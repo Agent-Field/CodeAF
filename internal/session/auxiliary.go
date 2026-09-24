@@ -9,6 +9,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/taxonomy"
@@ -577,7 +578,7 @@ func (a *Agent) journalRoleCall(response *ai.Response, role roles.Role, rung, en
 	usage := response.Usage
 	a.file.appendCall(journalCall{
 		Model:      model,
-		Endpoint:   strings.TrimSpace(endpoint),
+		Endpoint:   a.attributedEndpoint(rung, endpoint),
 		Role:       string(role),
 		Input:      usage.PromptTokens,
 		CacheRead:  usage.CacheReadTokens(),
@@ -585,6 +586,32 @@ func (a *Agent) journalRoleCall(response *ai.Response, role roles.Role, rung, en
 		Output:     usage.CompletionTokens,
 		CostUSD:    costOf(usage),
 	})
+}
+
+// attributedEndpoint is the endpoint a call row names: the one the answer named
+// itself, or — when it named nobody — the name the model's own service declared
+// for its answers ([modelsource.Source.ServedAs]), and otherwise nothing.
+//
+// IT FEEDS THE RECORD AND NOTHING THAT LEARNS. Codex's backend names no server,
+// and until #1391 its rows were the one blank endpoint column in a profile. The
+// name is written here, where only the journal reads it, rather than put on the
+// answer: a name on an answer is a lane internal/provider rates and pins and a
+// machine the live screen draws beside the model, and a service that is its own
+// one machine has neither. model is the id the request was made with
+// (`codex/gpt-5.5`), because that is what says which service answered.
+func (a *Agent) attributedEndpoint(model, served string) string {
+	if served = strings.TrimSpace(served); served != "" {
+		return served
+	}
+	service, _ := a.liveSources().For(strings.TrimSpace(model))
+	return strings.TrimSpace(service.Source.ServedAs)
+}
+
+// liveSources is the service set this conversation routes by right now.
+func (a *Agent) liveSources() modelsource.Set {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.config.Sources.OrDefault(a.config.APIKey, a.config.BaseURL)
 }
 
 // The two failures this file names itself. Both are the shape a caller has

@@ -17,6 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
 // defaultContextWindow is the window assumed when Config.ContextWindow is
@@ -4241,6 +4242,9 @@ func newEventStream() *eventStream {
 }
 
 func (s *eventStream) send(event Event) {
+	if event.Kind == EventError && event.Err != nil {
+		event.Err = scrubEventError(event.Err)
+	}
 	s.mu.Lock()
 	// A STREAM THE READER LEFT IS NOT QUEUED INTO. Dropping here is the point of
 	// leaving: everything this fan-out is careful never to drop is careful on
@@ -4250,6 +4254,29 @@ func (s *eventStream) send(event Event) {
 		s.cond.Signal()
 	}
 	s.mu.Unlock()
+}
+
+type scrubbedEventError struct {
+	cause error
+	text  string
+}
+
+func (e *scrubbedEventError) Error() string { return e.text }
+func (e *scrubbedEventError) Unwrap() error { return e.cause }
+
+// scrubEventError is the last boundary before an EventError becomes visible.
+// It preserves the typed cause for readers using errors.Is or errors.As while
+// ensuring the sentence a surface receives contains no assembled credential.
+func scrubEventError(err error) error {
+	if err == nil {
+		return nil
+	}
+	said := err.Error()
+	clean := string(trace.Scrub([]byte(said)))
+	if clean == said {
+		return err
+	}
+	return &scrubbedEventError{cause: err, text: clean}
 }
 
 func (s *eventStream) close() {

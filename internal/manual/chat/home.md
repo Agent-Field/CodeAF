@@ -590,7 +590,7 @@ under it.
 
 The top line is the program's name and, right-aligned, what is true of the **whole
 machine** right now. It is the first row of **every** frame — home, every place, and the
-chat itself, where it sits over the tab strip (` Home  <your chats>`), a rule and a blank:
+chat itself, where it sits over the tab strip (` home  <your chats>`), a rule and a blank:
 the same four rows at the top wherever you are standing. **Inside a chat** and on every
 place but home it reads:
 
@@ -2093,7 +2093,7 @@ timed-out Git check draws nothing. The reading arrives a moment after home opens
 that is no longer on this disk says `that folder is gone` in place of the branch it cannot
 have.
 
-## What is scheduled on home — reminders, routines, watches and rules, what is next up and when
+## Standing on home — what is scheduled, reminders, routines, watches and rules, what is next up and when
 
 **The `standing` panel, last of the seven**: every standing order this machine will act
 on, from every project, **soonest first**, with the rules that simply hold at the end.

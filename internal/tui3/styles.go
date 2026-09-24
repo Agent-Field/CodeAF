@@ -1803,3 +1803,44 @@ const (
 	glyphHarness      = "◆"
 	glyphHarnessASCII = "#"
 )
+
+// The ball's brand gold, one spelling per kind of page. The bright gold sits at
+// about 2:1 against a white page, so a light page gets a deeper gold of its own
+// rather than the ball fading into the ground. WHICH page it is gets read from
+// the ladder's own ink rather than the theme setting, because a measured ground
+// replaces the ladder without touching that setting (adaptive.go): dark ink is
+// written on a light page, whichever ladder put it there.
+var (
+	hueWorkGold   = mustHue("#DAAC5C", heavy)
+	lightWorkGold = mustHue("#8C6420", heavy)
+)
+
+// workLogoCell uses foreground-only native glyphs. The ball has its own brand
+// gold rather than borrowing the question hue, whose meaning is actionable.
+func (p palette) workLogoCell(cell tokens.WorkLogoCell) string {
+	if cell.Glyph == 0 || cell.Glyph == ' ' {
+		return " "
+	}
+	h := p.ramp.ink
+	if cell.Gold {
+		h = hueWorkGold
+		if ink := p.ramp.ink; luminanceOf(ink.r, ink.g, ink.b) < 0.18 {
+			h = lightWorkGold
+		}
+	}
+	return p.paint(string(cell.Glyph), h)
+}
+
+// wordmark keeps the header recognizable without implying an idle app is busy.
+// Small and accessible terminals retain the plain product name.
+func (p palette) wordmark(width int) string {
+	name := p.bold(p.muted(product))
+	if width < 24 || p.ascii || p.linear || p.profile < tokens.ANSI256 {
+		return name
+	}
+	var mark strings.Builder
+	for _, cell := range tokens.WorkLogoMark() {
+		mark.WriteString(p.workLogoCell(cell))
+	}
+	return mark.String() + " " + name
+}

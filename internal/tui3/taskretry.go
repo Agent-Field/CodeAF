@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 const taskRetryWord = "enter retry"
@@ -147,6 +148,7 @@ func (a *app) resumeRetriedRoom(node *taskNode) tea.Cmd {
 	a.roomGen++
 	room.gen = a.roomGen
 	room.setDone(false)
+	room.workActivity.Start(a.now(), tokens.WorkLogoRandom)
 	room.lane, room.stop = nil, nil
 	if doors, ok := a.roomDoors(); ok {
 		lane, stop, err := roomLaneOf(doors, node.id)

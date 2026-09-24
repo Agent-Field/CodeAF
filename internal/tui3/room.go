@@ -322,6 +322,7 @@ const taskModelUnavailableWord = "changing a task's model is unavailable — thi
 // taskRoom is one node's page: what it has said, the lane carrying what it says
 // next, and where the reader is in it.
 type taskRoom struct {
+	workActivity tokens.WorkActivity
 	// detailsTop belongs to this page so scrolling its facts never moves the tree.
 	detailsTop int
 
@@ -621,6 +622,7 @@ func (a *app) newRoom(id uint64, title string) *taskRoom {
 		stick:    true,
 		dirty:    true,
 	}
+	r.workActivity.Start(a.now(), tokens.WorkLogoRandom)
 	r.feed = newFeed(a.roomFeedHooks(r))
 	r.mdAt = a.now()
 	return r
@@ -2082,11 +2084,18 @@ func (a *app) freezeRoom() {
 	if a.copy.on || a.room == nil {
 		return
 	}
-	rows := a.roomRows(a.bodyWidth())
+	width := a.bodyWidth()
+	height := a.viewHeight()
+	// COPY OWNS THE PAGE BEFORE IT IS LAID OUT, so the room's transient
+	// activity and the blank belonging only to it never enter the snapshot.
+	a.copy.on = true
+	a.room.dirty = true
+	rows := a.roomRows(width)
 	if len(rows) == 0 {
+		a.copy.on = false
+		a.room.dirty = true
 		return
 	}
-	height := a.viewHeight()
 	snapshot := make([]string, 0, len(rows))
 	stripped := make([]string, 0, len(rows))
 	owner := make([]int, 0, len(rows))

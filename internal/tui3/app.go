@@ -791,11 +791,20 @@ type (
 		outcome modelsource.Outcome
 		models  []Model
 		err     error
+		// browser says this result owns a waiting browser card. Word is the
+		// shared terminal-and-panel sentence that settles that card.
+		browser bool
+		word    string
 		// renamedFrom is the Written name the row carried when the draft
 		// opened, and empty unless this connect was an edit that changed it.
 		// The adopt side re-prefixes every model id already picked under the
 		// old name, or they strand onto the default service (modelservices.go).
 		renamedFrom string
+	}
+	codexFlowMsg struct {
+		draft modelConnectDraft
+		flow  CodexFlow
+		err   error
 	}
 	// The two messages the default model provider's browser connection takes
 	// (firstrun.go). The first carries the listener after it is standing, so the
@@ -1131,6 +1140,7 @@ type app struct {
 	// writing. Both are cleared when the turn settles — a rate quoted over a
 	// finished turn is a rate nobody is watching.
 	turnBegan    time.Time
+	workActivity tokens.WorkActivity
 	turnOutStart int
 	// turnCostAt is what the session had spent when the turn now running
 	// started, and it is the other end of the subtraction a turn footer's price
@@ -1670,7 +1680,7 @@ type app struct {
 	// connNames is what a service is CALLED, keyed by the id every event
 	// carries: the offer is the only event that names one, and the two that
 	// follow it have to be able to say the word anyway.
-	// connFlows are the sign-ins this surface is waiting on, keyed by service.
+	// connFlows are the account sign-ins this surface is waiting on, keyed by service.
 	// A flow is held only so it can be ABANDONED — the conversation being
 	// replaced, or a second attempt at the same account — because a listener
 	// nobody is going to answer is a listener outliving its reason.
@@ -1726,6 +1736,11 @@ type app struct {
 	harnChip  string
 	connNames map[string]string
 	connFlows map[string]*connect.Flow
+	// codexFlow is the model-service browser sign-in. Its result is tokens rather
+	// than a connected-account status, so it cannot live in connFlows; it is held
+	// for the same reason, so replacing the conversation can cancel its listener.
+	codexFlow    CodexFlow
+	codexConnect func(context.Context) (CodexFlow, error)
 	// leftTap is when ← was last pressed over an empty box, and it is the whole
 	// of the double-tap (room.go's [app.navBack]). One tap steps back a level;
 	// two inside [navDoubleTap] go home.
@@ -2775,6 +2790,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		applyAPIKey:         opts.ApplyAPIKey,
 		applyModelSources:   opts.ApplyModelSources,
 		routerConnect:       opts.ConnectOpenRouter,
+		codexConnect:        opts.ConnectCodex,
 		applyApprovals:      opts.ApplyApprovals,
 		recentSessions:      opts.RecentSessions,
 		resume:              opts.Resume,
@@ -4617,6 +4633,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.adoptConnectResult(msg)
 		return a, nil
 
+	case codexFlowMsg:
+		return a, a.adoptCodexFlow(msg)
+
 	case modelConnectResultMsg:
 		a.adoptModelConnectResult(msg)
 		return a, nil
@@ -5031,11 +5050,13 @@ func (a *app) paint() tea.Cmd {
 	// stream has stopped arriving does not need thirty frames a second: the
 	// clock steps at the spinner's own cadence, and the animations that count
 	// in paints (spinnerStep, pulseStep) land exactly where they would have at
-	// full cadence, one stride at a time. Any OTHER liveness term, or a stream
+	// full cadence, one stride at a time. A visible working logo also needs the
+	// full cadence because its geometry moves between spinner glyph changes.
+	// Any OTHER liveness term, or a stream
 	// still arriving ([app.streamFresh]), keeps the full cadence.
 	if waitLive || otherLive {
 		every := a.frameEvery()
-		if waitLive && !otherLive && !a.streamFresh() {
+		if waitLive && !otherLive && !a.streamFresh() && !a.workLogoVisible() {
 			every *= spinnerStep
 		}
 		return tea.Batch(kick, surfaceTick(every, func(time.Time) tea.Msg { return frameMsg{} }))
@@ -6205,6 +6226,7 @@ func (a *app) startClock() {
 		return
 	}
 	a.turnBegan, a.turnOutStart, a.turnCostAt = a.now(), a.outputTokens, a.cost
+	a.workActivity.Start(a.turnBegan, tokens.WorkLogoRandom)
 	// AND THE COLUMN OPENS AT NOTHING, because the figures it chases are this
 	// turn's rather than the session's (tokencol.go's [tokenCol.open]).
 	a.col.open()

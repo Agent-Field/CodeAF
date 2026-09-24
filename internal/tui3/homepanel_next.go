@@ -7,16 +7,12 @@ import (
 	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
-// nextPanel is `next up`: the reminders and routines this machine will act on,
+// nextPanel is `standing`: the reminders and routines this machine will act on,
 // soonest first and the rules that simply hold at the end — the order and the
 // `in 20h` / `mon 8:30` / `holds` clause the project card's band always drew
 // (homeband_nextup.go's [standByNextDue] and [standWhenClause]), now for the
 // whole machine. Every row opens the standing place, where the orders are kept.
 type nextPanel struct{ homePanelBase }
-
-// homeScheduledWord matches the standing place the heading opens. The panel
-// includes reminders, routines, watches and rules, not only scheduled work.
-const homeScheduledWord = "standing"
 
 func (nextPanel) rows(in *homeGridInput) homePanelRows {
 	views := nextActive(in)

@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"sort"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/paymentrefusal"
@@ -105,7 +108,34 @@ func SourceKeyAt(profileDir string, row PersistedSource, src modelsource.Source)
 	if strings.EqualFold(strings.TrimSpace(src.ID), modelsource.DefaultID) {
 		return APIKeyAt(profileDir)
 	}
+	if strings.EqualFold(strings.TrimSpace(src.ID), "codex") {
+		if codexauth.Connected(profileDir) {
+			return codexauth.Sentinel
+		}
+		return ""
+	}
 	return sourceKeyFromRow(row, src)
+}
+
+// CatalogHTTPClient is the one door onto a model service's listing transport.
+// Codex needs the profile's rotating bearer and account headers; every ordinary
+// OpenAI-compatible service keeps the catalog's default client by answering nil.
+func CatalogHTTPClient(service modelsource.Connected) *http.Client {
+	if strings.EqualFold(strings.TrimSpace(service.Source.ID), "codex") {
+		return codexauth.Client(service.Home)
+	}
+	return nil
+}
+
+// CatalogOptionsFor is the one construction door for a connected service's
+// catalog compartment. Keeping the source identity, address, key, profile and
+// account-aware client together makes it impossible for a new listing road to
+// send Codex's persisted sentinel through the generic HTTP client.
+func CatalogOptionsFor(service modelsource.Connected, profileDir string) catalog.Options {
+	return catalog.Options{
+		Source: service.Source.ID, BaseURL: service.Address, APIKey: service.Key,
+		Dir: profileDir, HTTPClient: CatalogHTTPClient(service),
+	}
 }
 
 func sourceKeyFromRow(row PersistedSource, src modelsource.Source) string {
@@ -115,9 +145,22 @@ func sourceKeyFromRow(row PersistedSource, src modelsource.Source) string {
 // ResolveSources builds the whole registry: the synthesised default service
 // first, then every persisted row this build still knows.
 func ResolveSources(profileDir, defaultKey, defaultBase string) modelsource.Set {
-	return resolveSources(defaultKey, defaultBase, PersistedSources(profileDir), func(row PersistedSource, source modelsource.Source) string {
+	set := resolveSources(defaultKey, defaultBase, PersistedSources(profileDir), func(row PersistedSource, source modelsource.Source) string {
 		return SourceKeyAt(profileDir, row, source)
 	})
+	return sourceHomes(set, profileDir)
+}
+
+func sourceHomes(set modelsource.Set, profileDir string) modelsource.Set {
+	services := set.All()
+	for index := range services {
+		services[index].Home = profileDir
+		if strings.EqualFold(services[index].Source.ID, "codex") {
+			services[index].Address = codexauth.Backend()
+			services[index].Source.Address = services[index].Address
+		}
+	}
+	return modelsource.NewSet(services...)
 }
 
 // resolveSources is the file-free half of ResolveSources. Load hands it the
@@ -178,6 +221,9 @@ func resolveSources(defaultKey, defaultBase string, rows []PersistedSource, keyA
 }
 
 func resolvedSourceAddress(row PersistedSource, source modelsource.Source) string {
+	if strings.EqualFold(strings.TrimSpace(source.ID), "codex") {
+		return codexauth.Backend()
+	}
 	if modelsource.IsCustomID(source.ID) {
 		return strings.TrimRight(strings.TrimSpace(row.Address), "/")
 	}
@@ -185,6 +231,77 @@ func resolvedSourceAddress(row PersistedSource, source modelsource.Source) strin
 		return resolvedDoorAddress(row, source, door)
 	}
 	return resolvedRegionAddress(row, source)
+}
+
+// CodexRememberedModels is the Codex catalog this profile remembers for the
+// connected service, every row with the window it accepts.
+//
+// A ROW REMEMBERED BEFORE #1383 CARRIES NO WINDOW, because the connection that
+// wrote it dropped the listing's `context_window`. For a model the fallback list
+// names, the fallback's figure stands in: it is the same observation of the same
+// account listing that [ConnectCodex] remembers when the listing cannot be
+// reached, so it is a fact this build already holds about that id rather than a
+// guess about a model nobody has heard back from. Any other id keeps its zero,
+// which every reader already treats as "nobody can say". It is the one door both
+// readers of a Codex catalog take — the process shelf an engine's sessions ask
+// for a window, and the surface's own rows — so a profile connected by an older
+// build reads 272k the next time it opens, without connecting again.
+func CodexRememberedModels(service modelsource.Connected, profileDir string) []catalog.Model {
+	rows := catalog.Recall(CatalogOptionsFor(service, profileDir)).ModelsNow()
+	known := make(map[string]int, len(codexauth.FallbackModels))
+	for _, model := range codexauth.FallbackModels {
+		known[strings.ToLower(model.ID)] = model.ContextLength
+	}
+	for index := range rows {
+		if rows[index].ContextLength <= 0 {
+			rows[index].ContextLength = known[strings.ToLower(strings.TrimSpace(rows[index].ID))]
+		}
+	}
+	return rows
+}
+
+// ConnectCodex keeps a completed browser sign-in, persists its service row and
+// seeds the picker from the account's own visible model list.
+func ConnectCodex(ctx context.Context, profileDir string, tokens codexauth.Tokens) (modelsource.Outcome, error) {
+	if err := codexauth.Save(profileDir, tokens); err != nil {
+		return modelsource.Outcome{}, err
+	}
+	listed := true
+	row := PersistedSource{ID: "codex", Written: "codex", Key: codexauth.Sentinel, Listed: &listed}
+	if err := persistConnectedSource(profileDir, row); err != nil {
+		_ = codexauth.Remove(profileDir)
+		return modelsource.Outcome{}, err
+	}
+	models, listErr := codexauth.List(ctx, profileDir, codexauth.Options{})
+	refreshed := listErr == nil
+	if !refreshed {
+		models = append([]codexauth.Model(nil), codexauth.FallbackModels...)
+	}
+	outcome := modelsource.Outcome{Kind: modelsource.OutcomeConnected, Listed: true, Refreshed: refreshed}
+	// EACH ROW KEEPS ITS WINDOW. The catalog remembered here is what the picker,
+	// the status line's meter and the session's compaction all read for a Codex
+	// model, and a row remembered without one left a conversation that moved onto
+	// it on its previous model's window (#1383). The figure is the account
+	// listing's own, or the fallback rows' one observed figure when the listing
+	// could not be reached.
+	remembered := make([]catalog.Model, 0, len(models))
+	for _, model := range models {
+		if id := strings.TrimSpace(model.ID); id != "" {
+			outcome.ModelIDs = append(outcome.ModelIDs, id)
+			remembered = append(remembered, catalog.Model{ID: id, ContextLength: model.ContextLength, PriceUnknown: true})
+		}
+	}
+	outcome.Models = len(outcome.ModelIDs)
+	service, found := ResolveSources(profileDir, "", DefaultBaseURL).ByID("codex")
+	if !found {
+		_ = DisconnectService(profileDir, "codex")
+		return modelsource.Outcome{}, errors.New("codex connection was not saved")
+	}
+	if err := catalog.Remember(CatalogOptionsFor(service, profileDir), remembered); err != nil {
+		_ = DisconnectService(profileDir, "codex")
+		return modelsource.Outcome{}, err
+	}
+	return outcome, nil
 }
 
 func resolvedRegionAddress(row PersistedSource, source modelsource.Source) string {
@@ -555,7 +672,8 @@ func persistConnectedSource(profileDir string, row PersistedSource) error {
 	return WriteSources(profileDir, rows)
 }
 
-// DisconnectService removes one service row and its stored key atomically.
+// DisconnectService removes one service row and its stored credential. Codex's
+// rotating tokens live in their owner-only sibling file and leave with it.
 func DisconnectService(profileDir, id string) error {
 	rows := PersistedSources(profileDir)
 	kept := rows[:0]
@@ -564,5 +682,11 @@ func DisconnectService(profileDir, id string) error {
 			kept = append(kept, row)
 		}
 	}
-	return WriteSources(profileDir, kept)
+	if err := WriteSources(profileDir, kept); err != nil {
+		return err
+	}
+	if strings.EqualFold(strings.TrimSpace(id), "codex") {
+		return codexauth.Remove(profileDir)
+	}
+	return nil
 }

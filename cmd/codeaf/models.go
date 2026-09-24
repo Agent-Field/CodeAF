@@ -43,7 +43,10 @@ func runModels(args []string) error {
 	// The same daily-cached listing every other surface reads. This one is a
 	// report and may wait for it: a panel line without the model's own
 	// capabilities is the line this command exists to improve on.
-	discovery := catalog.Options{BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir}
+	discovery := catalog.Options{
+		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
+		HTTPClient: config.CatalogHTTPClient(settings.Sources.Default()),
+	}
 	models, err := v3ModelsReport(discovery, *refresh)
 	if err != nil {
 		// The same sentence the picker leaves, on stderr: the table below is
