@@ -39,7 +39,7 @@ func TestTaskDeletionReconcilesLiveRailAndEveryRecordView(t *testing.T) {
 			}
 			a.comp.tasks = append([]session.TaskIndexEntry(nil), rows...)
 			a.planRowsFront = a.frontGen
-			a.planRows = []session.PlanTaskRow{{ID: "t-parent"}, {ID: "t-child", Parent: "t-parent"}, {ID: "t-sibling"}}
+			a.planRows = []session.PlanTaskRow{{ID: "t-parent", Status: "done"}, {ID: "t-child", Parent: "t-parent", Status: "done"}, {ID: "t-sibling", Status: "done"}}
 			pilotStopped := false
 			a.pilots = map[uint64]*taskPilot{102: {id: 102, stop: func() { pilotStopped = true }}}
 			a.railWhere = railSpot{id: 102}
