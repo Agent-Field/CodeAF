@@ -155,30 +155,38 @@ func Save(profileDir string, teams []Team) error {
 // is coloured by the next [LoadHued].
 func Update(profileDir string, fn func(*File) error) error {
 	return withLock(profileDir, lockWait, func() error {
-		f, legacy, _, err := read(profileDir)
-		if err != nil {
-			return err
-		}
-		missing := f == nil
-		if missing {
-			f = &File{Version: Version}
-		}
-		tidy(f.Teams)
-		if err := fn(f); err != nil {
-			return err
-		}
-		if missing && len(f.Teams) == 0 {
-			return nil
-		}
-		tidy(f.Teams)
-		if err := write(profileDir, f.Teams); err != nil {
-			return err
-		}
-		if legacy {
-			_ = os.Rename(legacyPath(profileDir), legacyPath(profileDir)+".migrated")
-		}
-		return nil
+		_, err := updateLocked(profileDir, fn)
+		return err
 	})
+}
+
+// updateLocked is [Update]'s body, for a caller that holds the lock. It
+// answers the file as fn left it, tidied, which is what was written; a missing
+// file that fn left with no teams is answered empty and is not created.
+func updateLocked(profileDir string, fn func(*File) error) (*File, error) {
+	f, legacy, _, err := read(profileDir)
+	if err != nil {
+		return nil, err
+	}
+	missing := f == nil
+	if missing {
+		f = &File{Version: Version}
+	}
+	tidy(f.Teams)
+	if err := fn(f); err != nil {
+		return nil, err
+	}
+	if missing && len(f.Teams) == 0 {
+		return f, nil
+	}
+	tidy(f.Teams)
+	if err := write(profileDir, f.Teams); err != nil {
+		return nil, err
+	}
+	if legacy {
+		_ = os.Rename(legacyPath(profileDir), legacyPath(profileDir)+".migrated")
+	}
+	return f, nil
 }
 
 // SetAside moves an unreadable teams file out of the way, to
@@ -224,10 +232,14 @@ func write(profileDir string, teams []Team) error {
 		_ = os.Remove(name)
 		return err
 	}
+	// The time moves past the file this replaces, so its stamp moves
+	// (stamp.go); the caller holds the lock, so no other write is between.
+	before := modTime(path)
 	if err := os.Rename(name, path); err != nil {
 		_ = os.Remove(name)
 		return err
 	}
+	advance(path, before)
 	return nil
 }
 
