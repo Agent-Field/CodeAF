@@ -8,19 +8,19 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-func TestEscapeFooterNamesHomeAndMain(t *testing.T) {
+func TestHomeFooterNamesDoubleSpaceOnlyWhereItWorks(t *testing.T) {
 	a, _ := homeTabsFixture(t)
 	a.closeHome()
-	if got := a.idleHint(); !strings.Contains(got, "esc home") {
+	if got := a.idleHint(); !strings.Contains(got, homeDoorWord) {
 		t.Fatalf("conversation footer: %q", got)
 	}
-	b := crumbApp(t)
-	if got := b.idleHint(); !strings.Contains(got, "esc main") || strings.Contains(got, "esc home") {
-		t.Fatalf("task footer: %q", got)
+	a.input.setText("draft")
+	if got := a.idleHint(); strings.Contains(got, homeDoorWord) {
+		t.Fatalf("draft advertises the empty-box gesture: %q", got)
 	}
-	b.hintRow(b.width)
-	if b.homeDoor.to <= b.homeDoor.from {
-		t.Fatal("task Escape label has no mouse target")
+	b := crumbApp(t)
+	if got := b.idleHint(); strings.Contains(got, homeDoorWord) {
+		t.Fatalf("task room advertises a conversation-only gesture: %q", got)
 	}
 }
 

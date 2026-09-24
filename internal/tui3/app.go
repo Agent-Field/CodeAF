@@ -1883,6 +1883,10 @@ type app struct {
 	// sends no status-line news (hostlink.go's [app.sayNewsSilence]). It is said
 	// once per window, because it is a fact about a machine and not about a turn.
 	newsSilenceSaid bool
+	// watchSpaces counts the run of spaces a WATCHER has typed, which is how the
+	// door home is reached from a register with no box on the frame
+	// (watching.go's [app.watchKey]). It is zero everywhere else.
+	watchSpaces int
 	// linkLatency is the hosted connection's rolling round trip, and
 	// linkPingAsking keeps its slow clock to one call at a time. Both are zero on
 	// every local session and before the first hosted answer, which the
@@ -1986,6 +1990,7 @@ type app struct {
 	// so it is refreshed on the paint clock while something on screen is drawing
 	// it and held between times.
 	away elsewhereCache
+
 	// pilots are the watchers on the nodes that are running right now, keyed by
 	// id, and pilotGen the counter each one takes its generation from (task.go).
 	// Empty is the ordinary state: nothing is running, so nothing is watched.
@@ -2205,6 +2210,10 @@ type app struct {
 	// not now that a conversation draws it too (pulsebeat.go). Every figure in it
 	// is read from the MACHINE, never from what a screen was holding (#525).
 	machine machineFacts
+	// placeSpaceArmed is the first of the two spaces that open home from a
+	// place with no box — spend, standing — held until the second lands or any
+	// other key disarms it (placekeys.go's [app.placeHomeGesture]).
+	placeSpaceArmed bool
 	// pageMsg is the one refusal a place that is not home has to say, drawn where
 	// the hint would be. It is one field for [homeView.msg]'s reason: pressing a
 	// door twice says the same thing once.
@@ -2439,7 +2448,11 @@ type app struct {
 	// can sit on, and the draft it is holding (rewind.go). Closed, it costs the
 	// frame nothing.
 	//
-	// rewSay and rewSayAt hold a temporary rewind refusal on the frame clock.
+	// escArm is when the first esc landed, or zero — the door's other half, which
+	// lives out here rather than inside the mode because it is a fact about the
+	// mode being DOWN. rewSay is one sentence the mode could not act on
+	// ("nothing to rewind") and rewSayAt when it was said; both run down on the
+	// frame clock ([app.rewindSweep]), because this surface has one clock.
 	rew rewindMode
 	// rewSheet is the DELIBERATE rewind: the whole conversation as a full-frame
 	// timeline, with a search, a preview of the pick and a two-stage enter
@@ -2447,6 +2460,7 @@ type app struct {
 	// whole, and it is built from the session's own transcript rather than from
 	// the drawn blocks — which is why it can reach turns the inline mode cannot.
 	rewSheet rewindSheet
+	escArm   time.Time
 	rewSay   string
 	rewSayAt time.Time
 	// tmux says this surface is inside a multiplexer, so a clipboard write has
@@ -2699,7 +2713,7 @@ func (a *app) noteKilled() {
 // opens with, which is already about the keys nothing else names, is where it is
 // written down. It is the third and last clause because the two in front of it
 // are about the session a person is in and this one is about the program.
-const landingKeysWord = "esc back · ctrl+c interrupts or quits · ? for help"
+const landingKeysWord = "esc interrupts · ctrl+c quits · ? for help"
 
 func newApp(ctx context.Context, opts Options) *app {
 	// THE ENVIRONMENT IS READ THROUGH THE SEAM AND NOWHERE ELSE, so the four
@@ -2987,8 +3001,8 @@ func newApp(ctx context.Context, opts Options) *app {
 	// IT HAS TO BE TRUE IN EVERY STATE, and the line it replaced was not: it
 	// promised an interrupt on the first frame of a session where nothing was
 	// running, and at that moment ctrl+c was the door rather than a stop. The
-	// clauses distinguish back navigation from the stop-or-quit key: Escape
-	// goes back, while Ctrl+C stops a running turn or leaves at rest (leaving.go).
+	// two clauses here are each true whatever is happening — esc stops the turn
+	// when there is one, and ctrl+c at rest always leaves (leaving.go).
 	//
 	// AND IT WAITS FOR THE GREETING TO GO. On an empty session the line lands
 	// when the conversation begins rather than above a screen that is asking for
@@ -4948,7 +4962,10 @@ func (a *app) paint() tea.Cmd {
 		// update wakes this clock, and the clock keeps turning while the store
 		// says the run is still out (homestanding.go, standing.go).
 		a.standingAnimating() ||
-		// Rewind refusals expire on the shared frame clock.
+		// AND THE REWIND ARM IS THE SEVENTH, and the only one of them that turns
+		// with nothing on screen moving at all: the hint slot says "esc again to
+		// rewind" for half a second, and something has to be drawing the frame
+		// that takes it away again (rewind.go).
 		a.rewindTicking() ||
 		// AND A STOP BEING LET GO OF IS THE TENTH, and it is the third that turns
 		// with nothing on screen moving at all — a stopped turn draws nothing new
@@ -7199,9 +7216,6 @@ func (a *app) slash(line string) tea.Cmd {
 		// the shape every choice row on this surface refuses in.
 		return a.runEffort(rest)
 
-	case "ask":
-		return a.runAskCommand(rest)
-
 	case "task":
 		return a.runTaskCommand(rest)
 
@@ -7300,7 +7314,7 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "rewind":
 		// THE COMMAND IS THE DELIBERATE DOOR AND IT OPENS THE TIMELINE
-		// (rewindsheet.go). Escape remains back navigation
+		// (rewindsheet.go), while esc esc keeps the quick inline gesture
 		// (rewind.go). Somebody who typed six letters to get here has already told
 		// this surface that the answer is not the message they just sent — it is
 		// somewhere back in the conversation, and finding it wants the whole of the
@@ -7482,7 +7496,7 @@ func (a *app) freshAndEmpty() bool {
 		return false
 	}
 	// A NOTE IS NOT A CONVERSATION. Every surface opens with the surface's own
-	// lines on it — `esc back · ctrl+c interrupts or quits`, a door's notice, a
+	// lines on it — `esc interrupts · ctrl+c quits`, a door's notice, a
 	// refusal somebody read — and counting those would make "fresh and empty"
 	// false on the very first frame of every session, which is the one state
 	// this test exists to recognise.
@@ -7769,7 +7783,7 @@ func (a *app) quit() tea.Cmd {
 	return tea.Quit
 }
 
-// interrupt is ctrl+c: stop the turn, keep what it said.
+// interrupt is esc: stop the turn, keep what it said.
 //
 // EVERYTHING A STOP OWES THE SCREEN IS PAID AT THE KEY, and that is the whole of
 // what this function changed when the interruption wave went through it. The
@@ -7782,7 +7796,7 @@ func (a *app) quit() tea.Cmd {
 // disagreeing with the one fact the person is certain of — they pressed the key.
 func (a *app) interrupt() {
 	a.interruptTurn()
-	// CTRL+C STOPS EVERYTHING, including both ways a later turn can already be
+	// ESC STOPS EVERYTHING, including both ways a later turn can already be
 	// waiting. The session drops its follow-up queue on interrupt; the surface
 	// drops that mirror and its editable parked queue in the same keypress so the
 	// stream close cannot orphan or unexpectedly send either one.
@@ -7792,7 +7806,7 @@ func (a *app) interrupt() {
 
 // interruptForBarge stops the current turn but preserves the draft
 // [app.bargeIn] just parked. ctrl+shift+enter promises stop-and-send; it shares the
-// stop machinery with ctrl+c without sharing ctrl+c's queue-clearing decision.
+// stop machinery with esc without sharing esc's queue-clearing decision.
 func (a *app) interruptForBarge() {
 	a.interruptTurn()
 	a.dropFollows()
@@ -7854,7 +7868,7 @@ func (a *app) interruptTurn() {
 	a.note("stopped")
 	// AND THIS TURN PROMOTES NOTHING (hierarchy.go's [app.cutTurn]). The mark goes
 	// on the blocks at the keypress so the demotion is on screen the moment the
-	// person presses ctrl+c, and again when the stream finally closes ([app.settle]),
+	// person presses esc, and again when the stream finally closes ([app.settle]),
 	// because events in flight land between the two.
 	a.cutTurn(a.turn)
 }
@@ -7866,9 +7880,25 @@ func (a *app) interruptTurn() {
 // it are still true and the second one is what dictated how this was built. What
 // changed is that the thing it said did not exist now does.
 //
-// The stop bound is a clock, not a second key: Ctrl+C already asked the turn
-// to stop, and Escape must remain navigation. The deadline starts on that
-// first stop and releases a turn that will not finish letting go.
+// WHAT THE ARGUMENT GOT RIGHT, FIRST HALF: THERE IS NO KEY LEFT. esc's grammar
+// in the conversation is read in a fixed order (input.go, rewind.go): a recall
+// walk takes it, then [app.escRewind] — where the first esc ARMS the rewind on
+// its way past and a second one inside [rewindArmWindow] OPENS it — and only
+// then [app.interrupt]. So every esc that lands within half a second of another
+// esc already belongs to rewind, and THE INTERRUPT IS NOT FOR SALE cuts the
+// other way just as hard. Putting a hard stop AFTER the window does not save it
+// either, because an esc past the window is a FIRST esc again, so the key would
+// mean "stop harder" or "open the rewind" depending on what the person did half
+// a second later — one keypress with two readings, which is the one thing this
+// keyboard cannot have. ctrl+c is spoken for on both sides of the same moment:
+// mid-turn it is the interrupt, and at rest — which is what winding down IS —
+// it is the door (leaving.go).
+//
+// THAT REMAINS TRUE, SO THE SECOND STAGE TAKES NO KEY AT ALL. It is a CLOCK,
+// started by the esc the person already pressed, and it needs no grammar because
+// it asks for no gesture. A person who wants a turn to stop has said so once;
+// making them say it twice, harder, into a surface that already heard them is
+// the exact experience issue #265 was filed about.
 //
 // WHAT THE ARGUMENT GOT RIGHT, SECOND HALF, AND WHY IT DICTATED THE ORDER OF
 // WORK: A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN. A deadline whose

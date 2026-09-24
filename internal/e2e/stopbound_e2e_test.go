@@ -310,34 +310,35 @@ func runRealModelBoundedStop(t *testing.T) {
 	})
 	rig := start(t, "stopreal", home, workspace, 120, 40)
 
-	rig.lit("use the read tool on " + pipe + " and tell me what is in it")
+	// Explain the deliberate wait: a model otherwise correctly refuses to
+	// open a FIFO, so the test never reaches the stop it is supposed to time.
+	rig.lit("This is a controlled cancellation test. Use the read tool directly on " + pipe +
+		". It is an intentional FIFO with no writer. Blocking is expected: I will press Escape to cancel it. Do not inspect it with bash or avoid the read; start that read now.")
 	rig.keys("Enter")
 
-	// THE TURN HAS TO BE GENUINELY INSIDE THE CALL BEFORE THE KEY IS PRESSED.
-	// Waiting for the word `read` is not enough — it is in the sentence the person
-	// typed, so it is on screen before the model has decided anything, and a run
-	// that pressed esc there would be timing the stop of a turn that was between
-	// steps. The status line's own phase clause is the honest evidence: it reads
-	// `running read · Ns` only while the call is executing (internal/tui3's
-	// phase segment), and a call parked on a pipe with no writer never leaves it.
-	rig.waitFor(modelPatience, "running read")
-	// And it is STILL there several seconds later, which is what tells a call that
-	// is stuck apart from one that is merely slow.
+	// The journal identifies the exact read and its completion. The live
+	// footer can summarize it as "working" after briefly saying "running read".
+	deadline := time.Now().Add(modelPatience)
+	for !pendingPipeRead(t, home, pipe) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the model never started the requested pipe read:\n%s", rig.capture())
+		}
+		time.Sleep(pollEvery)
+	}
 	time.Sleep(6 * time.Second)
-	screen := rig.capture()
-	if !strings.Contains(screen, "running read") {
-		t.Fatalf("the read call came back, so this run is not about an uncancellable wait:\n%s", screen)
+	if !pendingPipeRead(t, home, pipe) {
+		t.Fatalf("the read completed, so this run is not about an uncancellable wait:\n%s", rig.capture())
 	}
 
 	pressed := time.Now()
-	rig.keys("C-c")
+	rig.keys("Escape")
 
 	stopping := rig.waitFor(10*time.Second, say(t, "stopDetachWord"))
-	t.Logf("=== REAL MODEL: pane after ctrl+c (the bound, stated) ===\n%s", stopping)
+	t.Logf("=== REAL MODEL: pane after esc (the bound, stated) ===\n%s", stopping)
 
 	detached := rig.waitFor(stopBoundPatience, say(t, "stopDetachedWord"))
 	took := time.Since(pressed)
-	t.Logf("=== REAL MODEL: pane after the detach (%s after ctrl+c) ===\n%s", took.Round(time.Second), detached)
+	t.Logf("=== REAL MODEL: pane after the detach (%s after esc) ===\n%s", took.Round(time.Second), detached)
 	if took > stopBoundPatience {
 		t.Fatalf("the turn took %s to detach, which is past the bound", took)
 	}
@@ -354,6 +355,47 @@ func runRealModelBoundedStop(t *testing.T) {
 	rig.waitFor(modelPatience, "ready")
 }
 
+// pendingPipeRead checks the journal rather than a transient status label, so
+// the path in the user's prompt cannot satisfy the wait.
+func pendingPipeRead(t *testing.T, home, pipe string) bool {
+	t.Helper()
+	for _, transcript := range sessionTranscripts(t, home) {
+		pending := map[string]bool{}
+		for _, line := range strings.Split(transcript, "\n") {
+			var entry struct {
+				ToolCalls []struct {
+					ID       string `json:"id"`
+					Function struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					} `json:"function"`
+				} `json:"toolCalls"`
+				Took struct {
+					CallID string `json:"callId"`
+				} `json:"took"`
+				ToolCallID string `json:"toolCallId"`
+			}
+			if json.Unmarshal([]byte(line), &entry) != nil {
+				continue
+			}
+			for _, call := range entry.ToolCalls {
+				var args struct {
+					Path string `json:"path"`
+				}
+				if call.Function.Name == "read" && json.Unmarshal([]byte(call.Function.Arguments), &args) == nil && args.Path == pipe {
+					pending[call.ID] = true
+				}
+			}
+			delete(pending, entry.Took.CallID)
+			delete(pending, entry.ToolCallID)
+		}
+		if len(pending) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // runStoppedInTime is the scenario where the engine DOES let go: the surface's
 // wait ends inside the bound, nothing is detached, and the box is usable again.
 func runStoppedInTime(t *testing.T, stub *stopStub, name, ask string) {
@@ -364,14 +406,14 @@ func runStoppedInTime(t *testing.T, stub *stopStub, name, ask string) {
 	waitUntilParked(t, rig, stub)
 
 	pressed := time.Now()
-	rig.keys("C-c")
+	rig.keys("Escape")
 
 	// THE SURFACE'S WAIT ENDS INSIDE THE BOUND. `interrupted` is the word the
 	// status line takes once the turn is genuinely over (internal/tui3's
 	// render.go), so waiting for it is waiting for the stream to have closed.
 	settled := rig.waitFor(stopBoundPatience, say(t, "interruptedWord"))
 	took := time.Since(pressed)
-	t.Logf("=== pane %s after ctrl+c: the never-ending stream is over ===\n%s", took.Round(time.Second), settled)
+	t.Logf("=== pane %s after esc: the never-ending stream is over ===\n%s", took.Round(time.Second), settled)
 	if took > stopGraceE2E {
 		t.Fatalf("the stream took %s to end, which is past the bound", took)
 	}
@@ -425,19 +467,19 @@ func runBoundedStop(t *testing.T, stub *stopStub, name, ask string) {
 	waitUntilParked(t, rig, stub)
 
 	pressed := time.Now()
-	rig.keys("C-c")
+	rig.keys("Escape")
 
 	// 1. THE BOUND IS ON THE SCREEN BEFORE IT FIRES.
 	stopping := rig.waitFor(10*time.Second, say(t, "stopDetachWord"))
 	if !strings.Contains(stopping, say(t, "stoppingWord")) {
 		t.Fatalf("the countdown is drawn without the word it belongs to:\n%s", stopping)
 	}
-	t.Logf("=== pane after ctrl+c (the bound, stated) ===\n%s", stopping)
+	t.Logf("=== pane after esc (the bound, stated) ===\n%s", stopping)
 
 	// 2. AND IT FIRES INSIDE THE BOUND.
 	detached := rig.waitFor(stopBoundPatience, say(t, "stopDetachedWord"))
 	took := time.Since(pressed)
-	t.Logf("=== pane after the detach (%s after ctrl+c) ===\n%s", took.Round(time.Second), detached)
+	t.Logf("=== pane after the detach (%s after esc) ===\n%s", took.Round(time.Second), detached)
 	if took > stopBoundPatience {
 		t.Fatalf("the turn took %s to detach, which is past the bound", took)
 	}
@@ -465,8 +507,9 @@ func waitUntilParked(t *testing.T, rig *rig, stub *stopStub) {
 	for time.Now().Before(deadline) {
 		switch stub.kind {
 		case parkOnStream:
-			// The second request is out and its text is arriving.
-			if strings.Contains(rig.capture(), stopStubStreaming) {
+			// The live summary can omit the sentence-ending period. The same
+			// words still prove that the second request is streaming on screen.
+			if strings.Contains(rig.capture(), strings.TrimSuffix(stopStubStreaming, ".")) {
 				return
 			}
 		case parkOnPipe:

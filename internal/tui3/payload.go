@@ -226,7 +226,7 @@ func paintPayload(line string, facts []segment, pal palette, prose func(string) 
 //
 // The legend's right end and the mode lines under it are written in one shape
 // at every call site that fills them (render.go's [app.hintWord] lists them
-// all): `chord verb`, joined by " · ". `ctrl+c interrupt`. `y allow · n deny · a
+// all): `chord verb`, joined by " · ". `esc interrupt`. `y allow · n deny · a
 // always`. `ctrl+r reveal · ctrl+y copy · esc`. THE CHORD IS THE PAYLOAD and
 // the verb is the prose, every time, which is a rule worth reading off the
 // string rather than making twenty-five call sites carry a list of their own

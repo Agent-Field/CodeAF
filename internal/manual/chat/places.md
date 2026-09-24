@@ -27,9 +27,8 @@ Every place is drawn in the same frame:
 5. a rule, then the **composer** — one line you can type into, wherever you are
 6. the hint line — what the keys do here
 
-`esc` dismisses an editor or filter first, then returns to Home. The resting tasks,
-spend and settings footers say `esc home`, including compact task screens. Places are not
-stacked: opening one closes whichever was up. Further Escape presses stay on Home.
+`esc` leaves a place and puts you back in the conversation you were in. Places are not
+stacked: opening one closes whichever was up, so `esc` is always one press from the chat.
 
 ## How to get to a place — the keyboard shortcut to jump between pages
 
@@ -55,7 +54,8 @@ Four ways, and they all reach the same seven rooms:
   conversations that match. A place ranks first, wears `▸`, and says `a place` out at the
   right margin. Home's list is a **drop-up** — it is read upward, out of the box you typed
   into — so ranking first means the offered place sits **below every conversation the same
-  words matched**, nearest the message box. One `↑` selects it.
+  words matched**, one row above `ask here` and `start a new conversation`, which is the
+  nearest row to your hand.
   Where the place can say what is behind it without going to the disk for it, the margin
   says that too: `a place · 6 orders, 1 fired today` on standing. A place that has nothing
   to count, or nothing in it, says `a place` alone.
@@ -190,8 +190,9 @@ mark. On **search** the words you type are the query, drawn on the first row of 
 same way, and `esc` clears them. On **memory** the head row echoes the filter in place of
 `type to filter`. Spend and standing take no text.
 
-**Escape backs out to Home from every place.** Filters clear first where present;
-editors and nested views close before their parent page. Two spaces no longer navigate.
+**Two spaces still open home from every place.** On a place with a filter they are typed
+into the empty filter and taken back out; on spend and standing, which have nothing to type
+into, the two bare spaces are counted, and any other key between them disarms the door.
 
 ## The rule above home's box — where it lands, the model, thinking, approvals, what happened to the here ~/codeaf chip
 
@@ -597,7 +598,7 @@ one word most people guess for "what has this cost" printed one conversation's b
 never mentioned the machine-wide ledger. It opens the place now.
 
 **The foot names the keys this place has**, and it is built from the row under the cursor:
-`enter opens what spent it · → the limits · shift+←→ move the days · tab next place · esc home`.
+`enter opens what spent it · → the limits · shift+←→ move the days · tab next place · esc close`.
 Where the head row is too narrow to draw its own arrows the window clause is dropped, and
 over an empty ledger only the way out is named.
 
@@ -799,7 +800,7 @@ afternoon.
 place segment and the legend under the box already carry. On a local session it is not there
 at all: a machine name is worth a word only when there is more than one machine in play.
 
-## Why is home empty over ssh when I connect to another machine — Escape over --host
+## Why is home empty over ssh when I connect to another machine — space space over --host
 
 **It is not empty any more, and this is the answer if you have seen it be.**
 
@@ -811,7 +812,7 @@ the chat you came from keeps running, the same door `codeaf resume` uses locally
 It used to draw **one dim line** where the rows would be —
 `home shows this machine's projects, and this session is on another` — because the projects
 it could reach were the laptop's while the work was on the server. Before that it refused to
-open at all. If you press Escape over a connection and get one line, the machine you are
+open at all. If you press space space over a connection and get one line, the machine you are
 attached to is running an older codeaf than the one you are sitting at, and the fix is the
 same as for any version mismatch: update the older one.
 

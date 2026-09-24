@@ -203,9 +203,9 @@ func TestTheParkedLineTrimsFromTheRightOnANarrowFrame(t *testing.T) {
 	}
 }
 
-// CTRL+C clears the parked queue at the keypress, before the interrupted stream
+// ESC clears the parked queue at the keypress, before the interrupted stream
 // closes, so there is no inert waiting block left during teardown.
-func TestCtrlCClearsTheParkedBlockWhileTheTurnIsWindingDown(t *testing.T) {
+func TestEscClearsTheParkedBlockWhileTheTurnIsWindingDown(t *testing.T) {
 	a, agent := streaming(t, "reading the tree. ")
 	parkLine(t, a, "do much more of a deep research please")
 	drive(t, a, frameMsg{})
@@ -220,13 +220,13 @@ func TestCtrlCClearsTheParkedBlockWhileTheTurnIsWindingDown(t *testing.T) {
 		t.Fatalf("the hint slot never offered the stop: %q", got)
 	}
 
-	drive(t, a, key("ctrl+c"), frameMsg{})
+	drive(t, a, key("esc"), frameMsg{})
 
 	if !a.windingDown() {
-		t.Fatal("the surface is not winding down after ctrl+c")
+		t.Fatal("the surface is not winding down after esc")
 	}
 	if len(a.parks) != 0 {
-		t.Fatalf("ctrl+c left a message parked during teardown: %+v", a.parks)
+		t.Fatalf("esc left a message parked during teardown: %+v", a.parks)
 	}
 	body := plain(frame(a))
 	if strings.Contains(body, "do much more of a deep research please") || strings.Contains(body, parkedHint[0]) {
@@ -236,7 +236,7 @@ func TestCtrlCClearsTheParkedBlockWhileTheTurnIsWindingDown(t *testing.T) {
 	agent.finish()
 	drive(t, a, streamClosedMsg{gen: a.gen}, frameMsg{})
 	if len(agent.sent) != 1 {
-		t.Fatalf("the stream close sent the message ctrl+c dropped: %q", agent.sent)
+		t.Fatalf("the stream close sent the message esc dropped: %q", agent.sent)
 	}
 }
 
@@ -293,39 +293,39 @@ func TestParkedMessagesGoOneAtATimeInTheOrderTheyWereTyped(t *testing.T) {
 	}
 }
 
-// ── ctrl+c ─────────────────────────────────────────────────────────────────────
+// ── esc ─────────────────────────────────────────────────────────────────────
 
-// CTRL+C WITH A MESSAGE WAITING STOPS THE ANSWER AND DROPS IT.
-func TestCtrlCWithAMessageWaitingStopsTheAnswerAndDropsIt(t *testing.T) {
+// ESC WITH A MESSAGE WAITING STOPS THE ANSWER AND DROPS IT.
+func TestEscWithAMessageWaitingStopsTheAnswerAndDropsIt(t *testing.T) {
 	a, agent := streaming(t, "reading the tree. ")
 	parkLine(t, a, "no, the other file")
 
-	drive(t, a, key("ctrl+c"))
+	drive(t, a, key("esc"))
 	agent.finish()
 	drive(t, a, streamClosedMsg{gen: a.gen})
 
 	if agent.stops != 1 {
-		t.Fatalf("ctrl+c did not stop the answer: %d stops", agent.stops)
+		t.Fatalf("esc did not stop the answer: %d stops", agent.stops)
 	}
 	if len(agent.sent) != 1 {
-		t.Fatalf("ctrl+c sent the waiting message it should drop: %q", agent.sent)
+		t.Fatalf("esc sent the waiting message it should drop: %q", agent.sent)
 	}
 	if len(a.parks) != 0 {
-		t.Fatalf("ctrl+c left the waiting message behind: %+v", a.parks)
+		t.Fatalf("esc left the waiting message behind: %+v", a.parks)
 	}
 }
 
-// The issue's verification matrix names both queues. One ctrl+c clears the
+// The issue's verification matrix names both queues. One esc clears the
 // session follow-up mirror and the editable parked queue, and neither stream
 // close may resurrect a turn from either one.
-func TestCtrlCClearsBothWaitingQueuesWithoutAnOrphanedTurn(t *testing.T) {
+func TestEscClearsBothWaitingQueuesWithoutAnOrphanedTurn(t *testing.T) {
 	a, agent := streaming(t, "reading the tree. ")
 	parkLine(t, a, "the parked message")
 	a.follows = append(a.follows, queued{text: "the queued follow-up"})
 
-	drive(t, a, key("ctrl+c"))
+	drive(t, a, key("esc"))
 	if len(a.parks) != 0 || len(a.follows) != 0 {
-		t.Fatalf("ctrl+c left queues behind: parked=%+v queued=%+v", a.parks, a.follows)
+		t.Fatalf("esc left queues behind: parked=%+v queued=%+v", a.parks, a.follows)
 	}
 	agent.finish()
 	drive(t, a, streamClosedMsg{gen: a.gen})
@@ -334,16 +334,16 @@ func TestCtrlCClearsBothWaitingQueuesWithoutAnOrphanedTurn(t *testing.T) {
 	}
 }
 
-// CTRL+C WITH NOTHING WAITING IS EXACTLY WHAT IT WAS: a stop, and no message.
-func TestCtrlCWithNothingWaitingIsStillJustTheInterrupt(t *testing.T) {
+// ESC WITH NOTHING WAITING IS EXACTLY WHAT IT WAS: a stop, and no message.
+func TestEscWithNothingWaitingIsStillJustTheInterrupt(t *testing.T) {
 	a, agent := streaming(t, "reading the tree. ")
-	drive(t, a, key("ctrl+c"))
+	drive(t, a, key("esc"))
 
 	if agent.stops != 1 {
-		t.Fatalf("ctrl+c did not stop the answer: %d stops", agent.stops)
+		t.Fatalf("esc did not stop the answer: %d stops", agent.stops)
 	}
 	if len(agent.sent) != 1 {
-		t.Fatalf("ctrl+c sent something nobody typed: %q", agent.sent)
+		t.Fatalf("esc sent something nobody typed: %q", agent.sent)
 	}
 	if a.state != stateInterrupted {
 		t.Fatalf("state = %v, want interrupted", a.state)
@@ -351,15 +351,15 @@ func TestCtrlCWithNothingWaitingIsStillJustTheInterrupt(t *testing.T) {
 }
 
 // H4: the empty running line is the plain interrupt, while a parked message
-// says that ctrl+c drops the waiting words as it stops.
+// says that esc drops the waiting words as it stops.
 func TestTheHintSaysWhatEscDoesWhileAMessageIsWaiting(t *testing.T) {
 	a, _ := streaming(t, "reading the tree. ")
-	if got := a.hintWord(); got != "ctrl+c interrupt" {
+	if got := a.hintWord(); got != "esc interrupt" {
 		t.Fatalf("a plain running turn = %q, want the interrupt", got)
 	}
 	parkLine(t, a, "no, the other file")
-	if got := a.hintWord(); got != "ctrl+c stops and drops" {
-		t.Fatalf("hint = %q, want what ctrl+c now does", got)
+	if got := a.hintWord(); got != "esc stops and drops" {
+		t.Fatalf("hint = %q, want what esc now does", got)
 	}
 }
 

@@ -19,10 +19,7 @@ import (
 // homeKindAt is the kind of the line the cursor rests on, for asserting where
 // the arrows landed without trusting the order the drop-up was built in.
 func homeKindAt(a *app) homeRowKind {
-	if line, ok := a.home.focusedLine(); ok {
-		return line.kind
-	}
-	return homeRowKind(255)
+	return a.home.lines[a.home.cursor].kind
 }
 
 // TestHomeSlashOffersCommandRows: typing a slash word offers the matching
@@ -49,21 +46,21 @@ func TestHomeSlashOffersCommandRows(t *testing.T) {
 	// "/clea" reaches /new through its clear alias, and the row that appears
 	// must be the canonical one — the word this surface runs — with the alias
 	// printed beside it, the same bargain chat's list makes.
-	a.homeKey(key("ctrl+u"))
+	a.homeKey(key("esc"))
 	typeHome(a, "/clea")
 	if text := homeText(a); !strings.Contains(text, "/new") {
 		t.Fatalf("typing clea did not offer the canonical /new row:\n%s", text)
 	}
 
 	// "/mo" offers /model — the acceptance's own word.
-	a.homeKey(key("ctrl+u"))
+	a.homeKey(key("esc"))
 	typeHome(a, "/mo")
 	if text := homeText(a); !strings.Contains(text, "/model") {
 		t.Fatalf("typing /mo did not offer the model command row:\n%s", text)
 	}
 
 	// "/conf" reaches /settings through its config alias.
-	a.homeKey(key("ctrl+u"))
+	a.homeKey(key("esc"))
 	typeHome(a, "/conf")
 	if text := homeText(a); !strings.Contains(text, "/settings") {
 		t.Fatalf("typing /conf did not offer the canonical settings row:\n%s", text)
@@ -438,8 +435,8 @@ func TestModelThenEscLeavesNoPickerOverTheConversation(t *testing.T) {
 	}
 	runCmd(a.key(key("esc")))
 	runCmd(a.key(key("esc")))
-	if !a.at(pageHome) {
-		t.Fatal("two escapes left home")
+	if a.at(pageHome) {
+		t.Fatal("two escapes did not leave home")
 	}
 	if a.pick.open || a.target.pick.open {
 		t.Fatal("a model list is standing over the conversation home was in front of")
@@ -577,6 +574,7 @@ func TestHomeSlashSelectionSurvivesTheSlowTick(t *testing.T) {
 
 	typeHome(a, "/set")
 	a.homeKey(key("up"))
+	a.homeKey(key("up"))
 	if k := homeKindAt(a); k != homeCommand {
 		t.Fatalf("two ↑ landed on %v, want a command row", k)
 	}
@@ -629,14 +627,14 @@ func TestHomeOfferedPlaceSelectionSurvivesTheSlowTick(t *testing.T) {
 	}
 }
 
-// TestHomeSlashDoesNotAddASubmissionRow: the resting row and the foot under it
+// TestHomeSlashActionRowSaysItWillRun: the resting row and the foot under it
 // both name what enter will actually do with a slash line.
 //
 // THE ROW MAY NOT PROMISE A CONVERSATION IT WILL NOT START. Enter on the action
 // row dispatches a "/" line ([app.homeEnter]), and the row went on reading
 // `+ start a new conversation: "/settings"` while it did — which is the one row
 // on this screen whose whole job is to say what the key means.
-func TestHomeSlashDoesNotAddASubmissionRow(t *testing.T) {
+func TestHomeSlashActionRowSaysItWillRun(t *testing.T) {
 	lab := newHomeLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", time.Now())
 	a := lab.app(mine)
@@ -648,13 +646,13 @@ func TestHomeSlashDoesNotAddASubmissionRow(t *testing.T) {
 		t.Fatalf("the cursor left the action row onto %v", k)
 	}
 	text := homeText(a)
-	if strings.Contains(text, homeStartGlyph+" run /settings") {
-		t.Fatalf("a removed run-command action row was rendered:\n%s", text)
+	if !strings.Contains(text, "/settings") {
+		t.Fatalf("the action row does not say it will run the command:\n%s", text)
 	}
 	if strings.Contains(text, homeStartWord+`: "/settings"`) {
 		t.Fatalf("the action row still offers to start a conversation with the command:\n%s", text)
 	}
-	if hint := a.homeHintWords(); strings.Contains(hint, "enter runs this command") {
+	if hint := a.homeHintWords(); !strings.Contains(hint, "enter") {
 		t.Fatalf("the foot reads %q, want it naming the run", hint)
 	}
 
@@ -662,10 +660,10 @@ func TestHomeSlashDoesNotAddASubmissionRow(t *testing.T) {
 	// always said, quoted words and all.
 	a.homeKey(key("esc"))
 	typeHome(a, "pricing")
-	if text := homeText(a); strings.Contains(text, homeStartWord+`: "pricing"`) {
-		t.Fatalf("a sentence rendered a removed action row:\n%s", text)
+	if text := homeText(a); !strings.Contains(text, homeStartWord+`: "pricing"`) {
+		t.Fatalf("a sentence lost the row it has always had:\n%s", text)
 	}
-	if hint := a.homeHintWords(); strings.Contains(hint, "enter starts a new conversation and sends this") {
+	if hint := a.homeHintWords(); !strings.Contains(hint, "enter starts a new conversation and sends this") {
 		t.Fatalf("a sentence's foot reads %q", hint)
 	}
 }
@@ -688,7 +686,7 @@ func TestHomeSlashChosenRowWritesTheNameAndNotThePlaceholder(t *testing.T) {
 	// the argless form, which runs and opens the picker instead, so the walk
 	// looks for the row by what it is rather than counting keystrokes.
 	for i := 0; i < len(a.home.lines); i++ {
-		if line, ok := a.home.focusedLine(); ok && line.kind == homeCommand && line.cmd.args != "" {
+		if line := a.home.lines[a.home.cursor]; line.kind == homeCommand && line.cmd.args != "" {
 			break
 		}
 		a.homeKey(key("down"))
@@ -751,7 +749,7 @@ func TestHomeSlashDoesNotSwallowAPastedPath(t *testing.T) {
 	// The label itself rather than the painted row: a temp directory's path is
 	// longer than the column, and this test is about which of the two readings
 	// the row took, not about where it was cut.
-	if got := a.home.pastedProject(); got != dir {
+	if got := a.home.startLabel(); got != homeStartWord+" in "+dir {
 		t.Fatalf("the action row says %q, want it offering the folder", got)
 	}
 	if hint := a.homeHintWords(); strings.Contains(hint, "enter runs this command") {

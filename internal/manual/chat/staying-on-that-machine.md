@@ -245,7 +245,7 @@ you are looking at is the line above.
 
 **Nothing is lost and nothing is closed.** The window is still attached: replies arrive
 live, the transcript is complete, you can scroll it, copy out of it, answer a permission
-card, press `ctrl+c` to interrupt, and walk to any other place with the usual keys. What you
+card, press `esc` to interrupt, and walk to any other place with the usual keys. What you
 cannot do is send a message — and typing characters does nothing at all, because there is
 no box on the screen to put them in.
 
@@ -268,7 +268,7 @@ There is no lock and nothing to release. Whoever pressed `enter` most recently h
 the window that lost it keeps its own draft, its own scroll position and the whole
 conversation.
 
-**Walking away instead:** Escape backs out to Home, exactly as they do
+**Walking away instead:** two spaces in an empty box still open home, exactly as they do
 when you are typing, so you can leave the conversation running in front of the other
 window and get on with something else on this machine.
 

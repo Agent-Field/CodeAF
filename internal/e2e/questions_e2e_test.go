@@ -1033,12 +1033,12 @@ func questionsWithdrawn(t *testing.T) {
 	awaitQuestion(t, r, "overwrite the checkpoint?", keyedWord("1", "overwrite it"))
 	shot(t, r, "raised")
 
-	// Escape folds the question to the chip; Ctrl+C interrupts the turn
-	// explicitly, which withdraws the question
+	// `esc` twice: the first folds the question to the chip (it is LATER, not
+	// cancel), the second is the surface's own interrupt, which takes the turn
 	// the question was holding open — and with the turn gone the question has
 	// stopped needing an answer.
 	press(t, r, "Escape")
-	press(t, r, "C-c")
+	press(t, r, "Escape")
 	gone := r.waitFor(90*time.Second, say(t, "questionWithdrawnWord"))
 	screenSays(t, gone, say(t, "questionWithdrawnMark"), "the withdrawn mark")
 	screenSays(t, gone, "overwrite the checkpoint?", "the withdrawn line names the question that went away")

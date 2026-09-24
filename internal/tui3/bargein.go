@@ -83,7 +83,7 @@ import (
 const bargeKey = "ctrl+shift+enter"
 
 // bargeSendWord is what this gesture does in the running-turn hint. It belongs
-// to ctrl+shift+enter alone: ctrl+c stops and clears waiting queues, while this chord
+// to ctrl+shift+enter alone: esc stops and clears waiting queues, while this chord
 // deliberately preserves the draft it just parked so the stream close sends it.
 const bargeSendWord = "stops and sends"
 
