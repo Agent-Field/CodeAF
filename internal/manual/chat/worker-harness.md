@@ -27,7 +27,10 @@ says `It joined the work already underway and shares its copy.` A proposed task 
 ANOTHER folder is refused while that run is underway, with both folders named and
 `tasks that run together share one copy of one folder. Propose it again when that work
 has ended`. A task handed off after the run has ended starts a run of its own, in a new
-copy cut from your folder as the first run left it.
+copy cut from your folder as the first run left it. So does one handed off after a run
+that nothing is driving any more (a limit you set ended it, or codeaf closed under it):
+the old run's store is kept beside the new one as its record, exactly as it was left,
+and new work never runs inside it.
 
 **When the run ends its work comes home by itself.** The copy's work is committed and
 merged into the folder it was cut from, the copy is given back, and the run's page

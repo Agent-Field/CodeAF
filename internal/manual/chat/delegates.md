@@ -92,6 +92,10 @@ when that work has ended`.
 **It has no review round.** codeaf's checker does not read its work afterwards. What the
 program itself checked is reported in its result, kept apart from what its model claimed.
 
+**It does not outlive codeaf.** If codeaf quits, crashes or is stopped while a program
+works, its run ends with `codeaf closed while <name> was running`, at the last moment it
+was seen working. Nothing carries it on: the next hand-off starts a run of its own.
+
 A name your build does not carry is refused with the ones it does:
 `this codeaf carries no program called <name>; it carries …`.
 

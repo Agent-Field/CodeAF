@@ -24,10 +24,12 @@ package session
 // `/task` while one is live adds its work to that same store rather than
 // opening a second one, because one store is one run (`plandb`'s own law: a
 // store belongs to one root), and the becomes-live child is dispatched by the
-// supervisor already turning. A conversation that has no live run seeds a fresh
-// store the way [TaskGraph.planSeed] seeds one — adopting a live store it finds,
-// archiving a finished one beside the session folder — so a resumed
-// conversation keeps reading its own plan.
+// supervisor already turning. A conversation that has no live run seeds a
+// fresh store under the new hand-off's own number, and the store already
+// there is archived beside the session folder whatever its root says
+// ([Agent.seedBeltRunStore]): a store no run in this process holds is a record,
+// never more work, so a resumed conversation still reads its old plan and a
+// new hand-off never runs inside it.
 
 import (
 	"context"
@@ -376,7 +378,7 @@ func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brie
 		return a.joinBeltRun(g, live, id, title, brief, dependencies, stand, via)
 	}
 
-	plan, store, err := a.openBeltRunStore(g, path, storeID, title, brief)
+	plan, store, err := a.seedBeltRunStore(g, path, storeID, title, brief)
 	if err != nil {
 		return err
 	}
@@ -596,12 +598,183 @@ func delegateGroundNames(proposed, copyDir string) []string {
 	return names
 }
 
-// openBeltRunStore opens the conversation's store for a run, creating it under
-// this run's root or adopting the live one already there. It is [planSeed]'s own
-// road stated for the run door: a store whose root has ended is archived beside
+// seedBeltRunStore opens a fresh store for a NEW hand-off, under the hand-off's
+// own number. A store already at the path is archived beside the session folder
+// the way a finished one always was, and never adopted, whatever its root says.
+//
+// A NEW HAND-OFF ONCE ADOPTED ANY STORE WHOSE ROOT HAD NOT ENDED, and a root
+// stays open whenever its process went away mid-run: codeaf quit, crashed, or
+// was stopped by signal while a program worked, or an ordinary run ended on a
+// limit its person set. The next `/senior-dev` in that conversation then ran
+// inside the dead run's store: measured on 2026-09-24, a CSSTree run was handed
+// the earlier happy-dom run's brief, its calls, spend, ceiling and ending were
+// written into the happy-dom task's record folder, the happy-dom page came to
+// read `stopped · $2.38 of $1.24 · 277 calls · 1h 7m` over a run that had
+// failed after 29 minutes, and the CSSTree task had no page at all. This door
+// is only ever reached with no run live in this process ([Agent.beltRun] is
+// asked first), so any store it finds is a record, and a record is archived.
+//
+// A PROGRAM'S RUN LEFT OPEN IS ENDED BEFORE IT IS ARCHIVED, at its last evidence
+// of life ([endOrphanedProgramRun]), because nothing can ever carry a program's
+// run on and its page would read `running` for ever. An ordinary run left open
+// is archived INTACT: its store is the record of what it did, and ending it
+// here would write a fault over work a limit its person set had paused.
+func (a *Agent) seedBeltRunStore(g *TaskGraph, path, rootID, title, brief string) (*planState, *plandb.Store, error) {
+	plan := &planState{path: path, chat: g.planChat()}
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		store, err := plandb.Open(path, title, rootID, title, brief, plan.chat)
+		return plan, store, err
+	} else if err != nil {
+		return nil, nil, err
+	}
+	old, err := plandb.Open(path, "", "", "", "")
+	if err != nil {
+		return nil, nil, err
+	}
+	endOrphanedProgramRun(old)
+	_ = old.Close()
+	archived := fmt.Sprintf("%s.%d", path, len(planArchivePaths(path))+1)
+	if err := os.Rename(path, archived); err != nil {
+		return nil, nil, err
+	}
+	store, err := plandb.Open(path, title, rootID, title, brief, plan.chat)
+	return plan, store, err
+}
+
+// programClosedSentence is the ending written on a program's run that codeaf
+// closed under: the conversation or the engine ended while the program worked.
+// It says what happened in plain words, because nobody decided anything and the
+// work did not fail on its own.
+func programClosedSentence(name string) string {
+	return "codeaf closed while " + name + " was running"
+}
+
+// endOrphanedProgramRun ends a program's run whose store was left open by a
+// process that went away, at the run's last evidence of life. It does nothing
+// to a store whose run has ended, or whose run no program worked (the task's
+// record folder holds no program record, [delegate.ProgramFile]).
+//
+// THE ENDING IS WRITTEN WHEN THE RUN WAS LAST SEEN, NOT NOW. The process that
+// finds the store can be hours later than the one that lost it, and the page
+// counts a run's time to its ending ([plandb.Store.FailRootAt] says why).
+func endOrphanedProgramRun(store *plandb.Store) {
+	rootID := store.RootID()
+	root := store.Task(rootID)
+	if root == nil || terminalStoreStatus(root.Status) {
+		return
+	}
+	taskDir := plandb.TaskDir(filepath.Dir(store.Path()), rootID)
+	record, ok := delegate.ReadProgram(taskDir)
+	if !ok {
+		return
+	}
+	endProgramRunClosed(store, record.Name, lastEvidenceOfLife(store, root, taskDir, record))
+}
+
+// endProgramRunClosed writes a program's run's ending when codeaf closed under
+// it: the run's task failed with the plain sentence at the instant named (zero
+// is now), and the same sentence as the task's newest note, which is the line
+// its page carries — the store's error is a field no page draws, and a page
+// that read `incomplete` with nothing beside it would send a person looking
+// for a fault in the work.
+func endProgramRunClosed(store *plandb.Store, name string, at time.Time) {
+	sentence := programClosedSentence(name)
+	if err := store.FailRootAt(sentence, at); err != nil {
+		return
+	}
+	if root := store.Task(store.RootID()); root == nil || root.Error != sentence {
+		// A run that had already ended keeps its own ending and its own words.
+		return
+	}
+	_, _ = store.AddNote(store.RootID(), store.RootID(), sentence)
+}
+
+// lastEvidenceOfLife is the latest instant a program's run is known to have
+// been working: its program's recorded exit when it has one, the end of its
+// last model call (or the start of one that never came back), its last charge,
+// and the store's own last write to its task. The zero time means none of them
+// is known, which the ending reads as now.
+func lastEvidenceOfLife(store *plandb.Store, root *plandb.Task, taskDir string, record delegate.ProgramRecord) time.Time {
+	latest := root.UpdatedAt
+	later := func(at time.Time) {
+		if at.After(latest) {
+			latest = at
+		}
+	}
+	later(record.StartedAt)
+	later(record.EndedAt)
+	later(store.LastSpendAt())
+	if turns, err := delegate.ReadTurns(taskDir, 0); err == nil {
+		for _, turn := range turns {
+			later(turn.Started)
+			later(turn.Ended)
+		}
+	}
+	return latest
+}
+
+// endInterruptedProgramRun is the restore's half of the same ending: a
+// conversation read back from disk whose run row comes back interrupted over a
+// program's store that is still open has its run ended there, at the run's
+// last evidence of life. It runs once, as the conversation is opened, when the
+// process opening it is the only one that holds it (the session file's lock),
+// so no run of this conversation can be live anywhere.
+//
+// WITHOUT IT THE PAGE READ `running` UNTIL THE NEXT HAND-OFF. codeaf closing
+// under a program's run left the store open, and a reopened conversation drew
+// that run's page as running, offered to stop it, and counted its clock up from
+// when it started for as long as the page stayed open.
+func (a *Agent) endInterruptedProgramRun() {
+	if a.config.InTask {
+		return
+	}
+	g := a.graph()
+	if g == nil || !g.holdsInterruptedRun() {
+		return
+	}
+	path := g.planPath()
+	if path == "" {
+		return
+	}
+	if info, err := os.Stat(path); err != nil || info.IsDir() {
+		return
+	}
+	store, err := plandb.Open(path, "", "", "", "")
+	if err != nil {
+		return
+	}
+	defer store.Close()
+	row, err := strconv.ParseUint(store.RootID(), 10, 64)
+	if err != nil {
+		return
+	}
+	if kept, found := runRowOf(g, row); !found || kept.State != TaskInterrupted {
+		return
+	}
+	endOrphanedProgramRun(store)
+}
+
+// holdsInterruptedRun says whether any run row this graph holds came back
+// interrupted, so a conversation with none never opens its store to ask.
+func (g *TaskGraph) holdsInterruptedRun() bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, rows := range g.runs {
+		for _, row := range rows {
+			if row.State == TaskInterrupted {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// openBeltRunStore opens the conversation's store for a run that is CARRIED ON
+// ([Agent.ContinueRun]), adopting the store already there. It is [planSeed]'s own
+// road stated for that door: a store whose root has ended is archived beside
 // the session folder and a fresh one seeded, because a finished plan is not a
-// live one; a store still running is adopted, because it is this conversation's
-// run and a second `/task` is more of its work.
+// live one; a store still running is adopted, because the run being carried on
+// is the one it holds. A new hand-off never comes here ([Agent.seedBeltRunStore]).
 func (a *Agent) openBeltRunStore(g *TaskGraph, path, rootID, title, brief string) (*planState, *plandb.Store, error) {
 	plan := &planState{path: path, chat: g.planChat()}
 	if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -686,16 +859,34 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 //
 // IT IS NOT A PERSON'S STOP AND MUST NOT BE MISTAKEN FOR ONE. A stop writes the
 // person's reason on the store's root and settles the row in their words
-// (stoprun.go); this writes nothing and says nothing, because nobody asked for
-// anything — the room simply closed. What the run did is in its store, which is
-// where the next launch reads it from.
+// (stoprun.go); this says nothing in the conversation, because nobody asked for
+// anything — the room simply closed. What an ordinary run did is in its store,
+// which is where the next launch reads it from, and its root is left open.
+//
+// A PROGRAM'S RUN IS ENDED IN ITS STORE FIRST, THEN CUT, the order a stop takes.
+// Nothing can carry a program's run on, and the ending the run writes for itself
+// comes only after the engine has answered, which on an engine being shut down
+// (a signal, `codeaf engine --stop`) is after the process has gone: the store
+// then said `running` for ever, and the next hand-off ran inside it. Written
+// here, the ending is on disk before anything is cut. WAITING instead — holding
+// Close until the run had written its own ending — was the other road, and it
+// is the weaker one: it holds a person's quit for the program's grace and the
+// landing behind it, and a process killed during that wait writes nothing at
+// all. A crash writes nothing either way; that store is ended by the next
+// process to find it ([endOrphanedProgramRun]).
 func (a *Agent) cutBeltRun() {
 	a.beltMu.Lock()
+	run := a.beltRun
 	var cut context.CancelFunc
-	if a.beltRun != nil {
-		cut = a.beltRun.cut
+	stopped := false
+	if run != nil {
+		cut, stopped = run.cut, run.stopped
 	}
 	a.beltMu.Unlock()
+	if run != nil && run.delegate != nil && !stopped {
+		// A run a person already stopped keeps the stop's ending and its words.
+		endProgramRunClosed(run.store, run.delegate.Name, time.Time{})
+	}
 	if cut != nil {
 		cut()
 	}

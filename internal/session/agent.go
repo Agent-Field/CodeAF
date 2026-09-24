@@ -376,6 +376,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// recovery is load, reconcile with the disk, continue the frontier
 	// (task_store.go). A fresh session has no checkpoint and this is a stat.
 	agent.recoverTasks()
+	// AND A PROGRAM'S RUN THE LAST PROCESS LEFT OPEN IS ENDED, where it was last
+	// seen, so its page stops reading `running` (task_run_belt.go).
+	agent.endInterruptedProgramRun()
 	// AND THE PROJECT'S RECORD IS RECONCILED BESIDE IT. The checkpoint above is
 	// one conversation's graph; the project index is every window's record of
 	// what this directory ever ran, and it holds rows that say "running" — a run

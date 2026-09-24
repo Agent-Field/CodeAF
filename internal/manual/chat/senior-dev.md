@@ -300,11 +300,30 @@ A run ends in one of these ways, and the task's ending says which:
 - `senior-dev crashed: …` — the program itself broke, or could not start (no brief, a
   refused `senior-dev.json`, no git repository at a shell without `--in-place`);
 - `stopped by the run: …` — you, or the run it belonged to, stopped it; what follows is
-  what senior-dev said on its way out, usually `stopped before it finished`.
+  what senior-dev said on its way out, usually `stopped before it finished`;
+- `codeaf closed while senior-dev was running` — codeaf quit, crashed or was stopped
+  while it worked (see the next section).
 
 When it ends without submitting, it still checks the tree it leaves. If the project's
 tests cannot even start there, the tree is put back to the last state whose build and
 tests could run, or to where it began.
+
+## If codeaf quits while senior-dev works — closed, crashed, engine stopped, restarted mid-run
+
+senior-dev runs inside the codeaf that started it and ends with it. When you quit codeaf
+or close the conversation, when the engine is stopped (`codeaf engine --stop`, a signal),
+or when codeaf crashes while senior-dev is working, the run is over: its page reads
+`incomplete` with `codeaf closed while senior-dev was running` beside it.
+
+**The run ends where it was last seen working**: the end of its last model call, its last
+charge, or its store's last change, whichever is latest. So the time and the spend on its
+page stop there, and do not count the hours codeaf was closed. When codeaf closes in an
+orderly way the ending is written before senior-dev is stopped; after a crash it is
+written by the next codeaf that opens that conversation, or that hands work off in it.
+
+**Nothing carries it on.** The next `/senior-dev` in that conversation starts a run of its
+own, under its own task number, with its own brief and its own page. The old run's page
+stays as the record of what it did.
 
 Everything senior-dev said while it worked (each stage and what it knew at the time)
 is kept in `delegate-stderr.log` in the task's record folder. Its `agent-summary` there
