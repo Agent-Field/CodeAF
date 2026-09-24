@@ -270,6 +270,9 @@ func (a *app) frame() (string, int, int) {
 	// A tile just opened from the wall frames the conversation's first few
 	// pictures as it grows into the frame (wall.go); a string compare when not.
 	body = a.wallZoomed(body)
+	// The strip's team switcher hangs over whatever page is drawn under it
+	// (teammenu.go); the frame as it was when it is down.
+	body = a.teamMenuOver(body)
 	return norm.NFC.String(body), caretX, caretY
 }
 
