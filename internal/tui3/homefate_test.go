@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -136,6 +137,50 @@ func TestProjectAtHomeBrowsesForTheTargetAndPinsIt(t *testing.T) {
 	}
 	// AND NOTHING REACHED THE CONVERSATION BEHIND HOME. A pin is a decision about
 	// a conversation that does not exist yet.
+	if len(a.attachedPlaces()) > 0 {
+		t.Fatalf("the pick was referred to the conversation behind home: %v", a.attachedPlaces())
+	}
+}
+
+// THE STORE LANDING DOES NOT CHANGE WHO THE SHEET IS ABOUT. The first browser of
+// a launch opens before the background read of the pick counts answers, and
+// that answer rebuilds the sheet; a rebuild that forgot [folderPick.forTarget]
+// turned home's `the next conversation's folder` into `add context`, and the
+// folder chosen a second later was referred to the conversation BEHIND home —
+// caught in a real terminal on a fresh profile, where every test here had
+// already read the store.
+func TestTheStoreLandingKeepsHomesSheetAboutTheNextConversation(t *testing.T) {
+	a, _, root := mixedLab(t)
+	runCmd(a.openHome())
+
+	settleFolder(t, a, a.homeSlash("/project"))
+	if !a.folder.open || !a.folder.forTarget {
+		t.Fatalf("bare /project did not open the browser for the target: open=%v target=%v",
+			a.folder.open, a.folder.forTarget)
+	}
+
+	// The store lands, exactly as the background read delivers it.
+	settleFolder(t, a, func() tea.Msg {
+		return folderStoreMsg{store: folderStore{Roots: []string{filepath.Join(root, "here")}}}
+	})
+	if !a.folder.open || !a.folder.forTarget {
+		t.Fatalf("the store landing turned home's sheet into the conversation's: open=%v target=%v",
+			a.folder.open, a.folder.forTarget)
+	}
+	if len(a.folder.held) > 0 {
+		t.Fatalf("the store landing marked the conversation behind home's folders as held: %v", a.folder.held)
+	}
+
+	onFolderRow(t, a, "inner")
+	settleFolder(t, a, a.folderConfirm())
+
+	inner := filepath.Join(root, "here", "inner")
+	if a.target.where != inner {
+		t.Fatalf("the pick pinned %q, want %q", a.target.where, inner)
+	}
+	if !a.at(pageHome) {
+		t.Fatal("the pick did not land back on home")
+	}
 	if len(a.attachedPlaces()) > 0 {
 		t.Fatalf("the pick was referred to the conversation behind home: %v", a.attachedPlaces())
 	}

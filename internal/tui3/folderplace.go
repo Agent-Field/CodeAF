@@ -1189,12 +1189,22 @@ func (a *app) tookFolderStore(msg folderStoreMsg) tea.Cmd {
 	hidden, gen, cols := a.folder.hidden, a.folder.gen, a.folder.cols
 	marks, pane := a.folder.marks, a.folder.pane
 	paneTop, paneLeft := a.folder.paneTop, a.folder.paneLeft
+	forTarget := a.folder.forTarget
 	a.folder.start(a.folderCandidates(), a.tilde)
 	a.folder.filter, a.folder.facts = filter, facts
 	a.folder.kids, a.folder.asking, a.folder.hidden = kids, asking, hidden
 	a.folder.marks, a.folder.pane = marks, pane
 	a.folder.paneTop, a.folder.paneLeft = paneTop, paneLeft
-	a.markFolderHeld()
+	// AND SO DOES WHO THE SHEET IS ABOUT. Home's sheet chooses for the
+	// conversation that does not exist yet ([app.openTargetContextPick]), and a
+	// rebuild that dropped the flag turned the first `/project` or bare `/attach`
+	// of a launch into `add context` a second after it opened, so the folder
+	// chosen on it went to the conversation BEHIND home. Its sheet holds nothing
+	// either, for the reason that function gives.
+	a.folder.forTarget = forTarget
+	if !forTarget {
+		a.markFolderHeld()
+	}
 	// The COLUMNS are kept whole and not re-seated: which level they are on and
 	// which row of it the cursor is on are facts about where a person has walked
 	// to, and a store arriving is not news about either.
