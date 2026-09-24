@@ -27,12 +27,13 @@ package run
 //
 // ── MONEY IS METERED BY THE API, NEVER REPORTED BY THE PROGRAM ──────────────
 //
-// Each call's price reaches three books as it is metered ([delegateMeter]):
-// the run's live bank, which the supervisor holds to the ceiling and the
-// conversation's status line reads; the task's spend rows, one per call, which
-// the task page draws; and this machine's spending ledger, one row per call,
-// exactly once — the conversation folds the run's total into its own meter
-// without writing a ledger row of its own (internal/session's addFoldedUsage).
+// Each call's price reaches four books as it is metered ([delegateMeter]):
+// the conversation's own, which folds the call whole — tokens, model and
+// dollars — without writing a ledger row of its own (internal/session's
+// beltFold); the run's live bank, which the supervisor holds to the ceiling;
+// the task's spend rows, one per call, which the task page draws; and this
+// machine's spending ledger, one row per call, exactly once, filed under the
+// conversation and the task.
 // The program's terminal record may still carry its own reading of what it
 // spent; that figure is kept on the record and never banked.
 
