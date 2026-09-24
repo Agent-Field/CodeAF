@@ -57,8 +57,18 @@ type ElsewhereTask struct {
 	// person expects words. What a surface draws instead of it is the surface's
 	// own business.
 	Session string
+	// Project is what to call the project folder that window is filed under,
+	// and "" when it is the reader's own. It is set only on a row read from
+	// ANOTHER project folder because it is on the same repository
+	// (taskrepo.go), and it is the one clause that tells such a row apart from a
+	// window beside this one.
+	Project string
 	// Task is the work itself, exactly as the other window described it.
 	Task PresenceTask
+	// score is how much this work has to do with the reader
+	// ([elsewhereScope.score]), set by the one reading that ranks it. Zero on
+	// every row nothing ranked, which keeps their order as it was read.
+	score int
 }
 
 // Elsewhere is one reading of every OTHER window open on one project.

@@ -24,6 +24,17 @@ package session
 //     those runs have already written ([PresenceTask.Files]). This is the half
 //     that says whose ground is moving before the model edits it.
 //
+// ── THIS FOLDER, AND THIS REPOSITORY FROM ANY FOLDER ──
+//
+// Both halves read this chat's own project folder as they always did, and every
+// other project folder for work on a repository this chat is on (taskrepo.go):
+// the folder a chat was launched in is not the repository its work was about,
+// and most of the overlap measured on 2026-09-24 was one repository reached from
+// two folders. A row from another folder says which one, and the rows are ranked
+// before the cap bites — shared files, then the same repository, then the same
+// folder — so the one row that shares a file with this chat's work is the last
+// one to be cut.
+//
 // ── FACTS, NEVER INSTRUCTIONS ──
 //
 // The block states what other windows did and are doing, and asks the model for
@@ -52,6 +63,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -198,6 +210,16 @@ type deltaLanding struct {
 	Files   []string
 	// Wrote is the honest total behind Files, which is capped.
 	Wrote int
+	// Unread says the row's file list could not be read when it was written
+	// ([TaskIndexEntry.FilesUnread]). It is the one thing that tells a row
+	// whose files nobody could read from a row that named none, and the row
+	// says so rather than reading like one that touched nothing.
+	Unread bool
+	// Project is the other project folder the landing was filed under, and ""
+	// for this chat's own. Score is how much it has to do with this chat
+	// ([elsewhereScope.score]); the block keeps the highest when the cap bites.
+	Project string
+	Score   int
 }
 
 // landedElsewhere is the past half: work that FINISHED in this project, in some
@@ -235,21 +257,66 @@ func landedElsewhere(rows []TaskIndexEntry, mine []string, after time.Time, limi
 		if id := strings.TrimSpace(row.SessionID); id == "" || own[id] {
 			continue
 		}
-		files, wrote := row.Files, row.FilesChanged
-		if len(files) > deltaRowFiles {
-			files = files[:deltaRowFiles]
-		}
-		out = append(out, deltaLanding{
-			Key:     row.SessionID + "\x00" + row.ID,
-			Label:   deltaLine(row.Label),
-			Status:  strings.TrimSpace(row.Status),
-			Outcome: deltaLine(row.Outcome),
-			Files:   append([]string(nil), files...),
-			Wrote:   wrote,
-		})
+		out = append(out, deltaLandingOf(row))
 		if len(out) >= limit {
 			break
 		}
+	}
+	return out
+}
+
+// deltaLandingOf is one index row flattened to what the block names.
+func deltaLandingOf(row TaskIndexEntry) deltaLanding {
+	files, wrote := row.Files, row.FilesChanged
+	if len(files) > deltaRowFiles {
+		files = files[:deltaRowFiles]
+	}
+	return deltaLanding{
+		Key:     row.SessionID + "\x00" + row.ID,
+		Label:   deltaLine(row.Label),
+		Status:  strings.TrimSpace(row.Status),
+		Outcome: deltaLine(row.Outcome),
+		Files:   append([]string(nil), files...),
+		Wrote:   wrote,
+		Unread:  strings.TrimSpace(row.FilesUnread) != "",
+	}
+}
+
+// rankedLandings is the past half of one wide reading ([Agent.readElsewhereWide]),
+// best first and cut to the cap: the highest score first, and the newest first
+// among rows that score the same, which is the order the block always kept.
+func rankedLandings(reading elsewhereReading, limit int) []deltaLanding {
+	rows := append([]TaskIndexEntry(nil), reading.landed...)
+	key := func(row TaskIndexEntry) string { return row.SessionID + "\x00" + row.ID }
+	sort.SliceStable(rows, func(i, j int) bool {
+		left, right := reading.scores[key(rows[i])], reading.scores[key(rows[j])]
+		if left != right {
+			return left > right
+		}
+		return rows[i].EndedAt.After(rows[j].EndedAt)
+	})
+	var out []deltaLanding
+	for _, row := range rows {
+		landing := deltaLandingOf(row)
+		landing.Project = deltaLine(reading.names[key(row)])
+		landing.Score = reading.scores[key(row)]
+		out = append(out, landing)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
+// rankLandings orders what the block will say, best first, keeping the order it
+// was given among rows that score the same, and cuts it to the cap. It is what
+// lets a landing the model was already told stay ahead of fresher news that has
+// less to do with this chat.
+func rankLandings(landed []deltaLanding, limit int) []deltaLanding {
+	out := append([]deltaLanding(nil), landed...)
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Score > out[j].Score })
+	if len(out) > limit {
+		out = out[:limit]
 	}
 	return out
 }
@@ -325,8 +392,23 @@ func deltaRemember(told, fresh []deltaLanding, limit int) []deltaLanding {
 //
 // EVERY CLAUSE WITH NOTHING IN IT IS DROPPED rather than written empty: a row
 // reading "· ·" is two facts this build does not have, stated as though it did.
-func renderElsewhereBlock(landed []deltaLanding, live []ElsewhereTask) string {
+//
+// A ROW FROM ANOTHER PROJECT FOLDER SAYS WHICH ONE (`in home`), and only that
+// row: the folder is the one fact that tells work on this repository from
+// somewhere else apart from a window beside this one.
+//
+// AND WHAT COULD NOT BE LOOKED AT IS SAID, under the lead line (notes). A
+// reading that could not resolve this chat's repository, or could not read
+// another folder's record, did not find "nothing elsewhere" — it did not look —
+// and when the block would otherwise be empty that line is the whole block,
+// because silence would read as the first and the truth is the second.
+func renderElsewhereBlock(landed []deltaLanding, live []ElsewhereTask, notes ...string) string {
 	var body strings.Builder
+	for _, note := range notes {
+		if note = deltaLine(note); note != "" {
+			body.WriteString(note + "\n")
+		}
+	}
 	if len(landed) > 0 {
 		// "recently" AND NOT "since you were last told", although the stamp is
 		// what selects these. The list keeps what it has already said
@@ -339,8 +421,13 @@ func renderElsewhereBlock(landed []deltaLanding, live []ElsewhereTask) string {
 			if row.Status != "" {
 				parts = append(parts, row.Status)
 			}
+			if row.Project != "" {
+				parts = append(parts, "in "+row.Project)
+			}
 			if word := deltaFilesWord(row.Files, row.Wrote); word != "" {
 				parts = append(parts, word)
+			} else if row.Unread {
+				parts = append(parts, deltaFilesUnknown)
 			}
 			body.WriteString("- " + strings.Join(parts, " · ") + "\n")
 			if row.Outcome != "" {
@@ -349,6 +436,10 @@ func renderElsewhereBlock(landed []deltaLanding, live []ElsewhereTask) string {
 		}
 	}
 	families := foldElsewhere(live)
+	// THE SAME RANKING AS THE PAST HALF, over whole families: a family counts
+	// for its best member, and families that score the same keep the order they
+	// were read in, which is newest window first.
+	sort.SliceStable(families, func(i, j int) bool { return families[i].score() > families[j].score() })
 	if len(families) > deltaLiveRows {
 		families = families[:deltaLiveRows]
 	}
@@ -370,6 +461,15 @@ func renderElsewhereBlock(landed []deltaLanding, live []ElsewhereTask) string {
 type elsewhereFamily struct {
 	head  ElsewhereTask
 	parts []ElsewhereTask
+}
+
+// score is the family's best member's ([ElsewhereTask.score]).
+func (f elsewhereFamily) score() int {
+	best := f.head.score
+	for _, part := range f.parts {
+		best = max(best, part.score)
+	}
+	return best
 }
 
 // foldElsewhere folds every part onto the work at the top of its family, in
@@ -443,6 +543,9 @@ func (f elsewhereFamily) row() string {
 	if name := deltaLine(at.Session); name != "" {
 		parts = append(parts, `window "`+name+`"`)
 	}
+	if project := deltaLine(at.Project); project != "" {
+		parts = append(parts, "in "+project)
+	}
 	if word := elsewherePartsWord(f.parts); word != "" {
 		parts = append(parts, word)
 	}
@@ -500,6 +603,11 @@ func elsewherePartsWord(parts []ElsewhereTask) string {
 	}
 	return count + " " + noun + " running, " + strconv.Itoa(quick) + " " + kind
 }
+
+// deltaFilesUnknown is the clause a landing carries in place of its files when
+// its file list could not be read ([TaskIndexEntry.FilesUnread]). It is a word
+// and not silence because silence is what a row that named no files says.
+const deltaFilesUnknown = "files unknown"
 
 // deltaFilesWord is a row's paths, and the honest total where the list was cut.
 // No files is NOT "touched nothing" — it is a run that has not written yet, or a
@@ -564,9 +672,13 @@ func deltaLine(text string) string {
 // could be "told" — and stamping it told in the constructor would mark a day of
 // landings seen on a session the person opened and closed without typing.
 //
-// EVERYTHING ABOUT IT FAILS QUIET. A conversation with no folder, a project with
-// no index, an unreadable stamp: each answers an empty block, and a turn with an
-// empty block is a turn exactly as it would have been.
+// WHAT IS SIMPLY ABSENT FAILS QUIET. A conversation with no folder, a project
+// with no index, an unreadable stamp, a working directory that is no repository:
+// each answers an empty block, and a turn with an empty block is a turn exactly
+// as it would have been. What is THERE AND COULD NOT BE READ — a repository whose
+// git link points at nothing, another folder's record that would not open — is
+// said in one line instead ([renderElsewhereBlock]'s notes), because reading it
+// as nothing would tell the model nobody else is on its repository.
 func (a *Agent) refreshElsewhere(ctx context.Context) {
 	// THE SAME PREDICATE THE CALL SITE ASKED, asked again by the door that acts
 	// on it — [Question.Revisable]'s shape exactly: one reading of who may be
@@ -598,13 +710,15 @@ func (a *Agent) refreshElsewhere(ctx context.Context) {
 		since = now.Add(-deltaFirstReach)
 	}
 
-	// THE FILE AND NOT [Agent.TaskIndex]. That door merges THIS session's live
+	// THE FILES AND NOT [Agent.TaskIndex]. That door merges THIS session's live
 	// graph over the file, and this half of the block is by definition about
 	// other conversations' landed work — a merge would cost a scheduler nobody
-	// asked for and could not add a single row this reads.
-	fresh := landedElsewhere(ReadTaskIndex(a.config.taskIndexFile()),
-		[]string{mine, a.config.Place.ID()}, since, deltaLandedRows)
-	live := a.Elsewhere().Tasks()
+	// asked for and could not add a single row this reads. The files are this
+	// project folder's and every other folder's rows on this chat's
+	// repositories, ranked ([Agent.readElsewhereWide], taskrepo.go).
+	reading := a.readElsewhereWide(dir, []string{mine, a.config.Place.ID()}, since, now)
+	fresh := rankedLandings(reading, deltaLandedRows)
+	live := reading.live
 
 	// ── EVERYTHING THIS READING CHANGES, UNDER ONE HOLD OF THE LOCK ──────────
 	//
@@ -660,8 +774,8 @@ func (a *Agent) refreshElsewhere(ctx context.Context) {
 		return
 	}
 	a.oweToldStampLocked(dir, now)
-	a.elsewhereTold = deltaRemember(a.elsewhereTold, fresh, deltaLandedRows)
-	a.elsewhereText = renderElsewhereBlock(a.elsewhereTold, live)
+	a.elsewhereTold = rankLandings(deltaRemember(a.elsewhereTold, fresh, len(a.elsewhereTold)+len(fresh)), deltaLandedRows)
+	a.elsewhereText = renderElsewhereBlock(a.elsewhereTold, live, reading.notes...)
 	a.mu.Unlock()
 }
 
