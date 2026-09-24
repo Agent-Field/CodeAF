@@ -176,12 +176,22 @@ func pageProgram(page session.PlanTaskPage) string {
 // engine that sent them predates the field, the name the run's own plan row
 // carries ([app.railProgramRow]), which is a row the surface already holds and
 // never a read made while drawing.
+//
+// ONLY THIS WINDOW'S OWN NODE IS LOOKED UP IN THIS WINDOW'S PLAN ROWS. Those
+// rows are the conversation in front's, found by the bare number, and task ids
+// restart with every conversation — so a guest page's node (taskowner.go's
+// [taskGuestNode]), standing for another conversation's task 7, would take the
+// badge of this conversation's own task 7 and wear `[senior-dev]` over work no
+// program had. Such a node answers with its own fact and nothing else.
 func (a *app) nodeProgram(node *taskNode) string {
 	if node == nil {
 		return ""
 	}
 	if node.program != "" {
 		return node.program
+	}
+	if a.tasks[node.id] != node {
+		return ""
 	}
 	if row, ok := a.railProgramRow(node); ok {
 		return strings.TrimSpace(row.Program)

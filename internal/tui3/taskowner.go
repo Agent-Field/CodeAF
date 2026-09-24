@@ -453,6 +453,12 @@ func (a *app) tookGuestNotice(msg taskGuestNoticeMsg) tea.Cmd {
 		if title := strings.TrimSpace(notice.Title); title != "" {
 			guest.node.title = title
 		}
+		// THE PROGRAM THE OWNER NAMES IS THE PAGE'S BADGE, and a notice naming
+		// none — from an engine older than the field — takes nothing away, the
+		// rule the rail keeps for this window's own nodes.
+		if program := strings.TrimSpace(notice.Program); program != "" {
+			guest.node.program = program
+		}
 		if notice.Elapsed > 0 {
 			guest.node.elapsed = notice.Elapsed
 		}
@@ -963,6 +969,10 @@ func (a *app) taskGuestTrail(item tasksItem) []string {
 // THE MODEL IS EMPTY BECAUSE NOBODY HERE KNOWS IT. The presence file the row was
 // minted from carries a title and a state, not a model, and the emptiness law
 // says an unknown draws as nothing rather than as this conversation's own.
+//
+// THE PROGRAM IS THE ROW'S OWN, and the only place the page's badge may come
+// from until the owner says otherwise ([app.tookGuestNotice]): this window's
+// plan rows are another conversation's numbering ([app.nodeProgram]).
 func taskGuestNode(item tasksItem) *taskNode {
 	id := taskSheetEntryID(item.entry.ID)
 	title := strings.TrimSpace(item.entry.Title)
@@ -974,6 +984,7 @@ func taskGuestNode(item tasksItem) *taskNode {
 		ident:    identFor(id),
 		title:    title,
 		label:    strings.TrimSpace(item.entry.Label),
+		program:  strings.TrimSpace(item.entry.Program),
 		state:    session.TaskState(strings.TrimSpace(item.entry.Status)),
 		ended:    item.entry.EndedAt,
 		met:      item.entry.EndedAt,

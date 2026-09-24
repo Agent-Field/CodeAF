@@ -330,7 +330,11 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by 
 			Status: task.Task.State, SessionID: task.SessionID, StartedAt: task.Task.StartedAt,
 		}
 		key := tasksKeyOf(entry)
-		entry.Parent = held[key].entry.Parent
+		// THE FAMILY AND THE PROGRAM COME OFF THE INDEX ROW OF THE SAME WORK, where
+		// there is one: presence carries neither, and a row that dropped the
+		// program would open a page with no badge over a program's work
+		// ([taskGuestNode]).
+		entry.Parent, entry.Program = held[key].entry.Parent, held[key].entry.Program
 		put(key, tasksItem{
 			entry: entry, row: tasksRowFor(world, mine, entry), runs: true, away: true, window: task.Session,
 			here: mine.here[strings.TrimSpace(task.SessionID)],

@@ -280,6 +280,105 @@ func TestTheRoomPanelAndItsTitleWearTheBadge(t *testing.T) {
 	}
 }
 
+// A PAGE ONTO ANOTHER CONVERSATION'S WORK WEARS THAT WORK'S BADGE, AND NEVER THE
+// ONE A LOCAL TASK OF THE SAME NUMBER WEARS. Task ids restart with every
+// conversation, so the page onto their task 7 stands beside this window's own
+// task 7 — here a senior-dev run, whose plan row the surface holds. The page's
+// header used to fall through to that row by the bare number and draw
+// `[senior-dev]` over work no program had; and when the owner said its own work
+// was a program's, the page dropped it.
+func TestAGuestPageWearsItsOwnWorksBadgeAndNeverTheLocalTasks(t *testing.T) {
+	a, _ := planAppWith(t, []session.PlanTaskRow{programRow()}, nil)
+	a.width, a.height = 120, 30
+	a.taskUpdate(update(7, programTitle, session.TaskRunning, session.TaskNotice{}))
+	if drawn := plain(strings.Join(a.railRows(a.viewHeight()), "\n")); !strings.Contains(drawn, "[senior-dev]") {
+		t.Fatalf("this window's own task 7 wears no badge, so this would prove nothing:\n%s", drawn)
+	}
+	door := &guestDoor{}
+	door.watching()
+	a.openTaskOwner = door.open
+	a.away = elsewhereCache{read: true, at: a.now(), held: session.NewElsewhere(a.now(),
+		map[string]string{"the-other-window": "docs pass"},
+		window("the-other-window", session.PresenceTask{
+			ID: "7", Title: "Port the parser", State: string(session.TaskRunning)}))}
+	enterAway(t, a)
+	if !a.roomIsGuest() {
+		t.Fatal("the row opened no reading page")
+	}
+	if title := plain(a.roomTitleRow(a.width)); !strings.Contains(title, "Port the parser") || strings.Contains(title, "[") {
+		t.Fatalf("another conversation's ordinary task 7 reads %q, wearing the badge of this window's own task 7", title)
+	}
+	// AND WHEN ITS OWNER SAYS ITS WORK IS A PROGRAM'S, THE PAGE WEARS THAT BADGE.
+	ownerSays(t, a, session.Event{Kind: session.EventTaskUpdate, Task: &session.TaskNotice{
+		ID: 7, Title: "Port the parser", State: session.TaskRunning, Program: "doc-writer"}})
+	if title := plain(a.roomTitleRow(a.width)); !strings.Contains(title, "Port the parser [doc-writer]") {
+		t.Fatalf("the owner said its task 7 is doc-writer's and the page reads %q", title)
+	}
+	if node := a.tasks[7]; node == nil || node.program != "" {
+		t.Fatalf("the owner's notice named a program on this window's own task 7: %+v", node)
+	}
+}
+
+// ANOTHER CONVERSATION'S PROGRAM WORK OPENS WEARING ITS BADGE, off the row the
+// page was opened from and before its owner has said anything: the project's
+// index names the program, and the row of that work another window has out
+// keeps it, as it keeps the family it belongs to.
+func TestAnotherConversationsProgramWorkOpensWearingItsBadge(t *testing.T) {
+	a, door := guestLab(t)
+	door.watching()
+	theirs := theirLiveSession
+	theirs.Tasks = session.TaskRollup{Rows: []session.TaskIndexEntry{{
+		ID: "7", SessionID: theirs.ID, Label: "Port the parser", Title: "Port the parser",
+		Status: string(session.TaskRunning), Program: "senior-dev",
+	}}}
+	if !openTaskPlaceWithRows(a) {
+		t.Fatal("the tasks place opened with no rows on it")
+	}
+	// The walk of the disk, as this fixture's machine would have answered it,
+	// read the way the place's own rebuild reads it ([tasksPlace.regroup]).
+	p := &a.taskSheet
+	p.world = session.World{Projects: []session.Project{{Sessions: []session.SessionRow{theirs}}}}
+	p.reading = readTasks(p.world, p.mine, p.reading.win, p.order, p.reading.seen, p.reading.now)
+	r := a.tasksFiltered()
+	width, _ := a.size()
+	lines := r.lay(width)
+	found := false
+	for at := range lines {
+		if item, ok := r.at(lines, at); ok && item.away {
+			if item.entry.Program != "senior-dev" {
+				t.Fatalf("the row another window has out lost the program its index row names: %+v", item.entry)
+			}
+			a.taskSheet.cursor, found = at, true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("no row on the page belongs to another window:\n%s", taskSheetText(a))
+	}
+	cmd := a.taskSheetEnter()
+	if cmd == nil {
+		t.Fatal("enter over another window's running work did nothing at all")
+	}
+	msg, ok := cmd().(taskOwnerMsg)
+	if !ok {
+		t.Fatalf("enter did not ask the engine for the owner: %T", cmd())
+	}
+	a.tookTaskOwner(msg)
+	if !a.roomIsGuest() {
+		t.Fatal("the row opened no reading page")
+	}
+	if title := plain(a.roomTitleRow(a.width)); !strings.Contains(title, "Port the parser [senior-dev]") {
+		t.Fatalf("another conversation's senior-dev task opens reading %q, want its badge", title)
+	}
+	// AND AN OWNER'S NOTICE THAT NAMES NO PROGRAM — an engine older than the
+	// field — takes nothing away.
+	ownerSays(t, a, session.Event{Kind: session.EventTaskUpdate, Task: &session.TaskNotice{
+		ID: 7, Title: "Port the parser", State: session.TaskRunning}})
+	if title := plain(a.roomTitleRow(a.width)); !strings.Contains(title, "Port the parser [senior-dev]") {
+		t.Fatalf("a notice naming no program took the badge off the page: %q", title)
+	}
+}
+
 // THE CARD A PERSON APPROVES NAMES THE PROGRAM: the block in the transcript
 // wears the badge beside the name, and the question above the box says it in
 // words — the same sentence the engine's own question object says.
