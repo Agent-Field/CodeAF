@@ -194,7 +194,7 @@ func (a *app) homeStripInDescription(width, room int) bool {
 // homeDescriptionVerbs wraps whole choices within the description column.
 // It reads the same captured verbs as the inline strip, preserving their keys.
 func (a *app) homeDescriptionVerbs(width int, pal palette) []string {
-	return verbChoiceLines(a.strip.verbs, width, homeDescLeadBlank, pal)
+	return a.stripChoiceLines(width, homeDescLeadBlank, pal)
 }
 
 // homeDescNote is one row's note as the lines it takes: the thread's title

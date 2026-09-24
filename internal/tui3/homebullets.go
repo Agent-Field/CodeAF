@@ -3,17 +3,17 @@ package tui3
 import "github.com/Agent-Field/codeaf/internal/tui2/tokens"
 
 // homeChatState reads only the foreground state and the keeper's cached events.
-// A task running in the conversation does not mean its answer is still streaming.
+// Closing a tab does not hide its running tasks, jobs or streamed reply.
 func (a *app) homeChatState(cell *homeCell) (answering, unread bool) {
-	if cell == nil || cell.closed || cell.chatKey == "" {
+	if cell == nil || cell.chatKey == "" {
 		return false, false
 	}
 	key := cell.chatKey
 	if key == a.frontTabKey() {
-		return a.state == stateWorking, a.unreadChats[key]
+		return a.frontSignal() == tabWorking, a.unreadChats[key]
 	}
 	if held := a.behind[key]; held != nil && held.watch != nil {
-		return held.watch.turning.Load(), a.unreadChats[key] || held.watch.landedSince() > 0
+		return held.watch.signal() == tabWorking, a.unreadChats[key] || held.watch.landedSince() > 0
 	}
 	return false, a.unreadChats[key]
 }
@@ -32,7 +32,7 @@ func (a *app) homeAnsweringLine() int {
 
 func (a *app) homeConversationBullet(cell *homeCell, pal palette) string {
 	working, unread := a.homeChatState(cell)
-	if cell != nil && !cell.closed && cell.row != nil {
+	if cell != nil && cell.row != nil {
 		_, moving := homeMovingAt(homeLine{kind: homeSession, row: cell.row.session})
 		working = working || moving
 	}

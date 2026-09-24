@@ -273,6 +273,9 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by 
 	var order []tasksKey
 	held := map[tasksKey]tasksItem{}
 	put := func(key tasksKey, item tasksItem) {
+		if item.row.DeletedTasks[item.entry.ID] {
+			return
+		}
 		if _, seen := held[key]; !seen {
 			order = append(order, key)
 		}

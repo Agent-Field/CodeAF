@@ -13,23 +13,25 @@ type sessionsPanel struct{ homePanelBase }
 func (sessionsPanel) rows(in *homeGridInput) homePanelRows {
 	byFile := make(map[string]switcherRow)
 	for _, row := range in.rows {
-		if row.kind == switcherConversation && !row.session.Archived {
+		if row.kind == switcherConversation {
 			byFile[filepath.Clean(row.session.Transcript)] = row
 		}
 	}
-	// Home is a place to resume open work. Archived history remains searchable,
-	// while a local tab close must also hide a row in an older disk snapshot.
+	// Closed conversations remain part of history and retain their dim styling.
 	for _, project := range in.world.Projects {
 		for _, row := range project.Sessions {
 			if row.Archived {
-				delete(byFile, filepath.Clean(row.Transcript))
+				byFile[filepath.Clean(row.Transcript)] = switcherRow{kind: switcherConversation,
+					session: row, project: project.Name, title: homeName(row),
+					place: switcherWhere(row, project)}
 			}
 		}
 	}
+	// The tab keeper has fresher titles and ownership than the disk snapshot.
 	for _, row := range in.closedChats {
-		delete(byFile, filepath.Clean(row.session.Transcript))
+		row.session.Archived = true
+		byFile[filepath.Clean(row.session.Transcript)] = row
 	}
-	// An explicitly reopened tab takes precedence over an older archive record.
 	for _, row := range in.openChats {
 		byFile[filepath.Clean(row.session.Transcript)] = row
 	}

@@ -338,6 +338,13 @@ func (h searchHit) row() session.SessionRow {
 // locked" shortcut here, because this place never read the flock: the open
 // reports it instead, which is what the resume picker has always done.
 func (a *app) openConversationRow(row session.SessionRow) tea.Cmd {
+	if a.homeConversationClosed(row) {
+		if err := a.writeHomeArchived(row, false); err != nil {
+			a.taskRowNotice("could not reopen conversation")
+			return nil
+		}
+		delete(a.tabShut, a.convKey(row.Transcript))
+	}
 	switch {
 	case a.holding(row.Transcript):
 		// A conversation this terminal already has open: the one on screen, or one

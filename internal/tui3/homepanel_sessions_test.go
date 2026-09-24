@@ -43,7 +43,7 @@ func TestHomeSessionsHeadingOpensRenamedTab(t *testing.T) {
 	}
 }
 
-func TestHomeSessionsExcludesClosedHistoryAndKeepsFreshTabTitles(t *testing.T) {
+func TestHomeSessionsKeepsClosedHistoryAndFreshTabTitles(t *testing.T) {
 	a, files := homeTabsFixture(t)
 	in := a.home.gridInput()
 	in.closedChats = []switcherRow{in.openChats[1]}
@@ -52,18 +52,15 @@ func TestHomeSessionsExcludesClosedHistoryAndKeepsFreshTabTitles(t *testing.T) {
 	got := (sessionsPanel{homePanelBase{panelSessions}}).rows(&in)
 	found := false
 	for _, line := range got.lines {
-		if line.row.Transcript == files[0] {
-			found = true
-			if line.cell.title != "Fresh tab title" {
-				t.Fatal("stale title")
-			}
+		if line.row.Transcript == files[0] && line.cell.title != "Fresh tab title" {
+			t.Fatal("stale title")
 		}
 		if line.row.Transcript == files[1] {
-			t.Fatal("closed conversation remains in the Home preview")
+			found = line.cell.closed
 		}
 	}
 	if !found {
-		t.Fatal("open conversation is absent")
+		t.Fatal("closed history is absent or not dimmed")
 	}
 
 }

@@ -1824,6 +1824,9 @@ func (a *app) placeHintSaid() string {
 		return line
 	}
 	if a.strip.open {
+		if a.strip.prompt != "" {
+			return "y yes · n no · esc cancel"
+		}
 		return stripHint
 	}
 	// AND A LAYER INSIDE A PLACE OUTRANKS THE ROUTER'S TAIL for exactly the
