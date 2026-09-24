@@ -116,7 +116,7 @@ on one waits for you.
 |---|---|---|
 | `team_status` | every member's handle, title and state (running, asking, idle, failed), the question waiting, the files touched, and recent traffic | no |
 | `team_read` | the end of one member's conversation, bounded; the member is not told | no |
-| `team_send` | a message to one member or to everyone, as a note (information) or a directive (an instruction) | no |
+| `team_send` | a message to one member or to everyone, as a note (information, which waits) or a directive (an instruction, which starts an idle member) | no |
 | `team_stop` | ends one member's current turn, the way your own Stop does: nothing is deleted, and its background tasks and jobs keep running | no |
 | `team_start` | a new member conversation with a handle and a brief; it opens in the team's folder and is handed the brief, marked as the manager's, on its first request | yes |
 
@@ -132,11 +132,33 @@ share a finding, ask a teammate, or say they are blocked.
 
 ## When messages arrive
 
-A message reaches a conversation at the start of its next step: straight away when it is
-working, and when it next runs when it is idle. A member busy in one long command reads it when
-that command returns, which is what `team_stop` is for. Nothing is delivered twice, and a
-conversation that joins a team is not handed the team's earlier history. A conversation
-reopened later is handed what was said to it while it was closed.
+A message reaches a conversation at the start of its next step. When the conversation is
+working, that is straight away. When it is idle, it depends on the kind of message:
+
+- A **directive** starts an idle member's turn. The member is handed the directive, marked
+  `◆ directive from manager`, never as if you had typed it.
+- A **note** wakes nobody. An idle member reads it when it next runs, for whatever reason.
+- A member's **reply to the manager** (`team_post` to the manager), and a member finishing,
+  failing or starting to wait on you, start an idle manager's turn. Replies that arrive within
+  a few seconds of each other are gathered into one turn rather than one turn each.
+
+A member no window has open is opened by codeaf in the background so it can run, and a window
+that opens it later joins the running conversation. When that cannot be done, the traffic says
+`could not wake @web:` and why, and the message waits for the member's next turn.
+
+Every wake is a line in the traffic, `◆ woke @web` or `@web woke ◆`, so the rail shows why a
+conversation is running. A wake spends through the same limits a turn you start does, and two
+more bound it: one conversation is woken at most 20 times an hour, and a manager woken 10 times
+by its team with nothing from you stops being woken and asks you instead, as a waiting line in
+the traffic. It is woken again after you next say something to it.
+
+A team's auto-wake can be turned off: its entry in `teams.json` in the profile carries
+`"wake": false`. With it off, every message waits for each conversation's next turn.
+
+A member busy in one long command reads a message when that command returns, which is what
+`team_stop` is for. Nothing is delivered twice, and a conversation that joins a team is not
+handed the team's earlier history. A conversation reopened later is handed what was said to it
+while it was closed.
 
 The traffic itself is kept in the profile of the machine the conversations run on, in
 `teams/<id>/traffic.jsonl`, one line per message, only ever added to.

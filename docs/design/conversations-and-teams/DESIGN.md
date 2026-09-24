@@ -224,16 +224,50 @@ new member is not handed old history. The UI tails the same log off the loop: it
 rail, and it carries out stops and starts for the conversations its window holds, once per
 entry. Neither package calls the other for team features.
 
+**Team traffic wakes (built 2026-09-24).** A manager that hands out work and then waits for
+the person to type again is not running a team, so the lines that ask for an answer start one:
+
+- A **directive** (`team_send` kind `directive`) to a member's handle or to everyone starts
+  each idle member's turn. A **note** wakes nobody and is read at the member's next turn. A
+  member already working is not started again; it reads the directive at its next step
+  boundary, the steering road it always had.
+- A member's `team_post` **to the manager**, and a member's own **finished**, **failed** and
+  **asking** events, start an idle manager's turn. They coalesce: the first arms a five second
+  settle window, measured from that first line and never extended, and one turn carries
+  everything that arrived in it, so members finishing on one burst of work are one thing to act
+  on.
+- The woken turn is never the person's: it opens on the same marked note a step boundary
+  hands over, queued as the session's line with the wake bit, so the spend limit, the wall and
+  a stopped session still decide whether it may run.
+- The watch lives with each conversation on the engine (`internal/session`'s
+  `team_wakewatch.go`), locally and over `--host` alike. It costs nothing while a turn runs,
+  one stat of the teams file per second shared by every conversation in the process while
+  idle, and one stat of each team log only while idle in a managed team with wake on.
+- **A conversation nobody holds is opened headless.** The side that wrote a waking line probes
+  the target's journal lock; when nothing holds it, the engine sends a hello naming its
+  transcript to the session host of its folder (`cmd/codeaf`'s `team_resume.go`), which opens
+  it with no surface and keeps it while it works. A window that opens it later joins the
+  running conversation. Where no road exists (a `--no-host` or `--once` process, no folder
+  recorded, a host that will not start), the Traffic says `could not wake @x: <reason>`.
+- **Limits.** One conversation is woken at most 20 times an hour (`teamWakesPerHour`). A
+  manager woken 10 times by its team with no word from the person (`teamLoopRounds`) stops being
+  woken and asks the person instead: an asking event from the manager in Traffic, drawn in the
+  needs-you amber, and a note for its next turn. The person's next message to it resets the
+  count. Wakes spend through the ordinary budgets.
+- **Visibility.** Every wake is a Traffic event, `◆ woke @web` and `@web woke ◆`, and every
+  refusal is one too.
+- **Off switch.** A team's `wake` field in `teams.json`, on when absent and written only as
+  `"wake": false`. The settings to turn it off from the interface come with the delegation
+  work; until then it is the field and the manual's line.
+
 **Known limits of v1.** A stop or a start takes effect only in a window that holds those
 conversations. A member waiting on a permission prompt shows as running, because the prompt is
-not in its session file, until its own asking event says so. A message never wakes an idle
-conversation; it is read when that conversation next runs; the one exception is a member's
-own start. Over `--host` against an engine older than the teams doors, teams and the manager
+not in its session file, until its own asking event says so. The loop breaker's needs-you is
+the Traffic's asking row and a note, not a question on the manager's tab. Over `--host` against an engine older than the teams doors, teams and the manager
 are off and say so. An unreadable teams file on the engine is not moved aside from a window over
 `--host`; the window holds no teams until it can be read.
 
-**Not in v1.** Waking on team events by itself (with a budget and an off switch), collision
-flags when two members touch the same files, nested managers (a sub-team's manager is a member
+**Not in v1.** Collision flags when two members touch the same files, nested managers (a sub-team's manager is a member
 of the parent team; reports flow up, directives down), and dispatch of whole plans.
 
 ## 6. The laws this design leans on
