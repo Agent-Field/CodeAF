@@ -1,12 +1,14 @@
 ---
 kind: changed
-title: Proposed message-box parity and visual rules
+title: The message-box rules #1071 shipped are written down
 pr: 1334
 surface: [docs]
-invalidates:
-  - "These proposed standing preferences and visual rules are reviewed separately from the UX implementation in PR 1071; their owner attribution requires confirmation before merging."
+invalidates: []
 ---
 
-Separated at the reviewer's request: message-box parity, clickable-heading
-hover feedback, and model and project presentation on the seam. This draft is
-for confirmation of the proposed standing rules and their attribution.
+`docs/DESIGN-LANGUAGE.md` now records what #1071 shipped: a Home heading that
+opens a place underlines under the pointer, and the message-box seam draws the
+current model bold in the data hue, spells the effort `model (provider):effort`,
+carries no git branch in a conversation, and keeps home's `project: <path>` at
+the far right, cut on the right. `CLAUDE.md` gains a standing preference: a
+change to Home's message box is weighed for the conversation's in the same change.

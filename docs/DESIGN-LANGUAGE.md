@@ -497,7 +497,7 @@ they are exactly as quiet as the table above says.
 
 ### The current model on the message-box seam
 
-Owner ruling, 2026-09-17: the current model is always **bold in the data hue** on
+Adopted with #1071 (merged 2026-09-21): the current model is always **bold in the data hue** on
 home and conversation seams. It must be easy to find without hovering or first
 changing it. The provider beside it and the surrounding telemetry keep their
 existing weight; the emphasis is confined to the model name.
