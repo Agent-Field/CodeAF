@@ -149,7 +149,7 @@ func (a *app) tasksLoaded(rows []session.TaskIndexEntry, known ...bool) tea.Cmd 
 			return tasksLoadedMsg{rows: rows, known: ready}
 		})
 	}
-	a.comp.tasks, a.comp.tasksHeld = rows, false
+	a.comp.tasks, a.comp.tasksHeld = a.keepTaskRecords(rows), false
 	if a.hosted() {
 		a.adoptFarTaskRows(rows)
 	}

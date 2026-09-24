@@ -276,6 +276,8 @@ type Meta struct {
 	// ArchivedTasks hides individual task rows without changing their execution
 	// or putting away the conversation that owns them. IDs are local to this session.
 	ArchivedTasks map[string]bool `json:"archivedTasks,omitempty"`
+	// DeletedTasks permanently withdraws saved task records, including late index writes.
+	DeletedTasks map[string]bool `json:"deletedTasks,omitempty"`
 }
 
 // LoadMeta reads a session folder's identity. A missing file, an unparsable

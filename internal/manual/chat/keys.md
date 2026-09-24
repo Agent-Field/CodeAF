@@ -832,7 +832,8 @@ inside one.
 a browser.
 
 Your unsent sentence, caret and attachments stay with the conversation. The
-conversation remains in `alt+k` and Home, and reopening restores its tab and draft.
+conversation remains on Home, with progress still visible while it works. It leaves
+the open `alt+k` list; reopening restores its tab and draft.
 
 Closing the active tab selects the most recently used remaining open tab. With
 none left, the window goes **Home** with the current session behind it.
@@ -1698,9 +1699,11 @@ every section at once and is drawn on the **control row** at the top of the list
 `⌕ port`. `alt+s` sorts by the next column — age, name, state, files, cost — and
 `alt+shift+s` turns the column you are on round; a press on one of the two column labels at
 the right of that control row sorts by it. `→` opens the row's
-verbs, and this place has one: `s stop it`, over a task this conversation is holding that is
-still queued or running. Its foot is assembled from what is true of the row under the
-cursor — `enter open its room · → verbs: stop it · alt+s sort · type to filter` over a task this
+four actions: `x close` (then `x delete` after closing), `n new in project`,
+`o open folder`, and `p copy project`. A collapsed family opens before its actions.
+Delete asks `delete is permanent, are you sure?`; `y` confirms, `n` restores the actions.
+Enter reopens a closed row. To stop work without deleting its record, open its room
+and use its Stop action. The foot names the applicable actions over a task this
 window is running, `enter go inside it` on a task another conversation ran, which has no room to open,
 and one of three clauses on a task another codeaf **window** is running:
 `enter go to that conversation` when this terminal is holding that conversation, which
@@ -2060,10 +2063,10 @@ everything else this window is not showing — so pressing it again closes the n
 rather than the same one, and several go in a row. Its conversation, its work and its
 draft are untouched; `→` reaches it and `enter` brings it back.
 
-**Tab closing does not archive the saved conversation.** `ctrl+e` or `→`, then
-`x close`, on Home also archives it and removes its Home row and tab immediately.
-Both routes keep work and drafts. To reopen, type its name on Home and press Enter
-on the result; if it was just closed under that search, change the search first.
+**Tab closing does not archive the saved conversation.** Home shows up to three
+recently closed tabs as dimmed rows. `ctrl+e` or `→`, then `x close`, on Home also
+archives the conversation and closes its tab, removing it from the default chats
+list. Both routes keep work and drafts. Enter on a dimmed Home row reopens it.
 
 On the row marked `you are here`, the card closes and the window selects the most
 recently used remaining tab, or Home when none remain. This is the same action as
@@ -2205,9 +2208,9 @@ While something is typed the two arrows move the caret in the box instead.
 strip is the one state where a printable key is a verb, and it is why it has to be drawn.
 Everywhere else "make me a site" comes out whole wherever the cursor is resting. The row's
 actions otherwise ride chords, which can never begin a word, and they work from any column:
-**`ctrl+e` closes the conversation tab** — it leaves Home and the default chats menu.
-Typing its name finds it again; change the search text first if you just closed a
-matching result. Enter or `ctrl+e` on that closed result reopens it. **`ctrl+o`** opens
+**`ctrl+e` closes the conversation tab** — it leaves the open Home list and the
+default chats menu. Up to three closed rows stay dimmed on Home; typing finds older
+ones. Enter or `ctrl+e` on a closed row reopens it. **`ctrl+o`** opens
 its folder and **`ctrl+y`** copies its path. **`ctrl+t`** on a conversation's row still
 starts a new one in that row's folder, though `enter` on a row of the `projects` panel is
 the way home offers now. On a standing item's row — in `needs you` while it asks, in
@@ -3345,5 +3348,18 @@ when you put it off with `esc`.
 
 Press `alt+k` (`opt+k` on macOS) to open the chats menu from a conversation.
 It lists the same open tabs as Home, in the tab strip's order. Select one and press
-Enter. Closed conversations are behind the menu's fold and remain searchable by
-name on Home, rather than staying in Home's resting list.
+Enter. Closed conversations are behind the menu's fold; Home also keeps up to
+three recently closed conversations dimmed below the open list.
+
+## Permanently delete from Home or Sessions — y confirms, n cancels
+
+Close the selected conversation or task with `→` then `x close`. Its work continues.
+Open the actions again: `x delete` now asks `delete is permanent, are you sure?`.
+`y` confirms. `n` or Escape cancels and restores the four actions; Enter does not confirm.
+In Sessions, press `→` again after opening a collapsed family to reach these actions.
+Enter on a closed row reopens it instead of deleting it.
+
+Confirmed conversation deletion stops its agent and removes the conversation and all
+its tasks. A nested task deletion removes only that task's saved record and journal.
+Borrowed project files and sibling tasks remain. Permanent deletion has no undo and
+is not offered for remotely hosted files.

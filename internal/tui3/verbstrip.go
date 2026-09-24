@@ -62,9 +62,11 @@ type verb struct {
 // rebuild, because it is about the cursor's destination rather than about how
 // the cursor got there ([app.holdStrip]).
 type verbStrip struct {
-	open  bool
-	row   string
-	verbs []verb
+	// prompt replaces the row actions with an explicit confirmation.
+	prompt string
+	open   bool
+	row    string
+	verbs  []verb
 }
 
 // stripHint is the line under the strip while it is up (SCREEN 3c). It names
@@ -128,6 +130,22 @@ func (a *app) stripKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if !a.strip.open {
 		return nil, false
 	}
+	if a.strip.prompt != "" {
+		switch msg.String() {
+		case "y", "n", "esc":
+			choice := msg.String()
+			if choice == "esc" {
+				choice = "n"
+			}
+			for _, v := range a.strip.verbs {
+				if string(v.key) == choice {
+					a.closeStrip()
+					return v.do(), true
+				}
+			}
+		}
+		return nil, true
+	}
 	switch msg.String() {
 	case "esc", "left":
 		a.closeStrip()
@@ -149,8 +167,8 @@ func (a *app) stripKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// before the next key — finds the row is not the captured one and drops it.
 	for _, v := range a.strip.verbs {
 		if msg.String() == string(v.key) {
-			cmd := v.do()
 			a.closeStrip()
+			cmd := v.do()
 			a.touch()
 			return cmd, true
 		}
@@ -247,7 +265,7 @@ func (a *app) verbStripRow(width int) []string {
 	if width < 2 || len(a.strip.verbs) == 0 {
 		return nil
 	}
-	return verbChoiceLines(a.strip.verbs, width, " ", a.pal)
+	return a.stripChoiceLines(width, " ", a.pal)
 }
 
 // verbChoiceLines shares the same option layout between a list and home's
@@ -315,3 +333,16 @@ const (
 	memoryForgetWord = "forget it"
 	memoryUndoWord   = "put it back"
 )
+
+// stripChoiceLines keeps the confirmation visible in both strip placements.
+func (a *app) stripChoiceLines(width int, lead string, pal palette) []string {
+	var rows []string
+	if a.strip.prompt != "" {
+		for _, line := range strings.Split(a.strip.prompt, "\n") {
+			for _, part := range wrap(line, max(1, width-ansi.StringWidth(lead))) {
+				rows = append(rows, lead+pal.ink(part))
+			}
+		}
+	}
+	return append(rows, verbChoiceLines(a.strip.verbs, width, lead, pal)...)
+}

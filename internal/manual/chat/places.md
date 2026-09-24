@@ -449,8 +449,7 @@ being held down — it only reports what arrived.
 The first place, and the one codeaf opens on. Everything on this machine, from every
 project, in one, two or three columns — one `sessions` list of the fifteen most recent
 conversations, then question rows, `projects`, `since you left`, `spend`, and `scheduled`.
-Open tabs and unarchived saved history share that list. Closed conversations leave
-Home’s resting list and can still be found by typing their names. Which
+Open tabs and saved history share that list, with closed conversations dimmed. Which
 column a panel stands in follows what it holds: every panel with rows is in the **field** at
 the left, and the **rail** at the right holds `projects` and `spend` at its top and, under
 them, whichever panels are quiet today. An empty panel keeps its heading and one dim line
@@ -484,12 +483,11 @@ shared prompt with the correction two rows further down on the foot, which meant
 row on the screen was inviting a message the page cannot send. `enter` opens a task's room
 when this conversation is holding it, and goes inside its record card otherwise. `→` opens
 the row's options: `x close`, `n new in project`, `o open folder`, and
-`p copy project` where the local conversation and project are available. A task this
-conversation is holding that is still queued or running also offers `s stop it`. Everything starts expanded; the list scrolls and its
+`p copy project` where the local conversation and project are available. To stop work, open its room and use Stop. Everything starts expanded; the list scrolls and its
 tail fades. The rule under the list is a bare line — the counts are on the section headings
 the list already draws, and it says `nothing matches` only when your filter has emptied the
 page — and the foot names only what is true of the row you are on: `enter open its room ·
-→ verbs: stop it`.
+→ verbs: close, new in project, open folder, copy project`.
 
 ## Close or put away a task, find an archived task, or reopen it
 
@@ -500,12 +498,15 @@ The choice is saved with the conversation and survives reopening the app.
 
 To recover it, type its name in the Tasks filter. Search includes put-away tasks within
 the selected time window; expand that window if the task is older. Select the matching
-task and use `→`, then `x reopen`. `enter` can still open its record.
+task and press Enter to reopen its record. After Close, `→ x delete` instead asks
+`delete is permanent, are you sure?`. `y` permanently deletes only that task’s record
+and journal; `n` returns to the four actions. A conversation row has the same
+actions, but its confirmed deletion stops the agent and deletes all its tasks.
 
 `n new in project`, `o open folder`, and `p copy project` use the project of the conversation
 that owns the selected task. A new chat is independent of the task. These folder actions
 and per-task put-away are local capabilities; a connected remote window does not offer
-them. Its existing stop action remains available when that engine supports it.
+them. Stop remains available from the task’s room when that engine supports it.
 
 ## standing — what runs without being asked, and where to type on the standing page
 

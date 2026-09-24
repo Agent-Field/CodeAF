@@ -602,7 +602,7 @@ func (a *app) taskSheetOwnRows() []session.TaskIndexEntry {
 			EndedAt:   taskNodeEnded(node),
 		})
 	}
-	return rows
+	return a.keepTaskRecords(rows)
 }
 
 // taskIndexHolds reports whether the project's index already carries this node.
@@ -1090,6 +1090,12 @@ func (p *tasksPlace) enter(a *app) tea.Cmd {
 	item, ok := a.taskSheetCurrent()
 	if !ok {
 		return nil
+	}
+	if item.row.ArchivedTasks[item.entry.ID] {
+		if err := session.SetTaskArchived(item.row.Dir, item.entry.SessionID, item.entry.ID, false); err != nil {
+			a.taskRowNotice("could not reopen task: " + err.Error())
+			return nil
+		}
 	}
 	// A PLAN ROW OPENS ITS OWN PAGE — the description, the notes and the
 	// trajectory the store carries — through the sheet's own machinery and the
@@ -1657,43 +1663,17 @@ func (a *app) taskSheetKeysLine() string { return a.taskSheet.hint(a) }
 // of the foot's second clause: the strip draws exactly what the foot named, and
 // the foot names exactly what the strip will do.
 //
-// ONLY ONE OF SCREEN 1e's TWO VERBS EXISTS, and the other is therefore ABSENT
-// rather than drawn dead. The design spells `run it again, stop it`:
-//
-//   - `stop it` is real. A node THIS window's graph is holding, still queued or
-//     running, is exactly what [app.stopTaskTarget] offers the roster's own `x`,
-//     and the engine door behind it is [app.stopDoors]. Work another conversation
-//     ran has no such node — the id in a cancel address is this session's — and
-//     work that has settled has nothing left to stop, so neither is offered one.
-//   - `run it again` has NO SEAM. Nothing on this machine re-runs a finished
-//     task: a record row is an account of work that happened, and starting the
-//     same brief again is `/task <brief>`, which is a new piece of work with a
-//     new id rather than a repeat of an old one. A capability that cannot work is
-//     absent, not broken — so the verb is not named here, and the foot does not
-//     promise it.
+// Conversations and nested tasks share Home's four actions. Stopping work is
+// still available from its room; deleting a record is a separate confirmed act.
 func (p *tasksPlace) verbs(a *app) []verb {
+	if chat, ok := a.taskSheetChat(); ok {
+		return a.conversationRowVerbs(chat.row)
+	}
 	item, ok := a.taskSheetCurrent()
 	if !ok {
 		return nil
 	}
-	verbs := a.taskRowVerbs(item.row, item.entry)
-	entry := item.entry
-	node := a.taskSheetNodeFor(&entry)
-	if node == nil {
-		return verbs
-	}
-	target := a.stopTaskTarget(node)
-	if target.empty() {
-		return verbs
-	}
-	// THE BUILD GUARD, ASKED BEFORE THE VERB IS NAMED. A surface driven by an
-	// agent with no door onto cancelling says so when `x` is pressed
-	// ([stopUnavailableWord]); a NAMED verb that could only ever answer with that
-	// sentence would be this place advertising a key it has not got.
-	if _, ok := a.stopDoors(); !ok {
-		return verbs
-	}
-	return append(verbs, verb{key: 's', word: stopActWord, do: func() tea.Cmd { return a.tasksStop(target) }})
+	return a.taskRowVerbs(item.row, item.entry)
 }
 
 // tasksStop ends one piece of work from the strip, and says what the engine
@@ -1839,8 +1819,8 @@ func (placeTasks) verbs(a *app) []verb  { return a.taskSheet.verbs(a) }
 func (placeTasks) rowID(a *app) string {
 	if chat, ok := a.taskSheetChat(); ok {
 		// A CONVERSATION IS NAMED SO IT CANNOT BE MISTAKEN FOR THE WORK UNDER IT
-		// ([tasksChatKey] holds the mark that makes that true). It carries no verbs
-		// of its own, and a strip captured over a task must not survive the cursor
+		// ([tasksChatKey] holds the mark that makes that true). A strip captured
+		// over a task must not survive the cursor
 		// stepping onto the chat above it.
 		return chat.key.session + "\x00" + chat.key.id
 	}

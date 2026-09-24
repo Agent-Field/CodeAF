@@ -105,12 +105,16 @@ func TestHomeCloseClosesTheSelectedTabAndEnterReopensIt(t *testing.T) {
 		t.Fatal("the selected tab stayed open")
 	}
 	assertHomeTabParity(t, a)
-	assertHomeConversationAbsent(t, a, files[1])
+	_, closed := homeConversationLines(a)
+	if len(closed) != 1 || closed[0].row.Transcript != files[1] {
+		t.Fatalf("wrong closed rows: %+v", closed)
+	}
+	if !strings.Contains(a.homeCellRow(closed[0], -1, 60, a.pal, true)[0], a.pal.dim(closed[0].cell.title)) {
+		t.Fatal("closed conversation is not dim")
+	}
 	if a.input.String() != "keep the conversation draft" {
 		t.Fatal("closing another row lost the draft")
 	}
-	a.home.box.setText("Conversation 2")
-	a.home.build()
 	a.home.point(files[1])
 	drive(t, a, key("enter"))
 	if a.at(pageHome) || a.file != files[1] || a.tabShut[a.convKey(files[1])] {
@@ -120,7 +124,7 @@ func TestHomeCloseClosesTheSelectedTabAndEnterReopensIt(t *testing.T) {
 	assertHomeTabParity(t, a)
 }
 
-func TestHomeHidesClosedConversationsAndKeepsBoundedHistory(t *testing.T) {
+func TestHomeClosedConversationsAreBoundedAndNewestFirst(t *testing.T) {
 	a, files := homeTabsFixture(t)
 	for _, file := range files[:4] {
 		a.home.point(file)
@@ -128,11 +132,13 @@ func TestHomeHidesClosedConversationsAndKeepsBoundedHistory(t *testing.T) {
 	}
 	assertHomeTabParity(t, a)
 	open, closed := homeConversationLines(a)
-	if len(open) != 3 || len(closed) != 0 {
+	if len(open) != 3 || len(closed) != 4 {
 		t.Fatalf("open=%d closed=%d", len(open), len(closed))
 	}
-	for _, file := range files[:4] {
-		assertHomeConversationAbsent(t, a, file)
+	for i, line := range closed {
+		if line.row.Transcript != files[i] {
+			t.Fatalf("closed order %d = %q", i, line.row.Transcript)
+		}
 	}
 	// Archived records also supply the bounded list without this close stack.
 	fresh := a.newHomeView(a.readWorld(), true)
@@ -151,10 +157,13 @@ func TestTabDismissUpdatesHomeWithoutAWorldRefresh(t *testing.T) {
 	}
 	drain(t, a, a.tabDismiss(tab))
 	assertHomeTabParity(t, a)
-	assertHomeConversationAbsent(t, a, files[2])
+	_, closed := homeConversationLines(a)
+	if len(closed) != 1 || closed[0].row.Transcript != files[2] {
+		t.Fatal("tab close did not reach Home")
+	}
 }
 
-func TestHomeHidesPersistedClosedConversationsAndSearchFindsThem(t *testing.T) {
+func TestHomeShowsPersistedClosedConversationsAndSearchFindsOlderOnes(t *testing.T) {
 	a, files := homeTabsFixture(t)
 	for _, file := range files[4:] {
 		if err := session.SetArchived(filepath.Dir(file), true); err != nil {
@@ -163,7 +172,7 @@ func TestHomeHidesPersistedClosedConversationsAndSearchFindsThem(t *testing.T) {
 	}
 	a.refreshHome()
 	_, closed := homeConversationLines(a)
-	if len(closed) != 0 {
+	if len(closed) != homeClosedLimit {
 		t.Fatalf("closed rows=%d", len(closed))
 	}
 	a.home.box.setText("Conversation 7")
@@ -185,8 +194,6 @@ func TestHomeCloseKeepsRunningWorkAndCurrentDraft(t *testing.T) {
 		t.Fatal("closing the Home row stopped work or lost the draft")
 	}
 	assertHomeTabParity(t, a)
-	a.home.box.setText("Conversation 1")
-	a.home.build()
 	a.home.point(files[0])
 	drive(t, a, key("enter"))
 	if a.at(pageHome) || a.agent != busy || a.input.String() != "unfinished message" {
@@ -232,7 +239,10 @@ func TestHomeConversationListsStayInSyncAcrossWidths(t *testing.T) {
 			a.home.point(files[1])
 			drive(t, a, key("ctrl+e"))
 			assertHomeTabParity(t, a)
-			assertHomeConversationAbsent(t, a, files[1])
+			_, closed := homeConversationLines(a)
+			if len(closed) != 1 || closed[0].row.Transcript != files[1] {
+				t.Fatal("closed row missing at this width")
+			}
 		})
 	}
 }
@@ -258,16 +268,6 @@ func TestARowThisTerminalHoldsNeverClaimsAnotherWindowAfterClose(t *testing.T) {
 		frame := homeText(a)
 		if strings.Contains(frame, "another window") || strings.Contains(frame, "enter brings it here") {
 			t.Fatalf("close=%t: our own conversation claimed another window:\n%s", closeIt, frame)
-		}
-	}
-}
-
-// A closed conversation must leave every Home section, not merely its old position.
-func assertHomeConversationAbsent(t *testing.T, a *app, file string) {
-	t.Helper()
-	for _, line := range a.home.lines {
-		if line.kind == homeSession && line.row.Transcript == file {
-			t.Fatalf("closed conversation remains on Home: %s", file)
 		}
 	}
 }

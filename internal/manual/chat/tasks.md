@@ -4455,12 +4455,10 @@ With a pointer, the `Stop` at the right end of a room's facts row — the second
 header, under the breadcrumbs — raises the same card.
 Strip chips do not carry a stop button.
 
-**There is one other way to stop a task, and it asks no card.** On the **sessions** place
-(`ctrl+.`, `/history`), `→` on a task this conversation is holding opens the row's verbs and
-draws `s stop it`; `s` then ends it. That is two deliberate presses with the word on screen
-for the second of them, which is what the card protects `x` from being without — and the
-card cannot be drawn over a full-screen place anyway, so it would be a question nobody could
-see. It uses the same door in the engine and answers with the same sentence.
+**On the Sessions list, open the task's room to stop its work.** The list's four
+actions are Close (then Delete), New in project, Open folder and Copy project.
+Close preserves work. Delete confirms permanent record removal with `y` or cancels
+back to those actions with `n`. Deleting a task record does not delete its conversation.
 
 **What stopping does.** A task that is RUNNING has its worker cut off where it stands: the
 turn it was in the middle of ends, and the task settles as `stopped`. A task still QUEUED
@@ -5294,7 +5292,7 @@ under the cursor**, and never from a fixed sentence. Over a task this window is 
 reads
 
 ```
-enter open its room · → verbs: stop it · type to filter · alt+. map · tab next place
+enter open its room · → verbs: close, new in project, open folder, copy project · type to filter · esc home
 ```
 
 The last two keys are on every place and the router adds them. What comes before them
@@ -5310,7 +5308,7 @@ changes with the cursor:
   is running*.
 - `enter about that window` over work this machine cannot reach at all, which opens the card
   naming where it is.
-- `→ verbs: stop it` **only while the row has that verb** — see below.
+- `→ verbs:` names the available row actions — see below.
 - A row whose work has raised something for you answers on the same line, behind the door:
   the foot reads `enter open its room · hello.txt · waiting in this conversation · alt+y`,
   with the page's own clauses — the fold, the verbs, the filter, the way out — giving way
@@ -5326,19 +5324,16 @@ The final clauses describe the **page** rather than the row:
   says `esc clear the filter` instead — the one fact the box itself cannot show is that esc
   now means the filter and not the page.
 
-**`→` opens the row's verbs, and the sessions place has exactly one: `s stop it`.** It is
-offered over a task **this conversation is holding** that is still `queued` or `running` —
-the same work the roster's own `x` can end, through the same door in the engine, and it
-answers with the engine's own sentence (`stopping task 7 — its branch is kept`). A settled
-task has nothing left to stop, work another conversation ran has no live worker here, and a
-session whose engine has no cancel door is offered nothing — in every one of those cases the
-verb is **absent**, and the foot does not name it.
+**`→` opens four row actions:** `x close`, `n new in project`, `o open folder`,
+and `p copy project`, where those doors are available. A collapsed conversation or
+family opens first; another `→` reaches its actions. Closed rows offer `x delete`;
+Enter reopens them.
 
-**It asks no confirmation, and that is deliberate.** The confirmation card guards `x`, which
-is one bare keystroke over a list; on the strip the word `stop it` is drawn on screen and
-only then does `s` mean anything, which is two deliberate presses with the verb in front of
-you. The card is also not available here: it is drawn in the conversation's chrome, and a
-question raised over a full-screen place would be one nobody could see.
+**Delete asks `delete is permanent, are you sure?`.** `y` deletes, `n` cancels and
+restores the four actions. Enter does not confirm. Deleting a conversation stops its
+agent and removes all its tasks. Deleting a nested task removes only that task's record
+and journal, preserving its parent and siblings. Close alone never stops work or deletes
+history. To stop a task without deleting its record, open its room and use Stop.
 
 ## Retry an incomplete or errored task — enter retry on its task screen
 

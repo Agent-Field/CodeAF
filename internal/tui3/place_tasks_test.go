@@ -54,7 +54,7 @@ func TestTheTasksFootIsScreenOneEWordForWord(t *testing.T) {
 	// sorting is a chord, and a chord nobody can find is a chord that does not
 	// exist. The filter is named beside it because nothing else on the frame says
 	// that a letter goes into the box on the control row rather than to the page.
-	const want = "enter open its room · → verbs: close, open folder, copy project, stop it · type to filter · esc home"
+	const want = "enter open its room · → verbs: close, open folder, copy project · type to filter · esc home"
 	if got := a.taskSheetKeysLine(); got != want {
 		t.Fatalf("the foot reads\n  %q\nwant\n  %q", got, want)
 	}
@@ -120,10 +120,10 @@ func TestTheTasksVerbsOnTheStripAreTheVerbsInTheFoot(t *testing.T) {
 	for _, v := range verbs {
 		keys += string(v.key)
 	}
-	if keys != "xops" {
-		t.Fatalf("the running row offers %q, want archive, folder, copy and stop", keys)
+	if keys != "xop" {
+		t.Fatalf("the running row offers %q, want close, folder and copy", keys)
 	}
-	if !strings.Contains(a.taskSheetKeysLine(), stopActWord) {
+	if !strings.Contains(a.taskSheetKeysLine(), "close") {
 		t.Fatalf("the foot does not name the verb the row has: %q", a.taskSheetKeysLine())
 	}
 
@@ -133,7 +133,7 @@ func TestTheTasksVerbsOnTheStripAreTheVerbsInTheFoot(t *testing.T) {
 		t.Fatal("→ on a row with a verb opened no strip")
 	}
 	strip := plain(strings.Join(a.verbStripRow(a.width), "\n"))
-	if !strings.Contains(strip, "s "+stopActWord) {
+	if !strings.Contains(strip, "x close") {
 		t.Fatalf("the strip does not draw the verb: %q", strip)
 	}
 }
@@ -214,32 +214,15 @@ func TestTheTasksFootNamesNoStopWithoutTheEnginesDoor(t *testing.T) {
 	}
 }
 
-// `s` ON THE STRIP ENDS THE WORK, through the door the card uses and with the
-// engine's own sentence kept.
-func TestSOnTheTasksStripStopsThatTaskThroughTheEnginesDoor(t *testing.T) {
+// Closing and deleting records must not grow an unadvertised stop shortcut.
+func TestSOnTheTasksStripDoesNotStopWork(t *testing.T) {
 	a, agent := tasksFootApp(t)
-	agent.line = "stopping task 7 — its branch is kept"
-
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyRight})
-	drive(t, a, key("s"))
-
-	if len(agent.asked) != 1 || agent.asked[0] != session.CancelTask+":7" {
-		t.Fatalf("the engine was asked %v, want one %q", agent.asked, session.CancelTask+":7")
+	drive(t, a, key("right"), key("s"))
+	if len(agent.asked) != 0 {
+		t.Fatal("an unadvertised key stopped work")
 	}
-	// The strip goes away with the row it was about, and the engine's line is
-	// where the person is looking.
-	if a.strip.open {
-		t.Fatal("the verb left its strip standing")
-	}
-	if text := taskText(a); !strings.Contains(text, "stopping task 7") {
-		t.Fatalf("the engine's own sentence is nowhere:\n%s", text)
-	}
-	// AND NO CONFIRMATION CARD WAS RAISED, because stop.go refuses to raise one
-	// over a frame that is not drawing it — the strip is the deliberate gesture
-	// here, and `→` then `s` is two presses with the verb on screen for the
-	// second of them.
-	if a.stopping() {
-		t.Fatal("the strip raised a card this place cannot draw")
+	if !a.strip.open {
+		t.Fatal("an unadvertised key dismissed the actions")
 	}
 }
 

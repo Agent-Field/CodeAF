@@ -24,10 +24,13 @@ func (a *app) taskRowVerbs(row session.SessionRow, entry session.TaskIndexEntry)
 		word := "close"
 		archived := row.ArchivedTasks[entry.ID]
 		if archived {
-			word = "reopen"
+			word = "delete"
 		}
 		verbs = append(verbs, verb{key: 'x', word: word, do: func() tea.Cmd {
-			return a.putTaskAway(dir, entry, !archived)
+			if archived {
+				return a.askRecordDelete(row, &entry)
+			}
+			return a.putTaskAway(dir, entry, true)
 		}})
 	}
 	if workspace := strings.TrimSpace(row.Workspace); workspace != "" {

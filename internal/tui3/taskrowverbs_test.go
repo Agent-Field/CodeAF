@@ -74,10 +74,10 @@ func TestTaskClosePersistsAndCanBeRestoredFromTheTasksFilter(t *testing.T) {
 		t.Fatal("the filter could not recover the archived task record")
 	}
 	drive(t, b, key("right"))
-	if !strings.Contains(taskSheetText(b), "x reopen") {
-		t.Fatal("the filtered task did not offer restore")
+	if !strings.Contains(taskSheetText(b), "x delete") {
+		t.Fatal("the filtered task did not offer delete")
 	}
-	drive(t, b, key("x"))
+	drive(t, b, key("enter"))
 	meta, _ = session.LoadMeta(owner.Dir)
 	if meta.ArchivedTasks["t1"] {
 		t.Fatal("restore did not persist")
