@@ -183,36 +183,55 @@ func (c planRunClocks) apply(row *PlanTaskRow, dir string, task *plandb.Task, ro
 	if row == nil || task == nil || row.Program == "" {
 		return
 	}
+	c.pair(row, dir, task)
+	if terminalStoreStatus(task.Status) {
+		planEndedRow(row, task)
+		return
+	}
+	if task.ID != root || c.live == task.ID {
+		return
+	}
+	planUndrivenRow(row, dir, task)
+}
+
+// pair puts the run's one pair on the row: the hand-off, and the run row's
+// settled end or, before it settles, the program's recorded exit.
+func (c planRunClocks) pair(row *PlanTaskRow, dir string, task *plandb.Task) {
 	record, _ := delegate.ReadProgram(plandb.TaskDir(dir, task.ID))
 	kept := c.rows[task.ID]
 	started := kept.StartedAt
 	if started.IsZero() {
 		started = record.StartedAt
 	}
-	if !started.IsZero() {
-		row.Started = started
-		row.Ended = kept.EndedAt
-		if row.Ended.IsZero() {
-			row.Ended = runClockEnd(started, record, time.Time{})
-		}
-	}
-	// A TASK THE STORE HAS ENDED IS IN NO STAGE, AND ITS CLOCK HAS STOPPED.
-	// Closing a conversation writes its program's ending before it cuts the
-	// program, and a program cut that way never lives to clear the stage it was
-	// in, so the page read `working` with no time over a run nothing was
-	// driving (found by killing the engine under a real senior-dev run). A live
-	// step on an ended task is left over, and when neither the row nor the
-	// program's record says when the run ended, the store's own ending does.
-	if terminalStoreStatus(task.Status) {
-		row.Live, row.Stage = plandb.LiveStep{}, ""
-		if !row.Started.IsZero() && row.Ended.IsZero() && !task.CompletedAt.Before(row.Started) {
-			row.Ended = task.CompletedAt
-		}
+	if started.IsZero() {
 		return
 	}
-	if task.ID != root || c.live == task.ID {
-		return
+	row.Started = started
+	row.Ended = kept.EndedAt
+	if row.Ended.IsZero() {
+		row.Ended = runClockEnd(started, record, time.Time{})
 	}
+}
+
+// planEndedRow is a program's row the store has ended.
+//
+// A TASK THE STORE HAS ENDED IS IN NO STAGE, AND ITS CLOCK HAS STOPPED.
+// Closing a conversation writes its program's ending before it cuts the
+// program, and a program cut that way never lives to clear the stage it was
+// in, so the page read `working` with no time over a run nothing was driving
+// (found by killing the engine under a real senior-dev run). A live step on an
+// ended task is left over, and when neither the row nor the program's record
+// says when the run ended, the store's own ending does.
+func planEndedRow(row *PlanTaskRow, task *plandb.Task) {
+	row.Live, row.Stage = plandb.LiveStep{}, ""
+	if !row.Started.IsZero() && row.Ended.IsZero() && !task.CompletedAt.Before(row.Started) {
+		row.Ended = task.CompletedAt
+	}
+}
+
+// planUndrivenRow is a program's root the store still calls open while no run
+// in this process holds it: ended at its last sign of life, with no stage.
+func planUndrivenRow(row *PlanTaskRow, dir string, task *plandb.Task) {
 	row.Status = string(plandb.StatusFailed)
 	row.Live, row.Stage = plandb.LiveStep{}, ""
 	if row.Ended.IsZero() {

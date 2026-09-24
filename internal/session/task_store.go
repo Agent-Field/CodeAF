@@ -1419,11 +1419,7 @@ func decodeTasks(content []byte) (taskDocument, error) {
 			return taskDocument{}, fmt.Errorf("run row %d is also a node", record.ID)
 		case drawn[record.ID]:
 			return taskDocument{}, fmt.Errorf("run row %d appears twice", record.ID)
-		// A FILE AN EARLIER BUILD WROTE WITH AN INTERRUPTED ROW is read, not set
-		// aside whole: that build wrote the row back as the reader had drawn it
-		// ([runRowRecord] says why that no longer happens), and refusing the
-		// file for it cost the conversation every task it had.
-		case !validTaskState(record.State) && record.State != TaskInterrupted:
+		case !validRunRowState(record.State):
 			return taskDocument{}, fmt.Errorf("run row %d is in state %q", record.ID, record.State)
 		case record.ElapsedMS < 0:
 			return taskDocument{}, fmt.Errorf("run row %d has a negative elapsed", record.ID)
@@ -1437,6 +1433,15 @@ func decodeTasks(content []byte) (taskDocument, error) {
 		return taskDocument{}, fmt.Errorf("the id counter is %d behind node %d", document.Seq, highest)
 	}
 	return document, nil
+}
+
+// validRunRowState is a run row's state as a checkpoint may hold it: a node's
+// states, and interrupted too. A FILE AN EARLIER BUILD WROTE WITH AN
+// INTERRUPTED ROW is read, not set aside whole: that build wrote the row back
+// as the reader had drawn it ([runRowRecord] says why that no longer happens),
+// and refusing the file for it cost the conversation every task it had.
+func validRunRowState(state TaskState) bool {
+	return validTaskState(state) || state == TaskInterrupted
 }
 
 func validTaskState(state TaskState) bool {
