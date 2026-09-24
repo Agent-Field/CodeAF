@@ -13,10 +13,27 @@ files each has touched, and the last few lines of the team's traffic. It never c
 whole conversations. A member of a team with a manager is told the same way which team it is
 in, its handle, and that it reports with `team_post`.
 
-Every member has a short **handle**, like `@web` or `@parser`, made from its title when it
-joins: the word that says what the conversation is about, so `checking branches for the qa
-binary` becomes `@qa-binary` and `Fix the login bug` becomes `@login`. A handle is never changed after that, so a line in the traffic keeps meaning the
-member it meant. Messages in a team are addressed by handle.
+Every member has a **handle**: one lowercase word that says what the conversation is about,
+like `@security` for `santosh dev2 branch code complexity & security review`, `@milestones`
+for `CodeAF repo issue tags & milestones` or `@gravity` for `quantum gravity research updates`.
+The moment a member has a title it gets a quick guess from the title's words, so it can be
+addressed at once; then, when the conversation's title is made, the same cheap model that
+names conversations chooses the word, once, for a few tokens. If another member of the team
+already has that word, the member takes the model's second choice, or the word with one word
+of its title in front, like `@api-security`. A handle a person or the manager gave, like the
+one `team_start` names a new member by, is never replaced, and a handle the model chose is not
+chosen again, so a line in the traffic keeps meaning the member it meant. Messages in a team
+are addressed by handle.
+
+Handles made before this were guesses, and each is chosen again the same way on its
+conversation's next turn. Every change is written to the team's traffic as
+`codeaf  @review is now @security`, which the manager and every member are told at their next
+step, and the manager's account of its team shows the new handle. Over `--host` the choosing
+happens on the far machine, where the conversation and the model are.
+
+In the manager's replies, in the team's quoted cards and in a team tool's call, every member's
+handle is a link: point at it for its title in the hint line, press it to open that member,
+which resumes it first when this window does not have it open.
 
 ## Making a manager
 
@@ -51,7 +68,8 @@ bottom:
 - `@parser → @web  fyi  the lexer is in` for a member's message;
 - `◆ stopped @web  going in circles` and `◆ started @lexer  rewrite the lexer…`, with the
   reason and the brief;
-- `@web  finished`, `failed`, and `asking`, which is the only line in the needs-you amber.
+- `@web  finished`, `failed`, and `asking`, which is the only line in the needs-you amber;
+- `codeaf  @review is now @security` when a member's handle changed.
 
 Each row ends with its age (`now`, `2m`, `3h`). Your own messages are not on the rail; they are
 in the manager's conversation. Point at a row to read its whole text in the hint line, and press

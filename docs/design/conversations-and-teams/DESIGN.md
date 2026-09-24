@@ -16,8 +16,22 @@ conversation's manager, carrying facts from one chat to the next by hand.
 
 ## 1. The wall: every open conversation, live
 
-A full-frame grid of tiles, one per open conversation, each drawing the live tail of its
-transcript.
+A full-frame grid of tiles, one per conversation open in this window, each drawing the live
+tail of its transcript.
+
+**What it shows is what is open in this window** (ruled 2026-09-24). The wall and the tab
+strip are the conversations this window has open, narrowed by a team when one is shown; they
+are not a view of the team. The title says so: `Conversations · open in this window`, and
+`· in test` while a team is shown, with `1 open` on the right. A shown team's members that
+this window does not have open are neither tiles nor tabs. While there are any, the title
+carries one quiet word button, `2 more in test · Open them` (key `r`, hint `Resume the 2
+conversations of test not open here; nothing in front moves · r`), which resumes them behind
+the conversation in front, on the door line, off the loop, so they arrive as tiles and tabs
+without moving the front or the focus. When every member is open there is no mark at all.
+The Teams row counts open members; its hint says the team's size (`test · 1 open here · 3
+members`). The first build drew every member on the strip while the wall kept only the open
+ones, and the owner's screen read `test 1` over three tabs. A team's whole membership, open
+or not, belongs to the teams page on home (section 7).
 
 **Doors in.** `alt+v`, `/wall`, the `▦` dock under the input box, and `▦ All` beside the tab
 strip's `+`. The dock is a one-row map of every open conversation coloured by state; a click
@@ -97,7 +111,8 @@ things by the name they remember.
 
 **Where teams show.** Dots before a tile's title; a segmented Teams row on the wall; when a
 team is shown, a `● name ▾` chip leading the tab strip and the rule under it in the team's
-hue. The chip is the switcher: teams, All, add or remove this conversation, new team, team
+hue. Showing a team narrows the strip to its members open in this window, plus the tab in
+front (section 1). The chip is the switcher: teams, All, add or remove this conversation, new team, team
 settings. New conversations started while a team is shown join it.
 
 ## 3. Organize: one button, a proposal, never a silent change
@@ -180,9 +195,38 @@ tasks and jobs running.
 gate, and a manager that could answer them would make every approval rule meaningless. If
 that is ever wanted, it is a separate, explicit per-team setting.
 
-**Handles.** Titles are too long to address, so each member gets a short handle (`@parser`),
-derived from its title when it joins, or when it first gets a title if it joined untitled;
-unique in the team, never changed on its own, clickable everywhere it appears.
+**Handles.** Titles are too long to address, so each member gets a handle: ONE lowercase word
+naming what the conversation is about (`@security`, `@milestones`, `@gravity`). A word list
+cannot do this well; measured on the owner's team it made `@review`, `@reviewing` and
+`@session` of "santosh dev2 branch code complexity & security review", "CodeAF repo issue
+tags & milestones" and "quantum gravity research updates / session monitor". So:
+
+- the word list (`teams.DeriveHandle`) is the instant guess, made when the member first has
+  a title, so it is addressable at once;
+- the title model chooses the word when the conversation's title is made
+  (`internal/session`'s `handlepick.go`): one call on the title role, a few tokens, asking
+  for the subject and two alternates; over `--host` it runs on the engine, which owns the
+  model and the store;
+- `teams.File.ChooseHandle` writes it under the store's lock: the first free word, else the
+  first with a title word in front (`@api-security`), numbered only when nothing else fits;
+- `Member.HandleBy` records who chose (`words`, `model`, `typed`); a handle a person or the
+  manager gave (`team_start`'s) is never replaced, and a model's word is not chosen again;
+- one time, every existing guessed handle is chosen again the same way on its conversation's
+  next turn, and every rename is a Traffic event from `system` to `everyone`,
+  `@review is now @security`, told to the manager and every member at their next step; the
+  manager's role note is rebuilt when the teams file moves, so it shows the new handle.
+
+**Every team reference in a chat is a door.** An `@handle` of a member of any team the
+conversation is in, and a team's name written as a team (`team test`, `the test team`,
+`"test"`), are links in the model's prose, the surface's notes, a team's quoted cards (the
+brief included) and a team tool's call rows (`team_send @security`). They go through the
+task link's own pass (`markdown.go`, `teamlink.go`): columns recorded on the row, the press
+resolved before the row's own answer, the hover held as (block, ordinal) with team
+references numbered from their own offset. The hover is a ground; the hint line says
+`Open @security · santosh dev2 branch… · click` (`Resume` when it is not open here). A press
+opens the member through the strip's door, resuming it first; a team's name opens the wall
+on that team. They are resolved from memory only; an `@word` that is no member's handle stays
+text.
 
 **Where it lives.** The manager is an ordinary session file. Traffic is
 `<profile>/teams/<id>/traffic.jsonl`, append-only, rotated at 4 MB with one old file kept;
@@ -283,5 +327,6 @@ of the parent team; reports flow up, directives down), and dispatch of whole pla
 
 - Agent tools for teams from any chat ("put the nvda chats in a team"), through the same
   store, which over `--host` is the engine's (section 5, "Whose profile").
-- A Teams place on home showing the tree; nesting in the UI; drag a tile onto a team.
+- A Teams place on home showing the tree and each team's whole membership, open or not;
+  nesting in the UI; drag a tile onto a team.
 - The manager waking on events, collision flags, nested managers, dispatch.
