@@ -338,7 +338,22 @@ func (a *app) moveTarget() bool {
 			break
 		}
 	}
-	a.target.where = next
+	return a.pinTargetProject(next)
+}
+
+// pinTargetProject is the shared selection for cycling and clicking a project.
+// A pending pasted-folder offer must yield to this explicit choice, while its
+// text stays in the draft just as it does after Option+P.
+func (a *app) pinTargetProject(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false
+	}
+	a.target.where = path
+	if a.home.projectPaste.path != "" {
+		a.home.projectPaste.path = ""
+		a.home.build()
+	}
 	a.touch()
 	return true
 }

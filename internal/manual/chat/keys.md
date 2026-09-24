@@ -597,7 +597,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `ctrl+.` | Open the sessions place (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on the machine the session runs on, and an empty home on a fresh one. Does nothing when the box has words in it |
 | `ctrl+l` | Jump back to the live edge of the conversation |
-| `ctrl+t` | Start a **new chat** — the same start page the `+` at the end of the tab strip opens. Nothing is created until you send the first message, `esc` comes back, and the conversation you were in keeps its draft, its attachments and its work. On a home row it starts the fresh chat in that row's own folder, the same door as `enter` on a `projects` row |
+| `ctrl+t` | Start a **new chat** — the same start page the `+` at the end of the tab strip opens. Nothing is created until you send the first message, `esc` comes back, and the conversation you were in keeps its draft, its attachments and its work. On a home row it starts the fresh chat in that row's own folder, while clicking a `projects` row selects the folder for the next message |
 | `ctrl+w` | **Close this tab** — the same thing the `✕` on it does. Selects the last-used remaining tab, or Home if none remain. Drafts are kept, and the conversation keeps running; a tab with work in it asks `keep running` / `stop work` / `cancel` first |
 | `alt+t` (`opt+t`) | Give the keyboard to the task roster. Press again or `esc` to take it back |
 | `ctrl+g` | A foreground command that can be kept takes the key first. Otherwise close the task roster's column, or bring it back — the column stands even with no tasks in it. Remembered for the next session. On a frame under 100 columns with no roster raised and no command to keep, it does nothing |
@@ -2219,7 +2219,7 @@ what each holds), and its keys are a small grammar:
 | `↑` / `↓` (`ctrl+p` / `ctrl+n`) | walk the field, from one panel into the next, and stop at both ends: `↑` off the top row stays there and does not climb onto the tab bar (reach the bar with a click, `tab`, or a place's chord) |
 | `←` / `→` | cross to the next column, onto the row nearest the one you left — only into a column with a row to stand on |
 | a digit, or a question's own key | answers **the one row of `needs you` that is drawing its answers**, from anywhere on home, with no cursor move — the row under the cursor when it can take one, the top answerable row otherwise. A question's chips are `1 allow once  2 always  3 deny`; a landing in `unread` offers `1 accept   2 not right`, its own `[a]`/`[n]` being letters and letters always type on home |
-| `enter` | acts on the row under the cursor: a conversation opens, a project row starts a new chat in that folder, a `since you left` line opens its record, file or place, a `standing` row opens standing, a fold line opens or shuts its panel. `spend`'s lines are not stops, so the cursor never reaches them |
+| `enter` | acts on the row under the cursor: a conversation opens, a `since you left` line opens its record, file or place, a `standing` row opens standing, a fold line opens or shuts its panel. `projects` and `spend` rows are not stops, so the cursor never reaches them; a click on a project picks the folder for the next message |
 | `pgup` / `pgdown` | jump a screenful |
 | `tab` | **the next place** on the bar |
 | `esc` | clears the box if anything is in it, and closes home otherwise |
@@ -2251,9 +2251,9 @@ actions otherwise ride chords, which can never begin a word, and they work from 
 **`ctrl+e` closes the conversation tab** — it leaves the open Home list and the
 default chats menu. Up to three closed rows stay dimmed on Home; typing finds older
 ones. Enter or `ctrl+e` on a closed row reopens it. **`ctrl+o`** opens
-its folder and **`ctrl+y`** copies its path. **`ctrl+t`** on a conversation's row still
-starts a new one in that row's folder, though `enter` on a row of the `projects` panel is
-the way home offers now. On a standing item's row — in `needs you` while it asks, in
+its folder and **`ctrl+y`** copies its path. **`ctrl+t`** on a conversation's row
+starts a new one in that row's folder; a click on a row of the `projects` panel instead
+picks the folder for the next message sent from home. On a standing item's row — in `needs you` while it asks, in
 `standing` otherwise, firing or not — **`ctrl+e` pauses** it, **`ctrl+x` stops it for good**, and
 **`alt+e` raises how hard that item thinks** one rung. Each chord acts on the row under
 your pointer when there is one, the cursor's row otherwise. The machine's own default is
@@ -2983,7 +2983,7 @@ reading simply does not exist and the chord does nothing there.
 | Where | What it does |
 |---|---|
 | Message box, or the task roster holding the keyboard | Start a new chat — the start page the tab strip's `+` opens. The roster gives the keyboard back on the way |
-| Home | Start a fresh conversation **in the folder of the conversation row under the cursor** — `enter` on a `projects` row is the way home offers it |
+| Home | Start a fresh conversation **in the folder of the conversation row under the cursor** — a click on a `projects` row picks the folder for the next message instead |
 | Model picker only | Cycle the reasoning effort |
 
 It used to hand the keyboard to the task roster everywhere. **That is `alt+t` (`opt+t`) now** —
