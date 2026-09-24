@@ -734,6 +734,11 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 	}
 	a.emitTaskUpdate(notice)
 	g.keepRunRows(notice.ID, []TaskNotice{notice})
+	// AND THE PRESENCE FILE IS REFRESHED NOW, not at the next heartbeat: a run
+	// starting or settling changes what every other window counts as running
+	// ([Agent.presenceBeltRun]), and a few seconds of an idle-looking window
+	// over a run in flight is the gap this closes.
+	a.nudgePresence()
 }
 
 // cutBeltRun ends the live run because the CONVERSATION is ending. It is what
