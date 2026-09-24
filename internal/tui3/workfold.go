@@ -249,6 +249,7 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 		// machine the router refuses — and a chip that hid it left them with a
 		// pin that disappeared and no sentence anywhere saying why.
 		blocked, stopped := false, false
+		var asks []int
 		for i := lo; i < hi; i++ {
 			if es[i].kind == entryAssistant && strings.TrimSpace(es[i].text) != "" {
 				answer = i
@@ -256,8 +257,10 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 			if es[i].cut {
 				stopped = true
 			}
-			if es[i].kind == entryTask || es[i].kind == entryConnect || es[i].kind == entryStanding ||
-				(es[i].kind == entryNote && (es[i].told || strings.HasPrefix(es[i].text, "cancel"))) {
+			if es[i].kind == entryTask || es[i].kind == entryConnect || es[i].kind == entryStanding {
+				asks = append(asks, i)
+			}
+			if es[i].kind == entryNote && (es[i].told || strings.HasPrefix(es[i].text, "cancel")) {
 				blocked = true
 			}
 			// A SEAM IS NEVER FOLDED AWAY. A chip hides the machinery between a
@@ -270,6 +273,37 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 				blocked = true
 			}
 		}
+		// AN ASK STANDS, AND THE WORK BEFORE IT STILL FOLDS. A task proposal, a
+		// sign-in or a standing card is a thing the work could not decide alone,
+		// so no chip may cover it. It used to keep the WHOLE turn open instead:
+		// the moment a turn ended on `/senior-dev`'s approval card, every thought
+		// and call above the card unfolded at once, a screenful of machinery
+		// arriving exactly when the person had one question to answer. So a turn
+		// with asks in it is cut at each of them: the settled work between two
+		// asks folds behind a chip that ends at the ask, the ask stands, and the
+		// stretch after the last ask folds by the ordinary rule, up to its answer.
+		// A running turn, a stopped one and a blocked one are unchanged below.
+		if len(asks) > 0 && !blocked && !stopped && (runningTurn == 0 || es[lo].turn != runningTurn) {
+			from := lo
+			for _, at := range asks {
+				if askSegmentSettled(es, from, at) {
+					f := workfold{key: es[lo].turn, turn: es[lo].turn, start: -1, answer: at}
+					if countWork(es, from, at, &f); f.start >= 0 {
+						out[f.start] = f
+					}
+				}
+				from = at + 1
+			}
+			if answer >= from && es[answer].settled {
+				f := workfold{key: es[lo].turn, turn: es[lo].turn, start: -1, answer: answer}
+				if countWork(es, from, answer, &f); f.start >= 0 {
+					out[f.start] = f
+				}
+			}
+			lo = hi
+			continue
+		}
+		blocked = blocked || len(asks) > 0
 		// THE END OF WHAT THE CHIP SWALLOWS. An ordinary fold stops at the answer
 		// and leaves it standing; a stopped turn's fold runs to the end of the
 		// group, because there is nothing in it that was said TO the person.
@@ -323,6 +357,26 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 		lo = hi
 	}
 	return out
+}
+
+// askSegmentSettled reports whether the rows before an ask are settled work a
+// chip may cover: no prose still streaming, no call still running or waiting on
+// the person, and no call that failed, because only failure speaks here.
+func askSegmentSettled(es []entry, from, to int) bool {
+	for i := from; i < to; i++ {
+		e := &es[i]
+		switch e.kind {
+		case entryAssistant:
+			if e.provisional && !e.settled {
+				return false
+			}
+		case entryTool:
+			if e.status != toolOK {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // Only a settled tail owned by a confirmed response may fold without a later
