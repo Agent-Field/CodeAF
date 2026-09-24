@@ -88,3 +88,16 @@ func TestAProgramsReceiptNamesItsFolder(t *testing.T) {
 		t.Fatalf("the started receipt = %q", got)
 	}
 }
+
+// THE CARD NAMES THE PROJECT. A program's card said `where:` and the path its
+// copy would have under codeaf's state; it says the folder, or a copy of it.
+func TestAProgramsCardNamesTheProject(t *testing.T) {
+	repo, plain := newTestRepo(t), t.TempDir()
+	config := Config{Workspace: t.TempDir(), Delegates: testPrograms("fake")}
+	if got := taskCardWhere(config, 1, taskSpec{via: "fake", ground: repo}); got != "a copy of "+repo {
+		t.Fatalf("a repository's card says where: %q", got)
+	}
+	if got := taskCardWhere(config, 1, taskSpec{via: "fake", ground: plain}); got != plain {
+		t.Fatalf("a plain folder's card says where: %q", got)
+	}
+}

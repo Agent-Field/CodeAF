@@ -1421,7 +1421,7 @@ func newTaskQuestion(id uint64, spec taskSpec, elsewhere string, deadline time.T
 			Summary:    spec.summary,
 			Brief:      spec.brief,
 			Acceptance: spec.acceptance,
-			Where:      taskWhereNotice(config.Place, config.Workspace, id, spec.where, spec.mode),
+			Where:      taskCardWhere(config, id, spec),
 			Ground:     spec.ground,
 			Mode:       spec.mode,
 			DependsOn:  spec.dependsOn,
@@ -1507,6 +1507,19 @@ func (a *Agent) taskClockTimer(after time.Duration) (<-chan time.Time, func()) {
 	}
 	timer := time.NewTimer(after)
 	return timer.C, func() { timer.Stop() }
+}
+
+// taskCardWhere is the card's `where`. A PROGRAM'S CARD NAMES ITS PROJECT: the
+// folder it will work in, or a copy of it. The copy's own path under codeaf's
+// state does not exist yet and is nobody's folder, and a card that showed it
+// asked a person to approve work going somewhere they had never heard of.
+func taskCardWhere(config Config, id uint64, spec taskSpec) string {
+	for _, program := range config.Delegates {
+		if program.Name == spec.via && strings.TrimSpace(spec.ground) != "" {
+			return programPlace(program, spec.ground)
+		}
+	}
+	return taskWhereNotice(config.Place, config.Workspace, id, spec.where, spec.mode)
 }
 
 func taskWhereNotice(place Place, workspace string, id uint64, where string, mode TaskMode) string {

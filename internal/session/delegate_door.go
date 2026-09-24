@@ -195,10 +195,27 @@ func delegateReceipt(ground string, via delegate.Delegate) string {
 	if !via.LandsTree() {
 		return "It is " + via.Name + "'s: it works alone, and its answer arrives when it ends."
 	}
-	if root, ok := repositoryRoot(ground); !ok || !hasCommit(root) {
+	if !hasGitHistory(ground) {
 		return "It is " + via.Name + "'s: it works alone in " + ground + " itself, which has no git history, so its changes are there as it makes them."
 	}
 	return "It is " + via.Name + "'s: it works alone in a copy of " + ground + ", and when it ends its work is left on the task's own branch; nothing is merged into the checkout."
+}
+
+// programPlace is where a program works, in a person's words: the folder
+// itself, or a copy of it when it has a history to copy from and the program
+// edits code.
+func programPlace(program delegate.Delegate, ground string) string {
+	if !program.LandsTree() || !hasGitHistory(ground) {
+		return ground
+	}
+	return "a copy of " + ground
+}
+
+// hasGitHistory says ground is in a repository with at least one commit — the
+// same reading [delegateOnPlainFolder] makes of the copy it was given.
+func hasGitHistory(ground string) bool {
+	root, ok := repositoryRoot(ground)
+	return ok && hasCommit(root)
 }
 
 // delegateStartedReceipt is an approved hand-off's receipt: a task's first line
