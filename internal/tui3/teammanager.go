@@ -54,9 +54,12 @@ const (
 // it the offer is the team switcher's alone.
 const teamManagerSlotFloor = 100
 
-// teamHostedWord is what the manager's doors say over --host. The team's
+// teamHostedWord is what the manager's doors say over --host when the engine
+// has no teams doors ([app.teamsOff]): an engine from before them. The team's
 // Traffic is written where the session runs, and this window's profile is not
 // that one, so a manager made from here would talk into a log nobody reads.
+// An engine with the doors answers for its own profile (teamseam.go), and
+// then every door here works over --host as it does locally.
 const teamHostedWord = "managers are not available over --host yet"
 
 // teamManagerMark is the manager's mark in this terminal's glyphs.
@@ -101,7 +104,7 @@ func (a *app) teamMakeManager(id string, tab chatTab) error {
 	if tab.key == "" || tab.start || tab.work {
 		return nil
 	}
-	if a.hosted() {
+	if a.teamsOff() {
 		a.note(teamHostedWord)
 		return nil
 	}
@@ -193,7 +196,7 @@ func (a *app) teamManagerStart() tea.Cmd {
 	if !ok || t.Manager != "" {
 		return nil
 	}
-	if a.hosted() {
+	if a.teamsOff() {
 		a.note(teamHostedWord)
 		return nil
 	}
@@ -315,7 +318,7 @@ func (a *app) teamManagerMenuWord(t team, key string) string {
 	if title := a.teamManagerTitle(t); title != "" {
 		word += " (replaces " + fitConversationTitle(title, 24) + ")"
 	}
-	if a.hosted() {
+	if a.teamsOff() {
 		word += " · not over --host"
 	}
 	return word
@@ -340,7 +343,7 @@ func (a *app) teamHoverWords() string {
 		}
 		return "Switch team, add this conversation, or make a manager" + hintSegment + "click"
 	case hit.kind == tabManager:
-		if a.hosted() {
+		if a.teamsOff() {
 			return teamHostedWord
 		}
 		return "Start a manager: a chat that runs " + t.Name + " for you" + hintSegment + "also in the " + a.linearMark("▾", "v") + " menu"

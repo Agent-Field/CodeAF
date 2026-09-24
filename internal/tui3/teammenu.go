@@ -380,7 +380,7 @@ func (a *app) teamMenuCard(width, height int) wallCard {
 		case teamMenuManager:
 			word := a.teamManagerMenuWord(shown, front)
 			ln.left, ln.leftW = pal.ink(word), ansi.StringWidth(word)
-			if a.hosted() {
+			if a.teamsOff() {
 				ln.left = pal.dim(word)
 			}
 		case teamMenuNew:

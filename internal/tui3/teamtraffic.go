@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"os"
 	"strings"
 	"time"
 
@@ -21,24 +20,27 @@ import (
 // THE READ IS OFF THE LOOP, AND A QUIET SECOND COSTS A STAT. A clock of its own
 // ([trafficEvery]) runs while this window holds a conversation in a team that
 // HAS A MANAGER, and at no other time: a team without one writes no Traffic
-// worth reading here. On each turn the clock's own command stats the teams
-// file and each held team's log, off the loop ([app.trafficNext]); the loop
-// compares the two stamps with the ones it kept and, when nothing moved, starts
-// no read, touches nothing, and tells the frame it may draw what it drew before
-// (view.go's still frame). A second of quiet is therefore one timer, one stat
-// per file and one message the frame skips. After [trafficIdleTurns] quiet
-// turns the clock slows to [trafficEveryIdle], and anything that moves brings
-// it back. Only a log that moved is read, forward from a cursor, in a command
-// beside the door line ([app.besideLine]); what came back is folded into a
-// cache on the loop, and THE FRAME DRAWS THE CACHE AND NOTHING ELSE
-// (framedisk_law_test.go). The same read picks up the teams file when another
-// process changed it, and gives a member its title when it joined before it had
-// one ([teamstore.DeriveHandle] through the store's tidy).
+// worth reading here. Each turn of the clock asks, beside the door line
+// ([app.besideLine]), for each held team's log after the cursor this window
+// holds and for the teams file only if its stamp moved ([TeamsSeam]); the
+// seam stats before it reads (internal/teams' [teamstore.Watch]), so a quiet
+// log is answered with nothing from one stat, and over --host with a frame of
+// a few bytes. What came back is folded into a cache on the loop, the clock is
+// set for its next turn there, and when nothing was new the loop touches
+// nothing and tells the frame it may draw what it drew before (view.go's still
+// frame). After [trafficIdleTurns] quiet turns the clock slows to
+// [trafficEveryIdle], and anything that moves brings it back. THE FRAME DRAWS
+// THE CACHE AND NOTHING ELSE (framedisk_law_test.go). The same turn picks up
+// the teams file when another process changed it, and gives a member its
+// title when it joined before it had one ([teamstore.DeriveHandle] through the
+// store's tidy, written as an ordinary edit, [app.teamEdit]).
 //
-// OVER --host THERE IS NO CLOCK AT ALL. The session writes its Traffic into the
-// profile of the machine it runs on, and this window's profile is not that one;
-// a rail read from here would be an empty log drawn as if it were the team's
-// (host.go's honesty table says so, and teammanager.go says it on the strip).
+// OVER --host THE CLOCK READS THE ENGINE'S LOG. The session writes its Traffic
+// into the profile of the machine it runs on, and the --host door's seam asks
+// that machine (internal/remote's Teams.Traffic), so the rail is the team's
+// own. An engine without those doors hands no seam, and then there is no clock
+// at all ([app.teamsOff]): a rail read from this window's profile would be an
+// empty log drawn as if it were the team's.
 //
 // THE ACTS ARE DONE ONCE, AND ONLY NEW ONES. A stop addressed to a
 // conversation this window holds ends that conversation's current turn, as the
@@ -71,29 +73,12 @@ const (
 	trafficFromStart = "000000000000"
 )
 
-// trafficStamp is what a stat said about one file: its size and time, and
-// whether it was there at all. Two equal stamps are a file nobody wrote.
-type trafficStamp struct {
-	size int64
-	mod  time.Time
-	ok   bool
-}
-
-// trafficStat is one file's stamp. It reads the disk, so it is called from a
-// command and never from the loop or a frame.
-func trafficStat(path string) trafficStamp {
-	info, err := os.Stat(path)
-	if err != nil {
-		return trafficStamp{}
-	}
-	return trafficStamp{size: info.Size(), mod: info.ModTime(), ok: true}
-}
-
 // trafficState is the cache, the clock and the rail's own state.
 type trafficState struct {
-	// ticking says a trafficTickMsg is on its way, and reading that a read is
-	// out, so a turn of the clock never starts a second one beside it. idle
-	// counts the turns in a row that found nothing.
+	// ticking says the clock is turning (a trafficTickMsg or the read it
+	// started is on its way), and reading that a read is out, so a turn of the
+	// clock never starts a second one beside it. idle counts the turns in a row
+	// that found nothing.
 	ticking bool
 	reading bool
 	idle    int
@@ -104,16 +89,14 @@ type trafficState struct {
 	rows map[string][]teamstore.Entry
 	// done is every stop and start acted on, by team id and entry id.
 	done map[string]bool
-	// logs is each team's log as it was when a read of it was last started,
-	// and teamsAt the teams file's, so a turn of the clock reads only what
-	// moved.
-	logs    map[string]trafficStamp
-	teamsAt trafficStamp
-	// stamp is the teams file's time when it was last read here, and edits
-	// counts this window's own writes, so a read that crossed one does not
-	// put the list from before it back.
-	stamp time.Time
+	// stamp is the teams file's stamp when it was last read or written here
+	// (internal/teams' stamp.go), which is what a turn asks the seam to answer
+	// "same" to. edits counts this window's own edits and wrote the edits the
+	// last write covered, so a read that crossed an edit, or came back while one
+	// was still unwritten, does not put the list from before it back.
+	stamp string
 	edits int
+	wrote int
 	// seen is, per team, the newest entry the person has had in front of them
 	// on the rail, which is what the closed edge counts past.
 	seen map[string]string
@@ -128,13 +111,8 @@ type trafficState struct {
 	cache trafficCache
 }
 
-// trafficTickMsg is one turn of the Traffic clock: the stamps its command took
-// of the teams file and of each team's log in ids, in the same order.
-type trafficTickMsg struct {
-	teams trafficStamp
-	ids   []string
-	logs  []trafficStamp
-}
+// trafficTickMsg is one turn of the Traffic clock coming round.
+type trafficTickMsg struct{}
 
 // trafficJob is one team's read: after the cursor, or the tail on a first look.
 type trafficJob struct {
@@ -177,7 +155,7 @@ func (a *app) trafficTeamWanted(t team) bool {
 // trafficWanted reports whether any team is worth reading, which is when the
 // clock runs. It allocates nothing: it is asked after every message.
 func (a *app) trafficWanted() bool {
-	if !a.wall.loaded || len(a.wall.teams) == 0 || a.hosted() {
+	if !a.wall.loaded || len(a.wall.teams) == 0 || a.teamsOff() {
 		return false
 	}
 	for _, t := range a.wall.teams {
@@ -191,75 +169,50 @@ func (a *app) trafficWanted() bool {
 // trafficArm starts the clock when there is something to read and it is not
 // already turning. It is asked after every message ([app.Update]), so a team
 // made, a member joined or a manager opened starts it without each of those
-// doors having to know. Its first turn reads at once; the turns after it read
-// only what moved.
+// doors having to know. Its first turn reads at once; the read's fold sets the
+// turn after it ([app.trafficTake]).
 func (a *app) trafficArm() tea.Cmd {
 	if a.traffic.ticking || !a.trafficWanted() {
 		return nil
 	}
 	a.traffic.ticking = true
 	a.traffic.idle = 0
-	return tea.Batch(a.trafficRead(), a.trafficNext())
+	return a.trafficReadOf(a.trafficIDs(), true)
 }
 
-// trafficNext is the clock's next turn. The ids are taken here, on the loop;
-// the stats are taken by the command, when the turn comes round.
-func (a *app) trafficNext() tea.Cmd {
-	dir := a.profileDir
+// trafficIDs is every managed team this window holds a conversation in.
+func (a *app) trafficIDs() []string {
 	var ids []string
 	for _, t := range a.wall.teams {
 		if a.trafficTeamWanted(t) {
 			ids = append(ids, t.ID)
 		}
 	}
+	return ids
+}
+
+// trafficNext is the clock's next turn: a timer and nothing else. The read is
+// started on the loop when it comes round ([app.trafficTick]), so it carries
+// the cursors as they are then.
+func (a *app) trafficNext() tea.Cmd {
 	every := trafficEvery
 	if a.traffic.idle >= trafficIdleTurns {
 		every = trafficEveryIdle
 	}
-	return surfaceTick(every, func(time.Time) tea.Msg {
-		msg := trafficTickMsg{teams: trafficStat(teamstore.Path(dir)), ids: ids, logs: make([]trafficStamp, len(ids))}
-		for i, id := range ids {
-			msg.logs[i] = trafficStat(teamstore.TrafficPath(dir, id))
-		}
-		return msg
-	})
+	return surfaceTick(every, func(time.Time) tea.Msg { return trafficTickMsg{} })
 }
 
-// trafficTick is a turn of the clock: read what moved, and come round again,
-// while there is anything to read. It stops itself when there is not, and
-// [app.trafficArm] starts it again. quiet says the turn changed nothing a frame
-// draws, so the frame before it stands.
-func (a *app) trafficTick(msg trafficTickMsg) (cmd tea.Cmd, quiet bool) {
+// trafficTick is a turn of the clock: read, and come round again from the
+// read's fold, while there is anything to read. It stops itself when there is
+// not, and [app.trafficArm] starts it again. The turn itself changes nothing a
+// frame draws, so it is always quiet; the read's fold says whether anything
+// moved.
+func (a *app) trafficTick(trafficTickMsg) (cmd tea.Cmd, quiet bool) {
 	if !a.trafficWanted() {
 		a.traffic.ticking = false
 		return nil, true
 	}
-	var moved []string
-	for i, id := range msg.ids {
-		if _, seen := a.traffic.cursor[id]; !seen || msg.logs[i] != a.traffic.logs[id] {
-			moved = append(moved, id)
-		}
-	}
-	teamsMoved := msg.teams != a.traffic.teamsAt
-	titles := a.trafficTitles()
-	if len(moved) == 0 && !teamsMoved && len(titles) == 0 {
-		a.traffic.idle++
-		return a.trafficNext(), true
-	}
-	if a.traffic.reading {
-		// The read already out answers for this turn; the stamps are left as
-		// they were, so the next turn sees the same movement and reads it.
-		return a.trafficNext(), true
-	}
-	a.traffic.idle = 0
-	if a.traffic.logs == nil {
-		a.traffic.logs = map[string]trafficStamp{}
-	}
-	for i, id := range msg.ids {
-		a.traffic.logs[id] = msg.logs[i]
-	}
-	a.traffic.teamsAt = msg.teams
-	return tea.Batch(a.trafficReadOf(moved, titles, teamsMoved), a.trafficNext()), false
+	return a.trafficReadOf(a.trafficIDs(), true), true
 }
 
 // trafficTitles is every member that joined with no title and whose tab has
@@ -286,22 +239,26 @@ func (a *app) trafficTitles() []trafficTitle {
 }
 
 // trafficRead reads every managed team this window holds a conversation in,
-// the teams file with them. It is the clock's first turn and a test's.
-func (a *app) trafficRead() tea.Cmd {
-	var ids []string
-	for _, t := range a.wall.teams {
-		if a.trafficTeamWanted(t) {
-			ids = append(ids, t.ID)
-		}
-	}
-	return a.trafficReadOf(ids, a.trafficTitles(), true)
-}
+// the teams file with them, once, without setting the clock. It is a test's.
+func (a *app) trafficRead() tea.Cmd { return a.trafficReadOf(a.trafficIDs(), false) }
 
-// trafficReadOf reads the logs of teams ids, and the teams file when teams
-// says it moved, off the loop, and folds what it found in
-// ([app.trafficTake]).
-func (a *app) trafficReadOf(ids []string, titles []trafficTitle, teams bool) tea.Cmd {
+// trafficReadOf reads the logs of teams ids after their cursors, and the teams
+// file when its stamp moved, through the seam, beside the door line, and folds
+// what it found in ([app.trafficTake]). tick says this read is a turn of the
+// clock, whose fold sets the next one; a turn that finds a read already out
+// leaves the answer to it and only comes round again.
+func (a *app) trafficReadOf(ids []string, tick bool) tea.Cmd {
+	if titles := a.trafficTitles(); len(titles) > 0 {
+		// A member that joined before it had a title takes its tab's name,
+		// and with it a handle, as an ordinary edit: [app.teamEdit] gives every
+		// member this window has a tab for its tab's name on the way, and the
+		// write is made after this message ([app.teamsWrite]).
+		_ = a.teamEdit(func(*teamstore.File) error { return nil })
+	}
 	if a.traffic.reading || !a.wall.loaded {
+		if tick {
+			return a.trafficNext()
+		}
 		return nil
 	}
 	var jobs []trafficJob
@@ -309,11 +266,8 @@ func (a *app) trafficReadOf(ids []string, titles []trafficTitle, teams bool) tea
 		after, seen := a.traffic.cursor[id]
 		jobs = append(jobs, trafficJob{id: id, after: after, first: !seen})
 	}
-	if len(jobs) == 0 && len(titles) == 0 && !teams {
-		return nil
-	}
 	a.traffic.reading = true
-	dir, reserved, stamp, edits := a.profileDir, teamReservedHues(a.pal), a.traffic.stamp, a.traffic.edits
+	seam, reserved, stamp, edits := a.teamsSeam(), teamReservedHues(a.pal), a.traffic.stamp, a.traffic.edits
 	return a.besideLine(func() func(bool) tea.Cmd {
 		got := make([]trafficGot, len(jobs))
 		for i, j := range jobs {
@@ -321,53 +275,26 @@ func (a *app) trafficReadOf(ids []string, titles []trafficTitle, teams bool) tea
 			if j.first {
 				after, limit = "", trafficKeep
 			}
-			entries, err := teamstore.ReadTraffic(dir, j.id, after, limit)
+			entries, err := seam.Traffic(j.id, after, limit)
 			got[i] = trafficGot{trafficJob: j, entries: entries, err: err}
 		}
-		titled := false
-		if len(titles) > 0 {
-			err := teamstore.Update(dir, func(f *teamstore.File) error {
-				for _, want := range titles {
-					i := teamstore.Index(f.Teams, want.team)
-					if i < 0 {
-						continue
-					}
-					for j := range f.Teams[i].Members {
-						if m := &f.Teams[i].Members[j]; m.Key == want.key && strings.TrimSpace(m.Word) == "" {
-							m.Word = want.word
-						}
-					}
-				}
-				return nil
-			})
-			titled = err == nil
+		fresh, at, same, err := seam.ReadSince(stamp, reserved)
+		if err != nil || same {
+			fresh, at = nil, stamp
 		}
-		var fresh []team
-		var at time.Time
-		if teams || titled {
-			if info, err := os.Stat(teamstore.Path(dir)); err == nil {
-				at = info.ModTime()
-			}
-			if titled || !at.Equal(stamp) {
-				if f, err := teamstore.LoadHued(dir, reserved); err == nil {
-					fresh = f.Teams
-				}
-			}
-		} else {
-			at = stamp
-		}
-		return func(bool) tea.Cmd { return a.trafficTake(got, fresh, at, edits) }
+		return func(bool) tea.Cmd { return a.trafficTake(got, fresh, at, edits, tick) }
 	})
 }
 
 // trafficTake folds one read in, on the loop: the teams file when it changed
-// and nothing was written here since the read began, each team's new entries
-// onto its cache, and the stops and starts among them done. A read that found
-// nothing new leaves the frame before it standing.
-func (a *app) trafficTake(got []trafficGot, fresh []team, at time.Time, edits int) tea.Cmd {
+// and nothing was edited here since the read began or is still unwritten, each
+// team's new entries onto its cache, and the stops and starts among them done.
+// A read that found nothing new leaves the frame before it standing. A turn of
+// the clock sets the next one here, slower after a run of quiet ones.
+func (a *app) trafficTake(got []trafficGot, fresh []team, at string, edits int, tick bool) tea.Cmd {
 	a.traffic.reading = false
 	changed := false
-	if edits == a.traffic.edits {
+	if edits == a.traffic.edits && a.traffic.wrote == a.traffic.edits {
 		if fresh != nil {
 			a.teamAdopt(teamsClone(fresh))
 			changed = true
@@ -424,6 +351,18 @@ func (a *app) trafficTake(got []trafficGot, fresh []team, at time.Time, edits in
 		a.touch()
 	} else if len(acts) == 0 {
 		a.ptr.still = a.drawn
+	}
+	if tick {
+		if changed {
+			a.traffic.idle = 0
+		} else {
+			a.traffic.idle++
+		}
+		if a.trafficWanted() {
+			acts = append(acts, a.trafficNext())
+		} else {
+			a.traffic.ticking = false
+		}
 	}
 	return tea.Batch(acts...)
 }

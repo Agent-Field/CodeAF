@@ -186,6 +186,7 @@ func TestTeamMakeReplacesByNameAndDeleteFollowsActive(t *testing.T) {
 	if sp, ok := a.teamActive(); !ok || sp.Name != "docs" {
 		t.Fatalf("active did not follow: %+v %v", sp, ok)
 	}
+	teamsFlush(t, a)
 	b := &app{profileDir: dir}
 	b.teamsEnsure()
 	if names := b.teamNames(); !reflect.DeepEqual(names, []string{"docs"}) {
@@ -238,6 +239,7 @@ func TestTeamRoundTripKeepsUnknownFieldsAndTheManager(t *testing.T) {
 	if err := a.teamRename("abcdefabcdef", "dock"); err != nil {
 		t.Fatal(err)
 	}
+	teamsFlush(t, a)
 	raw, _ = os.ReadFile(filepath.Join(dir, teamsFile))
 	if !strings.Contains(string(raw), `"pinned": true`) || !strings.Contains(string(raw), `"manager": "k1"`) || !strings.Contains(string(raw), `"dock"`) {
 		t.Fatalf("an edit dropped what it did not know:\n%s", raw)
@@ -306,6 +308,7 @@ func TestTeamTreeRefusesLoopsAndDeleteReparents(t *testing.T) {
 		t.Fatalf("other's ancestors are %q", got)
 	}
 	// The tree is on disk, as every edit is.
+	teamsFlush(t, a)
 	b := newTestAppWithProfile(a.profileDir, nil)
 	b.teamsEnsure()
 	if lowT, _ := b.teamByID(low); lowT.Parent != top {
@@ -417,6 +420,7 @@ func TestTeamNewConversationJoinsTheShownTeam(t *testing.T) {
 	if got := a.teamsOf(beside); len(got) != 1 || got[0] != id {
 		t.Fatalf("the conversation started from home is in %v", got)
 	}
+	teamsFlush(t, a)
 	disk, _ := loadTeams(a.profileDir, nil)
 	if len(disk) != 1 || !teamHolds(disk[0], fresh) || !teamHolds(disk[0], beside) {
 		t.Fatalf("the joins were not saved: %+v", disk)

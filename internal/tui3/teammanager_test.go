@@ -66,6 +66,7 @@ func TestTeamManagerSlotStartsAManager(t *testing.T) {
 	if got.Manager != boss || !got.Holds(boss) {
 		t.Fatalf("the new conversation is not the manager: %q, %+v", got.Manager, got.Members)
 	}
+	teamsFlush(t, a)
 	disk, _ := loadTeams(a.profileDir, nil)
 	if len(disk) == 0 || disk[0].Manager != boss {
 		t.Fatalf("the manager did not reach the disk: %+v", disk)

@@ -162,6 +162,7 @@ func TestTeamMenuAddsAndRemovesTheFrontConversation(t *testing.T) {
 	if frame, _ = menuFrame(t, a); !strings.Contains(frame, "− Remove this conversation") {
 		t.Fatalf("the row did not flip:\n%s", frame)
 	}
+	teamsFlush(t, a)
 	disk, _ := loadTeams(a.profileDir, nil)
 	saved := false
 	for _, tm := range disk {

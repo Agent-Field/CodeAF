@@ -166,7 +166,7 @@ func (a *app) trafficKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if !ok || t.Manager == "" {
 		return nil, false
 	}
-	if a.hosted() {
+	if a.teamsOff() {
 		a.note(teamHostedWord)
 		return nil, true
 	}
@@ -229,7 +229,7 @@ func (a *app) trafficHoverWords() string {
 // and the box says which. "" elsewhere. Frame-safe, allocation free for every
 // conversation that is not in a managed team.
 func (a *app) trafficHint() string {
-	if a.hosted() || !a.wall.loaded || len(a.wall.teams) == 0 {
+	if a.teamsOff() || !a.wall.loaded || len(a.wall.teams) == 0 {
 		return ""
 	}
 	if _, ok := a.teamFrontManaged(); ok {

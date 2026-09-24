@@ -1336,6 +1336,9 @@ type app struct {
 	// traffic is the Traffic log's cache, its clock and its rail
 	// (teamtraffic.go).
 	traffic trafficState
+	// teamsDisk is where the teams are kept and the edits not yet written
+	// there (teamseam.go).
+	teamsDisk teamsDisk
 	// teamMenu is the strip chip's team switcher (teammenu.go).
 	teamMenu teamMenu
 	// homeGen is home's own clock generation. It belongs to the SURFACE rather
@@ -2802,6 +2805,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		resume:              opts.Resume,
 		shared:              opts.SharedAgent,
 		stands:              opts.Standing,
+		teamsDisk:           teamsDisk{door: opts.Teams},
 		link:                opts.Link,
 		conns:               opts.Connections,
 		harn:                opts.Harnesses,
@@ -3219,7 +3223,10 @@ func (a *app) Init() tea.Cmd {
 		a.setupDemoCmd(), a.checkForUpdate(), titleSend(a.titleSent),
 		// AND THE TWO DOORS INTO THE LOOP FROM ELSEWHERE, each with its one
 		// command parked on it (doorbell.go).
-		a.news.waitRing(), a.leaving.waitRing()}
+		a.news.waitRing(), a.leaving.waitRing(),
+		// AND THE TEAMS' FIRST READ, when the seam held nothing to load above
+		// (teamseam.go); nil on every local launch.
+		a.teamsWrite()}
 	if a.welcome.animating() {
 		standing = append(standing, a.wake())
 	}
@@ -3304,6 +3311,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// turning and nothing when it is.
 	if tick := a.trafficArm(); tick != nil {
 		cmd = tea.Batch(cmd, tick)
+	}
+	// AND AN EDIT TO THE TEAMS IS WRITTEN HERE, off the loop, for the same
+	// reason: every door that edits a team has happened by now, and it costs a
+	// length check when nothing was edited (teamseam.go).
+	if write := a.teamsWrite(); write != nil {
+		cmd = tea.Batch(cmd, write)
 	}
 	// AND THE TERMINAL'S TITLE IS ASKED AFTER EVERY MESSAGE, because this is
 	// the one place every change to where a person stands has already happened
