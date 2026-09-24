@@ -83,7 +83,12 @@ func makeTeamFixture(t *testing.T, managed, wakes bool) teamFixture {
 	}
 	fixture.teamID = teams.NewID()
 	err := teams.Update(fixture.profile, func(file *teams.File) error {
-		file.Teams = append(file.Teams, teams.Team{ID: fixture.teamID, Name: "harbor", WakeOff: !wakes})
+		team := teams.Team{ID: fixture.teamID, Name: "harbor"}
+		if !wakes {
+			off := false
+			team.Settings.Wake = &off
+		}
+		file.Teams = append(file.Teams, team)
 		for _, member := range []teams.Member{
 			{Key: convKeyOf(t, fixture.manager), File: fixture.manager, Word: "Harbor manager", Handle: "boss"},
 			{Key: convKeyOf(t, fixture.web), File: fixture.web, Word: "web frontend", Handle: "web"},

@@ -167,8 +167,9 @@ func (a *Agent) teamTarget(want string, manager bool) (teams.Team, teamRole, str
 	a.team.mu.Lock()
 	keys := append([]string(nil), a.teamKeysLocked()...)
 	a.team.mu.Unlock()
+	defaults := a.teamDefaults(profile)
 	var fits []teamRole
-	for _, role := range rolesFor(file.Teams, keys) {
+	for _, role := range rolesFor(file, keys, defaults) {
 		if manager && role.manager || !manager && !role.manager && role.managed {
 			fits = append(fits, role)
 		}
@@ -366,7 +367,7 @@ func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (string,
 	default:
 		return invalidArgumentsPrefix + "kind is note or directive", true, nil
 	}
-	team, _, refusal := a.teamTarget(parsed.Team, true)
+	team, role, refusal := a.teamTarget(parsed.Team, true)
 	if refusal != "" {
 		return refusal, true, nil
 	}
@@ -392,8 +393,8 @@ func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (string,
 		// A DIRECTIVE WAKES, and a member nobody has open is opened so it can
 		// (team_wakewatch.go). The answer says what will happen and no more:
 		// whether the wake ran is the Traffic's to say, where the person reads it.
-		a.teamRouse(a.config.teamProfile(), team, teamSendTargets(team, entry))
-		if !team.Wakes() {
+		a.teamRouse(a.config.teamProfile(), team, role.wakes, teamSendTargets(team, entry))
+		if !role.wakes {
 			return fmt.Sprintf("Sent a directive to %s. This team's auto-wake is off, so a member that is idle reads it when its conversation next runs; a busy one at its next step.", who), false, nil
 		}
 		return fmt.Sprintf("Sent a directive to %s. A member that is idle starts a turn on it now, and a busy one reads it at its next step. "+
@@ -578,7 +579,7 @@ func (a *Agent) teamPostTool(ctx context.Context, args json.RawMessage) (string,
 		// A REPLY TO THE MANAGER WAKES IT, so a manager nobody has open is
 		// opened (team_wakewatch.go).
 		if manager, ok := team.Member(team.Manager); ok {
-			a.teamRouse(a.config.teamProfile(), team, []teams.Member{manager})
+			a.teamRouse(a.config.teamProfile(), team, role.wakes, []teams.Member{manager})
 		}
 	}
 	return "Posted to " + where + " in " + strconv.Quote(team.Name) + ". It arrives at the start of their next step.", false, nil

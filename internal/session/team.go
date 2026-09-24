@@ -95,8 +95,20 @@ type teamRole struct {
 	// this conversation writes names it ([teams.Entry.Member]).
 	key string
 	// wakes says the team's traffic starts this conversation's turn when it is
-	// idle ([teams.Team.Wakes], team_wakewatch.go).
+	// idle: the team's effective `wake` ([teams.Effective], inherited from
+	// its parents and the profile's `teams.wake`; team_wakewatch.go).
 	wakes bool
+	// questionsUp is the effective `questions_up` of the team this
+	// conversation reports to, which is what decides where its clarifying
+	// questions go (team_questions.go).
+	questionsUp bool
+	// shared says this conversation is a member (not the manager) of this
+	// managed team but reports to a manager elsewhere (teams.File.Home): this
+	// team's manager is a LINK, who may read it and send it notes, and whose
+	// directives and stops do not reach it as its manager's. reportsTo names
+	// the team it reports to, for the sentence that says so.
+	shared    bool
+	reportsTo string
 }
 
 // fileStamp is what a stat says about a file, and the whole of how this file
@@ -131,9 +143,14 @@ type teamSeat struct {
 	// exists ([Agent.teamKeysLocked]).
 	keys     []string
 	resolved bool
-	// teamsAt is the teams file as it was when roles was read from it.
-	teamsAt fileStamp
-	roles   []teamRole
+	// teamsAt is the teams file as it was when roles was read from it, and
+	// configAt the profile's config.json, whose `teams.` rows the roles'
+	// inherited settings fall back to ([teams.DefaultsAt]); defaults is what
+	// was read from it.
+	teamsAt  fileStamp
+	configAt fileStamp
+	defaults teams.Defaults
+	roles    []teamRole
 	// cursors is the id of the last Traffic entry read, per team, and
 	// trafficAt is each log as it was when this conversation last caught up on
 	// it. cursorsRead says cursors has been loaded from the session folder.
@@ -246,7 +263,8 @@ func (a *Agent) teamRolesLocked(profile string) []teamRole {
 		return nil
 	}
 	now := stampOf(teams.Path(profile))
-	if now == a.team.teamsAt {
+	settings := a.teamDefaultsMovedLocked(profile)
+	if now == a.team.teamsAt && !settings {
 		return a.team.roles
 	}
 	if !now.present {
@@ -262,29 +280,80 @@ func (a *Agent) teamRolesLocked(profile string) []teamRole {
 		return a.team.roles
 	}
 	a.team.teamsAt = now
-	a.team.roles = rolesFor(file.Teams, keys)
+	a.team.roles = rolesFor(file, keys, a.team.defaults)
 	a.team.file = file
 	a.team.events.member.Store(eventfulRoles(a.team.roles))
 	return a.team.roles
 }
 
-// rolesFor is the teams whose members include one of keys, in file order.
-func rolesFor(list []teams.Team, keys []string) []teamRole {
+// teamDefaultsMovedLocked reads the profile's `teams.` rows again when its
+// config.json has moved since the last read, and reports whether it did. A
+// config that has not moved costs one stat. The caller holds a.team.mu.
+func (a *Agent) teamDefaultsMovedLocked(profile string) bool {
+	now := stampOf(config.BudgetConfigPath(profile))
+	if now == a.team.configAt {
+		return false
+	}
+	a.team.configAt = now
+	a.team.defaults = teams.DefaultsAt(profile)
+	return true
+}
+
+// teamDefaults is the profile's `teams.` rows, read again only when they moved.
+func (a *Agent) teamDefaults(profile string) teams.Defaults {
+	a.team.mu.Lock()
+	defer a.team.mu.Unlock()
+	a.teamDefaultsMovedLocked(profile)
+	return a.team.defaults
+}
+
+// rolesFor is the open teams whose members include one of keys, in file
+// order, each with its settings resolved against d.
+//
+// A CLOSED TEAM IS NO PART AT ALL (teams' lifecycle.go): it spends nothing,
+// so a conversation whose only teams closed has no verb, no role and no
+// delivery, and takes no team turn.
+func rolesFor(file *teams.File, keys []string, d teams.Defaults) []teamRole {
+	if file == nil {
+		return nil
+	}
+	home, hasHome := teams.Report{}, false
+	for _, key := range keys {
+		if report, ok := file.Home(key); ok {
+			home, hasHome = report, true
+			break
+		}
+	}
 	var roles []teamRole
-	for _, team := range list {
+	for _, team := range file.Teams {
+		if team.Closed() {
+			continue
+		}
 		member, ok := memberOf(team, keys)
 		if !ok {
 			continue
 		}
-		roles = append(roles, teamRole{
-			id:      team.ID,
-			name:    team.Name,
-			handle:  member.Handle,
-			manager: team.Manager != "" && team.Manager == member.Key,
-			managed: team.Manager != "",
-			key:     member.Key,
-			wakes:   team.Wakes(),
-		})
+		effective := file.Effective(team.ID, d)
+		role := teamRole{
+			id:          team.ID,
+			name:        team.Name,
+			handle:      member.Handle,
+			manager:     team.Manager != "" && team.Manager == member.Key,
+			managed:     team.Manager != "",
+			key:         member.Key,
+			wakes:       effective.Wake,
+			questionsUp: effective.QuestionsUp,
+		}
+		if hasHome {
+			role.questionsUp = file.Effective(home.Team, d).QuestionsUp
+		}
+		if role.managed && !role.manager && hasHome && home.Team != team.ID {
+			role.shared = true
+			if at, ok := file.Team(home.Team); ok {
+				role.reportsTo = at.Name
+			}
+		}
+		roles = append(roles, role)
 	}
 	return roles
 }

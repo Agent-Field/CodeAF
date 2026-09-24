@@ -92,6 +92,7 @@ teams.cap_usd_day
 teams.depth_limit
 teams.questions_up
 teams.sub_share_pct
+teams.wake
 telemetry
 tenure_after
 tools.approval
