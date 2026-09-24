@@ -22,8 +22,8 @@ func TestTeamSpendSumsTheSubtreeFromTheLedger(t *testing.T) {
 	lines := []string{
 		line("2026-09-24", 1.00, a, ""),
 		line("2026-09-24", 0.25, "9999999999999999", b), // a task b started
-		line("2026-09-24", 5.00, x, ""),                  // somebody else
-		line("2026-09-23", 7.00, a, ""),                  // yesterday
+		line("2026-09-24", 5.00, x, ""),                 // somebody else
+		line("2026-09-23", 7.00, a, ""),                 // yesterday
 		line("2026-09-24", 0.50, b, ""),
 	}
 	writeLedger(t, ledger, lines...)

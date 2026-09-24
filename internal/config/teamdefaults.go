@@ -122,16 +122,20 @@ func teamRows(dir string) []Setting {
 			Hint: "the share of its parent's daily cap a new sub-team starts with. It is " +
 				"written on the sub-team when it is made, so changing this later moves " +
 				"no team that already exists.",
-			read:  func() string { return strconv.Itoa(TeamDefaultsAt(dir).SubSharePct) },
-			write: func(raw string) error { return writeTeamsBand(dir, KeyTeamsSubSharePct, raw, teamsShareMin, teamsShareMax) },
+			read: func() string { return strconv.Itoa(TeamDefaultsAt(dir).SubSharePct) },
+			write: func(raw string) error {
+				return writeTeamsBand(dir, KeyTeamsSubSharePct, raw, teamsShareMin, teamsShareMax)
+			},
 		},
 		{
 			Key: KeyTeamsDepthLimit, Category: CategoryTeams, Kind: SettingCount,
 			Label: "team depth", Unit: "levels", UnitOne: "level",
 			Hint: "how many levels of teams a manager may build by starting sub-teams, " +
 				"the top team counting as one. 1 means no sub-teams.",
-			read:  func() string { return strconv.Itoa(TeamDefaultsAt(dir).DepthLimit) },
-			write: func(raw string) error { return writeTeamsBand(dir, KeyTeamsDepthLimit, raw, teamsDepthMin, teamsDepthMax) },
+			read: func() string { return strconv.Itoa(TeamDefaultsAt(dir).DepthLimit) },
+			write: func(raw string) error {
+				return writeTeamsBand(dir, KeyTeamsDepthLimit, raw, teamsDepthMin, teamsDepthMax)
+			},
 		},
 	}
 }
