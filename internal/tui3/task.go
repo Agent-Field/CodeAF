@@ -1933,10 +1933,17 @@ func (a *app) taskCardRows(card *taskCard, width int, sel bool) []string {
 	if card.where != "" {
 		out = append(out, stem+a.pal.dim(fit("where: "+card.where, room)))
 	}
-	if point := a.taskBranchPoint(); point != "" {
+	if point := a.taskBranchPoint(); point != "" && card.program == "" {
 		// The branch point is the last of the facts about the work, and it is the
 		// one thing on the card a person cannot find out afterwards without
 		// reading a merge.
+		//
+		// A PROGRAM'S CARD HAS NONE. A program works in the folder itself, on a
+		// branch of its own cut from the commit the checkout is on, and a checkout
+		// with work not committed is refused before any card goes up
+		// (internal/session's programfolder.go): `unsaved edits included` was the
+		// copy's sentence, and on a program's card it was false twice over. Its
+		// `where:` line above already says the folder and its branch.
 		out = append(out, stem+a.pal.dim(fit(point, room)))
 	}
 	if meta := a.taskMetaWord(card, room); meta != "" {
