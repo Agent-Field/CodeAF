@@ -360,6 +360,11 @@ func wallHint(v wallView, ascii bool) string {
 		switch h.arg {
 		case wallPopNew:
 			return "Make a new team with this conversation in it"
+		case wallPopManager:
+			if v.popManager == wallManagerRemove {
+				return "Make this an ordinary member again"
+			}
+			return "Make this conversation the team's manager"
 		case wallPopDelete:
 			return "Delete this team; its conversations stay open"
 		case wallPopConfirm:
@@ -1319,6 +1324,12 @@ func wallMembersLines(pal palette, g wallGlyphs, v wallView) (string, []wallCard
 		lines = append(lines, wallCardLine{rule: true})
 	}
 	row(wallPopNew, "", pal.muted("+ New team"+k.more), len(v.teams))
+	switch v.popManager {
+	case wallManagerMake:
+		row(wallPopManager, "", pal.muted(v.mark+" Make manager"), len(v.teams)+1)
+	case wallManagerRemove:
+		row(wallPopManager, "", pal.muted("  Remove manager"), len(v.teams)+1)
+	}
 	return "Teams", lines, inner
 }
 
