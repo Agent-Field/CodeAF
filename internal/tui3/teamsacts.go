@@ -2,8 +2,6 @@ package tui3
 
 import (
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -319,15 +317,12 @@ func (a *app) teamsStartIn(where string) (tea.Cmd, string) {
 
 // ── DECIDING ────────────────────────────────────────────────────────────────
 
-// teamsCapAmount reads the figure a cap packet's `raise` option names, `Raise
-// to $10`, false when it names none.
-var teamsCapAmount = regexp.MustCompile(`\$\s*([0-9]+(?:\.[0-9]+)?)`)
-
 // teamsDecide decides packet id with option opt, or with the person's own
-// words, through the seam, off the loop. A closing report's `Close` closes the
-// team, `Close now` closes it although the wrap-up did not finish, and a cap's
-// `Raise to $10` sets the cap on the team it was raised for: money is the
-// person's, so the interface writes it, never a manager.
+// words, through the seam, off the loop. A closing report's `Close` (or
+// `Close now`, on an incomplete one) closes the team on its report
+// ([app.teamsAcceptReport]). A cap's `Raise to $10` is only the decision: the
+// session lifts the ceiling for the day from the packet's own figures
+// (DESIGN.md 8.8), and a manager can never decide one.
 func (a *app) teamsDecide(id, opt, words string) tea.Cmd {
 	seam := a.teamsSeam()
 	if !seam.delegation() {
@@ -356,34 +351,13 @@ func (a *app) teamsDecide(id, opt, words string) tea.Cmd {
 	a.tp.msg = "decided " + a.teamsDot() + " " + label
 	a.tp.top = teamsTopCache{}
 	a.touch()
-	var after tea.Cmd
-	switch {
-	case packet.Kind == teamstore.PacketClosing && (opt == teamstore.OptionClose || opt == teamstore.OptionCloseNow):
-		after = a.teamsCloseNow(packet.Origin, packet.ID)
-	case packet.Kind == teamstore.PacketCap && opt == teamstore.OptionRaiseCap:
-		if o, ok := packet.Option(opt); ok {
-			if m := teamsCapAmount.FindStringSubmatch(o.Label); m != nil {
-				if usd, err := strconv.ParseFloat(m[1], 64); err == nil {
-					team := packet.Origin
-					_ = a.teamEdit(func(f *teamstore.File) error {
-						return f.SetSettings(team, func(s *teamstore.Settings) { s.CapUSDDay = &usd })
-					})
-				}
-			}
-		}
+	// A CLOSING REPORT'S `Close` closes the team (DESIGN.md 8.8). Every other
+	// decision, a cap's `Raise to $X` included, is the decision and nothing
+	// more: the session reads a raise back from the packet's own figures.
+	if packet.Kind == teamstore.PacketClosing && (opt == teamstore.OptionClose || opt == teamstore.OptionCloseNow) {
+		return a.teamsAcceptReport(packet, decision)
 	}
-	decide := a.offLoop(func() func(bool) tea.Cmd {
-		_, err := seam.Decide(id, teamstore.Person, decision, "")
-		return func(bool) tea.Cmd {
-			if err != nil {
-				a.tp.msg = "not decided: " + err.Error()
-				a.touch()
-			}
-			a.tp.packetsStamp = ""
-			return a.teamsRead(false)
-		}
-	})
-	return tea.Batch(after, decide)
+	return a.teamsDecideOnly(seam, id, decision)
 }
 
 // teamsPrompt answers a member's permission prompt from the page, through

@@ -542,3 +542,131 @@ func TestOrganizeOffersToCloseQuietTeamsWithUndo(t *testing.T) {
 		}
 	}
 }
+
+// ── the session's contract (DESIGN.md 8.8) ──────────────────────────────────
+
+// WRAP UP FIRST IS THE ONE REQUEST LINE in the team's Traffic, which the
+// manager's session reads; the team stays open until its report is accepted,
+// and accepting it closes the team on its report.
+func TestTeamsWrapUpAsksTheManagerAndTheReportCloses(t *testing.T) {
+	a, harbor, _ := teamsHostedLab(t)
+	flushTeams(t, a)
+	a.state = stateWorking
+	drive(t, a, runCmd(a.teamsCloseAsk(harbor))...)
+	if a.tsheet.cursor != tsWrapUp {
+		t.Fatalf("the card does not lead with Wrap up first: %+v", a.tsheet)
+	}
+	drive(t, a, runCmd(a.teamSheetDo(tsWrapUp))...)
+	log, err := teamstore.ReadTraffic(a.profileDir, harbor, "", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	asked := false
+	for _, e := range log {
+		asked = asked || teamstore.IsWrapUp(e)
+	}
+	if !asked {
+		t.Fatalf("no wrap-up request in harbor's Traffic: %+v", log)
+	}
+	a.state = stateIdle
+	seam := a.teamsSeam()
+	p, err := seam.Raise(teamstore.Packet{Team: teamstore.Person, Origin: harbor, Kind: teamstore.PacketClosing,
+		RaisedBy: teamstore.FromManager, Question: "close harbor?",
+		Options: []teamstore.Option{{ID: teamstore.OptionClose, Label: "Close", Consequence: "the team closes on this report"},
+			{ID: teamstore.OptionKeepGoing, Label: "Keep going", Consequence: "the team goes on"}},
+		Recommendation: &teamstore.Recommendation{Option: teamstore.OptionClose, Reason: "everything is committed"},
+		Report:         &teamstore.ClosingReport{Done: "the parser ships", Left: "the docs", SpendUSD: 1.5}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	drive(t, a, runCmd(a.teamsRead(false))...)
+	text := teamsFrameText(a)
+	for _, want := range []string{"close harbor?", "the parser ships", "the docs", "Keep going"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the closing report lost %q:\n%s", want, text)
+		}
+	}
+	var closeBtn teamsTarget
+	for _, tg := range a.tp.targets {
+		if tg.act == teamsActOption && tg.arg == p.ID && tg.opt == teamstore.OptionClose {
+			closeBtn = tg
+		}
+	}
+	drive(t, a, runCmd(a.teamsDo(closeBtn))...)
+	if got, _ := a.teamByID(harbor); !got.Closed() || got.Report != p.ID {
+		t.Fatalf("accepting the report did not close harbor on it: %+v", got)
+	}
+}
+
+// A CAP PACKET SAYS ITS FIGURES, and `Raise to $X` is the decision alone: the
+// session lifts the day's ceiling, so the team's own cap is not rewritten.
+func TestTeamsCapPacketSaysItsFiguresAndRaisingWritesNoSetting(t *testing.T) {
+	a, harbor, _ := teamsPlaceLabIDs(t)
+	flushTeams(t, a)
+	p, err := a.teamsSeam().Raise(teamstore.Packet{Team: teamstore.Person, Origin: harbor, Kind: teamstore.PacketCap,
+		RaisedBy: teamstore.FromManager, Question: "harbor reached its $5 cap today",
+		Options: []teamstore.Option{{ID: teamstore.OptionRaiseCap, Label: "Raise to $10", Consequence: "harbor may spend $10 today"},
+			{ID: teamstore.OptionStopToday, Label: "Stop for today", Consequence: "nothing new starts until tomorrow"}},
+		Recommendation: &teamstore.Recommendation{Option: teamstore.OptionStopToday, Reason: "the day is nearly done"},
+		Cap:            &teamstore.CapFacts{Team: harbor, Day: teamstore.Today(), CapUSD: 5, SpentUSD: 5.2, RaiseTo: 10}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	drive(t, a, runCmd(a.teamsRead(false))...)
+	text := teamsFrameText(a)
+	for _, want := range []string{"spent $5.20 of $5.00 today", "Raise to $10", "Stop for today"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the cap card lost %q:\n%s", want, text)
+		}
+	}
+	var raise teamsTarget
+	for _, tg := range a.tp.targets {
+		if tg.act == teamsActOption && tg.arg == p.ID && tg.opt == teamstore.OptionRaiseCap {
+			raise = tg
+		}
+	}
+	drive(t, a, runCmd(a.teamsDo(raise))...)
+	got, err := teamstore.PacketByID(a.profileDir, p.ID)
+	if err != nil || got.Decision != teamstore.OptionRaiseCap || got.DecidedBy != teamstore.Person {
+		t.Fatalf("the raise was not decided by the person: %+v %v", got, err)
+	}
+	if team, _ := a.teamByID(harbor); team.Settings.CapUSDDay != nil {
+		t.Fatalf("the raise rewrote harbor's cap: %+v", team.Settings)
+	}
+}
+
+// WAKE IS ON THE CARD with where it comes from, and a shared member says whose
+// manager it reports to.
+func TestTeamsCardShowsWakeAndASharedMemberSaysWhoseItIs(t *testing.T) {
+	a, harbor, orbit := teamsHostedLab(t)
+	drive(t, a, runCmd(a.teamSheetOpen(harbor, teamSheetSettings))...)
+	if text := teamsFrameText(a); !strings.Contains(text, "team messages wake") {
+		t.Fatalf("the card has no wake row:\n%s", text)
+	}
+	a.teamSheetDo(tsWake)
+	if got, _ := a.teamByID(harbor); got.Settings.Wake == nil {
+		t.Fatal("the wake row did not override")
+	}
+	a.tsheet = teamSheet{}
+	// orbit's member, made a member of harbor too, keeps orbit as its home.
+	o, _ := a.teamByID(orbit)
+	m := o.Members[0]
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		if err := f.AddMember(harbor, teamstore.Member{Key: m.Key, File: m.File, Where: m.Where, Word: m.Word, Handle: m.Handle}); err != nil {
+			return err
+		}
+		if err := f.AddMember(orbit, teamstore.Member{Key: "orbit-boss", Handle: "oboss", Word: "orbit's boss"}); err != nil {
+			return err
+		}
+		if err := f.SetManager(orbit, "orbit-boss"); err != nil {
+			return err
+		}
+		return f.SetHome(m.Key, orbit)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	a.tp.top = teamsTopCache{}
+	if text := teamsFrameText(a); !strings.Contains(text, "reports to orbit") {
+		t.Fatalf("the shared member does not say whose it is:\n%s", text)
+	}
+}

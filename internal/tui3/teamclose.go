@@ -143,6 +143,21 @@ func (a *app) teamsCloseNow(id, report string) tea.Cmd {
 		return nil
 	}
 	now := a.now()
+	shut := a.teamsStopMembers(id)
+	if err := a.teamEdit(func(f *teamstore.File) error { return f.Close(id, now, report) }); err != nil {
+		a.tp.msg = "not closed: " + err.Error()
+		a.touch()
+		return nil
+	}
+	return a.teamsAfterClose(t, shut, now, true)
+}
+
+// teamsStopMembers is the interface's half of every close (DESIGN.md 8.5):
+// each member of team id (and of the open teams under it, less any shared
+// with an open team outside them) that is working has its turn stopped, and
+// every one but the conversation in front has its tab closed. It answers the
+// tabs it closed, for Undo.
+func (a *app) teamsStopMembers(id string) []string {
 	front := a.frontTabKey()
 	var shut []string
 	for _, key := range a.teamsCloseKeys(id) {
@@ -161,11 +176,14 @@ func (a *app) teamsCloseNow(id, report string) tea.Cmd {
 			shut = append(shut, key)
 		}
 	}
-	if err := a.teamEdit(func(f *teamstore.File) error { return f.Close(id, now, report) }); err != nil {
-		a.tp.msg = "not closed: " + err.Error()
-		a.touch()
-		return nil
-	}
+	return shut
+}
+
+// teamsAfterClose is what follows a close on this window: Undo offered, the
+// selection and the wall moved off the team, and its Traffic told when tell
+// says the store did not tell it already.
+func (a *app) teamsAfterClose(t team, shut []string, now time.Time, tell bool) tea.Cmd {
+	id := t.ID
 	// On the page the Undo row says it; off it the close is said where the
 	// person is standing.
 	a.tp.undo = teamsUndo{team: id, name: t.Name, shut: shut, at: now}
@@ -181,6 +199,9 @@ func (a *app) teamsCloseNow(id, report string) tea.Cmd {
 	}
 	a.tp.top = teamsTopCache{}
 	a.touch()
+	if !tell {
+		return a.teamsBringManager()
+	}
 	return tea.Batch(a.teamsTell(id, teamstore.Entry{Kind: teamstore.KindClose, From: teamstore.FromYou, To: teamstore.ToEveryone,
 		Text: "the person closed the team"}), a.teamsBringManager())
 }
@@ -276,27 +297,103 @@ func (a *app) teamsReopen(id string, withParents bool) tea.Cmd {
 	return tea.Batch(append(tells, a.teamsBringManager())...)
 }
 
-// teamsWrapUp is `Wrap up first`: the manager is asked in the team's Traffic,
-// as a directive from the person, to wrap the team up and bring a closing
-// report. The session delivers it to the manager at its next step, like every
-// line addressed to it (DESIGN.md section 5). Over a connection with no
-// Traffic door the page says so and offers the other two.
+// teamsWrapUp is `Wrap up first`: the seam's wrap-up door appends the one
+// Traffic entry the manager's session reads as the request
+// (teamstore.WrapUpRequest, DESIGN.md 8.8), and the session does the rest: the
+// manager is woken, told to finish and commit, and brings a closing report,
+// which arrives here as a card; past its time or money codeaf raises the
+// report itself, marked incomplete. Over a connection whose engine has no
+// such door the page says so and offers the other two.
 func (a *app) teamsWrapUp(id string) tea.Cmd {
 	t, ok := a.teamByID(id)
 	if !ok || t.Manager == "" {
 		return nil
 	}
-	if a.teamsSeam().Append == nil {
-		a.tp.msg = "a wrap-up cannot be asked for over this connection yet: Close now, or Cancel"
+	door := a.teamsSeam().WrapUp
+	if door == nil {
+		a.tp.msg = teamsNoWrapUpWord
 		a.touch()
 		return nil
 	}
 	a.tp.msg = "asked " + a.teamManagerMark() + " " + t.Name + "'s manager to wrap up · its closing report will be a card here"
 	a.touch()
-	return a.teamsTell(id, teamstore.Entry{Kind: teamstore.KindDirective, From: teamstore.FromYou, To: teamstore.ToManager,
-		Text: "Wrap up " + t.Name + " so the person can close it: tell every member to finish and commit, " +
-			"answer what you can, then raise a closing packet to the person (kind closing) with a closing report " +
-			"(done, left, where the files are, what it spent) and the options close and keep-going."})
+	return a.offLoop(func() func(bool) tea.Cmd {
+		err := door(id, "")
+		return func(bool) tea.Cmd {
+			if err != nil {
+				a.tp.msg = "the wrap-up was not asked for: " + err.Error()
+				a.touch()
+			}
+			return nil
+		}
+	})
+}
+
+// teamsNoWrapUpWord is what the close card and the page say where the seam has
+// no wrap-up door: an engine older than the doors, over --host.
+const teamsNoWrapUpWord = "Wrap up first is not offered over this connection: Close now, or Cancel"
+
+// teamsAcceptReport is the person's `Close` on a closing report: the interface
+// stops the team's turns and closes its tabs now, and the store closes the
+// team with the packet as its report (teamstore.AcceptClosing), after the
+// decision is written. The window then reads the teams again, because the
+// file moved under it.
+func (a *app) teamsAcceptReport(p teamstore.Packet, decision string) tea.Cmd {
+	t, ok := a.teamByID(p.Origin)
+	if !ok || t.Closed() {
+		return nil
+	}
+	seam := a.teamsSeam()
+	if seam.AcceptClosing == nil {
+		// No door to close it on its report: close it here, the report named.
+		cmd := a.teamsCloseNow(p.Origin, p.ID)
+		return tea.Batch(cmd, a.teamsDecideOnly(seam, p.ID, decision))
+	}
+	shut := a.teamsStopMembers(p.Origin)
+	reserved, now, id := teamReservedHues(a.pal), a.now(), p.ID
+	return a.offLoop(func() func(bool) tea.Cmd {
+		_, err := seam.Decide(id, teamstore.Person, decision, "")
+		closed := false
+		var teams []team
+		var stamp string
+		if err == nil {
+			closed, err = seam.AcceptClosing(id)
+		}
+		if err == nil {
+			teams, stamp, _, err = seam.ReadSince("", reserved)
+		}
+		return func(bool) tea.Cmd {
+			a.tp.packetsStamp = ""
+			if err != nil {
+				a.tp.msg = "not closed: " + err.Error()
+				a.touch()
+				return a.teamsRead(false)
+			}
+			a.teamAdopt(teamsClone(teams))
+			a.traffic.stamp = stamp
+			var cmd tea.Cmd
+			if closed {
+				cmd = a.teamsAfterClose(t, shut, now, false)
+			}
+			return tea.Batch(cmd, a.teamsRead(false))
+		}
+	})
+}
+
+// teamsDecideOnly writes the person's decision on packet id and reads the
+// packets again.
+func (a *app) teamsDecideOnly(seam TeamsSeam, id, decision string) tea.Cmd {
+	return a.offLoop(func() func(bool) tea.Cmd {
+		_, err := seam.Decide(id, teamstore.Person, decision, "")
+		return func(bool) tea.Cmd {
+			if err != nil {
+				a.tp.msg = "not decided: " + err.Error()
+				a.touch()
+			}
+			a.tp.packetsStamp = ""
+			return a.teamsRead(false)
+		}
+	})
 }
 
 // teamsTell appends one entry to team id's Traffic through the seam, off the
