@@ -47,6 +47,7 @@ model_sources
 models.crew
 models.crew.allowed
 models.crew.cap
+models.crew.free_routes
 models.crew.pick
 models.crew.source
 models.fallbacks
