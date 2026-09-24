@@ -198,7 +198,7 @@ func TestWallClickTeamsPopoverAndSettings(t *testing.T) {
 }
 
 // WHILE A TEAM NARROWS THE STRIP, THE STRIP SAYS WHICH: a chip at its left
-// end, which opens the conversations view where teams are changed.
+// end, which opens the team switcher (teammenu.go).
 func TestTabTeamChipNamesTheShownTeam(t *testing.T) {
 	a, _, _ := tabApp(t)
 	plainRow := plain(a.tabsRow(a.width))
@@ -221,8 +221,8 @@ func TestTabTeamChipNamesTheShownTeam(t *testing.T) {
 			t.Fatalf("a tab was drawn under the chip: %+v", hit)
 		}
 	}
-	if _, took := a.tabPress(a.wall.chip.from+1, placeTabRow); !took || !a.wall.on {
-		t.Fatal("the chip did not open the conversations view")
+	if _, took := a.tabPress(a.wall.chip.from+1, placeTabRow); !took || !a.teamMenu.on || a.wall.on {
+		t.Fatal("the chip did not open the team switcher")
 	}
 	t.Logf("%q", row)
 }

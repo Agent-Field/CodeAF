@@ -361,6 +361,11 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	// A key ends an opened tile's zoom, so what it types is drawn whole.
 	a.wallZoomDone()
+	// The team switcher is a menu, and a menu has the keyboard while it is up
+	// (teammenu.go).
+	if a.teamMenu.on && !door {
+		return a.teamMenuKey(msg)
+	}
 	if a.wall.on && !door {
 		return a.wallKey(msg)
 	}

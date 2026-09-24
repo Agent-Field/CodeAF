@@ -1323,8 +1323,10 @@ type app struct {
 	// THE KEY IS THE CANONICAL TRANSCRIPT PATH ([convKey]), because that is what
 	// home names a row by and what the flock is taken on.
 	behind map[string]*kept
-	// wall is the grid of every open conversation and the spaces (wallcontract.go).
+	// wall is the grid of every open conversation and the teams (wallcontract.go).
 	wall wallState
+	// teamMenu is the strip chip's team switcher (teammenu.go).
+	teamMenu teamMenu
 	// homeGen is home's own clock generation. It belongs to the SURFACE rather
 	// than to any conversation, because there is one home — and it is bumped by
 	// every close, so a tick armed by a home that has since been closed cannot
@@ -3135,6 +3137,10 @@ var _ tea.Model = (*app)(nil)
 // has no wakeups; a hosted one also owns hostlink.go's separate five-second
 // measurement clock.
 func (a *app) Init() tea.Cmd {
+	// THE TEAMS ARE READ ONCE, HERE, so the strip's switcher is there from the
+	// first frame for a person who has teams (teams.go, teammenu.go). It is one
+	// small file, and the frame only ever reads what this loaded.
+	a.teamsEnsure()
 	// EVERY PICTURE ALREADY ON SCREEN IS STAT'D HERE, before the first frame asks
 	// about any of them. This is `open`, which is one of the two loops the fourth
 	// law lets read the disk, and it is the only reason a RESUMED conversation
@@ -3635,6 +3641,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// motion spent ahead of them in the same message was one (wall.go's
 		// [app.wallMotion]).
 		a.ptr.still = false
+		// A wheel under the switcher puts it away: it hangs from the strip,
+		// and the page under it is about to move.
+		if a.teamMenu.on {
+			a.closeTeamMenu()
+		}
 		if a.wall.on {
 			a.wallWheel(msg.Mouse().X, msg.Mouse().Y, msg.Mouse().Button == tea.MouseWheelDown)
 			return a, nil
@@ -3847,6 +3858,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.ptr.still = false
 		a.clearPlaceRowHover()
 		a.sawAPerson()
+		// THE TEAM SWITCHER OWNS THE PRESS WHILE IT IS UP, as a menu does:
+		// its rows answer, and a press off it only puts it away (teammenu.go).
+		if a.teamMenu.on && msg.Mouse().Button == tea.MouseLeft {
+			return a, a.teamMenuPress(msg.Mouse().X, msg.Mouse().Y)
+		}
 		if a.wall.on && msg.Mouse().Button == tea.MouseLeft {
 			if cmd, took := a.wallPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
@@ -4232,6 +4248,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// THE WALL OWNS MOTION WHILE IT IS UP, as it owns the press: its own
 		// targets light under the pointer, and the strip above it still does
 		// (wall.go).
+		if a.teamMenu.on {
+			a.teamMenuMotion(msg.Mouse().X, msg.Mouse().Y)
+			return a, nil
+		}
 		if a.wall.on {
 			a.wallMotion(msg.Mouse().X, msg.Mouse().Y)
 			return a, nil
