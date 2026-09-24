@@ -162,6 +162,14 @@ type RunLanding struct {
 	// brought back to its ground ([Agent.landBeltRun]). Empty is an engine's own
 	// landing, which commits on the copy's branch and merges nothing.
 	Home string
+	// Touched is every path the run's work changed, read off its working copy
+	// against the commit the copy was cut from ([runTouchedFiles]) — a file a
+	// worker committed itself as surely as one the landing committed for it —
+	// and TouchedUnread is why that could not be read, "" when it was. Both are
+	// set by this door ([Agent.landBeltRun]) and go onto the run's row in the
+	// project's record ([Agent.recordBeltRunIndex]).
+	Touched       []string
+	TouchedUnread string
 }
 
 // RunEngine is the run engine as this door reaches it. Start drives one store
@@ -865,12 +873,18 @@ func (a *Agent) releaseBeltRun(run *beltRun) {
 // not go in answers with the sentence that names the kept branch and the files.
 func (a *Agent) landBeltRun(ctx context.Context, engine RunEngine, run *beltRun) RunLanding {
 	landing, err := engine.Land(ctx, run.store, run.workspace, run.root)
+	// WHAT THE RUN TOUCHED IS READ HERE, AFTER THE LANDING'S COMMIT AND BEFORE
+	// THE COPY IS GIVEN BACK: the copy is the one place the whole of the run's
+	// work still stands against the commit it was cut from, and the merge below
+	// is what takes it away.
+	touched, unread := runTouchedFiles(run.tree)
 	if err != nil {
 		if g := a.graph(); g != nil {
 			g.planNote("the run's landing failed: " + err.Error())
 		}
-		return RunLanding{}
+		return RunLanding{Touched: touched, TouchedUnread: unread}
 	}
+	landing.Touched, landing.TouchedUnread = mergePaths(touched, landing.Changed), unread
 	if run.tree.dir == "" {
 		return landing
 	}
@@ -956,6 +970,7 @@ func owedLandingTier() roles.Tier { return roles.TierLow }
 func (a *Agent) settleBeltRun(run *beltRun, summary RunSummary, landing RunLanding) {
 	notice := a.beltRunNotice(run, summary, landing)
 	notice.EndedAt = a.taskClockNow()
+	a.recordBeltRunIndex(run, notice, summary.USD, landing.Touched, landing.TouchedUnread)
 	g := a.graph()
 	if g == nil {
 		a.emitTaskUpdate(notice)

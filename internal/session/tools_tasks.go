@@ -1366,6 +1366,10 @@ func taskRowText(entry TaskIndexEntry) string {
 	}
 	if entry.FilesChanged > 0 {
 		parts = append(parts, taskFilesWord(entry.FilesChanged))
+	} else if strings.TrimSpace(entry.FilesUnread) != "" {
+		// A LIST NOBODY COULD READ IS SAID, not dropped: dropped, it reads the
+		// same as work that wrote nothing ([TaskIndexEntry.FilesUnread]).
+		parts = append(parts, deltaFilesUnknown)
 	}
 	if entry.DurationMS > 0 {
 		parts = append(parts, taskSpanWord(entry.Duration()))
