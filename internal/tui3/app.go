@@ -6713,8 +6713,8 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 	// row's own answer: the prose it sits in has no gesture of its own, and a
 	// reference read after the body would be a door the body had already closed
 	// the room behind (markdown.go's [linkifyTasks]).
-	if a.linkPress(x, r) {
-		return
+	if took, open := a.linkPress(x, r); took {
+		return open
 	}
 	// AND THE FOOT UNDER A TABLE THAT WAS CUT IS THE OTHER ONE, resolved here for
 	// the same reason and in the same breath: it is a phrase inside a row of the
@@ -6818,33 +6818,39 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 // answer, which for a paragraph is nothing at all. The gap between two links is
 // a sentence, not a seam, and swallowing a click on it would make the paragraph
 // a place where missing costs you the page.
-func (a *app) linkPress(x int, r row) bool {
+//
+// A TEAM REFERENCE IS THE SAME KIND OF DOOR (teamlink.go): a member opens, or
+// is resumed and opened, and a team's name opens the conversations view on it.
+func (a *app) linkPress(x int, r row) (bool, tea.Cmd) {
 	if len(r.links) == 0 || a.welcome.open {
-		return false
+		return false, nil
 	}
 	for _, link := range r.links {
 		if link.span.holds(x) {
+			if link.team != "" {
+				return true, a.teamLinkPress(link)
+			}
 			a.openRoomFor(link.id, link.title)
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 // linkHoverAt is which reference of this row's BLOCK the pointer is over, and -1
-// for none. It is the ordinal rather than the position on the row for the reason
+// for none, with a team reference's identity for the hint line ([teamLinkKey]). It is the ordinal rather than the position on the row for the reason
 // [taskLink.ord] carries one (markdown.go), and it is the same test [app.linkPress]
 // makes so the words that light are the words that open something.
-func (a *app) linkHoverAt(x int, r row) int {
+func (a *app) linkHoverAt(x int, r row) (int, string) {
 	if len(r.links) == 0 || a.welcome.open {
-		return -1
+		return -1, ""
 	}
 	for _, link := range r.links {
 		if link.span.holds(x) {
-			return link.ord
+			return link.ord, teamLinkKey(link)
 		}
 	}
-	return -1
+	return -1, ""
 }
 
 // statusPress resolves a click on the status row's MODEL SEGMENT, and reports

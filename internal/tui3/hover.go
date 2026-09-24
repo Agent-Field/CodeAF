@@ -549,8 +549,8 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 		// before it: the prose it sits in has no gesture of its own, and a paragraph
 		// that lit as a whole would promise a door on every word of it (markdown.go's
 		// [linkifyTasks]).
-		if at := a.linkHoverAt(x, r); at >= 0 {
-			return hoverAt{kind: hoverLink, entry: r.entry, index: at}
+		if at, key := a.linkHoverAt(x, r); at >= 0 {
+			return hoverAt{kind: hoverLink, entry: r.entry, index: at, key: key}
 		}
 		switch {
 		case r.foot.span.holds(x):

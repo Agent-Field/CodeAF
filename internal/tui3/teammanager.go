@@ -332,6 +332,9 @@ func (a *app) teamHoverWords() string {
 	if words := a.trafficHoverWords(); words != "" {
 		return words
 	}
+	if words := a.teamLinkHint(); words != "" {
+		return words
+	}
 	hit, ok := a.hotTab()
 	if !ok {
 		return ""
