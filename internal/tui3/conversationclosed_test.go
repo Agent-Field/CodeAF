@@ -192,3 +192,62 @@ func TestSwitchingAwayDoesNotReopenAClosedForegroundConversation(t *testing.T) {
 	drain(t, a, a.reopenClosedTab())
 	assertConversationClosedEverywhere(t, a, files[0], false)
 }
+
+func TestSessionsDeleteCurrentConversationKeepsItsSavedIdentity(t *testing.T) {
+	a, files := homeTabsFixture(t)
+	old := &fakeAgent{model: "m"}
+	next := &fakeAgent{model: "m"}
+	a.agent = old
+	a.start = func(string) (Conversation, error) {
+		return Conversation{Agent: next, SessionFile: files[5], Workspace: a.workspace}, nil
+	}
+	drain(t, a, a.showPage(pageTasks))
+	pointSessionsConversation(t, a, files[0])
+	chat, ok := a.taskSheetChat()
+	if !ok || chat.row.Dir != filepath.Dir(files[0]) {
+		t.Fatalf("Sessions lost the current conversation's saved folder: %+v", chat.row)
+	}
+	drive(t, a, key("right"), key("right"), key("x"))
+	meta, _ := session.LoadMeta(filepath.Dir(files[0]))
+	if !meta.Archived {
+		t.Fatal("Sessions Close did not save the current conversation's closed state")
+	}
+	pointSessionsConversation(t, a, files[0])
+	drive(t, a, key("right"), key("right"), key("x"), key("y"))
+	if _, err := os.Stat(files[0]); !os.IsNotExist(err) {
+		t.Fatalf("Sessions failed to delete the current conversation: %v; notice %q", err, a.taskSheet.actionNote)
+	}
+	if a.agent != next || old.closes != 1 || old.stops != 1 {
+		t.Fatal("Sessions deletion did not stop and replace the old agent exactly once")
+	}
+	if !a.at(pageTasks) {
+		t.Fatal("deletion left Sessions")
+	}
+}
+
+func TestSessionsLiveRowRetainsSavedOwnershipAndClosureMetadata(t *testing.T) {
+	a, files := homeTabsFixture(t)
+	meta, err := session.LoadMeta(filepath.Dir(files[0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta.Owned = true
+	meta.Archived = true
+	meta.ArchivedTasks = map[string]bool{"closed-task": true}
+	meta.DeletedTasks = map[string]bool{"deleted-task": true}
+	if err := session.SaveMeta(filepath.Dir(files[0]), meta); err != nil {
+		t.Fatal(err)
+	}
+	drain(t, a, a.showPage(pageTasks))
+	pointSessionsConversation(t, a, files[0])
+	chat, ok := a.taskSheetChat()
+	if !ok || chat.row.Dir != filepath.Dir(files[0]) || !chat.row.Owned || !chat.row.ArchivedTasks["closed-task"] || !chat.row.DeletedTasks["deleted-task"] {
+		t.Fatalf("live status erased saved ownership or task visibility: %+v", chat.row)
+	}
+	// A conversation younger than the latest world scan still knows its folder.
+	a.owned = true
+	row := a.taskSheetSelfRow()
+	if row.Dir != filepath.Dir(files[0]) || row.ID != filepath.Base(row.Dir) || !row.Owned {
+		t.Fatalf("unscanned live identity is incomplete: %+v", row)
+	}
+}

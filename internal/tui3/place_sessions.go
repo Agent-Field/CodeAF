@@ -524,9 +524,11 @@ func (a *app) taskSheetSelfRow() session.SessionRow {
 		Transcript: strings.TrimSpace(a.file),
 		Model:      a.model,
 		Workspace:  a.workspace,
+		Owned:      a.owned,
 	}
 	if file := row.Transcript; file != "" {
-		row.ID = filepath.Base(filepath.Dir(file))
+		row.Dir = filepath.Dir(file)
+		row.ID = filepath.Base(row.Dir)
 	}
 	row.Open, row.Live = true, true
 	row.Presence.State = a.taskSheetSelfState()

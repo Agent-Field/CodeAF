@@ -26,6 +26,15 @@ func tasksConversationRows(world session.World, mine tasksMine, win session.Usag
 			return
 		}
 		if i, found := at[row.ID]; found {
+			// Live status cannot replace the saved identity or closure metadata.
+			// Delete needs this exact owner folder, including for the foreground
+			// conversation whose live row was built without a world scan.
+			if rows[i].Dir != "" {
+				row.Dir = rows[i].Dir
+			}
+			row.Owned = rows[i].Owned
+			row.Archived = rows[i].Archived
+			row.ArchivedTasks, row.DeletedTasks = rows[i].ArchivedTasks, rows[i].DeletedTasks
 			if row.Project == "" {
 				row.Project = rows[i].Project
 			}
