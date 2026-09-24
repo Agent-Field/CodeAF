@@ -235,11 +235,62 @@ func (f *ProgramFolder) cutBranch() error {
 	// away between the two leaves a record a later one can finish from rather
 	// than a branch nothing knows about.
 	f.write()
-	if out, err := git(f.Dir, "switch", "-q", "-c", f.Branch); err != nil {
-		_ = os.Remove(programFolderRecord(f.key))
-		return fmt.Errorf("could not cut %s's branch in %s: %s", f.Program, f.Dir, firstLine(out))
+	out, err := git(f.Dir, append(switchWithoutHooks(), "-c", f.Branch)...)
+	if err == nil {
+		return nil
 	}
-	return nil
+	// A SWITCH THAT FAILED IS READ AGAIN BEFORE IT IS ANSWERED. git's exit says
+	// the command failed, not that nothing happened: a lock it could not take
+	// after the branch was made leaves the branch behind, and whatever else can
+	// go wrong once HEAD has moved leaves the checkout on it. A cut that did
+	// happen is carried on with, because the record written above is exactly
+	// what it needs; a branch made without the checkout following is deleted,
+	// so nothing is left in the person's repository that nothing knows about.
+	if currentBranch(f.Dir) == f.Branch {
+		return nil
+	}
+	if tip := branchCommit(f.Dir, f.Branch); tip != "" && tip == f.Start {
+		_, _ = git(f.Dir, "branch", "-q", "-D", f.Branch)
+	}
+	_ = os.Remove(programFolderRecord(f.key))
+	refusal := fmt.Sprintf("could not cut %s's branch in %s: %s", f.Program, f.Dir, firstLine(out))
+	if !f.onHome() {
+		refusal += "; the checkout is now on " + checkoutWords(f.Dir) + ", not " + f.homeWords()
+	}
+	return errors.New(refusal)
+}
+
+// switchWithoutHooks is the head of every `git switch` codeaf runs in a
+// program's folder: quiet, and with the repository's hooks turned off.
+//
+// BOTH SWITCHES GO BETWEEN TWO NAMES FOR ONE COMMIT — the program's branch cut
+// where the checkout stands, and the person's own checked out again over a
+// branch that holds nothing past it — so there is no checkout work a hook
+// could have to do. And a hook that fails is the one way a switch that moved
+// HEAD still exits non-zero: an LFS post-checkout hook with no git-lfs on
+// codeaf's PATH left the checkout on a branch the refusal said was never cut.
+func switchWithoutHooks() []string {
+	return []string{"-c", "core.hooksPath=" + os.DevNull, "switch", "-q"}
+}
+
+// onHome says the checkout is where the person had it before the run: on
+// their branch, or at the commit when it was on none.
+func (f *ProgramFolder) onHome() bool {
+	head := currentBranch(f.Dir)
+	if f.Home != "" {
+		return head == f.Home
+	}
+	at, err := git(f.Dir, "rev-parse", "--verify", "-q", "HEAD")
+	return head == "" && err == nil && strings.TrimSpace(at) == f.Start
+}
+
+// checkoutWords names where a checkout is now, as a person reads it: the
+// branch, or the commit when it is on none.
+func checkoutWords(dir string) string {
+	if head := currentBranch(dir); head != "" {
+		return "the branch " + head
+	}
+	return "no branch, at " + shortCommit(dir, "HEAD")
 }
 
 // programFolderAt is the folder a program asked to work in asked works in,
@@ -298,24 +349,8 @@ func programFolderOf(asked string) (dir string, repo bool, outer string, refusal
 // file back to its last commit. So nothing starts until the person has put it
 // somewhere of their own.
 func programCheckoutInTheWay(dir, notes string) string {
-	for _, half := range []struct{ path, what string }{
-		{"MERGE_HEAD", "merge"},
-		{"rebase-merge", "rebase"},
-		{"rebase-apply", "rebase"},
-		{"CHERRY_PICK_HEAD", "cherry-pick"},
-		{"REVERT_HEAD", "revert"},
-	} {
-		out, err := git(dir, "rev-parse", "--git-path", half.path)
-		if err != nil {
-			continue
-		}
-		path := strings.TrimSpace(out)
-		if !filepath.IsAbs(path) {
-			path = filepath.Join(dir, path)
-		}
-		if _, err := os.Lstat(path); err == nil {
-			return dir + " is in the middle of a " + half.what + "; finish it or abort it, then ask again"
-		}
+	if half := halfDone(dir); half != "" {
+		return dir + " is in the middle of a " + half + "; finish it or abort it, then ask again"
 	}
 	out, err := git(dir, "status", "--porcelain", "--untracked-files=all", "-z")
 	if err != nil {
@@ -332,6 +367,32 @@ func programCheckoutInTheWay(dir, notes string) string {
 		return ""
 	}
 	return dir + " has changes that are not committed (" + namedFew(paths, programFolderShown) + "); commit or stash them, then ask again"
+}
+
+// halfDone is the git operation a checkout is in the middle of — a merge, a
+// rebase, a cherry-pick or a revert — in the word a person uses for it, "" when
+// it is in the middle of none.
+func halfDone(dir string) string {
+	for _, half := range []struct{ path, what string }{
+		{"MERGE_HEAD", "merge"},
+		{"rebase-merge", "rebase"},
+		{"rebase-apply", "rebase"},
+		{"CHERRY_PICK_HEAD", "cherry-pick"},
+		{"REVERT_HEAD", "revert"},
+	} {
+		out, err := git(dir, "rev-parse", "--git-path", half.path)
+		if err != nil {
+			continue
+		}
+		path := strings.TrimSpace(out)
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(dir, path)
+		}
+		if _, err := os.Lstat(path); err == nil {
+			return half.what
+		}
+	}
+	return ""
 }
 
 // porcelainZPaths is every path `git status --porcelain -z` names, a rename
@@ -376,6 +437,12 @@ type ProgramFolderEnd struct {
 	Moved  bool
 	HeadOn string
 	At     string
+	// HomeMoved says the person's own branch no longer points where it did
+	// when the run began — something committed on it, reset it or deleted it
+	// while the program worked — and HomeAt is the commit it points at now,
+	// empty when it is gone. codeaf moves it back no more than it moved it.
+	HomeMoved bool
+	HomeAt    string
 	// Refused is git's own line when what the program left could not be
 	// committed, or the checkout could not be put back.
 	Refused string
@@ -422,10 +489,18 @@ func (f *ProgramFolder) settle(result string) ProgramFolderEnd {
 		}
 		return end
 	}
+	end.HomeMoved, end.HomeAt = f.homeMoved()
 	end.Refused = f.commitLeftovers(result)
 	head, _ := git(f.Dir, "rev-parse", "--verify", "HEAD")
 	end.Changed = changedSince(f.Dir, f.Start)
 	if end.Refused == "" && strings.TrimSpace(head) == f.Start {
+		if end.HomeMoved {
+			// A BRANCH OF THE PERSON'S THAT MOVED IS NOT SWITCHED TO. Going back
+			// would check out commits nobody here made or read, under a sentence
+			// saying the run changed nothing; the empty branch stays checked out,
+			// and the sentence says why.
+			return end
+		}
 		// A RUN THAT CHANGED NOTHING LEAVES NOTHING: no branch holding nothing
 		// in the person's repository, and their own branch checked out again.
 		if refused := f.goBack(); refused != "" {
@@ -439,21 +514,56 @@ func (f *ProgramFolder) settle(result string) ProgramFolderEnd {
 	return end
 }
 
+// homeMoved reads the person's own branch again, the one the run was cut
+// from, and answers whether it no longer points at the commit the run began
+// on, and where it points now ("" when it is gone). A checkout that was on no
+// branch has nothing that can move: a commit is where it is.
+//
+// NOTHING SAYS "AS IT WAS" WITHOUT LOOKING. The program never writes the
+// person's branch, but its shell can — a checkout of it, a commit there, a
+// switch back — and the sentence the person relies on before they push is
+// the one that must not repeat a promise nobody checked.
+func (f *ProgramFolder) homeMoved() (bool, string) {
+	if f.Home == "" {
+		return false, ""
+	}
+	tip := branchCommit(f.Dir, f.Home)
+	return tip != f.Start, tip
+}
+
 // commitLeftovers commits everything the program left uncommitted in its
 // folder onto its branch, in one commit whose subject is the run's title and
 // whose body is result, and answers git's line when it would not go.
 //
 // IT IS THE PROGRAM'S FOLDER, SO IT IS ALL OF IT. The checkout was clean when
-// the branch was cut ([programCheckoutInTheWay]), so everything in it now that
-// is not committed is the run's. The notes folder is left out by name as well,
-// for a folder whose notes were there before the run and are not ignored.
+// the branch was cut ([programCheckoutInTheWay]), and nothing else of codeaf's
+// writes there while the run holds it ([programHoldGuard]), so everything in
+// it now that is not committed is the run's. It is only ever asked of a run
+// whose end this process saw: a run whose process went away is settled
+// without a commit ([ProgramFolder.settleGone]).
+//
+// THE NOTES ARE TAKEN BACK OUT OF THE INDEX, NOT LEFT OUT OF THE ADD. A
+// pathspec that excludes `.senior-dev` makes `git add` exit 1 whenever that
+// folder is there and ignored — and senior-dev ignores it in every repository
+// it works in — so a notes folder that was there before the run, or would not
+// move, failed every finishing commit. The whole folder is staged and the
+// notes' own path reset to what HEAD holds, which git does whatever its
+// ignore rules say, the way [sealGroundWork] does it.
+//
+// A CHECKOUT IN THE MIDDLE OF A MERGE IS NOT COMMITTED. The program's shell can
+// start one, and a commit now would conclude it, conflict markers and all,
+// under codeaf's name; the work is left as it is and the ending says why.
 func (f *ProgramFolder) commitLeftovers(result string) string {
-	add := []string{"add", "-A", "--", "."}
-	if f.Notes != "" {
-		add = append(add, ":(exclude)"+f.Notes)
+	if half := halfDone(f.Dir); half != "" {
+		return f.Dir + " is in the middle of a " + half
 	}
-	if out, err := git(f.Dir, add...); err != nil {
+	if out, err := git(f.Dir, "add", "-A", "--", "."); err != nil {
 		return "git add: " + firstLine(out)
+	}
+	if f.Notes != "" {
+		if out, err := git(f.Dir, "reset", "-q", "--", f.Notes); err != nil {
+			return "git reset: " + firstLine(out)
+		}
 	}
 	if _, err := git(f.Dir, "diff", "--cached", "--quiet"); err == nil {
 		return ""
@@ -478,12 +588,17 @@ func (f *ProgramFolder) commitLeftovers(result string) string {
 // goBack checks out the person's own branch again (or the commit their
 // checkout was on) and deletes the program's empty branch, answering git's
 // line when either would not go.
+//
+// A SWITCH THAT FAILED AND STILL ARRIVED IS AN ARRIVAL. The checkout is read
+// again after a failure ([ProgramFolder.onHome]), so a switch git reported
+// badly after it had moved HEAD goes on to delete the empty branch rather
+// than telling the person their folder could not be put back while it was.
 func (f *ProgramFolder) goBack() string {
-	back := []string{"switch", "-q", f.Home}
+	back := append(switchWithoutHooks(), f.Home)
 	if f.Home == "" {
-		back = []string{"switch", "-q", "--detach", f.Start}
+		back = append(switchWithoutHooks(), "--detach", f.Start)
 	}
-	if out, err := git(f.Dir, back...); err != nil {
+	if out, err := git(f.Dir, back...); err != nil && !f.onHome() {
 		return firstLine(out)
 	}
 	if out, err := git(f.Dir, "branch", "-q", "-D", f.Branch); err != nil {
@@ -588,15 +703,18 @@ func (e ProgramFolderEnd) Sentence() string {
 		}
 	case e.Dropped:
 		said = "it changed nothing, so " + f.Dir + " is back on " + f.homeWords() + " and its branch " + f.Branch + " was deleted"
+	case e.HomeMoved && !e.Kept && e.Refused == "":
+		said = "it changed nothing, but " + e.homeMovedWords() + ", so codeaf did not switch back to it: its empty branch " +
+			f.Branch + " is still checked out in " + f.Dir
 	case e.Refused != "" && !e.Kept:
 		said = "it changed nothing, but " + f.Dir + " could not be put back on " + f.homeWords() + " (" + e.Refused +
 			"), so its empty branch " + f.Branch + " is still checked out there"
 	case e.Refused != "":
 		said = "its branch " + f.Branch + " is checked out in " + f.Dir + ", but what it left uncommitted could not be committed (" +
-			e.Refused + "), so those changes are in the folder, uncommitted; " + f.goBackWords()
+			e.Refused + "), so those changes are in the folder, uncommitted; " + e.goBackWords()
 	default:
 		said = "its work is on the branch " + f.Branch + " in " + f.Dir + ", " + fileCount(len(e.Changed)) +
-			", and that branch is checked out there; " + f.goBackWords()
+			", and that branch is checked out there; " + e.goBackWords()
 	}
 	if e.Notes != "" {
 		said += "; " + e.Notes
@@ -616,14 +734,37 @@ func (f ProgramFolder) homeWords() string {
 // branch wants: the one that goes back to their own branch, and the one that
 // brings the work in from there. THE FOLDER IS QUOTED FOR A SHELL the way
 // every path this package hands one is ([shellQuoted]).
-func (f ProgramFolder) goBackWords() string {
+//
+// AND IT SAYS "AS IT WAS" ONLY WHEN IT IS ([ProgramFolder.homeMoved]): a branch
+// of the person's that moved during the run is said to have moved, from where
+// to where, before anybody is told how to merge onto it.
+func (e ProgramFolderEnd) goBackWords() string {
+	f := e.Folder
 	folder := shellQuoted(f.Dir)
 	if f.Home == "" {
 		return "your checkout was on no branch, at " + shortSha(f.Start) + ", and `git -C " + folder +
 			" switch --detach " + shortSha(f.Start) + "` goes back to it"
 	}
-	return "your branch " + f.Home + " is as it was: `git -C " + folder + " switch " + f.Home +
-		"` goes back to it, and `git -C " + folder + " merge " + f.Branch + "` from there brings the work in"
+	back := "`git -C " + folder + " switch " + f.Home + "` goes back to it, and `git -C " + folder + " merge " +
+		f.Branch + "` from there brings the work in"
+	switch {
+	case e.HomeMoved && e.HomeAt == "":
+		return e.homeMovedWords()
+	case e.HomeMoved:
+		return e.homeMovedWords() + ", and codeaf did not move it: look at it before you push or merge it; " + back
+	}
+	return "your branch " + f.Home + " is as it was: " + back
+}
+
+// homeMovedWords says how the person's own branch moved during the run
+// ([ProgramFolderEnd.HomeMoved]).
+func (e ProgramFolderEnd) homeMovedWords() string {
+	f := e.Folder
+	if e.HomeAt == "" {
+		return "your branch " + f.Home + " is gone: it was at " + shortSha(f.Start) +
+			" when the run began, and codeaf did not make it again"
+	}
+	return "your branch " + f.Home + " moved during the run, from " + shortSha(f.Start) + " to " + shortSha(e.HomeAt)
 }
 
 // landing is a finished folder as the run's landing: the program's branch

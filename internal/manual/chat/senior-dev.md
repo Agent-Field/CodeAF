@@ -257,27 +257,38 @@ project's build and tests (`senior-dev observed: …`). Read the second for "did
 
 **A run you stop keeps its work the same way**: the stop says `its work so far stays on
 its branch <branch>, checked out in <folder>` at once, and the page then says where it is
-in the words above.
+in the words above. A merge senior-dev's shell left half done is never committed: the
+page says what it left `could not be committed (<folder> is in the middle of a merge)`.
 
 **A run that changed nothing leaves nothing**: your own branch is checked out again, its
 empty branch is deleted, and the page says `it changed nothing, so <folder> is back on
 your branch <yours> and its branch <branch> was deleted`.
 
-## Does senior-dev change my branch — your branch never moves, going back, a HEAD it moved
+## Does senior-dev change my branch — your branch never moves, going back, a HEAD it moved, my branch moved during the run
 
 No. Your branch (or, when your checkout was on no branch, the commit it was on) is
-written down before senior-dev starts, and the run never writes to it, resets it or
+written down before senior-dev starts, and codeaf never writes to it, resets it or
 merges into it. After the run your folder is on senior-dev's branch; `git -C '<folder>'
 switch <yours>` goes back, and the page names the exact command. From no branch it
-names `git -C '<folder>' switch --detach <commit>`.
+names `git -C '<folder>' switch --detach <commit>`. codeaf's own switches run with your
+repository's hooks turned off: both go between two names for one commit, so a hook has
+nothing to do there.
 
 senior-dev's shell can still run `git checkout`, and a brief that says "work on a new
 branch" makes that likely. **So a brief need not ask for a branch: the work already has
 one.** If HEAD is not on its branch when the run ends, nothing is touched, and the page
 says where HEAD is: `senior-dev left <folder> on the branch <other> instead of its own
 branch <branch>, so codeaf changed nothing there: nothing was committed and nothing was
-switched; <branch> holds N files` (or `on no branch, at <commit>`). Look at that branch
-before you commit anything there.
+switched; <branch> holds N files` (or `on no branch, at <commit>`).
+
+**codeaf reads your branch again before it says it is as it was.** If something moved it
+during the run, the page says `your branch <yours> moved during the run, from <commit>
+to <commit>, and codeaf did not move it: look at it before you push or merge it`, and a
+run that changed nothing is not switched back onto it: `it changed nothing, but your
+branch <yours> moved during the run, from <commit> to <commit>, so codeaf did not switch
+back to it: its empty branch <branch> is still checked out in <folder>`. A branch deleted
+meanwhile reads `your branch <yours> is gone: it was at <commit> when the run began, and
+codeaf did not make it again`.
 
 ## senior-dev refused: changes that are not committed — a dirty checkout, uncommitted changes, a merge in progress
 

@@ -967,6 +967,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where does senior-dev put its work", "senior-dev"},
 		{"does senior-dev change my branch", "senior-dev"},
 		{"how do I go back to my own branch after senior-dev", "senior-dev"},
+		{"senior-dev says my branch moved during the run", "senior-dev"},
 		{"senior-dev refused: changes that are not committed", "senior-dev"},
 		{"senior-dev says my folder is busy", "senior-dev"},
 		{"can I run senior-dev in a folder that is not a git repo", "senior-dev"},

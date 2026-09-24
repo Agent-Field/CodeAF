@@ -185,7 +185,8 @@ your folder and checks it out, and the program works there; its own commits (sen
 `wip(edit): …`) stay on that branch, and nothing squashes them. When it ends, however it ends, codeaf commits what
 it left uncommitted onto that branch — the task's title, with the program's own account
 of the ending as the body — and **leaves the branch checked out**, so the work is in your
-folder. **Your own branch never moves**, and nothing is merged into it. The task's page
+folder. **Your own branch never moves**, and nothing is merged into it; if anything else
+moved it during the run, the page says so instead of `as it was`. The task's page
 and the conversation say ``its work is on the branch <branch> in <folder>, N files, and
 that branch is checked out there; your branch <yours> is as it was: `git -C '<folder>'
 switch <yours>` goes back to it, and `git -C '<folder>' merge <branch>` from there brings

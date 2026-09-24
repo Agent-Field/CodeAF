@@ -197,8 +197,19 @@ func delegateReceipt(ground string, via delegate.Delegate, record *TaskCopyRecor
 		return "It is " + via.Name + "'s: it works alone in " + ground + " itself, which has no git history, so its changes are there as it makes them."
 	}
 	folder := ProgramFolder{Home: record.Home, Start: record.HomeSha}
+	stays := folder.homeWords() + " does not move"
+	// THE PROMISE IS READ BEFORE IT IS MADE ([ProgramFolder.homeMoved]): a
+	// branch of the person's that has already moved from where the run was
+	// cut is said to have, rather than promised to stay. One that cannot be
+	// read at all, or a record that never wrote down where it stood, is a
+	// branch this receipt cannot hold up against anything, and keeps the
+	// promise the run itself keeps.
+	if tip := branchCommit(ground, record.Home); tip != "" && record.HomeSha != "" && tip != record.HomeSha {
+		stays = "your branch " + record.Home + " has already moved, from " + shortSha(record.HomeSha) + " to " + shortSha(tip) +
+			", and codeaf does not move it"
+	}
 	return "It is " + via.Name + "'s: it works alone in " + ground + " itself, on a new branch " + record.Branch + "; " +
-		folder.homeWords() + " does not move, and when it ends " + record.Branch + " stays checked out there with its work."
+		stays + ", and when it ends " + record.Branch + " stays checked out there with its work."
 }
 
 // runRowCopy is the record a run's row was published with as it started
