@@ -482,8 +482,10 @@ looking at an image. Each of those is a
 - **careful work** — careful · checks what must not be wrong — audits, briefs, vision.
 - **mastermind** — thinks · plans runs and designs harnesses.
 
-**All five arrive with a model already in them**, and the five together are the `balanced`
-preset:
+**All five arrive with a model already in them**, and on an account that is not
+known low on OpenRouter credits the five together are the `balanced` preset.
+While the account is known low, unwritten table seats use the free crew described
+in *OpenRouter credits and free models*, and `/status` calls that crew `free`:
 
 | class | as shipped |
 | --- | --- |
@@ -767,7 +769,9 @@ the crew — or `/model` — half way through does not move work already going.
 4. the model you are talking to, only when the worker row is blank.
 
 So on the shipped `balanced` crew a task runs on `z-ai/glm-5.3-flash` whatever you are
-chatting on, and `/crew max` moves the next task onto `z-ai/glm-5.3`. The task's row on the
+chatting on, and `/crew max` moves the next task onto `z-ai/glm-5.3`. While a known
+OpenRouter balance is low, an unwritten worker row uses the free worker model
+instead; a crew or worker row you chose keeps its model. The task's row on the
 roster, its room's status line and its finished card all name the model it actually ran
 on. The worker of an adaptive run's nodes is the same seat, and so is the work model of
 `codeaf do` — one row, every door.

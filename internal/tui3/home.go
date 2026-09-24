@@ -131,6 +131,7 @@ func (a *app) homeBeat(gen int) tea.Cmd {
 		return nil
 	}
 	a.refreshHome()
+	a.refreshCreditWarnings()
 	// AND THE ROW A MOVE LEFT BEHIND IS AIMED AT AGAIN, because the reading above
 	// has just put the cursor back on this window's own conversation and the row
 	// somebody was told to press enter on is the one that matters this minute

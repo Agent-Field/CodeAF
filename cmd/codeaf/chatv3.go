@@ -618,6 +618,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// holds starts talking with it on its next request, and every one opened
 		// later is built with it (chatv3_process.go's [v3Process.setAPIKey]).
 		ApplyAPIKey:       proc.setAPIKey,
+		ReadCredits:       v3CreditReader(proc),
+		PaymentRefusals:   v3PaymentRefusals(proc),
+		ImplicitTalk:      strings.TrimSpace(*model) == "" && strings.TrimSpace(env.Get(config.ModelEnv)) == "" && config.ChatModelAt(settings.ProfileDir) == "",
 		ApplyModelSources: proc.setModelSources,
 		// With no endpoint named, OpenRouter is the model provider and a missing
 		// key has a direct browser door. A custom OpenAI-compatible endpoint gets
@@ -1315,6 +1318,9 @@ func v3TalkModel(asked string, settings config.Config) string {
 	}
 	if saved := config.ChatModelAt(settings.ProfileDir); saved != "" {
 		return saved
+	}
+	if strings.TrimSpace(env.Get(config.ModelEnv)) == "" && (settings.Model == config.DefaultModel || settings.Model == config.FreeChatModel) {
+		return config.ChatDefaultAt(settings.ProfileDir)
 	}
 	return settings.Model
 }
@@ -2167,6 +2173,14 @@ type v3Crew struct {
 	// spell separately.
 	generation uint64
 	values     map[string]string
+	// low is [config.CreditsLowAt] as of the snapshot. It is compared on every
+	// read beside the generation because the balance record is written by
+	// WHICHEVER PROCESS READ IT (#1439): on the ordinary launch the surface
+	// reads the key and the engine runs the crew, so a low record the surface
+	// wrote never moves the engine's own generation counter, and the crew it
+	// built before the record existed would go on seating the paid table. The
+	// check is a stat through the record's memo, not a file read.
+	low bool
 	// err is the last rebuild's refusal, KEPT AND SERVED rather than swallowed.
 	// A pins row somebody has just broken must not silently un-pin every role —
 	// that would move work onto another model without saying so — so a failed
@@ -2178,7 +2192,7 @@ type v3Crew struct {
 // read is [roles.Source]: one key, and the fast path is an atomic load and a
 // read lock.
 func (c *v3Crew) read(key string) (string, bool) {
-	if config.SettingsGeneration() != c.generationNow() {
+	if generation, low := c.stampNow(); config.SettingsGeneration() != generation || config.CreditsLowAt(c.profileDir) != low {
 		// A rebuild that fails leaves the old snapshot in place, so the error is
 		// dropped here on purpose: this is the resolution path, and the honest
 		// answer to "which model" is the last one that parsed.
@@ -2193,16 +2207,19 @@ func (c *v3Crew) read(key string) (string, bool) {
 	return value, true
 }
 
-func (c *v3Crew) generationNow() uint64 {
+// stampNow is what the snapshot was built against: the settings generation and
+// whether the balance record read low.
+func (c *v3Crew) stampNow() (uint64, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.generation
+	return c.generation, c.low
 }
 
 // rebuild reads the rows and replaces the snapshot. It reads BEFORE taking the
 // write lock so a slow disk cannot hold a concurrent turn's resolution.
 func (c *v3Crew) rebuild() error {
 	generation := config.SettingsGeneration()
+	low := config.CreditsLowAt(c.profileDir)
 	values, err := c.snapshot()
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -2210,7 +2227,7 @@ func (c *v3Crew) rebuild() error {
 	// retried on every single call — that would put a file read back on the hot
 	// path, which is the thing this seam exists to avoid — so the refusal is
 	// recorded and the next write is what triggers another attempt.
-	c.generation, c.err = generation, err
+	c.generation, c.low, c.err = generation, low, err
 	if err != nil {
 		return err
 	}
@@ -2340,6 +2357,8 @@ func v3Models(models v3Catalog) []tui3.Model {
 		if !row.PriceUnknown {
 			model.PromptPrice = row.PromptPrice
 			model.CompletionPrice = row.CompletionPrice
+			model.RequestPrice = row.RequestPrice
+			model.PriceKnown = true
 			model.CacheReadPrice = row.CacheReadPrice
 		}
 		out = append(out, model)

@@ -237,9 +237,16 @@ func (a *app) hintRow(width int) string {
 	if !a.seamShowing() {
 		right, rightPlain = a.seamAliveLabel(width)
 	}
+	warning := a.chatCreditWarning
+	if layoutTier(width) == tierPhone || ansi.StringWidth(warning)+ansi.StringWidth(rightPlain)+3 > width {
+		warning = ""
+	}
 	room := width - 1
 	if rightPlain != "" {
 		room -= ansi.StringWidth(rightPlain) + hudGap
+	}
+	if warning != "" {
+		room -= ansi.StringWidth(warning) + 1
 	}
 	for hint != "" && ansi.StringWidth(hint) > room {
 		hint = a.hintShorter(hint)
@@ -263,20 +270,43 @@ func (a *app) hintRow(width int) string {
 	if used > 0 {
 		used++
 	}
+	// THE LOW-CREDIT LINE STANDS JUST LEFT OF WHATEVER HOLDS THE RIGHT EDGE
+	// (credits.go, #1439): the aliveness on a frame with no seam, the project on
+	// every other. It is drawn whole or not at all, so the project is fitted to
+	// what the keys AND the line leave, and gives way before the line does.
+	warned := ""
+	if warning != "" {
+		warned = a.pal.warn(warning)
+	}
 	if rightPlain != "" {
+		if warned != "" {
+			pad := max(1, width-used-ansi.StringWidth(warning)-hudGap-ansi.StringWidth(rightPlain))
+			return line + strings.Repeat(" ", pad) + warned + strings.Repeat(" ", hudGap) + right
+		}
 		return line + strings.Repeat(" ", max(1, width-used-ansi.StringWidth(rightPlain))) + right
+	}
+	before := used
+	if warned != "" {
+		before += 1 + ansi.StringWidth(warning)
 	}
 	// THE PROJECT, in what the keys leave — never inside a room, whose page
 	// carries the node's own identity (roomseam.go).
 	if project := a.seamProjectWord(); project != "" && !a.roomOpen() {
-		if text, span, ok := projectAtRight(project, used, width); ok {
+		if text, span, ok := projectAtRight(project, before, width); ok {
 			a.seamProjectSpan = span
-			pad := width - 1 - used - ansi.StringWidth(text)
 			painted := a.paintSeamProject(text,
 				hudSpan{from: ansi.StringWidth(targetProjectLead), to: ansi.StringWidth(text)},
 				a.hot.kind == hoverSeamProject)
+			if warned != "" {
+				pad := width - 1 - used - ansi.StringWidth(warning) - hudGap - ansi.StringWidth(text)
+				return line + strings.Repeat(" ", max(1, pad)) + warned + strings.Repeat(" ", hudGap) + painted + " "
+			}
+			pad := width - 1 - used - ansi.StringWidth(text)
 			return line + strings.Repeat(" ", pad) + painted + " "
 		}
+	}
+	if warned != "" {
+		return line + strings.Repeat(" ", max(1, width-1-used-ansi.StringWidth(warning))) + warned + " "
 	}
 	return line + strings.Repeat(" ", max(0, width-used))
 }

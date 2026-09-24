@@ -485,7 +485,7 @@ func load(requireKey bool) (Config, error) {
 		APIKey:            apiKey,
 		BaseURL:           baseURL,
 		UnreadProfileKeys: unreadProfileKeys,
-		Model:             firstNonEmpty(env.Get(ModelEnv), DefaultModel),
+		Model:             firstNonEmpty(env.Get(ModelEnv), ChatDefaultAt(profileDir)),
 		PlanModel:         strings.TrimSpace(env.Get(PlanModelEnv)),
 		Timeout:           DefaultTimeout,
 		Reasoning:         DefaultReasoning,

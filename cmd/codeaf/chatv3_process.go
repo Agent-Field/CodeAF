@@ -127,6 +127,8 @@ type v3Process struct {
 	// one of its models ([v3Process.ownCatalog]). closeAll cancels and joins each.
 	catalogs []*catalog.Catalog
 	closed   bool
+	// creditWatcher owns the balance reads shared by all conversations.
+	creditWatcher *v3CreditWatcher
 }
 
 // lifetime is the context background work owned by this process runs under,
@@ -263,6 +265,7 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		LaunchDir:         launchDir,
 	}
 	process.Skills, process.skillsDir = v3SkillShelf(process.Memory)
+	process.creditWatcher = newV3CreditWatcher(process)
 	process.startPlaceSweep()
 	return process, nil
 }
@@ -493,6 +496,9 @@ func (p *v3Process) closeAll() {
 	if p.processStop != nil {
 		p.processStop()
 	}
+	if p.creditWatcher != nil {
+		p.creditWatcher.close()
+	}
 	if p.Models != nil {
 		p.Models.Close()
 	}
@@ -662,6 +668,7 @@ func (s *v3Seam) start(workspace string) (tui3.Conversation, error) {
 	if err != nil {
 		return tui3.Conversation{}, err
 	}
+	launch = v3FreshDefault(launch, s.seed.Model)
 	place, err := v3NextSession(launch.Place, launch.Workspace)
 	if err != nil {
 		return tui3.Conversation{}, err

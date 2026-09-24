@@ -469,6 +469,9 @@ func CrewAt(profileDir string) string {
 	for _, tier := range ModelTiers {
 		live[tier] = tierSeatUnder(profileDir, family, tier).Model
 	}
+	if sameCrew(live, freeCrewModels) {
+		return CrewFree
+	}
 	table := crewTableFor(family)
 	for _, preset := range CrewPresets {
 		if sameCrew(live, table[preset]) {
