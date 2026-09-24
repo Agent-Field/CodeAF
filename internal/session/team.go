@@ -27,11 +27,18 @@ package session
 //     session's line and never the person's, it starts no turn (v1 does not
 //     wake on team events), and it is journaled as a note so a reopened page
 //     draws it in the harness's lane.
+//   - THE ROLE ([teamRoleBlock]). What this conversation IS in each team, the
+//     manager of it with its members named and its three laws, or a member
+//     under a manager with its handle and its verb, rides a note of its own
+//     ([teamRoleNoteOpening]) worded as codeaf's instruction. It is composed
+//     from the same read the boundary makes before the request, so it is in
+//     front of the model from the first request a conversation sends as a
+//     manager, and never waits on a read beside the work.
 //   - THE DIGEST ([Agent.refreshTeamDigest]). A manager's turn carries
-//     [teams.Digest] for its team, with the manager's brief above it, in a note
-//     of its own at the tail of the transcript ([teamNoteOpening]). It is read
-//     beside the work at the start of a turn, the way the other windows' block
-//     is (taskdelta.go), and never carries a member's transcript.
+//     [teams.Digest] for its team in a note of its own at the tail of the
+//     transcript ([teamNoteOpening]). It is read beside the work at the start
+//     of a turn, the way the other windows' block is (taskdelta.go), and never
+//     carries a member's transcript.
 //
 // WHO IS NEVER IN A TEAM. A task node, a worker and an auditor are not
 // conversations anybody put in a team: their keys are not in the file, and a
@@ -304,7 +311,9 @@ func (a *Agent) teamBoundary() string {
 	a.team.mu.Lock()
 	roles := a.teamRolesLocked(profile)
 	news := a.teamNewsLocked(profile, roles)
+	role := teamRoleBlock(roles, a.team.file)
 	a.team.mu.Unlock()
+	a.setTeamRole(role)
 	a.armTeamTools(roles)
 	return news
 }
@@ -640,13 +649,6 @@ func writeTeamFile(path string, raw []byte) error {
 // whenever a member does.
 const teamNoteOpening = "A note from the session, not from the person: the team you manage, as it stands right now. Facts, not requests, and the last such note is the one that holds."
 
-// teamManagerBrief is what a manager is told about being one, on every turn it
-// is one. It is three laws and nothing else, because the verbs' own
-// descriptions carry how.
-const teamManagerBrief = "You are this team's manager. Hand real work to members with team_send (or team_start for a new one) rather than doing it yourself, and keep track with team_status and team_read. " +
-	"The person outranks you: what they say in a member's own conversation stands over your directive, and a conflict goes to them. " +
-	"You cannot answer a member's permission prompt; tell the person it is waiting."
-
 // teamDigestBudget is how many characters of digest ride each managed team.
 const teamDigestBudget = 1600
 
@@ -672,8 +674,9 @@ func (a *Agent) refreshTeamDigest(ctx context.Context) {
 	a.teamDigestText = block
 }
 
-// teamDigest is the brief and one digest per managed team, "" for a
-// conversation that manages none.
+// teamDigest is one digest per managed team, "" for a conversation that
+// manages none. Who the manager is and what it does is not here: that is the
+// role note's, which cannot arrive late ([teamRoleBlock]).
 func (a *Agent) teamDigest(profile string) string {
 	a.team.mu.Lock()
 	roles := a.teamRolesLocked(profile)
@@ -695,7 +698,7 @@ func (a *Agent) teamDigest(profile string) string {
 		return ""
 	}
 	now := time.Now()
-	parts := []string{teamManagerBrief}
+	var parts []string
 	for _, role := range managed {
 		team, ok := file.Team(role.id)
 		if !ok {
@@ -983,4 +986,138 @@ func sortedTeamNames(roles []teamRole) []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// ── the role ────────────────────────────────────────────────────────────────
+
+// teamRoleNoteOpening is the first line of the note that says what this
+// conversation is in its teams.
+//
+// IT IS AN INSTRUCTION AND SAYS SO. The digest's opening calls its note facts
+// and not requests, which is right for a list of who is doing what and wrong
+// for "you are this team's manager": a model told that its role is a fact
+// beside the work, and not a request, weighs it like one, and the manager found
+// on the ordinary launch answered "what is happening here" as an ordinary chat
+// about its folder. So the role rides its own opening, in codeaf's voice.
+const teamRoleNoteOpening = "Instructions from codeaf, not from the person: your part in a team. They hold until a later note that opens this way replaces them."
+
+// teamRoleWithdrawn is the role note for a conversation that had a part in a
+// team and has none now. An earlier role note is never taken out of the
+// transcript (the append law), so the change is said at the tail instead.
+const teamRoleWithdrawn = "You are no longer the manager or a member of any team. What earlier notes that opened this way said no longer holds, and a team verb you still carry will refuse."
+
+// teamManagerLaws is how a manager works, stated once in the role. The verbs'
+// own descriptions carry how each is called.
+const teamManagerLaws = "Three laws:\n" +
+	"1. Hand real work to members with team_send, or team_start for a new member, rather than doing it yourself, and keep track with team_status and team_read. Asked what is happening, answer from the team.\n" +
+	"2. The person outranks you: what they say in a member's own conversation stands over your directive, and a conflict goes to them.\n" +
+	"3. You cannot answer a member's permission prompt; tell the person it is waiting."
+
+// teamRosterMax is how many members the role names before it sends the model
+// to team_status for the rest, and teamRosterWord how much of each member's
+// title it quotes.
+const (
+	teamRosterMax  = 12
+	teamRosterWord = 60
+)
+
+// teamRoleBlock is what this conversation is in its teams, one paragraph per
+// team it manages or is a managed member of, "" for none. A member of a team
+// with no manager has no part to be told: it has no verb and nobody to report
+// to.
+//
+// It is composed off the teams file the boundary has just read, under the
+// seat's lock, so it costs no disk of its own.
+func teamRoleBlock(roles []teamRole, file *teams.File) string {
+	var parts []string
+	for _, role := range roles {
+		switch {
+		case role.manager:
+			parts = append(parts, teamManagerRole(role, file))
+		case role.managed:
+			parts = append(parts, teamMemberRole(role))
+		}
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+func teamManagerRole(role teamRole, file *teams.File) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "You are the manager of the team %q. The person talks to you and you run the team for them: you decide who does what, hand the work out, and tell the person where it stands.\n", role.name)
+	b.WriteString(teamRoster(role, file))
+	b.WriteString("\n")
+	b.WriteString(teamManagerLaws)
+	return b.String()
+}
+
+// teamRoster names the manager's members by handle, with the start of each
+// one's title.
+func teamRoster(role teamRole, file *teams.File) string {
+	if file == nil {
+		return "team_status lists its members."
+	}
+	team, ok := file.Team(role.id)
+	if !ok {
+		return "team_status lists its members."
+	}
+	var named []string
+	for _, member := range team.Members {
+		if member.Key == role.key {
+			continue
+		}
+		who := "a member with no handle yet"
+		if member.Handle != "" {
+			who = "@" + member.Handle
+		}
+		if word := strings.TrimSpace(member.Word); word != "" {
+			who += " (" + cutRunesTeam(word, teamRosterWord) + ")"
+		}
+		named = append(named, who)
+	}
+	if len(named) == 0 {
+		return "It has no members but you yet; team_start opens one."
+	}
+	more := ""
+	if len(named) > teamRosterMax {
+		more = fmt.Sprintf(", and %d more that team_status lists", len(named)-teamRosterMax)
+		named = named[:teamRosterMax]
+	}
+	return "Its members: " + strings.Join(named, ", ") + more + "."
+}
+
+func teamMemberRole(role teamRole) string {
+	you := "a member"
+	if role.handle != "" {
+		you = "@" + role.handle
+	}
+	return fmt.Sprintf("You are %s in the team %q, which has a manager. "+
+		"Lines from the manager arrive marked \"◆ from manager\" and from teammates \"from @handle\"; none of them is the person, whose own words outrank the manager's. "+
+		"Report progress, findings and blockers with team_post, to the manager, a teammate or the room.", you, role.name)
+}
+
+// setTeamRole leaves the role where the next landing of the session's notes
+// will carry it ([Agent.landTeamRoleLocked]).
+func (a *Agent) setTeamRole(role string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		return
+	}
+	a.teamRoleText = role
+}
+
+// landTeamRoleLocked lands the role note when the role has moved since the last
+// one, and the withdrawal when a conversation that had a role has none. A
+// conversation that never had one lands nothing, which is every conversation
+// in no team.
+func (a *Agent) landTeamRoleLocked() {
+	block := strings.TrimSpace(a.teamRoleText)
+	if block == "" {
+		last := a.lastNoteLocked(teamRoleNoteOpening)
+		if last == "" || last == teamRoleNoteOpening+"\n\n"+teamRoleWithdrawn {
+			return
+		}
+		block = teamRoleWithdrawn
+	}
+	a.landNoteLocked(teamRoleNoteOpening, block)
 }

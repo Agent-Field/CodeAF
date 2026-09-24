@@ -445,7 +445,7 @@ func TestOnlyAManagerCarriesTheDigest(t *testing.T) {
 	manager.mu.Lock()
 	block := manager.teamDigestText
 	manager.mu.Unlock()
-	for _, want := range []string{teamManagerBrief, `Team "harbor": 3 members, manager @boss.`, "@web", "@parser", "header done"} {
+	for _, want := range []string{`Team "harbor": 3 members, manager @boss.`, "@web", "@parser", "header done"} {
 		if !strings.Contains(block, want) {
 			t.Errorf("the manager's digest lacks %q:\n%s", want, block)
 		}

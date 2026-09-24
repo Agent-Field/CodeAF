@@ -2675,6 +2675,11 @@ func (a *Agent) landVolatileLocked() {
 	// (memory.go), so leaving it in front of the whole conversation re-priced the
 	// entire transcript on any turn the router reached differently — the same bug
 	// the card had, on a faster beat. See [memoryNoteOpening].
+	// THE TEAM ROLE LANDS FIRST, because it is the one note that says what this
+	// conversation is rather than what is around it, and it was composed from a
+	// read made before this request ([Agent.teamBoundary]) rather than beside
+	// the work, so it is never a step late (team.go's [teamRoleNoteOpening]).
+	a.landTeamRoleLocked()
 	a.landNoteLocked(memoryNoteOpening, strings.TrimSpace(a.memoryText))
 	a.landNoteLocked(volatileNoteOpening, a.volatileBlockLocked())
 	// AND A MANAGER'S TEAM, in a note of its own for the reason the memory block
@@ -2746,7 +2751,8 @@ func isVolatileNote(text string) bool {
 	return strings.HasPrefix(text, volatileNoteOpening) ||
 		strings.HasPrefix(text, memoryNoteOpening) ||
 		strings.HasPrefix(text, bashBeltFrameOpening) ||
-		strings.HasPrefix(text, teamNoteOpening)
+		strings.HasPrefix(text, teamNoteOpening) ||
+		strings.HasPrefix(text, teamRoleNoteOpening)
 }
 
 // mayBashBelt is [Config.mayBashBelt] asked of a live agent, so that the
