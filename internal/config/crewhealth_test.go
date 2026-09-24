@@ -198,3 +198,82 @@ func TestADirectConnectionIsASecondRouteToTheSameModel(t *testing.T) {
 		}
 	}
 }
+
+// THE FREE SWITCH DECIDES WHETHER A FREE POOL IS A ROUTE AT ALL. Off (the
+// default), no candidate, offer or routed seat carries a :free route and no
+// :free id is offered; on, the pool is one more route of its paid model.
+func TestTheFreeSwitchGovernsFreeRoutesEverywhere(t *testing.T) {
+	dir := crewProfile(t)
+	rows := CrewCatalog()
+	rows = append(rows,
+		catalog.Model{ID: "z-ai/glm-5.3-flash:free", OpenWeights: true, IntelligenceIndex: 41.8, CodingIndex: 71.5, AgenticIndex: 50.9, ContextLength: 1310720, Parameters: []string{"tools"}},
+		catalog.Model{ID: "thinkingmachines/inkling-small:free", ContextLength: 262144, CodingIndex: 60, Parameters: []string{"tools"}})
+	CrewCatalog = func() []catalog.Model { return rows }
+	var history []router.CrewRouteOutcome
+	withRouteHistory(t, &history)
+	freeRoutes := func() (ids []string, routes int) {
+		for _, c := range CrewCandidatesAt(dir) {
+			for _, r := range c.Routes {
+				if r.Kind == crewroute.Free {
+					routes++
+				}
+			}
+		}
+		for _, o := range CrewOffersAt(dir) {
+			if crewroute.IsFree(o.Model.ID) {
+				ids = append(ids, o.Model.ID)
+			}
+			for _, r := range o.Routes {
+				if r.Kind == crewroute.Free {
+					routes++
+				}
+			}
+		}
+		return ids, routes
+	}
+	if ids, routes := freeRoutes(); len(ids) > 0 || routes > 0 {
+		t.Fatalf("with free routes off: offered %v, %d free routes", ids, routes)
+	}
+	d, err := RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: openTask}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pick := range d.Crew {
+		if pick.Kind == crewroute.Free || strings.Contains(pick.Send, ":free") || strings.Contains(pick.Model, "inkling") {
+			t.Fatalf("with free routes off the %s seat is %+v", pick.Seat, pick)
+		}
+	}
+	if err := SetCrewFreeRoutes(dir, true); err != nil {
+		t.Fatal(err)
+	}
+	ids, routes := freeRoutes()
+	if len(ids) > 0 || routes == 0 {
+		t.Fatalf("with free routes on: offered ids %v (want none, a pool is a route), %d free routes (want some)", ids, routes)
+	}
+}
+
+// A PICKER NEVER OFFERS A MODEL THAT CANNOT HOLD A CONVERSATION: speech,
+// transcription and image models are no seat, whatever parameters they list.
+func TestCrewOffersNoSpeechOrImageModels(t *testing.T) {
+	dir := crewProfile(t)
+	rows := CrewCatalog()
+	rows = append(rows,
+		catalog.Model{ID: "deepgram/aura-2", PromptPrice: 1e-9, CompletionPrice: 1e-9, ContextLength: 262144, InputModalities: []string{"text"}, OutputModalities: []string{"audio"}, Parameters: []string{"tools"}},
+		catalog.Model{ID: "deepgram/nova-3", PromptPrice: 1e-9, CompletionPrice: 1e-9, ContextLength: 262144, InputModalities: []string{"audio"}, OutputModalities: []string{"text"}, Parameters: []string{"tools"}},
+		catalog.Model{ID: "vendor/flux-image", PromptPrice: 1e-9, CompletionPrice: 1e-9, ContextLength: 262144, InputModalities: []string{"text"}, OutputModalities: []string{"image"}, Parameters: []string{"tools"}})
+	CrewCatalog = func() []catalog.Model { return rows }
+	var history []router.CrewRouteOutcome
+	withRouteHistory(t, &history)
+	var deepseek bool
+	for _, offer := range CrewOffersAt(dir) {
+		switch offer.Model.ID {
+		case "deepgram/aura-2", "deepgram/nova-3", "vendor/flux-image":
+			t.Errorf("%s was offered for a seat", offer.Model.ID)
+		case "deepseek/deepseek-v4-flash":
+			deepseek = true
+		}
+	}
+	if !deepseek {
+		t.Error("a chat model with tools was not offered")
+	}
+}

@@ -498,7 +498,7 @@ func crewModelOf(row catalog.Model) crewroute.Model {
 		ID: row.ID, Open: row.OpenWeights,
 		PromptPrice: row.PromptPrice, CompletionPrice: row.CompletionPrice, CacheReadPrice: row.CacheReadPrice,
 		Intelligence: row.IntelligenceIndex, Coding: row.CodingIndex, Agentic: row.AgenticIndex,
-		Context: row.ContextLength, Tools: crewTakesTools(row),
+		Context: row.ContextLength, Tools: crewTakesTools(row) && crewSpeaksText(row),
 	}
 }
 
@@ -513,6 +513,17 @@ func crewTakesTools(row catalog.Model) bool {
 		return listHolds(row.Parameters, "tools")
 	}
 	return crewroute.IsMeasured(row.ID)
+}
+
+// crewSpeaksText is whether a catalog row reads text and writes text. A crew
+// seat is a conversation of text and tool calls: a speech, transcription or
+// image model that lists tool parameters is still no seat. A row that lists
+// no modalities has said nothing either way and is judged on its tools alone.
+func crewSpeaksText(row catalog.Model) bool {
+	if len(row.InputModalities) > 0 && !listHolds(row.InputModalities, "text") {
+		return false
+	}
+	return len(row.OutputModalities) == 0 || listHolds(row.OutputModalities, "text")
 }
 
 // crewCatalogModel is one model as the router would read it, from the
