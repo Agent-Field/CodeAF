@@ -112,6 +112,9 @@ type trafficState struct {
 	// only, and this window's.
 	open   map[string]bool
 	opened int
+	// version counts the reads that changed any team's cache, which is what a
+	// thread card in the conversation keys on (teamthreadcard.go).
+	version int
 	// The last frame's rail, for the pointer (teamrail.go).
 	drawn trafficDrawn
 	cache trafficCache
@@ -354,6 +357,7 @@ func (a *app) trafficTake(got []trafficGot, fresh []team, at string, edits int, 
 		}
 	}
 	if changed {
+		a.traffic.version++
 		a.touch()
 	} else if len(acts) == 0 {
 		a.ptr.still = a.drawn

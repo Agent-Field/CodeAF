@@ -488,6 +488,10 @@ type entry struct {
 	// a value it cost the idle frame seven percent, which is most of what the
 	// memo was buying.
 	hung *toolBlock
+	// thread is the memo of a thread card: what a manager's team_send row
+	// hangs, or the answers under a team note's quoted line
+	// (teamthreadcard.go). A pointer for the reason hung is one.
+	thread *threadMemo
 
 	// demoted says THIS PROSE WAS NARRATION AND NOT THE ANSWER, and it is the
 	// whole of THE ANSWER HIERARCHY as far as a renderer is concerned
@@ -6769,6 +6773,8 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		a.toggleWorkfold(r.turn)
 	case hitMore:
 		a.showAll(r.entry)
+	case hitThread:
+		a.trafficToggle(r.open)
 	case hitPictureOriginal:
 		return a.openPictureAt(r.entry, r.pictureIndex)
 	case hitPictures:

@@ -67,6 +67,10 @@ const (
 	// row nothing in the conversation produced — the line is drawn between two
 	// blocks, and it exists only while the mode is up.
 	hitRewind
+	// hitThread is a line of a thread card (teamthreadcard.go): the words of a
+	// manager's message or of a member's answer, which a press lays out in
+	// full and a second press folds again. The row's open field says whose.
+	hitThread
 )
 
 // row is one visible screen row and what it points at. It is the single
@@ -104,6 +108,8 @@ type row struct {
 	// Picture controls retain their index and original-file action through gutter layout.
 	pictureIndex int
 	pictureOpen  hudSpan
+	// open is a [hitThread] row's message, by team and entry id.
+	open string
 }
 
 // toolWindow is how many of a turn's tool calls stay on screen. Three is the
@@ -926,6 +932,11 @@ func (a *app) entryRows(d deck, i, width int) []string {
 	// out of the per-frame path; tool rows make the opposite trade because their
 	// lines already bypass this cache.
 	key := renderedEntryKey{identity: e.identity, width: width, ink: a.inkState}
+	// A TEAM NOTE DRAWS ANSWERS OUT OF THE TRAFFIC CACHE (teamthreadcard.go), so
+	// its rows go stale when that cache moves, and only then.
+	if a.teamNoteStale(e, width) {
+		e.stale = true
+	}
 	if e.built && e.rowKey == key && !e.stale {
 		return e.rows
 	}

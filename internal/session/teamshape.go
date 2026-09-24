@@ -41,9 +41,12 @@ type TeamLine struct {
 // teamNewsLead opens every group of a delivery ([teamNewsGroup]).
 const teamNewsLead = "Team traffic in "
 
-// teamNewsLines is a delivery's lines, nil for text that is not one.
+// teamNewsLines is a delivery's lines, nil for text that is not one. A note
+// that woke a turn opens with a sentence of its own and carries the delivery
+// under it (team_wakewatch.go), so a delivery is found at the start of any
+// line, not only the first.
 func teamNewsLines(text string) []TeamLine {
-	if !strings.HasPrefix(text, teamNewsLead) {
+	if !strings.HasPrefix(text, teamNewsLead) && !strings.Contains(text, "\n"+teamNewsLead) {
 		return nil
 	}
 	var (
