@@ -1072,34 +1072,12 @@ func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
 		return landing
 	}
 	merge, said, _, _ := run.tree.comeHome(run.title, nil, a.signsGitWork())
-	if merge == mergeKept && run.tree.keepsBranch && dropEmptyTaskBranch(run.tree, run.startSha) {
-		// AN EMPTY BRANCH IS NOT A LANDING. The branch was kept for the person
-		// to merge, and there is nothing on it to merge: every look-only,
-		// failed or crashed program run left one more `task/*` branch at the
-		// commit it started from in the person's repository. It is deleted, and
-		// the run says what it always said about a copy that holds no change.
-		if landing.Refused == "" {
-			landing.Refused = runNothingToLand
-		}
-		return landing
+	if merge == mergeKept && run.tree.keepsBranch {
+		return a.branchOnlyLanding(run, landing, said)
 	}
 	if landing.Refused != "" {
 		// NOTHING TO LAND IS STILL AN ENDING: the copy was given back above, and
 		// the sentence the engine answered is the whole account.
-		return landing
-	}
-	if merge == mergeKept && run.tree.keepsBranch {
-		// A BRANCH-ONLY LANDING IS A LANDING, not a refusal: the work is on its
-		// branch in the person's repository, which is where it was promised.
-		landing.Home, landing.Root = merge, run.tree.root
-		if run.tree.branch != "" {
-			landing.Branch = run.tree.branch
-		}
-		if _, err := run.store.AddNote(run.root, run.root, said); err != nil {
-			if g := a.graph(); g != nil {
-				g.planNote("the run's homecoming note failed: " + err.Error())
-			}
-		}
 		return landing
 	}
 	if merge != mergeMerged && merge != mergeInPlace {
@@ -1119,6 +1097,40 @@ func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
 	}
 	home := withReport("its work is in "+run.ground+" on "+landing.Branch, said)
 	if _, err := run.store.AddNote(run.root, run.root, home); err != nil {
+		if g := a.graph(); g != nil {
+			g.planNote("the run's homecoming note failed: " + err.Error())
+		}
+	}
+	return landing
+}
+
+// branchOnlyLanding is the landing of a copy whose work lands AS ITS BRANCH
+// ([delegateKeepsBranch]), once the copy has come home and been given back:
+// the branch named, with the repository it is in, and the homecoming written
+// on the run's page; or, for a branch holding nothing, the branch deleted.
+func (a *Agent) branchOnlyLanding(run *beltRun, landing RunLanding, said string) RunLanding {
+	if dropEmptyTaskBranch(run.tree, run.startSha) {
+		// AN EMPTY BRANCH IS NOT A LANDING. The branch was kept for the person
+		// to merge, and there is nothing on it to merge: every look-only,
+		// failed or crashed program run left one more `task/*` branch at the
+		// commit it started from in the person's repository. It is deleted, and
+		// the run says what it always said about a copy that holds no change.
+		if landing.Refused == "" {
+			landing.Refused = runNothingToLand
+		}
+		return landing
+	}
+	if landing.Refused != "" {
+		// NOTHING TO LAND IS STILL AN ENDING, as on every other road.
+		return landing
+	}
+	// A BRANCH-ONLY LANDING IS A LANDING, not a refusal: the work is on its
+	// branch in the person's repository, which is where it was promised.
+	landing.Home, landing.Root = mergeKept, run.tree.root
+	if run.tree.branch != "" {
+		landing.Branch = run.tree.branch
+	}
+	if _, err := run.store.AddNote(run.root, run.root, said); err != nil {
 		if g := a.graph(); g != nil {
 			g.planNote("the run's homecoming note failed: " + err.Error())
 		}
