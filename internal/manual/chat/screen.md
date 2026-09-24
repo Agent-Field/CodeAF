@@ -104,6 +104,9 @@ tabs in a row of their own, with a thin rule separating navigation from reading:
   ────────────────────────────────────────────────────────────────────────────────────────
 ```
 
+While a team is shown its chip, `● harbor ▾`, comes right after `Home` and before the tabs it
+narrows, with the team's `◆ Manager` after it (see *The team switcher on the tab strip*).
+
 Each tab is a **padded target** separated by quiet space. The filled surface includes
 one blank cell before its status icon and after its close mark; the leading inset
 selects the tab and the trailing inset belongs to the close target. The gaps do nothing.
