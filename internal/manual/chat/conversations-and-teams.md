@@ -201,6 +201,15 @@ included:
 
 `↑` `↓` move, `enter` chooses, `esc` or a press anywhere off it puts it away.
 
+## A team's manager
+
+A team can have one **manager**, a conversation that runs the team for you: you talk to it, it
+hands work to the members and tells you where things stand. While a team is shown, the first
+place on the tab strip is the manager's, a quiet `+ Manager` until there is one and `◆ harbor`
+after; `◆ Make manager` in the team switcher or in a tile's Teams list makes an existing
+conversation the manager. What a manager can do, and how members talk to each other, is on the
+**team manager** page.
+
 ## Where teams are kept
 
 Teams are saved in your profile, in `teams.json`, every time one changes, and never in

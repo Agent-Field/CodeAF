@@ -1,9 +1,9 @@
 # Conversations and teams: every open conversation at once, grouped, and one day managed
 
 Written 2026-09-24 against draft PR #1429 (`feat/conversation-overview`, head `c520c363c`).
-Shaped with the owner over 2026-09-23 and 2026-09-24. Sections 1 to 4 describe what is
-built; section 5 is the manager, ruled and about to be built; section 7 is what is
-deliberately left for later.
+Shaped with the owner over 2026-09-23 and 2026-09-24. Sections 1 to 5 describe what is
+built, the manager's first version included; section 7 is what is deliberately left for
+later.
 
 ## The problem, in the owner's framing
 
@@ -121,7 +121,7 @@ runs by itself.
 | Glyph controls in tile corners | Replaced by word buttons on hover | Nobody could tell what `●+` did |
 | The wall's door only at the top | Added the dock under the input | Where the hands are |
 
-## 5. The manager (ruled 2026-09-24, v1 being built)
+## 5. The manager (ruled and built 2026-09-24)
 
 **The goal.** Today the person is every team's manager. The manager chat takes the
 coordination load: one place to talk to a whole team, run by something that knows what every
@@ -171,13 +171,28 @@ tasks and jobs running.
 gate, and a manager that could answer them would make every approval rule meaningless. If
 that is ever wanted, it is a separate, explicit per-team setting.
 
-**Handles.** Titles are too long to address, so each member gets a short handle when it joins
-(`@parser`), derived from its title, unique in the team, editable, never changed on its own,
-clickable everywhere it appears.
+**Handles.** Titles are too long to address, so each member gets a short handle (`@parser`),
+derived from its title when it joins, or when it first gets a title if it joined untitled;
+unique in the team, never changed on its own, clickable everywhere it appears.
 
 **Where it lives.** The manager is an ordinary session file. Traffic is
-`<profile>/teams/<id>/traffic.jsonl`, append-only; the team id is its channel. The store is
-`internal/teams`, shared by the UI and the tools under a file lock.
+`<profile>/teams/<id>/traffic.jsonl`, append-only, rotated at 4 MB with one old file kept;
+the team id is its channel. The store is `internal/teams`, shared by the UI and the tools:
+every write is a read-modify-write under a file lock (`Update`), so neither side overwrites
+what the other wrote.
+
+**Traffic is the only channel between the UI and the session.** A conversation's identity in
+a team is its transcript path, the same key the tab strip uses. The session side writes
+messages, stops and starts as Traffic entries and delivers what is addressed to it before
+every model request, with a cursor kept in its session folder so nothing arrives twice and a
+new member is not handed old history. The UI tails the same log off the loop: it draws the
+rail, and it carries out stops and starts for the conversations its window holds, once per
+entry. Neither package calls the other for team features.
+
+**Known limits of v1.** A stop or a start takes effect only in a window that holds those
+conversations. A member waiting on a permission prompt shows as running, because the prompt is
+not in its session file. A message never wakes an idle conversation; it is read when that
+conversation next runs. Over `--host` the store is assumed to be in the engine's profile.
 
 **Not in v1.** Waking on team events by itself (with a budget and an off switch), collision
 flags when two members touch the same files, nested managers (a sub-team's manager is a member
