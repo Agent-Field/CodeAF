@@ -17,6 +17,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/delegate"
@@ -43,6 +44,7 @@ func fakeCarriedProgram() delegate.Delegate {
 			Bind: func(fs *flag.FlagSet) delegate.Body {
 				calls := fs.Int("calls", 1, "how many questions to ask the model")
 				wait := fs.Bool("wait", false, "wait to be stopped after the questions")
+				linger := fs.Duration("linger", 0, "leave a helper holding stdout this long after the program exits")
 				return func(ctx context.Context, host delegate.Host, args []string) error {
 					host.Hello([]string{"implement", "verify"})
 					host.Stage("implement", "running")
@@ -61,6 +63,13 @@ func fakeCarriedProgram() delegate.Delegate {
 					}
 					host.Stage("verify", "pass")
 					host.Terminal(delegate.Ending{Status: delegate.StatusPass, Message: "submitted and verified", Claim: "the test is fixed", Observed: "pass"})
+					if *linger > 0 {
+						// A detached helper that inherited stdout and outlives the
+						// program, which keeps the launch draining after the exit.
+						helper := exec.Command("sleep", fmt.Sprintf("%g", linger.Seconds()))
+						helper.Stdout = os.Stdout
+						_ = helper.Start()
+					}
 					return nil
 				}
 			},

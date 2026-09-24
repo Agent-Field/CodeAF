@@ -68,6 +68,24 @@ type Result struct {
 	Elapsed time.Duration
 }
 
+// ExitedAt is the instant the program's process was gone: the launch's own
+// measure of the process's life laid on the instant the caller started it, and
+// never later than returned, the instant the launch gave its answer back.
+//
+// THE PROGRAM'S WALL TIME IS ITS PROCESS'S, NOT THE DRAIN'S. A launch returns
+// only once stdout is drained, and a helper the program left holding stdout can
+// keep that drain open for the whole grace after the program itself exited. A
+// conversation's run and a shell run both end the program's clock here, so the
+// same program reads the same time on every surface.
+func (r Result) ExitedAt(started, returned time.Time) time.Time {
+	if r.Elapsed > 0 {
+		if exited := started.Add(r.Elapsed); exited.Before(returned) {
+			return exited
+		}
+	}
+	return returned
+}
+
 // ErrNoTerminal is the error a launch answers when the program exited without
 // a terminal record and was not stopped by the caller: the run did not finish
 // in the protocol's terms, whatever the exit code said.

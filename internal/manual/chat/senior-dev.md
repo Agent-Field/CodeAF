@@ -290,7 +290,8 @@ and `--variant` sets the reasoning effort every call asks for.
 ## What a shell run prints at the end — how long senior-dev ran, what it cost, waiting for the last price
 
 At a shell, `codeaf senior-dev` prints each stage, step and model call as it happens, then
-how the run ended, then one line with what it came to:
+how the run ended, then `the run's record is in` and the run's record folder, and last one
+line with what it came to:
 
 ```
   277 model calls · $2.30 · 22m 51s
@@ -302,7 +303,9 @@ measured is left off, never written as a zero.
 When ctrl-c or `--max-cost` stops the run in the middle of a model call, that call is still
 paid for, and its price arrives by a receipt about twenty seconds later. The run waits for
 it before those last lines, and says so on stderr:
-`waiting up to 1m 10s for the price of 1 call that was cut short`.
+`waiting up to 1m 10s for the price of 1 call that was cut short`. **A second ctrl-c leaves
+at once** instead of waiting; a price still owed is then missing from the run's line and
+from this machine's spending ledger.
 
 Every call is written to this machine's spending ledger, filed as one piece of work named
 after the run's record folder (such as `20260924-150405.000000`). That folder also keeps

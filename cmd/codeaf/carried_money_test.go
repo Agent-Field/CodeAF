@@ -79,7 +79,10 @@ func TestAShellRunWaitsForItsLastCallsPriceAndKeepsItsClock(t *testing.T) {
 }
 
 // THE LAST LINE SAYS HOW LONG THE PROGRAM RAN, the way a person says it, and
-// leaves off a figure nobody measured rather than writing a zero.
+// leaves off a figure nobody measured rather than writing a zero. IT IS THE LAST
+// LINE EVEN THOUGH THE RUN KEPT A RECORD: every real run has a record folder by
+// its end, and the line naming it used to follow the summary, so the manual's
+// "last line" was the folder's path.
 func TestAShellRunsLastLineSaysHowLongItRan(t *testing.T) {
 	for _, row := range []struct {
 		calls int
@@ -93,12 +96,42 @@ func TestAShellRunsLastLineSaysHowLongItRan(t *testing.T) {
 	} {
 		printed := &lockedBuffer{}
 		inv := &delegate.Invocation{Program: fakeCarriedProgram(), Workspace: t.TempDir()}
-		view := newCarriedView(printed, inv, filepath.Join(t.TempDir(), "never-written"))
+		record := t.TempDir()
+		view := newCarriedView(printed, inv, record)
 		view.calls = row.calls
 		view.Terminal(delegate.Terminal{Status: delegate.StatusPass, Message: "done"})
 		_ = view.end(delegate.Result{}, nil, false, row.spent, row.took)
 		if !strings.HasSuffix(printed.String(), row.want) {
 			t.Fatalf("printed %q, want it to end %q", printed.String(), row.want)
 		}
+		if !strings.Contains(printed.String(), "  the run's record is in "+record+"\n") {
+			t.Fatalf("printed %q, want the record folder named before the last line", printed.String())
+		}
+	}
+}
+
+// A SHELL RUN'S TIME IS THE PROGRAM'S, NOT THE DRAIN'S. The launch returns only
+// once the program's stdout is drained, and a helper the program left holding
+// stdout keeps that open for up to the grace after the program itself exited.
+// The shell took its end after the launch returned, so the same program read up
+// to fifteen seconds longer from a shell than from a conversation, whose worker
+// already ends the clock at the process's own exit.
+func TestAShellRunsTimeEndsWhenTheProgramExitedAndNotWhenItsOutputDrained(t *testing.T) {
+	_, printed := hostWithRealChild(t, 0.01)
+	const linger = 2 * time.Second
+	before := time.Now()
+	err := runCarried(fakeCarriedProgram(), []string{"--calls", "1", "--linger", linger.String(), "--dir", t.TempDir(), "fix it"})
+	if code := exitCodeOf(err); code != 0 {
+		t.Fatalf("left with %d (%v):\n%s", code, err, printed)
+	}
+	if waited := time.Since(before); waited < linger {
+		t.Fatalf("the run returned after %v, before the helper let go of stdout at %v", waited, linger)
+	}
+	program, ok := delegate.ReadProgram(newestRecord(t))
+	if !ok || program.EndedAt.Before(program.StartedAt) {
+		t.Fatalf("program record = %+v (%v), want the program's own start and end", program, ok)
+	}
+	if ran := program.EndedAt.Sub(program.StartedAt); ran >= linger {
+		t.Fatalf("the record says the program ran %v, which is the drain's %v and not the process's", ran, linger)
 	}
 }

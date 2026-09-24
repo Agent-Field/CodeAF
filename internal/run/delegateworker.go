@@ -433,18 +433,9 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 		StderrPath: filepath.Join(taskDir, delegateStderrName),
 		Grace:      w.setup.Grace,
 	}, sink)
-	// THE INSTANT THE PROCESS WAS GONE, which is the launch's own measure of the
-	// process's life laid on the instant it was started, and never later than
-	// now. The launch returns only once stdout is drained, and a helper the
-	// program left holding stdout can keep that drain open for the whole grace
-	// after the program itself has exited; the program's wall time is its
-	// process's, not the drain's.
-	ended = time.Now()
-	if result.Elapsed > 0 {
-		if exited := started.Add(result.Elapsed); exited.Before(ended) {
-			ended = exited
-		}
-	}
+	// THE INSTANT THE PROCESS WAS GONE, and not the instant its stdout drained
+	// ([delegate.Result.ExitedAt] says why; a shell run reads it the same way).
+	ended = result.ExitedAt(started, time.Now())
 	// THE RECORD IS WRITTEN AGAIN NOW, WHOLE, AND WHETHER OR NOT A HELLO CAME. A
 	// program that died before it said hello is still a program this run
 	// started, and its page and its row need its times as much as a finished

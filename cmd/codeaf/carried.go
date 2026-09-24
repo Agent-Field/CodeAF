@@ -78,12 +78,28 @@ func runCarried(program delegate.Delegate, args []string) error {
 	}
 	// SIGTERM IS THE HOST'S STOP (internal/delegate's launch): the body's
 	// context ends, and the program writes its terminal on the way out.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := carriedSignals()
 	defer stop()
 	if _, child := delegate.ModelAPIFromEnv(); child {
 		return carriedExit(delegate.RunChild(ctx, inv, os.Stdout))
 	}
 	return runCarriedHost(ctx, inv)
+}
+
+// carriedSignals is a shell run's context: it ends on the first ctrl-c or
+// SIGTERM, and that first signal hands the rest back to the terminal.
+//
+// A SECOND CTRL-C LEAVES AT ONCE. After the first one the run still waits for
+// the program's grace, its last calls to finish and the price of a call the
+// stop cut short — up to about a minute and a half, said on stderr as it
+// happens. Holding the signals for all of that swallowed a second ctrl-c, and
+// a person who means "now" is owed a way out that does not wait for money to
+// be counted. What leaving costs is said in the manual: a price still being
+// waited for is then not in the run's line.
+func carriedSignals() (context.Context, context.CancelFunc) {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	context.AfterFunc(ctx, stop)
+	return ctx, stop
 }
 
 // carriedRoad is how one shell run reaches models: the funnel a call on a
@@ -283,7 +299,12 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 		StderrPath: filepath.Join(record, carriedStderrName),
 		Grace:      grace,
 	}, view)
-	ended := time.Now()
+	// THE INSTANT THE PROCESS WAS GONE, not the instant its stdout drained, for
+	// both the last line and the record's end: a helper the program left holding
+	// stdout kept the launch open for up to the grace after the exit, and the
+	// same program read that much longer here than in a conversation, whose
+	// worker reads it this way ([delegate.Result.ExitedAt]).
+	ended := result.ExitedAt(started, time.Now())
 	untell()
 	// The program has exited: its API goes with it, so nothing it left behind
 	// can spend, and every row it cost is on disk before this process leaves —
@@ -648,8 +669,15 @@ func (v *carriedView) end(result delegate.Result, runErr error, limited bool, sp
 			v.say("  %s observed: %s", name, observed)
 		}
 	}
+	// The folder the run's record is in comes before the last line, so that
+	// line is always what the run came to.
+	if _, err := os.Stat(v.record); err == nil {
+		v.say("  the run's record is in %s", v.record)
+	}
 	// THE LAST LINE IS WHAT THE RUN CAME TO: its calls, its dollars and how
-	// long the program ran, each left off rather than written as a zero.
+	// long the program ran, each left off rather than written as a zero. It is
+	// last because the manual says so and a person reading `tail -1` is told
+	// so; the record folder's line, which every real run has, used to follow it.
 	var summary []string
 	if calls > 0 {
 		word := "calls"
@@ -666,9 +694,6 @@ func (v *carriedView) end(result delegate.Result, runErr error, limited bool, sp
 	}
 	if len(summary) > 0 {
 		v.say("  %s", strings.Join(summary, " · "))
-	}
-	if _, err := os.Stat(v.record); err == nil {
-		v.say("  the run's record is in %s", v.record)
 	}
 	return carriedExit(status)
 }
