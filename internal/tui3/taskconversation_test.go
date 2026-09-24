@@ -481,3 +481,45 @@ func TestACallsArgumentsAreReadForWhatTheCallWasAbout(t *testing.T) {
 		}
 	}
 }
+
+// EVERY DOOR INTO A PROGRAM'S TASK OPENS ITS CONVERSATION. The card in the
+// conversation, a transcript link, the task strip and the home panel all come
+// through [app.openRoomFor], which used to open a room: a blank page, because a
+// program has no worker transcript, while senior-dev made call after call. A
+// held row that names its program now opens the stored page the rail's way.
+func TestEveryDoorIntoAProgramsTaskOpensItsConversation(t *testing.T) {
+	row := programRow()
+	row.ID = "7"
+	a, _ := planAppWith(t, []session.PlanTaskRow{row}, map[string]session.PlanTaskPage{row.ID: programPage(row, programTurns())})
+	a.width, a.height = 120, 28
+	a.openRoomFor(7, row.Title)
+	if a.room != nil {
+		t.Fatal("a program's task opened a room")
+	}
+	cmd := a.takeRoomPump()
+	if cmd == nil {
+		t.Fatal("nothing asked the store for the program's page")
+	}
+	drive(t, a, cmd())
+	if !a.taskSheet.planOn || !a.taskPlanIsProgram() {
+		t.Fatalf("the door did not open the program's page: plan %v, program %+v", a.taskSheet.planOn, a.taskSheet.plan.Program)
+	}
+	if lines := programPageLines(a); !saidBy(lines, "senior-dev", "rewrite the auth middleware") {
+		t.Fatalf("the page does not show the program's conversation:\n%s", strings.Join(lines, "\n"))
+	}
+}
+
+// AND A TASK THAT IS NOT A PROGRAM'S STILL OPENS ITS ROOM, at once and without
+// asking the store: the redirect is for a program's run and no other.
+func TestADoorIntoAnOrdinaryTaskStillOpensItsRoom(t *testing.T) {
+	row := programRow()
+	row.ID, row.Program, row.Stage = "7", "", ""
+	a, _ := planAppWith(t, []session.PlanTaskRow{row}, nil)
+	if a.programTask(7) {
+		t.Fatal("an ordinary task was taken for a program's")
+	}
+	a.openRoomFor(7, row.Title)
+	if a.railPlanPending.id != "" {
+		t.Fatal("an ordinary task's door asked the store for a page instead of opening its room")
+	}
+}

@@ -1101,12 +1101,49 @@ func (a *app) roomStandingOn(node *taskNode) bool {
 // openRoomFor toggles compact task controls and transcript links within the same
 // conversation. Sidebar rows use openRailRoom so a repeated click stays inside.
 // A guest with the same task number belongs to a different conversation.
+//
+// A PROGRAM'S TASK OPENS ITS CONVERSATION AND NEVER A ROOM. A task handed to a
+// program codeaf carries (senior-dev) has no worker transcript: the program
+// talks to codeaf through the run's model API, and what it said is on the
+// task's stored page ([app.taskConversation]). A room on it is a blank page
+// saying it fills in as the task works while the program makes call after
+// call, which is how a person watching senior-dev saw nothing for five
+// minutes. The rail's own door already asked the store first
+// ([app.openRailRoom]); every other door — the card in the conversation, a
+// transcript link, the task strip, the home panel, the sessions place — came
+// through here and went straight to the room. So a row the surface already
+// holds as a program's opens its page the rail's way, with the room as the
+// answer only when the store has no page for it.
 func (a *app) openRoomFor(id uint64, title string) {
 	if a.room != nil && !a.roomIsGuest() && a.room.id == id {
 		a.closeRoom()
 		return
 	}
+	if a.programTask(id) {
+		a.roomPump = tea.Batch(a.roomPump, a.openRailPlan(strconv.FormatUint(id, 10), func() tea.Cmd {
+			a.openRoom(id, title)
+			return a.takeRoomPump()
+		}))
+		return
+	}
 	a.openRoom(id, title)
+}
+
+// programTask reports whether the surface holds this conversation's task as a
+// program's run: its held row names the program. It reads only what is held,
+// never the store, because it is asked on the loop at a key or a click.
+func (a *app) programTask(id uint64) bool {
+	rows, ok := a.heldPlanRows()
+	if !ok {
+		return false
+	}
+	want := strconv.FormatUint(id, 10)
+	for _, row := range rows {
+		if row.ID == want {
+			return strings.TrimSpace(row.Program) != ""
+		}
+	}
+	return false
 }
 
 // openRailRoom makes list selection idempotent. Repeated clicks must not close
