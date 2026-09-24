@@ -2654,7 +2654,7 @@ type Agent struct {
 	programBounced bounceMark
 	// programsHeard is what the person's messages of the turn they last spoke
 	// in said about the programs this build carries: the newest one named,
-	// the message that named it, and every one named (delegate_asked.go). It is
+	// the message that named it, and every one asked for (delegate_asked.go). It is
 	// written where their words are recorded ([Agent.rememberAskLocked]), so a
 	// steer that names nothing does not unsay what the turn opened by asking.
 	programsHeard programsHeard

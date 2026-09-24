@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -400,6 +401,86 @@ func TestAnAskForAProgramIsNeverTooSmall(t *testing.T) {
 	}
 	if refusal := refusedWith(unasked, taskSpec{via: "nosuch"}); refusal != spawnFloorRefusal {
 		t.Fatalf("a program this build does not carry lifted the floor: %q", refusal)
+	}
+}
+
+// A COMMIT, AN UNDO OR A REVERT STAYS HERE, WHATEVER IT NAMES. "revert
+// senior-dev's commit" is on the floor as a revert, and it names senior-dev,
+// which used to lift the floor: the proposal without `via` was bounced toward
+// senior-dev, and the one with it went up and started a billed run on a branch
+// of its own, where the revert the person asked for can never land on their
+// branch. And a name said in passing is no ask for the program: "fix
+// senior-dev's typo in this file" is a one-file fix, and stays one without a
+// bounce toward a program the floor would then refuse.
+func TestAnAskThatOnlyMentionsAProgramStaysOnTheFloor(t *testing.T) {
+	for _, asked := range []string{
+		"revert senior-dev's commit",
+		"commit senior-dev's changes",
+		"undo what senior-dev did",
+		"git revert the senior-dev commit",
+		"revert this commit with senior-dev",
+		"fix senior-dev's typo in this file",
+		"fix the line senior-dev changed in this file",
+	} {
+		if !trivialAsk(asked) {
+			t.Fatalf("%q is off the floor, so this test would prove nothing", asked)
+		}
+		for _, spec := range []taskSpec{{via: "senior-dev"}, {}} {
+			agent := programConversation(t, nil)
+			heard(agent, asked)
+			if refusal := refusedWith(agent, spec); refusal != spawnFloorRefusal {
+				t.Errorf("%q with via %q read %q, want the floor", asked, spec.via, refusal)
+			}
+		}
+	}
+}
+
+// THE NAME LIFTS THE FLOOR WHERE IT ASKS FOR THE PROGRAM: typed as its command,
+// first in the message, or right after a word that hands it the work. The
+// same name as a possessive, or after a word that only points at it, is a
+// mention, and the looser reading that turns a proposal back
+// ([Config.programNamedIn]) still hears it.
+func TestTheProgramIsAskedForOnlyWhereTheWordsAskForIt(t *testing.T) {
+	config := Config{Delegates: testPrograms("senior-dev")}
+	for _, asked := range []string{
+		"fix this file with senior-dev",
+		"fix this one line using senior dev",
+		"fix this file, give it to senior-dev",
+		"fix this file via /senior-dev",
+		"edit this file, have seniordev do it",
+		"fix this file /senior-dev",
+		"senior-dev, fix this file",
+		"Senior Dev should take this one",
+		"let senior-dev do it",
+		"ask senior-dev to fix the retry",
+		"I want senior-dev on this",
+	} {
+		if got := config.programsAskedIn(asked); !slices.Equal(got, []string{"senior-dev"}) {
+			t.Errorf("%q asked for %q, want senior-dev", asked, got)
+		}
+	}
+	for _, asked := range []string{
+		"revert senior-dev's commit",
+		"undo what senior-dev did",
+		"fix the line senior-dev changed in this file",
+		"senior-dev's branch broke the build",
+		"the senior-dev run left a typo",
+		"fix the typo in internal/senior-dev/main.go",
+		"fix this file",
+	} {
+		if got := config.programsAskedIn(asked); len(got) != 0 {
+			t.Errorf("%q asked for %q, want nothing", asked, got)
+		}
+	}
+	if config.programNamedIn("revert senior-dev's commit") != "senior-dev" {
+		t.Fatal("the reading that turns a proposal back no longer hears a mention")
+	}
+	for _, asked := range []string{"fix this file with senior-dev", "fix this file /senior-dev"} {
+		agent := programConversation(t, nil)
+		heard(agent, asked)
+		if refusal := refusedWith(agent, taskSpec{via: "senior-dev"}); refusal != "" {
+			t.Errorf("%q: the proposal naming the program asked for was refused: %q", asked, refusal)
+		}
 	}
 }
 

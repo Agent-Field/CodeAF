@@ -958,6 +958,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is naming a delegate enough to make codeaf use it", "delegates"},
 		{"I typed a correction and it forgot I named the delegate", "delegates"},
 		{"does a correction undo naming a program", "delegates"},
+		{"why did it revert the delegate's commit itself instead of using the delegate", "delegates"},
 		{"which folder does a delegate work in", "delegates"},
 		// A program works in the folder itself, on a branch of its own in a
 		// repository (internal/session's programfolder.go), asked the ways

@@ -16,10 +16,18 @@ package session
 //     passes as it is, which is how "fix it with senior-dev" and "don't use
 //     senior-dev for this" both come out right: which of the two the person
 //     said is read by the model, from words code cannot weigh.
-//   - A proposal whose `via` is the program the person named is never too
+//   - A proposal whose `via` is the program the person asked for is never too
 //     small. The spawn floor (spawnfloor.go) keeps a one-file fix in the
 //     conversation, and a person who typed "fix this file with senior-dev" has
 //     overruled it already, exactly as a person who typed `/task` has.
+//
+// THE TWO READ THE WORDS DIFFERENTLY, because they are wrong at different
+// prices. A bounce the person did not mean costs one round trip, and the model
+// that reads it can answer "did not mean the program", so it hears any mention
+// of the name ([Config.programNamedIn]). A floor lifted that the person did not
+// mean starts a billed run that cannot do what they asked, and nothing reads
+// it again, so it hears only the words that ask for the program
+// ([Config.programsAskedIn]), and never lifts a commit, an undo or a revert.
 //
 // AND THE PERSON'S WORDS ARE EVERY MESSAGE OF THE TURN, not the newest one
 // ([programsHeard]): a steer typed while the model reads the code names
@@ -142,16 +150,22 @@ func (b *askBounce) text() string {
 	return programNamedSentence(b.name)
 }
 
-// askedForProgram says `via` names a program the person's words named in the
-// turn they last spoke in, which is the one thing that lifts the spawn floor
-// for a proposal ([Agent.refuseProposedTask]). A name this build does not
+// programMayLiftFloor says a proposal made on a trivial ask whose verb is verb
+// may pass the spawn floor ([Agent.refuseProposedTask]): the verb is not work
+// on the person's own branch ([yourBranchVerbs]), and the person asked for a
+// program in the turn they last spoke in — for a `via`, that program. A
+// proposal with no `via` may pass only as far as the bounce that asks it to
+// name the program, and meets the floor after that. A name this build does not
 // carry is never heard ([Agent.hearProgramsLocked]), so it lifts nothing.
-func (a *Agent) askedForProgram(via string) bool {
-	if via == "" {
+func (a *Agent) programMayLiftFloor(verb, via string) bool {
+	if yourBranchVerbs[verb] {
 		return false
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if via == "" {
+		return len(a.programsHeard.asked) > 0
+	}
 	return slices.Contains(a.programsHeard.asked, via)
 }
 
@@ -175,8 +189,9 @@ type programsHeard struct {
 	// that message's [Agent.personSeq], which the bounce is counted against.
 	named string
 	seq   uint64
-	// asked is every program a message of the turn named, which is what lifts
-	// the floor for a proposal whose `via` is one of them.
+	// asked is every program a message of the turn asked to do the work
+	// ([Config.programsAskedIn]), which is what lifts the floor for a proposal
+	// whose `via` is one of them.
 	asked []string
 }
 
@@ -192,9 +207,8 @@ func (a *Agent) hearProgramsLocked(text string) {
 	if a.programsHeard.turn != a.turnSeq {
 		a.programsHeard = programsHeard{turn: a.turnSeq}
 	}
-	words := normalizedWords(text)
-	for _, name := range a.config.delegateNames() {
-		if namesProgram(words, name) && !slices.Contains(a.programsHeard.asked, name) {
+	for _, name := range a.config.programsAskedIn(text) {
+		if !slices.Contains(a.programsHeard.asked, name) {
 			a.programsHeard.asked = append(a.programsHeard.asked, name)
 		}
 	}
@@ -222,14 +236,98 @@ func (c Config) programNamedIn(asked string) string {
 // the name is a run of whole words, or those words written as one.
 func namesProgram(words []string, name string) bool {
 	parts := normalizedWords(name)
-	if len(parts) == 0 {
-		return false
-	}
-	joined := strings.Join(parts, "")
 	for at := range words {
-		if words[at] == joined || slices.Equal(words[at:min(at+len(parts), len(words))], parts) {
+		if nameWidthAt(words, at, parts) > 0 {
 			return true
 		}
+	}
+	return false
+}
+
+// nameWidthAt is how many of the words the name (split as [normalizedWords]
+// splits it) takes starting at words[at]: one when it is written as one word,
+// all of its parts when it is spelled out, and zero when it is not there.
+func nameWidthAt(words []string, at int, parts []string) int {
+	switch {
+	case len(parts) == 0:
+		return 0
+	case words[at] == strings.Join(parts, ""):
+		return 1
+	case slices.Equal(words[at:min(at+len(parts), len(words))], parts):
+		return len(parts)
+	}
+	return 0
+}
+
+// programAskWords are the words that, right before a program's name, hand it
+// the work: "fix this file with senior-dev", "give it to senior-dev", "have
+// senior-dev fix it". A word that only points at the program ("the senior-dev
+// run", "what senior-dev did") is not one.
+var programAskWords = map[string]bool{
+	"with":  true,
+	"via":   true,
+	"using": true,
+	"use":   true,
+	"give":  true,
+	"hand":  true,
+	"to":    true,
+	"have":  true,
+	"let":   true,
+	"ask":   true,
+	"get":   true,
+	"want":  true,
+}
+
+// programsAskedIn is every program the person's words ask to do the work,
+// which is stricter than naming it ([Config.programNamedIn]): the program's
+// command typed as a word of its own (`/senior-dev`), or its name first in the
+// message, as the one addressed, or right after one of [programAskWords]. A
+// possessive is never an ask ("revert senior-dev's commit"), and neither is
+// the name anywhere else ("undo what senior-dev did").
+func (c Config) programsAskedIn(text string) []string {
+	words := normalizedWords(text)
+	var asked []string
+	for _, name := range c.delegateNames() {
+		if typedAsCommand(text, name) || addressedByName(words, normalizedWords(name)) {
+			asked = append(asked, name)
+		}
+	}
+	return asked
+}
+
+// addressedByName says the name stands in the words as the one asked to do
+// the work: first in them, or right after a word that hands it the work, and
+// not followed by the "s" a possessive leaves once its apostrophe is gone.
+func addressedByName(words, parts []string) bool {
+	for at := range words {
+		width := nameWidthAt(words, at, parts)
+		if width == 0 || (at+width < len(words) && words[at+width] == "s") {
+			continue
+		}
+		if at == 0 || programAskWords[words[at-1]] {
+			return true
+		}
+	}
+	return false
+}
+
+// typedAsCommand says the text holds the program's command, `/name`, as a word
+// of its own. The same letters inside a path ("internal/senior-dev/main.go")
+// are not one, so the slash must open a word and the name must end one, on the
+// same reading of a name's bytes the brief's path guard uses ([pathByte]).
+func typedAsCommand(text, name string) bool {
+	lower, command := strings.ToLower(text), "/"+name
+	for from := 0; from < len(lower); {
+		at := strings.Index(lower[from:], command)
+		if at < 0 {
+			return false
+		}
+		at += from
+		end := at + len(command)
+		if (at == 0 || !pathByte(lower[at-1])) && (end == len(lower) || !pathByte(lower[end])) {
+			return true
+		}
+		from = end
 	}
 	return false
 }

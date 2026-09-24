@@ -79,10 +79,19 @@ for this" is kept too. The next section says what else counts.
 looked like work, goes to codeaf's own worker and never to a program. A task never hands
 its work to a program. `/<name> <brief>` starts the program at once, with no card.
 
-## Naming a program in a small ask or a correction — fix this file with senior-dev, I typed a correction and it forgot senior-dev
+## Naming a program in a small ask or a correction — fix this file with senior-dev, revert what senior-dev did, I typed a correction and it forgot senior-dev
 
-**An ask for a program is never too small.** A one-file fix or a single command otherwise
-stays in the conversation, but "fix this file with senior-dev" goes to senior-dev.
+**An ask for a program is never too small.** A one-file fix or a single read otherwise
+stays in the conversation, but "fix this file with senior-dev" goes to senior-dev. For
+that, your words have to ask for the program: its command (`/senior-dev`), its name
+first in the message, or its name right after with, via, using, use, give, hand, to,
+have, let, ask, get or want. A name in passing asks nothing: "fix senior-dev's typo in
+this file" or "fix the line senior-dev changed in this file" stays here.
+
+**A commit, an undo or a revert stays here, whatever it names.** "revert senior-dev's
+commit", "commit senior-dev's changes" or "revert this commit with senior-dev" is done in
+the conversation, and a proposal for it is refused: a program works on a branch of its
+own and never moves yours, so it could not do it. `/senior-dev <brief>` still starts it.
 
 **A correction does not undo the name.** Every message you type into one turn is read for
 the program's name, not only the newest. Name senior-dev, then type "the failing test is

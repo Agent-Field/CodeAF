@@ -1202,9 +1202,11 @@ gets dropped. The floor is the words you typed, not how much the reply has alrea
 **What still becomes a task.** Several independent pieces in one message, a sweep across
 many files, a rewrite you would sit and watch: those can still be handed over, proposed, or
 started with `/task`. Typing `/task commit everything` still starts a task, because you
-asked for one. Naming a program codeaf carries lifts the floor the same way: for "fix this
-one line with senior-dev", a proposal that hands it to senior-dev is not refused, because
-you asked for senior-dev (the programs page).
+asked for one. Asking for a program codeaf carries lifts the floor the same way: for "fix
+this one line with senior-dev", a proposal that hands it to senior-dev is not refused,
+because you asked for senior-dev (the programs page). A name in passing ("fix
+senior-dev's typo in this file") lifts nothing, and nothing lifts it for a commit, an undo
+or a revert: "revert senior-dev's commit" is done here.
 
 ## An answer that stops before your question is finished is carried on — my reply stopped halfway, it said it would do the rest and then stopped, codeaf kept going without me
 
