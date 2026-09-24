@@ -632,8 +632,9 @@ func (s *Server) complete(ctx context.Context, out *reply, request *call, model 
 
 // settings are the per-call facts the funnel reads off the call's context:
 // who the call is for, what it is called in the log, the program's own cache
-// lineage and reasoning depth, the working it handed back, and the four
-// sinks that meter it, catch its working and name its server.
+// lineage and reasoning depth, the working it handed back, the sinks that
+// meter it, catch its working and name its server, the count of the receipts
+// it is owed, and the ask that an answer with no usage block be priced too.
 func (s *Server) settings(ctx context.Context, request *call, bill *tally, catch *catcher, slot *provider.ServedEndpoint, entry *record) context.Context {
 	role := s.config.Role
 	if role == "" {
