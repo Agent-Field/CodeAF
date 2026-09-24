@@ -609,8 +609,18 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		WorkModel:    workSeat,
 		PlanModel:    planSeat,
 		CheckModel:   checkSeat,
-		CompleterFor: func(string) Completer { return a.beltRunCompleter() },
+		CompleterFor: func(string) Completer { return a.crewRunCompleter(run) },
 	}
+}
+
+// crewRunCompleter is the completer a run's seats call through: the
+// conversation's account-aware view, with the routed crew's seat fallback in
+// front of it when the run was routed (taskcrew.go).
+func (a *Agent) crewRunCompleter(run *beltRun) Completer {
+	if run == nil || run.crew == nil {
+		return a.beltRunCompleter()
+	}
+	return crewSeatCompleter{agent: a, run: run}
 }
 
 // openBeltRunStore opens the conversation's store for a run. A NEW REQUEST GETS
@@ -859,13 +869,27 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	}
 	a.deliverBeltRunLanding(run, summary, landing)
 	a.settleBeltRun(run, summary, landing)
-	// THE CREW'S OUTCOME: accepted when the work came home whole, not kept
-	// otherwise. A later `/redo stronger` overwrites it (taskcrew.go).
+	// THE CREW'S OUTCOME is the TASK's — was the result kept — and never the
+	// route's, which the seats' first calls wrote already (taskcrew.go). A run
+	// that finished and whose landing nobody refused is accepted: merged, in
+	// place, KEPT on its branch on purpose (a protected branch, a clean repo
+	// on main), or nothing to land because the work was an answer. Only a
+	// refused, conflicted or abandoned landing is not kept. A later
+	// `/redo stronger` overwrites it.
 	outcome := router.CrewNotKept
-	if summary.Outcome == beltRunOutcomeDone && landing.Refused == "" && (landing.Home == mergeMerged || landing.Home == mergeInPlace) {
+	if crewKept(summary.Outcome, landing) {
 		outcome = router.CrewAccepted
 	}
 	a.settleTaskCrew(run.row, outcome, summary.USD)
+}
+
+// crewKept is whether a run's ending counts as its crew's work kept: it
+// finished, and its landing was neither refused, conflicted nor abandoned.
+func crewKept(outcome string, landing RunLanding) bool {
+	if outcome != beltRunOutcomeDone || landing.Refused != "" {
+		return false
+	}
+	return landing.Home != mergeConflicted && landing.Home != mergeAborted
 }
 
 // releaseBeltRun is the last thing every run does: it is cleared off the Agent,
@@ -1216,7 +1240,7 @@ func (run *beltRun) crewDecision() *crewroute.Decision {
 	if run == nil || run.crew == nil {
 		return nil
 	}
-	decision := run.crew.decision
+	decision := run.crew.current()
 	return &decision
 }
 
