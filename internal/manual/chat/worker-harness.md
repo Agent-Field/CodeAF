@@ -250,7 +250,9 @@ rewrote its history as a summary, `switched to <model>` when another model start
 answering its work (with the program's reason after it when it gave one), `codeaf
 refused a call · <why>` and `a call to its model failed · <why>`. A model is named nowhere
 else. While a call is out the last line is `◐ thinking` and its seconds. A long run shows
-its newest actions under a line such as `…142 earlier actions`.
+its newest actions under a line such as `…142 earlier actions`. A run from before codeaf
+kept a program's actions is drawn from its model calls, each tool asked for as one action
+with no step word, and a long one shows its newest under `…142 earlier calls`.
 
 The line over the page stays put while you scroll: the step the program is in (before it
 names one, its stage in the word it gives a person; the task's own word, such as

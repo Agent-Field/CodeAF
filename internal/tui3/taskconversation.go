@@ -315,8 +315,18 @@ func (a *app) taskConversation(page session.PlanTaskPage, width int, briefFull b
 	}
 	// THE ACTIONS THE PAGE LEAVES OUT ARE COUNTED AT THE PAGE'S OWN EDGE, spelled
 	// the way every fold line on this surface is ([bandFoldWord]).
-	if program.EarlierActions > 0 {
+	//
+	// A PAGE DRAWN FROM ITS CALLS COUNTS THE CALLS IT LEAVES OUT THERE INSTEAD. A
+	// run from before the action log — or one read off a --host engine too old to
+	// send its actions — has no actions to count, and its page is the newest calls
+	// the store carries ([actFromCalls]); without the count its first kept call
+	// stood straight under the brief, and the page read as though the run began
+	// there.
+	switch {
+	case program.EarlierActions > 0:
 		out = append(out, pal.dim(fit(glyphMore+itoa(program.EarlierActions)+" "+actEarlierWord, width)))
+	case len(program.Actions) == 0 && program.Earlier > 0:
+		out = append(out, pal.dim(fit(glyphMore+itoa(program.Earlier)+" "+convEarlierWord, width)))
 	}
 	current := ""
 	for _, line := range lines {

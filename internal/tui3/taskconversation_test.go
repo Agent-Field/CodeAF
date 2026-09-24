@@ -487,6 +487,39 @@ func TestARunFromBeforeTheActionLogIsDrawnFromItsCalls(t *testing.T) {
 	}
 }
 
+// A LONG RUN FROM BEFORE THE ACTION LOG SAYS HOW MANY CALLS ITS PAGE LEAVES OUT.
+// Its page is drawn from the newest calls the store carries, so the count of the
+// ones it cut is a count of calls, and it stands between the brief and the
+// first action drawn from them — without it the page read as though the run
+// began at the first call it kept. A page whose actions were logged counts its
+// actions there and never its calls.
+func TestALongRunFromBeforeTheActionLogSaysHowManyCallsItLeavesOut(t *testing.T) {
+	page := programPage(programRow(), programTurns())
+	page.Program.Actions, page.Program.Earlier, page.Program.Calls = nil, 150, 153
+	page.Row.Status = "done"
+	a, _ := programPageApp(t, page, 80, 40)
+	lines := programPageLines(a)
+	text := strings.Join(lines, "\n")
+	fold, first := -1, -1
+	for i, line := range lines {
+		if fold < 0 && strings.Contains(line, "150 "+convEarlierWord) {
+			fold = i
+		}
+		if first < 0 && strings.Contains(line, "read internal/auth/middleware.go") {
+			first = i
+		}
+	}
+	if fold < 0 || first < 0 || fold > first || strings.Contains(text, actEarlierWord) {
+		t.Fatalf("a run drawn from its calls does not count the 150 calls it leaves out above its first action:\n%s", text)
+	}
+	logged := programPage(programRow(), programTurns())
+	logged.Program.Earlier = 150
+	b, _ := programPageApp(t, logged, 80, 40)
+	if text := strings.Join(programPageLines(b), "\n"); strings.Contains(text, convEarlierWord) {
+		t.Fatalf("a page drawn from its action log counts the calls it leaves out:\n%s", text)
+	}
+}
+
 // THE RAW CALLS ARE ONE KEY AWAY. The key row names the key; the key turns the
 // page to the dialogue between the program and its model — the model named, its
 // words and its calls — and the key row then names the way back; the same key
