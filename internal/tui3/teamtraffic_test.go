@@ -236,3 +236,28 @@ func TestTrafficStopAndStartAreDoneOnceAndNeverReplayed(t *testing.T) {
 		t.Fatalf("the history is not on the new window's rail: %+v", b.traffic.rows[harbor])
 	}
 }
+
+// A MEMBER THAT JOINED BEFORE IT HAD A TITLE IS TITLED BY THE READ. Nothing a
+// person does has to happen for it: the Traffic read sees the member's tab has
+// a name now, writes it through the store, and the member has a handle the
+// manager can address it by.
+func TestTrafficReadTitlesAMemberThatJoinedUntitled(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		return f.AddMember(harbor, teamstore.Member{Key: "/tmp/lab/late.jsonl", File: "/tmp/lab/late.jsonl"})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := mustTeam(t, a, harbor).Member("/tmp/lab/late.jsonl"); m.Handle != "" {
+		t.Fatalf("an untitled member has handle %q", m.Handle)
+	}
+	a.chatTabs = append(a.chatTabs, chatTab{key: "/tmp/lab/late.jsonl", file: "/tmp/lab/late.jsonl", word: "benchmark sweep"})
+	trafficReadNow(t, a)
+	if m, _ := mustTeam(t, a, harbor).Member("/tmp/lab/late.jsonl"); m.Handle != "benchmark" {
+		t.Fatalf("the read left the member as %+v", m)
+	}
+	disk, _ := loadTeams(a.profileDir, nil)
+	if m, _ := disk[0].Member("/tmp/lab/late.jsonl"); m.Handle != "benchmark" {
+		t.Fatalf("the title did not reach the disk: %+v", m)
+	}
+}
