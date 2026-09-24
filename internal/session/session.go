@@ -748,6 +748,12 @@ type Event struct {
 	// least this many", and internal/tui3 spells that with a trailing `+`.
 	Args string
 
+	// BeltStepHandled is present only for a run worker that opted into the
+	// step boundary handshake. Its owner closes it after recording this end
+	// event and applying the run's limits and notes. Cancellation releases a
+	// belt whose reader failed, and this local handshake never goes on wire.
+	BeltStepHandled chan<- struct{} `json:"-"`
+
 	// Output is the tool's result text on EventToolEnd and EventToolFailed,
 	// verbatim up to a cap and then marked "… (N more bytes)".
 	//
@@ -1161,6 +1167,12 @@ type TaskLanding struct {
 }
 
 type Config struct {
+	// WaitForBeltSteps is for the run worker that enforces its limits and
+	// delivers notes from tool-end events. Its sole event reader must close
+	// Event.BeltStepHandled after processing each such event. Other agents
+	// leave this off and their event streams remain asynchronous.
+	WaitForBeltSteps bool
+
 	Workspace string // tools root here; all relative paths resolve inside it
 	Model     string
 	APIKey    string
