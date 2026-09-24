@@ -114,6 +114,7 @@ func TestTUIE2E(t *testing.T) {
 	t.Run("space_in_the_task_room_pages_the_card", testTaskRoomKeepsSpace)
 	t.Run("TaskOnTheRunEngine", testTaskOnTheRunEngine)
 	t.Run("TaskOnTheDefaultBelt", testTaskOnTheDefaultBelt)
+	t.Run("foreign_skills_reach_the_conversation", testForeignSkills)
 }
 
 // testPlainLaunchConnectionsAndHarnesses is the engine-road regression: the

@@ -150,6 +150,25 @@ var tuiWords = map[string]tuiWord{
 			"STOPPED without guessing at a number of seconds, on a scenario whose own card offers nothing " +
 			"to wait for",
 	},
+	// ── the skills a person already has ──────────────────────────────────────
+	"skillsCarriedWord": {
+		screen: "skills · ",
+		pkg:    "internal/tui3",
+		why: "the dim note under a message naming the skills its turn carried, kept above the turn's " +
+			"`▸ worked` chip — the only screen evidence that a skill from another tool's folder reached " +
+			"a turn by itself or by /skill ([testForeignSkills]); the headless --once door prints the " +
+			"engine's own `skills carried: ` sentence instead",
+	},
+	"skillNoShelfWord": {
+		screen: "this conversation has no skill shelf",
+		why: "the picker row's tail when there is no shelf to attach against. It must be ABSENT on the " +
+			"ordinary launch with memory on and off: it once read `memory is off` on every machine",
+	},
+	"skillCannotCarryWord": {
+		screen: "this conversation cannot carry attached skills",
+		why: "what choosing a skill says when the session under the surface has no attachment doors — " +
+			"which was every choice on the ordinary launch before the doors crossed the session host's socket",
+	},
 	"stopDetachedWord": {
 		screen: "detached — the turn was let go of and nothing is waiting for it",
 		why:    "the note a turn let go of at the bound leaves in the conversation",

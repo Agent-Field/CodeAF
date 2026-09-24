@@ -24,6 +24,7 @@ package session
 // nothing constructs one.
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -269,3 +270,23 @@ func runRootAsk(store *plandb.Store) string {
 // supervisor writes when the worker's own `plandb done` has not already
 // ended the task.
 func (a *Agent) TaskReport() string { return taskReport(a) }
+
+// sendBeltStep publishes a completed action and, for the run worker alone,
+// keeps the next action behind the run's recording, limits and note delivery.
+// The shared event hub stays asynchronous; only this producer waits, outside
+// every agent and hub lock. Cancellation also releases a failed event reader.
+func (a *Agent) sendBeltStep(ctx context.Context, hub *eventHub, event Event) {
+	if !a.config.WaitForBeltSteps {
+		hub.send(event)
+		return
+	}
+	handled := make(chan struct{})
+	event.BeltStepHandled = handled
+	if !hub.send(event) {
+		return
+	}
+	select {
+	case <-handled:
+	case <-ctx.Done():
+	}
+}

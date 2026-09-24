@@ -1,0 +1,34 @@
+{
+  "version": 2,
+  "plugins": {
+    "tidy@market": [
+      {
+        "scope": "user",
+        "installPath": "@FIXTURE@/home/.claude/plugins/cache/market/tidy/1.0.0",
+        "version": "1.0.0"
+      }
+    ],
+    "suite@split": [
+      {
+        "scope": "user",
+        "installPath": "@FIXTURE@/home/.claude/plugins/cache/split/suite/abc123",
+        "version": "abc123"
+      }
+    ],
+    "dormant@market": [
+      {
+        "scope": "user",
+        "installPath": "@FIXTURE@/home/.claude/plugins/cache/market/dormant/1.0.0",
+        "version": "1.0.0"
+      }
+    ],
+    "projonly@market": [
+      {
+        "scope": "project",
+        "projectPath": "@FIXTURE@/project",
+        "installPath": "@FIXTURE@/home/.claude/plugins/cache/market/projonly/1.0.0",
+        "version": "1.0.0"
+      }
+    ]
+  }
+}

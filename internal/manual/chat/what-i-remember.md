@@ -32,6 +32,11 @@ below is made, and the background tidy never runs. With it off, `/remember`,
 memory is off for this session · turn it on under /settings
 ```
 
+Skills are not memory, and turning memory off keeps them: the skills in your
+Claude Code, Codex and other skill folders still reach the conversation, carried
+with a message that suits them and attached by `/skill`
+(`skills-from-other-tools` says how).
+
 **The memory PLACE still opens with it off.** `alt+6` and `/memory` both reach it, and
 what they reach is the heading `memory` and its one line, with that same sentence written
 once into the rule above the composer — *What the memory place shows when there is nothing

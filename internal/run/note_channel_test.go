@@ -65,7 +65,8 @@ func TestANoteLeftWhileATaskWorksReachesItsWorkerBetweenSteps(t *testing.T) {
 		t.Fatalf("release the command: %v", err)
 	}
 	if err := <-done; err != nil {
-		t.Fatalf("the worker's run failed: %v", err)
+		trajectory, trajectoryErr := run.Trajectory(filepath.Dir(store.Path()), store.RootID())
+		t.Fatalf("the worker's run failed: %v\ntrajectory (%v): %#v\nrequests:\n%s", err, trajectoryErr, trajectory, seatTranscript(seat))
 	}
 
 	carried := seatSawTimes(seat, said)

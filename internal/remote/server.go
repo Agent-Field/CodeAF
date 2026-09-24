@@ -1204,6 +1204,10 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// way the newsroom files it ([Session.fileNews]): an engine that cannot
 		// name its conversation fans nothing out, and says so here.
 		News: newsKeyOf(sess.agent) != "",
+		// Whether this conversation can carry skills put in front of it by
+		// hand, asked of the agent it has open — for [Welcome.Skills]'s stated
+		// reason (skills.go).
+		Skills: skillsKnown(sess.agent),
 	}
 }
 
@@ -2577,6 +2581,15 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		agent.SetReasoningFor(args.Model, args.Level)
 		s.session.announce()
 		return nil, nil
+
+	case MethodAttachSkills, MethodDetachSkill, MethodAttachedSkills, MethodClearSkills, MethodSkillShelf:
+		payload, err := serveSkills(agent, call)
+		// A door that moved the attachment is a fact every window's chip is
+		// drawing, so every surface is told, not only the one that asked.
+		if err == nil && call.Method != MethodAttachedSkills && call.Method != MethodSkillShelf {
+			s.session.announce()
+		}
+		return payload, err
 
 	case MethodEffort, MethodResolvedEffort, MethodSetEffort:
 		door, ok := agent.(effortDoor)
