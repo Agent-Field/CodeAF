@@ -319,6 +319,10 @@ func (a *Agent) beltRunRootRow(id string) (uint64, bool) {
 // stopped by a person. NOTHING IS LANDED AND NO TURN IS BOUGHT: the person
 // ended the spend, and a model call to narrate the ending would be more of it.
 func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
+	// WHAT THE RUN TOUCHED BEFORE IT WAS STOPPED is read while its copy still
+	// stands, for [Agent.landBeltRun]'s reason: keeping the work may give the copy
+	// back, and the row a stopped run leaves names its files like any other.
+	touched, unread := runTouchedFiles(run.tree, true)
 	merge, changed := keptWork(run.tree, run.title, nil, a.signsGitWork())
 	report := stopBecause(taskStoppedWord, why)
 	if merge != mergeInPlace {
@@ -346,6 +350,7 @@ func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
 	if merge != mergeInPlace && len(changed) > 0 {
 		notice.Branch = run.tree.branch
 	}
+	a.recordBeltRunIndex(run, notice, 0, mergePaths(touched, changed), unread)
 	g := a.graph()
 	if g == nil {
 		a.emitTaskUpdate(notice)

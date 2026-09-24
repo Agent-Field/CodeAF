@@ -162,6 +162,14 @@ type RunLanding struct {
 	// brought back to its ground ([Agent.landBeltRun]). Empty is an engine's own
 	// landing, which commits on the copy's branch and merges nothing.
 	Home string
+	// Touched is every path the run's work changed, read off its working copy
+	// against the commit the copy was cut from ([runTouchedFiles]) — a file a
+	// worker committed itself as surely as one the landing committed for it —
+	// and TouchedUnread is why that could not be read, "" when it was. Both are
+	// set by this door ([Agent.landBeltRun]) and go onto the run's row in the
+	// project's record ([Agent.recordBeltRunIndex]).
+	Touched       []string
+	TouchedUnread string
 }
 
 // RunEngine is the run engine as this door reaches it. Start drives one store
@@ -431,6 +439,10 @@ func (a *Agent) startOrJoinTaskRun(ctx context.Context, id uint64, title, brief 
 		// [planStoreID]'s spelling, which is the one the plan read answers under.
 		PlanTask: planStoreID(storeID),
 	})
+	// AND THE PROJECT'S RECORD SAYS IT IS RUNNING, from the same breath, so home,
+	// the sessions page and every other window see work out rather than an idle
+	// window ([Agent.recordBeltRunStart]).
+	a.recordBeltRunStart(run)
 
 	go a.driveBeltRun(runCtx, engine, run, a.beltRunSpec(run, brief))
 	return false, nil
@@ -722,6 +734,11 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 	}
 	a.emitTaskUpdate(notice)
 	g.keepRunRows(notice.ID, []TaskNotice{notice})
+	// AND THE PRESENCE FILE IS REFRESHED NOW, not at the next heartbeat: a run
+	// starting or settling changes what every other window counts as running
+	// ([Agent.presenceBeltRun]), and a few seconds of an idle-looking window
+	// over a run in flight is the gap this closes.
+	a.nudgePresence()
 }
 
 // cutBeltRun ends the live run because the CONVERSATION is ending. It is what
@@ -801,6 +818,11 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 		// it ([TaskInterrupted]). Landing it here put the work into the folder of
 		// a person who had closed the window on it, and settling the row said
 		// `failed` about work that had not failed.
+		//
+		// THE PROJECT'S RECORD IS TOLD THE SAME WORD, with the files touched so
+		// far, so the run does not vanish from every other window's reading until
+		// somebody carries it on ([Agent.recordBeltRunInterrupted]).
+		a.recordBeltRunInterrupted(run, summary.USD)
 		return
 	}
 	// EVERY OTHER ENDING IS WRITTEN ON THE RUN'S OWN TASK. The engine writes the
@@ -865,12 +887,18 @@ func (a *Agent) releaseBeltRun(run *beltRun) {
 // not go in answers with the sentence that names the kept branch and the files.
 func (a *Agent) landBeltRun(ctx context.Context, engine RunEngine, run *beltRun) RunLanding {
 	landing, err := engine.Land(ctx, run.store, run.workspace, run.root)
+	// WHAT THE RUN TOUCHED IS READ HERE, AFTER THE LANDING'S COMMIT AND BEFORE
+	// THE COPY IS GIVEN BACK: the copy is the one place the whole of the run's
+	// work still stands against the commit it was cut from, and the merge below
+	// is what takes it away.
+	touched, unread := runTouchedFiles(run.tree, false)
 	if err != nil {
 		if g := a.graph(); g != nil {
 			g.planNote("the run's landing failed: " + err.Error())
 		}
-		return RunLanding{}
+		return RunLanding{Touched: touched, TouchedUnread: unread}
 	}
+	landing.Touched, landing.TouchedUnread = mergePaths(touched, landing.Changed), unread
 	if run.tree.dir == "" {
 		return landing
 	}
@@ -956,6 +984,7 @@ func owedLandingTier() roles.Tier { return roles.TierLow }
 func (a *Agent) settleBeltRun(run *beltRun, summary RunSummary, landing RunLanding) {
 	notice := a.beltRunNotice(run, summary, landing)
 	notice.EndedAt = a.taskClockNow()
+	a.recordBeltRunIndex(run, notice, summary.USD, landing.Touched, landing.TouchedUnread)
 	g := a.graph()
 	if g == nil {
 		a.emitTaskUpdate(notice)

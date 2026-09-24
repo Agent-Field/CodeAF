@@ -224,6 +224,26 @@ type TaskIndexEntry struct {
 	// invent an answer (the emptiness law), which is why [LandedTouching] answers
 	// with two lists instead of one.
 	Files []string `json:"files,omitempty"`
+	// FilesUnread is WHY THE FILE LIST COULD NOT BE READ, and "" when it was —
+	// or when the row comes from a road that never tried. It is set by the one
+	// road whose list is read off the working copy after the fact (a run on the
+	// worker harness, task_run_belt.go's [runTouchedFiles]), where a copy with
+	// no starting commit on record or a diff git refused is a real outcome.
+	//
+	// IT IS THE SECOND HALF OF ABSENCE-IS-UNKNOWN. A row with no Files says
+	// nothing about what it touched; a row with FilesUnread says it tried to
+	// know and could not, and a reader says so ("files unknown") rather than
+	// drawing it the same as a row that named no files.
+	FilesUnread string `json:"filesUnread,omitempty"`
+	// Repo is the repository the work was on, spelled as its git common
+	// directory (taskrepo.go's [repoIdentity]), so that every linked worktree of
+	// one repository names it the same way. It is what lets a chat filed under
+	// one project folder find work on its repository filed under another.
+	//
+	// ADDITIVE, AND ABSENCE IS UNKNOWN: a row written before it existed is read
+	// through its Ground instead, and a row with neither is left out of any
+	// reading keyed by the repository rather than guessed into or out of it.
+	Repo string `json:"repo,omitempty"`
 	// MaySplit is WHETHER THIS WORK WAS EVER ALLOWED TO HAND ITS PARTS OUT, and
 	// which reader allowed it: "wide" for a model's own judgement of breadth,
 	// "judged" for the sizing call at the typed door, "counted" for a brief that
@@ -668,10 +688,24 @@ func (a *Agent) recordTaskIndex(node *TaskNode) {
 // recordTaskIndexEntry is the one append door for every kind of task row. A
 // regular task reaches it through [Agent.recordTaskIndex]; an adaptive run has
 // no TaskNode, so its completion seam supplies the same citation directly.
+//
+// EVERY ROW IS STAMPED WITH ITS REPOSITORY HERE, once, for every road: off the
+// ground the work was about, or the conversation's own working directory for a
+// road that names no ground (an adaptive run works in it). A row whose ground is
+// no repository carries none, which is the truth about it.
 func (a *Agent) recordTaskIndexEntry(entry TaskIndexEntry) {
 	path := a.config.taskIndexFile()
 	if path == "" || strings.TrimSpace(entry.Title) == "" {
 		return
+	}
+	if strings.TrimSpace(entry.Repo) == "" {
+		ground := strings.TrimSpace(entry.Ground)
+		if ground == "" {
+			ground = strings.TrimSpace(a.config.Workspace)
+		}
+		if repo, err := repoIdentity(ground); err == nil {
+			entry.Repo = repo
+		}
 	}
 	appendTaskIndex(path, entry)
 }
@@ -727,10 +761,16 @@ func (a *Agent) closeInflightTaskIndexRows() {
 		if row.SessionID != session || !row.Live() || held[strings.TrimSpace(row.ID)] {
 			continue
 		}
-		closed := row
-		closed.Status = string(TaskFailed)
-		closed.Outcome = taskInterruptedOutcome
-		closed.EndedAt = now
+		// A RUN ON THE WORKER HARNESS IS CLOSED IN ITS OWN WORD, `interrupted`,
+		// with the files its copy holds so far ([Agent.interruptedRunRow]); a
+		// run carried on and finished later writes the row that supersedes it.
+		closed, isRun := a.interruptedRunRow(row, now)
+		if !isRun {
+			closed = row
+			closed.Status = string(TaskFailed)
+			closed.Outcome = taskInterruptedOutcome
+			closed.EndedAt = now
+		}
 		appendTaskIndex(path, closed)
 	}
 }

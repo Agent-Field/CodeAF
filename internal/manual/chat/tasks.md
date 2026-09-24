@@ -2812,7 +2812,9 @@ running in another window now:
 
 - **`recently landed in other windows:`** is tasks that finished **in another window**. Your
   own conversation's tasks are never repeated there — their reports already arrived here in
-  full. Each row names the task, how it ended, and the files it wrote.
+  full. Each row names the task, how it ended, and the files it wrote. It also reads chats
+  filed under **other folders** that work on the same repository — see "Work on the same
+  repository from a chat in another folder".
 - **`running in another window now:`** is what those windows have out at this moment, with
   the files each run has already written. Written, not planned: nothing is reserved and
   nothing is locked by it. **A task's parts ride on its row** (`3 quick parts running`,
@@ -2830,6 +2832,46 @@ running in another window now:
   one is about **you** having looked at the dashboard, this one about the chat having been
   told.
 - A **task** is never given this block. A task's brief is its whole world.
+
+## Work on the same repository from a chat in another folder — does it see chats opened in a different directory
+
+Yes. A chat is filed under the folder codeaf was launched in, which is not always the
+repository the work is on: a chat opened in your home folder that works on a repository is
+filed under home. So `<elsewhere>` also reads **every other project folder** for work on a
+repository this chat is on — the repository of its working directory and of its own tasks.
+Worktrees of one repository count as one repository.
+
+```
+- Sweep the call sites · done · in home · internal/session/agent.go
+- Port the parser · window "docs pass" · in home · internal/parser/parse.go
+```
+
+- A row from another folder says which one (`in home`). Rows from this folder say nothing
+  extra. Work on an **unrelated** repository in another folder is never shown.
+- Rows are ranked before the cap of **6** and **6**: work that shares a file with this
+  chat's own work first, then work on the same repository, then work in the same folder.
+- `files unknown` on a row means its list of files **could not be read**. A row with no
+  files named simply named none.
+- When it **could not look**, it says so in one line under the lead instead of going quiet:
+  `other project folders were not searched: this conversation's repository could not be
+  resolved (…)`, or `the record of project <name> could not be read (…)`. A folder that is
+  not a repository at all is not an error and says nothing.
+
+## Do runs on the worker harness record which files they touched
+
+Yes. When a run on the worker harness ends, or is stopped, its row in the project's record
+names **every file it changed** against the commit its copy was cut from, files a worker
+committed itself included. That row is what `<elsewhere>`, the `tasks` tool and the rows on
+home read. If the list could not be read (no starting commit on record, or git refused),
+the row says `files unknown` rather than naming no files.
+
+- **While it runs** the row says `running`, and the window running it names the run and
+  the hand-offs that joined it as work out. Home, the sessions page, `<elsewhere>` and the
+  `tasks` tool in other windows count it as running, not idle.
+- **If its conversation closes, or its process dies, mid-run**, the row says `interrupted`,
+  with the files touched so far (new files included) when its copy is still there to read.
+  Carried on and finished, the new row replaces it.
+- In the run's **own** conversation, the `tasks` answer lists the run once, from its plan.
 
 ## Asking the chat what else is running on this project right now
 
