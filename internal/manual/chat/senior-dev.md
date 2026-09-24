@@ -35,7 +35,9 @@ the moment codeaf handed the work over.
 **The stage is said in plain words.** On the row and on that line senior-dev's stage
 reads `starting`, `reading the brief`, `working`, `handing in its work`, `checking its
 work` or `finishing` — never senior-dev's own names for its inner phases. The whole of its
-work on the change, every model call and tool included, reads `working`.
+work on the change, every model call and tool included, reads `working`; the build and
+tests it runs at the end, and a last turn to leave its work in a state that stands, read
+`checking its work`.
 
 `esc`, a press on the conversation's tab, or a press on `Home` leaves it, and the run goes
 on. `x` over an empty box, `/stop`, or `Stop` on that line asks `Stop this task?` first.

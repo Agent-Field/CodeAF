@@ -34,6 +34,16 @@ func TestEveryStageSeniorDevReportsHasAPersonsWord(t *testing.T) {
 	}
 }
 
+// SENIOR-DEV'S LANDING STAGE IS ITS LAST CHECKS, NOT ITS START. It reports
+// `landing` once as it starts (superseded by `implement` within milliseconds)
+// and then for its end-of-run landing turn and the build and tests it runs on
+// the tree it leaves, which read `starting` for those last minutes.
+func TestSeniorDevsLandingStageReadsAsCheckingItsWork(t *testing.T) {
+	if word := Program.StageWords["landing"]; word != "checking its work" {
+		t.Fatalf("senior-dev's landing stage reads %q, want %q", word, "checking its work")
+	}
+}
+
 func contains(list []string, want string) bool {
 	for _, item := range list {
 		if item == want {

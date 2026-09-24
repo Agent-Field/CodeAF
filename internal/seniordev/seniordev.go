@@ -35,11 +35,17 @@ import (
 
 // Program is senior-dev as codeaf carries it.
 // stageWords is senior-dev's stage names (app.Stages) in a person's words.
+//
+// `landing` IS ITS LAST CHECKS. senior-dev reports it once as it starts, and
+// `implement` replaces that within milliseconds; every other time it is the
+// end-of-run turn that brings its work to a state that stands and the build
+// and tests it runs on the tree it leaves. Read as `starting`, the row went
+// back to `starting` for the last minutes of a run.
 var stageWords = map[string]string{
 	"bootstrap":           "starting",
 	"run-contract":        "starting",
 	"intake":              "reading the brief",
-	"landing":             "starting",
+	"landing":             "checking its work",
 	"implement":           "working",
 	"agent-runtime":       "working",
 	"compaction-capacity": "working",
