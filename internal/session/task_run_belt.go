@@ -381,28 +381,9 @@ func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brie
 		return a.joinBeltRun(g, live, id, title, brief, dependencies, stand, via)
 	}
 
-	// A PROGRAM THAT EDITS FILES WORKS IN THE FOLDER ITSELF (programfolder.go),
-	// and the folder is readied before anything else: a folder that refuses —
-	// changes that are not committed, another program's run in it — refuses
-	// before a store is seeded or a row is published.
-	var folder *ProgramFolder
-	if via == nil {
-		// AN ORDINARY RUN IS REFUSED A FOLDER A PROGRAM'S RUN HOLDS
-		// (programhold.go), before a store is seeded or a copy cut from it.
-		if refusal := standHeldRefusal(stand, a.config.Workspace); refusal != "" {
-			return errors.New(refusal)
-		}
-	}
-	if via != nil && via.LandsTree() {
-		prepared, err := PrepareProgramFolder(ProgramFolderOrder{
-			Program: *via, Dir: stand.dir, Title: title, Holder: taskStopName(id, title),
-			Keep: plandb.TaskDir(filepath.Dir(path), storeID), Instead: "say which folder the work is in, as ground",
-			Place: a.config.Place, Sign: a.signsGitWork(),
-		})
-		if err != nil {
-			return err
-		}
-		folder = prepared
+	folder, err := a.readyRunFolder(id, title, filepath.Dir(path), stand, via)
+	if err != nil {
+		return err
 	}
 	plan, store, err := a.seedBeltRunStore(g, path, storeID, title, brief)
 	if err != nil {
@@ -459,6 +440,36 @@ func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brie
 
 	go a.driveBeltRun(runCtx, engine, run, a.beltRunSpec(run, brief))
 	return nil
+}
+
+// readyRunFolder answers the folder a new run that edits files by a program's
+// hand works in, readied, and what refuses a run its folder. It is the first
+// thing a run does, so a folder that refuses refuses before a store is seeded
+// or a row is published. sessionDir is the folder the run's store is in.
+//
+//   - A PROGRAM THAT EDITS FILES WORKS IN THE FOLDER ITSELF (programfolder.go),
+//     readied here: refused over changes that are not committed or another
+//     program's run in or around it, and otherwise held for the run.
+//   - AN ORDINARY RUN IS REFUSED A FOLDER A PROGRAM'S RUN HOLDS
+//     (programhold.go), before a copy is cut from it.
+//
+// A program that only answers reads the folder where it is and changes
+// nothing, so it is neither readied nor refused, and nil is its folder.
+func (a *Agent) readyRunFolder(id uint64, title, sessionDir string, stand taskStand, via *delegate.Delegate) (*ProgramFolder, error) {
+	if via == nil {
+		if refusal := standHeldRefusal(stand, a.config.Workspace); refusal != "" {
+			return nil, errors.New(refusal)
+		}
+		return nil, nil
+	}
+	if !via.LandsTree() {
+		return nil, nil
+	}
+	return PrepareProgramFolder(ProgramFolderOrder{
+		Program: *via, Dir: stand.dir, Title: title, Holder: taskStopName(id, title),
+		Keep: plandb.TaskDir(sessionDir, strconv.FormatUint(id, 10)), Instead: "say which folder the work is in, as ground",
+		Place: a.config.Place, Sign: a.signsGitWork(),
+	})
 }
 
 // joinBeltRun is the second task of a live run. The store holds one root, so the

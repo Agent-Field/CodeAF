@@ -40,14 +40,14 @@ type programHold struct {
 	holder string
 }
 
-// programHoldTries and programHoldPause are how often, and how far apart, a
-// run asks again for a hold it found taken. A door that only wants to know
+// programHoldWait is how long a run goes on asking for a hold it found taken,
+// and programHoldPause how far apart it asks. A door that only wants to know
 // whether a folder is busy takes the hold's file for the instant of asking
-// ([programHoldAt]), and a run that asks at that same instant would read
-// that as a run holding it; a real run holds its folder for minutes, so a
-// few short asks cost a refused run nothing it would notice.
+// ([programHoldAt]), and a run that asks at that same instant would read that
+// as a run holding it; a real run holds its folder for minutes, so a tenth of
+// a second costs a refused run nothing it would notice.
 const (
-	programHoldTries = 5
+	programHoldWait  = 100 * time.Millisecond
 	programHoldPause = 20 * time.Millisecond
 )
 
@@ -72,9 +72,9 @@ func claimProgramFolder(key, holder string) (*os.File, programHold, bool) {
 	if err != nil {
 		return nil, programHold{}, false
 	}
-	for try := 1; ; try++ {
+	for asked := time.Now(); ; {
 		err = filelock.Lock(file, true, true)
-		if err == nil || !isLockHeld(err) || try == programHoldTries {
+		if err == nil || !isLockHeld(err) || time.Since(asked) >= programHoldWait {
 			break
 		}
 		time.Sleep(programHoldPause)
