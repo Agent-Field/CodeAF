@@ -27,7 +27,7 @@ func (a *app) workTab() (chatTab, bool) {
 	if !live && a.workTabStable() {
 		return chatTab{}, false
 	}
-	word := strings.TrimSpace(rows[0].Title)
+	word := strings.TrimSpace(workTabRow(rows).Title)
 	if word == "" {
 		return chatTab{}, false
 	}
@@ -70,11 +70,25 @@ func (a *app) openWorkTab() tea.Cmd {
 	a.refreshElsewhere()
 	a.taskSheet = a.takeTaskReading()
 	a.workTabOn, a.taskSheet.planOn, a.taskSheet.detailOn = true, true, true
-	a.taskSheet.plan = session.PlanTaskPage{Row: rows[0]}
+	row := workTabRow(rows)
+	a.taskSheet.plan = session.PlanTaskPage{Row: row}
 	a.taskSheet.planNote.reset()
 	a.chatTabBar = tabBar{}
 	a.touch()
-	return a.taskSheetPlanAsk(rows[0].ID, nil, nil, nil)
+	return a.taskSheetPlanAsk(row.ID, nil, nil, nil)
+}
+
+// workTabRow is the row the run's tab is about: the first one still working,
+// and the first row when none is. A conversation that handed senior-dev two
+// tasks holds two runs' rows, and a tab named after the one that had already
+// landed opened on it while the other was the work in front of the person.
+func workTabRow(rows []session.PlanTaskRow) session.PlanTaskRow {
+	for _, row := range rows {
+		if planRunning(row.Status) {
+			return row
+		}
+	}
+	return rows[0]
 }
 
 func (a *app) workTabKey(msg tea.KeyPressMsg) tea.Cmd {
@@ -98,6 +112,16 @@ func (a *app) workTabKey(msg tea.KeyPressMsg) tea.Cmd {
 func (a *app) workTabFrame(width, height int) []string {
 	a.workTabStable()
 	out := a.headRows(width, a.tabsRow(width), a.pal)
+	// A PROGRAM'S RUN SHOWS ITS PAGE. The rows below are the whole tasks place
+	// — every conversation this machine has held — and for a run the plan
+	// switch drives that was the run's own list; a program's run has one row
+	// and its page is its conversation with codeaf, so the tab drew a hundred
+	// conversations and the run's notes under them and never the program.
+	// Its tab draws the page the rail opens, under the tab strip.
+	if a.taskSheet.planOn && a.taskPlanIsProgram() {
+		page, _, _ := a.taskPlanFrame(width, max(height-len(out), 1))
+		return append(out, page...)
+	}
 	reading := a.tasksFiltered()
 	reading.unfolded = true
 	rows := reading.rows(width, a.pal)

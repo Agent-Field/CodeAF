@@ -523,3 +523,43 @@ func TestADoorIntoAnOrdinaryTaskStillOpensItsRoom(t *testing.T) {
 		t.Fatal("an ordinary task's door asked the store for a page instead of opening its room")
 	}
 }
+
+// A PROGRAM'S TAB IS ITS CONVERSATION, AND IT IS THE RUN STILL WORKING. With two
+// of senior-dev's runs in one conversation, the tab was named after the first
+// row, which had landed, and it drew the whole tasks place — every
+// conversation on the machine — with that run's notes under it.
+func TestAProgramsTabShowsTheWorkingRunsConversation(t *testing.T) {
+	landed := programRow()
+	landed.ID, landed.Title, landed.Status, landed.Stage = "1", "Implement true-myth", "done", ""
+	working := programRow()
+	working.ID, working.Title = "2", "Implement happy-dom"
+	rows := []session.PlanTaskRow{landed, working}
+	pages := map[string]session.PlanTaskPage{
+		landed.ID:  programPage(landed, nil),
+		working.ID: programPage(working, programTurns()),
+	}
+	a, fake := planAppWith(t, rows, pages)
+	a.width, a.height = 120, 30
+	a.taskSheet.mine.plan = fake.plan
+	if tab, ok := a.workTab(); !ok || tab.word != "Implement happy-dom" {
+		t.Fatalf("the tab is %q, want the run still working", tab.word)
+	}
+	cmd := a.openWorkTab()
+	if cmd == nil {
+		t.Fatal("the run's tab did not open")
+	}
+	drive(t, a, cmd())
+	if a.taskSheet.plan.Row.ID != working.ID {
+		t.Fatalf("the tab opened row %q, want the working run %q", a.taskSheet.plan.Row.ID, working.ID)
+	}
+	lines := make([]string, 0)
+	for _, line := range a.workTabFrame(a.width, a.height) {
+		lines = append(lines, plain(line))
+	}
+	if !saidBy(lines, "senior-dev", "rewrite the auth middleware") {
+		t.Fatalf("the tab does not draw the program's conversation:\n%s", strings.Join(lines, "\n"))
+	}
+	if strings.Contains(strings.Join(lines, "\n"), " chats · ") {
+		t.Fatalf("the tab still draws the tasks place:\n%s", strings.Join(lines, "\n"))
+	}
+}
