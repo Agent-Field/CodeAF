@@ -203,5 +203,19 @@ func TestCrewSnapshotProvidersList(t *testing.T) {
 │  {tick} z-ai        subscription     1 model   · nothing today  on                                    │
 │  {off} ollama      local            0 models  · nothing today  off                                   │
 │  {tick} my-vllm     custom endpoint  pins only · nothing today  on                                    │
+│                                                                                                  │
+│  free routes  off · rate-limited, may log prompts                                                │
 ╰─ space or enter toggle · esc back ───────────────────────────────────────────────────────────────╯`)
+}
+
+func TestCrewSnapshotFreeRoutesOn(t *testing.T) {
+	a, _ := crewLab(t)
+	crewToProviders(t, a)
+	drive(t, a, key("enter"), key("down"), key(" "))
+	crewSnap(t, a, "free routes on", `
+╭─ crew · providers · 1 of 1 on ───────────────────────────────────────────────────────────── esc ─╮
+│  {tick} openrouter  api key  4 models · nothing today  on                                             │
+│                                                                                                  │
+│› free routes  on · rate-limited, may log prompts  {tick}                                              │
+╰─ space or enter toggle · esc back ────────────────────────────────────────────────────── z undo ─╯`)
 }

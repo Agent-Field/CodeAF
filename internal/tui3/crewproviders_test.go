@@ -237,6 +237,31 @@ func TestCrewProvidersList(t *testing.T) {
 	}
 }
 
+// THE FREE ROUTES ARE THE LIST'S LAST LINE, off until turned on, with the
+// tick and the undo every other change has — and never on the main rows.
+func TestCrewProvidersListFreeRoutes(t *testing.T) {
+	a, dir := crewLab(t)
+	crewToProviders(t, a)
+	if strings.Contains(crewScreen(a), crewFreeRoutesWord) {
+		t.Fatal("the free routes are drawn on the main rows")
+	}
+	drive(t, a, key("enter"), key("end"))
+	if line := crewLineWith(t, crewScreen(a), crewFreeRoutesWord); !strings.Contains(line, "off · "+crewFreeRoutesWhy) {
+		t.Fatalf("the free routes line reads %q", line)
+	}
+	drive(t, a, key("enter"))
+	if !config.CrewFreeRoutesAt(dir) {
+		t.Fatal("enter on the free routes did not turn them on")
+	}
+	drive(t, a, key("z"))
+	if config.CrewFreeRoutesAt(dir) {
+		t.Fatal("z left the free routes on")
+	}
+	if strings.Contains(crewLineWith(t, crewScreen(a), crewFreeRoutesWord), " on ") {
+		t.Fatal("the line did not come back off")
+	}
+}
+
 // THE SETTINGS SEATS ROW COUNTS THE PROVIDERS ON.
 func TestSettingsSeatsRowCountsProviders(t *testing.T) {
 	a, dir := crewProvidersLab(t)

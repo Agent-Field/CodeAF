@@ -567,7 +567,10 @@ which puts things back exactly as they were.
   `/connect`. `enter` opens the providers list: one line per provider with how it bills
   (`api key`, `subscription`, `local`, `custom endpoint`), how many models it serves, what it
   carried today and `on` or `off`; `space` or `enter` toggles the line under the cursor, `z`
-  undoes, `esc` goes back to the row.
+  undoes, `esc` goes back to the row. The list's last line is
+  `free routes  off · rate-limited, may log prompts`: turned on, the crew may also use a
+  model's free `:free` route, which is rate-limited and may log what it is sent. It is off
+  until you turn it on, and it is on the list only, never on the panel's rows.
 - **cap row**: type a figure (a digit starts it) and `enter`; empty it and `enter` for none.
   A figure that is not dollars is refused under the rows.
 - `z` undoes the last change while the bottom edge offers it; `?` shows every key;

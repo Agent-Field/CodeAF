@@ -734,8 +734,8 @@ func SetCrewAllowedRule(profileDir string, rule crewroute.Allowed) error {
 }
 
 // CrewState is the crew's persisted rows as they stand — the three seats, the
-// allowed rule, the cap and the providers turned off, raw — which is what the
-// panel's undo puts back.
+// allowed rule, the cap, the providers turned off and the free-routes switch,
+// raw — which is what the panel's undo puts back.
 //
 // IT IS THE ROWS AND NOT A READING OF THEM. An undo that re-wrote what the
 // readers made of the rows would turn a hand-written `auto` into an absent
@@ -747,7 +747,7 @@ type CrewState struct {
 
 // crewStateKeys are the rows a [CrewState] carries.
 func crewStateKeys() []string {
-	keys := []string{KeyCrewAllowed, KeyCrewCap, KeyCrewProvidersOff}
+	keys := []string{KeyCrewAllowed, KeyCrewCap, KeyCrewProvidersOff, KeyCrewFreeRoutes}
 	for _, seat := range crewroute.Seats {
 		keys = append(keys, tierKeyFor(CrewSeatTier(seat)))
 	}

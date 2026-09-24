@@ -160,6 +160,8 @@ const (
 	crewAllowFixWord   = "enter to allow it"
 	crewPickHint       = "type to filter"
 	crewProviderOff    = "provider off"
+	crewFreeRoutesWord = "free routes"
+	crewFreeRoutesWhy  = "rate-limited, may log prompts"
 	crewConnectChip    = "+"
 )
 
@@ -185,6 +187,7 @@ type crewPanel struct {
 	suggest   map[crewroute.Seat]string
 	rule      crewroute.Allowed
 	capUSD    float64
+	free      bool
 	providers []config.CrewProvider
 	offers    []config.CrewOffer
 	gaps      []crewroute.Gap
@@ -322,6 +325,7 @@ func (p *crewPanel) read(dir string) {
 	p.pins = config.CrewPinsAt(dir)
 	p.rule = config.CrewAllowedAt(dir)
 	p.capUSD = config.CrewCapAt(dir)
+	p.free = config.CrewFreeRoutesAt(dir)
 	p.providers = config.CrewProvidersAt(dir)
 	p.chip = min(p.chip, len(p.providers))
 	p.offers = config.CrewOffersAt(dir)
@@ -711,8 +715,16 @@ func (a *app) crewOpenProv() {
 	p.view, p.prov, p.provSaved = crewProviding, min(p.chip, max(0, len(p.providers)-1)), -1
 }
 
-// crewProvLines is how many lines the providers list has.
-func (p *crewPanel) crewProvLines() int { return len(p.providers) }
+// crewProvLines is how many lines the providers list has: a provider a line
+// and the free-routes switch last, which is the list's and never the row's —
+// a free pool is a way a provider can be reached, and the list is where how
+// each one is reached is said.
+func (p *crewPanel) crewProvLines() int {
+	if len(p.providers) == 0 {
+		return 0
+	}
+	return len(p.providers) + 1
+}
 
 // crewProvKey is a key on the providers list. There is no filter: a
 // person has a handful of connections, and every letter is free to mean
@@ -723,7 +735,7 @@ func (a *app) crewProvKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc", "q":
 		p.view, p.cursor = crewMain, crewProviders
-		p.chip = min(p.prov, len(p.providers))
+		p.chip = min(p.prov, max(0, len(p.providers)-1))
 	case "up", "k", "ctrl+p":
 		p.prov = moveCursor(p.prov, -1, p.crewProvLines())
 	case "down", "j", "ctrl+n":
@@ -740,9 +752,18 @@ func (a *app) crewProvKey(msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-// crewProvToggle is space or enter on a line of the providers list.
+// crewProvToggle is space or enter on a line of the providers list: a
+// provider turned off or on, or the free routes.
 func (a *app) crewProvToggle() tea.Cmd {
 	p := &a.crewUI
+	if p.prov == len(p.providers) && len(p.providers) > 0 {
+		free := !p.free
+		cmd := a.crewWrite(crewProviders, func(dir string) error { return config.SetCrewFreeRoutes(dir, free) })
+		if p.refusal == "" {
+			p.provSaved = p.prov
+		}
+		return cmd
+	}
 	return a.crewToggleProvider(p.prov)
 }
 
@@ -1817,6 +1838,21 @@ func (a *app) crewProvRows(width, hover int) ([]string, []int) {
 		rows = append(rows, a.crewRowLine(text, i == p.prov, hover == len(rows), false, width))
 		owner = append(owner, i)
 	}
+	// THE FREE ROUTES, apart from the providers and after them: a switch about
+	// every provider at once, and off unless somebody turned it on, because a
+	// free pool may keep what it is sent.
+	rows, owner = append(rows, ""), append(owner, -1)
+	at := len(p.providers)
+	state, ink := "off", a.pal.dim
+	if p.free {
+		state, ink = "on", a.pal.ink
+	}
+	text := a.pal.ink(crewFreeRoutesWord) + "  " + ink(state) + a.pal.dim(" · "+crewFreeRoutesWhy)
+	if p.live(now) && p.saved == crewProviders && p.provSaved == at {
+		text += "  " + a.pal.add(a.icon(tokens.GSettled))
+	}
+	rows = append(rows, a.crewRowLine(text, p.prov == at, hover == len(rows), false, width))
+	owner = append(owner, at)
 	if p.refusal != "" {
 		for _, said := range crewSaid(a.icon(tokens.GFailed)+" "+p.refusal, width, a.pal.bad) {
 			rows = append(rows, said)

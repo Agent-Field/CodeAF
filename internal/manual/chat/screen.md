@@ -1450,6 +1450,8 @@ a tick `✓` at its end, and the frame's bottom edge offers `z undo` for five se
 │  ✓ z-ai        subscription     4 models  · nothing today  on       │
 │  ✓ ollama      local            2 models  · nothing today  on       │
 │  ○ my-vllm     custom endpoint  pins only · nothing today  off      │
+│                                                                     │
+│  free routes  off · rate-limited, may log prompts                   │
 ```
 
 What gives way when the window narrows, in order: the seats drop their
