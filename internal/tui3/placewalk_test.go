@@ -104,7 +104,7 @@ func TestThePlaceWithNoStoreOpensAndSaysSoOnTheFrame(t *testing.T) {
 // was every door onto it.
 func TestTheTasksPlaceOpensOnAChatThatHasDelegatedNothing(t *testing.T) {
 	a := placeApp(t)
-	drive(t, a, key("alt+2"))
+	drive(t, a, key(placeChord(pageTasks)))
 	if a.page != pageTasks || !a.at(pageTasks) {
 		t.Fatal("the tasks place did not open")
 	}

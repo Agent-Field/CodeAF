@@ -64,6 +64,12 @@ func everyPlaceTable() []everyPlace {
 			},
 		},
 		{
+			id:     pageTeams,
+			open:   teamsPlaceLab,
+			cursor: func(a *app) int { return a.teamsCursorIndex() },
+			hits:   teamsHits,
+		},
+		{
 			id:     pageTasks,
 			open:   func(t *testing.T) *app { return historyApp(t, 200) },
 			cursor: func(a *app) int { return a.taskSheet.cursor },

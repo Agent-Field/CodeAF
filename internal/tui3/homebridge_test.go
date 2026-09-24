@@ -229,12 +229,12 @@ func TestEnterOnTheBarOpensThePlaceUnderTheCursor(t *testing.T) {
 	if !a.at(pageHome) {
 		t.Fatalf("walking the bar opened %q by itself", a.page.word())
 	}
-	if a.bar.at != pageTasks {
+	if a.bar.at != pageTeams {
 		t.Fatalf("→ landed the bar cursor on %q, want the next word along", a.bar.at.word())
 	}
 	// ...and `enter` is what goes in, with the cursor coming down into the body.
 	drive(t, a, key("enter"))
-	if !a.at(pageTasks) {
+	if !a.at(pageTeams) {
 		t.Fatalf("enter on the bar left the person on %q", a.page.word())
 	}
 	if a.bar.on {

@@ -188,7 +188,7 @@ func homeFate(word, rest string) string {
 		return fateTargetModel
 	case "folder":
 		return fateTargetFolder
-	case "settings", "search", "spend", "history", "home", "wall":
+	case "settings", "search", "spend", "history", "home", "wall", "teams":
 		return fatePlace
 	case "resume":
 		return fateResume

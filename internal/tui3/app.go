@@ -1341,6 +1341,12 @@ type app struct {
 	teamsDisk teamsDisk
 	// teamMenu is the strip chip's team switcher (teammenu.go).
 	teamMenu teamMenu
+	// tp is the teams page's own state: its selection, its reading of the
+	// store and the targets it drew (teamspage.go).
+	tp teamsPage
+	// tsheet is a team's card: its settings, its close and its delete
+	// (teamsheet.go).
+	tsheet teamSheet
 	// homeGen is home's own clock generation. It belongs to the SURFACE rather
 	// than to any conversation, because there is one home — and it is bumped by
 	// every close, so a tick armed by a home that has since been closed cannot
@@ -3318,6 +3324,10 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if write := a.teamsWrite(); write != nil {
 		cmd = tea.Batch(cmd, write)
 	}
+	// AND THE TEAMS PAGE SETTLES WHICH CONVERSATION ITS PANE HOSTS, after
+	// every message that could have moved the front (teamspagehost.go). One
+	// comparison on every other place.
+	a.teamsSync()
 	// AND THE TERMINAL'S TITLE IS ASKED AFTER EVERY MESSAGE, because this is
 	// the one place every change to where a person stands has already happened
 	// by — a place entered, a name arriving, a question coming up — and it is
@@ -3349,6 +3359,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// not survive has news, and a person who presses a key gets it rather than
 	// waiting for whatever repaints next.
 	a.takeLinkNotice()
+	// THE TEAMS PAGE TAKES WHAT IS ITS OWN AND HANDS THE REST TO THE MANAGER'S
+	// CONVERSATION it hosts (teamspagehost.go). One comparison on every other
+	// place.
+	if cmd, took := a.teamsRoute(msg); took {
+		return a, cmd
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		// A zero size is a terminal that could not say — a headless boot, a
@@ -3693,6 +3709,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.teamMenu.on {
 			a.closeTeamMenu()
 		}
+		if a.tsheet.on {
+			return a, nil
+		}
 		if a.wall.on {
 			a.wallWheel(msg.Mouse().X, msg.Mouse().Y, msg.Mouse().Button == tea.MouseWheelDown)
 			return a, nil
@@ -3909,6 +3928,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// its rows answer, and a press off it only puts it away (teammenu.go).
 		if a.teamMenu.on && msg.Mouse().Button == tea.MouseLeft {
 			return a, a.teamMenuPress(msg.Mouse().X, msg.Mouse().Y)
+		}
+		// A team's card owns the press while it is up, on the same terms
+		// (teamsheet.go).
+		if a.tsheet.on {
+			if msg.Mouse().Button == tea.MouseLeft {
+				return a, a.teamSheetPress(msg.Mouse().X, msg.Mouse().Y)
+			}
+			return a, nil
 		}
 		if a.wall.on && msg.Mouse().Button == tea.MouseLeft {
 			if cmd, took := a.wallPress(msg.Mouse().X, msg.Mouse().Y); took {
@@ -4302,6 +4329,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// (wall.go).
 		if a.teamMenu.on {
 			a.teamMenuMotion(msg.Mouse().X, msg.Mouse().Y)
+			return a, nil
+		}
+		if a.tsheet.on {
+			a.teamSheetMotion(msg.Mouse().X, msg.Mouse().Y)
 			return a, nil
 		}
 		if a.wall.on {
@@ -7214,6 +7245,10 @@ func (a *app) slash(line string) tea.Cmd {
 	case "wall":
 		// EVERY OPEN CONVERSATION AT ONCE, as a grid of live tiles (wall.go).
 		return a.openWall()
+
+	case "teams":
+		// THE TEAM-LEVEL VIEW, which is a place (place_teams.go).
+		return a.showPage(pageTeams)
 
 	case "spend":
 		// AND THE WHOLE MACHINE'S BILL, which is a place and not a note. This word

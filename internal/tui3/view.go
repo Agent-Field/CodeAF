@@ -273,6 +273,8 @@ func (a *app) frame() (string, int, int) {
 	// The strip's team switcher hangs over whatever page is drawn under it
 	// (teammenu.go); the frame as it was when it is down.
 	body = a.teamMenuOver(body)
+	// A team's card (teamsheet.go) hangs over whatever is drawn under it.
+	body = a.teamSheetOver(body)
 	return norm.NFC.String(body), caretX, caretY
 }
 
@@ -489,6 +491,12 @@ func (a *app) chatFrameLines(width, height int) ([]string, int, int) {
 		rows = append(rows, a.roomKinRows(width)...)
 	}
 	rows = append(rows, strip...)
+	// AND THE TEAMS PAGE'S OWN ROWS, while it hosts this conversation: the team's
+	// header, members and inbox, pinned under the strip and charged in
+	// [app.topHeight] on the same terms (teamspagehost.go).
+	if a.teamsHosting() {
+		rows = append(rows, a.teamsHostTop(width)...)
+	}
 	// THE ROSTER TAKES THE BODY WHOLE on a frame with no columns to lend it: the
 	// same rows, the same folds, the same footer, laid out at the full width
 	// instead of squeezed into thirty columns that are not there (task.go's
@@ -1039,6 +1047,11 @@ func (a *app) rule(width int) string {
 // nothing at all.
 func (a *app) size() (int, int) {
 	width, height := a.width, a.height
+	// THE TEAMS PAGE LENDS ITS MANAGER A RECTANGLE (teamspagehost.go): while the
+	// pane hosts the conversation, the conversation's width is the terminal's
+	// less the rail, so every layout and hit test it makes resolves against the
+	// cells it is really drawn in.
+	width -= a.teamsHostRail()
 	if width < 8 {
 		width = 8
 	}
@@ -1244,7 +1257,9 @@ func (a *app) startPageBody() int {
 // is resolved through them — three questions that must never be able to disagree
 // about where the body starts. Neither of the two may ask [app.viewHeight] back,
 // which is why both answer from the terminal's size alone.
-func (a *app) topHeight() int { return a.headHeight() + a.stripHeight() }
+func (a *app) topHeight() int {
+	return a.headHeight() + a.stripHeight() + a.teamsHostTopHeight()
+}
 
 // headHeight is what the pinned focus header costs the body region: one row
 // while a room is open on a frame with the height to spare, the kin rows under

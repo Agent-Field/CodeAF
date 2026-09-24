@@ -49,6 +49,10 @@ const (
 	pageSpend
 	pageSearch
 	pageSettings
+	// pageTeams is the team-level view (place_teams.go). It is appended rather
+	// than put after pageHome because the ids are only names: the order a
+	// person meets the places in is [placeOrder]'s, and nothing stores an id.
+	pageTeams
 )
 
 // ── THE CONTRACT EVERY PLACE ANSWERS ────────────────────────────────────────
@@ -385,11 +389,13 @@ var placeRegistry = map[page]place{}
 // bar's reading order at the mercy of what a file happens to be called — and
 // `place_home.go` sorts after `place_tasks.go` would silently reorder the bar
 // and every number on it.
-var placeOrder = []page{pageHome, pageTasks, pageSpend, pageSettings, pageStanding, pageMemory, pageSearch}
+var placeOrder = []page{pageHome, pageTeams, pageTasks, pageSpend, pageSettings, pageStanding, pageMemory, pageSearch}
 
-// placeBarPlaces is how many of [placeOrder] the tab bar draws: the four a day
-// is read through.
-const placeBarPlaces = 4
+// placeBarPlaces is how many of [placeOrder] the tab bar draws: the five a day
+// is read through. Teams joined them right after home (DESIGN.md section 8.4,
+// ruled 2026-09-24): it is where a person runs the work they handed off, so
+// it is read as often as home is.
+const placeBarPlaces = 5
 
 // barPages is the places the bar draws while a person stands at `here`: the
 // first [placeBarPlaces], and the room they are standing in when it is one of
@@ -1684,7 +1690,7 @@ const (
 	placeMapVerbWords = "→ show what this row can do"
 	// placeMapWords is the hint line while the map is drawn (SCREEN 3b): the
 	// chord list, in the cells the hint was already in.
-	placeMapWords = "alt+1…7 go to a place · " + placeMapTaskWords + " · " +
+	placeMapWords = "alt+1…8 go to a place · " + placeMapTaskWords + " · " +
 		placeMapVerbWords + " · " + mapCloseWords
 	// placeMapTaskWords is the map's clause about the chord that starts a task,
 	// named so the line can be drawn WITHOUT it: only home starts things, so on
