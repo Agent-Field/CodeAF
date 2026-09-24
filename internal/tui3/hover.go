@@ -322,6 +322,11 @@ const (
 	// would follow the packing instead of the conversation.
 	hoverDockWall
 	hoverDockCell
+	// hoverTraffic is one row of the manager's Traffic rail, held by its row
+	// on the last frame (teamtraffic.go), and hoverTrafficGrip the narrow
+	// frame's edge that lays the traffic over the body.
+	hoverTraffic
+	hoverTrafficGrip
 )
 
 // hoverAt is what the pointer is over, as an identity rather than as a screen
@@ -469,6 +474,12 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	// is on the frame none of the others can be: the roster is away, so every
 	// question below about a row of it answers about nothing (task.go's
 	// [app.railGripAt]).
+	// THE TRAFFIC RAIL IS ASKED BEFORE THE TASK COLUMN, for the reason the
+	// press asks it first: it stands at the frame's right edge, in columns the
+	// task column's own questions would otherwise claim (teamtraffic.go).
+	if at, ok := a.trafficHoverAt(x, y); ok {
+		return at
+	}
 	if a.railGripAt(x, y) {
 		return hoverAt{kind: hoverRailGrip}
 	}
