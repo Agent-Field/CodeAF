@@ -35,6 +35,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I switch teams from the tab strip", "conversations-and-teams"},
 		{"does deleting a team close its conversations", "conversations-and-teams"},
 		{"where are my teams saved", "conversations-and-teams"},
+		// The team manager (team-manager.md).
+		{"what can the team manager do", "team-manager"},
+		{"can the manager answer a member's permission prompt", "team-manager"},
+		{"how does a member post to the room", "team-manager"},
 		{"can I use my own deepseek key", "services"},
 		{"how do I connect glm", "services"},
 		{"how do I add an api key for another provider", "services"},
