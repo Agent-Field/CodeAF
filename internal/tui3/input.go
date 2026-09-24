@@ -352,16 +352,6 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		a.railPlanPending.keys = append(a.railPlanPending.keys, msg)
 		return nil
 	}
-	if a.railTaskPlanOn && !door {
-		cmd := a.taskPlanKey(msg)
-		if !a.taskSheet.planOn {
-			a.railTaskPlanOn = false
-		}
-		return cmd
-	}
-	if a.workTabOn {
-		return a.workTabKey(msg)
-	}
 	if cmd, taken := a.pasteChipKey(msg); taken {
 		return cmd
 	}
