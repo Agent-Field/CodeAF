@@ -79,7 +79,10 @@ it proposes one.
 given them when it starts, and codeaf enforces them from outside as well: once the run's
 spend has reached the dollar ceiling, every further model call is refused before it is
 made, and the task then says `<name> reached the run's dollar ceiling of $…`. The call
-that crossed the ceiling was already paid for, so a run can end a little over it.
+that crossed the ceiling was already paid for, so a run can end a little over it. On a
+service that reports no prices (a local proxy, a vendor's own API, a plan you signed in
+to) no call has a price to add up, so the dollar ceiling cannot hold: a time limit
+(`--max-hours`) is the bound there.
 
 **It runs alone.** While one is running, no other task can join its copy, and it cannot be
 started under another run. Both are refused with the folder that is busy:

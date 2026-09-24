@@ -64,7 +64,9 @@ ask is turned down inside the program, and after three it is told questions are 
 available. Put everything it would stop and ask into the brief.
 
 **It has no step cap.** It is held to the conversation's dollar and time ceilings instead,
-and codeaf enforces both from outside whatever it does.
+and codeaf enforces both from outside whatever it does. On a service that reports no
+prices the dollar ceiling cannot hold, and a time limit is the only bound (see the section
+on services that report no prices).
 
 **It reaches a model only through codeaf.** It holds no key and reads none; a
 `senior-dev.json` in your folder that sets `apiKey`, `baseURL` or `providerRouting` is
@@ -150,6 +152,24 @@ call on the run's own work model — the one a task's own worker would use — a
 conversation on the task page names the model that answered. When nothing here can serve
 that model either, the conversation's own model may answer instead, and the page names
 whichever model did. Which models it asks for is the next section.
+
+## senior-dev on a service that reports no prices — a local proxy, a Codex sign-in, the dollar ceiling does not hold, set a time limit
+
+Some model services answer without saying what a call cost: most of the services you
+connect in `/connect` besides the default router, such as a local proxy or runner, a
+vendor's own API, or a plan you signed in to such as Codex. codeaf never guesses a price,
+so each call
+senior-dev makes through one is counted with its tokens and no dollars. The task page,
+the rail and the spend place show no money for those calls, never `$0.00`, and a missing
+price does not mean the service charged nothing.
+
+**So the dollar ceiling cannot hold there.** A run whose calls report no price never
+reaches its dollar ceiling, whatever it is set to, and senior-dev's own `--max-cost` adds
+up the same missing figures. codeaf does not refuse such a run or estimate its cost.
+
+**On such a service the bound that holds is a time limit.** Start codeaf with
+`--max-hours`, or give a shell run `--max-hours`, before you hand the work off. With no
+time limit, the run ends only when senior-dev finishes or you stop it.
 
 ## Why a stopped senior-dev run takes a moment to end — the price of the call it was in the middle of
 
