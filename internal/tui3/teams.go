@@ -547,6 +547,11 @@ func teamTabs(t team, live []chatTab) []chatTab {
 			}
 		}
 		if !found {
+			// A member closed before it had a name is not drawn, as the strip
+			// draws no nameless tab ([app.tabList]); it is still a member.
+			if strings.TrimSpace(m.Word) == "" {
+				continue
+			}
 			tab = chatTab{key: m.Key, file: m.File, where: m.Where, word: m.Word, full: m.Word}
 		}
 		out = append(out, tab)
@@ -581,9 +586,21 @@ func (a *app) teamsEnsure() {
 	a.wall.teams = teams
 }
 
-// teamSave writes the sets, and says what the disk refused in the words the
-// caller hands it; the sets are kept in memory either way.
+// teamSave writes the sets; they are kept in memory either way. Each member
+// the strip still has a tab for takes that tab's current name first, so a
+// conversation that joined before it had a title is saved under the one it has
+// now and can be named again once its tab is closed.
 func (a *app) teamSave() error {
+	for i := range a.wall.teams {
+		for j, m := range a.wall.teams[i].Members {
+			for _, tab := range a.chatTabs {
+				if tab.key == m.Key && strings.TrimSpace(tab.word) != "" && !tab.start && !tab.work {
+					a.wall.teams[i].Members[j].Word = tab.word
+					break
+				}
+			}
+		}
+	}
 	return saveTeams(a.profileDir, a.wall.teams)
 }
 
@@ -813,12 +830,20 @@ func (a *app) teamDelete(id string) error {
 	return a.teamSave()
 }
 
-// teamJoinNew puts a conversation this window has just started into the team
-// the strip is narrowed to, so a new conversation opened while looking at a
-// team is one of it. It is called from the doors that mint a fresh
-// conversation and never from a switch: moving to a conversation that already
-// exists changes no team. With no team active it does nothing, and it never
-// loads the file, because a team can only be active once it has been loaded.
+// teamJoinFront puts the conversation this window has just started, now in
+// front, into the team the strip is narrowed to, so a new conversation opened
+// while looking at a team is one of it. It is called from the two doors that
+// mint a fresh conversation, /new and its road from the strip's + and the start
+// page ([app.renewRefusing]) and a path typed on home ([app.startBeside]), at
+// the moment the conversation first has its key. It is never called from a
+// switch: moving to a conversation that already exists changes no team.
+func (a *app) teamJoinFront() {
+	a.teamJoinNew(chatTab{key: a.convKey(a.file), file: a.file, where: a.workspace})
+}
+
+// teamJoinNew is [app.teamJoinFront] for any tab. With no team active it does
+// nothing, and it never loads the file, because a team can only be active once
+// it has been loaded.
 func (a *app) teamJoinNew(tab chatTab) {
 	t, ok := a.teamActive()
 	if !ok || tab.key == "" || teamHolds(t, tab.key) {

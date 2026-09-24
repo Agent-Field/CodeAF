@@ -7700,6 +7700,9 @@ func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
 	if key := a.convKey(a.file); key != "" {
 		a.rememberOpen(key)
 	}
+	// A conversation started while a team is shown is one of that team
+	// (teams.go's [app.teamJoinFront]).
+	a.teamJoinFront()
 	return cmd, true
 }
 
