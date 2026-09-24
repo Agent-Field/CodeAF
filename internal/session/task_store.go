@@ -1066,6 +1066,16 @@ func (g *TaskGraph) documentLocked() taskDocument {
 // They are a pair and they are next to each other so that a field added to one
 // is missing from the other in the same eyeful.
 func runRowRecord(notice TaskNotice) runRecord {
+	// AN INTERRUPTED ROW IS WRITTEN DOWN AS THE MOVING ROW IT WAS. Interrupted
+	// is what a reader makes of a row that was moving when its process went
+	// away ([runRowNotice]); it is not a state this file holds, and the row was
+	// written back verbatim, so the next reopen refused the whole checkpoint and
+	// the conversation lost every task it had, finished ones included. Written
+	// as running, it comes back interrupted again, and an older build reads it.
+	state := notice.State
+	if state == TaskInterrupted {
+		state = TaskRunning
+	}
 	return runRecord{
 		ID:        notice.ID,
 		Run:       notice.Run,
@@ -1073,7 +1083,7 @@ func runRowRecord(notice TaskNotice) runRecord {
 		Parent:    notice.Parent,
 		Title:     notice.Title,
 		Kind:      notice.Kind,
-		State:     notice.State,
+		State:     state,
 		Stopped:   notice.Stopped,
 		Report:    notice.Report,
 		Model:     notice.Model,
@@ -1409,7 +1419,11 @@ func decodeTasks(content []byte) (taskDocument, error) {
 			return taskDocument{}, fmt.Errorf("run row %d is also a node", record.ID)
 		case drawn[record.ID]:
 			return taskDocument{}, fmt.Errorf("run row %d appears twice", record.ID)
-		case !validTaskState(record.State):
+		// A FILE AN EARLIER BUILD WROTE WITH AN INTERRUPTED ROW is read, not set
+		// aside whole: that build wrote the row back as the reader had drawn it
+		// ([runRowRecord] says why that no longer happens), and refusing the
+		// file for it cost the conversation every task it had.
+		case !validTaskState(record.State) && record.State != TaskInterrupted:
 			return taskDocument{}, fmt.Errorf("run row %d is in state %q", record.ID, record.State)
 		case record.ElapsedMS < 0:
 			return taskDocument{}, fmt.Errorf("run row %d has a negative elapsed", record.ID)

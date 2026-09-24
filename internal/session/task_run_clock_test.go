@@ -391,3 +391,76 @@ func TestTheTasksToolSeesAProgramsRunAndSaysHowLongItTook(t *testing.T) {
 		t.Fatal("the note the conversation was handed at the landing does not say how long the run took")
 	}
 }
+
+// AN INTERRUPTED ROW SURVIVES THE NEXT CHECKPOINT. A row that was moving when
+// its process went away comes back interrupted, and the next checkpoint wrote
+// it down as `interrupted` — a state the reader refuses — so the reopen after
+// that set the whole file aside and the conversation lost every task it had,
+// the finished ones with it (found by killing the engine under a real
+// senior-dev run, then opening the conversation twice).
+func TestAnInterruptedRunRowSurvivesTheNextCheckpoint(t *testing.T) {
+	dir, workspace := t.TempDir(), t.TempDir()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = workspace
+		config.Place = Place{Dir: dir}
+		config.SessionFile = filepath.Join(dir, placeTranscript)
+	})
+	g := agent.graph()
+	began := time.Date(2026, time.September, 24, 10, 35, 54, 0, time.UTC)
+	done := TaskNotice{ID: g.reserve(), Title: "the finished run", State: TaskDone, StartedAt: began, EndedAt: began.Add(time.Minute)}
+	moving := TaskNotice{ID: g.reserve(), Title: "the run codeaf closed under", State: TaskRunning, StartedAt: began.Add(2 * time.Minute)}
+	agent.publishRunRow(g, done)
+	agent.publishRunRow(g, moving)
+	journal := agent.file.journalPath()
+	if err := agent.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	reopen := func() *Agent {
+		t.Helper()
+		back, err := newAgent(Config{Workspace: workspace, Model: "test/model", System: "SYSTEM", SessionFile: journal}, &scriptedCompleter{})
+		if err != nil {
+			t.Fatalf("reopen: %v", err)
+		}
+		return back
+	}
+	first := reopen()
+	if rows := first.graph().runRows(moving.ID); len(rows) != 1 || rows[0].State != TaskInterrupted {
+		t.Fatalf("the moving row came back as %+v, want interrupted", rows)
+	}
+	// Anything that writes the checkpoint again: here, one more row.
+	later := TaskNotice{ID: first.graph().reserve(), Title: "a later run", State: TaskDone, StartedAt: began.Add(time.Hour), EndedAt: began.Add(2 * time.Hour)}
+	first.publishRunRow(first.graph(), later)
+	if err := first.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	second := reopen()
+	defer second.Close()
+	for _, want := range []TaskNotice{done, moving, later} {
+		if rows := second.graph().runRows(want.ID); len(rows) != 1 || rows[0].Title != want.Title {
+			t.Fatalf("row %d (%s) came back as %+v after the second reopen", want.ID, want.Title, rows)
+		}
+	}
+	if rows := second.graph().runRows(moving.ID); rows[0].State != TaskInterrupted {
+		t.Fatalf("the interrupted row came back as %s, want interrupted still", rows[0].State)
+	}
+}
+
+// A FILE AN EARLIER BUILD WROTE WITH AN INTERRUPTED ROW STILL LOADS, rather than
+// being set aside whole: the row is read as the moving row it was.
+func TestACheckpointHoldingAnInterruptedRunRowIsNotRefused(t *testing.T) {
+	document := taskDocument{Type: "tasks", Version: 1, Seq: 2, Runs: []runRecord{
+		{ID: 1, Title: "done", State: TaskDone},
+		{ID: 2, Title: "cut", State: TaskInterrupted},
+	}}
+	content, err := json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, err := decodeTasks(content)
+	if err != nil {
+		t.Fatalf("a checkpoint with an interrupted run row was refused: %v", err)
+	}
+	if len(back.Runs) != 2 {
+		t.Fatalf("the checkpoint came back with %d rows, want both", len(back.Runs))
+	}
+}
