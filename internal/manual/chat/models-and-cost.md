@@ -1468,8 +1468,12 @@ one late line to the machine's usage ledger. That line is marked `reconciled`, m
 figures came from the receipt rather than the cut stream. A losing rescue arm is recorded as
 hedged waste from its own receipt too; it is real provider money, but it is not added twice.
 
+codeaf asks for the receipt at once, then again about 1, 5, 20 and 40 seconds after the call
+ended. The receipt for a call cut in the middle usually takes the router about twenty seconds
+to price.
+
 When no generation id arrived, the base has no receipt route, or the receipt still cannot be
-had after the short retry schedule, codeaf writes an `unbilled` marker with no invented
+had after that schedule, codeaf writes an `unbilled` marker with no invented
 price or token count. The marker survives a restart. `/cost` counts missing prices for this
 conversation and its tasks; `/spend` counts the markers in its selected time window. Both
 say, for example, `2 calls the provider charged for and could not be priced`. At zero they

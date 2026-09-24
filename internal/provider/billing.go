@@ -94,8 +94,24 @@ type Reconciled struct {
 // finish without their usage blocks at the same instant.
 type ReconcileSink func(Reconciled)
 
+// ReceiptPending is told the moment a receipt is queued for a call whose
+// stream ended without its usage block, and answers the function to call once
+// that receipt's one answer has reached the [ReconcileSink]. The answer is
+// called exactly once, found or not, so a count kept with it always comes back
+// to zero.
+//
+// IT EXISTS FOR WORK WHOSE BOOKS CLOSE. A receipt is fetched in the background
+// on a schedule that runs for seconds after the call returned, and a caller
+// that reads its total and closes its books the moment its last call ends
+// reads a total without that money — the stopped senior-dev runs of
+// 2026-09-23 lost their in-flight call exactly so, about twenty seconds before
+// its receipt arrived. With this armed, such a caller can wait (bounded by
+// [ReceiptWait]) for what it is still owed before it reads the total.
+type ReceiptPending func() (done func())
+
 type billingContextKey struct{}
 type reconcileContextKey struct{}
+type receiptPendingContextKey struct{}
 
 // WithBilling arms one piece of work's banking. Like the transcript sink it
 // belongs to the work rather than to the client, because one client serves
@@ -115,6 +131,26 @@ func WithReconcile(ctx context.Context, sink ReconcileSink) context.Context {
 		return ctx
 	}
 	return context.WithValue(ctx, reconcileContextKey{}, sink)
+}
+
+// WithReceiptPending arms one piece of work to be told about every receipt
+// queued on its behalf and when each was answered ([ReceiptPending]). It
+// changes nothing about how a receipt is fetched or banked: the money still
+// reaches the work through [WithReconcile] alone.
+func WithReceiptPending(ctx context.Context, pending ReceiptPending) context.Context {
+	if pending == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, receiptPendingContextKey{}, pending)
+}
+
+// receiptPendingFrom reads back what [WithReceiptPending] armed, or nil.
+func receiptPendingFrom(ctx context.Context) ReceiptPending {
+	if ctx == nil {
+		return nil
+	}
+	pending, _ := ctx.Value(receiptPendingContextKey{}).(ReceiptPending)
+	return pending
 }
 
 // billingFrom reads back the sink WithBilling armed, or nil.
@@ -178,6 +214,10 @@ func BillingSinkFrom(ctx context.Context) BillingSink { return billingFrom(ctx) 
 
 // ReconcileSinkFrom reads back the receipt sink [WithReconcile] armed, or nil.
 func ReconcileSinkFrom(ctx context.Context) ReconcileSink { return reconcileFrom(ctx) }
+
+// ReceiptPendingFrom reads back what [WithReceiptPending] armed, or nil — for a
+// scripted funnel that owes a receipt the way the provider's own does.
+func ReceiptPendingFrom(ctx context.Context) ReceiptPending { return receiptPendingFrom(ctx) }
 
 // CallNodeFrom is the node WithCallNode named, empty when nothing did.
 func CallNodeFrom(ctx context.Context) string { return callNode(ctx) }

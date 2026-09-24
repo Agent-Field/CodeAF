@@ -676,3 +676,80 @@ func TestReceiptWorkersRetireAfterTheirQueueDrains(t *testing.T) {
 		t.Fatal("a receipt arriving after retirement never restarted its worker")
 	}
 }
+
+// TestAQueuedReceiptIsOwedUntilItsSinkHasBankedIt pins the pending door that
+// lets a run wait for the price of the call it was cut in the middle of: the
+// work is told a receipt is owed before the fetch begins, and told it was
+// answered only after the sink has had the money — never the other way round,
+// or a caller could read its total in the gap. A call that queues no receipt
+// (a usage block, or no id and no text) owes nothing.
+func TestAQueuedReceiptIsOwedUntilItsSinkHasBankedIt(t *testing.T) {
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		<-release
+		fmt.Fprint(w, `{"data":{"total_cost":0.058,"tokens_prompt":52139,"tokens_completion":4895}}`)
+	}))
+	t.Cleanup(server.Close)
+	client := receiptTestClient(t, server)
+	var mu sync.Mutex
+	var owed int
+	var order []string
+	pending := func() func() {
+		mu.Lock()
+		owed++
+		mu.Unlock()
+		return func() {
+			mu.Lock()
+			owed--
+			order = append(order, "answered")
+			mu.Unlock()
+		}
+	}
+	results := make(chan Reconciled, 1)
+	ctx := WithReceiptPending(WithReconcile(t.Context(), func(result Reconciled) {
+		mu.Lock()
+		order = append(order, "banked")
+		mu.Unlock()
+		results <- result
+	}), pending)
+
+	// Neither of these queues a receipt, so neither is owed.
+	cost := 0.01
+	client.settle(ctx, "sim/model", &ai.Response{Usage: &ai.Usage{PromptTokens: 1, Cost: &cost}}, "stalled", 0)
+	client.settle(ctx, "sim/model", &ai.Response{}, "stalled", 0)
+	mu.Lock()
+	if owed != 0 {
+		mu.Unlock()
+		t.Fatalf("owed = %d after two calls that queued no receipt", owed)
+	}
+	mu.Unlock()
+
+	client.settle(ctx, "sim/model", &ai.Response{ID: "cut-in-flight"}, "stopped", 12)
+	mu.Lock()
+	if owed != 1 {
+		mu.Unlock()
+		t.Fatalf("owed = %d while the receipt is being fetched, want 1", owed)
+	}
+	mu.Unlock()
+	close(release)
+	if result := receiptResult(t, results); !result.Found || result.Cost != 0.058 {
+		t.Fatalf("receipt = %+v", result)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		mu.Lock()
+		settled := owed == 0 && len(order) == 2
+		got := append([]string(nil), order...)
+		mu.Unlock()
+		if settled {
+			if got[0] != "banked" || got[1] != "answered" {
+				t.Fatalf("order = %v, want the money banked before the receipt is marked answered", got)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the receipt was never marked answered: order %v", got)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
