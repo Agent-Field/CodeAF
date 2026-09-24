@@ -406,11 +406,9 @@ func wallHint(v wallView, ascii bool) string {
 		case wallActNext:
 			return keyed("Go to the next conversation waiting on you", "n")
 		case wallActResume:
-			them := "the " + strconv.Itoa(v.away) + " conversations"
-			if v.away == 1 {
-				them = "the conversation"
-			}
-			return keyed("Resume "+them+" of "+team(v.team)+" not open here; nothing in front moves", "r")
+			// Short, because the toolbar gives the hint what its buttons leave:
+			// the title beside the button already says which team.
+			return keyed("Resume the "+strconv.Itoa(v.away)+" not open here", "r")
 		case wallActColsLess:
 			return keyed("Fewer columns", "-")
 		case wallActColsMore:
