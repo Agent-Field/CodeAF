@@ -106,3 +106,48 @@ func TestTheDelegationDoorsCrossFromTheEnginesProfile(t *testing.T) {
 		t.Fatalf("the team's files are still there: %v", err)
 	}
 }
+
+// THE WRAP-UP'S DOORS CROSS: the request lands in the engine's Traffic as
+// exactly the marker the manager's session reads, and accepting a decided
+// closing report closes the team on the engine, once.
+func TestTheWrapUpDoorsCrossToTheEngine(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	loop, dir := teamsLoop(t)
+	if !loop.Client.Welcome().WrapUp {
+		t.Fatal("an engine of this build does not say it has the wrap-up doors")
+	}
+	if err := teamstore.Save(dir, []teamstore.Team{
+		{ID: "0a0a0a0a0a0a", Name: "harbor", Manager: "hm",
+			Members: []teamstore.Member{{Key: "hm", Handle: "boss"}, {Key: "w", Handle: "web"}}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := loop.Client.TeamsWrapUp("0a0a0a0a0a0a", ""); err != nil {
+		t.Fatal(err)
+	}
+	log, err := teamstore.ReadTraffic(dir, "0a0a0a0a0a0a", "", 0)
+	if err != nil || len(log) != 1 || !teamstore.IsWrapUp(log[0]) {
+		t.Fatalf("the engine's traffic: %+v %v", log, err)
+	}
+	p, err := teamstore.Raise(dir, teamstore.Packet{Team: teamstore.Person, Origin: "0a0a0a0a0a0a", Kind: teamstore.PacketClosing,
+		RaisedBy: teamstore.FromManager, Question: "close harbor?", Report: &teamstore.ClosingReport{Done: "all of it"},
+		Options: []teamstore.Option{{ID: teamstore.OptionClose, Label: "Close", Consequence: "it closes"},
+			{ID: teamstore.OptionKeepGoing, Label: "Keep going", Consequence: "it stays"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loop.Client.TeamsDecide(p.ID, teamstore.Person, teamstore.OptionClose, ""); err != nil {
+		t.Fatal(err)
+	}
+	reply, err := loop.Client.TeamsAcceptClosing(p.ID)
+	if err != nil || !reply.Closed {
+		t.Fatalf("accept: %+v %v", reply, err)
+	}
+	if again, err := loop.Client.TeamsAcceptClosing(p.ID); err != nil || again.Closed {
+		t.Fatalf("a second accept: %+v %v", again, err)
+	}
+	f, _ := teamstore.Load(dir)
+	if team, _ := f.Team("0a0a0a0a0a0a"); !team.Closed() {
+		t.Fatal("the engine's team did not close")
+	}
+}
