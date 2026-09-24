@@ -7253,11 +7253,11 @@ func (a *app) slash(line string) tea.Cmd {
 		// THE SHELF, AS A PICKER. Bare, it opens the list on the whole shelf
 		// with the attached ones at the top, which is the same answer the
 		// space after the command gives (skillpick.go); the surface writes
-		// the command and its space into the box rather than opening the list
-		// from nowhere, because the list is synced off the draft and a draft
-		// with the command in it is a draft the query can be typed into.
+		// the command and its query into the box rather than opening the list
+		// from nowhere. A path typed on home must survive the new conversation
+		// that home opens before this command reaches the picker.
 		a.input.reset()
-		a.input.insert("/skill ")
+		a.input.insert("/skill " + rest)
 		a.syncLists()
 		a.touch()
 		return a.edited()
