@@ -782,11 +782,52 @@ func (a *app) openRoom(id uint64, title string) {
 		// what is asked ([roomRowDone]).
 		room.done = roomRowDone(a.tasks[id])
 		room.resolveUnfinished()
-		a.roomPump = tea.Batch(prefetch, a.wake())
+		a.roomPump = tea.Batch(prefetch, a.wake(), a.roomProgramCheck(id))
 		return
 	}
 	room.lane, room.stop = lane, stop
-	a.roomPump = tea.Batch(waitRoom(lane, room.gen), prefetch, a.wake())
+	a.roomPump = tea.Batch(waitRoom(lane, room.gen), prefetch, a.wake(), a.roomProgramCheck(id))
+}
+
+// roomProgramCheck asks the store, off the loop, whether the task a room was
+// just opened on is a program's, and if it is, trades the room for the task's
+// page.
+//
+// EVERY DOOR ENDS HERE, SO THE QUESTION IS ASKED HERE. [app.openRoomFor] asks
+// the rows this conversation holds, which answers without a frame of room, but
+// a door that brings a conversation forward and reopens the room it was on
+// (the sessions place, a switch back to a held conversation) opens it before
+// that conversation's rows have been read, and a program's room is a blank
+// page that says it will fill in: the program has no worker transcript, and
+// its conversation with codeaf is on the stored page. Nothing is traded when
+// the person has already left the room, or when it is another conversation's.
+func (a *app) roomProgramCheck(id uint64) tea.Cmd {
+	// A DOOR THAT ALREADY ASKED THE STORE, and was told there is no page, is
+	// not asked again: the rail reads the store once, at the gesture.
+	if asked := a.roomPageAsked; asked != 0 {
+		a.roomPageAsked = 0
+		if asked == id {
+			return nil
+		}
+	}
+	agent, ok := a.planReader()
+	if !ok || id == 0 {
+		return nil
+	}
+	key := strconv.FormatUint(id, 10)
+	return a.offLoop(func() func(bool) tea.Cmd {
+		page, found := agent.PlanTaskPage(key)
+		return func(here bool) tea.Cmd {
+			if !here || !found || (page.Program == nil && strings.TrimSpace(page.Row.Program) == "") {
+				return nil
+			}
+			if a.room == nil || a.roomIsGuest() || a.room.id != id {
+				return nil
+			}
+			a.closeRoom()
+			return a.openRailPlan(key, nil)
+		}
+	})
 }
 
 // openFarRoom opens a hosted node immediately and asks the engine for its
@@ -1121,6 +1162,7 @@ func (a *app) openRoomFor(id uint64, title string) {
 	}
 	if a.programTask(id) {
 		a.roomPump = tea.Batch(a.roomPump, a.openRailPlan(strconv.FormatUint(id, 10), func() tea.Cmd {
+			a.roomPageAsked = id
 			a.openRoom(id, title)
 			return a.takeRoomPump()
 		}))
@@ -1164,6 +1206,7 @@ func (a *app) openRailRoom(node *taskNode) tea.Cmd {
 		if run != "" && !hasPlan {
 			a.openOrchRoom(run, part)
 		} else {
+			a.roomPageAsked = id
 			a.openRoom(id, title)
 		}
 		return a.takeRoomPump()

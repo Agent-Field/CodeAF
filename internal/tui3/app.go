@@ -997,6 +997,10 @@ type app struct {
 	// answer belong to the replay that asked for it.
 	historyLoading bool
 	historyGen     int
+	// roomPageAsked is the task whose stored page the door opening its room has
+	// just asked for and not found, so the room does not ask again
+	// ([app.roomProgramCheck]). Zero is every other opening.
+	roomPageAsked uint64
 	// unfolded holds the turns whose tool cluster is showing every call.
 	unfolded map[int]bool
 	// workOpen is the ephemeral expansion state of live and completed work.

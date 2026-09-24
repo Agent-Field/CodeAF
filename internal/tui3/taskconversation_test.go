@@ -563,3 +563,36 @@ func TestAProgramsTabShowsTheWorkingRunsConversation(t *testing.T) {
 		t.Fatalf("the tab still draws the tasks place:\n%s", strings.Join(lines, "\n"))
 	}
 }
+
+// A ROOM OPENED ON A PROGRAM'S TASK TRADES ITSELF FOR THE PAGE. The sessions
+// place brings a conversation forward and reopens the room it was aimed at
+// before that conversation's rows are read, so the row check at the door
+// cannot see the program; the room asks the store itself, and a program's
+// page replaces the blank room.
+func TestARoomOpenedOnAProgramsTaskBecomesItsPage(t *testing.T) {
+	row := programRow()
+	row.ID = "7"
+	a, _ := planAppWith(t, nil, map[string]session.PlanTaskPage{row.ID: programPage(row, programTurns())})
+	a.width, a.height = 120, 28
+	a.room = a.newRoom(7, row.Title)
+	cmd := a.roomProgramCheck(7)
+	if cmd == nil {
+		t.Fatal("the room did not ask whether its task is a program's")
+	}
+	drive(t, a, cmd())
+	if a.room != nil {
+		t.Fatal("the program's room stayed open")
+	}
+	if !a.taskSheet.planOn || !a.taskPlanIsProgram() {
+		t.Fatal("the program's page did not replace the room")
+	}
+	// AND AN ORDINARY TASK KEEPS ITS ROOM.
+	plain := row
+	plain.Program, plain.Stage = "", ""
+	b, _ := planAppWith(t, nil, map[string]session.PlanTaskPage{"8": {Row: plain}})
+	b.room = b.newRoom(8, "ordinary")
+	drive(t, b, b.roomProgramCheck(8)())
+	if b.room == nil {
+		t.Fatal("an ordinary task's room was traded away")
+	}
+}
