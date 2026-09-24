@@ -42,7 +42,7 @@ func (a *app) headRows(width int, middle string, pal palette) []string {
 	// says the strip above it is narrowed (teams.go).
 	ruleInk := pal.dim
 	if sp, ok := a.teamActive(); ok {
-		if ink := pal.teamInk(sp.hueSpec()); ink != nil {
+		if ink := pal.teamInk(sp.HueSpec()); ink != nil {
 			ruleInk = ink
 		}
 	}

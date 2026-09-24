@@ -163,6 +163,13 @@ var frameForbidden = map[string]map[string]bool{
 	"filepath": {"Glob": true, "Walk": true, "WalkDir": true, "EvalSymlinks": true},
 	"net":      {"*": true},
 	"http":     {"*": true},
+	// The team store (internal/teams) is another package, so its bodies are
+	// leaves to this walk; its doors that touch the disk are named here so a
+	// frame that reached one would still be seen.
+	"teamstore": {
+		"Load": true, "LoadHued": true, "Save": true, "Update": true, "SetAside": true,
+		"AppendTraffic": true, "ReadTraffic": true,
+	},
 }
 
 // processForbidden is the narrower question the update loop is asked: not

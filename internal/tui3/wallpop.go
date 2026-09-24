@@ -79,7 +79,7 @@ func (a *app) wallOpenSettings(id string, at wallPop) {
 	at.kind = wallPopSettings
 	at.team = id
 	at.name = t.Name
-	at.choices = append([]teamHueSpec{t.hueSpec()},
+	at.choices = append([]teamHueSpec{t.HueSpec()},
 		teamHueChoices(a.teamHues(id), teamReservedHues(a.pal), wallSwatchCount-1)...)
 	at.choice = 0
 	a.wall.pop = at

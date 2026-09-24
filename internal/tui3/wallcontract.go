@@ -1,10 +1,10 @@
 package tui3
 
 import (
-	"encoding/json"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
 // ── THE WALL AND ITS TEAMS: THE SHAPES THE THREE HALVES AGREE ON ───────────
@@ -294,48 +294,13 @@ func (r wallHitRef) onTile(i int) bool {
 	return r.kind >= wallHitTile && r.kind <= wallHitClose && r.arg == i
 }
 
-// teamMember is one conversation a team holds, with enough to reopen it
-// when this window no longer has a tab for it.
-type teamMember struct {
-	Key   string `json:"key"`
-	File  string `json:"file"`
-	Where string `json:"where"`
-	Word  string `json:"word"`
-}
-
-// team is one named set of conversations. A conversation may be in any
-// number of them: a team is a grouping, not a place a conversation lives.
-// teams.json holds {"version":2,"teams":[...]} (teams.go).
-type team struct {
-	// ID is random and minted once; everything that names a team names it by
-	// this, never by its place in the list or by its name.
-	ID   string
-	Name string
-	// Parent is the id of the team this one sits under, "" at the top level.
-	// A team has one parent at most and the chain never loops.
-	Parent string
-	// Members are the conversations, in the order the person stored them.
-	Members []teamMember
-	// Manager is reserved for the member whose word will outrank the team's
-	// other conversations, by conversation key. Nothing sets it yet; a file
-	// that has one keeps it.
-	Manager string
-	// Hue and Tier are the team's colour (teamhue.go). A file written before
-	// teams had colours has neither, and is given them on load, the same ones
-	// every time.
-	Hue  float64
-	Tier int
-	Made time.Time
-
-	// hued says the file gave this team a colour; extra is every field a
-	// later build wrote that this one does not know, kept so a save does not
-	// drop it (teams.go reads and writes both).
-	hued  bool
-	extra map[string]json.RawMessage
-}
-
-// hueSpec is the team's colour as the generator speaks it.
-func (t team) hueSpec() teamHueSpec { return teamHueSpec{Hue: t.Hue, Tier: t.Tier} }
+// team and teamMember are the store's own types (internal/teams), named
+// here as the interface has always named them. The store owns the file, the
+// ids, the tree, handles and the manager; the interface owns how a team looks.
+type (
+	team       = teamstore.Team
+	teamMember = teamstore.Member
+)
 
 // wallState is the wall's whole footprint on the app: one field.
 type wallState struct {

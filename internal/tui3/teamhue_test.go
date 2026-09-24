@@ -169,7 +169,7 @@ func TestTeamHueLegacyLoadIsStable(t *testing.T) {
 	}
 	for i := range first {
 		if first[i].Hue != second[i].Hue || first[i].Tier != second[i].Tier {
-			t.Fatalf("team %d coloured %v then %v", i, first[i].hueSpec(), second[i].hueSpec())
+			t.Fatalf("team %d coloured %v then %v", i, first[i].HueSpec(), second[i].HueSpec())
 		}
 	}
 	if hueGap(first[0].Hue, 200) < 60 || hueGap(first[2].Hue, 200) < 60 || hueGap(first[0].Hue, first[2].Hue) < 60 {

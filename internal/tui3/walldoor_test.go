@@ -171,7 +171,7 @@ func TestTabWallDoorTakesTheTeamColour(t *testing.T) {
 		t.Fatalf("no door with a team shown: %q", plain(row))
 	}
 	made, _ := a.teamByID(i)
-	ink := a.pal.teamInk(made.hueSpec())
+	ink := a.pal.teamInk(made.HueSpec())
 	if ink == nil {
 		t.Skip("the palette draws no team colour")
 	}

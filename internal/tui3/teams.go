@@ -1,15 +1,9 @@
 package tui3
 
 import (
-	"bytes"
-	"crypto/rand"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -17,7 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/codeaf/internal/config"
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
 // ── TEAMS: NAMED SETS OF CONVERSATIONS, KEPT ON THEIR OWN FILE ─────────────
@@ -35,19 +29,16 @@ import (
 // reordering one never moves any of those onto another. The name is the
 // person's and may change.
 //
-// THE MODEL IS READY FOR TREES AND MANAGERS THAT ARE NOT BUILT YET. A team has
-// at most one parent, which must exist, and a chain of parents never loops
-// ([app.teamSetParent] refuses). Manager is reserved for a member whose word
-// will outrank the team's other conversations; no code path sets it today, and
-// a file that has one keeps it.
+// THE STORE IS internal/teams. The file, the ids, the tree, the migration from
+// the first build's spaces.json, handles, the manager and the lock two writers
+// share all live there, because the team tools a model calls (internal/session)
+// write the same file. What is here is the interface's side: which tabs make a
+// team, how a team is named on the card, what the strip shows.
 //
-// THE SETS LIVE IN <profile>/teams.json AND NEVER IN config.json. config.json
-// is a flat dotted map of settings, and a nested list written there would read
-// back as unset with no error and trip the unread-key notice besides. A file of
-// its own has its own shape and its own failure. The file of the first build,
-// spaces.json, is read once when teams.json is not there yet, written out as
-// teams.json and renamed to spaces.json.migrated, so no group a person made is
-// lost on the way.
+// THE INTERFACE STILL SAVES ITS WHOLE LOADED LIST ([teamstore.Save]), under
+// the store's lock but not as a read-modify-write, so an edit here replaces a
+// change another process made since the opening. Each edit moving onto
+// [teamstore.Update] is what ends that.
 //
 // THE FRAME NEVER READS IT (framedisk_law_test.go). The file is read once, by
 // [app.teamsEnsure], on an opening (the wall, an alt+digit, the strip chip);
@@ -56,357 +47,63 @@ import (
 // teamsFile is the file's name inside the profile directory, and
 // teamsLegacyFile the first build's.
 const (
-	teamsFile       = "teams.json"
-	teamsLegacyFile = "spaces.json"
-	teamsVersion    = 2
+	teamsFile       = teamstore.FileName
+	teamsLegacyFile = teamstore.LegacyFileName
 )
 
 // teamNameCells is the widest a suggested name may be, in cells.
 const teamNameCells = 16
 
-// teamsDisk is the file's whole shape. It is an object rather than a bare
-// list so that a field added later is an addition, not a new format. Legacy
-// is the first build's list, read and never written.
-type teamsDisk struct {
-	Version int    `json:"version"`
-	Teams   []team `json:"teams"`
-	Legacy  []team `json:"spaces,omitempty"`
-}
+// teamsPath is where the sets live ([teamstore.Path]); an empty profile
+// directory is the ordinary launch and resolves to this process's profile.
+func teamsPath(profileDir string) string { return teamstore.Path(profileDir) }
 
-// teamKnownFields is every key [team] reads itself. Any other key a team
-// carries on disk was written by a later build, and is kept as it was.
-var teamKnownFields = map[string]bool{
-	"id": true, "name": true, "parent": true, "members": true, "manager": true,
-	"hue": true, "tier": true, "made": true,
-}
-
-// teamFields is team's stored shape without its methods, so the two
-// methods below can use the ordinary encoding for the fields they know.
-type teamFields struct {
-	ID      string       `json:"id"`
-	Name    string       `json:"name"`
-	Parent  string       `json:"parent"`
-	Members []teamMember `json:"members"`
-	Manager string       `json:"manager"`
-	Hue     float64      `json:"hue"`
-	Tier    int          `json:"tier"`
-	Made    time.Time    `json:"made"`
-}
-
-// UnmarshalJSON reads a team, keeping every field it does not know in
-// extra, and noting whether the file gave it a colour: a hue of 0 is a real
-// hue, so absence is read off the file and not off the value.
-func (t *team) UnmarshalJSON(raw []byte) error {
-	var known teamFields
-	if err := json.Unmarshal(raw, &known); err != nil {
-		return err
-	}
-	var all map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &all); err != nil {
-		return err
-	}
-	*t = team{ID: known.ID, Name: known.Name, Parent: known.Parent, Members: known.Members,
-		Manager: known.Manager, Hue: known.Hue, Tier: known.Tier, Made: known.Made}
-	_, t.hued = all["hue"]
-	for k, v := range all {
-		if teamKnownFields[k] {
-			continue
-		}
-		if t.extra == nil {
-			t.extra = map[string]json.RawMessage{}
-		}
-		t.extra[k] = v
-	}
-	return nil
-}
-
-// MarshalJSON writes the known fields in their order, then any field a later
-// build wrote, sorted, exactly as it was read.
-func (t team) MarshalJSON() ([]byte, error) {
-	raw, err := json.Marshal(teamFields{ID: t.ID, Name: t.Name, Parent: t.Parent, Members: t.Members,
-		Manager: t.Manager, Hue: t.Hue, Tier: t.Tier, Made: t.Made})
-	if err != nil || len(t.extra) == 0 {
-		return raw, err
-	}
-	keys := make([]string, 0, len(t.extra))
-	for k := range t.extra {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	var b bytes.Buffer
-	b.Write(raw[:len(raw)-1])
-	for _, k := range keys {
-		name, _ := json.Marshal(k)
-		b.WriteByte(',')
-		b.Write(name)
-		b.WriteByte(':')
-		b.Write(t.extra[k])
-	}
-	b.WriteByte('}')
-	return b.Bytes(), nil
-}
-
-// newTeamID is a fresh random id: twelve hex digits, never derived from the
-// name, so a rename is a rename and two teams once called the same are still
-// two.
-func newTeamID() string {
-	var b [6]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		// crypto/rand does not fail on the systems this runs on; the clock is
-		// a unique enough stand-in if it ever does.
-		return strconv.FormatInt(time.Now().UnixNano()&0xffffffffffff, 16)
-	}
-	return hex.EncodeToString(b[:])
-}
-
-// teamsPath is where the sets live. AN EMPTY PROFILE DIRECTORY IS THE
-// ORDINARY LAUNCH, not the absence of a profile: CODEAF_PROFILE_DIR is almost
-// never exported, and the empty string resolves to this process's own profile
-// in the state root, as every other file a profile keeps does
-// (emptyprofile_test.go states the law; [config.ProfilePath] is the one
-// resolution).
-func teamsPath(profileDir string) string {
-	return config.ProfilePath(profileDir, teamsFile)
-}
-
-func teamsLegacyPath(profileDir string) string {
-	return config.ProfilePath(profileDir, teamsLegacyFile)
-}
-
-// loadTeams reads the sets from profileDir and puts them in order: every team
-// has an id, a colour and a parent that exists, and no chain of parents loops.
-// reserved is the hues the palette spends on meaning, which a team the file
-// left uncoloured is kept out of.
-//
-// A missing file is no teams and no error, because a person who never made one
-// has no file. A file that is there but unreadable is an ERROR and is left
-// exactly as it was: what to do with it is the caller's decision, and silently
-// treating it as empty would let the next save overwrite every set the person
-// made.
-//
-// THE FIRST BUILD'S FILE IS MIGRATED HERE, once. With no teams.json and a
-// spaces.json beside it, the old list is read, given ids and the colours it was
-// drawn with, written as teams.json, and only then is spaces.json renamed to
-// spaces.json.migrated. A write that fails leaves spaces.json where it was, and
-// the next load tries again.
+// loadTeams reads the sets from profileDir, repaired and coloured around the
+// reserved hues ([teamstore.LoadHued]). A missing file is no teams and no
+// error; an unreadable one is an error and is left as it was.
 func loadTeams(profileDir string, reserved []float64) ([]team, error) {
-	raw, err := os.ReadFile(teamsPath(profileDir))
-	legacy := false
-	if errors.Is(err, os.ErrNotExist) {
-		raw, err = os.ReadFile(teamsLegacyPath(profileDir))
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil
-		}
-		legacy = true
-	}
+	f, err := teamstore.LoadHued(profileDir, reserved)
 	if err != nil {
 		return nil, err
 	}
-	var disk teamsDisk
-	if err := json.Unmarshal(raw, &disk); err != nil {
-		name := teamsFile
-		if legacy {
-			name = teamsLegacyFile
-		}
-		return nil, fmt.Errorf("teams: %s is unreadable: %w", name, err)
-	}
-	teams := disk.Teams
-	if legacy || (disk.Version < teamsVersion && len(teams) == 0) {
-		teams = disk.Legacy
-	}
-	changed := teamsTidy(teams, reserved)
-	if legacy {
-		if err := saveTeams(profileDir, teams); err == nil {
-			path := teamsLegacyPath(profileDir)
-			_ = os.Rename(path, path+".migrated")
-		}
-	} else if changed || disk.Version < teamsVersion {
-		_ = saveTeams(profileDir, teams)
-	}
-	return teams, nil
+	return f.Teams, nil
 }
 
-// teamsTidy puts a loaded list in order, in place, and reports whether it had
-// to change anything: an id for every team (and a second one for an id used
-// twice), a colour for every team the file left without one, and a parent
-// that exists and does not lead back to the team itself.
-func teamsTidy(teams []team, reserved []float64) bool {
-	changed := false
-	seen := map[string]bool{}
-	for i := range teams {
-		if teams[i].ID == "" || seen[teams[i].ID] {
-			teams[i].ID = newTeamID()
-			changed = true
-		}
-		seen[teams[i].ID] = true
-	}
-	for i := range teams {
-		if p := teams[i].Parent; p != "" && (!seen[p] || p == teams[i].ID) {
-			teams[i].Parent = ""
-			changed = true
-		}
-	}
-	// A loop in the file is cut where it is first met, at the team whose
-	// parent leads back to it.
-	for i := range teams {
-		if teams[i].Parent != "" && teamParentLoops(teams, teams[i].ID, teams[i].Parent) {
-			teams[i].Parent = ""
-			changed = true
-		}
-	}
-	for _, t := range teams {
-		if !t.hued {
-			changed = true
-			break
-		}
-	}
-	teamsHueLegacy(teams, reserved)
-	return changed
-}
+// saveTeams writes the sets to profileDir, all at once or not at all
+// ([teamstore.Save]).
+func saveTeams(profileDir string, s []team) error { return teamstore.Save(profileDir, s) }
 
-// teamsHueLegacy gives every team the file left without a colour one from
-// the generator, in file order, around the ones that have theirs. It depends
-// on nothing but the file and the ramp, so the same file is coloured the same
-// way on every load, and a migrated file keeps the colours it was drawn with.
-func teamsHueLegacy(teams []team, reserved []float64) {
-	var used []teamHueSpec
-	for _, t := range teams {
-		if t.hued {
-			used = append(used, t.hueSpec())
-		}
-	}
-	for i := range teams {
-		if teams[i].hued {
-			continue
-		}
-		next := nextTeamHue(used, reserved)
-		next.Tier = teamTierFor(i)
-		teams[i].Hue, teams[i].Tier, teams[i].hued = next.Hue, next.Tier, true
-		used = append(used, next)
-	}
-}
+// newTeamID is a fresh random id ([teamstore.NewID]).
+func newTeamID() string { return teamstore.NewID() }
 
-// saveTeams writes the sets to profileDir, all at once or not at all: the
-// bytes go to a temporary file beside the real one and are renamed over it, so
-// a crash mid-write leaves the previous file whole rather than half a list.
-func saveTeams(profileDir string, s []team) error {
-	path := teamsPath(profileDir)
-	dir := filepath.Dir(path)
-	if s == nil {
-		s = []team{}
-	}
-	raw, err := json.MarshalIndent(teamsDisk{Version: teamsVersion, Teams: s}, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	temp, err := os.CreateTemp(dir, teamsFile+".writing-*")
-	if err != nil {
-		return err
-	}
-	name := temp.Name()
-	if _, err := temp.Write(raw); err != nil {
-		_ = temp.Close()
-		_ = os.Remove(name)
-		return err
-	}
-	if err := temp.Close(); err != nil {
-		_ = os.Remove(name)
-		return err
-	}
-	if err := os.Rename(name, path); err != nil {
-		_ = os.Remove(name)
-		return err
-	}
-	return nil
-}
+// teamIndex is where the team with id sits in teams, -1 when it is not there.
+func teamIndex(teams []team, id string) int { return teamstore.Index(teams, id) }
 
 // ── THE TREE ────────────────────────────────────────────────────────────────
 
-// teamIndex is where the team with id sits in teams, -1 when it is not there.
-func teamIndex(teams []team, id string) int {
-	if id == "" {
-		return -1
-	}
-	for i, t := range teams {
-		if t.ID == id {
-			return i
-		}
-	}
-	return -1
-}
-
-// teamParentLoops reports whether making parent the parent of id would close
-// a loop: whether id is parent itself or one of parent's ancestors. The walk
-// is bounded by the list, so a loop already in the list cannot hang it.
-func teamParentLoops(teams []team, id, parent string) bool {
-	for at, steps := parent, 0; at != "" && steps <= len(teams); steps++ {
-		if at == id {
-			return true
-		}
-		i := teamIndex(teams, at)
-		if i < 0 {
-			return false
-		}
-		at = teams[i].Parent
-	}
-	return false
-}
+// teamTree is the loaded sets as the store's file, for its tree walks. It
+// shares the slice, so a change through it is a change to the loaded sets.
+func (a *app) teamTree() *teamstore.File { return &teamstore.File{Teams: a.wall.teams} }
 
 // teamByID is the team with id. Frame-safe: memory only.
-func (a *app) teamByID(id string) (team, bool) {
-	if i := teamIndex(a.wall.teams, id); i >= 0 {
-		return a.wall.teams[i], true
-	}
-	return team{}, false
-}
+func (a *app) teamByID(id string) (team, bool) { return a.teamTree().Team(id) }
 
 // teamChildren is every team whose parent is id, in stored order; id "" is
 // the top level.
-func (a *app) teamChildren(id string) []team {
-	var out []team
-	for _, t := range a.wall.teams {
-		if t.Parent == id {
-			out = append(out, t)
-		}
-	}
-	return out
-}
+func (a *app) teamChildren(id string) []team { return a.teamTree().Children(id) }
 
 // teamAncestors is id's parent, its parent's parent, and so on to the top,
 // nearest first.
-func (a *app) teamAncestors(id string) []team {
-	var out []team
-	t, ok := a.teamByID(id)
-	for ok && t.Parent != "" && len(out) < len(a.wall.teams) {
-		t, ok = a.teamByID(t.Parent)
-		if ok {
-			out = append(out, t)
-		}
-	}
-	return out
-}
+func (a *app) teamAncestors(id string) []team { return a.teamTree().Ancestors(id) }
 
 // teamSetParent puts team id under parent, or at the top level for "". The
 // parent must exist and may not be the team or anything under it. It is the
 // tree's one door and nothing in the interface opens it yet.
 func (a *app) teamSetParent(id, parent string) error {
 	a.teamsEnsure()
-	i := teamIndex(a.wall.teams, id)
-	if i < 0 {
-		return fmt.Errorf("no team %s", id)
+	if err := a.teamTree().SetParent(id, parent); err != nil {
+		return err
 	}
-	if parent != "" {
-		if teamIndex(a.wall.teams, parent) < 0 {
-			return fmt.Errorf("no team %s", parent)
-		}
-		if teamParentLoops(a.wall.teams, id, parent) {
-			return errors.New("a team cannot sit under itself")
-		}
-	}
-	a.wall.teams[i].Parent = parent
 	return saveTeams(a.profileDir, a.wall.teams)
 }
 
@@ -428,14 +125,7 @@ func teamFromTabs(name string, tabs []chatTab, now time.Time) team {
 }
 
 // teamHolds reports whether key is one of t's members.
-func teamHolds(t team, key string) bool {
-	for _, m := range t.Members {
-		if m.Key == key {
-			return true
-		}
-	}
-	return false
-}
+func teamHolds(t team, key string) bool { return t.Holds(key) }
 
 // teamSuggestName is a short name for tabs from their own words. Conversations
 // that all sit in one workspace are most likely that project's, so its folder
@@ -576,11 +266,7 @@ func (a *app) teamsEnsure() {
 	a.wall.activeID = ""
 	teams, err := loadTeams(a.profileDir, teamReservedHues(a.pal))
 	if err != nil {
-		path := teamsPath(a.profileDir)
-		if _, statErr := os.Stat(path); statErr != nil {
-			path = teamsLegacyPath(a.profileDir)
-		}
-		_ = os.Rename(path, path+".unreadable-"+strconv.FormatInt(time.Now().UnixNano(), 10))
+		_, _ = teamstore.SetAside(a.profileDir)
 		teams = nil
 	}
 	a.wall.teams = teams
@@ -618,7 +304,7 @@ func (a *app) teamHues(skip string) []teamHueSpec {
 	out := make([]teamHueSpec, 0, len(a.wall.teams))
 	for _, t := range a.wall.teams {
 		if skip == "" || t.ID != skip {
-			out = append(out, t.hueSpec())
+			out = append(out, t.HueSpec())
 		}
 	}
 	return out
@@ -645,7 +331,8 @@ func (a *app) teamMakeHued(name string, tabs []chatTab, hue teamHueSpec) (string
 		}
 	}
 	if at < 0 {
-		t.ID, t.Hue, t.Tier, t.hued = newTeamID(), hue.Hue, hue.Tier, true
+		t.ID = newTeamID()
+		t.SetHue(hue)
 		a.wall.teams = append(a.wall.teams, t)
 		return t.ID, a.teamSave()
 	}

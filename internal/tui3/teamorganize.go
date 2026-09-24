@@ -2,7 +2,6 @@ package tui3
 
 import (
 	"context"
-	"encoding/json"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -196,7 +195,7 @@ func organizeFolders(convs []orgConv, teams []team) []orgProp {
 					missing = append(missing, k)
 				}
 			}
-			out = orgMergeInto(out, orgProp{team: teams[i].ID, name: teams[i].Name, hue: teams[i].hueSpec(), keys: missing, folder: true})
+			out = orgMergeInto(out, orgProp{team: teams[i].ID, name: teams[i].Name, hue: teams[i].HueSpec(), keys: missing, folder: true})
 			continue
 		}
 		out = orgMergeInto(out, orgProp{name: name, keys: keys, folder: true})
@@ -260,7 +259,7 @@ func organizeFromModel(res session.TeamProposal, teams []team) []orgProp {
 	var out []orgProp
 	for _, n := range res.New {
 		if i := teamNamed(teams, n.Name); i >= 0 {
-			out = append(out, orgProp{team: teams[i].ID, name: teams[i].Name, hue: teams[i].hueSpec(), keys: orgMissing(teams[i], n.Members)})
+			out = append(out, orgProp{team: teams[i].ID, name: teams[i].Name, hue: teams[i].HueSpec(), keys: orgMissing(teams[i], n.Members)})
 			continue
 		}
 		out = append(out, orgProp{name: n.Name, keys: n.Members, reason: n.Reason})
@@ -270,7 +269,7 @@ func organizeFromModel(res session.TeamProposal, teams []team) []orgProp {
 		if i < 0 {
 			continue
 		}
-		out = append(out, orgProp{team: teams[i].ID, name: teams[i].Name, hue: teams[i].hueSpec(), keys: orgMissing(teams[i], add.Members)})
+		out = append(out, orgProp{team: teams[i].ID, name: teams[i].Name, hue: teams[i].HueSpec(), keys: orgMissing(teams[i], add.Members)})
 	}
 	return out
 }
@@ -537,8 +536,9 @@ func (a *app) wallOrganizeApply() {
 			i = teamNamed(a.wall.teams, p.name)
 		}
 		if i < 0 && p.team == "" && len(members) > 0 {
-			a.wall.teams = append(a.wall.teams, team{ID: newTeamID(), Name: p.name, Members: members,
-				Hue: p.hue.Hue, Tier: p.hue.Tier, hued: true, Made: now})
+			fresh := team{ID: newTeamID(), Name: p.name, Members: members, Made: now}
+			fresh.SetHue(p.hue)
+			a.wall.teams = append(a.wall.teams, fresh)
 			made++
 			continue
 		}
@@ -594,15 +594,7 @@ func teamsClone(teams []team) []team {
 	}
 	out := make([]team, len(teams))
 	for i, t := range teams {
-		t.Members = append([]teamMember(nil), t.Members...)
-		if t.extra != nil {
-			extra := make(map[string]json.RawMessage, len(t.extra))
-			for k, v := range t.extra {
-				extra[k] = v
-			}
-			t.extra = extra
-		}
-		out[i] = t
+		out[i] = t.Clone()
 	}
 	return out
 }

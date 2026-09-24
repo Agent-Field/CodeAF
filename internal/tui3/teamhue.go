@@ -4,6 +4,7 @@ import (
 	"math"
 	"sync"
 
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -30,19 +31,15 @@ import (
 // alternate so neighbours differ in lightness as well.
 
 // teamHueSpec is a team's colour as stored: a hue angle in degrees and a
-// lightness tier, 0 or 1.
-type teamHueSpec struct {
-	Hue  float64
-	Tier int
-}
+// lightness tier, 0 or 1. The spacing arithmetic is the store's
+// (internal/teams/hue.go), because a team is coloured on load there; the
+// palette's side of it, which hues are reserved and how a hue is drawn, is
+// here.
+type teamHueSpec = teamstore.HueSpec
 
 // teamHueBand is how many degrees either side of a meaningful hue no team
 // may take.
-const teamHueBand = 25
-
-// teamHueTierFree is how many teams are all drawn at tier 0 before the tiers
-// start to alternate.
-const teamHueTierFree = 6
+const teamHueBand = teamstore.HueBand
 
 // ── OKLAB AND OKLCH ─────────────────────────────────────────────────────────
 
@@ -106,13 +103,7 @@ func oklabHue(r, g, b uint8) float64 {
 }
 
 // hueGap is the distance between two hues around the circle, 0..180.
-func hueGap(a, b float64) float64 {
-	d := math.Mod(math.Abs(a-b), 360)
-	if d > 180 {
-		d = 360 - d
-	}
-	return d
-}
+func hueGap(a, b float64) float64 { return teamstore.HueGap(a, b) }
 
 // ── THE GENERATOR ───────────────────────────────────────────────────────────
 
@@ -131,60 +122,18 @@ func teamReservedFrom(r ramp) []float64 {
 }
 
 // teamHueAllowed reports whether a hue is clear of every reserved band.
-func teamHueAllowed(h float64, reserved []float64) bool {
-	for _, r := range reserved {
-		if hueGap(h, r) < teamHueBand {
-			return false
-		}
-	}
-	return true
-}
+func teamHueAllowed(h float64, reserved []float64) bool { return teamstore.HueAllowed(h, reserved) }
 
-// teamTierFor is the tier the n-th team (from zero) is drawn at.
-func teamTierFor(n int) int {
-	if n < teamHueTierFree {
-		return 0
-	}
-	return 1 - (n-teamHueTierFree)%2
-}
-
-// nextTeamHue is the colour for a new team beside the used ones: the allowed
-// whole degree farthest from every used hue, the lowest such degree on a tie.
+// nextTeamHue is the colour for a new team beside the used ones
+// ([teamstore.NextHue]).
 func nextTeamHue(used []teamHueSpec, reserved []float64) teamHueSpec {
-	best, bestGap := -1.0, -1.0
-	for d := 0; d < 360; d++ {
-		h := float64(d)
-		if !teamHueAllowed(h, reserved) {
-			continue
-		}
-		gap := 1000.0
-		for _, u := range used {
-			gap = math.Min(gap, hueGap(h, u.Hue))
-		}
-		if gap > bestGap {
-			best, bestGap = h, gap
-		}
-	}
-	if best < 0 {
-		best = 0
-	}
-	return teamHueSpec{Hue: best, Tier: teamTierFor(len(used))}
+	return teamstore.NextHue(used, reserved)
 }
 
-// teamHueChoices is k colours a new team could take, best first: each the
-// farthest from the used hues and from the choices before it. They are what
-// the new-team card offers as swatches and what shuffle walks through.
+// teamHueChoices is k colours a new team could take, best first. They are
+// what the new-team card offers as swatches and what shuffle walks through.
 func teamHueChoices(used []teamHueSpec, reserved []float64, k int) []teamHueSpec {
-	tier := teamTierFor(len(used))
-	seen := append([]teamHueSpec(nil), used...)
-	out := make([]teamHueSpec, 0, k)
-	for len(out) < k {
-		next := nextTeamHue(seen, reserved)
-		next.Tier = tier
-		out = append(out, next)
-		seen = append(seen, next)
-	}
-	return out
+	return teamstore.HueChoices(used, reserved, k)
 }
 
 // ── DRAWING ONE ─────────────────────────────────────────────────────────────

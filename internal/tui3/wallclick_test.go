@@ -167,9 +167,9 @@ func TestWallClickTeamsPopoverAndSettings(t *testing.T) {
 	if a.wall.pop.kind != wallPopSettings || a.wall.pop.team != harbor || a.wall.pop.name != "harbor" {
 		t.Fatalf("settings: %+v", a.wall.pop)
 	}
-	before := a.wall.teams[0].hueSpec()
+	before := a.wall.teams[0].HueSpec()
 	wallClick(t, a, wallHitFor(t, a, wallHitSwatch, 2))
-	if a.wall.teams[0].hueSpec() == before {
+	if a.wall.teams[0].HueSpec() == before {
 		t.Fatal("a swatch did not recolour the team")
 	}
 	for range "harbor" {
