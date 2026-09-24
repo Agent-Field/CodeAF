@@ -169,7 +169,7 @@ type homePanelSlot struct {
 // growth budget (owner, 2026-09-10: a fifty-five-row terminal was two short
 // columns over thirty rows of air). Spend's budget is its rest: it never grows.
 // The head column is where a press on a heading goes. The conversation list
-// has no heading; projects is read-only. The explainer is the dim clause a
+// has no heading; the projects heading opens nothing. The explainer is the dim clause a
 // heading may carry after its word — see [homePanelSlot.explainer].
 var homePanelOrder = []homePanelSlot{
 	{panel: sessionsPanel{homePanelBase{panelSessions}}, word: sessionsWord, keep: 7, least: 4, rest: homeSessionsLimit, most: homeSessionsLimit, place: pageTasks, head: pageTasks},
@@ -453,6 +453,8 @@ type homeCell struct {
 	note, tag, right string
 	// bold is this window's own conversation.
 	bold bool
+	// underline marks a hovered project name without lighting its facts.
+	underline bool
 	// closed conversations stay dim even when the cursor is on them.
 	closed bool
 	// path says the title is a folder's path, which is cut FROM THE LEFT —
@@ -1535,7 +1537,7 @@ func (a *app) refreshGridReadings(now time.Time) tea.Cmd {
 // homePreselect puts the cursor on THE CONVERSATION THIS WINDOW WAS IN BEFORE
 // THIS ONE (law 6): the most recent key on this window's own stack that is not
 // the one in front and is on the grid. Enter is then a switch in two keys, and
-// repeated Escape presses stay on Home.
+// Escape returns to the conversation behind Home.
 func (a *app) homePreselect() {
 	if !a.home.gridOn() {
 		return

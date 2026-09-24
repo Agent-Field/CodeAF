@@ -146,7 +146,7 @@ var tuiWords = map[string]tuiWord{
 		why:    "the promise in home's box with nothing typed into it — the one box on a place",
 	},
 	"homeDoorWord": {
-		screen: "esc back",
+		screen: "space space home",
 		why:    "the gesture back to home, named on the conversation's own rule",
 	},
 	"microcopy": {
@@ -167,7 +167,7 @@ var tuiWords = map[string]tuiWord{
 	},
 	"homePanelProjects": {
 		screen: "projects",
-		why:    "the panel of folders, never empty, read and never stood on since 2026-09-17 — the view by project alt+g used to be",
+		why:    "the panel of folders, never empty; clicking a project selects the next message’s folder",
 	},
 	"homePanelRunning": {
 		screen: "sessions",
@@ -223,11 +223,17 @@ var tuiWords = map[string]tuiWord{
 		screen: "last active ",
 		why:    "the facts line on the card beside a search — the one card left once the resting card went",
 	},
+	"homeStartWord": {
+		screen: "start a new conversation",
+		why:    "the action row under anything typed at home",
+	},
 
 	// ── asking from home ─────────────────────────────────────────────────────
 	"homeAskHereWord": {
 		screen: "ask here",
-		why:    "the heading of the home pane opened by /ask",
+		why: "what one ↑ off the action row starts, drawn as the row's own heading over the pane. " +
+			"`ctrl+enter` is still bound and is no longer advertised — most terminals cannot send it " +
+			"and `alt+enter` belongs to the task layer (home.go's [app.homeHintWords])",
 	},
 	"notifyAskWord": {
 		screen: "waiting on you",
@@ -516,7 +522,7 @@ var tuiWords = map[string]tuiWord{
 			"words home's own row draws, so this gate holds the spelling without a second copy of it here",
 	},
 	"landingKeysWord": {
-		screen: "esc back · ctrl+c interrupts or quits",
+		screen: "esc interrupts · ctrl+c quits",
 		why:    "the notice a conversation greets on, and what a window that RESUMED an earlier one draws instead of home",
 	},
 	"questionWaitingWord": {

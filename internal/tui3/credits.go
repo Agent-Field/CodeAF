@@ -160,27 +160,40 @@ func (a *app) paidCreditModel(id string, models []Model) bool {
 }
 
 func (a *app) creditPlaceHint(width int, pal palette) string {
-	hint := a.placeHint()
-	warning := a.homeCreditWarning
-	if !a.at(pageHome) || layoutTier(width) == tierPhone || ansi.StringWidth(warning)+3 > width {
-		warning = ""
-	}
+	warning := a.homeCreditWarningFor(width)
 	room := width - 2
 	if warning != "" {
 		room -= ansi.StringWidth(warning) + 1
 	}
-	left := " " + paintHint(hintFit(hint, room), pal, pal.dim)
-	if warning == "" {
-		return left
+	hint := hintFit(a.placeHint(), room)
+	return withCreditWarning(" "+paintHint(hint, pal, pal.dim), 1+ansi.StringWidth(hint), width, warning, pal)
+}
+
+// homeCreditWarningFor is Home's low-credit line when it applies AND fits this
+// width whole: never on another place, never at the phone tier, never cut.
+func (a *app) homeCreditWarningFor(width int) string {
+	warning := a.homeCreditWarning
+	if warning == "" || !a.at(pageHome) || layoutTier(width) == tierPhone || ansi.StringWidth(warning)+3 > width {
+		return ""
 	}
-	return left + strings.Repeat(" ", max(1, width-ansi.StringWidth(left)-ansi.StringWidth(warning)-1)) + pal.warn(warning) + " "
+	return warning
+}
+
+// withCreditWarning puts the line at the right of a row whose first `used`
+// cells are already drawn, one cell in from the edge, or returns the row as it
+// was when there is no line to draw.
+func withCreditWarning(line string, used, width int, warning string, pal palette) string {
+	if warning == "" {
+		return line
+	}
+	return line + strings.Repeat(" ", max(1, width-1-used-ansi.StringWidth(warning))) + pal.warn(warning) + " "
 }
 
 // creditPlaceMessage keeps a complete warning on Home's message row. A place
 // message keeps its usual shape whenever the two fit side by side.
 func (a *app) creditPlaceMessage(width int, msg string, pal palette) string {
-	warning := a.homeCreditWarning
-	if !a.at(pageHome) || layoutTier(width) == tierPhone || ansi.StringWidth(warning)+3 > width || warning == "" {
+	warning := a.homeCreditWarningFor(width)
+	if warning == "" {
 		return msg
 	}
 	if ansi.StringWidth(msg)+ansi.StringWidth(warning)+1 > width {

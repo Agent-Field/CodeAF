@@ -37,8 +37,17 @@ func TestLowCreditsWarningFollowsThePaidModelOnBothBoxes(t *testing.T) {
 	}
 	for _, line := range []string{plain(a.hintRow(200)), placeFrameText(a)} {
 		for _, row := range strings.Split(line, "\n") {
-			if at := strings.Index(row, lowCreditsWarning); at >= 0 && ansi.StringWidth(row[:at+len(lowCreditsWarning)]) != 199 {
-				t.Fatalf("warning did not end one cell before the right edge: %q", row)
+			// RIGHT-ALIGNED: the line ends one cell in from the edge, or — where
+			// the row carries the project at its right end — the group gap and the
+			// project are all that follow it.
+			at := strings.Index(row, lowCreditsWarning)
+			if at < 0 {
+				continue
+			}
+			after := strings.TrimRight(row[at+len(lowCreditsWarning):], " ")
+			if ansi.StringWidth(strings.TrimRight(row, " ")) > 199 ||
+				(after != "" && !strings.HasPrefix(after, groupGapRun+targetProjectLead)) {
+				t.Fatalf("warning was not right-aligned: %q", row)
 			}
 		}
 	}
