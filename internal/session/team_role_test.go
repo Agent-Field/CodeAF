@@ -62,7 +62,7 @@ func TestTheManagersFirstRequestSaysWhatItIs(t *testing.T) {
 	for _, want := range []string{
 		`You are the manager of the team "harbor".`,
 		"@web (web frontend)", "@parser (the parser)",
-		"Three laws:", "team_send", "team_start", "team_status", "team_read",
+		"Six laws:", "team_send", "team_start", "team_status", "team_read", "team_decide", "team_escalate",
 		"The person outranks you", "permission prompt",
 	} {
 		if !strings.Contains(role, want) {

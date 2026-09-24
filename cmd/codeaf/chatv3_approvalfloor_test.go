@@ -215,7 +215,7 @@ func TestTheFloorDoesNotWidenAnySafetyFloor(t *testing.T) {
 func TestTheTeamVerbsAreAllowedAndTeamStartAsks(t *testing.T) {
 	dir := v3Profile(t, map[string]any{"tools.approvalMode": "prompt"})
 	policy := gateOf(t, dir)
-	for _, tool := range []string{"team_status", "team_read", "team_send", "team_stop", "team_post"} {
+	for _, tool := range []string{"team_status", "team_read", "team_send", "team_stop", "team_post", "team_decide", "team_escalate", "team_close_report"} {
 		wantAction(t, policy, tool, `{"to":"web","text":"x","handle":"web"}`, approval.ActionAllow)
 	}
 	wantAction(t, policy, "team_start", `{"handle":"docs","brief":"write the README"}`, approval.ActionPrompt)
