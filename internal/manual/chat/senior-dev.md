@@ -265,10 +265,10 @@ names `git -C '<folder>' switch --detach <commit>`.
 senior-dev's shell can still run `git checkout`, and a brief that says "work on a new
 branch" makes that likely. **So a brief need not ask for a branch: the work already has
 one.** If HEAD is not on its branch when the run ends, nothing is touched, and the page
-says where HEAD is: `senior-dev left <folder> on the branch
-<other> instead of its own branch <branch>, so codeaf changed nothing there: nothing was
-committed and nothing was switched; <branch> holds N files` (or `on no branch, at
-<commit>`). Look at that branch before you commit anything there.
+says where HEAD is: `senior-dev left <folder> on the branch <other> instead of its own
+branch <branch>, so codeaf changed nothing there: nothing was committed and nothing was
+switched; <branch> holds N files` (or `on no branch, at <commit>`). Look at that branch
+before you commit anything there.
 
 ## senior-dev refused: changes that are not committed — a dirty checkout, uncommitted changes, a merge in progress
 

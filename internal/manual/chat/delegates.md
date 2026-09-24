@@ -152,7 +152,8 @@ program run at a time; ask again when that run has ended`.
 
 **It runs alone.** While one is running, no other task can join it, and it cannot be
 started under another run of this conversation: `work is already underway in <folder>;
-<name> runs alone, so propose it again when that work has ended`.
+<name> runs alone, so propose it again when that work has ended` (`in a copy of
+<folder>` when the work underway is a task of codeaf's own).
 
 A name your build does not carry is refused with the ones it does:
 `this codeaf carries no program called <name>; it carries …`.
