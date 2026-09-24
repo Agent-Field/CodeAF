@@ -251,6 +251,13 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 				// end-of-step append clears the live step the begin event published.
 				w.clearLiveStep(task.ID)
 				if capSteps > 0 && steps >= capSteps {
+					// The last allowed command may itself have finished or parked
+					// the task. The store's ending takes precedence over the cap.
+					if end, ok := w.storeEnding(task.ID); ok {
+						ending = end
+						stop()
+						continue
+					}
 					// THE CAP IS A BOUND ON SPEND, not a finding about the work:
 					// the turn is stopped here rather than judged, and the ending
 					// below says where it stopped.
@@ -399,6 +406,13 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 		// go round again on the harness's note, is not running a command, and
 		// every one of those endings leaves the same emptiness behind.
 		w.clearLiveStep(task.ID)
+		if capped && ending.kind == endingNone {
+			// A command's store write can land after its end event. Read once
+			// more after the turn drains before naming the cap as the ending.
+			if end, ok := w.storeEnding(task.ID); ok {
+				ending = end
+			}
+		}
 		switch {
 		case ending.kind == endingDone:
 			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Result: ending.result, Reason: "finished in the store"}); err != nil {

@@ -675,9 +675,9 @@ requirement in them, and speed is no permission to skip the walk.
 - **The time limit.** An elapsed-time limit on the session ends a run too: see
   "Does a time limit stop a running task?" on the page about starting codeaf.
 - **The step cap.** A worker stops at **200** finished tool calls — the same
-  figure a node worker carries. The cap is a bound on spend and not a finding about
-  the work: the turn is stopped there rather than judged, and a worker stopped this
-  way did not finish.
+  figure a node worker carries. If the last call itself finished or parked the task
+  in the store, that ending wins. Otherwise the cap stops the worker there without
+  judging its work.
 - **Spend rows by seat.** Every call a run makes lands one row in the plan store's
   ledger, tagged with the task, the model, and the role — the **seat** — it ran on.
   Read it back with `plandb spend`, by role and by model, or rolled up under one
