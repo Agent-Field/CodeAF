@@ -28,16 +28,20 @@ package session
 //     senior-dev's `--in-place`). codeaf passes them whenever it decided so,
 //     because the program's own reading of a folder climbs to any repository
 //     around it.
-//  4. WHEN IT ENDS, however it ends — done, not finished, stopped, crashed, or
-//     found at a reopen with nothing driving it: in a repository, what the
-//     program left uncommitted is committed onto its branch in one commit (the
-//     task's title, the result under it) and the branch is LEFT CHECKED OUT, so
-//     the person sees the work in their folder. A run that changed nothing is
+//  4. WHEN IT ENDS — done, not finished, stopped, or crashed, an end the
+//     process holding the run saw — in a repository, what the program left
+//     uncommitted is committed onto its branch in one commit (the task's
+//     title, the result under it) and the branch is LEFT CHECKED OUT, so the
+//     person sees the work in their folder. A run that changed nothing is
 //     undone: the person's branch is checked out again and the empty branch
 //     deleted. A HEAD the program's shell moved off its branch is left exactly
-//     where it is, and said. In either kind of folder the program's notes
-//     ([delegate.Delegate.Notes]) are moved into the run's record folder
-//     unless they were there before the run.
+//     where it is, and said, and so is a branch of the person's that moved.
+//     A RUN WHOSE PROCESS WENT AWAY — codeaf closed, crashed or killed — is
+//     settled by the next codeaf that finds it WITHOUT A SINGLE GIT WRITE
+//     ([ProgramFolder.settleGone]): its work stays as it left it, and the
+//     person is told where and in what state. In either kind of folder the
+//     program's notes ([delegate.Delegate.Notes]) are moved into the run's
+//     record folder unless they were there before the run.
 //  5. ONE RUN PER FOLDER. codeaf starts and stops the run and keeps its money,
 //     its time and its screen, and nothing else. A second program run on a
 //     folder one is working in — from any conversation, any window, or a
@@ -115,7 +119,7 @@ type ProgramFolderOrder struct {
 }
 
 // ProgramFolder is one program run's folder as [PrepareProgramFolder] readied
-// it. It is also the record a later process finishes the run's folder from
+// it. It is also the record a later process settles the run's folder from
 // when the process that started it went away first
 // ([settleOwedProgramFolder]), which is why its fields are written down.
 type ProgramFolder struct {
@@ -184,16 +188,21 @@ func PrepareProgramFolder(order ProgramFolderOrder) (*ProgramFolder, error) {
 		return nil, errors.New(programFolderBusy(dir, holder))
 	}
 	folder.lock = lock
-	// A RUN THAT WENT AWAY IN THIS FOLDER IS FINISHED BEFORE THE NEXT ONE
-	// STARTS: its leftovers committed on its branch and its notes moved, so
-	// they are neither refused as the person's changes nor handed to the next
-	// run as its own. Nothing else holds the folder, because this does — and
-	// on a filesystem that takes no locks nothing can say so, so an owed run
-	// there is left for its own conversation's reopen.
+	// A RUN THAT WENT AWAY IN THIS FOLDER IS SETTLED BEFORE THE NEXT ONE STARTS,
+	// AND NOTHING OF IT IS COMMITTED ([ProgramFolder.settleGone]): its record
+	// ended with where its work is and its notes moved, so the next run is
+	// never handed the last one's checklist as its own. What it left
+	// uncommitted stays exactly where it was, and the next run meets it the way
+	// it meets anybody's changes — refused, and told whose they may be. Nothing
+	// else holds the folder, because this does; on a filesystem that takes no
+	// locks nothing can say so, and an owed run there is left alone.
+	var earlier *ProgramFolderEnd
 	if owed, ok := readProgramFolder(folder.key); ok && owed.Ended == "" && lock != nil {
-		owed.key, owed.place = folder.key, order.Place
-		owed.Ended = owed.settle("").Sentence()
+		owed.key = folder.key
+		end := owed.settleGone()
+		owed.Ended = end.Sentence()
 		owed.write()
+		earlier = &end
 	}
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		if err := os.Mkdir(dir, 0o755); err != nil {
@@ -211,6 +220,13 @@ func PrepareProgramFolder(order ProgramFolderOrder) (*ProgramFolder, error) {
 	}
 	if err := folder.cutBranch(); err != nil {
 		folder.release()
+		if earlier != nil && earlier.Folder.Branch != "" && !earlier.Moved {
+			// AND THE REFUSAL SAYS WHOSE THE CHANGES MAY BE. codeaf cannot tell a
+			// run's last edits from the person's own made on its branch since, so
+			// it commits neither and says both.
+			return nil, fmt.Errorf("%w; they may be an earlier %s run's, which codeaf could not finish: its branch %s is checked out there",
+				err, earlier.Folder.Program, earlier.Folder.Branch)
+		}
 		return nil, err
 	}
 	return folder, nil
@@ -443,6 +459,12 @@ type ProgramFolderEnd struct {
 	// empty when it is gone. codeaf moves it back no more than it moved it.
 	HomeMoved bool
 	HomeAt    string
+	// Gone says the run's process went away before it could end the run
+	// itself, so codeaf settled its folder without writing to git at all
+	// ([ProgramFolder.settleGone]), and Uncommitted is how many files it found
+	// there that are not committed.
+	Gone        bool
+	Uncommitted int
 	// Refused is git's own line when what the program left could not be
 	// committed, or the checkout could not be put back.
 	Refused string
@@ -512,6 +534,61 @@ func (f *ProgramFolder) settle(result string) ProgramFolderEnd {
 	}
 	end.Kept = true
 	return end
+}
+
+// settleGone settles the folder of a run whose process went away before it
+// could end the run itself — a crash, a kill, codeaf closed — and it WRITES
+// NOTHING TO GIT: no add, no commit, no switch, no branch deleted. It reads
+// where the checkout is, what the program's branch holds and how many files
+// are not committed, moves the program's notes into the run's record folder,
+// and answers the ending that says so ([ProgramFolderEnd.Gone]).
+//
+// ONLY AN END CODEAF SAW IS FINISHED WITH A COMMIT. Once the process that
+// held the folder is gone, the folder is the person's again, and what is
+// uncommitted in it may be the run's last edits or their own made on its
+// branch since — codeaf cannot tell the two apart. A commit here once swept a
+// person's day of edits, and a merge they were resolving, into a commit under
+// codeaf's name with their hooks skipped. The read is made with git's optional
+// locks off, so not even the index is refreshed.
+func (f *ProgramFolder) settleGone() ProgramFolderEnd {
+	end := ProgramFolderEnd{Folder: *f, Gone: true}
+	end.Notes = f.keepNotes()
+	if f.Branch == "" {
+		return end
+	}
+	if head := currentBranch(f.Dir); head != f.Branch {
+		end.Moved, end.HeadOn = true, head
+		if head == "" {
+			end.At = shortCommit(f.Dir, "HEAD")
+		}
+	}
+	if tip := branchCommit(f.Dir, f.Branch); tip != "" {
+		end.Changed = changedBetween(f.Dir, f.Start, tip)
+		end.Kept = tip != f.Start
+	}
+	if !end.Moved {
+		end.Uncommitted = uncommittedCount(f.Dir, f.Notes)
+		end.HomeMoved, end.HomeAt = f.homeMoved()
+	}
+	return end
+}
+
+// uncommittedCount is how many files in a checkout are not committed, the
+// program's notes left out, read without taking or writing any of git's locks;
+// zero when git cannot say.
+func uncommittedCount(dir, notes string) int {
+	out, err := git(dir, "--no-optional-locks", "status", "--porcelain", "--untracked-files=all", "-z")
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, path := range porcelainZPaths(out) {
+		if notes != "" && (path == notes || strings.HasPrefix(path, strings.TrimSuffix(notes, "/")+"/")) {
+			continue
+		}
+		count++
+	}
+	return count
 }
 
 // homeMoved reads the person's own branch again, the one the run was cut
@@ -686,6 +763,11 @@ func (e ProgramFolderEnd) Sentence() string {
 	f := e.Folder
 	var said string
 	switch {
+	case e.Gone && f.Branch == "" && f.Outer != "":
+		said = "its work so far is in " + f.Dir + ", as it left it; the git repository around it is at " + f.Outer +
+			", which holds your home folder, so codeaf cut no branch there and committed nothing"
+	case e.Gone && f.Branch == "":
+		said = "its work so far is in " + f.Dir + ", which has no git history, as it left it"
 	case f.Branch == "" && f.Outer != "":
 		said = "its work is in " + f.Dir + "; the git repository around it is at " + f.Outer +
 			", which holds your home folder, so codeaf cut no branch there and committed nothing"
@@ -701,6 +783,8 @@ func (e ProgramFolderEnd) Sentence() string {
 		if e.Kept {
 			said += "; " + f.Branch + " holds " + fileCount(len(e.Changed))
 		}
+	case e.Gone:
+		said = e.goneWords()
 	case e.Dropped:
 		said = "it changed nothing, so " + f.Dir + " is back on " + f.homeWords() + " and its branch " + f.Branch + " was deleted"
 	case e.HomeMoved && !e.Kept && e.Refused == "":
@@ -720,6 +804,24 @@ func (e ProgramFolderEnd) Sentence() string {
 		said += "; " + e.Notes
 	}
 	return said
+}
+
+// goneWords is where a run whose process went away left its work in a
+// repository, still on its own branch ([ProgramFolder.settleGone]): the branch,
+// that it is checked out as the run left it, how many files are not committed,
+// and the way back — which, while something is uncommitted, starts with
+// putting that somewhere, because a switch would carry it along.
+func (e ProgramFolderEnd) goneWords() string {
+	f := e.Folder
+	said := "its work so far is on its branch " + f.Branch + " in " + f.Dir + ", which is checked out there, as it left it"
+	if e.Uncommitted == 0 {
+		return said + "; " + e.goBackWords()
+	}
+	said += ", with " + fileCount(e.Uncommitted) + " not committed"
+	if e.HomeMoved {
+		said += "; " + e.homeMovedWords()
+	}
+	return said + "; commit or stash them there before you go back to " + f.homeWords()
 }
 
 // homeWords names where the person's checkout was before the run.
@@ -923,9 +1025,9 @@ func readProgramFolderAt(path string) (*ProgramFolder, bool) {
 	return &folder, true
 }
 
-// settleOwedProgramFolder finishes the folder of the run whose record folder
-// is keep, when that run's process went away before it could: the reopen of
-// its conversation, or the next hand-off in it, comes here
+// settleOwedProgramFolder settles the folder of the run whose record folder
+// is keep, when that run's process went away before it could finish it: the
+// reopen of its conversation, or the next hand-off in it, comes here
 // ([endOrphanedProgramRun]). It answers how the folder was left, and false
 // when nothing was owed or somebody else holds the folder now.
 func settleOwedProgramFolder(keep string) (ProgramFolderEnd, bool) {
@@ -938,14 +1040,21 @@ func settleOwedProgramFolder(keep string) (ProgramFolderEnd, bool) {
 		if !ok || owed.Ended != "" || filepath.Clean(owed.Keep) != filepath.Clean(keep) {
 			continue
 		}
-		lock, holder := claimProgramFolder(owed.key, owed.Program+", finishing a run codeaf closed under")
+		lock, holder := claimProgramFolder(owed.key, owed.Program+", settling a run codeaf closed under")
 		if holder != "" || lock == nil {
 			// A HOLD SOMEBODY ELSE HAS, or one nobody can take, is a folder this
 			// reopen cannot know is idle: it is left for the next codeaf that can.
 			return ProgramFolderEnd{}, false
 		}
 		owed.lock = lock
-		return owed.Finish(""), true
+		// NOTHING IS COMMITTED FOR A RUN WHOSE END NOBODY SAW
+		// ([ProgramFolder.settleGone]): the folder has been the person's since
+		// the process went away, however long ago that was.
+		end := owed.settleGone()
+		owed.Ended = end.Sentence()
+		owed.write()
+		owed.release()
+		return end, true
 	}
 	return ProgramFolderEnd{}, false
 }

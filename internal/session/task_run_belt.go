@@ -637,8 +637,8 @@ func programClosedSentence(name string) string {
 // closed under AFTER the program had exited: its worker was still settling
 // owed receipts, or the run was about to end. The program was not running, so
 // the sentence does not say it was; what was not done is the run's ending in
-// its folder, which the next codeaf to find the run does
-// ([settleOwedProgramFolder]) and says under this line.
+// its folder, which the next codeaf to find the run settles without writing
+// to git ([settleOwedProgramFolder]) and says under this line.
 func programEndedSentence(name string) string {
 	return name + " had ended; codeaf closed before it could say where its work is"
 }
@@ -651,8 +651,8 @@ func programEndedSentence(name string) string {
 const runLimitSentence = "a limit you set stopped it"
 
 // endOrphanedProgramRun ends a program's run whose store was left open by a
-// process that went away, at the run's last evidence of life, and finishes the
-// folder it worked in when that process went away before it could
+// process that went away, at the run's last evidence of life, and settles the
+// folder it worked in when that process went away before it could finish it
 // ([settleOwedProgramFolder]), answering how it left the folder. It ends
 // nothing in a store whose run has ended, or whose run no program worked (the
 // task's record folder holds no program record, [delegate.ProgramFile]).
@@ -661,10 +661,12 @@ const runLimitSentence = "a limit you set stopped it"
 // finds the store can be hours later than the one that lost it, and the page
 // counts a run's time to its ending ([plandb.Store.FailRootAt] says why).
 //
-// THE FOLDER IS FINISHED WHATEVER THE STORE SAYS. A run a person stopped, or
+// THE FOLDER IS SETTLED WHATEVER THE STORE SAYS. A run a person stopped, or
 // one codeaf closed under, has its store's ending written before its folder is
 // finished, so a process that went away in between leaves an ended store over
-// a folder still on the program's branch with its last changes uncommitted.
+// a folder still on the program's branch with its last changes uncommitted —
+// and those are left uncommitted, because nobody saw the run end
+// ([ProgramFolder.settleGone]).
 func endOrphanedProgramRun(store *plandb.Store) (ProgramFolderEnd, bool) {
 	rootID := store.RootID()
 	root := store.Task(rootID)
@@ -793,9 +795,9 @@ func (a *Agent) endInterruptedProgramRun() {
 // reads ([Agent.beltRunEndedAt]). The store's ending can come after the exit
 // by the whole wait for owed receipts, and that wait is not the run's time.
 //
-// AND IT SAYS WHERE THE WORK IS when this reopen finished the run's folder
+// AND IT SAYS WHERE THE WORK IS when this reopen settled the run's folder
 // (settled): the folder's sentence under the ending, and the program's branch
-// when it holds the work, as the live ending would have said them.
+// when it holds the work.
 func (a *Agent) settleInterruptedProgramRow(g *TaskGraph, store *plandb.Store, kept TaskNotice, end ProgramFolderEnd, settled bool) {
 	root := store.Task(store.RootID())
 	if root == nil || (root.Status != plandb.StatusFailed && root.Status != plandb.StatusCancelled) {

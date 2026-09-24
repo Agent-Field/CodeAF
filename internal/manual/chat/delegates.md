@@ -154,8 +154,9 @@ program itself checked is reported in its result, kept apart from what its model
 window only detaches it. If that engine stops or crashes, the conversation is closed, or a
 `--no-host` codeaf quits, the run ends with `codeaf closed while <name> was running` where
 it was last seen working, or `<name> had ended; codeaf closed before it could say where its
-work is` at the program's exit; the next codeaf to find the run commits what it left on
-its branch. Nothing carries it on; the next hand-off starts a run of its own.
+work is` at the program's exit; the next codeaf to find the run says where its work is,
+as it was left, and commits nothing. Nothing carries it on; the next hand-off starts a
+run of its own.
 
 ## Why was the delegate refused — uncommitted changes, the folder is busy, it runs alone, no such program
 
@@ -182,7 +183,7 @@ A name your build does not carry is refused with the ones it does:
 
 In a git repository codeaf cuts the program a branch of its own (`task/<title>-<id>`) in
 your folder and checks it out, and the program works there; its own commits (senior-dev's
-`wip(edit): …`) stay on that branch, and nothing squashes them. When it ends, however it ends, codeaf commits what
+`wip(edit): …`) stay on that branch, and nothing squashes them. When it ends, codeaf commits what
 it left uncommitted onto that branch — the task's title, with the program's own account
 of the ending as the body — and **leaves the branch checked out**, so the work is in your
 folder. **Your own branch never moves**, and nothing is merged into it; if anything else

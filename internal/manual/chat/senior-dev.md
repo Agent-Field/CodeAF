@@ -244,16 +244,17 @@ how it keeps a record to restore from; they stay there, and nothing squashes the
 
 When the run ends — finished or not, stopped, or crashed — codeaf commits whatever it
 left uncommitted onto that branch, in one commit whose subject is the task's title and
-whose body is senior-dev's own ending, and **leaves the branch checked out**, so the work
-is in your folder when you look. Nothing is merged into your own branch. The task's page
+whose body is senior-dev's own ending (unless codeaf itself closed first: then nothing
+is committed), and **leaves the branch checked out**, so the work is in your folder
+when you look. Nothing is merged into your own branch. The task's page
 and the conversation both say ``its work is on the branch <branch> in <folder>, N files,
 and that branch is checked out there; your branch <yours> is as it was: `git -C '<folder>'
 switch <yours>` goes back to it, and `git -C '<folder>' merge <branch>` from there brings
 the work in``. Merge it when you are ready, or ask the chat to.
 
-The ending keeps two witnesses apart: what senior-dev's model said it did when it
-submitted (`senior-dev's model said: …`) and what senior-dev itself saw when it ran the
-project's build and tests (`senior-dev observed: …`). Read the second for "did it work".
+The ending keeps two witnesses apart: what senior-dev's model said it did
+(`senior-dev's model said: …`) and what senior-dev saw when it ran the project's build
+and tests (`senior-dev observed: …`). Read the second for "did it work".
 
 **A run you stop keeps its work the same way**: the stop says `its work so far stays on
 its branch <branch>, checked out in <folder>` at once, and the page then says where it is
@@ -515,14 +516,14 @@ A run ends in one of these ways, and the task's ending says which:
 - `codeaf closed while senior-dev was running` — the codeaf holding its conversation
   stopped or crashed while it worked (see the next section);
 - `senior-dev had ended; codeaf closed before it could say where its work is` —
-  senior-dev had already exited, and codeaf stopped before it had committed what was left
+  senior-dev had already exited, and codeaf stopped before it had finished its folder
   (see the next section).
 
 When it ends without submitting, it still checks the tree it leaves. If the project's
 tests cannot even start there, the tree is put back to the last state whose build and
 tests could run, or to where it began.
 
-## If codeaf quits while senior-dev works — closed, crashed, engine stopped, restarted mid-run
+## If codeaf quits while senior-dev works — closed, crashed, engine stopped, restarted mid-run, where is its work
 
 senior-dev ends with the engine holding its conversation. Leaving a hosted conversation's
 window (closing it, `ctrl+c`, a closed terminal) only detaches: senior-dev keeps working.
@@ -532,10 +533,16 @@ row read `incomplete` with `codeaf closed while senior-dev was running` beside i
 stage, nothing waiting on you, and no fault. If senior-dev had already exited, it reads
 `senior-dev had ended; codeaf closed before it could say where its work is`.
 
-**Its folder is finished by the next codeaf that finds the run**: the one that opens that
-conversation, hands work off in it, or starts a run in that folder. What senior-dev left
-uncommitted is committed on its branch, which stays checked out, its notes are moved out,
-and the page adds where the work is, as a run that ended would say it.
+**Its folder is settled by the next codeaf that finds the run, and nothing is
+committed**: the one that opens that conversation, hands work off in it, or starts a run
+in that folder, a shell run included. codeaf cannot tell senior-dev's last edits from yours
+made there since, so it commits neither and switches nothing. Its branch stays checked
+out as it was left, its notes are moved out, and the page adds `its work so far is on its
+branch <branch> in <folder>, which is checked out there, as it left it, with N files not
+committed; commit or stash them there before you go back to your branch <yours>`. A run
+started in that folder then is refused over those changes, and adds `they may be an
+earlier senior-dev run's, which codeaf could not finish: its branch <branch> is checked
+out there`.
 
 **The run ends where it was last seen working**: senior-dev's exit, or else the end of its
 last model call, its last charge, or its store's last change, whichever is latest. So its
@@ -543,9 +550,8 @@ time and spend do not count the hours codeaf was closed. An orderly close writes
 before senior-dev is stopped; after a crash the next codeaf that opens that conversation,
 or hands work off in it, writes it.
 
-**Nothing carries it on.** The next `/senior-dev` in that conversation starts a run of its
-own, under its own task number, with its own brief and its own page. The old run's page
-stays as the record of what it did.
+**Nothing carries it on.** The next `/senior-dev` starts a run of its own, with its own
+task and page; the old page stays as the record of what it did.
 
 ## senior-dev's log — delegate-stderr.log, agent-summary, a shell run's record folder
 
