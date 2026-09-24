@@ -69,10 +69,11 @@ up like any proposal's.
 **Naming the program is enough.** Say it in your message, by name or as its command
 ("fix issue 412 with senior-dev", "give this to /senior-dev", "senior dev should do
 this"), and the model is told to use it. If it proposes the work without the program
-anyway, codeaf turns that proposal back once:
+anyway, codeaf turns that proposal back once, along with every other proposal without
+it in the same reply:
 ``the person named senior-dev: if they want it to do this work, propose this again with `via: "senior-dev"`; if they asked for it not to be used, or did not mean the program, propose it again unchanged``.
-The next proposal for the same message passes as it is, so "don't use senior-dev for
-this" is kept too.
+A proposal the model makes after reading that passes as it is, so "don't use senior-dev
+for this" is kept too.
 
 **An ask for a program is never too small.** A one-file fix or a single command otherwise
 stays in the conversation, but "fix this file with senior-dev" goes to senior-dev.

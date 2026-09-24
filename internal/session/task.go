@@ -653,8 +653,8 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 	// resolve are all "do not start this"; they live in one helper so this
 	// road does not grow another ending (complexity_test.go's ratchet on this
 	// function).
-	if refusal := a.refuseProposedTask(spec); refusal != "" {
-		return bare.Settled(refusal, true)
+	if refusal := a.refuseProposedTask(spec); refusal != nil {
+		return refusal
 	}
 	// A DELEGATE IS RESOLVED BEFORE THE CARD, so a name this machine has no
 	// delegate for is answered with the names it has and nobody is asked to

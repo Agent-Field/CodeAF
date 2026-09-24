@@ -3,9 +3,12 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/manual"
 )
 
@@ -48,9 +51,9 @@ func proposeOutputs(events []Event) []string {
 // A PROPOSAL THAT LEAVES OUT THE PROGRAM THE PERSON NAMED IS TURNED BACK ONCE.
 // The person asked for senior-dev and the model proposed the work for its own
 // worker, which is the proposal a model writes by habit: it is told who was
-// named and both ways to answer. The next proposal for the same message
-// passes as it is, because "don't use senior-dev" is an ask too, and only the
-// model can read which one it was.
+// named and both ways to answer. The next proposal for the same message, made
+// after the model has read that, passes as it is, because "don't use
+// senior-dev" is an ask too, and only the model can read which one it was.
 func TestAProposalLeavingOutTheProgramThePersonNamedIsTurnedBackOnce(t *testing.T) {
 	registerBeltRunEngine(t, newBeltRunDouble("unused"))
 	completer := &routedCompleter{parent: []step{
@@ -87,6 +90,72 @@ func TestAProposalLeavingOutTheProgramThePersonNamedIsTurnedBackOnce(t *testing.
 	}
 }
 
+// proposalsInOneMessage is the model sending several proposals in one message,
+// which is how the hand-off page tells it to work in parallel. Each call has an
+// id of its own, as a provider's calls in one message do.
+func proposalsInOneMessage(titles ...string) step {
+	return func(context.Context, []ai.Message) (*ai.Response, error) {
+		calls := make([]ai.ToolCall, len(titles))
+		for index, title := range titles {
+			arguments, _ := json.Marshal(taskArguments{
+				Title:       title,
+				Summary:     "two lines the person reads",
+				Brief:       title + "\n" + taskBriefMark,
+				Deliverable: "the fix, on the branch the run leaves",
+				Acceptance:  "the issue's own reproduction passes",
+			})
+			calls[index] = ai.ToolCall{
+				ID:       "call-task-" + strconv.Itoa(index),
+				Type:     "function",
+				Function: ai.ToolCallFunction{Name: "propose_task", Arguments: string(arguments)},
+			}
+		}
+		return callsResponse(calls...), nil
+	}
+}
+
+// EVERY PROPOSAL OF ONE MESSAGE IS TURNED BACK. "fix issues #31 and #32 with
+// senior-dev" is two proposals in one message, sent together before the model
+// has read either result. Only the first used to be turned back: the second
+// passed as though the model had read the bounce, went up with no `via`, and
+// its countdown admitted it to codeaf's own worker against the person's ask.
+// Both are turned back, and the proposals of the message the model writes
+// after reading them pass as they are.
+func TestEveryProposalOfOneMessageIsTurnedBack(t *testing.T) {
+	registerBeltRunEngine(t, newBeltRunDouble("unused"))
+	completer := &routedCompleter{parent: []step{
+		proposalsInOneMessage("Fix issue #31", "Fix issue #32"),
+		proposalsInOneMessage("Fix issue #31", "Fix issue #32"),
+		finalText("started"),
+	}}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Delegates = testPrograms("senior-dev")
+	})
+	nodes := make(ranNodes, 4)
+	graph := stubbedGraph(agent, func(node *TaskNode) { nodes <- node })
+
+	outputs := proposeOutputs(collect(t, mustSubmit(t, agent, "fix issues #31 and #32 with senior-dev")))
+
+	if len(outputs) != 4 {
+		t.Fatalf("want four proposal results, got %d: %q", len(outputs), outputs)
+	}
+	for _, output := range outputs[:2] {
+		if output != programNamedSentence("senior-dev") {
+			t.Fatalf("a proposal sent beside the one turned back read %q, want the bounce too: %q", output, outputs[:2])
+		}
+	}
+	for _, output := range outputs[2:] {
+		if !strings.HasPrefix(output, "task ") {
+			t.Fatalf("a proposal written after the bounce was read was not let through: %q", output)
+		}
+	}
+	nodes.await(t)
+	nodes.await(t)
+	if admitted(graph) != 2 {
+		t.Fatalf("the graph admitted %d nodes, want the two proposals of the second message", admitted(graph))
+	}
+}
+
 // THE NAME IS HEARD HOWEVER A PERSON TYPES IT: as its command, in any case,
 // with a space or nothing where it has a hyphen. And a word that only shares
 // part of it is not the name.
@@ -118,7 +187,7 @@ func TestTheProgramIsHeardHoweverThePersonSpellsIt(t *testing.T) {
 	for _, asked := range []string{"/senior-dev fix the retry", "fix the retry with senior dev", "Senior-Dev, fix the retry"} {
 		agent := programConversation(t, nil)
 		heard(agent, asked)
-		if bounce := agent.programAskBounce(taskSpec{title: "t"}); bounce != programNamedSentence("senior-dev") {
+		if bounce := agent.programAskBounce(taskSpec{title: "t"}).text(); bounce != programNamedSentence("senior-dev") {
 			t.Errorf("%q: the proposal without via read %q, want the bounce", asked, bounce)
 		}
 	}
@@ -132,52 +201,113 @@ func TestTheProgramIsHeardHoweverThePersonSpellsIt(t *testing.T) {
 func TestNoBounceWhereNothingWasNamedOrNoProgramCouldBe(t *testing.T) {
 	plain := programConversation(t, nil)
 	heard(plain, "the scheduler drops retries under load; fix it")
-	if bounce := plain.programAskBounce(taskSpec{}); bounce != "" {
+	if bounce := plain.programAskBounce(taskSpec{}).text(); bounce != "" {
 		t.Fatalf("a message naming no program was bounced: %q", bounce)
 	}
 
 	named := "the scheduler drops retries under load; fix it with senior-dev"
 	inTask := programConversation(t, func(config *Config) { config.InTask = true })
 	heard(inTask, named)
-	if bounce := inTask.programAskBounce(taskSpec{}); bounce != "" {
+	if bounce := inTask.programAskBounce(taskSpec{}).text(); bounce != "" {
 		t.Fatalf("a task node was bounced toward a program it cannot name: %q", bounce)
 	}
 
 	noPrograms := programConversation(t, func(config *Config) { config.Delegates = nil })
 	heard(noPrograms, named)
-	if bounce := noPrograms.programAskBounce(taskSpec{}); bounce != "" {
+	if bounce := noPrograms.programAskBounce(taskSpec{}).text(); bounce != "" {
 		t.Fatalf("a build carrying no program was bounced: %q", bounce)
 	}
 
 	withVia := programConversation(t, nil)
 	heard(withVia, named)
-	if bounce := withVia.programAskBounce(taskSpec{via: "senior-dev"}); bounce != "" {
+	if bounce := withVia.programAskBounce(taskSpec{via: "senior-dev"}).text(); bounce != "" {
 		t.Fatalf("a proposal naming the program was bounced: %q", bounce)
 	}
 
 	registerBeltRunEngine(t, nil)
 	noRoad, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) { config.Delegates = testPrograms("senior-dev") })
 	heard(noRoad, named)
-	if bounce := noRoad.programAskBounce(taskSpec{}); bounce != "" {
+	if bounce := noRoad.programAskBounce(taskSpec{}).text(); bounce != "" {
 		t.Fatalf("a build with no run road was bounced: %q", bounce)
 	}
 }
 
+// modelReadTheResults is the turn sending its next request, which is the one
+// moment a model reads what its last batch returned ([episode.decisionBegins]).
+func modelReadTheResults(agent *Agent) { agent.stepSeq.Add(1) }
+
+// refusedWith is what a proposal of spec reads back from the door refusals,
+// and "" when none of them turns it around.
+func refusedWith(agent *Agent, spec taskSpec) string {
+	refusal := agent.refuseProposedTask(spec)
+	if refusal == nil {
+		return ""
+	}
+	text, _, _ := refusal.Commit(context.Background())
+	return text
+}
+
 // ONCE IS PER MESSAGE. A second message of the person's that names the program
-// again is a new ask and earns its own bounce; a second proposal for the same
-// message does not.
+// again is a new ask and earns its own bounce; a proposal for the same message
+// made after the model has read the bounce does not.
 func TestTheBounceIsOncePerMessageOfThePersons(t *testing.T) {
 	agent := programConversation(t, nil)
 	heard(agent, "fix the flaky retry with senior-dev")
-	if agent.programAskBounce(taskSpec{}) == "" {
+	if agent.programAskBounce(taskSpec{}) == nil {
 		t.Fatal("the first proposal for the message was not bounced")
 	}
-	if bounce := agent.programAskBounce(taskSpec{}); bounce != "" {
-		t.Fatalf("the second proposal for the same message was bounced again: %q", bounce)
+	modelReadTheResults(agent)
+	if bounce := agent.programAskBounce(taskSpec{}).text(); bounce != "" {
+		t.Fatalf("the proposal made after the bounce was read was bounced again: %q", bounce)
 	}
 	heard(agent, "no really, give it to senior-dev")
-	if agent.programAskBounce(taskSpec{}) == "" {
+	if agent.programAskBounce(taskSpec{}) == nil {
 		t.Fatal("a new message naming the program again was not bounced")
+	}
+}
+
+// AND NOT BEFORE THE MODEL HAS READ IT. Every proposal of one message is
+// staged before any of their results is read, so a second proposal from the
+// same step is turned back beside the first rather than passing as though the
+// bounce had been read. And a bounce withdrawn before it went ahead (the reply
+// carrying it was cut) was never read at all: it takes its mark back, and the
+// next proposal is turned back in its place.
+func TestTheBounceIsNotSpentUntilTheModelHasReadIt(t *testing.T) {
+	agent := programConversation(t, nil)
+	heard(agent, "fix issues #31 and #32 with senior-dev")
+	first, second := agent.programAskBounce(taskSpec{}), agent.programAskBounce(taskSpec{})
+	if first == nil || second == nil {
+		t.Fatalf("two proposals of one step were not both bounced: %q, %q", first.text(), second.text())
+	}
+
+	first.Withdraw()
+	second.Withdraw()
+	modelReadTheResults(agent)
+	if agent.programAskBounce(taskSpec{}) == nil {
+		t.Fatal("the proposal after a withdrawn bounce passed, and the model never read that bounce")
+	}
+
+	withdrawnLate := programConversation(t, nil)
+	heard(withdrawnLate, "fix issues #31 and #32 with senior-dev")
+	first, second = withdrawnLate.programAskBounce(taskSpec{}), withdrawnLate.programAskBounce(taskSpec{})
+	second.Withdraw()
+	first.Withdraw()
+	modelReadTheResults(withdrawnLate)
+	if withdrawnLate.programAskBounce(taskSpec{}) == nil {
+		t.Fatal("siblings withdrawn in the other order left a mark behind")
+	}
+
+	arguments, _ := json.Marshal(taskArguments{Title: "t", Summary: "s", Brief: "b", Deliverable: "d", Acceptance: "a"})
+	throughTheDoor := programConversation(t, nil)
+	heard(throughTheDoor, "fix issues #31 and #32 with senior-dev")
+	hold := bare.NewHold()
+	hold.Withdraw()
+	if _, _, err := throughTheDoor.proposeTask(bare.WithHold(context.Background(), hold), arguments); err != nil {
+		t.Fatalf("the withdrawn proposal errored the turn: %v", err)
+	}
+	modelReadTheResults(throughTheDoor)
+	if bounce := refusedWith(throughTheDoor, taskSpec{}); bounce != programNamedSentence("senior-dev") {
+		t.Fatalf("after a proposal withdrawn from the door, the next one read %q, want the bounce", bounce)
 	}
 }
 
@@ -194,22 +324,23 @@ func TestAnAskForAProgramIsNeverTooSmall(t *testing.T) {
 	}
 	agent := programConversation(t, nil)
 	heard(agent, asked)
-	if refusal := agent.refuseProposedTask(taskSpec{via: "senior-dev"}); refusal != "" {
+	if refusal := refusedWith(agent, taskSpec{via: "senior-dev"}); refusal != "" {
 		t.Fatalf("the proposal naming the program the person asked for was refused: %q", refusal)
 	}
-	if refusal := agent.refuseProposedTask(taskSpec{}); refusal != programNamedSentence("senior-dev") {
+	if refusal := refusedWith(agent, taskSpec{}); refusal != programNamedSentence("senior-dev") {
 		t.Fatalf("the proposal leaving the program out read %q, want the bounce", refusal)
 	}
-	if refusal := agent.refuseProposedTask(taskSpec{}); refusal != spawnFloorRefusal {
+	modelReadTheResults(agent)
+	if refusal := refusedWith(agent, taskSpec{}); refusal != spawnFloorRefusal {
 		t.Fatalf("the second proposal leaving the program out read %q, want the floor", refusal)
 	}
 
 	unasked := programConversation(t, nil)
 	heard(unasked, "fix this file")
-	if refusal := unasked.refuseProposedTask(taskSpec{via: "senior-dev"}); refusal != spawnFloorRefusal {
+	if refusal := refusedWith(unasked, taskSpec{via: "senior-dev"}); refusal != spawnFloorRefusal {
 		t.Fatalf("a program nobody asked for lifted the floor: %q", refusal)
 	}
-	if refusal := unasked.refuseProposedTask(taskSpec{via: "nosuch"}); refusal != spawnFloorRefusal {
+	if refusal := refusedWith(unasked, taskSpec{via: "nosuch"}); refusal != spawnFloorRefusal {
 		t.Fatalf("a program this build does not carry lifted the floor: %q", refusal)
 	}
 }

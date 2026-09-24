@@ -32,12 +32,12 @@ countdown. A change you would make in a few steps it still makes itself.
 **Naming it is enough.** Say senior-dev in your message, in any spelling: "fix issue 412
 with senior-dev", "/senior-dev should take this", "senior dev". The model is told to use
 it, and if it proposes the work without senior-dev anyway, codeaf turns that proposal
-back once and tells it you named senior-dev. That holds even for a one-file fix, which
-otherwise stays in the conversation.
+back once, with any others in the same reply, and tells it you named senior-dev. That
+holds even for a one-file fix, which otherwise stays in the conversation.
 
 **Saying not to is kept too.** "don't use senior-dev for this" names it, so the first
-proposal is turned back the same way; the model proposes it again as it was, and the
-second proposal for the same message passes.
+proposal is turned back the same way; the model reads that and proposes it again as it
+was, and that proposal passes.
 
 **Typing `/senior-dev <brief>`** starts it at once, with your brief word for word and no
 card. Work codeaf moves to a task on its own, because a reply ran long or looked like

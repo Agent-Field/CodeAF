@@ -29,7 +29,11 @@ package session
 // commit is how the commit is lost. The matcher is a closed set and nothing
 // else.
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+)
 
 // spawnFloorRefusal is what propose_task reads back when the person's words
 // are a trivial ask. It names the fix the model can act on: do the command
@@ -48,13 +52,17 @@ const spawnFloorRefusal = "this ask is one command — do it here. A commit, an 
 // to name it, and the one that names it is not refused for being small
 // (delegate_asked.go). A proposal naming a program the person did not ask
 // for meets the floor as any proposal does.
-func (a *Agent) refuseProposedTask(spec taskSpec) string {
-	if bounce := a.programAskBounce(spec); bounce != "" {
+//
+// IT ANSWERS A STAGED CALL, nil for none, because the bounce is not a settled
+// refusal: it marks the message it was made for, and a call withdrawn before
+// it went ahead takes that mark back ([askBounce.Withdraw]).
+func (a *Agent) refuseProposedTask(spec taskSpec) bare.Staged {
+	if bounce := a.programAskBounce(spec); bounce != nil {
 		return bounce
 	}
 	if !a.config.InTask {
 		if asked := a.taskRequest(); trivialAsk(asked) && !a.config.askedForProgram(asked, spec.via) {
-			return spawnFloorRefusal
+			return bare.Settled(spawnFloorRefusal, true)
 		}
 	}
 	if missing, failed := a.graph().doomedDependencies(spec.dependsOn); len(missing)+len(failed) > 0 {
@@ -62,10 +70,10 @@ func (a *Agent) refuseProposedTask(spec taskSpec) string {
 			missing = a.missingRunDependencies(missing)
 		}
 		if len(missing)+len(failed) > 0 {
-			return dependencyRefusal(missing, failed)
+			return bare.Settled(dependencyRefusal(missing, failed), true)
 		}
 	}
-	return ""
+	return nil
 }
 
 // spawnFloorWide is the words that mean the ask has MORE THAN ONE piece of
