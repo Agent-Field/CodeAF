@@ -48,3 +48,25 @@ func TestConversationStoppedTaskNeverSaysFinished(t *testing.T) {
 		a.room = nil
 	}
 }
+
+func TestConversationTaskTotalSeparatesStoppedFromDone(t *testing.T) {
+	a := statusApp(t)
+	a.tasks = map[uint64]*taskNode{
+		1: {id: 1, title: "Stopped parent", state: session.TaskFailed, stopped: true},
+		2: {id: 2, parent: "1", title: "Stopped child", state: session.TaskFailed, ending: session.TaskEndingStopped},
+		3: {id: 3, title: "Completed sibling", state: session.TaskDone},
+	}
+	a.taskOrder = []uint64{1, 2, 3}
+	rows, _ := a.railFootRows(100, 40)
+	text := plain(strings.Join(rows, "\n"))
+	if !strings.Contains(text, "2 stopped") || !strings.Contains(text, "1 done") || strings.Contains(text, "3 done") {
+		t.Fatalf("wrong task totals: %s", text)
+	}
+	delete(a.tasks, 3)
+	a.taskOrder = []uint64{1, 2}
+	rows, _ = a.railFootRows(100, 40)
+	text = plain(strings.Join(rows, "\n"))
+	if !strings.Contains(text, "2 stopped") || strings.Contains(text, "done") {
+		t.Fatalf("stopped tasks counted as done: %s", text)
+	}
+}
