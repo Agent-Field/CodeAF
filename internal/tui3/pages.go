@@ -1534,7 +1534,7 @@ func placeFrameWithBar(a *app, width, height int,
 		// out drawn as a target; the layer has taken the keyboard and has a way out
 		// of its own, and two feet arguing about what `esc` does is worse at every
 		// width than one foot naming the keys that are live.
-		add(" "+paintHint(hintFit(a.placeHint(), width-2), pal, pal.dim), nil)
+		add(a.creditPlaceHint(width, pal), nil)
 	case bar != nil:
 		if line, hit, ok = bar(width); ok {
 			add(line, hit)
@@ -1543,13 +1543,13 @@ func placeFrameWithBar(a *app, width, height int,
 		fallthrough
 	default:
 		if msg, ok := a.placeMsgLine(width); ok {
-			add(msg, nil)
+			add(a.creditPlaceMessage(width, msg, pal), nil)
 		} else if hasBox {
 			// HOME'S KEYS ROW CARRIES THE PROJECT AT ITS RIGHT (hometip.go's
 			// [app.homeFootLine]): the keys first, and the path in what they leave.
 			add(a.homeFootLine(width, pal), nil)
 		} else {
-			add(" "+paintHint(hintFit(a.placeHint(), width-2), pal, pal.dim), nil)
+			add(a.creditPlaceHint(width, pal), nil)
 		}
 	}
 

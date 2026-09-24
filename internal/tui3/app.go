@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -16,6 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/credits"
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -903,6 +905,21 @@ type app struct {
 	updateArgs    []string
 	updateActive  bool
 	restart       *codeupdate.Plan
+	// THE OPENROUTER BALANCE (credits.go). readCredits is the door's reader and
+	// nil on every surface that cannot ask; the rest is what the loop keeps so
+	// the keys row never reads a file or scans a catalog while it draws.
+	readCredits         func(context.Context) (credits.Reading, error)
+	paymentRefusals     func(func()) func()
+	creditHookStop      func()
+	creditWake          *doorbell
+	creditPending       atomic.Uint32
+	creditRecordPending atomic.Bool
+	creditTrigger       *credits.Trigger
+	creditsLow          bool
+	implicitTalk        bool
+	creditSwitching     bool
+	chatCreditWarning   string
+	homeCreditWarning   string
 	// errandHome is the person's own home directory, resolved ONCE at `open` and
 	// held: the `~` project an item that belongs to no repository runs in
 	// ([app.errandPlace], [app.readBareBands], and homeexchange.go's
@@ -2818,6 +2835,9 @@ func newApp(ctx context.Context, opts Options) *app {
 		build:               strings.TrimSpace(opts.Build),
 		resumed:             opts.Resumed,
 		updateCheck:         opts.UpdateCheck,
+		readCredits:         opts.ReadCredits,
+		paymentRefusals:     opts.PaymentRefusals,
+		implicitTalk:        opts.ImplicitTalk,
 		resolveUpdate:       opts.ResolveUpdate,
 		installUpdate:       opts.InstallUpdate,
 		updateRunning:       strings.TrimSpace(opts.UpdateRunning),
@@ -2895,6 +2915,14 @@ func newApp(ctx context.Context, opts Options) *app {
 	// named once, here, and driven by name nowhere afterwards.
 	a.pictures = newLearned(statPictureFile)
 	a.modelLists = newLearned(readModelCacheName)
+	if a.readCredits != nil {
+		a.creditTrigger = credits.NewTrigger(time.Now)
+		a.creditWake = newDoorbell(creditWakeMsg{})
+		a.creditsLow = config.CreditsLowAt(a.profileDir)
+		if a.paymentRefusals != nil {
+			a.creditHookStop = a.paymentRefusals(func() { a.creditRecordPending.Store(true); a.creditWake.ring() })
+		}
+	}
 	// AND THE HOME DIRECTORY IS ONE OF THEM, with one name rather than a file per
 	// name: the frame names where an errand with no project of its own lands, and
 	// the answer is a fact about the process and not about the frame asking.
@@ -3106,6 +3134,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	// which is only now — home, a picker or a conversation. [app.Init] sends it,
 	// and from then on [app.retitle] sends it again only when it moves.
 	a.titleSent = terminalTitle(a)
+	a.refreshCreditWarnings()
 	return a
 }
 
@@ -3259,7 +3288,7 @@ func (a *app) Init() tea.Cmd {
 		// AND THE SETUP SCREEN'S EXAMPLE PANEL, when the setup is the first frame
 		// and the controls screen is its first step. It answers nil in every other
 		// case, which is most launches (onboarding.go).
-		a.setupDemoCmd(), a.checkForUpdate(), titleSend(a.titleSent),
+		a.setupDemoCmd(), a.checkForUpdate(), a.launchCredits(), a.creditWake.waitRing(), titleSend(a.titleSent),
 		// AND THE TWO DOORS INTO THE LOOP FROM ELSEWHERE, each with its one
 		// command parked on it (doorbell.go).
 		a.news.waitRing(), a.leaving.waitRing()}
@@ -4891,6 +4920,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case updateCheckMsg:
 		return a, a.tookUpdateCheck(msg)
+	case creditWakeMsg:
+		if a.creditRecordPending.Swap(false) {
+			a.refreshCreditWarnings()
+		}
+		return a, tea.Batch(a.creditWake.waitRing(), a.takeCreditWake())
+	case creditReadMsg:
+		return a, a.tookCredits(msg)
 
 	case updateResolveMsg:
 		return a, a.tookUpdateResolve(msg)
@@ -5654,6 +5690,7 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		a.retrying = true
 
 	case session.EventTurnDone:
+		a.refreshCreditWarnings()
 		if a.unreadChats == nil {
 			a.unreadChats = make(map[string]bool)
 		}
@@ -5668,6 +5705,10 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		after = tea.Batch(a.settle(), a.notifyDone())
 
 	case session.EventError:
+		a.refreshCreditWarnings()
+		if a.creditRefusalEnded(ev.Err) {
+			a.askCredits(credits.Refusal)
+		}
 		// AND A TURN THAT RAN OUT OF TRIES SAYS SO IN THOSE WORDS. The line used
 		// to be `error: after 3 retries: API error (429) …` — the engine's
 		// arithmetic and the provider's sentence, one inside the other, with
@@ -7860,6 +7901,11 @@ func (a *app) orchestrateEvent(ev session.Event) tea.Cmd {
 // conversation it is holding — ending the ones this process runs, detaching from
 // the ones a host runs (keeper.go's [app.leaveEverything]).
 func (a *app) quit() tea.Cmd {
+	if a.creditHookStop != nil {
+		a.creditHookStop()
+		a.creditHookStop = nil
+	}
+	a.creditWake.close()
 	// A provider connection owns a loopback listener. It leaves with the
 	// surface even when the browser is still open, just as account connections
 	// and file doors below do.

@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/credits"
 )
 
 // THE FIRST-RUN SETUP, AND THE MODEL DOOR THAT MAY COME BACK.
@@ -1000,4 +1001,6 @@ func (a *app) handAPIKey() {
 	if err := a.applyAPIKey(key); err != nil {
 		a.note("the key is saved but this conversation could not take it · " + err.Error())
 	}
+	a.refreshCreditWarnings()
+	a.askCredits(credits.KeyChanged)
 }
