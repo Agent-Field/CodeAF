@@ -41,6 +41,16 @@ type ProgramRecord struct {
 	// keeps it nowhere a page could read it afterwards, and a page that shows
 	// the spend without the ceiling beside it leaves out half the reading.
 	CeilingUSD float64 `json:"ceiling_usd,omitempty"`
+	// StartedAt and EndedAt are the program's own clock: the instant codeaf
+	// started its process and the instant that process was gone, written by
+	// whoever ran it (the run's worker, or the shell verb). They are the ONE
+	// record of how long the program itself ran, because every other pair of
+	// times near a run brackets something else — the store is seeded before
+	// the copy is cut, and the row settles after the landing. EndedAt is zero
+	// while the program runs, and both are zero in a record written before
+	// they existed, which a reader draws as no time rather than a wrong one.
+	StartedAt time.Time `json:"started_at,omitzero"`
+	EndedAt   time.Time `json:"ended_at,omitzero"`
 }
 
 // WriteProgram writes the record, whole, making the folder when it is not
