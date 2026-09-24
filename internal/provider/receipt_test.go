@@ -828,3 +828,67 @@ func TestAnAnswerWithNoUsageIsSettledOnlyWhereTheWorkAskedForIt(t *testing.T) {
 		})
 	}
 }
+
+// TestACutAnswerWithNoUsageIsStillSettledWhereTheWorkAskedForIt pins the opt-in
+// door on the roads that end in a cut. A paid 200 with no usage block that is
+// cut after it arrived — the model's own tool grammar written as text, or a
+// rescue that is not language — was billed through the ordinary door, which
+// banks nothing without a usage block, so on work that armed
+// WithUnmeteredReceipts the provider's charge reached no book at all.
+func TestACutAnswerWithNoUsageIsStillSettledWhereTheWorkAskedForIt(t *testing.T) {
+	const leak = `<｜DSML｜_web_search>{\"query\":\"x\"}<｜/DSML｜_web_search>`
+	for _, row := range []struct {
+		name   string
+		stream bool
+		rescue bool
+		body   string
+	}{
+		{name: "a whole answer that leaked its grammar", body: `{"id":"gen-cut","model":"sim/model","choices":[{"index":0,` +
+			`"finish_reason":"stop","message":{"role":"assistant","content":"` + leak + `"}}]}`},
+		{name: "a streamed answer that leaked its grammar", stream: true,
+			body: `data: {"id":"gen-cut","choices":[{"index":0,"delta":{"content":"` + leak + `"},"finish_reason":"stop"}]}` + "\n\n" + "data: [DONE]\n\n"},
+		{name: "a rescue that is not language", stream: true, rescue: true,
+			body: `data: {"id":"gen-cut","choices":[{"index":0,"delta":{"content":"half an answer \ufffd\ufffd"},"finish_reason":"stop"}]}` + "\n\n" + "data: [DONE]\n\n"},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			forgetLanes(t)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/generation" {
+					fmt.Fprint(w, `{"data":{"total_cost":0.0125,"tokens_prompt":9000,"tokens_completion":40}}`)
+					return
+				}
+				if row.stream {
+					w.Header().Set("Content-Type", "text/event-stream")
+				} else {
+					w.Header().Set("Content-Type", "application/json")
+				}
+				fmt.Fprint(w, row.body)
+			}))
+			t.Cleanup(server.Close)
+			client, err := NewClient(Config{
+				APIKey: "receipt-key", BaseURL: server.URL, Model: "sim/model", HTTPClient: server.Client(),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			client.velocity = newVelocityLedger()
+			client.wait = func(context.Context, time.Duration) error { return nil }
+			results := make(chan Reconciled, 1)
+			ctx := WithUnmeteredReceipts(WithReconcile(t.Context(), func(result Reconciled) { results <- result }))
+			if row.stream {
+				ctx = WithStreamObserver(ctx, func(StreamEvent) {})
+			}
+			if row.rescue {
+				ctx = withHedgeLane(ctx, "rescue")
+			}
+			_, err = client.CompleteWithMessages(ctx, userMessages("look this up"), ai.WithTools(machineryTools("web_search")))
+			if _, ok := CutFrom(err); !ok {
+				t.Fatalf("err = %v, want the answer cut", err)
+			}
+			result := receiptResult(t, results)
+			if !result.Found || result.Cost != 0.0125 || result.Ref != "gen-cut" {
+				t.Fatalf("settled = %+v, want the receipt's $0.0125", result)
+			}
+		})
+	}
+}
