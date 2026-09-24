@@ -3,6 +3,7 @@ package tui3
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
@@ -235,4 +236,91 @@ func TestHomeConversationKeepsWorkingWhileOneOfItsTasksWaitsForADecision(t *test
 			t.Fatalf("the conversation's own question lost its mark: %q", got)
 		}
 	})
+}
+
+// A conversation that has never been named has no tab, so Home draws it from the
+// saved rows; a task that is the first thing it does still marks it working.
+func TestHomeUnnamedConversationWorksWhileItsFirstTaskRuns(t *testing.T) {
+	lab := newHomeLab(t)
+	workspace := lab.workspace("project")
+	file := lab.session("project", "0000000000000001", "", workspace, time.Now())
+	a := lab.app(file)
+	a.workspace = workspace
+	a.width, a.height = 180, 45
+	a.linear = true
+	a.state = stateIdle
+	if tabs := a.tabList(); len(tabs) != 0 {
+		t.Fatalf("an unnamed conversation drew a tab: %+v", tabs)
+	}
+	a.taskUpdate(signalSettled(61, session.TaskRunning))
+	a.openHome()
+	var cell *homeCell
+	for _, line := range a.home.lines {
+		if line.kind == homeSession && line.cell != nil && line.cell.row != nil && line.cell.row.here {
+			cell = line.cell
+		}
+	}
+	if cell == nil {
+		t.Fatal("Home drew no row for the conversation in front")
+	}
+	if got := plain(a.homeConversationBullet(cell, a.pal)); got != a.pal.glyph(tokens.GWorking) {
+		t.Fatalf("Home shows %q while the unnamed conversation's task runs", got)
+	}
+	a.taskUpdate(signalSettled(61, session.TaskDone))
+	if got := plain(a.homeConversationBullet(cell, a.pal)); got != a.pal.glyph(tokens.GProseBullet) {
+		t.Fatalf("Home still shows work after the unnamed conversation's task settled: %q", got)
+	}
+}
+
+// Another window's conversation keeps its working mark while one of its tasks
+// runs, even when a different task's decision is waiting on the task's own row.
+func TestHomeAnotherWindowsDecisionDoesNotHideItsRunningTask(t *testing.T) {
+	a, _ := homeTabsFixture(t)
+	a.linear = true
+	cell := &homeCell{row: &switcherRow{session: session.SessionRow{Live: true,
+		Tasks:    session.TaskRollup{Running: 1},
+		Presence: session.SessionPresence{State: session.PresenceWaiting, Reason: "your call on the parser"}}}}
+	if got := plain(a.homeConversationBullet(cell, a.pal)); got != a.pal.glyph(tokens.GWorking) {
+		t.Fatalf("a waiting decision hid another window's running task: %q", got)
+	}
+}
+
+// Home's frame clock runs only for a spinner a person can see: a working row that
+// wears a question draws a still `?`, so it never takes the spinner.
+func TestHomeSpinnerSkipsARowWearingAQuestion(t *testing.T) {
+	a, files := homeTabsFixture(t)
+	open, _ := homeConversationLines(a)
+	front := open[0].cell
+	a.linear, a.pal.ascii = false, false
+	a.home.spin = homeNoLine
+	a.state = stateIdle
+	a.taskUpdate(signalSettled(71, session.TaskRunning))
+	front.mark = cellMarkNeeds
+	if a.homeAnimating() {
+		t.Fatal("Home animates although its only working row draws a still question")
+	}
+	key := a.convKey(files[1])
+	watch := &behindWatch{}
+	watch.noteTask(&session.TaskNotice{ID: 72, State: session.TaskRunning})
+	if a.behind == nil {
+		a.behind = make(map[string]*kept)
+	}
+	a.behind[key] = &kept{watch: watch}
+	var held *homeCell
+	for _, line := range open {
+		if line.cell.chatKey == key {
+			held = line.cell
+		}
+	}
+	if held == nil {
+		t.Fatal("the held conversation has no Home row")
+	}
+	first := plain(a.homeConversationBullet(held, a.pal))
+	a.paints += spinnerStep
+	if next := plain(a.homeConversationBullet(held, a.pal)); next == first || !a.homeAnimating() {
+		t.Fatal("the spinner did not move to the working row a person can see")
+	}
+	if got := plain(a.homeConversationBullet(front, a.pal)); got != a.pal.glyph(tokens.GNeedsHuman) {
+		t.Fatalf("the question lost its mark to the spinner: %q", got)
+	}
 }
