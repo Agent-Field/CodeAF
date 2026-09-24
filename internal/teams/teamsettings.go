@@ -183,11 +183,11 @@ type Effective struct {
 	// spend counts every team under it ([TeamSpend]), so an inherited cap is
 	// the ancestor's one pool, shared, and not a second allowance of the same
 	// size; the spend to set beside it is CapFrom.Team's.
-	CapFrom        Origin  `json:"cap_from"`
-	DepthLimit     int     `json:"depth_limit"`
-	DepthFrom      Origin  `json:"depth_from"`
-	SubShare       float64 `json:"sub_share"`
-	SubShareFrom   Origin  `json:"sub_share_from"`
+	CapFrom      Origin  `json:"cap_from"`
+	DepthLimit   int     `json:"depth_limit"`
+	DepthFrom    Origin  `json:"depth_from"`
+	SubShare     float64 `json:"sub_share"`
+	SubShareFrom Origin  `json:"sub_share_from"`
 }
 
 // Effective resolves team id's settings: each from the team's own override,
