@@ -599,8 +599,9 @@ task's record instead, which the clause above says out loud.
 saved. Once the store has the note the room writes `the worker reads a note at its next step`
 under it: the note goes to the task's store and waits until the worker asks for its next step,
 which is when it reads what you wrote. A task that has ended, `done` or `incomplete`, takes no
-next step, so its room leaves that sentence out. If the store refuses the note, the store's own
-sentence is drawn on the line you typed.
+next step, so its room leaves that sentence out, and it takes no note at all: `enter` there
+says `this task has finished` and where the words can go, and leaves them in the box. If the
+store refuses a note for another reason, the store's own sentence is drawn on the line you typed.
 
 ## Task page says finished but the work is still running
 

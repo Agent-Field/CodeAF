@@ -166,7 +166,8 @@ the worker reads a note at its next step
 
 A worker is a separate loop, so a note waits until the worker asks for its next step, and that
 is when it reads what you wrote. A task that has ended, `done` or `incomplete`, takes no next
-step, so its room leaves that sentence out. `x` is read only over an empty box: the moment
+step, so its room takes no note: `enter` there says `this task has finished` and where the
+words can go, and leaves them in the box. `x` is read only over an empty box: the moment
 there is a note to type, a letter is a letter. `x` raises the `Stop this task?` card before
 anything ends. On a task that has ended it is not offered and does nothing: it is a letter in
 the box. `p` is always a letter in the room; a part is held from its row in the tasks place.
