@@ -167,7 +167,7 @@ var tuiWords = map[string]tuiWord{
 	},
 	"homePanelProjects": {
 		screen: "projects",
-		why:    "the panel of folders, never empty, read and never stood on since 2026-09-17 — the view by project alt+g used to be",
+		why:    "the panel of folders, never empty; clicking a project selects the next message’s folder",
 	},
 	"homePanelRunning": {
 		screen: "sessions",
