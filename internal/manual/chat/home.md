@@ -299,7 +299,7 @@ The choice survives closing the app. Folder actions use the task's conversation 
 
 **Only one working conversation animates.** The other running conversations keep a
 still working mark. Home's latest activity reading chooses the spinner; if it has none,
-the first conversation with live work takes it. The page refreshes its saved facts every
+the first conversation with live work takes it, passing over a row that shows `?`. The page refreshes its saved facts every
 three seconds. An `ask here` errand's row takes the spinner while its answer is coming, and so does
 a row on its way here from another window.
 
@@ -2217,7 +2217,7 @@ their heights and their sides move with the terminal and the day.
 Every conversation in Home has a bullet. A dim bullet means there is no unread
 reply known to this window. A working mark means the conversation is answering or has
 queued or running tasks or background commands, even after its answer ends. This applies
-to the conversation in front and those held in other tabs. The mark clears when the last
+to the conversation in front, including one with no name yet, and those held in other tabs. The mark clears when the last
 work finishes; one completed task does not hide another that is still running, and a
 task waiting for your decision carries its `?` on the task's own row without hiding the
 conversation's other work.
