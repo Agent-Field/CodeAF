@@ -210,6 +210,18 @@ on.
 working, nothing is driving that run: its page reads `incomplete` rather than `running`,
 its time stops at the last thing it did, and it offers no stop.
 
+## Does another conversation or window see my senior-dev run — the @ list, other windows, the project's task list
+
+Yes. A senior-dev run takes a row in the project's task list the moment it starts, saying
+running, and a second row closes it when it ends, with its time, how it ended, the branch
+its work was kept on and what it cost. So the `@` list, another conversation's `tasks`
+tool, the conversation list's task counts and every other codeaf window on the project
+see it, and a window that has the run's conversation open says it is being worked on. The
+conversation that started the run lists it once, by the number its rail shows.
+
+If codeaf went away while the run was working, its row is closed the next time that
+conversation is opened: `incomplete — codeaf closed while this was still running`.
+
 ## Why did senior-dev stop — how a run ends, its log, crashed or stopped
 
 A run ends in one of these ways, and the task's ending says which:

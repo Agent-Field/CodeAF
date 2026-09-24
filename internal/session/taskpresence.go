@@ -904,7 +904,10 @@ func (a *Agent) presenceSnapshot(now time.Time) SessionPresence {
 		// would leave that window saying `waiting on you` with nothing after it.
 		snapshot.Question = a.presenceAsk()
 	}
-	snapshot.RunningTasks = append(a.presenceTasks(), a.presenceRuns()...)
+	// A HAND-OFF'S RUN IS WORK OUT TOO, and its row is in the project's index
+	// from its first breath (task_run_index.go); without it here every other
+	// window judged that row by the join and counted a live run as incomplete.
+	snapshot.RunningTasks = append(append(a.presenceTasks(), a.presenceRuns()...), a.presenceBeltRuns()...)
 	snapshot.Jobs = a.presenceJobs()
 	return snapshot
 }

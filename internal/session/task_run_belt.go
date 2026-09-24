@@ -646,7 +646,10 @@ func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
 // AND A ROW THAT HAS ENDED CARRIES HOW LONG IT RAN, worked out here from the
 // one pair it carries ([runSpan]) so that no publisher can put a different
 // figure beside the same two instants: the rail's clock, the card's span and
-// the checkpoint's elapsed_ms all read it.
+// the checkpoint's elapsed_ms all read it. Every row also reaches the project's
+// index and, while it runs, this conversation's presence ([Agent.indexRunRow]),
+// which is how the `@` list, another window and another conversation's tasks
+// tool know the run is there at all.
 func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 	if notice.Copy == nil {
 		for _, kept := range g.runRows(notice.ID) {
@@ -661,6 +664,7 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 	}
 	a.emitTaskUpdate(notice)
 	g.keepRunRows(notice.ID, []TaskNotice{notice})
+	a.indexRunRow(notice)
 }
 
 // cutBeltRun ends the live run because the CONVERSATION is ending. It is what

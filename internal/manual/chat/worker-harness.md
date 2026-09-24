@@ -43,7 +43,9 @@ landing card says `merged` when the work is in your folder and `branch kept` onl
 branch that is waiting. A hand-off that joined the run ends with it: its row settles
 `done` or `incomplete` when the run's does. The
 row the run was published under settles `done` when the run finished whole and
-`incomplete` on any other ending.
+`incomplete` on any other ending. Each of these rows is in the project's task list (the
+`@` list, other conversations' `tasks` tool, other windows) from the moment it starts, and
+is closed there with its time when it settles.
 
 **With the switch unset, none of this is reached.** `/task` raises an ordinary
 task on this session's own tree, briefed beside its worker and landed through the

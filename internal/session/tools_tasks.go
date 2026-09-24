@@ -273,7 +273,9 @@ func (a *Agent) taskSearchText(query string, limit int, scope string) string {
 	if limit <= 0 && a.config.taskID != 0 {
 		limit = taskFanLimit
 	}
-	out := taskRowsTextLimit(a.taskRows(), query, limit)
+	// THIS CONVERSATION'S OWN RUNS ARE LEFT TO THEIR STORE'S LISTING, which the
+	// tool puts above this one ([Agent.withoutOwnRunRows]).
+	out := taskRowsTextLimit(a.withoutOwnRunRows(a.taskRows()), query, limit)
 	if !a.tellsElsewhere() {
 		return a.taskConversationHint(out)
 	}
@@ -656,9 +658,10 @@ func (a *Agent) oneTask(ctx context.Context, token string, parsed tasksArguments
 	if parsed.Stop && (parsed.Continue || parsed.Forward || strings.TrimSpace(parsed.Resolve) != "") {
 		return "stop ends the task, so it cannot be combined with continue, resolve or forward; send one action at a time.", true, nil
 	}
-	// A LIVE RUN HAS NO PROJECT-INDEX ROW YET. Its rows are kept beside the
-	// graph's nodes and are written to the finished-work index only when the run
-	// ends, so a stop must resolve that live owner before asking the index. Every
+	// A LIVE RUN IS STOPPED THROUGH ITS OWNER, NEVER THROUGH THE INDEX. Its rows
+	// are kept beside the graph's nodes, not among them, and the index row this
+	// conversation's own run writes is left out of this reader
+	// ([Agent.withoutOwnRunRows]), so a stop resolves the live run first. Every
 	// other operation keeps its existing reader: run details come from the plan
 	// store and ordinary tasks come from the graph and project index below.
 	if parsed.Stop {
@@ -666,7 +669,7 @@ func (a *Agent) oneTask(ctx context.Context, token string, parsed tasksArguments
 			return a.stopOneTask(entry, id, true, parsed.Say)
 		}
 	}
-	rows := a.taskRows()
+	rows := a.withoutOwnRunRows(a.taskRows())
 	entry, found := a.taskByToken(rows, token)
 	if !found {
 		// CONTINUE ON A MISS IS NOT "NO TASK". The person named a number and

@@ -104,9 +104,10 @@ func (a *Agent) stopBeltRow(id uint64, why string) (string, bool, error) {
 }
 
 // liveBeltTaskByToken resolves the model's task spelling against the run that
-// is alive now. A run's rows are deliberately not graph nodes and do not reach
-// the project's finished-work index until they end, so that index cannot be
-// the door onto stopping one. The run's own kept rows carry the same ids and
+// is alive now. A run's rows are deliberately not graph nodes, and the index
+// rows they write are left out of this conversation's own reading of the index
+// (task_run_index.go), so that index cannot be the door onto stopping one. The
+// run's own kept rows carry the same ids and
 // titles the rail shows, which makes a number and a title-derived name mean the
 // same thing here that they mean for an ordinary task.
 func (a *Agent) liveBeltTaskByToken(token string) (TaskIndexEntry, uint64, bool) {
