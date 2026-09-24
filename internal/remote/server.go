@@ -1187,6 +1187,8 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// Every engine of this build answers the teams doors from its own
 		// profile (teams.go), so the flag is about the build, not the agent.
 		Teams: true,
+		// The two model asks are the agent's, so they are asked of it.
+		TeamAsk: teamAskKnown(sess.agent),
 		// This revision checks it in the handler, for every engine behind it
 		// ([Session.agentOf]), so the answer is about the wire and not the agent.
 		SteerOwner: true,
@@ -2971,6 +2973,9 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	}
 	// And the teams doors, additive in the same way (wire_teams.go).
 	if payload, handled, err := s.teamsCall(call); handled {
+		return payload, err
+	}
+	if payload, handled, err := teamAskCall(agent, call); handled {
 		return payload, err
 	}
 	return nil, fmt.Errorf("engine: no such method %q", call.Method)
