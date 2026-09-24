@@ -633,9 +633,6 @@ func (a *app) hopRest(open []hopRow, now time.Time) []hopRow {
 	var all []switcherRow
 	for _, project := range world.Projects {
 		for _, row := range project.Sessions {
-			if row.Archived {
-				continue
-			}
 			a.hopKnown++
 			if held[a.convKey(row.Transcript)] {
 				continue
@@ -1795,11 +1792,7 @@ func (a *app) countConversations() tea.Cmd {
 		}
 		n := 0
 		for _, project := range seen.Projects {
-			for _, row := range project.Sessions {
-				if !row.Archived {
-					n++
-				}
-			}
+			n += len(project.Sessions)
 		}
 		return hopCountMsg{n: n}
 	}

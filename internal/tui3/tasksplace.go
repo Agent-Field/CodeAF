@@ -171,6 +171,7 @@ type tasksMineRow struct {
 type tasksChatView struct {
 	title           string
 	working, unread bool
+	closed          bool
 }
 
 // tasksReading is everything drawing and routing need from one world reading.
@@ -812,6 +813,7 @@ func (r tasksReading) lay(width int) []tasksLine {
 				if view, ok := r.chatViews[line.chat.row.Transcript]; ok {
 					line.chat.title = view.title
 					line.chat.working, line.chat.unread = view.working, view.unread
+					line.chat.row.Archived = view.closed
 				}
 				line.kin = ""
 				lines = append(lines, line)
@@ -2077,7 +2079,7 @@ func tasksChatRow(line tasksLine, width int, now time.Time, folder, tilde string
 	lead := tasksBareLead + pal.dim(tasksTreeLead(line, width, pal)) + bullet + " "
 	return tasksTableRow(lead, ansi.StringWidth(lead), name,
 		tasksChatStateField(chat), tasksKeyField(by.key, line.rank, now),
-		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit, project, tasksFoldMark(line, pal))
+		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit, chat.row.Archived, project, tasksFoldMark(line, pal))
 }
 
 // tasksRow is one piece of work on a wide frame, and it is A ROW OF A TABLE: the
@@ -2116,7 +2118,7 @@ func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palett
 	}
 	return tasksTableRow(lead, cells, label,
 		state, second,
-		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit, "", tasksFoldMark(line, pal))
+		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit, false, "", tasksFoldMark(line, pal))
 }
 
 // tasksAgeField reads recorded activity rather than dating every live task now.

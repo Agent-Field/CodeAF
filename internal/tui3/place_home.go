@@ -288,7 +288,7 @@ func (a *app) homeArchiveRow(row session.SessionRow) tea.Cmd {
 	if row.Transcript == a.file {
 		key = a.frontTabKey()
 	}
-	a.tabShutKey(key)
+	a.tabShutSaved(key)
 	a.taskRowNotice(homeClosedWord)
 	a.refreshRecordLists()
 	return nil
@@ -299,7 +299,10 @@ func (a *app) homeConversationClosed(row session.SessionRow) bool {
 	if row.Transcript == a.file {
 		key = a.frontTabKey()
 	}
-	return row.Archived || a.tabShut[key]
+	if closed, known := a.tabShut[key]; known {
+		return closed
+	}
+	return row.Archived
 }
 
 // A new tab without a saved session has no archive record yet.

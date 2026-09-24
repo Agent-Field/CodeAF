@@ -489,6 +489,15 @@ the list already draws, and it says `nothing matches` only when your filter has 
 page — and the foot names only what is true of the row you are on: `enter open its room ·
 → verbs: close, new in project, open folder, copy project`.
 
+## Closed conversations in Sessions — dark grey names and synchronized tabs
+
+A closed conversation stays in Sessions with its name in the same dark grey as Home,
+even when selected. Its running work keeps its progress marks. Closing from Home,
+Sessions, the conversation tab or the chats menu saves the same state: the tab and
+its default `alt+k` entry disappear. The menu's `→ show closed` fold can still find it.
+Enter reopens it and restores its normal name and tab. Confirmed permanent deletion
+removes the conversation from Home, Sessions, tabs, the chats menu and reopen history.
+
 ## Close or put away a task, find an archived task, or reopen it
 
 On home or the Sessions list, select the task, press `→`, then `x close`.

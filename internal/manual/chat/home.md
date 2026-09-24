@@ -689,8 +689,11 @@ among its fifteen most recent, and search finds older ones. Running replies, tas
 and jobs keep their progress marks after the tab closes. Its draft and saved history stay.
 
 **Enter reopens the conversation and its tab.** On a phone-width terminal, Enter first
-opens its sheet; use the sheet's open action. Closing from Home or Sessions saves its
-closed status across restarts; `ctrl+w` retains the tab in this window's close stack.
+opens its sheet; use the sheet's open action. Home, Sessions, the tab close button and
+`ctrl+w` in the chats menu save the same closed status across restarts. Closed names
+use the same dark grey on Home and Sessions, including the selected row. Running
+progress stays visible. Reopening from any of these places or `ctrl+shift+t` clears
+the closed status everywhere.
 
 ## Permanently delete a conversation or task — delete is permanent, are you sure?
 

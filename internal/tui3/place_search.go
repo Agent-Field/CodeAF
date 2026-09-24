@@ -343,7 +343,9 @@ func (a *app) openConversationRow(row session.SessionRow) tea.Cmd {
 			a.taskRowNotice("could not reopen conversation")
 			return nil
 		}
-		delete(a.tabShut, a.convKey(row.Transcript))
+		if a.tabShut != nil {
+			a.tabShut[a.convKey(row.Transcript)] = false
+		}
 	}
 	switch {
 	case a.holding(row.Transcript):
