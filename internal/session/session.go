@@ -2724,11 +2724,15 @@ type Agent struct {
 	// block would name a landing on one turn and forget it on the next —
 	// see [deltaRemember].
 	elsewhereTold []deltaLanding
-	// teamDigestText is the team note's block (team.go): the manager's brief and
-	// the digest of every team this conversation manages, "" for one that
-	// manages none. It sits under mu and rides its own note at the tail, like
-	// elsewhereText, so an unchanged team lands no second note.
+	// teamDigestText is the team note's block (team.go): the digest of every
+	// team this conversation manages, "" for one that manages none. It sits
+	// under mu and rides its own note at the tail, like elsewhereText, so an
+	// unchanged team lands no second note.
 	teamDigestText string
+	// teamRoleText is what this conversation is in its teams (team.go's
+	// [teamRoleBlock]), set at every step boundary before the request and
+	// landed in a note of its own ahead of the others.
+	teamRoleText string
 	// team is this conversation's account of its teams: its key, its roles and
 	// its Traffic cursors (team.go). It has its own lock and is never read
 	// under mu.
