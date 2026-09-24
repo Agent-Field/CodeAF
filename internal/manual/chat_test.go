@@ -40,6 +40,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can the manager answer a member's permission prompt", "team-manager"},
 		{"how does a member post to the room", "team-manager"},
 		{"does a directive wake an idle member", "team-manager"},
+		// Questions, packets, caps and wrapping up (team-questions-and-caps.md).
+		{"does a member's question go to the manager or to me", "team-questions-and-caps"},
+		{"what is a decision packet", "team-questions-and-caps"},
+		{"what happens when a team reaches its daily cap", "team-questions-and-caps"},
+		{"how do I wrap up a team before closing it", "team-questions-and-caps"},
+		{"can a manager direct a member of another team", "team-manager"},
 		{"can I use my own deepseek key", "services"},
 		{"how do I connect glm", "services"},
 		{"how do I add an api key for another provider", "services"},
