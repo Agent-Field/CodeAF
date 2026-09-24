@@ -141,6 +141,10 @@ var commands = []command{
 	// lands nowhere.
 	{name: "search", desc: "everything said on this machine · " + placeChord(pageSearch)},
 	{name: "wall", desc: "every open conversation, live, and your teams · alt+v or ▦ below the box"},
+	// THE TEAMS PAGE, beside the wall it opens onto: the wall is the open
+	// conversations big, and this is the team-level view, every member open or
+	// not, the manager's conversation and what waits on you (place_teams.go).
+	{name: "teams", desc: "your teams, their managers and what waits on you · " + placeChord(pageTeams)},
 	{name: "spend", desc: "what this machine has cost, by the day · " + placeChord(pageSpend)},
 	// It sits AFTER /compact and before /help because those two are the pair a
 	// person reads together when a conversation has gone wrong: compacting is

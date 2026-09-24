@@ -88,6 +88,20 @@ type TeamsSeam struct {
 	// answers the ids forgotten. The window reads the list again after it
 	// (ReadSince), because the file moved.
 	Delete func(team string) ([]string, error)
+
+	// ── THE TEAMS PAGE (place_teams.go) ──
+	//
+	// Two more doors, OPTIONAL: a seam without them is a seam, and the page says
+	// what it cannot show rather than reading this machine's files. Over --host
+	// no wire answers them yet, so cmd/codeaf's hostTeams leaves them nil.
+
+	// History is team's packets, decided ones included, oldest first: the
+	// closed view reads its closing report from it (teamstore.Packets).
+	History func(team string) ([]teamstore.Packet, error)
+	// Append writes one entry to team's Traffic (teamstore.AppendTraffic). The
+	// page uses it for the three things the person says to a team outside a
+	// conversation: a wrap-up asked of the manager, a close and a reopen.
+	Append func(team string, e teamstore.Entry) error
 }
 
 // present reports whether the seam was handed at all.
@@ -167,6 +181,10 @@ func localTeams(dir string, watch *teamstore.Watch) TeamsSeam {
 			return spend, stamp, false, err
 		},
 		Delete: func(team string) ([]string, error) { return teamstore.Delete(dir, team) },
+		History: func(team string) ([]teamstore.Packet, error) {
+			return teamstore.Packets(dir, team)
+		},
+		Append: func(team string, e teamstore.Entry) error { return teamstore.AppendTraffic(dir, team, e) },
 	}
 }
 
