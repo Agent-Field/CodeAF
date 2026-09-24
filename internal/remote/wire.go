@@ -1143,6 +1143,17 @@ type Welcome struct {
 	// would open a picker whose every row ends in an error.
 	Folders bool `json:"folders,omitempty"`
 
+	// Teams says this engine ANSWERS THE TEAMS DOORS ([MethodTeamsRead],
+	// [MethodTeamsUpdate], [MethodTeamsTraffic]) from its own profile, which
+	// is where its team tools keep the teams and their Traffic.
+	//
+	// IT IS CARRIED FOR [Welcome.Folders]' REASON: the window decides at the
+	// door whether it has teams over this connection, before anything is
+	// drawn. ABSENCE IS false, and false turns teams off over the connection
+	// with the sentence the window has always said; it never sends the window
+	// back to the laptop's own teams file, which the far session cannot see.
+	Teams bool `json:"teams,omitempty"`
+
 	// News says this engine SENDS THE STATUS LINE'S NEWS — the "phase" and
 	// "lane" frames the live rate and the `via <machine>` rider are drawn from
 	// (news.go) — for the conversation this surface arrived in.
