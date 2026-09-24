@@ -136,8 +136,13 @@ func TestTeamStripTabsKeepsTheFrontTab(t *testing.T) {
 	}
 	a.wall.activeID = a.wall.teams[0].ID
 	got := a.teamStripTabs(tabs)
+	// The team has no manager, so its first place is the manager's empty one
+	// (teammanager.go), and the members follow it.
+	if len(got) == 0 || !got[0].slot {
+		t.Fatalf("the manager's place is not first: %+v", got)
+	}
 	var keys []string
-	for _, tab := range got {
+	for _, tab := range got[1:] {
 		keys = append(keys, tab.key)
 	}
 	if strings.Join(keys, ",") != "c,a,b" {
@@ -145,7 +150,7 @@ func TestTeamStripTabsKeepsTheFrontTab(t *testing.T) {
 	}
 	// A front tab that is a member is not drawn twice.
 	tabs[1].here, tabs[0].here = false, true
-	if got := a.teamStripTabs(tabs); len(got) != 2 {
+	if got := a.teamStripTabs(tabs); len(got) != 3 {
 		t.Fatalf("member front tab doubled: %+v", got)
 	}
 }

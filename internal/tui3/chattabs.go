@@ -154,6 +154,9 @@ type chatTab struct {
 	start  bool
 	signal tabSignal
 	work   bool
+	// slot is the manager's place in a team that has none: `+ Manager`, a
+	// word button with no conversation behind it (teammanager.go).
+	slot bool
 }
 
 // tabKind is what one drawn piece of the strip IS, which is what decides whether
@@ -192,6 +195,10 @@ const (
 	// the new-chat `+` (wall.go). It is kept out of the tabs' list for the
 	// chip's reason, in [wallState.door].
 	tabWall
+	// tabManager is `+ Manager`, the first place of a team shown that has no
+	// manager; a press starts one (teammanager.go). It has no close cells,
+	// because there is nothing behind it to close.
+	tabManager
 )
 
 // tabHit is where one piece was drawn and what pressing it does. It is the
@@ -211,7 +218,7 @@ func (h tabHit) door(a *app) bool {
 	switch h.kind {
 	case tabHere:
 		return a.roomOpen() || a.startingChat()
-	case tabOther, tabClose, tabNew, tabHome, tabScrollLeft, tabScrollRight, tabTeam, tabWall:
+	case tabOther, tabClose, tabNew, tabHome, tabScrollLeft, tabScrollRight, tabTeam, tabWall, tabManager:
 		return true
 	}
 	return false
@@ -794,6 +801,13 @@ func (a *app) tabsFit(tabs []chatTab, room, door int) ([]tabPiece, []tabHit) {
 	words := make([]string, len(tabs))
 	widths := make([]int, len(tabs))
 	for at, tab := range tabs {
+		if tab.slot {
+			// The manager's empty place is a word button: its word whole where
+			// it fits, and no close cells, since nothing is behind it.
+			words[at] = " " + fitConversationTitle(tab.word, max(cell-tabInsetCells-2, 1)) + " "
+			widths[at] = ansi.StringWidth(words[at]) + tabInsetCells
+			continue
+		}
 		words[at] = a.tabName(tab, cell-tabCloseCells-tabInsetCells)
 		widths[at] = ansi.StringWidth(words[at]) + tabInsetCells + tabCloseCells
 	}
@@ -815,7 +829,7 @@ func (a *app) tabsFit(tabs []chatTab, room, door int) ([]tabPiece, []tabHit) {
 	}
 	for i := from; i < to; i++ {
 		word := words[i]
-		if to-from == 1 {
+		if to-from == 1 && !tabs[i].slot {
 			// The one tab that is left takes whatever the row has, cut. A name with
 			// an ellipsis in it still says which conversation this is; a blank row
 			// says nothing at all.
@@ -828,6 +842,14 @@ func (a *app) tabsFit(tabs []chatTab, room, door int) ([]tabPiece, []tabHit) {
 		kind := tabOther
 		if tabs[i].here {
 			kind = tabHere
+		}
+		if tabs[i].slot {
+			pieces = append(pieces, tabPiece{word: a.tabSepWord(), quiet: true})
+			at += sepW
+			pieces = append(pieces, tabPiece{word: strings.Repeat(" ", tabInsetCells) + words[i], kind: tabManager, tab: tabs[i]})
+			hits = append(hits, tabHit{span: hudSpan{from: at, to: at + width}, kind: tabManager, tab: tabs[i]})
+			at += width
+			continue
 		}
 		pieces = append(pieces, tabPiece{word: a.tabSepWord(), quiet: true})
 		at += sepW
@@ -946,7 +968,7 @@ func (a *app) tabsPaint(pieces []tabPiece) string {
 	hot, lit := a.hotTab()
 	line := ""
 	for _, piece := range pieces {
-		on := lit && hot.tab.key == piece.tab.key && hot.tab.start == piece.tab.start && hot.kind != tabFold && hot.kind != tabNew && hot.kind != tabHome && hot.kind != tabScrollLeft && hot.kind != tabScrollRight && hot.kind != tabTeam && hot.kind != tabWall
+		on := lit && hot.tab.key == piece.tab.key && hot.tab.start == piece.tab.start && hot.kind != tabFold && hot.kind != tabNew && hot.kind != tabHome && hot.kind != tabScrollLeft && hot.kind != tabScrollRight && hot.kind != tabTeam && hot.kind != tabWall && hot.kind != tabManager
 		switch {
 		case piece.quiet:
 			line += a.pal.dim(piece.word)
@@ -960,7 +982,7 @@ func (a *app) tabsPaint(pieces []tabPiece) string {
 				word = a.pal.underline(word)
 			}
 			line += word
-		case piece.kind == tabFold || piece.kind == tabNew || piece.kind == tabHome || piece.kind == tabScrollLeft || piece.kind == tabScrollRight:
+		case piece.kind == tabFold || piece.kind == tabNew || piece.kind == tabHome || piece.kind == tabScrollLeft || piece.kind == tabScrollRight || piece.kind == tabManager:
 			if lit && hot.kind == piece.kind {
 				word := piece.word
 				if a.pal.profile < tokens.ANSI256 {
@@ -1154,6 +1176,10 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 		return a.openHome(), true
 	case tabNew:
 		return a.openChatStart(), true
+	case tabManager:
+		// The team's empty manager's place: a new conversation, made the
+		// manager (teammanager.go).
+		return a.teamManagerStart(), true
 	case tabTeam:
 		// The chip is the team switcher (teammenu.go).
 		a.openTeamMenu()

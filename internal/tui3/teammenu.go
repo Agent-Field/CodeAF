@@ -20,6 +20,7 @@ import (
 //	│ ○   All              12  │
 //	│ ──────────────────────── │
 //	│ + Add this conversation  │
+//	│ ◆ Make manager           │
 //	│ + New team…              │
 //	│   Team settings…         │
 //	╰──────────────────────────╯
@@ -28,7 +29,9 @@ import (
 // conversation in front only when it is not a member ([app.teamActivate]).
 // The rows under the rule act on the conversation in front: into or out of the
 // team that is shown, a new team starting with it, or the shown team's settings,
-// the last two on the wall, where teams are edited.
+// the last two on the wall, where teams are edited. `Make manager` makes a
+// member the team's manager, and on the manager it reads `Remove manager`
+// (teammanager.go).
 //
 // WITH NO TEAM SHOWN THE CHIP IS STILL THERE, AS A QUIET ` Teams ▾ `, whenever
 // there is a team to switch to. The strip is the one control on every page,
@@ -58,6 +61,7 @@ const (
 	teamMenuToggle   = -11 // + Add this conversation, or − Remove it
 	teamMenuNew      = -12 // + New team…
 	teamMenuSettings = -13 // Team settings…
+	teamMenuManager  = -14 // ◆ Make manager, or Remove manager
 )
 
 // teamMenuRow is one row of the switcher, as the painter and the keys both
@@ -80,6 +84,9 @@ func (a *app) teamMenuRows() []teamMenuRow {
 	_, shown := a.teamActive()
 	if shown && a.frontTabKey() != "" {
 		rows = append(rows, teamMenuRow{code: teamMenuToggle})
+		if t, _ := a.teamActive(); teamHolds(t, a.frontTabKey()) {
+			rows = append(rows, teamMenuRow{code: teamMenuManager})
+		}
 	}
 	rows = append(rows, teamMenuRow{code: teamMenuNew})
 	if shown {
@@ -151,6 +158,17 @@ func (a *app) teamMenuDo(r teamMenuRow) tea.Cmd {
 		}
 		if err := a.teamToggleMember(t.ID, a.teamMenuFront()); err != nil {
 			a.note("the team is changed for this window, but " + err.Error())
+		}
+		a.touch()
+		return nil
+	case teamMenuManager:
+		// The menu stays up, so the row's word is seen to flip.
+		t, ok := a.teamActive()
+		if !ok {
+			return nil
+		}
+		if err := a.teamToggleManager(t.ID, a.teamMenuFront()); err != nil {
+			a.note("the manager is changed for this window, but " + err.Error())
 		}
 		a.touch()
 		return nil
@@ -357,6 +375,12 @@ func (a *app) teamMenuCard(width, height int) wallCard {
 				if pal.ascii {
 					word = "- Remove this conversation"
 				}
+			}
+			ln.left, ln.leftW = pal.ink(word), ansi.StringWidth(word)
+		case teamMenuManager:
+			word := a.teamManagerMark() + " Make manager"
+			if shown.Manager != "" && shown.Manager == front {
+				word = "  Remove manager"
 			}
 			ln.left, ln.leftW = pal.ink(word), ansi.StringWidth(word)
 		case teamMenuNew:

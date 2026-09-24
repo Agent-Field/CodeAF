@@ -152,6 +152,17 @@ func (a *app) wallShown(now time.Time) []wallTile {
 			kept = append(kept, tile)
 		}
 	}
+	// THE MANAGER'S TILE IS PINNED FIRST, as its tab is the strip's first
+	// place, and wears the manager's mark (teammanager.go).
+	for i, tile := range kept {
+		if sp.Manager == "" || tile.tab.key != sp.Manager {
+			continue
+		}
+		tile.manager = true
+		copy(kept[1:i+1], kept[:i])
+		kept[0] = tile
+		break
+	}
 	return kept
 }
 
@@ -232,6 +243,7 @@ func (a *app) wallFrame(width, height int) []string {
 	if t, ok := a.teamActive(); ok {
 		view.team = t.ID
 	}
+	view.popManager, view.mark = a.wallPopManagerRow(), a.teamManagerMark()
 	// The counts are of open conversations, whatever a filter is hiding: a
 	// team's members this window has no tab for are still members, but they
 	// are not on the wall. They are read off the strip's list, not a second

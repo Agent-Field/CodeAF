@@ -142,6 +142,41 @@ func (a *app) wallToggleTeam(id string, tiles []wallTile) {
 	}
 }
 
+// wallPopManagerRow is the teams popover's manager row: offered when the
+// popover is about one conversation and that conversation is in the team shown,
+// as Make manager, or as Remove manager when it is that team's manager already.
+// Frame-safe: memory only.
+func (a *app) wallPopManagerRow() int {
+	p := a.wall.pop
+	if p.kind != wallPopMembers || len(p.targets) != 1 {
+		return 0
+	}
+	t, ok := a.teamActive()
+	if !ok || !teamHolds(t, p.targets[0]) {
+		return 0
+	}
+	if t.Manager == p.targets[0] {
+		return wallManagerRemove
+	}
+	return wallManagerMake
+}
+
+// wallPopToggleManager is the popover's manager row pressed. The popover stays
+// up, so the row's word is seen to flip.
+func (a *app) wallPopToggleManager(tiles []wallTile) {
+	if a.wallPopManagerRow() == 0 {
+		return
+	}
+	t, _ := a.teamActive()
+	tabs := a.wallTabsFor(a.wall.pop.targets, tiles)
+	if len(tabs) == 0 {
+		return
+	}
+	if err := a.teamToggleManager(t.ID, tabs[0]); err != nil {
+		a.note("the manager is changed for this window, but " + err.Error())
+	}
+}
+
 // wallPopNewTeam is + New team… in the teams popover: the new-team card,
 // with the popover's conversations as the ones picked.
 func (a *app) wallPopNewTeam(tiles []wallTile) tea.Cmd {
@@ -185,6 +220,9 @@ func (a *app) wallPopPress(hit wallHit, tiles []wallTile) tea.Cmd {
 		a.wallRecolor(hit.arg)
 	case p.kind == wallPopMembers && hit.arg == wallPopNew:
 		return a.wallPopNewTeam(tiles)
+	case p.kind == wallPopMembers && hit.arg == wallPopManager:
+		p.cursor = len(a.wall.teams) + 1
+		a.wallPopToggleManager(tiles)
 	case p.kind == wallPopMembers:
 		if i := teamIndex(a.wall.teams, hit.id); i >= 0 {
 			p.cursor = i
@@ -221,12 +259,20 @@ func (a *app) wallPopKey(msg tea.KeyPressMsg, tiles []wallTile) tea.Cmd {
 	switch p.kind {
 	case wallPopMembers:
 		last := len(a.wall.teams) // the + New team row
+		end := last
+		if a.wallPopManagerRow() != 0 {
+			end = last + 1 // the manager row under it
+		}
 		switch key {
 		case "up", "k":
 			p.cursor = max(p.cursor-1, 0)
 		case "down", "j":
-			p.cursor = min(p.cursor+1, last)
+			p.cursor = min(p.cursor+1, end)
 		case "space", "enter":
+			if p.cursor > last {
+				a.wallPopToggleManager(tiles)
+				return nil
+			}
 			if p.cursor >= last {
 				return a.wallPopNewTeam(tiles)
 			}

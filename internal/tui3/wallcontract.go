@@ -77,6 +77,9 @@ type wallTile struct {
 	question string
 	// marked is picked for a new team.
 	marked bool
+	// manager says this is the manager of the team shown, pinned first and
+	// marked before its name (teammanager.go).
+	manager bool
 	// rows is the tail drawn the way the conversation itself draws it
 	// (wallmini.go), already painted and fit to the body's width. When it is
 	// set the painter draws it in place of lines.
@@ -156,7 +159,18 @@ type wallView struct {
 	doorHot bool
 	// org is Organize's button and card (teamorganize.go).
 	org wallOrganize
+	// popManager is the teams popover's manager row for its one conversation
+	// in the team shown: 0 for none, and otherwise one of wallManagerMake and
+	// wallManagerRemove (teammanager.go). mark is the manager's glyph.
+	popManager int
+	mark       string
 }
+
+// The teams popover's manager row, as [wallView.popManager] says it.
+const (
+	wallManagerMake   = 1
+	wallManagerRemove = 2
+)
 
 // wallTeamRow is one team as the painter draws it: its id, name and colour,
 // and how many of its members are open conversations.
@@ -205,6 +219,7 @@ const (
 	wallPopDelete  = -2 // Delete team
 	wallPopConfirm = -3 // Delete, confirmed
 	wallPopKeep    = -4 // Keep, the delete undone
+	wallPopManager = -6 // Make manager, or Remove manager, in the team shown
 )
 
 // wallPopKind is which popover is up.

@@ -867,6 +867,16 @@ func wallTopBorder(pal palette, v wallView, t wallTile, i int, look wallTileLook
 		add(dots)
 		used += dw
 	}
+	if t.manager {
+		mark := teamManagerGlyph
+		if pal.ascii {
+			mark = teamManagerGlyphASCII
+		}
+		if w-used-right-2 >= 8 {
+			add(pal.accent(mark) + " ")
+			used += ansi.StringWidth(mark) + 1
+		}
+	}
 	nameRoom := w - used - right - 1
 	name := t.name
 	if nameRoom < 1 {

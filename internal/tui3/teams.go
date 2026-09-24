@@ -663,7 +663,7 @@ func (a *app) teamStripTabs(tabs []chatTab) []chatTab {
 	if !ok {
 		return tabs
 	}
-	out := teamTabs(t, tabs)
+	out := a.teamStripManager(t, teamTabs(t, tabs))
 	for _, tab := range tabs {
 		if tab.here && !teamHolds(t, tab.key) {
 			out = append(out, tab)
