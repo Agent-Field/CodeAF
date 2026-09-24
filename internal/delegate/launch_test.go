@@ -199,7 +199,13 @@ func TestRunKillsAProgramThatIgnoresTerm(t *testing.T) {
 		`trap '' TERM`,
 		`sleep 30`,
 	}, "\n"))
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	// THE PROGRAM MUST HAVE ITS TRAP BEFORE THE STOP ARRIVES. Three hundred
+	// milliseconds was the whole of its life here, and on a loaded box the
+	// shell had not yet run `trap` when TERM came, so it died of the TERM and
+	// the test read a program that honours TERM as one the launch failed to
+	// kill. It is given a second and a half to get there; the grace that
+	// follows is what the test is about.
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
 	defer cancel()
 	started := time.Now()
 	launch := fakeLaunch(t, script, t.TempDir(), "b", Ceilings{}, ModelAPI{})
