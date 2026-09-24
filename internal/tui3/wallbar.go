@@ -91,17 +91,17 @@ func wallBarWidth(bs []wallButton, gap int) int {
 // wallKeys is the spelling of the marks the controls use, in the palette's
 // tier.
 type wallKeys struct {
-	back, enter, shuffle, minus, more, menu, caret, spaces, rule string
-	boxOff, boxOn, boxSome                                       string
+	back, enter, pick, shuffle, minus, more, menu, caret, rule string
+	boxOff, boxOn, boxSome                                     string
 }
 
 func wallKeysFor(ascii bool) wallKeys {
 	if ascii {
-		return wallKeys{back: "<", enter: "enter", shuffle: "~", minus: "-", more: "...", menu: "~", caret: "v",
-			spaces: "*+", rule: "-", boxOff: "[ ]", boxOn: "[x]", boxSome: "[-]"}
+		return wallKeys{back: "<", enter: "enter", pick: "space", shuffle: "~", minus: "-", more: "...", menu: "~", caret: "v",
+			rule: "-", boxOff: "[ ]", boxOn: "[x]", boxSome: "[-]"}
 	}
-	return wallKeys{back: "‹", enter: "↵", shuffle: "↻", minus: "−", more: "…", menu: "⋯", caret: "▾",
-		spaces: "●+", rule: "─", boxOff: "☐", boxOn: "☑", boxSome: "▣"}
+	return wallKeys{back: "‹", enter: "↵", pick: "␣", shuffle: "↻", minus: "−", more: "…", menu: "⋯", caret: "▾",
+		rule: "─", boxOff: "☐", boxOn: "☑", boxSome: "▣"}
 }
 
 // wallPart is one piece of a row drawn on a ground: hot pieces are a control
@@ -175,9 +175,9 @@ func wallBar(pal palette, v wallView, width, y int) (string, []wallHit) {
 //
 // BETWEEN THE TWO IS THE STATUS LINE. While the pointer rests on any control,
 // the toolbar says in one dim line what that control does and the key that
-// does the same, as a desktop program's status bar does: a glyph like ●+ is
-// learnt by pointing at it once, and nothing is drawn over the thing pointed
-// at.
+// does the same, as a desktop program's status bar does: a glyph like a
+// segment's dot is learnt by pointing at it once, and nothing is drawn over
+// the thing pointed at.
 func wallBarIn(pal palette, v wallView, width, inset, y int) (string, []wallHit) {
 	k := wallKeysFor(pal.ascii)
 	hint := wallHint(v, pal.ascii)
@@ -198,17 +198,33 @@ func wallBarIn(pal palette, v wallView, width, inset, y int) (string, []wallHit)
 	cols := []wallButton{{act: wallActColsLess, label: k.minus}, {act: wallActColsMore, label: "+"}}
 	const colsWord = "Columns"
 	colsW := len(colsWord) + wallBarWidth(cols, 0)
+	help := []wallButton{{act: wallActHelp, label: "Help", key: "?"}}
 
-	showCols, showActs := true, len(acts)
-	fits := func() bool {
-		w := 1 + wallBarWidth(left, gap) + gap
+	// A narrow frame gives up the columns first, then the acts from the right,
+	// and Help last of all: it is the one button that says what the rest do.
+	// The keys stay whatever is drawn.
+	showCols, showActs, showHelp := true, len(acts), true
+	rightW := func() int {
+		w := 0
+		part := func(pw int) {
+			if w > 0 {
+				w += gap
+			}
+			w += pw
+		}
 		if showActs > 0 {
-			w += wallBarWidth(acts[:showActs], gap)
+			part(wallBarWidth(acts[:showActs], gap))
 		}
 		if showCols {
-			w += gap + colsW
+			part(colsW)
 		}
-		return w+max(inset-1, 0) <= width
+		if showHelp {
+			part(wallBarWidth(help, gap))
+		}
+		return w
+	}
+	fits := func() bool {
+		return 1+wallBarWidth(left, gap)+gap+rightW()+max(inset-1, 0) <= width
 	}
 	for !fits() {
 		switch {
@@ -216,20 +232,15 @@ func wallBarIn(pal palette, v wallView, width, inset, y int) (string, []wallHit)
 			showCols = false
 		case showActs > 0:
 			showActs--
+		case showHelp:
+			showHelp = false
 		default:
 			return "", nil
 		}
 	}
 	s, lw, hits := wallLay(pal, left, v.hover, 1, y, gap)
 	row := " " + s
-	right := acts[:showActs]
-	rw := wallBarWidth(right, gap)
-	if showCols {
-		if rw > 0 {
-			rw += gap
-		}
-		rw += colsW
-	}
+	rw := rightW()
 	// The last button's ground sits in the inset, as the title's last pill's
 	// does, so its word ends where the grid does.
 	at := width - max(inset-1, 0) - rw
@@ -246,21 +257,35 @@ func wallBarIn(pal palette, v wallView, width, inset, y int) (string, []wallHit)
 		used += hintGap + ansi.StringWidth(hint)
 	}
 	row += strings.Repeat(" ", max(at-used, 0))
-	if len(right) > 0 {
-		rs, w, rh := wallLay(pal, right, v.hover, at, y, gap)
-		row += rs
-		hits = append(hits, rh...)
-		at += w
-		if showCols {
+	first := true
+	sep := func() {
+		if !first {
 			row += strings.Repeat(" ", gap)
 			at += gap
 		}
+		first = false
+	}
+	if showActs > 0 {
+		sep()
+		rs, w, rh := wallLay(pal, acts[:showActs], v.hover, at, y, gap)
+		row += rs
+		hits = append(hits, rh...)
+		at += w
 	}
 	if showCols {
+		sep()
 		row += pal.dim(colsWord)
-		cs, _, ch := wallLay(pal, cols, v.hover, at+len(colsWord), y, 0)
+		cs, w, ch := wallLay(pal, cols, v.hover, at+len(colsWord), y, 0)
 		row += cs
 		hits = append(hits, ch...)
+		at += len(colsWord) + w
+	}
+	if showHelp {
+		sep()
+		hs, w, hh := wallLay(pal, help, v.hover, at, y, gap)
+		row += hs
+		hits = append(hits, hh...)
+		at += w
 	}
 	return row, hits
 }
@@ -360,7 +385,7 @@ func wallHint(v wallView, ascii bool) string {
 		case wallActNewSpace:
 			return keyed(wallNewSpaceHint(marked), "s")
 		case wallActNext:
-			return keyed("Go to the next conversation waiting on you", "?")
+			return keyed("Go to the next conversation waiting on you", "n")
 		case wallActColsLess:
 			return keyed("Fewer columns", "-")
 		case wallActColsMore:
@@ -381,7 +406,16 @@ func wallHint(v wallView, ascii bool) string {
 			return keyed("Put the card away", "esc")
 		case wallActShuffle:
 			return keyed("Suggest another name and colour", "ctrl+r")
+		case wallActHelp:
+			return keyed("What you can do here", "?")
 		}
+	case wallHitHelp:
+		if rows := wallHelpRows(ascii); h.arg >= 0 && h.arg < len(rows) {
+			return rows[h.arg].hint
+		}
+	}
+	if v.doorHot {
+		return keyed("Close Conversations", "alt+v")
 	}
 	return ""
 }
@@ -661,53 +695,75 @@ func wallHitsWithin(hits []wallHit, width int) []wallHit {
 	return kept
 }
 
-func wallCloseMark(ascii bool) string {
-	if ascii {
-		return "x"
-	}
-	return "×"
-}
+// ── A TILE'S ACTION ROW AND ITS SPACES ──────────────────────────────────────
 
-// ── A TILE'S OWN CONTROLS AND ITS SPACES ────────────────────────────────────
-
-// wallCtl is one control on a tile's top border, x cells from the first.
-type wallCtl struct {
+// wallTileAct is one button on a tile's action row, x cells from the tile's
+// left edge.
+type wallTileAct struct {
 	kind wallHitKind
-	word string
+	btn  wallButton
 	x    int
 }
 
-// wallTileCtlsFull is the least tile width that spells `open ↗` out; below it
-// the controls are their glyphs alone.
-const wallTileCtlsFull = 44
+// wallActGap is the run of border between two buttons on the action row, so
+// the row still reads as the tile's border with words set into it.
+const wallActGap = 2
 
-// wallTileCtls is the controls a tile w wide carries at the right of its top
-// border, and the cells they take: its spaces, open, and close. The answer
-// depends on the width alone, never on hover or focus, so the cells are the
-// same whether the controls are drawn or not.
-func wallTileCtls(ascii bool, w int) ([]wallCtl, int) {
+// wallTileActs is the buttons tile t's action row carries at width w: Open,
+// or Answer on a tile waiting on a person, then Select, Spaces and Close.
+// They are laid from the border's second cell, two rule cells apart, and a
+// narrow tile loses them from the right, keeping its first; a tile too narrow
+// for even that has no row. The answer depends on the tile's width and its
+// state, never on the pointer, so the cells are the same whether the row is
+// drawn or not.
+func wallTileActs(ascii bool, t wallTile, w int) []wallTileAct {
 	k := wallKeysFor(ascii)
-	open := "↗"
-	if ascii {
-		open = ">"
+	first := wallButton{label: "Open", key: k.enter}
+	if t.signal == tabNeedsPerson {
+		first = wallAnswerButton(ascii)
 	}
-	var words []string
-	switch {
-	case w >= wallTileCtlsFull:
-		words = []string{" " + k.spaces + " ", " open " + open + " ", " " + wallCloseMark(ascii) + " "}
-	case w >= 24:
-		words = []string{" " + k.spaces + " ", " " + open + " ", " " + wallCloseMark(ascii) + " "}
-	default:
-		return nil, 0
+	all := []wallTileAct{
+		{kind: wallHitOpen, btn: first},
+		{kind: wallHitSelect, btn: wallButton{label: "Select", key: k.pick}},
+		{kind: wallHitSpaces, btn: wallButton{label: "Spaces", key: "m"}},
+		{kind: wallHitClose, btn: wallButton{label: "Close", key: "x"}},
 	}
-	kinds := []wallHitKind{wallHitSpaces, wallHitOpen, wallHitClose}
-	ctls := make([]wallCtl, len(words))
-	x := 0
-	for i, word := range words {
-		ctls[i] = wallCtl{kind: kinds[i], word: word, x: x}
-		x += ansi.StringWidth(word)
+	// The row keeps "╰─" before the first button and at least one rule cell
+	// and the corner after the last.
+	x := 2
+	var out []wallTileAct
+	for j, act := range all {
+		if j > 0 {
+			x += wallActGap
+		}
+		bw := wallButtonW(act.btn)
+		if x+bw+2 > w {
+			break
+		}
+		act.x = x
+		out = append(out, act)
+		x += bw
 	}
-	return ctls, x
+	return out
+}
+
+// wallActRow is the bottom border as the action row: each button a verb in
+// ink and its key dim, in the toolbar's button style, parted by runs of the
+// border, and the button under the pointer on the next ground up from the
+// tile's. y is the frame row it is drawn on.
+func wallActRow(pal palette, v wallView, i int, look wallTileLook, acts []wallTileAct, w, y int) string {
+	box, border := look.box, look.border
+	parts := []wallPart{{s: border(box.bl + box.h)}}
+	at := 2
+	for j, act := range acts {
+		if j > 0 {
+			parts = append(parts, wallPart{s: border(strings.Repeat(box.h, act.x-at))})
+		}
+		parts = append(parts, wallPart{s: wallButtonPaint(pal, act.btn, false), hot: wallRowHot(v, act.kind, i, y)})
+		at = act.x + wallButtonW(act.btn)
+	}
+	parts = append(parts, wallPart{s: border(strings.Repeat(box.h, max(w-at-1, 0)) + box.br)})
+	return wallFit(wallCompose(pal, parts, look.ground), w)
 }
 
 // wallTileDotsMax is the most dots a tile's border carries before the rest
@@ -738,46 +794,32 @@ func wallTileDots(pal palette, v wallView, t wallTile) (string, int) {
 }
 
 // wallTileHits is where tile i's targets landed, its top-left corner at x0,y0.
-// The first hit is always the one on the corner. A control is a target only
+// The first hit is always the one on the corner. A button is a target only
 // while it is drawn; hidden, its cells are the tile's body, and moving onto
 // them is hovering the tile, which draws it.
 func wallTileHits(pal palette, v wallView, t wallTile, i int, focused bool, x0, y0, w, h int) []wallHit {
 	look := wallLookFor(pal, v, t, i, focused)
-	type seg struct {
-		kind   wallHitKind
-		x0, x1 int
-	}
-	var segs []seg
-	push := func(kind wallHitKind, a, b int) {
-		if b <= a {
-			return
-		}
-		if n := len(segs); n > 0 && kind == wallHitTile && segs[n-1].kind == wallHitTile && segs[n-1].x1 == a {
-			segs[n-1].x1 = b
-			return
-		}
-		segs = append(segs, seg{kind, a, b})
-	}
-	at := x0
-	if wallSelFits(w) && look.boxOn {
-		push(wallHitTile, at, at+2)
-		push(wallHitSelect, at+2, at+2+wallSelW)
-		at += 2 + wallSelW
-	}
-	ctls, cw := wallTileCtls(pal.ascii, w)
-	if cw > 0 && look.ctlOn {
-		cx := x0 + w - 2 - cw
-		push(wallHitTile, at, cx)
+	var hits []wallHit
+	// row lays one border row's targets: the tile, cut around each control.
+	row := func(y int, ctls []wallHit) {
+		at := x0
 		for _, c := range ctls {
-			push(c.kind, cx+c.x, cx+c.x+ansi.StringWidth(c.word))
+			if c.x0 > at {
+				hits = append(hits, wallHit{x0: at, y0: y, x1: c.x0, y1: y + 1, kind: wallHitTile, arg: i})
+			}
+			c.y0, c.y1, c.arg = y, y+1, i
+			hits = append(hits, c)
+			at = c.x1
 		}
-		at = cx + cw
+		if at < x0+w {
+			hits = append(hits, wallHit{x0: at, y0: y, x1: x0 + w, y1: y + 1, kind: wallHitTile, arg: i})
+		}
 	}
-	push(wallHitTile, at, x0+w)
-	hits := make([]wallHit, 0, len(segs)+5)
-	for _, s := range segs {
-		hits = append(hits, wallHit{x0: s.x0, y0: y0, x1: s.x1, y1: y0 + 1, kind: s.kind, arg: i})
+	var top []wallHit
+	if look.boxOn && wallSelFits(w) && w >= 5 {
+		top = append(top, wallHit{x0: x0 + 2, x1: x0 + 2 + wallSelW, kind: wallHitSelect})
 	}
+	row(y0, top)
 	if h <= 1 {
 		return hits
 	}
@@ -788,17 +830,24 @@ func wallTileHits(pal palette, v wallView, t wallTile, i int, focused bool, x0, 
 	}
 	// A waiting tile's Answer is the tile's open, cut out of the body around
 	// it so the two never share a cell.
-	dx, dy, bw, ok := wallAnswerAt(pal.ascii, t, w, h)
-	if !ok {
-		body(y0+1, y0+h, x0, x0+w)
-		return hits
+	last := y0 + h - 1
+	if dx, dy, bw, ok := wallAnswerAt(pal.ascii, t, w, h); ok && y0+dy < last {
+		ay := y0 + dy
+		body(y0+1, ay, x0, x0+w)
+		body(ay, ay+1, x0, x0+dx)
+		hits = append(hits, wallHit{x0: x0 + dx, y0: ay, x1: x0 + dx + bw, y1: ay + 1, kind: wallHitOpen, arg: i})
+		body(ay, ay+1, x0+dx+bw, x0+w)
+		body(ay+1, last, x0, x0+w)
+	} else {
+		body(y0+1, last, x0, x0+w)
 	}
-	ay := y0 + dy
-	body(y0+1, ay, x0, x0+w)
-	body(ay, ay+1, x0, x0+dx)
-	hits = append(hits, wallHit{x0: x0 + dx, y0: ay, x1: x0 + dx + bw, y1: ay + 1, kind: wallHitOpen, arg: i})
-	body(ay, ay+1, x0+dx+bw, x0+w)
-	body(ay+1, y0+h, x0, x0+w)
+	var bottom []wallHit
+	if look.rowOn {
+		for _, act := range wallTileActs(pal.ascii, t, w) {
+			bottom = append(bottom, wallHit{x0: x0 + act.x, x1: x0 + act.x + wallButtonW(act.btn), kind: act.kind})
+		}
+	}
+	row(last, bottom)
 	return hits
 }
 
@@ -811,6 +860,9 @@ type wallCard struct {
 	x, y int
 	w    int
 	hits []wallHit
+	// over is how far a scrolled card's lines can scroll, zero for a card
+	// that fits.
+	over int
 }
 
 // wallCardLine is one row inside a card: painted words, and the targets on
@@ -1291,12 +1343,17 @@ func wallSplice(row, card string, x, width int) string {
 }
 
 // wallCarve takes the rectangle x0,y0..x1,y1 out of every hit, keeping what is
-// left of each around it, so nothing under a card answers the pointer.
+// left of each around it, so nothing under a card answers the pointer. A
+// control the card covers any of is dropped whole: a sliver of a button left
+// beside a card is a target on a cell that no longer says what it does.
 func wallCarve(hits []wallHit, x0, y0, x1, y1 int) []wallHit {
 	out := make([]wallHit, 0, len(hits))
 	for _, h := range hits {
 		if h.x1 <= x0 || h.x0 >= x1 || h.y1 <= y0 || h.y0 >= y1 {
 			out = append(out, h)
+			continue
+		}
+		if h.kind != wallHitTile {
 			continue
 		}
 		if h.y0 < y0 {

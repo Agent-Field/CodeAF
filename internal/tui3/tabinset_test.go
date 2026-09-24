@@ -17,7 +17,7 @@ func TestTabInsetSurroundsPaintedStatusAndClose(t *testing.T) {
 				a := newTestApp(&fakeAgent{})
 				a.pal = newPalette(profile, false)
 				tab := chatTab{key: "inset", word: "Readable title", here: active, signal: signal}
-				pieces, hits := a.tabsFit([]chatTab{tab}, 70)
+				pieces, hits := a.tabsFit([]chatTab{tab}, 70, 0)
 				a.chatTabHits = hits
 				var label, close tabHit
 				for _, hit := range hits {

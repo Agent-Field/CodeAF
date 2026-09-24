@@ -23,7 +23,8 @@ import (
 // toolbar (wallbar.go), whose free middle says what the control under the
 // pointer does. The head and the foot end where the grid ends. Two cards can
 // float over the grid: the selection tray while conversations are picked, and
-// the new-space card while one is named.
+// the new-space card while one is named; and the help sheet (wallhelp.go)
+// floats over everything while it is up.
 //
 // The words on screen are the person's words: a Conversation is a tile, a
 // Space is a named set of them. "wall" and "tab" are this code's names and are
@@ -39,14 +40,18 @@ import (
 //
 //	rest       a dim rounded border and no ground
 //	hover      the whole tile on the cursor ground, the border lifted to muted,
-//	           and the tile's own controls drawn
-//	focus      the heavy border; weight, never colour
+//	           and its action row drawn on the bottom border
+//	focus      the heavy border; weight, never colour; and the action row
 //	selected   the selected ground, a step above hover, and a ☑ at top left
 //	needs you  the amber border, and the only amber on the wall; its body
 //	           ends in the question and an Answer button
 //
-// Controls a hover reveals are drawn into cells the border kept for them all
-// along, so nothing under the pointer ever moves.
+// THE ACTIONS ARE WORDS, NOT GLYPHS. A tile's bottom border carries a
+// sparkline at rest, and under the pointer or the keyboard's focus it becomes
+// a row of labelled buttons, each a verb and its key (wallbar.go's
+// [wallTileActs]). The buttons' cells depend on the tile's width alone, so
+// nothing moves as the row appears. The ☐ is drawn only in the selection
+// mode, on every tile, where the mode itself says what a box is for.
 
 // wallChromeRows is what the frame spends outside the grid. The head is the
 // title bar, the Spaces row, a rule and a blank row; the foot mirrors it, a
@@ -357,6 +362,9 @@ func renderWall(pal palette, v wallView, width, height int) ([]string, []wallHit
 	if v.pop.kind != wallPopNone && !v.naming {
 		hits = wallOverlay(rows, hits, wallPopCard(pal, g, v, width, height), width)
 	}
+	if v.help {
+		hits = wallOverlay(rows, hits, wallHelpCard(pal, v, width, height), width)
+	}
 
 	for i, s := range rows {
 		if ansi.StringWidth(s) > width {
@@ -591,8 +599,9 @@ type wallTileLook struct {
 	border  func(string) string
 	ground  func(string) string
 	hovered bool
-	// boxOn says the selection box is drawn, and ctlOn the top-right controls.
-	boxOn, ctlOn bool
+	// boxOn says the selection box is drawn on the top border, which is the
+	// selection mode; rowOn says the bottom border is the action row.
+	boxOn, rowOn bool
 }
 
 // wallLookFor is the ladder read for one tile. Each rung claims one thing, and
@@ -614,8 +623,8 @@ func wallLookFor(pal palette, v wallView, t wallTile, i int, focused bool) wallT
 		border:  wallBorderInk(pal, t, focused, hovered),
 		ground:  wallGroundFor(pal, t, hovered),
 		hovered: hovered,
-		boxOn:   hovered || t.marked || wallMarked(v) > 0,
-		ctlOn:   hovered || focused,
+		boxOn:   wallMarked(v) > 0,
+		rowOn:   hovered || focused,
 	}
 }
 
@@ -688,32 +697,32 @@ func wallAnswerAt(ascii bool, t wallTile, w, h int) (dx, dy, bw int, ok bool) {
 	return wallPadX, h - 2 - padY, bw, true
 }
 
-// wallAnswerHot reports whether the pointer is on tile i's Answer button
-// rather than on its open ↗, which answers to the same ref. Without the
-// pointer's row both are lit, which at least says they are one door.
-func wallAnswerHot(v wallView, i, y0, dy int, corner bool) bool {
-	if v.hover.kind != wallHitOpen || v.hover.arg != i {
+// wallRowHot reports whether the pointer is on tile i's target of kind on
+// frame row y. A waiting tile's Answer and its row's Answer answer to one
+// ref, as a picked tile's ☐ and its row's Select do, and the pointer's row
+// says which of the two to light; without it both are lit, which at least
+// says they are one door.
+func wallRowHot(v wallView, kind wallHitKind, i, y int) bool {
+	if v.hover.kind != kind || v.hover.arg != i {
 		return false
 	}
-	if !v.pointerOn {
-		return true
-	}
-	if corner {
-		return v.pointerY == y0
-	}
-	return v.pointerY == y0+dy
+	return !v.pointerOn || v.pointerY == y
 }
 
 // wallPaintTile is one tile, exactly h rows of exactly w cells, its top-left
 // corner on frame row y0:
 //
-//	╭─ ☐ the tree walk ─────────────── open ↗  × ─╮
+//	╭─ ●● the tree walk ───────────────────────────╮
 //	│                                              │
 //	│  ⠸ running bash · 2m                         │
 //	│                                              │
 //	│  the body, oldest faded, newest in ink       │
 //	│                                              │
 //	╰─ ▁▂▃▅▇▅▃ ────────────────────────────────────╯
+//
+// and under the pointer or the focus its bottom border is the action row:
+//
+//	╰─ Open ↵ ── Select ␣ ── Spaces m ── Close x ──╯
 func wallPaintTile(pal palette, g wallGlyphs, v wallView, t wallTile, i int, focused bool, w, h, y0 int) []string {
 	look := wallLookFor(pal, v, t, i, focused)
 	box, border, ground := look.box, look.border, look.ground
@@ -739,7 +748,7 @@ func wallPaintTile(pal palette, g wallGlyphs, v wallView, t wallTile, i int, foc
 	if dx, dy, _, ok := wallAnswerAt(pal.ascii, t, w, h); ok && dy < len(out) {
 		// The button is laid over its row with the tile's ground around it and
 		// its own ground under it, as a control in a tile is.
-		btn := wallButtonPaint(pal, wallAnswerButton(pal.ascii), wallAnswerHot(v, i, y0, dy, false))
+		btn := wallButtonPaint(pal, wallAnswerButton(pal.ascii), wallRowHot(v, wallHitOpen, i, y0+dy))
 		bw := wallButtonW(wallAnswerButton(pal.ascii))
 		lead := border(box.v) + strings.Repeat(" ", dx-1)
 		tail := strings.Repeat(" ", max(w-dx-bw-1, 0)) + border(box.v)
@@ -747,6 +756,11 @@ func wallPaintTile(pal palette, g wallGlyphs, v wallView, t wallTile, i int, foc
 	}
 	for y := 0; y < padY; y++ {
 		out = append(out, blank)
+	}
+	if look.rowOn {
+		if acts := wallTileActs(pal.ascii, t, w); len(acts) > 0 {
+			return append(out, wallActRow(pal, v, i, look, acts, w, y0+h-1))
+		}
 	}
 	out = append(out, ground(wallBottomBorder(pal, t, box, border, w)))
 	return out
@@ -800,71 +814,59 @@ func wallMetaLine(pal palette, g wallGlyphs, v wallView, t wallTile, w int) stri
 	return s
 }
 
-// wallSelW is the cells the selection box takes at a tile's top left, drawn
-// or kept: ` ☐ ` unmarked, ` ☑ ` marked.
+// wallSelW is the cells the selection box takes at a tile's top left in the
+// selection mode: ` ☐ ` unmarked, ` ☑ ` marked.
 const wallSelW = 3
 
 // wallSelFits reports whether a tile w wide carries the selection box.
 func wallSelFits(w int) bool { return w >= 20 }
 
-// wallTitleGap is the least run of border between a title and the controls
-// kept at its right, so a long title reads as cut and never as touching them.
+// wallTitleGap is the least run of border between a title and the corner, so
+// a long title reads as cut and never as touching it.
 const wallTitleGap = 2
 
-// wallTopBorder is the selection box and the title on the left, and the
-// tile's own controls on the right:
+// wallTopBorder is the space's dots and the title, and in the selection mode
+// the box before them:
 //
-//	╭─ ☐ ●● the tree walk ─────────────────── ●+  open ↗  × ─╮
+//	╭─ ●● the tree walk ───────────────────────────────╮
+//	╭─ ☐ ●● the tree walk ─────────────────────────────╮
 //
-// The insets are fixed: one rule cell, the box's three cells (kept as rule
-// when the box is not drawn), the space's dots and a blank, the title, then
-// at least two rule cells before the controls' cells, then one rule cell and
-// the corner. The title is the brightest thing on the tile. Every piece a
-// hover reveals has its cells whether or not it is drawn.
+// The title is the brightest thing on the tile and has the whole border to
+// itself, less two rule cells before the corner. The box is drawn on every
+// tile or on none: it comes with the mode, never with the pointer, so a
+// hover changes nothing on this row but the box's own ground.
 func wallTopBorder(pal palette, v wallView, t wallTile, i int, look wallTileLook, w, y0 int) string {
 	box, border, ground := look.box, look.border, look.ground
 	if w < 5 {
 		return ground(wallFit(border(box.tl+strings.Repeat(box.h, max(w-2, 0))+box.tr), w))
 	}
-	ctls, ctlW := wallTileCtls(pal.ascii, w)
-	selW := 0
-	if wallSelFits(w) {
-		selW = wallSelW
-	}
-
 	var parts []wallPart
 	add := func(s string) { parts = append(parts, wallPart{s: s}) }
 
 	add(border(box.tl + box.h))
 	used := 2
-	if selW > 0 {
+	if look.boxOn && wallSelFits(w) {
+		sel := wallSelGlyph(pal.ascii, t.marked)
+		word := " " + sel + " "
 		switch {
-		case look.boxOn:
-			sel := wallSelGlyph(pal.ascii, t.marked)
-			word := " " + sel + " "
-			switch {
-			case v.hover.kind == wallHitSelect && v.hover.arg == i:
-				parts = append(parts, wallPart{s: pal.ink(word), hot: true})
-			case t.marked:
-				add(" " + pal.accent(sel) + " ")
-			default:
-				add(pal.muted(word))
-			}
+		case wallRowHot(v, wallHitSelect, i, y0):
+			parts = append(parts, wallPart{s: pal.ink(word), hot: true})
+		case t.marked:
+			add(" " + pal.accent(sel) + " ")
 		default:
-			add(border(box.h+box.h) + " ")
+			add(pal.muted(word))
 		}
-		used += selW
+		used += wallSelW
 	} else {
 		add(" ")
 		used++
 	}
-	right := ctlW + 2 // the controls, one rule and the corner
-	if dots, dw := wallTileDots(pal, v, t); dw > 0 && w-used-right-wallTitleGap-dw >= 8 {
+	right := 1 + wallTitleGap // the least rule and the corner
+	if dots, dw := wallTileDots(pal, v, t); dw > 0 && w-used-right-dw >= 8 {
 		add(dots)
 		used += dw
 	}
-	// The title, its blank, and the least rule before the controls.
-	nameRoom := w - used - right - 1 - wallTitleGap
+	nameRoom := w - used - right - 1
 	name := t.name
 	if nameRoom < 1 {
 		name = ""
@@ -875,25 +877,7 @@ func wallTopBorder(pal palette, v wallView, t wallTile, i int, look wallTileLook
 		add(pal.bold(pal.ink(name)) + " ")
 		used += ansi.StringWidth(name) + 1
 	}
-	add(border(strings.Repeat(box.h, max(w-used-right, 0))))
-	if ctlW > 0 {
-		if look.ctlOn {
-			for _, c := range ctls {
-				hot := v.hover.kind == c.kind && v.hover.arg == i
-				if c.kind == wallHitOpen {
-					hot = hot && wallAnswerHot(v, i, y0, 0, true)
-				}
-				if hot {
-					parts = append(parts, wallPart{s: pal.ink(c.word), hot: true})
-				} else {
-					add(pal.muted(c.word))
-				}
-			}
-		} else {
-			add(border(strings.Repeat(box.h, ctlW)))
-		}
-	}
-	add(border(box.h + box.tr))
+	add(border(strings.Repeat(box.h, max(w-used-1, 0)) + box.tr))
 	return wallFit(wallCompose(pal, parts, ground), w)
 }
 

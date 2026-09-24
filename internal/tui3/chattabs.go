@@ -185,8 +185,13 @@ const (
 	tabScrollRight
 	// tabSpace is the chip at the row's left end naming the space the strip is
 	// narrowed to; a press opens the wall, where spaces are changed. It is kept
-	// out of the tabs' list for the toggle's reason, in [wallState.chip].
+	// out of the tabs' list, in [wallState.chip], because the run of tabs and
+	// its count are one thing and the chip is not one of them.
 	tabSpace
+	// tabWall is the strip's door to the conversations view, ` ▦ All ` after
+	// the new-chat `+` (wall.go). It is kept out of the tabs' list for the
+	// chip's reason, in [wallState.door].
+	tabWall
 )
 
 // tabHit is where one piece was drawn and what pressing it does. It is the
@@ -206,7 +211,7 @@ func (h tabHit) door(a *app) bool {
 	switch h.kind {
 	case tabHere:
 		return a.roomOpen() || a.startingChat()
-	case tabOther, tabClose, tabNew, tabHome, tabScrollLeft, tabScrollRight, tabSpace:
+	case tabOther, tabClose, tabNew, tabHome, tabScrollLeft, tabScrollRight, tabSpace, tabWall:
 		return true
 	}
 	return false
@@ -245,6 +250,11 @@ type tabBar struct {
 	// was drawn.
 	space string
 	chip  hudSpan
+	// wallOn and door are the conversations view's state and where its door
+	// was drawn, so a reused row still lights the door right and still
+	// answers for it.
+	wallOn bool
+	door   hudSpan
 	// hot is the column of the piece the pointer was on, or -1.
 	hot     int
 	more    bool
@@ -531,6 +541,7 @@ func (a *app) roomFactsRow() int {
 func (a *app) tabsRow(width int) string {
 	a.chatTabHits = nil
 	a.wall.chip = hudSpan{}
+	a.wall.door = hudSpan{}
 	if a.tabsHeight(width) == 0 {
 		return ""
 	}
@@ -559,9 +570,9 @@ func (a *app) tabsRow(width int) string {
 	more := a.hopAvailable()
 	home := a.homeDoorOpen() && width-headLabelAt >= len(" Home ")+2+tabWordFloor+tabCloseCells+tabInsetCells
 	chipWord := a.tabSpaceWord()
-	if memo := a.chatTabBar; memo.home == home && memo.newChat == a.canStart() && memo.space == chipWord && memo.same(width, a.inkState, hot, more, tabs) {
+	if memo := a.chatTabBar; memo.home == home && memo.newChat == a.canStart() && memo.space == chipWord && memo.wallOn == a.wall.on && memo.same(width, a.inkState, hot, more, tabs) {
 		a.chatTabHits = memo.hits
-		a.wall.chip = memo.chip
+		a.wall.chip, a.wall.door = memo.chip, memo.door
 		return memo.line
 	}
 	room := max(width-headLabelAt, 0)
@@ -575,7 +586,7 @@ func (a *app) tabsRow(width int) string {
 	if home {
 		homeWidth = len(" Home ") + 2
 	}
-	pieces, hits := a.tabsFit(tabs, room-homeWidth)
+	pieces, hits := a.tabsFit(tabs, room-homeWidth, tabWallCellsAt(width))
 	if home {
 		hits = tabsAt(hits, homeWidth)
 		hits = append([]tabHit{{span: hudSpan{from: 0, to: len(" Home ")}, kind: tabHome}}, hits...)
@@ -586,14 +597,77 @@ func (a *app) tabsRow(width int) string {
 		return strings.Repeat(" ", max(width, 0))
 	}
 	a.chatTabHits = tabsAt(hits, headLabelAt+chipW)
+	// The door is laid out with the tabs, so it follows the new-chat `+`
+	// wherever that lands, and is then kept apart from them.
+	kept := a.chatTabHits[:0]
+	for _, hit := range a.chatTabHits {
+		if hit.kind == tabWall {
+			a.wall.door = hit.span
+			continue
+		}
+		kept = append(kept, hit)
+	}
+	a.chatTabHits = kept
 	line := strings.Repeat(" ", headLabelAt)
 	if chipW > 0 {
 		line += a.tabSpacePaint(chipWord, headLabelAt) + " "
 	}
 	line += a.tabsPaint(pieces)
+	// THE ROW FILLS THE FRAME, as the pulse over it does, so a door that went
+	// narrower leaves no cells behind it for the last frame's words.
+	line += strings.Repeat(" ", max(width-ansi.StringWidth(line), 0))
 	a.chatTabBar = tabBar{width: width, ink: a.inkState, hot: hot, more: more, newChat: a.canStart(), home: home, line: line, hits: a.chatTabHits,
-		tabs: append([]chatTab(nil), tabs...), space: chipWord, chip: a.wall.chip}
+		tabs: append([]chatTab(nil), tabs...), space: chipWord, chip: a.wall.chip, wallOn: a.wall.on, door: a.wall.door}
 	return line
+}
+
+// The strip's door to the conversations view. It is ` ▦ All `, the glyph and
+// the word, on a row at least tabWallWordFrom wide; the glyph alone, ` ▦ `, on
+// one at least tabWallFrom wide; and not drawn on a narrower one, where every
+// cell is a tab's and the view is still alt+v and the dock's `▦`. Its cells
+// depend on the width alone, never on the pointer, so nothing re-packs under
+// the hand.
+const (
+	tabWallFrom     = 60
+	tabWallWordFrom = 80
+	tabWallWord     = "All"
+)
+
+// tabWallCellsAt is the cells the door takes on a row width wide, pads
+// included: one blank either side, as the `+` has.
+func tabWallCellsAt(width int) int {
+	switch {
+	case width >= tabWallWordFrom:
+		return 4 + len(tabWallWord)
+	case width >= tabWallFrom:
+		return 3
+	}
+	return 0
+}
+
+// tabWallPaint draws the door: lit with the tab-in-front's own step while the
+// view is up, on the strip's hover ground under the pointer, and otherwise the
+// glyph in the shown space's colour (dim with none, as the dock's is) and the
+// word muted.
+func (a *app) tabWallPaint(word string, hot bool) string {
+	glyph := a.dockWallGlyph()
+	switch {
+	case hot:
+		if a.pal.profile < tokens.ANSI256 {
+			word = a.linearMark("·", ".") + strings.TrimPrefix(word, " ")
+		}
+		return a.pal.cursor(a.pal.ink(word), 0)
+	case a.wall.on:
+		return a.tabActivePaint(word)
+	}
+	ink := a.pal.dim
+	if sp, ok := a.spaceActive(); ok {
+		if pen := a.pal.spaceInk(sp.hueSpec()); pen != nil && !a.linear {
+			ink = pen
+		}
+	}
+	rest := strings.TrimPrefix(word, " "+glyph)
+	return a.pal.dim(" ") + ink(glyph) + a.pal.muted(rest)
 }
 
 // tabSpaceWord is the space chip's words, ` ● harbor ▾ `, or "" when no space
@@ -654,7 +728,11 @@ func (a *app) tabCloseWord() string { return a.linearMark(tabCloseMark, tabClose
 // tabsFit keeps names readable and exposes overflow through a scrolling window.
 // Selection is revealed unless the person explicitly browsed away from it; the
 // hidden count and directional controls describe everything outside that window.
-func (a *app) tabsFit(tabs []chatTab, room int) ([]tabPiece, []tabHit) {
+//
+// door is the cells the conversations view's door asks for after the new-chat
+// `+`, zero for none; it is given up whole when the tabs could not keep their
+// floor beside it.
+func (a *app) tabsFit(tabs []chatTab, room, door int) ([]tabPiece, []tabHit) {
 	if room <= 0 {
 		return nil, nil
 	}
@@ -669,6 +747,10 @@ func (a *app) tabsFit(tabs []chatTab, room int) ([]tabPiece, []tabHit) {
 	if showNew {
 		room -= 4
 	}
+	if door > 0 && room-door < tabWordFloor+tabCloseCells+tabInsetCells+7 {
+		door = 0
+	}
+	room -= door
 	active := 0
 	for at, tab := range tabs {
 		if tab.here {
@@ -771,6 +853,18 @@ func (a *app) tabsFit(tabs []chatTab, room int) ([]tabPiece, []tabHit) {
 		hits = append(hits, tabHit{span: hudSpan{from: at, to: at + 3}, kind: tabNew})
 		at += 3
 	}
+	// The conversations view's door stands right after it, touching it as the
+	// `+` touches the separator before it, each wearing its own blank either
+	// side.
+	if door > 0 {
+		word := " " + a.dockWallGlyph() + " "
+		if door > 3 {
+			word += tabWallWord + " "
+		}
+		pieces = append(pieces, tabPiece{word: word, kind: tabWall})
+		hits = append(hits, tabHit{span: hudSpan{from: at, to: at + door}, kind: tabWall})
+		at += door
+	}
 	// AND THE COUNT OF WHAT DID NOT FIT, WHICH IS THE WHOLE OF THE ROW'S RIGHT
 	// END NOW. It has no ladder to walk down any more: `+3` is three cells that
 	// are all fact, so it is drawn whole or it is not drawn — which is the same
@@ -841,10 +935,12 @@ func (a *app) tabsPaint(pieces []tabPiece) string {
 	hot, lit := a.hotTab()
 	line := ""
 	for _, piece := range pieces {
-		on := lit && hot.tab.key == piece.tab.key && hot.tab.start == piece.tab.start && hot.kind != tabFold && hot.kind != tabNew && hot.kind != tabHome && hot.kind != tabScrollLeft && hot.kind != tabScrollRight && hot.kind != tabSpace
+		on := lit && hot.tab.key == piece.tab.key && hot.tab.start == piece.tab.start && hot.kind != tabFold && hot.kind != tabNew && hot.kind != tabHome && hot.kind != tabScrollLeft && hot.kind != tabScrollRight && hot.kind != tabSpace && hot.kind != tabWall
 		switch {
 		case piece.quiet:
 			line += a.pal.dim(piece.word)
+		case piece.kind == tabWall:
+			line += a.tabWallPaint(piece.word, lit && hot.kind == tabWall)
 		case piece.kind == tabClose:
 			line += a.tabClosePaint(piece, hot, lit, on)
 		case piece.kind == tabHere:
@@ -950,6 +1046,9 @@ func (a *app) hotTab() (tabHit, bool) {
 	if a.hot.kind != hoverTab {
 		return tabHit{}, false
 	}
+	if a.wall.door.pressable() && a.hot.index == a.wall.door.from {
+		return tabHit{span: a.wall.door, kind: tabWall}, true
+	}
 	if a.wall.chip.pressable() && a.hot.index == a.wall.chip.from {
 		return tabHit{span: a.wall.chip, kind: tabSpace}, true
 	}
@@ -994,6 +1093,9 @@ func (a *app) tabAt(x, y int) (tabHit, bool) {
 	}
 	if a.wall.chip.pressable() && a.wall.chip.holds(x) {
 		return tabHit{span: a.wall.chip, kind: tabSpace}, true
+	}
+	if a.wall.door.pressable() && a.wall.door.holds(x) {
+		return tabHit{span: a.wall.door, kind: tabWall}, true
 	}
 	return tabHit{}, false
 }
@@ -1043,6 +1145,12 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 		return a.openChatStart(), true
 	case tabSpace:
 		if a.wall.on {
+			return nil, true
+		}
+		return a.openWall(), true
+	case tabWall:
+		if a.wall.on {
+			a.closeWall()
 			return nil, true
 		}
 		return a.openWall(), true
