@@ -139,6 +139,7 @@ func AppendTraffic(profileDir, teamID string, e Entry) error {
 				return err
 			}
 		}
+		before := modTime(path)
 		file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 		if err != nil {
 			return err
@@ -147,7 +148,13 @@ func AppendTraffic(profileDir, teamID string, e Entry) error {
 			_ = file.Close()
 			return err
 		}
-		return file.Close()
+		if err := file.Close(); err != nil {
+			return err
+		}
+		// The log's stamp moves with every line (stamp.go), under the log's
+		// lock, so a reader that stats before it reads never misses one.
+		advance(path, before)
+		return nil
 	})
 }
 
