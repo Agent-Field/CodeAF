@@ -1882,7 +1882,7 @@ const ctxRingSize = 6
 type hudSeg uint8
 
 const (
-	// segCrew is the crew's preset word — `crew max` — the OTHER model dial,
+	// segCrew is the crew's reading — `crew auto` — the OTHER model dial,
 	// drawn at the head of the telemetry so it stands beside the conversation's
 	// model across the gap (crew.go's [app.crewSegment] says why it is one word).
 	segCrew hudSeg = iota
@@ -3785,8 +3785,8 @@ const hopDoorWord = hopOpenKey + " chats"
 // What replaces it is a slot that only ever names the keys that WORK RIGHT NOW:
 //
 //	the pointer is theirs drag to select · any key ends it
-//	the picker is open    → lanes · enter switch · esc · crew max
-//	  inside a fold       enter choose · ← back · esc · crew max
+//	the picker is open    → lanes · enter switch · esc · crew auto
+//	  inside a fold       enter choose · ← back · esc · crew auto
 //	the sessions are up   enter open · esc
 //	copy mode is on       v select · a block · y yank · esc
 //	rewind mode is up     nothing — the mode bar prints its own keys

@@ -182,11 +182,17 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/memories` | — | — | prints every memory into the conversation |
 | `/remember` | — | `<text>` | keeps one thing across conversations |
 | `/forget` | — | `<query>` | forgets the best matching memory |
-| `/crew` | — | — | opens the six-seat reading: the model you talk to, then the three crew presets |
-| `/crew` | — | `<preset>` | sets the crew to `frugal`, `balanced` or `max` |
+| `/crew` | — | — | prints the crew panel: the three seats, providers, allowed models, the daily cap and recent tasks |
+| `/crew` | — | `pin <seat> <model[@provider]>` | pins the worker, planner or checker to a model; `/model` stays |
+| `/crew` | — | `unpin <seat\|all>` | puts a seat back on auto |
+| `/crew` | — | `models <rule>` | which models a seat may be picked from — `all`, `open`, `≤in/out`, ids |
+| `/crew` | — | `cap <dollars\|off>` | the most tasks' crews may spend in a day |
 | `/task` | — | — | opens the full-screen task page — the same page as `/history` and ctrl+. |
 | `/task` | — | `<brief>` | starts one worker at once; its brief is written and its width read beside it, and wide work splits |
 | `/task` | — | `solo <brief>` | starts one worker at once, with no reading of its width |
+| `/task` | — | `--best <brief>` | starts the task on the strongest crew the allowed models make, this task only |
+| `/task` | — | `--cheap <brief>` | starts the task on the cheapest crew that does the work, this task only |
+| `/redo` | — | `stronger` | runs the last task again on a stronger crew, and teaches the crew that kind of work needs more |
 | `/history` | — | — | opens the full-screen sessions place — every task this machine has run, filterable (also ctrl+.) |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/status` | `/info`, `/context` | `--json` | prints the same facts as one JSON object, keys in the same order |
@@ -637,20 +643,18 @@ whole wall time — the right edge of the row shows the live `38 tok/s` instead)
 (`2 open · 1 waiting`) and `watching` (the standing count, which is drawn at the foot of the
 task column). `crew` is a fifth and has its own line above.
 
-The `crew` line sits directly under `model` and reads the preset word — or `custom` — and
-the three classes:
+The `crew` line sits directly under `model` and says the crew is auto, with any seat you
+pinned after it:
 
 ```
-crew     max · brain claude-opus-5 · hands glm-5.3 · checks claude-fable-5.1
+crew     auto · pinned checker moonshotai/kimi-k3
 ```
 
-The crew is **not on the status line**. It was one short segment there — `crew max`, or
-`crew custom` — at the head of the telemetry until 2026-09-09, and it came off: the row is
-a ledger of things you act on from it, and a preset is changed on a page. The `crew` line
-here and on the phone's status sheet is where it is read now, in full. Every ordinary
-launch has a crew — one is never unset, only `custom` — so the line is always there; the
-one session that shows none is a **remote** one opened with `--host`, where the crew
-belongs to the other machine.
+The crew is **not on the status line**: the row is a ledger of things you act on from it,
+and the crew is changed on its panel. The `crew` line here and on the phone's status sheet
+is where it is read. Every ordinary launch has a crew — auto is an answer, not an absence —
+so the line is always there; the one session that shows none is a **remote** one opened
+with `--host`, where the crew belongs to the other machine.
 
 `/status` differs from the on-screen status sheet in two deliberate ways:
 
@@ -1436,76 +1440,59 @@ On a project that has never run a task the page opens on its heading and one lin
 `work you send off with /task lands here, and its record stays`. The tasks pages describe the
 page in full.
 
-## /crew — the five models codeaf uses on its own behalf, read beside the one you talk to
+## /crew — the crew panel, and the three seats a task runs on
 
-codeaf runs **six model seats**. Seat one is the model you talk to, and `/model` is what
-moves it. The other five — reflex, small work, worker, careful work, mastermind — are the
-models codeaf uses on its own behalf, for the calls you did not type and for the work
-inside every task. `/crew` reads all six and sets the five in one word. **It never moves
-seat one.**
+The crew is the three seats a task runs on: the **worker** that does the work, the
+**planner** that structures it, and the **checker** that reads the result. By default all
+three are auto — codeaf picks each one for each task, from what kind of work the task is.
+**`/crew` never moves the model you talk to**; only `/model` does.
 
 ```
 /crew
 ```
 
-opens the six-seat reading, bottom-anchored like the model picker. From the top:
+prints the panel into the conversation:
 
 ```
-the five models codeaf uses on its own behalf — not the one you chat with
-  you talk to · deepseek-v4-flash
-  family ‹ open models · all models ›
-  frugal — glm-flash works and thinks, qwen-max checks
-    reflex       google/gemini-2.5-flash · small work   deepseek/deepseek-v4-flash-0731 · worker       z-ai/glm-5.3-flash · careful work qwen/qwen3.8-max-0902 · mastermind   z-ai/glm-5.3-flash
-› balanced — glm-flash works, fable checks, opus thinks
-    reflex       google/gemini-2.5-flash · small work   deepseek/deepseek-v4-flash-0731 · worker       z-ai/glm-5.3-flash · careful work anthropic/claude-fable-5.1 · mastermind   anthropic/claude-opus-5
-  max — glm-5.3 works, fable checks, opus thinks
-    reflex       google/gemini-2.5-flash · small work   deepseek/deepseek-v4-flash-0731 · worker       z-ai/glm-5.3 · careful work anthropic/claude-fable-5.1 · mastermind   anthropic/claude-opus-5
-each of the five can be pinned on its own in /settings → Providers
+worker   auto · now z-ai/glm-5.3-flash
+planner  auto · now z-ai/glm-5.3-flash
+checker  ⌖ moonshotai/kimi-k3@openrouter
+
+providers  openrouter (metered) · codex (plan)
+allowed    all
+daily cap  $5.00 · $0.412 spent today · 3 tasks, 1 on a plan
+
+recent     fix the empty-config crash · bugfix · worker glm-5.3-flash (openrouter) · checker glm-5.3-flash · $0.021 (est $0.023) · accepted
 ```
 
-The first line says what the presets change and what they do not. The second is **seat
-one** — `you talk to · <model>`, spelled as the legend above the box spells it — with no marker and
-no highlight, because nothing in this chooser can move it. The third is the **family**: **←→** moves `family`, which says which pool the three presets below it draw from, open weights or the
-whole catalog. Then the three presets: the one
-in force wears a highlighted ground, `›` is where **enter** is aimed and it opens on yours,
-↑ / ctrl+p and ↓ / ctrl+n move, and **esc** closes without changing anything. The last
-line points at the settings row where one seat can be pinned by itself; the chooser does not
-pick seats one at a time.
-
-If you have pinned one of the five yourself, no preset wears the ground and the chooser says
-`yours is none of the three — picking one puts all five back` above the closing line.
-
-A word that is not one of the three changes nothing and prints the three:
-`/crew cheap` answers `/crew cheap · not one of the three` and then the listing.
-
-What each of the five classes funds, and how to set one of them on its own, is on the models
-page.
-
-## /crew <preset> — the confirm line, and the model it leaves alone
-
-`/crew frugal`, `/crew balanced` or `/crew max` sets the five and confirms in one line:
+A seat on auto says the model it would pick for work of no particular kind; a pinned seat
+wears the pin mark `⌖` and names its model. The model ids are drawn brighter than the words
+around them, because they are what the command was typed to find out. The last line is
+every shortcut the panel takes:
 
 ```
-crew → max · brain claude-opus-5 · hands glm-5.3 · checks claude-fable-5.1 · you are still talking to deepseek-v4-flash — /model changes that
+/crew · /crew pin <worker|planner|checker> <model[@provider]> · /crew unpin <seat|all> · /crew models <all|open|≤in/out|ids…|+id|-id> · /crew cap <dollars|off>
 ```
 
-**The model ids are drawn brighter than the words around them.** `crew →`, the preset
-word, `brain`/`hands`/`checks` and `you are still talking to` stay at the grey every note
-is written in; the three crew ids and the model you are talking to step up, because they
-are what the command was typed to find out. `/model` wears the command chip, because it is
-a command you can type. See "Why is one word in a line brighter than the rest" on the
-screen page.
+- **`/crew pin <seat> <model[@provider]>`** pins one seat, for every task until you unpin
+  it. `@provider` sends it through that connection. A pin outside the allowed models is
+  refused. The confirmation names the model you are still talking to:
+  `checker ⌖ moonshotai/kimi-k3 · every task until you unpin it · you are still talking to
+  deepseek-v4-flash — /model changes that`.
+- **`/crew unpin <seat>`** puts the seat back on auto; `/crew unpin all` puts all three back.
+- **`/crew models <rule>`** sets which models a seat nobody pinned may be picked from —
+  `all`, `open`, `≤1/5` for a price ceiling per million tokens in and out, or a list of ids —
+  and `+id` or `-id` changes the rule in force by one word. Bare `/crew models` says the rule.
+- **`/crew cap <dollars|off>`** caps what crews may spend in a day. Bare `/crew cap` says the
+  cap and today's spend.
 
-The last clause names, by id, the one seat the command did not touch: the model you are
-talking to, in the same spelling the legend above the box uses, so you can check it
-against the line over your own prompt. `/crew` never changes that model and never offers to; only
-`/model` does. When the session has no model yet the clause reads
-`the model you talk to is untouched — /model changes that`.
+A form that is none of these changes nothing and prints the line of shortcuts:
+`/crew cheap · not a crew form · …`. How hard to try **one** task is not a panel setting at
+all — it is said with `/task --best` or `/task --cheap`, and `/redo stronger` asks again
+after the fact (see *Tasks*).
 
-**The change is live.** The next call codeaf makes on its own uses the new crew — no
-relaunch, and no waiting for the next session. To read the crew back afterwards: the live
-`/status` prints the `crew` line under `model`, the phone's status sheet has the same row,
-`/settings` → Providers has the crew row, and bare `/crew` opens on yours.
+**The change is live.** The next task uses it — no relaunch. The whole story, from how a
+seat is picked to how a profile from an earlier build is migrated, is on the models page.
 
 **That promise is local-session only.** Over `--host` the session resolves its crew from
 the other machine, and there is no crew write across the connection — so `/crew` refuses
@@ -1690,7 +1677,7 @@ Every one of them lands on the next launch rather than on the conversation in fr
 you, so they are a fact about this machine and not about this session. Nothing you saved
 moved: the keys they are stored under are unchanged.
 
-The five models codeaf uses on your behalf are **not** here — they are on Providers, with
+The models codeaf uses on your behalf are **not** here — they are on Providers, with
 the row that says which model you are talking to. They used to be on this tab, one tab away
 from it, which made "which model does the planning" and "which model am I talking to" two
 errands on two screens. Neither is the conversation's own money limit here any more: it is
@@ -1795,16 +1782,18 @@ order:
 5. **prompt profile** — how much codeaf tells the model before you type: `auto`, `lean`,
    `full`. Another cycle row. `auto` reads the model's context window and goes lean under
    32,000 tokens (see *Models, context, and what it costs*).
-6. **crew** — the five below, chosen as one word: `frugal`, `balanced`, `max`. It is a cycle
-   row: enter or space walks it. Answer any of the five yourself and it reads `custom`.
-7. **reflex** — `near-free · reads every turn — memory, titles, safety`
-8. **small work** — `cheap · the small calls — names, digests, the safety gate`
-9. **worker** — `does the work · every task, its parts, every run node — most of the bill`
-10. **careful work** — `careful · checks what must not be wrong — audits, briefs, vision`
-11. **mastermind** — `thinks · plans runs and designs harnesses — add :low, :medium or :high`
-12. **pinned roles**, and hanging off it the **roles** list — one row per auxiliary call
-    codeaf makes for itself, grouped under its class. Those rows come from the running binary
+6. **reflex** — `near-free · reads every turn — memory, titles, safety`
+7. **small work** — `cheap · the small calls — names, digests, the safety gate`
+8. **worker** — `does the work · every task, its parts, every run node — most of the bill. Empty is auto: routed per task`
+9. **checker** — `reads finished work and checks what must not be wrong. Empty is auto: routed per task`
+10. **planner** — `plans runs and designs harnesses — add :low, :medium or :high. Empty is auto: routed per task`
+11. **pinned roles**, and hanging off it the **roles** list — one row per auxiliary call
+    codeaf makes for itself, grouped under its row. Those rows come from the running binary
     rather than the settings registry.
+
+**worker**, **checker** and **planner** are the crew's three seats: empty reads `auto`,
+and a model id there is a pin — the same pin `/crew pin` writes. The rest of the crew —
+allowed models, the daily cap, today's spend — is on the `/crew` panel.
 
 **A pin for a role this build no longer has is ignored, and the row stops showing it.** Roles
 come and go with the calls that use them — `compaction` was one, and a compaction has not asked
@@ -1826,9 +1815,9 @@ that has come apart is cut and asked again, on by default (see *Models, context,
 it costs*) — and one row per capability slot added automatically from the settings
 registry: drawing, speaking, composing, filming, voice.
 
-The first four of the five classes are **select** rows and open the model picker. The
-**mastermind** row is a **text** box instead, because its value may carry a thinking level
-(`moonshotai/kimi-k3:high`) and a picker hands back a bare id.
+The reflex, small work, worker and checker rows are **select** rows and open the model
+picker. The **planner** row is a **text** box instead, because its value may carry a
+thinking level (`moonshotai/kimi-k3:high`) and a picker hands back a bare id.
 
 The connected model services have their own section on the tab, each with its billing
 door, the safe spelling of its key, its region and its order. The section ends with an
@@ -1887,13 +1876,13 @@ one call codeaf makes outside a turn — `title`, `guardian`, `auditor`,
 one of them you ask for yourself with `ctrl+r` (see the keys page) — drawn as
 `<role>    <model>`, with `pinned` after it when that role has a model of its own.
 
-The rows are **grouped under their class**, in the same order the five class rows are drawn
-above them: `roles · reflex`, `roles · small work`, `roles · worker`, `roles · careful work`,
-`roles · mastermind`. The class is the heading, so it is not repeated on every row — which
+The rows are **grouped under their row**, in the same order the five model rows are drawn
+above them: `roles · reflex`, `roles · small work`, `roles · worker`, `roles · checker`,
+`roles · planner`. The row is the heading, so it is not repeated on every role — which
 leaves the widest part of the row for the model id it is there to show.
 
 Stop on a row and the line under the list says **what that role is** and where its answer
-came from: `the plan that steers an adaptive run · follows mastermind above. enter pins it
+came from: `the plan that steers an adaptive run · follows planner above. enter pins it
 to a model of its own.`
 
 - **enter** opens the model picker and pins the role to what you choose.

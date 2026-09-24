@@ -65,7 +65,7 @@ that is a different program and nothing here talks to it.
 | `codeaf chat --host devbox` | the chat here, the work on another machine |
 
 **The very first launch on a machine with nothing configured** opens on a short setup
-instead — connect OpenRouter in your browser, choose the crew, set the spending rails —
+instead — connect OpenRouter in your browser, check the chat model, set the spending rails —
 and then on the empty conversation. The preference questions are shown once. The
 OpenRouter step returns on any later local interactive launch while no key exists,
 including a named or resumed conversation using the default service, and `enter` on an

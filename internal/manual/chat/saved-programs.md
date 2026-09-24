@@ -209,8 +209,8 @@ Optional: `--dir <dir>` for the directory to work in (`-w` still works), `--mode
 `--journal <path>` to append every call the run makes to a file, one JSON object per line,
 and `--json` for the one result object `codeaf do` and `codeaf exec` also print.
 
-With no `--model` it runs on your crew's small-work class — the same crew `/crew` sets —
-and it opens by saying which model it took and what chose it.
+With no `--model` it runs on the crew's worker — a `/crew pin` if you set one, otherwise
+the worker picked for this run — and it opens by saying which model it took and what chose it.
 
 There is no task surface and no card here. What comes back:
 

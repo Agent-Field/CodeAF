@@ -695,24 +695,22 @@ Every task a run launches sits in one of two **seats**, and each seat is a model
 named on a door or in the profile:
 
 - **`--model` is the work seat** — the model a leaf that does the work itself
-  runs on. `codeaf do` reads it from `--model`, then `CODEAF_MODEL`, then the
-  profile's crew, then this build's default; a `/task` in a conversation reads it
-  from the conversation's own worker row. A root is born a leaf, so its first
+  runs on. `codeaf do` reads it from `--model`, then `CODEAF_MODEL`, then a
+  `/crew pin`, then the worker the crew picks for this task; a `/task` in a
+  conversation takes the worker its crew picked for it. A root is born a leaf, so its first
   launch rides this seat, and so does every task the plan adds under it.
 - **`--plan-model` is the plan seat** — the model the root and every task that
   has children run their coordinating turns on. `codeaf do` resolves it the same
-  way from `--plan-model`, then `CODEAF_PLAN_MODEL`, then the crew; a
-  conversation takes it from its mastermind row. A leaf that splits moves onto
+  way from `--plan-model`, then `CODEAF_PLAN_MODEL`, then a `/crew pin`, then
+  the crew picked for this task; a `/task` takes its crew's planner. A leaf that splits moves onto
   this seat for the turns where it is a coordinator.
 - **`--check-model` is the check seat**: the model a check the review round
   adds reads a finished leaf against. `codeaf do` resolves it from
-  `--check-model`, then the `CODEAF_CHECK_MODEL` environment value, then a plan
-  seat pinned by `--plan-model` or `CODEAF_PLAN_MODEL`. A run pinned to two models checks on
-  the plan seat and no third model appears from the profile. A `/task` has no flags, so
-  its check reads `CODEAF_CHECK_MODEL` alone. Without those pins,
-  the check takes the crew's careful row, the same row a conversation's checker rides. The
-  **probe** seat is the one the profile's own `low` row answers alone: nothing
-  on a door names it, so a probe runs on the crew you set in `/crew`.
+  `--check-model`, then the `CODEAF_CHECK_MODEL` environment value, then a
+  `/crew pin`, then the checker the crew picks for this task. **It never inherits the
+  plan seat**: a `--plan-model` says who plans and nothing about who checks. A `/task`
+  takes its crew's checker. The **probe** seat is the one the profile's own
+  **small work** row answers alone: nothing on a door names it, and no crew pin moves it.
 
 The seat a person names is the seat **every** launch takes — a task launched
 after the door resolved the seats still runs on them, not on whichever row the

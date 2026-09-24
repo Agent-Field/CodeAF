@@ -83,7 +83,6 @@ func poolTildeCatalog() []catalog.Model {
 	}
 }
 
-
 // TestPoolJudgeHookScoresALandedTaskIntoItsOwnSheetAndAnswersTheNewCells runs
 // one landing through the real hook and reads back the whole of it: one cell
 // per held seat in the install's own sheet, the seam answering those cells at
@@ -123,7 +122,6 @@ func TestPoolJudgeHookScoresALandedTaskIntoItsOwnSheetAndAnswersTheNewCells(t *t
 			t.Fatalf("the sheet holds no cell for %s: %+v", seat, cells)
 		}
 	}
-
 
 	if len(asked) != 2 || asked[0] != "other/judge" || asked[1] != "other/judge" {
 		t.Fatalf("the judge asked %v, want only other/judge — never a model the crew held", asked)

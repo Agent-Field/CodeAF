@@ -1802,21 +1802,6 @@ rule.
 
   </details>
 
-- **The crew's seats are picked from a row — table, catalog or learn** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `chat` `engine`
-
-  <details><summary>3 things that are no longer true</summary>
-
-  - `config.SeatLearned` is the new rung. `Seat.Rung()` says `crew balanced, computed from
-    the catalog` for `SeatComputed` and `crew balanced, learned` for `SeatLearned`;
-    `Seats.Report()`, `Seats.Line()` and the receipts follow. The headless doors read the
-    same pick through `config.ResolveSeats`, so a run from the shell is seated exactly as
-    the conversation is.
-  - internal/manual: the class-row section is now `Where the seats are picked from —
-    table, catalog, learn`, with the bare `auto` word kept inside it as the per-seat
-    alias, and the headless ladder page names the two rung words.
-
-  </details>
-
 - **Three pure packages — a crew picker, an additive tally and a measurement-index reader** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `engine`
 
   <details><summary>why</summary>
@@ -2407,35 +2392,6 @@ rule.
 
   </details>
 
-- **The crew's default family is `all`, and both families' worker, careful and mastermind seats moved** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `chat` `engine`
-
-  <details><summary>6 things that are no longer true</summary>
-
-  - The five shipped tier defaults were the open table's balanced row. `DefaultReflexModel` is now `google/gemini-2.5-flash`, `DefaultHighModel` and `DefaultMastermindModel` are `anthropic/claude-fable-5.1`; `DefaultLowModel` and `DefaultWorkerModel` are unchanged. The identity the crew row rests on still holds: the five defaults are exactly the DEFAULT family's balanced row.
-  - The `/crew` listing named the family whenever the row was not `open`. It names it whenever the row is not the default family, so an `open` listing carries the `family · open models` line and an `all` one does not.
-
-  Both tables are read off one plot, computed seat by seat on 2026-09-16: the
-  expected bill a seat's own call shape runs up, built from the catalog's
-  published prompt, completion and cache-read prices, against that seat's quality
-  from its published intelligence, coding and agentic indexes. The worker and the
-  careful seats are priced as long cached loops and the mastermind as one-shot
-  calls, which is why the columns no longer climb together in either family.
-
-  In the all family the worker stays on `glm-5.3-flash` through balanced because
-  the worker seat carries most of a task's tokens: a step there multiplies through
-  the whole bill, where a step on the careful or the mastermind seat is paid a
-  handful of times. The laws around the tables are untouched — the careful seat is
-  a different vendor from the worker in every preset of both families and still
-  sees images, and the reflex and small-work columns still never vary.
-
-  </details>
-
-- **Six cells of the fixed crew tables moved to the measured seats** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `chat` `engine`
-
-  <details><summary>3 things that are no longer true</summary>
-
-  - `config.DefaultMastermindModel` is `anthropic/claude-opus-5`, so the five shipped defaults are still exactly the default family's balanced row. An untouched profile plans on opus-5 and reads the crew as `balanced`; a profile that pinned the mastermind on the old default now reads `custom` until it pins again.
-
 - **The fuel meter asks an installed tariff first, and its table holds the ids this build ships** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `engine`
 
   <details><summary>3 things that are no longer true</summary>
@@ -2663,12 +2619,6 @@ rule.
 
   </details>
 
-- **the headless doors wait for the catalog rows a pick reads** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `engine`
-
-  <details><summary>2 things that are no longer true</summary>
-
-  - `codeaf do`, `codeaf exec` and every door through `useAutoSeats` resolved their seats while the lazy catalog was still warming, so a pick taken off the table — or a tier row that says `auto` — read no rows and fell to the family's table row, reported as `crew balanced, table`, on a machine whose catalog was already cached beside the profile. They now wait for the warm within a three-second bound when the profile needs the rows, and fall exactly as before when the bound runs out — with the rung word saying which happened.
-
 - **No git command runs without a directory, and the checkout guard reads a linked worktree's own share** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `engine`
 
   <details><summary>3 things that are no longer true</summary>
@@ -2767,12 +2717,6 @@ rule.
   - The rung decision lived in two places, `autoRow` and `pickedModel`, and they disagreed. It now lives once, in `computedRung`, which both call, so the seam that exists to stop a seat meaning one thing in chat and another headless cannot drift again.
 
   </details>
-
-- **a bare auto row under picked from = catalog reads the catalog's figures alone** — [#1120](https://github.com/Agent-Field/codeaf/pull/1120) · `chat` `engine`
-
-  <details><summary>2 things that are no longer true</summary>
-
-  - Under `picked from = catalog` a tier row that says `auto` answered with the Model Pool's measurements blended in while its rung said `computed from the catalog`; it now answers the catalog's published figures alone, the same computation the pick word's own seat runs.
 
 - **the do door seats its worker from the settings the run will use** — [#1122](https://github.com/Agent-Field/codeaf/pull/1122) · `engine`
 
@@ -5777,7 +5721,7 @@ rule.
 
   <details><summary>1 thing that is no longer true</summary>
 
-  - The shipped reflex default was nex-agi/nex-n2-mini, in DefaultReflexModel and in all three crew presets. It is now mistralai/mistral-nemo everywhere a default names the tier; nex-n2-mini appears only in historical comments about what it did there.
+  - The shipped reflex default was nex-agi/nex-n2-mini, in DefaultReflexModel. It is now mistralai/mistral-nemo everywhere a default names the tier; nex-n2-mini appears only in historical comments about what it did there.
 
   nex-n2-mini's endpoint accepts the reasoning disable and thinks anyway, so every
   reflex call ran at the 2,000-token recovery ceiling and one overlong thinking
@@ -6708,7 +6652,7 @@ rule.
   Eight claims in the money and standing-order pages that the code does not make,
   found by reading the code beside the pages. The figures the pages quote are now
   rows in the truth table — the day's $500, the plan's $100, practice's $50, a
-  firing's $5, the five-minute pass, and both spellings of the crew max line — so
+  firing's $5 and the five-minute pass — so
   the next one to move goes red with its owner named rather than sitting on the
   page. Nine new probes, and one heading widened because a probe reached neither
   page that could answer it.
@@ -9771,15 +9715,15 @@ rule.
   <details><summary>7 things that are no longer true</summary>
 
   - The model flags said `(default AFORGE_MODEL)`, which named one rung of four. They now name the ladder: `flag › AFORGE_MODEL › crew › default`.
-  - A headless run said nothing about which models it was using unless a plan split happened to be in force. Every one of those doors now opens with a `models:` line on stderr naming both seats and the rung that chose each — `models: work deepseek/deepseek-v4-flash (crew frugal) · plan qwen/qwen3.8-27b (crew frugal)`.
-  - `aforge do --json` had no model fields. It now carries `model`, `plan_model`, `model_source` and `plan_model_source`; the two source fields name the rung (`--model`, `AFORGE_MODEL`, `crew frugal`, `default`), and a campaign should record them beside the score.
-  - The plan role's seed origin in the journal always read `AFORGE_PLAN_MODEL` or `--plan-model`. It now reads whatever actually named the model, which may be `crew frugal`.
+  - A headless run said nothing about which models it was using unless a plan split happened to be in force. Every one of those doors now opens with a `models:` line on stderr naming both seats and the rung that chose each — `models: work deepseek/deepseek-v4-flash (crew) · plan qwen/qwen3.8-27b (crew)`.
+  - `aforge do --json` had no model fields. It now carries `model`, `plan_model`, `model_source` and `plan_model_source`; the two source fields name the rung (`--model`, `AFORGE_MODEL`, `crew`, `default`), and a campaign should record them beside the score.
+  - The plan role's seed origin in the journal always read `AFORGE_PLAN_MODEL` or `--plan-model`. It now reads whatever actually named the model, which may be the crew.
   - A model value carrying a thinking level missed every catalog lookup: `moonshotai/kimi-k3:low` matched no row, so its window read zero, its price read unpublished, its capabilities read unknown, and its measured history filed under a second identity. `catalog.normalizeID` — the one place a value becomes a lookup key — now takes the level off alongside the `~` alias marker, and `config.panelTierWord` does the same.
   - A model id carrying a thinking level was sent to the provider whole, so `--plan-model moonshotai/kimi-k3:low` asked for a slug no provider publishes — a 404 on every planning call. `Config.providerConfig` and `ClientFor` now split the level off the slug; the seat, the plan role binding and the receipt keep the whole value, and the role ladder applies the level per call as it always has.
 
   The crew is the product's own word for a model policy, and headless invented a
   second one. Reported from a benchmark (#166) that ran the same task under two
-  presets and had to read `models.tiers.*` out of `config.json` by hand to do it —
+  crews and had to read `models.tiers.*` out of `config.json` by hand to do it —
   which is exactly the one-source-of-truth violation the crew exists to prevent.
 
   The resolution is one function beside `CrewAt`/`TierModelAt` — `config.ResolveSeats`
@@ -9788,11 +9732,6 @@ rule.
   planning seat the **mastermind** tier because those are the two the chat's own
   worker and planner ride (`roles.DefaultAssignment`), so the two surfaces now call
   the same two models for the same two jobs.
-
-  One decision worth stating: an untouched profile falls to the **build's default**
-  rather than reading its own shipped tier values back as `crew balanced`. The four
-  defaults *are* the balanced row, so the alternative would make the bottom rung
-  unreachable and quietly change the default headless work model for everybody.
 
   A crew value carrying a thinking level (`moonshotai/kimi-k3:low`) carries it the
   way a flag does — whole into the seat and into the plan role's binding, split
@@ -10745,7 +10684,7 @@ rule.
 
   <details><summary>6 things that are no longer true</summary>
 
-  - The status line showed the crew on an ordinary launch — it did not, since crewSegment guarded on an empty profileDir, and AFORGE_PROFILE_DIR is unset on very nearly every launch. It guards on a hosted window now, so `crew balanced` is on the row for everybody.
+  - The status line showed the crew on an ordinary launch — it did not, since crewSegment guarded on an empty profileDir, and AFORGE_PROFILE_DIR is unset on very nearly every launch. It guards on a hosted window now, so the crew is on the row for everybody.
   - An empty profileDir meant a surface with no profile. It never has: internal/config resolves "" to this process's own profile in the state root, and the only window with no profile of its own is a hosted (`--host`) one.
   - The notices' ledger was written per profile. It was written for nobody: noticeLedgerPath answered "" on an ordinary launch and the board kept everything in RAM, so a hint retired by its own gesture came back at the next launch, a hint ignored was never counted past session one of three, and the news channel never had an older build to compare against. All three now work, which is a visible change: a hint you already acted on will stop coming back.
   - config.BudgetConfigPath was the place that knew what an empty profile directory means. config.ProfilePath is, and BudgetConfigPath, the notice ledger and cmd/aforge's chatLogPath all resolve through it.
@@ -12048,7 +11987,7 @@ rule.
 
   <details><summary>5 things that are no longer true</summary>
 
-  - The v3 surface did not know `--one-model` existed. It read the profile's four crew rows through `config.CrewAt` and drew `crew custom` (or `crew balanced`, or `crew max`) for the whole of a run in which those rows seated nothing, because the door had already emptied the roles source and the task model. `internal/tui3.Options` carries `OneModel`, set from the session's own `session.Config.OneModel`, and the surface reports the flag.
+  - The v3 surface did not know `--one-model` existed. It read the profile's four crew rows through `config.CrewAt` and drew its crew segment for the whole of a run in which those rows seated nothing, because the door had already emptied the roles source and the task model. `internal/tui3.Options` carries `OneModel`, set from the session's own `session.Config.OneModel`, and the surface reports the flag.
   - `app.crewReading` read the profile and nothing else. It answers the flag FIRST and returns a fixed reading under it — segment `one model`, word `one model · every call rides the model you are talking to` — taken once and never invalidated by the settings generation, because nothing a session can do moves it. The five surfaces that read through it therefore agree by construction: the status line's segment, `/status`'s crew line, the model picker's hint slot, the status note and the welcome box's clause.
   - A profile older than the worker row was told `your crew was set before the work seat existed · it is running on your small work model until you pick a crew again` when its first task started, under `--one-model` as well as without it — and "until you pick a crew again" promises a change picking one would not make. `app.workSeat` returns the zero `config.Seat` under the flag the way it already does over a connection, so the thread's receipt and the `/crew` sheet's inherited row are both silent. Without the flag the same profile still draws its crew word and still says the line once; the #311/#314 behaviour is unchanged.
   - `internal/manual/chat/models-and-cost.md` described what `--one-model` settles and said nothing about what the screen does under it. It has a section of its own for the screen: the crew segment reads `one model`, the rows are overridden rather than gone, and no crew receipt is posted.
@@ -13496,7 +13435,7 @@ rule.
 
   <details><summary>4 things that are no longer true</summary>
 
-  - A thinking level written onto a class value (`z-ai/glm-5.3:high`) reached the conversation's one-shot role calls and nothing else. The client seam took the level off the slug so a provider would be asked for a model it publishes, and discarded it in the same line, so every headless seat sent only the run-wide economy — which defaults to off, and which a model that cannot stop thinking answers at the lowest word it lists. A `crew balanced` run seated at `z-ai/glm-5.3:high` recorded `effort='low'` on 149 of its 155 brain calls. The level now travels beside the bare slug on the client that was built from it, and reaches every request that seat sends at every headless door.
+  - A thinking level written onto a class value (`z-ai/glm-5.3:high`) reached the conversation's one-shot role calls and nothing else. The client seam took the level off the slug so a provider would be asked for a model it publishes, and discarded it in the same line, so every headless seat sent only the run-wide economy — which defaults to off, and which a model that cannot stop thinking answers at the lowest word it lists. A run seated at `z-ai/glm-5.3:high` recorded `effort='low'` on 149 of its 155 brain calls. The level now travels beside the bare slug on the client that was built from it, and reaches every request that seat sends at every headless door.
   - `provider.Config` had no way to carry an operator's own thinking level, and the adapter could not tell an effort a call cannot work without from an ordinary economy: `WithRequiredReasoningEffort` and `WithConfiguredReasoningEffort` built the identical request. `provider.Config.Effort` is now the client's pin, it outranks any effort carried on a context, and only a request made with `WithRequiredReasoningEffort` — the reflex's disable, whose answer cap leaves a thinking pass no room — wins over it.
   - A model-call row recording `low` gave a reader no way to tell a deliberate downgrade from a dropped pin. Rows now carry `effort_pin` when the call carried something other than its client's pinned level, and nothing at all when the pin travelled or there was no pin; `aforge logs` prints it as `pinned high` beside the effort that won.
 
@@ -15681,12 +15620,12 @@ rule.
   <details><summary>4 things that are no longer true</summary>
 
   - The lean prompt profile had three triggers — the pin, the crew's `worker` seat, and a window under 32,000 tokens. It now has two: the pin `AFORGE_PROMPT_PROFILE=lean`, and a context window under 32,000 tokens. `Config.atTheWorkerSeat` and the `THE SEAT BEFORE THE WINDOW` branch in `resolvePromptProfile` are gone.
-  - An open-weight model was treated as a small model. It is not: `deepseek/deepseek-v4-flash-0731` and `z-ai/glm-5.3-flash` — the models the frugal and balanced crew presets put in the `worker` seat — are served with 128,000 tokens of room, so a conversation on one of them now renders the FULL page, byte-identically to any other 128,000-token model, with the full tool list and saved memories on. A licence is not a size.
+  - An open-weight model was treated as a small model. It is not: `deepseek/deepseek-v4-flash-0731` and `z-ai/glm-5.3-flash` — models often seated as the `worker` — are served with 128,000 tokens of room, so a conversation on one of them now renders the FULL page, byte-identically to any other 128,000-token model, with the full tool list and saved memories on. A licence is not a size.
   - `internal/manual/chat/models-and-cost.md` said lean applied "under 32,000 tokens, or on that seat". It now says lean applies in exactly two cases, and it carries a second section, `## Is an open-weight or local model given the lean profile?`, saying that deepseek and glm with a large window are not lean.
   - There is still no `/settings` row for the profile. The environment pin is the only way to choose it by hand.
 
-  The seat trigger was silent, and that is what made it wrong. A person on the
-  frugal preset who then picked their worker model in chat would have had sections
+  The seat trigger was silent, and that is what made it wrong. A person whose crew
+  seated an open-weight worker and who then picked their worker model in chat would have had sections
   taken off the page, `propose_task`, `tasks`, `watch`, `track`, `commit`, `recall`
   and `read_document` shelved, and saved memories turned off — with nothing on
   screen saying so, because a derived profile has no row anywhere to read. A model

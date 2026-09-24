@@ -162,9 +162,9 @@ locally.
   stop with Ctrl+C: the last line on the error stream is `record kept at
   <path>`, and that directory holds the whole record as `graph.db`. `--keep`
   keeps it whatever happened, and so does `CODEAF_DEBUG` set to anything but
-  `0`, `false` or `off`. It runs on this profile's crew unless `--model`,
-  `--plan-model` or the matching variables name something else, and it opens by
-  saying which of those chose its two models.
+  `0`, `false` or `off`. It runs on a crew picked for the run — with any `/crew pin` this profile holds —
+  unless `--model`, `--plan-model` or the matching variables pin a seat for it, and it
+  opens by saying which of those chose its models.
 - `codeaf wake` — run one bounded pass and exit. This is what the standing watch
   timer runs; you can run it by hand too.
 - `codeaf doctor` — the brain's path and size, whether a resident is alive, the

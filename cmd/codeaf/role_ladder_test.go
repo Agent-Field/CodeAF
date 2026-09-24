@@ -86,7 +86,7 @@ func TestPlanKnobSeedsTheGlobalPlanBindingOnce(t *testing.T) {
 
 	// Another origin names itself instead, and a value the initializer has not
 	// said before does move the binding. The origin is whatever named the model
-	// — a flag here, a crew preset on a headless run (config.ResolveSeats).
+	// — a flag here, a crew pin or the router on a headless run (config.ResolveSeats).
 	installRoleLadder(graph, "talk/model", "flagged/model", "work/model", "flagged/model", "--plan-model")
 	binding, _, err = graph.RoleBindingAt(store.RolePlan, store.ScopeGlobal)
 	if err != nil {

@@ -864,7 +864,7 @@ What steps up, in the lines you will see it in:
 
 | Line | What is drawn brighter |
 | --- | --- |
-| the crew line after `/crew` | the three crew model ids and the model you are still talking to — `brain`, `hands`, `checks` and `you are still talking to` stay grey |
+| the `/crew` panel and its confirmations | the model ids, the allowed rule and the model you are still talking to — `worker`, `auto · now`, `every task until you unpin it` and `you are still talking to` stay grey |
 | `model · <id>` after `/model` | the model id |
 | `harness · <name>` | the harness's name |
 | `<mode> task <id> started · <title>` | the id and the title |
@@ -1086,8 +1086,8 @@ are looking at a different one is counted in `N waiting` on the next frame. `tab
 empty box goes to the last one — see the keys page, and home's *Switch between projects
 without leaving*.
 
-**Six facts are on `/status` and the phone sheet but not on the row:** `crew` (the preset
-the five models codeaf uses on its own behalf are on), `changes` (`Σ +128 −14`, lines
+**Six facts are on `/status` and the phone sheet but not on the row:** `crew` (auto, and
+any seat you pinned), `changes` (`Σ +128 −14`, lines
 added and removed by this session), `rate` (`1.2k tok/s avg`, this turn's output over
 this turn's whole wall time, waits and tool calls included — which is why it is not the
 figure at the right edge of the row), the compaction sparkline's readings, `open` and
@@ -3988,7 +3988,7 @@ with its name in bold, the way a row on home does.
 The step above that is for the thing you have actually **chosen**, and it stays drawn
 when nobody is touching the list: the roster row and the strip chip of the room you are
 standing in, the model in use in `/model`, the conversation you are in on home and in
-`/resume`, the crew in force in `/crew`, the tab you are on in `/settings`. Both can be
+`/resume`, the tab you are on in `/settings`. Both can be
 on screen at once — that is what two steps are for — and the roster is where you will
 see it: the room you walked into on the louder ground, the row `↑↓` has reached on the
 quieter one. Where a cursor lands on the chosen row itself, the louder ground wins, so a

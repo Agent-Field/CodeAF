@@ -1,0 +1,41 @@
+---
+kind: changed
+title: a task's crew is routed per task, and /crew is the panel of what is allowed and pinned
+pr: 1436
+surface: [engine, chat, docs]
+invalidates:
+  - "The crew was a preset word — `frugal`, `balanced`, `max` — that wrote all five tier rows at once, with a family row (`models.crew.source`: `open` or `all`) and a pick row (`models.crew.pick`: `table`, `catalog`, `learn`) beside it, and a tier row could say `auto`. None of those words exists now: every seat nobody pinned is picked per task by internal/crewroute. `/crew <preset>` is refused with the four forms the command does take."
+  - "The preset tables, the catalog picker package, `config/auto.go` and its catalog, index and own-cells seams, and the three shipped crew-seat default models are gone. The router's catalog seam is `config.CrewCatalog`; the Model Pool's index is no longer a crew picker."
+  - "The check seat inherited the plan seat's model when only the planner was named by flag or environment. It never does: `--check-model`, `CODEAF_CHECK_MODEL`, a pin, or the router's checker."
+  - "A seat nothing pinned fell to a model this build chose for everybody. It is routed; a seat nothing allowed can sit is an error that says so."
+  - "A worker row a profile never wrote was read as inherited from the small-work row, with a one-time notice. There is no inheritance and no notice: an unwritten crew row is auto."
+  - "The onboarding controls screen asked for a crew. It asks for the daily limit and the chat model; the crew asks nothing up front."
+  - "The settings rows for the careful and planning tiers are labelled `checker` and `planner`; empty is auto. The `crew`, `model family` and `picked from` rows are gone."
+  - "`codeaf do`'s `model_source`/`plan_model_source` read `crew <preset>` or `default`. They read `--model`, the variable, `pinned` or `routed`, and `-json` also carries `class`, `crew`, `est_usd`, `check_model` and `check_model_source`."
+---
+A task's crew — the worker that does the work, the planner that structures it
+and the checker that reads the result — is picked for that task. The router
+classifies the task as a narrow fix, open-ended work or other, prices every
+allowed model on every connected route (a subscription plan or a local model
+costs nothing to route to), and sits each seat where quality minus λ times cost
+is highest, λ at the knee of the curve. `--best` and `--cheap` (on `/task`, on
+the conversation's hand-off as `effort`, and on `codeaf do`) move λ for one task
+only. The evidence the defaults are read from is in
+`docs/design/model-pool/pareto-crewing.pdf`.
+
+**What persists is what the panel says.** `/crew` shows the seats, the providers
+the crew can route through, the allowed-models rule, the daily cap with today's
+spend, and the recent tasks. `/crew pin <seat> <model[@provider]>`,
+`/crew unpin <seat|all>`, `/crew models <rule>` and `/crew cap <dollars|off>`
+change it. A pin outside the allowed models is refused. At the cap a chat task
+does not start and `codeaf do` refuses unless given `-yes-spend`.
+
+**Redo is how a crew learns.** `/redo stronger` runs the last task again with
+every unpinned seat one step stronger, and the router's log records that this
+class of work in this repository was under-served, so the next such task starts
+a step higher; five accepted tasks take the step back off. Nothing escalates on
+its own.
+
+**Old profiles migrate once**, with one line: preset, pick and `auto` rows
+become auto, the ids a person wrote stay pinned, and the `open` family becomes
+the allowed rule `open`.

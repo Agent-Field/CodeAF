@@ -79,27 +79,27 @@ than inventing a description.
 
 ## Which models a run from the shell uses
 
-`codeaf do`, `exec`, `plan`, `run`, `revise` and `run subharness` seat two models — one
-that works, one that plans — and both resolve the same way. First answer wins:
+`codeaf do`, `exec`, `plan`, `run` and `revise` seat a crew of three — a **worker**, a
+**planner** and a **checker** — and each seat resolves on its own ladder. First answer wins:
 
-1. `--model` / `--plan-model` on the command line
-2. `CODEAF_MODEL` / `CODEAF_PLAN_MODEL` in the environment
-3. the crew in this profile — the mastermind class plans, the small-work class works
-4. the model this build ships with
+1. `--model` / `--plan-model` / `--check-model` on the command line — a pin for this run only
+2. `CODEAF_MODEL` / `CODEAF_PLAN_MODEL` / `CODEAF_CHECK_MODEL` in the environment — the same
+3. a seat pinned in this profile with `/crew pin`
+4. the crew picked for this task, from what kind of work it is and the models you allow
 
-The crew is the same one `/crew` sets in the chat, so a machine told `frugal` there runs
-frugal here. It answers only where a crew has actually been set; an untouched profile takes
-the build's default. `CODEAF_HOME` and `CODEAF_PROFILE_DIR` decide which profile is asked.
-A seat computed from the catalog says so where the preset would be — `crew frugal,
-computed from the catalog` — and one computed with what your runs measured says `crew
-frugal, learned`; the **picked from** row in the chat's settings decides which, and a
-pick of `catalog` or `learn` seats a run from the shell exactly as it seats the chat.
+The checker never inherits the planner. The profile is the same one `/crew` sets in the
+chat, so a checker pinned there is the checker here; `CODEAF_HOME` and `CODEAF_PROFILE_DIR`
+decide which profile is asked. `codeaf do` also takes `--best`, `--cheap` and
+`--pin seat=model[@provider]` for one task.
 
-Every one of those runs opens with a line on stderr naming both seats and what chose each:
+Every one of those runs opens with a line on stderr naming the seats and what chose each,
+and under it the crew line:
 
 ```
-models: work z-ai/glm-5.3-flash (crew frugal) · plan z-ai/glm-5.3-flash (crew frugal)
+models: worker z-ai/glm-5.3-flash (routed) · planner z-ai/glm-5.3-flash (routed) · checker moonshotai/kimi-k3 (pinned)
+crew: bugfix · worker glm-5.3-flash (openrouter) · checker 📌 kimi-k3 · est $0.023
 ```
 
-`codeaf do --json` carries the same four facts as `model`, `plan_model`, `model_source`
-and `plan_model_source`.
+`codeaf do --json` carries the same facts as `model`, `plan_model`, `check_model`,
+`model_source`, `plan_model_source` and `check_model_source`, with `class`, `crew` and
+`est_usd` beside them.

@@ -1655,7 +1655,6 @@ func TestPoolShowReadsAnUnparsableOwnSheetAsNone(t *testing.T) {
 	}
 }
 
-
 // ── THE MIRROR ──────────────────────────────────────────────────────────────
 
 // poolEnv is an environment holding exactly the names given, so a test pins
