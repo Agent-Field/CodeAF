@@ -51,6 +51,8 @@ type taskStartedMsg struct {
 }
 
 func (a *app) runTaskCommand(arg string) tea.Cmd {
+	// The word was typed, bare or with a brief (notice.go).
+	a.noticeEvent(eventTaskTyped)
 	arg = strings.TrimSpace(arg)
 	if arg == "" {
 		// A BARE /task IS THE ROSTER AND NOT A USAGE LINE. The margin's `+ /task`

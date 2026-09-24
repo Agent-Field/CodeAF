@@ -38,8 +38,14 @@ import (
 // could enter without first saving their own work somewhere else, and esc puts
 // the sentence back exactly as it was.
 //
-// Escape is reserved for back navigation. /rewind opens the timeline; this
-// inline renderer remains available to internal callers.
+// THE DOOR IS DOUBLE-ESC, and it is double for one reason: esc already means
+// INTERRUPT while a turn runs, and that meaning is not for sale. So the first esc
+// keeps whatever it always meant — it stops the model mid-turn, and at rest it
+// does nothing at all — and it ARMS this mode for [rewindArmWindow]; a second esc
+// inside that window opens it. Interrupt first, then rewind, in the order the
+// engine's own refusal asks for ([session.ErrTurnInFlight]): the pair is one
+// gesture, and it is the gesture a person's hand already makes when they want to
+// take something back.
 //
 // KEYS: ↑/↓ walk the TURNS, which is the unit a person thinks in ("not that
 // message"); ←/→ slide through the steps inside the turn the cut is in, for the
@@ -56,6 +62,23 @@ import (
 // one of them to be derived from the other — which is exactly what the resume
 // path already does.
 
+// rewindArmWindow is how long the first esc keeps rewind armed.
+//
+// HALF A SECOND, and the number is chosen against the HAND rather than against a
+// reaction time. A deliberate double-tap — the double-click every pointer on this
+// machine is calibrated for, and the "esc esc" that leaves an editor's mode —
+// lands its second key inside 300ms; a person who pressed esc to interrupt a turn
+// and then decided, having read something, to also take it back is a person
+// making a second decision, and their second key arrives a second or more later.
+// So the window has to be long enough that the first kind never misses and short
+// enough that the second kind never fires by accident.
+//
+// It errs SHORT on purpose. A window that lapsed too early costs one extra
+// keystroke; a window that lapsed too late puts a person who tapped esc twice to
+// dismiss two things into a mode they did not ask for, over a conversation they
+// are about to cut. The two mistakes are not the same size.
+const rewindArmWindow = 500 * time.Millisecond
+
 // rewindSayWindow is how long a sentence this mode could not act on stays in the
 // hint slot — "nothing to rewind", and nothing else. Two and a half seconds is
 // long enough to be read once and short enough that it is never furniture.
@@ -63,6 +86,8 @@ const rewindSayWindow = 2500 * time.Millisecond
 
 // The mode's words, written down once.
 const (
+	// rewindArmWord is what the hint slot says while the first esc is still warm.
+	rewindArmWord = "esc again to rewind"
 	// rewindEmptyWord is what it says when there is nothing to cut.
 	rewindEmptyWord = "nothing to rewind"
 	// rewindCutWord is the cut line's label, and rewindKeysWord the mode bar's
@@ -149,6 +174,7 @@ func (a *app) enterRewind() tea.Cmd {
 	if len(points) == 0 {
 		return a.sayRewind(rewindEmptyWord)
 	}
+	a.disarmRewind()
 	a.closeLists()
 	a.dropHover()
 	a.rew = rewindMode{
@@ -196,10 +222,64 @@ func (a *app) leaveRewind(restore bool) {
 	a.touch()
 }
 
+// ── THE DOUBLE ESC ──────────────────────────────────────────────────────────
+
+// escRewind is esc's rewind half. It reports whether it TOOK the key: the second
+// esc inside the window opens the mode and is taken, and the first one arms and
+// is NOT — it goes on to mean whatever it always meant, which mid-turn is the
+// interrupt (input.go's esc case). The command it returns is carried down both
+// paths, because arming needs the frame clock to run the window down.
+func (a *app) escRewind() (tea.Cmd, bool) {
+	if !a.rewindReady() {
+		return nil, false
+	}
+	if a.rewindArmed() {
+		return a.enterRewind(), true
+	}
+	a.escArm = a.now()
+	a.touch()
+	return a.wake(), false
+}
+
+// rewindReady reports whether esc may arm the mode at all: nothing else on this
+// surface is holding the keyboard, and the agent under it can rewind.
+//
+// It is the LIST OF STATES esc already means something in, read from the routers
+// that take the key before input.go's own switch does (input.go, app.go's Update)
+// — a modal state whose dismiss key silently armed a second mode would be a
+// surface where esc means two things at once.
+func (a *app) rewindReady() bool {
+	if a.rew.on {
+		return false
+	}
+	if _, ok := a.rewinder(); !ok {
+		return false
+	}
+	switch {
+	case a.rewSheet.open,
+		a.at(pageSettings), a.at(pageTasks), a.deck.open, a.expand.open, a.pick.open, a.roster.open,
+		a.connPanel.open, a.menu.open, a.comp.open, a.welcome.open,
+		a.copy.on, a.recalling(), a.roomOpen(), a.railHold, a.railFull(),
+		a.asking(), a.awaitingTask(), a.guard != nil, a.asksConnect(),
+		a.asksHarness():
+		return false
+	}
+	return true
+}
+
+// rewindArmed reports whether the first esc is still warm.
+func (a *app) rewindArmed() bool {
+	return !a.escArm.IsZero() && a.now().Sub(a.escArm) < rewindArmWindow
+}
+
+// disarmRewind forgets it.
+func (a *app) disarmRewind() { a.escArm = time.Time{} }
+
 // sayRewind puts one sentence in the hint slot for a moment — "nothing to
 // rewind", which is the whole of what this is for.
 func (a *app) sayRewind(text string) tea.Cmd {
 	a.rewSay, a.rewSayAt = text, a.now()
+	a.disarmRewind()
 	a.touch()
 	return a.wake()
 }
@@ -211,13 +291,17 @@ func (a *app) rewindSaying() bool {
 
 // rewindTicking says the frame clock has a reason to keep turning even with
 // nothing else happening: a window or a sentence with an end to reach.
-func (a *app) rewindTicking() bool { return a.rewindSaying() }
+func (a *app) rewindTicking() bool { return a.rewindArmed() || a.rewindSaying() }
 
 // rewindSweep runs both of those clocks down. It is called from [app.paint] and
 // from nowhere else — NO GOROUTINE OF ITS OWN, for the reason the spinner and the
 // countdowns have none (app.go): this surface has exactly one clock, and a second
 // one is a second wakeup per second and two states that disagree about the time.
 func (a *app) rewindSweep() {
+	if !a.escArm.IsZero() && !a.rewindArmed() {
+		a.disarmRewind()
+		a.touch()
+	}
 	if a.rewSay != "" && !a.rewindSaying() {
 		a.rewSay, a.rewSayAt = "", time.Time{}
 		a.touch()
