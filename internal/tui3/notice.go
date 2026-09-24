@@ -386,9 +386,8 @@ var notices = []notice{
 	// ── starting work ───────────────────────────────────────────────────────
 	//
 	// `/ask answers right here without opening a conversation` stood here
-	// until 2026-09-22 and came off ahead of the door it taught: /ask is on
-	// its way out, and a tip is a thing to teach somebody who will still have
-	// it tomorrow. The command itself is untouched.
+	// until 2026-09-22 and came off with the command it taught. Asking from
+	// home now uses the ask-here row, so that tip would point at a dead door.
 	{
 		id: "task-in-chat", slot: slotHint,
 		armed:  spoken,
