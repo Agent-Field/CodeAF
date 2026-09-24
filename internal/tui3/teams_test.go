@@ -107,20 +107,42 @@ func TestTeamTabsMergeLiveAndKeepStoredOrder(t *testing.T) {
 	sp := team{Name: "s", Members: []teamMember{
 		{Key: "c", File: "fc", Where: "/w", Word: "gamma"},
 		{Key: "a", File: "fa", Where: "/w", Word: "alpha"},
+		{Key: "d", File: "fd", Where: "/w", Handle: "lexer"},
 	}}
 	live := []chatTab{
 		{key: "a", file: "fa", word: "alpha now", here: true, held: true, signal: tabSignal(1)},
 		{key: "b", file: "fb", word: "beta"},
 	}
-	got := teamTabs(sp, live)
-	if len(got) != 2 || got[0].key != "c" || got[1].key != "a" {
+	// Held: c is held behind with a title, d is held with none yet (a member
+	// the manager just started).
+	held := func(key string) bool { return key == "c" || key == "d" }
+	got := teamTabs(sp, live, held)
+	if len(got) != 3 || got[0].key != "c" || got[1].key != "a" || got[2].key != "d" {
 		t.Fatalf("order: %+v", got)
 	}
 	if want := (chatTab{key: "c", file: "fc", where: "/w", word: "gamma", full: "gamma"}); got[0] != want {
-		t.Fatalf("closed member rebuilt as %+v", got[0])
+		t.Fatalf("held member rebuilt as %+v", got[0])
 	}
 	if got[1] != live[0] {
 		t.Fatalf("live member not the live tab: %+v", got[1])
+	}
+	if got[2].word != "@lexer" {
+		t.Fatalf("a held member with no title is drawn by its handle: %+v", got[2])
+	}
+}
+
+// A MEMBER THIS WINDOW DOES NOT HAVE OPEN GETS NO TAB. The strip is what is
+// open here, narrowed to the team; the owner saw three tabs over a wall of one.
+func TestTeamTabsDrawNoTabForAMemberNotOpenHere(t *testing.T) {
+	sp := team{Name: "test", Members: []teamMember{
+		{Key: "a", File: "fa", Word: "alpha"},
+		{Key: "b", File: "fb", Word: "beta"},
+		{Key: "c", File: "fc", Word: "gamma"},
+	}}
+	live := []chatTab{{key: "a", file: "fa", word: "alpha", here: true}}
+	got := teamTabs(sp, live, func(string) bool { return false })
+	if len(got) != 1 || got[0].key != "a" {
+		t.Fatalf("only the open member is a tab: %+v", got)
 	}
 }
 
@@ -370,7 +392,7 @@ func TestTeamDeleteOrReorderNeverRetargetsAnother(t *testing.T) {
 	a.wall.hover = wallHitForTeam(t, a, wallHitChip, third).ref()
 	a.wall.teams[0], a.wall.teams[1] = a.wall.teams[1], a.wall.teams[0]
 	frame := wallPlainFrame(a.wallFrame(a.width, a.height))
-	if !strings.Contains(frame, "Show only the conversations in third") {
+	if !strings.Contains(frame, "third · 1 open here · 1 member") {
 		t.Fatalf("the hover followed the place, not the team:\n%s", frame)
 	}
 	wallKeyPress(a, "D")

@@ -266,11 +266,12 @@ func (a *app) teamStripManager(t team, tabs []chatTab) []chatTab {
 	// THE MANAGER IS DRAWN BEFORE IT HAS A TITLE. The strip draws no nameless
 	// tab ([app.tabList]), but the manager's tab is named for the team, so a
 	// manager just started, or closed before its first answer, still has its
-	// place: the conversation in front as itself, and a closed one from what
-	// the team kept, which is what [app.tabGo] needs to open it again.
+	// place: the conversation in front as itself, and one held behind from
+	// what the team kept. A manager this window does not have open gets no
+	// tab, as no member does ([teamTabs]); the wall's `Open them` resumes it.
 	m, _ := t.Member(t.Manager)
 	here := t.Manager == a.frontTabKey()
-	if !here && m.File == "" {
+	if !here && (m.File == "" || !a.teamHeldOpen(t.Manager)) {
 		return tabs
 	}
 	tab := chatTab{key: t.Manager, file: m.File, where: m.Where, word: word, full: m.Word, here: here, pinned: true}

@@ -2,12 +2,15 @@ package tui3
 
 import (
 	"context"
+	"errors"
 	"math/rand/v2"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── THE WALL'S WIRING: KEYS, FRAME, POINTER AND STRIP ───────────────────────
@@ -39,6 +42,8 @@ import (
 //	m                  its teams, or the picked'    Teams on a tile, Add to…
 //	s                  new team of the picked       + New team, Make team
 //	e                  the shown team's settings    a segment's dot or ⋯
+//	r                  resume the shown team's      the title's Open them
+//	                   members not open here
 //	tab, shift+tab     next or previous team        a Teams segment
 //	1 to 9             that team, again for All     a Teams segment
 //	D                  delete the shown team        settings, Delete
@@ -134,8 +139,10 @@ func (a *app) closeWall() {
 	a.touch()
 }
 
-// wallShown is the tiles the wall draws: every open conversation, narrowed to
-// the active team's members when one is active.
+// wallShown is the tiles the wall draws: every conversation open in this
+// window, narrowed to the active team's members when one is active. A member
+// this window does not have open is not a tile; the title counts it and
+// offers to resume it ([app.wallResumeAway]).
 func (a *app) wallShown(now time.Time) []wallTile {
 	tiles := a.wallTiles(now)
 	sp, ok := a.teamActive()
@@ -249,10 +256,11 @@ func (a *app) wallFrame(width, height int) []string {
 			view.popManagerWord = a.teamManagerMenuWord(t, a.wall.pop.targets[0])
 		}
 	}
-	// The counts are of open conversations, whatever a filter is hiding: a
-	// team's members this window has no tab for are still members, but they
-	// are not on the wall. They are read off the strip's list, not a second
-	// build of every tile.
+	// The counts are of conversations open in this window, whatever a filter
+	// is hiding: a team's members this window has no tab for are still
+	// members, but they are not on the wall; the title counts them apart and
+	// offers to resume them ([app.wallResumeAway]). They are read off the
+	// strip's list, not a second build of every tile.
 	open := map[string]bool{}
 	tabs := a.tabList()
 	for _, tab := range tabs {
@@ -269,7 +277,10 @@ func (a *app) wallFrame(width, height int) []string {
 				n++
 			}
 		}
-		view.teams = append(view.teams, wallTeamRow{id: t.ID, name: t.Name, hue: t.HueSpec(), count: n})
+		view.teams = append(view.teams, wallTeamRow{id: t.ID, name: t.Name, hue: t.HueSpec(), count: n, members: len(t.Members)})
+	}
+	if t, ok := a.teamActive(); ok {
+		view.away = len(a.teamAway(t, tabs))
 	}
 	rows, hits := renderWall(a.pal, view, width, room)
 	// A scroll moved the tiles under a pointer that did not move: the target
@@ -473,6 +484,9 @@ func (a *app) wallCommand(key string, tiles []wallTile) tea.Cmd {
 			return nil
 		}
 		return a.wallDismissAt(tiles, a.wall.focus)
+	case "r":
+		// The shown team's members not open here, as the title's Open them.
+		return a.wallResumeAway()
 	case "e":
 		// The shown team's settings, where its dot or ⋯ opens them.
 		if id := a.wall.activeID; id != "" {
@@ -1127,6 +1141,8 @@ func (a *app) wallAct(act wallAct, tiles []wallTile) tea.Cmd {
 		a.wallOrganizeApply()
 	case wallActOrgCancel:
 		a.wallOrganizeClose()
+	case wallActResume:
+		return a.wallResumeAway()
 	}
 	return nil
 }
@@ -1148,6 +1164,121 @@ func (a *app) wallDismissAt(tiles []wallTile, i int) tea.Cmd {
 	cmd := a.tabDismiss(tab)
 	a.wallRefocus(tiles, focused)
 	return cmd
+}
+
+// wallResumeAway is the title's `Open them` and r: every member of the shown
+// team this window does not have open is resumed BEHIND, as the manager's
+// starts are ([app.trafficStarted]), so each becomes a tab and a tile and
+// nothing in front moves. The focus stays on the tile it was on.
+//
+// A member the keeper still holds but whose tab was closed only gets its tab
+// back. The rest are opened through the door on the door line, off the loop,
+// one after another, because opening one is a call to the engine; what comes
+// back is stowed on the loop. Over a connection that holds one conversation at
+// a time there is no behind to resume into, and the note says so.
+func (a *app) wallResumeAway() tea.Cmd {
+	t, ok := a.teamActive()
+	if !ok {
+		return nil
+	}
+	away := a.teamAway(t, a.tabList())
+	if len(away) == 0 {
+		return nil
+	}
+	focused := a.wallFocusedKey(a.wallShown(a.now()))
+	var closed []teamMember
+	for _, m := range away {
+		if a.behind[m.Key] != nil {
+			delete(a.tabShut, m.Key)
+			continue
+		}
+		if strings.TrimSpace(m.File) != "" {
+			closed = append(closed, m)
+		}
+	}
+	a.chatTabBar = tabBar{}
+	a.wallRefocusKey(focused)
+	if len(closed) == 0 {
+		return nil
+	}
+	switch {
+	case a.shared:
+		a.note("could not open the rest of " + t.Name + ": " + oneConversationWord)
+		return nil
+	case a.open == nil:
+		a.note("could not open the rest of " + t.Name + ": " + resumeUnavailableWord)
+		return nil
+	}
+	open, name := a.open, t.Name
+	return a.besideLine(func() func(bool) tea.Cmd {
+		convs := make([]Conversation, 0, len(closed))
+		var refused []string
+		for _, m := range closed {
+			conv, err := open(m.Where, m.File)
+			switch {
+			case errors.Is(err, session.ErrSessionLocked):
+				refused = append(refused, teamMemberWord(m)+": "+sessionBusyWord)
+			case err != nil:
+				refused = append(refused, teamMemberWord(m)+": "+err.Error())
+			case conv.Agent != nil:
+				convs = append(convs, conv)
+			}
+		}
+		return func(bool) tea.Cmd { return a.wallResumed(name, convs, refused) }
+	})
+}
+
+// wallResumed holds what [app.wallResumeAway] opened, behind, and says what
+// did not open.
+func (a *app) wallResumed(team string, convs []Conversation, refused []string) tea.Cmd {
+	focused := ""
+	if a.wall.on {
+		focused = a.wallFocusedKey(a.wallShown(a.now()))
+	}
+	var cmds []tea.Cmd
+	var keys []string
+	for _, conv := range convs {
+		key := a.convKey(conv.SessionFile)
+		cmds = append(cmds, a.stow(conv, nil))
+		a.trafficBehindTop(key)
+		keys = append(keys, key)
+	}
+	a.chatTabBar = tabBar{}
+	if a.wall.on {
+		a.wallRefocusKey(focused)
+		cmds = append(cmds, a.wallReadCmd(keys...))
+	}
+	if len(refused) > 0 {
+		a.note("could not open all of " + team + ": " + strings.Join(refused, "; "))
+	}
+	a.touch()
+	return tea.Batch(cmds...)
+}
+
+// wallRefocusKey keeps the focus on the tile holding key after the tiles
+// changed under it; with no such key, or the wall down, it does nothing.
+func (a *app) wallRefocusKey(key string) {
+	if !a.wall.on || key == "" {
+		return
+	}
+	tiles := a.wallShown(a.now())
+	for i, tile := range tiles {
+		if tile.tab.key == key {
+			a.wallMove(i, len(tiles))
+			return
+		}
+	}
+}
+
+// teamMemberWord is how a note names a member: its title, else its handle.
+func teamMemberWord(m teamMember) string {
+	if w := strings.TrimSpace(m.Word); w != "" {
+		return w
+	}
+	if m.Handle != "" {
+		return "@" + m.Handle
+	}
+	return "a member"
 }
 
 // wallFocusedKey is the focused tile's conversation, "" for none.
