@@ -74,9 +74,10 @@ everything it would stop and ask is already settled. The model is told the same 
 it proposes one.
 
 **It has no step cap.** It is held to this conversation's dollar and time limits. It is
-given them when it starts, and codeaf enforces them from outside as well: a model call that
-would cross the dollar ceiling is refused before it is made, and the task then says
-`<name> reached the run's dollar ceiling of $…`.
+given them when it starts, and codeaf enforces them from outside as well: once the run's
+spend has reached the dollar ceiling, every further model call is refused before it is
+made, and the task then says `<name> reached the run's dollar ceiling of $…`. The call
+that crossed the ceiling was already paid for, so a run can end a little over it.
 
 **It runs alone.** While one is running, no other task can join its copy, and it cannot be
 started under another run. Both are refused with the folder that is busy:
@@ -109,7 +110,9 @@ A program that only answers works in your folder in place and changes nothing. I
 arrives in the conversation the way a task's landing does.
 
 What it spent is in the conversation's total, in `/cost` and on the status line. Every
-model call it made went through codeaf and is priced like one of codeaf's own.
+model call it made went through codeaf and is priced like one of codeaf's own. A run
+stopped in the middle of a call is not over until that call's price has come in, for at
+most 70 seconds, so the call it was cut in is in those figures too.
 
 ## Why is there no command for it — missing, not in this build, Windows, a hosted conversation
 

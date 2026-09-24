@@ -20,6 +20,15 @@ package modelapi
 // spend rows and the machine's spending ledger all see a call's dollars before
 // the program does. The program's own account of what it spent is never read.
 //
+// ── THE RUN'S BOOKS CLOSE ONLY WHEN ITS RECEIPTS ARE IN ─────────────────────
+//
+// A call cut in the middle — the one in flight when a person stops the run, or
+// when the supervisor ends it at the ceiling — is still paid for, and its price
+// arrives by the provider's receipt about twenty seconds later. [Server.Close]
+// waits for every receipt still owed on this run's calls (bounded by
+// provider.ReceiptWait) before it returns, so the run's total read after it,
+// the task's spend rows and the conversation's books all hold that money.
+//
 // ── THE CEILING IS A REFUSAL BEFORE THE CALL ────────────────────────────────
 //
 // A call made once the run's metered spend has reached its dollar ceiling is
@@ -100,6 +109,11 @@ type Config struct {
 	// Unbilled is told a call the provider charged for and could put no figure
 	// on — a cut stream whose receipt never came.
 	Unbilled func(model string)
+	// Settling is told, once, when [Server.Close] begins to wait for the
+	// receipts still owed on this run's cut calls, with how many there are, so
+	// a person watching the run can be told why its end takes a moment. Nil
+	// says nothing; nothing is told when nothing is owed.
+	Settling func(owed int)
 	// Role is the lane role the calls ride: an unattended leaf when nobody is
 	// reading, which is a run's worker, and an attended one for a shell run a
 	// person is watching. Empty is unattended.
@@ -155,6 +169,11 @@ type Server struct {
 	// logMu keeps two turns from sharing one write of the log.
 	bankMu sync.Mutex
 	logMu  sync.Mutex
+
+	// owed counts the receipts the funnel has queued for this run's calls and
+	// not yet answered (provider.WithReceiptPending), which [Server.Close]
+	// waits for.
+	owed receiptsOwed
 }
 
 // Open starts one run's API on an OS-chosen 127.0.0.1 port and mints its
@@ -229,6 +248,16 @@ func (s *Server) refuse() {
 // every call in flight is ended, the listener and every connection are closed,
 // and the calls that were running are given [closeWait] to write their last
 // record. A grandchild the program left behind can no longer spend.
+//
+// AND THE RUN'S BOOKS ARE CLOSED WITH EVERY RECEIPT IN THEM. A call cut in
+// the middle — ended just now by this very close, or by the program's own stop
+// a moment before — is priced by a receipt the provider fetches in the
+// background about twenty seconds later. Close waits for every receipt still
+// owed, for at most [receiptWait], so the [Server.Spent] a caller reads after
+// it is the run's whole total and every charge has reached [Config.Bank] while
+// the caller's books are still open. It measured: each of the three stopped
+// runs of 2026-09-23 lost exactly that call from its task, its run total and
+// its conversation's books, and only the machine's ledger heard of it.
 func (s *Server) Close() error {
 	if !s.end() {
 		return nil
@@ -244,10 +273,85 @@ func (s *Server) Close() error {
 	case <-drained:
 	case <-time.After(closeWait):
 	}
+	if owed := s.owed.count(); owed > 0 && s.config.Settling != nil {
+		s.config.Settling(owed)
+	}
+	s.owed.wait(receiptWait)
 	if errors.Is(err, http.ErrServerClosed) {
 		err = nil
 	}
 	return err
+}
+
+// receiptWait bounds how long [Server.Close] waits for the receipts owed on a
+// run's cut calls: the provider's own ceiling for one receipt, so a receipt
+// the provider is still asking for is never abandoned early, and one that will
+// never come costs the run's ending no more than that. A variable only so a
+// test can shorten it.
+var receiptWait = provider.ReceiptWait
+
+// receiptsOwed counts receipts queued and not yet answered. Its idle channel
+// is closed whenever the count is zero and made anew when it leaves zero, so a
+// waiter can wait on it with a bound and look again when it closes.
+type receiptsOwed struct {
+	mu   sync.Mutex
+	n    int
+	idle chan struct{}
+}
+
+// owe counts one receipt in and answers the function that counts it out,
+// which does so once however often it is called.
+func (o *receiptsOwed) owe() func() {
+	o.mu.Lock()
+	if o.n == 0 {
+		o.idle = make(chan struct{})
+	}
+	o.n++
+	o.mu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			o.mu.Lock()
+			defer o.mu.Unlock()
+			o.n--
+			if o.n == 0 {
+				close(o.idle)
+			}
+		})
+	}
+}
+
+// count is how many receipts are owed now.
+func (o *receiptsOwed) count() int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.n
+}
+
+// wait returns when nothing is owed, or when bound has passed; it answers
+// whether everything owed came in.
+func (o *receiptsOwed) wait(bound time.Duration) bool {
+	deadline := time.Now().Add(bound)
+	for {
+		o.mu.Lock()
+		if o.n == 0 {
+			o.mu.Unlock()
+			return true
+		}
+		idle := o.idle
+		o.mu.Unlock()
+		left := time.Until(deadline)
+		if left <= 0 {
+			return false
+		}
+		timer := time.NewTimer(left)
+		select {
+		case <-idle:
+			timer.Stop()
+		case <-timer.C:
+			return false
+		}
+	}
 }
 
 // end marks the API closed and forgets its token, and answers whether this was
@@ -354,6 +458,23 @@ type record struct {
 	mu    sync.Mutex
 	turn  delegate.Turn
 	ended bool
+	// owed says the funnel queued a receipt for this call: its price is on its
+	// way, however late.
+	owed bool
+}
+
+// owe marks the call as one whose receipt the funnel has queued.
+func (r *record) owe() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.owed = true
+}
+
+// owing reports whether the funnel queued a receipt for this call.
+func (r *record) owing() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.owed
 }
 
 // serveOn says the call went out on the seat instead of the ask.
@@ -407,7 +528,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, request *call) {
 	}
 	entry, spent := s.open(request, thread, served)
 
-	if ceiling := s.config.Ceiling; ceiling > 0 && spent >= ceiling {
+	if ceiling := s.config.Ceiling; ceiling > 0 && ceilingReached(ceiling, spent) {
 		// 402 AND NOTHING THAT READS AS PASSING: a program's client retries a
 		// 408, a 409, a 429 and a 5xx as the weather, and a ceiling is not
 		// weather — asked again it answers the same.
@@ -446,6 +567,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, request *call) {
 	} else {
 		said = answerOf(response, model, bill, catch, slot, out)
 		s.arrived(thread, said.reasoning.field)
+		s.unpriced(response, bill, entry, model)
 	}
 	s.log(entry.close(func(turn *delegate.Turn) {
 		turn.TokensIn, turn.TokensOut, turn.Cached, turn.CostUSD = bill.figures()
@@ -453,6 +575,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, request *call) {
 		if err == nil {
 			turn.Reply, turn.Calls = said.text, toolUses(said.calls)
 		}
+		turn.Served = answeredBy(*turn, bill.model(), response)
 	}))
 
 	if r.Context().Err() != nil {
@@ -537,6 +660,10 @@ func (s *Server) settings(ctx context.Context, request *call, bill *tally, catch
 	ctx = provider.WithMessageReasoning(ctx, request.reasoning)
 	ctx = provider.WithBilling(ctx, func(billed provider.Billed) { s.charge(bill, billed, false) })
 	ctx = provider.WithReconcile(ctx, func(receipt provider.Reconciled) { s.receipt(bill, entry, receipt) })
+	ctx = provider.WithReceiptPending(ctx, func() func() {
+		entry.owe()
+		return s.owed.owe()
+	})
 	ctx = provider.WithStreamObserver(ctx, catch.observe)
 	return provider.WithServedEndpoint(ctx, slot)
 }
@@ -570,6 +697,31 @@ func (s *Server) charge(bill *tally, billed provider.Billed, late bool) {
 	}
 }
 
+// unpriced keeps an answered call that nothing priced on the ledger as the
+// marker it is.
+//
+// AN ANSWER WITH NO USAGE BLOCK IS NOT A FREE ONE. The funnel bills a call
+// from the usage block at the end of its answer, and asks for a receipt only
+// when the answer was cut; an answer that arrived whole and simply carried no
+// usage block was billed nowhere and said so nowhere — true-myth's call
+// 7483768e on 2026-09-23, a 200 on kimi-k2.6 after nearly eight seconds with
+// no figure in any book. Such a call is told as one nobody could price
+// ([Config.Unbilled]), exactly as a receipt that never came is, with no money
+// invented. A call the funnel billed, or whose receipt is on its way, is not.
+func (s *Server) unpriced(response *ai.Response, bill *tally, entry *record, model string) {
+	if s.config.Unbilled == nil || response == nil || response.Usage != nil || entry.owing() {
+		return
+	}
+	if _, billed := bill.metered(); billed {
+		return
+	}
+	answered := strings.TrimSpace(response.Model)
+	if answered == "" {
+		answered = model
+	}
+	s.config.Unbilled(answered)
+}
+
 // meter adds one charge to the run's total and answers the total.
 func (s *Server) meter(cost float64) float64 {
 	s.mu.Lock()
@@ -598,7 +750,56 @@ func (s *Server) receipt(bill *tally, entry *record, receipt provider.Reconciled
 		return
 	}
 	entry.turn.TokensIn, entry.turn.TokensOut, entry.turn.Cached, entry.turn.CostUSD = bill.figures()
+	entry.turn.Served = answeredBy(entry.turn, bill.model(), nil)
 	s.log(entry.turn)
+}
+
+// answeredBy is the model a turn names as the one that answered: the one it
+// already names — the run's seat, when [Resolve] or the funnel put the call
+// there — or else the model the funnel billed, or the answer's own model when
+// nothing was billed, whenever that is another model than the one asked for.
+//
+// THE PAGE MUST NOT NAME A MODEL THAT NEVER ANSWERED. When nothing this
+// machine serves can take the ask or the seat, the call goes out as asked, and
+// the conversation's own pool may put it on the model in its own seat — which
+// this API never hears of. Run 3d6d on 2026-09-24 asked qwen, deepseek and
+// kimi 27 times, and gpt-5.6-sol answered every one; the page named the three
+// that never did. The funnel's bill names who answered, so it is the witness.
+func answeredBy(turn delegate.Turn, billed string, response *ai.Response) string {
+	if served := strings.TrimSpace(turn.Served); served != "" {
+		return served
+	}
+	answered := strings.TrimSpace(billed)
+	if answered == "" && response != nil {
+		answered = strings.TrimSpace(response.Model)
+	}
+	if answered == "" || sameModel(turn.Model, answered) {
+		return ""
+	}
+	return answered
+}
+
+// sameModel reports whether two ids name one model, read the way the task page
+// names a speaker: by the part after the last vendor, case aside, so
+// `openrouter/deepseek/deepseek-v4-pro` and `deepseek/deepseek-v4-pro` are one
+// model, and a dated build of it (`deepseek-v4-pro-0731`) is still it. An ask
+// that named no model is never the same as the model that answered it.
+func sameModel(asked, answered string) bool {
+	word := func(id string) string {
+		id = strings.ToLower(strings.TrimSpace(id))
+		if at := strings.LastIndexByte(id, '/'); at >= 0 {
+			id = id[at+1:]
+		}
+		return id
+	}
+	a, b := word(asked), word(answered)
+	if a == "" || b == "" {
+		return a == b
+	}
+	build := func(long, short string) bool {
+		return strings.HasPrefix(long, short+"-") || strings.HasPrefix(long, short+":")
+	}
+	return a == b || build(a, b) || build(b, a)
 }
 
 // log writes one turn. A log that cannot be written costs the record and never
@@ -636,6 +837,14 @@ func (t *tally) add(billed provider.Billed) {
 	if model := strings.TrimSpace(billed.Model); model != "" {
 		t.lastModel = model
 	}
+}
+
+// model is the model the funnel last billed for this call, empty when it
+// billed nothing.
+func (t *tally) model() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.lastModel
 }
 
 func (t *tally) figures() (in, out, cached int, cost float64) {
@@ -738,10 +947,28 @@ func ceilingSentence(ceiling, spent float64) string {
 	return "the run's dollar ceiling of " + dollars(ceiling) + " is reached (" + dollars(spent) + " spent), so codeaf made no call"
 }
 
+// ceilingDust is the most a ceiling may still have left and be reached: a
+// billionth of a dollar, far below any call's price and far above the float
+// rounding in a sum of prices.
+const ceilingDust = 1e-9
+
+// ceilingReached reports whether a run's spend has reached its ceiling.
+//
+// A CEILING WITH NOTHING LEFT IS REACHED BEFORE THE FIRST CALL. A run whose
+// person's limit was already spent is handed the smallest positive figure,
+// because zero means no ceiling at all (internal/session's runCostLeft); read
+// as `spent >= ceiling`, nothing spent was still under it, and the run's first
+// call was made and paid for. Nothing left is nothing left.
+func ceilingReached(ceiling, spent float64) bool {
+	return ceiling-spent <= ceilingDust
+}
+
 // dollars writes an amount the way a person reads one: cents, and four places
-// under a cent so a small run is not written as nothing.
+// under a cent so a small run is not written as nothing. An amount that would
+// still read as nothing at four places — a ceiling with nothing left — is
+// written as the nothing it is.
 func dollars(amount float64) string {
-	if amount > 0 && amount < 0.01 {
+	if amount >= 0.00005 && amount < 0.01 {
 		return fmt.Sprintf("$%.4f", amount)
 	}
 	return fmt.Sprintf("$%.2f", amount)

@@ -129,9 +129,12 @@ with no git history nothing is committed at all: the work is already in the fold
 
 Every model call senior-dev makes goes through codeaf, which serves each run its own
 model API. So every call is priced like one of codeaf's own, shows in the conversation's
-total and in `/cost`, and is held to the run's dollar ceiling: **codeaf refuses the call
-that would cross it**, before it is made. A refused call ends senior-dev's turn; it runs
-the project's build and tests on the tree it has, and ends there, and the task says
+total and in `/cost`, and is held to the run's dollar ceiling: **once the run's spend has
+reached it, codeaf refuses every further call** before it is made, with
+`the run's dollar ceiling of $5.00 is reached ($5.04 spent), so codeaf made no call`.
+The call that crossed the ceiling was already made and paid for, so a run can end a little
+over it. A refused call ends senior-dev's turn; it runs the project's build and tests on
+the tree it has, and ends there, and the task says
 `senior-dev reached the run's dollar ceiling of $5.00: …` with senior-dev's own words
 after it.
 
@@ -142,8 +145,23 @@ submit.
 
 **When none of your model services can serve the model it asks for**, codeaf answers the
 call on the run's own work model — the one a task's own worker would use — and the
-conversation on the task page names the model that answered. Which models it asks for is
-the next section.
+conversation on the task page names the model that answered. When nothing here can serve
+that model either, the conversation's own model may answer instead, and the page names
+whichever model did. Which models it asks for is the next section.
+
+## Why a stopped senior-dev run takes a moment to end — the price of the call it was in the middle of
+
+When you stop a run, or codeaf ends it at its dollar ceiling, senior-dev is usually in
+the middle of a model call. That call is still paid for, and the router prices a call cut
+off like that by a receipt codeaf fetches afterwards, usually about twenty seconds later.
+**The run is not over until that receipt is in**, for at most 70 seconds, so the task's
+spend, the run's total and the conversation's `/cost` all include that call. A shell run
+waits the same way before it prints its last line.
+
+A receipt that never comes is kept as a call nobody could price, never as a free one
+(the section `Was I charged for a reply that got cut off` says where those are counted).
+So is a call answered whole whose answer carried no usage block at all: codeaf has no
+figure for it, and does not guess one.
 
 ## Which models does senior-dev use — your crew, its own list, --high
 

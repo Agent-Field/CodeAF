@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -668,8 +669,12 @@ func TestALateReceiptIsBankedAndItsTurnRewritten(t *testing.T) {
 	dir := t.TempDir()
 	late := make(chan struct{})
 	calls := &script{reply: func(ctx context.Context, model string, _ []ai.Message, _ ai.Request) (*ai.Response, error) {
+		// Owed the way the provider owes a receipt: before the fetch, and
+		// answered after the sink.
+		done := provider.ReceiptPendingFrom(ctx)()
 		sink := provider.ReconcileSinkFrom(ctx)
 		go func() {
+			defer done()
 			time.Sleep(50 * time.Millisecond)
 			sink(provider.Reconciled{Billed: provider.Billed{Model: model, PromptTokens: 50, CompletionTokens: 5, Cost: 0.02}, Found: true})
 			sink(provider.Reconciled{Billed: provider.Billed{Model: "other"}, Found: false})
@@ -697,5 +702,181 @@ func TestALateReceiptIsBankedAndItsTurnRewritten(t *testing.T) {
 	turns, _ := delegate.ReadTurns(dir, 0)
 	if len(turns) != 1 || turns[0].CostUSD != 0.02 || turns[0].TokensIn != 50 {
 		t.Fatalf("turn = %+v, want it rewritten with the late receipt", turns)
+	}
+}
+
+// THE RUN'S BOOKS CLOSE WITH THE RECEIPT OF THE CALL IT WAS CUT IN: the funnel
+// owes a receipt for a call that ended without its usage block, and it arrives
+// well after the call has returned — the stopped runs of 2026-09-23 saw it
+// twenty seconds later. Close waits for it, so the total read after Close and
+// the bank both hold it, and the watcher is told once how many were owed. A
+// receipt that never comes costs the ending no more than the bound.
+func TestCloseWaitsForTheReceiptOwedOnACutCall(t *testing.T) {
+	gate := make(chan struct{})
+	calls := &script{reply: func(ctx context.Context, model string, _ []ai.Message, _ ai.Request) (*ai.Response, error) {
+		// The provider's own order: owed before the fetch, answered after the
+		// sink has the money.
+		done := provider.ReceiptPendingFrom(ctx)()
+		sink := provider.ReconcileSinkFrom(ctx)
+		go func() {
+			defer done()
+			<-gate
+			sink(provider.Reconciled{Billed: provider.Billed{Model: model, PromptTokens: 52139, CompletionTokens: 4895, Cost: 0.058188488}, Found: true})
+		}()
+		return saying(model, "cut short"), nil
+	}}
+	var mu sync.Mutex
+	var banked []modelapi.Charge
+	var settling []int
+	server, api := open(t, modelapi.Config{
+		CompleterFor: calls.completerFor,
+		Bank:         func(charge modelapi.Charge) { mu.Lock(); banked = append(banked, charge); mu.Unlock() },
+		Settling:     func(owed int) { mu.Lock(); settling = append(settling, owed); mu.Unlock() },
+	})
+	if status, payload := post(t, api, api.Token, hello); status != http.StatusOK {
+		t.Fatalf("status %d: %s", status, payload)
+	}
+	if spent := server.Spent(); spent != 0 {
+		t.Fatalf("spent %v before the receipt came", spent)
+	}
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		close(gate)
+	}()
+	if err := server.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if spent := server.Spent(); spent != 0.058188488 {
+		t.Fatalf("spent after Close = %v, want the late receipt's $0.058188488 in it", spent)
+	}
+	mu.Lock()
+	if len(banked) != 1 || !banked[0].Late || banked[0].CostUSD != 0.058188488 || len(settling) != 1 || settling[0] != 1 {
+		mu.Unlock()
+		t.Fatalf("banked %+v settling %v, want the one late charge banked before Close returned, told once", banked, settling)
+	}
+	mu.Unlock()
+
+	// A receipt that never comes: Close gives up at the bound.
+	defer modelapi.ShortenReceiptWait(150 * time.Millisecond)()
+	never := &script{reply: func(ctx context.Context, model string, _ []ai.Message, _ ai.Request) (*ai.Response, error) {
+		provider.ReceiptPendingFrom(ctx)()
+		return saying(model, "cut short"), nil
+	}}
+	stuck, stuckAPI := open(t, modelapi.Config{CompleterFor: never.completerFor})
+	if status, payload := post(t, stuckAPI, stuckAPI.Token, hello); status != http.StatusOK {
+		t.Fatalf("status %d: %s", status, payload)
+	}
+	began := time.Now()
+	if err := stuck.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if waited := time.Since(began); waited < 100*time.Millisecond || waited > 5*time.Second {
+		t.Fatalf("Close waited %s for a receipt that never came, want about the bound", waited)
+	}
+}
+
+// THE PAGE NAMES THE MODEL THAT ANSWERED. When nothing here could take the ask
+// or the seat, the conversation's own pool put the call on its seat, which this
+// API never hears of — run 3d6d asked qwen and was answered by gpt-5.6-sol, at a
+// price its service does not report. The funnel's bill names who answered, and
+// the turn says so; an ask answered by the same model under another spelling,
+// or by a dated build of it, names nothing more.
+func TestATurnNamesTheModelTheFunnelBilledWhenItIsNotTheAsk(t *testing.T) {
+	for _, row := range []struct {
+		name, asked, billed, answer, want string
+	}{
+		{name: "the pool's seat answered", asked: "qwen/qwen3.6-plus", billed: "gpt-5.6-sol", want: "gpt-5.6-sol"},
+		{name: "the same model without its service", asked: "openrouter/deepseek/deepseek-v4-pro", billed: "deepseek/deepseek-v4-pro", want: ""},
+		{name: "a dated build of the ask", asked: "deepseek/deepseek-v4-pro", billed: "deepseek/deepseek-v4-pro-0731", want: ""},
+		{name: "nothing billed, the answer names another", asked: "moonshotai/kimi-k2.6", answer: "z-ai/glm-5.1", want: "z-ai/glm-5.1"},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			dir := t.TempDir()
+			calls := &script{reply: func(ctx context.Context, model string, _ []ai.Message, _ ai.Request) (*ai.Response, error) {
+				answered := model
+				if row.billed != "" {
+					// A service that reports no price: tokens, and no dollars.
+					bill(ctx, row.billed, 58511, 405, 55356, 0)
+					answered = row.billed
+				}
+				if row.answer != "" {
+					answered = row.answer
+				}
+				return saying(answered, "done"), nil
+			}}
+			_, api := open(t, modelapi.Config{TaskDir: dir, CompleterFor: calls.completerFor})
+			body := `{"model":"` + row.asked + `","messages":[{"role":"user","content":"go"}]}`
+			if status, payload := post(t, api, api.Token, body); status != http.StatusOK {
+				t.Fatalf("status %d: %s", status, payload)
+			}
+			turns, _ := delegate.ReadTurns(dir, 0)
+			if len(turns) != 1 || turns[0].Model != row.asked || turns[0].Served != row.want {
+				t.Fatalf("turn = %+v, want the ask %q kept and %q named as what answered", turns, row.asked, row.want)
+			}
+		})
+	}
+}
+
+// A RUN WITH NOTHING LEFT OF ITS LIMIT MAKES NO CALL AT ALL. The conversation
+// hands such a run the smallest positive ceiling, because zero means none; the
+// first call used to go through and be paid for, since nothing spent was still
+// "under" it. It is refused with the ceiling's own sentence, and the funnel is
+// never asked.
+func TestARunWhoseCeilingIsAlreadySpentMakesNoCall(t *testing.T) {
+	dir := t.TempDir()
+	calls := &script{reply: words("paid for", 0.139463)}
+	server, api := open(t, modelapi.Config{TaskDir: dir, CompleterFor: calls.completerFor, Ceiling: math.SmallestNonzeroFloat64})
+	status, payload := post(t, api, api.Token, hello)
+	message, code := errorOf(t, payload)
+	if status != http.StatusPaymentRequired || code != 402 ||
+		message != "the run's dollar ceiling of $0.00 is reached ($0.00 spent), so codeaf made no call" {
+		t.Fatalf("the first call of a spent run was answered %d: %s", status, payload)
+	}
+	if len(calls.calls()) != 0 || server.Spent() != 0 || server.RefusedAtCeiling() != 1 {
+		t.Fatalf("the funnel was asked %d times, spent %v, refused %d", len(calls.calls()), server.Spent(), server.RefusedAtCeiling())
+	}
+}
+
+// AN ANSWER NOTHING PRICED IS SAID, NOT SILENT. A call answered whole whose
+// answer carried no usage block was billed nowhere and marked nowhere; it is
+// told as a call nobody could price, with no money invented. A call the funnel
+// billed — at a price or at none — and a call whose receipt is owed are not.
+func TestAnAnsweredCallNothingPricedIsToldAsUnbilled(t *testing.T) {
+	for _, row := range []struct {
+		name  string
+		reply func(context.Context, string, []ai.Message, ai.Request) (*ai.Response, error)
+		want  []string
+	}{
+		{name: "no usage block, no receipt", want: []string{"moonshotai/kimi-k2.6"},
+			reply: func(_ context.Context, model string, _ []ai.Message, _ ai.Request) (*ai.Response, error) {
+				return saying(model, "whole"), nil
+			}},
+		{name: "billed", reply: words("whole", 0.03)},
+		{name: "billed with no price", reply: words("whole", 0)},
+		{name: "a receipt owed",
+			reply: func(ctx context.Context, model string, _ []ai.Message, _ ai.Request) (*ai.Response, error) {
+				done := provider.ReceiptPendingFrom(ctx)()
+				go done()
+				return saying(model, "cut"), nil
+			}},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			calls := &script{reply: row.reply}
+			var mu sync.Mutex
+			var unbilled []string
+			_, api := open(t, modelapi.Config{
+				CompleterFor: calls.completerFor,
+				Unbilled:     func(model string) { mu.Lock(); unbilled = append(unbilled, model); mu.Unlock() },
+			})
+			body := `{"model":"moonshotai/kimi-k2.6","messages":[{"role":"user","content":"go"}]}`
+			if status, payload := post(t, api, api.Token, body); status != http.StatusOK {
+				t.Fatalf("status %d: %s", status, payload)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if strings.Join(unbilled, ",") != strings.Join(row.want, ",") {
+				t.Fatalf("unbilled = %v, want %v", unbilled, row.want)
+			}
+		})
 	}
 }
