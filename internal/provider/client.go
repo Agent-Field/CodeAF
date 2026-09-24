@@ -1124,7 +1124,7 @@ func (c *Client) completionInOnePiece(
 	})
 	// The money, banked at the same instant the log row is written and for the
 	// same reason: this is where the fact is known. See billing.go.
-	c.bill(ctx, c.modelFor(request), &response)
+	c.billAnswered(ctx, c.modelFor(request), &response, len(responseText(&response)))
 	return &response, len(relearned) > 0, nil
 }
 
@@ -2160,7 +2160,7 @@ func (c *Client) completeWithMessagesStreaming(
 	// Both paths or neither, exactly as the learning above: a streamed answer
 	// is billed by the provider the same way a whole-body one is, and a ledger
 	// blind to one of the two transports is a ledger nobody can reconcile.
-	c.bill(ctx, c.modelFor(request), response)
+	c.billAnswered(ctx, c.modelFor(request), response, content.Len())
 	finished = true
 	observer(StreamEvent{Kind: StreamFinished, Session: session})
 	return response, relearned, nil

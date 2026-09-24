@@ -1470,7 +1470,8 @@ hedged waste from its own receipt too; it is real provider money, but it is not 
 
 codeaf asks for the receipt at once, then again about 1, 5, 20 and 40 seconds after the call
 ended. The receipt for a call cut in the middle usually takes the router about twenty seconds
-to price.
+to price. A call senior-dev made that arrived whole but with no usage block is asked about
+the same way.
 
 When no generation id arrived, the base has no receipt route, or the receipt still cannot be
 had after that schedule, codeaf writes an `unbilled` marker with no invented

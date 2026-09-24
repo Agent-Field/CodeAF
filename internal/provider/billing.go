@@ -112,6 +112,7 @@ type ReceiptPending func() (done func())
 type billingContextKey struct{}
 type reconcileContextKey struct{}
 type receiptPendingContextKey struct{}
+type unmeteredReceiptsContextKey struct{}
 
 // WithBilling arms one piece of work's banking. Like the transcript sink it
 // belongs to the work rather than to the client, because one client serves
@@ -142,6 +143,31 @@ func WithReceiptPending(ctx context.Context, pending ReceiptPending) context.Con
 		return ctx
 	}
 	return context.WithValue(ctx, receiptPendingContextKey{}, pending)
+}
+
+// WithUnmeteredReceipts arms one piece of work to have an answer that arrived
+// whole but carried no usage block settled the way a cut one is ([Client.settle]):
+// its receipt is asked for by generation id, or it is told as a call nobody
+// could price. Without it such an answer is billed nowhere and said nowhere,
+// which is every other caller's behaviour, left alone on purpose.
+//
+// IT IS OPT-IN BECAUSE IT IS NEW MONEY ON AN OLD ROAD. A program's model API
+// arms it (internal/provider/modelapi): its runs are held to a dollar ceiling
+// and read as one account, and true-myth's call 7483768e of 2026-09-23 — a 200
+// on kimi-k2.6 after nearly eight seconds with no usage block — was in no book
+// at all. A direct service is untouched either way, because settle stops at
+// one: its missing usage block is a subscription's silence, not a charge.
+func WithUnmeteredReceipts(ctx context.Context) context.Context {
+	return context.WithValue(ctx, unmeteredReceiptsContextKey{}, true)
+}
+
+// unmeteredReceiptsFrom reports whether [WithUnmeteredReceipts] armed ctx.
+func unmeteredReceiptsFrom(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	armed, _ := ctx.Value(unmeteredReceiptsContextKey{}).(bool)
+	return armed
 }
 
 // receiptPendingFrom reads back what [WithReceiptPending] armed, or nil.
@@ -206,6 +232,17 @@ func (c *Client) bill(ctx context.Context, model string, response *ai.Response) 
 	sink(billed)
 }
 
+// billAnswered bills an answer that arrived whole. One with no usage block is
+// settled like a cut one when the work asked for that ([WithUnmeteredReceipts]),
+// and billed the ordinary way — which banks nothing for it — otherwise.
+func (c *Client) billAnswered(ctx context.Context, model string, response *ai.Response, answerBytes int) {
+	if response != nil && response.Usage == nil && unmeteredReceiptsFrom(ctx) {
+		c.settle(ctx, model, response, receiptUnmeteredReason, answerBytes)
+		return
+	}
+	c.bill(ctx, model, response)
+}
+
 // BillingSinkFrom and CallNodeFrom read back what a leaf's context was armed
 // with. They exist for the surfaces that arm it and the tests that check they
 // did: arming billing is one line at three call sites, and a call site that
@@ -214,6 +251,9 @@ func BillingSinkFrom(ctx context.Context) BillingSink { return billingFrom(ctx) 
 
 // ReconcileSinkFrom reads back the receipt sink [WithReconcile] armed, or nil.
 func ReconcileSinkFrom(ctx context.Context) ReconcileSink { return reconcileFrom(ctx) }
+
+// UnmeteredReceiptsFrom reports whether [WithUnmeteredReceipts] armed ctx.
+func UnmeteredReceiptsFrom(ctx context.Context) bool { return unmeteredReceiptsFrom(ctx) }
 
 // ReceiptPendingFrom reads back what [WithReceiptPending] armed, or nil — for a
 // scripted funnel that owes a receipt the way the provider's own does.

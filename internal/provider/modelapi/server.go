@@ -458,23 +458,6 @@ type record struct {
 	mu    sync.Mutex
 	turn  delegate.Turn
 	ended bool
-	// owed says the funnel queued a receipt for this call: its price is on its
-	// way, however late.
-	owed bool
-}
-
-// owe marks the call as one whose receipt the funnel has queued.
-func (r *record) owe() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.owed = true
-}
-
-// owing reports whether the funnel queued a receipt for this call.
-func (r *record) owing() bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.owed
 }
 
 // serveOn says the call went out on the seat instead of the ask.
@@ -567,7 +550,6 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, request *call) {
 	} else {
 		said = answerOf(response, model, bill, catch, slot, out)
 		s.arrived(thread, said.reasoning.field)
-		s.unpriced(response, bill, entry, model)
 	}
 	s.log(entry.close(func(turn *delegate.Turn) {
 		turn.TokensIn, turn.TokensOut, turn.Cached, turn.CostUSD = bill.figures()
@@ -660,10 +642,15 @@ func (s *Server) settings(ctx context.Context, request *call, bill *tally, catch
 	ctx = provider.WithMessageReasoning(ctx, request.reasoning)
 	ctx = provider.WithBilling(ctx, func(billed provider.Billed) { s.charge(bill, billed, false) })
 	ctx = provider.WithReconcile(ctx, func(receipt provider.Reconciled) { s.receipt(bill, entry, receipt) })
-	ctx = provider.WithReceiptPending(ctx, func() func() {
-		entry.owe()
-		return s.owed.owe()
-	})
+	ctx = provider.WithReceiptPending(ctx, s.owed.owe)
+	// AN ANSWER WITH NO USAGE BLOCK IS NOT A FREE ONE. The funnel asks for a
+	// receipt only when an answer was cut; one that arrived whole and simply
+	// carried no usage block was billed nowhere and said so nowhere —
+	// true-myth's call 7483768e on 2026-09-23, a 200 on kimi-k2.6 after nearly
+	// eight seconds with no figure in any book. A run's calls are settled like
+	// cut ones instead: priced by their receipt, or told as calls nobody could
+	// price, never guessed.
+	ctx = provider.WithUnmeteredReceipts(ctx)
 	ctx = provider.WithStreamObserver(ctx, catch.observe)
 	return provider.WithServedEndpoint(ctx, slot)
 }
@@ -695,31 +682,6 @@ func (s *Server) charge(bill *tally, billed provider.Billed, late bool) {
 			Cached: billed.CachedTokens, CostUSD: billed.Cost, Spent: spent, Late: late,
 		})
 	}
-}
-
-// unpriced keeps an answered call that nothing priced on the ledger as the
-// marker it is.
-//
-// AN ANSWER WITH NO USAGE BLOCK IS NOT A FREE ONE. The funnel bills a call
-// from the usage block at the end of its answer, and asks for a receipt only
-// when the answer was cut; an answer that arrived whole and simply carried no
-// usage block was billed nowhere and said so nowhere — true-myth's call
-// 7483768e on 2026-09-23, a 200 on kimi-k2.6 after nearly eight seconds with
-// no figure in any book. Such a call is told as one nobody could price
-// ([Config.Unbilled]), exactly as a receipt that never came is, with no money
-// invented. A call the funnel billed, or whose receipt is on its way, is not.
-func (s *Server) unpriced(response *ai.Response, bill *tally, entry *record, model string) {
-	if s.config.Unbilled == nil || response == nil || response.Usage != nil || entry.owing() {
-		return
-	}
-	if _, billed := bill.metered(); billed {
-		return
-	}
-	answered := strings.TrimSpace(response.Model)
-	if answered == "" {
-		answered = model
-	}
-	s.config.Unbilled(answered)
 }
 
 // meter adds one charge to the run's total and answers the total.

@@ -753,3 +753,78 @@ func TestAQueuedReceiptIsOwedUntilItsSinkHasBankedIt(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 }
+
+// writeWholeWithoutUsage streams a whole, finished answer that names its
+// generation and never sends a usage block.
+func writeWholeWithoutUsage(w http.ResponseWriter, id string) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `data: {"id":%q,"choices":[{"index":0,"delta":{"content":"a whole answer"}}]}`+"\n\n", id)
+	fmt.Fprintf(w, `data: {"id":%q,"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\n", id)
+	fmt.Fprint(w, "data: [DONE]\n\n")
+	w.(http.Flusher).Flush()
+}
+
+// TestAnAnswerWithNoUsageIsSettledOnlyWhereTheWorkAskedForIt pins the opt-in
+// door: a whole answer that carried no usage block is settled like a cut one —
+// its receipt asked for and banked — only when the work armed
+// WithUnmeteredReceipts, and never on a direct service. Every other caller's
+// road is exactly what it was: no receipt request and nothing reported.
+func TestAnAnswerWithNoUsageIsSettledOnlyWhereTheWorkAskedForIt(t *testing.T) {
+	for _, row := range []struct {
+		name   string
+		armed  bool
+		direct bool
+		want   bool
+	}{
+		{name: "armed on the routed service", armed: true, want: true},
+		{name: "not armed", armed: false},
+		{name: "armed on a direct service", armed: true, direct: true},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			var receipts atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/generation" {
+					receipts.Add(1)
+					fmt.Fprint(w, `{"data":{"total_cost":0.032296144,"tokens_prompt":116000,"tokens_completion":40}}`)
+					return
+				}
+				writeWholeWithoutUsage(w, "gen-unmetered")
+			}))
+			t.Cleanup(server.Close)
+			client, err := NewClient(Config{
+				APIKey: "receipt-key", BaseURL: server.URL, Model: "moonshotai/kimi-k2.6",
+				Direct: row.direct, HTTPClient: server.Client(),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			client.velocity = newVelocityLedger()
+			client.wait = func(context.Context, time.Duration) error { return nil }
+			results := make(chan Reconciled, 1)
+			ctx := WithReconcile(WithStreamObserver(t.Context(), func(StreamEvent) {}), func(result Reconciled) { results <- result })
+			if row.armed {
+				ctx = WithUnmeteredReceipts(ctx)
+			}
+			response, err := client.CompleteWithMessages(ctx, userMessages("hello"))
+			if err != nil || response == nil || response.Usage != nil {
+				t.Fatalf("response %+v err %v, want a whole answer with no usage block", response, err)
+			}
+			if !row.want {
+				select {
+				case result := <-results:
+					t.Fatalf("an answer this work did not arm was settled: %+v", result)
+				case <-time.After(200 * time.Millisecond):
+				}
+				if receipts.Load() != 0 {
+					t.Fatalf("a receipt was asked for %d times", receipts.Load())
+				}
+				return
+			}
+			result := receiptResult(t, results)
+			if !result.Found || result.Cost != 0.032296144 || result.Ref != "gen-unmetered" || result.Reason != "unmetered" {
+				t.Fatalf("settled = %+v, want the receipt's $0.032296144", result)
+			}
+		})
+	}
+}

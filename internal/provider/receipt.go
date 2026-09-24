@@ -72,10 +72,13 @@ const (
 	// carries and still prevents an upstream body becoming an unbounded read.
 	maxReceiptBytes = 1 << 20
 
-	// These two words name endings that have no [CutReason] of their own. They
+	// These words name endings that have no [CutReason] of their own. They
 	// live here so every such ending and every receipt row spell them alike.
-	receiptTornReason    = "torn"
-	receiptRefusalReason = "refusal"
+	// unmetered is an answer that arrived whole with no usage block
+	// ([WithUnmeteredReceipts]).
+	receiptTornReason      = "torn"
+	receiptRefusalReason   = "refusal"
+	receiptUnmeteredReason = "unmetered"
 )
 
 var receiptRetrySchedule = [...]time.Duration{

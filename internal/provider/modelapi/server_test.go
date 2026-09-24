@@ -837,46 +837,21 @@ func TestARunWhoseCeilingIsAlreadySpentMakesNoCall(t *testing.T) {
 	}
 }
 
-// AN ANSWER NOTHING PRICED IS SAID, NOT SILENT. A call answered whole whose
-// answer carried no usage block was billed nowhere and marked nowhere; it is
-// told as a call nobody could price, with no money invented. A call the funnel
-// billed — at a price or at none — and a call whose receipt is owed are not.
-func TestAnAnsweredCallNothingPricedIsToldAsUnbilled(t *testing.T) {
-	for _, row := range []struct {
-		name  string
-		reply func(context.Context, string, []ai.Message, ai.Request) (*ai.Response, error)
-		want  []string
-	}{
-		{name: "no usage block, no receipt", want: []string{"moonshotai/kimi-k2.6"},
-			reply: func(_ context.Context, model string, _ []ai.Message, _ ai.Request) (*ai.Response, error) {
-				return saying(model, "whole"), nil
-			}},
-		{name: "billed", reply: words("whole", 0.03)},
-		{name: "billed with no price", reply: words("whole", 0)},
-		{name: "a receipt owed",
-			reply: func(ctx context.Context, model string, _ []ai.Message, _ ai.Request) (*ai.Response, error) {
-				done := provider.ReceiptPendingFrom(ctx)()
-				go done()
-				return saying(model, "cut"), nil
-			}},
-	} {
-		t.Run(row.name, func(t *testing.T) {
-			calls := &script{reply: row.reply}
-			var mu sync.Mutex
-			var unbilled []string
-			_, api := open(t, modelapi.Config{
-				CompleterFor: calls.completerFor,
-				Unbilled:     func(model string) { mu.Lock(); unbilled = append(unbilled, model); mu.Unlock() },
-			})
-			body := `{"model":"moonshotai/kimi-k2.6","messages":[{"role":"user","content":"go"}]}`
-			if status, payload := post(t, api, api.Token, body); status != http.StatusOK {
-				t.Fatalf("status %d: %s", status, payload)
-			}
-			mu.Lock()
-			defer mu.Unlock()
-			if strings.Join(unbilled, ",") != strings.Join(row.want, ",") {
-				t.Fatalf("unbilled = %v, want %v", unbilled, row.want)
-			}
-		})
+// AN ANSWER NOTHING PRICED IS NOT LEFT SILENT. Every call a run makes rides a
+// context that asks the funnel to settle an answer that arrived whole with no
+// usage block the way it settles a cut one: by its receipt, or as a call nobody
+// could price (provider.WithUnmeteredReceipts).
+func TestARunsCallsAskTheFunnelToSettleAnAnswerWithNoUsage(t *testing.T) {
+	armed := make(chan bool, 1)
+	calls := &script{reply: func(ctx context.Context, model string, _ []ai.Message, _ ai.Request) (*ai.Response, error) {
+		armed <- provider.UnmeteredReceiptsFrom(ctx)
+		return saying(model, "whole"), nil
+	}}
+	_, api := open(t, modelapi.Config{CompleterFor: calls.completerFor})
+	if status, payload := post(t, api, api.Token, hello); status != http.StatusOK {
+		t.Fatalf("status %d: %s", status, payload)
+	}
+	if !<-armed {
+		t.Fatal("the call's context does not ask the funnel to settle an answer with no usage block")
 	}
 }

@@ -162,8 +162,9 @@ waits the same way before it prints its last line.
 
 A receipt that never comes is kept as a call nobody could price, never as a free one
 (the section `Was I charged for a reply that got cut off` says where those are counted).
-So is a call answered whole whose answer carried no usage block at all: codeaf has no
-figure for it, and does not guess one.
+A senior-dev call answered whole whose answer carried no usage block at all is asked
+about the same way: priced by its receipt, or kept as a call nobody could price. codeaf
+never guesses a figure for either.
 
 ## Which models does senior-dev use — your crew, its own list, --high
 
