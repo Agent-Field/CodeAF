@@ -5,13 +5,18 @@
 A team can have one **manager**: a conversation that runs the team for you. You talk to the
 manager, and it hands work to the team's members, keeps track of what each is doing, and tells
 you where things stand. It is an ordinary conversation with every ordinary tool, under the
-same permission rules as any other; what makes it the manager is the team verbs below and a
-short account of its team that it carries on every turn: each member's handle and state, the
-question a member is waiting on, the files each has touched, and the last few lines of the
-team's traffic. It never carries members' whole conversations.
+same permission rules as any other; what makes it the manager is the team verbs below, an
+instruction from codeaf on its first request that it is this team's manager (with its members'
+handles and the rules under **Who outranks whom**), and a short account of its team that it
+carries on every turn: each member's handle and state, the question a member is waiting on, the
+files each has touched, and the last few lines of the team's traffic. It never carries members'
+whole conversations. A member of a team with a manager is told the same way which team it is
+in, its handle, and that it reports with `team_post`.
 
 Every member has a short **handle**, like `@web` or `@parser`, made from its title when it
-joins. Messages in a team are addressed by handle.
+joins: the word that says what the conversation is about, so `checking branches for the qa
+binary` becomes `@qa-binary` and `Fix the login bug` becomes `@login`. A handle is never changed after that, so a line in the traffic keeps meaning the
+member it meant. Messages in a team are addressed by handle.
 
 ## Making a manager
 
