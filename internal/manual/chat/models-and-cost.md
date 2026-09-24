@@ -482,8 +482,10 @@ looking at an image. Each of those is a
 - **careful work** — careful · checks what must not be wrong — audits, briefs, vision.
 - **mastermind** — thinks · plans runs and designs harnesses.
 
-**All five arrive with a model already in them**, and the five together are the `balanced`
-preset:
+**All five arrive with a model already in them**, and on an account that is not
+known low on OpenRouter credits the five together are the `balanced` preset.
+While the account is known low, unwritten table seats use the free crew described
+in *OpenRouter credits and free models*, and `/status` calls that crew `free`:
 
 | class | as shipped |
 | --- | --- |

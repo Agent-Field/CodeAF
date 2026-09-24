@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/credits"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/fuzzy"
 	"github.com/Agent-Field/codeaf/internal/lane"
@@ -2890,6 +2891,13 @@ func (a *app) switchModel(id string, window int) {
 		a.ctxWindow = window
 	}
 	a.rememberModel(a.model)
+	a.refreshCreditWarnings()
+	if a.chatCreditWarning != "" {
+		a.askCredits(credits.PaidSwitch)
+	}
+	if a.creditSwitching {
+		return
+	}
 	// THE ID IS THE WHOLE OF THIS LINE (payload.go). `model ·` is a label a person
 	// already knows they asked for; the id is the one thing here they cannot see
 	// anywhere else at this moment, so it steps to ink and the label stays dim.
@@ -2928,7 +2936,7 @@ func (a *app) switchModel(id string, window int) {
 // screen claims the choice was saved. The note says "model · <id>", which is
 // true of the running session whatever the disk did.
 func (a *app) rememberModel(id string) {
-	if a.saveModel == nil || strings.TrimSpace(id) == "" {
+	if a.creditSwitching || a.saveModel == nil || strings.TrimSpace(id) == "" {
 		return
 	}
 	_ = a.saveModel(id)

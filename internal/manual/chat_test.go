@@ -29,6 +29,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		page     string
 	}{
 		{"what can you do", "what-i-can-do"},
+		{"out of credits", "openrouter-credits"},
+		{"only free models", "openrouter-credits"},
+		{"it worked and then stopped", "openrouter-credits"},
+		{"why is my model a free one", "openrouter-credits"},
+		{"low on credits warning", "openrouter-credits"},
 		{"can I use my own deepseek key", "services"},
 		{"how do I connect glm", "services"},
 		{"how do I add an api key for another provider", "services"},
