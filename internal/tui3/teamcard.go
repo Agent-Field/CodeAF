@@ -2,6 +2,9 @@ package tui3
 
 import (
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/session"
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
 // ── WHAT A TEAM SAID TO A CONVERSATION, AS A QUOTED CARD ────────────────────
@@ -89,9 +92,52 @@ func teamAsideCards(text string, mark string) ([]teamCard, bool) {
 	return cards, len(cards) > 0
 }
 
+// teamLineCards is the lines the session took apart for a delivery
+// ([session.TeamLine]) as cards; the aside's text still says who they were for.
+func teamLineCards(lines []session.TeamLine, text, mark string) ([]teamCard, bool) {
+	if len(lines) == 0 {
+		return nil, false
+	}
+	self := mark + " manager"
+	if at := strings.Index(text, "(@"); at >= 0 {
+		if end := strings.Index(text[at:], ")"); end > 0 {
+			self = text[at+1 : at+end]
+		}
+	}
+	addr := func(s string) string {
+		switch s {
+		case "":
+			return self
+		case teamstore.FromManager:
+			return mark + " manager"
+		case teamstore.FromYou:
+			return "you"
+		case teamstore.FromSystem:
+			return "codeaf"
+		case teamstore.ToRoom:
+			return "room"
+		case teamstore.ToEveryone:
+			return "all"
+		}
+		return "@" + strings.TrimPrefix(s, "@")
+	}
+	cards := make([]teamCard, 0, len(lines))
+	for _, l := range lines {
+		c := teamCard{from: addr(l.From), to: addr(l.To), text: strings.TrimSpace(l.Text)}
+		if l.Kind == teamstore.KindDirective {
+			c.tag = "do"
+		}
+		cards = append(cards, c)
+	}
+	return cards, true
+}
+
 // teamCardRows draws one team note's lines as quoted cards, width wide.
 func (a *app) teamCardRows(e entry, width int) []string {
-	cards, ok := teamAsideCards(e.text, a.teamManagerMark())
+	cards, ok := teamLineCards(e.team, e.text, a.teamManagerMark())
+	if !ok {
+		cards, ok = teamAsideCards(e.text, a.teamManagerMark())
+	}
 	if !ok {
 		return []string{a.pal.dim("· " + firstLine(e.text))}
 	}

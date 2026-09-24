@@ -249,6 +249,10 @@ type entry struct {
 	discussionID    string
 	discussionIndex int
 
+	// team is what a team delivery handed the conversation, line by line, on
+	// an [entryTeam] (teamcard.go); nil on every other entry.
+	team []session.TeamLine
+
 	kind entryKind
 	text string
 	turn int

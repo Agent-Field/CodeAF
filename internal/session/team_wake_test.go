@@ -1,0 +1,65 @@
+package session
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
+
+	"github.com/Agent-Field/codeaf/internal/teams"
+)
+
+// A MEMBER THE MANAGER STARTED TAKES ITS FIRST TURN ON ITS OWN, AND IS HANDED
+// THE BRIEF ONCE. The conversation opens before it is a member, as the
+// interface opens it; once it is made one under the handle the start names, it
+// wakes with no person's words, its first request carries the brief marked as
+// the manager's, and nothing hands it the brief a second time.
+func TestAStartedMemberWakesOnItsOwnWithTheBriefOnce(t *testing.T) {
+	fixture := newTeamFixture(t, true)
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: "lexer", Text: "Rewrite the lexer."})
+	dir := filepath.Join(filepath.Dir(filepath.Dir(fixture.parser)), "lexer")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	transcript := filepath.Join(dir, placeTranscript)
+	if err := os.WriteFile(transcript, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("on it"), nil },
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("again"), nil },
+	}}
+	lexer := teamAgent(t, fixture, transcript, completer, nil)
+	time.Sleep(3 * teamWakeEvery)
+	if completer.requests() != 0 {
+		t.Fatal("a conversation that is not a member yet woke")
+	}
+	if err := teams.Update(fixture.profile, func(file *teams.File) error {
+		return file.AddMember(fixture.teamID, teams.Member{Key: convKeyOf(t, transcript), File: transcript, Handle: "lexer"})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for completer.requests() == 0 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if completer.requests() == 0 {
+		t.Fatal("the started member never took its first turn")
+	}
+	first := userTextIn(completer.request(0))
+	if !strings.Contains(first, teamBriefWord+": Rewrite the lexer.") {
+		t.Fatalf("the first request did not carry the brief:\n%s", first)
+	}
+	for _, entry := range lexer.Transcript() {
+		if entry.Role == "user" {
+			t.Fatalf("the woken turn carries words as the person's: %+v", entry)
+		}
+	}
+	if news := lexer.teamBoundary(); strings.Contains(news, "Rewrite the lexer") {
+		t.Fatalf("the brief would be handed over twice: %q", news)
+	}
+}

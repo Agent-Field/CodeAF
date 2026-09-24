@@ -762,8 +762,8 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			}
 			// A LINE THE TEAM SENT IS A CARD, headed by who said it to whom
 			// (teamcard.go), and never the person's `›`.
-			if strings.HasPrefix(text, teamAsideLead) {
-				blocks = append(blocks, entry{kind: entryTeam, text: text, turn: turn})
+			if len(e.Team) > 0 || strings.HasPrefix(text, teamAsideLead) {
+				blocks = append(blocks, entry{kind: entryTeam, text: text, team: e.Team, turn: turn})
 				continue
 			}
 			// A LINE THE SESSION WROTE GOES IN THE SESSION'S OWN LANE — the dim
