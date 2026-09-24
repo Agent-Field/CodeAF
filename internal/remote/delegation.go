@@ -17,7 +17,8 @@ import (
 func (s *server) delegationCall(call Frame) (json.RawMessage, bool, error) {
 	switch call.Method {
 	case MethodTeamsDefaults, MethodTeamsPackets, MethodTeamsRaise, MethodTeamsDecide,
-		MethodTeamsEscalate, MethodTeamsSpend, MethodTeamsDelete:
+		MethodTeamsEscalate, MethodTeamsSpend, MethodTeamsDelete,
+		MethodTeamsWrapUp, MethodTeamsAcceptClosing:
 	default:
 		return nil, false, nil
 	}
@@ -95,6 +96,28 @@ func delegationAnswer(dir string, call Frame) (any, error) {
 		}
 		return SpendReading{Stamp: stamp, Spend: &spend}, nil
 
+	case MethodTeamsWrapUp:
+		args, err := arg[WrapUpArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		return struct{}{}, teamstore.AppendTraffic(dir, args.Team, teamstore.WrapUpRequest(args.Text))
+
+	case MethodTeamsAcceptClosing:
+		args, err := arg[AcceptClosingArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		p, err := teamstore.PacketByID(dir, args.ID)
+		if err != nil {
+			return nil, err
+		}
+		closed, err := teamstore.AcceptClosing(dir, p)
+		if err != nil {
+			return nil, err
+		}
+		return AcceptClosingReply{Closed: closed, Stamp: teamstore.Stamp(dir)}, nil
+
 	default: // MethodTeamsDelete
 		args, err := arg[DeleteTeamArgs](call)
 		if err != nil {
@@ -145,6 +168,18 @@ func (c *Client) TeamsSpend(team, day, stamp string) (SpendReading, error) {
 // TeamsDelete forgets a closed team on the engine.
 func (c *Client) TeamsDelete(team string) (DeleteTeamReply, error) {
 	return delegationAsk[DeleteTeamReply](c, MethodTeamsDelete, DeleteTeamArgs{Team: team})
+}
+
+// TeamsWrapUp asks the engine's manager of team to wrap up.
+func (c *Client) TeamsWrapUp(team, text string) error {
+	_, err := delegationAsk[struct{}](c, MethodTeamsWrapUp, WrapUpArgs{Team: team, Text: text})
+	return err
+}
+
+// TeamsAcceptClosing closes the team a decided closing packet reports on,
+// on the engine.
+func (c *Client) TeamsAcceptClosing(id string) (AcceptClosingReply, error) {
+	return delegationAsk[AcceptClosingReply](c, MethodTeamsAcceptClosing, AcceptClosingArgs{ID: id})
 }
 
 // delegationAsk is one round trip decoded as T.

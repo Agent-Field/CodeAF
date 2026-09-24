@@ -1167,6 +1167,13 @@ type Welcome struct {
 	// rather than reading this laptop's files.
 	Delegation bool `json:"delegation,omitempty"`
 
+	// WrapUp says this engine ANSWERS THE WRAP-UP'S TWO DOORS
+	// ([MethodTeamsWrapUp], [MethodTeamsAcceptClosing]). A third flag for
+	// [Welcome.Delegation]'s reason: an engine built between the two has the
+	// packets and not these. ABSENCE IS false, and false leaves the window
+	// with `Close now` only over that connection, said as such.
+	WrapUp bool `json:"wrap_up,omitempty"`
+
 	// TeamAsk says this engine ANSWERS THE WALL'S TWO MODEL ASKS
 	// ([MethodTeamsName], [MethodTeamsPropose]): its agent names a group of
 	// conversations and proposes teams on its own naming role.

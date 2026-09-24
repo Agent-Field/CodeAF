@@ -47,6 +47,38 @@ const (
 	MethodTeamsDelete = "Teams.Delete" // DeleteTeamArgs → DeleteTeamReply
 )
 
+// THE WRAP-UP'S TWO DOORS ([Welcome.WrapUp]). Traffic is the channel between
+// the interface and the session, and over --host the window reads it
+// ([MethodTeamsTraffic]) but has no door to write it: so the one line the
+// person's `Wrap up first` writes crosses by a door of its own, which appends
+// exactly [teamstore.WrapUpRequest] to the engine's log and nothing else; and
+// accepting a closing report, which closes the team and logs it, crosses by
+// [teamstore.AcceptClosing] on the engine. Neither is a general Traffic
+// writer: a window cannot put words in a member's mouth through them.
+const (
+	MethodTeamsWrapUp        = "Teams.WrapUp"        // WrapUpArgs → struct{}
+	MethodTeamsAcceptClosing = "Teams.AcceptClosing" // AcceptClosingArgs → AcceptClosingReply
+)
+
+// WrapUpArgs is the team to wrap up and the person's words, "" for the
+// standard ones.
+type WrapUpArgs struct {
+	Team string `json:"team"`
+	Text string `json:"text,omitempty"`
+}
+
+// AcceptClosingArgs names a decided closing packet.
+type AcceptClosingArgs struct {
+	ID string `json:"id"`
+}
+
+// AcceptClosingReply says whether this call closed the team, and the teams
+// file's stamp after.
+type AcceptClosingReply struct {
+	Closed bool   `json:"closed"`
+	Stamp  string `json:"stamp"`
+}
+
 // PacketsArgs is a scope (a team id, teamstore.Person, or "" for every
 // waiting packet) and the stamp the window last got, "" for none.
 type PacketsArgs struct {
