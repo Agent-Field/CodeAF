@@ -39,7 +39,7 @@ type recordDeletedMsg struct {
 	replacement Conversation
 	stopped     bool
 	err         error
-	page        page
+	sessions    bool
 }
 
 // deleteRecord runs shutdown and disk removal off the update loop. The selected
@@ -62,61 +62,58 @@ func (a *app) deleteRecord(row session.SessionRow, task *session.TaskIndexEntry)
 	if row.Owned {
 		where = row.ProjectDir
 	}
-	page := pageHome
-	if a.at(pageTasks) {
-		page = pageTasks
-	}
+	sessions := a.at(pageTasks)
 	a.deleteBusy = true
 	a.taskRowNotice("deleting…")
-	return func() tea.Msg {
-		out := recordDeletedMsg{key: key, front: front, row: row, task: task, page: page}
+	return a.offLoop(func() func(bool) tea.Cmd {
+		out := recordDeletedMsg{key: key, front: front, row: row, task: task, sessions: sessions}
+		done := func(bool) tea.Cmd { return a.recordDeleted(out) }
 		if task != nil {
 			out.err = session.DeleteTaskRecord(row.Dir, row.ID, task.ID)
-			return out
+			return done
 		}
 		// A replacement is created before ending the foreground agent, so a failed
 		// new-conversation door cannot strand the surface without a usable agent.
 		if front {
 			if start == nil {
 				out.err = fmt.Errorf("cannot prepare a new conversation")
-				return out
+				return done
 			}
 			out.replacement, out.err = start(where)
 			if out.err != nil {
-				return out
+				return done
 			}
 			if out.replacement.Agent == nil {
 				out.err = fmt.Errorf("new conversation has no agent")
-				return out
+				return done
 			}
 		}
 		if owner == nil && session.InUse(row.Transcript) {
 			if open == nil {
 				out.err = fmt.Errorf("conversation is held by another window")
-				return out
+				return done
 			}
 			conv, err := open(row.Workspace, row.Transcript)
 			if err != nil {
 				out.err = err
-				return out
+				return done
 			}
 			owner = conv.Agent
 		}
 		if owner != nil {
-			owner.InterruptFor(session.StopByLeaving)
-			out.err = owner.Close()
+			out.err = endConversationAgent(owner, session.StopByLeaving)
 			if out.err != nil {
 				if out.replacement.Agent != nil {
 					_ = out.replacement.Agent.Close()
 					out.replacement = Conversation{}
 				}
-				return out
+				return done
 			}
 			out.stopped = true
 		}
 		out.err = session.DeleteConversation(row.Dir, row.ID)
-		return out
-	}
+		return done
+	})
 }
 
 func (a *app) recordDeleted(msg recordDeletedMsg) tea.Cmd {
@@ -163,7 +160,7 @@ func (a *app) recordDeleted(msg recordDeletedMsg) tea.Cmd {
 	}
 	// Re-read both authorities so no cached task, close-stack entry or preview
 	// can bring a deleted conversation back to either list.
-	if msg.page == pageTasks && !a.at(pageTasks) {
+	if msg.sessions && !a.at(pageTasks) {
 		cmd = tea.Batch(cmd, a.showPage(pageTasks))
 	}
 	a.refreshRecordLists()

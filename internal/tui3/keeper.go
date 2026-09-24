@@ -1186,10 +1186,16 @@ func (a *app) endAgent(agent Agent) { a.endAgentFor(agent, session.StopByLeaving
 // CONVERSATION to go, not for the reply to be thrown away — so the engine owes
 // them a sentence about the answer that never came.
 func (a *app) endAgentFor(agent Agent, door session.StopDoor) {
-	agent.InterruptFor(door)
-	if err := agent.Close(); err != nil {
+	if err := endConversationAgent(agent, door); err != nil {
 		a.note("close failed: " + err.Error())
 	}
+}
+
+// endConversationAgent shares the shutdown order with confirmed deletion and
+// returns failure before the caller removes any saved conversation files.
+func endConversationAgent(agent Agent, door session.StopDoor) error {
+	agent.InterruptFor(door)
+	return agent.Close()
 }
 
 // leaveFront is the act both doors above are: the conversation in front is let
