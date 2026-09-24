@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -313,6 +314,55 @@ func TestDeletedConversationLeavesTheCurrentFrameWithAStaleWorld(t *testing.T) {
 				}
 				t.Fatal("filtering modified the engine's shared snapshot")
 			})
+		}
+	}
+}
+
+func TestChatsMenuOpensWhenEveryConversationTabIsClosed(t *testing.T) {
+	for _, shared := range []bool{false, true} {
+		for _, count := range []int{1, 3} {
+			for _, page := range []string{"home", "sessions"} {
+				t.Run(fmt.Sprintf("shared=%v/count=%d/%s", shared, count, page), func(t *testing.T) {
+					lab := newHomeLab(t)
+					workspace := lab.workspace("project")
+					var files []string
+					for i := 0; i < count; i++ {
+						files = append(files, lab.session("project", fmt.Sprintf("%016d", i+1), fmt.Sprintf("Saved conversation %d", i+1), workspace, lab.pin(time.Now())))
+					}
+					a := lab.app(files[0])
+					a.shared = shared
+					for _, file := range files {
+						a.tabShutKey(a.convKey(file))
+					}
+					if page == "home" {
+						drain(t, a, a.openHome())
+					} else {
+						drain(t, a, a.showPage(pageTasks))
+					}
+					drive(t, a, key(hopOpenKey))
+					if !a.hopShowing() || len(a.hop.rows) != count || !a.hop.all {
+						t.Fatalf("closed conversations have no visible menu: open=%v rows=%d all=%v", a.hop.open, len(a.hop.rows), a.hop.all)
+					}
+					if len(a.hopCardLines(a.width, a.height, a.pal)) == 0 {
+						t.Fatal("the menu has no drawn card")
+					}
+					drive(t, a, key("left"))
+					if !a.hopShowing() {
+						t.Fatal("hiding closed rows made the entire menu invisible")
+					}
+					drive(t, a, key("esc"))
+					if a.hop.open {
+						t.Fatal("escape failed to dismiss the menu")
+					}
+					drive(t, a, key(hopOpenKey))
+					selected := a.hop.rows[a.hop.at].file
+					drive(t, a, key("enter"))
+					meta, err := session.LoadMeta(filepath.Dir(selected))
+					if err != nil || meta.Archived || a.file != selected || a.hop.open {
+						t.Fatalf("Enter failed to reopen selected conversation: file=%q closed=%v err=%v", a.file, meta.Archived, err)
+					}
+				})
+			}
 		}
 	}
 }

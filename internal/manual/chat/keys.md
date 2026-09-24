@@ -1849,7 +1849,9 @@ released Ctrl.
 ```
 
 It works from the **first** session: on a fresh launch you hold one conversation, the card
-has that one row, and the fold has the rest of the machine in it.
+has that one row, and the fold has the rest of the machine in it. If every conversation tab is
+closed, the card shows saved conversations immediately, including when only one remains.
+The hide-closed option appears only while there are open rows to leave on screen.
 
 ## What the fold at the foot holds, and the tabs above the conversation
 
