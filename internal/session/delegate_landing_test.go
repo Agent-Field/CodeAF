@@ -366,3 +366,22 @@ func TestAPlainFolderRunLeavesNotesThatWereThereBeforeIt(t *testing.T) {
 		t.Fatalf("notes that were not this run's alone were moved: %v", err)
 	}
 }
+
+// A MOVED HEAD OVER NOTHING TO LAND CLAIMS NO COMMIT. The note names where the
+// program had left HEAD either way, and says its work was committed, with the
+// warning about work built elsewhere, only when a commit was made.
+func TestAMovedHeadsNoteClaimsACommitOnlyWhenOneWasMade(t *testing.T) {
+	moved := headMove{moved: true, from: "senior-own", unrelated: true}
+	if got := moved.sentence("fake", "task/x", false); got != "fake had moved its copy to the branch senior-own, and any commit it made on senior-own is still on that branch" {
+		t.Fatalf("over nothing to land the note says %q", got)
+	}
+	if got := moved.sentence("fake", "task/x", true); !strings.Contains(got, "its work was committed on task/x") || !strings.Contains(got, "read its diff before you merge it") {
+		t.Fatalf("over a landing the note says %q", got)
+	}
+	if got := (headMove{moved: true, detached: true}).sentence("fake", "task/x", false); got != "fake had left its copy on no branch" {
+		t.Fatalf("a detached HEAD over nothing to land says %q", got)
+	}
+	if got := (headMove{}).sentence("fake", "task/x", true); got != "" {
+		t.Fatalf("a HEAD that never moved says %q", got)
+	}
+}
