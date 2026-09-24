@@ -47,7 +47,7 @@ func fakeFolderProgram() delegate.Delegate {
 					if *inPlace {
 						mode = "in place"
 					}
-					host.Step("folder", mode)
+					host.Step(delegate.StepRecord{Command: "folder", Observation: mode})
 					if err := os.WriteFile(filepath.Join(host.Workspace(), "made.txt"), []byte("made\n"), 0o644); err != nil {
 						return err
 					}
