@@ -61,7 +61,7 @@ func (a *app) runCrew(arg string) {
 	case "unpin":
 		a.crewUnpin(rest)
 	case "models":
-		a.crewModels(rest)
+		a.crewAllowedModels(rest)
 	case "cap":
 		a.crewCap(rest)
 	default:
@@ -115,9 +115,9 @@ func (a *app) crewUnpin(rest string) {
 	a.note(string(seat) + " is auto · picked for each task")
 }
 
-// crewModels is `/crew models <rule>`: the whole rule, or a `+id`/`-id`
+// crewAllowedModels is `/crew models <rule>`: the whole rule, or a `+id`/`-id`
 // changing the rule in force. A bare `/crew models` says the rule.
-func (a *app) crewModels(rest string) {
+func (a *app) crewAllowedModels(rest string) {
 	if rest == "" {
 		a.noteFacts("allowed models · "+config.CrewAllowedAt(a.profileDir).String(), config.CrewAllowedAt(a.profileDir).String())
 		return

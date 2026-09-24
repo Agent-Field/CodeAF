@@ -1,10 +1,10 @@
 package main
 
 import (
-	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"io"
 	"os"
 	"strconv"
@@ -2125,7 +2125,7 @@ func v3SearchSeam(brain *store.Store) tui3.SearchStore {
 // IT IS LIVE. It used to be resolved once, at boot, on the argument that two
 // calls in one conversation must not answer to different settings — and the
 // crew is what makes that argument the wrong way round. A person who types
-// `/crew max` because the planner is not thinking hard enough has said something
+// `/crew pin planner …` because the planner is not thinking hard enough has said something
 // about the run they are about to start, not about the next launch, and a source
 // that made them restart to be heard would be a knob that does nothing on the
 // surface that offers it.
@@ -2245,6 +2245,12 @@ func (c *v3Crew) snapshot() (map[string]string, error) {
 	// the cheapest question in it. The mastermind tier: it plans adaptive runs
 	// and designs saved harnesses, and a repository that could point it at a
 	// model would be spending a visitor's credit on the run it asked for.
+	// A CHECKER NO PROJECT NAMED IS THE CREW'S: its pin, or the router's
+	// standing pick ([config.TierModelAt]) — never an empty row that would
+	// fall to the conversation's model.
+	if strings.TrimSpace(high) == "" {
+		high = config.TierModelAt(c.profileDir, config.ModelTierHigh)
+	}
 	values := map[string]string{
 		roles.TierKey(roles.TierReflex):     config.TierModelAt(c.profileDir, config.ModelTierReflex),
 		roles.TierKey(roles.TierMastermind): config.TierModelAt(c.profileDir, config.ModelTierMastermind),

@@ -9,13 +9,13 @@ func TestClassifyReadsTheKindOfWork(t *testing.T) {
 		class Class
 		sure  bool
 	}{
-		{"a fix: title", Task{Text: "fix: avoid OverflowError when formatting very large integer parameters"}, Bugfix, true},
-		{"a bug tag", Task{Text: "[bug] merge_list call drops vlan interfaces"}, Bugfix, true},
+		{"a fix: title", Task{Text: "fix: avoid an overflow when formatting very large integers"}, Bugfix, true},
+		{"a bug tag", Task{Text: "[bug] export drops the last row of a table"}, Bugfix, true},
 		{"a stack trace", Task{Text: "config loader\n\nTraceback (most recent call last):\n  File \"x.py\", line 3\nKeyError: 'a'"}, Bugfix, true},
-		{"a crash in the title", Task{Text: "git_diff.py crashes with fatal exit code 128 on repositories without an initial commit"}, Bugfix, true},
+		{"a crash in the title", Task{Text: "the diff tool crashes on repositories without an initial commit"}, Bugfix, true},
 		{"a bug label", Task{Text: "the chart looks odd", Labels: []string{"bug"}}, Bugfix, true},
-		{"a feature request", Task{Text: "Consider adding strictly proper scoring rule metrics\n\n**Is your feature request related to a problem?**"}, OpenEnded, true},
-		{"a refactor title", Task{Text: "refactor(gateway): enrich model type registry metadata for UI consumption"}, OpenEnded, true},
+		{"a feature request", Task{Text: "Consider adding a percentile metric\n\n**Is your feature request related to a problem?**"}, OpenEnded, true},
+		{"a refactor title", Task{Text: "refactor(api): split the handler registry into modules"}, OpenEnded, true},
 		{"add something", Task{Text: "Add a --json flag to the status command"}, OpenEnded, true},
 		{"docs", Task{Text: "docs: explain the retry settings"}, OpenEnded, true},
 		{"an enhancement label", Task{Text: "the chart looks odd", Labels: []string{"enhancement"}}, OpenEnded, true},
@@ -38,12 +38,12 @@ func TestClassifyReadsTheKindOfWork(t *testing.T) {
 // issue #N" and "make the existing test suite pass", and a signal that fires on
 // everything tells the router nothing.
 func TestClassifyReadsPastAHarnessWrapper(t *testing.T) {
-	wrapped := "Implement issue #412: [bug] merge_list call drops vlan interfaces\n\nThe merge uses the wrong key.\n\n" +
+	wrapped := "Implement issue #12: [bug] export drops the last row of a table\n\nThe loop stops one short.\n\n" +
 		"Work in this repository. Implement the change and make the existing test suite pass. Do not weaken or delete tests to make them pass."
 	if got := Classify(Task{Text: wrapped}); got.Class != Bugfix {
 		t.Errorf("wrapped fix read as %s (%q)", got.Class, got.Why)
 	}
-	feature := "Implement issue #617: Save sizing of part search window\n\nIt would be really useful to save these for the next search.\n\n" +
+	feature := "Implement issue #34: Remember the window size between sessions\n\nIt would be really useful to keep it for next time.\n\n" +
 		"Work in this repository. Implement the change and make the existing test suite pass."
 	if got := Classify(Task{Text: feature}); got.Class != OpenEnded {
 		t.Errorf("wrapped feature read as %s (%q)", got.Class, got.Why)

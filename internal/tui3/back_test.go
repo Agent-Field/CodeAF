@@ -150,7 +150,6 @@ func TestEscapePeelsModalLayersBeforeHome(t *testing.T) {
 	}{
 		{"model", func(a *app) { a.pick.open = true }, func(a *app) bool { return a.pick.open }},
 		{"effort", func(a *app) { a.effPick.open = true }, func(a *app) bool { return a.effPick.open }},
-		{"crew", func(a *app) { a.crewPick.open = true }, func(a *app) bool { return a.crewPick.open }},
 		{"resume", func(a *app) { a.roster.open = true }, func(a *app) bool { return a.roster.open }},
 		{"folder", func(a *app) { a.folder.open = true }, func(a *app) bool { return a.folder.open }},
 		{"files", func(a *app) { a.shelf.open = true }, func(a *app) bool { return a.shelf.open }},

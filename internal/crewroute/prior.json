@@ -1,6 +1,6 @@
 {
   "measured": "2026-09-24",
-  "source": "22 real GitHub issues (14 narrow fixes, 8 open-ended), every crew scored blind by two reviewers on a 0-10 mergeability scale; docs/design/model-pool/",
+  "source": "measured crews per class of work, scored on a 0-10 mergeability scale; see docs/design/model-pool/pareto-crewing.pdf",
   "knee_per_usd": 5,
   "shapes": {
     "worker": {"prompt": 15000, "cached": 250000, "completion": 4000},

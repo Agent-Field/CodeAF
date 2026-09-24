@@ -3830,11 +3830,11 @@ func (a *app) hintWord() string {
 		return "drag to select · any key ends it"
 	case a.pick.open:
 		// AND THE CREW IS NAMED BESIDE THE KEYS, because this list is where a
-		// person lands when the crew they just set did not change anything they
-		// can see. The status line's model readout is the conversation's model,
-		// which /crew never touches by design — so somebody who typed `/crew max`
-		// opens /model hunting for the change, and the one word this slot can
-		// afford tells them the crew is a separate thing that is already set.
+		// person lands when a crew change did not change anything they can see.
+		// The status line's model readout is the conversation's model, which
+		// /crew never touches by design — so somebody who pinned a seat opens
+		// /model hunting for the change, and the one word this slot can afford
+		// tells them the crew is a separate thing.
 		// The picker's rows are the list itself and are reused whole inside the
 		// settings panel ([picker.rowsOwned]), so it has no header or foot of its
 		// own to spend on a sentence; this slot is the line that is already there.

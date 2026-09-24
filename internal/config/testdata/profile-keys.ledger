@@ -45,6 +45,8 @@ model.work
 model_pool
 model_sources
 models.crew
+models.crew.allowed
+models.crew.cap
 models.crew.pick
 models.crew.source
 models.fallbacks

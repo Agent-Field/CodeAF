@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
@@ -59,21 +60,31 @@ func TestTheDoorsRoleLadderCarriesEveryTier(t *testing.T) {
 		t.Fatalf("the reflex role resolves to %q after the tier was pinned to vendor/tiny", reflex)
 	}
 
-	// EVERY CLASS IS WIRED, each to its own shipped model. The failure this holds
-	// shut is a class the door forgot: a role on it would resolve to the
-	// conversation's model, which is the mistake the reflex arm was added for.
-	// The mastermind's value may carry a level, and Resolve hands back the id
-	// alone — a colon in a model field is a request for a model nobody serves.
-	mastermind, _ := roles.SplitEffort(config.DefaultMastermindModel)
+	// EVERY CLASS IS WIRED. The two small rows ship pointed at a model; the
+	// three crew seats are the crew's — a pin when one is written, the
+	// router's pick otherwise — so pinning them here makes every class answer
+	// with its own model and none with the conversation's. The planner's value
+	// may carry a level, and Resolve hands back the id alone.
+	for seat, pin := range map[crewroute.Seat]string{
+		crewroute.Worker: "vendor/worker", crewroute.Checker: "vendor/checker", crewroute.Planner: "vendor/planner:high",
+	} {
+		if err := config.SetCrewPin(dir, seat, pin); err != nil {
+			t.Fatalf("pinning the %s: %v", seat, err)
+		}
+	}
+	source, err = v3RolesSource(t.TempDir(), dir)
+	if err != nil {
+		t.Fatalf("v3RolesSource: %v", err)
+	}
 	for _, c := range []struct {
 		role roles.Role
 		want string
 	}{
 		{roles.RoleTitle, config.DefaultLowModel},
-		{roles.RoleWorker, config.DefaultWorkerModel},
-		{roles.RoleAuditor, config.DefaultHighModel},
-		{roles.RolePlanner, mastermind},
-		{roles.RoleDesigner, mastermind},
+		{roles.RoleWorker, "vendor/worker"},
+		{roles.RoleAuditor, "vendor/checker"},
+		{roles.RolePlanner, "vendor/planner"},
+		{roles.RoleDesigner, "vendor/planner"},
 	} {
 		model, err := roles.Resolve(roles.Source(source), c.role, "vendor/conversation")
 		if err != nil || model != c.want {
@@ -82,8 +93,8 @@ func TestTheDoorsRoleLadderCarriesEveryTier(t *testing.T) {
 	}
 	// And the level reaches the caller as its own half.
 	call, err := roles.ResolveCall(roles.Source(source), roles.RolePlanner, "vendor/conversation")
-	if _, level := roles.SplitEffort(config.DefaultMastermindModel); err != nil || call.Effort != level {
-		t.Fatalf("the planner resolved to %+v (%v), want the shipped level %q", call, err, level)
+	if err != nil || call.Effort != "high" {
+		t.Fatalf("the planner resolved to %+v (%v), want the pinned level high", call, err)
 	}
 }
 

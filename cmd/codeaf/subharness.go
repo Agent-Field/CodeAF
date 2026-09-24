@@ -445,13 +445,18 @@ func newSharedCatalog() func(config.Config) *catalog.Catalog {
 			// (config.CrewCatalog): the same non-blocking read, never a fetch,
 			// and set once at start-up so every headless door routes against
 			// the list it already holds.
-			config.CrewCatalog = resolved.ModelsNow
+			seatCrewRows(resolved.ModelsNow)
 			// and the pool's errands beside it, in the same one-time manner.
 			wirePoolIndex(settings.ProfileDir)
 		})
 		return resolved
 	}
 }
+
+// seatCrewRows hands the router the catalog's rows. It is a variable so a
+// test that seats a catalog of its own is not overwritten by the first door
+// that warms the shared one.
+var seatCrewRows = func(rows func() []catalog.Model) { config.CrewCatalog = rows }
 
 // autoSeatRowsBound is how long a headless door waits for the catalog's rows
 // before it routes its crew. It is sized to cover the disk read of a cached

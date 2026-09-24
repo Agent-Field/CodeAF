@@ -12,25 +12,21 @@
 //
 // ── WHY IT ROUTES ON THE CLASS OF WORK ──
 //
-// On 22 real GitHub issues, every crew scored blind by two reviewers, the
-// cheapest crew — glm-5.3-flash in every seat — fixed narrow bugs as well as
-// kimi-k3 in every seat did (6.57 against 6.86 out of ten, a difference whose
-// interval straddles zero) at a fifteenth of the price, and a kimi checker
-// added nothing to a fix. On open-ended work the same cheap crew merged NONE
-// of eight tasks, and giving it a strong checker — and only a checker — merged
-// all eight. Routing fixes to the cheap crew and open-ended work to the cheap
-// crew with a strong checker scored the same as always paying for the strong
-// checker, 20 of 22 mergeable, for 40% less. That is the whole policy, read
-// off a table ([prior]) rather than written into branches: classify the task
-// ([Classify]), then pick each seat to maximise quality minus λ times cost.
+// The evidence behind it is in docs/design/model-pool/pareto-crewing.pdf. In
+// short: on narrow fixes the cheapest crew was as mergeable as a dear one and
+// a strong checker added nothing; on open-ended work the cheap crew alone was
+// rarely mergeable, and a strong checker — and only a checker — made the
+// difference. So the policy is read off a table ([prior]) rather than written
+// into branches: classify the task ([Classify]), then pick each seat to
+// maximise quality minus λ times cost.
 //
 // ── WHAT IT DOES NOT DO ──
 //
-// It does not escalate on its own. CodeAF's own done-verdict caught 41% of the
-// real solves and passed 83% of the failures on the same tasks, so a loop that
-// escalated on it would spend on the wrong tasks; [AutoEscalate] is off, and a
-// stronger crew is something a person asks for (`redo stronger`) until a
-// checker's agreement with reviewers is measured at about 0.7.
+// It does not escalate on its own. A done-verdict that misses real solves and
+// passes failures would make an escalation loop spend on the wrong tasks, so
+// [AutoEscalate] is off, and a stronger crew is something a person asks for
+// (`redo stronger`) until the checker's agreement with a human reviewer is
+// measured high enough to trust.
 //
 // It is PURE: no disk, no network, no clock. The same request gives the same
 // crew, in the same order, every time — which is what lets a decision be
@@ -48,10 +44,8 @@ import (
 // AutoEscalate is whether a crew is ever made stronger without somebody
 // asking. It is OFF, and a constant rather than a setting, because the number
 // that would justify turning it on — how often the checker's verdict agrees
-// with a reviewer's, measured at 0.41 recall and 0.83 false-pass on real work —
-// is a property of the checker, not a preference. The Pandora-index rule the
-// evidence supports (stop when the verdict is trusted, escalate when it is
-// not) needs an agreement near 0.7 before its escalations pay for themselves.
+// with a reviewer's — is a property of the checker, not a preference, and it
+// is not yet high enough for automatic escalations to pay for themselves.
 const AutoEscalate = false
 
 // Seat is one of the crew's three seats, by the name a person reads.

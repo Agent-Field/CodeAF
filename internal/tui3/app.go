@@ -6100,7 +6100,7 @@ func (a *app) note(text string) { a.noteWritten(text, false, nil) }
 // whole, so a note written into the conversation behind it is written where
 // nobody can read it — and the answers that landed there were the ones a person
 // most needed: `there is no command called /x · / lists them`, /help's key
-// sheet, /status, /cost, `crew · frugal`, a budget that was set. Home has had a
+// sheet, /status, /cost, the /crew panel, a budget that was set. Home has had a
 // line for exactly this since it was built (pages.go's [app.placeMsgLine]) and
 // the dispatcher never reached it.
 //

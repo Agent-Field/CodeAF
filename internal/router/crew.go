@@ -111,12 +111,12 @@ type CrewLog struct {
 }
 
 // The learning rule's two numbers. A redo raises its repository and class by
-// one step, to at most crewMaxOffset; crewDecayAfter accepted tasks of that
+// one step, to at most redoOffsetCeiling; redoDecayAfter accepted tasks of that
 // class there take a step back off, so a class that was under-served once is
 // not overpaid for ever.
 const (
-	crewMaxOffset  = 3
-	crewDecayAfter = 5
+	redoOffsetCeiling = 3
+	redoDecayAfter    = 5
 	// crewRecent is how many tasks the panel lists.
 	crewRecent = 8
 	// crewTailBytes is how much of the log is read: the crew rows are a few
@@ -177,13 +177,13 @@ func ReadCrewLog(dir string, now time.Time) CrewLog {
 		key := task.Record.Repo + "\x00" + task.Record.TaskClass
 		switch task.Outcome {
 		case CrewRedone:
-			if out.Offsets[key] < crewMaxOffset {
+			if out.Offsets[key] < redoOffsetCeiling {
 				out.Offsets[key]++
 			}
 			accepted[key] = 0
 		case CrewAccepted:
 			accepted[key]++
-			if accepted[key] >= crewDecayAfter && out.Offsets[key] > 0 {
+			if accepted[key] >= redoDecayAfter && out.Offsets[key] > 0 {
 				out.Offsets[key]--
 				accepted[key] = 0
 			}

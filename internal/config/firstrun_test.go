@@ -16,8 +16,8 @@ func TestAFreshProfileIsMissingAllThreeAndAnAnsweredOneIsNot(t *testing.T) {
 	t.Setenv("CODEAF_DAILY_BUDGET", "")
 	dir := t.TempDir()
 
-	if APIKeyConfigured(dir) || CrewConfigured(dir) || DailyBudgetConfigured(dir) {
-		t.Fatal("a profile nobody has touched must read as unanswered on all three")
+	if APIKeyConfigured(dir) || DailyBudgetConfigured(dir) {
+		t.Fatal("a profile nobody has touched must read as unanswered on both")
 	}
 	// The crew RESOLVES on that profile — every seat auto — and that is
 	// exactly what must not count.
@@ -34,7 +34,7 @@ func TestAFreshProfileIsMissingAllThreeAndAnAnsweredOneIsNot(t *testing.T) {
 	if err := WriteDailyBudgetUSD(dir, 7); err != nil {
 		t.Fatal(err)
 	}
-	if !APIKeyConfigured(dir) || !CrewConfigured(dir) || !DailyBudgetConfigured(dir) {
+	if !APIKeyConfigured(dir) || !DailyBudgetConfigured(dir) {
 		t.Fatal("every answered row must read as configured")
 	}
 	if got := PersistedAPIKey(dir); got != "sk-or-v1-abc" {
@@ -149,21 +149,16 @@ func TestTheAPIKeyRowMasksReadsTheShellFirstAndWritesTheProfile(t *testing.T) {
 	}
 }
 
-// THE ALLOWED MODELS ARE AN OPINION TOO. A person who narrowed them and never
-// pinned a seat has still answered the crew, so the setup must not paper over
-// it; and the rule nobody wrote is the default, which is NOT an answer.
-func TestTheAllowedRuleCountsAsAnAnsweredCrew(t *testing.T) {
+// THE ALLOWED RULE NOBODY WROTE IS `all`, and narrowing it is read back.
+func TestTheAllowedRuleDefaultsToAllAndReadsBack(t *testing.T) {
 	dir := t.TempDir()
-	if CrewConfigured(dir) {
-		t.Fatal("a profile nobody has touched must read as unanswered")
-	}
 	if got := CrewAllowedAt(dir).String(); got != "all" {
 		t.Fatalf("an untouched profile allows %q, want all", got)
 	}
 	if err := SetCrewAllowed(dir, "open"); err != nil {
 		t.Fatal(err)
 	}
-	if !CrewConfigured(dir) {
-		t.Fatal("a profile whose allowed models were narrowed must read as answered")
+	if got := CrewAllowedAt(dir).String(); got != "open" {
+		t.Fatalf("a narrowed rule reads back %q", got)
 	}
 }

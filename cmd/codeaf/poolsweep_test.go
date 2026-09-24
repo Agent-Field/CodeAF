@@ -25,7 +25,6 @@ func TestPoolJudgeSweepJudgesAPendingRowOnceThenNeverAgain(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
-	restoreOwnCells(t)
 
 	profileDir := t.TempDir()
 	poolDir := config.ProfilePath(profileDir, "pool")
@@ -70,7 +69,6 @@ func TestPoolJudgeSweepWithNoKeyLeavesRowsWaiting(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
-	restoreOwnCells(t)
 
 	profileDir := t.TempDir()
 	poolDir := config.ProfilePath(profileDir, "pool")
@@ -99,7 +97,6 @@ func TestPoolJudgeSweepToleratesATornPendingLine(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
-	restoreOwnCells(t)
 
 	profileDir := t.TempDir()
 	poolDir := config.ProfilePath(profileDir, "pool")
@@ -155,7 +152,6 @@ func TestPoolJudgeSweepCutShortKeepsALeftoverClaimsRows(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
-	restoreOwnCells(t)
 
 	profileDir := t.TempDir()
 	poolDir := config.ProfilePath(profileDir, "pool")

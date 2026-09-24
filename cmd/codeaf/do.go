@@ -164,7 +164,7 @@ type headlessOutcome struct {
 	Learned []string `json:"learned,omitempty"`
 	// Model and PlanModel are the two seats this errand ran on, and the two
 	// Source fields name the rung that chose each — `--model`, `CODEAF_MODEL`,
-	// `crew frugal`, `default` (config.ResolveSeats). They are here because the
+	// `pinned`, `routed` (config.ResolveSeats). They are here because the
 	// defect that produced them was invisible from outside: a campaign that
 	// believed its profile's crew was in force had no way to read back that the
 	// run had resolved its models somewhere else entirely (#166). A caller

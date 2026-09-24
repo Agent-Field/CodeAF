@@ -133,23 +133,20 @@ type setupFlow struct {
 // setupSteps is which of the two questions this conversation still needs
 // answered, in the order they are asked. The provider question uses the same
 // answer as enter, so setup cannot ask for a default-service key a connected
-// service carrying this conversation does not need. The controls keep using
-// internal/config's own predicates, so the screen cannot ask for a crew /crew
-// would already report.
+// service carrying this conversation does not need.
 //
-// THE CONTROLS SCREEN IS ONE STEP AND SO IT IS ASKED AS ONE. It carries three
-// controls and it opens when EITHER of the two persisted ones is still unwritten
-// — a profile that has a crew and no limit is shown both, with the crew already
-// on the value it chose, because a screen that dropped the row a person had
-// answered would read as a different screen every time it opened. The chat model
-// is not in the condition: it resolves from the build and from CODEAF_MODEL until
-// somebody chooses, so a profile is never MISSING one.
+// THE CONTROLS SCREEN IS ONE STEP AND SO IT IS ASKED AS ONE. It carries two
+// controls and it opens while the persisted one — the daily limit — is still
+// unwritten. The chat model is not in the condition: it resolves from the
+// build and from CODEAF_MODEL until somebody chooses, so a profile is never
+// MISSING one. The crew is not in it either: a task's crew is picked per task
+// and asks nothing up front.
 func (a *app) setupSteps() []setupStep {
 	steps := make([]setupStep, 0, 2)
 	if a.defaultProviderNeeded() {
 		steps = append(steps, setupKey)
 	}
-	if !config.CrewConfigured(a.profileDir) || !config.DailyBudgetConfigured(a.profileDir) {
+	if !config.DailyBudgetConfigured(a.profileDir) {
 		steps = append(steps, setupControls)
 	}
 	return steps
@@ -662,7 +659,7 @@ const (
 // THE TEST IS STRUCTURAL AND NOT A GUESS AT THE PROSE. Every refusal the
 // registry authors is a plain fmt.Errorf with nothing wrapped inside it —
 // `that's not a dollar amount — a number, or none for no limit`,
-// `pick one of: frugal, balanced, max`, `OpenRouter key is set by
+// `pick one of: on, off`, `OpenRouter key is set by
 // OPENROUTER_API_KEY` — while every failure that came off the disk is wrapped
 // around the operating system's own error (internal/config's
 // writeProfileValues wraps each one with %w). So an error that wraps another

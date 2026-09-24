@@ -9,11 +9,11 @@
 package main
 
 import (
-	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"io"
 	"log"
 	"os"
@@ -1213,22 +1213,21 @@ func applyModelFlags(settings *config.Config, model, planModel string) {
 	}
 }
 
-// THE TWO MODEL FLAGS SAY THE SAME THING AT EVERY DOOR, so they say it once.
+// THE THREE MODEL FLAGS SAY THE SAME THING AT EVERY DOOR, so they say it once.
 //
-// The wording they replaced was `(default CODEAF_MODEL)`, which named one rung
-// of four and hid the two that decide most runs: a profile's crew, and this
-// build's own default when nobody has said anything at all. A help string that
-// names the whole ladder is the shortest place a person can learn that their
-// crew reaches this command (config.ResolveSeats).
+// Each is a ONE-TASK PIN: the flag, then its variable, then the crew — a pin
+// the profile holds (/crew pin) or the router's pick for this task
+// (config.ResolveSeats). The check seat never falls to the plan seat, and no
+// seat falls to a model this build chose for everybody.
 const (
-	workLadderHelp    = "flag › CODEAF_MODEL › crew › default"
-	planLadderHelp    = "flag › CODEAF_PLAN_MODEL › crew mastermind › the work model"
-	checkLadderHelp   = "flag › CODEAF_CHECK_MODEL › plan pinned by flag or environment › crew careful"
-	modelFlagHelp     = "work model for this run (" + workLadderHelp + ")"
-	planModelFlagHelp = "model that plans, when different from the work model (" + planLadderHelp + ")"
-	// The check seat's ladder names its environment rung and the resolved
-	// plan seat fallback before the crew's careful row.
-	checkModelFlagHelp = "model that checks finished work (" + checkLadderHelp + ")"
+	workLadderHelp    = "flag › CODEAF_MODEL › crew pin › crew routed per task"
+	planLadderHelp    = "flag › CODEAF_PLAN_MODEL › crew pin › crew routed per task"
+	checkLadderHelp   = "flag › CODEAF_CHECK_MODEL › crew pin › crew routed per task"
+	modelFlagHelp     = "work model for this run, a one-task pin (" + workLadderHelp + ")"
+	planModelFlagHelp = "model that plans, a one-task pin (" + planLadderHelp + ")"
+	// The check seat's ladder is its own: a pinned planner says something about
+	// planning and nothing about who grades the work.
+	checkModelFlagHelp = "model that checks finished work, a one-task pin (" + checkLadderHelp + ")"
 )
 
 // yesSpendFlagHelp is what `--yes-spend` MEANS, said once, on both doors that

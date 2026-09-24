@@ -73,11 +73,11 @@ package session
 // consent.go refuses for the same reason.
 
 import (
-	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -213,15 +213,15 @@ type taskArguments struct {
 	// Checks is the repeatable verification this proposal puts the work under:
 	// the only commands its independent checker will be allowed to run
 	// (task_checks.go). Optional, and the harness never writes one either.
-	Checks     []string `json:"checks,omitempty"`
-	DependsOn  []uint64 `json:"depends_on"`
-	Wide       bool     `json:"wide"`
-	Model      string   `json:"model"`
+	Checks    []string `json:"checks,omitempty"`
+	DependsOn []uint64 `json:"depends_on"`
+	Wide      bool     `json:"wide"`
+	Model     string   `json:"model"`
 	// Effort is the person's one-task word for how hard to try — best or
 	// cheap — which moves this task's crew and nothing after it (taskcrew.go).
-	Effort     string   `json:"effort"`
-	MaxSteps   int      `json:"max_steps"`
-	NoProgress int      `json:"no_progress"`
+	Effort     string `json:"effort"`
+	MaxSteps   int    `json:"max_steps"`
+	NoProgress int    `json:"no_progress"`
 }
 
 // taskSpec is one node's settled instruction: what the person was shown, and

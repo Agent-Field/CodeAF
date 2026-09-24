@@ -99,8 +99,8 @@ func (a *Agent) resolveTaskModel(word string) taskModelChoice {
 //
 // THE CREW'S WORKER SEAT SITS BETWEEN THE PIN AND THE CONVERSATION. The worker
 // is the seat that pays most of a task's bill, and until it was on the ladder
-// the crew moved everything about a task except its cost: a person on `frugal`
-// talking to a frontier model handed every task to that frontier model. The
+// the crew moved everything about a task except its cost: a person talking to a
+// frontier model handed every task to that frontier model. The
 // `task.model` row still wins, because it is the more specific answer — one
 // person pinning one thing — and the conversation is still the floor, because
 // a cleared worker row means "follow the conversation" on every tier

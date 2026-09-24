@@ -15,17 +15,11 @@ import (
 // work's quality, and what it costs. This file is where both come from, in the
 // order they are trusted:
 //
-//  1. THE EVIDENCE TABLE (prior.json, embedded). Measured: 22 real GitHub
-//     issues, fourteen narrow fixes and eight open-ended pieces of work, every
-//     crew's result scored blind by two reviewers on a ten-point mergeability
-//     scale. A crew's score is read here as the SUM of what its three seats
-//     add, split so the measured crews add back up exactly:
-//
-//     bugfix     all glm-5.3-flash   6.57  = 4.00 worker + 1.00 planner + 1.57 checker
-//     bugfix     all kimi-k3         6.86  = 4.20 worker + 1.09 planner + 1.57 checker
-//     openended  all glm-5.3-flash   3.60  = 2.00 worker + 0.60 planner + 1.00 checker
-//     openended  + kimi-k3 checker   7.60  =                              + 5.00 checker
-//     openended  + v4-flash checker  5.70  =                              + 3.10 checker
+//  1. THE EVIDENCE TABLE (prior.json, embedded). Measured crews per class of
+//     work, each scored on a ten-point mergeability scale
+//     (docs/design/model-pool/pareto-crewing.pdf). A crew's score is read here
+//     as the SUM of what its three seats add, split so the measured crews add
+//     back up exactly; the cells are prior.json's own.
 //
 //     The split between the worker and the planner of one crew is a choice the
 //     evidence does not make — both moved together — and it is made in the

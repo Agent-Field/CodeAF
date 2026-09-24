@@ -8,14 +8,14 @@ import (
 // WHAT KIND OF WORK A TASK IS, READ OFF ITS OWN WORDS.
 //
 // The router routes on a task's CLASS and on nothing finer, and that is a
-// measured choice rather than a shortcut: across the 22 real issues the crew
-// was scored on, and the 46k DeepSWE trials behind them, the text of a task
-// did not predict how hard that one task would be beyond the kind of work it
-// was. What the kind of work DID predict was large and one-sided — a narrow
-// fix is done as well by the cheapest crew as by the dearest, and open-ended
-// work (a feature, a refactor, docs, a design) is only mergeable with a strong
-// checker behind it. So the question this file answers is the only one worth
-// asking of the text: which of the two is this?
+// measured choice rather than a shortcut (docs/design/model-pool/
+// pareto-crewing.pdf): the text of a task did not predict how hard that one
+// task would be beyond the kind of work it was, and what the kind of work DID
+// predict was large and one-sided — a narrow fix is done as well by the
+// cheapest crew as by a dear one, and open-ended work (a feature, a refactor,
+// docs, a design) is only mergeable with a strong checker behind it. So the
+// question this file answers is the only one worth asking of the text: which
+// of the two is this?
 //
 // ── THE SIGNALS ──
 //
@@ -31,7 +31,7 @@ import (
 //     "regression", "steps to reproduce" lean narrow; "feature request",
 //     "would be great", "consider adding", "refactor" lean open-ended.
 //
-// A harness's own wrapper around an issue — "Implement issue #412: …" and the
+// A harness's own wrapper around an issue — "Implement issue #12: …" and the
 // standing instruction to keep the test suite green that follows every task
 // it hands out — is read past, because it is the same sentence on every task
 // and a signal that fires on everything tells the router nothing.
@@ -42,7 +42,7 @@ import (
 // [OpenEnded], and that is the safe side on purpose: calling a narrow fix
 // open-ended costs a strong checker it did not need — cents — while calling
 // open-ended work a narrow fix sends it to a crew that was measured merging
-// none of eight such tasks. The two mistakes are not the same size, so the
+// almost none of it. The two mistakes are not the same size, so the
 // tie does not go to the cheaper one.
 
 // Class is the kind of work a task is. It is a string because it is written
@@ -144,7 +144,7 @@ var labelWords = map[string]Class{
 }
 
 // wrapperLine is the harness's own sentence around an issue's title:
-// "Implement issue #412: [bug] merge_list drops vlan interfaces". The verb is
+// "Implement issue #12: [bug] export drops the last row". The verb is
 // the harness talking and the tail is the issue's own title.
 var wrapperLine = regexp.MustCompile(`(?i)^\s*(implement|fix|resolve|address|solve|close|work on)\s+(github\s+)?issue\s+#?\d+\s*[:\-—]\s*(.*)$`)
 

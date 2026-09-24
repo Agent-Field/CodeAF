@@ -192,7 +192,7 @@ func TestTheHintSlotFollowsTheKeyboard(t *testing.T) {
 	a.pick.open = true
 	// And the crew rides the end of it on any launch that has one (crew.go's
 	// [app.crewHint]).
-	if got := a.hintWord(); got != "enter switch · esc · crew "+config.DefaultCrew {
+	if got := a.hintWord(); got != "enter switch · esc · crew auto" {
 		t.Fatalf("an open picker offered %q", got)
 	}
 	a.pick.open, a.copy.on = false, false

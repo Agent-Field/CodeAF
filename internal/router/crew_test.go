@@ -31,13 +31,13 @@ func TestTheCrewLogKeepsTodayAndLearnsFromRedos(t *testing.T) {
 		t.Errorf("recent %+v, want the unsettled c first", log.Recent)
 	}
 	// Enough accepted fixes take the step back off.
-	for i := 0; i < crewDecayAfter; i++ {
+	for i := 0; i < redoDecayAfter; i++ {
 		call := CrewCallID("")
 		LogCrewDecision(dir, call, fix, nil)
 		LogCrewOutcome(dir, call, fix, CrewAccepted, 0.01)
 	}
 	if got := ReadCrewLog(dir, time.Now()).Offsets["repo\x00bugfix"]; got != 0 {
-		t.Errorf("after %d accepted fixes the offset is still %d", crewDecayAfter, got)
+		t.Errorf("after %d accepted fixes the offset is still %d", redoDecayAfter, got)
 	}
 	// Yesterday's spend is not today's.
 	if got := ReadCrewLog(dir, time.Now().Add(48*time.Hour)); got.Tasks != 0 || got.SpentUSD != 0 {

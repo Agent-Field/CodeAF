@@ -290,7 +290,7 @@ var commands = []command{
 	// --cheap the cheapest, and neither moves the next task.
 	{name: "task", args: "--best <brief>", desc: "…on the strongest crew allowed, this task only", door: sendDoorTask},
 	{name: "task", args: "--cheap <brief>", desc: "…on the cheapest crew allowed, this task only", door: sendDoorTask},
-	{name: "redo", args: "stronger", desc: "run the last task again on a stronger crew · codeaf learns from it"},
+	{name: "redo", args: "stronger", desc: "the last task again, on a stronger crew"},
 	// THE THIRD ROW IS GONE, AND ITS ABSENCE IS THE FEATURE. It typed
 	// `adaptive <brief>`, which opened a planner that drew the whole graph before
 	// any of the work had been looked at. The measured road answers that question

@@ -60,23 +60,6 @@ func APIKeyConfigured(profileDir string) bool {
 	return APIKeyAt(profileDir) != ""
 }
 
-// CrewConfigured is whether a person has ever answered the crew: a seat
-// pinned, the allowed models or the daily cap written — or, on a profile from
-// before the crew was routed, any of the rows the retired presets wrote.
-func CrewConfigured(profileDir string) bool {
-	for _, key := range []string{KeyCrewAllowed, KeyCrewCap, legacyKeyCrew, legacyKeyCrewSource, legacyKeyCrewPick} {
-		if _, ok := persistedValue(profileDir, key); ok {
-			return true
-		}
-	}
-	for _, tier := range ModelTiers {
-		if _, ok := persistedString(profileDir, tierKeyFor(tier)); ok {
-			return true
-		}
-	}
-	return false
-}
-
 // DailyBudgetConfigured is whether a person has answered the daily ceiling: the
 // environment pins it, or the profile file holds it.
 func DailyBudgetConfigured(profileDir string) bool {

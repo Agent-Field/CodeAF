@@ -8,9 +8,9 @@ import (
 	"time"
 )
 
-// The trial's own model set, priced as the catalog published it on the day
+// The evidence table's own model set, priced as the catalog published it on the day
 // the evidence was measured, each reachable on OpenRouter only.
-func trialCandidates() []Candidate {
+func evidenceCandidates() []Candidate {
 	var out []Candidate
 	for _, id := range []string{"z-ai/glm-5.3-flash", "moonshotai/kimi-k3", "deepseek/deepseek-v4-flash"} {
 		m, _ := Snapshot(id)
@@ -80,7 +80,7 @@ func TestTheTableReproducesTheEvidence(t *testing.T) {
 // THE ROUTED POLICY, read off prices rather than branches: a fix goes to the
 // cheapest crew, open-ended work to the cheapest crew with the strong checker.
 func TestTheKneeRoutesFixesCheapAndOpenEndedToAStrongChecker(t *testing.T) {
-	cands := trialCandidates()
+	cands := evidenceCandidates()
 	cases := []struct {
 		class   Class
 		checker string
@@ -106,7 +106,7 @@ func TestTheKneeRoutesFixesCheapAndOpenEndedToAStrongChecker(t *testing.T) {
 }
 
 func TestEffortMovesOnlyWhereTheEvidenceSaysItPays(t *testing.T) {
-	cands := trialCandidates()
+	cands := evidenceCandidates()
 	best, _ := Decide(Request{Class: Bugfix, Candidates: cands, Effort: EffortBest})
 	if best.Seat(Worker).Model != "moonshotai/kimi-k3" || best.Seat(Planner).Model != "moonshotai/kimi-k3" {
 		t.Errorf("--best on a fix: %+v, want kimi worker and planner", best.Crew)
@@ -125,7 +125,7 @@ func TestEffortMovesOnlyWhereTheEvidenceSaysItPays(t *testing.T) {
 // a dear frontier row does not take a seat off the measured best even at
 // --best, and at the knee its price keeps it out.
 func TestAnUnmeasuredFrontierModelDoesNotOutrankTheEvidence(t *testing.T) {
-	cands := append(trialCandidates(),
+	cands := append(evidenceCandidates(),
 		catalogRow("anthropic/claude-opus-5", false, 5, 25, 50.8, 78, 56.5),
 		catalogRow("anthropic/claude-fable-5.1", false, 10, 50, 53.4, 81.6, 57.9))
 	for _, effort := range []Effort{EffortKnee, EffortBest} {
@@ -163,7 +163,7 @@ func TestUnmeasuredModelsAreRankedByTheirPublishedFigures(t *testing.T) {
 }
 
 func TestAPinnedSeatAlwaysRunsItsPin(t *testing.T) {
-	cands := trialCandidates()
+	cands := evidenceCandidates()
 	d, err := Decide(Request{Class: Bugfix, Candidates: cands, Pins: map[Seat]Pin{
 		Checker: {Model: "moonshotai/kimi-k3", Send: "moonshotai/kimi-k3", Kind: Metered},
 	}})
@@ -225,7 +225,7 @@ func TestNoCandidateIsAnErrorNamingTheSeat(t *testing.T) {
 }
 
 func TestRedoStrongerEscalatesOnlyUnpinnedSeats(t *testing.T) {
-	cands := trialCandidates()
+	cands := evidenceCandidates()
 	first, _ := Decide(Request{Class: Bugfix, Candidates: cands})
 	again, err := Decide(Request{Class: Bugfix, Candidates: cands, Stronger: &first})
 	if err != nil {
@@ -264,7 +264,7 @@ func TestRedoStrongerEscalatesOnlyUnpinnedSeats(t *testing.T) {
 }
 
 func TestLearnedStepsStartAFixHigher(t *testing.T) {
-	cands := trialCandidates()
+	cands := evidenceCandidates()
 	d, _ := Decide(Request{Class: Bugfix, Candidates: cands, Steps: 2})
 	if d.Seat(Worker).Model != "moonshotai/kimi-k3" {
 		t.Errorf("two learned steps on a fix: worker %s, want kimi", d.Seat(Worker).Model)
@@ -291,7 +291,7 @@ func TestPaceGrowsAsTheCapNears(t *testing.T) {
 		}
 	}
 	// Near the cap an open-ended task drops the dear checker.
-	cands := trialCandidates()
+	cands := evidenceCandidates()
 	mult, _ := Pace(9.9, 10)
 	d, _ := Decide(Request{Class: OpenEnded, Candidates: cands, Pace: mult})
 	if d.Seat(Checker).Model == "moonshotai/kimi-k3" {
@@ -300,10 +300,10 @@ func TestPaceGrowsAsTheCapNears(t *testing.T) {
 }
 
 func TestGapsNameAMissingStrongChecker(t *testing.T) {
-	if gaps := Gaps(trialCandidates()); len(gaps) != 0 {
-		t.Errorf("the trial set has a strong checker, got gaps %+v", gaps)
+	if gaps := Gaps(evidenceCandidates()); len(gaps) != 0 {
+		t.Errorf("the evidence set has a strong checker, got gaps %+v", gaps)
 	}
-	flashOnly := trialCandidates()[:1]
+	flashOnly := evidenceCandidates()[:1]
 	gaps := Gaps(flashOnly)
 	if len(gaps) != 1 || gaps[0].Seat != Checker || gaps[0].Class != OpenEnded {
 		t.Errorf("flash alone: gaps %+v, want the open-ended checker", gaps)
@@ -311,7 +311,7 @@ func TestGapsNameAMissingStrongChecker(t *testing.T) {
 }
 
 func TestTheDecisionLine(t *testing.T) {
-	cands := trialCandidates()
+	cands := evidenceCandidates()
 	d, _ := Decide(Request{Class: OpenEnded, Candidates: cands, Pins: map[Seat]Pin{Checker: {Model: "moonshotai/kimi-k3"}}})
 	got := d.Line("📌", 0.108)
 	want := "openended · worker glm-5.3-flash (openrouter) · checker 📌 kimi-k3 · $0.108 (est $0.112)"
@@ -326,7 +326,7 @@ func TestTheDecisionLine(t *testing.T) {
 // THE ROUTER'S OWN BUDGET: under two milliseconds a decision, against a
 // catalog the size of the real one, classification included.
 func TestADecisionTakesUnderTwoMilliseconds(t *testing.T) {
-	cands := trialCandidates()
+	cands := evidenceCandidates()
 	for i := 0; i < 600; i++ {
 		cands = append(cands, catalogRow("acme/m"+string(rune('a'+i%26))+strings.Repeat("x", i%7), i%2 == 0,
 			0.1+float64(i%30)/10, 0.5+float64(i%40)/5, 20+float64(i%35), 40+float64(i%45), 20+float64(i%40)))
@@ -345,7 +345,7 @@ func TestADecisionTakesUnderTwoMilliseconds(t *testing.T) {
 }
 
 func TestRouteIsDeterministicWhateverTheOrder(t *testing.T) {
-	cands := append(trialCandidates(), catalogRow("acme/twin-a", true, 0.15, 0.5, 41.8, 71.5, 50.9), catalogRow("acme/twin-b", true, 0.15, 0.5, 41.8, 71.5, 50.9))
+	cands := append(evidenceCandidates(), catalogRow("acme/twin-a", true, 0.15, 0.5, 41.8, 71.5, 50.9), catalogRow("acme/twin-b", true, 0.15, 0.5, 41.8, 71.5, 50.9))
 	a, _ := Decide(Request{Class: Other, Candidates: cands})
 	reversed := make([]Candidate, len(cands))
 	for i := range cands {
