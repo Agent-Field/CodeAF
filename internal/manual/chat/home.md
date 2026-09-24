@@ -360,9 +360,9 @@ rows that do not fit behind `N more`. The Sessions heading opens the full Sessio
 typing into the box searches older history. The `alt+k chats` menu (`opt+k` on macOS)
 continues to list open tabs only.
 
-Closing with `→`, then `x close`, or `ctrl+e`, removes the same conversation from
-Home's open rows, the tab strip and the default chats menu immediately. It keeps
-running work and drafts. A waiting conversation carries a `?`;
+Closing with `→`, then `x close`, or `ctrl+e`, closes the tab and removes it from
+the default chats menu immediately. Home keeps the conversation visible as closed,
+including progress from its running work. It keeps running work and drafts. A waiting conversation carries a `?`;
 the question remains reachable even when its tab is closed.
 
 `/ask` exchanges follow the conversation rows. Escape opens Home; Enter opens the
