@@ -216,6 +216,19 @@ type elsewhereReading struct {
 	notes  []string
 }
 
+// elsewhereReader is one reading in progress: what this chat is on, which ids
+// are its own, how far back the past half reaches, and what has been found.
+// It is a type so each step of the reading is one short method rather than one
+// long function with every step's decisions in it.
+type elsewhereReader struct {
+	scope elsewhereScope
+	own   map[string]bool
+	mine  []string
+	since time.Time
+	now   time.Time
+	out   elsewhereReading
+}
+
 // readElsewhereWide is one reading of every project folder beside this chat's
 // own, for work on a repository this chat is on.
 //
@@ -225,128 +238,158 @@ type elsewhereReading struct {
 // chat in a folder that is not a repository pays for no reading of the rest of
 // the machine.
 func (a *Agent) readElsewhereWide(dir string, mine []string, since, now time.Time) elsewhereReading {
-	out := elsewhereReading{scores: map[string]int{}, names: map[string]string{}}
 	bucket := filepath.Dir(dir)
-	own := make(map[string]bool, len(mine))
+	reader := &elsewhereReader{
+		scope: elsewhereScope{repos: map[string]bool{}, files: map[string]bool{}, resolve: repoResolver{}},
+		own:   make(map[string]bool, len(mine)),
+		mine:  mine,
+		since: since,
+		now:   now,
+		out:   elsewhereReading{scores: map[string]int{}, names: map[string]string{}},
+	}
 	for _, id := range mine {
 		if id = strings.TrimSpace(id); id != "" {
-			own[id] = true
+			reader.own[id] = true
 		}
 	}
-	scope := elsewhereScope{repos: map[string]bool{}, files: map[string]bool{}, resolve: repoResolver{}}
+	rows := ReadTaskIndex(filepath.Join(bucket, taskIndexName))
+	reader.learnScope(a, rows)
+	for _, row := range rows {
+		reader.keep(row, true, "")
+	}
+	// THE PRESENT HALF of this folder: its other windows, as they always were.
+	for _, task := range a.Elsewhere().Tasks() {
+		task.score = reader.scope.score(true, "", task.Task.Files)
+		reader.out.live = append(reader.out.live, task)
+	}
+	if len(reader.scope.repos) > 0 {
+		reader.readOtherFolders(filepath.Dir(bucket), bucket)
+	}
+	return reader.out
+}
 
-	// WHAT THIS CHAT IS ON: its working directory, the ground of the run it has
-	// out, the repositories and files its own landed work recorded, and the
-	// files its own running tasks have written so far.
+// learnScope is WHAT THIS CHAT IS ON: its working directory, the ground of the
+// run it has out, the repositories and files its own landed work recorded, and
+// the files its own running tasks have written so far.
+func (r *elsewhereReader) learnScope(a *Agent, rows []TaskIndexEntry) {
 	workspace := strings.TrimSpace(a.config.Workspace)
 	if workspace == "" {
 		workspace = strings.TrimSpace(a.config.Place.Workspace)
 	}
-	if repo, err := scope.resolve.of(workspace); err == nil {
-		scope.repos[repo] = true
+	if repo, err := r.scope.resolve.of(workspace); err == nil {
+		r.scope.repos[repo] = true
 	} else if !errors.Is(err, errNotRepository) {
-		out.notes = append(out.notes, "other project folders were not searched: this conversation's repository could not be resolved ("+deltaLine(err.Error())+")")
+		r.out.notes = append(r.out.notes, "other project folders were not searched: this conversation's repository could not be resolved ("+deltaLine(err.Error())+")")
 	}
 	a.beltMu.Lock()
+	ground := ""
 	if a.beltRun != nil {
-		if repo, err := scope.resolve.of(a.beltRun.ground); err == nil {
-			scope.repos[repo] = true
-		}
+		ground = a.beltRun.ground
 	}
 	a.beltMu.Unlock()
-	rows := ReadTaskIndex(filepath.Join(bucket, taskIndexName))
+	if repo, err := r.scope.resolve.of(ground); err == nil {
+		r.scope.repos[repo] = true
+	}
 	for _, row := range rows {
-		if !own[strings.TrimSpace(row.SessionID)] {
+		if !r.own[strings.TrimSpace(row.SessionID)] {
 			continue
 		}
-		if repo := scope.resolve.rowRepo(row); repo != "" {
-			scope.repos[repo] = true
+		if repo := r.scope.resolve.rowRepo(row); repo != "" {
+			r.scope.repos[repo] = true
 		}
-		for _, path := range row.Files {
-			scope.files[strings.TrimSpace(path)] = true
-		}
+		r.learnFiles(row.Files)
 	}
 	for _, task := range a.presenceTasks() {
-		for _, path := range task.Files {
-			scope.files[strings.TrimSpace(path)] = true
-		}
+		r.learnFiles(task.Files)
 	}
+}
 
-	// THE PAST HALF: this folder's landings, then every other folder's
-	// landings on one of this chat's repositories.
-	keep := func(row TaskIndexEntry, sameFolder bool, project string) {
-		if row.Live() || row.EndedAt.IsZero() || !row.EndedAt.After(since) {
-			return
+func (r *elsewhereReader) learnFiles(files []string) {
+	for _, path := range files {
+		if path = strings.TrimSpace(path); path != "" {
+			r.scope.files[path] = true
 		}
-		if id := strings.TrimSpace(row.SessionID); id == "" || own[id] {
-			return
-		}
-		repo := scope.resolve.rowRepo(row)
-		if !sameFolder && (repo == "" || !scope.repos[repo]) {
-			return
-		}
-		score := scope.score(sameFolder, repo, row.Files)
-		if score == 0 {
-			return
-		}
-		key := row.SessionID + "\x00" + row.ID
-		out.scores[key] = score
-		if project != "" {
-			out.names[key] = project
-		}
-		out.landed = append(out.landed, row)
 	}
-	for _, row := range rows {
-		keep(row, true, "")
-	}
+}
 
-	// THE PRESENT HALF: this folder's other windows, as they always were.
-	for _, task := range a.Elsewhere().Tasks() {
-		task.score = scope.score(true, "", task.Task.Files)
-		out.live = append(out.live, task)
+// keep takes one landed row into the past half when it is another chat's, ended
+// since the reach, and has something to do with this chat. A row from another
+// folder has to be on one of this chat's repositories to count at all.
+func (r *elsewhereReader) keep(row TaskIndexEntry, sameFolder bool, project string) {
+	if row.Live() || row.EndedAt.IsZero() || !row.EndedAt.After(r.since) {
+		return
 	}
+	if id := strings.TrimSpace(row.SessionID); id == "" || r.own[id] {
+		return
+	}
+	repo := r.scope.resolve.rowRepo(row)
+	if !sameFolder && (repo == "" || !r.scope.repos[repo]) {
+		return
+	}
+	score := r.scope.score(sameFolder, repo, row.Files)
+	if score == 0 {
+		return
+	}
+	key := row.SessionID + "\x00" + row.ID
+	r.out.scores[key] = score
+	if project != "" {
+		r.out.names[key] = project
+	}
+	r.out.landed = append(r.out.landed, row)
+}
 
-	if len(scope.repos) > 0 {
-		root := filepath.Dir(bucket)
-		entries, err := os.ReadDir(root)
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			out.notes = append(out.notes, "other project folders could not be listed ("+deltaLine(err.Error())+")")
+// readOtherFolders reads every project folder under root except this chat's own.
+func (r *elsewhereReader) readOtherFolders(root, bucket string) {
+	entries, err := os.ReadDir(root)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		r.out.notes = append(r.out.notes, "other project folders could not be listed ("+deltaLine(err.Error())+")")
+	}
+	for _, entry := range entries {
+		other := filepath.Join(root, entry.Name())
+		if !entry.IsDir() || filepath.Clean(other) == filepath.Clean(bucket) {
+			continue
 		}
-		for _, entry := range entries {
-			if !entry.IsDir() {
-				continue
-			}
-			other := filepath.Join(root, entry.Name())
-			if filepath.Clean(other) == filepath.Clean(bucket) {
-				continue
-			}
-			name := elsewhereProjectName(other)
-			theirs, err := readTaskIndexChecked(filepath.Join(other, taskIndexName))
-			if err != nil {
-				out.notes = append(out.notes, "the record of project "+name+" could not be read ("+deltaLine(err.Error())+")")
-			}
-			for _, row := range theirs {
-				keep(row, false, name)
-			}
-			for _, window := range ReadProjectPresence(other, now, mine...) {
-				repo, err := scope.resolve.of(window.Workspace)
-				if err != nil || !scope.repos[repo] {
-					continue
-				}
-				meta, _ := LoadMeta(window.Dir)
-				for _, task := range window.RunningTasks {
-					out.live = append(out.live, ElsewhereTask{
-						SessionID: window.SessionID,
-						Session:   strings.TrimSpace(meta.Title),
-						Project:   name,
-						Task:      task,
-						score:     scope.score(false, repo, task.Files),
-					})
-				}
-			}
+		r.readOtherFolder(other)
+	}
+}
+
+// readOtherFolder reads one other project folder: its landed rows and its live
+// windows, each kept only when it is on one of this chat's repositories. The
+// folder's name is looked up once, and only when something in it is kept or
+// could not be read.
+func (r *elsewhereReader) readOtherFolder(other string) {
+	name := ""
+	named := func() string {
+		if name == "" {
+			name = elsewhereProjectName(other)
+		}
+		return name
+	}
+	theirs, err := readTaskIndexChecked(filepath.Join(other, taskIndexName))
+	if err != nil {
+		r.out.notes = append(r.out.notes, "the record of project "+named()+" could not be read ("+deltaLine(err.Error())+")")
+	}
+	for _, row := range theirs {
+		if repo := r.scope.resolve.rowRepo(row); repo != "" && r.scope.repos[repo] {
+			r.keep(row, false, named())
 		}
 	}
-	return out
+	for _, window := range ReadProjectPresence(other, r.now, r.mine...) {
+		repo, err := r.scope.resolve.of(window.Workspace)
+		if err != nil || !r.scope.repos[repo] {
+			continue
+		}
+		meta, _ := LoadMeta(window.Dir)
+		for _, task := range window.RunningTasks {
+			r.out.live = append(r.out.live, ElsewhereTask{
+				SessionID: window.SessionID,
+				Session:   strings.TrimSpace(meta.Title),
+				Project:   named(),
+				Task:      task,
+				score:     r.scope.score(false, repo, task.Files),
+			})
+		}
+	}
 }
 
 // elsewhereProjectName is what a row from another project folder calls that
