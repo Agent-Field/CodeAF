@@ -3,6 +3,7 @@ package tui3
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -273,5 +274,261 @@ func TestTeamsHostsTheManagersRealConversation(t *testing.T) {
 	drive(t, a, key("tab"))
 	if a.at(pageTeams) {
 		t.Fatal("tab on the hosted page did not walk on")
+	}
+}
+
+// ── the team's card ─────────────────────────────────────────────────────────
+
+// THE CARD SAYS WHERE EVERY VALUE COMES FROM: an inherited one dim with
+// `· from Settings` or `· from <team>`, an override in ink with `reset`, and
+// reset gives the value back to what it inherits.
+func TestTeamsCardShowsProvenanceAndResets(t *testing.T) {
+	a, harbor, orbit := teamsPlaceLabIDs(t)
+	five := 5.0
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		return f.SetSettings(harbor, func(s *teamstore.Settings) { s.CapUSDDay = &five })
+	}); err != nil {
+		t.Fatal(err)
+	}
+	drive(t, a, runCmd(a.teamSheetOpen(orbit, teamSheetSettings))...)
+	if !a.tsheet.on {
+		t.Fatal("the card did not open")
+	}
+	text := teamsFrameText(a)
+	for _, want := range []string{"from Settings", "from harbor", "$5.00 a day"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the card lost %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "reset") {
+		t.Fatalf("a card with no override offers reset:\n%s", text)
+	}
+	a.teamSheetSave(tsDepth, "2")
+	if got, _ := a.teamByID(orbit); got.Settings.DepthLimit == nil || *got.Settings.DepthLimit != 2 {
+		t.Fatalf("the depth was not kept on orbit: %+v", got.Settings)
+	}
+	if text = teamsFrameText(a); !strings.Contains(text, "reset") || !strings.Contains(text, "2 levels") {
+		t.Fatalf("an override does not offer reset:\n%s", text)
+	}
+	a.teamSheetDo(tsDepth + tsReset)
+	if got, _ := a.teamByID(orbit); got.Settings.DepthLimit != nil {
+		t.Fatalf("reset left the override: %+v", got.Settings)
+	}
+	// A value out of its band is refused in the card's own words.
+	a.teamSheetSave(tsShare, "140")
+	if a.tsheet.err == "" {
+		t.Fatal("a share of 140% was taken")
+	}
+}
+
+// ── closing ─────────────────────────────────────────────────────────────────
+
+// NOTHING RUNNING IS ONE CLOSE AND AN UNDO; the team moves to Closed and Undo
+// puts it back.
+func TestTeamsCloseWithNothingRunningIsOneClickAndUndo(t *testing.T) {
+	a, _, orbit := teamsPlaceLabIDs(t)
+	drive(t, a, runCmd(a.teamsCloseAsk(orbit))...)
+	if a.tsheet.on {
+		t.Fatal("a quiet team asked before closing")
+	}
+	if got, _ := a.teamByID(orbit); !got.Closed() {
+		t.Fatal("orbit did not close")
+	}
+	text := teamsFrameText(a)
+	if !strings.Contains(text, "Undo") || !strings.Contains(text, "Closed · 1") {
+		t.Fatalf("the close offers no Undo or no Closed fold:\n%s", text)
+	}
+	drive(t, a, runCmd(a.teamsDo(teamsTargetOf(t, a, teamsActUndo, "")))...)
+	if got, _ := a.teamByID(orbit); got.Closed() {
+		t.Fatal("Undo did not reopen orbit")
+	}
+}
+
+// SOMETHING RUNNING PUTS UP THE CARD: `Close now` first when no manager runs
+// the team, `Wrap up first` first when one does, and Cancel changes nothing.
+func TestTeamsCloseCardOffersWrapUpNowAndCancel(t *testing.T) {
+	a, harbor, _ := teamsPlaceLabIDs(t)
+	a.state = stateWorking
+	drive(t, a, runCmd(a.teamsCloseAsk(harbor))...)
+	if !a.tsheet.on || a.tsheet.mode != teamSheetClose || a.tsheet.cursor != tsCloseNow {
+		t.Fatalf("the card for a team with no manager: %+v", a.tsheet)
+	}
+	text := teamsFrameText(a)
+	if strings.Contains(text, "Wrap up first") || !strings.Contains(text, "Close now") || !strings.Contains(text, "Cancel") {
+		t.Fatalf("the card with no manager:\n%s", text)
+	}
+	a.teamSheetKey(key("esc"))
+	if got, _ := a.teamByID(harbor); a.tsheet.on || got.Closed() {
+		t.Fatal("Cancel closed the team or left the card up")
+	}
+	for _, tab := range a.tabList() {
+		if tab.key == a.frontTabKey() {
+			if err := a.teamMakeManager(harbor, tab); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	drive(t, a, runCmd(a.teamsCloseAsk(harbor))...)
+	if !a.tsheet.on || a.tsheet.cursor != tsWrapUp {
+		t.Fatalf("a managed team's card does not lead with Wrap up first: %+v", a.tsheet)
+	}
+	drive(t, a, runCmd(a.teamSheetDo(tsWrapUp))...)
+	if got, _ := a.teamByID(harbor); got.Closed() {
+		t.Fatal("Wrap up first closed the team at once")
+	}
+	if !strings.Contains(a.tp.msg, "wrap up") {
+		t.Fatalf("the wrap-up said nothing: %q", a.tp.msg)
+	}
+	drive(t, a, runCmd(a.teamsCloseAsk(harbor))...)
+	drive(t, a, runCmd(a.teamSheetDo(tsCloseNow))...)
+	if got, _ := a.teamByID(harbor); !got.Closed() {
+		t.Fatal("Close now did not close the team")
+	}
+}
+
+// THE CLOSED FOLD shows a closed team's report, members and dates with
+// Reopen and Delete…, and a team under a closed parent offers to reopen the
+// parent too.
+func TestTeamsClosedFoldReopensWithItsParent(t *testing.T) {
+	a, harbor, orbit := teamsPlaceLabIDs(t)
+	drive(t, a, runCmd(a.teamsCloseAsk(harbor))...)
+	if got, _ := a.teamByID(orbit); !got.Closed() {
+		t.Fatal("closing the parent left the sub-team open")
+	}
+	drive(t, a, runCmd(a.teamsDo(teamsTargetOf(t, a, teamsActClosedFold, "")))...)
+	drive(t, a, runCmd(a.teamsSelect(orbit))...)
+	text := teamsFrameText(a)
+	for _, want := range []string{"Reopen harbor too", "Delete…", "closed"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the closed sub-team lost %q:\n%s", want, text)
+		}
+	}
+	drive(t, a, runCmd(a.teamsDo(teamsTargetOf(t, a, teamsActReopenParent, orbit)))...)
+	for _, id := range []string{harbor, orbit} {
+		if got, _ := a.teamByID(id); got.Closed() {
+			t.Fatalf("%s is still closed", got.Name)
+		}
+	}
+}
+
+// ── members ─────────────────────────────────────────────────────────────────
+
+// A MEMBER THIS WINDOW DOES NOT HOLD IS RESUMED BEHIND, in its own tab, and
+// the person stays where they are.
+func TestTeamsMemberPressResumesItBehind(t *testing.T) {
+	a, harbor, _ := teamsPlaceLabIDs(t)
+	far := "/tmp/lab/far-away.jsonl"
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		return f.AddMember(harbor, teamstore.Member{Key: a.convKey(far), File: far, Where: "/tmp/lab", Word: "far", Handle: "far"})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	opened := ""
+	a.open = func(where, file string) (Conversation, error) {
+		opened = file
+		return Conversation{Agent: &fakeAgent{model: "m"}, Workspace: where, SessionFile: file}, nil
+	}
+	front := a.frontTabKey()
+	text := teamsFrameText(a)
+	if !strings.Contains(text, "@far") || !strings.Contains(text, "not open") {
+		t.Fatalf("a member this window does not hold is not listed:\n%s", text)
+	}
+	var member teamsTarget
+	for _, tg := range a.tp.targets {
+		if tg.act == teamsActMember && tg.arg == a.convKey(far) {
+			member = tg
+		}
+	}
+	if member.arg == "" {
+		t.Fatalf("no target for @far:\n%s", teamsFrameText(a))
+	}
+	drive(t, a, runCmd(a.teamsDo(member))...)
+	if opened != far {
+		t.Fatalf("the press opened %q", opened)
+	}
+	if a.frontTabKey() != front || !a.at(pageTeams) {
+		t.Fatalf("the resume moved the person: front %q page %q", a.frontTabKey(), a.page.word())
+	}
+	if !a.trafficHeld(a.convKey(far)) {
+		t.Fatal("the member is not held behind")
+	}
+}
+
+// ── over --host ─────────────────────────────────────────────────────────────
+
+// OVER --host THE SETTINGS TEAMS TAB SAYS WHOSE DEFAULTS THE TEAMS READ and
+// does not edit this machine's.
+func TestTeamsSettingsTabOverHostIsReadOnlyAndSaysWhose(t *testing.T) {
+	a := placeApp(t)
+	a.host = "spark"
+	drive(t, a, key(placeChord(pageSettings)))
+	for i, title := range settingTabs {
+		if title == tabTeams {
+			a.sheet.tab = i
+		}
+	}
+	a.sheet.build()
+	if note := a.sheet.footNote(); !strings.Contains(note, "on spark") {
+		t.Fatalf("the Teams tab over --host says %q", note)
+	}
+	before := a.sheet.items[a.sheet.cursor].row.Value()
+	drive(t, a, key("enter"))
+	if a.sheet.edit != nil || !strings.Contains(a.sheet.msg, "spark") {
+		t.Fatalf("a Teams row took an edit over --host (msg %q)", a.sheet.msg)
+	}
+	if after := a.sheet.items[a.sheet.cursor].row.Value(); after != before {
+		t.Fatalf("the row changed from %q to %q", before, after)
+	}
+	a.host = ""
+	a.sheet.host = ""
+	if note := a.sheet.footNote(); !strings.Contains(note, "a team can override any of these on its card") {
+		t.Fatalf("the Teams tab says %q", note)
+	}
+}
+
+// ── organize ────────────────────────────────────────────────────────────────
+
+// ORGANIZE OFFERS TO CLOSE THE QUIET TEAMS, ticked like every suggestion,
+// never on its own, and Undo reopens them.
+func TestOrganizeOffersToCloseQuietTeamsWithUndo(t *testing.T) {
+	a, harbor, orbit := teamsPlaceLabIDs(t)
+	old := a.now().Add(-10 * 24 * time.Hour)
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		for i := range f.Teams {
+			f.Teams[i].Made = old
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	flushTeams(t, a)
+	_ = a.openWall()
+	a.wallSetTeam("")
+	drive(t, a, runCmd(a.wallOrganizeOpen())...)
+	var quiet *orgProp
+	for i := range a.wall.org.props {
+		if a.wall.org.props[i].team == orgCloseRow {
+			quiet = &a.wall.org.props[i]
+		}
+	}
+	if quiet == nil || len(quiet.closes) != 2 || quiet.name != "Close 2 quiet teams" {
+		t.Fatalf("Organize did not offer the quiet teams: %+v", a.wall.org.props)
+	}
+	for _, id := range []string{harbor, orbit} {
+		if got, _ := a.teamByID(id); got.Closed() {
+			t.Fatal("a suggestion closed a team before Apply")
+		}
+	}
+	a.wallOrganizeApply()
+	for _, id := range []string{harbor, orbit} {
+		if got, _ := a.teamByID(id); !got.Closed() {
+			t.Fatalf("Apply left %s open", got.Name)
+		}
+	}
+	a.wallOrganizeUndo()
+	for _, id := range []string{harbor, orbit} {
+		if got, _ := a.teamByID(id); got.Closed() {
+			t.Fatalf("Undo left %s closed", got.Name)
+		}
 	}
 }

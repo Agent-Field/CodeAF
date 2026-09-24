@@ -406,7 +406,7 @@ func (a *app) wallOrganizeOpen() tea.Cmd {
 	a.wall.hover = wallHitRef{}
 	a.wall.stirred = true
 	a.touch()
-	quiet := a.wallOrganizeQuiet(o.gen)
+	quietAsk := a.wallOrganizeQuietAsk(o.gen)
 	convs := a.orgConvs()
 	var proposer teamProposer
 	if a.agent != nil {
@@ -414,7 +414,17 @@ func (a *app) wallOrganizeOpen() tea.Cmd {
 	}
 	if proposer == nil || len(convs) < 2 {
 		a.wallOrganizeShow(nil, proposer == nil && len(convs) >= 2, "")
-		return quiet
+		if quietAsk == nil {
+			return nil
+		}
+		gen := o.gen
+		return a.besideLine(func() func(here bool) tea.Cmd {
+			ids := quietAsk()
+			return func(bool) tea.Cmd {
+				a.wallOrganizeQuietTake(gen, ids)
+				return nil
+			}
+		})
 	}
 	in := session.TeamProposalInput{}
 	for _, c := range convs {
@@ -429,22 +439,28 @@ func (a *app) wallOrganizeOpen() tea.Cmd {
 	}
 	gen := o.gen
 	o.thinking = true
-	return tea.Batch(quiet, a.besideLine(func() func(here bool) tea.Cmd {
+	return a.besideLine(func() func(here bool) tea.Cmd {
+		var quiet []string
+		if quietAsk != nil {
+			quiet = quietAsk()
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), organizeWait)
 		defer cancel()
 		res, err := proposer.ProposeTeams(ctx, in)
 		return func(bool) tea.Cmd {
+			a.wallOrganizeQuietTake(gen, quiet)
 			a.wallOrganized(gen, res, err)
 			return nil
 		}
-	}))
+	})
 }
 
-// wallOrganizeQuiet asks, off the loop, which open teams have been quiet for
+// wallOrganizeQuietAsk is the question, to be asked off the loop in the same
+// read as the model's, of which open teams have been quiet for
 // [teamstore.QuietAfter] with nothing waiting, for the card's `Close N quiet
-// teams`. It reads this machine's profile, so over --host it asks nothing:
-// the engine has no door for it yet, and the card simply does not offer it.
-func (a *app) wallOrganizeQuiet(gen int) tea.Cmd {
+// teams`. It reads this machine's profile, so over --host it is nil: the
+// engine has no door for it yet, and the card simply does not offer it.
+func (a *app) wallOrganizeQuietAsk(gen int) func() []string {
 	o := &a.wall.org
 	o.quiet, o.quietGen = nil, gen
 	if a.hosted() || a.teamsOff() {
@@ -452,15 +468,13 @@ func (a *app) wallOrganizeQuiet(gen int) tea.Cmd {
 	}
 	dir, now := a.profileDir, a.now()
 	tree := &teamstore.File{Teams: teamsClone(a.wall.teams)}
-	return a.besideLine(func() func(here bool) tea.Cmd {
+	return func() []string {
 		ids, err := teamstore.Quiet(dir, tree, now, teamstore.QuietAfter)
-		return func(bool) tea.Cmd {
-			if err == nil {
-				a.wallOrganizeQuietTake(gen, ids)
-			}
+		if err != nil {
 			return nil
 		}
-	})
+		return ids
+	}
 }
 
 // wallOrganizeQuietTake folds the quiet teams in: kept for the card, and put

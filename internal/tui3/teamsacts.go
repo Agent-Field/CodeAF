@@ -79,6 +79,8 @@ func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 		return nil
 	case teamsActPrompt:
 		return a.teamsPrompt(t.arg, t.opt)
+	case teamsActUndo:
+		return a.teamsUndoClose()
 	}
 	return nil
 }
