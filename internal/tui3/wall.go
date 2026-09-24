@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"context"
 	"math/rand/v2"
 	"strings"
 	"time"
@@ -206,6 +207,7 @@ func (a *app) wallFrame(width, height int) []string {
 		naming:    a.wall.naming,
 		name:      a.wall.name,
 		nameFresh: a.wall.nameFresh,
+		asking:    a.wall.nameAsking,
 		made:      a.wall.made,
 		madeN:     a.wall.madeN,
 		madeAt:    a.wall.madeAt,
@@ -335,16 +337,17 @@ func (a *app) wallKey(msg tea.KeyPressMsg) tea.Cmd {
 			}
 		case "backspace":
 			a.wall.name = dropLastRune(a.wall.name)
-			a.wall.nameFresh = false
+			a.wall.nameFresh, a.wall.nameAsking = false, false
 		default:
 			if t := msg.Key().Text; t != "" {
 				// A name the wall filled in is selected: the first key typed
-				// replaces it, as it would in any text field.
+				// replaces it, as it would in any text field. The name being
+				// asked for is no longer wanted: the person is naming it.
 				if a.wall.nameFresh {
 					a.wall.name = ""
 				}
 				a.wall.name += t
-				a.wall.nameFresh = false
+				a.wall.nameFresh, a.wall.nameAsking = false, false
 			}
 		}
 		return nil
@@ -432,7 +435,7 @@ func (a *app) wallCommand(key string, tiles []wallTile) tea.Cmd {
 			a.wallOpenMembers([]string{tiles[a.wall.focus].tab.key}, a.wallAnchor(wallHitTeams, a.wall.focus))
 		}
 	case "s":
-		a.wallStartNaming(tiles)
+		return a.wallStartNaming(tiles)
 	case "x":
 		// The picked views, as the tray's Close views does; with none picked,
 		// the focused one's, as its Close does.
@@ -577,14 +580,20 @@ func (a *app) wallCols(by, n int) {
 // wallStartNaming opens the new-team card with a name already in it. Nothing
 // marked names the focused tile alone, which is the one a person pressing s
 // is looking at.
-func (a *app) wallStartNaming(tiles []wallTile) {
+//
+// THE NAME IS GIVEN ONCE, HERE, FROM WHAT THE CONVERSATIONS ARE. A shared
+// project folder is the name, and nothing is asked. Otherwise a pleasant word
+// is shown at once and one model call is asked for a better one off the loop
+// ([app.wallAskName]); it replaces the word only if the person has not typed.
+// After the card is saved nothing renames a team but the person.
+func (a *app) wallStartNaming(tiles []wallTile) tea.Cmd {
 	marked := a.wallMarkedTabs(tiles)
 	if len(marked) == 0 && len(tiles) > 0 {
 		a.wall.marked[tiles[a.wall.focus].tab.key] = true
 		marked = a.wallMarkedTabs(tiles)
 	}
 	if len(marked) == 0 {
-		return
+		return nil
 	}
 	a.wall.naming = true
 	a.wall.filterOn = false
@@ -595,6 +604,99 @@ func (a *app) wallStartNaming(tiles []wallTile) {
 	// and the best is taken until the person takes another.
 	a.wall.choices = teamHueChoices(a.teamHues(""), teamReservedHues(a.pal), wallSwatchCount)
 	a.wall.choice = 0
+	return a.wallAskName(marked)
+}
+
+// teamNamer is the door a team's suggested name comes through: the agent's
+// own naming errand (internal/session's teamname.go), on the path and the
+// cheap model conversations name themselves with. It is asserted rather than
+// added to [Agent], as [namedAgent] is, so an agent without it is simply not
+// asked.
+type teamNamer interface {
+	NameTeam(ctx context.Context, titles []string) (string, error)
+}
+
+// teamNameWait is the most a suggestion is waited for. Past it the word
+// already in the card is the name and the suggestion is dropped.
+const teamNameWait = 5 * time.Second
+
+// wallNameTimeMsg ends the wait for suggestion gen.
+type wallNameTimeMsg struct{ gen int }
+
+// wallAskName asks the agent once, off the loop, for a name for marked, and
+// says `naming…` in the card while it waits. It asks nothing when the
+// conversations share a folder, whose name is already the right one, or when
+// there is no agent that names.
+func (a *app) wallAskName(marked []chatTab) tea.Cmd {
+	a.wall.nameGen++
+	a.wall.nameAsking = false
+	if teamFolder(marked) != "" || a.agent == nil {
+		return nil
+	}
+	namer, ok := a.agent.(teamNamer)
+	if !ok {
+		return nil
+	}
+	var titles []string
+	for _, tab := range marked {
+		title := tab.full
+		if strings.TrimSpace(title) == "" {
+			title = tab.word
+		}
+		if title = strings.TrimSpace(title); title != "" {
+			titles = append(titles, title)
+		}
+	}
+	if len(titles) == 0 {
+		return nil
+	}
+	gen := a.wall.nameGen
+	a.wall.nameAsking = true
+	ask := a.besideLine(func() func(here bool) tea.Cmd {
+		ctx, cancel := context.WithTimeout(context.Background(), teamNameWait)
+		defer cancel()
+		name, err := namer.NameTeam(ctx, titles)
+		return func(bool) tea.Cmd {
+			a.wallTeamNamed(gen, name, err)
+			return nil
+		}
+	})
+	wait := tea.Tick(teamNameWait, func(time.Time) tea.Msg { return wallNameTimeMsg{gen: gen} })
+	return tea.Batch(ask, wait)
+}
+
+// wallTeamNamed takes suggestion gen into the card, if it is still the one
+// being waited for, the card is still up and the person has not typed. A
+// failure, an empty answer or a name another team already has leaves the word
+// that was there.
+func (a *app) wallTeamNamed(gen int, name string, err error) {
+	if gen != a.wall.nameGen || !a.wall.nameAsking {
+		return
+	}
+	a.wall.nameAsking = false
+	a.touch()
+	if err != nil || !a.wall.naming || !a.wall.nameFresh {
+		return
+	}
+	name = ansi.Truncate(strings.TrimSpace(name), teamNameCells, "")
+	if name == "" {
+		return
+	}
+	for _, taken := range a.teamNames() {
+		if strings.EqualFold(taken, name) {
+			return
+		}
+	}
+	a.wall.name = name
+}
+
+// wallNameTimedOut ends the wait for suggestion gen: the word in the card
+// stays, and an answer that comes later is not used.
+func (a *app) wallNameTimedOut(gen int) {
+	if gen == a.wall.nameGen && a.wall.nameAsking {
+		a.wall.nameAsking = false
+		a.touch()
+	}
 }
 
 // wallSwatchCount is how many colours a card offers.
@@ -606,6 +708,10 @@ const wallSwatchCount = 6
 func (a *app) wallShuffleName(tiles []wallTile) {
 	a.wall.name = teamFreshName(a.wallMarkedTabs(tiles), a.teamNames(), a.wall.name, rand.IntN)
 	a.wall.nameFresh = true
+	// A shuffle is the person choosing: a suggestion still on its way is
+	// no longer wanted.
+	a.wall.nameGen++
+	a.wall.nameAsking = false
 	if c := len(a.wall.choices); c > 0 {
 		a.wall.choice = (a.wall.choice + 1) % c
 	}
@@ -917,7 +1023,7 @@ func (a *app) wallDo(hit wallHit) tea.Cmd {
 	case wallHitChipMenu:
 		a.wallOpenSettings(hit.id, a.wallLocal(hit))
 	case wallHitAddTeam:
-		a.wallStartNaming(tiles)
+		return a.wallStartNaming(tiles)
 	case wallHitMini:
 		a.wallMove(hit.arg, n)
 	case wallHitAction:
@@ -948,7 +1054,7 @@ func (a *app) wallAct(act wallAct, tiles []wallTile) tea.Cmd {
 	case wallActSelect:
 		a.wallToggle(tiles, a.wall.focus)
 	case wallActNewTeam, wallActMakeTeam:
-		a.wallStartNaming(tiles)
+		return a.wallStartNaming(tiles)
 	case wallActFilter:
 		a.wall.filterOn = true
 	case wallActFilterClear:

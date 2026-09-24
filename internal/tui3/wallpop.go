@@ -144,14 +144,14 @@ func (a *app) wallToggleTeam(id string, tiles []wallTile) {
 
 // wallPopNewTeam is + New team… in the teams popover: the new-team card,
 // with the popover's conversations as the ones picked.
-func (a *app) wallPopNewTeam(tiles []wallTile) {
+func (a *app) wallPopNewTeam(tiles []wallTile) tea.Cmd {
 	keys := a.wall.pop.targets
 	a.wall.pop = wallPop{}
 	a.wall.marked = map[string]bool{}
 	for _, key := range keys {
 		a.wall.marked[key] = true
 	}
-	a.wallStartNaming(tiles)
+	return a.wallStartNaming(tiles)
 }
 
 // wallRecolor takes colour j of the settings popover's choices, at once.
@@ -184,7 +184,7 @@ func (a *app) wallPopPress(hit wallHit, tiles []wallTile) tea.Cmd {
 	case hit.kind == wallHitSwatch && p.kind == wallPopSettings:
 		a.wallRecolor(hit.arg)
 	case p.kind == wallPopMembers && hit.arg == wallPopNew:
-		a.wallPopNewTeam(tiles)
+		return a.wallPopNewTeam(tiles)
 	case p.kind == wallPopMembers:
 		if i := teamIndex(a.wall.teams, hit.id); i >= 0 {
 			p.cursor = i
@@ -228,8 +228,7 @@ func (a *app) wallPopKey(msg tea.KeyPressMsg, tiles []wallTile) tea.Cmd {
 			p.cursor = min(p.cursor+1, last)
 		case "space", "enter":
 			if p.cursor >= last {
-				a.wallPopNewTeam(tiles)
-				return nil
+				return a.wallPopNewTeam(tiles)
 			}
 			if p.cursor >= 0 {
 				a.wallToggleTeam(a.wall.teams[p.cursor].ID, tiles)
