@@ -200,8 +200,10 @@ func TestOrganizeApplyThenUndoRestoresTheExactList(t *testing.T) {
 	if _, err := a.teamMake("orbit", []chatTab{tiles[1].tab}); err != nil {
 		t.Fatal(err)
 	}
-	prior := teamsClone(a.wall.teams)
+	// The list Undo must give back is the one as written: the save is queued,
+	// and the member's handle and the stored time come back with it.
 	teamsFlush(t, a)
+	prior := teamsClone(a.wall.teams)
 	before, err := os.ReadFile(teamsPath(a.profileDir))
 	if err != nil {
 		t.Fatal(err)
