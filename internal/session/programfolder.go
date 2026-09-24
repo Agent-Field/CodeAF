@@ -104,8 +104,9 @@ type ProgramFolderOrder struct {
 	// `task 4 (Fix the parser)`, or `a run started at a shell`.
 	Holder string
 	// Keep is the run's record folder. The program's notes are moved into it
-	// when the run ends, and it is the name a reopen finds the run's folder by
-	// ([settleOwedProgramFolder]).
+	// when the run ends, how the folder was left is written there
+	// ([programFolderEndFile]), and it is the name a reopen finds the run's
+	// folder by ([settleOwedProgramFolder]).
 	Keep string
 	// Instead is what a folder that is the home folder is answered with,
 	// after the refusal itself ([programHomeRefusal]).
@@ -163,9 +164,9 @@ func (f *ProgramFolder) Plain() bool { return f == nil || f.Branch == "" }
 // PrepareProgramFolder readies the folder a program was asked to work in, per
 // the contract at the top of this file, and holds it for the run: the folder
 // resolved and made when it must be, the hold taken, a run that went away in
-// it finished first, and in a repository the checkout read and the program's
-// branch cut. The refusal is a sentence a person can act on, and nothing has
-// been changed when there is one.
+// it settled first, and in a repository the checkout read and the program's
+// branch cut. The refusal is a sentence a person can act on, and nothing of
+// the person's has been changed when there is one.
 func PrepareProgramFolder(order ProgramFolderOrder) (*ProgramFolder, error) {
 	if strings.TrimSpace(order.Dir) == "" {
 		return nil, errors.New(order.Program.Name + " was handed no folder to work in")
