@@ -291,6 +291,9 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 		// never asking for the person's attention.
 		if len(ev.Skills) > 0 {
 			f.note("skills · " + strings.Join(ev.Skills, ", "))
+			if n := len(f.entries); n > 0 && f.entries[n-1].kind == entryNote {
+				f.entries[n-1].carried = true
+			}
 		} else {
 			f.note(ev.Text)
 		}
