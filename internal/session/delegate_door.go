@@ -203,8 +203,19 @@ func delegateReceipt(ground string, via delegate.Delegate, record *TaskCopyRecor
 
 // delegateFolderReceipt is where a program that edits files works, as its
 // receipt says it ([delegateReceipt]).
+//
+// A FOLDER WITH NO BRANCH IS NOT ALWAYS A FOLDER WITH NO HISTORY. One inside a
+// repository whose root holds the home folder — a dotfiles repository — is
+// worked in without git because codeaf will not cut a branch there, and a
+// receipt that said it "has no git history" had the chat telling the person so,
+// or advising `git init` inside their dotfiles; it names the repository, the
+// way the run's ending does ([ProgramFolderEnd.Sentence]).
 func delegateFolderReceipt(ground string, via delegate.Delegate, record *TaskCopyRecord) string {
 	if record == nil || record.Branch == "" {
+		if _, _, outer, _ := programFolderOf(ground); outer != "" {
+			return "It is " + via.Name + "'s: it works alone in " + ground + " itself, inside the git repository at " + outer +
+				", which holds your home folder, so codeaf cuts no branch there and commits nothing; its changes are there as it makes them."
+		}
 		return "It is " + via.Name + "'s: it works alone in " + ground + " itself, which has no git history, so its changes are there as it makes them."
 	}
 	folder := ProgramFolder{Home: record.Home, Start: record.HomeSha}

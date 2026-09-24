@@ -356,3 +356,96 @@ func TestTheNextRunCarriesOnInAFolderTheOneThatWentAwayLeftClean(t *testing.T) {
 		t.Fatalf("the dead run's committed work is not on its branch:\n%s", files)
 	}
 }
+
+// A REOPEN THAT SETTLES A FINISHED PROGRAM'S FOLDER SETTLES ITS ROW DONE. The
+// program finished and codeaf closed before the row was published; the row was
+// left `interrupted` for ever, with no branch, while the page said where the
+// work was. It now reads done, with the program's result and the folder's
+// sentence, and names the branch that holds the work.
+func TestAReopenSettlesTheRowOfAProgramThatFinished(t *testing.T) {
+	repo := newTestRepo(t)
+	var dead *ProgramFolder
+	agent, id, _ := reopenedWith(t, func(store *plandb.Store, taskDir string, _ time.Time) {
+		dead = deadProgramFolder(t, repo, taskDir)
+		if err := os.Remove(filepath.Join(repo, "half.txt")); err != nil {
+			t.Fatal(err)
+		}
+		commitIn(t, repo, "done.txt")
+		if err := store.CompleteRoot("finished: its tests pass"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	row := reopenedRow(t, agent, id)
+	if row.State != TaskDone || !strings.HasPrefix(row.Report, "finished: its tests pass") ||
+		!strings.Contains(row.Report, "its work so far is on its branch "+dead.Branch) {
+		t.Fatalf("the reopened row = %+v, want it done, with its result and where its work is", row)
+	}
+	if row.Branch != dead.Branch || row.Merge != mergeKept || row.EndedAt.IsZero() {
+		t.Fatalf("the reopened row = %+v, want it to name the branch that holds the work", row)
+	}
+}
+
+// A FOLDER ANOTHER PROCESS ENDED IS READ BACK FROM THE RUN'S RECORD FOLDER.
+// Its folder was finished — by the run itself before codeaf closed, or by the
+// next run in that folder, which then wrote its own record over the one beside
+// the hold — and the reopen found nothing owed, so the row said only that
+// codeaf closed. It now says where the work went and names the branch.
+func TestAReopenReadsTheEndingOfAFolderAnotherProcessEnded(t *testing.T) {
+	t.Run("ended by the run", func(t *testing.T) {
+		repo := newTestRepo(t)
+		var said, branch string
+		agent, id, _ := reopenedWith(t, func(_ *plandb.Store, taskDir string, _ time.Time) {
+			folder, err := PrepareProgramFolder(ProgramFolderOrder{Program: testPrograms("fake")[0], Dir: repo, Title: "The ended run", Holder: "task 9 (The ended run)", Keep: taskDir})
+			if err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, filepath.Join(repo, "fix.go"), "package fix\n")
+			said, branch = folder.Finish("done").Sentence(), folder.Branch
+		})
+		row := reopenedRow(t, agent, id)
+		if !strings.Contains(row.Report, said) || row.Branch != branch || TaskReasonOf(row.Ending, row.Report) != "codeaf closed while fake was running" {
+			t.Fatalf("the reopened row = %+v, want %q and the branch %s", row, said, branch)
+		}
+	})
+	t.Run("settled by the next run", func(t *testing.T) {
+		repo := newTestRepo(t)
+		var dead *ProgramFolder
+		agent, id, _ := reopenedWith(t, func(_ *plandb.Store, taskDir string, _ time.Time) {
+			dead = deadProgramFolder(t, repo, taskDir)
+			if err := os.Remove(filepath.Join(repo, "half.txt")); err != nil {
+				t.Fatal(err)
+			}
+			commitIn(t, repo, "done.txt")
+			next, err := PrepareProgramFolder(ProgramFolderOrder{Program: testPrograms("fake")[0], Dir: repo, Title: "The next run", Holder: "task 10 (The next run)", Keep: t.TempDir()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			next.Finish("")
+		})
+		row := reopenedRow(t, agent, id)
+		if !strings.Contains(row.Report, "its work so far is on its branch "+dead.Branch) || row.Branch != dead.Branch {
+			t.Fatalf("the reopened row = %+v, want where the dead run's work is", row)
+		}
+	})
+}
+
+// THE RECEIPT OF A FOLDER INSIDE A REPOSITORY AT THE HOME FOLDER NAMES THAT
+// REPOSITORY. It said the folder "has no git history", which the chat repeated
+// to the person, or answered with a `git init` inside their dotfiles.
+func TestTheReceiptOfAFolderUnderARepositoryAtHomeNamesIt(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	mustGit(t, home, "init", "-q")
+	writeFile(t, filepath.Join(home, ".zshrc"), "export A=1\n")
+	mustGit(t, home, "add", "-A")
+	mustGit(t, home, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "dotfiles")
+	project := filepath.Join(home, "Desktop", "pong")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	want := "It is fake's: it works alone in " + project + " itself, inside the git repository at " + canonicalPath(home) +
+		", which holds your home folder, so codeaf cuts no branch there and commits nothing; its changes are there as it makes them."
+	if got := delegateReceipt(project, testPrograms("fake")[0], &TaskCopyRecord{Dir: project}); !strings.HasPrefix(got, want) || strings.Contains(got, "no git history") {
+		t.Fatalf("the receipt = %q, want %q", got, want)
+	}
+}

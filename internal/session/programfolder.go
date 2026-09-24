@@ -203,6 +203,7 @@ func PrepareProgramFolder(order ProgramFolderOrder) (*ProgramFolder, error) {
 		end := owed.settleGone()
 		owed.Ended = end.Sentence()
 		owed.write()
+		end.keepEnding()
 		earlier = &end
 	}
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
@@ -466,6 +467,62 @@ type ProgramFolderEnd struct {
 	Refused string
 	// Notes is where the program's notes went, as a sentence.
 	Notes string
+
+	// said is the sentence a run's folder was ended with, read back from its
+	// record folder by a process that did not end it ([keptProgramFolderEnd]);
+	// [ProgramFolderEnd.Sentence] answers it as it was said.
+	said string
+}
+
+// programFolderEndFile is the file in a run's own record folder that says how
+// its folder was left: the branch, whether it holds the work, the files, and
+// the sentence.
+//
+// IT IS WRITTEN WHERE THE RUN'S RECORD LIVES, NOT ONLY BESIDE THE HOLD. The
+// record beside the hold is one folder's, and the next run in that folder
+// writes over it; and a run whose folder was ended by one process can have its
+// row settled by another — a codeaf that closed after the ending and before
+// the row. Either way the conversation that reopens the run finds its ending
+// here, and its row names the branch and where the work went instead of
+// staying `interrupted` ([Agent.settleInterruptedProgramRow]).
+const programFolderEndFile = "program-folder.json"
+
+// programFolderEnding is what [programFolderEndFile] holds.
+type programFolderEnding struct {
+	Branch  string   `json:"branch,omitempty"`
+	Kept    bool     `json:"kept,omitempty"`
+	Changed []string `json:"changed,omitempty"`
+	Said    string   `json:"said"`
+}
+
+// keepEnding writes how the run's folder was left into the run's record
+// folder ([programFolderEndFile]). It is a record, so a disk that refuses it
+// costs a later reopen its sentence and never the run.
+func (e ProgramFolderEnd) keepEnding() {
+	keep := strings.TrimSpace(e.Folder.Keep)
+	if keep == "" {
+		return
+	}
+	body, err := json.MarshalIndent(programFolderEnding{Branch: e.Folder.Branch, Kept: e.Kept, Changed: e.Changed, Said: e.Sentence()}, "", "  ")
+	if err != nil || os.MkdirAll(keep, 0o700) != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(keep, programFolderEndFile), body, 0o600)
+}
+
+// keptProgramFolderEnd is how the run whose record folder is keep left its
+// folder, as it wrote it there ([ProgramFolderEnd.keepEnding]); false when it
+// wrote nothing.
+func keptProgramFolderEnd(keep string) (ProgramFolderEnd, bool) {
+	body, err := os.ReadFile(filepath.Join(keep, programFolderEndFile))
+	if err != nil {
+		return ProgramFolderEnd{}, false
+	}
+	var ending programFolderEnding
+	if json.Unmarshal(body, &ending) != nil || strings.TrimSpace(ending.Said) == "" {
+		return ProgramFolderEnd{}, false
+	}
+	return ProgramFolderEnd{Folder: ProgramFolder{Branch: ending.Branch, Keep: keep}, Kept: ending.Kept, Changed: ending.Changed, said: ending.Said}, true
 }
 
 // Finish ends a program's run in its folder, per the fourth point of the
@@ -476,6 +533,7 @@ func (f *ProgramFolder) Finish(result string) ProgramFolderEnd {
 	end := f.settle(result)
 	f.Ended = end.Sentence()
 	f.write()
+	end.keepEnding()
 	f.release()
 	return end
 }
@@ -756,6 +814,9 @@ func (f *ProgramFolder) StopPromise() string {
 // how much of it, that its branch is checked out, and how to go back to the
 // person's own branch and bring the work in.
 func (e ProgramFolderEnd) Sentence() string {
+	if e.said != "" {
+		return e.said
+	}
 	f := e.Folder
 	var said string
 	switch {
@@ -1003,6 +1064,7 @@ func settleOwedProgramFolder(keep string) (ProgramFolderEnd, bool) {
 		end := owed.settleGone()
 		owed.Ended = end.Sentence()
 		owed.write()
+		end.keepEnding()
 		owed.release()
 		return end, true
 	}

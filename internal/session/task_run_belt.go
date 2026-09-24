@@ -783,7 +783,26 @@ func (a *Agent) endInterruptedProgramRun() {
 		return
 	}
 	end, settled := endOrphanedProgramRun(store)
+	if !settled {
+		// A FOLDER ENDED BY A PROCESS THAT DID NOT LIVE TO SETTLE THE ROW is read
+		// back from the run's record folder ([keptProgramFolderEnd]), and its
+		// page is told once where the work is.
+		taskDir := plandb.TaskDir(filepath.Dir(store.Path()), store.RootID())
+		if end, settled = keptProgramFolderEnd(taskDir); settled && !storeSays(store, end.Sentence()) {
+			_, _ = store.AddNote(store.RootID(), store.RootID(), end.Sentence())
+		}
+	}
 	a.settleInterruptedProgramRow(g, store, kept, end, settled)
+}
+
+// storeSays is whether a note on the store's root already says sentence.
+func storeSays(store *plandb.Store, sentence string) bool {
+	for _, note := range store.Notes(store.RootID(), 0) {
+		if strings.Contains(note.Body, sentence) {
+			return true
+		}
+	}
+	return false
 }
 
 // settleInterruptedProgramRow settles the row a reopen restored as interrupted
@@ -794,8 +813,13 @@ func (a *Agent) endInterruptedProgramRun() {
 // the side list draws as waiting on a person — says something the page does
 // not: the page reads it ended, in codeaf's sentence, with its time stopped.
 // The row now says the same, not as a fault, ending where the store ended it.
-// A run whose task the store calls done is left as it came back: its program
-// finished, but the work was never landed, and that is a person's call.
+//
+// A RUN WHOSE TASK THE STORE CALLS DONE SETTLES DONE. Its program finished and
+// codeaf closed before the row was published; the row used to be left
+// interrupted, on the reading that the work was never landed and that was a
+// person's call — but a program's work is never landed by anybody, it is left
+// on its branch, and this reopen settles the folder too. So the row reads done,
+// with the program's result and where the work is.
 //
 // THE ROW ENDS AT THE PROGRAM'S RECORDED EXIT when the record carries one, and
 // at the store's ending otherwise ([runClockEnd]) — the pair every live settle
@@ -807,7 +831,7 @@ func (a *Agent) endInterruptedProgramRun() {
 // when it holds the work.
 func (a *Agent) settleInterruptedProgramRow(g *TaskGraph, store *plandb.Store, kept TaskNotice, end ProgramFolderEnd, settled bool) {
 	root := store.Task(store.RootID())
-	if root == nil || (root.Status != plandb.StatusFailed && root.Status != plandb.StatusCancelled) {
+	if root == nil || (root.Status != plandb.StatusFailed && root.Status != plandb.StatusCancelled && root.Status != plandb.StatusDone) {
 		return
 	}
 	record, ok := delegate.ReadProgram(plandb.TaskDir(filepath.Dir(store.Path()), store.RootID()))
@@ -815,8 +839,14 @@ func (a *Agent) settleInterruptedProgramRow(g *TaskGraph, store *plandb.Store, k
 		return
 	}
 	row := kept
-	row.State = TaskFailed
-	row.Report, row.Ending, row.Stopped = interruptedProgramEnding(store, root, record)
+	if root.Status == plandb.StatusDone {
+		row.State, row.Ending, row.Stopped = TaskDone, "", false
+		row.Result = strings.TrimSpace(root.Result)
+		row.Report = row.Result
+	} else {
+		row.State = TaskFailed
+		row.Report, row.Ending, row.Stopped = interruptedProgramEnding(store, root, record)
+	}
 	row.EndedAt = runClockEnd(kept.StartedAt, record, root.CompletedAt)
 	row.Elapsed = 0
 	if settled {

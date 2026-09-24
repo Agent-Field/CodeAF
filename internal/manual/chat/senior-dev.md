@@ -562,12 +562,12 @@ tests could run, or to where it began.
 ## If codeaf quits while senior-dev works — closed, crashed, engine stopped, restarted mid-run, where is its work
 
 senior-dev ends with the engine holding its conversation. Leaving a hosted conversation's
-window (closing it, `ctrl+c`, a closed terminal) only detaches: senior-dev keeps working.
-When that engine is stopped (`codeaf engine --stop`, a signal) or crashes, the conversation
-itself is closed, or a `--no-host` codeaf quits, the run is over: its page and side-list
-row read `incomplete` with `codeaf closed while senior-dev was running` beside it, no
-stage, nothing waiting on you, and no fault. If senior-dev had already exited, it reads
-`senior-dev had ended; codeaf closed before it could say where its work is`.
+window only detaches: senior-dev keeps working. When that engine is stopped or crashes,
+the conversation is closed, or a `--no-host` codeaf quits, the run is over: its page and
+side-list row read `incomplete` with `codeaf closed while senior-dev was running`, no
+stage, nothing waiting on you, and no fault; or `senior-dev had ended; codeaf closed
+before it could say where its work is` if it had exited. A run senior-dev had finished
+reads done, with its result.
 
 **Its folder is settled by the next codeaf that finds the run, and nothing is
 committed**: the one that opens that conversation, hands work off in it, or starts a run
