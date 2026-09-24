@@ -6,6 +6,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/router"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -14,7 +15,7 @@ import (
 // routes on, so a change to what any of them says — a column moved, a word
 // respelled, a warning that grew a second copy — fails here and prints both
 // screens. The marks are the vocabulary's, asked of the surface ({pin}, {tick},
-// {fail}, {star}), because which repertoire draws them is the terminal's
+// {fail}, {star}, {off}), because which repertoire draws them is the terminal's
 // business and not the screen's. The paint is not pinned: the tests beside
 // these assert colour where colour is the subject.
 
@@ -23,7 +24,7 @@ func crewSnap(t *testing.T, a *app, name, want string) {
 	t.Helper()
 	want = strings.NewReplacer(
 		"{pin}", a.icon(tokens.GPinned), "{tick}", a.icon(tokens.GSettled),
-		"{fail}", a.icon(tokens.GFailed), "{star}", a.icon(tokens.GRecommended),
+		"{fail}", a.icon(tokens.GFailed), "{star}", a.icon(tokens.GRecommended), "{off}", a.icon(tokens.GQueued),
 	).Replace(strings.TrimPrefix(want, "\n"))
 	if got := crewScreen(a); got != want {
 		t.Fatalf("the %s screen moved.\n--- got ---\n%s\n--- want ---\n%s", name, got, want)
@@ -43,6 +44,7 @@ func TestCrewSnapshotPanel(t *testing.T) {
 │  checker   {pin} kimi-k3                                                                             │
 │                                                                                                  │
 │  models    ‹ all › (4)                                                                           │
+│  providers {tick} openrouter  +                                                                       │
 │  cap       none                                                                                  │
 ╰─ enter change · esc close · ? keys ──────────────────────────────────────────────────────────────╯`)
 }
@@ -89,6 +91,7 @@ func TestCrewSnapshotPriceBeingTyped(t *testing.T) {
 │  checker   auto · likely deepseek-v4-flash                                                       │
 │                                                                                                  │
 │› models    ‹ price ›  ≤ $[ 0.5 ] in / $[ 5 ] out (2)  {tick}                                          │
+│  providers {tick} openrouter  +                                                                       │
 │  cap       none                                                                                  │
 │  no strong checker among the models you allow · open-ended work will be checked weakly           │
 ╰─ enter change · esc close · ? keys ──────────────────────────────────────────────────────────────╯`)
@@ -103,8 +106,7 @@ func TestCrewSnapshotChecklist(t *testing.T) {
 	drive(t, a, key("down"), key("down"), key("down"), key("right"), key("enter"))
 	crewSnap(t, a, "checklist", `
 ╭─ crew · allowed models · 2 of 4 ─────────────────────────────────────────────────────────── esc ─╮
-│› {tick} openrouter  whole provider · metered                                                          │
-│  {tick} z-ai/glm-5.3-flash  $0.15/$0.50                                                               │
+│› {tick} z-ai/glm-5.3-flash  $0.15/$0.50                                                               │
 │    moonshotai/kimi-k3  $3/$15                                                                    │
 │  {tick} deepseek/deepseek-v4-flash  $0.08/$0.16                                                       │
 │    anthropic/claude-opus-5  $5/$25                                                               │
@@ -125,6 +127,7 @@ func TestCrewSnapshotNarrow(t *testing.T) {
 │  checker   {pin} kimi-k3                                 │
 │                                                      │
 │  models    ‹ all › (4)                               │
+│  providers {tick} openrouter  +                           │
 │  cap       none                                      │
 ╰─ enter change · esc close · ? keys ──────────────────╯`)
 }
@@ -140,6 +143,7 @@ func TestCrewSnapshotNoProviders(t *testing.T) {
 │  checker   auto                                                                                  │
 │                                                                                                  │
 │  models    ‹ all › (0)                                                                           │
+│  providers +                                                                                     │
 │  cap       none                                                                                  │
 │  no providers connected — /connect adds one                                                      │
 ╰─ enter change · esc close · ? keys ──────────────────────────────────────────────────────────────╯`)
@@ -156,6 +160,48 @@ func TestCrewSnapshotUndoOffer(t *testing.T) {
 │  checker   auto · likely deepseek-v4-flash                                                       │
 │                                                                                                  │
 │› models    ‹ open › (3)  {tick}                                                                       │
+│  providers {tick} openrouter  +                                                                       │
 │  cap       none                                                                                  │
 ╰─ enter change · esc close · ? keys ───────────────────────────────────────────────────── z undo ─╯`)
+}
+
+func TestCrewSnapshotProvidersRow(t *testing.T) {
+	a, dir := crewProvidersLab(t)
+	if err := config.SetCrewProviderOn(dir, "ollama", false); err != nil {
+		t.Fatal(err)
+	}
+	crewToProviders(t, a)
+	crewSnap(t, a, "providers row", `
+╭─ crew ───────────────────────────────────────────────────────────────────────────────────── esc ─╮
+│  worker    auto · likely glm-5.3-flash                                                           │
+│  planner   auto · likely glm-5.3-flash                                                           │
+│  checker   auto · likely deepseek-v4-flash                                                       │
+│                                                                                                  │
+│  models    ‹ all › (4)                                                                           │
+│› providers {tick} openrouter  {tick} z-ai sub  {off} ollama local  {tick} my-vllm  +                                │
+│  cap       none                                                                                  │
+╰─ enter change · space toggle · esc close · ? keys ───────────────────────────────────────────────╯`)
+}
+
+func TestCrewSnapshotProvidersList(t *testing.T) {
+	a, dir := crewProvidersLab(t)
+	if err := config.SetCrewProviderOn(dir, "ollama", false); err != nil {
+		t.Fatal(err)
+	}
+	// A task whose worker and planner rode OpenRouter and whose checker rode the
+	// plan: the whole of its cost is OpenRouter's.
+	record := router.CrewRecord{TaskClass: "bugfix", Seats: map[string]string{"worker": "a", "planner": "b", "checker": "c"},
+		Providers: map[string]string{"worker": "openrouter", "planner": "openrouter", "checker": "z-ai"},
+		Kinds:     map[string]string{"worker": "metered", "planner": "metered", "checker": "plan"}}
+	router.LogCrewDecision(config.ProfilePath(dir, ""), "crew:snap", record, nil)
+	router.LogCrewOutcome(config.ProfilePath(dir, ""), "crew:snap", record, router.CrewAccepted, 0.21)
+	crewToProviders(t, a)
+	drive(t, a, key("enter"))
+	crewSnap(t, a, "providers list", `
+╭─ crew · providers · 3 of 4 on ───────────────────────────────────────────────────────────── esc ─╮
+│› {tick} openrouter  api key          4 models  · today $0.210   on                                    │
+│  {tick} z-ai        subscription     1 model   · nothing today  on                                    │
+│  {off} ollama      local            0 models  · nothing today  off                                   │
+│  {tick} my-vllm     custom endpoint  pins only · nothing today  on                                    │
+╰─ space or enter toggle · esc back ───────────────────────────────────────────────────────────────╯`)
 }

@@ -49,6 +49,7 @@ models.crew.allowed
 models.crew.cap
 models.crew.free_routes
 models.crew.pick
+models.crew.providers.off
 models.crew.source
 models.fallbacks
 models.pool.public_key

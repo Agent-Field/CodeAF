@@ -1426,6 +1426,37 @@ Beyond the four tiers, these are the exact points where parts of the screen give
 | landed task card | nothing below width 8 |
 | turn receipt | none below width 8 |
 
+## The crew panel on screen — the /crew frame, its providers row, and what gives way when narrow
+
+`/crew` hangs one frame over the conversation, in the place every overlay takes, with the
+input line under it. Its rows, top to bottom: the three seats, a blank line, **models**,
+**providers**, **cap**, then the dim `today` line and any warning.
+
+```
+│  models    ‹ all › (96)                                             │
+│› providers ✓ openrouter  ✓ z-ai sub  ✓ ollama local  ○ my-vllm  +   │
+│  cap       none                                                     │
+```
+
+A provider chip is `✓` and its name when it is on, `○` and dim when it is off; the chip
+under the cursor is bold, and `+` at the end is `/connect`. The row that just changed wears
+a tick `✓` at its end, and the frame's bottom edge offers `z undo` for five seconds.
+
+`enter` on the providers row swaps the rows for the providers list, titled
+`crew · providers · 3 of 4 on`:
+
+```
+│› ✓ openrouter  api key          96 models · today $1.20    on       │
+│  ✓ z-ai        subscription     4 models  · nothing today  on       │
+│  ✓ ollama      local            2 models  · nothing today  on       │
+│  ○ my-vllm     custom endpoint  pins only · nothing today  off      │
+```
+
+What gives way when the window narrows, in order: the seats drop their
+`usually <model>` hint, the provider chips drop their `local` word, and then the chips fold
+into one count — `providers 3 of 4 on` — where `space` and `enter` open the list instead.
+Nothing on the panel is cut with `…`: a row that does not fit is said shorter.
+
 ## The two-row status deck at phone width
 
 Under 60 columns the status row becomes a deck of exactly two rows — never one, never

@@ -493,20 +493,21 @@ it.
 
 ### The /crew panel
 
-Bare `/crew` opens the crew panel: a framed panel over the conversation, with five rows you
+Bare `/crew` opens the crew panel: a framed panel over the conversation, with six rows you
 can change and one line about the day.
 
 ```
-╭─ crew ─────────────────────────────────────── esc ─╮
-│› worker    auto · usually glm-5.3-flash            │
-│  planner   auto · usually glm-5.3-flash            │
-│  checker   ⌖ kimi-k3                               │
-│                                                    │
-│  models    ‹ all › (96)                            │
-│  cap       none                                    │
-│                                                    │
-│  today $1.84 · 14 tasks                            │
-╰─ enter change · esc close · ? keys ────────────────╯
+╭─ crew ──────────────────────────────────────────────────────── esc ─╮
+│› worker    auto · usually glm-5.3-flash                             │
+│  planner   auto · usually glm-5.3-flash                             │
+│  checker   ⌖ kimi-k3                                                │
+│                                                                     │
+│  models    ‹ all › (96)                                             │
+│  providers ✓ openrouter  ✓ z-ai sub  ✓ ollama local  ○ my-vllm  +   │
+│  cap       none                                                     │
+│                                                                     │
+│  today $1.84 · 14 tasks                                             │
+╰─ enter change · esc close · ? keys ─────────────────────────────────╯
 ```
 
 - **the seats** — `auto · usually <model>` for a seat codeaf picks, naming the model recent
@@ -514,15 +515,28 @@ can change and one line about the day.
   model, with `@provider` when a route is pinned too. A pin nothing connected can run says
   `unavailable`.
 - **models** — which models a seat may be picked from, walked with `←`/`→` in place:
-  `all`, `open`, `price`, `custom`, with the number of models each admits in brackets.
+  `all`, `open`, `price`, `custom`, with the number of models each admits in brackets. The
+  number counts only models a provider that is on still serves.
+- **providers** — one chip per connected provider: `✓` on, `○` off and dim. An API key is
+  its plain name, a subscription says `sub`, a model on this machine says `local` when there
+  is room, and a custom endpoint is the name you gave it. The `+` at the end opens
+  `/connect`. On a narrow window the chips fold to `3 of 4 on`.
 - **cap** — the most crews may spend in a day, `none` for no cap.
 - **today** — what crews spent today and how many tasks ran. A day with nothing in it has
   no line.
 
-Providers are not a row. They come from your connections, and the panel only names them
-when something cannot work: `no providers connected — /connect adds one`, or a pin whose
-provider is not connected. A rule that leaves open-ended work without a strong checker says
-so under the rows.
+**The allowed models are the models rule less every model no provider that is on serves.**
+Turning a provider off takes its routes away, never a model: a model another provider still
+serves stays allowed on that route, and the crew's routing and its route costs only ever
+use providers that are on. Which providers are off is saved beside the rule, not inside it,
+so walking the models row to a new answer never turns a provider back on. A provider you
+connect later is on the day you connect it. **At least one provider must stay on**: turning
+off the last one is refused under the rows with `at least one provider must stay on`. A
+pinned seat whose only provider is off says `provider off` on its row.
+
+With nothing connected the panel says `no providers connected — /connect adds one`; a pin
+whose provider is not connected says `unavailable`. A rule that leaves open-ended work
+without a strong checker says so under the rows.
 
 Every change is saved the moment you make it, and the next task uses it with no relaunch.
 The changed row wears a tick `✓`, and for five seconds the bottom edge offers `z undo`,
@@ -544,15 +558,26 @@ which puts things back exactly as they were.
 - **models row**: `←`/`→` step between `all`, `open`, `price` and `custom`, saving each.
   On `price` the row becomes two boxes, `≤ $[ 1 ] in / $[ 5 ] out`; `enter` edits the
   first, `enter` (or `tab`) moves to the second, `enter` saves. On `custom`, `enter` opens
-  a checklist of your providers (`whole provider`) and every model they reach, ticked where
-  the rule admits it: type to filter, `space` or `enter` ticks and unticks, and each tick is
-  saved as the shortest rule that says it (`open -deepseek`, `all -openrouter`).
+  a checklist of every model your providers reach — models only; providers are the
+  providers row's — ticked where the rule admits it: type to filter, `space` or `enter`
+  ticks and unticks, and each tick is saved as the shortest rule that says it
+  (`open -deepseek`, `all -moonshotai/kimi-k3`).
+- **providers row**: `←`/`→` walk the chips, `space` turns the one under the cursor off or
+  on (the bottom edge says `space toggle` only on this row), and `space` on `+` opens
+  `/connect`. `enter` opens the providers list: one line per provider with how it bills
+  (`api key`, `subscription`, `local`, `custom endpoint`), how many models it serves, what it
+  carried today and `on` or `off`; `space` or `enter` toggles the line under the cursor, `z`
+  undoes, `esc` goes back to the row.
 - **cap row**: type a figure (a digit starts it) and `enter`; empty it and `enter` for none.
   A figure that is not dollars is refused under the rows.
 - `z` undoes the last change while the bottom edge offers it; `?` shows every key;
   `esc` goes back exactly one level, and on the panel closes it.
-- **Mouse**: a click on a row is `enter`; a click on `‹` or `›` steps the models row; the
-  wheel scrolls a list.
+- **Mouse**: a click on a row is `enter`; a click on `‹` or `›` steps the models row; a
+  click on a provider chip toggles it; the wheel scrolls a list.
+- **Filtering a seat's list** finds a model from the front of its name: a prefix of the id
+  or the name comes first, then a word inside it (`flash`), then the letters anywhere inside
+  it. A row whose letters only match scattered — `kim` in `grok-imagine` — is shown only
+  when nothing matched better.
 
 Typical keystrokes: pin the checker is `/crew ↓ ↓ enter kim enter`; allow open-weight
 models only is `/crew ↓ ↓ ↓ →`; a $5 cap is `/crew`, down to `cap`, `5`, `enter`.
@@ -579,7 +604,7 @@ the rule would have to break is not a pin. And a pinned model none of your conne
 reach is not quietly swapped: the task does not start, and says why.
 
 In `/settings` → Providers the three seats are one row, **seats**, which says how many are
-pinned, the allowed rule and the cap; `enter` on it opens the crew panel, and `esc` there
+pinned, the allowed rule, how many providers are on and the cap; `enter` on it opens the crew panel, and `esc` there
 brings you back to the row.
 
 ### Which models are allowed
@@ -596,7 +621,8 @@ Any rule can be followed by `+x` and `-x`, read left to right: `open -deepseek` 
 open model but DeepSeek's, and `≤1/5 +moonshotai/kimi-k3` is the price rule with one
 exception let in. `/crew models +kimi-k3` or `/crew models -deepseek` changes the rule in
 force by one word. A `-x` naming a **provider** — `-openrouter` — takes that provider's
-routes away rather than any model.
+routes away rather than any model; to switch a provider off for the crew, use the panel's
+**providers** row, which keeps the choice when the rule changes.
 
 A rule that would leave a pinned seat outside it is refused until you unpin the seat, and
 a rule that does not parse is refused with the reason — a typo that silently allowed

@@ -91,22 +91,22 @@ func (j *crewJourney) open() {
 
 // ── the five journeys ───────────────────────────────────────────────────────
 
-// CHECK: /crew, esc. The panel says the three seats, the models and the cap,
-// and esc takes it down.
+// CHECK: /crew, esc. The panel says the three seats, the models, the
+// providers and the cap, and esc takes it down.
 func TestCrewJourneyCheck(t *testing.T) {
 	a, _ := crewLab(t)
 	j := &crewJourney{t: t, a: a}
 	j.open()
 	screen := crewScreen(a)
 	for _, want := range []string{crewTitleWord, "worker", "planner", "checker", "auto",
-		"models", "‹ all ›", "cap", "none", crewMainKeys, "esc"} {
+		"models", "‹ all ›", "providers", "cap", "none", crewMainKeys, "esc"} {
 		if !strings.Contains(screen, want) {
 			t.Errorf("the panel does not say %q:\n%s", want, screen)
 		}
 	}
-	// PROVIDERS ARE NOT A ROW on a profile where they are fine.
-	if strings.Contains(screen, "openrouter") {
-		t.Errorf("a connected provider is drawn as a row:\n%s", screen)
+	// THE ONE CONNECTED PROVIDER IS A CHIP, on, with the `+` beside it.
+	if row := crewLineWith(t, screen, "providers"); !strings.Contains(row, a.icon(tokens.GSettled)+" openrouter  "+crewConnectChip) {
+		t.Errorf("the providers row reads %q", row)
 	}
 	j.keys("esc")
 	if a.crewUI.open {
@@ -194,7 +194,7 @@ func TestCrewJourneyCap(t *testing.T) {
 	a, dir := crewLab(t)
 	j := &crewJourney{t: t, a: a}
 	j.open()
-	j.keys("down", "down", "down", "down")
+	j.keys("down", "down", "down", "down", "down")
 	j.typed("5")
 	if row := crewLineWith(t, crewScreen(a), "cap"); !strings.Contains(row, "$[ 5 ]") {
 		t.Fatalf("typing on the cap row did not open its hole: %q", row)
@@ -203,7 +203,7 @@ func TestCrewJourneyCap(t *testing.T) {
 	if got := config.CrewCapAt(dir); got != 5 {
 		t.Fatalf("the cap reads %v", got)
 	}
-	if j.count != 7 {
+	if j.count != 8 {
 		t.Fatalf("setting the cap took %d steps", j.count)
 	}
 	t.Logf("set cap: %d steps", j.count)
@@ -358,8 +358,9 @@ func TestCrewPriceIsTypedOnTheRow(t *testing.T) {
 	}
 }
 
-// CUSTOM IS THE CHECKLIST: providers whole, then models, each ticked where the
-// rule admits it — and a tick writes the shortest rule that says it.
+// CUSTOM IS THE CHECKLIST: the models, each ticked where the rule admits it —
+// and a tick writes the shortest rule that says it. A provider is not a line
+// of it: providers are the providers row's.
 func TestCrewChecklist(t *testing.T) {
 	a, dir := crewLab(t)
 	if err := config.SetCrewAllowed(dir, "open -deepseek"); err != nil {
@@ -376,8 +377,8 @@ func TestCrewChecklist(t *testing.T) {
 		t.Fatal("enter on custom did not open the checklist")
 	}
 	screen := crewScreen(a)
-	if !strings.Contains(crewLineWith(t, screen, "whole provider"), a.icon(tokens.GSettled)+" openrouter") {
-		t.Fatalf("the provider is not ticked:\n%s", screen)
+	if strings.Contains(screen, "whole provider") || strings.Contains(screen, "  openrouter") {
+		t.Fatalf("the checklist still lists a provider:\n%s", screen)
 	}
 	if strings.Contains(crewLineWith(t, screen, "deepseek-v4-flash"), a.icon(tokens.GSettled)) {
 		t.Fatalf("an excluded model is ticked:\n%s", screen)

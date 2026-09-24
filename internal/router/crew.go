@@ -103,6 +103,9 @@ type CrewLog struct {
 	Tasks    int
 	OnPlan   int
 	Local    int
+	// ProviderUSD is today's settled crew spend by the provider that carried
+	// it ([crewProviderShares]), for the /crew panel's list of providers.
+	ProviderUSD map[string]float64
 	// Recent is the last few tasks, newest first.
 	Recent []CrewTask
 	// Offsets is the learned escalation offset per repository and class,
@@ -128,7 +131,7 @@ const (
 // ReadCrewLog reads the crew rows out of the log's tail. now decides which
 // day is today, in the local time zone the person lives in.
 func ReadCrewLog(dir string, now time.Time) CrewLog {
-	out := CrewLog{Offsets: map[string]int{}}
+	out := CrewLog{Offsets: map[string]int{}, ProviderUSD: map[string]float64{}}
 	path, err := statePath(dir, "router-events.jsonl")
 	if err != nil {
 		return out
@@ -191,6 +194,9 @@ func ReadCrewLog(dir string, now time.Time) CrewLog {
 		if y, m, d := task.At.Local().Date(); y == year && m == month && d == day {
 			out.Tasks++
 			out.SpentUSD += task.CostUSD
+			for provider, share := range crewProviderShares(task.Record, task.CostUSD) {
+				out.ProviderUSD[provider] += share
+			}
 			switch task.Record.Kinds["worker"] {
 			case "plan":
 				out.OnPlan++
@@ -206,6 +212,38 @@ func ReadCrewLog(dir string, now time.Time) CrewLog {
 	}
 	for i := len(order) - 1; i >= 0 && len(out.Recent) < crewRecent; i-- {
 		out.Recent = append(out.Recent, *tasks[order[i]])
+	}
+	return out
+}
+
+// crewProviderShares is one task's cost laid on the providers that carried it.
+//
+// THE LOG KEEPS A TASK'S COST WHOLE and each seat's provider beside it, not a
+// cost per seat, so the share is by seat: the cost is split evenly across the
+// seats that rode a metered route, because a plan or a local model adds
+// nothing to what a task costs. A task whose seats all rode a plan or a local
+// model — or that names no provider at all — lays its cost, if it has one, on
+// nobody rather than on a provider that cannot have charged it.
+func crewProviderShares(record CrewRecord, costUSD float64) map[string]float64 {
+	if costUSD <= 0 {
+		return nil
+	}
+	var metered []string
+	for seat, provider := range record.Providers {
+		if provider == "" {
+			continue
+		}
+		if kind := record.Kinds[seat]; kind == "plan" || kind == "local" {
+			continue
+		}
+		metered = append(metered, provider)
+	}
+	if len(metered) == 0 {
+		return nil
+	}
+	out := map[string]float64{}
+	for _, provider := range metered {
+		out[provider] += costUSD / float64(len(metered))
 	}
 	return out
 }

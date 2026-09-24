@@ -397,3 +397,75 @@ func TestCrewStateRestoresTheRows(t *testing.T) {
 		t.Fatal("an absent row came back as a written one")
 	}
 }
+
+// A PROVIDER TURNED OFF IS A ROUTE TAKEN AWAY, in a row of its own: the router
+// never picks through it, the offers mark a model only it reached as not
+// allowed, the last provider on cannot be turned off, a pin naming it is
+// refused, and the undo puts the row back with the others.
+func TestCrewProvidersTurnedOff(t *testing.T) {
+	dir := crewProfile(t)
+	if err := writeProfileValue(dir, keyModelSources, []PersistedSource{{ID: "z-ai", Written: "z-ai", Key: "zai-key-0123456789", Door: "coding-plan", Order: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	before := CrewStateAt(dir)
+	for _, p := range CrewProvidersAt(dir) {
+		if !p.On {
+			t.Fatalf("a connection nobody turned off reads off: %+v", p)
+		}
+	}
+	if err := SetCrewProviderOn(dir, "z-ai", false); err != nil {
+		t.Fatal(err)
+	}
+	if got := CrewProvidersOffAt(dir); !got["z-ai"] || len(got) != 1 {
+		t.Fatalf("the row reads %v", got)
+	}
+	if rule := CrewAllowedAt(dir).String(); rule != "all" {
+		t.Fatalf("turning a provider off wrote the allowed rule: %q", rule)
+	}
+	for _, c := range CrewCandidatesAt(dir) {
+		for _, r := range c.Routes {
+			if r.Provider == "z-ai" {
+				t.Fatalf("%s is still routed through a provider that is off", c.Model.ID)
+			}
+		}
+	}
+	d, err := RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: fixTask}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := d.Seat(crewroute.Worker); w.Provider != "openrouter" {
+		t.Fatalf("the worker rode %s with z-ai off", w.Provider)
+	}
+	if err := SetCrewPin(dir, crewroute.Worker, "z-ai/glm-5.3-flash@z-ai"); err == nil || !strings.Contains(err.Error(), "turned off") {
+		t.Fatalf("a pin through a provider that is off: %v", err)
+	}
+	// THE LAST ONE ON STAYS ON.
+	if err := SetCrewProviderOn(dir, "openrouter", false); !errors.Is(err, ErrCrewLastProvider) {
+		t.Fatalf("turning off the last provider on: %v", err)
+	}
+	if err := SetCrewProviderOn(dir, "nobody", false); err == nil {
+		t.Fatal("a provider that is not connected was turned off")
+	}
+	// ONLY OPENROUTER ON, AND ONLY IT SERVES: every offer is still served.
+	for _, offer := range CrewOffersAt(dir) {
+		if !offer.Served {
+			t.Errorf("%s reads unserved while openrouter is on", offer.Model.ID)
+		}
+	}
+	if err := RestoreCrewState(dir, before); err != nil {
+		t.Fatal(err)
+	}
+	if _, held := persistedValue(dir, KeyCrewProvidersOff); held {
+		t.Fatal("undo left the providers row written")
+	}
+	// TURNING THE LAST ONE BACK ON REMOVES THE ROW rather than writing an empty list.
+	if err := SetCrewProviderOn(dir, "z-ai", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetCrewProviderOn(dir, "z-ai", true); err != nil {
+		t.Fatal(err)
+	}
+	if _, held := persistedValue(dir, KeyCrewProvidersOff); held {
+		t.Fatal("every provider on left the row written")
+	}
+}

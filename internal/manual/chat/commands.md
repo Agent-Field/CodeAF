@@ -182,7 +182,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/memories` | — | — | prints every memory into the conversation |
 | `/remember` | — | `<text>` | keeps one thing across conversations |
 | `/forget` | — | `<query>` | forgets the best matching memory |
-| `/crew` | — | — | opens the crew panel: the three seats, the allowed models and the daily cap, changed in place |
+| `/crew` | — | — | opens the crew panel: the three seats, the allowed models, the providers and the daily cap, changed in place |
 | `/crew` | — | `pin <seat> <model[@provider]>` | pins the worker, planner or checker to a model; `/model` stays |
 | `/crew` | — | `unpin <seat\|all>` | puts a seat back on auto |
 | `/crew` | — | `models <rule>` | which models a seat may be picked from — `all`, `open`, `≤in/out`, ids |
@@ -1451,9 +1451,11 @@ three are auto — codeaf picks each one for each task, from what kind of work t
 /crew
 ```
 
-opens the crew panel over the conversation — five rows you change in place (the worker,
-planner and checker seats, the allowed **models**, the daily **cap**) and a dim `today`
-line. `enter` changes the row under the cursor, `esc` closes, `?` lists every key. The
+opens the crew panel over the conversation — six rows you change in place (the worker,
+planner and checker seats, the allowed **models**, the **providers**, the daily **cap**)
+and a dim `today` line. `enter` changes the row under the cursor, `esc` closes, `?` lists
+every key. On the **providers** row `←`/`→` walk one chip per connected provider and `space`
+turns the one under the cursor off or on; the `+` at its end opens `/connect`. The
 models page has the panel drawn out and every key (*Crew panel keys*). A seat on auto says
 the model it usually runs; a pinned seat wears the pin mark `⌖`. Typed on home, `/crew`
 steps off home and `esc` brings you back.
@@ -1775,15 +1777,15 @@ order:
    32,000 tokens (see *Models, context, and what it costs*).
 6. **reflex** — `near-free · reads every turn — memory, titles, safety`
 7. **small work** — `cheap · the small calls — names, digests, the safety gate`
-8. **seats** — `the worker, planner and checker, the models they may be picked from, and the daily cap · enter opens /crew`
+8. **seats** — `the worker, planner and checker, the models they may be picked from, the providers they may route through, and the daily cap · enter opens /crew`
 9. **pinned roles**, and hanging off it the **roles** list — one row per auxiliary call
     codeaf makes for itself, grouped under its row. Those rows come from the running binary
     rather than the settings registry.
 
 **worker**, **checker** and **planner** are the crew's three seats, and on the tab they are
-one row, **seats** (`auto · 1 pinned · models open · cap $5.00`). `enter` on it opens the
-`/crew` panel, where the seats, the allowed models and the daily cap are changed; `esc`
-there comes back to the row.
+one row, **seats** (`auto · 1 pinned · models open · 3 of 4 providers · cap $5.00`).
+`enter` on it opens the `/crew` panel, where the seats, the allowed models, the providers
+and the daily cap are changed; `esc` there comes back to the row.
 
 **A pin for a role this build no longer has is ignored, and the row stops showing it.** Roles
 come and go with the calls that use them — `compaction` was one, and a compaction has not asked

@@ -44,3 +44,21 @@ func TestTheCrewLogKeepsTodayAndLearnsFromRedos(t *testing.T) {
 		t.Errorf("two days on: %d tasks, $%v", got.Tasks, got.SpentUSD)
 	}
 }
+
+// TODAY'S SPEND IS LAID ON THE PROVIDERS THAT CARRIED IT, a metered seat an
+// even share, and a plan or local seat nothing.
+func TestTheCrewLogSplitsTodayByProvider(t *testing.T) {
+	dir := t.TempDir()
+	mixed := CrewRecord{TaskClass: "bugfix", Seats: map[string]string{"worker": "a", "planner": "b", "checker": "c"},
+		Providers: map[string]string{"worker": "openrouter", "planner": "deepseek", "checker": "codex"},
+		Kinds:     map[string]string{"worker": "metered", "planner": "metered", "checker": "plan"}}
+	LogCrewDecision(dir, "crew:m", mixed, nil)
+	LogCrewOutcome(dir, "crew:m", mixed, CrewAccepted, 0.04)
+	got := ReadCrewLog(dir, time.Now()).ProviderUSD
+	if len(got) != 2 || got["openrouter"] != 0.02 || got["deepseek"] != 0.02 {
+		t.Fatalf("by provider %v, want openrouter and deepseek at 0.02 each", got)
+	}
+	if _, ok := got["codex"]; ok {
+		t.Fatal("a plan seat was charged a share")
+	}
+}

@@ -372,14 +372,16 @@ var nonSettingProfileFields = []string{
 	// [LaneBorrowAt] reads it. Left off this list, every launch after the row
 	// was saved told the person their profile carried an ignored key.
 	LaneBorrowKey(LaneSlotTalk),
-	// THE CREW'S TWO STANDING ROWS. They are written by /crew's shortcuts and
-	// read by the router (crew.go), and no settings-registry row owns them:
-	// the panel is where a rule and a cap are read beside the day's spend.
+	// THE CREW'S STANDING ROWS. They are written by /crew's shortcuts and
+	// panel and read by the router (crew.go), and no settings-registry row owns
+	// them: the panel is where a rule, a cap and the providers turned off are
+	// read beside the day's spend.
 	KeyCrewAllowed,
 	KeyCrewCap,
 	// And the free-routes switch beside them, which the crew's providers list
 	// turns on and off.
 	KeyCrewFreeRoutes,
+	KeyCrewProvidersOff,
 }
 
 // retiredProfileKeys are top-level config.json keys that a shipped version once

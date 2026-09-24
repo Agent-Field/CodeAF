@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/fuzzy"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/router"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
@@ -25,6 +26,7 @@ import (
 //	│ › checker   (pin) kimi-k3                           │
 //	│                                                    │
 //	│   models    ‹ all › (96)                           │
+//	│   providers ✓ openrouter  ✓ codex sub  ○ my-vllm  + │
 //	│   cap       none                                   │
 //	│                                                    │
 //	│   today $1.84 · 14 tasks                           │
@@ -36,8 +38,9 @@ import (
 // crew (crew.go's header, internal/config's crew.go). How hard to try ONE task
 // is said in the ask and never here.
 //
-// FIVE ROWS, ONE VERB. Three seats, the allowed models and the cap are the only
-// rows the cursor stops on, and enter is what every one of them answers:
+// SIX ROWS, ONE VERB. Three seats, the allowed models, the providers and the
+// cap are the only rows the cursor stops on, and enter is what every one of
+// them answers:
 //
 //   - A SEAT opens the one list this panel has — the models a seat could sit,
 //     `auto` first, the router's own suggestion marked — and enter on a row of
@@ -47,20 +50,30 @@ import (
 //     open, a price ceiling, custom — and each step is written as it is taken; a
 //     price turns the row into its two ceilings, typed into holes on the row
 //     itself; custom opens the checklist, the one other screen here.
+//   - THE PROVIDERS ROW IS TOGGLED WHERE IT STANDS. It is one chip per
+//     connected provider, ←/→ walk them, and space turns the one under the
+//     cursor off or on; the `+` at its end is /connect. Enter opens the one
+//     screen that says more about each — how it bills, how many models it
+//     serves, what it carried today.
 //   - THE CAP IS TYPED WHERE IT STANDS. A digit on the row starts it, enter
 //     keeps it, an emptied hole is no cap. There is no dialog to open first.
 //
 // EVERY CHANGE IS WRITTEN THE MOMENT IT IS MADE, through the same writers the
 // `/crew` shortcuts use (internal/config's SetCrewPin, SetCrewAllowedRule,
-// SetCrewCap), so a refusal is the same refusal whichever door asked. What
+// SetCrewProviderOn, SetCrewCap), so a refusal is the same refusal whichever door asked. What
 // makes that safe is the undo beside it: the row that changed wears a tick,
 // and for a few seconds the bottom edge offers `z undo`, which puts the rows
 // back exactly as they were ([config.RestoreCrewState]).
 //
-// PROVIDERS ARE NOT A ROW. What a crew can route through is the connections a
-// person made, and a list of them here would be a list nobody can change from
-// here; they surface only where they are the reason something cannot work — a
-// pin whose provider is not connected, or no provider at all.
+// A PROVIDER TURNED OFF IS A ROUTE TAKEN AWAY, NOT A MODEL. The allowed models
+// are the models row's rule less every model no provider that is still on
+// serves, and the models row counts exactly that; the set of providers turned
+// off is a row of its own beside the rule (internal/crewroute's providers.go
+// argues why it is never a `-x` inside it). Connecting a provider is still
+// what adds one — the row only ever lists connections — so a provider
+// connected tomorrow is on the day it is connected, and the last one on
+// cannot be turned off, because a crew with nothing to route through is no
+// crew at all.
 //
 // ── WHAT IT IS BUILT FROM ──
 //
@@ -85,23 +98,26 @@ import (
 type crewView uint8
 
 const (
-	// crewMain is the five rows.
+	// crewMain is the six rows.
 	crewMain crewView = iota
 	// crewPicking is the list a seat is pinned from.
 	crewPicking
-	// crewChecking is the custom checklist of allowed models and providers.
+	// crewChecking is the custom checklist of allowed models.
 	crewChecking
+	// crewProviding is the providers row laid out, one provider a line.
+	crewProviding
 	// crewKeys is `?`: every key and gesture the panel takes.
 	crewKeys
 )
 
-// The main panel's five stops, in the order the cursor walks them. The three
+// The main panel's six stops, in the order the cursor walks them. The three
 // seats come first and in [crewroute.Seats] order, so a stop below crewModels
 // is a seat by its index.
 const (
-	crewModels = 3
-	crewCap    = 4
-	crewStops  = 5
+	crewModels    = 3
+	crewProviders = 4
+	crewCap       = 5
+	crewStops     = 6
 )
 
 // crewListRows is how many rows either list shows at most — the same ceiling
@@ -131,6 +147,8 @@ const (
 const (
 	crewTitleWord      = "crew"
 	crewMainKeys       = "enter change · esc close · ? keys"
+	crewChipKeys       = "enter change · space toggle · esc close · ? keys"
+	crewProvKeys       = "space or enter toggle · esc back"
 	crewPickKeys       = "type to filter · enter pick · → routes · esc back"
 	crewCheckKeys      = "type to filter · space or enter tick · esc back"
 	crewKeysKeys       = "esc back"
@@ -141,6 +159,8 @@ const (
 	crewNothingMatches = "nothing matches"
 	crewAllowFixWord   = "enter to allow it"
 	crewPickHint       = "type to filter"
+	crewProviderOff    = "provider off"
+	crewConnectChip    = "+"
 )
 
 // crewModelBases are the four answers the models row walks, in order.
@@ -205,6 +225,21 @@ type crewPanel struct {
 	arrows [2]hudSpan
 	// arrowLine is the drawn line the arrows are on, -1 when not drawn.
 	arrowLine int
+
+	// chip is the providers row's position: a provider by its index in
+	// providers, or len(providers) for the `+` that opens /connect.
+	chip int
+	// chips are the cells of each chip on the drawn row, the `+` last, and
+	// chipLine the drawn line they are on, -1 when not drawn; folded is the
+	// row drawn as its count because the chips did not fit, when ←/→ have
+	// nothing to walk and space opens the list instead.
+	chips    []hudSpan
+	chipLine int
+	folded   bool
+	// prov is the providers list's cursor, and provSaved the line that took
+	// the last change there, which wears the tick while [crewPanel.live].
+	prov      int
+	provSaved int
 }
 
 // crewHole is one hole typed into on the main rows.
@@ -230,6 +265,8 @@ type crewPick struct {
 	cursor int
 	top    int
 	score  []int
+	// tier is each hit's match tier ([crewMatchTier]), which outranks score.
+	tier []int
 	// unfold is the model whose routes are showing, "" when none is.
 	unfold string
 	// refuse is the line whose pin the allowed models refused, and why: the
@@ -254,19 +291,23 @@ type crewPickLine struct {
 }
 
 // crewCheck is the custom checklist.
+//
+// IT IS MODELS ONLY. A provider is taken away on the providers row, where the
+// verdict is a set beside the rule; a `-provider` inside the rule would also
+// read as a vendor, and would be dropped the next time the models row was
+// walked onto a new base.
 type crewCheck struct {
 	filter editor
-	// lines are the providers, then the models; hits index them.
+	// lines are the models; hits index them.
 	lines  []crewCheckLine
 	hits   []int
 	cursor int
 	top    int
 }
 
-// crewCheckLine is one checklist line: a provider, or an offer.
+// crewCheckLine is one checklist line: an offer.
 type crewCheckLine struct {
-	provider *config.CrewProvider
-	offer    *config.CrewOffer
+	offer *config.CrewOffer
 }
 
 func (p *crewPanel) close() { *p = crewPanel{} }
@@ -282,6 +323,7 @@ func (p *crewPanel) read(dir string) {
 	p.rule = config.CrewAllowedAt(dir)
 	p.capUSD = config.CrewCapAt(dir)
 	p.providers = config.CrewProvidersAt(dir)
+	p.chip = min(p.chip, len(p.providers))
 	p.offers = config.CrewOffersAt(dir)
 	p.gaps = config.CrewGapsAt(dir)
 	p.log = config.CrewLogAt(dir)
@@ -362,7 +404,8 @@ func (p *crewPanel) modelStep() int {
 
 // countFor is how many reachable models one step of the models row admits —
 // the dim figure beside it, so walking the row is a way of reading what each
-// answer would leave.
+// answer would leave. A model only a provider turned off serves is not
+// counted on any step: it is not one a seat can be picked from.
 func (p *crewPanel) countFor(step int) int {
 	var rule crewroute.Allowed
 	switch step {
@@ -383,7 +426,18 @@ func (p *crewPanel) countFor(step int) int {
 	}
 	n := 0
 	for _, offer := range p.offers {
-		if rule.AdmitsModel(offer.Model) {
+		if offer.Served && rule.AdmitsModel(offer.Model) {
+			n++
+		}
+	}
+	return n
+}
+
+// providersOn is how many connected providers are on.
+func (p *crewPanel) providersOn() int {
+	n := 0
+	for _, provider := range p.providers {
+		if provider.On {
 			n++
 		}
 	}
@@ -414,7 +468,7 @@ func (a *app) openCrew() {
 	}
 	a.closeLists()
 	a.dismissWelcome()
-	a.crewUI = crewPanel{open: true, back: back, backTab: tab, backCursor: cursor, saved: -1, step: -1}
+	a.crewUI = crewPanel{open: true, back: back, backTab: tab, backCursor: cursor, saved: -1, step: -1, chipLine: -1, provSaved: -1}
 	a.crewUI.read(a.profileDir)
 	a.touch()
 }
@@ -495,6 +549,8 @@ func (a *app) crewKey(msg tea.KeyPressMsg) tea.Cmd {
 		return a.crewPickKey(msg)
 	case crewChecking:
 		return a.crewCheckKey(msg)
+	case crewProviding:
+		return a.crewProvKey(msg)
 	case crewKeys:
 		if k := msg.String(); k == "esc" || k == "?" || k == "q" {
 			p.view = crewMain
@@ -527,14 +583,25 @@ func (a *app) crewKey(msg tea.KeyPressMsg) tea.Cmd {
 		if p.cursor == crewModels {
 			return a.crewStepModels(-1)
 		}
+		if p.cursor == crewProviders && !p.folded {
+			p.chip = max(0, p.chip-1)
+		}
 	case "right", "l":
 		if p.cursor == crewModels {
 			return a.crewStepModels(1)
 		}
+		if p.cursor == crewProviders && !p.folded {
+			p.chip = min(len(p.providers), p.chip+1)
+		}
 		if p.cursor < crewModels {
 			a.crewOpenPick(crewroute.Seats[p.cursor])
 		}
-	case "enter", " ", "space":
+	case " ", "space":
+		if p.cursor == crewProviders {
+			return a.crewSpaceChip()
+		}
+		return a.crewEnter()
+	case "enter":
 		return a.crewEnter()
 	case "backspace", "delete":
 		if p.cursor == crewCap {
@@ -554,7 +621,7 @@ func (a *app) crewKey(msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-// crewMove walks the five stops, clamping at both ends. Leaving the models
+// crewMove walks the six stops, clamping at both ends. Leaving the models
 // row lets go of a step nothing was written for.
 func (a *app) crewMove(delta int) {
 	p := &a.crewUI
@@ -579,6 +646,11 @@ func (a *app) crewEnter() tea.Cmd {
 		default:
 			return a.crewStepModels(1)
 		}
+	case p.cursor == crewProviders:
+		if !p.folded && p.chip == len(p.providers) {
+			return a.crewConnect()
+		}
+		a.crewOpenProv()
 	case p.cursor == crewCap:
 		p.edit = &crewHole{stop: crewCap}
 		if p.capUSD > 0 {
@@ -586,6 +658,92 @@ func (a *app) crewEnter() tea.Cmd {
 		}
 	}
 	return nil
+}
+
+// ── the providers row ───────────────────────────────────────────────────────
+
+// crewSpaceChip is space on the providers row: the chip under the cursor
+// turned off or on, or /connect on the `+`. A row folded to its count has no
+// chip under the cursor, so space there opens the list, where every provider
+// is a line of its own.
+func (a *app) crewSpaceChip() tea.Cmd {
+	p := &a.crewUI
+	switch {
+	case p.folded:
+		a.crewOpenProv()
+		return nil
+	case p.chip >= len(p.providers):
+		return a.crewConnect()
+	}
+	return a.crewToggleProvider(p.chip)
+}
+
+// crewToggleProvider turns one provider off or on, through the writer the
+// shortcut uses — so the last provider on is refused here in the writer's own
+// words ([config.ErrCrewLastProvider]), under the rows, and nothing changes.
+func (a *app) crewToggleProvider(at int) tea.Cmd {
+	p := &a.crewUI
+	if at < 0 || at >= len(p.providers) {
+		return nil
+	}
+	provider := p.providers[at]
+	cmd := a.crewWrite(crewProviders, func(dir string) error { return config.SetCrewProviderOn(dir, provider.ID, !provider.On) })
+	if p.refusal == "" && p.view == crewProviding {
+		p.provSaved = at
+	}
+	return cmd
+}
+
+// crewConnect is the `+`: the panel goes and /connect opens in its place —
+// the one door a provider is added through, never a second copy of it here.
+// A provider connected there is on the next time this panel is read.
+func (a *app) crewConnect() tea.Cmd {
+	a.crewUI.close()
+	a.openConnect()
+	a.touch()
+	return nil
+}
+
+// crewOpenProv opens the providers list on the provider the row's cursor was
+// on.
+func (a *app) crewOpenProv() {
+	p := &a.crewUI
+	p.view, p.prov, p.provSaved = crewProviding, min(p.chip, max(0, len(p.providers)-1)), -1
+}
+
+// crewProvLines is how many lines the providers list has.
+func (p *crewPanel) crewProvLines() int { return len(p.providers) }
+
+// crewProvKey is a key on the providers list. There is no filter: a
+// person has a handful of connections, and every letter is free to mean
+// what it means on the rows — `z` is the undo here too.
+func (a *app) crewProvKey(msg tea.KeyPressMsg) tea.Cmd {
+	p := &a.crewUI
+	p.refusal = ""
+	switch msg.String() {
+	case "esc", "q":
+		p.view, p.cursor = crewMain, crewProviders
+		p.chip = min(p.prov, len(p.providers))
+	case "up", "k", "ctrl+p":
+		p.prov = moveCursor(p.prov, -1, p.crewProvLines())
+	case "down", "j", "ctrl+n":
+		p.prov = moveCursor(p.prov, 1, p.crewProvLines())
+	case "home":
+		p.prov = 0
+	case "end":
+		p.prov = max(0, p.crewProvLines()-1)
+	case "z":
+		a.crewUndo()
+	case "enter", " ", "space":
+		return a.crewProvToggle()
+	}
+	return nil
+}
+
+// crewProvToggle is space or enter on a line of the providers list.
+func (a *app) crewProvToggle() tea.Cmd {
+	p := &a.crewUI
+	return a.crewToggleProvider(p.prov)
 }
 
 // crewStepModels walks the models row one answer, and writes it: `all`,
@@ -762,10 +920,25 @@ func (a *app) crewOpenPick(seat crewroute.Seat) {
 
 // rank narrows the list to the filter — every term must match, scored by the
 // matcher every picker shares — and lays the drawn lines out again.
+//
+// A MODEL NAME IS TYPED FROM ITS FRONT. The shared matcher takes any
+// subsequence, which is right for a command palette and wrong for a list of
+// model ids: `kim` finds kimi-k3, and also gro-k-IM-agine and K-rea-2-medIum,
+// which nobody typing three letters of a name meant. So the matcher decides
+// only WHETHER a row matches, and how strongly within its tier; the tier
+// decides the order first ([crewMatchTier]) — a prefix of the id or the name,
+// then a prefix of a word inside it, then anywhere inside it, then a
+// subsequence — and a subsequence-only row is shown only when nothing matched
+// better, because then it is the best the list has.
 func (k *crewPick) rank() {
 	query := strings.TrimSpace(k.filter.String())
-	ft := fuzzyTerms(strings.Fields(strings.ToLower(query)))
+	words := strings.Fields(strings.ToLower(query))
+	ft := fuzzyTerms(words)
 	k.hits = k.hits[:0]
+	if len(k.tier) != len(k.rows) {
+		k.tier = make([]int, len(k.rows))
+	}
+	strong := false
 	for i, row := range k.rows {
 		if len(ft) == 0 {
 			k.hits = append(k.hits, i)
@@ -775,14 +948,80 @@ func (k *crewPick) rank() {
 		if !hit {
 			continue
 		}
-		k.score[i] = total
+		k.score[i], k.tier[i] = total, crewMatchTier(row.fields, words)
+		strong = strong || k.tier[i] < crewTierSubsequence
 		k.hits = append(k.hits, i)
 	}
 	if len(ft) > 0 {
-		sort.SliceStable(k.hits, func(a, b int) bool { return k.score[k.hits[a]] > k.score[k.hits[b]] })
+		if strong {
+			kept := k.hits[:0]
+			for _, at := range k.hits {
+				if k.tier[at] < crewTierSubsequence {
+					kept = append(kept, at)
+				}
+			}
+			k.hits = kept
+		}
+		sort.SliceStable(k.hits, func(a, b int) bool {
+			ta, tb := k.tier[k.hits[a]], k.tier[k.hits[b]]
+			if ta != tb {
+				return ta < tb
+			}
+			return k.score[k.hits[a]] > k.score[k.hits[b]]
+		})
 	}
 	k.cursor, k.top, k.refuse = 0, 0, -1
 	k.relist()
+}
+
+// The seat list's match tiers, strongest first.
+const (
+	// crewTierPrefix is a field the word begins: `kim` of kimi-k3, `deep` of
+	// deepseek/deepseek-v4-flash.
+	crewTierPrefix = iota
+	// crewTierWord is a word inside a field the word begins, after a `/`, a
+	// `-`, a `.` or a space: `flash` of glm-5.3-flash.
+	crewTierWord
+	// crewTierInside is the word anywhere inside a field.
+	crewTierInside
+	// crewTierSubsequence is the word's letters in order, with gaps — the
+	// matcher's own verdict and nothing stronger.
+	crewTierSubsequence
+)
+
+// crewMatchTier is how strongly a row matches every typed word: the weakest
+// of the words' own tiers, each word's the strongest over the row's fields.
+func crewMatchTier(fields, words []string) int {
+	tier := crewTierPrefix
+	for _, word := range words {
+		best := crewTierSubsequence
+		for _, field := range fields {
+			field = strings.ToLower(field)
+			switch {
+			case strings.HasPrefix(field, word):
+				best = crewTierPrefix
+			case crewWordPrefix(field, word):
+				best = min(best, crewTierWord)
+			case strings.Contains(field, word):
+				best = min(best, crewTierInside)
+			}
+		}
+		tier = max(tier, best)
+	}
+	return tier
+}
+
+// crewWordPrefix is whether a word begins some word inside a field.
+func crewWordPrefix(field, word string) bool {
+	for i := 1; i < len(field); i++ {
+		switch field[i-1] {
+		case '/', '-', '.', ' ', '_', ':':
+			if strings.HasPrefix(field[i:], word) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // relist lays out the drawn lines: every hit, and the routes of the unfolded
@@ -951,14 +1190,11 @@ func crewSeatStop(seat crewroute.Seat) int {
 
 // ── the custom checklist ────────────────────────────────────────────────────
 
-// crewOpenCheck opens the checklist: every connected provider, then every
-// model they reach, each ticked where the rule admits it.
+// crewOpenCheck opens the checklist: every model a connected provider
+// reaches, each ticked where the rule admits it.
 func (a *app) crewOpenCheck() {
 	p := &a.crewUI
 	check := &crewCheck{}
-	for i := range p.providers {
-		check.lines = append(check.lines, crewCheckLine{provider: &p.providers[i]})
-	}
 	for i := range p.offers {
 		check.lines = append(check.lines, crewCheckLine{offer: &p.offers[i]})
 	}
@@ -974,12 +1210,7 @@ func (c *crewCheck) rank() {
 	c.hits = c.hits[:0]
 	for i, line := range c.lines {
 		if len(ft) > 0 {
-			var fields []string
-			if line.provider != nil {
-				fields = []string{line.provider.ID, line.provider.Name}
-			} else {
-				fields = []string{line.offer.Model.ID, crewroute.ShortModel(line.offer.Model.ID)}
-			}
+			fields := []string{line.offer.Model.ID, crewroute.ShortModel(line.offer.Model.ID)}
 			if _, hit := fuzzy.ScoreFields(fields, ft); !hit {
 				continue
 			}
@@ -996,9 +1227,6 @@ func (c *crewCheck) move(delta int) {
 
 // ticked is whether one checklist line is admitted by the rule in force.
 func (p *crewPanel) ticked(line crewCheckLine) bool {
-	if line.provider != nil {
-		return p.rule.AdmitsRoute(line.provider.ID)
-	}
 	return p.rule.AdmitsModel(line.offer.Model)
 }
 
@@ -1028,16 +1256,10 @@ func (a *app) crewTick() tea.Cmd {
 		return nil
 	}
 	line := c.lines[c.hits[c.cursor]]
-	admit := !p.ticked(line)
-	var rule crewroute.Allowed
-	if line.provider != nil {
-		rule = p.rule.RouteToggled(line.provider.ID, admit)
-	} else {
-		var ok bool
-		if rule, ok = p.rule.Toggled(line.offer.Model, admit); !ok {
-			p.refusal = "a list keeps one model at least — tick another before this one"
-			return nil
-		}
+	rule, ok := p.rule.Toggled(line.offer.Model, !p.ticked(line))
+	if !ok {
+		p.refusal = "a list keeps one model at least — tick another before this one"
+		return nil
 	}
 	return a.crewWrite(crewModels, func(dir string) error { return config.SetCrewAllowedRule(dir, rule) })
 }
@@ -1076,37 +1298,37 @@ func (a *app) crewDraw(width, n, hover int) []string {
 		room = n
 		rows, owner = crewWindow(rows, owner, p.focusLine(owner), room)
 		p.owner = owner
-		p.arrowLine = crewArrowLine(owner, p)
+		p.arrowLine = crewArrowLine(owner, p, crewModels)
+		p.chipLine = crewArrowLine(owner, p, crewProviders)
 		return crewPad(rows, n)
 	}
 	rows, owner = crewWindow(rows, owner, p.focusLine(owner), room)
 	title, keys := a.crewEdges()
 	aside := a.pal.dim("esc")
-	// THE UNDO IS OFFERED WHERE `z` MEANS IT: on the five rows. In a list the
-	// letter is a filter's, and in a hole it is nothing, so an offer drawn there
-	// would be a key that does something else.
+	// THE UNDO IS OFFERED WHERE `z` MEANS IT: on the six rows and the providers
+	// list, which has no filter. In a filtered list the letter is the filter's,
+	// and in a hole it is nothing, so an offer drawn there would be a key that
+	// does something else.
 	keysAside := ""
-	if p.view == crewMain && p.edit == nil && p.live(a.now()) && p.undo != nil {
+	if (p.view == crewMain || p.view == crewProviding) && p.edit == nil && p.live(a.now()) && p.undo != nil {
 		keysAside = a.pal.dim(crewUndoWord)
 	}
 	lines, _ := framed{title: title, aside: aside, keys: a.pal.dim(keys), keysAside: keysAside}.draw(a.pal, width, rows)
 	p.owner = append(append([]int{-1}, owner...), -1)
-	p.arrowLine = -1
-	for i, at := range p.owner {
-		if p.view == crewMain && at == crewModels {
-			p.arrowLine = i
-		}
-	}
+	p.arrowLine = crewArrowLine(p.owner, p, crewModels)
+	p.chipLine = crewArrowLine(p.owner, p, crewProviders)
 	return crewPad(lines, n)
 }
 
-// crewArrowLine is the drawn line of the models row, for a bare block.
-func crewArrowLine(owner []int, p *crewPanel) int {
+// crewArrowLine is the drawn line of one main row — the models row, whose
+// arrows a press walks, or the providers row, whose chips a press toggles —
+// and -1 when the main rows are not up.
+func crewArrowLine(owner []int, p *crewPanel, stop int) int {
 	if p.view != crewMain {
 		return -1
 	}
 	for i, at := range owner {
-		if at == crewModels {
+		if at == stop {
 			return i
 		}
 	}
@@ -1132,6 +1354,8 @@ func (p *crewPanel) focusLine(owner []int) int {
 		want = p.pick.cursor
 	case crewChecking:
 		want = p.check.cursor
+	case crewProviding:
+		want = p.prov
 	case crewKeys:
 		return 0
 	}
@@ -1164,6 +1388,13 @@ func (a *app) crewEdges() (string, string) {
 		return a.pal.muted(crewTitleWord + " · allowed models · " + strconv.Itoa(n) + " of " + strconv.Itoa(len(p.offers))), crewCheckKeys
 	case crewKeys:
 		return a.pal.muted(crewTitleWord + " · keys"), crewKeysKeys
+	case crewProviding:
+		return a.pal.muted(crewTitleWord + " · providers · " + strconv.Itoa(p.providersOn()) + " of " + strconv.Itoa(len(p.providers)) + " on"), crewProvKeys
+	}
+	if p.cursor == crewProviders && p.edit == nil {
+		// SPACE IS SAID WHERE IT MEANS SOMETHING OF ITS OWN. On every other row it
+		// is enter, which the edge already says.
+		return title, crewChipKeys
 	}
 	return title, crewMainKeys
 }
@@ -1180,6 +1411,8 @@ func (a *app) crewRowsHover(width, hover int) ([]string, []int) {
 		return a.crewCheckRows(inner, hover)
 	case crewKeys:
 		return a.crewKeyRows(inner)
+	case crewProviding:
+		return a.crewProvRows(inner, hover)
 	}
 	return a.crewMainRows(inner, hover)
 }
@@ -1252,6 +1485,7 @@ func (a *app) crewMainRows(width, hover int) ([]string, []int) {
 	modelsLine := a.crewRowLine(a.crewLabel("models", p.cursor == crewModels)+models, p.cursor == crewModels, hover == len(rows), false, width)
 	p.arrows = crewArrowSpans(modelsLine)
 	add(modelsLine, crewModels)
+	add(a.crewProvidersLine(width, hover == len(rows)), crewProviders)
 	capValue := a.crewCapValue()
 	if p.live(now) && p.saved == crewCap {
 		capValue += "  " + a.pal.add(a.icon(tokens.GSettled))
@@ -1312,25 +1546,38 @@ func (a *app) crewSeatValue(seat crewroute.Seat, width int) string {
 
 // pinTrouble is why a pin cannot run on what is connected, or "": its
 // provider is not connected, or no connected provider reaches its model.
+//
+// A PIN WHOSE ONLY PROVIDER IS TURNED OFF says so rather than `unavailable`:
+// the provider is still connected, and the fix is a space on the providers
+// row, not a trip to /connect.
 func (p *crewPanel) pinTrouble(pin config.CrewPin) string {
 	if pin.Provider != "" {
 		for _, provider := range p.providers {
 			if provider.ID == pin.Provider {
+				if !provider.On {
+					return crewProviderOff
+				}
 				return ""
 			}
 		}
 		return "unavailable · " + pin.Provider + " is not connected"
 	}
-	lineage := crewroute.Lineage(strings.TrimPrefix(pin.Model, "openrouter/"))
-	for _, offer := range p.offers {
-		if crewroute.Lineage(offer.Model.ID) == lineage {
-			return ""
-		}
-	}
 	// A pin written with a connection's own prefix is reached by that
 	// connection whether or not the catalog knows the model.
 	for _, provider := range p.providers {
-		if strings.HasPrefix(strings.ToLower(pin.Model), strings.ToLower(provider.Written)+"/") {
+		if provider.ID != modelsource.DefaultID && strings.HasPrefix(strings.ToLower(pin.Model), strings.ToLower(provider.Written)+"/") {
+			if !provider.On {
+				return crewProviderOff
+			}
+			return ""
+		}
+	}
+	lineage := crewroute.Lineage(strings.TrimPrefix(pin.Model, "openrouter/"))
+	for _, offer := range p.offers {
+		if crewroute.Lineage(offer.Model.ID) == lineage {
+			if !offer.Served {
+				return crewProviderOff
+			}
 			return ""
 		}
 	}
@@ -1381,6 +1628,202 @@ func (a *app) crewCapValue() string {
 		return a.pal.ink("none")
 	}
 	return a.pal.ink(crewroute.Money(p.capUSD)) + a.pal.dim(" a day")
+}
+
+// crewChipRoom is the cells a providers row keeps free past its chips, for
+// the tick a toggle leaves — so the row that just changed never folds or
+// unfolds under the tick it wears.
+const crewChipRoom = 3
+
+// crewChipWords is one provider as its chip says it: the name, and the kind
+// hint where how it bills is not a key — `sub` for a subscription, `local`
+// for a model on this machine when local is asked for. A custom endpoint
+// is the prefix the person wrote for it, which is the name they gave it —
+// its id and its catalog name are the same for every custom endpoint.
+func crewChipWords(provider config.CrewProvider, local bool) (string, string) {
+	name := provider.ID
+	switch {
+	case modelsource.IsCustomID(provider.ID):
+		if provider.Written != "" {
+			name = provider.Written
+		}
+	case provider.Kind == crewroute.Plan:
+		return name, "sub"
+	case provider.Kind == crewroute.Local && local:
+		return name, "local"
+	}
+	return name, ""
+}
+
+// crewProvidersLine is the providers row, drawn, with the cells of every chip
+// found on it for the pointer.
+//
+// THE CHIPS FOLD RATHER THAN CLIP. A row that does not fit drops its `local`
+// hints first — the one word on it a person can do without — and then says
+// only how many are on, `3 of 4 on`, with enter the way to the list that has
+// room for every one. A chip cut in half would be a toggle nobody could read.
+func (a *app) crewProvidersLine(width int, hovered bool) string {
+	p := &a.crewUI
+	selected := p.cursor == crewProviders
+	room := width - ansi.StringWidth(overlayLead(false, false, a.pal)) - ansi.StringWidth(ansi.Strip(a.crewLabel("providers", false))) - crewChipRoom
+	var words []string
+	value := ""
+	p.folded = false
+	for _, local := range []bool{true, false} {
+		value, words = a.crewChips(local, selected)
+		if ansi.StringWidth(ansi.Strip(value)) <= room {
+			break
+		}
+		value, words = "", nil
+	}
+	if value == "" {
+		p.folded = true
+		value = a.pal.ink(strconv.Itoa(p.providersOn())+" of "+strconv.Itoa(len(p.providers))) + a.pal.dim(" on")
+	}
+	if p.live(a.now()) && p.saved == crewProviders {
+		value += "  " + a.pal.add(a.icon(tokens.GSettled))
+	}
+	line := a.crewRowLine(a.crewLabel("providers", selected)+value, selected, hovered, false, width)
+	p.chips = crewChipSpans(line, words)
+	return line
+}
+
+// crewChips is the chips, painted — on in ink behind a tick, off dim behind an
+// empty circle, the cursor's in bold when the row has the cursor — and the
+// plain words of each, in order, the `+` last.
+func (a *app) crewChips(local, selected bool) (string, []string) {
+	p := &a.crewUI
+	var parts, words []string
+	for i, provider := range p.providers {
+		name, hint := crewChipWords(provider, local)
+		mark, ink := a.icon(tokens.GSettled), a.pal.ink
+		if !provider.On {
+			mark, ink = a.icon(tokens.GQueued), a.pal.dim
+		}
+		plainWord := mark + " " + name
+		text := ink(mark) + " " + ink(name)
+		if selected && p.chip == i {
+			text = a.pal.bold(ink(mark + " " + name))
+		}
+		if hint != "" {
+			plainWord += " " + hint
+			text += a.pal.dim(" " + hint)
+		}
+		parts, words = append(parts, text), append(words, plainWord)
+	}
+	plus := a.pal.dim(crewConnectChip)
+	if selected && p.chip == len(p.providers) {
+		plus = a.pal.bold(a.pal.ink(crewConnectChip))
+	}
+	parts, words = append(parts, plus), append(words, crewConnectChip)
+	return strings.Join(parts, "  "), words
+}
+
+// crewChipSpans finds each chip's cells on the drawn row, in order, so a
+// press on one toggles it — the models row's arrows found the same way
+// ([crewArrowSpans]).
+func crewChipSpans(line string, words []string) []hudSpan {
+	if len(words) == 0 {
+		return nil
+	}
+	plainLine := ansi.Strip(line)
+	from := strings.Index(plainLine, "providers")
+	if from < 0 {
+		return nil
+	}
+	from += len("providers")
+	spans := make([]hudSpan, 0, len(words))
+	for _, word := range words {
+		at := strings.Index(plainLine[from:], word)
+		if at < 0 {
+			return nil
+		}
+		start := ansi.StringWidth(plainLine[:from+at])
+		spans = append(spans, hudSpan{from: start, to: start + ansi.StringWidth(word)})
+		from += at + len(word)
+	}
+	return spans
+}
+
+// crewKindWord is how a provider bills, as the providers list says it.
+func crewKindWord(provider config.CrewProvider) string {
+	switch {
+	case modelsource.IsCustomID(provider.ID):
+		return "custom endpoint"
+	case provider.Kind == crewroute.Plan:
+		return "subscription"
+	case provider.Kind == crewroute.Local:
+		return "local"
+	}
+	return "api key"
+}
+
+// crewServedWord is how many of the models a seat could be pinned to one
+// provider serves. A custom endpoint serves models the catalog does not
+// describe, which a pin that names it reaches and nothing else does.
+func (p *crewPanel) crewServedWord(provider config.CrewProvider) string {
+	n := 0
+	for _, offer := range p.offers {
+		for _, r := range offer.Routes {
+			if r.Provider == provider.ID {
+				n++
+				break
+			}
+		}
+	}
+	switch {
+	case n == 0 && modelsource.IsCustomID(provider.ID):
+		return "pins only"
+	case n == 1:
+		return "1 model"
+	}
+	return strconv.Itoa(n) + " models"
+}
+
+// crewProvRows is the providers list: one provider a line — on or off, its
+// name, how it bills, how many models it serves and what it carried today,
+// the day's share laid on it by the seats it carried (internal/router's
+// crew.go). Columns line up, because a list of four is read down.
+func (a *app) crewProvRows(width, hover int) ([]string, []int) {
+	p := &a.crewUI
+	if len(p.providers) == 0 {
+		return []string{a.pal.dim(fit("  "+crewNoProviderWord, width))}, []int{-1}
+	}
+	nameW, kindW, servedW := 0, 0, 0
+	for _, provider := range p.providers {
+		name, _ := crewChipWords(provider, false)
+		nameW = max(nameW, ansi.StringWidth(name))
+		kindW = max(kindW, ansi.StringWidth(crewKindWord(provider)))
+		servedW = max(servedW, ansi.StringWidth(p.crewServedWord(provider)))
+	}
+	pad := func(word string, w int) string { return word + strings.Repeat(" ", max(0, w-ansi.StringWidth(word))) }
+	var rows []string
+	var owner []int
+	now := a.now()
+	for i, provider := range p.providers {
+		name, _ := crewChipWords(provider, false)
+		mark, ink, state := a.icon(tokens.GSettled), a.pal.ink, "on"
+		if !provider.On {
+			mark, ink, state = a.icon(tokens.GQueued), a.pal.dim, "off"
+		}
+		day := "nothing today"
+		if usd := p.log.ProviderUSD[provider.ID]; usd > 0 {
+			day = "today " + crewroute.Money(usd)
+		}
+		text := ink(mark) + " " + ink(pad(name, nameW)) + "  " + a.pal.dim(pad(crewKindWord(provider), kindW)+"  "+pad(p.crewServedWord(provider), servedW)+" · "+pad(day, 13)) + "  " + ink(state)
+		if p.live(now) && p.saved == crewProviders && p.provSaved == i {
+			text += "  " + a.pal.add(a.icon(tokens.GSettled))
+		}
+		rows = append(rows, a.crewRowLine(text, i == p.prov, hover == len(rows), false, width))
+		owner = append(owner, i)
+	}
+	if p.refusal != "" {
+		for _, said := range crewSaid(a.icon(tokens.GFailed)+" "+p.refusal, width, a.pal.bad) {
+			rows = append(rows, said)
+			owner = append(owner, -1)
+		}
+	}
+	return rows, owner
 }
 
 // crewTodayWord is the one dim line about the day: what the crews spent and
@@ -1535,7 +1978,10 @@ func (a *app) crewOfferText(row crewPickRow, current bool, width int) string {
 		}
 		facts = append(facts, provider)
 	}
-	if !offer.Allowed {
+	switch {
+	case !offer.Served:
+		facts = append(facts, crewProviderOff)
+	case !offer.Allowed:
 		facts = append(facts, "not allowed")
 	}
 	if row.suggested {
@@ -1587,11 +2033,9 @@ func (a *app) crewCheckRows(width, hover int) ([]string, []int) {
 		if p.ticked(line) {
 			mark = a.pal.ink(a.icon(tokens.GSettled)) + " "
 		}
-		var text string
-		if line.provider != nil {
-			text = mark + a.pal.ink(line.provider.ID) + a.pal.dim("  whole provider · "+string(line.provider.Kind))
-		} else {
-			text = mark + a.pal.ink(line.offer.Model.ID) + a.pal.dim("  "+crewPerM(line.offer.Model))
+		text := mark + a.pal.ink(line.offer.Model.ID) + a.pal.dim("  "+crewPerM(line.offer.Model))
+		if !line.offer.Served {
+			text += a.pal.dim(" · " + crewProviderOff)
 		}
 		rows = append(rows, a.crewRowLine(text, at == c.cursor, hover == len(rows), false, width))
 		owner = append(owner, at)
@@ -1607,12 +2051,13 @@ func (a *app) crewCheckRows(width, hover int) ([]string, []int) {
 var crewKeyLines = [][2]string{
 	{"↑↓  j k", "move"},
 	{"enter", "change the row · pick · tick"},
-	{"←→", "walk the models row · a model's routes"},
+	{"←→", "walk the models row · the providers · a model's routes"},
+	{"space", "turn the provider under the cursor off or on"},
 	{"0-9", "type the cap, or a price ceiling"},
 	{"type", "filter a list"},
 	{"z", "undo the last change, for a few seconds"},
 	{"esc", "back one level · close"},
-	{"click", "a row is enter · ‹ › walk the models row"},
+	{"click", "a row is enter · ‹ › walk the models row · a provider toggles"},
 	{"wheel", "scrolls a list"},
 }
 
@@ -1665,6 +2110,16 @@ func (a *app) crewPress(x, y int) tea.Cmd {
 				return a.crewStepModels(1)
 			}
 		}
+		if at == crewProviders && mark.index == p.chipLine && !p.folded {
+			// A PRESS ON A CHIP IS SPACE ON IT; a press on the row's name or its
+			// empty end is enter on the row, the list, as on every other row.
+			for i, span := range p.chips {
+				if span.holds(x) {
+					p.chip = i
+					return a.crewSpaceChip()
+				}
+			}
+		}
 		return a.crewEnter()
 	case crewPicking:
 		p.pick.cursor = at
@@ -1672,6 +2127,9 @@ func (a *app) crewPress(x, y int) tea.Cmd {
 	case crewChecking:
 		p.check.cursor = at
 		return a.crewTick()
+	case crewProviding:
+		p.prov = at
+		return a.crewProvToggle()
 	}
 	return nil
 }
@@ -1685,6 +2143,8 @@ func (a *app) crewWheel(delta int) {
 		p.pick.move(delta)
 	case crewChecking:
 		p.check.move(delta)
+	case crewProviding:
+		p.prov = moveCursor(p.prov, delta, p.crewProvLines())
 	case crewMain:
 		if p.edit == nil {
 			a.crewMove(delta)
@@ -1723,6 +2183,7 @@ func (a *app) crewNow(stop int, before config.CrewState) tea.Cmd {
 	if p.view != crewMain {
 		p.view, p.pick, p.check = crewMain, nil, nil
 	}
+	p.provSaved = -1
 	p.cursor, p.undo = stop, &before
 	p.saved, p.savedAt = stop, a.now()
 	a.touch()

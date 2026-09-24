@@ -1914,11 +1914,12 @@ func crewSeatKey(key string) bool {
 
 // crewDoorWords are what the `seats` row is found by in a search: its name,
 // the panel it opens, and the words for what that panel holds.
-var crewDoorWords = []string{"seats", "crew", "worker planner checker pin", "allowed models daily cap"}
+var crewDoorWords = []string{"seats", "crew", "worker planner checker pin", "allowed models providers daily cap"}
 
 // crewDoorItem is the `seats` row: the crew's three seat rows as one, whose
 // enter opens the crew panel. Its value is the crew in the fewest words — how
-// many seats are pinned, which models are allowed, the cap — read here, on a
+// many seats are pinned, which models are allowed, how many of the connected
+// providers are on, the cap — read here, on a
 // build, and never on a draw. With terms it is the row only if they match it,
 // and otherwise an item that is not a door.
 func (s *sheet) crewDoorItem(terms []fuzzy.Term) sheetItem {
@@ -1935,13 +1936,22 @@ func (s *sheet) crewDoorItem(terms []fuzzy.Term) sheetItem {
 		seats = "auto · " + strconv.Itoa(n) + " pinned"
 	}
 	value := seats + " · models " + config.CrewAllowedAt(s.profileDir).String()
+	if providers := config.CrewProvidersAt(s.profileDir); len(providers) > 0 {
+		on := 0
+		for _, provider := range providers {
+			if provider.On {
+				on++
+			}
+		}
+		value += " · " + strconv.Itoa(on) + " of " + strconv.Itoa(len(providers)) + " providers"
+	}
 	if capUSD := config.CrewCapAt(s.profileDir); capUSD > 0 {
 		value += " · cap " + crewroute.Money(capUSD)
 	}
 	return sheetItem{
 		crewDoor: true, crewValue: value, hitAt: hitAt, hitLen: hitLen,
 		meta: settingMeta{tab: tabProviders, label: "seats",
-			about: "the worker, planner and checker, the models they may be picked from, and the daily cap · enter opens /crew"},
+			about: "the worker, planner and checker, the models they may be picked from, the providers they may route through, and the daily cap · enter opens /crew"},
 	}
 }
 

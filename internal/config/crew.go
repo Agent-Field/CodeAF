@@ -27,13 +27,16 @@ import (
 //     and the router never overrides;
 //   - the ALLOWED MODELS, one rule ([crewroute.ParseAllowed]) — `all` unless
 //     somebody narrowed it;
-//   - an optional DAILY CAP on what crews spend, which the router paces toward.
+//   - an optional DAILY CAP on what crews spend, which the router paces toward;
+//   - the PROVIDERS TURNED OFF, a set of connections the crew may not route
+//     through — empty unless somebody switched one off.
 //
-// The providers a crew can use are not a setting: they are the connections the
-// person made, read off the profile the way every call reads them. That is
-// the one-sentence model the whole feature is built on — the /crew panel says
-// what is allowed and it persists; the words in an ask say how hard to try
-// that one task; nothing else sticks.
+// The providers a crew can use are the connections the person made, read off
+// the profile the way every call reads them; what persists is only which of
+// them the crew leaves alone, so a connection made tomorrow is on the day it
+// is made. That is the one-sentence model the whole feature is built on — the
+// /crew panel says what is allowed and it persists; the words in an ask say
+// how hard to try that one task; nothing else sticks.
 //
 // THE PINS LIVE IN THE TIER ROWS THE CREW HAS ALWAYS LIVED IN. The worker
 // seat is the `worker` tier row, the planner is the `mastermind` row, the
@@ -58,6 +61,12 @@ const (
 	// turned it on: a free pool may log or train on what it is sent, which is
 	// a choice about a person's code, not a price.
 	KeyCrewFreeRoutes = "models.crew.free_routes"
+	// KeyCrewProvidersOff is the connected providers a person turned off for
+	// the crew, a list of provider ids; absent is every provider on. It is a
+	// row of its own beside the allowed rule and never a `-x` inside it
+	// (crewroute's providers.go says why), and PROFILE-ONLY for the allowed
+	// rule's reason.
+	KeyCrewProvidersOff = "models.crew.providers.off"
 )
 
 // CrewAuto is the word a seat reads when it is not pinned.
@@ -258,6 +267,9 @@ func CrewPinAllowed(profileDir string, pin CrewPin) error {
 		if !rule.AdmitsRoute(provider.ID) {
 			return fmt.Errorf("%s is a provider your allowed models exclude (%s)", provider.ID, rule.String())
 		}
+		if !provider.On {
+			return fmt.Errorf("%s is turned off for the crew · turn it on in /crew's providers row", provider.ID)
+		}
 		if _, ok := provider.route(pin.Model, model, known); !ok {
 			return fmt.Errorf("%s does not serve %s", provider.Name, pin.Model)
 		}
@@ -346,6 +358,70 @@ func SetCrewFreeRoutes(profileDir string, on bool) error {
 	return writeProfileValue(profileDir, KeyCrewFreeRoutes, on)
 }
 
+// ── the providers turned off ────────────────────────────────────────────────
+
+// ErrCrewLastProvider is the refusal to turn off the last provider on: a crew
+// with nothing to route through is not a narrower crew but no crew, and the
+// way to say "none of these" is to disconnect them, which /connect does.
+var ErrCrewLastProvider = errors.New("at least one provider must stay on")
+
+// CrewProvidersOffAt is the providers turned off for the crew. A row that does
+// not read — a hand edit — reads as none off, the way a rule that does not
+// parse reads as the default.
+func CrewProvidersOffAt(profileDir string) crewroute.ProvidersOff {
+	raw, ok := persistedValue(profileDir, KeyCrewProvidersOff)
+	if !ok {
+		return nil
+	}
+	var ids []string
+	if json.Unmarshal(raw, &ids) != nil {
+		return nil
+	}
+	off := crewroute.ProvidersOff{}
+	for _, id := range ids {
+		if id = strings.ToLower(strings.TrimSpace(id)); id != "" {
+			off[id] = true
+		}
+	}
+	return off
+}
+
+// SetCrewProviderOn turns one connected provider on or off for the crew, IN
+// ONE FILE WRITE, refusing to turn off the last one on ([ErrCrewLastProvider])
+// and a provider that is not connected.
+//
+// THE ROW KEEPS ONLY CONNECTED PROVIDERS. An id left behind by a connection
+// since removed is dropped on the next write, so a provider disconnected and
+// connected again is on — the same as any connection made after the row was
+// written — and the row never grows a list of names nobody can see.
+func SetCrewProviderOn(profileDir, id string, on bool) error {
+	providers := CrewProvidersAt(profileDir)
+	provider, ok := crewProviderByID(providers, id)
+	if !ok {
+		return fmt.Errorf("%s is not a connected provider · connect it with /connect", strings.TrimSpace(id))
+	}
+	var ids []string
+	still := 0
+	for _, p := range providers {
+		stays := p.On
+		if p.ID == provider.ID {
+			stays = on
+		}
+		if stays {
+			still++
+			continue
+		}
+		ids = append(ids, p.ID)
+	}
+	if still == 0 {
+		return ErrCrewLastProvider
+	}
+	if len(ids) == 0 {
+		return writeProfileValues(profileDir, map[string]any{KeyCrewProvidersOff: removeProfileKey})
+	}
+	return writeProfileValue(profileDir, KeyCrewProvidersOff, ids)
+}
+
 // ── what the router may pick from ───────────────────────────────────────────
 
 // CrewCatalog is how the catalog reaches crew routing: the binary holding the
@@ -416,6 +492,9 @@ type CrewProvider struct {
 	// Serves is the models a plan door serves, empty for every model the
 	// vendor lists.
 	Serves []string
+	// On is whether the crew may route through it: every connection is, until
+	// a person turns it off ([SetCrewProviderOn]).
+	On bool
 	// vendors are the catalog vendor prefixes this connection serves directly.
 	vendors []string
 	// collides lists the catalog vendors whose ids this connection's Written
@@ -435,6 +514,7 @@ var crewVendors = map[string][]string{
 // default service first when it has one. It is DERIVED, never a setting —
 // connecting a provider is what adds it.
 func CrewProvidersAt(profileDir string) []CrewProvider {
+	off := CrewProvidersOffAt(profileDir)
 	set := ResolveSources(profileDir, APIKeyAt(profileDir), DefaultBaseURL)
 	written := map[string]bool{}
 	for _, service := range set.All() {
@@ -447,6 +527,7 @@ func CrewProvidersAt(profileDir string) []CrewProvider {
 			continue
 		}
 		p := CrewProvider{ID: strings.ToLower(source.ID), Name: source.Name, Written: source.Written, Kind: crewroute.Metered}
+		p.On = off.On(p.ID)
 		switch {
 		case strings.EqualFold(source.ID, modelsource.DefaultID):
 			p.collides = map[string]bool{}
@@ -540,8 +621,12 @@ func (p CrewProvider) route(id string, model crewroute.Model, known bool) (crewr
 // connection, then the default service, which is the order a tie between
 // routes of equal cost is broken in. A model no connected provider reaches is
 // not a candidate, however cheap.
+//
+// A provider the person turned off carries none of those routes
+// ([crewroute.ProvidersOff]), so a model only it reached is no candidate
+// either — the route cost the router weighs is always a route it may take.
 func CrewCandidatesAt(profileDir string) []crewroute.Candidate {
-	return crewCandidates(CrewAllowedAt(profileDir), CrewProvidersAt(profileDir))
+	return CrewProvidersOffAt(profileDir).Candidates(crewCandidates(CrewAllowedAt(profileDir), CrewProvidersAt(profileDir)))
 }
 
 // crewCandidates is [CrewCandidatesAt] over a rule and a set of providers
@@ -607,7 +692,11 @@ type CrewOffer struct {
 	// order — plans and local first, the default service last — and the
 	// cheapest route is the first one.
 	Routes []crewroute.Route
-	// Allowed is whether the rule admits the model on at least one of them.
+	// Served is whether a provider that is ON reaches it: a model only a
+	// provider turned off reaches is still listed, and is not allowed.
+	Served bool
+	// Allowed is whether the rule admits the model on at least one route
+	// through a provider that is on.
 	Allowed bool
 }
 
@@ -617,12 +706,14 @@ type CrewOffer struct {
 // route reaches what.
 func CrewOffersAt(profileDir string) []CrewOffer {
 	rule := CrewAllowedAt(profileDir)
+	off := CrewProvidersOffAt(profileDir)
 	providers := CrewProvidersAt(profileDir)
 	var out []CrewOffer
 	for _, c := range crewCandidates(crewroute.Allowed{Base: crewroute.BaseAll}, providers) {
 		offer := CrewOffer{Model: c.Model, Routes: c.Routes}
+		offer.Served = len(off.Routes(c.Routes)) > 0
 		if rule.AdmitsModel(c.Model) {
-			for _, r := range c.Routes {
+			for _, r := range off.Routes(c.Routes) {
 				if rule.AdmitsRoute(r.Provider) {
 					offer.Allowed = true
 					break
@@ -643,7 +734,8 @@ func SetCrewAllowedRule(profileDir string, rule crewroute.Allowed) error {
 }
 
 // CrewState is the crew's persisted rows as they stand — the three seats, the
-// allowed rule and the cap, raw — which is what the panel's undo puts back.
+// allowed rule, the cap and the providers turned off, raw — which is what the
+// panel's undo puts back.
 //
 // IT IS THE ROWS AND NOT A READING OF THEM. An undo that re-wrote what the
 // readers made of the rows would turn a hand-written `auto` into an absent
@@ -655,7 +747,7 @@ type CrewState struct {
 
 // crewStateKeys are the rows a [CrewState] carries.
 func crewStateKeys() []string {
-	keys := []string{KeyCrewAllowed, KeyCrewCap}
+	keys := []string{KeyCrewAllowed, KeyCrewCap, KeyCrewProvidersOff}
 	for _, seat := range crewroute.Seats {
 		keys = append(keys, tierKeyFor(CrewSeatTier(seat)))
 	}
