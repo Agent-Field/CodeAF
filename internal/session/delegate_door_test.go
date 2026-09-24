@@ -6,10 +6,12 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/delegate"
+	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
 // testPrograms is a build that carries one program called name. The session
@@ -246,6 +248,45 @@ func TestAProgramIsHandedTheConversationsCrew(t *testing.T) {
 	}
 	if got := agent.delegateCrew(&beltRun{}); !got.IsZero() {
 		t.Fatalf("a run no program works was handed a crew: %+v", got)
+	}
+}
+
+// A PROGRAM'S RUN THAT DID NOT FINISH IS OVER ON ITS PAGE. The engine left its
+// store open, the page read `running · … · x stop it` for forty minutes over a
+// program that had ended, and the next hand-off would have adopted it. Its
+// store's run task is now ended with the program's own sentence.
+func TestAProgramsRunThatDidNotFinishIsEndedInItsStore(t *testing.T) {
+	double := newBeltRunDouble("")
+	double.leaveOpen = true
+	double.summary = RunSummary{Outcome: "ran and did not finish", Program: &ProgramEnding{
+		Status: delegate.StatusFail, Reason: "fake did not finish: its tests fail", Result: "its tests fail",
+	}}
+	registerBeltRunEngine(t, double)
+	agent, _ := newTestAgent(t, beltRunCompleter{text: ""}, func(config *Config) {
+		config.Workspace = newTestRepo(t)
+		config.Place = Place{Dir: t.TempDir()}
+		config.AskConsent = false
+		config.Delegates = testPrograms("fake")
+	})
+	id, _, _, err := agent.StartDelegate(context.Background(), "fake", "change the project")
+	if err != nil {
+		t.Fatalf("StartDelegate: %v", err)
+	}
+	<-double.entered
+	double.mu.Lock()
+	spec := double.spec
+	double.mu.Unlock()
+	endBeltRun(t, agent, double)
+
+	store := beltRunStoreAt(t, filepath.Dir(spec.Store.Path()))
+	defer store.Close()
+	root := store.Task(store.RootID())
+	if root.Status != plandb.StatusFailed || root.Error != "fake did not finish: its tests fail" {
+		t.Fatalf("the run's task = %s (%q), want failed with the program's own sentence", root.Status, root.Error)
+	}
+	page, ok := agent.PlanTaskPage(strconv.FormatUint(id, 10))
+	if !ok || page.Row.Status != string(plandb.StatusFailed) {
+		t.Fatalf("the task's page row = %+v (%v), want it ended and not running", page.Row, ok)
 	}
 }
 

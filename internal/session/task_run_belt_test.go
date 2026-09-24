@@ -63,6 +63,9 @@ type beltRunDouble struct {
 	// for a run that did not finish.
 	honoursStop bool
 	early       func(workspace string)
+	// leaveOpen makes the double end the way the real engine ends a run a
+	// limit or a program's own ending took down: its store's root left open.
+	leaveOpen bool
 }
 
 func newBeltRunDouble(result string) *beltRunDouble {
@@ -115,7 +118,7 @@ func (d *beltRunDouble) Start(ctx context.Context, spec RunSpec) RunSummary {
 	if d.work != nil {
 		d.work(spec.Workspace)
 	}
-	if spec.Store != nil {
+	if spec.Store != nil && !d.leaveOpen {
 		_ = spec.Store.CompleteRoot(d.summary.Result)
 	}
 	close(d.finished)

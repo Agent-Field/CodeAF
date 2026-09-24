@@ -705,6 +705,15 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	var landing RunLanding
 	if run.delegate != nil {
 		landing = a.landDelegateRun(run, summary)
+		// A PROGRAM'S RUN IS OVER WHEN ITS PROGRAM IS, however it ended: it is
+		// a run of one task that nothing continues, so a store the engine left
+		// open — a program ended at the dollar ceiling leaves it so — is closed
+		// here, or its page would read `running` and offer `stop it` for ever.
+		// A run that already ended is left as it ended.
+		if summary.Outcome != beltRunOutcomeDone {
+			words, _ := runEndingWords(summary)
+			_ = run.store.FailRoot(words)
+		}
 	} else {
 		landing = a.landBeltRun(ctx, engine, run)
 	}

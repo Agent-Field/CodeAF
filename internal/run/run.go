@@ -149,6 +149,9 @@ type Supervisor struct {
 	// ended, when it ended without finishing ([ProgramEndedError]); nil for
 	// every other run.
 	rootProgram *ProgramEndedError
+	// rootFailure is the root worker's error when it failed, which the run's
+	// ending writes onto the root ([plandb.Store.FailRoot]).
+	rootFailure string
 	// limitHit is which limit a person set ended this run, and empty while none
 	// has. It is set the moment the run decides a limit was reached (the
 	// elapsed signal in Run, the spend counters in countLiveSpend and
@@ -380,6 +383,14 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 	}
 
 	if s.inFlight == 0 && (s.rootFailed || s.limitHit != "") {
+		if s.rootFailed && s.limitHit == "" {
+			// THE RUN'S OWN TASK FAILED, SO THE RUN IS OVER, and the store says
+			// so: left open it read as running for ever, and the next hand-off
+			// would adopt it as live work ([plandb.Store.FailRoot]). A run a
+			// limit ended keeps its open work, which is what lets it be taken
+			// up again under a wider bound.
+			_ = s.store.FailRoot(s.rootFailure)
+		}
 		// Nothing of ours is running and the run cannot complete itself: the
 		// root's own worker failed, or the run has reached a limit a person set,
 		// in dollars or in time.
@@ -694,6 +705,7 @@ func (s *Supervisor) absorb(ret workerReturn) {
 				s.addReviewCheck(ret.task, root.Result)
 			} else {
 				s.rootFailed = true
+				s.rootFailure = ret.err.Error()
 				// A PROGRAM THAT ENDED WITHOUT FINISHING SAID WHY, and its words
 				// are the run's to carry, never to drop: the session draws the
 				// row out of them ([Summary.Program]).

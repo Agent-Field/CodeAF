@@ -49,3 +49,30 @@ func TestStopRootEndsTheRunAndEverythingStillOpenUnderIt(t *testing.T) {
 		t.Fatalf("a second stop rewrote the first one's reason: %q", root.Error)
 	}
 }
+
+// A RUN WHOSE OWN TASK FAILED IS OVER IN THE STORE. Nothing wrote its ending,
+// so it read as running for ever and the next hand-off would have adopted it.
+// The runtime's verb fails the run's task with the reason, cancels what is
+// still open, writes no result, and leaves what had ended as it ended.
+func TestFailRootEndsTheRunWithoutAResult(t *testing.T) {
+	store := planOpen(t, filepath.Join(t.TempDir(), "plan.json"))
+	planAdd(t, store, planSpec("landed", "Landed"), planSpec("waiting", "Waiting"))
+	planFinish(t, store, "landed", "worker", "landed delivered")
+
+	if err := store.FailRoot("senior-dev did not finish: its tests fail"); err != nil {
+		t.Fatalf("fail root: %v", err)
+	}
+	root := store.Task("root")
+	if root.Status != StatusFailed || root.Error != "senior-dev did not finish: its tests fail" || root.Result != "" || root.CompletedAt.IsZero() {
+		t.Fatalf("the run's own task after it failed = %s, %q, result %q, ended %v", root.Status, root.Error, root.Result, root.CompletedAt)
+	}
+	if task := store.Task("waiting"); task.Status != StatusCancelled {
+		t.Fatalf("open work under a failed run = %s, want cancelled", task.Status)
+	}
+	if task := store.Task("landed"); task.Status != StatusDone || task.Result != "landed delivered" {
+		t.Fatalf("work that had already landed was rewritten: %s, %q", task.Status, task.Result)
+	}
+	if err := store.FailRoot("again"); err != nil || store.Task("root").Error != "senior-dev did not finish: its tests fail" {
+		t.Fatalf("a second ending rewrote the first: %v, %q", err, store.Task("root").Error)
+	}
+}

@@ -1547,6 +1547,45 @@ func (s *Store) StopRoot(reason string) error {
 	})
 }
 
+// FailRoot ends the run because the run's own task failed: its worker came
+// home with an error and nothing of the run is still working. Only the runtime
+// calls it, the way only the runtime calls [Store.CompleteRoot] and
+// [Store.StopRoot]. The run's task is failed with the reason, and every other
+// task still open is cancelled with it, in one transaction; a task that had
+// already ended keeps its ending. No result is written: a result is what a
+// finished run delivers, and a failed worker's account is not one.
+//
+// A FAILED RUN WAS LEFT OPEN, AND AN OPEN RUN READS AS RUNNING. Nothing wrote
+// the ending of a run whose own worker failed, so its store said `running` for
+// ever: the task's page drew `running` and offered `stop it` over a program
+// that had ended forty minutes earlier, and the next hand-off would have
+// adopted the dead run's store as live work ([Store.StopRoot] says why an open
+// run is adopted). A run that already ended is left as it ended.
+func (s *Store) FailRoot(reason string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.transact(func(next *state, now time.Time) error {
+		root := next.Tasks[next.RootID]
+		if root == nil || terminal(root.Status) {
+			return errNoChange
+		}
+		reason = strings.TrimSpace(reason)
+		for _, task := range next.Tasks {
+			if terminal(task.Status) || task.ID == root.ID {
+				continue
+			}
+			task.Status, task.Error, task.ClaimedBy = StatusCancelled, reason, ""
+			task.Owner, task.SeenAt = "", time.Time{}
+			task.UpdatedAt, task.CompletedAt = now, now
+		}
+		root.Status, root.Error, root.ClaimedBy = StatusFailed, reason, ""
+		root.Owner, root.SeenAt = "", time.Time{}
+		root.UpdatedAt, root.CompletedAt = now, now
+		promote(next, now)
+		return nil
+	})
+}
+
 // Archive moves whole finished subtrees out of the live plan and into the
 // archive: a task and every task under it, when each one has been terminal —
 // done, cancelled or failed — for longer than the window. The moved tasks
