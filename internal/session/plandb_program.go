@@ -146,6 +146,15 @@ func (a *Agent) planCarriedPrograms() map[string]string {
 	return map[string]string{a.beltRun.root: a.beltRun.delegate.Name}
 }
 
+// planRootIsProgram answers whether a run's root task was handed to a program:
+// its record folder holds the program's record, or the conversation's live run
+// carries a program for it before that record has reached the disk.
+func (a *Agent) planRootIsProgram(store *plandb.Store, rootID string) bool {
+	id := planTaskID(rootID)
+	_, ok := planProgramRecord(filepath.Dir(store.Path()), id, a.planCarriedPrograms()[id])
+	return ok
+}
+
 // planProgramPage reads one task's program and conversation for its page, or
 // nil for a task that is not a program's: no record in its folder, no name the
 // live run carries for it, and no conversation log.

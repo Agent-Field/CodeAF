@@ -5580,3 +5580,10 @@ the run has moved and somebody is looking, rather than every time you look, and
 once when the run lands. The **now** sentence also appears under the run's dot
 row in the rail, dim and two lines at most. Without a model key the lines are
 absent; the task facts remain available on their own.
+
+Each refresh is one model call, and it is counted like any other: it is in the
+conversation's spend on the status line, in `/cost` and in the spending ledger,
+even when its answer could not be used. Two looks at the same moment buy one
+refresh, not two. A run with no rows yet buys none, and neither does a task
+handed to a program such as senior-dev: its page is its conversation with
+codeaf, and its row already says its stage, so it has no four lines.

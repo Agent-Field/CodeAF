@@ -3196,6 +3196,10 @@ type Agent struct {
 	// held.
 	beltMu  sync.Mutex
 	beltRun *beltRun
+	// runSummaryBusy holds the roots whose card reading is being bought right
+	// now ([Agent.RefreshRunSummary]), so a second surface that asks in the same
+	// moment keeps the last reading rather than paying for a second one.
+	runSummaryBusy sync.Map
 	// taskAnswers is the proposals a person owes an answer to, keyed by the id
 	// the EventTaskProposal carried. It is consent's pending-id machinery for a
 	// question whose CLOCK can be held: the wait ends on an answer, on an active

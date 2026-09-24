@@ -3,16 +3,19 @@ package session
 import (
 	"context"
 	"errors"
+	"math"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
-func runSummaryFixture(t *testing.T, completer *scriptedCompleter) (*Agent, *plandb.Store, time.Time) {
+func runSummaryFixture(t *testing.T, completer *scriptedCompleter, more ...func(*Config)) (*Agent, *plandb.Store, time.Time) {
 	t.Helper()
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	dir := t.TempDir()
@@ -28,6 +31,9 @@ func runSummaryFixture(t *testing.T, completer *scriptedCompleter) (*Agent, *pla
 	agent, _ := newTestAgent(t, completer, func(c *Config) {
 		c.Place = Place{Dir: dir}
 		c.clock = func() time.Time { return now }
+		for _, apply := range more {
+			apply(c)
+		}
 	})
 	return agent, store, now
 }
@@ -159,5 +165,105 @@ func TestRunSummaryStampAndInputCarryTheHeldQuestions(t *testing.T) {
 	}
 	if !strings.Contains(input, "LAST LOOK\nnever\n") {
 		t.Fatalf("a run never looked at must say so:\n%s", input)
+	}
+}
+
+// A RUN'S READING IS PAID FOR, SO IT IS IN THE BOOKS. The card's lines are a
+// worker-tier call, and until this test they reached the conversation's journal
+// and nowhere else: the status line, `/cost` and the machine's spending ledger
+// all left them out, which a stub service that billed every call caught at
+// three unbanked calls on every senior-dev run.
+func TestARunSummaryIsInTheConversationsBooksAndTheLedger(t *testing.T) {
+	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
+	client := &scriptedCompleter{steps: []step{pricedText("what: w\nsince: s\nnow: n\nnext: Nothing needs you.", 0.0123)}}
+	agent, _, _ := runSummaryFixture(t, client, func(c *Config) { c.usageLedger = ledger })
+	if _, ok := agent.RefreshRunSummary(context.Background(), planRootID, time.Time{}); !ok {
+		t.Fatal("the refresh stored no summary")
+	}
+	if got := agent.Usage().CostUSD; math.Abs(got-0.0123) > 1e-9 {
+		t.Fatalf("the conversation's books hold $%.4f, want the reading's $0.0123", got)
+	}
+	FlushUsage()
+	lines, err := ReadUsage(ledger, time.Time{})
+	if err != nil {
+		t.Fatalf("read the ledger: %v", err)
+	}
+	if len(lines) != 1 || math.Abs(lines[0].USD-0.0123) > 1e-9 {
+		t.Fatalf("ledger = %+v, want one row of $0.0123", lines)
+	}
+}
+
+// AN ANSWER THAT CANNOT BE READ WAS STILL PAID FOR. The last good reading
+// stands on the card, and the money for the one that could not be used is in
+// the books all the same.
+func TestARunSummaryAnswerThatCannotBeReadIsStillInTheBooks(t *testing.T) {
+	client := &scriptedCompleter{steps: []step{pricedText("not the four lines", 0.004)}}
+	agent, _, _ := runSummaryFixture(t, client)
+	if _, ok := agent.RefreshRunSummary(context.Background(), planRootID, time.Time{}); ok {
+		t.Fatal("an unreadable answer was stored as a summary")
+	}
+	if got := agent.Usage().CostUSD; math.Abs(got-0.004) > 1e-9 {
+		t.Fatalf("the conversation's books hold $%.4f, want the unreadable answer's $0.004", got)
+	}
+}
+
+// A PROGRAM'S RUN BUYS NO READING. Its store holds one task and a live stage,
+// its page is its conversation with codeaf, and four model-written lines about
+// one row would say again, for money, what the row already says.
+func TestAProgramsRunBuysNoRunSummary(t *testing.T) {
+	client := &scriptedCompleter{steps: []step{pricedText("what: w\nsince: s\nnow: n\nnext: n", 0.0123)}}
+	agent, store, _ := runSummaryFixture(t, client)
+	if err := delegate.WriteProgram(plandb.TaskDir(filepath.Dir(store.Path()), planRootID), delegate.ProgramRecord{Name: "senior-dev"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := agent.RefreshRunSummary(context.Background(), planRootID, time.Time{}); ok {
+		t.Fatal("a program's run was given a summary")
+	}
+	if client.requests() != 0 {
+		t.Fatalf("a program's run asked a model %d times for a summary, want none", client.requests())
+	}
+}
+
+// A RUN WITH NOTHING IN IT BUYS NO READING. The first refresh of a run used to
+// be sent before its store held the task, with an empty ask and no rows, and a
+// model was paid to summarise nothing.
+func TestARunSummaryOfNoRowsMakesNoCall(t *testing.T) {
+	client := &scriptedCompleter{steps: []step{pricedText("what: w\nsince: s\nnow: n\nnext: n", 0.0123)}}
+	agent, _, _ := runSummaryFixture(t, client)
+	if _, ok := agent.RefreshRunSummary(context.Background(), "no-such-root", time.Time{}); ok {
+		t.Fatal("a run with no rows was given a summary")
+	}
+	if client.requests() != 0 {
+		t.Fatalf("a run with no rows asked a model %d times, want none", client.requests())
+	}
+}
+
+// ONE READING AT A TIME FOR ONE RUN. Two surfaces asking in the same moment
+// (a window's own refresh and the page it just opened) both found the reading
+// stale and both paid for one; the second now keeps the last reading.
+func TestTwoRefreshesOfOneRunAtOnceBuyOneReading(t *testing.T) {
+	release := make(chan struct{})
+	entered := make(chan struct{}, 2)
+	client := &scriptedCompleter{steps: []step{func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		entered <- struct{}{}
+		<-release
+		cost := 0.0123
+		response := textResponse("what: w\nsince: s\nnow: n\nnext: n")
+		response.Usage.Cost = &cost
+		return response, nil
+	}}}
+	agent, _, _ := runSummaryFixture(t, client)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		agent.RefreshRunSummary(context.Background(), planRootID, time.Time{})
+	}()
+	<-entered
+	agent.RefreshRunSummary(context.Background(), planRootID, time.Time{})
+	close(release)
+	wg.Wait()
+	if client.requests() != 1 {
+		t.Fatalf("two refreshes at once asked a model %d times, want one", client.requests())
 	}
 }
