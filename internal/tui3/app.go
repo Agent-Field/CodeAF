@@ -1325,6 +1325,9 @@ type app struct {
 	behind map[string]*kept
 	// wall is the grid of every open conversation and the teams (wallcontract.go).
 	wall wallState
+	// traffic is the Traffic log's cache, its clock and its rail
+	// (teamtraffic.go).
+	traffic trafficState
 	// teamMenu is the strip chip's team switcher (teammenu.go).
 	teamMenu teamMenu
 	// homeGen is home's own clock generation. It belongs to the SURFACE rather
@@ -3286,6 +3289,14 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if hold := a.takeQuestionHolds(); hold != nil {
 		cmd = tea.Batch(cmd, hold)
 	}
+	// AND THE TRAFFIC CLOCK IS ARMED HERE, for the reason the title is asked
+	// here: a team made, a member joined, a manager opened, each happens by some
+	// message, and this is the one place every one of them has happened by
+	// (teamtraffic.go). It costs a walk of the loaded teams when it is not
+	// turning and nothing when it is.
+	if tick := a.trafficArm(); tick != nil {
+		cmd = tea.Batch(cmd, tick)
+	}
 	// AND THE TERMINAL'S TITLE IS ASKED AFTER EVERY MESSAGE, because this is
 	// the one place every change to where a person stands has already happened
 	// by — a place entered, a name arriving, a question coming up — and it is
@@ -3591,6 +3602,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case wallTickMsg:
 		return a, a.wallTick()
+
+	case trafficTickMsg:
+		return a, a.trafficTick()
 
 	case wallNameTimeMsg:
 		a.wallNameTimedOut(msg.gen)
@@ -4133,6 +4147,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// the body for the same reason: the two are drawn side by side, so
 			// which one was pressed is a question about x (room.go). A rail row
 			// is a door into that node's room.
+			// AND THE TRAFFIC RAIL BEFORE IT, at the frame's right edge while the
+			// manager is in front: a row goes to its member (teamtraffic.go).
+			if cmd, took := a.trafficPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
 			if cmd, took := a.railPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}

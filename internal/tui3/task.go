@@ -3126,7 +3126,7 @@ func (a *app) railGripState() (string, func(string) string) {
 // [app.railAt]'s own bargain: a strip that answered a click it would not light
 // under the pointer is a strip that disagrees with itself about what it is.
 func (a *app) railGripAt(x, y int) bool {
-	if !a.railStowed() || x < a.bodyWidth() {
+	if !a.railStowed() || x < a.bodyWidth() || x >= a.bodyWidth()+a.railWidth() {
 		return false
 	}
 	top := a.bodyTop()
@@ -3137,9 +3137,13 @@ func (a *app) railGripAt(x, y int) bool {
 // question about the transcript resolves through — what the frame draws, where
 // the wheel lands, which row a click hit. A rail the layout knew about and the
 // hit-testing did not would deliver clicks to rows wrapped at another width.
+//
+// THE TRAFFIC RAIL IS CHARGED HERE TOO, while the manager is in front
+// (teamtraffic.go): it stands to the right of this column, and the conversation
+// is what gives it the columns.
 func (a *app) bodyWidth() int {
 	width, _ := a.size()
-	if body := width - a.railWidth(); body > 0 {
+	if body := width - a.railWidth() - a.trafficWidth(); body > 0 {
 		return body
 	}
 	return width

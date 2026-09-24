@@ -302,6 +302,9 @@ func (a *app) teamEdit(change func(f *teamstore.File) error) error {
 	}
 	a.teamRefreshWords(mine.Teams)
 	a.wall.teams = mine.Teams
+	// A Traffic read already out may carry the file from before this write;
+	// counting the write keeps it from being put back (teamtraffic.go).
+	a.traffic.edits++
 	reserved := teamReservedHues(a.pal)
 	var wrote *teamstore.File
 	err := teamstore.Update(a.profileDir, func(f *teamstore.File) error {
