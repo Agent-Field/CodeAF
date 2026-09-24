@@ -100,7 +100,7 @@ func bindRun(fs *flag.FlagSet) delegate.Body {
 	inPlace := fs.Bool("in-place", false, "work without git: no commits; checkpoints kept outside")
 	high := fs.String("high", app.DefaultHighModels, "models the coder routes among, comma-separated")
 	low := fs.String("low", "", "models for the history summary (default: --high)")
-	frontier := fs.String("frontier", "", "models for the frontier tier; no call uses it, so it changes nothing")
+	frontier := fs.String("frontier", "", "models for the frontier tier (no call uses it)")
 	crew := fs.Bool("crew", false, "the models came from codeaf's crew: skip any it cannot size")
 	return func(ctx context.Context, host delegate.Host, args []string) error {
 		run(ctx, host, app.Options{
