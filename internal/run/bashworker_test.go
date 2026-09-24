@@ -545,6 +545,15 @@ func TestBashWorkerEndsItsLoopAtTheStepCap(t *testing.T) {
 	if report.Steps != 3 {
 		t.Fatalf("report steps = %d, want the cap the loop stopped at", report.Steps)
 	}
+	// The bound is on work, not just on what the recorder admits afterwards.
+	// A fourth request has already spent past the cap even if its end event
+	// is discarded, so count the provider calls as well as the written steps.
+	seat.mu.Lock()
+	calls := seat.seen
+	seat.mu.Unlock()
+	if calls != 3 {
+		t.Fatalf("the provider received %d calls, want exactly the three allowed steps", calls)
+	}
 	lines := rawTrajectory(t, storeDir, store.RootID())
 	if len(lines) != 5 {
 		t.Fatalf("the trajectory holds %d lines, want the opening line, three steps and the ending", len(lines))
