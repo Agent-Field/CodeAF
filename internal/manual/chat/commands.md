@@ -1103,8 +1103,9 @@ Search matches conversation names, project names, task titles and **what tasks c
 the one-sentence outcome — so `postgres` finds the chat whose work mentioned it, including
 the ones no panel is drawing.
 
-**`enter` opens any conversation on the screen, in any project**, and `enter` on a
-`projects` row starts a fresh one in that folder. The conversation you were in is left
+**`enter` opens any conversation on the screen, in any project**, and `ctrl+t` on a
+conversation's row starts a fresh one in that row's folder; clicking a `projects` row
+instead picks the folder your next message from home goes to. The conversation you were in is left
 **open** behind it — still streaming, still running its tasks — and the new one is built on
 its own workspace with that project's own permissions, crew and spend ceiling. Nothing is
 carried across, because a second project is a second conversation rather than this one

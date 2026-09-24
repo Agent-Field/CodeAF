@@ -451,8 +451,9 @@ each of those is a panel of its own now.
 
 **You cannot any more, and `alt+g` does nothing.** Home is panels now, and the
 `projects` panel is the by-project view: every folder with a conversation in it, this
-window's own first, each with `N chats · M running` and its branch. It is a reading and
-not a list to walk: nothing on it opens. Typing the project's name into the box lists
+window's own first, each with `N chats · M running` and its branch. It is not a list to
+walk and nothing on it opens; clicking a project's name picks it as the folder for the
+next message. Typing the project's name into the box lists
 every conversation in it, and `ctrl+t` on one of them starts a new one there.
 
 ## How do I hide the quiet chats — alt+q hide the quiet ones
