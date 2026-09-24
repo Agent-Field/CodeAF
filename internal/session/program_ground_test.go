@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 )
 
 // A PROGRAM WORKS IN THE FOLDER IT WAS GIVEN. A chat opened in a plain folder
@@ -108,10 +110,12 @@ func TestAProgramsCardNamesTheProject(t *testing.T) {
 // that names no model is refused, and a proposal naming none is handed the
 // crew rather than the default a task's card shows.
 func TestAProgramWorksWithTheModelsThePersonAskedFor(t *testing.T) {
+	router := modelsource.DefaultSource("https://openrouter.ai/api/v1")
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.TaskModels = func() []string {
 			return []string{"moonshotai/kimi-k2.6", "z-ai/glm-5.1", "z-ai/glm-5.3-flash", "deepseek/deepseek-v4-pro"}
 		}
+		config.Sources = modelsource.NewSet(modelsource.Connected{Source: router, Key: "sk-or-v1-routerkey0000000000", Address: router.Address})
 	})
 	choice := agent.resolveProgramModels("kimi-k2.6, deepseek-v4-pro")
 	if choice.problem != "" || choice.model != "moonshotai/kimi-k2.6,deepseek/deepseek-v4-pro" {
@@ -131,5 +135,32 @@ func TestAProgramWorksWithTheModelsThePersonAskedFor(t *testing.T) {
 	}
 	if got := delegateStartedReceipt(2, "Invaders", "moonshotai/kimi-k2.6", "It is fake's.", ""); !strings.HasPrefix(got, "task 2 started on moonshotai/kimi-k2.6: Invaders\n") {
 		t.Fatalf("receipt = %q", got)
+	}
+}
+
+// A MODEL NO CONNECTED SERVICE SERVES IS REFUSED BY NAME, before a card. It was
+// handed to the program and every call on it was answered on the crew's
+// working seat instead: the person asked for one model and got another.
+func TestAProgramIsNotHandedAModelNoServiceServes(t *testing.T) {
+	router := modelsource.DefaultSource("https://openrouter.ai/api/v1")
+	proxy := modelsource.Source{ID: modelsource.CustomID, Written: "mybox", Name: "mybox", Address: "http://127.0.0.1:9000/v1"}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.TaskModels = func() []string { return []string{"moonshotai/kimi-k2.6", "mybox/qwen3-coder"} }
+		config.Sources = modelsource.NewSet(
+			modelsource.Connected{Source: router, Address: router.Address},
+			modelsource.Connected{Source: proxy, Key: "local", Address: proxy.Address},
+		)
+	})
+	if choice := agent.resolveProgramModels("kimi-k2.6"); !strings.Contains(choice.problem, "none of the model services connected here can serve moonshotai/kimi-k2.6") {
+		t.Fatalf("an unserved model = %+v", choice)
+	}
+	if choice := agent.resolveProgramModels("qwen3-coder, kimi-k2.6"); !strings.Contains(choice.problem, "none of the model services connected here can serve moonshotai/kimi-k2.6") {
+		t.Fatalf("an unserved model in a list = %+v", choice)
+	}
+	if choice := agent.resolveProgramModels("qwen3-coder"); choice.problem != "" || choice.model != "mybox/qwen3-coder" {
+		t.Fatalf("a served model = %+v", choice)
+	}
+	if choice := agent.resolveProgramModels(""); choice.problem != "" {
+		t.Fatalf("no model named was refused: %+v", choice)
 	}
 }

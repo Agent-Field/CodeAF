@@ -400,31 +400,74 @@ func taskModelMovedSentence(from, to string) string {
 
 // resolveProgramModels is [Agent.resolveTaskModel] for a program, which works
 // with one model or several: a `model` naming more than one, separated by
-// commas, is resolved word by word, and each word must name exactly one model
-// this install has. One word is resolved as any task's is, its shortlist and
-// all.
+// commas, is resolved word by word, and each word must name exactly one model.
+// One word is resolved as any task's is, its shortlist and all.
+//
+// EVERY MODEL NAMED MUST BE ONE A CONNECTED SERVICE CAN SERVE. The list a word
+// is matched against is the whole catalog, and a model none of the person's
+// services can reach was handed to the program anyway and then answered, call
+// after call, on the crew's working seat by the run's model API — the person
+// asked for one model and was quietly given another. It is refused here, by
+// name, before a card is shown.
 func (a *Agent) resolveProgramModels(word string) taskModelChoice {
-	words := strings.Split(word, ",")
+	var words []string
+	for _, part := range strings.Split(word, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			words = append(words, part)
+		}
+	}
 	if len(words) < 2 {
-		return a.resolveTaskModel(word)
+		choice := a.resolveTaskModel(word)
+		if len(words) == 0 || choice.problem != "" {
+			return choice
+		}
+		if len(choice.options) > 0 {
+			choice.options = slices.DeleteFunc(choice.options, func(model string) bool { return !a.programServes(model) })
+			switch len(choice.options) {
+			case 0:
+				return taskModelChoice{problem: programUnservedProblem(words[0])}
+			case 1:
+				return taskModelChoice{model: choice.options[0]}
+			}
+			return choice
+		}
+		if !a.programServes(choice.model) {
+			return taskModelChoice{problem: programUnservedProblem(choice.model)}
+		}
+		return choice
 	}
 	var models []string
 	for _, part := range words {
-		if strings.TrimSpace(part) == "" {
-			continue
-		}
 		choice := a.resolveTaskModel(part)
 		switch {
 		case choice.problem != "":
 			return choice
 		case len(choice.options) > 0:
-			return taskModelChoice{problem: taskModelVague(strings.TrimSpace(part), choice.options)}
+			return taskModelChoice{problem: taskModelVague(part, choice.options)}
+		case !a.programServes(choice.model):
+			return taskModelChoice{problem: programUnservedProblem(choice.model)}
 		}
 		if !slices.Contains(models, choice.model) {
 			models = append(models, choice.model)
 		}
 	}
 	return taskModelChoice{model: strings.Join(models, ",")}
+}
+
+// programServes says a connected service can take a call on model, by the one
+// test the run's model API makes ([ServesModel]). A conversation with no
+// services at all cannot be asked, and is not refused on that account.
+func (a *Agent) programServes(model string) bool {
+	a.mu.Lock()
+	sources := a.config.Sources.OrDefault(a.config.APIKey, a.config.BaseURL)
+	a.mu.Unlock()
+	return sources.Empty() || ServesModel(sources, model)
+}
+
+// programUnservedProblem is the refusal for a model no connected service serves.
+func programUnservedProblem(model string) string {
+	return "none of the model services connected here can serve " + model +
+		", so a program cannot be handed it; name a model one of them serves, spelled with its service's prefix when it is not the default service's"
 }
 
 // programAsked is the models a proposal asked its program to work with: what

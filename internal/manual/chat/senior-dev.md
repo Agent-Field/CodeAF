@@ -284,7 +284,8 @@ for either.
 with kimi-k2.6", or several: "with kimi-k2.6 and deepseek-v4-pro" — and senior-dev works
 with exactly those, routing among them call by call when there are several; the card and
 the task's first line name them. A name that fits more than one model is put to you to
-settle. A model senior-dev's model catalog does not know how to size cannot be used: the
+settle. A model none of your connected services can serve is refused before the card, by
+name, rather than swapped for another. A model senior-dev's model catalog does not know how to size cannot be used: the
 run ends before its first call with `senior-dev cannot work with <model>: …`, and nothing
 is spent. The models are fixed when the run starts; changing the crew later does not move
 a run already working. `/senior-dev` typed with a brief uses your crew.
