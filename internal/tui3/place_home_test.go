@@ -289,7 +289,7 @@ func TestARowSaysWhenItsDoorWillRefuseWithoutACardToSayIt(t *testing.T) {
 		if strings.Contains(words, "new in project") || strings.Contains(words, "open folder") {
 			t.Fatalf("a gone row offered a door that cannot open: %s", words)
 		}
-		if !strings.Contains(words, "copy project") {
+		if !strings.Contains(words, "copy name") {
 			t.Fatalf("a gone row lost the door that asks nothing of the disk: %s", words)
 		}
 		return
