@@ -13,7 +13,12 @@
 // shelf simply stop being carried.
 package session
 
-import "strings"
+import (
+	"errors"
+	"strings"
+
+	store "github.com/Agent-Field/codeaf/internal/store"
+)
 
 // AttachSkills puts skill names in front of this conversation, in the order
 // given, and returns the set as it now stands. A name already attached keeps
@@ -86,4 +91,24 @@ func containsSkillName(names []string, name string) bool {
 		}
 	}
 	return false
+}
+
+// ErrNoSkillShelf is the answer [Agent.SkillFacts] gives a conversation that
+// has no shelf store at all, which is different from a shelf with nothing on
+// it: a surface lists the skill folders it finds either way, and only this
+// answer makes it say on each row that choosing one does nothing.
+var ErrNoSkillShelf = errors.New("this conversation has no skill shelf")
+
+// SkillFacts is the shelf as THIS SESSION reads it — the same store the
+// catalog, the skills a message carries and `use_skill` read
+// ([Config.skillShelf]) — for a surface that lists it. It is the session's
+// answer and not the surface's because which store the shelf lives in is the
+// door's choice, and a picker that read some store of its own would be a
+// second answer to "which skills can this conversation use".
+func (a *Agent) SkillFacts(status string, limit int) ([]store.Fact, error) {
+	shelf := a.config.skillShelf()
+	if shelf == nil {
+		return nil, ErrNoSkillShelf
+	}
+	return shelf.SkillFacts(status, limit)
 }

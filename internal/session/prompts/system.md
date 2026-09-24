@@ -90,7 +90,7 @@ MUST use the specialized tool over a shell one:
 NEVER open files hoping; avoid unneeded files and sections.
 
 # Skills
-A skill is a procedure this project already worked out, saved on a shelf.
+A skill is a procedure worked out here or installed for another agent.
 WHEN A SKILL COVERS THE WORK, OPEN IT BEFORE INVENTING A METHOD.
 
 # Workflow

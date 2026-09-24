@@ -86,6 +86,15 @@ type v3Process struct {
 	// answer to give. Each conversation still gets its own memory pass and its
 	// own context, which is per-agent already.
 	Memory *store.Store
+	// Skills is the skill shelf every conversation this process opens reads:
+	// the Memory store itself when memory is on, and otherwise a store of its
+	// own that holds nothing but the skills the folders on disk hold
+	// ([v3SkillShelf]). It is profile-scoped for Memory's reason, and one
+	// handle for its reason too.
+	Skills *store.Store
+	// skillsDir is the folder the memory-off shelf lives in, removed with it
+	// at close; empty when the shelf is the Memory store.
+	skillsDir string
 	// Artifacts is the deliverables index — one file per machine, and /export
 	// and /files must resolve the same one the session's own products record
 	// themselves in.
@@ -253,6 +262,7 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		Conns:             v3Connect(settings.ProfileDir),
 		LaunchDir:         launchDir,
 	}
+	process.Skills, process.skillsDir = v3SkillShelf(process.Memory)
 	process.startPlaceSweep()
 	return process, nil
 }
@@ -543,6 +553,15 @@ func (p *v3Process) closeAll() {
 	}
 	if p.Memory != nil {
 		_ = p.Memory.Close()
+	}
+	// The memory-off shelf goes with the process that built it: it was only
+	// ever a reading of the skill folders, and the next launch reads them
+	// again.
+	if p.skillsDir != "" {
+		if p.Skills != nil {
+			_ = p.Skills.Close()
+		}
+		_ = os.RemoveAll(p.skillsDir)
 	}
 }
 

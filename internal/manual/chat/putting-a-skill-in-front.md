@@ -15,6 +15,22 @@ A skill that is on is marked with a filled dot on its row; one that is off
 carries a hollow one. Each row says what the skill is for and where it came
 from — this project, your home directory, or the shelf codeaf keeps for you.
 
+The list holds the skills you installed for Claude Code, Codex and the other
+agentskills.io tools, read where they live — the page
+`skills-from-other-tools` says which folders. It works the same with memory
+on or off, and in the ordinary launch, where the conversation runs in this
+workspace's session host.
+
+## Why a skill row says it cannot be attached
+
+A row ending `this conversation has no skill shelf, so this cannot be attached`
+is a skill found on disk in a conversation with no shelf to resolve it
+against, so turning it on would do nothing. It happens when the shelf could not
+be built at launch, or when the conversation runs in a session host from an
+older codeaf; relaunching on the current one fixes both. When the whole
+conversation cannot carry attached skills, choosing a row says
+`this conversation cannot carry attached skills` instead.
+
 ## Attach a skill from any folder
 
 Type `/skill` followed by a path — `/skill ~/notes/my-skill`, `/skill

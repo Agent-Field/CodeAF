@@ -287,6 +287,15 @@ type entry struct {
 	// the explanation should have been (session's EventRowNews).
 	told bool
 
+	// carried marks the note naming the skills a turn carried (session's
+	// turnSkillsNotice). It is not addressed to the person, so it does not hold
+	// a turn open the way [entry.told] does; it is a record of what the
+	// person's message took with it, so it sits under that message and a chip
+	// starts below it rather than swallowing it ([countWork]). Folded, the line
+	// vanished for good: an opened chip lists calls, not notes, so the only
+	// screen evidence that a skill reached a turn lasted as long as the turn.
+	carried bool
+
 	// context is the NAMED WORKING CONTEXT this turn was routed into, in the
 	// engine's own person-facing words (session's TaskNotice.Context) — and empty
 	// for every ordinary turn, which is nearly all of them. It is set on the
@@ -1764,8 +1773,13 @@ type app struct {
 	// (skillpick.go). It holds no attachment state of its own: the names live
 	// in the session, and the tray chip reads them there.
 	skillPick skillPick
-	connNames map[string]string
-	connFlows map[string]*connect.Flow
+	// skillShelfSeen is the session's shelf as its last reading answered, nil
+	// until one has (skillpick.go's [app.readSkillShelf]). It outlives the
+	// list, so a list opened again draws the last answer while the next read
+	// is on its way.
+	skillShelfSeen *skillShelfReading
+	connNames      map[string]string
+	connFlows      map[string]*connect.Flow
 	// codexFlow is the model-service browser sign-in. Its result is tokens rather
 	// than a connected-account status, so it cannot live in connFlows; it is held
 	// for the same reason, so replacing the conversation can cancel its listener.
@@ -8546,9 +8560,9 @@ func (a *app) syncLists() tea.Cmd {
 	// AND THE SKILL PICKER IS THE FOURTH OF THEM, on the harness picker own
 	// terms: the same space that begins an argument begins the shelf
 	// (skillpick.go).
-	if a.syncSkillPick() {
+	if open, read := a.syncSkillPick(); open {
 		a.comp.close()
-		return nil
+		return read
 	}
 	was := a.comp.open
 	a.comp.sync(&a.input)

@@ -18,10 +18,12 @@ package session
 // IT IS GATED EXACTLY AS propose_task IS ([Agent.mayProposeTask]) and on one
 // thing more: a store to read the shelf FROM. A node on the floor of its tree
 // already has no kids and is handed no verb to make any; the same shape has no
-// business rummaging a shelf either, and an agent with no Memory has no shelf to
-// read. So the belt and the page agree by construction: [Config.mayProposeTask]
-// AND a non-nil store, which is the predicate the belt fact is composed from
-// (beltfacts.go) and the gate this method reads.
+// business rummaging a shelf either, and an agent with no shelf store has
+// nothing to read. So the belt and the page agree by construction:
+// [Config.mayProposeTask] AND a non-nil [Config.skillShelf], which is the
+// predicate the belt fact is composed from (beltfacts.go) and the gate this
+// method reads. With memory off the live door still hands a shelf, so the verb
+// is there whenever the person's skill folders are.
 
 import (
 	"context"
@@ -68,7 +70,7 @@ func (a *Agent) useSkillTool() []bare.Tool {
 	// The belt's gate and the page's predicate are one predicate
 	// (beltfacts.go's `use_skill` row holds this same line), so the sentence a
 	// shape reads can never promise a verb its belt withheld.
-	if !a.mayProposeTask() || a.config.Memory == nil {
+	if !a.mayProposeTask() || a.config.skillShelf() == nil {
 		return nil
 	}
 	return []bare.Tool{{
@@ -109,7 +111,7 @@ func (a *Agent) runUseSkill(_ context.Context, args json.RawMessage) (string, bo
 // hundred-byte paths is noise the model has not asked to open yet — and the doc
 // is the one-line Body the skill was recorded with.
 func (a *Agent) listSkills() (string, bool, error) {
-	skills, err := a.config.Memory.SkillFacts(store.FactActive, skillShelfLimit)
+	skills, err := a.config.skillShelf().SkillFacts(store.FactActive, skillShelfLimit)
 	if err != nil {
 		return "Could not read the skill shelf: " + err.Error(), true, nil
 	}
@@ -142,7 +144,7 @@ func (a *Agent) listSkills() (string, bool, error) {
 // shelf's own spelling, so the name a worker reads back is the one that works
 // next time.
 func (a *Agent) getSkill(name string) (string, bool, error) {
-	skills, err := a.config.Memory.SkillFacts(store.FactActive, skillShelfLimit)
+	skills, err := a.config.skillShelf().SkillFacts(store.FactActive, skillShelfLimit)
 	if err != nil {
 		return "Could not read the skill shelf: " + err.Error(), true, nil
 	}
@@ -150,7 +152,7 @@ func (a *Agent) getSkill(name string) (string, bool, error) {
 		if !strings.EqualFold(filepath.Base(skill.Artifact), name) {
 			continue
 		}
-		artifact, doc, _, _, err := a.config.Memory.SkillFactAccessors(skill.Seq)
+		artifact, doc, _, _, err := a.config.skillShelf().SkillFactAccessors(skill.Seq)
 		if err != nil {
 			return "Could not read skill: " + err.Error(), true, nil
 		}

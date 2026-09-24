@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/skills"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -304,5 +305,60 @@ func TestImportSyncIgnoresPromotedCommandFolders(t *testing.T) {
 	}
 	if active[0].Artifact != pdfDir {
 		t.Errorf("the promoted command folder was imported: %q", active[0].Artifact)
+	}
+}
+
+// A skill folder that is a link reaches the shelf under the link's own name,
+// and an edit made at the folder the link names is read on the next pass: the
+// digest is taken through the link, not of it.
+func TestImportSyncReadsLinkedSkillFoldersThroughTheLink(t *testing.T) {
+	homeDir := t.TempDir()
+	projectDir := t.TempDir()
+	shared := filepath.Join(homeDir, "shared", "pdf-kit")
+	writeImportedSkill(t, shared, "pdf", "Fill and flatten PDF forms")
+	link := filepath.Join(homeDir, ".claude", "skills", "pdf")
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(shared, link); err != nil {
+		t.Fatal(err)
+	}
+
+	graph := openStore(t)
+	reconciler := New(graph, nil, nil)
+	reconciler.reconcileImportedSkills(projectDir, homeDir)
+	first, ok := importedFactByArtifact(t, graph, link)
+	if !ok {
+		t.Fatal("the linked skill folder was not imported")
+	}
+	if first.SkillName() != "pdf" {
+		t.Errorf("SkillName = %q, want the link's own name", first.SkillName())
+	}
+
+	writeImportedSkill(t, shared, "pdf", "Fill, flatten and redact PDF forms")
+	reconciler.reconcileImportedSkills(projectDir, homeDir)
+	second, ok := importedFactByArtifact(t, graph, link)
+	if !ok {
+		t.Fatal("the second pass lost the linked skill")
+	}
+	if second.Seq == first.Seq || second.Body != "Fill, flatten and redact PDF forms" {
+		t.Errorf("the edit behind the link was never read: #%d %q after #%d", second.Seq, second.Body, first.Seq)
+	}
+}
+
+// The two deeper sources are named by the harness they belong to, the way the
+// six skills folders always were: a Claude Code plugin's skill is a Claude
+// Code skill, and Codex's bundled one is a Codex skill.
+func TestImportedSkillScopeNamesTheHarnessForDeeperRoots(t *testing.T) {
+	for root, want := range map[string]string{
+		".claude/skills":        "harness:claude",
+		".claude/plugins":       "harness:claude",
+		".codex/skills/.system": "harness:codex",
+		".agents/skills":        "harness:agents",
+	} {
+		skill := skills.Skill{Scope: skills.ScopeUser, Root: root}
+		if got := importedSkillScope(skill, "/work/app"); got != want {
+			t.Errorf("importedSkillScope(%q) = %q, want %q", root, got, want)
+		}
 	}
 }
