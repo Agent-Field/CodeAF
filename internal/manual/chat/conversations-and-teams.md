@@ -22,7 +22,8 @@ view in this window, and the conversation keeps running.
 
 The title bar says what is shown, `every open conversation, live` or `the conversations in
 harbor` while a team is shown, and counts what is running, what needs you and how many are
-open. Under it is the **Teams** row, and at the bottom a toolbar with `Filter /`,
+open. Under it is the **Teams** row, which ends in `✦ Organize` while every conversation is
+shown, and at the bottom a toolbar with `Filter /`,
 `New team s`, `Columns − +` and `Help ?`. While the pointer rests on any control, the middle
 of the toolbar says in one dim line what it does and which key does the same.
 
@@ -122,6 +123,55 @@ count was, opens the team's settings: its name, which you edit as you type, and 
 **Delete team** asks first, and deleting a team never closes or changes a conversation; only
 the group's name goes.
 
+## Organize: teams suggested for your conversations
+
+While the view shows **All**, the Teams row ends in `✦ Organize`. Press it, or `o`, and a card
+suggests teams for the conversations that are open. Nothing changes until you apply it:
+
+```
+╭─ Organize ────────────────────────────────────────────────╮
+│  New teams                                                │
+│  ☑ ● codeaf          5  from the folder                   │
+│  ☑ ● nvda research   3  cpu profiling, nvda deep…, 10-K   │
+│  Add to existing                                          │
+│  ☑ ● harbor        + 2  relay audit, footprint table      │
+│                                                           │
+│  about $0.0020                    Cancel esc   Apply ↵    │
+╰───────────────────────────────────────────────────────────╯
+```
+
+The suggestions come from two places:
+
+- **Folders.** Conversations that share a project folder, two or more of them, are suggested
+  as a team named after the folder (`from the folder`). If a team already has that name, the
+  ones it is missing are suggested for it instead, and a folder whose conversations are
+  already together in one team is left alone. This part is free and always the same.
+- **The model you use for names**, asked once per press (the same cheap one that names
+  conversations and teams), over the conversations' titles and folders and your teams, for
+  groupings a folder cannot see and conversations that belong in a team you already have.
+  `thinking…` shows while it works, and it is given ten seconds. Where the two disagree the
+  folders win. The line at the bottom says about what the ask cost.
+
+If the model cannot be asked or does not answer, the card shows the folder suggestions alone
+and says `suggestions from folders only`. With nothing to suggest it says
+`Everything is organized` beside a `Close`.
+
+Every row starts ticked. `↑` `↓` move, `space` or a press ticks and unticks a row, `enter` or
+**Apply** makes the ticked ones in one go, and `esc`, **Cancel** or a press off the card puts
+it away with nothing changed. A new team gets the name and the colour the card showed; each
+new team's colour is its own. A conversation can be suggested for several teams, as it can be
+in several.
+
+After an Apply the Teams row says what it did for a few seconds, like
+`Organized · 2 new teams, 2 added   Undo`. **Undo**, or `u` while it is there, puts your teams
+back exactly as they were.
+
+Organize only ever adds: it never renames a team and never takes a conversation out of one,
+so pressing it again is how you refresh the suggestions. Nothing runs by itself. The button
+counts the conversations in no team once there are five or more, `✦ Organize 7`, and after a
+run that found nothing to suggest it reads `Organized ✓` until your conversations or teams
+change; it can still be pressed.
+
 ## The team switcher on the tab strip
 
 While a team is shown, the tab strip starts with a chip naming it, `● harbor ▾`. With teams
@@ -180,6 +230,8 @@ what its key does.
 | `s` | New team of the picked conversations, or the focused one |
 | `e` | The shown team's settings |
 | `D` | Delete the shown team; its conversations stay open |
+| `o` | Organize: suggest teams for your conversations (while All is shown) |
+| `u` | Undo the last Organize, while the Teams row offers it |
 | `tab`, `shift+tab` | Next or previous team, then All |
 | `1` to `9` | That team; its digit again goes back to All |
 | `/` | Filter conversations by name; `esc` clears it |
@@ -188,3 +240,5 @@ what its key does.
 
 In the new-team card: type the name, `ctrl+r` another name and colour, `←` `→` the colour,
 `enter` create, `esc` cancel.
+
+In the Organize card: `↑` `↓` move, `space` tick or untick, `enter` apply, `esc` cancel.
