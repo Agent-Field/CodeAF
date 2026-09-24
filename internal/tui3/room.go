@@ -1225,6 +1225,9 @@ func (a *app) openRailPlan(id string, missing func() tea.Cmd) tea.Cmd {
 			return nil
 		}
 		a.railPlanPending = railPlanPending{}
+		if !a.railPlanFront() {
+			return nil
+		}
 		if missing != nil {
 			return missing()
 		}

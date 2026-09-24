@@ -113,7 +113,8 @@ nothing.
 
 The page can take a moment to arrive. From the press on, what you type belongs to the
 page and never to the conversation: the keys are kept in order and land in the page's
-note box when it opens, `enter` included. `esc` in that moment withdraws the press. If
+note box when it opens, `enter` included. `esc` in that moment withdraws the press, and so
+does going to a place such as Home: the page does not open over it. If
 the row turns out to have no page and its room opens instead, those keys are dropped.
 
 A page opened on a task that is queued or running follows it: it reads the task again
@@ -242,7 +243,8 @@ run has spent (`of` its ceiling when the page knows it), how many model calls it
 made, and how long it has been going. A figure with nothing behind it is left out, and a
 narrow window drops the time first. The time is the one the side list and the landed card
 show for the run: it counts from the moment codeaf handed the work over, and once the run
-has ended it is the whole span, up to the moment the program's own process ended. A run
+has ended it is the whole span, up to the moment the program's own process ended. It stops
+there as soon as that process ends, while codeaf is still landing the work. A run
 nothing is driving any more, because codeaf closed while the program worked, reads
 `incomplete` with its time stopped at the last thing it did. On a tall window with the side list open, the line sits
 beside the task's title instead.
@@ -253,7 +255,8 @@ model's, named by its short name: the first line of its answer, and one dim row 
 it asked for behind that tool's mark. A call codeaf refused is one line from `codeaf`,
 `refused · <why>`; a failed one is `the call failed · <why>`. The call in flight is the
 last line, `◐`, the model and its seconds, gone when the call returns. The page reads the
-store again every three seconds while the run works, and once more when it ends.
+store again every three seconds while the run works, and once more after its work has
+landed, so the note on where the work went is on the page.
 
 Only the first line of each message is drawn, and a long run shows its newest calls under
 a line such as `…142 earlier calls`; the task's own record keeps more of every call. On

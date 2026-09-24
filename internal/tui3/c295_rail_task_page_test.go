@@ -268,3 +268,41 @@ func TestALetterTypedWhileARailPageOpensNeverRaisesTheStopCard(t *testing.T) {
 		t.Fatalf("the page's box holds %q, want every key typed while it opened: %q", got, "an example")
 	}
 }
+
+// A PLACE OPENED WHILE A ROW'S PAGE IS ON ITS WAY WITHDRAWS THE PRESS. The
+// person pressed a run's row in the side list and then went Home before the
+// store answered — milliseconds here, seconds over a connection — and the
+// answer opened the run's page over Home, a room under it, or a program's room
+// under it with the box pointed at the run while Home's box was on screen.
+func TestAPlaceOpenedWhileARowsPageIsOnItsWayWithdrawsThePress(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		app  func(t *testing.T) *app
+		id   uint64
+	}{
+		{"a run's stored page", func(t *testing.T) *app { a, _ := railTaskPageApp(t, true); return a }, 2},
+		{"a run with no stored page", func(t *testing.T) *app { a, _ := railTaskPageApp(t, false); return a }, 2},
+		{"a program's row not yet held", func(t *testing.T) *app {
+			a, _ := programRoomApp(t, 120, 28)
+			a.planRows, a.planRowsRead = nil, false
+			return a
+		}, 7},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := tc.app(t)
+			cmd := a.openRailRoom(a.tasks[tc.id])
+			if cmd == nil || a.railPlanPending.id == "" {
+				t.Fatalf("the press asked the store nothing: pending=%q", a.railPlanPending.id)
+			}
+			drain(t, a, a.openHome())
+			drain(t, a, cmd)
+			if !a.at(pageHome) {
+				t.Fatal("the person is no longer at Home")
+			}
+			if a.railTaskPlanOn || a.taskSheet.planOn || a.room != nil || a.railPlanPending.id != "" {
+				t.Fatalf("the answer landed on Home: page=%v plan=%v room=%v pending=%q",
+					a.railTaskPlanOn, a.taskSheet.planOn, a.room != nil, a.railPlanPending.id)
+			}
+		})
+	}
+}

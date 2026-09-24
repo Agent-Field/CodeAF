@@ -171,6 +171,14 @@ func (a *app) tasksLoaded(rows []session.TaskIndexEntry, known ...bool) tea.Cmd 
 // the far world. It does not invent live controls: these nodes remain records,
 // and the room behind one is read-only because the remote agent deliberately
 // implements none of the local room-action interfaces.
+//
+// A LIVE ROW IS A STALE ROW ONCE THE STREAM HAS LANDED ITS NODE. The far world
+// is the one this window last fetched, and a run's row reaches its index as
+// `running` at the hand-off: the roster read a landing's own notice asks for
+// adopted that row, put the landed run back to running with no age and its
+// spend from before the landing, and its clock climbed with no end. So a live
+// row never touches a node that has settled, and its age — the node's age at
+// the instant the row was built — is never taken for how long the work ran.
 func (a *app) adoptFarTaskRows(rows []session.TaskIndexEntry) {
 	if a.tasks == nil {
 		a.tasks = map[uint64]*taskNode{}
@@ -181,6 +189,9 @@ func (a *app) adoptFarTaskRows(rows []session.TaskIndexEntry) {
 			continue
 		}
 		node := a.tasks[id]
+		if node != nil && row.Live() && farNodeSettled(node) {
+			continue
+		}
 		if node == nil {
 			node = &taskNode{id: id, ident: identFor(id), met: row.EndedAt}
 			a.tasks[id] = node
@@ -190,7 +201,11 @@ func (a *app) adoptFarTaskRows(rows []session.TaskIndexEntry) {
 		node.label = firstNonEmpty(strings.TrimSpace(row.Title), strings.TrimSpace(row.Label))
 		node.title = taskTitleOf(node.label, "", id)
 		node.state = session.TaskState(row.Status)
-		node.elapsed = time.Duration(row.DurationMS) * time.Millisecond
+		if row.Live() {
+			a.anchorFarLiveNode(node, row)
+		} else {
+			node.elapsed = time.Duration(row.DurationMS) * time.Millisecond
+		}
 		node.cost, node.tokens, node.model = row.Cost, row.Tokens, strings.TrimSpace(row.Model)
 		node.report, node.changed = strings.TrimSpace(row.Outcome), append([]string(nil), row.Files...)
 		node.transcript = strings.TrimSpace(row.TranscriptURI)
@@ -201,6 +216,31 @@ func (a *app) adoptFarTaskRows(rows []session.TaskIndexEntry) {
 		// (session's [session.GroundWord]).
 		node.rung, node.mode = row.Rung, row.Mode
 	}
+}
+
+// farNodeSettled is whether a node this window holds has landed, whichever
+// road told it so. A node with no state yet is not settled: nothing has said
+// anything about its work.
+func farNodeSettled(node *taskNode) bool {
+	return node.state != "" && node.state != session.TaskRunning && node.state != session.TaskQueued
+}
+
+// anchorFarLiveNode gives a node adopted from a live far row the instant its
+// clock counts from, when the stream has not already given it one: the row's
+// own start, which does not go stale the way the age it carries does
+// ([session.TaskIndexEntry.Duration]). A start later than this window's clock
+// is another machine's clock running ahead, and the node counts from now.
+// Without an anchor the side list counted from the zero instant.
+func (a *app) anchorFarLiveNode(node *taskNode, row session.TaskIndexEntry) {
+	if !node.began.IsZero() || row.StartedAt.IsZero() {
+		return
+	}
+	now := a.now()
+	if row.StartedAt.After(now) {
+		node.began = now
+		return
+	}
+	node.began = row.StartedAt
 }
 
 // refreshTasks says the snapshot is stale and reads it again if anybody is

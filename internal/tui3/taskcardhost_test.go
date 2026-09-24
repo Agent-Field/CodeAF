@@ -412,3 +412,60 @@ func TestAHostedTaskCardSaysItsPathsAreTheFarMachines(t *testing.T) {
 		t.Fatalf("the card lost its branch row:\n%s", text)
 	}
 }
+
+// A STALE FAR ROW NEVER UNDOES A LANDING THE STREAM DELIVERED. The far world a
+// hosted window reads is the one it last fetched, and a run's row reaches its
+// index as `running` at the hand-off: the roster read the landing's own notice
+// asks for adopted that row, put the landed run back to running with no age,
+// and its clock climbed with no end — `39m` ten minutes after a twenty-nine
+// minute run, a spinner and `1 running` on the side list.
+func TestAStaleFarRowNeverUndoesTheStreamsLanding(t *testing.T) {
+	a := hostedPlaceLab(t)
+	born := time.Now().Add(-30 * time.Minute)
+	ended := born.Add(29*time.Minute + 8*time.Second)
+	now := ended.Add(2 * time.Second)
+	a.clock = func() time.Time { return now }
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(9, "widening the pipe", session.TaskRunning,
+		session.TaskNotice{StartedAt: born})})
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(9, "widening the pipe", session.TaskDone,
+		session.TaskNotice{StartedAt: born, EndedAt: ended, Elapsed: ended.Sub(born), CostUSD: 1.61})})
+	held := farCardEntry(now)
+	held.Status, held.EndedAt, held.StartedAt, held.DurationMS, held.Cost = string(session.TaskRunning), time.Time{}, born, 0, 1.24
+	a.adoptFarTaskRows([]session.TaskIndexEntry{held})
+	node := a.tasks[9]
+	if node.state != session.TaskDone {
+		t.Fatalf("the held far row put the landed run back to %s", node.state)
+	}
+	now = now.Add(10 * time.Minute)
+	if got := a.roomClock(node); got != "29m 8s" {
+		t.Fatalf("ten minutes after the landing the run reads %q, want 29m 8s", got)
+	}
+	if node.cost != 1.61 {
+		t.Fatalf("the held far row put the landed run's spend back to %.2f", node.cost)
+	}
+}
+
+// A LIVE FAR ROW THE STREAM HAS NOT NAMED COUNTS FROM THE ROW'S OWN START. A
+// node adopted from a live row had no anchor at all, and the side list counted
+// from the zero instant: `2562047h 47m`.
+func TestALiveFarRowCountsFromItsOwnStart(t *testing.T) {
+	a := hostedPlaceLab(t)
+	now := time.Now()
+	a.clock = func() time.Time { return now }
+	live := farCardEntry(now)
+	live.Status, live.EndedAt, live.TranscriptURI = string(session.TaskRunning), time.Time{}, ""
+	live.StartedAt, live.DurationMS = now.Add(-3*time.Minute), int64(time.Minute/time.Millisecond)
+	a.adoptFarTaskRows([]session.TaskIndexEntry{live})
+	if got := strings.Split(plain(a.railTelemetry(a.tasks[9], 40)), railSep)[0]; got != "3m" {
+		t.Fatalf("a live far row three minutes in reads %q on the side list, want 3m", got)
+	}
+	// AND ONE THAT NAMES NO START DRAWS NO AGE rather than one counted from the
+	// zero instant.
+	b := hostedPlaceLab(t)
+	b.clock = func() time.Time { return now }
+	live.StartedAt = time.Time{}
+	b.adoptFarTaskRows([]session.TaskIndexEntry{live})
+	if got := plain(b.railTelemetry(b.tasks[9], 40)); strings.Contains(got, "h") {
+		t.Fatalf("a live far row with no start reads %q on the side list", got)
+	}
+}

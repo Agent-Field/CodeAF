@@ -178,9 +178,14 @@ func (a *app) programPinned(page session.PlanTaskPage, width int, clock string) 
 // is made, and it is ended by the supervisor rather than when the program's
 // process is gone — so a page reading them and a rail and a landed card reading
 // the notices drew three different figures for one run. The store's stamps are
-// what is left for a run this conversation has no row for.
+// what is left for a run this conversation has no row for — and for the span
+// between the program's exit and the row settling, when the page's pair has
+// already stopped where the row will ([programExitClock]).
 func (a *app) taskPlanAge(row session.PlanTaskRow) string {
 	if node := a.programRowNode(row); node != nil {
+		if word, ok := programExitClock(row, node); ok {
+			return word
+		}
 		if word, ok := a.nodeClock(node); ok {
 			return word
 		}

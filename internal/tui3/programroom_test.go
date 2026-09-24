@@ -165,6 +165,65 @@ func TestAProgramRoomFollowsWhileRunningAndStopsAfterItSettles(t *testing.T) {
 	}
 }
 
+// THE STORE ENDS BEFORE THE ROW LANDS, AND THE ROOM KEEPS READING. The engine
+// ends the store's root at the program's exit and writes the landing — where
+// the work went and how to bring it in — after it, and only then settles the
+// conversation's row. A read in that gap came back ended, took the room off the
+// clock, and the landing's own notice found nothing left to read: the landed
+// room never showed the note. The node's landing is what ends the room, and a
+// read that was still out when it landed is not the last one.
+func TestAProgramRoomReadsTheLandingTheStoreEndedAhead(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		out  bool // a beat's read is still out when the landing arrives
+	}{
+		{"the store's ending read on a beat", false},
+		{"a read still out when the row lands", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, agent := programRoomApp(t, 120, 28)
+			openProgramRoomNow(t, a)
+			page := agent.planFake.pages["7"]
+			page.Row.Status, page.Row.Ended = "done", a.now()
+			agent.planFake.pages["7"] = page
+			planBeat(t, a)
+			if a.room.done || !a.programRoomFollows() {
+				t.Fatalf("a store that ended ahead of the row took the room off the clock: done=%v", a.room.done)
+			}
+			var out tea.Cmd
+			if tc.out {
+				at := a.now().Add(elsewhereEvery)
+				a.clock = func() time.Time { return at }
+				out = a.programRoomFollow()
+				if out == nil {
+					t.Fatal("the beat issued no read")
+				}
+			}
+			const landing = "the work landed on branch senior-dev/auth"
+			page.Notes = []session.PlanTaskNote{{Body: landing}}
+			drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, page.Row.Title, session.TaskDone,
+				session.TaskNotice{StartedAt: programRunBegan, EndedAt: a.now()})})
+			if tc.out {
+				// The read that was out answers with the page before the landing.
+				stale := page
+				stale.Notes = nil
+				agent.planFake.pages["7"] = stale
+				drain(t, a, out)
+			}
+			agent.planFake.pages["7"] = page
+			for range 2 {
+				drive(t, a, frameMsg{})
+			}
+			if !strings.Contains(roomText(a), landing) {
+				t.Fatalf("the landed room never shows the landing note:\n%s", roomText(a))
+			}
+			if a.programRoomFollows() {
+				t.Fatal("a landed program's room keeps the paint clock turning")
+			}
+		})
+	}
+}
+
 // STOP ON A PROGRAM'S ROOM IS THE RUN'S STOP, through the store's own door. `x`
 // over an empty box and /stop both raise the card aimed at the run's own task
 // by the store's id, the target the stored page's `x` has always raised, and
@@ -277,5 +336,39 @@ func TestAProgramRunReadsOneFigureOnTheRoomTheRailAndTheCard(t *testing.T) {
 	}
 	if card == nil || !strings.Contains(plain(a.doneTail(card)), "29m08s") {
 		t.Fatalf("the landed card does not read the span 29m08s: %+v", card)
+	}
+}
+
+// THE CLOCK STOPS AT THE PROGRAM'S EXIT, NOT AT THE LANDING. After senior-dev's
+// process ends the engine waits for the receipts of calls it still owes (up to
+// seventy seconds on a cut call) and lands the work, and only then settles the
+// conversation's row; the stored page's row already carries the exit. The room
+// and the stored page counted on through that wait — `21m 5s` over a run of
+// twenty minutes — and jumped back when the row settled.
+func TestAProgramRoomsClockStopsAtTheProgramsExit(t *testing.T) {
+	a, agent := programRoomApp(t, 120, 28)
+	openProgramRoomNow(t, a)
+	exit := programRunBegan.Add(20 * time.Minute)
+	page := agent.planFake.pages["7"]
+	page.Row.Ended = exit
+	agent.planFake.pages["7"] = page
+	now := exit.Add(65 * time.Second)
+	a.clock = func() time.Time { return now }
+	drain(t, a, a.programRoomRead())
+	if a.tasks[7].state != session.TaskRunning {
+		t.Fatalf("the fixture's row has settled: %s", a.tasks[7].state)
+	}
+	facts, _ := a.programFactsWord(120)
+	if !strings.HasSuffix(facts, rowSep+"20m") {
+		t.Fatalf("the room's facts read %q sixty-five seconds after a twenty-minute run's exit, want 20m", facts)
+	}
+	if pinned := a.taskPlanPinned(page, 120); !strings.HasSuffix(pinned, rowSep+"20m") {
+		t.Fatalf("the stored page pins %q after the program exited, want 20m", pinned)
+	}
+	// A RUN STILL WORKING COUNTS ON, whatever the store's row says about the end
+	// of a run it has not been told of.
+	page.Row.Ended = time.Time{}
+	if got := a.taskPlanAge(page.Row); got != "21m 5s" {
+		t.Fatalf("a running program's page reads %q, want 21m 5s", got)
 	}
 }

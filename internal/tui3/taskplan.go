@@ -2078,11 +2078,12 @@ func planWithoutOwnFolder(command, folder string) string {
 // pressed, so from the press on, every key is held here, in order, and handed
 // to the page's own keyboard the moment the page is up ([app.finishRailPlan]).
 //
-// THREE WAYS OUT, and none of them reaches the conversation: the answer opens
+// FOUR WAYS OUT, and none of them reaches the conversation: the answer opens
 // the page and replays the keys; the answer says there is no page, the row's
 // room opens as it always did and the keys are dropped, because a room's box
-// is a different receiver again; `esc` withdraws the press. A second press
-// replaces the first and starts with no keys.
+// is a different receiver again; `esc` withdraws the press; and so does going
+// to a place, whose answer then opens nothing ([app.railPlanFront]). A second
+// press replaces the first and starts with no keys.
 type railPlanPending struct {
 	id   string
 	keys []tea.KeyPressMsg
@@ -2090,12 +2091,23 @@ type railPlanPending struct {
 
 func (a *app) beginRailPlan(id string) { a.railPlanPending = railPlanPending{id: id} }
 
+// railPlanFront is whether the answer to a row's press may still open
+// anything: only while the conversation the row was pressed in is what is in
+// front. A place opened since is a way out of the press ([app.leaveTaskOverlays]
+// withdraws it), and this is the same rule read where the answer lands, so no
+// door that forgot to withdraw it can open a page over a place or a room under
+// one.
+func (a *app) railPlanFront() bool { return a.showing() == nil }
+
 func (a *app) finishRailPlan(id string) tea.Cmd {
 	if a.railPlanPending.id != id {
 		return nil
 	}
 	keys := a.railPlanPending.keys
 	a.railPlanPending = railPlanPending{}
+	if !a.railPlanFront() {
+		return nil
+	}
 	// A PROGRAM'S PAGE IS A ROOM IN THE CONVERSATION'S TAB (programroom.go), opened
 	// on the page this read just brought back — which is how a row the surface
 	// did not yet hold as a program's, and a run's own line under its row, reach

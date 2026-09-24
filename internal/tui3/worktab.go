@@ -169,7 +169,14 @@ func (a *app) workTabFrame(width, height int) []string {
 // off the strip the work tab went on drawing. Every place opens through
 // [app.standDownRest], and the conversation's own tab calls it on the way back
 // ([app.tabGo]).
+//
+// AND A ROW'S PAGE STILL ON ITS WAY IS WITHDRAWN WITH THEM ([railPlanPending]).
+// A person who pressed a run's row and then went Home has left the press
+// behind, and its answer — milliseconds later here, seconds over a connection
+// — opened the run's page over Home, or a room under it with the box pointed
+// at the run while Home's box was the one on screen.
 func (a *app) leaveTaskOverlays() {
+	a.railPlanPending = railPlanPending{}
 	if !a.workTabOn && !a.railTaskPlanOn {
 		return
 	}

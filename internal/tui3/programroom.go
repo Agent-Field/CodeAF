@@ -154,16 +154,22 @@ func (a *app) openProgramRoom(id uint64, title string, page session.PlanTaskPage
 
 // programRoomDone is whether the open program room's work is over: by the
 // conversation's own row when it holds one, and by the stored page's state
-// otherwise, and by either one when both are known. A room whose node this
-// window never saw is not taken for finished on that absence alone
-// ([roomRowDone] answers true for no node at all).
+// only when it does not. A room whose node this window never saw is not taken
+// for finished on that absence alone ([roomRowDone] answers true for no node
+// at all).
+//
+// THE ROW OUTRANKS THE STORE WHENEVER THE WINDOW HOLDS ONE. The engine ends
+// the store's root at the program's exit and writes the landing — where the
+// work went, how to bring it in — only after it, and the row settles last. A
+// room that took the store's ending for the end stopped reading in that gap,
+// and its landing never reached the page.
 func (a *app) programRoomDone() bool {
 	p := a.programOf()
 	if p == nil {
 		return false
 	}
-	if node := a.roomNode(); node != nil && roomRowDone(node) {
-		return true
+	if node := a.roomNode(); node != nil {
+		return roomRowDone(node)
 	}
 	return planEnded(p.page.Row)
 }
@@ -190,7 +196,15 @@ func (a *app) programRoomRead() tea.Cmd {
 			if room.title == "" || room.title == taskIDWord(room.id) {
 				room.title = firstNonEmpty(page.Row.Title, room.title)
 			}
-			room.done = a.programRoomDone()
+			// A READ NEVER ENDS A ROOM WHOSE ROW THIS WINDOW HOLDS. The node's
+			// landing is what ends it, in [app.programRoomFollow], which reads the
+			// page once more from that moment; a read that was already out when
+			// the row landed answers with the page from before the landing, and
+			// had it ended the room here the last read would never be made. A room
+			// with no node has only the store to go by, and this read is it.
+			if a.roomNode() == nil {
+				room.done = a.programRoomDone()
+			}
 			room.dirty = true
 			a.touch()
 			return nil
@@ -317,17 +331,44 @@ func (a *app) programFactsWord(width int) (string, int) {
 	return line, ansi.StringWidth(lead)
 }
 
-// programRoomClock is the age the program room's facts row draws: the node's
-// clock when this conversation holds one for it, and the stored page's own
-// stamps otherwise.
+// programRoomClock is the age the program room's facts row draws: the span
+// the program ran once its process has ended, the node's clock when this
+// conversation holds one for it, and the stored page's own stamps otherwise.
 func (a *app) programRoomClock() string {
+	p := a.programOf()
+	if p != nil {
+		if word, ok := programExitClock(p.page.Row, a.roomNode()); ok {
+			return word
+		}
+	}
 	if word, ok := a.nodeClock(a.roomNode()); ok {
 		return word
 	}
-	if p := a.programOf(); p != nil {
+	if p != nil {
 		return a.taskPlanAge(p.page.Row)
 	}
 	return ""
+}
+
+// programExitClock is the span a program's run ran for when its process has
+// ended and the conversation's row has not yet settled: the page's own pair,
+// which session puts on the hand-off and the program's recorded exit, rounded
+// as every finished span is ([taskNode.ranFor]).
+//
+// THE CLOCK STOPS AT THE PROGRAM'S EXIT, NOT AT THE LANDING. After the process
+// ends the engine waits for the receipts of calls it still owes — up to
+// seventy seconds on a cut call — and lands the work, and only then settles
+// the row; a room and a page that went on reading the row's running clock
+// counted through all of that and jumped back when it settled. A row that has
+// settled has its own span, and a run still working has no exit to stop at.
+func programExitClock(row session.PlanTaskRow, node *taskNode) (string, bool) {
+	if node == nil || node.state != session.TaskRunning || strings.TrimSpace(row.Program) == "" {
+		return "", false
+	}
+	if row.Started.IsZero() || row.Ended.IsZero() || row.Ended.Before(row.Started) {
+		return "", false
+	}
+	return countUpWord(row.Ended.Sub(row.Started).Round(time.Second)), true
 }
 
 // programStopTarget is what `x`, `/stop` and the room's Stop end on a

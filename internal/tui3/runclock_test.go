@@ -91,3 +91,58 @@ func TestAStoredRowsFinishedSpanIsRoundedLikeTheCards(t *testing.T) {
 		t.Fatalf("a finished 61.5-second run reads %q, want 1m 2s", got)
 	}
 }
+
+// AN ORDINARY TASK SETTLED AGAIN KEEPS THE AGE ITS WORK TOOK. The engine moves
+// a node's end to the moment a person accepts it (and to every later round that
+// settles it again) and keeps the age it reported at the landing, so a task that
+// worked five minutes and was accepted an hour later read `1h 5m` on its room
+// and `1h05m` on its card when the two stamps outranked the age. The stamps are
+// what is left for a row that reports no age — a run's row — and there they
+// still measure the run.
+func TestASettledTasksClockIsTheAgeItReported(t *testing.T) {
+	a, _ := planAppWith(t, nil, nil)
+	started := taskFixtureNow
+	now := started.Add(time.Minute)
+	a.clock = func() time.Time { return now }
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(4, "tidy the parser", session.TaskRunning,
+		session.TaskNotice{StartedAt: started, Elapsed: time.Minute})})
+	now = started.Add(5 * time.Minute)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(4, "tidy the parser", session.TaskUnverified,
+		session.TaskNotice{StartedAt: started, EndedAt: now, Elapsed: 5*time.Minute + 300*time.Millisecond})})
+	if got := a.roomClock(a.tasks[4]); got != "5m" {
+		t.Fatalf("the landed task's clock reads %q, want 5m", got)
+	}
+	now = started.Add(time.Hour + 5*time.Minute)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(4, "tidy the parser", session.TaskDone,
+		session.TaskNotice{StartedAt: started, EndedAt: now, Elapsed: 5*time.Minute + 300*time.Millisecond})})
+	if got := a.roomClock(a.tasks[4]); got != "5m" {
+		t.Fatalf("a task that worked 5m and was accepted an hour later reads %q, want 5m", got)
+	}
+	card := a.doneCardAt(len(a.entries) - 1)
+	if card == nil {
+		t.Fatal("the accepted task drew no card")
+	}
+	if tail := plain(a.doneTail(card)); !strings.Contains(tail, "5m00s") {
+		t.Fatalf("the accepted task's card reads %q, want 5m00s", tail)
+	}
+}
+
+// A REPORTED AGE OUTRANKS ANOTHER MACHINE'S START. An engine on another
+// machine stamps a node's start on its own clock, and one running ninety
+// seconds behind this window's made a node ten seconds into its work read
+// `1m 40s` on the rail — and jump back when it landed. The age an update
+// reports needs no agreement between two clocks; the start is the anchor only
+// for a row that reports no age, which is a run's.
+func TestARunningClockTrustsTheReportedAgeOverAnotherMachinesStart(t *testing.T) {
+	a, _ := planAppWith(t, nil, nil)
+	now := taskFixtureNow
+	a.clock = func() time.Time { return now }
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(5, "behind", session.TaskRunning,
+		session.TaskNotice{StartedAt: now.Add(-10*time.Second - 90*time.Second), Elapsed: 10 * time.Second})})
+	if got := a.tasks[5].began; !got.Equal(now.Add(-10 * time.Second)) {
+		t.Fatalf("a start from a clock behind anchored the row at %s, want the reported age", got)
+	}
+	if got := plain(a.railTelemetry(a.tasks[5], 40)); !strings.HasPrefix(got, "10s") {
+		t.Fatalf("the rail reads %q ten seconds into the work, want 10s", got)
+	}
+}
