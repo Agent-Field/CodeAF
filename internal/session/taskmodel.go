@@ -40,6 +40,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
@@ -409,6 +410,13 @@ func taskModelMovedSentence(from, to string) string {
 // after call, on the crew's working seat by the run's model API — the person
 // asked for one model and was quietly given another. It is refused here, by
 // name, before a card is shown.
+//
+// A WORD SPELLED WITH A CONNECTED SERVICE'S PREFIX IS TAKEN AS WRITTEN. The
+// catalog a word is matched against lists no model of a service the person
+// connected themselves (a local proxy, a box of their own), so `mybox/qwen3`
+// matched nothing there while it is exactly how that service is asked; it is
+// the person naming a service and a model, and is kept when the service can
+// take a call.
 func (a *Agent) resolveProgramModels(word string) taskModelChoice {
 	var words []string
 	for _, part := range strings.Split(word, ",") {
@@ -416,36 +424,20 @@ func (a *Agent) resolveProgramModels(word string) taskModelChoice {
 			words = append(words, part)
 		}
 	}
-	if len(words) < 2 {
-		choice := a.resolveTaskModel(word)
-		if len(words) == 0 || choice.problem != "" {
-			return choice
-		}
-		if len(choice.options) > 0 {
-			choice.options = slices.DeleteFunc(choice.options, func(model string) bool { return !a.programServes(model) })
-			switch len(choice.options) {
-			case 0:
-				return taskModelChoice{problem: programUnservedProblem(words[0])}
-			case 1:
-				return taskModelChoice{model: choice.options[0]}
-			}
-			return choice
-		}
-		if !a.programServes(choice.model) {
-			return taskModelChoice{problem: programUnservedProblem(choice.model)}
-		}
-		return choice
+	switch len(words) {
+	case 0:
+		return a.resolveTaskModel(word)
+	case 1:
+		return a.resolveProgramWord(words[0])
 	}
 	var models []string
 	for _, part := range words {
-		choice := a.resolveTaskModel(part)
+		choice := a.resolveProgramWord(part)
 		switch {
 		case choice.problem != "":
 			return choice
 		case len(choice.options) > 0:
 			return taskModelChoice{problem: taskModelVague(part, choice.options)}
-		case !a.programServes(choice.model):
-			return taskModelChoice{problem: programUnservedProblem(choice.model)}
 		}
 		if !slices.Contains(models, choice.model) {
 			models = append(models, choice.model)
@@ -454,14 +446,43 @@ func (a *Agent) resolveProgramModels(word string) taskModelChoice {
 	return taskModelChoice{model: strings.Join(models, ",")}
 }
 
-// programServes says a connected service can take a call on model, by the one
-// test the run's model API makes ([ServesModel]). A conversation with no
-// services at all cannot be asked, and is not refused on that account.
-func (a *Agent) programServes(model string) bool {
+// resolveProgramWord is one word of [Agent.resolveProgramModels]: a model, a
+// shortlist of the ones a service serves, or the refusal.
+func (a *Agent) resolveProgramWord(word string) taskModelChoice {
+	sources := a.programSources()
+	if segment, bare := modelsource.Split(word, sources.Written()); segment != "" && bare != "" {
+		if !ServesModel(sources, word) {
+			return taskModelChoice{problem: programUnservedProblem(word)}
+		}
+		return taskModelChoice{model: word}
+	}
+	choice := a.resolveTaskModel(word)
+	serves := func(model string) bool { return sources.Empty() || ServesModel(sources, model) }
+	switch {
+	case choice.problem != "":
+		return choice
+	case len(choice.options) > 0:
+		choice.options = slices.DeleteFunc(choice.options, func(model string) bool { return !serves(model) })
+		switch len(choice.options) {
+		case 0:
+			return taskModelChoice{problem: programUnservedProblem(word)}
+		case 1:
+			return taskModelChoice{model: choice.options[0]}
+		}
+		return choice
+	case !serves(choice.model):
+		return taskModelChoice{problem: programUnservedProblem(choice.model)}
+	}
+	return choice
+}
+
+// programSources is this conversation's model services, read under the lock
+// the surface moves them under. A conversation with none cannot be asked what
+// they serve, and a model is not refused on that account.
+func (a *Agent) programSources() modelsource.Set {
 	a.mu.Lock()
-	sources := a.config.Sources.OrDefault(a.config.APIKey, a.config.BaseURL)
-	a.mu.Unlock()
-	return sources.Empty() || ServesModel(sources, model)
+	defer a.mu.Unlock()
+	return a.config.Sources.OrDefault(a.config.APIKey, a.config.BaseURL)
 }
 
 // programUnservedProblem is the refusal for a model no connected service serves.

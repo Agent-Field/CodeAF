@@ -160,6 +160,14 @@ func TestAProgramIsNotHandedAModelNoServiceServes(t *testing.T) {
 	if choice := agent.resolveProgramModels("qwen3-coder"); choice.problem != "" || choice.model != "mybox/qwen3-coder" {
 		t.Fatalf("a served model = %+v", choice)
 	}
+	// A model spelled with a connected service's prefix is taken as written,
+	// though the catalog lists nothing of that service.
+	if choice := agent.resolveProgramModels("mybox/some-local-model"); choice.problem != "" || choice.model != "mybox/some-local-model" {
+		t.Fatalf("a model named with its service = %+v", choice)
+	}
+	if choice := agent.resolveProgramModels("openrouter/moonshotai/kimi-k2.6"); !strings.Contains(choice.problem, "serve openrouter/moonshotai/kimi-k2.6") {
+		t.Fatalf("a keyless service's model named with its prefix = %+v", choice)
+	}
 	if choice := agent.resolveProgramModels(""); choice.problem != "" {
 		t.Fatalf("no model named was refused: %+v", choice)
 	}
