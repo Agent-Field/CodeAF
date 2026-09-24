@@ -61,15 +61,21 @@ var Program = delegate.Delegate{
 }
 
 // crewFlags is the conversation's crew as senior-dev's own flags: the working
-// seat is the pool the coder routes on (--high), the planning seat its frontier
-// tier, and the light seat the history summaries (--low). --crew says the pools
-// came from a crew, so a model senior-dev's catalog cannot size is left out
-// rather than failing the run. A seat the crew leaves unset keeps senior-dev's
-// own default for it.
+// seat is the pool the coder routes on (--high), and the light seat the
+// history summaries (--low). --crew says the pools came from a crew, so a
+// model senior-dev's catalog cannot size is left out rather than failing the
+// run. A seat the crew leaves unset keeps senior-dev's own default for it.
+//
+// THE PLANNING SEAT IS NOT HANDED OVER, BECAUSE NOTHING WOULD USE IT. It went
+// to senior-dev's frontier tier, and senior-dev routes exactly two kinds of
+// call: the coder's turns on the high pool and the history summary on the low
+// one (baked/tier.go). No call rides the frontier tier, so the flag changed
+// nothing, while the manual told the person their mastermind model handled
+// senior-dev's hardest calls.
 func crewFlags(crew delegate.Crew) []string {
 	flags := []string{"--crew"}
 	for _, seat := range []struct{ flag, model string }{
-		{"--high", crew.Hands}, {"--frontier", crew.Brain}, {"--low", crew.Light},
+		{"--high", crew.Hands}, {"--low", crew.Light},
 	} {
 		if model := app.CrewModel(seat.model); model != "" {
 			flags = append(flags, seat.flag, model)
@@ -94,7 +100,7 @@ func bindRun(fs *flag.FlagSet) delegate.Body {
 	inPlace := fs.Bool("in-place", false, "work without git: no commits; checkpoints kept outside")
 	high := fs.String("high", app.DefaultHighModels, "models the coder routes among, comma-separated")
 	low := fs.String("low", "", "models for the history summary (default: --high)")
-	frontier := fs.String("frontier", "", "models for the frontier tier (default: --high)")
+	frontier := fs.String("frontier", "", "models for the frontier tier; no call uses it, so it changes nothing")
 	crew := fs.Bool("crew", false, "the models came from codeaf's crew: skip any it cannot size")
 	return func(ctx context.Context, host delegate.Host, args []string) error {
 		run(ctx, host, app.Options{

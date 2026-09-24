@@ -225,9 +225,10 @@ never guesses a figure for either.
 
 ## Which models does senior-dev use — your crew, its own list, --high
 
-**From the chat it uses your crew.** codeaf hands senior-dev the conversation's crew: the
-worker (hands) model is the one it works with, the mastermind (brain) model its hardest
-calls, and the low model its history summaries. Change the crew and the next run follows.
+**From the chat it uses your crew.** codeaf hands senior-dev two of the conversation's
+crew: the worker (hands) model is the one it works with, and the low model its history
+summaries. Change the crew and the next run follows. The mastermind (brain) model is not
+used: every call senior-dev makes is either its work or a history summary.
 A crew model senior-dev's model catalog cannot size is left out, and its log says so;
 if that leaves no working model, it uses its own list instead.
 
@@ -235,8 +236,8 @@ if that leaves no working model, it uses its own list instead.
 while after it fails: deepseek-v4-flash, deepseek-v4-pro, qwen3.6-plus, kimi-k2.6,
 glm-5.1 and minimax-m2.7. A run with no crew set uses it, and so does a shell run.
 
-**At a shell you choose**: `--high` replaces the list, `--frontier` and `--low` set the
-other two, and `--variant` sets the reasoning effort every call asks for.
+**At a shell you choose**: `--high` replaces the list, `--low` sets the summaries' models,
+and `--variant` sets the reasoning effort every call asks for.
 
 ## What a shell run prints at the end — how long senior-dev ran, what it cost, waiting for the last price
 
@@ -275,8 +276,9 @@ senior-dev's own flags on `run`:
   `xhigh`; unset leaves the model's own default;
 - `--in-place` — work in a folder without git: no commits, and its checkpoints kept
   outside the folder;
-- `--high`, `--low`, `--frontier` — comma-separated models it routes among; `--low`
-  (its history summaries) and `--frontier` fall back to `--high`;
+- `--high`, `--low` — comma-separated models it routes among; `--low` (its history
+  summaries) falls back to `--high`;
+- `--frontier` — accepted, and changes nothing: no call senior-dev makes uses that tier;
 - `--crew` — the models came from a conversation's crew: one its catalog cannot size is
   left out instead of failing the run. codeaf passes it with the crew's models.
 
