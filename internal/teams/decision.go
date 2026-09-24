@@ -48,9 +48,17 @@ import (
 // READS ARE STAT-FIRST AND INCREMENTAL, for traffic.go's reason: the teams
 // page asks about open packets on its clock. A file whose stamp has not moved
 // is answered from memory, and one that grew is read from the byte where the
-// last read stopped, never from the top (a packet file is never rotated, so an
-// offset stays good until the file shrinks, which only a delete does). The
-// scan across teams is one directory listing and a stat per team.
+// last read stopped, never from the top. The scan across teams is one
+// directory listing and a stat per team.
+//
+// THE FILE ROTATES LIKE TRAFFIC, and keeps every packet still waiting. Past
+// [decisionsRotateBytes] the file is renamed to decisions.1.jsonl (replacing
+// the one before) and the new file opens with one `carry` line per packet
+// still waiting, the packet whole as it stands (its trail, its escalated
+// state). A reader folds the rotated file and then the current one, and a
+// carry replaces what the rotated file said of that id, so a waiting packet
+// is never lost to a rotation and a decided one stays readable for one
+// rotation more, which is long enough for its raiser to be handed the answer.
 //
 // EVERY CHANGE IS ALSO A LINE OF TRAFFIC, a [KindPacket] entry in the log of
 // the team that raised it and of every team that was asked to decide it, so
@@ -126,6 +134,19 @@ type Hop struct {
 	At     time.Time `json:"at"`
 }
 
+// CapFacts is what a [PacketCap] packet says about the pool: whose cap it is
+// (Team, the pool's owner), the local day, the cap reached, what the pool had
+// spent when it was raised, and the figure the `raise` option raises it to
+// for the rest of that day. The session reads RaiseTo back when the person
+// picks `raise`, so the amount on the button is the amount that holds.
+type CapFacts struct {
+	Team     string  `json:"team"`
+	Day      string  `json:"day"`
+	CapUSD   float64 `json:"cap_usd"`
+	SpentUSD float64 `json:"spent_usd"`
+	RaiseTo  float64 `json:"raise_to"`
+}
+
 // ClosingReport is what a [PacketClosing] packet says about the team: what
 // was done, what is left, where the files are and what it spent. Incomplete
 // says the wrap-up ran out of time or money before it finished.
@@ -159,6 +180,8 @@ type Packet struct {
 	Recommendation *Recommendation `json:"recommendation,omitempty"`
 	// Report is a closing packet's report, and nil on every other kind.
 	Report *ClosingReport `json:"report,omitempty"`
+	// Cap is a cap packet's facts, and nil on every other kind.
+	Cap *CapFacts `json:"cap,omitempty"`
 	// State is one of the Packet states.
 	State string `json:"state"`
 	// DecidedBy is the deciding manager's handle, or [Person].
@@ -212,7 +235,19 @@ const (
 	opRaise    = "raise"
 	opDecide   = "decide"
 	opEscalate = "escalate"
+	// opCarry is a waiting packet written again, whole, at the head of a
+	// rotated file. It replaces what an older line said of that id.
+	opCarry = "carry"
 )
+
+// decisionsRotateBytes is the size past which a packet file starts a new one.
+// A packet is a few hundred bytes to a few kilobytes, so a megabyte is
+// hundreds of decisions; a var so a test can rotate in a few lines.
+var decisionsRotateBytes int64 = 1 << 20
+
+func decisionsRotated(path string) string {
+	return strings.TrimSuffix(path, ".jsonl") + ".1.jsonl"
+}
 
 // DecisionsPath is team teamID's packet file.
 func DecisionsPath(profileDir, teamID string) string {
@@ -325,7 +360,13 @@ func Decide(profileDir, id, by, decision, reason string) (Packet, error) {
 	if o, ok := out.Option(decision); ok {
 		word = o.Label
 	}
-	logPacket(profileDir, f, out, []string{out.Origin, out.Team}, fmt.Sprintf("%s decided: %s", e.By, word))
+	// A QUESTION'S ANSWER READS AS ONE on the rail: `answered @web: JSON`,
+	// which the interface draws after the decider's mark.
+	said := fmt.Sprintf("%s decided: %s", e.By, word)
+	if out.Kind == PacketQuestion {
+		said = fmt.Sprintf("answered %s: %s", raiserWord(out.RaisedBy), word)
+	}
+	logPacket(profileDir, f, out, []string{out.Origin, out.Team}, said)
 	return out, nil
 }
 
@@ -376,6 +417,16 @@ func Escalate(profileDir, id, by, to, reason string) (Packet, error) {
 	}
 	logPacket(profileDir, f, out, []string{out.Origin, from, to}, fmt.Sprintf("%s sent it up to %s: %s", e.By, where, reason))
 	return out, nil
+}
+
+// raiserWord is how a raiser is named in a Traffic line: @handle for a
+// member, the word itself for manager, you or system.
+func raiserWord(by string) string {
+	switch by {
+	case FromManager, FromSystem, Person:
+		return by
+	}
+	return "@" + strings.TrimPrefix(by, "@")
 }
 
 // mayDecide reports whether by may decide or escalate p, and the name it is
@@ -452,6 +503,11 @@ func appendDecision(profileDir, teamID string, e *decisionEvent, check func(Pack
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			return err
 		}
+		if info, err := os.Stat(path); err == nil && info.Size() > 0 && info.Size()+int64(len(line))+1 > decisionsRotateBytes {
+			if err := rotateDecisions(path); err != nil {
+				return err
+			}
+		}
 		before := modTime(path)
 		file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 		if err != nil {
@@ -467,6 +523,51 @@ func appendDecision(profileDir, teamID string, e *decisionEvent, check func(Pack
 		advance(path, before)
 		return nil
 	})
+}
+
+// rotateDecisions starts a new packet file at path, under its lock: the fold
+// as it stands is taken, the file is renamed over the rotated one, and the new
+// file is written (temporary file and rename) with a carry line for every
+// packet still waiting, so nothing waiting lives only in the rotated file.
+func rotateDecisions(path string) error {
+	now, err := packetCache.read(path)
+	if err != nil {
+		return err
+	}
+	var carry bytes.Buffer
+	for _, p := range now.list() {
+		if !p.Waiting() {
+			continue
+		}
+		p := p
+		line, err := json.Marshal(decisionEvent{Op: opCarry, At: p.At, Packet: &p})
+		if err != nil {
+			return err
+		}
+		carry.Write(line)
+		carry.WriteByte('\n')
+	}
+	if err := os.Rename(path, decisionsRotated(path)); err != nil {
+		return err
+	}
+	if carry.Len() == 0 {
+		return nil
+	}
+	temp, err := os.CreateTemp(filepath.Dir(path), ".decisions-*")
+	if err != nil {
+		return err
+	}
+	name := temp.Name()
+	if _, err := temp.Write(carry.Bytes()); err != nil {
+		_ = temp.Close()
+		_ = os.Remove(name)
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	return os.Rename(name, path)
 }
 
 // logPacket appends a [KindPacket] line to the Traffic of each distinct team
@@ -590,12 +691,14 @@ func allPackets(profileDir string) ([]Packet, error) {
 
 // ── THE FOLD, AND ITS MEMORY ────────────────────────────────────────────────
 
-// folded is one packet file as read so far.
+// folded is one packet file as read so far: the rotated file whole (as it
+// was at rotated), then the current file up to offset.
 type folded struct {
-	stamp  string
-	offset int64
-	order  []string
-	byID   map[string]Packet
+	stamp   string
+	rotated string
+	offset  int64
+	order   []string
+	byID    map[string]Packet
 }
 
 func (f *folded) list() []Packet {
@@ -617,6 +720,14 @@ func (f *folded) apply(e decisionEvent) {
 			return
 		}
 		f.order = append(f.order, e.Packet.ID)
+		f.byID[e.Packet.ID] = clonePacket(*e.Packet)
+	case opCarry:
+		if e.Packet == nil || e.Packet.ID == "" {
+			return
+		}
+		if _, known := f.byID[e.Packet.ID]; !known {
+			f.order = append(f.order, e.Packet.ID)
+		}
 		f.byID[e.Packet.ID] = clonePacket(*e.Packet)
 	case opDecide:
 		if p, ok := f.byID[e.ID]; ok && p.Waiting() {
@@ -652,6 +763,10 @@ func clonePacket(p Packet) Packet {
 		r := *p.Report
 		r.Files = append([]string(nil), r.Files...)
 		p.Report = &r
+	}
+	if p.Cap != nil {
+		c := *p.Cap
+		p.Cap = &c
 	}
 	return p
 }
@@ -690,56 +805,82 @@ func (m *packetMemory) read(path string) (*folded, error) {
 		m.files = map[string]*folded{}
 	}
 	stamp := stampOf(path)
+	rotated := stampOf(decisionsRotated(path))
 	f := m.files[path]
-	if f != nil && f.stamp == stamp {
+	if f != nil && f.stamp == stamp && f.rotated == rotated {
 		return f.copy(), nil
 	}
-	if stamp == MissingStamp {
+	if stamp == MissingStamp && rotated == MissingStamp {
 		delete(m.files, path)
 		return &folded{byID: map[string]Packet{}}, nil
 	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, err
+	size := int64(0)
+	if stamp != MissingStamp {
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil, err
+		}
+		size = info.Size()
 	}
-	if f == nil || info.Size() < f.offset {
+	// FROM THE TOP when this process has not read it, when it shrank, or when
+	// the rotated file moved (a rotation happened): the rotated file whole,
+	// then the current one.
+	if f == nil || size < f.offset || f.rotated != rotated {
 		f = &folded{byID: map[string]Packet{}}
+		if rotated != MissingStamp {
+			if _, err := m.foldFrom(decisionsRotated(path), 0, f); err != nil && !os.IsNotExist(err) {
+				return nil, err
+			}
+		}
+		f.offset = 0
 	}
+	if stamp != MissingStamp {
+		end, err := m.foldFrom(path, f.offset, f)
+		if err != nil && !os.IsNotExist(err) {
+			return nil, err
+		}
+		f.offset = end
+	}
+	// A line still being written has no newline yet; it is read next time,
+	// from the offset that stops before it.
+	f.stamp, f.rotated = stamp, rotated
+	m.files[path] = f
+	return f.copy(), nil
+}
+
+// foldFrom folds the complete lines of the file at path from offset into f,
+// and answers the offset after the last complete line.
+func (m *packetMemory) foldFrom(path string, offset int64, f *folded) (int64, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return offset, err
 	}
 	defer file.Close()
-	if _, err := file.Seek(f.offset, io.SeekStart); err != nil {
-		return nil, err
+	if _, err := file.Seek(offset, io.SeekStart); err != nil {
+		return offset, err
 	}
 	r := bufio.NewReader(file)
 	for {
 		line, err := r.ReadBytes('\n')
 		if len(line) > 0 && line[len(line)-1] == '\n' {
 			m.reads += int64(len(line))
-			f.offset += int64(len(line))
+			offset += int64(len(line))
 			var e decisionEvent
 			if json.Unmarshal(bytes.TrimSpace(line), &e) == nil {
 				f.apply(e)
 			}
 		}
 		if err == io.EOF {
-			break
+			return offset, nil
 		}
 		if err != nil {
-			return nil, err
+			return offset, err
 		}
 	}
-	// A line still being written has no newline yet; it is read next time,
-	// from the offset that stops before it.
-	f.stamp = stamp
-	m.files[path] = f
-	return f.copy(), nil
 }
 
 func (f *folded) copy() *folded {
-	out := &folded{stamp: f.stamp, offset: f.offset, order: append([]string(nil), f.order...),
+	out := &folded{stamp: f.stamp, rotated: f.rotated, offset: f.offset, order: append([]string(nil), f.order...),
 		byID: make(map[string]Packet, len(f.byID))}
 	for id, p := range f.byID {
 		out.byID[id] = p
