@@ -39,7 +39,7 @@ func TestDigestContent(t *testing.T) {
 	for _, want := range []string{
 		`Team "harbor": 4 members, manager @lead.`,
 		`- @lead (manager) "Harbor manager": unknown`,
-		`- @fix-login "Fix the login bug": asking, active 3m ago. Asking: "Which database?". Files: a.go, b.go, c.go, d.go, e.go +2 more`,
+		`- @fix-login "Fix the login bug": asking, active within the hour. Asking: "Which database?". Files: a.go, b.go, c.go, d.go, e.go +2 more`,
 		`- @docs "Write the docs": finished, active 26h ago`,
 		`- [c]: unknown`,
 		"Recent traffic:\n- 09:01 note fix-login -> manager: line 1\n",

@@ -143,13 +143,19 @@ func trafficLine(e Entry) string {
 	return line
 }
 
-// ago is a duration as a short age: "just now", "5m ago", "2h ago", "3d ago".
+// ago is a duration as a COARSE age: "within the hour", "2h ago", "3d ago".
+//
+// IT MOVES AT MOST ONCE AN HOUR, and that is the point. The digest rides a
+// manager's turn as a note that lands again only when its text moves, and a
+// note that lands again is a message the manager's transcript carries for the
+// rest of its life (session's landNoteLocked: an append, never a rewrite, for
+// the prompt cache). An age counted in minutes moved the text every minute,
+// so a manager asked twice in five minutes paid for its whole team twice with
+// nothing changed. Nobody running a team needs to know "3m" from "7m".
 func ago(d time.Duration) string {
 	switch {
-	case d < time.Minute:
-		return "just now"
 	case d < time.Hour:
-		return strconv.Itoa(int(d/time.Minute)) + "m ago"
+		return "within the hour"
 	case d < 48*time.Hour:
 		return strconv.Itoa(int(d/time.Hour)) + "h ago"
 	}
