@@ -46,14 +46,17 @@ const (
 // watchTeamStart starts the watch described above, or does nothing.
 func (a *Agent) watchTeamStart() {
 	profile := a.config.teamProfile()
+	// AND EVERY CONVERSATION THAT COULD BE IN A TEAM WATCHES ITS TRAFFIC for
+	// the lines that wake it (team_wakewatch.go), which costs nothing while it
+	// is in no managed team but a stat the whole process shares.
+	a.watchTeamTraffic(profile)
 	if profile == "" || !teamsHaveManager(profile) {
 		return
 	}
 	// FRESH IS MEASURED FROM HERE: whatever the transcript holds at open, a
 	// turn begun some other way grows it, and that ends the watch.
 	// ONLY A CONVERSATION WITH NOTHING IN IT YET. One reopened with a history
-	// is not being started, and a team's later lines wait for its next turn as
-	// they always have: v1 wakes nobody on team traffic but a start.
+	// is not being started; what wakes it later is the traffic watch.
 	base, busy := a.teamWakeState()
 	if busy || base > 0 {
 		return
