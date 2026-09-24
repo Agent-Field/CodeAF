@@ -80,6 +80,24 @@ type Limits struct {
 	ReviewRound bool
 }
 
+// costDust is the most a dollar limit may still have left and be reached: a
+// billionth of a dollar, far below any call's price and far above the float
+// rounding in a sum of prices. The model API a program's calls go through
+// reads its ceiling the same way (internal/provider/modelapi's ceilingReached).
+const costDust = 1e-9
+
+// costReached reports whether a run's spend has reached its dollar limit.
+//
+// A LIMIT WITH NOTHING LEFT IS REACHED WITH NOTHING SPENT. The conversation
+// hands a run whose person's limit is already spent the smallest positive
+// figure, because zero means no limit at all; read as `spent >= limit`,
+// nothing spent was still under it, and a run whose program's first call was
+// refused for it ended as work that did not finish instead of on the limit the
+// person set.
+func (l Limits) costReached(spent float64) bool {
+	return l.CostUSD > 0 && l.CostUSD-spent <= costDust
+}
+
 // stepsPerTaskKey is the type behind the context value, so a worker reads its
 // cap with a typed lookup rather than a string key another package could
 // collide with.

@@ -40,7 +40,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -52,8 +51,9 @@ import (
 // limits is the smaller, so a run and an adaptive run cannot come to disagree
 // about it. Zero means no limit. A spent or overspent limit becomes the smallest
 // positive figure rather than zero because the run engine reads zero as
-// unlimited; its existing limit ending then stops the run before a second paid
-// call if admission did not already refuse the turn.
+// unlimited. Both the engine and a program's model API read a limit with
+// nothing left as already reached, so such a run makes no paid call at all and
+// ends on the person's cost limit.
 func runCostLeft(limit, spent float64) float64 {
 	if limit <= 0 {
 		return 0
@@ -120,6 +120,18 @@ type RunSpec struct {
 	Serves func(model string) bool
 	// OnSpend observes the reconciled cumulative run spend while work is live.
 	OnSpend func(float64)
+	// OnCharge observes each priced call a worker that meters call by call
+	// makes — a delegated run's program, through its model API — with the
+	// call's own tokens and model, so the conversation folds the call whole
+	// rather than as a bare dollar figure ([RunCharge]). Nil for a worker that
+	// only reports its running total.
+	OnCharge func(RunCharge)
+	// Conversation is the id of the conversation that started the run: the
+	// journal id its own ledger rows carry as their Session. A delegated
+	// run's ledger rows name it as their Root and their Session, beside the
+	// task's id, so the conversation's receipt and the spending page can place
+	// the money. Empty leaves those rows naming no conversation.
+	Conversation string
 	// Delegate, when set, is the program this run's root task is handed to
 	// instead of a bash worker (delegate_door.go). No key goes with it: the
 	// program reaches a model only through the API codeaf serves the run. Nil is
@@ -529,6 +541,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		PlanModel:    planSeat,
 		CompleterFor: func(string) Completer { return a.beltRunCompleter() },
 		Serves:       a.servesModel,
+		Conversation: a.runConversation(),
 		Delegate:     run.delegate,
 		PlainFolder:  run.plain,
 		Ground:       run.groundNames,
@@ -694,16 +707,13 @@ func (a *Agent) cutBeltRun() {
 // the row the run was published under settles. The store is closed and the run
 // cleared once the work is home, so the next `/task` seeds a fresh plan.
 func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun, spec RunSpec) {
-	var foldedUSD float64
-	foldSpend := func(total float64) {
-		if total <= foldedUSD {
-			return
-		}
-		delta := total - foldedUSD
-		a.addFoldedUsage(&ai.Response{Usage: &ai.Usage{Cost: &delta}}, "", 0)
-		foldedUSD = total
-	}
-	spec.OnSpend = foldSpend
+	// THE RUN'S MONEY REACHES THE CONVERSATION'S BOOKS THROUGH ONE FOLD
+	// (task_run_money.go): each call whole as a program's model API meters it,
+	// and whatever the run's running total holds beyond those — a bash
+	// worker's spend, which arrives only as a total.
+	fold := &beltFold{agent: a}
+	spec.OnSpend = fold.total
+	spec.OnCharge = fold.charge
 	summary := engine.Start(ctx, spec)
 	// THE RUN'S WORK IS OVER THE MOMENT THE ENGINE ANSWERS, and that instant is
 	// taken now, before the landing, the summary refresh and the note — which
@@ -713,7 +723,7 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	a.beltMu.Unlock()
 	// The final receipt closes any gap between the last live reading and every
 	// ending, before the person-stop road and the ordinary landing road split.
-	foldSpend(summary.USD)
+	fold.total(summary.USD)
 	if run.cut != nil {
 		defer run.cut()
 	}

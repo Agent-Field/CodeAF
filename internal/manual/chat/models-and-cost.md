@@ -2074,7 +2074,7 @@ which is the whole machine's ledger rather than this conversation's — it was a
 |---|---|
 | `spend` | the money, printed only when it is above zero — this conversation **and every task it started** |
 | `conversation` | what the conversation's own calls cost |
-| `tasks` | what the work it started has cost, running or finished — tasks and the nodes of an adaptive run |
+| `tasks` | what the work it started has cost, running or finished — tasks, the nodes of an adaptive run, and a task handed to a program such as senior-dev |
 | `tokens` | `48.1k in · 3.2k out`, or one half alone, or the combined figure |
 | `cache` | `31.2k read · saved $0.0180` — the money half only when a price pair was published |
 | `model calls` | **requests to the provider**, deliberately not "turns" |
@@ -2105,6 +2105,12 @@ is the same figure `/cost` leads with.
 **Adaptive runs are in it too.** A node of an adaptive run is work this conversation
 started: its money is on the row while it is still working, under `tasks` when you ask
 `/cost` for the halves.
+
+**So is a program's run.** Every model call senior-dev (or another program codeaf carries)
+makes for a task this conversation handed it names this conversation and that task on the
+ledger, and it is on the row as it is spent, under `tasks` in `/cost`, and under the task
+on the spend place. Its tokens and its calls reach this conversation's `tokens` and
+`model calls` lines as well.
 
 It used to be the conversation's own half alone. A task's money only reaches the
 conversation's books when the task **closes**, so a family working for two hours left the
@@ -2153,8 +2159,9 @@ than the number of times you have spoken.
 
 It counts every request that is written down, not only the ones in your turns: naming the
 session, a judge deciding where something should be routed, looking at a picture, every
-request a task's own agent made on its own lane, and every request a harness run made
-while it walked its program. That is deliberate, because the `spend` line above it is the
+request a task's own agent made on its own lane, every request a harness run made
+while it walked its program, and every request a program such as senior-dev made for a
+task this conversation handed it. That is deliberate, because the `spend` line above it is the
 sum over exactly those requests — a smaller count beside it would be a bill divided by the
 wrong number.
 

@@ -129,14 +129,16 @@ with no git history nothing is committed at all: the work is already in the fold
 
 Every model call senior-dev makes goes through codeaf, which serves each run its own
 model API. So every call is priced like one of codeaf's own, shows in the conversation's
-total and in `/cost`, and is held to the run's dollar ceiling: **once the run's spend has
+total, its tokens and its call count, under `tasks` in `/cost`, and under the task on the
+spend place, and is held to the run's dollar ceiling: **once the run's spend has
 reached it, codeaf refuses every further call** before it is made, with
 `the run's dollar ceiling of $5.00 is reached ($5.04 spent), so codeaf made no call`.
 The call that crossed the ceiling was already made and paid for, so a run can end a little
 over it. A refused call ends senior-dev's turn; it runs the project's build and tests on
 the tree it has, and ends there, and the task says
 `senior-dev reached the run's dollar ceiling of $5.00: …` with senior-dev's own words
-after it.
+after it. A run handed off after the conversation's dollar limit is already spent starts
+nothing and makes no call: its row ends at once with `a dollar limit you set stopped it`.
 
 The time ceiling is kept by senior-dev as well as by codeaf. It holds back the last part
 of its time to land: two fifteenths of the run, at least 45 seconds, at most 12 minutes,

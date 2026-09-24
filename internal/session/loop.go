@@ -5231,6 +5231,18 @@ func (a *Agent) addFoldedUsageAs(response *ai.Response, model string, calls int,
 	a.addUsageAs(response, model, calls, role, false, false)
 }
 
+// addDetachedFoldedUsage is [Agent.addFoldedUsage] for work that runs BESIDE
+// the conversation's turns rather than inside one: a run the conversation
+// handed a task to (task_run_money.go's beltFold). It writes no ledger row,
+// because the run's own worker wrote one per call, and it moves no turn's
+// share ([Agent.addDetachedUsageAs]'s reason): a run's call priced while the
+// person's next chat turn is running is not that turn's spending, and a turn
+// abandoned then would otherwise be journaled with the run's dollars as its
+// own.
+func (a *Agent) addDetachedFoldedUsage(response *ai.Response, model string, calls int) {
+	a.addUsageAs(response, model, calls, "", false, false, detachedFromTurn)
+}
+
 // The roles an auxiliary line can name. A line is journaled with the role that
 // made the call so a bad answer can be traced to the model that gave it: the
 // session's name and a piece of work's name are the two that a person SEES, and

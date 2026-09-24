@@ -269,6 +269,13 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 	if s.staleAfter <= 0 {
 		s.staleAfter = defaultStaleAfter
 	}
+	// A RUN HANDED NOTHING OF ITS DOLLAR LIMIT STARTS NO WORKER. The limit was
+	// spent before the run began ([Limits.costReached]), so the first pass
+	// launches nothing and answers the limit: no worker is seated to make the
+	// one paid call that would have told the loop so.
+	if s.limits.costReached(s.spent) {
+		s.limitHit = LimitCost
+	}
 	// TAKE-OVER BEFORE THE FIRST PASS: a claim a dead process left behind is
 	// released here, so the ready set the first pass reads can offer it again
 	// with no pass of waiting.
@@ -572,7 +579,7 @@ func (s *Supervisor) countLiveSpend() {
 	}
 	s.liveMu.Unlock()
 	s.publishSpend()
-	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD && s.limitHit == "" {
+	if s.limits.costReached(s.spent) && s.limitHit == "" {
 		s.limitHit = LimitCost
 		for _, cancel := range s.cancels {
 			cancel()
@@ -594,7 +601,7 @@ func (s *Supervisor) settleSpend(ret workerReturn) {
 	// THE LIMIT THAT ENDED THE RUN IS THE FIRST ONE REACHED. A return that carries
 	// the spend past the dollar limit after the time limit already ended the run
 	// does not rename the ending.
-	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD && s.limitHit == "" {
+	if s.limits.costReached(s.spent) && s.limitHit == "" {
 		s.limitHit = LimitCost
 	}
 	s.publishSpend()

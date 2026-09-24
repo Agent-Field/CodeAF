@@ -112,6 +112,16 @@ type DelegateSetup struct {
 	// (delegate.RehomeBrief), so the program is never told a path it must not
 	// work in. Empty for a program working in the folder itself.
 	Ground []string
+	// Conversation is the id of the conversation the run belongs to
+	// (session.RunSpec.Conversation), which every ledger row the program's
+	// calls write names as its Root and its Session, beside the task's id, so
+	// the conversation's spend and the spending page can say whose money it
+	// was. Empty leaves the rows naming no conversation.
+	Conversation string
+	// OnCharge is told every priced call as it is metered
+	// (session.RunSpec.OnCharge), for the conversation to fold the call's
+	// tokens, model and dollars into its own books. Nil tells nobody.
+	OnCharge func(session.RunCharge)
 }
 
 // NewDelegateWorker builds the worker. cost and elapsed are the run's
@@ -209,40 +219,102 @@ func (s *delegateSink) Step(command, observation string) {
 func (s *delegateSink) Terminal(t delegate.Terminal) { s.terminal = &t }
 
 // delegateMeter is where the run's model API tells each charge as it is
-// metered: the run's live bank, the task's spend row, and the machine's
-// spending ledger. It is called one charge at a time, in order.
+// metered: the conversation's books, the run's live bank, the task's spend
+// row, and the machine's spending ledger. It is called one charge at a time,
+// in order.
 type delegateMeter struct {
 	ctx       context.Context
 	store     *plandb.Store
 	taskID    string
+	taskDir   string
 	role      string
 	name      string
 	workspace string
 	ledger    string
+	// conversation is the conversation the run belongs to, stamped on every
+	// ledger row; onCharge folds each call into that conversation's books.
+	conversation string
+	onCharge     func(session.RunCharge)
 }
 
-// bank books one charge in all three places.
+// bank books one charge in all four places.
 //
-// THE LEDGER ROW IS WRITTEN HERE AND ONLY HERE. The conversation that started
-// the run folds the run's total into its own meter through the fold door,
-// which writes no ledger row, exactly as it does for a bash worker whose own
-// session wrote the rows — so each of the program's calls is on this machine's
-// spending ledger once. The row is the worker seat's, because the program sits
-// where the run's worker would.
+// THE CONVERSATION HEARS FIRST, BEFORE THE RUN'S BANK MOVES. The conversation
+// folds each call whole — its tokens, its model, its dollars — as it is
+// metered, and also folds whatever the run's total says it has not yet heard
+// of (internal/session's beltFold); telling it the call before the total that
+// holds the call is what keeps one dollar from being folded twice.
+//
+// THE LEDGER ROW IS WRITTEN HERE AND ONLY HERE. The conversation's fold writes
+// no ledger row, exactly as it does for a bash worker whose own session wrote
+// the rows — so each of the program's calls is on this machine's spending
+// ledger once. The row is the worker seat's, because the program sits where
+// the run's worker would, and it names whose work it was the way a task
+// node's row does ([session.UsageLine.Root]): the conversation as its Root and
+// its Session, the task as its Task. A row that named none of them was money
+// the conversation's receipt and the spending page could not place — 94.9% of
+// one day's spend on 2026-09-23 was senior-dev calls filed under nobody.
 func (m *delegateMeter) bank(charge modelapi.Charge) {
-	bankSpend(m.ctx, charge.Spent)
-	_ = m.store.AddSpend(m.taskID, m.name, m.role, charge.CostUSD, charge.TokensIn, charge.TokensOut)
-	line := session.UsageLine{
-		Model: charge.Model, Calls: 1, Input: charge.TokensIn, Output: charge.TokensOut, USD: charge.CostUSD,
-		Reconciled: charge.Late, Workspace: m.workspace,
+	if m.onCharge != nil {
+		m.onCharge(session.RunCharge{
+			Model: charge.Model, TokensIn: charge.TokensIn, TokensOut: charge.TokensOut,
+			Cached: charge.Cached, USD: charge.CostUSD,
+		})
 	}
+	bankSpend(m.ctx, charge.Spent)
+	if err := m.store.AddSpend(m.taskID, m.name, m.role, charge.CostUSD, charge.TokensIn, charge.TokensOut); err != nil {
+		m.unstored(charge, err)
+	}
+	line := m.stamp(session.UsageLine{
+		Model: charge.Model, Calls: 1, Input: charge.TokensIn, Output: charge.TokensOut, USD: charge.CostUSD,
+		Reconciled: charge.Late,
+	})
 	session.RecordUsage(m.ledgerPath(), session.TagUsage(line, roles.RoleWorker, session.SeatWorker))
 }
 
 // unbilled keeps a call nobody could price on the ledger as the marker it is,
-// with no invented money.
+// with no invented money, filed under the same work as every priced row.
 func (m *delegateMeter) unbilled(model string) {
-	session.RecordUnbilledCall(m.ledgerPath(), session.TagUsage(session.UsageLine{Model: model, Workspace: m.workspace}, roles.RoleWorker, session.SeatWorker))
+	session.RecordUnbilledCall(m.ledgerPath(), session.TagUsage(m.stamp(session.UsageLine{Model: model}), roles.RoleWorker, session.SeatWorker))
+}
+
+// stamp names whose work a ledger row is: the workspace it was spent against,
+// the task, and the conversation the task belongs to.
+func (m *delegateMeter) stamp(line session.UsageLine) session.UsageLine {
+	line.Workspace = m.workspace
+	line.Task = strings.TrimPrefix(strings.TrimSpace(m.taskID), "t-")
+	if conversation := strings.TrimSpace(m.conversation); conversation != "" {
+		line.Root, line.Session = conversation, conversation
+	}
+	return line
+}
+
+// unstored says, in the task's own record folder, that a charge could not be
+// written to the task's spend rows.
+//
+// A SPEND ROW THE STORE REFUSED IS NOT DROPPED IN SILENCE. The machine's
+// ledger and the conversation's books already hold the charge, but the task
+// page's figure is read from these rows, so a refusal makes the page read
+// short; the line in delegate-stderr.log is where a person asking why finds
+// the answer. It is written only after the model API has closed — a receipt
+// that outlived even its wait, arriving after the program's process is gone —
+// or on a store that failed outright, so it never interleaves with the
+// program's own stderr.
+func (m *delegateMeter) unstored(charge modelapi.Charge, err error) {
+	if strings.TrimSpace(m.taskDir) == "" {
+		return
+	}
+	file, openErr := os.OpenFile(filepath.Join(m.taskDir, delegateStderrName), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if openErr != nil {
+		return
+	}
+	defer file.Close()
+	model := strings.TrimSpace(charge.Model)
+	if model == "" {
+		model = "a model"
+	}
+	_, _ = fmt.Fprintf(file, "codeaf: a charge of $%.6f for a call on %s is not in this task's spend rows, because the task's record refused it (%v); the machine's spending ledger has it\n",
+		charge.CostUSD, model, err)
 }
 
 func (m *delegateMeter) ledgerPath() string {
@@ -287,12 +359,13 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 		role = plandb.RoleWork
 	}
 	meter := &delegateMeter{
-		ctx: ctx, store: w.store, taskID: task.ID, role: role,
+		ctx: ctx, store: w.store, taskID: task.ID, taskDir: taskDir, role: role,
 		// The spend row's "model" column carries the program's name, because
 		// that is what spent the money; the ledger row names the model that
 		// answered.
 		name:      "delegate/" + w.program.Name,
 		workspace: w.workspace, ledger: w.setup.Ledger,
+		conversation: w.setup.Conversation, onCharge: w.setup.OnCharge,
 	}
 	api, err := modelapi.Open(modelapi.Config{
 		TaskDir:      taskDir,
@@ -363,6 +436,10 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	}
 	// The program has exited: its API goes with it, so nothing it left behind
 	// can spend, and the calls that were still running write their last turn.
+	// THE CLOSE WAITS FOR THE RECEIPTS STILL OWED (modelapi's Server.Close): the
+	// call a stop or the ceiling cut in the middle is priced about twenty
+	// seconds later, and it has to reach the task's spend rows, the run's total
+	// read just below and the conversation's books while all three are open.
 	_ = api.Close()
 	// THE LIVE STEP GOES WITH THE PROCESS, whatever the ending: a row that still
 	// read "implement · running" after the program was gone would be a claim
