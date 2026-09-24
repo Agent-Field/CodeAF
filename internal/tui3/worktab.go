@@ -13,7 +13,13 @@ func (a *app) workTab() (chatTab, bool) {
 	// rows are the ones the task sheet already carries ([tasksMine.plan], read
 	// off the loop); asking the agent here opened the plan store twice on
 	// every frame of a conversation with a run in it.
-	rows := a.taskSheet.mine.plan
+	//
+	// A PROGRAM'S RUN HAS NO TAB. Its task opens inside this conversation's own
+	// tab, as a room, from its row, its card and every other door
+	// (programroom.go); a tab of its own drew itself selected beside the
+	// conversation's, and a press on the conversation's tab never left it. Only
+	// the rows of a run the belt switch drives make the tab.
+	rows := beltRows(a.taskSheet.mine.plan)
 	if len(rows) == 0 {
 		return chatTab{}, false
 	}
@@ -34,9 +40,21 @@ func (a *app) workTab() (chatTab, bool) {
 	return chatTab{key: a.frontTabKey() + "#work", file: a.file, word: word, full: word, here: a.workTabOn, held: true, work: true}, true
 }
 
+// beltRows is the rows of runs the belt switch drives, which are the only runs
+// with a tab of their own: every row that names no program.
+func beltRows(rows []session.PlanTaskRow) []session.PlanTaskRow {
+	var out []session.PlanTaskRow
+	for _, row := range rows {
+		if strings.TrimSpace(row.Program) == "" {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
 func (a *app) workTabStable() bool {
 	var sig strings.Builder
-	for _, row := range a.taskSheet.mine.plan {
+	for _, row := range beltRows(a.taskSheet.mine.plan) {
 		if planRunning(row.Status) {
 			a.workTabSettled = ""
 			return false
@@ -59,6 +77,7 @@ func (a *app) workTabStable() bool {
 // ([app.taskSheetPlanAsk]), and until it does the pane draws the run's own row.
 func (a *app) openWorkTab() tea.Cmd {
 	rows, ok := a.heldPlanRows()
+	rows = beltRows(rows)
 	if !ok || len(rows) == 0 {
 		return nil
 	}
@@ -112,16 +131,6 @@ func (a *app) workTabKey(msg tea.KeyPressMsg) tea.Cmd {
 func (a *app) workTabFrame(width, height int) []string {
 	a.workTabStable()
 	out := a.headRows(width, a.tabsRow(width), a.pal)
-	// A PROGRAM'S RUN SHOWS ITS PAGE. The rows below are the whole tasks place
-	// — every conversation this machine has held — and for a run the plan
-	// switch drives that was the run's own list; a program's run has one row
-	// and its page is its conversation with codeaf, so the tab drew a hundred
-	// conversations and the run's notes under them and never the program.
-	// Its tab draws the page the rail opens, under the tab strip.
-	if a.taskSheet.planOn && a.taskPlanIsProgram() {
-		page, _, _ := a.taskPlanFrame(width, max(height-len(out), 1))
-		return append(out, page...)
-	}
 	reading := a.tasksFiltered()
 	reading.unfolded = true
 	rows := reading.rows(width, a.pal)
@@ -142,12 +151,6 @@ func (a *app) workTabFrame(width, height int) []string {
 			who = "you"
 		}
 		out = append(out, a.pal.dim(who+railSep)+a.pal.ink(note.Body))
-	}
-	// A PROGRAM'S RUN TAKES NO NOTE, so its tab offers no box: nothing typed
-	// there would reach the program, and the keys it would have typed are the
-	// page's reading keys and nothing else ([app.taskPlanKey]).
-	if a.taskPlanIsProgram() {
-		return out
 	}
 	text := a.taskSheet.planNote.String()
 	if strings.TrimSpace(text) == "" {

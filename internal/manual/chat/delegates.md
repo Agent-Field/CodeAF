@@ -17,8 +17,9 @@ none of them runs on its own outside codeaf. Each is a command in the chat, `/<n
 Your key stays in codeaf and never reaches the program or any command it runs. Every
 call the program makes goes through codeaf's own model road, so it is priced into your
 spending, held to the run's dollar ceiling, and shown as one turn of a conversation on the
-run's task page. When your services cannot serve the model the program asks for, the
-run's own work model answers, and the page names the model that did.
+run's task page, which opens inside the conversation's own tab like any task's. When your
+services cannot serve the model the program asks for, the run's own work model answers,
+and the page names the model that did.
 
 This is different from a harness or a subharness, which are built out of codeaf's own
 parts. A program codeaf carries has an engine of its own.

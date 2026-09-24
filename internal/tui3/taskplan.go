@@ -18,6 +18,7 @@ package tui3
 // slice of [session.Agent] this file needs.
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -1042,7 +1043,13 @@ func (a *app) taskPlanStopTaken(id string) tea.Cmd {
 				return nil
 			}
 			if err != nil {
-				a.note(err.Error())
+				// A stop that could not be given is said where the person is: on
+				// the program's room when that is what they stopped it from.
+				if a.programOf() != nil {
+					a.roomNote(err.Error())
+				} else {
+					a.note(err.Error())
+				}
 			} else {
 				a.railStamp++
 			}
@@ -2089,6 +2096,19 @@ func (a *app) finishRailPlan(id string) tea.Cmd {
 	}
 	keys := a.railPlanPending.keys
 	a.railPlanPending = railPlanPending{}
+	// A PROGRAM'S PAGE IS A ROOM IN THE CONVERSATION'S TAB (programroom.go), opened
+	// on the page this read just brought back — which is how a row the surface
+	// did not yet hold as a program's, and a run's own line under its row, reach
+	// it. The keys held for a page are dropped, as they are when the answer is a
+	// room: a room's box is a different receiver.
+	if a.taskPlanIsProgram() {
+		if n, err := strconv.ParseUint(planTaskIDWord(id), 10, 64); err == nil && n != 0 {
+			page := a.taskSheet.plan
+			a.closeTaskPlan()
+			a.openProgramRoom(n, page.Row.Title, page)
+			return a.takeRoomPump()
+		}
+	}
 	a.railTaskPlanOn = true
 	// THE SIDE LIST GIVES THE KEYBOARD BACK, because the page covers it: a list
 	// holding keys nobody can see would spend the page's first `esc` on itself.

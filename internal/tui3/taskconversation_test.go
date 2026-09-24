@@ -416,32 +416,22 @@ func TestAProgramsPlanRowDrawsItsStageAndNotACommand(t *testing.T) {
 	}
 }
 
-// A PROGRAM'S RUN'S TAB OFFERS NO BOX EITHER. The run's tab routes its keys to
-// the page's own keyboard, so a box drawn there for a program would be a promise
-// that every key typed into it breaks — before the page's read comes back as
-// much as after, because the row it opens on already names the program.
-func TestAProgramsWorkTabOffersNoNoteBox(t *testing.T) {
+// A PROGRAM'S RUN IS OFFERED NO TAB, SO NO TAB OFFERS IT A BOX. The run's tab
+// used to open the stored page with the tab's own keyboard, which had to be
+// kept from drawing a box for a program; a program's run has no tab now, and
+// its task opens in the conversation's own tab, whose box sends a program
+// nothing ([TestAProgramsRoomSendsNothingAndSaysSo]). Its held rows are no work
+// tab's rows either, so the tab cannot be opened on them by any door.
+func TestAProgramsRunOpensNoWorkTab(t *testing.T) {
 	row := programRow()
 	a, fake := planAppWith(t, []session.PlanTaskRow{row}, map[string]session.PlanTaskPage{row.ID: programPage(row, programTurns())})
 	a.width, a.height = 120, 28
 	a.taskSheet.mine.plan = fake.plan
-	if cmd := a.openWorkTab(); cmd == nil {
-		t.Fatal("the run's tab did not open")
-	} else {
-		if text := plain(strings.Join(a.workTabFrame(a.width, a.height), "\n")); strings.Contains(text, taskPlanNoteWord) {
-			t.Fatalf("the program's tab offers a box before its page is read:\n%s", text)
-		}
-		drive(t, a, cmd())
+	if tab, ok := a.workTab(); ok {
+		t.Fatalf("the program's run is offered a tab of its own, %q", tab.word)
 	}
-	if text := plain(strings.Join(a.workTabFrame(a.width, a.height), "\n")); strings.Contains(text, taskPlanNoteWord) {
-		t.Fatalf("the program's tab offers a box:\n%s", text)
-	}
-	for _, r := range "a note" {
-		drive(t, a, key(string(r)))
-	}
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-	if len(fake.noted) != 0 || !a.taskSheet.planNote.empty() {
-		t.Fatalf("typing on a program's tab wrote notes %v, box %q", fake.noted, a.taskSheet.planNote.String())
+	if cmd := a.openWorkTab(); cmd != nil || a.workTabOn {
+		t.Fatal("the work tab opened on a program's run")
 	}
 }
 
@@ -482,30 +472,38 @@ func TestACallsArgumentsAreReadForWhatTheCallWasAbout(t *testing.T) {
 	}
 }
 
-// EVERY DOOR INTO A PROGRAM'S TASK OPENS ITS CONVERSATION. The card in the
-// conversation, a transcript link, the task strip and the home panel all come
-// through [app.openRoomFor], which used to open a room: a blank page, because a
-// program has no worker transcript, while senior-dev made call after call. A
-// held row that names its program now opens the stored page the rail's way.
+// EVERY DOOR INTO A PROGRAM'S TASK OPENS ITS CONVERSATION, AS A ROOM. The card
+// in the conversation, a transcript link, the task strip and the home panel all
+// come through [app.openRoomFor], which used to open an ordinary room — a blank
+// page, because a program has no worker transcript — and then a full-frame page
+// over the conversation with no tab strip. A held row that names its program
+// opens the program's room at once, inside the conversation's tab, with the
+// program's conversation as its body — whichever way the row's id is spelled:
+// the store answers `t-7`, and a comparison against the bare number missed
+// every real row.
 func TestEveryDoorIntoAProgramsTaskOpensItsConversation(t *testing.T) {
-	row := programRow()
-	row.ID = "7"
-	a, _ := planAppWith(t, []session.PlanTaskRow{row}, map[string]session.PlanTaskPage{row.ID: programPage(row, programTurns())})
-	a.width, a.height = 120, 28
-	a.openRoomFor(7, row.Title)
-	if a.room != nil {
-		t.Fatal("a program's task opened a room")
-	}
-	cmd := a.takeRoomPump()
-	if cmd == nil {
-		t.Fatal("nothing asked the store for the program's page")
-	}
-	drive(t, a, cmd())
-	if !a.taskSheet.planOn || !a.taskPlanIsProgram() {
-		t.Fatalf("the door did not open the program's page: plan %v, program %+v", a.taskSheet.planOn, a.taskSheet.plan.Program)
-	}
-	if lines := programPageLines(a); !saidBy(lines, "senior-dev", "rewrite the auth middleware") {
-		t.Fatalf("the page does not show the program's conversation:\n%s", strings.Join(lines, "\n"))
+	for _, id := range []string{"7", "t-7"} {
+		t.Run(id, func(t *testing.T) {
+			row := programRow()
+			row.ID = id
+			a, fake := planAppWith(t, []session.PlanTaskRow{row}, map[string]session.PlanTaskPage{"7": programPage(row, programTurns())})
+			a.width, a.height = 120, 28
+			a.openRoomFor(7, row.Title)
+			if a.programOf() == nil || a.railTaskPlanOn || a.taskSheet.planOn {
+				t.Fatalf("the door did not open the program's room: room=%v railPage=%v page=%v", a.room != nil, a.railTaskPlanOn, a.taskSheet.planOn)
+			}
+			cmd := a.takeRoomPump()
+			if cmd == nil {
+				t.Fatal("nothing asked the store for the program's page")
+			}
+			drain(t, a, cmd)
+			if len(fake.noted) != 0 {
+				t.Fatalf("opening the room wrote notes %v", fake.noted)
+			}
+			if text := roomText(a); !strings.Contains(text, "I'll read the middleware and the store first.") {
+				t.Fatalf("the room does not show the program's conversation:\n%s", text)
+			}
+		})
 	}
 }
 
@@ -524,52 +522,35 @@ func TestADoorIntoAnOrdinaryTaskStillOpensItsRoom(t *testing.T) {
 	}
 }
 
-// A PROGRAM'S TAB IS ITS CONVERSATION, AND IT IS THE RUN STILL WORKING. With two
-// of senior-dev's runs in one conversation, the tab was named after the first
-// row, which had landed, and it drew the whole tasks place — every
-// conversation on the machine — with that run's notes under it.
-func TestAProgramsTabShowsTheWorkingRunsConversation(t *testing.T) {
+// A PROGRAM'S RUNS ARE NO TAB, AND A BELT RUN BESIDE THEM KEEPS ITS OWN. With
+// two of senior-dev's runs in one conversation the strip used to offer a tab
+// named after one of them; a program's task opens in the conversation's own
+// tab now, so neither is a tab — and a run the belt switch drives beside them
+// is still the tab, named after itself and never after a program's run.
+func TestAProgramsRunsAreNoTabAndABeltRunKeepsItsOwn(t *testing.T) {
 	landed := programRow()
-	landed.ID, landed.Title, landed.Status, landed.Stage = "1", "Implement true-myth", "done", ""
+	landed.ID, landed.Title, landed.Status, landed.Stage = "t-1", "Implement true-myth", "done", ""
 	working := programRow()
-	working.ID, working.Title = "2", "Implement happy-dom"
-	rows := []session.PlanTaskRow{landed, working}
-	pages := map[string]session.PlanTaskPage{
-		landed.ID:  programPage(landed, nil),
-		working.ID: programPage(working, programTurns()),
-	}
-	a, fake := planAppWith(t, rows, pages)
+	working.ID, working.Title = "t-2", "Implement happy-dom"
+	a, fake := planAppWith(t, []session.PlanTaskRow{landed, working}, nil)
 	a.width, a.height = 120, 30
 	a.taskSheet.mine.plan = fake.plan
-	if tab, ok := a.workTab(); !ok || tab.word != "Implement happy-dom" {
-		t.Fatalf("the tab is %q, want the run still working", tab.word)
+	if tab, ok := a.workTab(); ok {
+		t.Fatalf("a program's run is offered a tab, %q", tab.word)
 	}
-	cmd := a.openWorkTab()
-	if cmd == nil {
-		t.Fatal("the run's tab did not open")
-	}
-	drive(t, a, cmd())
-	if a.taskSheet.plan.Row.ID != working.ID {
-		t.Fatalf("the tab opened row %q, want the working run %q", a.taskSheet.plan.Row.ID, working.ID)
-	}
-	lines := make([]string, 0)
-	for _, line := range a.workTabFrame(a.width, a.height) {
-		lines = append(lines, plain(line))
-	}
-	if !saidBy(lines, "senior-dev", "rewrite the auth middleware") {
-		t.Fatalf("the tab does not draw the program's conversation:\n%s", strings.Join(lines, "\n"))
-	}
-	if strings.Contains(strings.Join(lines, "\n"), " chats · ") {
-		t.Fatalf("the tab still draws the tasks place:\n%s", strings.Join(lines, "\n"))
+	belt := session.PlanTaskRow{ID: "t-3", Title: "Fix the flake", Status: "running"}
+	a.taskSheet.mine.plan = append(append([]session.PlanTaskRow(nil), fake.plan...), belt)
+	if tab, ok := a.workTab(); !ok || tab.word != belt.Title {
+		t.Fatalf("the belt run's tab is %q, want %q", tab.word, belt.Title)
 	}
 }
 
-// A ROOM OPENED ON A PROGRAM'S TASK TRADES ITSELF FOR THE PAGE. The sessions
+// A ROOM OPENED ON A PROGRAM'S TASK BECOMES THE PROGRAM'S ROOM. The sessions
 // place brings a conversation forward and reopens the room it was aimed at
-// before that conversation's rows are read, so the row check at the door
-// cannot see the program; the room asks the store itself, and a program's
-// page replaces the blank room.
-func TestARoomOpenedOnAProgramsTaskBecomesItsPage(t *testing.T) {
+// before that conversation's rows are read, so the row check at the door cannot
+// see the program; the room asks the store itself, and becomes the program's
+// room — still a room in the conversation's tab, never a page drawn over it.
+func TestARoomOpenedOnAProgramsTaskBecomesItsRoom(t *testing.T) {
 	row := programRow()
 	row.ID = "7"
 	a, _ := planAppWith(t, nil, map[string]session.PlanTaskPage{row.ID: programPage(row, programTurns())})
@@ -580,11 +561,14 @@ func TestARoomOpenedOnAProgramsTaskBecomesItsPage(t *testing.T) {
 		t.Fatal("the room did not ask whether its task is a program's")
 	}
 	drive(t, a, cmd())
-	if a.room != nil {
-		t.Fatal("the program's room stayed open")
+	if a.programOf() == nil || a.room.id != 7 {
+		t.Fatalf("the room did not become the program's room: room=%v", a.room != nil)
 	}
-	if !a.taskSheet.planOn || !a.taskPlanIsProgram() {
-		t.Fatal("the program's page did not replace the room")
+	if a.railTaskPlanOn || a.taskSheet.planOn {
+		t.Fatal("the program's task was drawn as a page over the conversation")
+	}
+	if text := roomText(a); !strings.Contains(text, "I'll read the middleware and the store first.") {
+		t.Fatalf("the room does not show the program's conversation:\n%s", text)
 	}
 	// AND AN ORDINARY TASK KEEPS ITS ROOM.
 	plain := row
@@ -592,7 +576,7 @@ func TestARoomOpenedOnAProgramsTaskBecomesItsPage(t *testing.T) {
 	b, _ := planAppWith(t, nil, map[string]session.PlanTaskPage{"8": {Row: plain}})
 	b.room = b.newRoom(8, "ordinary")
 	drive(t, b, b.roomProgramCheck(8)())
-	if b.room == nil {
-		t.Fatal("an ordinary task's room was traded away")
+	if b.room == nil || b.programOf() != nil {
+		t.Fatal("an ordinary task's room was changed")
 	}
 }

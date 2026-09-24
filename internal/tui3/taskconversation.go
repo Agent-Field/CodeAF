@@ -100,10 +100,10 @@ type convLine struct {
 	ink  func(string) string
 }
 
-// taskPlanIsProgram reports whether the open page is a program's: its read
-// carries the program's conversation, or its row names the program — which is
-// all a page opened on a held row knows until its own read comes back
-// ([app.openWorkTab]), and that page must not flash a box it will take away.
+// taskPlanIsProgram reports whether the open stored page is a program's: its
+// read carries the program's conversation, or its row names the program, which
+// is how a read that came back for a side-list press is known to belong in the
+// program's room instead ([app.finishRailPlan]).
 func (a *app) taskPlanIsProgram() bool {
 	page := a.taskSheet.plan
 	return page.Program != nil || strings.TrimSpace(page.Row.Program) != ""
@@ -136,6 +136,14 @@ func convProgramOf(page session.PlanTaskPage) *session.PlanProgram {
 // narrow frame gives up the clock before the calls and the calls before the
 // money.
 func (a *app) taskPlanPinned(page session.PlanTaskPage, width int) string {
+	return a.programPinned(page, width, a.taskPlanAge(page.Row))
+}
+
+// programPinned is [app.taskPlanPinned] with the clock handed in: the program's
+// room ([app.programFactsWord]) draws the same line with the clock of the
+// node it is standing on, which is the clock the rail and the landed card
+// read, so the one run reads one figure wherever it is drawn.
+func (a *app) programPinned(page session.PlanTaskPage, width int, clock string) string {
 	if (page.Program == nil && strings.TrimSpace(page.Row.Program) == "") || width < 1 {
 		return ""
 	}
@@ -155,14 +163,27 @@ func (a *app) taskPlanPinned(page session.PlanTaskPage, width int) string {
 	if n := program.Calls; n > 0 {
 		fields = append(fields, rowSay(itoa(n)+" "+plural("call", n)))
 	}
-	fields = append(fields, rowSay(a.taskPlanAge(page.Row)))
+	fields = append(fields, rowSay(clock))
 	return rowTail(fields, width)
 }
 
 // taskPlanAge is how long a task has been going: from when it was made to when
 // it ended, or to now while it runs. A task that has ended without a moment
 // recorded for its ending draws no age rather than one that keeps climbing.
+//
+// A PROGRAM'S RUN READS THE CLOCK THE RAIL READS whenever this conversation
+// holds one for it ([app.nodeClock]). The store's two stamps bracket other
+// events than the run's notices do — the store is seeded before the run's copy
+// is made, and it is ended by the supervisor rather than when the program's
+// process is gone — so a page reading them and a rail and a landed card reading
+// the notices drew three different figures for one run. The store's stamps are
+// what is left for a run this conversation has no row for.
 func (a *app) taskPlanAge(row session.PlanTaskRow) string {
+	if node := a.programRowNode(row); node != nil {
+		if word, ok := a.nodeClock(node); ok {
+			return word
+		}
+	}
 	if row.Started.IsZero() {
 		return ""
 	}
@@ -196,7 +217,17 @@ func (a *app) taskProgramBody(width int) []string {
 	if n := len(a.taskSheet.planBack); n > 0 {
 		out = append(out, pal.dim("esc/← "+a.taskSheet.planBack[n-1].Row.Title))
 	}
-	out = append(out, a.taskConversation(page, width)...)
+	return append(out, a.programBody(page, width, a.taskSheet.planBriefFull)...)
+}
+
+// programBody is what both of a program's pages draw under their head — the
+// tasks place's stored page ([app.taskProgramBody]) and the program's room in
+// the conversation's own tab (programroom.go): the conversation, the steps a
+// run with no conversation reported, and the notes. briefFull is the page's
+// own fold, because each page folds its brief with its own key.
+func (a *app) programBody(page session.PlanTaskPage, width int, briefFull bool) []string {
+	pal := a.pal
+	out := a.taskConversation(page, width, briefFull)
 	if len(convProgramOf(page).Turns) == 0 && len(page.Steps) > 0 {
 		out = append(out, "", pal.dim("steps"))
 		for _, step := range page.Steps {
@@ -227,7 +258,7 @@ func (a *app) taskProgramBody(width int) []string {
 // [convTextLeast] cells of words each name stands on its own line instead. The
 // column is as wide as the widest name on the page, so it does not move as the
 // conversation grows by a call from the same model.
-func (a *app) taskConversation(page session.PlanTaskPage, width int) []string {
+func (a *app) taskConversation(page session.PlanTaskPage, width int, briefFull bool) []string {
 	if width < 1 {
 		return nil
 	}
@@ -244,7 +275,7 @@ func (a *app) taskConversation(page session.PlanTaskPage, width int) []string {
 	// Folded to the brief's own three lines, with the key that unfolds it, the
 	// way every other page folds a brief.
 	opening := convSide{name: speaker}
-	for _, line := range a.taskConversationBrief(page, text) {
+	for _, line := range taskConversationBrief(page, text, briefFull) {
 		opening.lines = append(opening.lines, convLine{text: line, ink: pal.ink})
 	}
 	if len(opening.lines) > 0 {
@@ -295,9 +326,9 @@ func (a *app) taskConversation(page session.PlanTaskPage, width int) []string {
 // ([planBriefRows]), at the width the words get beside the names, folded to
 // [briefFoldLines] with the line that says how many more and which key opens
 // them.
-func (a *app) taskConversationBrief(page session.PlanTaskPage, text int) []string {
+func taskConversationBrief(page session.PlanTaskPage, text int, briefFull bool) []string {
 	lines := planBriefRows(page.Description, text)
-	if a.taskSheet.planBriefFull || len(lines) <= briefFoldLines {
+	if briefFull || len(lines) <= briefFoldLines {
 		return lines
 	}
 	return append(append([]string(nil), lines[:briefFoldLines]...),
@@ -309,9 +340,15 @@ func (a *app) taskConversationBrief(page session.PlanTaskPage, text int) []strin
 // or closes it ([app.taskPlanKey]). It measures the brief at the width the
 // conversation draws it at, so the key and the fold line cannot disagree.
 func (a *app) taskConversationFolds() bool {
-	page := a.taskSheet.plan
 	width, _ := a.size()
-	_, text := convColumns(convNames(convProgramOf(page), convProgramName(page)), width-2)
+	return convBriefFolds(a.taskSheet.plan, width-2)
+}
+
+// convBriefFolds is whether a program's brief folds when its conversation is
+// drawn at this width — the one measure both of a program's pages ask before
+// their `ctrl+o` opens or closes it.
+func convBriefFolds(page session.PlanTaskPage, width int) bool {
+	_, text := convColumns(convNames(convProgramOf(page), convProgramName(page)), width)
 	return len(planBriefRows(page.Description, text)) > briefFoldLines
 }
 

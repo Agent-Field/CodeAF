@@ -18,6 +18,25 @@ Use it for one change big enough to want an agent of its own for an hour, and sp
 well enough that nobody will be asked anything: a rewrite across a package, a migration,
 a feature with its tests. A change you would make in a few steps is not worth it.
 
+## Watching senior-dev work — open its task, its conversation with codeaf, how long it has run, stop it
+
+A senior-dev run is a task of the conversation that started it. Its row is on the side
+list with the stage it is in and what it has spent so far, and a card in the conversation
+lands when it ends. Click the row or the card, or follow a task link to it, and its task
+opens **inside the conversation's own tab**: the tab strip stays on top, with the
+conversation's tab selected and `Home` beside it. senior-dev gets no tab of its own.
+
+The task shows senior-dev's conversation with codeaf: its brief, each model call with
+what senior-dev sent and what the model answered, and the call in flight. The line over
+it pins the stage, the spend of the run's ceiling, the number of calls and how long the
+run has been going — the same time the side list and the landed card show, counted from
+the moment codeaf handed the work over.
+
+`esc`, a press on the conversation's tab, or a press on `Home` leaves it, and the run goes
+on. `x` over an empty box, `/stop`, or `Stop` on that line asks `Stop this task?` first.
+Nothing typed there reaches senior-dev: the box says `senior-dev reads no messages — say
+it to main`, and `enter` says the same line and keeps your words in the box.
+
 ## How do I ask senior-dev for a change — writing the brief, what to put in it
 
 The brief is everything senior-dev knows about what you want. It is saved as

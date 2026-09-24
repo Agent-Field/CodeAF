@@ -4949,8 +4949,10 @@ func (a *app) paint() tea.Cmd {
 	// AND THE PLAN PAGE'S OWN READING IS TAKEN ON THE SAME CLOCK, for the same
 	// reason: a page left open on a running task follows its newest step
 	// ([app.taskPlanFollow]), and a page on a settled task is not read at all —
-	// the clock stops with the task, one row down.
-	kick = tea.Batch(kick, a.taskPlanFollow())
+	// the clock stops with the task, one row down. A program's room reads its
+	// stored page on the same beat and under the same law
+	// ([app.programRoomFollow]).
+	kick = tea.Batch(kick, a.taskPlanFollow(), a.programRoomFollow())
 	// A TOOL THAT HAS JUST ENDED IS ASKED ABOUT ON THIS FRAME, not at the next
 	// tenth ([app.usageOwed]) — the ask alone, because nothing else on this
 	// beat has moved with it. ONLY WHILE THE WORK IS STILL RUNNING: the ask is
@@ -5138,7 +5140,12 @@ func (a *app) paint() tea.Cmd {
 		// fourth that can be the whole of what is happening: the page follows a
 		// live edge the store writes from another process, and no turn of ours
 		// runs while it moves (taskplan.go's [app.taskPlanFollow]).
-		a.taskPlanRunning()
+		a.taskPlanRunning() ||
+		// AND A PROGRAM'S ROOM ON WORK THAT CAN STILL MOVE IS THE EIGHTEENTH, for
+		// the plan page's reason exactly: senior-dev writes its conversation from
+		// another process, and the room's age ticks on this clock
+		// (programroom.go's [app.programRoomFollow]).
+		a.programRoomFollows()
 	// THE WAIT ON THE MODEL is the only term that can hold this clock while
 	// the screen shows nothing but the spinner and the ellipsis, and a spinner
 	// glyph only changes every spinnerStep-th paint (styles.go). A wait whose

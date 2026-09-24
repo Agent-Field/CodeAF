@@ -153,7 +153,9 @@ func (a *app) roomControlRows(width int) []railLine {
 	if host, ok := a.agent.(interface{ TaskSetupSupported() bool }); ok && !host.TaskSetupSupported() && !a.roomIsGuest() {
 		out = append(out, railLine{text: a.pal.dim(fit("Engine update needed", width)), entry: -1})
 	}
-	if node := a.roomNode(); node != nil && !a.roomIsGuest() {
+	// A PROGRAM'S RUN HAS NO THINKING LEVEL THIS SURFACE CAN MOVE, so its room
+	// draws no row for one (programroom.go).
+	if node := a.roomNode(); node != nil && !a.roomIsGuest() && a.programOf() == nil {
 		movable := a.taskRungMovable(node)
 		rung := a.taskRung(node.id).String()
 		if movable || rung != "" {
@@ -180,7 +182,10 @@ func (a *app) roomControlRows(width int) []railLine {
 		}
 	}
 	if target := a.stopHere(); !target.empty() {
-		if _, ok := a.stopDoors(); ok {
+		// A run's own task stops through the store's door and not the stop door
+		// ([stopTarget.plan]), and its target is only offered when that door is
+		// there (programroom.go's [app.programStopTarget]).
+		if _, ok := a.stopDoors(); ok || target.plan != "" {
 			out = append(out, railLine{entry: -1}, row("Stop "+target.noun+"…", "stop"))
 		}
 	}
@@ -288,11 +293,21 @@ func (a *app) roomModelCommand(rest string) {
 func (a *app) roomTitleRow(width int) string {
 	left := a.roomHereWord()
 	right, painted := "", ""
-	if node := a.roomNode(); node != nil {
+	if node := a.roomNode(); node != nil && a.programOf() == nil {
 		f := a.roomFactsOf(node)
 		right = rowAll([]rowField{f.state, f.live, f.clock, f.spend})
 		state := rowAll([]rowField{f.state})
 		painted = a.taskStateInk(node)(state) + a.pal.muted(strings.TrimPrefix(right, state))
+	} else if a.programOf() != nil {
+		// A PROGRAM'S ROOM PINS ITS STORED PAGE'S LINE BESIDE THE TITLE: the stage,
+		// the spend of the ceiling, the calls and the age (programroom.go). It is
+		// given at most half the row, so the title keeps its half.
+		line, lead := a.programFactsWord(max((width-headLabelAt-2)/2, 1))
+		right = line
+		painted = a.pal.muted(line)
+		if node != nil && lead > 0 {
+			painted = a.taskStateInk(node)(ansi.Cut(line, 0, lead)) + a.pal.muted(ansi.Cut(line, lead, ansi.StringWidth(line)))
+		}
 	}
 	room := max(width-headLabelAt-2-ansi.StringWidth(right)-3, 1)
 	left = fit(left, room)
@@ -316,7 +331,9 @@ func (a *app) roomRecipientWord() string {
 		}
 		return "Conversation model"
 	}
-	if a.roomIsGuest() {
+	// A PROGRAM'S ROOM IS READ AND NEVER WRITTEN TO (programroom.go), so the box's
+	// label says what a borrowed page's does rather than naming a recipient.
+	if a.roomIsGuest() || a.programOf() != nil {
 		return "Reading: " + a.roomHereWord()
 	}
 	return "To: " + a.roomHereWord()
