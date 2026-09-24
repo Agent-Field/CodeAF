@@ -43,6 +43,12 @@ type Team struct {
 	Hue  float64
 	Tier int
 	Made time.Time
+	// WakeOff turns the team's auto-wake off: a directive no longer starts an
+	// idle member's turn, and a member's reply no longer starts the manager's.
+	// Everything is still delivered, at the next turn each conversation takes.
+	// It is stored as "wake": false and only then, so a file that never said
+	// anything about waking wakes.
+	WakeOff bool
 
 	// hued says the team has a colour: the file gave it one or [Team.SetHue]
 	// did. A hue of 0 is a real hue, so absence is kept apart from the value.
@@ -60,7 +66,7 @@ type File struct {
 // knownFields is every key [Team] reads itself.
 var knownFields = map[string]bool{
 	"id": true, "name": true, "parent": true, "members": true, "manager": true,
-	"hue": true, "tier": true, "made": true,
+	"hue": true, "tier": true, "made": true, "wake": true,
 }
 
 // wireTeam is the stored shape. Hue and Tier are pointers so a team with no
@@ -75,6 +81,7 @@ type wireTeam struct {
 	Hue     *float64  `json:"hue,omitempty"`
 	Tier    *int      `json:"tier,omitempty"`
 	Made    time.Time `json:"made"`
+	Wake    *bool     `json:"wake,omitempty"`
 }
 
 // UnmarshalJSON reads a team, keeping every field it does not know.
@@ -88,6 +95,7 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 		return err
 	}
 	*t = Team{ID: w.ID, Name: w.Name, Parent: w.Parent, Members: w.Members, Manager: w.Manager, Made: w.Made}
+	t.WakeOff = w.Wake != nil && !*w.Wake
 	if w.Hue != nil {
 		t.Hue, t.hued = *w.Hue, true
 	}
@@ -110,6 +118,10 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 // build wrote, sorted, exactly as it was read.
 func (t Team) MarshalJSON() ([]byte, error) {
 	w := wireTeam{ID: t.ID, Name: t.Name, Parent: t.Parent, Members: t.Members, Manager: t.Manager, Made: t.Made}
+	if t.WakeOff {
+		off := false
+		w.Wake = &off
+	}
 	if t.Hued() {
 		hue, tier := t.Hue, t.Tier
 		w.Hue, w.Tier = &hue, &tier
@@ -135,6 +147,11 @@ func (t Team) MarshalJSON() ([]byte, error) {
 	b.WriteByte('}')
 	return b.Bytes(), nil
 }
+
+// Wakes reports whether team traffic wakes the team's idle conversations: a
+// directive its member, a reply or an event its manager. It is on unless the
+// team was turned off ([Team.WakeOff]).
+func (t Team) Wakes() bool { return !t.WakeOff }
 
 // Hued reports whether the team has a colour. A team built in code with a
 // non-zero hue or tier counts as coloured.
