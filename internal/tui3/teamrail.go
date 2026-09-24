@@ -199,6 +199,15 @@ func (a *app) trafficAddr(s string) string {
 	return word
 }
 
+// trafficFull is an address the rail cut, spelled whole again: a handle is
+// `@` and the raw name, and every other address was never cut.
+func trafficFull(cut, raw string) string {
+	if strings.HasPrefix(cut, "@") {
+		return "@" + raw
+	}
+	return cut
+}
+
 // trafficShown reports whether an entry is drawn at all. The person's own
 // words are in the manager's conversation already, where they said them.
 func trafficShown(e teamstore.Entry) bool {
@@ -306,7 +315,12 @@ func (a *app) trafficLine(t team, e teamstore.Entry, width int) (string, string,
 	}
 	hint := ""
 	if target != "" {
-		hint = plainHead
+		// The hint line has the room the row did not, so it names everyone
+		// whole.
+		hint = strings.ReplaceAll(plainHead, a.trafficAddr(e.From), trafficFull(a.trafficAddr(e.From), e.From))
+		if e.To != "" {
+			hint = strings.ReplaceAll(hint, a.trafficAddr(e.To), trafficFull(a.trafficAddr(e.To), e.To))
+		}
 		if tag != "" {
 			hint += " " + tag
 		}
