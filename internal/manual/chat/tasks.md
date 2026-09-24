@@ -2591,7 +2591,7 @@ conversations, retaining older parents and children instead of splitting their t
 Filtering never moves a conversation into a different section.
 
 Conversation names use the full title shown on Home and truncate only to fit. Their
-bullets also match Home: dim at rest, working while answering, bright for unread replies,
+bullets also match Home: dim at rest, working while answering or running tasks, bright for unread replies,
 and a question mark when an answer is needed. A missing transcript still leaves its tasks
 under an identified conversation row; nothing is promoted into a top-level task.
 
