@@ -174,6 +174,22 @@ func testPlainLaunchConnectionsAndHarnesses(t *testing.T) {
 		t.Fatalf("the plain launch lost this machine's harness registry:\n%s", harnesses)
 	}
 	t.Logf("the local engine road opened this machine's harness registry:\n%s", harnesses)
+
+	// AND THE CREW PANEL, which is the same kind of door onto this machine's
+	// profile: /crew opens it framed over the conversation, enter on the first
+	// seat opens that seat's list on `auto`, and esc steps back out one level at
+	// a time. Nothing is chosen, so nothing is written and no model is asked.
+	r.keys("Escape")
+	r.lit("/crew")
+	r.keys("Enter")
+	crew := r.waitFor(20*time.Second, say(t, "crewMainKeys"))
+	t.Logf("the crew panel opened:\n%s", crew)
+	r.keys("Enter")
+	seats := r.waitFor(20*time.Second, say(t, "crewAutoWord"))
+	t.Logf("the worker's seat list opened on auto:\n%s", seats)
+	r.keys("Escape")
+	r.waitFor(20*time.Second, say(t, "crewMainKeys"))
+	r.keys("Escape")
 	r.quit()
 }
 

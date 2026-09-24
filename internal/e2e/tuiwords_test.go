@@ -121,6 +121,14 @@ var tuiWords = map[string]tuiWord{
 		screen: "harnesses are unavailable here",
 		why:    "the refusal that must be absent from an ordinary launch and remain available to the hosted seam",
 	},
+	"crewMainKeys": {
+		screen: "enter change · esc close · ? keys",
+		why:    "/crew opened its panel, framed, with its keys in the bottom edge",
+	},
+	"crewAutoWord": {
+		screen: "auto — codeaf picks per task",
+		why:    "enter on a seat opened the seat list on its first row, auto",
+	},
 
 	// ── the bounded stop ─────────────────────────────────────────────────────
 	"stoppingWord": {

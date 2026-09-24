@@ -1751,6 +1751,9 @@ type app struct {
 	// it, because that path runs entirely on session events (harness.go).
 	harn      *subharness.Store
 	harnPanel harnessPanel
+	// crewUI is /crew: the five rows a person changes about the crew, edited
+	// where they stand, over the conversation (crewpanel.go).
+	crewUI crewPanel
 	// harnPick is the filtering list "/harness " opens over that same registry,
 	// and harnChip the name it was answered with — the one harness the next
 	// message will run, held in the tray above the box rather than in the draft
@@ -3683,6 +3686,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.questionDialogWheel(msg) {
 			return a, nil
 		}
+		// THE CREW PANEL TAKES THE WHEEL WHILE IT IS UP: its lists are longer
+		// than its frame, and the conversation under a modal is not live
+		// (crewpanel.go).
+		if a.crewUI.open {
+			a.crewWheel(placeWheelDelta(msg.Mouse().Button))
+			return a, nil
+		}
 		// THE TAB BAR IS READ BEFORE EVERY PLACE'S OWN ROWS, exactly as it is for
 		// the press: it is the router's row, drawn on all seven places in the same
 		// cells, so a wheel answered by the place under it would scroll a list for
@@ -3999,6 +4009,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.harnPanel.open {
 				return a, a.harnessPanelPress(msg.Mouse().Y)
 			}
+			// AND THE CREW PANEL, on the same terms, with the one difference that
+			// it reads the column too: the models row's two arrows are targets of
+			// their own (crewpanel.go).
+			if a.crewUI.open {
+				return a, a.crewPress(msg.Mouse().X, msg.Mouse().Y)
+			}
 			// AND THE PERMISSIONS PANEL IS THE THIRD OF THEM, on the same terms
 			// (permissions.go): a press on a row acts on that row, and a press
 			// anywhere else closes the list.
@@ -4226,6 +4242,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case approvalFlashMsg:
 		// And the approvals chip's, on the same terms (approvalchip.go).
+		a.touch()
+		return a, nil
+
+	case crewUndoMsg:
+		// And the crew panel's undo window closing (crewpanel.go): one repaint,
+		// so the tick and the `z undo` offer come down.
 		a.touch()
 		return a, nil
 
@@ -7253,10 +7275,10 @@ func (a *app) slash(line string) tea.Cmd {
 		return nil
 
 	case "crew":
-		// The crew panel and its four shortcuts (crew.go): what is allowed and
-		// what is pinned, which persists; nothing else about a crew sticks.
-		a.runCrew(rest)
-		return nil
+		// The crew panel and its four shortcuts (crew.go, crewpanel.go): what is
+		// allowed and what is pinned, which persists; nothing else about a crew
+		// sticks.
+		return a.runCrew(rest)
 
 	case "effort":
 		// How hard THIS conversation thinks (effortchip.go). The bare form opens

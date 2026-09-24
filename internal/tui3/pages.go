@@ -2271,6 +2271,7 @@ func (a *app) closeModals() {
 	a.effPick.close()
 	a.connPanel.close()
 	a.harnPanel.close()
+	a.crewUI.close()
 	a.permPanel.close()
 	// Navigation hides an unanswered offer without resolving or losing it.
 	if a.subPage.card.asked() {

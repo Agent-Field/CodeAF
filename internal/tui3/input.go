@@ -560,6 +560,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.harnessPanelKey(msg)
 	}
 
+	// And the crew panel, on those panels' terms exactly (crewpanel.go): opened
+	// by a command, nothing typed under it — its filters and holes are its own —
+	// and esc stepping back one level at a time until it closes.
+	if a.crewUI.open && msg.String() != "ctrl+c" {
+		return a.crewKey(msg)
+	}
+
 	// And the permissions panel, which is those panels' twin (permissions.go):
 	// opened by a command, nothing typed under it, esc leaves exactly as it was.
 	// Modal also frees a bare d to mean "drop this line" — no draft is under it
@@ -1652,6 +1659,19 @@ func (a *app) inputBlockUnfloored(width int) ([]string, int, int) {
 		}
 		if a.connPanel.filtering {
 			return draftBlock(&a.connPanel.filter, a.pal, width, 1, connectFilterHint, "")
+		}
+	}
+	// AND THE CREW PANEL'S TWO LISTS TAKE IT ON THE SAME TERMS: the seat list's
+	// filter and the checklist's are this surface's one-line box, in the place
+	// /model's filter stands (crewpanel.go). A hole on one of its rows is typed
+	// on the row itself, and the caret then has no box to live in and is hidden,
+	// on the law the /connect panel's choice follows above.
+	if a.crewUI.open {
+		if box := a.crewBox(); box != nil {
+			return draftBlock(box, a.pal, width, 1, crewPickHint, "")
+		}
+		if a.crewUI.edit != nil {
+			a.caret = false
 		}
 	}
 	// AND WHERE THE DRAFT ITSELF WOULD BE, ONE DIM LINE WHEN ANOTHER WINDOW HAS

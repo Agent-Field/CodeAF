@@ -3872,6 +3872,10 @@ func (a *app) hintWord() string {
 		// another project cannot be excepted from a place it never reached
 		// ([standingPlace.hint]).
 		return a.orders.hint(a)
+	case a.crewUI.open:
+		// The crew panel prints its keys in its own bottom edge (crewpanel.go),
+		// and a slot repeating them would say the same thing twice on one screen.
+		return ""
 	case a.subPage.open:
 		// /subharness names its verbs here PER ROW, because enter means two
 		// things on the intake card — fill this field in, or start the run — and

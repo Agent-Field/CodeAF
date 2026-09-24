@@ -174,7 +174,9 @@ func TestTheRolesSectionSaysWhatAnswersEachRole(t *testing.T) {
 	if !strings.Contains(selected.meta.about, roles.Describe(roles.RolePlanner)) {
 		t.Fatalf("the selected role's line does not say what it is: %q", selected.meta.about)
 	}
-	if !strings.Contains(selected.meta.about, "follows planner above") {
+	// THE PLANNER IS A CREW SEAT, and a crew seat is set on the crew panel
+	// rather than on a row above this one (settings.go's [sheet.roleAbout]).
+	if !strings.Contains(selected.meta.about, "follows the planner seat (/crew)") {
 		t.Fatalf("the selected role's line reads %q", selected.meta.about)
 	}
 }
@@ -330,11 +332,11 @@ func TestSearchingFindsARoleByName(t *testing.T) {
 // panel grew, so it must not touch whatever the cursor happens to be on.
 func TestDelOnAnOrdinaryRowChangesNothing(t *testing.T) {
 	a := tieredSheet(t)
-	cursorTo(t, a, config.KeyTierHighModel)
+	cursorTo(t, a, config.KeyTierLowModel)
 	drive(t, a, key("delete"))
 
-	row, _ := a.sheet.registry.Row(config.KeyTierHighModel)
-	if row.Value() != "test/careful-model" {
+	row, _ := a.sheet.registry.Row(config.KeyTierLowModel)
+	if row.Value() != "test/cheap-model" {
 		t.Fatalf("del changed a tier row to %q", row.Value())
 	}
 	if got := roleItem(t, a, roles.RoleWorker); got.pin != "" {

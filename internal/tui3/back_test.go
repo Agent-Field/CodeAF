@@ -155,6 +155,7 @@ func TestEscapePeelsModalLayersBeforeHome(t *testing.T) {
 		{"files", func(a *app) { a.shelf.open = true }, func(a *app) bool { return a.shelf.open }},
 		{"connections", func(a *app) { a.connPanel.open = true }, func(a *app) bool { return a.connPanel.open }},
 		{"harness", func(a *app) { a.harnPanel.open = true }, func(a *app) bool { return a.harnPanel.open }},
+		{"crew", func(a *app) { a.crewUI = crewPanel{open: true, saved: -1, step: -1} }, func(a *app) bool { return a.crewUI.open }},
 		{"permissions", func(a *app) { a.permPanel.open = true }, func(a *app) bool { return a.permPanel.open }},
 		{"drafts", func(a *app) { a.draftPage.open = true }, func(a *app) bool { return a.draftPage.open }},
 		{"subharness list", func(a *app) { a.subPage.open = true }, func(a *app) bool { return a.subPage.open }},
@@ -219,5 +220,24 @@ func TestBackPastAnApprovalKeepsItUnansweredAndReopenable(t *testing.T) {
 	drive(t, a, tea.KeyPressMsg{Code: 'y', Mod: tea.ModAlt})
 	if !a.questioning() {
 		t.Fatal("deferred question could not be reopened")
+	}
+}
+
+// /CREW TYPED ON HOME STEPS OFF IT AND ESC STEPS BACK: a place cannot draw an
+// overlay, so the panel opens over the conversation behind home, and the one
+// level esc goes back is home itself (crewpanel.go's [app.openCrew]).
+func TestCrewFromHomeComesBackToHome(t *testing.T) {
+	a := backApp(t)
+	runCmd(a.showPage(pageHome))
+	if !a.at(pageHome) {
+		t.Fatal("home did not open")
+	}
+	runCmd(a.homeSlash("/crew"))
+	if !a.crewUI.open || a.at(pageHome) {
+		t.Fatalf("/crew on home left the panel %v and home %v", a.crewUI.open, a.at(pageHome))
+	}
+	drive(t, a, key("esc"))
+	if a.crewUI.open || !a.at(pageHome) {
+		t.Fatal("esc on the panel did not come back to home")
 	}
 }

@@ -4,9 +4,10 @@ import (
 	"strconv"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
-	"github.com/Agent-Field/codeaf/internal/router"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
@@ -26,13 +27,11 @@ import (
 // /model IS UNTOUCHED BY ALL OF IT. The model a person talks to is the
 // conversation's; the crew is the models codeaf spends on its own behalf.
 //
-// THE BARE FORM IS THE PANEL, as one page: the seats (auto, or pinned with the
-// pin glyph), the providers the crew can route through (derived from the
-// connections, never a setting), the allowed-models rule, the daily cap with
-// today's spend beside it, and the recent tasks with the crew each one ran on.
-// The four shortcuts are how anything on it changes, and every write goes
-// through internal/config's own writers so a command and a settings row cannot
-// disagree about which crew is on.
+// THE BARE FORM IS THE PANEL (crewpanel.go): the five rows a person changes
+// — three seats, the allowed models, the daily cap — edited where they stand.
+// The four shortcuts write the same rows through the same writers and then
+// open the panel with the tick on the row they changed, so a command and the
+// panel cannot disagree about which crew is on:
 //
 //	/crew pin <seat> <model[@provider]>   /crew unpin <seat|all>
 //	/crew models <all|open|≤in/out|list|+model|-model>
@@ -42,85 +41,100 @@ import (
 const crewUsage = "/crew · /crew pin <worker|planner|checker> <model[@provider]> · /crew unpin <seat|all> · " +
 	"/crew models <all|open|≤in/out|ids…|+id|-id> · /crew cap <dollars|off>"
 
-// runCrew is /crew: the panel, or one of its four shortcuts.
-func (a *app) runCrew(arg string) {
+// runCrew is /crew: the panel, or one of its four shortcuts. It answers the
+// tick that takes the panel's undo offer down after a shortcut opened it.
+func (a *app) runCrew(arg string) tea.Cmd {
 	if a.hosted() {
 		a.note(a.remoteProfileWord("the crew"))
-		return
+		return nil
 	}
 	arg = strings.TrimSpace(arg)
 	word, rest, _ := strings.Cut(arg, " ")
 	rest = strings.TrimSpace(rest)
 	switch strings.ToLower(word) {
 	case "":
-		a.closeLists()
-		text := a.crewPanel()
-		a.noteFacts(text, columnFacts(text, false)...)
+		a.openCrew()
+		return nil
+	}
+	// EVERY SHORTCUT KEEPS THE ROWS AS THEY STOOD, so the panel it opens can
+	// offer the same undo a change made on the panel offers.
+	before := config.CrewStateAt(a.profileDir)
+	stop := -1
+	switch strings.ToLower(word) {
 	case "pin":
-		a.crewPin(rest)
+		stop = a.crewPin(rest)
 	case "unpin":
-		a.crewUnpin(rest)
+		stop = a.crewUnpin(rest)
 	case "models":
-		a.crewAllowedModels(rest)
+		stop = a.crewAllowedModels(rest)
 	case "cap":
-		a.crewCap(rest)
+		stop = a.crewCap(rest)
 	default:
 		a.note("/crew " + arg + " · not a crew form · " + crewUsage)
 	}
+	if stop < 0 {
+		return nil
+	}
+	return a.crewNow(stop, before)
 }
 
 // crewPin is `/crew pin <seat> <model[@provider]>`. A pin outside the allowed
 // models is REFUSED rather than written, because a pin the router would have
 // to break is not a pin ([config.SetCrewPin] says the rule once).
-func (a *app) crewPin(rest string) {
+//
+// Each shortcut answers the panel row it changed, or -1 when it changed
+// nothing — a refusal, or a question it answered with a note.
+func (a *app) crewPin(rest string) int {
 	seatWord, model, _ := strings.Cut(rest, " ")
 	seat, ok := config.ParseCrewSeat(seatWord)
 	model = strings.TrimSpace(model)
 	if !ok || model == "" {
 		a.note("usage: /crew pin <worker|planner|checker> <model[@provider]>")
-		return
+		return -1
 	}
 	if err := config.SetCrewPin(a.profileDir, seat, model); err != nil {
 		a.note("could not pin the " + string(seat) + " · " + err.Error())
-		return
+		return -1
 	}
 	a.crewApplied()
 	pin, _ := config.CrewPinAt(a.profileDir, seat)
 	a.noteFacts(string(seat)+" "+a.icon(tokens.GPinned)+" "+pin.String()+" · every task until you unpin it · "+
 		a.crewUnchangedClause(), pin.String())
+	return crewSeatStop(seat)
 }
 
 // crewUnpin is `/crew unpin <seat|all>`: the seat goes back to auto.
-func (a *app) crewUnpin(rest string) {
+func (a *app) crewUnpin(rest string) int {
 	rest = strings.ToLower(strings.TrimSpace(rest))
 	if rest == "all" {
 		if err := config.ClearCrewPins(a.profileDir); err != nil {
 			a.note("could not unpin · " + err.Error())
-			return
+			return -1
 		}
 		a.crewApplied()
 		a.note("every seat is auto · codeaf picks the worker, planner and checker for each task")
-		return
+		return 0
 	}
 	seat, ok := config.ParseCrewSeat(rest)
 	if !ok {
 		a.note("usage: /crew unpin <worker|planner|checker|all>")
-		return
+		return -1
 	}
 	if err := config.ClearCrewPin(a.profileDir, seat); err != nil {
 		a.note("could not unpin the " + string(seat) + " · " + err.Error())
-		return
+		return -1
 	}
 	a.crewApplied()
 	a.note(string(seat) + " is auto · picked for each task")
+	return crewSeatStop(seat)
 }
 
 // crewAllowedModels is `/crew models <rule>`: the whole rule, or a `+id`/`-id`
 // changing the rule in force. A bare `/crew models` says the rule.
-func (a *app) crewAllowedModels(rest string) {
+func (a *app) crewAllowedModels(rest string) int {
 	if rest == "" {
 		a.noteFacts("allowed models · "+config.CrewAllowedAt(a.profileDir).String(), config.CrewAllowedAt(a.profileDir).String())
-		return
+		return -1
 	}
 	var err error
 	switch {
@@ -133,27 +147,29 @@ func (a *app) crewAllowedModels(rest string) {
 	}
 	if err != nil {
 		a.note("could not set the allowed models · " + err.Error())
-		return
+		return -1
 	}
 	a.crewApplied()
 	rule := config.CrewAllowedAt(a.profileDir).String()
 	a.noteFacts("allowed models · "+rule+" · every seat nobody pinned is picked from these", rule)
+	return crewModels
 }
 
 // crewCap is `/crew cap <dollars|off>`. The router paces toward it — dearer
 // crews cost more of the day's quality as the day's spend climbs — and at it a
 // task does not start until the person raises it or asks for `--cheap`.
-func (a *app) crewCap(rest string) {
+func (a *app) crewCap(rest string) int {
 	if rest == "" {
 		a.note("daily cap · " + a.crewCapWords())
-		return
+		return -1
 	}
 	if err := config.SetCrewCap(a.profileDir, rest); err != nil {
 		a.note("could not set the daily cap · " + err.Error())
-		return
+		return -1
 	}
 	a.crewApplied()
 	a.note("daily cap · " + a.crewCapWords())
+	return crewCap
 }
 
 // crewCapWords is the cap and today's spend, or `none` for no cap.
@@ -165,121 +181,10 @@ func (a *app) crewCapWords() string {
 	return "none · " + crewroute.Money(spent) + " spent today"
 }
 
-// crewApplied is the tail every crew write shares: an open settings panel is
-// rebuilt, because it may be holding rows read before the write.
-func (a *app) crewApplied() { a.refreshSettings() }
-
-// crewPanel is the bare /crew page.
-//
-//	worker   auto · now glm-5.3-flash via openrouter
-//	planner  auto · now glm-5.3-flash via openrouter
-//	checker  (pin) moonshotai/kimi-k3@openrouter
-//
-//	providers  openrouter (metered) · codex (plan)
-//	allowed    all
-//	daily cap  $5.000 · $0.412 spent today · 3 tasks, 1 on a plan
-//
-//	recent     openended · worker glm-5.3-flash (openrouter) · checker kimi-k3 · $0.108 (est $0.112) · accepted
-//
-// THE EMPTINESS LAW on every line: a seat with nothing to route to says so, a
-// profile with no connection says so, and a day with no task has no recent
-// lines rather than a header over nothing.
-func (a *app) crewPanel() string {
-	var out strings.Builder
-	pins := config.CrewPinsAt(a.profileDir)
-	for _, seat := range crewroute.Seats {
-		out.WriteString(padRight(string(seat), 9))
-		if pin, ok := pins[seat]; ok {
-			out.WriteString(a.icon(tokens.GPinned) + " " + pin.String() + "\n")
-			continue
-		}
-		now := config.TierSeatAt(a.profileDir, config.CrewSeatTier(seat)).Model
-		if now == "" {
-			out.WriteString("auto · nothing allowed can sit this seat — connect a provider or widen /crew models\n")
-			continue
-		}
-		out.WriteString("auto · now " + now + "\n")
-	}
-	out.WriteString("\n")
-	var providers []string
-	for _, provider := range config.CrewProvidersAt(a.profileDir) {
-		providers = append(providers, provider.ID+" ("+string(provider.Kind)+")")
-	}
-	if len(providers) == 0 {
-		out.WriteString("providers  none connected · /connect adds one\n")
-	} else {
-		out.WriteString("providers  " + strings.Join(providers, " · ") + "\n")
-	}
-	out.WriteString("allowed    " + config.CrewAllowedAt(a.profileDir).String() + "\n")
-	log := config.CrewLogAt(a.profileDir)
-	day := a.crewCapWords()
-	if log.Tasks > 0 {
-		day += " · " + strconv.Itoa(log.Tasks) + " tasks"
-		if log.OnPlan > 0 {
-			day += ", " + strconv.Itoa(log.OnPlan) + " on a plan"
-		}
-		if log.Local > 0 {
-			day += ", " + strconv.Itoa(log.Local) + " local"
-		}
-	}
-	out.WriteString("daily cap  " + day + "\n")
-	for _, gap := range config.CrewGapsAt(a.profileDir) {
-		out.WriteString("gap        " + gap.Line + "\n")
-	}
-	if len(log.Recent) > 0 {
-		out.WriteString("\n")
-		for i, task := range log.Recent {
-			lead := "recent     "
-			if i > 0 {
-				lead = "           "
-			}
-			line := task.Record.TaskClass + " · " + crewRecordSeats(task.Record, a.icon(tokens.GPinned))
-			if task.Settled {
-				line += " · " + crewroute.Money(task.CostUSD) + " (est " + crewroute.Money(task.Record.EstUSD) + ") · " + task.Outcome
-			} else {
-				line += " · est " + crewroute.Money(task.Record.EstUSD)
-			}
-			if title := strings.TrimSpace(task.Record.Title); title != "" {
-				line = title + " · " + line
-			}
-			out.WriteString(lead + line + "\n")
-		}
-	}
-	out.WriteString("\n" + crewUsage + " · /model is untouched")
-	return out.String()
-}
-
-// crewRecordSeats is a logged task's worker and checker in the card line's
-// words.
-func crewRecordSeats(record router.CrewRecord, pinMark string) string {
-	pinned := map[string]bool{}
-	for _, seat := range record.Pinned {
-		pinned[seat] = true
-	}
-	var parts []string
-	for _, seat := range []string{string(crewroute.Worker), string(crewroute.Checker)} {
-		model := crewroute.ShortModel(record.Seats[seat])
-		if model == "" {
-			continue
-		}
-		if pinned[seat] {
-			model = pinMark + " " + model
-		}
-		if provider := record.Providers[seat]; provider != "" && seat == string(crewroute.Worker) {
-			model += " (" + provider + ")"
-		}
-		parts = append(parts, seat+" "+model)
-	}
-	return strings.Join(parts, " · ")
-}
-
-// padRight pads a word to a column.
-func padRight(word string, width int) string {
-	for len(word) < width {
-		word += " "
-	}
-	return word
-}
+// crewApplied is the tail every crew write shares: an open panel re-reads and
+// an open settings sheet is rebuilt, because either may be holding rows read
+// before the write ([app.crewRefreshed]).
+func (a *app) crewApplied() { a.crewRefreshed() }
 
 // crewUnchangedClause is the tail of a pin's confirmation: the model the
 // conversation is still on, and the one command that moves it.

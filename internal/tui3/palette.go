@@ -3172,6 +3172,8 @@ func (a *app) overlayHeight() int {
 		want = a.connPanel.height(width)
 	case a.harnPanel.open:
 		want = a.harnPanel.height(width)
+	case a.crewUI.open:
+		want = a.crewHeight(width)
 	case a.harnPick.open:
 		want = a.harnPick.height(width)
 	case a.skillPick.open:
@@ -3230,6 +3232,8 @@ func (a *app) overlayRows(width, n int) []string {
 		return a.connPanel.draw(width, n, a.pal, hover)
 	case a.harnPanel.open:
 		return a.harnPanel.draw(width, n, a.pal, hover)
+	case a.crewUI.open:
+		return a.crewDraw(width, n, hover)
 	case a.harnPick.open:
 		return a.harnPick.draw(width, n, a.pal, hover)
 	case a.skillPick.open:

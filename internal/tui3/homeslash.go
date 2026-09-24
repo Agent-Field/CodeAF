@@ -138,6 +138,8 @@ const (
 //	opens a conversation here first      it opens one AT THE TARGET (homedraft.go)
 //	                                     and runs there, the door `enter` uses
 //	answers here                         a note, echoed onto home's own line
+//	opens the crew panel                 /crew, bare or a shortcut — home steps
+//	                                     aside for it and esc comes back
 //	runs on the conversation behind home  /land /workspace — and they say so
 //	a fresh conversation behind home     /new
 //	closes the conversation behind home  /quit
@@ -158,6 +160,7 @@ const (
 	fateTray         = "onto home's tray"
 	fateNeedsChat    = "opens a conversation here first"
 	fateAnswers      = "answers here"
+	fateCrew         = "opens the crew panel"
 	fateBehind       = "runs on the conversation behind home"
 	fateFresh        = "a fresh conversation behind home"
 	fateQuit         = "closes the conversation behind home"
@@ -219,9 +222,11 @@ func homeFate(word, rest string) string {
 		}
 		return fateNeedsChat
 	case "crew":
-		// The panel and its four shortcuts are all notes about the machine's
-		// profile, so every form answers here.
-		return fateAnswers
+		// THE PANEL AND ITS FOUR SHORTCUTS ALL OPEN THE PANEL — the bare form to
+		// change something, a shortcut to show what it changed — and a place
+		// cannot draw an overlay, so every form steps off home onto the
+		// conversation behind it, and esc on the panel steps back (crewpanel.go).
+		return fateCrew
 	case "redo":
 		// A redo runs a task this conversation started again, so there has to
 		// be one.

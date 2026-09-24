@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/fuzzy"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -345,12 +347,14 @@ var settingUI = map[string]settingMeta{
 		about: "the model a task runs on when you have not asked for another. " +
 			"Blank runs it on the model you are talking to.",
 	},
-	// THE CREW'S THREE SEATS LIVE ON THE PROVIDERS TAB, with the model they
-	// answer under: which model answers what is one question (docs/CHAT-V3.md
-	// Decision 6). Each seat row is empty for AUTO — codeaf routes that seat per
-	// task — and a model id written there is a PIN, the same pin `/crew pin`
-	// writes (internal/config's crew.go). The panel of the whole crew, with its
-	// allowed models and its daily cap, is /crew.
+	// THE CREW'S THREE SEATS ARE REGISTRY ROWS AND ARE NOT DRAWN AS THREE ROWS.
+	// Each is empty for AUTO — codeaf routes that seat per task — and a model id
+	// written there is a PIN, the same pin `/crew pin` writes (internal/config's
+	// crew.go). They are kept on this map because the map is total over the
+	// registry, and the Providers tab draws them as ONE row, `seats`, whose
+	// enter opens the crew panel ([sheet.crewDoorItem], crewpanel.go): one
+	// place edits a seat, and it is the place that also says which models a
+	// seat may be picked from and what the crews may spend.
 	config.KeyTierReflexModel: {
 		tab: tabProviders, label: "reflex", widget: widgetSelect,
 		about: "near-free · reads every turn — memory, titles, safety",
@@ -858,6 +862,11 @@ type sheetItem struct {
 	// they are kept by the engine rather than by the registry, and they draw
 	// through this page's own row grammar.
 	autonomy *autonomyRow
+	// crewDoor is set on the Providers tab's one `seats` row, which stands where
+	// the crew's three seat rows would and opens the crew panel (crewpanel.go);
+	// crewValue is what it says about the crew beside its name.
+	crewDoor  bool
+	crewValue string
 	// read is set on a row of the Spending tab that is a RECEIPT and not a
 	// setting — `today`, and the two rails this build has but does not keep a
 	// registry row for (settingspend.go). It hangs here for [sheetItem.conn]'s
@@ -1343,7 +1352,17 @@ func (s *sheet) build() {
 			s.cursor = s.clampCursor(s.cursor)
 			return
 		}
+		door := false
 		for _, row := range s.tabRows() {
+			// THE THREE SEATS ARE ONE ROW HERE, standing where the first of them
+			// would ([sheet.crewDoorItem]).
+			if crewSeatKey(row.Key) {
+				if !door {
+					s.items = append(s.items, s.crewDoorItem(nil))
+					door = true
+				}
+				continue
+			}
 			meta, _ := s.metaFor(row)
 			s.items = append(s.items, sheetItem{row: row, meta: meta})
 			if row.Key == config.KeyAPIKey && !s.sources.Empty() {
@@ -1398,7 +1417,7 @@ func (s *sheet) build() {
 		matched := make([]settingHit, 0, len(s.rows)/len(settingTabs)+1)
 		for _, row := range s.rows {
 			meta, ok := s.metaFor(row)
-			if !ok || meta.tab != title {
+			if !ok || meta.tab != title || crewSeatKey(row.Key) {
 				continue
 			}
 			score, hit, at, n := s.settingMatch(row, meta, title, terms)
@@ -1419,6 +1438,14 @@ func (s *sheet) build() {
 		// the word is not in one — so the section answers the search itself, under
 		// the tab it lives on.
 		if title == tabProviders {
+			// THE SEATS ROW ANSWERS FOR THE THREE IT STANDS FOR: a search for
+			// "checker", "pin" or "cap" finds the one door to all of them.
+			if door := s.crewDoorItem(terms); door.crewDoor {
+				if len(s.items) == start {
+					s.items = append(s.items, sheetItem{head: title})
+				}
+				s.items = append(s.items, door)
+			}
 			if matched := s.roleItems(terms); len(matched) > 0 {
 				if len(s.items) == start {
 					s.items = append(s.items, sheetItem{head: title})
@@ -1862,10 +1889,60 @@ func (s *sheet) roleAbout(row *roleRow) string {
 	if said != "" {
 		said += " · "
 	}
-	if row.pin != "" {
-		return said + "pinned, so it ignores " + row.tierLabel + " above. del clears the pin."
+	// A CREW SEAT IS NOT A ROW ABOVE ANY MORE: the three seats are the one
+	// `seats` row, so a role riding one names the seat and the panel it is
+	// set on rather than pointing up at a row that is not there.
+	class := row.tierLabel + " above"
+	if crewSeatKey(tierSettingKey(row.tier)) {
+		class = "the " + row.tierLabel + " seat (/crew)"
 	}
-	return said + "follows " + row.tierLabel + " above. enter pins it to a model of its own."
+	if row.pin != "" {
+		return said + "pinned, so it ignores " + class + ". del clears the pin."
+	}
+	return said + "follows " + class + ". enter pins it to a model of its own."
+}
+
+// crewSeatKey says whether a registry row is one of the crew's three seats.
+func crewSeatKey(key string) bool {
+	for _, seat := range crewroute.Seats {
+		if key == config.CrewSeatKey(seat) {
+			return true
+		}
+	}
+	return false
+}
+
+// crewDoorWords are what the `seats` row is found by in a search: its name,
+// the panel it opens, and the words for what that panel holds.
+var crewDoorWords = []string{"seats", "crew", "worker planner checker pin", "allowed models daily cap"}
+
+// crewDoorItem is the `seats` row: the crew's three seat rows as one, whose
+// enter opens the crew panel. Its value is the crew in the fewest words — how
+// many seats are pinned, which models are allowed, the cap — read here, on a
+// build, and never on a draw. With terms it is the row only if they match it,
+// and otherwise an item that is not a door.
+func (s *sheet) crewDoorItem(terms []fuzzy.Term) sheetItem {
+	var hitAt, hitLen int
+	if len(terms) > 0 {
+		_, ok, at, n := s.matchHits(crewDoorWords, terms)
+		if !ok {
+			return sheetItem{}
+		}
+		hitAt, hitLen = at, n
+	}
+	seats := "auto"
+	if n := len(config.CrewPinsAt(s.profileDir)); n > 0 {
+		seats = "auto · " + strconv.Itoa(n) + " pinned"
+	}
+	value := seats + " · models " + config.CrewAllowedAt(s.profileDir).String()
+	if capUSD := config.CrewCapAt(s.profileDir); capUSD > 0 {
+		value += " · cap " + crewroute.Money(capUSD)
+	}
+	return sheetItem{
+		crewDoor: true, crewValue: value, hitAt: hitAt, hitLen: hitLen,
+		meta: settingMeta{tab: tabProviders, label: "seats",
+			about: "the worker, planner and checker, the models they may be picked from, and the daily cap · enter opens /crew"},
+	}
 }
 
 // roleFilter is the question a role's picker asks. Two registered roles are not
@@ -2153,6 +2230,13 @@ func (a *app) activate() tea.Cmd {
 	}
 	if item.conn != nil {
 		return a.connAct(item.conn)
+	}
+	if item.crewDoor {
+		// THE SEATS ROW OPENS THE CREW PANEL, and the sheet steps aside for it:
+		// a place cannot draw an overlay, and esc on the panel brings this row
+		// back ([app.openCrew]).
+		a.openCrew()
+		return nil
 	}
 	if item.service != nil {
 		if item.service.planPause {
@@ -3101,6 +3185,9 @@ func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, bo
 	}
 	if item.role != nil {
 		return s.roleRowLines(item.role, s.itemHit(item), selected, hovered, width, pal)
+	}
+	if item.crewDoor {
+		return overlayLinesHit(item.meta.label, item.crewValue, s.itemHit(item), selected, false, hovered, width, pal)
 	}
 	if item.autonomy != nil {
 		return s.autonomyRowLines(item.autonomy, s.itemHit(item), selected, hovered, width, pal)

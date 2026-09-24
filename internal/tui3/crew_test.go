@@ -15,12 +15,16 @@ import (
 // form that is none of them, and the crew line a routed task says.
 
 // The bare form is the panel: the three seats (all auto on a profile nobody
-// touched), the allowed rule, the daily cap, and the shortcuts.
+// touched), the allowed models and the daily cap, over the conversation rather
+// than written into it (crewpanel_test.go drives it).
 func TestCrewIsThePanel(t *testing.T) {
 	a, _ := sheetApp(t)
 	a.slash("/crew")
-	text := lastNote(t, a)
-	for _, want := range []string{"worker", "planner", "checker", "auto", "allowed    all", "daily cap", "/crew pin", "/model is untouched"} {
+	if !a.crewUI.open {
+		t.Fatal("/crew opened no panel")
+	}
+	text := strings.Join(plainOverlay(a), "\n")
+	for _, want := range []string{"worker", "planner", "checker", "auto", "models", "‹ all ›", "cap", "none"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the panel does not say %q:\n%s", want, text)
 		}
@@ -45,8 +49,10 @@ func TestCrewPinAndUnpin(t *testing.T) {
 	if note := lastNote(t, a); !strings.Contains(note, a.icon(tokens.GPinned)) || !strings.Contains(note, "kimi-k3@openrouter") {
 		t.Fatalf("the confirmation does not show the pin: %q", note)
 	}
-	a.slash("/crew")
-	if panel := lastNote(t, a); !strings.Contains(panel, a.icon(tokens.GPinned)+" moonshotai/kimi-k3@openrouter") {
+	if !a.crewUI.open {
+		t.Fatal("the pin did not open the panel on what it changed")
+	}
+	if panel := strings.Join(plainOverlay(a), "\n"); !strings.Contains(panel, a.icon(tokens.GPinned)+" kimi-k3 @openrouter") {
 		t.Fatalf("the panel does not mark the pinned seat:\n%s", panel)
 	}
 	a.slash("/crew unpin checker")
