@@ -169,7 +169,9 @@ before you are shown a card.
 
 **One folder takes one program run at a time**, from any conversation, any window or a
 shell: `<folder> is busy: <name>, task 4 (…), is working in it, and one folder takes one
-program run at a time; ask again when that run has ended`.
+program run at a time; ask again when that run has ended`. So do the folders inside it
+and around it: `… is working in <held folder>, which holds it, …` (or `which is inside
+it`).
 
 **It runs alone.** While one is running, no other task can join it, and it cannot be
 started under another run of this conversation: `work is already underway in <folder>;

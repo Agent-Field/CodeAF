@@ -44,9 +44,10 @@ package session
 //     record folder unless they were there before the run.
 //  5. ONE RUN PER FOLDER. codeaf starts and stops the run and keeps its money,
 //     its time and its screen, and nothing else. A second program run on a
-//     folder one is working in — from any conversation, any window, or a
-//     shell — is refused, naming the run that holds it; the hold is a file
-//     lock, which dies with the process that took it ([claimProgramFolder]).
+//     folder one is working in, or on a folder inside it or around it — from
+//     any conversation, any window, or a shell — is refused, naming the run
+//     that holds it; the hold is a file lock, which dies with the process that
+//     took it (programhold.go).
 //
 // WHY THERE IS SO LITTLE HERE. Until 2026-09-24 a program ran through the
 // general task machinery: a copy of the folder cut for every run, the brief's
@@ -183,9 +184,9 @@ func PrepareProgramFolder(order ProgramFolderOrder) (*ProgramFolder, error) {
 		Notes: order.Program.Notes, Keep: order.Keep, Sign: order.Sign,
 		key: canonicalPath(dir), place: order.Place,
 	}
-	lock, holder := claimProgramFolder(folder.key, order.Program.Name+", "+order.Holder)
-	if holder != "" {
-		return nil, errors.New(programFolderBusy(dir, holder))
+	lock, hold, busy := claimProgramFolder(folder.key, order.Program.Name+", "+order.Holder)
+	if busy {
+		return nil, errors.New(programFolderBusy(dir, hold))
 	}
 	folder.lock = lock
 	// A RUN THAT WENT AWAY IN THIS FOLDER IS SETTLED BEFORE THE NEXT ONE STARTS,
@@ -428,11 +429,6 @@ func porcelainZPaths(out string) []string {
 		}
 	}
 	return paths
-}
-
-// programFolderBusy is the refusal for a folder another program run holds.
-func programFolderBusy(dir, holder string) string {
-	return dir + " is busy: " + holder + ", is working in it, and one folder takes one program run at a time; ask again when that run has ended"
 }
 
 // ProgramFolderEnd is how a program's run left its folder, as
@@ -920,52 +916,6 @@ func changedBetween(dir, from, to string) []string {
 	return paths
 }
 
-// claimProgramFolder takes the hold on one folder for a program's run and
-// writes holder into it, so a second run is told whose it is. It answers the
-// held lock, or the holder of a lock somebody else has; a nil lock with no
-// holder is a filesystem that takes no locks, and the run goes ahead unheld,
-// which is what every run did before the hold existed.
-//
-// flock DIES WITH ITS PROCESS, however it dies, so a crashed codeaf leaves no
-// hold behind to be broken by hand; and it is per open file, so two
-// conversations in one engine exclude each other exactly as two windows do.
-func claimProgramFolder(key, holder string) (*os.File, string) {
-	directory := home.Join("v3", programFolderDir)
-	if err := os.MkdirAll(directory, 0o700); err != nil {
-		return nil, ""
-	}
-	path := filepath.Join(directory, programFolderName(key)+".lock")
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
-	if err != nil {
-		return nil, ""
-	}
-	if err := filelock.Lock(file, true, true); err != nil {
-		_ = file.Close()
-		if !isLockHeld(err) {
-			return nil, ""
-		}
-		held, _ := os.ReadFile(path)
-		if said := strings.TrimSpace(string(held)); said != "" {
-			return nil, said
-		}
-		return nil, "another program run"
-	}
-	_ = file.Truncate(0)
-	_, _ = file.WriteAt([]byte(holder), 0)
-	return file, ""
-}
-
-// programFolderHolder is who holds a folder now, "" when nobody does: the
-// hold asked for and let go at once, for a door that only wants to know.
-func programFolderHolder(key string) string {
-	lock, holder := claimProgramFolder(key, "")
-	if lock != nil {
-		_ = filelock.Unlock(lock)
-		_ = lock.Close()
-	}
-	return holder
-}
-
 // release lets the folder go.
 func (f *ProgramFolder) release() {
 	if f.lock == nil {
@@ -1040,8 +990,8 @@ func settleOwedProgramFolder(keep string) (ProgramFolderEnd, bool) {
 		if !ok || owed.Ended != "" || filepath.Clean(owed.Keep) != filepath.Clean(keep) {
 			continue
 		}
-		lock, holder := claimProgramFolder(owed.key, owed.Program+", settling a run codeaf closed under")
-		if holder != "" || lock == nil {
+		lock, _, busy := claimProgramFolder(owed.key, owed.Program+", settling a run codeaf closed under")
+		if busy || lock == nil {
 			// A HOLD SOMEBODY ELSE HAS, or one nobody can take, is a folder this
 			// reopen cannot know is idle: it is left for the next codeaf that can.
 			return ProgramFolderEnd{}, false

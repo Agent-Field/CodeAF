@@ -305,12 +305,20 @@ In the chat the model is told this before you are shown a card, and can commit o
 the changes itself if you ask it to; at a shell the run prints `error:` and the sentence,
 and leaves.
 
-## senior-dev refused: the folder is busy — one run per folder, another window, a shell run
+## senior-dev refused: the folder is busy — one run per folder, a folder inside it, another window, a shell run
 
 One folder takes one senior-dev run at a time, from any conversation, any window or a
 shell. A second is refused, naming the one working there: `<folder> is busy: senior-dev,
 task 4 (Fix the parser), is working in it, and one folder takes one program run at a
 time; ask again when that run has ended` (or `senior-dev, a run started at a shell`).
+
+**So are the folders inside it, and a folder around it.** A run on a folder of projects
+puts back whatever changed anywhere under it once it has submitted, so a run in one of
+those projects is refused too, naming the folder held: `<folder> is busy: senior-dev,
+task 4 (…), is working in <held folder>, which holds it, and one folder takes one program
+run at a time; ask again when that run has ended` (`which is inside it` the other way
+round). Two runs in two folders side by side both go.
+
 The hold goes with the codeaf holding it, however it ends, so a crash never leaves a
 folder refused.
 

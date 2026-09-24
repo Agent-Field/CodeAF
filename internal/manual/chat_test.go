@@ -971,6 +971,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"senior-dev says my branch moved during the run", "senior-dev"},
 		{"senior-dev refused: changes that are not committed", "senior-dev"},
 		{"senior-dev says my folder is busy", "senior-dev"},
+		{"why can't I run senior-dev in a folder inside the one another run is working in", "senior-dev"},
 		{"can I run senior-dev in a folder that is not a git repo", "senior-dev"},
 		{"where do senior-dev's notes go", "senior-dev"},
 		{"the delegate was refused because of uncommitted changes", "delegates"},

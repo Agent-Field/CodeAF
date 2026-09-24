@@ -414,8 +414,8 @@ func programGroundRefusal(program delegate.Delegate, dir *string) string {
 		return refusal
 	}
 	*dir = folder
-	if holder := programFolderHolder(canonicalPath(folder)); holder != "" {
-		return programFolderBusy(folder, holder)
+	if hold, busy := programHoldNear(canonicalPath(folder), ""); busy {
+		return programFolderBusy(folder, hold)
 	}
 	if repo {
 		return programCheckoutInTheWay(folder, program.Notes)
