@@ -213,9 +213,14 @@ func (a *app) dockPaint(tabs []chatTab, from, count, hidden, at int) string {
 
 // dockHoverWords is what the hint slot says while the pointer rests on the
 // dock, and "" when it rests anywhere else: the wall's name and key over `▦`,
-// and a conversation's name and what it is doing over its cell.
+// and a conversation's name and what it is doing over its cell. The strip's
+// own door to the wall (chattabs.go) is explained here too, in the same words.
 func (a *app) dockHoverWords() string {
 	switch a.hot.kind {
+	case hoverTab:
+		if a.wall.door.pressable() && a.hot.index == a.wall.door.from {
+			return dockWallWord
+		}
 	case hoverDockWall:
 		if a.dock.wall.pressable() {
 			return dockWallWord

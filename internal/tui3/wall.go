@@ -24,31 +24,36 @@ import (
 // and every act a key does is a press somewhere, except the few that are pure
 // navigation or have no control to hang from (marked "key only").
 //
-//	alt+v              open or close the wall        ▦ in the dock
-//	esc, q             back one layer: popover, card, selection, filter, wall
-//	                                                 ‹ Back, a press off a card
+//	alt+v              open or close the wall        ▦ in the dock, ▦ All on the strip
+//	esc, q             back one layer: popover, card, help, selection,
+//	                   filter, wall                  ‹ Back, a press off a card
+//	?                  what you can do here          Help ?
 //	arrows, hjkl       move the focus                (key only; hover never moves it)
 //	home g, end G      first and last tile           (key only)
 //	pgup, pgdown       a screen of rows              the wheel, one row a notch
-//	enter              open the focused tile         a press on any tile, or ↗
-//	space              pick the focused tile         its ☐; any tile once one is picked
-//	x                  close its view, or the picked  × on a tile, Close views
-//	m                  its spaces, or the picked'    ●+ on a tile, Add to…
+//	n                  next waiting on a person      the title's needs-you count
+//	enter              open the focused tile         a press on any tile, or Open
+//	space              pick the focused tile         Select; any tile once one is picked
+//	x                  close its view, or the picked'  Close on a tile, Close views
+//	m                  its spaces, or the picked'    Spaces on a tile, Add to…
 //	s                  new space of the picked       + New space, Make space
 //	e                  the shown space's settings    a segment's dot or ⋯
 //	tab, shift+tab     next or previous space        a Spaces segment
 //	1 to 9             that space, again for All     a Spaces segment
 //	D                  delete the shown space        settings, Delete
 //	/                  filter                        Filter /
-//	?                  next waiting on a person      the title's needs-you count
 //	-, + or =          fewer or more columns         Columns − +
 //	0                  columns back to automatic     (key only)
+//
+// Every row of the help sheet (wallhelp.go) is a press too, and does what its
+// key does.
 //
 // A PRESS ON A TILE OPENS IT, as a window's thumbnail does in any overview:
 // one press, not a press to aim and another to go. Once any tile is picked a
 // press toggles instead, as a photo grid does in its selection mode. The
-// pointer resting on a tile lights it and shows its controls and changes
-// nothing; the keyboard's focus is its own and only the keys move it.
+// pointer resting on a tile lights it and turns its bottom border into its
+// action row, and changes nothing else; the keyboard's focus is its own and
+// only the keys move it.
 //
 // THE MOTION IS SMALL AND NEVER HOLDS A KEY. The tiles come in row by row as
 // the wall opens (about 140ms in all), and an opened tile's rectangle grows
@@ -119,6 +124,7 @@ func (a *app) closeWall() {
 	a.wall.revealAt = time.Time{}
 	a.wall.card = wallRect{}
 	a.wall.spinning = false
+	a.wall.help = false
 	a.touch()
 }
 
@@ -213,6 +219,9 @@ func (a *app) wallFrame(width, height int) []string {
 		reduced:   reduced,
 		pointerOn: a.wall.ptrIn,
 		pointerY:  a.wall.ptrY - len(head),
+		help:      a.wall.help,
+		helpTop:   a.wall.helpTop,
+		doorHot:   a.hot.kind == hoverTab && a.wall.door.pressable() && a.hot.index == a.wall.door.from,
 	}
 	if sp, ok := a.spaceActive(); ok {
 		view.space = sp.Name
@@ -301,10 +310,14 @@ func (a *app) wallKey(msg tea.KeyPressMsg) tea.Cmd {
 	a.wallSettle()
 	key := msg.String()
 	tiles := a.wallShown(a.now())
-	n := len(tiles)
 
 	if a.wall.pop.kind != wallPopNone {
 		return a.wallPopKey(msg, tiles)
+	}
+	if a.wall.help {
+		if cmd, took := a.wallHelpKey(key); took {
+			return cmd
+		}
 	}
 	if a.wall.naming {
 		switch key {
@@ -372,6 +385,14 @@ func (a *app) wallKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.closeWall()
 		return nil
 	}
+	return a.wallCommand(key, tiles)
+}
+
+// wallCommand is what one key does on the wall at rest, with no card, filter
+// or popover taking the keyboard. The help sheet's rows press it too, so a row
+// does exactly what its key does.
+func (a *app) wallCommand(key string, tiles []wallTile) tea.Cmd {
+	n := len(tiles)
 	switch key {
 	case "esc", "q":
 		a.wallBack(tiles)
@@ -402,7 +423,7 @@ func (a *app) wallKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.wallToggle(tiles, a.wall.focus)
 	case "m":
 		// The picked conversations' spaces, as the tray's Add to… opens them;
-		// with none picked, the focused one's, as a press on its ●+ does.
+		// with none picked, the focused one's, as a press on its Spaces does.
 		if marked := a.wallMarkedTabs(tiles); len(marked) > 0 {
 			keys := make([]string, 0, len(marked))
 			for _, tab := range marked {
@@ -416,7 +437,7 @@ func (a *app) wallKey(msg tea.KeyPressMsg) tea.Cmd {
 		a.wallStartNaming(tiles)
 	case "x":
 		// The picked views, as the tray's Close views does; with none picked,
-		// the focused one's, as its × does.
+		// the focused one's, as its Close does.
 		if len(a.wallMarkedTabs(tiles)) > 0 {
 			return a.wallCloseViews(tiles)
 		}
@@ -442,8 +463,10 @@ func (a *app) wallKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	case "/":
 		a.wall.filterOn = true
-	case "?":
+	case "n":
 		a.wallNext(tiles)
+	case "?":
+		a.wallOpenHelp()
 	case "tab", "shift+tab":
 		a.wallCycleSpace(key == "tab")
 	case "-":
@@ -463,8 +486,9 @@ func (a *app) wallKey(msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-// wallBack is esc once the popover and the card are down: it takes off the
-// innermost thing still on, the selection, then the filter, then the wall.
+// wallBack is esc once the popover, the card and the help sheet are down: it
+// takes off the innermost thing still on, the selection, then the filter, then
+// the wall.
 // The selection goes before the filter because it is the newer and the
 // smaller of the two, and it may have been picked through the filter.
 func (a *app) wallBack(tiles []wallTile) {
@@ -730,8 +754,9 @@ func (a *app) wallHitAt(x, y int) (wallHit, bool) {
 // moved the grid (stirred).
 //
 // ONE TARGET CAN SPAN TWO ROWS' MEANINGS: a waiting tile's Answer and its
-// open ↗ share one ref, and the painter lights the one on the pointer's row
-// (wallView.pointerY), so on that target a change of row is a change.
+// row's Answer share one ref, as a picked tile's ☐ and its row's Select do,
+// and the painter lights the one on the pointer's row (wallView.pointerY), so
+// on those targets a change of row is a change.
 func (a *app) wallMotion(x, y int) {
 	rowMoved := y != a.wall.ptrY
 	a.wall.ptrX, a.wall.ptrY, a.wall.ptrIn = x, y, y >= a.wall.headRows
@@ -746,7 +771,7 @@ func (a *app) wallMotion(x, y int) {
 		a.wall.stirred = true
 	}
 	hit, _ := a.wallHitAt(x, y)
-	if a.wall.hover == hit.ref() && hit.kind == wallHitOpen && rowMoved {
+	if a.wall.hover == hit.ref() && (hit.kind == wallHitOpen || hit.kind == wallHitSelect) && rowMoved {
 		a.wall.stirred = true
 		a.touch()
 		return
@@ -785,6 +810,10 @@ func (a *app) wallPress(x, y int) (tea.Cmd, bool) {
 			switch hit.kind {
 			case tabSpace:
 				return nil, true
+			case tabWall:
+				// The strip's own door to this view closes it, as alt+v does.
+				a.closeWall()
+				return nil, true
 			case tabScrollLeft, tabScrollRight:
 				return nil, false
 			case tabClose:
@@ -802,10 +831,11 @@ func (a *app) wallPress(x, y int) (tea.Cmd, bool) {
 	// or a sheet does anywhere: the popover, or the new-space card, which is
 	// the same as its Cancel. A press inside a card but on none of its
 	// controls is a press on the card, and does nothing.
-	if a.wall.card.w() > 0 && (a.wall.pop.kind != wallPopNone || a.wall.naming) {
+	if a.wall.card.w() > 0 && (a.wall.pop.kind != wallPopNone || a.wall.naming || a.wall.help) {
 		if !a.wall.card.holds(x, y) {
 			a.wall.pop = wallPop{}
 			a.wall.naming = false
+			a.wall.help = false
 			a.wall.stirred = true
 			return nil, true
 		}
@@ -833,6 +863,13 @@ func (a *app) wallDo(hit wallHit) tea.Cmd {
 			}
 		case hit.kind == wallHitAction && (hit.arg == int(wallActSave) || hit.arg == int(wallActCancel) || hit.arg == int(wallActShuffle)):
 			return a.wallAct(wallAct(hit.arg), tiles)
+		}
+		return nil
+	}
+	// The help sheet answers only its own rows, as a menu does.
+	if a.wall.help {
+		if hit.kind == wallHitHelp {
+			return a.wallHelpPress(hit.arg, tiles)
 		}
 		return nil
 	}
@@ -931,6 +968,8 @@ func (a *app) wallAct(act wallAct, tiles []wallTile) tea.Cmd {
 		a.wall.naming = false
 	case wallActShuffle:
 		a.wallShuffleName(tiles)
+	case wallActHelp:
+		a.wallOpenHelp()
 	}
 	return nil
 }
@@ -1053,6 +1092,11 @@ func (a *app) wallWheel(x, y int, down bool) {
 		return
 	}
 	a.wall.wheelDir, a.wall.wheelAt = dir, now
+	// The help sheet scrolls under the wheel, and nothing behind it does.
+	if a.wall.help {
+		a.wallHelpScroll(dir)
+		return
+	}
 	// A popover hangs from a control that is about to move, so it goes, as a
 	// menu does when the page under it scrolls.
 	if a.wall.pop.kind != wallPopNone {
@@ -1195,13 +1239,16 @@ func wallTileBounds(hits []wallHit, i int) (wallRect, bool) {
 	return r, ok
 }
 
-// wallCardRect is where the popover, or else the new-space card, lands on
-// this frame, so a press can be told to be on it or off it. It is laid out
+// wallCardRect is where the help sheet, the popover, or else the new-space
+// card lands on this frame, so a press can be told to be on it or off it. It is laid out
 // only while one is up, and a card is a handful of short rows.
 func (a *app) wallCardRect(v wallView, width, room, head int) wallRect {
 	var card wallCard
 	g := wallGlyphsFor(a.pal.ascii)
 	switch {
+	case v.help:
+		card = wallHelpCard(a.pal, v, width, room)
+		a.wall.helpMax = card.over
 	case v.pop.kind != wallPopNone && !v.naming:
 		card = wallPopCard(a.pal, g, v, width, room)
 	case v.naming:
@@ -1223,7 +1270,7 @@ func (a *app) wallRevealMask(rows []string, hits []wallHit, n, cols, tileH, room
 	if a.wall.revealAt.IsZero() {
 		return
 	}
-	if a.wall.naming || a.wall.pop.kind != wallPopNone || len(a.wall.marked) > 0 || n == 0 || cols < 1 {
+	if a.wall.naming || a.wall.help || a.wall.pop.kind != wallPopNone || len(a.wall.marked) > 0 || n == 0 || cols < 1 {
 		a.wall.revealAt = time.Time{}
 		return
 	}

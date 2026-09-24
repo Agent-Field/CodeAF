@@ -321,10 +321,26 @@ func TestWallRenderPrintsFrame(t *testing.T) {
 		rows, _ = renderWall(pal, v, 120, 40)
 		t.Logf("%s 120x40, tile 1 hovered:\n%s", pname, wallPlainFrame(rows))
 
+		v = wallUnmarked(base)
+		v.hover = wallHitRef{kind: wallHitSelect, arg: 3}
+		rows, _ = renderWall(pal, v, 120, 40)
+		t.Logf("%s 120x40, tile 3's Select hovered, its action row up:\n%s", pname, wallPlainFrame(rows))
+
+		v = wallUnmarked(base)
+		v.help = true
+		v.hover = wallHitRef{kind: wallHitHelp, arg: 3}
+		rows, _ = renderWall(pal, v, 120, 40)
+		t.Logf("%s 120x40, the help sheet, Next needing you hovered:\n%s", pname, wallPlainFrame(rows))
+		rows, _ = renderWall(pal, v, 80, 21)
+		t.Logf("%s 80x21 (an 80x24 window's wall), the help sheet scrolling:\n%s", pname, wallPlainFrame(rows))
+		v.helpTop = 99
+		rows, _ = renderWall(pal, v, 80, 21)
+		t.Logf("%s 80x21, the help sheet scrolled to its end:\n%s", pname, wallPlainFrame(rows))
+
 		v = base
 		v.hover = wallHitRef{kind: wallHitAction, arg: int(wallActAddTo)}
 		rows, _ = renderWall(pal, v, 120, 40)
-		t.Logf("%s 120x40, tiles 2 and 5 selected, the tray up:\n%s", pname, wallPlainFrame(rows))
+		t.Logf("%s 120x40, tiles 2 and 5 selected, the tray up, every tile's box on its top border:\n%s", pname, wallPlainFrame(rows))
 
 		v = wallUnmarked(base)
 		v.pop = wallPop{kind: wallPopMembers, x: 90, y0: 4, y1: 5, targets: []string{"k1"}, cursor: -1}
@@ -386,9 +402,14 @@ func wallFrameVariants(t *testing.T, pal palette, n, w, h int, each func(name st
 	settings.pop = wallPop{kind: wallPopSettings, x: 10, y0: 1, y1: 2, space: 1, name: "infra", choices: naming.choices}
 	confirm := settings
 	confirm.pop.confirm = true
+	help := wallUnmarked(base)
+	help.help = true
+	scrolled := help
+	scrolled.helpTop = 99
 	for _, s := range []state{
 		{"rest", wallUnmarked(base)}, {"picked", base}, {"naming", naming},
 		{"members", members}, {"settings", settings}, {"confirm", confirm},
+		{"help", help}, {"help scrolled", scrolled},
 	} {
 		_, rest := renderWall(pal, s.v, w, h)
 		refs := []wallHitRef{{}}
@@ -411,7 +432,7 @@ func TestWallClickHitsSitOnTheirLabels(t *testing.T) {
 		wallActBack: "Back", wallActNewSpace: "New space", wallActFilter: "Filter", wallActNext: "needs you",
 		wallActColsLess: "−", wallActColsMore: "+", wallActMakeSpace: "Make space", wallActAddTo: "Add to",
 		wallActCloseViews: "Close views", wallActClear: "Clear", wallActSave: "Create", wallActCancel: "Cancel",
-		wallActFilterClear: "Clear", wallActShuffle: "Shuffle",
+		wallActFilterClear: "Clear", wallActShuffle: "Shuffle", wallActHelp: "Help",
 	}
 	for pname, pal := range wallTestPalettes() {
 		for _, sz := range wallTestSizes {
@@ -496,49 +517,106 @@ func TestWallBarDropsWholeButtons(t *testing.T) {
 	}
 }
 
-// A TILE'S CONTROLS HAVE THEIR CELLS WHETHER OR NOT THEY ARE DRAWN: hovering a
-// tile moves nothing in it, it only draws into cells kept for that.
-func TestWallClickTileControlsReserveCells(t *testing.T) {
+// A TILE'S ACTIONS ARE WORDS ON ITS BOTTOM BORDER, drawn under the pointer or
+// the focus and nowhere else, into cells that depend on the width alone:
+// hovering a tile moves nothing in it, and its top border carries no control.
+func TestWallTileActionRowReservesCells(t *testing.T) {
 	for pname, pal := range wallTestPalettes() {
 		for _, sz := range wallTestSizes {
 			v := wallUnmarked(wallFixture(6))
 			v.focus = 0
 			_, tileW, tileH := wallGrid(len(v.tiles), sz[0], sz[1], 0)
 			g := wallGlyphsFor(pal.ascii)
-			for _, i := range []int{3, 5} { // no spaces, and one
+			k := wallKeysFor(pal.ascii)
+			name := fmt.Sprintf("%s %dx%d", pname, sz[0], sz[1])
+			for _, i := range []int{1, 3, 5} { // waiting, no spaces, one space
 				rest := wallPaintTile(pal, g, v, v.tiles[i], i, false, tileW, tileH, wallGridTop)
 				hv := v
 				hv.hover = wallHitRef{kind: wallHitTile, arg: i}
 				hover := wallPaintTile(pal, g, hv, v.tiles[i], i, false, tileW, tileH, wallGridTop)
 				if len(rest) != tileH || len(hover) != tileH {
-					t.Fatalf("%s %dx%d: %d rows at rest, %d hovered, tile is %d", pname, sz[0], sz[1], len(rest), len(hover), tileH)
+					t.Fatalf("%s: %d rows at rest, %d hovered, tile is %d", name, len(rest), len(hover), tileH)
 				}
 				for y := range rest {
 					if ansi.StringWidth(rest[y]) != tileW || ansi.StringWidth(hover[y]) != tileW {
-						t.Fatalf("%s %dx%d row %d: %d then %d cells, tile is %d", pname, sz[0], sz[1], y,
+						t.Fatalf("%s row %d: %d then %d cells, tile is %d", name, y,
 							ansi.StringWidth(rest[y]), ansi.StringWidth(hover[y]), tileW)
 					}
 				}
+				// The top border is the same row at rest and hovered: dots and a
+				// title, and no box outside the selection mode.
 				top, topHover := ansi.Strip(rest[0]), ansi.Strip(hover[0])
-				name := v.tiles[i].name
-				at := func(s string) int { return ansi.StringWidth(s[:strings.Index(s, name)]) }
-				if at(top) != at(topHover) {
-					t.Fatalf("%s %dx%d: the title moved under the pointer:\n%q\n%q", pname, sz[0], sz[1], top, topHover)
+				if top != topHover {
+					t.Fatalf("%s: the top border changed under the pointer:\n%q\n%q", name, top, topHover)
 				}
-				closeMark := wallCloseMark(pal.ascii)
-				if strings.Contains(top, closeMark) || !strings.Contains(topHover, closeMark) {
-					t.Fatalf("%s %dx%d: the controls are not revealed by the hover alone:\n%q\n%q", pname, sz[0], sz[1], top, topHover)
+				if strings.Contains(ansi.Cut(top, 0, 5), wallSelGlyph(pal.ascii, false)) || strings.Contains(top, "open") {
+					t.Fatalf("%s: the top border carries a control: %q", name, top)
 				}
-				sel := wallSelGlyph(pal.ascii, false)
-				if strings.Contains(ansi.Cut(top, 0, 5), sel) || !strings.Contains(topHover, sel) {
-					t.Fatalf("%s %dx%d: the selection box is not revealed by the hover alone:\n%q\n%q", pname, sz[0], sz[1], top, topHover)
+				// Every row but the bottom one is the same; the bottom one is the
+				// action row, its buttons where the layout put them.
+				for y := 1; y < tileH-1; y++ {
+					if ansi.Strip(rest[y]) != ansi.Strip(hover[y]) {
+						t.Fatalf("%s row %d moved under the pointer:\n%q\n%q", name, y, ansi.Strip(rest[y]), ansi.Strip(hover[y]))
+					}
+				}
+				bottom, bottomHover := ansi.Strip(rest[tileH-1]), ansi.Strip(hover[tileH-1])
+				if strings.Contains(bottom, "Close") {
+					t.Fatalf("%s: the action row is drawn at rest: %q", name, bottom)
+				}
+				acts := wallTileActs(pal.ascii, v.tiles[i], tileW)
+				if len(acts) == 0 || acts[0].kind != wallHitOpen {
+					t.Fatalf("%s: tile %d keeps no Open: %+v", name, i, acts)
+				}
+				first := "Open " + k.enter
+				if v.tiles[i].signal == tabNeedsPerson {
+					first = "Answer " + k.enter
+				}
+				if !strings.Contains(bottomHover, first) {
+					t.Fatalf("%s: tile %d's action row does not start with %q: %q", name, i, first, bottomHover)
+				}
+				for _, act := range acts {
+					got := ansi.Strip(ansi.Cut(hover[tileH-1], act.x+1, act.x+1+ansi.StringWidth(act.btn.label)))
+					if got != act.btn.label {
+						t.Fatalf("%s: %q drawn as %q at %d: %q", name, act.btn.label, got, act.x, bottomHover)
+					}
 				}
 			}
-			// And the focused tile shows its controls with no pointer at all.
-			focused := ansi.Strip(wallPaintTile(pal, g, v, v.tiles[0], 0, true, tileW, tileH, wallGridTop)[0])
-			if !strings.Contains(focused, wallCloseMark(pal.ascii)) {
-				t.Fatalf("%s %dx%d: the focused tile hides its controls: %q", pname, sz[0], sz[1], focused)
+			// The focused tile shows its row with no pointer at all.
+			focused := ansi.Strip(wallPaintTile(pal, g, v, v.tiles[0], 0, true, tileW, tileH, wallGridTop)[tileH-1])
+			if !strings.Contains(focused, "Open "+k.enter) {
+				t.Fatalf("%s: the focused tile hides its actions: %q", name, focused)
 			}
+		}
+	}
+}
+
+// A NARROW TILE LOSES ITS BUTTONS FROM THE RIGHT AND KEEPS OPEN, and the row
+// never runs past the tile.
+func TestWallTileActionRowDropsFromTheRight(t *testing.T) {
+	for pname, pal := range wallTestPalettes() {
+		v := wallUnmarked(wallFixture(6))
+		prev := 5
+		for w := 60; w >= 12; w-- {
+			acts := wallTileActs(pal.ascii, v.tiles[0], w)
+			if len(acts) > prev {
+				t.Fatalf("%s width %d: %d buttons, more than the %d at a wider tile", pname, w, len(acts), prev)
+			}
+			prev = len(acts)
+			if len(acts) > 0 && acts[0].kind != wallHitOpen {
+				t.Fatalf("%s width %d: Open was dropped before %+v", pname, w, acts)
+			}
+			if n := len(acts); n > 0 && acts[n-1].x+wallButtonW(acts[n-1].btn)+2 > w {
+				t.Fatalf("%s width %d: the last button runs into the corner", pname, w)
+			}
+			hv := v
+			hv.hover = wallHitRef{kind: wallHitTile, arg: 0}
+			rows := wallPaintTile(pal, wallGlyphsFor(pal.ascii), hv, v.tiles[0], 0, false, w, 12, wallGridTop)
+			if got := ansi.StringWidth(rows[len(rows)-1]); got != w {
+				t.Fatalf("%s width %d: the action row is %d cells", pname, w, got)
+			}
+		}
+		if n := len(wallTileActs(pal.ascii, v.tiles[0], 200)); n != 4 {
+			t.Fatalf("%s: a wide tile carries %d buttons, want 4", pname, n)
 		}
 	}
 }
@@ -561,7 +639,7 @@ func TestWallTileDotsName(t *testing.T) {
 	if got := top(pal, four, 2); !strings.Contains(got, "●●●+1 ship the port") {
 		t.Fatalf("four spaces: %q", got)
 	}
-	if got := top(pal, v.tiles[3], 3); strings.Contains(got, "●") || !strings.Contains(got, "─── relay audit") {
+	if got := top(pal, v.tiles[3], 3); strings.Contains(got, "●") || !strings.HasPrefix(got, "╭─ relay audit") {
 		t.Fatalf("no spaces: %q", got)
 	}
 	plain := newPalette(tokens.ANSI16, false)
@@ -583,15 +661,24 @@ func TestWallClickSelectionModeShowsEveryBox(t *testing.T) {
 			t.Fatalf("tile %d in selection mode: %q, want the box %q", i, top, want)
 		}
 	}
-	_, hits := renderWall(pal, v, 180, 50)
-	boxes := 0
+	rows, hits := renderWall(pal, v, 180, 50)
+	boxes := map[int]bool{}
 	for _, hit := range hits {
-		if hit.kind == wallHitSelect {
-			boxes++
+		if hit.kind == wallHitSelect && strings.Contains(ansi.Strip(ansi.Cut(rows[hit.y0], hit.x0, hit.x1)), wallSelGlyph(false, v.tiles[hit.arg].marked)) {
+			boxes[hit.arg] = true
 		}
 	}
-	if boxes != 4 {
-		t.Fatalf("%d selection boxes answer the pointer, want all 4", boxes)
+	if len(boxes) != 4 {
+		t.Fatalf("%d selection boxes answer the pointer, want all 4", len(boxes))
+	}
+	// Out of the selection mode no tile draws a box, hovered or not.
+	v = wallUnmarked(v)
+	v.hover = wallHitRef{kind: wallHitTile, arg: 1}
+	for i, tile := range v.tiles {
+		top := ansi.Strip(wallPaintTile(pal, g, v, tile, i, false, tileW, tileH, wallGridTop)[0])
+		if strings.Contains(top, wallSelGlyph(false, false)) {
+			t.Fatalf("tile %d draws a box out of the selection mode: %q", i, top)
+		}
 	}
 }
 
@@ -874,7 +961,7 @@ func TestWallChromeAlignsWithTheGrid(t *testing.T) {
 }
 
 // A LONG TITLE IS CUT WITH AN ELLIPSIS AND KEEPS TWO RULE CELLS BEFORE THE
-// CONTROLS' CELLS, at rest and hovered alike.
+// CORNER, at rest, hovered and in the selection mode alike.
 func TestWallLongTitleKeepsItsDistance(t *testing.T) {
 	pal := newPalette(tokens.TrueColor, false)
 	g := wallGlyphsFor(false)
@@ -882,22 +969,25 @@ func TestWallLongTitleKeepsItsDistance(t *testing.T) {
 	v.tiles[3].name = strings.Repeat("a very long title ", 8)
 	for _, sz := range wallTestSizes {
 		_, tileW, tileH := wallGrid(6, sz[0], sz[1], 0)
-		_, ctlW := wallTileCtls(false, tileW)
-		for _, hover := range []bool{false, true} {
+		for _, state := range []string{"rest", "hover", "picking"} {
 			hv := v
-			if hover {
+			switch state {
+			case "hover":
 				hv.hover = wallHitRef{kind: wallHitTile, arg: 3}
+			case "picking":
+				hv.tiles = append([]wallTile(nil), v.tiles...)
+				hv.tiles[0].marked = true
 			}
 			top := ansi.Strip(wallPaintTile(pal, g, hv, hv.tiles[3], 3, false, tileW, tileH, wallGridTop)[0])
 			cut := strings.Index(top, "…")
 			if cut < 0 {
-				t.Fatalf("%dx%d: the long title is not cut: %q", sz[0], sz[1], top)
+				t.Fatalf("%dx%d %s: the long title is not cut: %q", sz[0], sz[1], state, top)
 			}
 			runes := []rune(top)
 			at := len([]rune(top[:cut]))
-			gap := runes[at+2 : len(runes)-2-ctlW]
-			if len(gap) < wallTitleGap || strings.Trim(string(gap), "─") != "" && !hover {
-				t.Fatalf("%dx%d hover=%v: %d rule cells between the title and the controls: %q", sz[0], sz[1], hover, len(gap), top)
+			gap := runes[at+2 : len(runes)-1]
+			if len(gap) < wallTitleGap || strings.Trim(string(gap), "─") != "" {
+				t.Fatalf("%dx%d %s: %d rule cells between the title and the corner: %q", sz[0], sz[1], state, len(gap), top)
 			}
 		}
 	}

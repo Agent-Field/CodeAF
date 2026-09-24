@@ -140,11 +140,19 @@ type wallView struct {
 	madeN  int
 	madeAt time.Time
 	// pointerOn says pointerY holds the row the pointer is on, in the painter's
-	// own rows (the head's rows taken off). Two targets share a ref, a waiting
-	// tile's Answer and its open ↗, and the row says which one to light; left
-	// unset, both light.
+	// own rows (the head's rows taken off). Some targets share a ref on two
+	// rows, a waiting tile's Answer and its row's Answer, or a picked tile's ☐
+	// and its row's Select, and the row says which one to light; left unset,
+	// both light.
 	pointerOn bool
 	pointerY  int
+	// help says the help sheet is up, and helpTop is the first of its lines
+	// shown when it is scrolled.
+	help    bool
+	helpTop int
+	// doorHot says the pointer rests on the strip's own door to this view
+	// (chattabs.go), which the toolbar explains like any other control.
+	doorHot bool
 }
 
 // wallHitKind is what a press on one hit does.
@@ -153,10 +161,10 @@ type wallHitKind uint8
 const (
 	wallHitNone     wallHitKind = iota
 	wallHitTile                 // a tile's body: open it, or pick it in selection mode; arg is the tile
-	wallHitSelect               // a tile's ☐: pick it or put it back; arg is the tile
-	wallHitSpaces               // a tile's ●+: the spaces it is in; arg is the tile
-	wallHitOpen                 // a tile's open ↗; arg is the tile
-	wallHitClose                // a tile's ×, which closes the view; arg is the tile
+	wallHitSelect               // a tile's Select, or its ☐ in selection mode: pick it or put it back; arg is the tile
+	wallHitSpaces               // a tile's Spaces: the spaces it is in; arg is the tile
+	wallHitOpen                 // a tile's Open, or its Answer; arg is the tile
+	wallHitClose                // a tile's Close, which closes the view; arg is the tile
 	wallHitChip                 // a Spaces segment; arg is the space, -1 for All
 	wallHitChipMenu             // a segment's dot or its ⋯: the space's settings; arg is the space
 	wallHitAddSpace             // the + New space segment
@@ -164,6 +172,7 @@ const (
 	wallHitMini                 // one minimap cell; arg is the tile
 	wallHitPopRow               // a popover row; arg is a space, or a wallPop row code
 	wallHitSwatch               // a colour swatch; arg is its index among the choices
+	wallHitHelp                 // a row of the help sheet; arg is its place in [wallHelpList]
 )
 
 // The popover rows that are not a space.
@@ -215,7 +224,7 @@ const (
 	wallActSelect                     // space
 	wallActNewSpace                   // s
 	wallActFilter                     // /
-	wallActNext                       // ?
+	wallActNext                       // n
 	wallActColsLess                   // -
 	wallActColsMore                   // + or =
 	wallActClose                      // x
@@ -227,6 +236,7 @@ const (
 	wallActCancel                     // esc, naming
 	wallActFilterClear                // esc, filtering
 	wallActShuffle                    // ctrl+r, naming
+	wallActHelp                       // ?
 )
 
 // wallHitRef names one target without its cells, which is what a hover keeps
@@ -344,6 +354,15 @@ type wallState struct {
 	// spinning says the last frame drew a live working tile, whose spinner
 	// needs the paint clock turning.
 	spinning bool
+	// help says the help sheet is up; helpTop is its scroll, and helpMax the
+	// most it could scroll on the last frame, so a key clamps to what was
+	// drawn.
+	help    bool
+	helpTop int
+	helpMax int
+	// door is where the strip drew its own door to this view, empty when it
+	// was not drawn (chattabs.go).
+	door hudSpan
 }
 
 // wallTail is one conversation's cached reading (walltail.go fills it).
