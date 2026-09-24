@@ -409,10 +409,16 @@ func (a *app) teamSheetCloseLines(t team, inner int) []wallCardLine {
 		accent := c.code == tsWrapUp && managed
 		b, hit, w := a.teamSheetButton(c.label, c.key, c.code, 0, accent)
 		text := b + strings.Repeat(" ", max(labelW-w, 0))
-		if c.consequence != "" {
-			text += "  " + pal.dim(fit(c.consequence, max(inner-labelW, 8)))
+		// The consequence wraps under itself rather than being cut: it is the
+		// one thing that says what the button does.
+		said := wrap(c.consequence, max(inner-labelW-2, 8))
+		if len(said) > 0 {
+			text += "  " + pal.dim(said[0])
 		}
 		lines = append(lines, wallCardLine{s: text, hits: []wallHit{hit}, bleed: true})
+		for _, l := range said[min(1, len(said)):] {
+			lines = append(lines, wallCardLine{s: strings.Repeat(" ", labelW+2) + pal.dim(l)})
+		}
 	}
 	return lines
 }

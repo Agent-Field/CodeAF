@@ -166,10 +166,10 @@ func (a *app) teamsCloseNow(id, report string) tea.Cmd {
 		a.touch()
 		return nil
 	}
+	// On the page the Undo row says it; off it the close is said where the
+	// person is standing.
 	a.tp.undo = teamsUndo{team: id, name: t.Name, shut: shut, at: now}
-	a.tp.msg = t.Name + " is closed"
 	if !a.at(pageTeams) {
-		// Off the page the close is said where the person is standing.
 		a.note(t.Name + " is closed · its conversations are kept · Closed on the teams page reopens it")
 	}
 	if a.tp.sel == id {
