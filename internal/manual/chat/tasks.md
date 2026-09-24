@@ -2896,7 +2896,14 @@ wisp · /Users/ada/code/wisp
 - Inside a task this is absent, like the rest of it: a task sees the pieces it handed out
   itself and nothing wider.
 
-## Filter Sessions by conversation name, project or task name — searching the task page, where the words I type appear, my cursor jumped to another task while I was reading
+## Filter Sessions by conversation name, project or task name
+
+Type in Sessions to find conversations by their name, project name or path, or any
+nested task name. A match keeps the complete conversation and all its tasks, rather
+than hiding unmatched siblings or children. Conversations without tasks can match
+their name or project too. Clear the query to restore your previous folds.
+
+## Searching the task page: type to filter, find an old task by name, where the words I type appear, my cursor jumped to another task while I was reading
 
 **Just type.** On Sessions every printable key — letters, the space, and digits
 everywhere they are not an answer — builds a filter. It selects whole conversations
