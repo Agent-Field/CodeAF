@@ -62,6 +62,9 @@ type Team struct {
 	ClosedAt   time.Time
 	ClosedWith string
 	Report     string
+	// Root marks the one team that holds every other (root.go): the `All
+	// teams` row, made when the person gives it a manager.
+	Root bool
 	// Settings are the team's own delegation overrides (teamsettings.go),
 	// each unset field inheriting from the parent chain and then the
 	// profile's `teams.` defaults. They are stored flat on the team.
@@ -84,7 +87,7 @@ type File struct {
 var knownFields = map[string]bool{
 	"id": true, "name": true, "parent": true, "members": true, "manager": true,
 	"hue": true, "tier": true, "made": true,
-	"state": true, "closed_at": true, "closed_with": true, "report": true,
+	"state": true, "closed_at": true, "closed_with": true, "report": true, "root": true,
 	"questions_up": true, "cap_usd_day": true, "depth_limit": true, "sub_share": true,
 }
 
@@ -105,6 +108,7 @@ type wireTeam struct {
 	ClosedAt   *time.Time `json:"closed_at,omitempty"`
 	ClosedWith string     `json:"closed_with,omitempty"`
 	Report     string     `json:"report,omitempty"`
+	Root       bool       `json:"root,omitempty"`
 	// The overrides are written flat beside the fields above, each only when
 	// set, so a team with none is written exactly as before.
 	Settings
@@ -121,7 +125,7 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 		return err
 	}
 	*t = Team{ID: w.ID, Name: w.Name, Parent: w.Parent, Members: w.Members, Manager: w.Manager, Made: w.Made,
-		Settings: w.Settings, State: w.State, ClosedWith: w.ClosedWith, Report: w.Report}
+		Settings: w.Settings, State: w.State, ClosedWith: w.ClosedWith, Report: w.Report, Root: w.Root}
 	if w.ClosedAt != nil {
 		t.ClosedAt = *w.ClosedAt
 	}
@@ -147,7 +151,7 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 // build wrote, sorted, exactly as it was read.
 func (t Team) MarshalJSON() ([]byte, error) {
 	w := wireTeam{ID: t.ID, Name: t.Name, Parent: t.Parent, Members: t.Members, Manager: t.Manager, Made: t.Made,
-		Settings: t.Settings, ClosedWith: t.ClosedWith, Report: t.Report}
+		Settings: t.Settings, ClosedWith: t.ClosedWith, Report: t.Report, Root: t.Root}
 	// A state this build does not know is written back as it was read, so a
 	// later build's word survives; open is written as nothing.
 	if t.State != "" && t.State != TeamOpen {
@@ -323,6 +327,9 @@ func (f *File) SetParent(id, parent string) error {
 	if err != nil {
 		return err
 	}
+	if f.Teams[i].Root && parent != "" {
+		return ErrRoot
+	}
 	if parent != "" {
 		if Index(f.Teams, parent) < 0 {
 			return fmt.Errorf("no team %s", parent)
@@ -470,6 +477,10 @@ func tidy(teams []Team) bool {
 		if teams[i].Settings.tidy() {
 			changed = true
 		}
+	}
+	// The root holds every other top-level team (root.go).
+	if tidyRoot(teams) {
+		changed = true
 	}
 	// Homes last: they depend on the managers and parents settled above.
 	if assignHomes(teams) {

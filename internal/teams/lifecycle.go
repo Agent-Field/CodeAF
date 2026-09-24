@@ -82,6 +82,9 @@ func (f *File) Close(id string, at time.Time, report string) error {
 	if err != nil {
 		return err
 	}
+	if f.Teams[i].Root {
+		return ErrRoot
+	}
 	if f.Teams[i].Closed() {
 		return nil
 	}
