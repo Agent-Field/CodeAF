@@ -55,6 +55,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -121,6 +122,11 @@ type teamSeat struct {
 	trafficAt   map[string]fileStamp
 	// events is the lane this conversation's own events leave by (teamevent.go).
 	events teamEventLane
+	// file is the teams file roles was read from, kept so a manager's digest
+	// reads the members off it rather than loading the file a second time.
+	file *teams.File
+	// journals is what each member's journal last said (teamcache.go).
+	journals journalCache
 }
 
 // teamLogStart is the cursor that reads a Traffic log from its first entry:
@@ -213,7 +219,7 @@ func (a *Agent) teamRolesLocked(profile string) []teamRole {
 		return a.team.roles
 	}
 	if !now.present {
-		a.team.teamsAt, a.team.roles = now, nil
+		a.team.teamsAt, a.team.roles, a.team.file = now, nil, nil
 		a.team.events.member.Store(false)
 		return nil
 	}
@@ -226,6 +232,7 @@ func (a *Agent) teamRolesLocked(profile string) []teamRole {
 	}
 	a.team.teamsAt = now
 	a.team.roles = rolesFor(file.Teams, keys)
+	a.team.file = file
 	a.team.events.member.Store(eventfulRoles(a.team.roles))
 	return a.team.roles
 }
@@ -317,7 +324,14 @@ func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
 		return ""
 	}
 	a.readTeamCursorsLocked()
-	moved := false
+	// THE CURSOR IS WRITTEN DOWN ONLY WHEN IT MATTERS AFTER A RESTART: when a
+	// team's first cursor is taken, because a restart would take a later one and
+	// skip what was said while this was closed, and when something was
+	// delivered, because a restart must not deliver it twice. A cursor that
+	// moved over lines addressed to somebody else is kept in memory; a restart
+	// reads those lines again and hands on none of them, which costs a read and
+	// never a message, where a write per step cost a file per step.
+	save := false
 	var groups []string
 	for _, role := range roles {
 		path := teams.TrafficPath(profile, role.id)
@@ -329,7 +343,7 @@ func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
 		if !known {
 			cursor = a.firstTeamCursor(profile, role)
 			a.team.cursors[role.id] = cursor
-			moved = true
+			save = true
 		}
 		entries, err := teams.ReadTraffic(profile, role.id, cursor, teamPageLimit)
 		if err != nil {
@@ -342,10 +356,7 @@ func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
 				lines = append(lines, line)
 			}
 		}
-		if cursor != a.team.cursors[role.id] {
-			a.team.cursors[role.id] = cursor
-			moved = true
-		}
+		a.team.cursors[role.id] = cursor
 		// CAUGHT UP IS WHAT THE STAMP MEANS. A page that came back full has more
 		// behind it, so the stamp is left unmatched and the next boundary reads on.
 		if len(entries) < teamPageLimit {
@@ -353,9 +364,10 @@ func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
 		}
 		if len(lines) > 0 {
 			groups = append(groups, teamNewsGroup(role, lines))
+			save = true
 		}
 	}
-	if moved {
+	if save {
 		a.saveTeamCursorsLocked()
 	}
 	return strings.Join(groups, "\n\n")
@@ -652,6 +664,7 @@ func (a *Agent) teamDigest(profile string) string {
 	a.team.mu.Lock()
 	roles := a.teamRolesLocked(profile)
 	keys := append([]string(nil), a.teamKeysLocked()...)
+	file := a.team.file
 	a.team.mu.Unlock()
 	var managed []teamRole
 	for _, role := range roles {
@@ -662,8 +675,9 @@ func (a *Agent) teamDigest(profile string) string {
 	if len(managed) == 0 {
 		return ""
 	}
-	file, err := teams.Load(profile)
-	if err != nil {
+	// THE FILE THE ROLES CAME OFF, not a second load: the role read above
+	// stats the teams file and reads it only when it moved.
+	if file == nil {
 		return ""
 	}
 	now := time.Now()
@@ -674,7 +688,7 @@ func (a *Agent) teamDigest(profile string) string {
 			continue
 		}
 		log, _ := teams.ReadTraffic(profile, role.id, "", teamStateLook)
-		parts = append(parts, teams.Digest(team, memberStates(team, keys, now, log), recentOf(log), teamDigestBudget))
+		parts = append(parts, teams.Digest(team, memberStates(team, keys, now, log, &a.team.journals), recentOf(log), teamDigestBudget))
 	}
 	return strings.TrimSpace(strings.Join(parts, "\n\n"))
 }
@@ -689,14 +703,17 @@ func (a *Agent) teamBlockLocked() string { return strings.TrimSpace(a.teamDigest
 // first) for the one state a journal cannot hold: a member held on a permission
 // prompt ([askingFromEvents]). This conversation's own row is running: it is
 // the one reading the file.
-func memberStates(team teams.Team, self []string, now time.Time, log []teams.Entry) map[string]teams.MemberState {
+//
+// A MEMBER'S JOURNAL IS READ ONLY WHEN IT MOVED: journals keeps what each said
+// against its stamp, and a nil one reads every time.
+func memberStates(team teams.Team, self []string, now time.Time, log []teams.Entry, journals *journalCache) map[string]teams.MemberState {
 	states := make(map[string]teams.MemberState, len(team.Members))
 	for _, member := range team.Members {
 		if teamHoldsKey(self, member.Key) {
 			states[member.Key] = teams.MemberState{State: teams.StateRunning}
 			continue
 		}
-		if state, last, ok := journalStateAt(member.File, now); ok {
+		if state, last, ok := journals.stateOf(member.File, now); ok {
 			states[member.Key] = askingFromEvents(state, last, member, log)
 		}
 	}
@@ -748,25 +765,67 @@ func journalState(path string, now time.Time) (teams.MemberState, bool) {
 // journalStateAt is [journalState] and the instant of the journal's last line,
 // which is what an asking event is weighed against.
 func journalStateAt(path string, now time.Time) (teams.MemberState, time.Time, bool) {
+	facts, ok := readJournalFacts(path)
+	if !ok {
+		return teams.MemberState{}, time.Time{}, false
+	}
+	return facts.state(now), facts.last, true
+}
+
+// journalFacts is what a member's journal tail says, before the clock is
+// asked: everything [journalState] needs that does not move while the file
+// does not. It is what a cache keeps per file (teamcache.go), so a manager's
+// turn that finds a member's journal unmoved reads nothing.
+type journalFacts struct {
+	// last is the newest line's instant, the file's modification time when no
+	// line carried one.
+	last time.Time
+	// asking is a question the member called `ask` for and has no answer to,
+	// with its head, "" when it gave none.
+	asking   bool
+	question string
+	// failed says a turn's last word was an error or a failure line; spoke says
+	// somebody spoke after the last turn's pace line.
+	failed bool
+	spoke  bool
+	// files is the newest [journalFiles] files touched, newest first.
+	files []string
+}
+
+// memberJournalLine is the few fields of a journal line a state is read from. The
+// rest of each line (the message's content, its reasoning) is skipped rather
+// than decoded.
+type memberJournalLine struct {
+	Type       string        `json:"type"`
+	Role       string        `json:"role"`
+	Timestamp  string        `json:"timestamp"`
+	ToolCalls  []ai.ToolCall `json:"toolCalls"`
+	ToolCallID string        `json:"toolCallId"`
+}
+
+// readJournalFacts reads the last [journalTail] bytes of a member's journal.
+// The boolean is false for a file that cannot be read.
+func readJournalFacts(path string) (journalFacts, bool) {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return teams.MemberState{}, time.Time{}, false
+		return journalFacts{}, false
 	}
 	lines, mod, err := journalTailLines(path, journalTail)
 	if err != nil {
-		return teams.MemberState{}, time.Time{}, false
+		return journalFacts{}, false
 	}
 	var (
-		last       time.Time
-		spokeAt    = -1
-		endedAt    = -1
-		failedAt   = -1
-		pendingAsk = map[string]string{}
-		files      []string
+		last     time.Time
+		spokeAt  = -1
+		endedAt  = -1
+		failedAt = -1
+		pending  []string // the ids of asks with no answer yet, in order
+		heads    = map[string]string{}
+		files    []string
 	)
-	for index, line := range lines {
-		var entry sessionEntry
-		if json.Unmarshal(line, &entry) != nil {
+	for index, raw := range lines {
+		var entry memberJournalLine
+		if json.Unmarshal(raw, &entry) != nil {
 			continue
 		}
 		if at, err := time.Parse(time.RFC3339Nano, entry.Timestamp); err == nil {
@@ -789,7 +848,8 @@ func journalStateAt(path string, now time.Time) (teams.MemberState, time.Time, b
 							Head string `json:"head"`
 						}
 						_ = json.Unmarshal([]byte(call.Function.Arguments), &args)
-						pendingAsk[call.ID] = strings.TrimSpace(args.Head)
+						pending = append(pending, call.ID)
+						heads[call.ID] = strings.TrimSpace(args.Head)
 					case "edit", "write":
 						var args struct {
 							Path string `json:"path"`
@@ -800,33 +860,51 @@ func journalStateAt(path string, now time.Time) (teams.MemberState, time.Time, b
 					}
 				}
 			case "tool":
-				delete(pendingAsk, entry.ToolCallID)
+				delete(heads, entry.ToolCallID)
 			}
 		}
 	}
 	if last.IsZero() {
 		last = mod
 	}
-	state := teams.MemberState{SinceActive: now.Sub(last), Files: newestFirst(files, journalFiles)}
+	facts := journalFacts{
+		last:   last,
+		failed: failedAt > endedAt && failedAt > spokeAt,
+		spoke:  spokeAt > endedAt,
+		files:  newestFirst(files, journalFiles),
+	}
+	for _, id := range pending {
+		head, open := heads[id]
+		if !open {
+			continue
+		}
+		facts.asking = true
+		if head != "" {
+			facts.question = head
+		}
+	}
+	return facts, true
+}
+
+// state is the facts read against the clock: a turn with no ending that has
+// gone quiet for [journalStale] is over.
+func (f journalFacts) state(now time.Time) teams.MemberState {
+	state := teams.MemberState{SinceActive: now.Sub(f.last), Files: f.files}
 	if state.SinceActive <= 0 {
 		state.SinceActive = time.Second
 	}
 	switch {
-	case len(pendingAsk) > 0:
+	case f.asking:
 		state.State = teams.StateAsking
-		for _, head := range pendingAsk {
-			if head != "" {
-				state.Question = head
-			}
-		}
-	case failedAt > endedAt && failedAt > spokeAt:
+		state.Question = f.question
+	case f.failed:
 		state.State = teams.StateFailed
-	case spokeAt > endedAt && now.Sub(last) < journalStale:
+	case f.spoke && now.Sub(f.last) < journalStale:
 		state.State = teams.StateRunning
 	default:
 		state.State = teams.StateIdle
 	}
-	return state, last, true
+	return state
 }
 
 // appendFresh moves path to the end of files, so the list is in the order the

@@ -154,7 +154,7 @@ func TestAMemberHeldOnAPromptReadsAsAsking(t *testing.T) {
 	}
 	team, _ := file.Team(fixture.teamID)
 	log, _ := teams.ReadTraffic(fixture.profile, fixture.teamID, "", teamStateLook)
-	web := memberStates(team, nil, now, log)[convKeyOf(t, fixture.web)]
+	web := memberStates(team, nil, now, log, nil)[convKeyOf(t, fixture.web)]
 	if web.State != teams.StateAsking || web.Question != "needs your ok to run bash" {
 		t.Fatalf("a member held on a prompt reads %+v", web)
 	}
@@ -165,7 +165,7 @@ func TestAMemberHeldOnAPromptReadsAsAsking(t *testing.T) {
 			ToolCalls: []ai.ToolCall{{ID: "c1", Type: "function", Function: ai.ToolCallFunction{Name: "bash", Arguments: `{"command":"make"}`}}}},
 		sessionEntry{Type: "message", Role: "tool", ToolCallID: "c1", Content: "ok", Timestamp: callAt.Add(2 * time.Second).Format(time.RFC3339Nano)},
 	)
-	if web := memberStates(team, nil, now, log)[convKeyOf(t, fixture.web)]; web.State != teams.StateRunning {
+	if web := memberStates(team, nil, now, log, nil)[convKeyOf(t, fixture.web)]; web.State != teams.StateRunning {
 		t.Fatalf("a member whose prompt was answered reads %+v", web)
 	}
 }
