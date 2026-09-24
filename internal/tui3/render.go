@@ -741,6 +741,9 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	// the cells that open it — a press on its number landed in the sentence
 	// beside it. That was true of every moved row with a link in it before this
 	// pass moved every row; it is not true of any row now.
+	// THE TEAM HALF OF THE LINK PASS, over the rows as they were laid out and
+	// before the indent law moves them with their spans (teamlink.go).
+	a.teamLinkPass(out, es)
 	if workIndent(width) != "" {
 		cols := workIndentCols(width)
 		for i := range out {
