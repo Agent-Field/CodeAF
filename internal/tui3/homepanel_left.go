@@ -131,6 +131,10 @@ func ledgerTaskLine(entry session.TaskIndexEntry, row session.SessionRow) string
 	if label == "" {
 		label = strings.TrimSpace(entry.Title)
 	}
+	// A PROGRAM'S WORK SAYS WHOSE IT IS, with its badge after its name
+	// (programbadge.go) — the brackets alone, because this line is measured and
+	// painted whole by the cell that draws it.
+	label = programText(label, entry.Program)
 	if label == "" {
 		label = homeName(row)
 	}

@@ -21,10 +21,11 @@ a feature with its tests. A change you would make in a few steps is not worth it
 ## Watching senior-dev work — open its task, what it is doing step by step, how long it has run, stop it
 
 A senior-dev run is a task of the conversation that started it. Its row is on the side
-list with the step it is in and what it has spent so far, and a card in the conversation
-lands when it ends. Click the row or the card, or follow a task link to it, and its task
-opens **inside the conversation's own tab**: the tab strip stays on top, with the
-conversation's tab selected and `Home` beside it. senior-dev gets no tab of its own.
+list wearing `[senior-dev]` after its title, with the step it is in and what it has spent
+so far under it, and a card in the conversation lands when it ends. Click the row or the
+card, or follow a task link to it, and its task opens **inside the conversation's own
+tab**: the tab strip stays on top, with the conversation's tab selected and `Home` beside
+it. senior-dev gets no tab of its own.
 
 The task shows **what senior-dev is doing**, action by action, each under the step of its
 process it served — its brief, the workspace it set up, what it read and ran and changed,
@@ -69,6 +70,29 @@ under way, drawn quieter: `told its model what it found, and to finish and hand 
 1)`, `time is short: gave its model one last turn to finish`, a dropped call retried, a
 tool call written as text corrected — and `compacted its memory` and `switched to <model>`
 with its reason.
+
+## How do I tell a senior-dev task from a normal task — the [senior-dev] badge, [sd], what the brackets on a task mean
+
+A task handed to senior-dev wears its name as a badge wherever a task is named:
+`[senior-dev]`, bold in the accent colour, after the task's title. A normal task — one
+`/task` starts, or one the chat hands to codeaf's own worker — wears no badge.
+
+- **The side list** wears it after the title. When the list is too narrow for
+  everything, the task's number (`#7`) goes first; then the badge shortens to its
+  initials, `[sd]` — the narrower list a frame under 120 columns draws reads
+  `⠋ rewrite the… [sd] #7` — and the title is cut last. Widened with `w`, the list has
+  room for the whole badge and the number.
+- **The card you answer** asks `wants to start a [senior-dev] task: <title>`, and the
+  card's top line wears the badge beside the task's name.
+- **The task's own page** wears it beside the title.
+- **The task strip**, the row of chips that stands in for the side list under 100
+  columns, wears `[sd]`.
+- **The `@` list, the tasks place and home's list of work** wear `[senior-dev]`.
+- **The chat's `tasks` tool** says `via senior-dev` on the row, so the chat can tell too.
+
+The brackets are always drawn, so a terminal with no colour, the row of the task you
+have open, and a screen reader all still show the badge. It is not a button: a press
+anywhere on the row opens the task.
 
 ## How do I ask senior-dev for a change — writing the brief, what to put in it
 

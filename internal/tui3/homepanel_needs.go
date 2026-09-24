@@ -326,6 +326,10 @@ func needsCall(project session.Project, row session.SessionRow, entry session.Ta
 	if title == "" {
 		title = strings.TrimSpace(entry.Title)
 	}
+	// A PROGRAM'S WORK SAYS WHOSE IT IS, with its badge after its name
+	// (programbadge.go) — the brackets alone, because the cell measures and
+	// paints its title whole.
+	title = programText(title, entry.Program)
 	asked := needsCallAt(entry)
 	// A LANDING WEARS NO MARK (law 8). The amber `?` means a thing has stopped
 	// and will not move until somebody answers it; a landing has already

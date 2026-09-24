@@ -178,7 +178,12 @@ func tasksChatStateField(chat tasksChat) rowField {
 // would put them in a different place on every line of the page — a table whose
 // columns move is a tail with extra steps. Only the NAME flexes (rowfit.go law
 // 1), and the lead eats into the name.
-func tasksTableRow(lead string, leadCells int, name string, state, second rowField,
+//
+// A PROGRAM'S WORK WEARS ITS BADGE AFTER THE NAME, inside the name's own column
+// (programbadge.go): program is the name of the program the row's work was
+// handed to, "" for every other row, and the badge is paid for out of the name
+// the way the lead is, so no column moves for it.
+func tasksTableRow(lead string, leadCells int, name, program string, state, second rowField,
 	secondInk func(string) string, width int, key tasksSortKey, pal palette, lit bool, project, fold string) string {
 	stateCells, secondCells, nameCells := tasksColumns(width, key)
 	nameCells = max(nameCells-leadCells, 1)
@@ -186,12 +191,14 @@ func tasksTableRow(lead string, leadCells int, name string, state, second rowFie
 	if fold != "" {
 		foldCells = 1 + ansi.StringWidth(fold)
 	}
-	said := fit(name, max(nameCells-foldCells-tasksColumnAir, 1))
-	out := lead + placeSubject(said, lit, pal)
+	room := max(nameCells-foldCells-tasksColumnAir, 1)
+	wears := programSpelling(programBadge(program), name, room, railTitleFloor)
+	said := fit(name, max(room-programCells(wears), 1))
+	out := lead + placeSubject(said, lit, pal) + pal.programAfter(wears)
 	if fold != "" {
 		out += " " + pal.dim(fold)
 	}
-	out += pad(nameCells - ansi.StringWidth(said) - foldCells)
+	out += pad(nameCells - ansi.StringWidth(said) - programCells(wears) - foldCells)
 	if cells := tasksProjectCells(width); cells > 0 {
 		word := fit(project, cells-1)
 		out += placeFactInk(lit, pal)(word) + pad(cells-ansi.StringWidth(word))

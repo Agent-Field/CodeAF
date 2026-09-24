@@ -160,8 +160,8 @@ func TestAProgramsPageDrawsItsActionsUnderItsSteps(t *testing.T) {
 	page := strings.Join(lines, "\n")
 	t.Logf("a program's page, mid-way:\n%s", page)
 
-	if lines[0] != "rewrite the auth middleware" {
-		t.Fatalf("the head's first row is %q, want the task's title", lines[0])
+	if lines[0] != "rewrite the auth middleware [senior-dev]" {
+		t.Fatalf("the head's first row is %q, want the task's title and its program's badge", lines[0])
 	}
 	if lines[1] != "implement · $1.24 · 3 calls · 14m 3s" {
 		t.Fatalf("the pinned line is %q, want the step, the spend, the calls and the age", lines[1])

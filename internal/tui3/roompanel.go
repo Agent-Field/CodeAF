@@ -310,8 +310,24 @@ func (a *app) roomTitleRow(width int) string {
 		}
 	}
 	room := max(width-headLabelAt-2-ansi.StringWidth(right)-3, 1)
-	left = fit(left, room)
-	return strings.Repeat(" ", headLabelAt) + a.pal.bold(a.pal.ink(left)) + strings.Repeat(" ", max(width-headLabelAt-2-ansi.StringWidth(left)-ansi.StringWidth(right), 1)) + painted + "  "
+	// A PROGRAM'S TASK WEARS ITS PROGRAM'S BADGE BESIDE ITS TITLE, the one its row
+	// wears on the side list (programbadge.go), paid for out of the title's half
+	// of the row and never the facts'. An ordinary task spends nothing on it.
+	wears := programSpelling(programBadge(a.roomProgram()), left, room, railTitleFloor)
+	left = fit(left, room-programCells(wears))
+	return strings.Repeat(" ", headLabelAt) + a.pal.bold(a.pal.ink(left)) + a.pal.programAfter(wears) + strings.Repeat(" ", max(width-headLabelAt-2-ansi.StringWidth(left)-programCells(wears)-ansi.StringWidth(right), 1)) + painted + "  "
+}
+
+// roomProgram is the program the open room's task was handed to: the name its
+// stored page gives it on a program's room, and the node's own otherwise — ""
+// for every ordinary task.
+func (a *app) roomProgram() string {
+	if p := a.programOf(); p != nil {
+		if name := pageProgram(p.page); name != "" {
+			return name
+		}
+	}
+	return a.nodeProgram(a.roomNode())
 }
 
 // The expanded layout is a height decision independent of the body's measured

@@ -131,7 +131,8 @@ func TestTheModelFollowsTheNodeOntoTheRailAndTheLandedCard(t *testing.T) {
 		t.Fatalf("the node did not keep its model: %+v", node)
 	}
 	// THE MODEL NEVER BUYS ITS CELLS FROM THE NAME. The first line is the state
-	// glyph, the title and the handle — nothing else — and the model rides the
+	// glyph, the title and the handle — and, for work handed to a program, that
+	// program's badge (programbadge.go); nothing else — and the model rides the
 	// telemetry row under it (task.go's [app.railTelemetry]), which is a row that
 	// gives up its own tail rather than the title's cells.
 	full := plain(strings.Join(a.railNodeRows(node, railCols), "\n"))

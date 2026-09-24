@@ -309,6 +309,10 @@ func planItem(row session.PlanTaskRow, chat string, kin planKin) tasksItem {
 			Cost:      row.USD,
 			StartedAt: row.Started,
 			EndedAt:   row.Ended,
+			// The program the store's root was handed to, so every row drawn off
+			// this item — the rail's, the tasks place's — wears the badge the
+			// node's own row does (programbadge.go).
+			Program: row.Program,
 		},
 		runs: planRunning(row.Status),
 		live: &status,
@@ -589,11 +593,20 @@ func planRailRow(line tasksLine, width int, pal palette, now time.Time) string {
 	if room < 1 {
 		room = 1
 	}
+	label := planRailLabel(item)
+	// A PROGRAM'S RUN WEARS ITS BADGE AFTER ITS TITLE HERE TOO. The store's root is
+	// the same work as the node's row and is normally left out beside it
+	// ([planRowShown]), but when it is this row that is drawn, it is the only row
+	// the program's work has on the column — so it is the one that has to say
+	// whose work it is (programbadge.go). The badge is spoken for before the tail
+	// is, on the node row's own terms, and an ordinary row spends nothing on it.
+	wears := programSpelling(programBadge(item.entry.Program), label, room, railTitleFloor)
+	room -= programCells(wears)
+	subject := func(title string) string { return placeSubject(title, false, pal) + pal.programAfter(wears) }
 	tail := planRailTail(item, width, pal, now)
 	if tail == "" {
-		return lead + placeSubject(fit(planRailLabel(item), room), false, pal)
+		return lead + subject(fit(label, room))
 	}
-	label := planRailLabel(item)
 	tailWidth := ansi.StringWidth(tail)
 	titleRoom := room - tailWidth - planRailGap
 	// THE RUN'S ROW KEEPS ITS PROGRESS AND EVERY OTHER ROW KEEPS ITS NAME. The
@@ -611,7 +624,7 @@ func planRailRow(line tasksLine, width int, pal palette, now time.Time) string {
 		if want := ansi.StringWidth(label); titleRoom < want && titleRoom < planRailKeepTitle {
 			left := room - want - planRailGap
 			if left < planRailMinTail {
-				return lead + placeSubject(fit(label, room), false, pal)
+				return lead + subject(fit(label, room))
 			}
 			tail = fit(tail, left)
 			tailWidth = ansi.StringWidth(tail)
@@ -619,10 +632,10 @@ func planRailRow(line tasksLine, width int, pal palette, now time.Time) string {
 		}
 	}
 	if tailWidth < 1 || titleRoom < planRailMinTitle {
-		return lead + placeSubject(fit(label, room), false, pal)
+		return lead + subject(fit(label, room))
 	}
 	title, titleWidth := fitWidth(label, titleRoom)
-	return lead + placeSubject(title, false, pal) +
+	return lead + subject(title) +
 		strings.Repeat(" ", room-titleWidth-tailWidth) + pal.dim(tail)
 }
 
@@ -1333,13 +1346,21 @@ func (a *app) taskPlanBriefFolds() bool {
 // every other page draws its telemetry — is a figure that scrolls away the
 // moment there is more than a screen of it. On every other page, and on a
 // program's page with nothing yet to say, that line is the air it always was.
+//
+// AND A PROGRAM'S PAGE WEARS THE PROGRAM'S BADGE BESIDE ITS TITLE, the one its
+// row wears on the side list (programbadge.go), so the page says whose work it
+// is before a line of the conversation under it has been read.
 func (a *app) taskPlanHeadRows(width int) []string {
 	pal := a.pal
 	under := ""
 	if pinned := a.taskPlanPinned(a.taskSheet.plan, width); pinned != "" {
 		under = pal.dim(pinned)
 	}
-	return []string{fit(pal.bold(pal.ink(a.taskSheet.plan.Row.Title)), width), under, pal.dim(rule(width))}
+	title := fit(pal.bold(pal.ink(a.taskSheet.plan.Row.Title)), width)
+	if program := pageProgram(a.taskSheet.plan); program != "" {
+		title = pal.programTitled(a.taskSheet.plan.Row.Title, program, width, func(s string) string { return pal.bold(pal.ink(s)) })
+	}
+	return []string{title, under, pal.dim(rule(width))}
 }
 
 // taskPlanFoot is what the page spends under its body: the closing rule, the

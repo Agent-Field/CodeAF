@@ -78,6 +78,13 @@ type taskCard struct {
 	// OWED, and until it lands the way to ask for another is to say so in the
 	// words `c change` takes.
 	model string
+	// program is the program this work is going to — senior-dev — and "" for a
+	// task this conversation's own worker will do (session's
+	// TaskNotice.Program). The head wears its badge beside the name
+	// ([app.taskHead]), because who the work is being handed to is the one thing
+	// about it a person approving it cannot find out afterwards and do anything
+	// about.
+	program string
 	// elsewhere is the one dim line saying which of this brief's files another
 	// window's work is already in, as the engine wrote it (session's
 	// TaskNotice.Elsewhere), and "" when there was nothing to say.
@@ -308,6 +315,15 @@ type taskNode struct {
 	// that is true before it starts and after it lands, and it is what keeps a
 	// card from promising a branch to a node that could never have one.
 	kind session.TaskKind
+	// program is the program this node's work was handed to — senior-dev — as
+	// the engine names it (session's TaskNotice.Program), and "" for an ordinary
+	// task. It is what the node's badge is drawn from (programbadge.go), and it
+	// is kept on [taskNode.kind]'s rule: written once, from the proposal's card or
+	// the first notice that names it, and never cleared, because which program has
+	// the work is settled before the work starts and nothing afterwards moves it.
+	// Read it through [app.nodeProgram], which also answers for a node an older
+	// engine never named.
+	program string
 	// doing is the phase this node is in, in its own kind's plain words —
 	// "designing", "awaiting your look" — and empty for an ordinary task, which
 	// has no phases (session's TaskNotice.Doing).
@@ -1258,6 +1274,7 @@ func (a *app) proposeTask(ev session.Event) {
 		ident:      identFor(notice.ID),
 		dependsOn:  notice.DependsOn,
 		model:      strings.TrimSpace(notice.Model),
+		program:    strings.TrimSpace(notice.Program),
 		elsewhere:  strings.TrimSpace(notice.Elsewhere),
 		deadline:   notice.Deadline,
 		born:       a.now(),
@@ -2001,14 +2018,21 @@ func (a *app) taskHead(card *taskCard, width int, sel bool) string {
 	// rail in four seconds and on the card that lands in eleven minutes.
 	head := corner + " " + a.icon(tokens.GNeedsHuman) + " "
 	mark := a.taskMarkSel(card.ident, sel) + " "
-	title := fit(card.name, width-ansi.StringWidth(head)-3)
+	// AND WORK GOING TO A PROGRAM WEARS THAT PROGRAM'S BADGE BESIDE ITS NAME, the
+	// same badge its row will wear on the side list in four seconds
+	// (programbadge.go), so the card a person approves says who the work is being
+	// handed to. It is paid for out of the title's cells, never the frame's.
+	room := width - ansi.StringWidth(head) - 3
+	badge := programSpelling(programBadge(card.program), card.name, room, railTitleFloor)
+	title := fit(card.name, room-programCells(badge))
 	line := paint(head) + mark
 	if card.settled() {
 		line += a.pal.muted(title)
 	} else {
 		line += a.pal.askBold(title)
 	}
-	if fill := width - ansi.StringWidth(head) - ansi.StringWidth(title) - 3; fill > 0 {
+	line += a.pal.programAfter(badge)
+	if fill := width - ansi.StringWidth(head) - ansi.StringWidth(title) - programCells(badge) - 3; fill > 0 {
 		line += paint(" " + strings.Repeat(rule, fill))
 	}
 	return line
@@ -4601,6 +4625,7 @@ func railPack(segs []string, width, rooms int) []string {
 //	│  └─ ◌ Cut the goldens    #4
 //	└─ ◌ Wire the seam         #5
 //	⠙ Port the parser        ▸ +7     the same family, folded
+//	⠙ rewrite the… [sd] #8            work handed to a program, wearing its badge
 //
 // EVERY ROW OPENS WITH ONE GLYPH AND IT IS THE STATE. A flat row used to lead
 // with two — the state and the node's own ◆ — and the second bought nothing
@@ -4653,6 +4678,15 @@ func (a *app) railEntryRows(e railEntry, width int) ([]string, hudSpan, hudSpan)
 	}
 	glyph, lead, folds := a.railLead(e)
 	room := width - at - ansi.StringWidth(lead)
+	// A PROGRAM'S WORK WEARS ITS BADGE FIRST IN THE TRAILING SLOT, straight after
+	// the title (programbadge.go). It is spoken for before the handle is, because
+	// it is the one fact on this line that tells two rows apart by what they ARE
+	// while the handle only tells them apart by number — so as the column narrows
+	// the handle goes first, then the badge falls to its short spelling, and only
+	// then is the title cut, down to [railTitleFloor]. An ordinary task has no
+	// badge, spends nothing here, and draws exactly the row it always drew.
+	wears := programSpelling(programBadge(a.nodeProgram(node)), node.title, room, railTitleFloor)
+	room -= programCells(wears)
 	// The trailing slot: a folded root says how much it is standing for, every
 	// other row says its handle, and both stand down when the title cannot afford
 	// them.
@@ -4674,7 +4708,10 @@ func (a *app) railEntryRows(e railEntry, width int) ([]string, hudSpan, hudSpan)
 	if at > 0 && whole > room && whole <= room+railWideGain {
 		a.railCramped = true
 	}
-	line := prefix + lead + a.railTitle(node, title)
+	// A PROGRAM'S BADGE IS DRAWN AND NEVER RECORDED AS A TARGET. The badge span
+	// returned below is the folded count's, which a press reads as "expand"; a
+	// program's badge is part of the row, and the row is the node's door.
+	line := prefix + lead + a.railTitle(node, title) + a.pal.programAfter(wears)
 	badge := hudSpan{}
 	if meta != "" {
 		if pad := room - ansi.StringWidth(title) + 1; pad > 0 {
@@ -5836,6 +5873,12 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		// [session.TaskNotice.Decider] — so a guard that only ever looked at the
 		// state would throw away the event that puts the chips back on the card
 		// somebody is waiting in front of (taskdone.go's [app.handedBackCard]).
+		//
+		// AND A PROGRAM THE NODE HAS NOT BEEN TOLD OF IS NEWS, on the brief's
+		// terms: an empty one says nothing, and one the node already carries is the
+		// second copy. A row first drawn from an older record that named none and
+		// then published again, in the same state, by the run that knows its
+		// program must not lose the badge to this guard.
 		node := a.tasks[notice.ID]
 		if node == nil || (notice.CostUSD <= node.cost &&
 			taskLiveLines(notice) == node.liveLines() && !taskRenames(notice, node) &&
@@ -5843,7 +5886,8 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 			!taskPauses(notice, node) && !taskReasks(notice, node) &&
 			notice.Decider == node.decider && notice.NextModel == node.nextModel && notice.Thinking == node.thinking &&
 			(notice.Brief == "" || notice.Brief == node.brief) &&
-			(notice.Acceptance == "" || notice.Acceptance == node.acceptance)) {
+			(notice.Acceptance == "" || notice.Acceptance == node.acceptance) &&
+			(notice.Program == "" || notice.Program == node.program)) {
 			return nil
 		}
 	}
@@ -5882,6 +5926,9 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 			node.label = card.title
 			node.assignment = firstNonEmpty(card.summary, card.brief)
 			node.brief, node.acceptance, node.where = card.brief, card.acceptance, card.where
+			// And which program it went to, so the row wears the badge the card
+			// wore even when the notice that made it said nothing about it.
+			node.program = card.program
 		}
 		a.tasks[notice.ID] = node
 		a.taskOrder = append(a.taskOrder, notice.ID)
@@ -6043,6 +6090,13 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	// an update that says nothing about it has not changed it.
 	if notice.Kind != "" {
 		node.kind = notice.Kind
+	}
+	// AND SO IS THE PROGRAM THE WORK WAS HANDED TO, on the kind's own rule: it is
+	// on every row a program's run publishes, so a row drawn for the first time
+	// after a conversation switch wears its badge from that first frame, and an
+	// update quiet about it has not taken the work off the program.
+	if program := strings.TrimSpace(notice.Program); program != "" {
+		node.program = program
 	}
 	// AND SO IS THE WORKING CONTEXT, on the same rule and for the same reason: a
 	// node that named one is in it for the rest of its life, and an update quiet

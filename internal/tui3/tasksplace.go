@@ -2072,7 +2072,7 @@ func tasksChatRow(line tasksLine, width int, now time.Time, folder, tilde string
 	}
 	bullet := conversationBullet(pal, chat.working, chat.unread, chat.question, pal.glyph(tokens.GWorking))
 	lead := tasksBareLead + pal.dim(tasksTreeLead(line, width, pal)) + bullet + " "
-	return tasksTableRow(lead, ansi.StringWidth(lead), name,
+	return tasksTableRow(lead, ansi.StringWidth(lead), name, "",
 		tasksChatStateField(chat), tasksKeyField(by.key, line.rank, now),
 		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit, project, tasksFoldMark(line, pal))
 }
@@ -2111,7 +2111,7 @@ func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palett
 	if item.plan != nil && item.plan.Total > 0 {
 		label += "  " + planProgress(*item.plan, width, pal)
 	}
-	return tasksTableRow(lead, cells, label,
+	return tasksTableRow(lead, cells, label, item.entry.Program,
 		state, second,
 		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit, "", tasksFoldMark(line, pal))
 }
@@ -2144,6 +2144,11 @@ func tasksCardHead(item tasksItem, width int, pal palette, lit bool) string {
 	label := tasksLabel(item.entry)
 	if item.plan != nil && item.plan.Total > 0 {
 		label += "  " + planProgress(*item.plan, width, pal)
+	}
+	// A PROGRAM'S WORK WEARS ITS BADGE AFTER THE NAME, as its wide row does
+	// ([tasksTableRow]); an ordinary row is fitted exactly as it always was.
+	if program := strings.TrimSpace(item.entry.Program); program != "" {
+		return lead + pal.programTitled(label, program, room, func(s string) string { return placeSubject(s, lit, pal) })
 	}
 	return lead + placeSubject(fit(label, room), lit, pal)
 }

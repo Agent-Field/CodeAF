@@ -408,6 +408,14 @@ const (
 //
 //	› ✓ ⧉ Fix the nil-map crash                                    3h
 //	  ◐ ⧉ Sweep the deprecated call sites                          4m
+//	  ◐ ⧉ Rewrite the auth middleware [senior-dev]                 9m
+//
+// A PROGRAM'S WORK SAYS WHOSE IT IS, with the badge its row wears on the side
+// list (programbadge.go) after the words. It is the brackets alone here and not
+// the badge's ink, for this list's own reason: the overlay paints a row by what
+// it IS — under the cursor, hovered, dim — and a word carrying colour of its own
+// would fight that paint, so the badge says itself in the row's ink like every
+// other word on it.
 func taskRowLabel(entry session.TaskIndexEntry, pal palette) string {
 	// Label is the title already cut to a row's width (session.taskLabel), and
 	// the uncut title stands in for a row written before that field existed.
@@ -415,7 +423,7 @@ func taskRowLabel(entry session.TaskIndexEntry, pal palette) string {
 	if words == "" {
 		words = entry.Title
 	}
-	return taskStatusGlyph(entry, pal) + " " + mentionMark(pal.ascii) + " " + words
+	return taskStatusGlyph(entry, pal) + " " + mentionMark(pal.ascii) + " " + programText(words, entry.Program)
 }
 
 func mentionMark(ascii bool) string {
@@ -576,6 +584,13 @@ func mentionTokens(text string) []string {
 // offer nobody can take, because there is nothing left running to send words to.
 func taskPointerBlock(entry session.TaskIndexEntry) string {
 	head := "[Task reference: " + entry.Title + " — id " + entry.ID + " · " + entry.Status
+	// A PROGRAM'S WORK SAYS WHICH PROGRAM HAD IT, in the word the model hands
+	// work to one with (`propose_task`'s `via`), because the model reading this
+	// block is deciding what to say about work the person can see was not its
+	// own worker's.
+	if program := strings.TrimSpace(entry.Program); program != "" {
+		head += " · via " + program
+	}
 	if when := mentionWhenWord(entry); when != "" {
 		head += " · " + when
 	}

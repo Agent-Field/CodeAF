@@ -23,6 +23,11 @@ task's, shows the actions the program took, each under the step of its own proce
 program asks for, the run's own work model answers, and the raw calls name the model that
 did.
 
+**Every program's tasks wear its name as a badge**: `[<name>]` after the task's title on
+the side list, the card, the task's page, the `@` list, the tasks place and home, and its
+initials (`[sd]` for senior-dev) where a list is narrow. A task codeaf's own worker does
+wears none, and a program added to codeaf later gets its own badge from its name.
+
 This is different from a harness or a subharness, which are built out of codeaf's own
 parts. A program codeaf carries has an engine of its own.
 
@@ -39,9 +44,9 @@ turn goes on, and the row appears on the rail.
 
 The model can choose one as well. `propose_task` takes `via` naming the program, and the
 card you answer says which program the work is going to: it asks `wants to start a
-[<name>] task: <title>`. The model is told the programs
-your build carries, each in the program's own words: what it is for, what its brief must
-say, and what it needs of its folder.
+[<name>] task: <title>`, and its top line wears the program's badge. The model is told
+the programs your build carries, each in the program's own words: what it is for, what its
+brief must say, and what it needs of its folder.
 
 At a shell, `codeaf <name> <brief>` runs the same program in the folder you are in, or the
 one `--dir` names. `--max-cost` and `--max-hours` set its ceilings, and `--json` prints its

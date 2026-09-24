@@ -940,6 +940,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what is senior-dev doing", "senior-dev"},
 		{"what do the steps on senior-dev's page mean", "senior-dev"},
 		{"how do I see senior-dev's raw calls to its model", "senior-dev"},
+		// And its badge, asked by somebody who has just seen a bracketed word on a
+		// task and does not know what it is, and by somebody looking for one.
+		{"how do I tell a senior-dev task from a normal task", "senior-dev"},
+		{"what does [senior-dev] mean on a task", "senior-dev"},
+		{"what is the [sd] next to a task on the side list", "senior-dev"},
+		{"which of my tasks are senior-dev's", "senior-dev"},
+		{"does every delegate get its own badge", "delegates"},
 		{"which folder does a delegate work in", "delegates"},
 		{"the harness I just had built is not in /subharness", "subharnesses"},
 		{"how do I run a harness I had designed", "subharnesses"},
