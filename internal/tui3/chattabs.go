@@ -388,7 +388,10 @@ func keysHold(keys []string, key string) bool {
 // title the surface is showing for the one in front, the agent's own for one the
 // keeper holds, and the last name it went by for one that is neither.
 func (a *app) tabAs(tab chatTab, held *kept, front string) chatTab {
-	tab.here = tab.key == front
+	// ONE TAB IS DRAWN SELECTED. While the work tab is up it is the selected one
+	// (worktab.go), and the conversation's own tab is a door back to the
+	// conversation ([app.tabGo]); both used to draw selected at once.
+	tab.here = tab.key == front && !a.workTabOn
 	tab.held = held != nil
 	switch {
 	case tab.here:
@@ -999,6 +1002,17 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 func (a *app) tabGo(tab chatTab) (cmd tea.Cmd) {
 	if tab.work {
 		return a.openWorkTab()
+	}
+	// THE CONVERSATION'S OWN TAB, PRESSED FROM A PAGE DRAWN OVER IT, IS THE WAY
+	// BACK TO IT: the page stands down and the conversation is what is drawn,
+	// exactly as `esc` would leave it. The press used to reach a switch to the
+	// conversation already in front, which did nothing.
+	if tab.key != "" && !tab.start && tab.key == a.frontTabKey() && (a.workTabOn || a.railTaskPlanOn) {
+		a.leaveTaskOverlays()
+		a.closeRoom()
+		a.tabReveal()
+		a.touch()
+		return nil
 	}
 	a.workTabOn = false
 	a.tabReveal()

@@ -2090,6 +2090,9 @@ func (a *app) finishRailPlan(id string) tea.Cmd {
 	keys := a.railPlanPending.keys
 	a.railPlanPending = railPlanPending{}
 	a.railTaskPlanOn = true
+	// THE SIDE LIST GIVES THE KEYBOARD BACK, because the page covers it: a list
+	// holding keys nobody can see would spend the page's first `esc` on itself.
+	a.railHold = false
 	var cmds []tea.Cmd
 	for _, key := range keys {
 		// A KEY THAT LEFT THE PAGE ENDS THE REPLAY. The keys were kept for the

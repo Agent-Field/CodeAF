@@ -95,7 +95,7 @@ shows, in order, each section left out when nothing is behind it:
 A page the engine will not answer for — a task this conversation did not spawn, or
 one whose store has gone — is not opened; the list stays where it was.
 
-## Open a run's task from the side list — click its row, or one of its parts
+## Open a run's task from the side list — click its row, or one of its parts, and leave it with esc
 
 With the switch on, a run is drawn in the conversation's side list as its own row,
 `#N`, with its parts and their checks hanging under it. Every one of those rows is a
@@ -103,8 +103,12 @@ door: click the run's row, or select it and press `enter`, and its page opens ov
 conversation; click a part's row or a check's row and THAT task's page opens. The page
 is the one the tasks place opens: what the task was asked, its notes, its steps, and the
 box that leaves a note — except a program's page, which is its conversation and has no
-box (see *A program's task page is a conversation, not steps*). `esc` goes back to the
-conversation exactly as you left it, with whatever you had typed still in the box.
+box (see *A program's task page is a conversation, not steps*).
+
+`esc` goes back to the conversation exactly as you left it, with whatever you had typed
+still in the box, and stops nothing. The page takes the whole window: while it is up it
+covers the tab strip, the side list and the transcript, and a press on any of them does
+nothing.
 
 The page can take a moment to arrive. From the press on, what you type belongs to the
 page and never to the conversation: the keys are kept in order and land in the page's

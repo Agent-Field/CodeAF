@@ -359,7 +359,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return cmd
 	}
-	if a.workTabOn {
+	// AND THE WORK TAB IS READ BELOW THE DOOR TOO, on the same law: ctrl+c on it
+	// was handed to the page, which took nothing.
+	if a.workTabOn && !door {
 		return a.workTabKey(msg)
 	}
 	if cmd, taken := a.pasteChipKey(msg); taken {

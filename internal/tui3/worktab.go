@@ -155,3 +155,22 @@ func (a *app) workTabFrame(width, height int) []string {
 	}
 	return append(out, prompt+a.pal.dim(text))
 }
+
+// leaveTaskOverlays stands down the two task pages the belt switch still draws
+// over the conversation — the work tab, and a run's page opened from the side
+// list — and is a no-op when neither is up.
+//
+// EVERY DOOR OUT OF THE CONVERSATION'S FRAME CALLS IT, because both pages are
+// drawn before any place is (view.go's [app.frameBody]): a place opened under
+// one of them was a place nobody could see, and Home opened that way dropped
+// off the strip the work tab went on drawing. Every place opens through
+// [app.standDownRest], and the conversation's own tab calls it on the way back
+// ([app.tabGo]).
+func (a *app) leaveTaskOverlays() {
+	if !a.workTabOn && !a.railTaskPlanOn {
+		return
+	}
+	a.workTabOn, a.railTaskPlanOn = false, false
+	a.closeTaskPlan()
+	a.chatTabBar = tabBar{}
+}

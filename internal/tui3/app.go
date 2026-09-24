@@ -3718,6 +3718,17 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if cmd, took := a.placeTabWheel(msg.Mouse().Y, placeWheelDelta(msg.Mouse().Button)); took {
 			return a, cmd
 		}
+		// AND THE TWO TASK PAGES THE BELT SWITCH DRAWS OVER THE CONVERSATION, on
+		// the press's terms: the wheel scrolls a run's page, the work tab's list
+		// keeps no offset of its own, and neither moves the tab names, the side
+		// list or the transcript under it.
+		if a.railTaskPlanOn {
+			a.taskPlanScroll(placeWheelDelta(msg.Mouse().Button))
+			return a, nil
+		}
+		if a.workTabOn {
+			return a, nil
+		}
 		// The settings panel is modal for the pointer too: it is the whole
 		// screen, so there is no conversation under it for a wheel to reach.
 		if a.at(pageSettings) {
@@ -3911,6 +3922,23 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// screen is the same for the pointer's own reason: it is three
 			// keystrokes, and a press through it would land on a frame that is
 			// not being drawn (firstrun.go).
+			return a, nil
+		}
+		// A TASK PAGE THE BELT SWITCH DRAWS OVER THE CONVERSATION IS MODAL FOR THE
+		// POINTER. The work tab answers its strip and nothing else, and a run's
+		// page opened from the side list draws no strip and answers nothing. A
+		// press that fell through was answered by the strip, the side list or the
+		// transcript underneath: a press where the conversation's ✕ had been
+		// closed the conversation's tab under a page that went on covering it.
+		if a.railTaskPlanOn {
+			return a, nil
+		}
+		if a.workTabOn {
+			if msg.Mouse().Button == tea.MouseLeft {
+				if cmd, took := a.tabPress(msg.Mouse().X, msg.Mouse().Y); took {
+					return a, cmd
+				}
+			}
 			return a, nil
 		}
 		if msg.Mouse().Button == tea.MouseLeft {

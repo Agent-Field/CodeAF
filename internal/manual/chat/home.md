@@ -2369,9 +2369,11 @@ keeps its status bullet, with the most recently active running conversation anim
 A task awaiting your decision has its own question indicator; its parent conversation
 does not repeat that indicator unless it has a separate question.
 
-## Does a run create another conversation in Sessions or the chats menu
+## Does a run create another conversation in Sessions or the chats menu — a run's tab
 
-A run’s tab is a view inside its parent conversation. Home’s Sessions list and the chats menu keep one row for that conversation, using its conversation title. The run’s own tab remains available beside it.
+No. Home’s Sessions list and the chats menu keep one row for the conversation, using its conversation title.
+
+A run also has a tab of its own on the strip beside its conversation’s, named after the task the run is working on, for as long as the run works. It is a view inside that conversation: while it is open it is the one tab drawn selected, and a press on the conversation’s tab, a press on `Home`, or `esc` leaves it.
 
 ## Why does a closed conversation say another window
 
