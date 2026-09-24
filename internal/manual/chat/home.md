@@ -722,7 +722,8 @@ stays empty until you select a result.
 `↑`/`↓` (or `ctrl+p`/`ctrl+n`) walk a column and `←`/`→` cross between columns.
 
 **One click is `enter`.** A click on a row opens it, and a click on a fold that names a
-place opens that place. A click on a panel's **heading** opens the place the heading names:
+place opens that place. A `projects` row is the one exception: a click on it picks that
+folder for the next message and opens nothing. A click on a panel's **heading** opens the place the heading names:
 `sessions` opens sessions, `since you left` opens memory, `spend` opens spend, and
 `standing` opens standing. There is no `needs you` heading. The conversation list has no heading. The `projects` heading opens nothing
 and stays dim. **A heading that opens somewhere underlines on mouse-over.** The
