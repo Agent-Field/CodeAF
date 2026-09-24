@@ -730,7 +730,7 @@ everything you set up from it:
 
 **Home and the standing place both work over a connection**, and both are about the far
 machine: home's panels are that machine's — its questions, its running work, its
-`scheduled` — and the
+`standing` — and the
 standing place lists both what stands on this conversation and what stands anywhere else on
 that machine. `p` and `s` write to the far machine's store and the refusal, if the store
 refuses, is that store's own. The count at the foot of the task column — and the

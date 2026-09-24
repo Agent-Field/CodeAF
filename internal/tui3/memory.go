@@ -57,6 +57,7 @@ const memoryOffNote = "memory is off for this session · turn it on under /setti
 
 // runRemember is /remember: keep one thing across conversations.
 func (a *app) runRemember(text string) {
+	a.noticeEvent(eventRemembered)
 	if a.hosted() {
 		a.note(memoryRemoteWord)
 		return

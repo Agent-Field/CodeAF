@@ -31,6 +31,7 @@ import (
 
 // runCrew is /crew: the three presets with the current one marked, or one applied.
 func (a *app) runCrew(arg string) {
+	a.noticeEvent(eventCrewShown)
 	if a.hosted() {
 		a.note(a.remoteProfileWord("the crew"))
 		return

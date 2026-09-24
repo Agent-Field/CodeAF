@@ -11,7 +11,7 @@ import (
 // Until 2026-09-17 the seam over the box carried the keys that work right now
 // on its right, and the row under the box carried the numbers:
 //
-//	─ porting the parser · glm-5.3-flash:high · ◇ asks ──── esc back · / commands ─
+//	─ porting the parser · glm-5.3-flash:high · ◇ asks ──── space space home · / commands ─
 //	 › your sentence
 //	 $0.27 · ⟲ saved $0.0038 · 58% cached   66.8k/1.3M · 5%             38 tok/s · ⠹ working · 12s
 //
@@ -22,7 +22,7 @@ import (
 //
 //	─ glm-5.3-flash (deepinfra):high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
 //	 › your sentence
-//	 alt+e effort · alt+a approvals · alt+k chats · / commands · esc back
+//	 alt+e effort · alt+a approvals · alt+k chats · / commands · space space home
 //
 //	─ glm-5.3-flash:auto · ◇ asks ───────────────── project: ~/codeaf ─
 //	 › type to search or start something new
@@ -221,8 +221,17 @@ func (a *app) seamTelemetryLabel(ledger, alive []hudPart) (string, string) {
 // in the payload grammar every hint on this surface is painted in. On a frame
 // with no seam the right edge's aliveness rides the same row's right, and the
 // keys give up their clauses before the state word gives up anything.
+//
+// AND THE PROJECT IS AT ITS RIGHT END, since 2026-09-22, exactly as it is on
+// home's keys row (hometip.go's [app.homeFootLine]): right-justified in what
+// the keys leave, cut on the right where they leave it too little, gone
+// where they leave it less than a word. It came down off the seam so the
+// two feet a person moves between most read the same way, and it is still
+// a door — onto the folder chooser ([app.seamProjectPress]) — so its columns
+// are recorded here, as the row is laid out ([app.seamProjectSpan]).
 func (a *app) hintRow(width int) string {
 	a.homeDoor = hudSpan{}
+	a.seamProjectSpan = hudSpan{}
 	hint := a.footHint(width)
 	right, rightPlain := "", ""
 	if !a.seamShowing() {
@@ -240,9 +249,9 @@ func (a *app) hintRow(width int) string {
 	} else {
 		hint = ""
 	}
-	if offset := strings.Index(hint, a.escapeDoorWord()); offset >= 0 {
+	if offset := strings.Index(hint, homeDoorWord); offset >= 0 {
 		from := 1 + ansi.StringWidth(hint[:offset])
-		a.homeDoor = hudSpan{from: from, to: from + ansi.StringWidth(a.escapeDoorWord())}
+		a.homeDoor = hudSpan{from: from, to: from + ansi.StringWidth(homeDoorWord)}
 	}
 	// THE ROW FILLS THE FRAME, as every foot row does: a row shorter than the
 	// frame would leave the cells behind it to whatever the last frame drew.
@@ -254,10 +263,22 @@ func (a *app) hintRow(width int) string {
 	if used > 0 {
 		used++
 	}
-	if rightPlain == "" {
-		return line + strings.Repeat(" ", max(0, width-used))
+	if rightPlain != "" {
+		return line + strings.Repeat(" ", max(1, width-used-ansi.StringWidth(rightPlain))) + right
 	}
-	return line + strings.Repeat(" ", max(1, width-used-ansi.StringWidth(rightPlain))) + right
+	// THE PROJECT, in what the keys leave — never inside a room, whose page
+	// carries the node's own identity (roomseam.go).
+	if project := a.seamProjectWord(); project != "" && !a.roomOpen() {
+		if text, span, ok := projectAtRight(project, used, width); ok {
+			a.seamProjectSpan = span
+			pad := width - 1 - used - ansi.StringWidth(text)
+			painted := a.paintSeamProject(text,
+				hudSpan{from: ansi.StringWidth(targetProjectLead), to: ansi.StringWidth(text)},
+				a.hot.kind == hoverSeamProject)
+			return line + strings.Repeat(" ", pad) + painted + " "
+		}
+	}
+	return line + strings.Repeat(" ", max(0, width-used))
 }
 
 // seamAliveLabel is the right edge alone — the rate and the state word — for

@@ -27,9 +27,8 @@ Every place is drawn in the same frame:
 5. a rule, then the **composer** — one line you can type into, wherever you are
 6. the hint line — what the keys do here
 
-`esc` dismisses an editor or filter first, then returns to Home. The resting tasks,
-spend and settings footers say `esc home`, including compact task screens. Places are not
-stacked: opening one closes whichever was up. Further Escape presses stay on Home.
+`esc` leaves a place and puts you back in the conversation you were in. Places are not
+stacked: opening one closes whichever was up, so `esc` is always one press from the chat.
 
 ## How to get to a place — the keyboard shortcut to jump between pages
 
@@ -55,7 +54,8 @@ Four ways, and they all reach the same seven rooms:
   conversations that match. A place ranks first, wears `▸`, and says `a place` out at the
   right margin. Home's list is a **drop-up** — it is read upward, out of the box you typed
   into — so ranking first means the offered place sits **below every conversation the same
-  words matched**, nearest the message box. One `↑` selects it.
+  words matched**, one row above `ask here` and `start a new conversation`, which is the
+  nearest row to your hand.
   Where the place can say what is behind it without going to the disk for it, the margin
   says that too: `a place · 6 orders, 1 fired today` on standing. A place that has nothing
   to count, or nothing in it, says `a place` alone.
@@ -147,7 +147,9 @@ Three gestures, the same on all seven places:
   moving the mouse onto a row selects it. Keyboard navigation immediately takes over
   and clears the old mouse highlight. A parked pointer cannot reclaim the selection;
   move it again to switch back. Leaving the list keeps the latest selection. Settings
-  retains its separate hover preview.
+  retains its separate hover preview. Home's `projects` rows are not selected by the
+  mouse: the pointer only underlines a project's name, and a click picks that folder for
+  the next message without moving the selection.
 - **a click on a row opens it**, exactly as `enter` on it would: on standing, spend and
   search the first press puts the cursor there and opens what the row names. **A click
   never spends**: on memory, where `enter` on a line asks the model about it, the press
@@ -188,8 +190,9 @@ mark. On **search** the words you type are the query, drawn on the first row of 
 same way, and `esc` clears them. On **memory** the head row echoes the filter in place of
 `type to filter`. Spend and standing take no text.
 
-**Escape backs out to Home from every place.** Filters clear first where present;
-editors and nested views close before their parent page. Two spaces no longer navigate.
+**Two spaces still open home from every place.** On a place with a filter they are typed
+into the empty filter and taken back out; on spend and standing, which have nothing to type
+into, the two bare spaces are counted, and any other key between them disarms the door.
 
 ## The rule above home's box — where it lands, the model, thinking, approvals, what happened to the here ~/codeaf chip
 
@@ -197,18 +200,24 @@ The line over home's box is the same shape as the line over a conversation's own
 box:
 
 ```
-─ glm-5.3-flash:auto · ◇ asks ─── project: ~/src/parser
+                        💡 /project sets the project folder for a new conversation ✕
+─ glm-5.3-flash:auto · ◇ asks ──────────────────────────────────────────────────────
 › type to search or start something new
-alt+p project · alt+e effort · alt+a approvals · alt+k chats · / commands
+alt+p project · alt+e effort · alt+a approvals · / commands        project: ~/src/parser
 ```
 
 At the left it says **what model** answers, then a colon and **how hard it thinks**
 (the rung or `auto`, without a badge), and **what it runs without asking** (`◇` and `asks`, `guardian`, `YOLO` or `refuses` — the same words the
 approvals chip uses inside a conversation). The model is always bold and bright cyan,
-on home and in conversations. At the far right, `project: <path>` names where the
-next conversation opens; in a conversation it names that conversation's workspace.
-Long paths truncate on the right, and the field disappears if there is no room. The bottom row names the
-available project, effort and approval controls; the cells can also be pressed:
+on home and in conversations. On both boxes `project: <path>` is at the right end of the
+**keys row under the box** (it left the rule on 2026-09-22): home's names where the next
+conversation opens, a conversation's names its own workspace. The keys keep their room: a
+long path truncates on the right, and the field disappears if there is less than a word
+of room. **On home** the dim line above the rule, when there is one, is a tip (see *hints
+and tips*), there from the first minute. **In a conversation** the tip is not that row at
+all: it is the lowest rung of the keys row itself, taking the slot from the rest state
+whenever nothing else is happening. The bottom row names the available project, effort
+and approval controls; the cells can also be pressed:
 
 | cell | chord | or |
 |---|---|---|
@@ -234,12 +243,12 @@ this process was started with it.
 
 **The `here ~/codeaf` chip is gone**, and so are the rules that the other places used to
 draw over their boxes. The arrow and `new conversation in` lead are gone from home too;
-the model starts the seam, and the project sits at the far right. A place with something to say about its page — `nothing matches`
+the model starts the seam, and the project sits at the far right of the keys row under the box. A place with something to say about its page — `nothing matches`
 on tasks when a filter emptied it, a receipt on memory, the "this session is on another
 machine" line over `--host` — says it on its rule, where the box's rule would have been.
 
 **Over `--host`, and on a session with no dial**, the rung and the gate are simply not on
-home's rule — the folder and the model still are. The far machine's rows decide what a
+home's rule — the model still is, and the folder is still at the right of the keys row. The far machine's rows decide what a
 conversation there runs without asking.
 
 ## Why did pressing alt+enter not send my task straight away
@@ -448,7 +457,7 @@ being held down — it only reports what arrived.
 
 The first place, and the one codeaf opens on. Everything on this machine, from every
 project, in one, two or three columns — one `sessions` list of the fifteen most recent
-conversations, then question rows, `projects`, `since you left`, `spend`, and `scheduled`.
+conversations, then question rows, `projects`, `since you left`, `spend`, and `standing`.
 Open tabs and saved history share that list, with closed conversations dimmed. Which
 column a panel stands in follows what it holds: every panel with rows is in the **field** at
 the left, and the **rail** at the right holds `projects` and `spend` at its top and, under
@@ -457,8 +466,9 @@ naming what arrives there.
 
 Its own keys are in the **Home** page: `↑↓` walk a panel, `←→` cross columns, a digit
 answers the question row drawing its answers, and `enter` opens a row. `tab` is the way to the
-next place, and the errand pane is taken into with `→` rather than `tab`. Home has no
-`alt+<letter>` keys — `alt+g` and `alt+q` are unbound there.
+next place, and the errand pane is taken into with `→` rather than `tab`. Home uses
+`alt+p` for the next conversation's project, `alt+e` for effort, `alt+a` for
+approvals and `alt+k` for chats; `alt+g` and `alt+q` are unbound there.
 
 Clicking Home’s `since you left` heading opens memory. Questions appear as amber `?`
 bullets on the conversation or task, with no separate `needs you` heading.
@@ -471,7 +481,7 @@ queued, waiting or unanswered work. Once that work settles, its whole tree moves
 completed; new work moves it back. Each task retains its own state word.
 
 Both sections default to newest activity first; click the age heading to reverse. Conversation titles match Home, and the same
-bullets mark answering, unread and unanswered states. Every conversation and nested task
+bullets mark running work, unread replies and unanswered questions. Every conversation and nested task
 starts expanded, with connecting tree lines and fold arrows immediately after titles in the left column. Projects
 have their own column. You can fold a branch yourself. `/history`, `ctrl+.` and `alt+2` open it.
 
@@ -493,12 +503,13 @@ page — and the foot names only what is true of the row you are on: `enter open
 ## Close or put away a task, find an archived task, or reopen it
 
 On home or the Sessions list, select the task, press `→`, then `x close`.
-This hides only that task from home's panels and the unfiltered Sessions list. Its work
-continues if it is running; its record, conversation, and other tasks are unchanged.
-The choice is saved with the conversation and survives reopening the app.
+The task disappears immediately from the Sessions list, including the current filter
+results, and from home's panels. Its work continues if it is running; its record,
+conversation, and other tasks are unchanged. The choice is saved with the conversation
+and survives reopening the app.
 
-To recover it, type its name in the Tasks filter. Search includes put-away tasks within
-the selected time window; expand that window if the task is older. Select the matching
+To recover it, change the Sessions filter or reopen the page and type its name. Search
+includes put-away tasks within the selected time window; expand that window if the task is older. Select the matching
 task and use `→`, then `x reopen`. `enter` can still open its record.
 
 `n new in project`, `o open folder`, and `p copy project` use the project of the conversation
@@ -594,7 +605,7 @@ one word most people guess for "what has this cost" printed one conversation's b
 never mentioned the machine-wide ledger. It opens the place now.
 
 **The foot names the keys this place has**, and it is built from the row under the cursor:
-`enter opens what spent it · → the limits · shift+←→ move the days · tab next place · esc home`.
+`enter opens what spent it · → the limits · shift+←→ move the days · tab next place · esc close`.
 Where the head row is too narrow to draw its own arrows the window clause is dropped, and
 over an empty ledger only the way out is named.
 
@@ -602,7 +613,7 @@ On a machine that has spent nothing the place is its heading `spend` over one li
 `every chat and task is priced here as it runs`. A window paged onto a quiet fortnight is a
 different thing — its head row stays, with the arrows that page it back.
 
-## search — finding anything said or run
+## search — finding anything said or run, and what it matches when memory is off
 
 Everything that has been said on this machine. `alt+7` opens it — it is not on the tab
 bar — and typing searches: the
@@ -632,12 +643,19 @@ With nothing typed the place is its heading `search` over one line saying what t
 **A search that finds nothing says what to do about it**:
 `nothing on this machine says "amber rail" · try fewer words, or a name`.
 
-**And a window with no index behind it says so** rather than reporting an empty result:
-`there is no index of this machine's conversations behind this window, so nothing can be
-searched from here.` — which is a different sentence from "nobody has said that", and the
-difference matters. Over `--host` the sentence names the machine instead: the index is the
-one this machine's conversations were written into, and the conversation you are in was
-written on the other one.
+**With memory off the place refuses, and says which silence it is.** What was said is
+indexed only while the **memory** row is on — memory off opens no store at all — so this
+window says `there is no index of this machine's conversations behind this window, so
+nothing can be searched from here.` and searches nothing, whatever you type. That is
+deliberate: a search that never happened must not report a result, because
+`nothing on this machine says "amber rail"` would make you believe a conversation does not
+exist. **To find a conversation on such a machine, use home's box**, which matches names
+and projects and has never needed the index. (For one build on 2026-09-22 this place
+matched by name itself; that was taken back on 2026-09-23, because a place called `search`
+that searches something narrower than it says reads exactly like a whole search that found
+nothing.) Over `--host` a sentence at the top names the machine: the index is the one this
+machine's conversations were written into, and the conversation you are in was written on
+the other one.
 
 Typing here searches and nothing else. **Typing on home is what offers places** (`sta` offers
 the standing place beside the chats that match) — the same offer made twice, one `tab` apart,
@@ -796,7 +814,7 @@ afternoon.
 place segment and the legend under the box already carry. On a local session it is not there
 at all: a machine name is worth a word only when there is more than one machine in play.
 
-## Why is home empty over ssh when I connect to another machine — Escape over --host
+## Why is home empty over ssh when I connect to another machine — space space over --host
 
 **It is not empty any more, and this is the answer if you have seen it be.**
 
@@ -808,7 +826,7 @@ the chat you came from keeps running, the same door `codeaf resume` uses locally
 It used to draw **one dim line** where the rows would be —
 `home shows this machine's projects, and this session is on another` — because the projects
 it could reach were the laptop's while the work was on the server. Before that it refused to
-open at all. If you press Escape over a connection and get one line, the machine you are
+open at all. If you press space space over a connection and get one line, the machine you are
 attached to is running an older codeaf than the one you are sitting at, and the fix is the
 same as for any version mismatch: update the older one.
 
@@ -873,11 +891,6 @@ walking the conversation's task roster it still widens that roster. Project sele
 on home and in the task composer now uses `alt+p` (`opt+p`), and clicking home's
 project path takes the same step through the same list. The selected project remains
 set when you start a conversation and return home.
-
-## Where is the model filter in Settings
-
-When choosing a model for a setting, type to filter. The filter text appears above
-the model list, and Enter applies the selected model.
 
 ## Where is the model filter in Settings
 

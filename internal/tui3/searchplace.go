@@ -49,9 +49,14 @@ type searchReading struct {
 	hits   []searchHit
 	facets []searchFacet
 	now    time.Time
-	// noIndex says there is no conversation store behind this window at all, so
-	// that "nobody has said that" and "nothing looked" are two different
-	// sentences on the page rather than one ([searchNoIndexWord]).
+	// noIndex says there is no conversation store behind this window, and so
+	// nothing to search at all ([searchNoIndexWord]).
+	//
+	// THE PLACE MATCHED BY NAME HERE FOR ONE BUILD on 2026-09-22 — the way
+	// home's box does — and the owner took that back on 2026-09-23. A place
+	// called `search` that quietly searches something narrower than what it
+	// says is worse than one that refuses: the refusal is a fact a person can
+	// act on, and half a search reads like a whole one that found nothing.
 	noIndex bool
 	// unfolded is whether every result is drawn rather than the first
 	// [searchShown] and a fold line ([searchReading.unfolding]).

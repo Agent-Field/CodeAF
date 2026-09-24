@@ -250,7 +250,7 @@ not.
 
 Two things it does **not** do:
 
-- **A command you interrupted is interrupted.** Pressing `ctrl+c` cancels the turn,
+- **A command you interrupted is interrupted.** Pressing `esc` cancels the turn,
   and a cancelled command is never kept as a job: it dies, no job appears, and the
   answer is `Command aborted`. Stop means stop.
 - **It does not outlive the conversation.** A foreground command kept as a job is a job, so it is
@@ -697,7 +697,7 @@ some cannot see at all.
 You attach pictures to a message you type. **Drag a file onto the terminal, or
 paste one you copied as a file**, and it is attached — your sentence gets a short
 `[image #1]` token where the path would have gone, and you can then talk about
-"image #1" and be understood. `/image <path>` and the `@` completion attach one
+"image #1" and be understood. `/attach <path>` and the `@` completion attach one
 too. The picture travels **inside the message as the picture**, not as a path
 somebody has to go and open. The "what the keys do" page has the whole of it.
 
@@ -845,7 +845,7 @@ absolute path**, however you spelled it in the call:
 **One look gets ten minutes**, and then the tool answers without it. A model that
 takes the picture and goes quiet used to leave the row running for the rest of
 the conversation; now the window runs out and you get the line above instead.
-Press ctrl+c and the look stops on the same beat everything else does.
+Press esc and the look stops on the same beat everything else does.
 
 **When no looking model can be reached, the tool is not there at all** — it is
 left off the toolbelt rather than offered and made to refuse. Ask for a picture
