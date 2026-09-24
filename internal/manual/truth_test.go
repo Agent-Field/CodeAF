@@ -153,6 +153,28 @@ func quotedFacts(t *testing.T) []quotedFact {
 			{"screen", "bounded at %s seconds"},
 		},
 	}, {
+		fact: "the run supervisor's re-ask cadence", owner: "run.passInterval",
+		value: strconv.Itoa(sourceDurationNumber(t, "../run/run.go", "passInterval", "Millisecond")),
+		quotes: []quotedIn{
+			{"how-tasks-run", "every **%s milliseconds**"},
+			{"tasks", "every %s milliseconds"},
+		},
+	}, {
+		fact: "the node road's re-ask cadence", owner: "session.taskPressurePoll",
+		value: strconv.Itoa(sourceDurationNumber(t, "../session/task_pressure.go", "taskPressurePoll", "Second")),
+		quotes: []quotedIn{
+			{"how-tasks-run", "every **%s seconds**"},
+			{"tasks", "every %s seconds"},
+		},
+	}, {
+		fact: "how much of one skill file is read", owner: "skills.MaxSkillFileBytes",
+		value:  strconv.Itoa(sourceByteLimit(t, "../skills/skills.go", "MaxSkillFileBytes") / 1024),
+		quotes: []quotedIn{{"skills-from-other-tools", "at most %s KiB"}},
+	}, {
+		fact: "the plugin JSON cap", owner: "skills.maxPluginJSONBytes",
+		value:  strconv.Itoa(sourceByteLimit(t, "../skills/regular.go", "maxPluginJSONBytes") / (1 << 20)),
+		quotes: []quotedIn{{"skills-from-other-tools", "over %s MiB"}},
+	}, {
 		fact: "how many models the crew is", owner: "config.ModelTiers", value: seats, others: notSeats,
 		quotes: []quotedIn{
 			{"commands", "the %s models codeaf uses on its own behalf"},
@@ -605,6 +627,34 @@ func sourceNumber(t *testing.T, path, name string) int {
 		t.Fatalf("%s = %q is not a number", name, match[1])
 	}
 	return value
+}
+
+// sourceDurationNumber checks both a cadence's figure and its unit, so a
+// millisecond to second change cannot leave a numerically equal page green.
+func sourceDurationNumber(t *testing.T, path, name, unit string) int {
+	t.Helper()
+	match := regexp.MustCompile(`(?m)^\s*(?:const\s+)?` + regexp.QuoteMeta(name) + `\s*=\s*(\d+)\s*\*\s*time\.([A-Za-z]+)`).FindStringSubmatch(sourceText(t, path))
+	if match == nil || match[2] != unit {
+		t.Fatalf("%s no longer holds %s in time.%s", path, name, unit)
+	}
+	n, _ := strconv.Atoi(match[1])
+	return n
+}
+
+// sourceByteLimit resolves the small arithmetic expression that owns a file
+// cap, including its multiplier; reading only its first digit would miss drift.
+func sourceByteLimit(t *testing.T, path, name string) int {
+	t.Helper()
+	match := regexp.MustCompile(`(?m)^\s*(?:const\s+)?` + regexp.QuoteMeta(name) + `\s*=\s*(\d+)\s*(\*|<<)\s*(\d+)`).FindStringSubmatch(sourceText(t, path))
+	if match == nil {
+		t.Fatalf("%s no longer holds a byte limit called %s", path, name)
+	}
+	left, _ := strconv.Atoi(match[1])
+	right, _ := strconv.Atoi(match[3])
+	if match[2] == "<<" {
+		return left << right
+	}
+	return left * right
 }
 
 // flagNumber is the default of one command-line flag, read out of the file that
