@@ -28,9 +28,9 @@ import (
 // program's run leaves when its process goes away mid-run: its run task still
 // open, the program's record beside it, a charge on the ledger, and a model
 // call that came back at lastSeen. It answers lastSeen.
-func orphanProgramStore(t *testing.T, path, rootID, brief string) time.Time {
+func orphanProgramStore(t *testing.T, path, rootID, brief string, chat ...string) time.Time {
 	t.Helper()
-	store, err := plandb.Open(path, "the dead run", rootID, "the dead run", brief)
+	store, err := plandb.Open(path, "the dead run", rootID, "the dead run", brief, chat...)
 	if err != nil {
 		t.Fatalf("seed the dead run's store: %v", err)
 	}
@@ -231,14 +231,26 @@ func TestAReopenedConversationEndsTheProgramRunItsLastProcessLeftOpen(t *testing
 	g := life.graph()
 	id := g.reserve()
 	rootID := strconv.FormatUint(id, 10)
-	lastSeen := orphanProgramStore(t, g.planPath(), rootID, "the brief")
+	lastSeen := orphanProgramStore(t, g.planPath(), rootID, "the brief", g.planChat())
 	// The row as the process that died last wrote it down: running.
 	life.publishRunRow(g, TaskNotice{ID: id, Title: "the dead run", State: TaskRunning, StartedAt: time.Now()})
 	_ = life.Close()
 
 	reopened := open()
-	if rows := reopened.graph().runRows(id); len(rows) != 1 || rows[0].State != TaskInterrupted {
-		t.Fatalf("the row came back as %+v, want interrupted", rows)
+	// THE ROW SETTLES WITH ITS STORE. A program's run is one nothing can carry
+	// on, so the row the reopen restored as interrupted — which the side list
+	// drew as `?`, waiting on a person — is settled where the page already
+	// stood: ended, in codeaf's sentence, not a fault, at the instant it was
+	// last seen, with its span.
+	rows := reopened.graph().runRows(id)
+	if len(rows) != 1 || rows[0].State != TaskFailed || rows[0].Ending != TaskEndingInterrupted ||
+		rows[0].Report != "codeaf closed while fake was running" || !rows[0].EndedAt.Equal(lastSeen) {
+		t.Fatalf("the row came back as %+v, want it ended as interrupted, in codeaf's sentence, at %v", rows, lastSeen)
+	}
+	page, ok := reopened.PlanTaskPage(rootID)
+	if !ok || page.Row.Status != string(plandb.StatusFailed) || page.Row.Stage != "" || !page.Row.Live.Empty() ||
+		page.Row.Ended.IsZero() || !page.Row.Ended.Equal(lastSeen) {
+		t.Fatalf("the dead run's page row = %+v (%v), want it ended at %v with no live stage", page.Row, ok, lastSeen)
 	}
 	store := beltRunStoreAt(t, place)
 	defer store.Close()
@@ -251,5 +263,41 @@ func TestAReopenedConversationEndsTheProgramRunItsLastProcessLeftOpen(t *testing
 	}
 	if _, err := os.Stat(filepath.Join(place, planStoreFilename+".1")); !os.IsNotExist(err) {
 		t.Fatalf("opening a conversation archived its store: %v", err)
+	}
+}
+
+// A RUN CODEAF CLOSED UNDER READS ENDED ON ITS PAGE, NOT WORKING. Closing the
+// conversation writes the run's ending before it cuts the program, and the
+// program never lives to clear the stage it was in, so the page's line read
+// `working` with no time over a run nothing was driving (found by killing the
+// engine under a real senior-dev run). A task the store has ended has no live
+// stage, and its time ends where the store says it ended.
+func TestAProgramsTaskTheStoreHasEndedHasNoLiveStageAndStopsItsClock(t *testing.T) {
+	place := t.TempDir()
+	agent, _ := newTestAgent(t, beltRunCompleter{text: ""}, func(config *Config) {
+		config.Workspace = newTestRepo(t)
+		config.Place = Place{Dir: place}
+		config.Delegates = testPrograms("fake")
+	})
+	g := agent.graph()
+	id := g.reserve()
+	rootID := strconv.FormatUint(id, 10)
+	orphanProgramStore(t, g.planPath(), rootID, "the brief", g.planChat())
+	store := beltRunStoreAt(t, place)
+	if err := store.SetLive(rootID, 3, "fake: working"); err != nil {
+		t.Fatal(err)
+	}
+	endedAt := time.Now().UTC().Add(-time.Minute).Truncate(time.Millisecond)
+	if err := store.FailRootAt("codeaf closed while fake was running", endedAt); err != nil {
+		t.Fatal(err)
+	}
+	_ = store.Close()
+	agent.publishRunRow(g, TaskNotice{ID: id, Title: "the dead run", State: TaskRunning, StartedAt: endedAt.Add(-5 * time.Minute)})
+	page, ok := agent.PlanTaskPage(rootID)
+	if !ok || page.Row.Stage != "" || !page.Row.Live.Empty() {
+		t.Fatalf("an ended program task's page row = %+v (%v), want no live stage", page.Row, ok)
+	}
+	if page.Row.Ended.IsZero() {
+		t.Fatalf("an ended program task's page row has no end, want its clock stopped where the store ended it")
 	}
 }

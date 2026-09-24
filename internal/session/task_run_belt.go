@@ -807,10 +807,44 @@ func (a *Agent) endInterruptedProgramRun() {
 	if err != nil {
 		return
 	}
-	if kept, found := runRowOf(g, row); !found || kept.State != TaskInterrupted {
+	kept, found := runRowOf(g, row)
+	if !found || kept.State != TaskInterrupted {
 		return
 	}
 	endOrphanedProgramRun(store)
+	a.settleInterruptedProgramRow(g, store, kept)
+}
+
+// settleInterruptedProgramRow settles the row a reopen restored as interrupted
+// once its program's run has ended in its store, whether this reopen ended it
+// or the closing did first ([Agent.cutBeltRun]).
+//
+// A PROGRAM'S RUN IS ONE NOTHING CAN CARRY ON, so a row left interrupted — which
+// the side list draws as waiting on a person — says something the page does
+// not: the page reads it ended, in codeaf's sentence, with its time stopped.
+// The row now says the same, not as a fault, ending where the store ended it.
+// A run whose task the store calls done is left as it came back: its program
+// finished, but the work was never landed, and that is a person's call.
+func (a *Agent) settleInterruptedProgramRow(g *TaskGraph, store *plandb.Store, kept TaskNotice) {
+	root := store.Task(store.RootID())
+	if root == nil || (root.Status != plandb.StatusFailed && root.Status != plandb.StatusCancelled) {
+		return
+	}
+	record, ok := delegate.ReadProgram(plandb.TaskDir(filepath.Dir(store.Path()), store.RootID()))
+	if !ok {
+		return
+	}
+	settled := kept
+	settled.State = TaskFailed
+	settled.Report = strings.TrimSpace(root.Error)
+	settled.Ending = TaskEndingProgram
+	if settled.Report == "" || settled.Report == programClosedSentence(record.Name) {
+		settled.Report = programClosedSentence(record.Name)
+		settled.Ending = TaskEndingInterrupted
+	}
+	settled.EndedAt = root.CompletedAt
+	settled.Elapsed = 0
+	a.publishRunRow(g, settled)
 }
 
 // holdsInterruptedRun says whether any run row this graph holds came back

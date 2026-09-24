@@ -375,8 +375,10 @@ tests could run, or to where it began.
 
 senior-dev runs inside the codeaf that started it and ends with it. When you quit codeaf
 or close the conversation, when the engine is stopped (`codeaf engine --stop`, a signal),
-or when codeaf crashes while senior-dev is working, the run is over: its page reads
-`incomplete` with `codeaf closed while senior-dev was running` beside it.
+or when codeaf crashes while senior-dev is working, the run is over: its page and its row
+on the side list read `incomplete` with `codeaf closed while senior-dev was running` beside
+it, no stage, and nothing waiting on you — it is not a fault, and there is nothing to carry
+on.
 
 **The run ends where it was last seen working**: the end of its last model call, its last
 charge, or its store's last change, whichever is latest. So the time and the spend on its

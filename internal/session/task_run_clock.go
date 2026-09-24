@@ -196,7 +196,21 @@ func (c planRunClocks) apply(row *PlanTaskRow, dir string, task *plandb.Task, ro
 			row.Ended = runClockEnd(started, record, time.Time{})
 		}
 	}
-	if task.ID != root || terminalStoreStatus(task.Status) || c.live == task.ID {
+	// A TASK THE STORE HAS ENDED IS IN NO STAGE, AND ITS CLOCK HAS STOPPED.
+	// Closing a conversation writes its program's ending before it cuts the
+	// program, and a program cut that way never lives to clear the stage it was
+	// in, so the page read `working` with no time over a run nothing was
+	// driving (found by killing the engine under a real senior-dev run). A live
+	// step on an ended task is left over, and when neither the row nor the
+	// program's record says when the run ended, the store's own ending does.
+	if terminalStoreStatus(task.Status) {
+		row.Live, row.Stage = plandb.LiveStep{}, ""
+		if !row.Started.IsZero() && row.Ended.IsZero() && !task.CompletedAt.Before(row.Started) {
+			row.Ended = task.CompletedAt
+		}
+		return
+	}
+	if task.ID != root || c.live == task.ID {
 		return
 	}
 	row.Status = string(plandb.StatusFailed)
