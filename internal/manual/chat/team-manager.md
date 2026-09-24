@@ -100,6 +100,16 @@ Each is one line of traffic per change, never one per step. They are the session
 nothing you type is ever written to the traffic. `team_status` reads them too, so a member held
 on a permission prompt shows as `asking` rather than `running`.
 
+## Who a member reports to
+
+A conversation can be in more than one team, but it **reports to** exactly one manager, its
+home: the nearest manager above it, picked for you and never changed by itself. Its home
+manager directs it; every other manager whose team it is in is a **link**, which may read it
+(`team_read`) and send it a note, and nothing more. A link's `team_send` of a directive, and
+its `team_stop`, are refused with a sentence saying whose the member is; a directive to
+`everyone` goes to the members who report to that manager and names the ones it left out.
+In `team_status` a shared member reads `reports to dock`, and `busy for dock` while it runs.
+
 ## Who outranks whom
 
 Your own words come first. What you say in a member's own conversation stands over anything
@@ -119,9 +129,14 @@ on one waits for you.
 | `team_send` | a message to one member or to everyone, as a note (information, which waits) or a directive (an instruction, which starts an idle member) | no |
 | `team_stop` | ends one member's current turn, the way your own Stop does: nothing is deleted, and its background tasks and jobs keep running | no |
 | `team_start` | a new member conversation with a handle and a brief; it opens in the team's folder and is handed the brief, marked as the manager's, on its first request | yes |
+| `team_decide` | answers a decision packet waiting on the manager, most often a member's question: an option, or its own words | no |
+| `team_escalate` | sends a packet waiting on the manager up, to its own manager or to you, with the reason it is not the manager's to decide | no |
+| `team_close_report` | brings you the team's closing report (done, left, where the files are) after you asked it to wrap up | no |
 
-`team_start` asks because a new conversation spends money for as long as it runs. The others
-act only inside the team you made, and every one of them is logged in the team's traffic.
+`team_start` asks because a new conversation spends money for as long as it runs, and it is
+refused while the team is at its daily cap. The others act only inside the team you made, and
+every one of them is logged in the team's traffic. Questions, packets, caps and wrapping up are
+on the page **Team questions, decisions and caps**.
 Like any tool, each can be set to ask or allow in `/settings` under the tool approvals.
 
 ## The member's verb
@@ -152,8 +167,10 @@ more bound it: one conversation is woken at most 20 times an hour, and a manager
 by its team with nothing from you stops being woken and asks you instead, as a waiting line in
 the traffic. It is woken again after you next say something to it.
 
-A team's auto-wake can be turned off: its entry in `teams.json` in the profile carries
-`"wake": false`. With it off, every message waits for each conversation's next turn.
+A team's auto-wake can be turned off. `team messages wake` in `/settings` under **Teams** is
+the default every team inherits (on), and a team can override it for itself and the teams
+under it: its entry in `teams.json` in the profile carries `"wake": false` (or `true`). With it
+off, every message waits for each conversation's next turn.
 
 A member busy in one long command reads a message when that command returns, which is what
 `team_stop` is for. Nothing is delivered twice, and a conversation that joins a team is not

@@ -256,9 +256,11 @@ the person to type again is not running a team, so the lines that ask for an ans
   count. Wakes spend through the ordinary budgets.
 - **Visibility.** Every wake is a Traffic event, `◆ woke @web` and `@web woke ◆`, and every
   refusal is one too.
-- **Off switch.** A team's `wake` field in `teams.json`, on when absent and written only as
-  `"wake": false`. The settings to turn it off from the interface come with the delegation
-  work; until then it is the field and the manual's line.
+- **Off switch.** `wake` is one of the inheritable team settings (8.2): a team's own `wake`
+  in `teams.json` (a file from before it was inheritable wrote only `"wake": false`, which
+  reads unchanged as an override to off), else the nearest ancestor's, else the profile's
+  `teams.wake` (on). The settings tab's Teams group carries the default as its own row, `team
+  messages wake`.
 
 **Known limits of v1.** A stop or a start takes effect only in a window that holds those
 conversations. A member waiting on a permission prompt shows as running, because the prompt is
@@ -330,7 +332,7 @@ foundation commit and is tested.
 
 Everything below is `internal/teams` unless named otherwise.
 
-**Per-team settings** (`teamsettings.go`). Four optional overrides, stored flat on the team in
+**Per-team settings** (`teamsettings.go`). Five optional overrides, stored flat on the team in
 `teams.json`, each unset meaning inherit:
 
 | teams.json field | Go | Meaning | Band |
@@ -339,13 +341,14 @@ Everything below is `internal/teams` unless named otherwise.
 | `cap_usd_day` | `*float64` | dollars per local day for the team and everything under it; `0` is an explicit no cap | `>= 0` |
 | `depth_limit` | `*int` | levels of teams, the top counting as one | 1 to 10 |
 | `sub_share` | `*float64` | fraction of this team's cap a new sub-team is made with | (0, 1] |
+| `wake` | `*bool` | team traffic wakes idle conversations (section 5); the old `"wake": false` reads as off | |
 
-- `type Settings struct{ QuestionsUp *bool; CapUSDDay *float64; DepthLimit *int; SubShare *float64 }`,
+- `type Settings struct{ QuestionsUp *bool; CapUSDDay *float64; DepthLimit *int; SubShare *float64; Wake *bool }`,
   `Team.Settings`, `(Settings).Empty()`.
 - `(*File).SetSettings(id, func(*Settings)) error`: set a field to override, nil it to
   reset; out of band is `ErrSetting` and nothing changes. tidy drops an out-of-band value in a
   hand-edited file (it reads as inherit).
-- `type Defaults struct{ QuestionsUp bool; CapUSDDay float64; DepthLimit int; SubShare float64 }`
+- `type Defaults struct{ QuestionsUp bool; CapUSDDay float64; DepthLimit int; SubShare float64; Wake bool }`
   and `DefaultsAt(profileDir) Defaults`, from config.json in one read.
 - `(*File).Effective(id, Defaults) Effective`: each value with its `Origin`
   (`QuestionsUpFrom`, `CapFrom`, `DepthFrom`, `SubShareFrom`). `Origin{Kind, Team, Name}`,
@@ -372,8 +375,10 @@ settings tab `Teams`, each a row with a named reader `TeamDefaultsAt` and a ledg
 | `teams.cap_usd_day` | dollars, `no cap` at 0 | 0 | team daily cap |
 | `teams.sub_share_pct` | whole %, 1 to 100 | 50 | sub-team share |
 | `teams.depth_limit` | levels, 1 to 10 | 3 | team depth |
+| `teams.wake` | on/off | on | team messages wake |
 
-All four are guarded from model self-service (`selfservice.go`): a manager is a model, and
+All five are guarded from model self-service (`teams.wake` as pressure: a wake starts a turn
+nobody typed), the first four (`selfservice.go`): a manager is a model, and
 each is a rail on managers (money, pressure, consent).
 
 **Home and links** (`home.go`).
@@ -490,7 +495,7 @@ its transcript folder's name. So:
   appended bytes are read; a quiet ledger costs a stat. `internal/session`'s
   `TestTeamSpendReadsTheSessionsLedger` pins the path and field names.
 - A sub-team closed today still counts toward its parent's day: the money was spent.
-- Nothing here enforces a cap.
+- Nothing here enforces a cap; the session does (8.8).
 
 **Traffic kinds added** (`traffic.go`):
 
@@ -693,7 +698,110 @@ it), and `Close team…`. Closable with `esc`.
 - Spend over `--host` is the engine machine's ledger only. A conversation whose model calls
   were made on another machine (a laptop-run member of a far team) is not counted; no such
   arrangement exists today.
-- A packet file is never rotated. A team that raises thousands of packets grows it without
+- (Settled by d1, 8.8: the packet file now rotates.) A packet file was never rotated. A team that raises thousands of packets grew it without
   bound; if that happens, rotate like Traffic and keep undecided packets in the new file.
 - The ruling does not say who may reopen a team whose parent is closed; the store refuses it
   (`ErrParentClosed`) and the card should offer `Reopen harbor` instead.
+
+### 8.8 What the session built (d1)
+
+Everything below is `internal/session` unless named otherwise, on branch `task/deleg-session`.
+The interface side (d2) meets it only through `internal/teams` and its Traffic.
+
+**Wake is an inherited setting.** `teams.Settings.Wake`, `Effective.Wake`/`WakeFrom`,
+`Defaults.Wake`, config key `teams.wake` (8.2). A conversation's roles are resolved against the
+profile's `teams.` rows, which are read again only when `config.json` moves (one stat per
+boundary). A closed team gives no role at all: no verb, no delivery, no team turn.
+
+**Home and links (routing).** A conversation's home is `File.Home(key)`. In a managed team whose
+manager is not its home it is **shared**: that manager is a link.
+
+- `team_send` kind `directive` and `team_stop` from a link are refused, in words that name the
+  home team (`@web reports to the manager of "harbor", not to you: here you are a link …`); a
+  note goes through. A directive to `everyone` is written once per member who reports here
+  (`To` = handle) and names the shared ones it left out; with none left it is refused.
+- A member reads a link's directive (from an older writer) as `◆ fyi from the manager of …`
+  and is not woken by it.
+- `team_status` and the digest mark a shared member `reports to <team>`, and `busy for <team>`
+  in place of `running` (`teams.MemberState.ReportsTo`). `team_status` also lists the packets
+  waiting on the team.
+
+**Questions up.** `ask` of kind clarification, choice or confirmation from a member whose home
+team has `questions_up` effective raises a `question` packet (`Team` = home team, `Origin` = the
+membership, `RaisedBy` = handle, one party with the asker's reason as context, the options with
+their consequences, the pick as the recommendation) and returns at once, saying so; nothing is
+shown to the person, and the manager is roused if nobody holds it. A permission, landing,
+assumption or ratify never goes up. The manager's own clarifying question (and its judgement
+calls) is a packet too: to its home team when it has one and questions go up there, otherwise
+to `you`. New manager verbs, all on the approval floor (allow):
+
+| Verb | What it does |
+|---|---|
+| `team_decide` | `Decide(id, "manager", answer, reason)` on a packet waiting on a team it manages; an option may be named by its label; refuses cap and closing packets (the person's) |
+| `team_escalate` | `Escalate` to its own home team (`to: up`, the default) or to `you` |
+| `team_close_report` | raises the `closing` packet to `you` (done, left, files, the team's spend today) |
+
+Delivery reads `KindPacket` lines by packet id: a manager is handed a packet newly waiting on
+its team whole (question, contexts, `[id] label: consequence`, recommendation, trail), and is
+woken by it; the raiser (member or manager) is handed `◆ answered: <label or words> (by ◆
+@boss, because …). Your question was: …` and woken; an escalation of its question is told
+without waking. `Decide` on a question now logs `answered @web: <label>` (the rail draws it
+after the decider's mark).
+
+**Caps.** At every point the team would START something (a member or manager wake, a new
+member's brief, `team_start`), the pool (owner = `CapFrom.Team`, or the top of the chain for a
+Settings cap) is checked: at or over the ceiling, the start is held and the Traffic says `held
+@web: harbor reached its $5 cap today …` once per reason; a running turn is never cut; the
+person's own typing is never held. The first holder raises ONE `cap` packet to `you` for the
+pool and ceiling (`harbor reached its $5 cap today`; `raise` = `Raise to $10`, twice the
+ceiling; `stop` = `Stop for today`; recommended `stop`), carrying `Packet.Cap` =
+`CapFacts{Team, Day, CapUSD, SpentUSD, RaiseTo}`. A decided `raise` lifts the ceiling to
+`RaiseTo` for that local day; meeting it raises one more packet at the new ceiling; `stop` or
+the person's own words hold until the day turns or the cap is changed. Spend is read through
+`TeamSpend` only when `TeamSpendStamp` moved (per pool, per session), never per model request.
+
+**Wrap up first: the door and the marker (for d2).** The interface appends ONE Traffic entry to
+the team's log:
+
+```go
+teams.AppendTraffic(profile, teamID, teams.WrapUpRequest("")) // or the person's own words
+// = Entry{Kind: KindDirective, From: FromYou, To: ToManager, State: StateWrapUp ("wrap-up"), Text: …}
+```
+
+`teams.IsWrapUp(e)` is the only reader. The manager is woken by it and handed an instruction
+(tell every member to finish and commit, answer what it can, start nothing new, then
+`team_close_report`), bounded by `wrapUpFor` (15 minutes) and `wrapUpSpendUSD` ($2 of the
+team's spend since the clock's first look). Past either with no report, codeaf raises the
+`closing` packet itself with `Report.Incomplete`, question `close harbor? (wrap-up incomplete)`,
+options `close-now` / `keep-going`, recommended `keep-going`. A complete report has `close` /
+`keep-going`, recommended `close`. At most one closing packet waits per team.
+
+**Accepting closes.** `teams.AcceptClosing(profile, packet)` closes `packet.Origin` with the
+packet as its report and appends a `KindClose` line, only for a decided closing packet whose
+decision is `close` or `close-now`; it is idempotent. The interface calls it after the person's
+`Decide`; the manager's session calls it again when its delivery reads the decision (and tells
+the manager). `Close now` stopping member turns and closing tabs stays the interface's (8.5).
+
+**Packet file rotation.** `decisions.jsonl` rotates past 1 MB (`decisionsRotateBytes`) to
+`decisions.1.jsonl`, and the new file opens with one `carry` line per packet still waiting (the
+packet whole, trail and escalated state included). The reader folds the rotated file, then the
+current one; a carry replaces what the older file said of that id. A waiting packet is never
+lost; a decided one stays readable for one more rotation.
+
+**Over `--host`.** All of the above runs where the conversations run, the engine: questions,
+caps, the wrap-up clock and the verbs are the engine's session reading the engine's profile and
+ledger, so a window over `--host` needs nothing new. It sees packets through `Teams.Packets` and
+decides through `Teams.Decide`. Traffic has no general writer over the wire, so the wrap-up
+has two narrow doors of its own, said by `Welcome.WrapUp`: `Teams.WrapUp` (`WrapUpArgs{Team,
+Text}`) appends exactly `teams.WrapUpRequest(Text)` to the engine's log, and
+`Teams.AcceptClosing` (`AcceptClosingArgs{ID}` → `AcceptClosingReply{Closed, Stamp}`) runs
+`teams.AcceptClosing` on the engine. Client: `(*remote.Client).TeamsWrapUp(team, text)`,
+`TeamsAcceptClosing(id)`. The interface wires them into its seam (d2); an engine without the
+flag gets `Close now` only, said as such.
+
+**Known gaps.** The wrap-up clock is the manager process's memory (a restart forgets it; the
+person's card still offers Close now). Two processes meeting a cap in the same instant can each
+raise a cap packet (one process raises one). A conversation in an unmanaged sub-team whose home
+manager is a level up gets no member verbs and no questions-up (its membership has no manager).
+A person's decision on a packet whose raiser nobody holds is delivered when that conversation
+next runs; only a manager is roused.
