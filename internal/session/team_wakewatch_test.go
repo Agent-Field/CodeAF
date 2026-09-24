@@ -71,7 +71,7 @@ func TestTeamWakeADirectiveWakesAnIdleMemberOnce(t *testing.T) {
 	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindDirective, From: teams.FromManager, To: "web", Text: "Fix the header."})
 	waitRequests(t, completer, 1)
 	first := userTextIn(completer.request(0))
-	if !strings.Contains(first, "◆ directive from manager: Fix the header.") {
+	if !strings.Contains(first, "◆ directive from manager #1: Fix the header.") {
 		t.Fatalf("the woken turn did not carry the directive:\n%s", first)
 	}
 	if !strings.Contains(first, "the person did not speak") {

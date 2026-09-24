@@ -302,7 +302,7 @@ func TestAStartedMemberIsHandedItsBriefAsTheManagers(t *testing.T) {
 	}
 	collect(t, events)
 	request := userTextIn(completer.request(0))
-	if !strings.Contains(request, teamBriefWord+": Rewrite the lexer.") || !strings.Contains(request, "not the person's words") {
+	if !strings.Contains(request, teamBriefWord+" #1: Rewrite the lexer.") || !strings.Contains(request, "not the person's words") {
 		t.Fatalf("the first request did not carry the marked brief:\n%s", request)
 	}
 	var asides []DisplayEntry

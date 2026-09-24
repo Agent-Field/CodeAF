@@ -33,6 +33,9 @@ type TeamLine struct {
 	Kind string
 	// Text is the line's words, whole lines kept.
 	Text string
+	// Thread is the line's own entry id when the delivery numbered it ("#42",
+	// which a member is told so its reply can name it), "" when it did not.
+	Thread string
 }
 
 // teamNewsLead opens every group of a delivery ([teamNewsGroup]).
@@ -106,6 +109,12 @@ func teamLineParts(line string) (TeamLine, bool) {
 		}
 	default:
 		return TeamLine{}, false
+	}
+	// A line delivered to a member ends its head with the line's number.
+	if at := strings.LastIndex(head, " #"); at >= 0 {
+		if id, ok := teams.ThreadID(head[at+1:]); ok {
+			parsed.Thread, head = id, head[:at]
+		}
 	}
 	switch head {
 	case "":
