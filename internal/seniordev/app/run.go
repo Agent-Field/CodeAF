@@ -63,6 +63,11 @@ type Options struct {
 	// InPlace edits the folder without git: no commits, no refs, and the run's
 	// checkpoints kept outside it.
 	InPlace bool
+	// Crew says the pools came from the crew of the conversation that started
+	// the run (`--crew`), not from a person typing them: a model the catalog
+	// cannot size is dropped with a note, and a --high left empty routes on
+	// [DefaultHighModels] ([crewPools]).
+	Crew bool
 }
 
 // Run runs senior-dev once in the host's workspace and answers how it ended.
@@ -135,6 +140,15 @@ func runWith(ctx context.Context, host delegate.Host, options Options, notes io.
 		}
 		client.catalog = catalog
 		model = client
+		if options.Crew {
+			args = crewPools(args, func(ref string) bool {
+				providerID, modelID := normalizeModelRef(splitModelID(ref))
+				if _, err := catalog.Resolve(providerID, modelID); err == nil {
+					return true
+				}
+				return len(loadedConfig.model(providerID, modelID)) > 0
+			}, notes)
+		}
 	}
 
 	runner := newPipeline(args, workspace, pipelineDeps{

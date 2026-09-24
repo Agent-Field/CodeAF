@@ -117,9 +117,10 @@ func Parse(program Delegate, line []string, out io.Writer) (*Invocation, error) 
 // AN UNSET CEILING IS NOT ON THE LINE. A program handed `--max-cost 0` might
 // read it as a ceiling of nothing; one handed no flag reads no ceiling.
 //
-// plain says the folder has no git history, and puts the program's own
-// [Delegate.PlainFolder] flags on the line after codeaf's.
-func ChildArgs(program Delegate, workspace, brief string, ceilings Ceilings, plain bool) []string {
+// The facts codeaf read about the run put the program's own flags on the line
+// after codeaf's: [Delegate.PlainFolder] for a folder with no git history, and
+// [Delegate.CrewFlags] for the conversation's crew.
+func ChildArgs(program Delegate, workspace, brief string, ceilings Ceilings, facts RunFacts) []string {
 	args := []string{program.Name, program.Default, "--json", "--dir", workspace}
 	if ceilings.CostUSD > 0 {
 		args = append(args, "--max-cost", strconv.FormatFloat(ceilings.CostUSD, 'f', -1, 64))
@@ -127,10 +128,22 @@ func ChildArgs(program Delegate, workspace, brief string, ceilings Ceilings, pla
 	if ceilings.Hours > 0 {
 		args = append(args, "--max-hours", strconv.FormatFloat(ceilings.Hours, 'f', -1, 64))
 	}
-	if plain {
+	if facts.Plain {
 		args = append(args, program.PlainFolder...)
 	}
+	if program.CrewFlags != nil && !facts.Crew.IsZero() {
+		args = append(args, program.CrewFlags(facts.Crew)...)
+	}
 	return append(args, "--", brief)
+}
+
+// RunFacts is what codeaf read about a run before it started the program, each
+// of which puts the program's own flags for it on the line ([ChildArgs]).
+type RunFacts struct {
+	// Plain says the folder has no git history.
+	Plain bool
+	// Crew is the conversation's crew; zero for a run no conversation started.
+	Crew Crew
 }
 
 // Help writes a program's help: what it is, its commands, and the flags every

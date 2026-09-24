@@ -2,7 +2,13 @@
 
 package app
 
-import "strings"
+import (
+	"fmt"
+	"io"
+	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/seniordev/engine/orclient"
+)
 
 // DefaultHighModels is the pool the coder routes on when the command line
 // names none: `--high` on `codeaf senior-dev run`. Each entry is a model on the
@@ -28,6 +34,48 @@ type cliArgs struct {
 	InPlace  bool
 	MaxCost  *float64
 	MaxHours *float64
+}
+
+// CrewModel is a crew seat's model as a pool entry: the id filed under the
+// service codeaf's model API speaks for, which is how every pool entry is
+// spelled ([DefaultHighModels]). An id already filed there is left alone.
+func CrewModel(id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" || strings.HasPrefix(id, orclient.Service+"/") {
+		return id
+	}
+	return orclient.Service + "/" + id
+}
+
+// crewPools keeps, of pools a conversation's crew filled, only the models the
+// catalog can size — a call on one it cannot is a call senior-dev refuses to
+// make — and says which it dropped. A --high with nothing left routes on
+// [DefaultHighModels], because a crew of models this catalog does not know is
+// no reason to stop a run codeaf already started; an empty --low or
+// --frontier falls back to --high, as it always does.
+//
+// IT IS ONLY FOR A CREW. A person who types --high at a shell meant those
+// models, and is told plainly when one cannot be served; a crew was chosen for
+// the conversation, and a program that cannot use one of its seats uses its
+// own list rather than failing an hour of work.
+func crewPools(args cliArgs, known func(string) bool, notes io.Writer) cliArgs {
+	keep := func(raw string) string {
+		var kept []string
+		for _, ref := range splitPool(raw) {
+			if known(ref) {
+				kept = append(kept, ref)
+				continue
+			}
+			_, _ = fmt.Fprintf(notes, "[senior-dev] the crew's %s is not in the model catalog; it is left out of this run\n", ref)
+		}
+		return strings.Join(kept, ",")
+	}
+	args.High, args.Low, args.Frontier = keep(args.High), keep(args.Low), keep(args.Frontier)
+	if args.High == "" {
+		_, _ = fmt.Fprintf(notes, "[senior-dev] none of the crew's models can be sized; routing on senior-dev's own list\n")
+		args.High = DefaultHighModels
+	}
+	return args
 }
 
 func splitPool(raw string) []string {

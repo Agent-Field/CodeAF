@@ -930,6 +930,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"senior-dev says workspace is not a git repository", "senior-dev"},
 		{"senior-dev finished but its work is not in my folder", "senior-dev"},
 		{"how do I merge senior-dev's branch", "senior-dev"},
+		{"which models does senior-dev use", "senior-dev"},
+		{"make senior-dev use my crew models", "senior-dev"},
 		{"which folder does a delegate work in", "delegates"},
 		{"the harness I just had built is not in /subharness", "subharnesses"},
 		{"how do I run a harness I had designed", "subharnesses"},

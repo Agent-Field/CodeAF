@@ -65,7 +65,7 @@ func TestParseTakesANamedCommandAndItsOwnFlags(t *testing.T) {
 // The line a host starts its child with is the line Parse reads back.
 func TestChildArgsParseBackToTheSameInvocation(t *testing.T) {
 	program := testProgram(nil)
-	line := ChildArgs(program, "/work", "add a --flag to the parser", Ceilings{CostUSD: 2.5, Hours: 1}, false)
+	line := ChildArgs(program, "/work", "add a --flag to the parser", Ceilings{CostUSD: 2.5, Hours: 1}, RunFacts{})
 	if line[0] != "fake" {
 		t.Fatalf("line = %q, want the program's name first", line)
 	}
@@ -88,10 +88,10 @@ func TestChildArgsCarryThePlainFolderFlagsOnlyForAPlainFolder(t *testing.T) {
 	if err := program.Validate(); err != nil {
 		t.Fatalf("a program whose plain-folder flags its command takes is refused: %v", err)
 	}
-	if line := ChildArgs(program, "/work", "the brief", Ceilings{}, false); strings.Contains(strings.Join(line, " "), "--variant") {
+	if line := ChildArgs(program, "/work", "the brief", Ceilings{}, RunFacts{}); strings.Contains(strings.Join(line, " "), "--variant") {
 		t.Fatalf("a folder with history carried the plain-folder flags: %q", line)
 	}
-	line := ChildArgs(program, "/work", "the brief", Ceilings{}, true)
+	line := ChildArgs(program, "/work", "the brief", Ceilings{}, RunFacts{Plain: true})
 	if got := strings.Join(line, " "); !strings.HasSuffix(got, "--variant plain -- the brief") {
 		t.Fatalf("line = %q, want the plain-folder flags just before the brief", got)
 	}
@@ -100,6 +100,27 @@ func TestChildArgsCarryThePlainFolderFlagsOnlyForAPlainFolder(t *testing.T) {
 	inv, err := Parse(program, line[1:], &bytes.Buffer{})
 	if err != nil || inv.Brief() != "the brief" {
 		t.Fatalf("the line read back as %+v, %v", inv, err)
+	}
+}
+
+// The conversation's crew reaches the program in its own flags, before the
+// brief, and a run with no crew carries none.
+func TestChildArgsCarryTheCrewInTheProgramsOwnFlags(t *testing.T) {
+	program := testProgram(nil)
+	program.CrewFlags = func(crew Crew) []string { return []string{"--variant", crew.Hands} }
+	if err := program.Validate(); err != nil {
+		t.Fatalf("a program whose crew flags its command takes is refused: %v", err)
+	}
+	if line := strings.Join(ChildArgs(program, "/work", "the brief", Ceilings{}, RunFacts{}), " "); strings.Contains(line, "--variant") {
+		t.Fatalf("a run with no crew carried crew flags: %q", line)
+	}
+	line := ChildArgs(program, "/work", "the brief", Ceilings{}, RunFacts{Crew: Crew{Hands: "vendor/hands"}})
+	if got := strings.Join(line, " "); !strings.HasSuffix(got, "--variant vendor/hands -- the brief") {
+		t.Fatalf("line = %q, want the crew's flags just before the brief", got)
+	}
+	program.CrewFlags = func(Crew) []string { return []string{"--models", "x"} }
+	if err := program.Validate(); err == nil || !strings.Contains(err.Error(), "crew flags") {
+		t.Fatalf("Validate = %v, want crew flags its command does not take refused", err)
 	}
 }
 

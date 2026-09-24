@@ -66,6 +66,15 @@ person's checkout: the page says `its work is on the branch <branch> in
 <folder>; nothing was merged into your checkout`. An hour-long run meeting the
 checkout's hour of changes at a merge was a finished run reading as failed.
 
+**The crew rides the line.** A run a conversation starts carries its crew
+(`delegate.Crew`: brain, hands, light — the mastermind, worker and low tiers,
+effort taken off) in the program's own flags (`Delegate.CrewFlags`); a program
+with none picks its own models. senior-dev's are `--crew --high <hands>
+--frontier <brain> --low <light>`, and `--crew` makes it drop a model its
+catalog cannot size, and route on its own list if the working seat is left
+empty, rather than fail the run. `Validate` parses the flags with the default
+command, as it does the plain-folder ones.
+
 **A program's own ending names the row.** A terminal that is not `pass`
 reaches the session typed (`run.ProgramEndedError` → `session.ProgramEnding`):
 `fail` and `budget` end the row on `TaskEndingProgram`, whose reason is the

@@ -228,6 +228,27 @@ func TestAProgramsOwnEndingIsTheRowsReasonAndNotAFault(t *testing.T) {
 	}
 }
 
+// A program is handed the conversation's crew — its planning, working and
+// light seats, with any effort taken off — and a run no program works is handed
+// none.
+func TestAProgramIsHandedTheConversationsCrew(t *testing.T) {
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "unused"}, func(config *Config) {
+		config.RolesSource = tierSettings(map[string]string{
+			"tiers.mastermind": "vendor/brain:high",
+			"tiers.worker":     "vendor/hands",
+			"tiers.low":        "vendor/light",
+		})
+	})
+	program := testPrograms("fake")[0]
+	got := agent.delegateCrew(&beltRun{delegate: &program})
+	if want := (delegate.Crew{Brain: "vendor/brain", Hands: "vendor/hands", Light: "vendor/light"}); got != want {
+		t.Fatalf("crew = %+v, want %+v", got, want)
+	}
+	if got := agent.delegateCrew(&beltRun{}); !got.IsZero() {
+		t.Fatalf("a run no program works was handed a crew: %+v", got)
+	}
+}
+
 func TestStartDelegateRefusesANameThisMachineDoesNotHave(t *testing.T) {
 	double := newBeltRunDouble("done")
 	registerBeltRunEngine(t, double)

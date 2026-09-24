@@ -50,9 +50,28 @@ var Program = delegate.Delegate{
 	// checkpoints outside the folder and commits nothing; a folder with no git
 	// history has nothing else it can run on.
 	PlainFolder: []string{"--in-place"},
+	CrewFlags:   crewFlags,
 	Default:     "run",
 	Page:        "senior-dev",
 	Commands:    []delegate.Command{runCommand},
+}
+
+// crewFlags is the conversation's crew as senior-dev's own flags: the working
+// seat is the pool the coder routes on (--high), the planning seat its frontier
+// tier, and the light seat the history summaries (--low). --crew says the pools
+// came from a crew, so a model senior-dev's catalog cannot size is left out
+// rather than failing the run. A seat the crew leaves unset keeps senior-dev's
+// own default for it.
+func crewFlags(crew delegate.Crew) []string {
+	flags := []string{"--crew"}
+	for _, seat := range []struct{ flag, model string }{
+		{"--high", crew.Hands}, {"--frontier", crew.Brain}, {"--low", crew.Light},
+	} {
+		if model := app.CrewModel(seat.model); model != "" {
+			flags = append(flags, seat.flag, model)
+		}
+	}
+	return flags
 }
 
 // runCommand is senior-dev's one verb: the whole run, from the brief to the
@@ -72,6 +91,7 @@ func bindRun(fs *flag.FlagSet) delegate.Body {
 	high := fs.String("high", app.DefaultHighModels, "models the coder routes among, comma-separated")
 	low := fs.String("low", "", "models for the history summary (default: --high)")
 	frontier := fs.String("frontier", "", "models for the frontier tier (default: --high)")
+	crew := fs.Bool("crew", false, "the models came from codeaf's crew: skip any it cannot size")
 	return func(ctx context.Context, host delegate.Host, args []string) error {
 		run(ctx, host, app.Options{
 			Goal:     strings.Join(args, " "),
@@ -80,6 +100,7 @@ func bindRun(fs *flag.FlagSet) delegate.Body {
 			Frontier: *frontier,
 			Variant:  *variant,
 			InPlace:  *inPlace,
+			Crew:     *crew,
 		}, os.Stderr)
 		return nil
 	}

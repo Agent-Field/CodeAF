@@ -102,6 +102,10 @@ type DelegateSetup struct {
 	// (session.RunSpec.PlainFolder), so the program's line carries its own
 	// flags for one (delegate.Delegate.PlainFolder).
 	PlainFolder bool
+	// Crew is the conversation's crew (session.RunSpec.Crew), which the
+	// program's line carries in its own flags (delegate.Delegate.CrewFlags) so
+	// it works on the models the person chose. Zero leaves it to its own.
+	Crew delegate.Crew
 	// Ground is every spelling of the folder the task was proposed on, when the
 	// program works in a copy of it (session.RunSpec.Ground). The brief is
 	// rewritten to name the copy wherever it named that folder
@@ -309,7 +313,8 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	result, err := delegate.Run(launchCtx, delegate.Launch{
 		Name: w.program.Name,
 		Bin:  exe,
-		Args: delegate.ChildArgs(w.program, w.workspace, brief, delegate.Ceilings{CostUSD: w.cost, Hours: w.elapsed.Hours()}, w.setup.PlainFolder),
+		Args: delegate.ChildArgs(w.program, w.workspace, brief, delegate.Ceilings{CostUSD: w.cost, Hours: w.elapsed.Hours()},
+			delegate.RunFacts{Plain: w.setup.PlainFolder, Crew: w.setup.Crew}),
 		// NO KEY REACHES THE PROGRAM (delegate.ChildEnv): the API's address and
 		// token are the whole of what it is given.
 		Env:        delegate.ChildEnv(api.API()),

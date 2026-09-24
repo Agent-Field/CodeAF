@@ -140,12 +140,25 @@ of its time to land: two fifteenths of the run, at least 45 seconds, at most 12 
 and never more than a quarter of it. When that window opens it gets one last turn to
 submit.
 
-senior-dev picks its model call by call from its own list of open models, and avoids one
-for a while after it fails. `--high` replaces the list, and `--variant` sets the
-reasoning effort every call asks for. **When none of your model services can serve the
-model it asks for**, codeaf answers the call on the run's own work model — the one a
-task's own worker would use — and the conversation on the task page names the model that
-answered. A call is never refused only because this machine does not know a model's id.
+**When none of your model services can serve the model it asks for**, codeaf answers the
+call on the run's own work model — the one a task's own worker would use — and the
+conversation on the task page names the model that answered. Which models it asks for is
+the next section.
+
+## Which models does senior-dev use — your crew, its own list, --high
+
+**From the chat it uses your crew.** codeaf hands senior-dev the conversation's crew: the
+worker (hands) model is the one it works with, the mastermind (brain) model its hardest
+calls, and the low model its history summaries. Change the crew and the next run follows.
+A crew model senior-dev's model catalog cannot size is left out, and its log says so;
+if that leaves no working model, it uses its own list instead.
+
+**Its own list** is six open models it routes among call by call, avoiding one for a
+while after it fails: deepseek-v4-flash, deepseek-v4-pro, qwen3.6-plus, kimi-k2.6,
+glm-5.1 and minimax-m2.7. A run with no crew set uses it, and so does a shell run.
+
+**At a shell you choose**: `--high` replaces the list, `--frontier` and `--low` set the
+other two, and `--variant` sets the reasoning effort every call asks for.
 
 ## senior-dev's flags — run, --variant, --in-place, --high, --max-cost
 
@@ -163,7 +176,9 @@ senior-dev's own flags on `run`:
 - `--in-place` — work in a folder without git: no commits, and its checkpoints kept
   outside the folder;
 - `--high`, `--low`, `--frontier` — comma-separated models it routes among; `--low`
-  (its history summaries) and `--frontier` fall back to `--high`.
+  (its history summaries) and `--frontier` fall back to `--high`;
+- `--crew` — the models came from a conversation's crew: one its catalog cannot size is
+  left out instead of failing the run. codeaf passes it with the crew's models.
 
 `codeaf senior-dev help` describes it and its one command, `run`;
 `codeaf senior-dev run --help` prints all of them, codeaf's four included.

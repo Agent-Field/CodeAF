@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -176,6 +177,67 @@ func TestSeniorDevWorksAPlainFolderAsTheChatsRunWorker(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(workspace, ".git")); !os.IsNotExist(err) {
 		t.Fatalf("the plain folder was made into a repository: %v", err)
+	}
+}
+
+// THE CREW'S MODEL IS THE ONE ASKED FOR. The worker hands senior-dev the
+// conversation's crew; senior-dev routes on the crew's working seat, and every
+// call the model API serves names it — none of senior-dev's own list, which
+// this catalog does not even carry, so a call on it would fail the run.
+func TestSeniorDevWorksOnTheConversationsCrew(t *testing.T) {
+	if testing.Short() {
+		t.Skip("drives the real senior-dev engine")
+	}
+	program, carried := builtin.Find("senior-dev")
+	if !carried {
+		t.Skip("this build carries no senior-dev")
+	}
+	workspace := seniorDevWorkspace(t)
+	t.Setenv(carriedChildEnv, "real")
+	t.Setenv("DO_NOT_TRACK", "1")
+	t.Setenv("CODEAF_NO_UPDATE_CHECK", "1")
+
+	store, err := plandb.Open(filepath.Join(t.TempDir(), "plan.json"), "senior-dev-run", "root", "Add the feature", "Add the feature.")
+	if err != nil {
+		t.Fatalf("open plan store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := &seniorDevModel{}
+	var asked sync.Map
+	worker := runengine.NewDelegateWorker(store, workspace, program, runengine.DelegateSetup{
+		Exe:   self,
+		Grace: 5 * time.Second,
+		CompleterFor: func(name string) session.Completer {
+			asked.Store(name, true)
+			return model
+		},
+		Ledger: filepath.Join(t.TempDir(), "usage.jsonl"),
+		Crew:   delegate.Crew{Hands: "fixture/vendor-model", Brain: "fixture/vendor-model"},
+	}, 1.0, 0)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	report, err := worker.Run(ctx, *store.Task(store.RootID()))
+	if err != nil {
+		stderr, _ := os.ReadFile(filepath.Join(plandb.TaskDir(filepath.Dir(store.Path()), store.RootID()), "delegate-stderr.log"))
+		t.Fatalf("senior-dev on the crew's model failed: %v\nits stderr:\n%s", err, stderr)
+	}
+	if !strings.Contains(report.Result, "feature.txt now holds the feature") {
+		t.Fatalf("the run's result = %q, want senior-dev's own passing ending", report.Result)
+	}
+	var names []string
+	asked.Range(func(key, _ any) bool { names = append(names, key.(string)); return true })
+	if len(names) == 0 {
+		t.Fatal("no call reached the model API")
+	}
+	for _, name := range names {
+		if !strings.Contains(name, "fixture/vendor-model") {
+			t.Fatalf("a call asked for %q; want every call on the crew's model, asked %q", name, names)
+		}
 	}
 }
 

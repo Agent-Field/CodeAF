@@ -134,6 +134,10 @@ type RunSpec struct {
 	// handed names the copy wherever it named the folder
 	// (delegate.RehomeBrief). Empty for every other run.
 	Ground []string
+	// Crew is the conversation's crew as a delegated run's program is handed it
+	// ([conversationCrew]), so the program works on the models the person
+	// chose. Zero for every other run.
+	Crew delegate.Crew
 }
 
 // ProgramEnding is a delegated run's program's own ending when it did not
@@ -519,7 +523,30 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		Delegate:     run.delegate,
 		PlainFolder:  run.plain,
 		Ground:       run.groundNames,
+		Crew:         a.delegateCrew(run),
 	}
+}
+
+// delegateCrew is the conversation's crew as a delegated run hands it to its
+// program: the planning seat, the working seat and the light seat, read off the
+// same role ladder this conversation's own planner and workers resolve through,
+// with each seat's effort taken off, because a program's pool is a list of
+// models and an effort is a knob of the request. Zero for a run no program works.
+//
+// THE PERSON'S CREW IS THE DEFAULT. A program handed an hour of work used to
+// route on a list of its own the person never chose, while the crew they set
+// sat unread beside it.
+func (a *Agent) delegateCrew(run *beltRun) delegate.Crew {
+	if run.delegate == nil {
+		return delegate.Crew{}
+	}
+	source := roles.Source(a.config.RolesSource)
+	seat := func(tier roles.Tier) string {
+		value, _ := roles.TierModel(source, tier)
+		model, _ := roles.SplitEffort(strings.TrimSpace(value))
+		return strings.TrimSpace(model)
+	}
+	return delegate.Crew{Brain: seat(roles.TierMastermind), Hands: seat(roles.TierWorker), Light: seat(roles.TierLow)}
 }
 
 // delegateGroundNames is every way a brief is likely to spell the folder a

@@ -89,6 +89,17 @@ type Delegate struct {
 	// where it is, and the program is told so on its line. The program says
 	// only how it is told, so codeaf never has to learn its flag's name.
 	PlainFolder []string
+	// CrewFlags is the flags the default command takes to use the models of
+	// the conversation's crew ([Crew]), which codeaf puts on the line of every
+	// run it starts from a conversation. Nil is a program that picks its own
+	// models whatever the crew says.
+	//
+	// THE PERSON'S CREW IS THE DEFAULT, AND THE PROGRAM SAYS HOW IT HEARS IT.
+	// A person who set which models do the thinking and the typing expects a
+	// program they hand work to to use them too, rather than a list of its
+	// own they never chose; codeaf knows the crew and nothing of the program's
+	// flags, so the program turns the one into the other.
+	CrewFlags func(Crew) []string
 	// Default is the command a bare brief runs: `/<name> <brief>` in the chat
 	// and `codeaf <name> <brief>` in a shell. It names one of Commands.
 	Default string
@@ -129,6 +140,21 @@ type Body func(ctx context.Context, host Host, args []string) error
 // slash command and a shell verb — so it has to be something a person can
 // type without quoting.
 var nameShape = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
+
+// Crew is the models a conversation's crew seats, by what each is for, as ids
+// on the service codeaf's model API speaks for (`vendor/model`), with no
+// effort suffix. An empty field is a seat the crew leaves unset.
+type Crew struct {
+	// Brain is the planning seat: the model the crew thinks hardest with.
+	Brain string
+	// Hands is the working seat: the model the crew does the work with.
+	Hands string
+	// Light is the cheap seat: summaries, and whatever needs no depth.
+	Light string
+}
+
+// IsZero says the crew names no model at all, so no flag is owed for it.
+func (c Crew) IsZero() bool { return c == Crew{} }
 
 // GuideMax is the most bytes a program's [Delegate.Guide] may take. It is a
 // paragraph a model reads on every turn of every conversation that carries the
@@ -196,17 +222,32 @@ func (d Delegate) Validate() error {
 	if !seen[d.Default] {
 		return fmt.Errorf("%s: the default command %q is not one of its commands", d.Name, d.Default)
 	}
-	if len(d.PlainFolder) > 0 {
-		// THE FLAGS ARE PARSED BY THE COMMAND THEY WILL BE HANDED TO, so a
-		// misspelt one fails here, in the build's own test, and never as a
-		// run that dies on its first line in somebody's folder.
-		command, _ := d.Command(d.Default)
+	if err := d.validateLineFlags(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateLineFlags holds the flags codeaf puts on the program's line for it —
+// for a plain folder, and for the conversation's crew — to its default command:
+// a flag the command does not take would end every such run at its first line,
+// so it fails here, in the build's own test.
+func (d Delegate) validateLineFlags() error {
+	command, _ := d.Command(d.Default)
+	parses := func(flags []string) bool {
 		fs := flag.NewFlagSet(d.Name+" "+command.Name, flag.ContinueOnError)
 		fs.SetOutput(io.Discard)
 		command.Bind(fs)
-		if err := fs.Parse(d.PlainFolder); err != nil || fs.NArg() > 0 {
-			return fmt.Errorf("%s: the plain folder flags %q are not flags its %s command takes", d.Name, strings.Join(d.PlainFolder, " "), command.Name)
+		return fs.Parse(flags) == nil && fs.NArg() == 0
+	}
+	if d.CrewFlags != nil {
+		sample := Crew{Brain: "vendor/brain", Hands: "vendor/hands", Light: "vendor/light"}
+		if flags := d.CrewFlags(sample); !parses(flags) {
+			return fmt.Errorf("%s: the crew flags %q are not flags its %s command takes", d.Name, strings.Join(flags, " "), command.Name)
 		}
+	}
+	if len(d.PlainFolder) > 0 && !parses(d.PlainFolder) {
+		return fmt.Errorf("%s: the plain folder flags %q are not flags its %s command takes", d.Name, strings.Join(d.PlainFolder, " "), command.Name)
 	}
 	return nil
 }
