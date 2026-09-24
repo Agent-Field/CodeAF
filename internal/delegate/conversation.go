@@ -28,8 +28,10 @@ const ConversationFile = "delegate-conversation.jsonl"
 
 // ProgramFile names, inside a task's record folder, which program the run
 // handed its task to and the stages it said it would move through (its
-// `hello`). The worker writes it when the hello arrives; the task page reads
-// it to say whose conversation it is drawing, after the run as well as during.
+// `hello`). The worker writes it when the hello arrives and again, whole, when
+// the program's process is gone — then whether or not a hello ever came, so a
+// program that died early still has its clock; the task page reads it to say
+// whose conversation it is drawing, after the run as well as during.
 const ProgramFile = "delegate-program.json"
 
 // ProgramRecord is ProgramFile's content.
@@ -71,7 +73,7 @@ func WriteProgram(dir string, record ProgramRecord) error {
 }
 
 // ReadProgram reads the record; ok is false for a run that handed its task to
-// no program, or whose program has not said hello yet.
+// no program, or whose program has neither said hello nor ended yet.
 func ReadProgram(dir string) (ProgramRecord, bool) {
 	data, err := os.ReadFile(filepath.Join(dir, ProgramFile))
 	if err != nil {

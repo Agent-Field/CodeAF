@@ -154,6 +154,12 @@ type delegateSink struct {
 	// this conversation's engine was running and its child is the new build.
 	stop     context.CancelFunc
 	mismatch string
+	// record is the program record as this run has written it so far: the
+	// name, the ceiling and the instant the process was started, and the
+	// stages once the hello has named them. It is kept here because the record
+	// is written whole, twice — at the hello and when the process is gone — and
+	// the second write must carry what the first one said.
+	record delegate.ProgramRecord
 }
 
 func (s *delegateSink) Hello(h delegate.Hello) {
@@ -163,7 +169,8 @@ func (s *delegateSink) Hello(h delegate.Hello) {
 		// the moment the program says hello — and keeps knowing after the run.
 		// It is a record, so a disk that refuses it costs the page its heading
 		// and never the run.
-		_ = delegate.WriteProgram(s.taskDir, delegate.ProgramRecord{Name: s.name, Stages: h.Stages, CeilingUSD: s.worker.cost})
+		s.record.Stages = h.Stages
+		_ = delegate.WriteProgram(s.taskDir, s.record)
 		return
 	}
 	// TWO BUILDS, ONE RUN. Nothing a newer child writes can be trusted to mean
@@ -254,8 +261,16 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryBeginKind, ExitsRecorded: true}); err != nil {
 		return Report{}, fmt.Errorf("stamp the trajectory opening line: %w", err)
 	}
+	// THE PROGRAM'S OWN CLOCK: the instant its process was started and the
+	// instant it was gone, both zero on every road out of here that never
+	// started one. The ending line carries them, so the trajectory holds the
+	// same pair the program record does.
+	var started, ended time.Time
 	end := func(steps int, reason, result string) {
-		_ = appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Result: result, Reason: reason})
+		_ = appendTrajectory(storeDir, task.ID, Step{
+			Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Result: result, Reason: reason,
+			StartedAt: started, EndedAt: ended,
+		})
 	}
 	exe := w.setup.Exe
 	if exe == "" {
@@ -304,12 +319,15 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 
 	launchCtx, stop := context.WithCancel(ctx)
 	defer stop()
-	sink := &delegateSink{worker: w, taskID: task.ID, storeDir: storeDir, taskDir: taskDir, name: w.program.Name, stop: stop}
+	sink := &delegateSink{worker: w, taskID: task.ID, storeDir: storeDir, taskDir: taskDir, name: w.program.Name, stop: stop,
+		record: delegate.ProgramRecord{Name: w.program.Name, CeilingUSD: w.cost}}
 	brief := strings.TrimSpace(task.Description)
 	if brief == "" {
 		brief = strings.TrimSpace(task.Title)
 	}
 	brief = delegate.RehomeBrief(brief, w.setup.Ground, w.workspace)
+	started = time.Now()
+	sink.record.StartedAt = started
 	result, err := delegate.Run(launchCtx, delegate.Launch{
 		Name: w.program.Name,
 		Bin:  exe,
@@ -322,6 +340,27 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 		StderrPath: filepath.Join(taskDir, delegateStderrName),
 		Grace:      w.setup.Grace,
 	}, sink)
+	// THE INSTANT THE PROCESS WAS GONE, which is the launch's own measure of the
+	// process's life laid on the instant it was started, and never later than
+	// now. The launch returns only once stdout is drained, and a helper the
+	// program left holding stdout can keep that drain open for the whole grace
+	// after the program itself has exited; the program's wall time is its
+	// process's, not the drain's.
+	ended = time.Now()
+	if result.Elapsed > 0 {
+		if exited := started.Add(result.Elapsed); exited.Before(ended) {
+			ended = exited
+		}
+	}
+	// THE RECORD IS WRITTEN AGAIN NOW, WHOLE, AND WHETHER OR NOT A HELLO CAME. A
+	// program that died before it said hello is still a program this run
+	// started, and its page and its row need its times as much as a finished
+	// one's do. A child of ANOTHER BUILD is the one exception: it was never this
+	// run's program, and it is not written down as one.
+	if sink.mismatch == "" {
+		sink.record.EndedAt = ended
+		_ = delegate.WriteProgram(taskDir, sink.record)
+	}
 	// The program has exited: its API goes with it, so nothing it left behind
 	// can spend, and the calls that were still running write their last turn.
 	_ = api.Close()
