@@ -280,9 +280,11 @@ func (a *Agent) landDelegateRun(run *beltRun, summary RunSummary) RunLanding {
 		return RunLanding{Home: mergeInPlace}
 	}
 	dir := run.workspace
+	// THE SQUASH LANDS ON CODEAF'S BRANCH, WHEREVER THE PROGRAM LEFT HEAD.
+	moved := delegateHeadHome(dir, run.tree.branch, run.startSha, m.Name)
 	if run.startSha != "" {
-		head, err := git(dir, "rev-parse", "HEAD")
-		if err == nil && strings.TrimSpace(head) != run.startSha {
+		head, err := git(dir, "rev-parse", "--verify", "-q", "HEAD")
+		if err != nil || strings.TrimSpace(head) != run.startSha {
 			if out, err := git(dir, "reset", "--soft", run.startSha); err != nil {
 				if g := a.graph(); g != nil {
 					g.planNote(m.Name + "'s commits could not be squashed: " + firstLine(out))
@@ -306,7 +308,10 @@ func (a *Agent) landDelegateRun(run *beltRun, summary RunSummary) RunLanding {
 	}
 	note := landing.Refused
 	if note == "" {
-		note = fmt.Sprintf("landed on %s: %d files", landing.Branch, len(landing.Changed))
+		note = fmt.Sprintf("landed on %s: %s", landing.Branch, fileCount(len(landing.Changed)))
+	}
+	if moved != "" {
+		note += " · " + moved
 	}
 	if _, err := run.store.AddNote(run.root, run.root, note); err != nil {
 		if g := a.graph(); g != nil {
@@ -314,4 +319,60 @@ func (a *Agent) landDelegateRun(run *beltRun, summary RunSummary) RunLanding {
 		}
 	}
 	return a.bringBeltRunHome(run, landing)
+}
+
+// delegateHeadHome puts a tree program's copy back on the task's own branch
+// before its work is squashed, and answers the sentence the landing note adds
+// when it had to: which branch the program had moved the copy to, and whether
+// its work stood on the commit the copy started from. It answers "" for the
+// ordinary run, whose HEAD never left the task's branch.
+//
+// A PROGRAM'S SHELL CAN MOVE HEAD, AND ONE DID. A brief said "work on a new
+// branch", and senior-dev ran `git checkout -b` four times in one run. The
+// landing squashed and committed on whatever branch HEAD was on, while the row,
+// the note and the carry home all named codeaf's task branch, which held
+// nothing: the person was told their work was on a branch that was empty. And
+// where the program had checked out one of the PERSON'S OWN branches, the
+// squash's `reset --soft` moved that branch back to the copy's first commit,
+// taking the person's own commits off it.
+//
+// `git symbolic-ref` moves HEAD alone: the index and the files stay exactly as
+// the program left them, so the squash and the commit that follow land its
+// finished tree on the task's branch, and the branch the program moved to is
+// never reset by codeaf. Any commit the program made there stays on that
+// branch, which the note says.
+//
+// A PROGRAM WHOSE WORK DID NOT STAND ON THE COPY'S FIRST COMMIT is said out
+// loud too. The squash commits the program's finished tree over that commit,
+// so work the program built on some other commit (a branch cut from `main`,
+// say) also undoes whatever the copy's first commit had and that one did not,
+// and the diff is the only place that would show.
+func delegateHeadHome(dir, branch, startSha, name string) string {
+	branch = strings.TrimSpace(branch)
+	if branch == "" {
+		return ""
+	}
+	current := currentBranch(dir)
+	if current == branch {
+		return ""
+	}
+	head, _ := git(dir, "rev-parse", "--verify", "-q", "HEAD")
+	head = strings.TrimSpace(head)
+	if _, err := git(dir, "symbolic-ref", "HEAD", "refs/heads/"+branch); err != nil {
+		return ""
+	}
+	var said string
+	if current == "" {
+		said = name + " had left its copy on no branch; its work was committed on " + branch
+	} else {
+		said = name + " had moved its copy to the branch " + current + "; its work was committed on " + branch +
+			", and any commit it made on " + current + " is still on that branch"
+	}
+	if startSha != "" && head != "" {
+		if _, err := git(dir, "merge-base", "--is-ancestor", startSha, head); err != nil {
+			said += " · its work was not built on the commit its copy started from, so the commit on " + branch +
+				" may also undo changes that commit had; read its diff before you merge it"
+		}
+	}
+	return said
 }

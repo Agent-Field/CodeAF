@@ -1312,11 +1312,16 @@ func beltLandingLine(landing RunLanding) string {
 	if landing.Branch == "" {
 		return ""
 	}
-	files := "files"
-	if len(landing.Changed) == 1 {
-		files = "file"
+	return fmt.Sprintf("landed on %s: %s", landing.Branch, fileCount(len(landing.Changed)))
+}
+
+// fileCount is a count of files in words, `1 file` and `2 files`, so every
+// landing line that counts them counts them the same way.
+func fileCount(n int) string {
+	if n == 1 {
+		return "1 file"
 	}
-	return fmt.Sprintf("landed on %s: %d %s", landing.Branch, len(landing.Changed), files)
+	return strconv.Itoa(n) + " files"
 }
 
 func (a *Agent) missingRunDependencies(ids []uint64) []uint64 {

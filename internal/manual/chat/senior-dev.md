@@ -127,6 +127,27 @@ it pinned and its session database. That folder is kept out of git, so it never 
 When a run changed nothing, there is nothing to land and the task says so. On a folder
 with no git history nothing is committed at all: the work is already in the folder.
 
+## When it moved to another branch in its copy — "work on a new branch", my own branch, a detached HEAD
+
+Its shell can run `git checkout` in its copy, and a brief that says "work on a new
+branch" makes that likely. It changes nothing about where the work lands: when the run
+ends, codeaf puts the copy back on the task's own branch without touching its files, and
+squashes the finished tree onto it. The branch it had moved to is never reset by codeaf,
+even when that is one of your own branches, so what it left there stays.
+
+The task's page says so beside the landing, in these words after the program's name:
+`had moved its copy to the branch <branch>; its work was committed on <task branch>, and
+any commit it made on <branch> is still on that branch`, or `had left its copy on no
+branch; its work was committed on <task branch>`.
+
+When the work was not built on where the copy started (it cut its own branch from
+somewhere else), the squash also undoes whatever the copy's starting point had and its
+work did not, and the page adds `its work was not built on the commit its copy started
+from, so the commit on <task branch> may also undo changes that commit had; read its diff
+before you merge it`.
+
+So a brief need not ask for a branch: codeaf already gives the work one.
+
 ## What a senior-dev run costs — model calls, the dollar ceiling, which models
 
 Every model call senior-dev makes goes through codeaf, which serves each run its own

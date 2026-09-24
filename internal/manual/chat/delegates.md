@@ -112,6 +112,10 @@ nothing was merged into your checkout`. Ask the chat to merge it, or merge it yo
 (`git merge <branch>`), when you are ready. Nothing can conflict when the run ends,
 because the landing writes nothing of yours; a conflict only appears when you merge.
 
+If the program switched branches in its copy, its work still lands on the task's own
+branch, and the branch it had moved to (even one of yours) is never reset by codeaf; the
+task's page names that branch.
+
 When there is nothing to land, it says `nothing to land: the run's working copy holds no
 change`. A folder with no git history is the exception: the program works in it directly.
 
