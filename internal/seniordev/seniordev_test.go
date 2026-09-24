@@ -83,8 +83,8 @@ const (
 
 // modelAPIServer answers like codeaf's model API: OpenRouter's streamed
 // chat-completions shape, a keepalive comment before the first chunk, and
-// usage.cost in the last. It plays one scripted conversation — write the
-// feature, write the checklist, submit, and stop — and keeps every request it
+// usage.cost in the last. It plays one scripted conversation — run the tests,
+// write the feature, write the checklist, submit, and stop — and keeps every request it
 // was sent.
 type modelAPIServer struct {
 	mu       sync.Mutex
@@ -146,14 +146,17 @@ func (s *modelAPIServer) seen() []seenRequest {
 	return append([]seenRequest(nil), s.requests...)
 }
 
-// scriptedReply is the model's side of the conversation, one reply per call.
+// scriptedReply is the model's side of the conversation, one reply per call:
+// run the tests first, write the feature, write the checklist, submit, stop.
 func scriptedReply(call int) string {
 	switch call {
 	case 1:
-		return toolCall(call, "write", map[string]any{"filePath": "feature.txt", "content": "implemented\n"})
+		return toolCall(call, "bash", map[string]any{"command": "make test"})
 	case 2:
-		return toolCall(call, "write", map[string]any{"filePath": ".senior-dev/checklist.md", "content": "- [x] the feature is implemented\n"})
+		return toolCall(call, "write", map[string]any{"filePath": "feature.txt", "content": "implemented\n"})
 	case 3:
+		return toolCall(call, "write", map[string]any{"filePath": ".senior-dev/checklist.md", "content": "- [x] the feature is implemented\n"})
+	case 4:
 		return toolCall(call, "submit", map[string]any{
 			"reason": "feature.txt now holds the feature", "evidence": "make test exits 0",
 			"checklist_satisfied": true,
@@ -298,6 +301,10 @@ func TestTheRunCommandWorksATaskThroughTheModelAPIItIsGiven(t *testing.T) {
 				t.Fatalf("step %q says tool %q and step %q, want a tool and one of %v", record.step, record.record.Tool, record.record.Step, app.Steps)
 			}
 			named[record.record.Step] = true
+			// A COMMAND SAYS HOW IT EXITED, from the shell tool's own record of it.
+			if record.record.Tool == "bash" && record.record.Exit == nil {
+				t.Fatalf("the command step %q carries no exit code", record.step)
+			}
 		case "terminal":
 			terminals++
 			if at != len(records)-1 {
@@ -308,9 +315,9 @@ func TestTheRunCommandWorksATaskThroughTheModelAPIItIsGiven(t *testing.T) {
 	if steps < 1 {
 		t.Fatalf("no step records: %+v", records)
 	}
-	// The scripted model writes the feature, then its checklist, then submits;
-	// senior-dev then runs the project's own build and tests itself.
-	for _, want := range []string{app.StepImplement, app.StepChecklist, app.StepSubmit, app.StepVerify} {
+	// The scripted model runs the tests, writes the feature, then its checklist,
+	// then submits; senior-dev then runs the project's own build and tests itself.
+	for _, want := range []string{app.StepExplore, app.StepImplement, app.StepChecklist, app.StepSubmit, app.StepVerify} {
 		if !named[want] {
 			t.Errorf("no step was named %q: %v", want, named)
 		}
@@ -358,8 +365,8 @@ func TestTheRunCommandWorksATaskThroughTheModelAPIItIsGiven(t *testing.T) {
 	}
 
 	requests := server.seen()
-	if len(requests) < 4 {
-		t.Fatalf("%d model requests, want the scripted four", len(requests))
+	if len(requests) < 5 {
+		t.Fatalf("%d model requests, want the scripted five", len(requests))
 	}
 	route, err := url.Parse(modelapi.ChatURL(host.api.BaseURL))
 	if err != nil {
