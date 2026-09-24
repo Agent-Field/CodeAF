@@ -2645,6 +2645,11 @@ type Agent struct {
 	// person is not currently saying under their live authority
 	// (task_forward.go).
 	personHeard uint64
+	// programBounced is the [Agent.personSeq] of the person's message a
+	// proposal was last turned back for, because that message named a program
+	// and the proposal did not (delegate_asked.go). It is what makes the bounce
+	// once per message: the next proposal for the same message passes as it is.
+	programBounced uint64
 	// callOutcomes is whether a finished call came back a failure, by call occurrence
 	// (admission_compile.go). It is recorded at the batch's own fan-out because
 	// the flag the tool returned does not survive into the transcript, and it is

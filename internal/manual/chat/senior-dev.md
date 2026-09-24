@@ -14,9 +14,33 @@ the tree is frozen at that moment, so nothing it does afterwards can change what
 back. It then runs the project's own build and tests on the frozen tree, and if anything
 moved after it submitted, the tree is put back to what it submitted.
 
-Use it for one change big enough to want an agent of its own for an hour, and specified
-well enough that nobody will be asked anything: a rewrite across a package, a migration,
-a feature with its tests. A change you would make in a few steps is not worth it.
+It is for complex, multi-part coding work: fixing an issue in a mature codebase whose
+cause spans files, a feature with its tests, a rewrite across a package, a migration.
+codeaf hands work like that to it by itself, and uses it whenever you name it (the next
+section). Its brief has to settle everything, because nobody will be asked anything.
+
+## Will codeaf use senior-dev by itself — when does codeaf hand work to senior-dev, how do I make codeaf use senior-dev, stop it using senior-dev
+
+**Yes, for the work it is for.** The chat's model is told to hand complex, multi-part
+coding work to senior-dev, whole, rather than doing it in the conversation or giving it
+to codeaf's own worker: fixing an issue in a mature codebase whose cause spans files, a
+feature with its tests, a rewrite across a package, a migration. It proposes the task
+with `via` naming senior-dev, and the card goes up like any proposal's, with its
+countdown. A change you would make in a few steps it still makes itself.
+
+**Naming it is enough.** Say senior-dev in your message, in any spelling: "fix issue 412
+with senior-dev", "/senior-dev should take this", "senior dev". The model is told to use
+it, and if it proposes the work without senior-dev anyway, codeaf turns that proposal
+back once and tells it you named senior-dev. That holds even for a one-file fix, which
+otherwise stays in the conversation.
+
+**Saying not to is kept too.** "don't use senior-dev for this" names it, so the first
+proposal is turned back the same way; the model proposes it again as it was, and the
+second proposal for the same message passes.
+
+**Typing `/senior-dev <brief>`** starts it at once, with your brief word for word and no
+card. Work codeaf moves to a task on its own, because a reply ran long or looked like
+work, goes to codeaf's own worker, never to senior-dev.
 
 ## Watching senior-dev work — open its task, what it is doing step by step, how long it has run, stop it
 

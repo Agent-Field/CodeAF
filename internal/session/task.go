@@ -179,6 +179,15 @@ var taskDescription = "Hand self-contained work to a task outside this conversat
 // carries it whole, and [composeBrief] bounds the person's verbatim ask and
 // nothing else — so a findings-rich handoff reaches the worker entire, and this
 // sentence is the only thing standing between the model and writing one.
+//
+// AND `via` SAYS WHEN IT IS SET, NOT ONLY WHAT IT IS. It opened on "Optional",
+// and a model already writing a proposal for an issue in a mature project read
+// that as the field to leave out. The hand-off page says codeaf prefers a
+// program for the work its guide claims and uses one the person asks for
+// (delegate_door.go's [delegateFact]); this is that same preference at the
+// moment the field is being filled, in as few bytes as say it. The page stays
+// the rule's home: on the lean belt this schema is fetched on demand, and the
+// page is all that is read before the model decides to propose at all.
 var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"title":{"type":"string","description":"One line naming the work as a person would say it"},` +
 	`"summary":{"type":"string","description":"Two or three lines the person reads to decide whether to redirect it"},` +
@@ -192,7 +201,7 @@ var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids that must finish first, only ones propose_task returned in this session. Its brief is given their reports; an unknown or failed id refuses the proposal"},` +
 	`"wide":{"type":"boolean","description":"Optional. True when the work is wider than one pair of hands. Say true whenever you judged it broad; a wrong true costs nothing"},` +
 	`"model":{"type":"string","description":"Optional, only where the person asked for one: a catalog id or part of one, never a class word, so resolve \"fast\" to a concrete model. A word fitting several is shown to the person to settle"},` +
-	`"via":{"type":"string","description":"Optional: a program your instructions list, to do the whole task alone in ground (or this conversation's folder)"},` +
+	`"via":{"type":"string","description":"A program your instructions list, to do the whole task alone in ground (or this conversation's folder): set it for work one is for, and when the person names one"},` +
 	`"max_steps":{"type":"integer","description":"Optional. Finished tool calls per progress checkpoint (default ` + strconv.Itoa(taskMaxSteps) + `); work still advancing is given more."},` +
 	`"no_progress":{"type":"integer","description":"Optional. Tool calls in a row that may add nothing before it is stopped as stuck (default ` + strconv.Itoa(taskNoProgress) + `). Raise it for work that must read a great deal first"}` +
 	`},"required":["title","summary","brief","deliverable","acceptance"],"additionalProperties":false}`
@@ -639,10 +648,11 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 		}
 		return bare.Settled(problem, true)
 	}
-	// THE DOOR REFUSALS, before a card or a slot. A trivial ask and a
-	// depends_on that can never resolve are both "do not start this"; they
-	// live in one helper so this road does not grow another ending
-	// (complexity_test.go's ratchet on this function).
+	// THE DOOR REFUSALS, before a card or a slot. A proposal that left out the
+	// program the person named, a trivial ask and a depends_on that can never
+	// resolve are all "do not start this"; they live in one helper so this
+	// road does not grow another ending (complexity_test.go's ratchet on this
+	// function).
 	if refusal := a.refuseProposedTask(spec); refusal != "" {
 		return bare.Settled(refusal, true)
 	}
@@ -653,7 +663,7 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 		if _, err := a.delegateFor(spec.via); err != nil {
 			return bare.Settled(err.Error(), true)
 		}
-		if a.config.InTask || chatRunEngine == nil {
+		if !a.mayHandToProgram() {
 			return bare.Settled(spec.via+" can only be given work from the conversation, and only where the run road is linked", true)
 		}
 	}

@@ -42,7 +42,8 @@ Type its name as a command, then the brief:
 That is `/task` with the worker chosen. A run starts at once in a copy of your folder, the
 turn goes on, and the row appears on the rail.
 
-The model can choose one as well. `propose_task` takes `via` naming the program, and the
+The model can choose one as well, and reaches for one by itself (see *When codeaf hands
+work to a program by itself*). `propose_task` takes `via` naming the program, and the
 card you answer says which program the work is going to: it asks `wants to start a
 [<name>] task: <title>`, and its top line wears the program's badge. The model is told
 the programs your build carries, each in the program's own words: what it is for, what its
@@ -53,6 +54,31 @@ one `--dir` names. `--max-cost` and `--max-hours` set its ceilings, and `--json`
 records instead of readable lines. `codeaf <name> --help` lists its own commands and flags.
 Its last line says what the run came to, such as `277 model calls · $2.30 · 22m 51s`: the
 calls, the dollars and how long the program ran.
+
+## When codeaf hands work to a program by itself — will it use one without being asked, naming one is enough, it did the work itself instead
+
+The chat's model is told to hand the work a program is for to that program, whole, rather
+than doing it itself or giving it to codeaf's own worker, even when it is one long job
+with nothing to run beside it. Each program's own line says what it is for: senior-dev's
+claims complex, multi-part coding work, such as fixing an issue in a mature codebase
+whose cause spans files, a feature with its tests, a rewrite across a package, or a
+migration. The model proposes that work with `via` naming the program, and its card goes
+up like any proposal's.
+
+**Naming the program is enough.** Say it in your message, by name or as its command
+("fix issue 412 with senior-dev", "give this to /senior-dev", "senior dev should do
+this"), and the model is told to use it. If it proposes the work without the program
+anyway, codeaf turns that proposal back once:
+``the person named senior-dev: if they want it to do this work, propose this again with `via: "senior-dev"`; if they asked for it not to be used, or did not mean the program, propose it again unchanged``.
+The next proposal for the same message passes as it is, so "don't use senior-dev for
+this" is kept too.
+
+**An ask for a program is never too small.** A one-file fix or a single command otherwise
+stays in the conversation, but "fix this file with senior-dev" goes to senior-dev.
+
+**What it does not do.** A reply codeaf moves to a task on its own, because it ran long or
+looked like work, goes to codeaf's own worker and never to a program. A task never hands
+its work to a program. `/<name> <brief>` starts the program at once, with no card.
 
 ## Which folder a program works in — a repository I have not cloned, it edited files outside its copy, a folder with no git
 

@@ -373,6 +373,38 @@ func TestThePromptNamesTheDelegatesThisLaunchHasAndOnlyThose(t *testing.T) {
 	}
 }
 
+// CODEAF PREFERS A PROGRAM FOR THE WORK IT IS FOR, AND USES ONE WHEN ASKED.
+// The paragraph said a large task "can" go to a program, and the model took a
+// permission for no reason to: the owner's call of 2026-09-24 is that it
+// reach for one by itself on the work the program's guide claims, over its
+// own hands and its own worker, and whenever the person names one. Both
+// sentences are said whatever the program lands, before the folder rule and
+// apart from it, so either can be reworded without the other; and `via`
+// says the same when the proposal is being written.
+func TestThePagePrefersAProgramForItsWorkAndForTheAsk(t *testing.T) {
+	preference := []string{
+		"AND WORK A PROGRAM BUILT INTO CODEAF IS FOR GOES TO IT WHOLE, named in\n`propose_task`'s `via`",
+		"rather than to you or a worker, whatever its critical path;",
+		"so does work the person asks one for, by name or as `/name`.",
+	}
+	textOnly := testPrograms("reader")
+	textOnly[0].Lands = delegate.LandsText
+	for _, programs := range [][]delegate.Delegate{testPrograms("fake"), textOnly} {
+		page := promptWithBeltFacts(Config{Workspace: t.TempDir(), Delegates: programs})
+		for _, want := range preference {
+			if !strings.Contains(page, want) {
+				t.Fatalf("a build carrying %s is not told %q:\n%s", programs[0].Name, want, page)
+			}
+		}
+		if rule := strings.Index(page, "It works in a copy"); rule >= 0 && rule < strings.Index(page, preference[2]) {
+			t.Fatalf("the folder rule is said inside the preference rather than after it:\n%s", page)
+		}
+	}
+	if !strings.Contains(taskSchemaJSON, `"via":{"type":"string","description":"A program your instructions list, to do the whole task alone in ground (or this conversation's folder): set it for work one is for, and when the person names one"}`) {
+		t.Fatal("`via` does not say when it is set")
+	}
+}
+
 // THE FOLDER A PROGRAM IS HANDED IS CODEAF'S TO EXPLAIN, and it is explained
 // only where it is true. A program that edits files works in a copy of the
 // proposal's folder and lands only from there, so the page tells the model to

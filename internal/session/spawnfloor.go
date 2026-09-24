@@ -37,13 +37,25 @@ import "strings"
 const spawnFloorRefusal = "this ask is one command — do it here. A commit, an undo, a one-file edit or a single read stays in the conversation; handing it to a task is how the work gets dropped."
 
 // refuseProposedTask is every check that can turn a propose_task call around
-// BEFORE a card is raised or a slot is taken: the spawn floor, then a
-// depends_on that can never resolve. Both used to live as endings of
-// [Agent.proposeTask]; they are here so that road does not grow (the
-// complexity ratchet holds it at 16).
+// BEFORE a card is raised or a slot is taken: a proposal that left out the
+// program the person named, the spawn floor, then a depends_on that can never
+// resolve. They used to live as endings of [Agent.proposeTask]; they are here
+// so that road does not grow (the complexity ratchet holds it at 16).
+//
+// THE PROGRAM THE PERSON NAMED COMES FIRST, and it lifts the floor. "fix this
+// file with senior-dev" is a one-file fix on the floor's reading and an ask
+// for a program on the person's: the proposal without `via` is turned back
+// to name it, and the one that names it is not refused for being small
+// (delegate_asked.go). A proposal naming a program the person did not ask
+// for meets the floor as any proposal does.
 func (a *Agent) refuseProposedTask(spec taskSpec) string {
-	if !a.config.InTask && trivialAsk(a.taskRequest()) {
-		return spawnFloorRefusal
+	if bounce := a.programAskBounce(spec); bounce != "" {
+		return bounce
+	}
+	if !a.config.InTask {
+		if asked := a.taskRequest(); trivialAsk(asked) && !a.config.askedForProgram(asked, spec.via) {
+			return spawnFloorRefusal
+		}
 	}
 	if missing, failed := a.graph().doomedDependencies(spec.dependsOn); len(missing)+len(failed) > 0 {
 		if bashBeltAsked() {

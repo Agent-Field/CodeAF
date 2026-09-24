@@ -1200,7 +1200,9 @@ gets dropped. The floor is the words you typed, not how much the reply has alrea
 **What still becomes a task.** Several independent pieces in one message, a sweep across
 many files, a rewrite you would sit and watch: those can still be handed over, proposed, or
 started with `/task`. Typing `/task commit everything` still starts a task, because you
-asked for one.
+asked for one. Naming a program codeaf carries lifts the floor the same way: for "fix this
+one line with senior-dev", a proposal that hands it to senior-dev is not refused, because
+you asked for senior-dev (the programs page).
 
 ## An answer that stops before your question is finished is carried on — my reply stopped halfway, it said it would do the rest and then stopped, codeaf kept going without me
 
@@ -5543,8 +5545,10 @@ and breadcrumbs remain available.
 ## will the chat do it itself or start a task?
 
 One read, one edit or one command the chat does itself. Anything with parts goes
-out as tasks. With `CODEAF_TASK_BELT=bash` set there is **one way** the chat puts
-work out, a task:
+out as tasks. Complex coding work a program codeaf carries is for, such as fixing an
+issue in a mature codebase, goes to that program (senior-dev), and so does work you
+name a program for; the programs page says when. With `CODEAF_TASK_BELT=bash` set
+there is **one way** the chat puts work out, a task:
 
 - **hand off:** the chat proposes a task; approving the card, or letting its
   countdown run out, starts it as a run in the conversation's plan.

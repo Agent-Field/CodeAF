@@ -471,9 +471,22 @@ const fixedPrefixTarget = 48_000
 // prompt text was offered and declined: the paragraph is how the conversation
 // learns what senior-dev is for and which folder to hand it, and cutting
 // other lanes' wording to make room was the riskier edit days before a ship.
+//
+// 2026-09-24, codeaf reaches for a program by itself, and the owner's call by
+// name: "raise the cap only as much as necessary — the prompts will be refined
+// later". The programs paragraph now says work a program is for goes to it
+// whole, rather than to the conversation or its own worker whatever its
+// critical path, and that work the person asks one for by name goes to it;
+// senior-dev's guide claims the complex, many-sided coding work it was going
+// unused on (an issue in a mature codebase whose cause spans files) and says
+// its brief carries the issue in full; and `via` says when it is set. That
+// grew fixed by 202 bytes (page 153, `propose_task` 49) to 56,447, and lean
+// by 153 to 47,859. Both arms already had room, 26 and 13 bytes of it, so
+// fixed rises by 176 and lean by 140, and both sit exactly on the
+// measurement again.
 const (
-	fixedPrefixWaiver = 8_271
-	leanPrefixWaiver  = 16_219
+	fixedPrefixWaiver = 8_447
+	leanPrefixWaiver  = 16_359
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane

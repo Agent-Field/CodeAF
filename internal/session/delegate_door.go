@@ -95,11 +95,30 @@ func (c Config) mayDelegate() bool {
 // That nobody can be asked anything is `propose_task`'s own `brief`
 // description, and that small work is never handed off is this section's
 // own; neither is said a second time here.
+//
+// AND CODEAF PREFERS A PROGRAM FOR THE WORK IT IS FOR. The paragraph said a
+// large task "can" go to one, which is a permission, and a permission loses
+// to the two roads the rest of the section teaches: an issue in a mature
+// project is worked through inline, or handed to codeaf's own worker, which
+// has none of a program's machinery for that work. The owner's call of
+// 2026-09-24 is that codeaf reach for a program by itself on complicated,
+// many-sided coding work, and almost always when the person asks for one. So
+// the first sentence is a preference over both of those roads, the program's
+// guide under it says which work that is, and WHATEVER ITS CRITICAL PATH is
+// said because the section's own test for a hand-off is the critical path:
+// one hard fix has a single one, and a model holding that test alone would
+// keep the fix. The second sentence is the person's ask, which outranks the
+// section's floor on small work; code holds both halves of it, where a prompt
+// would be forgotten (delegate_asked.go).
+//
+// THE TWO SENTENCES STAND APART FROM THE FOLDER RULE, which is spliced in
+// after them, so either can be reworded without touching the other.
 var delegateFact = beltFact{
 	tools: []string{"propose_task"},
 	holds: Config.mayDelegate,
-	present: "AND ONE LARGE TASK CAN GO TO A PROGRAM BUILT INTO CODEAF, named in `propose_task`'s\n" +
-		"`via`, which does the whole of it alone.%s The programs here:\n%s",
+	present: "AND WORK A PROGRAM BUILT INTO CODEAF IS FOR GOES TO IT WHOLE, named in\n" +
+		"`propose_task`'s `via`, rather than to you or a worker, whatever its critical path;\n" +
+		"so does work the person asks one for, by name or as `/name`.%s The programs here:\n%s",
 	fill: func(config Config, text string) string {
 		rule := ""
 		if config.carriesTreeProgram() {

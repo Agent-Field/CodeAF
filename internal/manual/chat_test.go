@@ -947,6 +947,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what is the [sd] next to a task on the side list", "senior-dev"},
 		{"which of my tasks are senior-dev's", "senior-dev"},
 		{"does every delegate get its own badge", "delegates"},
+		// And whether codeaf reaches for it on its own, asked the ways somebody
+		// who has just watched it do the work itself, or wants it to, puts it.
+		{"will codeaf use senior-dev by itself", "senior-dev"},
+		{"when does codeaf hand work to senior-dev", "senior-dev"},
+		{"how do I make codeaf use senior-dev", "senior-dev"},
+		{"I asked for senior-dev and it did the work itself", "senior-dev"},
+		{"how do I stop it using senior-dev for this", "senior-dev"},
+		{"will codeaf hand work to a program without being asked", "delegates"},
+		{"is naming a delegate enough to make codeaf use it", "delegates"},
 		{"which folder does a delegate work in", "delegates"},
 		{"the harness I just had built is not in /subharness", "subharnesses"},
 		{"how do I run a harness I had designed", "subharnesses"},
