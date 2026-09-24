@@ -46,6 +46,9 @@ const (
 	ToEveryone  = "everyone"
 	ToManager   = "manager"
 	ToRoom      = "room"
+	// ToSeveral is a message to more than one member and fewer than all of
+	// them, by name: [Entry.Handles] lists who (thread.go).
+	ToSeveral = "several"
 )
 
 var kinds = map[string]bool{
@@ -63,9 +66,18 @@ type Entry struct {
 	Kind string `json:"kind"`
 	// From is a member's handle, or manager, you or system.
 	From string `json:"from"`
-	// To is a member's handle, or everyone, manager or room.
+	// To is a member's handle, or everyone, manager or room, or several with
+	// the handles in Handles.
 	To   string `json:"to"`
 	Text string `json:"text"`
+	// Handles is who a message to several members is for, in the order the
+	// sender named them; empty on every other entry (thread.go).
+	Handles []string `json:"handles,omitempty"`
+	// Answers is the id of the entry this one answers, which is what threads
+	// the log: a member's reply names the manager's message it replies to, and
+	// the events its turn raises name the same one. Empty on an entry that
+	// answers nothing, and on every entry written before threads (thread.go).
+	Answers string `json:"answers,omitempty"`
 	// Files are paths the entry is about, when it is about any.
 	Files []string `json:"files,omitempty"`
 	// Member is the conversation key the entry concerns, when there is one.
@@ -110,20 +122,30 @@ func safeTeamID(id string) error {
 // AppendTraffic adds e to the end of team teamID's log, under the log's lock,
 // giving it the next id and, when it has none, the time now.
 func AppendTraffic(profileDir, teamID string, e Entry) error {
+	_, err := AppendTrafficID(profileDir, teamID, e)
+	return err
+}
+
+// AppendTrafficID is [AppendTraffic], and the id the entry was given, which a
+// writer that will be answered keeps so the answer can name it.
+func AppendTrafficID(profileDir, teamID string, e Entry) (string, error) {
 	if err := safeTeamID(teamID); err != nil {
-		return err
+		return "", err
 	}
 	if !kinds[e.Kind] {
-		return fmt.Errorf("teams: %q is not a traffic kind", e.Kind)
+		return "", fmt.Errorf("teams: %q is not a traffic kind", e.Kind)
 	}
 	if strings.TrimSpace(e.From) == "" || strings.TrimSpace(e.To) == "" {
-		return errors.New("teams: a traffic entry needs a from and a to")
+		return "", errors.New("teams: a traffic entry needs a from and a to")
+	}
+	if e.To == ToSeveral && len(e.Handles) == 0 {
+		return "", errors.New("teams: a message to several members needs their handles")
 	}
 	if e.At.IsZero() {
 		e.At = time.Now()
 	}
 	path := TrafficPath(profileDir, teamID)
-	return lockedAt(strings.TrimSuffix(path, ".jsonl")+".lock", lockWait, func() error {
+	err := lockedAt(strings.TrimSuffix(path, ".jsonl")+".lock", lockWait, func() error {
 		last, err := lastTrafficID(path)
 		if err != nil {
 			return err
@@ -156,6 +178,10 @@ func AppendTraffic(profileDir, teamID string, e Entry) error {
 		advance(path, before)
 		return nil
 	})
+	if err != nil {
+		return "", err
+	}
+	return e.ID, nil
 }
 
 // ReadTraffic is team teamID's log after the entry with id after, oldest
