@@ -3,6 +3,7 @@ package tui3
 import (
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -107,6 +108,10 @@ func (r refusal) fit(width int) string {
 
 // The refusals themselves, spelled once each.
 var (
+	// A stopped task keeps its ending when its page refuses further input.
+	roomStoppedRefusal      = refusal{what: "this task was stopped", shortWhat: "stopped", door: refusalMainDoor}
+	roomGuestStoppedRefusal = refusal{what: "this task was stopped", shortWhat: "stopped", door: refusalOwnerLead + refusalOwnerPlace}
+
 	// roomFinishedRefusal is what a landed node's room says — at its foot, and in
 	// the box's own placeholder. The parent clause is added by
 	// [app.roomFinishedRefusal] when there is a parent to name.
@@ -145,6 +150,8 @@ var (
 // question drawing three doors as pressable keys (room.go's [app.guardRows]),
 // which is this law's own best case rather than an exception to it.
 var taskRefusals = []refusal{
+	roomStoppedRefusal,
+	roomGuestStoppedRefusal,
 	roomFinishedRefusal,
 	roomUnavailableRefusal,
 	roomGuestFinishedRefusal,
@@ -165,6 +172,9 @@ var taskRefusals = []refusal{
 // offered as a door onto a name nobody has.
 func (a *app) roomFinishedRefusal() refusal {
 	out := roomFinishedRefusal
+	if a.taskStatus(a.roomNode()).Presence == session.TaskPresenceStopped {
+		out = roomStoppedRefusal
+	}
 	if title := a.roomParentTitle(); title != "" {
 		out.door += refusalParentDoor + title
 	}
@@ -185,6 +195,9 @@ func (a *app) roomDoneRefusal() refusal {
 		return a.roomFinishedRefusal()
 	}
 	out := roomGuestFinishedRefusal
+	if a.taskStatus(a.roomNode()).Presence == session.TaskPresenceStopped {
+		out = roomGuestStoppedRefusal
+	}
 	if owner := strings.TrimSpace(guest.owner); owner != "" {
 		out.door = refusalOwnerLead + owner
 	}

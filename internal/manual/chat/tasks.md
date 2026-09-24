@@ -4457,7 +4457,10 @@ Strip chips do not carry a stop button.
 
 **On Home and Sessions, `→ x stop` stops the selected task and its active descendants.**
 Queued or waiting work also offers Stop. This menu action acts directly and keeps its
-records visible; it never closes the conversation. Once the whole subtree has stopped,
+records visible; it never closes the conversation. A task stopped here reads `stopped`
+in the conversation task column and its task page, including after reopening. Its task
+page says `this task was stopped`. Stopping
+an already stopped task leaves that status unchanged. Once the whole subtree has stopped,
 `x delete` asks `delete is permanent, are you sure?`. `y` deletes the task and all its
 descendants; `n` or Escape returns to the four actions. Enter never confirms Delete.
 Deleted tasks disappear immediately from Home, Sessions, the conversation task column

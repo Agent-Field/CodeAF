@@ -159,6 +159,9 @@ func (a *Agent) stopJoinedRow(run *beltRun, id uint64, why string) (string, bool
 		title = task.Title
 	}
 	name := taskStopName(id, title)
+	if planTaskStopped(run.store, task) {
+		return name + " is already stopped; there is nothing to stop", true, nil
+	}
 	if task == nil || terminalStoreStatus(task.Status) {
 		return name + " has already finished; there is nothing to stop", true, nil
 	}
@@ -190,6 +193,9 @@ func (a *Agent) endedBeltRow(id uint64) (string, bool, error) {
 	}
 	for _, kept := range g.runRows(id) {
 		if kept.ID == id && kept.Run == "" {
+			if kept.Stopped || kept.Ending == TaskEndingStopped {
+				return taskStopName(id, kept.Title) + " is already stopped; there is nothing to stop", true, nil
+			}
 			return taskStopName(id, kept.Title) + " has already finished; there is nothing to stop", true, nil
 		}
 	}
@@ -204,16 +210,24 @@ func (a *Agent) beltRunStopped(run *beltRun) (bool, string) {
 	return run.stopped, run.stopReason
 }
 
-// beltRunRootRow answers the row a run's own task is published under, when id
-// names the live run's own task. It is how the page's stop finds the run: the
-// page speaks the store's ids and the stop speaks the row's number.
-func (a *Agent) beltRunRootRow(id string) (uint64, bool) {
+// beltRunTaskRow translates a live plan task into its conversation row.
+// Both the root and joined work must use the stop that publishes live notices.
+func (a *Agent) beltRunTaskRow(id string) (uint64, bool) {
 	a.beltMu.Lock()
 	defer a.beltMu.Unlock()
-	if a.beltRun == nil || planTaskID(id) != a.beltRun.root {
+	if a.beltRun == nil {
 		return 0, false
 	}
-	return a.beltRun.row, true
+	key := planTaskID(id)
+	if key == a.beltRun.root {
+		return a.beltRun.row, true
+	}
+	for _, row := range a.beltRun.joined {
+		if strconv.FormatUint(row, 10) == key {
+			return row, true
+		}
+	}
+	return 0, false
 }
 
 // settleStoppedBeltRun ends a run a person stopped: what its workers had made

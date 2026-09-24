@@ -114,19 +114,22 @@ func (a *Agent) PlanResume(id string) error {
 }
 
 // PlanCancel ends a task, its descendants and the work hard-depending on it.
-// The cascade is the store's own law; the person's cancel carries no reason,
-// because the store records the ending and the surface reads the word.
+// The cascade is the store's own law. A person's stop is recorded explicitly
+// so every surface distinguishes it from work that completed on its own.
 //
 // THE RUN'S OWN TASK IS STOPPED AS THE RUN. The store refuses every verb on it,
 // because no worker may end the run it is part of; a person may, and the stop
 // they are owed is the run's (stoprun.go), never the store's sentence about who
 // owns what.
 func (a *Agent) PlanCancel(id string) error {
-	if row, ok := a.beltRunRootRow(id); ok {
+	if row, ok := a.beltRunTaskRow(id); ok {
 		_, err := a.cancelTask(row, "")
 		return err
 	}
 	return a.planSteer(id, func(store *plandb.Store, task *plandb.Task) error {
+		if planTaskStopped(store, task) {
+			return nil
+		}
 		if task.ID == store.RootID() {
 			// A RUN NOBODY IS RUNNING ANY MORE. The store holds an open run and this
 			// conversation has none going (the program ended under it), so there is
@@ -134,7 +137,7 @@ func (a *Agent) PlanCancel(id string) error {
 			// is open under it end, and the next hand-off starts fresh.
 			return store.StopRoot(taskStoppedWord)
 		}
-		_, err := store.Cancel(task.ID, "")
+		_, err := store.Cancel(task.ID, taskStoppedWord)
 		return err
 	})
 }
