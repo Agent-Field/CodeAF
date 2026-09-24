@@ -154,6 +154,8 @@ type wallView struct {
 	// doorHot says the pointer rests on the strip's own door to this view
 	// (chattabs.go), which the toolbar explains like any other control.
 	doorHot bool
+	// org is Organize's button and card (teamorganize.go).
+	org wallOrganize
 }
 
 // wallTeamRow is one team as the painter draws it: its id, name and colour,
@@ -193,6 +195,7 @@ const (
 	wallHitPopRow               // a popover row; id is a team (arg wallPopTeam), or arg is a wallPop row code
 	wallHitSwatch               // a colour swatch; arg is its index among the choices
 	wallHitHelp                 // a row of the help sheet; arg is its place in [wallHelpList]
+	wallHitOrgRow               // a suggestion on the Organize card; arg is its place in the card
 )
 
 // The popover rows that are not a team.
@@ -258,6 +261,10 @@ const (
 	wallActFilterClear                // esc, filtering
 	wallActShuffle                    // ctrl+r, naming
 	wallActHelp                       // ?
+	wallActOrganize                   // o: the Organize card, on All
+	wallActOrgUndo                    // u: the last Organize undone, while it is offered
+	wallActOrgApply                   // enter, organizing
+	wallActOrgCancel                  // esc, organizing
 )
 
 // wallHitRef names one target without its cells, which is what a hover keeps
@@ -412,6 +419,8 @@ type wallState struct {
 	// door is where the strip drew its own door to this view, empty when it
 	// was not drawn (chattabs.go).
 	door hudSpan
+	// org is Organize's card, its suggestions and its Undo (teamorganize.go).
+	org wallOrganize
 }
 
 // wallTail is one conversation's cached reading (walltail.go fills it).

@@ -34,7 +34,7 @@ import (
 //	pgup, pgdown       a screen of rows              the wheel, one row a notch
 //	n                  next waiting on a person      the title's needs-you count
 //	enter              open the focused tile         a press on any tile, or Open
-//	team              pick the focused tile         Select; any tile once one is picked
+//	space              pick the focused tile         Select; any tile once one is picked
 //	x                  close its view, or the picked'  Close on a tile, Close views
 //	m                  its teams, or the picked'    Teams on a tile, Add to…
 //	s                  new team of the picked       + New team, Make team
@@ -42,6 +42,8 @@ import (
 //	tab, shift+tab     next or previous team        a Teams segment
 //	1 to 9             that team, again for All     a Teams segment
 //	D                  delete the shown team        settings, Delete
+//	o                  suggest teams, on All        ✦ Organize on the Teams row
+//	u                  undo the last Organize       Undo, while the Teams row offers it
 //	/                  filter                        Filter /
 //	-, + or =          fewer or more columns         Columns − +
 //	0                  columns back to automatic     (key only)
@@ -126,6 +128,9 @@ func (a *app) closeWall() {
 	a.wall.card = wallRect{}
 	a.wall.spinning = false
 	a.wall.help = false
+	if a.wall.org.on {
+		a.wallOrganizeClose()
+	}
 	a.touch()
 }
 
@@ -232,11 +237,13 @@ func (a *app) wallFrame(width, height int) []string {
 	// are not on the wall. They are read off the strip's list, not a second
 	// build of every tile.
 	open := map[string]bool{}
-	for _, tab := range a.tabList() {
+	tabs := a.tabList()
+	for _, tab := range tabs {
 		if !tab.start && !tab.work {
 			open[tab.key] = true
 		}
 	}
+	view.org = a.wallOrganizeFrame(tiles, tabs)
 	view.total = len(open)
 	for _, t := range a.wall.teams {
 		n := 0
@@ -351,6 +358,9 @@ func (a *app) wallKey(msg tea.KeyPressMsg) tea.Cmd {
 			}
 		}
 		return nil
+	}
+	if a.wall.org.on {
+		return a.wallOrganizeKey(key)
 	}
 	if a.wall.filterOn {
 		switch key {
@@ -483,6 +493,10 @@ func (a *app) wallCommand(key string, tiles []wallTile) tea.Cmd {
 		if id := a.wall.activeID; id != "" {
 			a.wallDeleteTeam(id)
 		}
+	case "o":
+		return a.wallOrganizeOpen()
+	case "u":
+		a.wallOrganizeUndo()
 	}
 	return nil
 }
@@ -939,14 +953,17 @@ func (a *app) wallPress(x, y int) (tea.Cmd, bool) {
 	}
 	a.wallSettle()
 	// A PRESS OFF A CARD PUTS THE CARD AWAY and does nothing else, as a menu
-	// or a sheet does anywhere: the popover, or the new-team card, which is
-	// the same as its Cancel. A press inside a card but on none of its
+	// or a sheet does anywhere: the popover, or the new-team or Organize card,
+	// which is the same as its Cancel. A press inside a card but on none of its
 	// controls is a press on the card, and does nothing.
-	if a.wall.card.w() > 0 && (a.wall.pop.kind != wallPopNone || a.wall.naming || a.wall.help) {
+	if a.wall.card.w() > 0 && (a.wall.pop.kind != wallPopNone || a.wall.naming || a.wall.help || a.wall.org.on) {
 		if !a.wall.card.holds(x, y) {
 			a.wall.pop = wallPop{}
 			a.wall.naming = false
 			a.wall.help = false
+			if a.wall.org.on {
+				a.wallOrganizeClose()
+			}
 			a.wall.stirred = true
 			return nil, true
 		}
@@ -976,6 +993,10 @@ func (a *app) wallDo(hit wallHit) tea.Cmd {
 			return a.wallAct(wallAct(hit.arg), tiles)
 		}
 		return nil
+	}
+	// The Organize card is modal as the new-team card is.
+	if a.wall.org.on {
+		return a.wallOrganizePress(hit)
 	}
 	// The help sheet answers only its own rows, as a menu does.
 	if a.wall.help {
@@ -1081,6 +1102,14 @@ func (a *app) wallAct(act wallAct, tiles []wallTile) tea.Cmd {
 		a.wallShuffleName(tiles)
 	case wallActHelp:
 		a.wallOpenHelp()
+	case wallActOrganize:
+		return a.wallOrganizeOpen()
+	case wallActOrgUndo:
+		a.wallOrganizeUndo()
+	case wallActOrgApply:
+		a.wallOrganizeApply()
+	case wallActOrgCancel:
+		a.wallOrganizeClose()
 	}
 	return nil
 }
@@ -1203,9 +1232,20 @@ func (a *app) wallWheel(x, y int, down bool) {
 		return
 	}
 	a.wall.wheelDir, a.wall.wheelAt = dir, now
-	// The help sheet scrolls under the wheel, and nothing behind it does.
+	// The help sheet scrolls under the wheel, and nothing behind it does; the
+	// Organize card walks its rows, which scrolls it.
 	if a.wall.help {
 		a.wallHelpScroll(dir)
+		return
+	}
+	if a.wall.org.on {
+		if down {
+			a.wallOrganizeKey("down")
+		} else {
+			a.wallOrganizeKey("up")
+		}
+		a.wall.stirred = true
+		a.touch()
 		return
 	}
 	// A popover hangs from a control that is about to move, so it goes, as a
@@ -1350,8 +1390,8 @@ func wallTileBounds(hits []wallHit, i int) (wallRect, bool) {
 	return r, ok
 }
 
-// wallCardRect is where the help sheet, the popover, or else the new-team
-// card lands on this frame, so a press can be told to be on it or off it. It is laid out
+// wallCardRect is where the help sheet, the popover, the Organize card or
+// else the new-team card lands on this frame, so a press can be told to be on it or off it. It is laid out
 // only while one is up, and a card is a handful of short rows.
 func (a *app) wallCardRect(v wallView, width, room, head int) wallRect {
 	var card wallCard
@@ -1360,6 +1400,9 @@ func (a *app) wallCardRect(v wallView, width, room, head int) wallRect {
 	case v.help:
 		card = wallHelpCard(a.pal, v, width, room)
 		a.wall.helpMax = card.over
+	case v.org.on:
+		card = wallOrgCard(a.pal, g, v, width, room)
+		a.wall.org.top = card.top
 	case v.pop.kind != wallPopNone && !v.naming:
 		card = wallPopCard(a.pal, g, v, width, room)
 	case v.naming:
@@ -1381,7 +1424,7 @@ func (a *app) wallRevealMask(rows []string, hits []wallHit, n, cols, tileH, room
 	if a.wall.revealAt.IsZero() {
 		return
 	}
-	if a.wall.naming || a.wall.help || a.wall.pop.kind != wallPopNone || len(a.wall.marked) > 0 || n == 0 || cols < 1 {
+	if a.wall.naming || a.wall.help || a.wall.org.on || a.wall.pop.kind != wallPopNone || len(a.wall.marked) > 0 || n == 0 || cols < 1 {
 		a.wall.revealAt = time.Time{}
 		return
 	}

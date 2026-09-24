@@ -408,7 +408,28 @@ func wallHint(v wallView, ascii bool) string {
 			return keyed("Suggest another name and colour", "ctrl+r")
 		case wallActHelp:
 			return keyed("What you can do here", "?")
+		case wallActOrganize:
+			return keyed("Suggest teams for your conversations", "o")
+		case wallActOrgUndo:
+			return keyed("Put the teams back as they were", "u")
+		case wallActOrgApply:
+			return keyed("Make the ticked teams", "enter")
+		case wallActOrgCancel:
+			return keyed("Close without changing anything", "esc")
 		}
+	case wallHitOrgRow:
+		if h.arg >= 0 && h.arg < len(v.org.props) {
+			p := v.org.props[h.arg]
+			switch {
+			case p.reason != "":
+				return keyed(p.reason, "space")
+			case p.team != "":
+				return keyed("Add these to "+p.name, "space")
+			case p.folder:
+				return keyed("These conversations share a folder", "space")
+			}
+		}
+		return keyed("Tick or untick this suggestion", "space")
 	case wallHitHelp:
 		if rows := wallHelpRows(ascii); h.arg >= 0 && h.arg < len(rows) {
 			return rows[h.arg].hint
@@ -507,8 +528,12 @@ func wallTeamsRow(pal palette, g wallGlyphs, v wallView, width, height, inset, c
 		b.WriteString(s)
 		x += w
 	}
-	fitsAt := func(w int) bool { return x+w <= width }
+	// limit is the last cell the left part may reach; Organize's piece, when
+	// it is drawn, keeps its own cells at the right.
+	limit := width
+	fitsAt := func(w int) bool { return x+w <= limit }
 	k := wallKeysFor(pal.ascii)
+	var org wallOrgPiece
 	button := func(btn wallButton) {
 		if !fitsAt(1 + wallButtonW(btn)) {
 			return
@@ -557,6 +582,38 @@ func wallTeamsRow(pal palette, g wallGlyphs, v wallView, width, height, inset, c
 		}
 		button(wallButton{act: wallActFilterClear, label: "Clear", key: "esc"})
 	default:
+		// ORGANIZE STANDS AT THE RIGHT END, and yields to the teams: the row is
+		// laid with its cells kept, and laid again without it when that would
+		// leave a team or + New team off the row.
+		org = wallOrganizeButton(pal, g, v, y)
+		if org.w > 0 {
+			limit = width - inset - org.w - 2
+			if !wallTeamsSegments(pal, g, v, k, y, &b, &x, &hits, fitsAt) {
+				b.Reset()
+				b.WriteString(" ")
+				x, hits, limit, org = 1, hits[:0], width, wallOrgPiece{}
+				wallTeamsSegments(pal, g, v, k, y, &b, &x, &hits, fitsAt)
+			}
+		} else {
+			wallTeamsSegments(pal, g, v, k, y, &b, &x, &hits, fitsAt)
+		}
+	}
+
+	left := b.String()
+	lw := x
+	return wallTeamsRight(pal, g, v, left, lw, hits, org, width, inset, c, first, last, y)
+}
+
+// wallTeamsSegments lays the Teams control from cell *x: the label, All, a
+// segment per team and + New team, then a moment's note of a team just made.
+// It reports whether every team and + New team fit.
+func wallTeamsSegments(pal palette, g wallGlyphs, v wallView, k wallKeys, y int, b *strings.Builder, x *int, hits *[]wallHit, fitsAt func(int) bool) bool {
+	put := func(s string, w int) {
+		b.WriteString(s)
+		*x += w
+	}
+	whole := true
+	{
 		const label = "Teams   "
 		put(pal.dim(label[:len(label)-1]), len(label)-1)
 		sep := pal.dim("│")
@@ -599,11 +656,11 @@ func wallTeamsRow(pal palette, g wallGlyphs, v wallView, width, height, inset, c
 				nameInk = pal.ink
 			}
 			var parts []wallPart
-			x0, end := x, x+w
+			x0, end := *x, *x+w
 			if dotted {
 				// The dot, with the pad before it, is the settings door.
 				parts = append(parts, wallPart{s: " " + wallTeamMark(pal, v, at, "●"), hot: menuHot})
-				hits = append(hits, wallHit{x0: x0, y0: y, x1: x0 + 2, y1: y + 1, kind: wallHitChipMenu, id: id})
+				*hits = append(*hits, wallHit{x0: x0, y0: y, x1: x0 + 2, y1: y + 1, kind: wallHitChipMenu, id: id})
 				x0 += 2
 			}
 			parts = append(parts, wallPart{s: " " + nameInk(name) + " "})
@@ -613,12 +670,12 @@ func wallTeamsRow(pal palette, g wallGlyphs, v wallView, width, height, inset, c
 				if mw := ansi.StringWidth(menu); mw > cw {
 					menu = ansi.Truncate(menu, cw, "")
 				}
-				hits = append(hits, wallHit{x0: x0, y0: y, x1: tail, y1: y + 1, kind: wallHitChip, id: id})
+				*hits = append(*hits, wallHit{x0: x0, y0: y, x1: tail, y1: y + 1, kind: wallHitChip, id: id})
 				parts = append(parts, wallPart{s: wallFit(pal.ink(menu), cw) + " ", hot: menuHot})
-				hits = append(hits, wallHit{x0: tail, y0: y, x1: end, y1: y + 1, kind: wallHitChipMenu, id: id})
+				*hits = append(*hits, wallHit{x0: tail, y0: y, x1: end, y1: y + 1, kind: wallHitChipMenu, id: id})
 			} else {
 				parts = append(parts, wallPart{s: pal.dim(count) + " "})
-				hits = append(hits, wallHit{x0: x0, y0: y, x1: end, y1: y + 1, kind: wallHitChip, id: id})
+				*hits = append(*hits, wallHit{x0: x0, y0: y, x1: end, y1: y + 1, kind: wallHitChip, id: id})
 			}
 			put(wallCompose(pal, parts, ground), w)
 			return true
@@ -630,13 +687,16 @@ func wallTeamsRow(pal palette, g wallGlyphs, v wallView, width, height, inset, c
 				name = ansi.Truncate(name, wallChipCap, g.more)
 			}
 			if !segment(i, t.id, name, strconv.Itoa(t.count), t.id == v.team, true) {
+				whole = false
 				break
 			}
 		}
 		// + New team is the control's last segment, drawn as an action: muted
 		// until the pointer lights it.
 		add := " + New team "
-		if fitsAt(1 + len(add)) {
+		if !fitsAt(1 + len(add)) {
+			whole = false
+		} else {
 			if !first {
 				put(sep, 1)
 			}
@@ -644,7 +704,7 @@ func wallTeamsRow(pal palette, g wallGlyphs, v wallView, width, height, inset, c
 			if v.hover.kind == wallHitAddTeam {
 				s = pal.cursor(pal.ink(add), 0)
 			}
-			hits = append(hits, wallHit{x0: x, y0: y, x1: x + len(add), y1: y + 1, kind: wallHitAddTeam})
+			*hits = append(*hits, wallHit{x0: *x, y0: y, x1: *x + len(add), y1: y + 1, kind: wallHitAddTeam})
 			put(s, len(add))
 		}
 		// A team just made says so for a moment, in the row it now sits in.
@@ -655,37 +715,72 @@ func wallTeamsRow(pal palette, g wallGlyphs, v wallView, width, height, inset, c
 			}
 		}
 	}
+	return whole
+}
 
-	left := b.String()
-	lw := x
+// wallTeamsRight ends the Teams row: left, lw cells wide, then Organize's
+// piece and the minimap at the right end, inset cells from the edge, when there
+// are more conversations than the screen shows. A minimap that does not fit
+// whole says the rows on screen in words instead, and neither is drawn when
+// that does not fit either.
+func wallTeamsRight(pal palette, g wallGlyphs, v wallView, left string, lw int, hits []wallHit, org wallOrgPiece, width, inset, c, first, last, y int) (string, []wallHit) {
+	orgW := 0
+	if org.w > 0 {
+		orgW = org.w + 2
+	}
+	var mini string
+	var miniW int
+	var miniCells []int
 	// The minimap says where the screen sits among the conversations, which
 	// is news only when they do not all fit.
-	if last-first >= len(v.tiles) {
+	if last-first < len(v.tiles) {
+		mm, cells := wallMinimap(pal, g, v, c, first, last, width-lw-2-inset-orgW)
+		mw := ansi.StringWidth(mm)
+		if mm != "" && lw+2+mw+inset+orgW <= width && cells[len(cells)-1] >= 0 {
+			mini, miniW, miniCells = mm, mw, cells
+		} else {
+			// A minimap missing its last cells would say the wall is shorter
+			// than it is; the rows on screen are said in words instead.
+			dash := "–"
+			if pal.ascii {
+				dash = "-"
+			}
+			word := strconv.Itoa(first+1) + dash + strconv.Itoa(last) + " of " + strconv.Itoa(len(v.tiles))
+			if ww := ansi.StringWidth(word); lw+2+ww+inset+orgW <= width {
+				mini, miniW = pal.dim(word), ww
+			}
+		}
+	}
+	if miniW == 0 && org.w == 0 {
 		return ansi.Truncate(left, width, ""), wallHitsWithin(hits, width)
 	}
-	mm, cells := wallMinimap(pal, g, v, c, first, last, width-lw-2-inset)
-	mw := ansi.StringWidth(mm)
-	if mm == "" || lw+2+mw+inset > width || cells[len(cells)-1] < 0 {
-		// A minimap missing its last cells would say the wall is shorter
-		// than it is; the rows on screen are said in words instead.
-		dash := "–"
-		if pal.ascii {
-			dash = "-"
-		}
-		word := strconv.Itoa(first+1) + dash + strconv.Itoa(last) + " of " + strconv.Itoa(len(v.tiles))
-		ww := ansi.StringWidth(word)
-		if lw+2+ww+inset > width {
-			return ansi.Truncate(left, width, ""), wallHitsWithin(hits, width)
-		}
-		return left + strings.Repeat(" ", width-inset-ww-lw) + pal.dim(word) + strings.Repeat(" ", inset), wallHitsWithin(hits, width)
+	rightW := org.w + miniW
+	if org.w > 0 && miniW > 0 {
+		rightW += 2
 	}
-	at := width - inset - mw
-	for i, cx := range cells {
-		if cx >= 0 {
-			hits = append(hits, wallHit{x0: at + cx, y0: y, x1: at + cx + 1, y1: y + 1, kind: wallHitMini, arg: i})
+	at := width - inset - rightW
+	row := left + strings.Repeat(" ", max(at-lw, 0))
+	if org.w > 0 {
+		row += org.s
+		for _, h := range org.hits {
+			h.x0, h.x1 = h.x0+at, h.x1+at
+			hits = append(hits, h)
+		}
+		at += org.w
+		if miniW > 0 {
+			row += "  "
+			at += 2
 		}
 	}
-	return left + strings.Repeat(" ", at-lw) + mm + strings.Repeat(" ", inset), hits
+	if miniW > 0 {
+		row += mini
+		for i, cx := range miniCells {
+			if cx >= 0 {
+				hits = append(hits, wallHit{x0: at + cx, y0: y, x1: at + cx + 1, y1: y + 1, kind: wallHitMini, arg: i})
+			}
+		}
+	}
+	return row + strings.Repeat(" ", inset), wallHitsWithin(hits, width)
 }
 
 // wallHitsWithin keeps the hits that end inside the row.
@@ -865,8 +960,9 @@ type wallCard struct {
 	w    int
 	hits []wallHit
 	// over is how far a scrolled card's lines can scroll, zero for a card
-	// that fits.
+	// that fits, and top the first of them it shows.
 	over int
+	top  int
 }
 
 // wallCardLine is one row inside a card: painted words, and the targets on
