@@ -8,13 +8,40 @@ import (
 )
 
 // A handle is how a member is named inside its team, in the Traffic log and to
-// the team tools: short enough to type, stable enough to refer back to. It is
-// derived from the member's title when the member first has one, and it is
-// never changed automatically after that, so a line in the log keeps meaning
-// the member it meant. [File.SetHandle] is the only way to change one.
+// the team tools: ONE lowercase word that names what the conversation is about
+// (@security, @milestones, @gravity), short enough to type and stable enough to
+// refer back to.
+//
+// IT IS CHOSEN TWICE, ONCE AT ONCE AND ONCE WELL. The word list here
+// ([DeriveHandle]) guesses one the moment the member has a title, so the member
+// is addressable at once. The conversation's own title model then chooses the
+// word, once, when the conversation's title is made (internal/session's
+// handlepick.go), through [File.ChooseHandle]; the manager and the members are
+// told of the change in the Traffic log. A word list cannot tell a subject from
+// the kind of work done to it, and the first handles made from real titles were
+// @review, @reviewing and @session.
+//
+// A HANDLE A PERSON OR THE MANAGER GAVE IS NEVER REPLACED ([HandleByTyped]),
+// and a handle the model chose is not chosen again, so a line in the log keeps
+// meaning the member it meant.
 //
 // A member that joins before its conversation has a title has no handle yet; it
 // takes one the first time it is saved with a title.
+
+// Who chose a member's handle ([Member.HandleBy]).
+const (
+	HandleByWords = "words" // the word list's instant guess ([DeriveHandle])
+	HandleByModel = "model" // the title model's word ([File.ChooseHandle])
+	HandleByTyped = "typed" // given by a person or the manager; never replaced
+)
+
+// HandleDerived reports whether m's handle is the word list's guess, which the
+// title model may replace once ([File.ChooseHandle]). A handle written before
+// [Member.HandleBy] was kept reads as one: the only handles then were derived,
+// but for the manager's own starts, which it names again the same way.
+func (m Member) HandleDerived() bool {
+	return m.HandleBy == "" || m.HandleBy == HandleByWords
+}
 
 // Handle lengths, in characters.
 const (
@@ -223,8 +250,68 @@ func assignHandles(t *Team) bool {
 		if base == "" {
 			continue
 		}
-		m.Handle = uniqueHandle(*t, m.Key, base)
+		m.Handle, m.HandleBy = uniqueHandle(*t, m.Key, base), HandleByWords
 		changed = true
 	}
 	return changed
+}
+
+// ChooseHandle gives the member with key in team id the title model's word:
+// the first of choices, best first, that no other member of the team has.
+// When every choice is taken, the first is qualified by a word of the title in
+// front of it (@api-security), as [DeriveHandle] qualifies; only when nothing
+// fits is it numbered. old is the handle the member had and now the one it has;
+// a member whose handle was given ([HandleByTyped]) or already chosen by the
+// model keeps it, and so does a member whose handle is already the choice.
+func (f *File) ChooseHandle(id, key string, choices []string, title string) (old, now string, err error) {
+	i, err := f.at(id)
+	if err != nil {
+		return "", "", err
+	}
+	t := &f.Teams[i]
+	j := t.member(key)
+	if j < 0 {
+		return "", "", fmt.Errorf("%s is not in team %s", key, t.Name)
+	}
+	m := &t.Members[j]
+	old = m.Handle
+	if !m.HandleDerived() && m.Handle != "" {
+		return old, old, nil
+	}
+	var usable []string
+	for _, c := range choices {
+		if ValidHandle(c) == nil && !strings.Contains(c, "-") {
+			usable = append(usable, c)
+		}
+	}
+	if len(usable) == 0 {
+		return old, old, errors.New("no usable handle among the choices")
+	}
+	now = pickHandle(*t, key, usable, title)
+	m.Handle, m.HandleBy = now, HandleByModel
+	return old, now, nil
+}
+
+// pickHandle is the first free choice, else the first qualified by a title
+// word, else the first numbered.
+func pickHandle(t Team, key string, choices []string, title string) string {
+	for _, c := range choices {
+		if handleProblem(t, key, c) == nil {
+			return c
+		}
+	}
+	words := strings.FieldsFunc(strings.ToLower(title), func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
+	})
+	for _, c := range choices {
+		for _, q := range words {
+			if q == c || len(q) < handleWordMin || stopWords[q] || fillerWords[q] || strings.Trim(q, "0123456789") == "" {
+				continue
+			}
+			if h := q + "-" + c; len(h) <= HandleMax && handleProblem(t, key, h) == nil {
+				return h
+			}
+		}
+	}
+	return uniqueHandle(t, key, choices[0])
 }

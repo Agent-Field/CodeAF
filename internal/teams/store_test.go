@@ -129,7 +129,7 @@ func TestMigratesTheFirstBuildsFile(t *testing.T) {
 	if len(got) != 3 || got[0].Name != "harbor" || got[1].Name != "orbit" || got[2].Name != "lumen" {
 		t.Fatalf("migrated %+v", got)
 	}
-	if !reflect.DeepEqual(got[0].Members, []Member{{Key: "k1", File: "f1", Where: "/w/a", Word: "one", Handle: "one"}}) {
+	if !reflect.DeepEqual(got[0].Members, []Member{{Key: "k1", File: "f1", Where: "/w/a", Word: "one", Handle: "one", HandleBy: HandleByWords}}) {
 		t.Fatalf("members lost: %+v", got[0].Members)
 	}
 	seen := map[string]bool{}
