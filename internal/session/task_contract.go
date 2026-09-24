@@ -464,6 +464,25 @@ type TaskNotice struct {
 	// worktree. It is on the proposal AND on every update, because it is the one
 	// fact about a node that is true before it starts and after it lands.
 	Kind TaskKind
+	// Program is the program codeaf carries that this work is handed to —
+	// senior-dev — by the one name that program answers to (the Name of its
+	// [delegate.Delegate], the word its command row says), and "" for every task
+	// a worker of this conversation's own does, which is almost all of them.
+	//
+	// IT IS ON THE PROPOSAL AND ON EVERY ROW A PROGRAM'S RUN PUBLISHES, and that
+	// is the whole of why it is here. A surface used to learn a program's name
+	// only from the run's plan rows, which it reads on a beat of its own and
+	// drops on a conversation switch — so the card a person answered could not
+	// say which program the work was going to, and a program's row on the side
+	// list looked exactly like an ordinary task's for its first seconds and again
+	// after every switch. Carried here, the badge a program's work wears
+	// (internal/tui3's programbadge.go) is there from the first frame.
+	//
+	// IT IS A FACT FOR THE ROW'S WHOLE LIFE, like Kind above it: settled before the
+	// work starts and moved by nothing that happens to the work afterwards, so a
+	// publisher that forgets it has not changed it ([Agent.publishRunRow] carries
+	// it forward).
+	Program string
 
 	// ── proposal fields (EventTaskProposal) ─────────────────────────────
 

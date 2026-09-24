@@ -2801,7 +2801,7 @@ func (a *Agent) proposalQuestion(id uint64, notice TaskNotice) Question {
 		Ask:      AskPermission,
 		Form:     FormCard,
 		Asker:    Asker{Kind: AskerModel},
-		Head:     TaskProposalLead + strings.TrimSpace(notice.Title),
+		Head:     TaskProposalHead(notice),
 		Reason:   strings.TrimSpace(notice.Summary),
 		Subject:  SubjectRef{Kind: SubjectNode, ID: id, Name: strings.TrimSpace(notice.Title)},
 		Options:  AnswerOptions(QuestionTask),
@@ -2874,6 +2874,45 @@ func TaskModelShape(notice TaskNotice) InputShape {
 // block keys a question by its lane and its id, and two builders that drifted
 // would put two questions on screen about one proposal.
 const TaskProposalLead = "wants to start a task: "
+
+// TaskProposalHead is the whole sentence a proposal asks with: [TaskProposalLead]
+// and the title, and — for work going to a program codeaf carries — the
+// program's badge where the word `task` is, so the question reads
+// `wants to start a [senior-dev] task: <title>`.
+//
+// THE PROGRAM IS IN THE SENTENCE AND NOT ONLY ON THE CARD, because the sentence
+// is what every reader of a proposal gets: the block above the box, home's
+// needs panel, a surface over `--host`, and a plain-text or screen-reader
+// reader that draws no card at all. A person approving work is owed who it is
+// going to wherever they approve it. The badge stands before the title rather
+// than after it because a narrow reader cuts a head from its end.
+//
+// IT IS EXPORTED FOR [TaskProposalLead]'s REASON: the surface builds the same
+// question from the same notice, and two builders that drifted would be two
+// questions about one proposal.
+func TaskProposalHead(notice TaskNotice) string {
+	title := strings.TrimSpace(notice.Title)
+	if program := strings.TrimSpace(notice.Program); program != "" {
+		return "wants to start a " + ProgramBadge(program) + " task: " + title
+	}
+	return TaskProposalLead + title
+}
+
+// ProgramBadge is a program's name as the badge its work wears everywhere a
+// task is named — `[senior-dev]` — and it is the ONE spelling of the brackets
+// (internal/tui3's programbadge.go draws its full spelling from this).
+//
+// THE BRACKETS ARE THE BADGE, NOT DECORATION. A surface paints the badge in its
+// own ink, and a terminal with no colour, a selected row whose ground swallows a
+// tint and a sentence read aloud have only the brackets left to say that the
+// word inside them is a program's name rather than part of the title.
+func ProgramBadge(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	return "[" + name + "]"
+}
 
 // TaskProposalPickReason is why the clock recommends starting it, in the words
 // the recommendation is made in. It is exported for [TaskProposalLead]'s

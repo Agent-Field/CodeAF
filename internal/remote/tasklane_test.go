@@ -158,6 +158,32 @@ func TestAHandStartedTaskReachesTheHostedRail(t *testing.T) {
 	}
 }
 
+// A PROGRAM'S ROW KEEPS ITS PROGRAM OVER THE WIRE, so a surface on the near side
+// draws the badge a program's work wears (internal/tui3's programbadge.go) from
+// the row's first frame, exactly as a window on the far machine would.
+func TestAProgramsRowCrossesTheWireNamingItsProgram(t *testing.T) {
+	far := &railAgent{fakeAgent: &fakeAgent{}}
+	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) {
+		return &Engine{Agent: far, Workspace: "/srv/app", SessionFile: "/srv/app/j.jsonl"}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = loop.Close() })
+
+	lane, stop := loop.Client.Agent().WatchTaskUpdates()
+	t.Cleanup(stop)
+	waitFor(t, "the engine opened the surface's task lane", func() bool { return far.opened() == 1 })
+
+	row := taskEvent(9, "rewrite the auth middleware", session.TaskRunning)
+	row.Task.Program = "senior-dev"
+	far.land(row)
+	event := nextTask(t, lane)
+	if event.Task == nil || event.Task.ID != 9 || event.Task.Program != "senior-dev" {
+		t.Fatalf("the program's row crossed as %+v, want it naming senior-dev", event.Task)
+	}
+}
+
 // A FIRING USES THE REAL SESSION LANE OVER THE REAL WIRE. The scripted rail
 // above proves that a task-shaped event can cross; this is the other producer
 // of that lane, whose event has no task payload and is raised outside a turn.

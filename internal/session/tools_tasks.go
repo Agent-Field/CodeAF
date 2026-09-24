@@ -1263,6 +1263,15 @@ func taskChildRowText(entry TaskIndexEntry, withURI bool) string {
 // Every clause that has nothing to say is DROPPED rather than written empty. A
 // row reading "· 0 files · · $0.00" is three facts this build does not have,
 // stated as though it did.
+//
+// A PROGRAM'S WORK SAYS WHICH PROGRAM HAS IT, as the last fact on its first
+// line (`7 · rewrite-the-auth · working · running for 3m · via senior-dev`), in
+// the word `propose_task` hands work to one with. The person's side list wears
+// the program's badge on the same row, and a model that could not tell a
+// program's work from its own worker's would answer "what is running?" wrongly
+// about exactly the work the person can see is different. It trails the figures
+// rather than parting the name from its state, which is the pair a reader of
+// this line reads first.
 func taskRowText(entry TaskIndexEntry) string {
 	parts := []string{entry.ID, entry.Name, taskEntryWord(entry)}
 	if word := taskWhenWord(entry); word != "" {
@@ -1276,6 +1285,9 @@ func taskRowText(entry TaskIndexEntry) string {
 	}
 	if entry.Cost > 0 {
 		parts = append(parts, "$"+strconv.FormatFloat(entry.Cost, 'f', 2, 64))
+	}
+	if via := taskViaWord(entry.Program); via != "" {
+		parts = append(parts, via)
 	}
 	out := strings.Join(parts, " · ") + "\n  " + entry.Title
 	if entry.Outcome != "" {
@@ -1293,6 +1305,17 @@ func taskRowText(entry TaskIndexEntry) string {
 		out += "\n  " + strings.Join(where, " · ")
 	}
 	return out + "\n"
+}
+
+// taskViaWord is the clause a program's work carries in this tool's text —
+// `via senior-dev` — and "" for every task no program was handed, which says
+// nothing rather than `via` and a blank. It is one word for the index's rows and
+// the run's store rows alike, so the two listings name a program the same way.
+func taskViaWord(program string) string {
+	if program = strings.TrimSpace(program); program == "" {
+		return ""
+	}
+	return "via " + program
 }
 
 // taskWhereClauses is the trailing line a row may carry: where the work IS, the
@@ -1464,7 +1487,9 @@ func planTaskLabels(rows []PlanTaskRow) map[string]string {
 //
 // A PROGRAM'S RUN SAYS HOW LONG IT TOOK, off the run's one pair
 // ([planRowSpanWord], task_run_clock.go): the tool said no time at all, and a
-// model asked how long senior-dev took could only guess.
+// model asked how long senior-dev took could only guess. AND IT SAYS WHICH
+// PROGRAM HAS IT, after the clock, in [taskViaWord]'s one spelling — the same
+// place on the line [taskRowText] puts it.
 func (a *Agent) planTasksText(rows []PlanTaskRow, query string) string {
 	query = strings.ToLower(strings.TrimSpace(query))
 	labels := planTaskLabels(rows)
@@ -1478,6 +1503,9 @@ func (a *Agent) planTasksText(rows []PlanTaskRow, query string) string {
 		fmt.Fprintf(&b, "%s · %s · %s", labels[row.ID], cutChars(row.Title, runAskLineChars), row.Status)
 		if span := planRowSpanWord(row, now); span != "" {
 			fmt.Fprintf(&b, " · %s", span)
+		}
+		if via := taskViaWord(row.Program); via != "" {
+			fmt.Fprintf(&b, " · %s", via)
 		}
 		if line := summaryFirstLine(page.Result, runAskLineChars); line != "" {
 			fmt.Fprintf(&b, " · %s", line)
@@ -1512,6 +1540,9 @@ func (a *Agent) planTaskText(rows []PlanTaskRow, token string) (string, bool) {
 	head := labels[id] + " · " + cutChars(page.Row.Title, runAskLineChars) + " · " + page.Row.Status
 	if span := planRowSpanWord(page.Row, a.taskClockNow()); span != "" {
 		head += " · " + span
+	}
+	if via := taskViaWord(page.Row.Program); via != "" {
+		head += " · " + via
 	}
 	fmt.Fprintf(&b, "%s\n\nbrief:\n%s\n", head, cutChars(page.Description, runAskBodyChars))
 	if page.Result != "" {

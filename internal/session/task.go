@@ -1437,6 +1437,10 @@ func newTaskQuestion(id uint64, spec taskSpec, elsewhere string, deadline time.T
 			Model:        firstTaskModel(spec.modelOptions, spec.model),
 			ModelOptions: append([]string(nil), spec.modelOptions...),
 			Elsewhere:    elsewhere,
+			// AND WHICH PROGRAM THE WORK IS GOING TO, so the card names it before
+			// anybody is asked to say yes ([TaskNotice.Program]). The name was
+			// resolved at staging, so it is always one this build carries.
+			Program: spec.via,
 		},
 	}
 }

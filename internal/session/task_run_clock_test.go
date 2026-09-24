@@ -386,8 +386,8 @@ func TestTheTasksToolSeesAProgramsRunAndSaysHowLongItTook(t *testing.T) {
 		t.Fatalf("the listing answered %q (failed %v), want the run done with its time", listing, failed)
 	}
 	read, failed = runTool(t, agent, "tasks", `{"id":"`+name+`"}`)
-	if failed || !strings.HasPrefix(read, name+" · "+title+" · done · ran 22m 51s\n") {
-		t.Fatalf("reading the ended run answered %q (failed %v), want its time on its first line", read, failed)
+	if failed || !strings.HasPrefix(read, name+" · "+title+" · done · ran 22m 51s · via fake\n") {
+		t.Fatalf("reading the ended run answered %q (failed %v), want its time and its program on its first line", read, failed)
 	}
 	if conversationNotes(agent, "done · ran 22m 51s · submitted and verified") == 0 {
 		t.Fatal("the note the conversation was handed at the landing does not say how long the run took")

@@ -455,9 +455,14 @@ func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brie
 	// the branch it names exists only in this variable until it is: the road that
 	// cut it minted the name at random and wrote it nowhere ([runCopyOf] says the
 	// whole of why). A run published without it is a run nobody can carry on.
+	//
+	// AND THE ROW SAYS WHICH PROGRAM HAS THE WORK from this first publish on, which
+	// is the one place both doors meet — a typed `/<name>` and an approved
+	// `via` — so every later publish carries it forward from here
+	// ([TaskNotice.Program], [Agent.publishRunRow]).
 	a.publishRunRow(g, TaskNotice{
 		ID: id, Title: title, State: TaskRunning, StartedAt: born,
-		Copy: runCopyOf(tree),
+		Copy: runCopyOf(tree), Program: programName(via),
 	})
 
 	go a.driveBeltRun(runCtx, engine, run, a.beltRunSpec(run, brief))
@@ -504,6 +509,16 @@ func aloneName(via, running *delegate.Delegate) string {
 		return running.Name
 	}
 	return "it"
+}
+
+// programName is the name a run's rows carry for the program its worker is
+// ([TaskNotice.Program]), and "" for the conversation's own bash worker, which
+// is no program at all.
+func programName(via *delegate.Delegate) string {
+	if via == nil {
+		return ""
+	}
+	return strings.TrimSpace(via.Name)
 }
 
 // delegateStartSha is the commit a tree delegate's copy stands on before the
@@ -1015,6 +1030,13 @@ func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
 // keeps that from depending on each of them remembering. A notice that names a
 // copy of its own wins, because it is the more recent reading.
 //
+// THE PROGRAM IS CARRIED ACROSS HERE TOO, for the same reason and on its own
+// test: only the first publish knows which program has the work
+// ([TaskNotice.Program]), and a stop, a landing or a carry-on that published
+// without it would take the program's badge off its row halfway through its
+// life. A row that never had one — the conversation's own worker's — has
+// nothing to carry.
+//
 // AND A ROW THAT HAS ENDED CARRIES HOW LONG IT RAN, worked out here from the
 // one pair it carries ([runSpan]) so that no publisher can put a different
 // figure beside the same two instants: the rail's clock, the card's span and
@@ -1027,6 +1049,14 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 		for _, kept := range g.runRows(notice.ID) {
 			if kept.ID == notice.ID && kept.Copy != nil {
 				notice.Copy = kept.Copy
+				break
+			}
+		}
+	}
+	if notice.Program == "" {
+		for _, kept := range g.runRows(notice.ID) {
+			if kept.ID == notice.ID && kept.Program != "" {
+				notice.Program = kept.Program
 				break
 			}
 		}

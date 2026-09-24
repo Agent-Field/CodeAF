@@ -727,6 +727,12 @@ type runRecord struct {
 	// log where a run's shows how its branch came home, and it refuses the ✕ that
 	// a run's row offers (session's TaskKindJob, internal/tui3's task.go).
 	Kind TaskKind `json:"kind,omitempty"`
+	// Program is the program the run was handed to ([TaskNotice.Program]). It
+	// survives for Kind's reason: it decides how the row is DRAWN — a program's
+	// row wears its badge — and a conversation reopened tomorrow redraws its
+	// runs from these records long before any plan row is read. Absent is every
+	// run no program had, and every record written before the field existed.
+	Program string `json:"program,omitempty"`
 
 	State   TaskState `json:"state"`
 	Stopped bool      `json:"stopped,omitempty"`
@@ -1083,6 +1089,7 @@ func runRowRecord(notice TaskNotice) runRecord {
 		Parent:    notice.Parent,
 		Title:     notice.Title,
 		Kind:      notice.Kind,
+		Program:   notice.Program,
 		State:     state,
 		Stopped:   notice.Stopped,
 		Report:    notice.Report,
@@ -1125,6 +1132,7 @@ func runRowNotice(record runRecord) TaskNotice {
 		Parent:  record.Parent,
 		Title:   record.Title,
 		Kind:    record.Kind,
+		Program: record.Program,
 		State:   record.State,
 		Stopped: record.Stopped,
 		Report:  record.Report,

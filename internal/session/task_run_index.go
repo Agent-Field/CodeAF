@@ -55,6 +55,9 @@ func (a *Agent) indexRunRow(notice TaskNotice) {
 		// THE KEPT BRANCH ONLY, from the row's own word for how its work came
 		// home ([keptBranchOf]): a run whose work was merged names none.
 		Branch: keptBranchOf(notice.Branch, notice.Merge),
+		// AND WHICH PROGRAM HAS IT, so every surface drawing this file can put the
+		// program's badge on the row ([TaskIndexEntry.Program]).
+		Program: notice.Program,
 	}
 	// A PERSON'S STOP IS THE ROW'S ENDING, as it is on a node's row
 	// ([TaskNode.endingLocked]): the stop road publishes the flag and no word.

@@ -1374,7 +1374,7 @@ func (a *app) taskQuestion(notice *session.TaskNotice) session.Question {
 		Ask:      session.AskPermission,
 		Form:     session.FormCard,
 		Asker:    session.Asker{Kind: session.AskerModel},
-		Head:     session.TaskProposalLead + strings.TrimSpace(notice.Title),
+		Head:     session.TaskProposalHead(*notice),
 		Reason:   strings.TrimSpace(notice.Summary),
 		Subject:  session.SubjectRef{Kind: session.SubjectNode, ID: notice.ID, Name: strings.TrimSpace(notice.Title)},
 		Options:  session.AnswerOptions(session.QuestionTask),

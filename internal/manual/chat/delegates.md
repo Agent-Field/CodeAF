@@ -38,7 +38,8 @@ That is `/task` with the worker chosen. A run starts at once in a copy of your f
 turn goes on, and the row appears on the rail.
 
 The model can choose one as well. `propose_task` takes `via` naming the program, and the
-card you answer says which program the work is going to. The model is told the programs
+card you answer says which program the work is going to: it asks `wants to start a
+[<name>] task: <title>`. The model is told the programs
 your build carries, each in the program's own words: what it is for, what its brief must
 say, and what it needs of its folder.
 

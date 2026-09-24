@@ -157,6 +157,17 @@ type TaskIndexEntry struct {
 	// spelled in [TaskKindWord] so that a live row merged in from a graph reads
 	// the same way as a landed one, not because the file holds any.
 	Kind TaskKind `json:"kind,omitempty"`
+	// Program is the program codeaf carries that this work was handed to —
+	// senior-dev — and empty for every task a conversation's own worker did
+	// ([TaskNotice.Program]). It is what lets a surface drawing this file — the
+	// `@` list, home, the tasks place, another conversation's tasks tool — tell
+	// a program's work from an ordinary task's, which it otherwise could not
+	// do from anything a row carries.
+	//
+	// IT IS ADDITIVE AND ABSENCE IS ORDINARY, on [TaskIndexEntry.Kind]'s terms:
+	// rows written before the field existed decode with none, and a blank program
+	// and a plain task are drawn the same way on purpose.
+	Program string `json:"program,omitempty"`
 	// Where is the worker's resolved directory, or the explicit placement from a
 	// restored proposal that has not started yet.
 	Where string `json:"where,omitempty"`

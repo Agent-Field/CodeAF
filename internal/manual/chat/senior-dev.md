@@ -390,8 +390,8 @@ Everything that shows the run's time shows that one span: the line under its pag
 (counting up from the hand-off while it runs, and stopped at senior-dev's exit once it has
 ended, even before the work has landed), its row and card once it has landed, the note the
 conversation is handed when it lands (`done · ran 22m 51s · …`), and the chat's `tasks`
-tool (`#3 · <title> · done · ran 22m 51s`, or `running for 3m` while it goes) — so you can
-ask the chat how long it took. Each spells it the way the page does — `42s`, `22m 51s`,
+tool (`#3 · <title> · done · ran 22m 51s · via senior-dev`, or `running for 3m` while it
+goes) — so you can ask the chat how long it took. Each spells it the way the page does — `42s`, `22m 51s`,
 `1h 7m` — except the landed card, which spells it `22m51s`.
 
 The instants senior-dev's process started and ended are also kept in `delegate-program.json`
