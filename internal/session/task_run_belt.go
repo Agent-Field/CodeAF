@@ -220,7 +220,17 @@ type RunLanding struct {
 	// ([delegateKeepsBranch]), set only for that landing: the folder the merge
 	// that brings the work in runs in ([beltLandingLine]).
 	Root string
+	// Unrelated says the branch's work was not built on everything that branch
+	// held before it ([headMove.warns]), so a merge of it may also undo changes;
+	// the line the conversation is handed says so ([beltLandingLine]).
+	Unrelated bool
 }
+
+// landingUnrelatedWarning is what the conversation's landing line adds for work
+// that was not built on everything its branch held. THE PAGE SAID IT AND THE
+// CHAT DID NOT: the line the chat's model reads offered the merge command
+// alone, and a model asked to merge had nothing telling it to look first.
+const landingUnrelatedWarning = "its work was not built on everything that branch held, so the merge may also undo changes; read its diff before you merge it"
 
 // RunEngine is the run engine as this door reaches it. Start drives one store
 // to an outcome and answers what came of it; Land commits the run's working
@@ -303,6 +313,12 @@ type beltRun struct {
 	// back to at landing (delegate_door.go).
 	delegate *delegate.Delegate
 	startSha string
+	// taskTip is the task's branch as a tree program left it, read by its
+	// landing before anything moved it ([Agent.homeDelegateCopy]). It is what
+	// says whether that branch ever held the program's work, which the tip
+	// after the landing's own squash cannot ([dropEmptyTaskBranch]). It is
+	// written and read on the run's own goroutine alone.
+	taskTip string
 	// plain is a tree program working in a folder with no git history
 	// ([delegateOnPlainFolder]): it is told so on its line, and its landing
 	// commits nothing, because the work is already where it belongs.
@@ -1143,7 +1159,7 @@ func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
 // the branch named, with the repository it is in, and the homecoming written
 // on the run's page; or, for a branch holding nothing, the branch deleted.
 func (a *Agent) branchOnlyLanding(run *beltRun, landing RunLanding, said string) RunLanding {
-	if dropEmptyTaskBranch(run.tree, run.startSha) {
+	if dropEmptyTaskBranch(run.tree, run.startSha, run.taskTip) {
 		// AN EMPTY BRANCH IS NOT A LANDING. The branch was kept for the person
 		// to merge, and there is nothing on it to merge: every look-only,
 		// failed or crashed program run left one more `task/*` branch at the
@@ -1173,21 +1189,57 @@ func (a *Agent) branchOnlyLanding(run *beltRun, landing RunLanding, said string)
 }
 
 // dropEmptyTaskBranch deletes a kept task branch that holds nothing past the
-// commit its copy started from, and reports whether it did. Only a branch
-// whose tip IS that commit goes, so a branch holding even one commit of the
-// program's is never touched; the repository's lock is taken the way every
-// landing's branch work takes it.
-func dropEmptyTaskBranch(tree taskTree, startSha string) bool {
+// commit its copy started from, and reports whether it did; the repository's
+// lock is taken the way every landing's branch work takes it.
+//
+// THE BRANCH AS THE PROGRAM LEFT IT DECIDES, NOT THE BRANCH AFTER THE LANDING.
+// before is the task's branch read before codeaf moved it ([beltRun.taskTip]),
+// and only a branch that stood at the copy's start then can go: the landing's
+// own squash resets the branch to that start, and a test on the tip after it
+// once deleted a branch whose only reference to the program's commits was
+// that branch.
+//
+// AND EMPTY IS MEASURED FROM THE GROUND'S OWN COMMIT ([taskGroundCommit]). A
+// copy cut from a checkout with uncommitted edits starts from the commit that
+// holds them, which the landing takes back out ([taskTree.replayOwnWork]), so
+// an empty branch ends at the person's own commit, not at the start: it is
+// empty when it holds no commit past that commit and no change from it.
+func dropEmptyTaskBranch(tree taskTree, startSha, before string) bool {
 	if strings.TrimSpace(tree.root) == "" || strings.TrimSpace(tree.branch) == "" || startSha == "" {
+		return false
+	}
+	if strings.TrimSpace(before) != startSha {
 		return false
 	}
 	defer lockGitRoot(tree.place, tree.root)()
 	tip, err := git(tree.root, "rev-parse", "--verify", "-q", "refs/heads/"+tree.branch)
-	if err != nil || strings.TrimSpace(tip) != startSha {
+	if err != nil {
+		return false
+	}
+	tip, from := strings.TrimSpace(tip), taskGroundCommit(tree, startSha)
+	if ahead, err := git(tree.root, "rev-list", from+".."+tip); err != nil || strings.TrimSpace(ahead) != "" {
+		return false
+	}
+	if _, err := git(tree.root, "diff", "--quiet", from, tip); err != nil {
 		return false
 	}
 	_, err = git(tree.root, "branch", "-D", tree.branch)
 	return err == nil
+}
+
+// taskGroundCommit is the commit of the person's own a task's copy counts its
+// work from: the parent of the commit the ground ladder sealed the person's
+// uncommitted edits into, when it made one ([taskTree.replayOwnWork] takes that
+// commit back out), and the copy's start otherwise.
+func taskGroundCommit(tree taskTree, startSha string) string {
+	if strings.TrimSpace(tree.base) == "" {
+		return startSha
+	}
+	parent, err := git(tree.root, "rev-parse", "--verify", "-q", tree.base+"^")
+	if err != nil || strings.TrimSpace(parent) == "" {
+		return startSha
+	}
+	return strings.TrimSpace(parent)
 }
 
 // deliverBeltRunLanding writes the run's digest into the conversation record.
@@ -1447,6 +1499,10 @@ func beltRunOutcomeNote(store *plandb.Store, rootID string, summary RunSummary, 
 // merged, which repository held the branch, or what brings it in, and would tell
 // the person their folder held the work. The folder is quoted for a shell the
 // way every path this package hands one is ([shellQuoted]).
+//
+// WORK NOT BUILT ON EVERYTHING ITS BRANCH HELD IS SAID HERE AS ON THE PAGE
+// ([landingUnrelatedWarning]), because this line is what the chat's model reads
+// before it runs the merge it offers.
 func beltLandingLine(landing RunLanding) string {
 	if landing.Refused != "" {
 		return landing.Refused
@@ -1454,11 +1510,15 @@ func beltLandingLine(landing RunLanding) string {
 	if landing.Branch == "" {
 		return ""
 	}
+	line := fmt.Sprintf("landed on %s: %s", landing.Branch, fileCount(len(landing.Changed)))
 	if landing.Home == mergeKept && landing.Root != "" {
-		return fmt.Sprintf("its work is on the branch %s in %s, %s; nothing was merged into your checkout, and `git -C %s merge %s` brings it in",
+		line = fmt.Sprintf("its work is on the branch %s in %s, %s; nothing was merged into your checkout, and `git -C %s merge %s` brings it in",
 			landing.Branch, landing.Root, fileCount(len(landing.Changed)), shellQuoted(landing.Root), landing.Branch)
 	}
-	return fmt.Sprintf("landed on %s: %s", landing.Branch, fileCount(len(landing.Changed)))
+	if landing.Unrelated {
+		line += "; " + landingUnrelatedWarning
+	}
+	return line
 }
 
 // fileCount is a count of files in words, `1 file` and `2 files`, so every

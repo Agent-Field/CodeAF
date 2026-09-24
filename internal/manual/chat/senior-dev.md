@@ -163,17 +163,24 @@ project's build and tests (`senior-dev observed: …`). Read the second for "did
 Its own notes live in `.senior-dev/` in the copy: the brief, its checklist, the command
 it pinned and its session database. That folder is kept out of git, so it never lands.
 
-When a run changed nothing, there is nothing to land and the task says so; its branch,
-which would hold nothing, is deleted rather than left in your repository. On a folder
-with no git history nothing is committed at all: the work is already in the folder.
+**A run you stop keeps its work the same way.** What it had made by then, committed or
+not, is squashed into one `task:` commit on the task's own branch, and the task says `its
+work so far is kept on <branch> and did not go into <folder> · merge that branch to bring
+it in, or delete it to drop it`, with the files it had changed.
+
+When a run changed nothing, there is nothing to land and the task says so (`it had changed
+nothing` for a run you stopped); its branch, which would hold nothing, is deleted rather
+than left in your repository. On a folder with no git history nothing is committed at
+all: the work is already in the folder.
 
 ## When it moved to another branch in its copy — "work on a new branch", my own branch, a detached HEAD
 
 Its shell can run `git checkout` in its copy, and a brief that says "work on a new
 branch" makes that likely. It changes nothing about where the work lands: when the run
-ends, codeaf puts the copy back on the task's own branch without touching its files, and
-squashes the finished tree onto it. The branch it had moved to is never reset by codeaf,
-even when that is one of your own branches, so what it left there stays.
+ends, or you stop it, codeaf puts the copy back on the task's own branch without touching
+its files, and squashes the finished tree onto it. The branch it had moved to is never
+reset or committed on by codeaf, even when that is one of your own branches, so what it
+left there stays.
 
 The task's page says so beside the landing, in these words after the program's name:
 `had moved its copy to the branch <branch>; its work was committed on <task branch>, and
@@ -184,6 +191,17 @@ When the work was not built on where the copy started (it cut its own branch fro
 somewhere else), the squash also undoes whatever the copy's starting point had and its
 work did not, and the page adds `its work was not built on the commit its copy started
 from, so the commit on <task branch> may also undo changes that commit had; read its diff
+before you merge it`.
+
+When it had committed on the task's own branch before it moved, and the copy it left was
+not built on those commits (it went back to the start to look at it, say), they are not
+squashed away: the finished tree is committed on top of them, so every one stays on the
+task's branch, and the page adds `the commits it had made on <task branch> are kept there,
+under its finished work; that work was not built on them, so it may also undo their
+changes; read its diff before you merge it`.
+
+In either case the conversation is told too, after the merge command: `its work was not
+built on everything that branch held, so the merge may also undo changes; read its diff
 before you merge it`.
 
 So a brief need not ask for a branch: codeaf already gives the work one.

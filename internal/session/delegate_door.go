@@ -283,7 +283,9 @@ func delegateStand(workspace string, program delegate.Delegate) taskStand {
 // — with the tree and index kept, and committed once through the same road every
 // task commits through. The subject is the task's title; the body is the
 // terminal record's two sentences. Then the copy comes home the way every run's
-// copy does.
+// copy does. The one exception is a task's branch holding commits of the
+// program's that the tree it left was not built on: the tree is committed on
+// top of those, never over them ([headMove.squashOnto]).
 //
 // A TREE PROGRAM ON A PLAIN FOLDER LANDS NOTHING EITHER: there was no history
 // to copy from, so it worked in the folder itself and its changes are already
@@ -314,17 +316,11 @@ func (a *Agent) landDelegateRun(run *beltRun, summary RunSummary) RunLanding {
 	}
 	dir := run.workspace
 	// THE SQUASH LANDS ON CODEAF'S BRANCH, WHEREVER THE PROGRAM LEFT HEAD.
-	moved := delegateHeadHome(dir, run.tree.branch, run.startSha)
-	if run.startSha != "" {
-		head, err := git(dir, "rev-parse", "--verify", "-q", "HEAD")
-		if err != nil || strings.TrimSpace(head) != run.startSha {
-			if out, err := git(dir, "reset", "--soft", run.startSha); err != nil {
-				if g := a.graph(); g != nil {
-					g.planNote(m.Name + "'s commits could not be squashed: " + firstLine(out))
-				}
-			}
-		}
-	}
+	moved := a.homeDelegateCopy(run)
+	// THE BRANCH AS THE PROGRAM LEFT IT is what says whether it held any work,
+	// and the landing below moves it, so it is kept for the branch-only
+	// landing's emptiness question ([dropEmptyTaskBranch]).
+	run.taskTip = moved.tip
 	message := "task: " + clip(firstLine(run.title), 72)
 	if result := strings.TrimSpace(summary.Result); result != "" {
 		message += "\n\n" + result
@@ -338,6 +334,7 @@ func (a *Agent) landDelegateRun(run *beltRun, summary RunSummary) RunLanding {
 		landing.Refused = runNothingToLand
 	default:
 		landing.Branch, landing.Changed = currentBranch(dir), saved
+		landing.Unrelated = moved.warns()
 	}
 	note := landing.Refused
 	if note == "" {
@@ -359,11 +356,69 @@ func (a *Agent) landDelegateRun(run *beltRun, summary RunSummary) RunLanding {
 // with detached set for no branch at all), and whether its work stood on the
 // commit the copy started from. The zero value is a HEAD that never left the
 // task's branch.
+//
+// tip is the task's branch as the program left it, read before codeaf moved
+// anything; kept says that branch held commits of the program's that the HEAD
+// it left was not built on, so its work is committed on top of them rather
+// than squashed over them ([headMove.squashOnto]).
 type headMove struct {
 	moved     bool
 	from      string
 	detached  bool
 	unrelated bool
+	tip       string
+	kept      bool
+}
+
+// squashOnto is the commit a tree program's finished tree is committed on:
+// the commit its copy started from, so the program's own bookkeeping commits
+// fold into one, or the task's branch as the program left it when that branch
+// holds commits the finished tree was not built on.
+//
+// THE PROGRAM'S COMMITS ARE NEVER SQUASHED OVER FROM ELSEWHERE. senior-dev
+// commits every write on the task's branch; a model that then ran `git
+// checkout --detach` to look at the baseline, and was ended there by a limit,
+// had that branch reset back to the start under a tree that held none of its
+// work, and the branch, then empty, deleted with the only reference to an
+// hour of paid commits. Committed on top, every one of them stays on the
+// task's branch, and the note says the finished tree may undo them.
+func (move headMove) squashOnto(startSha string) string {
+	if move.kept {
+		return move.tip
+	}
+	return startSha
+}
+
+// warns says the landing's commit may also undo changes the branch held
+// before it: work built on another commit than the copy's start, or on
+// something other than the program's own commits on the task's branch.
+func (move headMove) warns() bool {
+	return move.unrelated || move.kept
+}
+
+// homeDelegateCopy puts a tree program's copy back on the task's own branch
+// and takes that branch back to the commit its work is committed on
+// ([headMove.squashOnto]), keeping the index and the files exactly as the
+// program left them, so the one commit that follows holds the program's whole
+// work. THE LANDING AND THE STOP BOTH TAKE IT: a stop that committed on
+// whatever branch HEAD was on put codeaf's commit on the person's own branch
+// while its report named the task's branch, which held nothing.
+func (a *Agent) homeDelegateCopy(run *beltRun) headMove {
+	dir := run.workspace
+	move := delegateHeadHome(dir, run.tree.branch, run.startSha)
+	onto := move.squashOnto(run.startSha)
+	if onto == "" {
+		return move
+	}
+	if head, err := git(dir, "rev-parse", "--verify", "-q", "HEAD"); err == nil && strings.TrimSpace(head) == onto {
+		return move
+	}
+	if out, err := git(dir, "reset", "--soft", onto); err != nil {
+		if g := a.graph(); g != nil {
+			g.planNote(run.delegate.Name + "'s commits could not be squashed: " + firstLine(out))
+		}
+	}
+	return move
 }
 
 // delegateHeadHome puts a tree program's copy back on the task's own branch
@@ -389,24 +444,35 @@ type headMove struct {
 // so work the program built on some other commit (a branch cut from `main`,
 // say) also undoes whatever the copy's first commit had and that one did not,
 // and the diff is the only place that would show.
+//
+// THE TASK'S BRANCH IS READ BEFORE HEAD MOVES ONTO IT. Where it holds commits
+// past the copy's start that the HEAD the program left was not built on, those
+// are the program's own work, and the squash must not reset over them
+// ([headMove.squashOnto]).
 func delegateHeadHome(dir, branch, startSha string) headMove {
 	branch = strings.TrimSpace(branch)
 	if branch == "" {
 		return headMove{}
 	}
+	tip, _ := git(dir, "rev-parse", "--verify", "-q", "refs/heads/"+branch)
+	stay := headMove{tip: strings.TrimSpace(tip)}
 	current := currentBranch(dir)
 	if current == branch {
-		return headMove{}
+		return stay
 	}
 	head, _ := git(dir, "rev-parse", "--verify", "-q", "HEAD")
 	head = strings.TrimSpace(head)
 	if _, err := git(dir, "symbolic-ref", "HEAD", "refs/heads/"+branch); err != nil {
-		return headMove{}
+		return stay
 	}
-	move := headMove{moved: true, from: current, detached: current == ""}
+	move := headMove{moved: true, from: current, detached: current == "", tip: stay.tip}
 	if startSha != "" && head != "" {
 		_, err := git(dir, "merge-base", "--is-ancestor", startSha, head)
 		move.unrelated = err != nil
+	}
+	if move.tip != "" && move.tip != startSha {
+		_, err := git(dir, "merge-base", "--is-ancestor", move.tip, head)
+		move.kept = head == "" || err != nil
 	}
 	return move
 }
@@ -431,7 +497,11 @@ func (move headMove) sentence(name, branch string, landed bool) string {
 	if !move.detached {
 		said += ", and any commit it made on " + move.from + " is still on that branch"
 	}
-	if landed && move.unrelated {
+	switch {
+	case landed && move.kept:
+		said += " · the commits it had made on " + branch + " are kept there, under its finished work; that work was not built on them, " +
+			"so it may also undo their changes; read its diff before you merge it"
+	case landed && move.unrelated:
 		said += " · its work was not built on the commit its copy started from, so the commit on " + branch +
 			" may also undo changes that commit had; read its diff before you merge it"
 	}

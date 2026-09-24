@@ -118,12 +118,20 @@ Ask the chat to merge it, or run that yourself, when you are ready. Nothing can 
 when the run ends, because the landing writes nothing of yours; a conflict only appears
 when you merge.
 
+A run you stop keeps its work the same way: what it had made by then is squashed into one
+commit on the task's own branch, and the task says `its work so far is kept on <branch>
+and did not go into <folder>`.
+
 If the program switched branches in its copy, its work still lands on the task's own
-branch, and the branch it had moved to (even one of yours) is never reset by codeaf; the
-task's page names that branch.
+branch, whether it ended or you stopped it, and the branch it had moved to (even one of
+yours) is never reset or committed on by codeaf; the task's page names that branch.
+Commits it had made on the task's own branch before it moved stay there, under its
+finished work.
 
 When there is nothing to land, it says `nothing to land: the run's working copy holds no
-change`, and the task's branch, which would hold nothing, is deleted. A folder with no git history is the exception: the program works in it directly.
+change` (`it had changed nothing` for a run you stopped), and the task's branch, which
+would hold nothing, is deleted. A folder with no git history is the exception: the
+program works in it directly.
 
 A program that only answers works in your folder in place and changes nothing. Its answer
 arrives in the conversation the way a task's landing does.
