@@ -307,7 +307,9 @@ tests cannot even start there, the tree is put back to the last state whose buil
 tests could run, or to where it began.
 
 Everything senior-dev said while it worked (each stage and what it knew at the time)
-is kept in `delegate-stderr.log` in the task's record folder. A run started at a shell has
+is kept in `delegate-stderr.log` in the task's record folder. Its `agent-summary` there
+adds up each of its agents' calls, time and cost; the cost is the price codeaf's model
+API told it for each call, not a catalog estimate, and a call nobody priced adds nothing. A run started at a shell has
 no task, so its record — that log, its conversation with codeaf, its stages and when it
 started and ended — is kept in a folder of its own under
 `~/.codeaf/v3/carried/senior-dev/`, one per run.

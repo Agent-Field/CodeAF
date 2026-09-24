@@ -761,3 +761,49 @@ func TestFinishRecordsReportedUpstream(t *testing.T) {
 		t.Fatalf("step-finish upstream = %q, want provider-b", finish.Upstream)
 	}
 }
+
+// A step's cost is the price its service put on it when it named one, and the
+// catalog's rates times its tokens only when it did not: the catalog read far
+// under what codeaf metered, and the run's agent-summary adds these up.
+func TestFinishCostsWhatTheServiceChargedWhenItSaid(t *testing.T) {
+	for _, row := range []struct {
+		name     string
+		reported *float64
+		want     float64
+	}{
+		{name: "the service named a price", reported: floatPtr(0.0412), want: 0.0412},
+		{name: "the service named none", want: 0},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			fixedSeams(t)
+			store := &memoryStore{messages: []msgmodel.WithParts{baseUser("msg_0000", "build", msgmodel.Parts{
+				msgmodel.TextPart{PartBase: msgmodel.PartBase{ID: "prt_0000", SessionID: "ses_1", MessageID: "msg_0000"}, Text: "hello"},
+			})}}
+			served := finishPart(orclient.FinishStop)
+			if row.reported != nil {
+				served.Metadata.Usage = orclient.NewObject()
+				served.Metadata.Usage.SetNumber("cost", *row.reported)
+			}
+			client := &scriptedClient{scripts: [][]orclient.StreamPart{{
+				orclient.TextStartPart{ID: "text_1"},
+				orclient.TextDeltaPart{ID: "text_1", Delta: "done"},
+				orclient.TextEndPart{ID: "text_1"},
+				served,
+			}}}
+			loop := Loop{Store: store, Client: client, Models: testResolver(), Executor: &immediateTool{}}
+			final, err := loop.Run(context.Background(), RunOptions{SessionID: "ses_1", Workspace: "/work", Worktree: "/work"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if final.Cost != row.want {
+				t.Fatalf("assistant cost = %v, want %v", final.Cost, row.want)
+			}
+			finish := store.rawSnapshot()[1].Parts[2].(msgmodel.StepFinishPart)
+			if finish.Cost != row.want {
+				t.Fatalf("step-finish cost = %v, want %v", finish.Cost, row.want)
+			}
+		})
+	}
+}
+
+func floatPtr(value float64) *float64 { return &value }

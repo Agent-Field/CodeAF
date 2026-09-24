@@ -466,12 +466,23 @@ func (p *Processor) finish(ctx context.Context, value orclient.FinishPart) error
 		Model: p.model.Calc,
 		Usage: calc.AsLanguageModelUsage(value.Usage),
 	})
+	// THE SERVICE'S OWN PRICE WINS OVER THE CATALOG'S. A step's cost is the
+	// catalog's rates times its tokens only when the service put no price on
+	// it; when it did, that is what was charged. The catalog's reading ran
+	// 1.2 to 10 times under codeaf's meter on the runs of 2026-09-23, and the
+	// run's agent-summary, which adds these up, told a reader of
+	// delegate-stderr.log that a $2.30 run had cost $0.57. It is an account
+	// and nothing more: the run's budget already reads the service's figure.
+	cost := usage.Cost
+	if reported, ok := reportedCost(value); ok {
+		cost = reported
+	}
 	finish := value.FinishReason.Unified
 	tokens := messageTokens(usage.Tokens)
 	part := msgmodel.StepFinishPart{
 		PartBase: msgmodel.PartBase{ID: nextID("prt"), SessionID: p.sessionID, MessageID: p.message.ID},
 		Reason:   finish,
-		Cost:     float64(usage.Cost),
+		Cost:     float64(cost),
 		Tokens:   tokens,
 	}
 	if value.Metadata.Provider != nil {
@@ -482,12 +493,26 @@ func (p *Processor) finish(ctx context.Context, value orclient.FinishPart) error
 	}
 	p.mu.Lock()
 	p.message.Finish = &finish
-	p.message.Cost = float64(float64(p.message.Cost) + usage.Cost)
+	p.message.Cost = float64(float64(p.message.Cost) + cost)
 	p.message.Tokens = tokens
 	p.message.Upstream = part.Upstream
 	message := p.message
 	p.mu.Unlock()
 	return p.store.UpdateMessage(ctx, message)
+}
+
+// reportedCost is the price the model's service put on one step, read off the
+// finish part's usage block, and whether it named one.
+func reportedCost(value orclient.FinishPart) (float64, bool) {
+	raw, ok := value.Metadata.Usage.Get("cost")
+	if !ok {
+		return 0, false
+	}
+	var cost float64
+	if json.Unmarshal(raw, &cost) != nil {
+		return 0, false
+	}
+	return cost, true
 }
 
 func (p *Processor) setAssistantError(classified retrysched.Err, fallback string) {
