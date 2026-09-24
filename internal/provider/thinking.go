@@ -201,6 +201,15 @@ func (c *Client) wireCeiling(model string, sent Effort, budget int, answer int) 
 // and by the transport, which is the point: the wait is sized for the reply
 // the request permits, never for the figure the caller started from.
 func (c *Client) ceilingFor(request *ai.Request, knobs callKnobs) (int, bool) {
+	if knobs.affordable > 0 {
+		if request.MaxTokens == nil || knobs.relaxed.has(relaxMaxTokens) {
+			return knobs.affordable, true
+		}
+		plain := knobs
+		plain.affordable = 0
+		ceiling, _ := c.ceilingFor(request, plain)
+		return min(ceiling, knobs.affordable), true
+	}
 	if request.MaxTokens == nil || knobs.relaxed.has(relaxMaxTokens) {
 		return 0, false
 	}

@@ -195,6 +195,7 @@ func (a *app) modelsFetched(msg modelsFetchedMsg) {
 	// dropping the memo there would throw away a good reading to punish a bad
 	// call, and the next frame would fall to the built-ins.
 	a.forgetModelList("", modelcatalog.DefaultBaseURL)
+	a.refreshCreditWarnings()
 	if a.pick.open && a.pick.refresh {
 		a.pick.restock(list)
 	}
