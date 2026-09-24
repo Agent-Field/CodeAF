@@ -12,13 +12,14 @@ program's own name.*
 A value in the build's list, `internal/delegate/builtin`, of type
 `delegate.Delegate`: a name (the chat command `/<name>` and the shell verb
 `codeaf <name>`), a one-line summary, a guide, what it lands (`tree` or `text`),
-its commands with their own flags, its default command, and the name of its page
-in the chat's manual. There is nothing to install. A program not in the list does
+its commands with their own flags, its default command, the flags that command
+takes to work in a folder with no git history (`PlainFolder`), and the name of
+its page in the chat's manual. There is nothing to install. A program not in the list does
 not exist anywhere; on Windows the list is empty.
 
 **The guide is the program describing itself to the model that hands it work:**
 one paragraph of at most 400 bytes (`delegate.GuideMax`) saying what it is for,
-what its brief must hold and what it needs of its folder. The conversation prints
+and what its brief must hold. The conversation prints
 it under the program's name, beside `propose_task`'s `via`, and says nothing about
 the program of its own. It rides every request of every turn, which is why it is
 short and why the manual page carries the rest.
@@ -39,8 +40,17 @@ a `delegate.Host`, and only codeaf makes one.
 Always as a child process of codeaf's own executable:
 
 ```
-codeaf <name> <command> --json --dir <workspace> [--max-cost USD] [--max-hours H] -- <brief>
+codeaf <name> <command> --json --dir <workspace> [--max-cost USD] [--max-hours H] [plain-folder flags] -- <brief>
 ```
+
+**The folder is codeaf's to read, and the program is told what it found.** A
+repository with a commit gets a working copy cut from it. A folder with no git
+history (a plain folder, or a repository with no commit) has nothing to cut
+from, so the program works in the folder itself and codeaf puts the program's
+own `PlainFolder` flags on its line (senior-dev's is `--in-place`); its landing
+commits nothing, because the work is already there, and the run's page says so.
+codeaf never learns a program's flag by name, and a flag the default command
+does not take fails `Validate`, so the build's own test catches it.
 
 - **From the chat,** the engine's run (`internal/run`'s `DelegateWorker`) starts
   that line in the run's working copy, which is cut from the folder the proposal

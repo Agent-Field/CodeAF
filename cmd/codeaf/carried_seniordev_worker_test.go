@@ -120,6 +120,65 @@ func TestSeniorDevWorksATaskAsTheChatsRunWorker(t *testing.T) {
 	}
 }
 
+// A FOLDER WITH NO GIT HISTORY IS WORKED IN WHERE IT IS. The chat reads the
+// folder before it starts the program and, finding no history to copy from,
+// hands senior-dev its own flag for that (seniordev.Program's PlainFolder) on
+// the line the run's worker builds. senior-dev then works the same scripted
+// task to the same passing ending, and leaves the folder as plain as it found
+// it: no repository is made in somebody's folder behind their back.
+func TestSeniorDevWorksAPlainFolderAsTheChatsRunWorker(t *testing.T) {
+	if testing.Short() {
+		t.Skip("drives the real senior-dev engine")
+	}
+	program, carried := builtin.Find("senior-dev")
+	if !carried {
+		t.Skip("this build carries no senior-dev")
+	}
+	workspace := seniorDevWorkspace(t)
+	if err := os.RemoveAll(filepath.Join(workspace, ".git")); err != nil {
+		t.Fatal(err)
+	}
+	seniorDevCatalogWithItsOwnPool(t)
+	t.Setenv(carriedChildEnv, "real")
+	t.Setenv("DO_NOT_TRACK", "1")
+	t.Setenv("CODEAF_NO_UPDATE_CHECK", "1")
+
+	store, err := plandb.Open(filepath.Join(t.TempDir(), "plan.json"), "senior-dev-run", "root", "Add the feature", "Add the feature.")
+	if err != nil {
+		t.Fatalf("open plan store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := &seniorDevModel{}
+	worker := runengine.NewDelegateWorker(store, workspace, program, runengine.DelegateSetup{
+		Exe:          self,
+		Grace:        5 * time.Second,
+		CompleterFor: func(string) session.Completer { return model },
+		Ledger:       filepath.Join(t.TempDir(), "usage.jsonl"),
+		PlainFolder:  true,
+	}, 1.0, 0)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	report, err := worker.Run(ctx, *store.Task(store.RootID()))
+	if err != nil {
+		stderr, _ := os.ReadFile(filepath.Join(plandb.TaskDir(filepath.Dir(store.Path()), store.RootID()), "delegate-stderr.log"))
+		t.Fatalf("senior-dev on a plain folder failed: %v\nits stderr:\n%s", err, stderr)
+	}
+	if !strings.Contains(report.Result, "feature.txt now holds the feature") {
+		t.Fatalf("the run's result = %q, want senior-dev's own passing ending", report.Result)
+	}
+	if content, err := os.ReadFile(filepath.Join(workspace, "feature.txt")); err != nil || string(content) != "implemented\n" {
+		t.Fatalf("the work is not in the folder: %q %v", content, err)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, ".git")); !os.IsNotExist(err) {
+		t.Fatalf("the plain folder was made into a repository: %v", err)
+	}
+}
+
 // seniorDevCatalogWithItsOwnPool points senior-dev at a model catalog that
 // carries its OWN default pool. The chat hands the program no `--high` — its
 // line is the default command and the shared flags only — so senior-dev asks

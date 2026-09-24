@@ -43,7 +43,7 @@ At a shell, `codeaf <name> <brief>` runs the same program in the folder you are 
 one `--dir` names. `--max-cost` and `--max-hours` set its ceilings, and `--json` prints its
 records instead of readable lines. `codeaf <name> --help` lists its own commands and flags.
 
-## Which folder a program works in — a repository I have not cloned, it edited files outside its copy
+## Which folder a program works in — a repository I have not cloned, it edited files outside its copy, a folder with no git
 
 A program that edits code works in a copy of one folder: the one this conversation works
 in, or the one the task names. **Only what it changes inside that copy lands.** Anything it
@@ -54,6 +54,11 @@ that names a repository and a commit, or a project you have not cloned), the mod
 it first, into a new folder, onto a branch at the commit the work names, and hands the
 program that folder. It is told never to write a brief that sends the program to work in
 another folder, because nothing the program did there could land.
+
+A folder with no git history (a plain folder, or a repository with no commit yet) has
+nothing to copy from, so the program works in that folder itself, and codeaf tells it so
+on the line it starts it with (senior-dev is given `--in-place`). Nothing is committed: its
+changes are already in the folder when it ends.
 
 At a shell nobody does that for you: clone the repository, then run `codeaf <name>` inside
 it, or name the folder with `--dir`.

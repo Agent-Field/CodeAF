@@ -41,7 +41,7 @@ func fakeLaunch(t *testing.T, script, workspace, brief string, ceilings Ceilings
 	return Launch{
 		Name: "fake",
 		Bin:  script,
-		Args: ChildArgs(program, workspace, brief, ceilings),
+		Args: ChildArgs(program, workspace, brief, ceilings, false),
 		Env:  ChildEnv(api),
 		Dir:  workspace,
 	}

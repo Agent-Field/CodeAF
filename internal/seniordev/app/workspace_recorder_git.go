@@ -52,7 +52,10 @@ func (recorder *gitRecorder) git(args ...string) (string, error) {
 
 func (recorder *gitRecorder) Prepare(ctx context.Context) error {
 	if gitOutput(ctx, recorder.workspace, "rev-parse", "--show-toplevel") == "" {
-		return fmt.Errorf("workspace is not a git repository: %s", recorder.workspace)
+		// A PERSON AT A SHELL CAN ANSWER THIS, so the sentence names the flag.
+		// The chat never meets it: codeaf reads the folder first and passes
+		// the flag itself (seniordev.Program's PlainFolder).
+		return fmt.Errorf("workspace is not a git repository: %s; run with --in-place to work in a plain folder", recorder.workspace)
 	}
 	// Exclude senior-dev's own artifacts on the workspace at bootstrap
 	// (non-fatal): without it the run's commits sweep senior-dev's bookkeeping
@@ -67,7 +70,7 @@ func (recorder *gitRecorder) Prepare(ctx context.Context) error {
 func (recorder *gitRecorder) Base(ctx context.Context) (string, error) {
 	baseSHA := gitOutput(ctx, recorder.workspace, "rev-parse", "HEAD")
 	if baseSHA == "" {
-		return "", fmt.Errorf("senior-dev run requires a git repository with at least one commit")
+		return "", fmt.Errorf("senior-dev run requires a git repository with at least one commit, or --in-place")
 	}
 	resolved := gitOutput(ctx, recorder.workspace, "rev-parse", "--verify", baseSHA+"^{commit}")
 	if resolved == "" {

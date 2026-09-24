@@ -105,6 +105,83 @@ func TestADelegatedRunSquashesTheProgramsCommitsIntoOneAndLandsIt(t *testing.T) 
 	}
 }
 
+// A FOLDER WITH NO GIT HISTORY: the program is told so on its line, works in
+// the folder itself because there is nothing to copy from, and its landing
+// commits nothing — no repository is made in the person's folder — and says
+// where the work is instead of refusing a commit git could never make.
+func TestADelegatedRunOnAPlainFolderIsToldSoAndLandsWhereItWorked(t *testing.T) {
+	const result = "submitted and verified. fake's model said: done"
+	double := newBeltRunDouble(result)
+	double.work = func(workspace string) {
+		if err := os.WriteFile(filepath.Join(workspace, "made.txt"), []byte("made\n"), 0o644); err != nil {
+			t.Error(err)
+		}
+	}
+	registerBeltRunEngine(t, double)
+	folder := t.TempDir()
+	if err := os.WriteFile(filepath.Join(folder, "notes.txt"), []byte("mine\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	agent, _ := newTestAgent(t, beltRunCompleter{text: result}, func(config *Config) {
+		config.Workspace = folder
+		config.Place = Place{Dir: t.TempDir()}
+		config.AskConsent = false
+		config.Delegates = testPrograms("fake")
+	})
+
+	if _, _, _, err := agent.StartDelegate(context.Background(), "fake", "make a file in this folder"); err != nil {
+		t.Fatalf("StartDelegate: %v", err)
+	}
+	<-double.entered
+	double.mu.Lock()
+	spec := double.spec
+	double.mu.Unlock()
+	if !spec.PlainFolder || canonicalPath(spec.Workspace) != canonicalPath(folder) {
+		t.Fatalf("spec = plain %v in %q, want the plain folder itself, said to be one", spec.PlainFolder, spec.Workspace)
+	}
+	endBeltRun(t, agent, double)
+
+	if content, err := os.ReadFile(filepath.Join(folder, "made.txt")); err != nil || string(content) != "made\n" {
+		t.Fatalf("the work is not in the folder: %q %v", content, err)
+	}
+	if _, err := os.Stat(filepath.Join(folder, ".git")); !os.IsNotExist(err) {
+		t.Fatalf("the landing made the plain folder a repository: %v", err)
+	}
+	store := beltRunStoreAt(t, filepath.Dir(spec.Store.Path()))
+	defer store.Close()
+	var said []string
+	for _, note := range store.Notes(store.RootID(), 0) {
+		said = append(said, note.Body)
+	}
+	joined := strings.Join(said, "\n")
+	if !strings.Contains(joined, "no git history, so nothing was committed") || strings.Contains(joined, "not a git repository") {
+		t.Fatalf("the run's notes = %q, want the plain-folder landing and no git refusal", said)
+	}
+}
+
+// A folder with history is copied, and the program is told nothing extra.
+func TestADelegatedRunOnARepositoryIsNotToldItIsPlain(t *testing.T) {
+	double := newBeltRunDouble("done")
+	registerBeltRunEngine(t, double)
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = newTestRepo(t)
+		config.Place = Place{Dir: t.TempDir()}
+		config.AskConsent = false
+		config.Delegates = testPrograms("fake")
+	})
+	if _, _, _, err := agent.StartDelegate(context.Background(), "fake", "change the project"); err != nil {
+		t.Fatalf("StartDelegate: %v", err)
+	}
+	<-double.entered
+	double.mu.Lock()
+	plain := double.spec.PlainFolder
+	double.mu.Unlock()
+	endBeltRun(t, agent, double)
+	if plain {
+		t.Fatal("a repository with a commit was called a plain folder")
+	}
+}
+
 func TestStartDelegateRefusesANameThisMachineDoesNotHave(t *testing.T) {
 	double := newBeltRunDouble("done")
 	registerBeltRunEngine(t, double)

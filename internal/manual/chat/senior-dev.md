@@ -72,12 +72,32 @@ refuse any path outside the folder it was handed, including one reached through 
 and say so to its model; it can still read files elsewhere. Its shell is not fenced the
 same way, and nothing a shell command changes outside the copy lands.
 
-**It needs a git repository with at least one commit**, unless it runs `--in-place`, which
-edits a plain folder without committing anything.
+**It keeps its record in git**, unless it runs `--in-place`; from the chat, codeaf chooses
+that for a folder with no git history (see the section on plain folders).
 
 **On Windows it is absent**: there is no `/senior-dev` and no `codeaf senior-dev`. Its
 engine needs a Unix shell, process groups and file locks, so Windows builds leave it out
 rather than carry something that fails every time.
+
+## senior-dev on a folder that is not a git repository — a plain folder, no git, --in-place
+
+From the chat, codeaf reads the task's folder before it starts senior-dev. A repository
+with at least one commit gets a copy, as every task does. **A folder with no git history —
+a plain folder, or a repository with no commit yet — has nothing to copy from**, so
+senior-dev works in that folder itself, and codeaf starts it with `--in-place`: it commits
+nothing, and keeps its checkpoints outside the folder.
+
+When it ends there is nothing to commit, because its changes are already in the folder.
+The task's page says `its work is in <folder>, which has no git history, so nothing was
+committed`. Its `.senior-dev/` notes (the brief, its checklist) stay in the folder
+afterwards; delete them when you are done with them.
+
+At a shell, pass `--in-place` yourself. Without it senior-dev stops at once with
+`workspace is not a git repository: <folder>; run with --in-place to work in a plain
+folder`.
+
+To have its work isolated and landed as one commit instead, make the folder a repository
+with a first commit (`git init`, `git add -A`, `git commit`) before you ask.
 
 ## Where senior-dev's work lands — one squashed commit on your branch
 
@@ -94,7 +114,8 @@ project's build and tests (`senior-dev observed: …`). Read the second for "did
 Its own notes live in `.senior-dev/` in the copy: the brief, its checklist, the command
 it pinned and its session database. That folder is kept out of git, so it never lands.
 
-When a run changed nothing, there is nothing to land and the task says so.
+When a run changed nothing, there is nothing to land and the task says so. On a folder
+with no git history nothing is committed at all: the work is already in the folder.
 
 ## What a senior-dev run costs — model calls, the dollar ceiling, which models
 
@@ -151,7 +172,7 @@ A run ends in one of these ways, and the task's ending says which:
   at the dollar ceiling; the words after are senior-dev's own ending;
 - `senior-dev stopped on its own ceiling: …` — it stopped itself at the time ceiling;
 - `senior-dev crashed: …` — the program itself broke, or could not start (no brief, a
-  refused `senior-dev.json`, no git repository);
+  refused `senior-dev.json`, no git repository at a shell without `--in-place`);
 - `stopped by the run: …` — you, or the run it belonged to, stopped it; what follows is
   what senior-dev said on its way out, usually `stopped before it finished`.
 

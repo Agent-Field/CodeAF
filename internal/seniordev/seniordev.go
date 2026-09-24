@@ -39,16 +39,20 @@ var Program = delegate.Delegate{
 	Summary: "an autonomous agent for one large, well-specified code change",
 	// What the chat's model reads before it names senior-dev in `via`. The
 	// brief is copied word for word into .senior-dev/spec.md and is all it ever
-	// knows of the work, so the guide says what that brief must settle; and
-	// its recorder is git unless it runs --in-place, which the chat's line
-	// never passes, so the guide says what its folder must be.
+	// knows of the work, so the guide says what that brief must settle. Its
+	// folder is codeaf's to choose and to read: a plain one is handed over
+	// with PlainFolder on the line, so the guide says nothing about git.
 	Guide: "For one large code change worth an hour: a rewrite across a package, a migration, " +
 		"a feature with its tests. Its brief names the files and commands, what done means and " +
-		"how to check it, and what must not change. Its folder must be a git repository with a commit.",
-	Lands:    delegate.LandsTree,
-	Default:  "run",
-	Page:     "senior-dev",
-	Commands: []delegate.Command{runCommand},
+		"how to check it, and what must not change.",
+	Lands: delegate.LandsTree,
+	// Its recorder is git unless it is told --in-place, which keeps its
+	// checkpoints outside the folder and commits nothing; a folder with no git
+	// history has nothing else it can run on.
+	PlainFolder: []string{"--in-place"},
+	Default:     "run",
+	Page:        "senior-dev",
+	Commands:    []delegate.Command{runCommand},
 }
 
 // runCommand is senior-dev's one verb: the whole run, from the brief to the

@@ -235,11 +235,27 @@ func delegateStand(workspace string, program delegate.Delegate) taskStand {
 // terminal record's two sentences. Then the copy comes home the way every run's
 // copy does.
 //
+// A TREE PROGRAM ON A PLAIN FOLDER LANDS NOTHING EITHER: there was no history
+// to copy from, so it worked in the folder itself and its changes are already
+// there ([delegateOnPlainFolder]).
+//
 // A TEXT PROGRAM LANDS NOTHING: it worked in place and promised to change
 // nothing, and its answer is the run's result, which the outcome note carries.
 func (a *Agent) landDelegateRun(run *beltRun, summary RunSummary) RunLanding {
 	m := run.delegate
 	if m == nil || !m.LandsTree() || run.tree.dir == "" {
+		return RunLanding{Home: mergeInPlace}
+	}
+	if run.plain {
+		// A PLAIN FOLDER HAS NO HISTORY TO COMMIT TO, and the program worked in
+		// it where it stands: its changes are already the person's, and the
+		// landing is only the note that says where they are.
+		note := "its work is in " + run.ground + ", which has no git history, so nothing was committed"
+		if _, err := run.store.AddNote(run.root, run.root, note); err != nil {
+			if g := a.graph(); g != nil {
+				g.planNote("the run's landing note failed: " + err.Error())
+			}
+		}
 		return RunLanding{Home: mergeInPlace}
 	}
 	dir := run.workspace

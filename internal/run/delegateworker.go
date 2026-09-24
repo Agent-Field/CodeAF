@@ -98,6 +98,10 @@ type DelegateSetup struct {
 	Ledger string
 	// Keepalive overrides the model API's keepalive interval, for a test.
 	Keepalive time.Duration
+	// PlainFolder says the working folder has no git history
+	// (session.RunSpec.PlainFolder), so the program's line carries its own
+	// flags for one (delegate.Delegate.PlainFolder).
+	PlainFolder bool
 }
 
 // NewDelegateWorker builds the worker. cost and elapsed are the run's
@@ -298,7 +302,7 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	result, err := delegate.Run(launchCtx, delegate.Launch{
 		Name: w.program.Name,
 		Bin:  exe,
-		Args: delegate.ChildArgs(w.program, w.workspace, brief, delegate.Ceilings{CostUSD: w.cost, Hours: w.elapsed.Hours()}),
+		Args: delegate.ChildArgs(w.program, w.workspace, brief, delegate.Ceilings{CostUSD: w.cost, Hours: w.elapsed.Hours()}, w.setup.PlainFolder),
 		// NO KEY REACHES THE PROGRAM (delegate.ChildEnv): the API's address and
 		// token are the whole of what it is given.
 		Env:        delegate.ChildEnv(api.API()),

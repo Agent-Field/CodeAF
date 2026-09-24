@@ -116,13 +116,19 @@ func Parse(program Delegate, line []string, out io.Writer) (*Invocation, error) 
 //
 // AN UNSET CEILING IS NOT ON THE LINE. A program handed `--max-cost 0` might
 // read it as a ceiling of nothing; one handed no flag reads no ceiling.
-func ChildArgs(program Delegate, workspace, brief string, ceilings Ceilings) []string {
+//
+// plain says the folder has no git history, and puts the program's own
+// [Delegate.PlainFolder] flags on the line after codeaf's.
+func ChildArgs(program Delegate, workspace, brief string, ceilings Ceilings, plain bool) []string {
 	args := []string{program.Name, program.Default, "--json", "--dir", workspace}
 	if ceilings.CostUSD > 0 {
 		args = append(args, "--max-cost", strconv.FormatFloat(ceilings.CostUSD, 'f', -1, 64))
 	}
 	if ceilings.Hours > 0 {
 		args = append(args, "--max-hours", strconv.FormatFloat(ceilings.Hours, 'f', -1, 64))
+	}
+	if plain {
+		args = append(args, program.PlainFolder...)
 	}
 	return append(args, "--", brief)
 }

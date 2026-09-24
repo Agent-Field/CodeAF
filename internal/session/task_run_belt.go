@@ -124,6 +124,10 @@ type RunSpec struct {
 	// program reaches a model only through the API codeaf serves the run. Nil is
 	// every run the conversation's own workers drive.
 	Delegate *delegate.Delegate
+	// PlainFolder says the delegated run's folder has no git history, so the
+	// program is started with its own flags for one
+	// (delegate.Delegate.PlainFolder). False for every other run.
+	PlainFolder bool
 }
 
 // RunLimit is which bound a person set ended a run. The engine's outcome word
@@ -245,6 +249,10 @@ type beltRun struct {
 	// back to at landing (delegate_door.go).
 	delegate *delegate.Delegate
 	startSha string
+	// plain is a tree program working in a folder with no git history
+	// ([delegateOnPlainFolder]): it is told so on its line, and its landing
+	// commits nothing, because the work is already where it belongs.
+	plain bool
 }
 
 // startTaskRun is StartTask's second road, taken whenever the bash belt is asked
@@ -345,6 +353,7 @@ func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brie
 		plan: plan, store: store, root: store.RootID(), row: id, title: title,
 		workspace: tree.dir, ground: canonicalPath(stand.dir), tree: tree, cut: cut,
 		born: born, delegate: via, startSha: delegateStartSha(tree, via),
+		plain: delegateOnPlainFolder(tree, via),
 	}
 	a.installBeltRun(g, run)
 	// THE COPY IS WRITTEN DOWN IN THE SAME BREATH THE RUN IS PUBLISHED, because
@@ -418,6 +427,24 @@ func delegateStartSha(tree taskTree, via *delegate.Delegate) string {
 	return strings.TrimSpace(head)
 }
 
+// delegateOnPlainFolder says a tree program is about to work in a folder with no
+// git history to cut a copy from: a plain folder, or a repository with no
+// commit yet. The copy road already answered that by working in the folder
+// itself ([prepareTaskTreeOn]); this is the same fact read off the tree it
+// answered with, for the program's line and its landing.
+//
+// IT WAS A RUN THAT DIED ON ITS FIRST LINE. senior-dev keeps its history in
+// git unless it is told otherwise, and handed a plain folder it ended at once
+// with "workspace is not a git repository", though it has a way of working
+// without one. codeaf is the one that read the folder, so codeaf says so.
+func delegateOnPlainFolder(tree taskTree, via *delegate.Delegate) bool {
+	if via == nil || !via.LandsTree() || tree.merge != mergeInPlace || tree.dir == "" {
+		return false
+	}
+	root, ok := repositoryRoot(tree.dir)
+	return !ok || !hasCommit(root)
+}
+
 // beltRunSpec is what the engine is handed for a run of this conversation: its
 // seats, its bounds and the copy it works in.
 //
@@ -459,6 +486,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		CompleterFor: func(string) Completer { return a.beltRunCompleter() },
 		Serves:       a.servesModel,
 		Delegate:     run.delegate,
+		PlainFolder:  run.plain,
 	}
 }
 

@@ -29,6 +29,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 )
@@ -77,6 +78,17 @@ type Delegate struct {
 	// Lands is LandsTree or LandsText. Empty reads as LandsTree, because a
 	// program that edits a tree is the one this was built for.
 	Lands string
+	// PlainFolder is the flags the default command takes to work in a folder
+	// with no git history, which codeaf puts on the line itself when the folder
+	// it hands a tree program is one ([ChildArgs]). Empty is a program that
+	// needs no flag for it, or cannot work there and says so in its ending.
+	//
+	// CODEAF DECIDES, BECAUSE CODEAF KNOWS. The folder is the one the task was
+	// proposed on, and whether it has a history to cut a working copy from is
+	// read by codeaf before the program starts: a plain folder is worked in
+	// where it is, and the program is told so on its line. The program says
+	// only how it is told, so codeaf never has to learn its flag's name.
+	PlainFolder []string
 	// Default is the command a bare brief runs: `/<name> <brief>` in the chat
 	// and `codeaf <name> <brief>` in a shell. It names one of Commands.
 	Default string
@@ -183,6 +195,18 @@ func (d Delegate) Validate() error {
 	}
 	if !seen[d.Default] {
 		return fmt.Errorf("%s: the default command %q is not one of its commands", d.Name, d.Default)
+	}
+	if len(d.PlainFolder) > 0 {
+		// THE FLAGS ARE PARSED BY THE COMMAND THEY WILL BE HANDED TO, so a
+		// misspelt one fails here, in the build's own test, and never as a
+		// run that dies on its first line in somebody's folder.
+		command, _ := d.Command(d.Default)
+		fs := flag.NewFlagSet(d.Name+" "+command.Name, flag.ContinueOnError)
+		fs.SetOutput(io.Discard)
+		command.Bind(fs)
+		if err := fs.Parse(d.PlainFolder); err != nil || fs.NArg() > 0 {
+			return fmt.Errorf("%s: the plain folder flags %q are not flags its %s command takes", d.Name, strings.Join(d.PlainFolder, " "), command.Name)
+		}
 	}
 	return nil
 }

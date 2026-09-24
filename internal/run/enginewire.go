@@ -52,6 +52,7 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 			CompleterFor: spec.CompleterFor,
 			Serves:       spec.Serves,
 			Seat:         WorkSeat(spec.ProfileDir, spec.WorkModel),
+			PlainFolder:  spec.PlainFolder,
 		}
 		factory = DelegateFactory(spec.Store, spec.Workspace, *spec.Delegate, setup, limits, factory)
 	}

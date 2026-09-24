@@ -65,7 +65,7 @@ func TestParseTakesANamedCommandAndItsOwnFlags(t *testing.T) {
 // The line a host starts its child with is the line Parse reads back.
 func TestChildArgsParseBackToTheSameInvocation(t *testing.T) {
 	program := testProgram(nil)
-	line := ChildArgs(program, "/work", "add a --flag to the parser", Ceilings{CostUSD: 2.5, Hours: 1})
+	line := ChildArgs(program, "/work", "add a --flag to the parser", Ceilings{CostUSD: 2.5, Hours: 1}, false)
 	if line[0] != "fake" {
 		t.Fatalf("line = %q, want the program's name first", line)
 	}
@@ -76,6 +76,40 @@ func TestChildArgsParseBackToTheSameInvocation(t *testing.T) {
 	if inv.Command.Name != "run" || !inv.JSON || inv.Workspace != "/work" || inv.Brief() != "add a --flag to the parser" ||
 		inv.Ceilings != (Ceilings{CostUSD: 2.5, Hours: 1}) {
 		t.Fatalf("invocation = %+v", inv)
+	}
+}
+
+// A plain folder puts the program's own flags for one on the line, before the
+// brief and where its command parses them, and a folder with history puts
+// nothing there.
+func TestChildArgsCarryThePlainFolderFlagsOnlyForAPlainFolder(t *testing.T) {
+	program := testProgram(nil)
+	program.PlainFolder = []string{"--variant", "plain"}
+	if err := program.Validate(); err != nil {
+		t.Fatalf("a program whose plain-folder flags its command takes is refused: %v", err)
+	}
+	if line := ChildArgs(program, "/work", "the brief", Ceilings{}, false); strings.Contains(strings.Join(line, " "), "--variant") {
+		t.Fatalf("a folder with history carried the plain-folder flags: %q", line)
+	}
+	line := ChildArgs(program, "/work", "the brief", Ceilings{}, true)
+	if got := strings.Join(line, " "); !strings.HasSuffix(got, "--variant plain -- the brief") {
+		t.Fatalf("line = %q, want the plain-folder flags just before the brief", got)
+	}
+	// Parse refuses a flag its command does not declare, so reading the line
+	// back is the command taking them.
+	inv, err := Parse(program, line[1:], &bytes.Buffer{})
+	if err != nil || inv.Brief() != "the brief" {
+		t.Fatalf("the line read back as %+v, %v", inv, err)
+	}
+}
+
+// A plain-folder flag the default command does not declare would end every
+// run on a plain folder at its first line, so the definition is refused.
+func TestValidateRefusesPlainFolderFlagsTheCommandDoesNotTake(t *testing.T) {
+	program := testProgram(nil)
+	program.PlainFolder = []string{"--in-place"}
+	if err := program.Validate(); err == nil || !strings.Contains(err.Error(), "plain folder flags") {
+		t.Fatalf("Validate = %v, want the plain folder flags refused", err)
 	}
 }
 
