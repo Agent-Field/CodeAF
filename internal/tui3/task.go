@@ -4297,10 +4297,22 @@ func (a *app) railFootRows(width, height int) ([]string, railFootMarks) {
 	// three lines. The foot counts what the column holds; the bill is the
 	// status row's (foot.go).
 	members := a.railMembers()
+	stopped := 0
 	for _, g := range railFootOrder {
-		if n := len(members[g]); n > 0 {
+		n := len(members[g])
+		for _, node := range members[g] {
+			// Sorting ended work together must not call a person's stop done.
+			if a.taskStatus(node).Presence == session.TaskPresenceStopped {
+				stopped++
+				n--
+			}
+		}
+		if n > 0 {
 			segs = append(segs, itoa(n)+" "+railGroupWords[g])
 		}
+	}
+	if stopped > 0 {
+		segs = append(segs, itoa(stopped)+" "+taskStoppedWord)
 	}
 	// IN THIS TERMINAL'S OWN SPELLING of the modifier (chords.go), because the
 	// offer names a chord now rather than a bare letter and a Mac calls that
