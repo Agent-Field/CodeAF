@@ -270,3 +270,15 @@ func TestTeamMenuQuietChipWithNoTeamShown(t *testing.T) {
 		t.Fatalf("the ASCII switcher:\n%s", frame)
 	}
 }
+
+// TestTeamMenuPrintsFrame prints the strip with the switcher open, on a
+// 120-column chat, for a person to look at.
+func TestTeamMenuPrintsFrame(t *testing.T) {
+	a, _, _ := menuApp(t)
+	a.width, a.height = 120, 30
+	a.touch()
+	_ = a.tabsRow(a.width)
+	a.openTeamMenu()
+	frame, _ := menuFrame(t, a)
+	t.Logf("120x30, the chat with the team switcher open:\n%s", strings.Join(strings.Split(frame, "\n")[:14], "\n"))
+}

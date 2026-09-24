@@ -370,6 +370,10 @@ func TestWallRenderPrintsFrame(t *testing.T) {
 		rows, _ = renderWall(pal, v, 120, 40)
 		t.Logf("%s 120x40, naming a team:\n%s", pname, wallPlainFrame(rows))
 
+		v.asking, v.hover = true, wallHitRef{}
+		rows, _ = renderWall(pal, v, 120, 40)
+		t.Logf("%s 120x40, naming a team while a name is asked for:\n%s", pname, wallPlainFrame(rows))
+
 		v = wallUnmarked(base)
 		v.hover = wallHitRef{kind: wallHitTeams, arg: 0}
 		rows, _ = renderWall(pal, v, 120, 40)
