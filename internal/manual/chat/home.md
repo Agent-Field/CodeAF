@@ -34,7 +34,7 @@ answering one question you would ask walking up to a colleague's desk:
    Spark Fleet Ssh Audit · 2 hosts up, 1 not
    made apartments-minto-street.md
 
- scheduled
+ standing
    the 6am repo watch
 ```
 
@@ -76,7 +76,7 @@ panels below them, which are in the rail only because they are quiet today.
 
 **The rank never moves, only the side.** Within the field and within the rail the order is
 always `sessions`, question rows, `projects`, `since you left`, `spend`,
-`scheduled` — so two panels that both fill never swap places.
+`standing` — so two panels that both fill never swap places.
 
 One column under 110 cells, where every panel is in that one order and there is no rail;
 two columns from 110; three from 170, where the rail is the third and the field fills the
@@ -92,7 +92,7 @@ from home stands there as a card. Nothing else stands in it.
 | `sessions` | one of the fifteen most recent conversations | opens the conversation | `your recent conversations appear here` |
 | `since you left` | what landed while you were away | opens the record, the file or the place | `what watches and tasks did while the terminal was shut` |
 | `spend` | today, the fortnight, who it went to | nothing — its lines are read, never stood on or pressed; the heading opens the spend place | `every chat and task is priced here` |
-| `scheduled` | a standing order — reminder, routine, watch or rule — soonest first | opens the standing place | `reminders, routines, watches and rules · "remind me at 6" or "every morning at 9"` |
+| `standing` | a standing order — reminder, routine, watch or rule — soonest first | opens the standing place | `reminders, routines, watches and rules · "remind me at 6" or "every morning at 9"` |
 
 **An empty headed panel keeps its heading and that one dim line** — it names what arrives there and
 the one thing that puts it there, and it never says the panel is empty. On a narrow column
@@ -548,17 +548,17 @@ folds it. One panel is open at a time; opening a second folds the first. An open
 taller than the window shows what fits and its line still counts the rest — `3 fewer · 40
 more` — and names no place, because `enter` on it folds rather than opens. The way to
 those rows is the panel's **heading**: `sessions` opens sessions, `since you left` opens memory,
-and `scheduled` opens standing. Conversations and extra question rows have no heading;
+and `standing` opens standing. Conversations and extra question rows have no heading;
 `projects` opens nothing. The foot under a fold says
 which way it will go: `enter shows the rest`, then `enter folds them`. Opening lasts as long
 as the window; a relaunch starts folded. The fold wears no mark: home spends its two marks
 on the amber `?` and the one moving cell.
 
 **A tall terminal grows the panels**, once every panel has what it naturally shows:
-additional question rows, `since you left` and `projects` to eight rows; `sessions` keeps at most fifteen recent conversations; `scheduled` from three to five. `spend` never grows. What is left over is air
+additional question rows, `since you left` and `projects` to eight rows; `sessions` keeps at most fifteen recent conversations; `standing` from three to five. `spend` never grows. What is left over is air
 under the shorter column.
 
-**A short terminal squeezes them in a fixed order**: `scheduled` gives way first, then `spend`,
+**A short terminal squeezes them in a fixed order**: `standing` gives way first, then `spend`,
 then `since you left`, then `sessions`, then `projects`; the conversation list and additional question rows
 shrink last. A squeezed panel keeps its heading, the rows that fit and its `N more` line;
 only when every panel is down to that is a panel dropped — and the panels that are only
@@ -577,7 +577,7 @@ panels, and `enter` again folds it. The box at the foot still searches every con
 the machine as you type — a project's name, a folder's name or a word from what a task came
 to all find them — whether or not a panel is drawing the row.
 
-Every panel's fold works the same way: `N more` under `sessions`, `since you left`, `scheduled`
+Every panel's fold works the same way: `N more` under `sessions`, `since you left`, `standing`
 and `projects` opens that panel. The places themselves — tasks, standing, spend — are on the
 tab bar and their slash commands, not behind the folds.
 
@@ -628,14 +628,14 @@ cent — one reading of one file, wherever you are standing.
 words — `home  tasks  spend  settings` — and `tab`, `alt+1` … `alt+4` walk them. Standing,
 memory and search open exactly as they did:
 
-- **`/standing`** (or `/orders`), `alt+5`, or `enter` on a `scheduled` row;
+- **`/standing`** (or `/orders`), `alt+5`, or `enter` on a `standing` row;
 - **`/memory`** (or `/memories`), `alt+6`, or `enter` on memory's line in `since you left`;
 - **`/search`**, `alt+7`, or the typed door on home's box.
 
 While you stand in one of the three, its word is drawn after the four so you can see where
 you are; `tab` from there goes to home. `alt+.` draws the map of all seven with their
 numbers. Home's own panels already summarise the three on the bar: `sessions` is a glimpse of
-tasks, `spend` of spend, `scheduled` of standing.
+tasks, `spend` of spend, `standing` of standing.
 
 ## Why did a dashboard open when I started codeaf — home greets you
 
@@ -722,7 +722,7 @@ stays empty until you select a result.
 **One click is `enter`.** A click on a row opens it, and a click on a fold that names a
 place opens that place. A click on a panel's **heading** opens the place the heading names:
 `sessions` opens sessions, `since you left` opens memory, `spend` opens spend, and
-`scheduled` opens standing. There is no `needs you` heading. The conversation list has no heading. The `projects` heading opens nothing
+`standing` opens standing. There is no `needs you` heading. The conversation list has no heading. The `projects` heading opens nothing
 and stays dim. **A heading that opens somewhere underlines on mouse-over.** The
 pointer on a heading moves neither the cursor nor the marked heading.
 A click on a `/` command only selects it; `enter` runs it.
@@ -1536,14 +1536,14 @@ three ways:**
 
 - **while it is asking you something**, it is a row of `needs you`, with the amber `?` and
   what it is asking under it;
-- **while it is firing**, it is a row of `scheduled` like any other order — it is not a
+- **while it is firing**, it is a row of `standing` like any other order — it is not a
   task and has no row on `sessions`. It is still the item — `ctrl+e` pauses it, `ctrl+x` stops
   it, and `alt+e` raises how hard it thinks;
-- **while it is simply waiting for its time**, it is a row of `scheduled`, soonest first, with
+- **while it is simply waiting for its time**, it is a row of `standing`, soonest first, with
   when it goes off at the right — `in 20h`, `mon 8:30`.
 
 `enter` on a question row opens the conversation that asked for it; on a `sessions` row it
-opens the conversation; on a `scheduled` row it opens the standing place.
+opens the conversation; on a `standing` row it opens the standing place.
 
 The `◦` mark itself belongs to the standing place and to a conversation's own lines —
 `◦ leave for the train · in 4m`. `∙` is a paused item there, and `◆` means the thing went off
@@ -1589,7 +1589,7 @@ dialled to `max` still does not turn every check on the machine into a deep pass
 and an item nobody has dialled asks for nothing.
 
 **`alt+e` on an item's row is how you raise the one that deserves it.** Put the cursor on
-the standing item — on home at rest it has a row under `scheduled`, or under `needs you`
+the standing item — on home at rest it has a row under `standing`, or under `needs you`
 while it is asking you something — and press it: the rung climbs one step each
 press — `low`, `medium`, `high`, `xhigh`, `max`, then back to `low` — and home says
 `thinking high · <your words>` at the foot. The item's sheet on a phone then carries a dim
@@ -2006,9 +2006,9 @@ timed-out Git check draws nothing. The reading arrives a moment after home opens
 that is no longer on this disk says `that folder is gone` in place of the branch it cannot
 have.
 
-## What is scheduled on home — reminders, routines, watches and rules, what is next up and when
+## Standing on home — what is scheduled, reminders, routines, watches and rules, what is next up and when
 
-**The `scheduled` panel, last of the seven**: every standing order this machine will act
+**The `standing` panel, last of the seven**: every standing order this machine will act
 on, from every project, **soonest first**, with the rules that simply hold at the end.
 Four kinds of order stand on it — a **reminder** (`remind me at 6`), a **routine** (`every
 morning at nine`), a **watch** (`tell me when CI goes red`, `when go.sum changes`) and a
@@ -2016,7 +2016,7 @@ morning at nine`), a **watch** (`tell me when CI goes red`, `when go.sum changes
 and **nothing at its right**:
 
 ```
- scheduled
+ standing
    the 6am repo watch
    top movers before the open
    tell me when CI goes red on master
@@ -2039,7 +2039,7 @@ a date beyond it (`21 sep 9:00am`), and `now` once they have arrived. A routine 
 never fired has no `last:`; a watch that has never looked has no `last looked`. An order in
 the middle of a pass says what the pass is doing instead of its clock.
 
-**An order stopped on you is not on `scheduled`** — it is a row of `needs you`, with its
+**An order stopped on you is not on `standing`** — it is a row of `needs you`, with its
 question, and comes back here the moment you answer. Paused, stopped and retired orders are
 not on it either.
 
@@ -2048,7 +2048,7 @@ door into the standing place**, where the orders are kept and changed.
 
 With nothing standing it keeps its heading and
 `reminders, routines, watches and rules · "remind me at 6" or "every morning at 9"` — the
-words that set one up. On a short terminal `scheduled` is the first panel to give way.
+words that set one up. On a short terminal `standing` is the first panel to give way.
 
 ## How much did today cost — the spend panel on home
 

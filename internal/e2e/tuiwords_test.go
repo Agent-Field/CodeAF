@@ -183,7 +183,7 @@ var tuiWords = map[string]tuiWord{
 		why:    "the day and the fortnight on home, and the third word of the four-place bar",
 	},
 	"homePanelNext": {
-		screen: "scheduled",
+		screen: "standing",
 		why:    "every standing order this machine will act on — reminders, routines, watches, rules — soonest first",
 	},
 	"homeRunningWhisper": {
