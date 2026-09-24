@@ -131,14 +131,17 @@ func (a *Agent) writeTeamEvent(event teamEvent) {
 		if !role.managed || role.manager || role.handle == "" {
 			continue
 		}
+		// The event answers what the member was last told by its manager, so
+		// the rail folds it into that thread's reply (internal/teams' thread.go).
 		err := teams.AppendTraffic(profile, role.id, teams.Entry{
-			At:     event.at,
-			Kind:   teams.KindEvent,
-			From:   role.handle,
-			To:     teams.ToManager,
-			Member: role.key,
-			Text:   event.text,
-			State:  event.state,
+			At:      event.at,
+			Kind:    teams.KindEvent,
+			From:    role.handle,
+			To:      teams.ToManager,
+			Member:  role.key,
+			Text:    event.text,
+			State:   event.state,
+			Answers: a.teamAnswering(role.id),
 		})
 		if err != nil || !role.wakes {
 			continue
@@ -165,7 +168,7 @@ func (a *Agent) rouseManager(profile string, role teamRole) {
 		return
 	}
 	if manager, ok := team.Member(team.Manager); ok {
-		a.teamRouse(profile, team, []teams.Member{manager})
+		a.teamRouse(profile, team, []teams.Member{manager}, "")
 	}
 }
 
@@ -368,7 +371,7 @@ func teamBriefLine(role teamRole, entry teams.Entry) string {
 	if text == "" {
 		return ""
 	}
-	return teamBriefWord + ": " + indentAfterFirst(cutRunesTeam(text, teamBriefText))
+	return teamBriefWord + teamNumber(entry) + ": " + indentAfterFirst(cutRunesTeam(text, teamBriefText))
 }
 
 // teamBriefWord opens the brief's line, beside "◆ from manager" and

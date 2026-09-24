@@ -158,6 +158,24 @@ type teamSeat struct {
 	// handleTried says this process has asked for its handle once
 	// (handlepick.go), so it is never asked for twice.
 	handleTried bool
+	// answering is, per team, the id of the last message the manager sent
+	// this conversation that it was handed: a note, a directive or its brief.
+	// It is what a member's reply to the manager answers when it names nothing
+	// else, and what the events its turn raises answer (internal/teams'
+	// thread.go). Memory only: a conversation reopened answers nothing until
+	// the manager next speaks to it, which reads as a thread of its own.
+	answering map[string]string
+}
+
+// teamAnsweringLocked is the id this conversation's replies in team id answer
+// by default, "" for none. The caller holds a.team.mu.
+func (a *Agent) teamAnsweringLocked(id string) string { return a.team.answering[id] }
+
+// teamAnswering is [Agent.teamAnsweringLocked] under the seat's lock.
+func (a *Agent) teamAnswering(id string) string {
+	a.team.mu.Lock()
+	defer a.team.mu.Unlock()
+	return a.teamAnsweringLocked(id)
 }
 
 // teamLogStart is the cursor that reads a Traffic log from its first entry:
@@ -398,6 +416,15 @@ func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
 			cursor = entry.ID
 			if line := teamLine(role, entry); line != "" {
 				lines = append(lines, line)
+				// WHAT THE MANAGER LAST SAID TO IT IS WHAT IT ANSWERS, until the
+				// manager says something else: its next reply to the manager, and
+				// the events its turn raises, name it.
+				if !role.manager && entry.From == teams.FromManager {
+					if a.team.answering == nil {
+						a.team.answering = map[string]string{}
+					}
+					a.team.answering[role.id] = entry.ID
+				}
 			}
 		}
 		a.team.cursors[role.id] = cursor
@@ -506,19 +533,30 @@ func teamLine(role teamRole, entry teams.Entry) string {
 	if entry.From == role.handle && role.handle != "" {
 		return ""
 	}
-	addressed := entry.To == teams.ToEveryone || entry.To == teams.ToRoom ||
-		(role.handle != "" && entry.To == role.handle)
-	if !addressed {
+	if entry.To != teams.ToRoom && !entry.Addressed(role.handle) {
 		return ""
 	}
+	// A MEMBER IS TOLD EACH LINE'S NUMBER, "#42", so a reply can name the
+	// line it answers (team_post's thread); one to the manager names the
+	// manager's last line by itself.
+	number := teamNumber(entry)
 	if entry.From == teams.FromManager {
 		word := "◆ from manager"
 		if entry.Kind == teams.KindDirective {
 			word = "◆ directive from manager"
 		}
-		return word + teamAimed(entry.To, false) + ": " + text
+		return word + teamAimed(entry.To, false) + number + ": " + text
 	}
-	return teamSpeaker(entry.From) + teamAimed(entry.To, false) + ": " + text
+	return teamSpeaker(entry.From) + teamAimed(entry.To, false) + number + ": " + text
+}
+
+// teamNumber is a delivered line's number with the space before it, " #42",
+// and "" for an entry that has no id yet.
+func teamNumber(entry teams.Entry) string {
+	if entry.ID == "" {
+		return ""
+	}
+	return " " + teams.ThreadNumber(entry.ID)
 }
 
 // teamSpeaker names who wrote a line.
@@ -546,6 +584,10 @@ func teamAimed(to string, manager bool) string {
 			return ""
 		}
 		return " to the manager"
+	case teams.ToSeveral:
+		// A member named among several is told it as its own line; a manager
+		// never reads its own messages back.
+		return ""
 	}
 	if manager {
 		return " to @" + to

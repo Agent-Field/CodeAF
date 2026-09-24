@@ -51,7 +51,7 @@ func TestAStartedMemberWakesOnItsOwnWithTheBriefOnce(t *testing.T) {
 		t.Fatal("the started member never took its first turn")
 	}
 	first := userTextIn(completer.request(0))
-	if !strings.Contains(first, teamBriefWord+": Rewrite the lexer.") {
+	if !strings.Contains(first, teamBriefWord+" #1: Rewrite the lexer.") {
 		t.Fatalf("the first request did not carry the brief:\n%s", first)
 	}
 	for _, entry := range lexer.Transcript() {
