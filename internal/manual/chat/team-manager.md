@@ -13,6 +13,35 @@ team's traffic. It never carries members' whole conversations.
 Every member has a short **handle**, like `@web` or `@parser`, made from its title when it
 joins. Messages in a team are addressed by handle.
 
+## Making a manager
+
+A team has no manager until you make one, and until then nothing about managers costs anything.
+While a team is shown, the first place on the tab strip is the manager's:
+
+- **`+ Manager`**, a quiet button, while the team has none. A press starts a new conversation
+  in the team's folder and makes it the manager.
+- **`◆ Make manager`** in the team switcher (the `● harbor ▾` chip) makes the conversation in
+  front the manager, and in a tile's Teams list on the conversations view makes that one the
+  manager. On the manager itself the row reads **Remove manager**, which turns it back into an
+  ordinary conversation with all its history.
+
+Once there is a manager, the first tab reads `◆ harbor`, and on the conversations view its tile
+comes first, marked `◆`.
+
+## The manager's screen
+
+While the manager is in front, the message box says `to ◆ manager`: everything you type goes
+to the manager and nowhere else. Beside the conversation, on the right, is the **Traffic** rail,
+the log of who told whom inside the team: `◆ → @web` for the manager's messages, `@parser →
+@web` for a member's, and a line for each stop and start. Press a row to go to that member.
+On a narrow window the rail folds to a `◆` at the right edge; press it to lay the traffic over
+the conversation, and again to put it away.
+
+When the manager starts a member with `team_start` and you allow it, this window opens the new
+conversation in the team's folder, gives it its handle, and sends the brief as its first
+message, marked `◆ from manager`. When the manager stops a member, this window stops it the
+way your own Stop would. Both happen only in a window that has those conversations open.
+
 ## Who outranks whom
 
 Your own words come first. What you say in a member's own conversation stands over anything
