@@ -192,7 +192,7 @@ var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids that must finish first, only ones propose_task returned in this session. Its brief is given their reports; an unknown or failed id refuses the proposal"},` +
 	`"wide":{"type":"boolean","description":"Optional. True when the work is wider than one pair of hands. Say true whenever you judged it broad; a wrong true costs nothing"},` +
 	`"model":{"type":"string","description":"Optional, only where the person asked for one: a catalog id or part of one, never a class word, so resolve \"fast\" to a concrete model. A word fitting several is shown to the person to settle"},` +
-	`"via":{"type":"string","description":"Optional: a program your instructions list, to do the whole task alone in a copy of ground (or of this conversation's folder)"},` +
+	`"via":{"type":"string","description":"Optional: a program your instructions list, to do the whole task alone in ground (or this conversation's folder)"},` +
 	`"max_steps":{"type":"integer","description":"Optional. Finished tool calls per progress checkpoint (default ` + strconv.Itoa(taskMaxSteps) + `); work still advancing is given more."},` +
 	`"no_progress":{"type":"integer","description":"Optional. Tool calls in a row that may add nothing before it is stopped as stuck (default ` + strconv.Itoa(taskNoProgress) + `). Raise it for work that must read a great deal first"}` +
 	`},"required":["title","summary","brief","deliverable","acceptance"],"additionalProperties":false}`
@@ -890,7 +890,7 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 		receipt := taskReceipt(p.id, spec, TaskRunning, p.stand, elsewhere)
 		switch {
 		case via != nil:
-			receipt = withReport(receipt, a.delegateReceipt(p.id, *via))
+			receipt = delegateStartedReceipt(p.id, spec.title, delegateReceipt(canonicalPath(stand.dir), *via), elsewhere)
 		case joined:
 			receipt = withReport(receipt, "It joined the work already underway and shares its copy.")
 		}

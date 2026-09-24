@@ -48,10 +48,19 @@ calls, the dollars and how long the program ran.
 
 ## Which folder a program works in — a repository I have not cloned, it edited files outside its copy, a folder with no git
 
-A program that edits code works in a copy of one folder: the one this conversation works
-in, or the one the task names. **Only what it changes inside that copy is kept**, on the
-task's own branch. Anything it changed anywhere else is not part of the task, and the
+A program that edits code works in a copy of one folder: the one the task names as its
+`ground`, or this conversation's own folder when it names none. Nothing else moves it —
+not `where`, not a path in the brief, not where the conversation has been working — and
+the task's receipt names the folder. **Only what it changes inside that copy is kept**, on
+the task's own branch. Anything it changed anywhere else is not part of the task, and the
 task's ending does not see it.
+
+**It is never handed your home folder**, or a folder above it: that is not a project. A
+conversation opened in your home folder names the project's folder (making one first when
+the work is new), and a hand-off that names none is refused with `<name> works in one
+project's folder, and <folder> is your home folder; say which folder the work is in, as
+ground`. `/<name>` typed there is refused the same way, and says to open codeaf in the
+project's folder or to ask in the chat and say which folder.
 
 **The brief it reads names its copy.** Wherever the brief names the task's folder, codeaf
 rewrites that path to the copy's before the program reads it, so it is never pointed at

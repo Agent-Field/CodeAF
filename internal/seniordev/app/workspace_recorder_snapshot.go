@@ -6,8 +6,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -314,6 +316,13 @@ func (recorder *snapshotRecorder) walk() ([]treeEntry, error) {
 // honourIgnores is false inside the store, where everything present belongs to
 // the snapshot by construction and a stray .gitignore must not remove files
 // from a tree that was already decided.
+//
+// A FOLDER OR FILE THE WORKSPACE WILL NOT LET US READ IS NOT PART OF THE TREE.
+// It is skipped on every walk alike, so it is in no snapshot, no change count
+// and no restore, and nothing of it is removed or written; one folder the
+// system keeps to itself (macOS answers `operation not permitted` for some
+// even to their owner) no longer ends the run before its first step. Inside
+// the store every file is ours, and an error there is still an error.
 func walkTree(root string, honourIgnores bool) ([]treeEntry, error) {
 	rules := newIgnoreRules()
 	if honourIgnores {
@@ -322,7 +331,7 @@ func walkTree(root string, honourIgnores bool) ([]treeEntry, error) {
 	var entries []treeEntry
 	err := filepath.Walk(root, func(name string, info os.FileInfo, err error) error {
 		if err != nil {
-			return err
+			return skipUnreadable(err, name != root && honourIgnores, info)
 		}
 		relative, relErr := filepath.Rel(root, name)
 		if relErr != nil {
@@ -361,7 +370,7 @@ func walkTree(root string, honourIgnores bool) ([]treeEntry, error) {
 		}
 		hash, hashErr := hashFile(name)
 		if hashErr != nil {
-			return hashErr
+			return skipUnreadable(hashErr, honourIgnores, info)
 		}
 		entries = append(entries, treeEntry{
 			path: relative, mode: info.Mode().Perm(),
@@ -374,6 +383,18 @@ func walkTree(root string, honourIgnores bool) ([]treeEntry, error) {
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].path < entries[j].path })
 	return entries, nil
+}
+
+// skipUnreadable is [walkTree]'s answer to an error at one path: skip it when
+// it is a refusal to read in a walk that may skip one, and stop otherwise.
+func skipUnreadable(err error, mayskip bool, info os.FileInfo) error {
+	if !mayskip || !errors.Is(err, fs.ErrPermission) {
+		return err
+	}
+	if info != nil && info.IsDir() {
+		return filepath.SkipDir
+	}
+	return nil
 }
 
 // manifestID is the tree's content address: every path, mode and content hash

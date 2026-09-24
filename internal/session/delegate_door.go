@@ -178,24 +178,61 @@ func branchOnlySentence(branch, root string) string {
 }
 
 // delegateReceipt is the sentence an approved hand-off to a program adds to
-// its receipt: who has the work and where it will be when it ends. It is read
-// off the run just started under row, which knows whether its folder had a
-// history to copy.
+// its receipt: who has the work, where, and where it will be when it ends.
+// ground is the folder the run was started on; whether it has a history to
+// copy is read off it the way the run read it ([delegateOnPlainFolder]), and
+// not off the live run, which a program that dies in its first second has
+// already left by the time the receipt is written.
 //
 // IT NEVER SAYS THE WORK LANDS. It said "lands when it ends", and a program's
 // work is left on the task's own branch and merged by nobody; a model that read
 // "lands" told the person their folder held work it did not.
-func (a *Agent) delegateReceipt(row uint64, via delegate.Delegate) string {
+//
+// IT NAMES THE FOLDER. A receipt that said "a copy" and "the folder itself"
+// without saying which let a model that had named ~/Desktop/pong read that its
+// program was there while it had been handed the person's home folder.
+func delegateReceipt(ground string, via delegate.Delegate) string {
 	if !via.LandsTree() {
 		return "It is " + via.Name + "'s: it works alone, and its answer arrives when it ends."
 	}
-	a.beltMu.Lock()
-	plain := a.beltRun != nil && a.beltRun.row == row && a.beltRun.plain
-	a.beltMu.Unlock()
-	if plain {
-		return "It is " + via.Name + "'s: it works alone in the folder itself, which has no git history, so its changes are there as it makes them."
+	if root, ok := repositoryRoot(ground); !ok || !hasCommit(root) {
+		return "It is " + via.Name + "'s: it works alone in " + ground + " itself, which has no git history, so its changes are there as it makes them."
 	}
-	return "It is " + via.Name + "'s: it works alone in a copy, and when it ends its work is left on the task's own branch; nothing is merged into the checkout."
+	return "It is " + via.Name + "'s: it works alone in a copy of " + ground + ", and when it ends its work is left on the task's own branch; nothing is merged into the checkout."
+}
+
+// delegateStartedReceipt is an approved hand-off's receipt: a task's first line
+// and its wake sentence, with the program's own account of where it works
+// ([Agent.delegateReceipt]) in place of a task's "in a copy of its own", which
+// a program on a plain folder is not.
+func delegateStartedReceipt(id uint64, title, where, elsewhere string) string {
+	return withElsewhere(fmt.Sprintf("task %d started: %s\n%s %s", id, title, where, taskHandoffWakeSentence), elsewhere)
+}
+
+// programHomeRefusal is the one folder a tree program is never handed: the
+// person's home folder, or one that holds it. It is not a project, and a
+// program on a folder with no git history snapshots the whole of it to know
+// what it changed — every file under the home folder, and a refusal from the
+// first one macOS keeps to itself. instead is what the one refused can do.
+func programHomeRefusal(program delegate.Delegate, dir, instead string) string {
+	if !program.LandsTree() || !holdsHomeFolder(dir) {
+		return ""
+	}
+	what := "holds your home folder"
+	if home, err := os.UserHomeDir(); err == nil && canonicalPath(home) == canonicalPath(dir) {
+		what = "is your home folder"
+	}
+	return program.Name + " works in one project's folder, and " + dir + " " + what + "; " + instead
+}
+
+// holdsHomeFolder says dir is the person's home folder or a folder above it.
+func holdsHomeFolder(dir string) bool {
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" || strings.TrimSpace(dir) == "" {
+		return false
+	}
+	rel, err := filepath.Rel(canonicalPath(dir), canonicalPath(home))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // DelegateUnknownError is the refusal for a `via` or a command naming no
@@ -248,6 +285,9 @@ func (a *Agent) StartDelegate(ctx context.Context, name, brief string) (uint64, 
 	}
 	if a.config.InTask {
 		return 0, "", "", errors.New("a task cannot hand its work to " + program.Name + "; only the conversation can")
+	}
+	if refusal := programHomeRefusal(program, canonicalPath(a.config.Workspace), "open codeaf in that folder, or ask for the work in the chat and say which folder it is in"); refusal != "" {
+		return 0, "", "", errors.New(refusal)
 	}
 	g := a.graph()
 	if chatRunEngine == nil || g == nil || g.planPath() == "" {

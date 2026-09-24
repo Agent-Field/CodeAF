@@ -356,3 +356,45 @@ func TestGitRecorderLeavesPromptsByteIdentical(t *testing.T) {
 		t.Fatal("the git path's run instruction changed")
 	}
 }
+
+// A folder or file the workspace will not let the run read is not part of the
+// tree: the run is not ended by it, no snapshot holds it, and a restore neither
+// removes nor writes it. macOS answers `operation not permitted` for some
+// folders even to their owner, and one of them ended a run at its first step.
+func TestSnapshotSkipsWhatItMayNotRead(t *testing.T) {
+	workspace, recorder := snapshotWorkspace(t, map[string]string{
+		"main.go": "package main\n", "locked/inside.txt": "private\n", "sealed.txt": "private\n",
+	})
+	locked, sealed := filepath.Join(workspace, "locked"), filepath.Join(workspace, "sealed.txt")
+	for _, name := range []string{locked, sealed} {
+		if err := os.Chmod(name, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755); _ = os.Chmod(sealed, 0o644) })
+	if _, err := os.ReadDir(locked); err == nil {
+		t.Skip("this user reads a folder with no permissions (root?)")
+	}
+	original, err := recorder.Snapshot()
+	if err != nil {
+		t.Fatalf("snapshot of a workspace holding an unreadable folder: %v", err)
+	}
+	paths, _, _, err := recorder.ListPaths(context.Background(), 1<<20)
+	if err != nil || strings.Join(paths, ",") != "main.go" {
+		t.Fatalf("paths = %q, %v; want only the readable file", paths, err)
+	}
+	if _, err := recorder.Record(original, "start"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFile(filepath.Join(workspace, "main.go"), "package main // edited\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := recorder.Restore(original, original); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	for _, name := range []string{locked, sealed} {
+		if _, err := os.Lstat(name); err != nil {
+			t.Fatalf("the restore touched %s: %v", name, err)
+		}
+	}
+}

@@ -64,6 +64,8 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+
+	"github.com/Agent-Field/codeaf/internal/delegate"
 )
 
 // taskStand is what the ladder came to: the ground, how this task stands on it,
@@ -151,6 +153,9 @@ const taskGroundPathsRead = 400
 // answer to the one question this file exists to have one answer to.
 func (a *Agent) resolveTaskGround(spec taskSpec) taskStand {
 	workspace := canonicalPath(strings.TrimSpace(a.config.Workspace))
+	if program, err := a.delegateFor(spec.via); err == nil {
+		return programGround(spec, workspace, program)
+	}
 	redirect := ""
 	// A MODEL'S PLACEMENT IS EVIDENCE, NOT AUTHORITY, INSIDE A REPOSITORY. A
 	// branch is the repository's isolation boundary even when `where` asked for
@@ -309,18 +314,7 @@ func (a *Agent) taskGroundOrStandingIn(spec taskSpec) taskStand {
 // answered for.
 func (a *Agent) groundLadder(spec taskSpec, workspace string) taskStand {
 	if said := strings.TrimSpace(spec.ground); said != "" {
-		dir, err := resolveTaskWhere(said, workspace)
-		if err != nil {
-			return taskStand{refusal: "this task names a folder it cannot work in: " + said}
-		}
-		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-			// A ground is a place that IS there. Unlike `where`, which is somebody
-			// saying where work should go and may name a folder to be made, this
-			// argument names the project the work is about — and a project nobody
-			// can find is a mistake worth saying out loud rather than creating.
-			return taskStand{refusal: "this task names a folder that is not there: " + dir}
-		}
-		return taskStand{dir: groundRoot(dir), rung: taskGroundSaid}
+		return saidGround(said, workspace)
 	}
 	// A PART STANDS WHERE ITS PARENT STANDS, and the rungs below are not climbed
 	// for it. A sub-task's branch is cut from its parent's worktree and merges
@@ -356,6 +350,50 @@ func (a *Agent) groundLadder(spec taskSpec, workspace string) taskStand {
 		return taskStand{dir: root, rung: taskGroundStandingIn}
 	}
 	return taskStand{dir: workspace, rung: taskGroundNothing}
+}
+
+// saidGround is the rung a proposal's own `ground` answers at.
+func saidGround(said, workspace string) taskStand {
+	dir, err := resolveTaskWhere(said, workspace)
+	if err != nil {
+		return taskStand{refusal: "this task names a folder it cannot work in: " + said}
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		// A ground is a place that IS there. Unlike `where`, which is somebody
+		// saying where work should go and may name a folder to be made, this
+		// argument names the project the work is about — and a project nobody
+		// can find is a mistake worth saying out loud rather than creating.
+		return taskStand{refusal: "this task names a folder that is not there: " + dir}
+	}
+	return taskStand{dir: groundRoot(dir), rung: taskGroundSaid}
+}
+
+// programGround is where a program works: the `ground` its proposal names, or
+// this conversation's own folder when it names none. NOTHING ELSE IS READ.
+//
+// The ladder above weighs `where`, the brief and the paths this conversation
+// touched, because a task of codeaf's own may be placed by any of them. A
+// program is handed ONE folder for an hour, and it has to be the one the model
+// said. The ladder's `in place` rung answered with the conversation's folder
+// before `ground` was read, so a chat opened in the person's home folder that
+// made ~/Desktop/pong, named it as ground and said `in place` handed senior-dev
+// the whole home folder; senior-dev, finding no git history there, began to
+// snapshot all of it and died on the first folder macOS keeps to itself
+// (`open /Users/…/.Trash: operation not permitted`). So a program's placement
+// is its own ([delegateStand]) and `where` is not read for it.
+func programGround(spec taskSpec, workspace string, program delegate.Delegate) taskStand {
+	stand := taskStand{dir: workspace, rung: taskGroundHere}
+	if said := strings.TrimSpace(spec.ground); said != "" {
+		if stand = saidGround(said, workspace); stand.refusal != "" {
+			return stand
+		}
+	}
+	if refusal := programHomeRefusal(program, stand.dir, "say which folder the work is in, as ground"); refusal != "" {
+		return taskStand{refusal: refusal}
+	}
+	placed := delegateStand(stand.dir, program)
+	placed.rung = stand.rung
+	return placed
 }
 
 // groundPlainlyNamedByBrief reports the one ground that holds every existing

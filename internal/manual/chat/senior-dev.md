@@ -113,7 +113,7 @@ that for a folder with no git history (see the section on plain folders).
 engine needs a Unix shell, process groups and file locks, so Windows builds leave it out
 rather than carry something that fails every time.
 
-## senior-dev on a folder that is not a git repository — a plain folder, no git, --in-place
+## senior-dev on a folder that is not a git repository — a plain folder, no git, --in-place, operation not permitted, .Trash
 
 From the chat, codeaf reads the task's folder before it starts senior-dev. A repository
 with at least one commit gets a copy, and the work lands on a branch of its own. **A folder with no git history —
@@ -132,6 +132,13 @@ in <path>`. A `.senior-dev/` already in the folder when the run began is left wh
 It works in your folder itself, so leave that folder alone while it runs: once it has
 submitted, anything changed there is put back to what it submitted, and a file added
 there is removed.
+
+**A folder or file in it that senior-dev may not read is skipped**, not a reason to stop:
+it is in none of its checkpoints, and nothing of it is changed or removed. senior-dev
+needs no Full Disk Access; a folder macOS keeps to itself (`operation not permitted`) is
+skipped like any other. It is never started on your home folder or a folder above it
+(see the programs page): to check what it changed, it reads every file in the folder,
+and your home folder is not one project.
 
 At a shell, pass `--in-place` yourself. Without it senior-dev stops at once with
 `workspace is not a git repository: <folder>; run with --in-place to work in a plain

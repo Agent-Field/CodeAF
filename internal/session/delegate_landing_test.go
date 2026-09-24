@@ -219,26 +219,20 @@ func TestTheConversationIsToldABranchOnlyLandingWasNotMerged(t *testing.T) {
 // folder itself for a folder with no history, in the conversation for one that
 // only answers.
 func TestAProgramsReceiptSaysWhereTheWorkWillBeAndPromisesNoMerge(t *testing.T) {
-	agent, _ := newTestAgent(t, beltRunCompleter{text: ""}, nil)
 	tree := testPrograms("fake")[0]
-	if got := agent.delegateReceipt(4, tree); got != "It is fake's: it works alone in a copy, and when it ends its work is left on the task's own branch; nothing is merged into the checkout." {
+	repo, plain := newTestRepo(t), t.TempDir()
+	if got := delegateReceipt(repo, tree); !strings.Contains(got, "it works alone in a copy of "+repo+", and when it ends its work is left on the task's own branch; nothing is merged into the checkout.") {
 		t.Fatalf("the receipt for a copy = %q", got)
 	}
-	agent.beltMu.Lock()
-	agent.beltRun = &beltRun{row: 4, plain: true}
-	agent.beltMu.Unlock()
-	if got := agent.delegateReceipt(4, tree); !strings.Contains(got, "in the folder itself, which has no git history") {
+	if got := delegateReceipt(plain, tree); !strings.Contains(got, "in "+plain+" itself, which has no git history") {
 		t.Fatalf("the receipt for a plain folder = %q", got)
 	}
-	agent.beltMu.Lock()
-	agent.beltRun = nil
-	agent.beltMu.Unlock()
 	reader := tree
 	reader.Lands = delegate.LandsText
-	if got := agent.delegateReceipt(4, reader); got != "It is fake's: it works alone, and its answer arrives when it ends." {
+	if got := delegateReceipt(plain, reader); got != "It is fake's: it works alone, and its answer arrives when it ends." {
 		t.Fatalf("the receipt for a program that answers = %q", got)
 	}
-	for _, got := range []string{agent.delegateReceipt(4, tree), agent.delegateReceipt(4, reader)} {
+	for _, got := range []string{delegateReceipt(repo, tree), delegateReceipt(plain, tree), delegateReceipt(plain, reader)} {
 		if strings.Contains(got, "lands") {
 			t.Fatalf("a receipt promises a landing: %q", got)
 		}
