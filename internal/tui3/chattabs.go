@@ -580,35 +580,40 @@ func (a *app) tabsRow(width int) string {
 		hot = a.hot.index
 	}
 	more := a.hopAvailable()
-	home := a.homeDoorOpen() && width-headLabelAt >= len(" Home ")+2+tabWordFloor+tabCloseCells+tabInsetCells
 	chipWord := a.tabTeamWord()
+	room := max(width-headLabelAt, 0)
+	// THE ORDER IS HOME, THE TEAM CHIP, THEN WHAT IT FILTERS: `Home` is a fixed
+	// door and stands first; the chip narrows the tabs, so it sits right before
+	// them, with the manager's place after it. The chip's cells are reserved
+	// first, so a tab is never drawn under it; Home is the first to go when the
+	// row runs short, then the chip, and never the tab in front.
+	chipW, chipNeed := 0, 0
+	if chipWord != "" {
+		chipNeed = 2*ansi.StringWidth(chipWord) + tabWordFloor + tabCloseCells + tabInsetCells + 8
+		if room >= chipNeed {
+			chipW = ansi.StringWidth(chipWord) + 1
+		}
+	}
+	homeWidth := len(" Home ") + 2
+	home := a.homeDoorOpen() && room-homeWidth >= max(chipNeed, tabWordFloor+tabCloseCells+tabInsetCells)
+	if !home {
+		homeWidth = 0
+	}
 	if memo := a.chatTabBar; memo.home == home && memo.newChat == a.canStart() && memo.team == chipWord && memo.wallOn == a.wall.on && memo.menuOn == a.teamMenu.on && memo.same(width, a.inkState, hot, more, tabs) {
 		a.chatTabHits = memo.hits
 		a.wall.chip, a.wall.door = memo.chip, memo.door
 		return memo.line
 	}
-	room := max(width-headLabelAt, 0)
-	// The team chip's cells are taken first, so a tab is never drawn under it.
-	chipW := 0
-	if chipWord != "" && room >= 2*ansi.StringWidth(chipWord)+tabWordFloor+tabCloseCells+tabInsetCells+8 {
-		chipW = ansi.StringWidth(chipWord) + 1
-		room -= chipW
-	}
-	homeWidth := 0
-	if home {
-		homeWidth = len(" Home ") + 2
-	}
+	room -= chipW
 	pieces, hits := a.tabsFit(tabs, room-homeWidth, tabWallCellsAt(width))
-	if home {
-		hits = tabsAt(hits, homeWidth)
-		hits = append([]tabHit{{span: hudSpan{from: 0, to: len(" Home ")}, kind: tabHome}}, hits...)
-		pieces = append([]tabPiece{{word: " Home ", kind: tabHome}, {word: "  ", quiet: true}}, pieces...)
-	}
-	if len(pieces) == 0 {
+	if len(pieces) == 0 && !home && chipW == 0 {
 		// An empty strip still occupies the header row charged to the layout.
 		return strings.Repeat(" ", max(width, 0))
 	}
-	a.chatTabHits = tabsAt(hits, headLabelAt+chipW)
+	a.chatTabHits = tabsAt(hits, headLabelAt+homeWidth+chipW)
+	if home {
+		a.chatTabHits = append([]tabHit{{span: hudSpan{from: headLabelAt, to: headLabelAt + len(" Home ")}, kind: tabHome}}, a.chatTabHits...)
+	}
 	// The door is laid out with the tabs, so it follows the new-chat `+`
 	// wherever that lands, and is then kept apart from them.
 	kept := a.chatTabHits[:0]
@@ -621,8 +626,11 @@ func (a *app) tabsRow(width int) string {
 	}
 	a.chatTabHits = kept
 	line := strings.Repeat(" ", headLabelAt)
+	if home {
+		line += a.tabsPaint([]tabPiece{{word: " Home ", kind: tabHome}, {word: "  ", quiet: true}})
+	}
 	if chipW > 0 {
-		line += a.tabTeamPaint(chipWord, headLabelAt) + " "
+		line += a.tabTeamPaint(chipWord, headLabelAt+homeWidth) + " "
 	}
 	line += a.tabsPaint(pieces)
 	// THE ROW FILLS THE FRAME, as the pulse over it does, so a door that went
