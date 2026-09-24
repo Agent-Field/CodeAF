@@ -521,7 +521,8 @@ func (c *completion) rows(width, n int, pal palette, hover int) []string {
 		case line.header != "":
 			ok = fill.plain(pal.dim("  " + fit(line.header, width-2)))
 		case line.task >= 0:
-			ok = fill.add(at, taskRowLabel(c.taskHits[line.task], pal), c.lineNote(at), at == c.selLine(), false)
+			note := c.lineNote(at)
+			ok = fill.add(at, taskRowLabel(c.taskHits[line.task], note, width, pal), note, at == c.selLine(), false)
 		default:
 			ok = fill.add(at, c.all[line.file], c.lineNote(at), at == c.selLine(), false)
 		}

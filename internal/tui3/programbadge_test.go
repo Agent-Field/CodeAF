@@ -437,7 +437,7 @@ func TestTheOtherListsOfTheWorkWearTheBadge(t *testing.T) {
 	}
 
 	entry := session.TaskIndexEntry{ID: "7", Label: programTitle, Title: programTitle, Status: "running", Program: "senior-dev"}
-	if label := plain(taskRowLabel(entry, a.pal)); !strings.HasSuffix(label, programTitle+" [senior-dev]") {
+	if label := plain(taskRowLabel(entry, "3m", 120, a.pal)); !strings.HasSuffix(label, programTitle+" [senior-dev]") {
 		t.Fatalf("the @ list's row is %q", label)
 	}
 	if block := taskPointerBlock(entry); !strings.Contains(block, "· via senior-dev") {
@@ -445,7 +445,7 @@ func TestTheOtherListsOfTheWorkWearTheBadge(t *testing.T) {
 	}
 	ordinary := entry
 	ordinary.Program = ""
-	if label := plain(taskRowLabel(ordinary, a.pal)); strings.Contains(label, "[") {
+	if label := plain(taskRowLabel(ordinary, "3m", 120, a.pal)); strings.Contains(label, "[") {
 		t.Fatalf("an ordinary @ row is %q", label)
 	}
 
@@ -467,6 +467,101 @@ func TestTheOtherListsOfTheWorkWearTheBadge(t *testing.T) {
 	}
 	if band := plain(strings.Join(homeWorkName(ordinary, 44, taskFixtureNow, a.pal), "\n")); strings.Contains(band, "[") {
 		t.Fatalf("home's work band reads %q for an ordinary task", band)
+	}
+}
+
+// programLongLabel is a program's task named as long as the project's index
+// names one (session's taskLabelLimit, fifty-six cells), which is the label a
+// home cell or an `@` row is handed.
+const programLongLabel = "Rewrite the auth middleware to use the new session store"
+
+// HOME'S `needs you` ROWS AND ITS `since you left` LINES PAY FOR THE BADGE OUT
+// OF THE TITLE, as every other list of the work does. The cell cuts a title
+// from its right to keep the row's age, and a badge written onto the end of the
+// title was the first thing it took: a senior-dev landing with a long name read
+// `…session store [seni… 1h` on a two-column home and wore no badge at all on a
+// three-column one. A landed line keeps the badge between the name and what the
+// work came to, so the outcome gives way before the badge does.
+func TestHomesRowsPayForTheBadgeOutOfTheTitle(t *testing.T) {
+	pal := newTestPalette()
+	now := taskFixtureNow
+	entry := session.TaskIndexEntry{
+		ID: "7", SessionID: "chat-1", Label: programLongLabel, Title: programLongLabel,
+		Status: string(session.TaskDone), Program: "senior-dev",
+		Outcome: "The middleware reads the new store.", EndedAt: now.Add(-time.Hour),
+	}
+	row := session.SessionRow{ID: "chat-1", Title: "the run", Tasks: session.TaskRollup{Rows: []session.TaskIndexEntry{entry}}}
+	needs := needsCall(session.Project{}, row, entry, session.TaskStatus{}, now).line.cell
+	landed := ledgerLanded(session.World{Projects: []session.Project{{Sessions: []session.SessionRow{row}}}}, now.Add(-2*time.Hour))
+	if len(landed) != 1 {
+		t.Fatalf("the landing is not a line of `since you left`: %+v", landed)
+	}
+	ledger := leftLine(landed[0], now).cell
+	if wide := plain(homeCellBody(ledger, 140, pal, false)); !strings.Contains(wide, programLongLabel+" [senior-dev] · The middleware reads the new store.") {
+		t.Fatalf("a wide landed line reads %q, want the badge between the name and the outcome", wide)
+	}
+	for _, probe := range []struct {
+		width int
+		want  string
+	}{
+		{80, "[senior-dev]"}, {66, "[senior-dev]"}, {55, "[senior-dev]"}, {40, "[senior-dev]"}, {21, "[sd]"},
+	} {
+		for name, cell := range map[string]*homeCell{"needs you": needs, "since you left": ledger} {
+			drawn := plain(homeCellBody(cell, probe.width, pal, false))
+			t.Logf("%s at %d: %q", name, probe.width, drawn)
+			if !strings.HasPrefix(drawn, "Rewrite the") || !strings.Contains(drawn, probe.want) || !strings.HasSuffix(drawn, " 1h") {
+				t.Fatalf("%s's row at %d cells reads %q, want the title, %s and the age", name, probe.width, drawn, probe.want)
+			}
+			if cells := ansi.StringWidth(drawn); cells > probe.width {
+				t.Fatalf("%s's row is %d cells in %d: %q", name, cells, probe.width, drawn)
+			}
+		}
+	}
+	// AN ORDINARY LANDING DRAWS WHAT IT ALWAYS DREW: its name and what it came to,
+	// cut from the right, and nothing bracketed.
+	entry.Program = ""
+	row.Tasks.Rows[0] = entry
+	plainNeeds := needsCall(session.Project{}, row, entry, session.TaskStatus{}, now).line.cell
+	plainLanded := ledgerLanded(session.World{Projects: []session.Project{{Sessions: []session.SessionRow{row}}}}, now.Add(-2*time.Hour))
+	for _, width := range []int{140, 66, 40} {
+		if drawn := plain(homeCellBody(plainNeeds, width, pal, false)); strings.Contains(drawn, "[") {
+			t.Fatalf("an ordinary landing's needs row reads %q", drawn)
+		}
+		if drawn := plain(homeCellBody(leftLine(plainLanded[0], now).cell, width, pal, false)); strings.Contains(drawn, "[") {
+			t.Fatalf("an ordinary landed line reads %q", drawn)
+		}
+	}
+	if drawn := plain(homeCellBody(leftLine(plainLanded[0], now).cell, 140, pal, false)); !strings.HasPrefix(drawn, programLongLabel+" · The middleware") {
+		t.Fatalf("an ordinary landed line reads %q", drawn)
+	}
+}
+
+// THE `@` LIST PAYS FOR THE BADGE OUT OF THE TITLE TOO. Its row cuts a label
+// from the right to keep the age at its edge, so a badge written onto the end
+// of the label was gone under about seventy columns.
+func TestTheMentionListPaysForTheBadgeOutOfTheTitle(t *testing.T) {
+	a, _, _ := taskApp(t)
+	entry := pastTask("7", "rewrite-the-auth-middleware", programLongLabel, time.Hour)
+	entry.Program = "senior-dev"
+	a.comp.tasks = []session.TaskIndexEntry{entry}
+	drive(t, a, key("@"), key("r"), key("e"))
+	drive(t, a, filesLoadedMsg{})
+	for _, probe := range []struct {
+		width int
+		want  string
+	}{
+		{100, "[senior-dev]"}, {60, "[senior-dev]"}, {45, "[senior-dev]"}, {28, "[sd]"},
+	} {
+		found := ""
+		for _, row := range a.comp.rows(probe.width, completeRows, a.pal, -1) {
+			if line := plain(row); strings.Contains(line, "Rewrite") {
+				found = line
+			}
+		}
+		t.Logf("at %d: %q", probe.width, found)
+		if !strings.Contains(found, probe.want) || ansi.StringWidth(found) > probe.width {
+			t.Fatalf("the @ list's row at %d cells reads %q, want %s inside the frame", probe.width, found, probe.want)
+		}
 	}
 }
 

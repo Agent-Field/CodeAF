@@ -445,6 +445,15 @@ type homeCell struct {
 	panel   homePanelID
 	mark    homeCellMark
 	title   string
+	// program is the program a row's work was handed to — senior-dev — and ""
+	// for every other row. Its badge follows the title and is PAID FOR OUT OF
+	// THE TITLE ([homeCellWears]): the cell cuts a title from its right, and a
+	// badge written onto the end of the title was the first thing that cut took.
+	program string
+	// after is the words that follow a program's badge — what a landed task came
+	// to, its separator in front ([ledgerTaskParts]) — which a cut takes before
+	// it takes the badge. A row with no program carries them in its title.
+	after string
 	// pad is the cells the title is padded to before the note, so a panel's
 	// notes stand in one column (the projects panel's counts).
 	pad int

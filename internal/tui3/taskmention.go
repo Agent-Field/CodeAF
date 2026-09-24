@@ -46,6 +46,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -416,14 +417,31 @@ const (
 // it IS — under the cursor, hovered, dim — and a word carrying colour of its own
 // would fight that paint, so the badge says itself in the row's ink like every
 // other word on it.
-func taskRowLabel(entry session.TaskIndexEntry, pal palette) string {
+//
+// AND IT IS PAID FOR OUT OF THE WORDS. The row cuts a label from its right to
+// keep the note at its edge, so the label is fitted here first, to the room the
+// row will give it beside note in width cells ([overlayLabelRoom]): the badge
+// keeps its long spelling while the words keep [railTitleFloor] cells, its short
+// one after that, and the words are cut into what is left. An ordinary task's
+// row is handed over exactly as it always was.
+func taskRowLabel(entry session.TaskIndexEntry, note string, width int, pal palette) string {
 	// Label is the title already cut to a row's width (session.taskLabel), and
 	// the uncut title stands in for a row written before that field existed.
 	words := entry.Label
 	if words == "" {
 		words = entry.Title
 	}
-	return taskStatusGlyph(entry, pal) + " " + mentionMark(pal.ascii) + " " + programText(words, entry.Program)
+	lead := taskStatusGlyph(entry, pal) + " " + mentionMark(pal.ascii) + " "
+	badge := programBadge(entry.Program)
+	if !badge.known() || strings.TrimSpace(words) == "" {
+		return lead + words
+	}
+	room := overlayLabelRoom(lead+words+" "+badge.full, note, width) - ansi.StringWidth(lead)
+	spelling := programSpelling(badge, words, room, railTitleFloor)
+	if spelling == "" {
+		return lead + words
+	}
+	return lead + fit(words, room-programCells(spelling)) + " " + spelling
 }
 
 func mentionMark(ascii bool) string {

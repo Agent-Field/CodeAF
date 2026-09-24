@@ -116,7 +116,10 @@ A task handed to senior-dev wears its name as a badge wherever a task is named:
   same number in this conversation wears.
 - **The task strip**, the row of chips that stands in for the side list under 100
   columns, wears `[sd]`.
-- **The `@` list, the tasks place and home's list of work** wear `[senior-dev]`.
+- **The `@` list, the tasks place and home** — its list of work, a landing under
+  `needs you` and a line under `since you left` — wear `[senior-dev]`, or `[sd]` where
+  the row is short of room. The title is cut before the badge, and a `since you left`
+  line cuts what the work came to first: `rewrite the auth middleware [senior-dev] · it…`.
 - **The chat's `tasks` tool** says `via senior-dev` on the row, so the chat can tell too.
 
 The brackets are always drawn, so a terminal with no colour, the row of the task you

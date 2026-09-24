@@ -146,18 +146,6 @@ func (p palette) programLabel(title, program string, room int, ink func(string) 
 	}
 }
 
-// programText is a title with its program's badge after it, as plain words, for
-// a row whose title is measured and painted as one piece of text by a renderer
-// of its own (home's cells). The brackets carry the badge there on their own,
-// which is the reason they are always drawn.
-func programText(title, program string) string {
-	badge := session.ProgramBadge(program)
-	if badge == "" || strings.TrimSpace(title) == "" {
-		return title
-	}
-	return title + " " + badge
-}
-
 // pageProgram is the program a stored page's task was handed to: the name the
 // program's own record gives it, and the name its row carries while that record
 // has not reached the disk — "" for every page no program was handed.

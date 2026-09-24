@@ -53,9 +53,18 @@ func (leftPanel) rows(in *homeGridInput) homePanelRows {
 // panel — and both are the row's description now, drawn under the cursor
 // ([switcherRow.note]); the edge reads `3h`, `1h`, like every row of the field
 // (owner, 2026-09-15).
+//
+// A PROGRAM'S LANDING WEARS ITS BADGE BETWEEN ITS NAME AND WHAT IT CAME TO, so
+// the cell cuts the outcome before the badge and pays for the badge out of the
+// name ([homeCellWears]); every other line is its title whole, as it was.
 func leftLine(row switcherRow, now time.Time) homeLine {
 	cell := &homeCell{panel: panelLeft, title: row.title, right: sinceAt(row.at, now), row: &row,
 		sub: strings.TrimSpace(row.note), grows: strings.TrimSpace(row.note) != ""}
+	if row.task != nil {
+		if label, after, program := ledgerTaskParts(*row.task, row.session); program != "" {
+			cell.title, cell.after, cell.program = label, after, program
+		}
+	}
 	return homeLine{kind: homeLedger, project: row.place, dir: leftKey(row),
 		view: row.item, item: row.item.Item, cell: cell}
 }
@@ -118,6 +127,15 @@ func ledgerLanded(world session.World, seen time.Time) []switcherRow {
 }
 
 // ledgerTaskLine is a landed task in one line: its label and what it came to.
+func ledgerTaskLine(entry session.TaskIndexEntry, row session.SessionRow) string {
+	label, after, _ := ledgerTaskParts(entry, row)
+	return label + after
+}
+
+// ledgerTaskParts is that line in the pieces a cell draws it in: the label,
+// what the work came to with the separator in front of it ("" when there is
+// nothing to say), and the program the work was handed to, whose badge stands
+// between the two ([leftLine]).
 //
 // A TASK THAT STOPPED INCOMPLETE SAYS WHY IN THE OUTCOME'S PLACE. The first
 // sentence of a report is what the work came to only when the work finished;
@@ -125,27 +143,26 @@ func ledgerLanded(world session.World, seen time.Time) []switcherRow {
 // news, in the rail's own words for it ([endingWord]).
 //
 // A ROW WITH NO NAME OF ITS OWN IS NAMED FOR ITS CONVERSATION rather than drawn
-// as a bare outcome, so every line still says whose work it was.
-func ledgerTaskLine(entry session.TaskIndexEntry, row session.SessionRow) string {
-	label := strings.TrimSpace(entry.Label)
+// as a bare outcome, so every line still says whose work it was — and it wears
+// no badge, because the name is the conversation's and not the work's.
+func ledgerTaskParts(entry session.TaskIndexEntry, row session.SessionRow) (label, after, program string) {
+	label = strings.TrimSpace(entry.Label)
 	if label == "" {
 		label = strings.TrimSpace(entry.Title)
 	}
-	// A PROGRAM'S WORK SAYS WHOSE IT IS, with its badge after its name
-	// (programbadge.go) — the brackets alone, because this line is measured and
-	// painted whole by the cell that draws it.
-	label = programText(label, entry.Program)
 	if label == "" {
 		label = homeName(row)
+	} else {
+		program = strings.TrimSpace(entry.Program)
 	}
 	outcome := endingWord(entry.Ending)
 	if outcome == "" {
 		outcome = switcherFirstLine(entry.Outcome)
 	}
-	if outcome == "" {
-		return label
+	if outcome != "" {
+		after = rowSep + outcome
 	}
-	return label + rowSep + outcome
+	return label, after, program
 }
 
 // ledgerMade is a line per file a conversation made since the look stamp:
