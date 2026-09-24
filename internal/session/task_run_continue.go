@@ -108,6 +108,9 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 		ID: row, Title: kept.Title, State: TaskRunning,
 		StartedAt: kept.StartedAt, Parent: kept.Parent, Copy: kept.Copy,
 	})
+	// AND THE PROJECT'S RECORD SAYS IT IS RUNNING AGAIN, over the interrupted
+	// row its last life left ([Agent.recordBeltRunStart]).
+	a.recordBeltRunStart(run)
 
 	// THE SAME SPEC THE RUN WOULD HAVE HAD ([Agent.beltRunSpec]). A continued
 	// run is the same run, so it works under the same seats and the same bounds;

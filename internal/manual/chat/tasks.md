@@ -2859,13 +2859,19 @@ Worktrees of one repository count as one repository.
 
 ## Do runs on the worker harness record which files they touched
 
-Yes. When a run on the worker harness ends, or is stopped, it leaves one row in the
-project's record, like any other task, naming **every file it changed** against the commit
-its copy was cut from — files a worker committed itself included. That row is what
-`<elsewhere>`, the `tasks` tool and the rows on home read. If the list could not be read
-(no starting commit on record, or git refused), the row says `files unknown` rather than
-naming no files. A run whose conversation closed under it writes its row when it is
-carried on and ends.
+Yes. When a run on the worker harness ends, or is stopped, its row in the project's record
+names **every file it changed** against the commit its copy was cut from, files a worker
+committed itself included. That row is what `<elsewhere>`, the `tasks` tool and the rows on
+home read. If the list could not be read (no starting commit on record, or git refused),
+the row says `files unknown` rather than naming no files.
+
+- **While it runs** the row says `running`, and the window running it names the run and
+  the hand-offs that joined it as work out. Home, the sessions page, `<elsewhere>` and the
+  `tasks` tool in other windows count it as running, not idle.
+- **If its conversation closes, or its process dies, mid-run**, the row says `interrupted`,
+  with the files touched so far (new files included) when its copy is still there to read.
+  Carried on and finished, the new row replaces it.
+- In the run's **own** conversation, the `tasks` answer lists the run once, from its plan.
 
 ## Asking the chat what else is running on this project right now
 

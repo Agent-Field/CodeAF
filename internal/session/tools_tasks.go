@@ -372,7 +372,14 @@ func (a *Agent) taskSearchText(query string, limit int, scope string) string {
 	if limit <= 0 && a.config.taskID != 0 {
 		limit = taskFanLimit
 	}
-	out := taskRowsTextLimit(a.taskRows(), query, limit)
+	rows := a.taskRows()
+	if a.config.taskID == 0 {
+		// ONE RUN, ONE ROW: a run's own plan rows lead this answer, so its row
+		// in the project's record is not listed a second time
+		// ([Agent.withoutListedRuns]).
+		rows = a.withoutListedRuns(rows)
+	}
+	out := taskRowsTextLimit(rows, query, limit)
 	if !a.tellsElsewhere() {
 		return a.taskConversationHint(out)
 	}

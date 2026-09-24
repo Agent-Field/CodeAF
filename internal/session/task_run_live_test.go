@@ -39,7 +39,8 @@ func liveRunChat(t *testing.T, double *beltRunDouble) (*Agent, Place, string) {
 	return agent, place, repo
 }
 
-// indexRowFor is the project record's last word on one run, or nil.
+// indexRowFor is the project record's last word on one run, or nil. The record
+// reads newest first, so the first match is the latest row.
 func indexRowFor(agent *Agent, id string) *TaskIndexEntry {
 	for _, entry := range ReadTaskIndex(agent.config.taskIndexFile()) {
 		if entry.ID == id {
@@ -170,6 +171,12 @@ func TestARunCutShortByItsChatClosingLeavesAnInterruptedRow(t *testing.T) {
 	}
 
 	// CARRIED ON AND FINISHED, the closing row supersedes the interrupted one.
+	// The next life holds the run's row the way a conversation read back from
+	// disk holds it: interrupted, with the copy it was written down with.
+	kept, found := runRowOf(agent.graph(), 71)
+	if !found || kept.Copy == nil {
+		t.Fatalf("the closed conversation kept no copy for its run: %+v", kept)
+	}
 	second := newBeltRunDouble("carried on and done")
 	second.real = true
 	registerBeltRunEngine(t, second)
@@ -178,6 +185,7 @@ func TestARunCutShortByItsChatClosingLeavesAnInterruptedRow(t *testing.T) {
 		config.Place = place
 		config.SessionFile = place.Transcript()
 	})
+	keepInterruptedRun(t, again, again.graph(), 71, "make the change", kept.Copy)
 	if _, err := again.ContinueRun(context.Background(), 71); err != nil {
 		t.Fatalf("carrying the run on: %v", err)
 	}
