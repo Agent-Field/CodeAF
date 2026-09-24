@@ -255,7 +255,7 @@ func homeGridZip(columns [][]homeCellLine, y int, xs []int) placeRow {
 func (a *app) homeLineRows(line homeLine, at, width int, pal palette, heading, hovered bool) []homeCellLine {
 	h := &a.home
 	hit := -1
-	if line.stop() {
+	if line.stop() || line.kind == homeProjectRow {
 		hit = at
 	}
 	lit := at == h.cursor
@@ -496,6 +496,11 @@ func homeCellBand(text string, width int, pal palette, lit bool) string {
 // panel reserves for it ([homeGridPanel.height]).
 func (a *app) homeCellRow(line homeLine, at, width int, pal palette, lit bool) []string {
 	cell := line.cell
+	if line.kind == homeProjectRow && at == a.home.projectHover {
+		hovered := *cell
+		hovered.underline = true
+		cell = &hovered
+	}
 	lead := a.homeCellLead(cell, at, pal)
 	leadWidth := homeGridLead
 	if (cell.panel == panelRecent || cell.panel == panelSessions) && line.kind == homeSession {
@@ -602,6 +607,9 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 		titleInk, factInk = pal.dim, pal.dim
 	}
 	line := titleInk(title)
+	if cell.underline {
+		line = pal.underline(line)
+	}
 	used := ansi.StringWidth(title)
 	if note != "" {
 		gap := max(0, pad-used) + len(homeCellGap)

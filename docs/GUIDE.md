@@ -206,7 +206,7 @@ keeps the last ten cleared drafts; `enter` restores one and `d` lets one go.
 | `/budget` | `what codeaf may spend · every limit on one tab` |
 | `/compact` | `summarize the conversation now` |
 | `/rewind` | `go back to an earlier point · esc esc takes back the last` |
-| `/manual` | `codeaf's own manual · every page, one per line` |
+| `/manual` | `asks the model what codeaf can do, from its own manual` |
 | `/help` | `this list` |
 | `/quit` | `close this conversation` |
 | `/drafts` | `cleared-but-kept drafts · enter restores one, d lets one go` |
@@ -330,7 +330,8 @@ in `config.json`, memory in `graph.db`, and project sessions under `v3/projects/
 The Markdown under `internal/manual/chat/` is compiled into codeaf, and the conversation
 reads it with the `manual` tool to answer questions about its own behaviour. From a
 terminal `codeaf manual` lists every page and `codeaf manual "<question>"` returns the
-sections that answer it; inside the chat it is `/manual`. Build gates require every
+sections that answer it; inside the chat `/manual` puts the question to the model with
+the manual open, and the answer arrives as a turn. Build gates require every
 slash command and alias, every tool name, and more than a hundred questions in ordinary
 language to reach an answering page.
 

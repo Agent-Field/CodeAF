@@ -10,7 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-func TestTasksSpendAndSettingsAdvertiseEscapeHome(t *testing.T) {
+func TestTasksSpendAndSettingsAdvertiseEscapeClose(t *testing.T) {
 	for _, place := range everyPlaceTable() {
 		if place.id != pageTasks && place.id != pageSpend && place.id != pageSettings {
 			continue
@@ -20,13 +20,13 @@ func TestTasksSpendAndSettingsAdvertiseEscapeHome(t *testing.T) {
 			for _, width := range []int{180, 80, 44} {
 				a.width = width
 				rows := strings.Split(placeFrameText(a), "\n")
-				if last := rows[len(rows)-1]; !strings.Contains(last, "esc home") {
+				if last := rows[len(rows)-1]; !strings.Contains(last, "esc close") {
 					t.Fatalf("at width %d, footer = %q", width, last)
 				}
 			}
 			drive(t, a, key("esc"))
-			if !a.at(pageHome) {
-				t.Fatal("Escape did not return to Home")
+			if !a.at(pageNone) {
+				t.Fatal("Escape did not return to the conversation")
 			}
 		})
 	}
