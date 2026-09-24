@@ -826,6 +826,10 @@ func (a *app) abandonConnects() {
 		a.abandonConnect(service)
 	}
 	a.connFlows = nil
+	if a.codexFlow != nil {
+		a.codexFlow.Cancel()
+		a.codexFlow = nil
+	}
 }
 
 // adoptConnectResult settles the block the browser — or the key — left open, and

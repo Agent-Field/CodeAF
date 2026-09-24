@@ -19,6 +19,13 @@ const ChatCompletionsPath = "/chat/" + "completions"
 // must agree on which member of a Set is the compatibility default.
 const DefaultID = "openrouter"
 
+// CodexName is the Codex service's display name — its [Source.Name], the one
+// every surface calls it by. It is named once because it is ALSO the endpoint
+// a Codex call row names ([Source.ServedAs]): the ChatGPT backend names no
+// server of its own, and the row reads `"endpoint":"Codex"` the way an
+// OpenRouter row reads the upstream that served it (#1391).
+const CodexName = "Codex"
+
 // CustomID is the identity of the vendored custom service row. The FIRST
 // custom connection a profile persists keeps this id, so profiles and tests
 // written before custom connections could multiply stay byte-identical; later
@@ -140,6 +147,18 @@ type Source struct {
 	// is chosen by what the key proves, so this is the vendor's best model both
 	// its subscription and metered roads serve, not simply its flagship.
 	Preferred string
+	// ServedAs is the endpoint a transcript's call row names for this service's
+	// answers when an answer names no machine of its own; empty for every
+	// service that has not declared one, whose silent answers name nothing.
+	//
+	// IT IS ATTRIBUTION FOR THE RECORD AND NOTHING ELSE. A name that arrived on
+	// an ANSWER is evidence internal/provider learns from — a lane to rate, a
+	// machine to pin, a router account to clear — and it is drawn beside the
+	// model on the live screen. A service whose backend IS its one machine has
+	// no lane to learn and no second machine to draw, so its name is declared
+	// here and written only into the call row (internal/session's
+	// [Agent.attributedEndpoint]), never put on the answer (#1391).
+	ServedAs string
 }
 
 // Connected is one service with the two facts only a caller that may read the
@@ -148,6 +167,9 @@ type Connected struct {
 	Source  Source
 	Key     string
 	Address string
+	// Home is the profile directory whose rotating credentials belong to this
+	// connection. Empty keeps the ordinary codeaf state root.
+	Home string
 	// Door is the bound billing road. It is zero for a one-door service, so all
 	// older status and runtime behaviour remains byte-identical.
 	Door Door
@@ -414,7 +436,7 @@ const (
 	minimaxPreferredModel  = "MiniMax-M3"
 )
 
-// Vendored returns the seven service descriptions shipped by this phase.
+// Vendored returns the service descriptions shipped by this phase.
 func Vendored() []Source {
 	return []Source{
 		{
@@ -477,6 +499,12 @@ func Vendored() []Source {
 			},
 			Listing: ListingNone, ProbeModel: "qwen3.8-flash", Probe: listingProbe(),
 			Preferred: "qwen3.7-plus",
+		},
+		{
+			ID: "codex", Written: "codex", Name: CodexName, ServedAs: CodexName,
+			Address:  "https://chatgpt.com/backend-api/codex",
+			KeyShape: func(key string) bool { return strings.TrimSpace(key) == "chatgpt" },
+			Listing:  ListingNone, Probe: Probe{}, Preferred: "gpt-5.5",
 		},
 		{
 			ID: "ollama", Written: "ollama", Name: "Ollama",
@@ -622,7 +650,10 @@ type Outcome struct {
 	// making a second catalog-shaped response the only road to the picker.
 	ModelIDs []string
 	Listed   bool
-	Door     Door
+	// Refreshed distinguishes an answered live list from the vendored fallback.
+	// It is meaningful only when Listed is true.
+	Refreshed bool
+	Door      Door
 	// PlanPaused records that the selected door proved the plan exists but its
 	// current usage window is spent. PlanReset is the vendor's readable reset
 	// time when it supplied one, and Overflow is the separately billed road the

@@ -504,7 +504,7 @@ func (c *Client) refuseServing(model string, refusal laneRefusal) {
 // a stream guard cut, how many attempts this model has had, whether the caller
 // has another model — and those are the caller's to add before it classifies.
 func Evidence(err error) taxonomy.Evidence {
-	evidence := taxonomy.Evidence{}
+	evidence := taxonomy.Evidence{TerminalTransport: terminalTransportFailureFrom(err)}
 	if err == nil {
 		return evidence
 	}

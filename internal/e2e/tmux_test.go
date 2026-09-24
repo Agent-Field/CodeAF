@@ -265,21 +265,30 @@ func (r *rig) skipSetup(t *testing.T) {
 // setupIsUp reports whether the first-run flow is on the frame right now.
 func (r *rig) setupIsUp() bool {
 	screen := r.capture()
-	return strings.Contains(screen, setupSkipKeysWord) || strings.Contains(screen, setupTitleWord)
+	return strings.Contains(screen, setupSkipKeysWord) || strings.Contains(screen, setupTitleWord) ||
+		strings.Contains(screen, setupMovesWord)
 }
 
 // setupPatience is how long [rig.skipSetup] waits for the flow to draw before
 // deciding this machine is not going to show one.
 const setupPatience = 8 * time.Second
 
-// The two sentences that say the first-run flow is up. They are the SUITE'S OWN
-// copies of internal/tui3's [setupSkipKeysWord] and the setup title, and they are
-// spelled here rather than reached through [say] because tuiwords_test.go's own
-// gate reads this file and every other one for the names it hands out — a door
-// used by [start] itself has to stand before any scenario asks for a word.
+// The sentences that say the first-run flow is up. They are the SUITE'S OWN
+// copies of internal/tui3's [setupSkipKeysWord], the setup title and the form's
+// legend, and they are spelled here rather than reached through [say] because
+// tuiwords_test.go's own gate reads this file and every other one for the names
+// it hands out — a door used by [start] itself has to stand before any scenario
+// asks for a word.
+//
+// THE LEGEND'S SECOND CLAUSE IS HERE FOR NARROW FRAMES. Below sixty columns the
+// form draws no title and its legend keeps only `enter goes on · tab moves`
+// (internal/tui3's onboarding.go, [app.setupControlsKeys]), so a rig started at
+// forty-four columns saw neither of the other two words, decided there was no
+// setup, and left its scenario typing into the daily-limit field.
 const (
 	setupSkipKeysWord = "esc skips setup"
 	setupTitleWord    = "setting up"
+	setupMovesWord    = "tab moves"
 )
 
 // keylessEnv is every variable a fresh-install run must not inherit: the two the
@@ -396,8 +405,12 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	// forty-five seconds while looking at a perfectly live one. `needs you` is
 	// drawn on every desktop home, whatever it holds: an empty panel keeps its
 	// heading.
+	//
+	// AND THE SETUP FORM IS ONE AT EVERY WIDTH. Below sixty columns it draws
+	// neither its title nor `esc skips setup`, only the first two clauses of its
+	// legend, which is what [setupMovesWord] reads.
 	if hit, _ := r.waitForAny(45*time.Second, say(t, "placeRestWord"),
-		say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "setupSkipWord"),
+		say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "setupSkipWord"), setupMovesWord,
 		say(t, "landingKeysWord"), say(t, "welcomeStarterKeysWord"),
 		say(t, "answersAllowOnce"), say(t, "homeAnswerHint"), say(t, "homeNeedsHeading")); hit == "" {
 		t.Fatal("the terminal never reached an interactive surface")

@@ -342,7 +342,10 @@ was served warm, or which endpoint answered it.
 So codeaf also writes one `call` line **per answered request**, carrying the model that
 answered, the endpoint that served it when the provider names one, tokens in, cache read,
 cache write, tokens out, and the provider's own figure for the money. A request the
-provider reported no usage for writes no line — a row of zeros would read as a fact.
+provider reported no usage for writes no line — a row of zeros would read as a fact. A
+Codex request's line names `Codex` as its endpoint: the ChatGPT backend names no machine
+of its own, so the service's name stands in, and the model beside it is the one the
+backend answered with.
 
 The one exception is a request whose usage block **never arrived** — a stream cut short,
 or a rescue arm that ran beside a slow answer. Those are exactly the expensive requests,

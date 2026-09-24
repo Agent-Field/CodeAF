@@ -99,11 +99,11 @@ while preserving the content's indentation.
 
 ## Conversation tabs — switching conversations by clicking, the tab strip over a chat, clicking a chat name
 
-**The header begins with Home and the conversations this window has been in**, drawn as
+**The header begins with `home` and the conversations this window has been in**, drawn as
 tabs in a row of their own, with a thin rule separating navigation from reading:
 
 ```
-  Home    openrouter price scrape    Refactor the rail sco…    [Shipping the parser] ×  +    +2
+  home    openrouter price scrape    Refactor the rail sco…    [Shipping the parser] ×  +    +2
   ────────────────────────────────────────────────────────────────────────────────────────
 ```
 
@@ -184,7 +184,9 @@ a rule, and a blank. From 6 through 15 rows the whole head stands down, while th
 rule above the message box remain. Below 6 rows those give way too, leaving the conversation,
 the box, and the status line. Blank rows cannot activate the content beneath them.
 
-**Home at the left opens the home page**, keeping your conversation and unsent words.
+**`home` at the left opens the home page**, keeping your conversation and unsent words.
+Its lowercase label and padded click target stay in the same columns on the dashboard
+and in conversations, including while hovered.
 It is separate from the tabs and breadcrumbs. Space twice on an empty composer still
 opens Home. Home disappears when the connection cannot open conversations, and on
 very narrow frames the current tab takes priority.

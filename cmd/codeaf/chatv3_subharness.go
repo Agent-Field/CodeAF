@@ -62,7 +62,12 @@ type v3Subharness struct {
 // pages is the page store this conversation's designs are written to, handed in
 // so the last-run reading can consult it. See [subharnessLastRun] for why one
 // reader has to ask two stores.
-func v3Subharnesses(settings config.Config, models *catalog.Catalog, model, workspace string, pages *subharness.Store) v3Subharness {
+//
+// window is the model's context length as the conversation's own start window
+// read it ([v3StartWindow]), zero when nobody could say; it is handed in rather
+// than asked of models here because models is the catalog of the model's
+// service, spelled in that service's bare ids, while model is the qualified id.
+func v3Subharnesses(settings config.Config, models *catalog.Catalog, model string, window int, workspace string, pages *subharness.Store) v3Subharness {
 	off := v3Subharness{}
 	space, err := exec.NewWorkspace(strings.TrimSpace(workspace))
 	if err != nil {
@@ -92,8 +97,8 @@ func v3Subharnesses(settings config.Config, models *catalog.Catalog, model, work
 	// file states them without restating them: internal/exec owns every one of
 	// those numbers and applies its own when it is handed nothing.
 	//
-	// THE WINDOW IS ASKED THROUGH THE ONE READING THAT NEVER WAITS ([v3Window]),
-	// and that is a launch-path law rather than a preference here.
+	// THE WINDOW IS ASKED THROUGH THE ONE READING THAT NEVER WAITS ([v3StartWindow],
+	// by the caller), and that is a launch-path law rather than a preference here.
 	// [catalog.Catalog.ContextLength] RESOLVES the lazy catalog, and resolving it
 	// on a stale cache is a GET /models with a fifteen-second ceiling
 	// (internal/catalog's LoadLazy says so in as many words) — so asked on this
@@ -110,7 +115,7 @@ func v3Subharnesses(settings config.Config, models *catalog.Catalog, model, work
 	// non-blocking answer, two readers.
 	linear := exec.NewLinear(client, space, web, 0, 0, 0).
 		WithAttribution(settings.Attribution).
-		WithContextLength(v3Window(models, model))
+		WithContextLength(window)
 	registry := exec.NewRegistry(linear)
 	// THE GENERALIST IS WHAT THE DEOPTIMIZATION PATH FALLS BACK TO, so it is
 	// registered before anything else can need it: a guard that does not pass
@@ -129,7 +134,7 @@ func v3Subharnesses(settings config.Config, models *catalog.Catalog, model, work
 	// a verb whose answer is silence.
 	registerSubharnessRunners(registry, leafBuild{
 		settings: settings, client: client, workspace: space, web: web,
-		model: model, models: models,
+		model: model, models: models, window: window,
 	})
 
 	// The look every bundle's guards are checked through. One per conversation,
