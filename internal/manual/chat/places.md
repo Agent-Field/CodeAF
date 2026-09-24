@@ -147,7 +147,9 @@ Three gestures, the same on all seven places:
   moving the mouse onto a row selects it. Keyboard navigation immediately takes over
   and clears the old mouse highlight. A parked pointer cannot reclaim the selection;
   move it again to switch back. Leaving the list keeps the latest selection. Settings
-  retains its separate hover preview.
+  retains its separate hover preview. Home's `projects` rows are not selected by the
+  mouse: the pointer only underlines a project's name, and a click picks that folder for
+  the next message without moving the selection.
 - **a click on a row opens it**, exactly as `enter` on it would: on standing, spend and
   search the first press puts the cursor there and opens what the row names. **A click
   never spends**: on memory, where `enter` on a line asks the model about it, the press

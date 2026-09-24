@@ -88,7 +88,7 @@ from home stands there as a card. Nothing else stands in it.
 
 | Panel | What a row is | `enter` on a row | Dim line when it holds nothing |
 | --- | --- | --- | --- |
-| `projects` | a folder with conversations | starts a new chat there | never empty — the folder this window opened in is always a row |
+| `projects` | a folder with conversations | no keyboard stop; click selects the next message’s project | never empty — the folder this window opened in is always a row |
 | `sessions` | one of the fifteen most recent conversations | opens the conversation | `your recent conversations appear here` |
 | `since you left` | what landed while you were away | opens the record, the file or the place | `what watches and tasks did while the terminal was shut` |
 | `spend` | today, the fortnight, who it went to | nothing — its lines are read, never stood on or pressed; the heading opens the spend place | `every chat and task is priced here` |
@@ -368,16 +368,17 @@ the question remains reachable even when its tab is closed.
 switch back is two keys — `space` `space`, then `enter` — and `esc` still goes back to the
 conversation behind home.
 
-## Start a chat in another folder — the projects panel is read, not pressed; ctrl+t starts a chat elsewhere
+## Choose a project for the next message — click a project name or use alt+p
 
-**The `projects` panel is a reading and nothing on it opens.** Its heading is drawn dim and
-opens nothing, its rows are not cursor stops — the arrows step over the whole panel and a
-click on a row does nothing — and it offers no verbs. It used to be that `enter` on a row
-started a fresh conversation in that folder; that door is gone (owner, 2026-09-17). To start
-a chat in another folder, stand on any row of that folder's conversations and press
-**`ctrl+t`**, or paste its path into an empty box and immediately press Enter. A conversation started that way is
-built on **its own** workspace, with that project's approval rules, crew, spend
-ceiling and saved shapes of work.
+**Click a project name under `projects` to select it for the next message.** The
+`project: <path>` label above the message box changes immediately, exactly as if
+`alt+p` (Option+P on macOS) had cycled to that project. Hovering underlines the name;
+clicking does not open a conversation or move the keyboard cursor. The choice lasts
+for this window, including after sending a message and returning home.
+
+The `projects` heading remains dim and opens nothing. Project rows are not keyboard
+stops; arrow keys stay in the conversation list. To cycle projects from the keyboard,
+use `alt+p`. To start a chat from a conversation row's folder, use `ctrl+t`.
 
 ```
  projects
@@ -395,13 +396,13 @@ when space runs out. Only paths inside your home directory use `~/`; home itself
 A similarly named sibling directory does not get that abbreviation. Counts and repository
 facts keep their columns as the path shortens.
 
-**A project row offers nothing to press** — no `enter`, no strip, no cursor on it. Typing
+**A project row selects a destination by click; it has no `enter` action or strip.** Typing
 the project's name into the box lists every conversation in it. Five rows show, eight in a
 tall window, then `N more`; typing a folder's name or path finds the rest. Pasting a folder
 path into an empty box offers a one-use start there (*Start something new from home*).
 
-`ctrl+t` on a conversation's row still starts one in that row's folder, but the projects
-panel is the way home offers it now.
+`ctrl+t` on a conversation's row starts one in that row's folder; clicking a project
+instead chooses the destination for the next message you send from Home.
 
 ## How many conversations does a project have — the count on its projects row
 
@@ -451,8 +452,9 @@ each of those is a panel of its own now.
 
 **You cannot any more, and `alt+g` does nothing.** Home is panels now, and the
 `projects` panel is the by-project view: every folder with a conversation in it, this
-window's own first, each with `N chats · M running` and its branch. It is a reading and
-not a list to walk: nothing on it opens. Typing the project's name into the box lists
+window's own first, each with `N chats · M running` and its branch. It is not a list to
+walk and nothing on it opens; clicking a project's name picks it as the folder for the
+next message. Typing the project's name into the box lists
 every conversation in it, and `ctrl+t` on one of them starts a new one there.
 
 ## How do I hide the quiet chats — alt+q hide the quiet ones
@@ -466,8 +468,8 @@ the conversation list shows the fifteen most recent conversations, with closed o
 **`↑` and `↓` walk the field**, from one panel into the next at its ends, and stop at
 both ends: `↑` off the top row stays on it and does not climb onto the tab bar. **`←` and
 `→` never leave the field** — `→` opens the row's own verbs under it and `←` closes them.
-Nothing on the rail — `projects`, `spend`, or a panel with nothing in it — can be walked
-onto or pressed.
+Arrow keys skip the rail. Project names there can be clicked to select the next message’s
+folder; the spend figures and empty-panel hints have no click action.
 
 **The panel the cursor is in marks its heading** with the cursor's ground; the words stay
 where they were. A headed panel such as `sessions` lights its heading when the cursor is
@@ -725,7 +727,8 @@ goes empty on the `start a new conversation` row, which is a chat that does not 
 `↑`/`↓` (or `ctrl+p`/`ctrl+n`) walk a column and `←`/`→` cross between columns.
 
 **One click is `enter`.** A click on a row opens it, and a click on a fold that names a
-place opens that place. A click on a panel's **heading** opens the place the heading names:
+place opens that place. A `projects` row is the one exception: a click on it picks that
+folder for the next message and opens nothing. A click on a panel's **heading** opens the place the heading names:
 `sessions` opens sessions, `since you left` opens memory, `spend` opens spend, and
 `standing` opens standing. There is no `needs you` heading. The conversation list has no heading. The `projects` heading opens nothing
 and stays dim. **A heading that opens somewhere underlines on mouse-over.** The
@@ -1359,8 +1362,8 @@ selected project. A new window starts with its own default.
 
 **`alt+p` is the same gesture for the folder** — press it, or press the path on the rule, and
 the target walks through the projects in the panel's order, including projects with only
-standing work, and wraps after the last. Both controls share one selection, shown only
-as `project: <path>` on the seam. If `/folder` selected a destination outside the panel,
+standing work, and wraps after the last. Clicking a project name in the panel selects it directly. All three controls share one
+selection, shown only as `project: <path>` on the seam. If `/folder` selected a destination outside the panel,
 the next cycle starts at its first project. With just one destination already selected,
 `alt+p project` is absent.
 
@@ -1939,7 +1942,7 @@ window runs, `s stop`.
 **`→` opens the strip on every row of the field, at every width** — the arrows never
 leave the field (owner, 2026-09-17) — and a conversation's verbs are on their chords too:
 `ctrl+e`, `ctrl+o`, `ctrl+y`, `ctrl+t`. The foot names none of them and says the same
-sentence on every row. A project's row has no strip: `projects` is read, not pressed.
+sentence on every row. A project's row has no strip: clicking it selects the next message's project.
 
 ## The work on the right of home — what each task came to
 

@@ -607,6 +607,8 @@ type homeView struct {
 	// is drawn as an underline under the word rather than a ground (owner,
 	// 2026-09-17: a clickable heading should say so under the mouse).
 	headHover int
+	// projectHover underlines a clickable project without moving the list cursor.
+	projectHover int
 	// says is what each place answers about WHAT IS IN IT, cached on the same
 	// beat the bands are read on so that building the typed drop-up costs no
 	// seam at all ([app.readPlaceSummaries], homeplaces.go).
@@ -1267,17 +1269,18 @@ func (a *app) newHomeView(world session.World, known bool) homeView {
 		// otherwise the row goes quiet the moment they return to look at it
 		// (takeovervoice.go). A launch has asked for nothing yet, so the greeting
 		// reads it as empty, which is the same field saying the same thing.
-		claim:     a.takeover.file,
-		tier:      a.homeTierNow(),
-		cols:      a.homeColsNow(),
-		gridWidth: a.homeGridWidthNow(),
-		tilde:     a.tilde,
-		hover:     -1,
-		headHover: -1,
-		last:      map[string]session.Summary{},
-		news:      map[string]homeNewsCache{},
-		expanded:  map[string]bool{},
-		itemsOpen: map[string]bool{},
+		claim:        a.takeover.file,
+		tier:         a.homeTierNow(),
+		cols:         a.homeColsNow(),
+		gridWidth:    a.homeGridWidthNow(),
+		tilde:        a.tilde,
+		hover:        -1,
+		headHover:    -1,
+		projectHover: -1,
+		last:         map[string]session.Summary{},
+		news:         map[string]homeNewsCache{},
+		expanded:     map[string]bool{},
+		itemsOpen:    map[string]bool{},
 		// AND THE ERRANDS ARE STILL HERE. They belong to the window, not to the
 		// screen, so opening home again finds every one that was still going —
 		// with its row, its tail and its pane exactly as they were left
@@ -2334,8 +2337,8 @@ func (h *homeView) itemLine(project session.Project, view StandingItemView) home
 // everything else on the column answers enter.
 func (l homeLine) stop() bool {
 	switch l.kind {
-	// A PROJECT'S ROW IS READ AND NOT STOOD ON (owner, 2026-09-17), like spend's
-	// lines: the rail holds nothing a cursor may rest on (homepanel_projects.go).
+	// Project rows select the draft only by pointer; keyboard navigation keeps
+	// its cursor in the field and Option+P chooses the project.
 	case homeSession, homeQuiet, homeAction, homeItem, homeItemFold, homeAskHere,
 		homeProject, homeExchangeRow, homeFold:
 		return true
@@ -4073,6 +4076,12 @@ func (a *app) homePress(x, y int) tea.Cmd {
 		return cmd
 	}
 	at := a.homeHitAt(x, y, hits)
+	// Project rows select the draft's destination without taking the list cursor
+	// or opening a conversation; cycling with Option+P makes the same selection.
+	if at >= 0 && at < len(a.home.lines) && a.home.lines[at].kind == homeProjectRow {
+		a.pinTargetProject(a.home.lines[at].proj.Path)
+		return nil
+	}
 	if at < 0 || at >= len(a.home.lines) || !a.home.lines[at].stop() {
 		return nil
 	}
@@ -4231,6 +4240,8 @@ func (a *app) homeHover(x, y int) tea.Cmd {
 	a.exchangeHover(row)
 	was := a.home.hover
 	a.home.hover = -1
+	wasProject := a.home.projectHover
+	a.home.projectHover = -1
 	// A HEADING THAT IS A DOOR SAYS SO UNDER THE POINTER. It is resolved against
 	// the headings the last frame drew, the same map a press reads
 	// ([app.homeHeadPress]), so the word that underlines is the word a click
@@ -4250,6 +4261,9 @@ func (a *app) homeHover(x, y int) tea.Cmd {
 	left, right := homeColumns(width)
 	if !inPane && (a.home.gridOn() || right <= 0 || x < left) && y >= 0 && y < len(hits) {
 		at := a.homeHitAt(x, y, hits)
+		if at >= 0 && at < len(a.home.lines) && a.home.lines[at].kind == homeProjectRow {
+			a.home.projectHover = at
+		}
 		if at >= 0 && at < len(a.home.lines) && a.home.lines[at].stop() {
 			a.home.hover = at
 			a.selectPlaceRow(&a.home.cursor, at)
@@ -4266,7 +4280,7 @@ func (a *app) homeHover(x, y int) tea.Cmd {
 		a.touch()
 		return asked
 	}
-	if a.home.headHover != wasHead {
+	if a.home.headHover != wasHead || a.home.projectHover != wasProject {
 		a.touch()
 	}
 	return nil
