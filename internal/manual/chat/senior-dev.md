@@ -32,6 +32,11 @@ it pins the stage, the spend of the run's ceiling, the number of calls and how l
 run has been going — the same time the side list and the landed card show, counted from
 the moment codeaf handed the work over.
 
+**The stage is said in plain words.** On the row and on that line senior-dev's stage
+reads `starting`, `reading the brief`, `working`, `handing in its work`, `checking its
+work` or `finishing` — never senior-dev's own names for its inner phases. The whole of its
+work on the change, every model call and tool included, reads `working`.
+
 `esc`, a press on the conversation's tab, or a press on `Home` leaves it, and the run goes
 on. `x` over an empty box, `/stop`, or `Stop` on that line asks `Stop this task?` first.
 Nothing typed there reaches senior-dev: the box says `senior-dev reads no messages — say

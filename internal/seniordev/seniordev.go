@@ -34,6 +34,23 @@ import (
 )
 
 // Program is senior-dev as codeaf carries it.
+// stageWords is senior-dev's stage names (app.Stages) in a person's words.
+var stageWords = map[string]string{
+	"bootstrap":           "starting",
+	"run-contract":        "starting",
+	"intake":              "reading the brief",
+	"landing":             "starting",
+	"implement":           "working",
+	"agent-runtime":       "working",
+	"compaction-capacity": "working",
+	"router-cancellation": "working",
+	"submit":              "handing in its work",
+	"verification":        "checking its work",
+	"ship":                "finishing",
+	"patch-summary":       "finishing",
+	"agent-summary":       "finishing",
+}
+
 var Program = delegate.Delegate{
 	Name:    "senior-dev",
 	Summary: "an autonomous agent for one large, well-specified code change",
@@ -55,9 +72,14 @@ var Program = delegate.Delegate{
 	// conversation (app's seniorDevDataDirectory, which git never sees).
 	Notes:     ".senior-dev",
 	CrewFlags: crewFlags,
-	Default:   "run",
-	Page:      "senior-dev",
-	Commands:  []delegate.Command{runCommand},
+	// What a person reads while it works, one plain word per phase: getting
+	// ready, doing the work (every inner stage of a model turn included),
+	// handing it in, checking it, wrapping up. A test holds every stage in
+	// app.Stages to a word.
+	StageWords: stageWords,
+	Default:    "run",
+	Page:       "senior-dev",
+	Commands:   []delegate.Command{runCommand},
 }
 
 // crewFlags is the conversation's crew as senior-dev's own flags: the working

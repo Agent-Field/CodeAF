@@ -197,10 +197,23 @@ func (s *delegateSink) Hello(h delegate.Hello) {
 
 func (s *delegateSink) Stage(stage, status string) {
 	// THE LIVE STEP IS THE PROGRAM'S PHASE, numbered after the last step
-	// recorded, so the row reads "senior-dev: implement · running" while the
-	// program is inside that phase and the count on the row stays the steps'.
+	// recorded, so the row reads "senior-dev: working" while the program is
+	// inside that phase and the count on the row stays the steps'.
+	//
+	// IN THE PROGRAM'S WORDS FOR A PERSON, NOT ITS STAGE'S NAME. A program that
+	// says what a person should read for its stages (delegate.Delegate's
+	// StageWords) is shown that word and no status beside it — a status is its
+	// machinery too — and a stage it gave no word keeps the word already shown.
+	// Only a program that said nothing is shown its own names, as it spelled
+	// them.
 	label := s.name + ": " + stage
-	if status != "" {
+	if words := s.worker.program.StageWords; words != nil {
+		word := strings.TrimSpace(words[stage])
+		if word == "" {
+			return
+		}
+		label = s.name + ": " + word
+	} else if status != "" {
 		label += " · " + status
 	}
 	_ = s.worker.store.SetLive(s.taskID, s.steps+1, label)

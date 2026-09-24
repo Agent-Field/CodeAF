@@ -113,6 +113,15 @@ type Delegate struct {
 	// own they never chose; codeaf knows the crew and nothing of the program's
 	// flags, so the program turns the one into the other.
 	CrewFlags func(Crew) []string
+	// StageWords is the word a person reads for each stage the program reports
+	// (its `stage` record), keyed by the stage's own name. The task's row and
+	// the line over its conversation show the word, never the name: a program's
+	// stages are its machinery — senior-dev's say `agent-runtime` and
+	// `router-cancellation` — and this house draws no machinery vocabulary.
+	// A stage with no word leaves the word shown before it standing, so a
+	// program's inner phases need not each be named. Nil shows every stage by
+	// its own name, for a program that has not said.
+	StageWords map[string]string
 	// Default is the command a bare brief runs: `/<name> <brief>` in the chat
 	// and `codeaf <name> <brief>` in a shell. It names one of Commands.
 	Default string

@@ -208,7 +208,7 @@ it, and the program gets no tab of its own.
 
 ```
   the run ▸ rewrite the auth middleware                              esc/← main
-─ implement · $1.24 of $5.00 · 3 calls · 14m 3s ──────────────────── Stop ─
+─ working · $1.24 of $5.00 · 3 calls · 14m 3s ────────────────────── Stop ─
   <program>          rewrite the auth middleware to use the new session store
   deepseek-v4-flash  I'll read the middleware and the store first.
                      ▤ read internal/auth/middleware.go
@@ -236,7 +236,8 @@ conversation: the program on one side, like a very particular person asking code
 things, and the model that answered on the other.
 
 The line over the conversation stays put while you scroll: the stage the program says it
-is in (the task's own word, such as `running` or `done`, when there is none), what the
+is in, in the word the program gives a person for it rather than its own name for the
+stage (the task's own word, such as `running` or `done`, when there is none), what the
 run has spent (`of` its ceiling when the page knows it), how many model calls it has
 made, and how long it has been going. A figure with nothing behind it is left out, and a
 narrow window drops the time first. The time is the one the side list and the landed card
