@@ -53,6 +53,11 @@ const (
 	// KeyCrewCap is the daily cap on what crews spend, in dollars; absent or
 	// zero is no cap.
 	KeyCrewCap = "models.crew.cap"
+	// KeyCrewFreeRoutes is whether the crew may use providers' free pools
+	// (a `:free` route of a model). PROFILE-ONLY and OFF unless somebody
+	// turned it on: a free pool may log or train on what it is sent, which is
+	// a choice about a person's code, not a price.
+	KeyCrewFreeRoutes = "models.crew.free_routes"
 )
 
 // CrewAuto is the word a seat reads when it is not pinned.
@@ -321,6 +326,24 @@ func CrewCapAt(profileDir string) float64 {
 // SetCrewCap writes the cap: a dollar amount, or `none`.
 func SetCrewCap(profileDir, raw string) error {
 	return writeDollars(profileDir, KeyCrewCap, raw)
+}
+
+// CrewFreeRoutesAt is whether the crew may route to providers' free pools.
+// Absent is off.
+//
+// A FREE ROUTE IS A ROUTE, NOT A MODEL. On, a model's free pool joins its other
+// routes and is weighed at what it is expected to cost — its refusals
+// included — and a seat on it falls through to the same model's paid route
+// before any other model. Off, the free pools are not routes at all; a person
+// can still pin one by name.
+func CrewFreeRoutesAt(profileDir string) bool {
+	on, _ := persistedBool(profileDir, KeyCrewFreeRoutes)
+	return on
+}
+
+// SetCrewFreeRoutes turns the free routes on or off.
+func SetCrewFreeRoutes(profileDir string, on bool) error {
+	return writeProfileValue(profileDir, KeyCrewFreeRoutes, on)
 }
 
 // ── what the router may pick from ───────────────────────────────────────────

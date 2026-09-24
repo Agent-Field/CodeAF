@@ -377,6 +377,9 @@ var nonSettingProfileFields = []string{
 	// the panel is where a rule and a cap are read beside the day's spend.
 	KeyCrewAllowed,
 	KeyCrewCap,
+	// And the free-routes switch beside them, which the crew's providers list
+	// turns on and off.
+	KeyCrewFreeRoutes,
 }
 
 // retiredProfileKeys are top-level config.json keys that a shipped version once
