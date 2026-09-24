@@ -91,6 +91,12 @@ type Entry struct {
 	Packet string `json:"packet,omitempty"`
 	// Reply is the id of the [KindQuestion] entry a [KindAnswer] answers.
 	Reply string `json:"reply,omitempty"`
+	// Team is, on a [KindStart], the sub-team the started conversation is to
+	// manage (a manager's `team_start` of kind team): the interface opens and
+	// adds the member as for any start, and the new conversation, reading its
+	// brief, makes itself that team's manager. It is empty on every other
+	// start and every other kind.
+	Team string `json:"team,omitempty"`
 }
 
 // trafficRotateBytes is the size past which the log starts a new file.

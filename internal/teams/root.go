@@ -30,6 +30,17 @@ import (
 //
 // Until the person asks, there is no root team, and the `All teams` row is a
 // row the interface draws over the top level with nothing stored behind it.
+//
+// THE GLOBAL MANAGER'S MEMBERS ARE THE TOP-LEVEL MANAGERS (ruling c-5: orders go
+// one level down, and a sub-team's manager is a member of the team above). So
+// while the root has a manager, tidy makes every open top-level team's manager
+// a member of the root, with the handle it has in its own team when that is
+// free there. Its directives then reach them by the ordinary road, its digest
+// lists them, and each reports to it by the ordinary home rule. It is only ever
+// added: a membership the person removes comes back while that conversation
+// still manages a top-level team, and one left behind by a manager who stopped
+// being one stays until the person removes it (the session's view of the root
+// shows only the current managers).
 
 // RootName is the root team's name.
 const RootName = "All teams"
@@ -115,5 +126,59 @@ func tidyRoot(teams []Team) bool {
 			teams[i].Parent, changed = rootID, true
 		}
 	}
+	if seatTopManagers(teams, rootID) {
+		changed = true
+	}
 	return changed
+}
+
+// seatTopManagers makes every open top-level team's manager a member of the
+// root rootID while the root has a manager, and reports whether it added one.
+func seatTopManagers(teams []Team, rootID string) bool {
+	r := Index(teams, rootID)
+	if r < 0 || teams[r].Manager == "" {
+		return false
+	}
+	changed := false
+	for _, t := range teams {
+		if t.Parent != rootID || t.Closed() || t.Manager == "" || teams[r].Holds(t.Manager) {
+			continue
+		}
+		m, ok := t.Member(t.Manager)
+		if !ok {
+			continue
+		}
+		m.Home, m.Started = false, false
+		if m.Handle != "" && handleProblem(teams[r], m.Key, m.Handle) != nil {
+			m.Handle = ""
+		}
+		teams[r].Members = append(teams[r].Members, m)
+		assignHandles(&teams[r])
+		changed = true
+	}
+	return changed
+}
+
+// TopManagers is the members of the root who manage an open top-level team
+// right now, in the root's member order: the global manager's own members.
+// Anything else the root holds (a manager who stopped being one, a
+// conversation the person put there) is not one of them.
+func (f *File) TopManagers() []Member {
+	r, ok := f.Root()
+	if !ok {
+		return nil
+	}
+	managing := map[string]bool{}
+	for _, t := range f.Teams {
+		if t.Parent == r.ID && !t.Closed() && t.Manager != "" {
+			managing[t.Manager] = true
+		}
+	}
+	var out []Member
+	for _, m := range r.Members {
+		if managing[m.Key] && m.Key != r.Manager {
+			out = append(out, m)
+		}
+	}
+	return out
 }

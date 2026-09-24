@@ -61,9 +61,21 @@ import (
 // rotation more, which is long enough for its raiser to be handed the answer.
 //
 // EVERY CHANGE IS ALSO A LINE OF TRAFFIC, a [KindPacket] entry in the log of
-// the team that raised it and of every team that was asked to decide it, so
-// the interface tailing a team's Traffic learns of a packet without polling
-// this file, and a session delivering Traffic hands it to the manager.
+// the team that raised it, of every team that was asked to decide it, and of
+// every party's team, so the interface tailing a team's Traffic learns of a
+// packet without polling this file, and a session delivering Traffic hands it
+// to the manager and tells the parties.
+//
+// A CONFLICT'S RULING IS A DIRECTIVE TO EVERY PARTY (ruling c-6). Whoever
+// decides a [PacketConflict] (the lowest common manager with [Decide], a
+// manager above it after an escalation, or the person on the teams page, here
+// or over --host through the engine's own [Decide]), the store appends one
+// [KindDirective] to each party's team log, addressed to its handle and
+// carrying the packet's id ([Entry.Packet]). So the ruling reaches every party
+// by the road a directive always takes and wakes it, and it is in every
+// involved team's Traffic, whoever made it. And a party never decides its
+// own case: a manager who is one of the parties is not the decider even when
+// the packet waits on its team ([ErrNotDecider]); the person still may.
 
 // Packet kinds.
 const (
@@ -317,7 +329,7 @@ func Raise(profileDir string, p Packet) (Packet, error) {
 	if err := appendDecision(profileDir, p.Origin, &decisionEvent{Op: opRaise, At: now, Packet: &p}, nil); err != nil {
 		return Packet{}, err
 	}
-	logPacket(profileDir, f, p, []string{p.Origin, p.Team},
+	logPacket(profileDir, f, p, involved(p, p.Origin, p.Team),
 		fmt.Sprintf("%s raised a %s: %s", p.RaisedBy, p.Kind, p.Question))
 	return p, nil
 }
@@ -366,7 +378,10 @@ func Decide(profileDir, id, by, decision, reason string) (Packet, error) {
 	if out.Kind == PacketQuestion {
 		said = fmt.Sprintf("answered %s: %s", raiserWord(out.RaisedBy), word)
 	}
-	logPacket(profileDir, f, out, []string{out.Origin, out.Team}, said)
+	logPacket(profileDir, f, out, involved(out, out.Origin, out.Team), said)
+	if out.Kind == PacketConflict {
+		rule(profileDir, f, out)
+	}
 	return out, nil
 }
 
@@ -415,7 +430,7 @@ func Escalate(profileDir, id, by, to, reason string) (Packet, error) {
 	if t, ok := f.Team(to); ok {
 		where = "◆ " + t.Name
 	}
-	logPacket(profileDir, f, out, []string{out.Origin, from, to}, fmt.Sprintf("%s sent it up to %s: %s", e.By, where, reason))
+	logPacket(profileDir, f, out, involved(out, out.Origin, from, to), fmt.Sprintf("%s sent it up to %s: %s", e.By, where, reason))
 	return out, nil
 }
 
@@ -444,11 +459,70 @@ func mayDecide(f *File, p Packet, by string) (string, bool) {
 	if !ok || (m.Handle != by && by != FromManager) {
 		return "", false
 	}
+	for _, party := range p.Parties {
+		if party.Key != "" && party.Key == t.Manager {
+			return "", false
+		}
+	}
 	if m.Handle != "" {
 		return m.Handle, true
 	}
 	return FromManager, true
 }
+
+// involved is teams followed by every party's team: the logs a packet line
+// goes to.
+func involved(p Packet, teams ...string) []string {
+	for _, party := range p.Parties {
+		teams = append(teams, party.Team)
+	}
+	return teams
+}
+
+// rule appends a decided conflict's ruling to every party's team log, as a
+// directive to that party. A party with no team or a team no longer in the
+// file is skipped; a log that cannot be written costs that line and never the
+// decision, which is written already.
+func rule(profileDir string, f *File, p Packet) {
+	from, by := FromManager, "◆ @"+p.DecidedBy
+	switch p.DecidedBy {
+	case Person:
+		from, by = FromYou, "the person"
+	case FromManager, "":
+		by = "the manager"
+	}
+	if t, ok := f.Team(p.Team); ok && p.DecidedBy != Person {
+		by += fmt.Sprintf(" (manager of %q)", t.Name)
+	}
+	word := p.Decision
+	if o, ok := p.Option(p.Decision); ok {
+		word = o.Label + ": " + o.Consequence
+	}
+	text := fmt.Sprintf("ruling on the conflict %s, by %s: %s", p.ID, by, word)
+	if r := strings.TrimSpace(p.Reason); r != "" {
+		text += ". Because: " + r
+	}
+	text += ". The conflict was: " + p.Question
+	for _, party := range p.Parties {
+		if party.Team == "" {
+			continue
+		}
+		if _, ok := f.Team(party.Team); !ok {
+			continue
+		}
+		to := party.Handle
+		if to == "" {
+			to = ToRoom
+		}
+		_ = AppendTraffic(profileDir, party.Team, Entry{Kind: KindDirective, From: from, To: to, Member: party.Key,
+			Text: text, Packet: p.ID, State: PacketDecided})
+	}
+}
+
+// IsRuling reports whether e is a conflict's ruling ([rule]): a directive
+// that carries its packet's id. A session delivers it to the party it names
+// whoever wrote it, and it wakes that party.
+func IsRuling(e Entry) bool { return e.Kind == KindDirective && e.Packet != "" }
 
 // isAncestor reports whether team above is an ancestor of team id.
 func isAncestor(f *File, above, id string) bool {
