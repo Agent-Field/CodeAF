@@ -178,9 +178,12 @@ type delegateSink struct {
 	// reader is the program's own reader of its action log
 	// (delegate.Delegate.Reader), told every record in the order it arrives, so
 	// the live step can name the step of the program's process the record
-	// served; stepped is whether any record has named one yet.
+	// served; stepped is whether any record has named one yet, and step the
+	// word the live step reads now, which a record naming the same step again
+	// does not write twice.
 	reader  delegate.ActionReader
 	stepped bool
+	step    string
 }
 
 // remember writes one received record to the task's action log, stamped with
@@ -220,7 +223,10 @@ func (s *delegateSink) live(action delegate.Action) {
 	}
 	if shown, ok := s.reader(action); ok && strings.TrimSpace(shown.Step) != "" {
 		s.stepped = true
-		_ = s.worker.store.SetLive(s.taskID, s.steps+1, s.name+": "+strings.TrimSpace(shown.Step))
+		if word := strings.TrimSpace(shown.Step); word != s.step {
+			s.step = word
+			_ = s.worker.store.SetLive(s.taskID, s.steps+1, s.name+": "+word)
+		}
 		return
 	}
 	if action.Kind != delegate.ActionStage || s.stepped {
