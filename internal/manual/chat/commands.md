@@ -182,7 +182,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/memories` | — | — | prints every memory into the conversation |
 | `/remember` | — | `<text>` | keeps one thing across conversations |
 | `/forget` | — | `<query>` | forgets the best matching memory |
-| `/crew` | — | — | prints the crew panel: the three seats, providers, allowed models, the daily cap and recent tasks |
+| `/crew` | — | — | opens the crew panel: the three seats, the allowed models and the daily cap, changed in place |
 | `/crew` | — | `pin <seat> <model[@provider]>` | pins the worker, planner or checker to a model; `/model` stays |
 | `/crew` | — | `unpin <seat\|all>` | puts a seat back on auto |
 | `/crew` | — | `models <rule>` | which models a seat may be picked from — `all`, `open`, `≤in/out`, ids |
@@ -1451,24 +1451,15 @@ three are auto — codeaf picks each one for each task, from what kind of work t
 /crew
 ```
 
-prints the panel into the conversation:
+opens the crew panel over the conversation — five rows you change in place (the worker,
+planner and checker seats, the allowed **models**, the daily **cap**) and a dim `today`
+line. `enter` changes the row under the cursor, `esc` closes, `?` lists every key. The
+models page has the panel drawn out and every key (*Crew panel keys*). A seat on auto says
+the model it usually runs; a pinned seat wears the pin mark `⌖`. Typed on home, `/crew`
+steps off home and `esc` brings you back.
 
-```
-worker   auto · now z-ai/glm-5.3-flash
-planner  auto · now z-ai/glm-5.3-flash
-checker  ⌖ moonshotai/kimi-k3@openrouter
-
-providers  openrouter (metered) · codex (plan)
-allowed    all
-daily cap  $5.00 · $0.412 spent today · 3 tasks, 1 on a plan
-
-recent     fix the empty-config crash · bugfix · worker glm-5.3-flash (openrouter) · checker glm-5.3-flash · $0.021 (est $0.023) · accepted
-```
-
-A seat on auto says the model it would pick for work of no particular kind; a pinned seat
-wears the pin mark `⌖` and names its model. The model ids are drawn brighter than the words
-around them, because they are what the command was typed to find out. The last line is
-every shortcut the panel takes:
+The shortcuts write the same rows and then open the panel with a tick on the row they
+changed:
 
 ```
 /crew · /crew pin <worker|planner|checker> <model[@provider]> · /crew unpin <seat|all> · /crew models <all|open|≤in/out|ids…|+id|-id> · /crew cap <dollars|off>
@@ -1784,16 +1775,15 @@ order:
    32,000 tokens (see *Models, context, and what it costs*).
 6. **reflex** — `near-free · reads every turn — memory, titles, safety`
 7. **small work** — `cheap · the small calls — names, digests, the safety gate`
-8. **worker** — `does the work · every task, its parts, every run node — most of the bill. Empty is auto: routed per task`
-9. **checker** — `reads finished work and checks what must not be wrong. Empty is auto: routed per task`
-10. **planner** — `plans runs and designs harnesses — add :low, :medium or :high. Empty is auto: routed per task`
-11. **pinned roles**, and hanging off it the **roles** list — one row per auxiliary call
+8. **seats** — `the worker, planner and checker, the models they may be picked from, and the daily cap · enter opens /crew`
+9. **pinned roles**, and hanging off it the **roles** list — one row per auxiliary call
     codeaf makes for itself, grouped under its row. Those rows come from the running binary
     rather than the settings registry.
 
-**worker**, **checker** and **planner** are the crew's three seats: empty reads `auto`,
-and a model id there is a pin — the same pin `/crew pin` writes. The rest of the crew —
-allowed models, the daily cap, today's spend — is on the `/crew` panel.
+**worker**, **checker** and **planner** are the crew's three seats, and on the tab they are
+one row, **seats** (`auto · 1 pinned · models open · cap $5.00`). `enter` on it opens the
+`/crew` panel, where the seats, the allowed models and the daily cap are changed; `esc`
+there comes back to the row.
 
 **A pin for a role this build no longer has is ignored, and the row stops showing it.** Roles
 come and go with the calls that use them — `compaction` was one, and a compaction has not asked

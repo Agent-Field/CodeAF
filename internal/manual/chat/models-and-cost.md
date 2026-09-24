@@ -493,28 +493,76 @@ it.
 
 ### The /crew panel
 
-Bare `/crew` is the panel, and it is where everything about the crew that persists is
-said. It shows:
+Bare `/crew` opens the crew panel: a framed panel over the conversation, with five rows you
+can change and one line about the day.
 
-- **the seats** — `auto · now <model>` for a seat codeaf picks, with the model it would
-  pick for work of no particular kind; or the pin mark `⌖` and the model a seat is pinned
-  to;
-- **providers** — every connection the crew can route through, with how it bills:
-  `metered`, `plan` or `local`. They come from your connections and are never a setting —
-  connecting a provider is what adds it;
-- **allowed** — the rule for which models a seat may be picked from;
-- **daily cap** — the most crews may spend in a day, with today's spend, how many tasks
-  ran and how many of them ran on a plan or a local model;
-- **recent** — the last few tasks with the crew each one ran on, what it cost beside what
-  it was estimated to cost, and how it ended.
+```
+╭─ crew ─────────────────────────────────────── esc ─╮
+│› worker    auto · usually glm-5.3-flash            │
+│  planner   auto · usually glm-5.3-flash            │
+│  checker   ⌖ kimi-k3                               │
+│                                                    │
+│  models    ‹ all › (96)                            │
+│  cap       none                                    │
+│                                                    │
+│  today $1.84 · 14 tasks                            │
+╰─ enter change · esc close · ? keys ────────────────╯
+```
 
-Under it is the line of shortcuts, which are how anything on the panel changes:
+- **the seats** — `auto · usually <model>` for a seat codeaf picks, naming the model recent
+  tasks ran there most (`likely` before there is any history); or the pin mark `⌖` and the
+  model, with `@provider` when a route is pinned too. A pin nothing connected can run says
+  `unavailable`.
+- **models** — which models a seat may be picked from, walked with `←`/`→` in place:
+  `all`, `open`, `price`, `custom`, with the number of models each admits in brackets.
+- **cap** — the most crews may spend in a day, `none` for no cap.
+- **today** — what crews spent today and how many tasks ran. A day with nothing in it has
+  no line.
+
+Providers are not a row. They come from your connections, and the panel only names them
+when something cannot work: `no providers connected — /connect adds one`, or a pin whose
+provider is not connected. A rule that leaves open-ended work without a strong checker says
+so under the rows.
+
+Every change is saved the moment you make it, and the next task uses it with no relaunch.
+The changed row wears a tick `✓`, and for five seconds the bottom edge offers `z undo`,
+which puts things back exactly as they were.
+
+## Crew panel keys — how to pin, unpin, set the cap or the allowed models on /crew
+
+`enter` is the one verb:
+
+- **enter on a seat** opens that seat's list: `auto — codeaf picks per task` first, then
+  the router's suggestion marked with the star and `suggested`, then every model your
+  providers reach with its price in and out per million tokens and one provider. Type to
+  filter; `enter` pins. **Unpinning is choosing `auto`** — the list opens on it, so it is
+  `enter enter`. `→` on a model shows its routes (`any route · cheapest`, then each
+  provider); `enter` on one pins the model to that provider, `←` folds them.
+- **A model outside your allowed models** is on the list marked `not allowed`. `enter` on it
+  says `<model> is not in your allowed models (<rule>) — enter to allow it`; a second
+  `enter` adds the model to the rule and pins it.
+- **models row**: `←`/`→` step between `all`, `open`, `price` and `custom`, saving each.
+  On `price` the row becomes two boxes, `≤ $[ 1 ] in / $[ 5 ] out`; `enter` edits the
+  first, `enter` (or `tab`) moves to the second, `enter` saves. On `custom`, `enter` opens
+  a checklist of your providers (`whole provider`) and every model they reach, ticked where
+  the rule admits it: type to filter, `space` or `enter` ticks and unticks, and each tick is
+  saved as the shortest rule that says it (`open -deepseek`, `all -openrouter`).
+- **cap row**: type a figure (a digit starts it) and `enter`; empty it and `enter` for none.
+  A figure that is not dollars is refused under the rows.
+- `z` undoes the last change while the bottom edge offers it; `?` shows every key;
+  `esc` goes back exactly one level, and on the panel closes it.
+- **Mouse**: a click on a row is `enter`; a click on `‹` or `›` steps the models row; the
+  wheel scrolls a list.
+
+Typical keystrokes: pin the checker is `/crew ↓ ↓ enter kim enter`; allow open-weight
+models only is `/crew ↓ ↓ ↓ →`; a $5 cap is `/crew`, down to `cap`, `5`, `enter`.
+
+The shortcuts do the same writes from the box and then open the panel with the tick on the
+row they changed:
 
 ```
 /crew · /crew pin <worker|planner|checker> <model[@provider]> · /crew unpin <seat|all> · /crew models <all|open|≤in/out|ids…|+id|-id> · /crew cap <dollars|off>
 ```
-
-Every change is live: the next task uses it, with no relaunch.
 
 ### Pinning a seat
 
@@ -530,9 +578,9 @@ that seat through OpenRouter even when a direct connection also serves the model
 the rule would have to break is not a pin. And a pinned model none of your connections can
 reach is not quietly swapped: the task does not start, and says why.
 
-The same three pins are the **worker**, **checker** and **planner** rows in `/settings` →
-Providers. A row left empty reads `auto`; a model id written there is a pin, exactly as if
-`/crew pin` had written it.
+In `/settings` → Providers the three seats are one row, **seats**, which says how many are
+pinned, the allowed rule and the cap; `enter` on it opens the crew panel, and `esc` there
+brings you back to the row.
 
 ### Which models are allowed
 
