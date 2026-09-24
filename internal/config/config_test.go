@@ -649,6 +649,18 @@ func TestProfileKeyLedgerLaw(t *testing.T) {
 	}
 }
 
+// A profile the lane page wrote carries the talk lane's borrow row, which a
+// reader consumes, so it is never reported unread.
+func TestTheLaneBorrowRowIsNotReportedUnread(t *testing.T) {
+	values := map[string]json.RawMessage{
+		LaneSettingKey(LaneSlotTalk): json.RawMessage(`"openrouter"`),
+		LaneBorrowKey(LaneSlotTalk):  json.RawMessage(`false`),
+	}
+	if unread := warnUnreadProfileKeys(t.TempDir(), values); len(unread) != 0 {
+		t.Fatalf("the lane rows were reported unread: %v", unread)
+	}
+}
+
 // TestRetiredProfileKeysAreNotReportedUnread pins that a profile carrying a
 // retired key is silent, and that a genuinely unknown key is still named.
 func TestRetiredProfileKeysAreNotReportedUnread(t *testing.T) {

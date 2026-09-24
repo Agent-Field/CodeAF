@@ -364,6 +364,11 @@ func LoadKeyless() (Config, error) { return load(false) }
 // though NewSettings(...).Rows() does not list them.
 var nonSettingProfileFields = []string{
 	KeySetupSeen,
+	// The talk lane's borrow row sits beside its lane row and is read by
+	// [LaneBorrowAt], but it is set from the lane page and not from a settings
+	// row of its own. Missing here, every profile the lane page had written
+	// was told at launch that a key codeaf reads was unread.
+	LaneBorrowKey(LaneSlotTalk),
 	KeySplitPct,
 	KeyStandingBackground,
 	KeyResponseAttempts,

@@ -1128,6 +1128,12 @@ var OperatorEnvPins = []string{
 	// would be promising an override that does nothing, which is worse than
 	// saying nothing at all.
 	"CODEAF_PROFILE_DIR",
+	// The model API codeaf serves one program's run, and the token for it
+	// (internal/delegate's ChildEnv). codeaf sets them on the child it starts
+	// and nobody else does; they are an address and a credential, so plumbing,
+	// and the footer names them and never shows a value.
+	"CODEAF_MODEL_API",
+	"CODEAF_MODEL_TOKEN",
 	// The release check's one-launch opt-out and its two mirror addresses
 	// (internal/update). They are plumbing rather than settings rows: the first
 	// is a shell's decision not to make a launch request, while the other two
