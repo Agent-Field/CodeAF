@@ -72,6 +72,15 @@ hover moves the card and never the mark.
 `dim` — THE ACCENT BUDGET below forbids lighting them, and a lit heading is the
 same defect arriving from the other side. The ground alone carries the fact.
 
+**A heading that is a door underlines under the pointer, and that is all the
+pointer does to a heading.** Home's headings open the place they name, and a
+person holding a mouse over one is asking whether it will; the answer is the
+underline — no ink, no ground, the one attribute a terminal has always used to
+say "this opens somewhere" — on the word alone, and only on a heading that
+opens somewhere. It is an affordance and not a step of the ladder: it marks
+nothing about where the cursor is, so the marked heading above still follows
+the keyboard only (added 2026-09-17).
+
 ### THE EMPHASIS LAW
 
 > **A row is emphasized by raising its ground and turning its leading text
@@ -485,6 +494,19 @@ it (a law test walks the question renderers' paints).
 colour is a row that shouts, and a screen of shouting rows is a screen with no
 priority at all. The grounds in THE GROUND LADDER are the sole exception, and
 they are exactly as quiet as the table above says.
+
+### The current model on the message-box seam
+
+Adopted with #1071 (merged 2026-09-21): the current model is always **bold in the data hue** on
+home and conversation seams. It must be easy to find without hovering or first
+changing it. The provider beside it and the surrounding telemetry keep their
+existing weight; the emphasis is confined to the model name.
+The effort follows a colon without a space or badge: `model (provider):effort`. Its
+styling stays separate from the model. The conversation seam carries no git branch. Home starts
+with those controls and puts `project: <path>` at the far right. Project paths on
+home preserve their absolute root (or `~/` under the home directory) and truncate
+at the right end, never at the left.
+
 
 ## ONE MARK PER TOKEN
 
