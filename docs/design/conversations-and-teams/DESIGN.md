@@ -25,7 +25,7 @@ are not a view of the team. The title says so: `Conversations · open in this wi
 `· in test` while a team is shown, with `1 open` on the right. A shown team's members that
 this window does not have open are neither tiles nor tabs. While there are any, the title
 carries one quiet word button, `2 more in test · Open them` (key `r`, hint `Resume the 2
-conversations of test not open here; nothing in front moves · r`), which resumes them behind
+not open here · r`), which resumes them behind
 the conversation in front, on the door line, off the loop, so they arrive as tiles and tabs
 without moving the front or the focus. When every member is open there is no mark at all.
 The Teams row counts open members; its hint says the team's size (`test · 1 open here · 3

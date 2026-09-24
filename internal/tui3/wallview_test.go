@@ -1112,7 +1112,7 @@ func TestWallTitleOffersTheTeamsMembersNotOpenHere(t *testing.T) {
 	if hrows[0] == rows[0] {
 		t.Fatal("the button takes no ground under the pointer")
 	}
-	if bar := ansi.Strip(hrows[len(hrows)-1]); !strings.Contains(bar, "Resume the 2 conversations of port not open here; nothing in front moves · r") {
+	if bar := ansi.Strip(hrows[len(hrows)-1]); !strings.Contains(bar, "Resume the 2 not open here · r") {
 		t.Fatalf("hint line %q", bar)
 	}
 	v.away = 0

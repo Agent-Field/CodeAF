@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
@@ -303,10 +304,16 @@ func (a *app) teamLinkHint() string {
 	}
 	words := verb + " @" + m.Handle
 	if title := strings.TrimSpace(m.Word); title != "" {
-		words += hintSegment + fitConversationTitle(title, 28)
+		if ansi.StringWidth(title) > teamLinkHintTitle {
+			title = strings.TrimRight(ansi.Truncate(title, teamLinkHintTitle-1, ""), " ") + a.linearMark("…", "...")
+		}
+		words += hintSegment + title
 	}
 	return words + hintSegment + "click"
 }
+
+// teamLinkHintTitle is the most cells of a member's title the hint line spends.
+const teamLinkHintTitle = 28
 
 // teamLinkKey is a team reference's identity for the hover, from which the
 // hint is read again off memory: the team, and the member when there is one.
