@@ -57,7 +57,9 @@ its hand-in, the build and tests it ran itself, and how it finished — with the
 model in flight as the last line, `◐ thinking` and its seconds. The next section says what
 each step means. The line over it pins the step, the spend of the run's ceiling, the
 number of model calls and how long the run has been going — the same time the side list
-and the landed card show, counted from the moment codeaf handed the work over.
+and the landed card show, counted from the moment codeaf handed the work over. While the
+task is open, its row on the side list leaves its clock out rather than show a time that
+stopped when you clicked; the true time is back on the row the moment you leave.
 
 **The raw calls are one key away.** `ctrl+y` turns the page to senior-dev's calls to its
 model — what it sent, what the model answered, and which model it was — and `ctrl+y`

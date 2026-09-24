@@ -146,3 +146,27 @@ func TestARunningClockTrustsTheReportedAgeOverAnotherMachinesStart(t *testing.T)
 		t.Fatalf("the rail reads %q ten seconds into the work, want 10s", got)
 	}
 }
+
+// A ROW WHOSE ROOM IS OPEN DRAWS NO CLOCK, RATHER THAN ONE STOPPED AT THE CLICK.
+// Standing in senior-dev's room froze its row's age at the second the room
+// opened: the side list read `2s` for a minute and more beside a page whose
+// header read `1m 21s`. The row now drops its clock while the room is open and
+// reads the whole true age again the moment the person leaves.
+func TestARowWhoseRoomIsOpenDrawsNoStoppedClock(t *testing.T) {
+	a, _ := planAppWith(t, nil, nil)
+	started := taskFixtureNow
+	now := started.Add(2 * time.Second)
+	a.clock = func() time.Time { return now }
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "rewrite the auth middleware", session.TaskRunning,
+		session.TaskNotice{StartedAt: started, CostUSD: 0.04})})
+	a.freezeNode(7)
+	now = started.Add(81 * time.Second)
+	got := plain(a.railTelemetry(a.tasks[7], 40))
+	if strings.Contains(got, "2s") || strings.Contains(got, "1m") || !strings.Contains(got, "$0.04") {
+		t.Fatalf("a row whose room is open reads %q, want its spend and no clock", got)
+	}
+	a.thawNode(7)
+	if got := plain(a.railTelemetry(a.tasks[7], 40)); !strings.HasPrefix(got, "1m 21s") {
+		t.Fatalf("the row read %q once its room closed, want the whole age 1m 21s", got)
+	}
+}

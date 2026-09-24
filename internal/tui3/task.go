@@ -5608,8 +5608,11 @@ func (a *app) railWaiting(node *taskNode, width int) []string {
 func (a *app) railTelemetry(node *taskNode, width int) string {
 	segs := make([]string, 0, 5)
 	// A NODE WITH NO ANCHOR HAS NO AGE TO DRAW. Counted from the zero instant it
-	// read `2562047h 47m`, which is not a measurement of anything.
-	if clock := countUpWord(a.taskNow(node).Sub(node.began)); clock != "" && !node.began.IsZero() {
+	// read `2562047h 47m`, which is not a measurement of anything. And a node
+	// whose room is open draws none either ([app.taskNow]): the room's own header
+	// carries the live figure, and a number stopped at the moment of the click
+	// read `2s` beside a senior-dev page reading `1m 21s`.
+	if clock := countUpWord(a.taskNow(node).Sub(node.began)); clock != "" && !node.began.IsZero() && node.froze.IsZero() {
 		segs = append(segs, clock)
 	}
 	if node.tokens > 0 {
@@ -5647,7 +5650,7 @@ func (a *app) railTelemetry(node *taskNode, width int) string {
 // that says how that is going. Both are empty under [taskToolFloor]: a call
 // that has just started is a call nobody is waiting on yet.
 func (a *app) taskClock(node *taskNode) (string, func(string) string) {
-	if node.toolBegan.IsZero() {
+	if node.toolBegan.IsZero() || !node.froze.IsZero() {
 		return "", nil
 	}
 	age := a.taskNow(node).Sub(node.toolBegan)
@@ -5672,6 +5675,13 @@ func (a *app) taskClock(node *taskNode) (string, func(string) string) {
 // is the opposite of what a person reading needs. It thaws when they leave, at
 // the value it would have had all along, because nothing here stops the clock
 // so much as stops reporting it.
+//
+// AND A ROW DRAWN AGAINST A FROZEN CLOCK DRAWS NO CLOCK AT ALL. Stopping the
+// report is not the same as reporting the stopped value: an age that stays at
+// the second of the click is a wrong measurement sitting beside the room's
+// right one, and a run's time is a figure the person reads to the second
+// ([app.railTelemetry], [app.taskClock] and [app.railPhase] each leave theirs
+// out while this is set).
 func (a *app) taskNow(node *taskNode) time.Time {
 	if !node.froze.IsZero() {
 		return node.froze
