@@ -756,8 +756,10 @@ by comparing the folder before and after: a file it wrote, a file of yours it ed
 further, and anything it committed itself. A folder that is not a git repository
 names no files, though the run's edits are still on disk.
 
-The run's plan is kept in `.codeaf/plandb.db` inside that directory, and that file
-is never named among the run's files.
+The run's plan and worker transcripts stay in a private folder under
+`~/.codeaf/runs/` (or `CODEAF_HOME/runs/`). The run leaves no `.codeaf/`
+record in the directory it edits, and its record is never named among the
+run's files.
 
 ## How much can a codeaf do run spend — --yes-spend, the plan price and today's limit
 
@@ -781,11 +783,13 @@ figure is a ceiling instead.
 ## codeaf do --db on the run engine, and where a run's store is
 
 - **`--db` is refused**, with exit 1 and a sentence saying why: it names a store
-  only the older engine works in, and a run holds its plan in `.codeaf/plandb.db`
-  inside the directory it works in. Drop the flag, or set `CODEAF_TASK_BELT=node`
+  only the older engine works in, and a run holds its plan in a private folder
+  under the state root's `runs/`. Drop the flag, or set `CODEAF_TASK_BELT=node`
   to run on the older engine, which takes it.
-- **That store is never deleted.** Pass `--keep` and the run names it on the error
-  stream: `record kept at <dir>/.codeaf/plandb.db`.
+- **A done run removes its private folder** unless `--keep` or debug mode asked
+  for it. A run that did not finish keeps it. The last line on the error stream
+  names any kept folder: `record kept at <folder>`. It holds `plandb.db` and
+  `tasks/` with the workers' trajectories and command transcripts.
 
 ## How do I tell the check what to run?
 

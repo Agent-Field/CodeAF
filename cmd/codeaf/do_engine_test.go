@@ -540,7 +540,7 @@ func TestDoOnTheRunEngineChecksASelfFinishedRootAndExitsZeroWhenItHolds(t *testi
 
 	var stdout, stderr strings.Builder
 	if err := doErrand(doRequest{
-		task: "do the work alone and say what you did", workspace: workspace, asJSON: true,
+		task: "do the work alone and say what you did", workspace: workspace, keep: true, asJSON: true,
 		timeout: 60 * time.Second, slots: bound(1), stdout: &stdout, stderr: &stderr,
 		newBeltCompleter: func(string) session.Completer { return seat },
 	}); err != nil {
@@ -552,7 +552,7 @@ func TestDoOnTheRunEngineChecksASelfFinishedRootAndExitsZeroWhenItHolds(t *testi
 		t.Fatalf("the envelope does not carry the root worker's result: %q", outcome.Deliverable)
 	}
 
-	store, err := plandb.Open(session.PlanStorePath(workspace), "", "root", "", "")
+	store, err := plandb.Open(filepath.Join(keptRunFolder(t, stderr.String()), "plandb.db"), "", "root", "", "")
 	if err != nil {
 		t.Fatalf("open the do run's plan: %v", err)
 	}
@@ -578,7 +578,7 @@ func TestDoOnTheRunEngineChecksASelfFinishedRootAndExitsZeroWhenItHolds(t *testi
 // admits no work at all. Exit 3 is the ladder's rung for a limit, and
 // `blocked_on` names the price so a caller knows what to raise.
 func TestDoOnTheRunEngineStopsAtACostCapOfZero(t *testing.T) {
-	beltRunEnv(t)
+	home := beltRunEnv(t)
 	workspace := t.TempDir()
 	zero := 0.0
 
@@ -598,6 +598,9 @@ func TestDoOnTheRunEngineStopsAtACostCapOfZero(t *testing.T) {
 	}
 	if strings.TrimSpace(outcome.Deliverable) != "" {
 		t.Fatalf("a run that did nothing carried a deliverable: %q", outcome.Deliverable)
+	}
+	if stores, err := filepath.Glob(filepath.Join(home, "runs", "codeaf-do-*")); err != nil || len(stores) != 0 {
+		t.Fatalf("a run refused before admission left a record: %v, %v", stores, err)
 	}
 }
 

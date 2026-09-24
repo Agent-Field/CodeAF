@@ -127,17 +127,15 @@ func (g *TaskGraph) planPath() string {
 	return ""
 }
 
-// PlanStorePath is where a run's plan store lives under a working copy that has
-// no session folder of its own: <dir>/.codeaf/plandb.db. It is the same name and
-// the same folder [planPath] falls to for a session with no Place, so a run
-// dispatched by a headless door and a session that seeds one of its own find one
-// file — two spellings of the path would be two stores with half a run in each.
+// PlanStorePath is the flat-layout fallback for a session with no Place:
+// <dir>/.codeaf/plandb.db. A new headless run uses [OpenRunPlanAt] in a
+// private folder instead; this path remains for the session fallback.
 func PlanStorePath(dir string) string {
 	return filepath.Join(dir, ".codeaf", planStoreFilename)
 }
 
-// OpenRunPlan opens the plan store a headless door outside a session runs over:
-// the working copy's own .codeaf/plandb.db, seeded with the run's words. A store
+// OpenRunPlan opens the older flat-layout plan path, seeded with the run's words.
+// The headless do door now uses [OpenRunPlanAt] in its private folder. A store
 // already at that path is SET ASIDE beside it first ([setAsideRunStore]) — a
 // finished one as it ended, and one nothing is driving as interrupted — and a
 // fresh one is seeded, so a second errand in one project is a second run rather
@@ -163,6 +161,15 @@ func OpenRunPlan(dir, title, brief string) (*plandb.Store, error) {
 		return plandb.Open(path, title, planRootID, title, brief)
 	}
 	if err := setAsideRunStore(path); err != nil {
+		return nil, err
+	}
+	return plandb.Open(path, title, planRootID, title, brief)
+}
+
+// OpenRunPlanAt seeds one run at an explicit store path. A headless run puts
+// this path in its private home, leaving the working copy for the work alone.
+func OpenRunPlanAt(path, title, brief string) (*plandb.Store, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
 	return plandb.Open(path, title, planRootID, title, brief)

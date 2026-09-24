@@ -128,6 +128,9 @@ type headlessOutcome struct {
 	// unexported because the sentence leaves through Deliverable, while Settled
 	// is already the machine signal and the JSON contract needs no second key.
 	unfinishedTree string
+	// recordKept is printed after the receipt's own stderr lines, so a kept
+	// private run folder is always the last line a person sees there.
+	recordKept string
 	// Run, Calls, Rounds and Redispatches are what a person went to
 	// `calls.jsonl` to reconstruct: which run this was, how many model calls it
 	// made, how many times it bought more work after looking at what it had,
@@ -499,9 +502,14 @@ func doErrand(request doRequest) error {
 	outcome, err := errandRun(request, seats, started)
 	if err != nil {
 		if !request.asJSON {
+			if outcome.recordKept != "" {
+				fmt.Fprintf(request.stderr, "record kept at %s\n", outcome.recordKept)
+			}
 			return err
 		}
+		recordKept := outcome.recordKept
 		outcome = failedErrand(err, started)
+		outcome.recordKept = recordKept
 	}
 	outcome.seated(seats)
 	// THE RUN NAMES ITSELF ON EVERY PATH, including the one where nothing
@@ -554,7 +562,7 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 	}
 	// THE RUN ENGINE IS THE DEFAULT ROAD, BEHIND THE SAME SWITCH AS THE BASH
 	// BELT. With the belt on — every machine that has set nothing — the errand
-	// is dispatched by the run engine over the project's own plan store rather
+	// is dispatched by the run engine over a private plan store rather
 	// than by the resident's reconciler below. CODEAF_TASK_BELT set to one of
 	// the words that turn the belt off is the only way onto the road below, and
 	// with it set not one byte of that road moves.
@@ -3247,6 +3255,9 @@ func withoutSummaryFileList(deliverable string, artifacts []string) string {
 // most common thing anyone does with a one-shot is pipe it somewhere.
 func reportErrand(request doRequest, outcome headlessOutcome) error {
 	sayBlocked(request.stderr, outcome)
+	if outcome.recordKept != "" && request.stderr != nil {
+		fmt.Fprintf(request.stderr, "record kept at %s\n", outcome.recordKept)
+	}
 	if request.asJSON {
 		encoded, err := json.MarshalIndent(errandEnvelope(outcome), "", "  ")
 		if err != nil {
@@ -3401,9 +3412,9 @@ func parseSlots(raw string) (*int, error) {
 }
 
 // runErrand is `codeaf do` on the run engine: the same errand as the road above
-// — the same store, the same worker, the same exit ladder and the same JSON
-// envelope — dispatched by [internal/run]'s supervisor over the project's own
-// plan store instead of by the resident's reconciler. It is taken whenever the
+// — the same worker, the same exit ladder and the same JSON envelope —
+// dispatched by [internal/run]'s supervisor over a private plan store instead
+// of by the resident's reconciler. It is taken whenever the
 // bash belt is on ([session.BashBeltAsked]), which it is unless the person set
 // CODEAF_TASK_BELT to one of the words that turn it off, because the worker it
 // dispatches is the belt's.
@@ -3420,10 +3431,10 @@ func parseSlots(raw string) (*int, error) {
 // envelope calls the deliverable. Nothing here compiles or plans — the ask the
 // door was handed is the whole assignment, which is the same verbatim contract
 // the resident road keeps.
-func runErrand(request doRequest, seats config.Seats) (headlessOutcome, error) {
+func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, runErr error) {
 	// A FLAG THIS ROAD CANNOT HONOUR IS REFUSED IN WORDS, NEVER DROPPED. `--db`
-	// names a store the older engine works in; a run keeps its plan in the
-	// working copy's own store instead, and a run that quietly worked somewhere
+	// names a store the older engine works in; a run keeps its plan in its own
+	// private folder instead, and a run that quietly worked somewhere
 	// other than the store it was pointed at would leave the person reading an
 	// untouched file for the answer.
 	if strings.TrimSpace(request.database) != "" {
@@ -3458,6 +3469,20 @@ func runErrand(request doRequest, seats config.Seats) (headlessOutcome, error) {
 	if err != nil {
 		return headlessOutcome{}, err
 	}
+	// THE DIRECTORY IS ADMITTED BEFORE THE PRIVATE RECORD. The older road
+	// creates a missing workspace while building its brain; this road must do
+	// so here, and refuse a file here, before opening a record or a worker.
+	if info, statErr := os.Stat(workspace); statErr == nil {
+		if !info.IsDir() {
+			return headlessOutcome{}, fmt.Errorf("%s is not a directory", workspace)
+		}
+	} else if os.IsNotExist(statErr) {
+		if err := os.MkdirAll(workspace, 0o700); err != nil {
+			return headlessOutcome{}, fmt.Errorf("create directory %s: %w", workspace, err)
+		}
+	} else {
+		return headlessOutcome{}, fmt.Errorf("inspect directory %s: %w", workspace, statErr)
+	}
 	// THE RUN WORKS IN PLACE AND COMMITS NOTHING, which is what `--dir` has
 	// always promised: "the directory to work in, edited in place". The copy is
 	// read before the run starts so that, afterwards, the files this run names
@@ -3466,10 +3491,29 @@ func runErrand(request doRequest, seats config.Seats) (headlessOutcome, error) {
 	// run's business ([session.RunTreeSnapshot]).
 	before := session.SnapshotRunTree(workspace)
 	title := topicTitle(request.task)
-	store, err := session.OpenRunPlan(workspace, title, request.task)
+	_, recordDir, _, err := headlessStore("")
 	if err != nil {
 		return headlessOutcome{}, err
 	}
+	admitted := false
+	// The record is private and unique per invocation. The existing headless
+	// home owns both its location and the rule for when it survives a run.
+	defer func() {
+		if !admitted {
+			_ = os.RemoveAll(recordDir)
+			return
+		}
+		if !keepPrivateStore(request.keep, trace.Enabled(), errandSucceeded(outcome, runErr)) {
+			_ = os.RemoveAll(recordDir)
+			return
+		}
+		outcome.recordKept = recordDir
+	}()
+	store, err := session.OpenRunPlanAt(filepath.Join(recordDir, "plandb.db"), title, request.task)
+	if err != nil {
+		return headlessOutcome{}, err
+	}
+	admitted = true
 	defer store.Close()
 
 	completerFor := request.newBeltCompleter
@@ -3540,22 +3584,16 @@ func runErrand(request doRequest, seats config.Seats) (headlessOutcome, error) {
 	// files are those paths and no others, on every ending — a run stopped short
 	// still left its edits on disk, and a caller has to be able to find them.
 	errand.Artifacts = landedPaths(workspace, before.Changed())
-	// `--keep` ASKED FOR THE RECORD BY NAME. On this road the record is the
-	// working copy's own plan store, which is never deleted, so the flag's
-	// promise is kept by saying where it is.
-	if request.keep && request.stderr != nil {
-		fmt.Fprintf(request.stderr, "record kept at %s\n", session.PlanStorePath(workspace))
-	}
 	return errand, nil
 }
 
 // runRoadRefusesStore is the sentence `codeaf do --db` answers on the run
 // engine. The flag names a store the older engine works in, and a run keeps its
-// plan in the directory it works in, so there is nothing for the flag to point
+// plan in a private folder, so there is nothing for the flag to point
 // at; the sentence says where the plan is instead and how to reach the engine
 // that takes the flag.
 const runRoadRefusesStore = "--db names a store only the older engine works in; " +
-	"a run keeps its plan in .codeaf/plandb.db inside the directory it works in. " +
+	"a run keeps its plan in a private folder under the state root's runs directory. " +
 	"Drop --db, or set CODEAF_TASK_BELT=node to run this on the older engine"
 
 // runSpend is the spending bound a run on this road is held to: the dollars
