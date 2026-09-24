@@ -904,7 +904,10 @@ func (a *Agent) presenceSnapshot(now time.Time) SessionPresence {
 		// would leave that window saying `waiting on you` with nothing after it.
 		snapshot.Question = a.presenceAsk()
 	}
-	snapshot.RunningTasks = append(a.presenceTasks(), a.presenceRuns()...)
+	// A RUN ON THE WORKER HARNESS IS WORK OUT TOO, and until it was named here a
+	// window with one in flight read as idle everywhere outside it
+	// ([Agent.presenceBeltRun]).
+	snapshot.RunningTasks = append(append(a.presenceTasks(), a.presenceRuns()...), a.presenceBeltRun()...)
 	snapshot.Jobs = a.presenceJobs()
 	return snapshot
 }

@@ -58,6 +58,13 @@ type TaskCopyRecord struct {
 	// landing outlives the run that made the world.
 	Rung GroundRung `json:"rung,omitempty"`
 	Seal string     `json:"seal,omitempty"`
+	// CheckBase is the commit the copy stood on when it was cut, before any
+	// worker could commit in it. It is what the run's list of touched files is
+	// read against ([runTouchedFiles]), so a run carried on tomorrow can still
+	// say every file it changed rather than only the ones since it was picked
+	// up. A record written before this field existed has none, and its list
+	// reads as unknown rather than as a guess.
+	CheckBase string `json:"checkBase,omitempty"`
 }
 
 // runCopyOf writes a live run's copy down. It is taken from the tree the run is
@@ -77,6 +84,9 @@ func runCopyOf(tree taskTree) *TaskCopyRecord {
 		HomeSha: tree.homeSha,
 		Rung:    tree.rung,
 		Seal:    tree.seal,
+		// The name is kept whole across the seam: a record is written once and
+		// read back by every later life of the run.
+		CheckBase: tree.checkBase,
 	}
 }
 
@@ -144,7 +154,10 @@ func runCopyTree(record *TaskCopyRecord, place Place) (taskTree, error) {
 		mode:    record.Mode,
 		rung:    record.Rung,
 		seal:    record.Seal,
-		place:   place,
+		// The commit the copy was cut from, for the list of files the run
+		// touched across every life it has had ([runTouchedFiles]).
+		checkBase: record.CheckBase,
+		place:     place,
 		// A SHELL WORKER'S COPY, which is what a run's always is: its workers
 		// edit through bash and fill no write ledger (task_run_belt.go states it
 		// where the copy is first made).

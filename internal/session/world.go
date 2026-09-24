@@ -681,7 +681,9 @@ func rollUp(rows []TaskIndexEntry, held SessionRow) TaskRollup {
 		switch {
 		case held.Runs(row):
 			rollup.Running++
-		case row.Live():
+		case row.Live(), row.Status == string(TaskInterrupted):
+			// A run nothing is driving any more is incomplete whether its row
+			// still claims running or already says interrupted.
 			rollup.Incomplete++
 		case row.Status == string(TaskFailed):
 			rollup.Failed++

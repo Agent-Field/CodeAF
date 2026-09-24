@@ -322,7 +322,7 @@ func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
 	// WHAT THE RUN TOUCHED BEFORE IT WAS STOPPED is read while its copy still
 	// stands, for [Agent.landBeltRun]'s reason: keeping the work may give the copy
 	// back, and the row a stopped run leaves names its files like any other.
-	touched, unread := runTouchedFiles(run.tree)
+	touched, unread := runTouchedFiles(run.tree, true)
 	merge, changed := keptWork(run.tree, run.title, nil, a.signsGitWork())
 	report := stopBecause(taskStoppedWord, why)
 	if merge != mergeInPlace {

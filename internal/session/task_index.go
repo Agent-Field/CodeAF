@@ -761,10 +761,16 @@ func (a *Agent) closeInflightTaskIndexRows() {
 		if row.SessionID != session || !row.Live() || held[strings.TrimSpace(row.ID)] {
 			continue
 		}
-		closed := row
-		closed.Status = string(TaskFailed)
-		closed.Outcome = taskInterruptedOutcome
-		closed.EndedAt = now
+		// A RUN ON THE WORKER HARNESS IS CLOSED IN ITS OWN WORD, `interrupted`,
+		// with the files its copy holds so far ([Agent.interruptedRunRow]); a
+		// run carried on and finished later writes the row that supersedes it.
+		closed, isRun := a.interruptedRunRow(row, now)
+		if !isRun {
+			closed = row
+			closed.Status = string(TaskFailed)
+			closed.Outcome = taskInterruptedOutcome
+			closed.EndedAt = now
+		}
 		appendTaskIndex(path, closed)
 	}
 }

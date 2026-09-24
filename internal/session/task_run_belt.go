@@ -439,6 +439,10 @@ func (a *Agent) startOrJoinTaskRun(ctx context.Context, id uint64, title, brief 
 		// [planStoreID]'s spelling, which is the one the plan read answers under.
 		PlanTask: planStoreID(storeID),
 	})
+	// AND THE PROJECT'S RECORD SAYS IT IS RUNNING, from the same breath, so home,
+	// the sessions page and every other window see work out rather than an idle
+	// window ([Agent.recordBeltRunStart]).
+	a.recordBeltRunStart(run)
 
 	go a.driveBeltRun(runCtx, engine, run, a.beltRunSpec(run, brief))
 	return false, nil
@@ -809,6 +813,11 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 		// it ([TaskInterrupted]). Landing it here put the work into the folder of
 		// a person who had closed the window on it, and settling the row said
 		// `failed` about work that had not failed.
+		//
+		// THE PROJECT'S RECORD IS TOLD THE SAME WORD, with the files touched so
+		// far, so the run does not vanish from every other window's reading until
+		// somebody carries it on ([Agent.recordBeltRunInterrupted]).
+		a.recordBeltRunInterrupted(run, summary.USD)
 		return
 	}
 	// EVERY OTHER ENDING IS WRITTEN ON THE RUN'S OWN TASK. The engine writes the
@@ -877,7 +886,7 @@ func (a *Agent) landBeltRun(ctx context.Context, engine RunEngine, run *beltRun)
 	// THE COPY IS GIVEN BACK: the copy is the one place the whole of the run's
 	// work still stands against the commit it was cut from, and the merge below
 	// is what takes it away.
-	touched, unread := runTouchedFiles(run.tree)
+	touched, unread := runTouchedFiles(run.tree, false)
 	if err != nil {
 		if g := a.graph(); g != nil {
 			g.planNote("the run's landing failed: " + err.Error())
