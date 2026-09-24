@@ -121,9 +121,9 @@ func TestTheTasksVerbsOnTheStripAreTheVerbsInTheFoot(t *testing.T) {
 		keys += string(v.key)
 	}
 	if keys != "xop" {
-		t.Fatalf("the running row offers %q, want close, folder and copy", keys)
+		t.Fatalf("the running row offers %q, want stop, folder and copy", keys)
 	}
-	if !strings.Contains(a.taskSheetKeysLine(), "close") {
+	if !strings.Contains(a.taskSheetKeysLine(), "stop") {
 		t.Fatalf("the foot does not name the verb the row has: %q", a.taskSheetKeysLine())
 	}
 
@@ -133,7 +133,7 @@ func TestTheTasksVerbsOnTheStripAreTheVerbsInTheFoot(t *testing.T) {
 		t.Fatal("→ on a row with a verb opened no strip")
 	}
 	strip := plain(strings.Join(a.verbStripRow(a.width), "\n"))
-	if !strings.Contains(strip, "x close") {
+	if !strings.Contains(strip, "x stop") {
 		t.Fatalf("the strip does not draw the verb: %q", strip)
 	}
 }

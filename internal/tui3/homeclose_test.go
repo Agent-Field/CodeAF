@@ -118,19 +118,12 @@ func TestSessionsConversationHasTheSameCloseDeleteAndCancelActions(t *testing.T)
 func TestNestedTaskDeleteKeepsItsConversationAndSibling(t *testing.T) {
 	lab := newSwitchLab(t)
 	lab.task("-beta", session.TaskIndexEntry{ID: "root", SessionID: "bbbb000000000001", Title: "Parent task", Status: string(session.TaskDone), EndedAt: lab.now})
-	lab.task("-beta", session.TaskIndexEntry{ID: "t1", Parent: "root", SessionID: "bbbb000000000001", Title: "read 40 filings", Status: string(session.TaskRunning)})
+	lab.task("-beta", session.TaskIndexEntry{ID: "t1", Parent: "root", SessionID: "bbbb000000000001", Title: "read 40 filings", Status: string(session.TaskDone), EndedAt: lab.now})
 	lab.task("-beta", session.TaskIndexEntry{Parent: "root", ID: "sibling", SessionID: "bbbb000000000001", Title: "Keep sibling", Status: string(session.TaskDone), EndedAt: lab.now})
+	lab.task("-beta", session.TaskIndexEntry{ID: "child", Parent: "t1", SessionID: "bbbb000000000001", Title: "Child", Status: string(session.TaskDone), EndedAt: lab.now})
+	lab.task("-beta", session.TaskIndexEntry{ID: "grandchild", Parent: "child", SessionID: "bbbb000000000001", Title: "Grandchild", Status: string(session.TaskDone), EndedAt: lab.now})
 	a := lab.open(180, 60)
 	owner := selectHomeTask(t, a, "t1")
-	drive(t, a, key("right"), key("x"))
-	a.taskSheet.query.setText("read 40 filings")
-	a.taskSheetTyped()
-	for _, at := range a.taskSheet.stops(a) {
-		a.taskSheet.cursor = at
-		if item, ok := a.taskSheetCurrent(); ok && item.entry.ID == "t1" {
-			break
-		}
-	}
 	drive(t, a, key("right"), key("right"), key("x"))
 	if a.strip.prompt == "" {
 		t.Fatal("nested delete did not ask")
@@ -147,11 +140,11 @@ func TestNestedTaskDeleteKeepsItsConversationAndSibling(t *testing.T) {
 	if meta.DeletedTasks["sibling"] {
 		t.Fatal("task deletion included a sibling")
 	}
-	if !meta.DeletedTasks["t1"] {
+	if !meta.DeletedTasks["t1"] || !meta.DeletedTasks["child"] || !meta.DeletedTasks["grandchild"] {
 		t.Fatal("task deletion was not permanent")
 	}
 	for _, item := range a.tasksFiltered().items {
-		if item.entry.SessionID == owner.ID && item.entry.ID == "t1" {
+		if item.entry.SessionID == owner.ID && (item.entry.ID == "t1" || item.entry.ID == "child" || item.entry.ID == "grandchild") {
 			t.Fatal("deleted task reappeared")
 		}
 	}

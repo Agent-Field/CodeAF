@@ -22,7 +22,7 @@ func (a *app) askRecordDelete(row session.SessionRow, task *session.TaskIndexEnt
 	}
 	detail := "stops this conversation and deletes all its tasks"
 	if entry != nil {
-		detail = "deletes only this task's saved record"
+		detail = "deletes this task and all its subtasks; keeps the conversation"
 	}
 	a.strip = verbStrip{open: true, row: normal.row, prompt: deletePermanentWord + "\n" + detail, verbs: []verb{
 		{key: 'y', word: "yes", do: func() tea.Cmd { return a.deleteRecord(target, entry) }},
@@ -40,6 +40,8 @@ type recordDeletedMsg struct {
 	stopped     bool
 	err         error
 	sessions    bool
+	taskIDs     []string
+	attached    Conversation
 }
 
 // deleteRecord runs shutdown and disk removal off the update loop. The selected
@@ -63,13 +65,33 @@ func (a *app) deleteRecord(row session.SessionRow, task *session.TaskIndexEntry)
 		where = row.ProjectDir
 	}
 	sessions := a.at(pageTasks)
+	var taskRows []session.TaskIndexEntry
+	if task != nil {
+		taskRows = a.taskActionRows(row, *task)
+	}
 	a.deleteBusy = true
 	a.taskRowNotice("deleting…")
 	return a.offLoop(func() func(bool) tea.Cmd {
 		out := recordDeletedMsg{key: key, front: front, row: row, task: task, sessions: sessions}
 		done := func(bool) tea.Cmd { return a.recordDeleted(out) }
 		if task != nil {
-			out.err = session.DeleteTaskRecord(row.Dir, row.ID, task.ID)
+			if owner == nil && session.InUse(row.Transcript) {
+				if open == nil || a.shared {
+					out.err = fmt.Errorf("open this conversation before deleting its task records")
+					return done
+				}
+				out.attached, out.err = open(row.Workspace, row.Transcript)
+				if out.err != nil {
+					return done
+				}
+				if filepath.Clean(out.attached.SessionFile) != filepath.Clean(row.Transcript) {
+					out.err = fmt.Errorf("conversation identity changed; task was not deleted")
+					return done
+				}
+				owner = out.attached.Agent
+			}
+			rows, _ := taskActionReading(owner, row.ID, taskRows)
+			out.taskIDs, out.err = session.DeleteTaskTree(row.Dir, row.ID, task.ID, rows)
 			return done
 		}
 		// A replacement is created before ending the foreground agent, so a failed
@@ -118,7 +140,7 @@ func (a *app) deleteRecord(row session.SessionRow, task *session.TaskIndexEntry)
 
 func (a *app) recordDeleted(msg recordDeletedMsg) tea.Cmd {
 	a.deleteBusy = false
-	var cmd tea.Cmd
+	cmd := a.keepTaskActionOwner(msg.attached)
 	if msg.err == nil {
 		if a.deletedRecords == nil {
 			a.deletedRecords = make(map[tasksKey]bool)
@@ -128,6 +150,9 @@ func (a *app) recordDeleted(msg recordDeletedMsg) tea.Cmd {
 			id = msg.task.ID
 		}
 		a.deletedRecords[tasksKey{session: msg.row.ID, id: id}] = true
+		for _, taskID := range msg.taskIDs {
+			a.deletedRecords[tasksKey{session: msg.row.ID, id: taskID}] = true
+		}
 		a.comp.tasks = a.keepTaskRecords(a.comp.tasks)
 	}
 	if msg.task == nil && (msg.stopped || msg.err == nil) {
@@ -202,7 +227,7 @@ func (a *app) keepTaskRecords(rows []session.TaskIndexEntry) []session.TaskIndex
 	}
 	kept := make([]session.TaskIndexEntry, 0, len(rows))
 	for _, row := range rows {
-		if !a.deletedRecords[tasksKey{session: row.SessionID}] && !a.deletedRecords[tasksKeyOf(row)] {
+		if !a.deletedRecords[tasksKey{session: row.SessionID}] && !a.deletedRecords[tasksKeyOf(row)] && !a.deletedRecords[tasksKey{session: row.SessionID, id: row.Parent}] && !a.deletedRecords[tasksKey{session: row.SessionID, id: row.PlanID}] {
 			kept = append(kept, row)
 		}
 	}
@@ -221,6 +246,18 @@ func (a *app) withoutDeletedConversations(world session.World) session.World {
 		rows := make([]session.SessionRow, 0, len(project.Sessions))
 		for _, row := range project.Sessions {
 			if !a.deletedRecords[tasksKey{session: row.ID}] {
+				row.Tasks.Rows = a.keepTaskRecords(row.Tasks.Rows)
+				// Plan rows also read these tombstones when a stale world is returned.
+				deleted := make(map[string]bool)
+				for id, gone := range row.DeletedTasks {
+					deleted[id] = gone
+				}
+				for key, gone := range a.deletedRecords {
+					if key.session == row.ID && key.id != "" {
+						deleted[key.id] = gone
+					}
+				}
+				row.DeletedTasks = deleted
 				rows = append(rows, row)
 			}
 		}

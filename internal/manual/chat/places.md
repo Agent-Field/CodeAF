@@ -502,24 +502,21 @@ an older engine snapshot cannot bring the deleted row back.
 This also works for the current conversation: its saved folder and ownership survive
 live-status updates, and deletion prepares a fresh conversation before stopping it.
 
-## Close or put away a task, find an archived task, or reopen it
+## Stop or delete a task — what happened to close or archived tasks?
 
-On home or the Sessions list, select the task, press `→`, then `x close`.
-This hides only that task from home's panels and the unfiltered Sessions list. Its work
-continues if it is running; its record, conversation, and other tasks are unchanged.
-The choice is saved with the conversation and survives reopening the app.
+On Home or Sessions, select the task and press `→`. `x stop` stops active work,
+including queued or waiting tasks and active descendants. Its records remain visible.
+Tasks have no Close operation; previously hidden tasks are shown again.
 
-To recover it, type its name in the Tasks filter. Search includes put-away tasks within
-the selected time window; expand that window if the task is older. Select the matching
-task and press Enter to reopen its record. After Close, `→ x delete` instead asks
-`delete is permanent, are you sure?`. `y` permanently deletes only that task’s record
-and journal; `n` returns to the four actions. A conversation row has the same
-actions, but its confirmed deletion stops the agent and deletes all its tasks.
+Once the whole selected subtree has stopped, `x delete` asks
+`delete is permanent, are you sure?`. `y` deletes the task and all descendants;
+`n` or Escape cancels and restores the four actions. Enter does not confirm deletion.
+New in project, Open folder and Copy project remain available. Deletion removes rows
+immediately and preserves the conversation and unrelated siblings. A Stop action stays
+Stop even if the task finishes while its menu is open.
 
-`n new in project`, `o open folder`, and `p copy project` use the project of the conversation
-that owns the selected task. A new chat is independent of the task. These folder actions
-and per-task put-away are local capabilities; a connected remote window does not offer
-them. Stop remains available from the task’s room when that engine supports it.
+Conversation rows retain Close followed by confirmed Delete. Closing preserves work;
+confirmed conversation deletion stops its agent and deletes every task it owns.
 
 ## standing — what runs without being asked, and where to type on the standing page
 

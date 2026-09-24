@@ -4455,10 +4455,14 @@ With a pointer, the `Stop` at the right end of a room's facts row — the second
 header, under the breadcrumbs — raises the same card.
 Strip chips do not carry a stop button.
 
-**On the Sessions list, open the task's room to stop its work.** The list's four
-actions are Close (then Delete), New in project, Open folder and Copy project.
-Close preserves work. Delete confirms permanent record removal with `y` or cancels
-back to those actions with `n`. Deleting a task record does not delete its conversation.
+**On Home and Sessions, `→ x stop` stops the selected task and its active descendants.**
+Queued or waiting work also offers Stop. This menu action acts directly and keeps its
+records visible; it never closes the conversation. Once the whole subtree has stopped,
+`x delete` asks `delete is permanent, are you sure?`. `y` deletes the task and all its
+descendants; `n` or Escape returns to the four actions. Enter never confirms Delete.
+The remaining actions are New in project, Open folder and Copy project. Tasks have no
+Close action. A Stop press cannot become Delete if work finishes while the menu is open.
+The conversation and unrelated sibling records survive task deletion.
 
 **What stopping does.** A task that is RUNNING has its worker cut off where it stands: the
 turn it was in the middle of ends, and the task settles as `stopped`. A task still QUEUED
@@ -5324,16 +5328,16 @@ The final clauses describe the **page** rather than the row:
   says `esc clear the filter` instead — the one fact the box itself cannot show is that esc
   now means the filter and not the page.
 
-**`→` opens four row actions:** `x close`, `n new in project`, `o open folder`,
-and `p copy project`, where those doors are available. A collapsed conversation or
-family opens first; another `→` reaches its actions. Closed rows offer `x delete`;
-Enter reopens them.
+**`→` opens four row actions:** `x stop` for active tasks or `x delete` for settled
+task subtrees, `n new in project`, `o open folder`, and `p copy project`, where those
+doors are available. A collapsed family opens first; another `→` reaches its actions.
+Conversation rows use `x close` followed by `x delete`; Enter reopens closed conversations.
 
 **Delete asks `delete is permanent, are you sure?`.** `y` deletes, `n` cancels and
 restores the four actions. Enter does not confirm. Deleting a conversation stops its
-agent and removes all its tasks. Deleting a nested task removes only that task's record
-and journal, preserving its parent and siblings. Close alone never stops work or deletes
-history. To stop a task without deleting its record, open its room and use Stop.
+agent and removes all its tasks. Deleting a nested task removes its record and all
+descendant task records and journals, preserving its conversation and unrelated siblings.
+Conversation Close alone never stops work or deletes history. To stop a task without deleting its record, use `→ x stop` on Home or Sessions.
 
 ## Retry an incomplete or errored task — enter retry on its task screen
 

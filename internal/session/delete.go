@@ -68,48 +68,157 @@ func deletionMeta(dir, id string) (Meta, error) {
 	return meta, nil
 }
 
-// DeleteTaskRecord removes only one task's saved citation and journal. The
-// tombstone prevents a late completion or an in-memory graph from publishing
-// the record again. It does not cancel the parent or its other work.
+// TaskRecordTree returns the selected task and every descendant in one owner.
+// The walk uses parent identities, never display order or titles.
+func TaskRecordTree(rows []TaskIndexEntry, owner, task string) []TaskIndexEntry {
+	latest := make(map[string]TaskIndexEntry)
+	for _, row := range rows {
+		if row.SessionID == owner {
+			latest[row.ID] = row
+		}
+	}
+	wanted := map[string]bool{task: true}
+	for changed := true; changed; {
+		changed = false
+		for _, row := range latest {
+			if !wanted[row.ID] && (row.Parent != "" && wanted[row.Parent] || row.PlanID != "" && wanted[row.PlanID]) {
+				wanted[row.ID], changed = true, true
+			}
+			if wanted[row.ID] && row.PlanID != "" && !wanted[row.PlanID] {
+				wanted[row.PlanID], changed = true, true
+			}
+		}
+	}
+	var tree []TaskIndexEntry
+	if root, ok := latest[task]; ok {
+		tree = append(tree, root)
+	}
+	for id, row := range latest {
+		if id != task && wanted[id] {
+			tree = append(tree, row)
+		}
+	}
+	return tree
+}
+
+// TaskRecordActive includes waiting work that can still start or resume. An
+// unknown unfinished state is not permission to permanently remove a record.
+func TaskRecordActive(row TaskIndexEntry) bool {
+	switch row.Status {
+	case string(TaskDone), string(TaskFailed), string(TaskUnverified), string(TaskInterrupted), "cancelled", "canceled":
+		return false
+	default:
+		return true
+	}
+}
+
+// DeleteTaskRecord is the single-root entry point; descendants belong to it.
 func DeleteTaskRecord(dir, owner, task string) error {
+	_, err := DeleteTaskTree(dir, owner, task, nil)
+	return err
+}
+
+// DeleteTaskTree checks the whole subtree before publishing tombstones and
+// removing its saved records. Index writers share this lock, so a late append
+// cannot slip between the activity check and removal. Live rows supplement
+// tasks that have not yet written an index record, including plan rows.
+func DeleteTaskTree(dir, owner, task string, live []TaskIndexEntry) ([]string, error) {
 	if task == "" {
-		return fmt.Errorf("missing task id")
+		return nil, fmt.Errorf("missing task id")
 	}
 	if _, err := deletionMeta(dir, owner); err != nil {
-		return err
+		return nil, err
 	}
 	index := TaskIndexPath((Place{Dir: dir}).Transcript())
-	if err := withMetaLock(dir, func() error {
-		meta, err := deletionMeta(dir, owner)
+	var ids, journals []string
+	err := withTaskIndexLock(index, func() error {
+		rows, err := taskDeletionRows(index)
 		if err != nil {
 			return err
 		}
-		if meta.DeletedTasks == nil {
-			meta.DeletedTasks = make(map[string]bool)
+		// A disk record that became active after the live reading must still
+		// veto deletion. Neither reading can erase the other's active work.
+		tree := TaskRecordTree(append(append([]TaskIndexEntry(nil), rows...), live...), owner, task)
+		if len(tree) == 0 {
+			return fmt.Errorf("task record is no longer available")
 		}
-		meta.DeletedTasks[task] = true
-		delete(meta.ArchivedTasks, task)
-		return SaveMeta(dir, meta)
-	}); err != nil {
+		wanted := make(map[string]bool)
+		for _, row := range tree {
+			wanted[row.ID] = true
+			if row.PlanID != "" {
+				wanted[row.PlanID] = true
+			}
+			if TaskRecordActive(row) {
+				return fmt.Errorf("task or its subtasks are still active; stop them first")
+			}
+		}
+		for _, row := range rows {
+			if row.SessionID == owner && wanted[row.ID] && TaskRecordActive(row) {
+				return fmt.Errorf("task or its subtasks are still active; stop them first")
+			}
+		}
+		if err := withMetaLock(dir, func() error {
+			meta, err := deletionMeta(dir, owner)
+			if err != nil {
+				return err
+			}
+			if meta.DeletedTasks == nil {
+				meta.DeletedTasks = make(map[string]bool)
+			}
+			for id := range wanted {
+				meta.DeletedTasks[id] = true
+				delete(meta.ArchivedTasks, id)
+				ids = append(ids, id)
+			}
+			return SaveMeta(dir, meta)
+		}); err != nil {
+			return err
+		}
+		journals, err = removeTaskIndexRowsLocked(index, owner, wanted)
 		return err
-	}
-	journals, err := removeTaskIndexRows(index, owner, task)
+	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for _, journal := range journals {
-		// Only this conversation's task journals belong to the record. A malformed
-		// citation cannot authorize removing the parent transcript or project files.
+		// A citation never authorizes deleting a parent transcript or project file.
 		root := canonicalPath((Place{Dir: dir}).NodeJournals())
 		path := canonicalPath(journal)
 		rel, err := filepath.Rel(root, path)
 		if err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return err
+				return ids, err
 			}
 		}
 	}
-	return nil
+	return ids, nil
+}
+
+// taskDeletionRows reads every latest record, without the search index's cap.
+// An unreadable index must refuse deletion rather than hide an active child.
+func taskDeletionRows(path string) ([]TaskIndexEntry, error) {
+	file, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	latest := make(map[string]TaskIndexEntry)
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 4096), 4<<20)
+	for scanner.Scan() {
+		var row TaskIndexEntry
+		if json.Unmarshal(scanner.Bytes(), &row) == nil {
+			latest[row.SessionID+"/"+row.ID] = row
+		}
+	}
+	var rows []TaskIndexEntry
+	for _, row := range latest {
+		rows = append(rows, row)
+	}
+	return rows, scanner.Err()
 }
 
 // withTaskIndexLock serializes appends and rewrites across processes. The lock
@@ -137,51 +246,62 @@ func taskRecordDeleted(index string, entry TaskIndexEntry) bool {
 		return false
 	}
 	meta, _ := LoadMeta(filepath.Join(filepath.Dir(index), entry.SessionID))
-	return meta.DeletedTasks[entry.ID]
+	return meta.DeletedTasks[entry.ID] || meta.DeletedTasks[entry.Parent] || meta.DeletedTasks[entry.PlanID]
 }
 
 // removeTaskIndexRows retains every unrelated line, including unknown older
 // records, rather than round-tripping the bounded public index reading.
 func removeTaskIndexRows(path, owner, task string) ([]string, error) {
+	var tasks map[string]bool
+	if task != "" {
+		tasks = map[string]bool{task: true}
+	}
 	var journals []string
 	err := withTaskIndexLock(path, func() error {
-		src, err := os.Open(path)
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		defer src.Close()
-		dst, err := os.CreateTemp(filepath.Dir(path), ".tasks-delete-*")
-		if err != nil {
-			return err
-		}
-		defer os.Remove(dst.Name())
-		defer dst.Close()
-		scanner := bufio.NewScanner(src)
-		scanner.Buffer(make([]byte, 4096), 4<<20)
-		for scanner.Scan() {
-			var entry TaskIndexEntry
-			if json.Unmarshal(scanner.Bytes(), &entry) == nil && entry.SessionID == owner && (task == "" || entry.ID == task) {
-				if journal := TaskRecordPath(entry.TranscriptURI); journal != "" {
-					journals = append(journals, journal)
-				}
-				continue
-			}
-			if _, err := dst.Write(append(append([]byte(nil), scanner.Bytes()...), '\n')); err != nil {
-				return err
-			}
-		}
-		if err := scanner.Err(); err != nil {
-			return err
-		}
-		if err := dst.Close(); err != nil {
-			return err
-		}
-		return os.Rename(dst.Name(), path)
+		var err error
+		journals, err = removeTaskIndexRowsLocked(path, owner, tasks)
+		return err
 	})
 	return journals, err
+}
+
+func removeTaskIndexRowsLocked(path, owner string, tasks map[string]bool) ([]string, error) {
+	var journals []string
+	src, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer src.Close()
+	dst, err := os.CreateTemp(filepath.Dir(path), ".tasks-delete-*")
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(dst.Name())
+	defer dst.Close()
+	scanner := bufio.NewScanner(src)
+	scanner.Buffer(make([]byte, 4096), 4<<20)
+	for scanner.Scan() {
+		var entry TaskIndexEntry
+		if json.Unmarshal(scanner.Bytes(), &entry) == nil && entry.SessionID == owner && (tasks == nil || tasks[entry.ID]) {
+			if journal := TaskRecordPath(entry.TranscriptURI); journal != "" {
+				journals = append(journals, journal)
+			}
+			continue
+		}
+		if _, err := dst.Write(append(append([]byte(nil), scanner.Bytes()...), '\n')); err != nil {
+			return nil, err
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	if err := dst.Close(); err != nil {
+		return nil, err
+	}
+	return journals, os.Rename(dst.Name(), path)
 }
 
 // keepTaskRecords also filters live graph snapshots and older writers' late
@@ -196,7 +316,7 @@ func keepTaskRecords(index string, rows []TaskIndexEntry) []TaskIndexEntry {
 			deleted = meta.DeletedTasks
 			byOwner[row.SessionID] = deleted
 		}
-		if !deleted[row.ID] {
+		if !deleted[row.ID] && !deleted[row.Parent] && !deleted[row.PlanID] {
 			kept = append(kept, row)
 		}
 	}

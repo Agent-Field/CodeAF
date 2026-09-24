@@ -563,3 +563,29 @@ func TestPlanStepDisplayFactsDoNotRewriteTrajectory(t *testing.T) {
 		t.Fatalf("PlanStep.Command = %q, want %q", steps[0].Command, command)
 	}
 }
+
+func TestDeletedPlanTaskIsAbsentFromListingsAndPages(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, planStoreFilename)
+	seedPlanStore(t, path, "chat-a", plandb.TaskSpec{ID: "alpha", Title: "Alpha"}, plandb.TaskSpec{ID: "beta", Title: "Beta"})
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	armPlanStore(t, agent, path, "chat-a")
+	owner, _ := deletionFixture(t)
+	agent.config.SessionFile = filepath.Join(owner, "transcript.jsonl")
+	meta, _ := LoadMeta(owner)
+	meta.DeletedTasks = map[string]bool{"t-alpha": true}
+	if err := SaveMeta(owner, meta); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range agent.PlanTasks() {
+		if row.ID == "t-alpha" {
+			t.Fatal("deleted plan task returned")
+		}
+	}
+	if _, ok := agent.PlanTaskPage("t-alpha"); ok {
+		t.Fatal("deleted task page reopened")
+	}
+	if _, ok := agent.PlanTaskPage("t-beta"); !ok {
+		t.Fatal("sibling task page lost")
+	}
+}

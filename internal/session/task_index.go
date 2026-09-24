@@ -122,6 +122,8 @@ type TaskIndexEntry struct {
 	// root. It is additive: rows written before families entered the index
 	// decode as roots, which is exactly what they were.
 	Parent string `json:"parent,omitempty"`
+	// PlanID links this graph record to its plan row without matching titles.
+	PlanID string `json:"planId,omitempty"`
 	// Name is the slug an "@" mention resolves: the title, kebab-cased
 	// ([TaskSlug]). Two tasks may share one — a project that fixed the same
 	// crash twice — and the newest wins, because "the nil-map task" said out
@@ -755,7 +757,12 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 	// written so far while it is still running is presence's to report
 	// ([Agent.presenceTasks]), not this file's.
 	files, wrote := taskFileCitations(n.changed)
+	planID := ""
+	if n.spec.planID != "" {
+		planID = planStoreID(n.spec.planID)
+	}
 	entry := TaskIndexEntry{
+		PlanID: planID,
 		ID:     strconv.FormatUint(n.id, 10),
 		Parent: taskIndexParent(n.parent),
 		Name:   TaskSlug(n.spec.title),

@@ -3358,13 +3358,16 @@ three recently closed conversations dimmed below the open list.
 
 ## Permanently delete from Home or Sessions — y confirms, n cancels
 
-Close the selected conversation or task with `→` then `x close`. Its work continues.
+Close the selected conversation with `→` then `x close`. Its work continues.
 Open the actions again: `x delete` now asks `delete is permanent, are you sure?`.
 `y` confirms. `n` or Escape cancels and restores the four actions; Enter does not confirm.
 In Sessions, press `→` again after opening a collapsed family to reach these actions.
 Enter on a closed row reopens it instead of deleting it.
 
 Confirmed conversation deletion stops its agent and removes the conversation and all
-its tasks. A nested task deletion removes only that task's saved record and journal.
+its tasks. Tasks have no Close action: `→ x stop` stops active work, including queued or waiting
+tasks. Once the entire task subtree has stopped, `→ x delete` offers the same y/n
+confirmation. Deletion removes the selected task and all descendants. A Stop press
+never changes into Delete if the task finishes while the menu is open.
 Borrowed project files and sibling tasks remain. Permanent deletion has no undo and
 is not offered for remotely hosted files.
