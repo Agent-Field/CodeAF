@@ -1,6 +1,11 @@
 package remote
 
-import teamstore "github.com/Agent-Field/codeaf/internal/teams"
+import (
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/session"
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+)
 
 // ── TEAMS ACROSS THE WIRE ───────────────────────────────────────────────────
 //
@@ -80,4 +85,46 @@ type TeamsTrafficArgs struct {
 type TeamsTraffic struct {
 	Entries []teamstore.Entry `json:"entries,omitempty"`
 	Stamp   string            `json:"stamp,omitempty"`
+}
+
+// ── AND THE TWO ASKS THE WALL MAKES OF THE ENGINE'S MODEL ───────────────────
+//
+// A team's suggested name and Organize's proposals are one cheap call each on
+// the naming role (internal/session's teamname.go and teampropose.go), made by
+// the ENGINE because the model, its key and its bill are on the engine's
+// machine. Over --host the wall is on the laptop, so without these two doors
+// the default road never asked: the card kept the word it opened with and
+// Organize showed the folder pass alone, in every terminal and in no test.
+//
+// THEY CARRY A BUDGET, NOT A DEADLINE, for [RefreshRunSummaryArgs.Budget]'s
+// reason: the engine's clock is not this one's. The wall bounds each ask
+// (internal/tui3's teamNameWait and organizeWait), and the engine bounds the
+// model call by the same span so it stops when the wall stops listening.
+//
+// [Welcome.TeamAsk] says the engine answers them. An engine from before them
+// sends no field, and this end refuses at once rather than spend a round trip
+// on a refusal, which is exactly the failure the wall already turns into the
+// word it holds and the folder pass alone.
+const (
+	// MethodTeamsName asks the engine's naming role for one short name for a
+	// group of conversations, given their titles.
+	MethodTeamsName = "Teams.Name" // TeamNameArgs → string
+	// MethodTeamsPropose asks the engine's naming role which teams the
+	// conversations offered could form and which existing teams more of them
+	// belong in.
+	MethodTeamsPropose = "Teams.Propose" // TeamProposeArgs → session.TeamProposal
+)
+
+// TeamNameArgs is the titles a group is named from, and how long the wall
+// will wait. Zero Budget is a caller with no deadline.
+type TeamNameArgs struct {
+	Titles []string      `json:"titles"`
+	Budget time.Duration `json:"budget,omitempty"`
+}
+
+// TeamProposeArgs is everything one Organize ask is about, and how long the
+// wall will wait.
+type TeamProposeArgs struct {
+	In     session.TeamProposalInput `json:"in"`
+	Budget time.Duration             `json:"budget,omitempty"`
 }

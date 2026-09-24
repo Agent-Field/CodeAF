@@ -1154,6 +1154,18 @@ type Welcome struct {
 	// back to the laptop's own teams file, which the far session cannot see.
 	Teams bool `json:"teams,omitempty"`
 
+	// TeamAsk says this engine ANSWERS THE WALL'S TWO MODEL ASKS
+	// ([MethodTeamsName], [MethodTeamsPropose]): its agent names a group of
+	// conversations and proposes teams on its own naming role.
+	//
+	// IT IS CARRIED FOR [Welcome.Folders]' REASON: a *remote.Agent always has
+	// NameTeam and ProposeTeams on it, so the wall's type assertion answers yes
+	// for every connection and says nothing about the far machine. ABSENCE IS
+	// false, and false is refused at this end before anything is written, which
+	// the wall reads as it reads any failed ask: the word it already holds, and
+	// Organize's folder pass alone.
+	TeamAsk bool `json:"teamAsk,omitempty"`
+
 	// News says this engine SENDS THE STATUS LINE'S NEWS — the "phase" and
 	// "lane" frames the live rate and the `via <machine>` rider are drawn from
 	// (news.go) — for the conversation this surface arrived in.
