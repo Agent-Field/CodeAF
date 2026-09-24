@@ -496,7 +496,9 @@ even when selected. Its running work keeps its progress marks. Closing from Home
 Sessions, the conversation tab or the chats menu saves the same state: the tab and
 its default `alt+k` entry disappear. The menu's `→ show closed` fold can still find it.
 Enter reopens it and restores its normal name and tab. Confirmed permanent deletion
-removes the conversation from Home, Sessions, tabs, the chats menu and reopen history.
+removes the conversation immediately from the current Home or Sessions screen, as well
+as tabs, the chats menu and reopen history. There is no need to leave and return;
+an older engine snapshot cannot bring the deleted row back.
 This also works for the current conversation: its saved folder and ownership survive
 live-status updates, and deletion prepares a fresh conversation before stopping it.
 

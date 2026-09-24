@@ -1109,7 +1109,7 @@ func (a *app) readWorldKnown() (session.World, bool) {
 			Transcript: file, Title: a.title, Workspace: a.workspace, Model: a.model,
 		}, time.Now())
 	}
-	return world, true
+	return a.withoutDeletedConversations(world), true
 }
 
 // worldOf is THE SEAM: the walk, and whether it is an answer.
