@@ -1236,7 +1236,7 @@ The complete paste must name one existing local directory. The action row reads
 conversation there without sending the path as a message. Any other key — including
 space, an arrow, Backspace, a shortcut or Shift+Enter — cancels the offer and keeps normal
 editing behavior. A second paste also cancels it. The remaining text is an ordinary
-message for the project selected on the seam; returning to the same path does not rearm
+message for the project selected at the right of the keys row; returning to the same path does not rearm
 it. Clear the box and paste the folder path again to get a fresh offer.
 
 Pasting into existing text, including whitespace or a newline, never activates the offer.
