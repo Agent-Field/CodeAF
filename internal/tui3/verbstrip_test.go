@@ -68,14 +68,14 @@ func TestTheStripCannotOutliveTheRowItWasOpenedOn(t *testing.T) {
 			if a.strip.open {
 				t.Fatalf("%s left the strip standing under a row it was not about:\n%s", walk, screen)
 			}
-			if strings.Contains(screen, "s "+stopActWord) {
+			if strings.Contains(screen, "p copy project") {
 				t.Fatalf("%s left the strip's letters drawn:\n%s", walk, screen)
 			}
 			// AND THE LETTER IS A LETTER AGAIN. This is the half that cost a task:
 			// the strip drawn under the new row made `s` look like that row's verb.
-			drive(t, a, key("s"))
-			if len(agent.asked) != 0 {
-				t.Fatalf("after %s, `s` asked the engine %v", walk, agent.asked)
+			drive(t, a, key("p"))
+			if len(agent.asked) != 0 || strings.HasPrefix(a.taskSheet.actionNote, "copied ") {
+				t.Fatalf("after %s, `p` acted on the old row; engine requests %v", walk, agent.asked)
 			}
 		})
 	}
@@ -98,9 +98,9 @@ func TestTheStripCannotOutliveTheRowAWheelWalksOffIt(t *testing.T) {
 	if a.strip.open {
 		t.Fatal("a wheel tick left the strip standing under a row it was not about")
 	}
-	drive(t, a, key("s"))
-	if len(agent.asked) != 0 {
-		t.Fatalf("after a wheel tick, `s` asked the engine %v", agent.asked)
+	drive(t, a, key("p"))
+	if len(agent.asked) != 0 || strings.HasPrefix(a.taskSheet.actionNote, "copied ") {
+		t.Fatalf("after a wheel tick, `p` acted on the old row; engine requests %v", agent.asked)
 	}
 }
 
@@ -119,8 +119,8 @@ func TestAKeyThatMovesNothingLeavesTheStripStanding(t *testing.T) {
 	if !a.strip.open {
 		t.Fatal("`end` on the last row closed a strip whose row had not moved")
 	}
-	drive(t, a, key("s"))
-	if len(agent.asked) != 1 {
-		t.Fatalf("`s` on the row the strip is still about asked the engine %v", agent.asked)
+	drive(t, a, key("p"))
+	if !strings.HasPrefix(a.taskSheet.actionNote, "copied ") || len(agent.asked) != 0 {
+		t.Fatalf("`p` did not copy the unchanged row: notice=%q, engine requests=%v", a.taskSheet.actionNote, agent.asked)
 	}
 }

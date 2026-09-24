@@ -67,13 +67,13 @@ func TestAWaitingQuestionRidesBehindTheRowDoorOnOneLine(t *testing.T) {
 }
 
 // TestANotelessFootKeepsTheDoorHintAsToday is the control: a task that raised
-// nothing draws the foot it always drew, unchanged.
+// nothing keeps its door and the actions that fit beside it.
 func TestANotelessFootKeepsTheDoorHintAsToday(t *testing.T) {
 	a, _ := tasksFootApp(t)
 	a.width, a.height = 100, 30
 	line := msgFootLine(a)
-	if line != "enter open its room · tab next place · esc home" {
-		t.Fatalf("a foot with nothing to say changed anyway:\n  %q\nwant\n  %q", line, "enter open its room · tab next place · esc home")
+	if line != "enter open its room · → verbs: close, open folder, copy project · tab next place · esc home" {
+		t.Fatalf("a foot with nothing to say changed anyway:\n  %q\nwant\n  %q", line, "enter open its room · → verbs: close, open folder, copy project · tab next place · esc home")
 	}
 	if strings.Contains(line, "waiting in this conversation") {
 		t.Fatalf("a task that raised nothing drew a waiting note: %q", line)
