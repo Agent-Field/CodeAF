@@ -9,25 +9,43 @@ import (
 // Named facts feed both the roomy groups and the compact ranked fallback.
 // A different layout must not invent a second reading of task activity.
 type roomFactFields struct {
-	state, clock, spend, calls, live, model, effort rowField
+	state, clock, spend, calls, live, model, tokens, effort rowField
 }
 
 func (a *app) roomFactsOf(node *taskNode) roomFactFields {
 	work := roomWorkOf(a.roomEntries())
 	model := strings.TrimSpace(node.model)
+	calls := roomCallField(work.calls)
+	// A RUN'S TASK COUNTS ITS STEPS AS THE STORE COUNTS THEM (planroom.go): a
+	// step the engine answered itself is in the record and in the count, and
+	// has no row on the page, so the page's own rows cannot be the count.
+	if plan := a.roomPlan(); plan != nil {
+		calls = rowSay(planStepWords(plan.page.Row.Steps))
+	}
 	return roomFactFields{
 		state:  rowSay(a.roomStateWord(node)),
 		clock:  rowSay(a.roomClock(node)),
 		spend:  rowSay(a.roomSpend(node)),
-		calls:  roomCallField(work.calls),
+		calls:  calls,
 		live:   rowSay(a.roomLiveWord(node, work)),
 		model:  rowSay(model, modelBase(model)),
+		tokens: rowSay(a.roomTokensWord(node)),
 		effort: rowSay(a.taskEffortClause(node)),
 	}
 }
 
+// roomTokensWord is the tokens a RUN'S TASK has read and written, off the
+// store's ledger (planroom.go), and nothing where the ledger names none. A
+// node's page does not say it here: a node's tokens are the live column's.
+func (a *app) roomTokensWord(node *taskNode) string {
+	if a.roomPlan() == nil || node == nil || node.tokens <= 0 {
+		return ""
+	}
+	return tokenWord(node.tokens) + " tok"
+}
+
 func (f roomFactFields) ranked() []rowField {
-	return []rowField{f.state, f.clock, f.spend, f.calls, f.live, f.model, f.effort}
+	return []rowField{f.state, f.clock, f.spend, f.calls, f.live, f.model, f.tokens, f.effort}
 }
 
 // roomGroupedFacts gives the outcome, activity and setup distinct reading
@@ -40,7 +58,7 @@ func (a *app) roomGroupedFacts(node *taskNode, width int, stop string) (string, 
 		if f.live.known() {
 			left += a.pal.muted(rowSep + rowAll([]rowField{f.live}))
 		}
-		right := a.pal.muted(rowAll([]rowField{f.clock, f.spend}))
+		right := a.pal.muted(rowAll([]rowField{f.clock, f.spend, f.tokens}))
 		if stop != "" {
 			right += "   " + a.pal.ink(stop)
 		}
@@ -50,7 +68,7 @@ func (a *app) roomGroupedFacts(node *taskNode, width int, stop string) (string, 
 	}
 	state := strings.TrimSpace(a.roomMark(node) + " " + rowAll([]rowField{f.state}))
 	activity := rowAll([]rowField{f.clock, f.calls, f.live})
-	setup := a.roomSetupInk(rowAll([]rowField{f.model, f.effort, f.spend}), node)
+	setup := a.roomSetupInk(rowAll([]rowField{f.model, f.tokens, f.effort, f.spend}), node)
 	left := state
 	if activity != "" {
 		if left != "" {

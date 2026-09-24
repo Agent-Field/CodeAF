@@ -193,36 +193,39 @@ func TestARunsPartsHangUnderTheNodeRowThatCarriesIt(t *testing.T) {
 	}
 }
 
-// A RUN'S PAGE WEARS THE TASK ROOM'S HEAD: the trail with the way back at its
-// end, and the facts rule led by the state's own mark — the spinner, the one a
-// working row wears on the rail — then the clock and the steps, with the money
-// at the far end. The figures the store has not got are absent, never zero.
-func TestARunsPageWearsTheTaskRoomsHead(t *testing.T) {
+// A RUN'S TASK OPENS THE TASK ROOM AND WEARS ITS HEAD: the trail with the way
+// back at its end, and the facts with the clock, the steps and the money. The
+// figures the store has not got are absent, never zero.
+func TestARunsTaskWearsTheTaskRoomsHead(t *testing.T) {
 	row := session.PlanTaskRow{ID: "t-alpha", Title: "Alpha", Status: "claimed", Steps: 17, USD: 0.02,
 		Started: taskFixtureNow.Add(-4 * time.Minute)}
 	pages := map[string]session.PlanTaskPage{"t-alpha": {Row: row, Description: "the work order",
 		Steps: []session.PlanStep{{Step: 1, Command: "gh issue list", Observation: "12 issues"}}}}
 	a, _ := planAppWith(t, []session.PlanTaskRow{row}, pages)
-	a.paints = 0
-	openPlanPage(t, a)
-	lines := strings.Split(taskSheetText(a), "\n")
-	if !strings.Contains(lines[0], roomCrumbSep+"Alpha") || !strings.HasSuffix(strings.TrimRight(lines[0], " "), taskCardBackWord) {
-		t.Fatalf("the page's first row is not the trail with the way back:\n%s", strings.Join(lines, "\n"))
+	a.height = 40
+	openPlanRoomNow(t, a, "t-alpha")
+	head := plain(strings.Join(a.roomHeadRows(a.width), "\n"))
+	lines := strings.Split(head, "\n")
+	if !strings.Contains(head, "Alpha") || !strings.HasSuffix(strings.TrimRight(lines[0], " "), roomBackWord) {
+		t.Fatalf("the room's head is not the trail with the way back over the task:\n%s", head)
 	}
-	lead := "─ " + tokens.Spinner(0) + " running   4m" + rowSep + "17 steps "
-	if !strings.HasPrefix(lines[1], lead) || !strings.HasSuffix(lines[1], " $0.02 ─") {
-		t.Fatalf("the page's second row is not the facts rule %q … $0.02:\n%s", lead, strings.Join(lines, "\n"))
+	for _, want := range []string{"4m", "$0.02"} {
+		if !strings.Contains(head, want) {
+			t.Fatalf("the room's head does not say %q:\n%s", want, head)
+		}
 	}
-	shell := a.actionLead(session.ActionRun, true)
-	if text := strings.Join(lines, "\n"); !strings.Contains(text, shell+"gh issue list") || !strings.Contains(text, "  12 issues") {
-		t.Fatalf("the page's step is not the room's shell row with its head under it:\n%s", text)
+	if got := roomStepsWord(a); got != "17 steps" {
+		t.Fatalf("the room's facts count %q, want the store's 17 steps", got)
+	}
+	if got := roomCommands(a); len(got) != 1 || got[0] != "gh issue list" {
+		t.Fatalf("the task's step is not the room's shell row: %q", got)
 	}
 
 	// AND A TASK THAT HAS NOT STARTED OR SPENT SAYS NEITHER.
 	bare := session.PlanTaskRow{ID: "t-beta", Title: "Beta", Status: "pending"}
 	b, _ := planAppWith(t, []session.PlanTaskRow{bare}, map[string]session.PlanTaskPage{"t-beta": {Row: bare}})
-	openPlanPage(t, b)
-	facts := strings.Split(taskSheetText(b), "\n")[1]
+	openPlanRoomNow(t, b, "t-beta")
+	facts := plain(strings.Join(b.roomHeadRows(b.width), "\n"))
 	for _, zero := range []string{"$0", "0 steps", "0s"} {
 		if strings.Contains(facts, zero) {
 			t.Fatalf("an unstarted task's facts rule says %q:\n%s", zero, facts)
@@ -232,8 +235,9 @@ func TestARunsPageWearsTheTaskRoomsHead(t *testing.T) {
 
 // A PART WITH NO STEP IN FLIGHT DRAWS NO LIVE LINE. The page used to draw the
 // running mark and the shell lead under a part that had landed, with nothing
-// after them — `◑ $` — because the line was drawn whatever the part's live
-// step said. A part is the rail's row now, and a row with no call says none.
+// after them (`◑ $`), because the line was drawn whatever the part's live
+// step said. A part in the room is the rail's row, and a row with no call says
+// none.
 func TestAPartWithNoStepInFlightDrawsNoLiveLine(t *testing.T) {
 	root := session.PlanTaskRow{ID: "t-root", Title: "Root", Status: "claimed"}
 	landed := session.PlanTaskRow{ID: "t-landed", Parent: "t-root", Title: "Landed part", Status: "done"}
@@ -241,10 +245,11 @@ func TestAPartWithNoStepInFlightDrawsNoLiveLine(t *testing.T) {
 	empty.Live.Step = 3
 	pages := map[string]session.PlanTaskPage{"t-root": {Row: root, Children: []session.PlanTaskRow{landed, empty}}}
 	a, _ := planAppWith(t, []session.PlanTaskRow{root, landed, empty}, pages)
-	openPlanPage(t, a)
-	text := taskSheetText(a)
+	a.height = 40
+	openPlanRoomNow(t, a, "t-root")
+	text := planRoomText(t, a)
 	if !strings.Contains(text, "Landed part") || !strings.Contains(text, "Empty call") {
-		t.Fatalf("the page lacks its parts:\n%s", text)
+		t.Fatalf("the room lacks its parts:\n%s", text)
 	}
 	for _, line := range strings.Split(text, "\n") {
 		trimmed := strings.TrimSpace(strings.TrimLeft(line, " │├└─"))

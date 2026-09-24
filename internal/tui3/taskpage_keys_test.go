@@ -10,82 +10,66 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// ── WHAT A PLAN PAGE'S KEYS DO WHEN THERE IS NOTHING LEFT TO STEER ──────────
+// ── WHAT A RUN'S TASK'S ROOM DOES WITH ITS KEYS WHEN THERE IS NOTHING LEFT TO
+// STEER ─────────────────────────────────────────────────────────────────────
 //
-// The key line is the promise: a page names `x` and `p` only while the task
-// can still be ended or held ([app.tasksPlanKeyWords]). These hold the keys to
-// the same promise, and hold the keys typed before a page opens to the one
-// receiver the page claims for them, its note box.
+// The room offers `x` only while the task can still be ended (planroom.go's
+// [app.planRoomStopTarget]). These hold the keys to that promise, and hold the
+// keys typed before a room opens to the one receiver the room claims for them,
+// its box.
 
-// endPlanPage settles the task on the page that is open, in the store and on
-// the surface both, so a re-read on the paint clock reads the same word.
-func endPlanPage(a *app, counted *railPlanCounter, status string) {
-	id := a.taskSheet.plan.Row.ID
+// endPlanTask settles one store task in the store, so the room's read wears it.
+func endPlanTask(counted *railPlanCounter, id, status string) {
 	counted.setStatus(id, status)
 	if page, ok := counted.planFake.pages[id]; ok {
 		page.Row.Status = status
 		counted.planFake.pages[id] = page
 	}
-	a.taskSheet.plan.Row.Status = status
 }
 
-// AN ENDED RUN'S PAGE RAISES NO STOP CARD. `x` asked "Stop this task?" over a
+// AN ENDED RUN'S ROOM RAISES NO STOP CARD. `x` asked "Stop this task?" over a
 // run that had already finished, and the stop the card then sent changed
-// nothing and was reported as though it had. The key line names neither key
-// there, so neither key acts: both are letters in the note.
-func TestAnEndedRunsPageTakesNeitherTheStopNorTheHold(t *testing.T) {
+// nothing and was reported as though it had. Both keys are letters in the box.
+func TestAnEndedRunsRoomTakesNeitherTheStopNorTheHold(t *testing.T) {
 	a, counted := railTaskPageApp(t, true)
-	clickRail(t, a, 0)
-	if !a.railTaskPlanOn {
-		t.Fatal("the rail row did not open its page")
-	}
-	endPlanPage(a, counted, "done")
-	if foot := a.taskPlanKeys(); strings.Contains(foot, tasksPlanCancelWord) {
-		t.Fatalf("the fixture's ended page still offers the stop: %q", foot)
+	endPlanTask(counted, "2", "done")
+	openPlanRoomNow(t, a, "2")
+	if a.roomPlan() == nil {
+		t.Fatal("the run's room did not open")
 	}
 	drive(t, a, key(stopRaiseKey))
-	if a.stopping() {
-		t.Fatal("x on an ended run's page raised the stop card")
-	}
-	if len(counted.cancelled) != 0 {
-		t.Fatalf("x on an ended run's page asked the store to cancel %v", counted.cancelled)
-	}
-	if !a.railTaskPlanOn {
-		t.Fatal("x on an ended run's page closed the page")
+	if a.stopping() || len(counted.cancelled) != 0 {
+		t.Fatalf("x on an ended run's room raised a card (%t) or cancelled %v", a.stopping(), counted.cancelled)
 	}
 	drive(t, a, key("p"))
 	if len(counted.paused)+len(counted.resumed) != 0 {
-		t.Fatalf("p on an ended run's page asked the store to hold it: %v %v", counted.paused, counted.resumed)
+		t.Fatalf("p on an ended run's room asked the store to hold it: %v %v", counted.paused, counted.resumed)
 	}
-	if got := a.taskSheet.planNote.String(); got != stopRaiseKey+"p" {
-		t.Fatalf("the two letters on an ended page are letters in the note, and the box holds %q", got)
+	if got := string(a.input.value); got != stopRaiseKey+"p" {
+		t.Fatalf("the two letters on an ended room are letters in the box, and the box holds %q", got)
 	}
 }
 
-// AN ENDED PART'S PAGE ASKS THE STORE NOTHING. `x` sent the store's cancel for
-// a part that had finished, and the page drew the store's raw refusal,
-// `task "3" is already terminal`, for a key its own foot never offered.
-func TestAnEndedPartsPageTakesNeitherTheStopNorTheHold(t *testing.T) {
+// AN ENDED PART'S ROOM ASKS THE STORE NOTHING, and draws no refusal for a key
+// it never offered.
+func TestAnEndedPartsRoomTakesNeitherTheStopNorTheHold(t *testing.T) {
 	a, counted := railTaskPageApp(t, true)
-	clickRail(t, a, 0)
-	drive(t, a, key("down"))
-	drive(t, a, key("enter"))
-	if a.taskSheet.plan.Row.ID != "3" {
-		t.Fatalf("the part's page did not open: on %q", a.taskSheet.plan.Row.ID)
+	openPlanRoomNow(t, a, "3")
+	if plan := a.roomPlan(); plan == nil || plan.id != "3" {
+		t.Fatal("the part's room did not open")
 	}
-	endPlanPage(a, counted, "done")
 	counted.refuse = errors.New(`task "3" is already terminal`)
 	drive(t, a, key(stopRaiseKey))
 	drive(t, a, key("p"))
 	if len(counted.cancelled)+len(counted.paused)+len(counted.resumed) != 0 {
-		t.Fatalf("keys on an ended part's page reached the store: cancel %v pause %v resume %v",
+		t.Fatalf("keys on an ended part's room reached the store: cancel %v pause %v resume %v",
 			counted.cancelled, counted.paused, counted.resumed)
 	}
-	if strings.Contains(a.pageMsg, "terminal") {
-		t.Fatalf("an ended part's page drew the store's refusal: %q", a.pageMsg)
+	if strings.Contains(planRoomText(t, a), "terminal") {
+		t.Fatalf("an ended part's room drew the store's refusal:\n%s", planRoomText(t, a))
 	}
-	if got := a.taskSheet.planNote.String(); got != stopRaiseKey+"p" {
-		t.Fatalf("the box on an ended part's page holds %q, want the two letters", got)
+	if got := string(a.input.value); got != stopRaiseKey+"p" {
+		t.Fatalf("the box on an ended part's room holds %q, want the two letters", got)
 	}
 }
 
@@ -108,13 +92,13 @@ func TestAnEndedPlanRowInTheListTakesNeitherKey(t *testing.T) {
 	}
 }
 
-// KEYS TYPED WHILE A PAGE IS ON ITS WAY GO TO ITS NOTE BOX AND NOWHERE ELSE.
-// The held keys were replayed through the page's whole keyboard, so a note
-// that began with the stop key, typed before the page was drawn, cancelled a
-// running part with nothing asked. What a person types at a page they cannot
-// see yet is a note, and a note typed blind is left in the box, unsent, for
-// them to read before they send it.
-func TestKeysTypedWhileAPartsPageOpensAreTheNoteAndNothingElse(t *testing.T) {
+// KEYS TYPED WHILE A ROOM IS ON ITS WAY GO TO ITS BOX AND NOWHERE ELSE. The
+// held keys were replayed through the page's whole keyboard, so a note that
+// began with the stop key, typed before the page was drawn, cancelled a running
+// part with nothing asked. What a person types at a room they cannot see yet is
+// a note, and a note typed blind is left in the box, unsent, for them to read
+// before they send it.
+func TestKeysTypedWhileAPartsRoomOpensAreTheBoxAndNothingElse(t *testing.T) {
 	a, counted := railTaskPageApp(t, true)
 	counted.setStatus("3", "running")
 	part := counted.planFake.pages["3"]
@@ -135,48 +119,25 @@ func TestKeysTypedWhileAPartsPageOpensAreTheNoteAndNothingElse(t *testing.T) {
 	close(held.release)
 	drive(t, a, <-answer)
 
-	if !a.railTaskPlanOn || a.taskSheet.plan.Row.ID != "3" {
-		t.Fatalf("the answer did not open the part's page: on %v, task %q", a.railTaskPlanOn, a.taskSheet.plan.Row.ID)
+	if plan := a.roomPlan(); plan == nil || plan.id != "3" {
+		t.Fatalf("the answer did not open the part's room: room %v", a.roomOpen())
 	}
 	if len(counted.cancelled) != 0 || a.stopping() {
-		t.Fatalf("a note typed before the page opened ended the part: cancelled %v, card up %t", counted.cancelled, a.stopping())
+		t.Fatalf("a note typed before the room opened ended the part: cancelled %v, card up %t", counted.cancelled, a.stopping())
 	}
 	if len(counted.noted) != 0 {
-		t.Fatalf("a note typed blind was sent before its page was seen: %v", counted.noted)
+		t.Fatalf("a note typed blind was sent before its room was seen: %v", counted.noted)
 	}
-	if got := a.taskSheet.planNote.String(); got != typed {
-		t.Fatalf("the page's box holds %q, want every key typed while it opened: %q", got, typed)
-	}
-}
-
-// CTRL+O MEASURES THE BRIEF AT THE WIDTH THE PAGE DRAWS IT. It counted at the
-// conversation's body width, which is narrower by the rail, so a brief the
-// page drew whole in three rows still toggled a fold nobody could see (#1289).
-func TestCtrlOCountsTheBriefAtThePagesOwnWidth(t *testing.T) {
-	a, _ := railTaskPageApp(t, true)
-	clickRail(t, a, 0)
-	if !a.railTaskPlanOn {
-		t.Fatal("the rail row did not open its page")
-	}
-	desc := strings.TrimSpace(strings.Repeat("word ", 110))
-	// THE PAGE DRAWS ITS BODY ONE CELL IN FROM EACH EDGE OF THE WHOLE FRAME.
-	drawn, narrow := planBriefRows(desc, a.width-2), planBriefRows(desc, a.bodyWidth())
-	if len(drawn) > briefFoldLines || len(narrow) <= briefFoldLines {
-		t.Fatalf("fixture: the brief wraps to %d rows on the page and %d at the body width; want at most %d and more than %d",
-			len(drawn), len(narrow), briefFoldLines, briefFoldLines)
-	}
-	a.taskSheet.plan.Description = desc
-	drive(t, a, tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
-	if a.taskSheet.planBriefFull {
-		t.Fatal("ctrl+o toggled a fold on a brief the page draws whole")
+	if got := string(a.input.value); got != typed {
+		t.Fatalf("the room's box holds %q, want every key typed while it opened: %q", got, typed)
 	}
 }
 
 // ── THE NOTE'S RECEIPT ──────────────────────────────────────────────────────
 
-// noteTwoPages is a list with two ordinary tasks, the first one's page open and
-// a note typed into its box.
-func noteTwoPages(t *testing.T) (*app, *planFake, []session.PlanTaskRow) {
+// noteTwoRooms is a list with two ordinary tasks, the first one's room open
+// from the tasks place and a note typed into its box.
+func noteTwoRooms(t *testing.T) (*app, *planFake, []session.PlanTaskRow) {
 	t.Helper()
 	rows := []session.PlanTaskRow{
 		{ID: "t-alpha", Parent: "t-run", Title: "Alpha", Status: "claimed"},
@@ -191,8 +152,8 @@ func noteTwoPages(t *testing.T) (*app, *planFake, []session.PlanTaskRow) {
 		t.Fatal("the place refused to open over a plan")
 	}
 	drive(t, a, key("enter"))
-	if !a.taskSheet.planOn || a.taskSheet.plan.Row.ID != "t-alpha" {
-		t.Fatalf("enter did not open alpha's page: on %v, task %q", a.taskSheet.planOn, a.taskSheet.plan.Row.ID)
+	if plan := a.roomPlan(); plan == nil || plan.id != "t-alpha" || a.at(pageTasks) {
+		t.Fatalf("enter did not open alpha's room over the conversation: room %v, tasks %v", a.roomOpen(), a.at(pageTasks))
 	}
 	for _, r := range "a note" {
 		drive(t, a, key(string(r)))
@@ -200,10 +161,10 @@ func noteTwoPages(t *testing.T) (*app, *planFake, []session.PlanTaskRow) {
 	return a, fake, rows
 }
 
-// ENTER TWICE SENDS A NOTE ONCE. The box was emptied only when the store
-// answered, so a second enter pressed before then sent the same words again.
+// ENTER TWICE SENDS A NOTE ONCE. The box is emptied the instant the words
+// leave, so a second enter has nothing to send.
 func TestEnterTwiceSendsANoteOnce(t *testing.T) {
-	a, fake, _ := noteTwoPages(t)
+	a, fake, _ := noteTwoRooms(t)
 	_, first := a.Update(key("enter"))
 	_, second := a.Update(key("enter"))
 	drain(t, a, tea.Batch(first, second))
@@ -212,22 +173,23 @@ func TestEnterTwiceSendsANoteOnce(t *testing.T) {
 	}
 }
 
-// A NOTE'S RECEIPT LANDS ON ITS OWN PAGE OR NOWHERE. The reply set the open
-// page to the page the note was sent from, whichever page a person had moved
-// to while the store was answering.
-func TestANoteReplyNeverOverwritesAnotherPage(t *testing.T) {
-	a, fake, rows := noteTwoPages(t)
+// A NOTE'S RECEIPT LANDS ON ITS OWN ROOM OR NOWHERE. A person can move to
+// another task's room while the store is answering, and the answer must not
+// touch the room they moved to.
+func TestANoteReplyNeverOverwritesAnotherRoom(t *testing.T) {
+	a, fake, rows := noteTwoRooms(t)
 	_, sent := a.Update(key("enter"))
 	// THE PERSON MOVES ON BEFORE THE STORE ANSWERS.
-	a.taskSheet.plan = fake.pages["t-beta"]
-	a.taskSheet.planNote.reset()
-	a.taskSheet.planNote.insert("for beta")
-	drain(t, a, sent)
-	if got := a.taskSheet.plan.Row.ID; got != rows[1].ID {
-		t.Fatalf("the note's reply put %q's page over the page the person had open", got)
+	openPlanRoomNow(t, a, "t-beta")
+	for _, r := range "for beta" {
+		drive(t, a, key(string(r)))
 	}
-	if got := a.taskSheet.planNote.String(); got != "for beta" {
-		t.Fatalf("the note's reply emptied another page's box: it holds %q", got)
+	drain(t, a, sent)
+	if plan := a.roomPlan(); plan == nil || plan.id != rows[1].ID {
+		t.Fatal("the note's reply moved the person off beta's room")
+	}
+	if got := string(a.input.value); got != "for beta" {
+		t.Fatalf("the note's reply emptied another room's box: it holds %q", got)
 	}
 	if len(fake.noted) != 1 || fake.noted[0].id != "t-alpha" {
 		t.Fatalf("the note went to %v, want alpha once", fake.noted)
