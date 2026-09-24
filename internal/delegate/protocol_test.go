@@ -12,13 +12,17 @@ import (
 // the reader is done, except for spoke, which a launch test waits on to know
 // the program has said its first word.
 type recorder struct {
-	mu       sync.Mutex
-	once     sync.Once
-	spoke    chan struct{}
-	hello    *Hello
-	stages   []string
-	steps    []string
-	terminal *Terminal
+	mu     sync.Mutex
+	once   sync.Once
+	spoke  chan struct{}
+	hello  *Hello
+	stages []string
+	steps  []string
+	// stageRecords and stepRecords are the records whole, for the tests of the
+	// optional fields.
+	stageRecords []StageRecord
+	stepRecords  []StepRecord
+	terminal     *Terminal
 }
 
 func newRecorder() *recorder { return &recorder{spoke: make(chan struct{})} }
@@ -29,18 +33,20 @@ func (r *recorder) Hello(h Hello) {
 	r.hello = &h
 }
 
-func (r *recorder) Stage(stage, status string) {
+func (r *recorder) Stage(stage StageRecord) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.stages = append(r.stages, stage+"·"+status)
+	r.stages = append(r.stages, stage.Stage+"·"+stage.Status)
+	r.stageRecords = append(r.stageRecords, stage)
 	if r.spoke != nil {
 		r.once.Do(func() { close(r.spoke) })
 	}
 }
-func (r *recorder) Step(command, observation string) {
+func (r *recorder) Step(step StepRecord) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.steps = append(r.steps, command+"→"+observation)
+	r.steps = append(r.steps, step.Command+"→"+step.Observation)
+	r.stepRecords = append(r.stepRecords, step)
 }
 func (r *recorder) Terminal(t Terminal) {
 	r.mu.Lock()
@@ -176,5 +182,54 @@ func TestTheReaderTakesOneHelloWithItsStages(t *testing.T) {
 	}
 	if reading.Ignored != 1 {
 		t.Fatalf("ignored = %d, want the second hello", reading.Ignored)
+	}
+}
+
+// A STEP SAYS ITS TOOL, ITS STEP AND A COMMAND'S EXIT, AND A STAGE ITS DATA —
+// each optional, each read forgivingly. A field of another shape than this
+// reader's is left off and the record kept; data that is not an object, or is
+// past the cap, is left off the stage and the stage kept; and a record that
+// carries none of them reads exactly as it did before they existed.
+func TestTheReaderCarriesTheOptionalFieldsAndForgivesTheirShape(t *testing.T) {
+	big := `{"text":"` + strings.Repeat("x", StageDataCap) + `"}`
+	stream := strings.Join([]string{
+		`{"type":"step","command":"bash: go test ./...","observation":"FAIL","tool":"bash","step":"explore","exit":1}`,
+		`{"type":"step","command":"bash: go build ./...","tool":"bash","step":"verify","exit":0}`,
+		`{"type":"step","command":"read: a.go","tool":7,"step":{"id":"x"},"exit":"one"}`,
+		`{"type":"step","command":"edit: a.go"}`,
+		`{"type":"stage","stage":"submit","status":"frozen","data":{"patch_files":4,"checklist_items":5}}`,
+		`{"type":"stage","stage":"verification","status":"pass","data":[1,2]}`,
+		`{"type":"stage","stage":"verification","status":"pass","data":` + big + `}`,
+		`{"type":"stage","stage":"bootstrap","status":"ready"}`,
+	}, "\n")
+	sink := &recorder{}
+	reading, err := Read(strings.NewReader(stream), sink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reading.Steps != 4 || len(sink.stageRecords) != 4 || reading.Ignored != 0 {
+		t.Fatalf("steps %d, stages %d, ignored %d; want every record kept", reading.Steps, len(sink.stageRecords), reading.Ignored)
+	}
+	first := sink.stepRecords[0]
+	if first.Tool != "bash" || first.Step != "explore" || first.Exit == nil || *first.Exit != 1 {
+		t.Fatalf("first step = %+v, want its tool, its step and its exit", first)
+	}
+	// AN EXIT OF 0 IS A FACT, NOT AN ABSENCE.
+	if second := sink.stepRecords[1]; second.Exit == nil || *second.Exit != 0 {
+		t.Fatalf("second step = %+v, want exit 0 kept", second)
+	}
+	if odd := sink.stepRecords[2]; odd.Tool != "" || odd.Step != "" || odd.Exit != nil || odd.Command != "read: a.go" {
+		t.Fatalf("a step with odd-shaped optional fields = %+v, want them left off and the step kept", odd)
+	}
+	if plain := sink.stepRecords[3]; plain.Tool != "" || plain.Step != "" || plain.Exit != nil {
+		t.Fatalf("a step with no optional fields = %+v", plain)
+	}
+	if got := string(sink.stageRecords[0].Data); got != `{"patch_files":4,"checklist_items":5}` {
+		t.Fatalf("stage data = %s, want the object as written", got)
+	}
+	for i := 1; i <= 3; i++ {
+		if data := sink.stageRecords[i].Data; data != nil {
+			t.Fatalf("stage %d data = %s, want none: not an object, past the cap, or never sent", i, data)
+		}
 	}
 }

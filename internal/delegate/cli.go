@@ -222,8 +222,8 @@ func (h *childHost) Models() ModelAPI   { return h.api }
 func (h *childHost) Hello(stages []string) {
 	_ = h.emitter.Hello(h.inv.Program.Name, stages)
 }
-func (h *childHost) Stage(stage, status string)       { _ = h.emitter.Stage(stage, status) }
-func (h *childHost) Step(command, observation string) { _ = h.emitter.Step(command, observation) }
+func (h *childHost) Stage(stage StageRecord) { _ = h.emitter.Stage(stage) }
+func (h *childHost) Step(step StepRecord)    { _ = h.emitter.Step(step) }
 func (h *childHost) Terminal(end Ending) {
 	if h.emitter.Ended() {
 		return

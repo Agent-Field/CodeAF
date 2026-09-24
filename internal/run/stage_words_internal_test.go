@@ -23,7 +23,7 @@ func TestAProgramsStageIsShownInTheWordItGaveAPerson(t *testing.T) {
 		defer store.Close()
 		sink := &delegateSink{worker: &DelegateWorker{store: store, program: program}, taskID: "root", name: program.Name}
 		for _, stage := range stages {
-			sink.Stage(stage[0], stage[1])
+			sink.Stage(delegate.StageRecord{Stage: stage[0], Status: stage[1]})
 		}
 		return store.LiveSteps()["root"].Command
 	}

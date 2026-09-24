@@ -528,11 +528,12 @@ func (v *carriedView) remember(change func(record *delegate.ProgramRecord)) {
 	_ = delegate.WriteProgram(v.record, v.program)
 }
 
-func (v *carriedView) Stage(stage, status string) {
+func (v *carriedView) Stage(record delegate.StageRecord) {
 	if v.records != nil {
-		_ = v.records.Stage(stage, status)
+		_ = v.records.Stage(record)
 		return
 	}
+	stage, status := record.Stage, record.Status
 	if !v.moved(stage, status) {
 		return
 	}
@@ -553,16 +554,16 @@ func (v *carriedView) moved(stage, status string) bool {
 	return changed
 }
 
-func (v *carriedView) Step(command, observation string) {
+func (v *carriedView) Step(record delegate.StepRecord) {
 	if v.records != nil {
-		_ = v.records.Step(command, observation)
+		_ = v.records.Step(record)
 		return
 	}
-	if head := firstLineOf(observation); head != "" {
-		v.say("  %s · %s", command, head)
+	if head := firstLineOf(record.Observation); head != "" {
+		v.say("  %s · %s", record.Command, head)
 		return
 	}
-	v.say("  %s", command)
+	v.say("  %s", record.Command)
 }
 
 func (v *carriedView) Terminal(t delegate.Terminal) {

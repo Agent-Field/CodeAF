@@ -40,6 +40,11 @@ const (
 // ProtocolVersion is the version `hello` carries. Both ends are this package,
 // so it moves only when a record changes meaning, and a mismatch means the two
 // processes are two builds.
+//
+// AN OPTIONAL FIELD ADDED TO A RECORD IS NOT A NEW MEANING. A stage's `data`
+// and a step's `tool`, `step` and `exit` arrived inside version 2: a reader
+// that predates them ignores them as it ignores every field it does not know,
+// and a program that does not send them is read exactly as before.
 const ProtocolVersion = 2
 
 // Hello is the first record: who is speaking, in which protocol, and the
@@ -68,7 +73,64 @@ const (
 const (
 	commandCap     = 200
 	observationCap = 2048
+	// labelCap bounds a step's tool name and its step id: each is one word a
+	// page prints, never a payload.
+	labelCap = 64
 )
+
+// StageDataCap is the most bytes a stage record's data may take, in JSON. It
+// is a curated copy of what the program already knows about the phase — an
+// attempt number, a count, a verdict of its own checks — for a page to say in
+// words, and never the program's whole account of itself, which stays on its
+// stderr. A reader drops data past it rather than cut it, because half an
+// object is not an object; the program is expected to have curated to it, and
+// senior-dev does (internal/seniordev/app's stage_data.go).
+const StageDataCap = 1024
+
+// StageRecord is one `stage` record: the phase the program moved to, how it
+// stands in it, and the small copy of what it knows about it.
+type StageRecord struct {
+	Stage  string `json:"stage"`
+	Status string `json:"status"`
+	// Data is a JSON object of at most [StageDataCap] bytes, or nothing. It is
+	// OPTIONAL AND ADDITIVE: a reader of version 2 that predates it reads the
+	// record without it.
+	Data json.RawMessage `json:"data,omitempty"`
+}
+
+// StepRecord is one `step` record: one finished action, what was run and the
+// head of what came back, and — each optional, each absent from a program that
+// does not say it — the tool that ran it, the step of the program's own
+// process it served, and a command's exit code.
+type StepRecord struct {
+	// Command is the action on one line, `<tool>: <what it was about>`.
+	Command string `json:"command"`
+	// Observation is the head of what came back.
+	Observation string `json:"observation,omitempty"`
+	// Tool is the tool's own name.
+	Tool string `json:"tool,omitempty"`
+	// Step is the program's own id for the part of its process the action
+	// served (senior-dev's are app.Steps). It is the program's word, drawn
+	// through the program's own vocabulary ([Delegate.Present]).
+	Step string `json:"step,omitempty"`
+	// Exit is a command's exit code, present only for an action that ran a
+	// command and learned how it exited — which is why it is a pointer: a
+	// command that exited 0 and an action that ran none are two facts.
+	Exit *int `json:"exit,omitempty"`
+}
+
+// stageData is a record's data as a reader keeps it: a JSON object of at most
+// [StageDataCap] bytes, and nothing for anything else.
+func stageData(raw json.RawMessage) json.RawMessage {
+	trimmed := strings.TrimSpace(string(raw))
+	if len(trimmed) > StageDataCap || !strings.HasPrefix(trimmed, "{") || !json.Valid([]byte(trimmed)) {
+		return nil
+	}
+	return json.RawMessage(trimmed)
+}
+
+// label is a step's tool name or step id as a reader keeps it: one line, cut.
+func label(s string) string { return cut(oneLine(s), labelCap) }
 
 // maxLineBytes bounds one stdout line. A program that writes a megabyte on one
 // line is mirroring something it should not, and a reader without a bound is
@@ -165,11 +227,12 @@ func KnownStatus(status string) bool {
 type Sink interface {
 	// Hello is the program's first record, told once.
 	Hello(h Hello)
-	// Stage is a phase change: the live step.
-	Stage(stage, status string)
+	// Stage is a phase change: the live step, and one line of the program's
+	// action log. Its data is already held to [StageDataCap].
+	Stage(record StageRecord)
 	// Step is one finished action: command and the observation head, both
-	// already capped.
-	Step(command, observation string)
+	// already capped, and the tool, step and exit the program said.
+	Step(record StepRecord)
 	// Terminal is the result. It is told at most once; a second terminal on
 	// the stream is ignored, because the contract says exactly one and the
 	// first is the one the program wrote on purpose.
@@ -227,9 +290,13 @@ func Read(r io.Reader, sink Sink) (Reading, error) {
 				sink.Hello(rec)
 			}
 		case RecordStage:
+			// THE OPTIONAL FIELDS ARE READ FORGIVINGLY. A stage whose data is
+			// not an object, or is past the cap, is still the stage: the data
+			// is left off, never the record.
 			var rec struct {
-				Stage  string `json:"stage"`
-				Status string `json:"status"`
+				Stage  string          `json:"stage"`
+				Status string          `json:"status"`
+				Data   json.RawMessage `json:"data"`
 			}
 			if json.Unmarshal([]byte(line), &rec) != nil || rec.Stage == "" {
 				reading.Ignored++
@@ -237,12 +304,19 @@ func Read(r io.Reader, sink Sink) (Reading, error) {
 			}
 			reading.LastStage, reading.LastStatus = rec.Stage, rec.Status
 			if sink != nil {
-				sink.Stage(rec.Stage, rec.Status)
+				sink.Stage(StageRecord{Stage: rec.Stage, Status: rec.Status, Data: stageData(rec.Data)})
 			}
 		case RecordStep:
+			// And so are a step's: a tool, a step id or an exit of another
+			// shape than this reader's is left off, because a program that
+			// spelled an optional field its own way has still finished the
+			// action it is reporting.
 			var rec struct {
-				Command     string `json:"command"`
-				Observation string `json:"observation"`
+				Command     string          `json:"command"`
+				Observation string          `json:"observation"`
+				Tool        json.RawMessage `json:"tool"`
+				Step        json.RawMessage `json:"step"`
+				Exit        json.RawMessage `json:"exit"`
 			}
 			if json.Unmarshal([]byte(line), &rec) != nil || strings.TrimSpace(rec.Command) == "" {
 				reading.Ignored++
@@ -250,7 +324,13 @@ func Read(r io.Reader, sink Sink) (Reading, error) {
 			}
 			reading.Steps++
 			if sink != nil {
-				sink.Step(cut(oneLine(rec.Command), commandCap), cut(rec.Observation, observationCap))
+				sink.Step(StepRecord{
+					Command:     cut(oneLine(rec.Command), commandCap),
+					Observation: cut(rec.Observation, observationCap),
+					Tool:        label(rawText(rec.Tool)),
+					Step:        label(rawText(rec.Step)),
+					Exit:        rawWhole(rec.Exit),
+				})
 			}
 		case RecordTerminal:
 			if reading.Terminal != nil {
@@ -271,6 +351,26 @@ func Read(r io.Reader, sink Sink) (Reading, error) {
 		}
 	}
 	return reading, scanner.Err()
+}
+
+// rawText is an optional field read as a string, and nothing when it is
+// absent or of another shape.
+func rawText(raw json.RawMessage) string {
+	var s string
+	if len(raw) == 0 || json.Unmarshal(raw, &s) != nil {
+		return ""
+	}
+	return s
+}
+
+// rawWhole is an optional field read as a whole number, and nil when it is
+// absent or of another shape.
+func rawWhole(raw json.RawMessage) *int {
+	var n int
+	if len(raw) == 0 || json.Unmarshal(raw, &n) != nil {
+		return nil
+	}
+	return &n
 }
 
 // oneLine folds a command onto one line, because it is drawn in a row.

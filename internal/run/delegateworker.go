@@ -195,7 +195,8 @@ func (s *delegateSink) Hello(h delegate.Hello) {
 	}
 }
 
-func (s *delegateSink) Stage(stage, status string) {
+func (s *delegateSink) Stage(record delegate.StageRecord) {
+	stage, status := record.Stage, record.Status
 	// THE LIVE STEP IS THE PROGRAM'S PHASE, numbered after the last step
 	// recorded, so the row reads "senior-dev: working" while the program is
 	// inside that phase and the count on the row stays the steps'.
@@ -219,13 +220,13 @@ func (s *delegateSink) Stage(stage, status string) {
 	_ = s.worker.store.SetLive(s.taskID, s.steps+1, label)
 }
 
-func (s *delegateSink) Step(command, observation string) {
+func (s *delegateSink) Step(record delegate.StepRecord) {
 	s.steps++
 	if err := appendTrajectory(s.storeDir, s.taskID, Step{
 		Kind:        trajectoryStepKind,
 		Step:        s.steps,
-		Command:     command,
-		Observation: observationHead(observation),
+		Command:     record.Command,
+		Observation: observationHead(record.Observation),
 	}); err != nil && s.lastErr == nil {
 		s.lastErr = err
 	}

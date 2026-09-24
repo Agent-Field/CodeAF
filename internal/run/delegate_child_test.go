@@ -54,7 +54,7 @@ func childBody(ctx context.Context, host delegate.Host, args []string) error {
 		_ = os.WriteFile(path, []byte(strings.Join(os.Environ(), "\n")), 0o600)
 	}
 	host.Hello([]string{"implement", "verify"})
-	host.Stage("implement", "running")
+	host.Stage(delegate.StageRecord{Stage: "implement", Status: "running"})
 	calls, _ := strconv.Atoi(os.Getenv("FAKE_CALLS"))
 	for call := 1; call <= calls; call++ {
 		if ctx.Err() != nil {
@@ -62,7 +62,7 @@ func childBody(ctx context.Context, host delegate.Host, args []string) error {
 		}
 		reply, err := askModel(ctx, host.Models(), fmt.Sprintf("call %d: %s", call, strings.Join(args, " ")))
 		if err != nil {
-			host.Step("model: ask", "refused: "+err.Error())
+			host.Step(delegate.StepRecord{Command: "model: ask", Observation: "refused: " + err.Error()})
 			if os.Getenv("FAKE_ENDING") == "crash" {
 				// senior-dev's own ending after a refusal: its sum of its
 				// answers' costs never reached its ceiling, so it cannot tell a
@@ -72,14 +72,14 @@ func childBody(ctx context.Context, host delegate.Host, args []string) error {
 			}
 			continue
 		}
-		host.Step("model: ask", reply)
+		host.Step(delegate.StepRecord{Command: "model: ask", Observation: reply})
 	}
 	if os.Getenv("FAKE_ENDING") == "wait" || ctx.Err() != nil {
 		<-ctx.Done()
 		host.Terminal(delegate.Ending{Status: delegate.StatusBudget, Message: "told to stop", CostUSD: 99})
 		return nil
 	}
-	host.Stage("verify", "pass")
+	host.Stage(delegate.StageRecord{Stage: "verify", Status: "pass"})
 	host.Terminal(delegate.Ending{Status: delegate.StatusPass, Message: "submitted and verified", Claim: "all green", Observed: "pass", CostUSD: 99})
 	return nil
 }

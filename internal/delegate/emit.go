@@ -79,17 +79,33 @@ func (e *Emitter) Hello(name string, stages []string) error {
 	return e.write(map[string]any{"type": RecordHello, "protocol": ProtocolVersion, "delegate": name, "stages": stages})
 }
 
-// Stage writes a phase change.
-func (e *Emitter) Stage(stage, status string) error {
-	return e.write(map[string]any{"type": RecordStage, "stage": stage, "status": status})
+// Stage writes a phase change, with its data when it is an object the reader
+// will keep ([StageDataCap]) and without it otherwise, so the record a program
+// writes is the record that arrives.
+func (e *Emitter) Stage(stage StageRecord) error {
+	record := map[string]any{"type": RecordStage, "stage": stage.Stage, "status": stage.Status}
+	if data := stageData(stage.Data); data != nil {
+		record["data"] = data
+	}
+	return e.write(record)
 }
 
 // Step writes one finished action, capped the way the reader caps it, so what
-// the program meant to say is what arrives.
-func (e *Emitter) Step(command, observation string) error {
-	record := map[string]any{"type": RecordStep, "command": cut(oneLine(command), commandCap)}
-	if observation != "" {
-		record["observation"] = cut(observation, observationCap)
+// the program meant to say is what arrives. The optional fields are written
+// only when they say something.
+func (e *Emitter) Step(step StepRecord) error {
+	record := map[string]any{"type": RecordStep, "command": cut(oneLine(step.Command), commandCap)}
+	if step.Observation != "" {
+		record["observation"] = cut(step.Observation, observationCap)
+	}
+	if tool := label(step.Tool); tool != "" {
+		record["tool"] = tool
+	}
+	if id := label(step.Step); id != "" {
+		record["step"] = id
+	}
+	if step.Exit != nil {
+		record["exit"] = *step.Exit
 	}
 	return e.write(record)
 }

@@ -24,7 +24,7 @@ func testProgram(body Body) Delegate {
 				variant := fs.String("variant", "", "how hard the model thinks")
 				return func(ctx context.Context, host Host, args []string) error {
 					if *variant != "" {
-						host.Stage("variant", *variant)
+						host.Stage(StageRecord{Stage: "variant", Status: *variant})
 					}
 					return body(ctx, host, args)
 				}

@@ -55,16 +55,16 @@ func (host *testHost) Hello(stages []string) {
 	host.hellos = append(host.hellos, stages)
 }
 
-func (host *testHost) Stage(stage, status string) {
+func (host *testHost) Stage(stage delegate.StageRecord) {
 	host.mu.Lock()
 	defer host.mu.Unlock()
-	host.stages = append(host.stages, stage+"/"+status)
+	host.stages = append(host.stages, stage.Stage+"/"+stage.Status)
 }
 
-func (host *testHost) Step(command, observation string) {
+func (host *testHost) Step(step delegate.StepRecord) {
 	host.mu.Lock()
 	defer host.mu.Unlock()
-	host.steps = append(host.steps, command)
+	host.steps = append(host.steps, step.Command)
 }
 
 func (host *testHost) Terminal(end delegate.Ending) {

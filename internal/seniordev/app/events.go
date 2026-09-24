@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/seniordev/bus"
 )
 
@@ -26,9 +27,14 @@ type event struct {
 	// `spend` only. A pointer because a run that has cost nothing yet still
 	// reports a figure, and omitempty would drop a real zero.
 	CostUSD *float64 `json:"cost_usd,omitempty"`
-	// `step` only: what was run, and what came back.
+	// `step` only: what was run, and what came back; the tool that ran it, the
+	// step of senior-dev's process it served (step_ids.go), and a command's
+	// exit code when it has one.
 	Command     string `json:"command,omitempty"`
 	Observation string `json:"observation,omitempty"`
+	Tool        string `json:"tool,omitempty"`
+	Step        string `json:"step,omitempty"`
+	Exit        *int   `json:"exit,omitempty"`
 }
 
 // recordSink is where the run's protocol records go: codeaf, through the
@@ -36,8 +42,8 @@ type event struct {
 // writes as it goes; the first (hello) and the last (terminal) are the run
 // command's own, because it is the one place that sees every ending.
 type recordSink interface {
-	Stage(stage, status string)
-	Step(command, observation string)
+	Stage(stage delegate.StageRecord)
+	Step(step delegate.StepRecord)
 }
 
 // eventWriter is the run's one outlet for what it has to say.
@@ -65,12 +71,16 @@ type eventWriter struct {
 	encoder *json.Encoder
 	// notes is where a stage's data goes for a person: one line per stage, on
 	// stderr, which codeaf keeps in a file beside the task. The protocol's
-	// stage record carries only the stage and its status.
+	// stage record carries a curated copy of it (stage_data.go).
 	notes   io.Writer
 	summary *agentSummary
 	// steps deduplicates `step` records: a tool part is republished as its
 	// state moves, so the same finished call arrives more than once.
 	steps map[string]struct{}
+	// progress is what the step classifier knows of the run so far
+	// (step_ids.go): whether a project file has changed, whether a submit was
+	// accepted. It is read and moved under mu, in the order the calls finish.
+	progress stepProgress
 }
 
 // newEventWriter is a writer whose only outlet is output: every record and
@@ -113,12 +123,17 @@ func (writer *eventWriter) emit(value event) {
 	switch value.Type {
 	case "stage":
 		if writer.records != nil {
-			writer.records.Stage(value.Stage, value.Status)
+			writer.records.Stage(delegate.StageRecord{
+				Stage: value.Stage, Status: value.Status, Data: stageRecordData(value.Data),
+			})
 		}
 		writer.noteStage(value)
 	case "step":
 		if writer.records != nil {
-			writer.records.Step(value.Command, value.Observation)
+			writer.records.Step(delegate.StepRecord{
+				Command: value.Command, Observation: value.Observation,
+				Tool: value.Tool, Step: value.Step, Exit: value.Exit,
+			})
 		}
 	}
 }
@@ -159,6 +174,10 @@ func (writer *eventWriter) busEvent(value bus.Payload) {
 			isStep = false
 		} else {
 			writer.steps[step.key] = struct{}{}
+			// THE STEP IS NAMED IN THE ORDER THE CALLS FINISHED, under the
+			// same lock that deduplicates them, so the progress it reads is the
+			// run's as of this call and no other.
+			step.step, writer.progress = stepOf(step.action, writer.progress)
 		}
 	}
 	writer.mu.Unlock()
@@ -168,6 +187,7 @@ func (writer *eventWriter) busEvent(value bus.Payload) {
 	if isStep {
 		writer.emit(event{
 			Type: "step", Command: step.command, Observation: step.observation,
+			Tool: step.action.tool, Step: step.step, Exit: step.exit,
 		})
 	}
 	// The running total, after the message that moved it, for the log only:
@@ -181,4 +201,21 @@ func (writer *eventWriter) busEvent(value bus.Payload) {
 
 func (writer *eventWriter) stage(stage, status string, data map[string]any) {
 	writer.emit(event{Type: "stage", Stage: stage, Status: status, Data: data})
+}
+
+// verifyStep reports one command senior-dev itself ran on the tree — the
+// project's own build or tests, with no model — as a step of its own: the
+// command, its exit code (nil for one that hung or was cut, which has none),
+// and the tail of what it printed.
+//
+// IT REPORTS WHAT RAN, AND CHANGES NOTHING ABOUT IT. The command, its ceiling
+// and how its result is judged are the verification's own
+// (full_verification_run.go); this is written after the command has exited,
+// from the observation the verification already made.
+func (writer *eventWriter) verifyStep(command, tail string, exit *int) {
+	writer.emit(event{
+		Type: "step", Command: "bash: " + oneLine(command),
+		Observation: clipBytes(tail, stepObservationMax),
+		Tool:        "bash", Step: StepVerify, Exit: exit,
+	})
 }

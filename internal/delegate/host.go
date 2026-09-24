@@ -31,8 +31,8 @@ type Host interface {
 	// Hello, Stage, Step and Terminal are the records (protocol.go). Hello
 	// comes first and Terminal last, once.
 	Hello(stages []string)
-	Stage(stage, status string)
-	Step(command, observation string)
+	Stage(stage StageRecord)
+	Step(step StepRecord)
 	Terminal(end Ending)
 	// Models is this run's model API.
 	Models() ModelAPI

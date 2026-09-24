@@ -133,13 +133,31 @@ and the command's own flags survive.
 | record | when | fields |
 | --- | --- | --- |
 | `hello` | first | `protocol` (2), `delegate`, `stages` (the whole list, in order) |
-| `stage` | on every phase change | `stage`, `status` |
-| `step` | once per finished action | `command` (one line, 200 bytes at most), `observation` (2048 bytes at most) |
+| `stage` | on every phase change | `stage`, `status`, and optionally `data`: a JSON object of at most 1024 bytes (`delegate.StageDataCap`) |
+| `step` | once per finished action | `command` (one line, 200 bytes at most), `observation` (2048 bytes at most), and optionally `tool` (the tool's name), `step` (the program's own id for the part of its process the action served) and `exit` (a command's exit code, only for an action that ran one) |
 | `terminal` | last, exactly once, on every path | `status` (`pass`, `fail`, `budget-exhausted`, `crashed`), `message`, `data`: `reason`, `claim`, `observed`, `deliverable`, and anything else |
 
 Any other line is ignored. There is no `spend` record: the model API meters
 every call as it is made, so money has one source of truth and it is not the
 program's word.
+
+**The optional fields are additive, and they are version 2.** The version moves
+only when a record changes meaning (`delegate.ProtocolVersion`); a field a
+reader does not know is ignored like any other, so a reader that predates
+`data`, `tool`, `step` and `exit` reads the same records without them, and a
+program that sends none of them is read exactly as before. They are read
+forgivingly: a `tool`, `step` or `exit` of another JSON shape is left off and
+the step kept, and `data` that is not an object, or is past the cap, is left
+off and the stage kept.
+
+A stage's `data` is a small, curated copy of what the program already knows
+about the phase — senior-dev's is an attempt, a retry count, its checklist's
+counts, the hand-in's size, what its own check found, the model it moved to —
+for a page to say in words; the program's whole account stays on its stderr.
+senior-dev's step ids are `brief`, `explore`, `pin`, `checklist`, `implement`,
+`submit` and `verify` (`internal/seniordev/app`'s `Steps`); the last is the
+project's own build and tests, which senior-dev runs itself with no model after
+the hand-in and when it checks the tree mid-run, each command one step.
 
 A `hello` carrying another protocol number means the engine outlived a rebuild
 and started the new binary as its child. The run is stopped before it spends,

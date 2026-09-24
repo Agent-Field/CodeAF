@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/steploop"
 	"github.com/Agent-Field/codeaf/internal/seniordev/session/sessioncore"
 )
@@ -99,22 +100,28 @@ func TestPipelineStreamsBusEventsToTheLog(t *testing.T) {
 
 // recordedHost is the part of a delegate host the event writer reports to.
 type recordedHost struct {
-	stages []string
-	steps  []string
+	stages       []string
+	steps        []string
+	stageRecords []delegate.StageRecord
+	stepRecords  []delegate.StepRecord
 }
 
-func (host *recordedHost) Stage(stage, status string) {
-	host.stages = append(host.stages, stage+"/"+status)
+func (host *recordedHost) Stage(stage delegate.StageRecord) {
+	host.stages = append(host.stages, stage.Stage+"/"+stage.Status)
+	host.stageRecords = append(host.stageRecords, stage)
 }
 
-func (host *recordedHost) Step(command, observation string) {
-	host.steps = append(host.steps, command)
+func (host *recordedHost) Step(step delegate.StepRecord) {
+	host.steps = append(host.steps, step.Command)
+	host.stepRecords = append(host.stepRecords, step)
 }
 
 // STDOUT IS THE PROTOCOL'S. A run codeaf hosts reports its stages and its
 // finished steps and nothing else: no bus payload, no spend record, no second
-// copy of a step a republished part would have made. A stage's data goes to
-// the notes, which are stderr, for a person.
+// copy of a step a republished part would have made. A stage's data goes whole
+// to the notes, which are stderr, for a person, and a curated copy of it rides
+// the stage record; a step says its tool, the step of senior-dev's process it
+// served, and a command's exit code.
 func TestAHostedRunReportsOnlyStagesAndSteps(t *testing.T) {
 	host := &recordedHost{}
 	var notes bytes.Buffer
@@ -122,15 +129,23 @@ func TestAHostedRunReportsOnlyStagesAndSteps(t *testing.T) {
 
 	writer.stage("implement", "running", map[string]any{"attempt": 0})
 	writer.busEvent(toolPartPayload("c1", "bash", "running", map[string]any{"command": "go test ./..."}, "", ""))
-	writer.busEvent(toolPartPayload("c1", "bash", "completed", map[string]any{"command": "go test ./..."}, "ok", ""))
-	writer.busEvent(toolPartPayload("c1", "bash", "completed", map[string]any{"command": "go test ./..."}, "ok", ""))
+	failing := toolPartPayload("c1", "bash", "completed", map[string]any{"command": "go test ./..."}, "FAIL", "")
+	failing.Properties.(map[string]any)["part"].(map[string]any)["state"].(map[string]any)["metadata"] = map[string]any{"exitCode": 1}
+	writer.busEvent(failing)
+	writer.busEvent(failing)
 	writer.busEvent(assistantPayload("m1", "coder", 1, 2, 3, 0.01))
 
 	if len(host.stages) != 1 || host.stages[0] != "implement/running" {
 		t.Fatalf("stages = %v, want the one stage", host.stages)
 	}
+	if got := string(host.stageRecords[0].Data); got != `{"attempt":0}` {
+		t.Fatalf("stage data = %s, want the attempt", got)
+	}
 	if len(host.steps) != 1 || host.steps[0] != "bash: go test ./..." {
 		t.Fatalf("steps = %v, want the one finished call, once", host.steps)
+	}
+	if step := host.stepRecords[0]; step.Tool != "bash" || step.Step != StepExplore || step.Exit == nil || *step.Exit != 1 {
+		t.Fatalf("step = %+v, want the bash tool, the explore step and exit 1", step)
 	}
 	if !strings.Contains(notes.String(), `implement · running {"attempt":0}`) {
 		t.Fatalf("notes = %q, want the stage and its data for a person", notes.String())

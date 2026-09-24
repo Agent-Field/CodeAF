@@ -178,3 +178,44 @@ func TestABareWorkspaceVerifiesVacuouslyRatherThanFailing(t *testing.T) {
 		t.Fatalf("a vacuous pass must say so in its evidence:\n%s", verification.Prompt)
 	}
 }
+
+// EVERY COMMAND senior-dev RUNS ON THE TREE ITSELF IS A STEP OF ITS OWN — the
+// verify step, the bash tool, the command, its exit code and the tail of what
+// it printed — reported after it ran, and judged exactly as before.
+func TestEachVerificationCommandIsReportedAsAVerifyStep(t *testing.T) {
+	workspace := t.TempDir()
+	writePassingPythonUnitTest(t, workspace)
+	if err := writeFile(filepath.Join(workspace, "Makefile"),
+		"build:\n\t@echo broken; exit 2\ntest:\n\t@true\n"); err != nil {
+		t.Fatal(err)
+	}
+	host := &recordedHost{}
+	runner := newPipeline(cliArgs{}, workspace, pipelineDeps{
+		Events: newRecordWriter(host, io.Discard), Notes: io.Discard,
+	})
+	defer runner.runtime.Close()
+
+	verification := runner.runProjectVerification(context.Background())
+	if len(host.stepRecords) != len(verification.Commands) || len(host.stepRecords) == 0 {
+		t.Fatalf("steps = %d for %d commands, want one each", len(host.stepRecords), len(verification.Commands))
+	}
+	failed := false
+	for i, step := range host.stepRecords {
+		evidence := verification.Commands[i].(map[string]any)
+		if step.Step != StepVerify || step.Tool != "bash" || step.Command != "bash: "+evidence["cmd"].(string) {
+			t.Fatalf("step %d = %+v, want the verify step for %v", i, step, evidence["cmd"])
+		}
+		if step.Exit == nil || float64(*step.Exit) != evidence["exit"].(float64) {
+			t.Fatalf("step %d exit = %v, want the evidence's %v", i, step.Exit, evidence["exit"])
+		}
+		if *step.Exit == 2 && strings.Contains(step.Observation, "broken") {
+			failed = true
+		}
+	}
+	if !failed || verification.Failed == nil {
+		t.Fatalf("the failing build is not a verify step with its exit and tail: %+v", host.stepRecords)
+	}
+	if last := host.stages[len(host.stages)-1]; last != "verification/fail" {
+		t.Fatalf("the last stage is %q, want the verification's own result after its steps", last)
+	}
+}

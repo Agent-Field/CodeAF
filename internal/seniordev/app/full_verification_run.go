@@ -217,6 +217,15 @@ func (run *projectVerificationRun) record(observation verificationObservation) {
 	run.result.Commands = append(run.result.Commands, observation.evidence)
 	run.recordCommandLine(observation)
 	entrypoint := observation.entrypoint
+	// EACH COMMAND IS A STEP OF ITS OWN, reported after it ran and judged
+	// exactly as before: a command that hung, or that the run's own ending cut,
+	// has no exit to report.
+	var exit *int
+	if !observation.timedOut {
+		code := observation.exitCode
+		exit = &code
+	}
+	run.runner.events.verifyStep(entrypoint.Command, observation.tail, exit)
 	run.runner.note(fmt.Sprintf(
 		"[senior-dev] full verification %s: %s (exit=%d, source=%s)\n",
 		entrypoint.Kind, entrypoint.Command, observation.exitCode, entrypoint.Source,

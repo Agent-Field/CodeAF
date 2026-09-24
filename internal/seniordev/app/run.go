@@ -29,9 +29,10 @@ var version = buildinfo.String()
 //
 // THE LIST IS CLOSED, and a test holds it to the source: every stage the run
 // can emit is here, and nothing is here that it cannot emit
-// (stages_test.go). compaction-capacity and router-cancellation happen inside
-// a model turn, only when a rejection pins a window or a call is withdrawn, so
-// they sit where the turns are.
+// (stages_test.go). compaction-capacity, compaction, router-cancellation and
+// model-switch happen inside a model turn — when a rejection pins a window, the
+// history is compacted, a call is withdrawn or the coder moves to another
+// model — so they sit where the turns are.
 var Stages = []string{
 	"bootstrap",
 	"run-contract",
@@ -40,7 +41,9 @@ var Stages = []string{
 	"implement",
 	"agent-runtime",
 	"compaction-capacity",
+	"compaction",
 	"router-cancellation",
+	"model-switch",
 	"submit",
 	"verification",
 	"ship",

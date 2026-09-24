@@ -287,7 +287,7 @@ func (runtime *runtimeAdapter) runTurn(ctx context.Context, request turn) (turnR
 	}
 	request.Store = runtime.durable
 	if request.CompactionDecisions == nil {
-		request.CompactionDecisions = newSeniorDevCompactionDecisionSink(runtime.bus)
+		request.CompactionDecisions = newSeniorDevCompactionDecisionSink(runtime.bus, runtime.events)
 	}
 	if request.ModelRequests == nil {
 		request.ModelRequests = newModelRequestSink(runtime.bus)

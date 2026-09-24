@@ -32,6 +32,8 @@ type hostRecord struct {
 	stages []string
 	stage  string
 	step   string
+	// record is the step record whole: its tool, its step and its exit.
+	record delegate.StepRecord
 	ending delegate.Ending
 }
 
@@ -49,10 +51,12 @@ func (h *recordingHost) Workspace() string           { return h.workspace }
 func (h *recordingHost) Ceilings() delegate.Ceilings { return h.ceilings }
 func (h *recordingHost) Models() delegate.ModelAPI   { return h.api }
 func (h *recordingHost) Hello(stages []string)       { h.add(hostRecord{kind: "hello", stages: stages}) }
-func (h *recordingHost) Stage(stage, status string) {
-	h.add(hostRecord{kind: "stage", stage: stage + "/" + status})
+func (h *recordingHost) Stage(stage delegate.StageRecord) {
+	h.add(hostRecord{kind: "stage", stage: stage.Stage + "/" + stage.Status})
 }
-func (h *recordingHost) Step(command, _ string) { h.add(hostRecord{kind: "step", step: command}) }
+func (h *recordingHost) Step(step delegate.StepRecord) {
+	h.add(hostRecord{kind: "step", step: step.Command, record: step})
+}
 func (h *recordingHost) Terminal(end delegate.Ending) {
 	h.add(hostRecord{kind: "terminal", ending: end})
 }
@@ -276,10 +280,11 @@ func TestTheRunCommandWorksATaskThroughTheModelAPIItIsGiven(t *testing.T) {
 	if len(records) == 0 || records[0].kind != "hello" {
 		t.Fatalf("the first record is not hello: %+v", records)
 	}
-	if !slices.Equal(records[0].stages, app.Stages) || len(records[0].stages) != 13 {
-		t.Fatalf("hello names %v, want the run's thirteen stages %v", records[0].stages, app.Stages)
+	if !slices.Equal(records[0].stages, app.Stages) || len(records[0].stages) != 15 {
+		t.Fatalf("hello names %v, want the run's fifteen stages %v", records[0].stages, app.Stages)
 	}
 	var steps, terminals int
+	named := map[string]bool{}
 	for at, record := range records {
 		switch record.kind {
 		case "hello":
@@ -288,6 +293,11 @@ func TestTheRunCommandWorksATaskThroughTheModelAPIItIsGiven(t *testing.T) {
 			}
 		case "step":
 			steps++
+			// EVERY STEP NAMES ITS TOOL AND THE STEP OF THE PROCESS IT SERVED.
+			if record.record.Tool == "" || !slices.Contains(app.Steps, record.record.Step) {
+				t.Fatalf("step %q says tool %q and step %q, want a tool and one of %v", record.step, record.record.Tool, record.record.Step, app.Steps)
+			}
+			named[record.record.Step] = true
 		case "terminal":
 			terminals++
 			if at != len(records)-1 {
@@ -297,6 +307,13 @@ func TestTheRunCommandWorksATaskThroughTheModelAPIItIsGiven(t *testing.T) {
 	}
 	if steps < 1 {
 		t.Fatalf("no step records: %+v", records)
+	}
+	// The scripted model writes the feature, then its checklist, then submits;
+	// senior-dev then runs the project's own build and tests itself.
+	for _, want := range []string{app.StepImplement, app.StepChecklist, app.StepSubmit, app.StepVerify} {
+		if !named[want] {
+			t.Errorf("no step was named %q: %v", want, named)
+		}
 	}
 	if terminals != 1 {
 		t.Fatalf("%d terminal records, want exactly one", terminals)

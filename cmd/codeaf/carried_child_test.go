@@ -47,21 +47,21 @@ func fakeCarriedProgram() delegate.Delegate {
 				linger := fs.Duration("linger", 0, "leave a helper holding stdout this long after the program exits")
 				return func(ctx context.Context, host delegate.Host, args []string) error {
 					host.Hello([]string{"implement", "verify"})
-					host.Stage("implement", "running")
+					host.Stage(delegate.StageRecord{Stage: "implement", Status: "running"})
 					for call := 1; call <= *calls && ctx.Err() == nil; call++ {
 						reply, err := askCarried(ctx, host.Models(), fmt.Sprintf("question %d: %s", call, strings.Join(args, " ")))
 						if err != nil {
-							host.Step("model: ask", "refused: "+err.Error())
+							host.Step(delegate.StepRecord{Command: "model: ask", Observation: "refused: " + err.Error()})
 							continue
 						}
-						host.Step("model: ask", reply)
+						host.Step(delegate.StepRecord{Command: "model: ask", Observation: reply})
 					}
 					if *wait || ctx.Err() != nil {
 						<-ctx.Done()
 						host.Terminal(delegate.Ending{Status: delegate.StatusFail, Message: "stopped before it finished"})
 						return nil
 					}
-					host.Stage("verify", "pass")
+					host.Stage(delegate.StageRecord{Stage: "verify", Status: "pass"})
 					host.Terminal(delegate.Ending{Status: delegate.StatusPass, Message: "submitted and verified", Claim: "the test is fixed", Observed: "pass"})
 					if *linger > 0 {
 						// A detached helper that inherited stdout and outlives the

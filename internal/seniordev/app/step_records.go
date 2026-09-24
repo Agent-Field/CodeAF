@@ -12,10 +12,12 @@ import (
 )
 
 // The `step` record projects one finished tool call into a shape a reader can
-// display without understanding the message model: what was run, and what came
-// back. Every byte of it is already on stdout inside the `message.part.updated`
-// payload for the same call — this adds no information to the stream, it
-// rearranges information the stream already carries.
+// display without understanding the message model: what was run, what came
+// back, the tool, a command's exit code, and the step of senior-dev's process
+// it served. Every byte but the last is already inside the
+// `message.part.updated` payload for the same call, and the last is read off
+// those same payloads in the order the calls finished (step_ids.go) — this
+// rearranges what the run already knows, and learns nothing new.
 //
 // Nothing here reaches the model. The record is written by the event layer
 // after the tool result has been produced; it is not a prompt, not a tool
@@ -33,11 +35,16 @@ const (
 
 // stepRecord is one finished tool call. key deduplicates: a tool part is
 // republished as its state moves, so the same call arrives more than once in
-// the same terminal state.
+// the same terminal state. action is what the step classifier reads
+// (step_ids.go), step is the step it named, and exit is a command's exit code,
+// which the bash tool keeps in its metadata (tool/bash.go) and nowhere else.
 type stepRecord struct {
 	key         string
 	command     string
 	observation string
+	action      stepAction
+	step        string
+	exit        *int
 }
 
 // toolStepRecord reads a bus payload and reports the finished tool call in it,
@@ -57,8 +64,13 @@ func toolStepRecord(value bus.Payload) (stepRecord, bool) {
 		return stepRecord{}, false
 	}
 	tool := stringAt(part, "tool")
-	record := stepRecord{key: "tool:" + stringAt(part, "callID") + ":" + status}
-	if argument := toolArgument(mapAt(state, "input")); argument != "" {
+	input := mapAt(state, "input")
+	record := stepRecord{
+		key:    "tool:" + stringAt(part, "callID") + ":" + status,
+		action: stepAction{tool: tool, target: stepTarget(input), failed: status == "error"},
+		exit:   exitCode(mapAt(state, "metadata")),
+	}
+	if argument := toolArgument(input); argument != "" {
 		record.command = tool + ": " + argument
 	} else {
 		record.command = tool
@@ -70,6 +82,40 @@ func toolStepRecord(value bus.Payload) (stepRecord, bool) {
 	}
 	record.observation = clipBytes(record.observation, stepObservationMax)
 	return record, true
+}
+
+// stepTargetKeys are the inputs that say what an action was aimed at, for the
+// step classifier: the file a file tool named, a shell's command, a patch's
+// whole text, where a search looked. It reads the input whole — the label on
+// the record is cut to 200 bytes, and a patch names its files after its first
+// line.
+var stepTargetKeys = []string{"filePath", "command", "patchText", "path", "pattern"}
+
+func stepTarget(input map[string]any) string {
+	for _, key := range stepTargetKeys {
+		if text, ok := input[key].(string); ok && strings.TrimSpace(text) != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+// exitCode is a tool's exit code from its metadata, nil when it reported none:
+// every tool but a shell, and a shell command killed at its ceiling.
+func exitCode(metadata map[string]any) *int {
+	var code int
+	switch value := metadata["exitCode"].(type) {
+	case float64:
+		if value != float64(int(value)) {
+			return nil
+		}
+		code = int(value)
+	case int:
+		code = value
+	default:
+		return nil
+	}
+	return &code
 }
 
 // toolArgumentKeys are the input fields that identify what a call was about,

@@ -31,6 +31,18 @@ func initRunRouter(args cliArgs, events ...*eventWriter) *adaptive.AdaptiveModel
 					"provider_health_changed": false,
 				})
 			}
+			// THE CODER MOVED TO ANOTHER MODEL: a stage, so codeaf's page can
+			// say why the model answering the work changed. Only a real change
+			// is one — a pick that stayed, or the first pick of the run, moved
+			// nothing — and only the coder's, because the history summary's
+			// model is not the one doing the work. The same event is on stderr
+			// as a `[router]` line, whole; the stage reports it and decides
+			// nothing.
+			if len(events) > 0 && events[0] != nil && event.Switched && event.Slot == "coder" {
+				events[0].stage("model-switch", "switched", map[string]any{
+					"from": event.PreviousModel, "to": event.Model, "reason": event.Reason,
+				})
+			}
 		},
 	})
 	router, _ := state.AdaptiveRouter(handle)
