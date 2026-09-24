@@ -115,7 +115,7 @@ func TestAddMemberAssignsAHandleOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	tm := f.Teams[0]
-	if len(tm.Members) != 2 || tm.Members[0].Handle != "refactor" || tm.Members[1].Handle != "" {
+	if len(tm.Members) != 2 || tm.Members[0].Handle != "parser" || tm.Members[1].Handle != "" {
 		t.Fatalf("members %+v", tm.Members)
 	}
 	// The untitled member takes a handle when it has a title; the titled one
@@ -123,7 +123,7 @@ func TestAddMemberAssignsAHandleOnce(t *testing.T) {
 	f.Teams[0].Members[1].Word = "Refactor the lexer"
 	f.Teams[0].Members[0].Word = "Something else entirely"
 	tidy(f.Teams)
-	if h := f.Teams[0].Members; h[0].Handle != "refactor" || h[1].Handle != "refactor2" {
+	if h := f.Teams[0].Members; h[0].Handle != "parser" || h[1].Handle != "lexer" {
 		t.Fatalf("handles after titles moved: %+v", h)
 	}
 	if err := f.AddMember("t1", Member{}); err == nil {

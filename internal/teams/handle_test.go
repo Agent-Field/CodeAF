@@ -9,16 +9,20 @@ func TestDeriveHandle(t *testing.T) {
 	for title, want := range map[string]string{
 		"":                                "",
 		"   ":                             "",
-		"Refactor the parser":             "refactor",
-		"Fix the login bug":               "fix-login",
+		"Refactor the parser":             "parser",
+		"Fix the login bug":               "login",
 		"The API docs":                    "api-docs",
-		"Add OAuth2 support":              "add-oauth2",
-		"Internationalization pipeline":   "internationa",
-		"a the of":                        "a-the",
+		"Add OAuth2 support":              "oauth2",
+		"Internationalization pipeline":   "pipeline",
+		"Internationalization":            "internationa",
+		"a the of":                        "chat",
 		"日本語":                             "chat",
 		"x":                               "chat",
-		"Port: codeaf -> linux/arm64":     "port",
-		"Can you help me with benchmarks": "help",
+		"Port: codeaf -> linux/arm64":     "arm64",
+		"Can you help me with benchmarks": "benchmarks",
+		"release 2026":                    "release",
+		"lexer rewrite":                   "lexer",
+		"benchmark sweep":                 "benchmark",
 	} {
 		got := DeriveHandle(title)
 		if got != want {
@@ -27,6 +31,39 @@ func TestDeriveHandle(t *testing.T) {
 		if got != "" && ValidHandle(got) != nil {
 			t.Errorf("DeriveHandle(%q) = %q is not valid: %v", title, got, ValidHandle(got))
 		}
+	}
+}
+
+// THE TITLES THAT GAVE @checking, @review, @agent AND @te, as they were on the
+// machine where a team of them was first made. Each handle names what the
+// conversation is about, none is a filler word or a two-letter fragment, and
+// the team's handles are all different.
+func TestHandlesFromRealTitlesNameTheWork(t *testing.T) {
+	titles := map[string]string{
+		"checking codeaf branches for qa binary":              "qa-binary",
+		"review santosh dev2 branch code complexity security": "security",
+		"reviewing codeaf repo issue tags and milestones":     "milestones",
+		"agent native user journey automated testing":         "testing",
+		"can you te": "chat",
+	}
+	tm := Team{ID: "t"}
+	for title, want := range titles {
+		got := DeriveHandle(title)
+		if got != want {
+			t.Errorf("DeriveHandle(%q) = %q, want %q", title, got, want)
+		}
+		if want != "chat" && (fillerWords[got] || len(got) < handleWordMin) {
+			t.Errorf("DeriveHandle(%q) = %q, a filler word or a fragment", title, got)
+		}
+		tm.Members = append(tm.Members, Member{Key: title, Word: title})
+	}
+	assignHandles(&tm)
+	seen := map[string]bool{}
+	for _, m := range tm.Members {
+		if seen[m.Handle] {
+			t.Fatalf("two members of one team were given @%s", m.Handle)
+		}
+		seen[m.Handle] = true
 	}
 }
 

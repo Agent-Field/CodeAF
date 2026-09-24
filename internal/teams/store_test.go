@@ -398,7 +398,7 @@ func TestLoadRepairsIdsManagersAndHandles(t *testing.T) {
 	for _, m := range f.Teams[0].Members {
 		handles = append(handles, m.Handle)
 	}
-	if strings.Join(handles, ",") != "fix-login,fix-login2," {
+	if strings.Join(handles, ",") != "login,page," {
 		t.Fatalf("handles %q", handles)
 	}
 	again, _ := Load(dir)
