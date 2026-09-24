@@ -208,3 +208,25 @@ func (a *app) keepTaskRecords(rows []session.TaskIndexEntry) []session.TaskIndex
 	}
 	return kept
 }
+
+// withoutDeletedConversations applies confirmed deletion to every world reading,
+// including an engine snapshot captured before the delete finished. Copying the
+// lists keeps the engine's shared cache immutable while both pages update now.
+func (a *app) withoutDeletedConversations(world session.World) session.World {
+	if len(a.deletedRecords) == 0 {
+		return world
+	}
+	projects := make([]session.Project, 0, len(world.Projects))
+	for _, project := range world.Projects {
+		rows := make([]session.SessionRow, 0, len(project.Sessions))
+		for _, row := range project.Sessions {
+			if !a.deletedRecords[tasksKey{session: row.ID}] {
+				rows = append(rows, row)
+			}
+		}
+		project.Sessions = rows
+		projects = append(projects, project)
+	}
+	world.Projects = projects
+	return world
+}

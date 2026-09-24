@@ -251,3 +251,68 @@ func TestSessionsLiveRowRetainsSavedOwnershipAndClosureMetadata(t *testing.T) {
 		t.Fatalf("unscanned live identity is incomplete: %+v", row)
 	}
 }
+
+func TestDeletedConversationLeavesTheCurrentFrameWithAStaleWorld(t *testing.T) {
+	for _, page := range []string{"home", "sessions"} {
+		for _, current := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/current=%v", page, current), func(t *testing.T) {
+				a, files := homeTabsFixture(t)
+				index := 1
+				if current {
+					index = 0
+				}
+				file := files[index]
+				title := fmt.Sprintf("Conversation %d", index+1)
+				// A local engine's cached world can lag behind the successful disk delete.
+				stale := a.readWorld()
+				a.world = func() (session.World, bool) { return stale, true }
+				if current {
+					a.start = func(string) (Conversation, error) {
+						return Conversation{Agent: &twoTitleAgent{fakeAgent: &fakeAgent{model: "m"}, full: "Replacement"}, SessionFile: files[5], Workspace: a.workspace}, nil
+					}
+				}
+				if page == "home" {
+					a.home.point(file)
+					drive(t, a, key("right"), key("x"))
+					a.home.point(file)
+					drive(t, a, key("right"), key("x"), key("y"))
+				} else {
+					drain(t, a, a.showPage(pageTasks))
+					pointSessionsConversation(t, a, file)
+					drive(t, a, key("right"), key("right"), key("x"))
+					pointSessionsConversation(t, a, file)
+					drive(t, a, key("right"), key("right"), key("x"), key("y"))
+				}
+				if _, err := os.Stat(file); !os.IsNotExist(err) {
+					t.Fatalf("delete did not complete: %v", err)
+				}
+				// Inspect the very next frame without reopening or manually refreshing it.
+				frame := placeFrameText(a)
+				if strings.Contains(frame, title) {
+					t.Fatalf("deleted conversation remained on the current %s frame:\n%s", page, frame)
+				}
+				if page == "home" && !a.at(pageHome) || page == "sessions" && !a.at(pageTasks) {
+					t.Fatal("deletion navigated away from the current page")
+				}
+				// An old presence response cannot rebuild a task under the deleted owner.
+				owner := filepath.Base(filepath.Dir(file))
+				a.away = elsewhereCache{read: true, at: a.now(), held: session.NewElsewhere(a.now(), map[string]string{owner: title},
+					window(owner, session.PresenceTask{ID: "late", Title: "Work from a deleted conversation", State: "working"}))}
+				// An old snapshot on a subsequent refresh cannot resurrect the row either.
+				a.refreshRecordLists()
+				if frame := placeFrameText(a); strings.Contains(frame, title) || strings.Contains(frame, "Work from a deleted conversation") {
+					t.Fatal("stale refresh resurrected the deleted conversation or its work")
+				}
+				if len(a.taskSheetAwayRows()) != 0 {
+					t.Fatal("stale presence retained the deleted conversation's work")
+				}
+				for _, row := range stale.Sessions() {
+					if row.Transcript == file {
+						return
+					}
+				}
+				t.Fatal("filtering modified the engine's shared snapshot")
+			})
+		}
+	}
+}

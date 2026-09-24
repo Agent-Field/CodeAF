@@ -480,6 +480,10 @@ func (a *app) taskSheetAwayRows() []session.ElsewhereTask {
 	tasks := a.elsewhere().Tasks()
 	out := make([]session.ElsewhereTask, 0, len(tasks))
 	for _, task := range tasks {
+		// A stale presence cache must not rebuild a conversation just deleted.
+		if a.deletedRecords[tasksKey{session: task.SessionID}] || a.deletedRecords[tasksKey{session: task.SessionID, id: task.Task.ID}] {
+			continue
+		}
 		if strings.TrimSpace(task.Task.Title) == "" {
 			continue
 		}
