@@ -181,20 +181,20 @@ all re-fit it. Only the overflow folds. The conversation keeps exactly the last 
 calls in the no-caption fallback above a line reading `N earlier tool calls · ctrl+o`,
 and scrolling the conversation never opens a fold — `ctrl+o` or a click does.
 
-## The two tabs on a task's page: `transcript` and `work`
+## See what a task changed: the `transcript` and `work` tabs, and the `tab` key
 
-Every task's page carries two tabs, named at the right of the line at the top beside the
-way back: `transcript` and `work`. It is the same on either engine. `transcript` is the page
-this manual describes: the brief, the steps, the notes and the report. `work` is what the
-task changed.
+Two tabs are named at the right of the top line, beside the way back: `transcript` and
+`work`. They are there for every task on either engine. `transcript` is everything this
+manual describes: the brief, the steps, the notes and the report. `work` shows the files
+changed.
 
-- On a task of this window's own engine, `work` lists the files the task changed once it
-  has landed: `files this task changed`, or `this task changed no files`. Before it lands
-  it says `the files this task changes are listed here when it lands`.
+- On this window's own engine, `work` lists the files once the task has landed:
+  `files this task changed`, or `this task changed no files`. Before it lands it says
+  `the files this task changes are listed here when it lands`.
 - On a run's task, `work` is the run's working copy read against the commit it was cut
   from: the difference, and the files added, with the files codeaf keeps there left out.
-  Every task of a run works in the one copy, so the tab says so at its top. A copy that is
-  gone from disk is read off its branch instead.
+  The whole run shares that one copy, and the tab says so at its top. A copy that is gone
+  from disk is read off its branch instead.
 
 `tab` over an empty box moves from one tab to the other, and a click on a tab's name opens
 it. With words in the box, `tab` is the box's own key.
@@ -597,11 +597,11 @@ task's record instead, which the clause above says out loud.
 
 **A run task's room carries this box too**, and it says when the note is read rather than merely
 saved. Once the store has the note the room writes `the worker reads a note at its next step`
-under it: the note goes to the task's store and waits until the worker asks for its next step,
-which is when it reads what you wrote. A task that has ended, `done` or `incomplete`, takes no
-next step, so its room leaves that sentence out, and it takes no note at all: `enter` there
-says `this task has finished` and where the words can go, and leaves them in the box. If the
-store refuses a note for another reason, the store's own sentence is drawn on the line you typed.
+under it: the note waits in the store until the next step, which is when it is read. Once the
+work has ended, `done` or `incomplete`, there is no next step, so the room leaves that sentence
+out and takes no note: `enter` says `this task has finished` and where to say them instead, and
+leaves them in the box. A note the store refuses for another reason shows the store's own
+sentence on the line you typed.
 
 ## Task page says finished but the work is still running
 
