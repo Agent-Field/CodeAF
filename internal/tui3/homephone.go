@@ -688,6 +688,9 @@ func (a *app) homePhoneWords(line homeLine, pal palette) (string, string, noteIn
 			homeNoteInk(line.row, a.homeHeld(line.row) || a.homeRowGone(line.row))
 	case homeCommand:
 		return line.cmd.typed(), line.cmd.note(a.chords), nil
+	case homeCompletion:
+		path, note, _ := h.completionWords(line)
+		return path, note, nil
 	case homeItem:
 		return standGlyph(line.view.Item, line.view.Running, line.view.News, pal.ascii) +
 				" " + strings.TrimSpace(line.view.Item.Words),

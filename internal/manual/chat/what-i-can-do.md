@@ -697,7 +697,7 @@ some cannot see at all.
 You attach pictures to a message you type. **Drag a file onto the terminal, or
 paste one you copied as a file**, and it is attached — your sentence gets a short
 `[image #1]` token where the path would have gone, and you can then talk about
-"image #1" and be understood. `/image <path>` and the `@` completion attach one
+"image #1" and be understood. `/attach <path>` and the `@` completion attach one
 too. The picture travels **inside the message as the picture**, not as a path
 somebody has to go and open. The "what the keys do" page has the whole of it.
 

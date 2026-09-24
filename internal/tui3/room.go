@@ -2087,7 +2087,8 @@ func (a *app) freezeRoom() {
 	width := a.bodyWidth()
 	height := a.viewHeight()
 	// COPY OWNS THE PAGE BEFORE IT IS LAID OUT, so the room's transient
-	// activity and the blank belonging only to it never enter the snapshot.
+	// activity and the blank belonging only to it never enter the snapshot
+	// (worklogo.go, #1384).
 	a.copy.on = true
 	a.room.dirty = true
 	rows := a.roomRows(width)

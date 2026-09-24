@@ -66,14 +66,17 @@ naming the four (and the one you stand in, when it is off the bar), a dim rule, 
 the hint line last. See the **Places** page.
 
 **Only home has a box under that rule.** Its seam starts with the model, a colon and
-its effort word and approvals, with the project at the far right:
-`z-ai/glm-5.3-flash:auto · ◇ asks ─── project: ~/codeaf`. Conversation seams use the same
-layout and retain the full model identifier, including the organization before `/`
-(for example, `deepseek/deepseek-v4.1-flash`). They name the current workspace after any telemetry on the right. Home's project is clickable to cycle the draft
-destination; the conversation's is a reading. Model names and project paths underline
-on mouse-over on both seams; the model stays bold and bright. Paths truncate on the right, and the
-project field disappears if the controls and telemetry leave too little room. The model stays
-bold and bright cyan on home and in conversations, and the effort has no badge.
+its effort word and approvals: `z-ai/glm-5.3-flash:auto · ◇ asks`. Conversation seams use
+the same layout and retain the full model identifier, including the organization before
+`/` (for example, `deepseek/deepseek-v4.1-flash`), with the numbers after it on the right.
+**The project is not on either seam since 2026-09-22**: `project: <path>` is at the right
+end of the **keys row under the box**, on home and in a conversation alike — home's names
+where the next conversation opens, a conversation's names its own workspace — and both are
+doors onto changing it: on home a click or `alt+p` walks the projects this machine knows
+and `/project` opens the folder chooser, in a conversation a click or `/folder` opens it. Model names on the seam and project paths on the keys row underline on
+mouse-over; the model stays bold and bright. Paths truncate on the right, and the project
+goes entirely where the keys leave less than a word of room. The model stays bold and
+bright cyan on home and in conversations, and the effort has no badge.
 The box says `› type to search or start something new`. Its bottom row carries
 `alt+p project · alt+e effort · alt+a approvals · alt+k chats · / commands`
 when those controls are available. `/model` or a press on the model opens the list;
@@ -684,8 +687,12 @@ answering and where** on the left, and **the numbers** — the bill, the meter, 
 word — on the right, like the legend on a fieldset:
 
 ```
-─ glm-5.3-flash (deepinfra):high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s   project: ~/src/parser ─
+─ glm-5.3-flash (deepinfra):high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
+ › your sentence
+ alt+e effort · alt+a approvals · alt+k chats · / commands              project: ~/src/parser
 ```
+
+The project is on the keys row under the box (since 2026-09-22), not on the rule.
 
 **The conversation's name is not on this line.** It was, from 2026-09-09 to 2026-09-17,
 and it came off because a title takes the room the numbers need: the name is on the tab
@@ -762,7 +769,11 @@ long title could never push the numbers off the frame, and the name moved off ag
 
 **The keys row under the box** — the last row of the frame — is the hint slot. Until
 2026-09-17 it was the right end of the rule above the box; the numbers took that end and
-the keys got a row of their own. It names the keys that work right now when a state has
+the keys got a row of their own. Since 2026-09-22 it carries `project: <path>` at its right
+end, and its LOWEST RUNG is the earned tip (see *hints and tips*): a conversation's tip
+lives on this row, under every state's own keys, and takes the slot from the rest state
+whenever nothing is happening. Home's tip is the row above the rule instead. It names the
+keys that work right now when a state has
 keys of its own — for example `y allow · n deny · a always` while a question is up,
 `esc interrupt` while a turn is running,
 `enter steers it in · ctrl+shift+enter stops and sends · esc interrupt` while a turn is
@@ -1352,9 +1363,10 @@ Under 60 columns, eight things change shape:
    at most three wide targets: `open · new · ask here` on the inbox, `‹ back · open ·
    more` on a sheet. A tap **opens** — there is no second column to preview into, so
    there is no two-step — and mouse motion is ignored. Below width **24** the plain
-   hint line is drawn instead of the bar. The rule over the box still says where the next
-   conversation goes, with model and effort first, then approvals, and `project: <path>` at the right.
-   The path truncates on the right, and controls give way whole on narrow frames. No arrow
+   hint line is drawn instead of the bar. The rule over the box still says what the next
+   conversation answers on, with model and effort first, then approvals; where it goes is
+   `project: <path>` at the right end of the keys row under the box, cut on the right where
+   the keys leave it too little room. Controls give way whole on narrow frames. No arrow
    or `new conversation in` lead is drawn. The phone's action bar owns the keys.
 
 8. **The task strip becomes one door, and the roster becomes cards.** The strip stops

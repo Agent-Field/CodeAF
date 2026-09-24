@@ -537,11 +537,31 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// all until they said so.
 		{"where did my changes go", "choosing-a-folder"},
 		{"merge what you did into my folder", "choosing-a-folder"},
+		// /project split off from /folder on 2026-09-22: the person setting one,
+		// the person who typed /folder on home the old way, and the person who
+		// tried /project in a conversation.
+		{"how do I set the project on home", "choosing-a-folder"},
+		{"which folder will my next conversation open in", "choosing-a-folder"},
+		{"what happened to /folder on the home screen", "choosing-a-folder"},
 		{"put the changes into the folder", "choosing-a-folder"},
 		{"you changed my files?", "choosing-a-folder"},
 		{"undo what you did to my folder", "choosing-a-folder"},
 		{"work in that folder directly", "choosing-a-folder"},
 		{"what does ctrl+b do", "keys"},
+		// ctrl+b on home, asked by the person who pressed it there and saw
+		// nothing, and by the one who wants a title off the list.
+		{"ctrl+b on home does nothing", "keys"},
+		{"can I copy text off the home screen", "keys"},
+		// Copy mode, asked by somebody who wants to get words off the screen.
+		// It was taken out on 2026-09-22 and put back on 2026-09-23 — the owner
+		// wanted the feature kept and only its tip dropped — so these have to
+		// reach the pages that describe it working.
+		{"how do I copy text out of the conversation", "keys"},
+		{"is there a copy mode", "keys"},
+		{"what does /copy do", "commands"},
+		// The cross on a tip row, asked by somebody who pressed it and watched
+		// the row answer with a different sentence.
+		{"what does the x on the hint row do", "hints-and-tips"},
 		// The spell-it-out gesture, asked the three ways people meet it: wanting
 		// it, seeing the hint and not knowing what it is, and being unhappy about
 		// what came back.
@@ -2377,6 +2397,20 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I turn off hints", "hints-and-tips"},
 		{"stop showing tips", "hints-and-tips"},
 		{"what is a news line", "hints-and-tips"},
+		{"what is the dim sentence above the rule on home", "hints-and-tips"},
+		{"does the @ file list work on home", "home"},
+		{"is there an /image command", "attaching-files"},
+		{"the tip on home changed by itself", "hints-and-tips"},
+		{"every hint codeaf can show", "hints-and-tips"},
+		{"is a retired tip gone for good", "hints-and-tips"},
+		{"a tip appeared in my conversation after a while", "hints-and-tips"},
+		{"why does the hint only show up when I stop typing", "hints-and-tips"},
+		// The showing rule, and the day the row went blank: asked by the
+		// owner, whose afternoon of stepping through home had spent the table.
+		{"how long does a tip have to be on screen to count", "hints-and-tips"},
+		{"no hints at all any more, home's row is blank", "hints-and-tips"},
+		{"can I search my conversations with memory off", "places"},
+		{"search says what was said is not indexed", "places"},
 
 		// The wave that made the places follow the session's machine. These are
 		// the owner's own sentences, from the report that started it: they
@@ -2615,6 +2649,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I read the manual from the terminal", "commands"},
 		{"does reading the manual cost anything", "commands"},
 		{"list every page of the manual", "commands"},
+		// /manual is a question put to the model since 2026-09-22, asked by
+		// somebody who typed it on home and watched a conversation open, and by
+		// somebody who remembers it printing the page.
+		{"why did /manual open a conversation", "commands"},
+		{"does /manual ask the model or just print the page", "commands"},
 		// The wave that gave /status a second form. Each of these is asked by
 		// somebody who wants the session's facts for a PROGRAM rather than for
 		// their own eyes — the plain wish, the flag met in the command list, and

@@ -972,6 +972,8 @@ func (a *app) askHereWith(text string, orders ErrandOrders) tea.Cmd {
 	if text == "" {
 		return nil
 	}
+	// The door was found, whatever it answers below (notice.go).
+	a.noticeEvent(eventAsked)
 	if a.updateStopsTurn() {
 		return nil
 	}

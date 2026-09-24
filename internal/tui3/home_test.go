@@ -343,25 +343,41 @@ func TestHomeEscGoesBackToTheConversation(t *testing.T) {
 	}
 }
 
-// esc peels one layer: a box with something in it is cleared before the screen
-// is left.
-func TestHomeEscClearsTheBoxBeforeItLeaves(t *testing.T) {
+// esc peels ONE LAYER AT A TIME, and there are three of them on home: the `@`
+// list under the box, then the box itself, then the screen. The draft here is
+// `@x`, which opens the list, so all three are in play — and the list goes
+// first, because clearing the box would take the token the list was opened for
+// with it (homeat.go).
+func TestHomeEscPeelsTheListThenTheBoxThenTheScreen(t *testing.T) {
 	lab := newHomeLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "one", "/tmp/alpha", time.Now())
 	a := lab.app(mine)
 	a.openHome()
 	a.homeKey(key("@"))
 	a.homeKey(key("x"))
+	if !a.home.comp.open {
+		t.Fatal("@x did not open the completion list")
+	}
+	a.homeKey(key("esc"))
+	if a.home.comp.open {
+		t.Fatal("the first esc did not close the list")
+	}
+	if !a.at(pageHome) {
+		t.Fatal("the first esc left home instead of closing the list")
+	}
+	if got := a.home.box.String(); got != "@x" {
+		t.Fatalf("closing the list changed the draft to %q", got)
+	}
 	a.homeKey(key("esc"))
 	if !a.at(pageHome) {
-		t.Fatal("the first esc left home instead of clearing the box")
+		t.Fatal("the second esc left home instead of clearing the box")
 	}
 	if !a.home.box.empty() {
 		t.Fatalf("the box still holds %q", a.home.box.String())
 	}
 	a.homeKey(key("esc"))
 	if a.at(pageHome) {
-		t.Fatal("the second esc did not close home")
+		t.Fatal("the third esc did not close home")
 	}
 }
 
@@ -972,6 +988,11 @@ func TestHomesRestingFootIsTheDesignsSentence(t *testing.T) {
 	//
 	// The resting row adds the available draft controls without navigation hints.
 	rest := strings.TrimSpace(ansi.Strip(lines[len(lines)-1]))
+	// THE PROJECT RIDES THE ROW'S RIGHT since 2026-09-22 (hometip.go), after
+	// the keys; the sentence under test is the keys.
+	if at := strings.LastIndex(rest, targetProjectLead); at >= 0 {
+		rest = strings.TrimSpace(rest[:at])
+	}
 	want := hintFit(dotted(homeOptionsWord, a.targetChordWords()), a.width-2)
 	if rest != want || strings.Contains(rest, "↑↓ pick") || strings.Contains(rest, "enter open") {
 		t.Fatalf("the resting hint reads %q, want %q", rest, want)
@@ -2216,6 +2237,19 @@ func (l *homeLab) door(standing string) *app {
 	return a
 }
 
+// goHome walks through the door the way a person does, which is TWO SPACES IN
+// AN EMPTY BOX and not esc — esc went back to being the interrupt, the layer
+// peel and the arming half of rewind on 2026-09-23 (#1388), and a test that
+// still pressed it was testing a key that no longer opens anything.
+func goHome(t *testing.T, a *app) {
+	t.Helper()
+	a.key(key(" "))
+	a.key(key(" "))
+	if !a.at(pageHome) {
+		t.Fatal("two spaces did not open home")
+	}
+}
+
 // TWO SPACES IN AN EMPTY BOX GO HOME.
 func TestDoubleSpaceInAnEmptyBoxGoesHome(t *testing.T) {
 	lab := newHomeLab(t)
@@ -3184,8 +3218,10 @@ func TestTheListIsPaddedOffTheFoot(t *testing.T) {
 			// padding, and it is empty whatever the list did. How tall the box is
 			// depends on the height ([boxFloor]), so the foot is asked rather than
 			// counted out here.
+			// THE PADDING IS THE TIP ROW SINCE 2026-09-22 (hometip.go): the same
+			// row, blank whenever there is no tip, and never a row of the list.
 			pad := len(lines) - placeFootRowsAt(h)
-			if got := strings.TrimSpace(ansi.Strip(lines[pad])); got != "" {
+			if got := strings.TrimSpace(ansi.Strip(lines[pad])); got != "" && pad != a.tipRow {
 				t.Fatalf("at height %d (typed %v) the list touches the foot: row %d is %q\n%s",
 					height, typed, pad, got, strings.Join(lines, "\n"))
 			}

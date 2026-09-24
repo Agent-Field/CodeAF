@@ -200,18 +200,24 @@ The line over home's box is the same shape as the line over a conversation's own
 box:
 
 ```
-─ glm-5.3-flash:auto · ◇ asks ─── project: ~/src/parser
+                        💡 /project sets the project folder for a new conversation ✕
+─ glm-5.3-flash:auto · ◇ asks ──────────────────────────────────────────────────────
 › type to search or start something new
-alt+p project · alt+e effort · alt+a approvals · alt+k chats · / commands
+alt+p project · alt+e effort · alt+a approvals · / commands        project: ~/src/parser
 ```
 
 At the left it says **what model** answers, then a colon and **how hard it thinks**
 (the rung or `auto`, without a badge), and **what it runs without asking** (`◇` and `asks`, `guardian`, `YOLO` or `refuses` — the same words the
 approvals chip uses inside a conversation). The model is always bold and bright cyan,
-on home and in conversations. At the far right, `project: <path>` names where the
-next conversation opens; in a conversation it names that conversation's workspace.
-Long paths truncate on the right, and the field disappears if there is no room. The bottom row names the
-available project, effort and approval controls; the cells can also be pressed:
+on home and in conversations. On both boxes `project: <path>` is at the right end of the
+**keys row under the box** (it left the rule on 2026-09-22): home's names where the next
+conversation opens, a conversation's names its own workspace. The keys keep their room: a
+long path truncates on the right, and the field disappears if there is less than a word
+of room. **On home** the dim line above the rule, when there is one, is a tip (see *hints
+and tips*), there from the first minute. **In a conversation** the tip is not that row at
+all: it is the lowest rung of the keys row itself, taking the slot from the rest state
+whenever nothing else is happening. The bottom row names the available project, effort
+and approval controls; the cells can also be pressed:
 
 | cell | chord | or |
 |---|---|---|
@@ -237,12 +243,12 @@ this process was started with it.
 
 **The `here ~/codeaf` chip is gone**, and so are the rules that the other places used to
 draw over their boxes. The arrow and `new conversation in` lead are gone from home too;
-the model starts the seam, and the project sits at the far right. A place with something to say about its page — `nothing matches`
+the model starts the seam, and the project sits at the far right of the keys row under the box. A place with something to say about its page — `nothing matches`
 on tasks when a filter emptied it, a receipt on memory, the "this session is on another
 machine" line over `--host` — says it on its rule, where the box's rule would have been.
 
 **Over `--host`, and on a session with no dial**, the rung and the gate are simply not on
-home's rule — the folder and the model still are. The far machine's rows decide what a
+home's rule — the model still is, and the folder is still at the right of the keys row. The far machine's rows decide what a
 conversation there runs without asking.
 
 ## Why did pressing alt+enter not send my task straight away
@@ -606,7 +612,7 @@ On a machine that has spent nothing the place is its heading `spend` over one li
 `every chat and task is priced here as it runs`. A window paged onto a quiet fortnight is a
 different thing — its head row stays, with the arrows that page it back.
 
-## search — finding anything said or run
+## search — finding anything said or run, and what it matches when memory is off
 
 Everything that has been said on this machine. `alt+7` opens it — it is not on the tab
 bar — and typing searches: the
@@ -636,12 +642,19 @@ With nothing typed the place is its heading `search` over one line saying what t
 **A search that finds nothing says what to do about it**:
 `nothing on this machine says "amber rail" · try fewer words, or a name`.
 
-**And a window with no index behind it says so** rather than reporting an empty result:
-`there is no index of this machine's conversations behind this window, so nothing can be
-searched from here.` — which is a different sentence from "nobody has said that", and the
-difference matters. Over `--host` the sentence names the machine instead: the index is the
-one this machine's conversations were written into, and the conversation you are in was
-written on the other one.
+**With memory off the place refuses, and says which silence it is.** What was said is
+indexed only while the **memory** row is on — memory off opens no store at all — so this
+window says `there is no index of this machine's conversations behind this window, so
+nothing can be searched from here.` and searches nothing, whatever you type. That is
+deliberate: a search that never happened must not report a result, because
+`nothing on this machine says "amber rail"` would make you believe a conversation does not
+exist. **To find a conversation on such a machine, use home's box**, which matches names
+and projects and has never needed the index. (For one build on 2026-09-22 this place
+matched by name itself; that was taken back on 2026-09-23, because a place called `search`
+that searches something narrower than it says reads exactly like a whole search that found
+nothing.) Over `--host` a sentence at the top names the machine: the index is the one this
+machine's conversations were written into, and the conversation you are in was written on
+the other one.
 
 Typing here searches and nothing else. **Typing on home is what offers places** (`sta` offers
 the standing place beside the chats that match) — the same offer made twice, one `tab` apart,

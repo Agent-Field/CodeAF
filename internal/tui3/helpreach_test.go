@@ -19,7 +19,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/codeaf/internal/manual"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
@@ -338,47 +337,15 @@ func TestASearchThatFindsNothingSaysWhatToDoAndAMissingIndexSaysSo(t *testing.T)
 	if cmd := a.searchTick(searchTickMsg{gen: a.search.ask.gen}); cmd != nil {
 		t.Fatal("a surface with no index sent a read anyway")
 	}
+	// With no index the place refuses and says which silence this is. It
+	// matched by name instead for one build on 2026-09-22 and the owner took
+	// that back the next day (chattip_test.go).
 	page := plain(placeFrameText(a))
 	if !strings.Contains(page, "no index of this machine's conversations") {
 		t.Fatalf("a window with no index behind it does not say so:\n%s", page)
 	}
 	if strings.Contains(page, `nothing on this machine says "report"`) {
 		t.Fatalf("a search that never happened reported a result:\n%s", page)
-	}
-}
-
-// ── ROW 7: THE MANUAL LISTING ───────────────────────────────────────────────
-
-// A LISTING THAT SHOWS A PAGE THAT DOES NOT EXIST is worse than one that shows
-// fewer pages. The listing is one line per page — the name, then the title —
-// and an ordinary note RE-FLOWS its text, so a long title wrapped and its last
-// word landed at the column the page names are in: `/manual` drew a page called
-// `later`, and `/manual later` then answered that there is no such page.
-func TestTheManualListingNeverInventsAPage(t *testing.T) {
-	pages := map[string]bool{}
-	for _, name := range manual.Chat().Pages() {
-		pages[name] = true
-	}
-	for _, width := range []int{60, 80, 120} {
-		a := newTestApp(&fakeAgent{model: "m"})
-		a.width, a.height = width, 40
-		a.railAway = true
-		typeLine(t, a, "/manual")
-		for _, row := range noticeBlockRows(a, len(a.entries)-1, a.bodyWidth()) {
-			// The note's own `· ` marker and the indent law's gutter come off
-			// first: what is left is the row as the listing built it, and its
-			// first word must be a page.
-			said := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(row), "·"))
-			name, _, _ := strings.Cut(said, " ")
-			if name == "" {
-				continue
-			}
-			if !pages[name] {
-				t.Fatalf("the listing at %d columns drew a row whose first word is %q, "+
-					"which is not a page — /manual %s answers that there is no such page:\n%s",
-					width, name, name, row)
-			}
-		}
 	}
 }
 

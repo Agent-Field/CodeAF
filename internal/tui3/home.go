@@ -549,6 +549,10 @@ type homeLine struct {
 	// rewritten, so a row can hold it without the staleness a world index would
 	// carry ([homeLine.row] states that law).
 	cmd *command
+	// comp is the row of home's `@` list a [homeCompletion] line offers — an
+	// index into [homeView.comp]'s lines, which are rebuilt with this list
+	// (homeat.go).
+	comp int
 }
 
 // homeBare is one project home knows only through the things keeping an eye on
@@ -654,6 +658,11 @@ type homeView struct {
 	// of the list mid-sentence has said what they meant, and the list reopening
 	// under the rewritten token would be the surface asking again.
 	cmd menu
+	// comp is the `@` list over this box — the same [completion] every
+	// conversation's box has, bound here to home's (homeat.go) — and walked is
+	// the folder its files were walked from, so a target that moves walks again.
+	comp   completion
+	walked string
 	// expanded is the projects somebody opened by hand, by bucket directory.
 	// It outlives a rescan and a query, because folding is a thing a person did
 	// and not a thing the data said.
@@ -1218,6 +1227,13 @@ func (a *app) closeHome() {
 // this home from re-arming itself into the next one ([homeTickMsg]).
 func (a *app) dropHome() {
 	a.homeGen++
+	// THE TIP ON HOME'S ROW GOES OUT OF SIGHT HERE, so here is where its
+	// standing is measured (notice.go's [app.noticeSettle]) — AND HERE IS
+	// WHERE A CROSS PRESSED ON IT IS LIFTED. The row a person put away stays
+	// away for the whole of the visit they pressed it on; coming back to home
+	// is what brings the next tip ([noticeBoard.hidden]).
+	a.noticeSettle(slotHome)
+	a.notices.hidden[slotHome] = false
 	// CLOSING IS THE LOOK. The stamp the next open measures news against is
 	// written here and only here — see [homeView.seen] for why not on the way
 	// in, and session's look.go for why a window that dies instead loses
@@ -1500,6 +1516,13 @@ func (h *homeView) build() {
 		h.picked = len(h.lines) > 0
 		return
 	}
+	if h.comp.open {
+		// The `@` list keeps the completion's own cursor, which rank() moves
+		// with the query (homeat.go).
+		h.cursor = h.clamp(h.comp.cursor)
+		h.picked = len(h.lines) > 0
+		return
+	}
 	if h.searching() {
 		// THE ROW A PERSON WALKED ONTO IS THE ROW THEY ARE STILL ON, and it does
 		// not have to be a conversation. `picked` is the decision to stop writing
@@ -1682,7 +1705,14 @@ func (h *homeView) dropUp() bool { return h.searching() }
 func (h *homeView) buildWorld() {
 	commandRows := h.commandLines()
 	if h.cmd.open {
+		h.comp.close()
 		h.lines = append(h.lines, commandRows...)
+		return
+	}
+	// AND THE `@` LIST IS THE OTHER TYPED LIST, asked after the command list
+	// because at most one is open (homeat.go).
+	if rows := h.completionLines(); h.comp.open {
+		h.lines = append(h.lines, rows...)
 		return
 	}
 	query := h.query()
@@ -2048,6 +2078,8 @@ func (l homeLine) sameRow(other homeLine) bool {
 		return l.project != "" && l.project == other.project
 	case homeCommand:
 		return l.cmd != nil && l.cmd == other.cmd
+	case homeCompletion:
+		return l.comp == other.comp
 	// the switcher's and the phone's own rows (place_home.go, homephone.go),
 	// and spend's readouts, which are told apart the same way though the
 	// cursor never rests on one (homepanel_spend.go).
@@ -2344,7 +2376,7 @@ func (l homeLine) stop() bool {
 		return true
 	// the router's lane: an offered place is a door like every other door on this
 	// column (homeplaces.go), and an offered command is one too (homeslash.go).
-	case homePlace, homeCommand:
+	case homePlace, homeCommand, homeCompletion:
 		return true
 	// phone lane: the inbox's own two stops (homephone.go).
 	case homePhoneNews, homePhoneMore:
@@ -2584,6 +2616,16 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		// the only one that is doing something to another window while it stands
 		// (takeover.go's [app.cancelTakeover]).
 		if a.cancelTakeover() {
+			return nil
+		}
+		// THE @ LIST IS INNER TO THE BOX, and so it goes first. It is drawn
+		// under home's box and belongs to the half-typed token in it
+		// (homeat.go), so esc over an open list means "not that one" and must
+		// leave the sentence exactly as it was — clearing the box here would
+		// take the word the list was opened for along with the list.
+		if h.comp.open {
+			h.dismissCompletion()
+			h.build()
 			return nil
 		}
 		if !h.box.empty() {
@@ -2889,6 +2931,11 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 
 	case "ctrl+b":
+		// THE EMACS LEFT, and not copy mode: for one build on 2026-09-22 the
+		// chord froze home's own rows the way it freezes a conversation's, and
+		// the owner found nothing worth copying off a screen whose every row
+		// is a door — so home keeps the caret key its box has always had, and
+		// the tip that taught the freeze was replaced (notice.go).
 		h.box.left()
 		h.build()
 		return nil
@@ -3138,6 +3185,9 @@ func (a *app) homeEnter() tea.Cmd {
 		// says — run it bare, or hold the box for the words it takes
 		// (homeslash.go's [app.homeRunCommand]).
 		return a.homeRunCommand(line)
+	case homeCompletion:
+		// ENTER PUTS THE PATH IN, or a picture on the tray (homeat.go).
+		return a.homeCompleteFile(line)
 	case homeAskHere:
 		// The same sentence, asked rather than opened (homeexchange.go).
 		return a.askHere(strings.TrimSpace(h.box.String()))
@@ -4031,6 +4081,13 @@ func (a *app) homePress(x, y int) tea.Cmd {
 	if a.homePhone() {
 		return a.homePhonePress(x, y)
 	}
+	// THE CROSS ON THE TIP ROW MOVES THE ROW ON (hometip.go, notice.go's
+	// [app.noticeDismiss]). It is read first because its row carries no other
+	// door and moves no cursor.
+	if a.tipRow >= 0 && y == a.tipRow && a.tipCloseSpan.holds(x) {
+		a.noticeDismiss(slotHome)
+		return nil
+	}
 	// A CLICK MOVES THE CURSOR, so it is one of the two gestures that can leave
 	// a settled exchange behind ([app.sweepExchanges] is the other half of
 	// [app.homeKey]'s own deferred sweep).
@@ -4556,6 +4613,10 @@ func (a *app) homeList(width, room int, pal palette) []homeDrawn {
 		switch {
 		case h.cmd.open:
 			word = commandNoMatchWord
+		case h.comp.open && !h.comp.loaded:
+			word = homeLookingWord
+		case h.comp.open:
+			word = homeNoFileWord
 		case h.searching():
 			word = homeNoMatchWord
 		case !h.known:
@@ -4689,6 +4750,9 @@ func (a *app) homeLine(line homeLine, at, width int, pal palette) string {
 	case homePlace:
 		// A PLACE, OFFERED BECAUSE THE WORDS MATCH ITS NAME (homeplaces.go).
 		return a.homePlaceRow(line, at, width, pal)
+	case homeCompletion:
+		// A PATH, OFFERED BECAUSE THE WORDS AFTER `@` MATCH IT (homeat.go).
+		return a.homeCompletionRow(line, at, width, pal)
 	case homeCommand:
 		// A COMMAND, OFFERED BECAUSE THE WORDS MATCH ITS NAME OR AN ALIAS
 		// (homeslash.go).
@@ -5452,6 +5516,9 @@ const homeOptionsWord = "→ options"
 func (a *app) homeHintWords() string {
 	if a.home.cmd.open {
 		return "↑↓ pick · enter use it · esc back"
+	}
+	if a.home.comp.open {
+		return homeCompletionHint
 	}
 	if ex := a.paneExchange(); ex != nil {
 		if ex.focused {
