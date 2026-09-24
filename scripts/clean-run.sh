@@ -29,7 +29,11 @@ if [ -n "${CLEAN_INTO:-}" ]; then
 	rm -rf "$into"
 	mkdir -p "$into"
 else
-	into=$(mktemp -d "${TMPDIR:-/tmp}/codeaf-clean.XXXXXX")
+	# /tmp AND NOT $TMPDIR: macOS's $TMPDIR is a long path under /var/folders,
+	# and codeaf's session host listens on a unix socket under this folder,
+	# whose path may weigh at most 103 bytes (internal/enginehost). A root
+	# there left no room for the socket.
+	into=$(mktemp -d /tmp/codeaf-clean.XXXXXX)
 fi
 
 # WHAT MAKES IT YOURS, AND NOTHING THAT MAKES IT USED: the settings file, the
