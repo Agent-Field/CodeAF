@@ -451,13 +451,14 @@ conversation holds still goes on to the ordinary task reader.
 
 Yes, and it does not have to ask. The run looks for unread notes each time the
 worker finishes a step, and hands them over at once, through the same door your
-own typing into a running conversation takes. Before asking the model for its
-next action, the worker waits for the run to record the completed step, apply its
-limits, and hand over any notes. A slow record cannot let later actions race past
-that boundary.
+own typing into a running conversation takes. It is not something the worker has
+to think to look for, and it does not wait politely for a pause.
 
-- **What it interrupts.** Nothing already running: the current step finishes
-  first, and the next model request carries the note.
+- **What it interrupts.** If the worker's model is in the middle of writing its
+  next reply, that reply is cut off and asked again with the note in view. If the
+  worker is running a command in the foreground that has been going for three
+  seconds or more, the command is moved to the background and keeps running as a
+  job the worker can check on; a younger command is let finish first.
 - **When it is missed.** If the worker's turn is ending in that same moment there
   is nothing to hand the note to, so it stays unread and the next step offers it
   again: an unread note is a note nobody has been told.

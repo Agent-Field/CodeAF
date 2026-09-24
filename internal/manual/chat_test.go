@@ -29,12 +29,6 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		page     string
 	}{
 		{"what can you do", "what-i-can-do"},
-		{"can you use my claude code skills", "skills-from-other-tools"},
-		{"why is my claude code plugin skill missing", "skills-from-other-tools"},
-		{"do codex skills work here", "skills-from-other-tools"},
-		{"do skills work with memory off", "skills-from-other-tools"},
-		{"two skills with the same name which one wins", "skills-from-other-tools"},
-		{"why does a skill row say it cannot be attached", "putting-a-skill-in-front"},
 		{"can I use my own deepseek key", "services"},
 		{"how do I connect glm", "services"},
 		{"how do I add an api key for another provider", "services"},

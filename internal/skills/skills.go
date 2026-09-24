@@ -52,17 +52,7 @@ const (
 // word, and a skill is always a DIRECT child directory holding a SKILL.md —
 // nothing is walked deeper, which is also why the resident's promoted command
 // folders on the .codeaf/skills shelf stay invisible to this scan: they have
-// no SKILL.md. A direct child that is a LINK to a directory counts as one:
-// installers that keep one copy of a skill and link it into every harness's
-// folder are the common way a skill reaches several harnesses at once, and a
-// scan that skipped links saw none of those.
-//
-// TWO MORE SOURCES FOLLOW THESE SIX WITHIN EACH SCOPE, and they come last on
-// purpose (see [Discover]): the skills that arrived inside an installed and
-// enabled Claude Code plugin ([RootClaudePlugins], plugins.go), and the skills
-// Codex ships with itself ([RootCodexSystem]). Nobody placed either of them
-// by hand, so any skill a person did place by hand, in any of the six folders,
-// owns the name over them.
+// no SKILL.md.
 var skillRoots = []string{
 	".codeaf/skills",
 	".agents/skills",
@@ -71,15 +61,6 @@ var skillRoots = []string{
 	".cursor/skills",
 	".gemini/skills",
 }
-
-// RootCodexSystem is the folder Codex installs its own bundled skills into.
-// It sits INSIDE .codex/skills, where the six-root scan sees it as one child
-// with no SKILL.md and passes over it, so it is read as a root of its own.
-//
-// IT RANKS LAST IN ITS SCOPE, below the plugin skills too. A system skill is
-// the harness's default and nobody chose it: a person who installed a skill of
-// the same name into .codex/skills or anywhere else meant theirs.
-const RootCodexSystem = ".codex/skills/.system"
 
 // Options names where to look: the project's own directory and the login home
 // directory, not any skills folder under them.
@@ -114,17 +95,10 @@ type Skill struct {
 	// scope. A shadowed skill stays in the result rather than being silently
 	// dropped, because "why is my skill not working" deserves an answer.
 	Shadowed bool
-	// Plugin names the Claude Code plugin a skill arrived inside, spelled the
-	// way Claude Code keys it (`name@marketplace`), and is empty for a skill
-	// read from a skills folder. Root is [RootClaudePlugins] whenever this is
-	// set.
-	Plugin string
 }
 
 // Discover scans the conventional skill folders under one project directory
 // and one home directory, in issue #1277's order, and returns what it found:
-// within each scope the six hand-kept folders, then the skills of every
-// installed and enabled Claude Code plugin, then Codex's bundled skills —
 // every folder that holds a SKILL.md, winners first, losers marked Shadowed,
 // and unreadable ones carried with a Warning rather than dropped. It never
 // fails because one folder is broken — the worst a malformed skill can do is
@@ -158,91 +132,40 @@ func Discover(opts Options) ([]Skill, error) {
 		bases = append(bases, scanBase{dir: absolute(homeDir), scope: ScopeUser})
 	}
 
-	// The plugin registry is read once for both scopes: it lives under the
-	// home directory whichever scope a plugin was installed for.
-	userPlugins, projectPlugins := claudePlugins(homeDir, projectDir)
-	homeFolded := homeDir != "" && projectDir != "" && absolute(homeDir) == absolute(projectDir)
-
 	result := make([]Skill, 0)
 	owner := make(map[string]int)
-	// take reads one skill folder into the result, settling its name against
-	// every skill collected before it.
-	take := func(dir, root, scope, plugin string) {
-		skill, state := readSkill(dir, root, scope)
-		skill.Plugin = plugin
-		switch state {
-		case stateNotASkill:
-		case stateSkipped:
-			result = append(result, skill)
-		case stateLoaded:
-			if _, seen := owner[skill.Name]; seen {
-				skill.Shadowed = true
-				result = append(result, skill)
-				return
-			}
-			owner[skill.Name] = len(result)
-			result = append(result, skill)
-		}
-	}
-	// collect reads every skill folder directly inside one folder.
-	collect := func(folder, root, scope, plugin string) {
-		entries, err := os.ReadDir(folder)
-		if err != nil {
-			// A missing folder is skipped without a word.
-			return
-		}
-		for _, entry := range entries {
-			if isDirectory(folder, entry) {
-				take(filepath.Join(folder, entry.Name()), root, scope, plugin)
-			}
-		}
-	}
 	for _, base := range bases {
 		scope := base.scope
 		for _, root := range skillRoots {
-			collect(filepath.Join(base.dir, root), root, scope, "")
-		}
-		// THE PLUGIN SKILLS, after every hand-kept folder in the scope and
-		// before the harness's own bundled skills. A project scope carries
-		// the plugins installed for this project; when the home directory
-		// folded into the project base above, it carries the person's own
-		// plugins after them too, the same way it already carries their six
-		// home folders.
-		plugins := userPlugins
-		if scope == ScopeProject {
-			plugins = projectPlugins
-			if homeFolded {
-				plugins = append(append([]claudePlugin(nil), projectPlugins...), userPlugins...)
+			entries, err := os.ReadDir(filepath.Join(base.dir, root))
+			if err != nil {
+				// A missing folder is skipped without a word.
+				continue
 			}
-		}
-		for _, plugin := range plugins {
-			for _, folder := range plugin.skillFolders {
-				// A folder a plugin names may be one skill rather than a
-				// folder of them, and then it is read as the one skill.
-				if info, err := os.Stat(filepath.Join(folder, "SKILL.md")); err == nil && info.Mode().IsRegular() {
-					take(folder, RootClaudePlugins, scope, plugin.id)
+			for _, entry := range entries {
+				if !entry.IsDir() {
 					continue
 				}
-				collect(folder, RootClaudePlugins, scope, plugin.id)
+				dir := filepath.Join(base.dir, root, entry.Name())
+				skill, state := readSkill(dir, root, scope)
+				switch state {
+				case stateNotASkill:
+					continue
+				case stateSkipped:
+					result = append(result, skill)
+				case stateLoaded:
+					if _, seen := owner[skill.Name]; seen {
+						skill.Shadowed = true
+						result = append(result, skill)
+						continue
+					}
+					owner[skill.Name] = len(result)
+					result = append(result, skill)
+				}
 			}
 		}
-		collect(filepath.Join(base.dir, RootCodexSystem), RootCodexSystem, scope, "")
 	}
 	return result, nil
-}
-
-// isDirectory reports whether one child of a skills folder is a directory,
-// following a link to find out. A link that points nowhere, or at a file, is
-// not a skill folder and is passed over the way a stray file is.
-func isDirectory(parent string, entry fs.DirEntry) bool {
-	if entry.IsDir() {
-		return true
-	}
-	if entry.Type()&fs.ModeSymlink == 0 {
-		return false
-	}
-	info, err := os.Stat(filepath.Join(parent, entry.Name()))
-	return err == nil && info.IsDir()
 }
 
 // absolute is filepath.Abs with the failure swallowed: a discovery handed a
@@ -409,12 +332,6 @@ func validSkillName(name string) bool {
 // file that cannot be read contributes nothing and stops nothing.
 func directorySize(dir string) int64 {
 	var total int64
-	// A skill folder reached through a link is walked at the folder it names:
-	// WalkDir does not descend through a link at its root, and a linked skill
-	// would otherwise weigh nothing at all.
-	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
-		dir = resolved
-	}
 	_ = filepath.WalkDir(dir, func(_ string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return nil

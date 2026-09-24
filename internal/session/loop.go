@@ -3415,7 +3415,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 	// the row.
 	for index, call := range calls {
 		if results[index].isError {
-			a.sendBeltStep(ctx, hub, Event{
+			hub.send(Event{
 				Kind:   EventToolFailed,
 				Tool:   call.Function.Name,
 				Hint:   clip(firstLine(results[index].text), hintLimit),
@@ -3437,7 +3437,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 		// A successful tool's hint is empty: the result belongs to the model,
 		// and the person already read what the call was going to do. Output is
 		// there for a person who asks to see it anyway.
-		a.sendBeltStep(ctx, hub, Event{
+		hub.send(Event{
 			Kind:   EventToolEnd,
 			Tool:   call.Function.Name,
 			Args:   rendered[index],

@@ -701,7 +701,8 @@ func (a *app) chipPress(x, y int) (tea.Cmd, bool) {
 	// AND THE SKILL CELL TAKES EVERY ATTACHED SKILL OFF AT ONCE — the one
 	// gesture the chip promises, and the manual page names (skillpick.go).
 	if at == traySkillChip {
-		return a.dropSkillChip(), true
+		a.dropSkillChip()
+		return nil, true
 	}
 	// AND A FOLDER'S CELL TAKES THE FOLDER OFF THE CONVERSATION — not off the
 	// message, which is what every other cargo cell up here does. It is the same

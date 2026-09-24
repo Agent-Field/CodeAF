@@ -1,6 +1,0 @@
-{
-  "split": {
-    "source": {"source": "directory", "path": "@FIXTURE@/market-clone/split"},
-    "installLocation": "@FIXTURE@/market-clone/split"
-  }
-}

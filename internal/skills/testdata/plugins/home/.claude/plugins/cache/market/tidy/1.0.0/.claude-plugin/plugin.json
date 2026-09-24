@@ -1,5 +1,0 @@
-{
-  "name": "tidy",
-  "version": "1.0.0",
-  "skills": ["./skills", "./extra", "../outside"]
-}
