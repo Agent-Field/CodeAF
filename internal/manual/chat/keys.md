@@ -2176,7 +2176,7 @@ what each holds), and its keys are a small grammar:
 | `↑` / `↓` (`ctrl+p` / `ctrl+n`) | walk the field, from one panel into the next, and stop at both ends: `↑` off the top row stays there and does not climb onto the tab bar (reach the bar with a click, `tab`, or a place's chord) |
 | `←` / `→` | cross to the next column, onto the row nearest the one you left — only into a column with a row to stand on |
 | a digit, or a question's own key | answers **the one row of `needs you` that is drawing its answers**, from anywhere on home, with no cursor move — the row under the cursor when it can take one, the top answerable row otherwise. A question's chips are `1 allow once  2 always  3 deny`; a landing in `unread` offers `1 accept   2 not right`, its own `[a]`/`[n]` being letters and letters always type on home |
-| `enter` | acts on the row under the cursor: a conversation opens, a project row starts a new chat in that folder, a `since you left` line opens its record, file or place, a `scheduled` row opens standing, a fold line opens or shuts its panel. `spend`'s lines are not stops, so the cursor never reaches them |
+| `enter` | acts on the row under the cursor: a conversation opens, a project row starts a new chat in that folder, a `since you left` line opens its record, file or place, a `standing` row opens standing, a fold line opens or shuts its panel. `spend`'s lines are not stops, so the cursor never reaches them |
 | `pgup` / `pgdown` | jump a screenful |
 | `tab` | **the next place** on the bar |
 | `esc` | dismisses a local layer; otherwise stays on Home and preserves the draft |
@@ -2211,7 +2211,7 @@ ones. Enter or `ctrl+e` on a closed row reopens it. **`ctrl+o`** opens
 its folder and **`ctrl+y`** copies its path. **`ctrl+t`** on a conversation's row still
 starts a new one in that row's folder, though `enter` on a row of the `projects` panel is
 the way home offers now. On a standing item's row — in `needs you` while it asks, in
-`scheduled` otherwise, firing or not — **`ctrl+e` pauses** it, **`ctrl+x` stops it for good**, and
+`standing` otherwise, firing or not — **`ctrl+e` pauses** it, **`ctrl+x` stops it for good**, and
 **`alt+e` raises how hard that item thinks** one rung. Each chord acts on the row under
 your pointer when there is one, the cursor's row otherwise. The machine's own default is
 not on this chord — it is the `thinking` row of `/settings`, and *alt+e — how hard the
@@ -2983,7 +2983,7 @@ and it moves the rung of **the thing you are standing on**. One chord, three sco
 | The message box, typing or empty | **This conversation's** rung — the one on the legend above the box, beside the model, see *The thinking chip above the message box* |
 | The task roster holds the keyboard (`alt+t`) and the cursor is on a task | That task's rung |
 | You are inside a task's page | That task's rung |
-| Home, with the cursor on a standing item's row — in `needs you` or `scheduled` | That item's rung |
+| Home, with the cursor on a standing item's row — in `needs you` or `standing` | That item's rung |
 
 Everywhere else it does nothing at all. A conversation row on home is deliberately not on
 the list: a conversation's rung belongs to the window that conversation is open in, where
