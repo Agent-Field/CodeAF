@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -33,7 +34,22 @@ func TestCreditsRecordChangesImplicitDefaultsWithoutSavingModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(data), "secret-key") || strings.Contains(string(data), "0.5") || len(CreditsKeyPrint("secret-key")) != 16 {
+	// THE RECORD HOLDS FOUR FIELDS AND NO NUMBER. A substring search for a
+	// dollar figure also matched the fractional seconds of read_at, so the
+	// fields are named and every value's type is checked instead.
+	var fields map[string]any
+	if err := json.Unmarshal(data, &fields); err != nil {
+		t.Fatal(err)
+	}
+	for name, value := range fields {
+		switch value.(type) {
+		case bool, string:
+		default:
+			t.Fatalf("record field %q holds %v, which is neither a flag nor text: %s", name, value, data)
+		}
+	}
+	if len(fields) != 4 || fields["low"] == nil || fields["known"] == nil || fields["key"] == nil || fields["read_at"] == nil ||
+		strings.Contains(string(data), "secret-key") || len(CreditsKeyPrint("secret-key")) != 16 {
 		t.Fatalf("record exposes a key or balance: %s", data)
 	}
 	if !CreditsNeedRead(dir, "different-key") || !CreditsNeedRead(dir, "secret-key") {
