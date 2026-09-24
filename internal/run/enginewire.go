@@ -51,6 +51,8 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 			Check: chatCheckSeat(),
 		}, spec.CompleterFor),
 		OnSpend: spec.OnSpend,
+		Gate:    spec.Admission,
+		OnHold:  spec.OnHold,
 	})
 	return session.RunSummary{
 		Outcome: string(outcome),

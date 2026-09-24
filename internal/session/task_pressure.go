@@ -238,6 +238,50 @@ type TaskLanes struct {
 // on every [Config] it hands out.
 func NewTaskLanes() *TaskLanes { return &TaskLanes{} }
 
+// RunAdmission is the run engine's three admission verbs. It uses the same
+// governor and process lane account as the node frontier without exposing the
+// governor's readings across the engine seam.
+type RunAdmission interface {
+	// MayStart reads host pressure before one worker is launched.
+	MayStart() bool
+	// Started reserves the lane after a worker has been built.
+	Started()
+	// Returned releases that lane when its worker comes home.
+	Returned()
+}
+
+type runAdmission struct {
+	governor *admissionGovernor
+	lanes    *TaskLanes
+}
+
+// NewRunAdmission builds the machine gate for either run door. Zeroing both
+// ceilings gives the engine a nil gate, the governor's existing off rule.
+func NewRunAdmission(maxLoad float64, minFreeMB int, lanes *TaskLanes) RunAdmission {
+	governor := newAdmissionGovernor(maxLoad, minFreeMB)
+	if governor == nil {
+		return nil
+	}
+	if lanes == nil {
+		lanes = NewTaskLanes()
+	}
+	return &runAdmission{governor: governor, lanes: lanes}
+}
+
+// MayStart samples the host with no graph lock held, because proc reads may
+// stall; the shared count projects the footprint of all conversation workers.
+func (g *runAdmission) MayStart() bool {
+	running := g.lanes.running()
+	g.governor.observe(running)
+	return g.governor.admits(g.lanes.running())
+}
+
+// Started adds one run worker to the account the node frontier also reads.
+func (g *runAdmission) Started() { g.lanes.take() }
+
+// Returned removes the worker on the supervisor's return and drain roads.
+func (g *runAdmission) Returned() { g.lanes.give() }
+
 // take records one lane taken anywhere in the process.
 func (a *TaskLanes) take() {
 	if a == nil {

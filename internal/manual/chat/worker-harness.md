@@ -55,11 +55,11 @@ While a run is live the task pane draws its **plan**: one row per task in the
 store, in the place's own row machinery, so a plan row looks like every other row.
 Each row wears one state word, mapped off the store's own status:
 
-- `queued` — the store says `pending`: the work is admitted and not started, with
-  nothing in its way but a slot. A row held behind named work says what is holding
-  it: `queued · waits: <the work it hangs under>` — see *Why does it say queued?*.
-- `running` — the store says `ready`, `claimed` or `running`: the work is
-  deliverable, or a worker has it.
+- `queued` — the store says `pending`: the work is admitted and not started. A
+  row held behind named work says `queued · waits: <the work it hangs under>`;
+  a ready row held by the machine says `queued · machine busy`.
+- `running` — the store says `ready`, `claimed` or `running` and there is no
+  machine hold: the work is deliverable, or a worker has it.
 - `done` — the store says `done`.
 - `incomplete` — the store says `failed`, or `cancelled` by anything but your own
   stop. Nothing judged it, so the word must not send you looking for a fault.

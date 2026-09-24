@@ -3499,6 +3499,7 @@ func runErrand(request doRequest, seats config.Seats) (headlessOutcome, error) {
 		Brief:     request.task,
 		Slots:     request.slotsFor(settings.ProfileDir),
 		Limits:    limits,
+		Gate:      session.NewRunAdmission(config.TaskMaxLoadAt(settings.ProfileDir), config.TaskMinFreeMBAt(settings.ProfileDir), session.NewTaskLanes()),
 		Factory: runengine.CrewFactory(store, workspace, settings.ProfileDir, runengine.Seats{
 			Work:  seats.Work.Model,
 			Plan:  seats.Plan.Model,
