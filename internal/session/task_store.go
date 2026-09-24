@@ -748,12 +748,27 @@ type runRecord struct {
 	// loud rather than repairing.
 	Copy *TaskCopyRecord `json:"copy,omitempty"`
 
-	// ElapsedMS is whatever age the row was last published with, frozen. A run's
-	// rows do not carry one today — the family publishes no Elapsed — so it is
-	// absent on every record this code writes, and it is here rather than left
-	// out because the record's job is to carry the notice, not to decide which
-	// half of it matters. Zero renders as nothing, which is the emptiness law.
+	// ElapsedMS is whatever age the row was last published with, frozen. A
+	// hand-off's run row carries its wall time from the row that settles it —
+	// the span from the hand-off to the instant its program was gone, or its
+	// engine answered ([runSpan]) — and an adaptive family's rows publish no
+	// Elapsed, so theirs is absent. Zero renders as nothing, which is the
+	// emptiness law.
 	ElapsedMS int64 `json:"elapsed_ms,omitempty"`
+
+	// Ending, Branch, Merge, Result and Changed are HOW THE ROW ENDED AND WHERE
+	// ITS WORK IS, which a settled run row carries and a conversation reopened
+	// tomorrow must still say. They were left out, and the drop was visible: a
+	// program that judged its own work unfinished came back as `a fault: …` —
+	// the failed-with-no-ending reading — instead of its own sentence, a run
+	// ended by a limit its person set lost which limit it was, and a row whose
+	// work was kept on a branch came back naming no branch at all. Each is
+	// omitted when empty, so an older file decodes exactly as it always did.
+	Ending  TaskEnding `json:"ending,omitempty"`
+	Branch  string     `json:"branch,omitempty"`
+	Merge   string     `json:"merge,omitempty"`
+	Result  string     `json:"result,omitempty"`
+	Changed []string   `json:"changed,omitempty"`
 }
 
 // taskDocument is the file: a type tag, a version, the id counter, the nodes in
@@ -1067,6 +1082,11 @@ func runRowRecord(notice TaskNotice) runRecord {
 		StartedAt: notice.StartedAt,
 		EndedAt:   notice.EndedAt,
 		Copy:      notice.Copy,
+		Ending:    notice.Ending,
+		Branch:    notice.Branch,
+		Merge:     notice.Merge,
+		Result:    notice.Result,
+		Changed:   append([]string(nil), notice.Changed...),
 	}
 }
 
@@ -1105,6 +1125,11 @@ func runRowNotice(record runRecord) TaskNotice {
 		StartedAt: record.StartedAt,
 		EndedAt:   record.EndedAt,
 		Copy:      record.Copy,
+		Ending:    record.Ending,
+		Branch:    record.Branch,
+		Merge:     record.Merge,
+		Result:    record.Result,
+		Changed:   append([]string(nil), record.Changed...),
 	}
 	if !notice.State.settled() {
 		// WORK NOTHING IS DRIVING IS INTERRUPTED, NOT FAILED. This row was live

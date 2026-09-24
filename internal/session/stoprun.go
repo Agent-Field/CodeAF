@@ -238,9 +238,12 @@ func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
 	a.recordUserLocked(note)
 	a.mu.Unlock()
 
+	// THE ROW ENDS WHERE THE RUN'S WORK DID — the instant the program was gone,
+	// or the engine answered — and not after the kept work was committed
+	// ([Agent.beltRunEndedAt]).
 	notice := TaskNotice{
 		ID: run.row, Title: run.title, State: TaskFailed, Stopped: true,
-		Report: report, Changed: changed, Merge: merge, EndedAt: a.taskClockNow(),
+		Report: report, Changed: changed, Merge: merge, EndedAt: a.beltRunEndedAt(run),
 	}
 	// THE ROW NAMES A BRANCH ONLY WHEN THERE IS WORK ON IT, for the reason the
 	// sentence does ([beltStoppedWhere]): measured on the real binary, a run

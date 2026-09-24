@@ -269,6 +269,15 @@ type beltRun struct {
 	// It is the same reading the row published to the surface carries, so the
 	// tree and the row cannot disagree about when the work began.
 	born time.Time
+	// ended is the instant the run's engine answered, off the same clock, and
+	// spent is what the engine said the run came to: both zero until the run's
+	// work is over. ended is what a run with no program's clock settles at
+	// ([Agent.beltRunEndedAt]), which is never the later instant its landing
+	// and its summary have finished at. Both are written and read under
+	// [Agent.beltMu], because a hand-off joining the run publishes from another
+	// goroutine while the run is ending.
+	ended time.Time
+	spent float64
 	// delegate is the program this run's root is handed to, nil for a run the
 	// conversation's own workers drive; startSha is the commit the copy stood on
 	// the moment the run began, the point a tree program's commits are squashed
@@ -633,6 +642,11 @@ func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
 // Carrying it forward in the one function every publisher goes through is what
 // keeps that from depending on each of them remembering. A notice that names a
 // copy of its own wins, because it is the more recent reading.
+//
+// AND A ROW THAT HAS ENDED CARRIES HOW LONG IT RAN, worked out here from the
+// one pair it carries ([runSpan]) so that no publisher can put a different
+// figure beside the same two instants: the rail's clock, the card's span and
+// the checkpoint's elapsed_ms all read it.
 func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 	if notice.Copy == nil {
 		for _, kept := range g.runRows(notice.ID) {
@@ -641,6 +655,9 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 				break
 			}
 		}
+	}
+	if notice.Elapsed == 0 {
+		notice.Elapsed = runSpan(notice.StartedAt, notice.EndedAt)
 	}
 	a.emitTaskUpdate(notice)
 	g.keepRunRows(notice.ID, []TaskNotice{notice})
@@ -684,6 +701,12 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	}
 	spec.OnSpend = foldSpend
 	summary := engine.Start(ctx, spec)
+	// THE RUN'S WORK IS OVER THE MOMENT THE ENGINE ANSWERS, and that instant is
+	// taken now, before the landing, the summary refresh and the note — which
+	// can take a quarter of a minute between them and are not the work.
+	a.beltMu.Lock()
+	run.ended, run.spent = a.taskClockNow(), summary.USD
+	a.beltMu.Unlock()
 	// The final receipt closes any gap between the last live reading and every
 	// ending, before the person-stop road and the ordinary landing road split.
 	foldSpend(summary.USD)
@@ -704,16 +727,22 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	}
 	var landing RunLanding
 	if run.delegate != nil {
-		landing = a.landDelegateRun(run, summary)
 		// A PROGRAM'S RUN IS OVER WHEN ITS PROGRAM IS, however it ended: it is
 		// a run of one task that nothing continues, so a store the engine left
-		// open — a program ended at the dollar ceiling leaves it so — is closed
-		// here, or its page would read `running` and offer `stop it` for ever.
-		// A run that already ended is left as it ended.
+		// open — a program ended at a limit leaves it so — is closed here, or its
+		// page would read `running` and offer `stop it` for ever. A run that
+		// already ended is left as it ended.
+		//
+		// IT IS CLOSED BEFORE THE LANDING, NOT AFTER IT. The squash and the
+		// commit take their time, and a page that went on reading `running` over
+		// a program that had already exited was a page claiming a present that
+		// was over — for the two limit endings alone, because every other ending
+		// is written by the engine at the program's exit.
 		if summary.Outcome != beltRunOutcomeDone {
 			words, _ := runEndingWords(summary)
 			_ = run.store.FailRoot(words)
 		}
+		landing = a.landDelegateRun(run, summary)
 	} else {
 		landing = a.landBeltRun(ctx, engine, run)
 	}
@@ -873,7 +902,7 @@ func owedLandingTier() roles.Tier { return roles.TierLow }
 // a surface draws.
 func (a *Agent) settleBeltRun(run *beltRun, summary RunSummary, landing RunLanding) {
 	notice := a.beltRunNotice(run, summary, landing)
-	notice.EndedAt = a.taskClockNow()
+	notice.EndedAt = a.beltRunEndedAt(run)
 	g := a.graph()
 	if g == nil {
 		a.emitTaskUpdate(notice)

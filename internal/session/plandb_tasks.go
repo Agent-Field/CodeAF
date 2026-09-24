@@ -64,7 +64,11 @@ type PlanTaskRow struct {
 	// cost so far.
 	USD float64
 	// Started is when the task was created and Ended when it completed; a task
-	// still open carries the zero Ended.
+	// still open carries the zero Ended. A PROGRAM's task carries its run's one
+	// pair instead — the hand-off and the instant the program was gone
+	// (task_run_clock.go's [planRunClocks.apply]) — because the store's pair
+	// brackets the copy being cut at one end and whenever each kind of ending
+	// wrote the store at the other.
 	Started time.Time
 	Ended   time.Time
 	// Note is the text of the task's last note, empty when nobody has left one.
@@ -219,6 +223,7 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 	var rows []PlanTaskRow
 	copies := a.planDisplayRunCopy()
 	carried := a.planCarriedPrograms()
+	clocks := a.planRunClocks()
 	for _, store := range stores {
 		dir := filepath.Dir(store.Path())
 		spend := planSpendByTask(store.Path())
@@ -232,6 +237,7 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 		for _, task := range tasks {
 			row := planTaskRow(store, dir, task, spend, live)
 			planCarriedRow(&row, carried[task.ID])
+			clocks.apply(&row, dir, task, root)
 			row.Folder = a.planTaskRunCopy(task.ID)
 			row.LiveParts = planStepDisplayFacts(PlanStep{Command: row.Live.Command}, copies.or(row.Folder), planShimFilename).Parts
 			rows = append(rows, row)
@@ -272,6 +278,7 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	live := store.LiveSteps()
 	copies := a.planDisplayRunCopy()
 	carried := a.planCarriedPrograms()
+	clocks := a.planRunClocks()
 	// Walk admission order once; membership follows parent edges only.
 	all := store.Tasks(plandb.Filter{Chat: plan.chat})
 	rows := make(map[string]PlanTaskRow, len(all))
@@ -280,6 +287,7 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	for _, child := range all {
 		row := planTaskRow(store, dir, child, spend, live)
 		planCarriedRow(&row, carried[child.ID])
+		clocks.apply(&row, dir, child, store.RootID())
 		row.Folder = a.planTaskRunCopy(child.ID)
 		row.LiveParts = planStepDisplayFacts(PlanStep{Command: row.Live.Command}, copies.or(row.Folder), planShimFilename).Parts
 		rows[child.ID] = row

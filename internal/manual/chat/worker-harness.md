@@ -205,8 +205,11 @@ other.
 
 The line under the title stays put while you scroll: the stage the program says it is in (the
 task's own word, such as `running` or `done`, when there is none), what the run has spent so
-far, how many model calls it has made, and how long it has been going. A figure with nothing
-behind it is left out. The conversation opens on the brief. Each call is the program's side — a
+far, how many model calls it has made, and how long it has been going — from the moment you
+handed it off to the moment the program's process ended, the same span its row and its card
+show. A figure with nothing behind it is left out. A run nothing is driving any more, because
+codeaf closed while the program worked, reads `incomplete` with its time stopped at the last
+thing it did. The conversation opens on the brief. Each call is the program's side — a
 tool's result as `<tool>: <first line>`, its own words, or `summarized its history so far` —
 and the model's, named by its short name: the first line of its answer, and one dim row per tool
 it asked for behind that tool's mark. A call codeaf refused is one line from `codeaf`,

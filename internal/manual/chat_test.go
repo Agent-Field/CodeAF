@@ -932,6 +932,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I merge senior-dev's branch", "senior-dev"},
 		{"which models does senior-dev use", "senior-dev"},
 		{"make senior-dev use my crew models", "senior-dev"},
+		{"how long did the senior-dev run take", "senior-dev"},
+		{"senior-dev's page still says running after codeaf crashed", "senior-dev"},
 		{"which folder does a delegate work in", "delegates"},
 		{"the harness I just had built is not in /subharness", "subharnesses"},
 		{"how do I run a harness I had designed", "subharnesses"},

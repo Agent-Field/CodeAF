@@ -183,6 +183,30 @@ senior-dev's own flags on `run`:
 `codeaf senior-dev help` describes it and its one command, `run`;
 `codeaf senior-dev run --help` prints all of them, codeaf's four included.
 
+## How long did senior-dev take — a run's time, the clock on its page, wall time
+
+A senior-dev run is timed from the moment you handed it off — when its row first reads
+`running`, after its copy has been made — to the moment senior-dev's own process ended.
+Making the copy before it, and landing the work after it, are not counted. A run whose
+senior-dev never started is timed to the moment the run ended.
+
+Everything that shows the run's time shows that one span: the line under its page's title
+(counting up from the hand-off while it runs, and stopped at senior-dev's exit once it has
+ended, even before the work has landed) and its row and card once it has landed. The page
+spells it `42s`, `22m 51s`, `1h 7m`.
+
+The instants senior-dev's process started and ended are also kept in `delegate-program.json`
+in the task's record folder, beside `delegate-stderr.log`.
+
+**After a reopen.** A conversation closed and opened again still shows each run's time, how
+it ended in senior-dev's own words (a `senior-dev did not finish: …` stays that sentence and
+is not turned into a fault), which limit stopped it when one did, and the branch its work is
+on.
+
+**A run nothing is running any more.** If codeaf closed or crashed while senior-dev was
+working, nothing is driving that run: its page reads `incomplete` rather than `running`,
+its time stops at the last thing it did, and it offers no stop.
+
 ## Why did senior-dev stop — how a run ends, its log, crashed or stopped
 
 A run ends in one of these ways, and the task's ending says which:
