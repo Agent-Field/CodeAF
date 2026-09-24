@@ -84,21 +84,36 @@ func (a *app) tipLine(tip string, width int, pal palette) (string, hudSpan) {
 // and clears them where the path does not fit.
 func (a *app) homeFootLine(width int, pal palette) string {
 	a.targetFolderSpan = hudSpan{}
-	hint := hintFit(a.placeHint(), width-2)
+	// THE LOW-CREDIT LINE, when it applies, stands just left of the project and
+	// is fitted before either the keys or the path (credits.go, #1439).
+	warning := a.homeCreditWarningFor(width)
+	room := width - 2
+	if warning != "" {
+		room -= ansi.StringWidth(warning) + 1
+	}
+	hint := hintFit(a.placeHint(), room)
 	line := " " + paintHint(hint, pal, pal.dim)
+	used := 1 + ansi.StringWidth(hint)
+	before := used
+	if warning != "" {
+		before += 1 + ansi.StringWidth(warning)
+	}
 	project := a.targetProject()
 	if project == "" {
-		return line
+		return withCreditWarning(line, used, width, warning, pal)
 	}
-	used := 1 + ansi.StringWidth(hint)
-	text, span, ok := projectAtRight(project, used, width)
+	text, span, ok := projectAtRight(project, before, width)
 	if !ok {
-		return line
+		return withCreditWarning(line, used, width, warning, pal)
 	}
 	a.targetFolderSpan = span
-	pad := width - 1 - used - ansi.StringWidth(text)
 	painted := a.paintSeamProject(text, hudSpan{from: ansi.StringWidth(targetProjectLead), to: ansi.StringWidth(text)},
 		a.targetHover == hoverSeamProject)
+	if warning != "" {
+		pad := width - 1 - used - ansi.StringWidth(warning) - hudGap - ansi.StringWidth(text)
+		return line + strings.Repeat(" ", max(1, pad)) + pal.warn(warning) + strings.Repeat(" ", hudGap) + painted
+	}
+	pad := width - 1 - used - ansi.StringWidth(text)
 	return line + strings.Repeat(" ", pad) + painted
 }
 

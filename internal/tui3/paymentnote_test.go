@@ -50,6 +50,17 @@ func TestAPaymentRefusalNeverDrawsTheGiveUpRow(t *testing.T) {
 	forbidden(t, note)
 }
 
+func TestAPaymentRefusalKeepsTheWholeTopUpLinkOnTheTurnRow(t *testing.T) {
+	sentence := "You requested up to 2212 tokens, but can only afford 641. " +
+		strings.Repeat("This request needs more credits. ", 7) +
+		"To increase, visit https://openrouter.ai/settings/credits"
+	refusal := &provider.APIError{Status: 402, Message: sentence}
+	note := (&feed{}).failureNote(refusal, "OpenRouter")
+	if !strings.Contains(note, "https://openrouter.ai/settings/credits") || !strings.Contains(note, strings.Repeat("This request needs more credits. ", 7)) {
+		t.Fatalf("payment row cut the vendor's sentence: %q", note)
+	}
+}
+
 // AND A PACING 429 IS STILL A PACING 429. The shape test is the only thing
 // separating them, so a test that only proved the new line would let the old
 // behaviour be widened onto every busy queue.
