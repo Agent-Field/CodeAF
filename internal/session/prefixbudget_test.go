@@ -484,9 +484,14 @@ const fixedPrefixTarget = 48_000
 // by 153 to 47,859. Both arms already had room, 26 and 13 bytes of it, so
 // fixed rises by 176 and lean by 140, and both sit exactly on the
 // measurement again.
+//
+// 2026-09-24, a program works in the folder itself. The folder rule stopped
+// describing a copy nothing merges and says the folder and its branch instead
+// ([delegateFolderRule]), 38 bytes shorter on both arms, and both waivers come
+// down by exactly that: fixed measures 56,409 and lean 47,821.
 const (
-	fixedPrefixWaiver = 8_447
-	leanPrefixWaiver  = 16_359
+	fixedPrefixWaiver = 8_409
+	leanPrefixWaiver  = 16_321
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane

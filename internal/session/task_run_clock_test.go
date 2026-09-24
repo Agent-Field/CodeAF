@@ -242,8 +242,8 @@ func TestARunRowKeepsItsEndingBranchAndSpanAcrossAReopen(t *testing.T) {
 }
 
 // A PROGRAM'S RUN A LIMIT ENDED READS ENDED BEFORE ITS WORK LANDS. The engine
-// leaves such a store open, and the run's task was ended only after the squash
-// and the commit, so the page went on reading `running` over a program that
+// leaves such a store open, and the run's task was ended only after its work
+// was committed, so the page went on reading `running` over a program that
 // had exited — for the two limit endings alone.
 func TestALimitEndedProgramRunIsEndedBeforeItsWorkLands(t *testing.T) {
 	double := newBeltRunDouble("")
@@ -277,8 +277,8 @@ func TestALimitEndedProgramRunIsEndedBeforeItsWorkLands(t *testing.T) {
 	if root == nil || root.Status != plandb.StatusFailed || len(notes) == 0 {
 		t.Fatalf("the run's task = %+v with notes %+v, want it failed with the landing noted", root, notes)
 	}
-	if !strings.HasPrefix(notes[0].Body, "landed on ") {
-		t.Fatalf("the first note on the run = %q, want the landing's own", notes[0].Body)
+	if !strings.Contains(notes[0].Body, "its work is on the branch ") {
+		t.Fatalf("the first note on the run = %q, want the one that says where its work is", notes[0].Body)
 	}
 	if !root.CompletedAt.Before(notes[0].At) {
 		t.Fatalf("the run's task ended at %v and its work landed at %v: it read running while its work landed", root.CompletedAt, notes[0].At)

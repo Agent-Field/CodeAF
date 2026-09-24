@@ -346,30 +346,6 @@ func TestDelegateWorkerReportsAFailedEndingAsAnError(t *testing.T) {
 	}
 }
 
-// A brief that named the folder the task was proposed on reaches the program
-// naming the copy it works in, so the program is never told a path it must not
-// work in.
-func TestDelegateWorkerHandsTheProgramABriefThatNamesItsCopy(t *testing.T) {
-	store := runOpenStore(t)
-	ground := filepath.Join(t.TempDir(), "project")
-	if _, err := store.Amend(store.RootID(), "work in the checkout at "+ground+" and commit there."); err != nil {
-		t.Fatal(err)
-	}
-	args := filepath.Join(t.TempDir(), "args")
-	t.Setenv("FAKE_ARGS", args)
-	workspace := t.TempDir()
-	m, setup := fakeDelegate(t, passLine("done"))
-	setup.Ground = []delegate.Rehome{{From: ground, To: workspace}}
-	worker := run.NewDelegateWorker(store, workspace, m, setup, 0, 0)
-	if _, err := worker.Run(runContext(t), *store.Task(store.RootID())); err != nil {
-		t.Fatal(err)
-	}
-	got, _ := os.ReadFile(args)
-	if !strings.Contains(string(got), "work in the checkout at "+workspace+" and commit there.") || strings.Contains(string(got), ground) {
-		t.Fatalf("the program was handed:\n%s\nwant the brief naming its copy %s and never %s", got, workspace, ground)
-	}
-}
-
 // A program that ended without finishing says why, and the run carries its
 // words whole to whoever drew the row: its status word, its sentence and its
 // account, not only the run's one word for every unfinished ending.

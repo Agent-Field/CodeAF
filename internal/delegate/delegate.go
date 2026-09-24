@@ -36,9 +36,10 @@ import (
 
 // The two things a program can leave behind.
 const (
-	// LandsTree is a program that works in the working copy it is given and
-	// leaves its changes there: codeaf squashes them into one commit and merges
-	// that home the way every task lands.
+	// LandsTree is a program that edits files in the folder it is given and
+	// leaves its changes there: in a git repository on a branch codeaf cut for
+	// the run and left checked out, with what it left uncommitted committed
+	// onto that branch when it ends (internal/session's programfolder.go).
 	LandsTree = "tree"
 	// LandsText is a program that changes nothing in the folder and puts its
 	// answer in the terminal record's deliverable: codeaf folds the text into
@@ -65,8 +66,8 @@ type Delegate struct {
 	// the program of its own.
 	//
 	// THE PROGRAM OWNS WHAT IS TRUE OF IT, AND CODEAF OWNS WHAT IS TRUE OF
-	// EVERY PROGRAM. The copy a program works in, what lands from it and the
-	// fact that nobody can be asked anything are codeaf's mechanics, stated
+	// EVERY PROGRAM. The folder a program works in, where its work is left and
+	// the fact that nobody can be asked anything are codeaf's mechanics, stated
 	// once beside the list; a guide that restated them would be one more copy
 	// to drift. A second program brings its own guide, and the conversation's
 	// page never has to learn its name.
@@ -84,23 +85,23 @@ type Delegate struct {
 	// needs no flag for it, or cannot work there and says so in its ending.
 	//
 	// CODEAF DECIDES, BECAUSE CODEAF KNOWS. The folder is the one the task was
-	// proposed on, and whether it has a history to cut a working copy from is
-	// read by codeaf before the program starts: a plain folder is worked in
-	// where it is, and the program is told so on its line. The program says
-	// only how it is told, so codeaf never has to learn its flag's name.
+	// proposed on, and whether the program works there on a branch of its own
+	// is read by codeaf before the program starts: a folder with no history, or
+	// in a repository at the home folder, is worked in without git, and the
+	// program is told so on its line. The program says only how it is told, so
+	// codeaf never has to learn its flag's name.
 	PlainFolder []string
 	// Notes is the folder, relative to the folder it works in, where the
 	// program keeps its own records while it works: its copy of the brief, its
 	// checklist, its session's database and its whole conversation with its
 	// model. Empty is a program that keeps nothing there.
 	//
-	// A PLAIN FOLDER'S NOTES ARE MOVED OUT OF IT. A program handed a folder with
-	// no git history works in the person's folder itself, so its records were
-	// left there when it ended — 46 files for one senior-dev run, a database and
-	// the full conversation among them — where a `git add -A` would commit them.
-	// codeaf moves the folder this names into the task's own record folder when
-	// such a run ends. In a copy they stay in the copy, which the person's
-	// folder never sees.
+	// THE NOTES ARE MOVED OUT OF THE FOLDER. A program works in the person's
+	// folder itself, so its records were left there when it ended — 46 files
+	// for one senior-dev run, a database and the full conversation among them —
+	// where a `git add -A` would commit them and the next run would read them
+	// as its own. codeaf moves the folder this names into the run's own record
+	// folder when the run ends, unless it was there before the run began.
 	Notes string
 	// CrewFlags is the flags the default command takes to use the models of
 	// the conversation's crew ([Crew]), which codeaf puts on the line of every

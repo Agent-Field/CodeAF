@@ -21,12 +21,11 @@ const excludeSentinel = "# senior-dev: workflow artifacts (managed by senior-dev
 // reads for workspace, once.
 //
 // THE FILE IS THE ONE GIT READS, which is not always <git-dir>/info/exclude.
-// In a linked worktree — and the working copy codeaf cuts for a task is one —
-// the git dir is .git/worktrees/<name>, and git ignores an info/ folder there
-// in favour of the common dir's. An exclude written beside the git dir changed
-// nothing: `.senior-dev/` stayed untracked, and a landing that stages the
-// tree's own status would have committed senior-dev's database, spec and tool
-// logs into the person's branch. `rev-parse --git-path` names the file git
+// In a linked worktree the git dir is .git/worktrees/<name>, and git ignores
+// an info/ folder there in favour of the common dir's. An exclude written
+// beside the git dir changed nothing: `.senior-dev/` stayed untracked, and a
+// commit of the tree's own status would have taken senior-dev's database,
+// spec and tool logs with it. `rev-parse --git-path` names the file git
 // actually consults, which for a linked worktree is the repository's shared
 // one.
 func EnsureSeniorDevExcluded(ctx context.Context, workspace string) (bool, error) {

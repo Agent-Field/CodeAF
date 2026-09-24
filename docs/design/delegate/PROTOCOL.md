@@ -25,11 +25,11 @@ the program of its own. It rides every request of every turn, which is why it is
 short and why the manual page carries the rest.
 
 **The program owns what is true of it; codeaf owns what is true of every
-program.** The copy a program that edits files works in, the rule that only that
-copy lands, and so the rule that it must be handed the repository the work
-belongs in (cloned first when the machine lacks it, and never briefed to work
-anywhere else) are codeaf's to say, once, beside the list; the rule is printed
-only when a program that lands a tree is carried. That nobody can be asked
+program.** That a program that edits files works in the task's folder itself, on
+a branch of its own in a repository, and so the rule that it must be handed the
+repository the work belongs in (cloned first when the machine lacks it, and never
+briefed to work anywhere else) are codeaf's to say, once, beside the list; the
+rule is printed only when a program that lands a tree is carried. That nobody can be asked
 anything is `propose_task`'s own. A guide repeats none of it.
 
 A program cannot run on its own. Its entry point is a `Command` whose body takes
@@ -44,27 +44,33 @@ codeaf <name> <command> --json --dir <workspace> [--max-cost USD] [--max-hours H
 ```
 
 **The folder is codeaf's to read, and the program is told what it found.** A
-repository with a commit gets a working copy cut from it. A folder with no git
-history (a plain folder, or a repository with no commit) has nothing to cut
-from, so the program works in the folder itself and codeaf puts the program's
-own `PlainFolder` flags on its line (senior-dev's is `--in-place`); its landing
-commits nothing, because the work is already there, and the run's page says so.
-codeaf never learns a program's flag by name, and a flag the default command
-does not take fails `Validate`, so the build's own test catches it.
+program that edits files works in the folder itself, never a copy
+(`internal/session`'s `programfolder.go`, whose header is the contract): the
+folder the proposal names, or the conversation's, or the shell's, snapped to its
+repository's root. In a repository with a commit whose root is below the home
+folder, codeaf writes the person's branch down, refuses a checkout with changes
+that are not committed or a merge half done, and cuts the program's own branch
+with `git switch -c task/<title>-<id>`; the program works there in its own git
+mode. Anything else — no history, no commit, or a repository at the home folder —
+is worked in as it is, and codeaf puts the program's own `PlainFolder` flags on
+its line (senior-dev's is `--in-place`), because the program's own reading climbs
+to any repository around the folder. codeaf never learns a program's flag by
+name, and a flag the default command does not take fails `Validate`, so the
+build's own test catches it. One folder takes one program run at a time, held by
+a file lock that dies with its process.
 
-**The brief names the copy.** Where the program works in a copy, every spelling
-of the proposed folder in the brief (as proposed, resolved, under `~`) is
-rewritten to the copy's path before the child is started
-(`delegate.RehomeBrief`), whole paths only. A senior-dev run briefed on "the
-checkout at /Users/…/happy-dom-task" ran its git commands there, in the
-person's checkout, because that is what it was told.
+**The brief is handed over as written.** There is no copy for a path in it to be
+rewritten into.
 
-**A tree program's work lands as its branch.** Its commits are squashed into
-one `task:` commit on the copy's branch, the branch is put where the person's
-repository can reach it, the copy is given back, and nothing is merged into the
-person's checkout: the page says `its work is on the branch <branch> in
-<folder>; nothing was merged into your checkout`. An hour-long run meeting the
-checkout's hour of changes at a merge was a finished run reading as failed.
+**A tree program's work stays on its branch, checked out.** When the run ends,
+however it ends, codeaf commits what the program left uncommitted onto its branch
+(the task's title, the ending as the body), moves the program's notes out of the
+folder, and leaves the branch checked out; the person's branch never moves and
+nothing is merged into it. The page says `its work is on the branch <branch> in
+<folder>, N files, and that branch is checked out there; your branch <yours> is as
+it was: …` with the commands that go back and bring the work in. A run that
+changed nothing switches back and deletes its empty branch; a HEAD the program's
+shell moved off its branch is left where it is and said.
 
 **The crew rides the line.** A run a conversation starts carries its crew
 (`delegate.Crew`: brain, hands, light — the mastermind, worker and low tiers,
@@ -82,10 +88,10 @@ program's sentence (`senior-dev did not finish: …`) and which is not a fault;
 `crashed` is `TaskEndingError`, the fault it is.
 
 - **From the chat,** the engine's run (`internal/run`'s `DelegateWorker`) starts
-  that line in the run's working copy, which is cut from the folder the proposal
-  names (`propose_task`'s `ground`) or else the conversation's own.
+  that line in the folder the proposal names (`propose_task`'s `ground`) or else
+  the conversation's own.
 - **From a shell,** `codeaf <name> <brief>` becomes the host: it serves the model
-  API itself and starts the same child.
+  API itself, readies its folder the same way, and starts the same child.
 
 The two are told apart by the environment. A child of a host has
 `CODEAF_MODEL_API` and `CODEAF_MODEL_TOKEN`; a person's shell has neither.

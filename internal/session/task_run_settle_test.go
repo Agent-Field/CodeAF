@@ -148,7 +148,7 @@ func TestAReopenedRunEndsAtItsProgramsRecordedExit(t *testing.T) {
 // A PROGRAM THAT HAD ALREADY EXITED IS NOT SAID TO HAVE BEEN RUNNING. codeaf
 // closed while the worker was settling the program's receipts, after the
 // program was gone: the run is ended where the program ended, in a sentence
-// that says the program had ended and its work was never brought in.
+// that says the program had ended before codeaf could say where its work is.
 func TestClosingAfterTheProgramExitedSaysItHadEnded(t *testing.T) {
 	place := t.TempDir()
 	double := newBeltRunDouble("")
@@ -176,7 +176,7 @@ func TestClosingAfterTheProgramExitedSaysItHadEnded(t *testing.T) {
 	kept := beltRunStoreAt(t, place)
 	root := kept.Task(rootID)
 	_ = kept.Close()
-	if root.Error != "fake had ended; codeaf closed before its work was brought in" || !root.CompletedAt.Equal(exited) {
+	if root.Error != "fake had ended; codeaf closed before it could say where its work is" || !root.CompletedAt.Equal(exited) {
 		t.Fatalf("after Close the run's task = %s (%q, ended %v), want it ended at the program's exit %v in a true sentence", root.Status, root.Error, root.CompletedAt, exited)
 	}
 	close(double.release)
@@ -194,7 +194,7 @@ func TestAReopenedRunWhoseProgramHadExitedSaysItHadEnded(t *testing.T) {
 		}
 	})
 	row := reopenedRow(t, agent, id)
-	if row.Report != "fake had ended; codeaf closed before its work was brought in" || !row.EndedAt.Equal(exited) || row.Ending != TaskEndingProgram {
+	if row.Report != "fake had ended; codeaf closed before it could say where its work is" || !row.EndedAt.Equal(exited) || row.Ending != TaskEndingProgram {
 		t.Fatalf("the run came back as %+v, want it ended at the program's exit %v in a true sentence", row, exited)
 	}
 }

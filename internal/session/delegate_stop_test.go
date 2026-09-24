@@ -1,13 +1,12 @@
 package session
 
-// WHERE A STOPPED PROGRAM'S WORK GOES, WHATEVER IT DID WITH HEAD.
+// WHERE A STOPPED PROGRAM'S WORK GOES.
 //
-// The landing puts a program's copy back on the task's own branch before its
-// work is committed; the stop did not. A stopped program's work was committed
-// on whatever branch HEAD was on, one of the person's own included, while the
-// report named the task's branch, which held nothing; a stop that changed
-// nothing left an empty branch; and a run that had committed every write, the
-// way senior-dev does, was told as having changed nothing at all.
+// A stop ends a program's run the way every ending of it ends: its folder
+// finished (programfolder.go), with what it had left uncommitted committed on
+// its own branch, that branch left checked out, and the person's branch where
+// it was. A stop that changed nothing leaves no branch, and the person is told
+// at once where the work will be.
 
 import (
 	"context"
@@ -61,66 +60,86 @@ func stoppedDelegatedRunThatDid(t *testing.T, prepare func(repo string), play fu
 	return conversation, row, beltRunNotes(t, filepath.Dir(spec.Store.Path()), spec.Store.RootID())
 }
 
-// A STOPPED PROGRAM THAT HAD CHECKED OUT THE PERSON'S OWN BRANCH never has
-// codeaf commit on it: the person's branch is exactly as the program left it,
-// and the work, committed and not, is on the task's branch the report names.
-func TestAStoppedProgramOnThePersonsBranchLeavesItAndKeepsItsWorkOnTheTaskBranch(t *testing.T) {
-	var left string
-	repo, row, notes := stoppedDelegatedRunThatDid(t, func(repo string) {
-		mustGit(t, repo, "checkout", "-q", "-b", "persons-feature")
-		commitIn(t, repo, "mine.txt")
-		mustGit(t, repo, "checkout", "-q", "-")
-	}, func(t *testing.T, workspace string) {
-		mustGit(t, workspace, "checkout", "-q", "persons-feature")
+// A STOPPED PROGRAM'S WORK IS COMMITTED ON ITS BRANCH, committed by the
+// program or not, and the branch is left checked out: the stop's own words are
+// the body of the commit that holds what it left.
+func TestAStoppedProgramsWorkIsCommittedOnItsBranchAndLeftCheckedOut(t *testing.T) {
+	repo, row, notes := stoppedDelegatedRunThatDid(t, nil, func(t *testing.T, workspace string) {
 		commitIn(t, workspace, "one.txt")
 		writeFile(t, filepath.Join(workspace, "two.txt"), "two\n")
-		left = strings.TrimSpace(gitOut(t, workspace, "rev-parse", "HEAD"))
 	})
-	if tip := strings.TrimSpace(gitOut(t, repo, "rev-parse", "persons-feature")); tip != left {
-		t.Fatalf("codeaf's stop moved the person's branch from %s to %s:\n%s", left, tip, gitOut(t, repo, "log", "--format=%s", "persons-feature"))
+	branch, log := taskBranchLog(t, repo)
+	if head := currentBranch(repo); head != branch {
+		t.Fatalf("the checkout is on %q after the stop, want the program's branch %q", head, branch)
 	}
-	branch, _ := taskBranchLog(t, repo)
 	files := gitOut(t, repo, "ls-tree", "--name-only", branch)
 	for _, name := range []string{"one.txt", "two.txt"} {
 		if !strings.Contains(files, name) {
-			t.Fatalf("the task's branch does not hold %s:\n%s", name, files)
+			t.Fatalf("the program's branch does not hold %s:\n%s", name, files)
 		}
 	}
-	if row.Branch != branch {
-		t.Fatalf("the row names %q, want the task's branch %q", row.Branch, branch)
+	if !strings.Contains(log, "wip(edit): one.txt") {
+		t.Fatalf("the program's own commit is gone from its branch:\n%s", log)
 	}
-	joined := strings.Join(notes, "\n")
-	if !strings.Contains(joined, "its work so far is kept on "+branch) || !strings.Contains(joined, "fake had moved its copy to the branch persons-feature") {
-		t.Fatalf("the stop does not say where the work is and where the program had moved: %q", notes)
+	if body := gitOut(t, repo, "log", "-1", "--format=%b", branch); !strings.Contains(body, "stopped") {
+		t.Fatalf("the commit of what the stop left does not say it was stopped:\n%s", body)
 	}
-}
-
-// A STOPPED PROGRAM THAT COMMITTED EVERY WRITE is told as having changed what
-// it changed. senior-dev commits each write on the task's branch, so nothing
-// is left uncommitted at a stop, and the stop read that as "it had changed
-// nothing" and named no branch.
-func TestAStoppedProgramThatCommittedEveryWriteReportsItsFiles(t *testing.T) {
-	repo, row, notes := stoppedDelegatedRunThatDid(t, nil, func(t *testing.T, workspace string) {
-		commitIn(t, workspace, "one.txt", "two.txt")
-	})
-	branch, _ := taskBranchLog(t, repo)
-	if row.Branch != branch || len(row.Changed) != 2 {
-		t.Fatalf("the row names %q with %q, want the task's branch %q with both files", row.Branch, row.Changed, branch)
+	if tip := strings.TrimSpace(gitOut(t, repo, "rev-parse", "work")); tip != strings.TrimSpace(gitOut(t, repo, "rev-parse", branch+"~2")) {
+		t.Fatalf("the person's branch moved to %s", tip)
 	}
-	joined := strings.Join(notes, "\n")
-	if strings.Contains(joined, "it had changed nothing") || !strings.Contains(joined, "its work so far is kept on "+branch) {
-		t.Fatalf("a stopped run that committed its writes says: %q", notes)
+	if row.Branch != branch || len(row.Changed) != 2 || row.Merge != mergeKept {
+		t.Fatalf("the row names %q with %q (%s), want the program's branch with both files", row.Branch, row.Changed, row.Merge)
+	}
+	if joined := strings.Join(notes, "\n"); !strings.Contains(joined, "stopped · its work is on the branch "+branch+" in "+canonicalPath(repo)+", 2 files, and that branch is checked out there") {
+		t.Fatalf("the stop does not say where the work is: %q", notes)
 	}
 }
 
 // A STOPPED PROGRAM THAT CHANGED NOTHING LEAVES NO BRANCH, as one that ended
-// does.
+// does, and the person's own branch is checked out again.
 func TestAStoppedProgramThatChangedNothingLeavesNoBranch(t *testing.T) {
 	repo, row, notes := stoppedDelegatedRunThatDid(t, nil, func(*testing.T, string) {})
 	if branches := strings.TrimSpace(gitOut(t, repo, "branch", "--list", "task/*")); branches != "" {
 		t.Fatalf("a stopped run that changed nothing left a branch behind: %q", branches)
 	}
-	if row.Branch != "" || !strings.Contains(strings.Join(notes, "\n"), "stopped · it had changed nothing") {
+	if head := currentBranch(repo); head != "work" {
+		t.Fatalf("the checkout is on %q, want the person's branch work back", head)
+	}
+	if row.Branch != "" || !strings.Contains(strings.Join(notes, "\n"), "stopped · it changed nothing, so "+canonicalPath(repo)+" is back on your branch work") {
 		t.Fatalf("a stopped run that changed nothing draws %q and says %q", row.Branch, notes)
 	}
+}
+
+// THE STOP SAYS AT ONCE WHERE THE WORK WILL BE: on the program's branch in the
+// person's folder, not on "its branch", which named nothing a person could
+// find.
+func TestAStoppedProgramSaysWhereItsWorkWillBe(t *testing.T) {
+	double := newBeltRunDouble("unused")
+	double.honoursStop = true
+	registerBeltRunEngine(t, double)
+	repo := newTestRepo(t)
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = repo
+		config.Place = Place{Dir: t.TempDir()}
+		config.AskConsent = false
+		config.Delegates = testPrograms("fake")
+	})
+	id, _, _, err := agent.StartDelegate(context.Background(), "fake", "add files")
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-double.entered
+	branch := currentBranch(repo)
+	said, err := agent.Cancel(CancelTask + ":" + strconv.FormatUint(id, 10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "its work so far stays on its branch " + branch + ", checked out in " + canonicalPath(repo); !strings.Contains(said, want) {
+		t.Fatalf("the stop said %q, want %q", said, want)
+	}
+	beltRunWaitFor(t, "the run to end", func() bool {
+		agent.beltMu.Lock()
+		defer agent.beltMu.Unlock()
+		return agent.beltRun == nil
+	})
 }

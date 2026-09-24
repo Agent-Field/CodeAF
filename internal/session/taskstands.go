@@ -380,20 +380,47 @@ func saidGround(said, workspace string) taskStand {
 // the whole home folder; senior-dev, finding no git history there, began to
 // snapshot all of it and died on the first folder macOS keeps to itself
 // (`open /Users/…/.Trash: operation not permitted`). So a program's placement
-// is its own ([delegateStand]) and `where` is not read for it.
+// is its own (programfolder.go) and `where` is not read for it.
+//
+// THE FOLDER IS READ BEFORE THE CARD, as the run will read it: snapped to its
+// repository's root, a folder not there yet taken when it can be made, and
+// refused for what would refuse the run — the home folder, a checkout with
+// changes that are not committed or a merge half done, another program's run
+// already in it — so nobody is asked to approve work that cannot start.
 func programGround(spec taskSpec, workspace string, program delegate.Delegate) taskStand {
-	stand := taskStand{dir: workspace, rung: taskGroundHere}
+	dir, rung := workspace, taskGroundHere
 	if said := strings.TrimSpace(spec.ground); said != "" {
-		if stand = saidGround(said, workspace); stand.refusal != "" {
-			return stand
+		resolved, err := resolveTaskWhere(said, workspace)
+		if err != nil {
+			return taskStand{refusal: "this task names a folder it cannot work in: " + said}
 		}
+		dir, rung = canonicalPath(resolved), taskGroundSaid
 	}
-	if refusal := programHomeRefusal(program, stand.dir, "say which folder the work is in, as ground"); refusal != "" {
+	if refusal := programGroundRefusal(program, &dir); refusal != "" {
 		return taskStand{refusal: refusal}
 	}
-	placed := delegateStand(stand.dir, program)
-	placed.rung = stand.rung
+	placed := delegateStand(dir)
+	placed.rung = rung
 	return placed
+}
+
+// programGroundRefusal reads the folder a program's proposal names the way
+// [PrepareProgramFolder] will, and answers what would refuse it, "" when
+// nothing would. It moves dir to the folder the program would work in, and it
+// changes nothing on disk.
+func programGroundRefusal(program delegate.Delegate, dir *string) string {
+	folder, repo, _, refusal := programFolderAt(program, *dir, "say which folder the work is in, as ground")
+	if refusal != "" || !program.LandsTree() {
+		return refusal
+	}
+	*dir = folder
+	if holder := programFolderHolder(canonicalPath(folder)); holder != "" {
+		return programFolderBusy(folder, holder)
+	}
+	if repo {
+		return programCheckoutInTheWay(folder, program.Notes)
+	}
+	return ""
 }
 
 // groundPlainlyNamedByBrief reports the one ground that holds every existing

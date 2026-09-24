@@ -181,9 +181,9 @@ type RegistryOptions struct {
 	Config                   *config.Service
 	AllowExternalDirectories bool
 	// ConfineWrites refuses every file write outside the workspace, whatever
-	// AllowExternalDirectories says of reads: codeaf lands only the copy a
-	// program works in, so a write anywhere else is work that can never come
-	// back and a change made to somebody's folder directly (path.go).
+	// AllowExternalDirectories says of reads: codeaf keeps only what a program
+	// changes in the folder it is handed, so a write anywhere else is work that
+	// no run owns and a change made to somebody else's folder (path.go).
 	ConfineWrites bool
 	// HardConfineShellPaths rejects parsed external shell operands instead of
 	// asking permission, for an embedder that must not prompt. senior-dev leaves it

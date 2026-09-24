@@ -12,11 +12,10 @@ package util
 // command that can commit carries an identity of its own, as `-c` overrides,
 // which GIT_AUTHOR_* and GIT_COMMITTER_* in the environment still win over.
 //
-// None of these commits is what a person keeps. When codeaf runs senior-dev on
-// a task, the run's commits are squashed into the one commit that lands, and
-// that commit carries codeaf's identity rather than this one. The address is
-// therefore a local one: it names the program that made a commit and no
-// account anywhere.
+// These commits stay on the branch codeaf cut for the run, under the one
+// commit codeaf makes of whatever the run left uncommitted when it ended,
+// which carries codeaf's identity rather than this one. The address is a local
+// one: it names the program that made a commit and no account anywhere.
 const (
 	CommitterName  = "senior-dev"
 	CommitterEmail = "senior-dev@localhost"

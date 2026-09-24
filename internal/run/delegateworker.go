@@ -10,13 +10,14 @@ package run
 //
 // What differs is inside: there is no model turn here. The program runs as a
 // child process of codeaf's own executable (`codeaf <name> run --json …`) in
-// the run's working copy, its stdout is the records, and its terminal record is
-// the ending. Every stage, step and ending is written to the task's action log
-// (delegate.ActionsFile) the moment it is received, which is what the task
-// page draws the program's work from; its `step` records are also what enter
-// the trajectory, so the task page's step count is what the program said it
-// did and not how many phases it announced; and the live step names the step
-// of the program's process it is in.
+// the run's folder (for a program that edits files, the person's folder itself,
+// readied by internal/session's PrepareProgramFolder), its stdout is the
+// records, and its terminal record is the ending. Every stage, step and ending
+// is written to the task's action log (delegate.ActionsFile) the moment it is
+// received, which is what the task page draws the program's work from; its
+// `step` records are also what enter the trajectory, so the task page's step
+// count is what the program said it did and not how many phases it announced;
+// and the live step names the step of the program's process it is in.
 //
 // ── ITS ONLY ROAD TO A MODEL IS THIS RUN'S MODEL API ────────────────────────
 //
@@ -102,21 +103,14 @@ type DelegateSetup struct {
 	Ledger string
 	// Keepalive overrides the model API's keepalive interval, for a test.
 	Keepalive time.Duration
-	// PlainFolder says the working folder has no git history
+	// PlainFolder says the program works in its folder without git
 	// (session.RunSpec.PlainFolder), so the program's line carries its own
-	// flags for one (delegate.Delegate.PlainFolder).
+	// flags for that (delegate.Delegate.PlainFolder).
 	PlainFolder bool
 	// Crew is the conversation's crew (session.RunSpec.Crew), which the
 	// program's line carries in its own flags (delegate.Delegate.CrewFlags) so
 	// it works on the models the person chose. Zero leaves it to its own.
 	Crew delegate.Crew
-	// Ground is every spelling of the folder the task was proposed on and of
-	// the repository around it, each paired with where it stands in the copy,
-	// when the program works in a copy (session.RunSpec.Ground). The brief is
-	// rewritten to name the copy wherever it named either
-	// (delegate.RehomeBrief), so the program is never told a path it must not
-	// work in. Empty for a program working in the folder itself.
-	Ground []delegate.Rehome
 	// Conversation is the id of the conversation the run belongs to
 	// (session.RunSpec.Conversation), which every ledger row the program's
 	// calls write names as its Root and its Session, beside the task's id, so
@@ -473,7 +467,6 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	if brief == "" {
 		brief = strings.TrimSpace(task.Title)
 	}
-	brief = delegate.RehomeBrief(brief, w.setup.Ground)
 	started = time.Now()
 	sink.record.StartedAt = started
 	result, err := delegate.Run(launchCtx, delegate.Launch{

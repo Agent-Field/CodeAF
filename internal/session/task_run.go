@@ -8175,11 +8175,6 @@ type taskTree struct {
 	// ([stageTaskWork]). Every other worker's ledger is complete by
 	// construction, and its landing reads the ledger alone, exactly as before.
 	bashBelt bool
-	// keepsBranch is a copy whose work lands AS ITS BRANCH and is never merged:
-	// the branch is put where the person's repository can reach it and the
-	// copy is given back, and bringing it in is the person's call. A program's
-	// run is landed this way (delegate_door.go's [delegateKeepsBranch]).
-	keepsBranch bool
 }
 
 // gitRoot is the in-process half of the root repository's lock, and the file
@@ -8331,7 +8326,7 @@ func cutTaskWorktree(ctx context.Context, place Place, root, session string, id 
 		root:    root,
 		dir:     dir,
 		mode:    mode,
-		branch:  "task/" + slugify(title) + "-" + shortID(),
+		branch:  taskBranchName(title),
 		title:   title,
 		promise: TaskModeWorktree,
 		frozen:  frozen,
@@ -8780,12 +8775,6 @@ func (t taskTree) comeHome(title string, wrote []string, sign bool) (string, str
 // gives the person a durable result and gives the working copy back without
 // changing a byte of the checkout they are using.
 func (t taskTree) keptInsteadOfMerged() string {
-	// A COPY THAT LANDS AS ITS BRANCH is kept whatever the checkout looks like:
-	// the branch in the person's repository is the whole landing it was
-	// promised, and nothing of theirs is merged into.
-	if t.keepsBranch {
-		return branchOnlySentence(t.branch, t.root)
-	}
 	// A TASK NEVER WRITES A PROTECTED, MOVED OR DETACHED CHECKOUT.
 	if t.landsInThePersonsRepository() {
 		return t.keptLandingSentence()

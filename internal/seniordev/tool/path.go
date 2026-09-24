@@ -44,13 +44,13 @@ func (r *Registry) resolvePath(path string) (string, error) {
 // both sides before they are compared (and macOS's /var and /private/var are
 // the same place by the same rule).
 //
-// WHY IT EXISTS. codeaf lands only the copy of the folder a run is handed. A
-// run told by its brief to "make a checkout" cloned a repository into the
-// person's own projects folder and edited it there with these tools: the task
-// ended saying it had changed nothing, and the edits sat in a folder of the
-// person's that no task owned. Reads stay open, because a task's statement can
-// live outside its copy; the shell cannot be fenced this way, and the prompt
-// says so.
+// WHY IT EXISTS. codeaf keeps only what a run changes in the folder it is
+// handed, on the branch it cut there. A run told by its brief to "make a
+// checkout" cloned a repository into the person's own projects folder and
+// edited it there with these tools: the task ended saying it had changed
+// nothing, and the edits sat in a folder of the person's that no task owned.
+// Reads stay open, because a task's statement can live outside its folder;
+// the shell cannot be fenced this way, and the prompt says so.
 func (r *Registry) resolveWritePath(path string) (string, error) {
 	resolved, err := r.resolvePath(path)
 	if err != nil || !r.confineWrites {

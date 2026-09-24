@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -29,26 +28,21 @@ func testPrograms(name string) []delegate.Delegate {
 }
 
 // The whole road from the door to the branch: `/fake <brief>` starts a run
-// whose spec names the delegate, the program's own commits in the copy are
-// squashed into ONE commit whose subject is the task's title and whose body is
-// the run's result, and that commit lands AS ITS BRANCH in the repository the
-// copy was cut from — never merged into the person's checkout. The engine is a
-// double whose `work` hook plays the program: two files, two commits, the way
-// senior-dev commits every edit.
-func TestADelegatedRunSquashesTheProgramsCommitsAndLandsThemAsABranch(t *testing.T) {
+// whose spec names the delegate and whose workspace is THE PERSON'S FOLDER
+// ITSELF, checked out on a branch codeaf cut for it. The program's own commits
+// stay on that branch, what it left uncommitted is committed there in one
+// commit whose subject is the task's title and whose body is the run's result,
+// the branch is left checked out, and the person's own branch never moves. The
+// engine is a double whose `work` hook plays the program: one file committed
+// the way senior-dev commits every edit, and one left uncommitted.
+func TestADelegatedRunWorksOnItsOwnBranchInTheFolderAndLeavesItCheckedOut(t *testing.T) {
 	// The double answers the run's result off the completer it is handed, so
-	// the result is scripted there: the sentence the landing commit must carry.
+	// the result is scripted there: the sentence the last commit must carry.
 	const result = "submitted and verified. fake's model said: tests pass"
 	double := newBeltRunDouble(result)
 	double.work = func(workspace string) {
-		for _, name := range []string{"one.txt", "two.txt"} {
-			if err := os.WriteFile(filepath.Join(workspace, name), []byte(name+"\n"), 0o644); err != nil {
-				t.Error(err)
-				return
-			}
-			mustGit(t, workspace, "add", name)
-			mustGit(t, workspace, "-c", "user.name=p", "-c", "user.email=p@p", "commit", "-q", "-m", "wip(edit): "+name)
-		}
+		commitIn(t, workspace, "one.txt")
+		writeFile(t, filepath.Join(workspace, "two.txt"), "two\n")
 	}
 	registerBeltRunEngine(t, double)
 	conversation := newTestRepo(t)
@@ -79,46 +73,65 @@ func TestADelegatedRunSquashesTheProgramsCommitsAndLandsThemAsABranch(t *testing
 	if spec.Brief != "add two files to the project" {
 		t.Fatalf("brief = %q", spec.Brief)
 	}
-	// The folder the task was proposed on is handed over in its spellings, so
-	// the program's brief names its copy wherever it named the folder.
-	if !slices.Contains(spec.Ground, delegate.Rehome{From: canonicalPath(conversation), To: spec.Workspace}) || canonicalPath(spec.Workspace) == canonicalPath(conversation) {
-		t.Fatalf("spec.Ground = %q for a copy at %q, want the proposed folder's spellings", spec.Ground, spec.Workspace)
+	// THE PROGRAM WORKS IN THE FOLDER ITSELF, on a branch of its own.
+	if canonicalPath(spec.Workspace) != canonicalPath(conversation) || spec.PlainFolder {
+		t.Fatalf("the program works in %q (plain %v), want the person's repository %q itself", spec.Workspace, spec.PlainFolder, conversation)
+	}
+	branch := currentBranch(conversation)
+	if !strings.HasPrefix(branch, "task/add-two-files-to-the-project-") {
+		t.Fatalf("the checkout is on %q while the program works, want a task branch of its own", branch)
 	}
 	endBeltRun(t, agent, double)
 
-	// THE CHECKOUT IS UNTOUCHED: nothing was merged into it.
-	if head := strings.TrimSpace(gitOut(t, conversation, "rev-parse", "HEAD")); head != base {
-		t.Fatalf("the person's checkout moved from %s to %s; a program's work lands as its branch", base, head)
+	// THE PERSON'S BRANCH NEVER MOVED, and the program's branch is left checked
+	// out with the work in the folder.
+	if tip := strings.TrimSpace(gitOut(t, conversation, "rev-parse", "work")); tip != base {
+		t.Fatalf("the person's branch moved from %s to %s", base, tip)
+	}
+	if head := currentBranch(conversation); head != branch {
+		t.Fatalf("the checkout is on %q after the run, want the program's branch %q left checked out", head, branch)
 	}
 	for _, name := range []string{"one.txt", "two.txt"} {
-		if _, err := os.Stat(filepath.Join(conversation, name)); !os.IsNotExist(err) {
-			t.Fatalf("%s was written into the person's checkout: %v", name, err)
+		if _, err := os.Stat(filepath.Join(conversation, name)); err != nil {
+			t.Fatalf("%s is not in the person's folder: %v", name, err)
 		}
 	}
-	// ONE COMMIT ON THE TASK'S BRANCH ABOVE THE BASE, and it is codeaf's
-	// landing commit, not the program's two.
-	branches := strings.Fields(gitOut(t, conversation, "branch", "--format=%(refname:short)", "--list", "task/*"))
-	if len(branches) != 1 {
-		t.Fatalf("want the task's one branch in the repository, got %q", branches)
+	if status := strings.TrimSpace(gitOut(t, conversation, "status", "--porcelain")); status != "" {
+		t.Fatalf("the run left the folder with changes that are not committed:\n%s", status)
 	}
-	log := gitOut(t, conversation, "log", "--format=%s%n%b", base+".."+branches[0])
-	subjects := strings.Fields(gitOut(t, conversation, "rev-list", base+".."+branches[0]))
-	if len(subjects) != 1 || strings.Contains(log, "wip(edit)") || !strings.HasPrefix(log, "task: ") {
-		t.Fatalf("the branch holds %d commits above the base, want one `task:` commit:\n%s", len(subjects), log)
+	// THE PROGRAM'S COMMIT STAYS, and codeaf's one commit of what was left is on
+	// top of it: the title, then the result.
+	subjects := strings.Fields(strings.ReplaceAll(gitOut(t, conversation, "log", "--format=%s", base+".."+branch), " ", "_"))
+	if len(subjects) != 2 || subjects[1] != "wip(edit):_one.txt" || !strings.HasPrefix(subjects[0], "add_two_files") {
+		t.Fatalf("the branch holds %q, want the program's commit under one commit of the title", subjects)
 	}
-	if !strings.Contains(log, "fake's model said: tests pass") {
-		t.Fatalf("the landing commit's body does not carry the run's result:\n%s", log)
+	if body := gitOut(t, conversation, "log", "-1", "--format=%b", branch); !strings.Contains(body, "fake's model said: tests pass") {
+		t.Fatalf("the last commit's body does not carry the run's result:\n%s", body)
 	}
-	// AND THE PAGE SAYS WHERE IT IS.
+	// AND THE PAGE AND THE CONVERSATION SAY WHERE IT IS AND HOW TO GO BACK.
 	store := beltRunStoreAt(t, filepath.Dir(spec.Store.Path()))
 	defer store.Close()
 	var said []string
 	for _, n := range store.Notes(store.RootID(), 0) {
 		said = append(said, n.Body)
 	}
-	if joined := strings.Join(said, "\n"); !strings.Contains(joined, "its work is on the branch "+branches[0]) ||
-		!strings.Contains(joined, "nothing was merged into your checkout") {
-		t.Fatalf("the run's notes = %q, want the branch it landed on", said)
+	root := canonicalPath(conversation)
+	want := "its work is on the branch " + branch + " in " + root + ", 2 files, and that branch is checked out there; your branch work is as it was: `git -C '" +
+		root + "' switch work` goes back to it, and `git -C '" + root + "' merge " + branch + "` from there brings the work in"
+	if joined := strings.Join(said, "\n"); !strings.Contains(joined, want) {
+		t.Fatalf("the run's notes = %q, want %q", said, want)
+	}
+	if got := conversationJournalLines(agent, want); got != 1 {
+		t.Fatalf("the conversation was told %d times %q", got, want)
+	}
+	var row TaskNotice
+	for _, kept := range agent.graph().runRows(id) {
+		if kept.ID == id {
+			row = kept
+		}
+	}
+	if row.Branch != branch || row.Merge != mergeKept || len(row.Changed) != 2 || row.Copy == nil || row.Copy.Branch != branch || row.Copy.Home != "work" {
+		t.Fatalf("the row = branch %q (%s), files %q, copy %+v; want the program's branch, kept, with both files", row.Branch, row.Merge, row.Changed, row.Copy)
 	}
 }
 
@@ -153,8 +166,8 @@ func TestADelegatedRunOnAPlainFolderIsToldSoAndLandsWhereItWorked(t *testing.T) 
 	double.mu.Lock()
 	spec := double.spec
 	double.mu.Unlock()
-	if !spec.PlainFolder || canonicalPath(spec.Workspace) != canonicalPath(folder) || len(spec.Ground) != 0 {
-		t.Fatalf("spec = plain %v in %q, ground %q, want the plain folder itself, said to be one, and nothing to rewrite", spec.PlainFolder, spec.Workspace, spec.Ground)
+	if !spec.PlainFolder || canonicalPath(spec.Workspace) != canonicalPath(folder) {
+		t.Fatalf("spec = plain %v in %q, want the plain folder itself, said to be one", spec.PlainFolder, spec.Workspace)
 	}
 	endBeltRun(t, agent, double)
 
@@ -176,7 +189,8 @@ func TestADelegatedRunOnAPlainFolderIsToldSoAndLandsWhereItWorked(t *testing.T) 
 	}
 }
 
-// A folder with history is copied, and the program is told nothing extra.
+// A folder with history is worked in on a branch, and the program is told
+// nothing extra.
 func TestADelegatedRunOnARepositoryIsNotToldItIsPlain(t *testing.T) {
 	double := newBeltRunDouble("done")
 	registerBeltRunEngine(t, double)
@@ -406,26 +420,29 @@ func TestThePagePrefersAProgramForItsWorkAndForTheAsk(t *testing.T) {
 }
 
 // THE FOLDER A PROGRAM IS HANDED IS CODEAF'S TO EXPLAIN, and it is explained
-// only where it is true. A program that edits files works in a copy of the
-// proposal's folder and lands only from there, so the page tells the model to
-// hand it the repository the work belongs in — cloned first when this machine
-// lacks it — and never to brief it to work somewhere else: the failure this
-// sentence was written from is senior-dev cloning a repository into the
+// only where it is true. A program that edits files works in the proposal's
+// folder itself, on a branch of its own in a repository, so the page tells the
+// model to hand it the repository the work belongs in — cloned first when this
+// machine lacks it — and never to brief it to work somewhere else: the failure
+// this sentence was written from is senior-dev cloning a repository into the
 // person's projects folder because its brief said to. A program that only
-// answers works in place and lands nothing, so a build carrying only those is
-// told nothing about copies.
+// answers reads the folder and changes nothing, so a build carrying only those
+// is told nothing about branches.
 func TestTheFolderRuleIsSaidWhereAProgramEditsFilesAndOnlyThere(t *testing.T) {
 	tree := Config{Workspace: t.TempDir(), Delegates: testPrograms("fake")}
 	page := promptWithBeltFacts(tree)
 	for _, want := range []string{
-		"It works in a copy of the task's folder, and only that copy's work is kept, on a branch\nnothing merges",
-		"clone one this machine\nlacks into a new folder",
-		"branch at the commit the work names, and pass it as\n`ground`.",
+		"It works in the task's folder itself, on a branch of its own in a repository, so hand\nit the repository the work belongs in",
+		"clone one this machine lacks into a new folder",
+		"at the commit the work names, and pass it as `ground`.",
 		"Never brief it to work elsewhere.",
 	} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("a build carrying a program that edits files is not told %q:\n%s", want, page)
 		}
+	}
+	if strings.Contains(page, "a copy of the task's folder") {
+		t.Fatalf("the page still says a program works in a copy:\n%s", page)
 	}
 	textOnly := testPrograms("reader")
 	textOnly[0].Lands = delegate.LandsText
@@ -433,8 +450,8 @@ func TestTheFolderRuleIsSaidWhereAProgramEditsFilesAndOnlyThere(t *testing.T) {
 	if !strings.Contains(page, "- `reader`: ") {
 		t.Fatalf("the program that answers is not listed:\n%s", page)
 	}
-	if strings.Contains(page, "copy of the task's folder") {
-		t.Fatalf("a build whose only program works in place is told about copies:\n%s", page)
+	if strings.Contains(page, "task's folder itself") {
+		t.Fatalf("a build whose only program reads in place is told about branches:\n%s", page)
 	}
 }
 

@@ -957,6 +957,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"will codeaf hand work to a program without being asked", "delegates"},
 		{"is naming a delegate enough to make codeaf use it", "delegates"},
 		{"which folder does a delegate work in", "delegates"},
+		// A program works in the folder itself, on a branch of its own in a
+		// repository (internal/session's programfolder.go), asked the ways
+		// somebody meets it: where the work went, whether their branch moved,
+		// how to get back, and the refusals that stop a run before it starts.
+		{"where does senior-dev put its work", "senior-dev"},
+		{"does senior-dev change my branch", "senior-dev"},
+		{"how do I go back to my own branch after senior-dev", "senior-dev"},
+		{"senior-dev refused: changes that are not committed", "senior-dev"},
+		{"senior-dev says my folder is busy", "senior-dev"},
+		{"can I run senior-dev in a folder that is not a git repo", "senior-dev"},
+		{"where do senior-dev's notes go", "senior-dev"},
+		{"the delegate was refused because of uncommitted changes", "delegates"},
 		{"the harness I just had built is not in /subharness", "subharnesses"},
 		{"how do I run a harness I had designed", "subharnesses"},
 		// The card codeaf raises by itself, asked the three ways somebody meets

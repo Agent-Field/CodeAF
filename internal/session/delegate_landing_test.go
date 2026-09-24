@@ -1,13 +1,13 @@
 package session
 
-// WHERE A PROGRAM'S WORK LANDS, WHATEVER IT DID WITH HEAD.
+// WHERE A PROGRAM'S WORK IS WHEN IT ENDS, WHATEVER IT DID IN THE FOLDER.
 //
-// A program's shell can switch branches in its copy, and senior-dev did, four
-// times in one run. The landing squashed onto whatever branch HEAD was on while
-// the row and the note named codeaf's task branch, which then held nothing; and
-// where the program checked out one of the person's own branches, the squash
-// reset that branch and took the person's commits off it. These pin the work to
-// the task's branch and the person's branches to their own history.
+// A program works in the person's folder itself, on a branch codeaf cut for
+// it when the folder is a repository (programfolder.go). These pin what the
+// person finds when it ends: its branch checked out with everything it left
+// committed there, their own branch untouched, nothing at all when it changed
+// nothing, a HEAD its shell moved left exactly where it was, and its own notes
+// moved out of the folder and never committed.
 
 import (
 	"context"
@@ -69,189 +69,142 @@ func commitIn(t *testing.T, workspace string, names ...string) {
 	}
 }
 
-// taskBranchHolds asserts the task's one branch holds exactly one `task:`
-// commit above base carrying every named file, and answers the branch.
-func taskBranchHolds(t *testing.T, repo, base string, names ...string) string {
+// taskBranchLog answers the task's one branch and the subjects of its history,
+// newest first.
+func taskBranchLog(t *testing.T, repo string) (string, string) {
 	t.Helper()
 	branches := strings.Fields(gitOut(t, repo, "branch", "--format=%(refname:short)", "--list", "task/*"))
 	if len(branches) != 1 {
 		t.Fatalf("want the task's one branch in the repository, got %q", branches)
 	}
-	commits := strings.Fields(gitOut(t, repo, "rev-list", base+".."+branches[0]))
-	subject := strings.TrimSpace(gitOut(t, repo, "log", "-1", "--format=%s", branches[0]))
-	if len(commits) != 1 || !strings.HasPrefix(subject, "task: ") {
-		t.Fatalf("the task's branch holds %d commits above the base (last %q), want one `task:` commit", len(commits), subject)
-	}
-	files := gitOut(t, repo, "ls-tree", "--name-only", branches[0])
-	for _, name := range names {
-		if !strings.Contains(files, name) {
-			t.Fatalf("the task's branch does not hold %s:\n%s", name, files)
-		}
-	}
-	return branches[0]
+	return branches[0], gitOut(t, repo, "log", "--format=%s", branches[0])
 }
 
-// A PROGRAM THAT SWITCHED TO A BRANCH OF ITS OWN still lands on the task's
-// branch, and the note names the branch it had moved to.
-func TestADelegatedRunThatSwitchedBranchLandsOnTheTaskBranch(t *testing.T) {
-	repo, base, row, notes := delegatedRunThatDid(t, nil, func(t *testing.T, workspace string) {
-		mustGit(t, workspace, "checkout", "-q", "-b", "senior-own")
-		commitIn(t, workspace, "one.txt", "two.txt")
-	})
-	branch := taskBranchHolds(t, repo, base, "one.txt", "two.txt")
-	if row.Branch != branch || row.Merge != mergeKept {
-		t.Fatalf("the row names branch %q (%s), want the task's %q, kept", row.Branch, row.Merge, branch)
-	}
-	joined := strings.Join(notes, "\n")
-	if !strings.Contains(joined, "landed on "+branch+": 2 files · fake had moved its copy to the branch senior-own; its work was committed on "+branch) {
-		t.Fatalf("the page's notes do not say where the program had moved: %q", notes)
-	}
-	if strings.Contains(joined, "may also undo") {
-		t.Fatalf("work built on the copy's first commit was warned about: %q", notes)
-	}
-}
-
-// A PROGRAM THAT LEFT HEAD ON NO BRANCH still lands on the task's branch.
-func TestADelegatedRunOnADetachedHeadLandsOnTheTaskBranch(t *testing.T) {
-	repo, base, row, notes := delegatedRunThatDid(t, nil, func(t *testing.T, workspace string) {
-		mustGit(t, workspace, "checkout", "-q", "--detach")
-		commitIn(t, workspace, "one.txt")
-	})
-	branch := taskBranchHolds(t, repo, base, "one.txt")
-	if row.Branch != branch {
-		t.Fatalf("the row names %q, want the task's branch %q", row.Branch, branch)
-	}
-	if !strings.Contains(strings.Join(notes, "\n"), "fake had left its copy on no branch; its work was committed on "+branch) {
-		t.Fatalf("the page's notes do not say HEAD was on no branch: %q", notes)
-	}
-}
-
-// A PROGRAM THAT CHECKED OUT THE PERSON'S OWN BRANCH never has codeaf rewrite
-// it: the person's commit is still on their branch afterwards, and the work
-// lands on the task's branch.
-func TestADelegatedRunThatCheckedOutThePersonsBranchLeavesItsHistory(t *testing.T) {
-	repo, base, _, notes := delegatedRunThatDid(t, func(repo string) {
-		mustGit(t, repo, "checkout", "-q", "-b", "persons-feature")
-		commitIn(t, repo, "mine.txt")
-		mustGit(t, repo, "-c", "user.name=p", "-c", "user.email=p@p", "commit", "-q", "--amend", "-m", "the person's own commit")
-		mustGit(t, repo, "checkout", "-q", "-")
-	}, func(t *testing.T, workspace string) {
-		mustGit(t, workspace, "checkout", "-q", "persons-feature")
-		commitIn(t, workspace, "one.txt")
-	})
-	if log := gitOut(t, repo, "log", "--format=%s", "persons-feature"); !strings.Contains(log, "the person's own commit") {
-		t.Fatalf("codeaf's landing took the person's own commit off their branch:\n%s", log)
-	}
-	branch := taskBranchHolds(t, repo, base, "one.txt")
-	if !strings.Contains(strings.Join(notes, "\n"), "fake had moved its copy to the branch persons-feature; its work was committed on "+branch) {
-		t.Fatalf("the page's notes do not name the person's branch the program moved to: %q", notes)
-	}
-}
-
-// WORK NOT BUILT ON THE COPY'S FIRST COMMIT is warned about, because its squash
-// may also undo what that commit had.
-func TestADelegatedRunBuiltOnAnotherCommitIsWarnedAbout(t *testing.T) {
-	_, _, _, notes := delegatedRunThatDid(t, nil, func(t *testing.T, workspace string) {
-		mustGit(t, workspace, "checkout", "-q", "--orphan", "fresh")
-		commitIn(t, workspace, "one.txt")
-	})
-	if !strings.Contains(strings.Join(notes, "\n"), "its work was not built on the commit its copy started from") {
-		t.Fatalf("work built on another commit landed without a word: %q", notes)
-	}
-	// The outcome line, the one the conversation is handed, says it too.
-	if !strings.Contains(strings.Join(notes, "\n"), "brings it in; "+landingUnrelatedWarning) {
-		t.Fatalf("the conversation's merge line does not carry the warning: %q", notes)
-	}
-}
-
-// A PROGRAM RUN THAT CHANGED NOTHING LEAVES NO BRANCH. There is nothing on an
-// empty branch to merge, and every look-only, failed or crashed run used to
-// leave one more `task/*` in the person's repository.
-func TestADelegatedRunThatChangedNothingLeavesNoBranch(t *testing.T) {
-	repo, _, row, notes := delegatedRunThatDid(t, nil, func(*testing.T, string) {})
+// A PROGRAM RUN THAT CHANGED NOTHING LEAVES NOTHING: the person's own branch is
+// checked out again and the empty branch is gone, so every look-only, failed or
+// crashed run does not leave one more `task/*` in the person's repository.
+func TestADelegatedRunThatChangedNothingGoesBackAndLeavesNoBranch(t *testing.T) {
+	repo, base, row, notes := delegatedRunThatDid(t, nil, func(*testing.T, string) {})
 	if branches := strings.TrimSpace(gitOut(t, repo, "branch", "--list", "task/*")); branches != "" {
 		t.Fatalf("a run that changed nothing left a branch behind: %q", branches)
+	}
+	if head := currentBranch(repo); head != "work" || strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD")) != base {
+		t.Fatalf("the checkout is on %q after a run that changed nothing, want the person's branch work at %s", head, base)
 	}
 	if row.Branch != "" {
 		t.Fatalf("the row names a branch %q over no work", row.Branch)
 	}
-	if !strings.Contains(strings.Join(notes, "\n"), "nothing to land: the run's working copy holds no change") {
-		t.Fatalf("the page does not say there was nothing to land: %q", notes)
+	if !strings.Contains(strings.Join(notes, "\n"), "it changed nothing, so "+canonicalPath(repo)+" is back on your branch work and its branch task/") {
+		t.Fatalf("the page does not say the run changed nothing and went back: %q", notes)
 	}
 }
 
-// THE CONVERSATION IS TOLD NOTHING WAS MERGED, WHERE THE BRANCH IS, AND HOW TO
-// BRING IT IN. The line a landing delivers is the one account the chat's model
-// gets, and it read like a merged run's: `landed on task/x: 2 files`.
-func TestTheConversationIsToldABranchOnlyLandingWasNotMerged(t *testing.T) {
-	double := newBeltRunDouble("done")
-	double.work = func(workspace string) { commitIn(t, workspace, "one.txt", "two.txt") }
-	registerBeltRunEngine(t, double)
-	conversation := newTestRepo(t)
-	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
-		config.Workspace = conversation
-		config.Place = Place{Dir: t.TempDir()}
-		config.AskConsent = false
-		config.Delegates = testPrograms("fake")
+// A PERSON WHOSE CHECKOUT WAS ON NO BRANCH GETS THAT COMMIT BACK, and is told
+// how to go back to it when the run leaves work.
+func TestADelegatedRunFromADetachedCheckoutNamesTheCommitToGoBackTo(t *testing.T) {
+	repo, base, row, notes := delegatedRunThatDid(t, func(repo string) {
+		mustGit(t, repo, "checkout", "-q", "--detach")
+	}, func(t *testing.T, workspace string) {
+		writeFile(t, filepath.Join(workspace, "one.txt"), "one\n")
 	})
-	if _, _, _, err := agent.StartDelegate(context.Background(), "fake", "add two files"); err != nil {
-		t.Fatalf("StartDelegate: %v", err)
+	branch, _ := taskBranchLog(t, repo)
+	if head := currentBranch(repo); head != branch || row.Branch != branch {
+		t.Fatalf("the checkout is on %q and the row names %q, want the program's branch %q", head, row.Branch, branch)
 	}
-	<-double.entered
-	endBeltRun(t, agent, double)
-	branches := strings.Fields(gitOut(t, conversation, "branch", "--format=%(refname:short)", "--list", "task/*"))
-	if len(branches) != 1 {
-		t.Fatalf("want the task's one branch, got %q", branches)
+	want := "your checkout was on no branch, at " + shortSha(base) + ", and `git -C '" + canonicalPath(repo) + "' switch --detach " + shortSha(base) + "` goes back to it"
+	if !strings.Contains(strings.Join(notes, "\n"), want) {
+		t.Fatalf("the page does not say how to go back to the commit: %q, want %q", notes, want)
 	}
-	root := canonicalPath(conversation)
-	want := "its work is on the branch " + branches[0] + " in " + root + ", 2 files; nothing was merged into your checkout, and `git -C '" +
-		root + "' merge " + branches[0] + "` brings it in"
-	if got := conversationJournalLines(agent, want); got != 1 {
-		t.Fatalf("the conversation was told %d times %q", got, want)
+}
+
+// A HEAD THE PROGRAM'S SHELL MOVED IS LEFT WHERE IT IS. senior-dev's shell can
+// run `git checkout`, and it did, four times in one run. codeaf then commits
+// nothing and switches nothing: committing where HEAD is would put codeaf's
+// commit on a branch that may be the person's own, and switching would carry
+// whatever is in the folder somewhere nobody chose. It says where HEAD is.
+func TestAProgramThatMovedHeadOffItsBranchIsLeftWhereItIs(t *testing.T) {
+	var left string
+	repo, base, row, notes := delegatedRunThatDid(t, nil, func(t *testing.T, workspace string) {
+		commitIn(t, workspace, "one.txt")
+		mustGit(t, workspace, "checkout", "-q", "work")
+		writeFile(t, filepath.Join(workspace, "loose.txt"), "loose\n")
+		left = strings.TrimSpace(gitOut(t, workspace, "rev-parse", "HEAD"))
+	})
+	branch, log := taskBranchLog(t, repo)
+	if head := currentBranch(repo); head != "work" || left != base {
+		t.Fatalf("the checkout is on %q at %s, want it left on work where the program put it", head, left)
 	}
-	if got := conversationJournalLines(agent, "landed on "+branches[0]); got != 0 {
-		t.Fatal("the conversation was told the work landed, the shape of a merged run")
+	if !strings.Contains(log, "wip(edit): one.txt") || strings.Count(log, "\n") != 2 {
+		t.Fatalf("the program's branch holds:\n%s\nwant its own commit and nothing of codeaf's", log)
+	}
+	if status := gitOut(t, repo, "status", "--porcelain"); !strings.Contains(status, "loose.txt") {
+		t.Fatalf("codeaf committed what the program left while HEAD was elsewhere:\n%s", status)
+	}
+	want := "fake left " + canonicalPath(repo) + " on the branch work instead of its own branch " + branch +
+		", so codeaf changed nothing there: nothing was committed and nothing was switched; " + branch + " holds 1 file"
+	if !strings.Contains(strings.Join(notes, "\n"), want) {
+		t.Fatalf("the page does not say where HEAD was left: %q, want %q", notes, want)
+	}
+	if row.Branch != branch {
+		t.Fatalf("the row names %q, want the program's branch %q, which holds its commit", row.Branch, branch)
+	}
+}
+
+// AND A HEAD LEFT ON NO BRANCH IS SAID WITH ITS COMMIT.
+func TestAProgramThatDetachedHeadIsLeftWhereItIs(t *testing.T) {
+	var at string
+	repo, _, _, notes := delegatedRunThatDid(t, nil, func(t *testing.T, workspace string) {
+		mustGit(t, workspace, "checkout", "-q", "--detach")
+		commitIn(t, workspace, "one.txt")
+		at = strings.TrimSpace(gitOut(t, workspace, "rev-parse", "HEAD"))
+	})
+	if head := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD")); head != at || currentBranch(repo) != "" {
+		t.Fatalf("codeaf moved a detached HEAD from %s to %s", at, head)
+	}
+	if !strings.Contains(strings.Join(notes, "\n"), "fake left "+canonicalPath(repo)+" on no branch, at "+shortSha(at)+" instead of its own branch task/") {
+		t.Fatalf("the page does not say HEAD was left on no branch: %q", notes)
 	}
 }
 
 // THE RECEIPT PROMISES NO MERGE. An approved hand-off to a program says who has
-// the work and where it will be: on the task's own branch for a copy, in the
-// folder itself for a folder with no history, in the conversation for one that
-// only answers.
+// the work and where it will be: on a new branch in the folder itself, left
+// checked out, with the person's branch named as the one that does not move;
+// in the folder itself for a folder with no history; in the conversation for
+// a program that only answers.
 func TestAProgramsReceiptSaysWhereTheWorkWillBeAndPromisesNoMerge(t *testing.T) {
 	tree := testPrograms("fake")[0]
-	repo, plain := newTestRepo(t), t.TempDir()
-	if got := delegateReceipt(repo, tree); !strings.Contains(got, "it works alone in a copy of "+repo+", and when it ends its work is left on the task's own branch; nothing is merged into the checkout.") {
-		t.Fatalf("the receipt for a copy = %q", got)
+	repo, plain := "/r/repo", "/r/plain"
+	record := &TaskCopyRecord{Dir: repo, Branch: "task/pong-abc123", Home: "main", HomeSha: "0123456789abcdef"}
+	if got, want := delegateReceipt(repo, tree, record), "It is fake's: it works alone in /r/repo itself, on a new branch task/pong-abc123; your branch main does not move, and when it ends task/pong-abc123 stays checked out there with its work."; got != want {
+		t.Fatalf("the receipt for a repository = %q, want %q", got, want)
 	}
-	if got := delegateReceipt(plain, tree); !strings.Contains(got, "in "+plain+" itself, which has no git history") {
+	detached := &TaskCopyRecord{Dir: repo, Branch: "task/pong-abc123", HomeSha: "0123456789abcdef"}
+	if got := delegateReceipt(repo, tree, detached); !strings.Contains(got, "; the commit 0123456789ab does not move") {
+		t.Fatalf("the receipt for a detached checkout = %q", got)
+	}
+	if got := delegateReceipt(plain, tree, &TaskCopyRecord{Dir: plain}); got != "It is fake's: it works alone in /r/plain itself, which has no git history, so its changes are there as it makes them." {
 		t.Fatalf("the receipt for a plain folder = %q", got)
 	}
 	reader := tree
 	reader.Lands = delegate.LandsText
-	if got := delegateReceipt(plain, reader); got != "It is fake's: it works alone, and its answer arrives when it ends." {
+	if got := delegateReceipt(plain, reader, nil); got != "It is fake's: it works alone, and its answer arrives when it ends." {
 		t.Fatalf("the receipt for a program that answers = %q", got)
 	}
-	for _, got := range []string{delegateReceipt(repo, tree), delegateReceipt(plain, tree), delegateReceipt(plain, reader)} {
-		if strings.Contains(got, "lands") {
-			t.Fatalf("a receipt promises a landing: %q", got)
+	for _, got := range []string{delegateReceipt(repo, tree, record), delegateReceipt(plain, tree, nil), delegateReceipt(plain, reader, nil)} {
+		if strings.Contains(got, "lands") || strings.Contains(got, "copy") {
+			t.Fatalf("a receipt promises a landing or a copy: %q", got)
 		}
 	}
 }
 
-// A PROGRAM HANDED A SUBFOLDER'S TASK READS PATHS THAT EXIST IN ITS COPY. The
-// copy is of the whole repository, so the subfolder is the same subfolder in
-// it and the repository is the copy's root; mapping the subfolder to the copy's
-// root sent every path to a file that is not there, and left the repository's
-// own spelling pointing at the person's checkout.
-func TestAProgramHandedASubfoldersTaskReadsPathsThatExistInItsCopy(t *testing.T) {
+// A PROGRAM HANDED A FOLDER INSIDE A REPOSITORY WORKS AT THE REPOSITORY'S ROOT,
+// which is where its branch is, and its brief reaches it as it was written:
+// there is no copy for a path to be rewritten into.
+func TestAProgramHandedASubfolderWorksAtTheRepositorysRoot(t *testing.T) {
 	double := newBeltRunDouble("")
 	registerBeltRunEngine(t, double)
 	repo := newTestRepo(t)
 	sub := filepath.Join(repo, "packages", "foo")
-	if err := os.MkdirAll(filepath.Join(sub, "src"), 0o755); err != nil {
-		t.Fatal(err)
-	}
 	writeFile(t, filepath.Join(sub, "src", "a.ts"), "export {}\n")
 	mustGit(t, repo, "add", "-A")
 	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "the package")
@@ -269,15 +222,82 @@ func TestAProgramHandedASubfoldersTaskReadsPathsThatExistInItsCopy(t *testing.T)
 	double.mu.Lock()
 	spec := double.spec
 	double.mu.Unlock()
-	copyRoot := spec.Workspace
-	want := "fix " + copyRoot + "/packages/foo/src/a.ts, then run git -C " + copyRoot + " status"
-	if got := delegate.RehomeBrief(spec.Brief, spec.Ground); got != want {
-		t.Fatalf("the program would read %q, want %q", got, want)
-	}
-	if _, err := os.Stat(filepath.Join(copyRoot, "packages", "foo", "src", "a.ts")); err != nil {
-		t.Fatalf("the path the program reads is not in its copy: %v", err)
+	if canonicalPath(spec.Workspace) != canonicalPath(repo) || spec.Brief != brief {
+		t.Fatalf("the program works in %q on %q, want the repository's root %q and the brief as written", spec.Workspace, spec.Brief, repo)
 	}
 	endBeltRun(t, agent, double)
+}
+
+// A PROGRAM'S NOTES IN A REPOSITORY ARE MOVED OUT AND NEVER COMMITTED. They
+// are the program's records — its database and its whole conversation — and a
+// commit of what the run left would otherwise have taken them onto the branch.
+func TestARepositoryRunsNotesAreMovedOutAndNeverCommitted(t *testing.T) {
+	double := newBeltRunDouble("done")
+	double.work = func(workspace string) {
+		writeFile(t, filepath.Join(workspace, ".fake", "spec.md"), "the brief\n")
+		writeFile(t, filepath.Join(workspace, "made.txt"), "made\n")
+	}
+	registerBeltRunEngine(t, double)
+	repo := newTestRepo(t)
+	programs := testPrograms("fake")
+	programs[0].Notes = ".fake"
+	place := t.TempDir()
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = repo
+		config.Place = Place{Dir: place}
+		config.AskConsent = false
+		config.Delegates = programs
+	})
+	if _, _, _, err := agent.StartDelegate(context.Background(), "fake", "make a file"); err != nil {
+		t.Fatalf("StartDelegate: %v", err)
+	}
+	<-double.entered
+	double.mu.Lock()
+	spec := double.spec
+	double.mu.Unlock()
+	endBeltRun(t, agent, double)
+	branch, _ := taskBranchLog(t, repo)
+	files := gitOut(t, repo, "ls-tree", "-r", "--name-only", branch)
+	if !strings.Contains(files, "made.txt") || strings.Contains(files, ".fake") {
+		t.Fatalf("the program's branch holds:\n%s\nwant its work and none of its notes", files)
+	}
+	taskDir := plandb.TaskDir(place, spec.Store.RootID())
+	if _, err := os.Stat(filepath.Join(taskDir, "fake", "spec.md")); err != nil {
+		t.Fatalf("the notes are not in the task's record folder: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".fake")); !os.IsNotExist(err) {
+		t.Fatalf("the notes were left in the person's folder: %v", err)
+	}
+}
+
+// NOTES THAT WERE THERE BEFORE A REPOSITORY RUN are not this run's to take, do
+// not refuse the run as changes of the person's, and are not committed.
+func TestNotesThatWereThereBeforeARepositoryRunStayAndAreNotCommitted(t *testing.T) {
+	double := newBeltRunDouble("done")
+	double.work = func(workspace string) { writeFile(t, filepath.Join(workspace, "made.txt"), "made\n") }
+	registerBeltRunEngine(t, double)
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, ".fake", "old.md"), "an earlier run's\n")
+	programs := testPrograms("fake")
+	programs[0].Notes = ".fake"
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = repo
+		config.Place = Place{Dir: t.TempDir()}
+		config.AskConsent = false
+		config.Delegates = programs
+	})
+	if _, _, _, err := agent.StartDelegate(context.Background(), "fake", "make a file"); err != nil {
+		t.Fatalf("a folder whose only untracked files are the program's own notes was refused: %v", err)
+	}
+	<-double.entered
+	endBeltRun(t, agent, double)
+	branch, _ := taskBranchLog(t, repo)
+	if files := gitOut(t, repo, "ls-tree", "-r", "--name-only", branch); strings.Contains(files, ".fake") || !strings.Contains(files, "made.txt") {
+		t.Fatalf("the program's branch holds:\n%s", files)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".fake", "old.md")); err != nil {
+		t.Fatalf("notes that were there before the run were taken: %v", err)
+	}
 }
 
 // plainFolderRun runs a program that keeps notes in `.fake` on a folder with
@@ -362,108 +382,5 @@ func TestAPlainFolderRunLeavesNotesThatWereThereBeforeIt(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(taskDir, "fake")); !os.IsNotExist(err) {
 		t.Fatalf("notes that were not this run's alone were moved: %v", err)
-	}
-}
-
-// A MOVED HEAD OVER NOTHING TO LAND CLAIMS NO COMMIT. The note names where the
-// program had left HEAD either way, and says its work was committed, with the
-// warning about work built elsewhere, only when a commit was made.
-func TestAMovedHeadsNoteClaimsACommitOnlyWhenOneWasMade(t *testing.T) {
-	moved := headMove{moved: true, from: "senior-own", unrelated: true}
-	if got := moved.sentence("fake", "task/x", false); got != "fake had moved its copy to the branch senior-own, and any commit it made on senior-own is still on that branch" {
-		t.Fatalf("over nothing to land the note says %q", got)
-	}
-	if got := moved.sentence("fake", "task/x", true); !strings.Contains(got, "its work was committed on task/x") || !strings.Contains(got, "read its diff before you merge it") {
-		t.Fatalf("over a landing the note says %q", got)
-	}
-	if got := (headMove{moved: true, detached: true}).sentence("fake", "task/x", false); got != "fake had left its copy on no branch" {
-		t.Fatalf("a detached HEAD over nothing to land says %q", got)
-	}
-	if got := (headMove{}).sentence("fake", "task/x", true); got != "" {
-		t.Fatalf("a HEAD that never moved says %q", got)
-	}
-}
-
-// taskBranchLog answers the task's one branch and the subjects of its history,
-// newest first.
-func taskBranchLog(t *testing.T, repo string) (string, string) {
-	t.Helper()
-	branches := strings.Fields(gitOut(t, repo, "branch", "--format=%(refname:short)", "--list", "task/*"))
-	if len(branches) != 1 {
-		t.Fatalf("want the task's one branch in the repository, got %q", branches)
-	}
-	return branches[0], gitOut(t, repo, "log", "--format=%s", branches[0])
-}
-
-// A PROGRAM THAT COMMITTED ON THE TASK'S BRANCH AND THEN LEFT HEAD AT THE BASE
-// keeps those commits. senior-dev commits every write on the task's branch; a
-// model that then ran `git checkout --detach` to look at the baseline, and was
-// ended there, had its branch reset back to the base over its commits, and the
-// branch, then empty, deleted: the paid work was unreachable.
-func TestADelegatedRunThatLeftHeadAtTheBaseKeepsItsCommitsOnTheTaskBranch(t *testing.T) {
-	repo, _, row, notes := delegatedRunThatDid(t, nil, func(t *testing.T, workspace string) {
-		commitIn(t, workspace, "one.txt")
-		mustGit(t, workspace, "checkout", "-q", "--detach", "HEAD~1")
-	})
-	branch, log := taskBranchLog(t, repo)
-	if !strings.Contains(log, "wip(edit): one.txt") {
-		t.Fatalf("the program's own commit is gone from the task's branch:\n%s", log)
-	}
-	if row.Branch != branch {
-		t.Fatalf("the row names %q, want the task's branch %q", row.Branch, branch)
-	}
-	if !strings.Contains(strings.Join(notes, "\n"), "the commits it had made on "+branch+" are kept there, under its finished work") {
-		t.Fatalf("the page does not say the program's commits are kept under its finished work: %q", notes)
-	}
-}
-
-// A PROGRAM THAT COMMITTED ON THE TASK'S BRANCH AND THEN CUT A BRANCH OFF THE
-// BASE keeps those commits too: its finished tree is committed on top of them,
-// never over them.
-func TestADelegatedRunThatBranchedOffTheBaseKeepsItsCommitsOnTheTaskBranch(t *testing.T) {
-	repo, _, _, notes := delegatedRunThatDid(t, nil, func(t *testing.T, workspace string) {
-		commitIn(t, workspace, "one.txt")
-		mustGit(t, workspace, "checkout", "-q", "-b", "experiment", "HEAD~1")
-		commitIn(t, workspace, "exp.txt")
-	})
-	branch, log := taskBranchLog(t, repo)
-	if !strings.Contains(log, "wip(edit): one.txt") {
-		t.Fatalf("the program's own commit is gone from the task's branch:\n%s", log)
-	}
-	if files := gitOut(t, repo, "ls-tree", "--name-only", branch); !strings.Contains(files, "exp.txt") {
-		t.Fatalf("the task's branch does not end with the program's finished tree:\n%s", files)
-	}
-	if !strings.Contains(strings.Join(notes, "\n"), "read its diff before you merge it") {
-		t.Fatalf("work not built on the program's own commits landed without a word: %q", notes)
-	}
-}
-
-// A PROGRAM RUN THAT CHANGED NOTHING OVER A CHECKOUT WITH UNCOMMITTED EDITS
-// LEAVES NO BRANCH EITHER. The copy started from a commit holding the person's
-// edits, the landing takes that commit back out, and the branch then stood at
-// the person's own commit: not the start, so it was kept, empty.
-func TestADelegatedRunThatChangedNothingOverADirtyCheckoutLeavesNoBranch(t *testing.T) {
-	repo, _, row, _ := delegatedRunThatDid(t, func(repo string) {
-		writeFile(t, filepath.Join(repo, "shared.txt"), "the person's own unfinished line\n")
-	}, func(*testing.T, string) {})
-	if branches := strings.TrimSpace(gitOut(t, repo, "branch", "--list", "task/*")); branches != "" {
-		t.Fatalf("a run that changed nothing over a dirty checkout left a branch behind: %q", branches)
-	}
-	if row.Branch != "" {
-		t.Fatalf("the row names a branch %q over no work", row.Branch)
-	}
-}
-
-// THE CONVERSATION'S MERGE LINE CARRIES THE PAGE'S WARNING. The line is the one
-// account of a landing the chat's model reads, and asked to merge it had nothing
-// telling it to look first.
-func TestTheConversationsMergeLineWarnsAboutWorkBuiltElsewhere(t *testing.T) {
-	landing := RunLanding{Branch: "task/x", Changed: []string{"a.go"}, Home: mergeKept, Root: "/r", Unrelated: true}
-	if got := beltLandingLine(landing); !strings.HasSuffix(got, "`git -C '/r' merge task/x` brings it in; "+landingUnrelatedWarning) {
-		t.Fatalf("the merge line does not carry the warning: %q", got)
-	}
-	landing.Unrelated = false
-	if got := beltLandingLine(landing); strings.Contains(got, landingUnrelatedWarning) {
-		t.Fatalf("work built on its start was warned about: %q", got)
 	}
 }

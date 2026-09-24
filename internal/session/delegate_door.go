@@ -14,10 +14,12 @@ package session
 // IT RIDES THE RUN ROAD WHATEVER THE BELT SAYS. `/task` takes the run road only
 // under CODEAF_TASK_BELT=bash, because that road's WORKER is the bash belt. A
 // program's worker is the program, so the road is asked for outright here: the
-// store, the copy, the supervisor and the landing are the run's, and nothing in
-// them reads the belt switch. What a delegated run does not have is the review
-// round, because a check seat is a bash-belt worker and the belt may be off; the
-// program's own verification is what its terminal record reports.
+// store, the supervisor and the row are the run's, and nothing in them reads
+// the belt switch. What a delegated run does not have is a copy — a program
+// that edits files works in the folder itself, on a branch of its own in a
+// repository (programfolder.go) — or the review round, because a check seat is
+// a bash-belt worker and the belt may be off; the program's own verification is
+// what its terminal record reports.
 
 import (
 	"context"
@@ -29,7 +31,6 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/delegate"
-	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
 // DelegateRow is one program as a surface lists it: the command word, the
@@ -90,7 +91,7 @@ func (c Config) mayDelegate() bool {
 // a program is for, what its brief must hold and what it needs of its folder
 // are the program's own [delegate.Delegate.Guide], printed under its name, so
 // nothing here names senior-dev. What is true of every program that edits
-// files — the copy it works in, what lands, and so which folder it must be
+// files — that it works in the folder itself, and so which folder it must be
 // handed — is codeaf's mechanics, and is said here once ([delegateFolderRule]).
 // That nobody can be asked anything is `propose_task`'s own `brief`
 // description, and that small work is never handed off is this section's
@@ -136,20 +137,18 @@ var delegateFact = beltFact{
 // the conversation handed senior-dev the one repository it knew — the
 // benchmark's, which holds the task's reference solution beside its statement —
 // and wrote a brief telling it to make a checkout of the real one. senior-dev
-// cloned it into the person's own projects folder and edited it there, outside
-// the copy codeaf lands from, and the task ended saying it had changed nothing.
-// The copy is cut from the folder the proposal names, so the folder is the one
-// thing the model has to get right, and fetching a repository that is not here
-// is its job, done before the proposal.
+// cloned it into the person's own projects folder and edited it there, and the
+// task ended saying it had changed nothing. The program works in the folder
+// the proposal names ([PrepareProgramFolder]), so the folder is the one thing
+// the model has to get right, and fetching a repository that is not here is
+// its job, done before the proposal.
 //
-// AND IT PROMISES NO MERGE, because there is none. It said "only that copy
-// lands", and a model told its work lands tells the person the work is in their
-// folder; a program's work is left on the task's own branch
-// ([delegateKeepsBranch]), and bringing it in is a separate step.
-const delegateFolderRule = "\nIt works in a copy of the task's folder, and only that copy's work is kept, on a branch\n" +
-	"nothing merges, so hand it the repository the work belongs in: clone one this machine\n" +
-	"lacks into a new folder, on a branch at the commit the work names, and pass it as\n" +
-	"`ground`. Never brief it to work elsewhere."
+// AND IT PROMISES NO MERGE, because there is none: in a repository the work is
+// left on the program's own branch, checked out in that folder, and bringing
+// it into the person's branch is a separate step the landing's line names.
+const delegateFolderRule = "\nIt works in the task's folder itself, on a branch of its own in a repository, so hand\n" +
+	"it the repository the work belongs in: clone one this machine lacks into a new folder,\n" +
+	"at the commit the work names, and pass it as `ground`. Never brief it to work elsewhere."
 
 // carriesTreeProgram says whether any program this conversation can hand work
 // to edits files, which is when [delegateFolderRule] is true of it.
@@ -175,72 +174,70 @@ func (c Config) delegateGuides() string {
 	return strings.Join(items, "\n")
 }
 
-// delegateKeepsBranch says how a tree program's work comes home: ON ITS
-// BRANCH, and never merged into the person's checkout by codeaf.
-//
-// A PROGRAM'S HOUR OF WORK IS NOT MERGED BEHIND ANYBODY'S BACK. A merge at the
-// end of an hour meets whatever happened to the checkout in that hour — the
-// person's own edits, another task's landing, a conversation that kept working
-// — and a clash then turned a finished run into one that read as failed, with
-// its work parked on a branch anyway. So the branch is the landing: one
-// squashed commit, reachable from the folder the task was proposed on, and the
-// conversation or the person merges it when they choose. Nothing can conflict
-// at the landing, because the landing writes nothing of anybody's.
-func delegateKeepsBranch(via *delegate.Delegate, plain bool) bool {
-	return via != nil && via.LandsTree() && !plain
-}
-
-// branchOnlySentence is what a person is told about work that landed as its
-// branch: where it is, and that it is theirs to bring in.
-func branchOnlySentence(branch, root string) string {
-	return "its work is on the branch " + branch + " in " + root + "; nothing was merged into your checkout"
-}
-
 // delegateReceipt is the sentence an approved hand-off to a program adds to
 // its receipt: who has the work, where, and where it will be when it ends.
-// ground is the folder the run was started on; whether it has a history to
-// copy is read off it the way the run read it ([delegateOnPlainFolder]), and
-// not off the live run, which a program that dies in its first second has
-// already left by the time the receipt is written.
+// ground is the folder the run was started on and record the run's own record
+// of it, written as the run started ([runCopyOf]): the program's branch, and
+// the person's branch it was cut from. They are read off the record and not off
+// the live run, which a program that dies in its first second has already
+// left by the time the receipt is written.
 //
-// IT NEVER SAYS THE WORK LANDS. It said "lands when it ends", and a program's
-// work is left on the task's own branch and merged by nobody; a model that read
-// "lands" told the person their folder held work it did not.
+// IT NEVER SAYS THE WORK LANDS. A program's work is left on its own branch and
+// merged by nobody; a model that read "lands" told the person their branch
+// held work it did not.
 //
 // IT NAMES THE FOLDER. A receipt that said "a copy" and "the folder itself"
 // without saying which let a model that had named ~/Desktop/pong read that its
 // program was there while it had been handed the person's home folder.
-func delegateReceipt(ground string, via delegate.Delegate) string {
+func delegateReceipt(ground string, via delegate.Delegate, record *TaskCopyRecord) string {
 	if !via.LandsTree() {
 		return "It is " + via.Name + "'s: it works alone, and its answer arrives when it ends."
 	}
-	if !hasGitHistory(ground) {
+	if record == nil || record.Branch == "" {
 		return "It is " + via.Name + "'s: it works alone in " + ground + " itself, which has no git history, so its changes are there as it makes them."
 	}
-	return "It is " + via.Name + "'s: it works alone in a copy of " + ground + ", and when it ends its work is left on the task's own branch; nothing is merged into the checkout."
+	folder := ProgramFolder{Home: record.Home, Start: record.HomeSha}
+	return "It is " + via.Name + "'s: it works alone in " + ground + " itself, on a new branch " + record.Branch + "; " +
+		folder.homeWords() + " does not move, and when it ends " + record.Branch + " stays checked out there with its work."
+}
+
+// runRowCopy is the record a run's row was published with as it started
+// ([runCopyOf]): where it works, and a program's branch. Nil when there is
+// none.
+func (a *Agent) runRowCopy(id uint64) *TaskCopyRecord {
+	g := a.graph()
+	if g == nil {
+		return nil
+	}
+	if kept, ok := runRowOf(g, id); ok {
+		return kept.Copy
+	}
+	return nil
 }
 
 // programPlace is where a program works, in a person's words: the folder
-// itself, or a copy of it when it has a history to copy from and the program
+// itself, on a branch of its own when it is a repository and the program
 // edits code.
 func programPlace(program delegate.Delegate, ground string) string {
 	if !program.LandsTree() || !hasGitHistory(ground) {
 		return ground
 	}
-	return "a copy of " + ground
+	return ground + ", on a branch of its own"
 }
 
-// hasGitHistory says ground is in a repository with at least one commit — the
-// same reading [delegateOnPlainFolder] makes of the copy it was given.
+// hasGitHistory says a program handed ground works there on a branch of its
+// own: ground is in a repository with a commit, whose root is below the home
+// folder. It is the one reading of "a branch or not" ([programFolderOf]), so
+// the card, the receipt and the run cannot disagree about it.
 func hasGitHistory(ground string) bool {
-	root, ok := repositoryRoot(ground)
-	return ok && hasCommit(root)
+	_, repo, _, _ := programFolderOf(ground)
+	return repo
 }
 
 // delegateStartedReceipt is an approved hand-off's receipt: a task's first line
 // and its wake sentence, with the program's own account of where it works
-// ([Agent.delegateReceipt]) in place of a task's "in a copy of its own", which
-// a program on a plain folder is not.
+// ([delegateReceipt]) in place of a task's "in a copy of its own", which a
+// program never is.
 // on is the models the person asked it to work with, "" for the crew's.
 func delegateStartedReceipt(id uint64, title, on, where, elsewhere string) string {
 	if on != "" {
@@ -326,7 +323,8 @@ func (a *Agent) StartDelegate(ctx context.Context, name, brief string) (uint64, 
 	if a.config.InTask {
 		return 0, "", "", errors.New("a task cannot hand its work to " + program.Name + "; only the conversation can")
 	}
-	if refusal := programHomeRefusal(program, canonicalPath(a.config.Workspace), "open codeaf in that folder, or ask for the work in the chat and say which folder it is in"); refusal != "" {
+	folder := canonicalPath(a.config.Workspace)
+	if refusal := programHomeRefusal(program, folder, "open codeaf in that folder, or ask for the work in the chat and say which folder it is in"); refusal != "" {
 		return 0, "", "", errors.New(refusal)
 	}
 	g := a.graph()
@@ -335,300 +333,35 @@ func (a *Agent) StartDelegate(ctx context.Context, name, brief string) (uint64, 
 	}
 	id := g.reserve()
 	title := taskPersonTitle(brief)
-	if err := a.startKnownTaskRunVia(ctx, id, title, brief, nil, delegateStand(a.config.Workspace, program), "", &program); err != nil {
+	if err := a.startKnownTaskRunVia(ctx, id, title, brief, nil, delegateStand(folder), "", &program); err != nil {
 		return 0, "", "", err
 	}
 	return id, title, "", nil
 }
 
-// delegateStand is where a program works. One that lands a tree gets a working
-// copy of the folder, as every task does; one that lands text reads the
-// person's folder in place and changes nothing, which is what it promises.
-func delegateStand(workspace string, program delegate.Delegate) taskStand {
-	if program.LandsTree() {
-		return taskStand{dir: workspace, mode: TaskModeWorktree}
-	}
-	return taskStand{dir: workspace, mode: TaskModeInPlace}
+// delegateStand is where a program works: the folder itself, always. One that
+// edits files is readied there by [PrepareProgramFolder], on a branch of its
+// own in a repository; one that lands text reads the person's folder and
+// changes nothing, which is what it promises.
+func delegateStand(folder string) taskStand {
+	return taskStand{dir: folder, mode: TaskModeInPlace}
 }
 
-// landDelegateRun is a delegated run's landing, in place of the engine's own.
-//
-// A TREE PROGRAM'S COMMITS ARE SQUASHED. senior-dev commits every edit as it goes
-// (`wip(edit): <path>`, dozens a run), so the copy's branch holds bookkeeping
-// history that is the program's own and nobody else's; the engine's landing
-// would also find nothing to commit, because everything is already committed,
-// and answer "nothing to land" over a tree full of work. So the copy is taken
-// back to the commit it stood on when the program started — recorded on the run
-// at that moment, so the point is exact whatever the ground ladder put under it
-// — with the tree and index kept, and committed once through the same road every
-// task commits through. The subject is the task's title; the body is the
-// terminal record's two sentences. Then the copy comes home the way every run's
-// copy does. The one exception is a task's branch holding commits of the
-// program's that the tree it left was not built on: the tree is committed on
-// top of those, never over them ([headMove.squashOnto]).
-//
-// A TREE PROGRAM ON A PLAIN FOLDER LANDS NOTHING EITHER: there was no history
-// to copy from, so it worked in the folder itself and its changes are already
-// there ([delegateOnPlainFolder]).
+// landDelegateRun is a delegated run's landing, in place of the engine's own:
+// the program's folder finished per the contract ([ProgramFolder.Finish]) —
+// what it left uncommitted committed on its branch with the run's ending as
+// the commit's body, or a run that changed nothing undone — and the landing
+// that says where the work is ([ProgramFolderEnd.landing]).
 //
 // A TEXT PROGRAM LANDS NOTHING: it worked in place and promised to change
 // nothing, and its answer is the run's result, which the outcome note carries.
 func (a *Agent) landDelegateRun(run *beltRun, summary RunSummary) RunLanding {
-	m := run.delegate
-	if m == nil || !m.LandsTree() || run.tree.dir == "" {
+	if run.folder == nil {
 		return RunLanding{Home: mergeInPlace}
 	}
-	if run.plain {
-		// A PLAIN FOLDER HAS NO HISTORY TO COMMIT TO, and the program worked in
-		// it where it stands: its changes are already the person's, and the
-		// landing is only the note that says where they are — and where the
-		// program's own records went, which are not the person's.
-		note := "its work is in " + run.ground + ", which has no git history, so nothing was committed"
-		if kept := a.keepPlainFolderNotes(run); kept != "" {
-			note += "; " + kept
-		}
-		if _, err := run.store.AddNote(run.root, run.root, note); err != nil {
-			if g := a.graph(); g != nil {
-				g.planNote("the run's landing note failed: " + err.Error())
-			}
-		}
-		return RunLanding{Home: mergeInPlace}
+	outcome, result := runEndingWords(summary)
+	if result == "" {
+		result = outcome
 	}
-	dir := run.workspace
-	// THE SQUASH LANDS ON CODEAF'S BRANCH, WHEREVER THE PROGRAM LEFT HEAD.
-	moved := a.homeDelegateCopy(run)
-	// THE BRANCH AS THE PROGRAM LEFT IT is what says whether it held any work,
-	// and the landing below moves it, so it is kept for the branch-only
-	// landing's emptiness question ([dropEmptyTaskBranch]).
-	run.taskTip = moved.tip
-	message := "task: " + clip(firstLine(run.title), 72)
-	if result := strings.TrimSpace(summary.Result); result != "" {
-		message += "\n\n" + result
-	}
-	saved, _, _, err := commitTaskWorkAs(dir, message, nil, a.signsGitWork(), true)
-	landing := RunLanding{}
-	switch {
-	case err != nil:
-		landing.Refused = firstLine(err.Error())
-	case len(saved) == 0:
-		landing.Refused = runNothingToLand
-	default:
-		landing.Branch, landing.Changed = currentBranch(dir), saved
-		landing.Unrelated = moved.warns()
-	}
-	note := landing.Refused
-	if note == "" {
-		note = fmt.Sprintf("landed on %s: %s", landing.Branch, fileCount(len(landing.Changed)))
-	}
-	if said := moved.sentence(m.Name, run.tree.branch, landing.Refused == ""); said != "" {
-		note += " · " + said
-	}
-	if _, err := run.store.AddNote(run.root, run.root, note); err != nil {
-		if g := a.graph(); g != nil {
-			g.planNote("the run's landing note failed: " + err.Error())
-		}
-	}
-	return a.bringBeltRunHome(run, landing)
-}
-
-// headMove is what a tree program had done with its copy's HEAD by the time
-// it ended, as [delegateHeadHome] found it: the branch it had moved to (empty
-// with detached set for no branch at all), and whether its work stood on the
-// commit the copy started from. The zero value is a HEAD that never left the
-// task's branch.
-//
-// tip is the task's branch as the program left it, read before codeaf moved
-// anything; kept says that branch held commits of the program's that the HEAD
-// it left was not built on, so its work is committed on top of them rather
-// than squashed over them ([headMove.squashOnto]).
-type headMove struct {
-	moved     bool
-	from      string
-	detached  bool
-	unrelated bool
-	tip       string
-	kept      bool
-}
-
-// squashOnto is the commit a tree program's finished tree is committed on:
-// the commit its copy started from, so the program's own bookkeeping commits
-// fold into one, or the task's branch as the program left it when that branch
-// holds commits the finished tree was not built on.
-//
-// THE PROGRAM'S COMMITS ARE NEVER SQUASHED OVER FROM ELSEWHERE. senior-dev
-// commits every write on the task's branch; a model that then ran `git
-// checkout --detach` to look at the baseline, and was ended there by a limit,
-// had that branch reset back to the start under a tree that held none of its
-// work, and the branch, then empty, deleted with the only reference to an
-// hour of paid commits. Committed on top, every one of them stays on the
-// task's branch, and the note says the finished tree may undo them.
-func (move headMove) squashOnto(startSha string) string {
-	if move.kept {
-		return move.tip
-	}
-	return startSha
-}
-
-// warns says the landing's commit may also undo changes the branch held
-// before it: work built on another commit than the copy's start, or on
-// something other than the program's own commits on the task's branch.
-func (move headMove) warns() bool {
-	return move.unrelated || move.kept
-}
-
-// homeDelegateCopy puts a tree program's copy back on the task's own branch
-// and takes that branch back to the commit its work is committed on
-// ([headMove.squashOnto]), keeping the index and the files exactly as the
-// program left them, so the one commit that follows holds the program's whole
-// work. THE LANDING AND THE STOP BOTH TAKE IT: a stop that committed on
-// whatever branch HEAD was on put codeaf's commit on the person's own branch
-// while its report named the task's branch, which held nothing.
-func (a *Agent) homeDelegateCopy(run *beltRun) headMove {
-	dir := run.workspace
-	move := delegateHeadHome(dir, run.tree.branch, run.startSha)
-	onto := move.squashOnto(run.startSha)
-	if onto == "" {
-		return move
-	}
-	if head, err := git(dir, "rev-parse", "--verify", "-q", "HEAD"); err == nil && strings.TrimSpace(head) == onto {
-		return move
-	}
-	if out, err := git(dir, "reset", "--soft", onto); err != nil {
-		if g := a.graph(); g != nil {
-			g.planNote(run.delegate.Name + "'s commits could not be squashed: " + firstLine(out))
-		}
-	}
-	return move
-}
-
-// delegateHeadHome puts a tree program's copy back on the task's own branch
-// before its work is squashed, and answers what it found ([headMove]).
-//
-// A PROGRAM'S SHELL CAN MOVE HEAD, AND ONE DID. A brief said "work on a new
-// branch", and senior-dev ran `git checkout -b` four times in one run. The
-// landing squashed and committed on whatever branch HEAD was on, while the row,
-// the note and the carry home all named codeaf's task branch, which held
-// nothing: the person was told their work was on a branch that was empty. And
-// where the program had checked out one of the PERSON'S OWN branches, the
-// squash's `reset --soft` moved that branch back to the copy's first commit,
-// taking the person's own commits off it.
-//
-// `git symbolic-ref` moves HEAD alone: the index and the files stay exactly as
-// the program left them, so the squash and the commit that follow land its
-// finished tree on the task's branch, and the branch the program moved to is
-// never reset by codeaf. Any commit the program made there stays on that
-// branch, which the note says.
-//
-// A PROGRAM WHOSE WORK DID NOT STAND ON THE COPY'S FIRST COMMIT is said out
-// loud too. The squash commits the program's finished tree over that commit,
-// so work the program built on some other commit (a branch cut from `main`,
-// say) also undoes whatever the copy's first commit had and that one did not,
-// and the diff is the only place that would show.
-//
-// THE TASK'S BRANCH IS READ BEFORE HEAD MOVES ONTO IT. Where it holds commits
-// past the copy's start that the HEAD the program left was not built on, those
-// are the program's own work, and the squash must not reset over them
-// ([headMove.squashOnto]).
-func delegateHeadHome(dir, branch, startSha string) headMove {
-	branch = strings.TrimSpace(branch)
-	if branch == "" {
-		return headMove{}
-	}
-	tip, _ := git(dir, "rev-parse", "--verify", "-q", "refs/heads/"+branch)
-	stay := headMove{tip: strings.TrimSpace(tip)}
-	current := currentBranch(dir)
-	if current == branch {
-		return stay
-	}
-	head, _ := git(dir, "rev-parse", "--verify", "-q", "HEAD")
-	head = strings.TrimSpace(head)
-	if _, err := git(dir, "symbolic-ref", "HEAD", "refs/heads/"+branch); err != nil {
-		return stay
-	}
-	move := headMove{moved: true, from: current, detached: current == "", tip: stay.tip}
-	if startSha != "" && head != "" {
-		_, err := git(dir, "merge-base", "--is-ancestor", startSha, head)
-		move.unrelated = err != nil
-	}
-	if move.tip != "" && move.tip != startSha {
-		_, err := git(dir, "merge-base", "--is-ancestor", move.tip, head)
-		move.kept = head == "" || err != nil
-	}
-	return move
-}
-
-// sentence is what the landing note adds about a HEAD the program had moved:
-// where it had left the copy, where its work was committed when anything was,
-// and the warning about work built on another commit. Empty for a HEAD that
-// never moved. A landing that committed nothing says only where HEAD had been,
-// because "its work was committed" would be a claim about a commit that does
-// not exist.
-func (move headMove) sentence(name, branch string, landed bool) string {
-	if !move.moved {
-		return ""
-	}
-	said := name + " had moved its copy to the branch " + move.from
-	if move.detached {
-		said = name + " had left its copy on no branch"
-	}
-	if landed {
-		said += "; its work was committed on " + branch
-	}
-	if !move.detached {
-		said += ", and any commit it made on " + move.from + " is still on that branch"
-	}
-	switch {
-	case landed && move.kept:
-		said += " · the commits it had made on " + branch + " are kept there, under its finished work; that work was not built on them, " +
-			"so it may also undo their changes; read its diff before you merge it"
-	case landed && move.unrelated:
-		said += " · its work was not built on the commit its copy started from, so the commit on " + branch +
-			" may also undo changes that commit had; read its diff before you merge it"
-	}
-	return said
-}
-
-// keepPlainFolderNotes moves a program's notes folder ([delegate.Delegate.Notes])
-// out of the plain folder it worked in and into the task's own record folder,
-// beside its conversation with codeaf, and answers the sentence that says
-// where they went ("" when nothing moved).
-//
-// THE PERSON'S FOLDER GETS BACK ONLY THE WORK. A senior-dev run left 46 files
-// in `.senior-dev/` there — its session database and its whole conversation
-// with its model among them — and the manual's own advice for isolation next
-// time, `git init` then `git add -A`, would have committed every one. A notes
-// folder that was already there when the run began is left alone, because it
-// is not this run's alone. A move across disks falls back to a copy and then a
-// removal, and a move that fails leaves the folder where it was, whole.
-func (a *Agent) keepPlainFolderNotes(run *beltRun) string {
-	m := run.delegate
-	if m == nil || m.Notes == "" || run.notesWereThere || run.tree.dir == "" {
-		return ""
-	}
-	from := filepath.Join(run.tree.dir, m.Notes)
-	if info, err := os.Lstat(from); err != nil || !info.IsDir() {
-		return ""
-	}
-	taskDir := plandb.TaskDir(filepath.Dir(run.store.Path()), run.root)
-	if err := os.MkdirAll(taskDir, 0o700); err != nil {
-		return ""
-	}
-	to := filepath.Join(taskDir, m.Name)
-	for n := 1; ; n++ {
-		if _, err := os.Lstat(to); os.IsNotExist(err) {
-			break
-		}
-		to = filepath.Join(taskDir, fmt.Sprintf("%s.%d", m.Name, n))
-	}
-	if err := os.Rename(from, to); err != nil {
-		if err := copyPath(from, to); err != nil {
-			_ = os.RemoveAll(to)
-			if g := a.graph(); g != nil {
-				g.planNote(m.Name + "'s notes could not be moved out of " + run.ground + ": " + err.Error())
-			}
-			return ""
-		}
-		_ = os.RemoveAll(from)
-	}
-	return "its notes (" + m.Notes + "/) are kept in " + to
+	return run.folder.Finish(result).landing()
 }

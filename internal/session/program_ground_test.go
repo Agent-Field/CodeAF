@@ -14,8 +14,10 @@ import (
 // made ~/Desktop/pong, named it as ground and said `in place`; the ladder's
 // `in place` rung answered with the conversation's folder before ground was
 // read, and senior-dev was handed the person's home folder. A program's folder
-// is its ground, or the conversation's folder when it names none, and `where`
-// is not read for it.
+// is its ground, or the conversation's folder when it names none, `where` is
+// not read for it, and it is that folder itself, never a copy. A ground that
+// is not there yet is taken when the folder it would be made in is there, and
+// made only when the run starts; one with nowhere to be made is refused.
 func TestAProgramWorksInTheGroundItWasGivenAndNowhereElse(t *testing.T) {
 	conversation := t.TempDir()
 	ground := newTestRepo(t)
@@ -25,16 +27,23 @@ func TestAProgramWorksInTheGroundItWasGivenAndNowhereElse(t *testing.T) {
 	})
 	for _, where := range []string{"in place", "", filepath.Join(conversation, "elsewhere")} {
 		stand := agent.resolveTaskGround(taskSpec{via: "fake", where: where, ground: ground, brief: "build it", deliverable: "the game", acceptance: "it runs"})
-		if stand.refusal != "" || stand.ask != "" || stand.dir != canonicalPath(ground) || stand.mode != TaskModeWorktree {
-			t.Fatalf("where %q: stand = %+v, want a copy of the ground %s", where, stand, canonicalPath(ground))
+		if stand.refusal != "" || stand.ask != "" || stand.dir != canonicalPath(ground) || stand.mode != TaskModeInPlace {
+			t.Fatalf("where %q: stand = %+v, want the ground %s itself", where, stand, canonicalPath(ground))
 		}
 	}
 	stand := agent.resolveTaskGround(taskSpec{via: "fake", where: "in place", brief: "build it", deliverable: "the game", acceptance: "it runs"})
 	if stand.refusal != "" || stand.dir != canonicalPath(conversation) {
 		t.Fatalf("no ground: stand = %+v, want the conversation's folder %s", stand, canonicalPath(conversation))
 	}
-	if stand := agent.resolveTaskGround(taskSpec{via: "fake", ground: filepath.Join(conversation, "missing"), brief: "b", deliverable: "d", acceptance: "a"}); !strings.Contains(stand.refusal, "not there") {
-		t.Fatalf("a ground that is not there: stand = %+v, want the refusal", stand)
+	fresh := filepath.Join(conversation, "pong")
+	if stand := agent.resolveTaskGround(taskSpec{via: "fake", ground: fresh, brief: "b", deliverable: "d", acceptance: "a"}); stand.refusal != "" || stand.dir != canonicalPath(fresh) {
+		t.Fatalf("a new folder whose parent is there: stand = %+v, want it taken as %s", stand, canonicalPath(fresh))
+	}
+	if _, err := os.Stat(fresh); !os.IsNotExist(err) {
+		t.Fatalf("the card made the folder before anybody approved the work: %v", err)
+	}
+	if stand := agent.resolveTaskGround(taskSpec{via: "fake", ground: filepath.Join(conversation, "missing", "deeper"), brief: "b", deliverable: "d", acceptance: "a"}); !strings.Contains(stand.refusal, "not there") {
+		t.Fatalf("a ground with nowhere to be made: stand = %+v, want the refusal", stand)
 	}
 }
 
@@ -73,30 +82,33 @@ func TestAProgramIsNeverHandedTheHomeFolder(t *testing.T) {
 	}
 }
 
-// THE RECEIPT NAMES THE FOLDER, and whether it has a history is read off the
-// folder rather than off a live run a program that died at once has left.
+// THE RECEIPT NAMES THE FOLDER AND THE BRANCH, read off the record the run
+// wrote as it started rather than off a live run a program that died at once
+// has left.
 func TestAProgramsReceiptNamesItsFolder(t *testing.T) {
 	tree := testPrograms("fake")[0]
 	repo := newTestRepo(t)
 	plain := t.TempDir()
-	if got, want := delegateReceipt(repo, tree), "It is fake's: it works alone in a copy of "+repo+", and when it ends its work is left on the task's own branch; nothing is merged into the checkout."; got != want {
-		t.Fatalf("the receipt for a copy = %q, want %q", got, want)
+	record := &TaskCopyRecord{Dir: repo, Branch: "task/pong-abc123", Home: "work"}
+	if got, want := delegateReceipt(repo, tree, record), "It is fake's: it works alone in "+repo+" itself, on a new branch task/pong-abc123; your branch work does not move, and when it ends task/pong-abc123 stays checked out there with its work."; got != want {
+		t.Fatalf("the receipt for a repository = %q, want %q", got, want)
 	}
-	if got, want := delegateReceipt(plain, tree), "It is fake's: it works alone in "+plain+" itself, which has no git history, so its changes are there as it makes them."; got != want {
+	if got, want := delegateReceipt(plain, tree, &TaskCopyRecord{Dir: plain}), "It is fake's: it works alone in "+plain+" itself, which has no git history, so its changes are there as it makes them."; got != want {
 		t.Fatalf("the receipt for a plain folder = %q, want %q", got, want)
 	}
-	got := delegateStartedReceipt(3, "Pong", "", delegateReceipt(plain, tree), "")
+	got := delegateStartedReceipt(3, "Pong", "", delegateReceipt(plain, tree, nil), "")
 	if !strings.HasPrefix(got, "task 3 started: Pong\nIt is fake's: it works alone in "+plain+" itself") || strings.Contains(got, "a copy of its own") || !strings.Contains(got, taskHandoffWakeSentence) {
 		t.Fatalf("the started receipt = %q", got)
 	}
 }
 
 // THE CARD NAMES THE PROJECT. A program's card said `where:` and the path its
-// copy would have under codeaf's state; it says the folder, or a copy of it.
+// copy would have under codeaf's state; it says the folder itself, and that it
+// gets a branch of its own there when the folder is a repository.
 func TestAProgramsCardNamesTheProject(t *testing.T) {
 	repo, plain := newTestRepo(t), t.TempDir()
 	config := Config{Workspace: t.TempDir(), Delegates: testPrograms("fake")}
-	if got := taskCardWhere(config, 1, taskSpec{via: "fake", ground: repo}); got != "a copy of "+repo {
+	if got := taskCardWhere(config, 1, taskSpec{via: "fake", ground: repo}); got != repo+", on a branch of its own" {
 		t.Fatalf("a repository's card says where: %q", got)
 	}
 	if got := taskCardWhere(config, 1, taskSpec{via: "fake", ground: plain}); got != plain {

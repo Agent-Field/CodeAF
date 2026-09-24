@@ -75,8 +75,9 @@ type RunSpec struct {
 	// for the life of the run; the engine reads and writes it like any other
 	// writer of the store.
 	Store *plandb.Store
-	// Workspace is the run's own working copy, the directory every worker
-	// types in and the landing commits.
+	// Workspace is the directory every worker types in and the landing
+	// commits: the run's own working copy, or the folder itself for a program
+	// that edits files (programfolder.go).
 	Workspace string
 	// Title and Brief are the run's own words: the title names the root row,
 	// and the brief is the assignment the root worker reads.
@@ -139,16 +140,10 @@ type RunSpec struct {
 	// program reaches a model only through the API codeaf serves the run. Nil is
 	// every run the conversation's own workers drive.
 	Delegate *delegate.Delegate
-	// PlainFolder says the delegated run's folder has no git history, so the
-	// program is started with its own flags for one
+	// PlainFolder says the delegated run's program works in its folder without
+	// git ([ProgramFolder.Plain]), so it is started with its own flags for that
 	// (delegate.Delegate.PlainFolder). False for every other run.
 	PlainFolder bool
-	// Ground is every spelling of the folder a delegated run's task was
-	// proposed on, and of the repository around it, each paired with where it
-	// stands in the copy, when the program works in a copy: the brief it is
-	// handed names the copy wherever it named either (delegate.RehomeBrief).
-	// Empty for every other run.
-	Ground []delegate.Rehome
 	// Crew is the conversation's crew as a delegated run's program is handed it
 	// ([conversationCrew]), so the program works on the models the person
 	// chose. Zero for every other run.
@@ -216,21 +211,11 @@ type RunLanding struct {
 	// brought back to its ground ([Agent.landBeltRun]). Empty is an engine's own
 	// landing, which commits on the copy's branch and merges nothing.
 	Home string
-	// Root is the repository a branch-only landing left its branch in
-	// ([delegateKeepsBranch]), set only for that landing: the folder the merge
-	// that brings the work in runs in ([beltLandingLine]).
-	Root string
-	// Unrelated says the branch's work was not built on everything that branch
-	// held before it ([headMove.warns]), so a merge of it may also undo changes;
-	// the line the conversation is handed says so ([beltLandingLine]).
-	Unrelated bool
+	// Line is a landing that says itself: a program's run, whose folder's
+	// ending ([ProgramFolderEnd.Sentence]) is the whole account of where its
+	// work is ([beltLandingLine]). Empty for every other run.
+	Line string
 }
-
-// landingUnrelatedWarning is what the conversation's landing line adds for work
-// that was not built on everything its branch held. THE PAGE SAID IT AND THE
-// CHAT DID NOT: the line the chat's model reads offered the merge command
-// alone, and a model asked to merge had nothing telling it to look first.
-const landingUnrelatedWarning = "its work was not built on everything that branch held, so the merge may also undo changes; read its diff before you merge it"
 
 // RunEngine is the run engine as this door reaches it. Start drives one store
 // to an outcome and answers what came of it; Land commits the run's working
@@ -277,7 +262,8 @@ type beltRun struct {
 	// workspace is the run's own copy, the directory every worker types in, and
 	// ground is the folder that copy was cut from and comes home to. tree is the
 	// copy as the ground ladder made it, kept so the run's landing is the ladder's
-	// own ([Agent.landBeltRun]).
+	// own ([Agent.landBeltRun]). A program that edits files has no copy: all
+	// three name the folder it works in ([ProgramFolder.tree]).
 	workspace string
 	ground    string
 	tree      taskTree
@@ -311,31 +297,12 @@ type beltRun struct {
 	ended time.Time
 	spent float64
 	// delegate is the program this run's root is handed to, nil for a run the
-	// conversation's own workers drive; startSha is the commit the copy stood on
-	// the moment the run began, the point a tree program's commits are squashed
-	// back to at landing (delegate_door.go).
+	// conversation's own workers drive; folder is the folder a program that
+	// edits files works in, held for the run and finished when it ends
+	// ([PrepareProgramFolder]), nil for every other run. It is set once, before
+	// the run starts, and never written again.
 	delegate *delegate.Delegate
-	startSha string
-	// taskTip is the task's branch as a tree program left it, read by its
-	// landing before anything moved it ([Agent.homeDelegateCopy]). It is what
-	// says whether that branch ever held the program's work, which the tip
-	// after the landing's own squash cannot ([dropEmptyTaskBranch]). It is
-	// written and read on the run's own goroutine alone.
-	taskTip string
-	// plain is a tree program working in a folder with no git history
-	// ([delegateOnPlainFolder]): it is told so on its line, and its landing
-	// commits nothing, because the work is already where it belongs.
-	plain bool
-	// notesWereThere says the program's notes folder ([delegate.Delegate.Notes])
-	// was already in a plain folder when the run began — left by a run started
-	// at a shell, say — so its landing leaves it where it is rather than take
-	// records that are not this run's alone.
-	notesWereThere bool
-	// groundMoves is every spelling of the folder a tree program's task was
-	// proposed on and of the repository around it, each paired with where it
-	// stands in the copy, when the program works in a copy of it
-	// ([delegateGroundMoves]); empty otherwise.
-	groundMoves []delegate.Rehome
+	folder   *ProgramFolder
 }
 
 // startTaskRun is StartTask's second road, taken whenever the bash belt is asked
@@ -386,8 +353,11 @@ func (a *Agent) startKnownTaskRun(ctx context.Context, id uint64, title, brief s
 // startKnownTaskRunVia is [Agent.startKnownTaskRun] with the worker named: nil
 // is the conversation's own bash worker, and a program is the one the root task
 // is handed to (delegate_door.go). One body serves both because a
-// delegated run IS a run — the store, the copy, the row and the stop road are
-// the same — and a second body would be two roads that must stay in step.
+// delegated run IS a run — the store, the row and the stop road are the same —
+// and a second body would be two roads that must stay in step. What differs is
+// where it works: a program that edits files works in the folder itself
+// (programfolder.go), where every other run gets the copy its ground ladder
+// cuts.
 //
 // asked is the models the person asked the program to work with, resolved;
 // none means the conversation's crew ([Agent.delegateCrew]).
@@ -411,26 +381,49 @@ func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brie
 		return a.joinBeltRun(g, live, id, title, brief, dependencies, stand, via)
 	}
 
+	// A PROGRAM THAT EDITS FILES WORKS IN THE FOLDER ITSELF (programfolder.go),
+	// and the folder is readied before anything else: a folder that refuses —
+	// changes that are not committed, another program's run in it — refuses
+	// before a store is seeded or a row is published.
+	var folder *ProgramFolder
+	if via != nil && via.LandsTree() {
+		prepared, err := PrepareProgramFolder(ProgramFolderOrder{
+			Program: *via, Dir: stand.dir, Title: title, Holder: taskStopName(id, title),
+			Keep: plandb.TaskDir(filepath.Dir(path), storeID), Instead: "say which folder the work is in, as ground",
+			Place: a.config.Place, Sign: a.signsGitWork(),
+		})
+		if err != nil {
+			return err
+		}
+		folder = prepared
+	}
 	plan, store, err := a.seedBeltRunStore(g, path, storeID, title, brief)
 	if err != nil {
+		folder.abandon()
 		return err
 	}
 	if question = strings.TrimSpace(question); question != "" {
 		if _, err := store.Revise(store.RootID(), plandb.TaskPatch{Question: &question}); err != nil {
 			_ = store.Close()
+			folder.abandon()
 			return err
 		}
 	}
-	tree, err := prepareTaskTreeOn(ctx, a.config.Place, a.config.Workspace, a.journalID(), id, title, stand)
-	if err != nil {
-		_ = store.Close()
-		return err
+	tree, ground := folder.tree(), canonicalPath(stand.dir)
+	if folder != nil {
+		// A PROGRAM'S GROUND IS THE FOLDER IT WORKS IN, which is the
+		// repository's root when it was handed a folder inside one.
+		ground = canonicalPath(folder.Dir)
+	} else {
+		tree, err = prepareTaskTreeOn(ctx, a.config.Place, a.config.Workspace, a.journalID(), id, title, stand)
+		if err != nil {
+			_ = store.Close()
+			return err
+		}
 	}
 	// THE COPY IS A SHELL WORKER'S, so its landing stages the tree's own status:
 	// a run's workers edit through bash and fill no write ledger.
 	tree.bashBelt = true
-	// AND A PROGRAM'S WORK LANDS AS ITS BRANCH ([delegateKeepsBranch]).
-	tree.keepsBranch = delegateKeepsBranch(via, delegateOnPlainFolder(tree, via))
 	// THE RUN'S CONTEXT IS ONE A PERSON'S STOP CAN CUT. It outlives the turn that
 	// started it, which is the caller's business (task.go hands this door a
 	// context no turn's ending cancels); what it must not outlive is the person
@@ -439,16 +432,8 @@ func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brie
 	born := a.taskClockNow()
 	run := &beltRun{
 		plan: plan, store: store, root: store.RootID(), row: id, title: title,
-		workspace: tree.dir, ground: canonicalPath(stand.dir), tree: tree, cut: cut,
-		born: born, delegate: via, startSha: delegateStartSha(tree, via),
-		plain: delegateOnPlainFolder(tree, via), asked: asked,
-	}
-	if via != nil && via.LandsTree() && !run.plain {
-		run.groundMoves = delegateGroundMoves(stand.dir, tree.root, tree.dir)
-	}
-	if run.plain && via.Notes != "" {
-		_, err := os.Lstat(filepath.Join(tree.dir, via.Notes))
-		run.notesWereThere = err == nil
+		workspace: tree.dir, ground: ground, tree: tree, cut: cut,
+		born: born, delegate: via, folder: folder, asked: asked,
 	}
 	a.installBeltRun(g, run)
 	// THE COPY IS WRITTEN DOWN IN THE SAME BREATH THE RUN IS PUBLISHED, because
@@ -475,13 +460,17 @@ func (a *Agent) startKnownTaskRunVia(ctx context.Context, id uint64, title, brie
 // Nothing opens a second store.
 //
 // A DELEGATE NEVER JOINS A RUN AND NOTHING JOINS A DELEGATE'S. A delegated run
-// is a run of one task whose worker owns the whole copy for the hour; a second
-// task beside it would be a bash worker typing in the tree the program is
-// editing, and a delegate added under a live run would be a second program in
-// the same tree. Both are refused with what is underway.
+// is a run of one task whose worker owns its whole folder for the hour; a
+// second task beside it would be a bash worker typing in the tree the program
+// is editing, and a delegate added under a live run would be a second program
+// beside the first. Both are refused with what is underway, and where.
 func (a *Agent) joinBeltRun(g *TaskGraph, live *beltRun, id uint64, title, brief string, dependencies []plandb.Dependency, stand taskStand, via *delegate.Delegate) error {
 	if via != nil || live.delegate != nil {
-		return errors.New("work is already underway in a copy of " + live.ground +
+		where := "in a copy of " + live.ground
+		if live.folder != nil {
+			where = "in " + live.ground
+		}
+		return errors.New("work is already underway " + where +
 			"; " + aloneName(via, live.delegate) + " runs alone, so propose it again when that work has ended")
 	}
 	if canonicalPath(stand.dir) != live.ground {
@@ -519,40 +508,6 @@ func programName(via *delegate.Delegate) string {
 		return ""
 	}
 	return strings.TrimSpace(via.Name)
-}
-
-// delegateStartSha is the commit a tree delegate's copy stands on before the
-// program has written a byte — the point its commits are squashed back to at
-// landing (delegate_door.go). It is read NOW, off the copy itself: whatever the
-// ground ladder put under this copy is under this commit, and everything the
-// program commits is above it. Empty for every run that is not a tree delegate's.
-func delegateStartSha(tree taskTree, via *delegate.Delegate) string {
-	if via == nil || !via.LandsTree() {
-		return ""
-	}
-	head, err := git(tree.dir, "rev-parse", "HEAD")
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(head)
-}
-
-// delegateOnPlainFolder says a tree program is about to work in a folder with no
-// git history to cut a copy from: a plain folder, or a repository with no
-// commit yet. The copy road already answered that by working in the folder
-// itself ([prepareTaskTreeOn]); this is the same fact read off the tree it
-// answered with, for the program's line and its landing.
-//
-// IT WAS A RUN THAT DIED ON ITS FIRST LINE. senior-dev keeps its history in
-// git unless it is told otherwise, and handed a plain folder it ended at once
-// with "workspace is not a git repository", though it has a way of working
-// without one. codeaf is the one that read the folder, so codeaf says so.
-func delegateOnPlainFolder(tree taskTree, via *delegate.Delegate) bool {
-	if via == nil || !via.LandsTree() || tree.merge != mergeInPlace || tree.dir == "" {
-		return false
-	}
-	root, ok := repositoryRoot(tree.dir)
-	return !ok || !hasCommit(root)
 }
 
 // beltRunSpec is what the engine is handed for a run of this conversation: its
@@ -597,8 +552,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		Serves:       a.servesModel,
 		Conversation: a.runConversation(),
 		Delegate:     run.delegate,
-		PlainFolder:  run.plain,
-		Ground:       run.groundMoves,
+		PlainFolder:  run.folder != nil && run.folder.Plain(),
 		Crew:         a.delegateCrew(run),
 	}
 }
@@ -626,75 +580,6 @@ func (a *Agent) delegateCrew(run *beltRun) delegate.Crew {
 		Brain: seat(roles.TierMastermind), Hands: seat(roles.TierWorker), Light: seat(roles.TierLow),
 		Asked: append([]string(nil), run.asked...),
 	}
-}
-
-// delegateGroundMoves is every way a brief is likely to spell the folder a
-// tree program's task was proposed on (as the proposal named it, absolute,
-// with its links resolved, and under ~) and the repository it is in, each
-// paired with where it stands in the program's copy. It is empty when the
-// program works in that folder itself, where there is nothing to rewrite.
-//
-// THE COPY IS CUT AT THE REPOSITORY'S ROOT, NOT AT THE FOLDER. A task proposed
-// on a subfolder of a repository (a conversation opened in one package of a
-// monorepo) gets a copy of the whole repository, so the subfolder is the same
-// subfolder inside the copy, and the repository's own root is the copy's root.
-// Both used to be wrong: the subfolder was mapped to the copy's root, which sent
-// every path under it to a file that does not exist, and the repository's
-// spelling was left as it was, so `git -C <the person's checkout>` reached the
-// program intact — the exact failure the rewrite exists to stop.
-func delegateGroundMoves(proposed, root, copyDir string) []delegate.Rehome {
-	proposed = strings.TrimSpace(proposed)
-	if proposed == "" || canonicalPath(proposed) == canonicalPath(copyDir) {
-		return nil
-	}
-	ground := canonicalPath(proposed)
-	target, rel := copyDir, ""
-	if root = strings.TrimSpace(root); root != "" {
-		if within, err := filepath.Rel(canonicalPath(root), ground); err == nil && within != "." &&
-			within != ".." && !strings.HasPrefix(within, "../") {
-			target, rel = filepath.Join(copyDir, within), within
-		}
-	}
-	groundSpellings := pathSpellings(proposed)
-	moves := make([]delegate.Rehome, 0, 2*len(groundSpellings))
-	for _, spelling := range groundSpellings {
-		moves = append(moves, delegate.Rehome{From: spelling, To: target})
-	}
-	if rel == "" {
-		return moves
-	}
-	// THE REPOSITORY IN EVERY SPELLING THE BRIEF COULD USE: its own, and the
-	// folder's spellings with the subfolder taken off, so `~/Code/app` is found
-	// wherever `~/Code/app/packages/foo` was how the task was named.
-	rootSpellings := pathSpellings(root)
-	for _, spelling := range groundSpellings {
-		if trimmed, ok := strings.CutSuffix(strings.TrimRight(spelling, "/"), "/"+filepath.ToSlash(rel)); ok && trimmed != "" {
-			rootSpellings = append(rootSpellings, trimmed)
-		}
-	}
-	for _, spelling := range rootSpellings {
-		moves = append(moves, delegate.Rehome{From: spelling, To: copyDir})
-	}
-	return moves
-}
-
-// pathSpellings is every way a brief is likely to spell one folder: as given,
-// absolute, with its links resolved, and under ~.
-func pathSpellings(path string) []string {
-	names := []string{path, canonicalPath(path)}
-	home, _ := os.UserHomeDir()
-	home = strings.TrimRight(home, "/")
-	if abs, err := filepath.Abs(path); err == nil && !strings.HasPrefix(path, "~") {
-		names = append(names, abs)
-	}
-	if home != "" {
-		for _, name := range append([]string(nil), names...) {
-			if rest, ok := strings.CutPrefix(name, home+"/"); ok {
-				names = append(names, "~/"+rest)
-			}
-		}
-	}
-	return names
 }
 
 // seedBeltRunStore opens a fresh store for a NEW hand-off, under the hand-off's
@@ -730,7 +615,7 @@ func (a *Agent) seedBeltRunStore(g *TaskGraph, path, rootID, title, brief string
 	if err != nil {
 		return nil, nil, err
 	}
-	endOrphanedProgramRun(old)
+	_, _ = endOrphanedProgramRun(old)
 	_ = old.Close()
 	archived := fmt.Sprintf("%s.%d", path, len(planArchivePaths(path))+1)
 	if err := os.Rename(path, archived); err != nil {
@@ -750,12 +635,12 @@ func programClosedSentence(name string) string {
 
 // programEndedSentence is the ending written on a program's run that codeaf
 // closed under AFTER the program had exited: its worker was still settling
-// owed receipts, or the run was about to land. The program was not running,
-// so the sentence does not say it was, and the work it left was never brought
-// in — it is where the program left it (for a program that works in its own
-// copy, in that copy on the task's branch, not squashed).
+// owed receipts, or the run was about to end. The program was not running, so
+// the sentence does not say it was; what was not done is the run's ending in
+// its folder, which the next codeaf to find the run does
+// ([settleOwedProgramFolder]) and says under this line.
 func programEndedSentence(name string) string {
-	return name + " had ended; codeaf closed before its work was brought in"
+	return name + " had ended; codeaf closed before it could say where its work is"
 }
 
 // runLimitSentence is the run engine's outcome word for a run a limit its
@@ -766,25 +651,35 @@ func programEndedSentence(name string) string {
 const runLimitSentence = "a limit you set stopped it"
 
 // endOrphanedProgramRun ends a program's run whose store was left open by a
-// process that went away, at the run's last evidence of life. It does nothing
-// to a store whose run has ended, or whose run no program worked (the task's
-// record folder holds no program record, [delegate.ProgramFile]).
+// process that went away, at the run's last evidence of life, and finishes the
+// folder it worked in when that process went away before it could
+// ([settleOwedProgramFolder]), answering how it left the folder. It ends
+// nothing in a store whose run has ended, or whose run no program worked (the
+// task's record folder holds no program record, [delegate.ProgramFile]).
 //
 // THE ENDING IS WRITTEN WHEN THE RUN WAS LAST SEEN, NOT NOW. The process that
 // finds the store can be hours later than the one that lost it, and the page
 // counts a run's time to its ending ([plandb.Store.FailRootAt] says why).
-func endOrphanedProgramRun(store *plandb.Store) {
+//
+// THE FOLDER IS FINISHED WHATEVER THE STORE SAYS. A run a person stopped, or
+// one codeaf closed under, has its store's ending written before its folder is
+// finished, so a process that went away in between leaves an ended store over
+// a folder still on the program's branch with its last changes uncommitted.
+func endOrphanedProgramRun(store *plandb.Store) (ProgramFolderEnd, bool) {
 	rootID := store.RootID()
 	root := store.Task(rootID)
-	if root == nil || terminalStoreStatus(root.Status) {
-		return
+	if root == nil {
+		return ProgramFolderEnd{}, false
 	}
 	taskDir := plandb.TaskDir(filepath.Dir(store.Path()), rootID)
-	record, ok := delegate.ReadProgram(taskDir)
-	if !ok {
-		return
+	if record, ok := delegate.ReadProgram(taskDir); ok && !terminalStoreStatus(root.Status) {
+		endProgramRunClosed(store, record, lastEvidenceOfLife(store, root, taskDir, record))
 	}
-	endProgramRunClosed(store, record, lastEvidenceOfLife(store, root, taskDir, record))
+	end, settled := settleOwedProgramFolder(taskDir)
+	if settled {
+		_, _ = store.AddNote(rootID, rootID, end.Sentence())
+	}
+	return end, settled
 }
 
 // endProgramRunClosed writes a program's run's ending when codeaf closed under
@@ -878,8 +773,8 @@ func (a *Agent) endInterruptedProgramRun() {
 	if !found || kept.State != TaskInterrupted {
 		return
 	}
-	endOrphanedProgramRun(store)
-	a.settleInterruptedProgramRow(g, store, kept)
+	end, settled := endOrphanedProgramRun(store)
+	a.settleInterruptedProgramRow(g, store, kept, end, settled)
 }
 
 // settleInterruptedProgramRow settles the row a reopen restored as interrupted
@@ -897,7 +792,11 @@ func (a *Agent) endInterruptedProgramRun() {
 // at the store's ending otherwise ([runClockEnd]) — the pair every live settle
 // reads ([Agent.beltRunEndedAt]). The store's ending can come after the exit
 // by the whole wait for owed receipts, and that wait is not the run's time.
-func (a *Agent) settleInterruptedProgramRow(g *TaskGraph, store *plandb.Store, kept TaskNotice) {
+//
+// AND IT SAYS WHERE THE WORK IS when this reopen finished the run's folder
+// (settled): the folder's sentence under the ending, and the program's branch
+// when it holds the work, as the live ending would have said them.
+func (a *Agent) settleInterruptedProgramRow(g *TaskGraph, store *plandb.Store, kept TaskNotice, end ProgramFolderEnd, settled bool) {
 	root := store.Task(store.RootID())
 	if root == nil || (root.Status != plandb.StatusFailed && root.Status != plandb.StatusCancelled) {
 		return
@@ -906,12 +805,19 @@ func (a *Agent) settleInterruptedProgramRow(g *TaskGraph, store *plandb.Store, k
 	if !ok {
 		return
 	}
-	settled := kept
-	settled.State = TaskFailed
-	settled.Report, settled.Ending, settled.Stopped = interruptedProgramEnding(store, root, record)
-	settled.EndedAt = runClockEnd(kept.StartedAt, record, root.CompletedAt)
-	settled.Elapsed = 0
-	a.publishRunRow(g, settled)
+	row := kept
+	row.State = TaskFailed
+	row.Report, row.Ending, row.Stopped = interruptedProgramEnding(store, root, record)
+	row.EndedAt = runClockEnd(kept.StartedAt, record, root.CompletedAt)
+	row.Elapsed = 0
+	if settled {
+		row.Report = strings.TrimSpace(row.Report + "\n" + end.Sentence())
+		row.Changed = end.Changed
+		if end.Kept {
+			row.Branch, row.Merge = end.Folder.Branch, mergeKept
+		}
+	}
+	a.publishRunRow(g, row)
 }
 
 // interruptedProgramEnding is how a program's run that a reopen settles ended,
@@ -1165,8 +1071,8 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 		// page would read `running` and offer `stop it` for ever. A run that
 		// already ended is left as it ended.
 		//
-		// IT IS CLOSED BEFORE THE LANDING, NOT AFTER IT. The squash and the
-		// commit take their time, and a page that went on reading `running` over
+		// IT IS CLOSED BEFORE THE LANDING, NOT AFTER IT. The folder's last
+		// commit takes its time, and a page that went on reading `running` over
 		// a program that had already exited was a page claiming a present that
 		// was over — for the two limit endings alone, because every other ending
 		// is written by the engine at the program's exit.
@@ -1231,18 +1137,15 @@ func (a *Agent) landBeltRun(ctx context.Context, engine RunEngine, run *beltRun)
 	return a.bringBeltRunHome(run, landing)
 }
 
-// bringBeltRunHome is the second half of a run's landing, shared by the engine's
-// landing and a delegate's: the copy's branch merged into the ground it was cut
-// from, the person's unfinished work carried across or the branch kept and the
-// files named, the copy given back, and the homecoming written on the run's page.
+// bringBeltRunHome is the second half of a run's landing: the copy's branch
+// merged into the ground it was cut from, the person's unfinished work carried
+// across or the branch kept and the files named, the copy given back, and the
+// homecoming written on the run's page.
 func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
 	if run.tree.dir == "" {
 		return landing
 	}
 	merge, said, _, _ := run.tree.comeHome(run.title, nil, a.signsGitWork())
-	if merge == mergeKept && run.tree.keepsBranch {
-		return a.branchOnlyLanding(run, landing, said)
-	}
 	if landing.Refused != "" {
 		// NOTHING TO LAND IS STILL AN ENDING: the copy was given back above, and
 		// the sentence the engine answered is the whole account.
@@ -1270,94 +1173,6 @@ func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
 		}
 	}
 	return landing
-}
-
-// branchOnlyLanding is the landing of a copy whose work lands AS ITS BRANCH
-// ([delegateKeepsBranch]), once the copy has come home and been given back:
-// the branch named, with the repository it is in, and the homecoming written
-// on the run's page; or, for a branch holding nothing, the branch deleted.
-func (a *Agent) branchOnlyLanding(run *beltRun, landing RunLanding, said string) RunLanding {
-	if dropEmptyTaskBranch(run.tree, run.startSha, run.taskTip) {
-		// AN EMPTY BRANCH IS NOT A LANDING. The branch was kept for the person
-		// to merge, and there is nothing on it to merge: every look-only,
-		// failed or crashed program run left one more `task/*` branch at the
-		// commit it started from in the person's repository. It is deleted, and
-		// the run says what it always said about a copy that holds no change.
-		if landing.Refused == "" {
-			landing.Refused = runNothingToLand
-		}
-		return landing
-	}
-	if landing.Refused != "" {
-		// NOTHING TO LAND IS STILL AN ENDING, as on every other road.
-		return landing
-	}
-	// A BRANCH-ONLY LANDING IS A LANDING, not a refusal: the work is on its
-	// branch in the person's repository, which is where it was promised.
-	landing.Home, landing.Root = mergeKept, run.tree.root
-	if run.tree.branch != "" {
-		landing.Branch = run.tree.branch
-	}
-	if _, err := run.store.AddNote(run.root, run.root, said); err != nil {
-		if g := a.graph(); g != nil {
-			g.planNote("the run's homecoming note failed: " + err.Error())
-		}
-	}
-	return landing
-}
-
-// dropEmptyTaskBranch deletes a kept task branch that holds nothing past the
-// commit its copy started from, and reports whether it did; the repository's
-// lock is taken the way every landing's branch work takes it.
-//
-// THE BRANCH AS THE PROGRAM LEFT IT DECIDES, NOT THE BRANCH AFTER THE LANDING.
-// before is the task's branch read before codeaf moved it ([beltRun.taskTip]),
-// and only a branch that stood at the copy's start then can go: the landing's
-// own squash resets the branch to that start, and a test on the tip after it
-// once deleted a branch whose only reference to the program's commits was
-// that branch.
-//
-// AND EMPTY IS MEASURED FROM THE GROUND'S OWN COMMIT ([taskGroundCommit]). A
-// copy cut from a checkout with uncommitted edits starts from the commit that
-// holds them, which the landing takes back out ([taskTree.replayOwnWork]), so
-// an empty branch ends at the person's own commit, not at the start: it is
-// empty when it holds no commit past that commit and no change from it.
-func dropEmptyTaskBranch(tree taskTree, startSha, before string) bool {
-	if strings.TrimSpace(tree.root) == "" || strings.TrimSpace(tree.branch) == "" || startSha == "" {
-		return false
-	}
-	if strings.TrimSpace(before) != startSha {
-		return false
-	}
-	defer lockGitRoot(tree.place, tree.root)()
-	tip, err := git(tree.root, "rev-parse", "--verify", "-q", "refs/heads/"+tree.branch)
-	if err != nil {
-		return false
-	}
-	tip, from := strings.TrimSpace(tip), taskGroundCommit(tree, startSha)
-	if ahead, err := git(tree.root, "rev-list", from+".."+tip); err != nil || strings.TrimSpace(ahead) != "" {
-		return false
-	}
-	if _, err := git(tree.root, "diff", "--quiet", from, tip); err != nil {
-		return false
-	}
-	_, err = git(tree.root, "branch", "-D", tree.branch)
-	return err == nil
-}
-
-// taskGroundCommit is the commit of the person's own a task's copy counts its
-// work from: the parent of the commit the ground ladder sealed the person's
-// uncommitted edits into, when it made one ([taskTree.replayOwnWork] takes that
-// commit back out), and the copy's start otherwise.
-func taskGroundCommit(tree taskTree, startSha string) string {
-	if strings.TrimSpace(tree.base) == "" {
-		return startSha
-	}
-	parent, err := git(tree.root, "rev-parse", "--verify", "-q", tree.base+"^")
-	if err != nil || strings.TrimSpace(parent) == "" {
-		return startSha
-	}
-	return strings.TrimSpace(parent)
 }
 
 // deliverBeltRunLanding writes the run's digest into the conversation record.
@@ -1610,33 +1425,23 @@ func beltRunOutcomeNote(store *plandb.Store, rootID string, summary RunSummary, 
 // much of it, or the refusal that says why it did not. It is empty only when
 // there is nothing to say — a landing with no branch and no refusal.
 //
-// A BRANCH-ONLY LANDING SAYS NOTHING WAS MERGED, WHERE, AND HOW TO BRING IT IN.
-// This line is the one account of a landing the conversation's model is given,
-// and it read `landed on task/x: 2 files`, the shape of a run whose work is
-// already in the person's folder: the model had no way to know that nothing was
-// merged, which repository held the branch, or what brings it in, and would tell
-// the person their folder held the work. The folder is quoted for a shell the
-// way every path this package hands one is ([shellQuoted]).
-//
-// WORK NOT BUILT ON EVERYTHING ITS BRANCH HELD IS SAID HERE AS ON THE PAGE
-// ([landingUnrelatedWarning]), because this line is what the chat's model reads
-// before it runs the merge it offers.
+// A PROGRAM'S LANDING SAYS ITSELF ([RunLanding.Line]): where its work is, that
+// its branch is checked out in the person's folder, and the two commands that
+// go back to their own branch and bring the work in. This line is the one
+// account of a landing the conversation's model is given, and a model told
+// only `landed on task/x: 2 files` would tell the person a thing about their
+// folder that nobody checked.
 func beltLandingLine(landing RunLanding) string {
+	if landing.Line != "" {
+		return landing.Line
+	}
 	if landing.Refused != "" {
 		return landing.Refused
 	}
 	if landing.Branch == "" {
 		return ""
 	}
-	line := fmt.Sprintf("landed on %s: %s", landing.Branch, fileCount(len(landing.Changed)))
-	if landing.Home == mergeKept && landing.Root != "" {
-		line = fmt.Sprintf("its work is on the branch %s in %s, %s; nothing was merged into your checkout, and `git -C %s merge %s` brings it in",
-			landing.Branch, landing.Root, fileCount(len(landing.Changed)), shellQuoted(landing.Root), landing.Branch)
-	}
-	if landing.Unrelated {
-		line += "; " + landingUnrelatedWarning
-	}
-	return line
+	return fmt.Sprintf("landed on %s: %s", landing.Branch, fileCount(len(landing.Changed)))
 }
 
 // fileCount is a count of files in words, `1 file` and `2 files`, so every

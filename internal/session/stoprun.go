@@ -34,7 +34,10 @@ package session
 //	                  what they had made is committed on the run's own branch and
 //	                  the copy is given back ([keptWork], the road every stopped
 //	                  task takes). NOTHING GOES INTO THE PERSON'S FOLDER: work
-//	                  that was stopped half-way is work nobody checked.
+//	                  that was stopped half-way is work nobody checked. A
+//	                  program's run has no copy: its folder is finished the way
+//	                  every ending of it finishes it ([ProgramFolder.Finish]), on
+//	                  its own branch, which the person's branch never becomes.
 //
 // IT IS IDEMPOTENT, like every other stop here (cancel.go): a second press on a
 // run that is stopping says so, and a press on a run that is over says that.
@@ -90,7 +93,11 @@ func (a *Agent) stopBeltRow(id uint64, why string) (string, bool, error) {
 		if cut != nil {
 			cut()
 		}
-		return "stopping " + stopBecause(name, why) + " — its branch is kept", true, nil
+		promise := "its branch is kept"
+		if run.folder != nil {
+			promise = run.folder.StopPromise()
+		}
+		return "stopping " + stopBecause(name, why) + " — " + promise, true, nil
 	}
 	joined := false
 	for _, row := range run.joined {
@@ -222,20 +229,32 @@ func (a *Agent) beltRunRootRow(id string) (uint64, bool) {
 // and the conversation are told once where that work is, and the rows settle as
 // stopped by a person. NOTHING IS LANDED AND NO TURN IS BOUGHT: the person
 // ended the spend, and a model call to narrate the ending would be more of it.
+//
+// A PROGRAM'S STOPPED WORK GOES WHERE AN ENDED ONE'S DOES: its folder finished
+// the one way every ending of it is ([ProgramFolder.Finish]), with the stop's
+// words as the body of the commit that holds what it left.
 func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
-	merge, changed, moved := a.keepStoppedWork(run)
 	report := stopBecause(taskStoppedWord, why)
-	if merge != mergeInPlace {
-		report += " · " + beltStoppedWhere(run.tree.branch, run.ground, changed)
-	}
-	if moved != "" {
-		report += " · " + moved
-	}
-	// A PROGRAM STOPPED IN A PLAIN FOLDER leaves the person's folder its work
-	// and nothing of its own, exactly as one that ended does.
-	if run.plain {
-		if kept := a.keepPlainFolderNotes(run); kept != "" {
-			report += " · " + kept
+	var merge, branch string
+	var changed []string
+	if run.folder != nil {
+		end := run.folder.Finish(report)
+		report += " · " + end.Sentence()
+		merge, changed = mergeInPlace, end.Changed
+		if end.Kept {
+			merge, branch = mergeKept, run.folder.Branch
+		}
+	} else {
+		merge, changed = keptWork(run.tree, run.title, nil, a.signsGitWork())
+		if merge != mergeInPlace {
+			report += " · " + beltStoppedWhere(run.tree.branch, run.ground, changed)
+		}
+		// THE ROW NAMES A BRANCH ONLY WHEN THERE IS WORK ON IT, for the reason
+		// the sentence does ([beltStoppedWhere]): measured on the real binary, a
+		// run stopped in its first seconds drew `branch kept` beside "it had
+		// changed nothing".
+		if merge != mergeInPlace && len(changed) > 0 {
+			branch = run.tree.branch
 		}
 	}
 	if _, err := run.store.AddNote(run.root, run.root, report); err != nil {
@@ -254,14 +273,7 @@ func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
 	// ([Agent.beltRunEndedAt]).
 	notice := TaskNotice{
 		ID: run.row, Title: run.title, State: TaskFailed, Stopped: true,
-		Report: report, Changed: changed, Merge: merge, EndedAt: a.beltRunEndedAt(run),
-	}
-	// THE ROW NAMES A BRANCH ONLY WHEN THERE IS WORK ON IT, for the reason the
-	// sentence does ([beltStoppedWhere]): measured on the real binary, a run
-	// stopped in its first seconds drew `branch kept` beside "it had changed
-	// nothing".
-	if merge != mergeInPlace && len(changed) > 0 {
-		notice.Branch = run.tree.branch
+		Report: report, Changed: changed, Merge: merge, Branch: branch, EndedAt: a.beltRunEndedAt(run),
 	}
 	g := a.graph()
 	if g == nil {
@@ -279,55 +291,4 @@ func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
 	// mid-flight, and the stop is a person, so the law draws those rows with
 	// the stop ending ([Agent.settleJoinedRows], [TaskReasonOf]).
 	a.settleJoinedRows(g, run, notice.EndedAt, TaskEndingStopped, cut)
-}
-
-// keepStoppedWork commits what a stopped run had made on the run's own branch
-// ([keptWork]) and answers the merge, the files, and what a tree program had
-// done with its copy's HEAD when it had moved it ([headMove.sentence]).
-//
-// A STOPPED PROGRAM'S WORK GOES WHERE A LANDED ONE'S DOES. The stop committed on
-// whatever branch HEAD was on, so a program that had checked out one of the
-// person's own branches had codeaf's commit put on it, while the report sent
-// the person to the task's branch, which held nothing. The copy is put back on
-// the task's branch first, with the landing's own guard over the program's
-// commits there ([Agent.homeDelegateCopy]).
-//
-// AND ITS FILES ARE COUNTED FROM THE COPY'S START. senior-dev commits every
-// write, so at a stop nothing is left uncommitted, and a count of what the stop
-// itself committed told a run that had written a dozen files as one that "had
-// changed nothing", naming no branch. A stop that changed nothing leaves no
-// branch, as a landing that changed nothing does ([dropEmptyTaskBranch]).
-func (a *Agent) keepStoppedWork(run *beltRun) (string, []string, string) {
-	sign := a.signsGitWork()
-	if run.delegate == nil || !run.delegate.LandsTree() || run.plain || run.tree.dir == "" {
-		merge, changed := keptWork(run.tree, run.title, nil, sign)
-		return merge, changed, ""
-	}
-	move := a.homeDelegateCopy(run)
-	committed := changedSince(run.workspace, run.startSha)
-	merge, changed := keptWork(run.tree, run.title, nil, sign)
-	changed = alsoChanged(changed, committed)
-	if len(changed) == 0 {
-		dropEmptyTaskBranch(run.tree, run.startSha, move.tip)
-	}
-	return merge, changed, move.sentence(run.delegate.Name, run.tree.branch, len(changed) > 0)
-}
-
-// changedSince is every path HEAD's tree differs from a commit in, empty when
-// either cannot be read: the work a copy's branch already holds past its start.
-func changedSince(dir, sha string) []string {
-	if strings.TrimSpace(sha) == "" {
-		return nil
-	}
-	out, err := git(dir, "diff", "--name-only", sha, "HEAD")
-	if err != nil {
-		return nil
-	}
-	var paths []string
-	for _, line := range strings.Split(out, "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			paths = append(paths, line)
-		}
-	}
-	return paths
 }

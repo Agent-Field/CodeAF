@@ -53,7 +53,6 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 			Serves:       spec.Serves,
 			Seat:         WorkSeat(spec.ProfileDir, spec.WorkModel),
 			PlainFolder:  spec.PlainFolder,
-			Ground:       spec.Ground,
 			Crew:         spec.Crew,
 			// AND ITS MONEY IS THE CONVERSATION'S, CALL BY CALL: every ledger row
 			// names the conversation and the task, and every call is folded

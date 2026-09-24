@@ -186,10 +186,13 @@ func TestClosingUnderAProgramsRunEndsItInItsStoreFirst(t *testing.T) {
 		t.Fatalf("the closed run's page row = %+v (%v), want the plain sentence beside it", page.Row, ok)
 	}
 
+	// THE SECOND HAND-OFF IS ON ANOTHER FOLDER: the first program is still in
+	// its grace in this process, and it holds its own folder until it has
+	// gone (programfolder.go's one run per folder).
 	second := newBeltRunDouble("")
 	registerBeltRunEngine(t, second)
 	again, _ := newTestAgent(t, beltRunCompleter{text: ""}, func(config *Config) {
-		config.Workspace = workspace
+		config.Workspace = newTestRepo(t)
 		config.Place = Place{Dir: place}
 		config.AskConsent = false
 		config.Delegates = testPrograms("fake")

@@ -1,8 +1,10 @@
 //go:build !windows
 
 // Package seniordev is senior-dev: an autonomous coding agent codeaf carries
-// and runs, and nothing else can. It takes one brief, works in a working copy
-// under a model it reaches only through codeaf, submits a frozen candidate,
+// and runs, and nothing else can. It takes one brief, works in the folder it is
+// handed — on the branch codeaf cut for it there when the folder is a git
+// repository (internal/session's programfolder.go) — under a model it reaches
+// only through codeaf, submits a frozen candidate,
 // checks it with the project's own build and tests, and ends with one record
 // that keeps what its model claimed apart from what it saw
 // (internal/seniordev/app; its own account of the run is ARCHITECTURE.md in
@@ -85,8 +87,10 @@ var Program = delegate.Delegate{
 		"carries the issue or ask in full, what done means and how to check it, and what must not change.",
 	Lands: delegate.LandsTree,
 	// Its recorder is git unless it is told --in-place, which keeps its
-	// checkpoints outside the folder and commits nothing; a folder with no git
-	// history has nothing else it can run on.
+	// checkpoints outside the folder and commits nothing. codeaf passes it for
+	// every folder it works in without git — no history, or a repository at
+	// the home folder — because the recorder's own reading climbs to any
+	// repository around the folder.
 	PlainFolder: []string{"--in-place"},
 	// Where it keeps its records in the folder it works in: the brief, the
 	// checklist, the pinned command, its session database and its model

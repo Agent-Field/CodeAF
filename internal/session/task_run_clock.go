@@ -73,7 +73,7 @@ func beltRunProgram(run *beltRun) delegate.ProgramRecord {
 // road that never drove one — ends now, which is the reading it always had.
 //
 // IT IS NEVER THE INSTANT THE ROW SETTLES. The row used to be stamped when it
-// was published, which is after the squash, the commit, the homecoming and a
+// was published, which is after the landing's commit, the homecoming and a
 // summary refresh that may wait six seconds for a model: none of that is the
 // run's work, and all of it was counted as though it were.
 func (a *Agent) beltRunEndedAt(run *beltRun) time.Time {

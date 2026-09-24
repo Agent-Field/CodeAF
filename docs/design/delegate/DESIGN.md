@@ -9,8 +9,19 @@
 > took, step by step, with the conversation one key away). The protocol is now internal,
 > version 2: [PROTOCOL.md](PROTOCOL.md). What follows is the v1 design as it was
 > built; the manifest road is kept on the tag `delegate-manifest-v1`. The run
-> road, the landing (one squashed commit for a tree, the answer folded in for
-> text), the stop and the reader below all carry over.
+> road, the answer folded in for text, the stop and the reader below all carry
+> over.
+>
+> **Superseded again on 2026-09-24: a program works in the folder itself.** The
+> owner asked why it was so hard to have senior-dev just work on the problem,
+> and the copy per run, the brief's paths rewritten to name it, the squash and
+> the HEAD-restoring landing were all deleted. A program that edits files now
+> works in the folder the task names, on a branch codeaf cuts for it there when
+> the folder is a git repository, and when it ends codeaf commits what it left
+> onto that branch and leaves it checked out; the person's branch never moves.
+> The contract is the header of `internal/session/programfolder.go`, and
+> [PROTOCOL.md](PROTOCOL.md) §2 says it. Every "working copy", "squash" and
+> "merge home" below is the design as it was built before that day.
 
 
 *2026-09-21, revised 2026-09-23. Written against `dev @ 17ae56d34` and
@@ -50,7 +61,7 @@ at the person's discretion.
 | Command | `/<name> <brief>`, one word per installed delegate | 2026-09-21 |
 | What it starts | a task through the existing `/task` door, never a blocking turn | 2026-09-21 |
 | Questions from the delegate | none. The brief must be self-sufficient | 2026-09-21 |
-| senior-dev's `wip(edit)` commits | squashed into one commit at landing | 2026-09-21 |
+| senior-dev's `wip(edit)` commits | squashed into one commit at landing (2026-09-21); kept on the program's own branch, under one commit of what it left uncommitted, from 2026-09-24 | 2026-09-24 |
 | senior-dev control plane | optional. Landed in senior-dev `f3b9716` | 2026-09-21 |
 | Live cost from senior-dev | a top-level `spend` record. Landed in senior-dev `5793499` | 2026-09-22 |
 | Steps from senior-dev | a `step` record per finished tool call. Landed in senior-dev `5793499` | 2026-09-22 |
@@ -261,6 +272,12 @@ group, waits the job grace, then kills. A terminal record inside the grace is
 read and folded. Without one the row reads `stopped` with the last stage seen.
 
 ### Landing a `tree` delegate
+
+*As built on 2026-09-21 and deleted on 2026-09-24: since then senior-dev works in
+the person's folder on a branch of its own, its `wip(edit)` commits stay on that
+branch, what it left uncommitted is committed there when it ends, and the branch
+is left checked out rather than merged. `refs/senior-dev/*` are written into the
+person's repository and overwritten by the next run.*
 
 1. senior-dev works in the run's own copy, passed as `--dir`.
 2. senior-dev commits every edit as it goes: `wip(edit): <path>`, dozens per run.

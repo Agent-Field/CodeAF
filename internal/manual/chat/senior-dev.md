@@ -7,7 +7,8 @@ codeaf carries. At a shell the same program is `codeaf senior-dev <brief>`. It i
 into codeaf and runs only through it: there is nothing to install and no senior-dev of
 its own to start.
 
-It works alone in a copy of your folder. It writes your brief down word for word, reads
+It works alone in your folder itself, on a branch of its own when the folder is a git
+repository, and your own branch never moves. It writes your brief down word for word, reads
 the repository, keeps a checklist of what the brief asks for, pins a command that shows
 the work passes, and edits until it believes the change is done. Then it **submits**:
 the tree is frozen at that moment, so nothing it does afterwards can change what it hands
@@ -123,9 +124,9 @@ anywhere on the row opens the task.
 ## How do I ask senior-dev for a change — writing the brief, what to put in it
 
 The brief is everything senior-dev knows about what you want. It is saved as
-`.senior-dev/spec.md` in its copy exactly as you wrote it, and it is read back from there
-whenever senior-dev summarises its own history, so the words you chose are never
-paraphrased away.
+`.senior-dev/spec.md` in the folder it works in exactly as you wrote it, and it is read
+back from there whenever senior-dev summarises its own history, so the words you chose
+are never paraphrased away.
 
 Write it the way you would hand work to someone who cannot reach you:
 
@@ -140,27 +141,22 @@ so a flag written after the brief becomes part of it.
 
 ## Running senior-dev on a repository you have not cloned — a benchmark task, another project
 
-senior-dev works in a copy of the folder it is handed, and only what it changes in that
-copy is kept, on the task's own branch. So it has to be handed the repository the work
-belongs in.
+senior-dev works in the folder it is handed and nowhere else, so it has to be handed the
+repository the work belongs in.
 
 In the chat, ask for the work and name the repository, and the commit if the work names
-one. The model clones it first, into a new folder, onto a branch at that commit, and hands
-senior-dev that folder. A benchmark task works this way: senior-dev gets a copy of the
-project's own repository and not of the benchmark's, so the benchmark's files, its
-reference solution among them, are not in its copy.
+one. The model clones it first, into a new folder, at that commit, and hands senior-dev
+that folder. A benchmark task works this way: senior-dev works in the project's own
+repository and not in the benchmark's, so the benchmark's files, its reference solution
+among them, are not in its folder.
 
 At a shell, clone the repository yourself, then run `codeaf senior-dev` inside it or pass
 the folder with `--dir`.
 
-A brief that names the folder you proposed is fine: codeaf rewrites that path to senior-dev's
-copy before senior-dev reads it, so its commands run in the copy. The copy is of the whole
-repository, so a subfolder you proposed becomes the same subfolder in the copy, and the
-repository around it becomes the copy's root.
-
-A brief that tells senior-dev to make a checkout of its own somewhere else does not work.
-It has no copy of that folder, so nothing it does there lands: its file tools refuse to
-write outside its copy, and what a shell command changes out there stays where it is.
+A brief that names the folder it works in is fine: senior-dev reads it as written. A
+brief that tells senior-dev to make a checkout of its own somewhere else does not work:
+its file tools refuse to write outside its folder, and what a shell command changes out
+there is not part of the task.
 
 ## What senior-dev cannot do — it cannot ask you anything, no step cap, no Windows
 
@@ -177,33 +173,32 @@ on services that report no prices).
 `senior-dev.json` in your folder that sets `apiKey`, `baseURL` or `providerRouting` is
 refused by name, because codeaf decides which model service serves each call.
 
-**It writes only inside its copy.** Its file tools (`write`, `edit`, `apply_patch`)
+**It writes only inside its folder.** Its file tools (`write`, `edit`, `apply_patch`)
 refuse any path outside the folder it was handed, including one reached through a link,
 and say so to its model; it can still read files elsewhere. Its shell is not fenced the
-same way, and nothing a shell command changes outside the copy lands.
+same way, and nothing a shell command changes outside the folder is part of the task.
 
-**It keeps its record in git**, unless it runs `--in-place`; from the chat, codeaf chooses
-that for a folder with no git history (see the section on plain folders).
+**It keeps its record in git**, on its own branch, unless it runs `--in-place`; codeaf
+chooses that for a folder with no git history, from the chat and at a shell alike (see
+the section on folders that are not a git repository).
 
 **On Windows it is absent**: there is no `/senior-dev` and no `codeaf senior-dev`. Its
 engine needs a Unix shell, process groups and file locks, so Windows builds leave it out
 rather than carry something that fails every time.
 
-## senior-dev on a folder that is not a git repository — a plain folder, no git, --in-place, operation not permitted, .Trash
+## Can I run senior-dev in a folder that is not a git repo — a plain folder, no git, --in-place, operation not permitted, .Trash
 
-From the chat, codeaf reads the task's folder before it starts senior-dev. A repository
-with at least one commit gets a copy, and the work lands on a branch of its own. **A folder with no git history —
-a plain folder, or a repository with no commit yet — has nothing to copy from**, so
-senior-dev works in that folder itself, and codeaf starts it with `--in-place`: it commits
-nothing, and keeps its checkpoints outside the folder.
+Yes. The folder is read before senior-dev starts. **A folder with no git history — a
+plain folder, or a repository with no first commit yet — is worked in as it is**, and
+senior-dev is started with `--in-place`, from the chat and at a shell alike: it keeps its
+checkpoints outside the folder and makes no commits. So is a folder inside a git
+repository whose root is your home folder (a dotfiles repository): no branch is ever cut
+there.
 
-When it ends there is nothing to commit, because its changes are already in the folder.
-The task's page says `its work is in <folder>, which has no git history, so nothing was
-committed`. **Its own records are moved out of your folder** when the run ends or you
-stop it: `.senior-dev/` (the brief, its checklist, the command it pinned, its session
-database and its whole conversation with its model) goes into the task's record folder,
-beside `delegate-conversation.jsonl`, and the page adds `its notes (.senior-dev/) are kept
-in <path>`. A `.senior-dev/` already in the folder when the run began is left where it is.
+When it ends its changes are already in the folder. The task's page says `its work is in
+<folder>, which has no git history, so nothing was committed` (or, under a repository at
+your home folder, `its work is in <folder>; the git repository around it is at <repo>,
+which holds your home folder, so codeaf cut no branch there and committed nothing`).
 
 It works in your folder itself, so leave that folder alone while it runs: once it has
 submitted, anything changed there is put back to what it submitted, and a file added
@@ -216,80 +211,87 @@ skipped like any other. It is never started on your home folder or a folder abov
 (see the programs page): to check what it changed, it reads every file in the folder,
 and your home folder is not one project.
 
-At a shell, pass `--in-place` yourself. Without it senior-dev stops at once with
-`workspace is not a git repository: <folder>; run with --in-place to work in a plain
-folder`. A shell run moves nothing: delete its `.senior-dev/` when you are done with it.
+A shell run used to stop at once there with `workspace is not a git repository:
+<folder>; run with --in-place to work in a plain folder`. It no longer does: `--in-place`
+is passed for you.
 
-To have its work isolated and left on a branch as one commit instead, make the folder a
-repository with a first commit (`git init`, `git add -A`, `git commit`) before you ask.
-Delete any `.senior-dev/` a shell run left there first, or `git add -A` commits its
-database and its conversation.
+## Its notes — .senior-dev, its checklist, its session database, moved out when it ends
 
-## Where senior-dev's work lands — its own branch, not merged, one squashed commit
+senior-dev keeps its own records in `.senior-dev/` in the folder it works in: the brief,
+its checklist, the command it pinned, its session database and its whole conversation
+with its model. **They are moved out of your folder when the run ends or you stop it**,
+into the task's record folder beside `delegate-conversation.jsonl` (a shell run's record
+folder at a shell), and the page adds `its notes (.senior-dev/) are kept in <path>`. So
+they never end up on a branch, and the next run in that folder never reads the last
+one's checklist as its own. A `.senior-dev/` already in the folder when the run began is
+left where it is, and never ends up on a branch either.
 
-senior-dev commits every file it writes inside its copy (`wip(write): <path>`,
-`wip(edit): <path>`), which is how it keeps a record to restore from. None of those
-commits reaches your branch. When the run ends, they are squashed into **one commit**
-whose subject is `task:` and the task's title, and whose body is senior-dev's own ending.
+## Where does senior-dev put its work — its own branch, checked out in your folder, not merged, not squashed
 
-**That commit is left on the task's own branch in your repository, and nothing is merged
-into your checkout.** The task's page says `its work is on the branch <branch> in
-<folder>; nothing was merged into your checkout`, and the conversation is told
-``its work is on the branch <branch> in <folder>, N files; nothing was merged into your
-checkout, and `git -C '<folder>' merge <branch>` brings it in``. Merge it when you are
-ready, or ask the chat to. A run can take an hour, and a merge at its end used to meet
-whatever changed in your checkout meanwhile; now nothing can clash until you choose to
-merge.
+In a git repository, codeaf cuts a branch of its own for the run (`task/<title>-<id>`)
+in your folder and checks it out there, and senior-dev works on it. senior-dev commits
+every file it writes (`wip(write): <path>`, `wip(edit): <path>`) on that branch, which is
+how it keeps a record to restore from; they stay there, and nothing squashes them.
+
+When the run ends — finished or not, stopped, or crashed — codeaf commits whatever it
+left uncommitted onto that branch, in one commit whose subject is the task's title and
+whose body is senior-dev's own ending, and **leaves the branch checked out**, so the work
+is in your folder when you look. Nothing is merged into your own branch. The task's page
+and the conversation both say ``its work is on the branch <branch> in <folder>, N files,
+and that branch is checked out there; your branch <yours> is as it was: `git -C '<folder>'
+switch <yours>` goes back to it, and `git -C '<folder>' merge <branch>` from there brings
+the work in``. Merge it when you are ready, or ask the chat to.
 
 The ending keeps two witnesses apart: what senior-dev's model said it did when it
 submitted (`senior-dev's model said: …`) and what senior-dev itself saw when it ran the
 project's build and tests (`senior-dev observed: …`). Read the second for "did it work".
 
-Its own notes live in `.senior-dev/` in the copy: the brief, its checklist, the command
-it pinned and its session database. That folder is kept out of git, so it never lands.
+**A run you stop keeps its work the same way**: the stop says `its work so far stays on
+its branch <branch>, checked out in <folder>` at once, and the page then says where it is
+in the words above.
 
-**A run you stop keeps its work the same way.** What it had made by then, committed or
-not, is squashed into one `task:` commit on the task's own branch, and the task says `its
-work so far is kept on <branch> and did not go into <folder> · merge that branch to bring
-it in, or delete it to drop it`, with the files it had changed.
+**A run that changed nothing leaves nothing**: your own branch is checked out again, its
+empty branch is deleted, and the page says `it changed nothing, so <folder> is back on
+your branch <yours> and its branch <branch> was deleted`.
 
-When a run changed nothing, there is nothing to land and the task says so (`it had changed
-nothing` for a run you stopped); its branch, which would hold nothing, is deleted rather
-than left in your repository. On a folder with no git history nothing is committed at
-all: the work is already in the folder.
+## Does senior-dev change my branch — your branch never moves, going back, a HEAD it moved
 
-## When it moved to another branch in its copy — "work on a new branch", my own branch, a detached HEAD
+No. Your branch (or, when your checkout was on no branch, the commit it was on) is
+written down before senior-dev starts, and the run never writes to it, resets it or
+merges into it. After the run your folder is on senior-dev's branch; `git -C '<folder>'
+switch <yours>` goes back, and the page names the exact command. From no branch it
+names `git -C '<folder>' switch --detach <commit>`.
 
-Its shell can run `git checkout` in its copy, and a brief that says "work on a new
-branch" makes that likely. It changes nothing about where the work lands: when the run
-ends, or you stop it, codeaf puts the copy back on the task's own branch without touching
-its files, and squashes the finished tree onto it. The branch it had moved to is never
-reset or committed on by codeaf, even when that is one of your own branches, so what it
-left there stays.
+senior-dev's shell can still run `git checkout`, and a brief that says "work on a new
+branch" makes that likely. **So a brief need not ask for a branch: the work already has
+one.** If HEAD is not on its branch when the run ends, nothing is touched, and the page
+says where HEAD is: `senior-dev left <folder> on the branch
+<other> instead of its own branch <branch>, so codeaf changed nothing there: nothing was
+committed and nothing was switched; <branch> holds N files` (or `on no branch, at
+<commit>`). Look at that branch before you commit anything there.
 
-The task's page says so beside the landing, in these words after the program's name:
-`had moved its copy to the branch <branch>; its work was committed on <task branch>, and
-any commit it made on <branch> is still on that branch`, or `had left its copy on no
-branch; its work was committed on <task branch>`.
+## senior-dev refused: changes that are not committed — a dirty checkout, uncommitted changes, a merge in progress
 
-When the work was not built on where the copy started (it cut its own branch from
-somewhere else), the squash also undoes whatever the copy's starting point had and its
-work did not, and the page adds `its work was not built on the commit its copy started
-from, so the commit on <task branch> may also undo changes that commit had; read its diff
-before you merge it`.
+senior-dev works in your checkout itself, so it starts only on a clean one. **A repository
+with changes that are not committed — modified, staged or untracked files — is refused
+before anything starts**, nothing is switched and nothing is spent: `<folder> has changes
+that are not committed (a.go, b.go, c.go and 2 more); commit or stash them, then ask
+again`. senior-dev's own `.senior-dev/` does not count. A checkout in the middle of a
+merge, a rebase, a cherry-pick or a revert is refused the same way: `<folder> is in the
+middle of a merge; finish it or abort it, then ask again`.
 
-When it had committed on the task's own branch before it moved, and the copy it left was
-not built on those commits (it went back to the start to look at it, say), they are not
-squashed away: the finished tree is committed on top of them, so every one stays on the
-task's branch, and the page adds `the commits it had made on <task branch> are kept there,
-under its finished work; that work was not built on them, so it may also undo their
-changes; read its diff before you merge it`.
+In the chat the model is told this before you are shown a card, and can commit or stash
+the changes itself if you ask it to; at a shell the run prints `error:` and the sentence,
+and leaves.
 
-In either case the conversation is told too, after the merge command: `its work was not
-built on everything that branch held, so the merge may also undo changes; read its diff
-before you merge it`.
+## senior-dev refused: the folder is busy — one run per folder, another window, a shell run
 
-So a brief need not ask for a branch: codeaf already gives the work one.
+One folder takes one senior-dev run at a time, from any conversation, any window or a
+shell. A second is refused, naming the one working there: `<folder> is busy: senior-dev,
+task 4 (Fix the parser), is working in it, and one folder takes one program run at a
+time; ask again when that run has ended` (or `senior-dev, a run started at a shell`).
+The hold goes with the codeaf holding it, however it ends, so a crash never leaves a
+folder refused.
 
 ## What a senior-dev run costs — model calls, the dollar ceiling, which models
 
@@ -382,8 +384,10 @@ and `--variant` sets the reasoning effort every call asks for.
 
 ## What a shell run prints at the end — how long senior-dev ran, what it cost, waiting for the last price
 
-At a shell, `codeaf senior-dev` prints each stage, step and model call as it happens, then
-how the run ended, then `the run's record is in` and the run's record folder, and last one
+At a shell, `codeaf senior-dev` first says where it works (`senior-dev · working in
+<folder>, on its own branch <branch>` in a repository), then prints each stage, step and
+model call as it happens, then how the run ended, then where its work is (the sentence a
+task's page says), then `the run's record is in` and the run's record folder, and last one
 line with what it came to:
 
 ```
@@ -410,7 +414,8 @@ ended.
 `codeaf senior-dev <brief>` is `codeaf senior-dev run -- <brief>`. codeaf gives every
 program it carries four flags:
 
-- `--dir DIR` — the folder to work in (the current one by default);
+- `--dir DIR` — the folder to work in (the current one by default; inside a git
+  repository, the repository's root);
 - `--max-cost USD` and `--max-hours H` — the ceilings;
 - `--json` — the program's records on stdout instead of readable lines.
 
@@ -419,7 +424,7 @@ senior-dev's own flags on `run`:
 - `--variant NAME` — reasoning effort sent with every call: `low`, `medium`, `high`,
   `xhigh`; unset leaves the model's own default;
 - `--in-place` — work in a folder without git: no commits, and its checkpoints kept
-  outside the folder;
+  outside the folder. codeaf passes it itself for a folder with no git history;
 - `--high`, `--low` — comma-separated models it routes among; `--low` (its history
   summaries) falls back to `--high`;
 - `--frontier` — accepted, and changes nothing: no call senior-dev makes uses that tier;
@@ -432,13 +437,13 @@ senior-dev's own flags on `run`:
 ## How long did senior-dev take — a run's time, the clock on its page, wall time
 
 A senior-dev run is timed from the moment you handed it off — when its row first reads
-`running`, after its copy has been made — to the moment senior-dev's own process ended.
-Making the copy before it, and landing the work after it, are not counted. A run whose
-senior-dev never started is timed to the moment the run ended.
+`running`, after its folder is ready and its branch cut — to the moment senior-dev's own
+process ended. Readying the folder before it, and committing what it left after it, are
+not counted. A run whose senior-dev never started is timed to the moment the run ended.
 
 Everything that shows the run's time shows that one span: the line under its page's title
 (counting up from the hand-off while it runs, and stopped at senior-dev's exit once it has
-ended, even before the work has landed), its row and card once it has landed, the note the
+ended, even before its last changes are committed), its row and card once it has ended, the note the
 conversation is handed when it lands (`done · ran 22m 51s · …`), and the chat's `tasks`
 tool (`#3 · <title> · done · ran 22m 51s · via senior-dev`, or `running for 3m` while it
 goes) — so you can ask the chat how long it took. Each spells it the way the page does — `42s`, `22m 51s`,
@@ -468,8 +473,8 @@ conversation that started the run lists it once, by the number its rail shows.
 If codeaf went away while the run was working, its row is closed the next time that
 conversation is opened, with the time the run had when it was last seen: it reads `codeaf
 closed while senior-dev was running`, or the run's own ending when it had one. A run
-senior-dev had finished but whose work codeaf never brought in reads `incomplete — codeaf
-closed while this was still running`.
+senior-dev had finished but that codeaf closed under before the run was over reads
+`incomplete — codeaf closed while this was still running`.
 
 ## Why did senior-dev stop — how a run ends, its log, crashed or stopped
 
@@ -484,13 +489,14 @@ A run ends in one of these ways, and the task's ending says which:
   at the dollar ceiling; the words after are senior-dev's own ending;
 - `senior-dev stopped on its own ceiling: …` — it stopped itself at the time ceiling;
 - `senior-dev crashed: …` — the program itself broke, or could not start (no brief, a
-  refused `senior-dev.json`, no git repository at a shell without `--in-place`);
+  refused `senior-dev.json`);
 - `stopped by the run: …` — you, or the run it belonged to, stopped it; what follows is
   what senior-dev said on its way out, usually `stopped before it finished`;
 - `codeaf closed while senior-dev was running` — the codeaf holding its conversation
   stopped or crashed while it worked (see the next section);
-- `senior-dev had ended; codeaf closed before its work was brought in` — senior-dev had
-  already exited, and codeaf stopped before its work was landed (see the next section).
+- `senior-dev had ended; codeaf closed before it could say where its work is` —
+  senior-dev had already exited, and codeaf stopped before it had committed what was left
+  (see the next section).
 
 When it ends without submitting, it still checks the tree it leaves. If the project's
 tests cannot even start there, the tree is put back to the last state whose build and
@@ -504,8 +510,12 @@ When that engine is stopped (`codeaf engine --stop`, a signal) or crashes, the c
 itself is closed, or a `--no-host` codeaf quits, the run is over: its page and side-list
 row read `incomplete` with `codeaf closed while senior-dev was running` beside it, no
 stage, nothing waiting on you, and no fault. If senior-dev had already exited, it reads
-`senior-dev had ended; codeaf closed before its work was brought in`, and its work is
-where senior-dev left it, not squashed.
+`senior-dev had ended; codeaf closed before it could say where its work is`.
+
+**Its folder is finished by the next codeaf that finds the run**: the one that opens that
+conversation, hands work off in it, or starts a run in that folder. What senior-dev left
+uncommitted is committed on its branch, which stays checked out, its notes are moved out,
+and the page adds where the work is, as a run that ended would say it.
 
 **The run ends where it was last seen working**: senior-dev's exit, or else the end of its
 last model call, its last charge, or its store's last change, whichever is latest. So its
@@ -516,6 +526,8 @@ or hands work off in it, writes it.
 **Nothing carries it on.** The next `/senior-dev` in that conversation starts a run of its
 own, under its own task number, with its own brief and its own page. The old run's page
 stays as the record of what it did.
+
+## senior-dev's log — delegate-stderr.log, agent-summary, a shell run's record folder
 
 Everything senior-dev said while it worked (each stage and what it knew at the time)
 is kept in `delegate-stderr.log` in the task's record folder, and every stage, step and

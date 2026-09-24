@@ -893,7 +893,7 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 	joined := a.beltRunStandsOn(p.stand)
 	stand := p.stand
 	if via != nil {
-		stand = delegateStand(stand.dir, *via)
+		stand = delegateStand(stand.dir)
 	}
 	asked := programAsked(spec)
 	err := a.startKnownTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, stand, question, via, asked...)
@@ -904,7 +904,7 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 		receipt := taskReceipt(p.id, spec, TaskRunning, p.stand, elsewhere)
 		switch {
 		case via != nil:
-			receipt = delegateStartedReceipt(p.id, spec.title, strings.Join(asked, ", "), delegateReceipt(canonicalPath(stand.dir), *via), elsewhere)
+			receipt = delegateStartedReceipt(p.id, spec.title, strings.Join(asked, ", "), delegateReceipt(canonicalPath(stand.dir), *via, a.runRowCopy(p.id)), elsewhere)
 		case joined:
 			receipt = withReport(receipt, "It joined the work already underway and shares its copy.")
 		}
@@ -1528,9 +1528,10 @@ func (a *Agent) taskClockTimer(after time.Duration) (<-chan time.Time, func()) {
 }
 
 // taskCardWhere is the card's `where`. A PROGRAM'S CARD NAMES ITS PROJECT: the
-// folder it will work in, or a copy of it. The copy's own path under codeaf's
-// state does not exist yet and is nobody's folder, and a card that showed it
-// asked a person to approve work going somewhere they had never heard of.
+// folder it will work in itself, and that it gets a branch of its own there
+// when the folder is a repository ([programPlace]). A card that showed a path
+// under codeaf's state asked a person to approve work going somewhere they had
+// never heard of.
 func taskCardWhere(config Config, id uint64, spec taskSpec) string {
 	for _, program := range config.Delegates {
 		if program.Name == spec.via && strings.TrimSpace(spec.ground) != "" {

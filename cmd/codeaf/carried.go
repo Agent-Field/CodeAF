@@ -30,6 +30,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -109,6 +110,10 @@ type carriedRoad struct {
 	completerFor func(model string) modelapi.Completer
 	serves       func(model string) bool
 	seat         string
+	// sign is the person's `attribution` row, which puts the trailer on the
+	// one commit codeaf writes when the run ends (internal/session's
+	// ProgramFolder.Finish).
+	sign bool
 }
 
 // carriedModels resolves a shell run's road. It is the person's own profile,
@@ -135,6 +140,7 @@ func profileRoad() (carriedRoad, error) {
 		completerFor: adapters.forModel,
 		serves:       func(model string) bool { return session.ServesModel(sources, model) },
 		seat:         seats.Work.Model,
+		sign:         settings.Attribution,
 	}, nil
 }
 
@@ -208,6 +214,28 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 	provider.SetPersonAtTheDoor(true)
 	record := carriedRecordDir(inv.Program.Name)
 	view := newCarriedView(carriedStdout, inv, record)
+	// THE FOLDER IS READIED BEFORE ANYTHING STARTS, the one way a conversation's
+	// run readies it (internal/session's programfolder.go): the folder itself,
+	// on a branch of its own in a repository, and a refusal — changes that are
+	// not committed, another program's run in it — before a cent is spent. A
+	// plain folder is no longer the program's first-line failure: codeaf says
+	// so on the program's line.
+	folder, err := carriedFolder(inv, record, road.sign)
+	if err != nil {
+		fmt.Fprintln(carriedStderr, "error:", err)
+		return exitCannotRun
+	}
+	view.inFolder(folder)
+	// AND THE FOLDER IS FINISHED ON EVERY ROAD OUT: the run's ending below, or
+	// a door that failed before the program ever ran, which leaves nothing.
+	finished := false
+	finish := func(result string) {
+		if folder != nil && !finished {
+			finished = true
+			view.left(folder.Finish(result).Sentence())
+		}
+	}
+	defer finish("")
 
 	runCtx, cut := context.WithCancel(ctx)
 	defer cut()
@@ -291,7 +319,7 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 	result, runErr := delegate.Run(runCtx, delegate.Launch{
 		Name: inv.Program.Name,
 		Bin:  exe,
-		Args: carriedChildLine(inv),
+		Args: carriedInFolder(carriedChildLine(inv), inv, folder),
 		// NO KEY REACHES THE PROGRAM (delegate.ChildEnv): the API's address and
 		// token are the whole of what it is given.
 		Env:        delegate.ChildEnv(api.API()),
@@ -312,7 +340,58 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 	_ = api.Close()
 	view.closed(ended)
 	session.CloseUsage()
+	finish(view.endingWords())
 	return view.end(result, runErr, limited.Load(), api.Spent(), ended.Sub(started))
+}
+
+// carriedFolder readies the folder a shell run's program works in
+// (internal/session's PrepareProgramFolder); nil for a program that edits no
+// files, which reads the folder where it is.
+func carriedFolder(inv *delegate.Invocation, record string, sign bool) (*session.ProgramFolder, error) {
+	if !inv.Program.LandsTree() {
+		return nil, nil
+	}
+	return session.PrepareProgramFolder(session.ProgramFolderOrder{
+		Program: inv.Program, Dir: inv.Workspace, Brief: inv.Brief(),
+		Holder: "a run started at a shell", Keep: record, Sign: sign,
+		Instead: "run it in the project's folder, or name that folder with --dir",
+	})
+}
+
+// carriedInFolder puts on a shell run's child line what codeaf decided about
+// its folder, after --json and before the person's own words: the folder
+// itself when it is not the one the line names (a folder inside a repository
+// is worked in at the repository's root, and the person's own --dir is taken
+// off so it cannot win), and the program's own flags for a folder worked in
+// without git ([delegate.Delegate.PlainFolder]).
+func carriedInFolder(child []string, inv *delegate.Invocation, folder *session.ProgramFolder) []string {
+	if folder == nil {
+		return child
+	}
+	at := slices.Index(child, "--json")
+	if at < 0 {
+		return child
+	}
+	head, rest := append([]string(nil), child[:at+1]...), child[at+1:]
+	if folder.Dir != inv.Workspace {
+		flags, words := rest[:len(rest)-len(inv.Args)], rest[len(rest)-len(inv.Args):]
+		kept := make([]string, 0, len(flags))
+		for i := 0; i < len(flags); i++ {
+			switch flag := flags[i]; {
+			case flag == "--dir" || flag == "-dir":
+				i++
+			case strings.HasPrefix(flag, "--dir=") || strings.HasPrefix(flag, "-dir="):
+			default:
+				kept = append(kept, flag)
+			}
+		}
+		head = append(head, "--dir", folder.Dir)
+		rest = append(kept, words...)
+	}
+	if folder.Plain() {
+		head = append(head, inv.Program.PlainFolder...)
+	}
+	return append(head, rest...)
 }
 
 // carriedSettlingLine is what a shell run says while it waits for the
@@ -478,6 +557,11 @@ type carriedView struct {
 	// the record folder each time it learns something: its start, its hello,
 	// its end.
 	program delegate.ProgramRecord
+	// folder is the folder the run was readied in, and leftFolder is how the
+	// run left it (internal/session's ProgramFolderEnd.Sentence); nil and
+	// empty for a program that edits no files.
+	folder     *session.ProgramFolder
+	leftFolder string
 }
 
 func newCarriedView(out io.Writer, inv *delegate.Invocation, record string) *carriedView {
@@ -493,7 +577,46 @@ func (v *carriedView) begin() {
 	if v.records != nil {
 		return
 	}
-	v.say("%s · working in %s", v.inv.Program.Name, v.inv.Workspace)
+	v.say("%s · working in %s", v.inv.Program.Name, v.where())
+}
+
+// inFolder keeps the folder the run was readied in, for the line that says
+// where it works.
+func (v *carriedView) inFolder(folder *session.ProgramFolder) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.folder = folder
+}
+
+// where is the folder the program works in, as the first line says it: on its
+// own branch when codeaf cut one.
+func (v *carriedView) where() string {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.folder == nil {
+		return v.inv.Workspace
+	}
+	if v.folder.Plain() {
+		return v.folder.Dir
+	}
+	return v.folder.Dir + ", on its own branch " + v.folder.Branch
+}
+
+// left keeps how the run left its folder, for the lines that end the run.
+func (v *carriedView) left(sentence string) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.leftFolder = sentence
+}
+
+// endingWords is the program's ending in the one sentence a person reads
+// ([carriedEnding]), the body of the commit that holds what it left.
+func (v *carriedView) endingWords() string {
+	terminal, _ := v.ending()
+	if terminal == nil {
+		return ""
+	}
+	return carriedEnding(v.inv.Program.Name, *terminal)
 }
 
 func (v *carriedView) Hello(h delegate.Hello) {
@@ -660,6 +783,11 @@ func (v *carriedView) end(result delegate.Result, runErr error, limited bool, sp
 		status = delegate.StatusBudget
 	}
 	if v.records != nil {
+		// THE RECORDS ARE THE PROGRAM'S, so where its folder was left goes to
+		// stderr beside them rather than into them.
+		if said := v.folderLine(); said != "" {
+			fmt.Fprintln(carriedStderr, said)
+		}
 		return carriedExit(status)
 	}
 	switch {
@@ -683,6 +811,12 @@ func (v *carriedView) end(result delegate.Result, runErr error, limited bool, sp
 		if observed := terminal.Observed(); observed != "" {
 			v.say("  %s observed: %s", name, observed)
 		}
+	}
+	// WHERE THE WORK IS comes after how the run ended: its branch, checked out
+	// in the folder, and how to go back — the sentence a conversation's run
+	// says on its page.
+	if said := v.folderLine(); said != "" {
+		v.say("  %s", said)
 	}
 	// The folder the run's record is in comes before the last line, so that
 	// line is always what the run came to.
@@ -711,6 +845,14 @@ func (v *carriedView) end(result delegate.Result, runErr error, limited bool, sp
 		v.say("  %s", strings.Join(summary, " · "))
 	}
 	return carriedExit(status)
+}
+
+// folderLine is how the run left its folder, "" for a program that edits no
+// files.
+func (v *carriedView) folderLine() string {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.leftFolder
 }
 
 // carriedEnding is the ending in one sentence, in the program's own words
