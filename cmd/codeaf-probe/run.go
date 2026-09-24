@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/probe"
 )
 
@@ -360,8 +361,8 @@ func runFixture(verb string, argv []string) int {
 	if scenario == "" {
 		return failBadRequestMsg("fixture: --scenario required")
 	}
-	root := filepath.Join(os.Getenv("CODEAF_PROBE_BASE"), defaultRoot())
-	if base := os.Getenv("CODEAF_PROBE_BASE"); base == "" {
+	root := filepath.Join(env.Get("CODEAF_PROBE_BASE"), defaultRoot())
+	if base := env.Get("CODEAF_PROBE_BASE"); base == "" {
 		home, _ := os.UserHomeDir()
 		root = filepath.Join(home, ".codeaf-probe", defaultRoot())
 	}

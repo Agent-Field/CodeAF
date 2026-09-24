@@ -6,11 +6,12 @@ package main
 import (
 	"os"
 
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/probe"
 )
 
 func main() {
-	if b := os.Getenv("CODEAF_PROBE_BASE"); b != "" { // test hook: pin the probe base for subprocess tests
+	if b := env.Get("CODEAF_PROBE_BASE"); b != "" { // test hook: pin the probe base for subprocess tests
 		probe.ProbeBase = b
 	}
 	os.Exit(run(os.Args[1:]))
