@@ -69,6 +69,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
@@ -704,6 +705,15 @@ const taskInterruptedOutcome = "incomplete — codeaf closed while this was stil
 //
 // The close is an APPEND, like every other write to this file, so nothing is
 // rewritten and a crash during it costs at most one row.
+//
+// A RUN'S ROW IS CLOSED WHERE THE RUN ENDED, WITH ITS SPAN, not at this
+// instant. A hand-off's run rows reach this file too (task_run_index.go), and
+// a run knows when it was last at work — its program's recorded exit, its
+// store's ending, its last model call or charge ([Agent.interruptedRunEnds]).
+// Closed at the reopen instant with no duration, a run that had ended at
+// 09:55 read `ended 10:53` with no time at all, and the `@` list said it had
+// ended moments ago. A graph node's row, and a run row nothing is known of,
+// still close now with the duration they had.
 func (a *Agent) closeInflightTaskIndexRows() {
 	// A node's own agent shares its parent's project directory and has no
 	// business closing the conversation's rows (the argument [Agent.recoverTasks]
@@ -722,6 +732,8 @@ func (a *Agent) closeInflightTaskIndexRows() {
 		return
 	}
 	held := a.heldTaskIDs()
+	runEnd, done := a.interruptedRunEnds()
+	defer done()
 	now := time.Now()
 	for _, row := range ReadTaskIndex(path) {
 		if row.SessionID != session || !row.Live() || held[strings.TrimSpace(row.ID)] {
@@ -731,8 +743,73 @@ func (a *Agent) closeInflightTaskIndexRows() {
 		closed.Status = string(TaskFailed)
 		closed.Outcome = taskInterruptedOutcome
 		closed.EndedAt = now
+		if ended := runEnd(row); !ended.IsZero() {
+			closed.EndedAt = ended
+			closed.DurationMS = runSpan(row.StartedAt, ended).Milliseconds()
+		}
 		appendTaskIndex(path, closed)
 	}
+}
+
+// interruptedRunEnds answers, for a run row this conversation keeps, the
+// instant its run was last known to be at work, read out of the conversation's
+// run store; zero for every other row, and for a run the store does not hold.
+// done closes the store once the rows are closed.
+func (a *Agent) interruptedRunEnds() (func(TaskIndexEntry) time.Time, func()) {
+	none := func(TaskIndexEntry) time.Time { return time.Time{} }
+	runs := a.ownRunRowIDs()
+	g := a.tasker()
+	if len(runs) == 0 || g == nil || g.planPath() == "" {
+		return none, func() {}
+	}
+	if info, err := os.Stat(g.planPath()); err != nil || info.IsDir() {
+		return none, func() {}
+	}
+	store, err := plandb.Open(g.planPath(), "", "", "", "")
+	if err != nil {
+		return none, func() {}
+	}
+	return func(row TaskIndexEntry) time.Time {
+		if !runs[strings.TrimSpace(row.ID)] {
+			return time.Time{}
+		}
+		return interruptedRunEnd(store, row)
+	}, func() { _ = store.Close() }
+}
+
+// interruptedRunEnd is where a run the store holds ended: for the run's own
+// row, the end of its one pair ([runClockEnd]) — the program's recorded exit,
+// else the store's ending, else the run's last evidence of life (its last
+// model call, its last charge, the latest write to any of its tasks); for a
+// hand-off that joined it, that task's own ending, else the run's.
+func interruptedRunEnd(store *plandb.Store, row TaskIndexEntry) time.Time {
+	rootID := store.RootID()
+	root := store.Task(rootID)
+	if root == nil {
+		return time.Time{}
+	}
+	taskDir := plandb.TaskDir(filepath.Dir(store.Path()), rootID)
+	record, _ := delegate.ReadProgram(taskDir)
+	ending := lastEvidenceOfLife(store, root, taskDir, record)
+	for _, task := range store.Tasks() {
+		if task.UpdatedAt.After(ending) {
+			ending = task.UpdatedAt
+		}
+	}
+	if terminalStoreStatus(root.Status) {
+		ending = root.CompletedAt
+	}
+	if id := strings.TrimSpace(row.ID); id != rootID {
+		task := store.Task(id)
+		if task == nil {
+			return time.Time{}
+		}
+		if terminalStoreStatus(task.Status) {
+			return task.CompletedAt
+		}
+		return ending
+	}
+	return runClockEnd(row.StartedAt, record, ending)
 }
 
 // heldTaskIDs is the set of node ids this session's graph is holding, or nil for

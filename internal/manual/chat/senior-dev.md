@@ -341,16 +341,16 @@ Everything that shows the run's time shows that one span: the line under its pag
 ended, even before the work has landed), its row and card once it has landed, the note the
 conversation is handed when it lands (`done · ran 22m 51s · …`), and the chat's `tasks`
 tool (`#3 · <title> · done · ran 22m 51s`, or `running for 3m` while it goes) — so you can
-ask the chat how long it took. Each spells it the way the page does: `42s`, `22m 51s`,
-`1h 7m`.
+ask the chat how long it took. Each spells it the way the page does — `42s`, `22m 51s`,
+`1h 7m` — except the landed card, which spells it `22m51s`.
 
 The instants senior-dev's process started and ended are also kept in `delegate-program.json`
 in the task's record folder, beside `delegate-stderr.log`.
 
 **After a reopen.** A conversation closed and opened again still shows each run's time, how
 it ended in senior-dev's own words (a `senior-dev did not finish: …` stays that sentence and
-is not turned into a fault), which limit stopped it when one did, and the branch its work is
-on.
+is not turned into a fault), which limit stopped it when one did, `stopped` when you stopped
+it, and the branch its work is on.
 
 **A run nothing is running any more.** If codeaf closed or crashed while senior-dev was
 working, nothing is driving that run: its page reads `incomplete` rather than `running`,
@@ -366,7 +366,10 @@ see it, and a window that has the run's conversation open says it is being worke
 conversation that started the run lists it once, by the number its rail shows.
 
 If codeaf went away while the run was working, its row is closed the next time that
-conversation is opened: `incomplete — codeaf closed while this was still running`.
+conversation is opened, with the time the run had when it was last seen: it reads `codeaf
+closed while senior-dev was running`, or the run's own ending when it had one. A run
+senior-dev had finished but whose work codeaf never brought in reads `incomplete — codeaf
+closed while this was still running`.
 
 ## Why did senior-dev stop — how a run ends, its log, crashed or stopped
 
@@ -384,8 +387,10 @@ A run ends in one of these ways, and the task's ending says which:
   refused `senior-dev.json`, no git repository at a shell without `--in-place`);
 - `stopped by the run: …` — you, or the run it belonged to, stopped it; what follows is
   what senior-dev said on its way out, usually `stopped before it finished`;
-- `codeaf closed while senior-dev was running` — codeaf quit, crashed or was stopped
-  while it worked (see the next section).
+- `codeaf closed while senior-dev was running` — the codeaf holding its conversation
+  stopped or crashed while it worked (see the next section);
+- `senior-dev had ended; codeaf closed before its work was brought in` — senior-dev had
+  already exited, and codeaf stopped before its work was landed (see the next section).
 
 When it ends without submitting, it still checks the tree it leaves. If the project's
 tests cannot even start there, the tree is put back to the last state whose build and
@@ -393,18 +398,20 @@ tests could run, or to where it began.
 
 ## If codeaf quits while senior-dev works — closed, crashed, engine stopped, restarted mid-run
 
-senior-dev runs inside the codeaf that started it and ends with it. When you quit codeaf
-or close the conversation, when the engine is stopped (`codeaf engine --stop`, a signal),
-or when codeaf crashes while senior-dev is working, the run is over: its page and its row
-on the side list read `incomplete` with `codeaf closed while senior-dev was running` beside
-it, no stage, and nothing waiting on you — it is not a fault, and there is nothing to carry
-on.
+senior-dev ends with the engine holding its conversation. Leaving a hosted conversation's
+window (closing it, `ctrl+c`, a closed terminal) only detaches: senior-dev keeps working.
+When that engine is stopped (`codeaf engine --stop`, a signal) or crashes, the conversation
+itself is closed, or a `--no-host` codeaf quits, the run is over: its page and side-list
+row read `incomplete` with `codeaf closed while senior-dev was running` beside it, no
+stage, nothing waiting on you, and no fault. If senior-dev had already exited, it reads
+`senior-dev had ended; codeaf closed before its work was brought in`, and its work is
+where senior-dev left it, not squashed.
 
-**The run ends where it was last seen working**: the end of its last model call, its last
-charge, or its store's last change, whichever is latest. So the time and the spend on its
-page stop there, and do not count the hours codeaf was closed. When codeaf closes in an
-orderly way the ending is written before senior-dev is stopped; after a crash it is
-written by the next codeaf that opens that conversation, or that hands work off in it.
+**The run ends where it was last seen working**: senior-dev's exit, or else the end of its
+last model call, its last charge, or its store's last change, whichever is latest. So its
+time and spend do not count the hours codeaf was closed. An orderly close writes the ending
+before senior-dev is stopped; after a crash the next codeaf that opens that conversation,
+or hands work off in it, writes it.
 
 **Nothing carries it on.** The next `/senior-dev` in that conversation starts a run of its
 own, under its own task number, with its own brief and its own page. The old run's page

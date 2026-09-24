@@ -241,11 +241,12 @@ func TestAReopenedConversationEndsTheProgramRunItsLastProcessLeftOpen(t *testing
 	// on, so the row the reopen restored as interrupted — which the side list
 	// drew as `?`, waiting on a person — is settled where the page already
 	// stood: ended, in codeaf's sentence, not a fault, at the instant it was
-	// last seen, with its span.
+	// last seen, with its span. The sentence is the row's reason, so its ending
+	// is the one whose reason is read from its report.
 	rows := reopened.graph().runRows(id)
-	if len(rows) != 1 || rows[0].State != TaskFailed || rows[0].Ending != TaskEndingInterrupted ||
+	if len(rows) != 1 || rows[0].State != TaskFailed || rows[0].Ending != TaskEndingProgram ||
 		rows[0].Report != "codeaf closed while fake was running" || !rows[0].EndedAt.Equal(lastSeen) {
-		t.Fatalf("the row came back as %+v, want it ended as interrupted, in codeaf's sentence, at %v", rows, lastSeen)
+		t.Fatalf("the row came back as %+v, want it ended in codeaf's sentence, at %v", rows, lastSeen)
 	}
 	page, ok := reopened.PlanTaskPage(rootID)
 	if !ok || page.Row.Status != string(plandb.StatusFailed) || page.Row.Stage != "" || !page.Row.Live.Empty() ||

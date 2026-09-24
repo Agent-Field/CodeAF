@@ -29,7 +29,8 @@ ANOTHER folder is refused while that run is underway, with both folders named an
 has ended`. A task handed off after the run has ended starts a run of its own, in a new
 copy cut from your folder as the first run left it. So does one handed off after a run
 that nothing is driving any more (a limit you set ended it, or codeaf closed under it):
-the old run's store is kept beside the new one as its record, exactly as it was left,
+the old run's store is kept beside the new one as its record — an ordinary run's exactly
+as it was left, and a program's run nothing had ended first ended where it was last seen —
 and new work never runs inside it.
 
 **When the run ends its work comes home by itself.** The copy's work is committed and

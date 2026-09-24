@@ -724,6 +724,23 @@ func programClosedSentence(name string) string {
 	return "codeaf closed while " + name + " was running"
 }
 
+// programEndedSentence is the ending written on a program's run that codeaf
+// closed under AFTER the program had exited: its worker was still settling
+// owed receipts, or the run was about to land. The program was not running,
+// so the sentence does not say it was, and the work it left was never brought
+// in — it is where the program left it (for a program that works in its own
+// copy, in that copy on the task's branch, not squashed).
+func programEndedSentence(name string) string {
+	return name + " had ended; codeaf closed before its work was brought in"
+}
+
+// runLimitSentence is the run engine's outcome word for a run a limit its
+// person set ended (internal/run's OutcomeLimit, spelled here because this
+// package may not reach that one). A program's run that ended on a limit
+// carries it as its store's ending when no sentence of the program's own came
+// back ([runEndingWords]), and a reopen reads the limit back out of it.
+const runLimitSentence = "a limit you set stopped it"
+
 // endOrphanedProgramRun ends a program's run whose store was left open by a
 // process that went away, at the run's last evidence of life. It does nothing
 // to a store whose run has ended, or whose run no program worked (the task's
@@ -743,7 +760,7 @@ func endOrphanedProgramRun(store *plandb.Store) {
 	if !ok {
 		return
 	}
-	endProgramRunClosed(store, record.Name, lastEvidenceOfLife(store, root, taskDir, record))
+	endProgramRunClosed(store, record, lastEvidenceOfLife(store, root, taskDir, record))
 }
 
 // endProgramRunClosed writes a program's run's ending when codeaf closed under
@@ -752,8 +769,18 @@ func endOrphanedProgramRun(store *plandb.Store) {
 // its page carries — the store's error is a field no page draws, and a page
 // that read `incomplete` with nothing beside it would send a person looking
 // for a fault in the work.
-func endProgramRunClosed(store *plandb.Store, name string, at time.Time) {
-	sentence := programClosedSentence(name)
+//
+// A PROGRAM WHOSE RECORD CARRIES ITS EXIT WAS NOT RUNNING. Its worker writes
+// the exit before it settles the program's owed receipts, and the run lands
+// only after that, so codeaf can close over a program that has already gone:
+// that run is ended at the program's exit ([runClockEnd]'s instant), in the
+// sentence that says so ([programEndedSentence]), and never in the one that
+// claims codeaf closed under a program at work.
+func endProgramRunClosed(store *plandb.Store, record delegate.ProgramRecord, at time.Time) {
+	sentence := programClosedSentence(record.Name)
+	if !record.EndedAt.IsZero() {
+		sentence, at = programEndedSentence(record.Name), record.EndedAt
+	}
 	if err := store.FailRootAt(sentence, at); err != nil {
 		return
 	}
@@ -841,6 +868,11 @@ func (a *Agent) endInterruptedProgramRun() {
 // The row now says the same, not as a fault, ending where the store ended it.
 // A run whose task the store calls done is left as it came back: its program
 // finished, but the work was never landed, and that is a person's call.
+//
+// THE ROW ENDS AT THE PROGRAM'S RECORDED EXIT when the record carries one, and
+// at the store's ending otherwise ([runClockEnd]) — the pair every live settle
+// reads ([Agent.beltRunEndedAt]). The store's ending can come after the exit
+// by the whole wait for owed receipts, and that wait is not the run's time.
 func (a *Agent) settleInterruptedProgramRow(g *TaskGraph, store *plandb.Store, kept TaskNotice) {
 	root := store.Task(store.RootID())
 	if root == nil || (root.Status != plandb.StatusFailed && root.Status != plandb.StatusCancelled) {
@@ -852,15 +884,51 @@ func (a *Agent) settleInterruptedProgramRow(g *TaskGraph, store *plandb.Store, k
 	}
 	settled := kept
 	settled.State = TaskFailed
-	settled.Report = strings.TrimSpace(root.Error)
-	settled.Ending = TaskEndingProgram
-	if settled.Report == "" || settled.Report == programClosedSentence(record.Name) {
-		settled.Report = programClosedSentence(record.Name)
-		settled.Ending = TaskEndingInterrupted
-	}
-	settled.EndedAt = root.CompletedAt
+	settled.Report, settled.Ending, settled.Stopped = interruptedProgramEnding(store, root, record)
+	settled.EndedAt = runClockEnd(kept.StartedAt, record, root.CompletedAt)
 	settled.Elapsed = 0
 	a.publishRunRow(g, settled)
+}
+
+// interruptedProgramEnding is how a program's run that a reopen settles ended,
+// read off what its store and its record kept: the sentence the row carries,
+// its ending, and whether a person stopped it.
+//
+// EACH ENDING IS THE ONE THE LIVE SETTLE WOULD HAVE DRAWN, because the row is
+// the same row whichever process settles it. A CANCELLED ROOT IS A PERSON'S
+// STOP (the stop road writes it before the program is ended, and a person who
+// quits during that wait has still stopped it). THE LIMIT SENTENCE IS THE
+// LIMIT, and which one is a fact of the run: the dollar ceiling it handed its
+// program was reached, or else its time ran out. codeaf's own sentences, and
+// every sentence of the program's, are read as the program's ending, whose
+// reason is the sentence itself — so the side list reads `codeaf closed while
+// senior-dev was running`, not the fixed words of a cut it cannot explain.
+func interruptedProgramEnding(store *plandb.Store, root *plandb.Task, record delegate.ProgramRecord) (string, TaskEnding, bool) {
+	report := strings.TrimSpace(root.Error)
+	switch {
+	case root.Status == plandb.StatusCancelled:
+		return report, TaskEndingStopped, true
+	case report == runLimitSentence:
+		return report, interruptedLimitEnding(store, record), false
+	case report == "":
+		return programClosedSentence(record.Name), TaskEndingProgram, false
+	}
+	return report, TaskEndingProgram, false
+}
+
+// interruptedLimitEnding is which limit ended a program's run, off the run's
+// own facts: its spend against the dollar ceiling the run handed its program
+// (the run's own ceiling, [delegate.ProgramRecord.CeilingUSD]) says the
+// dollars ran out, and any other limit ending is the run's time.
+func interruptedLimitEnding(store *plandb.Store, record delegate.ProgramRecord) TaskEnding {
+	spent := 0.0
+	for _, total := range store.SpendSummary().ByRole {
+		spent += total.USD
+	}
+	if record.CeilingUSD > 0 && spent >= record.CeilingUSD {
+		return TaskEndingCostLimit
+	}
+	return TaskEndingTimeLimit
 }
 
 // holdsInterruptedRun says whether any run row this graph holds came back
@@ -994,7 +1062,12 @@ func (a *Agent) cutBeltRun() {
 	a.beltMu.Unlock()
 	if run != nil && run.delegate != nil && !stopped {
 		// A run a person already stopped keeps the stop's ending and its words.
-		endProgramRunClosed(run.store, run.delegate.Name, time.Time{})
+		// A program that has not written its record yet is named by the run.
+		record := beltRunProgram(run)
+		if record.Name == "" {
+			record.Name = run.delegate.Name
+		}
+		endProgramRunClosed(run.store, record, time.Time{})
 	}
 	if cut != nil {
 		cut()
