@@ -101,6 +101,12 @@ const (
 	// tabTasks is how work you can walk away from is run — how it starts, how it
 	// is checked, how much of it happens at once, and on whose hands.
 	tabTasks = "Tasks"
+	// tabTeams is what every team inherits when it says nothing of its own:
+	// who answers a member's question, what a team may spend in a day, what a
+	// new sub-team is given, and how deep teams may nest. A team's own
+	// overrides are on its card on the teams page; these are the defaults its
+	// `· from Settings` points at.
+	tabTeams = "Teams"
 	// tabProviders is which model answers what.
 	tabProviders = "Providers"
 )
@@ -112,23 +118,27 @@ const (
 // Spending, Safety and Tasks stand between Display and Providers, and Spending
 // leads the three: "what may it spend" is asked before "on which machine", and
 // before either of the two questions that used to share its tab.
+//
+// Teams follows Tasks: both are about work you hand off, and its defaults are
+// read after the question of how one task runs.
 var settingTabs = []string{tabSession, tabContext, tabWorkspace, tabDisplay,
-	tabSpending, tabSafety, tabTasks, tabProviders, tabConnections}
+	tabSpending, tabSafety, tabTasks, tabTeams, tabProviders, tabConnections}
 
-// settingTabCategory is the ONE-TO-ONE map between the three new tabs and the
-// three registry categories behind them, and it is the seam that keeps the skin
+// settingTabCategory is the ONE-TO-ONE map between the four newer tabs and the
+// four registry categories behind them, and it is the seam that keeps the skin
 // honest about the one source of truth.
 //
 // The other tabs are a reading of the ROWS and not of the categories — "session
 // ceiling" is a dollar figure that answers "what may THIS conversation do" — and
-// that stays true of them. These three are different: the registry's own words
-// for them (`spending`, `safety`, `tasks`) are already the product's words for
+// that stays true of them. These four are different: the registry's own words
+// for them (`spending`, `safety`, `tasks`, `teams`) are already the product's words for
 // them, so a row that is filed under one and drawn under another would be two
 // answers to one question. chrome_test.go pins the map in both directions.
 var settingTabCategory = map[string]string{
 	tabSpending: config.CategorySpending,
 	tabSafety:   config.CategorySafety,
 	tabTasks:    config.CategoryTasks,
+	tabTeams:    config.CategoryTeams,
 }
 
 // settingWidget is how a row is ANSWERED, which is not quite how it reads.
@@ -762,6 +772,29 @@ var settingUI = map[string]settingMeta{
 		about: "how much codeaf tells the model before you type. auto reads the model's " +
 			"context window and goes lean under 32,000 tokens; lean and full say so yourself, " +
 			"for a provider that reports a window its model does not really have.",
+	},
+	// ── Teams ───────────────────────────────────────────────────────────────
+	// The four defaults every team inherits, in the order a person reaches
+	// for them (DESIGN.md section 8, the settings tab's Teams group).
+	config.KeyTeamsQuestionsUp: {
+		tab: tabTeams, label: "questions go to the manager", widget: widgetToggle,
+		about: "a member's clarifying question goes to its manager first; you are asked only " +
+			"what no manager can answer. Permission prompts always come to you.",
+	},
+	config.KeyTeamsCapUSDDay: {
+		tab: tabTeams, label: "daily cap per team", widget: widgetText,
+		about: "what a team and the teams under it may spend in a day before its manager " +
+			"asks you whether to go on. Blank or 0 is no cap.",
+	},
+	config.KeyTeamsSubSharePct: {
+		tab: tabTeams, label: "sub-team share", widget: widgetText,
+		about: "the share of its parent's cap a new sub-team starts with. Teams that " +
+			"already exist keep theirs.",
+	},
+	config.KeyTeamsDepthLimit: {
+		tab: tabTeams, label: "team depth", widget: widgetText,
+		about: "how many levels of teams a manager may build, the top team counting as one. " +
+			"1 means no sub-teams.",
 	},
 }
 
