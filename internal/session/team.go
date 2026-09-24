@@ -97,6 +97,9 @@ type teamRole struct {
 	// wakes says the team's traffic starts this conversation's turn when it is
 	// idle ([teams.Team.Wakes], team_wakewatch.go).
 	wakes bool
+	// derived says handle is the word list's guess, which the title model
+	// chooses again once (handlepick.go).
+	derived bool
 }
 
 // fileStamp is what a stat says about a file, and the whole of how this file
@@ -152,6 +155,9 @@ type teamSeat struct {
 	// (team_wakewatch.go).
 	watch  teamWatch
 	person personTurns
+	// handleTried says this process has asked for its handle once
+	// (handlepick.go), so it is never asked for twice.
+	handleTried bool
 }
 
 // teamLogStart is the cursor that reads a Traffic log from its first entry:
@@ -284,6 +290,7 @@ func rolesFor(list []teams.Team, keys []string) []teamRole {
 			managed: team.Manager != "",
 			key:     member.Key,
 			wakes:   team.Wakes(),
+			derived: member.HandleDerived(),
 		})
 	}
 	return roles
@@ -326,6 +333,9 @@ func (a *Agent) teamBoundary() string {
 	a.team.mu.Unlock()
 	a.setTeamRole(role)
 	a.armTeamTools(roles)
+	// A handle that is still the word list's guess is chosen once, beside the
+	// turn (handlepick.go).
+	a.teamHandlePass(roles)
 	return news
 }
 
@@ -463,10 +473,20 @@ func (a *Agent) firstTeamCursor(profile string, role teamRole) string {
 // everyone, or to the room. WHAT A MANAGER IS TOLD is every member's post,
 // wherever it was aimed, because the room is the manager's to run; and never its
 // own lines, the person's (which reach it in its own chat), a start or a stop
-// (which the interface performs) or an event (which the digest carries).
+// (which the interface performs) or an event (which the digest carries). The
+// one event everyone is told is codeaf's, that a handle changed.
 func teamLine(role teamRole, entry teams.Entry) string {
 	if entry.Kind == teams.KindStart {
 		return teamBriefLine(role, entry)
+	}
+	// A HANDLE THAT CHANGED IS TOLD TO EVERYONE, manager included: it is how a
+	// member is addressed, and a line to the old one would reach nobody
+	// (handlepick.go's [handleRenameEntry]).
+	if entry.Kind == teams.KindEvent && entry.From == teams.FromSystem && entry.To == teams.ToEveryone {
+		if text := strings.TrimSpace(entry.Text); text != "" {
+			return teamSpeaker(entry.From) + ": " + cutRunesTeam(text, teamEntryText)
+		}
+		return ""
 	}
 	if entry.Kind != teams.KindNote && entry.Kind != teams.KindDirective {
 		return ""
