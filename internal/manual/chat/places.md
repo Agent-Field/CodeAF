@@ -241,12 +241,12 @@ this process was started with it.
 
 **The `here ~/codeaf` chip is gone**, and so are the rules that the other places used to
 draw over their boxes. The arrow and `new conversation in` lead are gone from home too;
-the model starts the seam, and the project sits at the far right. A place with something to say about its page — `nothing matches`
+the model starts the seam, and the project sits at the far right of the keys row under the box. A place with something to say about its page — `nothing matches`
 on tasks when a filter emptied it, a receipt on memory, the "this session is on another
 machine" line over `--host` — says it on its rule, where the box's rule would have been.
 
 **Over `--host`, and on a session with no dial**, the rung and the gate are simply not on
-home's rule — the folder and the model still are. The far machine's rows decide what a
+home's rule — the model still is, and the folder is still at the right of the keys row. The far machine's rows decide what a
 conversation there runs without asking.
 
 ## Why did pressing alt+enter not send my task straight away
@@ -810,16 +810,14 @@ afternoon.
 place segment and the legend under the box already carry. On a local session it is not there
 at all: a machine name is worth a word only when there is more than one machine in play.
 
-## Why is home empty over ssh when I connect to another machine — space space, once Escape, over --host
+## Why is home empty over ssh when I connect to another machine — space space over --host
 
 **It is not empty any more, and this is the answer if you have seen it be.**
 
-`esc` over `--host` opens the home of the machine your session runs on: its
+`space` `space` over `--host` opens the home of the machine your session runs on: its
 projects, its conversations, and what each of those ran. `enter` on a row opens that
 conversation beside the one you are in — the engine gives it a connection of its own and
-the chat you came from keeps running, the same door `codeaf resume` uses locally. Two
-spaces over an empty box used to be this door as well; since 2026-09-17 `space` `space`
-types two spaces and nothing more, here and locally, and `esc` is the key.
+the chat you came from keeps running, the same door `codeaf resume` uses locally.
 
 It used to draw **one dim line** where the rows would be —
 `home shows this machine's projects, and this session is on another` — because the projects

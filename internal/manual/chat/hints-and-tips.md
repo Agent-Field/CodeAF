@@ -89,9 +89,10 @@ launch starts every tip from nothing.
 
 ## The tip on home changed by itself — the order the tips come round in, and the tip that jumps the queue
 
-Both rows take turns through the one list, in the order below, round and round: every tip
+Home's row takes turns through the one list, in the order below, round and round: every tip
 that is true for you gets its turn before any repeats, and a tip that stops being true
-stands down at once for the next. Nothing outranks anything — with one exception. **A tip
+stands down at once for the next. (A conversation's keys row does not take turns: it ranks,
+and the first tip in the list that is true for you there is the one it says.) Nothing outranks anything — with one exception. **A tip
 that has just become true jumps the queue**: when a conversation crosses half its context
 window, `/compact summarizes the conversation now` is said next rather than forty minutes
 later when the ring comes round. It jumps once and then takes its turn like the rest.

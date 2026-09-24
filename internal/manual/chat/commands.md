@@ -1986,7 +1986,8 @@ coming it steers that turn, exactly as a plain `enter` does.
 
 **On home it opens a conversation first.** Home is not a conversation, so `/manual` there
 is one of the commands that *opens a conversation here first* (see the home page): a
-conversation opens at the folder and the model on the rule above the box, home closes,
+conversation opens at the folder named at the right of the keys row and the model on the
+rule above the box, home closes,
 and the question is sent there. Until 2026-09-22 `/manual` on home printed its answer into
 the conversation *behind* home, where nothing could be seen of it — typing it looked like
 nothing happening.

@@ -142,9 +142,9 @@ same fact — the conversation it is choosing for does not exist yet:
 - The action row reads **`open the next conversation in · ~/src/parser`** instead of
   `add this folder`, and it never offers `remove this folder` — the conversation this is
   choosing for has no folders yet.
-- `enter` **pins** the folder: home comes back with the rule already changed and says
-  `next conversation opens in ~/src/parser`. Nothing is registered with any session until you
-  actually start one.
+- `enter` **pins** the folder: home comes back with `project: ~/src/parser` at the right
+  of the keys row under the box, and says nothing else. Nothing is registered with any
+  session until you actually start one.
 
 **`esc` comes back to home too**, having changed nothing — the browser only replaced home
 because a sheet takes the whole frame. Files chosen on that sheet still go where files go:

@@ -436,9 +436,9 @@ used to answer
 `<name> is a folder · attach a file`; locally it now goes to the folder door and says
 `folder · ~/code/thing`. Over `--host`, it registers nothing and says
 `choosing a folder is not available over --host yet — the folders here are this machine's, not the ones the conversation is on.`
-On home it pins the next conversation's folder instead and says
-`next conversation opens in ~/code/thing`, because there is no conversation there to attach
-one to. Dropping a folder on the window still refuses with the old
+On home it pins the next conversation's folder instead, because there is no conversation
+there to attach one to: it says nothing, and `project: ~/code/thing` at the right of the keys
+row under the box shows the pin. Dropping a folder on the window still refuses with the old
 `<name> is a folder · attach a file` sentence — see "Choosing a folder".
 
 ## Attaching a file from home — /attach on the home screen, before there is a conversation

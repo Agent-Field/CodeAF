@@ -595,7 +595,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `alt+e` | Walk this conversation's thinking rung one step: auto → low → medium → high → xhigh → max, and back to auto. Works with a sentence half typed. On home and every other place it walks the rung of the **next** conversation instead — the effort word after the model’s colon on home’s seam |
 | `alt+a` | Walk what this conversation runs without asking one stop: asks → guardian → YOLO → asks. Never lands on `refuses`. Works with a sentence half typed; over `--host` it says the far machine's rules decide. On home and every other place it walks the gate of the **next** conversation — the `◇` cell on the rule above that box — and that pin is spent by the conversation that uses it |
 | `ctrl+.` | Open the sessions place (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
-| `space` `space` | Two spaces, nothing more. This used to open home over an empty box; that door closed on 2026-09-17, and `esc` is the way home — see *Escape, esc, back, and getting home without stopping work* |
+| `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on the machine the session runs on, and an empty home on a fresh one. Does nothing when the box has words in it |
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `ctrl+t` | Start a **new chat** — the same start page the `+` at the end of the tab strip opens. Nothing is created until you send the first message, `esc` comes back, and the conversation you were in keeps its draft, its attachments and its work. On a home row it starts the fresh chat in that row's own folder, the same door as `enter` on a `projects` row |
 | `ctrl+w` | **Close this tab** — the same thing the `✕` on it does. Selects the last-used remaining tab, or Home if none remain. Drafts are kept, and the conversation keeps running; a tab with work in it asks `keep running` / `stop work` / `cancel` first |
@@ -1510,7 +1510,7 @@ an email address, a Go doc link — never opens the list.
 
 **What it walks:** the conversation's workspace, or **your own machine's** working
 directory over `--host`. **On home** the same list opens over home's box (since
-2026-09-22) and walks the folder the next conversation opens in — the one on the rule —
+2026-09-22) and walks the folder the next conversation opens in — the `project:` at the right of the keys row —
 so moving the target with `alt+p` or `/project` walks again; it offers files and folders
 there and never tasks, because a task pointer is minted when a conversation sends and
 home has none yet. Skipped: `.git`, `vendor`, `node_modules`, every
