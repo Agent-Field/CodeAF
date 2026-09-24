@@ -286,8 +286,11 @@ func (s *Server) Close() error {
 // receiptWait bounds how long [Server.Close] waits for the receipts owed on a
 // run's cut calls: the provider's own ceiling for one receipt, so a receipt
 // the provider is still asking for is never abandoned early, and one that will
-// never come costs the run's ending no more than that. A variable only so a
-// test can shorten it.
+// never come costs the run's ending no more than that. The provider counts that
+// ceiling from the instant a receipt was queued, however many were ahead of it
+// for a worker, and every receipt owed by a call that had ended by the time
+// this wait began was queued before it, so one bound covers them all. A
+// variable only so a test can shorten it.
 var receiptWait = provider.ReceiptWait
 
 // receiptsOwed counts receipts queued and not yet answered. Its idle channel

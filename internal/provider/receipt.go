@@ -60,7 +60,10 @@ const (
 	receiptFetchTimeout  = receiptFirstRetryDelay + receiptSecondRetryDelay + receiptThirdRetryDelay + receiptFourthRetryDelay +
 		time.Duration(receiptAttempts)*receiptRequestAllowance + receiptScheduleSlack
 	// ReceiptWait is the longest one receipt can take to be answered once it is
-	// queued: the whole schedule's ceiling. It is exported for work that waits
+	// queued: the whole schedule's ceiling, counted from the queue however long
+	// the receipt waited there for a worker ([receiptWork.deadline]), so a
+	// waiter that starts after every receipt it is owed was queued sees each one
+	// answered within it. It is exported for work that waits
 	// for the receipts it is owed before it closes its books
 	// ([WithReceiptPending]), so that wait and this schedule are one figure and
 	// widening the schedule widens the wait with it.
@@ -91,9 +94,31 @@ var receiptRetrySchedule = [...]time.Duration{
 // receiptWork is all the worker may retain from a call whose own context is
 // usually cancelled. The sink and attribution are values; no request context
 // crosses the hand-off because its cancellation is why this work exists.
+// queued is the instant the receipt was owed, which its ceiling is counted from.
 type receiptWork struct {
 	result Reconciled
 	sink   ReconcileSink
+	queued time.Time
+}
+
+// deadline is the latest a receipt may be answered: [receiptFetchTimeout] after
+// it was queued.
+//
+// IT IS COUNTED FROM THE QUEUE AND NOT FROM THE WORKER, because the queue is
+// what a waiter sees. A client drains its receipts with [receiptWorkerCount]
+// workers, so a fifth receipt owed behind four slow ones started its whole
+// schedule some forty seconds late and was answered about eighty seconds after
+// it was queued — past [ReceiptWait], so a run that waited that long for its
+// books closed them without that call's price. A receipt that waited in the
+// queue loses none of its chance by this: the provider was pricing its
+// generation the whole time it waited, and the worker's first request for it
+// is made that much later.
+func (w receiptWork) deadline() time.Time {
+	queued := w.queued
+	if queued.IsZero() {
+		queued = time.Now()
+	}
+	return queued.Add(receiptFetchTimeout)
 }
 
 // receiptRouteMemo remembers only the one definite capability answer: a base
@@ -180,6 +205,9 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 			sink(answer)
 		}
 	}
+	// THE RECEIPT'S BOUND STARTS HERE, when it is owed, and not when a worker
+	// gets to it ([receiptWork.deadline]).
+	work.queued = time.Now()
 	if !c.queueReceipt(work) {
 		// A full queue reports the missing price without holding up the turn.
 		work.sink(result)
@@ -232,7 +260,8 @@ func (c *Client) nextReceipt() (receiptWork, bool) {
 
 // reconcile follows the fixed growing schedule and delivers exactly one answer.
 // It starts from a fresh context because the call's own context has commonly
-// been cancelled already, then puts one ceiling around the entire schedule.
+// been cancelled already, then puts one ceiling around the entire schedule,
+// counted from when the receipt was queued ([receiptWork.deadline]).
 func (c *Client) reconcile(work receiptWork) {
 	result := work.result
 	base := strings.TrimRight(strings.TrimSpace(c.config.BaseURL), "/")
@@ -240,7 +269,7 @@ func (c *Client) reconcile(work receiptWork) {
 		work.sink(result)
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), receiptFetchTimeout)
+	ctx, cancel := context.WithDeadline(context.Background(), work.deadline())
 	defer cancel()
 	for attempt := 0; attempt < receiptAttempts; attempt++ {
 		billed, found, noRoute := c.fetchReceipt(ctx, result.Ref)

@@ -892,3 +892,50 @@ func TestACutAnswerWithNoUsageIsStillSettledWhereTheWorkAskedForIt(t *testing.T)
 		})
 	}
 }
+
+// ReceiptWait IS COUNTED FROM THE QUEUE, NOT FROM THE WORKER. A client drains
+// its receipts with four workers, so a fifth owed receipt waits behind four slow
+// ones before any worker asks for it; its whole schedule used to start there,
+// and it was answered about eighty seconds after it was queued — past the
+// seventy a run's books wait for it ([ReceiptWait]), so the run closed without
+// that call's price. A receipt now carries the instant it was queued, and its
+// ceiling is that instant plus the schedule's own.
+func TestAReceiptIsAnsweredWithinReceiptWaitOfBeingQueued(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// The generation is never priced, so only the ceiling can end the schedule.
+		fmt.Fprint(w, `{"data":{}}`)
+	}))
+	t.Cleanup(server.Close)
+	client := receiptTestClient(t, server)
+
+	// The queue stamps each receipt as it is admitted. No worker is started
+	// here, so the queued work can be read back as it was admitted.
+	client.receiptRunning = receiptWorkerCount
+	before := time.Now()
+	client.settle(WithReconcile(t.Context(), func(Reconciled) {}), "sim/model", &ai.Response{ID: "gen-queued"}, "torn", 0)
+	after := time.Now()
+	queued := <-client.receipts
+	if queued.queued.Before(before) || queued.queued.After(after) {
+		t.Fatalf("the receipt was stamped %v, want the instant it was queued (%v to %v)", queued.queued, before, after)
+	}
+
+	// A receipt that has already waited in the queue for nearly the whole bound
+	// is given only what is left of it, however long its pauses would run.
+	client.wait = func(ctx context.Context, _ time.Duration) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	results := make(chan Reconciled, 1)
+	late := receiptWork{
+		result: Reconciled{Ref: "gen-late"},
+		sink:   func(result Reconciled) { results <- result },
+		queued: time.Now().Add(-(ReceiptWait - 300*time.Millisecond)),
+	}
+	go client.reconcile(late)
+	if result := receiptResult(t, results); result.Found {
+		t.Fatalf("a receipt the provider never priced was found: %+v", result)
+	}
+	if answered := time.Since(late.queued); answered > ReceiptWait+2*time.Second {
+		t.Fatalf("the receipt was answered %v after it was queued, past ReceiptWait %v", answered, ReceiptWait)
+	}
+}
