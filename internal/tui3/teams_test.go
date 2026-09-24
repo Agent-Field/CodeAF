@@ -3,6 +3,7 @@ package tui3
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"github.com/Agent-Field/codeaf/internal/config"
 
 	"os"
@@ -511,5 +512,74 @@ func TestTeamDeleteOrReorderNeverRetargetsAnother(t *testing.T) {
 	}
 	if _, ok := a.teamByID(third); !ok {
 		t.Fatal("D took a neighbour with it")
+	}
+}
+
+// A CONVERSATION STARTED WHILE A TEAM IS SHOWN IS ONE OF IT. /new (the strip's
+// + and the start page take the same road) and a folder typed on home both
+// mint one, and each lands in the team the strip is narrowed to, saved. Going
+// back to a conversation that already exists changes no team, and with no
+// team shown a new conversation joins nothing.
+func TestTeamNewConversationJoinsTheShownTeam(t *testing.T) {
+	a, _, _ := tabApp(t)
+	a.profileDir = t.TempDir()
+	n := 0
+	a.start = func(workspace string) (Conversation, error) {
+		n++
+		return Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: fmt.Sprintf("/tmp/lab/new-%d.jsonl", n), Workspace: "/tmp/lab"}, nil
+	}
+	before := a.frontTabKey()
+	tabs := a.tabList()
+	id, err := a.teamMake("harbor", tabs[:1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.teamActivate(id)
+
+	if _, ok := a.renew(); !ok {
+		t.Fatal("/new refused")
+	}
+	fresh := a.frontTabKey()
+	if fresh == before || fresh == "" {
+		t.Fatalf("/new left %q in front", fresh)
+	}
+	if got := a.teamsOf(fresh); len(got) != 1 || got[0] != id {
+		t.Fatalf("the new conversation is in %v, want harbor", got)
+	}
+	if _, refusal := a.startBeside("/tmp/elsewhere"); refusal != "" {
+		t.Fatalf("home's new conversation refused: %s", refusal)
+	}
+	beside := a.frontTabKey()
+	if got := a.teamsOf(beside); len(got) != 1 || got[0] != id {
+		t.Fatalf("the conversation started from home is in %v", got)
+	}
+	disk, _ := loadTeams(a.profileDir, nil)
+	if len(disk) != 1 || !teamHolds(disk[0], fresh) || !teamHolds(disk[0], beside) {
+		t.Fatalf("the joins were not saved: %+v", disk)
+	}
+
+	// Switching to one that exists is not a join.
+	outside := ""
+	for _, tab := range a.tabList() {
+		if !teamHolds(disk[0], tab.key) {
+			outside = tab.key
+			_ = a.tabGo(tab)
+			break
+		}
+	}
+	if outside == "" {
+		t.Fatal("every conversation is already in the team")
+	}
+	if got := a.teamsOf(outside); len(got) != 0 {
+		t.Fatalf("switching to %q put it in %v", outside, got)
+	}
+
+	// With no team shown, nothing joins.
+	a.teamActivate("")
+	if _, ok := a.renew(); !ok {
+		t.Fatal("/new refused")
+	}
+	if got := a.teamsOf(a.frontTabKey()); len(got) != 0 {
+		t.Fatalf("a new conversation with no team shown joined %v", got)
 	}
 }
