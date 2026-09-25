@@ -161,7 +161,8 @@ is — a bug fix, a complex fix, open-ended work, or something else:
 
 The crew is auto by default. Each seat is scored from its catalog metadata by
 learned weights, moved by how this install's own tasks ended, over every model your
-connected providers serve. `/crew` shows it: the seats, the allowed models, the
+connected providers serve. The method is in the paper,
+[Pareto Crewing](docs/design/model-pool/pareto-crewing.pdf). `/crew` shows it: the seats, the allowed models, the
 providers, a per-task limit ($5 unless set) and an optional daily cap, and today's
 spend. `/crew pin checker <model>` pins one seat, `/crew models open` limits every
 seat to open-weight models, and `/task --best` or `/task --cheap` moves one task.
