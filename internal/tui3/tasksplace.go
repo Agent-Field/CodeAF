@@ -1281,29 +1281,15 @@ func tasksTreeOf(items []tasksItem, now time.Time, order tasksSort, chats ...ses
 		}
 	}
 	group := map[string]int{}
-	// THE TITLELESS ROW IS NAMED BY HOME'S OWN LADDER, never by the raw id its
-	// Title carries: the stem is the session's id, and an id is a machine's
-	// word in the one column whose whole job is matching names. Home solved this
-	// for its own lists with one spelling of the word ([listName]'s defect
-	// note), and this place draws the same row, so it reads the name from there
-	// rather than spelling it a second time here.
-	//
-	// THE TEST IS EQUALITY WITH THE ROW'S OWN ID, FOLDED, because a titleless
-	// row's Title is never empty — [tasksConversationRows] fills it with
-	// [homeName], whose title case has already raised the id's first letter, so
-	// the composer sees `De9ea39e6f4c18c3` where the id is `de9ea39e6f4c18c3` and
-	// a byte-exact check never fires. EqualFold is the one comparison that does.
+	// THE TITLELESS ROW IS NAMED BY [homeName], the one rule home's sessions
+	// list uses too. Spelling the id check here again would be a second rule,
+	// and the two would drift the day one of them changed.
 	//
 	// ONLY THE NAME CHANGES. The row keeps its place, its age stays empty
 	// (lastUserAt is the zero time and the emptiness law draws nothing), and
 	// [chatProjectWord] still sees the row, so a project that is not this name
 	// does not echo the word back as a project tag beside it.
-	tasksName := func(row session.SessionRow) string {
-		if strings.EqualFold(strings.TrimSpace(row.Title), row.ID) || (row.Title == "" && row.Transcript != "") {
-			return unnamedConversationWord
-		}
-		return homeName(row)
-	}
+	tasksName := func(row session.SessionRow) string { return homeName(row) }
 	for _, root := range roots {
 		id := tasksChatOf(root)
 		row, named := names[id]

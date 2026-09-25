@@ -287,6 +287,13 @@ before choosing the fifteen most recent, so each conversation appears once.
 The `opt+k` chats menu still lists open tabs; closing or reopening a conversation
 updates the tab and the row in Sessions together.
 
+## Why does home show a session id for an untitled chat, untitled conversation, new conversation
+
+**A conversation nothing has named yet reads `new conversation`** on home's sessions
+list, the same word the sessions place uses. It never reads as its session id, including
+the id with its first letter raised (`D53cceead3f99593`). A conversation that has a title
+keeps that title.
+
 ## Close or put away a task from home — task row options, new in project, open folder, copy project
 
 **`→` offers task options just as it does for threads:** `x close`,
