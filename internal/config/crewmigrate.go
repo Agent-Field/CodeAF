@@ -1,8 +1,9 @@
 package config
 
 import (
-	"sort"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 )
 
 // A PROFILE WRITTEN BEFORE THE CREW WAS ROUTED, READ THE WAY ITS OWNER MEANT IT.
@@ -91,11 +92,14 @@ func MigrateCrew(profileDir string) (string, error) {
 	if err := writeProfileValues(profileDir, values); err != nil {
 		return "", err
 	}
+	// The seats in the order the manual and the panel list them.
 	var kept []string
-	for seat, pin := range CrewPinsAt(profileDir) {
-		kept = append(kept, string(seat)+" "+pin.String())
+	pins := CrewPinsAt(profileDir)
+	for _, seat := range crewroute.Seats {
+		if pin, ok := pins[seat]; ok {
+			kept = append(kept, string(seat)+" "+pin.String())
+		}
 	}
-	sort.Strings(kept)
 	line := "your crew is auto now · codeaf picks the worker, planner and checker for each task"
 	if len(kept) > 0 {
 		// A PERSON WHOSE SEATS STAYED PINNED IS TOLD THAT FIRST: nothing they

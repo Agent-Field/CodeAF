@@ -218,6 +218,22 @@ func CrewHealthySend(profileDir, send, chatModel string) string {
 	return send
 }
 
+// CrewRouteAnswers is whether route health expects send's route to answer:
+// not quarantined or cooling, not on an account out of credit, not on a
+// provider whose key was refused. A profile with nothing wrong on it answers
+// at once, without reading its providers.
+func CrewRouteAnswers(profileDir, send string) bool {
+	send = strings.TrimSpace(send)
+	if profileDir == "" || send == "" {
+		return true
+	}
+	health := crewHealthCached(profileDir)
+	if len(health.blocked) == 0 && len(health.unaffordable) == 0 && len(health.disconnected) == 0 {
+		return true
+	}
+	return health.answers(send, CrewProvidersAt(profileDir))
+}
+
 // answers is whether this health expects send's route to answer.
 func (h crewHealth) answers(send string, providers []CrewProvider) bool {
 	if _, blocked := h.blocked[send]; blocked {
@@ -225,6 +241,13 @@ func (h crewHealth) answers(send string, providers []CrewProvider) bool {
 	}
 	pin := resolveCrewPin(CrewPin{Model: send}, providers)
 	return !h.disconnected[pin.Provider] && !(pin.Kind == crewroute.Metered && h.unaffordable[pin.Provider])
+}
+
+// forgetCrewHealth drops the cached route health.
+func forgetCrewHealth() {
+	crewHealthCache.mu.Lock()
+	crewHealthCache.at = time.Time{}
+	crewHealthCache.mu.Unlock()
 }
 
 // crewHealthCached is [crewHealthAt] read at most once a few seconds per
@@ -356,6 +379,11 @@ func (e ErrCrewUnreachable) Error() string { return e.Action }
 // (kind empty), or failed with a route-failure kind and when the route said it
 // may be asked again.
 func LogCrewRoute(profileDir, call string, d crewroute.Decision, repo, title string, seat crewroute.Seat, pick crewroute.Pick, kind string, until time.Time) {
+	if kind != "" {
+		// A FAILURE IS SEEN BY THE VERY NEXT CALL, not a few seconds later:
+		// the cache that spares every request a read of the log is dropped.
+		forgetCrewHealth()
+	}
 	router.LogCrewRoute(ProfilePath(profileDir, ""), call, CrewRecordOf(d, repo, title), router.CrewRouteOutcome{
 		Seat: string(seat), Send: pick.Send, Provider: pick.Provider,
 		Paid: pick.Kind == crewroute.Metered, Kind: kind, Until: until,

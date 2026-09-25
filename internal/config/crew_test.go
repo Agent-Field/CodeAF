@@ -277,7 +277,7 @@ func TestMigratingARetiredCrew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(line, "kept your pins: checker moonshotai/kimi-k3, planner z-ai/glm-5.3, worker z-ai/glm-5.3-flash") || !strings.Contains(line, "allowed models: open") {
+	if !strings.Contains(line, "kept your pins: worker z-ai/glm-5.3-flash, planner z-ai/glm-5.3, checker moonshotai/kimi-k3") || !strings.Contains(line, "allowed models: open") {
 		t.Errorf("notice %q", line)
 	}
 	if got := CrewAllowedAt(dir).String(); got != "open" {

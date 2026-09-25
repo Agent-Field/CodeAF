@@ -758,7 +758,7 @@ func crewCandidatesWith(rule crewroute.Allowed, providers []CrewProvider, facts 
 		paid := map[string]bool{}
 		at := map[string]int{}
 		for _, row := range rows {
-			if row.PriceUnknown || strings.HasPrefix(row.ID, "~") || crewroute.IsFree(row.ID) {
+			if crewUnpriced(row) || strings.HasPrefix(row.ID, "~") || crewroute.IsFree(row.ID) {
 				continue
 			}
 			lineage := crewroute.Lineage(row.ID)
@@ -783,7 +783,7 @@ func crewCandidatesWith(rule crewroute.Allowed, providers []CrewProvider, facts 
 		if facts.free {
 			free = map[string]string{}
 			for _, row := range rows {
-				if !crewroute.IsFree(row.ID) || strings.HasPrefix(row.ID, "~") {
+				if !crewroute.IsFree(row.ID) || strings.HasPrefix(row.ID, "~") || crewUnpriced(row) {
 					continue
 				}
 				key := crewroute.Lineage(row.ID)
@@ -845,6 +845,19 @@ func crewCandidatesWith(rule crewroute.Allowed, providers []CrewProvider, facts 
 		out = append(out, crewroute.Candidate{Model: m, Routes: routes})
 	}
 	return out
+}
+
+// crewUnpriced is a catalog row the router may not weigh: one whose provider
+// published no price, or a paid id priced at nothing — a stealth or preview
+// model, a meta-router — whose zero promises nothing about the next call and
+// would win every seat at $0. ONLY A FREE POOL (`…:free`) PRICED AT AN
+// EXPLICIT ZERO IS FREE. A pin still names such a model by its id; the router
+// never picks one on its own.
+func crewUnpriced(row catalog.Model) bool {
+	if row.PriceUnknown {
+		return true
+	}
+	return !crewroute.IsFree(row.ID) && row.PromptPrice <= 0 && row.CompletionPrice <= 0 && row.RequestPrice <= 0
 }
 
 // withoutPaidPool drops the default service's metered route for a model the
@@ -1027,7 +1040,7 @@ func CrewRecordOf(d crewroute.Decision, repo, title string) router.CrewRecord {
 	record := router.CrewRecord{
 		TaskClass: string(d.Class), Repo: repo, Title: title, Effort: string(d.Effort), Steps: d.Steps,
 		Seats: map[string]string{}, Providers: map[string]string{}, Kinds: map[string]string{}, EstUSD: d.EstUSD,
-		Redo: d.Redo, EstBase: d.EstUSD,
+		Redo: d.Redo, EstBase: d.EstUSD, TaskSubclass: d.Subclass, TaskReach: d.Reach,
 	}
 	if d.CostFactor > 0 {
 		record.EstBase = d.EstUSD / d.CostFactor

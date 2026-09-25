@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -471,6 +472,93 @@ func TestTheNextRungIsAtASimilarCost(t *testing.T) {
 		}
 		if next := ladder[0]; next.CostUSD > 3*pick.CostUSD || crewroute.Lineage(next.Model) == "moonshotai/kimi-k3" {
 			t.Errorf("the %s's next rung from %s ($%.4f) is %s ($%.4f)", seat, pick.Model, pick.CostUSD, next.Model, next.CostUSD)
+		}
+	}
+}
+
+// A CREW'S CALLS ARE HELD TO THE LOWER OF ITS OWN CAP AND THE DAY'S LIMIT,
+// and an open-ended kimi checker to three times its heavy-tail estimate.
+func TestTheSpendLinesASeatCallIsHeldTo(t *testing.T) {
+	dir := crewProfile(t)
+	if err := writeProfileValues(dir, map[string]any{KeyCrewCap: 1.0, KeyDailyBudget: 0.25}); err != nil {
+		t.Fatal(err)
+	}
+	if capUSD, action := CrewSpendCap(dir, true); capUSD != 0.25 || !strings.Contains(action, "/budget") {
+		t.Errorf("with the daily limit: %v %q", capUSD, action)
+	}
+	if capUSD, action := CrewSpendCap(dir, false); capUSD != 1.0 || !strings.Contains(action, "/crew cap") {
+		t.Errorf("without it: %v %q", capUSD, action)
+	}
+	var history []router.CrewRouteOutcome
+	withRouteHistory(t, &history)
+	if err := SetCrewPin(dir, crewroute.Checker, "moonshotai/kimi-k3"); err != nil {
+		t.Fatal(err)
+	}
+	d, err := RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: openTask}})
+	if err != nil && !errors.Is(err, ErrCrewAtCap) {
+		t.Fatal(err)
+	}
+	ceilings := CrewSeatCeilings(d)
+	if got := ceilings[d.Seat(crewroute.Checker).Send]; got < 0.2 || got > 0.4 {
+		t.Errorf("the open-ended kimi checker's ceiling is $%.3f (estimate $%.3f)", got, d.Seat(crewroute.Checker).EstUSD)
+	}
+	// One model in every seat: the spend the guard keeps is the model's, so
+	// the checker's line would stop the worker, and there is none.
+	one := crewroute.Decision{Crew: []crewroute.Pick{
+		{Seat: crewroute.Worker, Model: "vendor/cheap", Send: "vendor/cheap"},
+		{Seat: crewroute.Checker, Model: "vendor/cheap", Send: "vendor/cheap", EstUSD: 0.01},
+	}}
+	if got := CrewSeatCeilings(one); got != nil {
+		t.Errorf("a checker sharing the worker's model has a ceiling: %v", got)
+	}
+}
+
+// A MODEL PRICED AT NOTHING THAT IS NOT A FREE POOL IS NO CANDIDATE: a stealth
+// preview listed at "0"/"0" scored as $0 and won a planner's rescue. Neither
+// it nor a row with no published price is picked — in the crew or in the free
+// rescue — while an explicit-zero `:free` pool still is.
+func TestAnUnpricedModelIsNeverPicked(t *testing.T) {
+	dir := crewProfile(t)
+	rows := CrewCatalog()
+	rows = append(rows,
+		catalog.Model{ID: "stealth/space-bunny-alpha", ContextLength: 1048576,
+			IntelligenceIndex: 70, CodingIndex: 80, AgenticIndex: 70, Parameters: []string{"tools"}},
+		catalog.Model{ID: "vendor/unpublished", PriceUnknown: true, ContextLength: 1048576,
+			IntelligenceIndex: 70, CodingIndex: 80, AgenticIndex: 70, Parameters: []string{"tools"}},
+		catalog.Model{ID: "stealth/space-bunny-alpha-2:free", PriceUnknown: true, ContextLength: 1048576,
+			IntelligenceIndex: 70, CodingIndex: 80, AgenticIndex: 70, Parameters: []string{"tools"}},
+		catalog.Model{ID: "z-ai/glm-5.3-flash:free", OpenWeights: true, ContextLength: 1310720,
+			IntelligenceIndex: 41.8, CodingIndex: 71.5, AgenticIndex: 50.9, Parameters: []string{"tools"}})
+	CrewCatalog = func() []catalog.Model { return rows }
+	unpriced := func(id string) bool {
+		return strings.Contains(id, "space-bunny") || strings.Contains(id, "unpublished")
+	}
+	var history []router.CrewRouteOutcome
+	withRouteHistory(t, &history)
+	d, err := RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: fixTask}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pick := range d.Crew {
+		if unpriced(pick.Model) {
+			t.Errorf("the %s is %s", pick.Seat, pick.Model)
+		}
+		for _, rung := range d.Ladder[pick.Seat] {
+			if unpriced(rung.Model) {
+				t.Errorf("the %s's ladder holds %s", pick.Seat, rung.Model)
+			}
+		}
+	}
+	history = []router.CrewRouteOutcome{{At: time.Now(), Seat: "worker", Send: "z-ai/glm-5.3-flash", Provider: "openrouter", Kind: "payment"}}
+	for _, seat := range crewroute.Seats {
+		rescue := CrewRescue(dir, crewroute.Bugfix, seat, "")
+		if len(rescue) == 0 {
+			t.Fatalf("the %s has no free rescue", seat)
+		}
+		for _, r := range rescue {
+			if unpriced(r.Model) {
+				t.Errorf("the %s's rescue holds %s", seat, r.Model)
+			}
 		}
 	}
 }
