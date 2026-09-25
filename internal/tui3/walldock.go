@@ -252,6 +252,10 @@ func (a *app) dockHoverWords() string {
 			return name
 		}
 	}
+	// THE MANAGER'S TASKS' HEADER IS THE WAY BACK TO THE TRAFFIC (teamrail.go).
+	if a.hot.kind == hoverRailDoor && a.trafficOn() {
+		return "Back to the traffic" + hintSegment + railStowKey
+	}
 	// AND A JUMP THAT FOUND NOTHING SAYS SO, for a moment (teamjump.go).
 	return a.trafficJumpWords()
 }

@@ -103,6 +103,11 @@ func TestManagerColumnOffersItsTasks(t *testing.T) {
 	if a.bodyWidth() != body || a.railWidth() != cols || !strings.Contains(joined, "Task 1") || !strings.Contains(joined, trafficTasksWord+" 2") {
 		t.Fatalf("the tasks are not in the traffic's column (body %d→%d, cols %d→%d):\n%s", body, a.bodyWidth(), cols, a.railWidth(), joined)
 	}
+	a.hot = hoverAt{kind: hoverRailDoor}
+	if words := a.dockHoverWords(); !strings.Contains(words, "traffic") || !strings.Contains(words, railStowKey) {
+		t.Fatalf("the tasks' header hint says %q", words)
+	}
+	a.hot = hoverAt{}
 	drive(t, a, key(railStowKey))
 	if a.trafficTasksShowing() || a.trafficWidth() != cols {
 		t.Fatal("ctrl+g did not take the column back to the traffic")
