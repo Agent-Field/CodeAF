@@ -17,8 +17,14 @@ to its own manager, or to you. It reaches you only when no manager above could d
 always, and no manager can answer that for it.
 
 This is the setting `questions go to the manager` in `/settings` under **Teams**, on by default.
-A team can override it for itself and the teams under it; with it off, a member's questions come
-to you as they always did.
+A team can override it for itself and the teams under it, on its card (the **teams page**);
+with it off, a member's questions come to you as they always did.
+
+The **Teams** tab of `/settings` holds the defaults every team inherits: `questions go to the
+manager`, `team messages wake`, `daily cap per team`, `team depth` and `sub-team share`. Its
+dim line says `a team can override any of these on its card · saved to your profile`. Over
+`--host` the tab shows this computer's rows, read only, and says the teams inherit the other
+machine's Settings instead.
 
 ## What a decision packet is
 
@@ -60,7 +66,9 @@ A manager can never raise a cap: money is yours. Every held wake is one line in 
 
 ## Wrapping up and closing a team
 
-Closing a team with work running offers **Wrap up first**. The manager is asked to tell every
+`Close…` on the teams page, `Close team…` on a team's card, or `D` on the conversations view
+closes a team; with nothing running it closes at once and offers Undo (the **teams page** has
+every path). Closing a team with work running offers **Wrap up first**. The manager is asked to tell every
 member to finish the piece in hand and commit, to answer what it can, and then to bring you a
 **closing report** with `team_close_report`: what was done, what is left, where the files are,
 and what the team spent today. It arrives as a card with **Close** and **Keep going**, and the

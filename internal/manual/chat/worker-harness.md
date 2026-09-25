@@ -155,7 +155,7 @@ to the column's width; the glyph and the `$` are never spent on it.
 **The line is there only while a step is in flight.** A task that has not started, one held
 behind named work, and one that has landed all draw their ordinary row and no live line — the
 store clears the step the moment its command ends. These rows are a run's **plan rows**, drawn
-in the tasks place (`/history`, `ctrl+.`, `alt+2`, and the roster raised over the frame), not
+in the tasks place (`/history`, `ctrl+.`, `alt+3`, and the roster raised over the frame), not
 on the always-on column, which draws this conversation's own tree.
 
 ## What a run task's page shows while it runs

@@ -20,6 +20,10 @@ member it meant. Messages in a team are addressed by handle.
 
 ## Making a manager
 
+The **teams page** (`/teams`, `alt+2`) offers `+ Manager` on every team that has none, and
+`All teams` offers one manager over every team. Choosing a team there puts its manager's
+conversation in the page's pane, where you talk to it beside the tree of your teams.
+
 A team has no manager until you make one, and until then nothing about managers costs anything.
 While a team is shown, the first place on the tab strip is the manager's, pinned at the left
 like a pinned browser tab so it never scrolls away:
