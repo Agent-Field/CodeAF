@@ -280,6 +280,10 @@ type entry struct {
 	// ([app.noteBlock] says why, and a subharness card is the only shape that
 	// asks for it). It is false on every other note, which is nearly all of them.
 	block bool
+	// sheet says this note is a column, so a wrapped row keeps the column its
+	// first line already uses ([wrapSheet]). /help is the one note that asks
+	// for it: a continuation that started at the margin read as another key.
+	sheet bool
 
 	// told says this note is ADDRESSED TO THE PERSON rather than narration
 	// about the machinery, so the work chip may not swallow it (workfold.go's
@@ -7121,6 +7125,9 @@ func (a *app) slash(line string) tea.Cmd {
 		// pasted into a shell. /status still prints it whole.
 		help := helpText(a.hostedPath(tildePath(a.file, a.tilde)), a.chords)
 		a.noteFacts(help, columnFacts(help, true)...)
+		if n := len(a.entries); n > 0 && a.entries[n-1].kind == entryNote {
+			a.entries[n-1].sheet = true
+		}
 		return nil
 
 	case "budget":
