@@ -475,7 +475,7 @@ conversation this machine's codeaf service is running **keeps working** after th
 closes — its tasks, its questions and its journal are all there when you open the same
 workspace again — and a conversation running inside this terminal (`--no-host`, or a host
 that could not be reached) stops with it. To see what is running before you go, the task
-column (`ctrl+g`) and `/status` both say.
+column (`alt+l`) and `/status` both say.
 
 **Closing one tab still asks.** `ctrl+w` on a conversation with work running raises a card
 that names that work — `a task and a job running` — and waits for an answer. Leaving the
@@ -602,9 +602,9 @@ key arrives as ordinary `enter` and the message steers instead.
 | `ctrl+t` | Start a **new chat** — the same start page the `+` at the end of the tab strip opens. Nothing is created until you send the first message, `esc` comes back, and the conversation you were in keeps its draft, its attachments and its work. On a home row it starts the fresh chat in that row's own folder, the same door as `enter` on a `projects` row |
 | `ctrl+w` | **Close this tab** — the same thing the `✕` on it does. Selects the last-used remaining tab, or Home if none remain. Drafts are kept, and the conversation keeps running; a tab with work in it asks `keep running` / `stop work` / `cancel` first |
 | `alt+t` (`opt+t`) | Give the keyboard to the task roster. Press again or `esc` to take it back |
-| `alt+l` | With a team's manager in front: show or hide the team's **Traffic**. On a wide window it is the right-hand column (the task column folds to its edge while it is up, and `ctrl+g` gives the column back to the tasks); on a narrow one it is a card over the lower part of the conversation, and `esc` closes it. Remembered for this window |
+| `alt+l` (`opt+l`) | Close the column on the right, or bring it back, in every chat: the same column holds the Tasks and, in a chat in a team, the Traffic. The key is named at the right of the column's header. Under 100 columns it lays the column over the body, and a second press takes it off. Remembered for the next session |
 | `alt+m` | In a team that has a manager: go to the manager. Over `--host` against an older codeaf on the far machine it says managers are not available there |
-| `ctrl+g` | A foreground command that can be kept takes the key first. Otherwise close the task roster's column, or bring it back — the column stands even with no tasks in it. Remembered for the next session. On a frame under 100 columns with no roster raised and no command to keep, it does nothing |
+| `ctrl+g` | A foreground command that can be kept takes the key first. Otherwise it does what `alt+l` does: close the column, or bring it back; the column stands even with no tasks in it. Remembered for the next session |
 | `ctrl+e` | Empty box: open or close the running conversation’s compact steps first; otherwise the newest `▸ worked` chip onto its outline of captions — the latest completed turn's out here, the newest settled phase's inside a task's page — or the most recent thinking block when there is no chip. A caption is a short status line per step; its tool rows are one expand further. Otherwise: go to end of line |
 | `pgup` / `pgdown` | Scroll one page — the height of the view minus one, never less than one row |
 | `tab` | Open or commit path completion, over a command's path argument only — and over an **empty** box with no completion showing, go back to the last conversation. Does nothing when this terminal holds only one |
@@ -1729,8 +1729,7 @@ a phrase like `shell command` can be written · `backspace`, `ctrl+u`, `ctrl+w` 
 search · anything else types into it.
 
 **Task page** (`ctrl+.`, or `/history`, or the one dim door line at the bottom of the task
-column — `ctrl+. earlier`, or `ctrl+. view more` where the column has only folded a
-family away): `esc` closes it — or clears the filter first, if one is being typed —
+column, `ctrl+. earlier`): `esc` closes it (or clears the filter first, if one is being typed),
 and `ctrl+.` closes it either way · `up`/`ctrl+p`, `down`/`ctrl+n` move, stepping
 over the `running` and `earlier` section words · `pgup`/`pgdown` move twelve · `home`/`end`
 first and last · `enter` opens the row · `backspace`, `ctrl+w` and `ctrl+u` edit the filter
@@ -2385,30 +2384,34 @@ ink once this conversation has spent four fifths of its own `per conversation` l
 ## Keys in the task roster and inside a room
 
 **While the task roster holds the keyboard** (`alt+t`, `opt+t`): `esc` gives the keyboard
-back · `up`/`down` move · `right`/`left` open and fold · `enter` opens that row's room ·
-`alt+w` widens the column and narrows it again. Its hint reads exactly
-`↑↓ move · →← tree · enter open · alt+w wide · esc`. On a row whose work is still running or
-still queued the hint gains one more clause before `esc` — `alt+e think harder`, which
-moves that task's thinking rung. On an ordinary finished task, it saves the rung
-for when you continue; it does not restart work or rewrite the last attempt.
+back · `up`/`down` move over the needs-you band, the group headings and the tasks ·
+`enter` opens a task's room, opens or folds a group on its heading, and opens a band row's
+thing · `left`/`right` switch the column between Tasks and Traffic in a chat in a team ·
+`x` stops the task under the cursor · `alt+w` widens the column and narrows it again. Its
+hint reads exactly `↑↓ move · enter open · x stop · alt+w wide · esc`, led by
+`←→ tasks/traffic · ` in a chat in a team. On a row whose work is still running or still
+queued the hint gains one more clause before `esc`, `alt+e think harder`, which moves that
+task's thinking rung. On an ordinary finished task, it saves the rung for when you
+continue; it does not restart work or rewrite the last attempt.
 
 **Widen is a chord and not the bare letter `w`.** It used to be `w`, and `w` was read
 before the message box: a sentence typed while the roster still held the keyboard came out
 as `riting the port` and `orktree`. Every bare letter on this surface is either a key on a
 modal page with no message box, or an answer to a question drawn on screen, pressed over an
-empty box — and widening a column is neither, so it took a chord. The bare `w` still works
-on the **full-frame roster** (`alt+t` under about 100 columns, where the roster is drawn
-over the whole frame and there is no message box on screen). The column's own footer says
-`alt+w widen · click seam` or `alt+w narrow · click seam`, and clicking the seam — the
-column's two leftmost cells — does the same thing with the pointer. Both the offer and
-the handle exist only from 120 columns up, which is the only frame that lends the wider
-tier; narrower than that those two cells belong to the row under them and open its task.
+empty box, and widening a column is neither, so it took a chord. The bare `w` still works
+on the **full-frame roster** (`alt+t` under 100 columns, where the column is drawn over the
+whole frame and there is no message box on screen). The column's own footer says
+`alt+w widen · click seam` or `alt+w narrow · click seam`, and clicking the seam (the
+column's two leftmost cells) does the same thing with the pointer. Both the offer and the
+handle exist only from 120 columns up, which is the only frame that lends the wider
+column; narrower than that those two cells belong to the row under them and open its task.
 
-**`→` and `←` fold two things, and it is one gesture.** On a family's root row they open
-and close the family. On a row whose **work has finished** they open and close that row's
-own detail line — the merge word and price — which a finished row keeps folded so that the
-column's height goes to work that is still moving. A job's log path is not on that fold:
-it is on the job's page. `→` on anything else does nothing.
+**Folding is the headings' and nothing else's.** `Queued`, `Waiting` and `Done` start folded
+to one heading line; `enter` on the heading, or a press on it, opens the group, and it stays
+open for the session. `Running` never folds. A task row has no fold of its own: what it
+used to fold away (the merge word, the price, the branch) is on the hint line when the
+pointer is on it. `←` and `→` no longer fold anything; in a chat in a team they switch the
+column's two words, and elsewhere they do nothing.
 
 **The walk stops at this conversation's last job, after its last task.** The roster holds
 this conversation's work, then the jobs section under it, so `↓` walks both and clamps at
@@ -2416,46 +2419,43 @@ the bottom rather than carrying on into the project's record. Old tasks from ear
 sessions are on the sessions place, reached from the column's own `ctrl+. earlier` line, from
 `ctrl+.` or from `/history`; `enter` on an `earlier` row there goes inside that task's
 card. In a directory whose earlier sessions ran tasks but where **this** conversation has
-run none and started no jobs, `alt+t` falls through — there is nothing on the column to
+run none and started no jobs, `alt+t` falls through: there is nothing on the column to
 put a cursor on. A session that has only started a server still has the jobs section, so
 `alt+t` takes it.
 
 **The column's other lines take no cursor.** Its `standing` section, and the two `+` rows
-that close each of those sections (`+ /task`, `+ /standing`), are the pointer's — the walk
-skips them. The `jobs` section does take the cursor: the label, then every job row the
-column actually drew. Their keyboard equivalents for standing are the commands themselves:
-`/standing` opens the standing orders page, and typing `/task ` is exactly what pressing
-`+ /task` puts in the box. **No new key is added to the column by either of them.** `enter`
-on the `jobs` label toggles the section; `enter` on a job row opens that job's page.
+(`+ /task`, `+ /standing`), are the pointer's; the walk skips them. The `jobs` section does
+take the cursor: the label, then every job row the column actually drew. Their keyboard
+equivalents for standing are the commands themselves: `/standing` opens the standing orders
+page, and typing `/task ` is exactly what pressing `+ /task` puts in the box. `enter` on the
+`jobs` label toggles the section; `enter` on a job row opens that job's page.
 
-**Under 60 columns the TASKS PAGE this column reaches is a thumb's, not a keyboard's** — the
+**Under 60 columns the TASKS PAGE this column reaches is a thumb's, not a keyboard's**: the
 column itself is unchanged, and its own keys are the ones above. The page's rows become
 two-line cards a tap opens, its foot is a `‹ back` bar in place of the key legend
 `enter open its room · alt+s sort · type to filter`, and the strip that opens it is one full-width door
-(`▸ 3 tasks · 1 running`) rather than a row of chips. Mouse motion is ignored — a tap opens
+(`▸ 3 tasks · 1 running`) rather than a row of chips. Mouse motion is ignored: a tap opens
 in one gesture. The tasks page describes the phone flow in full.
 
-**`ctrl+g` closes the roster's column, and opens it again when it has no foreground
-command to keep.** It works from the message
-box, from inside a room, and while the roster holds the keyboard — it is the one key
-here you do not have to ask for the roster first to use. Closing it hands the keyboard
-back to the box. The choice is written to your profile as `ui.task_column`, so the next
-session opens the way you left it, and `alt+t` counts as asking for the column back.
+**`alt+l` closes the column, and opens it again.** It works from the message box, from
+inside a room, and while the roster holds the keyboard: it is the one key here you do not
+have to ask for the roster first to use. It is the same key in every chat, whichever word
+is in front, and the column's header names it at its right (`opt+l` on a Mac). Closing it
+hands the keyboard back to the box. The choice is written to your profile as
+`ui.task_column`, so the next session opens the way you left it, and `alt+t` counts as
+asking for the column back. `ctrl+g` does the same while no foreground command can be kept;
+while one can, `ctrl+g` backgrounds the command instead.
 
 **A closed column leaves a two-column edge down the right of the frame with a `❮` in it,
 drawn in ink, and clicking anywhere on that edge opens the column again. Clicking the
-column's `❯` door while it stands closes it** — one chevron control, two states, so the
-pointer can go both ways. With no foreground command to keep the line says
-`❯ ctrl+g hide`; while a command owns `ctrl+g`, it says only `❯ hide`. The chevron
-works in both states; the keyboard chord belongs to the command in the second one.
-When no command can be kept, the key falls through and does nothing only when there is
-no roster on the frame to close: a frame under 100 columns where nothing has raised the overlay. It works with
-no tasks at all — the column stands with only its `+ /task` and `+ /standing` doors, with the
-`ctrl+. earlier` door under them if earlier sessions ran anything, and either way an
-empty column is still a column to close. On the untouched empty screen there is no
-column yet; there `ctrl+g` is a first keystroke like any other — the greeting goes and
-the key then closes the column it would just have raised, so a second press brings it
-back (*The empty screen* page).
+`alt+l` at the right of the column's header while it stands closes it**, so the pointer can
+go both ways. `alt+l` works with no tasks at all: the column stands with only its header,
+its `+ /task` and `+ /standing` doors, and the `ctrl+. earlier` door under them if earlier
+sessions ran anything, and either way an empty column is still a column to close. Under 100
+columns there is no column beside the conversation, and `alt+l` lays it over the body
+instead. On the untouched empty screen there is no column yet; there the key is a first
+keystroke like any other: the greeting goes and the key then closes the column it would
+just have raised, so a second press brings it back (*The empty screen* page).
 
 **With a room open:** `esc` leaves the room, though a history recall walk is
 cancelled first · `enter` steers the node (see *What steering a task looks like on its
@@ -2672,11 +2672,14 @@ Only the left button acts. A press is resolved in this order:
    terminal the strip chip the roster's cursor is on carries a `✕` of its own, and
    pressing it asks to stop that work instead of opening its room. **When the column is
    closed, the two-column edge it leaves at the right of the frame answers here too** —
-   a press anywhere on it opens the column again. With no foreground command to keep,
-   `ctrl+g` does that too; while a command can be kept, the key backgrounds that command.
-   Within the column, its own lines are asked before its task rows: a `+ /task` or
-   `+ /standing` row types that command into your message box, and a row in the
-   `standing` section opens `/standing` with the cursor already on that order.
+   a press anywhere on it opens the column again; `alt+l` does that too.
+   Within the column, its own lines are asked before its task rows: the header's words
+   (the other word brings its view to the front, and the `alt+l` at the right closes the
+   column), a needs-you band row (it opens its thing), a group heading (it opens or folds
+   the group), a Traffic row, a `+ /task` or `+ /standing` row (it types that command into
+   your message box), and a row in the `standing` section (it opens `/standing` with the
+   cursor already on that order). Whatever lights under the pointer is exactly what a press
+   there does.
 9. The figures on the status row: the **money figure** (`$0.14`) and the cache beside it,
    which open the **Spending** tab of `/settings`; and the **context meter**
    (`66.8k/1.3M · 5%`) and the compaction forecast, which print `/status`. Each brightens
@@ -2741,8 +2744,8 @@ the wheel walks the **cursor** rather than a scroll offset of its own, because o
 window follows the cursor.
 
 **The task column on the right scrolls under the pointer** and leaves the conversation
-beside it where it is. It moves the column's own window — running work stays pinned at the
-top, and the `tasks` label with it — unless the column is holding the keyboard (`alt+t`),
+beside it where it is. It moves the column's own window (the header and the needs-you band
+stay pinned at the top) unless the column is holding the keyboard (`alt+t`),
 in which case the window is already following the cursor and the wheel walks that instead.
 
 Reaching the bottom **re-arms sticking**, so new replies follow along again. Scrolling
@@ -3128,8 +3131,8 @@ When more than one command is running at once, `ctrl+g` takes **the one that has
 been running longest**, which is the one you are waiting on.
 
 While a command can be kept, this meaning takes precedence over hiding or restoring the
-task column, so the column stays where it was. With no such command the key belongs to
-the column as described above. `ctrl+b` is copy mode and `ctrl+c` interrupts; neither changes.
+task column, so the column stays where it was. With no such command the key does what
+`alt+l` does: it closes the column or brings it back. `ctrl+b` is copy mode and `ctrl+c` interrupts; neither changes.
 
 ## When a settings change lands
 
