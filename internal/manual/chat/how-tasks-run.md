@@ -1404,7 +1404,9 @@ to the full log, all in the one turn. This is why a task does not `sleep` and `t
 build or test run — the waiting is done for it, and those nine `sleep N && tail` steps above
 are what the counter catches when something is polled that nobody is waiting on. A command
 started with `background: true` is the other case: a server or a sweep the task deliberately
-left running holds nothing up, and the task is asked its next step straight away.
+left running holds nothing up, and the task is asked its next step straight away. Either kind
+of job is the task's own to read and to stop, with the `jobs` tool's `output` and `kill`,
+and a job still running when the task ends is stopped with it.
 
 **A task that repeats itself is told what the work has been doing.** Before it is stopped it
 gets a `[stuck]` note, and that note now carries one more fact than the repetition itself:
@@ -1702,6 +1704,20 @@ How the restore is built depends on your workspace:
 
 The task's own checkout is untouched by any of this, and the restore is removed as soon as
 the answer is in.
+
+## Which folder the checker reads — did the check look at my checkout or the task's copy
+
+**A task's checker checks the task's own copy, never your checkout.** When a part of the
+work is finished, the checker — the seat that reads that part against what it was asked
+for — stands in the same copy the worker wrote in, and its instructions say so:
+the work is in its working directory, and every check and probe runs there.
+
+Your checkout is not the work while the task runs. It does not hold the result until the
+task lands, and it may hold changes of yours, or of other work, that are not this task's —
+so a check read there could pass or fail the task on the wrong diff.
+
+The checker may still read other folders, as every worker may. It writes only in its copy,
+and a write aimed anywhere else is refused before it runs.
 
 ## The check says my tests fail but they were already failing · red before the task started · my task was refused over somebody else's bug · pre-existing failures
 

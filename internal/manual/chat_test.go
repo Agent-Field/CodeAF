@@ -46,6 +46,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I see all my teams and what waits on me", "teams-page"},
 		{"does renaming a team update the message box", "teams-page"},
 		{"how do I close a team", "teams-page"},
+		{"will closing a sub-team stop its manager if that manager is also in the parent team", "teams-page"},
 		{"the pane said the manager was open in another window", "teams-page"},
 		{"how do I reopen a closed team", "teams-page"},
 		{"where do I change one team's settings", "teams-page"},
@@ -68,10 +69,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can the manager answer a member's permission prompt", "team-manager"},
 		{"how does a member post to the room", "team-manager"},
 		{"does a directive wake an idle member", "team-manager"},
+		{"why did my manager wake twice for one reply", "team-manager"},
+		{"can a manager stop a member working in the background without a window", "team-manager"},
+		{"what tools does a conversation lose when it stops being the manager", "team-manager"},
 		// Questions, packets, caps and wrapping up (team-questions-and-caps.md).
 		{"does a member's question go to the manager or to me", "team-questions-and-caps"},
 		{"what is a decision packet", "team-questions-and-caps"},
 		{"what happens when a team reaches its daily cap", "team-questions-and-caps"},
+		{"what if codeaf cannot read today's team spending", "team-questions-and-caps"},
+		{"do answered team questions survive packet file rotation", "team-questions-and-caps"},
 		{"why did two windows both ask me about the team cap", "team-questions-and-caps"},
 		{"how do I wrap up a team before closing it", "team-questions-and-caps"},
 		{"what happens to a wrap-up when codeaf restarts", "team-questions-and-caps"},
@@ -793,6 +799,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I open my tasks on a phone", "tasks"},
 		{"how do I get back from a task on my phone", "tasks"},
 		{"do tasks touch my working copy", "how-tasks-run"},
+		// The run's checker is told the work is in its own copy; a person who
+		// saw it read their checkout asks in these words.
+		{"did the checker read my checkout instead of the task's copy", "how-tasks-run"},
+		{"can a task stop a job it started", "how-tasks-run"},
 		// C14: repository placement, protected landings and kept dependency
 		// inheritance are reachable in the words a person uses after meeting them.
 		{"why didn't my task merge", "how-tasks-run"},
