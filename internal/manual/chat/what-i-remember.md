@@ -32,7 +32,7 @@ below is made, and the background tidy never runs. With it off, `/remember`,
 memory is off for this session · turn it on under /settings
 ```
 
-**The memory PLACE still opens with it off.** `alt+6` and `/memory` both reach it, and
+**The memory PLACE still opens with it off.** `alt+7` and `/memory` both reach it, and
 what they reach is the heading `memory` and its one line, with that same sentence written
 once into the rule above the composer — *What the memory place shows when there is nothing
 in it* below. It used to refuse to open at all, which made the memory key on a fresh machine a key
@@ -85,7 +85,7 @@ they are gone; nothing else keeps a second copy.
 
 ## How do I see what codeaf remembers about me?
 
-Open `/memory` — or `/memories`, or `alt+6` from anywhere (memory is not on the tab bar). **Memory is a
+Open `/memory` — or `/memories`, or `alt+7` from anywhere (memory is not on the tab bar). **Memory is a
 place**, one of seven, taking the whole screen with the tab bar above it and a composer at
 the foot.
 

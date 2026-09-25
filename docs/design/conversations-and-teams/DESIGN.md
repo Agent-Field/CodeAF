@@ -118,6 +118,14 @@ follows it; as the row narrows Home goes first, then the chip, never the tab in 
 front (section 1). The chip is the switcher: teams, All, add or remove this conversation, new team, team
 settings. New conversations started while a team is shown join it.
 
+**The way back from the places.** The places bar reads `home  teams  chats  tasks  spend
+settings` (ruled 2026-09-24); until a teams place exists it is `home  chats  tasks  spend
+settings`, and the list is data (`placeOrder` in `pages.go`) so teams takes its slot between
+home and chats. Digits follow the order, so `chats` is `alt+2` today and `alt+3` once teams
+lands. `chats` is not a room: a click, its digit or `enter` on it returns to the conversation
+in front, or opens a new chat when none is open. It never wears the current band, `tab` steps
+over it, and `alt+k` stays the switcher that chooses a conversation.
+
 ## 3. Organize: one button, a proposal, never a silent change
 
 On the All view, `✦ Organize` (key `o`), with a quiet count when five or more conversations

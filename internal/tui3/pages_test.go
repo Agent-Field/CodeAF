@@ -64,9 +64,13 @@ func TestTheSevenPlacesAreOneList(t *testing.T) {
 	if len(pages()) != 7 {
 		t.Fatalf("there are %d places, and the design has seven", len(pages()))
 	}
-	// AND alt+8 IS NOTHING, rather than the first place again.
-	if _, ok := placeDigit("alt+8"); ok {
-		t.Fatal("alt+8 reaches a place that does not exist")
+	// AND alt+9 IS NOTHING, rather than the first place again: the eight
+	// digits are the seven rooms and the way back to the chats.
+	if _, ok := placeDigit("alt+9"); ok {
+		t.Fatal("alt+9 reaches a place that does not exist")
+	}
+	if got, ok := placeDigit("alt+2"); !ok || got != pageChats {
+		t.Fatalf("alt+2 reaches %q, not the chats", got.word())
 	}
 }
 
@@ -302,8 +306,8 @@ func TestTheMapDrawsInTheCellsThatWereAlreadyThere(t *testing.T) {
 	// THE NUMBERS ARE ON THE TABS, and the three places off the bar are drawn
 	// after the four with theirs: the map is the one surface whose job is to show
 	// every key, so `alt+5`…`alt+7` are on it.
-	if bar := after[placeTabRow]; !strings.Contains(bar, "1 home") || !strings.Contains(bar, "4 settings") ||
-		!strings.Contains(bar, "5 standing") || !strings.Contains(bar, "7 search") {
+	if bar := after[placeTabRow]; !strings.Contains(bar, "1 home") || !strings.Contains(bar, "2 chats") || !strings.Contains(bar, "5 settings") ||
+		!strings.Contains(bar, "6 standing") || !strings.Contains(bar, "8 search") {
 		t.Fatalf("the map put no numbers on the tab bar: %q", bar)
 	}
 	// AND THE CHORD LIST IS THE HINT LINE.
@@ -752,15 +756,9 @@ func TestEveryPlaceReachesEveryOtherPlace(t *testing.T) {
 	}
 }
 
-// placeAt is a place's position in [pages], which is the digit that jumps to it.
-func placeAt(id page) int {
-	for i, at := range pages() {
-		if at == id {
-			return i
-		}
-	}
-	return -1
-}
+// placeAt is a place's position on the bar, which is the digit that jumps to
+// it less one.
+func placeAt(id page) int { return placeDigitOf(id) - 1 }
 
 // AND THE NUMBERS WORK FROM THE CONVERSATION, which is the screen a person
 // spends most of the day on and was the one surface they did not work from.
@@ -774,9 +772,9 @@ func TestTheNumbersOpenAPlaceFromTheConversationToo(t *testing.T) {
 	if a.at(pageHome) {
 		t.Fatal("close did not put the conversation back")
 	}
-	drive(t, a, key("alt+2"))
+	drive(t, a, key(placeChord(pageTasks)))
 	if a.page != pageTasks || !a.at(pageTasks) {
-		t.Fatalf("alt+2 from the conversation landed on %q (open %v)", a.page.word(), a.at(pageTasks))
+		t.Fatalf("%s from the conversation landed on %q (open %v)", placeChord(pageTasks), a.page.word(), a.at(pageTasks))
 	}
 	drive(t, a, key("esc"))
 	drive(t, a, key(placeChord(pageStanding)))
@@ -802,7 +800,7 @@ func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	a := placeApp(t)
 	for _, width := range []int{80, 120, 200} {
 		bar := plain(a.placeTabBar(width, false, a.pal))
-		if !strings.Contains(bar, "home   sessions   spend   settings") {
+		if !strings.Contains(bar, "home   chats   sessions   spend   settings") {
 			t.Fatalf("at %d columns the bar is not the four places in order: %q", width, bar)
 		}
 		for _, id := range []page{pageStanding, pageMemory, pageSearch} {

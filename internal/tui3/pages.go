@@ -49,6 +49,9 @@ const (
 	pageSpend
 	pageSearch
 	pageSettings
+	// pageChats is the bar's way back to the conversations (place_chats.go):
+	// never stood in, only walked out through.
+	pageChats
 )
 
 // ── THE CONTRACT EVERY PLACE ANSWERS ────────────────────────────────────────
@@ -385,11 +388,15 @@ var placeRegistry = map[page]place{}
 // bar's reading order at the mercy of what a file happens to be called — and
 // `place_home.go` sorts after `place_tasks.go` would silently reorder the bar
 // and every number on it.
-var placeOrder = []page{pageHome, pageTasks, pageSpend, pageSettings, pageStanding, pageMemory, pageSearch}
+//
+// AND THE CHATS ARE SECOND, right after home (place_chats.go): the room a
+// person came from, and goes back to more than to any other. A place added to
+// the bar later, teams, slots in between home and chats as one more row here.
+var placeOrder = []page{pageHome, pageChats, pageTasks, pageSpend, pageSettings, pageStanding, pageMemory, pageSearch}
 
 // placeBarPlaces is how many of [placeOrder] the tab bar draws: the four a day
-// is read through.
-const placeBarPlaces = 4
+// is read through, and the way back to the chats.
+const placeBarPlaces = 5
 
 // barPages is the places the bar draws while a person stands at `here`: the
 // first [placeBarPlaces], and the room they are standing in when it is one of
@@ -438,7 +445,19 @@ func registerPlace(p place) {
 
 // pages is every place in digit order, read from the registry's order table.
 // The bar draws a prefix of it ([barPages]).
-func pages() []page { return placeOrder }
+//
+// THE CHATS ARE ON THE BAR AND NOT AMONG THE ROOMS: `chats` is the way out of
+// the places (place_chats.go), so what is counted, listed on home and walked
+// as a room is every other word.
+func pages() []page {
+	rooms := make([]page, 0, len(placeOrder)-1)
+	for _, id := range placeOrder {
+		if id != pageChats {
+			rooms = append(rooms, id)
+		}
+	}
+	return rooms
+}
 
 // placeWordList is the seven words in digit order, for the one sentence on the
 // key sheet that has to say which digit is which (commands.go).
@@ -1675,7 +1694,7 @@ const (
 	// it where the place declares no verbs).
 	//
 	// IT SAYS WHAT THE KEY DOES. It read `→ verbs on this row`, which named a
-	// CATEGORY on a line where `alt+1…7 go to a place`, `alt+enter send it off as
+	// CATEGORY on a line where `alt+1…8 go to a place`, `alt+enter send it off as
 	// a task` and `esc close` all name an act — and `verbs` is the machinery's
 	// word for the strip rather than anybody's word for what pressing `→` gets
 	// them. The card's own `→ verbs: pause, stop` keeps the noun because the acts
@@ -1684,7 +1703,7 @@ const (
 	placeMapVerbWords = "→ show what this row can do"
 	// placeMapWords is the hint line while the map is drawn (SCREEN 3b): the
 	// chord list, in the cells the hint was already in.
-	placeMapWords = "alt+1…7 go to a place · " + placeMapTaskWords + " · " +
+	placeMapWords = "alt+1…8 go to a place · " + placeMapTaskWords + " · " +
 		placeMapVerbWords + " · " + mapCloseWords
 	// placeMapTaskWords is the map's clause about the chord that starts a task,
 	// named so the line can be drawn WITHOUT it: only home starts things, so on
@@ -1815,7 +1834,7 @@ func (a *app) placeHintSaid() string {
 		// what the keys are — and the place's resting foot is four clauses that
 		// the design fixes word for word (FIDELITY.md item 3). A key bound on
 		// every place and drawn on none of them would break SCREEN 3a's clause,
-		// and this is the line that keeps it, exactly as it keeps the `ctrl+1…7`
+		// and this is the line that keeps it, exactly as it keeps the `ctrl+1…8`
 		// alias ([chordSpelling.mapLine]).
 		line := a.chords.mapLine(a.placeMapSaid(), a.ctrlDigits())
 		if a.hopAvailable() {
@@ -2198,6 +2217,11 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 // ([place.remote]), which is still the place being open and saying why it is
 // empty.
 func (a *app) showPage(id page) (cmd tea.Cmd) {
+	// THE CHATS ARE THE ROAD OUT, not a room (place_chats.go): every door that
+	// names them, the bar, the digit and the cursor, arrives here.
+	if id == pageChats {
+		return a.goChats()
+	}
 	if a.startingChat() {
 		back := a.parkChatStart()
 		defer func() { cmd = tea.Batch(back, cmd) }()
@@ -2363,7 +2387,15 @@ func (a *app) placeBodyWheel(delta int) (tea.Cmd, bool) {
 // THE CIRCLE IS THE BAR ([barPages]). `tab` is the bar walked by a key, so it
 // goes where the words are: the four, and the room you are standing in when it
 // is one of the three off the bar — from which `tab` goes on to home.
-func nextPage(at page, back bool) page { return nextOn(barPages(at, false), at, back) }
+func nextPage(at page, back bool) page {
+	// `tab` walks the rooms, and the chats are the way out of them rather than
+	// one of them (place_chats.go), so the walk steps over the word.
+	next := nextOn(barPages(at, false), at, back)
+	if next == pageChats {
+		next = nextOn(barPages(at, false), pageChats, back)
+	}
+	return next
+}
 
 // nextOn is one step round a ring of places from `at`.
 func nextOn(all []page, at page, back bool) page {
