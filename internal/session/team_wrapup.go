@@ -235,6 +235,7 @@ func (a *Agent) teamWrapUpDue(profile string, now time.Time) {
 			continue
 		}
 		a.team.mu.Lock()
+		held := a.team.wraps[w.team]
 		delete(a.team.wraps, w.team)
 		a.team.mu.Unlock()
 		if openClosing(profile, w.team) {
@@ -246,9 +247,27 @@ func (a *Agent) teamWrapUpDue(profile string, now time.Time) {
 		if _, err := teams.Raise(profile, closingPacket(w.name, w.team, teams.ClosingReport{
 			Done: "not reported: " + why, Left: "unknown: see the team's traffic and each member's conversation",
 			SpendUSD: roundCents(spent), Incomplete: true,
-		})); err == nil {
-			clearTeamWrap(profile, w.team)
+		})); err != nil {
+			// THE RAISE DID NOT LAND. The clock was taken out before the
+			// write so a second look during it cannot raise a second report.
+			// A busy decisions file (ErrBusy after its wait) writes nothing,
+			// and leaving the clock out would mean this process never tries
+			// again: only a restart, which reads the disk, would send it.
+			// Put the same clock back and let the next ordinary look retry.
+			// A clock begun since the delete is newer and stays.
+			a.team.mu.Lock()
+			if held != nil {
+				if a.team.wraps == nil {
+					a.team.wraps = map[string]*wrapUp{}
+				}
+				if _, ok := a.team.wraps[w.team]; !ok {
+					a.team.wraps[w.team] = held
+				}
+			}
+			a.team.mu.Unlock()
+			continue
 		}
+		clearTeamWrap(profile, w.team)
 	}
 }
 

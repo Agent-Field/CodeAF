@@ -1066,7 +1066,11 @@ the bound minus how long since the start, and a wrap-up already past its bound r
 incomplete report on that start, once. Past either with no report, codeaf raises the
 `closing` packet itself with `Report.Incomplete`, question `close harbor? (wrap-up incomplete)`,
 options `close-now` / `keep-going`, recommended `keep-going`. A complete report has `close` /
-`keep-going`, recommended `close`. At most one closing packet waits per team.
+`keep-going`, recommended `close`. At most one closing packet waits per team. The in-memory
+clock is taken out before `Raise` so a second look during the write cannot raise another
+report. A `Raise` that fails (the decisions lock is busy, `ErrBusy` after its wait) puts
+that same clock back; the next ordinary due check tries again, and there is no retry loop
+inside the failed check. A raise that lands clears the clock in memory and on disk, once.
 
 **Accepting closes.** `teams.AcceptClosing(profile, packet)` closes `packet.Origin` with the
 packet as its report and appends a `KindClose` line, only for a decided closing packet whose

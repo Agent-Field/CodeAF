@@ -70,6 +70,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I wrap up a team before closing it", "team-questions-and-caps"},
 		{"what happens to a wrap-up when codeaf restarts", "team-questions-and-caps"},
 		{"does a wrap-up keep going if I quit codeaf", "team-questions-and-caps"},
+		{"what if the wrap-up report could not be sent", "team-questions-and-caps"},
 		{"can a manager direct a member of another team", "team-manager"},
 		{"can a manager start a sub-team", "team-manager"},
 		{"what is the global manager", "team-manager"},
