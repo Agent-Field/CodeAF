@@ -1004,7 +1004,9 @@ it), and `Close team…`. Closable with `esc`.
   A value is drawn with `from Settings` (`Origin.Words`). An engine without
   `Welcome.TeamSettings` keeps the tab read only and says
   `changing them is not available over this connection`. The other settings tabs still
-  write this laptop's config.json.
+  write this laptop's config.json. The note on those tabs says
+  `these rows belong to this machine; the Teams tab is saved on the other one.`
+  On the Teams tab, when the seam can write, it says `these rows are saved on <machine>.`
 - Spend over `--host` is the engine machine's ledger only. A conversation whose model calls
   were made on another machine (a laptop-run member of a far team) is not counted; no such
   arrangement exists today.
@@ -1215,7 +1217,9 @@ or `busy for <team>` (`MemberState.ReportsTo`).
   because quietness is read from the Traffic log.
 - **The `Teams` settings tab edits the engine's defaults over `--host`** when the engine says
   `TeamSettings` (8.7's first question). The write is the registry's own `Apply` on that
-  machine. An older engine keeps the tab read only, with
+  machine. The settings note on that tab says `these rows are saved on <machine>.` The
+  other tabs say `these rows belong to this machine; the Teams tab is saved on the other one.`
+  An older engine keeps the tab read only, with
   `changing them is not available over this connection`.
 - **Wake is on the card** (`team messages wake`, with its provenance), which 8.4's four rows
   predate; the settings tab's row order is questions, wake, cap, depth, share.

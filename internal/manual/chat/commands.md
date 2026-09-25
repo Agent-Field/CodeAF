@@ -1623,13 +1623,20 @@ So a value set here follows you between projects, and a value a project sets for
 has to be edited by hand in that file. When a project answers the same row, a write
 through `change_setting` says so rather than reporting a change that is not in force.
 
-Over `--host`, opening the panel first notes:
+Over `--host`, opening the panel on any tab but Teams first notes:
 
 ```
-these rows are this machine's — the ones that govern the conversation are read from the profile on the other one
+these rows belong to this machine; the Teams tab is saved on the other one.
 ```
 
-and then opens anyway.
+On the Teams tab the note is `these rows are saved on <machine>.` An older engine, where
+that tab cannot be saved over the connection, notes:
+
+```
+these rows belong to this machine; this conversation reads its profile on the other one.
+```
+
+The panel opens anyway.
 
 ## Can I edit team defaults over --host
 
