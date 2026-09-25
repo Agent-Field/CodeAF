@@ -120,9 +120,9 @@ things by the name they remember.
 
 **Where teams show.** Dots before a tile's title; a segmented Teams row on the wall; when a
 team is shown, a `● name ▾` chip on the tab strip and the rule under it in the team's
-hue. The strip reads `Home   ● name ▾   ◆ Manager   tabs…   +   ▦ All`: Home is a fixed door and
+hue. The strip reads `home   ● name ▾   ◆ Manager   tabs…   +   ▦ All`: home is a fixed door and
 stands first, the chip filters the tabs so it sits right before them, and the manager's place
-follows it; as the row narrows Home goes first, then the chip, never the tab in front (ruled
+follows it; as the row narrows home goes first, then the chip, never the tab in front (ruled
 2026-09-24). Showing a team narrows the strip to its members open in this window, plus the tab in
 front (section 1). The chip is the switcher: teams, All, add or remove this conversation, new team, team
 settings. New conversations started while a team is shown join it.

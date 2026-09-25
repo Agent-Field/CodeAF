@@ -33,7 +33,7 @@ import (
 // member the team's manager, and on the manager it reads `Remove manager`
 // (teammanager.go).
 //
-// WITH NO TEAM SHOWN THE CHIP IS STILL THERE, AS A QUIET ` Teams ▾ `, whenever
+// WITH NO TEAM SHOWN THE CHIP IS STILL THERE, AS A QUIET ` teams ▾ `, whenever
 // there is a team to switch to. The strip is the one control on every page,
 // and a switcher that appeared only once a team was already chosen could not be
 // used to choose the first; with no team at all there is nothing to switch to

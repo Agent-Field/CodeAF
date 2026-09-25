@@ -72,7 +72,7 @@ func TestTheConversationWearsThePlacesHead(t *testing.T) {
 		if !strings.HasPrefix(head[0], " "+plain(a.pal.wordmark(a.width))) || !strings.HasSuffix(head[0], headPulseWhole()) {
 			t.Fatalf("at %dx%d the chat's first row is not the pulse with its counts and budget:\n%q", size.w, size.h, head[0])
 		}
-		if !strings.Contains(head[placeTabRow], "Home") || !strings.Contains(head[placeTabRow], a.chatDisplayName()) {
+		if !strings.Contains(head[placeTabRow], " home ") || !strings.Contains(head[placeTabRow], a.chatDisplayName()) {
 			t.Fatalf("at %dx%d the strip is not under the pulse:\n%q", size.w, size.h, head[placeTabRow])
 		}
 		if head[2] != strings.Repeat("─", size.w) || head[3] != "" {

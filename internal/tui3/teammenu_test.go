@@ -245,7 +245,7 @@ func TestTeamMenuOpensTheCardAndTheSettings(t *testing.T) {
 	}
 }
 
-// WITH NO TEAM SHOWN THE CHIP IS A QUIET `Teams ▾` while there are teams, and
+// WITH NO TEAM SHOWN THE CHIP IS A QUIET `teams ▾` while there are teams, and
 // is not there at all while there are none.
 func TestTeamMenuQuietChipWithNoTeamShown(t *testing.T) {
 	a, _, _ := tabApp(t)
@@ -257,7 +257,7 @@ func TestTeamMenuQuietChipWithNoTeamShown(t *testing.T) {
 	a.teamActivate("")
 	a.touch()
 	row := plain(a.tabsRow(a.width))
-	if !strings.Contains(row, " Teams ▾ ") || !a.wall.chip.pressable() {
+	if !strings.Contains(row, " teams ▾ ") || !a.wall.chip.pressable() {
 		t.Fatalf("no quiet chip: %q", row)
 	}
 	if _, took := a.tabPress(a.wall.chip.from+1, placeTabRow); !took || !a.teamMenu.on {

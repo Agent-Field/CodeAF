@@ -76,7 +76,7 @@ func TestTheHeadAroundTheStripIsInertAndHomeHasPlainHover(t *testing.T) {
 			t.Fatal("Home padding is not part of the target")
 		}
 		a.hot = hot
-		if !strings.Contains(plain(a.tabsRow(a.width)), "·Home ") {
+		if !strings.Contains(plain(a.tabsRow(a.width)), "·home ") {
 			t.Fatal("Home has no plain-terminal hover feedback")
 		}
 	}
