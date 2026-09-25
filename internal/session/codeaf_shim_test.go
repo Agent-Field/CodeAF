@@ -136,3 +136,19 @@ func TestAWorkersCodeafRefusesRatherThanReachAnotherCodeaf(t *testing.T) {
 		t.Fatalf("the worker's codeaf answered %q, want the refusal and exit 127", said)
 	}
 }
+
+// Contract 1.x, the landing's side: the `codeaf` shim is the harness's own file,
+// exactly as the `plandb` shim beside it is. A run whose store sits inside the
+// working copy writes both into that copy's bin/, and a landing that counted
+// bin/codeaf as the work would report a change nobody asked for — or keep a
+// branch for it.
+func TestTheCodeafShimIsTheHarnesssOwnFileNotTheWork(t *testing.T) {
+	for _, path := range []string{"bin/" + planShimFilename, "bin/" + codeafShimFilename} {
+		if !harnessWrote(path) {
+			t.Fatalf("%s is counted as the run's work, want it read as the harness's own shim", path)
+		}
+	}
+	if harnessWrote("bin/devaf") {
+		t.Fatal("a bin/devaf the work wrote was taken for a harness shim")
+	}
+}
