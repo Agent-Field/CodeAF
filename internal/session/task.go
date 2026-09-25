@@ -188,6 +188,8 @@ var taskDescription = "Hand self-contained work to a task outside this conversat
 // moment the field is being filled, in as few bytes as say it. The page stays
 // the rule's home: on the lean belt this schema is fetched on demand, and the
 // page is all that is read before the model decides to propose at all.
+const taskViaSchemaJSON = `"via":{"type":"string","description":"A program your instructions list, to do the whole task alone in ground (or this conversation's folder): set it for work one is for, and when the person names one"},`
+
 var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"title":{"type":"string","description":"One line naming the work as a person would say it"},` +
 	`"summary":{"type":"string","description":"Two or three lines the person reads to decide whether to redirect it"},` +
@@ -201,10 +203,15 @@ var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids that must finish first, only ones propose_task returned in this session. Its brief is given their reports; an unknown or failed id refuses the proposal"},` +
 	`"wide":{"type":"boolean","description":"Optional. True when the work is wider than one pair of hands. Say true whenever you judged it broad; a wrong true costs nothing"},` +
 	`"model":{"type":"string","description":"Optional, only where the person asked for one: a catalog id or part of one, never a class word, so resolve \"fast\" to a concrete model. A word fitting several is shown to the person to settle"},` +
-	`"via":{"type":"string","description":"A program your instructions list, to do the whole task alone in ground (or this conversation's folder): set it for work one is for, and when the person names one"},` +
+	taskViaSchemaJSON +
 	`"max_steps":{"type":"integer","description":"Optional. Finished tool calls per progress checkpoint (default ` + strconv.Itoa(taskMaxSteps) + `); work still advancing is given more."},` +
 	`"no_progress":{"type":"integer","description":"Optional. Tool calls in a row that may add nothing before it is stopped as stuck (default ` + strconv.Itoa(taskNoProgress) + `). Raise it for work that must read a great deal first"}` +
 	`},"required":["title","summary","brief","deliverable","acceptance"],"additionalProperties":false}`
+
+// A build with no program has no usable via argument. Keep the full schema's
+// bytes unchanged where the launch registry carries one, and omit this field
+// on the same Config.mayDelegate predicate that controls the prompt.
+var taskSchemaWithoutViaJSON = strings.Replace(taskSchemaJSON, taskViaSchemaJSON, "", 1)
 
 // taskArguments is the wire form.
 type taskArguments struct {
@@ -543,7 +550,11 @@ func (a *Agent) taskTools() []bare.Tool {
 	if !a.mayProposeTask() {
 		return nil
 	}
-	return []bare.Tool{bare.StagedTool("propose_task", taskDescription, json.RawMessage(taskSchemaJSON), a.stageTask)}
+	schema := taskSchemaWithoutViaJSON
+	if a.config.mayDelegate() {
+		schema = taskSchemaJSON
+	}
+	return []bare.Tool{bare.StagedTool("propose_task", taskDescription, json.RawMessage(schema), a.stageTask)}
 }
 
 // mayProposeTask says whether propose_task belongs on this agent's belt: always

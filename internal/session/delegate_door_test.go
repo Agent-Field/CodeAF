@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/delegate"
+	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
@@ -384,6 +385,47 @@ func TestThePromptNamesTheDelegatesThisLaunchHasAndOnlyThose(t *testing.T) {
 	inTask := Config{Workspace: t.TempDir(), Delegates: with.Delegates, InTask: true}
 	if page := promptWithBeltFacts(inTask); strings.Contains(page, "The programs here") {
 		t.Fatal("a task node is told it may delegate")
+	}
+}
+
+// The tool and the prompt read the same launch registry. An empty build has no
+// program the model can name; a build carrying one offers via in its real tool.
+func TestProposeTaskOffersViaOnlyWhenTheLaunchCarriesAProgram(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		programs []delegate.Delegate
+		inTask   bool
+	}{
+		{name: "none"},
+		{name: "one", programs: testPrograms("senior-dev")},
+		{name: "built-in registry", programs: builtin.All()},
+		{name: "task node", programs: testPrograms("senior-dev"), inTask: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			config := Config{Workspace: t.TempDir(), Delegates: tc.programs, InTask: tc.inTask}
+			if tc.inTask {
+				config.tasker = graphForShape(t)
+				config.taskID = 1
+				config.taskDepth = 1
+			}
+			agent := &Agent{config: config}
+			tools := agent.taskTools()
+			if len(tools) != 1 || tools[0].Name != "propose_task" {
+				t.Fatalf("task tools = %+v", tools)
+			}
+			_, via := schemaProperties(t, tools[0].Schema)["via"]
+			wantVia := len(tc.programs) > 0 && !tc.inTask
+			if via != wantVia {
+				t.Fatalf("via present = %v, programs = %d: %s", via, len(tc.programs), tools[0].Schema)
+			}
+			page := promptWithBeltFacts(config)
+			if got := strings.Contains(page, "`propose_task`'s `via`"); got != wantVia {
+				t.Fatalf("prompt names via = %v, programs = %d", got, len(tc.programs))
+			}
+			if !wantVia && strings.Contains(page, "senior-dev") {
+				t.Fatal("a launch with no program told the model about senior-dev")
+			}
+		})
 	}
 }
 
