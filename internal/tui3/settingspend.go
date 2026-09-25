@@ -24,7 +24,7 @@ import (
 //	 per day           $500
 //	 per conversation  no limit                          this one $0.41
 //	 per plan          asks first above $100
-//	 per task          no limit of its own    it spends against the day and this conversation
+//	 per task          $5 a task                         set in /crew
 //	 per standing run  $5 a firing                       each order may name its own
 //	 practice          $50 of the day
 //
@@ -36,10 +36,9 @@ import (
 //     before the first call of the day it is not there at all (the emptiness
 //     law — a `$0.00 of $500` on a fresh morning is a claim nobody made).
 //   - `per task` and `per standing run` are rails this build HAS and does not
-//     keep a settings row for. A v3 task carries no dollar cap of its own —
-//     docs/LIMITS.md says so in those words — and a standing order's per-firing
-//     rail is written per item on the `stand` tool. The design asked for seven
-//     rows and the honest way to have seven is to SAY what those two rails are,
+//     keep a settings row for. A task's limit is set in /crew, and a standing
+//     order's per-firing rail is written per item on the `stand` tool. The
+//     design asked for seven rows and the honest way to have seven is to SAY what those two rails are,
 //     not to grow two knobs that write nowhere. A row that pretended to edit a
 //     rail nothing reads would be worse than the absence it was covering.
 //
@@ -114,7 +113,7 @@ func (s *sheet) spendingItems() []sheetItem {
 	add(config.KeyDailyBudget)
 	add(config.KeySpendRail)
 	add(config.KeyPlanConsent)
-	items = append(items, sheetItem{read: taskReading()}, sheetItem{read: standingReading()})
+	items = append(items, sheetItem{read: taskReading(s.profileDir)}, sheetItem{read: standingReading()})
 	add(config.KeyPracticeBudget)
 	for _, key := range order {
 		if _, left := mine[key]; left {
@@ -221,17 +220,14 @@ func subCent(usd float64) string {
 	return fmt.Sprintf("$%.4f", usd)
 }
 
-// taskReading is the rail a task actually runs under, said plainly.
-//
-// A TASK HAS NO DOLLAR CAP OF ITS OWN (docs/LIMITS.md). Its bounds are steps and
-// time; its money bound is whatever the conversation that started it carries,
-// which is the row two above this one and the day's row above that. The design
-// asked for a `per task` row and this is the true one: a person who wanted to
-// know what a task may spend now knows, and knows where to go and change it.
-func taskReading() *railReading {
+// taskReading is the per-task limit a crew task runs under: the figure set in
+// /crew, which stops the task's next call once the task has spent it. The task
+// also spends against the day and the conversation that started it.
+func taskReading(profileDir string) *railReading {
+	figure := config.CrewTaskMoney(config.CrewTaskCapAt(profileDir))
 	return &railReading{name: "per task",
-		value:   rowSay("no limit of its own", "no limit"),
-		receipt: rowSay("it spends against the day and this conversation", "against the day and this chat")}
+		value:   rowSay(figure+" a task", figure),
+		receipt: rowSay("set in /crew · it also spends against the day and this conversation", "set in /crew")}
 }
 
 // standingReading is what one firing of a standing order may spend when the

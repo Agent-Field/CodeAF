@@ -37,7 +37,7 @@ Claude Code, Codex and other skill folders still reach the conversation, carried
 with a message that suits them and attached by `/skill`
 (`skills-from-other-tools` says how).
 
-**The memory PLACE still opens with it off.** `alt+7` and `/memory` both reach it, and
+**The memory PLACE still opens with it off.** `alt+8` and `/memory` both reach it, and
 what they reach is the heading `memory` and its one line, with that same sentence written
 once into the rule above the composer — *What the memory place shows when there is nothing
 in it* below. It used to refuse to open at all, which made the memory key on a fresh machine a key
@@ -90,7 +90,7 @@ they are gone; nothing else keeps a second copy.
 
 ## How do I see what codeaf remembers about me?
 
-Open `/memory`, or `/memories`, or `alt+7` from anywhere (memory is not on the tab bar). **Memory is a
+Open `/memory`, or `/memories`, or `alt+8` from anywhere (memory is not on the tab bar). **Memory is a
 place**, one of seven, taking the whole screen with the tab bar above it and a composer at
 the foot.
 
@@ -541,12 +541,12 @@ list, every search and every message from that instant.
 
 Two calls per message — plus one that is not per message at all: the background
 tidy, on the **small work** class, a few times a day at most while nobody is
-here. The two that ride every message are both on the cheapest of the five crew
-classes — the
-`reflex` class, which exists precisely because a call made twice a turn is a
+here. The two that ride every message are both on the cheapest of the five model
+rows — the
+`reflex` row, which exists precisely because a call made twice a turn is a
 different economy from one made once a session. It ships pointed at
-`google/gemini-2.5-flash`, and at `mistralai/mistral-nemo` under the `open`
-crew family. Each goes out with a short
+`google/gemini-2.5-flash`, and at `mistralai/mistral-nemo` when your allowed
+models are `open`. Each goes out with a short
 prompt and a 200-token ceiling, and each is asked to answer in a few words of
 JSON.
 
@@ -574,8 +574,8 @@ summary are, so `/cost` and `/status` include them without any one message
 reading as three times the price of its neighbours. `/cost` also names how many
 of those paid requests were empty at their ceiling.
 
-You can point that class at a different model — the **reflex** row in
-`/settings` → Providers, or the whole crew in one word with `/crew` — or pin the
+You can point that row at a different model — the **reflex** row in
+`/settings` → Providers — or pin the
 `reflex` role by itself under `pinned roles`. A change is live: the next turn's
 pair uses it.
 

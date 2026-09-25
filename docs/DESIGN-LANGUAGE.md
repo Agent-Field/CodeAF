@@ -386,10 +386,10 @@ opposite ends.
 This surface says a great deal on its own account — a note, a hint, a legend, an
 announcement — and every word of it was written in the reading tiers, because
 none of it is the conversation. That is right about the LINE and it was wrong
-about what the line is for. `crew → balanced · brain kimi-k3:low · hands
-deepseek-v4-flash · checks qwen3.8-27b` was one flat dim run from end to end:
-the words a person already knew, and the four model ids they typed the command
-to learn, at exactly the same weight. The sentence was legible and the ANSWER
+about what the line is for. `checker ⌖ moonshotai/kimi-k3 · every task until
+you unpin it · you are still talking to deepseek-v4-flash` was one flat dim run
+from end to end: the words a person already knew, and the two model ids they
+typed the command to learn, at exactly the same weight. The sentence was legible and the ANSWER
 inside it was not.
 
 So the prose of an informational line stays where it is, and **each load-bearing
@@ -441,8 +441,8 @@ mentioned would have spent the budget forty times a minute.
 a line is bright then nothing in it is, and a rule that lifted every noun would
 have bought back the flat line it started from. So the hint slot lifts the key
 and never the verb beside it; `/status` lifts the figure and never its label;
-the crew line lifts the three ids and leaves `crew →`, the preset word the
-person has just typed, and the three role words where they were — those are the
+the `/crew` panel lifts the model ids and leaves the seat words, `auto · now`
+and the words the person has just typed where they were — those are the
 question, and the ids are the answer.
 
 **A datum is named, never guessed.** `internal/tui3/payload.go` holds the whole

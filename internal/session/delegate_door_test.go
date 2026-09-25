@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
 	"github.com/Agent-Field/codeaf/internal/plandb"
@@ -50,11 +52,16 @@ func TestADelegatedRunWorksOnItsOwnBranchInTheFolderAndLeavesItCheckedOut(t *tes
 	base := strings.TrimSpace(gitOut(t, conversation, "rev-parse", "HEAD"))
 	sessionDir := t.TempDir()
 	registry := testPrograms("fake")
-	agent, _ := newTestAgent(t, beltRunCompleter{text: result}, func(config *Config) {
-		config.Workspace = conversation
-		config.Place = Place{Dir: sessionDir}
-		config.AskConsent = false
-		config.Delegates = registry
+	agent, _ := newTestAgent(t, beltRunCompleter{text: result}, func(cfg *Config) {
+		cfg.Workspace = conversation
+		cfg.Place = Place{Dir: sessionDir}
+		cfg.AskConsent = false
+		cfg.Delegates = registry
+		cfg.RolesSource = tierSettings(map[string]string{"tiers.worker": "vendor/program-worker"})
+		cfg.RouteCrew = func(config.CrewAsk) (crewroute.Decision, error) {
+			t.Fatal("a program run was handed to the ordinary task router")
+			return crewroute.Decision{}, nil
+		}
 	})
 
 	id, title, note, err := agent.StartDelegate(context.Background(), "fake", "add two files to the project")
@@ -70,6 +77,9 @@ func TestADelegatedRunWorksOnItsOwnBranchInTheFolderAndLeavesItCheckedOut(t *tes
 	double.mu.Unlock()
 	if spec.Delegate == nil || spec.Delegate.Name != "fake" {
 		t.Fatalf("the engine was handed no delegate: %+v", spec.Delegate)
+	}
+	if spec.WorkModel != "vendor/program-worker" || spec.Crew.Hands != "vendor/program-worker" {
+		t.Fatalf("the program lost its pinned worker seat: model %q, crew %+v", spec.WorkModel, spec.Crew)
 	}
 	if spec.Brief != "add two files to the project" {
 		t.Fatalf("brief = %q", spec.Brief)
@@ -269,6 +279,31 @@ func TestAProgramIsHandedTheConversationsCrew(t *testing.T) {
 	}
 	if got := agent.delegateCrew(&beltRun{}); !got.IsZero() {
 		t.Fatalf("a run no program works was handed a crew: %+v", got)
+	}
+}
+
+// A program gets one stable profile worker recommendation when the old role
+// row is absent; its requested models remain explicit, and no task brief is
+// handed to the per-task router.
+func TestAProgramKeepsItsRequestedModelsBesideTheProfileWorker(t *testing.T) {
+	called := 0
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "unused"}, func(c *Config) {
+		c.RouteCrew = func(ask config.CrewAsk) (crewroute.Decision, error) {
+			called++
+			if ask.Task.Text != "" {
+				t.Fatalf("the program brief reached the ordinary task router: %q", ask.Task.Text)
+			}
+			return crewroute.Decision{Crew: []crewroute.Pick{{Seat: crewroute.Worker, Send: "vendor/profile-worker"}}}, nil
+		}
+	})
+	program := testPrograms("fake")[0]
+	run := &beltRun{delegate: &program, asked: []string{"vendor/requested"}}
+	crew := agent.delegateCrew(run)
+	if crew.Hands != "vendor/profile-worker" || !reflect.DeepEqual(crew.Asked, []string{"vendor/requested"}) {
+		t.Fatalf("program models = %+v", crew)
+	}
+	if called != 1 {
+		t.Fatalf("profile worker was read %d times", called)
 	}
 }
 

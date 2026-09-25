@@ -23,33 +23,32 @@ import (
 // the one screen that replaced them, and the rule that decided its contents is
 // written in docs/design/onboarding/DESIGN.md: a control belongs here when it is
 // NECESSARY TO WORK, MATERIALLY CHANGES THE FIRST EXPERIENCE, and CAN BE
-// UNDERSTOOD BEFORE THE PERSON HAS USED codeaf. Three pass — the day's limit
+// UNDERSTOOD BEFORE THE PERSON HAS USED codeaf. Two pass — the day's limit
 // (money is consequential and an amount can be chosen with no knowledge of the
-// engine), the chat model, and the crew — and everything else is a setting or a
-// thing to be taught at the moment it happens.
+// engine) and the chat model — and everything else is a setting or a thing to
+// be taught at the moment it happens. THE CREW USED TO BE THE THIRD, as a
+// choice between three preset words; since 2026-09-24 a task's crew is picked
+// per task and asks nothing up front, so it left this screen (/crew is where
+// its pins, allowed models and cap live).
 //
 // SIX LAWS HOLD THIS SCREEN TOGETHER.
 //
 //   - EVERY VALUE ON IT IS THE RESOLVED ONE. Nothing here is a figure this file
-//     knows: the limit, the model and the crew are read back through the settings
+//     knows: the limit and the model are read back through the settings
 //     registry and internal/config, so a profile that already has a limit sees
-//     THEIR limit and not the default, a crew nobody can name reads `Custom`
-//     rather than a preset it is not, and an environment variable that owns a row
-//     is named rather than quietly overwritten.
+//     THEIR limit and not the default, and an environment variable that owns a
+//     row is named rather than quietly overwritten.
 //   - THE DEFAULTS ARE ALREADY CHOSEN. Every row opens on the value that is in
 //     force, so a person who wants none of this presses enter on `Start a
 //     conversation` and has agreed to exactly what they were shown. That is the
 //     whole difference between a form and an interrogation.
 //   - IT WRITES ONLY WHAT IT WAS GIVEN. Leaving this screen writes the day's
-//     limit, because the limit is the field it asked about; it writes a crew ONLY
-//     where the person chose one here or where the profile had none at all. A
-//     setup that applied a preset to somebody's hand-pinned tiers would destroy an
-//     opinion in the act of asking for one ([app.commitSetupCrew]).
-//   - CANCELLING CHOOSES NOTHING. Esc out of either chooser leaves the value that
+//     limit, because the limit is the field it asked about, and nothing else.
+//   - CANCELLING CHOOSES NOTHING. Esc out of the model list leaves the value that
 //     was there before it opened. A cursor is not an answer.
 //   - THE SCREEN IS THREE SENTENCES LONG. Each control carries one line about
-//     what it does and nothing else; the caveats, the exact model ids and the five
-//     crew seats are behind `?`, on the field a person is standing on. A first
+//     what it does and nothing else; the caveats and the exact model ids are
+//     behind `?`, on the field a person is standing on. A first
 //     screen that has to be read before it can be answered is a first screen most
 //     people leave.
 //   - IT SPENDS NOTHING. Opening a model list reads the catalog this process
@@ -69,7 +68,6 @@ type setupControl int
 const (
 	controlLimit setupControl = iota
 	controlChatModel
-	controlCrew
 	controlReview
 	controlStart
 )
@@ -92,7 +90,6 @@ const (
 const (
 	controlLimitLabel = "Daily limit"
 	controlModelLabel = "Chat model"
-	controlCrewLabel  = "Work crew"
 )
 
 // controlLabelWidth is the column the three labels are laid out in. It is wide
@@ -109,7 +106,6 @@ const (
 	controlLimitWord = "When " + product + "'s spending today reaches this amount, " +
 		"new work waits until midnight or you raise it."
 	controlModelWord = "The model you talk to in this conversation."
-	controlCrewWord  = "Models used to plan, run, and check tasks."
 )
 
 // The detail behind `?`, on the field with the focus.
@@ -123,8 +119,8 @@ const (
 	controlLimitDetail = "It counts spending " + product + " records here. Calls already " +
 		"running can carry it a little past. Your provider account has its own controls."
 	controlModelDetail = "It also handles this conversation's tool use. Changing it here is " +
-		"the same choice /model makes, and it is kept for the next launch."
-	controlCrewDetail = "Changing the crew leaves the chat model alone."
+		"the same choice /model makes, and it is kept for the next launch." +
+		" Tasks get their own crew, picked per task · /crew shows it."
 )
 
 // The two spellings of the row under the fields. A fresh profile is told these
@@ -161,7 +157,7 @@ const (
 	controlFromLead   = "from "
 )
 
-// controlTaskPinLead is the line under the crew when a task-model override is in
+// controlTaskPinLead is the line under the chat model when a task-model override is in
 // force. THE CREW ROW WOULD OTHERWISE BE A LIE BY OMISSION: a person who pinned
 // `task.model` has taken the worker seat out of the preset's hands, and a screen
 // offering to change "the models used to run tasks" without saying so would be
@@ -186,7 +182,7 @@ func (a *app) setupControlsKey(name, text string) bool {
 		// open is about the screen itself, and [app.setupControlsPress] handles
 		// that one because leaving is the flow's business rather than this
 		// screen's.
-		if s.modelOpen || s.crewOpen {
+		if s.modelOpen {
 			s.closeChoosers()
 			return true
 		}
@@ -205,20 +201,12 @@ func (a *app) setupControlsKey(name, text string) bool {
 			a.moveSetupModel(1)
 			return true
 		}
-		if s.crewOpen && name != "tab" {
-			s.crewAt = moveCursor(s.crewAt, 1, len(config.CrewPresets))
-			return true
-		}
 		s.focusControl(a, 1)
 		return true
 
 	case "shift+tab", "up", "ctrl+p":
 		if s.modelOpen && name != "shift+tab" {
 			a.moveSetupModel(-1)
-			return true
-		}
-		if s.crewOpen && name != "shift+tab" {
-			s.crewAt = moveCursor(s.crewAt, -1, len(config.CrewPresets))
 			return true
 		}
 		s.focusControl(a, -1)
@@ -295,7 +283,7 @@ func (a *app) setupControlsKey(name, text string) bool {
 		a.filterSetupModels(s.modelFind + text)
 		return true
 	}
-	if s.control == controlLimit && !s.crewOpen {
+	if s.control == controlLimit && !s.anyOpen() {
 		s.limitText += text
 		s.limitTyped = true
 	}
@@ -312,13 +300,13 @@ func dropLast(text string) string {
 }
 
 // anyOpen reports whether a chooser is standing under a row.
-func (s *setupFlow) anyOpen() bool { return s.modelOpen || s.crewOpen }
+func (s *setupFlow) anyOpen() bool { return s.modelOpen }
 
 // closeChoosers puts both away and drops what was provisional in them: the model
-// list's filter and cursor, and the crew's cursor. Neither has written anything —
+// list's filter and cursor. It has written nothing —
 // that is what makes esc safe here.
 func (s *setupFlow) closeChoosers() {
-	s.modelOpen, s.crewOpen = false, false
+	s.modelOpen = false
 	s.modelFind = ""
 	s.modelTop = 0
 }
@@ -428,18 +416,6 @@ func (a *app) setupControlsEnter() bool {
 		a.filterSetupModels("")
 		return false
 
-	case controlCrew:
-		if s.crewOpen {
-			// THE CURSOR BECOMES THE ANSWER HERE AND NOWHERE ELSE. Until this
-			// line the crew on the row is whatever the profile reads.
-			s.crewPick = config.CrewPresets[clampIndex(s.crewAt, len(config.CrewPresets))]
-			s.closeChoosers()
-			return false
-		}
-		s.crewOpen = true
-		s.crewAt = a.setupCrewCursor()
-		return false
-
 	case controlReview:
 		s.reviewOpen = !s.reviewOpen
 		return false
@@ -494,47 +470,6 @@ func (a *app) commitSetupLimit() bool {
 	return true
 }
 
-// commitSetupCrew writes a crew, and MOSTLY DOES NOT.
-//
-// THE SETUP MAY NOT PAPER OVER AN OPINION. internal/config says why in its own
-// words: [config.CrewConfigured] is true when ANY of the tier rows, or the
-// family row above them, is in the profile, "because a person who pinned one tier
-// by hand, or chose a family, has an opinion the setup must not paper over with a
-// preset". So a preset is written on exactly two
-// roads — the person chose one in the chooser on this screen, or the profile had
-// no crew of its own at all and the row they were shown is the shipped default,
-// which is the case the first-run flow exists for.
-//
-// The cost of getting this wrong was a real one: a profile with hand-pinned tiers
-// and no daily limit opens this screen, and the old code applied
-// `CrewPresets[0]` — Frugal — to it on the way out, silently, because the cursor
-// started at zero.
-func (a *app) commitSetupCrew() bool {
-	s := &a.setup
-	preset := s.crewPick
-	if preset == "" {
-		if config.CrewConfigured(a.profileDir) {
-			return true
-		}
-		preset = config.CrewAt(a.profileDir)
-		if config.CrewLine(preset) == "" {
-			// Not one of the three, on a profile with nothing written down. There
-			// is no preset to record and nothing to preserve, so nothing is done.
-			return true
-		}
-	}
-	row, ok := a.registry().Row(config.KeyCrew)
-	if !ok {
-		return true
-	}
-	if err := row.Apply(preset); err != nil {
-		s.refusal = setupSaid(err, setupSaveFailedWord)
-		return false
-	}
-	a.refreshSettings()
-	return true
-}
-
 // commitSetupControls is `Start a conversation`. It reports whether the screen is
 // finished.
 //
@@ -544,10 +479,7 @@ func (a *app) commitSetupCrew() bool {
 // live conversation on that model rather than a promise to switch later. A person
 // who opened the list and pressed esc chose nothing and nothing was written.
 func (a *app) commitSetupControls() bool {
-	if !a.commitSetupLimit() {
-		return false
-	}
-	return a.commitSetupCrew()
+	return a.commitSetupLimit()
 }
 
 // takeSetupModel puts the conversation on a model chosen here, THROUGH THE
@@ -654,25 +586,6 @@ func (a *app) setupModelChoices() []Model {
 // under a field that still needs the primary action beneath it.
 const setupModelSlots = 5
 
-// setupCrewCursor is where the crew chooser opens: on the preset in force, so
-// enter confirms rather than changes. A crew that is nobody's preset opens on the
-// default, because there is no row to confirm and the default is the one this
-// screen would otherwise be recommending.
-func (a *app) setupCrewCursor() int {
-	current := a.setupCrewReading()
-	for i, preset := range config.CrewPresets {
-		if preset == current {
-			return i
-		}
-	}
-	for i, preset := range config.CrewPresets {
-		if preset == config.DefaultCrew {
-			return i
-		}
-	}
-	return 0
-}
-
 // setupLimitReading is the day's ceiling as this screen draws it and as it writes
 // it back: the registry row's own reading, which is `$500`, or `no limit` for a
 // profile that has taken the rail off.
@@ -685,16 +598,6 @@ func (a *app) setupLimitReading() string {
 		return value
 	}
 	return config.NoLimitWord
-}
-
-// setupCrewReading is the crew this screen is showing: what was chosen here, or
-// what the profile's five tier rows actually make — which may be
-// [config.CrewCustom], and says so rather than naming a preset it is not.
-func (a *app) setupCrewReading() string {
-	if a.setup.crewPick != "" {
-		return a.setup.crewPick
-	}
-	return config.CrewAt(a.profileDir)
 }
 
 // startSetupControls seeds the screen from the profile, ONCE. Every value on it
@@ -713,11 +616,6 @@ func (a *app) startSetupControls() {
 	s.limitText, s.limitTyped = "", false
 	s.closeChoosers()
 	s.reviewOpen, s.detail = false, false
-	s.crewPick = ""
-	// The family is read HERE, arriving on the screen, and not in the draw: this
-	// screen's rows are drawn every frame and a profile read belongs at a door.
-	s.crewSource = config.CrewSourceAt(a.profileDir)
-	s.crewAt = a.setupCrewCursor()
 	s.example = exampleForControl(controlLimit)
 	// ARRIVING ON THE SCREEN IS THE FIRST OF THE TWO DELIBERATE ACTS, so the
 	// panel plays once here. Coming BACK from the step behind this one does not
@@ -809,7 +707,11 @@ func exampleForControl(control setupControl) int {
 	switch control {
 	case controlLimit:
 		return 2
-	case controlCrew:
+	case controlReview:
+		// THE HAND-OFF EXAMPLE stood beside the crew row, which is gone: a task's
+		// crew is picked per task now and asks nothing here. The review row is
+		// the door to every setting this screen does not ask about, the crew's
+		// among them, so the hand-off stands beside it.
 		return 1
 	}
 	return 0
@@ -902,11 +804,6 @@ func titleWord(word string) string {
 	runes[0] = []rune(strings.ToUpper(string(runes[0])))[0]
 	return string(runes)
 }
-
-// presetWord is a crew preset as a label — `balanced` reads `Balanced` — and it
-// covers [config.CrewCustom] too, which is a reading rather than a preset and
-// still has to be spelled on the row.
-func presetWord(preset string) string { return titleWord(strings.TrimSpace(preset)) }
 
 // ── the drawing ─────────────────────────────────────────────────────────────
 
@@ -1180,16 +1077,10 @@ func (a *app) setupControlsForm(width int) *controlsSheet {
 	}
 	f.soft(rankSpacer, "")
 
-	// ── the crew ──
-	f.add(a.setupFieldRow(width, controlCrew, controlCrewLabel, presetWord(a.setupCrewReading()), ""))
-	a.addControlWords(f, width, controlCrew, controlCrewWord, a.setupCrewDetail())
 	if line := a.setupTaskPinRow(width); line != "" {
 		// A TASK-MODEL OVERRIDE IS NOT DETAIL. It is a fact that contradicts the
 		// row above it, so it is on the screen whether or not anybody asked.
 		f.add(line)
-	}
-	if s.crewOpen {
-		f.add(a.setupCrewRows(width)...)
 	}
 	f.soft(rankSpacer, "")
 
@@ -1337,56 +1228,7 @@ func (a *app) setupModelDetail() string {
 	return controlModelDetail
 }
 
-// setupCrewDetail is what `?` says about the crew: the three seats a person
-// actually asks about, read off the profile's own live rows through
-// internal/config's one summary, and then what a crew change does not touch.
-//
-// It is the LIVE reading and not the preset's table, which is the whole point on
-// a profile whose crew is nobody's preset: `Custom` on the row, and the models it
-// is actually made of underneath it.
-func (a *app) setupCrewDetail() string {
-	seats := ""
-	if a.setup.crewPick != "" {
-		// A PRESET TAKEN IN THE CHOOSER IS NOT ON DISK YET, so the seats come off
-		// the preset's own table rather than off the profile — otherwise `?` on a
-		// crew somebody has just chosen would describe the crew they replaced.
-		// The three roles are spelled the way internal/config spells them for the
-		// live reading below, because a person opening this twice must not be
-		// shown one sentence in two shapes.
-		seats = crewPickSeats(a.setup.crewSource, a.setup.crewPick)
-	}
-	if seats == "" {
-		seats = strings.TrimSpace(config.CrewClasses(a.profileDir))
-	}
-	if seats == "" {
-		return controlCrewDetail
-	}
-	return seats + "\n" + controlCrewDetail
-}
-
-// crewPickSeats is one preset's three named seats — `brain … · hands … · checks
-// …` — built from [config.CrewModels] so a preset chosen a moment ago describes
-// itself rather than the profile it has not been written to yet. It answers ""
-// for a word that is not a preset, which is the emptiness law: there is no crew
-// to describe and no placeholder that would be true.
-func crewPickSeats(source, preset string) string {
-	models, ok := config.CrewModelsForSource(source, preset)
-	if !ok {
-		return ""
-	}
-	short := func(tier string) string {
-		id := strings.TrimSpace(models[tier])
-		if at := strings.LastIndex(id, "/"); at >= 0 {
-			id = id[at+1:]
-		}
-		return id
-	}
-	return "brain " + short(config.ModelTierMastermind) +
-		" · hands " + short(config.ModelTierWorker) +
-		" · checks " + short(config.ModelTierHigh)
-}
-
-// setupTaskPinRow is the line under the crew when `task.model` is pinned, and ""
+// setupTaskPinRow is the line under the chat model when `task.model` is pinned, and ""
 // — the emptiness law — when it is not.
 func (a *app) setupTaskPinRow(width int) string {
 	row, ok := a.registry().Row(config.KeyTaskModel)
@@ -1481,70 +1323,6 @@ const setupNoCatalogWord = "no model list on this machine yet · /model finds on
 
 // setupNoMatchWord is a filter that matched nothing.
 const setupNoMatchWord = "nothing matches · backspace widens it"
-
-// crewChoiceWords is what each preset says about itself ON THIS SCREEN, and it
-// is deliberately NOT [config.CrewLine].
-//
-// The registry's line is written for somebody who already has the vocabulary:
-// `glm-flash works, checks and thinks · pennies a day` names one model three
-// times and makes a claim about money. Both halves are wrong here. Nobody meeting codeaf for the
-// first time can rank `glm-flash` against `kimi-k3`, and — the harder rule —
-// THIS SCREEN MAKES NO CLAIM ABOUT WHAT ANYTHING COSTS. "Pennies a day" is a
-// forecast about somebody else's usage on somebody else's pricing, said on the
-// one screen that also asks them to name a daily ceiling, and a product that
-// guesses at a person's bill next to a field where they set their own limit has
-// put a number in their head that it cannot stand behind.
-//
-// So each line is about THE CHOICE — how much model is put on the work — in the
-// comparative terms the three presets actually differ by. The five model ids are
-// one keystroke away on `?`, which is where an address belongs.
-var crewChoiceWords = map[string]string{
-	config.CrewFrugal:   "The lightest models that can do the work.",
-	config.CrewBalanced: "A stronger model plans and checks; lighter ones do the work.",
-	config.CrewMax:      "The strongest models on the work and the thinking.",
-}
-
-// crewChoiceWord is one preset's line here, falling back to the registry's own
-// for a preset this table has not been taught — which is the one-source rule
-// applied to a gap: a new preset gets a real sentence rather than a blank row,
-// and the blank row is what would have shipped if this map were the only source.
-func crewChoiceWord(preset string) string {
-	if word := crewChoiceWords[strings.ToLower(strings.TrimSpace(preset))]; word != "" {
-		return word
-	}
-	// The fallback is for a preset this screen has not been taught, and it is the
-	// default family's line: setupCrewRows runs inside the draw, so reading the profile
-	// here would put a profile read on the frame clock, and the seats this screen
-	// shows already take the family from a value read at the door.
-	return config.CrewLine(preset)
-}
-
-// setupCrewRows is the chooser under the crew row: the three presets, each with
-// its own compact sentence WHOLE — a comparison a person cannot finish reading is
-// not a comparison — and a word about a crew that is none of the three.
-func (a *app) setupCrewRows(width int) []string {
-	pal := a.pal
-	out := make([]string, 0, len(config.CrewPresets)*2+1)
-	at := clampIndex(a.setup.crewAt, len(config.CrewPresets))
-	for i, preset := range config.CrewPresets {
-		lead, name := "    ", pal.dim(presetWord(preset))
-		if i == at {
-			lead, name = "  "+pal.accent(setupLead), pal.bold(pal.ink(presetWord(preset)))
-		}
-		out = append(out, lead+name)
-		// The sentence is wrapped rather than cut, on its own line, so the three
-		// read as three comparable things at any width this screen has.
-		for _, line := range wrap(crewChoiceWord(preset), width-6) {
-			out = append(out, strings.Repeat(" ", 6)+pal.muted(line))
-		}
-	}
-	if a.setupCrewReading() == config.CrewCustom {
-		// crew.go's own sentence for this state, said in the one place a person
-		// can act on it.
-		out = append(out, strings.Repeat(" ", 4)+pal.dim(fit(crewCustomLine, width-4)))
-	}
-	return out
-}
 
 // setupReviewRow is the row under the fields. Its wording depends on the profile
 // and not on a guess: a profile that has written any of the three down is NOT
@@ -1658,7 +1436,7 @@ func (a *app) setupControlsKeys(width int) string {
 		// THE WAY OUT IS SECOND AND NOT LAST. At forty columns a legend has room
 		// for about two clauses, and of everything a chooser could teach, "this
 		// key leaves without choosing" is the one a person cannot guess.
-		parts = []string{"enter takes it", "esc cancels", "↑↓ choose"}
+		parts = []string{"enter takes it", "esc cancel", "↑↓ choose"}
 		if s.modelOpen {
 			parts = append(parts, "type to narrow")
 		}
@@ -1672,14 +1450,14 @@ func (a *app) setupControlsKeys(width int) string {
 		switch s.control {
 		case controlLimit:
 			parts = []string{"enter goes on", "tab moves", a.setupBackWord(), "type an amount or none"}
-		case controlChatModel, controlCrew:
+		case controlChatModel:
 			parts = []string{"enter opens the list", "tab moves", a.setupBackWord()}
 		case controlReview:
 			parts = []string{"enter shows them", "tab moves", a.setupBackWord()}
 		case controlStart:
 			parts = []string{"enter starts", "tab moves", a.setupBackWord()}
 		}
-		if s.control <= controlCrew {
+		if s.control <= controlChatModel {
 			parts = append(parts, "? detail")
 		}
 		if w, _ := a.size(); w >= setupWideCols {

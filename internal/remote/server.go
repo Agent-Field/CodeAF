@@ -1187,6 +1187,13 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// Every engine of this build answers the teams doors from its own
 		// profile (teams.go), so the flag is about the build, not the agent.
 		Teams: true,
+		// And the delegation doors beside them (delegation.go), for the same
+		// reason: the build answers them, whatever agent is open.
+		Delegation: true,
+		// And the settings tab's write of those defaults, for the same reason.
+		TeamSettings: true,
+		// And the wrap-up's two doors, for the same reason.
+		WrapUp: true,
 		// The two model asks are the agent's, so they are asked of it.
 		TeamAsk: teamAskKnown(sess.agent),
 		// This revision checks it in the handler, for every engine behind it
@@ -2311,6 +2318,22 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
+		// AN EFFORT WORD THIS ENGINE CANNOT HONOUR IS REFUSED, NEVER DROPPED:
+		// the person said how hard to try this task, and a start on the crew
+		// they would have had anyway is the silence version 18 exists to end.
+		if args.Effort != "" {
+			effortDoor, ok := agent.(interface {
+				StartTaskEffort(context.Context, string, bool, string) (uint64, string, string, error)
+			})
+			if !ok {
+				return nil, errors.New("engine: this session cannot choose a task's crew")
+			}
+			id, title, note, err := effortDoor.StartTaskEffort(context.Background(), args.Brief, args.Solo, args.Effort)
+			if err != nil {
+				return nil, err
+			}
+			return json.Marshal(TaskStarted{ID: id, Title: title, Note: note})
+		}
 		id, title, note, err := door.StartTask(context.Background(), args.Brief, args.Solo)
 		if err != nil {
 			return nil, err
@@ -2338,6 +2361,22 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, err
 		}
 		return json.Marshal(TaskStarted{ID: id, Title: title, Note: note})
+	case MethodTaskRedoStronger:
+		door, ok := agent.(interface {
+			RedoStronger(context.Context, uint64) (uint64, string, error)
+		})
+		if !ok {
+			return nil, errors.New("engine: this session has no task door")
+		}
+		args, err := arg[TaskRedoArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		id, title, err := door.RedoStronger(context.Background(), args.ID)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(TaskStarted{ID: id, Title: title})
 	case MethodPlannerStart:
 		door, ok := agent.(interface {
 			StartPlannerRun(context.Context, string, string) (string, string, error)
@@ -3033,6 +3072,9 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	}
 	// And the teams doors, additive in the same way (wire_teams.go).
 	if payload, handled, err := s.teamsCall(call); handled {
+		return payload, err
+	}
+	if payload, handled, err := s.delegationCall(call); handled {
 		return payload, err
 	}
 	if payload, handled, err := teamAskCall(agent, call); handled {

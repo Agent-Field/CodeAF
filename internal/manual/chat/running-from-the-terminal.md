@@ -385,6 +385,63 @@ one pass there is `--token-budget` and `--timeout`.
 itself, the same bytes `--out` would write. `codeaf logs --json` is a third: one JSON object per line,
 byte-for-byte what is on disk.
 
+## Which models a headless run uses — the crew, --best, --cheap, --pin and the daily cap
+
+A headless run has the same crew a conversation's task has: a **worker**, a **planner** and
+a **checker**, and every seat nobody pinned is picked for this task from what kind of work
+it is. The run says its crew on stderr before anything is spent — every seat, and which
+rung answered it — and under it the class the task was read as and the estimate:
+
+```
+models: worker z-ai/glm-5.3-flash (routed) · planner z-ai/glm-5.3-flash (routed) · checker moonshotai/kimi-k3 (pinned)
+crew: bugfix · worker glm-5.3-flash (openrouter) · checker 📌 kimi-k3 · est $0.023
+```
+
+A seat you pinned wears `📌`, so `checker 📌 kimi-k3` is a checker pinned with `/crew pin`.
+When the run ends, the `crew:` line is said again with what it actually cost beside the
+estimate: `crew: bugfix · worker glm-5.3-flash (openrouter) · checker 📌 kimi-k3 · $0.021 (est $0.023)`.
+
+**Every model flag is a one-task pin.** `--model`, `--plan-model` and `--check-model` pin the
+worker, planner and checker for this run and no other, and `CODEAF_MODEL`,
+`CODEAF_PLAN_MODEL` and `CODEAF_CHECK_MODEL` do the same from the environment. Each seat
+climbs its own ladder — the flag, then its variable, then a `/crew pin` in the profile,
+then the crew picked for this task — and the rung that answered is named beside the seat
+(`--model`, `CODEAF_MODEL`, `pinned`, `routed`). **The checker never inherits the planner:**
+a `--plan-model` says who plans and nothing about who checks.
+
+`codeaf do` takes three more, all for this one task:
+
+- **`--best`** — the strongest crew your allowed models make.
+- **`--cheap`** — the cheapest crew your allowed models make.
+- **`--pin seat=model[@provider]`** — pin one seat, `worker=`, `planner=` or `checker=`; say
+  it once per seat. `--pin checker=moonshotai/kimi-k3@openrouter` sends the checker through
+  that connection. A seat that is not one of the three, or a pin with no model, is refused.
+
+Nothing a headless run is told is written to the profile: the pins and the allowed models
+stay what `/crew` last set.
+
+**At the daily cap, `codeaf do` refuses.** When today's crew spend has reached the cap
+`/crew cap` set, it starts nothing and says so:
+
+```
+today's crew spend has reached the daily cap of $5.00 · raise it or turn it off with `/crew cap`, pass -yes-spend, or wait until midnight
+```
+
+`-yes-spend` is the one way past it for this run — past the daily cap, never past the
+per-task limit. `--cheap` is refused at the cap like any other run. The day turns over at
+midnight on this machine's clock.
+**Every run is held to the per-task limit**, $5 unless `/crew cap task` set another: a call
+that would take the run past it is not made, and the run stops on
+`this task reached its $5 limit · raise it in /crew`. The other headless doors — `exec`, `run`, `plan run` —
+are a person at a terminal running one thing, so they **warn and go on**:
+`note: today's crew spend has reached the daily cap · this run goes ahead; `codeaf do` would have stopped`.
+
+With `--json`, `codeaf do` carries the crew too: `class` (the kind of work the task was read
+as), `crew` (each seat's `model`, `provider`, `kind`, `pinned` and `est_usd`), `est_usd` for
+the whole crew beside `spend_usd`, `effort` when `--best` or `--cheap` was given, and
+`check_model` with `check_model_source` beside the worker's `model_source` and the planner's
+`plan_model_source`.
+
 ## What checked my unattended or headless run — what judged the delivery, and why task.audit is not the answer
 
 A `codeaf do` errand's delivery is read at the end by the **delivery gate**. It takes a
@@ -439,8 +496,8 @@ answer includes the check's own sentence about what could not be read.
 
 Some fields belong to one command and stay. `codeaf do` carries `spend_work` and
 `spend_overhead` — what the work cost against what it cost to decide what the work should
-be — and `blocked_on`, `learned`, `plan_model`, `model_source`, `plan_model_source` and
-`subharness`. It also carries `judged_by` when the settled root records an answered gate
+be — and `blocked_on`, `learned`, `plan_model`, `model_source`, `plan_model_source`,
+`check_model`, `check_model_source`, `class`, `crew`, `est_usd`, `effort` and `subharness`. It also carries `judged_by` when the settled root records an answered gate
 attempt and `unjudged` when that gate could not be reached. Both keys can be absent when
 no root gate row is available; neither key replaces `ok` and `stop`. `codeaf run` carries `output`, which is
 the typed answer whole, and `report`.
@@ -724,7 +781,7 @@ the same answer as one object; `show` reads nothing off the network.
 **The scores start here.** In a conversation, after a task lands, a model
 outside the crew is asked to score each seat the work ran on — the worker that
 carried it, and the seat that checked it when there was one. The scores stay
-in your install's own sheet (`own.json`) and feed the very next crew pick;
+in your install's own sheet (`own.json`) and are read when the next crew is chosen;
 nothing else reads them. With `model_pool` set to `on` the same scores also
 wait in `outbox.jsonl` beside the sheet, to leave with the pool's other
 measurements; `read` keeps them local, and `off` asks no judge at all and

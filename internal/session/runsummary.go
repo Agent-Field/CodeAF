@@ -103,6 +103,9 @@ func (a *Agent) RefreshRunSummary(ctx context.Context, rootID string, lastLook t
 	defer a.runSummaryBusy.Delete(rootID)
 	input := runSummaryInput(family, questions, rootID, lastLook, a.summaryNow(), stored.Summary)
 	closeStore()
+	if crewTaskOf(ctx) == nil {
+		ctx = withCrewTask(ctx, a.liveCrewFor(rootID))
+	}
 	response, called, err := a.callRole(ctx, roles.RoleWorker, a.model, []ai.Message{
 		textMessage("system", runSummaryPrompt), textMessage("user", input),
 	}, ai.WithMaxTokens(320))

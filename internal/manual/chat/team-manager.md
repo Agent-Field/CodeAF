@@ -34,9 +34,17 @@ happens on the far machine, where the conversation and the model are.
 
 In the manager's replies, in the team's quoted cards and in a team tool's call, every member's
 handle is a link: point at it for its title in the hint line, press it to open that member,
-which resumes it first when this window does not have it open.
+which resumes it first when this window does not have it open. A team's name in those same
+places, written as a team (`team harbor`, `the harbor team` or `"harbor"`), is a link too. A
+press opens the **teams page** with that team selected. The hint says `Open harbor on the
+teams page · click`. Over `--host`, against an engine with no teams doors, the press opens the
+conversations view on that team instead, and the hint says so.
 
 ## Making a manager
+
+The **teams page** (`/teams`, `alt+2`) offers `+ Manager` on every team that has none, and
+`All teams` offers one manager over every team. Choosing a team there puts its manager's
+conversation in the page's pane, where you talk to it beside the tree of your teams.
 
 A team has no manager until you make one, and until then nothing about managers costs anything.
 While a team is shown, the first place on the tab strip is the manager's, pinned at the left
@@ -62,62 +70,82 @@ While the manager is in front, the message box says `to ◆ manager`, and keeps 
 rule above the box once you start typing: everything you type goes to the manager and nowhere
 else. With a member in front the box says `to @web` the same way.
 
-On the right is the **Traffic** rail: who told whom inside the team, as threads. A thread is
-one message and everything that answered it, and the thread that moved last is at the top,
-straight under the header:
+On the right is the conversation's column, the same one every chat has. Its header is two
+words, `Tasks 14 · Traffic 8` with `alt+l` at its right: the word in front is in bold ink and
+the other is dim, each is a button (point at it for what it shows, press it to bring it to
+the front), and while the tasks are in front the Traffic word keeps counting what arrived,
+`Traffic 3 new`. With the manager in front the column opens on the **Traffic**; with a member
+in front it opens on the tasks. Each kind of chat remembers the word you last chose for the
+rest of the session. With the column holding the keyboard (`alt+t`), `←` and `→` switch the
+words. Nothing here moves the conversation: both words are drawn in the same columns.
+
+Under the header is what needs you, from both words: a member's question to you (`? @model → ◆
+keep the old schema?`), a decision put to you, and your tasks that are waiting on
+you, in the needs-you amber; a task that failed and that you have not opened yet is its `✕` in
+ordinary ink. Three rows at most, then `+2 more`; a line closes the band, and when nothing
+needs you there is no band at all. Pressing a question opens the member at the question; a
+decision opens the teams page. What is in the band is not drawn again under it.
+
+In the manager's chat the Traffic is the team's **work**, one line each, the newest at the
+top. Every row reads who it is from and who it is for, then the words:
 
 ```
-Traffic                                  hide alt+l
-◆ manager → @agent @checking @review  do        2m
-  Please provide a brief status update on your part
-├ @checking  ✓ Status update: the lexer is in   1m
-├ @agent  working…
-└ @review  asking: may I run the migration?    now
+Tasks 14 · Traffic 8                 alt+l
+? @model → ◆  keep the old schema?
+✕ parser bench incomplete
+──────────────────────────────────────────
+◆ → @scrape +2  Please provide a st…   ▸
+◆ → @model      Refactor the rail…     ▾
+  ↳ @model → ◆  ✓ done, 3 files changed
+  ↳ @model → ◆  working…
+General                     2 msgs     ▸
 ```
 
-- The header says who sent it, to whom, and `do` for a directive or `fyi` for a note. When the
-  rail is too narrow for every handle it names whom it can and counts the rest, `+2`.
-- The message is on its own dim line under it.
-- Each member who answered, or was started on it, has one line of the tree, in the order it
-  happened. `working…` is a member the message woke that has not answered yet; `✓` is a member
-  that answered and finished its turn, `✗` one whose turn failed, and `asking:` is a member
-  waiting on you, the only line in the needs-you amber.
-- `◆ manager stopped @web · going in circles`, `◆ manager started @lexer` with the brief under
-  it, and `codeaf  @review is now @security` are lines of their own, as is anything written
-  before threads.
+- A row is a thread (below): `◆ → @scrape +2` is the manager to the first member, and `+2`
+  for the ones that do not fit, then what it said. The state its answers leave it in
+  (`running`, `asking`, `done`, `failed`) and how many messages it holds sit at the right
+  when they fit, and the hint line always says them. The age is not on the row at any width.
+  Pointing at the row says the age on the hint line, and the band's questions do the same.
+  In a narrow column the arrow and the names stay, and only the words are cut, at a word,
+  with `…`.
+- `▸` lays the thread's replies open under it, one `↳` line per member, each `from → to`
+  the same way (`↳ @model → ◆  ✓ done, 3 files changed`): `✓` on an answer from a member
+  that finished its turn, `✗` for one that failed, `working…` for a member the message woke
+  that has not answered. The reply's time is on the hint line, not on the row. `▾` (or
+  `enter` on the row, with the column holding the keyboard) folds them.
+- Everything that answers nothing and is answered by nothing (notes, starts, stops, handle
+  changes, anything written before threads) is the one **General** thread, laid open the
+  same way. A start that made a sub-team reads `◆ manager started @api to run backend`; the
+  name is the team's name now, so a rename replaces `backend` on the next frame.
+- A thin `new` line stands under what arrived since you last looked, and stays put while you
+  read.
 
-Headers and answers end with their age (`now`, `2m`, `3h`); on a narrow rail only the header
-does. Your own messages are not on the rail; they are in the manager's conversation. Every
-`@handle` is a link, as in the chat: point at it for the member's title in the hint line, press
-it to open that member (resumed first when this window does not have it open) **scrolled to the
-message**: a handle on a thread's header opens the member at the directive as it was told it,
-and a handle on an answer opens it at its own post. The message is brought into view and
-lifted for a moment; the focus stays on that conversation. A message from before the
-conversation's history opens it at the bottom, and the hint line says `that message is older
-than this chat's history`. Point at a message's words to read them whole in the hint line,
-press them to lay them out in full under the row, and press again to fold them; the press also
-brings that thread's card in the manager's conversation into view. Nothing on the rail moves
-your focus but a handle.
+Every `@handle` is a link: point at it for the member's title in the hint line, press it to open
+that member (resumed first when this window does not have it open) **scrolled to the
+message**: a handle on a thread's row opens the member at the directive as it was told it, and a
+handle on a reply opens it at its own post. The message is brought into view and lifted for a
+moment; the focus stays on that conversation. A message from before the conversation's history
+opens it at the bottom, and the hint line says `that message is older than this chat's history`.
+Point anywhere else on a row to read it whole in the hint line; press it to bring that message
+in the manager's conversation into view. Nothing in the column moves your focus but a handle or a question in the band.
 
-With the manager in front the right-hand column is the Traffic, whatever you last told the task
-column with `ctrl+g`: the task column is not drawn beside it, not even as an edge. When the
-manager has live tasks of its own the header grows a second word, `Traffic · Tasks 2`; press
-`Tasks 2`, or `ctrl+g`, to lay the manager's tasks in the same column at the same width, and
-press the header line, or `ctrl+g` again, to go back to the Traffic. With no tasks there is no
-second word and `ctrl+g` does nothing here. Every other conversation's task column works as it
-always has. The rail's header reads `Traffic` with `hide alt+l` at its right. Put away, the rail is the word
-`Traffic` down the right edge with a count of what arrived since you last looked; press it or
-`alt+l` to bring it back. This window remembers whether you put it away.
+In a member's chat the Traffic is the messages to or from that member (and to the whole team),
+one line each, newest first, and that member is `you`: `◆ → you  parser numbers?` from the
+manager, `you → ◆  ✓ p50 41ms, p99 180ms` back, `you → @gravity  rebase done` to another
+member. Press one to go to it in the member's conversation. General, laid open, uses the same
+`from → to` on each of its lines.
 
-On a window too narrow for the column (under 84 columns) the rail is only that edge. Pressing it, or `alt+l`, lays the Traffic over the lower part of the
-conversation as a card with `Close esc` in its foot; the top of the conversation stays in view.
-`esc` closes it.
+`alt+l` puts the column away and brings it back, and this window remembers the answer (`ctrl+g`
+is the same key under its older name). Put away, the column is an edge down the right with a
+count of what arrived in the Traffic since you last looked; press it or `alt+l` to bring it
+back. On a window under 100 columns there is no column and no edge: `alt+l` lays the column
+over the conversation, and `esc` or `alt+l` takes it off again.
 
 Over `--host` teams and the manager work as they do locally. The teams and their Traffic are
 kept on the machine the conversations run on, and the window reads and writes them there, so
-the rail is the team's own and a manager set from the laptop is the one the far session
+the Traffic is the team's own and a manager set from the laptop is the one the far session
 follows. Against a far machine running an older codeaf, `+ Manager` and the menus say managers
-are not available over `--host`, and there is no rail.
+are not available over `--host`, and the column has no Traffic word.
 
 When the manager starts a member with `team_start`, you are asked first, on a card that reads
 `◆ manager wants to start @lexer`, with the brief under it and the clause `a new conversation;
@@ -133,6 +161,16 @@ was started. It reads the brief when it next runs.`, and the brief arrives on th
 the same way. When the manager stops a member,
 this window stops it the way your own Stop would. Both happen only in a window that has those
 conversations open.
+
+## Who a Traffic row is from and who it is to
+
+Every Traffic row reads `from → to`, then the words. The manager is `◆`. Several recipients
+are the first handle and `+2` for the rest. In a member's chat that member is `you`, so a
+question to it reads `◆ → you` and its answer reads `you → ◆`. A reply under a thread is the
+same shape after `↳` (`↳ @model → ◆  working…`). The band's question is the same shape in
+amber (`? @model → ◆  keep the old schema?`). The age and the reply's time are on the hint
+line at every width, never on the row. A narrow column keeps the arrow and the names and cuts
+only the words, at a word, with `…`. Press a handle to open that member at the message.
 
 ## What members say without being asked
 
@@ -156,6 +194,16 @@ It does not. `asking` means a live process is held on the prompt. If that proces
 transcript lock is free and the member reads as idle. The same happens when the wait is older
 than 30 minutes, even if a process still holds the transcript: nothing is still asking.
 
+## Who a member reports to
+
+A conversation can be in more than one team, but it **reports to** exactly one manager, its
+home: the nearest manager above it, picked for you and never changed by itself. Its home
+manager directs it; every other manager whose team it is in is a **link**, which may read it
+(`team_read`) and send it a note, and nothing more. A link's `team_send` of a directive, and
+its `team_stop`, are refused with a sentence saying whose the member is; a directive to
+`everyone` goes to the members who report to that manager and names the ones it left out.
+In `team_status` a shared member reads `reports to dock`, and `busy for dock` while it runs.
+
 ## Who outranks whom
 
 Your own words come first. What you say in a member's own conversation stands over anything
@@ -174,24 +222,103 @@ on one waits for you.
 | `team_read` | the end of one member's conversation, bounded; the member is not told | no |
 | `team_send` | a message to one member, to several (one message, every handle in `to`), or to everyone, as a note (information, which waits) or a directive (an instruction, which starts an idle member) | no |
 | `team_stop` | ends one member's current turn, the way your own Stop does: nothing is deleted, and its background tasks and jobs keep running. It is carried out by a window that has the member open; a member codeaf opened in the background, with no window on it, is not stopped and its turn runs to its end | no |
-| `team_start` | a new member conversation with a handle and a brief; it opens in the team's folder and is handed the brief, marked as the manager's, on its first request | yes |
+| `team_start` | a new member conversation with a handle and a brief; it opens in the team's folder and is handed the brief, marked as the manager's, on its first request. With kind `team` it starts a sub-team instead (see **Sub-teams**) | yes |
+| `team_decide` | answers a decision packet waiting on the manager, most often a member's question: an option, or its own words | no |
+| `team_escalate` | sends a packet waiting on the manager up, to its own manager or to you, with the reason it is not the manager's to decide | no |
+| `team_close_report` | brings you the team's closing report (done, left, where the files are) after you asked it to wrap up | no |
+| `team_raise` | raises a conflict to the manager above every party (see **Conflicts between members and teams**); members have it too | no |
 
-`team_start` asks because a new conversation spends money for as long as it runs. The others
-act only inside the team you made, and every one of them is logged in the team's traffic.
+`team_start` asks because a new conversation spends money for as long as it runs, and it is
+refused while the team is at its daily cap. The others act only inside the team you made, and
+every one of them is logged in the team's traffic. Questions, packets, caps and wrapping up are
+on the page **Team questions, decisions and caps**.
 Like any tool, each can be set to ask or allow in `/settings` under the tool approvals.
 
-## The member's verb
+## The member's verbs
 
 A member of a team that has a manager has `team_post`: a message to the room (every member and
 the manager), to one teammate by handle, or to the manager. Members use it to report progress,
-share a finding, ask a teammate, or say they are blocked.
+share a finding, ask a teammate, or say they are blocked. It also has `team_raise`, for a
+conflict it cannot settle with the other side itself.
+
+## A manager is told when a member moves
+
+Moving a conversation from one team to another, or moving a team under another, writes one
+line to the Traffic of each team it touches. The team that lost the member says
+`@web moved to harbor`. The team that gained the member says `@web joined from ops`. For a
+team moved under another, that is the moved team's Traffic and its new parent's. A manager
+reads those lines the next time it wakes, in the Traffic it already reads. Nothing about the
+move wakes it by itself, and a move that was refused writes no line.
+
+## Sub-teams
+
+A manager can start a **sub-team**: `team_start` with kind `team`, a name for the new team, a
+handle and a brief for its manager, and optionally members of its own team to move into it. You
+are asked first, on the same card as any start, which then reads `a new team "backend" under
+yours`. When you allow it:
+
+- the new team is made under the manager's team, with its share of the pool: the parent's daily
+  cap times `sub-team share` (`/settings`, **Teams**; 50% by default), written on the new team.
+  A parent with no cap gives none, and the new team spends from whatever pool is above it;
+- the members named move into it, and its manager is the new conversation, which opens behind
+  the one you are in like any start, is a member of the parent team, and is handed the brief
+  marked as the manager's together with the words `you were started to manage the team
+  "backend"`. It makes itself that team's manager and reports to the manager that started it;
+- the traffic of both teams says so: the start in the parent's, and in the new team's a line
+  naming who made it and who runs it.
+
+It is refused, with the reason, past the team depth (`team depth` in `/settings` under
+**Teams**, three levels by default, a team's own override first), under a closed team, at the
+team's daily cap, or when the name or the handle is taken.
+
+**Orders go one level down, reports one level up.** A manager directs its own team's members,
+and a sub-team's manager is one of them; it never directs a sub-team's members. A `team_send`
+directive or a `team_stop` naming one is refused with a sentence that names the sub-team's
+manager to send to instead. A message to `everyone` reaches the manager's own members only. A
+manager may still read a conversation in a team under its own with `team_read`, naming it
+`backend/@parser`. A sub-team's manager reports to the manager above: its `team_post` to the
+manager and its own questions go there first.
+
+**A sub-team with no manager of its own** answers to the nearest manager above it: its members'
+questions go to that manager, and their `team_post` to the manager reaches it, marked with the
+team it came from. Their posts to the room stay in their own team. That manager does not direct
+them; give the sub-team a manager, or move them up, for that.
+
+## The global manager
+
+With several top-level teams there is no one manager over all of them until you make one on the
+teams page's `All teams` row. That conversation is the **global manager**: the manager of a
+team that holds every other team. Its members are the managers of the top-level teams, and
+only them: codeaf adds each one to `All teams` for you, its account of its team lists only
+those managers, and its directives reach them and never their members. The top-level managers
+report to it, so their questions and conflicts between teams come to it before they come to
+you. It can start a new top-level team with `team_start` of kind `team`. Without a global
+manager, nothing here changes: each top-level manager reports to you.
+
+## Conflicts between members and teams
+
+When two or more conversations need incompatible things (the form posts JSON, the endpoint
+takes form data) and cannot settle it between themselves, one of them raises it with
+`team_raise`: the question, the other parties by handle (`@api`, or `back/@api` for a member
+of another team), its own side, and the options, each with what happens if it is chosen. A
+conflict is never detected for you; a party declares it.
+
+It goes, as one decision packet, to the **lowest manager above every party** who is not one of
+them, in one hop: two members of one team go to its manager, members of two sibling sub-teams to
+the manager of the team both sit under, and two top-level teams to the global manager. With no
+such manager it comes to you, in the inbox on the teams page. That manager is woken and handed
+the packet whole; the other parties are told it was raised. It rules with `team_decide`, or
+sends it up with `team_escalate`, never sideways. **The ruling reaches every party as a
+directive**, marked as a ruling on that conflict, in each party's own team's traffic, and wakes
+each of them, whoever ruled: a manager, or you. A party never decides its own case, even when
+it manages the team the packet waits on.
 
 ## Threads: what answers what
 
 Every line a member is handed carries its number, `◆ directive from manager #42: …`. A
 member's `team_post` to the manager answers the last message the manager sent it, by itself;
 to answer another it names it, `thread: #41`. The member's finishing, failing or asking, and
-the wake that started it, answer the same message, which is how the rail and the chats draw
+the wake that started it, answer the same message, which is how the Traffic and the chats draw
 them under it. A message to several members is one message, so the question and its answers
 are one thread however many were asked.
 
@@ -201,7 +328,9 @@ answer attached under that in muted ink as it arrives, one line each. Press an a
 to read it in full and again to fold it; point at them for the whole text in the hint line; a
 handle opens its member at the message: on an answer, at the member's own post, and on the
 card's header, at the message as the member was told it. A turn that sent one is not folded into a `worked` chip, so the
-thread stays where you can see it.
+thread stays where you can see it. The step over it is captioned as the work it is,
+`messaged @agent @checking @review`, never by the tool's name, and a run of sends reads
+`sending 3 messages`.
 
 The answers also reach the manager as its team's note. So nothing is shown twice, a note
 whose answers are already under their question reads as one dim line,
@@ -227,16 +356,18 @@ A member no window has open is opened by codeaf in the background so it can run,
 that opens it later joins the running conversation. When that cannot be done, the traffic says
 `could not wake @web:` and why, and the message waits for the member's next turn.
 
-Every wake is a line in the traffic, `◆ woke @web` or `@web woke ◆`, so the rail shows why a
+Every wake is a line in the traffic, `◆ woke @web` or `@web woke ◆`, so the Traffic shows why a
 conversation is running. A wake spends through the same limits a turn you start does, and two
 more bound it: one conversation is woken at most 20 times an hour, and a manager woken 10 times
 by its team with nothing from you stops being woken and asks you instead, as a waiting line in
 the traffic. It is woken again after you next say something to it.
 
-A team's auto-wake can be turned off: its entry in `teams.json` in the profile carries
-`"wake": false`. With it off, every message waits for each conversation's next turn, and a
-member the manager starts with `team_start` is opened and handed its brief on that next turn,
-with no turn started for it. The traffic says so.
+A team's auto-wake can be turned off. `team messages wake` in `/settings` under **Teams** is
+the default every team inherits (on), and a team can override it for itself and the teams
+under it: its entry in `teams.json` in the profile carries `"wake": false` (or `true`). With it
+off, every message waits for each conversation's next turn, and a member the manager starts
+with `team_start` is opened and handed its brief on that next turn, with no turn started for
+it. The traffic says so.
 
 A member busy in one long command reads a message when that command returns, which is what
 `team_stop` is for. Nothing is delivered twice, and a conversation that joins a team is not

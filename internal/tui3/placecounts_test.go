@@ -58,7 +58,7 @@ func TestATabWearsWhatChangedSinceYouLeftThatPlace(t *testing.T) {
 	// MEMORY IS OFF THE BAR, SO ITS NUMBER IS ON THE MAP — the one row that
 	// draws every place with its digit — and on the bar the moment you stand in
 	// it (pages.go's [barPages]).
-	if bar := plain(a.placeTabBar(160, true, a.pal)); !strings.Contains(bar, itoa(placeDigitOf(pageMemory))+" memory 3") {
+	if bar := navPlaces(a, 160, true); !strings.Contains(bar, itoa(placeDigitOf(pageMemory))+" memory 3") {
 		t.Fatalf("the map does not carry the count: %q", bar)
 	}
 }
@@ -76,7 +76,7 @@ func TestAPlaceWithNoLookStampWearsNoNumber(t *testing.T) {
 	if len(brain.asked) != 0 {
 		t.Fatalf("the store was asked for a delta with no origin to measure from: %v", brain.asked)
 	}
-	bar := plain(a.placeTabBar(160, false, a.pal))
+	bar := navPlaces(a, 160, false)
 	for _, digit := range "0123456789" {
 		if strings.ContainsRune(bar, digit) {
 			t.Fatalf("the bar wears a figure with no origin behind it: %q", bar)

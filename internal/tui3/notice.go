@@ -164,7 +164,7 @@ const (
 	// eventModelListOpened is the model list raised, over a conversation or
 	// over home's draft (palette.go, homedraft.go).
 	eventModelListOpened = "model-list-opened"
-	// eventCrewShown is /crew answered, bare or with a preset (crew.go).
+	// eventCrewShown is /crew answered, bare or with a subcommand (crew.go).
 	eventCrewShown = "crew-shown"
 	// eventBudgetShown is /budget answered, bare or with a figure (budget.go).
 	eventBudgetShown = "budget-shown"
@@ -1264,11 +1264,11 @@ func (a *app) chatTipReady() string {
 	if a.notices.hidden[slotHint] || a.at(pageHome) {
 		return ""
 	}
-	// THE CLOSED TASK COLUMN IS NOT ONE OF THOSE STATES. `ctrl+g tasks` is what
-	// the keys row says at rest once the column is put away ([railBackHint]),
+	// THE CLOSED SIDE COLUMN IS NOT ONE OF THOSE STATES. `alt+l tasks` is what
+	// the keys row says at rest once the column is put away ([app.sideBackHint]),
 	// and a tip that went quiet whenever it did was a tip that only ever
 	// appeared with the sidebar open (the owner's report, 2026-09-24).
-	if word := a.hintWord(); a.questionRoomOpen() || (word != "" && word != railBackHint) ||
+	if word := a.hintWord(); a.questionRoomOpen() || (word != "" && word != a.sideBackHint()) ||
 		(a.chordLost && a.chords.meta == chordMetaWord) {
 		return ""
 	}

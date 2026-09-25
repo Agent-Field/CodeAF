@@ -239,7 +239,9 @@ while it is open, so none of them contend for one keystroke on one screen.
 ## ? — the key that opens the key sheet
 
 `?` **over an empty box** opens `/help`: every command and every chord, written into the
-transcript where you can scroll it.
+transcript where you can scroll it. A row that is wider than the window wraps under the
+column its sentence already starts in, so the next line does not sit at the left edge as
+if it were another key.
 
 **On a place** — home, tasks, standing, memory, spend, search, settings — `?` draws **the
 map** instead, which is what `alt+.` draws: that place's own keys, in the cells the foot
@@ -251,6 +253,14 @@ every overlay, filter box, picker, panel and question on this surface takes the 
 before this binding is read, so a `?` typed into one of those reaches it and nothing else.
 
 `/?` is an alias of `/help` as well, for fingers that arrived from elsewhere.
+
+## Why a wrapped /help line stays under its key
+
+`/help` is a column. The key sits on the left and the sentence starts in a fixed
+column. When the window is too narrow for the sentence, the next line starts in
+that same column. It does not start at the left edge, which would look like a
+second key. The same is true of a line that was already indented under the
+column above it.
 
 ## Stop it and tell it something different at the same time — interrupt and say something new in one key
 
@@ -342,7 +352,7 @@ A message waiting above the box stays with its conversation when you open Home w
 pasted documents and standing mark stay with it. A connection that holds one conversation
 at a time returns the waiting words and pictures to the box and tray when switching ends
 the old conversation. `esc` stops the answer and drops waiting messages.
-From Home, `alt+2` (`chats` on the bar) goes straight back to the conversation you
+From Home, `alt+3` (`chats` on the bar) goes straight back to the conversation you
 were in, and `alt+k` chooses one.
 
 ## Interrupting a running turn — how do I stop it mid answer
@@ -476,7 +486,7 @@ conversation this machine's codeaf service is running **keeps working** after th
 closes — its tasks, its questions and its journal are all there when you open the same
 workspace again — and a conversation running inside this terminal (`--no-host`, or a host
 that could not be reached) stops with it. To see what is running before you go, the task
-column (`ctrl+g`) and `/status` both say.
+column (`alt+l`) and `/status` both say.
 
 **Closing one tab still asks.** `ctrl+w` on a conversation with work running raises a card
 that names that work — `a task and a job running` — and waits for an answer. Leaving the
@@ -603,9 +613,9 @@ key arrives as ordinary `enter` and the message steers instead.
 | `ctrl+t` | Start a **new chat** — the same start page the `+` at the end of the tab strip opens. Nothing is created until you send the first message, `esc` comes back, and the conversation you were in keeps its draft, its attachments and its work. On a home row it starts the fresh chat in that row's own folder, while clicking a `projects` row selects the folder for the next message |
 | `ctrl+w` | **Close this tab** — the same thing the `✕` on it does. Selects the last-used remaining tab, or Home if none remain. Drafts are kept, and the conversation keeps running; a tab with work in it asks `keep running` / `stop work` / `cancel` first |
 | `alt+t` (`opt+t`) | Give the keyboard to the task roster. Press again or `esc` to take it back |
-| `alt+l` | With a team's manager in front: show or hide the team's **Traffic**. On a wide window it is the right-hand column (the task column folds to its edge while it is up, and `ctrl+g` gives the column back to the tasks); on a narrow one it is a card over the lower part of the conversation, and `esc` closes it. Remembered for this window |
+| `alt+l` (`opt+l`) | Close the column on the right, or bring it back, in every chat: the same column holds the Tasks and, in a chat in a team, the Traffic. The key is named at the right of the column's header. Under 100 columns it lays the column over the body, and a second press takes it off. Remembered for the next session |
 | `alt+m` | In a team that has a manager: go to the manager. Over `--host` against an older codeaf on the far machine it says managers are not available there |
-| `ctrl+g` | A foreground command that can be kept takes the key first. Otherwise close the task roster's column, or bring it back — the column stands even with no tasks in it. Remembered for the next session. On a frame under 100 columns with no roster raised and no command to keep, it does nothing |
+| `ctrl+g` | A foreground command that can be kept takes the key first. Otherwise it does what `alt+l` does: close the column, or bring it back; the column stands even with no tasks in it. Remembered for the next session |
 | `ctrl+e` | Empty box: open or close the running conversation’s compact steps first; otherwise the newest `▸ worked` chip onto its outline of captions — the latest completed turn's out here, the newest settled phase's inside a task's page — or the most recent thinking block when there is no chip. A caption is a short status line per step; its tool rows are one expand further. Otherwise: go to end of line |
 | `pgup` / `pgdown` | Scroll one page — the height of the view minus one, never less than one row |
 | `tab` | Open or commit path completion, over a command's path argument only — and over an **empty** box with no completion showing, go back to the last conversation. Does nothing when this terminal holds only one |
@@ -668,7 +678,7 @@ rather than stopping at the edge.
 **With the keyboard**, `shift` with any motion key selects: `shift+←`/`shift+→` by a
 character, `shift+↑`/`shift+↓` by a line, `alt+shift+←`/`alt+shift+→` by a word,
 `shift+home`/`shift+end` to a line's ends, and `cmd+a` takes the whole message. Those
-`shift` chords are the message box's; on the seven places `shift+←→↑↓` are already the
+`shift` chords are the message box's; on the eight places `shift+←→↑↓` are already the
 time window that place is showing, so there they move the window and the pointer is how
 you select.
 
@@ -1711,12 +1721,22 @@ reads `[m] send to main · [esc] cancel`, because reviving live work would dupli
 
 ## Keys in the settings panel and the other panels
 
-**Conversations view** (`alt+v`, `/wall`, `chats` or `▦` under the box, or `▦ All` on the strip): the
+**Conversations view** (`alt+v`, `/wall`, or `▦ All` on the strip or under the box): the
 arrows move the focus · `enter` opens · `space` picks · `x` closes a view (the work keeps
 running) · `m` its teams · `s` a new team · `e` the shown team's settings · `tab` or `1` to
 `9` show a team · `/` filters · `?` lists every key, and each of its rows is a button. The
 **team switcher** under the strip's team chip takes `↑` `↓` `enter` `esc`. The whole map is on
 the *Conversations and teams* page.
+
+**Teams page** (`alt+2`, `/teams`): while the manager's conversation has the box, keys type
+into it; `alt+↑` `alt+↓` put the keyboard on the page's buttons and `esc` gives it back. On
+the buttons: `↑` `↓` walk, `←` `→` cross between the rail and the pane, `enter` presses,
+`s` the team's card · `c` close · `w` open on the conversations view · `n` new team (inside
+the chosen team) · `o` Organize · `m` Move into… another team · `space` pick a team for a
+move of several · `p` the members card · `M` a manager · `r` reopen · `d` delete a closed
+team · `u` Undo a close or a move · `esc` cancels a drag or a move's question. In the Move
+into… picker, typing filters, `↑` `↓` walk, `enter` moves, `esc` cancels. The whole map is on
+the *teams page* page.
 
 **Settings panel** (`ctrl+,`): `esc` backs out one layer at a time — search, then an
 open account, then the panel · `left`/`shift+tab` and `right`/`tab` change tab ·
@@ -1726,8 +1746,7 @@ a phrase like `shell command` can be written · `backspace`, `ctrl+u`, `ctrl+w` 
 search · anything else types into it.
 
 **Task page** (`ctrl+.`, or `/history`, or the one dim door line at the bottom of the task
-column — `ctrl+. earlier`, or `ctrl+. view more` where the column has only folded a
-family away): `esc` closes it — or clears the filter first, if one is being typed —
+column, `ctrl+. earlier`): `esc` closes it (or clears the filter first, if one is being typed),
 and `ctrl+.` closes it either way · `up`/`ctrl+p`, `down`/`ctrl+n` move, stepping
 over the `running` and `earlier` section words · `pgup`/`pgdown` move twelve · `home`/`end`
 first and last · `enter` opens the row · `backspace`, `ctrl+w` and `ctrl+u` edit the filter
@@ -1781,7 +1800,7 @@ reads `⟲ rewind — pick where the conversation goes back to` and its foot
 `⟲ drops 2 turns — everything below the pick is let go` above
 `esc close · ↑↓ move · enter picks the point` — which becomes
 `esc close · ↑↓ move · enter again rewinds here` once a pick is placed, and
-`esc clears the search · ↑↓ move · enter picks the point` while you are typing one.
+`esc clear the search · ↑↓ move · enter picks the point` while you are typing one.
 Clicking a row places the pick; clicking the placed point rewinds; the wheel walks the
 cursor. The sessions and rewind page describes what the cut does.
 
@@ -1813,6 +1832,18 @@ move · `enter` activate. Its foot reads `esc close · ↑↓ move`.
 `down`/`j` scroll · `pgup`/`ctrl+b`, `pgdown`/`ctrl+f`/`space` page · `home`/`g` top ·
 `end`/`G` bottom · `ctrl+o` lifts the line cap. Its foot reads exactly
 `esc close · ↑↓ scroll`, or `esc close · ↑↓ scroll · tap … for the rest`.
+
+**Crew panel** (`/crew`): `up`/`k`/`ctrl+p`, `down`/`j`/`ctrl+n`, `home`, `end` walk the six
+rows · `enter` changes the row · `esc` goes back one level and closes · `?` lists every key ·
+`z` undoes the last change while the bottom edge offers `z undo`. On the **models** row
+`←`/`→` step `all`, `open`, `price`, `custom`, and `enter` steps forward like `→` until
+`price` or `custom`, where it opens the ceilings or the checklist. On the **providers** row `←`/`→` walk the
+chips and `space` turns the one under the cursor off or on — the foot reads
+`enter change · space toggle · esc close · ? keys` there and nowhere else — and `space` on
+the `+` opens `/connect`, whose `esc` comes back to this row; `enter` opens the providers list, whose foot reads
+`space or enter toggle · esc back`. On the **cap** row a digit starts the figure. A click on
+a row is `enter`, a click on a provider chip toggles it, and the wheel walks. The models
+page has every key (*Crew panel keys*).
 
 All of these are modal: while one is up, every chord except `ctrl+c` belongs to it.
 `ctrl+c` does not close the panel — it quits codeaf, with the panel still up.
@@ -2169,24 +2200,24 @@ to filter, `↑↓` to walk, `enter` to use it, `esc` to go back to the layer.
 **Press the space bar twice with an empty message box.** That is the way back to home from
 inside a conversation, and `/home` opens it too.
 
-**There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the five words on
-the tab bar, `home  chats  tasks  spend  settings`, and each answers to its position there,
-`alt+1` through `alt+5`. **`alt+6`, `alt+7` and `alt+8` are kept**, on the three places that
+**There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the six places on
+the top line, `home  teams  chats  sessions  spend  settings`, and each answers to its position there,
+`alt+1` through `alt+6`. **`alt+7`, `alt+8` and `alt+9` are kept**, on the three places that
 are off the bar — standing, memory and search — so those keys still open a room rather than
-doing nothing; `alt+.` draws them all with their numbers. `alt+2` is `chats`, the way back
-to the conversation in front (a new chat when none is open); it is not a room, so `tab` steps
-over it. Hold
+doing nothing; `alt+.` draws them all with their numbers. `alt+2` is the teams page, and
+`alt+3` is `chats`, the way back to the conversation in front (a new chat when none is open);
+it is not a room, so `tab` steps over it. Hold
 `alt` and press the digit. On macOS codeaf draws the modifier as `opt+`, after the name on
 that keycap; it is the same key and the same chord, and on Linux and on Windows it is drawn
 `alt+`. It arrives in every terminal codeaf runs in, which is why the numbers are on `alt`
 rather than on `ctrl`.
 
-**`ctrl+1` … `ctrl+8` are a second spelling, on the terminals that can send them.** `ctrl`
+**`ctrl+1` … `ctrl+9` are a second spelling, on the terminals that can send them.** `ctrl`
 and a digit has no encoding in the forty-year-old scheme most terminals speak, so it is not
 the first spelling and never will be — but a terminal running the kitty keyboard protocol
 sends exactly the keys that scheme cannot spell, and it tells codeaf it does. Where that
-report arrives, `ctrl+1` … `ctrl+8` jump to the same seven places and `ctrl+.` draws the same
-map, and the map's own line says `alt+1…8 or ctrl+1…8 go to a place` so you can see it is
+report arrives, `ctrl+1` … `ctrl+9` jump to the same eight places and `ctrl+.` draws the same
+map, and the map's own line says `alt+1…9 or ctrl+1…9 go to a place` so you can see it is
 live. Where it does not, those chords do nothing and are never advertised. kitty, ghostty,
 WezTerm, foot and Windows Terminal are the usual ones that report it. **On a Mac this is the
 way in that needs no setting at all** — see "Why my option key types ¡ ™ £ instead of
@@ -2197,7 +2228,7 @@ place key that does: `tab` belongs to the composer's path completion while you a
 and the rest of the place grammar — `→` for the row's verbs, `alt+<letter>` for how a place
 is shown, `shift+←→↑↓` for its time window — is about the room you are standing in. Every
 number opens its room whatever is in it: a place with nothing of its own to draw spends the
-frame saying what it is for, and none of the seven is ever a key that does nothing. **On
+frame saying what it is for, and none of the eight is ever a key that does nothing. **On
 such a page the line under the box names only the way out** — `tab next place · esc` — on
 tasks, on standing orders and on memory alike: a foot that offered `enter` or `type to
 filter` over a body with no rows would be naming a key with nothing to act on.
@@ -2299,9 +2330,9 @@ not on this chord — it is the `thinking` row of `/settings`, and *alt+e — ho
 thing you are looking at thinks* says why.
 
 With the mouse: a click puts the cursor on a row and a second click on that row opens it.
-The wheel walks the list three rows a turn, and the **tab bar above the panels is a
-control** — clicking a place's word goes there, and clicking a gap between two words does
-nothing.
+The wheel walks the list three rows a turn, and the **places on the top line are
+controls**: clicking a place's word, or the cell either side of it, goes there, and clicking
+the air around the words does nothing.
 
 **Under 60 columns those two clicks are one.** At phone width home is an inbox and a
 row's card is a full-frame sheet, so a tap selects and opens in one gesture; the sheet's
@@ -2364,9 +2395,11 @@ to it. `ctrl+c` does not close home — it quits codeaf, with home still up.
 
 ## The tab bar is a row the cursor can stand on — ↑ off the top row, and ←/→ along the words
 
-**On every place, `↑` from the first row of the page lands the cursor on the tab bar** —
-the row of four words under the top line (five while you stand in standing, memory or
-search, whose word is drawn after the four). The word you are standing in wears the cursor's
+**On every place, `↑` from the first row of the page lands the cursor on the tab bar**,
+the six place words on the top line after the `codeaf` wordmark (seven while you stand in
+standing, memory or search, whose word is drawn after the six). The chat tab strip is
+not on a place. It is the row under that top line only while a conversation is in front.
+The word you are standing in wears the cursor's
 band there instead of its usual mark, and five keys mean something on that row:
 
 | Chord | What it does while the cursor is on the bar |
@@ -2375,10 +2408,10 @@ band there instead of its usual mark, and five keys mean something on that row:
 | `enter` | go into the place under the cursor |
 | `↓` | the same — go into the place under the cursor |
 | `esc` | back into the page, on the row you walked up from. It does **not** close the place |
-| `↑` | nothing. Above the bar is the top line, which is a reading rather than a control |
+| `↑` | nothing. The bar is on the top line, and there is nothing above it |
 
 Everything else means exactly what it means everywhere else: `tab` and `shift+tab` are the
-next and previous place, `alt+1` … `alt+8` jump, `alt+.` draws the map, and **any printable
+next and previous place, `alt+1` … `alt+9` jump, `alt+.` draws the map, and **any printable
 key goes into the composer** — taking the cursor back down into the page with it, because
 somebody who has started typing has stopped looking at the bar.
 
@@ -2398,7 +2431,7 @@ between the tabs with the arrow keys*.
 
 ## `b` on the spend place — the letter that opens the limits, and the money figure you can press
 
-On the spend place (`/spend`, or `alt+4`) two things lead to the money limits, and neither
+On the spend place (`/spend`, or `alt+5`) two things lead to the money limits, and neither
 one is an editor on that page — the page answers *what did it cost*, and the Spending tab
 of `/settings` is the one place *what may it spend* is set.
 
@@ -2423,30 +2456,34 @@ ink once this conversation has spent four fifths of its own `per conversation` l
 ## Keys in the task roster and inside a room
 
 **While the task roster holds the keyboard** (`alt+t`, `opt+t`): `esc` gives the keyboard
-back · `up`/`down` move · `right`/`left` open and fold · `enter` opens that row's room ·
-`alt+w` widens the column and narrows it again. Its hint reads exactly
-`↑↓ move · →← tree · enter open · alt+w wide · esc`. On a row whose work is still running or
-still queued the hint gains one more clause before `esc` — `alt+e think harder`, which
-moves that task's thinking rung. On an ordinary finished task, it saves the rung
-for when you continue; it does not restart work or rewrite the last attempt.
+back · `up`/`down` move over the needs-you band, the group headings and the tasks ·
+`enter` opens a task's room, opens or folds a group on its heading, and opens a band row's
+thing · `left`/`right` switch the column between Tasks and Traffic in a chat in a team ·
+`x` stops the task under the cursor · `alt+w` widens the column and narrows it again. Its
+hint reads exactly `↑↓ move · enter open · x stop · alt+w wide · esc`, led by
+`←→ tasks/traffic · ` in a chat in a team. On a row whose work is still running or still
+queued the hint gains one more clause before `esc`, `alt+e think harder`, which moves that
+task's thinking rung. On an ordinary finished task, it saves the rung for when you
+continue; it does not restart work or rewrite the last attempt.
 
 **Widen is a chord and not the bare letter `w`.** It used to be `w`, and `w` was read
 before the message box: a sentence typed while the roster still held the keyboard came out
 as `riting the port` and `orktree`. Every bare letter on this surface is either a key on a
 modal page with no message box, or an answer to a question drawn on screen, pressed over an
-empty box — and widening a column is neither, so it took a chord. The bare `w` still works
-on the **full-frame roster** (`alt+t` under about 100 columns, where the roster is drawn
-over the whole frame and there is no message box on screen). The column's own footer says
-`alt+w widen · click seam` or `alt+w narrow · click seam`, and clicking the seam — the
-column's two leftmost cells — does the same thing with the pointer. Both the offer and
-the handle exist only from 120 columns up, which is the only frame that lends the wider
-tier; narrower than that those two cells belong to the row under them and open its task.
+empty box, and widening a column is neither, so it took a chord. The bare `w` still works
+on the **full-frame roster** (`alt+t` under 100 columns, where the column is drawn over the
+whole frame and there is no message box on screen). The column's own footer says
+`alt+w widen · click seam` or `alt+w narrow · click seam`, and clicking the seam (the
+column's two leftmost cells) does the same thing with the pointer. Both the offer and the
+handle exist only from 120 columns up, which is the only frame that lends the wider
+column; narrower than that those two cells belong to the row under them and open its task.
 
-**`→` and `←` fold two things, and it is one gesture.** On a family's root row they open
-and close the family. On a row whose **work has finished** they open and close that row's
-own detail line — the merge word and price — which a finished row keeps folded so that the
-column's height goes to work that is still moving. A job's log path is not on that fold:
-it is on the job's page. `→` on anything else does nothing.
+**Folding is the headings' and nothing else's.** `Queued`, `Waiting` and `Done` start folded
+to one heading line; `enter` on the heading, or a press on it, opens the group, and it stays
+open for the session. `Running` never folds. A task row has no fold of its own: what it
+used to fold away (the merge word, the price, the branch) is on the hint line when the
+pointer is on it. `←` and `→` no longer fold anything; in a chat in a team they switch the
+column's two words, and elsewhere they do nothing.
 
 **The walk stops at this conversation's last job, after its last task.** The roster holds
 this conversation's work, then the jobs section under it, so `↓` walks both and clamps at
@@ -2454,46 +2491,43 @@ the bottom rather than carrying on into the project's record. Old tasks from ear
 sessions are on the sessions place, reached from the column's own `ctrl+. earlier` line, from
 `ctrl+.` or from `/history`; `enter` on an `earlier` row there goes inside that task's
 card. In a directory whose earlier sessions ran tasks but where **this** conversation has
-run none and started no jobs, `alt+t` falls through — there is nothing on the column to
+run none and started no jobs, `alt+t` falls through: there is nothing on the column to
 put a cursor on. A session that has only started a server still has the jobs section, so
 `alt+t` takes it.
 
 **The column's other lines take no cursor.** Its `standing` section, and the two `+` rows
-that close each of those sections (`+ /task`, `+ /standing`), are the pointer's — the walk
-skips them. The `jobs` section does take the cursor: the label, then every job row the
-column actually drew. Their keyboard equivalents for standing are the commands themselves:
-`/standing` opens the standing orders page, and typing `/task ` is exactly what pressing
-`+ /task` puts in the box. **No new key is added to the column by either of them.** `enter`
-on the `jobs` label toggles the section; `enter` on a job row opens that job's page.
+(`+ /task`, `+ /standing`), are the pointer's; the walk skips them. The `jobs` section does
+take the cursor: the label, then every job row the column actually drew. Their keyboard
+equivalents for standing are the commands themselves: `/standing` opens the standing orders
+page, and typing `/task ` is exactly what pressing `+ /task` puts in the box. `enter` on the
+`jobs` label toggles the section; `enter` on a job row opens that job's page.
 
-**Under 60 columns the TASKS PAGE this column reaches is a thumb's, not a keyboard's** — the
+**Under 60 columns the TASKS PAGE this column reaches is a thumb's, not a keyboard's**: the
 column itself is unchanged, and its own keys are the ones above. The page's rows become
 two-line cards a tap opens, its foot is a `‹ back` bar in place of the key legend
 `enter open its room · alt+s sort · type to filter`, and the strip that opens it is one full-width door
-(`▸ 3 tasks · 1 running`) rather than a row of chips. Mouse motion is ignored — a tap opens
+(`▸ 3 tasks · 1 running`) rather than a row of chips. Mouse motion is ignored: a tap opens
 in one gesture. The tasks page describes the phone flow in full.
 
-**`ctrl+g` closes the roster's column, and opens it again when it has no foreground
-command to keep.** It works from the message
-box, from inside a room, and while the roster holds the keyboard — it is the one key
-here you do not have to ask for the roster first to use. Closing it hands the keyboard
-back to the box. The choice is written to your profile as `ui.task_column`, so the next
-session opens the way you left it, and `alt+t` counts as asking for the column back.
+**`alt+l` closes the column, and opens it again.** It works from the message box, from
+inside a room, and while the roster holds the keyboard: it is the one key here you do not
+have to ask for the roster first to use. It is the same key in every chat, whichever word
+is in front, and the column's header names it at its right (`opt+l` on a Mac). Closing it
+hands the keyboard back to the box. The choice is written to your profile as
+`ui.task_column`, so the next session opens the way you left it, and `alt+t` counts as
+asking for the column back. `ctrl+g` does the same while no foreground command can be kept;
+while one can, `ctrl+g` backgrounds the command instead.
 
 **A closed column leaves a two-column edge down the right of the frame with a `❮` in it,
 drawn in ink, and clicking anywhere on that edge opens the column again. Clicking the
-column's `❯` door while it stands closes it** — one chevron control, two states, so the
-pointer can go both ways. With no foreground command to keep the line says
-`❯ ctrl+g hide`; while a command owns `ctrl+g`, it says only `❯ hide`. The chevron
-works in both states; the keyboard chord belongs to the command in the second one.
-When no command can be kept, the key falls through and does nothing only when there is
-no roster on the frame to close: a frame under 100 columns where nothing has raised the overlay. It works with
-no tasks at all — the column stands with only its `+ /task` and `+ /standing` doors, with the
-`ctrl+. earlier` door under them if earlier sessions ran anything, and either way an
-empty column is still a column to close. On the untouched empty screen there is no
-column yet; there `ctrl+g` is a first keystroke like any other — the greeting goes and
-the key then closes the column it would just have raised, so a second press brings it
-back (*The empty screen* page).
+`alt+l` at the right of the column's header while it stands closes it**, so the pointer can
+go both ways. `alt+l` works with no tasks at all: the column stands with only its header,
+its `+ /task` and `+ /standing` doors, and the `ctrl+. earlier` door under them if earlier
+sessions ran anything, and either way an empty column is still a column to close. Under 100
+columns there is no column beside the conversation, and `alt+l` lays it over the body
+instead. On the untouched empty screen there is no column yet; there the key is a first
+keystroke like any other: the greeting goes and the key then closes the column it would
+just have raised, so a second press brings it back (*The empty screen* page).
 
 **With a room open:** `esc` leaves the room, though a history recall walk is
 cancelled first · `enter` steers the node (see *What steering a task looks like on its
@@ -2730,11 +2764,14 @@ Only the left button acts. A press is resolved in this order:
    terminal the strip chip the roster's cursor is on carries a `✕` of its own, and
    pressing it asks to stop that work instead of opening its room. **When the column is
    closed, the two-column edge it leaves at the right of the frame answers here too** —
-   a press anywhere on it opens the column again. With no foreground command to keep,
-   `ctrl+g` does that too; while a command can be kept, the key backgrounds that command.
-   Within the column, its own lines are asked before its task rows: a `+ /task` or
-   `+ /standing` row types that command into your message box, and a row in the
-   `standing` section opens `/standing` with the cursor already on that order.
+   a press anywhere on it opens the column again; `alt+l` does that too.
+   Within the column, its own lines are asked before its task rows: the header's words
+   (the other word brings its view to the front, and the `alt+l` at the right closes the
+   column), a needs-you band row (it opens its thing), a group heading (it opens or folds
+   the group), a Traffic row, a `+ /task` or `+ /standing` row (it types that command into
+   your message box), and a row in the `standing` section (it opens `/standing` with the
+   cursor already on that order). Whatever lights under the pointer is exactly what a press
+   there does.
 9. The figures on the status row: the **money figure** (`$0.14`) and the cache beside it,
    which open the **Spending** tab of `/settings`; and the **context meter**
    (`66.8k/1.3M · 5%`) and the compaction forecast, which print `/status`. Each brightens
@@ -2799,8 +2836,8 @@ the wheel walks the **cursor** rather than a scroll offset of its own, because o
 window follows the cursor.
 
 **The task column on the right scrolls under the pointer** and leaves the conversation
-beside it where it is. It moves the column's own window — running work stays pinned at the
-top, and the `tasks` label with it — unless the column is holding the keyboard (`alt+t`),
+beside it where it is. It moves the column's own window (the header and the needs-you band
+stay pinned at the top) unless the column is holding the keyboard (`alt+t`),
 in which case the window is already following the cursor and the wheel walks that instead.
 
 Reaching the bottom **re-arms sticking**, so new replies follow along again. Scrolling
@@ -2931,14 +2968,13 @@ status line says what was copied instead of opening anything. See "selecting tex
 your mouse" above.
 
 **There is nothing under the pointer.** A click on empty space does nothing anywhere on
-this surface, including the gap between two words of the tab bar and the blank rows of a
-task's page. A click in copy mode acts on nothing at all, because those rows are a frozen
+this surface, including the air around the place words on the top line and the blank rows of
+a task's page. A click in copy mode acts on nothing at all, because those rows are a frozen
 snapshot.
 
-**The terminal is too narrow for the word you are aiming at.** The tab bar gives up words
-as the frame narrows, and at its narrowest it carries only the place you are standing in —
-so on a narrow window there is no other place-word on screen to click. `tab`, `shift+tab`
-and `alt+1`…`alt+8` still go everywhere.
+**The terminal is too narrow for the word you are aiming at.** The top line folds its
+trailing places into `more ▾` as the frame narrows; click `more ▾` and pick the place from
+its menu. `tab`, `shift+tab` and `alt+1`…`alt+9` still go everywhere.
 
 **A file path is your terminal's click, not codeaf's** — usually **cmd+click**
 (ctrl+click on Linux). If a plain click on a path does nothing, that is why.
@@ -3155,9 +3191,9 @@ answer:
 | `ctrl+r` | Bound. In the message box it is **spell it out** — see "Make my prompt better" above — in the `/files` list it opens the folder a file is in, and in the `/model` picker it fetches the newest model list. Nowhere else |
 | `alt+e` | **Bound**, on three surfaces: it moves how hard the thing you are standing on thinks — this conversation from the message box, a task, or a standing item on home. The machine's own default is the `thinking` row of `/settings` and is not on this chord. See "The thinking chip above the message box" and "alt+e — how hard the thing you are looking at thinks". Anywhere else it does nothing. On macOS it is shown as `opt+e`; the terminal must send Option as Alt/Meta, as for the other Option shortcuts |
 | `ctrl+x` | Bound in three places: it drops a harness design from inside its room; on home it stops a standing item for good; and on a `tasks` row of home that this window holds it asks to stop that task (`ctrl+x stop it` on the `alt+.` map; the foot under a field row is the resting sentence and does not name it). Not bound anywhere else |
-| `ctrl+y` | **Bound in two places**: on a program's task page — senior-dev's room, however it was opened — it turns the page between the actions the program took and its raw calls to its model; in the `/files` list it copies the file under the cursor. Nowhere else |
+| `ctrl+y` | **Bound** on a program's task page: it turns the page between the actions the program took and its raw model calls; on a Home project row and in the `/files` list it copies the path under the cursor. Nowhere else |
 | `ctrl+z` | **Bound**: undo in every box, with `ctrl+shift+z` to redo — see "Undo what I typed" |
-| `ctrl+<digit>` | **Bound as a second spelling of the place keys, on the terminals that report they can send it.** `ctrl` and a digit has no encoding in the scheme most terminals speak, which is why `alt+1` … `alt+8` (`opt+1` … `opt+8` on a Mac) are the first spelling and always will be, but a terminal running the kitty keyboard protocol sends it and says so, and where that report arrives `ctrl+1` … `ctrl+8` reach the same seven places. The map's line says `alt+1…8 or ctrl+1…8 go to a place` exactly when the alias is live. Where the terminal has said nothing, the chord does nothing and is never drawn |
+| `ctrl+<digit>` | **Bound as a second spelling of the place keys, on the terminals that report they can send it.** `ctrl` and a digit has no encoding in the scheme most terminals speak, which is why `alt+1` … `alt+9` (`opt+1` … `opt+9` on a Mac) are the first spelling and always will be, but a terminal running the kitty keyboard protocol sends it and says so, and where that report arrives `ctrl+1` … `ctrl+9` reach the same eight places. The map's line says `alt+1…9 or ctrl+1…9 go to a place` exactly when the alias is live. Where the terminal has said nothing, the chord does nothing and is never drawn |
 | `ctrl+.` | Two meanings, on two screens that cannot both be up. In a conversation it is every task this project has run (`/history`); while a place is standing it draws the key map, on the terminals that can send `ctrl+<digit>` |
 | `alt+<letter>` | Bound **only where a place says so, and only on that place**. `alt+s` changes the shelf on the memory place; `alt+b` and `alt+f` are the word jumps inside every box and are never taken by a place. Every other `alt+<letter>` does nothing |
 | `shift+←` `shift+→` `shift+↑` `shift+↓` | The **time window** of a place that has one: `shift+←→` moves it by its own length, `shift+↑↓` changes how coarse it is. Three places have one — tasks (when it ran), standing (when it fired) and spend (which days) — and each draws the same control on its head row, `shift+← aug 12 – aug 25 →` with `shift+↑ coarser` beside it. Anywhere else, on a terminal too narrow to draw the control, and (for the zoom alone) on a line with no room for its clause, they do nothing |
@@ -3198,8 +3234,8 @@ When more than one command is running at once, `ctrl+g` takes **the one that has
 been running longest**, which is the one you are waiting on.
 
 While a command can be kept, this meaning takes precedence over hiding or restoring the
-task column, so the column stays where it was. With no such command the key belongs to
-the column as described above. `ctrl+b` is copy mode and `esc` interrupts; neither changes.
+task column, so the column stays where it was. With no such command the key does what
+`alt+l` does: it closes the column or brings it back. `ctrl+b` is copy mode and `esc` interrupts; neither changes.
 
 ## When a settings change lands
 

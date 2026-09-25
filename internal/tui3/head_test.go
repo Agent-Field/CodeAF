@@ -10,10 +10,10 @@ import (
 
 // ── THE ONE HEAD ────────────────────────────────────────────────────────────
 //
-// A conversation and every place draw the same four rows at the top of the
-// frame — the pulse, the strip or the bar, the rule, a blank (head.go) — so a
-// person walking from home into a chat and back sees the head stay still and
-// only its middle row change.
+// Row zero is the same on a conversation and on every place. A conversation
+// then draws the strip, the rule and a blank ([chatHeadRows]). A place draws
+// the rule and a blank and no strip ([placeHeadRows]), so its body starts one
+// row higher.
 
 // headSizes are the three frames the one head is pinned at: the classic
 // terminal, a tall one, and a wide one.
@@ -40,14 +40,19 @@ func seedHeadFacts(a *app) {
 	a.machine = machineFacts{wants: 2, hands: 1, spent: 0.14, ceiling: 20}
 }
 
-// headOf is the first [placeHeadRows] rows of the frame, as a reader sees them.
+// headOf is the first rows of the frame, as a reader sees them: [chatHeadRows]
+// in a conversation, [placeHeadRows] on a place.
 func headOf(t *testing.T, a *app) []string {
 	t.Helper()
+	n := placeHeadRows
+	if !a.pageShowing() {
+		n = chatHeadRows
+	}
 	rows := strings.Split(frame(a), "\n")
-	if len(rows) < placeHeadRows {
+	if len(rows) < n {
 		t.Fatalf("a %d-row frame has no room for the head", len(rows))
 	}
-	head := make([]string, placeHeadRows)
+	head := make([]string, n)
 	for i := range head {
 		head[i] = strings.TrimRight(plain(rows[i]), " ")
 	}
@@ -60,27 +65,36 @@ func headPulseWhole() string {
 	return "2 want you · 1 moving · $0.14 / " + railFigure(20) + " · thu 9:49am"
 }
 
-// THE CONVERSATION WEARS THE PLACES' HEAD, AT EVERY SIZE THE STRIP IS DRAWN.
-// The pulse on row 0, the strip on the bar's row, the rule, a blank — and the
-// body starts under exactly those four rows.
+// THE CONVERSATION'S HEAD IS THE NAV, THE STRIP, THE RULE AND A BLANK.
+// The body starts under exactly those four rows. At eighty columns the pulse
+// has given up the clock, the moving count and the words of `2 want you`, whose
+// count stays as `2 ?`, to keep every place on the row (topnav.go's ladder);
+// wider, it says everything.
 func TestTheConversationWearsThePlacesHead(t *testing.T) {
 	a := headLab(t)
 	for _, size := range headSizes {
 		a.width, a.height = size.w, size.h
 		a.touch()
 		head := headOf(t, a)
-		if !strings.HasPrefix(head[0], " "+plain(a.pal.wordmark(a.width))) || !strings.HasSuffix(head[0], headPulseWhole()) {
-			t.Fatalf("at %dx%d the chat's first row is not the pulse with its counts and budget:\n%q", size.w, size.h, head[0])
+		pulse := headPulseWhole()
+		if size.w == 80 {
+			pulse = "2 ? · $0.14 / " + railFigure(20)
 		}
-		if !strings.Contains(head[placeTabRow], "home") || !strings.Contains(head[placeTabRow], a.chatDisplayName()) {
-			t.Fatalf("at %dx%d the strip is not under the pulse:\n%q", size.w, size.h, head[placeTabRow])
+		if !strings.HasPrefix(head[0], " "+plain(a.pal.wordmark(a.width))) || !strings.HasSuffix(head[0], pulse) {
+			t.Fatalf("at %dx%d the chat's first row is not the nav with the pulse at its end:\n%q", size.w, size.h, head[0])
+		}
+		if !placeWordsInOrder(head[0], "home", "teams", "chats", "sessions", "spend", "settings") {
+			t.Fatalf("at %dx%d the chat's first row does not carry the places:\n%q", size.w, size.h, head[0])
+		}
+		if strings.Contains(head[tabStripRow], " home ") || !strings.Contains(head[tabStripRow], a.chatDisplayName()) {
+			t.Fatalf("at %dx%d the strip is not under the nav, on its own:\n%q", size.w, size.h, head[tabStripRow])
 		}
 		if head[2] != strings.Repeat("─", size.w) || head[3] != "" {
 			t.Fatalf("at %dx%d the head does not close with a rule and a blank:\n%q\n%q", size.w, size.h, head[2], head[3])
 		}
-		if a.headHeight() != placeHeadRows || a.bodyTop() != placeHeadRows+a.stripHeight() {
+		if a.headHeight() != chatHeadRows || a.bodyTop() != chatHeadRows+a.stripHeight() {
 			t.Fatalf("at %dx%d the head draws %d rows and is charged %d, body at %d",
-				size.w, size.h, placeHeadRows, a.headHeight(), a.bodyTop())
+				size.w, size.h, chatHeadRows, a.headHeight(), a.bodyTop())
 		}
 		if size.w == 80 && size.h == 24 || size.w == 120 {
 			t.Logf("the chat head at %dx%d:\n%s", size.w, size.h, strings.Join(head, "\n"))
@@ -94,12 +108,11 @@ func TestTheConversationWearsThePlacesHead(t *testing.T) {
 // (roompanel.go's [app.roomOrganized]).
 var headFrameSizes = []struct{ w, h int }{{80, 24}, {120, 45}, {180, 45}}
 
-// A TASK ROOM SPENDS THE PLACES' HEAD ABOVE ITS BODY, as the conversation it
-// opened from does and as every place does: the pulse, the strip, the rule and
-// a blank, and the room's own trail on the first row under them — where a
-// place's heading is. It used to lay the trail where the rule stands and its
-// facts where the blank does, so walking into a task moved the rule down a row,
-// and two in the roomy layout (PLACES-AUDIT.md, lane K).
+// A TASK ROOM SPENDS THE CONVERSATION'S HEAD ABOVE ITS BODY: the nav, the
+// strip, the rule and a blank, and the room's own trail on the first row under
+// them. A place spends three rows and no strip, so its body starts where the
+// chat's strip is. The room used to lay the trail where the rule stands
+// (PLACES-AUDIT.md, lane K).
 func TestATaskRoomSpendsThePlacesHeadAboveItsBody(t *testing.T) {
 	room, chat := crumbApp(t), headLab(t)
 	for _, size := range headFrameSizes {
@@ -114,9 +127,13 @@ func TestATaskRoomSpendsThePlacesHeadAboveItsBody(t *testing.T) {
 			}
 			f.a.touch()
 			head := headOf(t, f.a)
-			if !strings.HasPrefix(head[0], " "+plain(f.a.pal.wordmark(f.a.width))) || head[2] != strings.Repeat("─", size.w) || head[3] != "" {
-				t.Fatalf("at %dx%d %s's head is not the pulse, a row, the rule and a blank:\n%s",
-					size.w, size.h, f.where, strings.Join(head, "\n"))
+			ruleAt := 2
+			if f.to != pageNone {
+				ruleAt = 1
+			}
+			if !strings.HasPrefix(head[0], " "+plain(f.a.pal.wordmark(f.a.width))) || head[ruleAt] != strings.Repeat("─", size.w) || strings.TrimSpace(head[ruleAt+1]) != "" {
+				t.Fatalf("at %dx%d %s's head is not the nav, then %s:\n%s",
+					size.w, size.h, f.where, map[bool]string{true: "the rule and a blank", false: "the strip, the rule and a blank"}[f.to != pageNone], strings.Join(head, "\n"))
 			}
 			if f.to != pageNone {
 				f.a.showPage(pageNone)
@@ -125,11 +142,11 @@ func TestATaskRoomSpendsThePlacesHeadAboveItsBody(t *testing.T) {
 		// The room's heading is the first row under the head, and the rows the
 		// frame drew there are the rows the geometry charged for.
 		rows := strings.Split(plain(frame(room)), "\n")
-		if room.roomHeadRow() != placeHeadRows || !strings.Contains(rows[placeHeadRows], "Write the tree") {
+		if room.roomHeadRow() != chatHeadRows || !strings.Contains(rows[chatHeadRows], "Write the tree") {
 			t.Fatalf("at %dx%d the room's trail is on row %d, not under the %d-row head:\n%q",
-				size.w, size.h, room.roomHeadRow(), placeHeadRows, rows[placeHeadRows])
+				size.w, size.h, room.roomHeadRow(), chatHeadRows, rows[chatHeadRows])
 		}
-		if room.bodyTop() != room.headHeight()+room.stripHeight() || room.headHeight() < placeHeadRows+room.roomHeadCount() {
+		if room.bodyTop() != room.headHeight()+room.stripHeight() || room.headHeight() < chatHeadRows+room.roomHeadCount() {
 			t.Fatalf("at %dx%d the room's head is charged %d rows, body at %d",
 				size.w, size.h, room.headHeight(), room.bodyTop())
 		}
@@ -222,8 +239,16 @@ func TestThePulseOverAChatIsThePulseOverAPlace(t *testing.T) {
 	if place[0] != chat {
 		t.Fatalf("the pulse over the tasks place is not the pulse over the chat:\n%q\n%q", place[0], chat)
 	}
-	if !strings.Contains(place[placeTabRow], "home") || !strings.Contains(place[placeTabRow], "sessions") {
-		t.Fatalf("the bar is not on the strip's row: %q", place[placeTabRow])
+	if !strings.Contains(place[navRow], "home") || !strings.Contains(place[navRow], "sessions") {
+		t.Fatalf("the nav is not on the first row: %q", place[navRow])
+	}
+	if strings.Contains(place[tabStripRow], a.chatDisplayName()) || !strings.HasPrefix(place[1], "─") {
+		t.Fatalf("the tasks place drew a strip under the nav: %q", place[tabStripRow])
+	}
+	a.showPage(pageNone)
+	chatHead := headOf(t, a)
+	if !strings.Contains(chatHead[tabStripRow], a.chatDisplayName()) {
+		t.Fatalf("the strip is not under the nav in the chat: %q", chatHead[tabStripRow])
 	}
 }
 
@@ -241,41 +266,35 @@ func TestHomesPulseIsTheBudgetAndTheClock(t *testing.T) {
 	}
 }
 
-// THE STRIP AND THE BAR ANSWER THE POINTER ON THE SAME ROW, and the pulse above
-// them answers nothing. A press resolved against the old head — the strip on
-// row zero, or on row one only on tall terminals — would open a chat for a
-// click on the pulse.
-func TestTheStripAndTheBarAnswerOnTheSameRow(t *testing.T) {
+// THE NAV ANSWERS ON ROW ZERO AND THE STRIP ON ROW ONE, on a chat and on a
+// place alike. A press resolved against the old head, where the places and
+// the strip took turns on row one, would open a chat for a click on a place.
+func TestTheNavAndTheStripAnswerOnTheirOwnRows(t *testing.T) {
 	a := headLab(t)
 	for _, size := range headSizes {
 		a.width, a.height = size.w, size.h
 		a.touch()
-		frame(a)
-		home := headerHomeTarget(t, a)
-		if _, ok := a.tabAt(home.span.from, placeTabRow); !ok {
-			t.Fatalf("at %dx%d the strip does not answer on row %d", size.w, size.h, placeTabRow)
+		home := headerHome(t, a)
+		if a.tabRow != navRow {
+			t.Fatalf("at %dx%d the nav was drawn on row %d", size.w, size.h, a.tabRow)
 		}
-		if cmd, took := a.tabPress(home.span.from, 0); !took || cmd != nil || a.at(pageHome) {
-			t.Fatalf("at %dx%d a press on the pulse leaked into the strip", size.w, size.h)
+		if _, ok := a.tabAt(home.from, navRow); ok {
+			t.Fatalf("at %dx%d the strip answers on the nav's row", size.w, size.h)
+		}
+		if cmd, took := a.tabPress(home.from, navRow); !took || cmd != nil || a.at(pageHome) {
+			t.Fatalf("at %dx%d a press on the nav leaked into the strip", size.w, size.h)
 		}
 	}
 	walkTo(t, a, pageTasks)
-	frame(a)
-	if a.tabRow != placeTabRow {
-		t.Fatalf("the bar was drawn on row %d, the strip on row %d", a.tabRow, placeTabRow)
+	home := headerHome(t, a)
+	if a.tabRow != navRow {
+		t.Fatalf("the place drew its nav on row %d", a.tabRow)
 	}
-	for _, span := range a.tabs {
-		if span.id != pageHome {
-			continue
-		}
-		cmd, took := a.placeTabPress(span.from, placeTabRow)
-		runCmd(cmd)
-		if !took || !a.at(pageHome) {
-			t.Fatal("a press on the bar's `home` did not open home")
-		}
-		return
+	cmd, took := a.navPress(home.from, navRow)
+	runCmd(cmd)
+	if !took || !a.at(pageHome) {
+		t.Fatal("a press on the nav's `home` did not open home")
 	}
-	t.Fatal("the bar drew no `home`")
 }
 
 // INSIDE A CHAT THE COUNTS COME OFF THE PULSE'S OWN BEAT. No home is open to

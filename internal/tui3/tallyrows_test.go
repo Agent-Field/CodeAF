@@ -246,21 +246,20 @@ func TestTheManualQuotesBothTasksOpeningHeadingsExactly(t *testing.T) {
 	}
 }
 
-// A ROSTER FOOTER THE MANUAL QUOTES IS BUILT FROM THE ROSTER'S OWN WORD TABLE.
-// `railGroupWords` moved and four passages went on teaching the words it had
-// dropped, so the next move of that table fails here rather than in front of
-// somebody reading the page.
+// THE GROUP HEADINGS THE MANUAL QUOTES ARE BUILT FROM THE ROSTER'S OWN WORD
+// TABLE. The column's footer of counts is gone and its headings carry the
+// counts now (`Running 4`, `Done 6 ▸`); the words moved once before and four
+// passages went on teaching the words it had dropped, so the next move of the
+// table fails here rather than in front of somebody reading the page.
 func TestTheManualQuotesTheRosterGroupsOwnWords(t *testing.T) {
 	wants := []string{
-		itoa(148) + " " + railGroupWords[railParked] + railSep + itoa(12) + " " + railGroupWords[railDone],
-		// IN THE FOOTER'S OWN ORDER ([railFootOrder]), which leads with what is
-		// HAPPENING and not with what is asking — the manual had it the other way
-		// round as well as in the retired words.
-		itoa(3) + " " + railGroupWords[railRunning] + railSep + itoa(1) + " " + railGroupWords[railAttention],
+		railHeadWords[railRunning] + " " + itoa(4),
+		railHeadWords[railIdle] + " " + itoa(3) + " " + glyphShut,
+		railHeadWords[railDone] + " " + itoa(6) + " " + glyphShut,
 	}
 	for _, want := range wants {
 		if !manual.Chat().Mentions(want) {
-			t.Fatalf("the chat manual does not quote the roster footer %q in the table's own words", want)
+			t.Fatalf("the chat manual does not quote the roster heading %q in the table's own words", want)
 		}
 	}
 }

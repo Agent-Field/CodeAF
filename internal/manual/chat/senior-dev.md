@@ -583,16 +583,22 @@ is spent. If models.dev is unavailable and there is no cache, conservative limit
 the run start. The models are fixed when the run starts; changing the crew later does not move
 a run already working. `/senior-dev` typed with a brief uses your crew.
 
-**Otherwise, from the chat it uses your crew.** codeaf hands senior-dev two of the conversation's
-crew: the worker (hands) model is the one it works with, and the low model its history
-summaries. Change the crew and the next run follows. The mastermind (brain) model is not
-used: every call senior-dev makes is either its work or a history summary.
+**Otherwise, from the chat it uses your crew.** codeaf hands senior-dev the worker
+(hands) model for its work and the low model for its history summaries. A pinned
+worker is kept; with no worker pin, codeaf reads one profile worker recommendation
+at the start of the run, independent of this task's brief. The per-task worker,
+planner and checker routing and `/crew`'s per-task limit apply to codeaf's own
+tasks, not senior-dev's run. Change the crew and the next run follows. The
+mastermind (brain) model is not used: every call senior-dev makes is either its
+work or a history summary.
 A crew model senior-dev's model catalog cannot size is left out, and its log says so;
 if that leaves no working model, it uses its own list instead.
 
 **Its own list** is six open models it routes among call by call, avoiding one for a
 while after it fails: deepseek-v4-flash, deepseek-v4-pro, qwen3.6-plus, kimi-k2.6,
-glm-5.1 and minimax-m2.7. A run with no crew set uses it, and so does a shell run.
+glm-5.1 and minimax-m2.7. A run with no usable crew model uses it. A shell run
+also reads one worker recommendation from your profile, then falls back to this list
+if that model cannot be used.
 
 **At a shell you choose**: `--high` replaces the list, `--low` sets the summaries' models,
 and `--variant` sets the reasoning effort every call asks for.

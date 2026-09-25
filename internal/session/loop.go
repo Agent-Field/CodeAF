@@ -2239,6 +2239,14 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// asking again is the right move, and then whether there is time to —
 		// and the line is written once, at the end of this switch, carrying the
 		// answer that was acted on (taxonomy_boundary.go's [Agent.weighLadder]).
+		if crewFinal(err) {
+			// A CREW'S LAST WORD IS NOT A WIRE FAILURE: the seat walked its
+			// ladder, a line of spend was met, or the route is resting, and the
+			// answer names what to do. Weighed as the provider error underneath
+			// it — a 429 with an hour's Retry-After — it bought a minute's
+			// backoff and another ask of a crew that had already said no.
+			return nil, model, err
+		}
 		verdict, evidence := a.weighLadder(err, ladder)
 		// ── AND WHETHER THERE IS TIME TO ASK AGAIN IS PART OF THE SAME READING ──
 		//
@@ -3756,6 +3764,11 @@ var glossFields = map[string][]string{
 	// here: it reads as its own sentence ([teamStartGloss]).
 	"team_send": {"to", "text"},
 	"team_post": {"to", "text"},
+	// A packet is its id and what was done with it.
+	"team_decide":       {"packet", "answer"},
+	"team_escalate":     {"packet", "to"},
+	"team_close_report": {"done"},
+	"team_raise":        {"question"},
 }
 
 // gloss renders one call as a person-readable line: the tool name and the one

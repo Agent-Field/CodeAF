@@ -1,6 +1,7 @@
 package session
 
 import (
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"strconv"
 	"strings"
 	"time"
@@ -815,6 +816,12 @@ type TaskNotice struct {
 	Model string
 	// NextModel is a saved continuation choice; Model still names the last attempt.
 	NextModel string
+	// Crew is the crew the router picked for this task — the class it read the
+	// task as, each seat's model and route, which seats were pinned, and the
+	// estimate — and nil on work that was not routed (taskcrew.go). The card
+	// draws its crew line from it, with CostUSD as the actual beside the
+	// estimate once there is one.
+	Crew *crewroute.Decision
 	// CostUSD is what this node's own agent has spent, live while it runs and
 	// frozen once it lands. Zero means nobody published a price — an unpriced
 	// model, or a node that has not started — and it is NOT the same claim as

@@ -167,7 +167,7 @@ func TestARecordWithNoSeatsScoresNothingAndFailsNothing(t *testing.T) {
 	}
 }
 
-func TestPickExcludesCrewModelsAndTheWorkerVendor(t *testing.T) {
+func TestPickExcludesTheCrewsOwnModelsAndTheWorkerVendor(t *testing.T) {
 	models := []catalog.Model{
 		{ID: "worker-vendor/cheap", PromptPrice: 0.1, CompletionPrice: 0.1, CodingIndex: 90, Parameters: []string{"tools"}},
 		{ID: "other/crew-held", PromptPrice: 0.2, CompletionPrice: 0.2, CodingIndex: 90, Parameters: []string{"tools"}},

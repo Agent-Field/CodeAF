@@ -42,6 +42,14 @@ today's spend beside the word: `no limit · $4.25 today`.
 spell "practice without a bound" — self-origin work runs while nobody is
 watching, so it is the one pocket that always has a bottom.
 
+**The crew's two limits live on `/crew`, not on this tab.** The **per task** row
+here reads the per-task limit and opens nothing new: it is set with
+`/crew cap task <dollars>` or on the panel's cap row (`per task $5 · daily none`).
+It is the second rail where `0` is not "no limit" — a task always has a limit, so
+`0` and `none` are refused and an emptied box is $5 again. The crew's **daily
+cap** beside it is unset until somebody sets it with `/crew cap <dollars>`, and
+`/crew cap off` takes it away.
+
 ## Every rail in the build
 
 | # | Rail | Where the number lives | Was | Now | Unit | What it blocks | `0` = no limit |
@@ -57,6 +65,9 @@ watching, so it is the one pocket that always has a bottom.
 | 9 | workflow ceiling | `internal/craft/types.go` `MaxRunBudgetUSD` | 10 | **500** | USD | the most a workflow file may grant itself | n/a |
 | 10 | workflow wall | `internal/craft/types.go` `DefaultWallClock` / `MaxWallClock` | 30m / 2h | **6h / 24h** | time | stops opening new rounds; running leaves finish | no |
 | 11 | discard consent gate | `internal/store/surgery.go` `SurgerySpendGateUSD` | 0.25 | **5** | USD already spent | asks before throwing running work away — raising it asks **less** | n/a |
+| 12 | per-task limit | `internal/config/crew.go` `CrewTaskCapDefault` | none | **5** | USD per task | the call that would pass it is not made; the task stops on `this task reached its $5 limit · raise it in /crew`. `-yes-spend` does not lift it | **no — a task always has one** |
+| 13 | crew daily cap | `internal/config/crew.go` `CrewCapAt` (`models.crew.cap`) | none | **none** | USD/day of crew spend | a task does not start, and a call that would cross it is not made; `codeaf do` refuses unless `-yes-spend` | yes (`off`) |
+| 14 | checker ceiling | `internal/config/crewspend.go` `crewCheckCeilingTimes` / `crewCheckCeilingFloor` | none | **3× the checker's estimate, at least $0.05** | USD per check | the check stops and the task ends unchecked | n/a |
 
 ### Rails that already shipped unbounded, and stay that way
 
@@ -71,8 +82,8 @@ watching, so it is the one pocket that always has a bottom.
 `CODEAF_NODE_BUDGET` (60 nodes) and `--budget` on `codeaf run` / `codeaf exec`
 (150 000 **tokens**) are counts. A task's own bounds are steps and time —
 `taskDeadline` 60m renewable four times, `taskMaxSteps` 200, `taskNoProgress` 6
-— and a task carries **no dollar cap of its own**: its money bound is whatever
-rail the conversation that started it carries. `costHintUSD` (10¢) is the point
+— and a task's dollar cap is the per-task limit set in `/crew` (`models.crew.task_cap`,
+$5 by default), inside whatever rail the conversation that started it carries. `costHintUSD` (10¢) is the point
 at which a first-run tip arms, not a ceiling.
 
 ## Where each number is set, in the order it wins
@@ -92,6 +103,8 @@ explicit instruction and still errors.
 | standing per-firing | — | `per_run_usd` on the `stand` tool, per item |
 | adaptive-run tank | — | the composer's third line, per run |
 | unattended budget | `CODEAF_MAX_COST` / `CODEAF_MAX_HOURS` | no — flags |
+| per-task limit | — | `/crew cap task` (`models.crew.task_cap`) |
+| crew daily cap | — | `/crew cap` (`models.crew.cap`) |
 
 ## One source of truth
 

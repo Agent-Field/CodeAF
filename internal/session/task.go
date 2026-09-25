@@ -77,6 +77,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -203,6 +204,7 @@ var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids that must finish first, only ones propose_task returned in this session. Its brief is given their reports; an unknown or failed id refuses the proposal"},` +
 	`"wide":{"type":"boolean","description":"Optional. True when the work is wider than one pair of hands. Say true whenever you judged it broad; a wrong true costs nothing"},` +
 	`"model":{"type":"string","description":"Optional, only where the person asked for one: a catalog id or part of one, never a class word, so resolve \"fast\" to a concrete model. A word fitting several is shown to the person to settle"},` +
+	`"effort":{"type":"string","enum":["best","cheap"],"description":"Only when the person asked"},` +
 	taskViaSchemaJSON +
 	`"max_steps":{"type":"integer","description":"Optional. Finished tool calls per progress checkpoint (default ` + strconv.Itoa(taskMaxSteps) + `); work still advancing is given more."},` +
 	`"no_progress":{"type":"integer","description":"Optional. Tool calls in a row that may add nothing before it is stopped as stuck (default ` + strconv.Itoa(taskNoProgress) + `). Raise it for work that must read a great deal first"}` +
@@ -229,13 +231,16 @@ type taskArguments struct {
 	// Checks is the repeatable verification this proposal puts the work under:
 	// the only commands its independent checker will be allowed to run
 	// (task_checks.go). Optional, and the harness never writes one either.
-	Checks     []string `json:"checks,omitempty"`
-	DependsOn  []uint64 `json:"depends_on"`
-	Wide       bool     `json:"wide"`
-	Model      string   `json:"model"`
-	Via        string   `json:"via"`
-	MaxSteps   int      `json:"max_steps"`
-	NoProgress int      `json:"no_progress"`
+	Checks    []string `json:"checks,omitempty"`
+	DependsOn []uint64 `json:"depends_on"`
+	Wide      bool     `json:"wide"`
+	Model     string   `json:"model"`
+	Via       string   `json:"via"`
+	// Effort is the person's one-task word for how hard to try — best or
+	// cheap — which moves this task's crew and nothing after it (taskcrew.go).
+	Effort     string `json:"effort"`
+	MaxSteps   int    `json:"max_steps"`
+	NoProgress int    `json:"no_progress"`
 }
 
 // taskSpec is one node's settled instruction: what the person was shown, and
@@ -361,6 +366,10 @@ type taskSpec struct {
 	// own worker (delegate_door.go). It is resolved at staging, so a name this
 	// machine has no delegate for is a refusal before any card goes up.
 	via string
+	// crewEffort is the one-task crew word the proposal carried — best, cheap,
+	// or empty for the router's own knee (taskcrew.go). It is not `effort`
+	// below, which is how hard the model thinks, not which models the crew is.
+	crewEffort crewroute.Effort
 	// effort is the rung this node's workers ask the model for, empty when
 	// nobody has set one and the ladder's next rung down decides
 	// (internal/effort). It travels the same road `model` travels — set at
@@ -866,6 +875,7 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	// and why ([runDidNotStart]), and reads as a failure. Only a run road that
 	// is not there at all (no engine linked, no place for a store) leaves this
 	// door for the older one ([Agent.commitProposalToRun]).
+	ctx = withCrewWish(ctx, crewWish{effort: spec.crewEffort})
 	if answer, refused, handled := a.commitProposalToRun(ctx, p, spec, elsewhere); handled {
 		return answer, refused, nil
 	}
@@ -1079,6 +1089,13 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 		via:        strings.TrimSpace(parsed.Via),
 		maxSteps:   parsed.MaxSteps,
 		noProgress: parsed.NoProgress,
+	}
+	if word := strings.TrimSpace(parsed.Effort); word != "" {
+		effort, ok := crewroute.ParseEffort(word)
+		if !ok {
+			return spec, "Invalid arguments: effort is best or cheap, or left out"
+		}
+		spec.crewEffort = effort
 	}
 	// A NEGATIVE THRESHOLD IS A MISTAKE WORTH SAYING OUT LOUD, where an absent
 	// one is not: omitting the field means "use the default" and is the ordinary

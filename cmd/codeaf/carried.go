@@ -143,7 +143,13 @@ func profileRoad() (carriedRoad, error) {
 		return carriedRoad{}, err
 	}
 	useAutoSeats(settings)
-	seats := config.ResolveSeats(settings.ProfileDir, "", "")
+	// A shell run has no task crew of its own. Resolve the profile's worker
+	// seat once here; the program keeps that seat unless its invocation names
+	// models explicitly.
+	seats, err := config.ResolveSeats(settings.ProfileDir, config.SeatFlags{}, config.CrewAsk{})
+	if err != nil && !errors.Is(err, config.ErrCrewAtCap) {
+		return carriedRoad{}, err
+	}
 	settings.Models = sharedCatalog(settings)
 	adapters := &carriedAdapters{settings: settings, built: map[string]modelapi.Completer{}}
 	sources := settings.Sources.OrDefault(settings.APIKey, settings.BaseURL)

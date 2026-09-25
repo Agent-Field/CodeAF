@@ -547,8 +547,14 @@ const fixedPrefixTarget = 48_000
 // pay the eight bytes back, and a declared fixture now weighs that same guide
 // and tool shape even on Windows, whose runnable registry is empty. The measured
 // caps and both waivers therefore stay at 57,124 and 49,590, with no increase.
+//
+// 2026-09-25, #1494 and #1436 merged into #1488. Their team delegation and
+// per-task crew forms leave the page at 22,291 bytes and grow the full tool
+// block to 34,927 over 24 tools. The measured fixed prefix is 57,218 bytes:
+// 94 above its preceding cap. The fixed waiver rises by exactly 94 for this
+// combined belt; the lean arm remains within its 49,590-byte cap.
 const (
-	fixedPrefixWaiver = 9_124
+	fixedPrefixWaiver = 9_218
 	leanPrefixWaiver  = 18_090
 )
 

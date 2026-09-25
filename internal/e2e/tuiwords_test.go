@@ -121,6 +121,14 @@ var tuiWords = map[string]tuiWord{
 		screen: "harnesses are unavailable here",
 		why:    "the refusal that must be absent from an ordinary launch and remain available to the hosted seam",
 	},
+	"crewMainKeys": {
+		screen: "enter change · esc close · ? keys",
+		why:    "/crew opened its panel, framed, with its keys in the bottom edge",
+	},
+	"crewAutoWord": {
+		screen: "auto — codeaf picks per task",
+		why:    "enter on a seat opened the seat list on its first row, auto",
+	},
 
 	// ── the bounded stop ─────────────────────────────────────────────────────
 	"stoppingWord": {
@@ -300,8 +308,9 @@ var tuiWords = map[string]tuiWord{
 		why:    "the pane saying the exchange is filed under what it made",
 	},
 	"exchangeAnswerHint": {
-		screen: "1 yes, set it up · 0 no · o other",
-		source: "yes, set it up",
+		screen: "Don't remind me",
+		source: "Don't remind me",
+		pkg:    "internal/session",
 		why: "the answers a ONE-OFF REMINDER's card offers, spelled in full under the box at every width. " +
 			"There are two rows and the key that asks for the box: a reminder has no `3 just once` to give, " +
 			"and since #189 the line is built from the answers the question carries rather than typed out, so " +
@@ -321,9 +330,10 @@ var tuiWords = map[string]tuiWord{
 		screen: "enter or tab answer this ",
 		why:    "the hint while the cursor stands on an errand row that is asking something",
 	},
-	"standYesWord": {
-		screen: "yes, set it up",
-		why:    "the first chip on a standing card, and half of the settled card's `yes, set it up · set up`",
+	"standRemindYes": {
+		screen: "Remind me",
+		pkg:    "internal/session",
+		why:    "the yes on a one-off reminder, which is what the errand in this suite asks for",
 	},
 	"standSetWord": {
 		screen: "set up",
@@ -378,7 +388,7 @@ var tuiWords = map[string]tuiWord{
 	// THE PHASE CLOCK COMPOSES BOTH OF ITS SENTENCES AT THE DRAW, out of halves
 	// two packages own (internal/tui3's phase.go, and the clock that feeds it in
 	// internal/provider). So each half is its own row and the suite asserts the
-	// join, which is the shape `standYesWord` and `standSetWord` already have.
+	// join, which is the shape `standRemindYes` and `standSetWord` already have.
 	// What varies is not a needle: the machine that went quiet is whatever this
 	// run pinned, and the provider a rescue would go to is whatever the frontier
 	// named. What stands still is the clause around them.
@@ -704,26 +714,6 @@ var tuiWords = map[string]tuiWord{
 			"planFigures). It is the same `N steps` and `$` the row already spends in its two columns",
 	},
 
-	// ── the seat a crew older than it never wrote ────────────────────────────
-	//
-	// The two halves of one line, and it is the ENGINE'S sentence: the surface
-	// says it in the thread and every headless door prints it under the models
-	// line, out of one composer (internal/config's Seat.Notice), so the gate
-	// looks for it where it is spelled rather than in the surface that relays it.
-	"inheritedSeatObservation": {
-		screen: "your crew was set before the work seat existed",
-		source: "your crew was set before the ",
-		pkg:    "internal/config",
-		why:    "the observation half: a profile older than the seat is told so, once, when work starts on it",
-	},
-	"inheritedSeatPromise": {
-		screen: "it is running on your small work seat's model",
-		source: "it is running on your ",
-		pkg:    "internal/config",
-		why: "the promise half, naming the row the work is actually on. It stops at the row rather " +
-			"than at `until you pick a crew again` because a transcript line is cut to make room for " +
-			"the task rail, and the sentence is longer than an ordinary window minus that column",
-	},
 	"taskLookWord": {
 		screen: "your call",
 		pkg:    "internal/session",

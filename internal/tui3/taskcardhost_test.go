@@ -167,7 +167,8 @@ func TestAHostedRosterListsTheFarConversationsTasks(t *testing.T) {
 	if node := a.tasks[9]; node == nil || node.title != "widening the pipe" {
 		t.Fatalf("the far row did not become a roster node: %#v", node)
 	}
-	if entries := a.railEntries(); len(entries) != 1 || entries[0].node == nil || entries[0].node.id != 9 {
+	railOpenAll(a)
+	if entries := a.railEntries(); len(entries) != 2 || !entries[0].head || entries[1].node == nil || entries[1].node.id != 9 {
 		t.Fatalf("the hosted roster stayed empty: %#v", entries)
 	}
 }

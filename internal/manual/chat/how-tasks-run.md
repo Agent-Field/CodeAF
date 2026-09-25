@@ -1792,12 +1792,12 @@ The worker is fresh; the working copy is not. The task stays *running* while a r
 way, and you see one plain line of what is being closed.
 
 **A correction round is attempted by a more capable model.** The first attempt runs on the
-task's own model; when a check finds gaps, the worker sent back to close them runs on your
-crew's **careful work** model — the `repair` role, in `/crew`. It is the one place codeaf
+task's own model; when a check finds gaps, the worker sent back to close them runs on the
+task's **checker** — the `repair` role, under the checker row. It is the one place codeaf
 spends more than you asked it to, and it is spent only after something has actually gone
 wrong, on a job the check has already narrowed to named gaps in a working copy that is
-already most of the way there. Two things turn it off by themselves: a crew whose careful
-model is the same as the model the work is on repairs on that model and costs nothing
+already most of the way there. Two things turn it off by themselves: a crew whose checker
+is the same as the model the work is on repairs on that model and costs nothing
 extra, and a task whose model **you named** — on the card or from inside its room — keeps
 your model for the correction round too.
 
@@ -2180,7 +2180,7 @@ what was left of the work is **not work a worker can do**: an approving review o
 person may give, a credential or an account nobody here holds, a decision that is yours to
 make, or a step that is somebody else's system doing something by itself.
 
-It is found by the same `mastermind` model that reads a task's parts before it splits (the
+It is found by the same **planner** that reads a task's parts before it splits (the
 tasks page, *when a task turns out to be too wide for one worker*). That reading runs
 **beside the task's worker**, which has already started, and when it comes back saying
 nobody here can do this, the worker is stopped where it is — the one time a started worker

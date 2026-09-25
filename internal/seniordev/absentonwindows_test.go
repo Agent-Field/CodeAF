@@ -10,17 +10,15 @@ import (
 	"testing"
 )
 
-// SENIOR-DEV IS ABSENT ON WINDOWS, NOT BROKEN THERE. Its engine has never had
-// a Windows form of its process groups, file locks and bash shell, so no file
-// of it may reach a Windows build: the build's list is empty there
-// (internal/delegate/builtin/carried_windows.go), and this holds every Go file
-// under this tree, tests included, to a constraint that keeps it out. A file
-// that forgot one would put half an engine into a Windows build, where it
-// either fails to compile or compiles into something that fails every time.
-func TestNoFileOfSeniorDevReachesAWindowsBuild(t *testing.T) {
+// SENIOR-DEV'S ENGINE IS ABSENT ON WINDOWS. Its process groups, file locks and
+// bash shell have no Windows form, so its files stay out of that build. The
+// one exception is util/runshape.go: codeaf's cross-platform program folder
+// reads those shared run facts even when the engine is absent.
+func TestOnlySharedRunFactsOfSeniorDevReachAWindowsBuild(t *testing.T) {
 	windows := build.Default
 	windows.GOOS, windows.GOARCH, windows.CgoEnabled = "windows", "amd64", false
 	checked := 0
+	sharedFacts := filepath.Join("util", "runshape.go")
 	err := filepath.WalkDir(".", func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -38,6 +36,12 @@ func TestNoFileOfSeniorDevReachesAWindowsBuild(t *testing.T) {
 		included, err := windows.MatchFile(filepath.Dir(path), entry.Name())
 		if err != nil {
 			return err
+		}
+		if path == sharedFacts {
+			if !included {
+				t.Errorf("%s must remain available to codeaf's Windows program folder", path)
+			}
+			return nil
 		}
 		if included {
 			t.Errorf("%s would be compiled into a Windows build; give it //go:build !windows", path)

@@ -116,9 +116,9 @@ func questionBlockText(a *app) string {
 	return plain(strings.Join(a.questionRows(a.width), "\n"))
 }
 
-// THE NODE KEEPS ITS MODEL AFTERWARDS: the rail says it on the telemetry row
-// under the name, the room's header states it, and the landed card keeps it
-// beside the working copy.
+// THE NODE KEEPS ITS MODEL AFTERWARDS: the column's hint line says it under
+// the pointer on the node's row, the room's header states it, and the landed
+// card keeps it beside the working copy.
 func TestTheModelFollowsTheNodeOntoTheRailAndTheLandedCard(t *testing.T) {
 	a, _, advance := taskApp(t)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: modelProposal(a, 7, 0, "openai/gpt-5", nil)})
@@ -130,32 +130,26 @@ func TestTheModelFollowsTheNodeOntoTheRailAndTheLandedCard(t *testing.T) {
 	if node == nil || node.model != "openai/gpt-5" {
 		t.Fatalf("the node did not keep its model: %+v", node)
 	}
-	// THE MODEL NEVER BUYS ITS CELLS FROM THE NAME. The first line is the state
-	// glyph, the title and the handle — and, for work handed to a program, that
-	// program's badge (programbadge.go); nothing else — and the model rides the
-	// telemetry row under it (task.go's [app.railTelemetry]), which is a row that
-	// gives up its own tail rather than the title's cells.
-	full := plain(strings.Join(a.railNodeRows(node, railCols), "\n"))
-	head, under, _ := strings.Cut(full, "\n")
-	if strings.Contains(head, "gpt-5") || !strings.Contains(head, "#7") {
-		t.Fatalf("the model is on the title's line:\n%s", full)
+	// THE MODEL NEVER BUYS ITS CELLS FROM THE NAME. The row is the state glyph,
+	// the name and the clock, one line, and the model is the hint line's under
+	// the pointer (sidecol.go's [app.sideHoverWords] reads the telemetry,
+	// task.go's [app.railTelemetry]).
+	row := plain(a.railEntryRow(railEntry{node: node, group: railRunning}, 28))
+	if strings.Contains(row, "gpt-5") || !strings.Contains(row, "Fix the nil-map") {
+		t.Fatalf("the model is on the task's row, or the name is not: %q", row)
 	}
-	if !strings.Contains(under, "gpt-5") {
-		t.Fatalf("the rail did not carry the model under the title:\n%s", full)
+	a.hot = hoverAt{kind: hoverRail, id: node.id}
+	if hint := a.sideHoverWords(); !strings.Contains(hint, "gpt-5") || !strings.Contains(hint, "Fix the nil-map crash") {
+		t.Fatalf("the hint line over the row does not carry the name and the model: %q", hint)
 	}
-	// A LONG NAME IS NOW THE SAME ROW. It used to cost the row its model, because
-	// the model was measured against the title; nothing is measured against the
-	// title any more.
+	// A LONG MODEL IS NEVER CUT ON THE HINT LINE: it has the room the row did
+	// not.
 	node.model = "anthropic/claude-opus-4.8"
-	long := plain(strings.Join(a.railNodeRows(node, railCols), "\n"))
-	if !strings.Contains(long, "claude-opus-4.8") || !strings.Contains(long, "#7") {
-		t.Fatalf("a long model cost the row one of its two facts:\n%s", long)
+	if hint := a.sideHoverWords(); !strings.Contains(hint, "claude-opus-4.8") {
+		t.Fatalf("a long model was cut from the hint line: %q", hint)
 	}
 	node.model = "openai/gpt-5"
-	narrow := plain(strings.Join(a.railNodeRows(node, railSlimCols), "\n"))
-	if !strings.Contains(narrow, "gpt-5") || !strings.Contains(narrow, "#7") {
-		t.Fatalf("a slim rail dropped the model with cells to spare:\n%s", narrow)
-	}
+	a.hot = hoverAt{}
 
 	advance(2 * time.Minute)
 	drive(t, a, taskEventMsg{gen: a.taskGen, ev: update(7, "Fix the nil-map crash", session.TaskDone,

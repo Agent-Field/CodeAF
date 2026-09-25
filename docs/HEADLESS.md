@@ -17,6 +17,7 @@ schema, and a person needs to know which command actually thinks.
 ```
 codeaf do "<task>" [--dir dir] [--db path] [--keep] [--timeout D]
                    [--json] [--yes-spend] [--model slug] [--plan-model slug]
+                   [--check-model slug] [--best|--cheap] [--pin seat=model[@provider]]
                    [--context-fill N] [--completion-reserve N]
 ```
 
@@ -40,9 +41,13 @@ work done.
 | `--keep` | off | Keep the private store instead of deleting it; the path is printed to stderr. |
 | `--timeout D` | `15m` | Hard wall, as a duration with a unit: `5m`, `2h`, `90s`. A bare number is still read as seconds for one release, so `--timeout 900` keeps working. A wall, not a schedule — the length of rope at which a wedged run is more useful dead. |
 | `--json` | off | Print one machine-readable object instead of the prose deliverable. |
-| `--yes-spend` | off | Spend past today's limit and past the plan-price question, without stopping to ask. The same flag with the same one sentence on `codeaf plan run`. Equivalent to `CODEAF_PREAUTHORIZE_SPEND=1`. |
-| `--model slug` | the ladder below | The work model for this run. |
-| `--plan-model slug` | the ladder below | Model that plans, replans, writes contracts, and runs the delivery gate, when it should differ from the model executing leaves. |
+| `--yes-spend` | off | Spend past today's limit and past the plan-price question, without stopping to ask. The same flag with the same one sentence on `codeaf plan run`. Equivalent to `CODEAF_PREAUTHORIZE_SPEND=1`. It does not lift the per-task limit (`/crew cap task`, $5 unless set). |
+| `--model slug` | the ladder below | The worker for this run — a one-task pin. |
+| `--plan-model slug` | the ladder below | The planner for this run — a one-task pin: plans, replans, writes contracts, and runs the delivery gate. |
+| `--check-model slug` | the ladder below | The checker for this run — a one-task pin. It never inherits the planner. |
+| `--best` | off | Run this task on the strongest crew your allowed models make. |
+| `--cheap` | off | Run this task on the cheapest crew your allowed models make. |
+| `--pin seat=model[@provider]` | none | Pin one seat for this run only — `worker=`, `planner=` or `checker=`. Repeatable, once per seat. |
 | `--context-fill N` | `60` | How full a model's context window may get before it is compacted, in percent; the law clamps it to 10–90. Setting it is what makes it govern a conversation's fold line as well — unset, that line follows the model's window. |
 | `--completion-reserve N` | `65536` | Tokens every call keeps free for its visible answer *and its reasoning*. Raise it for a reasoning-heavy model that truncates; lower it to buy prompt room on a small window. |
 
@@ -118,47 +123,67 @@ question was not the compiler's to answer at all.
 The corollary for a harness: put the answer in the ask. Anything you leave
 implicit is something `do` will decide for you and tell you it decided.
 
-### Which models a run uses — one ladder, four rungs
+### Which models a run uses — three seats, one ladder each
 
-The two seats — the model that **works** and the model that **plans** — resolve
-the same way at every headless door (`do`, `exec`, `run`, `plan new`,
-`plan revise`, `plan run`). First rung that answers wins, per seat:
+A run has a crew of three seats — the **worker** that does the work, the
+**planner** that plans it and the **checker** that reads the result — and every
+headless door (`do`, `exec`, `run`, `plan new`, `plan revise`, `plan run`)
+resolves them the same way. First rung that answers wins, per seat:
 
-| | work seat | plan seat |
-| --- | --- | --- |
-| 1 | `--model slug` | `--plan-model slug` |
-| 2 | `CODEAF_MODEL` | `CODEAF_PLAN_MODEL` |
-| 3 | the profile's crew — the **small work** row | the profile's crew — the **mastermind** row |
-| 4 | the build's default (`codeaf --help`) | empty: the work model plans too |
+| | worker | planner | checker |
+| --- | --- | --- | --- |
+| 1 | `--model slug` | `--plan-model slug` | `--check-model slug` |
+| 2 | `CODEAF_MODEL` | `CODEAF_PLAN_MODEL` | `CODEAF_CHECK_MODEL` |
+| 3 | a `/crew pin` in the profile | a `/crew pin` | a `/crew pin` |
+| 4 | routed for this task | routed for this task | routed for this task |
 
-**Rung 3 is what `/crew` writes** (`models.tiers.*` in the profile's
-`config.json`), and it is the rung that used to be missing: until #166 a headless
-run read the flags and the environment and never opened the profile, so a machine
-told `frugal` in the chat ran something else the moment the same brain ran
-headless. The two rows are the ones the chat's own planner and worker ride, so
-the crew now means the same thing on both surfaces.
+**Rungs 1 and 2 are one-task pins.** They are handed to the router as pins for
+this run, so the crew line, the estimate and the logged decision describe the
+crew that actually ran. **The checker never inherits the planner**: a pinned
+planner says something about planning and nothing about who grades the work.
+`codeaf do --pin checker=moonshotai/kimi-k3@openrouter` is the same pin spelled
+per seat, with the route after `@`.
 
-The crew answers only where a crew was actually **written**. A profile nobody has
-touched falls to rung 4 — the four shipped tier values are the `balanced` row, so
-reading them as a crew would make rung 4 unreachable and change the default work
-model for everybody. `CODEAF_HOME` / `CODEAF_PROFILE_DIR` decide which profile is
+**Rung 3 is what `/crew pin` writes** in the chat, so a checker pinned there is
+the checker here. `CODEAF_HOME` / `CODEAF_PROFILE_DIR` decide which profile is
 asked, so an isolated run is isolated here too.
 
-A crew row may carry a thinking level (`moonshotai/kimi-k3:low`), and so may a
-flag or a variable. The value travels whole and the level is applied per call by
-the role ladder, exactly as it is in the chat; the slug sent to the provider is
-the model alone. (Until this landed it was sent whole, so `--plan-model
-kimi-k3:low` asked OpenRouter for a model id nobody publishes.)
+**Rung 4 is the router.** Every seat nothing named is picked for this task: the
+task text is read as a class of work (`bugfix`, `openended` or `other`), and each
+seat gets the model that serves that class best for its cost among the models
+the profile allows (`/crew models` — `all` when nothing was written). `--best`
+and `--cheap` move one run to the strongest or the cheapest crew allowed.
 
-**Every run says which rung answered**, on stderr, before anything else:
+A seat's value may carry a thinking level (`moonshotai/kimi-k3:low`). The value
+travels whole and the level is applied per call by the role ladder, exactly as
+it is in the chat; the slug sent to the provider is the model alone.
+
+**Every run says which rung answered**, on stderr, before anything else, and
+under it the crew line — the class, the worker and its route, the checker (📌
+on a pinned seat) and the estimate:
 
 ```
-models: work z-ai/glm-5.3-flash (crew frugal) · plan z-ai/glm-5.3-flash (crew frugal)
-models: work anthropic/whatever (--model) · plan follows the work model (default)
+models: worker z-ai/glm-5.3-flash (routed) · planner z-ai/glm-5.3-flash (routed) · checker moonshotai/kimi-k3 (pinned)
+crew: bugfix · worker glm-5.3-flash (openrouter) · checker 📌 kimi-k3 · est $0.023
 ```
+
+When the run ends the `crew:` line is said again with the actual beside the
+estimate — `$0.021 (est $0.023)`.
+
+**The daily cap.** `/crew cap` sets what crews may spend in a day. At the cap
+`codeaf do` refuses before spending anything — `today's crew spend has reached
+the daily cap of $5.00 · raise it or turn it off with `/crew cap`, pass
+-yes-spend, or wait until midnight` — and `--yes-spend` is the one way past for
+that run; `--cheap` is refused at the cap like any other run. The other doors
+warn on stderr and go on.
+
+**The per-task limit.** Every run is held to the most one task may spend, $5
+unless `/crew cap task` set another. A call that would take the run past it is
+not made, and the run stops on `this task reached its $5 limit · raise it in
+/crew`. `--yes-spend` does not lift it.
 
 so a campaign can verify what actually ran instead of trusting the shell it
-launched from. `do --json` carries the same four facts as fields.
+launched from. `do --json` carries the same facts as fields.
 
 ### Exit codes — one ladder, and it is the same one on all three commands
 
@@ -269,13 +294,19 @@ there now. Test its value, or read `ok`.
 Fields that belong to `do` and stay: `spend_work` and `spend_overhead` — what
 the work cost against what it cost to decide what the work should be —
 `blocked_on`, `learned`, `plan_model`, `model_source`, `plan_model_source`,
+`check_model`, `check_model_source`, `class`, `crew`, `est_usd`, `effort`,
 `subharness` and `workspace`.
 
 | Field | Contract |
 | --- | --- |
 | `blocked_on` | The question it could not answer, verbatim. Non-empty **only** alongside a non-zero exit and an empty `answer`. |
 | `learned` | The job's blackboard: discoveries, pitfalls, a sibling's failure and why. On an ephemeral store this is the only piece of what the run understood that would otherwise die with it — capture it if you care about the run's reasoning. |
-| `model_source` / `plan_model_source` | Which rung of the ladder above chose each: `--model`, `CODEAF_MODEL`, `crew frugal`, `default`. Pin these in a campaign's records — they are the only way to tell two cells apart that were launched from different profiles. |
+| `model_source` / `plan_model_source` / `check_model_source` | Which rung of the ladder above chose each seat: the flag (`--model`, `--plan-model`, `--check-model`), the variable (`CODEAF_MODEL`, …), `pinned` or `routed`. Pin these in a campaign's records — they are the only way to tell two cells apart that were launched from different profiles. |
+| `check_model` | The checker's model. Present whenever a checker was seated. |
+| `class` | The class of work the task was read as: `bugfix`, `openended` or `other`. Present on a routed run. |
+| `crew` | Each seat — `worker`, `planner`, `checker` — as `{model, provider, kind, pinned, est_usd}`; `kind` is how the route bills: `metered`, `plan` or `local`. |
+| `est_usd` | The crew's estimate for the task, beside `spend_usd`, which is the actual. |
+| `effort` | `best` or `cheap` when `--best` or `--cheap` was given; absent otherwise. |
 | `workspace` | The directory the run worked in, absolute, edited in place. Always present; empty on a run that never opened one or was handed to an existing resident whose workspace this invocation cannot establish. |
 
 ### Stream discipline
@@ -739,8 +770,9 @@ The full list is `codeaf help env`. What matters headless:
 | Variable | Default | Why a harness cares |
 | --- | --- | --- |
 | `OPENROUTER_API_KEY` | — | Required. |
-| `CODEAF_MODEL` | see `--help` | The work model. `--model` overrides per run; unset, the profile's crew answers before the built-in default — see the ladder in section 1. |
-| `CODEAF_PLAN_MODEL` | unset | Plans, replans, contracts, and the gate on a stronger model while a smaller one executes leaves. Unset, the profile's crew mastermind answers; with no crew written, the work model plans too. |
+| `CODEAF_MODEL` | unset | Pins the worker for every run it is set on. `--model` overrides per run; unset, a `/crew pin` or the router answers — see the ladder in section 1. |
+| `CODEAF_PLAN_MODEL` | unset | Pins the planner: plans, replans, contracts and the delivery gate. Unset, a `/crew pin` or the router answers. |
+| `CODEAF_CHECK_MODEL` | unset | Pins the checker. Unset, a `/crew pin` or the router answers — never the planner. |
 | `CODEAF_MODELS` | unset | A panel instead of one model: calls cascade cheapest-first and escalate when a verifier catches a failure. Comma-separated slugs or a JSON path. **Changes what a run costs and how it fails — pin it when measuring.** |
 | `CODEAF_DAILY_BUDGET` | `20.0` | The day's spending limit in dollars; `0` is unlimited. A run that reaches it stops. |
 | `CODEAF_PREAUTHORIZE_SPEND` | unset | `1` is `--yes-spend` for every run. |
@@ -783,15 +815,16 @@ Rules that came from getting them wrong:
 - **`--model` alone does not pin a chat cell to one model.** The tier rows and
   role pins answer the auxiliary calls, so a campaign attributing spend and
   quality to a named model must pass `--one-model` — or measure a profile it
-  did not record. `do` takes its two seats from the same tier rows when nothing
-  else names them, so a headless cell is pinned by passing both flags (or both
-  variables), and `model_source` in the `--json` object says whether they took.
+  did not record. `do` routes every seat nothing names, so a headless cell is
+  pinned by passing all three flags (or all three variables, or `--pin` per seat),
+  and `model_source`, `plan_model_source` and `check_model_source` in the `--json`
+  object say whether they took.
   A run whose numbers are compared across the two shapes should say which is
   which. Verify rather than assume: the `usage` records in the session
   transcript name the model that actually served each call.
 - **The profile is part of the measurement.** Two cells run from two profiles
-  with different crews are two configurations, not one. Record `model_source`
-  and `plan_model_source` beside the score, or point every cell at one
+  with different pins or allowed models are two configurations, not one. Record
+  `model_source`, `plan_model_source`, `check_model_source` and `crew` beside the score, or point every cell at one
   `CODEAF_PROFILE_DIR`.
 - **`--timeout` is part of the result.** A cell that hit the wall measured the
   wall as much as the work. Report the timeout rate beside the score or the

@@ -773,14 +773,11 @@ func TestMaskCredentialHidesTheKeyAndItsLength(t *testing.T) {
 // The three throttle rows read their defaults, take a person's answer, and hand
 // it back to the accessor the session door calls — which is the whole of what a
 // settings row has to do.
-// EVERY TIER ROW SHIPS POINTED AT A MODEL, and the two answers a person can give
-// one are different from each other: never touching it is this build's own
-// choice, emptying it on purpose is "follow the conversation".
-//
-// The reflex row was the first written this way, for the reason its key states.
-// The other three joined it when the crew landed (crew.go), because a whole crew
-// following the conversation means the most expensive model in the build
-// answering the cheapest questions in it.
+// THE TWO ROWS THAT ARE NOT CREW SEATS SHIP POINTED AT A MODEL, and the two
+// answers a person can give one are different from each other: never touching
+// it is this build's own choice, emptying it on purpose is "follow the
+// conversation". The crew's three seats ship with NO model: unpinned, a seat is
+// routed, and a profile with no provider connected has nothing to route to.
 func TestEveryTierShipsWithAModelAndCanStillBeCleared(t *testing.T) {
 	dir := t.TempDir()
 	row := mustRow(t, registry(t, dir), KeyTierReflexModel)
@@ -791,15 +788,12 @@ func TestEveryTierShipsWithAModelAndCanStillBeCleared(t *testing.T) {
 	if got := row.Value(); got != DefaultReflexModel {
 		t.Fatalf("the reflex row reads %q in an untouched profile, want %q", got, DefaultReflexModel)
 	}
-	// And so do its three neighbours, each with the model this build chose for
-	// that class of work.
-	for _, c := range []struct{ tier, want string }{
-		{ModelTierLow, DefaultLowModel},
-		{ModelTierHigh, DefaultHighModel},
-		{ModelTierMastermind, DefaultMastermindModel},
-	} {
-		if got := TierModelAt(dir, c.tier); got != c.want {
-			t.Fatalf("the %s tier resolves %q in an untouched profile, want %q", c.tier, got, c.want)
+	if got := TierModelAt(dir, ModelTierLow); got != DefaultLowModel {
+		t.Fatalf("the low tier resolves %q in an untouched profile, want %q", got, DefaultLowModel)
+	}
+	for _, tier := range []string{ModelTierWorker, ModelTierHigh, ModelTierMastermind} {
+		if seat := TierSeatAt(dir, tier); seat.Source != SeatRouted {
+			t.Fatalf("the %s tier reads %+v in an untouched profile, want a routed seat", tier, seat)
 		}
 	}
 

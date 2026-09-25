@@ -62,6 +62,7 @@ invalidates:
   - "A restore that could not set the person's later edits aside left the folder as it was (nothing lost) but still ended with `the project's own build and tests passed`, about a folder holding changes nothing checked. The run now ends unchecked and says the folder could not be put back, and why."
   - "In the common ending, where every write was already checkpointed by the engine and nothing was left to stage, no commit on the run's branch carried `Assisted-by`. The engine's own checkpoint at the tip is now credited too, and a tip the model already pushed is never amended."
   - "The Windows build of codeaf stopped compiling once internal/session read senior-dev's generated-path list, because every file of internal/seniordev/util is !windows. The two run facts codeaf reads now live in the package's one file without a build constraint."
+  - "Dev's per-task crew router and one-column chat arrived after senior-dev's first review. A senior-dev run now keeps its requested models or one profile worker recommendation, outside the ordinary task's crew cap; its badge fits the shared side column. The combined remote door is wire version 19, so an older engine refuses before it can silently drop a delegate start."
 ---
 
 `docs/design/delegate/PROTOCOL.md` is the internal protocol (version 2); `internal/delegate`

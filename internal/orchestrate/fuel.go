@@ -94,7 +94,8 @@ func CatalogPrices(priceNow func(model string) (prompt, completion float64, know
 // all, which is common enough that a run metering only reported costs would
 // have a tank that never empties.
 //
-// The rows are the ids the shipped defaults and crew tables name, each copied
+// The rows are the ids the shipped defaults and the crew router's evidence
+// table name (internal/crewroute's prior.json), each copied
 // from the catalog's published price on the day its row was written; the
 // installed tariff ([CatalogPrices]) is what answers when a catalog is present,
 // and this table is only the fallback behind it.

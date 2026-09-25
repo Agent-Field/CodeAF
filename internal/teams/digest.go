@@ -34,6 +34,11 @@ type MemberState struct {
 	Question string
 	// Files are the files the member has touched.
 	Files []string
+	// ReportsTo is the name of the team whose manager this member reports to
+	// when that is not this team (home.go): a shared member, which this
+	// team's manager may read and send a note to, and not direct. A shared
+	// member that is running is drawn busy for that team.
+	ReportsTo string
 }
 
 // Digest limits.
@@ -114,7 +119,13 @@ func memberLine(m Member, s MemberState, manager bool) string {
 	if state == "" {
 		state = "unknown"
 	}
+	if s.ReportsTo != "" && state == StateRunning {
+		state = "busy for " + s.ReportsTo
+	}
 	b.WriteString(": " + state)
+	if s.ReportsTo != "" {
+		b.WriteString(", reports to " + s.ReportsTo)
+	}
 	if s.SinceActive > 0 {
 		b.WriteString(", active " + ago(s.SinceActive))
 	}

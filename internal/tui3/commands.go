@@ -147,6 +147,10 @@ var commands = []command{
 	// lands nowhere.
 	{name: "search", desc: "everything said on this machine · " + placeChord(pageSearch)},
 	{name: "wall", desc: "every open conversation, live, and your teams · alt+v or ▦ below the box"},
+	// THE TEAMS PAGE, beside the wall it opens onto: the wall is the open
+	// conversations big, and this is the team-level view, every member open or
+	// not, the manager's conversation and what waits on you (place_teams.go).
+	{name: "teams", desc: "your teams, their managers and what waits on you · " + placeChord(pageTeams)},
 	{name: "spend", desc: "what this machine has cost, by the day · " + placeChord(pageSpend)},
 	// It sits AFTER /compact and before /help because those two are the pair a
 	// person reads together when a conversation has gone wrong: compacting is
@@ -257,22 +261,20 @@ var commands = []command{
 	{name: "memories", args: "<query>", desc: "…only the ones matching a word"},
 	{name: "remember", args: "<text>", desc: "keep one thing across conversations"},
 	{name: "forget", args: "<query>", desc: "drop what is remembered about something"},
-	// AND WHAT codeaf WORKS WITH, beside what it knows about you. The five models
-	// it uses on your behalf, answered as one word (crew.go). FIVE, because
-	// [config.CrewModels] sets five seats in every preset — reflex, low, worker,
-	// high and mastermind — and the one these rows used to leave out was the
-	// worker, which is the seat that pays most of a task's bill. Two rows for one
-	// command, the way /model and /export have two: the bare form is the listing
-	// nearly everybody wants, and a single row carrying <preset> would make it
-	// unreachable from this list — [app.runMenu] puts a row that TAKES something
-	// into the draft instead of running it.
+	// AND WHAT codeaf WORKS WITH, beside what it knows about you: the crew a
+	// task runs on — worker, planner, checker — picked per task (crew.go). The
+	// bare form is the panel; the four shortcuts are how anything on it
+	// changes, one row each, because [app.runMenu] puts a row that TAKES
+	// something into the draft instead of running it, and each of these takes
+	// something.
 	//
 	// It sits here, under the memory rows, because those three are "what does it
-	// know" and this is "what does it think WITH", and because position in this
-	// table is a claim about frequency: a person sets their crew once and then
-	// occasionally regrets it, which is exactly where /memories sits too.
-	{name: "crew", desc: "the five models codeaf uses on its own behalf, beside the one you talk to"},
-	{name: "crew", args: "<preset>", desc: "…set the five to frugal, balanced or max · /model stays"},
+	// know" and this is "what does it think WITH".
+	{name: "crew", desc: "the crew tasks run on · picked per task, with your pins, allowed models and daily cap"},
+	{name: "crew", args: "pin <seat> <model[@provider]>", desc: "…pin the worker, planner or checker · /model stays"},
+	{name: "crew", args: "unpin <seat|all>", desc: "…put a seat back on auto"},
+	{name: "crew", args: "models <rule>", desc: "…which models a seat may be picked from · all, open, ≤in/out, ids"},
+	{name: "crew", args: "cap <dollars|off>", desc: "…the most tasks' crews may spend in a day"},
 	// AND HOW HARD THE ONE YOU TALK TO THINKS, under the two rows about WHICH
 	// models it thinks with, because that is the order the two questions arrive
 	// in: a person picks the model and then decides how much of it to spend.
@@ -293,6 +295,12 @@ var commands = []command{
 	{name: "effort", args: "<rung>", desc: "…set it outright · " + effortKey + " walks it, or press it on the seam"},
 	{name: "task", args: "<brief>", desc: "start work you can walk away from", door: sendDoorTask},
 	{name: "task", args: "solo <brief>", desc: "…with one worker, and no sizing call before it", door: sendDoorTask},
+	// HOW HARD TO TRY THIS ONE TASK is said in the ask and sticks to nothing
+	// (crew.go): --best puts the strongest crew the allowed models make on it,
+	// --cheap the cheapest, and neither moves the next task.
+	{name: "task", args: "--best <brief>", desc: "…on the strongest crew allowed, this task only", door: sendDoorTask},
+	{name: "task", args: "--cheap <brief>", desc: "…on the cheapest crew allowed, this task only", door: sendDoorTask},
+	{name: "redo", args: "stronger", desc: "the last task again, on a stronger crew"},
 	// THE THIRD ROW IS GONE, AND ITS ABSENCE IS THE FEATURE. It typed
 	// `adaptive <brief>`, which opened a planner that drew the whole graph before
 	// any of the work had been looked at. The measured road answers that question
@@ -1081,7 +1089,7 @@ func helpText(file string, chords chordSpelling) string {
 		helpKeyRow(chords.say(trafficKey), "with a team's manager in front: show or hide its Traffic"),
 		helpKeyRow(chords.say(teamManagerKey), "in a team with a manager: go to the manager"),
 		helpKeyRow(reopenTabChord, "reopen the last closed tab · when the terminal sends this distinct chord"),
-		helpKeyRow(chords.say(railHoldChord), "the task roster · ↑↓ move · →← fold · enter opens · esc back"),
+		helpKeyRow(chords.say(railHoldChord), "the task roster · ↑↓ move · ←→ tasks/traffic · enter opens · esc back"),
 		"ctrl+.         every task this project has run · /history · type to filter",
 		"ctrl+g         close the roster's column, or bring it back · remembered",
 		"ctrl+l         back to the latest · the chip above the box says so too",
@@ -1113,6 +1121,11 @@ func helpText(file string, chords chordSpelling) string {
 		"ctrl+,         open settings",
 		"d              in /permissions: drop the line under the cursor · press it twice",
 		"p s n          in /standing: pause one · stop it · keep it out of here",
+		// THE TEAMS PAGE'S LETTERS, each the button of the same word on the
+		// selected team, and the chord that puts the keyboard on those buttons
+		// while the manager's conversation has the box (teamspagehost.go).
+		"s c w n o      in /teams: settings · close · open on the wall · new team · organize",
+		helpKeyRow(chords.say("alt+↑↓"), "in /teams: onto the page's buttons while the manager has the box · esc back"),
 		"ctrl+r ctrl+y  in /files: reveal the folder it is in · copy it somewhere",
 	)
 	if file != "" {

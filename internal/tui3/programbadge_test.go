@@ -69,9 +69,9 @@ func TestAProgramsRowWearsItsBadgeAtEveryWidthOfTheColumn(t *testing.T) {
 		cols        int
 		want, never []string
 	}{
-		{"railCols", 120, false, railCols, []string{"[senior-dev]"}, []string{"#7", "[sd]"}},
-		{"railSlimCols", 110, false, railSlimCols, []string{"[sd]", "#7"}, []string{"[senior-dev]"}},
-		{"railWideCols", 120, true, railWideCols, []string{"[senior-dev]", "#7"}, []string{"[sd]"}},
+		{"normal", 120, false, sideColsFor(120), []string{"[sd]"}, []string{"[senior-dev]"}},
+		{"narrow", 110, false, sideColsFor(110), []string{"[sd]"}, []string{"[senior-dev]"}},
+		{"wide", 120, true, sideColsFor(120) + railWideGain, []string{"[senior-dev]"}, []string{"[sd]"}},
 	} {
 		row := plain(programRailRow(t, a, tier.width, tier.wide))
 		t.Logf("%s: %q", tier.name, row)
@@ -88,7 +88,7 @@ func TestAProgramsRowWearsItsBadgeAtEveryWidthOfTheColumn(t *testing.T) {
 		if cells := ansi.StringWidth(row); cells > tier.cols {
 			t.Fatalf("at %s the row is %d cells in a %d-cell column: %q", tier.name, cells, tier.cols, row)
 		}
-		if got, want := leadCells(t, row, "rewrit"), ansi.StringWidth(railSeam)+2; got != want {
+		if got, want := leadCells(t, row, "rewrit"), ansi.StringWidth(railSeam)+4; got != want {
 			t.Fatalf("at %s the title starts at cell %d, want %d — the badge must never lead:\n%q", tier.name, got, want, row)
 		}
 		// AND THE BADGE COMES AFTER THE TITLE, never before it.
@@ -110,8 +110,8 @@ func TestAnOrdinaryTasksRowWearsNoBadge(t *testing.T) {
 		if !ok {
 			t.Fatalf("the ordinary task is not on the column at %d", width)
 		}
-		if strings.Contains(row, "[") || !strings.Contains(row, "#8") {
-			t.Fatalf("an ordinary task's row at %d columns is %q, want its handle and no badge", width, row)
+		if strings.Contains(row, "[") || !strings.Contains(row, "Fix the loader") {
+			t.Fatalf("an ordinary task's row at %d columns is %q, want its title and no badge", width, row)
 		}
 	}
 	if programBadge("").known() {
@@ -123,7 +123,7 @@ func TestAnOrdinaryTasksRowWearsNoBadge(t *testing.T) {
 // senior-dev: a program that ships next year needs no change to this surface.
 func TestASecondProgramDrawsItsOwnBadge(t *testing.T) {
 	a := programRailApp(t, "doc-writer")
-	if row := plain(programRailRow(t, a, 120, false)); !strings.Contains(row, "[doc-writer]") || strings.Contains(row, "senior-dev") {
+	if row := plain(programRailRow(t, a, 120, false)); !strings.Contains(row, "[dw]") || strings.Contains(row, "senior-dev") {
 		t.Fatalf("a doc-writer's row is %q, want its own badge", row)
 	}
 	if row := plain(programRailRow(t, a, 110, false)); !strings.Contains(row, "[dw]") {
@@ -151,27 +151,26 @@ func TestAPressOnTheBadgeOpensTheTaskAndFoldsNothing(t *testing.T) {
 	if a.tasks[7].program != "senior-dev" {
 		t.Fatalf("a same-state row naming the program was thrown away by the de-dup: %+v", a.tasks[7])
 	}
-	_, cell, count := a.railEntryRows(railEntry{node: a.tasks[7]}, a.railRoom())
-	if cell.pressable() || count.pressable() {
-		t.Fatalf("the program's row reported a pressable span: cell %+v, count %+v", cell, count)
+	if row := plain(a.railEntryRow(railEntry{node: a.tasks[7], group: railRunning}, a.railRoom())); !strings.Contains(row, "[sd]") {
+		t.Fatalf("the program's row wears no badge: %q", row)
 	}
 	y := railRowY(t, a, 7)
 	row := railText(a, a.viewHeight())[y-a.bodyTop()]
-	at := strings.Index(row, "[senior-dev]")
+	at := strings.Index(row, "[sd]")
 	if at < 0 {
 		t.Fatalf("the program's row wears no badge: %q", row)
 	}
-	opened := map[uint64]bool{}
-	for id, open := range a.railOpen {
-		opened[id] = open
+	opened := map[int]bool{}
+	for group, open := range a.side.open {
+		opened[group] = open
 	}
 	railClick(t, a, a.bodyWidth()+ansi.StringWidth(row[:at])+1, y)
 	if !a.roomOpen() || roomID(a) != 7 {
 		t.Fatalf("a press on the badge did not open the task: room %d", roomID(a))
 	}
-	for id, open := range a.railOpen {
-		if opened[id] != open {
-			t.Fatalf("a press on the badge folded row %d", id)
+	for group, open := range a.side.open {
+		if opened[group] != open {
+			t.Fatalf("a press on the badge folded group %d", group)
 		}
 	}
 }
@@ -190,7 +189,7 @@ func TestDrawingAProgramsBadgeReadsNothingFromTheAgent(t *testing.T) {
 	// plan row.
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, row.Title, session.TaskRunning, session.TaskNotice{StartedAt: programRunBegan})})
 	rows, pages := counted.rows, counted.pages
-	if drawn := plain(strings.Join(a.railRows(a.viewHeight()), "\n")); !strings.Contains(drawn, "[senior-dev]") {
+	if drawn := plain(strings.Join(a.railRows(a.viewHeight()), "\n")); !strings.Contains(drawn, "[sd]") {
 		t.Fatalf("a node named only by its held plan row wears no badge:\n%s", drawn)
 	}
 	a.stripRow(90)
@@ -209,7 +208,7 @@ func TestTheBadgeOutlivesTheGapsInThePlanRows(t *testing.T) {
 	if _, held := a.heldPlanRows(); held {
 		t.Fatal("the fixture holds plan rows, so this would prove nothing about the notice")
 	}
-	if row := plain(programRailRow(t, a, 120, false)); !strings.Contains(row, "[senior-dev]") {
+	if row := plain(programRailRow(t, a, 120, false)); !strings.Contains(row, "[sd]") {
 		t.Fatalf("before any plan row was read the program's row is %q", row)
 	}
 	// A SWITCH AWAY AND BACK: the held rows belong to another front, and the
@@ -217,7 +216,7 @@ func TestTheBadgeOutlivesTheGapsInThePlanRows(t *testing.T) {
 	a.frontGen++
 	a.tasks, a.taskOrder, a.taskSeen = nil, nil, nil
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, programTitle, session.TaskRunning, programNotice("senior-dev"))})
-	if row := plain(programRailRow(t, a, 120, false)); !strings.Contains(row, "[senior-dev]") {
+	if row := plain(programRailRow(t, a, 120, false)); !strings.Contains(row, "[sd]") {
 		t.Fatalf("after a conversation switch the program's row is %q", row)
 	}
 }
@@ -230,22 +229,22 @@ func TestTheBadgesBracketsSurviveEveryPalette(t *testing.T) {
 	a := programRailApp(t, "senior-dev")
 	a.width = 120
 	painted := programRailRow(t, a, 120, false)
-	if want := a.pal.programInk("[senior-dev]"); !strings.Contains(painted, want) {
+	if want := a.pal.programInk("[sd]"); !strings.Contains(painted, want) {
 		t.Fatalf("the badge is not painted by the one painter:\n%q\nwant it to carry %q", painted, want)
 	}
 	a.pal = newPalette(tokens.NoColor, false)
-	if row := programRailRow(t, a, 120, false); row != plain(row) || !strings.Contains(row, "[senior-dev]") {
+	if row := programRailRow(t, a, 120, false); row != plain(row) || !strings.Contains(row, "[sd]") {
 		t.Fatalf("with no colour the row is %q, want plain text carrying the brackets", row)
 	}
 	a.pal = newPalette(tokens.ANSI256, true)
 	a.linear = true
-	if row := plain(programRailRow(t, a, 120, false)); !strings.Contains(row, "[senior-dev]") {
+	if row := plain(programRailRow(t, a, 120, false)); !strings.Contains(row, "[sd]") {
 		t.Fatalf("on the screen-reader tier the row is %q", row)
 	}
 	a.linear = false
 	a.pal = newPalette(tokens.ANSI256, false)
 	a.openRoom(7, programTitle)
-	if row := plain(programRailRow(t, a, 120, false)); !strings.Contains(row, "[senior-dev]") {
+	if row := plain(programRailRow(t, a, 120, false)); !strings.Contains(row, "[sd]") {
 		t.Fatalf("the row a person is standing in is %q, want the brackets on the selected ground", row)
 	}
 }
@@ -268,7 +267,7 @@ func TestTheRoomPanelAndItsTitleWearTheBadge(t *testing.T) {
 			tree = append(tree, plain(line.text))
 		}
 	}
-	if !strings.Contains(strings.Join(tree, "\n"), "[senior-dev]") {
+	if !strings.Contains(strings.Join(tree, "\n"), "[sd]") {
 		t.Fatalf("the room panel's tree does not wear the badge:\n%s", strings.Join(tree, "\n"))
 	}
 	title := plain(a.roomTitleRow(a.width))
@@ -291,7 +290,7 @@ func TestAGuestPageWearsItsOwnWorksBadgeAndNeverTheLocalTasks(t *testing.T) {
 	a, _ := planAppWith(t, []session.PlanTaskRow{programRow()}, nil)
 	a.width, a.height = 120, 30
 	a.taskUpdate(update(7, programTitle, session.TaskRunning, session.TaskNotice{}))
-	if drawn := plain(strings.Join(a.railRows(a.viewHeight()), "\n")); !strings.Contains(drawn, "[senior-dev]") {
+	if drawn := plain(strings.Join(a.railRows(a.viewHeight()), "\n")); !strings.Contains(drawn, "[sd]") {
 		t.Fatalf("this window's own task 7 wears no badge, so this would prove nothing:\n%s", drawn)
 	}
 	door := &guestDoor{}
@@ -597,13 +596,12 @@ func TestTheBadgeYieldsBeforeTheTitleFloor(t *testing.T) {
 // plan row is drawn as it always was.
 func TestAProgramsPlanRowOnTheRailWearsTheBadge(t *testing.T) {
 	a, _, _ := taskApp(t)
-	width := railCols - ansi.StringWidth(railSeam)
+	width := sideColsFor(120) - ansi.StringWidth(railSeam)
 	row := programRow()
-	rows, _, _ := a.railEntryRows(railEntry{node: planRailNode(row)}, width)
-	if len(rows) == 0 {
+	drawn := plain(a.railEntryRow(railEntry{node: planRailNode(row)}, width))
+	if drawn == "" {
 		t.Fatal("a program's plan row drew nothing")
 	}
-	drawn := plain(rows[0])
 	t.Logf("the plan row: %q", drawn)
 	if !strings.Contains(drawn, "rewrite the") || !strings.Contains(drawn, "[s") {
 		t.Fatalf("a program's plan row on the rail reads %q, want the program's badge", drawn)
@@ -612,8 +610,8 @@ func TestAProgramsPlanRowOnTheRailWearsTheBadge(t *testing.T) {
 		t.Fatalf("the plan row is %d cells in a %d-cell column: %q", cells, width, drawn)
 	}
 	row.Program, row.Stage = "", ""
-	ordinary, _, _ := a.railEntryRows(railEntry{node: planRailNode(row)}, width)
-	if len(ordinary) == 0 || strings.Contains(plain(ordinary[0]), "[") {
+	ordinary := plain(a.railEntryRow(railEntry{node: planRailNode(row)}, width))
+	if ordinary == "" || strings.Contains(ordinary, "[") {
 		t.Fatalf("an ordinary plan row reads %q", ordinary)
 	}
 }

@@ -29,8 +29,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		page     string
 	}{
 		{"what can you do", "what-i-can-do"},
+		{"why does a wrapped help line stay under its key", "keys"},
 		// The conversations view and its teams (conversations-and-teams.md).
 		{"how do I see all my conversations at once", "conversations-and-teams"},
+		{"what is the tabs dock under the message box", "conversations-and-teams"},
 		// The product's own words for that view are the wall: `/wall`, `alt+v`
 		// opens the wall. A person asks for it by that word.
 		{"what is the conversations wall", "conversations-and-teams"},
@@ -40,20 +42,65 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I switch teams from the tab strip", "conversations-and-teams"},
 		{"does deleting a team close its conversations", "conversations-and-teams"},
 		{"where are my teams saved", "conversations-and-teams"},
+		// The teams page (teams-page.md).
+		{"how do I see all my teams and what waits on me", "teams-page"},
+		{"does renaming a team update the message box", "teams-page"},
+		{"how do I close a team", "teams-page"},
+		{"the pane said the manager was open in another window", "teams-page"},
+		{"how do I reopen a closed team", "teams-page"},
+		{"where do I change one team's settings", "teams-page"},
+		{"what does the ? 2 mark on a team mean", "teams-page"},
+		// Nesting on the teams page (teams-page.md).
+		{"how do I move a team inside another team", "teams-page"},
+		{"can I drag a team onto another team", "teams-page"},
+		{"how do I add a chat to another team from the teams page", "teams-page"},
+		{"why is a team greyed out when I move a team", "teams-page"},
+		{"how do I undo moving a team", "teams-page"},
+		{"is a team move written to traffic", "teams-page"},
+		{"what happens in traffic when I move a conversation between teams", "conversations-and-teams"},
+		{"does the manager learn when a member moves to another team", "team-manager"},
+		{"what does +4 idle mean on a team", "teams-page"},
 		{"how do I mention a team or another conversation with @", "conversations-and-teams"},
+		{"what does clicking a team name in a chat do", "conversations-and-teams"},
+		{"where does a team link in a chat open", "teams-page"},
 		// The team manager (team-manager.md).
 		{"what can the team manager do", "team-manager"},
 		{"can the manager answer a member's permission prompt", "team-manager"},
 		{"how does a member post to the room", "team-manager"},
 		{"does a directive wake an idle member", "team-manager"},
+		// Questions, packets, caps and wrapping up (team-questions-and-caps.md).
+		{"does a member's question go to the manager or to me", "team-questions-and-caps"},
+		{"what is a decision packet", "team-questions-and-caps"},
+		{"what happens when a team reaches its daily cap", "team-questions-and-caps"},
+		{"why did two windows both ask me about the team cap", "team-questions-and-caps"},
+		{"how do I wrap up a team before closing it", "team-questions-and-caps"},
+		{"what happens to a wrap-up when codeaf restarts", "team-questions-and-caps"},
+		{"does a wrap-up keep going if I quit codeaf", "team-questions-and-caps"},
+		{"what if the wrap-up report could not be sent", "team-questions-and-caps"},
+		{"can a manager direct a member of another team", "team-manager"},
+		{"can a manager start a sub-team", "team-manager"},
+		{"what is the global manager", "team-manager"},
+		{"how do two members of different teams settle a conflict", "team-manager"},
+		{"who decides a conflict between two sub-teams", "team-manager"},
 		{"what happens when auto-wake is off and the manager starts a member", "team-manager"},
 		{"why is a member still asking after it crashed", "team-manager"},
 		{"does it ask again if the handle model times out", "team-manager"},
 		{"how does a member reply to a thread", "team-manager"},
 		{"why is the traffic rail drawn as threads", "team-manager"},
 		{"open a member's chat at the message it answered from the traffic", "team-manager"},
+		// The one column (sidecol.go): the two words in a team chat, and the
+		// band of what waits on the person above them.
+		{"how do I switch between tasks and traffic in a manager chat", "team-manager"},
+		{"what does Traffic 3 new mean in the column header", "team-manager"},
+		{"who is a traffic row from and who is it to", "team-manager"},
 		{"what does chats on the tab bar do", "places"},
 		{"how do I get back to my conversation from a place", "places"},
+		// The places sit on the top line. The chat strip is only inside a chat
+		// (places.md, head.go).
+		{"where did the places go", "places"},
+		{"what does more on the top line do", "places"},
+		{"why are my chat tabs showing on the home page", "places"},
+		{"why is there no tab strip on the teams page", "places"},
 		{"can you use my claude code skills", "skills-from-other-tools"},
 		{"why is my claude code plugin skill missing", "skills-from-other-tools"},
 		{"do codex skills work here", "skills-from-other-tools"},
@@ -1146,6 +1193,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does the status line not show the cost before I type", "empty-screen"},
 		{"what does try what is in this folder mean", "empty-screen"},
 		{"where did the recent sessions list go", "empty-screen"},
+		{"why does home show a session id for an untitled chat", "home"},
+		{"the hint line stayed after I resized", "places"},
 
 		// A task's page with heavy tool use, asked the ways the screenshot
 		// provoked: the wheel doing nothing, the calls that are not there, and
@@ -1464,7 +1513,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why won't you change my approval mode", "permissions"},
 		{"why won't permissions show the rules on the machine I used with host", "running-on-another-machine"},
 		{"did cache clean delete the cache on my laptop or the remote machine", "running-on-another-machine"},
-		{"why didn't crew max change the crew on the remote machine", "running-on-another-machine"},
+		{"why didn't /crew pin change the crew on the remote machine", "running-on-another-machine"},
 		{"why does remember over host not say whether memory is off", "running-on-another-machine"},
 		{"does subharness know whether the remote machine has saved programs", "running-on-another-machine"},
 		{"what does the indented part mean", "keys"},
@@ -2024,36 +2073,28 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it started answering and then handed the work over", "tasks"},
 		{"why did my reply stop halfway and become a task", "tasks"},
 
-		// The fifteenth wave: the crew that looks like it did nothing. `/crew max`
-		// writes four class models and the session picks them up on its next
-		// call — and the model on the status line does not move, because that one
-		// is the CONVERSATION's and the crew never touches it. So a person reads
-		// the confirmation, looks at a frame that says exactly what it said
-		// before, and asks these in front of it.
+		// The fifteenth wave: the crew that looks like it did nothing. `/crew pin`
+		// moves the next task's seat — and the model on the status line does not
+		// move, because that one is the CONVERSATION's and the crew never touches
+		// it. So a person reads the confirmation, looks at a frame that says
+		// exactly what it said before, and asks these in front of it.
 		{"I changed the crew but the model didn't change", "models-and-cost"},
 		{"why does the bottom still show the old model after /crew", "models-and-cost"},
 		{"does /crew change the model I'm talking to", "models-and-cost"},
-		// A crew older than the worker class: the run says `inherited` and the
-		// person asks about the word, or about the model they never picked.
-		{"why does my run say inherited", "models-and-cost"},
-		{"my crew was set before the work seat existed", "models-and-cost"},
-		// And the same substitution met in the conversation, where the person
-		// has no models line to read the word off — they ask about the task.
+		// The crew picked per task: the person meets a model they never named on
+		// a task's crew line and asks where it came from.
 		{"why is my task running on a model I did not pick", "models-and-cost"},
-		{"my work seat is inherited from small work", "models-and-cost"},
+		{"which model does a task run on", "models-and-cost"},
 		// The same crew question asked from outside the conversation, by
 		// somebody whose runs happen with nobody watching.
 		{"what models does a headless run use", "models-and-cost"},
-		// The onboarding wave: the five seats. /crew and /model became two dials
-		// a person can see as two — the confirm line names the model it left
-		// alone, bare /crew opens with seat one, and the status line carries
-		// `crew max` beside the model — and these are the questions the framing
-		// invites.
-		{"what are the five models", "models-and-cost"},
+		// The panel and its shortcuts, asked the ways the panel invites.
 		{"does /crew change my chat model", "models-and-cost"},
 		{"why did my model not change", "models-and-cost"},
-		{"what does crew max on the status line mean", "models-and-cost"},
-		{"what is the you talk to line in /crew", "commands"},
+		{"how do I pin the checker", "models-and-cost"},
+		{"what is the daily cap on the crew", "models-and-cost"},
+		{"what does /redo stronger do", "models-and-cost"},
+		{"my old crew preset is gone", "models-and-cost"},
 
 		{"how do I quit", "keys"},
 		{"how do I exit codeaf", "keys"},
@@ -2287,6 +2328,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I cancel this card", "keeping-an-eye"},
 		{"I don't understand these options", "keeping-an-eye"},
 		{"what does just once mean", "keeping-an-eye"},
+		{"what kind of standing card is this", "keeping-an-eye"},
+		{"why did it say the reminder was never set up after I said just once", "keeping-an-eye"},
 		{"can I change everywhere to just this project", "standing-orders"},
 		// The twelfth wave: answering a question from home. Both are asked by
 		// somebody looking at a `▲` row and wondering whether they have to walk
@@ -2558,6 +2601,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I work on the same conversation from two computers", "running-on-another-machine"},
 		{"what is the difference between another window and another machine", "running-on-another-machine"},
 		{"does home work over --host", "running-on-another-machine"},
+		{"can I change the Teams settings on another machine", "running-on-another-machine"},
+		{"where do team defaults go over a connection", "running-on-another-machine"},
+		{"can I edit team defaults over --host", "commands"},
 
 		// The wave that stopped a rebuild on the far machine from trapping
 		// somebody. These are the words a person actually uses at the moment it

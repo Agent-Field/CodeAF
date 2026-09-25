@@ -345,15 +345,22 @@ import (
 // Older peers must refuse before a question or an unwatched tool can run under
 // semantics the other side does not understand.
 //
-// VERSION 18 CARRIES THE DELEGATE DOOR — [MethodDelegateList] and
+// VERSION 19 CARRIES THE DELEGATE DOOR — [MethodDelegateList] and
 // [MethodDelegateStart] (wire_task.go). The number moves for [MethodTaskStart]'s
 // reason: `Delegate.Start` COMMISSIONS WORK on the far machine and spends its
-// money, so a version-17 engine answering "no such method" would leave a person
+// money, so a version-18 engine answering "no such method" would leave a person
 // told their work was under way while nothing had started. The list rides the
 // same number because a surface generates its command rows from it before its
 // first frame, and a row for a program the engine cannot start is a command
 // that lies.
-const Version = 18
+//
+// VERSION 18 IS THE CREW PICKED PER TASK. [TaskStartArgs] carries the one-task
+// effort word (`/task --best`, `/task --cheap`), and [MethodTaskRedoStronger]
+// runs the last task again on a stronger crew. The number moves because both
+// fail as silence on an older engine: a version-17 engine reads `effort` as a
+// field it does not know and starts the task on the crew it would have had,
+// and the person is never told their word did nothing. NEVER TO SILENCE.
+const Version = 19
 
 // AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods
 // rode version 5's: neither half can be surprised by them. "phase" and "lane"
@@ -1181,6 +1188,35 @@ type Welcome struct {
 	// with the sentence the window has always said; it never sends the window
 	// back to the laptop's own teams file, which the far session cannot see.
 	Teams bool `json:"teams,omitempty"`
+
+	// Delegation says this engine ANSWERS THE DELEGATION DOORS
+	// ([MethodTeamsDefaults], [MethodTeamsPackets], [MethodTeamsRaise],
+	// [MethodTeamsDecide], [MethodTeamsEscalate], [MethodTeamsSpend],
+	// [MethodTeamsDelete]) from its own profile, beside the teams doors.
+	//
+	// IT IS CARRIED FOR [Welcome.Teams]' REASON, and it is a second flag
+	// because an engine can have the first without it: one built between the
+	// two answers the teams file and its Traffic and not the packets, the
+	// spend or a delete. ABSENCE IS false, and false leaves those seam doors
+	// nil, which the window reads as "not over this connection" and says so
+	// rather than reading this laptop's files.
+	Delegation bool `json:"delegation,omitempty"`
+
+	// TeamSettings says this engine ANSWERS [MethodTeamsApplyDefault]: the
+	// settings tab can change the five `teams.` defaults on this machine.
+	//
+	// IT IS A FLAG OF ITS OWN beside [Welcome.Delegation] for that flag's
+	// reason. An engine can read the defaults and still have no door that
+	// writes them. ABSENCE IS false, and false leaves the Teams tab read-only
+	// over the connection, said as such, rather than writing this laptop's file.
+	TeamSettings bool `json:"team_settings,omitempty"`
+
+	// WrapUp says this engine ANSWERS THE WRAP-UP'S TWO DOORS
+	// ([MethodTeamsWrapUp], [MethodTeamsAcceptClosing]). A third flag for
+	// [Welcome.Delegation]'s reason: an engine built between the two has the
+	// packets and not these. ABSENCE IS false, and false leaves the window
+	// with `Close now` only over that connection, said as such.
+	WrapUp bool `json:"wrap_up,omitempty"`
 
 	// TeamAsk says this engine ANSWERS THE WALL'S TWO MODEL ASKS
 	// ([MethodTeamsName], [MethodTeamsPropose]): its agent names a group of

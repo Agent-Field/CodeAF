@@ -20,9 +20,8 @@ import (
 // (docs/design/home-rethink/ARCHITECTURE.md's three layers).
 //
 // IT IS THE ONE PLACE WITH A SECOND BAR INSIDE IT, and the two are not a
-// repetition: the upper one is the seven places and the lower one is this
-// place's own sections. The panel is where [placeTabBar] was lifted from, so
-// they are drawn by the same geometry and read as one object at two scales.
+// repetition: the nav at the top is the places and the bar in the body is this
+// place's own sections.
 
 // placeSettings is this place's handle on the registry (pages.go's [place]
 // states the contract and why the handle holds no state of its own).
@@ -40,7 +39,10 @@ func (placeSettings) open(a *app) tea.Cmd {
 	// change when somebody changes them — but the tab bar's numbers are
 	// recomputed on that beat, and a room that armed no clock stopped the whole
 	// bar counting while it was up ([placeSettings.tick]).
-	return a.armPlaceClock()
+	//
+	// OVER --host THE TEAMS TAB READS THE FAR MACHINE, once, off the loop. A
+	// local launch asks for nothing.
+	return tea.Batch(a.armPlaceClock(), a.readHostTeamDefaults())
 }
 
 // tick re-reads nothing and keeps the beat: see the note over [placeSettings.open].
@@ -180,6 +182,8 @@ func (placeSettings) note(a *app, width int) []string {
 	return []string{" " + pal.dim(noteFit(a.sheet.footNote(), width-2))}
 }
 
+func (placeSettings) about() string { return "how this machine is set" }
+
 func (placeSettings) hint(a *app) string { return a.sheet.keysLine() }
 
 // key is the panel's own grammar (settings.go's [app.sheetKey]): the value being
@@ -199,9 +203,10 @@ func (placeSettings) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
 // title bar (connectcaps.go).
 func (placeSettings) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	s := &a.sheet
+	var cmd tea.Cmd
 	switch {
 	case s.edit != nil:
-		a.sheetEditKey(msg)
+		cmd = a.sheetEditKey(msg)
 	case s.sel != nil:
 		a.sheetSelectKey(msg)
 	case s.conn.entry != nil:
@@ -210,7 +215,7 @@ func (placeSettings) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	a.touch()
-	return nil, true
+	return cmd, true
 }
 
 // caretRow is the connections key entry: a box this sheet draws INSIDE the row

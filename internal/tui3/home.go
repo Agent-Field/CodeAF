@@ -2539,7 +2539,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	a.pageMsg = ""
 	// THE ROUTER IS READ FIRST, AND IT IS ONE FUNCTION FOR EVERY PLACE
 	// (placekeys.go). It claims the chords that mean the same thing wherever you
-	// are standing, alt+1…8, tab, alt+enter, alt+., the shift arrows, and `→`
+	// are standing, alt+1…9, tab, alt+enter, alt+., the shift arrows, and `→`
 	// when the row has verbs — and hands everything else straight back, so this
 	// handler keeps its right of first refusal over its own keys.
 	if cmd, took := a.placeKey(msg); took {
@@ -5230,16 +5230,37 @@ func homeGlyph(row session.SessionRow, ascii bool) string {
 	return homeIdleGlyph
 }
 
-// homeName is what a conversation is CALLED on this surface's lists, through
-// [listName]: the title it gave itself, then the folder it lives in when that
-// folder reads as words, and then — rather than the id it usually is — the
-// plain word for a conversation nothing has named yet.
+// homeName is what a conversation is CALLED on this surface's lists: home's
+// sessions rows and the sessions place, through one rule.
 //
-// IT NEVER HAD THE PICKER'S MIDDLE RUNG. [humanName] can fall back to the first
-// thing the person said because the resume picker has read the transcript; a
-// [session.SessionRow] carries no opening line, so this call passed a title and
-// a path and got a title-cased hex id whenever the title was empty.
+// A TITLE THAT IS ONLY THE SESSION'S ID IS NOT A NAME. The id arrives as the
+// raw folder stem, or already title-cased (`D53cceead3f99593` for
+// `d53cceead3f99593`), because [listName] raises the first letter of a stem
+// that happens to read as letters. EqualFold is the comparison that catches
+// both. The word is returned as itself, so a later pass that stored it back
+// onto the row does not title-case it into `New Conversation`.
+//
+// A TITLELESS ROW KEEPS [listName]'s ladder. A brand new launch has no title
+// yet; calling every empty title the word put that launch on home as a saved
+// chat. The sessions place fills an empty title with this function and then
+// asks again, so a stem that came back as the id is caught on that second pass.
 func homeName(row session.SessionRow) string {
+	title := strings.TrimSpace(row.Title)
+	// A launch nobody has spoken in is not a saved chat. Open is not enough:
+	// the window sitting in that shell marks it in use. A live row, or one
+	// someone has spoken in, is the chat the sessions list and the sessions
+	// place both call by the word.
+	spoken := !row.At.IsZero() || row.Live
+	if !spoken {
+		return listName(row.Title, row.Transcript)
+	}
+	if strings.EqualFold(title, unnamedConversationWord) {
+		return unnamedConversationWord
+	}
+	id := strings.TrimSpace(row.ID)
+	if id != "" && title != "" && strings.EqualFold(title, id) {
+		return unnamedConversationWord
+	}
 	return listName(row.Title, row.Transcript)
 }
 

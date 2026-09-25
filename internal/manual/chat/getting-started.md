@@ -17,8 +17,8 @@ an empty prompt and a provider error. It opens in the chat itself, on **two scre
 under a minute, nothing else on the frame:
 
 1. **connect openrouter** — the default service; `enter` signs in in your browser, and pasting an existing key also works
-2. **Models and spending** — one screen with three controls on it: **Daily limit**,
-   **Chat model** and **Work crew**, each already showing the value that is in force
+2. **Models and spending** — one screen with two controls on it, **Daily limit** and
+   **Chat model**, each already showing the value that is in force
 
 The second screen's way out is **`Start a conversation`**. Every control on it opens on
 the value you already have, so pressing `enter` there agrees to exactly what is on the
@@ -45,7 +45,7 @@ are standing on — `tab` walks the rows, `?` opens a control's detail — and o
 window it is cut by whole clauses rather than mid-word.
 
 **On a window too short for the whole screen the explanations are what go**, a whole
-sentence at a time and never half of one. The three values, `Start a conversation` and
+sentence at a time and never half of one. The two values, `Start a conversation` and
 the keyboard line are never given up, so a sixteen-row window still shows a screen you
 can answer and leave.
 
@@ -156,46 +156,37 @@ here. They keep their shipped defaults — plan approval asks first above `$100`
 conversation ceiling is `no limit` — and `/budget` or `/settings` → Spending changes them
 when they start to matter.
 
-## The model you talk to and the work crew on the setup screen
+## The model you talk to on the setup screen — and why it does not ask about the crew
 
 **Chat model** is the model you talk to, shown by name — `DeepSeek V4 Flash` rather than
 `deepseek/deepseek-v4-flash`. Its line reads *The model you talk to in this
-conversation.*, and `?` adds the exact catalog id and that it also handles this
-conversation's tool use. Opening the row draws the real catalog: five rows at a time,
-`↑`/`↓` scroll the rest past, and **typing narrows it**, so two hundred models are
-reachable from a form with five rows on it. The row under the cursor shows its exact id.
-The model you are already on is always on that list and the cursor opens on it, even with
-no catalog yet, so accepting confirms rather than changes. Choosing one goes through the
-same settings row `/model` writes and is kept for the next launch.
+conversation.*, and `?` adds the exact catalog id, that it also handles this
+conversation's tool use, and that tasks get their own crew, picked per task. Opening the
+row draws the real catalog: five rows at a time, `↑`/`↓` scroll the rest past, and
+**typing narrows it**, so two hundred models are reachable from a form with five rows on
+it. The row under the cursor shows its exact id. The model you are already on is always on
+that list and the cursor opens on it, even with no catalog yet, so accepting confirms
+rather than changes. Choosing one goes through the same settings row `/model` writes and
+is kept for the next launch.
 
-**Work crew** is the five models codeaf uses on its own behalf — *Models used to plan,
-run, and check tasks.* Opening it draws the three presets — `Frugal`, `Balanced` and
-`Max` — each with a whole one-line description of **the choice** (how much model goes on
-the work), never a price: this screen makes no claim about what anything will cost you.
-`?` on the row shows the seats the crew is actually made of (`brain … · hands … ·
-checks …`) and that **a crew change leaves the model you talk to alone**. The crew is the five class rows (`models.tiers.reflex`, `models.tiers.low`,
-`models.tiers.worker`, `models.tiers.high`, `models.tiers.mastermind`); the model that
-answers you is the row above it, and neither touches the other.
+**There is no crew question**, because the crew is three seats — the worker, the planner and the
+checker — and codeaf picks all three for each task from what kind of work it is, so there
+is nothing to choose before the first task. `/crew` shows the crew, and pins a seat when
+you want one model there every time. The model that answers you is the one above, and
+neither touches the other.
 
-Two rules keep this screen from writing something you did not ask for:
+**`esc` out of the list leaves the row exactly as it was.** A cursor inside a list is
+provisional until you accept it.
 
-- **`esc` out of either list leaves the row exactly as it was.** A cursor inside a list
-  is provisional until you accept it.
-- **A crew you arranged yourself is never overwritten.** If any of the five class rows is
-  already in your profile — you pinned one by hand, or an earlier `/crew` wrote them — the
-  row reads `Custom`, `Start a conversation` writes no preset over it, and the list still
-  says `yours is none of the three — picking one puts all five back` if you want one.
-
-If a **task model** is pinned (`task.model`), one dim line under the crew says so —
-`Tasks are pinned to … · /settings changes that` — because that pin takes the worker seat
-out of the preset's hands and a crew row that did not mention it would be selling you a
-dial that is disconnected.
+If a **task model** is pinned (`task.model`), one dim line under the chat model says so —
+`Tasks are pinned to … · /settings changes that` — because that pin decides the worker
+seat, and a screen that did not mention it would be hiding where tasks run.
 
 At **112 columns and wider** a bordered panel stands beside these rows, labelled
 `○ Example · what you can do` and footed `An illustration. Nothing here has run.` — the
 only bordered surface codeaf draws, so it cannot be read as more form. It holds one
 request you could type and what it leads to, and follows the row you are on: beside the
-crew it shows `/task Fix the failing tests and explain the changes.` That request **types
+review row it shows `/task Fix the failing tests and explain the changes.` That request **types
 itself out once** on arriving and on `←`/`→`, then settles; typing settles it at once.
 Under 112 columns it is not drawn and the form is unchanged.
 
@@ -242,23 +233,22 @@ Every answer went through a settings row, so every answer has a door:
 | What you answered | Where to change it later |
 | --- | --- |
 | the default service's openrouter key | clear or remove it and the next local interactive launch offers **connect openrouter** again; `/settings`, Providers tab, the **openrouter key** row still accepts a pasted replacement |
-| the crew | `/crew` (bare shows the three, `/crew max` sets one), or the **crew** row on the settings panel |
+| the crew | nothing was asked — it is auto. `/crew` shows it, and `/crew pin <seat> <model>` pins a seat |
 | the daily limit | `/budget` (also `/limits`), or `/settings` → **Spending**. `CODEAF_DAILY_BUDGET` in your shell outranks the row |
 | the model you talk to | `/model`, or the **Chat model** row on the setup screen — the same settings row either way |
 | memory, permissions, the task countdown | `/settings`; the setup screen only shows them, under `Other settings` |
 
 A credential changed in the settings row reaches the running conversation at once,
-exactly as the setup's does. The crew and the budget are read live too: the next call
-codeaf makes on its own behalf uses the new crew, and the rail is checked against the
-new ceiling.
+exactly as the setup's does. A crew pin and the budget are read live too: the next task
+starts on the new pin, and the rail is checked against the new ceiling.
 
-**The setup asks about three things and no more.** Memory stays on, tool approvals keep
+**The setup asks about two things and no more.** Memory stays on, tool approvals keep
 prompting, and a proposed task keeps its 15-second countdown — none of them becomes a
 question there, because none can be answered usefully before you have seen codeaf do
 anything. They are taught where they happen: the countdown is on the task card, and the
 first permission question explains the actual tool that asked for something.
 
-Under the three fields is one row that shows them: **`Other settings use defaults ·
+Under the two fields is one row that shows them: **`Other settings use defaults ·
 review`** on a fresh profile, and **`Review other settings`** on a profile that has
 already written any of them down — it never claims your own settings are defaults.
 `enter` on that row opens three read-only rows straight off the settings registry:
@@ -308,9 +298,9 @@ ghostty with `font_family`, `[font.normal] family` and `font-family` in their co
 files.
 
 **Option as meta, on macOS.** Every chord codeaf binds is the option key, and on a Mac it is
-drawn the way the keycap names it, `opt+enter` to send what you typed off as a task, `opt+1`…`opt+8`
+drawn the way the keycap names it, `opt+enter` to send what you typed off as a task, `opt+1`…`opt+9`
 to jump to a place, `opt+.` for the map. (On Linux and Windows the same chords are drawn
-`alt+enter`, `alt+1`…`alt+8`, `alt+.`; this manual names both spellings together.) Most Mac
+`alt+enter`, `alt+1`…`alt+9`, `alt+.`; this manual names both spellings together.) Most Mac
 terminals send Option as an accent-composing key until you tell them otherwise, so those
 chords type `¡ ™ £ ≥` instead of doing anything. Turn on **iTerm2** → Profiles → Keys →
 *Left Option key: Esc+*, or **Terminal.app** → Profiles → Keyboard → *Use Option as Meta
@@ -322,15 +312,15 @@ composer still names what `enter` does — and the first place you land on says 
 line: `your terminal sends opt as a letter — turn on "use option as meta" in …`, naming the
 terminal you are actually in.
 
-**The first-run setup says it too.** When the three questions are done, a Mac gets one more
-line: `the places answer opt+1…opt+8 · if opt types a character instead, turn on "use option as
+**The first-run setup says it too.** When the questions are done, a Mac gets one more
+line: `the places answer opt+1…opt+9 · if opt types a character instead, turn on "use option as
 meta" in …`. It is a condition rather than a report — nothing has been pressed yet — and it is
 said once.
 
 **On kitty, ghostty and WezTerm there is also a way in with no setting at all:** those
 terminals report that they run the kitty keyboard protocol, and where that report arrives
-`ctrl+1` … `ctrl+8` jump to the same seven places and `ctrl+.` draws the same map. The map's
-own line says `alt+1…8 or ctrl+1…8 go to a place` exactly when the alias is live.
+`ctrl+1` … `ctrl+9` jump to the same eight places and `ctrl+.` draws the same map. The map's
+own line says `alt+1…9 or ctrl+1…9 go to a place` exactly when the alias is live.
 
 On Linux and on Windows terminals, Alt is already meta and there is nothing to set. The
 whole of this is also in *Screen* — see *The font codeaf is drawn for*, *alt or option or opt —

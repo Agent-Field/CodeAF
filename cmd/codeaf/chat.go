@@ -166,14 +166,14 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// then let the machine form print underneath, which said one fact twice.
 		return nil, err
 	}
-	// A tier row that says auto is answered from this catalog (config.AutoModels),
-	// so the word is wired BEFORE the seats handed in are applied — a door whose
-	// ladder answered the word before this line resolved it from nothing. The
-	// read is the same non-blocking one, never a fetch.
+	// The crew router picks its seats from this catalog (config.CrewCatalog),
+	// so it is wired BEFORE the seats handed in are applied — a door whose
+	// ladder routed before this line would have routed from nothing. The read
+	// is the same non-blocking one, never a fetch.
 	modelCatalog := catalog.LoadLazy(context.Background(), catalog.Options{
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
 	})
-	config.AutoModels = modelCatalog.ModelsNow
+	seatCrewRows(modelCatalog.ModelsNow)
 	wirePoolIndex(settings.ProfileDir)
 	if opts.seats != nil {
 		applySeats(&settings, *opts.seats)

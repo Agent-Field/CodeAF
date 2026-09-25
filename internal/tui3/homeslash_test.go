@@ -476,14 +476,15 @@ func TestShowPageClosesEveryModalOnTheWayIn(t *testing.T) {
 	a := lab.app(mine)
 
 	a.pick.open, a.roster.open, a.shelf.open = true, true, true
-	a.crewPick.open, a.effPick.open = true, true
+	a.effPick.open = true
 	a.connPanel.open, a.harnPanel.open, a.permPanel.open, a.subPage.open = true, true, true, true
+	a.crewUI.open = true
 	runCmd(a.showPage(pageHome))
 	for name, open := range map[string]bool{
 		"a.pick": a.pick.open, "a.roster": a.roster.open, "a.shelf": a.shelf.open,
-		"a.crewPick": a.crewPick.open, "a.effPick": a.effPick.open,
+		"a.effPick":   a.effPick.open,
 		"a.connPanel": a.connPanel.open, "a.harnPanel": a.harnPanel.open,
-		"a.permPanel": a.permPanel.open, "a.subPage": a.subPage.open,
+		"a.permPanel": a.permPanel.open, "a.subPage": a.subPage.open, "a.crewUI": a.crewUI.open,
 	} {
 		if open {
 			t.Errorf("%s survived a place standing up; it will appear over whatever esc lands on", name)

@@ -9,9 +9,9 @@ import (
 // The places' bar is where a person stands to read the machine, and until this
 // it had no word for the one room they came from: the chats, the conversation
 // surface with its tab strip. `esc` went back, and nothing on the bar said so.
-// So the bar carries `chats`, second, right after home:
+// So the bar carries `chats`, third, right after home and teams:
 //
-//	home  chats  tasks  spend  settings
+//	home  teams  chats  sessions  spend  settings
 //
 // A press on it, its digit and `enter` on it with the bar's cursor all do one
 // thing: the place closes and the conversation that was in front is in front
@@ -31,9 +31,11 @@ type placeChats struct{ placeBase }
 
 func init() { registerPlace(placeChats{}) }
 
-func (placeChats) id() page             { return pageChats }
-func (placeChats) word() string         { return "chats" }
-func (placeChats) cursorAt(a *app) int  { return 0 }
+func (placeChats) id() page            { return pageChats }
+func (placeChats) word() string        { return "chats" }
+func (placeChats) cursorAt(a *app) int { return 0 }
+func (placeChats) about() string       { return "every conversation, one at a time" }
+
 func (placeChats) hint(a *app) string   { return "back to your chats" }
 func (placeChats) open(a *app) tea.Cmd  { return nil }
 func (placeChats) enter(a *app) tea.Cmd { return a.goChats() }

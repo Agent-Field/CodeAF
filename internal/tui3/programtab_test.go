@@ -62,7 +62,9 @@ var programTabDoors = []struct {
 }{
 	{"a press on its rail row", func(t *testing.T, l *tabLab) { clickRail(t, l.a, 0) }},
 	{"enter on its rail row", func(t *testing.T, l *tabLab) {
-		l.a.railWhere, l.a.railHold = railSpot{id: 7}, true
+		l.a.side.open[railDone] = true
+		l.a.railWhere = railSpot{id: 7}
+		l.a.railHold = true
 		drive(t, l.a, tea.KeyPressMsg{Code: tea.KeyEnter})
 	}},
 	// The card in the transcript, a task link, the task strip, the home panel

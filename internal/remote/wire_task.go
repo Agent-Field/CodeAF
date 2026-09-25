@@ -15,14 +15,17 @@ const (
 	MethodDelegateList  = "Delegate.List"
 	MethodDelegateStart = "Delegate.Start"
 	MethodTaskStart     = "Task.Start"
-	MethodPlannerStart  = "Task.StartPlanner"
-	MethodTaskRoom      = "Task.Room"
-	MethodTaskSteer     = "Task.Steer"
-	MethodTaskStop      = "Task.Stop"
-	MethodTaskRetry     = "Task.Retry"
-	MethodTaskModel     = "Task.Model"
-	MethodTaskEffort    = "Task.Effort"
-	MethodTaskSetEffort = "Task.SetEffort"
+	// MethodTaskRedoStronger runs the newest task again with every seat nobody
+	// pinned one step stronger ([session.Agent.RedoStronger]).
+	MethodTaskRedoStronger = "Task.RedoStronger"
+	MethodPlannerStart     = "Task.StartPlanner"
+	MethodTaskRoom         = "Task.Room"
+	MethodTaskSteer        = "Task.Steer"
+	MethodTaskStop         = "Task.Stop"
+	MethodTaskRetry        = "Task.Retry"
+	MethodTaskModel        = "Task.Model"
+	MethodTaskEffort       = "Task.Effort"
+	MethodTaskSetEffort    = "Task.SetEffort"
 	// MethodTaskWatch is the surface saying it draws tasks, and it is the only
 	// one of these that asks for nothing back: what it buys is the engine
 	// pushing "task" frames from then on (tasklane.go). It is sent once per
@@ -160,9 +163,18 @@ type TaskStopped struct {
 // whether they said the work is one worker's ([session.Agent.StartTask]'s solo):
 // that is the one thing the surface knows and the engine cannot, because the
 // word and the standing answer are both read on the surface's side.
+//
+// Effort is the one-task effort word the person said (`best`, `cheap`), read on
+// the surface's side like solo, and empty on every ordinary start.
 type TaskStartArgs struct {
-	Brief string `json:"brief"`
-	Solo  bool   `json:"solo,omitempty"`
+	Brief  string `json:"brief"`
+	Solo   bool   `json:"solo,omitempty"`
+	Effort string `json:"effort,omitempty"`
+}
+
+// TaskRedoArgs names the task to run again stronger; 0 is the newest one.
+type TaskRedoArgs struct {
+	ID uint64 `json:"id,omitempty"`
 }
 
 // DelegateStartArgs carries the program's name and the person's brief, both

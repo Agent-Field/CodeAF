@@ -1590,6 +1590,35 @@ func (a *Agent) StartDelegate(ctx context.Context, name, brief string) (uint64, 
 	return started.ID, started.Title, started.Note, nil
 }
 
+// StartTaskEffort is [Agent.StartTask] with the one-task effort word said
+// (`/task --best`, `/task --cheap`); the engine's router reads it for this task
+// and nothing after it.
+func (a *Agent) StartTaskEffort(ctx context.Context, brief string, solo bool, effort string) (uint64, string, string, error) {
+	payload, err := a.c.call(ctx, MethodTaskStart, TaskStartArgs{Brief: brief, Solo: solo, Effort: effort})
+	if err != nil {
+		return 0, "", "", err
+	}
+	var started TaskStarted
+	if err := json.Unmarshal(payload, &started); err != nil {
+		return 0, "", "", err
+	}
+	return started.ID, started.Title, started.Note, nil
+}
+
+// RedoStronger runs a task again on the engine machine with a stronger crew
+// (`/redo stronger`); row 0 is the newest task the conversation started.
+func (a *Agent) RedoStronger(ctx context.Context, row uint64) (uint64, string, error) {
+	payload, err := a.c.call(ctx, MethodTaskRedoStronger, TaskRedoArgs{ID: row})
+	if err != nil {
+		return 0, "", err
+	}
+	var started TaskStarted
+	if err := json.Unmarshal(payload, &started); err != nil {
+		return 0, "", err
+	}
+	return started.ID, started.Title, nil
+}
+
 // StartPlannerRun opens the adaptive form on the engine machine.
 func (a *Agent) StartPlannerRun(ctx context.Context, brief, hint string) (string, string, error) {
 	payload, err := a.c.call(ctx, MethodPlannerStart, PlannerStartArgs{Brief: brief, Hint: hint})

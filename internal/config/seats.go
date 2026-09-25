@@ -1,310 +1,81 @@
 package config
 
 import (
+	"errors"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/env"
 )
 
-// THE TWO SEATS EVERY DOOR SITS SOMEBODY IN, RESOLVED ONE WAY.
+// THE THREE SEATS EVERY DOOR SITS SOMEBODY IN, RESOLVED ONE WAY.
 //
-// A run needs two models named before it can start: the one that plans and the
-// one that works. The chat surface has always asked the profile for them — a
-// role rides a tier, a tier is a crew row, and /crew writes all four
-// ([ApplyCrew], internal/roles) — while every headless door resolved its own
-// pair from a flag and an environment variable and never opened the profile at
-// all. So "my crew is frugal", said in the product's own vocabulary, held in the
-// conversation and was silently lost the moment the same brain ran under `do`
-// (#166). The benchmark that found it had to hand-translate a preset into two
-// slugs, which is the one-source-of-truth violation the crew exists to prevent.
+// A run needs its crew named before it can start: the worker that does the
+// work, the planner that structures it, the checker that reads the result.
+// Every door — `codeaf do`, `plan run`, `plan new`, `exec`, a saved program —
+// resolves them here, through one ladder, so a pin said in the product's own
+// vocabulary holds on every surface (#166 was the day it did not).
 //
-// [ResolveSeats] is the whole ladder, in one place, for every door: the flag, the
-// environment, the crew, the shipped default. It lives beside [CrewAt] rather
-// than in the commands because a fifth door must inherit it by calling it, not
-// by remembering to re-derive it — a rung copied into four files is a rung that
-// will differ in one of them.
+// THE LADDER, ONCE PER SEAT:
 //
-// IT ALSO REPORTS WHICH RUNG ANSWERED. That is not decoration: the whole defect
-// was invisible from outside, and a run whose receipt names the rung can be
-// checked by the script that ran it. [Config.Load] cannot answer that question —
-// it folds the environment and the default together into one string — which is
-// why the ladder reads the environment itself rather than reading it back off a
-// loaded config.
+//  1. the flag, which is what this invocation said — a ONE-TASK PIN;
+//  2. the environment, which is what this campaign said — a pin too;
+//  3. a one-task `--pin`, then the profile's pin (/crew pin);
+//  4. THE ROUTER, for every seat nothing above named: the task is classified
+//     and the seat picked for it (internal/crewroute, [RouteCrew]).
+//
+// THERE IS NO FIFTH RUNG. A seat nothing pinned is routed; it never falls
+// back to a model this build chose for everybody, and the check seat never
+// quietly inherits the planner's model because only the planner was named —
+// a person who pinned the planner said something about planning.
+//
+// IT ALSO REPORTS WHICH RUNG ANSWERED, because the defect this file was
+// written for was invisible from outside, and a run whose receipt names the
+// rung can be checked by the script that ran it.
 
-// SeatRole is which of the two seats one answer fills. It is on the [Seat] so a
-// seat can name its own flag and its own variable rather than being handed them.
+// SeatRole is which of the three seats one answer fills, by the name a person
+// reads. It is on the [Seat] so a seat can name its own flag and variable.
 type SeatRole string
 
 const (
-	// SeatWork is the model that does the work.
-	SeatWork SeatRole = "work"
-	// SeatPlan is the model that structures it — plans, replans, contracts, the
-	// delivery gate. Empty is legal here and means "the work model plans too";
-	// see [Config.PlanModelResolved].
-	SeatPlan SeatRole = "plan"
-	// SeatCheck is the model that checks finished work. It has no flagless
-	// rung of its own here: an empty check seat is the crew's careful row,
-	// read by the run's crew factory rather than resolved here, because the
-	// check is the one seat a two flag run must not let a third model fill.
-	SeatCheck SeatRole = "check"
+	// SeatWork is the worker: the model that does the work.
+	SeatWork SeatRole = "worker"
+	// SeatPlan is the planner: plans, replans, contracts, the delivery gate.
+	SeatPlan SeatRole = "planner"
+	// SeatCheck is the checker: the model that reads finished work.
+	SeatCheck SeatRole = "checker"
 )
 
-// SeatSource is the rung that answered, and the five constants are the ladder in
-// order. It is an enum rather than a sentence because a caller putting it in
-// JSON is making a promise a script parses.
+// crewSeatOf is the router's seat for a role.
+func crewSeatOf(role SeatRole) crewroute.Seat {
+	switch role {
+	case SeatPlan:
+		return crewroute.Planner
+	case SeatCheck:
+		return crewroute.Checker
+	}
+	return crewroute.Worker
+}
+
+// SeatSource is the rung that answered. It is an enum rather than a sentence
+// because a caller putting it in JSON is making a promise a script parses.
 type SeatSource string
 
 const (
-	// SeatFlag is `--model` or `--plan-model`: the most recent thing the person
-	// said, and it always wins.
+	// SeatFlag is `--model`, `--plan-model` or `--check-model`: the most recent
+	// thing the person said, and it always wins.
 	SeatFlag SeatSource = "flag"
-	// SeatEnv is the environment: automation's override, set once for a campaign
-	// instead of threaded onto every invocation.
+	// SeatEnv is the environment: automation's override, set once for a
+	// campaign instead of threaded onto every invocation.
 	SeatEnv SeatSource = "env"
-	// SeatCrew is the profile's own tier row — what /crew wrote.
-	SeatCrew SeatSource = "crew"
-	// SeatInherited is the profile's crew answering through an OLDER row than
-	// this seat's own, because the profile was written before this seat existed
-	// ([tierLineage]). It is still the crew answering — the model came from what
-	// the person chose — and it is a separate rung because a person is owed the
-	// difference between "the row you wrote" and "the row your row was split out
-	// of".
-	SeatInherited SeatSource = "inherited"
-	// SeatComputed is a tier row that says `auto` answering from the catalog:
-	// the seat's model computed off the published figures at read time
-	// ([AutoPick]). It is a rung of the crew's own, not the build's default —
-	// the person wrote the row — and it says so because a receipt that called it
-	// `crew` would hide the one fact a reader of the run is checking: the id was
-	// derived, not named.
-	SeatComputed SeatSource = "computed"
-	// SeatTable is a tier row that says `auto` answering from the family's
-	// table row ([autoRow], [pickedModel]) because nothing could be computed —
-	// no catalog, or no pick off it. The id is the preset's own, and the rung
-	// says which kind of answer it was.
-	SeatTable SeatSource = "table"
-	// SeatLearned is a seat computed at the crew's budget under the `learn`
-	// pick ([CrewPickAt]): the catalog's own figures, plus the Model Pool's
-	// measurements and the person's own judged runs carried as a quality
-	// prior. It is a rung of its own, beside [SeatComputed], because the one
-	// fact a reader of a run is checking — was this id derived, and from
-	// what — is a different answer under the two words: the catalog alone,
-	// or the catalog plus what runs measured.
-	SeatLearned SeatSource = "learned"
-	// SeatDefault is this build's choice, for a profile that has never said
-	// anything about models at all.
+	// SeatPinned is a pin: the profile's own (/crew pin) or a one-task `--pin`.
+	SeatPinned SeatSource = "pinned"
+	// SeatRouted is the router's pick for this task.
+	SeatRouted SeatSource = "routed"
+	// SeatDefault is this build's own model for a tier that is not a crew
+	// seat — reflex and small work — on a profile that never wrote the row.
 	SeatDefault SeatSource = "default"
 )
-
-// tierLineage is THE TABLE THAT MAKES A NEW SEAT SAFE TO ADD, and every tier
-// word has a row in it whether or not it has an ancestor.
-//
-// A seat added to the ladder after people have profiles is a seat their profiles
-// have no key for, and the ladder would fall past the crew they chose to this
-// build's default — which is what happened when the worker row landed (#302):
-// four pinned rows, and all the work quietly running on a model nobody picked.
-// So the rule is written once, here, rather than discovered again per seat: A
-// TIER WITH NO KEY OF ITS OWN INHERITS FROM THE ROW IT WAS SPLIT OUT OF, AND
-// SAYS THAT IT DID. A tier that is nobody's descendant declares that by naming
-// no ancestor, explicitly, so the next tier cannot join the table by forgetting
-// to.
-//
-// Words is what the settings sheet calls the row, because the one line a person
-// reads about the substitution has to name a row they can go and find.
-//
-// AND THE READ NEVER REPAIRS THE PROFILE. Writing the inherited key back would
-// end the substitution for good after one run, and it would also mean every
-// `codeaf do` — several at once on the same profile, on a machine where the disk
-// may be full — rewrites the file a person's crew lives in, to record a decision
-// this build made rather than one they did. [ApplyCrew] already writes every
-// row, so a person who answers the line ends it themselves, once, deliberately.
-var tierLineage = map[string]struct {
-	// Inherits is the tier this one falls back to, or empty for a tier that has
-	// always existed and inherits from nothing.
-	Inherits string
-	// Words is this row's name on the settings sheet.
-	Words string
-}{
-	ModelTierReflex: {Words: "reflex"},
-	ModelTierLow:    {Words: "small work"},
-	// The worker seat was split out of the small-work row in #278: before it,
-	// the work seat of every headless run and every node of an adaptive run
-	// resolved through `models.tiers.low`. That row is therefore the honest
-	// ancestor — a profile pinned before #278 meant its small-work model when it
-	// said what the work should run on.
-	ModelTierWorker:     {Inherits: ModelTierLow, Words: "worker"},
-	ModelTierHigh:       {Words: "careful work"},
-	ModelTierMastermind: {Words: "thinking"},
-}
-
-// tierWords is a row's name on the settings sheet, for the one line that has to
-// send somebody to it. An unknown tier answers with its own word, which is what
-// a table this file owns can promise about a word it does not.
-func tierWords(tier string) string {
-	if row, ok := tierLineage[tier]; ok && row.Words != "" {
-		return row.Words
-	}
-	return tier
-}
-
-// inheritedTier is the crew's answer for a tier the profile has no key for: the
-// nearest ancestor row that was actually WRITTEN, and which row that was.
-//
-// It walks the lineage rather than taking one step, so a seat split out of a
-// seat still reaches the row a profile older than both of them holds. The walk
-// is bounded by the number of tiers, which makes a table with a cycle in it slow
-// nothing down — [TestEveryTierDeclaresItsAncestry] is what refuses the cycle.
-//
-// AN UNWRITTEN ANCESTOR IS NOT AN ANSWER. Reading the ancestor through
-// [TierModelAt] would hand back this build's default for that row and report it
-// as the crew, which is the same lie one row over. A row cleared on purpose
-// reads empty — "follow the conversation", which a headless run cannot — and
-// falls through too.
-func inheritedTier(profileDir, tier string) (model, from string, ok bool) {
-	for hops := 0; hops < len(tierLineage); hops++ {
-		row, known := tierLineage[tier]
-		if !known || row.Inherits == "" {
-			return "", "", false
-		}
-		tier = row.Inherits
-		if written, held := persistedString(profileDir, tierKeyFor(tier)); held {
-			if value := strings.TrimSpace(written); value != "" {
-				return value, tier, true
-			}
-			return "", "", false
-		}
-	}
-	return "", "", false
-}
-
-// tierSeatRole is what one tier's seat is CALLED in the line a person reads
-// about it. The two seats a run sits somebody in have names of their own
-// ([SeatWork], [SeatPlan]) and both surfaces have to spell them the same way: a
-// conversation whose work seat was inherited must read the sentence `codeaf do`
-// prints, not a second wording for one fact. Every other row answers with its
-// own name on the settings sheet, so a tier that joins the lineage tomorrow has
-// a sentence before anybody writes one.
-func tierSeatRole(tier string) SeatRole {
-	switch tier {
-	case ModelTierWorker:
-		return SeatWork
-	case ModelTierMastermind:
-		return SeatPlan
-	}
-	return SeatRole(tierWords(tier))
-}
-
-// crewRow is THE PROFILE HALF OF THE LADDER, and the one place that tells a row
-// somebody WROTE from a row they CLEARED from a key that was NEVER HELD.
-//
-// The distinction is the whole mechanism and it is decided here so that the two
-// ladders above it cannot decide it differently: [resolveSeat], which climbs a
-// flag and a variable first for a run, and [TierSeatAt], which is what a
-// conversation and the settings sheet read. A second copy of these three cases
-// is how a person's crew comes to mean one thing headless and another in chat,
-// which is the defect this file was written for one surface at a time (#166,
-// #302, #312).
-//
-// source is empty when the profile has nothing this ladder can use, and
-// `cleared` tells the two ways of having nothing apart: a row emptied ON PURPOSE
-// says "follow the conversation", which a conversation can do and a headless run
-// cannot, so each caller's own bottom rung answers for it.
-func crewRow(profileDir, tier string) (model, from string, source SeatSource, cleared bool) {
-	if written, held := persistedString(profileDir, tierKeyFor(tier)); held {
-		if value := strings.TrimSpace(written); value != "" {
-			return value, "", SeatCrew, false
-		}
-		return "", "", "", true
-	}
-	// The key was never held, which on a profile older than this seat means the
-	// crew was chosen before the seat existed. It still answers, through the row
-	// this row was split out of ([tierLineage]).
-	if value, ancestor, ok := inheritedTier(profileDir, tier); ok {
-		return value, ancestor, SeatInherited, false
-	}
-	return "", "", "", false
-}
-
-// TierSeatAt is ONE TIER ROW READ AS A SEAT, for the surfaces that seat roles
-// rather than run a door: the conversation's role map (cmd/codeaf's v3Crew), the
-// five rows of the settings sheet, and the crew word derived from them.
-//
-// IT IS [resolveSeat] WITHOUT THE TWO RUNGS THAT BELONG TO AN INVOCATION. A flag
-// is something a command line said and a conversation has no command line for
-// its crew; CODEAF_MODEL names the model a person TALKS TO ([Load] folds it into
-// Config.Model), and a variable that also filled the work seat of every task
-// handed off in that conversation would be one word quietly moving two dials.
-// What is left is the profile — which is where a conversation's seats have
-// always come from.
-//
-// Where it differs from a run is the BOTTOM, and only there:
-//
-//   - a row the person WROTE is the crew answering;
-//   - a row they CLEARED reads empty, and stays empty, because on this surface
-//     that is an answer — "follow the conversation" — and refusing it would make
-//     a default into a rule ([TierModelAt] argues it at length);
-//   - a key NEVER HELD asks the lineage before the bottom rung, so a profile
-//     older than the worker seat hands a task the same model `codeaf do` hands
-//     it (#302 headless, #312 in the conversation), and the seat carries the fact
-//     so a surface can say it once ([Seat.Notice]);
-//   - anything else is this build's own choice for that class of work.
-//
-// THE PRESET WORD IS DELIBERATELY NOT READ HERE. [Seat.Crew] stays empty:
-// [CrewAt] derives the preset from all five rows THROUGH this function, so a
-// seat that filled it in would be the ladder asking the summary that is computed
-// from the ladder — five extra file reads per row, and a cycle. A surface that
-// wants both facts asks for both.
-func TierSeatAt(profileDir, tier string) Seat {
-	return tierSeatUnder(profileDir, CrewSourceAt(profileDir), tier)
-}
-
-// tierSeatUnder is [TierSeatAt] with the family already read, so a caller that
-// walks every tier ([CrewAt]) reads the profile ONCE for the family instead of
-// once per unwritten seat, and the five seats cannot be resolved under one
-// family while the preset table is resolved under another.
-func tierSeatUnder(profileDir, family, tier string) Seat {
-	model, from, source, cleared := crewRow(profileDir, tier)
-	// WHETHER THE ROW ITSELF WAS WRITTEN, read before the fallback below can
-	// stand in for it. A row a person typed is a pin the pick must not recompute
-	// ([pickedSeat]), and that is a fact about the row's presence, not about
-	// whether its id happens to match the preset it sits in.
-	written := source == SeatCrew
-	// THE BUDGET A ROW NOBODY WROTE RUNS AT. A build this one shapes writes no
-	// crew word, and an unwritten row reads the default preset's own id — but a
-	// run that STORED a word on the crew row ([storedCrewWord]) named a budget,
-	// and the seat reads that word's table row instead. The pick may still
-	// compute it when the pick is off the table.
-	var byWord string
-	if source == "" {
-		source = SeatDefault
-		if !cleared {
-			model = freeTierModelAt(profileDir, family, tier)
-			if seat, ok := unwrittenSeat(profileDir, family, tier); ok {
-				model, source, byWord = seat.Model, seat.Source, seat.Crew
-			}
-		}
-	}
-	// A row that says auto resolves through the one seam both ladders share
-	// ([autoRow]). Only a row somebody WROTE — directly, or through the lineage
-	// — can say it: the default rung names a model id, and a cleared row names
-	// nothing at all.
-	if IsAuto(model) {
-		var preset string
-		model, source, preset = autoRow(profileDir, family, tier)
-		return Seat{Role: tierSeatRole(tier), Model: model, Source: source, Crew: preset}
-	}
-	// AND THE PICK ROW ANSWERS FOR THE SEATS NOBODY NAMED, before the row's
-	// own rung is read: a pick of catalog or learn computes the dial seats at
-	// the crew's preset ([pickedSeat]), and leaves everything it does not
-	// answer — a hand-typed id, a cleared row, the two seats that always read
-	// the table — exactly as it was. A cleared row is a deliberate answer
-	// ("follow the conversation") and no pick unsays it on this surface.
-	if !cleared {
-		if seat, ok := pickedSeat(profileDir, family, tier, model, written); ok {
-			return seat
-		}
-	}
-	return Seat{Role: tierSeatRole(tier), Model: model, Source: source, From: from, Crew: byWord}
-}
 
 // ModelEnv, PlanModelEnv, and CheckModelEnv are the variables the seats read.
 // They are spelled here once because the ladder, [Load], and receipts name them.
@@ -314,7 +85,8 @@ const (
 	CheckModelEnv = "CODEAF_CHECK_MODEL"
 )
 
-// Seat is one seat's answer: the model, and where it came from.
+// Seat is one seat's answer: the model, where it came from, and the provider
+// it runs on when the router or a pin named one.
 type Seat struct {
 	// envSpelling is the variable that answered when Source is [SeatEnv] —
 	// the current spelling or the former one — recorded at resolution so the
@@ -323,21 +95,7 @@ type Seat struct {
 	Role        SeatRole
 	Model       string
 	Source      SeatSource
-	// From is the tier word this seat's model was INHERITED from, and is empty
-	// unless Source is [SeatInherited]. It is carried rather than re-derived
-	// because the line that tells a person what happened has to name the row it
-	// read, and a second walk of the lineage at print time could name a
-	// different one.
-	From string
-	// Crew is the preset word the profile's five tier rows make — `frugal`,
-	// `balanced`, `max` or `custom` ([CrewAt]) — and is empty unless Source is
-	// [SeatCrew], [SeatInherited], [SeatComputed] or [SeatTable]. It is read
-	// rather than stored, exactly as the settings sheet reads it, so a receipt
-	// and the sheet cannot disagree about which crew ran. On the computed and
-	// table rungs it is the preset the auto row is computed at, read from the
-	// stored rows ([crewPresetUnder]) rather than derived through the resolver,
-	// which would be the seam asking itself.
-	Crew string
+	Provider    string
 }
 
 // Flag is the flag that fills this seat.
@@ -353,16 +111,19 @@ func (s Seat) Flag() string {
 
 // Env is the variable that fills this seat.
 func (s Seat) Env() string {
-	if s.Role == SeatPlan {
+	switch s.Role {
+	case SeatPlan:
 		return PlanModelEnv
+	case SeatCheck:
+		return CheckModelEnv
 	}
 	return ModelEnv
 }
 
 // Rung is the answering rung as a receipt says it: the flag or the variable by
-// name, the crew by preset, and otherwise the one word `default`. Naming the
-// flag and the variable rather than saying "flag" and "env" costs nothing and
-// tells a reader which of the two they would have to change.
+// name, and otherwise the rung's own word. Naming the flag and the variable
+// rather than saying "flag" and "env" costs nothing and tells a reader which
+// of the two they would have to change.
 func (s Seat) Rung() string {
 	switch s.Source {
 	case SeatFlag:
@@ -372,347 +133,183 @@ func (s Seat) Rung() string {
 			return s.envSpelling
 		}
 		return s.Env()
-	case SeatCrew:
-		return s.crewRung()
-	case SeatInherited:
-		// The crew answered, through an older row. Both halves are said,
-		// because a receipt that said only `crew custom` would hide exactly the
-		// substitution this rung exists to report.
-		return s.crewRung() + ", inherited"
-	case SeatComputed:
-		return s.crewRung() + ", computed from the catalog"
-	case SeatLearned:
-		return s.crewRung() + ", learned"
-	case SeatTable:
-		return s.crewRung() + ", table"
+	case "":
+		return string(SeatDefault)
 	}
-	return "default"
+	return string(s.Source)
 }
-
-// crewRung is the crew half of a rung: the preset the profile's rows make, or
-// the bare word for a profile whose preset cannot be read.
-func (s Seat) crewRung() string {
-	if strings.TrimSpace(s.Crew) == "" {
-		return "crew"
-	}
-	return "crew " + s.Crew
-}
-
-// Notice is the ONE line a person reads when this seat was not filled by a row
-// they wrote, and it is empty for every other seat.
-//
-// IT IS SAID ONCE, WHERE THE SEATS ARE REPORTED, and never at the point of a
-// call: this seat answers every request a run makes, and a line that arrived
-// with all of them would be noise a person learns to read past — which leaves
-// them exactly where the silence did. [Report] is how a door prints it, so the
-// door does not have to remember.
-//
-// It is the register the surface already speaks in — an observation, a middle
-// dot, a promise, lowercase, no full stop, nothing about machinery
-// (internal/session's taskEscalationNote and checkpointCeilingNote). The
-// observation is the true thing: the profile is older than the seat. The promise
-// is what is running instead and what ends it.
-//
-// AND THE PROMISE NAMES THE DOOR, because it used to end in one nobody could
-// find. `until you pick a crew again` is a remedy with no address on it, and
-// this line is printed on FOUR HEADLESS DOORS — `codeaf do`, `codeaf plan run`,
-// `codeaf exec` and `codeaf run` — where there is no way at all to pick a crew:
-// [CrewPreset] is written by `/crew` and by the settings sheet's Providers row,
-// both of which are the conversation, and no flag and no terminal verb sets one.
-// So a person reading this in a terminal was told to do something, given no way
-// to do it, and left to discover on their own that the answer was a different
-// surface. Cause plus what to do is the law on both surfaces; a cause plus a
-// dead end is the defect.
-//
-// ONE FORM, TRUE FROM BOTH PLACES IT IS PRINTED. Naming `/crew` reads as the
-// next keystroke in the conversation and as a destination from the terminal, and
-// it is the same sentence in both — which is what keeps somebody who has seen
-// one surface recognising the other. `seat` STAYS: it is this product's own
-// noun for a row of the crew, taught under that name on the manual's own page
-// and spoken by the settings sheet and the model picker, and the vocabulary law
-// is about MACHINERY — the program's words for its own process — not about a
-// domain noun the product teaches.
-//
-// AND THE PROMISE ATTRIBUTES THE MODEL RATHER THAN DESCRIBING IT. This read
-// `it is running on your small work model`, printed directly under a models
-// line naming `deepseek/deepseek-v4-pro` — so two consecutive lines called one
-// model by its name and then called it small, and the developer who met them
-// could not tell which model the lane was actually on. The two lines were never
-// in disagreement about the FACT: whenever the source is [SeatInherited] the
-// model on the line above IS the inherited one, always, because that is what
-// inheriting means. What differed was the grammar. `small work` is the NAME OF
-// A SEAT on the settings sheet, one of the five this product seats, and putting
-// it in front of `model` turns a seat's name into an adjective about the model
-// it holds.
-//
-// So the notice never characterises the model a second time — it says which
-// SEAT lent it. `your small work seat's model` cannot be read as a claim about
-// deepseek-v4-pro, and it answers the question the person actually has: this
-// seat has no row of its own, so it is borrowing that one's. A description was
-// always going to contradict the line above it, since the two are one model.
-func (s Seat) Notice() string {
-	if s.Source != SeatInherited {
-		return ""
-	}
-	return "your crew was set before the " + string(s.Role) + " seat existed · " +
-		"it is running on your " + tierWords(s.From) + " seat's model until you pick a crew with " +
-		CrewCommand + " in the conversation"
-}
-
-// CrewCommand is the one door that ends the inheritance [Notice] describes. It
-// is a constant so the sentence and the surface that answers to it cannot drift
-// apart — the notice is printed by four commands that cannot reach it, and a
-// remedy naming a door that has been renamed is worse than one naming none.
-const CrewCommand = "/crew"
-
-// FromWords is the row this seat's model was inherited from, in the words the
-// settings sheet calls that row by — empty unless the source is
-// [SeatInherited]. It is exported for the surface that has its own sentence to
-// build about the same fact ([Notice] is the sentence; this is the noun), so two
-// surfaces cannot invent two names for one row.
-func (s Seat) FromWords() string {
-	if s.Source != SeatInherited {
-		return ""
-	}
-	return tierWords(s.From)
-}
-
-// Report is what a door prints: the seat, and the line that says a row was
-// inherited when one was.
-func (s Seat) Report() string { return withNotice(s.Line(), s.Notice()) }
 
 // Describe is one seat in a receipt's voice:
 //
-//	work z-ai/glm-5.3-flash (crew frugal)
-//	plan follows the work model (default)
+//	worker z-ai/glm-5.3-flash (routed)
+//	checker moonshotai/kimi-k3 (pinned)
 //
-// THE EMPTINESS LAW, as the crew row already keeps it: an unfilled plan seat is
-// said in words rather than left as a gap somebody has to interpret.
+// THE EMPTINESS LAW: a seat with no model says so in words rather than
+// leaving a gap somebody has to interpret.
 func (s Seat) Describe() string {
 	model := strings.TrimSpace(s.Model)
 	if model == "" {
-		model = "follows the work model"
+		model = "no model"
 	}
 	return string(s.Role) + " " + model + " (" + s.Rung() + ")"
 }
 
 // modelsLabel is the word a door puts in front of the sentence. It is spelled
-// once so the four doors cannot label the same fact differently.
+// once so the doors cannot label the same fact differently.
 const modelsLabel = "models: "
 
 // Line is one seat labelled, for the door that seats only one — `exec`, which
 // executes and never plans.
 func (s Seat) Line() string { return modelsLabel + s.Describe() }
 
-// Seats is both seats of one run, and the check seat beside them when a door
-// resolved one. Work and Plan are the ladder's two answers
-// ([ResolveSeats]); Check is the door's own answer for the review round
-// ([CheckSeat]), and empty on a door that named nothing, which the run's crew
-// factory reads as the profile's careful row.
+// Report is what a door prints for one seat.
+func (s Seat) Report() string { return s.Line() }
+
+// Seats is one run's crew as the door resolved it, and the router's decision
+// beside it when a seat was routed.
 type Seats struct {
 	Work  Seat
 	Plan  Seat
 	Check Seat
+	// Crew is the router's decision for this task — the class it read, every
+	// seat's pick and the estimate — nil only when no router was asked.
+	Crew *crewroute.Decision
 }
 
-// Sentence is both seats, unlabelled, for a door whose opening lines have a
-// label column of their own:
+// Sentence is the crew, unlabelled:
 //
-//	work z-ai/glm-5.3-flash (crew frugal) · plan z-ai/glm-5.3-flash (crew frugal)
+//	worker z-ai/glm-5.3-flash (routed) · planner z-ai/glm-5.3-flash (routed) · checker moonshotai/kimi-k3 (pinned)
 //
-// ONE SHAPE AND NOT TWO. It would read a little better to collapse a run whose
-// seats came from the same crew into one clause, and it would mean a script
-// parsing this has two grammars to know and a person comparing two runs has two
-// shapes to compare. Every run says both seats and names the rung beside each.
+// ONE SHAPE AND NOT TWO: every run says every seat and names the rung beside
+// each, so a script parsing this has one grammar to know.
 func (s Seats) Sentence() string {
-	return s.Work.Describe() + " · " + s.Plan.Describe()
+	return s.Work.Describe() + " · " + s.Plan.Describe() + " · " + s.Check.Describe()
 }
 
-// Line is the one line a headless run opens with:
-//
-//	models: work z-ai/glm-5.3-flash (crew frugal) · plan z-ai/glm-5.3-flash (crew frugal)
+// Line is the one line a headless run opens with.
 func (s Seats) Line() string { return modelsLabel + s.Sentence() }
 
-// Notice is the inheritance line for whichever seat was filled by an older row,
-// and empty when neither was. Both seats are asked and their lines joined,
-// because the table decides which tiers have ancestors and this must not have to
-// be edited when a second one does.
-func (s Seats) Notice() string {
-	lines := make([]string, 0, 2)
-	for _, seat := range []Seat{s.Work, s.Plan} {
-		if notice := seat.Notice(); notice != "" {
-			lines = append(lines, notice)
-		}
+// Report is what a door prints: the models line, and under it the crew's own
+// line — the class the task was read as and the estimate — when it was routed.
+func (s Seats) Report() string {
+	if s.Crew == nil {
+		return s.Line()
 	}
-	return strings.Join(lines, "\n")
+	return s.Line() + "\ncrew: " + s.Crew.Line(PinMark, -1)
 }
 
-// Report is what a door prints instead of [Line]: the models line, and beneath
-// it the one line that says a seat was inherited. ONE PLACE, so a door added
-// tomorrow cannot print the models and swallow the reason.
-func (s Seats) Report() string { return withNotice(s.Line(), s.Notice()) }
+// PinMark is the mark a pinned seat wears on a headless line. The chat
+// surface draws its own, from its icon vocabulary.
+const PinMark = "📌"
 
-// withNotice puts a notice under a line, and is the whole of the composition so
-// the two Report methods cannot disagree about it.
-func withNotice(line, notice string) string {
-	if notice == "" {
-		return line
-	}
-	return line + "\n" + notice
+// SeatFlags are the three seat flags a door took.
+type SeatFlags struct {
+	Model      string
+	PlanModel  string
+	CheckModel string
 }
 
-// ResolveSeats climbs the ladder once per seat.
+// ResolveSeats climbs the ladder for all three seats and routes every seat
+// nothing named, for the task in ask.
 //
-//  1. the flag, which is what this invocation said;
-//  2. the environment, which is what this campaign said;
-//  3. the profile's crew — the planning seat takes the MASTERMIND tier and the
-//     work seat takes the WORKER tier, because that is where the two roles ride
-//     in chat: roles.DefaultAssignment puts RolePlanner on TierMastermind and
-//     RoleWorker on TierWorker, and a chat task's own worker resolves through
-//     the same row (internal/session's defaultTaskModel), so a headless run, an
-//     adaptive run and a task handed off in conversation all call the same
-//     model on the same profile;
-//  4. the crew again, through an OLDER ROW, for a profile written before this
-//     seat existed — the worker row's ancestor is the small-work row it was
-//     split out of ([tierLineage]), and the seat says it was inherited rather
-//     than reporting the model as though the person had pinned it;
-//  5. this build's default, which a profile that has said nothing about models
-//     at all is the only thing left for.
+// A flag and a variable are handed to the router AS PINS FOR THIS TASK, so the
+// decision it answers — the crew line, the estimate, the logged row — is the
+// crew that actually runs, and a seat the flag filled still says `--model`
+// on the receipt. A value is handed on WHOLE: a flag may read
+// `moonshotai/kimi-k3:low`, and the level is split off where every level is,
+// at the point of the call ([roles.SplitEffort]).
 //
-// profileDir is the profile to ask, [ProfileDir] for an ordinary process. The
-// environment is read HERE, at call time, and not carried in from [Load]: Load
-// resolves CODEAF_MODEL and DefaultModel into one field and the difference
-// between them is exactly what the receipt has to report.
-//
-// A tier value may carry a thinking level (`moonshotai/kimi-k3:low`) and is
-// handed on WHOLE, exactly as a flag or a variable carrying one is. The level is
-// applied where every other level is applied — the role ladder splits it into a
-// model and an effort at the point of the call ([roles.SplitEffort],
-// internal/session's roleRequest) — and the client seam takes the level off the
-// slug it sends ([Config.providerConfig]). Neither of those is this function's
-// business, and a rung that quietly shortened the value would be the second
-// model policy this whole file exists to remove.
-func ResolveSeats(profileDir, flagModel, flagPlanModel string) Seats {
-	return Seats{
-		Work: resolveSeat(SeatWork, profileDir, flagModel, ModelTierWorker, ChatDefaultAt(profileDir)),
-		Plan: resolveSeat(SeatPlan, profileDir, flagPlanModel, ModelTierMastermind, ""),
+// The error is the router's: a seat nothing allowed can sit, or
+// [ErrCrewAtCap] — beside which the seats still come back, because what a
+// door does at the cap (ask, refuse, or be told to spend) is the door's.
+func ResolveSeats(profileDir string, flags SeatFlags, ask CrewAsk) (Seats, error) {
+	seats := Seats{Work: Seat{Role: SeatWork}, Plan: Seat{Role: SeatPlan}, Check: Seat{Role: SeatCheck}}
+	if ask.Sends == nil {
+		ask.Sends = map[crewroute.Seat]string{}
 	}
+	for _, slot := range []struct {
+		seat *Seat
+		flag string
+	}{{&seats.Work, flags.Model}, {&seats.Plan, flags.PlanModel}, {&seats.Check, flags.CheckModel}} {
+		seat := slot.seat
+		if value := strings.TrimSpace(slot.flag); value != "" {
+			seat.Model, seat.Source = value, SeatFlag
+		} else if value := strings.TrimSpace(env.Value(seat.Env())); value != "" {
+			seat.Model, seat.Source = value, SeatEnv
+			seat.envSpelling, _ = env.Spelling(seat.Env())
+		} else {
+			continue
+		}
+		ask.Sends[crewSeatOf(seat.Role)] = seat.Model
+	}
+	decision, err := RouteCrew(profileDir, ask)
+	if err != nil && !errors.Is(err, ErrCrewAtCap) {
+		return seats, err
+	}
+	seats.Crew = &decision
+	for _, seat := range []*Seat{&seats.Work, &seats.Plan, &seats.Check} {
+		pick := decision.Seat(crewSeatOf(seat.Role))
+		seat.Provider = pick.Provider
+		if seat.Source != "" {
+			continue
+		}
+		seat.Model = pick.Send
+		if pick.Pinned {
+			seat.Source = SeatPinned
+		} else {
+			seat.Source = SeatRouted
+		}
+	}
+	return seats, err
 }
 
-// CheckSeat is the check seat's own ladder, resolved at the door.
-// The flag wins, then the check environment. A plan seat pinned by either its
-// flag or its environment answers next. Any other plan source leaves the seat
-// empty for the run's crew factory to fill from the careful row.
-func CheckSeat(flagCheck string, plan Seat) Seat {
-	seat := Seat{Role: SeatCheck}
-	if value := strings.TrimSpace(flagCheck); value != "" {
-		seat.Model, seat.Source = value, SeatFlag
-		return seat
-	}
-	if value := strings.TrimSpace(env.Get(CheckModelEnv)); value != "" {
-		seat.Model, seat.Source = value, SeatEnv
-		return seat
-	}
-	if plan.Source == SeatFlag || plan.Source == SeatEnv {
-		seat.Model, seat.Source = plan.Model, plan.Source
-	}
-	return seat
+// CheckEnvModel is the check seat's environment rung alone, for the chat's
+// runs: a conversation has no flag, and CODEAF_CHECK_MODEL reaches a `/task`
+// run the way the manual says it reaches a headless one. Empty when unset.
+func CheckEnvModel() string {
+	return strings.TrimSpace(env.Get(CheckModelEnv))
 }
 
-// resolveSeat is the ladder itself, once, for either seat. The two seats differ
-// in three values — which flag, which tier, what the bottom rung is — and in
-// nothing else, which is why there is one function and not two.
+// TierSeatAt is ONE TIER ROW READ AS A SEAT, for the surfaces that seat roles
+// rather than run a door: the conversation's role map (cmd/codeaf's v3Crew),
+// the settings sheet's rows, and a run's crew factory for a seat its door did
+// not name.
 //
-// UNTOUCHED IS NOT THE CREW ANSWERING. A tier is read through [crewRow] rather
-// than [TierModelAt] so that a profile which has never held the key falls
-// THROUGH to the default rather than being reported as `crew balanced` — the
-// five shipped tier defaults are the balanced row, so TierModelAt would answer
-// for a person who has never said anything, the bottom rung would become
-// unreachable, and this build's headless default model would quietly change for
-// everybody. `crew` here means somebody chose a crew. A row cleared on purpose
-// reads empty, which is "follow the conversation" — a sentence a headless run
-// has no conversation to answer with — so it falls through too.
+// A CREW SEAT'S ROW — worker, planner (mastermind), checker (high) — is its
+// pin when one is written, and otherwise the router's pick for work of no
+// particular class ([standingCrewSeat]): the calls that ride those tiers
+// without a task in front of them are routed too, never handed a model this
+// build chose for everybody.
 //
-// AND A KEY THAT WAS NEVER HELD IS NOT THE SAME AS A PROFILE THAT SAID NOTHING.
-// The two were one case until the worker row landed (#302) and a profile that
-// had pinned every row it knew about fell all the way to the default for the
-// seat that does the work. So an unheld key asks the lineage before the bottom
-// rung: the crew answers through the ancestor row when the person wrote one, on
-// its own rung, and the run says so in one line ([Seat.Notice]).
-//
-// EVERY RUNG HANDS ITS VALUE ON WHOLE. A tier value may read
-// `moonshotai/kimi-k3:low` and a flag may say the same thing; both travel from
-// here unchanged, are seeded into the plan role's binding unchanged, and are
-// split into a model and a thinking effort by the role ladder at the point of
-// the call. A crew rung that shortened the value would leave a person planning
-// at `low` in the conversation and at nothing headless — the same divergence
-// #166 is about, one knob over.
-func resolveSeat(role SeatRole, profileDir, flag, tier, fallback string) Seat {
-	seat := Seat{Role: role}
-	if value := strings.TrimSpace(flag); value != "" {
-		seat.Model, seat.Source = value, SeatFlag
-		return seat
-	}
-	if value := strings.TrimSpace(env.Value(seat.Env())); value != "" {
-		seat.Model, seat.Source = value, SeatEnv
-		// The receipt names the spelling that answered — the former one is
-		// still read for a release, and a person who set it must not be told
-		// to look at a row they never wrote.
-		seat.envSpelling, _ = env.Spelling(seat.Env())
-		return seat
-	}
-	// AND THE PROFILE IS READ THROUGH THE ROW A CONVERSATION READS IT THROUGH
-	// ([crewRow]), so the three cases a tier key can be in are decided once for
-	// both surfaces. Nothing the profile can say fills this seat with the
-	// fallback except silence: a row cleared on purpose says "follow the
-	// conversation", which a headless run has no conversation to answer with,
-	// and it lands on the same bottom rung a profile that said nothing does.
-	model, from, source, cleared := crewRow(profileDir, tier)
-	if source == "" {
-		if cleared && role == SeatWork {
-			fallback = DefaultModel
+// THE OTHER TWO ROWS — reflex and small work — are not crew seats and read the
+// way they always have: a row somebody WROTE is theirs, a row they CLEARED
+// reads empty and follows the conversation ([TierModelAt] argues why UNSET
+// and CLEARED are different answers), and a key never held reads this build's
+// own near-free model — or, on an account known to be low, a free one
+// ([freeTierModelAt]).
+func TierSeatAt(profileDir, tier string) Seat {
+	if seat, ok := CrewTierSeat(tier); ok {
+		role := SeatRole(seat)
+		if pin, ok := CrewPinAt(profileDir, seat); ok {
+			return Seat{Role: role, Model: pin.Model, Source: SeatPinned, Provider: pin.Provider}
 		}
-		// THE PICK ANSWERS BEFORE THE BOTTOM RUNG: an unwritten seat under a
-		// pick of catalog or learn is computed at the crew's preset
-		// ([pickedSeat]), the same answer the conversation reads, and a row
-		// cleared on purpose still falls through — the pick answers for seats
-		// nobody named, and a cleared row is somebody naming emptiness.
-		if !cleared {
-			if seat, ok := pickedSeat(profileDir, CrewSourceAt(profileDir), tier, "", false); ok {
-				return seat
-			}
-		}
-		// A STORED CREW WORD SEATS THE HEADLESS DOOR TOO ([unwrittenSeat]): the
-		// word names a budget, and the row nobody wrote reads that budget's own
-		// table row rather than the run's fallback — the same seat the
-		// conversation reads, so a word cannot mean one thing here and another in
-		// chat.
-		if !cleared {
-			if seat, ok := unwrittenSeat(profileDir, CrewSourceAt(profileDir), tier); ok {
-				return seat
-			}
-		}
-		seat.Model, seat.Source = fallback, SeatDefault
-		return seat
+		return Seat{Role: role, Model: standingCrewSeat(profileDir, seat), Source: SeatRouted}
 	}
-	// A row that says auto resolves through the one seam both ladders share
-	// ([autoRow]) — on the rung it earned, with the preset it was computed at
-	// carried for the receipt — and never to `auto` and never to empty, which
-	// is what a headless run could do nothing with.
-	if IsAuto(model) {
-		var preset string
-		seat.Model, seat.Source, preset = autoRow(profileDir, CrewSourceAt(profileDir), tier)
-		seat.Crew = preset
-		return seat
+	role := SeatRole(tierWords(tier))
+	// A retired `auto` reads the default until the migration takes it away.
+	if written, held := persistedString(profileDir, tierKeyFor(tier)); held && !strings.EqualFold(strings.TrimSpace(written), CrewAuto) {
+		return Seat{Role: role, Model: strings.TrimSpace(written), Source: SeatPinned}
 	}
-	// AND BETWEEN THE ROW AND ITS OWN RUNG, the pick: a written row holding
-	// the preset's own table value is the preset answering rather than a pin,
-	// and the pick computes it ([pickedSeat]) — unless the profile stores a crew
-	// word, which makes every written row a pin. A hand-typed id keeps its rung
-	// either way.
-	if seat, ok := pickedSeat(profileDir, CrewSourceAt(profileDir), tier, model, source == SeatCrew); ok {
-		return seat
+	return Seat{Role: role, Model: freeTierModelAt(profileDir, tier), Source: SeatDefault}
+}
+
+// tierWords is a non-crew row's name on the settings sheet.
+func tierWords(tier string) string {
+	switch tier {
+	case ModelTierReflex:
+		return "reflex"
+	case ModelTierLow:
+		return "small work"
 	}
-	seat.Model, seat.Source, seat.From, seat.Crew = model, source, from, CrewAt(profileDir)
-	return seat
+	return tier
 }

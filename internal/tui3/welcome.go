@@ -1199,7 +1199,7 @@ func (w *welcome) recentName(i int) string {
 }
 
 // welcomeModelLine is the line under the wordmark: what is answering, and which
-// crew stands behind it — `anthropic/claude-sonnet-4.5 · balanced crew`.
+// crew stands behind it — `anthropic/claude-sonnet-4.5 · auto crew`.
 //
 // The model is its whole routing address and not the basename the status row
 // keeps, because this line is where a person who is about to spend their own

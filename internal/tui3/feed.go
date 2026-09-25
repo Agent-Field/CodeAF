@@ -1329,6 +1329,23 @@ func (f *feed) noteWritten(text string, block bool, facts []string) {
 	f.touch()
 }
 
+// renote rewrites the newest note saying old to say text instead, IN PLACE —
+// the line keeps its place in the thread, which is what a line that is one
+// fact still being settled wants (a task's crew line, crew.go). It answers
+// false when no note says old, and the caller then says text as a new note.
+func (f *feed) renote(old, text string, facts []string) bool {
+	for i := len(f.entries) - 1; i >= 0; i-- {
+		e := &f.entries[i]
+		if e.kind != entryNote || e.text != old {
+			continue
+		}
+		e.text, e.facts, e.stale = text, facts, true
+		f.touch()
+		return true
+	}
+	return false
+}
+
 // ── AN ATTEMPT THAT NEVER HAPPENED ──────────────────────────────────────────
 
 // retry is a cut request being asked again (internal/provider's streamguard.go).

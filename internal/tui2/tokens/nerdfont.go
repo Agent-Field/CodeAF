@@ -312,6 +312,14 @@ var vocabulary = []GlyphBinding{
 		ASCII:     "w",
 		UsualTint: TextTertiary, NFAmbiguous: true, AutoUpgrade: true,
 	},
+	// A crew seat a person pinned: the fixed point on the floor, the thumb tack
+	// where a patched font supplies one — a pin at two weights.
+	{
+		ID: GPinned, Name: "Pinned", Meaning: "a crew seat a person pinned; the router leaves it where it is",
+		Plain: GlyphPinned, NerdFont: "\uF08D", NFName: "nf-fa-thumb_tack",
+		ASCII:     "p",
+		UsualTint: TextTertiary, NFAmbiguous: true, AutoUpgrade: true,
+	},
 
 	// -- the execution voices (5.5) ------------------------------------------
 	{

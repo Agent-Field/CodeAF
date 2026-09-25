@@ -1164,8 +1164,8 @@ and an explicit zero temperature or output limit is preserved.
 Explicit choices remain explicit. `CODEAF_REASONING`,
 `CODEAF_EXEC_REASONING`, a model or crew value with `:low`, `:medium` or
 `:high`, a saved task or standing-work rung, and an embedder's `ai.Option` still
-travel. The three shipped crew presets contain bare model ids and add no effort
-level. `cmd/harness-design` is a development command with explicit CLI-sized
+travel. A crew seat nobody pinned is routed to a bare model id and adds no
+effort level. `cmd/harness-design` is a development command with explicit CLI-sized
 requests and retains its caps.
 
 The local process remains bounded independently of provider generation:
@@ -1359,6 +1359,12 @@ test. The cap-setting commit already measured eight bytes over both caps on this
 Linux machine; no byte changed when `HOME`, `USER`, `TMPDIR`, the launch directory
 or `TZ` changed. Eight bytes were removed from two equivalent phrases in the
 guide, so both caps remain at their measured values without raising a waiver.
+
+**The #1494 and #1436 merge remeasured the combined belt (2026-09-25).**
+The full page is 22,291 bytes and its 24 tools encode to 34,927 bytes, so the
+fixed cap is **57,218** bytes, exactly 94 above the previous measurement.
+The lean cap remains **49,590** bytes. The dated fixed waiver in
+`prefixWaivers` pays only that measured increase.
 
 ## Following through on a completion claim
 

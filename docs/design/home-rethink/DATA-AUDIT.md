@@ -511,7 +511,7 @@ Display (:77), Providers (:80), Connections (`connectcaps.go:109`). The other
 concepts are **separate overlays** with their own commands: `/connect` →
 `openConnect` (`connectpanel.go:463`), `/permissions` → `openPermissions`
 (`permissions.go:265`), `/harness` → `openHarness` (`harnesspanel.go:209`),
-`/crew` → `crewPicker` (`crew.go:183`). `/fixes` and `/accounts` do not exist.
+`/crew` → the crew chooser of the time (`crew.go:183`; since replaced by the `/crew` panel). `/fixes` and `/accounts` do not exist.
 
 | Section | Verdict |
 | --- | --- |

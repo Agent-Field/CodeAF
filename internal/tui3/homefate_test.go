@@ -69,8 +69,9 @@ func TestTheFateReadsTheArgumentWhereItChangesTheAnswer(t *testing.T) {
 	}{
 		{"standing", "", fatePlace},
 		{"standing", "keep the tests green", fateNeedsChat},
-		{"crew", "", fateNeedsChat},
-		{"crew", "frugal", fateAnswers},
+		{"crew", "", fateCrew},
+		{"crew", "cap 5", fateCrew},
+		{"redo", "stronger", fateNeedsChat},
 		{"task", "", fatePlace},
 		{"task", "port the parser", fateNeedsChat},
 		{"memory", "", fatePlace},

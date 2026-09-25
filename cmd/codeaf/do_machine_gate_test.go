@@ -39,7 +39,7 @@ func TestDoRunHonoursProfileMachineFloor(t *testing.T) {
 	outcome, err := runErrand(doRequest{
 		task: "do the work", workspace: workspace, timeout: 120 * time.Millisecond,
 		stderr: &stderr, newBeltCompleter: func(string) session.Completer { return seat },
-	}, config.ResolveSeats(profile, "", ""))
+	}, stubErrandSeats())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestDoRunHonoursProfileMachineFloor(t *testing.T) {
 	outcome, err = runErrand(doRequest{
 		task: "do the work", workspace: workspace, timeout: 30 * time.Second,
 		stderr: &stderr, newBeltCompleter: func(string) session.Completer { return seat },
-	}, config.ResolveSeats(profile, "", ""))
+	}, stubErrandSeats())
 	if err != nil || outcome.Nodes == 0 {
 		t.Fatalf("zeroed machine gate did not start: nodes=%d err=%v", outcome.Nodes, err)
 	}
@@ -88,7 +88,7 @@ func TestDoHeldByTheMachineSaysWhyOnStderrAndInItsStop(t *testing.T) {
 		asJSON: true, stdout: &stdout, stderr: &stderr,
 		newBeltCompleter: func(string) session.Completer { return seat },
 	}
-	outcome, err := runErrand(request, config.ResolveSeats(profile, "", ""))
+	outcome, err := runErrand(request, stubErrandSeats())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,5 +165,16 @@ func TestDoSaysAMachineHoldOnceAndItsEndOnce(t *testing.T) {
 	}
 	if watchMachineHold(nil, &stderr, 1.5, 0).runGate() != nil {
 		t.Fatal("no gate at all must reach the engine as nil, not as a wrapper around nothing")
+	}
+}
+
+// stubErrandSeats is the crew a stubbed errand runs on: three seats named
+// outright, as flags name them, so the run needs no catalog and no router —
+// the seat's completer is the test's own.
+func stubErrandSeats() config.Seats {
+	return config.Seats{
+		Work:  config.Seat{Role: config.SeatWork, Model: "stub/worker", Source: config.SeatFlag},
+		Plan:  config.Seat{Role: config.SeatPlan, Model: "stub/planner", Source: config.SeatFlag},
+		Check: config.Seat{Role: config.SeatCheck, Model: "stub/checker", Source: config.SeatFlag},
 	}
 }
