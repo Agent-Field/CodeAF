@@ -66,6 +66,13 @@ When the pool reaches its cap:
 A manager can never raise a cap: money is yours. Every held wake is one line in the traffic,
 `held @web: harbor reached its $5 cap today`.
 
+## Can a team cap be less than a cent
+
+Yes. A cap is spelled as you set it everywhere it appears, on the card, the teams page and the
+team's settings: `$5`, `$5.50`, and under a cent `$0.001`, never rounded to `$0.00`. **Raise
+to** always offers twice the ceiling the team reached, and names exactly that figure: a
+`$0.001` cap offers `Raise to $0.002`.
+
 ## Two windows ask once when a team reaches its cap
 
 You are asked once for that team, that day, and that ceiling. A second codeaf window, or a

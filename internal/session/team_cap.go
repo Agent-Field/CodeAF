@@ -37,7 +37,6 @@ package session
 
 import (
 	"fmt"
-	"math"
 	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/teams"
@@ -151,7 +150,7 @@ func (a *Agent) poolHold(profile string, owner teams.Team, cap float64) string {
 		return ""
 	}
 	held := fmt.Sprintf("%s reached its %s cap today (spent %s); the person has been asked whether to raise it, and nothing new starts until they answer",
-		owner.Name, teamMoney(ceiling), teamMoney(spent))
+		owner.Name, teamMoney(ceiling), teamSpendMoney(spent))
 	if found && (latest.Waiting() || latest.Cap.CapUSD >= ceiling) {
 		if !latest.Waiting() {
 			held = fmt.Sprintf("%s reached its %s cap today and the person chose to stop it for today", owner.Name, teamMoney(ceiling))
@@ -184,7 +183,7 @@ func latestCapPacket(profile, owner, day string) (teams.Packet, bool) {
 
 // capPacket is the packet a pool at its ceiling raises to the person.
 func capPacket(owner teams.Team, day string, ceiling, spent float64) teams.Packet {
-	raiseTo := math.Round(ceiling*2*100) / 100
+	raiseTo := teams.RaiseTo(ceiling)
 	return teams.Packet{
 		Team: teams.Person, Origin: owner.ID, Kind: teams.PacketCap, RaisedBy: teams.FromSystem,
 		Question: fmt.Sprintf("%s reached its %s cap today", owner.Name, teamMoney(ceiling)),
@@ -196,14 +195,15 @@ func capPacket(owner teams.Team, day string, ceiling, spent float64) teams.Packe
 		},
 		Recommendation: &teams.Recommendation{Option: teams.OptionStopToday,
 			Reason: "the cap is the limit you set; raise it only if today's work is worth more to you"},
-		Cap: &teams.CapFacts{Team: owner.ID, Day: day, CapUSD: ceiling, SpentUSD: math.Round(spent*100) / 100, RaiseTo: raiseTo},
+		Cap: &teams.CapFacts{Team: owner.ID, Day: day, CapUSD: ceiling, SpentUSD: teams.RoundMoney(spent), RaiseTo: raiseTo},
 	}
 }
 
-// teamMoney is dollars as the person reads them: $5, $5.50.
-func teamMoney(usd float64) string {
-	if usd == math.Trunc(usd) {
-		return fmt.Sprintf("$%.0f", usd)
-	}
-	return fmt.Sprintf("$%.2f", usd)
-}
+// teamMoney is dollars as the person reads them: $5, $5.50, $0.001. It is
+// teams' one spelling of a cap, so the refusal here, the packet and every
+// screen that draws the same cap say the same figure ([teams.Money]).
+func teamMoney(usd float64) string { return teams.Money(usd) }
+
+// teamSpendMoney is a MEASURED spend as the person reads it: kept to the cent,
+// or finer under a cent ([teams.RoundMoney]), then spelled as a cap is.
+func teamSpendMoney(usd float64) string { return teams.Money(teams.RoundMoney(usd)) }

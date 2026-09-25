@@ -807,11 +807,8 @@ func (a *app) teamsCanNest(parent string) (bool, string) {
 }
 
 // teamsMoney is a cap as a sentence says it: `$3` for whole dollars, `$2.50`
-// otherwise. A cap is a round figure a person chose, and `$3.00/day` reads as
-// a bill.
-func teamsMoney(usd float64) string {
-	if usd >= 1 && usd == float64(int64(usd)) {
-		return "$" + itoa(int(usd))
-	}
-	return dollars(usd)
-}
+// otherwise, `$0.001` under a cent. A cap is a round figure a person chose, and
+// `$3.00/day` reads as a bill. It is teams' own spelling ([teamstore.Money]),
+// the one the session's cap packet and refusal use, so the screen and the
+// packet never disagree about the same figure.
+func teamsMoney(usd float64) string { return teamstore.Money(usd) }

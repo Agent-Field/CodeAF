@@ -230,7 +230,7 @@ func (a *Agent) teamWrapUpDue(profile string, now time.Time) {
 		case now.Sub(w.started) >= wrapBound(w):
 			why = fmt.Sprintf("the wrap-up ran out of time (%s) before the manager brought its report", wrapBound(w).Round(time.Minute))
 		case spent-w.spentAt >= wrapUpSpendUSD:
-			why = fmt.Sprintf("the wrap-up spent %s, its limit, before the manager brought its report", teamMoney(spent-w.spentAt))
+			why = fmt.Sprintf("the wrap-up spent %s, its limit, before the manager brought its report", teamSpendMoney(spent-w.spentAt))
 		default:
 			continue
 		}

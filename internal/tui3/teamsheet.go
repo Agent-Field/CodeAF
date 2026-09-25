@@ -187,7 +187,7 @@ func (a *app) teamSheetRows(t team) []teamSheetRow {
 	}
 	cap := "no cap"
 	if e.CapUSDDay > 0 {
-		cap = dollars(e.CapUSDDay) + " a day"
+		cap = teamsMoney(e.CapUSDDay) + " a day"
 	}
 	depth := itoa(e.DepthLimit) + " levels"
 	if e.DepthLimit == 1 {
