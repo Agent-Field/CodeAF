@@ -96,6 +96,49 @@ func TestAForbiddenRouteIsNotRoutedToAgain(t *testing.T) {
 	}
 }
 
+// THE PANEL'S GAP COUNTS A PINNED CHECKER. A strong checker pinned over a set
+// whose only other model is weak leaves no warning — even while the pin's route
+// is quarantined and the candidates no longer carry it — and a weak one pinned
+// over a strong set is warned about by name.
+func TestTheGapCountsAPinnedChecker(t *testing.T) {
+	dir := crewProfile(t)
+	var history []router.CrewRouteOutcome
+	withRouteHistory(t, &history)
+	if err := SetCrewAllowed(dir, "deepseek-v4-flash, kimi-k3"); err != nil {
+		t.Fatal(err)
+	}
+	if gaps := CrewGapsAt(dir); len(gaps) != 0 {
+		t.Fatalf("a set with kimi-k3 in it: gaps %+v", gaps)
+	}
+	if err := SetCrewPin(dir, crewroute.Checker, "moonshotai/kimi-k3"); err != nil {
+		t.Fatal(err)
+	}
+	history = append(history, router.CrewRouteOutcome{At: time.Now(), Seat: "checker", Send: "moonshotai/kimi-k3", Provider: "openrouter", Kind: "forbidden"})
+	for _, c := range CrewCandidatesAt(dir) {
+		if crewroute.Lineage(c.Model.ID) == crewroute.Lineage("moonshotai/kimi-k3") && len(c.Routes) > 0 {
+			t.Fatalf("the quarantined pin is still a candidate: %+v", c)
+		}
+	}
+	if gaps := CrewGapsAt(dir); len(gaps) != 0 {
+		t.Errorf("kimi-k3 pinned as checker: gaps %+v, want none", gaps)
+	}
+	history = nil
+	if err := SetCrewPin(dir, crewroute.Checker, "deepseek/deepseek-v4-flash"); err != nil {
+		t.Fatal(err)
+	}
+	gaps := CrewGapsAt(dir)
+	want := "checker pinned to deepseek-v4-flash · open-ended work will be checked weakly"
+	if len(gaps) != 1 || gaps[0].Line != want {
+		t.Errorf("v4-flash pinned as checker: gaps %+v, want %q", gaps, want)
+	}
+	if err := ClearCrewPin(dir, crewroute.Checker); err != nil {
+		t.Fatal(err)
+	}
+	if gaps := CrewGapsAt(dir); len(gaps) != 0 {
+		t.Errorf("the checker unpinned again: gaps %+v", gaps)
+	}
+}
+
 // A ZERO-CREDIT ACCOUNT, end to end: a paid call says payment → the next
 // task is still routed on the paid route, which its first call probes → the
 // seat's rescue is the free pool → with that pool at its limit and the chat

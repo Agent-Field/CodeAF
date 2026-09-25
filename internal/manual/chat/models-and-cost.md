@@ -563,7 +563,12 @@ pinned seat whose only provider is off says `provider off` on its row.
 
 With nothing connected the panel says `no providers connected — /connect adds one`; a pin
 whose provider is not connected says `unavailable`. A rule that leaves open-ended work
-without a strong checker says so under the rows.
+without a strong checker says so under the rows:
+`no strong checker among the models you allow · open-ended work will be checked weakly`.
+**A pinned checker is the checker**, so the warning asks about the pin alone: a strong pin
+clears it whatever else is allowed, and a weak one names itself —
+`checker pinned to deepseek-v4-flash · open-ended work will be checked weakly` — even when a
+strong model is allowed beside it.
 
 Every change is saved the moment you make it, and the next task uses it with no relaunch.
 The changed row wears a tick `✓`, and for five seconds the bottom edge offers `z undo`,

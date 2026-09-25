@@ -1246,16 +1246,38 @@ type Gap struct {
 
 // Gaps names what the allowed models cannot cover. Today that is one thing,
 // the seat the routing rule depends on: open-ended work with no strong checker
-// among the models allowed — none credible whose ability reaches the middle
-// the open-ended link is centred on.
-func Gaps(candidates []Candidate) []Gap {
+// — none credible whose ability reaches the middle the open-ended link is
+// centred on.
+//
+// A PINNED SEAT IS THE SEAT. A pin always runs, so a pinned checker is the only
+// model the question is asked of: a strong pin leaves no gap however weak the
+// rest of the allowed models are, and a weak pin is a gap however strong they
+// are, said with the pin's name because the pin is what a person would change.
+// pins carry each pinned seat's model as the catalog reads it, or only its id
+// when the catalog does not carry it; a candidate of the same lineage is read
+// in its place, the way [pinned] reads it. An unpinned checker is asked of
+// every model allowed, as before.
+func Gaps(candidates []Candidate, pins map[Seat]Model) []Gap {
 	t := forDecision(candidates, nil)
 	strong := t.linkOf(OpenEnded).URef
-	for _, c := range candidates {
-		if !seatable(Checker, c) || !t.credible(c.Model) {
-			continue
+	isStrong := func(m Model) bool {
+		a := t.abilityOf(m)
+		return t.credibleAt(a) && a.U+math.Sqrt(a.VarU) >= strong
+	}
+	if pin, ok := pins[Checker]; ok && strings.TrimSpace(pin.ID) != "" {
+		for _, c := range candidates {
+			if Lineage(c.Model.ID) == Lineage(pin.ID) {
+				pin = c.Model
+				break
+			}
 		}
-		if a := t.abilityOf(c.Model); a.U+math.Sqrt(a.VarU) >= strong {
+		if isStrong(pin) {
+			return nil
+		}
+		return []Gap{{Class: OpenEnded, Seat: Checker, Line: "checker pinned to " + ShortModel(pin.ID) + " · open-ended work will be checked weakly"}}
+	}
+	for _, c := range candidates {
+		if seatable(Checker, c) && isStrong(c.Model) {
 			return nil
 		}
 	}
