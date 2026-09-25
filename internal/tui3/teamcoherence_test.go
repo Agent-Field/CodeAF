@@ -280,6 +280,9 @@ func assertTeamPage(t *testing.T, a *app, id, front string) {
 	if !a.tp.focus || a.tp.cur != (teamsRef{act: teamsActSelect, id: id}) {
 		t.Fatalf("the rail cursor is focus %v %+v", a.tp.focus, a.tp.cur)
 	}
+	if hint := a.dockHoverWords(); strings.Contains(hint, "teams page") {
+		t.Fatalf("the chat link's hint outlived the press: %q", hint)
+	}
 	a.frame()
 	got, ok := a.teamsCursorTarget()
 	if !ok || got.pane || got.act != teamsActSelect || got.id != id {
