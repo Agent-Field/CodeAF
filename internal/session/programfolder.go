@@ -838,9 +838,20 @@ func (f *ProgramFolder) commitLeftovers(result string) string {
 	return ""
 }
 
-// creditModelCommit signs a model's own final commit when there are no loose
+// creditModelCommit signs the run's own final commit when there are no loose
 // changes for a finishing commit. It leaves the run's base and any commit the
 // person authored on the run branch alone.
+//
+// THE TIP IS THE RUN'S WHEN EITHER OF ITS TWO IDENTITIES MADE IT. The model's
+// own `git commit` carries codeaf's identity (the model's shell is given it),
+// and the engine's per-write checkpoints carry senior-dev's; the common ending,
+// where every write was already checkpointed and nothing is left to stage, has
+// one of the latter at its tip, and it is as much the run's work as the other.
+//
+// AND IT IS AMENDED ONLY WHERE AMENDING CHANGES NOTHING ANYONE ELSE HOLDS: the
+// tip must be what HEAD points at, on the run's branch, and no remote-tracking
+// ref may contain it. A tip the model already pushed keeps its credit-less
+// message rather than leave the local branch diverged from the remote.
 func (f *ProgramFolder) creditModelCommit() string {
 	if f.NoAttribution || f.Start == "" {
 		return ""
@@ -852,13 +863,18 @@ func (f *ProgramFolder) creditModelCommit() string {
 	if _, err := git(f.Dir, "merge-base", "--is-ancestor", f.Start, tip); err != nil {
 		return ""
 	}
+	if head, err := git(f.Dir, "symbolic-ref", "--quiet", "HEAD"); err != nil || strings.TrimSpace(head) != "refs/heads/"+f.Branch {
+		return ""
+	}
+	if held, err := git(f.Dir, "branch", "-r", "--contains", tip); err != nil || strings.TrimSpace(held) != "" {
+		return ""
+	}
 	identity, err := git(f.Dir, "show", "-s", "--format=%an%x00%ae%x00%cn%x00%ce", tip)
 	if err != nil {
 		return "git identity: " + firstLine(identity)
 	}
 	parts := strings.Split(strings.TrimSpace(identity), "\x00")
-	if len(parts) != 4 || parts[0] != codeafGitName || parts[1] != codeafGitEmail ||
-		parts[2] != codeafGitName || parts[3] != codeafGitEmail {
+	if len(parts) != 4 || !runGitIdentity(parts[0], parts[1]) || !runGitIdentity(parts[2], parts[3]) {
 		return ""
 	}
 	message, err := git(f.Dir, "show", "-s", "--format=%B", tip)
@@ -875,6 +891,13 @@ func (f *ProgramFolder) creditModelCommit() string {
 		return "git amend: " + firstLine(out)
 	}
 	return ""
+}
+
+// runGitIdentity reports whether a commit's name and address are one of the two
+// a run commits under: codeaf's, or senior-dev's own.
+func runGitIdentity(name, email string) bool {
+	return (name == codeafGitName && email == codeafGitEmail) ||
+		(name == util.CommitterName && email == util.CommitterEmail)
 }
 
 func (f *ProgramFolder) excludedFromCommit(path string) bool {
