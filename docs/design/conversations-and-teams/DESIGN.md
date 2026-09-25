@@ -170,6 +170,7 @@ split read from write, because the approval gate keys on tool names:
 | `team_stop` (ends a member's current turn, logged in Traffic) | manager | allow |
 | `team_start` (a new member chat with a brief and handle) | manager | ask |
 | `team_post` (to the room, a handle, or the manager) | members | allow |
+| `team_raise` (a conflict, to the lowest manager above every party; 8.9) | members and managers | allow |
 
 `team_stop` exists because a message only lands at a turn boundary: a member stuck in a long
 tool call reads nothing until it returns, and a directive is advice a model may misread. Stop
@@ -269,8 +270,9 @@ the Traffic's asking row and a note, not a question on the manager's tab. Over `
 are off and say so. An unreadable teams file on the engine is not moved aside from a window over
 `--host`; the window holds no teams until it can be read.
 
-**Not in v1.** Collision flags when two members touch the same files, nested managers (a sub-team's manager is a member
-of the parent team; reports flow up, directives down), and dispatch of whole plans.
+**Not in v1.** Collision flags when two members touch the same files, and dispatch of whole
+plans. (Nested managers, a sub-team's manager a member of the parent team with reports flowing
+up and directives down, were built later: 8.9.)
 
 ## 6. The laws this design leans on
 
@@ -802,7 +804,8 @@ flag gets `Close now` only, said as such.
 **Known gaps.** The wrap-up clock is the manager process's memory (a restart forgets it; the
 person's card still offers Close now). Two processes meeting a cap in the same instant can each
 raise a cap packet (one process raises one). A conversation in an unmanaged sub-team whose home
-manager is a level up gets no member verbs and no questions-up (its membership has no manager).
+manager is a level up gets no member verbs and no questions-up (its membership has no manager). (Closed by 8.9: such a member answers to that manager for
+questions and `team_post`.)
 A person's decision on a packet whose raiser nobody holds is delivered when that conversation
 next runs; only a manager is roused.
 
@@ -868,3 +871,132 @@ or `busy for <team>` (`MemberState.ReportsTo`).
 **Known gaps.** A switcher row `Closed · N` has no hover hint. The wall popover's delete code
 is unreached and kept until the wall is next reworked. Over `--host` the Settings tab cannot
 show the engine's `teams.` rows.
+
+### 8.10 Nesting, as the session built it
+
+Everything below is `internal/session`'s `team_nest.go` unless named otherwise, on branch
+`task/nest-session`. The interface meets it only through `internal/teams` and its Traffic; it
+needs nothing new to carry any of it out.
+
+**A sub-team is started like a member.** `team_start` takes `kind` (`member`, the default, or
+`team`), and for a team `name` and `members` (handles of the manager's own members to move in):
+
+```json
+{"handle":"api","brief":"…","kind":"team","name":"backend","members":["parser"]}
+```
+
+In one `teams.Update` it checks the manager still manages the team, that the team is open and
+`CanNest` (refused with the level, the limit and its origin: `A team under "harbor" would be
+level 3, past its depth limit of 2 (from Settings)`), that the handle and the name are free and
+that each member to move reports here; it makes the child under the manager's team, writes
+`SubTeamCap(parent)` on it as its own `cap_usd_day` when that is above zero (a parent with no cap
+gives none, and the child spends from the pool above), and moves the members (added to the
+child with their handles, removed from the parent). Then it writes ONE start to the parent's
+Traffic, `Entry{Kind: start, From: manager, To: <handle>, Text: <brief>, Team: <child id>}`
+(`teams.Entry.Team` is new), and a `note` from `system` to `room` in the child's Traffic naming
+who made it and who runs it. The approval is `team_start`'s (ask), and the card's gloss reads
+`a new team "backend" under yours, managed by it.` before the brief. The cap holds it like any
+start.
+
+The interface carries the start out as it carries out every start: it opens the conversation
+behind the one in front and adds it to the PARENT team under its handle (`Started`). The new
+conversation reads its brief at its first boundary (`team_wake.go` starts that turn, as for any
+start); a start that names a team is handed as `◆ you were started to manage the team
+"backend", under "harbor": …` above the brief, and the session then makes itself the child's
+manager (`Agent.claimSubTeams`: `AddMember` with its parent record, `SetManager`, in one
+`Update`; a child gone, closed or already managed is left alone and the parent's Traffic says
+`could not make the new conversation a team's manager: …`). This happens before the role note is
+composed, so the request that carries the brief also says it is the manager. Its manager is a
+member of the parent, so its home is the parent's manager by the ordinary rule (8.2): it reports
+up and takes the parent manager's orders.
+
+**Conflicts (`team_raise`, members and managers, allow).**
+
+```json
+{"question":"…","parties":["@api","back/@api"],"context":"my side",
+ "options":[{"label":"JSON","consequence":"…"},{"label":"form data","consequence":"…"}],
+ "recommend":"1","reason":"…","team":"optional"}
+```
+
+A party is a handle, looked for in the raiser's own teams first and then in every open team, or
+`team/@handle` (a team by name or id); one handle answering to two conversations is refused
+with both spelled `team/@handle`. The raiser is a party already (from its membership where it
+is not the manager, the first). The decider is `LCA(all party keys)`; none is `you`. The origin
+is the raiser's membership at or under the decider, and each party's `Team` is the membership
+it was found in, or its membership under the decider (not one it manages, the deepest, first),
+so every party's line runs through a team under the decider. At least two options, each with a
+consequence. The LCA manager is roused if nobody holds it.
+
+In the store (`teams` `decision.go`): every packet line now goes to the origin, the decider and
+every party's team (`involved`), so the other parties are told `◆ @web raised a conflict naming
+you (p…), for a manager above to decide: …` (not woken). A decided conflict appends to each
+party's team log a ruling, `Entry{Kind: directive, From: manager | you, To: <handle>, Member:
+<key>, Packet: <id>, State: decided, Text: "ruling on the conflict p…, by ◆ @boss (manager of
+"harbor"): JSON: <consequence>. Because: … The conflict was: …"}`, whoever decided it (the
+manager's `team_decide`, a manager above after `team_escalate`, or the person on the teams
+page, here or over `--host` through the engine's own `Decide`). `teams.IsRuling(e)` is the one
+reader. The session delivers a ruling to the party it names (`Member`, else `To`) whatever it
+is in that team, member or manager, shared or not, as `◆ ruling on … Follow it unless the
+person said otherwise in this conversation.`, and it wakes that party (`teamWakes`). The
+decided packet line hands the parties nothing more, so a ruling is delivered once. `mayDecide`
+refuses a manager who is one of the parties (`ErrNotDecider`); the person still may. A
+manager handed a conflict sees `parties: @web, @api` and may `team_read` a party in a team
+under its own as `team/@handle` (a read reaches down the tree; it changes nothing).
+
+**One level.** `team_send` (directive or note) and `team_stop` naming a handle that is not the
+manager's own member but a member of a team under it are refused with the sentence that names
+whom to send to: `@parser is in "backend", a team under yours, and orders go one level down: it
+takes them from the manager of "backend", not from you. Nothing was sent. Send a message to
+@api, which passes on what it should.` A sub-team's manager who is not a member of the parent
+(a tree the person nested by hand) is named as such; a member of a sub-team with no manager is
+told to ask the person for one. `everyone` was already the manager's own members.
+
+**The global manager** (`teams` `root.go`). While the root has a manager, tidy seats every open
+top-level team's manager as a member of the root with its own handle when free (only ever
+added), and `(*File).TopManagers()` is the root's members who manage an open top-level team now.
+The session's view of the root for its manager (`managedView`) is its manager and
+`TopManagers()`, never their members: the roster, the digest, `team_status`, `team_send`,
+`team_stop` and `everyone` all read it. The top-level managers therefore take its directives by
+ordinary delivery, report to it by the ordinary home rule (their questions reach it before the
+person), and conflicts across trees meet at it. `team_start` of kind team at the root makes a
+top-level team. With no root manager nothing changes.
+
+**The unmanaged sub-team.** A member of a team with no manager whose nearest open ancestor has
+one (`bossOf`) is a managed member (`teamRole.boss`, `bossName`): it has `team_post` and
+`team_raise`, its clarifying questions go up as packets to that manager (origin its own team),
+and its `team_post` to the manager is written to that manager's team log, marked `(from
+"dock", a team under yours with no manager of its own)`. Its room posts stay in its own team.
+That manager does not direct it.
+
+**Roles.** A sub-team manager's role note says `Your team is a team under "harbor": you report
+to its manager, @boss. Post to it with team_post; your questions go to it before the person.`,
+a top-level manager under a global manager `Your team is a top-level team, under the global
+manager of "All teams": …`, and a manager with sub-teams `Teams under yours: "backend" (run by
+@api). Direct their managers, never their members.` The global manager is told `You are the
+global manager: "All teams" holds every team, and your members are the managers of the top-level
+teams, never their members. …`. A top-level manager's membership of the root is told it reports
+to the global manager. A member of an unmanaged sub-team is told whom it answers to. The laws are
+seven: law 4 says one level down, law 7 says how a conflict travels. Members' notes gained one
+sentence (`A conflict you cannot settle with another member or team goes up with team_raise.`).
+None of this is in the fixed prefix: the verbs arm at a boundary and the role rides a note, so
+`TestTheFixedPrefixStaysUnderItsBudget` and `TestTheLeanPrefixStaysUnderItsBudget` are
+unchanged.
+
+**Over `--host`.** Nothing new crosses: every step above runs where the conversations run, and
+the window's `Teams.Raise` / `Teams.Decide` are the engine's store calls, so a conflict the
+person rules over `--host` writes its rulings on the engine
+(`TestAConflictRuledOverTheWireReachesEveryPartyOnTheEngine`).
+
+**For the interface (d3u).** A start line may carry `team` (a sub-team start: draw `◆ started
+@api to run backend`); carrying it out is unchanged. A ruling is a directive with `packet` set
+(`teams.IsRuling`), in each party's team: draw it as the ruling on that packet, not as that
+team's manager's own directive (`From` is `manager` for any deciding manager, `you` for the
+person). Packet lines now also appear in every party's team. The root's members include the
+top-level managers once it has a manager; the teams page's `All teams` header should list
+`TopManagers()`.
+
+**Known gaps.** A root membership seated for a manager who later stops managing a top-level team
+stays until the person removes it (the session's view ignores it). A sub-team start whose new
+conversation never runs (the window refused the start) leaves an unmanaged child team; the
+parent's Traffic shows the refused start only in the window. The root's folder for a
+top-level start is whatever the interface's `teamWhere` gives the root.
