@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -560,5 +561,44 @@ func TestAnUnpricedModelIsNeverPicked(t *testing.T) {
 				t.Errorf("the %s's rescue holds %s", seat, r.Model)
 			}
 		}
+	}
+}
+
+// A COMPLEX FIX IS ROUTED AS ONE ON THE REAL ROAD: RouteCrew classifies first
+// (for the learned offset) and hands the whole reading on, so the hermes
+// report runs its worker a rung above a one-line fix's, and the log row says
+// complex. ResolveSeats is the road codeaf do takes.
+func TestRouteCrewRunsAComplexFixOnAStrongerWorker(t *testing.T) {
+	dir := crewProfile(t)
+	var history []router.CrewRouteOutcome
+	withRouteHistory(t, &history)
+	report, err := os.ReadFile("../crewroute/testdata/hermes-7680.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	simple, err := RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: "fix: typo in the loop bound of paginate() skips the last page"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hard, err := RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: string(report)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if simple.Subclass != "simple" || hard.Subclass != "complex" {
+		t.Fatalf("subclasses %q and %q", simple.Subclass, hard.Subclass)
+	}
+	if record := CrewRecordOf(hard, "repo", "t"); record.TaskSubclass != "complex" || record.TaskReach == "" {
+		t.Errorf("the log row carries %q / %q", record.TaskSubclass, record.TaskReach)
+	}
+	sw, hw := simple.Seat(crewroute.Worker), hard.Seat(crewroute.Worker)
+	if hw.Quality <= sw.Quality {
+		t.Errorf("complex worker %s (q %.2f), simple %s (q %.2f)", hw.Model, hw.Quality, sw.Model, sw.Quality)
+	}
+	seats, err := ResolveSeats(dir, SeatFlags{}, CrewAsk{Task: crewroute.Task{Text: string(report)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seats.Crew == nil || seats.Crew.Subclass != "complex" || seats.Crew.Seat(crewroute.Worker).Model != hw.Model {
+		t.Errorf("codeaf do's seats: %+v", seats.Crew)
 	}
 }

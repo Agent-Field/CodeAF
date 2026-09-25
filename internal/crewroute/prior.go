@@ -457,6 +457,23 @@ func agenticKnown(seat Seat, m Model) bool {
 	return seat == Planner || m.Agentic > 0
 }
 
+// evidenceKnown is whether an unmeasured model publishes ANY index the seat
+// weighs. A model that publishes none is read at the catalog floor for every
+// index, which is still credible — and then wins a seat on price alone the
+// moment λ leans cheap: a planner rung went to a model with no index at all
+// because it was the cheapest thing with a context window. Nothing measured
+// it and nothing published about it, so there is nothing to rank it by, and
+// it is not a first pick nor a rung; only a seat's last-rung rescue takes it.
+func evidenceKnown(seat Seat, m Model) bool {
+	weights := seatWeight[seat]
+	for i, v := range [3]float64{m.Intelligence, m.Coding, m.Agentic} {
+		if weights[i] > 0 && v > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // seatCost is what one model costs in one seat on an ordinary task, at the
 // prices it publishes. A route that bills nothing per token (a subscription,
 // a local model) is priced by the caller, not here.

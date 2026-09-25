@@ -383,3 +383,44 @@ func TestALongLadderIsSaidAsItsNetMove(t *testing.T) {
 		t.Errorf("the line is %d characters after a long ladder: %q", n, line)
 	}
 }
+
+// A MODEL THAT PUBLISHES NOTHING IS NOT RANKED ON ITS PRICE: an unmeasured
+// row with no index the seat weighs — a planner rung once went to one — is
+// neither a pick nor a rung, however cheap; a seat's last-rung rescue may
+// still take it. And an unmeasured model that DOES publish reads below the
+// measured ones at the same cost, so at equal price the watched model wins.
+func TestAModelWithNoEvidenceIsNotPickedOnPrice(t *testing.T) {
+	bare := Candidate{Model: Model{ID: "upstage/solar-mini4", PromptPrice: 1e-9, CompletionPrice: 1e-9, Context: 1_000_000, Tools: true},
+		Routes: []Route{{Provider: "openrouter", Send: "upstage/solar-mini4", Kind: Metered}}}
+	cands := append(evidenceCandidates(), bare)
+	for _, effort := range []Effort{"", EffortCheap} {
+		d, err := Decide(Request{Class: Bugfix, Candidates: cands, Effort: effort})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, pick := range d.Crew {
+			if pick.Model == bare.Model.ID {
+				t.Errorf("effort %q: the %s is a model with no evidence", effort, pick.Seat)
+			}
+			for _, rung := range d.Ladder[pick.Seat] {
+				if rung.Model == bare.Model.ID {
+					t.Errorf("effort %q: the %s's ladder holds a model with no evidence", effort, pick.Seat)
+				}
+			}
+		}
+	}
+	rescue, err := Decide(Request{Class: Bugfix, Candidates: []Candidate{bare}, Rescue: true})
+	if err != nil || rescue.Seat(Planner).Model != bare.Model.ID {
+		t.Errorf("the rescue would not take it: %v %+v", err, rescue.Crew)
+	}
+	flash, _ := Snapshot("z-ai/glm-5.3-flash")
+	luna := catalogRow("openai/gpt-5.6-luna", false, flash.PromptPrice*1e6, flash.CompletionPrice*1e6, 37.3, 71.4, 42.1)
+	luna.Model.CacheReadPrice = flash.CacheReadPrice
+	d, err := Decide(Request{Class: Bugfix, Candidates: append(evidenceCandidates(), luna)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := d.Seat(Worker).Model; got != "z-ai/glm-5.3-flash" {
+		t.Errorf("at the measured worker's own price the worker is %s", got)
+	}
+}

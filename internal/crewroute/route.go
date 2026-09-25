@@ -191,6 +191,12 @@ type Request struct {
 	// Class, when set, is taken as given and the classifier is not asked — a
 	// replay, or a caller that already knows.
 	Class Class
+	// Reading, when set, is the classifier's whole answer as the caller
+	// already read it — the class, why, how sure, and a fix's reach — and is
+	// taken as it stands. A caller that classifies first to key its learned
+	// offset hands the reading on here rather than the class alone, which
+	// dropped the reach and ran every complex fix on the simple fix's worker.
+	Reading *Reading
 	// Candidates are the allowed models reachable on a connected provider.
 	Candidates []Candidate
 	// Pins are the seats the person fixed. A pinned seat always runs its pin.
@@ -356,10 +362,7 @@ func Decide(r Request) (Decision, error) {
 		lenient.rescue = true
 		t = &lenient
 	}
-	reading := Reading{Class: r.Class, Why: "given", Sure: true}
-	if r.Class == "" {
-		reading = Classify(r.Task)
-	}
+	reading := readingOf(r)
 	d := Decision{Class: reading.Class, Why: reading.Why, Sure: reading.Sure, Effort: r.Effort, Steps: r.Steps, Considered: len(r.Candidates)}
 	pins := r.Pins
 	if r.Stronger != nil && allPinned(pins) {
@@ -803,7 +806,8 @@ func eligible(t *table, class Class, seat Seat, c Candidate) (Pick, bool) {
 	if t.rescue {
 		return pick, true
 	}
-	if !pick.Measured && !agenticKnown(seat, c.Model) && CanonicalOf(c.Model.ID).Variant == "" {
+	if !pick.Measured && CanonicalOf(c.Model.ID).Variant == "" &&
+		(!agenticKnown(seat, c.Model) || !evidenceKnown(seat, c.Model)) {
 		return Pick{}, false
 	}
 	return pick, t.credible(class, seat, pick.Quality, pick.Measured)
@@ -970,6 +974,26 @@ func stronger(t *table, class Class, candidates []Candidate, pins map[Seat]Pin, 
 	}
 	crew[at] = up
 	return crew, step, nil
+}
+
+// readingOf is the reading a decision is made on: the caller's own when it
+// handed one on, the class given with the reach read off the task's words
+// when it gave only the class, and the classifier's otherwise. A CLASS GIVEN
+// IS NOT A REACH FORGOTTEN: a bugfix named by a replay or a caller is still
+// read for reach whenever the task's words are there to read.
+func readingOf(r Request) Reading {
+	switch {
+	case r.Reading != nil && (r.Class == "" || r.Class == r.Reading.Class):
+		return *r.Reading
+	case r.Class == "":
+		return Classify(r.Task)
+	}
+	reading := Reading{Class: r.Class, Why: "given", Sure: true}
+	if r.Class == Bugfix {
+		_, body := taskTitle(r.Task.Text)
+		reading.Complex = complexFix(body)
+	}
+	return reading
 }
 
 // withReachingWorker is a complex fix's crew: its worker one rung up the

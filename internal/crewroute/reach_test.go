@@ -82,3 +82,35 @@ func TestAComplexFixGetsAStrongerWorker(t *testing.T) {
 		t.Errorf("a pinned worker became %s", got)
 	}
 }
+
+// A CLASS GIVEN IS NOT A REACH FORGOTTEN: a caller that classified first and
+// hands on only the class — or the whole reading — still gets the complex
+// fix's worker, read off the same words.
+func TestAGivenBugfixClassStillReadsReach(t *testing.T) {
+	report, err := os.ReadFile("testdata/hermes-7680.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := Task{Text: string(report)}
+	cands := evidenceCandidates()
+	plain, err := Decide(Request{Class: Bugfix, Task: Task{Text: "fix: typo in the loop bound of paginate() skips the last page"}, Candidates: cands})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reading := Classify(task)
+	for name, r := range map[string]Request{
+		"the class alone":   {Class: Bugfix, Task: task, Candidates: cands},
+		"the whole reading": {Class: Bugfix, Reading: &reading, Candidates: cands},
+	} {
+		d, err := Decide(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d.Subclass != "complex" || d.Reach == "" {
+			t.Errorf("%s: subclass %q reach %q, want complex", name, d.Subclass, d.Reach)
+		}
+		if d.Seat(Worker).Quality <= plain.Seat(Worker).Quality {
+			t.Errorf("%s: worker %s, no stronger than the simple fix's %s", name, d.Seat(Worker).Model, plain.Seat(Worker).Model)
+		}
+	}
+}

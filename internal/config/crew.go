@@ -1173,7 +1173,9 @@ func RouteCrew(profileDir string, ask CrewAsk) (crewroute.Decision, error) {
 	// topped up would never be asked again.
 	candidates, notice := crewCandidatesNoticed(profileDir, health.probing())
 	req := crewroute.Request{
+		Task:       ask.Task,
 		Class:      reading.Class,
+		Reading:    &reading,
 		Candidates: candidates,
 		Pins:       pins,
 		Effort:     ask.Effort,
