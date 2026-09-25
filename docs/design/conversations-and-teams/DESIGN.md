@@ -41,7 +41,9 @@ pointer explains the piece it rests on: `Go to <title> · running · click` (or 
 you`, or `idle`), `<title> · you are here` on the square in front, and `All conversations
 · alt+v` on the word and on `▦`. The word is the first thing dropped when the row is too
 narrow. The squares stay, then fewer of them, then the dock is not drawn. Amber is only
-the square that is waiting on you.
+the square that is waiting on you. The dock is laid out last on the keys row: the project
+holds the row's right end (dev's foot since 2026-09-22) with the low-credit line beside it,
+and the dock takes what the keys and they leave, ending a gap short of them.
 
 **A tile, in reading order.** Title, then state, then now, then history:
 
@@ -117,7 +119,7 @@ things by the name they remember.
 
 **Where teams show.** Dots before a tile's title; a segmented Teams row on the wall; when a
 team is shown, a `● name ▾` chip on the tab strip and the rule under it in the team's
-hue. The strip reads `Home   ● name ▾   ◆ Manager   tabs…   +   ▦ All`: Home is a fixed door and
+hue. The strip reads `home   ● name ▾   ◆ Manager   tabs…   +   ▦ All`: home is a fixed door and
 stands first, the chip filters the tabs so it sits right before them, and the manager's place
 follows it; as the row narrows Home goes first, then the chip, never the tab in front (ruled
 2026-09-24). Showing a team narrows the strip to its members open in this window, plus the tab in

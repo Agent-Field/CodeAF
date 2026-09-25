@@ -659,7 +659,7 @@ func TestPlandbCliWorkerOwnDone(t *testing.T) {
 // session folder, arms no shim, and hands the worker the ordinary belt with
 // the graph's own verbs on it — every byte where it was.
 func TestPlandbCliFlagOffTouchesNothing(t *testing.T) {
-	t.Setenv("CODEAF_TASK_BELT", "")
+	t.Setenv("CODEAF_TASK_BELT", "node")
 	place := Place{Dir: t.TempDir()}
 	repo := newTestRepo(t)
 	t.Setenv("HOME", t.TempDir())

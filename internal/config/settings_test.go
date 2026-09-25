@@ -115,6 +115,12 @@ func TestRegistryCoversEveryUserFacingEnvironmentPin(t *testing.T) {
 	for _, name := range OperatorEnvPins {
 		registered[name] = true
 	}
+	// A RETIRED ROW'S VARIABLE IS READ ONLY TO BE TOLD IT IS GONE
+	// ([retiredRowEnv]), which is the opposite of a pin: nothing it says is
+	// obeyed, so it has no row to be.
+	for _, name := range retiredRowEnv {
+		registered[name] = true
+	}
 
 	pattern := regexp.MustCompile(`CODEAF_[A-Z0-9_]+`)
 	root := repositoryRoot(t)
@@ -334,7 +340,7 @@ func TestLoadReadsPersistedSettings(t *testing.T) {
 	for key, raw := range map[string]string{
 		KeyPracticeBudget: "6", KeyPracticeIdle: "5m", KeyBriefAfter: "30m",
 		KeyDocumentEngine: "free",
-		KeyVisionModel:    "seer/vision", KeyAttribution: "off",
+		KeyVisionModel:    "seer/vision",
 	} {
 		row, _ := rows.Row(key)
 		if err := row.Apply(raw); err != nil {
@@ -346,7 +352,7 @@ func TestLoadReadsPersistedSettings(t *testing.T) {
 	t.Setenv("CODEAF_PROFILE_DIR", dir)
 	for _, name := range []string{
 		"CODEAF_PRACTICE_BUDGET", "CODEAF_PRACTICE_IDLE", "CODEAF_BRIEF_AFTER",
-		"CODEAF_DOC_ENGINE", "CODEAF_VISION_MODEL", "CODEAF_ATTRIBUTION",
+		"CODEAF_DOC_ENGINE", "CODEAF_VISION_MODEL",
 	} {
 		t.Setenv(name, "")
 	}
@@ -358,9 +364,6 @@ func TestLoadReadsPersistedSettings(t *testing.T) {
 		loaded.BriefAfter != 30*time.Minute || loaded.DocumentEngine != "free" ||
 		loaded.VisionModel != "seer/vision" {
 		t.Fatalf("persisted settings did not reach Load: %+v", loaded)
-	}
-	if loaded.Attribution {
-		t.Fatal("attribution switched off in the sheet did not reach Load")
 	}
 
 	// The environment still wins over everything written here.
@@ -423,50 +426,51 @@ func TestTenurePersistsAndReachesTheProcessEnvironment(t *testing.T) {
 	}
 }
 
-// Attribution is on until someone says otherwise, and the row is the only way
-// to say otherwise short of the shell — which still wins.
-func TestAttributionDefaultsOnPersistsAndHonorsItsEnvironmentPin(t *testing.T) {
+// THE MODEL'S NAME IN THE `Assisted-by` LINE is on until someone says
+// otherwise, off leaves the line bare, and the shell still wins. The signature
+// itself is not a row at all.
+func TestTheModelNameRowDefaultsOnAndTurnsOnlyTheNameOff(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("CODEAF_ATTRIBUTION", "")
+	t.Setenv("CODEAF_ATTRIBUTION_MODEL", "")
 	rows := registry(t, dir)
-	row, ok := rows.Row(KeyAttribution)
+	if _, ok := rows.Row("attribution"); ok {
+		t.Fatal("the attribution row is still registered, so signing can still be turned off")
+	}
+	row, ok := rows.Row(KeyAttributionModel)
 	if !ok {
-		t.Fatal("attribution is not registered")
+		t.Fatalf("%s is not registered", KeyAttributionModel)
 	}
-	if row.Category != CategoryInterface || row.Kind != SettingBool || row.Label != "attribution" {
-		t.Fatalf("attribution row = %+v", row)
+	if KeyAttributionModel != "attribution.model" || row.Env != "CODEAF_ATTRIBUTION_MODEL" ||
+		row.Category != CategoryInterface || row.Kind != SettingBool {
+		t.Fatalf("the model-name row = %+v", row)
 	}
-	if row.Value() != "on" || !AttributionAt(dir) {
-		t.Fatalf("attribution does not default on: %q", row.Value())
+	if want := "On, commits say `Assisted-by: CodeAF (<model>)`; off, `Assisted-by: CodeAF`."; row.Hint != want {
+		t.Fatalf("hint = %q, want %q", row.Hint, want)
+	}
+	const model = "deepseek/deepseek-v4-flash"
+	if row.Value() != "on" || AssistedByModelAt(dir, model) != model {
+		t.Fatalf("the model's name is not on by default: %q", row.Value())
 	}
 	if err := row.Apply("off"); err != nil {
 		t.Fatal(err)
 	}
-	if AttributionAt(dir) {
-		t.Fatal("off did not persist")
+	if got := AssistedByModelAt(dir, model); got != "" {
+		t.Fatalf("off still hands the line a model: %q", got)
 	}
-	reread, _ := registry(t, dir).Row(KeyAttribution)
-	if reread.Value() != "off" {
+	if reread, _ := registry(t, dir).Row(KeyAttributionModel); reread.Value() != "off" {
 		t.Fatalf("the reread row lost the persisted choice: %q", reread.Value())
 	}
 
-	t.Setenv("CODEAF_ATTRIBUTION", "on")
-	if !AttributionAt(dir) {
+	t.Setenv("CODEAF_ATTRIBUTION_MODEL", "on")
+	if AssistedByModelAt(dir, model) != model {
 		t.Fatal("the environment lost to the persisted file")
 	}
-	pinned, _ := registry(t, dir).Row(KeyAttribution)
-	name, isPinned := pinned.PinnedBy()
-	if !isPinned || name != "CODEAF_ATTRIBUTION" {
-		t.Fatalf("attribution did not report its pin: %q", name)
+	pinned, _ := registry(t, dir).Row(KeyAttributionModel)
+	if name, isPinned := pinned.PinnedBy(); !isPinned || name != "CODEAF_ATTRIBUTION_MODEL" {
+		t.Fatalf("the model-name row did not report its pin: %q", name)
 	}
-	if err := pinned.Apply("off"); err == nil || !strings.Contains(err.Error(), name) {
-		t.Fatalf("a pinned attribution accepted an edit: %v", err)
-	}
-
-	// A hand-typed pin that means nothing reads as the default rather than
-	// stopping a launch over a signature.
-	t.Setenv("CODEAF_ATTRIBUTION", "sure")
-	if !AttributionAt(dir) {
+	t.Setenv("CODEAF_ATTRIBUTION_MODEL", "sure")
+	if !AttributionModelAt(dir) {
 		t.Fatal("a malformed pin did not fall back to the default")
 	}
 }
@@ -1438,6 +1442,11 @@ func TestTheModelPoolRowDefaultsToOnAndFollowsItsStoredWordAndItsPin(t *testing.
 	dir := t.TempDir()
 	t.Setenv("CODEAF_MODEL_POOL", "")
 	t.Setenv("CI", "")
+	// The telemetry off switch quiets the pool to `read` (ModelPoolResolved),
+	// so a shell that exports it would make this untouched profile read as a
+	// touched one. The test is about the row, not the shell it runs in.
+	t.Setenv("CODEAF_TELEMETRY", "")
+	t.Setenv("DO_NOT_TRACK", "")
 	rows := registry(t, dir)
 	row, ok := rows.Row(KeyModelPool)
 	if !ok {

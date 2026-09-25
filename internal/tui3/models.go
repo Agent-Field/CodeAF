@@ -52,11 +52,13 @@ type Model struct {
 	// anything the session knows. A session knows tokens; only a catalog knows
 	// what a token costs.
 	//
-	// Zero is "nobody published a figure" and never "free" — the same rule
-	// catalog.Model states, and the reason the note falls back to showing only
-	// the cached token count rather than a saving of $0.00.
+	// Zero alone is not evidence of a free tariff: PriceKnown records whether
+	// the catalog published these figures. An absent figure never becomes a
+	// claimed saving of $0.00.
 	PromptPrice     float64 `json:"prompt_price,omitempty"`
 	CompletionPrice float64 `json:"completion_price,omitempty"`
+	RequestPrice    float64 `json:"request_price,omitempty"`
+	PriceKnown      bool    `json:"price_known,omitempty"`
 	CacheReadPrice  float64 `json:"cache_read_price,omitempty"`
 
 	// ArenaElo is the best Design Arena Elo the catalog carries for this model,

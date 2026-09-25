@@ -245,7 +245,7 @@ you are looking at is the line above.
 
 **Nothing is lost and nothing is closed.** The window is still attached: replies arrive
 live, the transcript is complete, you can scroll it, copy out of it, answer a permission
-card, press `ctrl+c` to interrupt, and walk to any other place with the usual keys. What you
+card, press `esc` to interrupt, and walk to any other place with the usual keys. What you
 cannot do is send a message — and typing characters does nothing at all, because there is
 no box on the screen to put them in.
 
@@ -268,7 +268,7 @@ There is no lock and nothing to release. Whoever pressed `enter` most recently h
 the window that lost it keeps its own draft, its own scroll position and the whole
 conversation.
 
-**Walking away instead:** Escape backs out to Home, exactly as they do
+**Walking away instead:** two spaces in an empty box still open home, exactly as they do
 when you are typing, so you can leave the conversation running in front of the other
 window and get on with something else on this machine.
 
@@ -388,9 +388,12 @@ catches stops where it is and keeps its partial reply, the same thing ctrl+c doe
 Then it says one of these, naming the directory:
 
 ```
-stopped holding /home/you/api — the next connection starts fresh from this build
+stopped the engine holding /home/you/api (pid 4242, a1b2c3d4 built 2026-09-21 09:00, /home/you/.local/bin/codeaf) — the next connection starts fresh from this build
 nothing is holding /home/you/api here
 ```
+
+It names the process it stopped — pid, build, binary — so you know which one it was.
+`codeaf engine --status` asks the same question without stopping anything.
 
 `--workspace` picks which one; with no flag it means your home directory, exactly as it does
 for `codeaf engine` itself. **Type the flag.** Without it you stop whatever is holding your
@@ -411,8 +414,8 @@ It stands down every engine this machine is holding, in every workspace, one at 
 names each one as it goes:
 
 ```
-stopped holding /home/you/api
-stopped holding /home/you/site
+stopped holding /home/you/api (pid 4242, a1b2c3d4 built 2026-09-21 09:00, /home/you/.local/bin/codeaf)
+stopped holding /home/you/site (pid 4317, a1b2c3d4 built 2026-09-21 09:00, /home/you/.local/bin/codeaf)
 11 workspaces had nothing holding them
 the next connection in any of them starts fresh from this build
 ```
@@ -431,26 +434,56 @@ cold on the next connection rather than staying warm.
 If what you are actually chasing is a reply that stopped and said so on screen, this is
 not the page — *Models and cost* has the sentence you read and what each of them means.
 
+## Which engine is holding my folder — codeaf engine --status, what process, which binary, which build
+
+```
+codeaf engine --status
+codeaf engine --status --workspace /home/you/api
+codeaf engine --status-all
+```
+
+It asks the engine holding that workspace what it is, and stops nothing:
+
+```
+/home/you/api is held by an engine: an older build — the next codeaf launched here replaces it
+  pid        4242
+  binary     /home/you/.codeaf/bin/devaf
+  build      a1b2c3d4 built 2026-09-21 09:00
+  started    2026-09-21 09:12 (43h00m ago)
+  windows    1 attached · 3 conversations open
+  stop it    codeaf engine --stop --workspace /home/you/api
+```
+
+The first line is the answer — `this build`, `an older build`, or `a newer build than this
+binary` — and each line under it is left off when the engine did not say it; an engine too
+old to answer the question at all is named by its pid and binary alone. With nothing there
+it says `no engine is holding /home/you/api on this machine`. `--status-all` does every
+workspace this machine has an engine folder for. As with `--stop`, no `--workspace` means
+your home directory.
+
 ## Rebuilt codeaf but your conversation was still on the old engine — how codeaf tells you
 
 A plain `codeaf` does not run your conversation inside the window — the session host does,
 in a process of its own, so it survives the terminal closing. That process also outlives the
-build that started it. Rebuild with `make build` while a host is holding a conversation and
-the host of the **older** build keeps answering until it is holding nothing — a turn still
-running, a card waiting for you — and then retires, so the next window opens on the build
-now on disk.
+build that started it.
 
-You are told, once, on the way in, which state the machine was in:
+**An engine from an older build is replaced the moment a newer codeaf opens in that
+workspace**, busy or not, and you are told in one line which process that was:
 
-- **It was still holding work** — `the engine on <machine> is an older codeaf and is still
-  holding work — it picks up this build the moment it goes quiet`.
-- **It was only keeping your conversation warm** (the turn had finished and you had stepped
-  away) — `the engine on <machine> was an older codeaf holding this conversation — it has
-  picked up this build`.
+```
+replaced the older engine on <machine> (pid 4242, a1b2c3d4 built 2026-09-21 09:00, /home/you/.codeaf/bin/devaf) — this build holds the workspace now
+```
 
-Both are the same fact at two moments: the build you installed was not the one answering
-until now, so a fix you expected may simply not have reached the conversation you were
-reading yet. Nothing is owed in either case — the older build steps aside on its own.
+Its conversations are closed properly on the way out — transcripts flushed; a reply it was
+in the middle of stops where it is and keeps what it had written — and they reopen on the
+new build. Windows that were on it reconnect to the new one. `codeaf engine --daemon` does
+the same and prints the same line.
+
+"Older" is when the build was made, whichever file it runs from: another binary built two
+days ago is older, and so is one too old to say. **A newer engine is never replaced** by an
+older codeaf — that window joins it — and two copies of one build never take the slot from
+each other. It used to be the other way round: an older engine holding work was left in
+place, and a fresh `codeaf engine --daemon` exited without a word.
 
 ## What still does not work, even though the session stays open
 

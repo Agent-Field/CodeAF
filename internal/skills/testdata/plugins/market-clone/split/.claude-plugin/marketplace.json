@@ -1,0 +1,17 @@
+{
+  "name": "split",
+  "plugins": [
+    {
+      "name": "suite",
+      "source": "./",
+      "strict": false,
+      "skills": ["./skills/ledger-close", "./skills/sheet-merge"]
+    },
+    {
+      "name": "otherhalf",
+      "source": "./",
+      "strict": false,
+      "skills": ["./skills/other-half"]
+    }
+  ]
+}

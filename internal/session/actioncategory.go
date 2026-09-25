@@ -218,7 +218,7 @@ func ActionCategoryForTool(tool string) ActionCategory {
 
 	// Opening what is already located, and listing what is there.
 	case "read", "read_document", "ls", "manual", "view_image", "settings",
-		"tasks", "jobs", "list_harnesses", "list_subharnesses", "services",
+		"use_skill", "tasks", "jobs", "list_harnesses", "list_subharnesses", "services",
 		"gmail_read", "slack_read_thread", "slack_list_channels",
 		"calendar_list", "workspace_snapshots",
 		// A manager looking at its team: the states, and a member's page.

@@ -149,7 +149,7 @@ func runExec(args []string) error {
 	}
 
 	linear := exec.NewLinear(client, space, web, *maxTurns, *maxTokens, deadline).
-		WithAttribution(settings.Attribution).
+		WithAssistedBy(config.AssistedByModelAt(settings.ProfileDir, settings.Model)).
 		WithContextLength(modelCatalog.ContextLength(settings.Model))
 	// NO OUTCOME IS CARRIED AS NO OUTCOME, all the way to the ladder. This used
 	// to substitute an `exec.Outcome{Stop: exec.StopError}` here, which threw

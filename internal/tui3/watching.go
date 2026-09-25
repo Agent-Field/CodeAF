@@ -90,7 +90,7 @@ func (a *app) watching() bool {
 // weaker claim of the two and the one that stays true either way.
 //
 // IT DOES NOT ADVERTISE THE DOOR HOME, and that is not an omission. The foot of
-// the frame already says `esc back` in the hint slot ([homeDoorWord]),
+// the frame already says `space space home` in the hint slot ([homeDoorWord]),
 // the gesture still works from here, and a second copy of it in this line would
 // be the surface teaching one door in two places.
 func (a *app) watchWord() string {
@@ -137,16 +137,48 @@ func (a *app) watchBar(width int) []string {
 // send keys, which become the take-back, and a character typed into a box that
 // is not on the frame.
 //
-// Escape falls through to the shared back navigation; characters cannot edit
-// the hidden composer or trigger navigation in a watching window.
+// THE DOOR HOME IS COUNTED HERE RATHER THAN LET THROUGH, and that is worth the
+// four lines it costs. [app.homeGesture] reads two consecutive spaces out of the
+// BOX, and this register has no box on the frame — so letting the space fall
+// through while swallowing the letters turned a typed sentence into a run of
+// spaces and opened home on the first word with two in it. Driven over a real
+// connection, `this should be swallowed` walked straight out of the
+// conversation. The gesture is the same gesture; it is simply counted where the
+// keys actually are, and any other key ends the run exactly as a letter in the
+// box would.
 func (a *app) watchKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	switch msg.String() {
 	case "enter", standMarkKey:
+		a.watchSpaces = 0
 		return a.takeKeyboard(), true
 	case "alt+enter", "ctrl+j":
+		// A newline into a box nobody can see is nothing at all.
+		a.watchSpaces = 0
 		return nil, true
 	}
-	return nil, msg.Key().Text != ""
+	text := msg.Key().Text
+	if text == "" {
+		// Not a character: the arrows, the scroll keys, copy mode, the places.
+		// They are not this register's business and they end the run.
+		a.watchSpaces = 0
+		return nil, false
+	}
+	if text != " " {
+		a.watchSpaces = 0
+		return nil, true
+	}
+	// A SPACE ONLY COUNTS OVER AN EMPTY DRAFT, which is the condition the
+	// gesture has always had: a person with words already in the box meant a
+	// space in their sentence, and this window is still holding those words.
+	if !a.input.empty() {
+		return nil, true
+	}
+	a.watchSpaces++
+	if a.watchSpaces >= 2 && a.homeDoorOpen() {
+		a.watchSpaces = 0
+		return a.openHome(), true
+	}
+	return nil, true
 }
 
 // takeKeyboard asks the far machine for the keyboard back.

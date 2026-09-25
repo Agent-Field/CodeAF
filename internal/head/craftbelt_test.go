@@ -124,7 +124,7 @@ func TestForgettingAToolThatWasForgedRetiresTheToolRatherThanOnlyTheBelief(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := graph.ActivateSkill(skill.Seq, skill.Artifact); err != nil {
+	if err := graph.ActivateSkill(skill.Seq, skill.Artifact, ""); err != nil {
 		t.Fatal(err)
 	}
 	user := postUser(t, graph, "forget-tool", "stop using imgshrink, it mangles the colours")

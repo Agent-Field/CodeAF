@@ -563,6 +563,18 @@ const (
 	MethodResolvedEffort = "ResolvedEffort" // nothing → string (the rung the next turn asks for)
 	MethodSetEffort      = "SetEffort"      // string → bool (false when the word is not a rung)
 
+	// The skills a person puts in front of this conversation by hand, and the
+	// shelf they are chosen from (internal/session's skillattach.go, and
+	// skills.go here). The attachment is the SESSION'S — it is held beside the
+	// conversation and read on every message it sends — so a surface on the
+	// other end of a socket reaches it through these doors rather than holding
+	// a copy of its own.
+	MethodAttachSkills   = "AttachSkills"   // []string → []string (the set as it now stands)
+	MethodDetachSkill    = "DetachSkill"    // string → bool (whether it was on)
+	MethodAttachedSkills = "AttachedSkills" // nothing → []string
+	MethodClearSkills    = "ClearSkills"    // nothing → int (how many were on)
+	MethodSkillShelf     = "SkillShelf"     // SkillShelfArgs → []store.Fact
+
 	// The conversation's own posture on the tool gate (internal/session's
 	// approvalposture.go), the dial above one door over: the resolved posture
 	// rides [session.Facts] unasked for the frame, and these are the keystroke's
@@ -1184,6 +1196,26 @@ type Welcome struct {
 	// build between the news frames and this flag sends them without saying so,
 	// which is why a frame arriving counts as the same answer.
 	News bool `json:"news,omitempty"`
+
+	// Skills says this engine's conversation CAN CARRY SKILLS PUT IN FRONT OF
+	// IT BY HAND and can list the shelf they come from — that its agent
+	// answers [MethodAttachSkills], [MethodDetachSkill], [MethodAttachedSkills],
+	// [MethodClearSkills] and [MethodSkillShelf] rather than refusing them
+	// (skills.go).
+	//
+	// IT IS CARRIED FOR [Welcome.Folders]'S REASON: a surface at this end holds
+	// a *remote.Agent, which ALWAYS has the doors on it, so the assertion the
+	// picker makes says nothing about the far machine. ABSENCE IS false, and
+	// false keeps the picker's own sentence for a conversation that cannot
+	// carry attached skills rather than a list whose every choice goes nowhere.
+	Skills bool `json:"skills,omitempty"`
+}
+
+// SkillShelfArgs asks for one reading of the conversation's skill shelf, on
+// [store.Store.SkillFacts]'s own two arguments.
+type SkillShelfArgs struct {
+	Status string `json:"status,omitempty"`
+	Limit  int    `json:"limit,omitempty"`
 }
 
 // Driver is who holds the keyboard on one conversation, as told to ONE surface.

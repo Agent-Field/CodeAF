@@ -241,7 +241,7 @@ func (c *completion) close() { c.open = false }
 // the only one there was. Every command written here gets the completion; a
 // command that takes a path and is not written here gets nothing, silently,
 // which is the one failure worth watching for.
-var argPrefixes = []string{"/image ", "/export ", "/attach "}
+var argPrefixes = []string{"/export ", "/attach "}
 
 // argToken finds the path argument the caret is standing in: everything after
 // the command's prefix up to the caret. A path may hold spaces, so the token
@@ -600,7 +600,11 @@ func (c *completion) rows(width, n int, pal palette, hover int, headKey string) 
 }
 
 // filesLoadedMsg carries the walk back to the loop.
-type filesLoadedMsg struct{ paths []string }
+type filesLoadedMsg struct {
+	paths []string
+	// home says the walk was home's list's (homeat.go) and not the box's.
+	home bool
+}
 
 // loadFiles walks the workspace off the loop. It runs ONCE per surface: the
 // list is a completion aid, and a person who creates a file mid-conversation

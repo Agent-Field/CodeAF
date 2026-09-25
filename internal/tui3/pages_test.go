@@ -531,14 +531,17 @@ func TestAPlaceOutranksEveryConversationTheWordsAlsoMatch(t *testing.T) {
 	for _, r := range "sta" {
 		drive(t, a, key(string(r)))
 	}
-	place, lastChat := -1, -1
+	place, lastChat, ask, action := -1, -1, -1, -1
 	for i, line := range a.home.lines {
 		switch line.kind {
 		case homePlace:
 			place = i
 		case homeSession:
 			lastChat = i
-
+		case homeAskHere:
+			ask = i
+		case homeAction:
+			action = i
 		}
 	}
 	if place < 0 || lastChat < 0 {
@@ -547,6 +550,11 @@ func TestAPlaceOutranksEveryConversationTheWordsAlsoMatch(t *testing.T) {
 	if place < lastChat {
 		t.Fatalf("the place is drawn above a conversation it outranks: place at %d, last chat at %d\n%s",
 			place, lastChat, placeFrameText(a))
+	}
+	// AND THE TWO ROWS THAT ACT ON THE SENTENCE STAY UNDER IT. They are one
+	// cluster against the box and are not results at all ([homeAction]).
+	if ask < place || action < ask {
+		t.Fatalf("the sentence cluster moved: place %d, ask here %d, start %d", place, ask, action)
 	}
 	// AND THE ROW SAYS WHAT IS BEHIND IT, not just what kind of thing it is.
 	if !strings.Contains(placeFrameText(a), placeRowWord) {
@@ -768,9 +776,9 @@ func placeAt(id page) int { return placeDigitOf(id) - 1 }
 // seizing keys somebody has muscle memory for. The digits are the spare class.
 func TestTheNumbersOpenAPlaceFromTheConversationToo(t *testing.T) {
 	a := placeApp(t)
-	a.closeHome()
+	drive(t, a, key("esc"))
 	if a.at(pageHome) {
-		t.Fatal("close did not put the conversation back")
+		t.Fatal("esc did not put the conversation back")
 	}
 	drive(t, a, key(placeChord(pageTasks)))
 	if a.page != pageTasks || !a.at(pageTasks) {
@@ -782,7 +790,7 @@ func TestTheNumbersOpenAPlaceFromTheConversationToo(t *testing.T) {
 		t.Fatalf("%s from the conversation landed on %q", placeChord(pageStanding), a.page.word())
 	}
 	// AND `tab` IS STILL THE CONVERSATION'S OWN KEY THERE.
-	a.leavePlace()
+	drive(t, a, key("esc"))
 	page := a.page
 	drive(t, a, key("tab"))
 	if a.page != page || a.at(pageTasks) || a.at(pageStanding) {

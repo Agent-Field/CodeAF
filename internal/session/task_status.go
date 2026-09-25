@@ -479,7 +479,12 @@ func taskLifecycleStatus(status TaskStatus, facts TaskFacts) TaskStatus {
 		// Nothing was found out about the work and nobody decided anything about
 		// it; there was simply nobody there. It reads as itself and as nothing
 		// else ([TaskInterrupted]).
-		status.Presence, status.On = TaskPresenceInterrupted, TaskWaitPerson
+		//
+		// AND IT WAITS ON NOBODY, because nothing a person can press moves it.
+		// The door that would carry a run on has no caller yet
+		// (task_run_continue.go), so a row that said it was waiting on its person
+		// was waiting on an answer nothing could take.
+		status.Presence = TaskPresenceInterrupted
 	}
 	return status
 }
@@ -564,11 +569,16 @@ func taskEndingIsFault(ending TaskEnding) bool {
 func taskStatusDemand(status TaskStatus, facts TaskFacts) TaskStatus {
 	// Keeping a branch is a valid delivery workflow, not a request to merge.
 	// A conflict or an unresolved review is the actionable condition.
-	// AND WORK NOTHING IS DRIVING WILL NOT MOVE WITHOUT THEM EITHER. Continuing
-	// always asks first, so an interrupted row sits exactly where a your-call row
-	// sits until somebody answers it.
+	//
+	// WORK NOTHING IS DRIVING RAISES NO MARK. It used to, on the reading that
+	// continuing always asks first and so an interrupted row sat where a
+	// your-call row sits until somebody answered. But nothing can answer it:
+	// the door that carries a run on has no caller, the home read never counted
+	// the row as waiting, and a `needs you` mark that no press can clear is the
+	// mark #1331 took off held landings for the same reason. When the card that
+	// offers carrying on lands, the mark comes back with it.
 	if (status.Changes == TaskChangesConflicted && status.ChangesUnlanded()) ||
-		status.Presence == TaskPresenceNeedsLook || status.Presence == TaskPresenceInterrupted {
+		status.Presence == TaskPresenceNeedsLook {
 		status.Attention = true
 	}
 	if taskHeldLandingOffer(facts) {
@@ -676,8 +686,24 @@ func (n TaskNotice) StatusFacts() TaskFacts {
 		// make some surface write those words a second time
 		// ([runCannotContinue]). It reads no disk, which is what keeps this
 		// method the pure function every drawing road relies on.
-		CannotContinue: runCannotContinue(n.Copy),
+		CannotContinue: runRowCannotContinue(n),
 	}
+}
+
+// runRowCannotContinue answers the cannot-carry-on sentence for a RUN'S OWN
+// row, and nothing for any other row.
+//
+// A ROW THAT JOINED A RUN IS NOT A RUN, and it never carried a copy of its own:
+// the run's copy is written down once, on the run's own row, and the rows that
+// joined it share that copy ([Agent.startKnownTaskRun]). Asked of a joined row,
+// the question read a missing record as a missing copy, and every hand-off that
+// had joined a run came back after a restart saying its working copy was never
+// written down — which was false for every one of them.
+func runRowCannotContinue(n TaskNotice) string {
+	if n.Parent != 0 {
+		return ""
+	}
+	return runCannotContinue(n.Copy)
 }
 
 // StatusFacts is one record row as the reading takes it. `held` is the caller's
@@ -824,13 +850,12 @@ const (
 	taskAskStartNo    = "don't"
 	taskAskApproveYes = "approve"
 	taskAskApproveNo  = "decline"
-	// The three sentences an interrupted row asks with. The reason states the
-	// two facts a person needs before they answer — that nothing is driving it,
-	// and that what it did is not lost — because without the second one the
-	// only safe answer looks like starting over.
+	// The line an interrupted row says. It states the two facts a person needs
+	// — that nothing is driving it, and that what it did is not lost — because
+	// without the second one the only safe move looks like starting over. The
+	// two answers it used to offer are gone until something can take them
+	// ([taskInterruptedReason]).
 	taskAskContinueReason = "nothing is driving it; everything it did is kept"
-	taskAskContinueYes    = "continue it"
-	taskAskContinueNo     = "leave it"
 
 	taskAskConflictYes = "resolve it"
 	taskAskConflictNo  = "drop it"
@@ -966,45 +991,33 @@ func taskStatusWords(status TaskStatus, facts TaskFacts) TaskStatus {
 		status.Ask = taskAskOf(facts)
 		status.Reason = status.Ask.Reason
 	case TaskPresenceInterrupted:
-		// THE WORD IS THE PERSON'S OWN AND NOT `your call`, though the tier is
-		// theirs. Every other row in this tier is the machine having reached the
-		// end of what it can decide; this one is the machine not having been
-		// there, and a person scanning a list wants those told apart at a glance.
-		status.Tier, status.Word = TaskTierYourCall, taskWordInterrupted
-		status.Ask = taskAskContinuing(facts)
-		status.Reason = status.Ask.Reason
+		// THE WORD IS THE PERSON'S OWN AND NOT `your call`, AND SO IS NOT THE
+		// TIER. Nothing is moving it and nothing a person can press today picks
+		// it up, so it sits with the work that is not in flight and asks no
+		// question: a row that offered `continue it` offered a key wired to
+		// nothing. What it SAYS is still the two facts a person needs — that
+		// nothing is driving it and that what it did is kept — or, for a run
+		// that could never be carried on, why not ([taskInterruptedReason]).
+		status.Tier, status.Word = TaskTierOver, taskWordInterrupted
+		status.Reason = taskInterruptedReason(facts)
 	}
 	return status
 }
 
-// taskAskContinuing is what a row nothing is driving asks, and it is a reader of
-// its own beside [taskAskOf] rather than an arm inside it: that one walks the
-// facts of a LANDING to work out which judgement is owed, and there is no
-// judgement here. The answer follows from the presence alone.
+// taskInterruptedReason is the line beside `interrupted`: that nothing is
+// driving the work and everything it did is kept, or — for a run whose copy was
+// never written down — the one sentence that says it can never be carried on.
 //
-// THE OWNER IS ALWAYS THE PERSON. Continuing spends money, so no settle policy
-// hands this one to the model, which is the same reasoning that keeps a conflict
-// out of the model's hands.
-//
-// AND A RUN THAT CANNOT BE CARRIED ON SAYS WHY, WHERE THE OFFER WOULD HAVE BEEN.
-// It does not quietly lose the key, which is the shape of every defect this
-// design has been removing: a surface that knew something and did not say it. A
-// row that simply lacked the offer would teach a person that carrying on is
-// unreliable, when the truth is that this one run predates the record of where
-// its work is. The NO survives, because leaving it alone is still a real answer
-// and the only one left.
-func taskAskContinuing(facts TaskFacts) TaskAsk {
-	ask := TaskAsk{
-		Kind:   TaskAskContinue,
-		Reason: taskAskContinueReason,
-		Yes:    taskAskContinueYes,
-		No:     taskAskContinueNo,
-		Owner:  TaskAskOwnerPerson,
-	}
+// A RUN THAT CANNOT BE CARRIED ON SAYS WHY, where the plain line would have
+// been, and it is the same sentence the carry-on door refuses with
+// ([runCannotContinue]). It does not quietly drop the fact, which is the shape of
+// every defect this design has been removing: a surface that knew something and
+// did not say it.
+func taskInterruptedReason(facts TaskFacts) string {
 	if why := strings.TrimSpace(facts.CannotContinue); why != "" {
-		ask.Reason, ask.Yes = why, ""
+		return why
 	}
-	return ask
+	return taskAskContinueReason
 }
 
 // taskAskOf is the closed set of your-call questions, in the order the most

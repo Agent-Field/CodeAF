@@ -371,7 +371,7 @@ func TestClosingTheSheetAsksForTheWholeScreenBack(t *testing.T) {
 	t.Run("home esc", func(t *testing.T) {
 		a, _, _ := mixedLab(t)
 		runCmd(a.openHome())
-		settleFolder(t, a, a.homeSlash("/folder"))
+		settleFolder(t, a, a.homeSlash("/project"))
 		cmd := a.folderKey(tea.KeyPressMsg{Code: tea.KeyEscape})
 		if a.folder.open || !a.at(pageHome) {
 			t.Fatalf("home esc left open=%v page=%v", a.folder.open, a.page)
@@ -384,7 +384,7 @@ func TestClosingTheSheetAsksForTheWholeScreenBack(t *testing.T) {
 	t.Run("home choice", func(t *testing.T) {
 		a, _, _ := mixedLab(t)
 		runCmd(a.openHome())
-		settleFolder(t, a, a.homeSlash("/folder"))
+		settleFolder(t, a, a.homeSlash("/project"))
 		onFolderRow(t, a, "inner")
 		cmd := a.folderConfirm()
 		if a.folder.open || !a.at(pageHome) {

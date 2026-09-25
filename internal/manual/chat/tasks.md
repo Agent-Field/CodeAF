@@ -327,8 +327,9 @@ start together.
 **How many of them run at once is decided by memory, not by a number here.** Each piece
 that begins sets aside a footprint — one core's share of memory, or more where this
 session's pieces were seen to need more — so a wide hand-out runs as many pieces as the
-memory above `task.min_free_mb` can hold and leaves the rest queued, each row reading
-`waiting · machine busy`. Those begin by themselves as earlier pieces finish; there is
+memory above `task.min_free_mb` can hold and leaves the rest queued. The run's rail row
+reads `waiting · machine busy`; held parts on its plan page read
+`queued · machine busy`. Those begin by themselves as earlier pieces finish; there is
 nothing to do about it and nothing to come back for. how-tasks-run has the arithmetic.
 
 What it will *not* do is watch them. Each landing writes one dim line in the
@@ -2345,7 +2346,7 @@ another one's without the column ever saying it had. Everything they offered is 
 other side of the door, whole: every row, the filter, the cards, and `m` for the mention.
 
 **Where old work is listed now:** the task page (`ctrl+.`, `/history`, or that line), and
-home (`/home`, or Escape from the conversation). The chat can also read the whole project
+home (`/home`, or space twice on an empty box). The chat can also read the whole project
 record for you with its `tasks` tool — just ask.
 
 **Running work in another codeaf window** is on no surface but the task page. An ordinary
@@ -2591,7 +2592,7 @@ conversations, retaining older parents and children instead of splitting their t
 Filtering never moves a conversation into a different section.
 
 Conversation names use the full title shown on Home and truncate only to fit. Their
-bullets also match Home: dim at rest, working while answering, bright for unread replies,
+bullets also match Home: dim at rest, working while answering or running tasks, bright for unread replies,
 and a question mark when an answer is needed. A missing transcript still leaves its tasks
 under an identified conversation row; nothing is promoted into a top-level task.
 
@@ -3319,13 +3320,13 @@ local conversation the same page tails that log live.
 | clicking empty space | nothing | nothing — leaving is `esc`, `←`, or the pinned header |
 | what `enter` does | sends to the model, or holds the message above the box while a turn is running | **steers the task** — never held |
 | what `↑`/`↓` do | walk your history, then select a tool row, then scroll | the same walk through **the same history** — steered lines are in it — then scroll the page |
-| what `esc` does | backs out to Home, preserving work | leaves the room. It never interrupts and never stops work |
+| what `esc` does | interrupts the running turn | leaves the room. It never interrupts and never stops work |
 | how you stop the work | `esc` | `x` over an empty box, which raises the confirmation card |
 | the box's own line | the bare `› ` | a tinted segment naming the task, in its state's hue, then `› ` |
 | box placeholder | the draft prompt | `Steer this task… (esc: main)`, or `Steer <title>… (esc: main)` where the frame is too narrow for the segment |
 | pinned top rows | the pulse line, the tab strip under it, one thin rule and a blank — the same four rows every place draws; a dim `+N` at the strip's right end counts the tabs it could not spell, and `alt+k` opens the chats card | the same four rows — pulse, tab strip, rule, blank — so the rule does not move when you walk in; then a breadcrumb row (conversation → ancestor tasks → current task) and a quiet facts row under it |
 | legend word | the model, effort and approvals, with the remote machine when connected | `room · esc/←← main`, and `room · esc your line back` while a history walk is on |
-| legend hint | `ctrl+c interrupt` while a turn runs | `x stop` while there is work to stop, `↑↓ history` mid-walk, nothing otherwise |
+| legend hint | `esc interrupt` while a turn runs | `x stop` while there is work to stop, `↑↓ history` mid-walk, nothing otherwise |
 | the model on the status row | the conversation's model | `task <the task's model>` |
 | clicking that model | opens the picker and switches the conversation | opens the picker and switches **that task**, from its next request — and does nothing at all once the task has landed |
 | `ctrl+b` | freezes the transcript | freezes the room's own rows |
@@ -4130,8 +4131,8 @@ because there is nowhere dearer to move it to.
 
 **A busy machine is not one of these tests.** `task.max_load` and `task.min_free_mb` never
 refuse a split. If the machine is over one of them when the work divides, the split happens
-and the parts simply **wait** — the same wait any queued task does, drawn as
-`waiting · machine busy` — and they start themselves as soon as the machine clears. The
+and the parts simply **wait** — the run's rail row reads
+`waiting · machine busy` and held plan parts read `queued · machine busy` — and they start themselves as soon as the machine clears. The
 worker is told so in its receipt and has nothing to come back for.
 
 **A `/task` can be split for its worker, too.** The sizing call reads a `/task <brief>` for
@@ -4225,15 +4226,19 @@ What actually runs out is the machine, not a count of tasks. Two real ceilings h
 starts instead:
 
 - `task.max_load` — the one-minute load average divided by core count, default **1.5** per
-  core. At or above it, nothing new starts and a held task's row reads
-  `waiting · machine busy`.
+  core. At or above it, nothing new starts. The run's rail row reads
+  `waiting · machine busy`; its held plan parts read `queued · machine busy`.
 - `task.min_free_mb` — a floor under available memory, default **1536** MiB. Below it,
   nothing new starts — and each running piece sets aside a footprint of memory against
   that floor until a reading shows it, so a wide hand-out runs what the memory can hold
   and queues the rest on `machine busy` (how-tasks-run has the arithmetic).
 
-Both gate starts only. Nothing already running is ever touched; the pressure drains as
-running work finishes, and the check is re-asked every 5 seconds.
+Both gate starts only. Nothing already running is ever touched; pressure drains
+as running work finishes. The older node road re-asks every 5 seconds; the
+default run road re-asks each supervisor pass, every 300 milliseconds. `codeaf do`
+uses the same profile limits and, having no rail, says a hold on stderr, once:
+`waiting · machine busy` and the limit that held it (see *codeaf do is waiting and
+nothing happens* on the terminal page).
 
 **The honest caveat:** these two governors read `/proc/loadavg` and `/proc/meminfo`, so
 they only apply on a machine that has them. Where there is no `/proc` — macOS, Windows —
@@ -5321,7 +5326,7 @@ changes with the cursor:
 
 The final clauses describe the **page** rather than the row:
 
-- `esc home` returns to Home when the filter is clear.
+- `esc close` returns to the conversation when the filter is clear.
 - `type to filter`, because nothing else on the frame says that a letter goes into the box on
   the control row rather than to the page's own keys. While a filter **is** on, that slot
   says `esc clear the filter` instead — the one fact the box itself cannot show is that esc
@@ -5542,8 +5547,7 @@ and breadcrumbs remain available.
 ## will the chat do it itself or start a task?
 
 One read, one edit or one command the chat does itself. Anything with parts goes
-out as tasks. With `CODEAF_TASK_BELT=bash` set there is **one way** the chat puts
-work out, a task:
+out as tasks. There is **one way** the chat puts work out, a task:
 
 - **hand off:** the chat proposes a task; approving the card, or letting its
   countdown run out, starts it as a run in the conversation's plan.
@@ -5555,17 +5559,17 @@ work out, a task:
 - **ask about:** the chat reads the run's rows and the task's own steps and
   answers from them. It never redoes the work.
 
-## is there a quick task with the bash belt on? can the chat still start quick tasks?
+## is there a quick task? can the chat still start quick tasks?
 
-**No. With `CODEAF_TASK_BELT=bash` set the conversation has no quick task.** The
+**No. The conversation has no quick task.** The
 chat's only verb for putting work out is a task, and every task it starts is part
 of the conversation's plan, where the tree shows it and a check reads it. A quick
 task ran outside the plan, in the folder you stand in, with no check, so it was
 left off rather than kept as a second road. Asked to parallelize, the chat proposes
 several tasks at once. Small work it simply does itself.
 
-With the variable unset nothing changes: quick tasks work as *What a quick task is*
-describes.
+With `CODEAF_TASK_BELT` set to `node`, `legacy` or `off` the older engine returns
+and quick tasks work as *What a quick task is* describes.
 
 ## what are the what, since, now and next lines?
 

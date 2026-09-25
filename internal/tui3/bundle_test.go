@@ -1791,9 +1791,14 @@ func TestTheSeamCarriesTheModelAndTheInputsAffordances(t *testing.T) {
 	if keys := plain(a.hintRow(100)); !strings.Contains(keys, microcopy) {
 		t.Fatalf("the keys row is missing %q:\n%q", microcopy, keys)
 	}
-	// The model keeps its provider prefix, and the project follows the telemetry.
-	if !strings.Contains(line, "project: ~/src/codeaf") {
-		t.Fatalf("the legend lost its project: %q", line)
+	// The model keeps its provider prefix, and the project is on the keys row
+	// since 2026-09-22 (footswap.go's [app.hintRow]) rather than after the
+	// telemetry.
+	if strings.Contains(line, targetProjectLead) {
+		t.Fatalf("the legend still carries the project: %q", line)
+	}
+	if keys := plain(a.hintRow(100)); !strings.HasSuffix(strings.TrimRight(keys, " "), "project: ~/src/codeaf") {
+		t.Fatalf("the keys row lost its project: %q", keys)
 	}
 	if !strings.HasPrefix(line, "─ ") || !strings.HasSuffix(line, " ─") {
 		t.Fatalf("the label is not sitting inside a border: %q", line)
@@ -1980,9 +1985,12 @@ func TestTheStatusRowIsALedgerLeftAndAlivenessRight(t *testing.T) {
 	if cost < 0 || meter < cost || state < meter {
 		t.Fatalf("the groups are out of order:\n%q", line)
 	}
-	// THE KEYS ROW CARRIES NO FACT AT ALL — not the identity, not the numbers
-	// (footswap.go).
+	// THE KEYS ROW CARRIES NO FACT BUT THE PROJECT at its right end — not the
+	// identity, not the numbers (footswap.go's [app.hintRow]).
 	keys := plain(a.hintRow(200))
+	if at := strings.Index(keys, targetProjectLead); at >= 0 {
+		keys = keys[:at]
+	}
 	for _, banned := range []string{"porting the parser", "deepseek-v4-flash", "deepseek/", product, "$0.14", "idle"} {
 		if strings.Contains(keys, banned) {
 			t.Fatalf("the keys row is carrying %q: %q", banned, keys)
@@ -2003,9 +2011,10 @@ func TestTheStatusRowIsALedgerLeftAndAlivenessRight(t *testing.T) {
 	if !strings.Contains(line, "12.4k/128k · 10%") {
 		t.Fatalf("the meter's own halves are not joined by a dot: %q", line)
 	}
-	// The project follows the state at the right edge of the seam.
-	if !strings.HasSuffix(line, "idle   project: ~/src/codeaf ─") {
-		t.Fatalf("the project does not follow the state: %q", line)
+	// The state word is the last thing on the seam; the project is the keys
+	// row's since 2026-09-22.
+	if !strings.HasSuffix(line, "idle ─") {
+		t.Fatalf("the state word is not the last thing on the seam: %q", line)
 	}
 }
 
@@ -2254,10 +2263,10 @@ func TestTheHintSlotFollowsTheStateAndIsEmptyAtRest(t *testing.T) {
 	}
 
 	a.state = stateWorking
-	if got := a.hintWord(); got != "ctrl+c interrupt" {
+	if got := a.hintWord(); got != "esc interrupt" {
 		t.Fatalf("a working surface offered %q", got)
 	}
-	if line := plain(a.hintRow(120)); !strings.Contains(line, "ctrl+c interrupt") ||
+	if line := plain(a.hintRow(120)); !strings.Contains(line, "esc interrupt") ||
 		strings.Contains(line, microcopy) {
 		t.Fatalf("the hint did not take the slot: %q", line)
 	}
@@ -2506,8 +2515,14 @@ func TestTheHudLaysOutAtEveryWidth(t *testing.T) {
 		if strings.Contains(legend, "the bottom hud wave") {
 			t.Fatalf("at %d columns the seam carries the name: %q", tc.width, legend)
 		}
-		if tc.width == 200 && !strings.Contains(legend, "project: ~/src/codeaf") {
-			t.Fatalf("the wide legend lost its project: %q", legend)
+		// The project is the keys row's since 2026-09-22 (footswap.go).
+		if strings.Contains(legend, targetProjectLead) {
+			t.Fatalf("at %d columns the seam still carries the project: %q", tc.width, legend)
+		}
+		if tc.width == 200 {
+			if keys := plain(a.hintRow(tc.width)); !strings.Contains(keys, "project: ~/src/codeaf") {
+				t.Fatalf("the wide keys row lost its project: %q", keys)
+			}
 		}
 	}
 }
@@ -3326,7 +3341,7 @@ func TestEscFoldsTheProposalRatherThanDecliningItOrTheTurn(t *testing.T) {
 		t.Fatalf("esc answered the proposal: %+v", agent.answered)
 	}
 	if agent.stops != 0 {
-		t.Fatal("ctrl+c interrupted the turn")
+		t.Fatal("esc interrupted the turn")
 	}
 	if !a.awaitingTask() || a.questionCount() != 1 {
 		t.Fatalf("esc closed the proposal: awaiting=%v open=%d", a.awaitingTask(), a.questionCount())
