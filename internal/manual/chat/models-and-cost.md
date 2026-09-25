@@ -674,14 +674,24 @@ A routed task says its crew in ONE line, under the line that says it started, an
 is rewritten in place as the task goes. When it starts:
 
 ```
-task 12 crew · open-ended · worker glm-5.3-flash (openrouter) · planner kimi-k3 · checker ⌖ kimi-k3 · est $0.112
+task 12 crew · open-ended · worker glm-5.3-flash (openrouter) · planner kimi-k3 · checker ⌖ kimi-k3 · est $0.117
 ```
 
 and when it lands, the same line with what it actually cost beside the estimate:
 
 ```
-task 12 crew · open-ended · worker glm-5.3-flash (openrouter) · planner kimi-k3 · checker ⌖ kimi-k3 · $0.108 (est $0.112) · not right? /redo stronger
+task 12 crew · open-ended · worker glm-5.3-flash (openrouter) · planner kimi-k3 · checker ⌖ kimi-k3 · $0.108 (est $0.117) · not right? /redo stronger
 ```
+
+The estimate is what crews like this one have cost: each seat's measured cost per task
+in the crew trial for that kind of work, where a model was measured in that seat — so a
+model that writes a lot costs what it wrote — and the seat's token profile scaled to the
+trial otherwise; then moved by what this install's own paid tasks of the kind cost against
+their estimates. A seat on a plan, a local model or a free pool adds nothing to it.
+
+A pin sends exactly the id you wrote when the catalog lists it. An id the catalog lists
+only as a variant — a dated snapshot — is sent as that variant, and the line says which:
+`checker ⌖ deepseek-v4-flash → -0731`.
 
 The first word is the kind of work the task was read as. The worker's provider is named
 because it is where the money goes; the planner is named when it is another model than the
