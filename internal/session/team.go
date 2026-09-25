@@ -74,6 +74,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -193,6 +194,9 @@ type teamSeat struct {
 	// found by the delivery that handed it the brief and made good after it
 	// (team_nest.go's [Agent.claimSubTeams]).
 	claims []subTeamClaim
+	// told is the packet answers just handed over. Their durable marks are
+	// written after the seat lock is released and away from the turn's path.
+	told []string
 	// handleTried says this process has asked for its handle once
 	// (handlepick.go), so it is never asked for twice.
 	handleTried bool
@@ -425,14 +429,16 @@ func memberOf(team teams.Team, keys []string) (teams.Member, bool) {
 // handed back as one note, "" for nothing. It is called by [Agent.drainSteering]
 // before that drain takes the agent's lock.
 //
-// THE VERBS ARRIVE BY THE ARMING DOOR AND NEVER LEAVE. A conversation made a
-// manager halfway through its life is given the manager's verbs at its next
-// boundary through [Agent.armFamily], the door a connected account and a loaded
-// group arrive through, on the same append law: at the tail, nothing already
-// there moves. A conversation that stops being a manager keeps the verbs and
-// each one refuses, because it asks the file again when it is called
-// ([Agent.teamTarget]); taking a tool out of the block would re-price the whole
-// conversation for a verb nobody will call.
+// THE VERBS ARRIVE BY THE ARMING DOOR AND LEAVE WITH THE ROLE. A conversation
+// made a manager halfway through its life is given the manager's verbs at its
+// next boundary through [Agent.armFamily], the door a connected account and a
+// loaded group arrive through, on the same append law: at the tail, nothing
+// already there moves. A conversation that stops being a manager loses them at
+// its next boundary ([Agent.retireTeamTools]). They once stayed, each refusing
+// when called, to spare the one re-pricing of the prompt a rewritten tool block
+// costs; but a verb that cannot work must be absent, not broken (CLAUDE.md),
+// and a demotion is rare enough that paying once for it is cheap. A role
+// gained again appends its verbs at the tail as before.
 func (a *Agent) teamBoundary() string {
 	profile := a.config.teamProfile()
 	if profile == "" {
@@ -453,7 +459,16 @@ func (a *Agent) teamBoundary() string {
 		roles = a.teamRolesLocked(profile)
 	}
 	role := teamRoleBlock(roles, a.team.file)
+	told := append([]string(nil), a.team.told...)
+	a.team.told = nil
 	a.team.mu.Unlock()
+	if len(told) > 0 {
+		guard.Go("team answers handed over", func() {
+			for _, id := range told {
+				_ = teams.Told(profile, id)
+			}
+		})
+	}
 	// A wrap-up the delivery just started is written down here, after the
 	// seat's lock, so a restart keeps the clock (team_wrapup.go).
 	a.teamWrapUpNote(profile)
@@ -484,12 +499,97 @@ func (a *Agent) armTeamTools(roles []teamRole) {
 	if manager || member {
 		arriving = append(arriving, a.raiseTools()...)
 	}
+	allowed := make(map[string]bool, len(arriving))
+	for _, tool := range arriving {
+		allowed[tool.Name] = true
+	}
+	a.retireTeamTools(allowed)
 	if len(arriving) == 0 {
 		return
 	}
 	// A schema that will not parse is a bug in this build, and every tool here
 	// is a literal; the error has nowhere useful to go at a boundary.
 	_, _ = a.armFamily(arriving)
+	a.armMu.Lock()
+	for name := range allowed {
+		delete(a.teamRetired, name)
+	}
+	a.armMu.Unlock()
+}
+
+// retireTeamTools takes off the belt every team verb the current roles do not
+// give, and remembers why, so a model that calls one from memory is told the
+// role changed rather than that the verb never existed ([Agent.teamRetiredNotice]).
+//
+// A BOUNDARY THAT CHANGES NOTHING ALLOCATES NOTHING: it runs at every step of
+// every conversation in a profile, and nearly every time the belt already
+// matches the role. When a verb does leave, the belt is rebuilt into fresh
+// arrays under armMu, as [Agent.armFamily] grows it, so a reader holding the
+// previous snapshot is never written under, and every tool that stays keeps
+// its order.
+func (a *Agent) retireTeamTools(allowed map[string]bool) {
+	a.armMu.Lock()
+	defer a.armMu.Unlock()
+	leaving := false
+	for _, tool := range a.tools {
+		if teamToolName(tool.Name) && !allowed[tool.Name] {
+			leaving = true
+			break
+		}
+	}
+	if !leaving {
+		return
+	}
+	kept := make([]bare.Tool, 0, len(a.tools))
+	for _, tool := range a.tools {
+		if !teamToolName(tool.Name) || allowed[tool.Name] {
+			kept = append(kept, tool)
+			continue
+		}
+		if a.teamRetired == nil {
+			a.teamRetired = map[string]string{}
+		}
+		a.teamRetired[tool.Name] = teamRetiredMember
+		if teamManagerToolName(tool.Name) {
+			a.teamRetired[tool.Name] = teamRetiredManager
+		}
+	}
+	a.tools = kept
+	a.definitions, _ = toolDefinitions(kept)
+}
+
+// The reasons a retired team verb is answered with, one per kind of verb.
+const (
+	teamRetiredManager = "this conversation no longer manages a team"
+	teamRetiredMember  = "this conversation is no longer a member of a team with a manager"
+)
+
+// teamToolName reports whether name is one of the team verbs.
+func teamToolName(name string) bool {
+	for _, candidate := range teamToolNames {
+		if name == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+// teamManagerToolName reports whether name is a verb only a manager is given:
+// every team verb but a member's post and its conflict raise.
+func teamManagerToolName(name string) bool {
+	return teamToolName(name) && name != teamPostToolName && name != teamRaiseToolName
+}
+
+// teamRetiredNotice is what a call to a team verb the role took away is
+// answered with, and false for every other name.
+func (a *Agent) teamRetiredNotice(name string) (string, bool) {
+	a.armMu.Lock()
+	reason, ok := a.teamRetired[name]
+	a.armMu.Unlock()
+	if !ok {
+		return "", false
+	}
+	return name + " is no longer one of your tools: " + reason + ".", true
 }
 
 // teamNewsLocked reads each team's Traffic past this conversation's cursor and
@@ -614,7 +714,11 @@ func (a *Agent) firstTeamCursor(profile string, role teamRole) string {
 func (a *Agent) teamEntryLineLocked(profile string, role teamRole, entry teams.Entry) string {
 	switch {
 	case entry.Kind == teams.KindPacket:
-		return teamPacketLine(profile, role, entry)
+		line, told := teamPacketLine(profile, role, entry)
+		if told != "" {
+			a.team.told = append(a.team.told, told)
+		}
+		return line
 	case entry.Kind == teams.KindStart && entry.Team != "":
 		line := teamBriefLine(role, entry)
 		if line == "" {
@@ -625,6 +729,14 @@ func (a *Agent) teamEntryLineLocked(profile string, role teamRole, entry teams.E
 	case role.manager && teams.IsWrapUp(entry):
 		a.teamWrapUpBeginLocked(role, entry.At)
 		return wrapUpLine(role, entry)
+	case role.manager && entry.Kind == teams.KindEvent && entry.State == teams.StateFinished &&
+		teamFinishedAfterReply(profile, role.id, entry):
+		// A reply's ending starts no second wake, but the manager still reads
+		// that ending at its next boundary after the earlier wake has run.
+		lines := teamEventLines([]teams.Entry{entry})
+		if len(lines) > 0 {
+			return lines[0]
+		}
 	}
 	return teamLine(role, entry)
 }

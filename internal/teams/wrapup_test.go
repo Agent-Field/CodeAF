@@ -1,6 +1,8 @@
 package teams
 
 import (
+	"bufio"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -65,6 +67,102 @@ func TestThePacketFileRotatesAndKeepsEveryWaitingPacket(t *testing.T) {
 	// A waiting packet can still be decided after its raise rotated away.
 	if _, err := Decide(dir, waiting.ID, "lead", "2", "the handler is newer"); err != nil {
 		t.Fatalf("a carried packet could not be decided: %v", err)
+	}
+}
+
+func TestRotationKeepsAnUntoldAnswerAcrossSeveralFiles(t *testing.T) {
+	dir := packetTeams(t)
+	old := decisionsRotateBytes
+	decisionsRotateBytes = 3000
+	t.Cleanup(func() { decisionsRotateBytes = old })
+	owed, err := Raise(dir, Packet{Team: "bbbbbbbbbbbb", Kind: PacketQuestion, RaisedBy: "web", Question: "JSON or form data?"})
+	must(t, err)
+	_, err = Decide(dir, owed.ID, FromManager, "JSON", "the other endpoints use it")
+	must(t, err)
+	var firstConflict string
+	for i := 0; i < 24; i++ {
+		p, err := Raise(dir, conflict())
+		must(t, err)
+		if i == 0 {
+			firstConflict = p.ID
+		}
+		_, err = Decide(dir, p.ID, "lead", "1", "matches")
+		must(t, err)
+	}
+	if _, err := PacketByID(dir, firstConflict); err != ErrNoPacket {
+		t.Fatalf("an old conflict was carried as an owed answer: %v", err)
+	}
+	if got, err := PacketByID(dir, owed.ID); err != nil || got.State != PacketDecided {
+		t.Fatalf("an untold answer was lost after rotations: %+v, %v", got, err)
+	}
+	if err := Told(dir, owed.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := PacketByID(dir, owed.ID); err != nil || !got.Told {
+		t.Fatalf("the delivery mark was not folded: %+v, %v", got, err)
+	}
+	for i := 0; i < 24; i++ {
+		p, err := Raise(dir, conflict())
+		must(t, err)
+		_, err = Decide(dir, p.ID, "lead", "1", "matches")
+		must(t, err)
+	}
+	if got, err := PacketByID(dir, owed.ID); err != ErrNoPacket {
+		t.Fatalf("a told answer remains after two more rotations: %+v, %v", got, err)
+	}
+}
+
+func TestTodaysCapDecisionSurvivesRotationAndOwedCarryStaysBounded(t *testing.T) {
+	dir := packetTeams(t)
+	old := decisionsRotateBytes
+	decisionsRotateBytes = 3000
+	t.Cleanup(func() { decisionsRotateBytes = old })
+	cap, err := Raise(dir, capAsk(Today(), 5))
+	must(t, err)
+	_, err = Decide(dir, cap.ID, Person, OptionRaiseCap, "carry on")
+	must(t, err)
+	var newest Packet
+	for i := 0; i < 4; i++ {
+		newest, err = Raise(dir, Packet{Team: "bbbbbbbbbbbb", Kind: PacketQuestion, RaisedBy: "web",
+			Question: strings.Repeat("which way now? ", 25)})
+		must(t, err)
+		_, err = Decide(dir, newest.ID, FromManager, "go", "because")
+		must(t, err)
+	}
+	for i := 0; i < 24; i++ {
+		p, err := Raise(dir, conflict())
+		must(t, err)
+		_, err = Decide(dir, p.ID, "lead", "1", "matches")
+		must(t, err)
+	}
+	if got, err := PacketByID(dir, cap.ID); err != nil || got.Decision != OptionRaiseCap || got.Cap.RaiseTo != 10 {
+		t.Fatalf("today's cap decision disappeared: %+v, %v", got, err)
+	}
+	if again, err := Raise(dir, capAsk(Today(), 5)); err != nil || again.ID != cap.ID {
+		t.Fatalf("the same crossing raised again: %+v, %v", again, err)
+	}
+	if got, err := PacketByID(dir, newest.ID); err != nil || got.State != PacketDecided {
+		t.Fatalf("the newest owed answer was not carried: %+v, %v", got, err)
+	}
+	file, err := os.Open(DecisionsPath(dir, "bbbbbbbbbbbb"))
+	must(t, err)
+	defer file.Close()
+	scan := bufio.NewScanner(file)
+	decidedCarry := int64(0)
+	for scan.Scan() {
+		var line decisionEvent
+		if err := json.Unmarshal(scan.Bytes(), &line); err != nil {
+			t.Fatal(err)
+		}
+		if line.Op == opCarry && line.Packet != nil && line.Packet.State == PacketDecided && line.Packet.Kind != PacketCap {
+			decidedCarry += int64(len(scan.Bytes()) + 1)
+		}
+	}
+	if err := scan.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if decidedCarry == 0 || decidedCarry >= decisionsRotateBytes/2 {
+		t.Fatalf("decided carry used %d bytes, want some and no more than half of %d", decidedCarry, decisionsRotateBytes)
 	}
 }
 
