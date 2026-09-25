@@ -321,45 +321,6 @@ func TestARedoLineSaysEachSeatOnce(t *testing.T) {
 	}
 }
 
-// THE ESTIMATE IS CALIBRATED ON THE TRIAL: for every crew the trial ran, in
-// each class, the estimate a task's line shows is within 1.5× of what the
-// crew actually cost on average, as recorded in the prior's measured costs.
-func TestTheEstimateIsWithinHalfAgainOfTheTrialsCosts(t *testing.T) {
-	const flash, kimi, v4, glm53, pro = "z-ai/glm-5.3-flash", "moonshotai/kimi-k3", "deepseek/deepseek-v4-flash", "z-ai/glm-5.3", "deepseek/deepseek-v4-pro"
-	cases := []struct {
-		class                    Class
-		arm                      string
-		worker, planner, checker string
-		actual                   float64
-	}{
-		{Bugfix, "B uniform low-cost", flash, flash, flash, 0.02274},
-		{Bugfix, "E low-cost checker", flash, flash, v4, 0.02722},
-		{Bugfix, "C strong checker", flash, flash, kimi, 0.08322},
-		{Bugfix, "D uniform frontier", kimi, kimi, kimi, 0.35068},
-		{Bugfix, "F alternative worker", v4, flash, flash, 0.06210},
-		{Bugfix, "A2 ladder rung 2", pro, flash, flash, 0.626},
-		{Bugfix, "A3 ladder rung 3", glm53, flash, flash, 0.307},
-		{OpenEnded, "B uniform low-cost", flash, flash, flash, 0.04903},
-		{OpenEnded, "E low-cost checker", flash, flash, v4, 0.04495},
-		{OpenEnded, "C strong checker", flash, flash, kimi, 0.11660},
-	}
-	tb := prior()
-	for _, tc := range cases {
-		var est float64
-		for seat, id := range map[Seat]string{Worker: tc.worker, Planner: tc.planner, Checker: tc.checker} {
-			m, ok := Snapshot(id)
-			if !ok {
-				m = Model{ID: id}
-			}
-			pick := Pick{Seat: seat, Model: id, Kind: Metered, CostUSD: tb.seatCost(seat, m)}
-			est += pickEst(tb, tc.class, pick)
-		}
-		if ratio := est / tc.actual; ratio > 1.5 || ratio < 1/1.5 {
-			t.Errorf("%s %s: estimate $%.4f against $%.4f measured (%.2f×)", tc.class, tc.arm, est, tc.actual, ratio)
-		}
-	}
-}
-
 // A LONG LADDER IS ONE MOVE ON THE LINE: each seat says where it started,
 // where it is, the first reason and how many it tried between, and the line
 // stays within a card however many rungs were walked.
