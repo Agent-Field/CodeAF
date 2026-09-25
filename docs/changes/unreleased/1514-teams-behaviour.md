@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: a member's reply wakes its manager once, team_stop reaches background members, and a demoted manager loses its verbs
+title: one wake per member reply, team_stop reaches background members, a demoted manager loses its verbs
 pr: 1514
 surface: [chat, engine, remote]
 invalidates:
