@@ -3258,8 +3258,8 @@ func (a *app) railDrawnView(height int) ([]railLine, int) {
 	// A NODE ROW THAT CARRIES A RUN IS THAT RUN'S ROW. The door that takes the
 	// run road publishes a node row for the run's own task, naming it
 	// ([taskNode.planTask]) — and an older row is matched by the title it
-	// wears. That row is kept, drawn as the head of a family, and the run's
-	// parts hang under it: one piece of work, one row.
+	// wears. That row is kept, and the run's parts hang under it, a level in:
+	// one piece of work, one row.
 	carrier := make(map[string]int)
 	for _, line := range view {
 		node := nodeOf(line)
@@ -3286,7 +3286,7 @@ func (a *app) railDrawnView(height int) ([]railLine, int) {
 			kids = append(kids, block.self.kids...)
 		}
 		if at, ok := carrier[run]; ok {
-			under[at] = append(under[at], a.planRailLines(kids, entries[at].stems, entries[at].root, width)...)
+			under[at] = append(under[at], a.planRailLines(kids, 1, width)...)
 			continue
 		}
 		if block.self != nil {
@@ -3317,31 +3317,10 @@ func (a *app) railDrawnView(height int) ([]railLine, int) {
 			continue
 		}
 		if node != nil && carried[line.entry] {
-			if !line.head {
-				continue
-			}
-			// THE CARRIER IS DRAWN AGAIN AS THE HEAD OF ITS FAMILY, by the
-			// same renderer, so its under-block keeps the stem the parts
-			// below it hang from.
-			e := entries[line.entry]
-			kids := len(under[line.entry]) > 0
-			if kids && !e.folded {
-				e.root = true
-			}
-			rows, glyph, badge := a.railEntryRows(e, width)
-			for j, text := range rows {
-				redrawn := line
-				redrawn.text, redrawn.head = text, j == 0
-				if j == 0 {
-					redrawn.glyph, redrawn.badge = glyph, badge
-				} else {
-					redrawn.glyph, redrawn.badge = hudSpan{}, hudSpan{}
-				}
-				next = append(next, redrawn)
-			}
-			if !e.folded {
-				next = append(next, under[line.entry]...)
-			}
+			// THE CARRIER KEEPS ITS ONE LINE, and the run's parts hang under
+			// it, a level in: a task on this column is one line (sidecol.go).
+			next = append(next, line)
+			next = append(next, under[line.entry]...)
 			continue
 		}
 		next = append(next, line)
