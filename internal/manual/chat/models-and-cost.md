@@ -713,9 +713,14 @@ continue`, `reconnect openrouter with /connect`, or when the limit resets. What 
 that refused a model is left out for a week, one at its limit rests until its reset, an
 account out of credit is skipped until a paid call on it answers again. Free routes are
 off unless you turn them on; when every paid route is out of reach they are used anyway,
-and the line says `free routes in use (may log prompts)`. A rescue takes a general or a
-code model before one whose name says it was tuned for one domain (finance, medicine,
-law). A task that ran on an account out of credit and failed ends on the credit action,
+and the line says `free routes in use (may log prompts)`. A rescue never takes a model
+whose name says it was tuned for one domain (finance, medicine, law) or is too small for
+a seat's work, and a seat tries at most three free pools in a task; a pool at its limit
+is not waited on — the seat moves on at once, and with nothing left the task stops on
+its action within seconds. The line says each seat's net move — `worker glm-5.3-flash →
+gemma-4-31b-it (limit reached on openrouter) (+3 tried)` — and the router's log keeps
+every rung. A seat that cannot start moves to a model at a similar cost before a
+dearer one. A task that ran on an account out of credit and failed ends on the credit action,
 not on `/redo stronger`. A free pool can be pinned by name —
 `/crew pin worker vendor/model:free` — and picking a model's `free` route in a seat's
 list pins that pool, not the paid route beside it.
@@ -753,8 +758,11 @@ one line:
 your crew is auto now · codeaf picks the worker, planner and checker for each task · /crew to see it
 ```
 
-The preset and pick words, and a seat row that said `auto`, become auto. A seat holding a
-model id **you** wrote stays pinned, and the line names it (`still pinned: …`). A family of
+The preset and pick words, and a seat row that said `auto`, become auto. A seat holding
+any model id stays pinned — even an id an old preset shipped, since nothing on the row
+says which hand wrote it — and a profile with pins is told so instead
+(`kept your pins: worker …, planner …, checker …`). A profile with nothing retired on it
+is not touched. A family of
 `open` becomes the allowed rule `open`; the default family needs no rule.
 
 ### The roles under each row
