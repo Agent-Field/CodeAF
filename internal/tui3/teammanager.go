@@ -349,7 +349,7 @@ func (a *app) teamHoverWords() string {
 	if words := a.teamsPageHint(); words != "" {
 		return words
 	}
-	if words := a.trafficHoverWords(); words != "" {
+	if words := a.sideHoverWords(); words != "" {
 		return words
 	}
 	if words := a.teamLinkHint(); words != "" {

@@ -27,7 +27,7 @@ func TestOneTopBarPlacesAndChatsShareGeometry(t *testing.T) {
 		a, _, _, _ := trafficApp(t)
 		a.open = func(workspace, transcript string) (Conversation, error) { return Conversation{}, nil }
 		a.welcome.open = false
-		a.traffic.hidden = true
+		a.railAway = true
 		a.width, a.height = width, 24
 		a.touch()
 		chat, _, _ := a.frame()

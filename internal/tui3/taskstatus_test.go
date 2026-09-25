@@ -166,6 +166,7 @@ func TestUnlandedEditsAskForAPersonWithoutMovingTheState(t *testing.T) {
 	a := statusApp(t)
 	node := &taskNode{id: 6, state: session.TaskDone, merge: mergeWordConflicted, branch: "task/fix-nil"}
 	a.tasks[6] = node
+	a.taskOrder = append(a.taskOrder, 6)
 	status := a.taskStatus(node)
 	if status.Presence != session.TaskPresenceDone {
 		t.Errorf("presence = %q, want %q", status.Presence, session.TaskPresenceDone)
@@ -176,8 +177,8 @@ func TestUnlandedEditsAskForAPersonWithoutMovingTheState(t *testing.T) {
 	if group := a.railGroupOf(node); group != railAttention {
 		t.Errorf("the roster files unlanded edits under %q", railGroupWords[group])
 	}
-	if rank := a.railGlyphRank(node); rank != 0 {
-		t.Errorf("unlanded edits rank %d, want the loudest", rank)
+	if items := a.sideBand(); len(items) != 1 || !items[0].ask || items[0].key != "task/6" {
+		t.Errorf("unlanded edits are not the band's one amber item: %+v", items)
 	}
 }
 

@@ -42,7 +42,7 @@ func sendRow(a *app, args, output string) {
 func TestThreadCardGrowsAsRepliesLand(t *testing.T) {
 	a, harbor, _, _ := trafficApp(t)
 	a.width, a.height = 160, 40
-	a.traffic.hidden = true
+	a.railAway = true
 	price, _ := trafficHandle(t, a, harbor, "openrouter")
 	rail, _ := trafficHandle(t, a, harbor, "Refactor")
 	q, _ := teamstore.AppendTrafficID(a.profileDir, harbor, teamstore.Entry{Kind: teamstore.KindDirective, From: teamstore.FromManager,
@@ -80,7 +80,7 @@ func TestThreadCardGrowsAsRepliesLand(t *testing.T) {
 func TestThreadCardAnswerExpandsOnPress(t *testing.T) {
 	a, harbor, _, _ := trafficApp(t)
 	a.width, a.height = 160, 40
-	a.traffic.hidden = true
+	a.railAway = true
 	price, priceKey := trafficHandle(t, a, harbor, "openrouter")
 	q, _ := teamstore.AppendTrafficID(a.profileDir, harbor, teamstore.Entry{Kind: teamstore.KindDirective, From: teamstore.FromManager, To: price, Text: "status?"})
 	long := strings.Repeat("every price is checked twice and cached for an hour ", 6) + "END"
@@ -130,7 +130,7 @@ func TestThreadCardAnswerExpandsOnPress(t *testing.T) {
 func TestThreadCardFoldsTheDeliveredAnswers(t *testing.T) {
 	a, harbor, _, _ := trafficApp(t)
 	a.width, a.height = 160, 40
-	a.traffic.hidden = true
+	a.railAway = true
 	price, _ := trafficHandle(t, a, harbor, "openrouter")
 	q, _ := teamstore.AppendTrafficID(a.profileDir, harbor, teamstore.Entry{Kind: teamstore.KindDirective, From: teamstore.FromManager, To: price, Text: "status?"})
 	trafficAppend(t, a, harbor, teamstore.Entry{Kind: teamstore.KindNote, From: price, To: teamstore.ToManager, Text: "prices are cached", Answers: q})

@@ -187,8 +187,9 @@ func (a *app) taskEffortClause(node *taskNode) string {
 // It is the engine's own gate read from outside: a running or queued node in
 // this session's graph, or an ordinary settled node saving its next rung.
 // A node belonging to an adaptive run is outside the graph this door reaches.
-// railHoldHintWord is [railHoldHint] with the rung's chord named in it while the
-// row under the cursor can take one, and [railHoldHint] itself otherwise.
+// railHoldHintWord is [railHoldKeys] and esc, with the rung's chord named in
+// it while the row under the cursor can take one, and led by ←→ in a chat in a
+// team, where they switch the column's two words.
 //
 // AND A ROW THAT IS ASKING TAKES THE WHOLE LINE. A node that landed `needs your
 // look` is the surface standing still waiting for a person, and the three words
@@ -210,10 +211,14 @@ func (a *app) railHoldHintWord() string {
 		// ranked prefix of it that fits, and `esc` is the last thing it gives up.
 		return a.landingHintAt(node.id, a.width, railSep+"esc")
 	}
-	if !a.taskRungMovable(a.railFocusNode()) {
-		return a.chords.say(railHoldHint)
+	keys := railHoldKeys
+	if a.sideKind() != sideKindPlain {
+		keys = sideSwitchKeys + " · " + keys
 	}
-	return a.chords.say(railHoldKeys + " · " + effortKeyClause + " · esc")
+	if !a.taskRungMovable(a.railFocusNode()) {
+		return a.chords.say(keys + " · esc")
+	}
+	return a.chords.say(keys + " · " + effortKeyClause + " · esc")
 }
 
 func (a *app) taskRungMovable(node *taskNode) bool {

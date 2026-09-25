@@ -119,7 +119,7 @@ func TestPlanRowsDrawStoredNowUnderDotsAndRespectAbsenceAndWidth(t *testing.T) {
 		a.refreshElsewhere()
 		return a, a.railRows(a.viewHeight())
 	}
-	a, got := rail(sentence, 150, false)
+	a, got := rail(sentence, 110, false)
 	pal := a.pal
 	text := plain(strings.Join(got, "\n"))
 	if !strings.Contains(text, "reviewing the") {
@@ -159,7 +159,7 @@ func TestPlanRowsDrawStoredNowUnderDotsAndRespectAbsenceAndWidth(t *testing.T) {
 		t.Fatalf("the second now line was not cut with the rail ellipsis:\n%s", text)
 	}
 
-	if _, empty := rail("", 150, false); strings.Contains(plain(strings.Join(empty, "\n")), "reviewing") {
+	if _, empty := rail("", 110, false); strings.Contains(plain(strings.Join(empty, "\n")), "reviewing") {
 		t.Fatal("an empty now sentence left a summary row behind")
 	}
 }

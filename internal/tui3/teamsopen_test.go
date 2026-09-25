@@ -241,9 +241,11 @@ func TestTeamsHostedTrafficRowGoesToTheMember(t *testing.T) {
 	if !a.teamsHosting() {
 		t.Fatalf("the pane does not host harbor's manager:\n%s", teamsFrameText(a))
 	}
+	// The note answers nothing, so it is a line under General, laid open.
+	a.sideToggleThread(sideThreadKey(harbor, sideGeneral))
 	frame, _, _ := a.frame()
 	rows := strings.Split(ansi.Strip(frame), "\n")
-	cols := a.trafficWidth()
+	cols := a.railWidth()
 	// THE RAIL IS THREADS: the member's handle heads the thread and opens it,
 	// and the words under it are a door of their own.
 	at, x := -1, -1

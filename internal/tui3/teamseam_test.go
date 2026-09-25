@@ -181,8 +181,8 @@ func TestTeamsOverAHostedSeamRefuseNothingAndLeaveTheLaptopFileAlone(t *testing.
 	if _, err := os.Stat(teamsPath(laptop)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("the laptop's teams file was touched: %v", err)
 	}
-	if !a.trafficWanted() || !a.trafficOn() {
-		t.Fatal("the manager in front over --host has no clock or no rail")
+	if !a.trafficWanted() || a.sideKind() != sideKindManager {
+		t.Fatal("the manager in front over --host has no clock or no Traffic")
 	}
 	handle := ""
 	for _, m := range on[0].Members {
@@ -198,7 +198,15 @@ func TestTeamsOverAHostedSeamRefuseNothingAndLeaveTheLaptopFileAlone(t *testing.
 	trafficReadNow(t, a)
 	rows := a.traffic.rows[id]
 	if len(rows) != 1 || rows[0].Text != "take the lexer" {
-		t.Fatalf("the rail over --host holds %+v", rows)
+		t.Fatalf("the cache over --host holds %+v", rows)
+	}
+	// AND THE SIDE COLUMN DRAWS IT FROM THAT CACHE: the manager's Traffic in
+	// front, the directive a row of work, and the frames that draw it write
+	// nothing on the laptop.
+	a.width, a.height = 160, 40
+	a.welcome.open = false
+	if col := strings.Join(railLines(t, a), "\n"); !strings.Contains(col, "take the lexer") || a.sideView() != sideTraffic {
+		t.Fatalf("the column over --host does not draw the engine's Traffic:\n%s", col)
 	}
 	if entries, _ := os.ReadDir(laptop); len(entries) != 0 {
 		t.Fatalf("the laptop's profile holds %v", entries)

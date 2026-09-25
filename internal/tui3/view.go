@@ -521,9 +521,7 @@ func (a *app) chatFrameLines(width, height int) ([]string, int, int) {
 		rows = append(rows, lifted...)
 		return a.frameLines(rows, chrome, height, caretX, caretRow, lift, liftedAt)
 	}
-	// AND THE TRAFFIC RAIL BESIDE IT while the manager is in front, joined
-	// onto the task column's rows so one join lays both (teamtraffic.go).
-	rail := a.trafficBeside(a.railRows(view), view)
+	rail := a.railRows(view)
 	railAt := func(i int) string {
 		if i < len(rail) {
 			return rail[i]
@@ -562,14 +560,6 @@ func (a *app) chatFrameLines(width, height int) ([]string, int, int) {
 	// is two rows of body and thirty of pad, and a card centred in the body would
 	// sit at the top of an empty screen. What it is centred in is what a person
 	// sees, which is the region.
-	// ON A NARROW FRAME THE TRAFFIC IS LAID OVER THE BODY when the person asked
-	// for it (teamrail.go): a card over the lower rows, with the top of the
-	// conversation still drawn above it, and a press on a row of it is a press
-	// on it.
-	if a.trafficOverShowing() {
-		body, pad = a.trafficOverBody(body, pad, view)
-		selOn = false
-	}
 	if a.hopShowing() {
 		texts := make([]string, view)
 		for i, r := range body {
