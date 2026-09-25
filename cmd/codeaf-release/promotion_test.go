@@ -231,12 +231,19 @@ func TestC6ToC11PromotionMessages(t *testing.T) {
 	if !strings.Contains(absent, "no release run appeared") || strings.Contains(absent, "(absent)") {
 		t.Fatal(absent)
 	}
-	plan.Staging = base
+	blank, _ := message(plan, "push", "", "", "  \n", "", "", "", "", false, repo)
+	if strings.Contains(blank, "refused:") || strings.Contains(blank, ": .") || !strings.Contains(blank, "without a reason from git") {
+		t.Fatal(blank)
+	}
+	candidate := plan.Candidate
+	plan.Staging = candidate
 	plan.Outcome = "current"
 	current, _ := message(plan, "plan", "", "", "", "", "", "", "", false, repo)
 	if !strings.HasPrefix(current, "*staging is already current*") || !strings.Contains(current, "Nothing new on dev") || strings.Contains(current, "at the cutoff") {
 		t.Fatal(current)
 	}
+	plan.Staging = base
+	plan.Candidate = candidate
 	plan.Outcome = "diverged"
 	diverged, _ := message(plan, "plan", "", "", "", "", "", "", "", false, repo)
 	if !strings.HasPrefix(diverged, "*staging did not move*") || !strings.Contains(diverged, "nothing was forced") {
@@ -320,6 +327,36 @@ func TestC9ReleaseRunClassification(t *testing.T) {
 				t.Fatalf("%s: %+v %v", row.json, got, err)
 			}
 		})
+	}
+}
+
+// R2: When staging has already moved past the cutoff commit, the plan leaves it
+// alone and says so, without claiming dev has nothing new — dev can carry commits
+// after the cutoff that staging has not seen.
+func TestStagingPastTheCutoffIsNotNothingNewOnDev(t *testing.T) {
+	repo, _, _, at := promotionFixture(t)
+	late := strings.TrimSpace(fixtureGit(t, repo, "2026-09-18T12:00:00Z", "rev-parse", "refs/remotes/origin/dev"))
+	fixtureGit(t, repo, "2026-09-18T12:00:00Z", "update-ref", "refs/remotes/origin/staging", late)
+	plan, err := planPromotion(repo, instant(t, "2026-09-26T12:00:00Z"), "America/Toronto", "Friday", "17:00", "cutoff", "https://example.test/run")
+	if err != nil || plan.Outcome != "current" || plan.Candidate != at || plan.Staging != late {
+		t.Fatalf("plan = %+v, %v", plan, err)
+	}
+	msg, _ := message(plan, "plan", "", "", "", "", "", "", "", false, repo)
+	if !strings.HasPrefix(msg, "*staging is already current*") || strings.Contains(msg, "Nothing new on dev") || !strings.Contains(msg, "already past `"+short(at)+"`") || !strings.Contains(msg, "stays on `"+short(late)+"`") {
+		t.Fatal(msg)
+	}
+}
+
+// R3: An empty push log is an error from the reader rather than an empty line
+// that would be quoted as the reason.
+func TestEmptyPushLogIsAnError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "push.log")
+	if err := os.WriteFile(path, []byte("\n  \n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	if err := runPromotionPushError([]string{"--file", path}, &out); err == nil || out.String() != "" {
+		t.Fatalf("empty log printed %q, err %v", out.String(), err)
 	}
 }
 

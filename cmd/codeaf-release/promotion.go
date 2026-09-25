@@ -388,15 +388,16 @@ func runPromotionPushError(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	text := strings.TrimSpace(string(raw))
+	if text == "" {
+		return errors.New("git push failed without an error line")
+	}
+	lines := strings.Split(text, "\n")
 	for _, line := range lines {
 		if strings.Contains(line, "error:") || strings.Contains(line, "fatal:") || strings.Contains(line, "remote:") || strings.Contains(line, "[remote rejected]") {
 			_, err = fmt.Fprintln(out, line)
 			return err
 		}
-	}
-	if len(lines) == 0 {
-		return errors.New("git push failed without an error line")
 	}
 	_, err = fmt.Fprintln(out, lines[0])
 	return err
@@ -572,7 +573,14 @@ func message(plan PromotionPlan, phase, checkResult, jobs, pushError, releaseSta
 	case "plan":
 		switch plan.Outcome {
 		case "current":
-			body = fmt.Sprintf("*staging is already current* — Nothing new on dev; staging stays on `%s`. %s", short(plan.Staging), context)
+			// A plan is current when staging already holds the candidate, which
+			// includes staging having moved past it; only the first means dev has
+			// nothing new, because dev may carry commits after the cutoff.
+			if plan.Candidate == "" || plan.Staging == plan.Candidate {
+				body = fmt.Sprintf("*staging is already current* — Nothing new on dev; staging stays on `%s`. %s", short(plan.Staging), context)
+			} else {
+				body = fmt.Sprintf("*staging is already current* — staging is already past %s; staging stays on `%s`.", context, short(plan.Staging))
+			}
 		case "diverged":
 			body = fmt.Sprintf("*staging did not move* — `%s` and `%s` diverged; nothing was forced. A person has to look. %s", short(plan.Staging), id, context)
 		case "off-dev":
@@ -606,7 +614,14 @@ func message(plan PromotionPlan, phase, checkResult, jobs, pushError, releaseSta
 			if token := os.Getenv("PROMOTION_TOKEN"); token != "" {
 				first = strings.ReplaceAll(first, token, "[token]")
 			}
-			body = fmt.Sprintf("*staging did not move* — Push of %s was refused: %s. Run `git push origin %s:staging` by hand after checking the refs.", context, escapeSlack(first), plan.Candidate)
+			// The workflow passes whatever the error reader printed, and it prints
+			// nothing when git left an empty log, so an empty reason is named rather
+			// than drawn as a bare colon.
+			reason := ": " + escapeSlack(first)
+			if first == "" {
+				reason = " without a reason from git"
+			}
+			body = fmt.Sprintf("*staging did not move* — Push of %s was refused%s. Run `git push origin %s:staging` by hand after checking the refs.", context, reason, plan.Candidate)
 		}
 	case "release":
 		if releaseStatus == "success" && releaseTag != "" {
