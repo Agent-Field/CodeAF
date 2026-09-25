@@ -183,13 +183,14 @@ func (c Config) assistedByModel() string {
 }
 
 // gitSignature is how the harness signs a commit it writes ITSELF — a node's
-// landing, a family's frozen world, a stopped run kept on its branch — and it
-// is the same two trailer lines the model is told to write
+// landing, a family's frozen world, a stopped run kept on its branch — and
+// completes the lines on private worker commits before a run lands. It uses
+// the same two trailer lines the model is told to write
 // (internal/exec's [exec.AttributionTrailers]).
 //
-// ITS ZERO VALUE STILL SIGNS, with the bare `Assisted-by: CodeAF` line. There is
-// no value of this type that leaves a commit unsigned, because the signature has
-// no off; what it carries is only whether the line names a model and which.
+// ITS ZERO VALUE STILL SIGNS, with the bare `Assisted-by: CodeAF` line. The
+// repository's CONTRIBUTING rule is checked at the commit door, not represented
+// by a value here. This value carries only whether the line names a model.
 type gitSignature struct {
 	// named is the person's `attribution.model` row: whether the line names
 	// the model at all.
@@ -240,6 +241,16 @@ func (s gitSignature) sign(message string) string {
 		model = s.model
 	}
 	return exec.SignCommitMessage(message, model)
+}
+
+// signOnce preserves lines a worker already wrote and supplies only the
+// missing attribution, through the same model choice as the harness's commits.
+func (s gitSignature) signOnce(message string) string {
+	model := ""
+	if s.named {
+		model = s.model
+	}
+	return exec.SignCommitMessageOnce(message, model)
 }
 
 // signsGitWork is the signature a live agent's own commits carry, off the same

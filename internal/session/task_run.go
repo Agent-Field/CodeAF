@@ -9139,8 +9139,11 @@ func commitTaskWorkAs(dir, message string, wrote []string, sign gitSignature, ba
 		// what it always held.
 		return nil, "", refusedNothing, nil
 	}
+	if !repositoryRefusesTrailers(dir) {
+		message = signed(message, sign)
+	}
 	if out, err := git(dir, append(codeafGitIdentity(),
-		"commit", "--no-verify", "-m", signed(message, sign))...); err != nil {
+		"commit", "--no-verify", "-m", message)...); err != nil {
 		// A COMMIT THAT WOULD NOT GO IS USUALLY ABOUT THE COMMIT — a signature it
 		// could not make, a ref it could not lock, a rule the repository holds —
 		// and those are refusals a second answer can get past. Which of the two
@@ -9163,9 +9166,8 @@ func commitTaskWorkAs(dir, message string, wrote []string, sign gitSignature, ba
 // [exec.AttributionLaw]); this is the other half, and it is mechanical because
 // there is no model in the loop here to tell.
 //
-// IT ALWAYS SIGNS, with the same two lines the model is told to write — one
-// blank line, `Assisted-by`, then the co-author, and nothing else
-// ([gitSignature.sign]). There is no off: the row that was one is gone.
+// THE REPOSITORY'S CONTRIBUTING RULE IS THE EXCEPTION. The caller checks it
+// before applying this signature; there is no setting that turns it off.
 //
 // AND THE AUTHOR DOES NOT MOVE. These commits stay authored as
 // codeaf <agentfield-bot@users.noreply.github.com> ([codeafGitIdentity]) rather

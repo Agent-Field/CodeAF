@@ -60,7 +60,7 @@ func TestLandCommitsTheRunsWorkOntoItsBranch(t *testing.T) {
 		t.Fatalf("outcome = %q, want done", outcome)
 	}
 
-	landing, err := run.Land(ctx, store, work, store.RootID())
+	landing, err := run.Land(ctx, store, work, base, store.RootID())
 	if err != nil {
 		t.Fatalf("Land: %v", err)
 	}
@@ -102,6 +102,7 @@ func TestLandCommitsTheRunsWorkOntoItsBranch(t *testing.T) {
 func TestLandRefusesARunThatWroteNothing(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	repo, work := runLandWorkspace(t)
+	base := strings.TrimSpace(runGitOut(t, repo, "rev-parse", "work"))
 	store := runOpenStore(t)
 	ctx := runContext(t)
 	before := runGitOut(t, repo, "branch", "--format=%(refname:short)")
@@ -110,7 +111,7 @@ func TestLandRefusesARunThatWroteNothing(t *testing.T) {
 		t.Fatalf("outcome = %q, want done", outcome)
 	}
 
-	landing, err := run.Land(ctx, store, work, store.RootID())
+	landing, err := run.Land(ctx, store, work, base, store.RootID())
 	if err != nil {
 		t.Fatalf("Land: %v", err)
 	}
@@ -126,6 +127,121 @@ func TestLandRefusesARunThatWroteNothing(t *testing.T) {
 	}
 	if notes := store.Notes(store.RootID(), 0); len(notes) == 0 || notes[len(notes)-1].Body != landing.Refused {
 		t.Fatalf("the root's notes = %v, want the refusal sentence", notes)
+	}
+}
+
+// Contracts 1, 5 and 7: the real supervisor's worker commits on its branch;
+// landing signs that commit, leaves its identity and hook alone, and counts its
+// changed path even when the worker left no uncommitted work.
+func TestLandSignsWorkerCommitAndNamesCommittedWork(t *testing.T) {
+	for _, leftover := range []bool{false, true} {
+		name := "committed only"
+		if leftover {
+			name = "committed and leftover"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("CODEAF_TASK_BELT", "bash")
+			repo, work := runLandWorkspace(t)
+			base := strings.TrimSpace(runGitOut(t, repo, "rev-parse", "work"))
+			hooks := strings.TrimSpace(runGitOut(t, work, "rev-parse", "--git-path", "hooks"))
+			if !filepath.IsAbs(hooks) {
+				hooks = filepath.Join(work, hooks)
+			}
+			marker := filepath.Join(t.TempDir(), "hook-ran")
+			hookConfigBefore := runGitOut(t, work, "config", "--local", "--list")
+			writeRunFile(t, filepath.Join(hooks, "pre-commit"), "#!/bin/sh\nprintf ran >> '"+marker+"'\n")
+			if err := os.Chmod(filepath.Join(hooks, "pre-commit"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			store := runOpenStore(t)
+			seat := newFakeSeat()
+			seat.actions["root"] = func(_ context.Context, _ plandb.Task) (run.Report, error) {
+				writeRunFile(t, filepath.Join(work, "worker.txt"), "worker\n")
+				runGit(t, work, "add", "worker.txt")
+				runGit(t, work, "-c", "user.name=Worker", "-c", "user.email=worker@example.test", "commit", "-m", "worker")
+				if leftover {
+					writeRunFile(t, filepath.Join(work, "leftover.txt"), "leftover\n")
+				}
+				return run.Report{Result: "worker finished"}, nil
+			}
+			if got := run.NewSupervisor(store, work, 1, run.Limits{}, seat.workerFor).Run(runContext(t)); got != run.OutcomeDone {
+				t.Fatalf("run outcome = %q", got)
+			}
+			if _, err := os.Stat(marker); err != nil {
+				t.Fatalf("pre-commit hook did not run: %v", err)
+			}
+			landing, err := run.Land(runContext(t), store, work, base, store.RootID())
+			if err != nil || landing.Refused != "" || landing.Branch != "run-work" {
+				t.Fatalf("landing = %+v, %v", landing, err)
+			}
+			if data, err := os.ReadFile(marker); err != nil || string(data) != "ran" {
+				t.Fatalf("landing ran the worker's hook again: %q, %v", data, err)
+			}
+			if hookConfigAfter := runGitOut(t, work, "config", "--local", "--list"); hookConfigAfter != hookConfigBefore {
+				t.Fatalf("landing changed the repository's git config:\n%s\n--- before ---\n%s", hookConfigAfter, hookConfigBefore)
+			}
+			want := []string{"worker.txt"}
+			if leftover {
+				want = []string{"leftover.txt", "worker.txt"}
+			}
+			if !reflect.DeepEqual(landing.Changed, want) {
+				t.Fatalf("changed = %v, want %v", landing.Changed, want)
+			}
+			workerRev := "run-work"
+			if leftover {
+				workerRev += "~1"
+			}
+			message := runGitOut(t, work, "log", "-1", "--format=%B", workerRev)
+			if !strings.HasSuffix(message, "\n\nAssisted-by: CodeAF\nCo-Authored-By: CodeAF <267109073+agentfield-bot@users.noreply.github.com>\n") || strings.Count(message, "Assisted-by: CodeAF") != 1 {
+				t.Fatalf("worker commit was not signed once: %q", message)
+			}
+			if who := strings.TrimSpace(runGitOut(t, work, "log", "-1", "--format=%an <%ae>|%cn <%ce>", workerRev)); who != "Worker <worker@example.test>|Worker <worker@example.test>" {
+				t.Fatalf("worker identity changed: %q", who)
+			}
+			if leftover {
+				message := runGitOut(t, work, "log", "-1", "--format=%B", "run-work")
+				if strings.Count(message, "Assisted-by: CodeAF") != 1 || strings.Count(message, "Co-Authored-By: CodeAF") != 1 {
+					t.Fatalf("landing commit was not signed once: %q", message)
+				}
+			}
+			if now := strings.TrimSpace(runGitOut(t, repo, "rev-parse", "work")); now != base {
+				t.Fatalf("person's earlier commit moved: %s -> %s", base, now)
+			}
+			note := "landed on run-work: 1 file"
+			if leftover {
+				note = "landed on run-work: 2 files"
+			}
+			if notes := store.Notes(store.RootID(), 0); len(notes) == 0 || notes[len(notes)-1].Body != note {
+				t.Fatalf("notes = %v, want %q", notes, note)
+			}
+		})
+	}
+}
+
+// Contract 7: the run note names a file from committed work even if a later
+// worker commit reverted its net tree change.
+func TestLandNamesCommittedThenRevertedWork(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	repo, work := runLandWorkspace(t)
+	base := strings.TrimSpace(runGitOut(t, repo, "rev-parse", "work"))
+	store := runOpenStore(t)
+	seat := newFakeSeat()
+	seat.actions["root"] = func(_ context.Context, _ plandb.Task) (run.Report, error) {
+		writeRunFile(t, filepath.Join(work, "reverted.txt"), "one\n")
+		runGit(t, work, "add", "reverted.txt")
+		runGit(t, work, "-c", "user.name=Worker", "-c", "user.email=worker@example.test", "commit", "-m", "add reverted")
+		runGit(t, work, "-c", "user.name=Worker", "-c", "user.email=worker@example.test", "revert", "--no-edit", "HEAD")
+		return run.Report{Result: "reverted"}, nil
+	}
+	if got := run.NewSupervisor(store, work, 1, run.Limits{}, seat.workerFor).Run(runContext(t)); got != run.OutcomeDone {
+		t.Fatalf("run outcome = %q", got)
+	}
+	landing, err := run.Land(runContext(t), store, work, base, store.RootID())
+	if err != nil || landing.Refused != "" || landing.Branch != "run-work" || !reflect.DeepEqual(landing.Changed, []string{"reverted.txt"}) {
+		t.Fatalf("landing = %+v, %v", landing, err)
+	}
+	if notes := store.Notes(store.RootID(), 0); len(notes) == 0 || notes[len(notes)-1].Body != "landed on run-work: 1 file" {
+		t.Fatalf("landing notes = %v", notes)
 	}
 }
 

@@ -18,7 +18,7 @@ import (
 
 // The notices' own tests (notice.go, notice_ledger.go): the table check, the
 // ledger's promises, the arbitration as a pure thing, and then the whole road
-// through the app — a hint arming on its moment, drawing at the lowest rung,
+// through the app — a hint arming on its moment, drawing on the keys row,
 // retiring on its gesture, and staying retired across a restart.
 
 // ── the table ───────────────────────────────────────────────────────────────
@@ -133,13 +133,20 @@ func TestAHintAgesOutAcrossOrdinaryLaunches(t *testing.T) {
 	// The task tip is the one a first exchange arms highest (notice.go's
 	// table); `/ shows every command` stood here until both feet said it.
 	const hint = "task-in-chat"
-	// A SHOWING ON THE CONVERSATION'S ROW IS THE SLOT TAKING THE TIP, counted
-	// once per session however many events re-decide it — so each launch is one
-	// turn ending, and the ledger on disk has one more showing after it.
+	// A SHOWING ON THE CONVERSATION'S ROW IS THE KEYS ROW DRAWING THE TIP,
+	// counted once per session however many events re-decide it — so each
+	// launch is one turn ending and one frame, and the ledger on disk has one
+	// more showing after it.
+	drawn := func(a *app) {
+		frame(a)
+		drive(t, a, chatTipDueMsg{})
+	}
 	launch := func() *app {
 		a := noticeApp(t, "")
+		a.width = 160
 		a.turn = 1
 		a.noticeEvent(eventTurnEnded)
+		drawn(a)
 		return a
 	}
 	for session := 1; session <= noticeShownDefault; session++ {
@@ -149,6 +156,7 @@ func TestAHintAgesOutAcrossOrdinaryLaunches(t *testing.T) {
 		}
 		// A second event in the same session counts nothing more.
 		a.noticeEvent(eventTurnEnded)
+		drawn(a)
 		if got := loadNoticeLedger(noticeLedgerPath("")).shown(hint); got != session {
 			t.Fatalf("after launch %d the ledger on disk counts %d showings", session, got)
 		}
@@ -524,8 +532,8 @@ func makeDeliverable(t *testing.T, a *app) {
 	a.exportDone(exportedMsg{path: filepath.Join(t.TempDir(), "talk.md")})
 }
 
-// THE WHOLE ROAD. A hint arms on its moment, draws in the hint slot and only at
-// the lowest rung there, retires on the gesture it teaches, and is still
+// THE WHOLE ROAD. A hint arms on its moment, draws in the hint slot on the keys
+// row, retires on the gesture it teaches, and is still
 // retired when the surface comes up again over the same profile.
 func TestAHintArmsDrawsLowestRetiresAndStaysRetired(t *testing.T) {
 	a, dir := sheetApp(t)
@@ -540,14 +548,11 @@ func TestAHintArmsDrawsLowestRetiresAndStaysRetired(t *testing.T) {
 	if got := a.notices.current[slotHint]; got != "files-after-first-deliverable" {
 		t.Fatalf("an export landing armed %q", got)
 	}
-	// AND IT IS UP THE MOMENT IT ARMS, on the keys row at the foot: the
-	// conversation's tip is on no clock (chattip_test.go holds the whole of
-	// where it draws).
+	// AND IT IS UP THE MOMENT IT ARMS on a window nothing has stirred yet
+	// (chattip_test.go holds the whole of where it draws and the quiet it
+	// waits for).
 	if got := a.noticeHint(); got != deliverTip {
 		t.Fatalf("the tip row reads %q, want the tip", got)
-	}
-	if got := plain(a.footHint(a.width)); !strings.Contains(got, deliverTip) {
-		t.Fatalf("the keys row does not carry the tip: %q", got)
 	}
 	if !strings.Contains(plain(frame(a)), deliverTip) {
 		t.Fatalf("the tip is not on the frame:\n%s", plain(frame(a)))
@@ -688,6 +693,15 @@ func TestEveryRetireEventIsProvedByItsGesture(t *testing.T) {
 		eventSubharnessOpened: func(t *testing.T, a *app) { a.slash("/subharness") },
 		eventConnectOpened:    func(t *testing.T, a *app) { a.slash("/connect") },
 		eventAutonomyAsked:    func(t *testing.T, a *app) { a.slash("/autonomy") },
+		eventHomeGesture: func(t *testing.T, a *app) {
+			// A door that can open a conversation is what opens home at all
+			// ([app.homeDoorOpen]); the bare test app has none.
+			a.open = func(string, string) (Conversation, error) { return Conversation{}, nil }
+			drive(t, a, key(" "), key(" "))
+			if !a.at(pageHome) {
+				t.Fatal("two spaces did not open home")
+			}
+		},
 	}
 	for _, name := range noticeEvents {
 		if name == eventBoot {
@@ -1024,15 +1038,21 @@ func TestTheConversationsSlotChangesHandsSlowly(t *testing.T) {
 	}
 }
 
-// A TIP IS COUNTED ONCE PER SESSION ON THE CONVERSATION'S ROW, however many
-// events re-decide the slot, and its last allowed showing retires it for the
-// sessions after while leaving it up for this one.
+// A TIP IS COUNTED ONCE PER SESSION ON THE CONVERSATION'S ROW, when the row
+// draws it and never when the slot merely takes it, however many times it is
+// drawn; and its last allowed showing retires it for the sessions after while
+// leaving it up for this one.
 func TestTheConversationsRowCountsOnceASession(t *testing.T) {
 	b := freshBoard()
 	limit := fixedLimit(2)
 	b.take(slotHint, "tip", false, time.Time{}, limit, 1)
+	if got := b.ledger.shown("tip"); got != 0 {
+		t.Fatalf("the slot taking a tip nobody has seen counted %d showings", got)
+	}
+	b.seenOnce("tip", 2)
 	b.take(slotHint, "", false, time.Time{}, limit, 2)
 	b.take(slotHint, "tip", false, time.Time{}, limit, 3)
+	b.seenOnce("tip", 2)
 	if got := b.ledger.shown("tip"); got != 1 {
 		t.Fatalf("one session counted %d showings", got)
 	}
@@ -1044,6 +1064,7 @@ func TestTheConversationsRowCountsOnceASession(t *testing.T) {
 	next := newNoticeBoard("", "", true)
 	next.ledger = b.ledger
 	next.take(slotHint, "tip", false, time.Time{}, limit, 1)
+	next.seenOnce("tip", 2)
 	if !next.retired("tip") {
 		t.Fatal("the last allowed showing did not retire the notice")
 	}

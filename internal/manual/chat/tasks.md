@@ -1957,6 +1957,8 @@ open. Settled families and families containing only waiting work start folded to
 root; the root then carries the family's aggregate state glyph and a `▸ +N` badge for the
 hidden descendants.
 
+## Where did the workers go on the task page — find them as rows under their task
+
 **Workers under a task are the family's own rows and nothing else** — there is no second,
 smaller list drawn beneath a row. A task that split itself into parts, and an
 adaptive run and its workers, each announce themselves as tasks with a parent, so every one

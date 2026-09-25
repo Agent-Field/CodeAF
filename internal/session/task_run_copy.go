@@ -53,6 +53,9 @@ type TaskCopyRecord struct {
 	// was going.
 	Home    string `json:"home,omitempty"`
 	HomeSha string `json:"homeSha,omitempty"`
+	// CheckBase is the commit at the run's start. Old records have none and
+	// their worker commits are left as written when the run resumes.
+	CheckBase string `json:"checkBase,omitempty"`
 	// Rung is which rung of the ground ladder made this world and Seal is the
 	// one string that names it, carried for the reason a node carries them: a
 	// landing outlives the run that made the world.
@@ -78,6 +81,7 @@ func runCopyOf(tree taskTree) *TaskCopyRecord {
 		Mode:      tree.mode,
 		Home:      tree.home,
 		HomeSha:   tree.homeSha,
+		CheckBase: tree.checkBase,
 		Rung:      tree.rung,
 		Seal:      tree.seal,
 		Continues: tree.continues,
@@ -152,16 +156,17 @@ func runCopyTree(record *TaskCopyRecord, place Place) (taskTree, error) {
 		return taskTree{}, fmt.Errorf("its working copy is gone from %s, so there is nothing left to carry on in", dir)
 	}
 	return taskTree{
-		dir:     dir,
-		root:    record.Root,
-		branch:  record.Branch,
-		home:    record.Home,
-		homeSha: record.HomeSha,
-		ground:  record.Ground,
-		mode:    record.Mode,
-		rung:    record.Rung,
-		seal:    record.Seal,
-		place:   place,
+		dir:       dir,
+		root:      record.Root,
+		branch:    record.Branch,
+		home:      record.Home,
+		homeSha:   record.HomeSha,
+		checkBase: record.CheckBase,
+		ground:    record.Ground,
+		mode:      record.Mode,
+		rung:      record.Rung,
+		seal:      record.Seal,
+		place:     place,
 		// A SHELL WORKER'S COPY, which is what a run's always is: its workers
 		// edit through bash and fill no write ledger (task_run_belt.go states it
 		// where the copy is first made).
