@@ -9357,6 +9357,13 @@ func beltTreeWork(dir string) []string {
 		if harnessWrote(path) {
 			continue
 		}
+		// AN UNTRACKED BUILD CACHE IS NOT THE WORK EITHER, and it is a
+		// separate, narrower question ([buildCache]): exact cache names, and
+		// only for a file git has never been told about. A tracked cache that
+		// changed, or one the worker staged itself, is not `??` and lands.
+		if entry.Code == "??" && buildCache(path) {
+			continue
+		}
 		paths = append(paths, literalPathspec+path)
 	}
 	return paths

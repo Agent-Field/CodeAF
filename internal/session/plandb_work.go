@@ -150,8 +150,11 @@ func readPlanWork(copied *TaskCopyRecord) PlanTaskWork {
 		}
 		work.Patch, work.Cut = planWorkPatch(patch)
 		if out, err := git(work.Dir, "ls-files", "--others", "--exclude-standard", "-z", "--", "."); err == nil {
+			// An untracked build cache is left out as the landing leaves it
+			// out ([buildCache]), so the tab never previews a file that will
+			// not come home.
 			for _, name := range gitNULPaths(out) {
-				if !harnessWrote(filepath.ToSlash(name)) {
+				if !harnessWrote(filepath.ToSlash(name)) && !buildCache(filepath.ToSlash(name)) {
 					work.Added = append(work.Added, name)
 				}
 			}

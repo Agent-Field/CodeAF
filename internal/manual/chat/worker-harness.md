@@ -43,8 +43,9 @@ names it, for example `its branch <branch> was kept`, when your checkout moved o
 the copy was cut. A run whose workers committed everything still names its
 branch and changed files; codeaf signs those commits before the work comes home.
 A file lands under its own name whatever characters it holds, including spaces, quotes,
-accents or a newline; only codeaf's own `plandb.db` and the files beside it, and
-`.codeaf/` files, stay out of the landing commit.
+accents or a newline; only codeaf's own `plandb.db` and the files beside it, `.codeaf/`
+files, and untracked build caches stay out of the landing commit (see *Why a task's
+commit has no __pycache__* below).
 A run that only read says `nothing to land: the run's working copy holds no change`
 and changes no file. The
 landing card says `merged` when the work is in your folder and `branch kept` only for a
@@ -56,6 +57,26 @@ row the run was published under settles `done` when the run finished whole and
 **With the switch unset, this is the road `/task` takes.** Set
 `CODEAF_TASK_BELT=node` to use the older session tree road instead. See *How
 to turn it off*.
+
+## Why a task's commit has no __pycache__ or .pyc files, and no scratch files — what a landing leaves out
+
+A run's landing commits the files its copy holds, except three kinds:
+
+- codeaf's own files: `plandb.db` and the files beside it, and `.codeaf/`;
+- **untracked build caches**, the ones the interpreter and the test tools write while a
+  worker runs your tests: `__pycache__/`, `*.pyc`, `.pytest_cache/`, `.mypy_cache/`,
+  `.ruff_cache/` and `.DS_Store`. These are matched by exact name, never by resemblance, so
+  `poetry.lock`, `bench-results/` or `pycache_notes.md` still land;
+- nothing else.
+
+**A cache your repository already tracks still lands when it changes**, and so does one the
+worker staged with `git add` or committed itself. Only a cache file git has never been told
+about stays out. The task's `work` tab leaves the same files out of its list, so it never
+shows a file that will not come home.
+
+**Scratch copies are the worker's to clean up.** A worker is told to delete every scratch
+file it made in its copy before it reports done, because anything left there lands on your
+branch.
 
 ## The tasks pane and a task's page
 

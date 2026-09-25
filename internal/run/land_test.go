@@ -164,6 +164,82 @@ func TestLandKeepsEveryRealFilename(t *testing.T) {
 	}
 }
 
+// A LANDING LEAVES OUT UNTRACKED BUILD CACHES AND NOTHING ELSE (contract 5a, 5b
+// and 5c). A fresh-install run in a Python repository with no .gitignore landed
+// the interpreter's new `__pycache__/*.pyc` files beside its one-line fix. The
+// caches a run leaves untracked stay out; a cache file the repository already
+// tracks, and one the worker staged itself, are work and land; and every name
+// that merely resembles a cache — a lockfile, a folder the project owns, a file
+// whose name contains the word — lands as it always did.
+func TestLandLeavesOutUntrackedBuildCachesOnly(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	repo := t.TempDir()
+	runGit(t, repo, "init")
+	runGit(t, repo, "checkout", "-b", "work")
+	writeRunFile(t, filepath.Join(repo, "calc.py"), "def add(a, b):\n    return a - b\n")
+	writeRunFile(t, filepath.Join(repo, "__pycache__", "calc.cpython-310.pyc"), "tracked cache\n")
+	runGit(t, repo, "add", "calc.py", "__pycache__/calc.cpython-310.pyc")
+	runGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "seed")
+	base := strings.TrimSpace(runGitOut(t, repo, "rev-parse", "work"))
+	work := filepath.Join(t.TempDir(), "run")
+	runGit(t, repo, "worktree", "add", "-b", "run-work", work, "HEAD")
+	store := runOpenStore(t)
+	lands := map[string]string{
+		"calc.py":                          "def add(a, b):\n    return a + b\n",
+		"__pycache__/calc.cpython-310.pyc": "recompiled\n",
+		"notes/.DS_Store":                  "staged on purpose\n",
+		"poetry.lock":                      "lock\n",
+		"package-lock.json":                "{}\n",
+		"bench-results/x":                  "result\n",
+		"pycache_notes.md":                 "notes\n",
+		"src/__pycache__helper.py":         "helper\n",
+		"my.pyc.txt":                       "text\n",
+		"DS_Store.md":                      "doc\n",
+	}
+	caches := []string{
+		"__pycache__/test_calc.cpython-310.pyc",
+		"pkg/__pycache__/m.pyc",
+		".pytest_cache/v/cache/nodeids",
+		".mypy_cache/x",
+		".ruff_cache/x",
+		".DS_Store",
+		"lib/old.pyc",
+	}
+	seat := newFakeSeat()
+	seat.actions["root"] = func(_ context.Context, _ plandb.Task) (run.Report, error) {
+		for path, content := range lands {
+			writeRunFile(t, filepath.Join(work, path), content)
+		}
+		for _, path := range caches {
+			writeRunFile(t, filepath.Join(work, path), "cache\n")
+		}
+		runGit(t, work, "add", "notes/.DS_Store")
+		return run.Report{Result: "fixed add"}, nil
+	}
+	ctx := runContext(t)
+	if got := run.NewSupervisor(store, work, 1, run.Limits{}, seat.workerFor).Run(ctx); got != run.OutcomeDone {
+		t.Fatalf("run outcome = %q", got)
+	}
+	landing, err := run.Land(ctx, store, work, base, store.RootID())
+	if err != nil || landing.Refused != "" {
+		t.Fatalf("landing = %+v, error = %v", landing, err)
+	}
+	want := make([]string, 0, len(lands))
+	for name := range lands {
+		want = append(want, name)
+	}
+	slices.Sort(want)
+	if !reflect.DeepEqual(landing.Changed, want) {
+		t.Fatalf("landing.Changed = %q, want %q", landing.Changed, want)
+	}
+	listed := strings.Split(runGitOut(t, repo, "ls-tree", "-r", "-z", "--name-only", landing.Branch), "\x00")
+	for _, name := range caches {
+		if slices.Contains(listed, name) {
+			t.Errorf("the landing carried the untracked build cache %q", name)
+		}
+	}
+}
+
 // TestLandRefusesARunThatWroteNothing is the other ending of the same door: a
 // run that only read is a refusal with no branch, and the root says so.
 func TestLandRefusesARunThatWroteNothing(t *testing.T) {
