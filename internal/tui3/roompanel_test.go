@@ -227,7 +227,6 @@ func TestDeepTaskPanelKeepsAncestorClicksAndControlScope(t *testing.T) {
 		n := &taskNode{id: id, title: name, label: name, parent: fmt.Sprint(parent), state: session.TaskRunning, model: "z-ai/glm-5.3"}
 		a.tasks[id] = n
 		a.taskOrder = append(a.taskOrder, id)
-		a.railSetOpen(a.tasks[parent], true)
 		parent = id
 	}
 	for _, width := range []int{100, 120, 160} {
@@ -244,7 +243,7 @@ func TestDeepTaskPanelKeepsAncestorClicksAndControlScope(t *testing.T) {
 		lines, _ := a.railView(a.viewHeight())
 		found := false
 		for row, line := range lines {
-			if line.head && line.entry >= 0 && entries[line.entry].node.id == 129 {
+			if line.head && line.entry >= 0 && entries[line.entry].node != nil && entries[line.entry].node.id == 129 {
 				found = true
 				drive(t, a, tea.MouseClickMsg{X: width - 2, Y: a.topHeight() + row, Button: tea.MouseLeft})
 				if a.room.id != 129 {

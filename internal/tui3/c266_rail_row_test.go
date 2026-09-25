@@ -123,7 +123,7 @@ func TestTheRunsRowOnTheRailWearsTheDotRow(t *testing.T) {
 	// the thing seen without reading, so where they cannot share the title's
 	// line they stand under it, and the title keeps its line whole (the owner,
 	// 2026-09-18: "i also thought we had like multiple circles for progress").
-	narrow, short := c266Rail(t, c266PlanRows(), 150, false)
+	narrow, short := c266Rail(t, c266PlanRows(), 110, false)
 	at, slim := c266RowWith(t, short, "rewrite the auth flow")
 	if strings.Contains(slim, "2/4") {
 		t.Fatalf("the narrow rail's run row still carries the count the dot line carries:\n%s", slim)
@@ -173,7 +173,8 @@ func TestANarrowRailsHeldRowKeepsItsTitle(t *testing.T) {
 func TestTheRailIndentsATaskUnderItsParentTask(t *testing.T) {
 	rows := c266PlanRows()
 	rows = append(rows, session.PlanTaskRow{ID: "kid", Parent: "held", Title: "write the fixtures", Status: "pending"})
-	_, rail := c266Rail(t, rows, 150, false)
+	// The widened column, where both titles are drawn whole beside the wait.
+	_, rail := c266Rail(t, rows, 160, true)
 	_, parent := c266RowWith(t, rail, "write the tests")
 	_, child := c266RowWith(t, rail, "write the fixtures")
 	if strings.Index(child, "write") <= strings.Index(parent, "write") {

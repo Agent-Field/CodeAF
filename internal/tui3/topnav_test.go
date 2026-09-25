@@ -39,7 +39,7 @@ func navChat(t *testing.T) *app {
 	a, _, _, _ := trafficApp(t)
 	a.open = func(workspace, transcript string) (Conversation, error) { return Conversation{}, nil }
 	a.welcome.open = false
-	a.traffic.hidden = true
+	a.railAway = true
 	a.height = 30
 	return a
 }

@@ -1190,6 +1190,8 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// And the delegation doors beside them (delegation.go), for the same
 		// reason: the build answers them, whatever agent is open.
 		Delegation: true,
+		// And the settings tab's write of those defaults, for the same reason.
+		TeamSettings: true,
 		// And the wrap-up's two doors, for the same reason.
 		WrapUp: true,
 		// The two model asks are the agent's, so they are asked of it.

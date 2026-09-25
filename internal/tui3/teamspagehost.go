@@ -490,13 +490,3 @@ func (a *app) teamsComposerWord() string {
 	}
 	return "to " + a.teamManagerMark() + " " + name + " manager"
 }
-
-// trafficHidden reports whether the Traffic rail is put away: the window's own
-// answer, and on the teams page the page's, which starts folded because the
-// page has a rail of its own on the left. `alt+t` or the grip unfolds it.
-func (a *app) trafficHidden() bool {
-	if a.teamsHosting() {
-		return !a.tp.traffic
-	}
-	return a.traffic.hidden
-}

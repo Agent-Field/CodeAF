@@ -5,6 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -72,8 +73,13 @@ type TeamsSeam struct {
 	// Closing and reopening a team are not doors of their own: they are
 	// [teamstore.File.Close] and [teamstore.File.Reopen] made through Update.
 
-	// Defaults is the four `teams.` defaults, for a card's `· from Settings`.
+	// Defaults is the five `teams.` defaults, for a card's `· from Settings`.
 	Defaults func() (teamstore.Defaults, error)
+	// ApplyDefault writes one of those rows the way the settings tab writes it
+	// locally (config's ApplyTeamDefault) and answers the five as they stand
+	// after. Nil over --host against an engine without [remote.Welcome.TeamSettings]:
+	// the Teams tab stays read-only and says so, and nothing is written here.
+	ApplyDefault func(key, raw string) (teamstore.Defaults, error)
 	// Packets is the packets waiting on scope (a team id, teamstore.Person,
 	// or teamstore.ScopeAll), or same when the packet files are still at
 	// since ("" is never same).
@@ -171,6 +177,12 @@ func localTeams(dir string, watch *teamstore.Watch) TeamsSeam {
 			return entries, err
 		},
 		Defaults: func() (teamstore.Defaults, error) { return teamstore.DefaultsAt(dir), nil },
+		ApplyDefault: func(key, raw string) (teamstore.Defaults, error) {
+			if err := config.ApplyTeamDefault(dir, key, raw); err != nil {
+				return teamstore.Defaults{}, err
+			}
+			return teamstore.DefaultsAt(dir), nil
+		},
 		Packets: func(scope, since string) ([]teamstore.Packet, string, bool, error) {
 			stamp := teamstore.PacketsStamp(dir)
 			if since != "" && since == stamp {
