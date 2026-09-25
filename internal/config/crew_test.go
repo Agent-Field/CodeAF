@@ -167,6 +167,21 @@ func TestPinsRoundTripAndRefuseWhatTheRuleLeavesOut(t *testing.T) {
 	}
 }
 
+// A HEADLESS CREW LINE SAYS A PIN IN WORDS: `(pinned)`, the word the models
+// line above it uses, and never a pictograph a plain terminal or a script
+// cannot read.
+func TestHeadlessCrewReportNamesAPinInWords(t *testing.T) {
+	d := crewroute.Decision{Crew: []crewroute.Pick{
+		{Seat: crewroute.Worker, Model: "z-ai/glm-5.3-flash", Send: "z-ai/glm-5.3-flash"},
+		{Seat: crewroute.Planner, Model: "z-ai/glm-5.3-flash", Send: "z-ai/glm-5.3-flash"},
+		{Seat: crewroute.Checker, Model: "moonshotai/kimi-k3", Send: "moonshotai/kimi-k3", Pinned: true},
+	}}
+	report := (Seats{Crew: &d}).Report()
+	if !strings.Contains(report, "checker kimi-k3 (pinned)") || strings.Contains(report, "📌") {
+		t.Fatalf("headless crew report: %q", report)
+	}
+}
+
 func TestTheAllowedRuleNarrowsTheCandidates(t *testing.T) {
 	dir := crewProfile(t)
 	ids := func() []string { return crewroute.Names(CrewCandidatesAt(dir)) }

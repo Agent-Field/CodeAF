@@ -210,9 +210,9 @@ func quotedFacts(t *testing.T) []quotedFact {
 		},
 	}, {
 		// The mark a pinned seat wears on a headless line.
-		fact: "the mark a pinned seat wears headless", owner: "config.PinMark",
-		value:  config.PinMark,
-		quotes: []quotedIn{{"running-from-the-terminal", "checker %s kimi-k3"}},
+		fact: "the mark a pinned seat wears headless", owner: "crewroute.seatModel",
+		value:  "(pinned)",
+		quotes: []quotedIn{{"running-from-the-terminal", "checker kimi-k3 %s"}},
 	}, {
 		// The rule an untouched profile allows.
 		fact: "the allowed rule nobody wrote", owner: "config.CrewAllowedAt",
