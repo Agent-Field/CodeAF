@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -199,6 +200,67 @@ func TestPacketReadsAreIncremental(t *testing.T) {
 	grew := fileSize(t, DecisionsPath(dir, "bbbbbbbbbbbb")) - size
 	if got := packetCache.bytes() - before; got != grew {
 		t.Fatalf("a grown file read %d bytes, want the %d appended", got, grew)
+	}
+}
+
+// capAsk is one crossing: dock's pool, one local day, one ceiling.
+func capAsk(day string, ceiling float64) Packet {
+	return Packet{
+		Team: Person, Origin: "bbbbbbbbbbbb", Kind: PacketCap, RaisedBy: FromSystem,
+		Question: "dock reached its cap today",
+		Options: []Option{
+			{ID: OptionRaiseCap, Label: "Raise", Consequence: "dock goes on today"},
+			{ID: OptionStopToday, Label: "Stop for today", Consequence: "nothing new starts until tomorrow"},
+		},
+		Cap: &CapFacts{Team: "bbbbbbbbbbbb", Day: day, CapUSD: ceiling, SpentUSD: ceiling + 0.2, RaiseTo: ceiling * 2},
+	}
+}
+
+// TWO RAISERS OF ONE CROSSING WRITE ONE PACKET. Each goroutine is its own
+// raiser on the same directory, the way two processes are: they share no
+// packet in memory, only the file, and the second must find the first's line
+// under the file lock and write nothing. A later day is a different crossing
+// and writes a second packet, and so is the same day at a higher ceiling.
+func TestACapCrossingIsRaisedOnceAcrossRaisers(t *testing.T) {
+	dir := packetTeams(t)
+	var wg sync.WaitGroup
+	got := make([]Packet, 2)
+	errs := make([]error, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			got[i], errs[i] = Raise(dir, capAsk("2026-09-24", 5))
+		}(i)
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("raiser %d: %v", i, err)
+		}
+	}
+	if got[0].ID == "" || got[0].ID != got[1].ID {
+		t.Fatalf("two raisers wrote two packets: %s and %s", got[0].ID, got[1].ID)
+	}
+	list, err := Packets(dir, "bbbbbbbbbbbb")
+	if err != nil || len(list) != 1 || list[0].Kind != PacketCap || list[0].ID != got[0].ID {
+		t.Fatalf("the file holds %+v (%v)", list, err)
+	}
+	raw, _ := os.ReadFile(DecisionsPath(dir, "bbbbbbbbbbbb"))
+	if lines := strings.Count(string(raw), "\n"); lines != 1 {
+		t.Fatalf("the file has %d lines, want one raise:\n%s", lines, raw)
+	}
+	next, err := Raise(dir, capAsk("2026-09-25", 5))
+	if err != nil || next.ID == got[0].ID {
+		t.Fatalf("a later day: %+v %v", next, err)
+	}
+	higher, err := Raise(dir, capAsk("2026-09-24", 10))
+	if err != nil || higher.ID == got[0].ID || higher.ID == next.ID {
+		t.Fatalf("a higher ceiling: %+v %v", higher, err)
+	}
+	list, err = Packets(dir, "bbbbbbbbbbbb")
+	if err != nil || len(list) != 3 {
+		t.Fatalf("three crossings, got %+v (%v)", list, err)
 	}
 }
 

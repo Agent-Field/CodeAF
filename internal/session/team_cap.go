@@ -20,7 +20,9 @@ package session
 //   - ONE CAP PACKET PER POOL AND CEILING goes to the person ([teams.Person]):
 //     `harbor reached its $5 cap today`, with `Raise to $10` and `Stop for
 //     today`, and a recommendation. Whoever meets the cap first raises it;
-//     everyone after finds it waiting and raises nothing. A raise lifts the
+//     everyone after finds it waiting and raises nothing, including a second
+//     process: [teams.Raise] keeps one packet per pool, day and ceiling under
+//     the decisions file's lock. A raise lifts the
 //     ceiling for the rest of that local day to the figure the option said
 //     ([teams.CapFacts].RaiseTo); a stop, or an answer in the person's own
 //     words, holds the pool until the day turns or the cap is changed.
@@ -50,7 +52,8 @@ var (
 )
 
 // capRaising serializes this process's cap raises, so two conversations in
-// one pool meeting the cap in the same instant raise one packet.
+// one pool do not both call [teams.Raise]. A second process is covered by the
+// decisions file lock, not by this mutex.
 var capRaising sync.Mutex
 
 // spendMemo is one pool's spend as last read, against its stamp.
