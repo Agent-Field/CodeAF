@@ -1714,7 +1714,7 @@ reads `[m] send to main · [esc] cancel`, because reviving live work would dupli
 
 ## Keys in the settings panel and the other panels
 
-**Conversations view** (`alt+v`, `/wall`, `chats` or `▦` under the box, or `▦ All` on the strip): the
+**Conversations view** (`alt+v`, `/wall`, or `▦ All` on the strip or under the box): the
 arrows move the focus · `enter` opens · `space` picks · `x` closes a view (the work keeps
 running) · `m` its teams · `s` a new team · `e` the shown team's settings · `tab` or `1` to
 `9` show a team · `/` filters · `?` lists every key, and each of its rows is a button. The

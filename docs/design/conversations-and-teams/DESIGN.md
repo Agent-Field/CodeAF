@@ -34,13 +34,17 @@ ones, and the owner's screen read `test 1` over three tabs. A team's whole membe
 or not, belongs to the teams page on home (section 7).
 
 **Doors in.** `alt+v`, `/wall`, the dock under the input box, and `▦ All` beside the tab
-strip's `+`. The dock is a one-row map of every open conversation coloured by state, with
-a dim word `chats` in front of the squares. A click on a square switches to that
-conversation without opening the wall. A click on `chats` or on `▦` opens the wall. The
+strip's `+`. The dock is a one-row map of every open conversation coloured by state, led
+by `▦ All`, the strip's own door spelled the same way and drawn as one button (one hover
+ground over the glyph and the word). It used to lead with a dim `chats`, which is the
+nav's word for the way back to the conversations: one word on one frame led two places,
+so the dock now says what it opens. A click on a square switches to that conversation
+without opening the wall. A click anywhere on `▦ All` opens the wall. The
 pointer explains the piece it rests on: `Go to <title> · running · click` (or `waiting on
-you`, or `idle`), `<title> · you are here` on the square in front, and `The grid of your open tabs, and your teams · alt+v` on the word, on `▦` and on
-`▦ All`: with no team yet it is the only door on the strip that leads to making one. The word is the first thing dropped when the row is too
-narrow. The squares stay, then fewer of them, then the dock is not drawn. Amber is only
+you`, or `idle`), `<title> · you are here` on the square in front, and `The grid of your
+open tabs, and your teams · alt+v` on both `▦ All` doors: with no team yet it is the only
+door on the strip that leads to making one. The word `All` is the first thing dropped when
+the row is too narrow. The squares stay, then fewer of them, then the dock is not drawn. Amber is only
 the square that is waiting on you.
 
 **A tile, in reading order.** Title, then state, then now, then history:
