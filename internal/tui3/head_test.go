@@ -63,8 +63,9 @@ func headPulseWhole() string {
 // THE CONVERSATION WEARS THE PLACES' HEAD, AT EVERY SIZE THE STRIP IS DRAWN.
 // The nav and the pulse on row 0, the strip under it, the rule, a blank, and
 // the body starts under exactly those four rows. At eighty columns the pulse
-// has given up the clock and the counts to keep every place on the row
-// (topnav.go's ladder); wider, it says everything.
+// has given up the clock, the moving count and the words of `2 want you`, whose
+// count stays as `2 ?`, to keep every place on the row (topnav.go's ladder);
+// wider, it says everything.
 func TestTheConversationWearsThePlacesHead(t *testing.T) {
 	a := headLab(t)
 	for _, size := range headSizes {
@@ -73,7 +74,7 @@ func TestTheConversationWearsThePlacesHead(t *testing.T) {
 		head := headOf(t, a)
 		pulse := headPulseWhole()
 		if size.w == 80 {
-			pulse = "$0.14 / " + railFigure(20)
+			pulse = "2 ? · $0.14 / " + railFigure(20)
 		}
 		if !strings.HasPrefix(head[0], " "+plain(a.pal.wordmark(a.width))) || !strings.HasSuffix(head[0], pulse) {
 			t.Fatalf("at %dx%d the chat's first row is not the nav with the pulse at its end:\n%q", size.w, size.h, head[0])

@@ -386,3 +386,40 @@ func TestTheNavsFoldIsAWordDoorNotACount(t *testing.T) {
 		}
 	}
 }
+
+// THE COUNT THAT WANTS YOU NEVER LEAVES THE ROW. At every width from a split
+// pane to a wide screen the nav carries the number of things stopped on the
+// person, in amber: `2 want you` where it fits and `2 ?` where it does not.
+// And at eighty columns the short count costs no place: all six words stay.
+func TestTheCountThatWantsYouNeverLeavesTheNav(t *testing.T) {
+	a := navChat(t)
+	a.machine = machineFacts{wants: 2, hands: 1, spent: 1.2, ceiling: 20}
+	long := a.pal.warn("2" + pulseWantWord)
+	short := a.pal.warn("2 " + tabSignalGlyph(tabNeedsPerson, a.pal.ascii))
+	for width := 44; width <= 200; width++ {
+		a.width = width
+		a.navMemo = navMemo{}
+		line := a.navLine(width, a.pal)
+		if ansi.StringWidth(line) != width {
+			t.Fatalf("at %d the nav is %d wide", width, ansi.StringWidth(line))
+		}
+		if !strings.Contains(line, long) && !strings.Contains(line, short) {
+			t.Fatalf("at %d the nav lost the count that wants you: %q", width, plain(line))
+		}
+	}
+	a.width = 80
+	a.navMemo = navMemo{}
+	row := plain(a.navLine(80, a.pal))
+	if !placeWordsInOrder(row, "home", "teams", "chats", "sessions", "spend", "settings") || a.navMore.span.pressable() {
+		t.Fatalf("at 80 the short count cost a place: %q", row)
+	}
+	if !strings.HasSuffix(strings.TrimRight(row, " "), "2 ? · $1.20 / "+railFigure(20)) {
+		t.Fatalf("at 80 the pulse is not the short count and the allowance: %q", row)
+	}
+	// AND NOTHING WANTING YOU DRAWS NOTHING: no `0 ?`.
+	a.machine.wants = 0
+	a.navMemo = navMemo{}
+	if row := plain(a.navLine(60, a.pal)); strings.Contains(row, "?") {
+		t.Fatalf("an empty count drew a mark: %q", row)
+	}
+}

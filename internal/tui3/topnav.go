@@ -11,7 +11,8 @@ import (
 // ── THE TOP NAV: THE PLACES, ON THE WORDMARK'S ROW, ON EVERY PAGE ───────────
 //
 //	 >● codeaf   home  teams  chats  sessions  spend  settings   2 want you · $1.20  thu 10:31pm
-//	 >● codeaf   home  teams  chats  sessions  spend  more ▾                              $1.20
+//	 >● codeaf   home  teams  chats  sessions  spend  settings            2 ? · $1.20 / $20
+//	 >● codeaf   home  teams  chats  sessions  more ▾                              2 ? · $1.20
 //
 // The first row of every frame is the product's name, the places a person can
 // go, and the machine's pulse on the far end (pulse.go). It is drawn by ONE
@@ -44,10 +45,13 @@ import (
 //
 // A row too narrow for everything gives things up IN THE OWNER'S ORDER
 // (2026-09-24): the clock goes first (and the machine's name with it, the
-// other fact every terminal title already carries), then the counts, the
-// moving count before the one that wants you, then the allowance behind the
-// day's figure, and only then do the trailing places fold into `more ▾`, one
-// word at a time from the right. The day's figure is the last clause to go.
+// other fact every terminal title already carries), then the moving count,
+// then the words of `2 want you`, which shortens to `2 ?` in the same amber,
+// then the allowance behind the day's figure, and only then do the trailing
+// places fold into `more ▾`, one word at a time from the right. The day's
+// figure goes after every place has folded, and THE COUNT THAT WANTS YOU
+// NEVER GOES: it is the one thing on this row a person must not have to go
+// looking for, so it outlasts the money and the places (pulse.go).
 // The wordmark, the place you are in and the word under the bar's cursor
 // never fold, and a place wearing a count keeps its word, because a number is
 // this row saying something moved in a room you are not in.
@@ -192,13 +196,14 @@ func (a *app) navLay(width int, pal palette) string {
 		return navTailGap + ansi.StringWidth(tail)
 	}
 	// FIRST THE PULSE GIVES UP ITS CLAUSES, every place still on the row.
-	for _, tail := range tails {
+	for _, tail := range tails[:len(tails)-1] {
 		if lead+all+tailCost(tail)+navInset <= width {
 			return a.navPaint(width, pal, name, lead, shown, nil, tail)
 		}
 	}
 	// THEN THE TRAILING PLACES FOLD INTO `more ▾`, from the right, with the
-	// day's figure still on the row, and last of all the figure goes too.
+	// day's figure still on the row, and last of all the figure goes too,
+	// leaving the count that wants you, which never goes.
 	keep := func(id page) bool { return id == lit || a.barKeeps(id) || a.placeCount(id) > 0 }
 	moreCost := ansi.StringWidth(a.navMoreWord(pal)) + tabPadCols
 	fixed := 0
@@ -210,7 +215,7 @@ func (a *app) navLay(width int, pal palette) string {
 			free = append(free, id)
 		}
 	}
-	for _, tail := range []string{tails[len(tails)-1], ""} {
+	for _, tail := range []string{tails[len(tails)-2], tails[len(tails)-1]} {
 		used := fixed
 		for _, id := range free {
 			used += cost(id)
@@ -225,13 +230,14 @@ func (a *app) navLay(width int, pal palette) string {
 	// A ROW TOO NARROW EVEN FOR THE NAME, THE PLACE YOU ARE IN AND THE FOLD is
 	// drawn with every foldable word folded and cut at the frame's edge; a
 	// button the cut reached is not a target ([app.navPaint]).
-	return a.navPaint(width, pal, name, lead, shown, free, "")
+	return a.navPaint(width, pal, name, lead, shown, free, tails[len(tails)-1])
 }
 
 // navTails is every spelling the pulse end of the row may take, widest first,
-// in the order the ladder gives clauses up (this file's header). The last one
-// is the day's figure alone, which the places fold beside.
-func (a *app) navTails(pal palette, mode pulseMode) [6]string {
+// in the order the ladder gives clauses up (this file's header). The last but
+// one is the day's figure with the short count, which the places fold beside,
+// and the last is the short count alone ("" when nothing wants you).
+func (a *app) navTails(pal palette, mode pulseMode) [7]string {
 	p := a.pulseParts(a.now(), pal, mode)
 	host := ""
 	if name := strings.TrimSpace(a.host); name != "" {
@@ -253,13 +259,14 @@ func (a *app) navTails(pal palette, mode pulseMode) [6]string {
 		}
 		return out
 	}
-	return [6]string{
+	return [7]string{
 		rung(p.wants, p.hands, p.money, host, p.clock),
 		rung(p.wants, p.hands, p.money, host),
 		rung(p.wants, p.hands, p.money),
 		rung(p.wants, p.money),
-		rung(p.money),
-		rung(p.spend),
+		rung(p.ask, p.money),
+		rung(p.ask, p.spend),
+		rung(p.ask),
 	}
 }
 

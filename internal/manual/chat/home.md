@@ -603,8 +603,10 @@ every place but home it reads:
 `needs you` and `sessions` panels are those counts, row by row.
 
 **On a narrow window the right end gives way first**: the clock, then `4 moving`, then
-`2 want you`, then the allowance (`$0.55 / $500` becomes `$0.55`); only then do the places
-fold into `more ▾`, and the day's figure is the last thing to go. The **Places** page of
+the words of `2 want you`, which becomes `2 ?` in the same amber, then the allowance
+(`$0.55 / $500` becomes `$0.55`); only then do the places fold into `more ▾`, and then the
+day's figure goes. **The count of things waiting on you never goes**: `2 ?` is on the line at
+every width, because it is the one number you must not have to go looking for. The **Places** page of
 this manual has the whole order and the `more ▾` menu.
 
 - `2 want you` — how many things have **stopped on you**: a conversation waiting for an

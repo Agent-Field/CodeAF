@@ -162,8 +162,12 @@ wordmark's row and the strip is on every page, so the head is the same four rows
   tab (or `+`, or the manager's place) leaves the place for that chat, and the chip and
   `▦ All` open their menu and the grid over it. The strip keeps its own narrowing.
 - The ladder on row 0, in the owner's order: the clock (and `on <machine>` over `--host`), then
-  `moving`, then `want you`, then the allowance, then the trailing places fold one at a time
-  into `more ▾`, and the day's figure is the last clause. The wordmark, the lit place, the
+  `moving`, then the words of `2 want you` shorten to `2 ?` (same count, same amber, the mark
+  a waiting tab wears), then the allowance, then the trailing places fold one at a time into
+  `more ▾`, then the day's figure. The needs-you count never folds: it was allowed to for one
+  wave, and at 80 columns a conversation's top line then carried no count of what was waiting
+  on the person, the one fact a glance at that row is for. At 80 the row is all six places
+  and `2 ? · $1.20 / $20`. The wordmark, the lit place, the
   bar cursor's word and a counted place never fold. `more ▾` opens a small menu of exactly the
   folded places with their keys (navmore.go): hover ground, enter or click goes, esc or a press
   off it closes, and focus never moves anywhere else.
