@@ -2347,13 +2347,9 @@ func (a *app) goHome() {
 //
 // A ROW IS A DOOR AND ONLY A DRAWN CONTROL IS ANYTHING ELSE. Anywhere on a
 // node's row opens that node's room, which is what every row of this column has
-// always done, and the cells that mean something else are the ones the frame put
-// there to be pressed and no others: a folded root's `▸ +N`, where the count is
-// what says something is hidden, and the glyph cell ON THE FRAMES WHERE IT IS
-// DRAWN AS A DISCLOSURE, which is while the pointer is on a row that can fold.
-// Both come from spans the layout recorded (task.go's [app.railEntryRows]), so
-// the target is always exactly what is on screen; the press does not ask what
-// KIND of row it hit, because a row that could fold is not a fold control.
+// always done; a group's heading opens or folds its group; and the side
+// column's own rows answer through the doors their layout recorded
+// (sidecol.go), so the target is always exactly what is on screen.
 //
 // The press moves the roster's cursor to what was pressed but does NOT take the
 // keyboard: clicks focus what was clicked, and the draft is where this surface
@@ -2396,16 +2392,18 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 		a.roomPanelTake(line.roomAction)
 		return nil, true
 	}
+	// THE SIDE COLUMN'S OWN ROWS ANSWER FOR THEMSELVES: the header's words and
+	// its key, a band item, a row of the Traffic and the doors on each
+	// (sidecol.go). A row with nothing to press takes the press to do nothing.
+	if line.side != nil {
+		if !line.side.pressable() && line.side.doorAt(a.sideLineCol(x)) < 0 {
+			return nil, true
+		}
+		return a.sidePress(line.side, a.sideLineCol(x))
+	}
 	// THE FOOTER'S ONE OFFER IS PRESSABLE, because a hint that names a key and
 	// cannot be pressed is a hint that is only for one of the two hands
 	// (task.go's [app.railFootRows]).
-	// AND THE LAST LINE IS THE COLUMN'S DOOR, for the same reason one rung up: a
-	// line that names ctrl+g and cannot be clicked is an affordance for one of the
-	// two hands (task.go's [railStowHint]).
-	if line.stow {
-		a.railStow(true)
-		return nil, true
-	}
 	// AND THE DOOR ONTO THE TASK PAGE IS THE THIRD OF THEM, on the same terms: it
 	// names a chord, so it has to answer to the hand that does not type chords
 	// ([taskSheetPastHint], taskview.go). It leaves the column exactly as it is —
@@ -2444,30 +2442,22 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 		return a.openRailPlan(line.plan, nil), true
 	}
 	e, ok := a.railEntryAt(y)
-	if !ok || e.node == nil {
+	if !ok {
 		return nil, true
 	}
 	a.railWhere = railSpotOf(e)
-	at := x - a.railLeft() - ansi.StringWidth(railSeam)
-	// THE WHOLE ROW IS THE NODE'S DOOR AND THE TWO EXCEPTIONS ARE DRAWN. A press
-	// falls through to the room unless it landed on something the frame put there
-	// to be pressed — the `▸ +N` a folded root wears at rest, and the disclosure
-	// the glyph cell becomes under the pointer — and BOTH are read from spans the
-	// layout recorded rather than from a question about what kind of row this is
-	// (task.go's [app.railEntryRows]). Asking the row's kind was the bug: a family
-	// root and a landed row with a block tucked under it CAN fold, so their
-	// leading cells folded on every press, while the cell they folded from was
-	// drawing the row's state on every frame where the pointer was not already on
-	// it. A person aiming at a task got a list that jumped instead of a page.
-	switch {
-	case line.badge.holds(at):
-		a.railSetOpen(e.node, true)
-	case line.glyph.holds(at):
-		a.railToggle(e.node)
-	default:
-		return a.openRailRoom(e.node), true
+	// A GROUP'S HEADING OPENS THE GROUP OR FOLDS IT, anywhere on the row, and
+	// the running work's heading, which does not fold, takes the press to do
+	// nothing. EVERY OTHER ROW IS A NODE, and the whole row is its door.
+	if e.head {
+		a.sideToggleGroup(e.group)
+		return nil, true
 	}
-	return a.takeRoomPump(), true
+	if e.node == nil {
+		return nil, true
+	}
+	a.sideAck(e.node)
+	return a.openRailRoom(e.node), true
 }
 
 // railSeamAt reports whether a pointer is on the visible two-cell handle — which

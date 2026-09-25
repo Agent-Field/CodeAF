@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -107,14 +108,16 @@ func TestDockDrawsEveryConversationInStripOrder(t *testing.T) {
 	if got := ansi.Cut(row, a.dock.wall.from, a.dock.wall.to); got != "▦" {
 		t.Fatalf("the wall's mark is not where it was recorded: %q", got)
 	}
-	if !a.dock.label.pressable() || ansi.Cut(row, a.dock.label.from, a.dock.label.to) != dockLabel {
-		t.Fatalf("the word is not where it was recorded: %q %+v", row, a.dock.label)
+	// THE DOOR IS `▦ All`, SPELLED AS THE STRIP SPELLS IT, AND ONE BUTTON: the
+	// recorded span holds the glyph and the word, and the glyph is its first cell.
+	if !a.dock.label.pressable() || ansi.Cut(row, a.dock.label.from, a.dock.label.to) != "▦ "+tabWallWord {
+		t.Fatalf("the door is not where it was recorded: %q %+v", row, a.dock.label)
 	}
-	if !strings.Contains(painted, a.pal.dim(dockLabel)) {
+	if !strings.Contains(painted, a.pal.dim(" "+dockLabel)) {
 		t.Fatalf("the word is not dim: %q", painted)
 	}
-	if a.dock.label.to != a.dock.wall.from-1 {
-		t.Fatalf("the word does not stand in front of the glyph: label %+v wall %+v", a.dock.label, a.dock.wall)
+	if a.dock.label.from != a.dock.wall.from {
+		t.Fatalf("the glyph does not lead the door: label %+v wall %+v", a.dock.label, a.dock.wall)
 	}
 	// The ASCII floor spells the state in the character.
 	a.linear = true
@@ -289,7 +292,7 @@ func TestDockHoverHintPerCellKind(t *testing.T) {
 	if got := dockCellHint(here); got != "Shipping the parser"+hintSegment+"you are here" {
 		t.Fatalf("here: %q", got)
 	}
-	if dockChatsWord != "All conversations"+hintSegment+wallOpenKey {
+	if dockChatsWord != dockWallWord {
 		t.Fatalf("the word and the glyph say %q", dockChatsWord)
 	}
 }
@@ -327,13 +330,57 @@ func TestDockHoverWearsTheWallsHoverGround(t *testing.T) {
 	if !strings.Contains(lines[y], ground) {
 		t.Fatalf("the hovered cell is not on the cursor ground: %q", lines[y])
 	}
-	a.setHover(a.dock.label.from, y)
-	lines = strings.Split(frame(a), "\n")
-	word := a.pal.cursor(a.pal.ink(dockLabel), 0)
-	if !strings.Contains(lines[y], word) {
-		t.Fatalf("the hovered word is not on the cursor ground: %q", lines[y])
+	// THE DOOR IS ONE GROUND FROM ANY CELL OF IT: the glyph, the space and the
+	// word light together, because a press on any of them opens the wall.
+	door := a.dock.label
+	word := a.pal.cursor(a.pal.ink(a.dockWallGlyph()+" "+dockLabel), 0)
+	for x := door.from; x < door.to; x++ {
+		a.setHover(x, y)
+		lines = strings.Split(frame(a), "\n")
+		if !strings.Contains(lines[y], word) {
+			t.Fatalf("the pointer at %d of the door %+v does not light all of it: %q", x, door, lines[y])
+		}
 	}
 	if wall := wallButtonPaint(a.pal, wallButton{label: "x"}, true); !strings.Contains(wall, a.pal.cursor(" ", 0)[:strings.Index(a.pal.cursor(" ", 0), " ")]) {
 		t.Fatalf("the wall's hover is not the cursor ground: %q", wall)
+	}
+}
+
+// ONE WORD, ONE DOOR. The dock's door to the wall is spelled as the strip's
+// door to it is, `▦ All`, and both open the wall; the nav's `chats` over
+// them is the way back to the conversations and never the wall. The dock
+// used to say `chats` too, so one word on one frame led two places.
+func TestTheDocksDoorIsSpelledAsTheStripsDoor(t *testing.T) {
+	a, _, _ := tabApp(t)
+	a.width, a.height = 120, 30
+	rows := screenLines(a)
+	y := dockRowY(t, a)
+	strip := strings.TrimSpace(ansi.Cut(rows[tabStripRow], a.wall.door.from, a.wall.door.to))
+	dock := ansi.Cut(rows[y], a.dock.label.from, a.dock.label.to)
+	if strip != "▦ "+tabWallWord || dock != strip {
+		t.Fatalf("the strip's door says %q and the dock's says %q", strip, dock)
+	}
+	if strings.Contains(ansi.Cut(rows[y], a.dock.label.from-8, a.width), "chats") {
+		t.Fatalf("the dock still carries the nav's word: %q", rows[y])
+	}
+	for _, press := range []func() (tea.Cmd, bool){
+		func() (tea.Cmd, bool) { return a.dockPress(a.dock.label.to-1, y) },
+		func() (tea.Cmd, bool) { return a.tabPress(a.wall.door.from+1, tabStripRow) },
+	} {
+		if _, took := press(); !took || !a.wall.on {
+			t.Fatal("a press on `▦ All` did not open the wall")
+		}
+		a.closeWall()
+		rows = screenLines(a)
+		y = dockRowY(t, a)
+	}
+	for _, span := range a.tabs {
+		if span.id != pageChats {
+			continue
+		}
+		drive(t, a, tea.MouseClickMsg{X: span.from + 1, Y: navRow, Button: tea.MouseLeft})
+		if a.wall.on {
+			t.Fatal("the nav's `chats` opened the wall")
+		}
 	}
 }

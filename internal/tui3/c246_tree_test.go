@@ -89,8 +89,13 @@ func TestPlanRoomUnderItDrawsWholeSubtreeWithLiveLines(t *testing.T) {
 			t.Fatalf("the run's room is missing %q:\n%s", want, text)
 		}
 	}
+	// THE ROOM IS READ, NOT THE SIDE COLUMN BESIDE IT: every chat has the column
+	// now, and its Tasks view draws the same parts at its own indent.
 	var handlerLead, fixtureLead int
 	for _, line := range strings.Split(text, "\n") {
+		if at := strings.LastIndex(line, railSeam); at >= 0 {
+			line = line[:at]
+		}
 		if at := strings.Index(line, "Handler"); at >= 0 {
 			handlerLead = at
 		}

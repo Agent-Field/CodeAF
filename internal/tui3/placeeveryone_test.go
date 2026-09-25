@@ -64,6 +64,12 @@ func everyPlaceTable() []everyPlace {
 			},
 		},
 		{
+			id:     pageTeams,
+			open:   teamsPlaceLab,
+			cursor: teamsCursorLine,
+			hits:   teamsHits,
+		},
+		{
 			id:     pageTasks,
 			open:   func(t *testing.T) *app { return historyApp(t, 200) },
 			cursor: func(a *app) int { return a.taskSheet.cursor },
@@ -293,7 +299,7 @@ func TestTabLeavesEveryPlaceAndComesBack(t *testing.T) {
 	}
 }
 
-// alt+1…8 JUMPS FROM EVERY PLACE. The numbers are the bar's own order and they
+// alt+1…9 JUMPS FROM EVERY PLACE. The numbers are the bar's own order and they
 // mean the same thing wherever you are standing — or, for a room with nothing
 // in it, they say why and leave you where you were. What they may never do is
 // nothing at all.

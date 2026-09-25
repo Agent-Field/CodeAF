@@ -72,7 +72,7 @@ func TestClickingATabWordGoesToThatPlace(t *testing.T) {
 	if !ok {
 		t.Fatal("the spend tab is not on this bar")
 	}
-	drive(t, a, tea.MouseClickMsg{X: x, Y: placeTabRow, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseClickMsg{X: x, Y: navRow, Button: tea.MouseLeft})
 	if a.page != pageSpend {
 		t.Fatalf("clicking the spend tab left the router on %q", a.page.word())
 	}
@@ -86,23 +86,25 @@ func TestClickingATabWordGoesToThatPlace(t *testing.T) {
 	// The spend place has no box, so what a reopen would reset is its cursor.
 	a.moveSpend(1)
 	was := a.spend.cursor
-	drive(t, a, tea.MouseClickMsg{X: x, Y: placeTabRow, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseClickMsg{X: x, Y: navRow, Button: tea.MouseLeft})
 	if a.spend.cursor != was {
 		t.Fatalf("pressing the tab you are on reopened the place: the cursor moved from %d to %d", was, a.spend.cursor)
 	}
 }
 
-// AND A PRESS BETWEEN TWO WORDS DOES NOTHING. The gap belongs to no room, and
-// a bar that rounded a miss to its nearest neighbour would be a bar that opens
-// the wrong place for a one-cell slip.
+// AND A PRESS IN THE NAV'S AIR DOES NOTHING. Two words' buttons touch, each
+// owning its own pad cells, so the air on the row is the cells before the
+// first button and after the last; they belong to no room, and a row that
+// rounded a miss to its nearest neighbour would open the wrong place for a
+// one-cell slip.
 func TestClickingBetweenTwoTabsDoesNothing(t *testing.T) {
 	a := placeApp(t)
 	placeFrameText(a)
 	gap, ok := placeTabGapColumn(a)
 	if !ok {
-		t.Fatal("this bar has no gap between two chips")
+		t.Fatal("this nav has no air before its first button")
 	}
-	drive(t, a, tea.MouseClickMsg{X: gap, Y: placeTabRow, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseClickMsg{X: gap, Y: navRow, Button: tea.MouseLeft})
 	if a.page != pageHome {
 		t.Fatalf("a press in the gap moved to %q", a.page.word())
 	}
@@ -126,7 +128,7 @@ func TestAFrameWithNoTabBarHasNoTabToPress(t *testing.T) {
 	if a.tabRow >= 0 {
 		t.Fatalf("the phone frame claims a tab bar on row %d", a.tabRow)
 	}
-	drive(t, a, tea.MouseClickMsg{X: 4, Y: placeTabRow, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseClickMsg{X: 4, Y: navRow, Button: tea.MouseLeft})
 	if a.page != pageHome {
 		t.Fatalf("a press on the phone frame's second row went to %q", a.page.word())
 	}
@@ -142,16 +144,18 @@ func placeTabColumnOf(a *app, id page) (int, bool) {
 	return 0, false
 }
 
-// placeTabGapColumn is a cell between two chips: the last column before the
-// second chip begins, which no chip claims.
+// placeTabGapColumn is a cell of the nav's air: the last column before the
+// first button, between it and the wordmark, which no button claims.
 func placeTabGapColumn(a *app) (int, bool) {
-	if len(a.tabs) < 2 {
+	if len(a.tabs) < 1 || a.tabs[0].from < 1 {
 		return 0, false
 	}
-	if a.tabs[1].from-1 < a.tabs[0].to {
-		return 0, false
+	for _, span := range a.tabs {
+		if a.tabs[0].from-1 >= span.from && a.tabs[0].from-1 < span.to {
+			return 0, false
+		}
 	}
-	return a.tabs[1].from - 1, true
+	return a.tabs[0].from - 1, true
 }
 
 // ── the wheel ───────────────────────────────────────────────────────────────

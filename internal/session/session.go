@@ -2665,6 +2665,11 @@ type Agent struct {
 	// landingOutcomes are owed landing reports returned in this turn. They are
 	// completion evidence, not another part of the person's ask.
 	landingOutcomes []string
+	// personCardAnswers are the compact lines for cards a person answered
+	// during THIS turn (checkpoint.go's [personCardAnswerLine]). Cleared when
+	// the next turn opens, with the owed asks, because a later turn is not
+	// still bound by a card this one already settled.
+	personCardAnswers []string
 	// turnResults are the tasks whose RESULTS ARRIVED IN THIS TURN, by id, in
 	// arrival order and cleared with owedAsks when a turn opens.
 	//

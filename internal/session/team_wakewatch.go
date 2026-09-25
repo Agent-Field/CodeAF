@@ -118,6 +118,8 @@ type teamWatch struct {
 	rounds int
 	heard  int64
 	held   bool
+	// capSaid is the last cap hold the Traffic was told of.
+	capSaid string
 }
 
 // personTurns counts turns the person started, for the loop breaker. It is
@@ -139,6 +141,10 @@ func (a *Agent) watchTeamTraffic(profile string) {
 	if profile == "" {
 		return
 	}
+	// A wrap-up that was in progress when this process last stopped is armed
+	// before the loop, so one already past its bound closes on the start
+	// rather than waiting out a tick (team_wrapup.go).
+	a.teamWrapUpResume(profile, time.Now())
 	guard.Go("team traffic wake", func() { a.teamWatchLoop(profile) })
 }
 
@@ -160,6 +166,9 @@ func (a *Agent) teamWatchTick(profile string, now time.Time) bool {
 	if closed {
 		return false
 	}
+	// THE WRAP-UP'S CLOCK is looked at running or idle (team_wrapup.go), and
+	// costs nothing while no wrap-up is in progress.
+	a.teamWrapUpDue(profile, now)
 	if running {
 		// A RUNNING TURN READS ITS OWN TRAFFIC at every step boundary. A batch a
 		// manager was gathering goes with it: its posts land at the next
@@ -182,7 +191,7 @@ func (a *Agent) teamWatchTick(profile string, now time.Time) bool {
 		arrived := a.teamWatchReadLocked(profile, role)
 		var waking []teams.Entry
 		for _, entry := range arrived {
-			if teamWakes(role, entry) {
+			if teamWakes(role, entry) || teamPacketWakes(profile, role, entry) {
 				waking = append(waking, entry)
 			}
 		}
@@ -262,6 +271,14 @@ func (a *Agent) teamWatchReadLocked(profile string, role teamRole) []teams.Entry
 // member; a member's post to the manager, or a member's finished, failed or
 // asking event, for the manager.
 func teamWakes(role teamRole, entry teams.Entry) bool {
+	if role.manager && teams.IsWrapUp(entry) {
+		return true
+	}
+	// A CONFLICT'S RULING wakes the party it names, member or manager, whoever
+	// wrote it (team_nest.go).
+	if teams.IsRuling(entry) {
+		return rulingFor(role, entry)
+	}
 	if role.manager {
 		switch entry.From {
 		case "", teams.FromManager, teams.FromYou, teams.FromSystem:
@@ -278,7 +295,7 @@ func teamWakes(role teamRole, entry teams.Entry) bool {
 		}
 		return false
 	}
-	if entry.Kind != teams.KindDirective || entry.From != teams.FromManager || strings.TrimSpace(entry.Text) == "" {
+	if entry.Kind != teams.KindDirective || entry.From != teams.FromManager || strings.TrimSpace(entry.Text) == "" || role.shared {
 		return false
 	}
 	return entry.Addressed(role.handle)
@@ -292,13 +309,17 @@ func (a *Agent) teamWakeMember(profile string, roles []teamRole, now time.Time) 
 		a.teamWakeLimitSay(profile, roles, reason, now)
 		return
 	}
+	if reason := a.teamCapHold(profile, roles); reason != "" {
+		a.teamCapSay(profile, roles, reason)
+		return
+	}
 	news := a.teamBoundary()
 	if news == "" {
 		// A boundary that ran in the moment between the look and here has
 		// handed the directive over already; there is nothing left to wake on.
 		return
 	}
-	text := "Your manager's directive started this turn; the person did not speak.\n\n" + news
+	text := "Your manager started this turn (a directive, or the answer to your question); the person did not speak.\n\n" + news
 	woke, reason := a.teamWakeWith(text)
 	if woke {
 		a.teamWakeCount(now)
@@ -340,6 +361,14 @@ func (a *Agent) teamWakeManager(profile string, roles []teamRole, batch map[stri
 			said = append(said, byID[id])
 		}
 		a.teamWakeLimitSay(profile, said, reason, now)
+		return
+	}
+	var batchRoles []teamRole
+	for id := range batch {
+		batchRoles = append(batchRoles, byID[id])
+	}
+	if reason := a.teamCapHold(profile, batchRoles); reason != "" {
+		a.teamCapSay(profile, batchRoles, reason)
 		return
 	}
 	news := a.teamBoundary()
@@ -439,6 +468,29 @@ func (a *Agent) teamWakeCount(now time.Time) {
 	a.team.mu.Lock()
 	defer a.team.mu.Unlock()
 	a.team.watch.woken = append(a.team.watch.woken, now)
+}
+
+// teamCapSay tells the Traffic a wake was held at the cap, once per
+// conversation and reason: every held wake says the same thing, and the cap
+// packet is what asks the person.
+func (a *Agent) teamCapSay(profile string, roles []teamRole, reason string) {
+	a.team.mu.Lock()
+	say := a.team.watch.capSaid != reason
+	a.team.watch.capSaid = reason
+	a.team.mu.Unlock()
+	if !say {
+		return
+	}
+	for _, role := range roles {
+		who, to := "◆", teams.ToManager
+		if !role.manager {
+			who, to = "@"+role.handle, role.handle
+		}
+		a.teamSay(profile, role.id, teams.Entry{
+			Kind: teams.KindEvent, From: teams.FromSystem, To: to, Member: role.key,
+			State: teams.StateIdle, Text: "held " + who + ": " + reason,
+		})
+	}
 }
 
 // teamWakeLimitSay tells the Traffic the limit was reached, once an hour.
@@ -620,8 +672,8 @@ func SetTeamResume(open func(file, workspace string) error) {
 // says in the Traffic when one could not be. A conversation that is open
 // somewhere watches for itself and is left alone. answers is the entry that
 // asked for the wake, which a failure to wake answers, "" for none.
-func (a *Agent) teamRouse(profile string, team teams.Team, targets []teams.Member, answers string) {
-	if profile == "" || !team.Wakes() || len(targets) == 0 {
+func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets []teams.Member, answers string) {
+	if profile == "" || !wakes || len(targets) == 0 {
 		return
 	}
 	a.team.mu.Lock()

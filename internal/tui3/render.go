@@ -1272,6 +1272,11 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		body := wrap(e.text, room)
 		if e.block {
 			body = noteBlockLines(e.text, room)
+		} else if e.sheet {
+			// /help is a column. A wrap that starts the next row at the margin
+			// makes the sentence look like a new key. Continuations keep the
+			// column the first row's sentence already sits in.
+			body = wrapSheet(e.text, room)
 		}
 		out := make([]string, 0, len(body))
 		walk := factWalk{words: e.facts}
@@ -3739,6 +3744,12 @@ func (a *app) footHint(width int) string {
 	if hint := a.hintWord(); hint != "" {
 		return hint
 	}
+	// A WORD OF THE HEAD UNDER THE POINTER says what it opens and its key
+	// (topnav.go's [app.headHint]), under a state's own keys and over every
+	// resting sentence.
+	if hint := a.headHint(); hint != "" {
+		return hint
+	}
 	// AND UNDER THE STATES, BUT OVER EVERY TIP AND DOOR: THE CHORD THAT DID NOT
 	// ARRIVE. A Mac whose Option key is composing accents answers the switcher's
 	// chord with the character `˚`, and the legend's own door would go on naming
@@ -4010,7 +4021,7 @@ func (a *app) hintWord() string {
 		// It costs no rows, for the reason the line above it costs none: this is
 		// the legend, which is on the frame in every state.
 		return spellOutHint
-	case a.railAway && a.railAvail():
+	case a.railAway && a.railAvail() && a.headHint() == "":
 		// THE COLUMN IS AWAY AND THIS SESSION HAS RUN SOMETHING (task.go's
 		// [app.railStow]). It ranks LAST, under every state above it, because it is
 		// the only line here that is not about the next keystroke — it is where the
@@ -4023,8 +4034,10 @@ func (a *app) hintWord() string {
 		// there. This is that sign. With nothing run at all it stays quiet — the
 		// column a person closed was empty, ctrl+g still brings it back, and a
 		// standing hint about a roster of nothing is the emptiness law broken in
-		// the one slot a person reads most.
-		return railBackHint
+		// the one slot a person reads most. A word of the head under the pointer
+		// outranks it too ([app.footHint] asks [app.headHint] next): the pointer
+		// is on a word, and the line says that word.
+		return a.sideBackHint()
 	}
 	return ""
 }
@@ -4138,6 +4151,82 @@ func wrap(text string, width int) []string {
 		out = append(out, strings.Split(ansi.Wrap(para, width, ""), "\n")...)
 	}
 	return out
+}
+
+// wrapSheet is [wrap] for a column sheet such as /help. Each source line keeps
+// its own column: a row that already starts in spaces stays there, and a row
+// whose sentence begins after a gap of spaces continues under that sentence.
+// A continuation that fell back to column 0 read as a new key.
+func wrapSheet(text string, width int) []string {
+	if width < 4 {
+		width = 4
+	}
+	text = strings.ReplaceAll(text, "\t", "    ")
+	var out []string
+	for _, para := range strings.Split(text, "\n") {
+		if para == "" {
+			out = append(out, "")
+			continue
+		}
+		out = append(out, wrapSheetLine(para, width)...)
+	}
+	return out
+}
+
+// wrapSheetLine wraps one sheet row so every piece starts at the same column
+// as the sentence on the first piece.
+func wrapSheetLine(line string, width int) []string {
+	at := sheetColumn(line)
+	if at <= 0 || at >= width-4 {
+		return strings.Split(ansi.Wrap(line, width, ""), "\n")
+	}
+	head, rest := splitCells(line, at)
+	if strings.TrimSpace(rest) == "" {
+		return []string{line}
+	}
+	body := strings.Split(ansi.Wrap(rest, width-at, ""), "\n")
+	if len(body) == 0 {
+		return []string{line}
+	}
+	pad := strings.Repeat(" ", at)
+	out := make([]string, len(body))
+	out[0] = head + body[0]
+	for i := 1; i < len(body); i++ {
+		out[i] = pad + body[i]
+	}
+	return out
+}
+
+// sheetColumn is where a sheet row's sentence starts, in cells. A row that
+// already begins with spaces is hanging there. Otherwise it is the cell after
+// the first gap of two or more spaces, which is the column the key's sentence
+// is padded to. Zero means the row has no column to keep.
+func sheetColumn(line string) int {
+	lead := 0
+	for _, r := range line {
+		if r != ' ' {
+			break
+		}
+		lead++
+	}
+	if lead > 0 {
+		return lead
+	}
+	gap := 0
+	col := 0
+	for _, r := range line {
+		if r == ' ' {
+			gap++
+			col++
+			continue
+		}
+		if gap >= 2 {
+			return col
+		}
+		gap = 0
+		col += ansi.StringWidth(string(r))
+	}
+	return 0
 }
 
 // noteBlockLines is [wrap]'s opposite number for a block whose own line

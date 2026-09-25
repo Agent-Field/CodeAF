@@ -42,15 +42,16 @@ func TestTabWallDoorStandsAfterTheNewChat(t *testing.T) {
 			plus = hit
 		}
 	}
-	if !plus.span.pressable() || plus.span.to != door.from {
-		t.Fatalf("the door does not touch the +: + %+v door %+v\n%q", plus.span, door, plain(row))
+	// ONE GAP AFTER THE `+`, the gap between any two pieces of the strip.
+	if !plus.span.pressable() || plus.span.to+1 != door.from || plain(ansi.Cut(row, plus.span.to, door.from)) != " " {
+		t.Fatalf("the door does not stand one gap after the +: + %+v door %+v\n%q", plus.span, door, plain(row))
 	}
 	// The same blank either side as the +.
 	pw := plain(ansi.Cut(row, plus.span.from, plus.span.to))
 	if !strings.HasPrefix(pw, " ") || !strings.HasSuffix(pw, " ") || len(pw) != 3 {
 		t.Fatalf("the + is %q", pw)
 	}
-	if hit, ok := a.tabAt(door.from, placeTabRow); !ok || hit.kind != tabWall {
+	if hit, ok := a.tabAt(door.from, tabStripRow); !ok || hit.kind != tabWall {
 		t.Fatalf("the strip does not answer for the door: %+v", hit)
 	}
 	for _, w := range tabWords(a) {
@@ -66,7 +67,7 @@ func TestTabWallDoorHover(t *testing.T) {
 	a := wallDoorApp(t, 120)
 	rest := a.tabsRow(120)
 	door := a.wall.door
-	hover, ok := a.tabHoverAt(door.from+2, placeTabRow)
+	hover, ok := a.tabHoverAt(door.from+2, tabStripRow)
 	if !ok {
 		t.Fatal("the door does not take the pointer")
 	}
@@ -79,7 +80,7 @@ func TestTabWallDoorHover(t *testing.T) {
 	if !strings.Contains(cell, "\x1b[48;") || cell == ansi.Cut(rest, door.from, door.to) {
 		t.Fatalf("the hovered door wears no ground: %q", cell)
 	}
-	if got := a.dockHoverWords(); got != "Conversations "+wallOpenKey {
+	if got := a.dockHoverWords(); got != dockWallWord || !strings.Contains(got, "teams") || !strings.HasSuffix(got, wallOpenKey) {
 		t.Fatalf("the hint slot says %q", got)
 	}
 	t.Logf("120 columns at rest:\n%q\nhovered:\n%q", plain(rest), plain(lit))
@@ -101,7 +102,7 @@ func TestTabWallDoorOpensAndCloses(t *testing.T) {
 		t.Fatal("the door is not lit while the view is up")
 	}
 	t.Logf("120 columns with the view up:\n%q", plain(open))
-	if _, took := a.wallPress(door.from+1, placeTabRow); !took || a.wall.on {
+	if _, took := a.wallPress(door.from+1, tabStripRow); !took || a.wall.on {
 		t.Fatalf("a press on the door from inside the view: took %v on %v", took, a.wall.on)
 	}
 	// And the tab strip's own press closes it too.
@@ -112,9 +113,9 @@ func TestTabWallDoorOpensAndCloses(t *testing.T) {
 	}
 }
 
-// THE DOOR NARROWS AND GOES WITH THE ROW: the word first, then the glyph, and
-// the count of hidden tabs stays the last thing on it. The row is exactly the
-// frame's width.
+// THE DOOR GOES WITH THE ROW, WORD AND GLYPH TOGETHER: ` ▦ All ` wherever it
+// is drawn and nothing under [tabWallFrom], never a lone glyph; the count of
+// hidden tabs stays the last thing on it. The row is exactly the frame's width.
 func TestTabWallDoorAtEveryWidth(t *testing.T) {
 	for _, width := range []int{40, 60, 80, 120, 160} {
 		a := wallDoorApp(t, width)

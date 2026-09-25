@@ -50,7 +50,7 @@ func TestARunSaysItIsFormingWhileItHasNothingToShowYet(t *testing.T) {
 	a.taskUpdate(update(1, "competitive intelligence on the three vendors",
 		session.TaskRunning, session.TaskNotice{Doing: "forming the work"}))
 
-	if drawn := strings.Join(railText(a, a.viewHeight()), "\n"); !strings.Contains(drawn, "forming the work") {
+	if drawn := strings.Join(railText(a, a.viewHeight()), "\n") + "\n" + railHint(a, 1); !strings.Contains(drawn, "forming the work") {
 		t.Fatalf("the run's row says nothing while its workers are being formed:\n%s", drawn)
 	}
 
@@ -61,7 +61,7 @@ func TestARunSaysItIsFormingWhileItHasNothingToShowYet(t *testing.T) {
 	a.taskUpdate(update(2, "pricing sheet", session.TaskRunning, session.TaskNotice{Parent: 1}))
 	railKinship(a, 1, 2)
 
-	drawn := strings.Join(railText(a, a.viewHeight()), "\n")
+	drawn := strings.Join(railText(a, a.viewHeight()), "\n") + "\n" + railHint(a, 1)
 	if strings.Contains(drawn, "forming the work") {
 		t.Fatalf("the run still says it is forming with a worker on the board:\n%s", drawn)
 	}

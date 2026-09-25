@@ -41,12 +41,12 @@ import (
 //	x                  close its view, or the picked'  Close on a tile, Close views
 //	m                  its teams, or the picked'    Teams on a tile, Add to…
 //	s                  new team of the picked       + New team, Make team
-//	e                  the shown team's settings    a segment's dot or ⋯
+//	e                  the shown team's card        a segment's dot or ⋯
 //	r                  resume the shown team's      the title's Open them
 //	                   members not open here
 //	tab, shift+tab     next or previous team        a Teams segment
 //	1 to 9             that team, again for All     a Teams segment
-//	D                  delete the shown team        settings, Delete
+//	D                  close the shown team         Close… on its card
 //	o                  suggest teams, on All        ✦ Organize on the Teams row
 //	u                  undo the last Organize       Undo, while the Teams row offers it
 //	/                  filter                        Filter /
@@ -231,6 +231,7 @@ func (a *app) wallFrame(width, height int) []string {
 		name:      a.wall.name,
 		nameFresh: a.wall.nameFresh,
 		asking:    a.wall.nameAsking,
+		nameIn:    a.teamNameOf(a.wall.nameParent),
 		made:      a.wall.made,
 		madeN:     a.wall.madeN,
 		madeAt:    a.wall.madeAt,
@@ -270,14 +271,14 @@ func (a *app) wallFrame(width, height int) []string {
 	}
 	view.org = a.wallOrganizeFrame(tiles, tabs)
 	view.total = len(open)
-	for _, t := range a.wall.teams {
+	for _, t := range a.wallTeams() {
 		n := 0
 		for _, m := range t.Members {
 			if open[m.Key] {
 				n++
 			}
 		}
-		view.teams = append(view.teams, wallTeamRow{id: t.ID, name: t.Name, hue: t.HueSpec(), count: n, members: len(t.Members)})
+		view.teams = append(view.teams, wallTeamRow{id: t.ID, name: a.wallTeamLabel(t), hue: t.HueSpec(), count: n, members: len(t.Members)})
 	}
 	if t, ok := a.teamActive(); ok {
 		view.away = len(a.teamAway(t, tabs))
@@ -490,18 +491,18 @@ func (a *app) wallCommand(key string, tiles []wallTile) tea.Cmd {
 	case "e":
 		// The shown team's settings, where its dot or ⋯ opens them.
 		if id := a.wall.activeID; id != "" {
-			a.wallOpenSettings(id, a.wallAnchorTeam(wallHitChipMenu, id))
+			return a.teamSheetOpen(id, teamSheetSettings)
 		}
 	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 		// A team by its place on the Teams row; the digit of the team that
 		// is shown goes back to All, so the same key undoes itself.
 		i := int(key[0] - '1')
 		switch {
-		case i >= len(a.wall.teams):
-		case a.wall.teams[i].ID == a.wall.activeID:
+		case i >= len(a.wallTeams()):
+		case a.wallTeams()[i].ID == a.wall.activeID:
 			a.wallSetTeam("")
 		default:
-			a.wallSetTeam(a.wall.teams[i].ID)
+			a.wallSetTeam(a.wallTeams()[i].ID)
 		}
 	case "/":
 		a.wall.filterOn = true
@@ -519,10 +520,11 @@ func (a *app) wallCommand(key string, tiles []wallTile) tea.Cmd {
 		a.wall.cols = 0
 		a.wallMove(a.wall.focus, n)
 	case "D":
-		// Delete the active team. The conversations in it are untouched: a
-		// team is a view, and so is its going.
+		// CLOSE the shown team (ruling c-9): at once with Undo when nothing
+		// in it runs, and the close card when something does. A team is
+		// deleted only from the teams page's Closed fold, once it is closed.
 		if id := a.wall.activeID; id != "" {
-			a.wallDeleteTeam(id)
+			return a.teamsCloseAsk(id)
 		}
 	case "o":
 		return a.wallOrganizeOpen()
@@ -643,6 +645,7 @@ func (a *app) wallStartNaming(tiles []wallTile) tea.Cmd {
 	a.wall.naming = true
 	a.wall.filterOn = false
 	a.wall.pop = wallPop{}
+	a.wall.nameParent = ""
 	a.wall.name = teamFreshName(marked, a.teamNames(), "", rand.IntN)
 	a.wall.nameFresh = true
 	// The colours offered are the farthest from every team's, best first,
@@ -783,7 +786,9 @@ func (a *app) wallMakeTeam(tiles []wallTile) tea.Cmd {
 	if a.wall.choice >= 0 && a.wall.choice < len(a.wall.choices) {
 		hue = a.wall.choices[a.wall.choice]
 	}
-	id, err := a.teamMakeHued(name, a.wallMarkedTabs(tiles), hue)
+	parent := a.wall.nameParent
+	a.wall.nameParent = ""
+	id, err := a.teamMakeIn(name, a.wallMarkedTabs(tiles), hue, parent)
 	made, ok := a.teamByID(id)
 	if !ok {
 		return nil
@@ -858,11 +863,12 @@ func (a *app) wallDeleteTeam(id string) {
 // and the strip show; it never switches the conversation in front, so a person
 // can look through their teams without leaving the one they are in.
 func (a *app) wallCycleTeam(forward bool) {
-	n := len(a.wall.teams)
+	shown := a.wallTeams()
+	n := len(shown)
 	if n == 0 {
 		return
 	}
-	at := teamIndex(a.wall.teams, a.wall.activeID) // -1 is All
+	at := teamIndex(shown, a.wall.activeID) // -1 is All
 	next := at + 1
 	if !forward {
 		next = at - 1
@@ -877,7 +883,7 @@ func (a *app) wallCycleTeam(forward bool) {
 		a.wallSetTeam("")
 		return
 	}
-	a.wallSetTeam(a.wall.teams[next].ID)
+	a.wallSetTeam(shown[next].ID)
 }
 
 // ── THE POINTER ─────────────────────────────────────────────────────────────
@@ -916,9 +922,13 @@ func (a *app) wallMotion(x, y int) {
 	a.wall.ptrX, a.wall.ptrY, a.wall.ptrIn = x, y, y >= a.wall.headRows
 	if y < a.wall.headRows {
 		a.wallSetHover(wallHitRef{})
+		// The nav is on the head's first row here as on every page
+		// (topnav.go).
+		a.navHover(x, y)
 		a.setHover(x, y)
 		return
 	}
+	a.navHover(x, y)
 	if a.hot != (hoverAt{}) {
 		a.hot = hoverAt{}
 		a.touch()
@@ -1075,7 +1085,8 @@ func (a *app) wallDo(hit wallHit) tea.Cmd {
 	case wallHitChip:
 		a.wallSetTeam(hit.id)
 	case wallHitChipMenu:
-		a.wallOpenSettings(hit.id, a.wallLocal(hit))
+		// The team's card (teamsheet.go), over the wall.
+		return a.teamSheetOpen(hit.id, teamSheetSettings)
 	case wallHitAddTeam:
 		return a.wallStartNaming(tiles)
 	case wallHitMini:
@@ -1654,4 +1665,25 @@ func dropLastRune(s string) string {
 		return s
 	}
 	return string(r[:len(r)-1])
+}
+
+// wallTeamLabel is a team's name on the wall's flat Teams row: `harbor › api`
+// for a team inside another (its parent's name first, so two teams called api
+// are told apart), and the bare name at the top level. The row stays one flat
+// row (ruling c-12); the tree is the teams page's and the switcher's. Each part
+// is cut on its own, so the team's own name is never the part that is lost.
+func (a *app) wallTeamLabel(t team) string {
+	name := t.Name
+	if ansi.StringWidth(name) > wallChipCap {
+		name = ansi.Truncate(name, wallChipCap, a.linearMark("…", "~"))
+	}
+	p, ok := a.teamByID(t.Parent)
+	if !ok || p.Root {
+		return name
+	}
+	parent := p.Name
+	if ansi.StringWidth(parent) > wallChipCap/2 {
+		parent = ansi.Truncate(parent, wallChipCap/2, a.linearMark("…", "~"))
+	}
+	return parent + " " + a.linearMark("›", ">") + " " + name
 }

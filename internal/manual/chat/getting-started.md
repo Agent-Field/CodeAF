@@ -298,9 +298,9 @@ ghostty with `font_family`, `[font.normal] family` and `font-family` in their co
 files.
 
 **Option as meta, on macOS.** Every chord codeaf binds is the option key, and on a Mac it is
-drawn the way the keycap names it, `opt+enter` to send what you typed off as a task, `opt+1`…`opt+8`
+drawn the way the keycap names it, `opt+enter` to send what you typed off as a task, `opt+1`…`opt+9`
 to jump to a place, `opt+.` for the map. (On Linux and Windows the same chords are drawn
-`alt+enter`, `alt+1`…`alt+8`, `alt+.`; this manual names both spellings together.) Most Mac
+`alt+enter`, `alt+1`…`alt+9`, `alt+.`; this manual names both spellings together.) Most Mac
 terminals send Option as an accent-composing key until you tell them otherwise, so those
 chords type `¡ ™ £ ≥` instead of doing anything. Turn on **iTerm2** → Profiles → Keys →
 *Left Option key: Esc+*, or **Terminal.app** → Profiles → Keyboard → *Use Option as Meta
@@ -313,14 +313,14 @@ line: `your terminal sends opt as a letter — turn on "use option as meta" in �
 terminal you are actually in.
 
 **The first-run setup says it too.** When the questions are done, a Mac gets one more
-line: `the places answer opt+1…opt+8 · if opt types a character instead, turn on "use option as
+line: `the places answer opt+1…opt+9 · if opt types a character instead, turn on "use option as
 meta" in …`. It is a condition rather than a report — nothing has been pressed yet — and it is
 said once.
 
 **On kitty, ghostty and WezTerm there is also a way in with no setting at all:** those
 terminals report that they run the kitty keyboard protocol, and where that report arrives
-`ctrl+1` … `ctrl+8` jump to the same seven places and `ctrl+.` draws the same map. The map's
-own line says `alt+1…8 or ctrl+1…8 go to a place` exactly when the alias is live.
+`ctrl+1` … `ctrl+9` jump to the same eight places and `ctrl+.` draws the same map. The map's
+own line says `alt+1…9 or ctrl+1…9 go to a place` exactly when the alias is live.
 
 On Linux and on Windows terminals, Alt is already meta and there is nothing to set. The
 whole of this is also in *Screen* — see *The font codeaf is drawn for*, *alt or option or opt —

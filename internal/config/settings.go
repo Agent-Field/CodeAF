@@ -77,6 +77,10 @@ const (
 	// CategoryTasks is how work you can walk away from is run — how it starts,
 	// how it is checked, how much of it happens at once, and on whose hands.
 	CategoryTasks = "tasks"
+	// CategoryTeams is what every team inherits when it says nothing of its
+	// own: who answers a member's question, what a team may spend in a day,
+	// and how deep teams may nest (teamdefaults.go).
+	CategoryTeams = "teams"
 	// CategoryPractice is what codeaf does with its own time, and what it
 	// remembers of yours.
 	CategoryPractice = "memory & practice"
@@ -99,7 +103,7 @@ const (
 // safety and tasks follow it in the order the design's own hierarchy names.
 var SettingCategories = []string{
 	CategoryModels, CategorySpending, CategorySafety, CategoryTasks,
-	CategoryPractice, CategoryInterface,
+	CategoryTeams, CategoryPractice, CategoryInterface,
 }
 
 // Persisted keys are also the json field names in the profile's config.json.
@@ -2644,6 +2648,7 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeChoice(dir, KeySSHIPQoS, raw, SSHIPQoSChoices) },
 		},
 	)
+	rows = append(rows, teamRows(dir)...)
 	return rows
 }
 

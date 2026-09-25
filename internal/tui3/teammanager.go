@@ -329,7 +329,27 @@ func (a *app) teamManagerMenuWord(t team, key string) string {
 // team's doors: the manager's place on the strip, the team chip, and the
 // Traffic's rows and words. "" anywhere else.
 func (a *app) teamHoverWords() string {
-	if words := a.trafficHoverWords(); words != "" {
+	// The move picker and a team's card, over whatever is drawn; a drag, the
+	// members card, and then the teams page's own buttons while it hosts the
+	// manager.
+	if a.tmove.on {
+		return a.teamMoveHint()
+	}
+	if a.tsheet.on {
+		return a.teamSheetHint()
+	}
+	if a.at(pageTeams) {
+		if words := a.teamDragHint(); words != "" {
+			return words
+		}
+		if a.tcrew.on {
+			return a.teamCrewHint()
+		}
+	}
+	if words := a.teamsPageHint(); words != "" {
+		return words
+	}
+	if words := a.sideHoverWords(); words != "" {
 		return words
 	}
 	if words := a.teamLinkHint(); words != "" {

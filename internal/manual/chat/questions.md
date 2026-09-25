@@ -1270,13 +1270,13 @@ has all of the above: the digits, `esc` for later, the chip, the receipt, the
 settle guard, the narrow card and the phone sheet. `permissions` is its own page
 and states what each answer banks.
 
-**So does the standing card** — `wants to keep an eye on:` with `1 yes, set it up`,
-`3 just once` where the item can be done once at all, and `0 no`. What is left in
-the conversation is the card itself: your own words, the `when ·`, `where ·` and
-`costs ·` bands, and the meter where the engine put a deadline on it. The answers
-are up above the box with everything else you are being waited on for, and each
-one says what it costs beside it. `o` starts an updated request — it turns
-the box into the correction lane, and `enter` sends your words back to be
+**So does the standing card.** The first line says the kind: `wants to remind you`,
+`wants to set up a repeating check`, `wants to watch for something`, or
+`wants to keep a rule`. Under that is what it does, then when and what one time
+costs, and the `where ·` band. The answers sit above the box. A repeating check's
+yes is `Set it up · <cadence>`, its once is `Only now, don't repeat` (this used
+to say `just once`), and its no is `Don't set it up`. A reminder and a rule have
+no once. `o` starts an updated request. `enter` sends your words back to be
 re-proposed.
 
 **`esc` on a standing card means *later* now, and it used to mean no.** It is

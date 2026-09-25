@@ -272,7 +272,7 @@ that conversation beside the one you are in — the engine gives it a connection
 and the chat you came from keeps running, the same door `codeaf resume` uses locally. The right end of the tab bar reads `on <machine>` so you can
 see whose afternoon you are looking at, and it is not there at all on a local session.
 
-Three of the seven places still read the machine this window is running on, and each says so
+Three of the eight places still read the machine this window is running on, and each says so
 in one line where its rows would be: **spend**, **search** and **memory**. The whole table,
 and why the look-stamp behind each tab's number is kept per machine, is on the Places page
 under *The places over --host*.
@@ -454,11 +454,14 @@ exact sentence each one says.
    travels on the wire like every other answer; nothing about it needs a browser or a
    port. This is the one entry on the list that is a capability, not a limit.
 
-5. **`/settings` opens anyway, and says one sentence as it opens.** Half these rows are
-   this surface's own — the mouse, the timestamps, the draft — and genuinely apply; the
-   other half govern the conversation, which reads them from the far machine's profile. It
-   says exactly:
-   `these rows are this machine's — the ones that govern the conversation are read from the profile on the other one`
+5. **`/settings` opens anyway, and says whose rows these are.** Every tab but Teams writes
+   this machine. The Teams tab is saved on the other machine when that machine can take the
+   change. Opening on any other tab says exactly:
+   `these rows belong to this machine; the Teams tab is saved on the other one.`
+   On the Teams tab it says only what is true there:
+   `these rows are saved on <machine>.`
+   An older engine, where the Teams tab cannot be saved over the connection, says exactly:
+   `these rows belong to this machine; this conversation reads its profile on the other one.`
 
 ## More of what does not work over --host
 
@@ -575,7 +578,7 @@ The task roster lists this far conversation's work. Its rows come from the far
     keep it, or drop it — goes back the same way. Running a harness that already exists was
     never affected.
 
-13. **Three of the seven places still read this machine.** Spend adds up the ledger every
+13. **Three of the eight places still read this machine.** Spend adds up the ledger every
     model call on the machine this window runs on writes into, search reads the index of what
     was said here, and memory reads what sessions here learned — and there is no door on the
     wire for any of the three yet. Each place opens, keeps its head, its bar and its box, and
@@ -672,21 +675,51 @@ browser and no port, so that road stays open over `--host`.
 
 ## Settings over --host
 
-`/settings` opens over a connection and says one sentence as it opens:
+`/settings` opens over a connection. On any tab but Teams it says exactly:
 
 ```
-these rows are this machine's — the ones that govern the conversation are read from the profile on the other one
+these rows belong to this machine; the Teams tab is saved on the other one.
 ```
 
-Half the rows are this surface's own — the mouse, the timestamps, the draft — and those
-genuinely apply to what you are looking at. The other half govern the conversation, and
-the conversation reads them from the profile on the far machine. Change those over there.
+On the Teams tab it says only what is true there:
+
+```
+these rows are saved on <machine>.
+```
+
+An older engine, where that tab cannot be saved over the connection, says exactly:
+
+```
+these rows belong to this machine; this conversation reads its profile on the other one.
+```
+
+The rows on every tab but Teams are this machine's, and those changes apply to what you
+are looking at. The Teams tab is the other machine's when the connection can save it.
 
 **Asking codeaf to change a setting goes the other way.** `settings` and `change_setting`
-run inside the session, which is on the far machine, so they read and write **that**
-machine's profile — which is the profile the conversation actually obeys. So over a
+run inside the session, which is on the far machine, so they read and write that
+machine's profile, which is the profile the conversation actually obeys. So over a
 connection the two doors land in two different files: the panel edits this laptop, and
-asking edits the machine the work is on.
+asking edits the machine the work is on. The Teams tab is the exception on the panel.
+It saves on the other machine, the same place asking would write a team default.
+
+## Can I change the Teams settings on another machine, and where do team defaults go over a connection
+
+The **Teams** tab is the exception. Team defaults over a connection are what every team on
+the far machine inherits, so the tab shows that machine's values and a change is saved
+there, not on this computer. A value reads `from Settings`, the same words a team's own
+card uses when the team has not overridden it.
+
+You can change `questions go to the manager`, `team messages wake`, `daily cap per team`,
+`team depth` and `sub-team share`. The foot line says
+`a team can override any of these on its card · saved on <machine>`. The note on this tab
+says exactly `these rows are saved on <machine>.`
+
+An older engine, one that can show the teams but cannot take this change, keeps the tab
+read only. The note says exactly
+`these rows are on <machine>. changing them is not available over this connection.`
+The foot line says `changing them is not available over this connection`, and
+pressing enter on a row says the same sentence. Nothing is written on either machine.
 
 ## Approvals over --host
 

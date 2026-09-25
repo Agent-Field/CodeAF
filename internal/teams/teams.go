@@ -25,6 +25,16 @@ type Member struct {
 	// Handle is the member's short name inside this team (handle.go). It is
 	// empty only while the member has no title to derive one from.
 	Handle string `json:"handle,omitempty"`
+	// Home marks the one membership, among all of this conversation's, that
+	// names the manager it reports to (home.go): the nearest manager up this
+	// team's chain. At most one membership of a key carries it, and only one
+	// with a manager somewhere up its chain. [File.SetHome] moves it; tidy
+	// picks it when there is none and never moves a valid one.
+	Home bool `json:"home,omitempty"`
+	// Started says this membership was made by the team manager's team_start
+	// (a [KindStart] the interface carried out), which is the second rule a
+	// home is picked by.
+	Started bool `json:"started,omitempty"`
 	// HandleBy is who chose Handle: [HandleByWords] for the word list's
 	// instant guess, [HandleByModel] for the title model's word, and
 	// [HandleByTyped] for a handle a person or the manager gave. "" is a
@@ -49,12 +59,26 @@ type Team struct {
 	Hue  float64
 	Tier int
 	Made time.Time
-	// WakeOff turns the team's auto-wake off: a directive no longer starts an
-	// idle member's turn, and a member's reply no longer starts the manager's.
-	// Everything is still delivered, at the next turn each conversation takes.
-	// It is stored as "wake": false and only then, so a file that never said
-	// anything about waking wakes.
-	WakeOff bool
+	// State is [TeamOpen] or [TeamClosed] (lifecycle.go); the empty string a
+	// file from before the lifecycle wrote reads as open. ClosedAt is when it
+	// closed, ClosedWith the id of the team whose close closed it (itself, or
+	// the ancestor a cascade came from), and Report the id of its closing
+	// report packet, "" for a team closed without one.
+	State      string
+	ClosedAt   time.Time
+	ClosedWith string
+	Report     string
+	// Root marks the one team that holds every other (root.go): the `All
+	// teams` row, made when the person gives it a manager.
+	Root bool
+	// Settings are the team's own delegation overrides (teamsettings.go),
+	// each unset field inheriting from the parent chain and then the
+	// profile's `teams.` defaults. They are stored flat on the team.
+	Settings Settings
+	// Wrap is a wrap-up in progress (wrap.go): when it started and how long
+	// it was given. Nil is none, which is also what a file from before the
+	// field was kept reads as.
+	Wrap *Wrap
 
 	// hued says the team has a colour: the file gave it one or [Team.SetHue]
 	// did. A hue of 0 is a real hue, so absence is kept apart from the value.
@@ -72,7 +96,10 @@ type File struct {
 // knownFields is every key [Team] reads itself.
 var knownFields = map[string]bool{
 	"id": true, "name": true, "parent": true, "members": true, "manager": true,
-	"hue": true, "tier": true, "made": true, "wake": true,
+	"hue": true, "tier": true, "made": true,
+	"state": true, "closed_at": true, "closed_with": true, "report": true, "root": true,
+	"questions_up": true, "cap_usd_day": true, "depth_limit": true, "sub_share": true, "wake": true,
+	"wrap": true,
 }
 
 // wireTeam is the stored shape. Hue and Tier are pointers so a team with no
@@ -87,7 +114,18 @@ type wireTeam struct {
 	Hue     *float64  `json:"hue,omitempty"`
 	Tier    *int      `json:"tier,omitempty"`
 	Made    time.Time `json:"made"`
-	Wake    *bool     `json:"wake,omitempty"`
+	// The lifecycle, written only for a closed team.
+	State      string     `json:"state,omitempty"`
+	ClosedAt   *time.Time `json:"closed_at,omitempty"`
+	ClosedWith string     `json:"closed_with,omitempty"`
+	Report     string     `json:"report,omitempty"`
+	Root       bool       `json:"root,omitempty"`
+	// Wrap is written only while a wrap-up is in progress, so a team with
+	// none is written exactly as before.
+	Wrap *Wrap `json:"wrap,omitempty"`
+	// The overrides are written flat beside the fields above, each only when
+	// set, so a team with none is written exactly as before.
+	Settings
 }
 
 // UnmarshalJSON reads a team, keeping every field it does not know.
@@ -100,8 +138,11 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 	if err := json.Unmarshal(raw, &all); err != nil {
 		return err
 	}
-	*t = Team{ID: w.ID, Name: w.Name, Parent: w.Parent, Members: w.Members, Manager: w.Manager, Made: w.Made}
-	t.WakeOff = w.Wake != nil && !*w.Wake
+	*t = Team{ID: w.ID, Name: w.Name, Parent: w.Parent, Members: w.Members, Manager: w.Manager, Made: w.Made,
+		Settings: w.Settings, State: w.State, ClosedWith: w.ClosedWith, Report: w.Report, Root: w.Root, Wrap: w.Wrap}
+	if w.ClosedAt != nil {
+		t.ClosedAt = *w.ClosedAt
+	}
 	if w.Hue != nil {
 		t.Hue, t.hued = *w.Hue, true
 	}
@@ -123,10 +164,16 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 // MarshalJSON writes the known fields in their order, then any field a later
 // build wrote, sorted, exactly as it was read.
 func (t Team) MarshalJSON() ([]byte, error) {
-	w := wireTeam{ID: t.ID, Name: t.Name, Parent: t.Parent, Members: t.Members, Manager: t.Manager, Made: t.Made}
-	if t.WakeOff {
-		off := false
-		w.Wake = &off
+	w := wireTeam{ID: t.ID, Name: t.Name, Parent: t.Parent, Members: t.Members, Manager: t.Manager, Made: t.Made,
+		Settings: t.Settings, ClosedWith: t.ClosedWith, Report: t.Report, Root: t.Root, Wrap: t.Wrap}
+	// A state this build does not know is written back as it was read, so a
+	// later build's word survives; open is written as nothing.
+	if t.State != "" && t.State != TeamOpen {
+		w.State = t.State
+	}
+	if !t.ClosedAt.IsZero() {
+		at := t.ClosedAt
+		w.ClosedAt = &at
 	}
 	if t.Hued() {
 		hue, tier := t.Hue, t.Tier
@@ -154,10 +201,10 @@ func (t Team) MarshalJSON() ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-// Wakes reports whether team traffic wakes the team's idle conversations: a
-// directive its member, a reply or an event its manager. It is on unless the
-// team was turned off ([Team.WakeOff]).
-func (t Team) Wakes() bool { return !t.WakeOff }
+// Wakes reports whether the team's OWN setting leaves waking on: true unless
+// the team itself says "wake": false. It does not walk the chain; whether team
+// traffic really wakes a conversation is [Effective].Wake, which inherits.
+func (t Team) Wakes() bool { return t.Settings.Wake == nil || *t.Settings.Wake }
 
 // Hued reports whether the team has a colour. A team built in code with a
 // non-zero hue or tier counts as coloured.
@@ -205,6 +252,11 @@ func (t Team) member(key string) int {
 // Clone is a copy of t that shares nothing with it.
 func (t Team) Clone() Team {
 	t.Members = append([]Member(nil), t.Members...)
+	t.Settings = t.Settings.clone()
+	if t.Wrap != nil {
+		w := *t.Wrap
+		t.Wrap = &w
+	}
 	if t.extra != nil {
 		extra := make(map[string]json.RawMessage, len(t.extra))
 		for k, v := range t.extra {
@@ -297,6 +349,9 @@ func (f *File) SetParent(id, parent string) error {
 	i, err := f.at(id)
 	if err != nil {
 		return err
+	}
+	if f.Teams[i].Root && parent != "" {
+		return ErrRoot
 	}
 	if parent != "" {
 		if Index(f.Teams, parent) < 0 {
@@ -417,8 +472,9 @@ func (f *File) SetHandle(id, key, h string) error {
 // tidy puts a list in order, in place, and reports whether it changed
 // anything: an id for every team (and a new one for an id used twice), a
 // parent that exists and does not lead back, handles for members with titles
-// and no valid unique handle, and a manager that is a member. Colour is not
-// its business ([File.Colour] is).
+// and no valid unique handle, a manager that is a member, overrides inside
+// their bands, and one home for every conversation that has a manager to
+// report to (home.go). Colour is not its business ([File.Colour] is).
 func tidy(teams []Team) bool {
 	changed := false
 	seen := map[string]bool{}
@@ -450,6 +506,17 @@ func tidy(teams []Team) bool {
 			teams[i].Manager = ""
 			changed = true
 		}
+		if teams[i].Settings.tidy() {
+			changed = true
+		}
+	}
+	// The root holds every other top-level team (root.go).
+	if tidyRoot(teams) {
+		changed = true
+	}
+	// Homes last: they depend on the managers and parents settled above.
+	if assignHomes(teams) {
+		changed = true
 	}
 	return changed
 }
