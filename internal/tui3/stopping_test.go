@@ -217,6 +217,10 @@ func TestTheStoppedSurfaceReadsAClockThatDoesNotMoveOnItsOwn(t *testing.T) {
 // insists the compared frame SEES it.
 func TestTheStoppedFramesComparisonStillCoversTheHead(t *testing.T) {
 	a, _, elapse := stoppingAppOnAHeldClock(t)
+	// THE HEAD'S CLOCK NEEDS THE ROOM THE NAV LEAVES IT. The top line carries
+	// the places before the clock (topnav.go), and on the fixture's narrow
+	// frame the clock is the first thing the line drops.
+	a.width = 160
 	drive(t, a, key("esc"))
 
 	was := stoppedFrame(a)

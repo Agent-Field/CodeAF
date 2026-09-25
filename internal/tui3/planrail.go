@@ -241,6 +241,26 @@ func (a *app) planRailLines(kids []*planTwig, depth, width int) []railLine {
 	return out
 }
 
+// planPageLines is [app.planRailLines] for a task's page, which has the room
+// the side column gave up: under each part's one line stand the lines the
+// column moved to its hint ([app.railUnder]), what the part is doing and what
+// it is costing, so the page still names a call in flight the way the rail
+// once did beside the row.
+func (a *app) planPageLines(kids []*planTwig, depth, width int) []railLine {
+	var out []railLine
+	lead := strings.Repeat("  ", depth)
+	room := max(width-len(lead), 0)
+	for _, kid := range kids {
+		node := planRailNode(kid.row)
+		out = append(out, railLine{text: lead + a.railEntryRow(railEntry{node: node}, room), entry: -1, plan: kid.row.ID, head: true})
+		for _, under := range a.railUnder(node, max(room-4, 0)) {
+			out = append(out, railLine{text: lead + "    " + under, entry: -1, plan: kid.row.ID})
+		}
+		out = append(out, a.planPageLines(kid.kids, depth+1, width)...)
+	}
+	return out
+}
+
 // planRailRoot draws one run whose own row no node on the column carries: its
 // row, then its parts, every one of them through the node renderer.
 func (a *app) planRailRoot(twig *planTwig, width int) []railLine {

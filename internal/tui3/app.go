@@ -4557,6 +4557,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// [app.headHover]).
 		a.hoverDraftSeam(msg.Mouse().X, msg.Mouse().Y)
 		if a.headHover(msg.Mouse().X, msg.Mouse().Y) {
+			// AND THE HEAD TAKES THE POINTER OFF HOME'S PROJECT NAMES, which
+			// underline under the pointer alone (home.go's [app.homeHover]) and
+			// would otherwise stay lit after it left them for the nav.
+			if a.home.projectHover != -1 {
+				a.home.projectHover = -1
+				a.touch()
+			}
 			return a, nil
 		}
 		if a.at(pageSettings) {
