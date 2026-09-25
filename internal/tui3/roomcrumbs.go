@@ -215,6 +215,11 @@ func (a *app) roomAncestors() []*taskNode {
 	if node == nil || a.roomIsGuest() {
 		return nil
 	}
+	// A RUN'S TASK HANGS UNDER THE RUN'S TASKS, which are rows of its store and
+	// not nodes of this graph (planroom.go).
+	if a.roomPlan() != nil {
+		return a.planRoomAncestors()
+	}
 	seen := map[uint64]bool{node.id: true}
 	var up []*taskNode
 	for parent := node.ParentID(); parent != ""; {
@@ -446,7 +451,7 @@ func (a *app) paintCrumbs(label string, at int, paint func(string) string) strin
 
 // paintCrumbHits is [app.paintCrumbs] over a trail the caller laid out, so a
 // page that draws the room's trail shape without being a room — a store task's
-// page ([app.taskPlanTrail]) — paints its crumbs in the same inks.
+// page — paints its crumbs in the same inks.
 func (a *app) paintCrumbHits(label string, at int, hits []crumbHit, hot crumbHit, hovering bool) string {
 	width, cursor := ansi.StringWidth(label), 0
 	var out strings.Builder

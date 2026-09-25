@@ -45,7 +45,7 @@ import (
 // reads a handful of fields and allocates nothing.
 func (a *app) teamsHosting() bool {
 	return a.tp.host != "" && (a.at(pageTeams) || a.tp.forwarding) && !a.wall.on && !a.setup.open &&
-		!a.railTaskPlanOn && !a.workTabOn && !a.pasteEdit.open && a.tp.host == a.frontTabKey()
+		!a.pasteEdit.open && a.tp.host == a.frontTabKey()
 }
 
 // teamsHostRail is the rail's columns while the pane hosts the manager, its

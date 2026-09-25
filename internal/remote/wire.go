@@ -540,9 +540,15 @@ const (
 	// that as the block being absent HERE — which is exactly what it drew before
 	// this door existed — and the emptiness law is kept. Nothing that was drawn
 	// goes dark, so nothing is refused at the door.
-	MethodPlanSpend         = "PlanSpend"         // PlanSpendArgs → []session.PlanSpendLine
-	MethodPlanTasks         = "PlanTasks"         // nothing → []session.PlanTaskRow
-	MethodPlanTaskPage      = "PlanTaskPage"      // PlanTaskPageArgs → PlanTaskPageResult
+	MethodPlanSpend    = "PlanSpend"    // PlanSpendArgs → []session.PlanSpendLine
+	MethodPlanTasks    = "PlanTasks"    // nothing → []session.PlanTaskRow
+	MethodPlanTaskPage = "PlanTaskPage" // PlanTaskPageArgs → PlanTaskPageResult
+	// MethodPlanTaskWork is the task room's work tab: the difference in the
+	// run's working copy. It rides this version rather than moving it, for
+	// [MethodPlanSpend]'s reason — an engine that does not know it answers
+	// "no such method", and the tab draws the absence sentence it already
+	// drew for an engine with no door.
+	MethodPlanTaskWork      = "PlanTaskWork"      // PlanTaskArgs → PlanTaskWorkResult
 	MethodPlanNote          = "PlanNote"          // PlanTextArgs → nothing
 	MethodPlanPause         = "PlanPause"         // PlanTaskArgs → nothing
 	MethodPlanResume        = "PlanResume"        // PlanTaskArgs → nothing
@@ -1857,6 +1863,12 @@ type PlanTaskPageArgs struct {
 // PlanTaskPageResult preserves both the page and whether the task belongs to the plan.
 type PlanTaskPageResult struct {
 	Page session.PlanTaskPage
+	OK   bool
+}
+
+// PlanTaskWorkResult preserves both the working copy and whether the task belongs to the plan.
+type PlanTaskWorkResult struct {
+	Work session.PlanTaskWork
 	OK   bool
 }
 

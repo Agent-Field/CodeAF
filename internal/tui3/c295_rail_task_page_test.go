@@ -62,11 +62,11 @@ func TestRailClickReadsTheStoreAtTheGestureAndOpensTheTaskPage(t *testing.T) {
 	if fake.pages != 1 {
 		t.Fatalf("rail click read task pages %d times, want once at the gesture", fake.pages)
 	}
-	if !a.taskSheet.planOn || a.taskSheet.plan.Row.ID != "2" || a.roomOpen() {
-		t.Fatalf("rail click opened plan=%v id=%q room=%v", a.taskSheet.planOn, a.taskSheet.plan.Row.ID, a.roomOpen())
+	if plan := a.roomPlan(); plan == nil || plan.id != "2" {
+		t.Fatalf("rail click did not open the task room over store task 2: room=%v", a.roomOpen())
 	}
-	if got := taskSheetText(a); !strings.Contains(got, "replace the parser") {
-		t.Fatalf("the rail did not open taskPlanBody:\n%s", got)
+	if got := planRoomText(t, a); !strings.Contains(got, "replace the parser") {
+		t.Fatalf("the rail did not open the task's room:\n%s", got)
 	}
 }
 
@@ -74,8 +74,8 @@ func TestRailEnterReadsTheStoreAtTheGestureAndOpensTheTaskPage(t *testing.T) {
 	a, fake := railTaskPageApp(t, true)
 	a.railWhere, a.railHold = railSpot{id: 2}, true
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-	if fake.pages != 1 || !a.taskSheet.planOn || a.taskSheet.plan.Row.ID != "2" || a.roomOpen() {
-		t.Fatalf("rail enter reads=%d plan=%v id=%q room=%v", fake.pages, a.taskSheet.planOn, a.taskSheet.plan.Row.ID, a.roomOpen())
+	if plan := a.roomPlan(); fake.pages != 1 || plan == nil || plan.id != "2" {
+		t.Fatalf("rail enter reads=%d room=%v", fake.pages, a.roomOpen())
 	}
 }
 
@@ -85,8 +85,8 @@ func TestRailRowWithoutAStoredPageStillOpensItsRoom(t *testing.T) {
 	if fake.pages != 1 {
 		t.Fatalf("room fallback did %d page reads, want one gesture read", fake.pages)
 	}
-	if a.taskSheet.planOn || !a.roomOpen() || a.room.id != 2 {
-		t.Fatalf("absent page opened plan=%v room=%v id=%d", a.taskSheet.planOn, a.roomOpen(), roomID(a))
+	if a.roomPlan() != nil || !a.roomOpen() || a.room.id != 2 {
+		t.Fatalf("absent page opened room=%v id=%d", a.roomOpen(), roomID(a))
 	}
 }
 
@@ -107,17 +107,16 @@ func TestRailTaskPageSurvivesSettledFramesAndFramesDoNotReadTheAgent(t *testing.
 		drive(t, a, frameMsg{})
 		frame, _, _ := a.frame()
 		if !strings.Contains(plain(frame), "replace the parser") {
-			t.Fatalf("a settled frame closed the task page:\n%s", plain(frame))
+			t.Fatalf("a settled frame closed the task room:\n%s", plain(frame))
 		}
 	}
-	// A PAGE ON A RUNNING TASK FOLLOWS IT, one read at a time on the paint clock,
-	// and the read that finds the task settled is the last: ten frames on a
-	// settled page cost that one read and no more, and no frame reads the rows.
-	if fake.rows != reads || fake.pages > pages+1 {
-		t.Fatalf("a settled page kept calling the agent: row reads %d→%d, page reads %d→%d", reads, fake.rows, pages, fake.pages)
+	// A ROOM ON A RUNNING TASK FOLLOWS IT ON ITS OWN BEAT, never on the paint
+	// clock: ten frames cost no read of the page and no read of the rows.
+	if fake.rows != reads || fake.pages != pages {
+		t.Fatalf("frames called the agent: row reads %d→%d, page reads %d→%d", reads, fake.rows, pages, fake.pages)
 	}
-	if !a.taskSheet.planOn {
-		t.Fatal("ten settled frames closed the stored task page")
+	if a.roomPlan() == nil {
+		t.Fatal("ten settled frames closed the task room")
 	}
 }
 
@@ -126,24 +125,26 @@ func TestEscFromARailTaskPageReturnsExactlyToTheConversation(t *testing.T) {
 	a.input.value = []rune("draft stays here")
 	clickRail(t, a, 0)
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEscape})
-	if a.taskSheet.planOn || a.at(pageTasks) || a.roomOpen() {
-		t.Fatalf("esc left plan=%v tasks=%v room=%v", a.taskSheet.planOn, a.at(pageTasks), a.roomOpen())
+	if a.at(pageTasks) || a.roomOpen() {
+		t.Fatalf("esc left tasks=%v room=%v", a.at(pageTasks), a.roomOpen())
 	}
 	if got := string(a.input.value); got != "draft stays here" {
 		t.Fatalf("esc returned with draft %q", got)
 	}
 }
 
-func TestAChildRemainsOpenableFromARailTaskPage(t *testing.T) {
+func TestAChildRemainsOpenableFromARailTaskRoom(t *testing.T) {
 	a, fake := railTaskPageApp(t, true)
 	clickRail(t, a, 0)
-	a.taskSheet.planAt = 0
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-	if fake.pages != 2 || a.taskSheet.plan.Row.ID != "3" || len(a.taskSheet.planBack) != 1 {
-		t.Fatalf("child open reads=%d id=%q back=%d", fake.pages, a.taskSheet.plan.Row.ID, len(a.taskSheet.planBack))
+	if got := planRoomText(t, a); !strings.Contains(got, "cover the parser") {
+		t.Fatalf("the run's room does not draw its part:\n%s", got)
 	}
-	if got := taskSheetText(a); !strings.Contains(got, "the child page") {
-		t.Fatalf("child taskPlanBody was not drawn:\n%s", got)
+	openPlanRoomNow(t, a, "3")
+	if plan := a.roomPlan(); fake.pages != 2 || plan == nil || plan.id != "3" {
+		t.Fatalf("child open reads=%d room=%v", fake.pages, a.roomOpen())
+	}
+	if got := planRoomText(t, a); !strings.Contains(got, "the child page") {
+		t.Fatalf("the child's room was not drawn:\n%s", got)
 	}
 }
 
@@ -201,11 +202,11 @@ func TestARunIsItsOwnRowWithItsPartsUnderItAndEachOpensItsPage(t *testing.T) {
 		t.Fatal("a press on a part's row was not the rail's")
 	}
 	drain(t, a, cmd)
-	if !a.taskSheet.planOn || a.taskSheet.plan.Row.ID != "p2" || !a.railTaskPlanOn {
-		t.Fatalf("the press opened plan=%v task=%q over the chat=%v, want the second part's page", a.taskSheet.planOn, a.taskSheet.plan.Row.ID, a.railTaskPlanOn)
+	if plan := a.roomPlan(); plan == nil || plan.id != "p2" {
+		t.Fatalf("the press opened room=%v, want the second part's room", a.roomOpen())
 	}
-	if got := taskSheetText(a); !strings.Contains(got, "the second part's own page") {
-		t.Fatalf("the page drawn is not the part's:\n%s", got)
+	if got := planRoomText(t, a); !strings.Contains(got, "the second part's own page") {
+		t.Fatalf("the room drawn is not the part's:\n%s", got)
 	}
 }
 
@@ -216,8 +217,8 @@ func TestARunIsItsOwnRowWithItsPartsUnderItAndEachOpensItsPage(t *testing.T) {
 func TestANoteTypedOnARailTaskPageNeverRaisesTheStopCard(t *testing.T) {
 	a, _ := railTaskPageApp(t, true)
 	clickRail(t, a, 0)
-	if !a.railTaskPlanOn {
-		t.Fatal("the rail row did not open its page")
+	if a.roomPlan() == nil {
+		t.Fatal("the rail row did not open its room")
 	}
 	for _, r := range "an example" {
 		drive(t, a, key(string(r)))
@@ -225,8 +226,8 @@ func TestANoteTypedOnARailTaskPageNeverRaisesTheStopCard(t *testing.T) {
 	if a.stopping() {
 		t.Fatal("a letter in a note raised the stop card")
 	}
-	if got := a.taskSheet.planNote.String(); got != "an example" {
-		t.Fatalf("the note box holds %q, want %q", got, "an example")
+	if got := string(a.input.value); got != "an example" {
+		t.Fatalf("the room's box holds %q, want %q", got, "an example")
 	}
 }
 
@@ -271,10 +272,10 @@ func TestALetterTypedWhileARailPageOpensNeverRaisesTheStopCard(t *testing.T) {
 	}
 	close(held.release)
 	drive(t, a, <-answer)
-	if !a.railTaskPlanOn {
-		t.Fatal("the answer did not open the page")
+	if a.roomPlan() == nil {
+		t.Fatal("the answer did not open the room")
 	}
-	if got := a.taskSheet.planNote.String(); got != "an example" {
-		t.Fatalf("the page's box holds %q, want every key typed while it opened: %q", got, "an example")
+	if got := string(a.input.value); got != "an example" {
+		t.Fatalf("the room's box holds %q, want every key typed while it opened: %q", got, "an example")
 	}
 }

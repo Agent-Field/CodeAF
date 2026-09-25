@@ -425,20 +425,16 @@ func (a *app) navPress(x, y int) (tea.Cmd, bool) {
 }
 
 // headCovers is whether a full-frame view that is not a place is drawn over
-// the chats: the grid of open tabs, or the run's work tab. Both wear the head,
-// and the nav's doors lead out of them.
-func (a *app) headCovers() bool { return a.wall.on || a.workTabOn }
+// the chats: the grid of open tabs. It wears the head, and the nav's doors lead
+// out of it. A run's work opens in the task room, which is a room of its chat
+// (planroom.go) and stays where it is while a nav word opens a place.
+func (a *app) headCovers() bool { return a.wall.on }
 
-// headUncover takes those views down, so the page a nav word opens is the page
+// headUncover takes that view down, so the page a nav word opens is the page
 // on screen.
 func (a *app) headUncover() {
 	if a.wall.on {
 		a.closeWall()
-	}
-	if a.workTabOn {
-		a.workTabOn = false
-		a.closeTaskPlan()
-		a.chatTabBar = tabBar{}
 	}
 	a.touch()
 }
