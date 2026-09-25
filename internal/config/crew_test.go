@@ -572,3 +572,39 @@ func TestAPinnedThinkingLevelIsSentWithThePin(t *testing.T) {
 	}
 }
 
+// `auto` IN THE REFLEX OR SMALL-WORK ROW WAS THIS BUILD'S OWN MODEL for that
+// row before crews were routed, and it still is: it is never sent to a
+// provider as a model id, and the migration takes the row away. A row a person
+// cleared on purpose (empty) is theirs and stays.
+func TestAutoInAHelperRowReadsTheDefaultAndMigrates(t *testing.T) {
+	dir := crewProfile(t)
+	if err := writeProfileValues(dir, map[string]any{KeyTierLowModel: "auto", KeyTierReflexModel: "AUTO"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, tier := range []string{ModelTierLow, ModelTierReflex} {
+		if got := TierModelAt(dir, tier); got == "" || strings.EqualFold(got, "auto") {
+			t.Errorf("before migration the %s row reads %q", tier, got)
+		}
+	}
+	if line, err := MigrateCrew(dir); err != nil || line == "" {
+		t.Fatalf("migration said %q %v", line, err)
+	}
+	for _, key := range []string{KeyTierLowModel, KeyTierReflexModel} {
+		if _, held := persistedValue(dir, key); held {
+			t.Errorf("%s still holds auto after the migration", key)
+		}
+	}
+	if again, _ := MigrateCrew(dir); again != "" {
+		t.Errorf("a second migration said %q", again)
+	}
+	cleared := crewProfile(t)
+	if err := writeProfileValues(cleared, map[string]any{KeyTierLowModel: ""}); err != nil {
+		t.Fatal(err)
+	}
+	if line, _ := MigrateCrew(cleared); line != "" {
+		t.Errorf("a cleared small-work row was migrated: %q", line)
+	}
+	if _, held := persistedValue(cleared, KeyTierLowModel); !held {
+		t.Error("a cleared small-work row was deleted")
+	}
+}

@@ -63,13 +63,16 @@ func legacyCrewClearing(profileDir string) map[string]any {
 			}
 		}
 	}
-	for _, tier := range crewSeatTiers {
+	for _, tier := range ModelTiers {
 		value, held := persistedString(profileDir, tierKeyFor(tier))
 		if !held {
 			continue
 		}
 		word := strings.ToLower(strings.TrimSpace(value))
-		if word == "" || legacyWords[word] {
+		// THE REFLEX AND SMALL-WORK ROWS ARE NOT SEATS: only `auto` is retired
+		// there — it read that row's own default — and an emptied row is a
+		// person's "follow the conversation", which stays.
+		if _, seat := CrewTierSeat(tier); (seat && (word == "" || legacyWords[word])) || (!seat && word == CrewAuto) {
 			values[tierKeyFor(tier)] = removeProfileKey
 		}
 	}
