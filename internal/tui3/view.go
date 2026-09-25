@@ -1443,6 +1443,11 @@ func (a *app) resized(width, height int) tea.Cmd {
 		return nil
 	}
 	a.width, a.height = width, height
+	// A hover names a door the last layout drew. The new width may not draw
+	// it: `more ▾` leaves the row once the places fit, and a nav word may
+	// fold. The hint reads the hover, not the row, so leaving it would keep
+	// naming a door that is gone until the pointer moved.
+	a.dropResizeHover()
 	a.touch()
 	if a.rows == nil {
 		a.clampScroll()

@@ -162,6 +162,18 @@ back.
 time`. On `more ▾` it says `more · the places this row has no room for`; on the strip's
 `▦ All` it says `The grid of your open tabs, and your teams · alt+v`.
 
+**A resize drops that hint.** Widening the window so `more ▾` is no longer drawn clears
+the hover, and the hint line stops saying `more · the places this row has no room for`
+without waiting for the pointer to move. The same is true of a place word the new row
+may not draw.
+
+## The hint line stayed after I resized, stale hover, more hint after widening
+
+**Resizing the window forgets a hover that pointed at a door the new layout may not
+draw.** That is `more ▾` once the places fit on the row, and a place word that folded
+away. The hint line reads the hover, so leaving it would keep naming a door that is
+gone until the pointer moved. After the resize the hint no longer says `more`.
+
 **Hovering moves nothing else at all.** No cursor, no page, no window, no focus. If the
 keyboard cursor is standing on the bar as well you will see both marks at once: the
 cursor's band on the word the cursor is on, the hover ground on the word the pointer is on.

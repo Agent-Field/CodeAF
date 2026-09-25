@@ -719,6 +719,18 @@ func (a *app) markStale(i int) {
 // longer exists is a highlight on somebody else's row.
 func (a *app) dropHover() { a.hot = hoverAt{} }
 
+// dropResizeHover forgets hover that pointed at a door the new layout may
+// not draw. [app.dropHover] covers the body. The nav's own hover is separate:
+// [app.tabHover] is the place word, and [navMore.hot] is `more ▾`. Both feed
+// the hint line ([app.headHint]), which does not ask whether the last frame
+// still drew the door.
+func (a *app) dropResizeHover() {
+	a.dropHover()
+	a.barHover(pageNone)
+	a.navMoreHot(false)
+	a.navMore.hover = -1
+}
+
 // The four questions the renderers ask.
 
 // hoveringEntry reports whether the pointer is on this entry's rows.
