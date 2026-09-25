@@ -178,3 +178,29 @@ func TestThreadCardMemberMirror(t *testing.T) {
 		t.Fatalf("the member's chat does not mirror its answer under the manager's line:\n%s", text)
 	}
 }
+
+// A MANAGER'S STEPS ARE SAID AS TEAM WORK. Its fold read `▾ team_send 1 call
+// … 1 call`: the tool's own name where the work goes, and the count twice.
+func TestTeamToolCaptionsSayTheWork(t *testing.T) {
+	send := func(to string) entry {
+		return entry{kind: entryTool, tool: "team_send", status: toolOK, detail: toolDetail{Args: `{"to":"` + to + `","text":"status?"}`}}
+	}
+	if got := composeCaption([]entry{send("@scrape model")}, 0, 1); got != "messaging @scrape @model" {
+		t.Fatalf("one team_send is captioned %q", got)
+	}
+	if got := captionPast(composeCaption([]entry{send("everyone")}, 0, 1)); got != "messaged everyone" {
+		t.Fatalf("a finished broadcast is captioned %q", got)
+	}
+	if got := composeCaption([]entry{send("scrape"), send("model")}, 0, 2); got != "sending 2 messages" {
+		t.Fatalf("two sends are captioned %q", got)
+	}
+	start := entry{kind: entryTool, tool: "team_start", status: toolOK, detail: toolDetail{Args: `{"handle":"lexer","brief":"x"}`}}
+	if got := composeCaption([]entry{start}, 0, 1); got != "starting @lexer" {
+		t.Fatalf("a start is captioned %q", got)
+	}
+	for _, e := range []entry{send("a"), start} {
+		if got := composeCaption([]entry{e}, 0, 1); strings.Contains(got, "team_") {
+			t.Fatalf("a caption names the tool: %q", got)
+		}
+	}
+}
