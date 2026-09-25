@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: a devaf install's first run reaches its own binary, shows the usage notice on screen, and prints no raw lines
+title: a devaf first run reaches its own binary, shows the usage notice on screen, prints no raw lines
 pr: 1519
 surface: [build, chat, engine]
 invalidates:
