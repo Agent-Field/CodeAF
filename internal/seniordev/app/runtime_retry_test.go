@@ -216,6 +216,12 @@ func TestSoloRecoveryCrossesThePersistedEngineBoundaryWithoutReplayingToolEffect
 		Sleep: func(context.Context, time.Duration) error { return nil },
 	})
 	t.Cleanup(runner.runtime.Close)
+	// The real run prepares its recorder before starting the conversation. That
+	// installs Git's exclusion for the live session store, whose temporary files
+	// otherwise race git add during submit in this direct-to-converse fixture.
+	if err := runner.recorder.Prepare(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	// The adaptive router is orthogonal to this test. Keeping its single
 	// candidate out of cooldown lets the fresh turn start immediately.
 	backend.router = nil
