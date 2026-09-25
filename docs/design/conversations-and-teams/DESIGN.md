@@ -378,8 +378,10 @@ them.
   reads `from → to  words`. The manager is `◆`, several recipients are `@scrape +2`, and the
   words follow, and how long ago at the right (`◆ → @scrape +2  Please provide a st… ▸  2m`).
   The age is `now`, `2m`, `3h`, `1d`, the same ladder a task row and a home session use
-  (`sinceAt`), dim, on every kind of row: a thread, a `↳` reply, a band question, General,
-  and a member's own lines. It moves when the minute in the row cache moves, and nowhere
+  (`sinceAt`) through a day, dim, on every kind of row: a thread, a `↳` reply, a band question, General,
+  and a member's own lines. Past thirty days a task row and a home session print a date
+  (`sinceAt`). A Traffic row stays compact (`trafficAgeAt`): `30d`, weeks from six weeks
+  (`6w`, `12w` at ninety days), then years (`1y` at four hundred days). It moves when the minute in the row cache moves, and nowhere
   else. The state its answers leave it in and its message count give way to the words when
   the column is narrow; the hint says them. The arrow and the names keep their cells, then
   the age, and a narrow column cuts only the words, at a word, with `…`. A band row is
@@ -1502,7 +1504,7 @@ depth block is not shown and the store's own `SetParent` is the only check.
 
 A proposal card names its kind on the first line, then what it does, then when and what one time costs. The words live in `session.StandingOptions` so the conversation, home, `--host` and the recorded `labels` say the same thing.
 
-- A reminder (`when.at`): `wants to remind you`. `Remind me <when>`, `Change…`, `Don't remind me`. No once.
+- A reminder (`when.at`): `wants to remind you`. `Remind me <when>`, `Change…`, `Don't remind me`. No once. A distance from now is said back with the clock it landed on, joined by a middle dot: `Remind me in 1 minute · 07:35`.
 - A repeating check (`when.every`): `wants to set up a repeating check`. `Set it up · <cadence>`, `Change…`, `Only now, don't repeat`, `Don't set it up`.
 - A watch (file, idle, probe): `wants to watch for something`. `Watch for it`, `Change…`, `Check once now`, `Don't watch`.
 - A rule (`when.hold`): `wants to keep a rule`. `Keep this rule`, `Change where…`, `Don't keep it`. No once.
