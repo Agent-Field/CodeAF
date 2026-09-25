@@ -161,17 +161,13 @@ func ParseCrewPin(raw string) (pin CrewPin, auto bool, err error) {
 
 // CrewPinAt is one seat's pin, false when the seat is auto.
 //
-// A row that says `auto`, a row that is empty, and a row somebody's preset
-// wrote before this build ([legacyAppliedCrew]) are all auto: only a model id
-// a person wrote is a pin. A row that does not parse is auto too, and the
+// A row that says `auto`, a row that is empty and a retired preset word are
+// all auto; any model id is a pin. A row that does not parse is auto too, and the
 // panel says so, because a seat that silently ran a half-read id would be the
 // one thing worse than a seat that ignores it.
 func CrewPinAt(profileDir string, seat crewroute.Seat) (CrewPin, bool) {
 	value, held := persistedString(profileDir, tierKeyFor(CrewSeatTier(seat)))
 	if !held {
-		return CrewPin{}, false
-	}
-	if legacyAppliedCrew(profileDir) {
 		return CrewPin{}, false
 	}
 	pin, auto, err := ParseCrewPin(value)
@@ -219,8 +215,7 @@ func SetCrewPin(profileDir string, seat crewroute.Seat, raw string) error {
 		return err
 	}
 	values := map[string]any{tierKeyFor(CrewSeatTier(seat)): pin.String()}
-	// A profile a preset wrote is migrated in the same write, so the pin that
-	// lands is not read back as the preset's own row ([legacyAppliedCrew]).
+	// A profile carrying retired rows is migrated in the same write.
 	for key, value := range legacyCrewClearing(profileDir) {
 		if _, set := values[key]; !set {
 			values[key] = value
@@ -504,6 +499,27 @@ func crewModelOf(row catalog.Model) crewroute.Model {
 	}
 }
 
+// crewIndexesFrom is m with every index it lacks read from other, a row of the
+// same model, and then from the evidence table's snapshot of it.
+func crewIndexesFrom(m, other crewroute.Model) crewroute.Model {
+	fill := func(from crewroute.Model) {
+		if m.Intelligence <= 0 {
+			m.Intelligence = from.Intelligence
+		}
+		if m.Coding <= 0 {
+			m.Coding = from.Coding
+		}
+		if m.Agentic <= 0 {
+			m.Agentic = from.Agentic
+		}
+	}
+	fill(other)
+	if snap, ok := crewroute.Snapshot(m.ID); ok {
+		fill(snap)
+	}
+	return m
+}
+
 // crewTakesTools is whether a catalog row says the model takes tool calls.
 //
 // A ROW THAT LISTS NO PARAMETERS HAS SAID NOTHING, and a crew seat is an agent
@@ -751,13 +767,18 @@ func crewCandidatesWith(rule crewroute.Allowed, providers []CrewProvider, facts 
 				// is one candidate, read from the row that lists the model
 				// by its own name when there is one, so a seat is sent the
 				// name and not whichever snapshot the catalog listed first.
+				// THE FIGURES ARE THE MODEL'S, whichever row carried them: an
+				// index the snapshot's row published is not lost because the
+				// model's own row did not repeat it.
 				if strings.EqualFold(row.ID, lineage) {
-					models[at[lineage]] = crewModelOf(row)
+					models[at[lineage]] = crewIndexesFrom(crewModelOf(row), models[at[lineage]])
+				} else {
+					models[at[lineage]] = crewIndexesFrom(models[at[lineage]], crewModelOf(row))
 				}
 				continue
 			}
 			paid[lineage], at[lineage] = true, len(models)
-			models = append(models, crewModelOf(row))
+			models = append(models, crewIndexesFrom(crewModelOf(row), crewroute.Model{}))
 		}
 		if facts.free {
 			free = map[string]string{}

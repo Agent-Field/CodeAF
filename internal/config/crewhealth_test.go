@@ -439,3 +439,38 @@ func TestTheFreeRescuePrefersGeneralModels(t *testing.T) {
 		t.Errorf("the notice says free routes other than once: %q", notice)
 	}
 }
+
+// A SEAT THAT CANNOT START MOVES SIDEWAYS BEFORE IT MOVES UP: with the cheap
+// worker's route quarantined, the next rung is a qualified model at a similar
+// cost, not the dearest measured one — even when the model's own catalog row
+// left its indexes to a dated snapshot's row.
+func TestTheNextRungIsAtASimilarCost(t *testing.T) {
+	dir := crewProfile(t)
+	var rows []catalog.Model
+	for _, r := range CrewCatalog() {
+		if r.ID == "deepseek/deepseek-v4-flash" {
+			bare := r
+			bare.IntelligenceIndex, bare.CodingIndex, bare.AgenticIndex = 0, 0, 0
+			rows = append(rows, catalog.Model{ID: "deepseek/deepseek-v4-flash-0731", OpenWeights: true, PromptPrice: r.PromptPrice, CompletionPrice: r.CompletionPrice,
+				IntelligenceIndex: r.IntelligenceIndex, CodingIndex: r.CodingIndex, AgenticIndex: r.AgenticIndex, ContextLength: r.ContextLength, Parameters: r.Parameters}, bare)
+			continue
+		}
+		rows = append(rows, r)
+	}
+	CrewCatalog = func() []catalog.Model { return rows }
+	var history []router.CrewRouteOutcome
+	withRouteHistory(t, &history)
+	d, err := RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: fixTask}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, seat := range []crewroute.Seat{crewroute.Worker, crewroute.Planner} {
+		pick, ladder := d.Seat(seat), d.Ladder[seat]
+		if len(ladder) == 0 {
+			t.Fatalf("the %s has no ladder", seat)
+		}
+		if next := ladder[0]; next.CostUSD > 3*pick.CostUSD || crewroute.Lineage(next.Model) == "moonshotai/kimi-k3" {
+			t.Errorf("the %s's next rung from %s ($%.4f) is %s ($%.4f)", seat, pick.Model, pick.CostUSD, next.Model, next.CostUSD)
+		}
+	}
+}

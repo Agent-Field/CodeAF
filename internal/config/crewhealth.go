@@ -411,7 +411,7 @@ func crewFreeRescue(profileDir string, class crewroute.Class, seat crewroute.Sea
 	if notice == "" {
 		return nil
 	}
-	var free, tuned []crewroute.Candidate
+	var free []crewroute.Candidate
 	for _, c := range candidates {
 		var routes []crewroute.Route
 		for _, r := range c.Routes {
@@ -419,19 +419,13 @@ func crewFreeRescue(profileDir string, class crewroute.Class, seat crewroute.Sea
 				routes = append(routes, r)
 			}
 		}
-		switch {
-		case len(routes) == 0:
-		case crewroute.DomainTuned(c.Model.ID):
-			// A MODEL TUNED FOR ONE DOMAIN — finance, medicine, law — is a
-			// rescue's last choice, taken only when no general or code model
-			// is left.
-			tuned = append(tuned, crewroute.Candidate{Model: c.Model, Routes: routes})
-		default:
+		// THE RESCUE KEEPS A FLOOR: a model tuned for one domain (finance,
+		// medicine, law) or too small to do a seat's work is no rescue at all,
+		// however little else is left — a task stopped on its one action is
+		// better than one sent to a model that cannot do it.
+		if len(routes) > 0 && !crewroute.DomainTuned(c.Model.ID) && !crewroute.Tiny(c.Model.ID) {
 			free = append(free, crewroute.Candidate{Model: c.Model, Routes: routes})
 		}
-	}
-	if len(free) == 0 {
-		free = tuned
 	}
 	var out []crewroute.Pick
 	avoid := map[string]bool{}

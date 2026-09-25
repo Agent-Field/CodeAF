@@ -265,6 +265,7 @@ func TestMigratingARetiredCrew(t *testing.T) {
 	dir := crewProfile(t)
 	// A balanced preset applied in the `open` family: all five rows written,
 	// the three seat rows exactly the preset's, and the family and pick rows.
+	// The ids stay pins: no row says which hand wrote it.
 	if err := writeProfileValues(dir, map[string]any{
 		KeyTierReflexModel: "mistralai/mistral-nemo", KeyTierLowModel: "deepseek/deepseek-v4-flash-0731",
 		KeyTierWorkerModel: "z-ai/glm-5.3-flash", KeyTierHighModel: "moonshotai/kimi-k3", KeyTierMastermindModel: "z-ai/glm-5.3",
@@ -272,23 +273,23 @@ func TestMigratingARetiredCrew(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if pins := CrewPinsAt(dir); len(pins) != 0 {
-		t.Fatalf("a preset's rows read as pins before migrating: %v", pins)
-	}
 	line, err := MigrateCrew(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(line, "your crew is auto now") || !strings.Contains(line, "allowed models: open") {
+	if !strings.Contains(line, "kept your pins: checker moonshotai/kimi-k3, planner z-ai/glm-5.3, worker z-ai/glm-5.3-flash") || !strings.Contains(line, "allowed models: open") {
 		t.Errorf("notice %q", line)
 	}
 	if got := CrewAllowedAt(dir).String(); got != "open" {
 		t.Errorf("the open family became %q", got)
 	}
-	for _, key := range []string{legacyKeyCrewSource, legacyKeyCrewPick, KeyTierWorkerModel, KeyTierHighModel, KeyTierMastermindModel} {
+	for _, key := range []string{legacyKeyCrewSource, legacyKeyCrewPick} {
 		if _, held := persistedValue(dir, key); held {
 			t.Errorf("%s survived the migration", key)
 		}
+	}
+	if pins := CrewPinsAt(dir); len(pins) != 3 {
+		t.Errorf("the seat rows are pins %v, want all three kept", pins)
 	}
 	if got := TierModelAt(dir, ModelTierReflex); got != "mistralai/mistral-nemo" {
 		t.Errorf("the reflex row, not a crew seat, moved to %q", got)
@@ -296,6 +297,53 @@ func TestMigratingARetiredCrew(t *testing.T) {
 	// Once: the second run has nothing to say.
 	if again, _ := MigrateCrew(dir); again != "" {
 		t.Errorf("a second migration said %q", again)
+	}
+}
+
+// THE OWNER'S PROFILE: the three seats all hold the id an old preset shipped,
+// beside written low and reflex rows. Nothing retired is on it, so nothing
+// moves: all three stay pins, every run.
+func TestAPresetsIdsAPersonWroteStayPinned(t *testing.T) {
+	dir := crewProfile(t)
+	if err := writeProfileValues(dir, map[string]any{
+		KeyTierReflexModel: "mistralai/mistral-nemo", KeyTierLowModel: "z-ai/glm-5.3-flash",
+		KeyTierWorkerModel: "z-ai/glm-5.3-flash", KeyTierHighModel: "z-ai/glm-5.3-flash", KeyTierMastermindModel: "z-ai/glm-5.3-flash",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for run := 0; run < 2; run++ {
+		if line, err := MigrateCrew(dir); err != nil || line != "" {
+			t.Fatalf("run %d migrated a profile with nothing retired: %q %v", run, line, err)
+		}
+	}
+	for _, seat := range crewroute.Seats {
+		if pin, ok := CrewPinAt(dir, seat); !ok || pin.Model != "z-ai/glm-5.3-flash" {
+			t.Errorf("the %s is %+v, %v, want its pin kept", seat, pin, ok)
+		}
+	}
+	for _, key := range []string{KeyTierWorkerModel, KeyTierHighModel, KeyTierMastermindModel, KeyTierLowModel, KeyTierReflexModel} {
+		if _, held := persistedValue(dir, key); !held {
+			t.Errorf("%s was deleted", key)
+		}
+	}
+}
+
+// A CHECKER PINNED ALONE BESIDE A RETIRED WORD IS KEPT, and the line says so;
+// migrating again changes nothing.
+func TestAPinnedCheckerSurvivesMigration(t *testing.T) {
+	dir := crewProfile(t)
+	if err := writeProfileValues(dir, map[string]any{KeyTierHighModel: "moonshotai/kimi-k3", legacyKeyCrew: "balanced"}); err != nil {
+		t.Fatal(err)
+	}
+	line, err := MigrateCrew(dir)
+	if err != nil || !strings.Contains(line, "kept your pins: checker moonshotai/kimi-k3") {
+		t.Fatalf("notice %q %v", line, err)
+	}
+	if again, _ := MigrateCrew(dir); again != "" {
+		t.Errorf("a second migration said %q", again)
+	}
+	if pin, ok := CrewPinAt(dir, crewroute.Checker); !ok || pin.Model != "moonshotai/kimi-k3" {
+		t.Errorf("the checker is %+v, %v", pin, ok)
 	}
 }
 
@@ -310,7 +358,7 @@ func TestMigrationKeepsAHandWrittenIdAsAPin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(line, "still pinned: checker anthropic/claude-opus-5") {
+	if !strings.Contains(line, "kept your pins: checker anthropic/claude-opus-5") {
 		t.Errorf("notice %q", line)
 	}
 	if pin, ok := CrewPinAt(dir, crewroute.Checker); !ok || pin.Model != "anthropic/claude-opus-5" {
