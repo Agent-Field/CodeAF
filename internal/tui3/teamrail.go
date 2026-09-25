@@ -11,13 +11,15 @@ import (
 // ── THE RAIL: WHERE A PERSON READS THE TRAFFIC ─────────────────────────────
 //
 // While the manager is the conversation in front, the right of the body is the
-// team's Traffic, newest at the bottom, under a header that says what it is and
-// how to put it away:
+// team's Traffic as threads, the one that moved last at the top, under a
+// header that says what it is and how to put it away (teamthread.go draws
+// the threads):
 //
-//	Traffic                  hide alt+l
-//	◆ → @web  do  take the scope model     2m
-//	@parser → @web  fyi  the lexer is in   now
-//	@web  asking: may I run the migration  now   (the needs-you amber)
+//	Traffic                          hide alt+l
+//	◆ manager → @web @parser  do             2m
+//	  take the scope model and the lexer
+//	├ @parser  ✓ the lexer is in             1m
+//	└ @web  asking: may I run the migration  now   (the needs-you amber)
 //
 // THE RIGHT COLUMN IS TRAFFIC'S FIRST. The task column and the rail are both
 // right-hand panels, and two of them side by side left the conversation ninety
@@ -36,9 +38,10 @@ import (
 // the conversation still in view above it. [trafficKey] does the same from
 // the keyboard, and `esc` closes the card.
 //
-// EVERY ROW WITH SOMEONE BEHIND IT IS A DOOR to that member; a row about the
-// whole team (`◆ → all`) is not, and does not light. Under the pointer a row's
-// whole text is said in the hint line, with what a press does.
+// EVERY HANDLE IS A DOOR to its member, and a message's words are a door that
+// lays them out in full; a word about the whole team (`everyone`) is not, and
+// does not light. Under the pointer the hint line says what a press does, and
+// over a message its whole text.
 //
 // THE FRAME DRAWS THE CACHE AND NOTHING ELSE, and the column's rows are kept
 // between frames ([trafficCache]) until the entries, the width, the pointer or
@@ -81,13 +84,15 @@ type trafficDrawn struct {
 	mode   int
 	x0, x1 int
 	y0, y1 int
-	// lines is, per body row, the member a press there goes to ("" for none),
-	// and hints what the hint line says with the pointer on it.
-	lines []string
+	// doors is, per body row, the row's doors in the frame's columns
+	// (teamthread.go), and hints what the hint line says with the pointer on
+	// the row's header words (the hide word's row).
+	doors [][]trafficDoor
 	hints []string
-	// hide is the header's `hide` word, on row hideY, and close the card's
-	// `Close esc`, on row closeY.
+	// hide is the header's `hide` word, on row hideY, tab its `Tasks 2` word
+	// on the same row, and close the card's `Close esc`, on row closeY.
 	hide   hudSpan
+	tab    hudSpan
 	hideY  int
 	close  hudSpan
 	closeY int
@@ -97,17 +102,21 @@ type trafficDrawn struct {
 type trafficCacheKey struct {
 	team, last, seen    string
 	rows, width, height int
-	hot                 int
-	hideHot, ascii      bool
+	hot, hotDoor        int
+	open, tasks         int
+	hideHot, tabHot     bool
+	ascii               bool
 	minute              int64
 }
 
 // trafficCache is the column's rows as last drawn.
 type trafficCache struct {
-	key          trafficCacheKey
-	out          []string
-	lines, hints []string
-	hide         hudSpan
+	key   trafficCacheKey
+	out   []string
+	doors [][]trafficDoor
+	hints []string
+	hide  hudSpan
+	tab   hudSpan
 }
 
 // ── WHERE IT STANDS ─────────────────────────────────────────────────────────
@@ -133,37 +142,93 @@ func (a *app) trafficOn() bool {
 	return ok
 }
 
-// trafficTaskEdge is what the task column costs while the Traffic holds the
-// right: its edge, where that column would stand at all.
-func (a *app) trafficTaskEdge(width int) int {
-	if a.railQuiet() || railColsFor(width) == 0 {
-		return 0
+// WITH THE MANAGER IN FRONT THE RIGHT COLUMN IS THE TRAFFIC (ruled
+// 2026-09-24). The task column is not drawn and not reserved, whatever the
+// saved ctrl+g answer says, so no folded task edge stands beside the traffic
+// and no folded traffic edge beside an empty task column. Only when the manager
+// has live tasks of its own does the header offer them, `Traffic · Tasks 2`,
+// and choosing Tasks lays the task list in the same column
+// ([app.trafficTasksShowing]); the task column's own code draws it, at this
+// column's width ([app.railColumns]).
+
+// trafficTasksWord is the header's word for the manager's own tasks, and
+// trafficTabSep what stands between it and `Traffic`.
+const (
+	trafficTasksWord = "Tasks"
+	trafficTabSep    = " · "
+)
+
+// trafficTasksHead is the column's header while it shows the manager's tasks:
+// `Traffic · Tasks 2` with Tasks the current word, and the key back at the
+// right. The whole line is the way back to the traffic.
+func (a *app) trafficTasksHead(width int) string {
+	word := trafficTasksWord + " " + itoa(a.trafficTaskCount())
+	head := a.pal.dim(trafficWord) + a.pal.dim(trafficTabSep) + a.pal.bold(a.pal.ink(word))
+	used := len(trafficWord) + ansi.StringWidth(trafficTabSep) + ansi.StringWidth(word)
+	back := railStowKey + " traffic"
+	if gap := width - used - ansi.StringWidth(back); gap >= 2 {
+		head += strings.Repeat(" ", gap) + a.pal.dim(back)
 	}
-	return railGripCols
+	return fit(head, width)
 }
 
 // trafficFits reports whether this frame is wide enough for the column.
 func (a *app) trafficFits() bool {
 	width, _ := a.size()
-	return trafficColsFor(width-a.trafficTaskEdge(width)) > 0
+	return trafficColsFor(width) > 0
 }
 
-// trafficHoldsRail reports whether the Traffic has the right-hand column now,
-// which is what folds the task column to its edge.
+// trafficTaskCount is how many of the manager's own tasks are live: asking,
+// running, admitted or parked. 0 without the manager in front.
+func (a *app) trafficTaskCount() int {
+	if !a.trafficOn() || len(a.taskOrder) == 0 {
+		return 0
+	}
+	members := a.railMembers()
+	n := 0
+	for g := railAttention; g < railDone; g++ {
+		n += len(members[g])
+	}
+	return n
+}
+
+// trafficTasksShowing reports whether the column shows the manager's tasks
+// instead of the traffic: the person chose Tasks, there are live ones, and the
+// column is up on a frame wide enough for it.
+func (a *app) trafficTasksShowing() bool {
+	return a.traffic.tasks && !a.traffic.hidden && a.trafficOn() && a.trafficFits() && a.trafficTaskCount() > 0
+}
+
+// trafficTasksShow swaps the column between the traffic and the manager's
+// tasks, and brings the column back if it was put away. With no live tasks it
+// is the traffic, and there is nothing to swap to.
+func (a *app) trafficTasksShow(on bool) {
+	a.traffic.tasks = on && a.trafficTaskCount() > 0
+	if a.traffic.hidden && a.trafficFits() {
+		a.traffic.hidden = false
+	}
+	if !a.traffic.tasks {
+		a.railHold = false
+	}
+	a.dropHover()
+	a.touch()
+}
+
+// trafficHoldsRail reports whether the Traffic has the right-hand column now.
 func (a *app) trafficHoldsRail() bool {
-	return a.trafficOn() && !a.trafficHidden() && a.trafficFits()
+	return a.trafficOn() && !a.trafficHidden() && a.trafficFits() && !a.trafficTasksShowing()
 }
 
 // trafficWidth is what the rail costs the conversation, in columns: its column
 // where it holds the right, the edge where it is away or cannot stand, and
 // nothing without the manager in front.
 func (a *app) trafficWidth() int {
-	if !a.trafficOn() {
+	if !a.trafficOn() || a.trafficTasksShowing() {
 		return 0
 	}
 	if !a.trafficHidden() {
 		width, _ := a.size()
-		if cols := trafficColsFor(width - a.trafficTaskEdge(width)); cols > 0 {
+		if cols := trafficColsFor(width); cols > 0 {
 			return cols
 		}
 	}
@@ -199,19 +264,24 @@ func (a *app) trafficAddr(s string) string {
 	return word
 }
 
-// trafficFull is an address the rail cut, spelled whole again: a handle is
-// `@` and the raw name, and every other address was never cut.
-func trafficFull(cut, raw string) string {
-	if strings.HasPrefix(cut, "@") {
-		return "@" + raw
-	}
-	return cut
-}
-
 // trafficShown reports whether an entry is drawn at all. The person's own
-// words are in the manager's conversation already, where they said them.
+// words are in the manager's conversation already, where they said them. A
+// wake is drawn only as the `working…` of the thread it answers
+// (teamthread.go), so one that answers nothing, and a member waking the
+// manager, which the manager's own turn already shows, are not drawn.
 func trafficShown(e teamstore.Entry) bool {
-	return e.Kind != teamstore.KindYou && e.From != teamstore.FromYou
+	// A RULING THE PERSON MADE is still a ruling every party's log carries,
+	// so it is drawn, as `you ruling → …` (teamthread.go).
+	if teamstore.IsRuling(e) {
+		return true
+	}
+	if e.Kind == teamstore.KindYou || e.From == teamstore.FromYou {
+		return false
+	}
+	if e.Wake() {
+		return e.Answers != "" && e.From == teamstore.FromManager
+	}
+	return true
 }
 
 // trafficAsking reports whether an event is a member waiting on the person,
@@ -244,144 +314,6 @@ func (a *app) trafficAge(e teamstore.Entry) string {
 	return itoa(int(d/86400e9)) + "d"
 }
 
-// trafficLine is one entry as one painted row width cells wide, the member a
-// press on it goes to, and what the hint line says over it.
-//
-// A DIRECTIVE AND A NOTE DIFFER BY A WORD, dim after the addresses: `do` for
-// the one the member is to act on, `fyi` for the one it is to know. Colour
-// would say it only to a person who can see colour and who knows the key.
-func (a *app) trafficLine(t team, e teamstore.Entry, width int) (string, string, string) {
-	pal := a.pal
-	arrow := a.linearMark("→", "->")
-	text := strings.Join(strings.Fields(e.Text), " ")
-	var head, plainHead, tag, target string
-	switch {
-	case teamstore.IsRuling(e):
-		// A RULING IS NOT THIS TEAM'S MANAGER'S OWN ORDER (DESIGN.md 8.10): it
-		// is the decision on a conflict, by whichever manager decided it or by
-		// the person, written into every party's team. It says so, and names the
-		// packet in the hint.
-		by := a.trafficAddr(e.From)
-		if e.From == teamstore.FromYou {
-			by = "you"
-		}
-		plainHead = by + " ruling " + arrow + " " + a.trafficAddr(e.To)
-		head = pal.accent(by) + pal.muted(" ruling") + pal.dim(" "+arrow+" ") + pal.ink(a.trafficAddr(e.To))
-		text = trafficRulingText(text)
-		target = trafficMemberKey(t, e.To, e.Member)
-	case e.Kind == teamstore.KindStop || e.Kind == teamstore.KindStart:
-		word := "stopped"
-		if e.Kind == teamstore.KindStart {
-			word = "started"
-		}
-		plainHead = a.trafficAddr(e.From) + " " + word + " " + a.trafficAddr(e.To)
-		// A START THAT NAMES A TEAM made a sub-team for the started
-		// conversation to run (DESIGN.md 8.10).
-		if e.Kind == teamstore.KindStart && e.Team != "" {
-			name := e.Team
-			if sub, ok := a.teamByID(e.Team); ok {
-				name = sub.Name
-			}
-			plainHead += " to run " + name
-		}
-		head = pal.muted(plainHead)
-		target = trafficMemberKey(t, e.To, e.Member)
-	case e.Kind == teamstore.KindEvent:
-		if text == "" {
-			text = e.State
-		}
-		plainHead = a.trafficAddr(e.From)
-		head = pal.ink(plainHead)
-		target = trafficMemberKey(t, e.From, e.Member)
-	default:
-		plainHead = a.trafficAddr(e.From) + " " + arrow + " " + a.trafficAddr(e.To)
-		head = pal.ink(a.trafficAddr(e.From)) + pal.dim(" "+arrow+" ") + pal.ink(a.trafficAddr(e.To))
-		tag = "fyi"
-		if e.Kind == teamstore.KindDirective {
-			tag = "do"
-		}
-		target = trafficMemberKey(t, e.From, "")
-		if target == "" {
-			target = trafficMemberKey(t, e.To, e.Member)
-		}
-	}
-	asking := trafficAsking(e)
-	line := head
-	if tag != "" {
-		line += "  " + pal.dim(tag)
-	}
-	if text != "" {
-		switch {
-		case asking:
-			line += "  " + pal.ask(text)
-		case e.Kind == teamstore.KindEvent:
-			line += "  " + pal.dim(text)
-		default:
-			line += "  " + pal.muted(text)
-		}
-	}
-	if asking {
-		line = pal.ask(plainHead) + strings.TrimPrefix(line, head)
-	}
-	age := a.trafficAge(e)
-	room := width
-	if age != "" && width >= 24 {
-		room = width - ansi.StringWidth(age) - 1
-	} else {
-		age = ""
-	}
-	line = fit(line, room)
-	line += strings.Repeat(" ", max(room-ansi.StringWidth(line), 0))
-	if age != "" {
-		line += " " + pal.dim(age)
-	}
-	hint := ""
-	if target != "" {
-		// The hint line has the room the row did not, so it names everyone
-		// whole.
-		hint = strings.ReplaceAll(plainHead, a.trafficAddr(e.From), trafficFull(a.trafficAddr(e.From), e.From))
-		if e.To != "" {
-			hint = strings.ReplaceAll(hint, a.trafficAddr(e.To), trafficFull(a.trafficAddr(e.To), e.To))
-		}
-		if tag != "" {
-			hint += " " + tag
-		}
-		if text != "" {
-			hint += ": " + text
-		}
-		if teamstore.IsRuling(e) {
-			hint += hintSegment + "the ruling on conflict " + e.Packet
-		}
-		if m, ok := t.Member(target); ok && m.Handle != "" {
-			hint += hintSegment + "click opens @" + m.Handle
-		} else {
-			hint += hintSegment + "click opens it"
-		}
-	}
-	return line, target, hint
-}
-
-// trafficVisible is the newest room entries of team t that are drawn, oldest
-// first. It allocates only the slice it returns.
-func (a *app) trafficVisible(t team, room int) []teamstore.Entry {
-	rows := a.traffic.rows[t.ID]
-	n := 0
-	from := len(rows)
-	for from > 0 && n < room {
-		from--
-		if trafficShown(rows[from]) {
-			n++
-		}
-	}
-	out := make([]teamstore.Entry, 0, n)
-	for _, e := range rows[from:] {
-		if trafficShown(e) {
-			out = append(out, e)
-		}
-	}
-	return out
-}
-
 // trafficUnseen is how many drawn entries of team t arrived after the newest
 // the person had in front of them.
 func (a *app) trafficUnseen(t team) int {
@@ -389,7 +321,7 @@ func (a *app) trafficUnseen(t team) int {
 	rows := a.traffic.rows[t.ID]
 	n := 0
 	for i := len(rows) - 1; i >= 0 && rows[i].ID > seen; i-- {
-		if trafficShown(rows[i]) {
+		if trafficShown(rows[i]) && !rows[i].Wake() {
 			n++
 		}
 	}

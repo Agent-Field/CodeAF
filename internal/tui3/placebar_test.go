@@ -99,7 +99,7 @@ func TestTheBarIsARowOnEveryPlace(t *testing.T) {
 				if a.page != place.id {
 					t.Fatalf("at %d columns → on the bar opened %q", width, a.page.word())
 				}
-				if want := nextPage(place.id, false); a.bar.at != want {
+				if want := nextOn(barPages(place.id, false), place.id, false); a.bar.at != want {
 					t.Fatalf("at %d columns → landed the cursor on %q, want %q", width, a.bar.at.word(), want.word())
 				}
 				// AND `→` DOES NOT OPEN A ROW'S VERBS UP HERE. The strip is a
@@ -139,7 +139,12 @@ func TestTheBarIsARowOnEveryPlace(t *testing.T) {
 				// the room rather than merely coming back down.
 				barTop(t, a)
 				drive(t, a, key("right"), key("enter"))
-				if want := nextPage(place.id, false); a.page != want {
+				want := nextOn(barPages(place.id, false), place.id, false)
+				if want == pageChats {
+					// The way back to the chats opens no room: it leaves them.
+					want = pageNone
+				}
+				if a.page != want {
 					t.Fatalf("at %d columns enter on the bar landed on %q, want %q", width, a.page.word(), want.word())
 				}
 				if a.bar.on {
@@ -209,7 +214,7 @@ func TestTheNarrowBarKeepsTheWordTheCursorIsOn(t *testing.T) {
 
 // ── the bar is not a mode ───────────────────────────────────────────────────
 
-// `tab`, `shift+tab` AND `alt+1…7` KEEP WORKING FROM THE BAR, and a printable
+// `tab`, `shift+tab` AND `alt+1…9` KEEP WORKING FROM THE BAR, and a printable
 // character goes to the composer with the cursor following it back down.
 //
 // A ROW THAT CAPTURED THE KEYBOARD WOULD BE A MODE, and the six classes have no

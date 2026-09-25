@@ -71,7 +71,7 @@ func TestTeamWakeADirectiveWakesAnIdleMemberOnce(t *testing.T) {
 	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindDirective, From: teams.FromManager, To: "web", Text: "Fix the header."})
 	waitRequests(t, completer, 1)
 	first := userTextIn(completer.request(0))
-	if !strings.Contains(first, "◆ directive from manager: Fix the header.") {
+	if !strings.Contains(first, "◆ directive from manager #1: Fix the header.") {
 		t.Fatalf("the woken turn did not carry the directive:\n%s", first)
 	}
 	if !strings.Contains(first, "the person did not speak") {
@@ -90,6 +90,30 @@ func TestTeamWakeADirectiveWakesAnIdleMemberOnce(t *testing.T) {
 	woke := waitEvent(t, fixture, "woke @web")
 	if woke.From != teams.FromManager || woke.State != teams.StateRunning {
 		t.Errorf("the wake's line is %+v, want from the manager with the member running", woke)
+	}
+}
+
+// A DIRECTIVE TO SEVERAL WAKES EACH IDLE MEMBER IT NAMES. A send to several is
+// one entry carrying their handles, and it is as much a directive to each of
+// them as a line to one handle would be, so each is woken, and once.
+func TestTeamWakeADirectiveToSeveralWakesEachMemberItNames(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	web, parser := oneAnswer(2), oneAnswer(2)
+	teamAgent(t, fixture, fixture.web, web, nil)
+	teamAgent(t, fixture, fixture.parser, parser, nil)
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindDirective, From: teams.FromManager, To: teams.ToSeveral, Handles: []string{"web", "parser"}, Text: "Fix the header."})
+	for name, completer := range map[string]*scriptedCompleter{"web": web, "parser": parser} {
+		waitRequests(t, completer, 1)
+		if said := userTextIn(completer.request(0)); !strings.Contains(said, "Fix the header.") {
+			t.Errorf("@%s was woken without the directive:\n%s", name, said)
+		}
+	}
+	quietFor()
+	for name, completer := range map[string]*scriptedCompleter{"web": web, "parser": parser} {
+		if got := completer.requests(); got != 1 {
+			t.Errorf("one directive to several started %d requests for @%s, want 1", got, name)
+		}
 	}
 }
 

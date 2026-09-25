@@ -512,7 +512,7 @@ func (c command) aliasNote() string {
 // AND IT IS WHERE A ROW'S CHORD IS SPELLED FOR THIS KEYBOARD. Two of these
 // descriptions carry a place's own chord ([placeChord]), baked in at init where
 // no terminal has been detected yet — so on a Mac the list said `/spend … alt+3`
-// while the map two keystrokes away said `opt+1…opt+7`. The substitution has to
+// while the map two keystrokes away said `opt+1…opt+8`. The substitution has to
 // happen HERE rather than at either paint, because `⌘` is one cell where `cmd+`
 // is four and [menu.fit] counts the lines this string will take before
 // [menu.rows] draws it: measuring one spelling and drawing the other is a list
@@ -997,7 +997,7 @@ func helpText(file string, chords chordSpelling) string {
 		// know how to open, which is a help sheet behind the thing it explains.
 		//
 		// The three rows are spelled through [chordSpelling.say] like the
-		// `alt+enter` row above them, so a Mac reads `opt+1…opt+7` and a Linux box
+		// `alt+enter` row above them, so a Mac reads `opt+1…opt+8` and a Linux box
 		// reads what is authored here — one substitution, one door (chords.go).
 		helpKeyRow(chords.say(chordJumpWords), "go to a place · in the tab bar's own order: "+placeWordList()),
 		helpKeyRow(chords.say(placeMapKey), "on a place: what else is here · every key that place has, drawn"),

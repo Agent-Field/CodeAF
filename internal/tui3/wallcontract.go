@@ -127,6 +127,9 @@ type wallView struct {
 	hover wallHitRef
 	// total is how many conversations are open in all.
 	total int
+	// away is how many of the shown team's members this window does not have
+	// open; the title offers to resume them while it is not zero.
+	away int
 	// choices is the colours the new-team card offers and choice the one
 	// taken.
 	choices []teamHueSpec
@@ -179,12 +182,14 @@ const (
 )
 
 // wallTeamRow is one team as the painter draws it: its id, name and colour,
-// and how many of its members are open conversations.
+// how many of its members are open in this window, and how many members it
+// has in all, open or not.
 type wallTeamRow struct {
-	id    string
-	name  string
-	hue   teamHueSpec
-	count int
+	id      string
+	name    string
+	hue     teamHueSpec
+	count   int
+	members int
 }
 
 // teamRow is where team id sits in v.teams, -1 when it is not there.
@@ -286,6 +291,7 @@ const (
 	wallActOrgUndo                    // u: the last Organize undone, while it is offered
 	wallActOrgApply                   // enter, organizing
 	wallActOrgCancel                  // esc, organizing
+	wallActResume                     // r: the shown team's members not open here, resumed behind
 )
 
 // wallHitRef names one target without its cells, which is what a hover keeps

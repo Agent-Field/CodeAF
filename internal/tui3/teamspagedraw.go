@@ -379,7 +379,7 @@ func (a *app) teamsTop(d *teamsDraw, width int) []string {
 	// THE MEMBERS ARE ON THE HEADER (teamcrew.go): the ones doing something
 	// as chips, everyone else one word that opens the members card.
 	out = append(out, a.teamsNoManagerRows(d, t, width, len(out))...)
-	if !a.teamsSeam().delegation() && !a.teamsOff() && a.hosted() {
+	if !a.teamsCanDelegate() && !a.teamsOff() && a.hosted() {
 		out = append(out, "", " "+pal.dim(fit(teamsHostedWord, width-2)))
 	}
 	out = append(out, a.teamsPromptRows(d, t, width, len(out))...)
@@ -578,8 +578,7 @@ func (a *app) teamsHandleOf(t team, file string) string {
 // one line a press unfolds.
 func (a *app) teamsInboxRows(d *teamsDraw, width, y int) []string {
 	pal := a.pal
-	seam := a.teamsSeam()
-	if !seam.delegation() {
+	if !a.teamsCanDelegate() {
 		return nil
 	}
 	packets := a.teamsInbox()
@@ -823,7 +822,7 @@ func (a *app) teamsClosedRows(d *teamsDraw, t team, width, y int) []string {
 		if r.SpendUSD > 0 {
 			add("spent", dollars(r.SpendUSD))
 		}
-	case a.teamsSeam().History == nil:
+	case !a.teamsCanReadHistory():
 		out = append(out, " "+pal.dim(fit("its closing report is kept where the team ran, and is not readable over this connection", width-2)))
 	default:
 		out = append(out, " "+pal.dim("closed without a report"))

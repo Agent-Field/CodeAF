@@ -405,16 +405,24 @@ func wallInset(width, c, tileW int) int {
 // a count growing a digit moves only what is left of it. The count waiting on
 // a person is a button: it goes to the next one, as ? does.
 //
-//	▦ Conversations · every open conversation, live      ⠿ 3 running   ? 1 needs you   4 open
+//	▦ Conversations · open in this window · in test    2 more in test · Open them   1 open
+//
+// THE WALL IS WHAT IS OPEN IN THIS WINDOW, narrowed by a team, and the title
+// says so in those words. A team's members this window does not have open are
+// not tiles; while there are any, one quiet word button says how many and
+// resumes them behind ([app.wallResumeAway]), and while there are none it is
+// not drawn at all.
 func wallTitleRow(pal palette, g wallGlyphs, v wallView, width, inset, y int) (string, []wallHit) {
 	mark := "▦"
 	run := "⠿"
 	if pal.ascii {
 		mark, run = "#", "*"
 	}
-	sub := "every open conversation, live"
+	sub := wallOpenHereWord
+	teamName := ""
 	if i := v.teamRow(v.team); i >= 0 {
-		sub = "the conversations in " + v.teams[i].name
+		teamName = v.teams[i].name
+		sub += " " + g.sep + " in " + teamName
 	}
 	left := " " + pal.bold(pal.ink(mark+" Conversations")) + pal.dim(" "+g.sep+" "+sub)
 	working, needs := 0, 0
@@ -433,7 +441,8 @@ func wallTitleRow(pal palette, g wallGlyphs, v wallView, width, inset, y int) (s
 		s    string
 		w    int
 		pad  int
-		next bool
+		act  wallAct
+		away bool
 	}
 	const pillGap = 3
 	var pills []pill
@@ -447,7 +456,24 @@ func wallTitleRow(pal palette, g wallGlyphs, v wallView, width, inset, y int) (s
 		if v.hover.kind == wallHitAction && v.hover.arg == int(wallActNext) {
 			p = pal.cursor(p, 0)
 		}
-		pills = append(pills, pill{s: p, w: ansi.StringWidth(word) + 2, pad: 1, next: true})
+		pills = append(pills, pill{s: p, w: ansi.StringWidth(word) + 2, pad: 1, act: wallActNext})
+	}
+	awayAt := -1
+	awayPill := func(named bool) pill {
+		lead := strconv.Itoa(v.away) + " more"
+		if named && teamName != "" {
+			lead += " in " + teamName
+		}
+		lead += " " + g.sep + " "
+		p := " " + pal.dim(lead) + pal.muted(wallResumeWord) + " "
+		if v.hover.kind == wallHitAction && v.hover.arg == int(wallActResume) {
+			p = pal.cursor(" "+pal.muted(lead)+pal.ink(wallResumeWord)+" ", 0)
+		}
+		return pill{s: p, w: ansi.StringWidth(lead+wallResumeWord) + 2, pad: 1, act: wallActResume, away: true}
+	}
+	if v.away > 0 && v.team != "" {
+		awayAt = len(pills)
+		pills = append(pills, awayPill(true))
 	}
 	open := strconv.Itoa(len(v.tiles)) + " open"
 	pills = append(pills, pill{s: pal.dim(open), w: len(open)})
@@ -457,19 +483,33 @@ func wallTitleRow(pal palette, g wallGlyphs, v wallView, width, inset, y int) (s
 		}
 		return pillGap - pills[i-1].pad - pills[i].pad
 	}
+	measure := func() int {
+		edge := max(inset-pills[len(pills)-1].pad, 0)
+		rw := edge
+		for i, p := range pills {
+			rw += gapBefore(i) + p.w
+		}
+		return rw
+	}
 
 	// The last pill's pad sits in the inset, so its words end where the grid
 	// does.
 	edge := max(inset-pills[len(pills)-1].pad, 0)
-	rw := edge
-	for i, p := range pills {
-		rw += gapBefore(i) + p.w
-	}
+	rw := measure()
 	lw := ansi.StringWidth(left)
 	if lw+2+rw > width {
 		// The subtitle goes before any count does.
 		left = " " + pal.bold(pal.ink(mark+" Conversations"))
 		lw = ansi.StringWidth(left)
+	}
+	if lw+2+rw > width && awayAt >= 0 {
+		// Then the team's name in the button, which the title already said;
+		// then the button, whose key still works.
+		pills[awayAt] = awayPill(false)
+		if rw = measure(); lw+2+rw > width {
+			pills = append(pills[:awayAt], pills[awayAt+1:]...)
+			rw = measure()
+		}
 	}
 	if lw+2+rw > width {
 		return ansi.Truncate(left, width, ""), nil
@@ -483,8 +523,8 @@ func wallTitleRow(pal palette, g wallGlyphs, v wallView, width, inset, y int) (s
 		gap := gapBefore(i)
 		b.WriteString(strings.Repeat(" ", gap))
 		x += gap
-		if p.next {
-			hits = append(hits, wallHit{x0: x, y0: y, x1: x + p.w, y1: y + 1, kind: wallHitAction, arg: int(wallActNext)})
+		if p.pad > 0 {
+			hits = append(hits, wallHit{x0: x, y0: y, x1: x + p.w, y1: y + 1, kind: wallHitAction, arg: int(p.act)})
 		}
 		b.WriteString(p.s)
 		x += p.w
@@ -492,6 +532,14 @@ func wallTitleRow(pal palette, g wallGlyphs, v wallView, width, inset, y int) (s
 	b.WriteString(strings.Repeat(" ", edge))
 	return b.String(), hits
 }
+
+// wallOpenHereWord is what the wall is, in the title's words: the
+// conversations open in this window, whichever team narrows them.
+const wallOpenHereWord = "open in this window"
+
+// wallResumeWord is the title's word button that resumes the shown team's
+// members this window does not have open.
+const wallResumeWord = "Open them"
 
 // wallRule closes the head: dim, or, while a team is shown, in that team's
 // colour, so the whole frame says which set it is showing.

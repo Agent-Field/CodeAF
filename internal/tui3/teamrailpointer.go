@@ -41,8 +41,23 @@ func (a *app) trafficRowAt(x, y int) (int, bool) {
 	return rel, true
 }
 
-// trafficHoverAt is the hover the rail answers with. A row with nobody behind
-// it answers with nothing, so it does not light: it is not a door.
+// trafficDoorAt is the door under column x on body row rel of the last frame's
+// rail, and its index on the row, -1 for none.
+func (d trafficDrawn) trafficDoorAt(rel, x int) (trafficDoor, int) {
+	if rel < 0 || rel >= len(d.doors) {
+		return trafficDoor{}, -1
+	}
+	for i, door := range d.doors[rel] {
+		if door.span.holds(x) {
+			return door, i
+		}
+	}
+	return trafficDoor{}, -1
+}
+
+// trafficHoverAt is the hover the rail answers with: a handle or a message's
+// words under the pointer. Anywhere else on the rail answers with nothing, so
+// it does not light: it is not a door.
 func (a *app) trafficHoverAt(x, y int) (hoverAt, bool) {
 	if rel, ok := a.trafficRowAt(x, y); ok {
 		d := a.traffic.drawn
@@ -51,8 +66,11 @@ func (a *app) trafficHoverAt(x, y int) (hoverAt, bool) {
 			return hoverAt{kind: hoverTrafficClose}, true
 		case d.mode == trafficColumn && rel == d.hideY && d.hide.holds(x):
 			return hoverAt{kind: hoverTrafficHide}, true
-		case rel < len(d.lines) && d.lines[rel] != "":
-			return hoverAt{kind: hoverTraffic, index: rel}, true
+		case d.mode == trafficColumn && rel == d.hideY && d.tab.holds(x):
+			return hoverAt{kind: hoverTrafficTab}, true
+		}
+		if _, i := d.trafficDoorAt(rel, x); i >= 0 {
+			return hoverAt{kind: hoverTraffic, index: rel, entry: i}, true
 		}
 		return hoverAt{}, true
 	}
@@ -63,8 +81,9 @@ func (a *app) trafficHoverAt(x, y int) (hoverAt, bool) {
 }
 
 // trafficPress answers a press on the rail and reports whether it took it. A
-// row goes to its member; `hide` puts the column away; `Close esc` and a row
-// put the card away; the edge brings the column back, or on a narrow frame
+// handle goes to its member, and puts the card away; a message's words are
+// laid out in full or folded again; `hide` puts the column away; `Close esc`
+// puts the card away; the edge brings the column back, or on a narrow frame
 // lays the card over the body or takes it off. The rail's other cells are
 // furniture and take the press to do nothing.
 func (a *app) trafficPress(x, y int) (tea.Cmd, bool) {
@@ -77,9 +96,23 @@ func (a *app) trafficPress(x, y int) (tea.Cmd, bool) {
 		case d.mode == trafficColumn && rel == d.hideY && d.hide.holds(x):
 			a.trafficShow(false)
 			return nil, true
-		case rel < len(d.lines) && d.lines[rel] != "":
+		case d.mode == trafficColumn && rel == d.hideY && d.tab.holds(x):
+			a.trafficTasksShow(true)
+			return nil, true
+		}
+		door, i := d.trafficDoorAt(rel, x)
+		switch {
+		case i < 0:
+		case door.member != "":
 			a.traffic.over = false
-			return a.trafficGo(d.lines[rel]), true
+			return a.trafficJump(door.member, door.land), true
+		case door.expand != "":
+			a.trafficToggle(door.expand)
+			// AND THE MESSAGE'S CARD IN THE MANAGER'S OWN CONVERSATION COMES
+			// INTO VIEW, lifted (teamjump.go).
+			if door.here != "" {
+				return a.trafficJump("", door.here), true
+			}
 		}
 		return nil, true
 	}
@@ -88,6 +121,21 @@ func (a *app) trafficPress(x, y int) (tea.Cmd, bool) {
 		return nil, true
 	}
 	return nil, false
+}
+
+// trafficToggle lays one message out in full, or folds it again. It moves no
+// focus and changes nothing but what the rail and the thread cards draw.
+func (a *app) trafficToggle(key string) {
+	if a.traffic.open == nil {
+		a.traffic.open = map[string]bool{}
+	}
+	if a.traffic.open[key] {
+		delete(a.traffic.open, key)
+	} else {
+		a.traffic.open[key] = true
+	}
+	a.traffic.opened++
+	a.touch()
 }
 
 // trafficShowing reports whether the Traffic is in front of the person: the
@@ -201,12 +249,14 @@ func (a *app) teamOfFront() (team, bool) {
 func (a *app) trafficHoverWords() string {
 	d := a.traffic.drawn
 	switch a.hot.kind {
-	case hoverTraffic, hoverTrafficHide:
-		i := a.hot.index
-		if a.hot.kind == hoverTrafficHide {
-			i = d.hideY
+	case hoverTraffic:
+		if rel := a.hot.index; rel >= 0 && rel < len(d.doors) && a.hot.entry >= 0 && a.hot.entry < len(d.doors[rel]) {
+			return d.doors[rel][a.hot.entry].hint
 		}
-		if i >= 0 && i < len(d.hints) {
+	case hoverTrafficHide:
+		return "Hide the traffic" + hintSegment + trafficKey
+	case hoverTrafficTab:
+		if i := d.hideY; i >= 0 && i < len(d.hints) {
 			return d.hints[i]
 		}
 	case hoverTrafficClose:

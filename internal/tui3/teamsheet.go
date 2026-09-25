@@ -120,7 +120,7 @@ func (a *app) teamSheetOpen(id string, mode teamSheetMode) tea.Cmd {
 		s.choices = append([]teamHueSpec{t.HueSpec()}, teamHueChoices(a.teamHues(id), teamReservedHues(a.pal), wallSwatchCount-1)...)
 	case teamSheetClose:
 		s.cursor = tsCloseNow
-		if _, managed := a.teamsRunning(id); managed && a.teamsSeam().WrapUp != nil {
+		if _, managed := a.teamsRunning(id); managed && a.teamsCanWrapUp() {
 			s.cursor = tsWrapUp
 		}
 	case teamSheetDelete:
@@ -447,7 +447,7 @@ func (a *app) teamSheetCloseLines(t team, inner int) []wallCardLine {
 	}
 	var cs []choice
 	switch {
-	case t.Manager != "" && a.teamsSeam().WrapUp != nil:
+	case t.Manager != "" && a.teamsCanWrapUp():
 		cs = append(cs, choice{tsWrapUp, "Wrap up first", "", "the manager asks everyone to finish and commit, then brings you a closing report"})
 	case t.Manager != "":
 		// The engine behind this window has no wrap-up door: said, not hidden.
@@ -528,7 +528,7 @@ func (a *app) teamSheetStops() []int {
 		return append(stops, tsDone)
 	case teamSheetClose:
 		var stops []int
-		if t, ok := a.teamByID(s.team); ok && t.Manager != "" && a.teamsSeam().WrapUp != nil {
+		if t, ok := a.teamByID(s.team); ok && t.Manager != "" && a.teamsCanWrapUp() {
 			stops = append(stops, tsWrapUp)
 		}
 		return append(stops, tsCloseNow, tsCancel)

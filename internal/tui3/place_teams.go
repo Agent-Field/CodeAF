@@ -14,7 +14,7 @@ import (
 //
 // The handle the registry files (pages.go's [place]), and the keys, the
 // pointer and the acts of the page teamspage.go describes. The second place on
-// the bar, right after home: `home  teams  tasks  spend  settings`.
+// the bar, right after home: `home  teams  chats  sessions  spend  settings`.
 //
 // TWO SHAPES, ONE PLACE. With a manager in the pane the page hosts that
 // conversation whole (teamspagehost.go): the frame is the conversation's own,

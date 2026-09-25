@@ -4,7 +4,7 @@
 
 The **teams page** is where you run your teams: every team you have, what waits on you from
 them, and the manager of the team you choose, which you talk to right there. It is the second
-place on the tab bar, right after home: `home  teams  sessions  spend  settings`. Open it with
+place on the tab bar, right after home: `home  teams  chats  sessions  spend  settings`. Open it with
 `/teams`, `alt+2` (`opt+2` on a Mac), a click on the word `teams`, `tab` from home, or the map
 (`alt+.`). A number beside the word on the bar counts the decisions waiting on you that arrived
 since you last looked.
@@ -200,7 +200,7 @@ conversation. The page keeps these:
 | `alt+↑` `alt+↓` | put the keyboard on the page's buttons and walk them (`opt+↑` `opt+↓` on a Mac) |
 | `esc` | from the page's buttons, back to the message box |
 | `tab`, `shift+tab` | the next or previous place |
-| `alt+1` … `alt+8`, `alt+.` | jump to a place, draw the map |
+| `alt+1` … `alt+9`, `alt+.` | jump to a place, draw the map |
 
 On the page's buttons, and on a team with no manager in the pane:
 

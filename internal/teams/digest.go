@@ -146,7 +146,11 @@ func memberLine(m Member, s MemberState, manager bool) string {
 }
 
 func trafficLine(e Entry) string {
-	line := fmt.Sprintf("- %s %s %s -> %s: %s", e.At.Format("15:04"), e.Kind, e.From, e.To,
+	to := e.To
+	if e.To == ToSeveral {
+		to = strings.Join(e.Handles, ",")
+	}
+	line := fmt.Sprintf("- %s %s %s -> %s: %s", e.At.Format("15:04"), e.Kind, e.From, to,
 		cutRunes(oneLine(e.Text), digestText))
 	if len(e.Files) > 0 {
 		line += " [" + strings.Join(e.Files, ", ") + "]"

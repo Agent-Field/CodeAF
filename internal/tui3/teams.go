@@ -202,12 +202,23 @@ func teamFreshName(tabs []chatTab, taken []string, not string, pick func(int) in
 	}
 }
 
-// teamTabs is t as strip tabs, in the order the person stored them. A member
-// this window still has a tab for is THAT tab, so its here, held and signal
-// are the strip's own and a press attaches rather than opens; a member whose
-// tab was closed is rebuilt from what the team kept, which is enough for
-// [app.tabGo] to open it again.
-func teamTabs(t team, live []chatTab) []chatTab {
+// teamTabs is t's members THIS WINDOW HAS OPEN, as strip tabs, in the order
+// the person stored them. A member this window still has a tab for is THAT
+// tab, so its here, held and signal are the strip's own and a press attaches
+// rather than opens.
+//
+// A MEMBER THIS WINDOW DOES NOT HAVE OPEN GETS NO TAB. The strip is what is
+// open in this window, narrowed to the team; a team's whole membership lives
+// on the team, and the wall's `2 more in test · Open them` is the door to the
+// rest ([app.wallResumeAway]). Drawing a closed member as a tab made the strip
+// and the wall disagree about the same team: three tabs over a wall of one.
+//
+// held is whether the keeper holds a conversation behind this window. A member
+// the manager started is held from its first moment but has no title yet, so
+// the strip's list does not carry it ([app.tabList] draws no nameless tab);
+// it is open all the same, and is drawn by its handle, `@lexer`, until its
+// first answer names it.
+func teamTabs(t team, live []chatTab, held func(key string) bool) []chatTab {
 	out := make([]chatTab, 0, len(t.Members))
 	for _, m := range t.Members {
 		tab, found := chatTab{}, false
@@ -218,10 +229,9 @@ func teamTabs(t team, live []chatTab) []chatTab {
 			}
 		}
 		if !found {
-			// A member with no name yet is drawn by its handle, `@lexer`, which
-			// is what a member the manager started is called until its first
-			// answer names it. One with neither is not drawn, as the strip draws
-			// no nameless tab ([app.tabList]); it is still a member.
+			if held == nil || !held(m.Key) {
+				continue
+			}
 			word := m.Word
 			if strings.TrimSpace(word) == "" && m.Handle != "" {
 				word = "@" + m.Handle
@@ -232,6 +242,26 @@ func teamTabs(t team, live []chatTab) []chatTab {
 			tab = chatTab{key: m.Key, file: m.File, where: m.Where, word: word, full: word}
 		}
 		out = append(out, tab)
+	}
+	return out
+}
+
+// teamHeldOpen is [teamTabs]' held: a conversation the keeper holds whose tab
+// the person has not closed. Memory only.
+func (a *app) teamHeldOpen(key string) bool {
+	return a.behind[key] != nil && !a.tabShut[key]
+}
+
+// teamAway is the members of t this window does not have open: no tab on the
+// strip's list, and not held behind. They are still members; the wall offers
+// to resume them ([app.wallResumeAway]). Frame-safe: memory only.
+func (a *app) teamAway(t team, tabs []chatTab) []teamMember {
+	var out []teamMember
+	for _, m := range t.Members {
+		if m.Key == "" || tabsHold(tabs, m.Key) || a.teamHeldOpen(m.Key) {
+			continue
+		}
+		out = append(out, m)
 	}
 	return out
 }
@@ -580,7 +610,12 @@ func (a *app) teamActivate(id string) tea.Cmd {
 	if len(t.Members) == 0 || teamHolds(t, a.frontTabKey()) {
 		return nil
 	}
-	tabs := teamTabs(t, a.tabList())
+	// A team with nothing open here narrows the strip to the tab in front, and
+	// the front stays where it is: nothing to step to is not a reason to open.
+	tabs := teamTabs(t, a.tabList(), a.teamHeldOpen)
+	if len(tabs) == 0 {
+		return nil
+	}
 	return a.tabGo(tabs[0])
 }
 
@@ -675,7 +710,7 @@ func (a *app) teamStripTabs(tabs []chatTab) []chatTab {
 	if !ok {
 		return tabs
 	}
-	out := a.teamStripManager(t, teamTabs(t, tabs))
+	out := a.teamStripManager(t, teamTabs(t, tabs, a.teamHeldOpen))
 	// A member held behind that the strip had no tab for yet (one the manager
 	// started) still says what it is doing, as every held tab does.
 	for i := range out {

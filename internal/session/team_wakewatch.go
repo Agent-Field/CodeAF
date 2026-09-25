@@ -294,7 +294,7 @@ func teamWakes(role teamRole, entry teams.Entry) bool {
 	if entry.Kind != teams.KindDirective || entry.From != teams.FromManager || strings.TrimSpace(entry.Text) == "" || role.shared {
 		return false
 	}
-	return entry.To == teams.ToEveryone || (role.handle != "" && entry.To == role.handle)
+	return entry.Addressed(role.handle)
 }
 
 // ── the two wakes ───────────────────────────────────────────────────────────
@@ -321,17 +321,21 @@ func (a *Agent) teamWakeMember(profile string, roles []teamRole, now time.Time) 
 		a.teamWakeCount(now)
 	}
 	for _, role := range roles {
+		// The wake answers the directive that caused it, the one the
+		// boundary above just handed over, so a reader draws the member as
+		// working on that thread rather than as a line of its own.
+		answers := a.teamAnswering(role.id)
 		if woke {
 			a.teamSay(profile, role.id, teams.Entry{
 				Kind: teams.KindEvent, From: teams.FromManager, To: role.handle, Member: role.key,
-				State: teams.StateRunning, Text: "woke @" + role.handle,
+				State: teams.StateRunning, Text: "woke @" + role.handle, Answers: answers,
 			})
 			continue
 		}
 		if reason != "" {
 			a.teamSay(profile, role.id, teams.Entry{
 				Kind: teams.KindEvent, From: teams.FromSystem, To: role.handle, Member: role.key,
-				State: teams.StateIdle, Text: "could not wake @" + role.handle + ": " + reason,
+				State: teams.StateIdle, Text: "could not wake @" + role.handle + ": " + reason, Answers: answers,
 			})
 		}
 	}
@@ -662,8 +666,9 @@ func SetTeamResume(open func(file, workspace string) error) {
 
 // teamRouse opens every one of targets that nothing holds, off the path, and
 // says in the Traffic when one could not be. A conversation that is open
-// somewhere watches for itself and is left alone.
-func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets []teams.Member) {
+// somewhere watches for itself and is left alone. answers is the entry that
+// asked for the wake, which a failure to wake answers, "" for none.
+func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets []teams.Member, answers string) {
 	if profile == "" || !wakes || len(targets) == 0 {
 		return
 	}
@@ -692,7 +697,7 @@ func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets [
 				}
 				a.teamSay(profile, team.ID, teams.Entry{
 					Kind: teams.KindEvent, From: teams.FromSystem, To: to, Member: member.Key,
-					State: teams.StateIdle, Text: "could not wake " + who + ": " + reason,
+					State: teams.StateIdle, Text: "could not wake " + who + ": " + reason, Answers: answers,
 				})
 			}
 		}

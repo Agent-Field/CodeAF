@@ -483,7 +483,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// five (pages.go). Each of the seven takes the whole frame, so there is
 	// nothing under it a key could mean anything to — and the six classes of the
 	// grammar are read before the place's own keys, on every place, which is what
-	// makes `tab`, `alt+1…7` and `→` mean one thing wherever a person is standing
+	// makes `tab`, `alt+1…9` and `→` mean one thing wherever a person is standing
 	// ([app.placeKeyPress]).
 	//
 	// IT USED TO BE FIVE ARMS AT THREE DIFFERENT RUNGS. The settings panel and
@@ -784,7 +784,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
-	// AND alt+1…7 IS READ HERE, ON THE CONVERSATION'S ROAD. It is the one class
+	// AND alt+1…9 IS READ HERE, ON THE CONVERSATION'S ROAD. It is the one class
 	// of the place grammar that belongs to no place — it is how a person GETS to
 	// a room — and every claim above has already had its say, so a modal overlay
 	// that wants the chord still gets it first and nothing below has taken a

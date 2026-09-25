@@ -166,16 +166,16 @@ func TestTheCtrlDigitAliasIsClaimedOnlyWhereTheTerminalSaidItCan(t *testing.T) {
 	}
 
 	a.keysDisambiguated = true
-	a.placeKeyPress(ctrlKey('3'))
-	if want := pages()[2]; a.page != want {
-		t.Fatalf("ctrl+3 went to %s and the third place is %s", a.page.word(), want.word())
+	a.placeKeyPress(ctrlKey('4'))
+	if want := placeOrder[3]; a.page != want {
+		t.Fatalf("ctrl+4 went to %s and the fourth place is %s", a.page.word(), want.word())
 	}
 	// AND IT IS THE SAME PLACE THE alt SPELLING REACHES. One digit reading behind
 	// both encodings is what makes that true by construction.
 	a.showPage(pageHome)
-	a.placeKeyPress(tea.KeyPressMsg{Code: '3', Mod: tea.ModAlt})
-	if want := pages()[2]; a.page != want {
-		t.Fatalf("alt+3 went to %s and the third place is %s", a.page.word(), want.word())
+	a.placeKeyPress(tea.KeyPressMsg{Code: '4', Mod: tea.ModAlt})
+	if want := placeOrder[3]; a.page != want {
+		t.Fatalf("alt+4 went to %s and the fourth place is %s", a.page.word(), want.word())
 	}
 	a.showPage(pageHome)
 	a.placeKeyPress(ctrlKey('.'))
@@ -199,18 +199,18 @@ func TestTheMapNamesTheCtrlAliasExactlyWhenItIsBound(t *testing.T) {
 	a.mapShowing = true
 
 	a.keysDisambiguated = false
-	if line := a.placeHint(); strings.Contains(line, "ctrl+1…8") {
+	if line := a.placeHint(); strings.Contains(line, "ctrl+1…9") {
 		t.Fatalf("the map offers a chord this terminal cannot send:\n%s", line)
 	}
 	a.keysDisambiguated = true
 	line := a.placeHint()
-	if !strings.Contains(line, "alt+1…8 or ctrl+1…8 go to a place") {
+	if !strings.Contains(line, "alt+1…9 or ctrl+1…9 go to a place") {
 		t.Fatalf("the map hides an alias that is bound:\n%s", line)
 	}
 	// AND ON A MAC IT IS THE MAC'S SPELLING OF THE FIRST AND THE PLAIN ONE OF THE
 	// SECOND: `ctrl` is `ctrl` on every keyboard there is.
 	a.chords = detectChords("darwin", envOf(map[string]string{"TERM_PROGRAM": "kitty"}))
-	if mac := a.placeHint(); !strings.Contains(mac, "opt+1…8 or ctrl+1…8 go to a place") {
+	if mac := a.placeHint(); !strings.Contains(mac, "opt+1…9 or ctrl+1…9 go to a place") {
 		t.Fatalf("the mac map reads wrong:\n%s", mac)
 	}
 }
@@ -280,7 +280,7 @@ func TestTheOptionAsMetaNoteIsNeitherDrawnOffAMacNorInAConversation(t *testing.T
 func TestTheFirstRunLineNamesTheChordsAndTheSettingOnAMacOnly(t *testing.T) {
 	mac := detectChords("darwin", envOf(map[string]string{"TERM_PROGRAM": "Apple_Terminal"}))
 	words := mac.chordSetupWords()
-	for _, want := range []string{"opt+1…opt+8", "if opt types a character instead", "use option as meta", "Terminal: Profiles › Keyboard › Use Option as Meta key"} {
+	for _, want := range []string{"opt+1…opt+9", "if opt types a character instead", "use option as meta", "Terminal: Profiles › Keyboard › Use Option as Meta key"} {
 		if !strings.Contains(words, want) {
 			t.Fatalf("the first-run line lost %q:\n%s", want, words)
 		}
@@ -303,9 +303,9 @@ func TestTheOptionCharacterTableIsExactlyTheBoundChords(t *testing.T) {
 			t.Fatalf("%q is filed under %q, which is not a chord this surface binds", r, chord)
 		}
 	}
-	// The seven places, the map, and the letters the composer and the two places
+	// The nine places, the map, and the letters the composer and the two places
 	// that have a view actually take.
-	for _, chord := range []string{"alt+1", "alt+7", "alt+.", "alt+g", "alt+q", "alt+s", "alt+w", "alt+p", "alt+y", "alt+o", "alt+b", "alt+f"} {
+	for _, chord := range []string{"alt+1", "alt+7", "alt+9", "alt+.", "alt+g", "alt+q", "alt+s", "alt+w", "alt+p", "alt+y", "alt+o", "alt+b", "alt+f"} {
 		found := false
 		for _, have := range chordDeadKeys {
 			if have == chord {

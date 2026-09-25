@@ -498,23 +498,34 @@ func TestTheTeamHeaderIsOneLineAndDropsInOrder(t *testing.T) {
 	}
 }
 
-// A RULING AND A SUB-TEAM START READ AS WHAT THEY ARE on the Traffic rail
-// (DESIGN.md 8.10).
+// A RULING AND A SUB-TEAM START READ AS WHAT THEY ARE on the threaded
+// Traffic rail (DESIGN.md 8.10).
 func TestTrafficSaysRulingsAndSubTeamStarts(t *testing.T) {
 	a, harbor, orbit := teamsPlaceLabIDs(t)
 	h, _ := a.teamByID(harbor)
-	ruling := teamstore.Entry{Kind: teamstore.KindDirective, From: teamstore.FromManager, To: "web", Packet: "p9",
-		Text: "ruling on the conflict p9, by ◆ @boss (manager of \"harbor\"): JSON: the form stays"}
-	line, _, hint := a.trafficLine(h, ruling, 90)
-	if got := plain(line); !strings.Contains(got, "ruling") || strings.Contains(got, "do ") || !strings.Contains(got, "JSON: the form stays") {
-		t.Fatalf("the ruling row: %q", got)
+	lay := func(e teamstore.Entry) (string, string) {
+		s := &trafficSheet{a: a, t: h, width: 90, hotRow: -1}
+		s.thread(teamstore.Thread{Root: e, Latest: e.ID})
+		var rows, hints []string
+		for _, r := range s.rows {
+			rows = append(rows, plain(r.text))
+			for _, d := range r.doors {
+				hints = append(hints, d.hint)
+			}
+		}
+		return strings.Join(rows, "\n"), strings.Join(hints, "\n")
 	}
-	if hint != "" && !strings.Contains(hint, "p9") {
+	ruling := teamstore.Entry{ID: "000000000007", Kind: teamstore.KindDirective, From: teamstore.FromManager, To: "web", Packet: "p9",
+		Text: "ruling on the conflict p9, by ◆ @boss (manager of \"harbor\"): JSON: the form stays"}
+	got, hint := lay(ruling)
+	if !strings.Contains(got, "ruling") || strings.Contains(got, " do") || !strings.Contains(got, "JSON: the form stays") {
+		t.Fatalf("the ruling rows: %q", got)
+	}
+	if !strings.Contains(hint, "p9") {
 		t.Fatalf("the ruling's hint does not name its packet: %q", hint)
 	}
-	start := teamstore.Entry{Kind: teamstore.KindStart, From: teamstore.FromManager, To: "api", Team: orbit, Text: "run it"}
-	line, _, _ = a.trafficLine(h, start, 90)
-	if got := plain(line); !strings.Contains(got, "started @api to run orbit") {
-		t.Fatalf("the sub-team start row: %q", got)
+	start := teamstore.Entry{ID: "000000000008", Kind: teamstore.KindStart, From: teamstore.FromManager, To: "api", Team: orbit, Text: "run it"}
+	if got, _ := lay(start); !strings.Contains(got, "started @api to run orbit") {
+		t.Fatalf("the sub-team start rows: %q", got)
 	}
 }

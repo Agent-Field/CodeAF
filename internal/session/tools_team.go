@@ -40,6 +40,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -86,11 +87,11 @@ var teamReadSchema = `{"type":"object","properties":{"handle":{"type":"string","
 	`"messages":{"type":"integer","description":"How many of the last messages. Default ` + strconv.Itoa(teamReadDefault) + `, maximum ` + strconv.Itoa(teamReadMax) + `."},` +
 	teamArgSchema + `},"required":["handle"],"additionalProperties":false}`
 
-const teamSendDescription = "Send a message to one member, or to everyone in the team. It arrives at the start of the member's next step, marked as from the manager, never as the person. " +
+const teamSendDescription = "Send a message to one member, to several (one message with every handle in to), or to everyone in the team. It arrives at the start of the member's next step, marked as from the manager, never as the person. " +
 	"kind note is information and waits for the member's next turn; kind directive is an instruction the member should follow unless the person said otherwise in its own conversation, and it starts an idle member's turn. " +
 	"A member busy in a long tool call reads it when that returns; use team_stop to end its turn first."
 
-const teamSendSchema = `{"type":"object","properties":{"to":{"type":"string","description":"A member's handle, or everyone."},` +
+const teamSendSchema = `{"type":"object","properties":{"to":{"type":"string","description":"A member's handle, several separated by spaces, or everyone."},` +
 	`"text":{"type":"string","description":"The message."},` +
 	`"kind":{"type":"string","enum":["note","directive"],"description":"Default note."},` +
 	teamArgSchema + `},"required":["to","text"],"additionalProperties":false}`
@@ -116,10 +117,12 @@ const teamStartSchema = `{"type":"object","properties":{"handle":{"type":"string
 	teamArgSchema + `},"required":["handle","brief"],"additionalProperties":false}`
 
 const teamPostDescription = "Post a message in your team: to the room (every member and the manager), to one member by handle, or to the manager. " +
-	"It arrives at the start of their next step, marked as from you; a post to the manager starts its turn if it is idle. Use it to report progress or a finding, to ask a teammate, or to say you are blocked."
+	"It arrives at the start of their next step, marked as from you; a post to the manager starts its turn if it is idle. Use it to report progress or a finding, to ask a teammate, or to say you are blocked. " +
+	"A post to the manager answers the last message the manager sent you; to answer another, give its number as thread."
 
 const teamPostSchema = `{"type":"object","properties":{"to":{"type":"string","description":"room, manager, or a member's handle."},` +
 	`"text":{"type":"string","description":"The message."},` +
+	`"thread":{"type":"string","description":"The #number of the team message this answers, like #42. Optional."},` +
 	teamArgSchema + `},"required":["to","text"],"additionalProperties":false}`
 
 // team_read's bounds.
@@ -432,58 +435,47 @@ func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (string,
 	if refusal != "" {
 		return refusal, true, nil
 	}
-	entry := teams.Entry{Kind: kind, From: teams.FromManager, Text: text}
-	to := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(parsed.To)), "@")
 	file, _, _, _ := a.teamSnapshot(a.config.teamProfile())
-	if to == teams.ToEveryone {
-		entry.To = teams.ToEveryone
-		// A DIRECTIVE TO EVERYONE REACHES THE ONES WHO REPORT HERE. A shared
-		// member is left out and named, and the rest are each sent it, so no
-		// line in the log says `everyone` about a directive some were not
-		// sent.
-		if kind == teams.KindDirective {
-			own, shared := splitByHome(file, team)
-			if len(shared) > 0 {
-				if len(own) == 0 {
-					return fmt.Sprintf("Every member of %q reports to another team's manager (%s), so none may be directed by you. Send them a note instead.", team.Name, strings.Join(shared, ", ")), true, nil
-				}
-				for _, member := range own {
-					one := entry
-					one.To, one.Member = member.Handle, member.Key
-					if err := teams.AppendTraffic(a.config.teamProfile(), team.ID, one); err != nil {
-						return "The message could not be written to the team's traffic: " + err.Error(), true, nil
-					}
-				}
-				a.teamRouse(a.config.teamProfile(), team, role.wakes, own)
-				return fmt.Sprintf("Sent a directive to %d member(s) of %q who report to you. Not sent to %s: they report to another team's manager; send them a note.",
-					len(own), team.Name, strings.Join(shared, ", ")), false, nil
-			}
-		}
-	} else {
-		member, ok := teamMemberByHandle(team, to)
-		if !ok || member.Key == team.Manager {
-			if pointer := subTeamPointer(file, team, to, "a message"); pointer != "" && !ok {
-				return pointer, true, nil
-			}
-			return fmt.Sprintf("No member of %q has the handle %q. Send to one of %s, or to everyone.", team.Name, parsed.To, teamHandles(team, team.Manager)), true, nil
-		}
-		if where := reportsElsewhere(file, team, member); where != "" && kind == teams.KindDirective {
-			return linkRefusal(member, where, "a directive"), true, nil
-		}
-		entry.To, entry.Member = member.Handle, member.Key
+	entry, refusal := teamSendAddress(file, team, parsed.To, kind)
+	if refusal != "" {
+		return refusal, true, nil
 	}
-	if err := teams.AppendTraffic(a.config.teamProfile(), team.ID, entry); err != nil {
+	// A DIRECTIVE TO EVERYONE REACHES THE ONES WHO REPORT HERE. A shared
+	// member is left out and named, and the rest are sent it as one message to
+	// several, so no line in the log says `everyone` about a directive some
+	// were not sent, and the replies still thread under one number.
+	var shared []string
+	if entry.To == teams.ToEveryone && kind == teams.KindDirective {
+		var own []teams.Member
+		own, shared = splitByHome(file, team)
+		if len(shared) > 0 {
+			if len(own) == 0 {
+				return fmt.Sprintf("Every member of %q reports to another team's manager (%s), so none may be directed by you. Send them a note instead.", team.Name, strings.Join(shared, ", ")), true, nil
+			}
+			entry = teamEntryFor(own)
+		}
+	}
+	entry.Kind, entry.From, entry.Text = kind, teams.FromManager, text
+	id, err := teams.AppendTrafficID(a.config.teamProfile(), team.ID, entry)
+	if err != nil {
 		return "The message could not be written to the team's traffic: " + err.Error(), true, nil
 	}
-	who := "@" + entry.To
+	// THE ANSWER CARRIES THE MESSAGE'S NUMBER. The members are told it too, and
+	// their replies name it, which is what threads them under it on the rail
+	// and under this call in the manager's own conversation.
+	who := "@" + strings.Join(entry.Recipients(), ", @") + " (" + teams.ThreadNumber(id) + ")"
 	if entry.To == teams.ToEveryone {
-		who = "everyone in " + strconv.Quote(team.Name)
+		who = "everyone in " + strconv.Quote(team.Name) + " (" + teams.ThreadNumber(id) + ")"
 	}
 	if kind == teams.KindDirective {
 		// A DIRECTIVE WAKES, and a member nobody has open is opened so it can
 		// (team_wakewatch.go). The answer says what will happen and no more:
 		// whether the wake ran is the Traffic's to say, where the person reads it.
-		a.teamRouse(a.config.teamProfile(), team, role.wakes, teamSendTargets(team, entry))
+		a.teamRouse(a.config.teamProfile(), team, role.wakes, teamSendTargets(team, entry), id)
+		if len(shared) > 0 {
+			return fmt.Sprintf("Sent a directive to %d member(s) of %q who report to you: %s. Not sent to %s: they report to another team's manager; send them a note.",
+				len(entry.Recipients()), team.Name, who, strings.Join(shared, ", ")), false, nil
+		}
 		if !role.wakes {
 			return fmt.Sprintf("Sent a directive to %s. This team's auto-wake is off, so a member that is idle reads it when its conversation next runs; a busy one at its next step.", who), false, nil
 		}
@@ -491,6 +483,55 @@ func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (string,
 			"Their replies and their finishing wake you when they arrive, so there is no need to wait or poll; the traffic shows each wake.", who), false, nil
 	}
 	return fmt.Sprintf("Sent a note to %s. It arrives at the start of their next step; a note wakes nobody, so a member that is idle reads it when its conversation next runs.", who), false, nil
+}
+
+// teamSendAddress is where a manager's `to` sends a message: everyone, one
+// member, or several named members as ONE entry (internal/teams' thread.go),
+// and the refusal to hand back when a handle names nobody, names a member of
+// a team below (whose manager is the one to ask), or names a link a directive
+// may not reach.
+func teamSendAddress(file *teams.File, team teams.Team, to, kind string) (teams.Entry, string) {
+	words := strings.FieldsFunc(strings.ToLower(to), func(r rune) bool { return r == ' ' || r == ',' || r == ';' })
+	var members []teams.Member
+	for _, word := range words {
+		word = strings.TrimPrefix(word, "@")
+		if word == "" {
+			continue
+		}
+		if word == teams.ToEveryone {
+			return teams.Entry{To: teams.ToEveryone}, ""
+		}
+		member, ok := teamMemberByHandle(team, word)
+		if !ok || member.Key == team.Manager {
+			if pointer := subTeamPointer(file, team, word, "a message"); pointer != "" && !ok {
+				return teams.Entry{}, pointer
+			}
+			return teams.Entry{}, fmt.Sprintf("No member of %q has the handle %q. Send to one or more of %s, or to everyone.", team.Name, word, teamHandles(team, team.Manager))
+		}
+		if where := reportsElsewhere(file, team, member); where != "" && kind == teams.KindDirective {
+			return teams.Entry{}, linkRefusal(member, where, "a directive")
+		}
+		if !slices.ContainsFunc(members, func(m teams.Member) bool { return m.Handle == member.Handle }) {
+			members = append(members, member)
+		}
+	}
+	if len(members) == 0 {
+		return teams.Entry{}, fmt.Sprintf("Say who the message is for: one or more of %s, or everyone.", teamHandles(team, team.Manager))
+	}
+	return teamEntryFor(members), ""
+}
+
+// teamEntryFor addresses an entry to members: the one by handle, or several
+// as one entry that lists them.
+func teamEntryFor(members []teams.Member) teams.Entry {
+	if len(members) == 1 {
+		return teams.Entry{To: members[0].Handle, Member: members[0].Key}
+	}
+	handles := make([]string, 0, len(members))
+	for _, member := range members {
+		handles = append(handles, member.Handle)
+	}
+	return teams.Entry{To: teams.ToSeveral, Handles: handles}
 }
 
 // reportsElsewhere is the name of the team member reports to when that is
@@ -534,18 +575,12 @@ func linkRefusal(member teams.Member, where, what string) string {
 		"Nothing was sent. Send it a note (kind note), or raise it with its manager.", member.Handle, where, what)
 }
 
-// teamSendTargets is who a manager's message is addressed to: the one member,
-// or every member but the manager.
+// teamSendTargets is who a manager's message is addressed to: the members it
+// names, or every member but the manager.
 func teamSendTargets(team teams.Team, entry teams.Entry) []teams.Member {
-	if entry.To != teams.ToEveryone {
-		if member, ok := team.ByHandle(entry.To); ok {
-			return []teams.Member{member}
-		}
-		return nil
-	}
 	var out []teams.Member
 	for _, member := range team.Members {
-		if member.Key != team.Manager {
+		if member.Key != team.Manager && entry.Addressed(member.Handle) {
 			out = append(out, member)
 		}
 	}
@@ -693,9 +728,10 @@ func teamStartGloss(arguments string) string {
 
 func (a *Agent) teamPostTool(ctx context.Context, args json.RawMessage) (string, bool, error) {
 	var parsed struct {
-		To   string `json:"to"`
-		Text string `json:"text"`
-		Team string `json:"team"`
+		To     string `json:"to"`
+		Text   string `json:"text"`
+		Thread string `json:"thread"`
+		Team   string `json:"team"`
 	}
 	if err := decodeToolArguments(args, &parsed); err != nil {
 		return invalidArgumentsPrefix + err.Error(), true, nil
@@ -703,6 +739,14 @@ func (a *Agent) teamPostTool(ctx context.Context, args json.RawMessage) (string,
 	text := strings.TrimSpace(parsed.Text)
 	if text == "" {
 		return invalidArgumentsPrefix + "text is empty", true, nil
+	}
+	thread := ""
+	if strings.TrimSpace(parsed.Thread) != "" {
+		id, ok := teams.ThreadID(parsed.Thread)
+		if !ok {
+			return invalidArgumentsPrefix + "thread is a message's number, like #42", true, nil
+		}
+		thread = id
 	}
 	team, role, refusal := a.teamTarget(parsed.Team, false)
 	if refusal != "" {
@@ -729,13 +773,29 @@ func (a *Agent) teamPostTool(ctx context.Context, args json.RawMessage) (string,
 			entry.To, entry.Member = member.Handle, member.Key
 		}
 	}
+	// A REPLY TO THE MANAGER ANSWERS WHAT THE MANAGER LAST SAID TO IT, unless
+	// it named another line; a post to the room or a teammate answers only what
+	// it names (internal/teams' thread.go).
+	if thread == "" && entry.To == teams.ToManager {
+		thread = a.teamAnswering(team.ID)
+	}
 	if entry.To == teams.ToManager && role.boss != "" && role.boss != team.ID {
 		// A SUB-TEAM WITH NO MANAGER OF ITS OWN POSTS TO THE ONE ABOVE: the
 		// line goes to that team's log, where its manager reads it, saying
-		// which team it came from.
+		// which team it came from. What it answers is what that manager last
+		// said to it, in that log.
+		if strings.TrimSpace(parsed.Thread) == "" {
+			thread = a.teamAnswering(role.boss)
+		}
+		entry.Answers = thread
 		return a.teamPostUp(team, role, entry)
 	}
-	if err := teams.AppendTraffic(a.config.teamProfile(), team.ID, entry); err != nil {
+	entry.Answers = thread
+	// THE POST'S OWN NUMBER IS IN ITS ANSWER, ` as #N`, so the surface can find
+	// this call in the member's transcript when somebody asks to be taken to
+	// the message (tui3's teamjump.go).
+	own, err := teams.AppendTrafficID(a.config.teamProfile(), team.ID, entry)
+	if err != nil {
 		return "The post could not be written to the team's traffic: " + err.Error(), true, nil
 	}
 	where := "the room"
@@ -750,8 +810,16 @@ func (a *Agent) teamPostTool(ctx context.Context, args json.RawMessage) (string,
 		// A REPLY TO THE MANAGER WAKES IT, so a manager nobody has open is
 		// opened (team_wakewatch.go).
 		if manager, ok := team.Member(team.Manager); ok {
-			a.teamRouse(a.config.teamProfile(), team, role.wakes, []teams.Member{manager})
+			a.teamRouse(a.config.teamProfile(), team, role.wakes, []teams.Member{manager}, "")
 		}
 	}
-	return "Posted to " + where + " in " + strconv.Quote(team.Name) + ". It arrives at the start of their next step.", false, nil
+	answered := ""
+	if thread != "" {
+		answered = ", answering " + teams.ThreadNumber(thread)
+	}
+	as := ""
+	if own != "" {
+		as = " as " + teams.ThreadNumber(own)
+	}
+	return "Posted to " + where + " in " + strconv.Quote(team.Name) + as + answered + ". It arrives at the start of their next step.", false, nil
 }

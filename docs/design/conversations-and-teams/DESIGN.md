@@ -16,8 +16,22 @@ conversation's manager, carrying facts from one chat to the next by hand.
 
 ## 1. The wall: every open conversation, live
 
-A full-frame grid of tiles, one per open conversation, each drawing the live tail of its
-transcript.
+A full-frame grid of tiles, one per conversation open in this window, each drawing the live
+tail of its transcript.
+
+**What it shows is what is open in this window** (ruled 2026-09-24). The wall and the tab
+strip are the conversations this window has open, narrowed by a team when one is shown; they
+are not a view of the team. The title says so: `Conversations · open in this window`, and
+`· in test` while a team is shown, with `1 open` on the right. A shown team's members that
+this window does not have open are neither tiles nor tabs. While there are any, the title
+carries one quiet word button, `2 more in test · Open them` (key `r`, hint `Resume the 2
+not open here · r`), which resumes them behind
+the conversation in front, on the door line, off the loop, so they arrive as tiles and tabs
+without moving the front or the focus. When every member is open there is no mark at all.
+The Teams row counts open members; its hint says the team's size (`test · 1 open here · 3
+members`). The first build drew every member on the strip while the wall kept only the open
+ones, and the owner's screen read `test 1` over three tabs. A team's whole membership, open
+or not, belongs to the teams page on home (section 7).
 
 **Doors in.** `alt+v`, `/wall`, the `▦` dock under the input box, and `▦ All` beside the tab
 strip's `+`. The dock is a one-row map of every open conversation coloured by state; a click
@@ -96,9 +110,31 @@ path); a curated word while it runs. Typing wins. A team never renames itself: p
 things by the name they remember.
 
 **Where teams show.** Dots before a tile's title; a segmented Teams row on the wall; when a
-team is shown, a `● name ▾` chip leading the tab strip and the rule under it in the team's
-hue. The chip is the switcher: teams, All, add or remove this conversation, new team, team
+team is shown, a `● name ▾` chip on the tab strip and the rule under it in the team's
+hue. The strip reads `Home   ● name ▾   ◆ Manager   tabs…   +   ▦ All`: Home is a fixed door and
+stands first, the chip filters the tabs so it sits right before them, and the manager's place
+follows it; as the row narrows Home goes first, then the chip, never the tab in front (ruled
+2026-09-24). Showing a team narrows the strip to its members open in this window, plus the tab in
+front (section 1). The chip is the switcher: teams, All, add or remove this conversation, new team, team
 settings. New conversations started while a team is shown join it.
+
+**The way back from the places.** The places bar reads `home  teams  chats  sessions  spend
+settings` (the owner's order, ruled 2026-09-24; `sessions` is the tasks place's word), then
+standing, memory and search off the bar. The list is data (`placeOrder` in `pages.go`), and
+the digits follow it: teams `alt+2`, chats `alt+3`, sessions `alt+4`, spend `alt+5`, settings
+`alt+6`, standing `alt+7`, memory `alt+8`, search `alt+9`. `chats` is not a room: a click, its digit or `enter` on it returns to the conversation
+in front, or opens a new chat when none is open. It never wears the current band, `tab` steps
+over it, and `alt+k` stays the switcher that chooses a conversation.
+
+**One top bar.** The places bar and the chat strip are one row (ruled 2026-09-24): row 1 under
+the top line, the first word at column 3, two cells of air between two items (four between two
+words, counting each chip's pad), the current item on the strip's front-tab ground, then the
+same rule. Measured before the change at 80, 110 and 160 columns: both on row 1; the strip's
+first word at column 3 with 2 cells between chips, the places' at column 2 with 1, and the
+current place on the ground the strip gives a tab that is not in front. The strip's geometry
+was kept and the places bar moved to it, because the strip is the row a person lives on, its
+grounded chips and close marks need the air to read as separate things, and six short words
+have the room. `TestOneTopBarPlacesAndChatsShareGeometry` pins the row, column and gap on both.
 
 ## 3. Organize: one button, a proposal, never a silent change
 
@@ -135,19 +171,23 @@ and removing it returns it to an ordinary chat with its history. What makes it s
   a `+ Manager` placeholder, and nothing costs anything;
 - its layout is split: the person's conversation with the manager on the left, a **Traffic**
   rail on the right. Whatever the person types goes to the manager, always, and the composer
-  says so (`to ◆ manager`, on the box's rule once there is text). Traffic shows routed
-  messages (`@parser → @web  fyi`, `◆ → @web  do`) with their age, stops and starts with the
-  reason and the brief, and events (finished, failed, asking in the needs-you amber), every
-  row with a member behind it clickable to open that member. The rail holds the right-hand
-  column while the manager is in front, the task column folding to its edge beside it; it
+  says so (`to ◆ manager`, on the box's rule once there is text). Traffic is drawn as
+  threads (below, **Traffic is threaded**). With the manager in front the
+  right-hand column is the Traffic (ruled 2026-09-24): the task column is not drawn and not
+  reserved whatever the saved `ctrl+g` answer says. When the manager has live tasks the
+  header reads `Traffic · Tasks 2`, and Tasks (a press or `ctrl+g`) lays them in the same
+  column at the same width, and back; with none there is no word. The rail
   is put away with `hide alt+l` to a `Traffic` edge that counts what arrived, and on a narrow
   window it is that edge and a card laid over the lower conversation;
 - each turn it carries a small team digest (members, handles, states, questions waiting,
   files touched, recent traffic), never whole transcripts;
 - its messages reach members marked `◆ from manager`, never as if the person had typed them;
 - nothing it does moves the person's focus: a member it starts opens behind the conversation
-  in front, as a tab named `@handle`, and takes its first turn on its own (the session sees
-  itself started and wakes), reading the brief as the manager's.
+  in front, as a tab named `@handle`. With the team's auto-wake on it takes its first turn on
+  its own (the session sees itself started and wakes), reading the brief as the manager's.
+  With auto-wake off the member is still opened and the brief still waits for its first turn,
+  but no turn is started; the Traffic says `opened @handle; this team's auto-wake is off, so
+  no turn was started. It reads the brief when it next runs.`
 
 **Why not one stream of chat bubbles.** Members do not all read everything; each receives only
 what is addressed to it. A shared stream would look like a group chat and teach the person
@@ -181,9 +221,39 @@ tasks and jobs running.
 gate, and a manager that could answer them would make every approval rule meaningless. If
 that is ever wanted, it is a separate, explicit per-team setting.
 
-**Handles.** Titles are too long to address, so each member gets a short handle (`@parser`),
-derived from its title when it joins, or when it first gets a title if it joined untitled;
-unique in the team, never changed on its own, clickable everywhere it appears.
+**Handles.** Titles are too long to address, so each member gets a handle: ONE lowercase word
+naming what the conversation is about (`@security`, `@milestones`, `@gravity`). A word list
+cannot do this well; measured on the owner's team it made `@review`, `@reviewing` and
+`@session` of "santosh dev2 branch code complexity & security review", "CodeAF repo issue
+tags & milestones" and "quantum gravity research updates / session monitor". So:
+
+- the word list (`teams.DeriveHandle`) is the instant guess, made when the member first has
+  a title, so it is addressable at once;
+- the title model chooses the word when the conversation's title is made
+  (`internal/session`'s `handlepick.go`): one call on the title role, a few tokens, asking
+  for the subject and two alternates. A timeout or a network failure is asked once more
+  after a short wait; a refusal is not, and the word-list guess stands. Still one question
+  per title. Over `--host` it runs on the engine, which owns the model and the store;
+- `teams.File.ChooseHandle` writes it under the store's lock: the first free word, else the
+  first with a title word in front (`@api-security`), numbered only when nothing else fits;
+- `Member.HandleBy` records who chose (`words`, `model`, `typed`); a handle a person or the
+  manager gave (`team_start`'s) is never replaced, and a model's word is not chosen again;
+- one time, every existing guessed handle is chosen again the same way on its conversation's
+  next turn, and every rename is a Traffic event from `system` to `everyone`,
+  `@review is now @security`, told to the manager and every member at their next step; the
+  manager's role note is rebuilt when the teams file moves, so it shows the new handle.
+
+**Every team reference in a chat is a door.** An `@handle` of a member of any team the
+conversation is in, and a team's name written as a team (`team test`, `the test team`,
+`"test"`), are links in the model's prose, the surface's notes, a team's quoted cards (the
+brief included) and a team tool's call rows (`team_send @security`). They go through the
+task link's own pass (`markdown.go`, `teamlink.go`): columns recorded on the row, the press
+resolved before the row's own answer, the hover held as (block, ordinal) with team
+references numbered from their own offset. The hover is a ground; the hint line says
+`Open @security · santosh dev2 branch… · click` (`Resume` when it is not open here). A press
+opens the member through the strip's door, resuming it first; a team's name opens the wall
+on that team. They are resolved from memory only; an `@word` that is no member's handle stays
+text.
 
 **Where it lives.** The manager is an ordinary session file. Traffic is
 `<profile>/teams/<id>/traffic.jsonl`, append-only, rotated at 4 MB with one old file kept;
@@ -216,6 +286,64 @@ an opening, which must not block: locally one small file, over `--host` what is 
 first read is asked off the loop). The welcome's `Teams` flag says an engine has the doors; an
 engine without it gets no seam, and the window turns teams and the manager off with the line
 it has always said rather than reading the laptop's file, which the far session never sees.
+
+**Traffic is threaded (ruled and built 2026-09-24).** Measured on the owner's screen, one
+question to three members was twelve rows at the bottom of an empty column: the question three
+times, three wakes, three replies cut to two words, the manager's wake and two finishings, with
+nothing saying which reply answered which question. So:
+
+- **One entry per message.** `team_send` takes several handles (`to: "@agent @checking"`) and
+  writes ONE entry, `to: several` with `handles`, or `to: everyone`; delivery asks
+  `teams.Entry.Addressed`, so each named member is told once and nobody else is.
+- **An answer names what it answers.** `teams.Entry.Answers` is the id of the entry a line
+  answers. A member is told each line's number (`◆ directive from manager #42: …`) and
+  remembers the last line its manager sent it; its next `team_post` to the manager answers that
+  line unless it names another with `thread`, and the events its turn raises (finished, failed,
+  asking, the wake that started it, a failure to wake it) answer the same line. `team_send`'s
+  answer carries the number too. Entries written before this answer nothing and read as
+  threads of their own; the field travels in the entry's JSON, so `--host` needs nothing new.
+- **The rail is threads, the newest activity at the top**, straight under the header with no
+  space above; inside a thread everything is in the order it happened. A thread is a header
+  (`◆ manager → @agent @checking @review  do  2m`, `+2` for handles that do not fit, never the
+  tag), the message on its own dim line, and the answers as a tree (`├ @checking  ✓ Status
+  update: …  1m`, `└ @review  working…`). Wakes are not rows: a woken member reads `working…`
+  until it answers; a finishing is the `✓` on its answer or its own `✓ finished` line, a failure
+  `✗`, and a member asking the person is the one line in the needs-you amber. Stops, starts,
+  handle changes and unthreaded entries stay one line each.
+- **Delegation's entries are threads too** (section 8). A ruling (`teams.IsRuling`) heads its
+  own thread as `◆ manager ruling → @web` (or `you ruling`, the one entry of the person's the
+  rail draws), the ruling's words under it with the conflict's packet named in their hint; a
+  start that made a sub-team reads `◆ manager started @api to run backend`; a member's
+  clarifying question is a header tagged `asks`, and the manager's answer (a `KindAnswer`,
+  whose `Reply` stands in for `Answers`) is a line of the tree under it; a packet raised,
+  decided or answered (`codeaf  answered @web: JSON`), a closing and a reopening are one line
+  each, like an event. `team_send`'s directive to everyone, when some members report to
+  another team's manager, is one entry to the several who report here. The teams page's
+  hosted manager draws this same rail and takes the same jump.
+- **Handles are links there too**, inked and grounded as in the chat, hint `Open @x at this
+  message · title · click` (`Resume` when not open here), a press opening or resuming the member
+  scrolled to the message: a header's handle at the directive as delivered, an answer's handle at
+  the member's own post. Every place an entry sits in a transcript carries its number (a
+  delivered line's ` #N`, `team_send`'s `(#N)`, `team_post`'s ` as #N`), and the surface finds
+  the newest entry carrying it, scrolls it a third of the way down the view and lifts it for
+  1.6 s without taking the focus. A jump waits for a conversation still opening, for up to ten
+  seconds; a number in no entry opens at the bottom with `that message is older than this
+  chat's history` in the hint line. A message's words are a door: hover puts them whole in the
+  hint line, a press lays them out under the row and brings its thread card in the manager's
+  conversation into view, a second folds them. Rows are cached on the entries, width, pointer, minute and what is laid out.
+- **The manager's chat has the thread where it asked.** A `team_send` row reads
+  `team_send ◆ to @agent @checking @review · do`, the words quoted under it, and each member's
+  answer attached under that in muted ink as the Traffic cache brings it, one line each; the
+  same press and hover as the rail. A turn with a `team_send` in it is not folded into a work
+  chip, because its answers arrive after it ends.
+- **The member's chat mirrors it.** The manager's line is the quoted card it always was, and the
+  member's own answers to it hang under it the same way.
+- **No answer is drawn twice.** A member's reply also reaches the manager's model as a delivery
+  note, which replays as a team card. In the manager's chat an answer already under its
+  question's card is left out of that card, and a card left with nothing is one dim line,
+  `· @checking @review answered · in the thread above`. The model's transcript is unchanged; only
+  the drawing folds. A delivery inside a wake note is read as one too, so a woken member's
+  directive draws as the manager's card rather than a dim line.
 
 **Traffic is the only channel between the UI and the session.** A conversation's identity in
 a team is its transcript path, the same key the tab strip uses. The session side writes
@@ -256,16 +384,57 @@ the person to type again is not running a team, so the lines that ask for an ans
   needs-you amber, and a note for its next turn. The person's next message to it resets the
   count. Wakes spend through the ordinary budgets.
 - **Visibility.** Every wake is a Traffic event, `◆ woke @web` and `@web woke ◆`, and every
-  refusal is one too.
+  refusal is one too. The rail draws a member's wake as `working…` in the thread it answers and
+  does not draw the manager's; a refusal is the member's line in that thread.
 - **Off switch.** `wake` is one of the inheritable team settings (8.2): a team's own `wake`
   in `teams.json` (a file from before it was inheritable wrote only `"wake": false`, which
   reads unchanged as an override to off), else the nearest ancestor's, else the profile's
   `teams.wake` (on). The settings tab's Teams group carries the default as its own row, `team
-  messages wake`.
+  messages wake`. With it off, a directive, a reply and a
+  `team_start` start no turn: the new member is opened and reads its brief on the first turn
+  something else starts, and the Traffic says `opened @handle; this team's auto-wake is off, so
+  no turn was started.`
+
+**Mentioning a team or a chat from the composer.** `@` is still the one list
+(`internal/tui3`'s `files.go`, `mention.go`). Its first row is the words team, chat
+and file, each a press that types `@team:`, `@chat:` or `@file:` and keeps that
+section. The word under the pointer takes the cursor ground, and the hint is
+`only teams · click` (or conversations, or files). Typing filters every section that
+is showing. Argument completion (`/image `, `/export `, `/attach `) stays files only.
+
+Under the words: teams from the window's in-memory list, a colour dot and the name;
+then conversations, open tabs in this window first and then the recent snapshot the
+door already holds, loaded once inside a command; then the task sections; then
+files. A prefix hides the other sections, including tasks. A conversation in no team
+is still offered. The conversation in front is not.
+
+Choosing a team replaces the `@` token with `●` and the team's slug (`●harbor`),
+drawn in that team's colour. The runes are the token, so the caret's column does not
+move. Choosing a conversation keeps `@` and writes the handle, or `TaskSlug` of the
+title when the conversation has no handle. The row's note is the title.
+
+After send, the same link pass inks those tokens on the person's own message
+(`mentionLinkPass`). A `●slug` opens the wall on that team. An `@handle` or `@slug`
+of a conversation this window can name, including one in no team, opens it through
+the tab strip. Model prose keeps the older door: an `@handle` of a member of a team
+this conversation is in, and a team name written as a team.
+
+The digest is built on the engine (`internal/session`'s `mention.go`), inside
+`Submit` and before the lock, so `--host` works and the frame never reads it. The
+journal stores the person's words (`user.said`). The model reads those words plus
+one block per reference: a team is `teams.Digest` at 800 runes (members, handles,
+states, recent traffic); a chat is its title, its state and an excerpt of the last
+reply, cut at 1536 runes. The read is `teams.Load`, `teams.ReadTraffic`,
+`journalState` and `Peek`. It does not call `teamRouse`, `AppendTraffic` or
+`Submit` on the conversation it names. A token with a slash is a file path and is
+not a chat. An unknown `@word` is left as text. A standing mark does not take this
+road; `Submit` does, and steering goes through `Submit`.
 
 **Known limits of v1.** A stop or a start takes effect only in a window that holds those
-conversations. A member waiting on a permission prompt shows as running, because the prompt is
-not in its session file, until its own asking event says so. The loop breaker's needs-you is
+conversations. A member waiting on a permission prompt shows as running off its journal alone,
+because the prompt is not in its session file; its asking event says `asking` while a process
+holds the transcript lock and the event is under 30 minutes old (`askingStaleBound`). When the
+lock is free, or the event is older than that, it reads idle. The loop breaker's needs-you is
 the Traffic's asking row and a note, not a question on the manager's tab. Over `--host` against an engine older than the teams doors, teams and the manager
 are off and say so. An unreadable teams file on the engine is not moved aside from a window over
 `--host`; the window holds no teams until it can be read.
@@ -287,7 +456,8 @@ up and directives down, were built later: 8.9.)
 
 - Agent tools for teams from any chat ("put the nvda chats in a team"), through the same
   store, which over `--host` is the engine's (section 5, "Whose profile").
-- A Teams place on home showing the tree; nesting in the UI; drag a tile onto a team.
+- A Teams place on home showing the tree and each team's whole membership, open or not;
+  nesting in the UI; drag a tile onto a team.
 - The manager waking on events, collision flags, nested managers, dispatch.
 
 ## 8. Delegation (ruled 2026-09-24; store and contract built, session and screens next)
@@ -878,9 +1048,9 @@ or `busy for <team>` (`MemberState.ReportsTo`).
 - **Under 72 columns the rail stacks above the pane**, because a 24-column rail beside a
   conversation leaves the conversation too narrow to read. A hosted manager at that width is
   shown without the rail.
-- **The manual's digits are those of a bar without `chats`** (`home  teams  sessions  spend
-  settings`, `alt+1` … `alt+8`). The owner's order puts `chats` third; when that place lands,
-  every digit after `teams` in the manual and the help moves by one.
+- **The manual's digits follow the whole order** (`home  teams  chats  sessions  spend
+  settings`, `alt+1` … `alt+9`): when `chats` landed third, every digit after `teams` in the
+  manual and the help moved by one.
 
 - **The header is one line, and the members are a card** (owner feedback 2026-09-24, built on
   `task/nest-ui`, `teamcrew.go`). The two wrapped rows of every member as prose

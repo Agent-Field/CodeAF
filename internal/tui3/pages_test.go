@@ -62,11 +62,22 @@ func placeFrameText(a *app) string {
 // is left here is the two facts that are about the EDGES of that list.
 func TestTheSevenPlacesAreOneList(t *testing.T) {
 	if len(pages()) != 8 {
-		t.Fatalf("there are %d places, and the design has eight", len(pages()))
+		t.Fatalf("there are %d places, and the design has eight rooms", len(pages()))
 	}
-	// AND alt+9 IS NOTHING, rather than the first place again.
-	if _, ok := placeDigit("alt+9"); ok {
-		t.Fatal("alt+9 reaches a place that does not exist")
+	// AND alt+0 IS NOTHING, rather than a tenth place: the nine digits are the
+	// eight rooms and the way back to the chats, teams second and the chats
+	// third (the owner's order).
+	if _, ok := placeDigit("alt+0"); ok {
+		t.Fatal("alt+0 reaches a place that does not exist")
+	}
+	if got, ok := placeDigit("alt+2"); !ok || got != pageTeams {
+		t.Fatalf("alt+2 reaches %q, not teams", got.word())
+	}
+	if got, ok := placeDigit("alt+3"); !ok || got != pageChats {
+		t.Fatalf("alt+3 reaches %q, not the chats", got.word())
+	}
+	if got, ok := placeDigit("alt+9"); !ok || got != pageSearch {
+		t.Fatalf("alt+9 reaches %q, not search", got.word())
 	}
 }
 
@@ -300,10 +311,10 @@ func TestTheMapDrawsInTheCellsThatWereAlreadyThere(t *testing.T) {
 		t.Fatalf("the map moved the frame: %d rows became %d", len(before), len(after))
 	}
 	// THE NUMBERS ARE ON THE TABS, and the three places off the bar are drawn
-	// after the five with theirs: the map is the one surface whose job is to show
-	// every key, so `alt+6`…`alt+8` are on it.
-	if bar := after[placeTabRow]; !strings.Contains(bar, "1 home") || !strings.Contains(bar, "2 teams") ||
-		!strings.Contains(bar, "5 settings") || !strings.Contains(bar, "6 standing") || !strings.Contains(bar, "8 search") {
+	// after the six with theirs: the map is the one surface whose job is to show
+	// every key, so `alt+7`…`alt+9` are on it.
+	if bar := after[placeTabRow]; !strings.Contains(bar, "1 home") || !strings.Contains(bar, "2 teams") || !strings.Contains(bar, "3 chats") ||
+		!strings.Contains(bar, "6 settings") || !strings.Contains(bar, "7 standing") || !strings.Contains(bar, "9 search") {
 		t.Fatalf("the map put no numbers on the tab bar: %q", bar)
 	}
 	// AND THE CHORD LIST IS THE HINT LINE.
@@ -752,15 +763,9 @@ func TestEveryPlaceReachesEveryOtherPlace(t *testing.T) {
 	}
 }
 
-// placeAt is a place's position in [pages], which is the digit that jumps to it.
-func placeAt(id page) int {
-	for i, at := range pages() {
-		if at == id {
-			return i
-		}
-	}
-	return -1
-}
+// placeAt is a place's position on the bar, which is the digit that jumps to
+// it less one.
+func placeAt(id page) int { return placeDigitOf(id) - 1 }
 
 // AND THE NUMBERS WORK FROM THE CONVERSATION, which is the screen a person
 // spends most of the day on and was the one surface they did not work from.
@@ -774,9 +779,9 @@ func TestTheNumbersOpenAPlaceFromTheConversationToo(t *testing.T) {
 	if a.at(pageHome) {
 		t.Fatal("close did not put the conversation back")
 	}
-	drive(t, a, key("alt+3"))
+	drive(t, a, key(placeChord(pageTasks)))
 	if a.page != pageTasks || !a.at(pageTasks) {
-		t.Fatalf("alt+3 from the conversation landed on %q (open %v)", a.page.word(), a.at(pageTasks))
+		t.Fatalf("%s from the conversation landed on %q (open %v)", placeChord(pageTasks), a.page.word(), a.at(pageTasks))
 	}
 	drive(t, a, key("esc"))
 	drive(t, a, key(placeChord(pageStanding)))
@@ -792,9 +797,10 @@ func TestTheNumbersOpenAPlaceFromTheConversationToo(t *testing.T) {
 	}
 }
 
-// THE TAB BAR CARRIES ITS FIVE WORDS AT EVERY WIDTH A PERSON ACTUALLY USES, and
-// only those five: `home teams tasks spend settings` (DESIGN.md's law 10, with
-// teams after home by the teams page ruling, c-2). The ladder
+// THE TAB BAR CARRIES ITS SIX WORDS AT EVERY WIDTH A PERSON ACTUALLY USES, and
+// only those six: `home teams chats sessions spend settings` (DESIGN.md's law
+// 10, with teams after home by the teams page ruling, c-2, and the chats third,
+// the owner's order). The ladder
 // that gives words up is for terminals narrower than any of these
 // ([app.placeTabBar]); at 80 columns and up nothing is dropped. Standing,
 // memory and search are rooms reached by command, by their digit and by the
@@ -803,8 +809,8 @@ func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	a := placeApp(t)
 	for _, width := range []int{80, 120, 200} {
 		bar := plain(a.placeTabBar(width, false, a.pal))
-		if !strings.Contains(bar, "home   teams   sessions   spend   settings") {
-			t.Fatalf("at %d columns the bar is not the five places in order: %q", width, bar)
+		if !placeWordsInOrder(bar, "home", "teams", "chats", "sessions", "spend", "settings") {
+			t.Fatalf("at %d columns the bar is not the six places in order: %q", width, bar)
 		}
 		for _, id := range []page{pageStanding, pageMemory, pageSearch} {
 			if strings.Contains(bar, id.word()) {
@@ -815,7 +821,24 @@ func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	// AND A ROOM OFF THE BAR IS ON IT WHILE YOU STAND IN IT. A bar with no word
 	// lit is a bar that does not know where you are.
 	walkTo(t, a, pageMemory)
-	if bar := plain(a.placeTabBar(120, false, a.pal)); !strings.Contains(bar, "settings   memory") {
+	if bar := plain(a.placeTabBar(120, false, a.pal)); !strings.Contains(bar, "settings    memory") {
 		t.Fatalf("standing in memory, the bar does not say so: %q", bar)
 	}
+}
+
+// placeWordsInOrder reports whether every word stands in text, each after the
+// one before it and apart from its neighbours by spaces alone.
+func placeWordsInOrder(text string, words ...string) bool {
+	at := 0
+	for i, word := range words {
+		n := strings.Index(text[at:], word)
+		if n < 0 {
+			return false
+		}
+		if i > 0 && strings.TrimSpace(text[at:at+n]) != "" {
+			return false
+		}
+		at += n + len(word)
+	}
+	return true
 }

@@ -155,7 +155,7 @@ func (a *Agent) askUp(q Question) (string, bool) {
 				}
 				// A MANAGER NOBODY HOLDS IS OPENED to answer it, as a reply
 				// to it would open it (team_wakewatch.go).
-				a.teamRouse(profile, team, member.wakes, []teams.Member{m})
+				a.teamRouse(profile, team, member.wakes, []teams.Member{m}, "")
 			}
 		}
 		return fmt.Sprintf("Your question went to %s as packet %s, not to the person: in this team questions go to the manager first. "+
