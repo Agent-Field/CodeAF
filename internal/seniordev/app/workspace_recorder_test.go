@@ -5,6 +5,7 @@ package app
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -287,18 +288,89 @@ func TestInPlaceRunNeedsNoRepository(t *testing.T) {
 	}
 }
 
-// Without --in-place the workspace must still be a repository. The default
-// path is unchanged, and this is what says so.
-func TestDefaultRunStillRequiresARepository(t *testing.T) {
+// Without --in-place, git is used only if it is there. A plain folder runs
+// on the snapshot recorder and ends like any run, never with "not a git
+// repository", and no repository is made for it.
+func TestADefaultRunInAPlainFolderUsesTheSnapshotRecorder(t *testing.T) {
 	workspace := t.TempDir()
+	for name, content := range map[string]string{
+		"README.md": "base\n",
+		"Makefile":  "build:\n\t@true\n\ntest:\n\t@true\n",
+	} {
+		if err := writeFile(filepath.Join(workspace, name), content); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("SENIOR_DEV_SCRATCH_ROOT", t.TempDir())
+	var notes strings.Builder
 	ending := runWith(context.Background(), &testHost{workspace: workspace}, Options{
 		Goal: "Implement the thing.", High: "provider/high",
-	}, &strings.Builder{}, &coderOnlyBackend{})
-	if ending.Status != "crashed" {
-		t.Fatalf("a non-repository workspace was accepted without --in-place: %+v", ending)
+	}, &notes, &coderOnlyBackend{})
+	if ending.Status == "crashed" {
+		t.Fatalf("a plain folder crashed the default run: %s\n%s", ending.Message, notes.String())
 	}
-	if !strings.Contains(ending.Message, "not a git repository") {
-		t.Fatalf("the ending does not name the cause: %q", ending.Message)
+	if !strings.Contains(notes.String(), `"workspace_recorder":"snapshot"`) {
+		t.Fatal("the run contract does not record the snapshot recorder")
+	}
+	if _, err := os.Stat(filepath.Join(workspace, ".git")); !os.IsNotExist(err) {
+		t.Fatal("the run created a repository in a workspace that had none")
+	}
+}
+
+// The recorder follows what git can actually give: a work tree with a commit
+// is git's, and everything short of that — no repository, one with no commit
+// yet, a .git folder with no HEAD — is the snapshot recorder's. --in-place
+// still forces the snapshot recorder over a real repository.
+func TestTheRecorderIsGitOnlyWhereThereIsGitHistory(t *testing.T) {
+	ctx := context.Background()
+	git := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{
+			"-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false",
+		}, args...)...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	plain := t.TempDir()
+	empty := t.TempDir()
+	git(empty, "init", "-q")
+	broken := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(broken, ".git", "objects"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	committed := t.TempDir()
+	git(committed, "init", "-q")
+	if err := writeFile(filepath.Join(committed, "a.txt"), "a\n"); err != nil {
+		t.Fatal(err)
+	}
+	git(committed, "add", "a.txt")
+	git(committed, "commit", "-q", "-m", "base")
+	nested := filepath.Join(committed, "sub")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name, dir string
+		inPlace   bool
+		want      string
+	}{
+		{"plain folder", plain, false, "snapshot"},
+		{"repository with no commit", empty, false, "snapshot"},
+		{"a .git folder with no HEAD", broken, false, "snapshot"},
+		{"repository with a commit", committed, false, "git"},
+		{"a folder inside one", nested, false, "git"},
+		{"--in-place over a repository", committed, true, "snapshot"},
+	} {
+		got := newWorkspaceRecorder(cliArgs{InPlace: tc.inPlace}, tc.dir, func(string) {})
+		if got.Kind() != tc.want {
+			t.Errorf("%s: recorder %q, want %q", tc.name, got.Kind(), tc.want)
+		}
+		if err := got.Prepare(ctx); err != nil {
+			t.Errorf("%s: %s recorder did not prepare: %v", tc.name, got.Kind(), err)
+		}
 	}
 }
 

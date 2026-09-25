@@ -54,7 +54,10 @@ with `git switch -c task/<title>-<id>`; the program works there in its own git
 mode. Anything else — no history, no commit, or a repository at the home folder —
 is worked in as it is, and codeaf puts the program's own `PlainFolder` flags on
 its line (senior-dev's is `--in-place`), because the program's own reading climbs
-to any repository around the folder. codeaf never learns a program's flag by
+to any repository around the folder. senior-dev reads its folder too, and uses
+git only where there is a work tree with a commit, so the flag is needed only
+where git IS there and must not be used (the home folder's repository) — a
+plain folder never ends it, whatever its line says. codeaf never learns a program's flag by
 name, and a flag the default command does not take fails `Validate`, so the
 build's own test catches it. One folder takes one program run at a time, held by
 a file lock that dies with its process.

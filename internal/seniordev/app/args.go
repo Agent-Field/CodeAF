@@ -29,8 +29,9 @@ type cliArgs struct {
 	// Variant is sent as `reasoning.effort`. Empty sends no `reasoning` key,
 	// so the service's own default applies.
 	Variant string
-	// InPlace selects the snapshot recorder: senior-dev edits the workspace
-	// without requiring a repository and without writing to one.
+	// InPlace forces the snapshot recorder: senior-dev edits the workspace
+	// without writing to any repository around it. Without it, the snapshot
+	// recorder is still chosen wherever there is no git history to use.
 	InPlace  bool
 	MaxCost  *float64
 	MaxHours *float64

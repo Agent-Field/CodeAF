@@ -202,9 +202,10 @@ refuse any path outside the folder it was handed, including one reached through 
 and say so to its model; it can still read files elsewhere. Its shell is not fenced the
 same way, and nothing a shell command changes outside the folder is part of the task.
 
-**It keeps its record in git**, on its own branch, unless it runs `--in-place`; codeaf
-chooses that for a folder with no git history, from the chat and at a shell alike (see
-the section on folders that are not a git repository).
+**It keeps its record in git if git is there**, on its own branch. Where there is no git
+history it keeps its checkpoints outside the folder instead and commits nothing — it
+reads that itself, and never ends for want of git (see the section on folders that are
+not a git repository).
 
 **On Windows it is absent**: there is no `/senior-dev` and no `codeaf senior-dev`. Its
 engine needs a Unix shell, process groups and file locks, so Windows builds leave it out
@@ -212,12 +213,12 @@ rather than carry something that fails every time.
 
 ## Can I run senior-dev in a folder that is not a git repo — a plain folder, no git, --in-place, operation not permitted, .Trash
 
-Yes. The folder is read before senior-dev starts. **A folder with no git history — a
-plain folder, or a repository with no first commit yet — is worked in as it is**, and
-senior-dev is started with `--in-place`, from the chat and at a shell alike: it keeps its
-checkpoints outside the folder and makes no commits. So is a folder inside a git
-repository whose root is your home folder (a dotfiles repository): no branch is ever cut
-there.
+Yes. **senior-dev uses git only if it is there.** A folder with no git history — a plain
+folder, a repository with no first commit yet, a broken `.git`, a machine with no git — is
+worked in as it is: senior-dev reads that itself when it starts, keeps its checkpoints
+outside the folder and makes no commits. A folder inside a git repository whose root is
+your home folder (a dotfiles repository) is worked in the same way, because codeaf starts
+senior-dev with `--in-place` there: no branch is ever cut in your dotfiles.
 
 When it ends its changes are already in the folder. The task's page says `its work is in
 <folder>, which has no git history, so nothing was committed` (or, under a repository at
@@ -235,9 +236,9 @@ skipped like any other. It is never started on your home folder or a folder abov
 (see the programs page): to check what it changed, it reads every file in the folder,
 and your home folder is not one project.
 
-A shell run used to stop at once there with `workspace is not a git repository:
-<folder>; run with --in-place to work in a plain folder`. It no longer does: `--in-place`
-is passed for you.
+senior-dev used to stop at once there with `workspace is not a git repository:
+<folder>; run with --in-place to work in a plain folder`, which the chat could not act on.
+It no longer does, whatever flags it is started with.
 
 ## Why can't codeaf edit files while senior-dev is working — the folder is senior-dev's while it runs, a write or a task refused, bash, your own editor
 
@@ -497,8 +498,9 @@ senior-dev's own flags on `run`:
 
 - `--variant NAME` — reasoning effort sent with every call: `low`, `medium`, `high`,
   `xhigh`; unset leaves the model's own default;
-- `--in-place` — work in a folder without git: no commits, and its checkpoints kept
-  outside the folder. codeaf passes it itself for a folder with no git history;
+- `--in-place` — work without git even inside a repository: no commits, and its
+  checkpoints kept outside the folder. A folder with no git history is worked that way
+  without it; codeaf passes it itself under a repository at your home folder;
 - `--high`, `--low` — comma-separated models it routes among; `--low` (its history
   summaries) falls back to `--high`;
 - `--frontier` — accepted, and changes nothing: no call senior-dev makes uses that tier;

@@ -52,9 +52,9 @@ func (recorder *gitRecorder) git(args ...string) (string, error) {
 
 func (recorder *gitRecorder) Prepare(ctx context.Context) error {
 	if gitOutput(ctx, recorder.workspace, "rev-parse", "--show-toplevel") == "" {
-		// A PERSON AT A SHELL CAN ANSWER THIS, so the sentence names the flag.
-		// The chat never meets it: codeaf reads the folder first and passes
-		// the flag itself (seniordev.Program's PlainFolder).
+		// Unreachable in practice: newWorkspaceRecorder picks this recorder
+		// only after reading a work tree with a commit. It stays for a folder
+		// whose repository vanished between that reading and this one.
 		return fmt.Errorf("workspace is not a git repository: %s; run with --in-place to work in a plain folder", recorder.workspace)
 	}
 	// Exclude senior-dev's own artifacts on the workspace at bootstrap

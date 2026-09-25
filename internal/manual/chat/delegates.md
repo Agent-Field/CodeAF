@@ -128,7 +128,8 @@ A folder with no git history (a plain folder, a repository with no commit yet, o
 folder in a repository whose root is your home folder) is worked in as it is, and codeaf
 tells the program so on the line it starts it with (senior-dev is given `--in-place`),
 from the chat and at a shell. Nothing is committed: its changes are already in the
-folder when it ends.
+folder when it ends. senior-dev also reads this itself: it uses git only if git is
+there, so it never ends for want of a repository.
 
 At a shell, clone the repository yourself, then run `codeaf <name>` inside it, or name the
 folder with `--dir`.

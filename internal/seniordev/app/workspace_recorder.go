@@ -73,16 +73,33 @@ type workspaceRecorder interface {
 	CommitsOnWrite() bool
 }
 
-// newWorkspaceRecorder picks the recorder for a run. Git is the default and
-// the only recorder chosen by inspecting the workspace; --in-place is an
-// explicit choice, never inferred. Inference would be wrong in the case that
-// matters most: a run inside a real repository that must not touch its
-// history is indistinguishable, from the filesystem, from one that should.
+// newWorkspaceRecorder picks the recorder for a run. Git is used IF IT IS
+// THERE: a workspace inside a repository with a commit gets the git recorder,
+// and anything else — a plain folder, a repository with no commit yet, a
+// broken .git, a machine with no git — gets the snapshot recorder, exactly as
+// --in-place would. A run never ends for want of git.
+//
+// Inference only ever steps DOWN from git, never up. --in-place still forces
+// the snapshot recorder inside a real repository, because a run there that
+// must not touch the history is indistinguishable, from the filesystem, from
+// one that should; that choice stays the caller's (codeaf makes it for a
+// repository rooted at the home folder).
 func newWorkspaceRecorder(
 	args cliArgs, workspace string, note func(string),
 ) workspaceRecorder {
-	if args.InPlace {
+	if args.InPlace || !hasGitHistory(workspace) {
 		return newSnapshotRecorder(workspace, note)
 	}
 	return newGitRecorder(workspace, note)
+}
+
+// hasGitHistory reports whether the workspace is inside a git work tree whose
+// HEAD is a commit — the two things the git recorder cannot start without
+// (Prepare's work tree, Base's commit). No git on PATH answers false.
+func hasGitHistory(workspace string) bool {
+	ctx := context.Background()
+	if gitOutput(ctx, workspace, "rev-parse", "--is-inside-work-tree") != "true" {
+		return false
+	}
+	return gitOutput(ctx, workspace, "rev-parse", "--verify", "--quiet", "HEAD^{commit}") != ""
 }
