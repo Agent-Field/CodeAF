@@ -19,21 +19,27 @@ import (
 // row of its own there: every model, whoever makes it, is scored the same way.
 //
 //  1. ABILITY FROM METADATA. A model's ability is a latent number predicted
-//     from the fields its catalog row carries: log prompt and completion
-//     prices, log context length, release date, open weights, the published
-//     intelligence, coding and agentic indexes, and the design-arena Elo. The
-//     weights are a joint Gaussian over the ability and those fields
-//     ([weights.Mean], [weights.Cov]); a row is scored by conditioning on the
-//     fields it HAS. A missing field is not guessed at a fixed value: it is
-//     integrated out, and the ability's variance is wider for it. A model's
-//     product family ([familyOf]) then moves the mean by the family's fitted
-//     offset and narrows the variance.
+//     from the fields its catalog row carries. The weights are a joint
+//     Gaussian over the ability and those fields ([weights.Mean],
+//     [weights.Cov]); a row is scored by conditioning on the fields it HAS,
+//     and a field it lacks is integrated out, which widens the variance.
+//     A row that publishes any index — the intelligence, coding or agentic
+//     index, or the design-arena Elo ([weights.IndexFeatures]) — is scored
+//     from those indexes alone: nothing else on the row raises or lowers it,
+//     so a model at least as good on every index and no dearer is never
+//     scored below another. A row that publishes none is scored from its
+//     context length, release date and licence ([weights.BaseFeatures]), and
+//     its product family ([familyOf]) moves the mean by the family's fitted
+//     offset. Price is never read as ability: it is the cost.
 //
 //  2. ABILITY TO A SEAT. The ability is mapped to an expected solve rate u in
 //     (0, 1) ([weights.Ability]), and each (class, seat) reads u through its
 //     own linear link: quality = level + slope·(u − u_ref), on the 0–10 crew
 //     scale ([seatLink]). The slope is what the seat pays for ability in that
 //     class of work; its standard deviation is how sure the fit is of it.
+//     A seat is weighed at the ability's mean less [riskKappa] of its
+//     standard deviation, so a row the weights know less about is weighed
+//     below one they know well at the same mean.
 //
 //  3. THIS INSTALL'S OUTCOMES. What a person kept or redid, per class, seat
 //     and model, moves the quality by a bounded amount ([Request.Learned]).
@@ -77,11 +83,15 @@ type weights struct {
 	Knee float64 `json:"knee_per_usd"`
 	// Features names the metadata columns after the ability, in the order of
 	// Loc, Scale, Mean and Cov (whose index 0 is the ability).
-	Features []string    `json:"features"`
-	Loc      []float64   `json:"loc"`
-	Scale    []float64   `json:"scale"`
-	Mean     []float64   `json:"mean"`
-	Cov      [][]float64 `json:"cov"`
+	Features []string `json:"features"`
+	// IndexFeatures are the published indexes a row is scored from when it
+	// carries any; BaseFeatures what a row with none is scored from.
+	IndexFeatures []string    `json:"index_features"`
+	BaseFeatures  []string    `json:"base_features"`
+	Loc           []float64   `json:"loc"`
+	Scale         []float64   `json:"scale"`
+	Mean          []float64   `json:"mean"`
+	Cov           [][]float64 `json:"cov"`
 	// VarScale calibrates the conditional variance.
 	VarScale float64 `json:"var_scale"`
 	// FamilyRho is the share of residual variance a family explains, and
@@ -106,6 +116,7 @@ type weights struct {
 	CostScale        map[Class]map[Seat]float64 `json:"cost_scale"`
 	index            map[string]int             // feature name → column
 	cols             [len(featureNames)]int     // featureNames' columns, zero for one the weights lack
+	isIndex, isBase  [len(featureNames)]bool    // featureNames' roles
 	priorVar         float64                    // the ability's own variance, standardised
 }
 
@@ -122,6 +133,9 @@ type table struct {
 	cache      map[string]ability
 	// rescue is a table asked for a seat's last rungs ([Request.Rescue]).
 	rescue bool
+	// checkerFloor is whether any candidate's mean ability reaches the
+	// floor as a checker ([table.seatCredible]).
+	checkerFloor bool
 }
 
 var (
@@ -148,6 +162,8 @@ func load() *weights {
 		}
 		for i, f := range featureNames {
 			w.cols[i] = w.index[f]
+			w.isIndex[i] = holds(w.IndexFeatures, f)
+			w.isBase[i] = holds(w.BaseFeatures, f)
 		}
 		w.priorVar = w.Cov[0][0]
 		if w.VarScale <= 0 {
@@ -156,6 +172,16 @@ func load() *weights {
 		loaded = &w
 	})
 	return loaded
+}
+
+// holds is whether a list names a word.
+func holds(words []string, word string) bool {
+	for _, w := range words {
+		if w == word {
+			return true
+		}
+	}
+	return false
 }
 
 // prior is a fresh decision's table: nothing learned, no candidates seen.
@@ -175,12 +201,17 @@ func forDecision(candidates []Candidate, learned map[string]float64) *table {
 }
 
 // ability is what the weights say about one model: the solve rate u, its
-// variance, the latent ability's variance, and whether the row carried
-// enough to be scored at all — with the model's lineage and whether it is a
-// quantised copy, read once.
+// variance, the solve rate a seat weighs it at (u at the ability's mean less
+// [riskKappa] standard deviations), the latent ability's variance, whether
+// the row carried enough to be scored at all and whether it was scored from
+// published indexes — with the model's lineage and whether it is a quantised
+// copy, read once.
 type ability struct {
 	U, VarU  float64
+	UScore   float64
+	Theta    float64
 	VarTheta float64
+	Indexed  bool
 	Known    bool
 	lineage  string
 	quant    bool
@@ -230,9 +261,11 @@ func remembered(w *weights, m Model) ability {
 // the order [weights.features] reads them.
 var featureNames = [...]string{"lp_in", "lp_out", "lctx", "date", "open", "aa_int", "aa_cod", "aa_ag", "elo"}
 
-// features is a model's metadata in the weights' columns, NaN where the row
-// does not carry the field.
-func (w *weights) features(m Model) []float64 {
+// features is the metadata a model is scored from, in the weights' columns,
+// NaN where the row does not carry the field or the field is not read: a row
+// that carries any index is read on its indexes only, and a row with none on
+// its base fields. The second answer is whether the row took the index path.
+func (w *weights) features(m Model) ([]float64, bool) {
 	x := make([]float64, len(w.Features))
 	for i := range x {
 		x[i] = math.NaN()
@@ -249,12 +282,22 @@ func (w *weights) features(m Model) []float64 {
 		m.PromptPrice > 0, m.CompletionPrice > 0, m.Context > 0, !m.Released.IsZero(), true,
 		m.Intelligence > 0, m.Coding > 0, m.Agentic > 0, m.ArenaElo > 0,
 	}
+	indexed := false
 	for i, col := range w.cols {
-		if col > 0 && has[i] {
+		if col > 0 && has[i] && w.isIndex[i] {
+			indexed = true
+		}
+	}
+	for i, col := range w.cols {
+		read := w.isBase[i]
+		if indexed {
+			read = w.isIndex[i]
+		}
+		if col > 0 && has[i] && read {
 			x[col-1] = values[i]
 		}
 	}
-	return x
+	return x, indexed
 }
 
 // yearsSince2024 is a release date as the weights read it.
@@ -262,10 +305,15 @@ func yearsSince2024(at time.Time) float64 {
 	return at.Sub(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)).Hours() / 24 / 365.25
 }
 
-// abilityOf conditions the joint Gaussian on the fields a row carries, then
-// adds the family's offset and maps the ability to a solve rate.
+// riskKappa is how many standard deviations of ability a seat weighs a model
+// below its mean.
+const riskKappa = 1.0
+
+// abilityOf conditions the joint Gaussian on the fields a row is read by,
+// adds the family's offset to a row without indexes, and maps the ability to
+// a solve rate.
 func (w *weights) abilityOf(m Model) ability {
-	x := w.features(m)
+	x, indexed := w.features(m)
 	var obs [maxFeatures]int
 	var z, so0 [maxFeatures]float64
 	var soo [maxFeatures][maxFeatures]float64
@@ -297,15 +345,27 @@ func (w *weights) abilityOf(m Model) ability {
 	canon := CanonicalOf(m.ID)
 	theta := mean*w.Scale[0] + w.Loc[0]
 	v := variance * w.Scale[0] * w.Scale[0]
-	if off, ok := w.Families[familyKey(canon.ID)]; ok {
-		theta += math.Sqrt(v) * off[0]
-		v *= 1 - w.FamilyRho + off[1]
+	if !indexed {
+		if off, ok := w.Families[familyKey(canon.ID)]; ok {
+			theta += math.Sqrt(v) * off[0]
+			v *= 1 - w.FamilyRho + off[1]
+		}
+		// A ROW WITH NO PUBLISHED INDEX IS NEVER SCORED ABOVE THE POPULATION'S
+		// MEAN: what its date, context, licence and family would add stands in
+		// for indexes it does not publish, so it widens the variance instead.
+		if pop := w.Mean[0]*w.Scale[0] + w.Loc[0]; theta > pop {
+			v += (theta - pop) * (theta - pop)
+			theta = pop
+		}
 	}
 	v *= w.VarScale
 	a, b := w.Ability.A, w.Ability.B
-	u := sigmoid((a*theta + b) / math.Sqrt(1+math.Pi*a*a*v/8))
+	spread := math.Sqrt(1 + math.Pi*a*a*v/8)
+	u := sigmoid((a*theta + b) / spread)
 	d := a * u * (1 - u)
-	return ability{U: u, VarU: d * d * v, VarTheta: v, Known: known, lineage: canon.String(), quant: canon.Variant != ""}
+	score := sigmoid((a*(theta-riskKappa*math.Sqrt(v)) + b) / spread)
+	return ability{U: u, VarU: d * d * v, UScore: score, Theta: theta, VarTheta: v, Known: known, Indexed: indexed,
+		lineage: canon.String(), quant: canon.Variant != ""}
 }
 
 // maxFeatures bounds the metadata columns the ability is read from.
@@ -395,8 +455,9 @@ func (t *table) linkOf(class Class) classLink {
 }
 
 // quality is what one model adds in one seat for one class of work — the
-// link's mean at the model's ability, plus what this install learned — and
-// its standard deviation.
+// link at the solve rate the seat weighs the model at, plus what this install
+// learned — and its standard deviation. It is a score on the crew scale, not
+// clamped to it, so a weaker model is always scored below a stronger one.
 func (t *table) quality(class Class, seat Seat, m Model) (q, sd float64) {
 	return t.qualityOf(class, seat, t.abilityOf(m))
 }
@@ -406,7 +467,7 @@ func (t *table) qualityOf(class Class, seat Seat, a ability) (q, sd float64) {
 	link := t.linkOf(class)
 	s := link.Seats[seat]
 	du := a.U - link.URef
-	q = s.Level + s.Slope*du
+	q = s.Level + s.Slope*(a.UScore-link.URef)
 	sd = math.Sqrt(s.Slope*s.Slope*a.VarU + du*du*s.SlopeSD*s.SlopeSD)
 	if a.quant {
 		// A QUANTISED LOCAL COPY is credited with a share of its model's
@@ -416,7 +477,7 @@ func (t *table) qualityOf(class Class, seat Seat, a ability) (q, sd float64) {
 	if len(t.learned) > 0 {
 		q += t.learned[learnKey(class, seat, a.lineage)]
 	}
-	return math.Max(0, math.Min(10, q)), sd
+	return q, sd
 }
 
 // credible is whether a model may sit a seat: its row says enough to score
@@ -427,6 +488,18 @@ func (t *table) credible(m Model) bool { return t.credibleAt(t.abilityOf(m)) }
 // credibleAt is [table.credible] on an ability already read.
 func (t *table) credibleAt(a ability) bool {
 	return a.Known && a.U+2*math.Sqrt(a.VarU) >= t.UFloor
+}
+
+// seatCredible is [table.credibleAt] for one seat. THE CHECKER IS NEVER "ANY
+// MODEL WILL DO": it is the seat that decides whether the work is accepted,
+// so its ability's mean — not only its upper bound — must reach the floor,
+// whenever any candidate's does. A set of allowed models with none that
+// reaches it is still crewed, and [Gaps] says the checker is weak.
+func (t *table) seatCredible(seat Seat, a ability) bool {
+	if !t.credibleAt(a) {
+		return false
+	}
+	return seat != Checker || !t.checkerFloor || a.U >= t.UFloor
 }
 
 // pricePoint is one ability on a seat's price ladder and the least a
@@ -445,8 +518,12 @@ func (t *table) floorsOf(candidates []Candidate) map[Seat]float64 {
 		if c.Model.PromptPrice <= 0 && c.Model.CompletionPrice <= 0 {
 			continue
 		}
-		if !t.credibleAt(t.abilityOf(c.Model)) {
+		a := t.abilityOf(c.Model)
+		if !t.credibleAt(a) {
 			continue
+		}
+		if a.U >= t.UFloor && seatable(Checker, c) {
+			t.checkerFloor = true
 		}
 		for _, seat := range Seats {
 			if !seatable(seat, c) {

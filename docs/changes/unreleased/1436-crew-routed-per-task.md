@@ -25,13 +25,19 @@ the conversation's hand-off as `effort`, and on `codeaf do`) move λ for one tas
 only. The design behind the defaults is in
 `docs/design/model-pool/pareto-crewing.pdf`.
 
-**Every model in the catalog is scored from its catalog row.** Published
-indexes, arena rating, prices, context, release date (the catalog's `created`
-field, now read), open weights and model family go through fitted weights
-shipped in `internal/crewroute/prior.json` into a quality per seat and class
-with its variance; a row missing fields is scored with a wider variance and is
-scored again when a refresh fills them. A model whose row is too thin for a
-finite score is not picked unless pinned. No per-model table ships, and
+**Every model in the catalog is scored from its catalog row.** Fitted weights
+shipped in `internal/crewroute/prior.json` turn a row into a quality per seat
+and class with its variance. A row that publishes any index (the AA indexes or
+arena Elo) is scored on its indexes alone, so a model no dearer and at least as
+good on every shared index never ranks below another; a row with none is
+scored from context, release date (the catalog's `created` field, now read),
+licence and family, never above the population mean. Price is never read as
+ability. Seats weigh a model at its score less one standard deviation of
+ability; a checker's mean ability must reach the floor when any allowed model's
+does. A model whose row is too thin for a finite score is not picked unless
+pinned. Reach is read over a one-paragraph ask's whole text, a security fix is
+a reach signal, and "wrongly", "rejected", "instead of" and a rename or version
+bump read as fixes. No per-model table ships, and
 estimates come from catalog prices times each seat's token profile times the
 install's own cost factor. Each task's outcome — accepted, kept, redone,
 failed — moves that model's score in that seat by a small bounded step,

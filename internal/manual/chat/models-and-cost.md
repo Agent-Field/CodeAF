@@ -473,18 +473,23 @@ structures it, and the **checker** that reads the result. **By default all three
 codeaf picks each seat for each task: it reads what kind of work the task is — a
 **bugfix**, **open-ended** work, or **other** — and picks the model for each seat from what
 its catalog row says about it, weighed against what the model costs. Every model the catalog
-lists is a candidate, frontier models included. Its published indexes, arena rating, price,
-context, release date, open weights and the family it belongs to are read through fitted
-weights into a score for that seat on that kind of work, with how sure the score is; a row
-missing some of those is still scored, less surely, and is scored again when the catalog
-next lists them. How this install's own tasks ended — accepted, kept, redone, failed — moves
+lists is a candidate, frontier models included. A model that publishes any index — the
+intelligence, coding or agentic index, or an arena rating — is scored on those alone, through
+fitted weights, for that seat on that kind of work; price never counts as ability, so a model
+no dearer than another and at least as good on every index they both publish is never ranked
+below it. A model that publishes none is scored from its context, release date, licence and
+family, never above the average model, and less surely. Each seat weighs a model a little
+below its score by how unsure the score is, and a row is scored again when the catalog next
+lists new figures for it. How this install's own tasks ended — accepted, kept, redone, failed — moves
 a model's score in a seat a little each time, within a bound, and never freezes it. A task it
 cannot read with confidence counts as open-ended, because that is where a weak crew costs
 the most.
 
-The pick stops where more money stops buying much. On a small fix that usually means a
-cheap model in every seat; on open-ended work it usually means a cheap worker and a strong
-checker, because that is where a strong reader earns its price. A fix whose report shows **reach** —
+The pick stops where more money stops buying much. Every seat pays for ability, and
+open-ended work pays more for it than a fix does, so a small fix usually runs on a cheap crew
+and open-ended work buys a stronger model sooner as prices rise. The checker is never simply
+the cheapest model: its score must reach the ability of the weakest model seen doing the work,
+whenever an allowed model's does. A fix whose report shows **reach** —
 more than one file, an API or protocol, language rules, a long report or several repros,
 existing tests that must keep passing, two of these at least — gets its worker one rung
 stronger than a one-line fix would; its planner and checker are the fix's own, the line

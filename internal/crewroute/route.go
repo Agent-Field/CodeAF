@@ -850,7 +850,7 @@ func eligible(t *table, class Class, seat Seat, c Candidate) (Pick, bool) {
 	if t.rescue {
 		return pick, true
 	}
-	return pick, t.credibleAt(a)
+	return pick, t.seatCredible(seat, a)
 }
 
 // weighedCost is the cost a pick is weighed at: its expected cost on its
@@ -1033,8 +1033,7 @@ func readingOf(r Request) Reading {
 	}
 	reading := Reading{Class: r.Class, Why: "given", Sure: true}
 	if r.Class == Bugfix {
-		_, body := taskTitle(r.Task.Text)
-		reading.Complex = complexFix(body)
+		reading.Complex = complexFix(reachText(taskTitle(r.Task.Text)))
 	}
 	return reading
 }
@@ -1170,7 +1169,7 @@ func Gaps(candidates []Candidate) []Gap {
 		if !seatable(Checker, c) || !t.credible(c.Model) {
 			continue
 		}
-		if t.abilityOf(c.Model).U >= strong {
+		if a := t.abilityOf(c.Model); a.U+math.Sqrt(a.VarU) >= strong {
 			return nil
 		}
 	}

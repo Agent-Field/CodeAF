@@ -3,6 +3,7 @@ package crewroute
 import (
 	"errors"
 	"math"
+	"math/rand"
 	"strings"
 	"testing"
 	"time"
@@ -36,11 +37,23 @@ func TestTheWeightsCarryNoModelRows(t *testing.T) {
 }
 
 // THE ROUTED POLICY, read off the weights and the prices rather than branches:
-// a fix goes to the cheapest credible support seats, open-ended work to a
-// stronger checker.
-func TestTheKneeRoutesFixesCheapAndOpenEndedToAStrongChecker(t *testing.T) {
+// open-ended work pays more for ability in every seat than a fix does, so
+// there are prices at which open-ended work buys the stronger checker and a
+// fix does not — and none at which a fix buys it and open-ended work does not.
+func TestOpenEndedWorkBuysAStrongerCheckerAtPricesAFixDoesNot(t *testing.T) {
 	tab := prior()
-	for _, cands := range [][]Candidate{catalogCandidates(), frontierCandidates()} {
+	for _, seat := range Seats {
+		if fix, open := tab.linkOf(Bugfix).Seats[seat].Slope, tab.linkOf(OpenEnded).Seats[seat].Slope; open <= fix {
+			t.Errorf("%s: open-ended slope %.3f not above the fix's %.3f", seat, open, fix)
+		}
+	}
+	weak := candidateOf(glmFlash)
+	split := false
+	for mult := 0.25; mult <= 64; mult *= 1.25 {
+		strong := glm53
+		strong.ID = "acme/strong-checker"
+		strong.PromptPrice, strong.CompletionPrice, strong.CacheReadPrice = glmFlash.PromptPrice*mult, glmFlash.CompletionPrice*mult, glmFlash.CacheReadPrice*mult
+		cands := []Candidate{weak, candidateOf(strong)}
 		fix, err := Decide(Request{Class: Bugfix, Candidates: cands})
 		if err != nil {
 			t.Fatal(err)
@@ -49,27 +62,143 @@ func TestTheKneeRoutesFixesCheapAndOpenEndedToAStrongChecker(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		cheapest := math.Inf(1)
-		for _, c := range cands {
-			if cost := tab.classCost(Bugfix, Checker, c.Model); cost < cheapest {
-				cheapest = cost
-			}
+		fixBuys, openBuys := fix.Seat(Checker).Model == strong.ID, open.Seat(Checker).Model == strong.ID
+		if fixBuys && !openBuys {
+			t.Errorf("at %.2fx the flash price a fix buys the strong checker and open-ended work does not", mult)
 		}
-		if got := fix.Seat(Checker); math.Abs(got.CostUSD-cheapest) > 1e-12 {
-			t.Errorf("fix checker %s at $%.4f, want the cheapest at $%.4f", got.Model, got.CostUSD, cheapest)
-		}
-		byID := map[string]Model{}
-		for _, c := range cands {
-			byID[c.Model.ID] = c.Model
-		}
-		fixU := tab.abilityOf(byID[fix.Seat(Checker).Model]).U
-		openU := tab.abilityOf(byID[open.Seat(Checker).Model]).U
-		if openU <= fixU {
-			t.Errorf("open-ended checker %s (u %.3f) is no stronger than the fix's %s (u %.3f)",
-				open.Seat(Checker).Model, openU, fix.Seat(Checker).Model, fixU)
-		}
+		split = split || (openBuys && !fixBuys)
+	}
+	if !split {
+		t.Error("no price at which open-ended work buys the stronger checker and a fix does not")
+	}
+	for _, cands := range [][]Candidate{catalogCandidates(), frontierCandidates()} {
+		fix, _ := Decide(Request{Class: Bugfix, Candidates: cands})
+		open, _ := Decide(Request{Class: OpenEnded, Candidates: cands})
 		if fix.EstUSD >= open.EstUSD {
 			t.Errorf("a fix estimates $%.3f, open-ended work $%.3f: the fix should be the cheaper crew", fix.EstUSD, open.EstUSD)
+		}
+	}
+}
+
+// A CHEAPER MODEL AT LEAST AS GOOD ON EVERY PUBLISHED INDEX NEVER LOSES. For
+// rows that publish the same indexes, A no dearer than B and at least as good
+// on each of them, B is never scored above A in any seat nor cheaper, and a
+// decision over the two never seats B — whatever their release dates,
+// context, licence or family say.
+func TestADominatedModelNeverBeatsItsDominator(t *testing.T) {
+	rng := rand.New(rand.NewSource(7))
+	names := []string{"deepseek/deepseek-v9-flash", "z-ai/glm-9", "acme/model", "moonshotai/kimi-k9", "anthropic/claude-opus-9"}
+	for i := 0; i < 400; i++ {
+		var a, b Model
+		b = Model{ID: names[rng.Intn(len(names))], Open: rng.Intn(2) == 0, Tools: true,
+			PromptPrice: (0.05 + rng.Float64()*5) / 1e6, CompletionPrice: (0.1 + rng.Float64()*25) / 1e6,
+			Context: 1 << (17 + rng.Intn(4)), Released: released(2025+rng.Intn(2), time.Month(1+rng.Intn(12)), 1+rng.Intn(28))}
+		b.CacheReadPrice = b.PromptPrice / 10
+		a = Model{ID: names[rng.Intn(len(names))] + "-a", Open: rng.Intn(2) == 0, Tools: true,
+			PromptPrice: b.PromptPrice * rng.Float64(), CompletionPrice: b.CompletionPrice * rng.Float64(),
+			Context: 1 << (17 + rng.Intn(4)), Released: released(2025+rng.Intn(2), time.Month(1+rng.Intn(12)), 1+rng.Intn(28))}
+		a.CacheReadPrice = a.PromptPrice / 10
+		fields := []struct {
+			get func(*Model) *float64
+			lo  float64
+		}{{func(m *Model) *float64 { return &m.Intelligence }, 20}, {func(m *Model) *float64 { return &m.Coding }, 40},
+			{func(m *Model) *float64 { return &m.Agentic }, 20}, {func(m *Model) *float64 { return &m.ArenaElo }, 1150}}
+		published := 0
+		for _, f := range fields {
+			if rng.Intn(2) == 0 {
+				continue
+			}
+			published++
+			v := f.lo + rng.Float64()*f.lo*0.8
+			*f.get(&b) = v
+			*f.get(&a) = v + rng.Float64()*f.lo*0.2
+		}
+		if published == 0 {
+			a.Coding, b.Coding = 70, 60
+		}
+		tab := prior()
+		for _, class := range []Class{Bugfix, OpenEnded, Other} {
+			for _, seat := range Seats {
+				qa, _ := tab.quality(class, seat, a)
+				qb, _ := tab.quality(class, seat, b)
+				if qb > qa+1e-9 {
+					t.Fatalf("%s %s: dominated %+v scored %.4f above %+v at %.4f", class, seat, b, qb, a, qa)
+				}
+				if tab.classCost(class, seat, b) < tab.classCost(class, seat, a) {
+					t.Fatalf("%s %s: the dominated model costs less", class, seat)
+				}
+			}
+			d, err := Decide(Request{Class: class, Candidates: []Candidate{candidateOf(b), candidateOf(a)}})
+			if err != nil {
+				continue
+			}
+			for _, p := range d.Crew {
+				if p.Model == b.ID {
+					t.Fatalf("%s: %s seated the dominated %+v over %+v", class, p.Seat, b, a)
+				}
+			}
+		}
+	}
+	// The row that started it: a flash model no dearer on any price than
+	// another and better on every index the other publishes, which publishes
+	// one index to its four.
+	thin := Model{ID: "deepseek/deepseek-v4.1-flash", Open: true, PromptPrice: 1.5e-7, CompletionPrice: 6e-7, CacheReadPrice: glmFlash.CacheReadPrice,
+		Intelligence: 39.5, Context: 1048576, Released: released(2026, 9, 10), Tools: true}
+	for _, class := range []Class{Bugfix, OpenEnded} {
+		for _, effort := range []Effort{EffortCheap, EffortKnee} {
+			d, err := Decide(Request{Class: class, Effort: effort, Candidates: []Candidate{candidateOf(thin), candidateOf(glmFlash)}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := d.Seat(Worker).Model; got != glmFlash.ID {
+				t.Errorf("%s %q: worker %s over %s", class, effort, got, glmFlash.ID)
+			}
+		}
+	}
+}
+
+// THE SUPPORT SEATS OF A FIX STILL PAY FOR ABILITY: a model that publishes one
+// middling index at a fraction of a cent does not check a fix while a model
+// strong on every index costs a few tenths of a cent more.
+func TestAFixIsNotCheckedByWhateverIsCheapest(t *testing.T) {
+	if s := prior().linkOf(Bugfix).Seats[Checker].Slope; s <= 0 {
+		t.Fatalf("a fix's checker pays nothing for ability (slope %.3f)", s)
+	}
+	thin := Model{ID: "inclusionai/ling-3.0-flash", Open: true, PromptPrice: 2.1e-8, CompletionPrice: 6.3e-8, CacheReadPrice: 4.2e-9,
+		Coding: 50.6, Context: 262144, Released: released(2026, 7, 23), Tools: true}
+	d, err := Decide(Request{Class: Bugfix, Candidates: []Candidate{candidateOf(thin), candidateOf(glmFlash)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := d.Seat(Checker).Model; got != glmFlash.ID {
+		t.Errorf("a fix's checker is %s", got)
+	}
+	// A CHECKER'S MEAN ABILITY MUST REACH THE FLOOR when any candidate's does.
+	tab := forDecision([]Candidate{candidateOf(thin), candidateOf(v4Flash), candidateOf(glmFlash)}, nil)
+	for _, m := range []Model{thin, v4Flash, glmFlash} {
+		a := tab.abilityOf(m)
+		if pick, ok := eligible(tab, Bugfix, Checker, candidateOf(m)); ok && a.U < tab.UFloor {
+			t.Errorf("%s may check with mean ability %.3f under the floor %.3f", pick.Model, a.U, tab.UFloor)
+		}
+	}
+}
+
+// --BEST BUYS QUALITY IN EVERY SEAT, up to the task limit: no seat of a best
+// crew is left on a model another candidate outscores there.
+func TestBestBuysTheStrongestModelInEverySeat(t *testing.T) {
+	cands := frontierCandidates()
+	for _, class := range []Class{Bugfix, OpenEnded} {
+		d, err := Decide(Request{Class: class, Candidates: cands, Effort: EffortBest, TaskCap: 5})
+		if err != nil {
+			t.Fatal(err)
+		}
+		tab := forDecision(cands, nil)
+		for _, p := range d.Crew {
+			for _, c := range cands {
+				if other, ok := eligible(tab, class, p.Seat, c); ok && other.Quality > p.Quality+1e-9 {
+					t.Errorf("%s best: %s is %s at %.3f while %s scores %.3f", class, p.Seat, p.Model, p.Quality, other.Model, other.Quality)
+				}
+			}
 		}
 	}
 }
@@ -142,17 +271,38 @@ func TestAMissingIndexWidensTheVariance(t *testing.T) {
 }
 
 // A ROW THAT GAINS INDEXES IS READ AGAIN: nothing about a model is remembered
-// between decisions, so the next catalog refresh re-scores it.
+// between decisions, so the next catalog refresh re-scores it — from its
+// indexes now, and with less doubt.
 func TestARowThatGainsIndexesIsRescored(t *testing.T) {
 	bare := glmFlash
 	bare.Intelligence, bare.Coding, bare.Agentic, bare.ArenaElo = 0, 0, 0, 0
-	before, _ := Decide(Request{Class: OpenEnded, Candidates: []Candidate{candidateOf(bare), candidateOf(v4Flash)}})
-	after, _ := Decide(Request{Class: OpenEnded, Candidates: []Candidate{candidateOf(glmFlash), candidateOf(v4Flash)}})
-	if before.Seat(Worker).Quality == after.Seat(Worker).Quality && before.Seat(Worker).SD == after.Seat(Worker).SD {
-		t.Error("the row's new indexes changed nothing")
+	w := load()
+	before, after := w.abilityOf(bare), w.abilityOf(glmFlash)
+	if before.Indexed || !after.Indexed {
+		t.Fatalf("index path: before %v, after %v", before.Indexed, after.Indexed)
 	}
-	if after.Seat(Worker).SD >= before.Seat(Worker).SD {
-		t.Errorf("published indexes did not narrow the reading: sd %.3f then %.3f", before.Seat(Worker).SD, after.Seat(Worker).SD)
+	if after.VarTheta >= before.VarTheta {
+		t.Errorf("published indexes did not narrow the reading: variance %.3f then %.3f", before.VarTheta, after.VarTheta)
+	}
+	qb, _ := prior().quality(OpenEnded, Worker, bare)
+	qa, _ := prior().quality(OpenEnded, Worker, glmFlash)
+	if qa <= qb {
+		t.Errorf("strong published indexes scored %.3f, not above the bare row's %.3f", qa, qb)
+	}
+}
+
+// A ROW WITH NO PUBLISHED INDEX IS NEVER SCORED ABOVE THE POPULATION'S MEAN,
+// however new it is: its date and family widen the reading instead.
+func TestANewRowWithoutIndexesIsNotScoredAboveAverage(t *testing.T) {
+	w := load()
+	pop := w.Mean[0]*w.Scale[0] + w.Loc[0]
+	fresh := Model{ID: "openai/gpt-9-luna-pro", PromptPrice: 1e-7, CompletionPrice: 5e-7, Context: 1050000,
+		Released: released(2026, 9, 22), Tools: true}
+	if a := w.abilityOf(fresh); a.Theta > pop+1e-9 || a.Indexed {
+		t.Errorf("an index-less row read at ability %.3f over the population's %.3f", a.Theta, pop)
+	}
+	if d, err := Decide(Request{Class: Bugfix, Candidates: []Candidate{candidateOf(fresh), candidateOf(glmFlash)}}); err != nil || d.Seat(Worker).Model != glmFlash.ID {
+		t.Errorf("worker %s over the indexed flash model (%v)", d.Seat(Worker).Model, err)
 	}
 }
 
@@ -355,13 +505,13 @@ func TestPaceGrowsAsTheCapNears(t *testing.T) {
 			t.Errorf("Pace(%v, %v) = %v, %v; want %v, %v", tc.spent, tc.cap, got, at, tc.want, tc.atCap)
 		}
 	}
-	// Near the cap an open-ended task takes a cheaper checker.
-	cands := catalogCandidates()
+	// Near the cap an open-ended task takes a cheaper crew.
+	cands := frontierCandidates()
 	plain, _ := Decide(Request{Class: OpenEnded, Candidates: cands})
 	mult, _ := Pace(9.9, 10)
 	d, _ := Decide(Request{Class: OpenEnded, Candidates: cands, Pace: mult})
-	if d.Seat(Checker).CostUSD >= plain.Seat(Checker).CostUSD {
-		t.Errorf("at 99%% of the cap the checker is still %s (λ %.0f)", d.Seat(Checker).Model, d.Lambda)
+	if d.EstUSD >= plain.EstUSD {
+		t.Errorf("at 99%% of the cap the crew still estimates $%.3f against $%.3f (λ %.0f)", d.EstUSD, plain.EstUSD, d.Lambda)
 	}
 }
 

@@ -40,7 +40,7 @@ func TestCrewSnapshotPanel(t *testing.T) {
 	crewSnap(t, a, "panel", `
 ╭─ crew ───────────────────────────────────────────────────────────────────────────────────── esc ─╮
 │› worker    auto · likely glm-5.3-flash                                                           │
-│  planner   auto · likely kimi-k3                                                                 │
+│  planner   auto · likely glm-5.3-flash                                                           │
 │  checker   {pin} kimi-k3                                                                             │
 │                                                                                                  │
 │  models    ‹ all › (4)                                                                           │
@@ -93,7 +93,6 @@ func TestCrewSnapshotPriceBeingTyped(t *testing.T) {
 │› models    ‹ price ›  ≤ $[ 0.5 ] in / $[ 5 ] out (2)  {tick}                                          │
 │  providers {tick} openrouter  +                                                                       │
 │  cap       per task $5 · daily none                                                              │
-│  no strong checker among the models you allow · open-ended work will be checked weakly           │
 ╰─ enter change · esc close · ? keys ──────────────────────────────────────────────────────────────╯`)
 }
 
@@ -156,8 +155,8 @@ func TestCrewSnapshotUndoOffer(t *testing.T) {
 	crewSnap(t, a, "undo offer", `
 ╭─ crew ───────────────────────────────────────────────────────────────────────────────────── esc ─╮
 │  worker    auto · likely glm-5.3-flash                                                           │
-│  planner   auto · likely kimi-k3                                                                 │
-│  checker   auto · likely kimi-k3                                                                 │
+│  planner   auto · likely glm-5.3-flash                                                           │
+│  checker   auto · likely glm-5.3-flash                                                           │
 │                                                                                                  │
 │› models    ‹ open › (3)  {tick}                                                                       │
 │  providers {tick} openrouter  +                                                                       │
@@ -174,7 +173,7 @@ func TestCrewSnapshotProvidersRow(t *testing.T) {
 	crewSnap(t, a, "providers row", `
 ╭─ crew ───────────────────────────────────────────────────────────────────────────────────── esc ─╮
 │  worker    auto · likely glm-5.3-flash                                                           │
-│  planner   auto · likely kimi-k3                                                                 │
+│  planner   auto · likely glm-5.3-flash                                                           │
 │  checker   auto · likely glm-5.3-flash                                                           │
 │                                                                                                  │
 │  models    ‹ all › (4)                                                                           │

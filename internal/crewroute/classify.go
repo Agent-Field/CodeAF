@@ -122,7 +122,12 @@ var titleSignals = []signal{
 	{regexp.MustCompile(`(?i)^\s*(fix|bugfix|hotfix)(\([^)]*\))?!?:`), Bugfix, 2, "a fix: title"},
 	{regexp.MustCompile(`(?i)^\s*(test|tests|ci|chore|build)(\([^)]*\))?!?:`), Bugfix, 1, "a narrow chore title"},
 	{regexp.MustCompile(`(?i)\[\s*bug\s*\]|^\s*bug\s*[:\-]|^\s*BUG\b`), Bugfix, 2, "a bug tag in the title"},
-	{regexp.MustCompile(`(?i)\b(crash(es|ed|ing)?|error|exception|fails?|failing|broken|regression|drops?|rejects?|ignored|incorrect(ly)?|wrong|overflow\w*|hangs?|leaks?)\b`), Bugfix, 1, "a failure word in the title"},
+	{regexp.MustCompile(`(?i)\b(crash(es|ed|ing)?|error|exception|fails?|failing|broken|regression|drops?|rejects?|(is |are |gets? |being )?rejected|ignored|incorrect(ly)?|wrong(ly)?|overflow\w*|hangs?|leaks?)\b`), Bugfix, 1, "a failure word in the title"},
+	{regexp.MustCompile(`(?i)\binstead of\b`), Bugfix, 1, "what happens set against what should"},
+	// A MECHANICAL CHANGE — a rename, a version bump — is small and exact
+	// work however far across the tree it reaches: the fix's crew, not the
+	// open-ended one.
+	{mechanicalEdit, Bugfix, 2, "a mechanical change"},
 	{regexp.MustCompile(`\b[A-Z][A-Za-z]+(Error|Exception)\b`), Bugfix, 1, "an exception named in the title"},
 	// A DEFECT SAID IN PLAIN WORDS is a fix whether or not it wears a `fix:`
 	// prefix: a leading verb that repairs something, the word bug or broken,
@@ -213,6 +218,9 @@ var wrapperLine = regexp.MustCompile(`(?i)^\s*(implement|fix|resolve|address|sol
 // "expected 3, got 4".
 var defectSentence = regexp.MustCompile(`(?i)\b(returns?|gives?|prints?|produces?|yields?|shows?)\b[^.]*\binstead of\b|\bshould\b[^.]*\bbut\b|\bexpected\b[^.]*\b(got|but|received|instead)\b`)
 
+// mechanicalEdit is a title that asks for a rename or a version bump.
+var mechanicalEdit = regexp.MustCompile(`(?i)^\s*(please\s+)?(rename|bump|update (the )?(version|copyright)|upgrade (the )?version)\b`)
+
 // tinyEdit is a change too small to be open-ended whatever verb it opens
 // with: a docstring, a typo, a comment, one line. It reads as work of no
 // particular class — the cheap crew — and it outweighs a leading "add".
@@ -259,7 +267,7 @@ func Classify(task Task) Reading {
 	}
 	reading := decide(score, best, labelled)
 	if reading.Class == Bugfix {
-		reading.Complex = complexFix(body)
+		reading.Complex = complexFix(reachText(title, body))
 	}
 	return reading
 }
@@ -345,7 +353,9 @@ func taskTitle(text string) (title, body string) {
 //   - an API, an endpoint, a status code or a protocol;
 //   - language rules — i18n, locales, plurals, grammar, Unicode;
 //   - a long report, or more than one reproduction;
-//   - existing tests, guards or behaviour that must keep passing.
+//   - existing tests, guards or behaviour that must keep passing;
+//   - a security defect — traversal, injection, a bypass — whose repair must
+//     close every path to it.
 //
 // Two of them make a complex fix; one alone is how an ordinary report reads.
 // A complex fix moves its worker one rung up the seat's front ([Decide]); its
@@ -362,8 +372,10 @@ var (
 	sourceFile  = regexp.MustCompile(`\b[\w./-]+\.(py|go|ts|tsx|js|jsx|mjs|rs|java|kt|rb|c|cc|cpp|h|hpp|cs|php|swift|scala|ex|exs|vue|svelte)\b`)
 	wireWords   = regexp.MustCompile(`(?i)\b(api|apis|endpoints?|status codes?|http ?[1-5]\d\d|[1-5]\d\d (error|response)|protocols?|grpc|websockets?|rpc|wire format|openapi)\b`)
 	languageRul = regexp.MustCompile(`(?i)\b(i18n|l10n|locales?|locali[sz]ation|internationali[sz]ation|translations?|plurali[sz]ation|plurals?|grammar|language rules?|unicode|utf-?8|diacritics?|right-to-left|rtl)\b`)
-	keepPassing = regexp.MustCompile(`(?i)\b(existing|current|other|all) (unit |integration )?(tests?|checks?|guards?|behaviou?r)\b[^.]{0,60}\b(pass|passing|keep|kept|still|remain|break|breaking|unchanged)|\bwithout breaking\b|\bbackwards? compat`)
+	keepPassing = regexp.MustCompile(`(?i)\b(existing|current|other|all)( [\w-]+){0,2} (tests?|checks?|guards?|behaviou?r)\b[^.]{0,60}\b(pass|passing|keep|kept|still|remain|break|breaking|unchanged)|\bwithout breaking\b|\bbackwards? compat`)
 	reproMark   = regexp.MustCompile(`(?im)^\s*#+\s*(repro|reproduction|to reproduce|steps to reproduce)\b|^\s*(repro|reproduction) \d`)
+	manyRepros  = regexp.MustCompile(`(?i)\b(two|three|four|five|several|multiple|many|\d+) (repros|reproductions|reproducers|failing cases)\b`)
+	securityFix = regexp.MustCompile(`(?i)\b(security|vulnerab\w*|cve-\d+|path traversal|directory traversal|injection|xss|csrf|ssrf|auth(entication|orization)? bypass|privilege escalation|sanitis\w*|sanitiz\w*|escap(e|ing) (user )?input)\b`)
 )
 
 // complexLongBody is how long a report is, after the title, before its length
@@ -381,9 +393,20 @@ var reachSignals = []reachSignal{
 	{"an API or protocol", wireWords.MatchString},
 	{"language rules", languageRul.MatchString},
 	{"a long report or several repros", func(body string) bool {
-		return len(body) > complexLongBody || strings.Count(body, "```") >= 4 || len(reproMark.FindAllString(body, -1)) > 1
+		return len(body) > complexLongBody || strings.Count(body, "```") >= 4 || len(reproMark.FindAllString(body, -1)) > 1 ||
+			manyRepros.MatchString(body)
 	}},
+	{"a security fix", securityFix.MatchString},
 	{"existing tests that must keep passing", keepPassing.MatchString},
+}
+
+// reachText is what a fix is read for reach in: its body, or — for a task
+// written as one paragraph, which is the whole of most asks — its title.
+func reachText(title, body string) string {
+	if strings.TrimSpace(body) == "" {
+		return title
+	}
+	return body
 }
 
 // complexFix is the reach a fix's body shows, in words; empty is a simple fix.

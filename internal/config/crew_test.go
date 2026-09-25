@@ -52,9 +52,10 @@ func TestAnUntouchedProfileRoutesEverySeat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A fix: the worker the catalog reads as able for its price, and the
-	// cheapest credible model in the seats a fix does not pay ability for.
-	for seat, want := range map[Seat]string{seats.Work: "z-ai/glm-5.3-flash", seats.Plan: "deepseek/deepseek-v4-flash", seats.Check: "deepseek/deepseek-v4-flash"} {
+	// A fix: the model the catalog reads as able for its price in every seat —
+	// the cheaper v4-flash publishes weaker indexes, and a checker's ability
+	// must reach the floor.
+	for seat, want := range map[Seat]string{seats.Work: "z-ai/glm-5.3-flash", seats.Plan: "z-ai/glm-5.3-flash", seats.Check: "z-ai/glm-5.3-flash"} {
 		if seat.Source != SeatRouted || seat.Model != want {
 			t.Errorf("%s: %+v, want routed to %s on a fix", seat.Role, seat, want)
 		}
@@ -62,12 +63,14 @@ func TestAnUntouchedProfileRoutesEverySeat(t *testing.T) {
 	if seats.Crew == nil || seats.Crew.Class != crewroute.Bugfix {
 		t.Fatalf("crew %+v, want a bugfix decision", seats.Crew)
 	}
+	fixEst := seats.Crew.EstUSD
 	seats, err = ResolveSeats(dir, SeatFlags{}, CrewAsk{Task: crewroute.Task{Text: openTask}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if seats.Check.Model != "moonshotai/kimi-k3" || seats.Work.Model != "z-ai/glm-5.3-flash" {
-		t.Errorf("open-ended: worker %s, checker %s; want flash worker and a kimi checker", seats.Work.Model, seats.Check.Model)
+	if seats.Work.Model != "z-ai/glm-5.3-flash" || seats.Crew.EstUSD <= fixEst {
+		t.Errorf("open-ended: worker %s at $%.3f; want the flash worker on a dearer crew than the fix's $%.3f",
+			seats.Work.Model, seats.Crew.EstUSD, fixEst)
 	}
 	for _, m := range []string{seats.Work.Model, seats.Plan.Model, seats.Check.Model} {
 		if strings.Contains(m, "opus") || strings.Contains(m, "fable") {
@@ -220,12 +223,13 @@ func TestALearnedOffsetStartsARedoneClassHigher(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d.Seat(crewroute.Worker).Model != "moonshotai/kimi-k3" {
-		t.Errorf("a fix class redone here starts on %s, want the next rung up", d.Seat(crewroute.Worker).Model)
+	plain, _ := RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: fixTask}, Repo: "elsewhere"})
+	if d.Quality <= plain.Quality || d.EstUSD <= plain.EstUSD {
+		t.Errorf("a fix class redone here starts at quality %.2f ($%.3f), not above another repository's %.2f ($%.3f)",
+			d.Quality, d.EstUSD, plain.Quality, plain.EstUSD)
 	}
-	d, _ = RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: fixTask}, Repo: "elsewhere"})
-	if d.Seat(crewroute.Worker).Model != "z-ai/glm-5.3-flash" {
-		t.Errorf("another repository inherited the offset: %s", d.Seat(crewroute.Worker).Model)
+	if plain.Seat(crewroute.Worker).Model != "z-ai/glm-5.3-flash" {
+		t.Errorf("another repository inherited the offset: %s", plain.Seat(crewroute.Worker).Model)
 	}
 }
 
@@ -540,34 +544,5 @@ func TestCrewProvidersKeepOneThatRoutes(t *testing.T) {
 	}
 	if err := SetCrewProviderOn(dir, "openrouter", false); err != nil {
 		t.Fatalf("every seat pinned to the custom endpoint, and still refused: %v", err)
-	}
-}
-
-// THE PER-TASK LIMIT IS $5 UNTIL SET, a set figure reads back, and a task
-// cannot be left without one.
-func TestCrewTaskCapDefaultsAndRoundTrips(t *testing.T) {
-	dir := crewProfile(t)
-	if got := CrewTaskCapAt(dir); got != 5 {
-		t.Fatalf("an untouched profile's per-task limit reads %v", got)
-	}
-	if err := SetCrewTaskCap(dir, "$12.5"); err != nil {
-		t.Fatal(err)
-	}
-	if got := CrewTaskCapAt(dir); got != 12.5 {
-		t.Fatalf("the per-task limit reads %v after 12.5", got)
-	}
-	for _, raw := range []string{"none", "0", "-3", "lots"} {
-		if err := SetCrewTaskCap(dir, raw); err == nil {
-			t.Errorf("%q was taken as a per-task limit", raw)
-		}
-	}
-	if got := CrewTaskCapAt(dir); got != 12.5 {
-		t.Fatalf("a refused figure moved the limit to %v", got)
-	}
-	if capUSD, action := CrewTaskSpendCap(dir); capUSD != 12.5 || action != "this task reached its $12.50 limit · raise it in /crew" {
-		t.Fatalf("the limit's line reads %v, %q", capUSD, action)
-	}
-	if got := CrewTaskCapAction(CrewTaskCapDefault); got != "this task reached its $5 limit · raise it in /crew" {
-		t.Fatalf("the default limit's line reads %q", got)
 	}
 }

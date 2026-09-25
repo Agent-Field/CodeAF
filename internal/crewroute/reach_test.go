@@ -114,3 +114,38 @@ func TestAGivenBugfixClassStillReadsReach(t *testing.T) {
 		}
 	}
 }
+
+// A ONE-PARAGRAPH ASK IS READ FOR REACH TOO. Most asks have no body under a
+// title line, and the signals that make a fix complex sit in that one
+// paragraph.
+func TestAOneParagraphFixIsReadForReach(t *testing.T) {
+	cases := []struct{ text, why string }{
+		{"The /api/v2/orders endpoint returns HTTP 500 instead of 404 when the order id does not exist. The handler in api/orders.py and the repository in db/orders_repo.py both need changes, and the existing tests in tests/test_orders_api.py must keep passing. Repro: GET /api/v2/orders/999999 on a fresh database.", "two files and an endpoint"},
+		{"Security: the file upload endpoint accepts path traversal in the filename (../../etc/passwd). Sanitize filenames in upload/handlers.py and add a regression test.", "a security fix on an endpoint"},
+	}
+	for _, tc := range cases {
+		r := Classify(Task{Text: tc.text})
+		if r.Class != Bugfix || r.Complex == "" {
+			t.Errorf("%s: read as %s, reach %q; want a complex fix", tc.why, r.Class, r.Complex)
+		}
+	}
+	if r := Classify(Task{Text: "Fix typo in README: \"recieve\" should be \"receive\" in the install section."}); r.Complex != "" {
+		t.Errorf("a typo read as reaching: %q", r.Complex)
+	}
+}
+
+// A DEFECT SAID WITHOUT THE WORD BUG is still a fix, and a mechanical change
+// — a rename — is a small fix, not open-ended work.
+func TestDefectWordsAndMechanicalChangesReadAsFixes(t *testing.T) {
+	for _, text := range []string{
+		"Session titles are wrongly rejected for Japanese chats when the title contains English product names.",
+		"The export is incorrectly rounded when the total has three decimals.",
+		"Search returns the archived items instead of the live ones.",
+		"Rename the function get_usr to get_user across the codebase.",
+		"Bump the version to 2.4.1 in every package manifest.",
+	} {
+		if r := Classify(Task{Text: text}); r.Class != Bugfix || r.Complex != "" {
+			t.Errorf("%q read as %s (%s), reach %q; want a simple fix", text, r.Class, r.Why, r.Complex)
+		}
+	}
+}
