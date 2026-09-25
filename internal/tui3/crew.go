@@ -98,7 +98,7 @@ func (a *app) crewPin(rest string) int {
 	}
 	a.crewApplied()
 	pin, _ := config.CrewPinAt(a.profileDir, seat)
-	a.noteFacts(string(seat)+" "+a.icon(tokens.GPinned)+" "+pin.String()+" · every task until you unpin it · "+
+	a.noteFacts(string(seat)+" "+a.crewMark(tokens.GPinned)+" "+pin.String()+" · every task until you unpin it · "+
 		a.crewUnchangedClause(), pin.String())
 	return crewSeatStop(seat)
 }
@@ -222,6 +222,20 @@ func (a *app) crewLine(d *crewroute.Decision, actual float64) string {
 		return ""
 	}
 	return d.Line(crewPinMark(a.linear), actual)
+}
+
+// crewMark is a mark on the crew's own surfaces — the /crew panel, its
+// notes, the crew line — in the PLAIN tier whatever the icon setting says: a
+// pin, a tick, a ring, a cross, a diamond that every terminal draws. The rich
+// tier's private-use codepoints are a blank cell on a terminal without the
+// font, and on these surfaces a blank is a pinned seat or a connected
+// provider that reads as nothing at all. The linear and ASCII readings keep
+// their own spellings.
+func (a *app) crewMark(id tokens.GlyphID) string {
+	if a.linear || a.pal.ascii {
+		return tokens.ASCII.Glyph(id)
+	}
+	return tokens.Plain.Glyph(id)
 }
 
 // crewPinMark is the pin in a crew line: the plain glyph, ⌖, and never the

@@ -478,7 +478,12 @@ the most.
 
 The pick stops where more money stops buying much. On a small fix that usually means a
 cheap model in every seat; on open-ended work it usually means a cheap worker and a strong
-checker, because that is where a strong reader earns its price. The price is the one you
+checker, because that is where a strong reader earns its price. A fix whose report shows **reach** —
+more than one file, an API or protocol, language rules, a long report or several repros,
+existing tests that must keep passing, two of these at least — gets its worker one rung
+stronger than a one-line fix would; its planner and checker are the fix's own, the line
+still says bugfix, and a worker you pinned stays pinned. An issue's own labels count most:
+a `bug` label in any spelling (`bug :bug:`, `type/bug`) makes the task a bugfix. The price is the one you
 would actually pay: a model you reach through a subscription plan you connected costs
 nothing extra, and a local model costs nothing at all, so the crew prefers those routes
 whenever one serves the model.
@@ -651,6 +656,17 @@ what was spent, and the two ways on — raise it with `/crew cap`, or ask for th
 `--cheap`. `codeaf do` refuses the same way unless you pass `-yes-spend`; `codeaf exec`,
 `codeaf run` and `codeaf plan` say one line about it and go ahead.
 
+**Nor does a call that would cross it.** Every seat's call is priced before it is made —
+what the day has spent, plus what this call is expected to cost — and a call that would
+pass the cap is not made: the task stops on `today's crew spend has reached the daily cap
+of $5.00 · raise it with /crew cap`, with what it had done so far. A checker cut off this
+way ends on the same sentence.
+
+**A checker has a ceiling of its own on each task**: three times its estimate, and never
+less than $0.05. A check that reaches it stops there, on `the check stopped at its spend
+ceiling of $0.26, three times its estimate, before it finished`, and the task ends
+unchecked rather than on a bill ten times its estimate.
+
 This cap is the crew's own. The day's limit under `/settings` → Spending counts everything
 codeaf spends, and still applies.
 
@@ -674,13 +690,13 @@ A routed task says its crew in ONE line, under the line that says it started, an
 is rewritten in place as the task goes. When it starts:
 
 ```
-task 12 crew · open-ended · worker glm-5.3-flash (openrouter) · planner kimi-k3 · checker ⌖ kimi-k3 · est $0.117
+task 12 crew · open-ended · worker glm-5.3-flash (openrouter) · planner kimi-k3 · checker ⌖ kimi-k3 · est $0.121
 ```
 
 and when it lands, the same line with what it actually cost beside the estimate:
 
 ```
-task 12 crew · open-ended · worker glm-5.3-flash (openrouter) · planner kimi-k3 · checker ⌖ kimi-k3 · $0.108 (est $0.117) · not right? /redo stronger
+task 12 crew · open-ended · worker glm-5.3-flash (openrouter) · planner kimi-k3 · checker ⌖ kimi-k3 · $0.108 (est $0.121) · not right? /redo stronger
 ```
 
 The estimate is what crews like this one have cost: each seat's measured cost per task
@@ -717,9 +733,12 @@ and the line says `free routes in use (may log prompts)`. A rescue never takes a
 whose name says it was tuned for one domain (finance, medicine, law) or is too small for
 a seat's work, and a seat tries at most three free pools in a task; a pool at its limit
 is not waited on — the seat moves on at once, and with nothing left the task stops on
-its action within seconds. The line says each seat's net move — `worker glm-5.3-flash →
-gemma-4-31b-it (limit reached on openrouter) (+3 tried)` — and the router's log keeps
-every rung. A seat that cannot start moves to a model at a similar cost before a
+its action within seconds. A pool that answered at its limit is not asked again in that
+task by any seat, and no helper call reaches a route that refused — it is refused before
+it is sent. A model the catalog lists at no price that is not a free pool (a stealth or
+preview model) is never picked unless you pin it. The line says each seat's net move and
+its first cause — `worker glm-5.3-flash → gemma-4-31b-it (credit unavailable on
+openrouter; +3 tried)` — and the router's log keeps every rung. A seat that cannot start moves to a model at a similar cost before a
 dearer one. A task that ran on an account out of credit and failed ends on the credit action,
 not on `/redo stronger`. A free pool can be pinned by name —
 `/crew pin worker vendor/model:free` — and picking a model's `free` route in a seat's

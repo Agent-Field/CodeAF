@@ -590,3 +590,27 @@ func crewLineWith(t *testing.T, screen, want string) string {
 	t.Fatalf("no line holds %q:\n%s", want, screen)
 	return ""
 }
+
+// THE CREW'S MARKS ARE DRAWN BY EVERY TERMINAL: with the rich icon tier on, the
+// panel's pin, ticks and rings are still the plain tier's, because a terminal
+// without the font draws a private-use codepoint as a blank cell — a pinned
+// checker that reads as "checker  kimi-k3".
+func TestTheCrewPanelDrawsNoPrivateUseMarks(t *testing.T) {
+	a, dir := crewLab(t)
+	if err := config.SetCrewPin(dir, crewroute.Checker, "moonshotai/kimi-k3"); err != nil {
+		t.Fatal(err)
+	}
+	a.iconMode = config.IconsRich
+	a.settleIcons()
+	j := &crewJourney{t: t, a: a}
+	j.open()
+	screen := crewScreen(a)
+	for _, r := range screen {
+		if (r >= 0xE000 && r <= 0xF8FF) || r >= 0xF0000 {
+			t.Fatalf("the panel draws %U, a private-use mark:\n%s", r, screen)
+		}
+	}
+	if !strings.Contains(screen, tokens.Plain.Glyph(tokens.GPinned)) || !strings.Contains(screen, tokens.Plain.Glyph(tokens.GSettled)) {
+		t.Errorf("the panel does not draw the plain pin and tick:\n%s", screen)
+	}
+}

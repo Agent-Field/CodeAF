@@ -1560,14 +1560,14 @@ func (a *app) crewMainRows(width, hover int) ([]string, []int) {
 	for i, seat := range crewroute.Seats {
 		value := a.crewSeatValue(seat, width)
 		if p.live(now) && p.saved == i {
-			value += "  " + a.pal.add(a.icon(tokens.GSettled))
+			value += "  " + a.pal.add(a.crewMark(tokens.GSettled))
 		}
 		add(a.crewRowLine(a.crewLabel(string(seat), p.cursor == i)+value, p.cursor == i, hover == len(rows), false, width), i)
 	}
 	add("", -1)
 	models := a.crewModelsValue()
 	if p.live(now) && p.saved == crewModels {
-		models += "  " + a.pal.add(a.icon(tokens.GSettled))
+		models += "  " + a.pal.add(a.crewMark(tokens.GSettled))
 	}
 	modelsLine := a.crewRowLine(a.crewLabel("models", p.cursor == crewModels)+models, p.cursor == crewModels, hover == len(rows), false, width)
 	p.arrows = crewArrowSpans(modelsLine)
@@ -1575,7 +1575,7 @@ func (a *app) crewMainRows(width, hover int) ([]string, []int) {
 	add(a.crewProvidersLine(width, hover == len(rows)), crewProviders)
 	capValue := a.crewCapValue()
 	if p.live(now) && p.saved == crewCap {
-		capValue += "  " + a.pal.add(a.icon(tokens.GSettled))
+		capValue += "  " + a.pal.add(a.crewMark(tokens.GSettled))
 	}
 	add(a.crewRowLine(a.crewLabel("cap", p.cursor == crewCap)+capValue, p.cursor == crewCap, hover == len(rows), false, width), crewCap)
 	if day := a.crewTodayWord(); day != "" {
@@ -1588,7 +1588,7 @@ func (a *app) crewMainRows(width, hover int) ([]string, []int) {
 		}
 	}
 	if p.refusal != "" {
-		for _, line := range crewSaid(a.icon(tokens.GFailed)+" "+p.refusal, width, a.pal.bad) {
+		for _, line := range crewSaid(a.crewMark(tokens.GFailed)+" "+p.refusal, width, a.pal.bad) {
 			add(line, -1)
 		}
 	}
@@ -1621,7 +1621,7 @@ func (a *app) crewSeatValue(seat crewroute.Seat, width int) string {
 		}
 		return a.pal.ink("auto") + a.pal.dim(word+usual)
 	}
-	value := a.icon(tokens.GPinned) + " " + a.pal.data(crewroute.ShortModel(pin.Model))
+	value := a.crewMark(tokens.GPinned) + " " + a.pal.data(crewroute.ShortModel(pin.Model))
 	if pin.Provider != "" {
 		value += a.pal.dim(" @" + pin.Provider)
 	}
@@ -1781,7 +1781,7 @@ func (a *app) crewProvidersLine(width int, hovered bool) string {
 		value = a.pal.ink(strconv.Itoa(p.providersOn())+" of "+strconv.Itoa(len(p.providers))) + a.pal.dim(" on")
 	}
 	if p.live(a.now()) && p.saved == crewProviders {
-		value += "  " + a.pal.add(a.icon(tokens.GSettled))
+		value += "  " + a.pal.add(a.crewMark(tokens.GSettled))
 	}
 	line := a.crewRowLine(a.crewLabel("providers", selected)+value, selected, hovered, false, width)
 	p.chips = crewChipSpans(line, words)
@@ -1796,9 +1796,9 @@ func (a *app) crewChips(local, selected bool) (string, []string) {
 	var parts, words []string
 	for i, provider := range p.providers {
 		name, hint := crewChipWords(provider, local)
-		mark, ink := a.icon(tokens.GSettled), a.pal.ink
+		mark, ink := a.crewMark(tokens.GSettled), a.pal.ink
 		if !provider.On {
-			mark, ink = a.icon(tokens.GQueued), a.pal.dim
+			mark, ink = a.crewMark(tokens.GQueued), a.pal.dim
 		}
 		plainWord := mark + " " + name
 		text := ink(mark) + " " + ink(name)
@@ -1931,9 +1931,9 @@ func (a *app) crewProvRows(width, hover int) ([]string, []int) {
 	now := a.now()
 	for i, provider := range p.providers {
 		name, _ := crewChipWords(provider, false)
-		mark, ink, state := a.icon(tokens.GSettled), a.pal.ink, "on"
+		mark, ink, state := a.crewMark(tokens.GSettled), a.pal.ink, "on"
 		if !provider.On {
-			mark, ink, state = a.icon(tokens.GQueued), a.pal.dim, "off"
+			mark, ink, state = a.crewMark(tokens.GQueued), a.pal.dim, "off"
 		}
 		var fact string
 		switch facts {
@@ -1950,7 +1950,7 @@ func (a *app) crewProvRows(width, hover int) ([]string, []int) {
 		}
 		text += ink(state)
 		if p.live(now) && p.saved == crewProviders && p.provSaved == i {
-			text += "  " + a.pal.add(a.icon(tokens.GSettled))
+			text += "  " + a.pal.add(a.crewMark(tokens.GSettled))
 		}
 		rows = append(rows, a.crewRowLine(text, i == p.prov, hover == len(rows), false, width))
 		owner = append(owner, i)
@@ -1966,12 +1966,12 @@ func (a *app) crewProvRows(width, hover int) ([]string, []int) {
 	}
 	text := a.pal.ink(crewFreeRoutesWord) + "  " + ink(state) + a.pal.dim(" · "+crewFreeRoutesWhy)
 	if p.live(now) && p.saved == crewProviders && p.provSaved == at {
-		text += "  " + a.pal.add(a.icon(tokens.GSettled))
+		text += "  " + a.pal.add(a.crewMark(tokens.GSettled))
 	}
 	rows = append(rows, a.crewRowLine(text, p.prov == at, hover == len(rows), false, width))
 	owner = append(owner, at)
 	if p.refusal != "" {
-		for _, said := range crewSaid(a.icon(tokens.GFailed)+" "+p.refusal, width, a.pal.bad) {
+		for _, said := range crewSaid(a.crewMark(tokens.GFailed)+" "+p.refusal, width, a.pal.bad) {
 			rows = append(rows, said)
 			owner = append(owner, -1)
 		}
@@ -2087,14 +2087,14 @@ func (a *app) crewPickRows(width, hover int) ([]string, []int) {
 		rows = append(rows, a.crewRowLine(text, selected, hovered, marked, width))
 		owner = append(owner, at)
 		if k.refuse == at {
-			for _, said := range crewSaid(a.icon(tokens.GFailed)+" "+k.refuseWhy, width, a.pal.warn) {
+			for _, said := range crewSaid(a.crewMark(tokens.GFailed)+" "+k.refuseWhy, width, a.pal.warn) {
 				rows = append(rows, said)
 				owner = append(owner, -1)
 			}
 		}
 	}
 	if p.refusal != "" {
-		for _, said := range crewSaid(a.icon(tokens.GFailed)+" "+p.refusal, width, a.pal.bad) {
+		for _, said := range crewSaid(a.crewMark(tokens.GFailed)+" "+p.refusal, width, a.pal.bad) {
 			rows = append(rows, said)
 			owner = append(owner, -1)
 		}
@@ -2124,7 +2124,7 @@ func (a *app) crewOfferText(row crewPickRow, current bool, width int) string {
 	}
 	lead := "  "
 	if row.suggested {
-		lead = a.pal.warn(a.icon(tokens.GRecommended)) + " "
+		lead = a.pal.warn(a.crewMark(tokens.GRecommended)) + " "
 	}
 	ink := a.pal.ink
 	if !offer.Allowed {
@@ -2132,7 +2132,7 @@ func (a *app) crewOfferText(row crewPickRow, current bool, width int) string {
 	}
 	text := lead + ink(name)
 	if current {
-		text += " " + a.icon(tokens.GPinned)
+		text += " " + a.crewMark(tokens.GPinned)
 	}
 	facts := []string{crewPerM(offer.Model)}
 	if len(offer.Routes) > 0 {
@@ -2195,7 +2195,7 @@ func (a *app) crewCheckRows(width, hover int) ([]string, []int) {
 		line := c.lines[c.hits[at]]
 		mark := "  "
 		if p.ticked(line) {
-			mark = a.pal.ink(a.icon(tokens.GSettled)) + " "
+			mark = a.pal.ink(a.crewMark(tokens.GSettled)) + " "
 		}
 		text := mark + a.pal.ink(line.offer.Model.ID) + a.pal.dim("  "+crewPerM(line.offer.Model))
 		if !line.offer.Served {
@@ -2205,7 +2205,7 @@ func (a *app) crewCheckRows(width, hover int) ([]string, []int) {
 		owner = append(owner, at)
 	}
 	if p.refusal != "" {
-		rows = append(rows, a.pal.bad(fit("  "+a.icon(tokens.GFailed)+" "+p.refusal, width)))
+		rows = append(rows, a.pal.bad(fit("  "+a.crewMark(tokens.GFailed)+" "+p.refusal, width)))
 		owner = append(owner, -1)
 	}
 	return rows, owner
