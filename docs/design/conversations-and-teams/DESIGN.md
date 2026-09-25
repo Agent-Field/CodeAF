@@ -178,16 +178,10 @@ and removing it returns it to an ordinary chat with its history. What makes it s
 - it is the team's first tab, pinned at the left like a browser's pinned tab (`◆ Manager`),
   and the pinned first tile on the wall (`◆ Manager · <title>`); until one exists, that tab is
   a `+ Manager` placeholder, and nothing costs anything;
-- its layout is split: the person's conversation with the manager on the left, a **Traffic**
-  rail on the right. Whatever the person types goes to the manager, always, and the composer
-  says so (`to ◆ manager`, on the box's rule once there is text). Traffic is drawn as
-  threads (below, **Traffic is threaded**). With the manager in front the
-  right-hand column is the Traffic (ruled 2026-09-24): the task column is not drawn and not
-  reserved whatever the saved `ctrl+g` answer says. When the manager has live tasks the
-  header reads `Traffic · Tasks 2`, and Tasks (a press or `ctrl+g`) lays them in the same
-  column at the same width, and back; with none there is no word. The rail
-  is put away with `hide alt+l` to a `Traffic` edge that counts what arrived, and on a narrow
-  window it is that edge and a card laid over the lower conversation;
+- its layout is split: the person's conversation with the manager on the left, the column
+  on the right open on its **Traffic** (below, **One side column**). Whatever the person types
+  goes to the manager, always, and the composer says so (`to ◆ manager`, on the box's rule
+  once there is text). Traffic is drawn as threads (below, **Traffic is threaded**);
 - each turn it carries a small team digest (members, handles, states, questions waiting,
   files touched, recent traffic), never whole transcripts;
 - its messages reach members marked `◆ from manager`, never as if the person had typed them;
@@ -300,6 +294,62 @@ first read is asked off the loop). The welcome's `Teams` flag says an engine has
 engine without it gets no seam, and the window turns teams and the manager off with the line
 it has always said rather than reading the laptop's file, which the far session never sees.
 
+**One side column (ruled and built 2026-09-24).** The right of every conversation is one
+component (`tui3/sidecol.go`, `sidetraffic.go`), replacing the task column, the Traffic rail,
+the bordered Traffic card under 84 columns, and the `Traffic · Tasks 2` special case between
+them.
+
+- **The header is two words**, `Tasks 14 · Traffic 3 new`, with the hide key (`alt+l`,
+  `ctrl+g` its older name) at the right. A chat in no team has only `Tasks`. The word in front
+  is bold ink and the other dim; each is a door with a hover ground and a hint; the other word
+  keeps its count and says `N new` for Traffic that arrived behind it. A zero is dim.
+- **The view defaults by kind of chat**: Traffic in a manager's chat, Tasks in a member's and
+  everywhere else, and the person's choice is remembered per kind for the session. `←` `→`
+  switch words while the column holds the keyboard (`alt+t`); nothing here takes the focus.
+- **The needs-you band** is under the header, from both sources: a member's pending question
+  (its latest asking event, until anything later from it, from the person, or a wake), a
+  packet put to the person, and a task whose next step is the person's, all in the needs-you
+  amber with their own mark (`?` for a question); then a failure this window watched happen
+  and the person has not opened, its `✕` in ordinary ink. At most three rows and `+N more` (a
+  fourth item is drawn rather than counted); a rule under it; nothing at all when empty. An
+  item in the band is not drawn again below it; opening a failure acks it into Done.
+- **Tasks** are grouped by state, newest first in each: Running always open, Queued, Waiting
+  and Done folded to `Done 7 ▸` until pressed, and remembered open for the session. One line a
+  task: its state glyph, its name cut with `…`, its time in muted ink at the right (dropped
+  before it would cut a name that fits). What used to hang under a row (what it is doing,
+  `waits:`, merge word, cost, branch, the reason for a your-call) is the hint line's. The
+  family forest, its per-row disclosure and `view more` are gone; the margin under the list
+  (`+ /task`, standing, jobs, `ctrl+. earlier`) and a run's plan rows stay.
+- **Traffic in a manager's chat is work**: one row per thread (`teams.Threads`), whom it went
+  to and what it said, the state its answers leave it in and its message count (the count and
+  then the state give way to the words when the column is narrow; the hint says them), `▸`
+  laying the replies open as `↳ 09:58 @review: ✓ two findings…` (events folded into the
+  member's line), and every unthreaded line under one `General` thread. A thin `new` line
+  marks what arrived since the Traffic was last in front and holds still while it is read. A
+  handle opens its member at the message; the rest of a row brings the message into view in
+  the chat in front. **In a member's chat** it is the messages to or from that member, or to
+  everyone, one line each.
+- **Geometry.** The column is a quarter of the frame, 28 to 40 columns (30 at 120), from 100
+  columns up while the conversation keeps 56; `alt+w` adds 16 from 120 up. It is the same in
+  both views and every kind of chat, so switching, folding, the band and new rows never move
+  the conversation or the header. Under 100 columns there is no column and no edge; `alt+l` or
+  `alt+t` lay it over the body. Put away, it is an edge carrying the running or asking mark and,
+  in a team chat, the count of new Traffic.
+- **The frame reads memory**: tasks are the roster's nodes, Traffic the cache the Traffic clock
+  keeps, packets the teams page's last read; the Traffic rows and the band's asks are cached on
+  the log's tail, width, pointer, minute and what is laid open.
+
+**Where it departs, and why.** The owner's sketch showed the band only for needs-you; a
+failure is in it too, in ink, because a failure nobody opened was the one thing the old column
+kept at the top and dropping it would have hidden it under a folded `Done`. The column's width
+was the Traffic's three tenths and is a quarter now, because it is every chat's column and
+three tenths cost the conversation up to fourteen columns against the old task column; at 110
+columns a Traffic row's title is short, and its hint carries the rest. The margin under the
+task list stays, so a Tasks view with no tasks still shows `+ /task`.
+
+**Known gaps.** Packets reach the band only as fresh as the teams page's last read of them.
+Plan rows are spliced only into the Tasks view.
+
 **Traffic is threaded (ruled and built 2026-09-24).** Measured on the owner's screen, one
 question to three members was twelve rows at the bottom of an empty column: the question three
 times, three wakes, three replies cut to two words, the manager's wake and two finishings, with
@@ -315,7 +365,8 @@ nothing saying which reply answered which question. So:
   asking, the wake that started it, a failure to wake it) answer the same line. `team_send`'s
   answer carries the number too. Entries written before this answer nothing and read as
   threads of their own; the field travels in the entry's JSON, so `--host` needs nothing new.
-- **The rail is threads, the newest activity at the top**, straight under the header with no
+- **The rail was threads, the newest activity at the top** (superseded by **One side
+  column** above, where a thread is one row), straight under the header with no
   space above; inside a thread everything is in the order it happened. A thread is a header
   (`◆ manager → @agent @checking @review  do  2m`, `+2` for handles that do not fit, never the
   tag), the message on its own dim line, and the answers as a tree (`├ @checking  ✓ Status
@@ -1045,7 +1096,7 @@ or `busy for <team>` (`MemberState.ReportsTo`).
   the message box. The pane hosts a real conversation whose box takes every plain key, so the
   page's letters (`s c w n o m r d u`) and arrows work only once the person has stepped onto
   the buttons; without a manager in the pane they work at once.
-- **The Traffic rail is folded on this page** (`alt+l` unfolds it), because the teams rail has
+- **The side column is folded on this page** (`alt+l` unfolds it), because the teams rail has
   the left edge and the pane is narrower than a conversation's own screen.
 - **Choosing a team with a manager brings that manager's conversation in front.** It is the
   person's own selection, so this is not focus moving by itself; the conversation they were in

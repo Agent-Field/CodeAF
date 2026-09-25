@@ -128,10 +128,10 @@ go.
 
 **The manager's conversation.** Under all of that is the team manager's own conversation, the
 real one, with its transcript, its prompts and its message box, which says
-`to ◆ harbor manager`. Typing talks to the manager. The Traffic rail is folded on this page,
-because the teams rail already has the left; `alt+l` or its grip unfolds it.
-A press on a Traffic row goes to that member's conversation, off the page, exactly as it does
-in the conversation's own screen.
+`to ◆ harbor manager`. Typing talks to the manager. The conversation's right-hand column
+(`Tasks` and `Traffic`) is folded on this page, because the teams rail already has the left;
+`alt+l` or its edge unfolds it. A press on a handle in the Traffic goes to that member's
+conversation, off the page, exactly as it does in the conversation's own screen.
 
 While the manager's conversation is on its way in, the pane says `opening ◆ harbor's
 manager…`. It never waits silently: if the conversation cannot be opened, or has not answered
