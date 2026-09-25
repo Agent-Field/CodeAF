@@ -800,7 +800,7 @@ func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	a := placeApp(t)
 	for _, width := range []int{80, 120, 200} {
 		bar := plain(a.placeTabBar(width, false, a.pal))
-		if !strings.Contains(bar, "home   chats   sessions   spend   settings") {
+		if !strings.Contains(bar, "home    chats    sessions    spend    settings") {
 			t.Fatalf("at %d columns the bar is not the four places in order: %q", width, bar)
 		}
 		for _, id := range []page{pageStanding, pageMemory, pageSearch} {
@@ -812,7 +812,7 @@ func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	// AND A ROOM OFF THE BAR IS ON IT WHILE YOU STAND IN IT. A bar with no word
 	// lit is a bar that does not know where you are.
 	walkTo(t, a, pageMemory)
-	if bar := plain(a.placeTabBar(120, false, a.pal)); !strings.Contains(bar, "settings   memory") {
+	if bar := plain(a.placeTabBar(120, false, a.pal)); !strings.Contains(bar, "settings    memory") {
 		t.Fatalf("standing in memory, the bar does not say so: %q", bar)
 	}
 }

@@ -586,8 +586,18 @@ func (a *app) placeCount(id page) int {
 // one you are standing in wearing the band, and a number beside any place that
 // has something new in it.
 //
+// ONE TOP BAR (ruled 2026-09-24). The places bar and the chat strip are one row
+// in one place: the same y ([placeTabRow], the strip's row), the first word at
+// the same x ([placeBarLead] is the strip's [headLabelAt]), the same air between
+// two items ([placeBarGap], the strip's gap after Home and after the chip), and
+// the same ground on the current item ([activeGround], the strip's tab in
+// front). The strip's geometry was kept and this bar moved to it: the strip is
+// the row a person spends the day on, its grounded chips and close marks need
+// the two cells of air to read as separate things, and five short words have
+// the room to spare. [TestOneTopBarPlacesAndChatsShareGeometry] pins it.
+//
 // IT IS [sheetTabBar] WITH THE TITLES PASSED IN, and it is drawn with that
-// function's own geometry — [tabLead], [tabGap], [tabPad] — for the reason that
+// function's chip, [tabPad], for the reason that
 // function's comment already gives: "this panel IS a tab bar — the same object
 // the task strip is, drawn the same way, so that 'which page am I on' is one
 // visual question across the app rather than two". The settings panel keeps its
@@ -629,13 +639,11 @@ func (a *app) placeCount(id page) int {
 // are shown where the keys are.
 func (a *app) placeTabBar(width int, numbered bool, pal palette) string {
 	every := func(page) bool { return true }
-	if full, spans, ok := a.tabBarAt(width, numbered, pal, every, tabGap, 0); ok {
-		a.tabs = spans
-		return a.placeBarMachine(full, width, pal)
-	}
-	if tight, spans, ok := a.tabBarAt(width, numbered, pal, every, 0, 0); ok {
-		a.tabs = spans
-		return a.placeBarMachine(tight, width, pal)
+	for gap := placeBarGap; gap >= 0; gap-- {
+		if full, spans, ok := a.tabBarAt(width, numbered, pal, every, gap, 0); ok {
+			a.tabs = spans
+			return a.placeBarMachine(full, width, pal)
+		}
 	}
 	keep, elided := a.barWordsAt(width, numbered)
 	some, spans, _ := a.tabBarAt(width, numbered, pal, func(id page) bool { return keep[id] }, 0, elided)
@@ -712,7 +720,7 @@ func (a *app) barWordsAt(width int, numbered bool) (map[page]bool, int) {
 	shown := barPages(a.page, numbered)
 	cost := func(id page) int { return ansi.StringWidth(a.barChipWord(id, numbered)) + tabPadCols }
 	keep := make(map[page]bool, len(shown))
-	spent := tabLead
+	spent := placeBarLead
 	for _, id := range shown {
 		if a.barKeeps(id) || a.placeCount(id) > 0 {
 			keep[id] = true
@@ -776,12 +784,12 @@ func (a *app) placeBarMachine(bar string, width int, pal palette) string {
 	}
 	word := placeMachineLead + name
 	used, room := ansi.StringWidth(bar), ansi.StringWidth(word)
-	// tabLead's worth of air at each end, and tabGap between the last chip and
-	// the name, so the row breathes the way every other row of this bar does.
-	if used+tabGap+room+tabLead > width {
+	// placeBarLead's worth of air at each end, and placeBarGap between the last
+	// chip and the name, so the row breathes the way every other row of this bar does.
+	if used+placeBarGap+room+placeBarLead > width {
 		return bar
 	}
-	return bar + strings.Repeat(" ", width-used-room-tabLead) + pal.dim(word)
+	return bar + strings.Repeat(" ", width-used-room-placeBarLead) + pal.dim(word)
 }
 
 // barKeeps is the word the ladder may never give up: the place you are standing
@@ -795,6 +803,13 @@ func (a *app) placeBarMachine(bar string, width int, pal palette) string {
 func (a *app) barKeeps(id page) bool {
 	return id == a.page || (a.bar.on && id == a.bar.at)
 }
+
+// placeBarLead is the cell the bar's first chip starts in, one cell before its
+// first word, so the word lands where the chat strip's first word does.
+const placeBarLead = headLabelAt
+
+// placeBarGap is the air between two chips on the bar: the chat strip's.
+const placeBarGap = 2
 
 // placeTabSpan is where one place's CHIP sits on the bar, so the draw and the
 // press agree about it. It is the settings panel's [tabSpan] with the place it
@@ -818,10 +833,10 @@ type placeTabSpan struct {
 // gives up a word, and `elided` is how many places are not on this bar at all —
 // drawn as [barMoreWord] at the end of the row, in the cells that are left.
 func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bool, gap, elided int) (string, []placeTabSpan, bool) {
-	line, plain := strings.Repeat(" ", tabLead), strings.Repeat(" ", tabLead)
+	line, plain := strings.Repeat(" ", placeBarLead), strings.Repeat(" ", placeBarLead)
 	shown := barPages(a.page, numbered)
 	spans := make([]placeTabSpan, 0, len(shown))
-	at, first := tabLead, true
+	at, first := placeBarLead, true
 	for _, id := range shown {
 		if !keep(id) {
 			continue
@@ -854,7 +869,7 @@ func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bo
 			// one word, only in the tab bar", and the accent on a place is spent
 			// on the two live states and on nothing else (styles.go's THE
 			// ONE-ACCENT LAW). The band under it is what says "here".
-			line += pal.selected(pal.bold(pal.ink(chip)), band)
+			line += activeGround(pal, chip)
 		case id == a.tabHover:
 			// AND THE POINTER LIFTS THE WORD AND DOES NOTHING ELSE: the selected
 			// word's own ink and weight, with no band under it. A word that grew a

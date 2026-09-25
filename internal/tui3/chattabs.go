@@ -1410,9 +1410,14 @@ func (a *app) tabShutKey(key string) {
 
 // tabActivePaint gives the chosen tab a full contrasting surface, including
 // its close target. Plain terminals retain the existing bracket selection.
-func (a *app) tabActivePaint(word string) string {
-	if a.pal.profile < tokens.ANSI256 {
-		return a.pal.bold(word)
+func (a *app) tabActivePaint(word string) string { return activeGround(a.pal, word) }
+
+// activeGround is the current item's ground on the one top bar: the chat
+// strip's tab in front and the place you are standing in wear the same one.
+// Plain terminals keep the bold.
+func activeGround(pal palette, word string) string {
+	if pal.profile < tokens.ANSI256 {
+		return pal.bold(word)
 	}
-	return a.pal.background(a.pal.bold(a.pal.paint(ansi.Strip(word), a.pal.ramp.selected)), 0, a.pal.ramp.ink)
+	return pal.background(pal.bold(pal.paint(ansi.Strip(word), pal.ramp.selected)), 0, pal.ramp.ink)
 }
