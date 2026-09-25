@@ -466,13 +466,19 @@ const standingCadenceMark = " · "
 
 // StandingPlainLabel is a label with its cadence removed. A label that carries
 // none is returned as it is.
+//
+// A REMINDER'S WHEN IS THE WHOLE TAIL, including a clock joined on with the
+// same mark a repeating check uses between its verb and its cadence. "Remind
+// me in 1 minute · 07:35" drops to "Remind me", not to "Remind me in 1 minute":
+// the mark inside the when is part of the when, and a narrow row still loses
+// the when before it cuts a character.
 func StandingPlainLabel(label string) string {
-	if at := strings.Index(label, standingCadenceMark); at > 0 {
-		return label[:at]
-	}
 	const stem = "Remind me "
 	if strings.HasPrefix(label, stem) && len(label) > len(stem) {
 		return "Remind me"
+	}
+	if at := strings.Index(label, standingCadenceMark); at > 0 {
+		return label[:at]
 	}
 	return label
 }
