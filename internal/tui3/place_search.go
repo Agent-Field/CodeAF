@@ -556,6 +556,8 @@ const (
 // hint is WHAT THE ROW UNDER THE CURSOR CAN BE ASKED FOR (pages.go's
 // [place.hint]) — and on the teaching page and the no-hit line there is no row,
 // so the foot says only the two things that are true there.
+func (placeSearch) about() string { return "search every conversation" }
+
 func (placeSearch) hint(a *app) string {
 	if a.search.reading.foldAt(a.search.cursor) {
 		return foldEnterWord(a.search.unfolded) + " · ↑↓ pick · type to search · esc clears the words"

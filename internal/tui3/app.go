@@ -2174,15 +2174,19 @@ type app struct {
 	// so the flags are gone and the frame, the keyboard, the pointer and the tab
 	// bar all read this.
 	page page
-	// tabs and tabRow are WHERE THE TAB BAR WAS LAST PAINTED — one span per chip
-	// that survived the width ladder, and the row of the terminal the bar landed
-	// on (-1 when a short frame cut it off). They are written by the draw
-	// (pages.go's [placeFrameWithBar]) and read by the press, which is the same
-	// bargain every hit map on this surface strikes: a click resolves against
-	// what was actually drawn, never against what a second computation thinks
-	// was drawn.
+	// tabs and tabRow are WHERE THE NAV WAS LAST PAINTED: one span per place's
+	// button that survived the width ladder, and the row of the terminal the
+	// nav landed on (-1 on a frame with no head). They are written by the draw
+	// (head.go's [app.headRows], topnav.go's [app.navLine]) and read by the
+	// press, which is the same bargain every hit map on this surface strikes: a
+	// click resolves against what was actually drawn, never against what a
+	// second computation thinks was drawn.
 	tabs   []placeTabSpan
 	tabRow int
+	// navMemo is the nav's row as it was last laid out, and navMore is its
+	// fold, `more ▾`, and the menu of places behind it (topnav.go, navmore.go).
+	navMemo navMemo
+	navMore navMore
 	// boxRow and boxRows are WHERE A PLACE'S COMPOSER WAS LAST PAINTED — the row
 	// its first line landed on and how many lines it took — written by the same
 	// draw and read by the same press, on [app.chatTabs]'s bargain exactly. A click
@@ -2204,9 +2208,9 @@ type app struct {
 	// answers to one question.
 	bar barCursor
 	// tabHover is the place whose word the POINTER is resting on, and [pageNone]
-	// — the zero value — is "the pointer is not on the bar at all". It is what
-	// lifts one word's ink by one tier and changes nothing else on the frame
-	// (placemouse.go's [app.placeTabHover]).
+	// (the zero value) is "the pointer is not on the nav at all". It is what
+	// puts one word on the pointer's ground and changes nothing else on the
+	// frame (topnav.go's [app.navHover]).
 	tabHover page
 	// searchArm is how the search place's QUIET INTERVAL is armed, and nil — the
 	// real 150ms timer — everywhere but a test (place_search.go's
@@ -3775,11 +3779,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.questionDialogWheel(msg) {
 			return a, nil
 		}
-		// THE TAB BAR IS READ BEFORE EVERY PLACE'S OWN ROWS, exactly as it is for
-		// the press: it is the router's row, drawn on all seven places in the same
-		// cells, so a wheel answered by the place under it would scroll a list for
-		// a gesture made over a row that is not that list's. Over the bar the
-		// wheel walks the PLACES, one room a tick (placemouse.go's
+		// THE NAV IS READ BEFORE EVERY PLACE'S OWN ROWS, exactly as it is for
+		// the press: it is the router's row, drawn on every page in the same
+		// cells, so a wheel answered by the place under it would scroll a list
+		// for a gesture made over a row that is not that list's. Over the nav on
+		// a place the wheel walks the PLACES, one room a tick (placemouse.go's
 		// [app.placeTabWheel]).
 		if cmd, took := a.placeTabWheel(msg.Mouse().Y, placeWheelDelta(msg.Mouse().Button)); took {
 			return a, cmd
@@ -3955,6 +3959,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.teamMenu.on && msg.Mouse().Button == tea.MouseLeft {
 			return a, a.teamMenuPress(msg.Mouse().X, msg.Mouse().Y)
 		}
+		// AND THE NAV'S FOLD MENU, on the same terms (navmore.go).
+		if a.navMore.on && msg.Mouse().Button == tea.MouseLeft {
+			return a, a.navMorePress(msg.Mouse().X, msg.Mouse().Y)
+		}
 		// The move picker, over everything, and then a team's card own the
 		// press while they are up, on the same terms (teammove.go,
 		// teamsheet.go).
@@ -4006,13 +4014,16 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		if msg.Mouse().Button == tea.MouseLeft {
-			// THE TAB BAR IS READ BEFORE EVERY PLACE'S OWN ROWS, because it is
-			// the router's row and not any place's: it is drawn on every one of
-			// them, in the same cells, and a press answered by the place under it
-			// would be the one row of the frame that means something different
-			// depending on which room you happen to be standing in
-			// (placemouse.go's [app.placeTabPress]).
-			if cmd, took := a.placeTabPress(msg.Mouse().X, msg.Mouse().Y); took {
+			// THE HEAD IS READ BEFORE EVERY PAGE'S OWN ROWS, because it is the
+			// router's and not any page's: the nav and the strip are drawn on
+			// every one of them, in the same cells, and a press answered by the
+			// page under them would be the one row of the frame that means
+			// something different depending on where you happen to be standing
+			// (topnav.go's [app.navPress] and [app.headStripPress]).
+			if cmd, took := a.navPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
+			if cmd, took := a.headStripPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
 			// AND HOME'S RULE IS READ BEFORE HOME'S OWN ROWS, on the tab bar's
@@ -4369,6 +4380,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.teamMenuMotion(msg.Mouse().X, msg.Mouse().Y)
 			return a, nil
 		}
+		if a.navMore.on {
+			a.navMoreMotion(msg.Mouse().X, msg.Mouse().Y)
+			return a, nil
+		}
 		if a.tmove.on {
 			a.teamMoveMotion(msg.Mouse().X, msg.Mouse().Y)
 			return a, nil
@@ -4423,12 +4438,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Mouse().Button == tea.MouseLeft && a.dragMotion(msg.Mouse().X, msg.Mouse().Y) {
 			return a, nil
 		}
-		// AND THE TAB BAR IS READ BEFORE EVERY PLACE'S OWN ROWS HERE TOO, for the
-		// press's own reason: the bar is the router's row and means the same thing
-		// on all seven places, so the word under the pointer lifts wherever a
-		// person is standing (placemouse.go's [app.placeTabHover]).
+		// AND THE HEAD IS READ BEFORE EVERY PAGE'S OWN ROWS HERE TOO, for the
+		// press's own reason: the nav and the strip are the router's rows and
+		// mean the same thing on every page, so the button under the pointer
+		// takes its ground wherever a person is standing (topnav.go's
+		// [app.headHover]).
 		a.hoverDraftSeam(msg.Mouse().X, msg.Mouse().Y)
-		if a.placeTabHover(msg.Mouse().X, msg.Mouse().Y) {
+		if a.headHover(msg.Mouse().X, msg.Mouse().Y) {
 			return a, nil
 		}
 		if a.at(pageSettings) {

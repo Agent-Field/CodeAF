@@ -2171,8 +2171,8 @@ to filter, `↑↓` to walk, `enter` to use it, `esc` to go back to the layer.
 
 **Press `esc` to back out one layer at a time until Home.** `/home` opens it too.
 
-**There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the six words on
-the tab bar, `home  teams  chats  sessions  spend  settings`, and each answers to its position there,
+**There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the six places on
+the top line, `home  teams  chats  sessions  spend  settings`, and each answers to its position there,
 `alt+1` through `alt+6`. **`alt+7`, `alt+8` and `alt+9` are kept**, on the three places that
 are off the bar — standing, memory and search — so those keys still open a room rather than
 doing nothing; `alt+.` draws them all with their numbers. `alt+2` is the teams page, and
@@ -2265,9 +2265,9 @@ not on this chord — it is the `thinking` row of `/settings`, and *alt+e — ho
 thing you are looking at thinks* says why.
 
 With the mouse: a click puts the cursor on a row and a second click on that row opens it.
-The wheel walks the list three rows a turn, and the **tab bar above the panels is a
-control** — clicking a place's word goes there, and clicking a gap between two words does
-nothing.
+The wheel walks the list three rows a turn, and the **places on the top line are
+controls**: clicking a place's word, or the cell either side of it, goes there, and clicking
+the air around the words does nothing.
 
 **Under 60 columns those two clicks are one.** At phone width home is an inbox and a
 row's card is a full-frame sheet, so a tap selects and opens in one gesture; the sheet's
@@ -2326,9 +2326,9 @@ to it. `ctrl+c` does not close home — it quits codeaf, with home still up.
 
 ## The tab bar is a row the cursor can stand on — ↑ off the top row, and ←/→ along the words
 
-**On every place, `↑` from the first row of the page lands the cursor on the tab bar** —
-the row of six words under the top line (seven while you stand in standing, memory or
-search, whose word is drawn after the six). The word you are standing in wears the cursor's
+**On every place, `↑` from the first row of the page lands the cursor on the tab bar**,
+the six place words on the top line after the `codeaf` wordmark (seven while you stand in
+standing, memory or search, whose word is drawn after the six). The word you are standing in wears the cursor's
 band there instead of its usual mark, and five keys mean something on that row:
 
 | Chord | What it does while the cursor is on the bar |
@@ -2337,7 +2337,7 @@ band there instead of its usual mark, and five keys mean something on that row:
 | `enter` | go into the place under the cursor |
 | `↓` | the same — go into the place under the cursor |
 | `esc` | back into the page, on the row you walked up from. It does **not** close the place |
-| `↑` | nothing. Above the bar is the top line, which is a reading rather than a control |
+| `↑` | nothing. The bar is on the top line, and there is nothing above it |
 
 Everything else means exactly what it means everywhere else: `tab` and `shift+tab` are the
 next and previous place, `alt+1` … `alt+9` jump, `alt+.` draws the map, and **any printable
@@ -2873,14 +2873,13 @@ status line says what was copied instead of opening anything. See "selecting tex
 your mouse" above.
 
 **There is nothing under the pointer.** A click on empty space does nothing anywhere on
-this surface, including the gap between two words of the tab bar and the blank rows of a
-task's page. A click in copy mode acts on nothing at all, because those rows are a frozen
+this surface, including the air around the place words on the top line and the blank rows of
+a task's page. A click in copy mode acts on nothing at all, because those rows are a frozen
 snapshot.
 
-**The terminal is too narrow for the word you are aiming at.** The tab bar gives up words
-as the frame narrows, and at its narrowest it carries only the place you are standing in —
-so on a narrow window there is no other place-word on screen to click. `tab`, `shift+tab`
-and `alt+1`…`alt+9` still go everywhere.
+**The terminal is too narrow for the word you are aiming at.** The top line folds its
+trailing places into `more ▾` as the frame narrows; click `more ▾` and pick the place from
+its menu. `tab`, `shift+tab` and `alt+1`…`alt+9` still go everywhere.
 
 **A file path is your terminal's click, not codeaf's** — usually **cmd+click**
 (ctrl+click on Linux). If a plain click on a path does nothing, that is why.

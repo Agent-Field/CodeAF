@@ -40,7 +40,7 @@ func headPanel(a *app) string { return headRow(a) + "\n" + headFactsRow(a) }
 // tabsRowOf reads the tab labels inside the header's optional vertical padding.
 func tabsRowOf(a *app) string {
 	rows := strings.Split(frame(a), "\n")
-	at := placeTabRow
+	at := tabStripRow
 	if at >= len(rows) {
 		return ""
 	}

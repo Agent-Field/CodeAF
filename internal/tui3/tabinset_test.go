@@ -77,11 +77,11 @@ func TestTabInsetCellsKeepTheirNavigationAndCloseOwnership(t *testing.T) {
 		if closeIt {
 			x, want = close.to-1, tabClose
 		}
-		hit, ok := a.tabAt(x, placeTabRow)
+		hit, ok := a.tabAt(x, tabStripRow)
 		if !ok || hit.kind != want || hit.tab.word != word {
 			t.Fatalf("inset maps to wrong target: %+v", hit)
 		}
-		cmd, took := a.tabPress(x, placeTabRow)
+		cmd, took := a.tabPress(x, tabStripRow)
 		if !took {
 			t.Fatal("inset click fell through")
 		}

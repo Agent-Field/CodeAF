@@ -10,14 +10,15 @@ import (
 // Three gestures, one law each, and every one of them is the same law on all
 // seven places:
 //
-//	a press on a tab word   goes to that place
+//	a press on a tab word   goes to that place (topnav.go's [app.navPress])
 //	a press on a body row   is `enter` on it: the cursor lands and the row
 //	                        opens, and a click never spends (pages.go's
 //	                        [place.press])
 //	the pointer resting     previews the row it is over, and moves nothing —
-//	                        over a tab word, that preview is the word's own ink
+//	                        over a tab word, that preview is the word's
+//	                        hover ground (topnav.go's [app.navHover])
 //	the wheel               walks the cursor, three rows a tick, and over the
-//	                        tab bar walks the places, one room a tick
+//	                        nav walks the places, one room a tick
 //
 // THIS FILE IS THE ARITHMETIC AND NEVER THE PLACES. Which place answers which
 // gesture is pages.go's — it is the one file that may know them all by name —
@@ -30,13 +31,6 @@ import (
 // have been painted: the tab bar gives up words as the frame narrows, and a
 // body scrolls, so a span or a line computed independently would open the wrong
 // room or act on the wrong row exactly when a person could not tell why.
-
-// placeTabRow is the row of the frame the tab bar is drawn on: under the pulse
-// and over the rule (pages.go's [placeFrame] draws the ladder). The frame
-// records where it actually landed in [app.tabRow], because a frame too short
-// for its own contents drops it — this is the number that is true on every
-// frame that has one.
-const placeTabRow = 1
 
 // placeWheelRows is how far one turn of the wheel walks a place's cursor. It is
 // three because three is what every other list on this surface moves by
@@ -57,77 +51,8 @@ func placeWheelDelta(button tea.MouseButton) int {
 	return 0
 }
 
-// placeTabPress is a press on the tab bar: the place whose chip it landed in.
-//
-// A TAB WORD IS A DOOR. The bar names seven rooms and bands the one you are
-// standing in; a bar that answered a press with nothing would be seven labels,
-// which is what the owner met in the built binary. The gap between two chips
-// belongs to no room and is swallowed — a bar that rounded a miss to its
-// nearest neighbour would open the wrong place for a one-cell slip.
-//
-// AND PRESSING THE PLACE YOU ARE ALREADY IN DOES NOTHING AT ALL. Going there is
-// closing and reopening it, which throws away the filter somebody typed and the
-// row they were standing on; pressing where you are standing is not a gesture.
-func (a *app) placeTabPress(x, y int) (tea.Cmd, bool) {
-	// ROW ZERO IS THE PULSE AND CAN NEVER BE THE BAR, so anything under one is
-	// "no frame has drawn a bar yet" — the state a window is in before its first
-	// paint, and the state [app.frame] puts it back into for every surface that
-	// does not go through [placeFrame].
-	if !a.pageShowing() || a.tabRow < 1 || y != a.tabRow {
-		return nil, false
-	}
-	for _, span := range a.tabs {
-		if x < span.from || x >= span.to {
-			continue
-		}
-		if span.id == a.page {
-			return nil, true
-		}
-		return a.showPage(span.id), true
-	}
-	// THE REST OF THE ROW IS STILL THE BAR'S. A press in the gap, or out past
-	// the last chip, is a press on a row that has nothing under it — swallowing
-	// it is what stops it falling through to a body row it visually is not.
-	return nil, true
-}
-
-// placeTabHover is the pointer resting over the tab bar: THE WORD UNDER IT LIFTS
-// ONE INK TIER AND NOTHING ELSE ON THE FRAME MOVES.
-//
-// A TAB WORD IS A DOOR AND A DOOR SHOULD LOOK BACK. The bar answered a press
-// ([app.placeTabPress]) and said nothing at all while a pointer crossed it, so
-// seven words that open seven rooms read as a label strip until somebody
-// gambled a click on one. The lift is the selected word's own ink and weight
-// with no band under it (pages.go's [app.tabBarAt]) — a band would make the
-// hovered word look like the room a person is standing in, and a bar with two
-// grounds on it says nothing clearly.
-//
-// Hovering a tab changes no cursor, place or window. Clicking opens the place;
-// leaving the bar puts the ink back.
-func (a *app) placeTabHover(x, y int) bool {
-	if !a.pageShowing() || a.tabRow < 1 || y != a.tabRow {
-		// THE POINTER LEAVING THE ROW IS NEWS TOO, and it is the half that is easy
-		// to forget: a word left lifted after the hand moved away is a door that
-		// claims to be under a pointer that is somewhere else.
-		a.barHover(pageNone)
-		return false
-	}
-	under := pageNone
-	for _, span := range a.tabs {
-		if x >= span.from && x < span.to {
-			under = span.id
-			break
-		}
-	}
-	a.barHover(under)
-	// THE ROW IS THE BAR'S WHETHER OR NOT A WORD WAS UNDER THE POINTER, for
-	// [app.placeTabPress]'s reason: the gap between two chips belongs to no room,
-	// and letting it fall through would light a body row the pointer visually is
-	// not on.
-	return true
-}
-
-// placeTabWheel is the wheel turned over the tab bar: IT WALKS THE PLACES.
+// placeTabWheel is the wheel turned over the nav's row on a place: IT WALKS
+// THE PLACES.
 //
 // The wheel means "the next one of these" everywhere else on this surface — it
 // walks a list's cursor, three rows a tick (placeWheelRows) — and over a row
@@ -139,7 +64,7 @@ func (a *app) placeTabHover(x, y int) bool {
 // open two rooms nobody asked to see on its way to the third, and each of those
 // openings closes the last room and throws away its filter.
 func (a *app) placeTabWheel(y int, delta int) (tea.Cmd, bool) {
-	if !a.pageShowing() || a.tabRow < 1 || y != a.tabRow || delta == 0 {
+	if !a.pageShowing() || a.tabRow < 0 || y != a.tabRow || delta == 0 {
 		return nil, false
 	}
 	return a.walkPage(delta < 0), true

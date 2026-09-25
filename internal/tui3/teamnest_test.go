@@ -40,9 +40,12 @@ func nestLab(t *testing.T) (a *app, harbor, orbit, dock string) {
 }
 
 // nestRow is the frame row that holds want, -1 for none.
+//
+// The head is skipped: the strip of chats is on every page, and its team chip
+// reads `● harbor ▾` over the rail's own `● harbor`.
 func nestRow(a *app, want string) int {
 	for y, l := range strings.Split(teamsFrameText(a), "\n") {
-		if strings.Contains(l, want) {
+		if y >= placeHeadRows && strings.Contains(l, want) {
 			return y
 		}
 	}

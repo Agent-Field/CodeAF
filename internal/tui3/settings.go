@@ -2796,9 +2796,7 @@ func (a *app) sheetFrame(width, height int) ([]string, []sheetHit, int, int) {
 	// row is gone — the place tab bar above says `settings` — and so is its keys
 	// line, which is the one hint every place shares now. ITS OWN TAB BAR STAYS,
 	// as the first row of its body, and the two bars are not a repetition: the
-	// upper one is the seven places and the lower one is this place's sections.
-	// The panel is where [placeTabBar] was lifted from, so they are drawn by the
-	// same geometry and read as one object at two scales.
+	// nav at the top is the places and this one is this place's sections.
 	s := &a.sheet
 	pal := a.pal
 	lines, hits, caretX, caretY := placeFrame(a, width, height,
@@ -2899,9 +2897,9 @@ func tabChipCols(title string) int { return ansi.StringWidth(title) + tabPadCols
 // account, were also unreachable by eye: nobody discovers a tab they have never
 // seen.
 //
-// SCROLLING, NOT COLLAPSING, AND HERE IS WHY. The place bar solves the same
-// squeeze by giving words up in a stated order until only the word you are
-// standing in is left ([app.placeTabBar]'s width ladder), and that is right
+// SCROLLING, NOT COLLAPSING, AND HERE IS WHY. The nav solves the same squeeze
+// by folding words into `more ▾` in a stated order until only the word you are
+// standing in is left (topnav.go's width ladder), and that is right
 // THERE because its words are rooms — each one is a door you reach by name, the
 // bar is a list of the ones worth naming, and a room with something new in it
 // earns its cells over a room with nothing. These nine are not a list of doors;

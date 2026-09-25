@@ -38,7 +38,7 @@ strip's `+`. The dock is a one-row map of every open conversation coloured by st
 a dim word `chats` in front of the squares. A click on a square switches to that
 conversation without opening the wall. A click on `chats` or on `▦` opens the wall. The
 pointer explains the piece it rests on: `Go to <title> · running · click` (or `waiting on
-you`, or `idle`), `<title> · you are here` on the square in front, and `Every open conversation, and your teams · alt+v` on the word, on `▦` and on
+you`, or `idle`), `<title> · you are here` on the square in front, and `The grid of your open tabs, and your teams · alt+v` on the word, on `▦` and on
 `▦ All`: with no team yet it is the only door on the strip that leads to making one. The word is the first thing dropped when the row is too
 narrow. The squares stay, then fewer of them, then the dock is not drawn. Amber is only
 the square that is waiting on you.
@@ -120,10 +120,10 @@ things by the name they remember.
 
 **Where teams show.** Dots before a tile's title; a segmented Teams row on the wall; when a
 team is shown, a `● name ▾` chip on the tab strip and the rule under it in the team's
-hue. The strip reads `home   ● name ▾   ◆ Manager   tabs…   +   ▦ All`: home is a fixed door and
-stands first, the chip filters the tabs so it sits right before them, and the manager's place
-follows it; as the row narrows home goes first, then the chip, never the tab in front (ruled
-2026-09-24). Showing a team narrows the strip to its members open in this window, plus the tab in
+hue. The strip reads `● name ▾   ◆ Manager   tabs…   +   ▦ All`: the chip filters the tabs so it
+stands first, right before them, and the manager's place follows it; as the row narrows the
+chip goes, never the tab in front. The strip's `home` piece is gone: home is the first word of
+the nav on the row above (the top nav, below). Showing a team narrows the strip to its members open in this window, plus the tab in
 front (section 1). The chip is the switcher: teams, All, add or remove this conversation, new team, team
 settings. New conversations started while a team is shown join it.
 
@@ -132,18 +132,44 @@ settings` (the owner's order, ruled 2026-09-24; `sessions` is the tasks place's 
 standing, memory and search off the bar. The list is data (`placeOrder` in `pages.go`), and
 the digits follow it: teams `alt+2`, chats `alt+3`, sessions `alt+4`, spend `alt+5`, settings
 `alt+6`, standing `alt+7`, memory `alt+8`, search `alt+9`. `chats` is not a room: a click, its digit or `enter` on it returns to the conversation
-in front, or opens a new chat when none is open. It never wears the current band, `tab` steps
-over it, and `alt+k` stays the switcher that chooses a conversation.
+in front, or opens a new chat when none is open. It is the lit word inside a conversation, `tab`
+steps over it, and `alt+k` stays the switcher that chooses a conversation. Its hint says
+`every conversation, one at a time`, and `▦ All` says `The grid of your open tabs`: the place
+and the grid are two doors, one row apart, and they say so.
 
-**One top bar.** The places bar and the chat strip are one row (ruled 2026-09-24): row 1 under
-the top line, the first word at column 3, two cells of air between two items (four between two
-words, counting each chip's pad), the current item on the strip's front-tab ground, then the
-same rule. Measured before the change at 80, 110 and 160 columns: both on row 1; the strip's
-first word at column 3 with 2 cells between chips, the places' at column 2 with 1, and the
-current place on the ground the strip gives a tab that is not in front. The strip's geometry
-was kept and the places bar moved to it, because the strip is the row a person lives on, its
-grounded chips and close marks need the air to read as separate things, and six short words
-have the room. `TestOneTopBarPlacesAndChatsShareGeometry` pins the row, column and gap on both.
+**The top nav (ruled 2026-09-24, replacing "one top bar").** The places move onto the
+wordmark's row and the strip is on every page, so the head is the same four rows everywhere:
+
+```
+ >● codeaf   home  teams  chats  sessions  spend  settings      3 moving · $1.20  thu 10:31pm
+   ● harbor ▾   ◆ Manager ×   Refactor the rail… ×   openrouter price scrape ×   +   ▦ All
+──────────────────────────────────────────────────────────────────────────────────────────
+```
+
+- Row 0 (`navRow`, topnav.go): one cell of inset, the wordmark, two cells of air, then the place
+  words as buttons that touch (each ` word ` with a one-cell pad either side, so two blank cells
+  between two words), at least two cells, the pulse, one cell of inset. The gaps never change
+  with the width. The current place is lit in the accent (`chats` in a conversation, on the wall
+  and on the work tab); the rest are muted; on a no-colour terminal the lit word wears brackets
+  in its pads. The hover ground covers the pads, the press target is exactly that ground, and a
+  terminal that cannot show a ground puts `·` in the leading pad. The hint line says
+  `alt+N word · what it opens`, read off each place's `about()`.
+- Row 1 (`tabStripRow`): the chat strip on every page. On a place no tab is lit, a press on a
+  tab (or `+`, or the manager's place) leaves the place for that chat, and the chip and
+  `▦ All` open their menu and the grid over it. The strip keeps its own narrowing.
+- The ladder on row 0, in the owner's order: the clock (and `on <machine>` over `--host`), then
+  `moving`, then `want you`, then the allowance, then the trailing places fold one at a time
+  into `more ▾`, and the day's figure is the last clause. The wordmark, the lit place, the
+  bar cursor's word and a counted place never fold. `more ▾` opens a small menu of exactly the
+  folded places with their keys (navmore.go): hover ground, enter or click goes, esc or a press
+  off it closes, and focus never moves anywhere else.
+- Measured on Spark after the change, with a conversation of three tabs in team harbor: at 80
+  columns all six places fit beside `$1.20 / $20`; at 60 `spend` and `settings` fold into
+  `more ▾` beside `$1.20`; at 110 the counts and the money fit and the clock does not; at 160
+  everything fits. The scroll frame's allocation count fell from 229 to 210 under the 230
+  ceiling, because the row is memoised whole (`navMemo`), pulse included.
+- `TestTheHeadIsTheSameFourRowsOnEveryPage`, `TestOneTopNavOnAChatAndOnAPlace` and
+  `TestTheTopLineGivesThingsUpInTheOwnersOrder` pin the rows, the cells and the order.
 
 ## 3. Organize: one button, a proposal, never a silent change
 

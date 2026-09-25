@@ -186,7 +186,6 @@ const (
 	// second door onto a card the legend already names a key for.
 	tabFold
 	tabNew
-	tabHome
 	tabScrollLeft
 	tabScrollRight
 	// tabTeam is the chip at the row's left end naming the team the strip is
@@ -221,7 +220,7 @@ func (h tabHit) door(a *app) bool {
 	switch h.kind {
 	case tabHere:
 		return a.roomOpen() || a.startingChat()
-	case tabOther, tabClose, tabNew, tabHome, tabScrollLeft, tabScrollRight, tabTeam, tabWall, tabManager:
+	case tabOther, tabClose, tabNew, tabScrollLeft, tabScrollRight, tabTeam, tabWall, tabManager:
 		return true
 	}
 	return false
@@ -271,7 +270,6 @@ type tabBar struct {
 	hot     int
 	more    bool
 	newChat bool
-	home    bool
 	tabs    []chatTab
 	line    string
 	hits    []tabHit
@@ -484,7 +482,7 @@ func tabsCapped(tabs []chatTab, prev []string) []chatTab {
 
 // tabsHeight is what the head costs the body region DOWN TO AND INCLUDING THE
 // STRIP: the pulse, and the strip under it on the bar's own row
-// ([placeTabRow]).
+// ([tabStripRow]).
 //
 // IT STANDS DOWN ON THE TWO FLOORS THE CONVERSATION'S BAR STOOD DOWN ON. A frame
 // too narrow for a name and a way out is too narrow for this, and a terminal too
@@ -503,7 +501,7 @@ func (a *app) tabsHeight(width int) int {
 	if width < roomHeadFloor || a.breathingRows() < 2 {
 		return 0
 	}
-	return placeTabRow + 1
+	return tabStripRow + 1
 }
 
 // headSealHeight is the rule and the blank under the strip — the rest of the
@@ -575,6 +573,19 @@ func (a *app) tabsRow(width int) string {
 			tabs = append(tabs, chatTab{word: name, full: name, here: true, start: true})
 		}
 	}
+	// ON A PLACE NO TAB IS LIT. The strip is on every page (head.go), and the
+	// tab in front wears the lit ground because it is the page on screen; on a
+	// place it is not, and a lit tab there would be two answers to where the
+	// person is standing. The nav's lit word is the one answer; a press on
+	// any tab opens its chat (topnav.go's [app.headStripPress]).
+	if a.pageShowing() {
+		if _, ok := a.teamActive(); !ok {
+			tabs = append([]chatTab(nil), tabs...)
+		}
+		for i := range tabs {
+			tabs[i].here = false
+		}
+	}
 	hot := -1
 	if a.hot.kind == hoverTab {
 		hot = a.hot.index
@@ -582,11 +593,14 @@ func (a *app) tabsRow(width int) string {
 	more := a.hopAvailable()
 	chipWord := a.tabTeamWord()
 	room := max(width-headLabelAt, 0)
-	// THE ORDER IS HOME, THE TEAM CHIP, THEN WHAT IT FILTERS: `Home` is a fixed
-	// door and stands first; the chip narrows the tabs, so it sits right before
-	// them, with the manager's place after it. The chip's cells are reserved
-	// first, so a tab is never drawn under it; Home is the first to go when the
-	// row runs short, then the chip, and never the tab in front.
+	// THE ORDER IS THE TEAM CHIP, THEN WHAT IT FILTERS: the chip narrows the
+	// tabs, so it sits right before them, with the manager's place after it.
+	// The chip's cells are reserved first, so a tab is never drawn under it;
+	// the chip goes when the row runs short, and never the tab in front.
+	//
+	// THERE IS NO `home` PIECE ON THIS ROW ANY MORE. It was the strip's way to
+	// home while the places were drawn only on a place; home is the nav's
+	// first word now, on the row over this one on every page (topnav.go).
 	chipW, chipNeed := 0, 0
 	if chipWord != "" {
 		chipNeed = 2*ansi.StringWidth(chipWord) + tabWordFloor + tabCloseCells + tabInsetCells + 8
@@ -594,26 +608,18 @@ func (a *app) tabsRow(width int) string {
 			chipW = ansi.StringWidth(chipWord) + 1
 		}
 	}
-	homeWidth := len(" home ") + 2
-	home := a.homeDoorOpen() && room-homeWidth >= max(chipNeed, tabWordFloor+tabCloseCells+tabInsetCells)
-	if !home {
-		homeWidth = 0
-	}
-	if memo := a.chatTabBar; memo.home == home && memo.newChat == a.canStart() && memo.team == chipWord && memo.wallOn == a.wall.on && memo.menuOn == a.teamMenu.on && memo.same(width, a.inkState, hot, more, tabs) {
+	if memo := a.chatTabBar; memo.newChat == a.canStart() && memo.team == chipWord && memo.wallOn == a.wall.on && memo.menuOn == a.teamMenu.on && memo.same(width, a.inkState, hot, more, tabs) {
 		a.chatTabHits = memo.hits
 		a.wall.chip, a.wall.door = memo.chip, memo.door
 		return memo.line
 	}
 	room -= chipW
-	pieces, hits := a.tabsFit(tabs, room-homeWidth, tabWallCellsAt(width))
-	if len(pieces) == 0 && !home && chipW == 0 {
+	pieces, hits := a.tabsFit(tabs, room, tabWallCellsAt(width))
+	if len(pieces) == 0 && chipW == 0 {
 		// An empty strip still occupies the header row charged to the layout.
 		return strings.Repeat(" ", max(width, 0))
 	}
-	a.chatTabHits = tabsAt(hits, headLabelAt+homeWidth+chipW)
-	if home {
-		a.chatTabHits = append([]tabHit{{span: hudSpan{from: headLabelAt, to: headLabelAt + len(" home ")}, kind: tabHome}}, a.chatTabHits...)
-	}
+	a.chatTabHits = tabsAt(hits, headLabelAt+chipW)
 	// The door is laid out with the tabs, so it follows the new-chat `+`
 	// wherever that lands, and is then kept apart from them.
 	kept := a.chatTabHits[:0]
@@ -626,17 +632,14 @@ func (a *app) tabsRow(width int) string {
 	}
 	a.chatTabHits = kept
 	line := strings.Repeat(" ", headLabelAt)
-	if home {
-		line += a.tabsPaint([]tabPiece{{word: " home ", kind: tabHome}, {word: "  ", quiet: true}})
-	}
 	if chipW > 0 {
-		line += a.tabTeamPaint(chipWord, headLabelAt+homeWidth) + " "
+		line += a.tabTeamPaint(chipWord, headLabelAt) + " "
 	}
 	line += a.tabsPaint(pieces)
 	// THE ROW FILLS THE FRAME, as the pulse over it does, so a door that went
 	// narrower leaves no cells behind it for the last frame's words.
 	line += strings.Repeat(" ", max(width-ansi.StringWidth(line), 0))
-	a.chatTabBar = tabBar{width: width, ink: a.inkState, hot: hot, more: more, newChat: a.canStart(), home: home, line: line, hits: a.chatTabHits,
+	a.chatTabBar = tabBar{width: width, ink: a.inkState, hot: hot, more: more, newChat: a.canStart(), line: line, hits: a.chatTabHits,
 		tabs: append([]chatTab(nil), tabs...), team: chipWord, chip: a.wall.chip, wallOn: a.wall.on, menuOn: a.teamMenu.on, door: a.wall.door}
 	return line
 }
@@ -1014,7 +1017,7 @@ func (a *app) tabsPaint(pieces []tabPiece) string {
 	hot, lit := a.hotTab()
 	line := ""
 	for _, piece := range pieces {
-		on := lit && hot.tab.key == piece.tab.key && hot.tab.start == piece.tab.start && hot.kind != tabFold && hot.kind != tabNew && hot.kind != tabHome && hot.kind != tabScrollLeft && hot.kind != tabScrollRight && hot.kind != tabTeam && hot.kind != tabWall && hot.kind != tabManager
+		on := lit && hot.tab.key == piece.tab.key && hot.tab.start == piece.tab.start && hot.kind != tabFold && hot.kind != tabNew && hot.kind != tabScrollLeft && hot.kind != tabScrollRight && hot.kind != tabTeam && hot.kind != tabWall && hot.kind != tabManager
 		switch {
 		case piece.quiet:
 			line += a.pal.dim(piece.word)
@@ -1028,13 +1031,11 @@ func (a *app) tabsPaint(pieces []tabPiece) string {
 				word = a.pal.underline(word)
 			}
 			line += word
-		case piece.kind == tabFold || piece.kind == tabNew || piece.kind == tabHome || piece.kind == tabScrollLeft || piece.kind == tabScrollRight || piece.kind == tabManager:
+		case piece.kind == tabFold || piece.kind == tabNew || piece.kind == tabScrollLeft || piece.kind == tabScrollRight || piece.kind == tabManager:
 			if lit && hot.kind == piece.kind {
 				word := piece.word
 				if a.pal.profile < tokens.ANSI256 {
 					switch piece.kind {
-					case tabHome:
-						word = a.linearMark("·", ".") + "home "
 					case tabNew:
 						word = a.linearMark("·", ".") + "+ "
 					case tabScrollLeft, tabScrollRight:
@@ -1157,12 +1158,12 @@ func tabsAt(hits []tabHit, from int) []tabHit {
 // ── THE POINTER ─────────────────────────────────────────────────────────────
 
 // tabAt is the piece under a pointer, and whether there is one. It answers only
-// for the strip's own row, which is the bar's row ([placeTabRow]) wherever the
+// for the strip's own row, which is the bar's row ([tabStripRow]) wherever the
 // strip is drawn at all — [app.view] draws it under the pulse and
 // [app.headHeight] charges for both.
 func (a *app) tabAt(x, y int) (tabHit, bool) {
 	width, _ := a.size()
-	if y != placeTabRow || a.tabsHeight(width) == 0 {
+	if y != tabStripRow || a.tabsHeight(width) == 0 {
 		return tabHit{}, false
 	}
 	for _, hit := range a.chatTabHits {
@@ -1204,7 +1205,7 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 	if y < 0 || y >= a.tabsHeight(width) {
 		return nil, false
 	}
-	if y != placeTabRow {
+	if y != tabStripRow {
 		return nil, true
 	}
 	hit, ok := a.tabAt(x, y)
@@ -1218,8 +1219,6 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 	case tabScrollRight:
 		a.tabScroll(1)
 		return nil, true
-	case tabHome:
-		return a.openHome(), true
 	case tabNew:
 		return a.openChatStart(), true
 	case tabManager:
