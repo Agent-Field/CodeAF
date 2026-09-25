@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: crew follow-ups — seat-kept checker ceiling, route pins beside the tier row, landing line at the end
+title: crew follow-ups — checker ceiling by seat, route pins beside the tier row, landing line at the end
 pr: 1518
 surface: [chat, engine, docs]
 invalidates:
