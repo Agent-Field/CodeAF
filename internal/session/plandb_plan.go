@@ -829,7 +829,8 @@ const planCLIBinEnv = "CODEAF_PLANDB_BIN"
 // instead of answering.
 //
 // THE ORDER IS HOW WELL EACH CANDIDATE KNOWS ITSELF: the explicit override
-// first; the running binary, only when it passes the probe (a driver that
+// first; the running codeaf as it registered itself ([SetRunningCLI]),
+// unprobed; the running binary, only when it passes the probe (a driver that
 // routes the door passes — the bench's own binary is how the in-process arm
 // gets a CLI at all); the sibling `plandb` beside the executable, whose own
 // name is the whole contract — cmd/plandb builds it beside bin/codeaf — so
@@ -841,6 +842,15 @@ const planCLIBinEnv = "CODEAF_PLANDB_BIN"
 func resolvePlanCLI(storeDir string) []string {
 	if override := strings.TrimSpace(env.Get(planCLIBinEnv)); override != "" {
 		return []string{override, "plandb"}
+	}
+	// THE RUNNING CODEAF WINS UNPROBED TOO, because it said what it is
+	// ([SetRunningCLI]) and the probe was only ever standing in for that. The
+	// probe is a read beside a store the run is writing, and on 2026-09-25 it met
+	// `database is locked` there: the resolver fell through to the codeaf on the
+	// machine's PATH — an older version, answering this run's plan — and on a
+	// clean devaf install to nothing, which failed the task with the error below.
+	if runningCLI != "" {
+		return []string{runningCLI, "plandb"}
 	}
 	if self, err := os.Executable(); err == nil && !looksLikeTestBinary(self) {
 		if planCLIProbes(self, storeDir) {

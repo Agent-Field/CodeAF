@@ -152,3 +152,28 @@ func TestTheCodeafShimIsTheHarnesssOwnFileNotTheWork(t *testing.T) {
 		t.Fatal("a bin/devaf the work wrote was taken for a harness shim")
 	}
 }
+
+// Contract 1.2 for the plan CLI too, and the race the hand check met: the
+// running codeaf is the worker's `plandb` WITHOUT a probe. The probe runs
+// `<self> plandb status` beside a store the run is writing, and on 2026-09-25 it
+// met `database is locked (SQLITE_BUSY)` there, so the resolver fell through to
+// whatever codeaf the machine's PATH held — an older version on the check
+// machine, and on a clean devaf install nothing at all, which failed the task
+// with `no plandb CLI found`. The codeaf command registered itself, which is
+// the proof the probe was standing in for.
+func TestTheRunningCodeafIsTheWorkersPlandbWithoutAProbe(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv(planCLIBinEnv, "")
+	staleCodeafFirst(t, true)
+	// The running codeaf, caught mid-write: its probe answers busy.
+	busy := writeScript(t, t.TempDir(), "devaf", `if [ "$1" = plandb ] && [ "$2" = status ]; then echo "database is locked" >&2; exit 1; fi`+"\necho RIGHT \"$@\"")
+	previous := runningCLI
+	SetRunningCLI(busy)
+	t.Cleanup(func() { runningCLI = previous })
+
+	agent := newRunBeltWorker(t, effort.None)
+	said := runBeltBash(t, beltBash(t, agent), "plandb task note t-root --note hi")
+	if strings.Contains(said, "WRONG") || !strings.Contains(said, "RIGHT plandb task note") {
+		t.Fatalf("a worker's plandb reached %q, want the running devaf", said)
+	}
+}
