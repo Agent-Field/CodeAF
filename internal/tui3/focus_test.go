@@ -163,20 +163,20 @@ func TestTheRailIsStillTheDoorUnderTheHeader(t *testing.T) {
 	a, _, _ := roomApp(t)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(9, "Mix the audio",
 		session.TaskRunning, session.TaskNotice{})})
-	// TWO FAMILIES OF ONE, EQUALLY URGENT, so the column is in the order the
-	// session admitted them (task.go): node 7 first, node 9 under it. Which is
-	// which is not what this test owns — it owns the OFFSET — but naming them in
-	// the roster's own order is what keeps it about that.
+	// TWO RUNNING TASKS, so the column is newest first under one heading:
+	// node 9, then node 7. Which is which is not what this test owns (it owns
+	// the OFFSET), but naming them in the roster's own order is what keeps it
+	// about that.
 	clickRail(t, a, 0)
-	if a.room == nil || a.room.id != 7 {
-		t.Fatalf("the first rail row did not open node 7: %+v", a.room)
+	if a.room == nil || a.room.id != 9 {
+		t.Fatalf("the first rail row did not open node 9: %+v", a.room)
 	}
-	// Node 9 is drawn under node 7, and the header is above both: a click on the
+	// Node 7 is drawn under node 9, and the header is above both: a click on the
 	// rail's second row has to land a row further down the screen than it did
 	// before the room opened.
 	clickRail(t, a, 1)
-	if a.room == nil || a.room.id != 9 {
-		t.Fatalf("the second rail row did not open node 9 through the header: %+v", a.room)
+	if a.room == nil || a.room.id != 7 {
+		t.Fatalf("the second rail row did not open node 7 through the header: %+v", a.room)
 	}
 }
 

@@ -4024,7 +4024,7 @@ func (a *app) hintWord() string {
 		// column a person closed was empty, ctrl+g still brings it back, and a
 		// standing hint about a roster of nothing is the emptiness law broken in
 		// the one slot a person reads most.
-		return railBackHint
+		return a.sideBackHint()
 	}
 	return ""
 }

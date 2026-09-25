@@ -1,0 +1,169 @@
+package tui3
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/charmbracelet/x/ansi"
+
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+)
+
+// WHAT CAME IN WHILE THE TASKS WERE IN FRONT IS COUNTED ON THE OTHER WORD,
+// `Traffic 2 new`, and when the Traffic comes to the front a thin `new` line
+// stands under it and over what was already seen. The line holds still while
+// the Traffic is read, a row arriving moves neither the header nor the body,
+// and once looked at the word counts everything again.
+func TestTheTrafficSaysWhatIsNewAndHoldsStill(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	a.width, a.height = 160, 40
+	a.welcome.open = false
+	price, _ := trafficHandle(t, a, harbor, "openrouter")
+	rail, _ := trafficHandle(t, a, harbor, "Refactor")
+	trafficAppend(t, a, harbor, teamstore.Entry{Kind: teamstore.KindDirective, From: teamstore.FromManager, To: price, Text: "old work"})
+	trafficReadNow(t, a)
+	_ = railLines(t, a) // the Traffic in front: the old work is seen
+	a.sideSetView(sideTasks)
+	body, cols := a.bodyWidth(), a.railWidth()
+	head := railRowOf(railLines(t, a), sideTasksWord)
+
+	trafficAppend(t, a, harbor,
+		teamstore.Entry{Kind: teamstore.KindDirective, From: teamstore.FromManager, To: rail, Text: "first new work"},
+		teamstore.Entry{Kind: teamstore.KindDirective, From: teamstore.FromManager, To: price, Text: "second new work"},
+	)
+	trafficReadNow(t, a)
+	rows := railLines(t, a)
+	if railRowOf(rows, sideTrafficWord+" 2 "+sideNewWord) != head || a.bodyWidth() != body || a.railWidth() != cols {
+		t.Fatalf("the other word does not count what is new in place (body %d, cols %d):\n%s", a.bodyWidth(), a.railWidth(), strings.Join(rows, "\n"))
+	}
+
+	a.sideSetView(sideTraffic)
+	rows = railLines(t, a)
+	joined := strings.Join(rows, "\n")
+	second, first := railRowOf(rows, "second new work"), railRowOf(rows, "first new work")
+	line, old := railRowOf(rows, "── "+sideNewWord+" ──"), railRowOf(rows, "old work")
+	if railRowOf(rows, sideTrafficWord) != head || second != head+1 || first != second+1 || line != first+1 || old != line+1 {
+		t.Fatalf("the new line does not stand between the new and the seen (%d %d %d %d):\n%s", second, first, line, old, joined)
+	}
+	if strings.Contains(rows[head], sideNewWord) {
+		t.Fatalf("the word still says new with the Traffic in front: %q", rows[head])
+	}
+
+	// A ROW ARRIVING WHILE IT IS READ goes on top; the line and the header
+	// hold, and the body does not move.
+	trafficAppend(t, a, harbor, teamstore.Entry{Kind: teamstore.KindDirective, From: teamstore.FromManager, To: rail, Text: "third new work"})
+	trafficReadNow(t, a)
+	rows = railLines(t, a)
+	if railRowOf(rows, "third new work") != head+1 || railRowOf(rows, "── "+sideNewWord+" ──") != line+1 || railRowOf(rows, sideTrafficWord) != head || a.bodyWidth() != body {
+		t.Fatalf("a row arriving moved the line or the header:\n%s", strings.Join(rows, "\n"))
+	}
+
+	// AND LOOKED AT, IT IS SEEN: away and back, no line.
+	a.sideSetView(sideTasks)
+	a.sideSetView(sideTraffic)
+	if rows := railLines(t, a); railRowOf(rows, "── "+sideNewWord+" ──") >= 0 {
+		t.Fatalf("the line stayed over what was read:\n%s", strings.Join(rows, "\n"))
+	}
+}
+
+// IN A MEMBER'S CHAT THE TRAFFIC IS THAT MEMBER'S MESSAGES, newest first, one
+// line each: what it said is `→ whom`, what it was told is who told it, and
+// what went between two other members is not there. The count on the word is
+// the same set.
+func TestAMembersTrafficIsItsOwnMessages(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	a.width, a.height = 160, 40
+	price, priceKey := trafficHandle(t, a, harbor, "openrouter")
+	rail, _ := trafficHandle(t, a, harbor, "Refactor")
+	trafficAppend(t, a, harbor,
+		teamstore.Entry{Kind: teamstore.KindDirective, From: teamstore.FromManager, To: price, Text: "scrape the prices"},
+		teamstore.Entry{Kind: teamstore.KindDirective, From: teamstore.FromManager, To: rail, Text: "not for price"},
+		teamstore.Entry{Kind: teamstore.KindNote, From: price, To: teamstore.ToManager, Text: "prices are in"},
+		teamstore.Entry{Kind: teamstore.KindNote, From: teamstore.FromManager, To: teamstore.ToEveryone, Text: "all hands"},
+	)
+	trafficReadNow(t, a)
+	spend(t, a, a.trafficGo(priceKey))
+	a.sideSetView(sideTraffic)
+	rows := railLines(t, a)
+	joined := strings.Join(rows, "\n")
+	all := railRowOf(rows, "all hands")
+	said := railRowOf(rows, "prices are in")
+	told := railRowOf(rows, "scrape the prices")
+	if all < 0 || said != all+1 || told != said+1 {
+		t.Fatalf("the member's messages are not newest first, one line each (%d %d %d):\n%s", all, said, told, joined)
+	}
+	if !strings.Contains(rows[said], "→ "+teamManagerGlyph) || !strings.Contains(rows[told], teamManagerGlyph) {
+		t.Fatalf("a row does not say which way it went:\n%s", joined)
+	}
+	if strings.Contains(joined, "not for price") {
+		t.Fatalf("a message between others is in the member's Traffic:\n%s", joined)
+	}
+	if n, _ := a.sideTrafficCount(mustTeam(t, a, harbor), sideKindMember, price); n != 3 {
+		t.Fatalf("the word counts %d, want the member's 3", n)
+	}
+	// A PRESS ON A ROW GOES TO ITS MESSAGE HERE, and nowhere else.
+	x, y := sideRowOn(t, a, railKeyOfReply(t, a, "prices are in"))
+	sideClick(t, a, x, y)
+	if a.frontTabKey() != priceKey {
+		t.Fatalf("a press on the member's own row left its chat for %q", a.frontTabKey())
+	}
+}
+
+// THE GROUND THE POINTER LIGHTS IS THE TARGET THE PRESS HITS. On every row the
+// Traffic draws, laid open and not, the hover at a cell names the row, or the
+// door, that a press at the same cell acts on; the whole row lights for a
+// row, and lighting moves no word of it.
+func TestTheTrafficsHoverGroundIsItsClickTarget(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	a.width, a.height = 160, 40
+	price, _ := trafficHandle(t, a, harbor, "openrouter")
+	rail, _ := trafficHandle(t, a, harbor, "Refactor")
+	q := threadScenario(t, a, harbor, price, rail)
+	a.sideToggleThread(sideThreadKey(harbor, q))
+	a.sideToggleThread(sideThreadKey(harbor, sideGeneral))
+	_ = railLines(t, a)
+	view, _ := a.railDrawnView(a.viewHeight())
+	left := a.railLeft() + ansi.StringWidth(railSeam)
+	checked := 0
+	for i, line := range view {
+		if line.side == nil || line.side.key == sideHeadKey {
+			continue
+		}
+		y := a.topHeight() + i
+		for col := 0; col < a.railRoom(); col++ {
+			a.setHover(left+col, y)
+			door := line.side.doorAt(col)
+			switch {
+			case door >= 0:
+				if a.hot.kind != hoverSide || a.hot.key != line.side.key || a.hot.index != door {
+					t.Fatalf("row %q col %d: the pointer lit %+v, the press hits door %d", line.side.key, col, a.hot, door)
+				}
+			case line.side.pressable():
+				if a.hot.kind != hoverSide || a.hot.key != line.side.key || a.hot.index != -1 {
+					t.Fatalf("row %q col %d: the pointer lit %+v, the press hits the row", line.side.key, col, a.hot)
+				}
+			default:
+				if a.hot.kind == hoverSide {
+					t.Fatalf("row %q col %d lights with nothing to press", line.side.key, col)
+				}
+			}
+			checked++
+		}
+		// THE WHOLE ROW LIGHTS, and the words under the light are the words.
+		if line.side.pressable() {
+			x, _ := sideRowOn(t, a, line.side.key)
+			a.dropHover()
+			before := a.railRows(a.viewHeight())
+			a.setHover(x, y)
+			after := a.railRows(a.viewHeight())
+			y0 := y - a.topHeight()
+			if before[y0] == after[y0] || ansi.Strip(before[y0]) != ansi.Strip(after[y0]) {
+				t.Fatalf("row %q: the hover did not light it, or moved its words:\n%q\n%q", line.side.key, before[y0], after[y0])
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("the Traffic drew no row to point at")
+	}
+	a.dropHover()
+}

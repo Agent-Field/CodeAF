@@ -41,7 +41,7 @@ func TestTheTaskColumnClosesAndReopensOnItsKey(t *testing.T) {
 		t.Fatal("a session with five nodes drew no column to close")
 	}
 	full := a.width
-	if a.bodyWidth() != full-railCols {
+	if a.bodyWidth() != full-sideColsFor(full) {
 		t.Fatalf("the open column is not charged against the conversation: body=%d", a.bodyWidth())
 	}
 
@@ -54,7 +54,7 @@ func TestTheTaskColumnClosesAndReopensOnItsKey(t *testing.T) {
 	// glyph of state, and no task's name anywhere (task.go's [app.railGripRows])
 	// — which is a different thing from the column and is tested as one below.
 	edge := plain(strings.Join(a.railRows(a.viewHeight()), "\n"))
-	for _, gone := range []string{"Ship the port", "Read the law", railStowHint} {
+	for _, gone := range []string{"Ship the port", "Read the law", sideTasksWord} {
 		if strings.Contains(edge, gone) {
 			t.Fatalf("a closed column still drew %q:\n%q", gone, edge)
 		}
@@ -77,7 +77,7 @@ func TestTheTaskColumnClosesAndReopensOnItsKey(t *testing.T) {
 	if !a.railShowing() {
 		t.Fatal("ctrl+g did not bring the column back")
 	}
-	if a.bodyWidth() != full-railCols {
+	if a.bodyWidth() != full-sideColsFor(full) {
 		t.Fatalf("the reopened column is not charged against the conversation: body=%d", a.bodyWidth())
 	}
 	rail := strings.Join(railText(a, a.viewHeight()), "\n")
@@ -88,60 +88,41 @@ func TestTheTaskColumnClosesAndReopensOnItsKey(t *testing.T) {
 	}
 }
 
-// THE TOP CONTROL NAMES THE KEY, AND THE LINE IS A BUTTON. A door that
-// only the keyboard can open is a door half this surface cannot find.
+// THE HEADER NAMES THE KEY, AND THE KEY IS A BUTTON. A door that only the
+// keyboard can open is a door half this surface cannot find.
 func TestTheColumnDrawsItsOwnDoorAndThePressClosesIt(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.profileDir = t.TempDir()
 	railRun(a)
 
 	rows := railText(a, a.viewHeight())
-	if !strings.Contains(strings.Join(rows, "\n"), railStowHint) {
-		t.Fatalf("the column drew no way out of itself:\n%s", strings.Join(rows, "\n"))
-	}
-	// AND THE CHEVRON IS ON IT, pointing the way the column goes. It is the half
-	// of that line the pointer presses, and the words are the half the keyboard
-	// reads (task.go's [app.railDoorLine]).
-	if !strings.Contains(strings.Join(rows, "\n"), railGripOpenGlyph+" "+railStowHint) {
-		t.Fatalf("the column's door carries no chevron:\n%s", strings.Join(rows, "\n"))
+	if !strings.HasSuffix(strings.TrimRight(rows[0], " "), sideHideKey) {
+		t.Fatalf("the column's header names no way out of it: %q", rows[0])
 	}
 	// The paint is asked of the RAW rows: railText strips ANSI for reading, and
 	// an assertion about a palette run on stripped text passes only where the
 	// palette paints nothing.
 	painted := strings.Join(a.railRows(a.viewHeight()), "\n")
-	if !strings.Contains(painted, a.pal.data(railStowKey)) ||
-		!strings.Contains(painted, a.pal.dim(" hide")) {
-		t.Fatalf("the close door does not use the shared hint palette:\n%q", painted)
+	if !strings.Contains(painted, a.pal.dim(sideHideKey)) {
+		t.Fatalf("the key is not in the quiet ink of a hint:\n%q", painted)
 	}
-	// Hiding stays at the top while the task action follows the list.
+	// The header stays at the top while the task action follows the list.
 	lines, _ := a.railView(a.viewHeight())
-	door, task := -1, -1
+	task := -1
 	for i, line := range lines {
-		if line.stow {
-			door = i
-		}
 		if line.door == marginTaskType {
 			task = i
 		}
 	}
-	if door != 0 || task <= door+1 {
-		t.Fatalf("hide row %d is not pinned above the list and task action %d", door, task)
+	if lines[0].side == nil || lines[0].side.key != sideHeadKey || task <= 1 {
+		t.Fatalf("the header is not pinned above the list and task action %d", task)
 	}
 
-	pressed := false
-	for y := a.bodyTop(); y < a.bodyTop()+a.viewHeight(); y++ {
-		if line, ok := a.railLineAt(y); ok && line.stow {
-			drive(t, a, tea.MouseClickMsg{X: a.bodyWidth() + 4, Y: y, Button: tea.MouseLeft})
-			drive(t, a, tea.MouseReleaseMsg{X: a.bodyWidth() + 4, Y: y, Button: tea.MouseLeft})
-			pressed = true
-			break
-		}
-	}
-	if !pressed {
-		t.Fatal("the column's door was drawn on no pressable line")
-	}
+	x, y := sideDoorOf(t, a, sideActHide)
+	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 	if !a.railAway || a.railShowing() {
-		t.Fatal("a press on the door did not close the column")
+		t.Fatal("a press on the key did not close the column")
 	}
 }
 
@@ -161,7 +142,7 @@ func TestAClosedColumnStillSaysWhereTheWorkIs(t *testing.T) {
 	if !a.railAway {
 		t.Fatal("ctrl+g did not close the empty column")
 	}
-	if a.hintWord() == railBackHint {
+	if a.hintWord() == a.sideBackHint() {
 		t.Fatal("a session with no work at all offered the way back to a roster of nothing")
 	}
 	drive(t, a, ctrlG())
@@ -178,8 +159,8 @@ func TestAClosedColumnStillSaysWhereTheWorkIs(t *testing.T) {
 	if !strings.Contains(strip, "Ship the port") {
 		t.Fatalf("the strip named no running node:\n%s", strip)
 	}
-	if got := a.hintWord(); got != railBackHint {
-		t.Fatalf("the legend's hint reads %q, want %q", got, railBackHint)
+	if got := a.hintWord(); got != a.sideBackHint() {
+		t.Fatalf("the legend's hint reads %q, want %q", got, a.sideBackHint())
 	}
 
 	// AND THE STRIP'S OWN DOOR BRINGS THE COLUMN BACK. Asking for the whole
@@ -197,7 +178,7 @@ func TestAClosedColumnStillSaysWhereTheWorkIs(t *testing.T) {
 func TestTheKeyFallsThroughWhereNoRosterIsOnTheFrame(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.profileDir = t.TempDir()
-	// Under railSlimFloor there is no column to lend (task.go's [railColsFor]).
+	// Under railSlimFloor there is no column to lend (sidecol.go's [sideColsFor]).
 	a.width = railSlimFloor - 20
 	railRun(a)
 
@@ -308,7 +289,7 @@ func TestTheClosedColumnLeavesAnEdgeYouCanClick(t *testing.T) {
 	if a.railAway || !a.railShowing() {
 		t.Fatal("pressing the edge did not bring the column back")
 	}
-	if a.bodyWidth() != full-railCols {
+	if a.bodyWidth() != full-sideColsFor(full) {
 		t.Fatalf("the reopened column is not charged against the conversation: body=%d", a.bodyWidth())
 	}
 }
@@ -378,34 +359,20 @@ func TestTheChevronClosesAndOpensTheColumnByPointerAlone(t *testing.T) {
 		t.Fatal("a session with five nodes drew no column")
 	}
 
-	// THE OPEN LEG: the door line lights under the pointer and closes on a press.
-	door := -1
-	for y := a.bodyTop(); y < a.bodyTop()+a.viewHeight(); y++ {
-		if line, ok := a.railLineAt(y); ok && line.stow {
-			door = y
-		}
+	// THE OPEN LEG: the header's key lights under the pointer and closes the
+	// column on a press.
+	x, y := sideDoorOf(t, a, sideActHide)
+	a.setHover(x, y)
+	if a.hot.kind != hoverSide || a.hot.key != sideHeadKey || a.hot.index < 0 {
+		t.Fatalf("the pointer over the column's key lit nothing: %+v", a.hot)
 	}
-	if door < 0 {
-		t.Fatal("the standing column drew its door on no pressable line")
+	if lit := strings.Join(a.railRows(a.viewHeight()), "\n"); !strings.Contains(lit, a.pal.cursor(a.pal.ink(sideHideKey), 0)) {
+		t.Fatalf("the key did not take its hover ground:\n%q", lit)
 	}
-	at := a.bodyWidth() + ansi.StringWidth(railSeam)
-	a.setHover(at, door)
-	if !a.hoveringRailDoor() {
-		t.Fatalf("the pointer over the column's door lit nothing: %+v", a.hot)
-	}
-	lit := ""
-	for _, row := range railText(a, a.viewHeight()) {
-		if strings.Contains(row, railStowHint) {
-			lit = row
-		}
-	}
-	if !strings.Contains(lit, railGripOpenGlyph) {
-		t.Fatalf("the lit door lost its chevron: %q", lit)
-	}
-	drive(t, a, tea.MouseClickMsg{X: at, Y: door, Button: tea.MouseLeft})
-	drive(t, a, tea.MouseReleaseMsg{X: at, Y: door, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 	if !a.railAway || a.railShowing() {
-		t.Fatal("pressing the chevron did not close the column")
+		t.Fatal("pressing the key did not close the column")
 	}
 
 	// THE CLOSED LEG: the same control, the other way.
@@ -415,9 +382,6 @@ func TestTheChevronClosesAndOpensTheColumnByPointerAlone(t *testing.T) {
 	edge := plain(strings.Join(a.railRows(a.viewHeight()), "\n"))
 	if !strings.Contains(edge, railGripGlyph) {
 		t.Fatalf("the edge carries no chevron:\n%q", edge)
-	}
-	if strings.Contains(edge, railGripOpenGlyph) {
-		t.Fatalf("the edge carries the chevron of the other state:\n%q", edge)
 	}
 	drive(t, a, tea.MouseClickMsg{X: a.bodyWidth(), Y: a.bodyTop(), Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: a.bodyWidth(), Y: a.bodyTop(), Button: tea.MouseLeft})
