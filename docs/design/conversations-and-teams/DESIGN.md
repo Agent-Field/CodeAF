@@ -990,6 +990,10 @@ it), and `Close team…`. Closable with `esc`.
   the teams page's pane while that page stands, so the rail beside them still says which team
   they are about; they covered the rail before. Elsewhere they are centred on the frame.
 
+(Changed 2026-09-25: a manager of a team being closed is counted as working and
+its current turn is stopped by Close now even if it is also in an open parent;
+its tab stays open. Other shared conversations keep the prior rule.)
+
 ### 8.6 Where this departs from the brief, and why
 
 - **The home flag resolves to the nearest manager up its chain**, so giving an unmanaged

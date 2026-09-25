@@ -46,6 +46,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I see all my teams and what waits on me", "teams-page"},
 		{"does renaming a team update the message box", "teams-page"},
 		{"how do I close a team", "teams-page"},
+		{"will closing a sub-team stop its manager if that manager is also in the parent team", "teams-page"},
 		{"the pane said the manager was open in another window", "teams-page"},
 		{"how do I reopen a closed team", "teams-page"},
 		{"where do I change one team's settings", "teams-page"},

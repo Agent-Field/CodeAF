@@ -302,11 +302,13 @@ away; `←` `→` choose a colour. `esc` or `Done` puts the card away.
   **Close now** and **Cancel**. When the team has a manager, `Wrap up first` leads: the manager
   is asked to have everyone finish and commit and to bring you a closing report, which arrives
   as a card on this page with `Close` and `Keep going`; the team closes when you choose Close.
-  `Close now` stops every member's turn and closes their tabs at once. `Cancel` or `esc`
+  A working manager is named on the card even when it is also in a team above this one.
+  `Close now` stops every member's turn, including that manager's, and closes tabs belonging
+  only to the closing teams. A manager also in an open team above keeps its tab. `Cancel` or `esc`
   changes nothing.
 
-Closing a team closes the teams under it. A conversation that is also in another open team is
-never stopped by the close. The conversation you are looking at keeps its tab, so a close never
+Closing a team closes the teams under it. Other conversations that are also in another open team
+are not stopped by the close. The conversation you are looking at keeps its tab, so a close never
 moves you. A closed team spends nothing, is not on the conversations view or the strip, and
 waits under `▸ Closed · N`.
 
