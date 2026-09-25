@@ -1538,13 +1538,14 @@ func (a *app) taskPlanBody(width int) []string {
 	}
 	// A TASK WITH CHILDREN SHOWS THEM UNDER ITS STEPS, AND EACH ONE IS DRAWN AS
 	// THE SIDE COLUMN DRAWS A TASK: through the node renderer, one line with its
-	// state glyph, its name and its time, a part's own parts a level in
-	// ([app.planRailLines]). One kind of row for one kind of thing, on the column
-	// and on the page alike. The note composer and its receipt below are
+	// state glyph, its name and its time, a part's own parts a level in, and
+	// under it what the column's hint would say, its call and its clock and
+	// money ([app.planPageLines]). One kind of row for one kind of thing, on the
+	// column and on the page alike. The note composer and its receipt below are
 	// untouched by the tree.
 	if kids := page.Children; len(kids) > 0 {
 		section("under it")
-		for _, line := range a.planRailLines(planTwigsOf(kids), 0, min(width, planPageKinWidth)) {
+		for _, line := range a.planPageLines(planTwigsOf(kids), 0, min(width, planPageKinWidth)) {
 			add(line.text)
 		}
 	}
