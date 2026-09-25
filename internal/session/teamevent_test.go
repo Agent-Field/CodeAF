@@ -8,14 +8,31 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
+
+// holdJournal is a process holding a member's transcript lock, the way a live
+// session does, for as long as the test runs.
+func holdJournal(t *testing.T, path string) {
+	t.Helper()
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { file.Close() })
+	if err := filelock.Lock(file, true, true); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = filelock.Unlock(file) })
+}
 
 // teamEvents is every event in the fixture's log, oldest first.
 func teamEvents(t *testing.T, fixture teamFixture) []teams.Entry {
@@ -146,6 +163,7 @@ func TestAMemberHeldOnAPromptReadsAsAsking(t *testing.T) {
 		sessionEntry{Type: "message", Role: "assistant", Timestamp: callAt.Format(time.RFC3339Nano),
 			ToolCalls: []ai.ToolCall{{ID: "c1", Type: "function", Function: ai.ToolCallFunction{Name: "bash", Arguments: `{"command":"make"}`}}}},
 	)
+	holdJournal(t, fixture.web)
 	appendTraffic(t, fixture, teams.Entry{At: callAt.Add(time.Second), Kind: teams.KindEvent, From: "web", To: teams.ToManager,
 		Member: convKeyOf(t, fixture.web), Text: "needs your ok to run bash", State: teams.StateAsking})
 	file, err := teams.Load(fixture.profile)
@@ -167,6 +185,56 @@ func TestAMemberHeldOnAPromptReadsAsAsking(t *testing.T) {
 	)
 	if web := memberStates(team, nil, now, log, nil)[convKeyOf(t, fixture.web)]; web.State != teams.StateRunning {
 		t.Fatalf("a member whose prompt was answered reads %+v", web)
+	}
+}
+
+// A PROCESS THAT DIED ON THE PROMPT IS NOT STILL ASKING. Nothing holds the
+// transcript lock, so the asking event is stale and the member reads idle.
+func TestADeadMemberWaitingOnAPromptReadsIdle(t *testing.T) {
+	fixture := newTeamFixture(t, true)
+	now := time.Now()
+	callAt := now.Add(-time.Minute)
+	writeJournal(t, fixture.web,
+		sessionEntry{Type: "message", Role: "user", Content: "next", Timestamp: callAt.Add(-time.Second).Format(time.RFC3339Nano)},
+		sessionEntry{Type: "message", Role: "assistant", Timestamp: callAt.Format(time.RFC3339Nano),
+			ToolCalls: []ai.ToolCall{{ID: "c1", Type: "function", Function: ai.ToolCallFunction{Name: "bash", Arguments: `{"command":"make"}`}}}},
+	)
+	appendTraffic(t, fixture, teams.Entry{At: callAt.Add(time.Second), Kind: teams.KindEvent, From: "web", To: teams.ToManager,
+		Member: convKeyOf(t, fixture.web), Text: "needs your ok to run bash", State: teams.StateAsking})
+	file, err := teams.Load(fixture.profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	team, _ := file.Team(fixture.teamID)
+	log, _ := teams.ReadTraffic(fixture.profile, fixture.teamID, "", teamStateLook)
+	web := memberStates(team, nil, now, log, nil)[convKeyOf(t, fixture.web)]
+	if web.State != teams.StateIdle || web.Question != "" {
+		t.Fatalf("a member whose process died on a prompt reads %+v, want idle", web)
+	}
+}
+
+// AN ASKING EVENT OLDER THAN THE BOUND IS IDLE EVEN WHILE THE LOCK IS HELD.
+func TestAnOldAskingEventReadsIdle(t *testing.T) {
+	fixture := newTeamFixture(t, true)
+	now := time.Now()
+	callAt := now.Add(-31 * time.Minute)
+	writeJournal(t, fixture.web,
+		sessionEntry{Type: "message", Role: "user", Content: "next", Timestamp: callAt.Add(-time.Second).Format(time.RFC3339Nano)},
+		sessionEntry{Type: "message", Role: "assistant", Timestamp: callAt.Format(time.RFC3339Nano),
+			ToolCalls: []ai.ToolCall{{ID: "c1", Type: "function", Function: ai.ToolCallFunction{Name: "bash", Arguments: `{"command":"make"}`}}}},
+	)
+	holdJournal(t, fixture.web)
+	appendTraffic(t, fixture, teams.Entry{At: callAt.Add(time.Second), Kind: teams.KindEvent, From: "web", To: teams.ToManager,
+		Member: convKeyOf(t, fixture.web), Text: "needs your ok to run bash", State: teams.StateAsking})
+	file, err := teams.Load(fixture.profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	team, _ := file.Team(fixture.teamID)
+	log, _ := teams.ReadTraffic(fixture.profile, fixture.teamID, "", teamStateLook)
+	web := memberStates(team, nil, now, log, nil)[convKeyOf(t, fixture.web)]
+	if web.State != teams.StateIdle {
+		t.Fatalf("an asking event older than the bound reads %+v, want idle", web)
 	}
 }
 

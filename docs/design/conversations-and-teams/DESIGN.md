@@ -346,8 +346,10 @@ not a chat. An unknown `@word` is left as text. A standing mark does not take th
 road; `Submit` does, and steering goes through `Submit`.
 
 **Known limits of v1.** A stop or a start takes effect only in a window that holds those
-conversations. A member waiting on a permission prompt shows as running, because the prompt is
-not in its session file, until its own asking event says so. The loop breaker's needs-you is
+conversations. A member waiting on a permission prompt shows as running off its journal alone,
+because the prompt is not in its session file; its asking event says `asking` while a process
+holds the transcript lock and the event is under 30 minutes old (`askingStaleBound`). When the
+lock is free, or the event is older than that, it reads idle. The loop breaker's needs-you is
 the Traffic's asking row and a note, not a question on the manager's tab. Over `--host` against an engine older than the teams doors, teams and the manager
 are off and say so. An unreadable teams file on the engine is not moved aside from a window over
 `--host`; the window holds no teams until it can be read.

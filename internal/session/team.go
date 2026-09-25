@@ -772,7 +772,7 @@ func memberStates(team teams.Team, self []string, now time.Time, log []teams.Ent
 			continue
 		}
 		if state, last, ok := journals.stateOf(member.File, now); ok {
-			states[member.Key] = askingFromEvents(state, last, member, log)
+			states[member.Key] = askingFromEvents(state, last, member, log, now)
 		}
 	}
 	return states
