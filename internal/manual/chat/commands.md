@@ -190,8 +190,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/history` | — | — | opens the full-screen sessions place — every task this machine has run, filterable (also ctrl+.) |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/status` | `/info`, `/context` | `--json` | prints the same facts as one JSON object, keys in the same order |
-| `/search` | — | — | opens the search place — everything said on this machine (also `alt+7`) |
-| `/spend` | — | — | opens the spend place — what this machine has cost, by the day (also `alt+3`) |
+| `/search` | | | opens the search place: everything said on this machine (also `alt+8`) |
+| `/spend` | | | opens the spend place: what this machine has cost, by the day (also `alt+4`) |
 | `/wall` | | | every open conversation at once, as a grid of live tiles, and the teams you group them into (also `alt+v`, or `▦` under the box) |
 | `/teams` | | | the teams page: your teams as a tree, what waits on you, and the selected team's manager conversation (also `alt+2`, or `teams` on the tab bar) |
 | `/cost` | `/usage`, `/tokens` | — | prints what this conversation has spent, and on what |
@@ -227,16 +227,16 @@ Under the table `/help` prints the keys that have no slash command, including
 `alt+enter`, and `d` inside `/permissions`. The keys page covers those in full. The
 `ctrl+c` line reads `ctrl+c         quits everything · mid-turn it interrupts instead, like esc`.
 
-**It also names the way into the seven places**, which it did not for a long while — three
+**It also names the way into the eight places**, which it did not for a long while: three
 rows, directly under the `tab` row:
 
 ```
-alt+1…7        go to a place · in the tab bar's own order: home tasks standing memory spend search settings
+alt+1…8        go to a place · in the tab bar's own order: home teams sessions spend settings standing memory search
 alt+.          on a place: what else is here · every key that place has, drawn
                on a place, tab is the next place · esc back
 ```
 
-On a Mac those read `opt+1…7` and `opt+.`; the substitution happens once, at the moment of
+On a Mac those read `opt+1…8` and `opt+.`; the substitution happens once, at the moment of
 drawing, and the words are the same.
 
 **One gesture, one spelling.** Wherever the sheet names the escape key it writes `esc
@@ -727,12 +727,12 @@ and the note's leading `· `; strip those before feeding it to a parser.
 ## /search and /spend — the typed doors onto those two places
 
 `/search` opens the **search place** — everything that has been said on this machine,
-found by the words you remember of it. It is the same place `alt+7` opens and the same
+found by the words you remember of it. It is the same place `alt+8` opens and the same
 place `tab` walks to. It takes no argument: the place *is* a box, and typing in it
 searches.
 
 `/spend` opens the **spend place** — what this machine has cost, by the day, by the model
-and by what it was for. It is the same place `alt+3` opens.
+and by what it was for. It is the same place `alt+4` opens.
 
 **`/spend` used to be an alias of `/cost` and is not any more.** The two answer different
 questions: `/cost` is *this conversation's* bill, printed into the conversation, and the
@@ -1077,7 +1077,7 @@ greeting you is not the same as being out of reach: `/home`, or `esc` from a con
 it opens the far machine's.
 
 There is no argument form. There are three other ways in: **`alt+1`**, home being the first
-of the four places on the tab bar; **`esc`** from a conversation; and **`tab`** from any
+of the five places on the tab bar; **`esc`** from a conversation; and **`tab`** from any
 other place.
 
 **It is seven panels**, in one column under 110 cells, two from 110 and three from 170,
@@ -1410,7 +1410,7 @@ is built from this session's own work, and carries only a short dulled note of t
 **It is not `/tasks`, and there is no `/tasks` command.** `/task <brief>` and its `solo` form
 mean *give codeaf work*; this page starts none, so it does not share their word. Typing
 `/history` is the only slash form — but the PLACE this opens is called `tasks` on the tab
-bar, and **`alt+2`** and `tab` reach it without a command at all. The word is a place, not a
+bar, and **`alt+3`** and `tab` reach it without a command at all. The word is a place, not a
 command.
 
 Two sections. `running` is the tree of everything still going, drawn whole, with each task's

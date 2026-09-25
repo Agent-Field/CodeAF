@@ -57,7 +57,8 @@ whole map over the cells you are already reading.
 There is no argument form. The screen is how you name what you want; a command that took a
 project name would be asking you to type out the very thing home exists to show you.
 
-Home is the **first of the four places on the tab bar** — `home  tasks  spend  settings`.
+Home is the **first of the five places on the tab bar**: `home  teams  sessions  spend  settings`.
+The **teams page**, right after it, is where your teams and their managers live.
 It still does nothing on its own: no notifications and no alerts. You open it, you see where
 things stand, and you either act on something or leave.
 
@@ -504,8 +505,8 @@ own tab stack — so going back is `enter`. A window that has held only one conv
 **On a launch** — home greeting you — the cursor is on the conversation this window is
 holding, the row you can open to return.
 
-**`↑` off the top row of home stays on it.** The tab bar — the row of four words — is
-reached by clicking a word, by `tab`, or by a place's own chord (`alt+2` and the rest); on
+**`↑` off the top row of home stays on it.** The tab bar, the row of five words, is
+reached by clicking a word, by `tab`, or by a place's own chord (`alt+3` and the rest); on
 every other place `↑` off the top row still walks up onto it. On the bar `←`
 and `→` walk along the words without opening anything, `enter` or `↓` goes into the one under the
 cursor, and `esc` puts the cursor back on the row it came from. Walking up onto the bar does
@@ -622,18 +623,18 @@ another window asks can take up to ten seconds to reach a chat's top line.
 **The money on this line is the money on the spend place and the `spend` panel**, to the
 cent — one reading of one file, wherever you are standing.
 
-## Where did standing, memory and search go — the four places on the tab bar
+## Where did standing, memory and search go: the five places on the tab bar
 
-**They are still places; they are just off the bar.** The tab bar under the top line is four
-words — `home  tasks  spend  settings` — and `tab`, `alt+1` … `alt+4` walk them. Standing,
+**They are still places; they are just off the bar.** The tab bar under the top line is five
+words, `home  teams  sessions  spend  settings`, and `tab`, `alt+1` … `alt+5` walk them. Standing,
 memory and search open exactly as they did:
 
-- **`/standing`** (or `/orders`), `alt+5`, or `enter` on a `scheduled` row;
-- **`/memory`** (or `/memories`), `alt+6`, or `enter` on memory's line in `since you left`;
-- **`/search`**, `alt+7`, or the typed door on home's box.
+- **`/standing`** (or `/orders`), `alt+6`, or `enter` on a `scheduled` row;
+- **`/memory`** (or `/memories`), `alt+7`, or `enter` on memory's line in `since you left`;
+- **`/search`**, `alt+8`, or the typed door on home's box.
 
-While you stand in one of the three, its word is drawn after the four so you can see where
-you are; `tab` from there goes to home. `alt+.` draws the map of all seven with their
+While you stand in one of the three, its word is drawn after the five so you can see where
+you are; `tab` from there goes to home. `alt+.` draws the map of all eight with their
 numbers. Home's own panels already summarise the three on the bar: `sessions` is a glimpse of
 tasks, `spend` of spend, `scheduled` of standing.
 
@@ -1547,7 +1548,7 @@ opens the conversation; on a `scheduled` row it opens the standing place.
 
 The `◦` mark itself belongs to the standing place and to a conversation's own lines —
 `◦ leave for the train · in 4m`. `∙` is a paused item there, and `◆` means the thing went off
-after the last time you spoke in the conversation behind it. The standing place (`alt+5`,
+after the last time you spoke in the conversation behind it. The standing place (`alt+6`,
 `/standing`) is every promise this machine has made, with how much rope each has.
 
 **Retired items are nowhere on home.** Something that fired once and finished, or that you
@@ -1774,7 +1775,7 @@ phone*).
 
 **The machine's own card is gone too.** `↑` off the top of the column stays on the top row,
 and each thing that card said has a place: `keeping an eye on` is the standing place
-(`alt+5`), `today` is the `spend` panel and the pulse line, `agents` is the pulse's
+(`alt+6`), `today` is the `spend` panel and the pulse line, `agents` is the pulse's
 `4 moving`, and `thinking` is the `thinking` row of `/settings`.
 
 ## The card beside a search — the preview on the right while you type
@@ -2055,7 +2056,7 @@ words that set one up. On a short terminal `scheduled` is the first panel to giv
 **The `spend` panel, pinned in the rail under `projects`**, is the day and the fortnight in three dim lines.
 **Nothing under its heading is selectable or clickable**: the arrows step over its lines, the
 pointer does not light them, and a press on one does nothing. The heading is the door — `enter`
-cannot reach it, but a click on the word `spend` opens the spend place, as does `/spend` or `alt+3`:
+cannot reach it, but a click on the word `spend` opens the spend place, as does `/spend` or `alt+4`:
 
 ```
  spend

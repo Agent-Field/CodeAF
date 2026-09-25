@@ -274,7 +274,7 @@ that conversation beside the one you are in — the engine gives it a connection
 and the chat you came from keeps running, the same door `codeaf resume` uses locally. The right end of the tab bar reads `on <machine>` so you can
 see whose afternoon you are looking at, and it is not there at all on a local session.
 
-Three of the seven places still read the machine this window is running on, and each says so
+Three of the eight places still read the machine this window is running on, and each says so
 in one line where its rows would be: **spend**, **search** and **memory**. The whole table,
 and why the look-stamp behind each tab's number is kept per machine, is on the Places page
 under *The places over --host*.
@@ -576,7 +576,7 @@ The task roster lists this far conversation's work. Its rows come from the far
     keep it, or drop it — goes back the same way. Running a harness that already exists was
     never affected.
 
-13. **Three of the seven places still read this machine.** Spend adds up the ledger every
+13. **Three of the eight places still read this machine.** Spend adds up the ledger every
     model call on the machine this window runs on writes into, search reads the index of what
     was said here, and memory reads what sessions here learned — and there is no door on the
     wire for any of the three yet. Each place opens, keeps its head, its bar and its box, and

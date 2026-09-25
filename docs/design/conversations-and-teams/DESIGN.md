@@ -805,3 +805,66 @@ raise a cap packet (one process raises one). A conversation in an unmanaged sub-
 manager is a level up gets no member verbs and no questions-up (its membership has no manager).
 A person's decision on a packet whose raiser nobody holds is delivered when that conversation
 next runs; only a manager is roused.
+
+### 8.9 What the interface built (d2), and where it departs from 8.4 and 8.5
+
+Everything below is `internal/tui3` unless named otherwise, on branch `task/teams-page`. The
+person's guide is `internal/manual/chat/teams-page.md`.
+
+**As specified.** The `teams` place right after home (`placeOrder`, one entry, so the bar is
+data and not restyled); the rail with `All teams`, the tree, `+ New team`, `✦ Organize` and
+`▸ Closed · N`; the pane with the header (spend against the pool, `Settings`, `Close…`,
+`Open ▦`), the members line, the inbox cards and the manager's real conversation under them;
+the team card with provenance and `reset`; the close card; the Closed fold with `Reopen` and
+`Delete…`; Organize's quiet-team proposal with `Undo`; the `Teams` settings tab's dim line.
+The session's contract (8.8) is used as built: `teams.WrapUpRequest` through the seam's
+`WrapUp` door (locally `teams.AppendTraffic`, over `--host` `Client.TeamsWrapUp`), and
+`teams.AcceptClosing` after the person's Decide on a closing packet (over `--host`
+`Client.TeamsAcceptClosing`), both only when `Welcome.WrapUp` says so. Cap packets draw
+`Packet.Cap`; Raise and Stop are the person's alone. Shared members read `reports to <team>`
+or `busy for <team>` (`MemberState.ReportsTo`).
+
+**Where it departs, and why.**
+
+- **The marks are `⠿` (a member working, dim) and `? N` (amber, N things wait on you from the
+  team or a team under it)**, not `●` and `◆ needs you`. `●` is already every team's colour
+  dot and `◆` already marks a manager; a count says how much waits, which the rail row had no
+  room to say in words.
+- **The team card is the one settings surface.** The wall's `e`, the chip menu and the
+  switcher's `Team settings…` all open it, so the wall's old name-and-colour popover is gone
+  from use, and its delete with it.
+- **Delete exists only on a closed team** (8.5 said so), so the wall's `D` now closes the shown
+  team instead of deleting it, with Undo when nothing runs and the close card when something
+  does.
+- **The keyboard reaches the page's buttons by `alt+↑` `alt+↓`**, and `esc` gives it back to
+  the message box. The pane hosts a real conversation whose box takes every plain key, so the
+  page's letters (`s c w n o m r d u`) and arrows work only once the person has stepped onto
+  the buttons; without a manager in the pane they work at once.
+- **The Traffic rail is folded on this page** (`alt+l` unfolds it), because the teams rail has
+  the left edge and the pane is narrower than a conversation's own screen.
+- **Choosing a team with a manager brings that manager's conversation in front.** It is the
+  person's own selection, so this is not focus moving by itself; the conversation they were in
+  stays open behind on the strip. Resuming a member not open opens it behind, without moving.
+- **`Close now` keeps the front tab.** Every other member's tab closes, but the conversation the
+  person is looking at stays, so a close never moves them.
+- **Over `--host` the seam's `History` and `Append` doors are nil**: a closed team's report is
+  not read over the connection, and close and reopen write no Traffic lines there. The page
+  says so where the report would be. Organize's quiet-close proposal is offered locally only,
+  because quietness is read from the Traffic log.
+- **The `Teams` settings tab is read only over `--host`** and says the teams inherit the other
+  machine's Settings (8.7's first question, answered on the edit side; the engine's own values
+  are not read across yet).
+- **Wake is on the card** (`team messages wake`, with its provenance), which 8.4's four rows
+  predate; the settings tab's row order is questions, wake, cap, depth, share.
+- **The interface writes no cap raise.** The person's `Raise to $10` is a Decide; the session
+  applies it (8.8), so the setting has one writer.
+- **Under 72 columns the rail stacks above the pane**, because a 24-column rail beside a
+  conversation leaves the conversation too narrow to read. A hosted manager at that width is
+  shown without the rail.
+- **The manual's digits are those of a bar without `chats`** (`home  teams  sessions  spend
+  settings`, `alt+1` … `alt+8`). The owner's order puts `chats` third; when that place lands,
+  every digit after `teams` in the manual and the help moves by one.
+
+**Known gaps.** A switcher row `Closed · N` has no hover hint. The wall popover's delete code
+is unreached and kept until the wall is next reworked. Over `--host` the Settings tab cannot
+show the engine's `teams.` rows.

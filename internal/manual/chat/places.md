@@ -1,27 +1,29 @@
 # Places
 
-## What a place is, and the seven of them
+## What a place is, and the eight of them
 
-A **place** is a full-screen room in codeaf that is not this conversation. There are seven,
-and they are always in the same order — the four on the tab bar, then the three reached by
+A **place** is a full-screen room in codeaf that is not this conversation. There are eight,
+and they are always in the same order: the five on the tab bar, then the three reached by
 their command:
 
-`home` · `sessions` · `spend` · `settings` · `standing` · `memory` · `search`
+`home` · `teams` · `sessions` · `spend` · `settings` · `standing` · `memory` · `search`
 
-**The tab bar draws four:** `home  tasks  spend  settings`. Standing, memory and search are
+**The tab bar draws five:** `home  teams  sessions  spend  settings`. **Teams** is right
+after home: your teams, what waits on you from them, and the selected team's manager
+conversation (the **Teams page** of this manual has all of it). Standing, memory and search are
 places all the same — `/standing`, `/memory`, `/search`, their digit, the map and the typed
 box all reach them — and while you are standing in one its word is on the bar after the
-four, so the bar always says where you are.
+five, so the bar always says where you are.
 
 They are drawn as a **tab bar** on the second row of every place, under the top line — the
-row of words at the top of the screen, `home  tasks  spend  settings`, is this bar. The
+row of words at the top of the screen, `home  teams  sessions  spend  settings`, is this bar. The
 one you are standing in wears a filled band; the rest are dim. Nothing else on the surface
 looks like that bar, so "which place am I in" is one glance.
 
 Every place is drawn in the same frame:
 
 1. the top line — this machine's own signs: what is on watch, what today has cost, the time
-2. the tab bar — the four words, and the one you are in when it is not one of them
+2. the tab bar: the five words, and the one you are in when it is not one of them
 3. a dim rule
 4. the place's own body
 5. a rule, then the **composer** — one line you can type into, wherever you are
@@ -33,19 +35,19 @@ stacked: opening one closes whichever was up. Further Escape presses stay on Hom
 
 ## How to get to a place — the keyboard shortcut to jump between pages
 
-Four ways, and they all reach the same seven rooms:
+Four ways, and they all reach the same eight rooms:
 
 - **`tab`** — the next place **on the bar**, round again from the last. **`shift+tab`** —
   the one before. From standing, memory or search, `tab` goes on round the bar to home.
-- **`alt+1`** … **`alt+7`** (**`opt+1`** … **`opt+7`** on a Mac) — jump straight to one, **from a
-  place or from a conversation**. `alt+1` … `alt+4` are the tab bar's own order — home,
-  tasks, spend, settings — and `alt+5`, `alt+6`, `alt+7` are the three places off the bar:
+- **`alt+1`** … **`alt+8`** (**`opt+1`** … **`opt+8`** on a Mac) jump straight to one, **from a
+  place or from a conversation**. `alt+1` … `alt+5` are the tab bar's own order (home,
+  teams, sessions, spend, settings), and `alt+6`, `alt+7`, `alt+8` are the three places off the bar:
   standing, memory, search. Hold `alt` and press the digit. macOS draws the modifier as `opt`
   because that is the key's name on a Mac keycap; Linux and Windows draw it `alt+`, and it is the same
   chord either way. `tab` and the shift-arrows are not like them: in a conversation those
   already belong to path completion and to the caret, so the digits are the one class of
   place key that means the same thing wherever you are standing.
-- **`ctrl+1`** … **`ctrl+7`** — the same jump, on the terminals that can send it. `ctrl` and
+- **`ctrl+1`** … **`ctrl+8`**: the same jump, on the terminals that can send it. `ctrl` and
   a digit has no encoding in the scheme most terminals speak, so this is a second spelling and
   never the first: it works only where the terminal runs the kitty keyboard protocol and says
   so (kitty, ghostty, WezTerm, foot, Windows Terminal are the usual ones). `ctrl+.` draws the
@@ -93,7 +95,7 @@ lands on the **tab bar** — the row of place words under the top line — and f
 | `esc` | back into the page, on the row you walked up from |
 | `↑` | nothing. There is nothing above the bar but the top line, which is a reading rather than a control |
 | `tab` `shift+tab` | the next and the previous place, exactly as everywhere else |
-| `alt+1` … `alt+7` | jump straight to one, exactly as everywhere else |
+| `alt+1` … `alt+8` | jump straight to one, exactly as everywhere else |
 | any printable key | goes to the composer, and the cursor comes back down into the page with it |
 
 **The word your cursor is on wears the cursor's band**, in place of the mark the word you
@@ -141,7 +143,7 @@ a press on the word you are already standing on does nothing.
 
 ## The mouse on a place — clicking a row, hovering, and the wheel
 
-Three gestures, the same on all seven places:
+Three gestures, the same on all eight places:
 
 - **List rows have one selection.** On home, tasks, standing, memory, spend and search,
   moving the mouse onto a row selects it. Keyboard navigation immediately takes over
@@ -314,8 +316,8 @@ may not name a key it has not bound. Six classes, and a key belongs to exactly o
 | `↑` `↓` `enter` `esc` `tab` | move, open, back out, next place — and `↑` off the first row of the page moves onto the **tab bar**, which is a row the cursor can stand on (*How do I move between the tabs with the arrow keys*) |
 | any printable key | goes to the composer, always |
 | `alt+enter` | send what you typed off as a task |
-| `alt+1` … `alt+7` (`opt+1` … `opt+7` on a Mac) | jump straight to a place |
-| `ctrl+1` … `ctrl+7` | the same jump, only on terminals that report they can send it |
+| `alt+1` … `alt+8` (`opt+1` … `opt+8` on a Mac) | jump straight to a place |
+| `ctrl+1` … `ctrl+8` | the same jump, only on terminals that report they can send it |
 | `alt+<letter>` | change how THIS place is shown |
 | `alt+p` `alt+o` | inside the composer layer only: move the task, change its model |
 | `shift+←` `→` `↑` `↓` | move this place's time window |
@@ -434,7 +436,7 @@ Press `alt+.` and the whole key map appears **in the cells you were already read
 the keys for where I am standing. In a conversation the same key opens the `/help` sheet.
 
 **The chord list is built from the place you are on.** It reads
-`alt+1…7 go to a place · alt+enter send it off as a task · → show what this row can do · esc close`
+`alt+1…8 go to a place · alt+enter send it off as a task · → show what this row can do · esc close`
 — and the `→` clause is left out on a place whose rows have no verbs, such as search, rather
 than naming a key that would open nothing there.
 
@@ -463,6 +465,19 @@ next place, and the errand pane is taken into with `→` rather than `tab`. Home
 Clicking Home’s `since you left` heading opens memory. Questions appear as amber `?`
 bullets on the conversation or task, with no separate `needs you` heading.
 
+## teams: your teams, what waits on you, and each team's manager
+
+The second place on the bar, right after home. On the left is a **rail**: your teams as a
+tree (a sub-team indented under its parent), each with its colour, and a mark only when
+something is happening in it: a dim `⠿` while one of its members is working, and an amber
+`? 2` while two things wait on you. Under the tree are `+ New team` and `✦ Organize`, and
+at the foot a folded `▸ Closed · N` holds the teams you closed. On the right is the team
+you chose: a header with what it has spent today against its cap and three buttons,
+`Settings`, `Close…` and `Open ▦`; a line of its members, every one of them, open in this
+window or not; the decisions waiting on you, as cards you answer with one press; and the
+team manager's own conversation, which you talk to right there. `/teams`, `alt+2` and a
+click on the word open it. The **Teams page** of this manual has the whole of it.
+
 ## tasks — the tasks page, and how to get to it without a command
 
 The full-screen conversation tree groups every chat and its tasks into **running** and
@@ -473,7 +488,7 @@ completed; new work moves it back. Each task retains its own state word.
 Both sections default to newest activity first; click the age heading to reverse. Conversation titles match Home, and the same
 bullets mark answering, unread and unanswered states. Every conversation and nested task
 starts expanded, with connecting tree lines and fold arrows immediately after titles in the left column. Projects
-have their own column. You can fold a branch yourself. `/history`, `ctrl+.` and `alt+2` open it.
+have their own column. You can fold a branch yourself. `/history`, `ctrl+.` and `alt+3` open it.
 
 **Typing here narrows the list.** While this place is up every printable key goes to its
 filter — the one exception being `1` and `2` over a row the record pane beside the list is
@@ -511,7 +526,7 @@ them. Its existing stop action remains available when that engine supports it.
 The orders that fire on their own, on four shelves each under its own heading: this
 conversation's, this project's, the machine's, and then `in other projects` — everything
 else standing on this computer that does not reach the conversation you are in.
-`/standing` and `/orders` open it, and so does `alt+5`. It is not on the tab bar.
+`/standing` and `/orders` open it, and so does `alt+6`. It is not on the tab bar.
 
 `enter` opens where an order was asked for. `→` opens the row's verbs — `p pause`, `s stop`,
 and `n not here` on the three shelves that reach this conversation. Those three used to be
@@ -532,7 +547,7 @@ The standing orders page has the whole of it.
 ## memory — what is held true
 
 What codeaf holds true about you and this machine, with what kind of thing each line is, how
-it has done — `helped 19 · bore on 3` — and how old it is out at the right. `/memory` and `/memories` open it, and so does `alt+6`. It is not on the tab bar.
+it has done, `helped 19 · bore on 3`, and how old it is out at the right. `/memory` and `/memories` open it, and so does `alt+7`. It is not on the tab bar.
 
 The page is **shelves** — you, this project, this machine — biggest first, with the biggest
 one open and the rest rolled up. Type to filter what is already on the page, **every letter
@@ -556,7 +571,7 @@ machine · /remember adds a line`.
 
 ## spend — what it cost, and why it counts another session or another machine
 
-What this machine has cost, by the day, by the model, and by what it was for. `alt+3` opens
+What this machine has cost, by the day, by the model, and by what it was for. `alt+4` opens
 it. It reads one machine-wide ledger — a line per model call — so the figures are the bill
 and not an estimate.
 
@@ -604,7 +619,7 @@ different thing — its head row stays, with the arrows that page it back.
 
 ## search — finding anything said or run
 
-Everything that has been said on this machine. `alt+7` opens it — it is not on the tab
+Everything that has been said on this machine. `alt+8` opens it; it is not on the tab
 bar — and typing searches: the
 matches come back with the conversation they were said in, how long ago, and the project it
 belongs to, with your own words picked out in the line.
@@ -623,7 +638,7 @@ came from. Twelve conversations are shown and the rest fold into one line, `▸ 
 `enter` or a click on it draws them all, and `▾ 38 fewer` folds them back. A new search
 starts folded.
 
-**`/search` is the typed door onto this place**, beside `alt+7` and the map. It
+**`/search` is the typed door onto this place**, beside `alt+8` and the map. It
 takes no argument: the place is a box, and typing in it searches.
 
 With nothing typed the place is its heading `search` over one line saying what to do:
@@ -646,7 +661,7 @@ would be two rankings that could disagree.
 ## settings — how this machine is set
 
 Every setting, in sections, with a search that crosses all of them. `/settings`, `/set` and
-`/config` open it, and so does `alt+4`.
+`/config` open it, and so does `alt+5`.
 
 It has a **second bar** under the place bar: its own sections. Those two bars are not a
 repetition — the upper one is the places, the lower one is settings' own pages. `←` and
@@ -655,16 +670,16 @@ everywhere.
 
 ## Why the tab bar looks squashed on a narrow terminal — the places at 60 columns
 
-**All four words are on the bar at 60 columns, and down to 31.** The four words with the
-padding each chip carries and the air between them are 34 cells; under that the bar gives up
-the *air between the chips* before it gives up a place, so a 31-column pane draws
+**All five words are on the bar at 46 columns and wider, and down to 44.** The five words
+with the padding each chip carries and the air between them are 46 cells; under that the bar
+gives up the *air between the chips* before it gives up a place, so a 44-column pane draws
 
 ```
-  home  tasks  spend  settings
+  home  teams  sessions  spend  settings
 ```
 
 with two cells between the words instead of three. Nothing else changes: the band under the
-word you are standing in, the counts, `tab`, `←` `→` and `alt+1`…`alt+7` all mean exactly
+word you are standing in, the counts, `tab`, `←` `→` and `alt+1`…`alt+8` all mean exactly
 what they mean on a wide screen.
 
 **Under 31 columns the bar carries what it can and counts the rest.** It keeps the place
@@ -674,7 +689,7 @@ bar's words that are not on the row (standing, memory and search are never count
 are not the bar's to give up):
 
 ```
-  home  tasks  ▸ 2
+  home  teams  sessions  ▸ 2
 ```
 
 `▸ 3 more` where there are cells for the longer spelling, `▸ 3` where there are not — the
@@ -685,10 +700,10 @@ count is a sign and not a button** — pressing it does nothing, because it stan
 places at once and no single one of them is the answer.
 
 **The key that reaches them is `tab`**, and it is named on the foot of every place —
-`… · tab next place` — which is the last clause a narrow foot gives up. `alt+1`…`alt+7`
+`… · tab next place`, which is the last clause a narrow foot gives up. `alt+1`…`alt+8`
 still go straight to a place whether or not its word is on the row, and the numbers never
-move: the four on the bar are `alt+1`…`alt+4`, then standing, memory and search are
-`alt+5`…`alt+7`, whatever happens to be drawn.
+move: the five on the bar are `alt+1`…`alt+5`, then standing, memory and search are
+`alt+6`…`alt+8`, whatever happens to be drawn.
 
 ## Why a nearly-empty place says what it is for — why is the tasks page empty
 
@@ -699,8 +714,8 @@ names what arrives there and the one thing that puts it there, the way home's em
 do. It never says the place is empty.
 
 **Every place opens, always.** There is no state of the machine in which a word on the bar,
-or any of the seven digits, is a key that does nothing. On a machine codeaf was installed on
-an hour ago, `alt+2`, `alt+5` and `alt+6` all open:
+or any of the eight digits, is a key that does nothing. On a machine codeaf was installed on
+an hour ago, `alt+3`, `alt+6` and `alt+7` all open:
 
 - **sessions**, headed `sessions`:
   `work you send off with /task lands here, and its record stays`
@@ -720,7 +735,7 @@ never cut, and never ends in `…`. The moment the first thing arrives the line 
 the same heading; nothing above it moves.
 - **spend**, **search** and **memory** over `--host` each say one dim line where their rows
   would be — see *The places over --host* below for the exact words and why three of the
-  seven still say them.
+  eight still say them.
 
 There is no "coming soon", no greyed-out list and no empty table with headings over it. A
 page that draws the furniture of a feature it does not have looks like a bug rather than like
@@ -759,7 +774,7 @@ walk in.
 ## The rewind timeline is not a place
 
 `/rewind` (also `/undo`, `/back`) opens a full-screen page too, and it is deliberately **not**
-one of the seven. It is something you do to *this conversation* — pick a point and cut back
+one of the eight. It is something you do to *this conversation*: pick a point and cut back
 to it — rather than a room in the machine, so it has no tab and `tab` does not walk to it.
 
 ## The places over --host — whose machine am I looking at
@@ -778,6 +793,7 @@ their readings have not crossed:
 | Place | Over `--host` |
 |---|---|
 | **home** | the far machine's projects and conversations |
+| **teams** | the far machine's teams, their packets and their spend; the team card's settings rows are that machine's, and `Wrap up first` is offered only when its engine answers the wrap-up doors |
 | **sessions** | the far machine's work, out of the same reading |
 | **standing** | the far machine's orders — both what stands on this conversation and what stands anywhere else on that machine |
 | **settings** | this computer's rows; the sheet says the far conversation reads its profile on the other machine |

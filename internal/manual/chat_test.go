@@ -35,6 +35,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I switch teams from the tab strip", "conversations-and-teams"},
 		{"does deleting a team close its conversations", "conversations-and-teams"},
 		{"where are my teams saved", "conversations-and-teams"},
+		// The teams page (teams-page.md).
+		{"how do I see all my teams and what waits on me", "teams-page"},
+		{"how do I close a team", "teams-page"},
+		{"how do I reopen a closed team", "teams-page"},
+		{"where do I change one team's settings", "teams-page"},
+		{"what does the ? 2 mark on a team mean", "teams-page"},
 		// The team manager (team-manager.md).
 		{"what can the team manager do", "team-manager"},
 		{"can the manager answer a member's permission prompt", "team-manager"},

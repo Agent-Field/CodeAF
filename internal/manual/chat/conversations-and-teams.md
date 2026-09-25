@@ -119,9 +119,15 @@ start page, `ctrl+t`, and a folder typed on home all start a new conversation, a
 the team that is shown. Going back to a conversation that already exists changes no team.
 
 **Team settings.** `e`, the dot on a team's segment, or the `⋯` the pointer brings up where its
-count was, opens the team's settings: its name, which you edit as you type, and its colour.
-**Delete team** asks first, and deleting a team never closes or changes a conversation; only
-the group's name goes.
+count was, opens the team's **card**: its name, which you edit as you type, its colour, the
+settings it overrides (each one saying where an inherited value comes from) and
+**Close team…**. The **teams page** has the card whole.
+
+**Closing a team.** `D` closes the team that is shown: at once, with Undo, when nothing in it
+is running, and with a card offering **Wrap up first**, **Close now** and **Cancel** when
+something is. A closed team leaves the Teams row and the switcher and waits under
+`▸ Closed · N` on the teams page, where it can be reopened, and deleted once you are sure.
+Closing or deleting a team never deletes a conversation.
 
 ## Organize: teams suggested for your conversations
 
@@ -166,8 +172,11 @@ After an Apply the Teams row says what it did for a few seconds, like
 `Organized · 2 new teams, 2 added   Undo`. **Undo**, or `u` while it is there, puts your teams
 back exactly as they were.
 
-Organize only ever adds: it never renames a team and never takes a conversation out of one,
-so pressing it again is how you refresh the suggestions. Nothing runs by itself. The button
+When some teams have had no activity for a week and nothing waiting on them, the card also
+offers **Close 3 quiet teams** under `Quiet for a week`, ticked like the rest; Apply closes
+them and Undo reopens them. Apart from that Organize only ever adds: it never renames a team
+and never takes a conversation out of one, so pressing it again is how you refresh the
+suggestions. Nothing runs by itself. The button
 counts the conversations in no team once there are five or more, `✦ Organize 7`, and after a
 run that found nothing to suggest it reads `Organized ✓` until your conversations or teams
 change; it can still be pressed.
@@ -184,6 +193,7 @@ included:
 │ ◉ ● harbor              2  │
 │ ○ ● orbit               1  │
 │ ○   All                 3  │
+│     Closed · 2 ▸           │
 │ ────────────────────────── │
 │ − Remove this conversation │
 │ + New team…                │
@@ -195,9 +205,11 @@ included:
   unless it is not in the team, and then the team's first conversation comes forward
 - **+ Add this conversation** puts the conversation in front into the team that is shown, and
   the row turns into **− Remove this conversation**
+- **Closed · 2** is there while you have closed teams: a press opens the teams page with its
+  Closed fold open. A closed team is never one of the switcher's teams
 - **+ New team…** opens the conversations view with the new-team card, the conversation in
   front already picked
-- **Team settings…** opens the shown team's settings
+- **Team settings…** opens the shown team's card, over whatever page you are on
 
 `↑` `↓` move, `enter` chooses, `esc` or a press anywhere off it puts it away.
 
@@ -209,7 +221,8 @@ place on the tab strip is the manager's, pinned at the left: a quiet `+ Manager`
 one and `◆ Manager` after; `◆ Make this harbor's manager` in the team switcher or in a tile's
 Teams list makes an existing conversation the manager. While the manager is in front its
 **Traffic** rail is on the right (`alt+l` shows or hides it), and `alt+m` goes to the manager. What a manager can do, and how members talk to each other, is on the
-**team manager** page.
+**team manager** page. The **teams page** (`/teams`, `alt+2`) lists every team as a tree
+and puts the chosen team's manager conversation beside it, with what waits on you.
 
 ## Where teams are kept
 
@@ -238,8 +251,8 @@ what its key does.
 | `x` | Close the focused view, or the picked ones; the work keeps running |
 | `m` | The teams list for the focused conversation, or the picked ones |
 | `s` | New team of the picked conversations, or the focused one |
-| `e` | The shown team's settings |
-| `D` | Delete the shown team; its conversations stay open |
+| `e` | The shown team's card: name, colour, settings, Close team… |
+| `D` | Close the shown team; its conversations stay open |
 | `o` | Organize: suggest teams for your conversations (while All is shown) |
 | `u` | Undo the last Organize, while the Teams row offers it |
 | `tab`, `shift+tab` | Next or previous team, then All |

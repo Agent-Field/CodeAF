@@ -48,14 +48,14 @@ conversation is laid out at the full width of the terminal, running work still d
 the strip along the top, and the keys row under the box reads `ctrl+g tasks` once the
 session has tasks to come back to and no running-turn line owns that row.
 
-**Seven places take the whole frame instead of sharing it**, at every width: home, tasks,
-standing, memory, spend, search and settings. Four are on the tab bar — `home  tasks
-spend  settings` — and `tab` walks those; `alt+1` … `alt+7` (`opt+1` … `opt+7` on a Mac) jump
-straight to any of the seven from wherever you are standing — a place or a conversation —
+**Eight places take the whole frame instead of sharing it**, at every width: home, teams,
+tasks, standing, memory, spend, search and settings. Five are on the tab bar, `home  teams
+sessions  spend  settings`, and `tab` walks those; `alt+1` … `alt+8` (`opt+1` … `opt+8` on a Mac) jump
+straight to any of the eight from wherever you are standing, a place or a conversation,
 and each
-has commands of its own (`/home`, `/history`, `/standing`,
+has commands of its own (`/home`, `/teams`, `/history`, `/standing`,
 `/memory`, `/settings`). The rewind timeline (`/rewind`) takes the frame the same way and is
-deliberately not one of the seven — it is something you do to this conversation rather than
+deliberately not one of the eight: it is something you do to this conversation rather than
 a room in the machine.
 
 While any of them is up nothing else is drawn — no conversation, no box, no status line —
@@ -2882,10 +2882,10 @@ back to plain ASCII (`!` `*` `o` `-` `+`) and the screen still reads.
 ## alt or option or opt — how the chords are spelled on a Mac, on Linux and on Windows, and why not the option symbol
 
 **It is one key and two spellings, and codeaf picks the spelling from the platform it is
-running on.** On macOS every chord is drawn with `opt+` — `opt+1`…`opt+7`, `opt+.`,
+running on.** On macOS every chord is drawn with `opt+`: `opt+1`…`opt+8`, `opt+.`,
 `opt+enter`, `opt+g`, `opt+q`, `opt+s`, `opt+w`, `opt+o` — because the key that Mac keycap
 calls **option** is the key you press. On Linux, on Windows, and everywhere else the same
-chords are drawn `alt+1`…`alt+7`, `alt+.`, `alt+enter` and so on. Every hint line, the key
+chords are drawn `alt+1`…`alt+8`, `alt+.`, `alt+enter` and so on. Every hint line, the key
 map, the composer layer's rows and the key sheet `/help` draws read that one spelling, so
 what is on your screen is what is on your keyboard.
 
@@ -2918,7 +2918,7 @@ appears under the list:
 
 It names the terminal you are actually in, it is said once, and the first real chord that
 arrives retires it for the rest of the session. The first-run setup says the same thing ahead
-of time, as a condition rather than a diagnosis: `the seven places answer opt+1…opt+7 · if opt types
+of time, as a condition rather than a diagnosis: `the eight places answer opt+1…opt+8 · if opt types
 a character instead, turn on "use option as meta" in …`.
 
 **`alt+b` and `alt+f` do not retire it, and that is deliberate.** iTerm2's Natural Text
@@ -2950,8 +2950,8 @@ are worth the one setting.
 
 **And on kitty, ghostty and WezTerm there is a way in that needs no setting at all.** Those
 terminals run the kitty keyboard protocol and report it, and where that report arrives codeaf
-binds `ctrl+1` … `ctrl+7` as a second spelling of the jump and `ctrl+.` as a second spelling of
-the map. The map's own line says `alt+1…7 or ctrl+1…7 go to a place` exactly when the alias is
+binds `ctrl+1` … `ctrl+8` as a second spelling of the jump and `ctrl+.` as a second spelling of
+the map. The map's own line says `alt+1…8 or ctrl+1…8 go to a place` exactly when the alias is
 live, so you never have to guess. `ctrl+<digit>` has no encoding in the older scheme, which is
 why it can only ever be the second spelling and never the first — a terminal that has said
 nothing is never promised it.
@@ -3753,7 +3753,7 @@ nothing for it to open — `nothing made yet.` from `/files`, or
 `no subharnesses here yet — a subharness is a saved program for work that comes round
 again.` from `/subharness`. None of them is ever sent to the model.
 
-The **seven places** are not among them: `/standing`, `/history` and `/memory` open their
+The **eight places** are not among them: `/standing`, `/history` and `/memory` open their
 page whatever is in it and let the page say so, rather than writing a line here (the Places
 page states the law).
 
