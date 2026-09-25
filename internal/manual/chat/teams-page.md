@@ -95,6 +95,16 @@ go.
 real one, with its transcript, its prompts and its message box, which says
 `to ◆ harbor manager`. Typing talks to the manager. The Traffic rail is folded on this page,
 because the teams rail already has the left; `alt+l` or its grip unfolds it.
+A press on a Traffic row goes to that member's conversation, off the page, exactly as it does
+in the conversation's own screen.
+
+While the manager's conversation is on its way in, the pane says `opening ◆ harbor's
+manager…`. It never waits silently: if the conversation cannot be opened, or has not answered
+within four seconds, the pane says why, `couldn't open ◆ harbor's manager: <reason>`, and
+offers **`Retry`** and **`Open in chats`** (the manager as an ordinary conversation, off the
+page, where anything else wrong is said on its own line). When the manager's conversation is
+gone from the disk, the pane offers **`+ Manager`** instead, which starts a new conversation and
+makes it the team's manager.
 
 **A team with no manager** shows `+ Manager` under its members, beside one line on what a
 manager does; a press starts a new conversation in the team's folder and makes it the manager.
