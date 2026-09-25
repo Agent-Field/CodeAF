@@ -27,9 +27,12 @@ package session
 //     watch every tick, running or idle, and costs nothing while no wrap-up is
 //     in progress.
 //
-// THE WRAP-UP IS THE MANAGER PROCESS'S MEMORY, not a file: a manager that
-// restarts in the middle of one forgets its clock, and the person's card
-// still offers `Close now` (the interface's own road).
+// THE CLOCK IS ON THE TEAM, in teams.json ([teams.Wrap]): the start and the
+// bound it was given. A manager that restarts in the middle of one reads it
+// back ([Agent.teamWrapUpResume]) and keeps the time that is left. One
+// already past its bound raises the incomplete report on that start, once,
+// the same way a live clock would have. The person's card still offers
+// `Close now` either way (the interface's own road).
 
 import (
 	"context"
@@ -68,6 +71,13 @@ type wrapUp struct {
 	team    string
 	name    string
 	started time.Time
+	// bound is how long this wrap-up was given. It is the value of [wrapUpFor]
+	// when the clock started, kept on the team so a restart does not start
+	// the limit again. Zero is a clock from before it was stored, and reads
+	// as [wrapUpFor].
+	bound time.Duration
+	// noted says the start and the bound have been written to the team.
+	noted bool
 	// spentAt is the team's spend today when the wrap-up's clock first
 	// looked, which the spend bound is measured from; measured says it has.
 	spentAt  float64
@@ -95,7 +105,92 @@ func (a *Agent) teamWrapUpBeginLocked(role teamRole, at time.Time) {
 	if at.IsZero() {
 		at = time.Now()
 	}
-	a.team.wraps[role.id] = &wrapUp{team: role.id, name: role.name, started: at}
+	a.team.wraps[role.id] = &wrapUp{team: role.id, name: role.name, started: at, bound: wrapUpFor}
+}
+
+// teamWrapUpNote writes every wrap-up this process started and has not yet
+// recorded. The caller does not hold a.team.mu: the write takes the file's
+// own lock, and holding the seat across it would stall every reader. A second
+// start keeps the first clock ([teams.File.SetWrap]).
+func (a *Agent) teamWrapUpNote(profile string) {
+	if profile == "" {
+		return
+	}
+	a.team.mu.Lock()
+	var pending []wrapUp
+	for _, w := range a.team.wraps {
+		if !w.noted {
+			pending = append(pending, *w)
+		}
+	}
+	a.team.mu.Unlock()
+	for _, w := range pending {
+		bound := w.bound
+		if bound <= 0 {
+			bound = wrapUpFor
+		}
+		if _, _, err := teams.Change(profile, func(f *teams.File) error {
+			return f.SetWrap(w.team, w.started, bound)
+		}); err != nil {
+			continue
+		}
+		a.team.mu.Lock()
+		if held, ok := a.team.wraps[w.team]; ok {
+			held.noted = true
+		}
+		a.team.mu.Unlock()
+	}
+}
+
+// teamWrapUpResume arms the clock of every team this conversation manages
+// that has a wrap-up on disk, then looks at it. A wrap-up still inside its
+// bound keeps the start it was given, so the time left is what was left. One
+// already past it raises the incomplete report here, on the start, and not
+// again: the record is cleared when the report goes out. It is called when
+// the session opens ([Agent.watchTeamTraffic]).
+func (a *Agent) teamWrapUpResume(profile string, now time.Time) {
+	if profile == "" {
+		return
+	}
+	a.team.mu.Lock()
+	roles := a.teamRolesLocked(profile)
+	file := a.team.file
+	if a.team.wraps == nil {
+		a.team.wraps = map[string]*wrapUp{}
+	}
+	for _, role := range roles {
+		if !role.manager || file == nil {
+			continue
+		}
+		t, ok := file.Team(role.id)
+		if !ok || t.Wrap == nil || t.Closed() {
+			continue
+		}
+		if _, going := a.team.wraps[role.id]; going {
+			continue
+		}
+		a.team.wraps[role.id] = &wrapUp{
+			team: role.id, name: role.name, started: t.Wrap.Started, bound: t.Wrap.Bound, noted: true,
+		}
+	}
+	a.team.mu.Unlock()
+	a.teamWrapUpDue(profile, now)
+}
+
+// clearTeamWrap forgets a wrap-up the clock has finished with. A missing team
+// is not an error worth the report's road.
+func clearTeamWrap(profile, id string) {
+	_, _, _ = teams.Change(profile, func(f *teams.File) error {
+		return f.ClearWrap(id)
+	})
+}
+
+// wrapBound is how long w was given.
+func wrapBound(w wrapUp) time.Duration {
+	if w.bound > 0 {
+		return w.bound
+	}
+	return wrapUpFor
 }
 
 // wrapUpLine is the request as the manager is handed it: the person's words,
@@ -132,8 +227,8 @@ func (a *Agent) teamWrapUpDue(profile string, now time.Time) {
 			w.spentAt = spent
 		}
 		switch {
-		case now.Sub(w.started) >= wrapUpFor:
-			why = fmt.Sprintf("the wrap-up ran out of time (%s) before the manager brought its report", wrapUpFor.Round(time.Minute))
+		case now.Sub(w.started) >= wrapBound(w):
+			why = fmt.Sprintf("the wrap-up ran out of time (%s) before the manager brought its report", wrapBound(w).Round(time.Minute))
 		case spent-w.spentAt >= wrapUpSpendUSD:
 			why = fmt.Sprintf("the wrap-up spent %s, its limit, before the manager brought its report", teamMoney(spent-w.spentAt))
 		default:
@@ -143,12 +238,17 @@ func (a *Agent) teamWrapUpDue(profile string, now time.Time) {
 		delete(a.team.wraps, w.team)
 		a.team.mu.Unlock()
 		if openClosing(profile, w.team) {
+			// The report is already waiting, so the clock is over. Clearing
+			// the record is what stops the next start from raising it again.
+			clearTeamWrap(profile, w.team)
 			continue
 		}
-		_, _ = teams.Raise(profile, closingPacket(w.name, w.team, teams.ClosingReport{
+		if _, err := teams.Raise(profile, closingPacket(w.name, w.team, teams.ClosingReport{
 			Done: "not reported: " + why, Left: "unknown: see the team's traffic and each member's conversation",
 			SpendUSD: roundCents(spent), Incomplete: true,
-		}))
+		})); err == nil {
+			clearTeamWrap(profile, w.team)
+		}
 	}
 }
 
@@ -232,6 +332,7 @@ func (a *Agent) teamCloseReportTool(ctx context.Context, args json.RawMessage) (
 	a.team.mu.Lock()
 	delete(a.team.wraps, team.ID)
 	a.team.mu.Unlock()
+	clearTeamWrap(profile, team.ID)
 	return fmt.Sprintf("Your closing report went to the person as packet %s. %q closes only if they pick Close; if they pick Keep going you carry on, and you are told either way.", raised.ID, team.Name), false, nil
 }
 

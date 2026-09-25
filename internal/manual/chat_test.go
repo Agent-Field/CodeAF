@@ -65,6 +65,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what is a decision packet", "team-questions-and-caps"},
 		{"what happens when a team reaches its daily cap", "team-questions-and-caps"},
 		{"how do I wrap up a team before closing it", "team-questions-and-caps"},
+		{"what happens to a wrap-up when codeaf restarts", "team-questions-and-caps"},
+		{"does a wrap-up keep going if I quit codeaf", "team-questions-and-caps"},
 		{"can a manager direct a member of another team", "team-manager"},
 		{"can a manager start a sub-team", "team-manager"},
 		{"what is the global manager", "team-manager"},

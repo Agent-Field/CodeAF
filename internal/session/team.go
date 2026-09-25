@@ -454,6 +454,9 @@ func (a *Agent) teamBoundary() string {
 	}
 	role := teamRoleBlock(roles, a.team.file)
 	a.team.mu.Unlock()
+	// A wrap-up the delivery just started is written down here, after the
+	// seat's lock, so a restart keeps the clock (team_wrapup.go).
+	a.teamWrapUpNote(profile)
 	a.setTeamRole(role)
 	a.armTeamTools(roles)
 	// A handle that is still the word list's guess is chosen once, beside the

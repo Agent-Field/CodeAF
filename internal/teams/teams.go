@@ -75,6 +75,10 @@ type Team struct {
 	// each unset field inheriting from the parent chain and then the
 	// profile's `teams.` defaults. They are stored flat on the team.
 	Settings Settings
+	// Wrap is a wrap-up in progress (wrap.go): when it started and how long
+	// it was given. Nil is none, which is also what a file from before the
+	// field was kept reads as.
+	Wrap *Wrap
 
 	// hued says the team has a colour: the file gave it one or [Team.SetHue]
 	// did. A hue of 0 is a real hue, so absence is kept apart from the value.
@@ -95,6 +99,7 @@ var knownFields = map[string]bool{
 	"hue": true, "tier": true, "made": true,
 	"state": true, "closed_at": true, "closed_with": true, "report": true, "root": true,
 	"questions_up": true, "cap_usd_day": true, "depth_limit": true, "sub_share": true, "wake": true,
+	"wrap": true,
 }
 
 // wireTeam is the stored shape. Hue and Tier are pointers so a team with no
@@ -115,6 +120,9 @@ type wireTeam struct {
 	ClosedWith string     `json:"closed_with,omitempty"`
 	Report     string     `json:"report,omitempty"`
 	Root       bool       `json:"root,omitempty"`
+	// Wrap is written only while a wrap-up is in progress, so a team with
+	// none is written exactly as before.
+	Wrap *Wrap `json:"wrap,omitempty"`
 	// The overrides are written flat beside the fields above, each only when
 	// set, so a team with none is written exactly as before.
 	Settings
@@ -131,7 +139,7 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 		return err
 	}
 	*t = Team{ID: w.ID, Name: w.Name, Parent: w.Parent, Members: w.Members, Manager: w.Manager, Made: w.Made,
-		Settings: w.Settings, State: w.State, ClosedWith: w.ClosedWith, Report: w.Report, Root: w.Root}
+		Settings: w.Settings, State: w.State, ClosedWith: w.ClosedWith, Report: w.Report, Root: w.Root, Wrap: w.Wrap}
 	if w.ClosedAt != nil {
 		t.ClosedAt = *w.ClosedAt
 	}
@@ -157,7 +165,7 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 // build wrote, sorted, exactly as it was read.
 func (t Team) MarshalJSON() ([]byte, error) {
 	w := wireTeam{ID: t.ID, Name: t.Name, Parent: t.Parent, Members: t.Members, Manager: t.Manager, Made: t.Made,
-		Settings: t.Settings, ClosedWith: t.ClosedWith, Report: t.Report, Root: t.Root}
+		Settings: t.Settings, ClosedWith: t.ClosedWith, Report: t.Report, Root: t.Root, Wrap: t.Wrap}
 	// A state this build does not know is written back as it was read, so a
 	// later build's word survives; open is written as nothing.
 	if t.State != "" && t.State != TeamOpen {
@@ -245,6 +253,10 @@ func (t Team) member(key string) int {
 func (t Team) Clone() Team {
 	t.Members = append([]Member(nil), t.Members...)
 	t.Settings = t.Settings.clone()
+	if t.Wrap != nil {
+		w := *t.Wrap
+		t.Wrap = &w
+	}
 	if t.extra != nil {
 		extra := make(map[string]json.RawMessage, len(t.extra))
 		for k, v := range t.extra {

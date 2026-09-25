@@ -1001,7 +1001,11 @@ teams.AppendTraffic(profile, teamID, teams.WrapUpRequest("")) // or the person's
 `teams.IsWrapUp(e)` is the only reader. The manager is woken by it and handed an instruction
 (tell every member to finish and commit, answer what it can, start nothing new, then
 `team_close_report`), bounded by `wrapUpFor` (15 minutes) and `wrapUpSpendUSD` ($2 of the
-team's spend since the clock's first look). Past either with no report, codeaf raises the
+team's spend since the clock's first look). The start and the bound are written on the team
+(`teams.Wrap`, through `Change` / `ChangeIf`) when the clock starts, and cleared when the
+report goes out. A session that opens reads it back (`teamWrapUpResume`): the time left is
+the bound minus how long since the start, and a wrap-up already past its bound raises the
+incomplete report on that start, once. Past either with no report, codeaf raises the
 `closing` packet itself with `Report.Incomplete`, question `close harbor? (wrap-up incomplete)`,
 options `close-now` / `keep-going`, recommended `keep-going`. A complete report has `close` /
 `keep-going`, recommended `close`. At most one closing packet waits per team.
@@ -1020,8 +1024,10 @@ lost; a decided one stays readable for one more rotation.
 
 **Over `--host`.** All of the above runs where the conversations run, the engine: questions,
 caps, the wrap-up clock and the verbs are the engine's session reading the engine's profile and
-ledger, so a window over `--host` needs nothing new. It sees packets through `Teams.Packets` and
-decides through `Teams.Decide`. Traffic has no general writer over the wire, so the wrap-up
+ledger, so a window over `--host` needs nothing new. The clock travels with the team:
+`Teams.Read` and `Teams.Update` already return `[]teams.Team`, and `wrap` is a field of that
+record, so a restarted engine resumes the same countdown. It sees packets through `Teams.Packets`
+and decides through `Teams.Decide`. Traffic has no general writer over the wire, so the wrap-up
 has two narrow doors of its own, said by `Welcome.WrapUp`: `Teams.WrapUp` (`WrapUpArgs{Team,
 Text}`) appends exactly `teams.WrapUpRequest(Text)` to the engine's log, and
 `Teams.AcceptClosing` (`AcceptClosingArgs{ID}` → `AcceptClosingReply{Closed, Stamp}`) runs
@@ -1029,8 +1035,7 @@ Text}`) appends exactly `teams.WrapUpRequest(Text)` to the engine's log, and
 `TeamsAcceptClosing(id)`. The interface wires them into its seam (d2); an engine without the
 flag gets `Close now` only, said as such.
 
-**Known gaps.** The wrap-up clock is the manager process's memory (a restart forgets it; the
-person's card still offers Close now). Two processes meeting a cap in the same instant can each
+**Known gaps.** Two processes meeting a cap in the same instant can each
 raise a cap packet (one process raises one). A conversation in an unmanaged sub-team whose home
 manager is a level up gets no member verbs and no questions-up (its membership has no manager). (Closed by 8.9: such a member answers to that manager for
 questions and `team_post`.)
