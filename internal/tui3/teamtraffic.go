@@ -106,6 +106,10 @@ type trafficState struct {
 	// own, as it keeps its own tabs.
 	hidden bool
 	over   bool
+	// tasks says the column shows the manager's own tasks instead of the
+	// traffic (teamrail.go's [app.trafficTasksShowing]); it counts only while
+	// the manager has live tasks. Memory only, and this window's.
+	tasks bool
 	// open is every message the person laid out in full on the rail or under
 	// a thread card, by team and entry id (teamthread.go), and opened counts the
 	// presses that changed it, which is what the rail's cache keys on. Memory

@@ -93,14 +93,17 @@ it to open that member (resumed first when this window does not have it open). P
 message's words to read them whole in the hint line, press them to lay them out in full under
 the row, and press again to fold them. Nothing on the rail moves your focus but a handle.
 
-The rail takes the right-hand column while the manager is in front. The task column folds to its
-edge beside it; press that edge or `ctrl+g` to bring the tasks back, which puts the Traffic away.
-The rail's header reads `Traffic` with `hide alt+l` at its right. Put away, the rail is the word
+With the manager in front the right-hand column is the Traffic, whatever you last told the task
+column with `ctrl+g`: the task column is not drawn beside it, not even as an edge. When the
+manager has live tasks of its own the header grows a second word, `Traffic · Tasks 2`; press
+`Tasks 2`, or `ctrl+g`, to lay the manager's tasks in the same column at the same width, and
+press the header line, or `ctrl+g` again, to go back to the Traffic. With no tasks there is no
+second word and `ctrl+g` does nothing here. Every other conversation's task column works as it
+always has. The rail's header reads `Traffic` with `hide alt+l` at its right. Put away, the rail is the word
 `Traffic` down the right edge with a count of what arrived since you last looked; press it or
 `alt+l` to bring it back. This window remembers whether you put it away.
 
-On a window too narrow for the column (under about 84 columns after the task column's edge) the
-rail is only that edge. Pressing it, or `alt+l`, lays the Traffic over the lower part of the
+On a window too narrow for the column (under 84 columns) the rail is only that edge. Pressing it, or `alt+l`, lays the Traffic over the lower part of the
 conversation as a card with `Close esc` in its foot; the top of the conversation stays in view.
 `esc` closes it.
 
