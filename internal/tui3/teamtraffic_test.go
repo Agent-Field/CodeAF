@@ -161,8 +161,8 @@ func TestTrafficRailBesideTheManager(t *testing.T) {
 }
 
 // AT 110 COLUMNS THE RAIL STANDS. A 110-column laptop terminal is not narrow:
-// the Traffic takes the right column, and the task column folds to its edge
-// rather than pushing the rail under its floor.
+// the Traffic takes the right column, and the task column is not on the frame
+// at all, not even as an edge.
 func TestTrafficRailStandsAt110(t *testing.T) {
 	a, harbor, _, _ := trafficApp(t)
 	a.width, a.height = 110, 30
@@ -175,7 +175,7 @@ func TestTrafficRailStandsAt110(t *testing.T) {
 	if a.bodyWidth() < trafficBodyFloor {
 		t.Fatalf("the conversation is left %d columns", a.bodyWidth())
 	}
-	if !a.railQuiet() && !a.railStowed() {
+	if a.railWidth() != 0 || a.railShowing() || a.railStowed() {
 		t.Fatalf("the task column still stands beside the rail: %d", a.railWidth())
 	}
 }
@@ -183,8 +183,7 @@ func TestTrafficRailStandsAt110(t *testing.T) {
 // THE RAIL IS PUT AWAY BY A WORD AND BROUGHT BACK BY ITS EDGE OR ITS KEY. The
 // header's `hide` puts the column away and leaves the edge, the word Traffic
 // with a count of what came in since; the key brings it back; and asking the
-// task column back (ctrl+g's road) puts the Traffic away, since the two share
-// the one column.
+// task column back (ctrl+g's road) with no tasks leaves the Traffic where it is.
 func TestTrafficRailHidesAndShows(t *testing.T) {
 	a, harbor, _, _ := trafficApp(t)
 	a.width, a.height = 160, 40
@@ -219,9 +218,11 @@ func TestTrafficRailHidesAndShows(t *testing.T) {
 	if _, took := a.trafficKeyPress(tea.KeyPressMsg{Code: 'l', Mod: tea.ModAlt}); !took || a.traffic.hidden {
 		t.Fatalf("%s did not bring the rail back", trafficKey)
 	}
+	// ASKING FOR THE TASKS BACK, with no tasks of the manager's own, leaves the
+	// Traffic holding the column: there is nothing to swap to.
 	a.railStow(false)
-	if !a.traffic.hidden {
-		t.Fatal("asking for the tasks back left the Traffic holding the column")
+	if a.traffic.hidden || !a.trafficHoldsRail() {
+		t.Fatal("asking for the tasks back put the Traffic away")
 	}
 }
 

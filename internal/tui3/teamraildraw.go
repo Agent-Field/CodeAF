@@ -24,8 +24,8 @@ func (a *app) trafficBody(t team, height, width int) ([]string, [][]trafficDoor,
 	}
 	key := trafficCacheKey{
 		team: t.ID, last: last, seen: a.traffic.seen[t.ID], rows: len(rows),
-		width: width, height: height, hot: hot, hotDoor: hotDoor, open: a.traffic.opened,
-		hideHot: a.hot.kind == hoverTrafficHide, ascii: a.pal.ascii, minute: a.now().Unix() / 60,
+		width: width, height: height, hot: hot, hotDoor: hotDoor, open: a.traffic.opened, tasks: a.trafficTaskCount(),
+		hideHot: a.hot.kind == hoverTrafficHide, tabHot: a.hot.kind == hoverTrafficTab, ascii: a.pal.ascii, minute: a.now().Unix() / 60,
 	}
 	if c := &a.traffic.cache; c.out != nil && c.key == key {
 		return c.out, c.doors, c.hints, c.hide
@@ -33,7 +33,7 @@ func (a *app) trafficBody(t team, height, width int) ([]string, [][]trafficDoor,
 	out := make([]string, height)
 	doors := make([][]trafficDoor, height)
 	hints := make([]string, height)
-	var hide hudSpan
+	var hide, tab hudSpan
 	if height <= 0 || width <= 0 {
 		return out, doors, hints, hide
 	}
@@ -45,15 +45,35 @@ func (a *app) trafficBody(t team, height, width int) ([]string, [][]trafficDoor,
 	// the task column's own foot says it (`ctrl+g hide`): the name in ink, the
 	// way out dim at the right, and the way out is a word a hand can press.
 	hideWord := "hide " + trafficKey
-	head := a.pal.ink(trafficWord)
-	if gap := width - len(trafficWord) - ansi.StringWidth(hideWord); gap >= 2 {
+	head := a.pal.bold(a.pal.ink(trafficWord))
+	headW := len(trafficWord)
+	// AND THE MANAGER'S OWN TASKS ARE THE OTHER WORD, only while it has live
+	// ones: `Traffic · Tasks 2`, the word a press or ctrl+g takes to lay them
+	// in this column (teamrail.go).
+	if key.tasks > 0 {
+		word := trafficTasksWord + " " + itoa(key.tasks)
+		if headW+ansi.StringWidth(trafficTabSep)+ansi.StringWidth(word)+2+ansi.StringWidth(hideWord) <= width {
+			painted := a.pal.dim(word)
+			if key.tabHot {
+				painted = a.pal.cursor(a.pal.ink(word), 0)
+			}
+			from := headW + ansi.StringWidth(trafficTabSep)
+			head += a.pal.dim(trafficTabSep) + painted
+			tab = hudSpan{from: from, to: from + ansi.StringWidth(word)}
+			headW = tab.to
+			hints[0] = "Show the manager's tasks here" + hintSegment + railStowKey
+		}
+	}
+	if gap := width - headW - ansi.StringWidth(hideWord); gap >= 2 {
 		word := a.pal.dim(hideWord)
 		if key.hideHot {
 			word = a.pal.cursor(a.pal.ink(hideWord), 0)
 		}
 		head += strings.Repeat(" ", gap) + word
 		hide = hudSpan{from: width - ansi.StringWidth(hideWord), to: width}
-		hints[0] = "Hide the traffic" + hintSegment + trafficKey
+		if key.hideHot || hints[0] == "" {
+			hints[0] = "Hide the traffic" + hintSegment + trafficKey
+		}
 	}
 	out[0] = fit(head, width)
 	// THE NEWEST THREAD IS AT THE TOP, straight under the header, and the
@@ -69,7 +89,7 @@ func (a *app) trafficBody(t team, height, width int) ([]string, [][]trafficDoor,
 	for i, r := range laid {
 		out[1+i], doors[1+i] = r.text, r.doors
 	}
-	a.traffic.cache = trafficCache{key: key, out: out, doors: doors, hints: hints, hide: hide}
+	a.traffic.cache = trafficCache{key: key, out: out, doors: doors, hints: hints, hide: hide, tab: tab}
 	return out, doors, hints, hide
 }
 
@@ -100,6 +120,9 @@ func (a *app) trafficRows(height int) []string {
 	a.traffic.drawn = trafficDrawn{
 		mode: trafficColumn, x0: width - cols, x1: width, y0: 0, y1: height,
 		doors: trafficDoorsAt(doors, left), hints: hints, hide: hudSpan{from: hide.from + left, to: hide.to + left},
+	}
+	if tab := a.traffic.cache.tab; tab.pressable() {
+		a.traffic.drawn.tab = hudSpan{from: tab.from + left, to: tab.to + left}
 	}
 	if !hide.pressable() {
 		a.traffic.drawn.hide = hudSpan{}

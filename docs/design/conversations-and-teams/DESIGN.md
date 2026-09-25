@@ -172,8 +172,11 @@ and removing it returns it to an ordinary chat with its history. What makes it s
 - its layout is split: the person's conversation with the manager on the left, a **Traffic**
   rail on the right. Whatever the person types goes to the manager, always, and the composer
   says so (`to ◆ manager`, on the box's rule once there is text). Traffic is drawn as
-  threads (below, **Traffic is threaded**). The rail holds the right-hand
-  column while the manager is in front, the task column folding to its edge beside it; it
+  threads (below, **Traffic is threaded**). With the manager in front the
+  right-hand column is the Traffic (ruled 2026-09-24): the task column is not drawn and not
+  reserved whatever the saved `ctrl+g` answer says. When the manager has live tasks the
+  header reads `Traffic · Tasks 2`, and Tasks (a press or `ctrl+g`) lays them in the same
+  column at the same width, and back; with none there is no word. The rail
   is put away with `hide alt+l` to a `Traffic` edge that counts what arrived, and on a narrow
   window it is that edge and a card laid over the lower conversation;
 - each turn it carries a small team digest (members, handles, states, questions waiting,

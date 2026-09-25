@@ -89,9 +89,10 @@ type trafficDrawn struct {
 	// the row's header words (the hide word's row).
 	doors [][]trafficDoor
 	hints []string
-	// hide is the header's `hide` word, on row hideY, and close the card's
-	// `Close esc`, on row closeY.
+	// hide is the header's `hide` word, on row hideY, tab its `Tasks 2` word
+	// on the same row, and close the card's `Close esc`, on row closeY.
 	hide   hudSpan
+	tab    hudSpan
 	hideY  int
 	close  hudSpan
 	closeY int
@@ -102,8 +103,9 @@ type trafficCacheKey struct {
 	team, last, seen    string
 	rows, width, height int
 	hot, hotDoor        int
-	open                int
-	hideHot, ascii      bool
+	open, tasks         int
+	hideHot, tabHot     bool
+	ascii               bool
 	minute              int64
 }
 
@@ -114,6 +116,7 @@ type trafficCache struct {
 	doors [][]trafficDoor
 	hints []string
 	hide  hudSpan
+	tab   hudSpan
 }
 
 // ── WHERE IT STANDS ─────────────────────────────────────────────────────────
@@ -139,37 +142,93 @@ func (a *app) trafficOn() bool {
 	return ok
 }
 
-// trafficTaskEdge is what the task column costs while the Traffic holds the
-// right: its edge, where that column would stand at all.
-func (a *app) trafficTaskEdge(width int) int {
-	if a.railQuiet() || railColsFor(width) == 0 {
-		return 0
+// WITH THE MANAGER IN FRONT THE RIGHT COLUMN IS THE TRAFFIC (ruled
+// 2026-09-24). The task column is not drawn and not reserved, whatever the
+// saved ctrl+g answer says, so no folded task edge stands beside the traffic
+// and no folded traffic edge beside an empty task column. Only when the manager
+// has live tasks of its own does the header offer them, `Traffic · Tasks 2`,
+// and choosing Tasks lays the task list in the same column
+// ([app.trafficTasksShowing]); the task column's own code draws it, at this
+// column's width ([app.railColumns]).
+
+// trafficTasksWord is the header's word for the manager's own tasks, and
+// trafficTabSep what stands between it and `Traffic`.
+const (
+	trafficTasksWord = "Tasks"
+	trafficTabSep    = " · "
+)
+
+// trafficTasksHead is the column's header while it shows the manager's tasks:
+// `Traffic · Tasks 2` with Tasks the current word, and the key back at the
+// right. The whole line is the way back to the traffic.
+func (a *app) trafficTasksHead(width int) string {
+	word := trafficTasksWord + " " + itoa(a.trafficTaskCount())
+	head := a.pal.dim(trafficWord) + a.pal.dim(trafficTabSep) + a.pal.bold(a.pal.ink(word))
+	used := len(trafficWord) + ansi.StringWidth(trafficTabSep) + ansi.StringWidth(word)
+	back := railStowKey + " traffic"
+	if gap := width - used - ansi.StringWidth(back); gap >= 2 {
+		head += strings.Repeat(" ", gap) + a.pal.dim(back)
 	}
-	return railGripCols
+	return fit(head, width)
 }
 
 // trafficFits reports whether this frame is wide enough for the column.
 func (a *app) trafficFits() bool {
 	width, _ := a.size()
-	return trafficColsFor(width-a.trafficTaskEdge(width)) > 0
+	return trafficColsFor(width) > 0
 }
 
-// trafficHoldsRail reports whether the Traffic has the right-hand column now,
-// which is what folds the task column to its edge.
+// trafficTaskCount is how many of the manager's own tasks are live: asking,
+// running, admitted or parked. 0 without the manager in front.
+func (a *app) trafficTaskCount() int {
+	if !a.trafficOn() || len(a.taskOrder) == 0 {
+		return 0
+	}
+	members := a.railMembers()
+	n := 0
+	for g := railAttention; g < railDone; g++ {
+		n += len(members[g])
+	}
+	return n
+}
+
+// trafficTasksShowing reports whether the column shows the manager's tasks
+// instead of the traffic: the person chose Tasks, there are live ones, and the
+// column is up on a frame wide enough for it.
+func (a *app) trafficTasksShowing() bool {
+	return a.traffic.tasks && !a.traffic.hidden && a.trafficOn() && a.trafficFits() && a.trafficTaskCount() > 0
+}
+
+// trafficTasksShow swaps the column between the traffic and the manager's
+// tasks, and brings the column back if it was put away. With no live tasks it
+// is the traffic, and there is nothing to swap to.
+func (a *app) trafficTasksShow(on bool) {
+	a.traffic.tasks = on && a.trafficTaskCount() > 0
+	if a.traffic.hidden && a.trafficFits() {
+		a.traffic.hidden = false
+	}
+	if !a.traffic.tasks {
+		a.railHold = false
+	}
+	a.dropHover()
+	a.touch()
+}
+
+// trafficHoldsRail reports whether the Traffic has the right-hand column now.
 func (a *app) trafficHoldsRail() bool {
-	return a.trafficOn() && !a.traffic.hidden && a.trafficFits()
+	return a.trafficOn() && !a.traffic.hidden && a.trafficFits() && !a.trafficTasksShowing()
 }
 
 // trafficWidth is what the rail costs the conversation, in columns: its column
 // where it holds the right, the edge where it is away or cannot stand, and
 // nothing without the manager in front.
 func (a *app) trafficWidth() int {
-	if !a.trafficOn() {
+	if !a.trafficOn() || a.trafficTasksShowing() {
 		return 0
 	}
 	if !a.traffic.hidden {
 		width, _ := a.size()
-		if cols := trafficColsFor(width - a.trafficTaskEdge(width)); cols > 0 {
+		if cols := trafficColsFor(width); cols > 0 {
 			return cols
 		}
 	}

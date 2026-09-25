@@ -66,6 +66,8 @@ func (a *app) trafficHoverAt(x, y int) (hoverAt, bool) {
 			return hoverAt{kind: hoverTrafficClose}, true
 		case d.mode == trafficColumn && rel == d.hideY && d.hide.holds(x):
 			return hoverAt{kind: hoverTrafficHide}, true
+		case d.mode == trafficColumn && rel == d.hideY && d.tab.holds(x):
+			return hoverAt{kind: hoverTrafficTab}, true
 		}
 		if _, i := d.trafficDoorAt(rel, x); i >= 0 {
 			return hoverAt{kind: hoverTraffic, index: rel, entry: i}, true
@@ -93,6 +95,9 @@ func (a *app) trafficPress(x, y int) (tea.Cmd, bool) {
 			return nil, true
 		case d.mode == trafficColumn && rel == d.hideY && d.hide.holds(x):
 			a.trafficShow(false)
+			return nil, true
+		case d.mode == trafficColumn && rel == d.hideY && d.tab.holds(x):
+			a.trafficTasksShow(true)
 			return nil, true
 		}
 		door, i := d.trafficDoorAt(rel, x)
@@ -241,6 +246,8 @@ func (a *app) trafficHoverWords() string {
 			return d.doors[rel][a.hot.entry].hint
 		}
 	case hoverTrafficHide:
+		return "Hide the traffic" + hintSegment + trafficKey
+	case hoverTrafficTab:
 		if i := d.hideY; i >= 0 && i < len(d.hints) {
 			return d.hints[i]
 		}

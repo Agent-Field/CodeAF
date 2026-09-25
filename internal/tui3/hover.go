@@ -331,6 +331,9 @@ const (
 	// the narrow frame's card's `Close esc` (teamrail.go).
 	hoverTrafficHide
 	hoverTrafficClose
+	// hoverTrafficTab is the header's `Tasks 2` word, which lays the manager's
+	// own tasks in the column (teamrail.go).
+	hoverTrafficTab
 	// hoverThread is a line of a thread card in the conversation, held by its
 	// entry and the message it shows (teamthreadcard.go).
 	hoverThread
