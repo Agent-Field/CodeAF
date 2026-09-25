@@ -31,6 +31,11 @@ invalidates:
   - "`SIZE-BUDGET` was 54,600,000. It is 57,400,000: the old figure plus what the engine weighs on the heaviest platform, tabled in PERF.md, which also names that darwin/amd64 and linux/amd64 were already over the old figure before this change."
   - "The chat's prompt-size caps (internal/session's prefixbudget_test.go) were 56,146 bytes for the full prefix and 48,814 for the lean one on dev, and neither weighed the programs paragraph. Both are fixed, and the caps are 57,124 and 49,590: raised by exactly what the paragraph and the preference for a program cost (978 and 776 bytes), on the owner's calls of 2026-09-23 and 2026-09-24 (\"raise the cap only as much as necessary\")."
   - "A draft that installed programs from manifests in `~/.codeaf/delegates` was built and never shipped; it is kept on the tag `delegate-manifest-v1` for when programs from outside the binary return."
+  - "A restore after submission or a failed suite could erase later edits and new files; it now copies each differing file outside the project before restoring and names the rescue folder in the ending."
+  - "An eager write followed HEAD onto the person's branch, and the moved-HEAD ending denied existing task commits; eager commits now require the run's branch and the ending names committed and uncommitted work truthfully."
+  - "Changing `.gitignore` could commit a secret ignored when the run began, and test caches entered the task commit; the start-time ignored paths and the narrow generated-path list are excluded from eager and finishing commits."
+  - "The folder hold let workspace restore, workspace merge and unnamed generated output write inside the held folder; it now fences those writes with the other file tools."
+  - "A gitignored subfolder widened to its enclosing repository and an empty branch was deleted while its files remained; it now runs as a plain folder and says that nothing was committed."
 ---
 
 `docs/design/delegate/PROTOCOL.md` is the internal protocol (version 2); `internal/delegate`

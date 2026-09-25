@@ -144,7 +144,7 @@ and the command's own flags survive.
 | `hello` | first | `protocol` (2), `delegate`, `stages` (the whole list, in order) |
 | `stage` | on every phase change | `stage`, `status`, and optionally `data`: a JSON object of at most 1024 bytes (`delegate.StageDataCap`) |
 | `step` | once per finished action | `command` (one line, 200 bytes at most), `observation` (2048 bytes at most), and optionally `tool` (the tool's name), `step` (the program's own id for the part of its process the action served), `exit` (a command's exit code, only for an action that ran one), and `added` and `removed` (the lines an action that changed a file added and removed, only when the program counted them) |
-| `terminal` | last, exactly once, on every path | `status` (`pass`, `fail`, `budget-exhausted`, `crashed`), `message`, `data`: `reason`, `claim`, `observed`, `deliverable`, and anything else |
+| `terminal` | last, exactly once, on every path | `status` (`pass`, `fail`, `budget-exhausted`, `crashed`), `message`, `data`: `reason`, `claim`, `observed`, `deliverable`, `rescue_path` (optional absolute directory where files were copied before a restore), and anything else |
 
 Any other line is ignored. There is no `spend` record: the model API meters
 every call as it is made, so money has one source of truth and it is not the

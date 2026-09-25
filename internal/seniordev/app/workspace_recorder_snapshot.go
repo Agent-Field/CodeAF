@@ -197,6 +197,37 @@ func (recorder *snapshotRecorder) Restore(handle, wantTree string) error {
 	return nil
 }
 
+// DifferentPaths compares the same file manifests Restore uses, so a changed
+// file or a new file is rescued before the snapshot road replaces either.
+func (recorder *snapshotRecorder) DifferentPaths(handle string) ([]string, error) {
+	recorder.mu.Lock()
+	store := recorder.store
+	recorder.mu.Unlock()
+	if store == "" {
+		return nil, fmt.Errorf("no snapshot store: nothing was recorded")
+	}
+	wanted, err := walkTree(filepath.Join(store, handle), false)
+	if err != nil {
+		return nil, err
+	}
+	current, err := recorder.walk()
+	if err != nil {
+		return nil, err
+	}
+	before := make(map[string]treeEntry, len(wanted))
+	for _, entry := range wanted {
+		before[entry.path] = entry
+	}
+	var paths []string
+	for _, entry := range current {
+		old, found := before[entry.path]
+		if !found || old.hash != entry.hash || old.mode != entry.mode {
+			paths = append(paths, entry.path)
+		}
+	}
+	return paths, nil
+}
+
 // BaseTree is the identity function: a snapshot base IS a tree identifier,
 // where a git base is a commit that has to be resolved to one.
 func (recorder *snapshotRecorder) BaseTree(base string) (string, bool) {

@@ -44,6 +44,9 @@ type workspaceRecorder interface {
 	// Restore makes the working tree the one Record captured, and proves it by
 	// re-identifying the result. wantTree is that proof; a mismatch is an error.
 	Restore(handle, wantTree string) error
+	// DifferentPaths lists the current files a restore would overwrite or
+	// remove, so they can be copied outside the workspace first.
+	DifferentPaths(handle string) ([]string, error)
 
 	// BaseTree resolves a base identifier from Base to the tree identifier it
 	// names, so a base can be used as a restore target of last resort. ok is

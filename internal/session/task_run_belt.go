@@ -148,6 +148,10 @@ type RunSpec struct {
 	// git ([ProgramFolder.Plain]), so it is started with its own flags for that
 	// (delegate.Delegate.PlainFolder). False for every other run.
 	PlainFolder bool
+	// ProgramBranch and ProgramIgnoredFile fence the child's eager commits to
+	// its own branch and the ignore rules recorded before it started.
+	ProgramBranch      string
+	ProgramIgnoredFile string
 	// Crew is the conversation's crew as a delegated run's program is handed it
 	// ([conversationCrew]), so the program works on the models the person
 	// chose. Zero for every other run.
@@ -797,7 +801,14 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		Conversation: a.runConversation(),
 		Delegate:     run.delegate,
 		PlainFolder:  run.folder != nil && run.folder.Plain(),
-		Crew:         a.delegateCrew(run),
+		ProgramBranch: func() string {
+			if run.folder == nil {
+				return ""
+			}
+			return run.folder.Branch
+		}(),
+		ProgramIgnoredFile: run.folder.IgnoredFile(),
+		Crew:               a.delegateCrew(run),
 	}
 }
 

@@ -542,7 +542,7 @@ answer for those rows too, in words that say what happened:
 Neither ever answers that the row does not exist. A number no run of this
 conversation holds still goes on to the ordinary task reader.
 
-## Does a note actually reach the worker, when does it read it, does it have to ask for it
+## I left a note and the task ignored it — does a note reach the worker, when does it read it, does it have to ask?
 
 Yes, and it does not have to ask. The run looks for unread notes each time the
 worker finishes a step, and hands them over at once, through the same door your

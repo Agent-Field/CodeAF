@@ -5,6 +5,7 @@ package util
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,6 +37,12 @@ func EagerCommit(ctx context.Context, options EagerCommitOptions) {
 		return
 	}
 	defer func() { _ = recover() }()
+	// The branch comes from codeaf's folder preparation, not the current HEAD:
+	// a shell command or editor can move HEAD between two file tools.
+	expected := strings.TrimSpace(os.Getenv("SENIOR_DEV_EXPECTED_BRANCH"))
+	if !strings.HasPrefix(expected, "task/") {
+		return
+	}
 	inRepo, _ := RunProcess(ctx, []string{"git", "rev-parse", "--is-inside-work-tree"}, RunOptions{
 		ProcessOptions: ProcessOptions{Cwd: options.Cwd}, NoThrow: true,
 	})
@@ -49,7 +56,16 @@ func EagerCommit(ctx context.Context, options EagerCommitOptions) {
 	if rootResult.Code == 0 {
 		root = strings.TrimSpace(string(rootResult.Stdout))
 	}
+	head, _ := RunProcess(ctx, []string{"git", "symbolic-ref", "--quiet", "--short", "HEAD"}, RunOptions{
+		ProcessOptions: ProcessOptions{Cwd: root}, NoThrow: true,
+	})
+	if head.Code != 0 || strings.TrimSpace(string(head.Stdout)) != expected {
+		return
+	}
 	relative := repositoryRelative(root, options.Cwd, options.FilePath)
+	if GeneratedRunPath(relative) || IgnoredAtStart(relative) {
+		return
+	}
 	add, _ := RunProcess(ctx, []string{"git", "add", "--", relative}, RunOptions{
 		ProcessOptions: ProcessOptions{Cwd: root}, NoThrow: true,
 	})
@@ -62,10 +78,73 @@ func EagerCommit(ctx context.Context, options EagerCommitOptions) {
 	if diff.Code == 0 {
 		return
 	}
+	// A checkout may have moved while git was staging this path. Read HEAD
+	// again immediately before the commit, leaving the edit uncommitted there.
+	head, _ = RunProcess(ctx, []string{"git", "symbolic-ref", "--quiet", "--short", "HEAD"}, RunOptions{
+		ProcessOptions: ProcessOptions{Cwd: root}, NoThrow: true,
+	})
+	if head.Code != 0 || strings.TrimSpace(string(head.Stdout)) != expected {
+		return
+	}
 	message := "wip(" + options.Label + "): " + relative
 	_, _ = RunProcess(ctx, GitArgv(
 		"commit", "-m", message, "--no-verify", "--only", "--", relative,
 	), RunOptions{ProcessOptions: ProcessOptions{Cwd: root}, NoThrow: true})
+}
+
+// GeneratedRunPaths is the one narrow list of test droppings this run is
+// known to create. A general guess would hide a person's actual deliverable.
+const GeneratedRunPaths = "__pycache__/,.pytest_cache/,*.pyc"
+
+func GeneratedRunPath(path string) bool {
+	for _, pattern := range strings.Split(GeneratedRunPaths, ",") {
+		if strings.HasPrefix(pattern, "*.") {
+			if strings.HasSuffix(path, strings.TrimPrefix(pattern, "*")) {
+				return true
+			}
+			continue
+		}
+		for _, part := range strings.Split(filepath.ToSlash(path), "/") {
+			if part == strings.TrimSuffix(pattern, "/") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// IgnoredAtStart reads the parent's frozen ignore list. It is a small file in
+// the run record, since ignored directories can contain thousands of files.
+func IgnoredAtStart(path string) bool {
+	paths, err := InitialIgnoredPaths()
+	if err != nil {
+		// An unreadable safety list must never permit an eager commit.
+		return true
+	}
+	return PathIgnoredAtStart(path, paths)
+}
+
+// InitialIgnoredPaths reads the one list codeaf captured before the run.
+func InitialIgnoredPaths() ([]string, error) {
+	list := os.Getenv("SENIOR_DEV_IGNORED_AT_START")
+	if list == "" {
+		return nil, nil
+	}
+	body, err := os.ReadFile(list)
+	if err != nil {
+		return nil, fmt.Errorf("read start-time ignore list: %w", err)
+	}
+	return strings.Split(string(body), "\x00"), nil
+}
+
+// PathIgnoredAtStart matches a file or a child of an ignored directory.
+func PathIgnoredAtStart(path string, paths []string) bool {
+	for _, ignored := range paths {
+		if ignored != "" && (path == ignored || strings.HasPrefix(path, strings.TrimSuffix(ignored, "/")+"/")) {
+			return true
+		}
+	}
+	return false
 }
 
 // repositoryRelative names a written file inside the repository whose top

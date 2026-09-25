@@ -118,8 +118,8 @@ func TestADelegatedRunFromADetachedCheckoutNamesTheCommitToGoBackTo(t *testing.T
 }
 
 // A HEAD THE PROGRAM'S SHELL MOVED IS LEFT WHERE IT IS. senior-dev's shell can
-// run `git checkout`, and it did, four times in one run. codeaf then commits
-// nothing and switches nothing: committing where HEAD is would put codeaf's
+// run `git checkout`, and it did, four times in one run. codeaf then makes no
+// finishing commit and switches nothing: committing where HEAD is would put codeaf's
 // commit on a branch that may be the person's own, and switching would carry
 // whatever is in the folder somewhere nobody chose. It says where HEAD is.
 func TestAProgramThatMovedHeadOffItsBranchIsLeftWhereItIs(t *testing.T) {
@@ -141,7 +141,7 @@ func TestAProgramThatMovedHeadOffItsBranchIsLeftWhereItIs(t *testing.T) {
 		t.Fatalf("codeaf committed what the program left while HEAD was elsewhere:\n%s", status)
 	}
 	want := "fake left " + canonicalPath(repo) + " on the branch work instead of its own branch " + branch +
-		", so codeaf changed nothing there: nothing was committed and nothing was switched; " + branch + " holds 1 file"
+		", so codeaf made no finishing commit and did not switch branches; the checkout has 1 file uncommitted; " + branch + " holds 1 file; your branch work was not given a commit by codeaf"
 	if !strings.Contains(strings.Join(notes, "\n"), want) {
 		t.Fatalf("the page does not say where HEAD was left: %q, want %q", notes, want)
 	}

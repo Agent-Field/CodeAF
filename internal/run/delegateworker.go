@@ -107,6 +107,10 @@ type DelegateSetup struct {
 	// (session.RunSpec.PlainFolder), so the program's line carries its own
 	// flags for that (delegate.Delegate.PlainFolder).
 	PlainFolder bool
+	// Branch is the run's own task branch; IgnoredFile is its start-time
+	// ignore list. Both are passed to the child before any eager commit.
+	Branch      string
+	IgnoredFile string
 	// Crew is the conversation's crew (session.RunSpec.Crew), which the
 	// program's line carries in its own flags (delegate.Delegate.CrewFlags) so
 	// it works on the models the person chose. Zero leaves it to its own.
@@ -476,7 +480,7 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 			delegate.RunFacts{Plain: w.setup.PlainFolder, Crew: w.setup.Crew}),
 		// NO KEY REACHES THE PROGRAM (delegate.ChildEnv): the API's address and
 		// token are the whole of what it is given.
-		Env:        delegate.ChildEnv(api.API()),
+		Env:        append(delegate.ChildEnv(api.API()), "SENIOR_DEV_EXPECTED_BRANCH="+w.setup.Branch, "SENIOR_DEV_IGNORED_AT_START="+w.setup.IgnoredFile),
 		Dir:        w.workspace,
 		StderrPath: filepath.Join(taskDir, delegateStderrName),
 		Grace:      w.setup.Grace,

@@ -457,7 +457,7 @@ line of its report — `files: site/index.html, site/app.css` — and only names
 exist in its checkout are believed. A task that says nothing about them has left them
 behind, and that is the difference between a deliverable and a dropping.
 
-## Why my task's branch was kept — I committed, amended, rebased or reset my branch while it ran, it did not merge, has codeaf committed to dev or main, my checkout is on main or dev, tasks do not merge into a protected branch automatically, how do I take the work, why did the work not land in my checkout, why didn't my task merge, which branches does codeaf refuse to write
+## codeaf committed to dev — why my task's branch was kept, has codeaf committed to dev or main, I committed, amended, rebased or reset my branch while it ran, it did not merge, my checkout is on main or dev, tasks do not merge into a protected branch automatically, how do I take the work, why did the work not land in my checkout, why didn't my task merge, which branches does codeaf refuse to write
 
 A tag with the same name as a branch does not change which branch is protected
 or which commit the landing compares. Git signature-display settings also do

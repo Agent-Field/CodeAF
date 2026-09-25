@@ -5,7 +5,13 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // soloLandingReserve sizes the landing window: two fifteenths of the wall
@@ -232,5 +238,70 @@ func (runner *pipeline) soloRestoreCheckpoint(checkpoint soloCheckpoint) error {
 // How that is achieved is the recorder's business; both implementations
 // re-identify the result rather than trusting the operation.
 func (runner *pipeline) soloRestoreTree(commitSHA, wantTree string) error {
+	paths, err := runner.recorder.DifferentPaths(commitSHA)
+	if err != nil {
+		return fmt.Errorf("read files that a restore would replace: %w", err)
+	}
+	if len(paths) > 0 {
+		if err := runner.rescueBeforeRestore(paths); err != nil {
+			return fmt.Errorf("keep later files before restoring: %w", err)
+		}
+	}
 	return runner.recorder.Restore(commitSHA, wantTree)
+}
+
+// rescueBeforeRestore copies the current bytes outside the repository BEFORE
+// a recorder's forceful restore. The state root is durable and separate from
+// the person's tracked tree; a copy failure refuses the destructive restore.
+func (runner *pipeline) rescueBeforeRestore(paths []string) error {
+	root := home.Join("v3", "carried", "senior-dev", "rescued")
+	if relative, err := filepath.Rel(runner.workspace, root); err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) && !filepath.IsAbs(relative) {
+		root = filepath.Join(os.TempDir(), "codeaf-rescued")
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return err
+	}
+	if runner.rescuePath == "" {
+		created, err := os.MkdirTemp(root, "run-")
+		if err != nil {
+			return err
+		}
+		runner.rescuePath = created
+	}
+	destination := runner.rescuePath
+	if runner.rescueCount > 0 {
+		destination = filepath.Join(destination, fmt.Sprintf("later-%d", runner.rescueCount+1))
+	}
+	for _, path := range paths {
+		from := filepath.Join(runner.workspace, filepath.FromSlash(path))
+		info, err := os.Lstat(from)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		to := filepath.Join(destination, filepath.FromSlash(path))
+		if err := os.MkdirAll(filepath.Dir(to), 0o700); err != nil {
+			return err
+		}
+		switch {
+		case info.Mode().IsRegular():
+			if err := copyFile(from, to, info.Mode()); err != nil {
+				return err
+			}
+		case info.Mode()&os.ModeSymlink != 0:
+			link, err := os.Readlink(from)
+			if err != nil {
+				return err
+			}
+			if err := os.Symlink(link, to); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("cannot preserve %s before restore", from)
+		}
+	}
+	runner.rescueCount++
+	return nil
 }

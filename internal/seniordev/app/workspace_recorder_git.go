@@ -33,7 +33,8 @@ func newGitRecorder(workspace string, note func(string)) *gitRecorder {
 func (recorder *gitRecorder) Kind() string         { return "git" }
 func (recorder *gitRecorder) CommitsOnWrite() bool { return true }
 
-// git runs a git command in the workspace and returns its trimmed output.
+// git runs a git command in the workspace and keeps NUL-delimited path lists
+// byte-for-byte while trimming ordinary human-readable output.
 func (recorder *gitRecorder) git(args ...string) (string, error) {
 	argv := util.GitArgv(args...)
 	cmd := exec.Command(argv[0], argv[1:]...)
@@ -46,6 +47,13 @@ func (recorder *gitRecorder) git(args ...string) (string, error) {
 			"git %s: %v: %s",
 			strings.Join(args, " "), err, strings.TrimSpace(string(out)),
 		)
+	}
+	// NUL-delimited path lists may begin with whitespace that belongs to the
+	// first filename. Trimming those bytes would make a rescue miss that file.
+	for _, arg := range args {
+		if arg == "-z" {
+			return string(out), nil
+		}
 	}
 	return strings.TrimSpace(string(out)), nil
 }
@@ -118,6 +126,32 @@ func (recorder *gitRecorder) Snapshot() (string, error) {
 	if out, err := add.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("git add -A: %v: %s", err, strings.TrimSpace(string(out)))
 	}
+	// The candidate must obey the ignore rules from the START of the run,
+	// even after the model rewrote .gitignore. This is a private temporary index;
+	// the real index never stages these paths.
+	listed := exec.Command("git", "ls-files", "--cached", "-z")
+	listed.Dir, listed.Env = recorder.workspace, env
+	staged, err := listed.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("git ls-files in temporary index: %v: %s", err, strings.TrimSpace(string(staged)))
+	}
+	ignoredAtStart, err := util.InitialIgnoredPaths()
+	if err != nil {
+		return "", err
+	}
+	var excluded []string
+	for _, path := range strings.Split(string(staged), "\x00") {
+		if path != "" && (util.PathIgnoredAtStart(path, ignoredAtStart) || util.GeneratedRunPath(path)) {
+			excluded = append(excluded, path)
+		}
+	}
+	if len(excluded) > 0 {
+		reset := exec.Command("git", append([]string{"reset", "-q", "HEAD", "--"}, excluded...)...)
+		reset.Dir, reset.Env = recorder.workspace, env
+		if out, err := reset.CombinedOutput(); err != nil {
+			return "", fmt.Errorf("git reset temporary index: %v: %s", err, strings.TrimSpace(string(out)))
+		}
+	}
 	write := exec.Command("git", "write-tree")
 	write.Dir, write.Env = recorder.workspace, env
 	out, err := write.CombinedOutput()
@@ -145,17 +179,14 @@ func (recorder *gitRecorder) Publish(name, handle string) error {
 	return err
 }
 
-// Restore makes the working tree byte-identical to a recorded commit's tree,
-// and proves it did by re-hashing.
+// Restore makes the captured working tree match a recorded commit's tree,
+// while preserving files ignored at the start, and proves it by re-hashing.
 //
 // `checkout --force <commit> -- .` alone is OVERLAY checkout: it writes the
-// commit's files and deletes nothing. Every file the model writes is tracked
-// (eager-commit), so a file ADDED after the checkpoint -- probe debris is the
-// common case -- survives both the checkout and a `clean -fd`, and the
-// "restored" tree does not match the checkpoint. `--no-overlay` would fix it
-// but needs git >= 2.23, which not every image has; resetting the index to
-// the commit first makes the extras untracked, so the same old-git `clean`
-// removes them.
+// commit's files and deletes nothing. Resetting the index to the checkpoint
+// makes files added later untracked, so they can be removed one by one. A
+// blanket clean would also remove a person's file that was ignored at the
+// start if the run later removed its .gitignore rule.
 func (recorder *gitRecorder) Restore(handle, wantTree string) error {
 	if _, err := recorder.git("checkout", "--force", handle, "--", "."); err != nil {
 		return err
@@ -163,8 +194,21 @@ func (recorder *gitRecorder) Restore(handle, wantTree string) error {
 	if _, err := recorder.git("reset", "-q", handle, "--", "."); err != nil {
 		return err
 	}
-	if _, err := recorder.git("clean", "-fd"); err != nil {
+	newFiles, err := recorder.git("ls-files", "--others", "--exclude-standard", "-z")
+	if err != nil {
 		return err
+	}
+	ignoredAtStart, err := util.InitialIgnoredPaths()
+	if err != nil {
+		return err
+	}
+	for _, path := range strings.Split(newFiles, "\x00") {
+		if path == "" || util.PathIgnoredAtStart(path, ignoredAtStart) {
+			continue
+		}
+		if err := os.Remove(filepath.Join(recorder.workspace, filepath.FromSlash(path))); err != nil && !os.IsNotExist(err) {
+			return err
+		}
 	}
 	actual, err := recorder.Snapshot()
 	if err != nil {
@@ -176,6 +220,34 @@ func (recorder *gitRecorder) Restore(handle, wantTree string) error {
 		)
 	}
 	return nil
+}
+
+// DifferentPaths includes edits to tracked files and new non-ignored files.
+// Both can be removed by Restore, including a file already eagerly committed
+// after the checkpoint, whose change is measured against the checkpoint.
+func (recorder *gitRecorder) DifferentPaths(handle string) ([]string, error) {
+	changed, err := recorder.git("diff", "--name-only", "-z", handle, "--")
+	if err != nil {
+		return nil, err
+	}
+	newFiles, err := recorder.git("ls-files", "--others", "--exclude-standard", "-z")
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	for _, listing := range []string{changed, newFiles} {
+		for _, path := range strings.Split(listing, "\x00") {
+			if path != "" {
+				seen[path] = true
+			}
+		}
+	}
+	paths := make([]string, 0, len(seen))
+	for path := range seen {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	return paths, nil
 }
 
 func (recorder *gitRecorder) BaseTree(base string) (string, bool) {

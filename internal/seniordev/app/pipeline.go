@@ -51,6 +51,9 @@ type pipeline struct {
 	budgetRun *runbudget.BudgetTracker
 
 	budgetCost float64
+	// rescuePath is the durable place later edits are copied before a restore.
+	rescuePath  string
+	rescueCount int
 
 	fingerprintMu    sync.Mutex
 	fingerprintFiles map[string]worktreeFileFingerprint

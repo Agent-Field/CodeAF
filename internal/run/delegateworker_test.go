@@ -346,6 +346,27 @@ func TestDelegateWorkerReportsAFailedEndingAsAnError(t *testing.T) {
 	}
 }
 
+// The real child receives the branch and frozen ignore record that its eager
+// file writes need; a missing field would silently commit on current HEAD.
+func TestDelegateWorkerPassesTheRunBranchAndIgnoreRecordToItsChild(t *testing.T) {
+	store := runOpenStore(t)
+	seen := filepath.Join(t.TempDir(), "seen")
+	t.Setenv("FAKE_ENV_PATH", seen)
+	m, setup := fakeDelegate(t, "printf '%s\\n%s\\n' \"$SENIOR_DEV_EXPECTED_BRANCH\" \"$SENIOR_DEV_IGNORED_AT_START\" > \"$FAKE_ENV_PATH\"\n"+passLine("done"))
+	setup.Branch = "task/fix-123"
+	setup.IgnoredFile = filepath.Join(t.TempDir(), "ignored-at-start")
+	if _, err := run.NewDelegateWorker(store, t.TempDir(), m, setup, 0, 0).Run(runContext(t), *store.Task(store.RootID())); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(seen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != setup.Branch+"\n"+setup.IgnoredFile+"\n" {
+		t.Fatalf("child branch and ignore record = %q", body)
+	}
+}
+
 // A program that ended without finishing says why, and the run carries its
 // words whole to whoever drew the row: its status word, its sentence and its
 // account, not only the run's one word for every unfinished ending.

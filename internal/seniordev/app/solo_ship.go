@@ -140,8 +140,9 @@ func (runner *pipeline) soloRestoreIfDiverged(state *soloState, outcome *soloOut
 		})
 		return
 	}
-	// Diverged. Restoring is unconditional: post-submission edits are not part
-	// of the answer by definition, whether they look like improvements or not.
+	// Diverged. Later edits are not part of the submitted answer, whether
+	// they look like improvements or not. The restore first copies their bytes
+	// outside the workspace and refuses to proceed if that copy fails.
 	// soloRestoreTree rather than a bare checkout: a file ADDED after submit is
 	// tracked by eager-commit and would survive an overlay checkout, shipping a
 	// tree that silently differs from the frozen candidate it claims to be.
@@ -184,6 +185,9 @@ func (runner *pipeline) soloTerminal(outcome *soloOutcome, reason string) {
 	}
 	if outcome.SuiteDead {
 		data["suite_dead"] = true
+	}
+	if runner.rescuePath != "" {
+		data["rescue_path"] = runner.rescuePath
 	}
 	if candidate := outcome.Frozen; candidate != nil {
 		data["submission_reason"] = candidate.Reason

@@ -271,9 +271,9 @@ When it ends its changes are already in the folder. The task's page says `its wo
 your home folder, `its work is in <folder>; the git repository around it is at <repo>,
 which holds your home folder, so codeaf cut no branch there and committed nothing`).
 
-It works in your folder itself, so leave that folder alone while it runs: once it has
-submitted, anything changed there is put back to what it submitted, and a file added
-there is removed. codeaf's own file tools and tasks keep out of it until then.
+It works in your folder itself. Edits saved while it runs can join its work;
+after submission, edits the restore would replace are set aside as described
+under "Can I keep editing while senior-dev works?" below.
 
 **A folder or file in it that senior-dev may not read is skipped**, not a reason to stop:
 it is in none of its checkpoints, and nothing of it is changed or removed. senior-dev
@@ -286,15 +286,25 @@ senior-dev used to stop at once there with `workspace is not a git repository:
 <folder>; run with --in-place to work in a plain folder`, which the chat could not act on.
 It no longer does, whatever flags it is started with.
 
+## Can senior-dev work in a gitignored folder inside a repo?
+
+Yes. A folder git ignores inside a larger repository is worked in place like a
+plain folder. codeaf does not widen it to the enclosing repository, cut or
+delete a branch there, or commit any of its files. What senior-dev writes
+stays in the folder. The ending says `its work is in <folder>; git ignores
+this folder inside <repo>, so codeaf cut no branch and nothing was committed`.
+
 ## Why can't codeaf edit files while senior-dev is working — the folder is senior-dev's while it runs, a write or a task refused, bash, your own editor
 
 senior-dev works in your folder itself, so **the folder is senior-dev's until the run
 ends**: once it has submitted, anything changed there is put back to what it submitted
-and a file added there is removed, and what is left over is committed as its work. So
+and a file added there is removed after a copy is kept outside the folder. So
 nothing else of codeaf's writes there meanwhile, from any conversation, window or shell:
 
-- the chat's `write` and `edit`, `edit_video`, and a picture, music, video or speech
-  saved at a path there are refused: `<file> is in <folder>, where senior-dev, task 4
+- the chat's `write` and `edit`, `edit_video`, `workspace_restore`, `workspace_merge`,
+  and a picture, music, video or speech saved there, including unnamed default
+  outputs for `edit_video` and generation, are refused: `<file> is in <folder>, where
+  senior-dev, task 4
   (Fix the parser), is working, so nothing was written; wait for that run to end, or stop
   it, then write there`. Reading stays open.
 - a task on that folder, inside it or around it — proposed, typed with `/task`, a quick
@@ -307,6 +317,21 @@ nothing else of codeaf's writes there meanwhile, from any conversation, window o
 
 **`bash` is not fenced**: codeaf cannot know what a command writes. **Neither is your
 own editor**: what you save there while it runs joins its work, or is put back.
+
+## Can I keep editing while senior-dev works?
+
+Yes. In a git repository, edits saved before senior-dev submits can join its task
+branch's commits; the ending commit includes non-ignored files left in the folder.
+In a plain folder they stay in place, with no commit. If a submitted change or an
+earlier checkpoint has to be restored, codeaf first copies every changed tracked
+file and new non-ignored file that restore would replace into a rescue folder under
+codeaf's state root, outside your project. The submitted candidate is then put
+back. The ending says exactly: `Files that changed in the folder before senior-dev
+restored its checkpoint were set aside in <path>`. The path holds the bytes as they
+were before the restore; a later restore in the same run has its own subfolder.
+Files git ignored when the run started are not committed even if senior-dev
+changes `.gitignore`. Python `__pycache__/`, `.pytest_cache/` and `*.pyc` files
+made by its checks are not committed either. Those files stay in your folder.
 
 ## Its notes — .senior-dev, its checklist, its session database, moved out when it ends
 
@@ -323,11 +348,15 @@ left where it is, and never ends up on a branch either.
 
 In a git repository, codeaf cuts a branch of its own for the run (`task/<title>-<id>`)
 in your folder and checks it out there, and senior-dev works on it. senior-dev commits
-every file it writes (`wip(write): <path>`, `wip(edit): <path>`) on that branch, which is
+each file it writes, except initially ignored files and test caches (`wip(write):
+<path>`, `wip(edit): <path>`), on that branch, which is
 how it keeps a record to restore from; they stay there, and nothing squashes them.
+If HEAD leaves that branch, the per-write commit is skipped and the write stays
+uncommitted in the checkout.
 
-When the run ends — finished or not, stopped, or crashed — codeaf commits whatever it
-left uncommitted onto that branch, in one commit whose subject is the task's title and
+When the run ends — finished or not, stopped, or crashed — and HEAD is still on that
+branch, codeaf commits eligible work it left uncommitted, excluding paths ignored at
+the start and known test caches, in one commit whose subject is the task's title and
 whose body is senior-dev's own ending (unless codeaf itself closed first: then nothing
 is committed), and **leaves the branch checked out**, so the work is in your folder
 when you look. Nothing is merged into your own branch. The task's page
@@ -349,7 +378,7 @@ page says what it left `could not be committed (<folder> is in the middle of a m
 empty branch is deleted, and the page says `it changed nothing, so <folder> is back on
 your branch <yours> and its branch <branch> was deleted`.
 
-## Does senior-dev change my branch — your branch never moves, going back, a HEAD it moved, my branch moved during the run
+## Does senior-dev change my branch — your branch never moves, going back
 
 No. Your branch (or, when your checkout was on no branch, the commit it was on) is
 written down before senior-dev starts, and codeaf never writes to it, resets it or
@@ -359,12 +388,18 @@ names `git -C '<folder>' switch --detach <commit>`. codeaf's own switches run wi
 repository's hooks turned off: both go between two names for one commit, so a hook has
 nothing to do there.
 
+## What if HEAD moves to main or detaches, or my branch moves, while senior-dev is working?
+
 senior-dev's shell can still run `git checkout`, and a brief that says "work on a new
 branch" makes that likely. **So a brief need not ask for a branch: the work already has
-one.** If HEAD is not on its branch when the run ends, nothing is touched, and the page
-says where HEAD is: `senior-dev left <folder> on the branch <other> instead of its own
-branch <branch>, so codeaf changed nothing there: nothing was committed and nothing was
-switched; <branch> holds N files` (or `on no branch, at <commit>`).
+one.** If HEAD is not on its branch when the run ends, codeaf makes no finishing
+commit and does not switch branches. Work left uncommitted stays in that checkout.
+The page says where HEAD is and what its task branch already
+holds: `senior-dev left <folder> on the branch <other> instead of its own branch
+<branch>, so codeaf made no finishing commit and did not switch branches; the
+checkout has N files uncommitted; <branch> holds N files; your
+branch <yours> was not given a commit by codeaf` (or `on no branch, at <commit>`).
+For a clean checkout it says `no uncommitted files were left in that checkout`.
 
 **codeaf reads your branch again before it says it is as it was.** If something moved it
 during the run, the page says `your branch <yours> moved during the run, from <commit>
@@ -648,12 +683,14 @@ reads done, with its result.
 committed**: the one that opens that conversation, hands work off in it, or starts a run
 in that folder, a shell run included. codeaf cannot tell senior-dev's last edits from yours
 made there since, so it commits neither and switches nothing. Its branch stays checked
-out as it was left, its notes are moved out, and the page adds `its work so far is on its
+out when that is where HEAD was left, its notes are moved out, and the page adds `its work so far is on its
 branch <branch> in <folder>, which is checked out there, as it left it, with N files not
 committed; commit or stash them there before you go back to your branch <yours>`. A run
 started in that folder then is refused over those changes, and adds `they may be an
 earlier senior-dev run's, which codeaf could not finish: its branch <branch> is checked
-out there`.
+out there`. If HEAD moved to another branch or detached before the worker went away,
+codeaf leaves that checkout alone too. The ending names where HEAD is, the uncommitted
+files left there, and any commits already on the task branch.
 
 **The run ends where it was last seen working**: senior-dev's exit, or else the end of its
 last model call, its last charge, or its store's last change, whichever is latest. So its

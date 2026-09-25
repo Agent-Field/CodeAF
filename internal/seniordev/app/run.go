@@ -292,6 +292,9 @@ func endingOf(result pipelineResult) delegate.Ending {
 		Message: messageOf(result, extra),
 		CostUSD: result.CostUSD,
 	}
+	if rescue, _ := extra["rescue_path"].(string); rescue != "" {
+		ending.Message += ". Files that changed in the folder before senior-dev restored its checkpoint were set aside in " + rescue
+	}
 	if reason, _ := extra["reason"].(string); reason != "" && reason != ending.Message {
 		ending.Reason = reason
 	}

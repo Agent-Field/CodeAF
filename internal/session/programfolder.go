@@ -12,7 +12,8 @@ package session
 //     conversation's own when it names none (a typed `/senior-dev` names none),
 //     or the one a shell run was started in or named with `--dir` — THAT FOLDER
 //     ITSELF, never a copy of it. Inside a git repository it is the
-//     repository's root. It is never the home folder or a folder holding it
+//     repository's root unless git ignores the asked-for folder, which runs
+//     as a plain folder. It is never the home folder or a folder holding it
 //     ([programHomeRefusal]). A folder that is not there yet is made, empty,
 //     when the folder it would be made in is there.
 //  2. A GIT REPOSITORY — history, a commit, and a root below the home folder.
@@ -30,7 +31,8 @@ package session
 //     around it.
 //  4. WHEN IT ENDS — done, not finished, stopped, or crashed, an end the
 //     process holding the run saw — in a repository, what the program left
-//     uncommitted is committed onto its branch in one commit (the task's
+//     uncommitted, except paths ignored at start and known test droppings,
+//     is committed onto its branch in one commit (the task's
 //     title, the result under it) and the branch is LEFT CHECKED OUT, so the
 //     person sees the work in their folder. A run that changed nothing is
 //     undone: the person's branch is checked out again and the empty branch
@@ -78,6 +80,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/seniordev/util"
 )
 
 // programFolderDir is where the hold on each folder a program works in, and
@@ -161,6 +164,10 @@ type ProgramFolder struct {
 	// are that run's, so the person's branch is still the one named and a run
 	// that adds nothing never deletes what the earlier run left.
 	Continues bool `json:"continues,omitempty"`
+	// IgnoredAtStart keeps paths git ignored before the run changed its rules.
+	IgnoredAtStart []string `json:"ignoredAtStart,omitempty"`
+	// IgnoredOuter is the enclosing repository when Dir itself is ignored by it.
+	IgnoredOuter string `json:"ignoredOuter,omitempty"`
 
 	key   string
 	place Place
@@ -169,6 +176,15 @@ type ProgramFolder struct {
 
 // Plain says the program works in its folder without git.
 func (f *ProgramFolder) Plain() bool { return f == nil || f.Branch == "" }
+
+// IgnoredFile is the run's start-time ignore list, kept outside the repository
+// so the child can protect eager commits after it changes .gitignore.
+func (f *ProgramFolder) IgnoredFile() string {
+	if f == nil || f.Keep == "" {
+		return ""
+	}
+	return filepath.Join(f.Keep, "ignored-at-start")
+}
 
 // PrepareProgramFolder readies the folder a program was asked to work in, per
 // the contract at the top of this file, and holds it for the run: the folder
@@ -227,8 +243,28 @@ func PrepareProgramFolder(order ProgramFolderOrder) (*ProgramFolder, error) {
 		folder.NotesWereThere = err == nil
 	}
 	if !repo {
+		if outer != "" && !holdsHomeFolder(outer) {
+			folder.IgnoredOuter = outer
+			folder.Outer = ""
+		}
 		folder.write()
 		return folder, nil
+	}
+	ignored, err := git(dir, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z")
+	if err != nil {
+		folder.release()
+		return nil, fmt.Errorf("read paths ignored at the start in %s: %s", dir, firstLine(ignored))
+	}
+	folder.IgnoredAtStart = strings.Split(strings.TrimSuffix(ignored, "\x00"), "\x00")
+	if path := folder.IgnoredFile(); path != "" {
+		if err := os.MkdirAll(folder.Keep, 0o700); err != nil {
+			folder.release()
+			return nil, err
+		}
+		if err := os.WriteFile(path, []byte(ignored), 0o600); err != nil {
+			folder.release()
+			return nil, err
+		}
 	}
 	carried, err := folder.carryOn()
 	if !carried && err == nil {
@@ -406,6 +442,13 @@ func programFolderOf(asked string) (dir string, repo bool, outer string, refusal
 	case canonicalPath(asked) == root:
 		return asked, true, "", ""
 	}
+	// A FOLDER GIT IGNORES IS ITS OWN PLAIN WORKSPACE. Widening it to the
+	// repository would cut an empty branch and call the run's real files no work.
+	if relative, err := filepath.Rel(root, canonicalPath(asked)); err == nil {
+		if _, ignored := git(root, "check-ignore", "-q", "--no-index", "--", filepath.ToSlash(relative)); ignored == nil {
+			return asked, false, root, ""
+		}
+	}
 	return root, true, "", ""
 }
 
@@ -511,8 +554,8 @@ type ProgramFolderEnd struct {
 	HomeAt    string
 	// Gone says the run's process went away before it could end the run
 	// itself, so codeaf settled its folder without writing to git at all
-	// ([ProgramFolder.settleGone]), and Uncommitted is how many files it found
-	// there that are not committed.
+	// ([ProgramFolder.settleGone]). Uncommitted is how many files are not
+	// committed in a checkout left on or moved off the task branch.
 	Gone        bool
 	Uncommitted int
 	// Refused is git's own line when what the program left could not be
@@ -616,6 +659,8 @@ func (f *ProgramFolder) settle(result string) ProgramFolderEnd {
 			end.Changed = changedBetween(f.Dir, f.Start, tip)
 			end.Kept = tip != f.Start
 		}
+		end.Uncommitted = uncommittedCount(f.Dir, f.Notes)
+		end.HomeMoved, end.HomeAt = f.homeMoved()
 		return end
 	}
 	end.HomeMoved, end.HomeAt = f.homeMoved()
@@ -673,10 +718,10 @@ func (f *ProgramFolder) settleGone() ProgramFolderEnd {
 		end.Changed = changedBetween(f.Dir, f.Start, tip)
 		end.Kept = tip != f.Start
 	}
-	if !end.Moved {
-		end.Uncommitted = uncommittedCount(f.Dir, f.Notes)
-		end.HomeMoved, end.HomeAt = f.homeMoved()
-	}
+	// A vanished worker can leave loose files on a checkout it moved off the
+	// task branch too. The moved ending needs the same count as a seen end.
+	end.Uncommitted = uncommittedCount(f.Dir, f.Notes)
+	end.HomeMoved, end.HomeAt = f.homeMoved()
 	return end
 }
 
@@ -719,20 +764,11 @@ func (f *ProgramFolder) homeMoved() (bool, string) {
 // folder onto its branch, in one commit whose subject is the run's title and
 // whose body is result, and answers git's line when it would not go.
 //
-// IT IS THE PROGRAM'S FOLDER, SO IT IS ALL OF IT. The checkout was clean when
-// the branch was cut ([programCheckoutInTheWay]), and nothing else of codeaf's
-// writes there while the run holds it ([programHoldGuard]), so everything in
-// it now that is not committed is the run's. It is only ever asked of a run
-// whose end this process saw: a run whose process went away is settled
-// without a commit ([ProgramFolder.settleGone]).
-//
-// THE NOTES ARE TAKEN BACK OUT OF THE INDEX, NOT LEFT OUT OF THE ADD. A
-// pathspec that excludes `.senior-dev` makes `git add` exit 1 whenever that
-// folder is there and ignored — and senior-dev ignores it in every repository
-// it works in — so a notes folder that was there before the run, or would not
-// move, failed every finishing commit. The whole folder is staged and the
-// notes' own path reset to what HEAD holds, which git does whatever its
-// ignore rules say, the way [sealGroundWork] does it.
+// THE CHECKOUT WAS CLEAN AT THE START, but its ignore rules can change during
+// the run. Paths ignored at the start and known test droppings are never
+// staged by this finishing commit. The notes are excluded for the same reason:
+// a program's private record must not enter the person's branch. A run whose
+// process went away is settled without a commit ([ProgramFolder.settleGone]).
 //
 // A CHECKOUT IN THE MIDDLE OF A MERGE IS NOT COMMITTED. The program's shell can
 // start one, and a commit now would conclude it, conflict markers and all,
@@ -741,11 +777,38 @@ func (f *ProgramFolder) commitLeftovers(result string) string {
 	if half := halfDone(f.Dir); half != "" {
 		return f.Dir + " is in the middle of a " + half
 	}
-	if out, err := git(f.Dir, "add", "-A", "--", "."); err != nil {
-		return "git add: " + firstLine(out)
+	// Stage named paths only. A blanket add would put an initially ignored
+	// secret into the index when the run rewrote .gitignore, even if a later
+	// reset kept it out of the commit.
+	var toAdd []string
+	for _, args := range [][]string{
+		{"diff", "HEAD", "--name-only", "--no-renames", "-z", "--"},
+		{"ls-files", "--others", "--exclude-standard", "-z"},
+	} {
+		out, err := git(f.Dir, args...)
+		if err != nil {
+			return "git list changes: " + firstLine(out)
+		}
+		for _, path := range strings.Split(strings.TrimSuffix(out, "\x00"), "\x00") {
+			if path != "" && !f.excludedFromCommit(path) {
+				toAdd = append(toAdd, path)
+			}
+		}
 	}
-	if f.Notes != "" {
-		if out, err := git(f.Dir, "reset", "-q", "--", f.Notes); err != nil {
+	if len(toAdd) > 0 {
+		if out, err := git(f.Dir, append([]string{"add", "-A", "--"}, toAdd...)...); err != nil {
+			return "git add: " + firstLine(out)
+		}
+	}
+	staged, err := git(f.Dir, "diff", "--cached", "--name-only", "-z")
+	if err != nil {
+		return "git diff: " + firstLine(staged)
+	}
+	for _, path := range strings.Split(strings.TrimSuffix(staged, "\x00"), "\x00") {
+		if path == "" || !f.excludedFromCommit(path) {
+			continue
+		}
+		if out, err := git(f.Dir, "reset", "-q", "--", path); err != nil {
 			return "git reset: " + firstLine(out)
 		}
 	}
@@ -767,6 +830,18 @@ func (f *ProgramFolder) commitLeftovers(result string) string {
 		return "git commit: " + firstLine(out)
 	}
 	return ""
+}
+
+func (f *ProgramFolder) excludedFromCommit(path string) bool {
+	if f.Notes != "" && (path == f.Notes || strings.HasPrefix(path, strings.TrimSuffix(f.Notes, "/")+"/")) {
+		return true
+	}
+	for _, ignored := range f.IgnoredAtStart {
+		if ignored != "" && (path == ignored || strings.HasPrefix(path, strings.TrimSuffix(ignored, "/")+"/")) {
+			return true
+		}
+	}
+	return util.GeneratedRunPath(path)
 }
 
 // goBack checks out the person's own branch again (or the commit their
@@ -874,6 +949,10 @@ func (e ProgramFolderEnd) Sentence() string {
 	f := e.Folder
 	var said string
 	switch {
+	case e.Gone && f.IgnoredOuter != "":
+		said = "its work so far is in " + f.Dir + ", as it left it; git ignores this folder inside " + f.IgnoredOuter + ", so codeaf cut no branch and nothing was committed"
+	case f.IgnoredOuter != "":
+		said = "its work is in " + f.Dir + "; git ignores this folder inside " + f.IgnoredOuter + ", so codeaf cut no branch and nothing was committed"
 	case e.Gone && f.Branch == "" && f.Outer != "":
 		said = "its work so far is in " + f.Dir + ", as it left it; the git repository around it is at " + f.Outer +
 			", which holds your home folder, so codeaf cut no branch there and committed nothing"
@@ -890,9 +969,19 @@ func (e ProgramFolderEnd) Sentence() string {
 			where = "no branch, at " + e.At
 		}
 		said = f.Program + " left " + f.Dir + " on " + where + " instead of its own branch " + f.Branch +
-			", so codeaf changed nothing there: nothing was committed and nothing was switched"
+			", so codeaf made no finishing commit and did not switch branches"
+		if e.Uncommitted > 0 {
+			said += "; the checkout has " + fileCount(e.Uncommitted) + " uncommitted"
+		} else {
+			said += "; no uncommitted files were left in that checkout"
+		}
 		if e.Kept {
 			said += "; " + f.Branch + " holds " + fileCount(len(e.Changed))
+		}
+		if e.HomeMoved {
+			said += "; " + e.homeMovedWords()
+		} else if f.Home != "" {
+			said += "; your branch " + f.Home + " was not given a commit by codeaf"
 		}
 	case e.Gone:
 		said = e.goneWords()
