@@ -274,6 +274,9 @@ tool call reads nothing until it returns, and a directive is advice a model may 
 is the person's own Stop: it ends the current turn, deletes nothing, and leaves background
 tasks and jobs running.
 
+(Changed 2026-09-25: a member codeaf opened without a window now reads its manager's
+stop from Traffic during a running turn and ends that turn too.)
+
 **What it may not do.** Approve members' permission prompts. Those are the person's safety
 gate, and a manager that could answer them would make every approval rule meaningless. If
 that is ever wanted, it is a separate, explicit per-team setting.
@@ -524,6 +527,13 @@ the person to type again is not running a team, so the lines that ask for an ans
   something else starts, and the Traffic says `opened @handle; this team's auto-wake is off, so
   no turn was started.`
 
+(Changed 2026-09-25: a running managed member stats its team's Traffic once per
+tick and reads it when it moves, to honor a manager's stop.)
+
+(Changed 2026-09-25: a member's reply and the finished event from that same turn
+start one manager wake, even when the event arrives after the settle. Ten wakes
+therefore mean ten such reply rounds.)
+
 **Mentioning a team or a chat from the composer.** `@` is still the one list
 (`internal/tui3`'s `files.go`, `mention.go`). Its first row is the words team, chat
 and file, each a press that types `@team:`, `@chat:` or `@file:` and keeps that
@@ -569,6 +579,9 @@ lock is free, or the event is older than that, it reads idle. The loop breaker's
 the Traffic's asking row and a note, not a question on the manager's tab. Over `--host` against an engine older than the teams doors, teams and the manager
 are off and say so. An unreadable teams file on the engine is not moved aside from a window over
 `--host`; the window holds no teams until it can be read.
+
+(Changed 2026-09-25: a stop also reaches a background member with no window;
+starting a new member still needs the window's door.)
 
 **Not in v1.** Collision flags when two members touch the same files, and dispatch of whole
 plans. (Nested managers, a sub-team's manager a member of the parent team with reports flowing
@@ -990,6 +1003,10 @@ it), and `Close team…`. Closable with `esc`.
   the teams page's pane while that page stands, so the rail beside them still says which team
   they are about; they covered the rail before. Elsewhere they are centred on the frame.
 
+(Changed 2026-09-25: a manager of a team being closed is counted as working and
+its current turn is stopped by Close now even if it is also in an open parent;
+its tab stays open. Other shared conversations keep the prior rule.)
+
 ### 8.6 Where this departs from the brief, and why
 
 - **The home flag resolves to the nearest manager up its chain**, so giving an unmanaged
@@ -1093,6 +1110,10 @@ different crossing and a new packet. A decided `raise` lifts the ceiling to
 the person's own words hold until the day turns or the cap is changed. Spend is read through
 `TeamSpend` only when `TeamSpendStamp` moved (per pool, per session), never per model request.
 
+(Changed 2026-09-25: if a capped pool's spend read fails, the start is held
+with the read error, no cap packet is raised, and the failed reading is retried
+on the next check. An uncapped pool does not read spend.)
+
 **Wrap up first: the door and the marker (for d2).** The interface appends ONE Traffic entry to
 the team's log:
 
@@ -1128,6 +1149,11 @@ the manager). `Close now` stopping member turns and closing tabs stays the inter
 packet whole, trail and escalated state included). The reader folds the rotated file, then the
 current one; a carry replaces what the older file said of that id. A waiting packet is never
 lost; a decided one stays readable for one more rotation.
+
+(Changed 2026-09-25: a decided answer not yet handed to its raiser is carried
+across rotations, newest first within half the rotation size. Today's cap packets
+are carried too. Delivery appends a `told` line; after that the answer has the
+former one-rotation lifetime. Conflicts have their own Traffic directives.)
 
 **Over `--host`.** All of the above runs where the conversations run, the engine: questions,
 caps, the wrap-up clock and the verbs are the engine's session reading the engine's profile and

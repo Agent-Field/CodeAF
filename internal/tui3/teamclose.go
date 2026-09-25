@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"sort"
 	"strings"
 	"time"
 
@@ -26,8 +27,13 @@ import (
 //     Closed, in one step, with Undo.
 //   - `Cancel`.
 //
-// A CONVERSATION THAT IS ALSO IN ANOTHER OPEN TEAM IS NEVER STOPPED OR CLOSED
-// by this: it is still that team's. Closing a team closes the teams under it
+// A CONVERSATION THAT IS ALSO IN ANOTHER OPEN TEAM IS NEVER CLOSED by this, and
+// never stopped, with ONE EXCEPTION: the manager of a team being closed. A
+// sub-team's manager is also a member of the team above, so it is still that
+// team's and keeps its tab; but the turn it is running is this team's work, so
+// it counts as working (the card, and `Wrap up first`, rather than a close at
+// once while it runs on) and `Close now` stops that turn. Closing a team
+// closes the teams under it
 // (internal/teams' [teamstore.File.Close]); reopening reopens exactly what the
 // close closed. Delete is only ever offered on a closed team, and forgets the
 // grouping, the Traffic and the packets; the conversations stay in history.
@@ -42,6 +48,9 @@ type teamsUndo struct {
 	name string
 	shut []string
 	at   time.Time
+	// said ties `harbor is closed` to the write that carried the close
+	// (teamwritesaid.go); a close the report's own door made is said already.
+	said teamWriteSaid
 }
 
 // teamsCloseKeys is every conversation a close of team id stops and whose tab
@@ -80,6 +89,24 @@ func (a *app) teamsCloseKeys(id string) []string {
 	return keys
 }
 
+// teamsClosingManagers includes the manager of each team being closed even
+// when that conversation is also a member of an open team above it.
+func (a *app) teamsClosingManagers(id string) map[string]bool {
+	closing := map[string]bool{id: true}
+	for _, t := range a.teamTree().Descendants(id) {
+		if !t.Closed() {
+			closing[t.ID] = true
+		}
+	}
+	managers := map[string]bool{}
+	for _, t := range a.wall.teams {
+		if closing[t.ID] && t.Manager != "" {
+			managers[t.Manager] = true
+		}
+	}
+	return managers
+}
+
 // teamsRunning is the members of team id (and the teams under it) that are
 // working now, by handle or name, and whether its manager is one of them or
 // has any running at all.
@@ -89,11 +116,30 @@ func (a *app) teamsRunning(id string) (names []string, managed bool) {
 		return nil, false
 	}
 	front := a.frontTabKey()
-	for _, key := range a.teamsCloseKeys(id) {
+	managers := a.teamsClosingManagers(id)
+	keys := a.teamsCloseKeys(id)
+	seen := map[string]bool{}
+	for _, key := range keys {
+		seen[key] = true
+	}
+	var extra []string
+	for key := range managers {
+		if !seen[key] {
+			extra = append(extra, key)
+		}
+	}
+	sort.Strings(extra)
+	keys = append(keys, extra...)
+	for _, key := range keys {
 		if !a.trafficHeld(key) || a.tabSignalFor(key, key == front) != tabWorking {
 			continue
 		}
 		name := key
+		if managers[key] {
+			name = a.teamManagerMark() + " manager"
+			names = append(names, name)
+			continue
+		}
 		for _, u := range a.wall.teams {
 			if m, ok := u.Member(key); ok {
 				name = m.Word
@@ -149,7 +195,9 @@ func (a *app) teamsCloseNow(id, report string) tea.Cmd {
 		a.touch()
 		return nil
 	}
-	return a.teamsAfterClose(t, shut, now, true)
+	cmd := a.teamsAfterClose(t, shut, now, true)
+	a.tp.undo.said = a.teamWriteWatch(nil)
+	return cmd
 }
 
 // teamsStopMembers is the interface's half of every close (DESIGN.md 8.5):
@@ -160,7 +208,10 @@ func (a *app) teamsCloseNow(id, report string) tea.Cmd {
 func (a *app) teamsStopMembers(id string) []string {
 	front := a.frontTabKey()
 	var shut []string
-	for _, key := range a.teamsCloseKeys(id) {
+	closing := a.teamsCloseKeys(id)
+	covered := map[string]bool{}
+	for _, key := range closing {
+		covered[key] = true
 		if !a.trafficHeld(key) {
 			continue
 		}
@@ -175,6 +226,19 @@ func (a *app) teamsStopMembers(id string) []string {
 			a.tabShutKey(key)
 			shut = append(shut, key)
 		}
+	}
+	var extra []string
+	for key := range a.teamsClosingManagers(id) {
+		extra = append(extra, key)
+	}
+	sort.Strings(extra)
+	for _, key := range extra {
+		if covered[key] || !a.trafficHeld(key) || a.tabSignalFor(key, key == front) != tabWorking {
+			continue
+		}
+		// A manager shared with an open team keeps its tab but cannot keep
+		// working on the team being closed.
+		a.trafficStop(key)
 	}
 	return shut
 }
@@ -209,7 +273,7 @@ func (a *app) teamsAfterClose(t team, shut []string, now time.Time, tell bool) t
 // teamsUndoing reports whether Undo is still offered for the last close.
 func (a *app) teamsUndoing() bool {
 	u := a.tp.undo
-	return u.team != "" && a.now().Sub(u.at) < teamsUndoFor
+	return u.team != "" && u.said.said() && a.now().Sub(u.at) < teamsUndoFor
 }
 
 // teamsUndoClose takes the last close back: the team reopened, and the tabs it

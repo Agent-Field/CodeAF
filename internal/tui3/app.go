@@ -3822,6 +3822,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.wallTakeRead(msg)
 		return a, nil
 
+	case wallTreeMsg:
+		a.wallTakeTree(msg)
+		return a, nil
+
 	case wallTickMsg:
 		return a, a.wallTick()
 

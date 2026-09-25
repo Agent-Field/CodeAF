@@ -581,8 +581,10 @@ same code path the tool runs, so the two cannot drift:
 - `codeaf web fetch URL` / `codeaf web search QUERY` — the belt's web verbs.
 - `codeaf image PROMPT --out PATH` — one picture the way `generate_image` makes one.
 
-A few hands a shell cannot be are kept too — the billed `read_document`, `jobs`,
-`manual`, and the web, media and services families.
+A few hands a shell cannot be are kept too, and a worker calls them directly, one call
+per response exactly as it calls `bash` — the billed `read_document`, `jobs` (which
+reads and stops a job the worker started), `manual`, and the web, media and services
+families.
 
 **A worker cannot ask you a question.** `ask` is not on its belt: the loop reaches
 the person through the plan CLI and not a consent gate, so a thing it cannot have
