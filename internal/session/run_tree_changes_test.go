@@ -53,3 +53,26 @@ func TestARunTreeSnapshotOutsideARepositoryNamesNothing(t *testing.T) {
 		t.Fatalf("a folder with no repository named %v", got)
 	}
 }
+
+// Contract 1: an in-place run begun on an unborn branch signs its first root
+// commit and its child; a folder that was never a repository has no such base.
+func TestRunTreeSnapshotSignsFirstCommitsOnUnbornBranch(t *testing.T) {
+	repo := t.TempDir()
+	mustGit(t, repo, "init")
+	mustGit(t, repo, "checkout", "-b", "work")
+	snapshot := SnapshotRunTree(repo)
+	runCommitFile(t, repo, "first.txt", "first")
+	runCommitFile(t, repo, "second.txt", "second")
+	count, err := snapshot.SignRunCommits("")
+	if err != nil || count != 2 {
+		t.Fatalf("sign unborn run = %d, %v; want two commits", count, err)
+	}
+	for _, rev := range []string{"HEAD", "HEAD~1"} {
+		if message := gitOut(t, repo, "log", "-1", "--format=%B", rev); strings.Count(message, "Assisted-by: CodeAF") != 1 {
+			t.Fatalf("%s not signed once: %q", rev, message)
+		}
+	}
+	if count, err := snapshot.SignRunCommits(""); err != nil || count != 0 {
+		t.Fatalf("second signing = %d, %v", count, err)
+	}
+}

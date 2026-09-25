@@ -181,6 +181,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// seen, and wanting it gone.
 		{"why is there a co-author on my commit", "permissions"},
 		{"does codeaf sign my commits", "permissions"},
+		{"does the task sign the commits it makes itself", "permissions"},
+		{"why does my commit from codeaf do have a co-author line", "permissions"},
 		{"who is agentfield-bot", "permissions"},
 		{"what is the drafted with line at the bottom of my pull request", "permissions"},
 		{"stop adding a co-author trailer to my commits", "permissions"},

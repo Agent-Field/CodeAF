@@ -277,6 +277,29 @@ func SignCommitMessage(message, model string) string {
 	return strings.TrimRight(message, "\n") + "\n\n" + AttributionTrailers(model)
 }
 
+// SignCommitMessageOnce keeps a worker's own attribution when it already has
+// both lines. A partly signed message gains just the missing line, without
+// moving or duplicating the line the worker wrote.
+func SignCommitMessageOnce(message, model string) string {
+	assisted, coauthor := false, false
+	for _, line := range strings.Split(message, "\n") {
+		line = strings.TrimSpace(line)
+		assisted = assisted || strings.HasPrefix(strings.ToLower(line), strings.ToLower(AttributionAssistedBy))
+		coauthor = coauthor || strings.EqualFold(line, AttributionTrailer)
+	}
+	if assisted && coauthor {
+		return message
+	}
+	if !assisted && !coauthor {
+		return SignCommitMessage(message, model)
+	}
+	missing := AttributionTrailer
+	if !assisted {
+		missing = AssistedBy(model)
+	}
+	return strings.TrimRight(message, "\n") + "\n" + missing
+}
+
 // BareModelName is a model id as the `Assisted-by` line names it: the model and
 // nothing about who served it or how.
 //
