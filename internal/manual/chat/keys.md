@@ -1800,7 +1800,7 @@ reads `⟲ rewind — pick where the conversation goes back to` and its foot
 `⟲ drops 2 turns — everything below the pick is let go` above
 `esc close · ↑↓ move · enter picks the point` — which becomes
 `esc close · ↑↓ move · enter again rewinds here` once a pick is placed, and
-`esc clears the search · ↑↓ move · enter picks the point` while you are typing one.
+`esc clear the search · ↑↓ move · enter picks the point` while you are typing one.
 Clicking a row places the pick; clicking the placed point rewinds; the wheel walks the
 cursor. The sessions and rewind page describes what the cut does.
 
