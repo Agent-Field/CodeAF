@@ -212,7 +212,10 @@ func delegateReceipt(ground string, via delegate.Delegate, record *TaskCopyRecor
 // way the run's ending does ([ProgramFolderEnd.Sentence]).
 func delegateFolderReceipt(ground string, via delegate.Delegate, record *TaskCopyRecord) string {
 	if record == nil || record.Branch == "" {
-		if _, _, outer, _ := programFolderOf(ground); outer != "" {
+		if _, _, outer, _ := programFolderOf(ground); outer != "" && !holdsHomeFolder(outer) {
+			return "It is " + via.Name + "'s: it works alone in " + ground + " itself; git ignores this folder inside " + outer +
+				", so codeaf cuts no branch there and commits nothing; its changes are there as it makes them."
+		} else if outer != "" {
 			return "It is " + via.Name + "'s: it works alone in " + ground + " itself, inside the git repository at " + outer +
 				", which holds your home folder, so codeaf cuts no branch there and commits nothing; its changes are there as it makes them."
 		}
