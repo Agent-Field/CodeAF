@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -94,6 +95,72 @@ func TestLandCommitsTheRunsWorkOntoItsBranch(t *testing.T) {
 	// AND THE ROOT CARRIES WHERE THE WORK WENT.
 	if notes := store.Notes(store.RootID(), 0); len(notes) == 0 || notes[len(notes)-1].Body != "landed on run-work: 2 files" {
 		t.Fatalf("the root's notes = %v, want the landing line", notes)
+	}
+}
+
+// Contract 4a and 4b: the real landing must carry git-quoted names as their
+// exact bytes while leaving the harness's own files outside the commit.
+func TestLandKeepsEveryRealFilename(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	repo := t.TempDir()
+	runGit(t, repo, "init")
+	runGit(t, repo, "checkout", "-b", "work")
+	writeRunFile(t, filepath.Join(repo, "x b", "plandb.db"), "one\n")
+	runGit(t, repo, "add", "x b/plandb.db")
+	runGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "seed")
+	base := strings.TrimSpace(runGitOut(t, repo, "rev-parse", "work"))
+	work := filepath.Join(t.TempDir(), "run")
+	runGit(t, repo, "worktree", "add", "-b", "run-work", work, "HEAD")
+	store := runOpenStore(t)
+	files := map[string]string{
+		"x b/plandb.db":    "one\ntwo\n",
+		" lead.txt":        "lead\n",
+		"odd name é'q.txt": "accent\n",
+		"has\"quote.txt":   "quote\n",
+		"new\nline.txt":    "newline\n",
+		"a -> b.txt":       "arrow\n",
+	}
+	seat := newFakeSeat()
+	seat.actions["root"] = func(_ context.Context, _ plandb.Task) (run.Report, error) {
+		for path, content := range files {
+			writeRunFile(t, filepath.Join(work, path), content)
+		}
+		writeRunFile(t, filepath.Join(work, "plandb.db"), "private\n")
+		writeRunFile(t, filepath.Join(work, ".codeaf", "jobs", "x.log"), "private\n")
+		return run.Report{Result: "wrote six files"}, nil
+	}
+	ctx := runContext(t)
+	if got := run.NewSupervisor(store, work, 1, run.Limits{}, seat.workerFor).Run(ctx); got != run.OutcomeDone {
+		t.Fatalf("run outcome = %q", got)
+	}
+	landing, err := run.Land(ctx, store, work, base, store.RootID())
+	if err != nil || landing.Refused != "" || landing.Branch != "run-work" {
+		t.Fatalf("landing = %+v, error = %v", landing, err)
+	}
+	want := make([]string, 0, len(files))
+	for name := range files {
+		want = append(want, name)
+	}
+	slices.Sort(want)
+	if !reflect.DeepEqual(landing.Changed, want) {
+		t.Fatalf("landing.Changed = %q, want %q", landing.Changed, want)
+	}
+	listed := strings.Split(runGitOut(t, repo, "ls-tree", "-r", "-z", "--name-only", landing.Branch), "\x00")
+	for name, content := range files {
+		if !slices.Contains(listed, name) {
+			t.Errorf("landing tree omits %q: %q", name, listed)
+		}
+		if got := runGitOut(t, repo, "show", landing.Branch+":"+name); got != content {
+			t.Errorf("landed %q = %q, want %q", name, got, content)
+		}
+	}
+	for _, name := range []string{"plandb.db", ".codeaf/jobs/x.log"} {
+		if slices.Contains(listed, name) {
+			t.Errorf("landing tree includes harness file %q", name)
+		}
+	}
+	if notes := store.Notes(store.RootID(), 0); len(notes) == 0 || notes[len(notes)-1].Body != "landed on run-work: 6 files" {
+		t.Fatalf("root notes = %v, want six-file landing", notes)
 	}
 }
 

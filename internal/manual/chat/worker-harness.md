@@ -42,6 +42,9 @@ that will not go in is never forced: the branch is kept in your repository and t
 names it, for example `its branch <branch> was kept`, when your checkout moved on after
 the copy was cut. A run whose workers committed everything still names its
 branch and changed files; codeaf signs those commits before the work comes home.
+A file lands under its own name whatever characters it holds, including spaces, quotes,
+accents or a newline; only codeaf's own `plandb.db` and the files beside it, and
+`.codeaf/` files, stay out of the landing commit.
 A run that only read says `nothing to land: the run's working copy holds no change`
 and changes no file. The
 landing card says `merged` when the work is in your folder and `branch kept` only for a
