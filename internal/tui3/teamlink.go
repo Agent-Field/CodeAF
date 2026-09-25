@@ -287,6 +287,9 @@ func (a *app) teamLinkHint() string {
 		return ""
 	}
 	id, key, _ := strings.Cut(a.hot.key, "\x00")
+	if id == "" && key != "" {
+		return a.mentionChatHint(key)
+	}
 	t, ok := a.teamByID(id)
 	if !ok {
 		return ""
@@ -318,7 +321,7 @@ const teamLinkHintTitle = 28
 // teamLinkKey is a team reference's identity for the hover, from which the
 // hint is read again off memory: the team, and the member when there is one.
 func teamLinkKey(link taskLink) string {
-	if link.team == "" {
+	if link.team == "" && link.member == "" {
 		return ""
 	}
 	return link.team + "\x00" + link.member

@@ -3575,8 +3575,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case filesLoadedMsg:
 		a.comp.all, a.comp.loaded, a.comp.loading = msg.paths, true, false
+		a.fillMentions()
 		a.comp.rank()
 		a.touch()
+		return a, nil
+
+	case mentionRecentsMsg:
+		a.mentionRecentsLoaded(msg.rows)
 		return a, nil
 
 	case tasksLoadedMsg:
@@ -4084,6 +4089,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// still typing, so a press anywhere else is a press on whatever is
 			// there (harnesspick.go).
 			if cmd, took := a.harnessPickPress(msg.Mouse().Y); took {
+				return a, cmd
+			}
+			// AND THE @ LIST'S PREFIX WORDS, which are columns of its first row
+			// (mention.go). A press anywhere else on that list still falls through.
+			if cmd, took := a.mentionHeadPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
 			// AND THE THINKING LADDER TAKES A PRESS ON ITS OWN ROWS AND NOTHING
@@ -6830,6 +6840,9 @@ func (a *app) linkPress(x int, r row) (bool, tea.Cmd) {
 			if link.team != "" {
 				return true, a.teamLinkPress(link)
 			}
+			if link.member != "" && link.id == 0 {
+				return true, a.mentionChatPress(link.member)
+			}
 			a.openRoomFor(link.id, link.title)
 			return true, nil
 		}
@@ -8616,12 +8629,14 @@ func (a *app) syncLists() tea.Cmd {
 		return nil
 	}
 	was := a.comp.open
+	a.fillMentions()
 	a.comp.sync(&a.input)
 	if a.comp.open && !was {
 		// Both halves of the list are asked for at the same moment, and neither
 		// waits for the other: the index is one small file and lands first, the
-		// walk lands when it lands (taskmention.go, files.go).
-		return tea.Batch(a.loadFiles(), a.loadTasks())
+		// walk lands when it lands (taskmention.go, files.go). The recent
+		// conversations ride the same opening (mention.go).
+		return tea.Batch(a.loadFiles(), a.loadTasks(), a.loadMentionRecents())
 	}
 	return nil
 }
