@@ -15,6 +15,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/Agent-Field/codeaf/internal/seniordev/util"
 )
 
 // snapshotRecorder keeps the workspaceRecorder promises without git. It edits
@@ -26,8 +28,9 @@ import (
 // same identifier and two different trees do not, which is the only property
 // the run relies on.
 type snapshotRecorder struct {
-	workspace string
-	note      func(string)
+	workspace  string
+	note       func(string)
+	startRules *ignoreRules
 
 	mu    sync.Mutex
 	store string // lazily created; "" until the first snapshot is kept
@@ -38,7 +41,7 @@ type snapshotRecorder struct {
 
 func newSnapshotRecorder(workspace string, note func(string)) *snapshotRecorder {
 	return &snapshotRecorder{
-		workspace: workspace, note: note, published: map[string]string{},
+		workspace: workspace, note: note, startRules: startIgnoreRules(workspace), published: map[string]string{},
 	}
 }
 
@@ -157,13 +160,20 @@ func (recorder *snapshotRecorder) Restore(handle, wantTree string) error {
 	for _, entry := range wanted {
 		wantedPaths[entry.path] = struct{}{}
 	}
-	current, err := recorder.walk()
+	current, err := walkWorkspaceAll(recorder.workspace)
+	if err != nil {
+		return err
+	}
+	startPaths, err := util.InitialIgnoredPaths()
 	if err != nil {
 		return err
 	}
 	// Remove first: a path that is a file in the snapshot and a directory now
 	// (or the reverse) cannot be written over in place.
 	for _, entry := range current {
+		if ignoredAtStart(entry.path, recorder.startRules, startPaths) {
+			continue
+		}
 		if _, keep := wantedPaths[entry.path]; keep {
 			continue
 		}
@@ -210,7 +220,11 @@ func (recorder *snapshotRecorder) DifferentPaths(handle string) ([]string, error
 	if err != nil {
 		return nil, err
 	}
-	current, err := recorder.walk()
+	current, err := walkWorkspaceAll(recorder.workspace)
+	if err != nil {
+		return nil, err
+	}
+	startPaths, err := util.InitialIgnoredPaths()
 	if err != nil {
 		return nil, err
 	}
@@ -220,11 +234,24 @@ func (recorder *snapshotRecorder) DifferentPaths(handle string) ([]string, error
 	}
 	var paths []string
 	for _, entry := range current {
+		if ignoredAtStart(entry.path, recorder.startRules, startPaths) {
+			continue
+		}
 		old, found := before[entry.path]
 		if !found || old.hash != entry.hash || old.mode != entry.mode {
 			paths = append(paths, entry.path)
 		}
 	}
+	currentPaths := make(map[string]bool, len(current))
+	for _, entry := range current {
+		currentPaths[entry.path] = true
+	}
+	for _, entry := range wanted {
+		if !currentPaths[entry.path] {
+			paths = append(paths, entry.path)
+		}
+	}
+	sort.Strings(paths)
 	return paths, nil
 }
 
@@ -340,7 +367,21 @@ type treeEntry struct {
 }
 
 func (recorder *snapshotRecorder) walk() ([]treeEntry, error) {
-	return walkTree(recorder.workspace, true)
+	entries, err := walkTree(recorder.workspace, true)
+	if err != nil {
+		return nil, err
+	}
+	startPaths, err := util.InitialIgnoredPaths()
+	if err != nil {
+		return nil, err
+	}
+	kept := entries[:0]
+	for _, entry := range entries {
+		if !ignoredAtStart(entry.path, recorder.startRules, startPaths) {
+			kept = append(kept, entry)
+		}
+	}
+	return kept, nil
 }
 
 // walkTree lists every regular file in root, sorted, with its content hash.
@@ -355,6 +396,16 @@ func (recorder *snapshotRecorder) walk() ([]treeEntry, error) {
 // even to their owner) no longer ends the run before its first step. Inside
 // the store every file is ours, and an error there is still an error.
 func walkTree(root string, honourIgnores bool) ([]treeEntry, error) {
+	return walkTreeWithOptions(root, honourIgnores, honourIgnores)
+}
+
+// walkWorkspaceAll sees newly ignored files without treating a protected
+// folder as a destructive restore failure; the snapshot store stays strict.
+func walkWorkspaceAll(root string) ([]treeEntry, error) {
+	return walkTreeWithOptions(root, false, true)
+}
+
+func walkTreeWithOptions(root string, honourIgnores, maySkipUnreadable bool) ([]treeEntry, error) {
 	rules := newIgnoreRules()
 	if honourIgnores {
 		rules.load(root, "")
@@ -362,7 +413,7 @@ func walkTree(root string, honourIgnores bool) ([]treeEntry, error) {
 	var entries []treeEntry
 	err := filepath.Walk(root, func(name string, info os.FileInfo, err error) error {
 		if err != nil {
-			return skipUnreadable(err, name != root && honourIgnores, info)
+			return skipUnreadable(err, name != root && maySkipUnreadable, info)
 		}
 		relative, relErr := filepath.Rel(root, name)
 		if relErr != nil {
@@ -401,7 +452,7 @@ func walkTree(root string, honourIgnores bool) ([]treeEntry, error) {
 		}
 		hash, hashErr := hashFile(name)
 		if hashErr != nil {
-			return skipUnreadable(hashErr, honourIgnores, info)
+			return skipUnreadable(hashErr, maySkipUnreadable, info)
 		}
 		entries = append(entries, treeEntry{
 			path: relative, mode: info.Mode().Perm(),
@@ -498,6 +549,10 @@ func copyFile(source, destination string, mode os.FileMode) error {
 // no leftover shape from the tree it replaced. Failures are ignored: an empty
 // directory is invisible to the manifest and cannot make the proof fail.
 func (recorder *snapshotRecorder) pruneEmptyDirs() {
+	startPaths, err := util.InitialIgnoredPaths()
+	if err != nil {
+		return
+	}
 	var dirs []string
 	_ = filepath.Walk(recorder.workspace, func(name string, info os.FileInfo, err error) error {
 		if err != nil || !info.IsDir() {
@@ -509,6 +564,9 @@ func (recorder *snapshotRecorder) pruneEmptyDirs() {
 		}
 		relative = filepath.ToSlash(relative)
 		if relative == ".git" || relative == ".senior-dev" {
+			return filepath.SkipDir
+		}
+		if util.PathIgnoredAtStart(relative, startPaths) || recorder.startRules.ignored(relative, true) {
 			return filepath.SkipDir
 		}
 		dirs = append(dirs, name)

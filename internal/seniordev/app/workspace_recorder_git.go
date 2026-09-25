@@ -22,12 +22,28 @@ import (
 // and the only recorder that leaves the run's work in the repository's own
 // history.
 type gitRecorder struct {
-	workspace string
-	note      func(string)
+	workspace    string
+	note         func(string)
+	startRules   *ignoreRules
+	startTracked map[string]bool
 }
 
 func newGitRecorder(workspace string, note func(string)) *gitRecorder {
-	return &gitRecorder{workspace: workspace, note: note}
+	recorder := &gitRecorder{workspace: workspace, note: note, startRules: startIgnoreRules(workspace), startTracked: map[string]bool{}}
+	if tracked, err := recorder.git("ls-files", "--cached", "-z"); err == nil {
+		for _, path := range strings.Split(tracked, "\x00") {
+			if path != "" {
+				recorder.startTracked[path] = true
+			}
+		}
+	}
+	return recorder
+}
+
+// Git still tracks a path after an ignore rule matches it. Such a path is
+// part of the candidate and must never be filtered as ignored-at-start.
+func (recorder *gitRecorder) ignoredAtStart(path string, paths []string) bool {
+	return !recorder.startTracked[path] && ignoredAtStart(path, recorder.startRules, paths)
 }
 
 func (recorder *gitRecorder) Kind() string         { return "git" }
@@ -135,13 +151,13 @@ func (recorder *gitRecorder) Snapshot() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("git ls-files in temporary index: %v: %s", err, strings.TrimSpace(string(staged)))
 	}
-	ignoredAtStart, err := util.InitialIgnoredPaths()
+	startPaths, err := util.InitialIgnoredPaths()
 	if err != nil {
 		return "", err
 	}
 	var excluded []string
 	for _, path := range strings.Split(string(staged), "\x00") {
-		if path != "" && (util.PathIgnoredAtStart(path, ignoredAtStart) || util.GeneratedRunPath(path)) {
+		if path != "" && (recorder.ignoredAtStart(path, startPaths) || gitRunArtifact(path)) {
 			excluded = append(excluded, path)
 		}
 	}
@@ -194,16 +210,16 @@ func (recorder *gitRecorder) Restore(handle, wantTree string) error {
 	if _, err := recorder.git("reset", "-q", handle, "--", "."); err != nil {
 		return err
 	}
-	newFiles, err := recorder.git("ls-files", "--others", "--exclude-standard", "-z")
+	newFiles, err := recorder.git("ls-files", "--others", "-z")
 	if err != nil {
 		return err
 	}
-	ignoredAtStart, err := util.InitialIgnoredPaths()
+	startPaths, err := util.InitialIgnoredPaths()
 	if err != nil {
 		return err
 	}
 	for _, path := range strings.Split(newFiles, "\x00") {
-		if path == "" || util.PathIgnoredAtStart(path, ignoredAtStart) {
+		if path == "" || recorder.ignoredAtStart(path, startPaths) || gitRunArtifact(path) {
 			continue
 		}
 		if err := os.Remove(filepath.Join(recorder.workspace, filepath.FromSlash(path))); err != nil && !os.IsNotExist(err) {
@@ -222,24 +238,31 @@ func (recorder *gitRecorder) Restore(handle, wantTree string) error {
 	return nil
 }
 
-// DifferentPaths includes edits to tracked files and new non-ignored files.
-// Both can be removed by Restore, including a file already eagerly committed
-// after the checkpoint, whose change is measured against the checkpoint.
+// DifferentPaths includes tracked edits and deletions, plus every new file
+// the current ignore rules could hide from Restore. Start-time ignored paths
+// and the run's own generated files do not belong to the candidate.
 func (recorder *gitRecorder) DifferentPaths(handle string) ([]string, error) {
 	changed, err := recorder.git("diff", "--name-only", "-z", handle, "--")
 	if err != nil {
 		return nil, err
 	}
-	newFiles, err := recorder.git("ls-files", "--others", "--exclude-standard", "-z")
+	newFiles, err := recorder.git("ls-files", "--others", "-z")
+	if err != nil {
+		return nil, err
+	}
+	startPaths, err := util.InitialIgnoredPaths()
 	if err != nil {
 		return nil, err
 	}
 	seen := map[string]bool{}
-	for _, listing := range []string{changed, newFiles} {
-		for _, path := range strings.Split(listing, "\x00") {
-			if path != "" {
-				seen[path] = true
-			}
+	for _, path := range strings.Split(changed, "\x00") {
+		if path != "" {
+			seen[path] = true
+		}
+	}
+	for _, path := range strings.Split(newFiles, "\x00") {
+		if path != "" && !recorder.ignoredAtStart(path, startPaths) && !gitRunArtifact(path) {
+			seen[path] = true
 		}
 	}
 	paths := make([]string, 0, len(seen))
@@ -248,6 +271,12 @@ func (recorder *gitRecorder) DifferentPaths(handle string) ([]string, error) {
 	}
 	sort.Strings(paths)
 	return paths, nil
+}
+
+// Git's untracked listing includes ignored paths deliberately; the engine's
+// own notes are not a person's later edit or part of a candidate tree.
+func gitRunArtifact(path string) bool {
+	return util.GeneratedRunPath(path) || path == ".senior-dev" || strings.HasPrefix(path, ".senior-dev/")
 }
 
 func (recorder *gitRecorder) BaseTree(base string) (string, bool) {

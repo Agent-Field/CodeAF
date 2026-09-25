@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/seniordev/util"
 )
 
 // A .gitignore reader for the snapshot recorder. Under the git recorder this
@@ -45,6 +47,48 @@ type ignoreRule struct {
 
 func newIgnoreRules() *ignoreRules {
 	return &ignoreRules{byDir: map[string][]ignoreRule{}}
+}
+
+// startIgnoreRules freezes the folder's ignore files before the run changes
+// them, so a later file still follows the rules that existed at submission.
+func startIgnoreRules(workspace string) *ignoreRules {
+	rules := newIgnoreRules()
+	_ = filepath.WalkDir(workspace, func(name string, entry os.DirEntry, err error) error {
+		if err != nil || !entry.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(workspace, name)
+		if err != nil {
+			return nil
+		}
+		if entry.Name() == ".git" || entry.Name() == ".senior-dev" {
+			return filepath.SkipDir
+		}
+		if rel == "." {
+			rel = ""
+		}
+		rel = filepath.ToSlash(rel)
+		if rel != "" && rules.ignored(rel, true) {
+			return filepath.SkipDir
+		}
+		rules.load(workspace, rel)
+		return nil
+	})
+	return rules
+}
+
+// ignoredAtStart also honors the exact list recorded before the engine
+// launched, including Git's global and info/exclude rules.
+func ignoredAtStart(relative string, rules *ignoreRules, paths []string) bool {
+	if util.PathIgnoredAtStart(relative, paths) || rules.ignored(relative, false) {
+		return true
+	}
+	for dir := path.Dir(relative); dir != "." && dir != ""; dir = path.Dir(dir) {
+		if rules.ignored(dir, true) {
+			return true
+		}
+	}
+	return false
 }
 
 // load reads the .gitignore in one directory, if it has one. dir is relative

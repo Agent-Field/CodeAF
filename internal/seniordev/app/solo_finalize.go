@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -254,6 +256,22 @@ func (runner *pipeline) soloRestoreTree(commitSHA, wantTree string) error {
 // a recorder's forceful restore. The state root is durable and separate from
 // the person's tracked tree; a copy failure refuses the destructive restore.
 func (runner *pipeline) rescueBeforeRestore(paths []string) error {
+	var deleted []string
+	var existing []string
+	for _, path := range paths {
+		_, err := os.Lstat(filepath.Join(runner.workspace, filepath.FromSlash(path)))
+		switch {
+		case os.IsNotExist(err):
+			deleted = append(deleted, path)
+		case err != nil:
+			return err
+		default:
+			existing = append(existing, path)
+		}
+	}
+	if len(deleted) == 0 && len(existing) == 0 {
+		return nil
+	}
 	root := home.Join("v3", "carried", "senior-dev", "rescued")
 	if relative, err := filepath.Rel(runner.workspace, root); err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) && !filepath.IsAbs(relative) {
 		root = filepath.Join(os.TempDir(), "codeaf-rescued")
@@ -272,12 +290,9 @@ func (runner *pipeline) rescueBeforeRestore(paths []string) error {
 	if runner.rescueCount > 0 {
 		destination = filepath.Join(destination, fmt.Sprintf("later-%d", runner.rescueCount+1))
 	}
-	for _, path := range paths {
+	for _, path := range existing {
 		from := filepath.Join(runner.workspace, filepath.FromSlash(path))
 		info, err := os.Lstat(from)
-		if os.IsNotExist(err) {
-			continue
-		}
 		if err != nil {
 			return err
 		}
@@ -301,6 +316,52 @@ func (runner *pipeline) rescueBeforeRestore(paths []string) error {
 		default:
 			return fmt.Errorf("cannot preserve %s before restore", from)
 		}
+	}
+	if len(deleted) > 0 {
+		if err := os.MkdirAll(runner.rescuePath, 0o700); err != nil {
+			return err
+		}
+		if runner.rescueManifest == "" {
+			runner.rescueManifest = "deleted-files.txt"
+			for number := 2; ; number++ {
+				_, err := os.Lstat(filepath.Join(runner.rescuePath, runner.rescueManifest))
+				if os.IsNotExist(err) {
+					break
+				}
+				if err != nil {
+					return err
+				}
+				runner.rescueManifest = fmt.Sprintf("deleted-files-%d.txt", number)
+			}
+		}
+		manifest := filepath.Join(runner.rescuePath, runner.rescueManifest)
+		prior, err := os.ReadFile(manifest)
+		if err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		listed := map[string]bool{}
+		for _, path := range strings.Split(string(prior), "\n") {
+			if path != "" {
+				listed[path] = true
+			}
+		}
+		for _, path := range deleted {
+			// A filename can contain a newline. Quote only that exceptional
+			// spelling so the manifest still has one readable line per path.
+			if strings.ContainsAny(path, "\r\n") {
+				path = strconv.Quote(path)
+			}
+			listed[path] = true
+		}
+		all := make([]string, 0, len(listed))
+		for path := range listed {
+			all = append(all, path)
+		}
+		sort.Strings(all)
+		if err := os.WriteFile(manifest, []byte(strings.Join(all, "\n")+"\n"), 0o600); err != nil {
+			return err
+		}
+		runner.rescueDeleted = true
 	}
 	runner.rescueCount++
 	return nil

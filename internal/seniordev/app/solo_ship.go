@@ -188,6 +188,10 @@ func (runner *pipeline) soloTerminal(outcome *soloOutcome, reason string) {
 	}
 	if runner.rescuePath != "" {
 		data["rescue_path"] = runner.rescuePath
+		if runner.rescueDeleted {
+			data["rescue_deletions"] = true
+			data["rescue_manifest"] = runner.rescueManifest
+		}
 	}
 	if candidate := outcome.Frozen; candidate != nil {
 		data["submission_reason"] = candidate.Reason

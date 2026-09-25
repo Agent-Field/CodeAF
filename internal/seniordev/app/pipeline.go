@@ -52,8 +52,10 @@ type pipeline struct {
 
 	budgetCost float64
 	// rescuePath is the durable place later edits are copied before a restore.
-	rescuePath  string
-	rescueCount int
+	rescuePath     string
+	rescueCount    int
+	rescueDeleted  bool
+	rescueManifest string
 
 	fingerprintMu    sync.Mutex
 	fingerprintFiles map[string]worktreeFileFingerprint

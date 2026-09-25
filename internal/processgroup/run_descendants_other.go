@@ -4,6 +4,7 @@ package processgroup
 
 const RunMarkerEnv = "CODEAF_DELEGATE_RUN"
 
-func EnableSubreaper() {}
+func EnableSubreaper() error { return nil }
+func CleanupDescendants()    {}
 
 func CleanupRun(string) {}

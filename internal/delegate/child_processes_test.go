@@ -16,12 +16,17 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/delegate"
+	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/steploop"
 	"github.com/Agent-Field/codeaf/internal/seniordev/tool"
 )
 
 func TestRunEndsItsBashBackgroundProcesses(t *testing.T) {
 	if mode := os.Getenv("FC_PROCESS_CHILD"); mode != "" {
+		if err := processgroup.EnableSubreaper(); err != nil {
+			t.Fatal(err)
+		}
+		defer processgroup.CleanupDescendants()
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 		defer stop()
 		if err := os.WriteFile(os.Getenv("FC_PROCESS_PIDFILE")+".engine", []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {

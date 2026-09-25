@@ -96,10 +96,12 @@ func Run(ctx context.Context, host delegate.Host, options Options, notes io.Writ
 // senior-dev's own in-process tests always ran in.
 func runWith(ctx context.Context, host delegate.Host, options Options, notes io.Writer, injected backend) delegate.Ending {
 	if marker := env.Get(processgroup.RunMarkerEnv); marker != "" {
-		// The engine owns its orphaned shell descendants while it is alive;
-		// the host repeats cleanup if this process crashes before this defer.
-		processgroup.EnableSubreaper()
-		defer processgroup.CleanupRun(marker)
+		// Only the engine is a subreaper. It reaps its own shell descendants
+		// before it exits; the host's marker sweep is for a SIGKILL ending.
+		if err := processgroup.EnableSubreaper(); err != nil {
+			return refused("senior-dev cannot contain its shell processes on this machine: " + err.Error())
+		}
+		defer processgroup.CleanupDescendants()
 	}
 	if notes == nil {
 		notes = io.Discard
@@ -309,6 +311,10 @@ func endingOf(result pipelineResult) delegate.Ending {
 	}
 	if rescue, _ := extra["rescue_path"].(string); rescue != "" {
 		ending.Message += ". Files that changed in the folder before senior-dev restored its checkpoint were set aside in " + rescue
+		if deleted, _ := extra["rescue_deletions"].(bool); deleted {
+			manifest, _ := extra["rescue_manifest"].(string)
+			ending.Message += "; files deleted during the run are listed in " + manifest + " there"
+		}
 	}
 	if reason, _ := extra["reason"].(string); reason != "" && reason != ending.Message {
 		ending.Reason = reason

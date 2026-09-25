@@ -103,8 +103,8 @@ var ErrNoTerminal = errors.New("the program exited without a terminal record")
 // reads `context.Canceled` off a worker knows its own ending cut the task.
 func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 	cmd := exec.Command(launch.Bin, launch.Args...)
-	// A run marker survives a plain background job and a setsid escape, so a
-	// Linux host can find both after the engine exits or crashes.
+	// The marker is a last-resort Linux sweep after SIGKILL stops the engine
+	// before its own subreaper can clean up its descendants.
 	markerBytes := make([]byte, 16)
 	if _, err := rand.Read(markerBytes); err != nil {
 		return Result{ExitCode: -1}, fmt.Errorf("mark %s's descendants: %w", launch.Name, err)
@@ -176,10 +176,11 @@ func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 		}
 	}
 	result.Elapsed = time.Since(started)
-	// The engine's own group does not contain bash commands, which each start
-	// their own group, or a command that called setsid. Clean those descendants
-	// before draining stdout or releasing the folder, including on a crash.
-	processgroup.CleanupRun(marker)
+	// A SIGKILL engine cannot run its own parent-link cleanup. The marker is
+	// only a best-effort fallback for that ending.
+	if result.Killed || killedBySignal(waitErr) {
+		processgroup.CleanupRun(marker)
+	}
 	if waitErr == nil {
 		result.ExitCode = 0
 	} else {
@@ -214,6 +215,15 @@ func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 		return result, ErrNoTerminal
 	}
 	return result, nil
+}
+
+func killedBySignal(err error) bool {
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) {
+		return false
+	}
+	status, ok := exit.Sys().(syscall.WaitStatus)
+	return ok && status.Signaled() && status.Signal() == syscall.SIGKILL
 }
 
 // openStderr opens the stderr file for append, creating it, or a sink when
