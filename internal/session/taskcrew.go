@@ -311,6 +311,13 @@ func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []
 	if key == "" {
 		key = c.agent.Model()
 	}
+	if !crew.seats(key) {
+		// NOT A SEAT OF THIS CREW: a tier the run asks for that the crew does
+		// not name (a probe, a small errand). It is an auxiliary call, and it
+		// goes through the route-health guard like every other one — never
+		// to a route this task's crew was routed around.
+		return c.agent.completeWithModel(ctx, purposeInherited, messages, key, options...)
+	}
 	retried := false
 	for {
 		current := crew.sendFor(key)
@@ -378,6 +385,18 @@ type crewStopped struct {
 
 func (e crewStopped) Error() string { return e.action }
 func (e crewStopped) Unwrap() error { return e.cause }
+
+// seats is whether key is one of this crew's seats as routed — what the run
+// engine asks for when it calls a seat. original is written once, when the
+// crew is routed, and only read after.
+func (c *taskCrew) seats(key string) bool {
+	for _, send := range c.original {
+		if send == key {
+			return true
+		}
+	}
+	return false
+}
 
 // sendFor is the send id a request for key goes to now: key, or where the
 // seat has moved.

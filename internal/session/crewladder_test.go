@@ -26,6 +26,7 @@ type crewStub struct {
 	asked []string
 	paid  int
 	free  map[string]int
+	only  map[string]int
 }
 
 func newCrewStub(t *testing.T, paid int, free map[string]int) *crewStub {
@@ -46,6 +47,9 @@ func newCrewStub(t *testing.T, paid int, free map[string]int) *crewStub {
 		if strings.HasSuffix(body.Model, ":free") {
 			status = stub.free[body.Model]
 		}
+		if forced, ok := stub.only[body.Model]; ok {
+			status = forced
+		}
 		stub.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		switch status {
@@ -55,6 +59,9 @@ func newCrewStub(t *testing.T, paid int, free map[string]int) *crewStub {
 		case http.StatusPaymentRequired:
 			w.WriteHeader(status)
 			_, _ = io.WriteString(w, `{"error":{"message":"Insufficient credits. Add more using https://openrouter.ai/settings/credits","code":402}}`)
+		case http.StatusForbidden:
+			w.WriteHeader(status)
+			_, _ = io.WriteString(w, `{"error":{"message":"this model is only available on agentic harnesses","code":403}}`)
 		case http.StatusUnauthorized:
 			w.WriteHeader(status)
 			_, _ = io.WriteString(w, `{"error":{"message":"No auth credentials found","code":401}}`)
@@ -191,5 +198,40 @@ func TestARefusedKeyAsksToReconnectAndRestoredCreditIsSeenAtOnce(t *testing.T) {
 	}
 	if line := run.crew.current().Line("", -1); strings.Contains(line, "fallback") {
 		t.Errorf("a recovered account still reads as fallback: %q", line)
+	}
+}
+
+// NOTHING THIS TASK DOES ASKS A QUARANTINED ROUTE: a route that refused a
+// model is left out of the next task's crew, and a call the run makes on a
+// tier the crew does not seat — the same model by its tier's row — is handed
+// a healthy route instead. The stub counts zero requests for it.
+func TestNoCallReachesAQuarantinedRoute(t *testing.T) {
+	stub := newCrewStub(t, http.StatusOK, map[string]int{})
+	stub.only = map[string]int{"z-ai/glm-5.3-flash": http.StatusForbidden}
+	agent, _ := crewStubAgent(t, stub)
+	previous := config.CrewCatalog
+	rows := append(previous(), catalog.Model{ID: "deepseek/deepseek-v4-flash", OpenWeights: true, PromptPrice: 8.246e-8, CompletionPrice: 1.6492e-7,
+		IntelligenceIndex: 24.2, CodingIndex: 56.2, AgenticIndex: 22.2, ContextLength: 1048576, Parameters: []string{"tools"}})
+	config.CrewCatalog = func() []catalog.Model { return rows }
+
+	if _, err := askWorker(t, agent, 1); err != nil {
+		t.Fatalf("task 1: %v (asked %v)", err, stub.models())
+	}
+	stub.mu.Lock()
+	stub.asked = nil
+	stub.mu.Unlock()
+	run, err := askWorker(t, agent, 2)
+	if err != nil {
+		t.Fatalf("task 2: %v (asked %v)", err, stub.models())
+	}
+	// The run engine seats a tier the crew does not name on that tier's row.
+	if _, err := (crewSeatCompleter{agent: agent, run: run}).CompleteWithMessages(t.Context(),
+		[]ai.Message{textMessage("user", "a small errand")}, ai.WithModel("z-ai/glm-5.3-flash")); err != nil {
+		t.Fatalf("the errand: %v", err)
+	}
+	for _, model := range stub.models() {
+		if model == "z-ai/glm-5.3-flash" {
+			t.Fatalf("task 2 asked the quarantined route: %v", stub.models())
+		}
 	}
 }
