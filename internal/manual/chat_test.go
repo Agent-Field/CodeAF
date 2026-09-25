@@ -50,6 +50,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I undo moving a team", "teams-page"},
 		{"what does +4 idle mean on a team", "teams-page"},
 		{"how do I mention a team or another conversation with @", "conversations-and-teams"},
+		{"what does clicking a team name in a chat do", "conversations-and-teams"},
+		{"where does a team link in a chat open", "teams-page"},
 		// The team manager (team-manager.md).
 		{"what can the team manager do", "team-manager"},
 		{"can the manager answer a member's permission prompt", "team-manager"},
