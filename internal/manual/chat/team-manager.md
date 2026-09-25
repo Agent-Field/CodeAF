@@ -234,6 +234,17 @@ every one of them is logged in the team's traffic. Questions, packets, caps and 
 on the page **Team questions, decisions and caps**.
 Like any tool, each can be set to ask or allow in `/settings` under the tool approvals.
 
+## What happens when a conversation stops being the manager
+
+At its next step, a conversation removed as manager loses `team_status`, `team_read`,
+`team_send`, `team_stop`, `team_start`, `team_decide`, `team_escalate` and
+`team_close_report`. If it is still a member of a managed team, it keeps `team_post` and
+`team_raise`; outside a team it loses those too. A remembered call to a removed manager
+tool says `team_send is no longer one of your tools: this conversation no longer manages a
+team.` A removed member tool says `team_post is no longer one of your tools: this
+conversation is no longer a member of a team with a manager.` Made a manager again, it gets
+the manager tools back at its next step.
+
 ## The member's verbs
 
 A member of a team that has a manager has `team_post`: a message to the room (every member and

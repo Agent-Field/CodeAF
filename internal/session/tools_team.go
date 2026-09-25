@@ -4,8 +4,8 @@ package session
 //
 // A team's manager is an ordinary conversation with every ordinary tool under
 // the ordinary approval rules (docs/design/conversations-and-teams/DESIGN.md,
-// section 5). What makes it a manager is these five verbs and the digest its
-// turns carry (team.go); what makes a member able to answer is the sixth.
+// section 5). What makes it a manager is its verbs and the digest its turns
+// carry (team.go); a member has the verbs to answer and raise a conflict.
 //
 // THEY ARE ONE GROUP, AND THE GROUP IS ARMED, NOT SHELVED. A manager needs its
 // verbs on the turn the person asks it to hand something out, so a round trip
@@ -17,7 +17,7 @@ package session
 // goes through. The fixed prefix is unchanged for everybody else, which is what
 // prefixbudget_test.go holds.
 //
-// SIX TOOLS AND NOT ONE WITH ACTIONS, for the reason the settings pair is two:
+// SEPARATE TOOLS AND NOT ONE WITH ACTIONS, for the reason the settings pair is two:
 // THE APPROVAL GATE KEYS ON THE TOOL NAME. Reading a member's page and starting a
 // new conversation that spends money are two different acts, and a person must
 // be able to allow one and be asked about the other. So the reads, the messages
@@ -161,9 +161,8 @@ func (a *Agent) memberTools() []bare.Tool {
 // refusal to hand the model when there is none.
 //
 // IT IS ASKED ON EVERY CALL, never remembered from the boundary that armed the
-// verb: a conversation removed as manager a minute ago keeps the verb on its
-// belt (team.go states why), and this is where it is told it no longer runs
-// that team.
+// verb: a role can change between a boundary and a call. This is where a
+// still-running call learns it no longer has that role.
 func (a *Agent) teamTarget(want string, manager bool) (teams.Team, teamRole, string) {
 	profile := a.config.teamProfile()
 	if profile == "" {
