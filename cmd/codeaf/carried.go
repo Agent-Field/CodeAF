@@ -124,6 +124,7 @@ type carriedRoad struct {
 	serves       func(model string) bool
 	modelPrice   func(model string) (input, output float64, known bool)
 	seat         string
+	defaultSeat  func() (string, error)
 	signNamed    bool
 }
 
@@ -134,8 +135,8 @@ var carriedModels = profileRoad
 
 // profileRoad is the road through the person's profile: config.Load's
 // services and keys — so a machine with no key at all is answered with the
-// one sentence every command gives it — the crew's work seat, and one adapter
-// per model, built the way every client outside internal/config is built
+// one sentence every command gives it — the crew's work seat if this run
+// needs a default, and one adapter per model, built the way every client outside internal/config is built
 // ([config.Config.ClientConfig]).
 func profileRoad() (carriedRoad, error) {
 	settings, err := config.Load()
@@ -143,13 +144,6 @@ func profileRoad() (carriedRoad, error) {
 		return carriedRoad{}, err
 	}
 	useAutoSeats(settings)
-	// A shell run has no task crew of its own. Resolve the profile's worker
-	// seat once here; the program keeps that seat unless its invocation names
-	// models explicitly.
-	seats, err := config.ResolveSeats(settings.ProfileDir, config.SeatFlags{}, config.CrewAsk{})
-	if err != nil && !errors.Is(err, config.ErrCrewAtCap) {
-		return carriedRoad{}, err
-	}
 	settings.Models = sharedCatalog(settings)
 	adapters := &carriedAdapters{settings: settings, built: map[string]modelapi.Completer{}}
 	sources := settings.Sources.OrDefault(settings.APIKey, settings.BaseURL)
@@ -157,8 +151,16 @@ func profileRoad() (carriedRoad, error) {
 		completerFor: adapters.forModel,
 		serves:       func(model string) bool { return session.ServesModel(sources, model) },
 		modelPrice:   settings.Models.PriceNow,
-		seat:         seats.Work.Model,
-		signNamed:    config.AttributionModelAt(settings.ProfileDir),
+		defaultSeat: func() (string, error) {
+			// A shell run needs the profile's work seat only when nobody pinned
+			// a model for this invocation. A fresh profile can still use --high.
+			seats, err := config.ResolveSeats(settings.ProfileDir, config.SeatFlags{}, config.CrewAsk{})
+			if err != nil && !errors.Is(err, config.ErrCrewAtCap) {
+				return "", err
+			}
+			return seats.Work.Model, nil
+		},
+		signNamed: config.AttributionModelAt(settings.ProfileDir),
 	}, nil
 }
 
@@ -225,6 +227,12 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 	road, err := carriedModels()
 	if err != nil {
 		return err
+	}
+	if strings.TrimSpace(inv.ExplicitFlags["high"]) == "" && road.defaultSeat != nil {
+		road.seat, err = road.defaultSeat()
+		if err != nil {
+			return err
+		}
 	}
 	// A PERSON TYPED THIS AND IS WATCHING ITS LINES, which is the fact the
 	// lane layer reads for the calls that ride no context of the door's own

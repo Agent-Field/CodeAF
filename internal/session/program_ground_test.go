@@ -184,3 +184,20 @@ func TestAProgramIsNotHandedAModelNoServiceServes(t *testing.T) {
 		t.Fatalf("no model named was refused: %+v", choice)
 	}
 }
+
+// A chat proposal with via and an explicit connected model resolves the
+// model before any crew default, even when the profile has no crew rows.
+func TestProgramProposalNamesAConnectedModelWithoutCrewRows(t *testing.T) {
+	router := modelsource.DefaultSource("https://openrouter.ai/api/v1")
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.TaskModel = ""
+		config.TaskModels = nil
+		config.Sources = modelsource.NewSet(modelsource.Connected{
+			Source: router, Key: "sk-or-v1-fixture", Address: router.Address,
+		})
+	})
+	choice := agent.resolveProgramModels("openrouter/fixture/vendor-model")
+	if choice.problem != "" || choice.model != "openrouter/fixture/vendor-model" {
+		t.Fatalf("explicit program model on a fresh crew = %+v", choice)
+	}
+}

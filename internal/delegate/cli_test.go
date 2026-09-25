@@ -64,6 +64,26 @@ func TestParseTakesANamedCommandAndItsOwnFlags(t *testing.T) {
 	}
 }
 
+// A shell host can ask whether a model flag was written only after the real
+// parser has separated flags from brief words and program defaults.
+func TestParseRecordsOnlyFlagsTheCallerWrote(t *testing.T) {
+	program := testProgram(nil)
+	inv, err := Parse(program, []string{"run", "--variant=high", "--", "--variant=brief"}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv.ExplicitFlags["variant"] != "high" || inv.Brief() != "--variant=brief" {
+		t.Fatalf("explicit flags = %#v, brief = %q", inv.ExplicitFlags, inv.Brief())
+	}
+	bare, err := Parse(program, []string{"run", "brief"}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, written := bare.ExplicitFlags["variant"]; written {
+		t.Fatalf("an unwritten program flag appeared in %#v", bare.ExplicitFlags)
+	}
+}
+
 // The line a host starts its child with is the line Parse reads back.
 func TestChildArgsParseBackToTheSameInvocation(t *testing.T) {
 	program := testProgram(nil)

@@ -39,7 +39,10 @@ type Invocation struct {
 	// Line is the arguments exactly as given after the name, so a host can hand
 	// its child the same line it was handed.
 	Line []string
-	body Body
+	// ExplicitFlags records values the caller actually wrote, so a host can
+	// distinguish a model pin from a program's default after parsing.
+	ExplicitFlags map[string]string
+	body          Body
 }
 
 // Brief is the brief's words, joined.
@@ -90,6 +93,8 @@ func Parse(program Delegate, line []string, out io.Writer) (*Invocation, error) 
 		}
 		return nil, fmt.Errorf("%s %s: %w", program.Name, command.Name, err)
 	}
+	explicitFlags := map[string]string{}
+	fs.Visit(func(value *flag.Flag) { explicitFlags[value.Name] = value.Value.String() })
 	if *cost < 0 || *hours < 0 || math.IsNaN(*cost) || math.IsNaN(*hours) || math.IsInf(*cost, 0) || math.IsInf(*hours, 0) {
 		return nil, fmt.Errorf("%s %s: a ceiling must be a finite, non-negative number", program.Name, command.Name)
 	}
@@ -107,12 +112,13 @@ func Parse(program Delegate, line []string, out io.Writer) (*Invocation, error) 
 	}
 	return &Invocation{
 		Program: program, Command: command,
-		Workspace: abs,
-		Ceilings:  ceilings,
-		JSON:      *asJSON,
-		Args:      fs.Args(),
-		Line:      append([]string(nil), line...),
-		body:      body,
+		Workspace:     abs,
+		Ceilings:      ceilings,
+		JSON:          *asJSON,
+		Args:          fs.Args(),
+		Line:          append([]string(nil), line...),
+		ExplicitFlags: explicitFlags,
+		body:          body,
 	}, nil
 }
 
