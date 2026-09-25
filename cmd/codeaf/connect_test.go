@@ -197,7 +197,7 @@ func TestC8ConnectWithoutAServiceListsMethodsAndNeverDrawsNothing(t *testing.T) 
 	if err := runConnect(nil); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{modelsource.DefaultID + " · not connected · browser or key", "codex · not connected · browser", "deepseek · not connected · key", "no model service is connected"} {
+	for _, want := range []string{modelsource.DefaultID + " · not connected · browser or key", "codex · not connected · browser", "deepseek · not connected · key", "no provider is connected"} {
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("listing missing %q: %q", want, output.String())
 		}
@@ -267,12 +267,12 @@ func TestC10DisconnectForgetsCodexAndRejectsAnUnknownService(t *testing.T) {
 
 func TestC11ConnectHelpIsLiftedFromTheEightyColumnTable(t *testing.T) {
 	// C11: both terminal doors are present in the shared usage source.
-	for _, want := range []string{"codeaf connect", "codeaf connect <service> [--no-browser] [--region intl|cn]", "codeaf disconnect <service>"} {
+	for _, want := range []string{"codeaf connect", "codeaf connect <provider> [--no-browser] [--region intl|cn]", "codeaf disconnect <provider>"} {
 		if !strings.Contains(usageText, want) {
 			t.Errorf("usage is missing %q", want)
 		}
 	}
-	if page := usageForCommand("connect"); !strings.Contains(page, "list the model services") || !strings.Contains(page, "--no-browser") {
+	if page := usageForCommand("connect"); !strings.Contains(page, "list the providers") || !strings.Contains(page, "--no-browser") {
 		t.Fatalf("connect help = %q", page)
 	}
 }

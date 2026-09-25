@@ -103,8 +103,10 @@ type Model struct {
 	// Group is the connected service heading this row sits under. It is empty
 	// on the single-service path, which keeps that picker's output unchanged.
 	Group       string `json:"-"`
+	GroupHead   string `json:"-"`
 	GroupOrder  int    `json:"-"`
 	Unavailable bool   `json:"-"`
+	AddProvider bool   `json:"-"`
 	// Notice is display text for an unavailable group row. Such a row has no
 	// ID: a sentence explaining an empty service is not a model and therefore
 	// cannot be selected, pinned, unfolded, or handed to a wire-facing path.
@@ -265,6 +267,18 @@ func sameModelRows(left, right []Model) bool {
 // wait for the beat to find out.
 func (a *app) forgetModelList(source, base string) {
 	a.modelLists.forget(modelCacheNameFor(source, base))
+}
+
+// serviceModelsLanded is [Options.OnServiceModels]'s body: one provider's
+// listing was stocked behind the frame (a launch warm or a ctrl+r walk). The
+// memo under that pair is a reading from before the fetch, so it is dropped;
+// an open picker is restocked so its group fills WITHOUT a reopen.
+func (a *app) serviceModelsLanded(source, address string) {
+	a.forgetModelList(source, address)
+	if a.pick.open {
+		a.pick.restock(a.modelPickerList())
+	}
+	a.touch()
 }
 
 // WriteModelCache replaces the cache with models. It is called from the door

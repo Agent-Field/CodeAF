@@ -115,8 +115,8 @@ func TestTheSetupOpensOnAnOrdinaryLaunchWithNoKey(t *testing.T) {
 			if !strings.Contains(screen, "setting up") {
 				t.Fatalf("the setup's own title is not on the screen:\n%s", screen)
 			}
-			if !strings.Contains(screen, "default service") {
-				t.Fatalf("the OpenRouter connection was not scoped to the default service:\n%s", screen)
+			if !strings.Contains(screen, "default provider") {
+				t.Fatalf("the OpenRouter connection was not scoped to the default provider:\n%s", screen)
 			}
 		})
 	}

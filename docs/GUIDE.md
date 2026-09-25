@@ -263,7 +263,7 @@ capability that cannot work is left off it rather than offered and failing.
 Furrow watch. The five `gmail_*` and `calendar_*` tools arrive only with a connected
 Google account and the four `slack_*` only with Slack; `/connect` — `your connected
 accounts · connect another` — is the door, and any other keyed account brings one
-`<service-id>_request` instead, plus whatever the service names for itself.
+`<service-id>_request` instead, plus whatever the account names for itself.
 `view_image` needs a vision model. `edit_video` needs its local video binaries. Each
 media-generation tool needs both a media client and a resolved model for its modality.
 
@@ -286,12 +286,12 @@ after the conversation. Memory keeps person-, project-, or machine-scoped record
 
 ## Models, keys, and spending
 
-Key resolution for the default service is `OPENROUTER_API_KEY`, then
+Key resolution for the default provider is `OPENROUTER_API_KEY`, then
 `OPENAI_API_KEY`, then `api_key` in the profile's `config.json`. With no credential,
 an interactive local launch opens a two-page setup that offers to connect OpenRouter
 in a browser or take a pasted key. First run is unchanged and does not offer Codex.
-A non-interactive chat starts when the default service has a key or any connected
-service holds its credential; a call to a service without one still fails when it is
+A non-interactive chat starts when the default provider has a key or any connected
+provider holds its credential; a call to an account without one still fails when it is
 made. With no credential anywhere it stops with `codeaf chat needs a model to talk with.`
 
 <details>
@@ -300,11 +300,11 @@ made. With no credential anywhere it stops with `codeaf chat needs a model to ta
 Where a browser is reachable the first page is headed `connect openrouter`:
 
 ```text
-sign in once in your browser. openrouter makes the default service's key for this profile; codeaf stores it on this machine. no prompt is sent and no model is called.
+sign in once in your browser. openrouter makes the default provider's key for this profile; codeaf stores it on this machine. no prompt is sent and no model is called.
 ```
 
 Where it is not, the same page is headed `your openrouter key` and reads `codeaf talks
-to models on its default service through openrouter, on your key and your card. nothing
+to models on its default provider through openrouter, on your key and your card. nothing
 is sent until you do.` Either way the foot takes a pasted key and `esc` skips setup.
 The second page is `Daily limit` and `Chat model`.
 
@@ -313,13 +313,13 @@ The second page is `Daily limit` and `Chat model`.
 The chat model resolves from `--model`, then saved `model.talk`, then `CODEAF_MODEL`,
 then `~deepseek/deepseek-v4-flash-latest`. The last value is a floating alias. Besides
 OpenRouter, the connection screen supports DeepSeek, Z.ai, Moonshot, MiniMax, Alibaba
-Qwen, Codex through a ChatGPT plan, Ollama, and a custom OpenAI-compatible service.
-The same supported services can be managed without opening the chat with `codeaf
+Qwen, Codex through a ChatGPT plan, Ollama, and a custom OpenAI-compatible provider.
+The same supported providers can be managed without opening the chat with `codeaf
 connect` and `codeaf disconnect`; a qualified slug such as
-`qwen/<model>` selects its service.
+`qwen/<model>` selects its provider.
 
-Provider routing defaults to `simple`: an unpinned OpenRouter call carries no provider
-object, while a pinned call asks for exactly that lane. `latency` and `price` remain
+Host routing defaults to `simple`: an unpinned OpenRouter call carries no host
+object, while a pinned call asks for exactly that host. `latency` and `price` remain
 opt-in settings.
 
 The default daily rail is `$500`; setting that row to `0` removes it. First run asks for

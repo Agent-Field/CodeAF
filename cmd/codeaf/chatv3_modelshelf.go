@@ -36,6 +36,10 @@ type v3ModelShelf struct {
 	// sources is the service set the compartments were last aligned with, kept
 	// so a model id can be taken to ITS service's rows ([v3ModelShelf.contextWindow]).
 	sources modelsource.Set
+	// fetchErrors holds, per provider id, why its last listing attempt failed —
+	// the sentence the provider's group shows until a fetch lands. Written only
+	// from commands off the event loop, read on the draw path.
+	fetchErrors map[string]string
 }
 
 type serviceCompartment struct {
@@ -243,14 +247,112 @@ func (s *v3ModelShelf) refreshService(ctx context.Context, service modelsource.C
 		if len(seed) > 0 {
 			return append([]tui3.Model(nil), seed...), nil
 		}
-		return nil, v3FetchReason(err)
+		reason := v3FetchReason(err)
+		s.fetchError(strings.ToLower(strings.TrimSpace(service.Source.ID)), reason)
+		return nil, reason
 	}
 	rows := v3Models(fresh)
 	id := strings.ToLower(strings.TrimSpace(service.Source.ID))
 	address, door := serviceCompartmentIdentity(service)
 	s.stock(id, address, door, append([]tui3.Model(nil), rows...))
+	s.fetchError(id, nil)
 	_ = tui3.WriteModelCacheFor(service.Source.ID, service.Address, rows)
 	return rows, nil
+}
+
+// v3ServiceFetch is one connected provider's answer to a warm or a refresh:
+// the rows when the door answered, and the reason when it did not. A provider
+// that lists no models reports neither rows nor error — its group says so
+// through the surface's own empty-group sentence.
+type v3ServiceFetch struct {
+	service modelsource.Connected
+	rows    []tui3.Model
+	err     error
+}
+
+// warmAll fetches every connected provider whose compartment is cold, through
+// the same door the connect path uses ([v3ModelShelf.refreshService]). It is
+// issue #1508's launch half: a profile whose model_sources rows survive but
+// whose per-provider caches do not (a new machine, a cleaned profile, a
+// hand-written row) used to open /model with nothing to offer and nothing
+// coming — the only fetch was the one at connect time.
+//
+// IT IS THE CALLER'S GOROUTINE: this walks the network and must never run on
+// the event loop (the same law the connect command keeps). The draw path keeps
+// its lock discipline — the shelf takes its own lock and no other — and the
+// reader sees each provider's group fill the moment its fetch stocks the
+// compartment, without a reopen.
+//
+// A PROVIDER THAT CANNOT LIST IS NOT SKIPPED SILENTLY: the reason is recorded
+// per provider ([v3ModelShelf.fetchErrors]) so the group can say why, and the
+// next provider is still tried. ctrl+r shares this walk.
+func (s *v3ModelShelf) warmAll(ctx context.Context, onlyCold bool) []v3ServiceFetch {
+	if s == nil {
+		return nil
+	}
+	var fetches []v3ServiceFetch
+	for _, service := range s.sourcesNow().All()[1:] {
+		if strings.EqualFold(service.Source.ID, "codex") {
+			// A CODEX COMPARTMENT IS RE-READ FROM ITS REMEMBERED CATALOG, never
+			// from the wire; its rows arrive at setSources. Skipped here.
+			continue
+		}
+		id := strings.ToLower(strings.TrimSpace(service.Source.ID))
+		if onlyCold {
+			held, rows, ok := s.compartment(id)
+			if ok && (len(rows) > 0 || held.address == "" && held.door == "") {
+				// Warm, or a compartment that says it cannot be listed at all.
+				continue
+			}
+			if len(rows) == 0 && !ok {
+				// Not kept by setSources: not a listing provider this run.
+				if service.Source.Listing != modelsource.ListingModels || len(service.Door.Models) > 0 {
+					continue
+				}
+			}
+		}
+		if service.Source.Listing != modelsource.ListingModels || len(service.Door.Models) > 0 {
+			// A provider that declares no listing (or vendors its catalog in
+			// the door) has nothing to fetch; its group is drawn from what the
+			// compartment or the vendored rows hold.
+			continue
+		}
+		rows, err := s.refreshService(ctx, service, nil)
+		if err == nil && len(rows) == 0 {
+			continue
+		}
+		fetches = append(fetches, v3ServiceFetch{service: service, rows: rows, err: err})
+	}
+	return fetches
+}
+
+// fetchError records one provider's listing refusal, and fetchErrorFor reads it
+// back for the group's status line. The maps are only ever touched under the
+// shelf lock, from commands off the loop.
+func (s *v3ModelShelf) fetchError(id string, err error) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.fetchErrors == nil {
+		s.fetchErrors = make(map[string]string)
+	}
+	if err == nil {
+		delete(s.fetchErrors, id)
+		return
+	}
+	s.fetchErrors[id] = err.Error()
+}
+
+// fetchErrorFor is the recorded reason one provider last failed to list.
+func (s *v3ModelShelf) fetchErrorFor(id string) string {
+	if s == nil {
+		return ""
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.fetchErrors[id]
 }
 
 // v3Rows is a list of catalog rows already in hand, asked the one question

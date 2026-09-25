@@ -331,7 +331,9 @@ func TestConnectingAServiceFromProvidersMovesTheConversationOntoItsPreferredMode
 		t.Fatal("Providers did not draw the connected Z.ai service")
 	}
 	drive(t, a, key("enter"))
-	drive(t, a, key("enter"))
+	// ENTER ON A CONNECTED SERVICE OPENS ITS FOUR-ACTION MENU; "change key" is
+	// the third verb, and it is the road to the key box.
+	drive(t, a, key("down"), key("down"), key("enter"))
 	if a.sheet.conn.entry == nil || !a.sheet.conn.entry.secret {
 		t.Fatal("the Providers road did not reach the key box")
 	}
@@ -1062,7 +1064,8 @@ func TestOneServiceDrawsThePickerExactlyAsItDidBefore(t *testing.T) {
 	// surface (pickersort.go) — so `gpt-5-classic` stands above the model in use.
 	// The mark is still on the model in use, which is what this test is about.
 	want := "  gpt-5-classic\n" +
-		"› openai/gpt-4.1-mini                                                                             1M"
+		"› openai/gpt-4.1-mini                                                                             1M\n" +
+		"  + add a provider"
 	if rendered := plain(strings.Join(got, "\n")); rendered != want {
 		t.Fatalf("one-service picker changed:\ngot  %q\nwant %q", rendered, want)
 	}
@@ -1168,7 +1171,7 @@ func TestTheModelServiceWordsAreExactAndVendorWordsStopAtAWordBoundary(t *testin
 	if got := serviceMovedWord("deepseek-direct/deepseek-v4-pro", "~deepseek/deepseek-v4-flash-latest"); got != "this conversation was on deepseek-direct/deepseek-v4-pro · it is now on ~deepseek/deepseek-v4-flash-latest" {
 		t.Errorf("moved word = %q", got)
 	}
-	if got := serviceStrandedWord("deepseek-direct/deepseek-v4-pro"); got != "this conversation was on deepseek-direct/deepseek-v4-pro and nothing else here can take it · connect a service or pick a model" {
+	if got := serviceStrandedWord("deepseek-direct/deepseek-v4-pro"); got != "this conversation was on deepseek-direct/deepseek-v4-pro and nothing else here can take it · connect a provider or pick a model" {
 		t.Errorf("stranded word = %q", got)
 	}
 	if got := engineVariableWord("DEEPSEEK_API_KEY"); got != "the engine process reads $DEEPSEEK_API_KEY from its own environment" {
@@ -1302,7 +1305,7 @@ func TestDisconnectingAServiceLeavesTheConversationOnSomethingItCanReach(t *test
 		},
 		{
 			name: "nothing else can take it", wantModel: "deepseek-direct/deepseek-v4-pro",
-			want: "this conversation was on deepseek-direct/deepseek-v4-pro and nothing else here can take it · connect a service or pick a model",
+			want: "this conversation was on deepseek-direct/deepseek-v4-pro and nothing else here can take it · connect a provider or pick a model",
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -1682,8 +1685,8 @@ func TestConnectedServicesAppearUnderProvidersAndEmptinessDrawsNothing(t *testin
 	// with no custom connection yet is the one that needs the door (customAddRow).
 	addRows, connectionRows := 0, 0
 	for _, item := range a.sheet.items {
-		if item.head == "services" {
-			t.Fatal("an empty profile drew the services head")
+		if item.head == "providers" {
+			t.Fatal("an empty profile drew the providers head")
 		}
 		if item.service != nil && item.service.switcher {
 			t.Fatal("an empty profile drew the switcher row")
@@ -1714,11 +1717,11 @@ func TestConnectedServicesAppearUnderProvidersAndEmptinessDrawsNothing(t *testin
 	foundHead, foundRow := false, false
 	keyAt, headAt, rowAt := -1, -1, -1
 	for at, item := range a.sheet.items {
-		foundHead = foundHead || item.head == "services"
+		foundHead = foundHead || item.head == "providers"
 		if item.row.Key == config.KeyAPIKey {
 			keyAt = at
 		}
-		if item.head == "services" {
+		if item.head == "providers" {
 			headAt = at
 		}
 		if item.service != nil && item.service.name == "deepseek-direct" {
@@ -1731,8 +1734,14 @@ func TestConnectedServicesAppearUnderProvidersAndEmptinessDrawsNothing(t *testin
 	if !foundHead || !foundRow {
 		t.Fatalf("Providers did not draw the connected service: %+v", a.sheet.items)
 	}
-	if keyAt < 0 || headAt != keyAt+1 || rowAt != headAt+1 {
-		t.Fatalf("the services section is not immediately under the openrouter key: key=%d head=%d row=%d", keyAt, headAt, rowAt)
+	if keyAt < 0 || headAt != keyAt+1 || rowAt != headAt+2 {
+		t.Fatalf("the providers section is not immediately under the openrouter key: key=%d head=%d row=%d", keyAt, headAt, rowAt)
+	}
+	// THE DEFAULT PROVIDER LEADS THE SECTION: the head, then openrouter with
+	// its address and key status, then the persisted connections.
+	defaultRow := a.sheet.items[headAt+1].service
+	if defaultRow == nil || defaultRow.id != modelsource.DefaultID {
+		t.Fatalf("the default provider does not lead the section: %+v", a.sheet.items[headAt+1])
 	}
 }
 
@@ -1906,13 +1915,15 @@ func lineIndex(lines []string, match func(string) bool) int {
 	return -1
 }
 
-// headingLines counts the drawn service headings equal to group. A heading is a
-// dim line whose whole text is the group's name; a model's own row carries more
-// than the name, so this counts headings and never rows.
+// headingLines counts the drawn service headings for group. A heading is a dim
+// line that is the group's name alone, or — since the heads name the address
+// and the model count too ([serviceGroupHead]) — the name followed by the head
+// line's wide separator. A model's own row never carries either, so this counts
+// headings and never rows.
 func headingLines(lines []string, group string) int {
 	count := 0
 	for _, line := range lines {
-		if strings.TrimSpace(line) == group {
+		if t := strings.TrimSpace(line); t == group || strings.HasPrefix(t, group+"   ") {
 			count++
 		}
 	}
@@ -1963,7 +1974,7 @@ func TestTwoCustomConnectionsGroupApartInThePicker(t *testing.T) {
 	}
 	for _, id := range []string{"homelab/qwen-local", "studio/mistral-local"} {
 		group := id[:strings.Index(id, "/")]
-		headAt := lineIndex(lines, func(line string) bool { return line == group })
+		headAt := lineIndex(lines, func(line string) bool { return line == group || strings.HasPrefix(line, group+"   ") })
 		modelAt := lineIndex(lines, func(line string) bool { return strings.Contains(line, id) })
 		if headAt < 0 || modelAt < 0 || headAt > modelAt {
 			t.Fatalf("the %q heading did not stand above %q:\n%s", group, id, drawn)
@@ -2059,8 +2070,8 @@ func TestACustomConnectionWithNoListKeepsItsPlaceInThePicker(t *testing.T) {
 	if !strings.Contains(drawn, noServiceModelListWord) {
 		t.Fatalf("the listing-less service drew no notice row:\n%s", drawn)
 	}
-	homelabAt := lineIndex(lines, func(line string) bool { return line == "homelab" })
-	studioAt := lineIndex(lines, func(line string) bool { return line == "studio" })
+	homelabAt := lineIndex(lines, func(line string) bool { return line == "homelab" || strings.HasPrefix(line, "homelab   ") })
+	studioAt := lineIndex(lines, func(line string) bool { return line == "studio" || strings.HasPrefix(line, "studio   ") })
 	if homelabAt < 0 || studioAt < 0 || homelabAt > studioAt {
 		t.Fatalf("the listing-less service was drawn out of order:\n%s", drawn)
 	}

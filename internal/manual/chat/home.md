@@ -1389,7 +1389,7 @@ same door:
 - **`/model`**, or **pressing the model's name on that rule**, opens the model list in home's
   own body — the same filterable list `/model` opens in a conversation. Type to narrow it,
   `↑↓` to walk it, `enter` to take the row, `esc` to leave it alone. The foot while it is up
-  follows the cursor and reads `↑↓ pick · → providers · alt+s sort · enter choose · ctrl+t
+  follows the cursor and reads `↑↓ pick · → hosts · alt+s sort · enter choose · ctrl+t
   effort · esc back` on a model, and `↑↓ pick · ← back · alt+s sort · enter choose · esc back`
   inside an open provider fold. `← back` stands beside `↑↓ pick` because both move the cursor.
 - **`/model <slug>`** typed into the box pins it straight away, with no list.

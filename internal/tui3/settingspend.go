@@ -476,5 +476,5 @@ const (
 	spendUnwrittenWord = "unwritten"
 	spendUnwrittenSaid = "spending records could not be written"
 	spendUnbilledWord  = "unbilled"
-	spendUnbilledSaid  = "calls the provider charged for and could not be priced"
+	spendUnbilledSaid  = "calls the host charged for and could not be priced"
 )

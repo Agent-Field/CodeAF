@@ -84,6 +84,9 @@ type modelsFetchedMsg struct {
 	at    time.Time
 	err   error
 	shown map[string]bool
+	// all marks the walk-every-provider chord; rows, at and err are empty
+	// because each provider answers through [Options.OnServiceModels].
+	all bool
 }
 
 // offersRefresh is whether this list names the key and answers it right now:
@@ -146,7 +149,27 @@ func (a *app) armRefresh() {
 // client (internal/catalog's fetch), so nothing here keeps a second clock that
 // could disagree with it.
 func (a *app) fetchModels() tea.Cmd {
-	if a.refreshModels == nil || !a.pick.offersRefresh() {
+	if !a.pick.offersRefresh() {
+		return nil
+	}
+	// ctrl+r REFRESHES EVERY PROVIDER (issue #1508), not only the router's
+	// catalog: when the door walks all of them the chord is handed there, and
+	// each provider's group restocks itself as its fetch lands
+	// ([app.onServiceModels]). A door without the walk keeps the old single-
+	// catalog fetch. Either way the fetch is a command and the picker never
+	// waits on it.
+	if a.refreshAllModels != nil {
+		a.modelsFetching, a.pick.fetching = true, true
+		walk, ctx := a.refreshAllModels, a.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		return func() tea.Msg {
+			walk(ctx)
+			return modelsFetchedMsg{shown: map[string]bool{}, all: true}
+		}
+	}
+	if a.refreshModels == nil {
 		return nil
 	}
 	a.modelsFetching, a.pick.fetching = true, true
@@ -174,6 +197,13 @@ func (a *app) fetchModels() tea.Cmd {
 func (a *app) modelsFetched(msg modelsFetchedMsg) {
 	a.modelsFetching, a.pick.fetching = false, false
 	a.touch()
+	if msg.all {
+		// The walk-everything fetch answers through [Options.OnServiceModels],
+		// one provider at a time, as each lands. Nothing is carried here: the
+		// open picker has already been restocked per provider, and a provider
+		// that refused names its own reason in its own group.
+		return
+	}
 	list := keepModels(msg.rows, chatModel)
 	err := msg.err
 	if err == nil && (len(list) == 0 || msg.at.IsZero()) {

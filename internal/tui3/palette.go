@@ -451,6 +451,13 @@ func (p *picker) rank() {
 	if len(tokens) == 0 {
 		p.cursorToCurrent()
 	}
+	// THE DOOR IS NOT A MODEL AND NEVER RANKS: the add-provider row rides the
+	// list's end whatever the sort reads, because a door is not a row a
+	// column sorts.
+	sort.SliceStable(p.hits, func(a, b int) bool {
+		return !p.all[p.hits[a]].AddProvider && p.all[p.hits[b]].AddProvider
+	})
+	p.relist()
 }
 
 // narrowFold answers the filter box AS A QUESTION ABOUT THE MACHINES ALREADY ON
@@ -2001,8 +2008,17 @@ func (p *picker) groupBefore(at int) string {
 	if model.Group == "" {
 		return ""
 	}
+	// THE HEAD NAMES MORE THAN THE SERVICE when the list knows the address and
+	// the count ([GroupHead]): a block of ten rows under `openrouter` is a
+	// block under `openrouter   openrouter.ai · 547 models`, and a person
+	// reading the table reads which machine and how much of it without opening
+	// anything.
+	head := model.GroupHead
+	if head == "" {
+		head = model.Group
+	}
 	if at == p.top || at == 0 {
-		return model.Group
+		return head
 	}
 	previous := p.list[at-1]
 	if previous.lane != laneNone {
@@ -2010,7 +2026,7 @@ func (p *picker) groupBefore(at int) string {
 	}
 	before := p.all[p.hits[previous.hit]]
 	if before.Group != model.Group {
-		return model.Group
+		return head
 	}
 	return ""
 }
@@ -2166,15 +2182,15 @@ func laneAutoSaid(routing string) laneAutoSay {
 	if config.RoutingWord(routing) == config.RoutingSimple {
 		return laneAutoSay{
 			note: laneAutoNote,
-			about: "which provider answers your model. routing is simple, so auto " +
-				"sends no choice of ours at all and openrouter's own routing answers; a provider " +
+			about: "which host answers your model. routing is simple, so auto " +
+				"sends no choice of ours at all and openrouter's own routing answers; a host " +
 				"you pin is the whole request. enter opens them all with what has been " +
 				"measured of each.",
 		}
 	}
 	return laneAutoSay{
 		note: laneAutoNote,
-		about: "which provider answers your model. auto picks the fastest one " +
+		about: "which host answers your model. auto picks the fastest one " +
 			"each answer; enter opens them all with what has been measured of each.",
 		chooses: true,
 	}
@@ -2199,7 +2215,7 @@ const laneAutoNote = "auto-route based on /settings"
 // nothing behind the model has been measured. It is a sentence a person would
 // say, it draws no number, and it says when that changes — which is the whole
 // of what somebody who pressed `→` on the model needs to know about the gap.
-const laneUnmeasured = "no provider has been measured for this model yet — providers show up after its first answer"
+const laneUnmeasured = "no host has been measured for this model yet — hosts show up after its first answer"
 
 // lineUnder is the dim line drawn under one row, and empty under all but one of
 // them: [laneUnmeasured], under the `auto` row of a fold with no providers in
@@ -2533,11 +2549,11 @@ const (
 	// THE EFFORT KEY IS NAMED HERE BECAUSE THE BOX STOPPED NAMING IT
 	// ([pickerHint]), and this is the row it works on: inside a fold the cursor
 	// is on a machine and `ctrl+t` has no model to dial.
-	pickerKeysModel = "→ providers · " + sortKeyWord + " · enter switch · " + effortKeyWord + " · esc"
+	pickerKeysModel = "→ hosts · " + sortKeyWord + " · enter switch · " + effortKeyWord + " · esc"
 	// pickerKeysModelTab is the same row with the caret somewhere inside what is
 	// typed, where `→` steps over a character instead ([picker.foldKey]) and
 	// only `tab` opens.
-	pickerKeysModelTab = "tab providers · " + sortKeyWord + " · enter switch · " + effortKeyWord + " · esc"
+	pickerKeysModelTab = "tab hosts · " + sortKeyWord + " · enter switch · " + effortKeyWord + " · esc"
 	// pickerKeysFold is a row inside an open fold: enter chooses that provider,
 	// `←` walks back out to the model.
 	pickerKeysFold = "← back · " + sortKeyWord + " · enter choose · esc"
@@ -2619,9 +2635,9 @@ func (p *picker) keysParts() (string, string, string) {
 	if p.editing() && p.filter.cursor > 0 {
 		back = "tab back"
 	}
-	open := "→ providers"
+	open := "→ hosts"
 	if p.editing() && p.filter.cursor < len(p.filter.value) {
-		open = "tab providers"
+		open = "tab hosts"
 	}
 	// AND THE SORT IS NAMED WHEREVER THE TABLE IS DRAWN, because it is the LIST's
 	// key rather than the cursor's — the same reason the refresh key is in the
@@ -2670,7 +2686,7 @@ func (p *picker) keysParts() (string, string, string) {
 // [filterFor]).
 func (a *app) openPicker() {
 	a.noticeEvent(eventModelListOpened)
-	a.pick.startFor(a.modelList(), a.model, chatModel)
+	a.pick.startFor(a.modelPickerList(), a.model, chatModel)
 	// THE PIN IS A SNAPSHOT, exactly as the model in use is: it is what marks a
 	// row inside an open fold, and what the row in use says `via`, and neither
 	// of those can change while a modal overlay owns the keyboard.
@@ -2708,7 +2724,7 @@ func (a *app) openTaskPicker(id uint64) {
 	if node := a.tasks[id]; node != nil {
 		current = firstNonEmpty(node.nextModel, node.model)
 	}
-	a.pick.startFor(a.modelList(), current, chatModel)
+	a.pick.startFor(a.modelPickerList(), current, chatModel)
 	a.pick.task = id
 	a.armRefresh()
 	a.touch()
@@ -2726,6 +2742,20 @@ func (a *app) openTaskPicker(id uint64) {
 // this rule existed — and a rule enforced at two of three places is a rule with
 // a way round it.
 func (a *app) modelList() []Model { return a.modelsFor(chatModel) }
+
+// modelPickerList is the model overlay's list: the chat ladder, then the
+// door. THE DOOR IS A ROW WITH NO ID A WIRE WOULD TAKE: AddProvider routes
+// enter to the add-provider flow before any switchModel can see it. It rides
+// the picker and no other reader of the ladder — context measurement, the
+// sort laws and the slots all read [app.modelList] whole.
+func (a *app) modelPickerList() []Model {
+	list := a.modelsFor(chatModel)
+	return append(list, Model{
+		ID:          addProviderRowWord,
+		AddProvider: true,
+		GroupOrder:  len(a.sources.All()) + 1,
+	})
+}
 
 // modelsFor is that same source order, asked ONE SLOT'S question instead of the
 // chat law's ([modelFilter], models.go).
@@ -2755,9 +2785,27 @@ func (a *app) modelsFor(keep modelFilter) []Model {
 		if group == "" {
 			group = strings.ToLower(strings.TrimSpace(service.Source.Name))
 		}
+		head := serviceGroupHead(service.Source, len(models))
 		if len(models) == 0 {
+			// A SERVICE THAT LISTS NOTHING SAYS WHY. The bare placeholder named
+			// the fact; the state names the reason: a fetch that failed carries
+			// its reason and the retry, a fetch still out says so, and a
+			// provider that answered with nothing says that instead
+			// ([app.providerFetchError]).
+			notice := noServiceModelListWord
+			// THE ERROR DOOR IS AN OPTION, NOT A GIVEN: older seams construct an
+			// app without one ([Options.ProviderFetchError]), and a nil reading
+			// of a field this surface owns is a panic on a picker that was
+			// already drawing.
+			if a.providerFetchError != nil {
+				if err := a.providerFetchError(service.Source.ID); err != "" {
+					notice = cannotListModelsWord + err + listRetryWord
+				} else if a.modelsFetching {
+					notice = modelsFetching
+				}
+			}
 			grouped = append(grouped, Model{
-				Notice: noServiceModelListWord, Group: group, GroupOrder: order, Unavailable: true,
+				Notice: notice, Group: group, GroupHead: head, GroupOrder: order, Unavailable: true,
 			})
 			continue
 		}
@@ -2767,6 +2815,7 @@ func (a *app) modelsFor(keep modelFilter) []Model {
 				model.Direct = true
 			}
 			model.Group, model.GroupOrder = group, order
+			model.GroupHead = head
 			grouped = append(grouped, model)
 		}
 	}
@@ -2989,6 +3038,13 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		if ok {
+			// THE LAST ROW IS NOT A MODEL. It is the door to connect another
+			// provider, and enter on it opens that flow with the list behind
+			// it — a model row applies and stays, this row opens and leaves.
+			if chosen.AddProvider {
+				a.pick.close()
+				return a.openAddProvider(false)
+			}
 			// One list, two subjects, decided where the list was opened: a node when
 			// the model word in its room was pressed, and the conversation every
 			// other time (palette.go's [app.openTaskPicker]).
@@ -3177,6 +3233,8 @@ func (a *app) overlayHeight() int {
 		want = a.roster.height(width)
 	case a.shelf.open:
 		want = a.shelf.height(width)
+	case a.addPanel.open:
+		want = a.addPanel.height(width)
 	case a.connPanel.open:
 		want = a.connPanel.height(width)
 	case a.harnPanel.open:
@@ -3229,6 +3287,11 @@ func (a *app) overlayRows(width, n int) []string {
 		hover = a.hot.index
 	}
 	switch {
+	// THE ADD-PROVIDER PANEL RIDES THE SAME OVERLAY BUDGET AS THE PICKER IT
+	// WAS OPENED OVER: it is modal, it owns the keyboard, and it draws in the
+	// rows the frame hands out (addprovider.go).
+	case a.addPanel.open:
+		return a.addPanel.draw(width, n, a.pal, hover)
 	case a.pick.open:
 		return a.pick.rows(width, n, a.pal, hover, a.reasoningFor)
 	case a.effPick.open:
@@ -3237,6 +3300,8 @@ func (a *app) overlayRows(width, n int) []string {
 		return a.roster.rows(width, n, a.pal, hover)
 	case a.shelf.open:
 		return a.shelf.rows(width, n, a.pal, hover)
+	case a.addPanel.open:
+		return a.addPanel.draw(width, n, a.pal, hover)
 	case a.connPanel.open:
 		return a.connPanel.draw(width, n, a.pal, hover)
 	case a.harnPanel.open:

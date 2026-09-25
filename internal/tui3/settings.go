@@ -402,7 +402,7 @@ var settingUI = map[string]settingMeta{
 	// is most of what makes this row worth having.
 	config.KeyModelFallbacks: {
 		tab: tabSession, label: "fallback models", widget: widgetText,
-		about: "where a conversation goes when no provider will take the request: " +
+		about: "where a conversation goes when no host will take the request: " +
 			"slugs, comma-separated, first tried first. Blank picks the nearest one.",
 	},
 	// It sits with the model rows and not with the approval ones because the
@@ -713,12 +713,12 @@ var settingUI = map[string]settingMeta{
 	// differences the session pays attention to.
 	config.KeyRouting: {
 		tab: tabProviders, label: "routing", widget: widgetCycle,
-		about: "one model is served by many providers. simple is the one it ships with and " +
-			"sends no preference of ours — no pinned provider means the router's own default " +
-			"answers, and a pinned provider is the whole request; latency asks for the fastest " +
+		about: "one model is served by many hosts. simple is the one it ships with and " +
+			"sends no preference of ours — no pinned host means the router's own default " +
+			"answers, and a pinned host is the whole request; latency asks for the fastest " +
 			"and demotes one that keeps being slow; price asks for the cheapest; off asks " +
 			"for nothing, measures nothing, and leaves the two rows above it with no " +
-			"provider to name. a change here takes effect on your next message.",
+			"host to name. a change here takes effect on your next message.",
 	},
 	// AND UNDER IT, THE MACHINE ITSELF. routing is about what every request
 	// prefers; this is about which endpoint your conversation actually lands on.
@@ -728,11 +728,11 @@ var settingUI = map[string]settingMeta{
 	// picker's own `auto` row reads. A sentence spelled here as well would be
 	// this panel promising a takeover on a routing that runs none.
 	config.LaneSettingKey(talkSlot): {
-		tab: tabProviders, label: "provider", widget: widgetLane,
+		tab: tabProviders, label: "host", widget: widgetLane,
 	},
 	config.KeyLaneGuard: {
 		tab: tabProviders, label: "speed guard", widget: widgetToggle,
-		about: "an answer that is slow to start is asked of the next-best provider as well, " +
+		about: "an answer that is slow to start is asked of the next-best host as well, " +
 			"and you read whichever replies first. One extra call, under a tenth of spend.",
 	},
 	// AND THE OTHER HALF OF THE SAME QUESTION: the three rows above are about
@@ -743,7 +743,7 @@ var settingUI = map[string]settingMeta{
 		tab: tabProviders, label: "prompt profile", widget: widgetCycle,
 		about: "how much codeaf tells the model before you type. auto reads the model's " +
 			"context window and goes lean under 32,000 tokens; lean and full say so yourself, " +
-			"for a provider that reports a window its model does not really have.",
+			"for a host that reports a window its model does not really have.",
 	},
 	// ── Teams ───────────────────────────────────────────────────────────────
 	// The five defaults every team inherits, in the order a person reaches
@@ -1429,6 +1429,7 @@ func (s *sheet) build() {
 			return
 		}
 		door := false
+		routingHeadDone := false
 		for _, row := range s.tabRows() {
 			// THE THREE SEATS ARE ONE ROW HERE, standing where the first of them
 			// would ([sheet.crewDoorItem]).
@@ -1440,6 +1441,14 @@ func (s *sheet) build() {
 				continue
 			}
 			meta, _ := s.metaFor(row)
+			// THE ROUTING SECTION IS NAMED WHERE IT STARTS. host, routing and
+			// speed guard are three answers to one question — where a request
+			// goes — and they read as a block only when something says so.
+			if !routingHeadDone && (row.Key == config.KeyRouting ||
+				row.Key == config.LaneSettingKey(talkSlot) || row.Key == config.KeyLaneGuard) {
+				s.items = append(s.items, sheetItem{head: "routing"})
+				routingHeadDone = true
+			}
 			s.items = append(s.items, sheetItem{row: row, meta: meta})
 			if row.Key == config.KeyAPIKey && !s.sources.Empty() {
 				// THE EMPTY PROFILE KEEPS THE DOOR AND DRAWS NOTHING ELSE: no services
@@ -1448,19 +1457,29 @@ func (s *sheet) build() {
 				// decoration. The add row is an action, not decoration — a profile with
 				// no custom connection yet is the one that needs the door — so it stands
 				// alone when no service row stands beside it (customAddRow).
+				// THE EMPTY PROFILE KEEPS THE DOOR AND DRAWS NOTHING ELSE: no
+				// providers head, no default row, no connection rows — a row
+				// that could do nothing is decoration, and the add row stands
+				// alone when no service row stands beside it (the emptiness law).
 				services := modelServiceRows(s.profileDir, s.sources)
 				if len(services) > 0 {
-					s.items = append(s.items, sheetItem{head: "services"})
+					s.items = append(s.items, sheetItem{head: "providers"})
+					// THE DEFAULT PROVIDER LEADS: openrouter answers by default
+					// and is the row a person reads first.
+					if defaultRow := defaultServiceRow(s.profileDir, s.sources); defaultRow != nil {
+						s.items = append(s.items, sheetItem{service: defaultRow})
+					}
 					for _, service := range services {
 						s.items = append(s.items, sheetItem{service: service})
 					}
-					s.items = append(s.items, sheetItem{service: customAddRow()})
+					// THE SWITCHER RIDES BETWEEN THE CONNECTIONS AND THE DOOR:
+					// the add row is last, because the list reads as the
+					// providers you have, and the door to add another closes it.
 					if switcher := s.connectionSwitcherRow(); switcher != nil {
 						s.items = append(s.items, sheetItem{service: switcher})
 					}
-				} else {
-					s.items = append(s.items, sheetItem{service: customAddRow()})
 				}
+				s.items = append(s.items, sheetItem{service: customAddRow()})
 			}
 			// THE ROLES SECTION HANGS OFF THE ROW IT WRITES. Every pin those rows
 			// set lands in "pinned roles" and nowhere else, so it is drawn
@@ -2349,6 +2368,16 @@ func (a *app) activate() tea.Cmd {
 			a.switchActiveConnection()
 			return nil
 		}
+		// ENTER ON A CONNECTED SERVICE OFFERS ITS FOUR ACTIONS: refresh the
+		// model list, rename the connection, change its key, or disconnect.
+		// The menu is the row's own choice entry — the same closed-answer box
+		// a region answer uses — so the four verbs are read, walked and
+		// answered by the code every other entry already runs.
+		if _, isModel := modelConnectionSource(modelConnectionID(item.service.id)); isModel {
+			s.conn.entry = newModelChoiceEntry(modelConnectionID(item.service.id), item.service.name, "", modelServiceMenuChoices())
+			s.build()
+			return nil
+		}
 		// ENTER ON A CONNECTED SERVICE IS ITS EDIT: the id is kept, the
 		// answers prefill, and a changed name is a rename whose re-prefix the
 		// connect result carries (modelservices.go's reprefixRenamedModel).
@@ -2491,7 +2520,7 @@ func (a *app) openLaneList() bool {
 		return false
 	}
 	sel := &sheetSelect{
-		key: config.ModelSettingKey(talkSlot), label: "provider · " + a.model,
+		key: config.ModelSettingKey(talkSlot), label: "host · " + a.model,
 		keep: filterFor(config.ModelSettingKey(talkSlot)),
 	}
 	sel.pick.startFor(a.modelsFor(sel.keep), a.model, sel.keep)
@@ -3685,7 +3714,7 @@ func (s *sheet) keysLine() string {
 		if _, inside := s.sel.pick.laneUnder(); inside {
 			return "↑↓ move · ← or tab back · " + sortKeyWord + " · enter choose · esc cancel · type to filter"
 		}
-		return "↑↓ move · → or tab providers · " + sortKeyWord + " · enter choose · esc cancel · type to filter"
+		return "↑↓ move · → or tab hosts · " + sortKeyWord + " · enter choose · esc cancel · type to filter"
 	case s.conn.entry != nil:
 		return s.connKeysLine()
 	case s.onConnections():

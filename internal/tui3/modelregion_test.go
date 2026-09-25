@@ -238,6 +238,12 @@ func TestTheProvidersSheetAsksWithTheSameChoice(t *testing.T) {
 		t.Fatal("Providers did not draw the connected Z.ai service")
 	}
 	drive(t, a, key("enter"))
+	// ENTER ON A CONNECTED SERVICE OPENS ITS FOUR-ACTION MENU now; the region
+	// answer lives behind the edit door, which the menu names "rename".
+	if !strings.Contains(strings.Join(sheetLabels(a), "\n"), "change key") {
+		t.Fatal("enter on a connected service did not open the four-action menu")
+	}
+	drive(t, a, key("down"), key("enter"))
 
 	screen := strings.Join(sheetLabels(a), "\n")
 	if !strings.Contains(screen, "your region") ||

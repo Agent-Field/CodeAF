@@ -307,7 +307,7 @@ by its id against a narrow list of generation and sidecar words.
 ## Why the via name keeps changing on the model list
 
 It does not, not while the list is open. `via <machine>` on a `/model` row is which
-provider would typically serve that model, frozen when the list opened — so a turn
+host would typically serve that model, frozen when the list opened — so a turn
 running underneath cannot make the names jump, and the `▲0.5s` and `58t/s` next to them
 stay still too. Close the list and open it again to see the latest.
 

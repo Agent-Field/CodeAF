@@ -679,6 +679,7 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 		ContextWindow:              v3Window(models, welcome.Model),
 		Models:                     func() []tui3.Model { return v3Models(shelf) },
 		RefreshModels:              shelf.refresh,
+		ProviderFetchError:         shelf.fetchErrorFor,
 		// /export writes on THIS machine (host.go's honesty table), so its row
 		// goes in this machine's index — the same one the local launch spells.
 		ArtifactsIndex: artifactsIndexPath(),
