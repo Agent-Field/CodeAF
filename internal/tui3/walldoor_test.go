@@ -79,7 +79,7 @@ func TestTabWallDoorHover(t *testing.T) {
 	if !strings.Contains(cell, "\x1b[48;") || cell == ansi.Cut(rest, door.from, door.to) {
 		t.Fatalf("the hovered door wears no ground: %q", cell)
 	}
-	if got := a.dockHoverWords(); got != "Conversations "+wallOpenKey {
+	if got := a.dockHoverWords(); got != dockWallWord || !strings.Contains(got, "teams") || !strings.HasSuffix(got, wallOpenKey) {
 		t.Fatalf("the hint slot says %q", got)
 	}
 	t.Logf("120 columns at rest:\n%q\nhovered:\n%q", plain(rest), plain(lit))

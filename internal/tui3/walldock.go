@@ -49,7 +49,10 @@ const dockCap = 12
 const dockFloor = 2
 
 // dockWallWord is what the hint slot says while the pointer rests on `▦`.
-const dockWallWord = "Conversations " + wallOpenKey
+// It names teams because the view it opens is where a first team is made:
+// with no team yet, `▦ All` is the only door on the strip that leads to one,
+// and `Conversations` alone gave a person no reason to look there.
+const dockWallWord = "Every open conversation, and your teams" + hintSegment + wallOpenKey
 
 // dockCell is one conversation's cell as it was drawn: its column and its tab.
 type dockCell struct {
@@ -247,9 +250,10 @@ func (a *app) dockHoverWords() string {
 				name += hintSegment + "needs you"
 			}
 			if cell.tab.here {
-				name += hintSegment + "here"
+				return name + hintSegment + "here"
 			}
-			return name
+			// What a press does, as every other hint says it.
+			return name + hintSegment + "click opens it"
 		}
 	}
 	// THE MANAGER'S TASKS' HEADER IS THE WAY BACK TO THE TRAFFIC (teamrail.go).
