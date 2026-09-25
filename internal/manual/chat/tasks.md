@@ -4294,11 +4294,13 @@ A task still running is not redone; stop it first.
 
 **At the daily cap a task does not start.** `/crew cap` sets what crews may spend in a day;
 a task asked for once today's spend has reached it is refused with the cap, the spend and
-the two ways on:
+the ways on — `--cheap` and `--best` are refused the same, because a dollar cap is a cap:
 
 ```
-today's crew spend ($5.01) has reached the daily cap of $5.00 · raise it with /crew cap, or ask for this task with --cheap
+today's crew spend ($5.01) has reached the daily cap of $5.00 · raise it or turn it off with /crew cap, or wait until midnight
 ```
+
+The day turns over at midnight on this machine's clock, and the spend starts again from nothing.
 
 ## Naming a model for one task
 

@@ -172,9 +172,10 @@ estimate — `$0.021 (est $0.023)`.
 
 **The daily cap.** `/crew cap` sets what crews may spend in a day. At the cap
 `codeaf do` refuses before spending anything — `today's crew spend has reached
-the daily cap of $5.00 · raise it with `/crew cap`, run with --cheap, or pass
--yes-spend` — and `--yes-spend` is the one way past. The other doors warn on
-stderr and go on.
+the daily cap of $5.00 · raise it or turn it off with `/crew cap`, pass
+-yes-spend, or wait until midnight` — and `--yes-spend` is the one way past for
+that run; `--cheap` is refused at the cap like any other run. The other doors
+warn on stderr and go on.
 
 **The per-task limit.** Every run is held to the most one task may spend, $5
 unless `/crew cap task` set another. A call that would take the run past it is

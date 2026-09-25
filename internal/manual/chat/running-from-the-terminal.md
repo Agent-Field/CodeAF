@@ -402,10 +402,12 @@ stay what `/crew` last set.
 `/crew cap` set, it starts nothing and says so:
 
 ```
-today's crew spend has reached the daily cap of $5.00 · raise it with `/crew cap`, run with --cheap, or pass -yes-spend
+today's crew spend has reached the daily cap of $5.00 · raise it or turn it off with `/crew cap`, pass -yes-spend, or wait until midnight
 ```
 
-`-yes-spend` is the one way past it — past the daily cap, never past the per-task limit.
+`-yes-spend` is the one way past it for this run — past the daily cap, never past the
+per-task limit. `--cheap` is refused at the cap like any other run. The day turns over at
+midnight on this machine's clock.
 **Every run is held to the per-task limit**, $5 unless `/crew cap task` set another: a call
 that would take the run past it is not made, and the run stops on
 `this task reached its $5 limit · raise it in /crew`. The other headless doors — `exec`, `run`, `plan run` —

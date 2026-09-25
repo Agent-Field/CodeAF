@@ -669,10 +669,12 @@ leave a kind of work without a strong enough checker, the panel says so on a `ga
 away. The crew **paces toward it**: once half the day's cap is spent, a dearer crew costs
 more of the day's quality to justify, so the picks lean cheaper as the cap gets close.
 
-**At the cap a task does not start.** In a conversation the task is refused with the cap,
-what was spent, and the two ways on — raise it with `/crew cap`, or ask for that task with
-`--cheap`. `codeaf do` refuses the same way unless you pass `-yes-spend`; `codeaf exec`,
-`codeaf run` and `codeaf plan` say one line about it and go ahead.
+**At the cap a task does not start**, whatever it asks for — `--cheap` and `--best` are
+refused the same, because a dollar cap is a cap. In a conversation the task is refused with
+the cap, what was spent, and the ways on: raise it or turn it off with `/crew cap`, or wait
+until midnight on this machine's clock, when the day's spend starts again from nothing.
+`codeaf do` refuses the same way unless you pass `-yes-spend`; `codeaf exec`, `codeaf run`
+and `codeaf plan` say one line about it and go ahead.
 
 **Nor does a call that would cross it.** Every call a task makes — its seats', and the
 helpers around them, such as the run's closing summary — is priced before it is made:

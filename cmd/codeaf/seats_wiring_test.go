@@ -236,6 +236,23 @@ func TestAnErrandAtTheDailyCapRefusesUnlessToldToSpend(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "daily cap") {
 		t.Fatalf("an errand at the cap was not refused: %v", err)
 	}
+	// THE REFUSAL NAMES ONLY THE WAYS ON THAT WORK: /crew cap, -yes-spend and
+	// the day turning over. --cheap is refused at the cap too, so it is not one.
+	for _, way := range []string{"/crew cap", "-yes-spend", "midnight"} {
+		if !strings.Contains(err.Error(), way) {
+			t.Errorf("the refusal does not name %q: %q", way, err)
+		}
+	}
+	if strings.Contains(err.Error(), "--cheap") {
+		t.Errorf("the refusal offers --cheap: %q", err)
+	}
+	err = doErrand(doRequest{
+		task: "write the release note and include the migration steps", timeout: 60 * time.Second,
+		effort: crewroute.EffortCheap, stdout: &stdout, stderr: &stderr, newClient: script.client,
+	})
+	if err == nil || !strings.Contains(err.Error(), "daily cap") {
+		t.Fatalf("--cheap got past the cap: %v", err)
+	}
 	if script.count("chat") != 0 {
 		t.Fatal("an errand at the cap spent before it refused")
 	}
