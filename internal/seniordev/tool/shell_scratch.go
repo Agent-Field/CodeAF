@@ -17,6 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/env"
 	jobexec "github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/seniordev/netpolicy"
 )
 
@@ -216,6 +217,9 @@ func shellEnvironment(sessionID string) []string {
 	// The engine needs this run's loopback token, but a model command does not.
 	// The chat's shared shell policy also isolates this command's tmux socket.
 	environment := jobexec.JobShellEnv(env.EnvironWithout(delegate.EnvModelToken, delegate.EnvModelAPI))
+	// A model's own git commit belongs to the run even when the repository
+	// has the person's identity configured for their separate commits.
+	environment = append(environment, gitidentity.Environment()...)
 	// Appended after os.Environ() so exec's last-entry-wins dedup overrides
 	// any proxy the parent carries; independent of the shared-cache early
 	// return below, which must not open the network gate.

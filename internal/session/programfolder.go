@@ -816,7 +816,7 @@ func (f *ProgramFolder) commitLeftovers(result string) string {
 		}
 	}
 	if _, err := git(f.Dir, "diff", "--cached", "--quiet"); err == nil {
-		return ""
+		return f.creditModelCommit()
 	}
 	message := clip(firstLine(f.Title), 72)
 	if strings.TrimSpace(message) == "" {
@@ -834,6 +834,45 @@ func (f *ProgramFolder) commitLeftovers(result string) string {
 	args = append(args, "commit", "-q", "--no-verify", "-m", message)
 	if out, err := git(f.Dir, args...); err != nil {
 		return "git commit: " + firstLine(out)
+	}
+	return ""
+}
+
+// creditModelCommit signs a model's own final commit when there are no loose
+// changes for a finishing commit. It leaves the run's base and any commit the
+// person authored on the run branch alone.
+func (f *ProgramFolder) creditModelCommit() string {
+	if f.NoAttribution || f.Start == "" {
+		return ""
+	}
+	tip := branchCommit(f.Dir, f.Branch)
+	if tip == "" || tip == f.Start {
+		return ""
+	}
+	if _, err := git(f.Dir, "merge-base", "--is-ancestor", f.Start, tip); err != nil {
+		return ""
+	}
+	identity, err := git(f.Dir, "show", "-s", "--format=%an%x00%ae%x00%cn%x00%ce", tip)
+	if err != nil {
+		return "git identity: " + firstLine(identity)
+	}
+	parts := strings.Split(strings.TrimSpace(identity), "\x00")
+	if len(parts) != 4 || parts[0] != codeafGitName || parts[1] != codeafGitEmail ||
+		parts[2] != codeafGitName || parts[3] != codeafGitEmail {
+		return ""
+	}
+	message, err := git(f.Dir, "show", "-s", "--format=%B", tip)
+	if err != nil {
+		return "git message: " + firstLine(message)
+	}
+	if strings.Contains(message, "Assisted-by:") {
+		return ""
+	}
+	message = signed(strings.TrimRight(message, "\n"), gitSignature{named: f.SignModel != "", model: f.SignModel})
+	args := append([]string{"-c", "commit.gpgsign=false"}, codeafGitIdentity()...)
+	args = append(args, "commit", "--amend", "-q", "--no-verify", "-m", message)
+	if out, err := git(f.Dir, args...); err != nil {
+		return "git amend: " + firstLine(out)
 	}
 	return ""
 }
