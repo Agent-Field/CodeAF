@@ -259,13 +259,13 @@ func (a *app) teamDragCancel() {
 // teamDragHint is what the hint line says while a drag is under way, "" with
 // none.
 //
-//	Drop to move api into harbor · esc cancels
+//	Drop to move api into harbor · esc cancel
 func (a *app) teamDragHint() string {
 	d := a.tdrag
 	if !d.on {
 		return ""
 	}
-	tail := hintSegment + "esc cancels"
+	tail := hintSegment + "esc cancel"
 	switch {
 	case d.over == "":
 		if d.member {
