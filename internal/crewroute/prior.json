@@ -28,7 +28,7 @@
     {"class": "openended", "seat": "checker", "model": "moonshotai/kimi-k3", "quality": 5.00, "n": 8},
     {"class": "openended", "seat": "checker", "model": "deepseek/deepseek-v4-flash", "quality": 3.10, "n": 8}
   ],
-  "costs_source": "mean dollars per seat per task in the crew trial (docs/design/model-pool/data/trial_candidates.csv), a crew's cost split between seats that shared a model by the arms that differ in one seat",
+  "costs_source": "mean dollars per seat per task in the crew trial (docs/design/model-pool/data/trial_candidates.csv), a crew's cost split between seats that shared a model by the arms that differ in one seat; an open-ended checker at the p75 of its runs, the heavy tail a check reads into",
   "costs": [
     {"class": "bugfix", "seat": "worker", "model": "z-ai/glm-5.3-flash", "usd": 0.0179, "n": 14},
     {"class": "bugfix", "seat": "planner", "model": "z-ai/glm-5.3-flash", "usd": 0.0037, "n": 14},
@@ -43,8 +43,8 @@
     {"class": "openended", "seat": "worker", "model": "z-ai/glm-5.3-flash", "usd": 0.0270, "n": 8},
     {"class": "openended", "seat": "planner", "model": "z-ai/glm-5.3-flash", "usd": 0.0056, "n": 8},
     {"class": "openended", "seat": "checker", "model": "z-ai/glm-5.3-flash", "usd": 0.0159, "n": 8},
-    {"class": "openended", "seat": "checker", "model": "moonshotai/kimi-k3", "usd": 0.0846, "n": 8},
-    {"class": "openended", "seat": "checker", "model": "deepseek/deepseek-v4-flash", "usd": 0.0135, "n": 7},
+    {"class": "openended", "seat": "checker", "model": "moonshotai/kimi-k3", "usd": 0.0882, "n": 8},
+    {"class": "openended", "seat": "checker", "model": "deepseek/deepseek-v4-flash", "usd": 0.0185, "n": 7},
     {"class": "openended", "seat": "worker", "model": "z-ai/glm-5.3", "usd": 0.6245, "n": 2},
     {"class": "openended", "seat": "worker", "model": "deepseek/deepseek-v4-pro", "usd": 0.2258, "n": 2}
   ]

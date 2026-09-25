@@ -280,6 +280,11 @@ type Decision struct {
 	// before. Its own acceptance is the redo's, not a later task's: it must
 	// not take back the step the redo just taught.
 	Redo bool `json:",omitempty"`
+	// Subclass is, for a bugfix, "complex" or "simple" ([complexFix]), with
+	// Reach the signals that made it complex. The log keeps it; every line a
+	// person reads still says bugfix.
+	Subclass string `json:",omitempty"`
+	Reach    string `json:",omitempty"`
 	// CostFactor is what this install's own tasks of the class have cost
 	// against their estimates ([router.CrewLog.CostFactor]); EstUSD carries
 	// it. Zero is none learned yet.
@@ -394,6 +399,15 @@ func Decide(r Request) (Decision, error) {
 			break
 		}
 		crew = up
+	}
+	if d.Class == Bugfix {
+		d.Subclass, d.Reach = "simple", reading.Complex
+		if reading.Complex != "" {
+			d.Subclass = "complex"
+			if r.Stronger == nil && r.Again == nil {
+				crew = withReachingWorker(t, crew, candidates)
+			}
+		}
 	}
 	if r.Stronger != nil {
 		crew, d.Lambda, err = stronger(t, d.Class, candidates, pins, lambda, r.Stronger)
@@ -958,6 +972,25 @@ func stronger(t *table, class Class, candidates []Candidate, pins map[Seat]Pin, 
 	return crew, step, nil
 }
 
+// withReachingWorker is a complex fix's crew: its worker one rung up the
+// seat's front ([nextRung]) from the one the knee picked — the next model
+// above it by quality that nothing beats on both quality and cost, not the
+// top of the catalog. A pinned worker stays the pin, and a worker already at
+// the top stays where it is.
+func withReachingWorker(t *table, crew []Pick, candidates []Candidate) []Pick {
+	i := seatIndex(crew, Worker)
+	if i < 0 || crew[i].Pinned {
+		return crew
+	}
+	next, ok := nextRung(t, Bugfix, Worker, candidates, crew[i])
+	if !ok {
+		return crew
+	}
+	out := append([]Pick(nil), crew...)
+	out[i] = next
+	return out
+}
+
 // seatIndex is where a seat's pick sits in a crew, -1 when it is not there.
 func seatIndex(crew []Pick, seat Seat) int {
 	for i, pick := range crew {
@@ -1094,7 +1127,8 @@ func (d Decision) Line(pinMark string, actual float64) string {
 		// could take for the picked crew's success.
 		//
 		// EACH SEAT SAYS ITS NET MOVE, once: where it started, where it is
-		// now, the last reason, and how many it tried between — never the
+		// now, the FIRST reason — the cause, which a free pool at its limit
+		// further down never is — and how many it tried between — never the
 		// whole trail, which is the router log's to keep. A line that listed
 		// every rung of a long ladder wrapped past the card.
 		b.WriteString("running on fallback crew")
@@ -1114,11 +1148,15 @@ func (d Decision) Line(pinMark string, actual float64) string {
 				continue
 			}
 			b.WriteString(" · " + string(seat) + " " + ShortModel(first.From) + " → " + ShortModel(last.To))
-			if last.Why != "" {
-				b.WriteString(" (" + last.Why + ")")
+			var note []string
+			if first.Why != "" {
+				note = append(note, first.Why)
 			}
 			if moves > 1 {
-				b.WriteString(" (+" + strconv.Itoa(moves-1) + " tried)")
+				note = append(note, "+"+strconv.Itoa(moves-1)+" tried")
+			}
+			if len(note) > 0 {
+				b.WriteString(" (" + strings.Join(note, "; ") + ")")
 			}
 		}
 		b.WriteString(" · ")

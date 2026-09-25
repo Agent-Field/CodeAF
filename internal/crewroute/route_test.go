@@ -314,11 +314,11 @@ func TestTheDecisionLine(t *testing.T) {
 	cands := evidenceCandidates()
 	d, _ := Decide(Request{Class: OpenEnded, Candidates: cands, Pins: map[Seat]Pin{Checker: {Model: "moonshotai/kimi-k3"}}})
 	got := d.Line("📌", 0.108)
-	want := "open-ended · worker glm-5.3-flash (openrouter) · checker 📌 kimi-k3 · $0.108 (est $0.117)"
+	want := "open-ended · worker glm-5.3-flash (openrouter) · checker 📌 kimi-k3 · $0.108 (est $0.121)"
 	if got != want {
 		t.Errorf("line\n got %q\nwant %q", got, want)
 	}
-	if got := d.Line("📌", -1); !strings.HasSuffix(got, " · est $0.117") {
+	if got := d.Line("📌", -1); !strings.HasSuffix(got, " · est $0.121") {
 		t.Errorf("line before the run ends: %q", got)
 	}
 }

@@ -47,6 +47,11 @@ const (
 type CrewRecord struct {
 	// TaskClass is the class the task was read as — bugfix, openended, other.
 	TaskClass string `json:"task_class"`
+	// TaskSubclass is, for a bugfix, "complex" or "simple", and TaskReach the
+	// signals that made it complex. They are the log's alone: every line a
+	// person reads says bugfix.
+	TaskSubclass string `json:"task_subclass,omitempty"`
+	TaskReach    string `json:"task_reach,omitempty"`
 	// Repo is the repository the task ran in, the key the learned offset is
 	// kept under.
 	Repo   string `json:"repo,omitempty"`

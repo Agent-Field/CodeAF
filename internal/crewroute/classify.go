@@ -92,6 +92,11 @@ type Reading struct {
 	Class Class
 	Why   string
 	Sure  bool
+	// Complex is, for a bugfix, the signals that make it a fix with reach
+	// ([complexFix]), in words; empty is a simple fix. It names no class of
+	// its own — the task is still a bugfix on every line a person reads — and
+	// it moves only the worker ([Decide]).
+	Complex string
 }
 
 // signal is one rule: a pattern, the class it leans toward, how hard, and
@@ -129,6 +134,15 @@ var titleSignals = []signal{
 	{regexp.MustCompile(`(?i)^\s*(please\s+)?(fix|repair|correct|resolve|patch)\b`), Bugfix, 2, "a title that asks for a repair"},
 	{regexp.MustCompile(`(?i)\b(bug|bugs|buggy|broken)\b`), Bugfix, 1, "the word bug or broken"},
 	{defectSentence, Bugfix, 2, "what happens set against what should"},
+	// A TITLE THAT SAYS WHAT THE CODE DOES NOT DO is a defect report: "never
+	// keeps a square image", "does not close the file", "fails to parse",
+	// "should reject". "should support" and its kin ask for something new and
+	// are weighed back on the open-ended side below.
+	{regexp.MustCompile(`(?i)\b(never|doesn't|doesn’t|does not|don't|don’t|do not|fails to|failed to|cannot|can't|can’t|won't|won’t|no longer|should(n't|n’t| not)?)\b`), Bugfix, 1, "a title that says what the code does not do"},
+	// A CALL WRITTEN OUT IN THE TITLE — `RandomResizedCrop(scale=(1, 1))`,
+	// `parse("")` — is somebody quoting the input that misbehaves.
+	{regexp.MustCompile(`\b[A-Za-z_][\w.]*\((?:[^()]|\([^()]*\))+\)`), Bugfix, 1, "a call written out in the title"},
+	{regexp.MustCompile(`(?i)\bshould (also )?(support|allow|accept|provide|offer|expose|have|be able)\b`), OpenEnded, 1, "a title asking for something the code should also do"},
 	{regexp.MustCompile(`(?i)^\s*(feat|feature|refactor|perf|docs?)(\([^)]*\))?!?:`), OpenEnded, 2, "a feature or refactor title"},
 	{regexp.MustCompile(`(?i)^\s*(add|support|implement|introduce|enable|allow|create|design|define|document|redesign|rework|restructure|migrate|extend|expose|make)\b`), OpenEnded, 2, "a title that asks for something new"},
 	{regexp.MustCompile(`(?i)\b(consider|proposal|rfc|epic|feature|enhancement|refactor|docs|documentation|more pythonic|should (probably )?(default|be|support|allow)|fractional|metadata)\b`), OpenEnded, 1, "an open-ended word in the title"},
@@ -159,6 +173,38 @@ var labelWords = map[string]Class{
 	"kind/feature": OpenEnded, "refactor": OpenEnded, "documentation": OpenEnded, "docs": OpenEnded,
 	"design": OpenEnded, "proposal": OpenEnded, "rfc": OpenEnded, "epic": OpenEnded,
 	"question": Other, "investigation": Other, "discussion": Other,
+}
+
+// labelKeys are the words a tracker's own label spellings are built on —
+// `bug :bug:`, `type/bug`, `Kind: Enhancement ✨` — read when the label is
+// not one of [labelWords] as written. Labels with none of them (`help
+// wanted`, `good first issue`) say nothing about the kind of work.
+var labelKeys = map[string]Class{
+	"bug": Bugfix, "bugs": Bugfix, "defect": Bugfix, "regression": Bugfix, "crash": Bugfix, "bugfix": Bugfix,
+	"enhancement": OpenEnded, "feature": OpenEnded, "refactor": OpenEnded, "documentation": OpenEnded,
+	"docs": OpenEnded, "proposal": OpenEnded, "rfc": OpenEnded, "epic": OpenEnded,
+	"question": Other, "investigation": Other, "discussion": Other,
+}
+
+// labelWordRun is one run of letters in a folded label.
+var labelWordRun = regexp.MustCompile(`[a-z]+`)
+
+// labelClass is the class a label names: as written first, then word by
+// word, with an emoji shortcode (`:bug:`) read as its word.
+func labelClass(label string) (Class, bool) {
+	folded := strings.ToLower(strings.TrimSpace(label))
+	if class, ok := labelWords[folded]; ok {
+		return class, true
+	}
+	if strings.Contains(folded, "🐛") {
+		return Bugfix, true
+	}
+	for _, word := range labelWordRun.FindAllString(folded, -1) {
+		if class, ok := labelKeys[word]; ok {
+			return class, true
+		}
+	}
+	return "", false
 }
 
 // wrapperLine is the harness's own sentence around an issue's title:
@@ -192,8 +238,10 @@ func Classify(task Task) Reading {
 			best[s.class] = signal{class: s.class, weight: weight, name: s.name}
 		}
 	}
+	labelled := map[Class]bool{}
 	for _, label := range task.Labels {
-		if class, ok := labelWords[strings.ToLower(strings.TrimSpace(label))]; ok {
+		if class, ok := labelClass(label); ok {
+			labelled[class] = true
 			note(signal{class: class, name: "the `" + strings.TrimSpace(label) + "` label"}, weightLabel)
 		}
 	}
@@ -213,6 +261,18 @@ func Classify(task Task) Reading {
 			note(s, s.weight*weightBody)
 		}
 	}
+	reading := decide(score, best, labelled)
+	if reading.Class == Bugfix {
+		reading.Complex = complexFix(body)
+	}
+	return reading
+}
+
+// decide is the reading the scores make. A task a person labelled a bug and
+// nobody labelled anything else is a bugfix whatever its prose leaves unsaid:
+// the label is the answer, and the open-ended default is for tasks nobody
+// answered.
+func decide(score [3]int, best map[Class]signal, labelled map[Class]bool) Reading {
 	bug, open, other := score[0], score[1], score[2]
 	switch {
 	case other > bug && other > open:
@@ -221,6 +281,8 @@ func Classify(task Task) Reading {
 		return Reading{Class: Bugfix, Why: best[Bugfix].name, Sure: true}
 	case open >= bug+clearMargin:
 		return Reading{Class: OpenEnded, Why: best[OpenEnded].name, Sure: true}
+	case labelled[Bugfix] && !labelled[OpenEnded]:
+		return Reading{Class: Bugfix, Why: best[Bugfix].name, Sure: true}
 	case bug == 0 && open == 0:
 		return Reading{Class: OpenEnded, Why: "nothing in the task says which kind of work it is", Sure: false}
 	}
@@ -273,4 +335,71 @@ func taskTitle(text string) (title, body string) {
 		kept = append(kept, line)
 	}
 	return title, strings.Join(kept, "\n")
+}
+
+// A FIX WITH REACH IS NOT A ONE-LINE FIX. The evidence that the cheapest
+// worker fixes as well as any was measured on fixes of the ordinary size, and
+// a defect whose repair crosses files, a wire contract or a language's rules
+// is a different job wearing the same word: the cheap worker's patch is the
+// narrow one, and the checker then rejects it or — worse — passes it. So a
+// bugfix is read once more for REACH, off its body, on signals that say what
+// the repair must hold together rather than what broke:
+//
+//   - more than one source file named;
+//   - an API, an endpoint, a status code or a protocol;
+//   - language rules — i18n, locales, plurals, grammar, Unicode;
+//   - a long report, or more than one reproduction;
+//   - existing tests, guards or behaviour that must keep passing.
+//
+// Two of them make a complex fix; one alone is how an ordinary report reads.
+// A complex fix moves its worker one rung up the seat's front ([Decide]); its
+// planner and checker are the fix's own, and a pin is never overruled.
+
+// reachSignal is one of the signals above, and the words it is named by.
+type reachSignal struct {
+	name string
+	hit  func(body string) bool
+}
+
+// The patterns the reach signals read.
+var (
+	sourceFile  = regexp.MustCompile(`\b[\w./-]+\.(py|go|ts|tsx|js|jsx|mjs|rs|java|kt|rb|c|cc|cpp|h|hpp|cs|php|swift|scala|ex|exs|vue|svelte)\b`)
+	wireWords   = regexp.MustCompile(`(?i)\b(api|apis|endpoints?|status codes?|http ?[1-5]\d\d|[1-5]\d\d (error|response)|protocols?|grpc|websockets?|rpc|wire format|openapi)\b`)
+	languageRul = regexp.MustCompile(`(?i)\b(i18n|l10n|locales?|locali[sz]ation|internationali[sz]ation|translations?|plurali[sz]ation|plurals?|grammar|language rules?|unicode|utf-?8|diacritics?|right-to-left|rtl)\b`)
+	keepPassing = regexp.MustCompile(`(?i)\b(existing|current|other|all) (unit |integration )?(tests?|checks?|guards?|behaviou?r)\b[^.]{0,60}\b(pass|passing|keep|kept|still|remain|break|breaking|unchanged)|\bwithout breaking\b|\bbackwards? compat`)
+	reproMark   = regexp.MustCompile(`(?im)^\s*#+\s*(repro|reproduction|to reproduce|steps to reproduce)\b|^\s*(repro|reproduction) \d`)
+)
+
+// complexLongBody is how long a report is, after the title, before its length
+// alone is a signal of reach: a few paragraphs, or a trace and a table.
+const complexLongBody = 2000
+
+var reachSignals = []reachSignal{
+	{"more than one file", func(body string) bool {
+		seen := map[string]bool{}
+		for _, f := range sourceFile.FindAllString(body, -1) {
+			seen[f] = true
+		}
+		return len(seen) > 1
+	}},
+	{"an API or protocol", wireWords.MatchString},
+	{"language rules", languageRul.MatchString},
+	{"a long report or several repros", func(body string) bool {
+		return len(body) > complexLongBody || strings.Count(body, "```") >= 4 || len(reproMark.FindAllString(body, -1)) > 1
+	}},
+	{"existing tests that must keep passing", keepPassing.MatchString},
+}
+
+// complexFix is the reach a fix's body shows, in words; empty is a simple fix.
+func complexFix(body string) string {
+	var hits []string
+	for _, s := range reachSignals {
+		if s.hit(body) {
+			hits = append(hits, s.name)
+		}
+	}
+	if len(hits) < 2 {
+		return ""
+	}
+	return strings.Join(hits, ", ")
 }
