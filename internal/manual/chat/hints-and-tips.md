@@ -6,36 +6,52 @@ The dim row under your message box — the last row of the frame — mostly name
 work right now: `esc interrupt` while an answer is coming, `y allow · n deny · a always`
 while codeaf is asking you something, `space space home` when there is a home to go to,
 `/ commands` when nothing else is true. Once you have used codeaf a little, that idle line
-sometimes carries a **tip** instead — one sentence naming a key or a command you have not
+sometimes carries a **tip** as well — one sentence naming a key or a command you have not
 used yet, and what it does, for example `esc esc or /rewind takes back an earlier message`
 or `/files finds files codeaf wrote for you`. It reads the way every hint on this surface
 does: the key or the command first, then what it does.
 
-**In a conversation the tip is the keys row's lowest rung.** It takes that row from the
-rest state — the line a newcomer reads when nothing is happening — and every state with
-keys of its own outranks it: a running turn, a list, a panel, a room, and a box with so
-much as one letter in it. Empty the box and it is back. There is no clock over it and no
-cross on it: the event that makes a tip true puts it there, and it stays until something
-truer takes the row or you use what it teaches. **The way home stays beside it**: the row
-reads, say, `/files finds files codeaf wrote for you · space space home`, and on a narrow
-window the tip gives way first and `space space home` is kept. (Until 2026-09-24 the tip
-took the whole row, so after a conversation's first exchange the door home was not named
-anywhere on it.)
+**In a conversation the tip stands at the right end of the keys row, covering the
+project** (`project: <path>`) while it is up — led by a bulb (💡) and closed by a small
+cross (`✕`), as home's is. The controls keep their place at the row's left:
+
+```
+─ glm-5.3-flash:auto · ◇ asks ──────────────────────────────────────  $0.00   idle ─
+ ›
+ opt+e effort · / commands · space space home   💡 /files finds files codeaf wrote for you ✕
+```
+
+When the tip goes, `project:` is back in its place. When the row is too narrow for the
+whole sentence it is cut short with `…`, and where there is no room for a word of it the
+project stays.
+
+**It waits for 15 seconds of quiet.** Any key, click, scroll or paste hides it and starts
+the 15 seconds again, and so does an answer finishing — the tip never appears under an
+answer you have just started reading or between two things you are typing. A running turn,
+a list, a panel, a room, or a box with so much as one letter in it also keep it down. It
+shows whether the task column is open or put away with `ctrl+g`.
+
+**The cross puts it away**, and gives the project back, until you leave the conversation —
+for home, a place, or another conversation — and come back; it does not retire the tip,
+which comes round again later.
 
 **Home says its tips differently, and the two are not the same row.** Home's is the dim
 line **directly above the rule** over its box, right-aligned, led by a bulb and closed by a
 small cross. It rotates on every visit and every two minutes at rest, and the cross blanks
 it until you leave home and come back. A conversation is a screen you sit in and home is a
 screen you pass through, so the tip worth saying differs: a conversation gets the most
-urgent thing that is true right now, and home gets everything in turn.
+urgent thing that is true right now, and home gets everything in turn. Home's row does not
+wait for quiet; a conversation's waits 15 seconds.
 
 Both rows draw from **one list** of twenty-three tips (below), and using a gesture on
 either retires it on both.
 
-**A conversation's tip has changed places twice.** It was the keys row's lowest rung until
+**A conversation's tip has moved several times.** It was the keys row's lowest rung until
 2026-09-22, moved up to a row of its own over the rule that day — with a quiet minute
 before it appeared, a two-minute rotation and a cross — and moved back to the keys row the
-same day, which is where it is now.
+same day, replacing the controls there. On 2026-09-24 it stopped replacing the controls,
+spent part of that day above the rule again, and settled at the keys row's right end over
+the project, with a cross and a 15-second wait, which is where it is now.
 
 On a Mac the row says `opt` where the table below says `alt`, exactly as the keys row does.
 
@@ -127,8 +143,7 @@ build if the two disagree), so a tip you saw is on it word for word.
 - `space space takes you back to home` — after the first exchange, in a conversation only
   (never on home itself). Retired the first time two spaces in an empty box open home,
   from a conversation or from a place; reaching home by `/home` or the tab does not retire
-  it. While it is the tip, the row does not add `space space home` after it a second time. It is
-  the first tip a conversation says, ahead of `/task`.
+  it. It is the first tip a conversation says, ahead of `/task`.
 - `/task starts a single-shot task on the side` — after the first exchange. Retired when
   `/task` is typed, bare or with a brief.
 - `ctrl+enter makes your message a rule instead of a request` — retired when a standing
@@ -219,9 +234,11 @@ for a chord that works only in a conversation and only over a making-shaped sent
 ## Turn off hints — stop showing tips, disable the hints, the disable hints row
 
 Open the settings panel with `/settings` (or `ctrl+,`), go to the **Workspace** tab, and flip
-the **disable hints** row on. Enter or space toggles it; it is off by default, which means
-the tips show. (Until 2026-09-22 it was a **hints** row on the Display tab, on by default.)
-The change lands at the end of the next turn. On silences the tips — over a conversation's
+the **disable hints** row on. The line under the row reads
+`disable💡 tips everywhere (requires restart)`. Enter or space toggles it; it is off by
+default, which means the tips show. (Until 2026-09-22 it was a **hints** row on the Display
+tab, on by default.) The change lands at the end of the next turn in a conversation that is
+already open, and from the start in one opened after — restarting codeaf is the sure way. On silences the tips — over a conversation's
 box and over home's alike — and the what's-new lines together; it does not touch the keys
 row's own words for a live state — `esc interrupt` and the rest are not hints and cannot
 be turned off. From the terminal, `codeaf config` shows the same row under the same name.

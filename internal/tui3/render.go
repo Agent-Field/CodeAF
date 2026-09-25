@@ -3727,36 +3727,7 @@ func (a *app) footHint(width int) string {
 	if a.chordLost && a.chords.meta == chordMetaWord {
 		return a.chords.chordShortWords()
 	}
-	// AND UNDER EVERY STATE'S OWN KEYS, THE EARNED TIP (notice.go). It is the
-	// lowest rung there is — a tip about a gesture the person has not used yet,
-	// drawn only over an idle box — and it takes the slot from the rest state
-	// below because that is what the rest state is for: the one line a newcomer
-	// reads when nothing is happening.
-	//
-	// IT LEFT THIS ROW FOR ONE BUILD ON 2026-09-22, for a row of its own over
-	// the rule with a clock and a cross, and the owner put it back here. Home's
-	// row keeps that newer shape; the two boxes are read differently and are
-	// allowed to differ (notice.go's [noticeBoard.pick]).
-	//
-	// AND THE DOOR HOME STAYS BESIDE IT, since 2026-09-24 at the owner's word.
-	// The tip used to take the whole row, so from a conversation's first
-	// exchange onward `space space home` was gone — drawn on a task page,
-	// where no tip stands, and nowhere a person actually talks. A tip that is
-	// itself about the door does not say it twice.
-	if tip := a.noticeHint(); tip != "" {
-		return a.tipWithHomeDoor(tip)
-	}
 	return a.idleHint()
-}
-
-// tipWithHomeDoor is the earned tip followed by the door home, when the door is
-// showing and the tip does not already teach it. [app.hintShorter] gives the
-// tip up first on a narrow frame, because the door is the one that stays true.
-func (a *app) tipWithHomeDoor(tip string) string {
-	if !a.homeDoorShowing() || strings.Contains(tip, "space space") {
-		return tip
-	}
-	return tip + hintSegment + homeDoorWord
 }
 
 // idleHint keeps the shared controls in home's order, followed by the way home.

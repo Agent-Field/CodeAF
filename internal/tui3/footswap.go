@@ -229,9 +229,16 @@ func (a *app) seamTelemetryLabel(ledger, alive []hudPart) (string, string) {
 // two feet a person moves between most read the same way, and it is still
 // a door — onto the folder chooser ([app.seamProjectPress]) — so its columns
 // are recorded here, as the row is laid out ([app.seamProjectSpan]).
+//
+// AND THE TIP COVERS THE PROJECT WHILE IT IS UP, since 2026-09-24 at the
+// owner's word (notice.go's THE CONVERSATION'S TIP): the same right end, the
+// same fitting to what the keys leave, with home's bulb before it and a cross
+// after it whose columns are recorded here too ([app.chatTipClose]). The
+// project is back the moment the tip goes.
 func (a *app) hintRow(width int) string {
 	a.homeDoor = hudSpan{}
 	a.seamProjectSpan = hudSpan{}
+	a.chatTipClose = hudSpan{}
 	hint := a.footHint(width)
 	right, rightPlain := "", ""
 	if !a.seamShowing() {
@@ -288,6 +295,18 @@ func (a *app) hintRow(width int) string {
 	before := used
 	if warned != "" {
 		before += 1 + ansi.StringWidth(warning)
+	}
+	if tip := a.chatTip(); tip != "" {
+		if drawn, cross := a.tipLine(tip, width-before-hudGap, a.pal); drawn != "" {
+			drawn = strings.TrimLeft(drawn, " ")
+			w := ansi.StringWidth(drawn)
+			a.chatTipClose = hudSpan{from: width - 1 - (cross.to - cross.from), to: width - 1}
+			if warned != "" {
+				pad := width - 1 - used - ansi.StringWidth(warning) - hudGap - w
+				return line + strings.Repeat(" ", max(1, pad)) + warned + strings.Repeat(" ", hudGap) + drawn + " "
+			}
+			return line + strings.Repeat(" ", width-1-used-w) + drawn + " "
+		}
 	}
 	// THE PROJECT, in what the keys leave — never inside a room, whose page
 	// carries the node's own identity (roomseam.go).

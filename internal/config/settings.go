@@ -2687,11 +2687,8 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyHints, Category: CategoryInterface, Kind: SettingBool,
 			Label: "disable hints",
-			Hint: "on silences the one-line tips — the keys row's in a conversation and the " +
-				"row above the rule on home — and the what's-new line a new build may say " +
-				"with them. Off, the default, shows each tip until the key or command it " +
-				"names has been used once. A change lands at the end of the next turn.",
-			read: func() string { return formatBool(!HintsAt(dir)) },
+			Hint:  "disable💡 tips everywhere (requires restart)",
+			read:  func() string { return formatBool(!HintsAt(dir)) },
 			write: func(raw string) error {
 				disabled, err := parseBool(raw)
 				if err != nil {

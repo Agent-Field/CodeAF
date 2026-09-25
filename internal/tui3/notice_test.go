@@ -18,7 +18,7 @@ import (
 
 // The notices' own tests (notice.go, notice_ledger.go): the table check, the
 // ledger's promises, the arbitration as a pure thing, and then the whole road
-// through the app — a hint arming on its moment, drawing at the lowest rung,
+// through the app — a hint arming on its moment, drawing on the keys row,
 // retiring on its gesture, and staying retired across a restart.
 
 // ── the table ───────────────────────────────────────────────────────────────
@@ -524,8 +524,8 @@ func makeDeliverable(t *testing.T, a *app) {
 	a.exportDone(exportedMsg{path: filepath.Join(t.TempDir(), "talk.md")})
 }
 
-// THE WHOLE ROAD. A hint arms on its moment, draws in the hint slot and only at
-// the lowest rung there, retires on the gesture it teaches, and is still
+// THE WHOLE ROAD. A hint arms on its moment, draws in the hint slot on the keys
+// row, retires on the gesture it teaches, and is still
 // retired when the surface comes up again over the same profile.
 func TestAHintArmsDrawsLowestRetiresAndStaysRetired(t *testing.T) {
 	a, dir := sheetApp(t)
@@ -540,14 +540,11 @@ func TestAHintArmsDrawsLowestRetiresAndStaysRetired(t *testing.T) {
 	if got := a.notices.current[slotHint]; got != "files-after-first-deliverable" {
 		t.Fatalf("an export landing armed %q", got)
 	}
-	// AND IT IS UP THE MOMENT IT ARMS, on the keys row at the foot: the
-	// conversation's tip is on no clock (chattip_test.go holds the whole of
-	// where it draws).
+	// AND IT IS UP THE MOMENT IT ARMS on a window nothing has stirred yet
+	// (chattip_test.go holds the whole of where it draws and the quiet it
+	// waits for).
 	if got := a.noticeHint(); got != deliverTip {
 		t.Fatalf("the tip row reads %q, want the tip", got)
-	}
-	if got := plain(a.footHint(a.width)); !strings.Contains(got, deliverTip) {
-		t.Fatalf("the keys row does not carry the tip: %q", got)
 	}
 	if !strings.Contains(plain(frame(a)), deliverTip) {
 		t.Fatalf("the tip is not on the frame:\n%s", plain(frame(a)))

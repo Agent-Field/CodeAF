@@ -2203,8 +2203,8 @@ back in it.
 
 When the box is empty, the keys row under the box says so:
 `/ commands · space space home`, after any effort, approvals and chats hints. Clicking
-`space space home` opens home; that clause vanishes as soon as you type. When a tip has
-taken the row it still ends with `· space space home`.
+`space space home` opens home; that clause vanishes as soon as you type. A tip never takes
+its place: a conversation's tip covers the project at the row's right end instead.
 
 **The door does not ask what the machine holds.** It is open on a machine with only this
 conversation and on one with none, from the first minute, and starting a second

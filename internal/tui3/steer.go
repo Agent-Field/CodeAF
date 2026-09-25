@@ -487,12 +487,6 @@ func (a *app) runHint() string {
 // Idle controls yield from the left to commands and home; running hints keep
 // their existing priority from the left. Every step removes at least one clause.
 func (a *app) hintShorter(slot string) string {
-	// A TIP WITH THE DOOR BESIDE IT gives up the tip and keeps the door
-	// (render.go's [app.tipWithHomeDoor]). A tip alone yields nothing, as it
-	// always did: half a sentence is not a tip.
-	if slot != homeDoorWord && strings.HasSuffix(slot, hintSegment+homeDoorWord) && slot == a.tipWithHomeDoor(a.noticeHint()) {
-		return homeDoorWord
-	}
 	idle := a.idleHint()
 	if slot != "" && (slot == idle || strings.HasSuffix(idle, hintSegment+slot)) {
 		parts := strings.Split(slot, hintSegment)

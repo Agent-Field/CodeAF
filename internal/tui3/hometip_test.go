@@ -344,22 +344,24 @@ func TestTheCrossBlanksHomesRowAndSpendsNothingOfTheTipItPutAway(t *testing.T) {
 	}
 }
 
-// THE CROSS IS HOME'S ALONE. A conversation says its tip on the keys row
-// (chattip_test.go), and a keys row has never had one: there is no span for a
-// press to land in, and nothing on that row is a door.
-func TestAConversationsTipRowCarriesNoCross(t *testing.T) {
+// A CONVERSATION'S CROSS IS ITS OWN (2026-09-24). Its tip stands at the right
+// end of its keys row with a cross of its own, recorded on its own span, and
+// home's span is not written by a conversation's frame (chattip_test.go holds
+// the row).
+func TestAConversationsTipRowCarriesItsOwnCross(t *testing.T) {
 	a, _ := sheetApp(t)
 	makeDeliverable(t, a)
-	if a.noticeHint() == "" {
+	if a.chatTip() == "" {
 		t.Fatal("the conversation says no tip to begin with")
 	}
 	frame(a)
 	if a.tipCloseSpan.pressable() {
-		t.Fatalf("a conversation drew a cross at columns %+v", a.tipCloseSpan)
+		t.Fatalf("a conversation wrote home's cross at columns %+v", a.tipCloseSpan)
 	}
-	// And the tip is on the keys row rather than on a row of its own with a
-	// cross at the end of it.
-	if got := plain(a.footHint(a.width)); !strings.Contains(got, deliverTip) {
+	if !a.chatTipClose.pressable() {
+		t.Fatal("the conversation's tip row recorded no cross")
+	}
+	if got := plain(a.hintRow(a.width)); !strings.Contains(got, deliverTip) {
 		t.Fatalf("the conversation's tip is not on the keys row: %q", got)
 	}
 }

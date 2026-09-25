@@ -1,12 +1,13 @@
 ---
 kind: changed
-title: a conversation keeps space space home beside its tip, and a new tip says what it does
+title: a conversation's tip covers the project on the keys row, with a cross, after 15 quiet seconds
 pr: 1487
 surface: [chat, docs]
 invalidates:
-  - "A conversation's earned tip took the whole keys row, so from the first exchange onward `space space home` was named only where no tip draws (a task page). The row now reads the tip followed by `· space space home`, and a narrow frame gives up the tip before the door."
+  - "A conversation's earned tip was the keys row's lowest rung and replaced the whole row, so from the first exchange onward the controls and `space space home` were gone while a tip stood. The controls keep their place now, and the tip stands at the keys row's right end, covering `project: <path>` while it is up, with home's bulb and a cross; the project is back when it goes."
+  - "A conversation's tip had no clock and no cross. It waits for 15 seconds with no key, click, scroll or paste and none since a turn ended, and its cross puts it away (giving the project back) until the conversation is left (home, a place, another conversation) and come back to. Home's row does not wait."
+  - "The Workspace tab's `disable hints` row explained itself in a sentence about which rows it silences. The line under it reads `disable💡 tips everywhere (requires restart)`, and `codeaf config` shows the same words. It still silences both rows and the what's-new lines."
   - "The tip list was twenty-two rows. It is twenty-three: `space space takes you back to home`, the first row a conversation earns by talking (ahead of `/task`), armed only in a conversation whose door home opens and never on home, and retired by the two-space gesture itself (the new `home-gesture` event) — not by `/home` or the tab."
 ---
-The door home is the one key a person needs before any command a tip can teach,
-and the tip that took the row was hiding it exactly when a conversation had
-started to be used.
+The controls are the keys that work right now and a tip is only a suggestion,
+so the tip takes only the project's place, and only once somebody has stopped working.
