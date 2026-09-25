@@ -161,6 +161,20 @@ wordmark's row and the strip is on every page, so the head is the same four rows
 - Row 1 (`tabStripRow`): the chat strip on every page. On a place no tab is lit, a press on a
   tab (or `+`, or the manager's place) leaves the place for that chat, and the chip and
   `▦ All` open their menu and the grid over it. The strip keeps its own narrowing.
+- The strip's spacing (2026-09-25): every piece carries its own one-cell pad and ONE blank cell
+  separates any two pieces (chip and first tab, tab and tab, tab and `+`, `+` and `▦ All`, the
+  left arrow and what stands before it); the first ground is at column 2 with or without a
+  chip. A tab is symmetric: inset, status cell and pad before the name, pad, `×` cell and inset
+  after it (` ◐ name × `); the close target is the `×` and its inset, two cells, where it was
+  three with a blank of its own that made every tab one cell wider on the right. The reserved
+  status and `×` cells stay (no re-pack when work starts or the pointer arrives). Names are cut
+  at a word where one is near. The names shrink, down to 16 cells a tab, before the strip
+  scrolls; a scrolling strip draws both arrows, the one with nowhere to go dim and inert.
+  `▦ All` is always spelled with its word (no glyph-alone rung between 60 and 80 columns).
+  Every piece says what it does on the hint line: a tab says its dock square's sentence, `×`
+  `Close this tab · the work keeps running`, `+` `New chat · ctrl+t`, the arrows which way.
+  Where colour cannot show a ground the pointer's tab wears `·` in its leading inset, the
+  nav's rule.
 - The ladder on row 0, in the owner's order: the clock (and `on <machine>` over `--host`), then
   `moving`, then the words of `2 want you` shorten to `2 ?` (same count, same amber, the mark
   a waiting tab wears), then the allowance, then the trailing places fold one at a time into

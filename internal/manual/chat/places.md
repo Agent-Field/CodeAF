@@ -749,8 +749,9 @@ bar's cursor is on or a place wearing a count. `alt+1`…`alt+9` still go straig
 whether or not its word is on the row, and the numbers never move: the six on the bar are
 `alt+1`…`alt+6`, then standing, memory and search are `alt+7`…`alt+9`.
 
-The tab strip on the line under it keeps its own narrowing: long names are cut, the strip
-scrolls with `‹` `›`, and `+3` counts the tabs it could not spell.
+The tab strip on the line under it keeps its own narrowing: long names are cut at a word,
+the names shrink until every tab fits, then the strip scrolls with `‹` `›`, and `+3` counts
+the tabs it could not spell.
 
 ## Why a nearly-empty place says what it is for — why is the tasks page empty
 
