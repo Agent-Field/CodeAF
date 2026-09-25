@@ -31,7 +31,7 @@ func TestOneTopBarPlacesAndChatsShareGeometry(t *testing.T) {
 		a.width, a.height = width, 24
 		a.touch()
 		chat, _, _ := a.frame()
-		cy, cx, cgap := barGeometry(chat, "Home")
+		cy, cx, cgap := barGeometry(chat, "home")
 		places := placeApp(t)
 		places.width = width
 		frame, _, _ := places.frame()
