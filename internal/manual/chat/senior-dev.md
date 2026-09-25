@@ -275,8 +275,14 @@ model limits and still calls models through codeaf's loopback API.
 
 ## What happens to background commands after senior-dev ends — stop and detached processes
 
-codeaf ends background processes that senior-dev's shell started when the run ends or
-you stop it. On macOS, a process that detaches itself may outlive the run.
+On Linux, senior-dev's engine ends every process its shell started when the run ends,
+you stop it, or it reaches a ceiling, including detached processes that clear their
+environment; the engine follows its own process tree. If the engine itself
+is killed with SIGKILL, codeaf makes a best-effort sweep for children that kept its
+private launch marker. On macOS, a process that detaches itself may outlive the run.
+On Windows, senior-dev is unavailable.
+If Linux cannot enable the engine's subreaper, the run refuses before starting
+work: `senior-dev cannot contain its shell processes on this machine: <error>`.
 
 ## How does senior-dev run Python tests — pytest, unittest, missing pytest
 
@@ -320,6 +326,8 @@ plain folder. codeaf does not widen it to the enclosing repository, cut or
 delete a branch there, or commit any of its files. What senior-dev writes
 stays in the folder. The ending says `its work is in <folder>; git ignores
 this folder inside <repo>, so codeaf cut no branch and nothing was committed`.
+The start receipt says `git ignores this folder inside <repo>, so codeaf cuts no
+branch there and commits nothing`.
 
 ## Why can't codeaf edit files while senior-dev is working — the folder is senior-dev's while it runs, a write or a task refused, bash, your own editor
 
@@ -351,11 +359,14 @@ Yes. In a git repository, edits saved before senior-dev submits can join its tas
 branch's commits; the ending commit includes non-ignored files left in the folder.
 In a plain folder they stay in place, with no commit. If a submitted change or an
 earlier checkpoint has to be restored, codeaf first copies every changed tracked
-file and new non-ignored file that restore would replace into a rescue folder under
+file and new file not ignored when the run started that restore would replace into a rescue folder under
 codeaf's state root, outside your project. The submitted candidate is then put
 back. The ending says exactly: `Files that changed in the folder before senior-dev
 restored its checkpoint were set aside in <path>`. The path holds the bytes as they
-were before the restore; a later restore in the same run has its own subfolder.
+were before the restore. A tracked file deleted after submission is named in
+`deleted-files.txt` there, and the ending names that manifest. A later restore in
+the same run has its own subfolder. With nothing to rescue, no folder is created
+or named.
 Files git ignored when the run started are not committed even if senior-dev
 changes `.gitignore`. Python `__pycache__/`, `.pytest_cache/` and `*.pyc` files
 made by its checks are not committed either. Those files stay in your folder.
@@ -495,6 +506,9 @@ the tree it has, and ends there, and the task says
 `senior-dev reached the run's dollar ceiling of $5.00: …` with senior-dev's own words
 after it. A run handed off after the conversation's dollar limit is already spent starts
 nothing and makes no call: its row ends at once with `a dollar limit you set stopped it`.
+An estimated call may be refused while the metered spend is still below the ceiling;
+that ending is still a dollar limit, its line gives the metered spend, and codeaf
+refuses an automatic re-hand-off until you ask for one.
 When a dollar or time limit ends the run, the conversation also gets a line naming the
 limit, what the run spent and the branch or folder holding its work, even if that limit
 prevents the chat from making a wake call.

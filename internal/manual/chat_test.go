@@ -939,6 +939,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"will senior-dev stop and ask me questions while it works", "senior-dev"},
 		{"where did senior-dev's commits go", "senior-dev"},
 		{"how much does a senior-dev run cost", "senior-dev"},
+		{"does a senior-dev run have its own dollar limit", "senior-dev"},
 		{"what flags does codeaf senior-dev take", "senior-dev"},
 		{"why is there no /senior-dev on windows", "senior-dev"},
 		{"run senior-dev on a benchmark task from a repository I have not cloned", "senior-dev"},
@@ -2938,6 +2939,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 				pages = append(pages, section.Page)
 			}
 			t.Errorf("%q should reach %s; it reached %v", ask.question, ask.page, pages)
+		}
+	}
+}
+
+// The ordinary task's Spending row stays as written, but each general page
+// must point to the separate ceiling before it can answer for senior-dev.
+func TestGeneralTaskCostPagesNameSeniorDevCeiling(t *testing.T) {
+	pages := flatChatPages(t)
+	for _, name := range []string{"tasks", "models-and-cost", "commands"} {
+		page := pages[name]
+		if !strings.Contains(page, "ordinary `/task`") || !strings.Contains(page, "senior-dev") || !strings.Contains(page, "ceiling") {
+			t.Errorf("%s does not distinguish the ordinary task row from senior-dev's ceiling", name)
 		}
 	}
 }

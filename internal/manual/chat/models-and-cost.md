@@ -2807,7 +2807,7 @@ They live on **one tab**: `/settings` → **Spending**, which `/budget` opens di
 | **per day** | `$500` | new work waits for midnight or for you to raise it here |
 | **per conversation** | `no limit` | this conversation stops starting new turns; the turn in flight always finishes |
 | **per plan** | `asks first above $100` | a planned job estimated above it quotes its step count and its price and waits for your go-ahead — it asks, it does not stop |
-| **per task** | `no limit of its own` | nothing of its own; a task spends against the day and this conversation |
+| **per task** | `no limit of its own` | an ordinary `/task` spends against the day and this conversation; senior-dev has its own run ceiling |
 | **per standing run** | `$5 a firing` | that one firing stops there; each order may name its own |
 | **practice** | `$50 of the day` | codeaf's practice on itself stops until tomorrow, and your own work is untouched |
 
@@ -2948,9 +2948,9 @@ The row was called `ask before spending` when it lived on the Workspace tab, and
 setting key behind it is still `plan_consent_usd` — the panel's search matches the key as
 well as the label, so typing either finds it.
 
-## What may a task spend — a task has no dollar limit of its own
+## What may an ordinary /task spend — senior-dev has its own run ceiling
 
-**A task carries no dollar cap of its own.** The Spending tab says so on the `per task`
+**An ordinary `/task` run carries no dollar cap of its own.** The Spending tab says so on the `per task`
 row, in those words: `no limit of its own`, with the dim receipt `it spends against the
 day and this conversation`.
 
@@ -2963,7 +2963,8 @@ on the same tab.
 **What you get instead of a per-task limit is seeing it happen.** The `$` on the status
 line counts what the tasks are spending while they are spending it, and `/cost` splits that
 figure into `conversation` and `tasks`. A task is bounded by the wallet and watched on the
-row — it is never stopped on its own dollar count.
+row — an ordinary `/task` is never stopped on its own dollar count. A senior-dev
+run has a separate dollar and time ceiling; its own page names the defaults and flags.
 
 So **there is no per-task money row to edit**, and `/budget task 20` is not a shape this
 command takes. Where you *can* put a figure on one piece of work is the **composer layer**:

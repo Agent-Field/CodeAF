@@ -2263,11 +2263,13 @@ proposal card and the model's own proposals run under the conversation's own lim
 you set it — and under the day's limit above it. An adaptive run they start opens on the
 $100.00 default.
 
-**A task has no dollar limit of its own**, which the Spending tab says on its `per task`
+**An ordinary `/task` run has no dollar limit of its own**, which the Spending tab says on its `per task`
 row in those words: `no limit of its own · it spends against the day and this conversation`.
 Its own bounds are steps and time. The composer layer's third line is the one place a
 figure is put on a single piece of work, and there is no per-task money row to edit
 anywhere in settings.
+**senior-dev has its own dollar and time ceilings for each run**, separate from that
+`per task` row; see the senior-dev page for its defaults and how to change them.
 
 Changing the engine's default changes the figure the composer layer opens on; the two are
 meant to be one number and are stated in both places on purpose.

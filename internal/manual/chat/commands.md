@@ -825,8 +825,10 @@ the same row the Spending tab writes through.
 
 The row names it takes are **`day`** (`daily`, `today`), **`conversation`** (`chat`,
 `session`), **`plan`** (`plans`, `ask`) and **`practice`** — the four rows that can be
-edited. There is deliberately **no `/budget task`**: a task has no dollar limit of its
-own, so a command that accepted one would be writing a number nothing reads.
+edited. There is deliberately **no `/budget task`**: an ordinary `/task` has no dollar
+limit of its own, so a command that accepted one would write a number nothing reads.
+senior-dev has a separate ceiling for each run; see its page for the shell flags and
+conversation limits that can lower it.
 
 A write says back what it landed, in the tab's own words for that row — `per day · $50`,
 or `per day · no limit`. A figure it cannot read is refused in the row's own words with
