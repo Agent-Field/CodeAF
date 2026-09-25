@@ -688,6 +688,15 @@ func TestEveryRetireEventIsProvedByItsGesture(t *testing.T) {
 		eventSubharnessOpened: func(t *testing.T, a *app) { a.slash("/subharness") },
 		eventConnectOpened:    func(t *testing.T, a *app) { a.slash("/connect") },
 		eventAutonomyAsked:    func(t *testing.T, a *app) { a.slash("/autonomy") },
+		eventHomeGesture: func(t *testing.T, a *app) {
+			// A door that can open a conversation is what opens home at all
+			// ([app.homeDoorOpen]); the bare test app has none.
+			a.open = func(string, string) (Conversation, error) { return Conversation{}, nil }
+			drive(t, a, key(" "), key(" "))
+			if !a.at(pageHome) {
+				t.Fatal("two spaces did not open home")
+			}
+		},
 	}
 	for _, name := range noticeEvents {
 		if name == eventBoot {

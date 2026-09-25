@@ -25,10 +25,13 @@ import (
 // reports from the same day: enter on `/attach` in the list opens the browser
 // at once, and the search place finds conversations by name when memory is off.
 
-// chatTipLab is a conversation over a clock the test turns by hand.
+// chatTipLab is a conversation over a clock the test turns by hand, with a
+// door that can open a conversation, so home is somewhere to go back to
+// ([app.homeDoorOpen]).
 func chatTipLab(t *testing.T) (*app, func(time.Duration)) {
 	t.Helper()
 	a, _ := sheetApp(t)
+	a.open = func(string, string) (Conversation, error) { return Conversation{}, nil }
 	now := time.Date(2026, 9, 22, 10, 0, 0, 0, time.UTC)
 	a.clock = func() time.Time { return now }
 	return a, func(d time.Duration) { now = now.Add(d) }
@@ -102,6 +105,71 @@ func TestAConversationSaysItsTipOnTheKeysRow(t *testing.T) {
 	a.leavePlace()
 	if got := a.noticeHint(); got != deliverTip {
 		t.Fatalf("leaving the place did not give the row back: %q", got)
+	}
+}
+
+// THE DOOR HOME STAYS BESIDE THE TIP (2026-09-24). The tip used to take the
+// whole keys row, so from a conversation's first exchange onward
+// `space space home` was named nowhere on it. It rides after the tip now, and a
+// narrow frame gives up the tip before the door.
+func TestTheDoorHomeStaysBesideTheConversationsTip(t *testing.T) {
+	a, _ := chatTipLab(t)
+	makeDeliverable(t, a)
+	want := deliverTip + hintSegment + homeDoorWord
+	if got := plain(a.footHint(a.width)); got != want {
+		t.Fatalf("the keys row reads %q, want %q", got, want)
+	}
+	if y, rows := tipRowOf(a, want); y < 0 {
+		t.Fatalf("the frame does not carry the tip and the door together:\n%s", strings.Join(rows, "\n"))
+	}
+	if !a.homeDoor.holds(a.homeDoor.from) {
+		t.Fatal("the door beside the tip was drawn but not recorded for a click")
+	}
+	if got := a.hintShorter(want); got != homeDoorWord {
+		t.Fatalf("a narrow frame kept %q, want the door alone", got)
+	}
+	if got := a.hintShorter(homeDoorWord); got != "" {
+		t.Fatalf("the door alone shortened to %q", got)
+	}
+
+	// A letter in the box takes the tip and the door together.
+	drive(t, a, key("x"))
+	if got := plain(a.footHint(a.width)); strings.Contains(got, homeDoorWord) {
+		t.Fatalf("the door is still named over a box with a letter in it: %q", got)
+	}
+}
+
+// THE TIP ABOUT THE DOOR (2026-09-24) is said in a conversation after its first
+// exchange and never on home, and while it stands the row does not name the
+// door a second time after it.
+func TestTheWayHomeTipIsSaidAwayFromHomeOnly(t *testing.T) {
+	var row notice
+	for _, n := range notices {
+		if n.id == "home-by-two-spaces" {
+			row = n
+		}
+	}
+	if row.id == "" {
+		t.Fatal("the way-home tip is not on the table")
+	}
+	if row.text != "space space takes you back to home" || row.retire != eventHomeGesture {
+		t.Fatalf("the way-home tip reads %q and retires on %q", row.text, row.retire)
+	}
+	a, _ := chatTipLab(t)
+	if row.armed(a) {
+		t.Fatal("the way-home tip is armed before the first exchange")
+	}
+	a.turn = 1
+	if !row.armed(a) {
+		t.Fatal("the way-home tip is not armed after the first exchange")
+	}
+	runCmd(a.showPage(pageHome))
+	if row.armed(a) {
+		t.Fatal("the way-home tip is armed on home itself")
+	}
+	a.leavePlace()
+	if got := a.tipWithHomeDoor(row.text); got != row.text {
+		t.Fatalf("the way-home tip named the door twice: %q", got)
 	}
 }
 

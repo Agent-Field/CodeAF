@@ -188,6 +188,12 @@ const (
 	// eventAutonomyAsked is /autonomy reaching its command, bare or with a
 	// rule (autonomysheet.go).
 	eventAutonomyAsked = "autonomy-asked"
+	// eventHomeGesture is two spaces over an empty box opening home, from a
+	// conversation or from a place (input.go, placekeys.go). It is the
+	// gesture alone and not every way home: `/home` and a click on the tab
+	// are doors a person already knows, and the tip is about the one they
+	// cannot see.
+	eventHomeGesture = "home-gesture"
 )
 
 // noticeEvents is every event there is, in one list, so the table check can
@@ -201,7 +207,7 @@ var noticeEvents = []string{
 	eventFolderPicked, eventProjectSet, eventModelListOpened, eventCrewShown, eventBudgetShown,
 	eventSpendOpened, eventSteered, eventQueued, eventChatStarted,
 	eventPlaceJumped, eventRemembered, eventSearchOpened, eventSubharnessOpened,
-	eventConnectOpened, eventAutonomyAsked,
+	eventConnectOpened, eventAutonomyAsked, eventHomeGesture,
 }
 
 // notice is one thing the surface may tell a person, and the whole of the rule
@@ -298,6 +304,10 @@ var (
 	// while home is in front and stands down the moment it is not, so the one
 	// list can hold a sentence that would be a lie over a conversation's box.
 	onHome = func(a *app) bool { return a.at(pageHome) }
+	// awayFromHome is a conversation that has had an exchange and is in
+	// front: the other half of [onHome], for a tip about the way back, which
+	// would be a lie over home's own box.
+	awayFromHome = func(a *app) bool { return a.turn >= 1 && !a.at(pageHome) }
 )
 
 // notices is the table, and ITS ORDER IS THE ORDER THE ROWS COME ROUND IN on
@@ -306,11 +316,12 @@ var (
 // and the page say the same words — and notice_test.go holds the page to every
 // line here, so the table cannot say a thing the manual does not.
 //
-// TWENTY-TWO ROWS, AND EVERY CUT WAS DELIBERATE. A survey of the surface on
+// TWENTY-THREE ROWS, AND EVERY CUT WAS DELIBERATE. A survey of the surface on
 // 2026-09-21 turned up forty-eight lines worth saying; thirty of those shipped,
 // /project made thirty-one when it became a command of its own on 2026-09-22,
 // and three reads of the whole list by the owner that same day took it to
-// twenty-two. `alt+3`, `alt+1`–`alt+7`, `/search` and `/subharness` came off
+// twenty-two; the way home by two spaces made it twenty-three on 2026-09-24,
+// at the owner's word. `alt+3`, `alt+1`–`alt+7`, `/search` and `/subharness` came off
 // as rows the foot or the tab bar already teaches; the two lines about a
 // running answer became one; `/ask`'s came off ahead of the door it taught;
 // `/folder`'s came off because it was not true and /attach's line now covers
@@ -491,6 +502,18 @@ var notices = []notice{
 		armed:  ready,
 		text:   "ctrl+t starts a fresh chat in this project",
 		retire: eventChatStarted,
+	},
+	{
+		// THE WAY BACK, AT THE OWNER'S WORD ON 2026-09-24. The foot names the
+		// door as `space space home` beside every tip ([app.footHint]), but a
+		// label of three words reads as chrome after the first day, and this
+		// row says what it is in a sentence. It is never armed on home, where
+		// there is nowhere to go back to, and it retires on the gesture itself
+		// rather than on reaching home by `/home` or the tab.
+		id: "home-by-two-spaces", slot: slotHint,
+		armed:  awayFromHome,
+		text:   "space space takes you back to home",
+		retire: eventHomeGesture,
 	},
 	// ── memory, accounts and the rest ───────────────────────────────────────
 	{

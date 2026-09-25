@@ -16,7 +16,11 @@ rest state — the line a newcomer reads when nothing is happening — and every
 keys of its own outranks it: a running turn, a list, a panel, a room, and a box with so
 much as one letter in it. Empty the box and it is back. There is no clock over it and no
 cross on it: the event that makes a tip true puts it there, and it stays until something
-truer takes the row or you use what it teaches.
+truer takes the row or you use what it teaches. **The way home stays beside it**: the row
+reads, say, `/files finds files codeaf wrote for you · space space home`, and on a narrow
+window the tip gives way first and `space space home` is kept. (Until 2026-09-24 the tip
+took the whole row, so after a conversation's first exchange the door home was not named
+anywhere on it.)
 
 **Home says its tips differently, and the two are not the same row.** Home's is the dim
 line **directly above the rule** over its box, right-aligned, led by a bulb and closed by a
@@ -25,7 +29,7 @@ it until you leave home and come back. A conversation is a screen you sit in and
 screen you pass through, so the tip worth saying differs: a conversation gets the most
 urgent thing that is true right now, and home gets everything in turn.
 
-Both rows draw from **one list** of twenty-two tips (below), and using a gesture on
+Both rows draw from **one list** of twenty-three tips (below), and using a gesture on
 either retires it on both.
 
 **A conversation's tip has changed places twice.** It was the keys row's lowest rung until
@@ -99,7 +103,7 @@ later when the ring comes round. It jumps once and then takes its turn like the 
 
 ## Every hint codeaf can show, and what makes each one go away
 
-There are twenty-two, one list for both boxes. Each one says the moment it first appears
+There are twenty-three, one list for both boxes. Each one says the moment it first appears
 and the gesture that retires it. The list is the program's own table (the surface refuses to
 build if the two disagree), so a tip you saw is on it word for word.
 
@@ -159,6 +163,10 @@ build if the two disagree), so a tip you saw is on it word for word.
 **Moving around**
 
 - `ctrl+t starts a fresh chat in this project` — retired when the new-chat page opens.
+- `space space takes you back to home` — after the first exchange, in a conversation only
+  (never on home itself). Retired the first time two spaces in an empty box open home,
+  from a conversation or from a place; reaching home by `/home` or the tab does not retire
+  it. While it is the tip, the row does not add `space space home` after it a second time.
 
 **Memory, accounts and the rest**
 

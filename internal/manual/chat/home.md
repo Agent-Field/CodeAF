@@ -1475,6 +1475,12 @@ and not decoration. It also goes while a turn is running, where the same row has
 more urgent to say (`esc interrupt`); the gesture still works then, it is just not being
 advertised. (Until 2026-09-17 these words were the right end of the rule above the box.)
 
+**It stays when a tip is showing.** After the first exchange the keys row often carries a
+tip instead of the controls, and the door is kept after it —
+`/files finds files codeaf wrote for you · space space home`. Until 2026-09-24 the tip took
+the whole row and the door went with it. One of the tips is about the door itself:
+`space space takes you back to home`.
+
 **You can click it.** A press on the words `space space home` opens home; a press on the
 rule beside them is a press on a rule.
 

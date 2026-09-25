@@ -446,6 +446,7 @@ func (a *app) placeHomeGesture(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 		if a.placeSpaceArmed {
 			a.placeSpaceArmed = false
+			a.noticeEvent(eventHomeGesture)
 			return a.openHome(), true
 		}
 		a.placeSpaceArmed = true
@@ -455,6 +456,7 @@ func (a *app) placeHomeGesture(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	box.reset()
+	a.noticeEvent(eventHomeGesture)
 	return a.openHome(), true
 }
 
