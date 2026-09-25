@@ -44,21 +44,20 @@ invalidates:
   - "A senior-dev run stopped on a limit could leave only a silent ended row when the same limit blocked the chat's wake turn. The conversation now receives an authored line naming the limit, spend and branch or folder before any model wake; an open window paints the same line from the standing lane."
   - "The two automatic senior-dev re-hand-offs were counted only in the wake turn. The cap and the refusal after a limit now persist through later non-person turns and reopening the conversation, until the person speaks; silence approval counts as an automatic hand-off."
   - "The run's commit could credit the configured worker model even when another model answered every call. Chat and shell commits now credit only models recorded as answering in the run's loopback log, and a run with no answered call adds no model trailer."
+  - "The commands senior-dev's model ran inherited the host's `TMUX`, every provider key but the default one, and the loopback model API's token. They now get the chat bash's scrubbed shell (`exec.JobShellEnv`), with every key variable codeaf knows and the token removed; only the engine process holds the token."
+  - "A process senior-dev's bash started with `&` or `setsid` kept running after the run ended or was stopped. On Linux the engine is now a child subreaper that kills and reaps its whole process tree before it exits, however a command changed its session or environment; macOS kills the groups the bash tool tracked, and the manual states that platform's limit."
+  - "A child speaking another protocol version still had its steps written to the task trajectory. It is now refused, in one sentence naming both versions, before any of its records land."
+  - "A machine with no cached catalog that could not reach models.dev had every senior-dev run refused with `model catalog: context deadline exceeded`. The run now starts with conservative model limits, and the manual names the models.dev request, web fetch (on by default) and search (opt-in)."
+  - "senior-dev offered the model a `question` tool whose every call was rejected. It is absent from a hosted run's tools."
+  - "senior-dev's verifier always ran `python3 -m pytest`, so a correct fix in a unittest project on a machine without pytest ended as not finished. It now runs unittest discovery unless pytest is importable or declared."
+  - "A senior-dev run's `ended` card landed inside the chat's wake-turn `worked` fold and could be seen only by opening it. It now stands in the conversation on the first frame, in the same place on reopen."
+  - "The prompt-size tests filled the programs paragraph from the build's registry, so a build with no program weighed 550 bytes less, and #1488's recorded caps sat eight bytes under this measurement on Linux. They now weigh a declared senior-dev guide, the guide is eight bytes shorter, and the caps (57,124 and 49,590) did not move."
+  - "The rescue before a restore missed a file the person had just added an ignore line for, and silently recreated a tracked file the person deleted. It now accounts for every path changed since submission against the ignore rules recorded at the start, copies changed and new files, lists deletions in a manifest, and makes no rescue folder when there is nothing to keep."
+  - "A call the loopback API refused at the estimated ceiling ended the run as a crash, so no limit line was written and the chat could hand the work back. It now ends the run on its cost (or time) limit whatever the metered spend."
+  - "A run in a gitignored folder inside a repository said at its start that the repository holds the home folder. The start receipt now says the folder is ignored there, so the run works in place without a branch."
+  - "The general task pages said a task has no dollar limit of its own and is never stopped on its own dollar count. They now say that of an ordinary `/task` and point to senior-dev's run ceiling."
 ---
 
 `docs/design/delegate/PROTOCOL.md` is the internal protocol (version 2); `internal/delegate`
 is its specification in Go. senior-dev reads models.dev for its catalog when available;
 an offline machine with no cache uses conservative model limits and still runs.
-
-## Fix round
-
-- C1: Provider-key environment variables, configured custom-service key variables and the loopback token are stripped from senior-dev's model-written shell; its commands share the chat bash's tmux isolation.
-- C2: Background commands, including Linux processes detached with setsid, are killed when a run ends, stops or its engine crashes.
-- C3: A child speaking another record protocol version is refused before any of its steps enter the trajectory.
-- C4: An unavailable models.dev catalog no longer refuses a run; conservative model limits keep the loopback model API usable.
-- C5: A hosted senior-dev run no longer offers `question` when nobody can answer it.
-- C6: The manual now names senior-dev's default web fetch, opt-in Exa and Parallel search, models.dev request, and macOS detached-process limit.
-- C7: Python unittest projects without pytest now run unittest discovery; projects that have or declare pytest keep it.
-- E1: A senior-dev run's `ended` card now stands in the conversation outside the chat wake turn's `worked` fold, even when its task page was open at landing; the chat's own work still folds.
-- E2: The fixed and lean prefix tests now weigh the same declared senior-dev guide and tool shape on every build platform. The guide says the same work in eight fewer bytes, keeping the existing 57,124 and 49,590 byte caps after the previously recorded measurement proved eight bytes short on Linux.
-- F1–F5: Restores now rescue newly ignored files and record later deletions, estimated model-call refusals land as cost limits, Linux engine descendants end even after clearing their environment, ignored-folder start receipts name the reason for no branch, and the general task manual distinguishes senior-dev's run ceiling.
