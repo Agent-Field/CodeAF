@@ -75,6 +75,10 @@ func TestTeamThreadAReplyLinksToTheManagersLastMessage(t *testing.T) {
 		t.Fatalf("web was told:\n%s", news)
 	}
 	ctx := context.Background()
+	// THE POST SAYS ITS OWN NUMBER, so the surface can find it again.
+	if said, _, _ := web.teamPostTool(ctx, json.RawMessage(`{"to":"room","text":"hello"}`)); !strings.Contains(said, " as #3") {
+		t.Errorf("the post does not say its own number: %q", said)
+	}
 	for _, args := range []string{
 		`{"to":"manager","text":"on it"}`,
 		`{"to":"room","text":"fyi all"}`,

@@ -89,9 +89,15 @@ Traffic                                  hide alt+l
 Headers and answers end with their age (`now`, `2m`, `3h`); on a narrow rail only the header
 does. Your own messages are not on the rail; they are in the manager's conversation. Every
 `@handle` is a link, as in the chat: point at it for the member's title in the hint line, press
-it to open that member (resumed first when this window does not have it open). Point at a
-message's words to read them whole in the hint line, press them to lay them out in full under
-the row, and press again to fold them. Nothing on the rail moves your focus but a handle.
+it to open that member (resumed first when this window does not have it open) **scrolled to the
+message**: a handle on a thread's header opens the member at the directive as it was told it,
+and a handle on an answer opens it at its own post. The message is brought into view and
+lifted for a moment; the focus stays on that conversation. A message from before the
+conversation's history opens it at the bottom, and the hint line says `that message is older
+than this chat's history`. Point at a message's words to read them whole in the hint line,
+press them to lay them out in full under the row, and press again to fold them; the press also
+brings that thread's card in the manager's conversation into view. Nothing on the rail moves
+your focus but a handle.
 
 With the manager in front the right-hand column is the Traffic, whatever you last told the task
 column with `ctrl+g`: the task column is not drawn beside it, not even as an edge. When the
@@ -193,7 +199,8 @@ are one thread however many were asked.
 `team_send ◆ to @agent @checking @review · do`, with the message quoted under it and each
 answer attached under that in muted ink as it arrives, one line each. Press an answer's words
 to read it in full and again to fold it; point at them for the whole text in the hint line; a
-handle opens its member. A turn that sent one is not folded into a `worked` chip, so the
+handle opens its member at the message: on an answer, at the member's own post, and on the
+card's header, at the message as the member was told it. A turn that sent one is not folded into a `worked` chip, so the
 thread stays where you can see it.
 
 The answers also reach the manager as its team's note. So nothing is shown twice, a note

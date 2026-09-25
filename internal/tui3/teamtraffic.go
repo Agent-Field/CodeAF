@@ -110,6 +110,10 @@ type trafficState struct {
 	// traffic (teamrail.go's [app.trafficTasksShowing]); it counts only while
 	// the manager has live tasks. Memory only, and this window's.
 	tasks bool
+	// jump is a jump to a message waiting for its conversation to open, and
+	// landing the message lifted after one (teamjump.go).
+	jump    trafficJumpTo
+	landing trafficLanding
 	// open is every message the person laid out in full on the rail or under
 	// a thread card, by team and entry id (teamthread.go), and opened counts the
 	// presses that changed it, which is what the rail's cache keys on. Memory

@@ -609,7 +609,11 @@ func (a *Agent) teamPostTool(ctx context.Context, args json.RawMessage) (string,
 		thread = a.teamAnswering(team.ID)
 	}
 	entry.Answers = thread
-	if err := teams.AppendTraffic(a.config.teamProfile(), team.ID, entry); err != nil {
+	// THE POST'S OWN NUMBER IS IN ITS ANSWER, ` as #N`, so the surface can find
+	// this call in the member's transcript when somebody asks to be taken to
+	// the message (tui3's teamjump.go).
+	own, err := teams.AppendTrafficID(a.config.teamProfile(), team.ID, entry)
+	if err != nil {
 		return "The post could not be written to the team's traffic: " + err.Error(), true, nil
 	}
 	where := "the room"
@@ -631,5 +635,9 @@ func (a *Agent) teamPostTool(ctx context.Context, args json.RawMessage) (string,
 	if thread != "" {
 		answered = ", answering " + teams.ThreadNumber(thread)
 	}
-	return "Posted to " + where + " in " + strconv.Quote(team.Name) + answered + ". It arrives at the start of their next step.", false, nil
+	as := ""
+	if own != "" {
+		as = " as " + teams.ThreadNumber(own)
+	}
+	return "Posted to " + where + " in " + strconv.Quote(team.Name) + as + answered + ". It arrives at the start of their next step.", false, nil
 }

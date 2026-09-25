@@ -3278,7 +3278,16 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if mode, ok := msg.(tea.ModeReportMsg); ok {
 		a.ruler.noteModeReport(mode)
 	}
+	if _, ok := msg.(trafficLandedMsg); ok {
+		a.touch()
+		return a, nil
+	}
 	model, cmd := a.update(msg)
+	// A JUMP TO A MESSAGE WAITING FOR ITS CONVERSATION lands here, on the first
+	// message after that conversation is in front (teamjump.go).
+	if a.traffic.jump.key != "" {
+		cmd = tea.Batch(cmd, a.trafficLand())
+	}
 	// AND WHATEVER THE LAST FRAME ASKED THE DISK ABOUT IS READ HERE, on the loop,
 	// before the next frame draws (learned.go). `open` and `tick` may read the
 	// disk and `body` may not, so a frame that met a picture nobody had stat'd
@@ -6843,6 +6852,16 @@ func (a *app) linkPress(x int, r row) (bool, tea.Cmd) {
 	}
 	for _, link := range r.links {
 		if link.span.holds(x) {
+			// A HANDLE ON A THREAD CARD OPENS ITS MEMBER AT THE MESSAGE: an
+			// answer at the member's own post, the card's header at the message
+			// as the member was told it (teamjump.go).
+			if land := a.threadRowLand(r); land != "" && link.member != "" {
+				if t, ok := a.teamByID(link.team); ok {
+					if m, ok := t.Member(link.member); ok {
+						return true, a.trafficJump(m.Key, land)
+					}
+				}
+			}
 			if link.team != "" {
 				return true, a.teamLinkPress(link)
 			}

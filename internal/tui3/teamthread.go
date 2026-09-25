@@ -45,6 +45,10 @@ type trafficDoor struct {
 	expand string
 	hint   string
 	link   bool
+	// land is the entry a member's handle opens its conversation at, and here
+	// the entry a message's words bring into view in the manager's own
+	// conversation (teamjump.go).
+	land, here string
 }
 
 // trafficLaid is one drawn row of the rail and its doors.
@@ -72,6 +76,8 @@ type trafficSheet struct {
 	hotDoor int
 	// first is the row index the sheet's row 0 lands on, for the hover.
 	first int
+	// land and here are the entry the doors being laid open at (teamjump.go).
+	land, here string
 }
 
 // add lays one row from segs, with age flush right when there is room for
@@ -165,7 +171,11 @@ func (s *trafficSheet) full(n int) bool { return len(s.rows) >= n }
 func (s *trafficSheet) handleSeg(handle string, doors *[]trafficDoor, paint func(string) string) railSeg {
 	word := "@" + strings.TrimPrefix(handle, "@")
 	if m, ok := s.t.ByHandle(strings.TrimPrefix(handle, "@")); ok && m.Key != s.a.frontTabKey() {
-		*doors = append(*doors, trafficDoor{member: m.Key, link: true, hint: s.a.teamMemberHint(m)})
+		hint := s.a.teamMemberHint(m)
+		if s.land != "" {
+			hint = strings.Replace(hint, " @"+m.Handle, " @"+m.Handle+" at this message", 1)
+		}
+		*doors = append(*doors, trafficDoor{member: m.Key, link: true, land: s.land, hint: hint})
 		return railSeg{text: word, door: len(*doors) - 1}
 	}
 	return railSeg{text: word, paint: paint, door: -1}
@@ -230,7 +240,7 @@ func (s *trafficSheet) words(e teamstore.Entry, lead []railSeg, under string, pa
 		hint = "click folds it" + hintSegment + trafficKey + " hides the traffic"
 	}
 	door := len(doors)
-	doors = append(doors, trafficDoor{expand: key, hint: hint})
+	doors = append(doors, trafficDoor{expand: key, here: s.here, hint: hint})
 	if !open {
 		s.add(append(lead, railSeg{text: text, paint: paint, door: door}), doors, age)
 		return
@@ -246,7 +256,7 @@ func (s *trafficSheet) words(e teamstore.Entry, lead []railSeg, under string, pa
 			continue
 		}
 		s.add([]railSeg{{text: under, paint: s.a.pal.dim, door: -1}, {text: line, paint: paint, door: 0}},
-			[]trafficDoor{{expand: key, hint: hint}}, "")
+			[]trafficDoor{{expand: key, here: s.here, hint: hint}}, "")
 	}
 }
 
@@ -257,6 +267,9 @@ func (s *trafficSheet) thread(th teamstore.Thread) {
 	e := th.Root
 	arrow := " " + s.a.linearMark("→", "->") + " "
 	var doors []trafficDoor
+	// A HANDLE ON THE HEADER OPENS ITS MEMBER AT THIS MESSAGE, and the
+	// message's words bring its card into view here (teamjump.go).
+	defer func() { s.land, s.here = "", "" }()
 	switch e.Kind {
 	case teamstore.KindStop:
 		segs := append(s.speakerSegs(e.From, &doors), railSeg{text: " stopped ", paint: pal.muted, door: -1})
@@ -274,6 +287,7 @@ func (s *trafficSheet) thread(th teamstore.Thread) {
 		segs = append(segs, s.handleSeg(e.To, &doors, pal.muted))
 		s.add(segs, doors, s.a.trafficAge(e))
 	default:
+		s.land, s.here = e.ID, e.ID
 		tag := "fyi"
 		if e.Kind == teamstore.KindDirective {
 			tag = "do"
@@ -387,6 +401,12 @@ func (s *trafficSheet) replies(th teamstore.Thread) {
 			glyph, under = s.a.linearMark("└ ", "`-"), "  "
 		}
 		var doors []trafficDoor
+		// AN ANSWER'S HANDLE OPENS ITS MEMBER AT ITS OWN POST, and a line with
+		// nothing said yet at the message it answers.
+		s.land, s.here = th.Root.ID, th.Root.ID
+		if r.said {
+			s.land = r.entry.ID
+		}
 		lead := []railSeg{{text: glyph, paint: pal.dim, door: -1}}
 		if r.who == teamstore.FromManager {
 			lead = append(lead, s.managerSegs()...)

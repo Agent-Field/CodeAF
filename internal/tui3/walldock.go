@@ -252,7 +252,8 @@ func (a *app) dockHoverWords() string {
 			return name
 		}
 	}
-	return ""
+	// AND A JUMP THAT FOUND NOTHING SAYS SO, for a moment (teamjump.go).
+	return a.trafficJumpWords()
 }
 
 // dockAt is the dock's piece under column x on the keys row, as a hover.
