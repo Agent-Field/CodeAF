@@ -145,3 +145,26 @@ func TestTeamsFirstFrameIsDrawnBeforeAnyReadAndTheReadMovesNothing(t *testing.T)
 		}
 	}
 }
+
+// A CLOSED TEAM ON A SEAM WITH NO HISTORY DOOR READS WITHOUT ITS RECORD. An
+// older engine over --host carries no History; the read used to index the
+// histories it never asked for, once per closed team, and the window died on a
+// press of a closed team's link.
+func TestTeamsReadOfAClosedTeamWithNoHistoryDoorDoesNotPanic(t *testing.T) {
+	a, harbor, _ := teamsPlaceLabIDs(t)
+	if err := a.teamEdit(func(f *teamstore.File) error { return f.Close(harbor, a.now(), "") }); err != nil {
+		t.Fatal(err)
+	}
+	door := localTeams(a.profileDir, &a.teamsDisk.watch)
+	door.History = nil
+	a.teamsDisk.door = door
+	a.tp.reading = false
+	read := a.teamsRead(true)
+	if read == nil {
+		t.Fatal("no read was made")
+	}
+	drive(t, a, runCmd(read)...)
+	if _, ok := a.tp.history[harbor]; ok {
+		t.Fatal("a seam with no History door put a record on the closed team")
+	}
+}

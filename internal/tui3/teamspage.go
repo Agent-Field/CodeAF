@@ -691,12 +691,15 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 				got.spend[id], got.spendStamp[id] = spends[i].spend, spends[i].stamp
 			}
 		}
-		for i, id := range closedReports {
-			if histories[i] != nil {
+		// ONLY THE HISTORIES THAT WERE ASKED FOR. A seam with no History door
+		// (an older engine over --host) asks for none, and a closed team is
+		// then shown without its record rather than indexing an empty list.
+		for i, list := range histories {
+			if list != nil {
 				if got.history == nil {
 					got.history = map[string][]teamstore.Packet{}
 				}
-				got.history[id] = histories[i]
+				got.history[closedReports[i]] = list
 			}
 		}
 		return func(bool) tea.Cmd { return a.teamsFold(got) }
