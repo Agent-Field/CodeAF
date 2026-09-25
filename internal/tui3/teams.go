@@ -339,6 +339,11 @@ func (a *app) teamEdit(change func(f *teamstore.File) error) error {
 	}
 	a.teamRefreshWords(mine.Teams)
 	a.wall.teams = mine.Teams
+	// THE RAIL REMEMBERS THE ROWS IT DREW, keyed by everything but a team's
+	// name (teamrail.go's [trafficCacheKey]). A rename would otherwise leave
+	// `to run <old name>` on screen until something else moved the key. The
+	// next frame reads the name from the teams it now holds.
+	a.traffic.cache = trafficCache{}
 	// A window still waiting on its first read over a connection holds only
 	// this edit; the write brings the whole list back ([app.teamsTake]).
 	a.wall.loaded = true
