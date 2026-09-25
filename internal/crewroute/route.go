@@ -212,6 +212,13 @@ type Request struct {
 	// ([Lineage]). An unpinned seat is not given one while anything else can
 	// sit it; a pin is never overruled.
 	Avoid map[string]bool
+	// Rescue is a seat's LAST RUNG being picked — the free pools when nothing
+	// paid can be reached — rather than a crew being chosen: any model that
+	// can sit the seat (tools, context, a route) is taken, best first, though
+	// it publishes too little for the router to trust it as a first pick. A
+	// seat that runs on a thinly described model says so on its line; a seat
+	// that does not run at all says nothing useful.
+	Rescue bool
 }
 
 // Pick is one seat's answer.
@@ -265,6 +272,10 @@ type Decision struct {
 	// left to go and the failure said why — credit, a key, a limit. The line
 	// leads with it and offers no stronger redo, which could not help.
 	Stopped string `json:",omitempty"`
+	// Redo is whether this crew was asked for by a redo of a task that ran
+	// before. Its own acceptance is the redo's, not a later task's: it must
+	// not take back the step the redo just taught.
+	Redo bool `json:",omitempty"`
 }
 
 // Unspent is the actual cost a line is drawn with when there is none worth
@@ -324,6 +335,11 @@ var ErrStrongest = errors.New("this is already the strongest crew the models you
 // Decide picks the crew for one task.
 func Decide(r Request) (Decision, error) {
 	t := prior()
+	if r.Rescue {
+		lenient := *t
+		lenient.rescue = true
+		t = &lenient
+	}
 	reading := Reading{Class: r.Class, Why: "given", Sure: true}
 	if r.Class == "" {
 		reading = Classify(r.Task)
@@ -654,6 +670,9 @@ func eligible(t *table, class Class, seat Seat, c Candidate) (Pick, bool) {
 		return Pick{}, false
 	}
 	pick := pickOf(t, class, seat, c)
+	if t.rescue {
+		return pick, true
+	}
 	if !pick.Measured && !agenticKnown(seat, c.Model) && CanonicalOf(c.Model.ID).Variant == "" {
 		return Pick{}, false
 	}
@@ -962,8 +981,21 @@ func (d Decision) Line(pinMark string, actual float64) string {
 	}
 	b.WriteString(d.Class.Word())
 	worker, planner, checker := d.Seat(Worker), d.Seat(Planner), d.Seat(Checker)
+	// EACH SEAT IS SAID ONCE, WITH ITS CHANGE: a seat a redo or an effort word
+	// moved reads `planner glm-5.3-flash → kimi-k3` where the seat stands,
+	// never the seat and then its rung again at the end.
+	rung := map[Seat]Retry{}
+	for _, r := range d.Rungs {
+		rung[r.Seat] = r
+	}
+	said := func(pick Pick) string {
+		if r, ok := rung[pick.Seat]; ok {
+			return ShortModel(r.From) + " → " + seatModel(pick, pinMark)
+		}
+		return seatModel(pick, pinMark)
+	}
 	b.WriteString(" · worker ")
-	b.WriteString(seatModel(worker, pinMark))
+	b.WriteString(said(worker))
 	if worker.Provider != "" {
 		route := worker.Provider
 		if worker.Kind == Free {
@@ -974,15 +1006,13 @@ func (d Decision) Line(pinMark string, actual float64) string {
 	// THE PLANNER IS NAMED WHEN IT IS NOT THE WORKER. A crew whose planner is
 	// the worker's model says nothing a person reading the line needs; one
 	// whose planner is another model is a crew of three, and says so.
-	if planner.Model != "" && Lineage(planner.Model) != Lineage(worker.Model) {
+	_, plannerMoved := rung[Planner]
+	if planner.Model != "" && (plannerMoved || Lineage(planner.Model) != Lineage(worker.Model)) {
 		b.WriteString(" · planner ")
-		b.WriteString(seatModel(planner, pinMark))
+		b.WriteString(said(planner))
 	}
 	b.WriteString(" · checker ")
-	b.WriteString(seatModel(checker, pinMark))
-	for _, r := range d.Rungs {
-		b.WriteString(" · " + string(r.Seat) + " " + ShortModel(r.From) + " → " + ShortModel(r.To))
-	}
+	b.WriteString(said(checker))
 	switch {
 	case actual == Unspent:
 	case actual >= 0:

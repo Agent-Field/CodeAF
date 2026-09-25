@@ -63,3 +63,25 @@ func TestTheCrewLogSplitsTodayByProvider(t *testing.T) {
 		t.Fatal("a plan seat was charged a share")
 	}
 }
+
+// A REDO'S OWN ACCEPTANCE KEEPS THE STEP IT TAUGHT: the offset a redo adds is
+// for the NEXT task of the class there, and only a later accepted task takes
+// it back off.
+func TestARedoIsNotDecayedByItsOwnAcceptance(t *testing.T) {
+	dir := t.TempDir()
+	first := CrewRecord{TaskClass: "bugfix", Repo: "repo", Seats: map[string]string{"worker": "z-ai/glm-5.3-flash"}}
+	LogCrewDecision(dir, "crew:a", first, nil)
+	LogCrewOutcome(dir, "crew:a", first, CrewRedone, 0.01)
+	redo := first
+	redo.Redo = true
+	LogCrewDecision(dir, "crew:b", redo, nil)
+	LogCrewOutcome(dir, "crew:b", redo, CrewAccepted, 0.02)
+	if got := ReadCrewLog(dir, time.Now()).Offsets["repo\x00bugfix"]; got != 1 {
+		t.Fatalf("after the redo was accepted the offset is %d, want the step it taught", got)
+	}
+	LogCrewDecision(dir, "crew:c", first, nil)
+	LogCrewOutcome(dir, "crew:c", first, CrewAccepted, 0.01)
+	if got := ReadCrewLog(dir, time.Now()).Offsets["repo\x00bugfix"]; got != 0 {
+		t.Errorf("a later accepted task left the offset at %d", got)
+	}
+}

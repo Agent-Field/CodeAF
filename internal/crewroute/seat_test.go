@@ -307,3 +307,16 @@ func TestTheLineLeadsWithTheFallbackAndNamesNoUnspentMoney(t *testing.T) {
 		t.Errorf("an unspent line names money: %q", line)
 	}
 }
+
+// A REDO'S LINE SAYS EACH SEAT ONCE, WITH ITS CHANGE: a planner that moved is
+// `planner glm-5.3-flash → kimi-k3` where the planner stands, not the
+// planner and then its rung again.
+func TestARedoLineSaysEachSeatOnce(t *testing.T) {
+	d := Decision{Class: Bugfix, Crew: []Pick{
+		{Seat: Worker, Model: "z-ai/glm-5.3-flash"}, {Seat: Planner, Model: "moonshotai/kimi-k3"}, {Seat: Checker, Model: "moonshotai/kimi-k3"},
+	}, Rungs: []Retry{{Seat: Planner, From: "z-ai/glm-5.3-flash", To: "moonshotai/kimi-k3"}}}
+	line := d.Line("", -1)
+	if strings.Count(line, "planner") != 1 || !strings.Contains(line, "planner glm-5.3-flash → kimi-k3") {
+		t.Errorf("the redo line reads %q", line)
+	}
+}

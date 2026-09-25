@@ -91,6 +91,8 @@ type table struct {
 	spread   map[seatKey]spread
 	floors   map[seatKey]float64
 	byID     map[string]priorModel
+	// rescue is a table asked for a seat's last rungs ([Request.Rescue]).
+	rescue bool
 }
 
 type cellKey struct {

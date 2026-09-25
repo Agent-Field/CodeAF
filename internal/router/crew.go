@@ -70,6 +70,10 @@ type CrewRecord struct {
 	FailUntil   time.Time         `json:"fail_until,omitempty"`
 	Started     map[string]string `json:"started,omitempty"`
 	StartedPaid bool              `json:"started_paid,omitempty"`
+	// Redo is a row of a task that was itself a redo: its acceptance is the
+	// redo's own and decays no offset — only a LATER accepted task of the
+	// class there does.
+	Redo bool `json:"redo,omitempty"`
 }
 
 // LogCrewDecision appends a crew's decision row. Best-effort by construction:
@@ -259,6 +263,11 @@ func ReadCrewLog(dir string, now time.Time) CrewLog {
 		case CrewAccepted:
 			record := task.Record
 			out.LastGood = &record
+			if record.Redo {
+				// THE REDO'S OWN ACCEPTANCE TEACHES NOTHING NEW: the step it
+				// added is for the NEXT task of the class here to start on.
+				break
+			}
 			accepted[key]++
 			if accepted[key] >= redoDecayAfter && out.Offsets[key] > 0 {
 				out.Offsets[key]--

@@ -987,6 +987,7 @@ func CrewRecordOf(d crewroute.Decision, repo, title string) router.CrewRecord {
 	record := router.CrewRecord{
 		TaskClass: string(d.Class), Repo: repo, Title: title, Effort: string(d.Effort), Steps: d.Steps,
 		Seats: map[string]string{}, Providers: map[string]string{}, Kinds: map[string]string{}, EstUSD: d.EstUSD,
+		Redo: d.Redo,
 	}
 	for _, pick := range d.Crew {
 		record.Seats[string(pick.Seat)] = pick.Send
@@ -1065,7 +1066,13 @@ func RouteCrew(profileDir string, ask CrewAsk) (crewroute.Decision, error) {
 	}
 	pace, atCap := crewroute.Pace(day.SpentUSD, CrewCapAt(profileDir))
 	health := crewHealthAt(profileDir)
-	candidates, notice := crewCandidatesNoticed(profileDir, health)
+	// AN ACCOUNT OUT OF CREDIT, OR A KEY REFUSED, IS PROBED BY THE NEXT TASK:
+	// its paid routes are routed as usual, so the task's first seat call is
+	// the probe. A 200 clears the account on the spot; another refusal moves
+	// the seat down its ladder inside the task (to a free pool, when nothing
+	// paid is left), costing one refused call. Without the probe an account
+	// topped up would never be asked again.
+	candidates, notice := crewCandidatesNoticed(profileDir, health.probing())
 	req := crewroute.Request{
 		Class:      reading.Class,
 		Candidates: candidates,
@@ -1091,6 +1098,7 @@ func RouteCrew(profileDir string, ask CrewAsk) (crewroute.Decision, error) {
 		d.Note = strings.TrimSpace(strings.TrimPrefix(d.Note+" · "+notice, " · "))
 	}
 	d.Why, d.Sure = reading.Why, reading.Sure
+	d.Redo = ask.Stronger != nil || ask.Again != nil
 	if atCap {
 		return d, ErrCrewAtCap
 	}

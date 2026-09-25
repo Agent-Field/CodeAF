@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -94,10 +93,11 @@ func TestAForbiddenRouteIsNotRoutedToAgain(t *testing.T) {
 	}
 }
 
-// A ZERO-CREDIT ACCOUNT, end to end: a paid call says payment → the free
-// pools are used, with the notice → they are limited → the person's own model
-// on that same account is skipped → the one action.
-// Credit coming back puts normal routing back.
+// A ZERO-CREDIT ACCOUNT, end to end: a paid call says payment → the next
+// task is still routed on the paid route, which its first call probes → the
+// seat's rescue is the free pool → with that pool at its limit and the chat
+// model on the same account, nothing → the one action. A paid call answering
+// clears it, and the rescue has no free pool to offer any more.
 func TestAZeroCreditAccountWalksTheLadder(t *testing.T) {
 	dir := crewProfile(t)
 	rows := CrewCatalog()
@@ -118,33 +118,51 @@ func TestAZeroCreditAccountWalksTheLadder(t *testing.T) {
 	}
 
 	history = append(history, router.CrewRouteOutcome{At: time.Now(), Seat: "worker", Send: w.Send, Provider: w.Provider, Kind: "payment"})
-	free, err := RouteCrew(dir, ask)
+	probe, err := RouteCrew(dir, ask)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("an account out of credit refused the task at decision time: %v", err)
 	}
-	if got := free.Seat(crewroute.Worker); got.Kind != crewroute.Free {
-		t.Fatalf("with the account out of credit the worker is %+v, want the free pool", got)
+	if got := probe.Seat(crewroute.Worker); got.Kind != crewroute.Metered {
+		t.Fatalf("the next task's worker is %+v, want the paid route, probed", got)
 	}
-	if !strings.Contains(free.Line("", -1), "free routes may log prompts") {
-		t.Errorf("the free pools were used without saying so: %q", free.Line("", -1))
+	rescue := CrewRescue(dir, crewroute.Bugfix, crewroute.Worker, "somelab/the-chat-model")
+	if len(rescue) == 0 || rescue[0].Kind != crewroute.Free {
+		t.Fatalf("the rescue is %+v, want the free pool", rescue)
 	}
 
-	history = append(history, router.CrewRouteOutcome{At: time.Now(), Seat: "worker", Send: "z-ai/glm-5.3-flash:free", Provider: w.Provider, Kind: "quota"})
-	// The person's own model on the SAME account is no rescue: the account
-	// said it is out of credit, whichever model asks it.
-	_, err = RouteCrew(dir, CrewAsk{Task: ask.Task, ChatModel: "somelab/the-chat-model"})
-	var stop ErrCrewUnreachable
-	if !errors.As(err, &stop) || !strings.Contains(stop.Action, "add credit on openrouter") {
-		t.Fatalf("with the chat model on the account out of credit the answer is %v, want the one action", err)
+	history = append(history, router.CrewRouteOutcome{At: time.Now(), Seat: "worker", Send: rescue[0].Send, Provider: w.Provider, Kind: "quota"})
+	for _, r := range CrewRescue(dir, crewroute.Bugfix, crewroute.Worker, "somelab/the-chat-model") {
+		if r.Send == rescue[0].Send || r.Model == "somelab/the-chat-model" {
+			t.Fatalf("the rescue offers %+v: a pool at its limit, or the chat model on the account out of credit", r)
+		}
+	}
+	if got := crewHealthAt(dir).crewAction(); got != "add credit on openrouter to continue" {
+		t.Errorf("the one action is %q", got)
 	}
 
 	history = append(history, router.CrewRouteOutcome{At: time.Now(), Seat: "worker", Send: w.Send, Provider: w.Provider, Paid: true})
-	back, err := RouteCrew(dir, ask)
-	if err != nil {
-		t.Fatal(err)
+	for _, r := range CrewRescue(dir, crewroute.Bugfix, crewroute.Worker, "somelab/the-chat-model") {
+		if r.Kind == crewroute.Free {
+			t.Fatalf("with credit back the rescue still reaches for a free pool: %+v", r)
+		}
 	}
-	if got := back.Seat(crewroute.Worker); got.Kind != crewroute.Metered || strings.Contains(back.Line("", -1), "free routes") {
-		t.Fatalf("with credit back the worker is %+v (%q)", got, back.Line("", -1))
+}
+
+// AN AUXILIARY CALL NEVER ASKS A ROUTE THAT WILL NOT ANSWER: a helper that
+// would call a quarantined route, or a paid route on an account out of
+// credit, is handed the router's healthy pick instead.
+func TestAnAuxiliaryCallIsHandedAHealthyRoute(t *testing.T) {
+	dir := crewProfile(t)
+	history := []router.CrewRouteOutcome{{At: time.Now(), Send: "z-ai/glm-5.3-flash", Provider: "openrouter", Kind: "forbidden"}}
+	withRouteHistory(t, &history)
+	crewHealthCache.mu.Lock()
+	crewHealthCache.dir = ""
+	crewHealthCache.mu.Unlock()
+	if got := CrewHealthySend(dir, "z-ai/glm-5.3-flash", "somelab/chat"); got == "z-ai/glm-5.3-flash" || got == "" {
+		t.Errorf("a helper on the quarantined route is sent to %q", got)
+	}
+	if got := CrewHealthySend(dir, "moonshotai/kimi-k3", "somelab/chat"); got != "moonshotai/kimi-k3" {
+		t.Errorf("a healthy route was moved to %q", got)
 	}
 }
 

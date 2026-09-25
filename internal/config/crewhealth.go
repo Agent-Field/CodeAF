@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/crewroute"
@@ -176,6 +177,77 @@ func crewHealthOf(history []router.CrewRouteOutcome, now time.Time) crewHealth {
 		h.fail[send] = (float64(fails[send]) + crewPriorRate*crewPriorTasks) / (n + crewPriorTasks)
 	}
 	return h
+}
+
+// probing is this health with the accounts it holds out of credit and the
+// providers whose key it saw refused put back on trial: what a new task is
+// routed under, so its first call asks them again ([RouteCrew]).
+func (h crewHealth) probing() crewHealth {
+	h.unaffordable, h.disconnected = map[string]bool{}, map[string]bool{}
+	return h
+}
+
+// CrewHealthySend is the model an auxiliary call — a summary, a brief, a
+// landing's answer, anything that is not a crew seat's own call nor the
+// person's turn — should ask instead of send, when send's route is one route
+// health says will not answer: quarantined or cooling, on an account out of
+// credit, on a provider whose key was refused. It is the router's standing
+// worker pick, then the seat's rescue; send itself when its route is
+// healthy or nothing better is reachable.
+//
+// AN AUXILIARY CALL NEVER PROBES. Only a task's first seat call asks an
+// account out of credit again ([RouteCrew]); a helper that did would spend a
+// refusal on every summary.
+func CrewHealthySend(profileDir, send, chatModel string) string {
+	send = strings.TrimSpace(send)
+	if profileDir == "" || send == "" {
+		return send
+	}
+	health := crewHealthCached(profileDir)
+	if health.answers(send, CrewProvidersAt(profileDir)) {
+		return send
+	}
+	if seat := standingCrewSeat(profileDir, crewroute.Worker); seat != "" && seat != send {
+		return seat
+	}
+	for _, rung := range CrewRescue(profileDir, crewroute.Other, crewroute.Worker, chatModel) {
+		if rung.Send != send {
+			return rung.Send
+		}
+	}
+	return send
+}
+
+// answers is whether this health expects send's route to answer.
+func (h crewHealth) answers(send string, providers []CrewProvider) bool {
+	if _, blocked := h.blocked[send]; blocked {
+		return false
+	}
+	pin := resolveCrewPin(CrewPin{Model: send}, providers)
+	return !h.disconnected[pin.Provider] && !(pin.Kind == crewroute.Metered && h.unaffordable[pin.Provider])
+}
+
+// crewHealthCached is [crewHealthAt] read at most once a few seconds per
+// profile: auxiliary calls ask it on every request, and the router's log is a
+// file.
+func crewHealthCached(profileDir string) crewHealth {
+	crewHealthCache.mu.Lock()
+	defer crewHealthCache.mu.Unlock()
+	if crewHealthCache.dir == profileDir && time.Since(crewHealthCache.at) < crewHealthFresh {
+		return crewHealthCache.health
+	}
+	crewHealthCache.dir, crewHealthCache.at, crewHealthCache.health = profileDir, time.Now(), crewHealthAt(profileDir)
+	return crewHealthCache.health
+}
+
+// crewHealthFresh is how long a cached health reading stands.
+const crewHealthFresh = 3 * time.Second
+
+var crewHealthCache struct {
+	mu     sync.Mutex
+	dir    string
+	at     time.Time
+	health crewHealth
 }
 
 // usable is the routes this health leaves, with their learned failure rates.
@@ -354,7 +426,7 @@ func crewFreeRescue(profileDir string, class crewroute.Class, seat crewroute.Sea
 	var out []crewroute.Pick
 	avoid := map[string]bool{}
 	for len(out) < crewFreeRescues && len(free) > 0 {
-		d, err := crewroute.Decide(crewroute.Request{Class: class, Candidates: free, Avoid: avoid})
+		d, err := crewroute.Decide(crewroute.Request{Class: class, Candidates: free, Avoid: avoid, Rescue: true})
 		if err != nil {
 			break
 		}
