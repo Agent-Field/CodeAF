@@ -315,11 +315,14 @@ const (
 	// the person's own notes, and a paragraph that brightened would be
 	// promising a door on every sentence of it.
 	hoverQuestionOption
-	// hoverDockWall is the `▦` at the left of the dock under the box, and
-	// hoverDockCell one conversation's cell after it, held by the
-	// conversation's key rather than by its column (walldock.go): the dock
-	// narrows as the keys beside it change, and a hover stored as a column
-	// would follow the packing instead of the conversation.
+	// hoverDockLabel is the quiet word `chats` in front of the dock, and
+	// hoverDockWall the `▦` beside it. They are one door and two kinds,
+	// because a hover lights the piece under the pointer. hoverDockCell is
+	// one conversation's cell after them, held by the conversation's key
+	// rather than by its column (walldock.go): the dock narrows as the keys
+	// beside it change, and a hover stored as a column would follow the
+	// packing instead of the conversation.
+	hoverDockLabel
 	hoverDockWall
 	hoverDockCell
 	// hoverTraffic is one row of the manager's Traffic rail, held by its row

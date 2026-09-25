@@ -12,8 +12,8 @@ Open it any of these ways:
 - `alt+v` from anywhere in a conversation (on a Mac keyboard that is not sending alt,
   `option+v` types `√`, and that works too)
 - `/wall`
-- the `▦` at the right end of the row under the message box, drawn once a second
-  conversation is open
+- `chats` or `▦` at the right end of the row under the message box, drawn once a
+  second conversation is open (the word goes first when the row is narrow)
 - `▦ All` on the tab strip, after the new-chat `+` (just `▦` on a narrow window)
 
 Close it with `alt+v` again, `esc`, the `‹ Back` button at the bottom left, or a press on
@@ -32,8 +32,26 @@ shown, and at the bottom a toolbar with `Filter /`,
 of the toolbar says in one dim line what it does and which key does the same; on a narrow
 window `Columns` and the other buttons step aside for that line so it is always whole, and
 come back when the pointer leaves. Pointing at `▦ All` says `Every open conversation, and your
-teams · alt+v`; pointing at a cell of the `▦` row under the box names that conversation and
-says `click opens it`.
+teams · alt+v`; pointing at a square of the chats dock under the box names that conversation
+(see below).
+
+## The chats dock under the message box
+
+Once a second conversation is open, the row under the message box ends in a dim word,
+`chats`, then `▦`, then one square per open conversation, in the same order as the tab
+strip. The square in front is `▣`. The others are `■`, coloured the way the strip colours
+a tab: the live colour while it is running, amber while it is waiting on you, and dim
+while it is idle. Amber is only for waiting on you. One open conversation draws no dock.
+
+Rest the pointer on a square and that square takes the hover ground. The hint line says
+`Go to Shipping the parser · running · click`, with `waiting on you` or `idle` in the
+middle. On the square in front it says `Shipping the parser · you are here`. On `chats`
+or on `▦` it says `Every open conversation, and your teams · alt+v`, the same as `▦ All`.
+
+A press on a square goes to that conversation and does not open this view. A press on
+`chats` or on `▦` opens the conversations view, the same as `alt+v`. A press on the
+square in front does nothing. On a narrow row the word `chats` is the first thing to
+go. The squares stay, then fewer of them with a `+N`, then the dock is not drawn.
 
 ## Reading a tile: title, what it is doing, and the newest lines
 
