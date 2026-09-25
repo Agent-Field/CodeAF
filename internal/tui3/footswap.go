@@ -236,9 +236,16 @@ func (a *app) seamTelemetryLabel(ledger, alive []hudPart) (string, string) {
 // cells say what is under the pointer instead, and the dock does not move,
 // because it was fitted against the keys and not against the words standing
 // in for them.
+//
+// AND THE TIP COVERS THE PROJECT WHILE IT IS UP, since 2026-09-24 at the
+// owner's word (notice.go's THE CONVERSATION'S TIP): the same right end, the
+// same fitting to what the keys leave, with home's bulb before it and a cross
+// after it whose columns are recorded here too ([app.chatTipClose]). The
+// project is back the moment the tip goes.
 func (a *app) hintRow(width int) string {
 	a.homeDoor = hudSpan{}
 	a.seamProjectSpan = hudSpan{}
+	a.chatTipClose, a.chatTipDrawn = hudSpan{}, ""
 	a.dockClear()
 	hint := a.footHint(width)
 	right, rightPlain := "", ""
@@ -290,6 +297,21 @@ func (a *app) hintRow(width int) string {
 		before := keys
 		if warned != "" {
 			before += 1 + ansi.StringWidth(warning)
+		}
+		// THE TIP, WHILE IT IS UP, holds the right end in the project's place.
+		if tip := a.chatTip(); tip != "" {
+			if drawn, cross := a.tipLine(tip, width-before-hudGap, a.pal); drawn != "" {
+				drawn = strings.TrimLeft(drawn, " ")
+				w := ansi.StringWidth(drawn)
+				a.chatTipClose = hudSpan{from: width - 1 - (cross.to - cross.from), to: width - 1}
+				a.chatTipDrawn = a.notices.current[slotHint]
+				tail, from = drawn+" ", width-1-w
+				if warned != "" {
+					tail = warned + strings.Repeat(" ", hudGap) + tail
+					from -= ansi.StringWidth(warning) + hudGap
+				}
+				break
+			}
 		}
 		// THE PROJECT, in what the keys leave, never inside a room, whose page
 		// carries the node's own identity (roomseam.go).

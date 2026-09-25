@@ -96,7 +96,15 @@ func teamsRead(dir string, args TeamsReadArgs) (TeamsReading, error) {
 	}
 	f, err := teamstore.LoadHued(dir, args.Reserved)
 	if err != nil {
-		return TeamsReading{}, err
+		// AN UNREADABLE FILE IS MOVED ASIDE, NOT OVERWRITTEN, exactly as the
+		// local seam does (internal/tui3's localTeams). Every ordinary launch
+		// reads teams through this door, so without it a bad file refused every
+		// team edit for good; renamed to teams.json.unreadable-<nanos> it
+		// survives for a person to recover, and the window starts empty.
+		if _, aside := teamstore.SetAside(dir); aside != nil {
+			return TeamsReading{}, err
+		}
+		return TeamsReading{Stamp: teamstore.Stamp(dir)}, nil
 	}
 	return TeamsReading{Stamp: stamp, Teams: f.Teams}, nil
 }

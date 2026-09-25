@@ -2,6 +2,8 @@ package remote
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
@@ -97,5 +99,34 @@ func TestATeamsWriteAtAnOldBaseIsStale(t *testing.T) {
 	on, _ := teamstore.Load(dir)
 	if on.Teams[0].Name != "harbor" || on.Teams[0].Manager != "k1" {
 		t.Fatalf("the refused write touched the file: %+v", on.Teams[0])
+	}
+}
+
+// AN UNREADABLE TEAMS FILE IS MOVED ASIDE BY THE ENGINE'S READ, AS THE MANUAL
+// SAYS (conversations-and-teams.md, "Where teams are kept"). Every ordinary
+// launch reads teams through these doors, so a window never reaches the local
+// seam that sets a bad file aside; without this the person could make no team
+// at all, every edit refused with "teams.json is unreadable". The bad bytes
+// survive beside it for a person to recover, and a write after the read lands.
+func TestAnUnreadableTeamsFileIsSetAsideByTheEnginesRead(t *testing.T) {
+	loop, dir := teamsLoop(t)
+	bad := []byte(`{"teams":[{"id":"x",`)
+	if err := os.WriteFile(teamstore.Path(dir), bad, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	read, err := loop.Client.TeamsRead("", nil)
+	if err != nil || len(read.Teams) != 0 {
+		t.Fatalf("the read of an unreadable file: %+v, %v", read, err)
+	}
+	aside, _ := filepath.Glob(teamstore.Path(dir) + ".unreadable-*")
+	if len(aside) != 1 {
+		t.Fatalf("the unreadable file was not set aside: %v", aside)
+	}
+	if kept, _ := os.ReadFile(aside[0]); string(kept) != string(bad) {
+		t.Fatalf("the set-aside file holds %q, want the bad bytes", kept)
+	}
+	wrote, err := loop.Client.TeamsUpdate(read.Stamp, []teamstore.Team{{ID: "0a0a0a0a0a0a", Name: "beta"}})
+	if err != nil || wrote.Stale || len(wrote.Teams) != 1 {
+		t.Fatalf("a write after the read: %+v, %v", wrote, err)
 	}
 }

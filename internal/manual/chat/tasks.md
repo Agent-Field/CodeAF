@@ -1991,6 +1991,8 @@ greeting and no column at all until you type, a task lands, or a standing order 
 (*The empty screen* page). Under 100 columns there is no column and no edge, and `alt+t` (or
 `alt+l`) lays the same column over the body instead.
 
+## Where did the workers go on the task page — find them as rows under their task
+
 **Workers under a task are rows of their own.** A task that split itself into parts, and an
 adaptive run and its workers, each announce themselves as tasks, so each one is an ordinary
 row of the list under the group it is in: its own state glyph, its own name, reachable with

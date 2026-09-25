@@ -621,7 +621,7 @@ func (a *Agent) teamStopTool(ctx context.Context, args json.RawMessage) (string,
 	if err := teams.AppendTraffic(a.config.teamProfile(), team.ID, entry); err != nil {
 		return "The stop could not be written to the team's traffic: " + err.Error(), true, nil
 	}
-	return fmt.Sprintf("Asked to stop @%s's current turn. The window holding it ends the turn the way the person's Stop does; if no window has it open, there is no turn running to stop.", member.Handle), false, nil
+	return fmt.Sprintf("Asked to stop @%s's current turn. A window that has it open ends the turn the way the person's Stop does. A member codeaf opened in the background, with no window on it, is not stopped: its turn runs to its end.", member.Handle), false, nil
 }
 
 // ── team_start ──────────────────────────────────────────────────────────────

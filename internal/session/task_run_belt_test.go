@@ -122,12 +122,12 @@ func (d *beltRunDouble) Start(ctx context.Context, spec RunSpec) RunSummary {
 	return d.summary
 }
 
-func (d *beltRunDouble) Land(_ context.Context, _ *plandb.Store, workspace, _ string) (RunLanding, error) {
+func (d *beltRunDouble) Land(_ context.Context, _ *plandb.Store, workspace, base, _ string) (RunLanding, error) {
 	d.mu.Lock()
 	d.landCalls++
 	d.mu.Unlock()
 	if d.real {
-		branch, changed, refusal, err := LandRunTree(workspace, "the run", "")
+		branch, changed, refusal, err := LandRunTree(workspace, base, "the run", "")
 		return RunLanding{Branch: branch, Changed: changed, Refused: refusal}, err
 	}
 	return d.landing, nil
@@ -668,7 +668,7 @@ type landingRunDouble struct {
 }
 
 func (d landingRunDouble) Start(context.Context, RunSpec) RunSummary { return d.summary }
-func (d landingRunDouble) Land(context.Context, *plandb.Store, string, string) (RunLanding, error) {
+func (d landingRunDouble) Land(context.Context, *plandb.Store, string, string, string) (RunLanding, error) {
 	if d.landCalls != nil {
 		*d.landCalls++
 	}
@@ -977,6 +977,57 @@ func TestABeltRunsWorkComesHomeWhenItEnds(t *testing.T) {
 	rows := agent.graph().runRows(71)
 	if len(rows) == 0 || rows[0].Merge != mergeMerged || rows[0].Branch != currentBranch(conversation) {
 		t.Fatalf("the run's row says %+v, want merged on %s", rows, currentBranch(conversation))
+	}
+}
+
+// Contracts 1 and 7: the /task door brings two worker commits and a landing
+// commit into the person's ground, with each signed once and the base intact.
+func TestBeltRunSignsWorkerCommitsInGround(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	ground := beltRunCommittedRepo(t)
+	base := strings.TrimSpace(gitOut(t, ground, "rev-parse", "HEAD"))
+	dir := t.TempDir()
+	double := newBeltRunDouble("three files made")
+	double.real = true
+	double.work = func(workspace string) {
+		for _, name := range []string{"one.txt", "two.txt"} {
+			writeFile(t, filepath.Join(workspace, name), name+"\n")
+			mustGit(t, workspace, "add", name)
+			mustGit(t, workspace, "-c", "user.name=Worker", "-c", "user.email=worker@example.test", "commit", "-m", "add "+name)
+		}
+		writeFile(t, filepath.Join(workspace, "leftover.txt"), "leftover\n")
+	}
+	registerBeltRunEngine(t, double)
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = ground
+		config.Place = Place{Dir: dir}
+	})
+	if err := agent.startKnownTaskRun(context.Background(), 171, "make three files", "brief", nil, taskStand{dir: ground, mode: TaskModeWorktree}, ""); err != nil {
+		t.Fatal(err)
+	}
+	<-double.entered
+	endBeltRun(t, agent, double)
+	if got := strings.TrimSpace(gitOut(t, ground, "rev-parse", "HEAD~3")); got != base {
+		t.Fatalf("ground's earlier commit moved: %s -> %s", base, got)
+	}
+	for i, name := range []string{"leftover.txt", "two.txt", "one.txt"} {
+		if data, err := os.ReadFile(filepath.Join(ground, name)); err != nil || len(data) == 0 {
+			t.Fatalf("%s is not home: %q, %v", name, data, err)
+		}
+		rev := "HEAD" + strings.Repeat("~", i)
+		message := gitOut(t, ground, "log", "-1", "--format=%B", rev)
+		if strings.Count(message, "Assisted-by: CodeAF") != 1 || strings.Count(message, "Co-Authored-By: CodeAF") != 1 {
+			t.Fatalf("%s is not signed once: %q", rev, message)
+		}
+	}
+	store := beltRunStoreAt(t, dir)
+	defer store.Close()
+	var notes string
+	for _, note := range store.Notes(store.RootID(), 0) {
+		notes += note.Body + "\n"
+	}
+	if !strings.Contains(notes, "its work is in "+canonicalPath(ground)+" on ") || strings.Contains(notes, "nothing to land") {
+		t.Fatalf("ground landing note is wrong: %s", notes)
 	}
 }
 

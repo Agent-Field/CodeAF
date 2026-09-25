@@ -231,7 +231,10 @@ title does not wait for the answer to finish.
    their available width; there is no separately generated tab label. The title also
    reaches an idle chat or a chat you have switched away from.
 
-Hover over a tab to reveal its full title beneath it. Long titles wrap; the tab and
+Hover over a tab to reveal its full title beneath it, on the blank row under the line
+that closes the top of the screen. The title ends where the tab ends, and a title wider
+than the tab reaches out to the left; only one too wide for that room reaches right, and
+one wider than the whole row wraps over the top of the conversation. The tab and
 conversation stay in place, and the preview disappears when the pointer leaves.
 
 **Temporary failures and unusable names retry automatically.** Naming asks again, with

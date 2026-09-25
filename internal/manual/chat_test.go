@@ -33,6 +33,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// The conversations view and its teams (conversations-and-teams.md).
 		{"how do I see all my conversations at once", "conversations-and-teams"},
 		{"what is the tabs dock under the message box", "conversations-and-teams"},
+		// The product's own words for that view are the wall: `/wall`, `alt+v`
+		// opens the wall. A person asks for it by that word.
+		{"what is the conversations wall", "conversations-and-teams"},
+		{"how do I open the wall", "conversations-and-teams"},
+		{"what is the chats dock under the message box", "conversations-and-teams"},
 		{"how do I group conversations into a team", "conversations-and-teams"},
 		{"how do I switch teams from the tab strip", "conversations-and-teams"},
 		{"does deleting a team close its conversations", "conversations-and-teams"},
@@ -248,6 +253,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// seen, and wanting it gone.
 		{"why is there a co-author on my commit", "permissions"},
 		{"does codeaf sign my commits", "permissions"},
+		{"does the task sign the commits it makes itself", "permissions"},
+		{"why does my commit from codeaf do have a co-author line", "permissions"},
 		{"who is agentfield-bot", "permissions"},
 		{"what is the drafted with line at the bottom of my pull request", "permissions"},
 		{"stop adding a co-author trailer to my commits", "permissions"},
@@ -2778,6 +2785,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I install the latest dev build beside my codeaf", "running-from-the-terminal"},
 		{"what is devaf", "running-from-the-terminal"},
 		{"devaf", "running-from-the-terminal"},
+		{"what is stageaf", "running-from-the-terminal"},
+		{"stageaf", "running-from-the-terminal"},
+		{"how do I install the staging build", "running-from-the-terminal"},
+		{"how often does staging update", "running-from-the-terminal"},
 		{"can I run two versions of codeaf side by side", "running-from-the-terminal"},
 		{"how do I keep my dev build up to date", "running-from-the-terminal"},
 		{"install codeaf with a different file name", "running-from-the-terminal"},
@@ -2964,6 +2975,22 @@ func TestV9DevafQuestionsReachTheTerminalManual(t *testing.T) {
 		"can I run two versions of codeaf side by side",
 		"how do I keep my dev build up to date",
 	} {
+		var reached bool
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if section.Page == "running-from-the-terminal" {
+				reached = true
+				break
+			}
+		}
+		if !reached {
+			t.Errorf("%q does not reach running-from-the-terminal", asked)
+		}
+	}
+}
+
+// C24: Staging installer and cadence questions reach the terminal manual section.
+func TestC24StageafQuestionsReachTheTerminalManual(t *testing.T) {
+	for _, asked := range []string{"what is stageaf", "stageaf", "how do I install the staging build", "how often does staging update"} {
 		var reached bool
 		for _, section := range Chat().Search(asked, DefaultResults) {
 			if section.Page == "running-from-the-terminal" {
