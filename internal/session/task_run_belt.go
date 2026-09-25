@@ -640,15 +640,9 @@ func (a *Agent) joinOrWait(ctx context.Context, stand taskStand, id uint64, titl
 		}
 		over := live.over
 		if !live.ending && !live.closing && !live.stopped {
-			if via != nil || live.delegate != nil {
-				where := "in a copy of " + live.ground
-				if live.folder != nil {
-					where = "in " + live.ground
-				}
-				name := aloneName(via, live.delegate)
+			if refusal := programJoinRefusal(via, live); refusal != nil {
 				a.beltMu.Unlock()
-				return nil, errors.New("work is already underway " + where +
-					"; " + name + " runs alone, so propose it again when that work has ended")
+				return nil, refusal
 			}
 			if canonicalPath(stand.dir) != live.ground {
 				a.beltMu.Unlock()
@@ -713,6 +707,21 @@ func (a *Agent) readyRunFolder(id uint64, title, sessionDir string, stand taskSt
 		Keep: plandb.TaskDir(sessionDir, strconv.FormatUint(id, 10)), Instead: "say which folder the work is in, as ground",
 		Place: a.config.Place, SignModel: a.signsGitWork().namedModel(),
 	})
+}
+
+// programJoinRefusal is why a hand-off may not join the live run because a
+// program is on one side of it, and nil when neither is a program's: a program
+// never joins a run, and nothing joins a program's ([Agent.joinOrWait]).
+func programJoinRefusal(via *delegate.Delegate, live *beltRun) error {
+	if via == nil && live.delegate == nil {
+		return nil
+	}
+	where := "in a copy of " + live.ground
+	if live.folder != nil {
+		where = "in " + live.ground
+	}
+	return errors.New("work is already underway " + where +
+		"; " + aloneName(via, live.delegate) + " runs alone, so propose it again when that work has ended")
 }
 
 // aloneName is the program a refused join is about: the one asked for, or the
@@ -1307,14 +1316,7 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 			break
 		}
 	}
-	if notice.Program == "" {
-		for _, kept := range g.runRows(notice.ID) {
-			if kept.ID == notice.ID && kept.Program != "" {
-				notice.Program = kept.Program
-				break
-			}
-		}
-	}
+	notice.Program = keptRunProgram(g, notice)
 	if notice.Elapsed == 0 {
 		notice.Elapsed = runSpan(notice.StartedAt, notice.EndedAt)
 	}
@@ -1329,6 +1331,21 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 	a.emitTaskUpdate(notice)
 	g.keepRunRows(notice.ID, []TaskNotice{notice})
 	a.indexRunRow(notice)
+}
+
+// keptRunProgram is the program a run row names: its own when it names one,
+// and otherwise the one the row it replaces was published with
+// ([Agent.publishRunRow] says why it is carried).
+func keptRunProgram(g *TaskGraph, notice TaskNotice) string {
+	if notice.Program != "" {
+		return notice.Program
+	}
+	for _, kept := range g.runRows(notice.ID) {
+		if kept.ID == notice.ID && kept.Program != "" {
+			return kept.Program
+		}
+	}
+	return ""
 }
 
 // cutBeltRun ends the live run because the CONVERSATION is ending. It is what

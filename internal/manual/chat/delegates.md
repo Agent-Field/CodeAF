@@ -177,7 +177,10 @@ it`).
 **It runs alone.** While one is running, no other task can join it, and it cannot be
 started under another run of this conversation: `work is already underway in <folder>;
 <name> runs alone, so propose it again when that work has ended` (`in a copy of
-<folder>` when the work underway is a task of codeaf's own).
+<folder>` when the work underway is a task of codeaf's own). codeaf's own tasks run as the
+conversation's run too, so a `/task` typed in a conversation while senior-dev is working
+there is refused the same way, as a task that did not start; another conversation can
+run one, on a different folder.
 
 A name your build does not carry is refused with the ones it does:
 `this codeaf carries no program called <name>; it carries …`.

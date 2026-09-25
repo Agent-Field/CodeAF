@@ -104,10 +104,11 @@ func TestANewHandOffNeverRunsInsideADeadProgramsStore(t *testing.T) {
 	}
 }
 
-// AN ORDINARY RUN A LIMIT ENDED IS ARCHIVED INTACT. Its store is the record of
-// what it did, so it is not ended; and the next hand-off runs its own brief
-// under its own number rather than resuming the old one under the new title.
-func TestALimitEndedRunIsArchivedIntactAndTheNextHandOffRunsItsOwnBrief(t *testing.T) {
+// AN ORDINARY RUN A LIMIT ENDED IS ARCHIVED AS IT ENDED: its own task failed in
+// the limit's words (the run road ends it by one road and names the limit), its
+// brief kept; and the next hand-off runs its own brief under its own number
+// rather than resuming the old one under the new title.
+func TestALimitEndedRunIsArchivedAsItEndedAndTheNextHandOffRunsItsOwnBrief(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	conversation := beltRunCommittedRepo(t)
 	dir := t.TempDir()
@@ -146,8 +147,8 @@ func TestALimitEndedRunIsArchivedIntactAndTheNextHandOffRunsItsOwnBrief(t *testi
 		t.Fatalf("the limited run's store was not archived: %v", err)
 	}
 	defer archived.Close()
-	if root := archived.Task("91"); root == nil || terminalStoreStatus(root.Status) || root.Description != "brief one" {
-		t.Fatalf("the limited run's task = %+v, want it archived as it was left", root)
+	if root := archived.Task("91"); root == nil || root.Status != plandb.StatusFailed || root.Error != "a limit you set stopped it" || root.Description != "brief one" {
+		t.Fatalf("the limited run's task = %+v, want it archived as it ended, in the limit's words", root)
 	}
 }
 

@@ -476,7 +476,7 @@ func TestEachProgramIsListedWithItsOwnGuideInNameOrder(t *testing.T) {
 // gated on the switch, a person on the default belt clicked into senior-dev's
 // task and got a room that said it would fill in, for the whole run.
 func TestAProgramsRunIsReadableWithTheSwitchOff(t *testing.T) {
-	t.Setenv("CODEAF_TASK_BELT", "")
+	t.Setenv("CODEAF_TASK_BELT", "off")
 	if bashBeltAsked() {
 		t.Fatal("the switch is still on, so this test would prove nothing")
 	}

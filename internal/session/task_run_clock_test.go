@@ -339,7 +339,7 @@ func TestAProgramsRunNothingIsDrivingEndsAtItsLastActivity(t *testing.T) {
 // said how long a run had taken. The same span reaches the note the
 // conversation is handed when the run lands.
 func TestTheTasksToolSeesAProgramsRunAndSaysHowLongItTook(t *testing.T) {
-	t.Setenv("CODEAF_TASK_BELT", "")
+	t.Setenv("CODEAF_TASK_BELT", "off")
 	if bashBeltAsked() {
 		t.Fatal("the switch is still on, so this test would prove nothing")
 	}
@@ -473,7 +473,7 @@ func TestACheckpointHoldingAnInterruptedRunRowIsNotRefused(t *testing.T) {
 // conversation's books take the run's calls once, through the fold, and a row
 // that carries the total must not add it again.
 func TestAProgramsRowAndTheTasksToolSayWhatItCost(t *testing.T) {
-	t.Setenv("CODEAF_TASK_BELT", "")
+	t.Setenv("CODEAF_TASK_BELT", "off")
 	double := newBeltRunDouble("submitted and verified")
 	double.summary.USD = 2.30
 	registerBeltRunEngine(t, double)

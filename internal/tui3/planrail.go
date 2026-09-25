@@ -273,9 +273,15 @@ func (a *app) taskPlanTrail(width int) string {
 	for _, back := range a.taskSheet.planBack {
 		crumbs = append(crumbs, roomCrumb{word: strings.TrimSpace(back.Row.Title), kind: crumbAncestor})
 	}
-	crumbs = append(crumbs, roomCrumb{word: strings.TrimSpace(a.taskSheet.plan.Row.Title), kind: crumbHere})
+	title := strings.TrimSpace(a.taskSheet.plan.Row.Title)
+	crumbs = append(crumbs, roomCrumb{word: title, kind: crumbHere})
 	back := " " + taskCardBackWord + " "
 	room := width - headLabelAt - ansi.StringWidth(back) - 3
+	// A PROGRAM'S PAGE WEARS ITS BADGE AFTER THE TASK'S CRUMB, the one its row
+	// wears on the side list (programbadge.go), spoken for before the crumbs are
+	// fitted so the page says whose work it is before a line under it is read.
+	wears := programSpelling(programBadge(pageProgram(a.taskSheet.plan)), title, max(room, 0), railTitleFloor)
+	room -= programCells(wears)
 	label, hits, _ := fitCrumbChain(crumbs, max(room, 0))
 	if label == "" {
 		label, hits, _ = fitCrumbChain(crumbs, max(width-headLabelAt, 0))
@@ -285,8 +291,8 @@ func (a *app) taskPlanTrail(width int) string {
 		hit.span = hudSpan{from: hit.span.from + headLabelAt, to: hit.span.to + headLabelAt}
 		placed[i] = hit
 	}
-	line := strings.Repeat(" ", headLabelAt) + a.paintCrumbHits(label, headLabelAt, placed, crumbHit{}, false)
-	used := headLabelAt + ansi.StringWidth(label)
+	line := strings.Repeat(" ", headLabelAt) + a.paintCrumbHits(label, headLabelAt, placed, crumbHit{}, false) + a.pal.programAfter(wears)
+	used := headLabelAt + ansi.StringWidth(label) + programCells(wears)
 	if used+2+ansi.StringWidth(back)+1 <= width {
 		from := width - ansi.StringWidth(back) - 1
 		return line + strings.Repeat(" ", from-used) + a.pal.dim(back) + " "
