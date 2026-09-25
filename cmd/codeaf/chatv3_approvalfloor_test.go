@@ -205,3 +205,18 @@ func TestTheFloorDoesNotWidenAnySafetyFloor(t *testing.T) {
 	// And a bash call whose command cannot be read degrades rather than runs.
 	wantAction(t, policy, "bash", `{}`, approval.ActionPrompt)
 }
+
+// THE TEAM VERBS SPLIT READ AND MESSAGE FROM START (internal/session's
+// tools_team.go). A manager looking at its team, sending it a line, ending a
+// member's turn and a member posting to its room stay inside the team the person
+// made and are logged in its traffic, so they sit on the floor; a new member is a
+// new conversation that spends money, so team_start is the blanket mode's and
+// asks under the shipped default.
+func TestTheTeamVerbsAreAllowedAndTeamStartAsks(t *testing.T) {
+	dir := v3Profile(t, map[string]any{"tools.approvalMode": "prompt"})
+	policy := gateOf(t, dir)
+	for _, tool := range []string{"team_status", "team_read", "team_send", "team_stop", "team_post"} {
+		wantAction(t, policy, tool, `{"to":"web","text":"x","handle":"web"}`, approval.ActionAllow)
+	}
+	wantAction(t, policy, "team_start", `{"handle":"docs","brief":"write the README"}`, approval.ActionPrompt)
+}

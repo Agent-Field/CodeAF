@@ -31,7 +31,7 @@ func TestHeaderHomePreservesBothConversationAndNewChatDrafts(t *testing.T) {
 	openStart(t, a)
 	a.input.setText("new chat draft")
 	home := headerHomeTarget(t, a)
-	if home.span.from != tabLead {
+	if home.span.from != placeBarLead {
 		t.Fatal("Home is not first in navigation")
 	}
 	cmd, took := a.tabPress(home.span.from, placeTabRow)
@@ -192,7 +192,7 @@ func TestHomeTabKeepsItsSpellingAndPositionAcrossViews(t *testing.T) {
 				home := headerHomeTarget(t, a)
 				chat := plain(a.tabsRow(width))
 				column := strings.Index(chat, "home")
-				if column != tabLead+len(tabPad) || strings.Contains(chat, "Home") {
+				if column != placeBarLead+len(tabPad) || strings.Contains(chat, "Home") {
 					t.Fatalf("conversation home label is misplaced or capitalized: %q", chat)
 				}
 				hot, ok := a.tabHoverAt(home.span.from, placeTabRow)
