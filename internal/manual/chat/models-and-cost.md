@@ -713,7 +713,10 @@ continue`, `reconnect openrouter with /connect`, or when the limit resets. What 
 that refused a model is left out for a week, one at its limit rests until its reset, an
 account out of credit is skipped until a paid call on it answers again. Free routes are
 off unless you turn them on; when every paid route is out of reach they are used anyway,
-and the line says `free routes may log prompts`. A free pool can be pinned by name —
+and the line says `free routes in use (may log prompts)`. A rescue takes a general or a
+code model before one whose name says it was tuned for one domain (finance, medicine,
+law). A task that ran on an account out of credit and failed ends on the credit action,
+not on `/redo stronger`. A free pool can be pinned by name —
 `/crew pin worker vendor/model:free` — and picking a model's `free` route in a seat's
 list pins that pool, not the paid route beside it.
 

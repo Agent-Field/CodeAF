@@ -147,7 +147,7 @@ func TestTheSeatLadderReachesTheFreePoolsOnAnAccountOutOfCredit(t *testing.T) {
 		t.Fatalf("task 1 asked %v, want the paid route then its free pool", got)
 	}
 	line := run.crew.current().Line("", -1)
-	if !strings.HasPrefix(line, "running on fallback crew") || !strings.Contains(line, "free routes may log prompts") {
+	if !strings.HasPrefix(line, "running on fallback crew") || !strings.Contains(line, "free routes in use (may log prompts)") {
 		t.Errorf("task 1's line %q does not say the fallback and the free pool", line)
 	}
 
@@ -233,5 +233,19 @@ func TestNoCallReachesAQuarantinedRoute(t *testing.T) {
 		if model == "z-ai/glm-5.3-flash" {
 			t.Fatalf("task 2 asked the quarantined route: %v", stub.models())
 		}
+	}
+}
+
+// A TASK THAT RAN ON ITS RESCUE AND FAILED ENDS ON THE CREDIT ACTION: a
+// stronger crew is out of reach on an account out of credit, so the line
+// never offers "/redo stronger" there.
+func TestAFailedRescuedTaskEndsOnTheCreditAction(t *testing.T) {
+	crew := &taskCrew{decision: crewroute.Decision{Class: crewroute.Bugfix}, broke: map[string]bool{"openrouter": true}}
+	if got := crew.stoppedIfCutOff().Stopped; got != "add credit on openrouter to continue" {
+		t.Errorf("a failed task on an account out of credit stops on %q", got)
+	}
+	clean := &taskCrew{decision: crewroute.Decision{Class: crewroute.Bugfix}}
+	if got := clean.stoppedIfCutOff().Stopped; got != "" {
+		t.Errorf("a failed task that saw no account cut off stops on %q, want the redo offer", got)
 	}
 }

@@ -464,7 +464,7 @@ func (a *Agent) moveCrewSeat(run *beltRun, key, current string, kind provider.Ro
 			continue
 		}
 		decision = decision.WithRung(seat, rung, crewWhy(kind, provided))
-		if rung.Kind == crewroute.Free && !strings.Contains(decision.Note, crewFreeNotice) {
+		if rung.Kind == crewroute.Free && !strings.Contains(decision.Note, "free routes in use") {
 			decision.Note = strings.TrimSpace(decision.Note + " " + crewFreeNotice)
 		}
 		if next.Send == "" {
@@ -570,6 +570,20 @@ func (c *taskCrew) actionLocked(kind provider.RouteFailure, on string, until tim
 	return crewActionFor(kind, on, until)
 }
 
+// stoppedIfCutOff is the crew as a failed task ends it: when this task saw an
+// account run out of credit or a key refused, a stronger crew is out of reach
+// on it too, so the one action is what the line ends on — never "/redo
+// stronger". A crew that already stopped on its action, or saw neither, is
+// left as it is.
+func (c *taskCrew) stoppedIfCutOff() crewroute.Decision {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.decision.Stopped == "" && (len(c.broke) > 0 || len(c.gone) > 0) {
+		c.decision.Stopped = c.actionLocked("", "", time.Time{})
+	}
+	return c.decision
+}
+
 // crewKeys is a set's members, sorted.
 func crewKeys(set map[string]bool) []string {
 	out := make([]string, 0, len(set))
@@ -584,7 +598,7 @@ func crewKeys(set map[string]bool) []string {
 
 // crewFreeNotice is what the crew line says when a seat fell to a free pool:
 // the pool may keep what it is sent.
-const crewFreeNotice = "free routes in use · free routes may log prompts"
+const crewFreeNotice = "free routes in use (may log prompts)"
 
 // crewStopsOn is whether a seat with nowhere left to go stops the task on its
 // one action: a failure whose cause a person can fix (credit, a key, a

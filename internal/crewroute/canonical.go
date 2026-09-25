@@ -256,3 +256,29 @@ func versionDots(name string) string {
 	}
 	return string(b)
 }
+
+// DomainTuned is whether a model's own id says it was tuned for one domain
+// other than code and general work — finance, medicine, law, a single subject,
+// role-play — by a tag among the words of its name. Such a model is a poor
+// seat for software work whatever its figures, and a rescue that must take a
+// model it knows little about takes a general or a code model first.
+func DomainTuned(id string) bool {
+	name := strings.ToLower(ShortModel(strings.TrimSuffix(id, ":free")))
+	for _, word := range strings.FieldsFunc(name, func(r rune) bool {
+		return r == '-' || r == '_' || r == '.' || r == ':' || r == '/'
+	}) {
+		if domainTags[word] {
+			return true
+		}
+	}
+	return false
+}
+
+// domainTags are the name words that mark a model tuned for one domain.
+var domainTags = map[string]bool{
+	"fin": true, "finance": true, "financial": true, "med": true, "medical": true, "medicine": true,
+	"bio": true, "biomed": true, "clinical": true, "health": true, "legal": true, "law": true,
+	"math": true, "maths": true, "chem": true, "chemistry": true, "roleplay": true, "rp": true,
+	"story": true, "storytelling": true, "novel": true, "creative": true, "translate": true,
+	"translation": true, "guard": true, "safety": true,
+}

@@ -416,3 +416,26 @@ func TestADecisionRowNamesOnlySeatableCandidatesAndItsTopThree(t *testing.T) {
 		t.Errorf("the worker's top is %+v, want the pick first with its route", worker)
 	}
 }
+
+// A RESCUE TAKES A GENERAL OR A CODE MODEL BEFORE ONE TUNED FOR A DOMAIN, and
+// says free routes once.
+func TestTheFreeRescuePrefersGeneralModels(t *testing.T) {
+	dir := crewProfile(t)
+	rows := CrewCatalog()
+	rows = append(rows,
+		catalog.Model{ID: "inclusionai/ling-3.0-flash-fin:free", ContextLength: 262144, IntelligenceIndex: 60, CodingIndex: 80, AgenticIndex: 60, Parameters: []string{"tools"}},
+		catalog.Model{ID: "poolside/laguna-s-2.1:free", ContextLength: 262144, CodingIndex: 40, Parameters: []string{"tools"}})
+	CrewCatalog = func() []catalog.Model { return rows }
+	history := []router.CrewRouteOutcome{{At: time.Now(), Seat: "worker", Send: "z-ai/glm-5.3-flash", Provider: "openrouter", Kind: "payment"}}
+	withRouteHistory(t, &history)
+	for _, seat := range crewroute.Seats {
+		rescue := CrewRescue(dir, crewroute.Bugfix, seat, "")
+		if len(rescue) == 0 || crewroute.DomainTuned(rescue[0].Model) {
+			t.Errorf("the %s rescue is %+v, want a general model first", seat, rescue)
+		}
+	}
+	_, notice := crewCandidatesNoticed(dir, crewHealthAt(dir))
+	if strings.Count(notice, "free routes") != 1 {
+		t.Errorf("the notice says free routes other than once: %q", notice)
+	}
+}

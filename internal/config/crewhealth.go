@@ -286,7 +286,7 @@ func crewCandidatesNoticed(profileDir string, health crewHealth) ([]crewroute.Ca
 	if len(withFree) == len(candidates) {
 		return candidates, ""
 	}
-	return withFree, "free routes in use — credit unavailable on " + strings.Join(crewSet(health.unaffordable), ", ") + "; free routes may log prompts"
+	return withFree, "free routes in use (may log prompts) · credit unavailable on " + strings.Join(crewSet(health.unaffordable), ", ")
 }
 
 // anyPaidRoute is whether any candidate is reachable on a route that bills.
@@ -411,7 +411,7 @@ func crewFreeRescue(profileDir string, class crewroute.Class, seat crewroute.Sea
 	if notice == "" {
 		return nil
 	}
-	var free []crewroute.Candidate
+	var free, tuned []crewroute.Candidate
 	for _, c := range candidates {
 		var routes []crewroute.Route
 		for _, r := range c.Routes {
@@ -419,9 +419,19 @@ func crewFreeRescue(profileDir string, class crewroute.Class, seat crewroute.Sea
 				routes = append(routes, r)
 			}
 		}
-		if len(routes) > 0 {
+		switch {
+		case len(routes) == 0:
+		case crewroute.DomainTuned(c.Model.ID):
+			// A MODEL TUNED FOR ONE DOMAIN — finance, medicine, law — is a
+			// rescue's last choice, taken only when no general or code model
+			// is left.
+			tuned = append(tuned, crewroute.Candidate{Model: c.Model, Routes: routes})
+		default:
 			free = append(free, crewroute.Candidate{Model: c.Model, Routes: routes})
 		}
+	}
+	if len(free) == 0 {
+		free = tuned
 	}
 	var out []crewroute.Pick
 	avoid := map[string]bool{}

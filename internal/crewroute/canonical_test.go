@@ -72,3 +72,18 @@ func TestAQuantisedCopyInheritsEvidenceAtADiscount(t *testing.T) {
 		t.Fatalf("the copy reads %v (lineage %q), want %v", got, Lineage(local.ID), want)
 	}
 }
+
+// A MODEL'S NAME SAYS WHEN IT WAS TUNED FOR ONE DOMAIN, and a general or a
+// code model's does not.
+func TestDomainTunedModelsAreToldByTheirNames(t *testing.T) {
+	for _, id := range []string{"inclusionai/ling-3.0-flash-fin:free", "vendor/med-llama-70b", "acme/legal-7b", "x/qwen-math-72b", "y/roleplay-13b:free"} {
+		if !DomainTuned(id) {
+			t.Errorf("%s reads as general", id)
+		}
+	}
+	for _, id := range []string{"poolside/laguna-s-2.1:free", "z-ai/glm-5.3-flash", "qwen/qwen3-coder:free", "google/gemma-4-31b-it:free", "cohere/north-mini-code:free"} {
+		if DomainTuned(id) {
+			t.Errorf("%s reads as domain-tuned", id)
+		}
+	}
+}
