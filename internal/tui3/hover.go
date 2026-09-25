@@ -624,6 +624,14 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 				return hoverAt{kind: hoverPaste, index: n}
 			}
 		case chromeOverlay:
+			// THE @ LIST'S PREFIX WORDS ARE COLUMNS OF ITS FIRST ROW. A press on
+			// "team" is not a press on the row, so the word rides the key
+			// (mention.go).
+			if a.comp.open && !a.comp.arg && a.comp.top == 0 && mark.index == 0 {
+				if word, ok := mentionHeadAt(x); ok {
+					return hoverAt{kind: hoverOverlay, index: mark.index, key: word}
+				}
+			}
 			// EVERY LIST DOWN HERE IS ROWS, AND THE FOLDER SHEET IS COLUMNS. Its
 			// three columns do three different things to a press — walk out, move
 			// the cursor, walk in — so a band across the row would offer to do one

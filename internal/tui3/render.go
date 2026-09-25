@@ -744,6 +744,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	// THE TEAM HALF OF THE LINK PASS, over the rows as they were laid out and
 	// before the indent law moves them with their spans (teamlink.go).
 	a.teamLinkPass(out, es)
+	a.mentionLinkPass(out, es)
 	if workIndent(width) != "" {
 		cols := workIndentCols(width)
 		for i := range out {
@@ -3909,6 +3910,9 @@ func (a *app) hintWord() string {
 		// enter belongs to the LINE rather than to the list (input.go).
 		return "tab take · enter run · esc"
 	case a.menu.open || a.comp.open:
+		if hint := a.mentionHeadHint(); hint != "" {
+			return hint
+		}
 		return "↑↓ · enter · esc"
 	case a.shaping():
 		// The widening answer is part-way given and the block is on its second

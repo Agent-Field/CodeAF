@@ -898,6 +898,9 @@ type taskRef struct {
 	title    string
 	// member and team are a team reference's target ([taskLink.member]).
 	member, team string
+	// paint, when set, is this reference's own ink. Nil uses the pass's ink.
+	// A team mention uses it so the bullet wears that team's colour.
+	paint func(palette, string) string
 }
 
 // taskWord is the anchor every shape in the grammar opens on.
@@ -1121,7 +1124,11 @@ func paintLinksWith(text, flat string, refs []taskRef, pal palette, hot int, ink
 	for i := 0; i < len(text); {
 		if next < len(refs) && at == refs[next].from {
 			ref := refs[next]
-			inked := ink(pal, flat[ref.from:ref.to])
+			pen := ink
+			if ref.paint != nil {
+				pen = ref.paint
+			}
+			inked := pen(pal, flat[ref.from:ref.to])
 			if next == hot {
 				inked = hotInk(pal, flat[ref.from:ref.to])
 			}
