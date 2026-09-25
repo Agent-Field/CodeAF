@@ -386,51 +386,43 @@ func (p *tasksPlace) filtered(a *app) tasksReading {
 	// fold somebody left shut is not a decision they made about a list they had
 	// not yet asked for.
 	r.unfolded = true
-	// AND A MATCH IS SHOWN WHERE IT SITS. The work ABOVE a hit — the piece of work
-	// it was cut out of, and the conversation that asked for that — is kept even
-	// though it matches nothing, because the row above a hit is the one thing on
-	// the page that explains it. It used to be dropped, which promoted the hit to
-	// a root and left a person reading a worker with no idea whose it was.
-	hit := make(map[tasksKey]bool, len(r.items))
-	found := make([]tasksKey, 0, len(r.items))
-	for _, item := range r.items {
-		if tasksMatches(item, needle) || session.TaskWordsMatch(r.chatViews[item.row.Transcript].title, needle) {
-			key := tasksKeyOf(item.entry)
-			hit[key] = true
-			found = append(found, key)
+	// The filter selects conversations, not fragments of their work. A match
+	// on any descendant keeps its whole conversation, including siblings and
+	// descendants that do not repeat the query. Ownership, never a shared task
+	// number or title, decides which rows travel together.
+	owners := make(map[string]bool)
+	chatMatches := func(row session.SessionRow) bool {
+		title := row.Title
+		if view := r.chatViews[row.Transcript]; view.title != "" {
+			title = view.title
+		}
+		return session.TaskWordsMatch(title+" "+row.Project+" "+row.Workspace, needle)
+	}
+	for _, row := range r.chats {
+		if chatMatches(row) {
+			owners[row.ID] = true
 		}
 	}
-	tree := r.tree()
-	for _, key := range found {
-		// The hit set ends the walk when a path has already been visited.
-		for at := key; ; {
-			up, ok := tree.up[at]
-			if !ok || hit[up] {
-				break
-			}
-			hit[up] = true
-			at = up
+	for _, item := range r.items {
+		if tasksMatches(item, needle) || chatMatches(item.row) {
+			owners[tasksChatOf(item)] = true
 		}
 	}
-	kept := make([]tasksItem, 0, len(hit))
+	kept := make([]tasksItem, 0, len(r.items))
 	for _, item := range r.items {
-		if hit[tasksKeyOf(item.entry)] {
+		if owners[tasksChatOf(item)] {
 			kept = append(kept, item)
 		}
 	}
 	r.items = kept
 	chats := make([]session.SessionRow, 0, len(r.chats))
-	owners := make(map[string]bool)
-	for _, item := range kept {
-		owners[tasksChatOf(item)] = true
-	}
 	for _, row := range r.chats {
-		if owners[row.ID] || session.TaskWordsMatch(row.Title+" "+row.Project+" "+r.chatViews[row.Transcript].title, needle) {
+		if owners[row.ID] {
 			chats = append(chats, row)
 		}
 	}
 	r.chats = chats
-	tree = tasksTreeOf(kept, r.now, r.order, chats...)
+	tree := tasksTreeOf(kept, r.now, r.order, chats...)
 	tree.keepConversationStates(p.reading.tree())
 	r.shape = &tree
 	return r
@@ -722,12 +714,15 @@ func (a *app) tasksFiltered() tasksReading {
 
 // tasksMatches asks the query of one row.
 //
-// ANOTHER WINDOW'S ROW IS ASKED ITS TITLE AND NOTHING ELSE. Its id is
+// Another window's row matches its name and owner, but its id is
 // deliberately not matched: ids restart with every conversation (session's
 // task_index.go says so on TaskIndexEntry.ID), so "7" typed here is somebody
 // quoting a number they read in THIS window, and answering it with another
 // window's seventh node would hand them the wrong task under the right number.
 func tasksMatches(item tasksItem, needle string) bool {
+	if session.TaskWordsMatch(tasksLabel(item.entry), needle) {
+		return true
+	}
 	if item.away {
 		return session.TaskWordsMatch(item.entry.Title+" "+item.row.Title+" "+item.row.Project, needle)
 	}

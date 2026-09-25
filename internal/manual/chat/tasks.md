@@ -2918,12 +2918,20 @@ wisp · /Users/ada/code/wisp
 - Inside a task this is absent, like the rest of it: a task sees the pieces it handed out
   itself and nothing wider.
 
+## Filter Sessions by conversation name, project or task name
+
+Type in Sessions to find conversations by their name, project name or path, or any
+nested task name. A match keeps the complete conversation and all its tasks, rather
+than hiding unmatched siblings or children. Conversations without tasks can match
+their name or project too. Clear the query to restore your previous folds.
+
 ## Searching the task page: type to filter, find an old task by name, where the words I type appear, my cursor jumped to another task while I was reading
 
-**Just type.** On the task page every printable key — letters, the space, and digits
-everywhere they are not an answer — builds a filter, and every section narrows against it as
-you go. The two exceptions are `1` and `2` over a row the record pane beside the list is
-drawing answers for, which answer it: see *Answer a task from the list*.
+**Just type.** On Sessions every printable key — letters, the space, and digits
+everywhere they are not an answer — builds a filter. It selects whole conversations
+by conversation name, project name or path, or any nested task name. A match keeps
+the conversation’s complete task tree, including its other tasks, visible. The two exceptions
+are `1` and `2` over a row the record pane beside the list is drawing answers for, which answer it: see *Answer a task from the list*.
 
 ```
 ⌕ parser                                            state               age ↓
@@ -2934,16 +2942,16 @@ reading ink with the dim `type to filter` standing in the box until you type. It
 an echo on a note line UNDER the rows your keystrokes had just changed; it is at the top of
 the list now, where the typing goes.
 
-- It matches a task's **title**, its **id** (typed exactly: `7` finds task 7 and nothing
-  else), its **name** as the `@` list spells it, and its **outcome**. Letters in order are
+- Task matching includes its visible **label**, full **title**, exact **id**,
+  **name** as the `@` list spells it, and **outcome**. The result is the task’s whole
+  conversation. Letters in order are
   enough — `prsr` finds `Port the parser`.
 - **Every section is filtered at once**, another window's rows included — those match on
-  their **title only**, never on an id, because ids restart with every conversation and `7`
+  their **label or title**, never on an id, because ids restart with every conversation and `7`
   typed here is a number you read in *this* window. A section with no match is not drawn at
   all, heading and all, so a filter that only matches old work leaves the `earlier` list
   alone on the page.
-- It also matches the **conversation or project** a row came out of, because that is drawn
-  on the row and anything on screen is something you can search for.
+- A **conversation or project** match also finds conversations with no tasks.
 - `backspace` deletes a character, `ctrl+w` a word, `ctrl+u` all of it.
 - **`esc` clears the filter first and closes the page on the second press** — the same
   layering the settings panel's search has. `ctrl+.` closes the page from anywhere.
@@ -5354,8 +5362,10 @@ filter`. That is where your letters land — there is no message to send from th
 every printable key goes to the filter. `backspace` takes one back, `ctrl+u` clears the box,
 `ctrl+w` takes a word.
 
-The query is matched against the task's name, the main chat's title, the state word and the
-file paths the work touched. Every section narrows at once, and a section the query empties
+The query selects whole conversations by conversation name, project name or path, or any
+nested task name. A match keeps all tasks in that conversation, with their nesting intact.
+Conversations with no tasks can match their own name or project. Every section narrows at
+once, and a section the query empties
 is not drawn at all. A query that matches nothing keeps the page's own heading and count and
 says `nothing matches` under the list — there **is** work here, and your words are hiding it.
 

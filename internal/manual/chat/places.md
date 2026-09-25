@@ -258,8 +258,9 @@ went to the filter at the top of the list, and on spend the words went nowhere a
 is gone (2026-09-17).
 
 **Typing still filters where a list is worth filtering.** On **sessions** every printable key
-narrows the list, and the letters draw on the control row at the top of it beside the `⌕`
-mark. On **search** the words you type are the query, drawn on the first row of the body the
+narrows the conversation list by conversation name, project name or path, or nested task
+name. Matching conversations keep their complete task trees. The letters draw on the
+control row at the top beside the `⌕` mark. On **search** the words you type are the query, drawn on the first row of the body the
 same way, and `esc` clears them. On **memory** the head row echoes the filter in place of
 `type to filter`. Spend and standing take no text.
 
