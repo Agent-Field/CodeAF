@@ -787,7 +787,10 @@ wait in `outbox.jsonl` beside the sheet, to leave with the pool's other
 measurements; `read` keeps them local, and `off` asks no judge at all and
 writes nothing. The call itself is billed to the `judge` seat, so it shows up
 in the spend pages beside the crew seats rather than inside a task's own
-cost.
+cost. The judge asks with the key the install holds at that moment, so a task
+that lands just after you paste a key into first-run setup is scored with that key.
+A task that lands while there is no key at all is not judged. It is not marked
+judged either, so the next start scores it once a key exists.
 
 With `model_pool` on, the rows leave for the relay after each judged run and
 once more at start-up, under this install's own nonce and nothing else. The
