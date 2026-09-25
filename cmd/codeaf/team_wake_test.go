@@ -80,22 +80,46 @@ func managedTeamWith(t *testing.T, root, member, workspace string) string {
 	return teamID
 }
 
-// waitForAsk waits until the model has been sent a message holding want.
-func (m *recordingModel) waitForAsk(t *testing.T, want string, within time.Duration) {
+// waitForDirective waits until the model has been sent a line that is the
+// manager's directive and carries text as its words. It asserts what the
+// member was handed, not the line's exact wording: a delivered line's head may
+// end in the entry's number (" #42", which a member is told so it can answer
+// that line), and that number is the Traffic's to choose.
+func (m *recordingModel) waitForDirective(t *testing.T, text string, within time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(within)
 	for time.Now().Before(deadline) {
 		m.mu.Lock()
 		for _, request := range m.requests {
-			if request.messageContaining(want) != "" {
-				m.mu.Unlock()
-				return
+			for _, message := range request.texts() {
+				if directiveLineIn(message, text) {
+					m.mu.Unlock()
+					return
+				}
 			}
 		}
 		m.mu.Unlock()
 		time.Sleep(20 * time.Millisecond)
 	}
-	t.Fatalf("the model was never sent %q", want)
+	m.mu.Lock()
+	var sent strings.Builder
+	for _, request := range m.requests {
+		sent.WriteString(request.allText())
+	}
+	m.mu.Unlock()
+	t.Fatalf("the model was never sent the manager's directive %q; it was sent:\n%s", text, sent.String())
+}
+
+// directiveLineIn reports whether message holds a line marked as the
+// manager's directive whose words are text.
+func directiveLineIn(message, text string) bool {
+	for _, line := range strings.Split(message, "\n") {
+		head, words, ok := strings.Cut(strings.TrimSpace(line), ": ")
+		if ok && strings.HasPrefix(head, "◆ directive from manager") && words == text {
+			return true
+		}
+	}
+	return false
 }
 
 // A DIRECTIVE WAKES A MEMBER THE ENGINE HOLDS, with no surface and nobody
@@ -116,7 +140,7 @@ func TestTeamWakeTheEngineWakesAnIdleMemberOnADirective(t *testing.T) {
 	if err := teams.AppendTraffic("", teamID, teams.Entry{Kind: teams.KindDirective, From: teams.FromManager, To: "web", Text: "Fix the header."}); err != nil {
 		t.Fatal(err)
 	}
-	model.waitForAsk(t, "◆ directive from manager: Fix the header.", 20*time.Second)
+	model.waitForDirective(t, "Fix the header.", 20*time.Second)
 }
 
 // A MEMBER NOBODY HOLDS IS OPENED BY ITS FOLDER'S HOST, and wakes there. The
@@ -175,7 +199,7 @@ func TestTeamWakeAMemberNobodyHoldsIsOpenedHeadlessByItsHost(t *testing.T) {
 	if err := resumeTeamConversation(member, workspace, dial); err != nil {
 		t.Fatalf("the host did not open the member: %v", err)
 	}
-	model.waitForAsk(t, "◆ directive from manager: Fix the header.", 20*time.Second)
+	model.waitForDirective(t, "Fix the header.", 20*time.Second)
 
 	// AND A WINDOW OPENING IT NOW JOINS THE RUNNING ONE rather than booting a
 	// second agent onto its journal.
