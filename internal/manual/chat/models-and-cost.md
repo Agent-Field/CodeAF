@@ -2197,7 +2197,7 @@ covers the requests made before the restart.
 
 ## Is there a record of what I spent across all my conversations, by day or by model
 
-Yes — a file on disk, and **the spend place reads it**. Press `alt+4`, or `tab` to it from any
+Yes, a file on disk, and **the spend place reads it**. Press `alt+4`, or `tab` to it from any
 other place, and it draws that file: which days, which models, and what the money was for.
 
 Every cost line written into a conversation's transcript is also appended to one file for the
@@ -2815,7 +2815,7 @@ the same registry row, so what you set through one is what the others show:
 | --- | --- |
 | `/budget`, also `/limits` | opens the tab with the cursor on `per day` |
 | the money segment on the status line | press `$0.14` — it opens the tab. It brightens under the pointer to say it is a door |
-| the spend place (`alt+4`) | `enter` on its first line, the dim `today $3.42 of $500 · /budget sets the limits` — the same figure the top line of every place draws |
+| the spend place (`alt+4`) | `enter` on its first line, the dim `today $3.42 of $500 · /budget sets the limits`, the same figure the top line of every place draws |
 | the spend place, from a row | `→` opens the verb strip, where `b` is `the limits` |
 | a refused turn | the message names `/budget` |
 | the first-run setup | its `Models and spending` screen, whose **Daily limit** row writes this same row. It asks about the day's limit only — `per plan` and `per conversation` keep their defaults there and are changed here |

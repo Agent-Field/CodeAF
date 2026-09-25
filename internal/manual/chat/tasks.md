@@ -2310,7 +2310,7 @@ still size, shape and start the work directly, with no proposal card in between 
 extra question. There is no third form: `/task adaptive` is retired.
 
 **There is still no `/tasks` command**, though `sessions` is the name of the PLACE `/history`
-opens — `alt+3` and `tab` get there without typing anything. As a slash word the plural is not one this surface answers to;
+opens, `alt+3` and `tab` get there without typing anything. As a slash word the plural is not one this surface answers to;
 the two things a bare `/task` and a `/task <brief>` do are the pair of errands a person has
 about tasks — go and look at the work, or give codeaf some.
 

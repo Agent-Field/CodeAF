@@ -2885,7 +2885,7 @@ back to plain ASCII (`!` `*` `o` `-` `+`) and the screen still reads.
 ## alt or option or opt — how the chords are spelled on a Mac, on Linux and on Windows, and why not the option symbol
 
 **It is one key and two spellings, and codeaf picks the spelling from the platform it is
-running on.** On macOS every chord is drawn with `opt+` — `opt+1`…`opt+8`, `opt+.`,
+running on.** On macOS every chord is drawn with `opt+`, `opt+1`…`opt+8`, `opt+.`,
 `opt+enter`, `opt+g`, `opt+q`, `opt+s`, `opt+w`, `opt+o` — because the key that Mac keycap
 calls **option** is the key you press. On Linux, on Windows, and everywhere else the same
 chords are drawn `alt+1`…`alt+8`, `alt+.`, `alt+enter` and so on. Every hint line, the key

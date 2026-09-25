@@ -308,7 +308,7 @@ ghostty with `font_family`, `[font.normal] family` and `font-family` in their co
 files.
 
 **Option as meta, on macOS.** Every chord codeaf binds is the option key, and on a Mac it is
-drawn the way the keycap names it — `opt+enter` to send what you typed off as a task, `opt+1`…`opt+8`
+drawn the way the keycap names it, `opt+enter` to send what you typed off as a task, `opt+1`…`opt+8`
 to jump to a place, `opt+.` for the map. (On Linux and Windows the same chords are drawn
 `alt+enter`, `alt+1`…`alt+8`, `alt+.`; this manual names both spellings together.) Most Mac
 terminals send Option as an accent-composing key until you tell them otherwise, so those
