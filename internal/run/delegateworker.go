@@ -23,8 +23,9 @@ package run
 //
 // Before the program starts, the worker opens the run's model API
 // (internal/provider/modelapi) on this machine's loopback and hands the child
-// its address and token and nothing else (delegate.ChildEnv): no key reaches
-// the program. Every call it makes goes through the conversation's own
+// its address and token and nothing else (delegate.ChildEnv): no provider key
+// is inherited by the program, and its model-written shell loses the loopback token.
+// Every call it makes goes through the conversation's own
 // completer, is refused at the run's dollar ceiling before it is made, and is
 // written to the task's conversation log as one turn. The API is closed the
 // moment the program has exited, and the token dies with it.
@@ -257,7 +258,7 @@ func (s *delegateSink) Hello(h delegate.Hello) {
 	// TWO BUILDS, ONE RUN. Nothing a newer child writes can be trusted to mean
 	// what this parent reads it as, so the run is stopped before it spends and
 	// the person is told the one thing that fixes it.
-	s.mismatch = fmt.Sprintf("codeaf was rebuilt while this conversation was open (its %s speaks version %d of the records, this one reads %d); restart codeaf to run %s",
+	s.mismatch = fmt.Sprintf("%s speaks record protocol version %d, but codeaf reads version %d; restart codeaf to run %s",
 		s.name, h.Protocol, delegate.ProtocolVersion, s.name)
 	if s.stop != nil {
 		s.stop()
@@ -269,6 +270,9 @@ func (s *delegateSink) Stage(record delegate.StageRecord) {
 }
 
 func (s *delegateSink) Step(record delegate.StepRecord) {
+	if s.mismatch != "" {
+		return
+	}
 	s.steps++
 	if err := appendTrajectory(s.storeDir, s.taskID, Step{
 		Kind:        trajectoryStepKind,
@@ -478,8 +482,8 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 		Bin:  exe,
 		Args: delegate.ChildArgs(w.program, w.workspace, brief, delegate.Ceilings{CostUSD: w.cost, Hours: w.elapsed.Hours()},
 			delegate.RunFacts{Plain: w.setup.PlainFolder, Crew: w.setup.Crew}),
-		// NO KEY REACHES THE PROGRAM (delegate.ChildEnv): the API's address and
-		// token are the whole of what it is given.
+		// NO PROVIDER KEY IS INHERITED BY THE PROGRAM (delegate.ChildEnv): the API's
+		// address and token are what its engine needs; model commands lose both.
 		Env:        append(delegate.ChildEnv(api.API()), "SENIOR_DEV_EXPECTED_BRANCH="+w.setup.Branch, "SENIOR_DEV_IGNORED_AT_START="+w.setup.IgnoredFile),
 		Dir:        w.workspace,
 		StderrPath: filepath.Join(taskDir, delegateStderrName),

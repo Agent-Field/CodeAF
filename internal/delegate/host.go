@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 )
@@ -79,21 +80,33 @@ func ModelAPIFromEnv() (ModelAPI, bool) {
 // with every provider key and model redirection codeaf knows of taken out, and
 // the model API's two names set.
 //
-// NO KEY REACHES A PROGRAM. Taking the keys out is not tidiness: a program
-// hands its environment on to every command its model runs, so a key left
-// here is a key any model-written shell line can print — senior-dev passed its
-// whole environment to its shell tool before it was absorbed. And a
-// redirection left here would let a program reach a model some other way than
-// the API, which is the one road codeaf can meter, refuse at the ceiling and
-// show a person.
+// NO PROVIDER KEY IS INHERITED BY A PROGRAM. The child itself receives only the
+// loopback model token; the model's shell strips that token as well. A
+// redirection left here would let a program reach a model outside the API,
+// the one road codeaf can meter and show a person.
 func ChildEnv(api ModelAPI) []string {
-	strip := []string{EnvModelAPI, EnvModelToken, envBaseURL, "OPENAI_API_KEY", modelsource.DefaultSource("").KeyEnv}
+	strip := []string{EnvModelAPI, EnvModelToken, envBaseURL, "CODEAF_API_KEY", "OPENAI_API_KEY", modelsource.DefaultSource("").KeyEnv} // legacy-name
 	for _, source := range modelsource.Vendored() {
 		if source.KeyEnv != "" {
 			strip = append(strip, source.KeyEnv)
 		}
 	}
+	for _, source := range config.PersistedSources(config.ProfileDir()) {
+		if source.KeyEnv != "" {
+			strip = append(strip, source.KeyEnv)
+		}
+	}
 	environ := env.EnvironWithout(strip...)
+	// A provider may use a conventional key name before codeaf lists it, and
+	// the older compatibility spelling may be present without its new name.
+	kept := environ[:0]
+	for _, entry := range environ {
+		name, _, _ := strings.Cut(entry, "=")
+		if !strings.HasSuffix(name, "_API_KEY") {
+			kept = append(kept, entry)
+		}
+	}
+	environ = kept
 	if api.BaseURL != "" {
 		environ = append(environ, EnvModelAPI+"="+api.BaseURL, EnvModelToken+"="+api.Token)
 	}

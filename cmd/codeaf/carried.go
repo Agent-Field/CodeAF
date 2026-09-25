@@ -343,8 +343,8 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 		Name: inv.Program.Name,
 		Bin:  exe,
 		Args: carriedInFolder(carriedChildLine(inv), inv, folder),
-		// NO KEY REACHES THE PROGRAM (delegate.ChildEnv): the API's address and
-		// token are the whole of what it is given.
+		// NO PROVIDER KEY IS INHERITED BY THE PROGRAM (delegate.ChildEnv): the engine
+		// gets the loopback token it needs, and model commands lose that token.
 		Env:        append(delegate.ChildEnv(api.API()), "SENIOR_DEV_EXPECTED_BRANCH="+folder.Branch, "SENIOR_DEV_IGNORED_AT_START="+folder.IgnoredFile()),
 		Dir:        here,
 		StderrPath: filepath.Join(record, carriedStderrName),

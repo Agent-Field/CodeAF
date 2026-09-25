@@ -120,9 +120,9 @@ func TestRunHandsTheBriefOverVerbatim(t *testing.T) {
 	}
 }
 
-// NO KEY REACHES A PROGRAM. The child's environment is this process's with
-// every provider key and model redirection taken out and the model API's two
-// names put in.
+// NO PROVIDER KEY IS INHERITED BY A PROGRAM. The child's environment is this
+// process's with provider keys and model redirections taken out and the
+// model API's two names put in.
 func TestTheChildsEnvironmentCarriesTheAPIAndNoKey(t *testing.T) {
 	script := fakeProgram(t, terminalLine("pass", "done"))
 	envFile := filepath.Join(t.TempDir(), "env")
