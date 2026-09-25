@@ -480,7 +480,7 @@ func (a *app) planRoomWorkRead(now bool) tea.Cmd {
 			}
 			plan := a.room.plan
 			plan.working = false
-			if found {
+			if found || work.NoDoor {
 				plan.work, plan.workRead = work, true
 			} else {
 				plan.work, plan.workRead = session.PlanTaskWork{}, true
@@ -519,6 +519,9 @@ func (a *app) roomWorkRows(width int) []row {
 		}
 		if !plan.workRead {
 			return []row{dim(planWorkReadingWord)}
+		}
+		if plan.work.NoDoor {
+			return []row{dim(planWorkNoDoorWord)}
 		}
 		work := plan.work
 		if !work.Read {
