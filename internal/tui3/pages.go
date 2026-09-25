@@ -49,6 +49,10 @@ const (
 	pageSpend
 	pageSearch
 	pageSettings
+	// pageTeams is the team-level view (place_teams.go). It is appended rather
+	// than put after pageHome because the ids are only names: the order a
+	// person meets the places in is [placeOrder]'s, and nothing stores an id.
+	pageTeams
 	// pageChats is the bar's way back to the conversations (place_chats.go):
 	// never stood in, only walked out through.
 	pageChats
@@ -246,6 +250,11 @@ type place interface {
 	// hint is the line under the composer: what the row under the cursor can be
 	// asked for, and how to leave.
 	hint(a *app) string
+	// about is what this place holds, in the few words the hint line has room
+	// for while the pointer rests on the place's word on the nav (topnav.go's
+	// [app.headHint]): `the teams you hand work to`. Like `hint` it has no
+	// default, so a place added later says what it is for or does not build.
+	about() string
 	// changed is the tab's count: how many things in here have moved since the
 	// person last looked at this place.
 	changed(a *app, since time.Time) int
@@ -369,18 +378,20 @@ func (placeBase) caretRow(a *app, width int, rows []placeRow) (int, int, bool) {
 var placeRegistry = map[page]place{}
 
 // placeOrder is the whole set, in the one order that matters: `alt+1` through
-// `alt+7`, and — for the first [placeBarPlaces] of them — left to right along
+// `alt+9`, and, for the first [placeBarPlaces] of them, left to right along
 // the tab bar and round the circle `tab` walks.
 //
 // THE BAR IS FOUR PLACES AND HOME IS THEIR SUMMARY (DESIGN.md's law 10). What
-// wants you and what is running (home), the work itself (tasks), what it cost
-// (spend), and how this machine is set (settings). Standing, memory and search
-// come after them: still rooms, still reached by `/standing`, `/memory` and
-// `/search`, by the typed box's place offers, by `alt+5`…`alt+7` and by the
-// map — but not drawn on a bar a person reads a hundred times a day, until they
-// are the rooms a person walks into a hundred times a day.
+// wants you and what is running (home), the work itself (sessions, the tasks
+// place), what it cost (spend), and how this machine is set (settings), with
+// teams and the way back to the chats between home and the work. Standing,
+// memory and search come after them: still rooms, still reached by
+// `/standing`, `/memory` and `/search`, by the typed box's place offers, by
+// `alt+7`…`alt+9` and by the map, but not drawn on a bar a person reads a
+// hundred times a day, until they are the rooms a person walks into a hundred
+// times a day.
 //
-// THE THREE KEEP A DIGIT EACH so a hand that learned `alt+5` finds a room there
+// THE THREE KEEP A DIGIT EACH so a hand that learned `alt+7` finds a room there
 // rather than a key that does nothing.
 //
 // IT IS A LIST HERE AND NOT AN `init` ORDER. Go runs a package's `init`s in
@@ -389,14 +400,15 @@ var placeRegistry = map[page]place{}
 // `place_home.go` sorts after `place_tasks.go` would silently reorder the bar
 // and every number on it.
 //
-// AND THE CHATS ARE SECOND, right after home (place_chats.go): the room a
-// person came from, and goes back to more than to any other. A place added to
-// the bar later, teams, slots in between home and chats as one more row here.
-var placeOrder = []page{pageHome, pageChats, pageTasks, pageSpend, pageSettings, pageStanding, pageMemory, pageSearch}
+// TEAMS IS SECOND AND THE CHATS THIRD (the owner's order, 2026-09-24). Teams
+// is where a person runs the work they handed off (place_teams.go, DESIGN.md
+// section 8.4), so it is read as often as home is; the chats (place_chats.go)
+// are the room a person came from, and goes back to more than to any other.
+var placeOrder = []page{pageHome, pageTeams, pageChats, pageTasks, pageSpend, pageSettings, pageStanding, pageMemory, pageSearch}
 
 // placeBarPlaces is how many of [placeOrder] the tab bar draws: the four a day
-// is read through, and the way back to the chats.
-const placeBarPlaces = 5
+// is read through, teams beside home, and the way back to the chats.
+const placeBarPlaces = 6
 
 // barPages is the places the bar draws while a person stands at `here`: the
 // first [placeBarPlaces], and the room they are standing in when it is one of
@@ -580,113 +592,18 @@ func (a *app) placeCount(id page) int {
 	return 0
 }
 
-// ── the tab bar ─────────────────────────────────────────────────────────────
+// ── the places' words on the nav ────────────────────────────────────────────
+//
+// THE PLACES ARE DRAWN ON THE HEAD'S FIRST ROW, after the wordmark, on every
+// page (topnav.go). They used to be a bar of their own on the second row of a
+// place and nowhere else, taking turns with the chat strip; what is left here
+// is what the nav reads about each place.
 
-// placeTabBar is the second row of every place: the four words ([barPages]), the
-// one you are standing in wearing the band, and a number beside any place that
-// has something new in it.
-//
-// ONE TOP BAR (ruled 2026-09-24). The places bar and the chat strip are one row
-// in one place: the same y ([placeTabRow], the strip's row), the first word at
-// the same x ([placeBarLead] is the strip's [headLabelAt]), the same air between
-// two items ([placeBarGap], the strip's gap after Home and after the chip), and
-// the same ground on the current item ([activeGround], the strip's tab in
-// front). The strip's geometry was kept and this bar moved to it: the strip is
-// the row a person spends the day on, its grounded chips and close marks need
-// the two cells of air to read as separate things, and five short words have
-// the room to spare. [TestOneTopBarPlacesAndChatsShareGeometry] pins it.
-//
-// IT IS [sheetTabBar] WITH THE TITLES PASSED IN, and it is drawn with that
-// function's chip, [tabPad], for the reason that
-// function's comment already gives: "this panel IS a tab bar — the same object
-// the task strip is, drawn the same way, so that 'which page am I on' is one
-// visual question across the app rather than two". The settings panel keeps its
-// own inner bar under this one, and the two are told apart by what they are
-// made of rather than by a decoration: this one is the places, that one is
-// settings' own sections.
-//
-// ── THE WIDTH LADDER ────────────────────────────────────────────────────────
-//
-// A bar that is cut in half is a bar that lies about how many places there are,
-// so it gives up words in a stated order rather than being trimmed:
-//
-//  1. every word, every count, with the bar's own air between the chips —
-//     while they fit;
-//  2. EVERY WORD AGAIN, WITH THE AIR GIVEN UP. When the bar was seven words,
-//     they and the padding each chip carries were fifty-seven cells and the air
-//     between them six more, so a sixty-column terminal — a split pane, an ssh
-//     session from a train, a phone — overshot by three and fell all the way
-//     past the middle rung to the single word `home`, because on a quiet machine
-//     no place wears a count. The words are what this row is FOR and the space
-//     between them is not, so the space is what goes first.
-//  3. as many words as fit, in the bar's own order, always carrying the place
-//     you are standing in and any place wearing a count, and ending with a dim
-//     count of the places that did not fit ([barMoreWord]).
-//
-// THE BAR IS THE SIGN AND THE FOOT IS THE ROUTE. A row this narrow cannot say
-// `tab next place` as well as the words — at rung 3 there are not seven cells
-// spare for it — so what the bar owes a person is that the other rooms EXIST,
-// and the key that reaches them is on the foot of every place
-// ([placeHintTail]), which [hintFit] protects to the last cell there is. A bar
-// collapsed to the word `home` said neither of those things, and every other
-// place was undiscoverable on exactly the tier where a person is least able to
-// go looking for them.
-//
-// `numbered` is the map ([app.mapShowing]): every chip grows the digit that
-// jumps to it, in the cells the words were already in, and the places off the
-// bar are drawn after them with theirs — nothing moves that a person has to
-// re-find when the map goes away, and the three digits the bar does not show
-// are shown where the keys are.
-func (a *app) placeTabBar(width int, numbered bool, pal palette) string {
-	every := func(page) bool { return true }
-	for gap := placeBarGap; gap >= 0; gap-- {
-		if full, spans, ok := a.tabBarAt(width, numbered, pal, every, gap, 0); ok {
-			a.tabs = spans
-			return a.placeBarMachine(full, width, pal)
-		}
-	}
-	keep, elided := a.barWordsAt(width, numbered)
-	some, spans, _ := a.tabBarAt(width, numbered, pal, func(id page) bool { return keep[id] }, 0, elided)
-	a.tabs = spans
-	return a.placeBarMachine(some, width, pal)
-}
-
-// barMoreWord is the count of places a narrow bar could not carry, in the
-// spellings [rowfit.go]'s law 2 asks a fact to degrade through: `▸ 3 more` while
-// there are cells for it, and `▸ 3` when there are not.
-//
-// IT IS THE SURFACE'S ONE FOLD SENTENCE ([foldSpellings]) AND NO LONGER A `+`.
-// This row and the command menu's own tail mean the same thing — a navigation
-// list has more items than fit — and they were two writers with two spellings:
-// `+3 more` here against `▸ 3 more` there, so a person could not tell whether
-// `+3` was a count, a badge or a door. The mark is the half that says which, and
-// it is on every rung of the ladder: the word `more` gives way before `▸` does.
-//
-// IT IS A SIGN AND NOT A DOOR, and that is decided rather than unfinished: it
-// opens nothing, wears no cursor and claims no span, exactly as the machine's
-// name at the other end of this row does ([placeBarMachine]). A chip that
-// carried a press would have to pick one of the places it stands for, and the
-// key that reaches them all in order is `tab`.
-func barMoreWord(n, room int) string {
-	if n <= 0 {
-		return ""
-	}
-	for _, say := range foldSpellings(n, "") {
-		if tabPadCols+ansi.StringWidth(say) <= room {
-			return say
-		}
-	}
-	// AND A FRAME WITH NO ROOM EVEN FOR `+6` SAYS NOTHING, rather than running
-	// past its own edge. A count that overflowed the row would be this ladder
-	// committing the fault it exists to prevent.
-	return ""
-}
-
-// barChipWord is the word one place's chip carries: its own word, the digit the
-// map grows in front of it, and the count behind it. It is factored out of
-// [app.tabBarAt] so the ladder can MEASURE a chip without painting one, and so
-// the measurement and the paint can never come to disagree about how wide a
-// word is.
+// barChipWord is the word one place's button carries: its own word, the digit
+// the map grows in front of it, and the count behind it. It is factored out so
+// the nav's ladder can MEASURE a button without painting one, and so the
+// measurement and the paint can never come to disagree about how wide a word
+// is.
 func (a *app) barChipWord(id page, numbered bool) string {
 	word := id.word()
 	if numbered {
@@ -698,102 +615,13 @@ func (a *app) barChipWord(id page, numbered bool) string {
 	return word
 }
 
-// barWordsAt chooses the words a bar too narrow for all seven carries, and says
-// how many it had to leave off.
-//
-// THE MANDATORY HALF FIRST: the place you are standing in and the word under the
-// cursor may never go ([app.barKeeps] holds that argument), and neither may a
-// place wearing a count, because a number is this row saying something moved in
-// a room you are not standing in.
-//
-// THEN THE ROW IS FILLED IN THE BAR'S OWN ORDER AND STOPS AT THE FIRST WORD
-// THAT WILL NOT FIT — [rowfit.go]'s law 3 said about words instead of facts. A
-// fill that skipped `standing` because `spend` was shorter would draw a
-// different four places at every width, and `alt+1` … `alt+7` name positions
-// that never move; a prefix plus your own word is a reading a person can learn.
-//
-// The count's own cells are reserved out of the fill, measured against the
-// longest spelling this row could end up drawing, because a bar that spent its
-// last cells on one more word and then had no room to say two others exist
-// would be the collapse this ladder is here to prevent, one word later.
-func (a *app) barWordsAt(width int, numbered bool) (map[page]bool, int) {
-	shown := barPages(a.page, numbered)
-	cost := func(id page) int { return ansi.StringWidth(a.barChipWord(id, numbered)) + tabPadCols }
-	keep := make(map[page]bool, len(shown))
-	spent := placeBarLead
-	for _, id := range shown {
-		if a.barKeeps(id) || a.placeCount(id) > 0 {
-			keep[id] = true
-			spent += cost(id)
-		}
-	}
-	folds := foldSpellings(len(shown), "")
-	reserve := tabPadCols + ansi.StringWidth(folds[len(folds)-1])
-	for _, id := range shown {
-		if keep[id] {
-			continue
-		}
-		if spent+cost(id)+reserve > width {
-			break
-		}
-		keep[id] = true
-		spent += cost(id)
-	}
-	elided := 0
-	for _, id := range shown {
-		if !keep[id] {
-			elided++
-		}
-	}
-	return keep, elided
-}
-
-// placeMachineLead is the word in front of the machine's name at the right end
-// of the bar. It is there so that a bare `spark` in the row the seven places are
-// drawn in cannot be read as an eighth place.
+// placeMachineLead is the word in front of the machine's name on the nav's far
+// end. It is there so that a bare `spark` on the row the places are drawn in
+// cannot be read as one more place.
 const placeMachineLead = "on "
 
-// placeBarMachine puts the MACHINE THESE PLACES ARE ABOUT at the right end of
-// the tab bar, and puts nothing there at all on a local session.
-//
-// THE PLACES FOLLOW THE SESSION'S MACHINE NOW, AND A ROOM THAT MOVED WITHOUT
-// SAYING SO WOULD BE THE SAME FAULT WALKED BACKWARDS. Home used to draw one
-// sentence saying its rows belonged to the wrong machine; it draws the right
-// machine's rows instead ([app.readWorld]) — so the thing a person cannot see
-// any more is WHOSE work they are reading, and the fix is a name rather than a
-// sentence, because it is true on every frame of every place rather than in one
-// state of one of them.
-//
-// IT IS [app.host] AND NOT A SECOND SPELLING OF IT. The status line's place
-// segment writes `spark:app`, /status writes `spark:/srv/code/app`, and the
-// legend under the input writes `spark · porting the parser` — three renderings
-// of one field, which host.go's header states as the law that the connection is
-// shown as the place and nowhere else. This is the fourth, and it is the machine
-// alone because a place is a listing of a whole disk rather than of one
-// workspace.
-//
-// AND IT DISAPPEARS COMPLETELY ON A LOCAL SESSION, which is the test host.go
-// holds every indicator to: it is invisible when there is nothing to say. It
-// also gives up its cells before the bar gives up a word — the places are what
-// the row is for, and a name that pushed `search` off the end would be telling
-// somebody about a machine instead of about their own rooms.
-func (a *app) placeBarMachine(bar string, width int, pal palette) string {
-	name := strings.TrimSpace(a.host)
-	if name == "" {
-		return bar
-	}
-	word := placeMachineLead + name
-	used, room := ansi.StringWidth(bar), ansi.StringWidth(word)
-	// placeBarLead's worth of air at each end, and placeBarGap between the last
-	// chip and the name, so the row breathes the way every other row of this bar does.
-	if used+placeBarGap+room+placeBarLead > width {
-		return bar
-	}
-	return bar + strings.Repeat(" ", width-used-room-placeBarLead) + pal.dim(word)
-}
-
-// barKeeps is the word the ladder may never give up: the place you are standing
-// in, and — while the cursor is on the bar — the word the cursor is on.
+// barKeeps is the word the nav's ladder may never fold: the place you are
+// standing in, and, while the cursor is on the bar, the word the cursor is on.
 //
 // A CURSOR ON A WORD THE LADDER DROPPED WOULD BE A CURSOR NOBODY CAN SEE, which
 // is SCREEN 3a's clause said about a row rather than a key: nothing on this
@@ -804,18 +632,11 @@ func (a *app) barKeeps(id page) bool {
 	return id == a.page || (a.bar.on && id == a.bar.at)
 }
 
-// placeBarLead is the cell the bar's first chip starts in, one cell before its
-// first word, so the word lands where the chat strip's first word does.
-const placeBarLead = headLabelAt
-
-// placeBarGap is the air between two chips on the bar: the chat strip's.
-const placeBarGap = 2
-
-// placeTabSpan is where one place's CHIP sits on the bar, so the draw and the
+// placeTabSpan is where one place's BUTTON sits on the nav, so the draw and the
 // press agree about it. It is the settings panel's [tabSpan] with the place it
-// belongs to carried on it — the bar gives up words as the frame narrows
-// (the ladder above), so a span computed from the list of places rather than
-// from the bar that was actually painted would open whichever room happened to
+// belongs to carried on it: the nav folds words as the frame narrows
+// (topnav.go's ladder), so a span computed from the list of places rather than
+// from the row that was actually painted would open whichever room happened to
 // sit at that position on a wider terminal.
 //
 // It covers the chip's padding as well as its word, for the reason [tabSpan]
@@ -824,75 +645,6 @@ const placeBarGap = 2
 type placeTabSpan struct {
 	id       page
 	from, to int
-}
-
-// tabBarAt draws the bar over the places `keep` admits, says where each chip
-// landed, and says whether it fit.
-//
-// `gap` is the air between two chips, which the ladder above gives up before it
-// gives up a word, and `elided` is how many places are not on this bar at all —
-// drawn as [barMoreWord] at the end of the row, in the cells that are left.
-func (a *app) tabBarAt(width int, numbered bool, pal palette, keep func(page) bool, gap, elided int) (string, []placeTabSpan, bool) {
-	line, plain := strings.Repeat(" ", placeBarLead), strings.Repeat(" ", placeBarLead)
-	shown := barPages(a.page, numbered)
-	spans := make([]placeTabSpan, 0, len(shown))
-	at, first := placeBarLead, true
-	for _, id := range shown {
-		if !keep(id) {
-			continue
-		}
-		if !first {
-			line += strings.Repeat(" ", gap)
-			plain += strings.Repeat(" ", gap)
-			at += gap
-		}
-		first = false
-		// THE MAP GROWS THE NUMBER IN THE CELL THE WORD WAS ALREADY IN
-		// (SCREEN 3b). Nothing shifts, nothing pops up, and letting go of the
-		// map leaves the bar exactly where the eye left it ([app.barChipWord]).
-		word := a.barChipWord(id, numbered)
-		chip := tabPad + word + tabPad
-		band := ansi.StringWidth(word) + tabPadCols
-		switch {
-		case a.bar.on && id == a.bar.at:
-			// THE CURSOR'S OWN BAND, AND IT REPLACES THE SELECTED MARK RATHER THAN
-			// STACKING ON IT. While the cursor is up here the bar is the row a
-			// person is standing on, and the question the frame has to answer is
-			// "where is my cursor" — not "which room am I in", which the body
-			// underneath is already answering with every one of its rows. Two
-			// grounds on one word would be the screen saying both at once and
-			// neither clearly ([barCursor]).
-			line += pal.cursor(pal.bold(pal.ink(chip)), band)
-		case id == a.page:
-			// THE WORD YOU ARE STANDING IN IS TIER 1, BOLD, AND NOT AN ACCENT.
-			// SCREEN 2a's first level is spelled out: "1 · page — bright, bold,
-			// one word, only in the tab bar", and the accent on a place is spent
-			// on the two live states and on nothing else (styles.go's THE
-			// ONE-ACCENT LAW). The band under it is what says "here".
-			line += activeGround(pal, chip)
-		case id == a.tabHover:
-			// AND THE POINTER LIFTS THE WORD AND DOES NOTHING ELSE: the selected
-			// word's own ink and weight, with no band under it. A word that grew a
-			// ground on hover would look like the room a person was standing in,
-			// and a bar with two banded words on it says nothing at all; a word
-			// that lifted a tier says "this one is a door", which is the whole of
-			// what a pointer resting on it has learned.
-			line += pal.bold(pal.ink(chip))
-		default:
-			line += pal.dim(chip)
-		}
-		plain += chip
-		spans = append(spans, placeTabSpan{id: id, from: at, to: at + ansi.StringWidth(chip)})
-		at += ansi.StringWidth(chip)
-	}
-	// AND THE COUNT OF WHAT IS NOT HERE RIDES THE END OF THE ROW, with no span
-	// behind it: it is a sign, and [barMoreWord] says why it is not a door.
-	if more := barMoreWord(elided, width-ansi.StringWidth(plain)); more != "" {
-		chip := tabPad + more + tabPad
-		line += pal.dim(chip)
-		plain += chip
-	}
-	return line, spans, ansi.StringWidth(plain) <= width
 }
 
 // ── THE BAR IS A ROW THE CURSOR CAN STAND ON ────────────────────────────────
@@ -996,7 +748,7 @@ func (a *app) barWalk(back bool) {
 // THE CURSOR COMES DOWN EITHER WAY. Pressing the word you are already standing
 // in is not a door — going there would close and reopen the room, throwing away
 // the filter somebody typed and the row they were on, which is the same law the
-// pointer already keeps ([app.placeTabPress]) — so it simply puts the cursor
+// pointer already keeps ([app.navPress]), so it simply puts the cursor
 // back in the body.
 func (a *app) barEnter() tea.Cmd {
 	at := a.bar.at
@@ -1018,7 +770,7 @@ func (a *app) barEnter() tea.Cmd {
 // on. Anywhere else `↑` is the walk it has always been, and the place keeps it.
 func (a *app) barReach() bool {
 	pl := a.showing()
-	if pl == nil || a.bar.on || a.tabRow < 1 {
+	if pl == nil || a.bar.on || a.tabRow < 0 {
 		return false
 	}
 	// HOME'S COLUMN HAS NO WAY UP ONTO THE BAR (owner, 2026-09-17: "don't let
@@ -1066,9 +818,9 @@ func (a *app) barKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.barDrop()
 		return nil, true
 	case "up", "ctrl+p":
-		// THERE IS NOTHING OVER THE BAR. Row zero is the pulse, which is telemetry
-		// and not a control, so `↑` here is a key that has arrived at the top —
-		// swallowed rather than falling through into the body it just left.
+		// THERE IS NOTHING OVER THE BAR. It is row zero, the nav itself, so `↑`
+		// here is a key that has arrived at the top, swallowed rather than
+		// falling through into the body it just left.
 		return nil, true
 	}
 	// AND EVERY PRINTABLE CHARACTER GOES WHERE IT ALWAYS GOES, taking the cursor
@@ -1183,10 +935,9 @@ func placeLineHits(hits []placeHit) []int { return placeHitsOf(hits, -1) }
 // placeFrame is THE frame. Every place is drawn in it, and the head, the foot
 // and the clamp below belong to the router rather than to any place:
 //
-//	row 0        the pulse — this machine's vital signs (pulse.go)
-//	row 1        the tab bar — the seven places, and where you are
-//	row 2        a dim rule
-//	row 3        blank
+//	row 0        the nav: the wordmark, the places, the pulse (topnav.go)
+//	row 1        a dim rule
+//	row 2        blank
 //	...          the body — the place's own rows
 //	...          blank, then a dim rule
 //	...          the composer, with the scope chip at the right of its box row
@@ -1235,16 +986,10 @@ func placeFrameWithBar(a *app, width, height int,
 		hits = append(hits, hit)
 	}
 
-	// THE HEAD IS THE CONVERSATION'S HEAD, drawn by the same function with the
-	// bar as its middle row (head.go).
-	//
-	// THE BAR IS ROW ONE AND THE POINTER IS TOLD SO HERE. A press arrives as a
-	// row of the terminal, and the only honest way to know which row the bar
-	// ended up on is to record it where it was drawn — the clamp below can cut
-	// it off a frame too short for its own contents, and a press resolved
-	// against a constant would then open a place for a click on a body row.
-	a.tabRow = placeTabRow
-	for _, row := range a.headRows(width, a.placeTabBar(width, a.mapShowing, pal), pal) {
+	// THE HEAD IS THE NAV, THE RULE AND A BLANK. The strip is a chat's row and
+	// is not drawn on a place (head.go), so this frame does not lay it out and
+	// does not keep its hit spans.
+	for _, row := range a.headRows(width, "", pal) {
 		add(row, nil)
 	}
 
@@ -1589,11 +1334,11 @@ func placeFrameWithBar(a *app, width, height int,
 
 	if len(lines) > height {
 		removed := len(lines) - height
-		// A FRAME TOO SHORT FOR ITS OWN CONTENTS LOSES THE BAR, and the pointer
-		// is told that too: -1 is "there is no tab bar on this frame", which is
-		// the only answer that cannot turn a press on a body row into a place
-		// change.
-		a.tabRow = -1
+		// A FRAME TOO SHORT FOR ITS OWN CONTENTS KEEPS THE NAV. A place draws
+		// no strip, so there is no strip row to give back; the targets are
+		// cleared anyway so a stale span from a chat cannot catch the press.
+		a.chatTabHits = nil
+		a.wall.chip, a.wall.door = hudSpan{}, hudSpan{}
 		keep, keepHits := lines[:1], hits[:1]
 		lines = append(keep, lines[len(lines)-(height-1):]...)
 		hits = append(keepHits, hits[len(hits)-(height-1):]...)
@@ -1750,7 +1495,7 @@ const (
 	// it where the place declares no verbs).
 	//
 	// IT SAYS WHAT THE KEY DOES. It read `→ verbs on this row`, which named a
-	// CATEGORY on a line where `alt+1…8 go to a place`, `alt+enter send it off as
+	// CATEGORY on a line where `alt+1…9 go to a place`, `alt+enter send it off as
 	// a task` and `esc close` all name an act — and `verbs` is the machinery's
 	// word for the strip rather than anybody's word for what pressing `→` gets
 	// them. The card's own `→ verbs: pause, stop` keeps the noun because the acts
@@ -1759,7 +1504,7 @@ const (
 	placeMapVerbWords = "→ show what this row can do"
 	// placeMapWords is the hint line while the map is drawn (SCREEN 3b): the
 	// chord list, in the cells the hint was already in.
-	placeMapWords = "alt+1…8 go to a place · " + placeMapTaskWords + " · " +
+	placeMapWords = "alt+1…9 go to a place · " + placeMapTaskWords + " · " +
 		placeMapVerbWords + " · " + mapCloseWords
 	// placeMapTaskWords is the map's clause about the chord that starts a task,
 	// named so the line can be drawn WITHOUT it: only home starts things, so on
@@ -1884,13 +1629,19 @@ func (a *app) placeHintSaid() string {
 	if a.hopShowing() {
 		return hopFootWords
 	}
+	// AND A WORD OF THE HEAD UNDER THE POINTER SAYS WHAT IT OPENS AND ITS KEY
+	// (topnav.go's [app.headHint]), over every resting sentence, because the
+	// pointer on it is a person asking exactly that.
+	if hint := a.headHint(); hint != "" {
+		return hint
+	}
 	if a.mapShowing {
 		// THE SWITCHER IS NAMED ON THE MAP AND NOWHERE ELSE ON A PLACE. The map
 		// is this surface's own chord list — the one line whose job is to say
 		// what the keys are — and the place's resting foot is four clauses that
 		// the design fixes word for word (FIDELITY.md item 3). A key bound on
 		// every place and drawn on none of them would break SCREEN 3a's clause,
-		// and this is the line that keeps it, exactly as it keeps the `ctrl+1…8`
+		// and this is the line that keeps it, exactly as it keeps the `ctrl+1…9`
 		// alias ([chordSpelling.mapLine]).
 		line := a.chords.mapLine(a.placeMapSaid(), a.ctrlDigits())
 		if a.hopAvailable() {
@@ -2302,6 +2053,8 @@ func (a *app) showPage(id page) (cmd tea.Cmd) {
 	a.standDownRest()
 	a.closeStrip()
 	a.mapShowing = false
+	// AND THE NAV'S FOLD MENU: it was a way to this door, and it is used.
+	a.navMore.on = false
 	// AND THE COMPOSER LAYER GOES WITH THE PLACE IT WAS OPENED ON. It names that
 	// place in its own foot and dims that place's rows behind it; carried onto the
 	// next room it would be a decision drawn over a page it was never about

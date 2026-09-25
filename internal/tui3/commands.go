@@ -147,6 +147,10 @@ var commands = []command{
 	// lands nowhere.
 	{name: "search", desc: "everything said on this machine · " + placeChord(pageSearch)},
 	{name: "wall", desc: "every open conversation, live, and your teams · alt+v or ▦ below the box"},
+	// THE TEAMS PAGE, beside the wall it opens onto: the wall is the open
+	// conversations big, and this is the team-level view, every member open or
+	// not, the manager's conversation and what waits on you (place_teams.go).
+	{name: "teams", desc: "your teams, their managers and what waits on you · " + placeChord(pageTeams)},
 	{name: "spend", desc: "what this machine has cost, by the day · " + placeChord(pageSpend)},
 	// It sits AFTER /compact and before /help because those two are the pair a
 	// person reads together when a conversation has gone wrong: compacting is
@@ -1081,7 +1085,7 @@ func helpText(file string, chords chordSpelling) string {
 		helpKeyRow(chords.say(trafficKey), "with a team's manager in front: show or hide its Traffic"),
 		helpKeyRow(chords.say(teamManagerKey), "in a team with a manager: go to the manager"),
 		helpKeyRow(reopenTabChord, "reopen the last closed tab · when the terminal sends this distinct chord"),
-		helpKeyRow(chords.say(railHoldChord), "the task roster · ↑↓ move · →← fold · enter opens · esc back"),
+		helpKeyRow(chords.say(railHoldChord), "the task roster · ↑↓ move · ←→ tasks/traffic · enter opens · esc back"),
 		"ctrl+.         every task this project has run · /history · type to filter",
 		"ctrl+g         close the roster's column, or bring it back · remembered",
 		"ctrl+l         back to the latest · the chip above the box says so too",
@@ -1113,6 +1117,11 @@ func helpText(file string, chords chordSpelling) string {
 		"ctrl+,         open settings",
 		"d              in /permissions: drop the line under the cursor · press it twice",
 		"p s n          in /standing: pause one · stop it · keep it out of here",
+		// THE TEAMS PAGE'S LETTERS, each the button of the same word on the
+		// selected team, and the chord that puts the keyboard on those buttons
+		// while the manager's conversation has the box (teamspagehost.go).
+		"s c w n o      in /teams: settings · close · open on the wall · new team · organize",
+		helpKeyRow(chords.say("alt+↑↓"), "in /teams: onto the page's buttons while the manager has the box · esc back"),
 		"ctrl+r ctrl+y  in /files: reveal the folder it is in · copy it somewhere",
 	)
 	if file != "" {

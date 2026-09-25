@@ -38,7 +38,6 @@ func (a *app) roomPanelView(height int) ([]railLine, int) {
 	width := a.railRoom()
 	entries := a.railEntries()
 	focus := a.railFocusIndex(entries)
-	a.railCramped = false
 	lines := a.railLines(entries, width)
 	controls := a.roomControlRows(width)
 	foot, marks := a.railFootRows(width, height)

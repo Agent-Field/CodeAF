@@ -536,6 +536,38 @@ func TestWallBarDropsWholeButtons(t *testing.T) {
 	}
 }
 
+// A HINT IS SAID WHOLE, KEY AND ALL. While the pointer rests on a control
+// the status line outranks the columns and the acts, which step aside for it
+// (the one under the pointer and Help never do); at 80 it read `Resume the …`.
+func TestWallBarHintOutranksTheButtons(t *testing.T) {
+	pal := newPalette(tokens.TrueColor, false)
+	v := wallUnmarked(wallFixture(6))
+	v.away = 2
+	v.hover = wallHitRef{kind: wallHitAction, arg: int(wallActResume)}
+	want := wallHint(v, pal.ascii)
+	if !strings.HasSuffix(want, "· r") {
+		t.Fatalf("the fixture's hint is %q", want)
+	}
+	for _, w := range []int{80, 110, 160} {
+		row, _ := wallBar(pal, v, w, 0)
+		plainRow := ansi.Strip(row)
+		if ansi.StringWidth(row) > w || !strings.Contains(plainRow, want) || !strings.Contains(plainRow, "Help ?") {
+			t.Fatalf("width %d: the hint is not whole beside Help: %q", w, plainRow)
+		}
+	}
+	// The button under the pointer keeps its place while its own hint shows.
+	v.hover = wallHitRef{kind: wallHitAction, arg: int(wallActFilter)}
+	row, _ := wallBar(pal, v, 80, 0)
+	if !strings.Contains(ansi.Strip(row), "Filter /") {
+		t.Fatalf("the hovered button stepped aside: %q", ansi.Strip(row))
+	}
+	// And with the pointer gone every button is back.
+	v.hover = wallHitRef{}
+	if row, _ := wallBar(pal, v, 80, 0); !strings.Contains(ansi.Strip(row), "Columns") {
+		t.Fatalf("the columns did not come back: %q", ansi.Strip(row))
+	}
+}
+
 // A TILE'S ACTIONS ARE WORDS ON ITS BOTTOM BORDER, drawn under the pointer or
 // the focus and nowhere else, into cells that depend on the width alone:
 // hovering a tile moves nothing in it, and its top border carries no control.

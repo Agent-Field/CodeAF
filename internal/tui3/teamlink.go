@@ -30,8 +30,14 @@ import (
 //
 // A PRESS ON A MEMBER OPENS IT, and resumes it first when this window does not
 // have it open, through the strip's own door ([app.tabGo]). A press on a team
-// opens the conversations view shown on that team. The hint line says which,
-// with the member's title: `Open @security · santosh dev2 branch… · click`.
+// opens the teams page with that team selected: the rail's cursor on its row,
+// the pane showing it, and the keyboard left on that row rather than moved
+// into the pane. A closed team is selected inside `Closed`, and that fold is
+// opened so the row is there. Over --host against an engine without the teams
+// doors ([app.teamsOff]) the page cannot open, so the press still opens the
+// conversations view on that team, and the hint says that rather than the
+// page. A member's hint names the title: `Open @security · santosh dev2
+// branch… · click`.
 //
 // THE HOVER IS A GROUND, as every other control on this surface answers the
 // pointer, and not the task link's brightening: the owner's bar is that
@@ -251,17 +257,23 @@ func indexFoldAny(s, needle string, from int) int {
 }
 
 // teamLinkPress is a press on a team reference: the member opened, resumed
-// first when this window does not have it open, or the team shown on the
-// conversations view.
+// first when this window does not have it open, or the team opened on the
+// teams page ([app.openTeamFromLink]).
 func (a *app) teamLinkPress(link taskLink) tea.Cmd {
 	t, ok := a.teamByID(link.team)
 	if !ok {
 		return nil
 	}
 	if link.member == "" {
-		a.wall.activeID = t.ID
-		a.chatTabBar = tabBar{}
-		return a.openWall()
+		if a.teamsOff() {
+			// THE PAGE IS NOT THERE. An older engine over --host has no teams
+			// doors, so the press keeps the door it had: the conversations
+			// view narrowed to this team. The hint says that, and only that.
+			a.wall.activeID = t.ID
+			a.chatTabBar = tabBar{}
+			return a.openWall()
+		}
+		return a.openTeamFromLink(t)
 	}
 	m, ok := t.Member(link.member)
 	if !ok || m.Key == a.frontTabKey() {
@@ -279,6 +291,25 @@ func (a *app) teamLinkPress(link taskLink) tea.Cmd {
 	return a.tabGo(chatTab{key: m.Key, file: m.File, where: m.Where, word: word, full: word})
 }
 
+// openTeamFromLink stands the teams page on team t. The rail's cursor is the
+// landing and the pane shows the team. The keyboard stays on that row: a
+// managed team's page otherwise hands it to the manager's composer, which
+// would move the person into a sentence they did not ask to type. A closed
+// team is selected inside the Closed fold, opened so the row exists.
+func (a *app) openTeamFromLink(t team) tea.Cmd {
+	if t.Closed() {
+		a.tp.closedOpen = true
+	}
+	// The pointer was on a link in the chat that is no longer drawn; kept, it
+	// would leave that link's hint on a page that has no such link.
+	a.dropHover()
+	a.tp.sel = t.ID
+	cmd := a.showPage(pageTeams)
+	a.tp.focus = true
+	a.tp.cur = teamsRef{act: teamsActSelect, id: t.ID}
+	return cmd
+}
+
 // teamLinkHint is what the hint line says with the pointer on a team
 // reference, "" when it is not on one.
 func (a *app) teamLinkHint() string {
@@ -294,7 +325,10 @@ func (a *app) teamLinkHint() string {
 		return ""
 	}
 	if key == "" {
-		return "Show " + t.Name + " on the conversations view" + hintSegment + wallMembersWord(len(t.Members)) + hintSegment + "click"
+		if a.teamsOff() {
+			return "Show " + t.Name + " on the conversations view" + hintSegment + wallMembersWord(len(t.Members)) + hintSegment + "click"
+		}
+		return "Open " + t.Name + " on the teams page" + hintSegment + "click"
 	}
 	m, ok := t.Member(key)
 	if !ok {

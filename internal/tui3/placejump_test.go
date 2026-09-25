@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// ── alt+1…8 IS THE ONE CLASS THAT BELONGS TO NO PLACE ───────────────────────
+// ── alt+1…9 IS THE ONE CLASS THAT BELONGS TO NO PLACE ───────────────────────
 //
 // placeeveryone_test.go asks the numbers of all seven ROOMS. Nothing asked them
 // of the surface a person spends most of their time on: the conversation. And

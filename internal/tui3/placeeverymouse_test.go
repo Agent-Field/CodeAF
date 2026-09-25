@@ -39,7 +39,7 @@ func TestClickingATabWordWorksFromEveryPlace(t *testing.T) {
 			if !ok {
 				t.Fatalf("the %s tab is not on the bar the %s place drew", target.word(), place.id.word())
 			}
-			if a.tabRow != placeTabRow {
+			if a.tabRow != navRow {
 				t.Fatalf("the %s place drew its tab bar on row %d", place.id.word(), a.tabRow)
 			}
 			drive(t, a, tea.MouseClickMsg{X: x, Y: a.tabRow, Button: tea.MouseLeft})

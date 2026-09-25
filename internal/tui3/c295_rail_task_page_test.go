@@ -181,11 +181,13 @@ func TestARunIsItsOwnRowWithItsPartsUnderItAndEachOpensItsPage(t *testing.T) {
 	for i, line := range view {
 		text := plain(line.text)
 		switch {
-		case strings.Contains(text, "land the parser"):
+		// The second part's row names the run it waits on, so the run's own
+		// row is the first that carries its title.
+		case strings.Contains(text, "land the parser") && rootAt < 0:
 			rootAt = i
 		case strings.Contains(text, "write the parser"):
 			firstAt = i
-		case strings.Contains(text, "cover the parser"):
+		case strings.Contains(text, "cover the"):
 			secondAt = i
 		}
 	}

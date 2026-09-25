@@ -141,6 +141,9 @@ type wallView struct {
 	// one is being asked for, and the card says `naming…`.
 	nameFresh bool
 	asking    bool
+	// nameIn is the team the new team will be made inside, by name, "" for
+	// the top level (`+ New team in harbor` on the teams page).
+	nameIn string
 	// made is the team just made and how many it holds, said on the chip row
 	// until madeAt is wallMadeFor old.
 	made   string
@@ -371,6 +374,9 @@ type wallState struct {
 	nameFresh  bool
 	nameGen    int
 	nameAsking bool
+	// nameParent is the team a new team is made inside, by id: set by `+ New
+	// team in harbor` and cleared by every other opening of the card.
+	nameParent string
 	made       string
 	madeN      int
 	madeAt     time.Time

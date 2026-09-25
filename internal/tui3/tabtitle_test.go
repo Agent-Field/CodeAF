@@ -10,19 +10,19 @@ func TestTabHoverRevealsFullTitleWithoutMovingTargets(t *testing.T) {
 	a.title = "Shipping the parser with complete unicode support"
 	a.tabsRow(a.width)
 	span := tabSpanFor(t, a, a.title)
-	a.hot, _ = a.tabHoverAt(span.from, placeTabRow)
+	a.hot, _ = a.tabHoverAt(span.from, tabStripRow)
 	before := a.tabsRow(a.width)
 	frame := strings.Repeat(strings.Repeat(" ", a.width)+"\n", a.height-1)
 	rows := strings.Split(frame, "\n")
-	rows[placeTabRow] = before
+	rows[tabStripRow] = before
 	seal := rule(a.width)
-	rows[placeTabRow+1] = seal
+	rows[tabStripRow+1] = seal
 	frame = strings.Join(rows, "\n")
 	shown := strings.Split(a.tabTitlePreview(frame), "\n")
-	if !strings.Contains(plain(shown[placeHeadRows-1]), a.title) {
+	if !strings.Contains(plain(shown[chatHeadRows-1]), a.title) {
 		t.Fatal("hover did not put the full title on the head's blank row")
 	}
-	if shown[placeTabRow+1] != seal {
+	if shown[tabStripRow+1] != seal {
 		t.Fatal("preview covered the rule under the strip")
 	}
 	if a.tabsRow(a.width) != before || tabSpanFor(t, a, a.title) != span {
@@ -49,7 +49,7 @@ func TestTabTitlePreviewEndsUnderItsTab(t *testing.T) {
 	a.title = base
 	a.tabsRow(a.width)
 	span := tabSpanFor(t, a, a.title)
-	a.hot, _ = a.tabHoverAt(span.from, placeTabRow)
+	a.hot, _ = a.tabHoverAt(span.from, tabStripRow)
 	hit, ok := a.hotTab()
 	if !ok {
 		t.Fatal("the pointer is not over the tab")
@@ -66,7 +66,7 @@ func TestTabTitlePreviewEndsUnderItsTab(t *testing.T) {
 			t.Fatalf("a longer title moved the tab from %+v to %+v", span, got)
 		}
 		rows := strings.Split(strings.Repeat(strings.Repeat(" ", a.width)+"\n", a.height-1), "\n")
-		rows[placeTabRow] = row
+		rows[tabStripRow] = row
 		shown := strings.Split(a.tabTitlePreview(strings.Join(rows, "\n")), "\n")
 		for i := range shown {
 			shown[i] = plain(shown[i])
@@ -85,19 +85,19 @@ func TestTabTitlePreviewEndsUnderItsTab(t *testing.T) {
 		t.Fatalf("the fixture's tab ends at %d, which cannot show both a short and a long name", end)
 	}
 	shown := preview(base)
-	if at := strings.Index(shown[placeHeadRows-1], base); at+len(base) != end {
-		t.Fatalf("a name that fits ends at %d, want the tab's edge %d:\n%q", at+len(base), end, shown[placeHeadRows-1])
+	if at := strings.Index(shown[chatHeadRows-1], base); at+len(base) != end {
+		t.Fatalf("a name that fits ends at %d, want the tab's edge %d:\n%q", at+len(base), end, shown[chatHeadRows-1])
 	}
 
 	long := grown(end - headLabelAt + 10)
 	shown = preview(long)
-	if at := strings.Index(shown[placeHeadRows-1], long); at != headLabelAt {
-		t.Fatalf("a name wider than the room left of its tab starts at %d, want the margin %d:\n%q", at, headLabelAt, shown[placeHeadRows-1])
+	if at := strings.Index(shown[chatHeadRows-1], long); at != headLabelAt {
+		t.Fatalf("a name wider than the room left of its tab starts at %d, want the margin %d:\n%q", at, headLabelAt, shown[chatHeadRows-1])
 	}
 
 	wide := grown(a.width + 20)
 	shown = preview(wide)
-	first, second := shown[placeHeadRows-1], shown[placeHeadRows]
+	first, second := shown[chatHeadRows-1], shown[chatHeadRows]
 	if !strings.HasPrefix(first, strings.Repeat(" ", headLabelAt)+"Shipping") || strings.TrimSpace(second) == "" || !strings.HasPrefix(second, strings.Repeat(" ", headLabelAt)) || second[headLabelAt] == ' ' {
 		t.Fatalf("a name wider than the row does not wrap from the margin:\n%q\n%q", first, second)
 	}

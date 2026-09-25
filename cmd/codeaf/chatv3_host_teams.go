@@ -33,6 +33,23 @@ type hostTeams struct {
 	write   func(base string, teams []teamstore.Team) (remote.TeamsReading, error)
 	traffic func(team, after string, limit int) (remote.TeamsTraffic, error)
 
+	// The delegation doors, nil when the engine does not answer them
+	// ([remote.Welcome.Delegation]); the seam then hands the surface none.
+	defaults func() (teamstore.Defaults, error)
+	// applyDefault writes one `teams.` row ([remote.Welcome.TeamSettings]).
+	// Nil leaves the settings Teams tab read-only.
+	applyDefault func(key, raw string) (teamstore.Defaults, error)
+	packets      func(scope, stamp string) (remote.PacketsReading, error)
+	raise        func(p teamstore.Packet) (teamstore.Packet, error)
+	decide       func(id, by, decision, reason string) (teamstore.Packet, error)
+	escalate     func(id, by, to, reason string) (teamstore.Packet, error)
+	spend        func(team, day, stamp string) (remote.SpendReading, error)
+	deleteOne    func(team string) (remote.DeleteTeamReply, error)
+	// The wrap-up's two doors, nil when the engine does not answer them
+	// ([remote.Welcome.WrapUp]).
+	wrapUp        func(team, text string) error
+	acceptClosing func(id string) (remote.AcceptClosingReply, error)
+
 	mu sync.Mutex
 	// teams and stamp are the last list the engine answered with and the
 	// file's stamp it was at; known says there has been one.
@@ -51,12 +68,24 @@ const hostTeamsTries = 3
 // errHostTeamsBusy is a write that met another writer on every try.
 var errHostTeamsBusy = errors.New("the teams on the far machine kept changing while this was written; try again")
 
-func newHostTeams(far hostFar) *hostTeams {
-	return &hostTeams{
+func newHostTeams(far hostFar, delegation, wrapUp, settings bool) *hostTeams {
+	h := &hostTeams{
 		read:    far.client.TeamsRead,
 		write:   far.client.TeamsUpdate,
 		traffic: far.client.TeamsTraffic,
 	}
+	if delegation {
+		c := far.client
+		h.defaults, h.packets, h.raise = c.TeamsDefaults, c.TeamsPackets, c.TeamsRaise
+		h.decide, h.escalate, h.spend, h.deleteOne = c.TeamsDecide, c.TeamsEscalate, c.TeamsSpend, c.TeamsDelete
+		if wrapUp {
+			h.wrapUp, h.acceptClosing = c.TeamsWrapUp, c.TeamsAcceptClosing
+		}
+	}
+	if settings && far.client != nil {
+		h.applyDefault = far.client.TeamsApplyDefault
+	}
+	return h
 }
 
 // hostTeamsSeam is the seam the --host door hands the surface: the far
@@ -67,12 +96,80 @@ func hostTeamsSeam(far hostFar, welcome remote.Welcome) tui3.TeamsSeam {
 	if far.client == nil || !welcome.Teams {
 		return tui3.TeamsSeam{}
 	}
-	return newHostTeams(far).seam()
+	return newHostTeams(far, welcome.Delegation, welcome.WrapUp, welcome.TeamSettings).seam()
 }
 
-// seam is h as the surface's functions.
+// seam is h as the surface's functions. The delegation doors are handed only
+// when the engine answers them, so an older engine's window has a seam whose
+// delegation doors are nil, which the surface says rather than guesses at.
 func (h *hostTeams) seam() tui3.TeamsSeam {
-	return tui3.TeamsSeam{Load: h.load, ReadSince: h.readSince, Update: h.update, Traffic: h.readTraffic}
+	s := tui3.TeamsSeam{Load: h.load, ReadSince: h.readSince, Update: h.update, Traffic: h.readTraffic}
+	if h.applyDefault != nil {
+		s.ApplyDefault = h.applyDefault
+	}
+	if h.defaults == nil {
+		return s
+	}
+	s.Defaults, s.Raise, s.Decide, s.Escalate = h.defaults, h.raise, h.decide, h.escalate
+	s.Packets, s.Spend, s.Delete = h.readPackets, h.readSpend, h.forget
+	if h.wrapUp != nil && h.acceptClosing != nil {
+		s.WrapUp, s.AcceptClosing = h.wrapUp, h.closeOnReport
+	}
+	return s
+}
+
+// closeOnReport is [tui3.TeamsSeam.AcceptClosing]: the engine closes the team
+// on its report, and the list held here is read again, because the file moved.
+func (h *hostTeams) closeOnReport(id string) (bool, error) {
+	reply, err := h.acceptClosing(id)
+	if err != nil {
+		return false, err
+	}
+	if reply.Closed {
+		if _, _, _, err := h.readSince("", h.reservedHues()); err != nil {
+			return true, err
+		}
+	}
+	return reply.Closed, nil
+}
+
+// readPackets is [tui3.TeamsSeam.Packets]: one round trip, a few bytes when
+// the engine's packet files have not moved.
+func (h *hostTeams) readPackets(scope, since string) ([]teamstore.Packet, string, bool, error) {
+	got, err := h.packets(scope, since)
+	if err != nil {
+		return nil, "", false, err
+	}
+	return got.Packets, got.Stamp, got.Same, nil
+}
+
+// readSpend is [tui3.TeamsSeam.Spend]: one round trip, a few bytes when
+// neither the engine's teams file nor its ledger moved.
+func (h *hostTeams) readSpend(team, day, since string) (teamstore.Spend, string, bool, error) {
+	got, err := h.spend(team, day, since)
+	if err != nil {
+		return teamstore.Spend{}, "", false, err
+	}
+	if got.Same {
+		return teamstore.Spend{}, got.Stamp, true, nil
+	}
+	if got.Spend == nil {
+		return teamstore.Spend{Team: team, Day: day}, got.Stamp, false, nil
+	}
+	return *got.Spend, got.Stamp, false, nil
+}
+
+// forget is [tui3.TeamsSeam.Delete]: the engine forgets the team and its
+// files, and the list held here is read again, because the file moved.
+func (h *hostTeams) forget(team string) ([]string, error) {
+	reply, err := h.deleteOne(team)
+	if err != nil {
+		return nil, err
+	}
+	if _, _, _, err := h.readSince("", h.reservedHues()); err != nil {
+		return reply.Gone, err
+	}
+	return reply.Gone, nil
 }
 
 // load is [tui3.TeamsSeam.Load]: what is held, now, and never the wire.

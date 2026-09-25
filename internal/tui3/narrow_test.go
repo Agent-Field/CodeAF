@@ -21,98 +21,89 @@ import (
 // not DO there: find six of the seven places, read the end of a sentence, and
 // tell one conversation from another.
 
-// THE NARROW BAR STILL SAYS WHERE ELSE YOU CAN GO.
+// THE NARROW NAV STILL SAYS WHERE ELSE YOU CAN GO.
 //
-// At sixty columns the bar used to collapse to the single word `home`, with
-// nothing on the frame saying that tasks, standing, memory, spend, search and
-// settings existed at all: seven words and their padding are fifty-seven cells,
-// the air between them is six more, and sixty overshot by three — straight past
-// the middle rung of the ladder, because on a quiet machine no place wears a
-// count. The air is what goes now.
-func TestTheNarrowBarStillSaysWhereElseYouCanGo(t *testing.T) {
+// At sixty columns the places' bar used to collapse to the single word `home`,
+// with nothing on the frame saying the other places existed at all. The nav
+// on the wordmark's row keeps every place reachable at every width: a word it
+// has no room for folds into `more ▾`, which is a door onto exactly those
+// places (navmore.go), and the air between two words never changes.
+func TestTheNarrowNavStillSaysWhereElseYouCanGo(t *testing.T) {
 	a := placeApp(t)
-	// THE WIDTH WHERE THE AIR GOES is one cell under the bar's own width: the
-	// words still fit there once the gaps between them are given up. It is read
-	// off the bar rather than typed, because the bar is four words now and a
-	// literal sixty was a width measured against seven.
-	tight := ansi.StringWidth(plain(a.placeTabBar(200, false, a.pal))) - 1
-	for _, width := range []int{tight, 60, 80, 120, 160} {
-		bar := plain(a.placeTabBar(width, false, a.pal))
-		for _, id := range barPages(a.page, false) {
-			if !strings.Contains(bar, id.word()) {
-				t.Fatalf("at %d columns the bar drew\n\t%q\nand a person cannot reach %q from it; every one of its places should be on the row:\n\t%q",
-					width, bar, id.word(), plain(a.placeTabBar(200, false, a.pal)))
+	for _, width := range []int{50, 60, 80, 120, 160} {
+		bar := navPlaces(a, width, false)
+		for _, id := range barPages(a.navLit(), false) {
+			if !strings.Contains(" "+bar+" ", " "+id.word()+" ") && !pagesHold(a.navMore.folded, id) {
+				t.Fatalf("at %d columns the nav drew\n\t%q\nand a person cannot reach %q from it, on the row or behind `more`", width, bar, id.word())
 			}
 		}
-		if got := ansi.StringWidth(bar); got > width {
-			t.Fatalf("at %d columns the bar is %d cells wide and runs past the frame:\n\t%q", width, got, bar)
+		if got := ansi.StringWidth(plain(a.navLine(width, a.pal))); got > width {
+			t.Fatalf("at %d columns the nav is %d cells wide and runs past the frame", width, got)
 		}
-	}
-	// AND THE WIDE TIER DID NOT MOVE. The air between the chips is what a narrow
-	// frame gives up, so a frame with room for it still has it — a fix for sixty
-	// columns that re-spaced a hundred and sixty would be a fix that cost every
-	// other terminal something.
-	wide := plain(a.placeTabBar(120, false, a.pal))
-	if !strings.Contains(wide, "home    chats    sessions") {
-		t.Fatalf("at 120 columns the bar drew\n\t%q\nand the air between two chips is gone; it should read\n\t%q",
-			wide, "   home    chats    sessions    spend    settings")
-	}
-	if narrow := plain(a.placeTabBar(tight, false, a.pal)); !strings.Contains(narrow, "home   chats   sessions") {
-		t.Fatalf("at %d columns the bar drew\n\t%q\nand it should carry every word with the air between the chips given up:\n\t%q",
-			tight, narrow, "   home   chats   sessions   spend   settings")
+		// AND THE AIR IS HELD: two blank cells between two words, whatever the
+		// width, because what a narrow row gives up is words and never air.
+		if width >= 80 && !strings.Contains(bar, "home  teams  chats  sessions  spend  settings") {
+			t.Fatalf("at %d columns the nav drew\n\t%q\nand should carry the six places two cells apart", width, bar)
+		}
+		if strings.Contains(bar, "   ") {
+			t.Fatalf("at %d columns the nav drew\n\t%q\nwith the air between two words changed", width, bar)
+		}
 	}
 }
 
-// A BAR TOO NARROW FOR EVERY WORD SAYS HOW MANY IT DROPPED.
+// pagesHold reports whether one place is in a list of places.
+func pagesHold(list []page, id page) bool {
+	for _, p := range list {
+		if p == id {
+			return true
+		}
+	}
+	return false
+}
+
+// A NAV TOO NARROW FOR EVERY WORD FOLDS THEM INTO `more ▾`, AND IT IS A DOOR.
 //
-// Under the width where all seven fit there is no honest way to draw them, and
-// the collapse this ladder exists to prevent is not "fewer words" — it is a row
+// Under the width where all six fit there is no honest way to draw them, and
+// the collapse the ladder exists to prevent is not "fewer words", it is a row
 // that says `home` and lets a person believe that is all there is. So what is
-// left ends in a count of the places that are not on it, and the key that
-// reaches them is on the foot of every place.
-func TestABarTooNarrowForEveryWordSaysHowManyItDropped(t *testing.T) {
+// left ends in `more ▾`, which stands for exactly the places it folded, and
+// never in a bare count a person cannot press.
+func TestANavTooNarrowForEveryWordFoldsIntoMore(t *testing.T) {
 	a := placeApp(t)
-	for _, tc := range []struct{ width int }{{28}, {24}} {
-		bar := plain(a.placeTabBar(tc.width, false, a.pal))
+	for _, width := range []int{34, 40, 48} {
+		bar := navPlaces(a, width, false)
 		if !strings.Contains(bar, a.page.word()) {
-			t.Fatalf("at %d columns the bar drew\n\t%q\nand dropped the place you are standing in (%q)", tc.width, bar, a.page.word())
+			t.Fatalf("at %d columns the nav drew\n\t%q\nand folded the place you are standing in (%q)", width, bar, a.page.word())
 		}
-		if !strings.Contains(bar, tokens.GlyphCollapsed) {
-			t.Fatalf("at %d columns the bar drew\n\t%q\nand said nothing about the places it could not carry; it should end in a marked count, as in\n\t%q",
-				tc.width, bar, "  home  sessions  "+tokens.GlyphCollapsed+" 2")
+		if !strings.HasSuffix(bar, a.navMoreWord(a.pal)) || !a.navMore.span.pressable() {
+			t.Fatalf("at %d columns the nav drew\n\t%q\nand said nothing about the places it could not carry; it should end in `more ▾`", width, bar)
 		}
-		if got := ansi.StringWidth(bar); got > tc.width {
-			t.Fatalf("at %d columns the bar is %d cells wide and runs past the frame:\n\t%q", tc.width, got, bar)
-		}
-		// AND THE COUNT IS THE TRUTH. Every place that is not spelled on the row
-		// is one the count has to stand for, or the row is a second way of
-		// hiding them.
 		missing := 0
 		for _, id := range barPages(a.page, false) {
-			if !strings.Contains(bar, id.word()) {
+			if !strings.Contains(" "+bar+" ", " "+id.word()+" ") {
 				missing++
+				if !pagesHold(a.navMore.folded, id) {
+					t.Fatalf("at %d columns %q is off the row and not behind `more`", width, id.word())
+				}
 			}
 		}
-		// THE COUNT WEARS THE FOLD MARK, which is what tells it from a badge or
-		// a door ([barMoreWord] and [foldSpellings]).
-		if want := tokens.GlyphCollapsed + " " + itoa(missing); !strings.Contains(bar, want) {
-			t.Fatalf("at %d columns the bar drew\n\t%q\nwhich leaves %d places off the row; the count should read %q",
-				tc.width, bar, missing, want)
+		if missing != len(a.navMore.folded) || missing == 0 {
+			t.Fatalf("at %d columns the nav left %d places off and folded %v", width, missing, a.navMore.folded)
+		}
+		if strings.Contains(bar, "+") || strings.Contains(bar, tokens.GlyphCollapsed) {
+			t.Fatalf("at %d columns the fold is a count and not a word: %q", width, bar)
 		}
 	}
-	// AND A FRAME WITH NO ROOM FOR THE COUNT SAYS NOTHING RATHER THAN RUNNING
-	// PAST ITS OWN EDGE, which is the fault this whole ladder exists to prevent.
-	for _, width := range []int{8, 12, 16} {
-		if bar := plain(a.placeTabBar(width, false, a.pal)); ansi.StringWidth(bar) > width {
-			t.Fatalf("at %d columns the bar is %d cells wide and runs past the frame:\n\t%q", width, ansi.StringWidth(bar), bar)
+	// AND A FRAME WITH NO ROOM EVEN FOR THE FOLD NEVER RUNS PAST ITS OWN EDGE.
+	for _, width := range []int{8, 12, 16, 24} {
+		if got := ansi.StringWidth(plain(a.navLine(width, a.pal))); got > width {
+			t.Fatalf("at %d columns the nav is %d cells wide and runs past the frame", width, got)
 		}
 	}
-	// AND A COUNT NEVER APPEARS ON A BAR THAT CARRIED EVERYTHING. A `+0` beside
-	// four words would be furniture, and furniture is what people stop seeing —
-	// and the three places reached by command are not a count the bar owes.
-	for _, width := range []int{60, 80, 120, 160} {
-		if bar := plain(a.placeTabBar(width, false, a.pal)); strings.Contains(bar, "+") {
-			t.Fatalf("at %d columns every place is on the bar and it still counts something:\n\t%q", width, bar)
+	// AND A NAV THAT CARRIED EVERYTHING FOLDS NOTHING.
+	for _, width := range []int{80, 120, 160} {
+		if navPlaces(a, width, false); a.navMore.span.pressable() {
+			t.Fatalf("at %d columns every place is on the row and it still folds %v", width, a.navMore.folded)
 		}
 	}
 }
@@ -313,59 +304,67 @@ func pulseLab(t *testing.T) (*app, time.Time) {
 	return a, now
 }
 
-// THE TOP LINE GIVES UP THE CLOCK BEFORE THE WORK COUNT.
+// THE TOP LINE GIVES THINGS UP IN THE OWNER'S ORDER.
 //
-// This line was drawn ALL OR NOTHING: everything, or the program's name by
-// itself. So a sixty-column window — a split pane, an ssh session from a train —
-// spent twelve of its cells on `thu 12:01am` and then, one segment later, threw
-// the whole right end away and said nothing about the machine at all. It walks a
-// ranked ladder now, and the clock is the first thing off it: the terminal, the
-// window and the wall all say what time it is, and nothing else on this machine
-// says that twelve things have stopped and will not move until somebody looks.
-func TestTheTopLineGivesUpTheClockBeforeTheWorkCount(t *testing.T) {
+// The places and the pulse share the first row now, and the owner ruled the
+// order a narrowing row gives things up in (2026-09-24): the clock first, with
+// the machine's name, then the counts (the moving one before the one that
+// wants you), then the allowance behind the day's figure, then the trailing
+// places fold into `more ▾`, and the day's figure is the last clause standing.
+// Every width is checked: a thing given up early may never be on the row while
+// a thing given up later is gone, and every rung of the ladder is met.
+func TestTheTopLineGivesThingsUpInTheOwnersOrder(t *testing.T) {
 	a, now := pulseLab(t)
+	a.showPage(pageNone)
+	a.machine = machineFacts{wants: 12, hands: 4, spent: 123.45, ceiling: 500}
+	a.host = "spark"
 	clock := pulseClock(now)
-	// THE WIDE TIERS DID NOT MOVE. A fix for sixty columns that cost a hundred
-	// and sixty a segment would be a fix that made the common case worse.
-	for _, width := range []int{80, 120, 160} {
-		line := plain(a.pulseLine(width, a.pal, pulseWhole))
-		for _, want := range []string{product, "12 want you", "4 moving", "$123.45 / " + railFigure(500), clock} {
-			if !strings.Contains(line, want) {
-				t.Fatalf("at %d columns the top line drew\n\t%q\nand lost %q; there is room for all of it:\n\t%q",
-					width, line, want, " "+product+"   12 want you · 4 moving · $123.45 / "+railFigure(500)+" · "+clock)
+	type state struct{ clock, host, hands, wants, allowance, unfolded, spend bool }
+	seen := map[state]bool{}
+	for width := 220; width >= 30; width-- {
+		line := plain(a.navLine(width, a.pal))
+		if got := ansi.StringWidth(line); got > width {
+			t.Fatalf("at %d columns the top line is %d cells wide:\n\t%q", width, got, line)
+		}
+		if !strings.Contains(line, product) || !strings.Contains(line, " chats ") {
+			t.Fatalf("at %d columns the top line lost the wordmark or the lit place:\n\t%q", width, line)
+		}
+		s := state{
+			clock: strings.Contains(line, clock), host: strings.Contains(line, "on spark"),
+			hands: strings.Contains(line, "4 moving"), wants: strings.Contains(line, "12 want you"),
+			allowance: strings.Contains(line, "/ "+railFigure(500)), unfolded: !a.navMore.span.pressable(),
+			spend: strings.Contains(line, "$123.45"),
+		}
+		order := []bool{s.clock, s.host, s.hands, s.wants, s.allowance, s.unfolded, s.spend}
+		for i := range order {
+			for j := i + 1; j < len(order); j++ {
+				if order[i] && !order[j] {
+					t.Fatalf("at %d columns the top line gave up rung %d before rung %d:\n\t%q", width, j, i, line)
+				}
 			}
 		}
+		seen[s] = true
 	}
-	// AND THE LADDER, RUNG BY RUNG. Each width is the widest one at which the
-	// rung below is the honest answer, and each expectation is a WHOLE clause
-	// fewer than the one above it — never a clause with its end sliced off.
-	for _, one := range []struct {
-		width int
-		want  string
-	}{
-		{160, " >● " + product + "   12 want you · 4 moving · $123.45 / " + railFigure(500) + " · " + clock},
-		{60, " >● " + product + "   12 want you · 4 moving · $123.45 / " + railFigure(500)},
-		{47, " >● " + product + "   12 want you · 4 moving · $123.45"},
-		{40, " >● " + product + "   12 want you · 4 moving"},
-		{30, " >● " + product + "   12 want you"},
-		{16, " " + product},
+	for _, want := range []state{
+		{true, true, true, true, true, true, true},
+		{false, true, true, true, true, true, true},
+		{false, false, true, true, true, true, true},
+		{false, false, false, true, true, true, true},
+		{false, false, false, false, true, true, true},
+		{false, false, false, false, false, true, true},
+		{false, false, false, false, false, false, true},
+		{false, false, false, false, false, false, false},
 	} {
-		line := plain(a.pulseLine(one.width, a.pal, pulseWhole))
-		if squash(line) != squash(one.want) {
-			t.Fatalf("at %d columns the top line drew\n\t%q\nand it should have dropped whole segments by rank:\n\t%q",
-				one.width, line, one.want)
-		}
-		if got := ansi.StringWidth(line); got > one.width {
-			t.Fatalf("at %d columns the top line is %d cells wide and runs past the frame:\n\t%q", one.width, got, line)
+		if !seen[want] {
+			t.Fatalf("no width drew the rung %+v; the ladder skipped a step", want)
 		}
 	}
 	// AND THE CLOCK IS STILL THE ONE SEGMENT A QUIET MORNING KEEPS. It is the
-	// lowest-ranked thing on the line and it is never EMPTY, which are two
-	// different laws: a machine with nothing stopped, nothing moving and nothing
-	// spent draws the name and the time.
-	a.machine = machineFacts{}
-	if line := plain(a.pulseLine(80, a.pal, pulseWhole)); !strings.Contains(line, clock) {
-		t.Fatalf("over a quiet morning the top line drew\n\t%q\nand it should be the name and the time:\n\t%q", line, " "+product+"   "+clock)
+	// lowest-ranked thing on the line and it is never EMPTY: a machine with
+	// nothing stopped, nothing moving and nothing spent draws the time.
+	a.machine, a.host = machineFacts{}, ""
+	if line := plain(a.navLine(120, a.pal)); !strings.HasSuffix(strings.TrimRight(line, " "), clock) {
+		t.Fatalf("over a quiet morning the top line drew\n\t%q\nand it should end in the time", line)
 	}
 }
 
@@ -377,8 +376,10 @@ func TestTheTopLineGivesUpTheClockBeforeTheWorkCount(t *testing.T) {
 // no allowance with an empty numerator in front of it, no bare `$`.
 func TestANarrowTopLineNeverSaysTheDayCostNothing(t *testing.T) {
 	a, _ := pulseLab(t)
+	a.showPage(pageNone)
+	a.machine = machineFacts{wants: 12, hands: 4, spent: 123.45, ceiling: 500}
 	for width := 12; width <= 160; width++ {
-		line := plain(a.pulseLine(width, a.pal, pulseWhole))
+		line := plain(a.navLine(width, a.pal))
 		switch {
 		case strings.Contains(line, "$0.00"):
 			t.Fatalf("at %d columns the top line drew\n\t%q\nover a day that spent $123.45; a dropped segment may not become a zero", width, line)

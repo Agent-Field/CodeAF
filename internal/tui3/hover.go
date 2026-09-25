@@ -128,13 +128,12 @@ const (
 	// NODE's (task.go). Every row of that column is a door into a node's room, so
 	// every row of it reacts — which is this file's own law read the other way
 	// round: the set that lights is the set [app.press] acts on, and in the
-	// roster that is all of it. What the hover buys beyond the background step is
-	// the disclosure triangle a family root reveals in its glyph cell — and that
-	// cell is a fold ONLY on the frames where the triangle is drawn in it, which
-	// is this law read strictly: the press reads the span the layout recorded
-	// (task.go's [app.railLead]), so a state cell nobody is pointing at is the
-	// row's, and the row is the node's door.
+	// roster that is all of it.
 	hoverRail
+	// hoverRailGroup is a folding group's heading in the roster (`Done 7 ▸`),
+	// index its group. The whole row lights because a press anywhere on it
+	// opens the group or folds it.
+	hoverRailGroup
 	// hoverRailArea is the roster's non-node space. The rail remains one
 	// pointer target even between rows, because its footer offer follows the
 	// hand across the whole column.
@@ -149,11 +148,6 @@ const (
 	// there to be an area of: everything that asks about the rail's rows would
 	// answer about a column that is not on the frame.
 	hoverRailGrip
-	// hoverRailDoor is the STANDING column's own door — the footer line carrying
-	// the `❯` and `ctrl+g hide` (task.go's [railStowHint]). It is the other half
-	// of [hoverRailGrip]: one control in two states, so the right edge lights the
-	// same way whether the column is up or away.
-	hoverRailDoor
 	// hoverMarginDoor is one of the margin's two `+` rows, held by the SLASH WORD
 	// it types (margin.go): there are two of them and they type two different
 	// things, so the word is what tells them apart — and it is what the paint
@@ -166,12 +160,12 @@ const (
 	hoverMarginStand
 	// hoverRailMore is the footer's OTHER door — the one line that leaves the
 	// column for the task page (taskview.go's [taskSheetPastHint]). It is a kind
-	// of its own for [hoverRailDoor]'s reason: it belongs to no node, and it does
-	// something different from every other line of the footer.
+	// of its own because it belongs to no node, and it does something different
+	// from every other line of the footer.
 	hoverRailMore
 	// hoverRailStanding is the footer's standing count — `◦ 2 standing orders`,
 	// a door onto /standing (standdoor.go). It is a kind of its own for
-	// [hoverRailDoor]'s reason and one more: it was a segment of the status row
+	// [hoverRailMore]'s reason and one more: it was a segment of the status row
 	// until 2026-09-09, and what lights has to be what the press acts on
 	// wherever the line is drawn.
 	hoverRailStanding
@@ -315,9 +309,9 @@ const (
 	// the person's own notes, and a paragraph that brightened would be
 	// promising a door on every sentence of it.
 	hoverQuestionOption
-	// hoverDockLabel is the quiet word `chats` in front of the dock, and
-	// hoverDockWall the `▦` beside it. They are one door and two kinds,
-	// because a hover lights the piece under the pointer. hoverDockCell is
+	// hoverDockLabel is the dock's door, `▦ All`, glyph and word as one
+	// button, and hoverDockWall the `▦` alone on a row too narrow for the
+	// word (walldock.go). Either lights the whole door. hoverDockCell is
 	// one conversation's cell after them, held by the conversation's key
 	// rather than by its column (walldock.go): the dock narrows as the keys
 	// beside it change, and a hover stored as a column would follow the
@@ -325,18 +319,11 @@ const (
 	hoverDockLabel
 	hoverDockWall
 	hoverDockCell
-	// hoverTraffic is one row of the manager's Traffic rail, held by its row
-	// on the last frame (teamtraffic.go), and hoverTrafficGrip the narrow
-	// frame's edge that lays the traffic over the body.
-	hoverTraffic
-	hoverTrafficGrip
-	// hoverTrafficHide is the rail header's `hide` word, and hoverTrafficClose
-	// the narrow frame's card's `Close esc` (teamrail.go).
-	hoverTrafficHide
-	hoverTrafficClose
-	// hoverTrafficTab is the header's `Tasks 2` word, which lays the manager's
-	// own tasks in the column (teamrail.go).
-	hoverTrafficTab
+	// hoverSide is one of the side column's own rows or doors (sidecol.go):
+	// key is the row's identity and index the door on it, -1 for the row as a
+	// whole. A row is held by its key and not by its place because the band
+	// and the Traffic re-lay as things arrive.
+	hoverSide
 	// hoverThread is a line of a thread card in the conversation, held by its
 	// entry and the message it shows (teamthreadcard.go).
 	hoverThread
@@ -487,24 +474,16 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	// is on the frame none of the others can be: the roster is away, so every
 	// question below about a row of it answers about nothing (task.go's
 	// [app.railGripAt]).
-	// THE TRAFFIC RAIL IS ASKED BEFORE THE TASK COLUMN, for the reason the
-	// press asks it first: it stands at the frame's right edge, in columns the
-	// task column's own questions would otherwise claim (teamtraffic.go).
-	if at, ok := a.trafficHoverAt(x, y); ok {
-		return at
-	}
 	if a.railGripAt(x, y) {
 		return hoverAt{kind: hoverRailGrip}
 	}
 	if a.railSeamAt(x, y) {
 		return hoverAt{kind: hoverRailSeam}
 	}
-	// AND THE STANDING COLUMN'S OWN DOOR, which is asked before the rows for the
-	// reason the seam is: it is a line of the footer and belongs to no node, so a
-	// question about which node is under the pointer would answer about the empty
-	// space beside it (task.go's [app.railDoorAt]).
-	if a.railDoorAt(x, y) {
-		return hoverAt{kind: hoverRailDoor}
+	// THE SIDE COLUMN'S OWN ROWS AND DOORS, before the roster's nodes: its
+	// header, its band, its Traffic, and a group's heading (sidecol.go).
+	if at, ok := a.sideHoverAt(x, y); ok {
+		return at
 	}
 	// AND THE FOOTER'S STANDING COUNT, on exactly those terms: it is a line of
 	// the footer, it belongs to no node, and it answers to a click
@@ -747,6 +726,18 @@ func (a *app) markStale(i int) {
 // longer exists is a highlight on somebody else's row.
 func (a *app) dropHover() { a.hot = hoverAt{} }
 
+// dropResizeHover forgets hover that pointed at a door the new layout may
+// not draw. [app.dropHover] covers the body. The nav's own hover is separate:
+// [app.tabHover] is the place word, and [navMore.hot] is `more ▾`. Both feed
+// the hint line ([app.headHint]), which does not ask whether the last frame
+// still drew the door.
+func (a *app) dropResizeHover() {
+	a.dropHover()
+	a.barHover(pageNone)
+	a.navMoreHot(false)
+	a.navMore.hover = -1
+}
+
 // The four questions the renderers ask.
 
 // hoveringEntry reports whether the pointer is on this entry's rows.
@@ -786,7 +777,7 @@ func (a *app) hoveringRailMore() bool { return a.hot.kind == hoverRailMore }
 // hoveringRailArea reports whether the pointer is anywhere over the roster.
 func (a *app) hoveringRailArea() bool {
 	switch a.hot.kind {
-	case hoverRail, hoverRailArea, hoverRailSeam, hoverRailMore, hoverRailStanding:
+	case hoverRail, hoverRailArea, hoverRailSeam, hoverRailMore, hoverRailStanding, hoverSide, hoverRailGroup:
 		return true
 	}
 	return false
@@ -797,10 +788,6 @@ func (a *app) hoveringRailSeam() bool { return a.hot.kind == hoverRailSeam }
 
 // hoveringRailGrip reports whether the pointer is over the closed column's edge.
 func (a *app) hoveringRailGrip() bool { return a.hot.kind == hoverRailGrip }
-
-// hoveringRailDoor reports whether the pointer is over the standing column's own
-// door line, which is the same control in its other state.
-func (a *app) hoveringRailDoor() bool { return a.hot.kind == hoverRailDoor }
 
 // hoveringStatusModel reports whether the pointer is on the status row's model
 // segment (render.go's [app.paintIdentity] is what it changes).

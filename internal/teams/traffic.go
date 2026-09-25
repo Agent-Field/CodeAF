@@ -36,6 +36,12 @@ const (
 	KindStop      = "stop"      // a member was stopped
 	KindStart     = "start"     // a member was started
 	KindYou       = "you"       // the person spoke to the team
+	// The delegation kinds (DESIGN.md section 8).
+	KindQuestion = "question" // a member asks its home manager a clarifying question
+	KindAnswer   = "answer"   // the manager answers one; Reply is the question's id
+	KindPacket   = "packet"   // a decision packet was raised, decided or escalated
+	KindClose    = "close"    // the team was closed
+	KindReopen   = "reopen"   // the team was reopened
 )
 
 // Addresses that are not a member's handle.
@@ -46,6 +52,8 @@ const (
 	ToEveryone  = "everyone"
 	ToManager   = "manager"
 	ToRoom      = "room"
+	// ToYou is the person, as the one a question or a packet is put to.
+	ToYou = "you"
 	// ToSeveral is a message to more than one member and fewer than all of
 	// them, by name: [Entry.Handles] lists who (thread.go).
 	ToSeveral = "several"
@@ -53,6 +61,7 @@ const (
 
 var kinds = map[string]bool{
 	KindEvent: true, KindNote: true, KindDirective: true, KindStop: true, KindStart: true, KindYou: true,
+	KindQuestion: true, KindAnswer: true, KindPacket: true, KindClose: true, KindReopen: true,
 }
 
 // Entry is one line of the Traffic log. This shape is the contract between
@@ -86,9 +95,20 @@ type Entry struct {
 	// the State constants ([StateFinished], [StateFailed], [StateAsking],
 	// [StateIdle] for a turn that was stopped, [StateRunning] for one that
 	// carried on after its question was answered). It is empty on every other
-	// kind. A reader colours by it rather than by reading Text, which is the
+	// kind but [KindPacket]. A reader colours by it rather than by reading Text, which is the
 	// words a person reads.
 	State string `json:"state,omitempty"`
+	// Packet is the decision packet a [KindPacket] entry is about, and State
+	// is then the packet's state after the change it records.
+	Packet string `json:"packet,omitempty"`
+	// Reply is the id of the [KindQuestion] entry a [KindAnswer] answers.
+	Reply string `json:"reply,omitempty"`
+	// Team is, on a [KindStart], the sub-team the started conversation is to
+	// manage (a manager's `team_start` of kind team): the interface opens and
+	// adds the member as for any start, and the new conversation, reading its
+	// brief, makes itself that team's manager. It is empty on every other
+	// start and every other kind.
+	Team string `json:"team,omitempty"`
 }
 
 // trafficRotateBytes is the size past which the log starts a new file.

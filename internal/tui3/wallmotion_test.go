@@ -431,14 +431,14 @@ func TestWallKeysDoWhatTheButtonsDo(t *testing.T) {
 		t.Fatal(err)
 	}
 	wallKeyPress(a, "e")
-	if a.wall.pop.kind != wallPopNone {
+	if a.wall.pop.kind != wallPopNone || a.tsheet.on {
 		t.Fatal("e with no team shown opened something")
 	}
 	wallKeyPress(a, "1")
 	_ = a.wallFrame(a.width, a.height)
 	wallKeyPress(a, "e")
-	if a.wall.pop.kind != wallPopSettings || a.wall.pop.team != harbor {
-		t.Fatalf("e: %+v", a.wall.pop)
+	if !a.tsheet.on || a.tsheet.team != harbor {
+		t.Fatalf("e: %+v", a.tsheet)
 	}
 }
 

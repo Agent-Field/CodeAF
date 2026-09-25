@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -18,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
 // THE SETTINGS PANEL: /settings, or ctrl+, — the FIRST of the three fullscreen
@@ -101,6 +103,12 @@ const (
 	// tabTasks is how work you can walk away from is run — how it starts, how it
 	// is checked, how much of it happens at once, and on whose hands.
 	tabTasks = "Tasks"
+	// tabTeams is what every team inherits when it says nothing of its own:
+	// who answers a member's question, what a team may spend in a day, what a
+	// new sub-team is given, and how deep teams may nest. A team's own
+	// overrides are on its card on the teams page; these are the defaults its
+	// `· from Settings` points at.
+	tabTeams = "Teams"
 	// tabProviders is which model answers what.
 	tabProviders = "Providers"
 )
@@ -112,23 +120,27 @@ const (
 // Spending, Safety and Tasks stand between Display and Providers, and Spending
 // leads the three: "what may it spend" is asked before "on which machine", and
 // before either of the two questions that used to share its tab.
+//
+// Teams follows Tasks: both are about work you hand off, and its defaults are
+// read after the question of how one task runs.
 var settingTabs = []string{tabSession, tabContext, tabWorkspace, tabDisplay,
-	tabSpending, tabSafety, tabTasks, tabProviders, tabConnections}
+	tabSpending, tabSafety, tabTasks, tabTeams, tabProviders, tabConnections}
 
-// settingTabCategory is the ONE-TO-ONE map between the three new tabs and the
-// three registry categories behind them, and it is the seam that keeps the skin
+// settingTabCategory is the ONE-TO-ONE map between the four newer tabs and the
+// four registry categories behind them, and it is the seam that keeps the skin
 // honest about the one source of truth.
 //
 // The other tabs are a reading of the ROWS and not of the categories — "session
 // ceiling" is a dollar figure that answers "what may THIS conversation do" — and
-// that stays true of them. These three are different: the registry's own words
-// for them (`spending`, `safety`, `tasks`) are already the product's words for
+// that stays true of them. These four are different: the registry's own words
+// for them (`spending`, `safety`, `tasks`, `teams`) are already the product's words for
 // them, so a row that is filed under one and drawn under another would be two
 // answers to one question. chrome_test.go pins the map in both directions.
 var settingTabCategory = map[string]string{
 	tabSpending: config.CategorySpending,
 	tabSafety:   config.CategorySafety,
 	tabTasks:    config.CategoryTasks,
+	tabTeams:    config.CategoryTeams,
 }
 
 // settingWidget is how a row is ANSWERED, which is not quite how it reads.
@@ -770,6 +782,34 @@ var settingUI = map[string]settingMeta{
 			"context window and goes lean under 32,000 tokens; lean and full say so yourself, " +
 			"for a provider that reports a window its model does not really have.",
 	},
+	// ── Teams ───────────────────────────────────────────────────────────────
+	// The five defaults every team inherits, in the order a person reaches
+	// for them (DESIGN.md section 8, the settings tab's Teams group).
+	config.KeyTeamsQuestionsUp: {
+		tab: tabTeams, label: "questions go to the manager", widget: widgetToggle,
+		about: "a member's clarifying question goes to its manager first; you are asked only " +
+			"what no manager can answer. Permission prompts always come to you.",
+	},
+	config.KeyTeamsWake: {
+		tab: tabTeams, label: "team messages wake", widget: widgetToggle,
+		about: "a manager's directive starts an idle member's turn, and a member's reply " +
+			"starts the manager's. Off, messages wait for the next turn.",
+	},
+	config.KeyTeamsCapUSDDay: {
+		tab: tabTeams, label: "daily cap per team", widget: widgetText,
+		about: "what a team and the teams under it may spend in a day before its manager " +
+			"asks you whether to go on. Blank or 0 is no cap.",
+	},
+	config.KeyTeamsSubSharePct: {
+		tab: tabTeams, label: "sub-team share", widget: widgetText,
+		about: "the share of its parent's cap a new sub-team starts with. Teams that " +
+			"already exist keep theirs.",
+	},
+	config.KeyTeamsDepthLimit: {
+		tab: tabTeams, label: "team depth", widget: widgetText,
+		about: "how many levels of teams a manager may build, the top team counting as one. " +
+			"1 means no sub-teams.",
+	},
 }
 
 func init() {
@@ -957,6 +997,19 @@ func (i sheetItem) restful() bool { return i.head == "" && i.read == nil }
 // frame nothing.
 type sheet struct {
 	tab int
+	// host is the machine the session runs on over --host, "" otherwise.
+	host string
+	// teamDefaultsWrite says the teams seam can change that machine's `teams.`
+	// rows ([TeamsSeam.ApplyDefault]). False over --host against an engine
+	// without the door, and the Teams tab stays read-only.
+	teamDefaultsWrite bool
+	// farTeams is that machine's five defaults, once the seam has answered.
+	// Nil until then, and nil on a local launch.
+	farTeams *teamstore.Defaults
+	// hostNote is the settings sentence already written into the transcript
+	// for this visit. The same words are not written again when the tab
+	// moves between two tabs that share a disk.
+	hostNote string
 
 	registry *config.Settings
 	// profileDir is retained only for live explanations derived from several
@@ -1272,16 +1325,6 @@ func (a *app) openSettings() { a.showPage(pageSettings) }
 // raiseSettings builds the panel. It is [placeSettings]'s `open` and nothing
 // else calls it, which is what makes the router the one road in.
 func (a *app) raiseSettings() {
-	// THE PANEL OPENS AND SAYS WHOSE ROWS THESE ARE. Over --host it edits this
-	// machine's profile, and only some of these rows are about this machine: the
-	// mouse, the timestamps, the draft and the history are the surface's own and
-	// apply; the tool gate, the spend rail and the auxiliary models are the
-	// SESSION's, and the session reads them from the profile on the other machine.
-	// Closing the panel would take the working half away; opening it silently
-	// would let somebody turn a gate off and watch it stay on (host.go).
-	if a.hosted() {
-		a.note(settingsRemoteWord)
-	}
 	// The day's own figure, read once for the whole of this visit (see
 	// [app.spentTodayUSD]).
 	a.readDayCost()
@@ -1291,9 +1334,15 @@ func (a *app) raiseSettings() {
 	// [app.spentThisSessionUSD], issue #269). It is a tail read
 	// ([session.UsageCache]) and it happens once per visit, never on a draw.
 	a.readTreeSpend()
+	write := false
+	if a.hosted() && a.teamsDisk.door.present() && a.teamsDisk.door.ApplyDefault != nil && a.teamsDisk.door.Defaults != nil {
+		write = true
+	}
 	a.sheet = sheet{
-		registry:   a.registry(),
-		profileDir: a.profileDir,
+		host:              a.host,
+		teamDefaultsWrite: write,
+		registry:          a.registry(),
+		profileDir:        a.profileDir,
 		// AND WHAT THIS PROJECT DOES WITH A QUESTION WHILE NOBODY IS THERE. The
 		// rows are the engine's rather than the registry's (settingsautonomy.go),
 		// and a page that asked the engine per frame would be paying for an
@@ -1315,7 +1364,30 @@ func (a *app) raiseSettings() {
 	}
 	a.sheet.rows = a.sheet.registry.Rows()
 	a.sheet.build()
+	// WHOSE ROWS, SAID FOR THE TAB ON SHOW. Over --host the note is
+	// [settingsHostNote]: this machine on every tab but Teams, and the far
+	// machine on Teams when the seam can write it. It is said after the sheet
+	// exists, because the sentence is a reading of that sheet. Closing the
+	// panel would take the working rows away; opening it silently would let
+	// somebody turn a gate off and watch it stay on (host.go).
+	a.saySettingsHost()
 	a.touch()
+}
+
+// saySettingsHost writes the hosted settings sentence when it is not the one
+// already in the transcript. A local launch says nothing. Moving between two
+// tabs that share a disk says nothing again.
+func (a *app) saySettingsHost() {
+	if !a.hosted() {
+		return
+	}
+	onTeams := a.sheet.tab >= 0 && a.sheet.tab < len(settingTabs) && settingTabs[a.sheet.tab] == tabTeams
+	word := settingsHostNote(onTeams, a.host, a.sheet.teamDefaultsWrite, a.sheet.farTeams != nil)
+	if word == a.sheet.hostNote {
+		return
+	}
+	a.sheet.hostNote = word
+	a.note(word)
 }
 
 // closeSettings is the DOOR out of the panel, and it goes through the router.
@@ -1743,8 +1815,12 @@ func (s *sheet) changed(item sheetItem) bool {
 	case config.SettingModel, config.SettingPercent:
 		return false
 	}
+	value := item.row.Value()
+	if raw, ok := s.farTeamValue(item.row.Key); ok {
+		value = raw
+	}
 	was, known := s.defaults[item.row.Key]
-	return known && was != item.row.Value()
+	return known && was != value
 }
 
 // ── the roles ───────────────────────────────────────────────────────────────
@@ -2094,10 +2170,12 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// only in the message one (editundo.go).
 	if editorUndo(&s.query, msg.String()) {
 		s.build()
+		a.saySettingsHost()
 		return nil, true
 	}
 	if editorWordKill(&s.query, msg.String()) {
 		s.build()
+		a.saySettingsHost()
 		return nil, true
 	}
 
@@ -2112,6 +2190,7 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		if s.searching() {
 			s.query.reset()
 			s.build()
+			a.saySettingsHost()
 			return nil, true
 		}
 		if a.connEsc() {
@@ -2198,6 +2277,7 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			s.build()
 		}
 	}
+	a.saySettingsHost()
 	return nil, true
 }
 
@@ -2257,6 +2337,14 @@ func (a *app) activate() tea.Cmd {
 		return a.startModelConnect(modelConnectionStatus(source, true), true)
 	}
 	s.msg = ""
+	// OVER --host THE TEAMS DEFAULTS ARE THAT MACHINE'S. With the seam's write
+	// door they are edited there, the same keys the local tab writes. Without
+	// it an edit here would change this laptop's file and no team anybody is
+	// running, so the row says so instead.
+	if s.host != "" && item.meta.tab == tabTeams && !s.teamDefaultsWrite {
+		s.msg = s.hostTeamsLockedWord()
+		return nil
+	}
 	if item.autonomy != nil {
 		return a.autonomyRowNext(item.autonomy)
 	}
@@ -2277,8 +2365,15 @@ func (a *app) activate() tea.Cmd {
 	switch item.meta.widget {
 	case widgetToggle:
 		next := "on"
-		if item.row.Value() == "on" {
+		cur := item.row.Value()
+		if raw, ok := s.farTeamValue(item.row.Key); ok {
+			cur = raw
+		}
+		if cur == "on" {
 			next = "off"
+		}
+		if cmd := a.writeHostTeamDefault(item, next); cmd != nil || s.hostTeamRow(item) {
+			return cmd
 		}
 		a.applySetting(item, next)
 
@@ -2335,6 +2430,9 @@ func (a *app) activate() tea.Cmd {
 
 	default:
 		value := item.row.Value()
+		if raw, ok := s.farTeamValue(item.row.Key); ok {
+			value = raw
+		}
 		if value == item.row.EmptyLabel {
 			// The empty label is what the row SAYS when it holds nothing
 			// ("none", "follows the conversation"). Putting that word in the box
@@ -2519,29 +2617,34 @@ func (a *app) applySetting(item sheetItem, raw string) {
 
 // sheetEditKey drives the text submenu. enter saves, an empty box clears the
 // row, esc leaves it exactly as it was.
-func (a *app) sheetEditKey(msg tea.KeyPressMsg) {
+func (a *app) sheetEditKey(msg tea.KeyPressMsg) tea.Cmd {
 	s := &a.sheet
 	edit := s.edit
 	// The word and line jumps are the surface's, said once (editkeys.go).
 	if editorMotion(&edit.box, msg.String()) {
-		return
+		return nil
 	}
 	// AND ctrl+z TAKES BACK WHAT WAS TYPED, in every box on this surface and not
 	// only in the message one (editundo.go).
 	if editorUndo(&edit.box, msg.String()) {
-		return
+		return nil
 	}
 	switch msg.String() {
 	case "esc":
 		s.edit = nil
 	case "enter":
 		row, ok := s.registry.Row(edit.key)
+		raw := edit.box.String()
 		s.edit = nil
 		if !ok {
-			return
+			return nil
 		}
 		meta, _ := settingMetaFor(row)
-		a.applySetting(sheetItem{row: row, meta: meta}, edit.box.String())
+		item := sheetItem{row: row, meta: meta}
+		if cmd := a.writeHostTeamDefault(item, raw); cmd != nil || s.hostTeamRow(item) {
+			return cmd
+		}
+		a.applySetting(item, raw)
 	case "backspace":
 		edit.box.deleteBackward()
 	case "delete":
@@ -2569,6 +2672,146 @@ func (a *app) sheetEditKey(msg tea.KeyPressMsg) {
 			edit.box.insert(text)
 		}
 	}
+	return nil
+}
+
+// hostTeamRow reports whether this row is a Teams default edited on the far
+// machine. The local registry is not the writer then.
+func (s *sheet) hostTeamRow(item sheetItem) bool {
+	return s.host != "" && s.teamDefaultsWrite && item.meta.tab == tabTeams
+}
+
+// hostTeamsLockedWord is the one line an older engine gets: the tab can be
+// read and cannot be changed over this connection.
+func (s *sheet) hostTeamsLockedWord() string {
+	if s.farTeams != nil {
+		return "changing them is not available over this connection"
+	}
+	return "the teams on " + s.host + " inherit that machine's Settings; change them there"
+}
+
+// farTeamValue is one Teams row as the registry's Value would read it from the
+// far machine's defaults. The bool is false until that read has landed, and
+// false for every other row.
+func (s *sheet) farTeamValue(key string) (string, bool) {
+	if s.farTeams == nil {
+		return "", false
+	}
+	d := s.farTeams
+	switch key {
+	case config.KeyTeamsQuestionsUp:
+		if d.QuestionsUp {
+			return "on", true
+		}
+		return "off", true
+	case config.KeyTeamsWake:
+		if d.Wake {
+			return "on", true
+		}
+		return "off", true
+	case config.KeyTeamsCapUSDDay:
+		if d.CapUSDDay == 0 {
+			return "no cap", true
+		}
+		return "$" + strconv.FormatFloat(d.CapUSDDay, 'f', -1, 64), true
+	case config.KeyTeamsDepthLimit:
+		return strconv.Itoa(d.DepthLimit), true
+	case config.KeyTeamsSubSharePct:
+		return strconv.Itoa(int(d.SubShare*100 + 0.5)), true
+	}
+	return "", false
+}
+
+// hostedTeamReading is that value as the row draws it, with the unit the
+// registry would add and the provenance the team card uses for a value that
+// comes from these rows ([teamstore.Origin.Words], `from Settings`).
+func (s *sheet) hostedTeamReading(item sheetItem) (string, bool) {
+	raw, ok := s.farTeamValue(item.row.Key)
+	if !ok {
+		return "", false
+	}
+	value := raw
+	switch item.row.Key {
+	case config.KeyTeamsDepthLimit:
+		unit := "levels"
+		if raw == "1" {
+			unit = "level"
+		}
+		value = raw + " " + unit
+	case config.KeyTeamsSubSharePct:
+		value = raw + "%"
+	}
+	if words := (teamstore.Origin{Kind: teamstore.OriginSettings}).Words(); words != "" {
+		value += " · " + words
+	}
+	return value, true
+}
+
+// readHostTeamDefaults asks the seam for the far machine's `teams.` rows, off
+// the loop. It is nil locally and against an engine that cannot answer.
+func (a *app) readHostTeamDefaults() tea.Cmd {
+	if !a.hosted() {
+		return nil
+	}
+	door := a.teamsDisk.door
+	if !door.present() || door.Defaults == nil {
+		return nil
+	}
+	read := door.Defaults
+	return a.besideLine(func() func(bool) tea.Cmd {
+		d, err := read()
+		return func(here bool) tea.Cmd {
+			if !here || !a.at(pageSettings) {
+				return nil
+			}
+			if err != nil {
+				a.sheet.msg = err.Error()
+				a.touch()
+				return nil
+			}
+			a.sheet.farTeams = &d
+			a.sheet.build()
+			a.saySettingsHost()
+			a.touch()
+			return nil
+		}
+	})
+}
+
+// writeHostTeamDefault sends one Teams row through the seam, off the loop.
+// A nil command with [sheet.hostTeamRow] false means this row is local and
+// the caller writes it the usual way.
+func (a *app) writeHostTeamDefault(item sheetItem, raw string) tea.Cmd {
+	if !a.sheet.hostTeamRow(item) {
+		return nil
+	}
+	if a.sheet.farTeams == nil {
+		return nil
+	}
+	door := a.teamsDisk.door.ApplyDefault
+	if door == nil {
+		a.sheet.msg = a.sheet.hostTeamsLockedWord()
+		return nil
+	}
+	key := item.row.Key
+	return a.offLoop(func() func(bool) tea.Cmd {
+		d, err := door(key, raw)
+		return func(here bool) tea.Cmd {
+			if !here || !a.at(pageSettings) {
+				return nil
+			}
+			if err != nil {
+				a.sheet.msg = err.Error()
+			} else {
+				copied := d
+				a.sheet.farTeams = &copied
+				a.sheet.msg = ""
+			}
+			a.sheet.build()
+			a.touch()
+			return nil
+		}
+	})
 }
 
 // sheetSelectKey drives the model picker while a slot row owns it. Only the two
@@ -2693,6 +2936,7 @@ func (a *app) sheetPress(x, y int) tea.Cmd {
 			a.sheet.cursor, a.sheet.top, a.sheet.msg = 0, 0, ""
 			a.sheet.conn.armed, a.sheet.conn.entry = false, nil
 			a.sheet.build()
+			a.saySettingsHost()
 			a.touch()
 		}
 	case sheetHitRow:
@@ -2754,9 +2998,7 @@ func (a *app) sheetFrame(width, height int) ([]string, []sheetHit, int, int) {
 	// row is gone — the place tab bar above says `settings` — and so is its keys
 	// line, which is the one hint every place shares now. ITS OWN TAB BAR STAYS,
 	// as the first row of its body, and the two bars are not a repetition: the
-	// upper one is the seven places and the lower one is this place's sections.
-	// The panel is where [placeTabBar] was lifted from, so they are drawn by the
-	// same geometry and read as one object at two scales.
+	// nav at the top is the places and this one is this place's sections.
 	s := &a.sheet
 	pal := a.pal
 	lines, hits, caretX, caretY := placeFrame(a, width, height,
@@ -2857,9 +3099,9 @@ func tabChipCols(title string) int { return ansi.StringWidth(title) + tabPadCols
 // account, were also unreachable by eye: nobody discovers a tab they have never
 // seen.
 //
-// SCROLLING, NOT COLLAPSING, AND HERE IS WHY. The place bar solves the same
-// squeeze by giving words up in a stated order until only the word you are
-// standing in is left ([app.placeTabBar]'s width ladder), and that is right
+// SCROLLING, NOT COLLAPSING, AND HERE IS WHY. The nav solves the same squeeze
+// by folding words into `more ▾` in a stated order until only the word you are
+// standing in is left (topnav.go's width ladder), and that is right
 // THERE because its words are rooms — each one is a door you reach by name, the
 // bar is a list of the ones worth naming, and a room with something new in it
 // earns its cells over a room with nothing. These nine are not a list of doors;
@@ -3205,6 +3447,9 @@ func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, bo
 	// beside the default, rather than spelled again by every surface that draws
 	// a number ([config.Setting.Reading]).
 	value := item.row.Reading()
+	if hosted, ok := s.hostedTeamReading(item); ok {
+		value = hosted
+	}
 	if value == "" {
 		value = "—"
 	}
@@ -3368,6 +3613,21 @@ func (s *sheet) footNote() string {
 	// question, so it says its own line (connectcaps.go).
 	if s.onConnections() {
 		return s.connFootNote()
+	}
+	// THE TEAMS TAB IS DEFAULTS, and says where the exceptions live: a team's
+	// own overrides are on its card on the teams page (teamsheet.go). Over
+	// --host it says whose defaults the teams there really read.
+	if settingTabs[s.tab] == tabTeams {
+		if s.host != "" && !s.teamDefaultsWrite {
+			if s.farTeams != nil {
+				return "on " + s.host + " the teams inherit that machine's Settings · changing them is not available over this connection"
+			}
+			return "on " + s.host + " the teams inherit that machine's Settings · these are this one's, shown and not edited"
+		}
+		if s.host != "" {
+			return "a team can override any of these on its card · saved on " + s.host
+		}
+		return "a team can override any of these on its card · saved to your profile"
 	}
 	if item, ok := s.current(); ok {
 		if name, pinned := item.row.PinnedBy(); pinned {

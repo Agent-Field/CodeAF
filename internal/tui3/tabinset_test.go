@@ -42,7 +42,13 @@ func TestTabInsetSurroundsPaintedStatusAndClose(t *testing.T) {
 					line := a.tabsPaint(pieces)
 					first := ansi.Cut(line, label.span.from, label.span.from+1)
 					last := ansi.Cut(line, close.span.to-1, close.span.to)
-					if plain(first) != " " || plain(last) != " " {
+					// WITH NO COLOUR, THE POINTER'S TAB WEARS `·` IN ITS LEADING INSET,
+					// as a nav word does; every other edge is a blank.
+					lead := " "
+					if profile == tokens.NoColor && hover >= 0 {
+						lead = "·"
+					}
+					if plain(first) != lead || plain(last) != " " {
 						t.Fatalf("profile=%v signal=%v active=%v hover=%d: tab edges are not inset: %q / %q", profile, signal, active, hover, first, last)
 					}
 					if profile >= tokens.ANSI256 && (active || hover >= 0) {
@@ -77,11 +83,11 @@ func TestTabInsetCellsKeepTheirNavigationAndCloseOwnership(t *testing.T) {
 		if closeIt {
 			x, want = close.to-1, tabClose
 		}
-		hit, ok := a.tabAt(x, placeTabRow)
+		hit, ok := a.tabAt(x, tabStripRow)
 		if !ok || hit.kind != want || hit.tab.word != word {
 			t.Fatalf("inset maps to wrong target: %+v", hit)
 		}
-		cmd, took := a.tabPress(x, placeTabRow)
+		cmd, took := a.tabPress(x, tabStripRow)
 		if !took {
 			t.Fatal("inset click fell through")
 		}

@@ -12,9 +12,10 @@ Open it any of these ways:
 - `alt+v` from anywhere in a conversation (on a Mac keyboard that is not sending alt,
   `option+v` types `√`, and that works too)
 - `/wall`
-- `chats` or `▦` at the right end of the row under the message box, drawn once a
+- `▦ All` at the right end of the row under the message box, drawn once a
   second conversation is open (the word goes first when the row is narrow)
-- `▦ All` on the tab strip, after the new-chat `+` (just `▦` on a narrow window)
+- `▦ All` on the tab strip, after the new-chat `+` (not drawn under 60 columns). The strip
+  is the second line of a chat, not of a place, so from home or teams use `alt+v` or `/wall`
 
 Close it with `alt+v` again, `esc`, the `‹ Back` button at the bottom left, or a press on
 the strip's `▦ All`. Nothing you do in the view ends any work: closing a tile closes its
@@ -29,25 +30,34 @@ resumes them in the background, so they arrive as tiles and tabs while the conve
 front and your focus stay where they are. When every member is open the button is not there. Under it is the **Teams** row, which ends in `✦ Organize` while every conversation is
 shown, and at the bottom a toolbar with `Filter /`,
 `New team s`, `Columns − +` and `Help ?`. While the pointer rests on any control, the middle
-of the toolbar says in one dim line what it does and which key does the same.
+of the toolbar says in one dim line what it does and which key does the same; on a narrow
+window `Columns` and the other buttons step aside for that line so it is always whole, and
+come back when the pointer leaves. Pointing at `▦ All` says `The grid of your open tabs, and
+your teams · alt+v`; pointing at a square of the tabs dock under the box names that
+conversation (see below).
 
-## The chats dock under the message box
+**`▦ All` and the `chats` place are two different doors.** `chats` on the top line is the
+place: every conversation, one at a time, with the tab strip over it. `▦ All` is this view:
+the tabs this window has open, all at once, as a grid.
 
-Once a second conversation is open, the row under the message box ends in a dim word,
-`chats`, then `▦`, then one square per open conversation, in the same order as the tab
-strip. The square in front is `▣`. The others are `■`, coloured the way the strip colours
+## The tabs dock under the message box
+
+Once a second conversation is open, the row under the message box ends in `▦ All`, the
+same door the tab strip has, then one square per open conversation, in the same order as
+the tab strip. The square in front is `▣`. The others are `■`, coloured the way the strip colours
 a tab: the live colour while it is running, amber while it is waiting on you, and dim
 while it is idle. Amber is only for waiting on you. One open conversation draws no dock.
 
 Rest the pointer on a square and that square takes the hover ground. The hint line says
 `Go to Shipping the parser · running · click`, with `waiting on you` or `idle` in the
-middle. On the square in front it says `Shipping the parser · you are here`. On `chats`
-or on `▦` it says `All conversations · alt+v`.
+middle. On the square in front it says `Shipping the parser · you are here`. On `▦ All`
+it says `The grid of your open tabs, and your teams · alt+v`, as the strip's `▦ All` does,
+and the hover ground covers the glyph and the word together: they are one button.
 
-A press on a square goes to that conversation and does not open this view. A press on
-`chats` or on `▦` opens the conversations view, the same as `alt+v`. A press on the
-square in front does nothing. On a narrow row the word `chats` is the first thing to
-go. The squares stay, then fewer of them with a `+N`, then the dock is not drawn.
+A press on a square goes to that conversation and does not open this view. A press
+anywhere on `▦ All` opens the conversations view, the same as `alt+v`. A press on the
+square in front does nothing. On a narrow row the word `All` is the first thing to
+go, leaving `▦`. The squares stay, then fewer of them with a `+N`, then the dock is not drawn.
 
 ## Reading a tile: title, what it is doing, and the newest lines
 
@@ -144,9 +154,29 @@ start page, `ctrl+t`, and a folder typed on home all start a new conversation, a
 the team that is shown. Going back to a conversation that already exists changes no team.
 
 **Team settings.** `e`, the dot on a team's segment, or the `⋯` the pointer brings up where its
-count was, opens the team's settings: its name, which you edit as you type, and its colour.
-**Delete team** asks first, and deleting a team never closes or changes a conversation; only
-the group's name goes.
+count was, opens the team's **card**: its name, which you edit as you type, its colour,
+**`Inside: harbor ▾`** (which team it sits in; a press opens the Move into… picker), the
+settings it overrides (each one saying where an inherited value comes from) and
+**Close team…**. The **teams page** has the card whole.
+
+**Teams inside teams.** A team can sit inside another. The Teams row stays one flat row and
+names a team inside another with its parent first, `harbor › api`; the team switcher and the
+teams page draw the tree. You move a team on the **teams page** (`m`, Move into…, or a drag in
+its rail) or with `Inside` on its card, and every move can be undone for a few seconds.
+
+## Moving a conversation between teams is written to Traffic
+
+Moving a conversation from one team to another writes one Traffic line on each side:
+`@web moved to harbor` on the team it left, `@web joined from ops` on the team it joined.
+Moving a whole team under another writes the same kind of line on the team that moved and on
+its new parent. A move that does not go through writes nothing. The manager of a team that
+gained or lost a member is told on its next wake, from the Traffic it already reads.
+
+**Closing a team.** `D` closes the team that is shown: at once, with Undo, when nothing in it
+is running, and with a card offering **Wrap up first**, **Close now** and **Cancel** when
+something is. A closed team leaves the Teams row and the switcher and waits under
+`▸ Closed · N` on the teams page, where it can be reopened, and deleted once you are sure.
+Closing or deleting a team never deletes a conversation.
 
 ## Organize: teams suggested for your conversations
 
@@ -191,24 +221,28 @@ After an Apply the Teams row says what it did for a few seconds, like
 `Organized · 2 new teams, 2 added   Undo`. **Undo**, or `u` while it is there, puts your teams
 back exactly as they were.
 
-Organize only ever adds: it never renames a team and never takes a conversation out of one,
-so pressing it again is how you refresh the suggestions. Nothing runs by itself. The button
+When some teams have had no activity for a week and nothing waiting on them, the card also
+offers **Close 3 quiet teams** under `Quiet for a week`, ticked like the rest; Apply closes
+them and Undo reopens them. Apart from that Organize only ever adds: it never renames a team
+and never takes a conversation out of one, so pressing it again is how you refresh the
+suggestions. Nothing runs by itself. The button
 counts the conversations in no team once there are five or more, `✦ Organize 7`, and after a
 run that found nothing to suggest it reads `Organized ✓` until your conversations or teams
 change; it can still be pressed.
 
 ## The team switcher on the tab strip
 
-While a team is shown, the tab strip carries a chip naming it, `● harbor ▾`, right after
-`Home` and right before the tabs it narrows, with the manager's place after it:
+While a team is shown, the tab strip carries a chip naming it, `● harbor ▾`, first on the
+strip and right before the tabs it narrows, with the manager's place after it:
 
 ```
-  Home   ● harbor ▾   ◆ Manager ×   Refactor the rail sco… ×   openrouter price scrape ×   +   ▦ All
+   ● harbor ▾   ◆ Manager ×   Refactor the rail sco… ×   openrouter price scrape ×   +   ▦ All
 ```
 
-`Home` is a fixed door and stands first; the chip is a filter over the tabs, so it sits with
-them. When the row runs short `Home` is the first to go, then the chip, and never the tab in
-front. With teams but none shown, the chip is a quiet `Teams ▾`; with no teams at all there
+The chip is a filter over the tabs, so it sits with them. There is no `home` on the strip:
+home is the first place on the top line, over the strip while a chat is in front. The
+strip is not drawn on a place. When the row runs
+short the chip goes, and never the tab in front. With teams but none shown, the chip is a quiet `teams ▾`; with no teams at all there
 is no chip. A press on the
 chip opens the **team switcher** under it, on any page the strip is on, the conversations view
 included:
@@ -216,8 +250,10 @@ included:
 ```
 ╭─ Teams ────────────────────╮
 │ ◉ ● harbor              2  │
-│ ○ ● orbit               1  │
+│ ○   ● orbit             1  │
+│ ○ ● dock                0  │
 │ ○   All                 3  │
+│     Closed · 2 ▸           │
 │ ────────────────────────── │
 │ − Remove this conversation │
 │ + New team…                │
@@ -226,12 +262,15 @@ included:
 ```
 
 - a team, or **All**, narrows or widens the strip; the conversation in front stays in front
-  unless it is not in the team, and then the team's first conversation comes forward
+  unless it is not in the team, and then the team's first conversation comes forward. The
+  teams are the tree: a team inside another stands indented under it
 - **+ Add this conversation** puts the conversation in front into the team that is shown, and
   the row turns into **− Remove this conversation**
+- **Closed · 2** is there while you have closed teams: a press opens the teams page with its
+  Closed fold open. A closed team is never one of the switcher's teams
 - **+ New team…** opens the conversations view with the new-team card, the conversation in
   front already picked
-- **Team settings…** opens the shown team's settings
+- **Team settings…** opens the shown team's card, over whatever page you are on
 
 `↑` `↓` move, `enter` chooses, `esc` or a press anywhere off it puts it away.
 
@@ -241,11 +280,16 @@ A team can have one **manager**, a conversation that runs the team for you: you 
 hands work to the members and tells you where things stand. While a team is shown, the first
 place on the tab strip is the manager's, pinned at the left: a quiet `+ Manager` until there is
 one and `◆ Manager` after; `◆ Make this harbor's manager` in the team switcher or in a tile's
-Teams list makes an existing conversation the manager. While the manager is in front its
-**Traffic** rail is on the right (`alt+l` shows or hides it), and `alt+m` goes to the manager. What a manager can do, and how members talk to each other, is on the
-**team manager** page.
+Teams list makes an existing conversation the manager. The right-hand
+column of a chat in a team has two words, `Tasks` and `Traffic` (what passes in the team). A
+Traffic row reads who it is from and who it is for, `◆ → @scrape +2  Please provide…`, and in
+a member's chat that member is `you` (`◆ → you`, `you → ◆`). The
+manager's opens on the Traffic, a member's on its tasks, `←` `→` switch them while the column has
+the keyboard, `alt+l` shows or hides it, and `alt+m` goes to the manager. What a manager can do, and how members talk to each other, is on the
+**team manager** page. The **teams page** (`/teams`, `alt+2`) lists every team as a tree
+and puts the chosen team's manager conversation beside it, with what waits on you.
 
-## Team names and handles in a conversation are links
+## What clicking a team name in a chat does, and how team names and handles are links
 
 In a conversation that is in a team, every **handle** of a member of that team, like
 `@security`, is a link wherever it appears: in a reply, in a team's quoted card, in the
@@ -253,8 +297,12 @@ surface's own notes and in a team tool's call such as `team_send @security`. So 
 name where it is written as a team: `team harbor`, `the harbor team` or `"harbor"`. The
 pointer on one puts a ground under it and the hint line says what a press does, like
 `Open @security · santosh dev2 branch code… · click`. A press opens that member, resuming it
-first when this window does not have it open; a team's name opens the conversations view on
-that team. An `@word` that is no member's handle is left as plain text.
+first when this window does not have it open. A press on a team's name opens the **teams
+page** with that team selected: the rail's cursor on it and the pane showing it. The hint
+says `Open harbor on the teams page · click`. A closed team is selected inside `Closed`, and
+that fold is opened. Over `--host`, against an engine that has no teams doors, the teams page
+cannot open, so the press opens the conversations view on that team instead and the hint says
+so. An `@word` that is no member's handle is left as plain text.
 
 ## Mention a team or another conversation with @
 
@@ -271,7 +319,9 @@ filters every section that is still showing.
 Choosing a team inserts `●harbor` in the team's colour. Choosing a conversation
 inserts `@handle`, or a short slug of its title when it has none, and the row's
 hint is the full title. After you send, both stay links. A press on the team opens
-the conversations view on it. A press on the conversation opens that conversation.
+the teams page with it selected. A press on the conversation opens that conversation.
+Over `--host`, against an engine with no teams doors, a press on the team opens the
+conversations view on it instead.
 
 The model receives a short digest of each reference: for a team, its members,
 handles, states and recent traffic; for a chat, its title, its state and an excerpt
@@ -305,9 +355,9 @@ what its key does.
 | `x` | Close the focused view, or the picked ones; the work keeps running |
 | `m` | The teams list for the focused conversation, or the picked ones |
 | `s` | New team of the picked conversations, or the focused one |
-| `e` | The shown team's settings |
+| `e` | The shown team's card: name, colour, settings, Close team… |
 | `r` | Resume the shown team's conversations that are not open here |
-| `D` | Delete the shown team; its conversations stay open |
+| `D` | Close the shown team; its conversations stay open |
 | `o` | Organize: suggest teams for your conversations (while All is shown) |
 | `u` | Undo the last Organize, while the Teams row offers it |
 | `tab`, `shift+tab` | Next or previous team, then All |

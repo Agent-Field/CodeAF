@@ -198,6 +198,13 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 	if err := q.Check(a.Decisions()); err != nil {
 		return askRefusedLead + err.Error(), false, nil
 	}
+	// A TEAM MEMBER'S CLARIFYING QUESTION GOES TO ITS MANAGER FIRST, as a
+	// decision packet, when its team says questions go up (team_questions.go).
+	// A conversation in no team pays a stat of the teams file here, and only
+	// when it asks.
+	if said, up := a.askUp(q); up {
+		return said, false, nil
+	}
 	if !a.config.Interactive && q.Policy.Kind == PolicyAsk {
 		if q.Pick == nil {
 			return "your call: " + strings.TrimSpace(q.Head) + " (nobody to ask)", false, nil

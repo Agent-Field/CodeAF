@@ -9,6 +9,45 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
+// An untitled chat on home used to read as its session id with the first
+// letter raised (`D53cceead3f99593`). The sessions place already calls that
+// row `new conversation`. Home reads the name from the same [homeName].
+func TestHomeSessionsCallsAnUntitledChatNewConversation(t *testing.T) {
+	now := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
+	id := "d53cceead3f99593"
+	transcript := "/chat/" + id + "/transcript.jsonl"
+	titled := session.SessionRow{
+		ID: "927d303242f9d00e", Transcript: "/chat/927d303242f9d00e/transcript.jsonl",
+		Title: "Porting the Picker", At: now.Add(-time.Hour),
+	}
+	for _, title := range []string{id, "D53cceead3f99593"} {
+		row := session.SessionRow{ID: id, Transcript: transcript, Title: title, At: now, Live: true}
+		in := homeGridInput{now: now, rows: []switcherRow{
+			{kind: switcherConversation, session: row, title: homeName(row)},
+			{kind: switcherConversation, session: titled, title: homeName(titled)},
+		}}
+		got := (sessionsPanel{homePanelBase{panelSessions}}).rows(&in)
+		var untitledTitle, titledTitle string
+		for _, line := range got.lines {
+			if line.cell == nil {
+				continue
+			}
+			switch line.row.ID {
+			case id:
+				untitledTitle = line.cell.title
+			case titled.ID:
+				titledTitle = line.cell.title
+			}
+		}
+		if untitledTitle != unnamedConversationWord {
+			t.Fatalf("title %q reads %q, want %q", title, untitledTitle, unnamedConversationWord)
+		}
+		if titledTitle != "Porting the Picker" {
+			t.Fatalf("a titled chat reads %q", titledTitle)
+		}
+	}
+}
+
 func TestHomeSessionsShowsFifteenMostRecentConversations(t *testing.T) {
 	now := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
 	in := homeGridInput{now: now}

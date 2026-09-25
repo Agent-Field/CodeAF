@@ -49,7 +49,7 @@ func TestTeamManagerSlotStartsAManager(t *testing.T) {
 		}
 	}
 
-	cmd, took := a.tabPress(slot.span.from+1, placeTabRow)
+	cmd, took := a.tabPress(slot.span.from+1, tabStripRow)
 	if !took {
 		t.Fatal("the strip did not take the press")
 	}
@@ -128,7 +128,7 @@ func plainCells(row string, from, to int) string {
 func TestTeamMenuMakesAndRemovesTheManager(t *testing.T) {
 	a, harbor := managerApp(t)
 	front := a.frontTabKey()
-	if _, took := a.tabPress(a.wall.chip.from+1, placeTabRow); !took || !a.teamMenu.on {
+	if _, took := a.tabPress(a.wall.chip.from+1, tabStripRow); !took || !a.teamMenu.on {
 		t.Fatal("the chip did not open the switcher")
 	}
 	frame, _ := menuFrame(t, a)

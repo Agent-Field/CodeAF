@@ -98,34 +98,22 @@ type trafficState struct {
 	edits int
 	wrote int
 	// seen is, per team, the newest entry the person has had in front of them
-	// on the rail, which is what the closed edge counts past.
+	// on the side column's Traffic, which is what its word and the closed edge
+	// count past (sidecol.go).
 	seen map[string]string
-	// hidden says the person put the rail away on a frame wide enough for it,
-	// and over that the traffic is laid over the body as a card on a frame
-	// that is not. Both are this window's, in memory: another window keeps its
-	// own, as it keeps its own tabs.
-	hidden bool
-	over   bool
-	// tasks says the column shows the manager's own tasks instead of the
-	// traffic (teamrail.go's [app.trafficTasksShowing]); it counts only while
-	// the manager has live tasks. Memory only, and this window's.
-	tasks bool
 	// jump is a jump to a message waiting for its conversation to open, and
 	// landing the message lifted after one (teamjump.go).
 	jump    trafficJumpTo
 	landing trafficLanding
-	// open is every message the person laid out in full on the rail or under
-	// a thread card, by team and entry id (teamthread.go), and opened counts the
-	// presses that changed it, which is what the rail's cache keys on. Memory
-	// only, and this window's.
+	// open is every message the person laid out in full under a thread card,
+	// by team and entry id (teamthreadcard.go), and opened counts the presses
+	// that changed it, which is what the cards key on. Memory only, and this
+	// window's.
 	open   map[string]bool
 	opened int
 	// version counts the reads that changed any team's cache, which is what a
 	// thread card in the conversation keys on (teamthreadcard.go).
 	version int
-	// The last frame's rail, for the pointer (teamrail.go).
-	drawn trafficDrawn
-	cache trafficCache
 }
 
 // trafficTickMsg is one turn of the Traffic clock coming round.

@@ -8,11 +8,12 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// endedRailText expands the finished report and reads its rows as one line, because the rail wraps a row's
-// sentence across its narrow column and a test reads the sentence, not the wrap.
+// endedRailText is what the column says about node 7, read as one line: its
+// row, and the hint line over it, which is where the finished report went when
+// every row became one line.
 func endedRailText(a *app) string {
-	a.railSetOpen(a.tasks[7], true)
-	rows := plain(strings.Join(a.railRows(12), "\n"))
+	railOpenAll(a)
+	rows := plain(strings.Join(a.railRows(12), "\n")) + " " + railHint(a, 7)
 	return strings.Join(strings.Fields(strings.ReplaceAll(rows, "│", " ")), " ")
 }
 

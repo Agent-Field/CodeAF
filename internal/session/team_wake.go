@@ -136,7 +136,10 @@ func (a *Agent) awaitTeamStart(profile string, base int) {
 			return
 		}
 		if news := a.teamBoundary(); news != "" {
-			a.enqueueNote(userMessage{message: textMessage("user", news), wake: true})
+			// AT THE CAP THE BRIEF WAITS: it is queued without the wake, and
+			// the member reads it at its first turn (team_cap.go).
+			held := a.teamCapHold(profile, a.teamRoles()) != ""
+			a.enqueueNote(userMessage{message: textMessage("user", news), wake: !held})
 		}
 		return
 	}

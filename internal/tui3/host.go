@@ -81,13 +81,14 @@ import (
 //	a key sign-in     WORKS, unchanged. The person pastes a secret into a box on
 //	                  this screen and it travels on the wire like every other
 //	                  answer; nothing about it needs a browser or a port.
-//	/settings         says [settingsRemoteWord] as it opens, and opens anyway.
-//	                  Half these rows are this surface's own (the mouse, the
-//	                  timestamps, the draft) and genuinely apply; the other half
-//	                  govern the SESSION, which reads them from the far machine's
-//	                  profile. A panel that closed itself would take working rows
-//	                  away; one that said nothing would let a person turn a gate
-//	                  off and watch it stay on.
+//	/settings         says [settingsHostNote] as it opens, and again when the
+//	                  tab changes whose disk the rows are, and opens anyway.
+//	                  Every tab but Teams writes this machine. The Teams tab
+//	                  writes the far machine when the seam can take the change,
+//	                  and the note on that tab says only that. A panel that
+//	                  closed itself would take working rows away; one that said
+//	                  nothing would let a person turn a gate off and watch it
+//	                  stay on.
 //	the always key    the consent card's "always" writes nothing (the door hands
 //	                  no save seams over a connection), so the row says "allowed"
 //	                  rather than "saved" — which is the truth: the answer holds
@@ -387,11 +388,38 @@ const (
 	// row and shares it with nothing. It says WHAT and leaves the why to the
 	// command, which is the trade every row in a frame makes.
 	connectAskRemoteWord = "connecting an account is not available over --host yet"
-	// settingsRemoteWord opens the panel on a remote session.
-	settingsRemoteWord = "these rows and changes belong to this machine — this conversation reads its profile on the other one"
 	// exportHereWord follows the path a remote session's /export landed on.
 	exportHereWord = " · on this machine"
+	// settingsLocalWord is /settings over a connection, on every tab but Teams,
+	// when the Teams tab can be saved on the far machine. The rows on show are
+	// this machine's. The second sentence is the one tab that is not.
+	settingsLocalWord = "these rows belong to this machine; the Teams tab is saved on the other one."
+	// settingsLocalUnreadWord is the same opening when the Teams tab cannot be
+	// written over this connection. It does not claim that tab is saved there.
+	settingsLocalUnreadWord = "these rows belong to this machine; this conversation reads its profile on the other one."
 )
+
+// settingsHostNote is the sentence /settings says over a connection. onTeams
+// is the tab on show. savedThere means the seam can write that machine's
+// teams defaults. shownThere means those defaults have been read and are what
+// the tab is drawing, even when the write is refused.
+//
+// THE TEAMS TAB SAYS ONLY WHAT IS TRUE THERE. The other tabs write this
+// machine, and they name the Teams tab as the exception when that exception
+// is real. A note that said "these rows belong to this machine" on the Teams
+// tab would be the panel lying about the disk it just wrote.
+func settingsHostNote(onTeams bool, host string, savedThere, shownThere bool) string {
+	if onTeams && host != "" && savedThere {
+		return "these rows are saved on " + host + "."
+	}
+	if onTeams && host != "" && shownThere {
+		return "these rows are on " + host + ". changing them is not available over this connection."
+	}
+	if savedThere {
+		return settingsLocalWord
+	}
+	return settingsLocalUnreadWord
+}
 
 // remoteProfileWord is the honest floor for commands whose setting or store
 // belongs to the session's machine but has no wire door yet. The machine is
@@ -434,9 +462,10 @@ func (a *app) remoteProfileWord(thing string) string {
 //	spend      THE FAR MACHINE'S, through Places.Ledger and a held cache.
 //	search     THE FAR MACHINE'S, one call from the search command's goroutine.
 //	memory     THE FAR MACHINE'S, all seven readings and writes together.
-//	settings   SPLIT, AND CORRECTLY: half its rows are this surface's own and
-//	           half are read from the far machine's profile, which is what
-//	           [settingsRemoteWord] says as it opens.
+//	settings   SPLIT, AND CORRECTLY: every tab but Teams writes this machine.
+//	           The Teams tab writes the far machine when the seam can take the
+//	           change, which is what [settingsHostNote] says, for the tab on
+//	           show.
 //
 // A PLACE THAT HAS NOT LEARNED SAYS SO, in one dim line where its rows would be
 // ([place.remote], pages.go). The sentence is the place's own because the noun in
@@ -447,9 +476,9 @@ func (a *app) remoteProfileWord(thing string) string {
 // CLAUDE.md states about the manual said about the code.
 //
 // AND THE FRAME SAYS WHOSE MACHINE IT IS. A room whose rows quietly changed which
-// disk they describe would be the same fault walked backwards, so the tab bar
-// carries the machine's name at its right end and nothing at all on a local
-// session ([app.placeBarMachine]). It is [app.host], the same field the status
+// disk they describe would be the same fault walked backwards, so the nav
+// carries the machine's name at its far end and nothing at all on a local
+// session (topnav.go's [app.navTails]). It is [app.host], the same field the status
 // line's place segment, /status and the legend under the input all read, because
 // the connection is shown as the place and is shown nowhere else.
 const (

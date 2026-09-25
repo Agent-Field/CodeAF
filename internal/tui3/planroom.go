@@ -360,8 +360,8 @@ func (a *app) planRoomStopTarget() stopTarget {
 const planRoomPartsWord = "under it"
 
 // planPageKinWidth is the most a task's room spends on one row of its parts. A
-// part's row is the rail's row, whose handle stands at the row's far end; on a
-// page the width of the terminal that handle would sit a screen away from the
+// part's row is the side column's row, whose time stands at the row's far end; on
+// a page the width of the terminal that time would sit a screen away from the
 // title it belongs to, so the rows are drawn at a width a column could have.
 const planPageKinWidth = 64
 
@@ -377,9 +377,11 @@ const planRoomWaitsWord = "waits"
 
 // planRoomPartRows is what the task hangs on and what hangs under it, under the
 // transcript: the tasks it waits on and the tasks waiting on it, its own first,
-// then its parts, each drawn as the rail draws a task ([app.planRailLines], the
-// row shape #1420 settled on). A section with nothing in it is absent. Every
-// row is a door: a press opens that task's room ([app.press]).
+// then its parts, each drawn as the side column draws a task: through the node
+// renderer, one line with its state glyph, its name and its time, a part's own
+// parts a level in, and under it its call and its clock and money
+// ([app.planPageLines]). A section with nothing in it is absent. Every row is a
+// door: a press opens that task's room ([app.press]).
 func (a *app) planRoomPartRows(width int) []row {
 	plan := a.roomPlan()
 	if plan == nil {
@@ -404,7 +406,7 @@ func (a *app) planRoomPartRows(width int) []row {
 	}
 	if len(plan.page.Children) > 0 {
 		out = append(out, row{entry: -1}, row{text: a.pal.dim(fit(planRoomPartsWord, width)), entry: -1})
-		for _, line := range a.planRailLines(planTwigsOf(plan.page.Children), nil, false, min(width, planPageKinWidth)) {
+		for _, line := range a.planPageLines(planTwigsOf(plan.page.Children), 0, min(width, planPageKinWidth)) {
 			out = append(out, row{text: line.text, entry: -1, plan: line.plan})
 		}
 	}

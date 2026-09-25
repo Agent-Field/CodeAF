@@ -394,8 +394,13 @@ func (a *app) stopSay(line string) {
 // the roster does not hold the keyboard there is no cursor and nothing is being
 // aimed at (taskstrip.go's [app.stripFocused] reads the same two fields).
 func (a *app) railFocusNode() *taskNode {
-	if !a.railHold || a.railWhere.id == 0 {
+	if !a.railHold {
 		return nil
+	}
+	if a.railWhere.id == 0 {
+		// A TASK'S ROW IN THE BAND IS THAT TASK, for every key the held column
+		// answers (sidecol.go).
+		return a.tasks[sideTaskOf(a.railWhere.key)]
 	}
 	return a.tasks[a.railWhere.id]
 }
@@ -410,9 +415,8 @@ func (a *app) railFocusNode() *taskNode {
 // at an unseen row is the guess this whole path exists to avoid: [app.railView]
 // is the one door onto the roster's geometry, the same door the pointer and the
 // frame are answered through, so this and they cannot disagree about what is
-// on screen. A FOLDED ROOT STANDS FOR WHAT IT HIDES, exactly as it does for the
-// pointer: one row covering a family is one target, and its `worst` node is the
-// work it is standing for ([app.railView] reads the same field for the pin).
+// on screen. A group folded to its heading hides its rows from this count as
+// it hides them from the eye.
 //
 // Counted here and not beside the caller so the one-row rule has one statement
 // rather than two copies a second caller could get wrong.
@@ -426,13 +430,7 @@ func (a *app) stopVisible() (int, *taskNode) {
 			continue
 		}
 		if a.stopTaskTarget(node).empty() {
-			// A folded root carries nothing stoppable of its own but may be standing
-			// for a subtree that does. The work it stands for is the worst node it
-			// hid, which is the same reading the pin and the row's own glyph take.
-			if !e.folded || a.stopTaskTarget(e.worst).empty() {
-				continue
-			}
-			node = e.worst
+			continue
 		}
 		if count++; count > 1 {
 			return count, nil

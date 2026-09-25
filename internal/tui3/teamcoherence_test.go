@@ -248,3 +248,169 @@ func TestTeamToolRowsAndCardsLinkTheirHandles(t *testing.T) {
 		t.Errorf("the team_send row's @gravity is not a link:\n%s", strings.Join(plainRows(a), "\n"))
 	}
 }
+
+// teamNameLink is the first on-screen link that names team id and no member,
+// with its screen y.
+func teamNameLink(a *app, id string) (taskLink, int, bool) {
+	body, _ := a.window(a.bodyWidth(), a.viewHeight())
+	for i, r := range body {
+		for _, l := range r.links {
+			if l.team == id && l.member == "" {
+				return l, a.bodyTop() + i, true
+			}
+		}
+	}
+	return taskLink{}, 0, false
+}
+
+// assertTeamPage is the landing a team-name press owes: the teams place, that
+// team selected, the rail's cursor on its row, the conversation that was in
+// front still in front.
+func assertTeamPage(t *testing.T, a *app, id, front string) {
+	t.Helper()
+	if !a.at(pageTeams) || a.wall.on {
+		t.Fatalf("the press landed on page %q, wall %v", a.page.word(), a.wall.on)
+	}
+	if a.tp.sel != id {
+		t.Fatalf("the pane is on %q, want %q", a.tp.sel, id)
+	}
+	if a.frontTabKey() != front {
+		t.Fatalf("the press moved the front from %q to %q", front, a.frontTabKey())
+	}
+	if !a.tp.focus || a.tp.cur != (teamsRef{act: teamsActSelect, id: id}) {
+		t.Fatalf("the rail cursor is focus %v %+v", a.tp.focus, a.tp.cur)
+	}
+	if hint := a.dockHoverWords(); strings.Contains(hint, "teams page") {
+		t.Fatalf("the chat link's hint outlived the press: %q", hint)
+	}
+	a.frame()
+	got, ok := a.teamsCursorTarget()
+	if !ok || got.pane || got.act != teamsActSelect || got.id != id {
+		t.Fatalf("the drawn cursor is %+v (ok %v)", got, ok)
+	}
+}
+
+// A TEAM'S NAME IN A REPLY OPENS THE TEAMS PAGE ON IT. The rail's cursor lands
+// on the team, the pane is that team, and the conversation in front stays.
+func TestATeamNameInAReplyOpensTheTeamsPage(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	a.width, a.height = 160, 40
+	a.entries = append(a.entries, entry{kind: entryAssistant, text: "Ask the harbor team for the numbers.", settled: true})
+	a.touch()
+	link, y, ok := teamNameLink(a, harbor)
+	if !ok {
+		t.Fatalf("the reply grew no team-name link:\n%s", strings.Join(plainRows(a), "\n"))
+	}
+	front := a.frontTabKey()
+	drive(t, a, motionTo(link.span.from+1, y))
+	if hint := a.dockHoverWords(); hint != "Open harbor on the teams page · click" {
+		t.Fatalf("the hint line says %q", hint)
+	}
+	spend(t, a, a.press(link.span.from+1, y))
+	assertTeamPage(t, a, harbor, front)
+}
+
+// A SENT ●slug IS THE SAME DOOR. The @ chip a person inserted opens the teams
+// page on that team, with the same hint.
+func TestAMentionChipOpensTheTeamsPage(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	a.width, a.height = 160, 40
+	a.entries = append(a.entries, entry{kind: entryUser, text: "see ●harbor", settled: true})
+	a.touch()
+	link, y, ok := teamNameLink(a, harbor)
+	if !ok {
+		t.Fatalf("the chip grew no team link:\n%s", strings.Join(plainRows(a), "\n"))
+	}
+	front := a.frontTabKey()
+	drive(t, a, motionTo(link.span.from+1, y))
+	if hint := a.dockHoverWords(); hint != "Open harbor on the teams page · click" {
+		t.Fatalf("the chip's hint says %q", hint)
+	}
+	spend(t, a, a.press(link.span.from+1, y))
+	assertTeamPage(t, a, harbor, front)
+}
+
+// A TEAM TOOL'S ROW CARRIES THE SAME DOOR as a reply.
+func TestATeamNameOnAToolRowOpensTheTeamsPage(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	a.width, a.height = 160, 40
+	a.entries = append(a.entries, entry{kind: entryTool, tool: "team_send", text: "team_send the harbor team the numbers", settled: true})
+	a.touch()
+	link, y, ok := teamNameLink(a, harbor)
+	if !ok {
+		t.Fatalf("the tool row grew no team-name link:\n%s", strings.Join(plainRows(a), "\n"))
+	}
+	front := a.frontTabKey()
+	spend(t, a, a.press(link.span.from+1, y))
+	assertTeamPage(t, a, harbor, front)
+}
+
+// A CLOSED TEAM IS SELECTED INSIDE CLOSED, and the fold is opened so the row
+// is on the rail.
+func TestAClosedTeamLinkSelectsItInsideClosed(t *testing.T) {
+	a, _, _, _ := trafficApp(t)
+	var behind []chatTab
+	for _, tab := range a.tabList() {
+		if tab.key != a.frontTabKey() {
+			behind = append(behind, tab)
+			break
+		}
+	}
+	orbit, err := a.teamMake("orbit", behind)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.teamEdit(func(f *teamstore.File) error { return f.Close(orbit, a.now(), "") }); err != nil {
+		t.Fatal(err)
+	}
+	teamsFlush(t, a)
+	if got, _ := a.teamByID(orbit); !got.Closed() {
+		t.Fatal("orbit did not close")
+	}
+	a.width, a.height = 160, 40
+	a.entries = append(a.entries, entry{kind: entryAssistant, text: "The orbit team is put away.", settled: true})
+	a.touch()
+	link, y, ok := teamNameLink(a, orbit)
+	if !ok {
+		t.Fatalf("the closed team's name is not a link:\n%s", strings.Join(plainRows(a), "\n"))
+	}
+	front := a.frontTabKey()
+	spend(t, a, a.press(link.span.from+1, y))
+	assertTeamPage(t, a, orbit, front)
+	if !a.tp.closedOpen {
+		t.Fatal("the Closed fold stayed shut")
+	}
+	if text := teamsFrameText(a); !strings.Contains(text, "Closed") || !strings.Contains(text, "orbit") || !strings.Contains(text, "closed without a report") {
+		t.Fatalf("the closed team is not in the pane:\n%s", text)
+	}
+}
+
+// OVER --host WITH NO TEAMS DOORS the press keeps the conversations view, and
+// the hint says that rather than the teams page.
+func TestATeamLinkOverHostFallsBackToTheWall(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	a.host = "devbox"
+	if !a.teamsOff() {
+		t.Fatal("a hosted window with no seam still has teams")
+	}
+	a.width, a.height = 160, 40
+	a.entries = append(a.entries, entry{kind: entryAssistant, text: "Ask the harbor team.", settled: true})
+	a.touch()
+	link, y, ok := teamNameLink(a, harbor)
+	if !ok {
+		t.Fatalf("the reply grew no team-name link:\n%s", strings.Join(plainRows(a), "\n"))
+	}
+	drive(t, a, motionTo(link.span.from+1, y))
+	want := "Show harbor on the conversations view · " + wallMembersWord(len(mustTeam(t, a, harbor).Members)) + " · click"
+	if hint := a.dockHoverWords(); hint != want {
+		t.Fatalf("the fallback hint says %q, want %q", hint, want)
+	}
+	front := a.frontTabKey()
+	spend(t, a, a.press(link.span.from+1, y))
+	if a.at(pageTeams) || !a.wall.on || a.wall.activeID != harbor {
+		t.Fatalf("the fallback landed on page %q wall %v team %q", a.page.word(), a.wall.on, a.wall.activeID)
+	}
+	if a.frontTabKey() != front {
+		t.Fatalf("the wall moved the front from %q to %q", front, a.frontTabKey())
+	}
+}

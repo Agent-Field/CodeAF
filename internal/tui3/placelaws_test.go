@@ -194,7 +194,7 @@ func TestNoPlaceFileMentionsTheBar(t *testing.T) {
 	// forbidden is the ROUTER'S bar reaching into a place file, and each of these
 	// names one piece of it.
 	forbidden := []string{"barCursor", "a.bar.", "barRaise", "barDrop", "barWalk",
-		"barEnter", "barReach", "barKey(", "tabHover", "placeTabBar", "tabBarAt"}
+		"barEnter", "barReach", "barKey(", "tabHover", "navLine", "navPress"}
 	for _, name := range placeSourceFiles(t) {
 		if !strings.HasPrefix(name, "place_") {
 			continue
@@ -322,7 +322,7 @@ func TestEveryPlaceSpendsTheSameHeadAndFoot(t *testing.T) {
 	// doors rather than counted out again here.
 	wantFor := func(id page, size [2]int) edges {
 		height := size[1]
-		got := edges{bar: placeTabRow, headRule: 2, blank: placeHeadRows - 1,
+		got := edges{bar: navRow, headRule: 1, blank: placeHeadRows - 1,
 			footRule: height - placeFootRowsFor(id, height) + 1, box: -1, hint: height - 1}
 		if id == pageHome {
 			got.box = height - 1 - boxFloor(height)
@@ -339,8 +339,8 @@ func TestEveryPlaceSpendsTheSameHeadAndFoot(t *testing.T) {
 				rows[i] = ansi.Strip(line)
 			}
 			got := edges{bar: a.tabRow, headRule: -1, blank: -1, footRule: -1, box: -1, hint: len(rows) - 1}
-			if strings.HasPrefix(rows[2], "──") {
-				got.headRule = 2
+			if len(rows) > 1 && strings.HasPrefix(rows[1], "──") {
+				got.headRule = 1
 			}
 			if strings.TrimSpace(rows[placeHeadRows-1]) == "" {
 				got.blank = placeHeadRows - 1

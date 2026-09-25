@@ -199,8 +199,10 @@ the list`, with the card's own answers in front of it when a card is up and
 
 **The answers in that line are the ones the card actually drew, and never one more.** A
 card that offers all three reads
-`1 yes, set it up · 3 just once · 0 no · o other`; a one-off reminder's card,
-which has no `just once` to give, reads `1 yes, set it up · 0 no · o other`.
+`1 Set it up · Mondays at 9am · 3 Only now, don't repeat · 0 Don't set it up · o Change…`;
+a one-off reminder's card, which has no once to give, reads
+`1 Remind me at 6 · 0 Don't remind me · o Change…`. The once button used to say
+`just once`, which also read as "set it up once".
 The line is built from the question rather than written out, so it cannot name a digit that
 would do nothing.
 
@@ -275,7 +277,7 @@ window is in no project at all. A reminder belongs to no repository; a watch on 
 row is drawn at the top of the list whichever project it ended up in, and the project it
 belongs to is what the errand's own record says.
 
-## How do I answer the card, or say no to it — 1 yes, o other when or where, 3 just once, 0 no
+## How do I answer the card, or say no to it. 1 yes, o Change, 3 once, 0 no
 
 When the exchange gets far enough to propose something that keeps working, a card appears in
 the pane with your own words, when it would wake, and what it would cost per run. Nothing is
@@ -286,10 +288,11 @@ created until you answer it:
   your own words ("make it 8pm", "every weekday") and the model proposes again. Nothing is
   created by a change. (This was `2` before the card's answers moved onto the question every
   screen here draws; `c` is that question's own key for "not as it stands".)
-- `3` — once. The action runs now and nothing standing is created. **Not every card offers
-  it**: a one-off reminder draws no `3 just once` chip, because doing "remind me at six"
-  now says the wrong thing hours early. The hint under the box names the digit only where
-  the chip is on the card.
+- `3`. Once. The action runs now and nothing standing is created. On a repeating
+  check the button reads `Only now, don't repeat`. **Not every card offers it**: a
+  one-off reminder draws no once chip, because doing "remind me at six" now says the
+  wrong thing hours early. It used to say `just once`, which also read as "set it up
+  once". The hint under the box names the digit only where the chip is on the card.
 - `0` — no. Nothing is created and nothing is run, the card settles as `not set up`, and the
   keyboard goes back to the list. **This is the only way to say no in this pane**: `esc` here
   hands the keyboard back to the list without answering anything, and a card left standing on
@@ -304,9 +307,9 @@ on home says `? waiting on you` for as long as it does.
 
 **The card stays after you answer it.** It does not disappear — it settles in place, greys
 out, and its bottom edge carries what was decided in the same words a card in a conversation
-uses: `yes, set it up · set up`, `just once · done now, nothing kept`,
-`change when or where · you asked for something different`,
-`not set up`, `ended · nothing was set up`. The answers go, so `1`, `3`, `0` and `c` are
+uses: `Set it up · Mondays at 9am · set up`, `Only now, don't repeat · done now, nothing kept`,
+`Change… · you asked for something different`,
+`not set up`, `ended · nothing was set up`. The answers go, so `1`, `3`, `0` and `o` are
 ordinary characters again and can be typed into a follow-up. The only card that ever
 replaces it is the new one the model sends after a change.
 

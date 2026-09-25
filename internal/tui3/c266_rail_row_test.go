@@ -86,7 +86,8 @@ func TestANarrowRailsHeldRowKeepsItsTitle(t *testing.T) {
 func TestTheRailIndentsATaskUnderItsParentTask(t *testing.T) {
 	rows := c266PlanRows()
 	rows = append(rows, session.PlanTaskRow{ID: "kid", Parent: "held", Title: "write the fixtures", Status: "pending"})
-	_, rail := c266Rail(t, rows, 150, false)
+	// The widened column, where both titles are drawn whole beside the wait.
+	_, rail := c266Rail(t, rows, 160, true)
 	_, parent := c266RowWith(t, rail, "write the tests")
 	_, child := c266RowWith(t, rail, "write the fi")
 	if strings.Index(child, "write") <= strings.Index(parent, "write") {
@@ -94,24 +95,22 @@ func TestTheRailIndentsATaskUnderItsParentTask(t *testing.T) {
 	}
 }
 
-// A FAMILY'S LINE IS ONE UNBROKEN STROKE. The live line under a running task and
-// the task under a task both stand between two siblings, and each used to leave
-// a blank in the family's column, so the tree read as loose pieces.
+// A TASK UNDER A TASK STANDS A LEVEL IN, AND THE LINE A RUNNING PART WOULD
+// HAVE HAD UNDER IT IS THE HINT'S. The family's connectors are gone from the
+// side column (DESIGN.md, One side column): every task is one line, and a part
+// shows its depth by its indent alone.
 func TestTheFamilysLineRunsThroughTheLinesUnderARow(t *testing.T) {
 	rows := c266PlanRows()
 	rows = append(rows, session.PlanTaskRow{ID: "kid", Parent: "held", Title: "write the fixtures", Status: "pending"})
 	rows = append(rows, session.PlanTaskRow{ID: "after", Parent: "root", Title: "update the manual", Status: "pending"})
 	_, rail := c266Rail(t, rows, 150, false)
 	at, handler := c266RowWith(t, rail, "write the handler")
-	column := strings.Index(handler, "├")
-	if column < 0 {
-		t.Fatalf("the running row has no connector:\n%s", handler)
+	if at+1 < len(rail) && strings.Contains(plain(rail[at+1]), "$ git grep") {
+		t.Fatalf("a live line stands under a one-line task:\n%s\n%s", handler, plain(rail[at+1]))
 	}
-	if live := plain(rail[at+1]); !strings.HasPrefix(live[column:], "│") {
-		t.Fatalf("the live line breaks the family's stroke:\n%s\n%s", handler, live)
-	}
+	_, held := c266RowWith(t, rail, "write the tests")
 	_, kid := c266RowWith(t, rail, "write the fi")
-	if !strings.HasPrefix(kid[column:], "│") {
-		t.Fatalf("the task under a task breaks its parent's family stroke:\n%s", kid)
+	if strings.Index(kid, "write the fi") <= strings.Index(held, "write the tests") {
+		t.Fatalf("the task under a task is not a level in:\n%s\n%s", held, kid)
 	}
 }

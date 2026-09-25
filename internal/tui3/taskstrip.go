@@ -218,9 +218,7 @@ func (a *app) stripShowing() bool {
 	// is left for this row is the frame the roster cannot have — under
 	// [railSlimFloor], with nobody asking for the overlay — a column somebody
 	// closed with ctrl+g, and the harness chip above.
-	// AND BESIDE THE MANAGER'S TRAFFIC, whose header already carries the
-	// manager's tasks as one quiet word (teamrail.go).
-	if a.railStanding() || (a.trafficOn() && a.trafficFits()) {
+	if a.railStanding() {
 		return false
 	}
 	for _, id := range a.taskOrder {

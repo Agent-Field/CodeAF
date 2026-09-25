@@ -224,8 +224,12 @@ func TestEnterOnTheBarOpensThePlaceUnderTheCursor(t *testing.T) {
 	if !a.bar.on {
 		t.Fatal("the bar did not rise")
 	}
-	// Two words along the bar, past the way back to the chats, which opens
-	// nothing by itself...
+	// Three words along the bar, past teams and the way back to the chats,
+	// which opens nothing by itself...
+	drive(t, a, key("right"))
+	if a.bar.at != pageTeams {
+		t.Fatalf("→ landed the bar cursor on %q, want teams", a.bar.at.word())
+	}
 	drive(t, a, key("right"))
 	if a.bar.at != pageChats {
 		t.Fatalf("→ landed the bar cursor on %q, want chats", a.bar.at.word())

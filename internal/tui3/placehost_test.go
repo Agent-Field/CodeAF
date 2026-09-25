@@ -164,7 +164,7 @@ func TestTheTasksPlaceOverHostDrawsTheFarMachinesWork(t *testing.T) {
 
 // Settings is NOT one of them, and that is the point of the default being "".
 // Every row on it is either this surface's own or is read from the far machine's
-// profile, and it already says so as it opens ([settingsRemoteWord]) — a place
+// profile, and it already says so as it opens ([settingsHostNote]). A place
 // that drew one dim line instead would have taken working rows away.
 func TestTheSettingsPlaceIsNotGatedOverHost(t *testing.T) {
 	a := hostedPlaceLab(t)

@@ -268,6 +268,8 @@ func fadeColumnApp(t *testing.T, count int) *app {
 	for i := 0; i < count; i++ {
 		a.taskUpdate(update(uint64(i+1), "The "+fadeWord(i)+" errand", session.TaskDone, session.TaskNotice{}))
 	}
+	// The finished work opened, so it is longer than the frame.
+	railOpenAll(a)
 	a.paints = 0
 	return a
 }

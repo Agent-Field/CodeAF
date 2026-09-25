@@ -20,7 +20,7 @@ import (
 //	↑↓ enter esc tab      move, open, back out, next place      never text
 //	any printable         goes to the composer, always          never a verb
 //	alt+enter             send what you typed off as a task     one chord
-//	alt+1…8               jump straight to a place              drawn on the map
+//	alt+1…9               jump straight to a place              drawn on the map
 //	alt+<letter>          change how THIS place is shown        drawn on the map
 //	shift+←→↑↓            move this place's time window         no letters spent
 //	→ then a letter       act on the row — letters are verbs only here

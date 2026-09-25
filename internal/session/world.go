@@ -434,6 +434,39 @@ func ReadWorld(root string) World {
 // ReadHome is every project under this machine's state root.
 func ReadHome() World { return ReadWorld(PlacesRoot()) }
 
+// ReadRows is the rows of the named conversations and of nothing else, keyed by
+// each transcript's cleaned path: one [readSessionRow] per name, read exactly as
+// the walk reads that folder.
+//
+// IT IS FOR A SURFACE THAT KNOWS WHICH CONVERSATIONS IT DRAWS. The teams page
+// draws its members, twenty-five on a big machine, and it used to walk every
+// session under the root on its opening and on every beat to find them: a stat,
+// a meta.json, a presence file and a lock taken and let go for each of hundreds
+// of folders, to keep a handful. A name that is not a session folder's journal,
+// or whose folder is not a conversation somebody has had, is simply absent.
+//
+// THE TASK ROLL-UP IS NOT READ. The index is the bucket's ([TaskIndexPath]'s
+// law) and nothing that asks for rows by name draws it, so [SessionRow.Tasks]
+// is the zero roll-up here, as are the project fields.
+func ReadRows(transcripts []string) map[string]SessionRow {
+	now := time.Now()
+	rows := make(map[string]SessionRow, len(transcripts))
+	for _, name := range transcripts {
+		transcript := filepath.Clean(strings.TrimSpace(name))
+		if transcript == "." || filepath.Base(transcript) != placeTranscript {
+			continue
+		}
+		if _, done := rows[transcript]; done {
+			continue
+		}
+		dir := filepath.Dir(transcript)
+		if row, ok := readSessionRow(dir, filepath.Base(dir), now); ok {
+			rows[transcript] = row
+		}
+	}
+	return rows
+}
+
 // Adopt puts the conversation a window is sitting in into the world when the
 // walk did not find it, and reports whether it had to.
 //

@@ -16,12 +16,12 @@ func TestRailSeamClickTogglesTheWideTier(t *testing.T) {
 
 	drive(t, a, tea.MouseClickMsg{X: a.railLeft(), Y: y, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: a.railLeft(), Y: y, Button: tea.MouseLeft})
-	if !a.railWide || a.railWidth() != railWideCols {
+	if !a.railWide || a.railWidth() != sideColsFor(a.width)+railWideGain {
 		t.Fatalf("seam press did not widen the rail: wide=%v width=%d", a.railWide, a.railWidth())
 	}
 	drive(t, a, tea.MouseClickMsg{X: a.railLeft(), Y: y, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: a.railLeft(), Y: y, Button: tea.MouseLeft})
-	if a.railWide || a.railWidth() != railCols {
+	if a.railWide || a.railWidth() != sideColsFor(a.width) {
 		t.Fatalf("second seam press did not narrow the rail: wide=%v width=%d", a.railWide, a.railWidth())
 	}
 }

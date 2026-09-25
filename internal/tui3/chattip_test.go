@@ -125,8 +125,8 @@ func TestTheConversationsTipStandsWithTheColumnOpenOrAway(t *testing.T) {
 	check("column open")
 	drive(t, a, ctrlG())
 	a.tipQuietFrom = time.Time{}
-	if got := plain(a.footHint(a.width)); got != railBackHint {
-		t.Fatalf("the keys row of a put-away column reads %q, want %q", got, railBackHint)
+	if got := plain(a.footHint(a.width)); got != a.sideBackHint() {
+		t.Fatalf("the keys row of a put-away column reads %q, want %q", got, a.sideBackHint())
 	}
 	check("column put away")
 }

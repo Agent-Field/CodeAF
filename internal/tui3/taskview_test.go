@@ -688,7 +688,7 @@ func TestTheColumnOffersItsDoorOnlyWhenThereIsSomethingBehindIt(t *testing.T) {
 	// One node, nothing folded, and no record: the column is showing the whole of
 	// what there is to show.
 	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
-	for _, gone := range []string{taskSheetMoreHint, taskSheetPastHint} {
+	for _, gone := range []string{taskSheetKey + " view more", taskSheetPastHint} {
 		if rail := rosterText(a, a.viewHeight()); strings.Contains(rail, gone) {
 			t.Fatalf("the column offered %q with nothing behind it:\n%s", gone, rail)
 		}
@@ -700,7 +700,7 @@ func TestTheColumnOffersItsDoorOnlyWhenThereIsSomethingBehindIt(t *testing.T) {
 		pastTask("1", "ship-the-port", "Ship the port", time.Minute),
 	}
 	a.comp.tasks[0].SessionID = a.taskSheetSelfID()
-	for _, gone := range []string{taskSheetMoreHint, taskSheetPastHint} {
+	for _, gone := range []string{taskSheetKey + " view more", taskSheetPastHint} {
 		if rail := rosterText(a, a.viewHeight()); strings.Contains(rail, gone) {
 			t.Fatalf("the column offered %q for a row it is already drawing:\n%s", gone, rail)
 		}
@@ -727,31 +727,10 @@ func TestTheColumnOffersItsDoorOnlyWhenThereIsSomethingBehindIt(t *testing.T) {
 		t.Fatalf("the page door does not use the shared hint palette:\n%q", painted)
 	}
 	// The history door stays in the footer after the task actions and hide control.
-	if hide, history := strings.Index(rail, railStowHint), strings.Index(rail, taskSheetPastHint); hide < 0 || history <= hide {
+	if hide, history := strings.Index(rail, sideHideKey), strings.Index(rail, taskSheetPastHint); hide < 0 || history <= hide {
 		t.Fatalf("history does not follow the hide control:\n%s", rail)
 	}
 
-}
-
-// A FOLDED FAMILY EARNS IT TOO, because a folded root is one row standing for
-// work the column is deliberately not drawing — and with no record behind it the
-// same line says `view more` instead, because there is no earlier work to
-// promise.
-func TestAFoldedFamilyEarnsTheViewMoreLine(t *testing.T) {
-	a, _, _ := taskApp(t)
-	a.profileDir = t.TempDir()
-	railRun(a)
-	if rail := rosterText(a, a.viewHeight()); strings.Contains(rail, taskSheetMoreHint) {
-		t.Fatalf("an open column with no record offered more:\n%s", rail)
-	}
-	a.railSetOpen(a.tasks[1], false)
-	rail := rosterText(a, a.viewHeight())
-	if !strings.Contains(rail, taskSheetMoreHint) {
-		t.Fatalf("a folded family did not earn the line:\n%s", rail)
-	}
-	if strings.Contains(rail, taskSheetPastHint) {
-		t.Fatalf("a column with no record promised earlier work:\n%s", rail)
-	}
 }
 
 // AND THE LINE IS A BUTTON AS WELL AS A KEY. A row that names a chord and cannot
@@ -759,9 +738,10 @@ func TestAFoldedFamilyEarnsTheViewMoreLine(t *testing.T) {
 // light under the pointer is a button nothing says is a button.
 func TestPressingViewMoreOpensTheTaskPage(t *testing.T) {
 	a, _, _ := taskApp(t)
+	a.file = "/w/.codeaf/v3/sessions/-w/current/session.jsonl"
 	a.profileDir = t.TempDir()
 	railRun(a)
-	a.railSetOpen(a.tasks[1], false)
+	a.comp.tasks = []session.TaskIndexEntry{pastTask("9", "port-the-parser", "Port the parser", 40*time.Hour)}
 
 	at := railMoreLine(t, a)
 	if _, took := a.railPress(a.bodyWidth()+4, at+a.topHeight()); !took {
@@ -806,7 +786,7 @@ func railMoreLine(t *testing.T, a *app) int {
 
 // ── the column keeps what is running ────────────────────────────────────────
 
-// The hide control stays pinned while all tasks scroll in creation order.
+// The header stays pinned while every task scrolls.
 func TestSidebarHeaderStaysWhileRunningWorkScrolls(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
@@ -814,6 +794,7 @@ func TestSidebarHeaderStaysWhileRunningWorkScrolls(t *testing.T) {
 		a.taskUpdate(update(uint64(i), "landed "+itoa(i), session.TaskDone,
 			session.TaskNotice{Merge: mergeWordMerged}))
 	}
+	railOpenAll(a)
 
 	drive(t, a, altT())
 	for i := 0; i < 40; i++ {
@@ -824,7 +805,7 @@ func TestSidebarHeaderStaysWhileRunningWorkScrolls(t *testing.T) {
 		t.Fatalf("the running task did not scroll with the list:\n%s", rail)
 	}
 	// The hide control remains the first row.
-	if !strings.Contains(railText(a, a.viewHeight())[0], railStowHint) {
+	if !strings.Contains(railText(a, a.viewHeight())[0], sideHideKey) {
 		t.Fatal("the hide control moved with the task list")
 	}
 	if strings.Contains(rail, "landed 2 ") {
@@ -998,12 +979,11 @@ func TestAColumnFullOfRunningWorkKeepsAllOfItAndStillOffersTheDoor(t *testing.T)
 	if strings.Contains(rail, "Port the parser") {
 		t.Fatalf("the record took a row from running work:\n%s", rail)
 	}
-	// FOUR AND NOT FIVE, because the column opens with its section label now
-	// (margin.go): the label is geography and it is pinned above the work like
-	// every other line of the moving head, so a nine-row column spends one of its
-	// rows saying where it is. What it must never spend a row on is the RECORD,
-	// which is what this test is about and is still true above.
-	for i := 1; i <= 4; i++ {
+	// THE NEWEST FOUR, because the column opens with its header and the group's
+	// heading, and the newest work is first under it. What it must never spend a
+	// row on is the RECORD, which is what this test is about and is still true
+	// above.
+	for i := 8; i >= 5; i-- {
 		if !strings.Contains(rail, "running "+itoa(i)) {
 			t.Fatalf("running %d was evicted from the column:\n%s", i, rail)
 		}
@@ -1030,7 +1010,7 @@ func TestAnEmptySessionSaysSoAndStillNamesTheDoorOntoTheRecord(t *testing.T) {
 	if strings.Contains(bare, "no tasks yet") {
 		t.Fatalf("an empty column announced its emptiness:\n%s", bare)
 	}
-	for _, gone := range []string{taskSheetPastHint, taskSheetMoreHint} {
+	for _, gone := range []string{taskSheetPastHint, taskSheetKey + " view more"} {
 		if strings.Contains(bare, gone) {
 			t.Fatalf("an empty project drew %q, which it does not have:\n%s", gone, bare)
 		}
@@ -1081,6 +1061,7 @@ func TestTheRostersCursorStopsAtTheLastTaskOfThisConversation(t *testing.T) {
 	a.comp.tasks = []session.TaskIndexEntry{
 		pastTask("9", "port-the-parser", "Port the parser", time.Hour),
 	}
+	railOpenAll(a)
 	rosterText(a, a.viewHeight())
 
 	drive(t, a, altT())

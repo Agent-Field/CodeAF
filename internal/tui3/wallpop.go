@@ -221,10 +221,10 @@ func (a *app) wallPopPress(hit wallHit, tiles []wallTile) tea.Cmd {
 	case p.kind == wallPopMembers && hit.arg == wallPopNew:
 		return a.wallPopNewTeam(tiles)
 	case p.kind == wallPopMembers && hit.arg == wallPopManager:
-		p.cursor = len(a.wall.teams) + 1
+		p.cursor = len(a.wallTeams()) + 1
 		a.wallPopToggleManager(tiles)
 	case p.kind == wallPopMembers:
-		if i := teamIndex(a.wall.teams, hit.id); i >= 0 {
+		if i := teamIndex(a.wallTeams(), hit.id); i >= 0 {
 			p.cursor = i
 		}
 		a.wallToggleTeam(hit.id, tiles)
@@ -258,7 +258,7 @@ func (a *app) wallPopKey(msg tea.KeyPressMsg, tiles []wallTile) tea.Cmd {
 	}
 	switch p.kind {
 	case wallPopMembers:
-		last := len(a.wall.teams) // the + New team row
+		last := len(a.wallTeams()) // the + New team row
 		end := last
 		if a.wallPopManagerRow() != 0 {
 			end = last + 1 // the manager row under it
@@ -277,7 +277,7 @@ func (a *app) wallPopKey(msg tea.KeyPressMsg, tiles []wallTile) tea.Cmd {
 				return a.wallPopNewTeam(tiles)
 			}
 			if p.cursor >= 0 {
-				a.wallToggleTeam(a.wall.teams[p.cursor].ID, tiles)
+				a.wallToggleTeam(a.wallTeams()[p.cursor].ID, tiles)
 			}
 		}
 	case wallPopSettings:

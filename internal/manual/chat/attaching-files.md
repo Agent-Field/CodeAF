@@ -562,7 +562,9 @@ and the hint on the row is the full title. A conversation that is in no team is
 still on the list.
 
 After you send, that team mark and that `@handle` stay clickable. A press on the
-team opens the conversations view on it. A press on the conversation opens it. The
+team opens the teams page with it selected. A press on the conversation opens it. Over
+`--host`, against an engine with no teams doors, a press on the team opens the
+conversations view on it instead. The
 model is handed a short digest of each one, not the transcript, and the other
 conversation is not messaged and not woken. The words in your transcript are the
 words you typed.
