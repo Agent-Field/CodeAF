@@ -2,6 +2,10 @@ package tui3
 
 import (
 	"context"
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -149,5 +153,57 @@ func TestAHostedSurfaceInstallsTheFarMachinesDelegateRows(t *testing.T) {
 	}
 	if len(fake.started) != 1 || fake.started[0] != "fake: do it there" {
 		t.Fatalf("StartDelegate was asked %v", fake.started)
+	}
+}
+
+// A PROGRAM WORKS IN THE PERSON'S FOLDER. Its dirty-checkout refusal must not
+// be preceded by /task's promise that unsaved edits travel into a copy; /task
+// still makes that copy and keeps its existing note.
+func TestDirtyProgramCommandRefusesWithoutPromisingACopyAndTaskKeepsItsNote(t *testing.T) {
+	repo := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	git("init", "-q")
+	git("config", "user.name", "Test")
+	git("config", "user.email", "test@example.test")
+	file := filepath.Join(repo, "README.md")
+	if err := os.WriteFile(file, []byte("first\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	git("add", "README.md")
+	git("commit", "-qm", "first")
+	if err := os.WriteFile(file, []byte("unfinished\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	program, fake := newDelegateApp(t, session.DelegateRow{Name: "senior-dev", Description: "a program"})
+	program.workspace = repo
+	fake.fail = errors.New(repo + " has changes that are not committed (README.md); commit or stash them, then ask again")
+	cmd := program.slash("/senior-dev finish the feature")
+	if cmd == nil {
+		t.Fatal("/senior-dev did not open its command door")
+	}
+	if msg := settleDoor(t, program, cmd); msg != nil {
+		_, _ = program.Update(msg)
+	}
+	programNotes := strings.Join(noteTexts(program), "\n")
+	if !strings.Contains(programNotes, "has changes that are not committed") {
+		t.Fatalf("the refusal did not reach the person: %q", programNotes)
+	}
+	if strings.Contains(programNotes, "copy") || strings.Contains(programNotes, "unsaved edits go with it") {
+		t.Fatalf("the program promised a copy before refusing: %q", programNotes)
+	}
+
+	ordinary := newTestApp(&taskCommandFake{Agent: &fakeAgent{model: "m"}})
+	ordinary.workspace = repo
+	_, _ = ordinary.Update(taskMsg(ordinary.slash("/task finish the feature")))
+	wantNotes := []string{session.UnsavedEditsNote(repo), "single task 7 started · named work"}
+	if got := noteTexts(ordinary); len(got) != len(wantNotes) || got[0] != wantNotes[0] || got[1] != wantNotes[1] {
+		t.Fatalf("/task's notes = %q, want %q", got, wantNotes)
 	}
 }

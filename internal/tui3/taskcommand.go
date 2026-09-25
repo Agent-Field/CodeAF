@@ -134,16 +134,10 @@ func (a *app) startTaskDoor(door taskCommandAgent, brief string, solo bool) tea.
 	})
 }
 
-// startTaskDoorVia is [app.startTaskDoor] with the door itself handed in: the
-// notes said before the spend and the start message are the same whichever
-// door opens — the conversation's own worker or a delegate (delegate.go) — and
-// two copies of the preflight would be two places for one line to drift.
-// taskDoorNotes says the two lines every task door says before the spend — who
-// else is in these files, and what unsaved edits are about to travel — and
-// answers which conversation is speaking, read HERE rather than when the answer
-// lands ([app.adoptTypedBrief] is where that matters). It is one function
-// because the conversation's own door and a delegate's (delegate.go) say the
-// same two lines, and two copies would be two places for one line to drift.
+// taskDoorNotes says who else is in these files before either task door opens,
+// and answers which conversation is speaking before the asynchronous answer
+// lands. A program works in the folder itself, so only the ordinary task door
+// adds the separate note about edits travelling into its copy.
 func (a *app) taskDoorNotes(brief string) string {
 	// WHICH CONVERSATION IS SAYING THIS, read HERE rather than when the answer
 	// lands: the door is opened on a goroutine and the window may have moved on
@@ -166,7 +160,14 @@ func (a *app) taskDoorNotes(brief string) string {
 			a.note(line)
 		}
 	}
-	// AND WHAT THIS PERSON'S OWN CHECKOUT IS ABOUT TO SEND. The task works in a
+	return conv
+}
+
+// taskCopyDoorNotes adds the ordinary task's copy note after the shared
+// preflight. A program's door does not call this: it has no copy to describe.
+func (a *app) taskCopyDoorNotes(brief string) string {
+	conv := a.taskDoorNotes(brief)
+	// WHAT THIS PERSON'S OWN CHECKOUT IS ABOUT TO SEND. The task works in a
 	// copy of the folder AS IT STANDS (internal/session's groundladder.go), so
 	// half-finished edits go with the work — which is what almost everybody
 	// wants and is worth one line for the person who was in the middle of
@@ -184,7 +185,7 @@ func (a *app) taskDoorNotes(brief string) string {
 
 func (a *app) startTaskDoorVia(brief string, start func(context.Context) (uint64, string, string, error)) tea.Cmd {
 	ctx := a.ctx
-	conv := a.taskDoorNotes(brief)
+	conv := a.taskCopyDoorNotes(brief)
 	return func() tea.Msg {
 		id, title, note, err := start(ctx)
 		return taskStartedMsg{
