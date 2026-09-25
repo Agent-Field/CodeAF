@@ -499,6 +499,8 @@ func (placeHome) box(a *app) *editor {
 // hint is HOME'S WHOLE LINE, the router's own keys included. At rest that line is
 // the design's sentence word for word and names four keys exactly (SCREEN 1a,
 // home.go's [app.homeHint]); the router's tail appended here would make it five.
+func (placeHome) about() string { return "what wants you and what is running" }
+
 func (placeHome) hint(a *app) string { return a.homeHint() }
 
 // changed is ZERO AND THAT IS THE DESIGN. Home is where the "since you left"

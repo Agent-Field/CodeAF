@@ -58,7 +58,12 @@ const dockLabel = "chats"
 // strip's own door to the wall (`▦ All`). The dock's word and glyph say
 // [dockChatsWord] instead: they are the same door, and the sentence under
 // the box is the one a person reads while aiming at a square.
-const dockWallWord = "Every open conversation, and your teams" + hintSegment + wallOpenKey
+//
+// IT SAYS GRID AND TABS, NOT "EVERY CONVERSATION", because the nav's `chats`
+// sits right over it on every page and is the place for every conversation
+// (topnav.go). Two doors a row apart that both said "every conversation"
+// would be one door drawn twice; this one is the tabs open here, side by side.
+const dockWallWord = "The grid of your open tabs, and your teams" + hintSegment + wallOpenKey
 
 // dockChatsWord is what the hint slot says while the pointer rests on `chats`
 // or on the dock's `▦`.
@@ -283,7 +288,7 @@ func dockCellHint(tab chatTab) string {
 }
 
 // dockHoverWords is what the hint slot says while the pointer rests on the
-// dock, and "" when it rests anywhere else: `Every open conversation, and your teams · alt+v` over
+// dock, and "" when it rests anywhere else: `The grid of your open tabs, and your teams · alt+v` over
 // the word and over `▦`, and [dockCellHint] over a cell. The strip's own door
 // to the wall (chattabs.go) is explained here too, in its own sentence.
 func (a *app) dockHoverWords() string {

@@ -5,12 +5,12 @@ import (
 	"testing"
 )
 
-// barGeometry reads one top-bar row: the row it is on, the column its first
-// word starts in, and the blank cells between that word and the next item.
+// barGeometry reads one head row: the row it is on, the column its first word
+// starts in, and the blank cells between that word and the next item.
 func barGeometry(frame, first string) (y, x, gap int) {
 	for i, r := range strings.Split(plain(frame), "\n") {
 		at := strings.Index(r, first)
-		if at < 0 || strings.TrimSpace(r[:at]) != "" {
+		if at < 0 {
 			continue
 		}
 		rest := r[at+len(first):]
@@ -19,10 +19,11 @@ func barGeometry(frame, first string) (y, x, gap int) {
 	return -1, -1, -1
 }
 
-// ONE TOP BAR. The chat strip and the places bar are the same row: the first
-// word on the same line and in the same column, the same air between two
-// items, and the current item on the same ground, at every width a person uses.
-func TestOneTopBarPlacesAndChatsShareGeometry(t *testing.T) {
+// ONE TOP NAV. A conversation and a place draw the same nav: the places on the
+// wordmark's row, in the same cells, with the same air between two words, and
+// the strip of chats on the row under it on both. The one thing that differs
+// is which word is lit: `chats` over a conversation, the place over a place.
+func TestOneTopNavOnAChatAndOnAPlace(t *testing.T) {
 	for _, width := range []int{80, 110, 160} {
 		a, _, _, _ := trafficApp(t)
 		a.open = func(workspace, transcript string) (Conversation, error) { return Conversation{}, nil }
@@ -31,19 +32,34 @@ func TestOneTopBarPlacesAndChatsShareGeometry(t *testing.T) {
 		a.width, a.height = width, 24
 		a.touch()
 		chat, _, _ := a.frame()
-		cy, cx, cgap := barGeometry(chat, "Home")
-		places := placeApp(t)
-		places.width = width
-		frame, _, _ := places.frame()
-		py, px, pgap := barGeometry(frame, "home")
-		if cy < 0 || py < 0 {
-			t.Fatalf("at %d a bar is missing (chat row %d, places row %d)", width, cy, py)
+		cy, cx, cgap := barGeometry(chat, " home ")
+		chatSpans := append([]placeTabSpan(nil), a.tabs...)
+		walkTo(t, a, pageSpend)
+		frame, _, _ := a.frame()
+		py, px, pgap := barGeometry(frame, " home ")
+		if cy != navRow || py != navRow || a.tabRow != navRow {
+			t.Fatalf("at %d the nav is on row %d in the chat and %d on the place", width, cy, py)
 		}
-		if cy != py || py != places.tabRow || cx != px || cx != headLabelAt+1 || cgap != pgap || pgap != 2*len(tabPad)+placeBarGap {
-			t.Fatalf("at %d the bars differ: chat row %d x %d gap %d, places row %d x %d gap %d", width, cy, cx, cgap, py, px, pgap)
+		if cx != px || cgap != pgap || pgap != len(tabPad) {
+			t.Fatalf("at %d the navs differ: chat x %d gap %d, place x %d gap %d", width, cx, cgap, px, pgap)
 		}
-		if !strings.Contains(frame, activeGround(places.pal, tabPad+"home"+tabPad)) {
-			t.Fatalf("at %d the place you stand in is not on the chat strip's current ground", width)
+		if len(chatSpans) != len(a.tabs) {
+			t.Fatalf("at %d the chat's nav has %d buttons and the place's %d", width, len(chatSpans), len(a.tabs))
+		}
+		for i := range chatSpans {
+			if chatSpans[i] != a.tabs[i] {
+				t.Fatalf("at %d the button %d moved between the chat and the place: %+v, %+v", width, i, chatSpans[i], a.tabs[i])
+			}
+		}
+		// AND THE STRIP IS UNDER IT ON BOTH, the team chip in the same cells.
+		if sy, sx, _ := barGeometry(chat, "harbor ▾"); sy != tabStripRow {
+			t.Fatalf("at %d the chat's strip is on row %d", width, sy)
+		} else if py2, px2, _ := barGeometry(frame, "harbor ▾"); py2 != tabStripRow || px2 != sx {
+			t.Fatalf("at %d the place's strip is at row %d x %d, the chat's at row %d x %d", width, py2, px2, sy, sx)
+		}
+		lit := a.pal.onPlaces()
+		if !strings.Contains(frame, lit.bold(lit.accent(tabPad+"spend"+tabPad))) {
+			t.Fatalf("at %d the place you stand in is not lit in the accent", width)
 		}
 		if a.tabActivePaint(" x ") != activeGround(a.pal, " x ") {
 			t.Fatal("the chat strip's tab in front has a ground of its own")

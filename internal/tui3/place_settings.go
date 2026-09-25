@@ -20,9 +20,8 @@ import (
 // (docs/design/home-rethink/ARCHITECTURE.md's three layers).
 //
 // IT IS THE ONE PLACE WITH A SECOND BAR INSIDE IT, and the two are not a
-// repetition: the upper one is the seven places and the lower one is this
-// place's own sections. The panel is where [placeTabBar] was lifted from, so
-// they are drawn by the same geometry and read as one object at two scales.
+// repetition: the nav at the top is the places and the bar in the body is this
+// place's own sections.
 
 // placeSettings is this place's handle on the registry (pages.go's [place]
 // states the contract and why the handle holds no state of its own).
@@ -179,6 +178,8 @@ func (placeSettings) note(a *app, width int) []string {
 	}
 	return []string{" " + pal.dim(noteFit(a.sheet.footNote(), width-2))}
 }
+
+func (placeSettings) about() string { return "how this machine is set" }
 
 func (placeSettings) hint(a *app) string {
 	hint := a.sheet.keysLine()

@@ -100,7 +100,7 @@ func TestTeamsIsTheSecondPlaceOnTheBarTheDigitsAndTheCommand(t *testing.T) {
 		t.Fatalf("the second place is %q", placeOrder[1].word())
 	}
 	a := placeApp(t)
-	bar := plain(a.placeTabBar(120, false, a.pal))
+	bar := navPlaces(a, 120, false)
 	if !placeWordsInOrder(bar, "home", "teams", "chats", "sessions") {
 		t.Fatalf("the bar does not put teams after home: %q", bar)
 	}
@@ -145,6 +145,11 @@ func TestTeamsRailIsTheTreeWithMarksOnlyWhenSomethingHappens(t *testing.T) {
 	lines := rail()
 	hy, oy := -1, -1
 	for y, l := range lines {
+		// The head is skipped: the strip's team chip reads `● harbor ▾` on
+		// every page.
+		if y < placeHeadRows {
+			continue
+		}
 		if hy < 0 && strings.Contains(l, "harbor") {
 			hy = y
 		}
@@ -251,8 +256,8 @@ func TestTeamsHostsTheManagersRealConversation(t *testing.T) {
 	if len(lines) != a.height {
 		t.Fatalf("the hosted frame has %d rows, want %d", len(lines), a.height)
 	}
-	if !strings.Contains(lines[placeTabRow], "teams") {
-		t.Fatalf("the bar does not say teams:\n%s", strings.Join(lines, "\n"))
+	if !strings.Contains(lines[navRow], "teams") {
+		t.Fatalf("the nav does not say teams:\n%s", strings.Join(lines, "\n"))
 	}
 	w, _ := a.size()
 	if w != a.width-a.tp.railW {

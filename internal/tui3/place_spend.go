@@ -925,6 +925,8 @@ const (
 // hold them ([app.spendWindowKey] asks [placeWindowFits] the same question), and
 // a foot promising them under a head that is not drawing them would be this
 // surface advertising a key that does nothing.
+func (placeSpend) about() string { return "what the work has cost" }
+
 func (placeSpend) hint(a *app) string {
 	var parts []string
 	stop := a.spendStopAt(a.spend.cursor)

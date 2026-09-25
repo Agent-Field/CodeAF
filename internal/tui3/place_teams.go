@@ -133,6 +133,8 @@ func (placeTeams) note(a *app, width int) []string {
 
 // hint is what the pointer or the cursor is on, with its key, and otherwise
 // the page's keys.
+func (placeTeams) about() string { return "the teams you hand work to" }
+
 func (placeTeams) hint(a *app) string {
 	if a.tmove.on {
 		return a.teamMoveHint()

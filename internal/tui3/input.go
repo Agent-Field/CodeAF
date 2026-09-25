@@ -366,6 +366,10 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	if a.teamMenu.on && !door {
 		return a.teamMenuKey(msg)
 	}
+	// And so does the nav's fold menu (navmore.go).
+	if a.navMore.on && !door {
+		return a.navMoreKey(msg)
+	}
 	// The move picker, over everything, and then a team's card have the
 	// keyboard while they are up (teammove.go, teamsheet.go).
 	if a.tmove.on && !door {
