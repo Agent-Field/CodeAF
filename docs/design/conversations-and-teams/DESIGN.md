@@ -309,10 +309,17 @@ nothing saying which reply answered which question. So:
   until it answers; a finishing is the `✓` on its answer or its own `✓ finished` line, a failure
   `✗`, and a member asking the person is the one line in the needs-you amber. Stops, starts,
   handle changes and unthreaded entries stay one line each.
-- **Handles are links there too**, inked and grounded as in the chat, hint `Open @x · title ·
-  click` (`Resume` when not open here), a press opening or resuming the member. A message's words
-  are a door: hover puts them whole in the hint line, a press lays them out under the row, a
-  second folds them. Rows are cached on the entries, width, pointer, minute and what is laid out.
+- **Handles are links there too**, inked and grounded as in the chat, hint `Open @x at this
+  message · title · click` (`Resume` when not open here), a press opening or resuming the member
+  scrolled to the message: a header's handle at the directive as delivered, an answer's handle at
+  the member's own post. Every place an entry sits in a transcript carries its number (a
+  delivered line's ` #N`, `team_send`'s `(#N)`, `team_post`'s ` as #N`), and the surface finds
+  the newest entry carrying it, scrolls it a third of the way down the view and lifts it for
+  1.6 s without taking the focus. A jump waits for a conversation still opening, for up to ten
+  seconds; a number in no entry opens at the bottom with `that message is older than this
+  chat's history` in the hint line. A message's words are a door: hover puts them whole in the
+  hint line, a press lays them out under the row and brings its thread card in the manager's
+  conversation into view, a second folds them. Rows are cached on the entries, width, pointer, minute and what is laid out.
 - **The manager's chat has the thread where it asked.** A `team_send` row reads
   `team_send ◆ to @agent @checking @review · do`, the words quoted under it, and each member's
   answer attached under that in muted ink as the Traffic cache brings it, one line each; the

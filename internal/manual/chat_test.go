@@ -46,6 +46,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does it ask again if the handle model times out", "team-manager"},
 		{"how does a member reply to a thread", "team-manager"},
 		{"why is the traffic rail drawn as threads", "team-manager"},
+		{"open a member's chat at the message it answered from the traffic", "team-manager"},
 		{"what does chats on the tab bar do", "places"},
 		{"how do I get back to my conversation from a place", "places"},
 		{"can I use my own deepseek key", "services"},

@@ -105,9 +105,14 @@ func (a *app) trafficPress(x, y int) (tea.Cmd, bool) {
 		case i < 0:
 		case door.member != "":
 			a.traffic.over = false
-			return a.trafficGo(door.member), true
+			return a.trafficJump(door.member, door.land), true
 		case door.expand != "":
 			a.trafficToggle(door.expand)
+			// AND THE MESSAGE'S CARD IN THE MANAGER'S OWN CONVERSATION COMES
+			// INTO VIEW, lifted (teamjump.go).
+			if door.here != "" {
+				return a.trafficJump("", door.here), true
+			}
 		}
 		return nil, true
 	}

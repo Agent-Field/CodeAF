@@ -1120,7 +1120,10 @@ func (a *app) bodyRows(width, height int) ([]row, int) {
 	if a.roomOpen() {
 		return a.roomWindow(width, height)
 	}
-	return a.window(width, height)
+	// A MESSAGE SOMEBODY WAS JUST TAKEN TO IS LIFTED for a moment
+	// (teamjump.go). The draw only: the pointer resolves through window.
+	rows, pad := a.window(width, height)
+	return a.trafficLandRows(rows, width), pad
 }
 
 // bodyTop is the screen row the conversation starts on, or -1 when the frame is
