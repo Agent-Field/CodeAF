@@ -497,7 +497,7 @@ names none of them; `alt+.` draws the map when you want the rest.
 A digit answers the question row drawing its answers, wherever you are standing. `enter` acts on
 the row under the cursor. `alt+.` draws the map.
 
-## Why is a heading highlighted, why is one project name darker than the others
+## Why is a heading highlighted, which section is my cursor in, why is one project name darker than the others
 
 **Because the cursor is in that panel.** The heading of the panel holding the cursor wears
 the cursor's ground — one heading per frame, following the keyboard, and never the mouse.
