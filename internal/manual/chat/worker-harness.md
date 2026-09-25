@@ -496,9 +496,8 @@ what you actually asked for would list every row of the run and never learn it.
 ## How do I stop a run? Stop it did nothing and the task kept running, cancel the whole run
 
 Press `x` over an empty box while the run's row is the one task row on the side list,
-or open the run's own page and press `x stop it` there. Both raise the same card,
-`Stop this task?`, with `stop it` and `keep going`; the page steps aside so the card
-is drawn in the conversation. A digit moves the choice, `enter` takes it, and `esc` is
+or open the run's task room and press `x` there over an empty box. Both raise the same
+card, `Stop this task?`, with `stop it` and `keep going`. A digit moves the choice, `enter` takes it, and `esc` is
 `keep going`. Nothing ends on one keystroke. Telling the chat "stop task 1" ends a run
 the same way and asks nothing, because your sentence is the decision.
 
@@ -506,8 +505,9 @@ A stop ends the run now: every part still open is ended, what it was running is 
 off, and no further model call is made for it. The row reads `stopped`. A second stop
 on a run that is already stopping answers that it is already stopping.
 
-`x` on one PART of a run ends that part only, at once and without a card, and the
-rest of the run carries on. A row nothing drives any more is cleared the same way:
+`x` on one PART's row in the tasks place ends that part only, at once and without a
+card, and the rest of the run carries on. In a part's room `x` asks first, with the
+same card, and ends that part only. A row nothing drives any more is cleared the same way:
 the stop settles it as `stopped` and answers `stopped task N (<title>) — nothing was
 driving it any more`. A run cannot be paused as a whole, so under the run's own
 task no `p pause` is named.
