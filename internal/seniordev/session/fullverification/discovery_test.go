@@ -293,6 +293,9 @@ func TestDiscoverPlainPythonWithoutPackagingMetadata(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			workspace := t.TempDir()
+			// The fallback below is about identifying a Python project; make
+			// pytest importable so this older test also has a fixed test runner.
+			writeDiscoveryFile(t, workspace, "pytest.py", "# importable fixture module\n")
 			writeDiscoveryFile(t, workspace, test.marker, "# marker\n")
 			if test.marker != "tests/test_example.py" {
 				writeDiscoveryFile(t, workspace, "tests/test_example.py", "def test_green():\n    assert True\n")

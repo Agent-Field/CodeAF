@@ -7,6 +7,7 @@ package fullverification
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -545,10 +546,47 @@ func ecosystemDefaults(workspace string) []Entrypoint {
 		add(KindTest, "dotnet test", "dotnet project")
 	case isPythonProject(workspace):
 		if hasPythonTests(workspace) {
-			add(KindTest, "python3 -m pytest", "Python test files")
+			if declaresPytest(workspace) || pythonHasPytest(workspace) {
+				add(KindTest, "python3 -m pytest", "Python test files")
+			} else {
+				add(KindTest, "python3 -m unittest discover", "Python test files")
+			}
 		}
 	}
 	return entries
+}
+
+// declaresPytest keeps an explicit project choice even if this machine lacks
+// the package; that failure is a missing dependency rather than a test style
+// the verifier should silently replace.
+func declaresPytest(workspace string) bool {
+	if fileExists(filepath.Join(workspace, "pytest.ini")) || fileExists(filepath.Join(workspace, "conftest.py")) {
+		return true
+	}
+	files := []string{"pyproject.toml", "setup.cfg", "tox.ini", "requirements.txt"}
+	for _, pattern := range []string{"requirements-*.txt", "requirements_*.txt", "requirements/*.txt"} {
+		matches, _ := filepath.Glob(filepath.Join(workspace, pattern))
+		for _, match := range matches {
+			if relative, err := filepath.Rel(workspace, match); err == nil {
+				files = append(files, relative)
+			}
+		}
+	}
+	for _, name := range files {
+		contents, err := os.ReadFile(filepath.Join(workspace, name))
+		if err == nil && strings.Contains(strings.ToLower(string(contents)), "pytest") {
+			return true
+		}
+	}
+	return false
+}
+
+// pythonHasPytest checks the interpreter the discovered command will run in
+// the project's own directory, so an installed or local pytest is usable.
+func pythonHasPytest(workspace string) bool {
+	command := exec.Command("python3", "-c", "import pytest")
+	command.Dir = workspace
+	return command.Run() == nil
 }
 
 func appendShellCandidates(out []commandCandidate, raw, source string) []commandCandidate {
