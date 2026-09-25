@@ -32,6 +32,9 @@ import (
 type sseDecoder struct {
 	reader  *bufio.Reader
 	message []byte
+	// done records the protocol's explicit [DONE] marker, which shares the
+	// decoder's io.EOF return with an underlying connection close.
+	done bool
 	// alive, when set, is called once per SSE comment line — the ": OPENROUTER
 	// PROCESSING" keepalives a router sends while an upstream assembles its
 	// answer. Comments never become chunks (parseSSEMessage drops them), so
@@ -128,6 +131,7 @@ func (d *sseDecoder) next() ([]byte, error) {
 				d.message = d.message[:0]
 				switch {
 				case done:
+					d.done = true
 					return nil, io.EOF
 				case delivered:
 					return payload, nil

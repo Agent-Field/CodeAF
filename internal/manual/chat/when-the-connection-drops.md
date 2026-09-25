@@ -31,6 +31,13 @@ says `trying again` while it waits. A conversation opened with `--host` has a se
 connection, and that link to the other machine is the one the surface redials for up to five
 minutes.
 
+## The reply stopped halfway through
+
+If the model connection ends before the model reports a finish reason or sends its `[DONE]`
+marker, codeaf drops the unfinished reply and asks again. Text that appeared while it was
+arriving is not kept in the conversation. A reply with either completion signal is accepted,
+even when the other signal is absent.
+
 Over `--host`, the surface redials the machine by itself. You do not have to do anything.
 
 A conversation opened with `--host` runs on the other machine; the link between the two is

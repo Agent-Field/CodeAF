@@ -2696,6 +2696,8 @@ func cutNotice(cut *provider.StreamCut) string {
 		return "the reply kept going and never finished — asking again"
 	case provider.CutMachinery:
 		return "the model answered in its own internal markup instead of words — that text was dropped, asking again"
+	case provider.CutTruncated:
+		return "the connection ended before the reply was finished — that text was dropped, asking again"
 	default:
 		return "nothing came back from the model — asking again"
 	}
@@ -2716,6 +2718,8 @@ func cutWords(cut *provider.StreamCut) string {
 		return "the reply kept going and never finished"
 	case provider.CutMachinery:
 		return "the model answered in its own internal markup instead of words"
+	case provider.CutTruncated:
+		return "the connection ended before the reply was finished"
 	default:
 		return "nothing came back from the model"
 	}
@@ -2745,6 +2749,8 @@ func hopNotice(cut *provider.StreamCut, verdict taxonomy.Verdict, next string) s
 		return "the reply kept running on without finishing — finishing this one on " + next
 	case provider.CutMachinery:
 		return "the model kept answering in its own internal markup — finishing this one on " + next
+	case provider.CutTruncated:
+		return "the connection kept ending before the reply was finished — finishing this one on " + next
 	default:
 		return "nothing kept coming back from the model — finishing this one on " + next
 	}
@@ -2773,6 +2779,12 @@ func cutFailure(cut *provider.StreamCut, attempts int, hopped []string) error {
 		said = "the reply lost its thread " + timesWord(attempts) +
 			" — it came back as repetition and jumbled text, so none of it was kept. " +
 			"a different model may hold it (/model), or /compact to lighten the conversation"
+	case cut.Reason == provider.CutTruncated && len(hopped) > 0:
+		said = fmt.Sprintf("%s, %s — the partial reply was dropped. %s",
+			cut.Error(), timesWord(attempts), alsoTried(hopped))
+	case cut.Reason == provider.CutTruncated:
+		said = fmt.Sprintf("%s, %s — the partial reply was dropped. A different model may answer (/model)",
+			cut.Error(), timesWord(attempts))
 	case len(hopped) > 0:
 		said = fmt.Sprintf("%s, %s. %s — /model to pick another one yourself",
 			cut.Error(), timesWord(attempts), alsoTried(hopped))

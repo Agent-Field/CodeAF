@@ -110,6 +110,69 @@ func TestTheJunkNeverReachesTheTranscript(t *testing.T) {
 	}
 }
 
+func TestAnIncompleteReplyIsAskedAgainWithoutKeepingItsText(t *testing.T) {
+	const partial = "answer cut off before it was finished"
+	completer := &scriptedCompleter{steps: []step{
+		cutStep(provider.CutTruncated, partial),
+		func(_ context.Context, _ []ai.Message) (*ai.Response, error) {
+			return textResponse("the complete answer"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+	events, err := agent.Submit(context.Background(), "what happened?")
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	collected := collect(t, events)
+
+	retry, retried := firstOfKind(collected, EventRetrying)
+	if !retried || !strings.Contains(retry.Text, "connection ended before the reply was finished") || !strings.Contains(retry.Text, "dropped") {
+		t.Fatalf("retry note = %+v, want the incomplete reply described as dropped", retry)
+	}
+	if _, failed := firstOfKind(collected, EventError); failed {
+		t.Fatalf("a recovered reply ended in an error; events were %v", kinds(collected))
+	}
+	for _, message := range completer.request(1) {
+		for _, part := range message.Content {
+			if strings.Contains(part.Text, partial) {
+				t.Fatalf("the incomplete reply was sent again: %q", part.Text)
+			}
+		}
+	}
+	for _, message := range agent.snapshot() {
+		for _, part := range message.Content {
+			if strings.Contains(part.Text, partial) {
+				t.Fatalf("the incomplete reply was saved in the conversation: %q", part.Text)
+			}
+		}
+	}
+}
+
+func TestRepeatedIncompleteRepliesSayWhatWasDropped(t *testing.T) {
+	completer := &scriptedCompleter{steps: []step{
+		cutStep(provider.CutTruncated, "first partial"),
+		cutStep(provider.CutTruncated, "second partial"),
+		cutStep(provider.CutTruncated, "third partial"),
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+	events, err := agent.Submit(context.Background(), "go on")
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	collected := collect(t, events)
+
+	failure, failed := firstOfKind(collected, EventError)
+	if !failed {
+		t.Fatalf("two incomplete replies did not end the turn; events were %v", kinds(collected))
+	}
+	said := failure.Err.Error()
+	for _, want := range []string{"connection ended before the reply was finished", "partial reply was dropped", "/model"} {
+		if !strings.Contains(said, want) {
+			t.Fatalf("the sentence %q does not contain %q", said, want)
+		}
+	}
+}
+
 // TestAReplyThatComesApartTwiceEndsTheTurnInWordsThatHelp: the give-up sentence
 // names what happened and the two doors that actually open.
 func TestAReplyThatComesApartTwiceEndsTheTurnInWordsThatHelp(t *testing.T) {
