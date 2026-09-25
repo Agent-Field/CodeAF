@@ -1679,7 +1679,7 @@ func TestHomeLeavesARowWhoseFolderIsThereAlone(t *testing.T) {
 	for _, v := range a.homeRowVerbs() {
 		offered[v.word] = true
 	}
-	for _, word := range []string{"new in project", "open folder", "copy project"} {
+	for _, word := range []string{"new in project", "open folder", "copy name"} {
 		if !offered[word] {
 			t.Fatalf("the row lost the verb %q: %v", word, offered)
 		}

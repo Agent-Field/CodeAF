@@ -430,7 +430,7 @@ p pause   s stop   n not here
 ```
 
 On memory they are `c open the card`, `e fix the wording` and `f forget it`. On home the
-verbs are the row's own — a question's first two answers on its own answer keys, `x close`, `n new in project`, `o open folder`, `p copy project`, and
+verbs are the row's own — a question's first two answers on its own answer keys, `x close`, `c copy name`, `n new in project`, `o open folder`, and
 `p pause it` or `r resume it` on a standing item, `s stop` on a task this window runs,
 `its chats` and `open folder` on a project. On home, `→` opens the selected row's
 options at every width; the arrows stay in the list.
@@ -945,9 +945,9 @@ honest dim sentence instead of falling through to this computer's files.
 ## Can I put away a conversation on the other machine from home
 
 Yes. `x close` on the row menu or `ctrl+e` writes the archive mark on the machine whose home you are viewing.
-`enter` on a far conversation opens it in this window. `o open folder`, `p copy project`, and
-starting a new conversation in that folder are absent on far rows because those paths do not
-name folders on the computer holding your file manager and clipboard.
+`enter` on a far conversation opens it in this window. `c copy name` copies its current
+name to this computer’s clipboard. `o open folder` and starting a new conversation in that
+folder are absent on far rows because those paths do not name local folders.
 
 ## Do the tab numbers follow the machine too
 

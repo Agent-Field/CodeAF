@@ -2306,8 +2306,8 @@ the answers are on the `needs you` row itself.
 **`←` `→` cross home's columns first**; where no column with rows lies to the right, **`→`
 opens the row's verbs** on a strip drawn **directly under that row**, pushing the rest
 of the list down by its own height, and while that strip is drawn its letters are the verbs
-and the box is asleep — a question's own answer keys and words, `x close`, `n new in project`,
-`o open folder`, `p copy project`, `p pause it` or `r resume it` on a standing item. `esc` or
+and the box is asleep — a question's own answer keys and words, `x close`, `c copy name`, `n new in project`,
+`o open folder`, `p pause it` or `r resume it` on a standing item. `esc` or
 `←` closes it, `enter` still opens the row, and walking off the row closes it too. The arrows
 never leave home's field, and on a panel's fold line (`N more`) `enter`
 opens the panel and shows the rest; on `N fewer` it folds them again.

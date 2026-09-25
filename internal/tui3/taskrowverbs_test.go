@@ -141,13 +141,20 @@ func TestProjectMenuShortcutsUseTheSelectedItemsProject(t *testing.T) {
 				started = workspace
 				return Conversation{}, errors.New("test captured the requested project")
 			}
-			drive(t, a, key("right"), key("t"), key("c"))
+			drive(t, a, key("right"), key("t"))
+			if task {
+				drive(t, a, key("c"))
+			}
 			if !a.strip.open || started != "" {
 				t.Fatal("a retired menu shortcut still acted")
 			}
-			cmd, handled := a.stripKey(key("p"))
-			if !handled || cmd == nil || !reflect.DeepEqual(cmd(), tea.Raw(osc52(owner.Workspace, a.tmux))()) {
-				t.Fatal("p copy project did not copy the selected item's project")
+			copyKey, copied := "p", owner.Workspace
+			if !task {
+				copyKey, copied = "c", homeName(owner)
+			}
+			cmd, handled := a.stripKey(key(copyKey))
+			if !handled || cmd == nil || !reflect.DeepEqual(cmd(), tea.Raw(osc52(copied, a.tmux))()) {
+				t.Fatalf("%s copied the wrong text; want %q", copyKey, copied)
 			}
 			drive(t, a, key("right"), key("n"))
 			if started != owner.Workspace {

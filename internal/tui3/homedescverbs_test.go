@@ -32,7 +32,7 @@ func TestHomeOptionsAppearBelowTheDescriptionWithoutMovingTheList(t *testing.T) 
 				}
 			}
 			first := len(after)
-			for _, option := range []string{"x close", "n new in project", "o open folder", "p copy project"} {
+			for _, option := range []string{"x close", "c copy name", "n new in project", "o open folder"} {
 				row, col := homeRowOf(strings.Join(after, "\n"), option)
 				if row < 0 || col < xs[1] || col+len(option) > xs[1]+widths[1] {
 					t.Fatalf("%q is outside the description column:\n%s", option, strings.Join(after, "\n"))
@@ -69,7 +69,7 @@ func TestHomeDescriptionOptionsStayVisibleWithLongProseAndResize(t *testing.T) {
 	for _, width := range []int{180, 120, 180} {
 		a.width = width
 		frame := homeText(a)
-		for _, option := range []string{"x close", "n new in project", "o open folder", "p copy project"} {
+		for _, option := range []string{"x close", "c copy name", "n new in project", "o open folder"} {
 			if strings.Count(frame, option) != 1 {
 				t.Fatalf("at width %d, %q must appear exactly once:\n%s", width, option, frame)
 			}
