@@ -1,14 +1,36 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
+	"os"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 )
+
+// rawCrewRow is one row of the profile file as an older build reads it: the
+// stored string itself, not this build's reading of it.
+func rawCrewRow(t *testing.T, dir, key string) string {
+	t.Helper()
+	raw, err := os.ReadFile(BudgetConfigPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rows map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &rows); err != nil {
+		t.Fatal(err)
+	}
+	var value string
+	if err := json.Unmarshal(rows[key], &value); err != nil {
+		t.Fatal(err)
+	}
+	return value
+}
 
 // crewProfile is a profile with an OpenRouter key and a small catalog, the
 // ordinary state a crew is routed in. Every variable a seat or a key reads
@@ -143,6 +165,12 @@ func TestPinsRoundTripAndRefuseWhatTheRuleLeavesOut(t *testing.T) {
 	if got := mustRow(t, registry(t, dir), KeyTierWorkerModel).Value(); got != "z-ai/glm-5.3-flash@openrouter" {
 		t.Errorf("the worker row reads %q", got)
 	}
+	if got := rawCrewRow(t, dir, KeyTierWorkerModel); got != "z-ai/glm-5.3-flash" {
+		t.Errorf("the older build's tier row reads %q", got)
+	}
+	if got := rawCrewRow(t, dir, "models.crew.route.worker"); got != "z-ai/glm-5.3-flash@openrouter" {
+		t.Errorf("the route row reads %q", got)
+	}
 	if err := SetCrewAllowed(dir, "open"); err != nil {
 		t.Fatal(err)
 	}
@@ -162,8 +190,97 @@ func TestPinsRoundTripAndRefuseWhatTheRuleLeavesOut(t *testing.T) {
 	if _, ok := CrewPinAt(dir, crewroute.Worker); ok {
 		t.Error("`auto` did not unpin the worker")
 	}
+	if _, held := persistedValue(dir, "models.crew.route.worker"); held {
+		t.Error("unpin left the route row")
+	}
 	if got := mustRow(t, registry(t, dir), KeyTierWorkerModel).Value(); got != CrewAuto {
 		t.Errorf("an unpinned worker row reads %q, want auto", got)
+	}
+}
+
+// A ROUTE PIN THIS BUILD WROTE INTO A TIER ROW IS SPLIT ONCE, SILENTLY: the
+// row keeps the model an older build can send, the route moves to its own row,
+// a second start writes nothing, undo restores the route, and a route left
+// behind by an older build that changed the model is not applied to the new one.
+func TestRoutedPinMigrationAndStaleRoute(t *testing.T) {
+	dir := crewProfile(t)
+	if err := writeProfileValues(dir, map[string]any{KeyTierHighModel: "moonshotai/kimi-k3@openrouter"}); err != nil {
+		t.Fatal(err)
+	}
+	if pin, ok := CrewPinAt(dir, crewroute.Checker); !ok || pin.String() != "moonshotai/kimi-k3@openrouter" {
+		t.Fatalf("a pin before migration: %+v, %v", pin, ok)
+	}
+	if line, err := MigrateCrew(dir); err != nil || line != "" {
+		t.Fatalf("split migration: %q, %v", line, err)
+	}
+	if got := rawCrewRow(t, dir, KeyTierHighModel); got != "moonshotai/kimi-k3" {
+		t.Errorf("model row: %q", got)
+	}
+	if got := rawCrewRow(t, dir, "models.crew.route.checker"); got != "moonshotai/kimi-k3@openrouter" {
+		t.Errorf("route row: %q", got)
+	}
+	before, err := os.ReadFile(BudgetConfigPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldTime := time.Unix(1, 0)
+	if err := os.Chtimes(BudgetConfigPath(dir), oldTime, oldTime); err != nil {
+		t.Fatal(err)
+	}
+	if line, err := MigrateCrew(dir); err != nil || line != "" {
+		t.Fatalf("second migration: %q, %v", line, err)
+	}
+	after, err := os.ReadFile(BudgetConfigPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) {
+		t.Error("second migration rewrote the profile")
+	}
+	info, err := os.Stat(BudgetConfigPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.ModTime().Equal(oldTime) {
+		t.Error("second migration touched the profile")
+	}
+	saved := CrewStateAt(dir)
+	if err := SetCrewPin(dir, crewroute.Checker, "moonshotai/kimi-k3"); err != nil {
+		t.Fatal(err)
+	}
+	if _, held := persistedValue(dir, "models.crew.route.checker"); held {
+		t.Error("a model-only pin left the route row")
+	}
+	if err := RestoreCrewState(dir, saved); err != nil {
+		t.Fatal(err)
+	}
+	if pin, ok := CrewPinAt(dir, crewroute.Checker); !ok || pin.Provider != "openrouter" {
+		t.Fatalf("undo did not restore the route: %+v, %v", pin, ok)
+	}
+	if err := writeProfileValues(dir, map[string]any{KeyTierHighModel: "vendor/new"}); err != nil {
+		t.Fatal(err)
+	}
+	if pin, ok := CrewPinAt(dir, crewroute.Checker); !ok || pin.Model != "vendor/new" || pin.Provider != "" {
+		t.Fatalf("a stale route followed a new model: %+v, %v", pin, ok)
+	}
+	if err := ClearCrewPins(dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, held := persistedValue(dir, "models.crew.route.checker"); held {
+		t.Error("unpin all left the route row")
+	}
+}
+
+// The route rows are rows this build reads, so the unread-key notice is quiet
+// about them.
+func TestCrewRouteRowsAreReadProfileKeys(t *testing.T) {
+	dir := crewProfile(t)
+	values := map[string]json.RawMessage{}
+	for _, key := range []string{"models.crew.route.worker", "models.crew.route.planner", "models.crew.route.checker"} {
+		values[key] = json.RawMessage(`"vendor/model@openrouter"`)
+	}
+	if unread := warnUnreadProfileKeys(dir, values); len(unread) != 0 {
+		t.Fatalf("route keys are reported unread: %v", unread)
 	}
 }
 
