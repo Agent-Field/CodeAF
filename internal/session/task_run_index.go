@@ -72,7 +72,10 @@ func (a *Agent) indexRunRow(notice TaskNotice) {
 	}
 	entry.ArtifactURI = taskArtifactURI(worktree, notice.Branch, notice.Merge)
 	if notice.State.settled() {
-		entry.Cost = a.beltRunSpent(notice.ID)
+		entry.Cost = notice.CostUSD
+		if entry.Cost == 0 {
+			entry.Cost = a.beltRunSpent(notice.ID)
+		}
 	}
 	a.recordTaskIndexEntry(entry)
 	// Another window learns the run started, or ended, now rather than at the

@@ -1283,8 +1283,8 @@ func taskRowText(entry TaskIndexEntry) string {
 	if entry.DurationMS > 0 {
 		parts = append(parts, taskSpanWord(entry.Duration()))
 	}
-	if entry.Cost > 0 {
-		parts = append(parts, "$"+strconv.FormatFloat(entry.Cost, 'f', 2, 64))
+	if cost := taskDollarWord(entry.Cost); cost != "" {
+		parts = append(parts, cost)
 	}
 	if via := taskViaWord(entry.Program); via != "" {
 		parts = append(parts, via)
@@ -1316,6 +1316,15 @@ func taskViaWord(program string) string {
 		return ""
 	}
 	return "via " + program
+}
+
+// taskDollarWord is a task's spend as the tasks tool spells it on every row,
+// `$0.31`, and "" for none, which says nothing rather than `$0.00`.
+func taskDollarWord(usd float64) string {
+	if usd <= 0 {
+		return ""
+	}
+	return "$" + strconv.FormatFloat(usd, 'f', 2, 64)
 }
 
 // taskWhereClauses is the trailing line a row may carry: where the work IS, the
@@ -1485,9 +1494,10 @@ func planTaskLabels(rows []PlanTaskRow) map[string]string {
 // Empty when there is no run or nothing in it matches, so the caller's own
 // listing stands alone.
 //
-// A PROGRAM'S RUN SAYS HOW LONG IT TOOK, off the run's one pair
-// ([planRowSpanWord], task_run_clock.go): the tool said no time at all, and a
-// model asked how long senior-dev took could only guess. AND IT SAYS WHICH
+// A PROGRAM'S RUN SAYS HOW LONG IT TOOK AND WHAT IT COST, off the run's one pair
+// ([planRowSpanWord], task_run_clock.go) and its spend rows ([taskDollarWord]):
+// the tool said neither, and a model asked how long senior-dev took or what it
+// cost could only guess. AND IT SAYS WHICH
 // PROGRAM HAS IT, after the clock, in [taskViaWord]'s one spelling — the same
 // place on the line [taskRowText] puts it.
 func (a *Agent) planTasksText(rows []PlanTaskRow, query string) string {
@@ -1503,6 +1513,9 @@ func (a *Agent) planTasksText(rows []PlanTaskRow, query string) string {
 		fmt.Fprintf(&b, "%s · %s · %s", labels[row.ID], cutChars(row.Title, runAskLineChars), row.Status)
 		if span := planRowSpanWord(row, now); span != "" {
 			fmt.Fprintf(&b, " · %s", span)
+		}
+		if cost := taskDollarWord(row.USD); cost != "" {
+			fmt.Fprintf(&b, " · %s", cost)
 		}
 		if via := taskViaWord(row.Program); via != "" {
 			fmt.Fprintf(&b, " · %s", via)
@@ -1540,6 +1553,9 @@ func (a *Agent) planTaskText(rows []PlanTaskRow, token string) (string, bool) {
 	head := labels[id] + " · " + cutChars(page.Row.Title, runAskLineChars) + " · " + page.Row.Status
 	if span := planRowSpanWord(page.Row, a.taskClockNow()); span != "" {
 		head += " · " + span
+	}
+	if cost := taskDollarWord(page.Row.USD); cost != "" {
+		head += " · " + cost
 	}
 	if via := taskViaWord(page.Row.Program); via != "" {
 		head += " · " + via

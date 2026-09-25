@@ -349,7 +349,9 @@ folder refused.
 Every model call senior-dev makes goes through codeaf, which serves each run its own
 model API. So every call is priced like one of codeaf's own, shows in the conversation's
 total, its tokens and its call count, under `tasks` in `/cost`, and under the task on the
-spend place, and is held to the run's dollar ceiling: **once the run's spend has
+spend place. What the whole run came to is on its row, its landed card once opened
+and the chat's `tasks` tool (`#3 · … · done · ran 22m 51s · $2.30 · via senior-dev`).
+Every call is held to the run's dollar ceiling: **once the run's spend has
 reached it, codeaf refuses every further call** before it is made, with
 `the run's dollar ceiling of $5.00 is reached ($5.04 spent), so codeaf made no call`.
 The call that crossed the ceiling was already made and paid for, so a run can end a little

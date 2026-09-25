@@ -632,3 +632,23 @@ func TestAProgramsMentionBlockOffersTheStopAndNoSteer(t *testing.T) {
 		t.Fatalf("an ordinary running task lost its steer:\n%s", block)
 	}
 }
+
+// A PROGRAM'S LANDED CARD, OPENED, SAYS WHAT THE RUN COST, from the price its settled
+// row carries (session's publishRunRow) — the card drew none while the row
+// carried none.
+func TestAProgramsLandedCardSaysWhatItCost(t *testing.T) {
+	a := programRailApp(t, "senior-dev")
+	settled := programNotice("senior-dev")
+	settled.CostUSD, settled.EndedAt, settled.Report = 2.30, taskFixtureNow, "submitted and verified"
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, programTitle, session.TaskDone, settled)})
+	at := a.doneEntryFor(7)
+	if at < 0 {
+		t.Fatal("the program's run drew no landed card")
+	}
+	done := a.entries[at].done
+	done.open = true
+	card := plain(strings.Join(a.doneRows(done, 120, false), "\n"))
+	if !strings.Contains(card, "$2.30") {
+		t.Fatalf("the program's landed card names no price:\n%s", card)
+	}
+}

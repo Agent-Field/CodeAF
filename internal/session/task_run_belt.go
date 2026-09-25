@@ -853,6 +853,11 @@ func (a *Agent) settleInterruptedProgramRow(g *TaskGraph, store *plandb.Store, k
 		return
 	}
 	row := kept
+	// AND WHAT IT CAME TO, read off the store's spend rows: the process that
+	// knew the run's total is gone ([Agent.publishRunRow] carries it live).
+	if row.CostUSD == 0 {
+		row.CostUSD = storeSpent(store)
+	}
 	if root.Status == plandb.StatusDone {
 		row.State, row.Ending, row.Stopped = TaskDone, "", false
 		row.Result = strings.TrimSpace(root.Result)
@@ -899,16 +904,21 @@ func interruptedProgramEnding(store *plandb.Store, root *plandb.Task, record del
 	return report, TaskEndingProgram, false
 }
 
+// storeSpent is every dollar a run's store holds spend rows for.
+func storeSpent(store *plandb.Store) float64 {
+	spent := 0.0
+	for _, total := range store.SpendSummary().ByRole {
+		spent += total.USD
+	}
+	return spent
+}
+
 // interruptedLimitEnding is which limit ended a program's run, off the run's
 // own facts: its spend against the dollar ceiling the run handed its program
 // (the run's own ceiling, [delegate.ProgramRecord.CeilingUSD]) says the
 // dollars ran out, and any other limit ending is the run's time.
 func interruptedLimitEnding(store *plandb.Store, record delegate.ProgramRecord) TaskEnding {
-	spent := 0.0
-	for _, total := range store.SpendSummary().ByRole {
-		spent += total.USD
-	}
-	if record.CeilingUSD > 0 && spent >= record.CeilingUSD {
+	if spent := storeSpent(store); record.CeilingUSD > 0 && spent >= record.CeilingUSD {
 		return TaskEndingCostLimit
 	}
 	return TaskEndingTimeLimit
@@ -1022,6 +1032,14 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 	}
 	if notice.Elapsed == 0 {
 		notice.Elapsed = runSpan(notice.StartedAt, notice.EndedAt)
+	}
+	// A SETTLED RUN'S OWN ROW SAYS WHAT IT CAME TO, the figure its index row
+	// carries ([Agent.beltRunSpent]), so the landed card and every page drawn
+	// from the row show the price. No book is summed from rows: the conversation's
+	// total comes from the calls themselves (task_run_money.go), so this is a
+	// label and never a second charge.
+	if notice.State.settled() && notice.CostUSD == 0 {
+		notice.CostUSD = a.beltRunSpent(notice.ID)
 	}
 	a.emitTaskUpdate(notice)
 	g.keepRunRows(notice.ID, []TaskNotice{notice})

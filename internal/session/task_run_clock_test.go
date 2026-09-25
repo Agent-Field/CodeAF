@@ -466,3 +466,50 @@ func TestACheckpointHoldingAnInterruptedRunRowIsNotRefused(t *testing.T) {
 		t.Fatalf("the checkpoint came back with %d rows, want both", len(back.Runs))
 	}
 }
+
+// A PROGRAM'S SETTLED ROW AND ITS OWN CONVERSATION'S tasks TOOL SAY WHAT IT
+// COST. The row's notice carried no price, so the landed card drew none, and the
+// tool's reader of the run's store printed no dollars. The figure is a label: the
+// conversation's books take the run's calls once, through the fold, and a row
+// that carries the total must not add it again.
+func TestAProgramsRowAndTheTasksToolSayWhatItCost(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "")
+	double := newBeltRunDouble("submitted and verified")
+	double.summary.USD = 2.30
+	registerBeltRunEngine(t, double)
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "submitted and verified"}, func(config *Config) {
+		config.Workspace = newTestRepo(t)
+		config.Place = Place{Dir: t.TempDir()}
+		config.AskConsent = false
+		config.Delegates = testPrograms("fake")
+	})
+	id, title, _, err := agent.StartDelegate(context.Background(), "fake", "add two files to the project")
+	if err != nil {
+		t.Fatalf("StartDelegate: %v", err)
+	}
+	<-double.entered
+	double.mu.Lock()
+	spec := double.spec
+	double.mu.Unlock()
+	if err := spec.Store.AddSpend(spec.Store.RootID(), "delegate/fake", "worker", 2.30, 100, 50); err != nil {
+		t.Fatal(err)
+	}
+	endBeltRun(t, agent, double)
+
+	row, ok := runRowOf(agent.graph(), id)
+	if !ok || !row.State.settled() || row.CostUSD != 2.30 {
+		t.Fatalf("the run's settled row = %+v, want it to carry $2.30", row)
+	}
+	name := "#" + strconv.FormatUint(id, 10)
+	listing, failed := runTool(t, agent, "tasks", `{}`)
+	if failed || !strings.Contains(listing, name+" · "+title+" · done · ") || !strings.Contains(listing, " · done · $2.30 · ") {
+		t.Fatalf("the listing answered %q (failed %v), want the run's price after its state", listing, failed)
+	}
+	read, failed := runTool(t, agent, "tasks", `{"id":"`+name+`"}`)
+	if failed || !strings.HasSuffix(strings.SplitN(read, "\n", 2)[0], " · done · $2.30") {
+		t.Fatalf("reading the run answered %q (failed %v), want its price on its first line", read, failed)
+	}
+	if got := agent.Usage().CostUSD; got > 2.30+1e-9 {
+		t.Fatalf("the conversation's books hold $%.4f for a $2.30 run: the row's price was charged again", got)
+	}
+}
