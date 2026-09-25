@@ -75,11 +75,13 @@ CHANNEL='we"ird' write_install_marker "$tmp/state"
 ok "unexpected channel written as unknown" 'grep -q "\"channel\":\"unknown\"" "$f"'
 ok "unexpected-channel marker is valid JSON" 'json_valid'
 ok "unwritable state root does not fail the install" 'write_install_marker /proc/nonexistent-root'
+ok "an unwritable state root says nothing" '[ -z "$(write_install_marker /proc/nonexistent-root 2>&1)" ]'
 
 # --- no notice from the installer --------------------------------------------
 
 # The binary shows the notice at the first session; the installer shows none.
 ok "installer prints no telemetry notice" '! grep -qE "anonymous (performance data|usage counts)|TELEMETRY_NOTICE|print_telemetry_notice" "$script"'
+ok "no printed line in the installer mentions telemetry" '! grep -E "printf|echo" "$script" | grep -qi telemetry'
 expected=$(awk '
 	/^## The notice$/ {f=1; next}
 	f && /^```$/ {f++; next}

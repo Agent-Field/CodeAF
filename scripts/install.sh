@@ -71,15 +71,14 @@ write_install_marker() {
     stable|rc|staging|dev) channel="$CHANNEL" ;;
     *) channel="unknown" ;;
   esac
+  # The marker is background bookkeeping: a failure skips it without a word.
   if ! mkdir -p "$directory/telemetry" 2>/dev/null; then
-    printf 'codeaf: could not create %s/telemetry; skipping the install marker\n' "$directory" >&2
     return 0
   fi
   chmod 0700 "$directory/telemetry"
   file="$directory/telemetry/install.json"
   if ! { printf '{"install_method":"script","channel":"%s","installed_at":"%s"}' \
     "$channel" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"; } > "$file" 2>/dev/null; then
-    printf 'codeaf: could not write %s; skipping the install marker\n' "$file" >&2
     return 0
   fi
   chmod 0600 "$file"
