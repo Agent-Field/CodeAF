@@ -148,3 +148,63 @@ func TestTrafficJumpBringsTheCardIntoView(t *testing.T) {
 		t.Fatal("the card's answer does not open its member at the answer")
 	}
 }
+
+// A PRESS ON THE ROW, NOT ONLY THE HANDLE, OPENS THE CHAT THE MESSAGE BELONGS
+// TO, at that message. The manager's own words stay here and scroll. A reply
+// opens the member who wrote it. In the member's chat, the member's own reply
+// scrolls in place, and a message the manager wrote opens the manager.
+func TestTrafficPressOpensTheConversationTheMessageBelongsTo(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	a.width, a.height = 160, 40
+	price, priceKey := trafficHandle(t, a, harbor, "openrouter")
+	manager := a.frontTabKey()
+	q, _ := teamstore.AppendTrafficID(a.profileDir, harbor, teamstore.Entry{Kind: teamstore.KindDirective, From: teamstore.FromManager, To: teamstore.ToEveryone, Text: "all hands on the parser"})
+	reply, _ := teamstore.AppendTrafficID(a.profileDir, harbor, teamstore.Entry{Kind: teamstore.KindNote, From: price, To: teamstore.ToManager, Text: "parser numbers are in", Answers: q})
+	trafficReadNow(t, a)
+	fillEntries(a, 8, "before")
+	sendRow(a, `{"to":"everyone","text":"all hands on the parser","kind":"directive"}`, "Sent a directive to everyone ("+teamstore.ThreadNumber(q)+").")
+	fillEntries(a, 60, "after")
+	a.offset, a.stick = 0, true
+	_ = railLines(t, a)
+	x, y := sideRowOn(t, a, "thread/"+q)
+	sideClick(t, a, x, y)
+	shown, lifted := landedRow(a, "all hands on the parser")
+	if !shown || !lifted || a.frontTabKey() != manager {
+		t.Fatalf("a press on the manager's row did not stay and lift it (shown %v lifted %v front %q)", shown, lifted, a.frontTabKey())
+	}
+	if a.traffic.landing.entry < 0 {
+		t.Fatal("the manager's row did not highlight an entry")
+	}
+
+	// THE REPLY OPENS THE MEMBER WHO WROTE IT.
+	a.sideToggleThread(sideThreadKey(harbor, q))
+	_ = railLines(t, a)
+	x, y = sideRowOn(t, a, "reply/"+reply)
+	sideClick(t, a, x, y)
+	if a.frontTabKey() != priceKey {
+		t.Fatalf("a press on the reply opened %q, want %q", a.frontTabKey(), priceKey)
+	}
+
+	// IN THE MEMBER'S CHAT the member's own line scrolls here, and the
+	// manager's line opens the manager.
+	note := "Posted to the manager in \"harbor\" as " + teamstore.ThreadNumber(reply) + ", answering " + teamstore.ThreadNumber(q) + "."
+	a.entries = nil
+	fillEntries(a, 8, "pad")
+	a.entries = append(a.entries, entry{kind: entryTool, tool: "team_post", status: toolOK, settled: true, text: "team_post",
+		detail: toolDetail{Output: note}})
+	fillEntries(a, 60, "tail")
+	a.offset, a.stick = 0, true
+	a.sideSetView(sideTraffic)
+	_ = railLines(t, a)
+	x, y = sideRowOn(t, a, railKeyOfReply(t, a, "parser numbers"))
+	front := a.frontTabKey()
+	sideClick(t, a, x, y)
+	if a.frontTabKey() != front || a.traffic.landing.entry < 0 {
+		t.Fatalf("a press on the member's own row left %q or highlighted nothing (entry %d)", a.frontTabKey(), a.traffic.landing.entry)
+	}
+	x, y = sideRowOn(t, a, railKeyOfReply(t, a, "all hands"))
+	sideClick(t, a, x, y)
+	if a.frontTabKey() != manager {
+		t.Fatalf("a press on the manager's message in the member's chat opened %q", a.frontTabKey())
+	}
+}

@@ -87,21 +87,69 @@ func trafficAsking(e teamstore.Entry) bool {
 	return strings.HasPrefix(text, "ask") || strings.HasPrefix(text, "needs you")
 }
 
-// trafficAge is how long ago an entry was written, in the fewest cells.
+// trafficAge is how long ago an entry was written, in the same few cells a
+// task row and a home session use ([sinceAt]): `now`, `2m`, `3h`, `1d`. One
+// ladder, so a row and the home never disagree about what two minutes is.
 func (a *app) trafficAge(e teamstore.Entry) string {
-	if e.At.IsZero() {
-		return ""
+	return sinceAt(e.At, a.now())
+}
+
+// trafficBelongsTo is the conversation a Traffic entry was written in. A
+// message the sender wrote belongs in the sender's chat: the manager's mark
+// is the manager, a handle is that member. A message put to the person
+// belongs in the manager's chat, which is where the person reads it.
+func (a *app) trafficBelongsTo(t team, e teamstore.Entry) string {
+	if e.To == teamstore.ToYou {
+		return t.Manager
 	}
-	d := a.now().Sub(e.At)
-	switch {
-	case d < 60e9:
-		return "now"
-	case d < 3600e9:
-		return itoa(int(d/60e9)) + "m"
-	case d < 86400e9:
-		return itoa(int(d/3600e9)) + "h"
+	switch e.From {
+	case teamstore.FromManager, teamstore.FromYou, teamstore.FromSystem, "":
+		return t.Manager
 	}
-	return itoa(int(d/86400e9)) + "d"
+	if m, ok := t.ByHandle(e.From); ok {
+		return m.Key
+	}
+	return t.Manager
+}
+
+// trafficSenderWord is who a row says the message is from, the same word the
+// row draws: the manager's mark, `you` for this member, `codeaf`, or `@handle`.
+func (a *app) trafficSenderWord(from, self string) string {
+	if self != "" && (from == self || from == "@"+self) {
+		return "you"
+	}
+	switch from {
+	case teamstore.FromManager:
+		return a.teamManagerMark()
+	case teamstore.FromYou:
+		return "you"
+	case teamstore.FromSystem:
+		return "codeaf"
+	case "":
+		return "it"
+	}
+	return "@" + strings.TrimPrefix(from, "@")
+}
+
+// trafficOpenHint is the hint over a row that opens a message: who wrote it,
+// how long ago, then whatever else the row gave up, then the click.
+func trafficOpenHint(sender, age, extra string) string {
+	head := "Open " + sender + "'s message"
+	if sender == "you" {
+		head = "Open your message"
+	}
+	out := head
+	switch age {
+	case "":
+	case "now":
+		out += hintSegment + "now"
+	default:
+		out += hintSegment + age + " ago"
+	}
+	if extra != "" {
+		out += hintSegment + extra
+	}
+	return out + hintSegment + "click"
 }
 
 // trafficMarkSeen records that the person has team t's newest entry in front of
