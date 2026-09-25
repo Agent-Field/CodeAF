@@ -57,7 +57,8 @@ whole map over the cells you are already reading.
 There is no argument form. The screen is how you name what you want; a command that took a
 project name would be asking you to type out the very thing home exists to show you.
 
-Home is the **first word on the tab bar**: `home  teams  chats  sessions  spend  settings`.
+Home is the **first place on the top line**, right after the `codeaf` wordmark:
+`home  teams  chats  sessions  spend  settings`.
 The **teams page**, right after it, is where your teams and their managers live.
 It still does nothing on its own: no notifications and no alerts. You open it, you see where
 things stand, and you either act on something or leave.
@@ -588,19 +589,23 @@ under it.
 
 ## The line at the top of home — the pulse, want you, moving, spend and allowance, the clock
 
-The top line is the program's name and, right-aligned, what is true of the **whole
-machine** right now. It is the first row of **every** frame — home, every place, and the
-chat itself, where it sits over the tab strip (` Home  <your chats>`), a rule and a blank:
-the same four rows at the top wherever you are standing. **Inside a chat** and on every
-place but home it reads:
+The top line is the program's name, the places you can go, and, right-aligned, what is true
+of the **whole machine** right now. It is the first row of **every** frame: home, every
+place, and the chat itself. Under it is the tab strip of your chats, then a rule and a
+blank, the same four rows at the top wherever you are standing. **Inside a chat** and on
+every place but home it reads:
 
 ```
- codeaf              2 want you · 4 moving · $0.55 / $500 · tue 1:11pm
+ >● codeaf   home  teams  chats  sessions  spend  settings   2 want you · 4 moving · $0.55 / $500 · tue 1:11pm
 ```
 
-**On home it drops the two counts** and keeps the budget and the clock —
-` codeaf                              $0.55 / $500 · tue 1:11pm` — because the `needs you`
-and `sessions` panels are those counts, row by row.
+**On home it drops the two counts** and keeps the budget and the clock, because the
+`needs you` and `sessions` panels are those counts, row by row.
+
+**On a narrow window the right end gives way first**: the clock, then `4 moving`, then
+`2 want you`, then the allowance (`$0.55 / $500` becomes `$0.55`); only then do the places
+fold into `more ▾`, and the day's figure is the last thing to go. The **Places** page of
+this manual has the whole order and the `more ▾` menu.
 
 - `2 want you` — how many things have **stopped on you**: a conversation waiting for an
   answer, a standing order that will not fire until you say so, an errand holding a
@@ -625,7 +630,7 @@ cent — one reading of one file, wherever you are standing.
 
 ## Where did standing, memory and search go: the six words on the tab bar
 
-**They are still places; they are just off the bar.** The tab bar under the top line is six
+**They are still places; they are just off the bar.** The bar on the top line is six
 words, `home  teams  chats  sessions  spend  settings`. `tab` walks the five rooms among them and
 `alt+1` … `alt+6` go to each; `chats` (`alt+3`) is the way back to your conversation. Standing,
 memory and search open exactly as they did:
@@ -1505,8 +1510,8 @@ one (*Why is the home screen empty*).
 
 Over `--host` home lists **the machine your session is running on**. The projects, the
 conversations in them and the work each of those ran are read on the far end and carried
-here, so what you are looking at is the server's afternoon rather than your laptop's — and
-the right end of the tab bar says `on <machine>` so you can see which. Enter on a row opens
+here, so what you are looking at is the server's afternoon rather than your laptop's, and
+the right end of the top line says `on <machine>` so you can see which. Enter on a row opens
 that conversation beside the one you are in rather than in place of it.
 
 Two things a remote home does not do, and both are silences rather than sentences. **No row
