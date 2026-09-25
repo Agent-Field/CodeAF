@@ -62,6 +62,7 @@ func wallHelpList(ascii bool) []wallHelpGroup {
 		{name: "Open", rows: []wallHelpRow{
 			row("Open", k.enter, "enter", "Open the focused conversation"),
 			row("Answer", k.enter, "enter", "Open the focused conversation to answer it"),
+			row("Open the rest", "r", "r", "Resume the shown team's conversations not open here"),
 			row("Back", "esc", "esc", "Back one step"),
 		}},
 		{name: "Organize", rows: []wallHelpRow{

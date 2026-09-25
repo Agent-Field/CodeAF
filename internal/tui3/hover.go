@@ -331,6 +331,12 @@ const (
 	// the narrow frame's card's `Close esc` (teamrail.go).
 	hoverTrafficHide
 	hoverTrafficClose
+	// hoverTrafficTab is the header's `Tasks 2` word, which lays the manager's
+	// own tasks in the column (teamrail.go).
+	hoverTrafficTab
+	// hoverThread is a line of a thread card in the conversation, held by its
+	// entry and the message it shows (teamthreadcard.go).
+	hoverThread
 )
 
 // hoverAt is what the pointer is over, as an identity rather than as a screen
@@ -549,8 +555,8 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 		// before it: the prose it sits in has no gesture of its own, and a paragraph
 		// that lit as a whole would promise a door on every word of it (markdown.go's
 		// [linkifyTasks]).
-		if at := a.linkHoverAt(x, r); at >= 0 {
-			return hoverAt{kind: hoverLink, entry: r.entry, index: at}
+		if at, key := a.linkHoverAt(x, r); at >= 0 {
+			return hoverAt{kind: hoverLink, entry: r.entry, index: at, key: key}
 		}
 		switch {
 		case r.foot.span.holds(x):
@@ -575,6 +581,8 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			return hoverAt{kind: hoverPictures, entry: r.entry, index: r.pictureIndex}
 		case r.hit == hitBrief:
 			return hoverAt{kind: hoverBrief, entry: r.entry}
+		case r.hit == hitThread:
+			return hoverAt{kind: hoverThread, entry: r.entry, key: r.open}
 		case r.hit == hitTool, r.hit == hitMore, r.hit == hitTask, r.hit == hitDone,
 			r.hit == hitHarness:
 			// THE ONES THAT WERE MISSING FROM THIS LIST, and every one of them is
@@ -624,6 +632,14 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 				return hoverAt{kind: hoverPaste, index: n}
 			}
 		case chromeOverlay:
+			// THE @ LIST'S PREFIX WORDS ARE COLUMNS OF ITS FIRST ROW. A press on
+			// "team" is not a press on the row, so the word rides the key
+			// (mention.go).
+			if a.comp.open && !a.comp.arg && a.comp.top == 0 && mark.index == 0 {
+				if word, ok := mentionHeadAt(x); ok {
+					return hoverAt{kind: hoverOverlay, index: mark.index, key: word}
+				}
+			}
 			// EVERY LIST DOWN HERE IS ROWS, AND THE FOLDER SHEET IS COLUMNS. Its
 			// three columns do three different things to a press — walk out, move
 			// the cursor, walk in — so a band across the row would offer to do one

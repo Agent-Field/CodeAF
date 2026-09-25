@@ -488,6 +488,10 @@ type entry struct {
 	// a value it cost the idle frame seven percent, which is most of what the
 	// memo was buying.
 	hung *toolBlock
+	// thread is the memo of a thread card: what a manager's team_send row
+	// hangs, or the answers under a team note's quoted line
+	// (teamthreadcard.go). A pointer for the reason hung is one.
+	thread *threadMemo
 
 	// demoted says THIS PROSE WAS NARRATION AND NOT THE ANSWER, and it is the
 	// whole of THE ANSWER HIERARCHY as far as a renderer is concerned
@@ -3286,7 +3290,16 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if mode, ok := msg.(tea.ModeReportMsg); ok {
 		a.ruler.noteModeReport(mode)
 	}
+	if _, ok := msg.(trafficLandedMsg); ok {
+		a.touch()
+		return a, nil
+	}
 	model, cmd := a.update(msg)
+	// A JUMP TO A MESSAGE WAITING FOR ITS CONVERSATION lands here, on the first
+	// message after that conversation is in front (teamjump.go).
+	if a.traffic.jump.key != "" {
+		cmd = tea.Batch(cmd, a.trafficLand())
+	}
 	// AND WHATEVER THE LAST FRAME ASKED THE DISK ABOUT IS READ HERE, on the loop,
 	// before the next frame draws (learned.go). `open` and `tick` may read the
 	// disk and `body` may not, so a frame that met a picture nobody had stat'd
@@ -3599,8 +3612,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case filesLoadedMsg:
 		a.comp.all, a.comp.loaded, a.comp.loading = msg.paths, true, false
+		a.fillMentions()
 		a.comp.rank()
 		a.touch()
+		return a, nil
+
+	case mentionRecentsMsg:
+		a.mentionRecentsLoaded(msg.rows)
 		return a, nil
 
 	case tasksLoadedMsg:
@@ -4126,6 +4144,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// still typing, so a press anywhere else is a press on whatever is
 			// there (harnesspick.go).
 			if cmd, took := a.harnessPickPress(msg.Mouse().Y); took {
+				return a, cmd
+			}
+			// AND THE @ LIST'S PREFIX WORDS, which are columns of its first row
+			// (mention.go). A press anywhere else on that list still falls through.
+			if cmd, took := a.mentionHeadPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
 			// AND THE THINKING LADDER TAKES A PRESS ON ITS OWN ROWS AND NOTHING
@@ -6763,8 +6786,8 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 	// row's own answer: the prose it sits in has no gesture of its own, and a
 	// reference read after the body would be a door the body had already closed
 	// the room behind (markdown.go's [linkifyTasks]).
-	if a.linkPress(x, r) {
-		return
+	if took, open := a.linkPress(x, r); took {
+		return open
 	}
 	// AND THE FOOT UNDER A TABLE THAT WAS CUT IS THE OTHER ONE, resolved here for
 	// the same reason and in the same breath: it is a phrase inside a row of the
@@ -6809,6 +6832,8 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		a.toggleWorkfold(r.turn)
 	case hitMore:
 		a.showAll(r.entry)
+	case hitThread:
+		a.trafficToggle(r.open)
 	case hitPictureOriginal:
 		return a.openPictureAt(r.entry, r.pictureIndex)
 	case hitPictures:
@@ -6868,33 +6893,52 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 // answer, which for a paragraph is nothing at all. The gap between two links is
 // a sentence, not a seam, and swallowing a click on it would make the paragraph
 // a place where missing costs you the page.
-func (a *app) linkPress(x int, r row) bool {
+//
+// A TEAM REFERENCE IS THE SAME KIND OF DOOR (teamlink.go): a member opens, or
+// is resumed and opened, and a team's name opens the conversations view on it.
+func (a *app) linkPress(x int, r row) (bool, tea.Cmd) {
 	if len(r.links) == 0 || a.welcome.open {
-		return false
+		return false, nil
 	}
 	for _, link := range r.links {
 		if link.span.holds(x) {
+			// A HANDLE ON A THREAD CARD OPENS ITS MEMBER AT THE MESSAGE: an
+			// answer at the member's own post, the card's header at the message
+			// as the member was told it (teamjump.go).
+			if land := a.threadRowLand(r); land != "" && link.member != "" {
+				if t, ok := a.teamByID(link.team); ok {
+					if m, ok := t.Member(link.member); ok {
+						return true, a.trafficJump(m.Key, land)
+					}
+				}
+			}
+			if link.team != "" {
+				return true, a.teamLinkPress(link)
+			}
+			if link.member != "" && link.id == 0 {
+				return true, a.mentionChatPress(link.member)
+			}
 			a.openRoomFor(link.id, link.title)
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 // linkHoverAt is which reference of this row's BLOCK the pointer is over, and -1
-// for none. It is the ordinal rather than the position on the row for the reason
+// for none, with a team reference's identity for the hint line ([teamLinkKey]). It is the ordinal rather than the position on the row for the reason
 // [taskLink.ord] carries one (markdown.go), and it is the same test [app.linkPress]
 // makes so the words that light are the words that open something.
-func (a *app) linkHoverAt(x int, r row) int {
+func (a *app) linkHoverAt(x int, r row) (int, string) {
 	if len(r.links) == 0 || a.welcome.open {
-		return -1
+		return -1, ""
 	}
 	for _, link := range r.links {
 		if link.span.holds(x) {
-			return link.ord
+			return link.ord, teamLinkKey(link)
 		}
 	}
-	return -1
+	return -1, ""
 }
 
 // statusPress resolves a click on the status row's MODEL SEGMENT, and reports
@@ -8664,12 +8708,14 @@ func (a *app) syncLists() tea.Cmd {
 		return nil
 	}
 	was := a.comp.open
+	a.fillMentions()
 	a.comp.sync(&a.input)
 	if a.comp.open && !was {
 		// Both halves of the list are asked for at the same moment, and neither
 		// waits for the other: the index is one small file and lands first, the
-		// walk lands when it lands (taskmention.go, files.go).
-		return tea.Batch(a.loadFiles(), a.loadTasks())
+		// walk lands when it lands (taskmention.go, files.go). The recent
+		// conversations ride the same opening (mention.go).
+		return tea.Batch(a.loadFiles(), a.loadTasks(), a.loadMentionRecents())
 	}
 	return nil
 }

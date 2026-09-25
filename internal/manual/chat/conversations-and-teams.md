@@ -2,8 +2,8 @@
 
 ## The conversations view: every open conversation at once
 
-The **conversations view** shows every conversation this window has open as a grid of
-live tiles, so you can see at a glance which ones are working, which are waiting on you
+To see all your conversations at once, open the **conversations view**: every conversation
+this window has open, as a grid of live tiles, so you can see at a glance which ones are working, which are waiting on you
 and which are at rest, and go to any of them with one press. It is also where you group
 conversations into **teams**.
 
@@ -20,9 +20,13 @@ Close it with `alt+v` again, `esc`, the `‹ Back` button at the bottom left, or
 the strip's `▦ All`. Nothing you do in the view ends any work: closing a tile closes its
 view in this window, and the conversation keeps running.
 
-The title bar says what is shown, `every open conversation, live` or `the conversations in
-harbor` while a team is shown, and counts what is running, what needs you and how many are
-open. Under it is the **Teams** row, which ends in `✦ Organize` while every conversation is
+The view and the tab strip show **what is open in this window**. The title bar says so,
+`Conversations · open in this window`, or `open in this window · in harbor` while a team is
+shown, and counts what is running, what needs you and how many are open here. A team's
+members that this window does not have open are not tiles and not tabs; while the shown team
+has any, the title bar carries one quiet button, `2 more in harbor · Open them` (or `r`), that
+resumes them in the background, so they arrive as tiles and tabs while the conversation in
+front and your focus stay where they are. When every member is open the button is not there. Under it is the **Teams** row, which ends in `✦ Organize` while every conversation is
 shown, and at the bottom a toolbar with `Filter /`,
 `New team s`, `Columns − +` and `Help ?`. While the pointer rests on any control, the middle
 of the toolbar says in one dim line what it does and which key does the same.
@@ -81,7 +85,10 @@ While anything is picked, a tray rises over the bottom of the grid:
 A **team** is a group of conversations you name, like `harbor` for everything about one
 project. A conversation can be in any number of teams: a team is a grouping, not a place a
 conversation lives. Showing a team narrows both the conversations view and the **tab strip**
-to its members, and nothing else changes: no conversation is opened, closed or stopped.
+to its members that are open in this window, and nothing else changes: no conversation is
+opened, closed or stopped. A team's whole membership, open here or not, lives on the team:
+each segment of the Teams row counts the members open here, and resting the pointer on it
+says both, `harbor · 1 open here · 3 members`.
 
 **Making a team.** Press `s` (or `+ New team` on the Teams row, `Make team` in the tray, or
 `+ New team…` in a tile's teams list). With nothing picked, the team starts with the focused
@@ -189,8 +196,17 @@ change; it can still be pressed.
 
 ## The team switcher on the tab strip
 
-While a team is shown, the tab strip starts with a chip naming it, `● harbor ▾`. With teams
-but none shown, it is a quiet `Teams ▾`; with no teams at all there is no chip. A press on the
+While a team is shown, the tab strip carries a chip naming it, `● harbor ▾`, right after
+`Home` and right before the tabs it narrows, with the manager's place after it:
+
+```
+  Home   ● harbor ▾   ◆ Manager ×   Refactor the rail sco… ×   openrouter price scrape ×   +   ▦ All
+```
+
+`Home` is a fixed door and stands first; the chip is a filter over the tabs, so it sits with
+them. When the row runs short `Home` is the first to go, then the chip, and never the tab in
+front. With teams but none shown, the chip is a quiet `Teams ▾`; with no teams at all there
+is no chip. A press on the
 chip opens the **team switcher** under it, on any page the strip is on, the conversations view
 included:
 
@@ -232,6 +248,39 @@ Teams list makes an existing conversation the manager. While the manager is in f
 **team manager** page. The **teams page** (`/teams`, `alt+2`) lists every team as a tree
 and puts the chosen team's manager conversation beside it, with what waits on you.
 
+## Team names and handles in a conversation are links
+
+In a conversation that is in a team, every **handle** of a member of that team, like
+`@security`, is a link wherever it appears: in a reply, in a team's quoted card, in the
+surface's own notes and in a team tool's call such as `team_send @security`. So is a team's
+name where it is written as a team: `team harbor`, `the harbor team` or `"harbor"`. The
+pointer on one puts a ground under it and the hint line says what a press does, like
+`Open @security · santosh dev2 branch code… · click`. A press opens that member, resuming it
+first when this window does not have it open; a team's name opens the conversations view on
+that team. An `@word` that is no member's handle is left as plain text.
+
+## Mention a team or another conversation with @
+
+In the message box, `@` opens the same list files use. Teams are a section of it,
+each row a coloured dot and the team's name. Conversations are the next section:
+the ones open in this window first, then recent ones. A conversation in no team is
+on that list.
+
+The first row is the words **team**, **chat** and **file**. Each is a button with a
+background under the pointer and a one-line hint (`only teams · click`). A press
+types `@team:`, `@chat:` or `@file:`, and the list keeps only that section. Typing
+filters every section that is still showing.
+
+Choosing a team inserts `●harbor` in the team's colour. Choosing a conversation
+inserts `@handle`, or a short slug of its title when it has none, and the row's
+hint is the full title. After you send, both stay links. A press on the team opens
+the conversations view on it. A press on the conversation opens that conversation.
+
+The model receives a short digest of each reference: for a team, its members,
+handles, states and recent traffic; for a chat, its title, its state and an excerpt
+of the last reply. It does not receive the transcript. Mentioning a conversation
+does not message it and does not wake it. Your transcript keeps the words you typed.
+
 ## Where teams are kept
 
 Teams are saved in your profile, in `teams.json`, every time one changes, and never in
@@ -260,6 +309,7 @@ what its key does.
 | `m` | The teams list for the focused conversation, or the picked ones |
 | `s` | New team of the picked conversations, or the focused one |
 | `e` | The shown team's card: name, colour, settings, Close team… |
+| `r` | Resume the shown team's conversations that are not open here |
 | `D` | Close the shown team; its conversations stay open |
 | `o` | Organize: suggest teams for your conversations (while All is shown) |
 | `u` | Undo the last Organize, while the Teams row offers it |

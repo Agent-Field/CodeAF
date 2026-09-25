@@ -2882,6 +2882,11 @@ func railColsFor(width int) int {
 // person's — a terminal that cannot afford thirty columns cannot afford
 // forty-six either.
 func (a *app) railColumns(width int) int {
+	// THE MANAGER'S TASKS STAND IN THE TRAFFIC'S COLUMN, at its width, so
+	// swapping the two moves nothing in the conversation (teamrail.go).
+	if a.trafficOn() {
+		return trafficColsFor(width)
+	}
 	if a.railWide && width >= railFloor {
 		return railWideCols
 	}
@@ -2924,6 +2929,11 @@ func (a *app) railCanWiden() bool {
 // gets instead is one dim line at the foot of the column naming the page that
 // holds it ([taskSheetPastHint]).
 func (a *app) railShowing() bool {
+	// WITH THE MANAGER IN FRONT THE COLUMN IS THE TRAFFIC'S, and the tasks are
+	// on it only when the person chose them there (teamrail.go).
+	if a.trafficOn() {
+		return a.trafficTasksShowing() && !a.railQuiet()
+	}
 	if a.railAway || a.railQuiet() || a.trafficHoldsRail() {
 		return false
 	}
@@ -3026,11 +3036,10 @@ func (a *app) railRoom() int {
 // positive — so the right-hand strip of the frame always belongs to the roster
 // in one of its two shapes, and never to nobody.
 func (a *app) railStowed() bool {
-	// AND WHILE THE MANAGER'S TRAFFIC HOLDS THE RIGHT, the column is folded to
-	// this edge without being put away: the person's own answer in railAway is
-	// untouched, and putting the Traffic away gives the column back
-	// (teamrail.go).
-	if (!a.railAway && !a.trafficHoldsRail()) || a.railQuiet() {
+	// AND WITH THE MANAGER IN FRONT THERE IS NO EDGE AT ALL: the right is the
+	// Traffic's, and the person's own answer in railAway is kept for the next
+	// conversation (teamrail.go).
+	if a.trafficOn() || !a.railAway || a.railQuiet() {
 		return false
 	}
 	width, _ := a.size()
@@ -3286,7 +3295,11 @@ func (a *app) railView(height int) ([]railLine, int) {
 	// The hide control belongs to the sidebar, outside every scrolling list
 	// and task panel. Neither a new task nor a deeper page may displace it.
 	var head []railLine
-	if !a.railFull() && ansi.StringWidth(a.railDoorHint())+2 <= a.railRoom() {
+	if a.trafficOn() && !a.railFull() {
+		// THE TRAFFIC'S HEADER STAYS ON ITS COLUMN with the tasks laid in it:
+		// the whole line is the way back to the traffic (teamrail.go).
+		head = append(head, railLine{text: a.trafficTasksHead(a.railRoom()), entry: -1, stow: true})
+	} else if !a.railFull() && ansi.StringWidth(a.railDoorHint())+2 <= a.railRoom() {
 		head = append(head, railLine{text: a.railDoorLine(), entry: -1, stow: true})
 	}
 	if a.roomOpen() && len(head) < height {
@@ -3878,6 +3891,16 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// away, a column that is away comes back — and it is the only key on this
 		// map a person may press without having asked for the roster first.
 		//
+		// WITH THE MANAGER IN FRONT IT SWAPS THE TRAFFIC'S COLUMN between the
+		// traffic and the manager's own tasks, and with no live tasks it has
+		// nothing to swap to and does nothing (teamrail.go).
+		if a.trafficOn() {
+			if a.trafficTaskCount() == 0 {
+				return nil, false
+			}
+			a.trafficTasksShow(!a.trafficTasksShowing())
+			return nil, true
+		}
 		// IT ONLY ACTS ON A ROSTER THAT IS ON THE FRAME, or on one it has already
 		// taken off. The column stands empty now ([app.railShowing]), so "on the
 		// frame" no longer needs any tasks behind it — a column carrying nothing but
@@ -4192,14 +4215,13 @@ func (a *app) railWiden(wide bool) {
 // session opens where the last one was told to, which is the behaviour of a
 // session that has never been told anything.
 func (a *app) railStow(away bool) {
-	// THE TASKS BACK WHILE THE TRAFFIC HOLDS THE RIGHT is the Traffic put away:
-	// the two share the one column, and asking for one is asking the other to
-	// step aside (teamrail.go).
-	if !away && a.trafficHoldsRail() {
-		a.trafficShow(false)
-		if !a.railAway {
-			return
-		}
+	// WITH THE MANAGER IN FRONT THE ASK IS ANSWERED IN THE TRAFFIC'S COLUMN and
+	// the saved answer is not touched: bringing the tasks back shows them there
+	// when the manager has any, and putting them away shows the traffic
+	// (teamrail.go).
+	if a.trafficOn() {
+		a.trafficTasksShow(!away)
+		return
 	}
 	if a.railAway == away {
 		return

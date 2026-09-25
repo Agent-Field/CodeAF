@@ -34,6 +34,10 @@ const teamAsideLead = "Team traffic in "
 // directive, and what was said.
 type teamCard struct {
 	from, to, tag, text string
+	// who is the raw speaker (a handle, or manager), and thread the line's own
+	// entry id when the delivery numbered it; both empty on a card read from
+	// the note's text alone.
+	who, thread string
 }
 
 // teamAsideCards reads a session's team note into its lines, and reports
@@ -61,6 +65,12 @@ func teamAsideCards(text string, mark string) ([]teamCard, bool) {
 		speaker, said, ok := strings.Cut(line, ": ")
 		if !ok {
 			continue
+		}
+		// A line delivered to a member ends its head with its number, "#42".
+		if at := strings.LastIndex(speaker, " #"); at >= 0 {
+			if _, numbered := teamstore.ThreadID(speaker[at+1:]); numbered {
+				speaker = speaker[:at]
+			}
 		}
 		card := teamCard{to: self, text: strings.TrimSpace(said)}
 		if who, aim, aimed := strings.Cut(speaker, " to "); aimed {
@@ -123,7 +133,7 @@ func teamLineCards(lines []session.TeamLine, text, mark string) ([]teamCard, boo
 	}
 	cards := make([]teamCard, 0, len(lines))
 	for _, l := range lines {
-		c := teamCard{from: addr(l.From), to: addr(l.To), text: strings.TrimSpace(l.Text)}
+		c := teamCard{from: addr(l.From), to: addr(l.To), text: strings.TrimSpace(l.Text), who: l.From, thread: l.Thread}
 		if l.Kind == teamstore.KindDirective {
 			c.tag = "do"
 		}
@@ -141,6 +151,32 @@ func (a *app) teamCardRows(e entry, width int) []string {
 	if !ok {
 		return []string{a.pal.dim("· " + firstLine(e.text))}
 	}
+	name := ""
+	if len(e.team) > 0 {
+		name = e.team[0].Team
+	}
+	// THE MANAGER IS NOT SHOWN AN ANSWER TWICE: one already under its
+	// question's card in this conversation is left out here, and a note left
+	// with nothing is one dim line (teamthreadcard.go).
+	if t, managed := a.teamFrontManaged(); managed && (name == "" || t.Name == name) {
+		kept := cards[:0:0]
+		var answered []string
+		for _, c := range cards {
+			if c.who != "" && c.who != teamstore.FromManager && c.who != teamstore.FromYou && c.who != teamstore.FromSystem &&
+				a.teamNoteReplyShown(t, c.who, c.text) {
+				if !strings.Contains(strings.Join(answered, " "), "@"+c.who) {
+					answered = append(answered, "@"+c.who)
+				}
+				continue
+			}
+			kept = append(kept, c)
+		}
+		if len(kept) == 0 {
+			return []string{a.pal.dim("· " + strings.Join(answered, " ") + " answered" + hintSegment + "in the thread above")}
+		}
+		cards = kept
+	}
+	mirror, self := a.teamNoteSelf(name)
 	pal := a.pal
 	arrow := a.linearMark("→", "->")
 	bar := a.linearMark("│", "|")
@@ -161,6 +197,15 @@ func (a *app) teamCardRows(e entry, width int) []string {
 		for _, para := range strings.Split(c.text, "\n") {
 			for _, line := range wrap(para, max(width-2, 8)) {
 				out = append(out, pal.dim(bar+" ")+pal.ink(line))
+			}
+		}
+		// THE MEMBER'S OWN ANSWERS HANG UNDER THE MANAGER'S LINE, muted, as the
+		// manager's card has them (teamthreadcard.go).
+		if self != "" && c.who == teamstore.FromManager && c.thread != "" {
+			if th, found := threadOf(a.traffic.rows[mirror.ID], c.thread); found {
+				for _, r := range a.threadReplyRows(mirror.ID, th, self, width, func(string) bool { return false }) {
+					out = append(out, r.text)
+				}
 			}
 		}
 	}

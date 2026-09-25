@@ -244,16 +244,20 @@ func TestTeamsHostedTrafficRowGoesToTheMember(t *testing.T) {
 	frame, _, _ := a.frame()
 	rows := strings.Split(ansi.Strip(frame), "\n")
 	cols := a.trafficWidth()
-	at := -1
+	// THE RAIL IS THREADS: the member's handle heads the thread and opens it,
+	// and the words under it are a door of their own.
+	at, x := -1, -1
 	for y, r := range rows {
-		if strings.Contains(plainCells(r, a.width-cols, a.width), "prices a") {
-			at = y
+		cells := plainCells(r, a.width-cols, a.width)
+		if i := strings.Index(cells, "@"+price); i >= 0 {
+			at, x = y, a.width-cols+len([]rune(cells[:i]))+1
+			break
 		}
 	}
 	if at < 0 {
 		t.Fatalf("no Traffic row in the hosted pane:\n%s", strings.Join(rows, "\n"))
 	}
-	drive(t, a, tea.MouseClickMsg{X: a.width - cols + 3, Y: at, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseClickMsg{X: x, Y: at, Button: tea.MouseLeft})
 	if a.frontTabKey() != priceKey {
 		t.Fatalf("the row went to %q, want %q", a.frontTabKey(), priceKey)
 	}

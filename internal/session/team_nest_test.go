@@ -148,7 +148,7 @@ func TestTeamStartOfKindTeamMakesASubTeamWhoseManagerReportsUp(t *testing.T) {
 	}
 	api := n.agent(t, "api")
 	news := api.teamBoundary()
-	for _, want := range []string{`◆ you were started to manage the team "backend", under "harbor"`, "◆ brief from manager: Build the signup API."} {
+	for _, want := range []string{`◆ you were started to manage the team "backend", under "harbor"`, "◆ brief from manager #1: Build the signup API."} {
 		if !strings.Contains(news, want) {
 			t.Errorf("the new manager's first delivery lacks %q:\n%s", want, news)
 		}
@@ -240,7 +240,7 @@ func TestOrdersGoOneLevelDownAndPointToTheSubTeamsManager(t *testing.T) {
 	if said, failed = callTool(t, boss.teamSendTool, `{"to":"api","text":"ship it","kind":"directive"}`); failed {
 		t.Fatalf("a directive to the sub-team's manager was refused: %q", said)
 	}
-	if news := api.teamBoundary(); !strings.Contains(news, "◆ directive from manager: ship it") {
+	if news := api.teamBoundary(); !strings.Contains(news, "◆ directive from manager #1: ship it") {
 		t.Fatalf("the sub-team's manager did not get its manager's directive:\n%s", news)
 	}
 	// Everyone is the manager's own members only.
@@ -397,7 +397,7 @@ func TestTheGlobalManagerRunsTheTopLevelManagersOnly(t *testing.T) {
 		t.Fatalf("a directive to a top-level manager was refused: %q", said)
 	}
 	news := boss.teamBoundary()
-	if !strings.Contains(news, "◆ directive from manager: ship harbor first") {
+	if !strings.Contains(news, "◆ directive from manager #1: ship harbor first") {
 		t.Fatalf("the top-level manager did not get the global manager's directive:\n%s", news)
 	}
 	boss.mu.Lock()

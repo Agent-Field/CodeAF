@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// ── alt+1…7 IS THE ONE CLASS THAT BELONGS TO NO PLACE ───────────────────────
+// ── alt+1…9 IS THE ONE CLASS THAT BELONGS TO NO PLACE ───────────────────────
 //
 // placeeveryone_test.go asks the numbers of all seven ROOMS. Nothing asked them
 // of the surface a person spends most of their time on: the conversation. And
@@ -35,7 +35,8 @@ func conversationApp(t *testing.T) *app {
 // the assertion is the whole of the law: seven digits, seven rooms, from the
 // surface a person is most often on.
 func TestTheNumbersJumpFromTheConversation(t *testing.T) {
-	for at, id := range pages() {
+	for _, id := range pages() {
+		at := placeDigitOf(id) - 1
 		t.Run(id.word(), func(t *testing.T) {
 			a := conversationApp(t)
 			drive(t, a, key("alt+"+string(rune('1'+at))))

@@ -824,6 +824,10 @@ type taskLink struct {
 	span  hudSpan
 	id    uint64
 	title string
+	// member and team are a team reference's target (teamlink.go): the member's
+	// conversation key and its team's id, or the team alone for a team's name.
+	// Both are "" on a task reference.
+	member, team string
 	// ord is this reference's place among the ones its BLOCK drew, counted across
 	// every row the block wrapped over. It is written by the layout that numbered
 	// them (render.go's [app.deckRows]) and read by the pointer, which holds a
@@ -892,6 +896,11 @@ type taskRef struct {
 	from, to int
 	id       uint64
 	title    string
+	// member and team are a team reference's target ([taskLink.member]).
+	member, team string
+	// paint, when set, is this reference's own ink. Nil uses the pass's ink.
+	// A team mention uses it so the bullet wears that team's colour.
+	paint func(palette, string) string
 }
 
 // taskWord is the anchor every shape in the grammar opens on.
@@ -1097,6 +1106,12 @@ func flatten(text string) (string, []bool) {
 // hot is which of refs the pointer is on, and -1 for none. That one is inked a
 // step brighter and nothing else about the row changes — see [taskLinkHotInk].
 func paintLinks(text, flat string, refs []taskRef, pal palette, hot int) (string, []taskLink) {
+	return paintLinksWith(text, flat, refs, pal, hot, taskLinkInk, taskLinkHotInk)
+}
+
+// paintLinksWith is [paintLinks] with the two inks handed in, so a team
+// reference (teamlink.go) is written back by the same walk in its own hover.
+func paintLinksWith(text, flat string, refs []taskRef, pal palette, hot int, ink, hotInk func(palette, string) string) (string, []taskLink) {
 	var (
 		out   strings.Builder
 		links []taskLink
@@ -1109,9 +1124,13 @@ func paintLinks(text, flat string, refs []taskRef, pal palette, hot int) (string
 	for i := 0; i < len(text); {
 		if next < len(refs) && at == refs[next].from {
 			ref := refs[next]
-			inked := taskLinkInk(pal, flat[ref.from:ref.to])
+			pen := ink
+			if ref.paint != nil {
+				pen = ref.paint
+			}
+			inked := pen(pal, flat[ref.from:ref.to])
 			if next == hot {
-				inked = taskLinkHotInk(pal, flat[ref.from:ref.to])
+				inked = hotInk(pal, flat[ref.from:ref.to])
 			}
 			restore := ""
 			if inked != flat[ref.from:ref.to] {
@@ -1128,9 +1147,11 @@ func paintLinks(text, flat string, refs []taskRef, pal palette, hot int) (string
 				}
 			}
 			links = append(links, taskLink{
-				span:  hudSpan{from: ansi.StringWidth(flat[:ref.from]), to: ansi.StringWidth(flat[:ref.to])},
-				id:    ref.id,
-				title: ref.title,
+				span:   hudSpan{from: ansi.StringWidth(flat[:ref.from]), to: ansi.StringWidth(flat[:ref.to])},
+				id:     ref.id,
+				title:  ref.title,
+				member: ref.member,
+				team:   ref.team,
 			})
 			next++
 			// A REFERENCE ALREADY WEARING THIS INK IS LEFT ALONE, and that is the

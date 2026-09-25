@@ -121,6 +121,9 @@ type teamRole struct {
 	// the team it reports to, for the sentence that says so.
 	shared    bool
 	reportsTo string
+	// derived says handle is the word list's guess, which the title model
+	// chooses again once (handlepick.go).
+	derived bool
 }
 
 // fileStamp is what a stat says about a file, and the whole of how this file
@@ -190,6 +193,27 @@ type teamSeat struct {
 	// found by the delivery that handed it the brief and made good after it
 	// (team_nest.go's [Agent.claimSubTeams]).
 	claims []subTeamClaim
+	// handleTried says this process has asked for its handle once
+	// (handlepick.go), so it is never asked for twice.
+	handleTried bool
+	// answering is, per team, the id of the last message the manager sent
+	// this conversation that it was handed: a note, a directive or its brief.
+	// It is what a member's reply to the manager answers when it names nothing
+	// else, and what the events its turn raises answer (internal/teams'
+	// thread.go). Memory only: a conversation reopened answers nothing until
+	// the manager next speaks to it, which reads as a thread of its own.
+	answering map[string]string
+}
+
+// teamAnsweringLocked is the id this conversation's replies in team id answer
+// by default, "" for none. The caller holds a.team.mu.
+func (a *Agent) teamAnsweringLocked(id string) string { return a.team.answering[id] }
+
+// teamAnswering is [Agent.teamAnsweringLocked] under the seat's lock.
+func (a *Agent) teamAnswering(id string) string {
+	a.team.mu.Lock()
+	defer a.team.mu.Unlock()
+	return a.teamAnsweringLocked(id)
 }
 
 // teamLogStart is the cursor that reads a Traffic log from its first entry:
@@ -368,6 +392,7 @@ func rolesFor(file *teams.File, keys []string, d teams.Defaults) []teamRole {
 			key:         member.Key,
 			wakes:       effective.Wake,
 			questionsUp: effective.QuestionsUp,
+			derived:     member.HandleDerived(),
 		}
 		if hasHome {
 			role.questionsUp = file.Effective(home.Team, d).QuestionsUp
@@ -431,6 +456,9 @@ func (a *Agent) teamBoundary() string {
 	a.team.mu.Unlock()
 	a.setTeamRole(role)
 	a.armTeamTools(roles)
+	// A handle that is still the word list's guess is chosen once, beside the
+	// turn (handlepick.go).
+	a.teamHandlePass(roles)
 	return news
 }
 
@@ -498,6 +526,15 @@ func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
 			cursor = entry.ID
 			if line := a.teamEntryLineLocked(profile, role, entry); line != "" {
 				lines = append(lines, line)
+				// WHAT THE MANAGER LAST SAID TO IT IS WHAT IT ANSWERS, until the
+				// manager says something else: its next reply to the manager, and
+				// the events its turn raises, name it.
+				if !role.manager && entry.From == teams.FromManager {
+					if a.team.answering == nil {
+						a.team.answering = map[string]string{}
+					}
+					a.team.answering[role.id] = entry.ID
+				}
 			}
 		}
 		a.team.cursors[role.id] = cursor
@@ -596,7 +633,8 @@ func (a *Agent) teamEntryLineLocked(profile string, role teamRole, entry teams.E
 // everyone, or to the room. WHAT A MANAGER IS TOLD is every member's post,
 // wherever it was aimed, because the room is the manager's to run; and never its
 // own lines, the person's (which reach it in its own chat), a start or a stop
-// (which the interface performs) or an event (which the digest carries).
+// (which the interface performs) or an event (which the digest carries). The
+// one event everyone is told is codeaf's, that a handle changed.
 func teamLine(role teamRole, entry teams.Entry) string {
 	// A CONFLICT'S RULING reaches the party it names whoever wrote it and
 	// whatever this conversation is in the team (team_nest.go).
@@ -608,6 +646,15 @@ func teamLine(role teamRole, entry teams.Entry) string {
 	}
 	if entry.Kind == teams.KindStart {
 		return teamBriefLine(role, entry)
+	}
+	// A HANDLE THAT CHANGED IS TOLD TO EVERYONE, manager included: it is how a
+	// member is addressed, and a line to the old one would reach nobody
+	// (handlepick.go's [handleRenameEntry]).
+	if entry.Kind == teams.KindEvent && entry.From == teams.FromSystem && entry.To == teams.ToEveryone {
+		if text := strings.TrimSpace(entry.Text); text != "" {
+			return teamSpeaker(entry.From) + ": " + cutRunesTeam(text, teamEntryText)
+		}
+		return ""
 	}
 	if entry.Kind != teams.KindNote && entry.Kind != teams.KindDirective {
 		return ""
@@ -627,11 +674,13 @@ func teamLine(role teamRole, entry teams.Entry) string {
 	if entry.From == role.handle && role.handle != "" {
 		return ""
 	}
-	addressed := entry.To == teams.ToEveryone || entry.To == teams.ToRoom ||
-		(role.handle != "" && entry.To == role.handle)
-	if !addressed {
+	if entry.To != teams.ToRoom && !entry.Addressed(role.handle) {
 		return ""
 	}
+	// A MEMBER IS TOLD EACH LINE'S NUMBER, "#42", so a reply can name the
+	// line it answers (team_post's thread); one to the manager names the
+	// manager's last line by itself.
+	number := teamNumber(entry)
 	if entry.From == teams.FromManager {
 		word := "◆ from manager"
 		if entry.Kind == teams.KindDirective {
@@ -644,9 +693,18 @@ func teamLine(role teamRole, entry teams.Entry) string {
 		if role.shared {
 			word = fmt.Sprintf("◆ fyi from the manager of %q (you report to %q, whose word directs you)", role.name, role.reportsTo)
 		}
-		return word + teamAimed(entry.To, false) + ": " + text
+		return word + teamAimed(entry.To, false) + number + ": " + text
 	}
-	return teamSpeaker(entry.From) + teamAimed(entry.To, false) + ": " + text
+	return teamSpeaker(entry.From) + teamAimed(entry.To, false) + number + ": " + text
+}
+
+// teamNumber is a delivered line's number with the space before it, " #42",
+// and "" for an entry that has no id yet.
+func teamNumber(entry teams.Entry) string {
+	if entry.ID == "" {
+		return ""
+	}
+	return " " + teams.ThreadNumber(entry.ID)
 }
 
 // teamSpeaker names who wrote a line.
@@ -674,6 +732,10 @@ func teamAimed(to string, manager bool) string {
 			return ""
 		}
 		return " to the manager"
+	case teams.ToSeveral:
+		// A member named among several is told it as its own line; a manager
+		// never reads its own messages back.
+		return ""
 	}
 	if manager {
 		return " to @" + to
@@ -903,7 +965,7 @@ func memberStates(team teams.Team, self []string, now time.Time, log []teams.Ent
 			continue
 		}
 		if state, last, ok := journals.stateOf(member.File, now); ok {
-			states[member.Key] = askingFromEvents(state, last, member, log)
+			states[member.Key] = askingFromEvents(state, last, member, log, now)
 		}
 	}
 	return states

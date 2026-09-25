@@ -242,6 +242,27 @@ func (a *app) teamsSeam() TeamsSeam {
 	return localTeams(a.profileDir, &a.teamsDisk.watch)
 }
 
+// THE FRAME ASKS WHICH DOORS THERE ARE, NEVER FOR THE SEAM. Binding the local
+// seam builds closures that read the disk when called, and the paint walks
+// every closure it builds (framedisk_law_test.go), so a draw that only wants to
+// know whether a door exists asks here: the engine's seam when there is one,
+// and otherwise the local one, which has every door.
+
+// teamsCanDelegate reports whether the seam carries the delegation doors.
+func (a *app) teamsCanDelegate() bool {
+	return !a.teamsDisk.door.present() || a.teamsDisk.door.delegation()
+}
+
+// teamsCanWrapUp reports whether the seam has the wrap-up door.
+func (a *app) teamsCanWrapUp() bool {
+	return !a.teamsDisk.door.present() || a.teamsDisk.door.WrapUp != nil
+}
+
+// teamsCanReadHistory reports whether the seam can read a team's packets.
+func (a *app) teamsCanReadHistory() bool {
+	return !a.teamsDisk.door.present() || a.teamsDisk.door.History != nil
+}
+
 // teamsOff reports whether this window has no teams it can keep: over --host,
 // facing an engine that does not answer the teams doors. The window's own
 // profile is never the answer there, so the writes and the manager say

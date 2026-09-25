@@ -101,7 +101,7 @@ func TestTeamsIsTheSecondPlaceOnTheBarTheDigitsAndTheCommand(t *testing.T) {
 	}
 	a := placeApp(t)
 	bar := plain(a.placeTabBar(120, false, a.pal))
-	if !strings.Contains(bar, "home   teams   sessions") {
+	if !placeWordsInOrder(bar, "home", "teams", "chats", "sessions") {
 		t.Fatalf("the bar does not put teams after home: %q", bar)
 	}
 	drive(t, a, key("alt+2"))

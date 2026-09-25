@@ -106,6 +106,23 @@ type trafficState struct {
 	// own, as it keeps its own tabs.
 	hidden bool
 	over   bool
+	// tasks says the column shows the manager's own tasks instead of the
+	// traffic (teamrail.go's [app.trafficTasksShowing]); it counts only while
+	// the manager has live tasks. Memory only, and this window's.
+	tasks bool
+	// jump is a jump to a message waiting for its conversation to open, and
+	// landing the message lifted after one (teamjump.go).
+	jump    trafficJumpTo
+	landing trafficLanding
+	// open is every message the person laid out in full on the rail or under
+	// a thread card, by team and entry id (teamthread.go), and opened counts the
+	// presses that changed it, which is what the rail's cache keys on. Memory
+	// only, and this window's.
+	open   map[string]bool
+	opened int
+	// version counts the reads that changed any team's cache, which is what a
+	// thread card in the conversation keys on (teamthreadcard.go).
+	version int
 	// The last frame's rail, for the pointer (teamrail.go).
 	drawn trafficDrawn
 	cache trafficCache
@@ -348,6 +365,7 @@ func (a *app) trafficTake(got []trafficGot, fresh []team, at string, edits int, 
 		}
 	}
 	if changed {
+		a.traffic.version++
 		a.touch()
 	} else if len(acts) == 0 {
 		a.ptr.still = a.drawn

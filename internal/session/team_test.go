@@ -335,7 +335,7 @@ func TestAMemberIsToldWhatIsAddressedToItOnceAndOnlyThat(t *testing.T) {
 	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindStop, From: teams.FromManager, To: "web", Text: "stop"})
 
 	news := web.teamBoundary()
-	for _, want := range []string{"◆ from manager: ship the header", "◆ directive from manager to everyone: freeze main", "from @parser to the room: tokens are ready", "not the person's words"} {
+	for _, want := range []string{"◆ from manager #1: ship the header", "◆ directive from manager to everyone #2: freeze main", "from @parser to the room #3: tokens are ready", "not the person's words"} {
 		if !strings.Contains(news, want) {
 			t.Errorf("the member's note lacks %q:\n%s", want, news)
 		}
@@ -388,7 +388,7 @@ func TestAReopenedConversationResumesFromItsCursor(t *testing.T) {
 	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindNote, From: teams.FromManager, To: "web", Text: "two"})
 	second := teamAgent(t, fixture, fixture.web, nil, nil)
 	news := second.teamBoundary()
-	if !strings.Contains(news, "◆ from manager: two") {
+	if !strings.Contains(news, "◆ from manager #2: two") {
 		t.Fatalf("the reopened conversation was not told what was said while it was closed: %q", news)
 	}
 	if strings.Contains(news, ": one") {
@@ -417,7 +417,7 @@ func TestAFreshConversationStartsAtItsBirthOrItsOwnStart(t *testing.T) {
 	if !strings.Contains(news, "after its start") {
 		t.Fatalf("a started member lost what the manager said after its start: %q", news)
 	}
-	if !strings.Contains(news, teamBriefWord+": the brief") {
+	if !strings.Contains(news, teamBriefWord+" #3: the brief") {
 		t.Fatalf("a started member was not handed its brief, marked as the manager's: %q", news)
 	}
 	if strings.Contains(news, "before its start") {
@@ -441,7 +441,7 @@ func TestDeliveredTrafficReachesTheNextRequestAsTheSessionsNote(t *testing.T) {
 	}
 	collect(t, events)
 	request := userTextIn(completer.request(0))
-	if !strings.Contains(request, "◆ directive from manager: use the blue header") {
+	if !strings.Contains(request, "◆ directive from manager #1: use the blue header") {
 		t.Fatalf("the request did not carry the directive:\n%s", request)
 	}
 	web.mu.Lock()

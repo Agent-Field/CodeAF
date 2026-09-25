@@ -343,7 +343,7 @@ func (a *app) frameBody() (string, int, int) {
 	// with a refusal under a box that should never have been on the page.
 	//
 	// IT IS UNDER THE PLACES because a place is a room in the machine and this is
-	// one job in one conversation; alt+1…7 leaves it, and [app.standDownRest]
+	// one job in one conversation; alt+1…9 leaves it, and [app.standDownRest]
 	// closes it on the way out so it cannot reappear under a place somebody has
 	// since walked away from.
 	//
@@ -1137,7 +1137,10 @@ func (a *app) bodyRows(width, height int) ([]row, int) {
 	if a.roomOpen() {
 		return a.roomWindow(width, height)
 	}
-	return a.window(width, height)
+	// A MESSAGE SOMEBODY WAS JUST TAKEN TO IS LIFTED for a moment
+	// (teamjump.go). The draw only: the pointer resolves through window.
+	rows, pad := a.window(width, height)
+	return a.trafficLandRows(rows, width), pad
 }
 
 // bodyTop is the screen row the conversation starts on, or -1 when the frame is

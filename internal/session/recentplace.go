@@ -91,6 +91,9 @@ func RecentSessions(dir string, limit int) []Summary {
 		if !ok {
 			continue
 		}
+		// Peek records the path it opened. The listing sets it again so the
+		// path a mention resolves is the transcript this walk opened.
+		summary.File = file.file
 		if title := strings.TrimSpace(file.meta.Title); title != "" {
 			summary.Title = title
 		}

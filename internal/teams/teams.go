@@ -35,6 +35,12 @@ type Member struct {
 	// (a [KindStart] the interface carried out), which is the second rule a
 	// home is picked by.
 	Started bool `json:"started,omitempty"`
+	// HandleBy is who chose Handle: [HandleByWords] for the word list's
+	// instant guess, [HandleByModel] for the title model's word, and
+	// [HandleByTyped] for a handle a person or the manager gave. "" is a
+	// handle written before this was kept, and is read as the word list's
+	// ([Member.HandleDerived]).
+	HandleBy string `json:"handle_by,omitempty"`
 }
 
 // Team is one named set of conversations.
@@ -373,6 +379,14 @@ func (f *File) AddMember(id string, m Member) error {
 	if m.Handle != "" && handleProblem(*t, m.Key, m.Handle) != nil {
 		m.Handle = ""
 	}
+	// A handle that arrives with the member was given, not guessed: the
+	// manager's team_start names the member it starts, and that name is kept.
+	switch {
+	case m.Handle == "":
+		m.HandleBy = ""
+	case m.HandleBy == "":
+		m.HandleBy = HandleByTyped
+	}
 	t.Members = append(t.Members, m)
 	assignHandles(t)
 	return nil
@@ -422,7 +436,8 @@ func (f *File) ClearManager(id string) error {
 }
 
 // SetHandle gives the member with key in team id the handle h. It must be a
-// valid handle ([ValidHandle]) that no other member of the team has.
+// valid handle ([ValidHandle]) that no other member of the team has. It is a
+// handle given, never guessed, and nothing replaces it ([HandleByTyped]).
 func (f *File) SetHandle(id, key, h string) error {
 	i, err := f.at(id)
 	if err != nil {
@@ -436,7 +451,7 @@ func (f *File) SetHandle(id, key, h string) error {
 	if err := handleProblem(*t, key, h); err != nil {
 		return err
 	}
-	t.Members[j].Handle = h
+	t.Members[j].Handle, t.Members[j].HandleBy = h, HandleByTyped
 	return nil
 }
 

@@ -75,10 +75,10 @@ func trafficReadNow(t *testing.T, a *app) {
 
 // THE RAIL IS THE CACHE, BESIDE THE MANAGER, AND IT HOLDS THE RIGHT. With the
 // manager in front on a wide frame, the right of the body is the team's
-// traffic under a `Traffic` header, newest at the bottom, each row spelled
-// `from → to  do|fyi  text  age`; the person's own lines are not drawn; the
-// conversation is narrowed by exactly the rail; the composer says the words go
-// to the manager; and a row pressed goes to the member it is about.
+// traffic under a `Traffic` header, the newest thread straight under it, each
+// headed `from → to  do|fyi  age` over its words; the person's own lines are
+// not drawn; the conversation is narrowed by exactly the rail; the composer
+// says the words go to the manager; and a handle pressed goes to its member.
 func TestTrafficRailBesideTheManager(t *testing.T) {
 	a, harbor, _, _ := trafficApp(t)
 	a.width, a.height = 180, 40
@@ -106,38 +106,45 @@ func TestTrafficRailBesideTheManager(t *testing.T) {
 		if strings.Contains(right, trafficWord) && strings.Contains(right, "hide "+trafficKey) {
 			head = y
 		}
-		if strings.Contains(right, teamManagerGlyph+" → "+a.trafficAddr(rail)+"  do  take the") {
+		if strings.Contains(right, teamManagerGlyph+" manager → @"+rail+"  do") {
 			directive = y
 		}
-		if strings.Contains(right, a.trafficAddr(price)+" → "+a.trafficAddr(rail)+"  fyi  prices a") {
+		if strings.Contains(right, "@"+price+" → @"+rail+"  fyi") {
 			note = y
 		}
 		if strings.Contains(right, "my own words") {
 			t.Fatalf("the person's own line is on the rail: %q", right)
 		}
 	}
-	if head < 0 || directive < 0 || note < 0 || note <= directive || directive <= head {
-		t.Fatalf("the rail does not draw its header and the traffic newest at the bottom (%d, %d, %d):\n%s", head, directive, note, strings.Join(rows, "\n"))
+	if head < 0 || directive < 0 || note != head+1 || directive <= note {
+		t.Fatalf("the rail does not draw its header and the newest thread straight under it (%d, %d, %d):\n%s", head, directive, note, strings.Join(rows, "\n"))
+	}
+	if !strings.Contains(plainCells(rows[note+1], a.width-cols, a.width), "prices are in") ||
+		!strings.Contains(plainCells(rows[directive+1], a.width-cols, a.width), "take the scope model") {
+		t.Fatalf("a message is not on its own line under its header:\n%s", strings.Join(rows, "\n"))
 	}
 	if !strings.Contains(ansi.Strip(frame), "to "+teamManagerGlyph+" manager") {
 		t.Fatalf("the composer does not say where the words go:\n%s", ansi.Strip(frame))
 	}
 
-	// Under the pointer the row says its whole text and where a press goes.
-	top := a.bodyTop()
-	at, ok := a.trafficHoverAt(a.width-cols+3, note)
+	// Under the pointer the handle names its member, and the words say
+	// themselves whole.
+	at, ok := a.trafficHoverAt(a.width-cols+2, note)
 	if !ok || at.kind != hoverTraffic {
-		t.Fatalf("the row does not answer the pointer: %+v", at)
+		t.Fatalf("the handle does not answer the pointer: %+v", at)
 	}
 	a.hot = at
-	if words := a.dockHoverWords(); !strings.Contains(words, "prices are in") || !strings.Contains(words, "click opens @"+price) {
-		t.Fatalf("the hint line over the row says %q", words)
+	if words := a.dockHoverWords(); !strings.Contains(words, "@"+price) || !strings.Contains(words, "click") {
+		t.Fatalf("the hint line over the handle says %q", words)
+	}
+	a.hot, _ = a.trafficHoverAt(a.width-cols+4, note+1)
+	if words := a.dockHoverWords(); !strings.Contains(words, "prices are in") {
+		t.Fatalf("the hint line over the words says %q", words)
 	}
 	a.hot = hoverAt{}
-	_ = top
 
-	// The note's row goes to the member who wrote it.
-	if _, took := a.trafficPress(a.width-cols+3, note); !took {
+	// The note's handle goes to the member who wrote it.
+	if _, took := a.trafficPress(a.width-cols+2, note); !took {
 		t.Fatal("the rail did not take a press on its row")
 	}
 	if a.frontTabKey() != priceKey {
@@ -154,8 +161,8 @@ func TestTrafficRailBesideTheManager(t *testing.T) {
 }
 
 // AT 110 COLUMNS THE RAIL STANDS. A 110-column laptop terminal is not narrow:
-// the Traffic takes the right column, and the task column folds to its edge
-// rather than pushing the rail under its floor.
+// the Traffic takes the right column, and the task column is not on the frame
+// at all, not even as an edge.
 func TestTrafficRailStandsAt110(t *testing.T) {
 	a, harbor, _, _ := trafficApp(t)
 	a.width, a.height = 110, 30
@@ -168,7 +175,7 @@ func TestTrafficRailStandsAt110(t *testing.T) {
 	if a.bodyWidth() < trafficBodyFloor {
 		t.Fatalf("the conversation is left %d columns", a.bodyWidth())
 	}
-	if !a.railQuiet() && !a.railStowed() {
+	if a.railWidth() != 0 || a.railShowing() || a.railStowed() {
 		t.Fatalf("the task column still stands beside the rail: %d", a.railWidth())
 	}
 }
@@ -176,8 +183,7 @@ func TestTrafficRailStandsAt110(t *testing.T) {
 // THE RAIL IS PUT AWAY BY A WORD AND BROUGHT BACK BY ITS EDGE OR ITS KEY. The
 // header's `hide` puts the column away and leaves the edge, the word Traffic
 // with a count of what came in since; the key brings it back; and asking the
-// task column back (ctrl+g's road) puts the Traffic away, since the two share
-// the one column.
+// task column back (ctrl+g's road) with no tasks leaves the Traffic where it is.
 func TestTrafficRailHidesAndShows(t *testing.T) {
 	a, harbor, _, _ := trafficApp(t)
 	a.width, a.height = 160, 40
@@ -212,9 +218,11 @@ func TestTrafficRailHidesAndShows(t *testing.T) {
 	if _, took := a.trafficKeyPress(tea.KeyPressMsg{Code: 'l', Mod: tea.ModAlt}); !took || a.traffic.hidden {
 		t.Fatalf("%s did not bring the rail back", trafficKey)
 	}
+	// ASKING FOR THE TASKS BACK, with no tasks of the manager's own, leaves the
+	// Traffic holding the column: there is nothing to swap to.
 	a.railStow(false)
-	if !a.traffic.hidden {
-		t.Fatal("asking for the tasks back left the Traffic holding the column")
+	if a.traffic.hidden || !a.trafficHoldsRail() {
+		t.Fatal("asking for the tasks back put the Traffic away")
 	}
 }
 
@@ -243,7 +251,7 @@ func TestTrafficRailNarrowIsACard(t *testing.T) {
 	rows := strings.Split(ansi.Strip(frame), "\n")
 	at, card := -1, -1
 	for y, r := range rows {
-		if strings.Contains(r, a.trafficAddr(price)) && strings.Contains(r, "done with the scrape") {
+		if strings.Contains(r, "@"+price+" → ") && y+1 < len(rows) && strings.Contains(rows[y+1], "done with the scrape") {
 			at = y
 		}
 		if strings.Contains(r, trafficWord) && card < 0 && y > top {
@@ -379,7 +387,7 @@ func TestTrafficStopAndStartAreDoneOnceAndNeverReplayed(t *testing.T) {
 	// The rail says what the stop and the start were for.
 	a.width, a.height = 180, 40
 	frame := ansi.Strip(func() string { f, _, _ := a.frame(); return f }())
-	if !strings.Contains(frame, "stopped "+a.trafficAddr(price)+"  stuck in a") || !strings.Contains(frame, "started @lexer  rewrite the lexer") {
+	if !strings.Contains(frame, "stopped @"+price+" · stuck in") || !strings.Contains(frame, "started @lexer") || !strings.Contains(frame, "  rewrite the lexer") {
 		t.Fatalf("the rail drops the stop's reason or the start's brief:\n%s", frame)
 	}
 

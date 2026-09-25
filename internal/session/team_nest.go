@@ -579,7 +579,7 @@ func (a *Agent) teamRaiseTool(ctx context.Context, args json.RawMessage) (string
 	}
 	if lca.ID != "" {
 		if m, ok := lca.Member(lca.Manager); ok {
-			a.teamRouse(profile, lca, file.Effective(lca.ID, d).Wake, []teams.Member{m})
+			a.teamRouse(profile, lca, file.Effective(lca.ID, d).Wake, []teams.Member{m}, "")
 		}
 	}
 	var others []string
@@ -680,7 +680,7 @@ func (a *Agent) teamPostUp(team teams.Team, role teamRole, entry teams.Entry) (s
 	if file != nil {
 		if boss, ok := file.Team(role.boss); ok {
 			if manager, ok := boss.Member(boss.Manager); ok {
-				a.teamRouse(profile, boss, file.Effective(boss.ID, a.teamDefaults(profile)).Wake, []teams.Member{manager})
+				a.teamRouse(profile, boss, file.Effective(boss.ID, a.teamDefaults(profile)).Wake, []teams.Member{manager}, "")
 			}
 		}
 	}

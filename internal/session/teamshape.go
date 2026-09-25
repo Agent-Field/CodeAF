@@ -33,14 +33,20 @@ type TeamLine struct {
 	Kind string
 	// Text is the line's words, whole lines kept.
 	Text string
+	// Thread is the line's own entry id when the delivery numbered it ("#42",
+	// which a member is told so its reply can name it), "" when it did not.
+	Thread string
 }
 
 // teamNewsLead opens every group of a delivery ([teamNewsGroup]).
 const teamNewsLead = "Team traffic in "
 
-// teamNewsLines is a delivery's lines, nil for text that is not one.
+// teamNewsLines is a delivery's lines, nil for text that is not one. A note
+// that woke a turn opens with a sentence of its own and carries the delivery
+// under it (team_wakewatch.go), so a delivery is found at the start of any
+// line, not only the first.
 func teamNewsLines(text string) []TeamLine {
-	if !strings.HasPrefix(text, teamNewsLead) {
+	if !strings.HasPrefix(text, teamNewsLead) && !strings.Contains(text, "\n"+teamNewsLead) {
 		return nil
 	}
 	var (
@@ -106,6 +112,12 @@ func teamLineParts(line string) (TeamLine, bool) {
 		}
 	default:
 		return TeamLine{}, false
+	}
+	// A line delivered to a member ends its head with the line's number.
+	if at := strings.LastIndex(head, " #"); at >= 0 {
+		if id, ok := teams.ThreadID(head[at+1:]); ok {
+			parsed.Thread, head = id, head[:at]
+		}
 	}
 	switch head {
 	case "":

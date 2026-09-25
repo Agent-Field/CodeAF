@@ -22,7 +22,7 @@ import (
 // (teamspagehost.go), so a person can run most of their work from this one
 // page and step away.
 //
-//	home  teams  tasks  spend  settings
+//	home  teams  chats  sessions  spend  settings
 //	────────────────────────────────────────────────────────────────────────
 //	 All teams   + Manager │ ◆ harbor   $1.20 of $5 today  Settings  Close…  Open ▦
 //	 ● harbor          ⠿   │ @web running now · @api idle 2h · @docs not open 3d
