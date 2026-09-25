@@ -337,6 +337,10 @@ func TestTeamWrapUpEndsInAClosingReportThatClosesOnAccept(t *testing.T) {
 	if going != 1 {
 		t.Fatal("the wrap-up's clock did not start")
 	}
+	f, _ := teams.Load(fixture.profile)
+	if team, _ := f.Team(fixture.teamID); team.Wrap == nil || team.Wrap.Bound != wrapUpFor || team.Wrap.Started.IsZero() {
+		t.Fatalf("the wrap-up was not written down: %+v", team.Wrap)
+	}
 	said, failed := callTool(t, manager.teamCloseReportTool, `{"done":"the form","left":"the tests","files":["web/form.go"]}`)
 	if failed || !strings.Contains(said, "closing report went to the person") {
 		t.Fatalf("team_close_report said %q", said)
@@ -354,7 +358,7 @@ func TestTeamWrapUpEndsInAClosingReportThatClosesOnAccept(t *testing.T) {
 	if news := manager.teamBoundary(); !strings.Contains(news, "accepted the closing report") {
 		t.Fatalf("the manager was not told:\n%s", news)
 	}
-	f, _ := teams.Load(fixture.profile)
+	f, _ = teams.Load(fixture.profile)
 	if team, _ := f.Team(fixture.teamID); !team.Closed() || team.Report != p.ID {
 		t.Fatalf("the team did not close on its report: %+v", team)
 	}
@@ -382,6 +386,71 @@ func TestTeamAWrapUpPastItsBoundIsReportedIncomplete(t *testing.T) {
 	manager.teamWrapUpDue(fixture.profile, time.Now())
 	if waiting, _, _ := teams.OpenPackets(fixture.profile, teams.Person); len(waiting) != 1 {
 		t.Fatal("the incomplete report was raised twice")
+	}
+}
+
+// A RESTART KEEPS THE TIME THAT IS LEFT. The clock on the team is what the
+// next process arms, and it does not start the bound again.
+func TestTeamWrapUpResumesWithTheTimeLeft(t *testing.T) {
+	fixture := newTeamFixture(t, true)
+	stubCapSpend(t, &capSpend{usd: 0.5, stamp: "s1"})
+	started := time.Now().Add(-time.Minute).UTC()
+	bound := 15 * time.Minute
+	if err := teams.Update(fixture.profile, func(f *teams.File) error {
+		return f.SetWrap(fixture.teamID, started, bound)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	manager := teamAgent(t, fixture, fixture.manager, nil, nil)
+	if waiting, _, _ := teams.OpenPackets(fixture.profile, teams.Person); len(waiting) != 0 {
+		t.Fatal("a wrap-up with time left raised a report on start")
+	}
+	manager.team.mu.Lock()
+	w := manager.team.wraps[fixture.teamID]
+	manager.team.mu.Unlock()
+	if w == nil || !w.started.Equal(started) || w.bound != bound {
+		t.Fatalf("the clock did not resume: %+v", w)
+	}
+	manager.teamWrapUpDue(fixture.profile, started.Add(bound))
+	p := onlyPacket(t, fixture.profile, teams.Person)
+	if p.Kind != teams.PacketClosing || p.Report == nil || !p.Report.Incomplete {
+		t.Fatalf("the resumed clock did not report at its bound: %+v", p)
+	}
+	if err := manager.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_ = teamAgent(t, fixture, fixture.manager, nil, nil)
+	if waiting, _, _ := teams.OpenPackets(fixture.profile, teams.Person); len(waiting) != 1 {
+		t.Fatal("a second start raised the report again")
+	}
+}
+
+// A WRAP-UP ALREADY PAST ITS BOUND CLOSES ON THE START, and only once.
+func TestTeamWrapUpPastItsBoundClosesOnceOnStart(t *testing.T) {
+	fixture := newTeamFixture(t, true)
+	stubCapSpend(t, &capSpend{usd: 0.5, stamp: "s1"})
+	started := time.Now().Add(-20 * time.Minute).UTC()
+	if err := teams.Update(fixture.profile, func(f *teams.File) error {
+		return f.SetWrap(fixture.teamID, started, 15*time.Minute)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	first := teamAgent(t, fixture, fixture.manager, nil, nil)
+	p := onlyPacket(t, fixture.profile, teams.Person)
+	if p.Kind != teams.PacketClosing || p.Report == nil || !p.Report.Incomplete ||
+		!strings.Contains(p.Question, "wrap-up incomplete") {
+		t.Fatalf("a past wrap-up did not close on start: %+v", p)
+	}
+	f, _ := teams.Load(fixture.profile)
+	if team, _ := f.Team(fixture.teamID); team.Wrap != nil {
+		t.Fatalf("the finished clock was left on the team: %+v", team.Wrap)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_ = teamAgent(t, fixture, fixture.manager, nil, nil)
+	if waiting, _, _ := teams.OpenPackets(fixture.profile, teams.Person); len(waiting) != 1 {
+		t.Fatal("a second start closed the team again")
 	}
 }
 

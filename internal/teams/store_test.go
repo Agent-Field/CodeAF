@@ -406,3 +406,82 @@ func TestLoadRepairsIdsManagersAndHandles(t *testing.T) {
 		t.Fatalf("the repair was not written:\n%+v\n%+v", again.Teams, f.Teams)
 	}
 }
+
+// A FILE FROM BEFORE THE WRAP-UP CLOCK HAS NO wrap KEY, and loading it leaves
+// the team with none. Writing it back does not invent one.
+func TestAnOldTeamsFileLoadsWithNoWrapUp(t *testing.T) {
+	dir := t.TempDir()
+	in := `{"version":2,"teams":[{"id":"abcdefabcdef","name":"harbor","parent":"","members":[{"key":"k1","file":"","where":"","word":"one"}],` +
+		`"manager":"k1","hue":120,"tier":1,"made":"2026-09-20T10:00:00Z"}]}`
+	if err := os.WriteFile(Path(dir), []byte(in), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := Load(dir)
+	if err != nil || len(f.Teams) != 1 || f.Teams[0].Wrap != nil || f.Teams[0].Name != "harbor" {
+		t.Fatalf("old file: %+v %v", f, err)
+	}
+	if err := Save(dir, f.Teams); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(Path(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), `"wrap"`) {
+		t.Fatalf("an old team grew a wrap key:\n%s", raw)
+	}
+}
+
+// THE CLOCK SURVIVES THE FILE. Change writes the start and the bound, the
+// stamp moves, a reload reads them back, and a second SetWrap keeps the first.
+func TestWrapUpRoundTripThroughChange(t *testing.T) {
+	dir := t.TempDir()
+	started := time.Date(2026, 9, 24, 15, 4, 0, 0, time.UTC)
+	bound := 15 * time.Minute
+	if err := Save(dir, []Team{{ID: "abcdefabcdef", Name: "harbor", hued: true, Hue: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	before := Stamp(dir)
+	wrote, stamp, err := Change(dir, func(f *File) error {
+		return f.SetWrap("abcdefabcdef", started, bound)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stamp == before || stamp == MissingStamp || stamp != Stamp(dir) {
+		t.Fatalf("stamp %q, was %q, file %q", stamp, before, Stamp(dir))
+	}
+	if wrote == nil || wrote.Teams[0].Wrap == nil || !wrote.Teams[0].Wrap.Started.Equal(started) || wrote.Teams[0].Wrap.Bound != bound {
+		t.Fatalf("wrote %+v", wrote)
+	}
+	got, err := Load(dir)
+	if err != nil || got.Teams[0].Wrap == nil || !got.Teams[0].Wrap.Started.Equal(started) || got.Teams[0].Wrap.Bound != bound {
+		t.Fatalf("reloaded %+v %v", got, err)
+	}
+	later := started.Add(time.Hour)
+	if _, _, err := Change(dir, func(f *File) error {
+		return f.SetWrap("abcdefabcdef", later, time.Minute)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = Load(dir)
+	if !got.Teams[0].Wrap.Started.Equal(started) || got.Teams[0].Wrap.Bound != bound {
+		t.Fatalf("a second wrap-up reset the clock: %+v", got.Teams[0].Wrap)
+	}
+	if _, _, err := ChangeIf(dir, "not-the-stamp", func(f *File) error {
+		return f.ClearWrap("abcdefabcdef")
+	}); !errors.Is(err, ErrStale) {
+		t.Fatalf("a stale clear: %v", err)
+	}
+	if _, _, err := Change(dir, func(f *File) error { return f.ClearWrap("abcdefabcdef") }); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = Load(dir)
+	if got.Teams[0].Wrap != nil {
+		t.Fatalf("cleared wrap still there: %+v", got.Teams[0].Wrap)
+	}
+	raw, _ := os.ReadFile(Path(dir))
+	if strings.Contains(string(raw), `"wrap"`) {
+		t.Fatalf("a cleared wrap was still written:\n%s", raw)
+	}
+}

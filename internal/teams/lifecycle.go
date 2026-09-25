@@ -93,6 +93,8 @@ func (f *File) Close(id string, at time.Time, report string) error {
 	}
 	t := &f.Teams[i]
 	t.State, t.ClosedAt, t.ClosedWith, t.Report = TeamClosed, at, id, report
+	// A closed team has no wrap-up left to resume.
+	t.Wrap = nil
 	for _, d := range f.Descendants(id) {
 		j := Index(f.Teams, d.ID)
 		if f.Teams[j].Closed() {
@@ -100,6 +102,7 @@ func (f *File) Close(id string, at time.Time, report string) error {
 		}
 		c := &f.Teams[j]
 		c.State, c.ClosedAt, c.ClosedWith = TeamClosed, at, id
+		c.Wrap = nil
 	}
 	return nil
 }

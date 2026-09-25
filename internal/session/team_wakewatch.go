@@ -141,6 +141,10 @@ func (a *Agent) watchTeamTraffic(profile string) {
 	if profile == "" {
 		return
 	}
+	// A wrap-up that was in progress when this process last stopped is armed
+	// before the loop, so one already past its bound closes on the start
+	// rather than waiting out a tick (team_wrapup.go).
+	a.teamWrapUpResume(profile, time.Now())
 	guard.Go("team traffic wake", func() { a.teamWatchLoop(profile) })
 }
 
