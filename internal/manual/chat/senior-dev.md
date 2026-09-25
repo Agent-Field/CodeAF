@@ -219,7 +219,8 @@ broke — and acts on it:
 hand-off it tries, or one after a limit, is refused
 (`senior-dev has been sent back to this work 2 times already, the most codeaf does on its
 own: tell the person where the work stands and let them decide`), and you decide. A
-hand-off you ask for yourself is yours, and starts the count again. Each hand-off still
+hand-off you ask for yourself is yours, and starts the count again. This count holds
+through wake turns and a reopened conversation until you send a message. Each hand-off still
 shows its card, with the same countdown as any other, so you can stop one.
 
 **Every run on the same work stays on one branch.** A run handed a folder that the last
@@ -233,10 +234,11 @@ branch first and the next run cuts its own.
 cross) and `senior-dev's ending went to the chat`; the chat's own reply is where you read
 what came of the work. `ctrl+o` on the card still shows senior-dev's own words.
 
-**It has no step cap.** It is held to the conversation's dollar and time ceilings instead,
-and codeaf enforces both from outside whatever it does. On a service that reports no
-prices the dollar ceiling cannot hold, and a time limit is the only bound (see the section
-on services that report no prices).
+**It has no step cap.** Every run has finite dollar and wall-clock ceilings: by default,
+**up to $10.00 and 3h**. A conversation's `/budget` limits can lower either ceiling to
+what remains. At a shell, `--max-cost` and `--max-hours` set either ceiling explicitly.
+The proposal card, typed command's start note and shell run's first line say which ceiling
+applies. These ceilings are enforced outside senior-dev whatever it does.
 
 **It reaches a model only through codeaf.** Its engine receives a short-lived token for
 codeaf's loopback model API, but its model-written shell commands inherit neither that
@@ -388,6 +390,11 @@ and that branch is checked out there; your branch <yours> is as it was: `git -C 
 switch <yours>` goes back to it, and `git -C '<folder>' merge <branch>` from there brings
 the work in``. Merge it when you are ready, or ask the chat to.
 
+The finishing commit's model credit names only models recorded as answering a call in
+that run, including a model that answered in place of the one asked for. If no model
+answered, there is no `Assisted-by` trailer. The attribution setting still decides
+whether answered model names are shown.
+
 The ending keeps two witnesses apart: what senior-dev's model said it did
 (`senior-dev's model said: …`) and what senior-dev saw when it ran the project's build
 and tests (`senior-dev observed: …`). Read the second for "did it work".
@@ -474,15 +481,21 @@ model API. So every call is priced like one of codeaf's own, shows in the conver
 total, its tokens and its call count, under `tasks` in `/cost`, and under the task on the
 spend place. What the whole run came to is on its row, its landed card once opened
 and the chat's `tasks` tool (`#3 · … · done · ran 22m 51s · $2.30 · via senior-dev`).
-Every call is held to the run's dollar ceiling: **once the run's spend has
-reached it, codeaf refuses every further call** before it is made, with
-`the run's dollar ceiling of $5.00 is reached ($5.04 spent), so codeaf made no call`.
-The call that crossed the ceiling was already made and paid for, so a run can end a little
-over it. A refused call ends senior-dev's turn; it runs the project's build and tests on
+Before forwarding a call, codeaf reserves the larger estimate from the requested model
+and its possible fallback seat when both have known prices, using the request's input size
+and output cap (4,096 output tokens when none is named); if either price is unknown, it
+uses the unpriced bound. It refuses a call whose estimate would cross the run's dollar
+ceiling. In-flight calls can
+finish above their estimates, so the final spend can exceed the ceiling by a call's cost.
+The refusal says `the run's dollar ceiling of $5.00 is reached ($5.04 spent), so codeaf made no call`;
+the shown spend is the money already charged, not the reserved estimate. A refused call ends senior-dev's turn; it runs the project's build and tests on
 the tree it has, and ends there, and the task says
 `senior-dev reached the run's dollar ceiling of $5.00: …` with senior-dev's own words
 after it. A run handed off after the conversation's dollar limit is already spent starts
 nothing and makes no call: its row ends at once with `a dollar limit you set stopped it`.
+When a dollar or time limit ends the run, the conversation also gets a line naming the
+limit, what the run spent and the branch or folder holding its work, even if that limit
+prevents the chat from making a wake call.
 
 The time ceiling is kept by senior-dev as well as by codeaf. It holds back the last part
 of its time to land: two fifteenths of the run, at least 45 seconds, at most 12 minutes,
@@ -498,7 +511,7 @@ whichever model did. A dated build or a variant of the model it asked for, such 
 again; a sibling such as `openai/gpt-5.5-mini` answering for `openai/gpt-5.5` is a different
 model and is named. Which models it asks for is the next section.
 
-## senior-dev on a service that reports no prices — a local proxy, a Codex sign-in, the dollar ceiling does not hold, set a time limit
+## senior-dev on a service that reports no prices — a local proxy, a Codex sign-in, unknown dollar cost
 
 Some model services answer without saying what a call cost: most of the services you
 connect in `/connect` besides the default router, such as a local proxy or runner, a
@@ -508,13 +521,12 @@ senior-dev makes through one is counted with its tokens and no dollars. The task
 the rail and the spend place show no money for those calls, never `$0.00`, and a missing
 price does not mean the service charged nothing.
 
-**So the dollar ceiling cannot hold there.** A run whose calls report no price never
-reaches its dollar ceiling, whatever it is set to, and senior-dev's own `--max-cost` adds
-up the same missing figures. codeaf does not refuse such a run or estimate its cost.
-
-**On such a service the bound that holds is a time limit.** Start codeaf with
-`--max-hours`, or give a shell run `--max-hours`, before you hand the work off. With no
-time limit, the run ends only when senior-dev finishes or you stop it.
+**A missing price cannot become a dollar charge in the ledger.** To bound concurrency,
+codeaf reserves half the run's dollar ceiling for a call with no known model price and
+admits at most one such call in flight once the recorded spend reaches half the ceiling.
+This limits simultaneous calls but cannot say what an unpriced service actually charged.
+The run's wall-clock ceiling still ends it; set a different one with `/budget` or
+`--max-hours` if you need a shorter or longer run.
 
 ## Why a stopped senior-dev run takes a moment to end — the price of the call it was in the middle of
 
@@ -599,7 +611,7 @@ program it carries four flags:
 
 - `--dir DIR` — the folder to work in (the current one by default; inside a git
   repository, the repository's root);
-- `--max-cost USD` and `--max-hours H` — the ceilings;
+- `--max-cost USD` and `--max-hours H` — replace the default ceilings for a shell run;
 - `--json` — the program's records on stdout instead of readable lines.
 
 senior-dev's own flags on `run`:

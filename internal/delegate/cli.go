@@ -12,6 +12,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -75,7 +76,7 @@ func Parse(program Delegate, line []string, out io.Writer) (*Invocation, error) 
 	fs := flag.NewFlagSet(program.Name+" "+command.Name, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	dir := fs.String("dir", "", "the folder to work in (default: the current folder)")
-	cost := fs.Float64("max-cost", 0, "a dollar ceiling; codeaf refuses the call that would cross it")
+	cost := fs.Float64("max-cost", 0, "a dollar ceiling; reserve estimated call cost")
 	hours := fs.Float64("max-hours", 0, "a ceiling in hours of wall-clock time")
 	asJSON := fs.Bool("json", false, "write the records on stdout instead of readable lines")
 	body := command.Bind(fs)
@@ -89,8 +90,8 @@ func Parse(program Delegate, line []string, out io.Writer) (*Invocation, error) 
 		}
 		return nil, fmt.Errorf("%s %s: %w", program.Name, command.Name, err)
 	}
-	if *cost < 0 || *hours < 0 {
-		return nil, fmt.Errorf("%s %s: a ceiling cannot be negative", program.Name, command.Name)
+	if *cost < 0 || *hours < 0 || math.IsNaN(*cost) || math.IsNaN(*hours) || math.IsInf(*cost, 0) || math.IsInf(*hours, 0) {
+		return nil, fmt.Errorf("%s %s: a ceiling must be a finite, non-negative number", program.Name, command.Name)
 	}
 	workspace := *dir
 	if strings.TrimSpace(workspace) == "" {
@@ -100,10 +101,14 @@ func Parse(program Delegate, line []string, out io.Writer) (*Invocation, error) 
 	if err != nil {
 		return nil, fmt.Errorf("%s %s: --dir: %w", program.Name, command.Name, err)
 	}
+	ceilings := Ceilings{CostUSD: *cost, Hours: *hours}
+	if program.Name == "senior-dev" {
+		ceilings = ceilings.SeniorDevDefaults()
+	}
 	return &Invocation{
 		Program: program, Command: command,
 		Workspace: abs,
-		Ceilings:  Ceilings{CostUSD: *cost, Hours: *hours},
+		Ceilings:  ceilings,
 		JSON:      *asJSON,
 		Args:      fs.Args(),
 		Line:      append([]string(nil), line...),
@@ -162,7 +167,7 @@ func Help(program Delegate, out io.Writer) {
 	}
 	fmt.Fprintf(out, "\nflags every command takes:\n")
 	fmt.Fprintf(out, "  --dir DIR        the folder to work in (default: the current folder)\n")
-	fmt.Fprintf(out, "  --max-cost USD   a dollar ceiling; codeaf refuses the call that would cross it\n")
+	fmt.Fprintf(out, "  --max-cost USD   dollar ceiling; reserve estimated cost before each call\n")
 	fmt.Fprintf(out, "  --max-hours H    a ceiling in hours of wall-clock time\n")
 	fmt.Fprintf(out, "  --json           write the records on stdout instead of readable lines\n")
 	fmt.Fprintf(out, "\n`codeaf %s <command> --help` lists a command's own flags.\n", program.Name)

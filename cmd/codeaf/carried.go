@@ -122,12 +122,9 @@ func carriedSignals() (context.Context, context.CancelFunc) {
 type carriedRoad struct {
 	completerFor func(model string) modelapi.Completer
 	serves       func(model string) bool
+	modelPrice   func(model string) (input, output float64, known bool)
 	seat         string
-	// signModel is the model the attribution line on the one commit codeaf
-	// writes when the run ends names (internal/session's ProgramFolder.Finish):
-	// the work seat when the person's `attribution.model` row is on, and ""
-	// for the line that names none. The commit is signed either way.
-	signModel string
+	signNamed    bool
 }
 
 // carriedModels resolves a shell run's road. It is the person's own profile,
@@ -153,18 +150,10 @@ func profileRoad() (carriedRoad, error) {
 	return carriedRoad{
 		completerFor: adapters.forModel,
 		serves:       func(model string) bool { return session.ServesModel(sources, model) },
+		modelPrice:   settings.Models.PriceNow,
 		seat:         seats.Work.Model,
-		signModel:    signedSeat(settings.ProfileDir, seats.Work.Model),
+		signNamed:    config.AttributionModelAt(settings.ProfileDir),
 	}, nil
-}
-
-// signedSeat is the model a shell run's commit names: the work seat when the
-// person's `attribution.model` row is on, and "" when it is off.
-func signedSeat(profileDir, seat string) string {
-	if !config.AttributionModelAt(profileDir) {
-		return ""
-	}
-	return seat
 }
 
 // carriedAdapters is one adapter per model a shell run's program asks for,
@@ -243,7 +232,7 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 	// not committed, another program's run in it — before a cent is spent. A
 	// plain folder is no longer the program's first-line failure: codeaf says
 	// so on the program's line.
-	folder, err := carriedFolder(inv, record, road.signModel)
+	folder, err := carriedFolder(inv, record)
 	if err != nil {
 		fmt.Fprintln(carriedStderr, "error:", err)
 		return exitCannotRun
@@ -255,6 +244,9 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 	finish := func(result string) {
 		if folder != nil && !finished {
 			finished = true
+			if err := session.SetProgramAnswerAttribution(folder, road.signNamed); err != nil {
+				fmt.Fprintln(carriedStderr, "could not read the models that answered:", err)
+			}
 			view.left(folder.Finish(result).Sentence())
 		}
 	}
@@ -284,6 +276,7 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 		TaskDir:      record,
 		CompleterFor: road.completerFor,
 		Serves:       road.serves,
+		ModelPrice:   road.modelPrice,
 		Seat:         road.seat,
 		Ceiling:      inv.Ceilings.CostUSD,
 		Bank: func(charge modelapi.Charge) {
@@ -382,13 +375,13 @@ var carriedAPIClose = (*modelapi.Server).Close
 // carriedFolder readies the folder a shell run's program works in
 // (internal/session's PrepareProgramFolder); nil for a program that edits no
 // files, which reads the folder where it is.
-func carriedFolder(inv *delegate.Invocation, record string, signModel string) (*session.ProgramFolder, error) {
+func carriedFolder(inv *delegate.Invocation, record string) (*session.ProgramFolder, error) {
 	if !inv.Program.LandsTree() {
 		return nil, nil
 	}
 	return session.PrepareProgramFolder(session.ProgramFolderOrder{
 		Program: inv.Program, Dir: inv.Workspace, Brief: inv.Brief(),
-		Holder: "a run started at a shell", Keep: record, SignModel: signModel,
+		Holder: "a run started at a shell", Keep: record,
 		Instead: "run it in the project's folder, or name that folder with --dir",
 	})
 }
@@ -612,7 +605,7 @@ func (v *carriedView) begin() {
 	if v.records != nil {
 		return
 	}
-	v.say("%s · working in %s", v.inv.Program.Name, v.where())
+	v.say("%s · working in %s · %s", v.inv.Program.Name, v.where(), v.inv.Ceilings.Summary())
 }
 
 // inFolder keeps the folder the run was readied in, for the line that says

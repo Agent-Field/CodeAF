@@ -922,10 +922,12 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 		stand = delegateStand(stand.dir)
 	}
 	asked := programAsked(spec)
+	var prior *programOutcome
 	if via != nil {
-		a.keepProgramAttempt(p.id, a.programAttemptOf())
+		prior = a.keepProgramAttempt(p.id, a.programAttemptOf())
 	}
 	joined, err := a.startOrJoinTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, stand, question, via, asked...)
+	a.rollbackFailedProgramStart(via, p.id, prior, err)
 	if refusal := (standsElsewhereError{}); errors.As(err, &refusal) {
 		return refusal.Error(), true, true
 	}
@@ -1243,6 +1245,9 @@ func (a *Agent) openTask(ctx context.Context, id uint64, spec taskSpec, elsewher
 		deadline = a.taskClockNow().Add(countdown)
 	}
 	question := newTaskQuestion(id, spec, elsewhere, deadline, a.config)
+	if spec.via == "senior-dev" {
+		question.notice.Ceiling = a.seniorDevCeilings(a.usage.CostUSD).Summary()
+	}
 	if a.taskAnswers == nil {
 		a.taskAnswers = make(map[uint64]*taskQuestion, 1)
 	}

@@ -484,6 +484,9 @@ type TaskNotice struct {
 	// publisher that forgets it has not changed it ([Agent.publishRunRow] carries
 	// it forward).
 	Program string
+	// Ceiling is the finite allowance a proposed program run will start with,
+	// spelled for the approval card. Ordinary tasks leave it empty.
+	Ceiling string
 
 	// ── proposal fields (EventTaskProposal) ─────────────────────────────
 

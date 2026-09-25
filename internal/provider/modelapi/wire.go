@@ -76,14 +76,16 @@ type messageExtras struct {
 // call is one decoded request: what the funnel is handed and what the log is
 // written from.
 type call struct {
-	asked     string
-	thread    string
-	cacheKey  string
-	stream    bool
-	messages  []ai.Message
-	reasoning []provider.MessageReasoning
-	options   []ai.Option
-	depth     depth
+	inputBytes int
+	outputCap  int
+	asked      string
+	thread     string
+	cacheKey   string
+	stream     bool
+	messages   []ai.Message
+	reasoning  []provider.MessageReasoning
+	options    []ai.Option
+	depth      depth
 }
 
 // depth is how hard the program asked its model to think, in codeaf's own
@@ -111,9 +113,11 @@ func decodeRequest(body []byte) (*call, error) {
 		return nil, errors.New("the request carries no messages")
 	}
 	decoded := &call{
-		asked:    strings.TrimSpace(request.Model),
-		cacheKey: strings.TrimSpace(request.PromptCacheKey),
-		stream:   request.Stream,
+		asked:      strings.TrimSpace(request.Model),
+		cacheKey:   strings.TrimSpace(request.PromptCacheKey),
+		stream:     request.Stream,
+		inputBytes: len(body),
+		outputCap:  firstCeiling(request.MaxCompletionTokens, request.MaxTokens),
 	}
 	decoded.thread = decoded.cacheKey
 	hasReasoning := false

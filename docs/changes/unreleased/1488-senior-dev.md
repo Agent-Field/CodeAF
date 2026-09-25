@@ -39,6 +39,11 @@ invalidates:
   - "Changing `.gitignore` could commit a secret ignored when the run began, and test caches entered the task commit; the start-time ignored paths and the narrow generated-path list are excluded from eager and finishing commits."
   - "The folder hold let workspace restore, workspace merge and unnamed generated output write inside the held folder; it now fences those writes with the other file tools."
   - "A gitignored subfolder widened to its enclosing repository and an empty branch was deleted while its files remained; it now runs as a plain folder and says that nothing was committed."
+  - "A senior-dev run with no conversation budget was unlimited in both money and time. Every chat and shell run now starts with finite default ceilings; remaining conversation limits can lower them, shell flags can replace them, and the approval card or start line says what applies. Ordinary `/task` keeps its own limits."
+  - "The loopback model API checked only completed spend, so concurrent calls could all cross a dollar ceiling. It now reserves estimated cost atomically before forwarding priced calls, including a possible fallback to the run's seat, bounds concurrency when either model has no known price, and refuses a call whose estimate would cross the ceiling; an answer can still cost more than estimated."
+  - "A senior-dev run stopped on a limit could leave only a silent ended row when the same limit blocked the chat's wake turn. The conversation now receives an authored line naming the limit, spend and branch or folder before any model wake; an open window paints the same line from the standing lane."
+  - "The two automatic senior-dev re-hand-offs were counted only in the wake turn. The cap and the refusal after a limit now persist through later non-person turns and reopening the conversation, until the person speaks; silence approval counts as an automatic hand-off."
+  - "The run's commit could credit the configured worker model even when another model answered every call. Chat and shell commits now credit only models recorded as answering in the run's loopback log, and a run with no answered call adds no model trailer."
 ---
 
 `docs/design/delegate/PROTOCOL.md` is the internal protocol (version 2); `internal/delegate`

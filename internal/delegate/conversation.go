@@ -245,3 +245,28 @@ func ReadTurns(dir string, n int) ([]Turn, error) {
 	}
 	return turns, nil
 }
+
+// AnsweredModels is the distinct model set that actually answered this run,
+// in first-answer order. An unfinished, refused or failed call credits nobody.
+func AnsweredModels(dir string) ([]string, error) {
+	turns, err := ReadTurns(dir, 0)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var models []string
+	for _, turn := range turns {
+		if turn.Ended.IsZero() || turn.Refused != "" || turn.Failed != "" {
+			continue
+		}
+		model := strings.TrimSpace(turn.Served)
+		if model == "" {
+			model = strings.TrimSpace(turn.Model)
+		}
+		if model != "" && !seen[model] {
+			seen[model] = true
+			models = append(models, model)
+		}
+	}
+	return models, nil
+}

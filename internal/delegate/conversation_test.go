@@ -36,6 +36,32 @@ func TestReadTurnsKeepsEachCallsLatestRecordInStartOrder(t *testing.T) {
 	}
 }
 
+func TestCommitCreditsOnlyModelsThatAnsweredInTheRun(t *testing.T) {
+	dir := t.TempDir()
+	at := time.Now()
+	for _, turn := range []Turn{
+		{Seq: 1, Model: "crew/unused", Refused: "limit", Started: at, Ended: at},
+		{Seq: 2, Model: "worker/asked", Served: "minimax/m2.7", Started: at, Ended: at, Reply: "done"},
+		{Seq: 3, Model: "kimi/k2.6", Started: at, Ended: at, Calls: []ToolUse{{Name: "bash"}}},
+		{Seq: 4, Model: "other/failure", Started: at, Ended: at, Failed: "provider failed"},
+		{Seq: 5, Model: "minimax/m2.7", Started: at, Ended: at, Reply: "more"},
+	} {
+		if err := AppendTurn(dir, turn); err != nil {
+			t.Fatal(err)
+		}
+	}
+	models, err := AnsweredModels(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(models, ","); got != "minimax/m2.7,kimi/k2.6" {
+		t.Fatalf("answered models = %q", got)
+	}
+	if empty, err := AnsweredModels(t.TempDir()); err != nil || len(empty) != 0 {
+		t.Fatalf("no calls = %v, %v", empty, err)
+	}
+}
+
 func TestATurnIsWrittenCapped(t *testing.T) {
 	dir := t.TempDir()
 	sent := make([]Said, 20)

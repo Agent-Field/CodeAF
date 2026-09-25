@@ -96,6 +96,8 @@ type DelegateSetup struct {
 	// Serves answers whether this conversation's services can take a call on a
 	// model (session.RunSpec.Serves); nil answers yes for every model.
 	Serves func(model string) bool
+	// ModelPrice is the known per-token price for reserving model API calls.
+	ModelPrice func(model string) (input, output float64, known bool)
 	// Seat is the run's own work seat ([WorkSeat]): the model a call is
 	// answered on when the one the program asked for cannot be reached here.
 	Seat string
@@ -443,6 +445,7 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 		TaskDir:      taskDir,
 		CompleterFor: w.completerFor(),
 		Serves:       w.setup.Serves,
+		ModelPrice:   w.setup.ModelPrice,
 		Seat:         w.setup.Seat,
 		Ceiling:      w.cost,
 		Bank:         meter.bank,

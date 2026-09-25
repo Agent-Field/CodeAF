@@ -31,11 +31,10 @@ package modelapi
 //
 // ── THE CEILING IS A REFUSAL BEFORE THE CALL ────────────────────────────────
 //
-// A call made once the run's metered spend has reached its dollar ceiling is
-// never made: it is answered 402 in the router's own shape and written down as
-// a refused turn. A call already in flight when the ceiling is crossed is not
-// cut here — the run's supervisor ends the program for that, the way it ends
-// any worker whose run has spent its allowance.
+// Each call reserves its estimated cost before it goes out; a call that would
+// cross the ceiling is answered 402 in the router's own shape and written as a
+// refused turn. An answer may cost more than its estimate. The run's supervisor
+// ends a program that has spent its allowance.
 
 import (
 	"context"
@@ -46,6 +45,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"strings"
@@ -103,6 +103,9 @@ type Config struct {
 	Seat string
 	// Ceiling is the run's dollar ceiling, zero for none.
 	Ceiling float64
+	// ModelPrice is the catalog's published input and output price per token.
+	// Nil means a local or custom model with no known price.
+	ModelPrice func(model string) (input, output float64, known bool)
 	// Bank is told every charge as it is metered. It is called one charge at a
 	// time and must not block on the program.
 	Bank func(Charge)
@@ -156,12 +159,14 @@ type Server struct {
 	// mu guards the token, the ending, the meter, the turn numbers and the
 	// threads' memory — everything a call reads and writes that another call
 	// may be reading at the same moment.
-	mu      sync.Mutex
-	token   string
-	closed  bool
-	spent   float64
-	seq     int
-	threads threads
+	mu       sync.Mutex
+	token    string
+	closed   bool
+	spent    float64
+	reserved float64
+	inflight int
+	seq      int
+	threads  threads
 	// refused counts the calls answered 402 at the ceiling.
 	refused int
 
@@ -235,13 +240,6 @@ func (s *Server) RefusedAtCeiling() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.refused
-}
-
-// refuse counts one call refused at the ceiling.
-func (s *Server) refuse() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.refused++
 }
 
 // Close ends the API: THE TOKEN DIES WITH THE RUN. The token is forgotten,
@@ -500,14 +498,130 @@ func (r *record) close(fill func(turn *delegate.Turn)) delegate.Turn {
 // before, names the working the program handed back by the field its thread's
 // working last arrived on, and answers the run's spend at the moment the call
 // arrived — the figure its ceiling is asked against.
-func (s *Server) open(request *call, thread, served string) (*record, float64) {
+func (s *Server) open(request *call, thread, served, model string) (*record, float64, float64, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.seq++
 	entry := &record{turn: delegate.Turn{Seq: s.seq, Thread: thread, Started: time.Now(), Model: request.asked, Served: served}}
 	entry.turn.Sent, entry.turn.Restarted = s.threads.delta(thread, request.messages)
 	request.reasoning = s.threads.name(thread, request.reasoning)
-	return entry, s.spent
+	ceiling := s.config.Ceiling
+	if ceiling <= 0 {
+		s.inflight++
+		return entry, s.spent, 0, true
+	}
+	reserve, known := s.estimate(request, model)
+	if !known {
+		// An unpriced local or custom model can still spend real money. Once
+		// half the ceiling is spent, admit at most one such call in flight.
+		reserve = ceiling / 2
+		if left := ceiling - s.spent; reserve > left {
+			reserve = left
+		}
+	}
+	if ceilingReached(ceiling, s.spent+s.reserved) ||
+		(!known && s.spent >= ceiling/2 && s.inflight > 0) ||
+		reserve > ceiling-s.spent-s.reserved+ceilingDust {
+		s.refused++
+		return entry, s.spent, 0, false
+	}
+	s.reserved += reserve
+	s.inflight++
+	return entry, s.spent, reserve, true
+}
+
+// defaultOutputCap is the conservative output allowance used for a request
+// that names no max_tokens or max_completion_tokens.
+const defaultOutputCap = 4096
+
+// estimate uses the whole encoded input byte count as an upper token estimate;
+// this intentionally counts JSON framing and tools as input too. A call can
+// fall back to the run's seat, so its reservation covers the dearer model.
+func (s *Server) estimate(request *call, model string) (float64, bool) {
+	if s.config.ModelPrice == nil {
+		return 0, false
+	}
+	cap := request.outputCap
+	if cap <= 0 {
+		cap = defaultOutputCap
+	}
+	price := func(candidate string) (float64, bool) {
+		input, output, known := s.config.ModelPrice(candidate)
+		if !known || input < 0 || output < 0 || math.IsNaN(input) || math.IsNaN(output) ||
+			math.IsInf(input, 0) || math.IsInf(output, 0) {
+			return 0, false
+		}
+		return float64(request.inputBytes)*input + float64(cap)*output, true
+	}
+	reserve, known := price(model)
+	seat := strings.TrimSpace(s.config.Seat)
+	if seat != "" && seat != model {
+		// The first model can fail after admission and be answered on the seat.
+		// A seat with no published price uses the unpriced concurrency bound.
+		fallback, priced := price(seat)
+		if !known || !priced {
+			return 0, false
+		}
+		reserve = max(reserve, fallback)
+	}
+	return reserve, known
+}
+
+func (s *Server) release(reserved float64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.reserved -= reserved
+	s.inflight--
+}
+
+// callReservation keeps the estimate in the run's books until every receipt
+// owed by this call has replaced it with a real charge or an unbilled answer.
+type callReservation struct {
+	mu       sync.Mutex
+	server   *Server
+	amount   float64
+	pending  int
+	ended    bool
+	released bool
+}
+
+func (r *callReservation) receiptPending() func() {
+	r.markPending()
+	done := r.server.owed.owe()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			done()
+			r.finish(false)
+		})
+	}
+}
+
+func (r *callReservation) markPending() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.pending++
+}
+
+func (r *callReservation) finish(ended bool) {
+	if r.finished(ended) {
+		r.server.release(r.amount)
+	}
+}
+
+func (r *callReservation) finished(ended bool) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if ended {
+		r.ended = true
+	} else {
+		r.pending--
+	}
+	release := r.ended && r.pending == 0 && !r.released
+	if release {
+		r.released = true
+	}
+	return release
 }
 
 // arrived remembers the field a thread's working came in on.
@@ -527,18 +641,19 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, request *call) {
 	if thread == "" {
 		thread = delegate.MainThread
 	}
-	entry, spent := s.open(request, thread, served)
+	entry, spent, reserved, admitted := s.open(request, thread, served, model)
 
-	if ceiling := s.config.Ceiling; ceiling > 0 && ceilingReached(ceiling, spent) {
+	if !admitted {
 		// 402 AND NOTHING THAT READS AS PASSING: a program's client retries a
 		// 408, a 409, a 429 and a 5xx as the weather, and a ceiling is not
 		// weather — asked again it answers the same.
-		s.refuse()
-		refused := ceilingSentence(ceiling, spent)
+		refused := ceilingSentence(s.config.Ceiling, spent)
 		s.log(entry.close(func(turn *delegate.Turn) { turn.Refused = refused }))
 		writeError(w, http.StatusPaymentRequired, refused)
 		return
 	}
+	hold := &callReservation{server: s, amount: reserved}
+	defer hold.finish(true)
 	s.log(entry.turn)
 
 	ctx, stop := s.callContext(r.Context())
@@ -547,7 +662,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, request *call) {
 	bill := &tally{}
 	catch := &catcher{}
 	slot := &provider.ServedEndpoint{}
-	response, err := s.complete(ctx, out, request, model, bill, catch, slot, entry)
+	response, err := s.complete(ctx, out, request, model, bill, catch, slot, entry, hold)
 	// THE ONE FAILURE THE SEAT CAN CURE: the machine could not serve the model
 	// the program asked for — no key for its service, or a router that carries
 	// no such model — though the account pool believed it could. The call goes
@@ -557,7 +672,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, request *call) {
 			model = fallback
 			entry.serveOn(seat)
 			catch = &catcher{}
-			response, err = s.complete(ctx, out, request, model, bill, catch, slot, entry)
+			response, err = s.complete(ctx, out, request, model, bill, catch, slot, entry, hold)
 		}
 	}
 
@@ -591,7 +706,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, request *call) {
 
 // complete makes one call through the funnel and waits for it, saying the
 // answer is still coming every [Config.Keepalive] while it does.
-func (s *Server) complete(ctx context.Context, out *reply, request *call, model string, bill *tally, catch *catcher, slot *provider.ServedEndpoint, entry *record) (*ai.Response, error) {
+func (s *Server) complete(ctx context.Context, out *reply, request *call, model string, bill *tally, catch *catcher, slot *provider.ServedEndpoint, entry *record, hold *callReservation) (*ai.Response, error) {
 	var completer Completer
 	if s.config.CompleterFor != nil {
 		completer = s.config.CompleterFor(model)
@@ -600,7 +715,7 @@ func (s *Server) complete(ctx context.Context, out *reply, request *call, model 
 		return nil, errNoRoad
 	}
 	options := append(append([]ai.Option(nil), request.options...), ai.WithModel(model))
-	ctx = s.settings(ctx, request, bill, catch, slot, entry)
+	ctx = s.settings(ctx, request, bill, catch, slot, entry, hold)
 	type outcome struct {
 		response *ai.Response
 		err      error
@@ -638,7 +753,7 @@ func (s *Server) complete(ctx context.Context, out *reply, request *call, model 
 // lineage and reasoning depth, the working it handed back, the sinks that
 // meter it, catch its working and name its server, the count of the receipts
 // it is owed, and the ask that an answer with no usage block be priced too.
-func (s *Server) settings(ctx context.Context, request *call, bill *tally, catch *catcher, slot *provider.ServedEndpoint, entry *record) context.Context {
+func (s *Server) settings(ctx context.Context, request *call, bill *tally, catch *catcher, slot *provider.ServedEndpoint, entry *record, hold *callReservation) context.Context {
 	role := s.config.Role
 	if role == "" {
 		role = lanes.RoleLeafUnattended
@@ -661,7 +776,7 @@ func (s *Server) settings(ctx context.Context, request *call, bill *tally, catch
 	ctx = provider.WithMessageReasoning(ctx, request.reasoning)
 	ctx = provider.WithBilling(ctx, func(billed provider.Billed) { s.charge(bill, billed, false) })
 	ctx = provider.WithReconcile(ctx, func(receipt provider.Reconciled) { s.receipt(bill, entry, receipt) })
-	ctx = provider.WithReceiptPending(ctx, s.owed.owe)
+	ctx = provider.WithReceiptPending(ctx, hold.receiptPending)
 	// AN ANSWER WITH NO USAGE BLOCK IS NOT A FREE ONE. The funnel asks for a
 	// receipt only when an answer was cut; one that arrived whole and simply
 	// carried no usage block was billed nowhere and said so nowhere —
@@ -949,8 +1064,11 @@ func (s *Server) failure(err error, request context.Context, model string) (int,
 	return http.StatusBadGateway, firstLine(err.Error())
 }
 
-// ceilingSentence is the refusal a call made past the run's ceiling gets.
+// ceilingSentence is the refusal for a call that would cross the ceiling.
 func ceilingSentence(ceiling, spent float64) string {
+	if !ceilingReached(ceiling, spent) {
+		return "the run's dollar ceiling of " + dollars(ceiling) + " would be reached by this call's estimated cost (" + dollars(spent) + " spent), so codeaf made no call"
+	}
 	return "the run's dollar ceiling of " + dollars(ceiling) + " is reached (" + dollars(spent) + " spent), so codeaf made no call"
 }
 

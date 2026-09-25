@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -293,6 +294,158 @@ func TestACallPastTheCeilingIsRefusedBeforeItIsMade(t *testing.T) {
 	}
 	if len(turns) != 3 || turns[2].Refused == "" || turns[2].Ended.IsZero() || turns[2].CostUSD != 0 || turns[2].InFlight() {
 		t.Fatalf("turns = %+v, want the third written as a refusal that cost nothing", turns)
+	}
+}
+
+// Eight calls arriving together cannot each spend the same unreserved dollar.
+func TestConcurrentCallsReserveTheCeilingBeforeForwarding(t *testing.T) {
+	started := make(chan struct{}, 8)
+	release := make(chan struct{})
+	calls := &script{reply: func(ctx context.Context, model string, _ []ai.Message, _ ai.Request) (*ai.Response, error) {
+		started <- struct{}{}
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		bill(ctx, model, 100, 20, 0, 0.40)
+		return saying(model, "ok"), nil
+	}}
+	server, api := open(t, modelapi.Config{CompleterFor: calls.completerFor, Ceiling: 1})
+	var wg sync.WaitGroup
+	type answer struct {
+		status  int
+		payload []byte
+	}
+	answers := make(chan answer, 8)
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			status, payload := post(t, api, api.Token, hello)
+			answers <- answer{status, payload}
+		}()
+	}
+	for range 2 {
+		select {
+		case <-started:
+		case <-time.After(3 * time.Second):
+			t.Fatal("two calls did not reach the stub")
+		}
+	}
+	close(release)
+	wg.Wait()
+	close(answers)
+	refused := 0
+	for got := range answers {
+		if got.status == http.StatusPaymentRequired {
+			refused++
+			if !strings.Contains(string(got.payload), "the run's dollar ceiling of $1.00") {
+				t.Fatalf("402 did not name the ceiling: %s", got.payload)
+			}
+		}
+	}
+	if spent := server.Spent(); spent > 1.40 || server.RefusedAtCeiling() == 0 {
+		t.Fatalf("eight calls spent $%.2f with %d refusals", spent, server.RefusedAtCeiling())
+	}
+	if refused == 0 {
+		t.Fatal("all eight calls were forwarded")
+	}
+}
+
+func TestEstimatedSequentialCallIsRefusedBeforeItCrossesTheCeiling(t *testing.T) {
+	calls := &script{reply: words("ok", 0.40)}
+	server, api := open(t, modelapi.Config{
+		CompleterFor: calls.completerFor, Ceiling: 1,
+		ModelPrice: func(string) (float64, float64, bool) { return 0, 0.40, true },
+	})
+	body := `{"model":"priced/model","messages":[{"role":"user","content":"hi"}],"max_completion_tokens":1}`
+	for range 2 {
+		if status, payload := post(t, api, api.Token, body); status != http.StatusOK {
+			t.Fatalf("under-ceiling call got %d: %s", status, payload)
+		}
+	}
+	status, payload := post(t, api, api.Token, body)
+	if status != http.StatusPaymentRequired || !strings.Contains(string(payload), "would be reached by this call's estimated cost") || len(calls.calls()) != 2 {
+		t.Fatalf("third call got %d: %s; upstream %d", status, payload, len(calls.calls()))
+	}
+	if server.Spent() != 0.80 {
+		t.Fatalf("spent %.2f, want two settled calls", server.Spent())
+	}
+}
+
+// A request can fall back to the run's seat after its first model refuses it.
+// Its reservation must cover the model that can actually bill the answer.
+func TestFallbackSeatPriceIsReservedBeforeTheAskedModelIsForwarded(t *testing.T) {
+	calls := &script{reply: func(ctx context.Context, model string, messages []ai.Message, request ai.Request) (*ai.Response, error) {
+		if model == "asked/model" {
+			return nil, provider.ErrNoAPIKey
+		}
+		return words("seated", 0.60)(ctx, model, messages, request)
+	}}
+	server, api := open(t, modelapi.Config{
+		CompleterFor: calls.completerFor, Ceiling: 1, Seat: "seat/model",
+		ModelPrice: func(model string) (float64, float64, bool) {
+			if model == "seat/model" {
+				return 0, 0.60, true
+			}
+			return 0, 0.05, true
+		},
+	})
+	body := `{"model":"asked/model","messages":[{"role":"user","content":"hi"}],"max_completion_tokens":1}`
+	if status, payload := post(t, api, api.Token, body); status != http.StatusOK {
+		t.Fatalf("first call got %d: %s", status, payload)
+	}
+	if status, payload := post(t, api, api.Token, body); status != http.StatusPaymentRequired || len(calls.calls()) != 2 {
+		t.Fatalf("second call got %d: %s; upstream %d", status, payload, len(calls.calls()))
+	}
+	if spent := server.Spent(); spent != 0.60 {
+		t.Fatalf("spent $%.2f, want only the first seat answer", spent)
+	}
+}
+
+// A call with a pending receipt still occupies its estimate until its real
+// charge arrives, even after its HTTP answer has returned to the program.
+func TestPendingReceiptKeepsItsReservationUntilTheRealChargeArrives(t *testing.T) {
+	gate := make(chan struct{})
+	defer func() {
+		select {
+		case <-gate:
+		default:
+			close(gate)
+		}
+	}()
+	settled := make(chan struct{})
+	var callsMade atomic.Int32
+	calls := &script{reply: func(ctx context.Context, model string, _ []ai.Message, _ ai.Request) (*ai.Response, error) {
+		if callsMade.Add(1) == 1 {
+			done := provider.ReceiptPendingFrom(ctx)()
+			sink := provider.ReconcileSinkFrom(ctx)
+			go func() {
+				<-gate
+				sink(provider.Reconciled{Billed: provider.Billed{Model: model, PromptTokens: 1, CompletionTokens: 1, Cost: 0.40}, Found: true})
+				done()
+				close(settled)
+			}()
+		} else {
+			bill(ctx, model, 1, 1, 0, 0.40)
+		}
+		return saying(model, "ok"), nil
+	}}
+	_, api := open(t, modelapi.Config{CompleterFor: calls.completerFor, Ceiling: 1,
+		ModelPrice: func(string) (float64, float64, bool) { return 0, 0.60, true },
+	})
+	body := `{"model":"priced/model","messages":[{"role":"user","content":"hi"}],"max_completion_tokens":1}`
+	if status, payload := post(t, api, api.Token, body); status != http.StatusOK {
+		t.Fatalf("first call got %d: %s", status, payload)
+	}
+	if status, payload := post(t, api, api.Token, body); status != http.StatusPaymentRequired {
+		t.Fatalf("pending receipt admitted a second call: %d %s", status, payload)
+	}
+	close(gate)
+	<-settled
+	if status, payload := post(t, api, api.Token, body); status != http.StatusOK {
+		t.Fatalf("settled receipt did not free the reservation: %d %s", status, payload)
 	}
 }
 

@@ -236,6 +236,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		}
 		restored := replayed.messages
 		agent.file = file
+		agent.restoreProgramHold()
 		// AND WHAT AN EARLIER PROCESS OF THIS SESSION MADE. It is the one thing
 		// in the journal that cannot be re-derived from the transcript — whether
 		// a file was there before the session touched it is a measurement, taken

@@ -74,6 +74,28 @@ func TestTheFrontPageFitsWithTheProgramsThisBuildCarries(t *testing.T) {
 	}
 }
 
+func TestSeniorDevShellFirstLineNamesItsEffectiveCeiling(t *testing.T) {
+	program := fakeCarriedProgram()
+	program.Name = "senior-dev"
+	for _, tc := range []struct {
+		line []string
+		want string
+	}{
+		{[]string{"repair"}, (delegate.Ceilings{}).SeniorDevDefaults().Summary()},
+		{[]string{"--max-cost", "2", "--max-hours", "0.5", "repair"}, "up to $2.00 and 30m"},
+	} {
+		inv, err := delegate.Parse(program, tc.line, &bytes.Buffer{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		newCarriedView(&out, inv, t.TempDir()).begin()
+		if !strings.Contains(out.String(), tc.want) {
+			t.Fatalf("first line %q lacks %q", out.String(), tc.want)
+		}
+	}
+}
+
 // carriedPageLines is what the carried group may cost the front page on top
 // of [helpLineCap]: its heading and the blank line under it, and TWO LINES FOR
 // EACH PROGRAM — its synopsis and a summary that fits one line. The table

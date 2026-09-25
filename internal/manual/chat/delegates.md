@@ -140,14 +140,16 @@ folder with `--dir`.
 everything it would stop and ask is already settled. The model is told the same thing when
 it proposes one.
 
-**It has no step cap.** It is held to this conversation's dollar and time limits. It is
-given them when it starts, and codeaf enforces them from outside as well: once the run's
-spend has reached the dollar ceiling, every further model call is refused before it is
-made, and the task then says `<name> reached the run's dollar ceiling of $…`. The call
-that crossed the ceiling was already paid for, so a run can end a little over it. On a
-service that reports no prices (a local proxy, a vendor's own API, a plan you signed in
-to) no call has a price to add up, so the dollar ceiling cannot hold: a time limit
-(`--max-hours`) is the bound there.
+**It has no step cap.** senior-dev has finite dollar and wall-clock ceilings even when
+the conversation sets none; `/budget` can lower them, and shell flags set them directly.
+Before forwarding a call, codeaf reserves the larger estimate from the requested model
+and its possible fallback seat when both have known prices, using input size and output
+cap; if either price is unknown, it uses the unpriced bound. It refuses a call whose
+estimate would cross the ceiling. An
+answer can cost more than its estimate. When a model has no known price, codeaf reserves
+half the dollar ceiling and limits concurrent calls once half the recorded spend is used;
+an unpriced service's actual charge cannot be measured here. The wall-clock ceiling still
+ends the run.
 
 **It has no review round.** codeaf's checker does not read its work afterwards. What the
 program itself checked is reported in its result, kept apart from what its model claimed.

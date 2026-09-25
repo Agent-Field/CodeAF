@@ -4,6 +4,8 @@ package delegate
 // environment its process starts in.
 
 import (
+	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -43,6 +45,52 @@ type Host interface {
 type Ceilings struct {
 	CostUSD float64
 	Hours   float64
+}
+
+const (
+	// An autonomous senior-dev run with no person watching must stop on its own.
+	DefaultSeniorDevCostUSD = 10.0
+	// An autonomous senior-dev run with no person watching must stop on its own.
+	DefaultSeniorDevHours = 3.0
+)
+
+// SeniorDev fills absent conversation limits and caps larger ones at defaults.
+func (c Ceilings) SeniorDev() Ceilings {
+	if c.CostUSD <= 0 || c.CostUSD > DefaultSeniorDevCostUSD || math.IsNaN(c.CostUSD) {
+		c.CostUSD = DefaultSeniorDevCostUSD
+	}
+	if c.Hours <= 0 || c.Hours > DefaultSeniorDevHours || math.IsNaN(c.Hours) {
+		c.Hours = DefaultSeniorDevHours
+	}
+	return c
+}
+
+// SeniorDevDefaults fills omitted shell limits while preserving explicit flags.
+func (c Ceilings) SeniorDevDefaults() Ceilings {
+	if c.CostUSD <= 0 || math.IsNaN(c.CostUSD) || math.IsInf(c.CostUSD, 0) {
+		c.CostUSD = DefaultSeniorDevCostUSD
+	}
+	if c.Hours <= 0 || math.IsNaN(c.Hours) || math.IsInf(c.Hours, 0) {
+		c.Hours = DefaultSeniorDevHours
+	}
+	return c
+}
+
+// Summary says the two ceilings as the person sees them at either start door.
+func (c Ceilings) Summary() string {
+	return fmt.Sprintf("up to $%.2f and %s", c.CostUSD, c.TimeWord())
+}
+
+// TimeWord spells the wall ceiling without padded zero units.
+func (c Ceilings) TimeWord() string {
+	wall := c.Elapsed()
+	word := wall.String()
+	if wall%time.Hour == 0 {
+		word = fmt.Sprintf("%dh", int(wall/time.Hour))
+	} else if wall%time.Minute == 0 {
+		word = fmt.Sprintf("%dm", int(wall/time.Minute))
+	}
+	return word
 }
 
 // Elapsed is the hours as a duration, zero for none.

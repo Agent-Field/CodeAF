@@ -155,6 +155,9 @@ type ProgramFolder struct {
 	// ([ProgramFolderOrder.SignModel]).
 	Keep      string `json:"keep,omitempty"`
 	SignModel string `json:"signModel,omitempty"`
+	// NoAttribution is true when the run had no answered model call, so its
+	// finishing commit does not credit a model that did no work in this run.
+	NoAttribution bool `json:"noAttribution,omitempty"`
 	// Ended is the sentence the run's folder was finished with. Empty is a
 	// folder still owed its ending.
 	Ended string `json:"ended,omitempty"`
@@ -825,7 +828,10 @@ func (f *ProgramFolder) commitLeftovers(result string) string {
 		message += "\n\n" + result
 	}
 	args := append([]string{"-c", "commit.gpgsign=false"}, codeafGitIdentity()...)
-	args = append(args, "commit", "-q", "--no-verify", "-m", signed(message, gitSignature{named: f.SignModel != "", model: f.SignModel}))
+	if !f.NoAttribution {
+		message = signed(message, gitSignature{named: f.SignModel != "", model: f.SignModel})
+	}
+	args = append(args, "commit", "-q", "--no-verify", "-m", message)
 	if out, err := git(f.Dir, args...); err != nil {
 		return "git commit: " + firstLine(out)
 	}

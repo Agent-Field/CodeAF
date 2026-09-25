@@ -57,6 +57,7 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 		setup := DelegateSetup{
 			CompleterFor: spec.CompleterFor,
 			Serves:       spec.Serves,
+			ModelPrice:   spec.ModelPrice,
 			Seat:         WorkSeat(spec.ProfileDir, spec.WorkModel),
 			PlainFolder:  spec.PlainFolder,
 			Branch:       spec.ProgramBranch,

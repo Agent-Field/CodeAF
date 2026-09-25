@@ -81,6 +81,9 @@ func (a *Agent) rememberOwedLocked(user userMessage) {
 	// THE PERSON'S OWN MESSAGE, on the same test [Agent.rememberAskLocked] makes:
 	// a note the session authored and a wake are the session talking to itself.
 	if !user.authored && !user.wake {
+		if !user.resumed {
+			a.clearProgramHoldLocked()
+		}
 		a.oweLocked(owedAsk{text: user.text(), from: owedByPerson})
 	}
 	// AND WHAT EACH RESULT WAS OWED, which is the effective target where the

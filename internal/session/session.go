@@ -2665,6 +2665,10 @@ type Agent struct {
 	// woken with, nil for every other turn: a hand-off it makes is a re-attempt
 	// of that run ([Agent.programRetryRefusal]). Cleared with owedAsks.
 	programOutcomeNow *programOutcome
+	// programHold is the last program ending since the person's own words. It
+	// survives wake turns and reloads from the conversation's sidecar record.
+	programHold    *programOutcome
+	programHoldErr string
 	// programAttempts is each started program run's place in its line of runs,
 	// by row ([Agent.keepProgramAttempt]).
 	programAttempts map[uint64]programAttempt

@@ -66,6 +66,22 @@ func runCostLeft(limit, spent float64) float64 {
 	return left
 }
 
+// seniorDevCeilings caps the conversation's remaining allowance at the
+// unattended run defaults, so an unset conversation limit is still finite.
+func (a *Agent) seniorDevCeilings(spent float64) delegate.Ceilings {
+	wallLeft, _ := a.config.Budget.Left()
+	if a.config.Budget.Wall > 0 && !a.startedAt.IsZero() {
+		wallLeft = a.config.Budget.Wall - time.Since(a.startedAt)
+		if wallLeft <= 0 {
+			wallLeft = time.Nanosecond
+		}
+	}
+	return (delegate.Ceilings{
+		CostUSD: runCostLeft(a.railCap(0), spent),
+		Hours:   wallLeft.Hours(),
+	}).SeniorDev()
+}
+
 // RunSpec is one run as the door hands it to the engine: the store to drive,
 // the working copy its workers share, the run's own words, the conversation's
 // two limits, and the provider its workers are seated on.
@@ -125,6 +141,8 @@ type RunSpec struct {
 	// every model the program names, and answers a model nothing here can
 	// reach on the run's work seat instead. Nil answers yes for every model.
 	Serves func(model string) bool
+	// ModelPrice is the catalog price used to reserve each model API call.
+	ModelPrice func(model string) (input, output float64, known bool)
 	// OnSpend observes the reconciled cumulative run spend while work is live.
 	OnSpend func(float64)
 	// OnCharge observes each priced call a worker that meters call by call
@@ -321,6 +339,10 @@ type beltRun struct {
 	// goroutine while the run is ending.
 	ended time.Time
 	spent float64
+	// These are the ceilings fixed at hand-off, before the conversation spends
+	// more; the limit ending reads them even when its wake cannot run.
+	costCeiling, timeCeiling                     float64
+	conversationCostLimit, conversationTimeLimit bool
 	// delegate is the program this run's root is handed to, nil for a run the
 	// conversation's own workers drive; folder is the folder a program that
 	// edits files works in, held for the run and finished when it ends
@@ -570,8 +592,27 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 		PlanTask: planStoreID(storeID),
 	})
 
-	go a.driveBeltRun(runCtx, engine, run, a.beltRunSpec(run, brief))
+	spec := a.beltRunSpec(run, brief)
+	if programName(via) == "senior-dev" {
+		run.costCeiling, run.timeCeiling = spec.CostUSD, spec.Elapsed.Hours()
+		run.conversationCostLimit = a.railCap(0) > 0 && runCostLeft(a.railCap(0), a.Usage().CostUSD) <= delegate.DefaultSeniorDevCostUSD
+		run.conversationTimeLimit = a.seniorDevConversationTimeLimit()
+	}
+	go a.driveBeltRun(runCtx, engine, run, spec)
 	return false, nil
+}
+
+// seniorDevConversationTimeLimit reports whether the person's remaining wall
+// limit, rather than the unattended default, is the one that will stop the run.
+func (a *Agent) seniorDevConversationTimeLimit() bool {
+	if a.config.Budget.Wall <= 0 {
+		return false
+	}
+	remaining := a.config.Budget.Wall
+	if !a.startedAt.IsZero() {
+		remaining -= time.Since(a.startedAt)
+	}
+	return remaining <= time.Duration(delegate.DefaultSeniorDevHours*float64(time.Hour))
 }
 
 // lockBeltStart takes the conversation's start lock, the one door every road
@@ -778,13 +819,18 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 			wallLeft = time.Nanosecond
 		}
 	}
+	cost := runCostLeft(a.railCap(0), a.Usage().CostUSD)
+	if programName(run.delegate) == "senior-dev" {
+		ceilings := a.seniorDevCeilings(a.Usage().CostUSD)
+		cost, wallLeft = ceilings.CostUSD, ceilings.Elapsed()
+	}
 	return RunSpec{
 		Store:     run.store,
 		Workspace: run.workspace,
 		Title:     run.title,
 		Brief:     brief,
 		Slots:     a.config.TaskParallel,
-		CostUSD:   runCostLeft(a.railCap(0), a.Usage().CostUSD),
+		CostUSD:   cost,
 		Elapsed:   wallLeft,
 		// The step cap a node of this session's own tree carries, so a run
 		// worker and a node worker stop at the same figure.
@@ -798,6 +844,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		PlanModel:    planSeat,
 		CompleterFor: func(string) Completer { return a.beltRunCompleter() },
 		Serves:       a.servesModel,
+		ModelPrice:   a.config.ModelPrice,
 		Conversation: a.runConversation(),
 		Delegate:     run.delegate,
 		PlainFolder:  run.folder != nil && run.folder.Plain(),
@@ -1617,6 +1664,9 @@ func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
 func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing RunLanding) {
 	line := beltRunOutcomeNote(run.store, run.root, summary, landing, a.beltRunSpan(run))
 	if run.delegate != nil {
+		if limit := programLimitLine(run, summary, landing); limit != "" {
+			a.recordProgramLimit(limit)
+		}
 		a.accept(delivery{origin: fromRuntime, kind: msgResult, note: a.programLandingNote(run, summary, line)})
 		return
 	}
@@ -1636,6 +1686,22 @@ func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing 
 	a.mu.Lock()
 	a.recordUserLocked(note)
 	a.mu.Unlock()
+}
+
+// recordProgramLimit gives the open surface the same authored line the
+// conversation keeps. The model wake may be refused by this very limit, so
+// the standing lane must paint it without waiting for another turn.
+func (a *Agent) recordProgramLimit(line string) {
+	note := userText(line)
+	note.authored = true
+	a.mu.Lock()
+	a.recordUserLocked(note)
+	watchers := append([]*eventStream(nil), a.taskWatchers...)
+	a.mu.Unlock()
+	event := Event{Kind: EventNotice, Text: line}
+	for _, watcher := range watchers {
+		watcher.send(event)
+	}
 }
 
 // landingOwesAnswer admits only an owed work root to the one bounded reply turn.

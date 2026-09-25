@@ -8,6 +8,6 @@ The note ends with a line in brackets: the task, how it came out (passed, unveri
 - limit: it stopped on a dollar or time ceiling. Never hand it back on your own: say briefly what is done and what is left, and ask the person whether to spend more.
 - crashed: it broke rather than finished. Hand it back once if the cause looks passing (network, provider, a timeout); otherwise tell the person what broke.
 
-codeaf sends a program back to one piece of work at most twice on its own; a hand-off past that, or after a limit, is refused, and then the person decides.
+codeaf sends a program back to one piece of work at most twice on its own between messages from the person; a hand-off past that, or after a limit, is refused, even after a wake turn or reopening the conversation. The person decides and a new message from them resets the count.
 
 Keep the person's view simple. Do not paste the program's status words or its log; say what now works, what does not, where the work is (the branch and folder), and the one thing they might do next. If the work still does not pass after the last attempt, say so plainly: never report unfinished work as done.

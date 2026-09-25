@@ -85,6 +85,8 @@ type taskCard struct {
 	// about it a person approving it cannot find out afterwards and do anything
 	// about.
 	program string
+	// ceiling is the finite allowance on a program proposal, before approval.
+	ceiling string
 	// elsewhere is the one dim line saying which of this brief's files another
 	// window's work is already in, as the engine wrote it (session's
 	// TaskNotice.Elsewhere), and "" when there was nothing to say.
@@ -888,6 +890,10 @@ func waitTask(ch <-chan session.Event, gen int) tea.Cmd {
 func (a *app) taskEvent(ev session.Event) tea.Cmd {
 	var pilot, mentions tea.Cmd
 	switch ev.Kind {
+	case session.EventNotice:
+		// A program's limit ending reaches this standing lane even when the
+		// same limit refuses the model turn that would otherwise announce it.
+		a.note(ev.Text)
 	case session.EventTaskProposal:
 		a.proposeTask(ev)
 	case session.EventTaskUpdate:
@@ -1297,6 +1303,7 @@ func (a *app) proposeTask(ev session.Event) {
 		dependsOn:  notice.DependsOn,
 		model:      strings.TrimSpace(notice.Model),
 		program:    strings.TrimSpace(notice.Program),
+		ceiling:    strings.TrimSpace(notice.Ceiling),
 		elsewhere:  strings.TrimSpace(notice.Elsewhere),
 		deadline:   notice.Deadline,
 		born:       a.now(),
@@ -2185,6 +2192,9 @@ func (a *app) taskBranchPoint() string {
 // then never read. A narrow frame cuts the hint and keeps the model.
 func (a *app) taskMetaWord(card *taskCard, width int) string {
 	var parts []string
+	if card.ceiling != "" {
+		parts = append(parts, card.ceiling)
+	}
 	if card.model != "" {
 		parts = append(parts, taskModelTag+card.model)
 	}

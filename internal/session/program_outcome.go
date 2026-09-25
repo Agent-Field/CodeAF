@@ -25,7 +25,9 @@ package session
 // count again.
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -148,26 +150,32 @@ func programNextStep(o programOutcome) string {
 	return fmt.Sprintf("Its work does not stand yet. Read what failed; fix a small gap on its branch yourself, or hand the work back to %s with a brief sharpened by what failed. You may send it back %d more time%s on your own.", o.program, left, plural(left))
 }
 
-// rememberProgramOutcomeLocked keeps a program's ending for the turn it
-// arrives in, so a hand-off that turn makes is known as a re-attempt of it.
+// rememberProgramOutcomeLocked keeps a program's ending until the person next
+// speaks, so later automatic turns still know a hand-off is a re-attempt.
 // The caller holds a.mu.
 func (a *Agent) rememberProgramOutcomeLocked(user userMessage) {
 	if user.programOutcome != nil {
 		outcome := *user.programOutcome
 		a.programOutcomeNow = &outcome
+		a.programHold = &outcome
+		a.saveProgramHoldLocked()
 	}
 }
 
-// programRetryRefusal is why a hand-off to a program made in the turn a
-// program's ending woke may not go, and "" when it may. It is the code half
-// of the playbook's two bounds.
+// programRetryRefusal is why an automatic hand-off before the person's next
+// message may not go, and "" when it may. It is the code half of the playbook's
+// two bounds.
 func (a *Agent) programRetryRefusal(via string) string {
 	if strings.TrimSpace(via) == "" {
 		return ""
 	}
 	a.mu.Lock()
-	now := a.programOutcomeNow
+	now := a.programHold
+	fault := a.programHoldErr
 	a.mu.Unlock()
+	if fault != "" {
+		return fmt.Sprintf("%s cannot be sent back automatically: its hand-off history could not be saved (%s)", via, fault)
+	}
 	if now == nil {
 		return ""
 	}
@@ -186,7 +194,7 @@ func (a *Agent) programRetryRefusal(via string) string {
 func (a *Agent) programAttemptOf() programAttempt {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if now := a.programOutcomeNow; now != nil {
+	if now := a.programHold; now != nil {
 		return programAttempt{attempt: now.attempt + 1, auto: now.auto + 1}
 	}
 	return programAttempt{attempt: 1}
@@ -194,13 +202,52 @@ func (a *Agent) programAttemptOf() programAttempt {
 
 // keepProgramAttempt writes down a started hand-off's place in its line, by
 // the row the run is published under.
-func (a *Agent) keepProgramAttempt(row uint64, attempt programAttempt) {
+func (a *Agent) keepProgramAttempt(row uint64, attempt programAttempt) *programOutcome {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	var prior *programOutcome
+	if a.programHold != nil {
+		copy := *a.programHold
+		prior = &copy
+	}
 	if a.programAttempts == nil {
 		a.programAttempts = map[uint64]programAttempt{}
 	}
 	a.programAttempts[row] = attempt
+	if a.programHold != nil {
+		next := *a.programHold
+		next.row = row
+		next.programAttempt = attempt
+		a.programHold = &next
+		a.saveProgramHoldLocked()
+	}
+	return prior
+}
+
+// rollbackProgramAttempt returns a refused start's place to the count, because
+// only a run that actually started can use one of the automatic hand-offs.
+func (a *Agent) rollbackProgramAttempt(row uint64, prior *programOutcome) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.programAttempts, row)
+	if a.programHold == nil || a.programHold.row != row {
+		return
+	}
+	if prior == nil {
+		a.clearProgramHoldLocked()
+		return
+	}
+	copy := *prior
+	a.programHold = &copy
+	a.saveProgramHoldLocked()
+}
+
+// rollbackFailedProgramStart returns the count only when a proposed program
+// never started; ordinary tasks have no program attempt to return.
+func (a *Agent) rollbackFailedProgramStart(via *delegate.Delegate, row uint64, prior *programOutcome, err error) {
+	if via != nil && err != nil {
+		a.rollbackProgramAttempt(row, prior)
+	}
 }
 
 // programAttemptFor is a run's place in its line, the first run of one when
@@ -223,6 +270,10 @@ func (a *Agent) programLandingNote(run *beltRun, summary RunSummary, line string
 		row: run.row, program: programName(run.delegate), verdict: programVerdictOf(summary),
 		programAttempt: a.programAttemptFor(run.row),
 	}
+	a.mu.Lock()
+	a.programHold = &outcome
+	a.saveProgramHoldLocked()
+	a.mu.Unlock()
 	text := programOutcomeNote(outcome, line, a.beltRunSpent(run.row))
 	document := userText(text)
 	if task := run.store.Task(run.root); landingOwesAnswer(task) {
@@ -237,6 +288,77 @@ func (a *Agent) programLandingNote(run *beltRun, summary RunSummary, line string
 	return note
 }
 
+type programHoldRecord struct {
+	Row     uint64         `json:"row"`
+	Program string         `json:"program"`
+	Verdict programVerdict `json:"verdict"`
+	Attempt int            `json:"attempt"`
+	Auto    int            `json:"auto"`
+}
+
+// programHoldPath keeps the automatic hand-off bound beside the conversation
+// journal, so a reopen does not make another unattended run newly legal.
+func (a *Agent) programHoldPath() string {
+	if a.config.SessionFile == "" {
+		return ""
+	}
+	return a.config.SessionFile + ".program-handoff.json"
+}
+
+func (a *Agent) restoreProgramHold() {
+	path := a.programHoldPath()
+	if path == "" {
+		return
+	}
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return
+	}
+	if err != nil {
+		a.programHoldErr = err.Error()
+		return
+	}
+	var record programHoldRecord
+	if err := json.Unmarshal(data, &record); err != nil {
+		a.programHoldErr = err.Error()
+		return
+	}
+	a.programHold = &programOutcome{row: record.Row, program: record.Program, verdict: record.Verdict,
+		programAttempt: programAttempt{attempt: record.Attempt, auto: record.Auto}}
+}
+
+// saveProgramHoldLocked stores the whole bound atomically. A failed write
+// refuses further automatic runs until the person's next message resets it.
+func (a *Agent) saveProgramHoldLocked() {
+	path := a.programHoldPath()
+	if path == "" || a.programHold == nil {
+		return
+	}
+	o := a.programHold
+	data, err := json.Marshal(programHoldRecord{Row: o.row, Program: o.program, Verdict: o.verdict,
+		Attempt: o.attempt, Auto: o.auto})
+	if err == nil {
+		err = os.WriteFile(path+".tmp", data, 0o600)
+	}
+	if err == nil {
+		err = os.Rename(path+".tmp", path)
+	}
+	if err != nil {
+		a.programHoldErr = err.Error()
+	} else {
+		a.programHoldErr = ""
+	}
+}
+
+func (a *Agent) clearProgramHoldLocked() {
+	a.programHold, a.programHoldErr = nil, ""
+	if path := a.programHoldPath(); path != "" {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			a.programHoldErr = err.Error()
+		}
+	}
+}
+
 // programPageNote is what a program run's own page keeps as its ending: that
 // the ending went to the conversation, and where the work is. THE PROGRAM'S
 // STATUS IS NOT ON IT. The page's notes used to carry the whole outcome line —
@@ -249,4 +371,47 @@ func programPageNote(program string, landing RunLanding) string {
 		said += " · " + line
 	}
 	return said
+}
+
+// programLimitLine is written to the conversation before its wake is tried.
+// The same conversation limit may refuse that wake, so the model cannot be
+// the only messenger of the ending.
+func programLimitLine(run *beltRun, summary RunSummary, landing RunLanding) string {
+	if programVerdictOf(summary) != programLimit {
+		return ""
+	}
+	kind := summary.Limit
+	if kind == "" && summary.Program != nil {
+		// senior-dev calls its own elapsed ceiling "wall", while the run
+		// supervisor reports the same cause as a time limit.
+		reason := strings.ToLower(summary.Program.Reason)
+		if strings.Contains(reason, "wall") || strings.Contains(reason, "time") {
+			kind = RunLimitTime
+		}
+	}
+	scope, limit := "the run's", ""
+	if kind == RunLimitTime {
+		if run.conversationTimeLimit {
+			scope = "the conversation's"
+		}
+		limit = (delegate.Ceilings{Hours: run.timeCeiling}).TimeWord()
+	} else {
+		if run.conversationCostLimit {
+			scope = "the conversation's"
+		}
+		limit = fmt.Sprintf("$%.2f", run.costCeiling)
+	}
+	spent := summary.USD
+	if spent <= 0 {
+		spent = run.spent
+	}
+	spentWord := "spent no metered dollars"
+	if spent > 0 {
+		spentWord = fmt.Sprintf("spent $%.2f", spent)
+	}
+	where := "in the folder " + run.ground
+	if landing.Branch != "" {
+		where = "on branch " + landing.Branch + " in " + run.ground
+	}
+	return fmt.Sprintf("%s stopped at %s %s limit · %s · its work is %s", programName(run.delegate), scope, limit, spentWord, where)
 }

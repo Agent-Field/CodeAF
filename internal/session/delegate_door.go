@@ -370,10 +370,14 @@ func (a *Agent) StartDelegate(ctx context.Context, name, brief string) (uint64, 
 	}
 	id := g.reserve()
 	title := taskPersonTitle(brief)
+	note := ""
+	if program.Name == "senior-dev" {
+		note = a.seniorDevCeilings(a.Usage().CostUSD).Summary()
+	}
 	if err := a.startKnownTaskRunVia(ctx, id, title, brief, nil, delegateStand(folder), "", &program); err != nil {
 		return 0, "", "", err
 	}
-	return id, title, "", nil
+	return id, title, note, nil
 }
 
 // delegateStand is where a program works: the folder itself, always. One that
@@ -395,6 +399,11 @@ func delegateStand(folder string) taskStand {
 func (a *Agent) landDelegateRun(run *beltRun, summary RunSummary) RunLanding {
 	if run.folder == nil {
 		return RunLanding{Home: mergeInPlace}
+	}
+	if err := SetProgramAnswerAttribution(run.folder, a.signsGitWork().named); err != nil {
+		if g := a.graph(); g != nil {
+			g.planNote("the program's answered models could not be read: " + err.Error())
+		}
 	}
 	outcome, result := runEndingWords(summary)
 	if result == "" {
