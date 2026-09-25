@@ -55,13 +55,43 @@ func noticeLedgerPath(profileDir string) string {
 type noticeLedger struct {
 	// Build is the build the news channel last ran under.
 	Build string `json:"build,omitempty"`
+	// Rule is which counting rule the showings were counted under — see
+	// [noticeLedgerRule]. A ledger with none was written under the first.
+	Rule int `json:"rule,omitempty"`
 	// Seen is one mark per notice id that has ever been shown or retired.
 	Seen map[string]noticeMark `json:"seen,omitempty"`
 }
 
+// noticeLedgerRule is the counting rule this build writes showings under.
+//
+// RULE 1, until 2026-09-22, counted every visible change of hands as a
+// showing, and a ledger written under it is full of tips retired by six
+// one-second flashes on the way through home. RULE 2 counts a tip only once it
+// has stood [noticeReadTime] (notice.go). A ledger from an older rule is read
+// once with the rows the old rule spent forgiven — retired with the full count
+// of showings and nothing else — so that what the old rule threw away comes
+// back exactly once, and a tip retired by the gesture it teaches stays
+// retired, because that person really did use it.
+const noticeLedgerRule = 2
+
+// forgive un-retires every row the old counting rule spent — retired, and
+// shown at least limit times — and reports how many it gave back. A row
+// retired short of the count was retired by a gesture and is left alone.
+func (l *noticeLedger) forgive(limit int) int {
+	given := 0
+	for id, mark := range l.Seen {
+		if mark.Retired != "" && mark.Shown >= limit {
+			l.Seen[id] = noticeMark{}
+			given++
+		}
+	}
+	return given
+}
+
 // noticeMark is the ledger's word on one notice.
 type noticeMark struct {
-	// Shown counts the SESSIONS the notice was shown in, not the frames.
+	// Shown counts the SHOWINGS — turns of a row's rotation, on either box —
+	// and never the frames. Until 2026-09-22 a conversation counted sessions.
 	Shown int `json:"shown,omitempty"`
 	// Retired is when it was retired, RFC 3339, or "" while it is still live.
 	Retired string `json:"retired,omitempty"`

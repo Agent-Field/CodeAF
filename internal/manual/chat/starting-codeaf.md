@@ -89,7 +89,7 @@ underneath it. `esc`, or `enter` on the row the cursor starts on, drops into tha
 conversation; everything after that is the chat exactly as it always was. Home
 stays out of the way when you name a conversation, on a `--once` or `--host` run,
 and on a machine whose only conversation is the one already open — though it is
-still there to go to: `esc` from the conversation, or `/home`, opens it on that
+still there to go to: `space` twice on an empty box, or `/home`, opens it on that
 machine too. The home page covers the whole of it.
 
 Run it in the directory you want it to work in. That directory is where it stands
@@ -149,7 +149,9 @@ spend is counted as each model call is paid for, while its tasks are still worki
 one long task cannot carry the run far past the figure. A run that reaches it ends the
 work still going and its row says `a dollar limit you set stopped it`, just as a
 run its elapsed-time limit ended names the time limit. The call that reached the limit is
-already paid for, so the run can end a little over it.
+already paid for, so the run can end a little over it. A task started when nothing is
+left of that figure is not refused before it starts: its first worker makes one paid
+call and the run ends there, with the same line.
 
 ## Leaving it running on its own · leaving a headless run going with a budget · --once yolo · no screen · unattended · overnight · nobody watching
 

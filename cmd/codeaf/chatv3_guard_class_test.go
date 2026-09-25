@@ -32,6 +32,7 @@ func TestV3ProcessGuardGoClass(t *testing.T) {
 		"chatv3/background":       {kind: "one-shot", stop: "repairBackgroundChecks returns after one bounded Drift/Install pass"},
 		"chatv3/once-questions":   {kind: "one-shot", stop: "agent.Close closes the WatchQuestions channel consumed by the range"},
 		"chatv3/close-agent":      {kind: "joined one-shot", stop: "Agent.Close is bounded", join: "v3Process.closeAll waits on waiting"},
+		"chatv3/payment-credits":  {kind: "joined one-shot", stop: "processCtx is canceled and credits.Read is bounded", join: "v3Process.closeAll calls creditWatcher.close and waits"},
 		"chatv3/host-reap":        {kind: "one-shot", stop: "exec.Cmd.Wait returns when the replaced ssh child exits"},
 		"chatv3/host-follow":      {kind: "one-shot", stop: "remote Follow channel closes with the host connection"},
 		"chatv3/telemetry-events": {kind: "one-shot", stop: "source event channel closes and countedEvents returns"},

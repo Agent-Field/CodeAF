@@ -150,6 +150,25 @@ var tuiWords = map[string]tuiWord{
 			"STOPPED without guessing at a number of seconds, on a scenario whose own card offers nothing " +
 			"to wait for",
 	},
+	// ── the skills a person already has ──────────────────────────────────────
+	"skillsCarriedWord": {
+		screen: "skills · ",
+		pkg:    "internal/tui3",
+		why: "the dim note under a message naming the skills its turn carried, kept above the turn's " +
+			"`▸ worked` chip — the only screen evidence that a skill from another tool's folder reached " +
+			"a turn by itself or by /skill ([testForeignSkills]); the headless --once door prints the " +
+			"engine's own `skills carried: ` sentence instead",
+	},
+	"skillNoShelfWord": {
+		screen: "this conversation has no skill shelf",
+		why: "the picker row's tail when there is no shelf to attach against. It must be ABSENT on the " +
+			"ordinary launch with memory on and off: it once read `memory is off` on every machine",
+	},
+	"skillCannotCarryWord": {
+		screen: "this conversation cannot carry attached skills",
+		why: "what choosing a skill says when the session under the surface has no attachment doors — " +
+			"which was every choice on the ordinary launch before the doors crossed the session host's socket",
+	},
 	"stopDetachedWord": {
 		screen: "detached — the turn was let go of and nothing is waiting for it",
 		why:    "the note a turn let go of at the bound leaves in the conversation",
@@ -161,7 +180,7 @@ var tuiWords = map[string]tuiWord{
 		why:    "the promise in home's box with nothing typed into it — the one box on a place",
 	},
 	"homeDoorWord": {
-		screen: "esc back",
+		screen: "space space home",
 		why:    "the gesture back to home, named on the conversation's own rule",
 	},
 	"microcopy": {
@@ -185,7 +204,7 @@ var tuiWords = map[string]tuiWord{
 	},
 	"homePanelProjects": {
 		screen: "projects",
-		why:    "the panel of folders, never empty, read and never stood on since 2026-09-17 — the view by project alt+g used to be",
+		why:    "the panel of folders, never empty; clicking a project selects the next message’s folder",
 	},
 	"homePanelRunning": {
 		screen: "sessions",
@@ -201,7 +220,7 @@ var tuiWords = map[string]tuiWord{
 		why:    "the day and the fortnight on home, and the third word of the four-place bar",
 	},
 	"homePanelNext": {
-		screen: "scheduled",
+		screen: "standing",
 		why:    "every standing order this machine will act on — reminders, routines, watches, rules — soonest first",
 	},
 	"homeRunningWhisper": {
@@ -241,11 +260,17 @@ var tuiWords = map[string]tuiWord{
 		screen: "last active ",
 		why:    "the facts line on the card beside a search — the one card left once the resting card went",
 	},
+	"homeStartWord": {
+		screen: "start a new conversation",
+		why:    "the action row under anything typed at home",
+	},
 
 	// ── asking from home ─────────────────────────────────────────────────────
 	"homeAskHereWord": {
 		screen: "ask here",
-		why:    "the heading of the home pane opened by /ask",
+		why: "what one ↑ off the action row starts, drawn as the row's own heading over the pane. " +
+			"`ctrl+enter` is still bound and is no longer advertised — most terminals cannot send it " +
+			"and `alt+enter` belongs to the task layer (home.go's [app.homeHintWords])",
 	},
 	"notifyAskWord": {
 		screen: "waiting on you",
@@ -534,7 +559,7 @@ var tuiWords = map[string]tuiWord{
 			"words home's own row draws, so this gate holds the spelling without a second copy of it here",
 	},
 	"landingKeysWord": {
-		screen: "esc back · ctrl+c interrupts or quits",
+		screen: "esc interrupts · ctrl+c quits",
 		why:    "the notice a conversation greets on, and what a window that RESUMED an earlier one draws instead of home",
 	},
 	"questionWaitingWord": {

@@ -229,7 +229,7 @@ func TestDoOnTheRunEngineYesSpendRunsPastThePlanPrice(t *testing.T) {
 	}
 }
 
-// --db IS REFUSED IN WORDS. The run keeps its plan in the directory it works in,
+// --db IS REFUSED IN WORDS. The run keeps its plan in a private folder,
 // so a store named on the command line is one it would never touch; the door
 // says so and starts nothing, rather than working somewhere else in silence.
 func TestDoOnTheRunEngineRefusesDbInWords(t *testing.T) {
@@ -256,9 +256,7 @@ func TestDoOnTheRunEngineRefusesDbInWords(t *testing.T) {
 	}
 }
 
-// --keep IS HONOURED BY SAYING WHERE THE RECORD IS. The run's store is the
-// working copy's own and is never deleted, so what the flag asks for is kept;
-// the door says where, the way the older road does.
+// --keep IS HONOURED BY SAYING WHERE THE PRIVATE RECORD IS.
 func TestDoOnTheRunEngineKeepSaysWhereTheRecordIs(t *testing.T) {
 	beltRunEnv(t)
 	t.Setenv("CODEAF_PLANDB_BIN", beltPlandbDoor(t))
@@ -273,11 +271,21 @@ func TestDoOnTheRunEngineKeepSaysWhereTheRecordIs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("errand: %v\n%s", err, stderr.String())
 	}
-	want := "record kept at " + session.PlanStorePath(workspace)
+	folder := keptRunFolder(t, stderr.String())
+	want := "record kept at " + folder
 	if !strings.Contains(stderr.String(), want) {
 		t.Fatalf("--keep never said where the record is; want %q in:\n%s", want, stderr.String())
 	}
-	if _, err := os.Stat(session.PlanStorePath(workspace)); err != nil {
+	if _, err := os.Stat(filepath.Join(folder, "plandb.db")); err != nil {
 		t.Fatalf("the record --keep named is not there: %v", err)
+	}
+	if info, err := os.Stat(folder); err != nil || info.Mode().Perm() != 0o700 {
+		t.Fatalf("private folder mode = %v, err=%v; want 0700", info, err)
+	}
+	if _, err := os.Stat(filepath.Join(folder, "tasks")); err != nil {
+		t.Fatalf("kept record has no task transcripts: %v", err)
+	}
+	if status := doGitIn(t, workspace, "status", "--porcelain", "--untracked-files=all"); strings.Contains(status, ".codeaf/") {
+		t.Fatalf("--keep left a record in the repository:\n%s", status)
 	}
 }

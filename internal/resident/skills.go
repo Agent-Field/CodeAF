@@ -260,7 +260,7 @@ func contentDigest(dir string) (string, error) {
 		if _, err := io.WriteString(h, relative+"\x00"); err != nil {
 			return "", err
 		}
-		f, err := os.Open(path)
+		f, err := skills.OpenRegular(path)
 		if err != nil {
 			return "", err
 		}
@@ -322,7 +322,7 @@ func copySkillDirectory(source, target string) error {
 }
 
 func copySkillFile(source, target string, mode fs.FileMode) error {
-	reader, err := os.Open(source)
+	reader, err := skills.OpenRegular(source)
 	if err != nil {
 		return err
 	}
@@ -702,7 +702,16 @@ func ReconcileImportedSkills(st *store.Store, projectDir, homeDir string) {
 		if skill.Shadowed {
 			continue
 		}
-		digest, err := contentDigest(dir)
+		// A skill folder reached through a link is digested at the folder the
+		// link names. The fact keeps the link as its artifact, because the
+		// link's name is the skill's name; but the walk below does not descend
+		// through a link at its root, so digesting the link itself would hash
+		// nothing and an edited skill would never be read again.
+		digestDir := dir
+		if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+			digestDir = resolved
+		}
+		digest, err := contentDigest(digestDir)
 		if err != nil {
 			continue
 		}
@@ -747,9 +756,15 @@ func ReconcileImportedSkills(st *store.Store, projectDir, homeDir string) {
 // scorer surfaces it exactly when the work is in that directory; a user skill
 // is scoped to the harness folder it was read from, which names its source
 // without naming any one machine's paths.
+//
+// THE HARNESS IS THE ROOT'S FIRST FOLDER, which is the same answer as before
+// for the six skills folders and the right one for the two roots that sit
+// deeper: a skill out of a Claude Code plugin is a Claude Code skill, and one
+// out of Codex's bundled folder is a Codex skill.
 func importedSkillScope(skill skills.Skill, projectDir string) string {
 	if skill.Scope == skills.ScopeProject {
 		return "repo:" + projectDir
 	}
-	return "harness:" + strings.TrimSuffix(strings.TrimPrefix(skill.Root, "."), "/skills")
+	harness, _, _ := strings.Cut(strings.TrimPrefix(filepath.ToSlash(skill.Root), "."), "/")
+	return "harness:" + harness
 }

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // The admission governor: the machine's own answer to "may one more node
@@ -208,6 +210,11 @@ type admissionGovernor struct {
 	// the next build needs it — the same reason the kernel's own ru_maxrss is
 	// a high-water mark.
 	peakShareMB int
+	// heldBy is the settings row whose ceiling the last refused admission met
+	// ([config.KeyTaskMaxLoad] or [config.KeyTaskMinFreeMB]), and empty until
+	// one is refused. Admission never reads it back; it is kept for the door
+	// that has to say WHICH ceiling held its work ([runAdmission.HeldBy]).
+	heldBy string
 }
 
 // TaskLanes is THE COUNT OF RUNNING LANES ON ONE MACHINE, and the one divisor
@@ -237,6 +244,68 @@ type TaskLanes struct {
 // that opens conversations builds one for the life of the process and puts it
 // on every [Config] it hands out.
 func NewTaskLanes() *TaskLanes { return &TaskLanes{} }
+
+// MachineBusy is the word a start the governor held is read out with — the
+// rail's `waiting · machine busy`, a plan row's `queued · machine busy` — for a
+// door outside this package that has to say it in the same words.
+const MachineBusy = waitingMachineBusy
+
+// RunAdmission is the run engine's three admission verbs, and one question a
+// door with no rail asks of it. It uses the same governor and process lane
+// account as the node frontier without exposing the governor's readings across
+// the engine seam.
+type RunAdmission interface {
+	// MayStart reads host pressure before one worker is launched.
+	MayStart() bool
+	// Started reserves the lane after a worker has been built.
+	Started()
+	// Returned releases that lane when its worker comes home.
+	Returned()
+	// HeldBy names the settings row whose ceiling the last refused start met,
+	// [config.KeyTaskMaxLoad] or [config.KeyTaskMinFreeMB], and is empty until
+	// a start has been refused. A headless door has no rail to draw
+	// `machine busy` on, so it says which limit held it in words instead.
+	HeldBy() string
+}
+
+type runAdmission struct {
+	governor *admissionGovernor
+	lanes    *TaskLanes
+}
+
+// NewRunAdmission builds the machine gate for either run door. Zeroing both
+// ceilings gives the engine a nil gate, the governor's existing off rule.
+func NewRunAdmission(maxLoad float64, minFreeMB int, lanes *TaskLanes) RunAdmission {
+	governor := newAdmissionGovernor(maxLoad, minFreeMB)
+	if governor == nil {
+		return nil
+	}
+	if lanes == nil {
+		lanes = NewTaskLanes()
+	}
+	return &runAdmission{governor: governor, lanes: lanes}
+}
+
+// MayStart samples the host with no graph lock held, because proc reads may
+// stall; the shared count projects the footprint of all conversation workers.
+func (g *runAdmission) MayStart() bool {
+	running := g.lanes.running()
+	g.governor.observe(running)
+	return g.governor.admits(g.lanes.running())
+}
+
+// Started adds one run worker to the account the node frontier also reads.
+func (g *runAdmission) Started() { g.lanes.take() }
+
+// Returned removes the worker on the supervisor's return and drain roads.
+func (g *runAdmission) Returned() { g.lanes.give() }
+
+// HeldBy is the ceiling the governor's last refusal met.
+func (g *runAdmission) HeldBy() string {
+	g.governor.mu.Lock()
+	defer g.governor.mu.Unlock()
+	return g.governor.heldBy
+}
 
 // take records one lane taken anywhere in the process.
 func (a *TaskLanes) take() {
@@ -375,9 +444,11 @@ func (g *admissionGovernor) admits(running int) bool {
 	}
 	reading := g.sample
 	if g.maxLoad > 0 && reading.loadPerCore >= g.maxLoad {
+		g.heldBy = config.KeyTaskMaxLoad
 		return false
 	}
 	if g.minFreeMB > 0 && reading.availableMB > 0 && reading.availableMB-g.unseenLocked(running) < g.minFreeMB {
+		g.heldBy = config.KeyTaskMinFreeMB
 		return false
 	}
 	return true

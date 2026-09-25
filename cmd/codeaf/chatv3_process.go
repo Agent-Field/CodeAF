@@ -86,6 +86,15 @@ type v3Process struct {
 	// answer to give. Each conversation still gets its own memory pass and its
 	// own context, which is per-agent already.
 	Memory *store.Store
+	// Skills is the skill shelf every conversation this process opens reads:
+	// the Memory store itself when memory is on, and otherwise a store of its
+	// own that holds nothing but the skills the folders on disk hold
+	// ([v3SkillShelf]). It is profile-scoped for Memory's reason, and one
+	// handle for its reason too.
+	Skills *store.Store
+	// skillsDir is the folder the memory-off shelf lives in, removed with it
+	// at close; empty when the shelf is the Memory store.
+	skillsDir string
 	// Artifacts is the deliverables index — one file per machine, and /export
 	// and /files must resolve the same one the session's own products record
 	// themselves in.
@@ -118,6 +127,8 @@ type v3Process struct {
 	// one of its models ([v3Process.ownCatalog]). closeAll cancels and joins each.
 	catalogs []*catalog.Catalog
 	closed   bool
+	// creditWatcher owns the balance reads shared by all conversations.
+	creditWatcher *v3CreditWatcher
 }
 
 // lifetime is the context background work owned by this process runs under,
@@ -253,6 +264,8 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		Conns:             v3Connect(settings.ProfileDir),
 		LaunchDir:         launchDir,
 	}
+	process.Skills, process.skillsDir = v3SkillShelf(process.Memory)
+	process.creditWatcher = newV3CreditWatcher(process)
 	process.startPlaceSweep()
 	return process, nil
 }
@@ -483,6 +496,9 @@ func (p *v3Process) closeAll() {
 	if p.processStop != nil {
 		p.processStop()
 	}
+	if p.creditWatcher != nil {
+		p.creditWatcher.close()
+	}
 	if p.Models != nil {
 		p.Models.Close()
 	}
@@ -543,6 +559,15 @@ func (p *v3Process) closeAll() {
 	}
 	if p.Memory != nil {
 		_ = p.Memory.Close()
+	}
+	// The memory-off shelf goes with the process that built it: it was only
+	// ever a reading of the skill folders, and the next launch reads them
+	// again.
+	if p.skillsDir != "" {
+		if p.Skills != nil {
+			_ = p.Skills.Close()
+		}
+		_ = os.RemoveAll(p.skillsDir)
 	}
 }
 
@@ -643,6 +668,7 @@ func (s *v3Seam) start(workspace string) (tui3.Conversation, error) {
 	if err != nil {
 		return tui3.Conversation{}, err
 	}
+	launch = v3FreshDefault(launch, s.seed.Model)
 	place, err := v3NextSession(launch.Place, launch.Workspace)
 	if err != nil {
 		return tui3.Conversation{}, err

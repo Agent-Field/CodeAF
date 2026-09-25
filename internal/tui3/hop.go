@@ -612,7 +612,7 @@ func (a *app) hopStripOrder(rows []hopRow) []hopRow {
 // The feature was invisible until you had learned the thing it exists for.
 //
 // THE WORLD IS READ ON THE KEYSTROKE, ONCE, and that is affordable for one
-// reason: this gesture REPLACES pressing `esc`, which takes the same
+// reason: this gesture REPLACES pressing `space space`, which takes the same
 // reading and then draws a whole page with it. It can be no slower than what a
 // person does today to answer the same question.
 func (a *app) hopRest(open []hopRow, now time.Time) []hopRow {

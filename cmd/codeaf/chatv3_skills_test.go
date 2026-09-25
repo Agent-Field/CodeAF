@@ -95,3 +95,73 @@ func TestAForeignSkillIsOnTheShelfBeforeTheFirstMessage(t *testing.T) {
 func TestALaunchWithNoStoreSkipsTheShelfPassWithoutPanic(t *testing.T) {
 	importForeignSkillsBeforeFirstMessage(nil, t.TempDir())
 }
+
+// MEMORY OFF IS NOT SKILLS OFF. A launch whose memory row is off opens no
+// memory store at all, and still reaches the skills a person installed for
+// another harness: the process builds a shelf of the folders alone, the
+// launch imports into it before the first message, and the process removes it
+// when it closes, so nothing about the folders outlives the process that read
+// them.
+func TestAMemoryOffLaunchStillHasTheSkillShelf(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	profile := t.TempDir()
+	t.Setenv("CODEAF_PROFILE_DIR", profile)
+	t.Setenv("OPENROUTER_API_KEY", "test-key")
+	if err := os.WriteFile(filepath.Join(profile, "config.json"), []byte(`{"memory.enabled": "off"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	proc, err := openV3Process("chat")
+	if err != nil {
+		t.Fatalf("the process did not open: %v", err)
+	}
+	t.Cleanup(proc.closeAll)
+	dir := aForeignSkill(t)
+
+	launch, err := openV3Launch(proc, v3Options{Model: "test/model", Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatalf("the launch did not open: %v", err)
+	}
+	if launch.Config.Memory != nil {
+		t.Fatal("a launch with memory off was handed a memory store")
+	}
+	if launch.Config.Skills == nil {
+		t.Fatal("a launch with memory off was handed no skill shelf")
+	}
+	facts, err := launch.Config.Skills.SkillFacts(store.FactActive, 50)
+	if err != nil {
+		t.Fatalf("the memory-off shelf did not read: %v", err)
+	}
+	found := false
+	for _, fact := range facts {
+		found = found || fact.Artifact == dir
+	}
+	if !found {
+		t.Fatalf("the skill folder is not on the memory-off shelf: %+v", facts)
+	}
+
+	shelfDir := proc.skillsDir
+	if shelfDir == "" {
+		t.Fatal("the memory-off shelf has no folder of its own to remove")
+	}
+	proc.closeAll()
+	if _, err := os.Stat(shelfDir); !os.IsNotExist(err) {
+		t.Fatalf("the memory-off shelf outlived its process at %s (%v)", shelfDir, err)
+	}
+}
+
+// AND WITH MEMORY ON THERE IS ONE SHELF, the memory store itself: no second
+// database is opened beside the one the conversation remembers into.
+func TestAMemoryOnLaunchReadsSkillsFromTheMemoryStore(t *testing.T) {
+	proc := v3TestProcess(t)
+	launch, err := openV3Launch(proc, v3Options{Model: "test/model", Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatalf("the launch did not open: %v", err)
+	}
+	if launch.Config.Memory == nil || launch.Config.Skills != launch.Config.Memory {
+		t.Fatalf("with memory on the skill shelf is %p and memory is %p, want the same store", launch.Config.Skills, launch.Config.Memory)
+	}
+	if proc.skillsDir != "" {
+		t.Fatalf("a memory-on process made a second shelf at %s", proc.skillsDir)
+	}
+}

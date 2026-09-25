@@ -2575,14 +2575,26 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return formatBool(DraftPersistAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyDraftPersist, raw) },
 		},
+		// THE ROW READS THE OTHER WAY UP FROM ITS KEY. `ui.hints` persists
+		// whether tips are SHOWN, and keeps doing so — a persisted identifier keeps
+		// its bytes — while the row a person reads is `disable hints`, off by
+		// default (the owner's word for it, 2026-09-22). The inversion lives here,
+		// once, so the chat's settings panel and `codeaf config` cannot disagree.
 		Setting{
 			Key: KeyHints, Category: CategoryInterface, Kind: SettingBool,
-			Label: "hints",
-			Hint: "one-line tips above the message box, each shown until the key or command " +
-				"it names has been used once. Off silences them, and the what's-new line a " +
-				"new build may say with them. A change lands at the end of the next turn.",
-			read:  func() string { return formatBool(HintsAt(dir)) },
-			write: func(raw string) error { return writeBool(dir, KeyHints, raw) },
+			Label: "disable hints",
+			Hint: "on silences the one-line tips — the keys row's in a conversation and the " +
+				"row above the rule on home — and the what's-new line a new build may say " +
+				"with them. Off, the default, shows each tip until the key or command it " +
+				"names has been used once. A change lands at the end of the next turn.",
+			read: func() string { return formatBool(!HintsAt(dir)) },
+			write: func(raw string) error {
+				disabled, err := parseBool(raw)
+				if err != nil {
+					return err
+				}
+				return writeProfileValue(dir, KeyHints, !disabled)
+			},
 		},
 		Setting{
 			Key: KeyAttributionModel, Category: CategoryInterface, Kind: SettingBool,

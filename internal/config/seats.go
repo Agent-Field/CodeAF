@@ -285,7 +285,8 @@ func CheckEnvModel() string {
 // way they always have: a row somebody WROTE is theirs, a row they CLEARED
 // reads empty and follows the conversation ([TierModelAt] argues why UNSET
 // and CLEARED are different answers), and a key never held reads this build's
-// own near-free model.
+// own near-free model — or, on an account known to be low, a free one
+// ([freeTierModelAt]).
 func TierSeatAt(profileDir, tier string) Seat {
 	if seat, ok := CrewTierSeat(tier); ok {
 		role := SeatRole(seat)
@@ -298,7 +299,7 @@ func TierSeatAt(profileDir, tier string) Seat {
 	if written, held := persistedString(profileDir, tierKeyFor(tier)); held {
 		return Seat{Role: role, Model: strings.TrimSpace(written), Source: SeatPinned}
 	}
-	return Seat{Role: role, Model: builtinTierModel(tier), Source: SeatDefault}
+	return Seat{Role: role, Model: freeTierModelAt(profileDir, tier), Source: SeatDefault}
 }
 
 // tierWords is a non-crew row's name on the settings sheet.

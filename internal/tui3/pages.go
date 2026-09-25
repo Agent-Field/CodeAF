@@ -1400,7 +1400,27 @@ func placeFrameWithBar(a *app, width, height int,
 	for _, row := range rows {
 		add(row.text, row.hit)
 	}
-	add("", nil)
+	// THE BLANK OVER THE RULE IS HOME'S HINT ROW, when there is a tip to say
+	// and the box is at rest ([app.noticeHomeHint]). It is the same row either
+	// way — the foot is one height with a tip and without — and it is dim,
+	// one cell in, in the grammar every hint on this surface keeps: the key or
+	// the command, then what it does.
+	//
+	// IT IS RIGHT-ALIGNED, led by a bulb and closed by a cross (hometip.go's
+	// [app.tipLine]), and the cross's columns are recorded as the line is
+	// laid out, published below the clamp with the rule's own row.
+	tipTop := -1
+	a.tipCloseSpan = hudSpan{}
+	if tip := a.noticeHomeHint(); hasBox && tip != "" {
+		if line, span := a.tipLine(tip, width, pal); line != "" {
+			a.tipCloseSpan, tipTop = span, len(lines)
+			add(line, nil)
+		} else {
+			add("", nil)
+		}
+	} else {
+		add("", nil)
+	}
 	// AND HOME'S RULE IS A LEGEND RATHER THAN A LINE. The other six places have
 	// nothing to put on it — you are IN them, and the tab bar four rows up says
 	// which — but home's box is a draft for a conversation that does not exist
@@ -1514,7 +1534,7 @@ func placeFrameWithBar(a *app, width, height int,
 		// out drawn as a target; the layer has taken the keyboard and has a way out
 		// of its own, and two feet arguing about what `esc` does is worse at every
 		// width than one foot naming the keys that are live.
-		add(" "+paintHint(hintFit(a.placeHint(), width-2), pal, pal.dim), nil)
+		add(a.creditPlaceHint(width, pal), nil)
 	case bar != nil:
 		if line, hit, ok = bar(width); ok {
 			add(line, hit)
@@ -1523,9 +1543,13 @@ func placeFrameWithBar(a *app, width, height int,
 		fallthrough
 	default:
 		if msg, ok := a.placeMsgLine(width); ok {
-			add(msg, nil)
+			add(a.creditPlaceMessage(width, msg, pal), nil)
+		} else if hasBox {
+			// HOME'S KEYS ROW CARRIES THE PROJECT AT ITS RIGHT (hometip.go's
+			// [app.homeFootLine]): the keys first, and the path in what they leave.
+			add(a.homeFootLine(width, pal), nil)
 		} else {
-			add(" "+paintHint(hintFit(a.placeHint(), width-2), pal, pal.dim), nil)
+			add(a.creditPlaceHint(width, pal), nil)
 		}
 	}
 
@@ -1565,11 +1589,28 @@ func placeFrameWithBar(a *app, width, height int,
 		case targetTop > 0:
 			targetTop = -1
 		}
+		// AND THE TIP ROW OVER IT, by the same arithmetic.
+		switch {
+		case tipTop >= 1+removed:
+			tipTop -= removed
+		case tipTop > 0:
+			tipTop = -1
+		}
 	}
 	a.boxRow, a.boxRows = boxTop, boxHeight
 	a.targetRow = targetTop
 	if targetTop < 0 {
 		a.clearTargetSpans()
+	}
+	a.tipRow = tipTop
+	if tipTop < 0 {
+		a.tipCloseSpan = hudSpan{}
+	}
+	// THE KEYS ROW IS THE LAST ROW, and the clamp keeps the last rows, so it
+	// is on every frame that has a box at all.
+	a.footRow = -1
+	if hasBox {
+		a.footRow = len(lines) - 1
 	}
 	for len(lines) < height {
 		add("", nil)
@@ -2246,6 +2287,17 @@ func (a *app) showPage(id page) (cmd tea.Cmd) {
 		return nil
 	}
 	a.page = id
+	// AND THE DOOR IS THE GESTURE THE TIPS ABOUT IT WAIT FOR (notice.go): a
+	// place reached by any road retires its tip, and every visit to home
+	// moves home's row on to the next.
+	switch id {
+	case pageHome:
+		a.noticeHomeRotate()
+	case pageSpend:
+		a.noticeEvent(eventSpendOpened)
+	case pageSearch:
+		a.noticeEvent(eventSearchOpened)
+	}
 	return next.open(a)
 }
 
@@ -2273,12 +2325,7 @@ func (a *app) closeModals() {
 	a.harnPanel.close()
 	a.crewUI.close()
 	a.permPanel.close()
-	// Navigation hides an unanswered offer without resolving or losing it.
-	if a.subPage.card.asked() {
-		a.subPage.open = false
-	} else {
-		a.subPage.close()
-	}
+	a.subPage.close()
 	// AND HOME'S OWN MODEL LIST, which IS drawn where it stands and is still a
 	// list nobody left open on purpose: walking to another place and back to a
 	// list you had not finished with is a list you have to remember opening

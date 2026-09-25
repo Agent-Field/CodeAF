@@ -103,8 +103,9 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 		}
 	}
 	agent, err := session.NewBeltWorker(session.Config{
-		Workspace: w.workspace,
-		Model:     w.model,
+		Workspace:        w.workspace,
+		Model:            w.model,
+		WaitForBeltSteps: true,
 	}, w.completer, &task, w.store.Path(), w.store.RootID())
 	if err != nil {
 		return Report{}, err
@@ -194,7 +195,20 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 			stalled    bool
 			ending     storeEnding
 		)
-		for event := range events {
+		// The worker owns the step boundary: record the result, enforce its
+		// limits and deliver notes before the belt asks for another action.
+		// Acknowledging before the receive also covers every continue below.
+		var handled chan<- struct{}
+		for {
+			if handled != nil {
+				close(handled)
+				handled = nil
+			}
+			event, more := <-events
+			if !more {
+				break
+			}
+			handled = event.BeltStepHandled
 			if spent := agent.Usage().CostUSD; spent > banked {
 				banked = spent
 				bankSpend(runCtx, spent)
@@ -211,22 +225,14 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 				// so a task that is not running a command never claims a present.
 				_ = w.store.SetLive(task.ID, stepNumber+1, stepCommand(event))
 			case session.EventToolEnd, session.EventToolFailed:
-				// THE CAP IS THE LAST STEP COUNTED. stop() cancels the turn, but
-				// the agent's loop notices on its next round, and a round it had
-				// already started still ends its tool — under the race detector
-				// several do. Those late ends are drained here so the agent can
-				// close, and they are neither counted nor recorded: the report
-				// says the cap, and the trajectory ends where the cap fell.
+				// THE CAP IS THE LAST STEP COUNTED. The step handshake keeps the
+				// next action behind this decision. Any remaining end events are
+				// drained without extending the record past its bound.
 				if capped {
 					continue
 				}
-				// THE SAME-ACTION LAW ENDS THE RECORD WHERE IT FELL, for the cap's
-				// own reason: stop() cancels the turn, but a model that answers at
-				// once has its next action begun and aborted before the loop
-				// notices, and that aborted call is not a step the worker took.
-				// Counted, it would put a fifth step on a record whose ending says
-				// four, and its "aborted" answer would read as something that
-				// happened to the work.
+				// THE SAME-ACTION LAW ENDS THE RECORD WHERE IT FELL, before the
+				// acknowledgement permits another action.
 				if stalled {
 					continue
 				}
@@ -245,6 +251,13 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 				// end-of-step append clears the live step the begin event published.
 				w.clearLiveStep(task.ID)
 				if capSteps > 0 && steps >= capSteps {
+					// The last allowed command may itself have finished or parked
+					// the task. The store's ending takes precedence over the cap.
+					if end, ok := w.storeEnding(task.ID); ok {
+						ending = end
+						stop()
+						continue
+					}
 					// THE CAP IS A BOUND ON SPEND, not a finding about the work:
 					// the turn is stopped here rather than judged, and the ending
 					// below says where it stopped.
@@ -366,14 +379,9 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 				// released. A task ends no other way but these, the cap, the
 				// wall, or an errored turn.
 				//
-				// THE STORE IS READ ONCE THE ENDING IS FOUND, AND EVERY STEP THAT
-				// RAN IS STILL COUNTED. The agent runs ahead of this reader: it can
-				// call the model again and run the finish command while the step
-				// before it is still being recorded here, so the ending is often
-				// seen at an earlier step's end than the one that made it. The
-				// stop() only asks the turn to end; the ends that still arrive are
-				// commands that ran, and a task's record says what ran — unlike the
-				// cap, which is a bound and stops counting where it fell.
+				// The ending is read after this action has been recorded and
+				// before the step is acknowledged. A finish command therefore
+				// stops the worker before it can ask for another action.
 				if ending.kind != endingNone {
 					continue
 				}
@@ -398,6 +406,13 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 		// go round again on the harness's note, is not running a command, and
 		// every one of those endings leaves the same emptiness behind.
 		w.clearLiveStep(task.ID)
+		if capped && ending.kind == endingNone {
+			// A command's store write can land after its end event. Read once
+			// more after the turn drains before naming the cap as the ending.
+			if end, ok := w.storeEnding(task.ID); ok {
+				ending = end
+			}
+		}
 		switch {
 		case ending.kind == endingDone:
 			if err := appendTrajectory(storeDir, task.ID, Step{Kind: trajectoryEndKind, ExitsRecorded: true, Steps: steps, Result: ending.result, Reason: "finished in the store"}); err != nil {

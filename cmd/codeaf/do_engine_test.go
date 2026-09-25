@@ -119,14 +119,33 @@ func beltStubCLI(t *testing.T) string {
 // beltRunEnv puts the door on the run road: the belt's switch, the shim's
 // override, a home of its own to read the ledger under, and a profile the crew
 // resolves its seats from.
+//
+// THE PROFILE TURNS THE MACHINE GATE OFF. The run road asks the host's own
+// load and memory before every worker it starts, from the profile's
+// `task.max_load` and `task.min_free_mb` rows, and both are on out of the box.
+// A scripted run here is not a measurement of the machine running it: on a box
+// busy with other suites the gate held every root until the run's wall, and a
+// test about spending or landing failed as a deadline. The gate has its own
+// tests (do_machine_gate_test.go), which set the rows they mean.
 func beltRunEnv(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("CODEAF_HOME", home)
-	t.Setenv("CODEAF_PROFILE_DIR", filepath.Join(home, "profile"))
+	profile := filepath.Join(home, "profile")
+	t.Setenv("CODEAF_PROFILE_DIR", profile)
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	t.Setenv("CODEAF_PLANDB_BIN", beltStubCLI(t))
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
+	settings := config.NewSettings(config.SettingsOptions{ProfileDir: profile})
+	for _, key := range []string{config.KeyTaskMaxLoad, config.KeyTaskMinFreeMB} {
+		row, ok := settings.Row(key)
+		if !ok {
+			t.Fatalf("the %s row is absent", key)
+		}
+		if err := row.Apply("0"); err != nil {
+			t.Fatalf("turn %s off: %v", key, err)
+		}
+	}
 	return home
 }
 
@@ -521,7 +540,7 @@ func TestDoOnTheRunEngineChecksASelfFinishedRootAndExitsZeroWhenItHolds(t *testi
 
 	var stdout, stderr strings.Builder
 	if err := doErrand(doRequest{
-		task: "do the work alone and say what you did", workspace: workspace, asJSON: true,
+		task: "do the work alone and say what you did", workspace: workspace, keep: true, asJSON: true,
 		timeout: 60 * time.Second, slots: bound(1), stdout: &stdout, stderr: &stderr,
 		newBeltCompleter: func(string) session.Completer { return seat },
 	}); err != nil {
@@ -533,7 +552,7 @@ func TestDoOnTheRunEngineChecksASelfFinishedRootAndExitsZeroWhenItHolds(t *testi
 		t.Fatalf("the envelope does not carry the root worker's result: %q", outcome.Deliverable)
 	}
 
-	store, err := plandb.Open(session.PlanStorePath(workspace), "", "root", "", "")
+	store, err := plandb.Open(filepath.Join(keptRunFolder(t, stderr.String()), "plandb.db"), "", "root", "", "")
 	if err != nil {
 		t.Fatalf("open the do run's plan: %v", err)
 	}
@@ -559,7 +578,7 @@ func TestDoOnTheRunEngineChecksASelfFinishedRootAndExitsZeroWhenItHolds(t *testi
 // admits no work at all. Exit 3 is the ladder's rung for a limit, and
 // `blocked_on` names the price so a caller knows what to raise.
 func TestDoOnTheRunEngineStopsAtACostCapOfZero(t *testing.T) {
-	beltRunEnv(t)
+	home := beltRunEnv(t)
 	workspace := t.TempDir()
 	zero := 0.0
 
@@ -579,6 +598,9 @@ func TestDoOnTheRunEngineStopsAtACostCapOfZero(t *testing.T) {
 	}
 	if strings.TrimSpace(outcome.Deliverable) != "" {
 		t.Fatalf("a run that did nothing carried a deliverable: %q", outcome.Deliverable)
+	}
+	if stores, err := filepath.Glob(filepath.Join(home, "runs", "codeaf-do-*")); err != nil || len(stores) != 0 {
+		t.Fatalf("a run refused before admission left a record: %v, %v", stores, err)
 	}
 }
 

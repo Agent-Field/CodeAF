@@ -44,6 +44,7 @@ const crewUsage = "/crew · /crew pin <worker|planner|checker> <model[@provider]
 // runCrew is /crew: the panel, or one of its four shortcuts. It answers the
 // tick that takes the panel's undo offer down after a shortcut opened it.
 func (a *app) runCrew(arg string) tea.Cmd {
+	a.noticeEvent(eventCrewShown)
 	if a.hosted() {
 		a.note(a.remoteProfileWord("the crew"))
 		return nil

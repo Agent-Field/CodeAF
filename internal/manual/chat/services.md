@@ -128,6 +128,10 @@ service is connected and stored as before. For a multi-door service, codeaf trie
 remaining doors; if every one refuses for plan or payment reasons, it stores nothing and
 says, for example,
 `z-ai accepted the key but the account cannot pay — Insufficient balance or no resource package. Please recharge.`
+A payment refusal on OpenRouter also asks for its balance again, subject to the
+30-second quiet period after the last completed read. If OpenRouter
+says it can afford a smaller positive output cap, codeaf retries that request
+once with that cap. The final refusal keeps the vendor's whole sentence.
 A plain `429` with no recognised payment or plan code still means the service is busy and
 is waited out. Every saved key lives in the profile `config.json`, owner-readable only.
 

@@ -215,7 +215,7 @@ The **near** machine — the one you are sitting at — owns the surface:
   so what you typed while working on `devbox:code/app` belongs to that place
 - the model picker's cached list
 - the terminal itself
-- **the paths for `/image`, `/attach` and `@` completion**, which are anchored here; a bare
+- **the paths for `/attach` and `@` completion**, which are anchored here; a bare
   `/attach` opens the chooser on this machine
 - **the browser, the viewer and the file door** — the small `127.0.0.1` listener this
   window opens so that a path in a reply, `/files` and `/files <path>` can show you a file
@@ -552,7 +552,7 @@ The task roster lists this far conversation's work. Its rows come from the far
    `room unavailable — this session has no task rooms`; the far task id opens its live
    room, and steering and stopping cross to that task's engine.
 
-10. **`/image`, `/attach` and `@` are local, deliberately** — and this one is a capability as
+10. **`/attach` and `@` are local, deliberately** — and this one is a capability as
     much as a limit. The picture or file is on the machine you are sitting at and its bytes
     travel with the message, so a relative path and the completion walk are anchored here
     rather than on the remote workspace. What you attach really does arrive over there; see
@@ -740,10 +740,10 @@ own stream, so a turn whose words match a registered harness still asks you, and
 
 ## Attaching a picture or file, a bare /attach chooser, and @ paths, over --host
 
-`/image`, `/attach` and `@` completion are **local on purpose**. The picture or file is on
+`/attach` and `@` completion are **local on purpose**. The picture or file is on
 the machine you are sitting at, and its bytes travel with the message.
 
-So a relative path you type after `/image` or `/attach`, and the `@` completion walk, are
+So a relative path you type after `/attach`, and the `@` completion walk, are
 anchored **here** — to the directory you launched from — and not to the remote workspace.
 A bare `/attach` opens the add context chooser here too, already browsing the machine you
 are sitting at. Files chosen there reach the tray and travel with the next message.

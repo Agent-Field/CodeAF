@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -173,4 +174,47 @@ func TestTheCrewSourceIsSafeUnderConcurrentTurns(t *testing.T) {
 		}
 	}()
 	wait.Wait()
+}
+
+// C1 on the ordinary launch road (#1439): the surface reads the balance and
+// writes the record, and the ENGINE process seats the crew. A record written by
+// another process never moves this process's settings generation, so the crew
+// has to notice the record itself — or the engine keeps seating the paid table
+// its snapshot was built on, and the reflex call on a $0 account is refused.
+func TestACreditRecordWrittenByAnotherProcessReseatsTheLiveCrew(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(config.APIKeyEnv, "sk-or-v1-crewtest")
+	source, err := v3RolesSource(t.TempDir(), dir)
+	if err != nil {
+		t.Fatalf("v3RolesSource: %v", err)
+	}
+	reflex := roles.TierKey(roles.TierReflex)
+	paid, _ := source(reflex)
+	if paid != config.DefaultReflexModel {
+		t.Fatalf("a profile with no record seated reflex on %q, want the shipped %q", paid, config.DefaultReflexModel)
+	}
+	record, err := json.Marshal(map[string]any{
+		"low": true, "known": true, "key": config.CreditsKeyPrint("sk-or-v1-crewtest"), "read_at": "2026-09-24T21:44:22Z",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Written the way ANOTHER process writes it: straight to the file, with no
+	// call into this process's settings writer.
+	if err := os.WriteFile(filepath.Join(dir, "credits.json"), record, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	free, _ := source(reflex)
+	if free == paid || free != config.TierModelAt(dir, config.ModelTierReflex) || !strings.HasSuffix(free, ":free") {
+		t.Fatalf("after another process recorded a low balance the live crew seated reflex on %q", free)
+	}
+	record, _ = json.Marshal(map[string]any{
+		"low": false, "known": true, "key": config.CreditsKeyPrint("sk-or-v1-crewtest"), "read_at": "2026-09-24T21:50:00Z",
+	})
+	if err := os.WriteFile(filepath.Join(dir, "credits.json"), record, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if back, _ := source(reflex); back != paid {
+		t.Fatalf("after a top-up recorded elsewhere the live crew kept reflex on %q", back)
+	}
 }

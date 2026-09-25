@@ -382,6 +382,8 @@ const maxResponseBytes = 64 << 20
 type callKnobs struct {
 	cacheKey string
 	effort   effortRequest
+	// affordable caps the one resend after a payment refusal. Zero is no cap.
+	affordable int
 	// role is WHO this call is being made for ([lane.Role]), resolved from the
 	// context once here for [callKnobs.intent]'s reason: it is a fact about the
 	// CALLER, it cannot change between the top of the call and the encode, and
@@ -768,6 +770,19 @@ func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs ca
 	}
 	began := logNow()
 	response, err := c.send(ctx, request, knobs, body, stream)
+	if err == nil && response.StatusCode == http.StatusPaymentRequired && knobs.affordable == 0 {
+		peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
+		if readErr == nil {
+			if affordable := affordableTokens(peek); affordable > 0 {
+				c.record(recordFacts{ctx: ctx, request: request, knobs: knobs, stream: stream,
+					attempt: c.attemptsSoFar(knobs), began: began, status: response.StatusCode,
+					err: apiError(response.StatusCode, peek), responseBody: peek})
+				knobs.affordable = affordable
+				return c.resend(ctx, request, knobs, stream, response)
+			}
+		}
+		response.Body = rewound(peek, response.Body)
+	}
 	if err != nil || !endpointRefusalStatus(response.StatusCode) {
 		return response, err
 	}

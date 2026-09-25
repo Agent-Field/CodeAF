@@ -409,9 +409,9 @@ func (a *app) roomTrail() string {
 // twice, and the emptiness law is exactly that.
 
 // headLabelAt is the column a pinned label starts on. It is two cells for both
-// bars and for one reason each: [app.legendLine] opens the room's header with the
-// border's own `─ `, and the conversation's bar is indented to the transcript's
-// own left margin so the crumb stands over the words it is about.
+// room labels: [app.legendLine] opens the room's header with the border's own
+// `─ `, keeping the crumb over the transcript's words. The navigation strip
+// uses [tabLead] instead so its Home target aligns with the places bar.
 //
 // It is stated once because the crumb spans are measured from the label's start
 // and pressed in the terminal's own columns, and a bar that recorded one and read

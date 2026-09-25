@@ -97,10 +97,6 @@ var doorsThatHaveNotCrossed = map[string]absentDoor{
 		says:  "harnesses are unavailable here",
 		loses: "running a harness the picker offered",
 	},
-	"skillAttacher": {
-		says:  "this conversation cannot carry attached skills",
-		loses: "the /skill picker's toggles and its tray chip — over a connection an attachment can be neither made nor taken off",
-	},
 	"standingHereAgent": {
 		says:  "this window cannot change it",
 		loses: "the standing page's four doors — what holds here, an exception, standing one down, pausing one; the page draws only the elsewhere shelf",
@@ -131,7 +127,7 @@ var doorsThatHaveNotCrossed = map[string]absentDoor{
 // surfaceDoorLedger is the ratchet: the ledger above may shrink and may never
 // grow, and shrinking it without lowering this number in the same commit is a
 // red as well ([ratchetComplaint]).
-const surfaceDoorLedger = 22
+const surfaceDoorLedger = 21
 
 // TestEverySurfaceDoorTheEngineHasCrossesTheWire is the law above.
 func TestEverySurfaceDoorTheEngineHasCrossesTheWire(t *testing.T) {

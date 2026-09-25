@@ -650,6 +650,11 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 			attempt: attempts, began: attemptBegan, phase: calllog.PhaseStart,
 		})
 		response, err := httpClient.Do(httpRequest)
+		if err == nil && response != nil && response.StatusCode == http.StatusPaymentRequired {
+			// Every call shape passes this transport door, including reflexes,
+			// titles, tasks, and the affordable retry itself.
+			announcePaymentRequired(c.config.BaseURL)
+		}
 		// Custom transports may omit Request; retain the exact sent object so
 		// refusal learning never reconstructs it from mutable routing state.
 		if response != nil && response.Request == nil {

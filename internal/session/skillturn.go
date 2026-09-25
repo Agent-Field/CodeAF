@@ -84,10 +84,11 @@ func (a *Agent) attachTurnSkillsLocked(user *userMessage) {
 // no longer crowded out by one that shares a folder name.
 func (a *Agent) turnSkills(text string) (string, []string) {
 	text = strings.TrimSpace(text)
-	if a.config.Memory == nil || text == "" {
+	shelf := a.config.skillShelf()
+	if shelf == nil || text == "" {
 		return "", nil
 	}
-	facts, err := a.config.Memory.SkillFacts(store.FactActive, skillTurnResolveLimit)
+	facts, err := shelf.SkillFacts(store.FactActive, skillTurnResolveLimit)
 	if err != nil {
 		// A shelf that cannot be read is no shelf: nothing is attached, the
 		// message goes out as the person typed it, and the next turn reads a

@@ -119,14 +119,28 @@ func (w *behindWatch) signal() tabSignal {
 	switch {
 	case w.waits.Load():
 		return tabNeedsPerson
-	case w.turning.Load(), w.tasking.Load(), w.jobbing.Load():
-		// A TURN IN FLIGHT, OR WORK THAT OUTLIVED ONE. The second is the whole
-		// reason this is two loads rather than one: the watcher's turn flag goes
-		// false the moment the conversation's own stream ends, and the nodes it
-		// started keep running afterwards (keeper.go's [behindWatch.tasking]).
+	case w.working():
 		return tabWorking
 	}
 	return tabIdle
+}
+
+// working says this held conversation has work in flight, whatever else it is
+// waiting on.
+//
+// IT IS A TURN IN FLIGHT, OR WORK THAT OUTLIVED ONE. The second is the whole
+// reason this is three loads rather than one: the watcher's turn flag goes
+// false the moment the conversation's own stream ends, and the nodes it
+// started keep running afterwards (keeper.go's [behindWatch.tasking]).
+//
+// IT IS SEPARATE FROM [behindWatch.signal] BECAUSE A QUESTION OUTRANKS WORK ON
+// A TAB AND NOT ON HOME. The tab has one cell, so the question takes it; a Home
+// conversation row carries the question only when the question is the
+// conversation's own, and a landed task's `your call` is drawn on the task's
+// row instead (homepanel_needs.go's [needsLandingsSpeakFor]). Reading the
+// ranked signal there drew a conversation at rest while its other task ran.
+func (w *behindWatch) working() bool {
+	return w != nil && (w.turning.Load() || w.tasking.Load() || w.jobbing.Load())
 }
 
 // tabSignalFor is one conversation's state, by its canonical key ([app.convKey])
@@ -190,10 +204,17 @@ func (a *app) frontSignal() tabSignal {
 	if a.asking() || a.asksConnect() || a.asksHarness() || a.asksStanding() || (a.awaitingTask() && a.task != nil && a.task.deadline.IsZero()) {
 		return tabNeedsPerson
 	}
-	if a.state == stateWorking || a.tasksInFlight() || a.jobsRunning() > 0 {
+	if a.frontWorking() {
 		return tabWorking
 	}
 	return tabIdle
+}
+
+// frontWorking is [behindWatch.working] for the conversation on screen: a turn
+// in flight, a task node still going, or a background command still running,
+// whatever question is also open.
+func (a *app) frontWorking() bool {
+	return a.state == stateWorking || a.tasksInFlight() || a.jobsRunning() > 0
 }
 
 // tasksInFlight says this conversation has a task node still going, which is the

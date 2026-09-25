@@ -22,7 +22,7 @@ A filter with no matches shows `no commands match` and keeps unrelated results h
 
 The list follows the caret as well as edits. The box remains editable while it is open.
 A command chosen inside a sentence completes its token rather than running on its own;
-send tags such as `/ask` and `/task` retain their submission behavior.
+The `/task` send tag retains its submission behavior.
 
 On home, command rows describe what they will do there, including commands that open a
 conversation first. See *What each command does on home*. In a conversation, pointer
@@ -39,7 +39,7 @@ The same token rules apply on home and in conversations:
   list; moving the caret back into the command word opens it again.
 - The entire token must contain command-name characters. A further slash, a dot or a
   backslash makes it a path rather than a command token, even with the caret midway
-  through it. `/tmp/project` and `/image.png` therefore leave the list closed.
+  through it. `/tmp/project` and `/shot.png` therefore leave the list closed.
 
 A partial path such as `/tmp` is still indistinguishable from an unknown command word:
 it shows `no commands match` until another slash or path punctuation makes the intent
@@ -156,27 +156,29 @@ Canonical word, the other words it answers to, its argument form, and what it do
 |---|---|---|---|
 | `/model` | — | — | opens the model picker |
 | `/model` | — | `<slug>` | switches the model to that slug |
-| `/image` | — | `<path>` | attaches a picture; tab completes the path |
 | `/settings` | `/set`, `/config` | — | opens the fullscreen settings panel (also ctrl+,) |
 | `/connect` | `/connections` | — | opens the connection panel; its `models` group holds model services, followed by connected accounts |
 | `/new` | `/clear`, `/clean`, `/reset` | — | closes this session and starts a fresh one |
 | `/resume` | `/sessions` | — | opens the earlier-conversations picker |
 | `/compact` | — | — | summarizes the conversation now |
 | `/home` | — | — | every project and conversation on this machine, fullscreen |
-| `/folder` | `/place`, `/dir` | — | locally opens the add context sheet; over `--host` says the folder chooser is unavailable |
+| `/folder` | `/place`, `/dir` | — | locally opens the add context sheet for THIS conversation; on home it opens a conversation first; over `--host` says the folder chooser is unavailable |
 | `/folder` | `/place`, `/dir` | `<path>` | locally opens it with that in the box; over `--host` gives the same refusal |
-| `/attach` | `/upload` | — | opens the add context sheet for files, including over `--host` |
+| `/project` | — | — | on home: the browser, opened where the next conversation would open; in a conversation it says it is home's |
+| `/project` | — | `<path>` | on home: sets the folder the next conversation opens in, with no browser |
+| `/attach` | `/upload` | — | opens the add context sheet for files, including over `--host`; enter on this row of the `/` list opens it at once |
 | `/attach` | `/upload` | `<path>` | a file goes on the tray; locally a folder is referred, while over `--host` it is refused |
 | `/land` | — | — | says what has been changed for a folder you chose and is waiting to go into it |
 | `/land` | — | `now` | …puts it in: a branch merged for a repository, files copied back for a plain folder |
 | `/land` | — | `<folder>` | …when more than one folder is waiting; `/land <folder> now` puts that one in |
-| `/rewind` | `/undo`, `/back` | — | opens the rewind timeline — the whole conversation as a list (Escape backs out without rewinding) |
+| `/rewind` | `/undo`, `/back` | — | opens the rewind timeline — the whole conversation as a list (esc esc is the quick inline version) |
 | `/permissions` | `/perms` | — | lists what runs without asking; `d` drops a line |
 | `/standing` | `/orders` | `<words>` | makes those words a standing order — a card to answer, never work done once |
 | `/standing` | `/orders` | — | what stands over this conversation; `p` pauses, `s` stops, `n` excepts this place |
 | `/harness` | `/harnesses` | — | lists the saved shapes of work and what they did |
 | `/subharness` | `/sub` | — | lists the programs you can run; type to filter, enter opens that one's card |
 | `/subharness` | `/sub` | `<name>` | opens that subharness's intake card straight away |
+| `/skill` | `/skills` | — | opens the skill shelf under the message box; enter toggles a skill, and its chip stays attached across messages |
 | `/memory` | — | — | opens the memory panel |
 | `/memory` | `/memories` | `<query>` | prints matching memories into the conversation |
 | `/memories` | — | — | prints every memory into the conversation |
@@ -214,9 +216,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/files` | — | — | lists what has been made for you; opens, reveals or copies one — over `--host` it opens the browse page for that machine |
 | `/files` | — | `<path>` | over `--host`, brings that one file back and opens it here |
 | `/help` | `/?` | — | prints this list |
-| `/manual` | — | — | every page of codeaf's own manual, one per line |
-| `/manual` | — | `<page>` | prints that page as it is written |
-| `/manual` | — | `<question>` | prints the sections that answer it, labelled with page and heading |
+| `/manual` | — | — | asks the model what codeaf can do, answered from codeaf's own manual |
+| `/manual` | — | `<question>` | puts that question to the model, answered from codeaf's own manual, naming the page |
 | `/quit` | `/exit`, `/q` | — | leaves |
 
 ## /help, /?, /quit, /exit, /q — how do I close just this chat, does closing one conversation quit codeaf
@@ -245,7 +246,7 @@ drawing, and the words are the same.
 
 **One gesture, one spelling.** Wherever the sheet names the escape key it writes `esc
 back` — the places row, the task roster on `alt+t`, the conversation switcher on `alt+k`,
-`esc` — and that is the same two words the cards, pickers, the rewind sheet and the
+`space space` — and that is the same two words the cards, pickers, the rewind sheet and the
 switcher's own strip already use. The sheet used to say `esc comes back`, `esc goes back`
 and `esc leaves` on four different rows, which read as four gestures on the one screen you
 open to find out how many there are. The longer `esc leaves it as it was` is a different
@@ -274,7 +275,7 @@ any filter box, picker or panel: those have the keyboard first, so the key never
 this binding.
 
 The key is named on the first row of `/help` itself, and on the line every session opens
-with — `esc back · ctrl+c interrupts or quits · ? for help`. `/?` is also an alias of
+with — `esc interrupts · ctrl+c quits · ? for help`. `/?` is also an alias of
 `/help`, and has been all along.
 
 `/quit` (or `/exit`, `/q`) **closes the conversation in front**, and it does it at once —
@@ -374,8 +375,11 @@ maintained a little at a time by the reader that runs after each turn.
 ## /rewind — go back to an earlier point in the conversation
 
 `/rewind` (or `/undo`, `/back`) opens the **rewind timeline**: a fullscreen list of the
-whole conversation, oldest first, that you pick a point out of. Escape is back navigation;
-it no longer opens rewind. The command row reads `go back to an earlier point`.
+whole conversation, oldest first, that you pick a point out of. It is the deliberate way
+in. The quick way is esc esc, which draws a cut line through the transcript on screen
+instead of opening anything — see the sessions and rewind page for both.
+
+The command row reads `go back to an earlier point · esc esc takes back the last`.
 
 On the timeline: ↑↓ move, typing searches, the first `enter` places the pick and the
 second `enter` on that same point does the rewind, `esc` clears the search and then
@@ -413,6 +417,36 @@ ctrl+b does. In copy mode ↑↓ move, `v` marks, `a` takes the block, `y` yanks
 
 If you type `/copy` and the screen does not change, one of those two is why.
 
+## /project — set the project on home, which folder will my next conversation open in, change the project
+
+`/project` is **home's** command, and it sets the folder the conversation you start next
+will open in — the `project: ~/src/parser` at the right end of the keys row under home's
+box. Bare, it opens the folder browser where that next conversation would open. With a
+path after it, it takes the path and opens nothing:
+
+```
+/project                 the browser
+/project ~/src/parser    pinned at once · the keys row says project: ~/src/parser
+```
+
+A path that is not a directory on this machine is refused by name — `no folder there ·
+~/src/parsr` — and nothing changes. Over `--host` it refuses: the folders this program can
+read are the laptop's and the conversation would be on the other machine.
+
+**In a conversation it does nothing but say where it lives**, exactly:
+
+```
+/project is home's · it sets the folder the next conversation opens in · /folder gives this conversation one
+```
+
+The two commands are one word apart and do different jobs, so the answer names both.
+
+**It was the home half of `/folder` until 2026-09-22.** `/folder` meant "give this
+conversation a folder" in a conversation and "pin the next conversation's folder" on home,
+which is two acts behind one word. The pin is `/project` now, and `/folder` means the one
+thing on every screen — on home it opens a conversation first and browses there. `alt+p`
+is the same pin without a browser, walking the projects this machine knows.
+
 ## /select — drag to select with your mouse
 
 You usually do not need this any more: **dragging over the conversation already
@@ -440,30 +474,29 @@ answers out loud, exactly:
 your terminal already has the pointer — drag to select.
 ```
 
-## /image — attach a picture
+## /image — attach a picture, and why there is no /image command any more
 
-`/image <path>` attaches a picture to your next message. Use it for a picture that is not
-under this directory, or one the `@` completion walk does not reach.
+There is no `/image` command. Until 2026-09-22 it was a second word for `/attach` that
+took only a picture and refused everything else; `/attach <path>` does the whole job now.
+A picture handed to it lands on the tray as `▣ #1 name.png` and **its `[image #1]` token
+is appended to your sentence when you press `enter`**, so you can refer to it by number the
+same way you would one you dragged in. Anything else lands as a file. Typing `/image` is
+answered the way every unknown word is: `there is no command called /image · / lists them`.
 
 Path rules: `~` is your home directory, a bare name is under the directory this
-conversation is about, and an absolute path is left alone. Over `--host` the path is
-anchored to **this** machine — the picture is on the laptop you are sitting at, and its
-bytes travel with the message.
+conversation is about, an absolute path is left alone, and **a path in quotes, or with
+its spaces backslashed** — the shape Finder and a terminal drop hand you — is read as the
+one path it is. Over `--host` the path is anchored to **this** machine — the picture is on
+the laptop you are sitting at, and its bytes travel with the message.
 
-A full attachment tray does not stop the command: `/image` adds a second picture rather
-than sending the first.
+A full attachment tray does not stop the command: a second picture is a second chip rather
+than a send. Dragging or pasting a file over a line that already starts with `/` leaves
+the path as text, so `/attach ` still takes the path you dropped on it.
 
-The picture lands on the tray as `▣ #1 name.png` and **its `[image #1]` token is appended
-to your sentence when you press `enter`**, so you can refer to it by number the same way
-you would one you dragged in. Dragging or pasting a file over a line that already starts
-with `/` leaves the path as text, so `/image ` still takes the path you dropped on it.
-
-Refusals, exactly as written:
+Refusals, exactly as written on the attaching-files page:
 
 ```
-/image takes a path · try /image shot.png
-<name> is not a picture · png, jpeg, webp and gif are
-no such picture: <what you typed>
+no such file: <what you typed>
 <name> is already attached
 ```
 
@@ -731,7 +764,8 @@ and the note's leading `· `; strip those before feeding it to a parser.
 `/search` opens the **search place** — everything that has been said on this machine,
 found by the words you remember of it. It is the same place `alt+7` opens and the same
 place `tab` walks to. It takes no argument: the place *is* a box, and typing in it
-searches.
+searches. With the **memory** row off nothing said is indexed, and the place says so and
+searches nothing — find the conversation from home's box instead (see the *places* page).
 
 `/spend` opens the **spend place** — what this machine has cost, by the day, by the model
 and by what it was for. It is the same place `alt+3` opens.
@@ -1072,31 +1106,34 @@ conversation in them**, which is the one thing `/resume` cannot show you: `/resu
 "which conversation, here", and this is "what is there at all".
 
 **It is also what a bare `codeaf` opens on.** The conversation the launch picked is loaded
-underneath; opening its row returns to it. Escape stays on Home. Home stays out of the way when you named a conversation
+underneath, and `esc` — or `enter` on the row the cursor starts on, which is that same
+conversation — drops into it. Home stays out of the way when you named a conversation
 (`--session`, `codeaf resume`), on a `--once` or `--host` run, and on a machine whose only
 conversation is the one already open. There is no welcome box when home greets you. Not
-greeting you is not the same as being out of reach: `/home`, or `esc` from a conversation, opens it on a one-conversation machine and on an empty one alike, and over `--host`
+greeting you is not the same as being out of reach: `/home`, or `space` twice on an empty
+box, opens it on a one-conversation machine and on an empty one alike, and over `--host`
 it opens the far machine's.
 
 There is no argument form. There are three other ways in: **`alt+1`**, home being the first
-of the four places on the tab bar; **`esc`** from a conversation; and **`tab`** from any
+of the four places on the tab bar; **`space` twice** on an empty box; and **`tab`** from any
 other place.
 
 **It is seven panels**, in one column under 110 cells, two from 110 and three from 170,
 always in one order: an unheaded list of open tabs followed by up to three dimmed
 closed conversations, `needs you` (every question waiting on you, a digit answers the
-top one from anywhere), `projects` (folders, read-only),
+top one from anywhere), `projects` (click a folder to select it for the next message),
 `tasks` (the last day's tasks, running or landed, newest first), `since you left` (what landed while you were
-away), `spend` (today and the fortnight) and `scheduled` (standing orders, soonest first).
+away), `spend` (today and the fortnight) and `standing` (standing orders, soonest first).
 Which column a panel stands in follows what it holds: the panels with rows fill the **field**
 at the left, and the **rail** at the right holds `projects` and `spend` at its top with the
 quiet panels under them. An empty panel keeps its heading and one dim line naming what
 arrives there.
 
-`↑`/`↓` walk a column, `←`/`→` cross columns, `enter` opens, `esc` dismisses a local layer and otherwise stays on Home. **Typing does two things at once**: what you type is a new
+`↑`/`↓` walk a column, `←`/`→` cross columns, `enter` opens, `esc` closes back into the
+conversation you came from. **Typing does two things at once**: what you type is a new
 conversation waiting to be sent AND a live search over every project on the machine — the
-panels give way to the matches, with none selected until you navigate into them.
-Type-and-enter starts a chat. `/ask <question>` asks in a home pane instead. **A line that starts with `/` is
+panels give way to the matches, with `start a new conversation: "…"` directly above the box
+holding the cursor, so type-and-enter still starts a chat. **A line that starts with `/` is
 the third thing typing can be**: a command, run rather than sent (see *Typing a slash to see
 the command list*). The box says `› type to search or start something new` and the foot
 names the available draft controls:
@@ -1107,8 +1144,9 @@ Search matches conversation names, project names, task titles and **what tasks c
 the one-sentence outcome — so `postgres` finds the chat whose work mentioned it, including
 the ones no panel is drawing.
 
-**`enter` opens any conversation on the screen, in any project**, and `enter` on a
-`projects` row starts a fresh one in that folder. The conversation you were in is left
+**`enter` opens any conversation on the screen, in any project**, and `ctrl+t` on a
+conversation's row starts a fresh one in that row's folder; clicking a `projects` row
+instead picks the folder your next message from home goes to. The conversation you were in is left
 **open** behind it — still streaming, still running its tasks — and the new one is built on
 its own workspace with that project's own permissions, crew and spend ceiling. Nothing is
 carried across, because a second project is a second conversation rather than this one
@@ -1122,8 +1160,8 @@ no conversation matches
 that folder is gone · <path>
 ```
 
-`no conversation matches` is a search that found nothing; Enter still starts a new
-conversation with your words. `/new is unavailable here` is what the typing-to-start box says where no
+`no conversation matches` is a search that found nothing — the `start a new conversation`
+row is still there. `/new is unavailable here` is what the typing-to-start box says where no
 fresh-session seam exists. The last is `enter` on a row whose folder has been deleted or
 moved since its last conversation: home stays up and nothing is opened. **How many
 conversations this terminal already holds is never a refusal.** Past twelve, a quiet
@@ -1752,8 +1790,7 @@ after" are written the way you would say them — `20m`, `4h`, `1h30m` — and `
 off.
 
 **Display** — how the surface draws itself and what it remembers of your typing. Rows:
-"input history", "keep drafts", "task column", "hints" — the one-line tips above the
-message box, and the what's-new lines with them (see *Hints and tips*) — "chat width",
+"input history", "keep drafts", "task column", "chat width",
 "mouse", "timestamps", "turn work". There is no "nerd font" or "linear mode" row: icons
 need no patched font anywhere on this surface, and the accessible single-column rendering
 is the `--linear` flag at launch rather than a persisted setting.
@@ -1935,28 +1972,36 @@ list can do it, that ability is simply absent rather than present and failing.
 
 A change here lands on the **next** picture, sentence or film — not on the next launch.
 
-## /manual — how do I read the manual, is there a help page, show me the page about X
+## /manual — how do I read the manual, is there a help page, show me the page about a command, ask codeaf about itself
 
-`/manual` is codeaf's own manual, printed into the conversation. It is the same writing
-the chat reads to answer questions about itself, and it arrives **as it is written** —
-nothing is retold, summarized or shortened on the way to you.
+`/manual` puts a question about codeaf to the model **with the manual open**. The words
+after it go out as a turn of the conversation, told to answer out of codeaf's own manual —
+the same pages the chat reads whenever you ask what a key or a command does — and to say
+which page the answer came from, so you can go on and read that page yourself.
 
-Three forms, and which one you get is decided by what you type after the word:
-
-| Typed | What comes back |
+| Typed | What happens |
 |---|---|
-| `/manual` | every page, one per line: the name you type to open it, then what that page is about |
-| `/manual permissions` | that page, whole, exactly as written |
-| `/manual who can see my files` | the sections that answer it, each one labelled with the page and the heading it came from |
+| `/manual` | asks what codeaf can do, and which pages are worth reading first |
+| `/manual how do I change the effort level` | puts that question; the answer names the page it came from |
 
-A single word is read as a page **name**. More than one word is read as a **question**, and
-the question is answered out of every page at once, so you do not have to know which page
-a thing is written on before you can ask about it. The label over each answer — like
-`[permissions · What runs without asking]` — is the page you can open next with
-`/manual <name>`.
+Your line in the transcript is what you typed — `/manual how do I change the effort level`
+— and the answer lands under it the way every answer does. **It is a turn**: it goes to the
+model this conversation is on and costs what a turn costs. While an answer is already
+coming it steers that turn, exactly as a plain `enter` does.
 
-Nothing here costs anything. The pages are inside codeaf; reading them makes no model
-call, so `/manual` spends nothing and works with no key set up and with no connection.
+**On home it opens a conversation first.** Home is not a conversation, so `/manual` there
+is one of the commands that *opens a conversation here first* (see the home page): a
+conversation opens at the folder named at the right of the keys row and the model on the
+rule above the box, home closes,
+and the question is sent there. Until 2026-09-22 `/manual` on home printed its answer into
+the conversation *behind* home, where nothing could be seen of it — typing it looked like
+nothing happening.
+
+**To read a page as it is written, with no model call**, use the terminal: `codeaf manual`
+lists every page and `codeaf manual <page>` prints one whole (next section). Until
+2026-09-22 `/manual` did that in the conversation too — a bare `/manual` listed the pages,
+`/manual <page>` printed one and `/manual <question>` printed the sections that answered
+it, spending nothing — and that reading now lives at the terminal alone.
 
 ## codeaf manual — reading the manual from the terminal, without a key and without spending anything
 
@@ -2011,13 +2056,13 @@ The usage one command prints is **read out of the table** `codeaf --help` prints
 typed out a second time beside the flags, so the two can never disagree about what a
 command takes or what its codes mean.
 
-## What /manual refuses — a page name that does not exist, and a question with no answer
+## What codeaf manual refuses at the terminal — a page name that does not exist, and a question with no answer
 
-A **name** you type is an exact request, so it gets an exact answer or an exact refusal —
-never a near miss quietly shown as though you had asked for it. `/manual no-such-page`
-says there is no page by that name and prints the list of pages there are, and changes
-nothing. From the terminal `codeaf manual no-such-page` does the same and **exits
-non-zero**, so a script can tell a missing page from a page it just read.
+A **name** you type at the terminal is an exact request, so it gets an exact answer or an
+exact refusal — never a near miss quietly shown as though you had asked for it.
+`codeaf manual no-such-page` says there is no page by that name, prints the list of pages
+there are, changes nothing, and **exits non-zero**, so a script can tell a missing page
+from a page it just read.
 
 A **question** the manual has nothing on is a different thing, and it is an answer rather
 than a failure: you are told
@@ -2026,11 +2071,13 @@ than a failure: you are told
 the manual has nothing on that, which usually means codeaf does not do it
 ```
 
-followed by the list of pages. From the terminal that exits **0** — the manual saying "no,
-codeaf does not do that" is a fact about codeaf, not a broken command.
+followed by the list of pages, and the command exits **0** — the manual saying "no, codeaf
+does not do that" is a fact about codeaf, not a broken command.
 
-The manual describes **this** conversation surface. It has no pages about anything else,
-and it will not answer out of what the model remembers about other programs.
+In a conversation `/manual` refuses nothing: the words go to the model, and a question the
+manual has no page for is answered by the model saying so. The manual describes **this**
+conversation surface. It has no pages about anything else, and the model is told to answer
+questions about codeaf out of it rather than out of what it remembers about other programs.
 
 ## codeaf --help, and --help on any command — what does this command take, what are its flags, how do I see the usage
 
@@ -2081,16 +2128,3 @@ you closed*, including what a terminal that cannot send the key does instead.
 
 `alt+k` is the other way back: it lists every conversation on this machine, closed
 tabs included, and opening a row brings the tab and its draft back too.
-
-## /ask — ask from home without opening a regular conversation
-
-Type `/ask <question>` and press Enter to ask in a home pane. Choosing `/ask` from the
-command menu inserts `/ask ` and leaves the question for you to write, like `/task`.
-Bare `/ask` waits for your question. An inline `/ask` tag in a sentence works too, and
-is removed before sending. Multiple active submission tags keep the draft for correction.
-From a conversation, `/ask` opens Home and uses the same ask pane.
-
-Plain text on Home starts a new conversation by default. Only search results appear
-above the seam: one Up selects the best match, Enter opens a selected result, and Down
-past the last result returns to composing. The old ask/new action rows and their
-footer hints are absent.

@@ -69,6 +69,18 @@ type workerReturn struct {
 	err    error
 }
 
+// AdmissionGate is the machine's answer at each worker start and the shared
+// count of workers it has admitted. A nil gate admits every start. The gate
+// stays outside the store lock because its host reading may take time.
+type AdmissionGate interface {
+	// MayStart answers whether one more worker fits the current machine reading.
+	MayStart() bool
+	// Started counts a worker only after its factory has returned.
+	Started()
+	// Returned gives that worker's lane back on every return road.
+	Returned()
+}
+
 // Supervisor is the launch loop over one plan store. It claims ready leaves
 // as the task's own agent — the name its finish command answers to — and
 // records the process that holds the claim beside it, so a run is owned per
@@ -90,6 +102,11 @@ type Supervisor struct {
 	slots     int
 	limits    Limits
 	factory   WorkerFactory
+	gate      AdmissionGate
+	onHold    func([]string)
+	held      map[string]bool
+	passHeld  map[string]bool
+	blocked   bool
 
 	// after provides the run elapsed-limit signal. Production uses time.After;
 	// a test supplies a driven channel so the limit law needs no real sleep.
@@ -192,8 +209,8 @@ type Supervisor struct {
 // figure through as given. This constructor used to read the same 0 as 1 "to
 // keep a misconfigured run alive", which quietly ran every task a conversation
 // put on the harness one worker at a time while the setting beside it promised
-// no limit. What runs out is the machine and the provider's rate, and both are
-// governed elsewhere; the number of workers is not the resource.
+// no limit. Machine pressure is checked by the admission gate at each launch;
+// the number of workers is not itself the resource.
 func NewSupervisor(store *plandb.Store, workspace string, slots int, limits Limits, factory WorkerFactory) *Supervisor {
 	if slots < 0 {
 		slots = 0
@@ -266,6 +283,7 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 	s.wakes = make(map[string]int)
 	s.reported = make(map[string]map[string]bool)
 	s.lastReport = make(map[string]string)
+	defer s.reportHold(nil)
 	s.staleAfter = s.limits.StaleAfter
 	if s.staleAfter <= 0 {
 		s.staleAfter = defaultStaleAfter
@@ -341,6 +359,11 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 // pass takes one look at the store, launches what is ready, and answers the
 // run's outcome word when the run is over — an empty word means it is not.
 func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
+	// A HOLD IS A FACT ABOUT THIS PASS'S ELIGIBLE STARTS. Rebuild it even when
+	// there is no admission request, so cancelling a held task clears its word.
+	s.passHeld = make(map[string]bool)
+	s.blocked = false
+	defer func() { s.reportHold(s.passHeld) }()
 	if s.store.Task(rootID) == nil {
 		return OutcomeCannotRun
 	}
@@ -402,7 +425,7 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 		}
 		return OutcomeIncomplete
 	}
-	if !s.full() && !s.dispatchedRoot {
+	if !s.full() && !s.dispatchedRoot && s.mayStart(rootID) {
 		// The root is the first worker of the run. It is claimed by the runtime
 		// in the store, so it needs no claim here — only a seat.
 		s.dispatchedRoot = true
@@ -415,6 +438,9 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 			}
 			task := *ready
 			if task.ID == rootID || s.hasCancelledAncestor(task) {
+				continue
+			}
+			if !s.mayStart(task.ID) {
 				continue
 			}
 			// THE AGENT NAME IS THE TASK'S OWN ID, the store's naming trick:
@@ -448,7 +474,12 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 // step cap and, when wake is not empty, the resume clause a woken parent opens
 // with. The goroutine reports back on the channel and ends.
 func (s *Supervisor) launch(ctx context.Context, task plandb.Task, wake string) {
+	// The factory can panic before a worker exists. A machine lane belongs only
+	// to a worker that can return it, so take the lane after the factory succeeds.
 	worker := s.factory(task)
+	if s.gate != nil {
+		s.gate.Started()
+	}
 	taskCtx, cancel := context.WithCancel(ctx)
 	if strings.TrimSpace(wake) != "" {
 		taskCtx = WithWakeClause(taskCtx, wake)
@@ -527,6 +558,7 @@ func (s *Supervisor) drain() {
 	for s.inFlight > 0 {
 		ret := <-s.finished
 		s.inFlight--
+		s.returned()
 		// THE ENDING IS DROPPED, BUT THE FACT OF WHO IT CUT IS NOT: a worker
 		// that came home with the run's own ending as its error was taken down
 		// by that ending, and the run records it where it knows ([Summary.Cut]).
@@ -544,6 +576,57 @@ func (s *Supervisor) drain() {
 // with every slot taken. An unbounded run is never full.
 func (s *Supervisor) full() bool {
 	return s.slots > 0 && s.inFlight >= s.slots
+}
+
+// mayStart checks admission without a store lock. Once a start is refused, all
+// later eligible starts this pass are held without another machine reading.
+func (s *Supervisor) mayStart(id string) bool {
+	if s.blocked {
+		s.passHeld[id] = true
+		return false
+	}
+	if s.gate == nil || s.gate.MayStart() {
+		return true
+	}
+	s.blocked = true
+	s.passHeld[id] = true
+	return false
+}
+
+// reportHold sends a fresh set only when membership changes; an empty set
+// removes stale rail and plan words when the held work disappears.
+func (s *Supervisor) reportHold(held map[string]bool) {
+	if len(s.held) == len(held) {
+		same := true
+		for id := range held {
+			if !s.held[id] {
+				same = false
+				break
+			}
+		}
+		if same {
+			return
+		}
+	}
+	s.held = make(map[string]bool, len(held))
+	ids := make([]string, 0, len(held))
+	for id := range held {
+		s.held[id] = true
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	if s.onHold == nil {
+		return
+	}
+	s.onHold(ids)
+}
+
+// returned gives back exactly the lane a launched worker took. The caller
+// invokes it both for absorbed endings and for endings discarded by drain.
+func (s *Supervisor) returned() {
+	if s.gate != nil {
+		s.gate.Returned()
+	}
 }
 
 // returnsBuffer sizes the channel workers hand their returns through. A
@@ -686,6 +769,7 @@ func (s *Supervisor) absorbQueued() {
 // that stays open would stall the whole run: nothing else can make it
 // terminal, and the run would wait on it forever.
 func (s *Supervisor) absorb(ret workerReturn) {
+	s.returned()
 	// A RETURN FOR A TASK THE STORE ALREADY ENDED is written as nothing. The
 	// ending the store carries — a cancellation that landed while the worker
 	// ran, which the same write cleared the claim and cascaded down — is the
@@ -1063,6 +1147,9 @@ func (s *Supervisor) launchWakes(ctx context.Context, rootID string) {
 		if s.full() {
 			return
 		}
+		if !s.mayStart(task.ID) {
+			continue
+		}
 		// THE WOKEN-PARENT LAW: every non-root launch holds the task under its
 		// own agent id, so wait and done work identically on a first turn and a wake.
 		//
@@ -1134,6 +1221,9 @@ func (s *Supervisor) launchWaits(ctx context.Context, rootID string) {
 		}
 		if s.full() {
 			return
+		}
+		if !s.mayStart(task.ID) {
+			continue
 		}
 		// A READY LEAF IS CLAIMED, the same claim every dispatch makes, so its
 		// finish command still answers the ownership check. A composite is not
@@ -1609,6 +1699,10 @@ type Spec struct {
 	// Factory makes the worker for every task the run dispatches. Start holds
 	// no seat of its own: the root's worker comes from here like the rest.
 	Factory WorkerFactory
+	// Gate asks the machine before every worker, including the root and wakes.
+	Gate AdmissionGate
+	// OnHold announces the ids refused on a pass when their set changes.
+	OnHold func([]string)
 	// OnSpend observes the reconciled cumulative run spend whenever it rises.
 	OnSpend func(float64)
 }
@@ -1723,6 +1817,8 @@ func Start(ctx context.Context, spec Spec) (Outcome, Summary) {
 	}
 	supervisor := NewSupervisor(store, spec.Workspace, spec.Slots, spec.Limits, spec.Factory)
 	supervisor.onSpend = spec.OnSpend
+	supervisor.gate = spec.Gate
+	supervisor.onHold = spec.OnHold
 	outcome := supervisor.Run(ctx)
 	endRootOn(ctx, store, outcome)
 	result := supervisor.rootResult

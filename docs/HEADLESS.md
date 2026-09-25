@@ -187,6 +187,7 @@ launched from. `do --json` carries the same facts as fields.
 | `1` | `error` | It could not be run at all — no key, bad arguments, the store would not open, the workspace could not be made, no resident took it. Nothing was attempted and nothing was spent. |
 | `2` | `incomplete`, `unchecked` | It ran and did not finish: part of the work does not stand. The job failed or was cancelled, the delivery did not land whole, or a refusal that was not a question. Whatever it DID manage is on stdout and is worth reading. `unchecked` is the same rung and a different fact: the work was delivered and the final check could not be reached, so nothing has vouched for it — read it, it may be perfectly good. |
 | `3` | `budget`, `turn-cap`, `deadline`, `price` | A limit you set stopped it — the token budget (`--token-budget`), the turn cap (`--max-turns`), the wall (`--timeout`), or a plan price that crossed the consent threshold with no `--yes-spend`. The work was going when it was cut off; raise the limit and run it again. |
+| `124` | `deadline` | `do` on the worker harness (the belt it runs on unless `CODEAF_TASK_BELT` says `node`) only: the wall (`--timeout`) arrived. The run engine reports a wall and a failed part with the same word, so the wall leaves with the `timeout(1)` number instead of `3`. |
 | `4` | `question` | It stopped to ask and nobody was there. The question is on stderr verbatim and in `blocked_on`. |
 
 **This moved.** `do` used to return 0, 1 and 2 only, where `1` meant everything
@@ -331,6 +332,27 @@ A leaf that IS restarted — because the claim reaper found a claim nobody was
 holding — resumes rather than starting over: it is handed its own recorded turns,
 what it had already said, and the files it had already written. See PERF.md's
 liveness laws for the bounds.
+
+### A busy machine holds the run, and says so once
+
+On the worker harness, the belt `do` runs on unless `CODEAF_TASK_BELT` says
+`node`, it starts no worker while the machine is over
+the profile's `task.max_load` (load per core) or under its `task.min_free_mb`
+(available memory) — the same two limits a task in the chat waits on. The chat
+draws `waiting · machine busy` on the run's rail; `do` has only stderr, so the
+first held start prints one line in the same words, naming the limit that held
+it, and the first start after it prints one more:
+
+```
+waiting · machine busy · available memory under task.min_free_mb 1536 MiB
+starting · the machine has room again
+```
+
+A run whose `--timeout` arrives while the machine is still holding every start
+has started nothing and spent nothing. It leaves with `124` and `stop:
+"deadline"`, like every wall on this road, and `--json` carries `blocked_on`:
+the held line followed by ` · nothing started before --timeout`. A `0` in
+either row turns that half of the check off.
 
 ### The store, and how state survives
 

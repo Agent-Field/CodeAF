@@ -750,6 +750,12 @@ type Event struct {
 	// least this many", and internal/tui3 spells that with a trailing `+`.
 	Args string
 
+	// BeltStepHandled is present only for a run worker that opted into the
+	// step boundary handshake. Its owner closes it after recording this end
+	// event and applying the run's limits and notes. Cancellation releases a
+	// belt whose reader failed, and this local handshake never goes on wire.
+	BeltStepHandled chan<- struct{} `json:"-"`
+
 	// Output is the tool's result text on EventToolEnd and EventToolFailed,
 	// verbatim up to a cap and then marked "… (N more bytes)".
 	//
@@ -1163,6 +1169,12 @@ type TaskLanding struct {
 }
 
 type Config struct {
+	// WaitForBeltSteps is for the run worker that enforces its limits and
+	// delivers notes from tool-end events. Its sole event reader must close
+	// Event.BeltStepHandled after processing each such event. Other agents
+	// leave this off and their event streams remain asynchronous.
+	WaitForBeltSteps bool
+
 	Workspace string // tools root here; all relative paths resolve inside it
 	Model     string
 	APIKey    string
@@ -1252,21 +1264,21 @@ type Config struct {
 	// memory.enabled row is read. A door that turns memory off hands nothing
 	// here, which is what makes "no calls" structural.
 	Memory *store.Store
-	// SkillsAwaitMemory says this machine HAS skills and this session cannot
-	// reach them, because the shelf is read through the store and memory is
-	// off. The door measures it once at launch: the scan is a walk over six
-	// folders and a prompt prefix may not pay for one on every render.
+	// Skills is the store the skill shelf is read from: the catalog section,
+	// the skills a message carries, and `use_skill`. NIL FALLS BACK TO
+	// Memory, so a door that names no shelf of its own reads the shelf in the
+	// store it remembers into, exactly as every door did before this field.
 	//
-	// IT EXISTS BECAUSE ABSENT-AND-IMPOSSIBLE AND ABSENT-AND-UNBUILT ARE
-	// OTHERWISE THE SAME SILENCE. A model handed no shelf and no `use_skill`
-	// reasons from that silence and answers that codeaf has no skills at all,
-	// which is what a person with eighty-one of them on disk was told.
-	//
-	// FALSE IS NOT "NO SKILLS", it is "nothing to explain": either the store
-	// is there and the catalog speaks for itself, or the folders are empty too
-	// and a person with no skills must not pay for a sentence about a setting
-	// they have no use for.
-	SkillsAwaitMemory bool
+	// IT IS A SEPARATE FIELD BECAUSE SKILLS ARE NOT MEMORY. A person who
+	// turned memory off asked for a conversation that carries nothing about
+	// them across conversations; they did not ask to lose the skills they
+	// installed for Claude Code or Codex, which live in folders on disk and
+	// say nothing about them. So a door with memory off hands no Memory — no
+	// block, no reflex call, no `remember` — and still hands a shelf here:
+	// one that holds only what the folders hold, built from those folders by
+	// the same import pass, and thrown away with the process (cmd/codeaf's
+	// v3SkillShelf). The folders stay the one source of truth either way.
+	Skills *store.Store
 
 	// ConversationHistory grants only indexed history reads. Workers inherit
 	// this interface without receiving memory extraction, writes, or journaling.

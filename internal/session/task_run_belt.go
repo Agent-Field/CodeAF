@@ -93,6 +93,10 @@ type RunSpec struct {
 	// StepsPerTask is the per-task step cap, the same figure a node of this
 	// session's own tree carries.
 	StepsPerTask int
+	// Admission is the shared machine gate consulted for every worker start.
+	Admission RunAdmission
+	// OnHold announces the changed set of task ids whose starts are held.
+	OnHold func([]string)
 	// ProfileDir is the person's profile directory, read by the engine's crew
 	// factory to seat a task on the model its role rides.
 	ProfileDir string
@@ -225,6 +229,9 @@ type beltRun struct {
 	// each is settled with the run ([Agent.settleBeltRun]); it is written and
 	// read under [Agent.beltMu].
 	joined []uint64
+	// machineHeld is the set of starts refused on the latest pass. Readers
+	// take beltMu before copying membership onto live plan rows.
+	machineHeld map[string]bool
 	// cut ends the context the run's workers and every call they have out run
 	// under, and stopped and stopReason say a PERSON ended it and in what words
 	// (stoprun.go). cut is set once before the run starts; the other two are
@@ -615,11 +622,55 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		// The step cap a node of this session's own tree carries, so a run
 		// worker and a node worker stop at the same figure.
 		StepsPerTask: taskMaxSteps,
+		// The graph already owns the fallback account when the door handed
+		// none. Run and node workers must charge that same conversation.
+		Admission:    NewRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.graph().lanes),
+		OnHold:       func(ids []string) { a.setBeltRunMachineHold(run, ids) },
 		ProfileDir:   a.config.ProfileDir,
 		WorkModel:    workSeat,
 		PlanModel:    planSeat,
 		CheckModel:   checkSeat,
 		CompleterFor: func(string) Completer { return a.crewRunCompleter(run) },
+	}
+}
+
+// setBeltRunMachineHold keeps the rail's word tied to actual refused starts.
+// The engine sends an empty set after cancellation or completion so no old
+// refusal can remain attached to the run's row.
+func (a *Agent) setBeltRunMachineHold(run *beltRun, ids []string) {
+	a.beltMu.Lock()
+	if a.beltRun != run {
+		a.beltMu.Unlock()
+		return
+	}
+	held := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		held[planStoreID(id)] = true
+	}
+	if len(run.machineHeld) == len(held) {
+		same := true
+		for id := range held {
+			if !run.machineHeld[id] {
+				same = false
+				break
+			}
+		}
+		if same {
+			a.beltMu.Unlock()
+			return
+		}
+	}
+	run.machineHeld = held
+	a.beltMu.Unlock()
+	if g := a.graph(); g != nil {
+		waiting := ""
+		if len(held) != 0 {
+			waiting = waitingMachineBusy
+		}
+		a.publishRunRow(g, TaskNotice{
+			ID: run.row, Title: run.title, State: TaskRunning,
+			StartedAt: run.born, PlanTask: planStoreID(run.root), Waiting: waiting,
+		})
 	}
 }
 

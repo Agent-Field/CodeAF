@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/skills"
 	store "github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -26,6 +29,17 @@ import (
 type skillAgent struct {
 	*fakeAgent
 	held []string
+	// shelf is the session's own shelf, read through the agent the way the
+	// live session answers it (internal/session's Agent.SkillFacts). Nil is a
+	// conversation with no shelf store at all.
+	shelf *skillMemory
+}
+
+func (s *skillAgent) SkillFacts(status string, limit int) ([]store.Fact, error) {
+	if s.shelf == nil {
+		return nil, errors.New("this conversation has no skill shelf")
+	}
+	return s.shelf.SkillFacts(status, limit)
 }
 
 func (s *skillAgent) AttachSkills(names ...string) []string {
@@ -106,13 +120,17 @@ func seedSkill(t *testing.T, root, name, desc string) string {
 func skillApp(t *testing.T) (*app, *skillAgent, string, string) {
 	t.Helper()
 	project := t.TempDir()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	agent := &skillAgent{fakeAgent: &fakeAgent{}}
+	homeDir := t.TempDir()
+	// Both doors to the home point at one directory: HOME for the surface's
+	// own `~`, and CODEAF_HOME for the login home discovery reads, which is
+	// the one the launch's import pass reads too (internal/home's Login).
+	t.Setenv("HOME", homeDir)
+	t.Setenv(home.EnvVar, homeDir)
+	agent := &skillAgent{fakeAgent: &fakeAgent{}, shelf: &skillMemory{}}
 	a := newTestApp(agent)
 	a.workspace = project
 	a.width = 100
-	return a, agent, project, home
+	return a, agent, project, homeDir
 }
 
 // ── the list ────────────────────────────────────────────────────────────────
@@ -149,12 +167,102 @@ func TestTheSkillPickerOpensOnTheWholeShelf(t *testing.T) {
 	}
 }
 
+func TestTheSkillPickerShowsShelfWhileDiskScanIsHeld(t *testing.T) {
+	a, agent, project, _ := skillApp(t)
+	agent.AttachSkills("held-skill")
+	seedSkill(t, filepath.Join(project, ".agents", "skills"), "disk-skill", "from disk")
+	started, release := make(chan struct{}), make(chan struct{})
+	old := skillDiscover
+	skillDiscover = func(opts skills.Options) ([]skills.Skill, error) {
+		close(started)
+		<-release
+		return old(opts)
+	}
+	t.Cleanup(func() { skillDiscover = old })
+	typeInto(t, a, "/skill")
+	settled := make(chan struct{})
+	go func() { drive(t, a, key(" ")); close(settled) }()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("disk scan did not start")
+	}
+	if !a.skillPick.open || len(a.skillPick.rows) != 1 || a.skillPick.rows[0].name != "held-skill" {
+		t.Fatalf("picker did not open with its shelf row while disk was held: %+v", a.skillPick.rows)
+	}
+	close(release)
+	select {
+	case <-settled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("picker did not fold the disk scan")
+	}
+	if len(a.skillPick.rows) != 2 || a.skillPick.rows[1].name != "disk-skill" {
+		t.Fatalf("disk row did not arrive after release: %+v", a.skillPick.rows)
+	}
+}
+
+func TestSkillDiskScanDoesNotDelayALaterOrderedToggle(t *testing.T) {
+	a, agent, _, _ := skillApp(t)
+	a.skillPick.start([]skillPickRow{{name: "shelf-skill"}}, "")
+	started, release := make(chan struct{}), make(chan struct{})
+	old := skillDiscover
+	skillDiscover = func(opts skills.Options) ([]skills.Skill, error) {
+		close(started)
+		<-release
+		return nil, nil
+	}
+	t.Cleanup(func() { skillDiscover = old })
+	scan := a.readSkillDisk()
+	scanDone := make(chan tea.Msg, 1)
+	go func() { scanDone <- scan() }()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("disk scan did not begin")
+	}
+	toggle := a.skillToggled()
+	toggled := make(chan tea.Msg, 1)
+	go func() { toggled <- toggle() }()
+	select {
+	case msg := <-toggled:
+		a.doorSaid(msg.(doorMsg))
+		if len(agent.held) != 1 || agent.held[0] != "shelf-skill" {
+			t.Fatalf("ordered toggle attached %v", agent.held)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("disk scan held the later ordered attachment")
+	}
+	close(release)
+	a.doorSaid((<-scanDone).(doorMsg))
+}
+
+// THE FOLDER ROW RUNS NO DISK SCAN. Its attach is a gesture and keeps its place
+// in the ordered line, so the name is read on the loop — which is only safe
+// while that read is the folder's one SKILL.md, never a walk of every skill
+// root.
+func TestTheFolderRowAttachesWithoutADiskScan(t *testing.T) {
+	a, agent, _, homeDir := skillApp(t)
+	folder := seedSkill(t, homeDir, "loose-skill", "from a folder")
+	old := skillDiscover
+	skillDiscover = func(skills.Options) ([]skills.Skill, error) {
+		t.Error("enter on the folder row ran a disk scan")
+		return nil, nil
+	}
+	t.Cleanup(func() { skillDiscover = old })
+	a.skillPick.start([]skillPickRow{{name: "shelf-skill"}}, folder)
+	a.skillPick.cursor = len(a.skillPick.hits)
+	spend(t, a, a.skillToggled())
+	if !attachedHas(agent.held, "loose-skill") {
+		t.Fatalf("the folder row attached %v, want loose-skill", agent.held)
+	}
+}
+
 // THE SHELF FACTS RIDE THE SAME LIST, deduplicated by name against what
 // discovery found in place.
 func TestTheSkillPickerMergesTheShelfWithDiscovery(t *testing.T) {
-	a, _, project, _ := skillApp(t)
+	a, agent, project, _ := skillApp(t)
 	seedSkill(t, filepath.Join(project, ".claude", "skills"), "alpha-flake", "chase a flaky test")
-	a.memory = &skillMemory{facts: []store.Fact{
+	agent.shelf = &skillMemory{facts: []store.Fact{
 		{Kind: store.FactSkill, Status: store.FactActive, Artifact: filepath.Join(project, "shelf", "alpha-flake"), Body: "the shelf's own line"},
 		{Kind: store.FactSkill, Status: store.FactActive, Artifact: filepath.Join(project, "shelf", "nightly-notes"), Body: "write the notes"},
 	}}
@@ -337,9 +445,11 @@ func TestTheSkillChipCountsAndClearsInOneGesture(t *testing.T) {
 	if chip := strings.Join(a.skillTrayCells(), " "); !strings.Contains(chip, "2 skills") {
 		t.Fatalf("two attached skills did not count themselves: %q", chip)
 	}
-	if !a.dropSkillChip() {
+	drop := a.dropSkillChip()
+	if drop == nil {
 		t.Fatal("the ✕ changed nothing")
 	}
+	drain(t, a, drop)
 	if len(agent.held) != 0 {
 		t.Fatalf("the ✕ left %v attached", agent.held)
 	}
@@ -377,9 +487,13 @@ func TestTheTrayAnswersTheSkillChipForAPress(t *testing.T) {
 	if !ok || at != traySkillChip {
 		t.Fatalf("a press on the chip answered %d, want %d", at, traySkillChip)
 	}
-	if cmd, took := a.chipPress(len(inputPad), height-len(rows)+row); !took || cmd != nil {
+	// The press hands back the clearing door, asked off the update loop; the
+	// program loop's own job is to run it and fold the answer in.
+	cmd, took := a.chipPress(len(inputPad), height-len(rows)+row)
+	if !took || cmd == nil {
 		t.Fatalf("the press did not clear the chip")
 	}
+	drain(t, a, cmd)
 	if len(agent.held) != 0 {
 		t.Fatalf("the press left %v attached", agent.held)
 	}
@@ -393,13 +507,14 @@ func TestBareSkillOpensThePickerOnTheWholeShelf(t *testing.T) {
 	a, _, project, _ := skillApp(t)
 	seedSkill(t, filepath.Join(project, ".claude", "skills"), "alpha-flake", "chase a flaky test")
 
-	a.slash("/skill")
+	cmd := a.slash("/skill")
 	if !a.skillPick.open {
 		t.Fatal("bare /skill opened no picker")
 	}
 	if got := a.input.String(); got != "/skill " {
 		t.Fatalf("bare /skill left %q in the box", got)
 	}
+	spend(t, a, cmd)
 	screen := strings.Join(plainOverlay(a), "\n")
 	if !strings.Contains(screen, "alpha-flake") {
 		t.Fatalf("the picker did not open on the shelf:\n%s", screen)
@@ -434,31 +549,90 @@ func containsString(hay []string, needle string) bool {
 
 var _ = tea.Msg(nil)
 
-// A LIST OF ROWS THAT DO NOTHING WHEN CHOSEN SAYS SO ON THE ROW. The picker
-// reads the disk and attachment resolves against the shelf, so with memory off
-// it lists every skill a person has and none of them can be attached. Drawing
-// that list with nothing saying why is the control present and failing.
-func TestTheSkillPickerSaysWhyARowCannotBeAttachedWithMemoryOff(t *testing.T) {
-	a, _, project, _ := skillApp(t)
+// memoryOnly is the memory place's seam and nothing more, the way the live
+// door wraps its store (cmd/codeaf's v3Brain): it answers the memory place and
+// has no reading of the skill shelf at all.
+type memoryOnly struct{}
+
+func (memoryOnly) Snapshot(int) (store.MemoryShelves, error)        { return store.MemoryShelves{}, nil }
+func (memoryOnly) ChangedSince(time.Time) (int, int, error)         { return 0, 0, nil }
+func (memoryOnly) ListMemories(string, int) ([]store.Memory, error) { return nil, nil }
+func (memoryOnly) UpdateMemory(string, string, string, []string) error {
+	return nil
+}
+func (memoryOnly) ForgetMemory(string) error  { return nil }
+func (memoryOnly) RestoreMemory(string) error { return nil }
+func (memoryOnly) MemoryProvenance(string) (string, string, time.Time, error) {
+	return "", "", time.Time{}, nil
+}
+
+// THE PICKER READS THE SHELF THE SESSION READS, whatever memory is doing. It
+// used to look for the shelf through the memory seam, which the live door
+// wraps with no reading of skills, so on every machine it dropped the shelf's
+// own rows and told a person with memory on that memory was off. Asked of the
+// session, the shelf is there with a memory-shaped store beside it and with
+// no memory at all.
+func TestTheSkillPickerReadsTheShelfTheSessionReads(t *testing.T) {
+	for _, memory := range []memoryStore{memoryOnly{}, nil} {
+		a, agent, project, _ := skillApp(t)
+		seedSkill(t, filepath.Join(project, ".claude", "skills"), "alpha-flake", "chase a flaky test")
+		a.memory = memory
+		agent.shelf = &skillMemory{facts: []store.Fact{
+			{Kind: store.FactSkill, Status: store.FactActive, Artifact: filepath.Join(project, "shelf", "nightly-notes"), Body: "write the notes"},
+		}}
+
+		typeInto(t, a, "/skill ")
+		screen := strings.Join(plainOverlay(a), "\n")
+		for _, want := range []string{"alpha-flake", "nightly-notes", "write the notes"} {
+			if !strings.Contains(screen, want) {
+				t.Fatalf("memory %T: the list does not say %q:\n%s", memory, want, screen)
+			}
+		}
+		for _, stale := range []string{skillNoShelfWarning, "memory is off"} {
+			if strings.Contains(screen, stale) {
+				t.Fatalf("memory %T: a conversation with a shelf was told %q:\n%s", memory, stale, screen)
+			}
+		}
+	}
+}
+
+// A LIST OF ROWS THAT DO NOTHING WHEN CHOSEN SAYS SO ON THE ROW. A session
+// with no shelf store at all still lists the folders on disk, and every one of
+// those rows says it cannot be attached, rather than being chosen for nothing.
+func TestTheSkillPickerSaysWhyARowCannotBeAttachedWithNoShelf(t *testing.T) {
+	a, agent, project, _ := skillApp(t)
 	seedSkill(t, filepath.Join(project, ".claude", "skills"), "alpha-flake", "chase a flaky test")
-	a.memory = nil
+	agent.shelf = nil
 
 	typeInto(t, a, "/skill ")
 	screen := strings.Join(plainOverlay(a), "\n")
 	if !strings.Contains(screen, "alpha-flake") {
 		t.Fatalf("the picker stopped listing the skills on disk:\n%s", screen)
 	}
-	if !strings.Contains(screen, skillOffWarning) {
+	// The row is clipped at the overlay's width, so the check is on the words
+	// that carry the reason rather than on the whole sentence.
+	if reason, _, _ := strings.Cut(skillNoShelfWarning, ","); !strings.Contains(screen, reason) {
 		t.Fatalf("the row does not say why choosing it does nothing:\n%s", screen)
 	}
+}
 
-	// AND A SESSION WITH A SHELF IS UNCHANGED, because the sentence is about
-	// the machine and not about the skill.
-	b, _, other, _ := skillApp(t)
-	seedSkill(t, filepath.Join(other, ".claude", "skills"), "beta-diff", "read a diff")
-	b.memory = &skillMemory{}
-	typeInto(t, b, "/skill ")
-	if got := strings.Join(plainOverlay(b), "\n"); strings.Contains(got, skillOffWarning) {
-		t.Fatalf("a session with a shelf was told memory is off:\n%s", got)
+// THE PICKER LISTS THE SAME HOME THE LAUNCH IMPORTS FROM. The import pass
+// reads the login home through internal/home, which follows CODEAF_HOME; a
+// picker that read the process's HOME instead listed one machine's skills
+// while the shelf held another's.
+func TestTheSkillPickerReadsTheLoginHomeTheImportReads(t *testing.T) {
+	a, _, _, homeDir := skillApp(t)
+	moved := t.TempDir()
+	t.Setenv(home.EnvVar, moved)
+	seedSkill(t, filepath.Join(moved, ".claude", "skills"), "moved-skill", "a skill under the moved home")
+	seedSkill(t, filepath.Join(homeDir, ".claude", "skills"), "process-home-skill", "a skill under the process HOME")
+
+	typeInto(t, a, "/skill ")
+	screen := strings.Join(plainOverlay(a), "\n")
+	if !strings.Contains(screen, "moved-skill") {
+		t.Fatalf("the picker did not list the home the import reads:\n%s", screen)
+	}
+	if strings.Contains(screen, "process-home-skill") {
+		t.Fatalf("the picker listed a home the import never reads:\n%s", screen)
 	}
 }

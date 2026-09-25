@@ -1783,6 +1783,29 @@ rule.
 
 ### Added
 
+- **A model family toggle under the crew, so a preset can answer from open weights or from everything** — [#1073](https://github.com/Agent-Field/codeaf/pull/1073) · `chat` `engine`
+
+  <details><summary>6 things that are no longer true</summary>
+
+  - The three crew preset words (frugal, balanced, max) always resolved to open-weight models, and `crewModels` in `internal/config/crew.go` was the whole table of what they meant. There is now a second table `crewAllModels`, and `CrewModelsForSource(source, preset)` picks between them on the new `models.crew.source` setting (`open` default, `all` for closed and frontier). A profile that never answers the row still resolves the open table.
+  - The careful seat was only ever required to be a different vendor from the worker by convention. It is now asserted by a test over both families: within each preset of `crewModels` and `crewAllModels`, the worker and high ids name different providers.
+  - `models.crew` was the only crew setting. The crew row's derivation and `ApplyCrew` now also read `models.crew.source`, so the preset word and the five ids it summarizes can never be drawn from different families; flipping the family reads the crew as `custom` while the tier rows are written and match no preset in the new family; seats nobody pinned follow the family and keep the preset word.
+  - The open table's frugal mastermind and its balanced careful and mastermind seats moved onto the roster chosen seat by seat, and the shipped default crew, which is exactly the balanced row, moved with it. Only the default moved; a profile that answered the crew keeps its rows.
+  - A profile that applied the old `frugal` or the old `balanced` now matches no preset in the open table, because the roster moved: the crew word, the `/crew` highlight and the seat rung read `custom` until the preset is re-applied, which writes the new roster.
+  - `CrewConfigured` counted only the tier rows, so a person who chose a family and never pinned a tier could still be handed a preset by the first-run setup. It now counts `models.crew.source` too: a chosen family is an answered crew.
+
+  The crew shipped open-weight models for a reason: a default nobody's pricing can
+  move under them. That reason still holds for the default, so the toggle defaults to
+  `open` and changes nothing for anyone who does not ask. It is for the person who
+  has decided the frontier models are worth it on a given machine, and wants the same
+  three preset words to mean them.
+
+  The two families are a table apiece, not a filter over one, because the picks are
+  argued seat by seat rather than chosen by a rule about vendors or price. The all
+  table is new and mirrors the open one's three presets; the open table moved onto the
+  roster this work chose, which is the one edit here that changes a shipped default.
+
+  </details>
 
 - **custom connections are named, sit beside each other, and switch from the Providers tab** — [#1089](https://github.com/Agent-Field/codeaf/pull/1089) · `chat` `engine`
 
@@ -1802,6 +1825,49 @@ rule.
 
   </details>
 
+- **The crew's seats are picked from a row — table, catalog or learn** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `chat` `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - A seat on the computed rung read `crew frugal, computed`; it now reads `crew frugal, computed from the catalog`.
+  - The crew word was derived from the five live seats; under a pick of catalog or learn it is derived from the five stored rows, because the live seats are computed ids the preset tables do not hold.
+  - An unwritten seat read the preset's own table row on every surface; under a pick of catalog or learn the worker, careful work and mastermind seats are computed at the crew's preset instead, and a hand-typed model id still wins.
+
+  `models.crew.pick` is a new choice row beside the crew row: `table` (the default),
+  `catalog` and `learn`. The crew row keeps its meaning — how much to spend — and the pick
+  row says where the models for that budget come from when a tier row does not hold a model
+  id of its own.
+
+  - `config.CrewPickAt` and `config.SetCrewPick` are the row's reader and writer; a word
+    the build does not know reads as the default and a writer refuses it, the way every
+    choice row folds.
+  - The ladder applies the pick in one seam both ladders call — `config.pickedSeat`,
+    beside `autoRow` in internal/config/auto.go. Under `catalog` or `learn` the worker,
+    careful work and mastermind seats are computed at the crew's preset
+    (`config.crewPresetUnder`), reflex and small work always read the table, a stored
+    model id that is not the preset's own table value wins with source `crew`, and a flag
+    or `CODEAF_MODEL`/`CODEAF_PLAN_MODEL` still outrank everything below them.
+  - `config.AutoPickWith(tier, family, preset, models, prior)` is the pick with the
+    measured quality named: `catalog` passes a nil prior, `learn` passes the Model Pool's
+    role-quality prior (`config.autoPrior`), and `config.AutoPick` keeps its behaviour —
+    prior included — for the bare `auto` word a tier row may hold.
+  - `config.SeatLearned` is the new rung. `Seat.Rung()` says `crew balanced, computed from
+    the catalog` for `SeatComputed` and `crew balanced, learned` for `SeatLearned`;
+    `Seats.Report()`, `Seats.Line()` and the receipts follow. The headless doors read the
+    same pick through `config.ResolveSeats`, so a run from the shell is seated exactly as
+    the conversation is.
+  - internal/tui3: the row is on the Providers tab directly under the crew word
+    (`picked from`, a cycle widget), `/crew` takes the three words beside the presets and
+    refuses an unknown word by naming all six, and the crew word and status segment read
+    `balanced · learn` / `crew balanced · learn` when the pick is off the table. The
+    chooser names the pick on a reading line under the presets, and a crew applied under a
+    pick confirms with the pick named beside the preset (`config.CrewSummaryPick`).
+  - internal/manual: the class-row section is now `Where the seats are picked from —
+    table, catalog, learn`, with the bare `auto` word kept inside it as the per-seat
+    alias, and the headless ladder page names the two rung words.
+
+  </details>
+
 - **Three pure packages — a crew picker, an additive tally and a measurement-index reader** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `engine`
 
   <details><summary>why</summary>
@@ -1809,6 +1875,16 @@ rule.
   Standard library only, no disk, no network, and nothing on a surface wired to
   them yet.
 
+  - `internal/crewpick` scores every (worker, high, mastermind) combination a
+    candidate list can field by the bill its seat volumes run up against the mean
+    of its seat qualities, and reads the frugal, balanced and max picks — and a
+    knob between them — off the non-dominated front. A candidate that publishes
+    some but not all of its three indexes is scored on the ones it publishes,
+    each missing one estimated from the call's own candidates carrying the pair
+    and never above the largest measured value of that index; `Crew.Estimated`
+    says which of a pick's indexes were estimated, and a tie in bill and quality
+    runs to the crew on fewer of them. Only a candidate publishing no index at
+    all is out of the running.
   - `internal/pool/tally` keeps per-address sufficient statistics (n, sum, sum of
     squares) and paired-comparison counts, so two sheets merge by addition in any
     order and marshal to a byte-identical schema-1 document.
@@ -1901,6 +1977,16 @@ rule.
   Standard library and `internal/catalog` only, no disk, no network, and nothing
   on a surface wired to it yet.
 
+  - `internal/pool/judge` reads a run's record — its brief and deliverable, its
+    report, claim and ending, the files it wrote and the checks it ran, and which
+    model held each of the worker, high and mastermind seats — and asks one
+    question per seat, in role order, through a caller-supplied `Ask`. Each answer
+    is read as one JSON object carrying a 0-100 score and a one-sentence reason,
+    on the same scale crewpick reads seat quality on and a pool records its
+    `role_quality` metric in. A seat whose model is the judge's own is skipped; a
+    seat whose answer cannot be read fails alone, and the scores obtained come
+    back beside an error naming it. The caller owns the model, the transport and
+    the bill, and bills the judge's calls to its own seat.
   - `judge.Pick` chooses that judge from a catalog: the cheapest row whose
     published coding index reaches `judge.DefaultFloor`, that carries tools, that
     no crew seat holds and whose vendor is not the worker's, ties broken by id.
@@ -1925,6 +2011,11 @@ rule.
     into a 0600 file beside a 0700 directory — and `record.Cells` reads the
     sheet's plain `role_quality` cells back as the cells a prior reads, sorted
     by seat then model.
+  - `config.AutoOwnCells` is the start-up seam beside `config.AutoIndex`, and
+    `autoPrior` folds the own cells into the index's prior seat by seat through
+    `crewpick.MergePriors`, the means combined by observation count, at a floor
+    of one rather than the index's min_installs: an install's own scores are its
+    own evidence. A nil seam changes nothing.
   - `cmd/codeaf` reads the own sheet once at start-up beside the index
     (`wirePoolIndex`); a sheet that does not parse is said under the debug
     record's switch and read as absent, not as a fault a pick stops for.
@@ -1977,6 +2068,40 @@ rule.
 
   </details>
 
+- **A tier row that says `auto` computes its model from the catalog** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `chat` `engine`
+
+  <details><summary>why</summary>
+
+  Any of the five tier rows (`models.tiers.*`) may hold the bare word `auto`,
+  case folded: the seat's model is computed from the catalog's own published
+  figures through `internal/crewpick` — the three indexes against the three
+  prices, under each seat's call shape — every time the row is read. The word
+  stays on disk; the id is derived on every read.
+
+  - `config.AutoValue`, `config.IsAuto` and `config.AutoPick` are the word and
+    its pure pick; `config.AutoModels` is how the catalog reaches seat
+    resolution, set once at start-up from the binary's non-blocking read,
+    never a fetch. Nil is an ordinary state, not an error.
+  - Two new rungs on the seat ladder: `config.SeatComputed` and
+    `config.SeatTable`. An auto row resolves on both ladders
+    (`config.TierSeatAt` and `config.ResolveSeats`) through one seam — to the
+    computed id, or, when nothing can be computed, to the family's table row
+    for the preset the stored rows name. It never resolves to `auto` and never
+    to empty.
+  - A seat on either new rung names the preset it ran at: `crew frugal,
+    computed` on a run's receipt.
+  - The preset an auto row runs at is read from the profile's other stored
+    rows, an auto row matching whichever preset is being compared. **When the
+    stored rows match more than one preset, the default preset — `balanced` —
+    wins the tie**, which is also what a profile matching none of them reads.
+    Since `max` differs from `balanced` only in the worker seat, a crew with
+    `auto` on the worker and the shipped rows elsewhere matches both and reads
+    as `balanced`; the worker's own id is what identifies `max` to the seam.
+  - Rows that don't say auto are unchanged, and so is everything above the
+    crew: a flag, `--plan-model` and the environment still outrank an auto
+    row, and a flag whose text is `auto` is handed on whole.
+
+  </details>
 
 - **The Model Pool reaches its first surface — a `model_pool` setting and a `codeaf pool` verb** — [#1102](https://github.com/Agent-Field/codeaf/pull/1102) · `chat` `engine`
 
@@ -2392,6 +2517,48 @@ rule.
 
   </details>
 
+- **The crew's default family is `all`, and both families' worker, careful and mastermind seats moved** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `chat` `engine`
+
+  <details><summary>6 things that are no longer true</summary>
+
+  - `models.crew.source` defaulted to `open`, so a profile that never answered the row resolved the open-weight table. The default is now `all`: `DefaultCrewSource = CrewSourceAll`, and a profile that never chose a family resolves the all family's balanced row — `google/gemini-2.5-flash`, `deepseek/deepseek-v4-flash-0731`, `z-ai/glm-5.3-flash`, `anthropic/claude-fable-5.1`, `anthropic/claude-fable-5.1`.
+  - The five shipped tier defaults were the open table's balanced row. `DefaultReflexModel` is now `google/gemini-2.5-flash`, `DefaultHighModel` and `DefaultMastermindModel` are `anthropic/claude-fable-5.1`; `DefaultLowModel` and `DefaultWorkerModel` are unchanged. The identity the crew row rests on still holds: the five defaults are exactly the DEFAULT family's balanced row.
+  - `config.CrewModels` and `config.CrewLine` answered the OPEN family. They answer the default family, which is now `all`; the open table is reached through `CrewModelsForSource(CrewSourceOpen, …)` and `CrewLineFor(CrewSourceOpen, …)`. A blank, misspelt or retired family word still folds to the default, which is `all` rather than `open`.
+  - A profile that applied a preset under an older build now reads `custom`, because the worker, careful and mastermind seats moved in both families. The crew word, the `/crew` highlight and the seat rung all say `custom` until the preset is applied again, which writes the new five.
+  - The open table's worker column is unchanged and its mastermind column is not: frugal now plans on `z-ai/glm-5.3-flash`, and balanced and max both plan on `z-ai/glm-5.3` rather than `moonshotai/kimi-k3`. The all table's worker holds `z-ai/glm-5.3-flash` through balanced and `openai/gpt-5.6-sol` and `anthropic/claude-opus-5` are in no preset of it any more.
+  - The `/crew` listing named the family whenever the row was not `open`. It names it whenever the row is not the default family, so an `open` listing carries the `family · open models` line and an `all` one does not.
+
+  Both tables are read off one plot, computed seat by seat on 2026-09-16: the
+  expected bill a seat's own call shape runs up, built from the catalog's
+  published prompt, completion and cache-read prices, against that seat's quality
+  from its published intelligence, coding and agentic indexes. The worker and the
+  careful seats are priced as long cached loops and the mastermind as one-shot
+  calls, which is why the columns no longer climb together in either family.
+
+  In the all family the worker stays on `glm-5.3-flash` through balanced because
+  the worker seat carries most of a task's tokens: a step there multiplies through
+  the whole bill, where a step on the careful or the mastermind seat is paid a
+  handful of times. The laws around the tables are untouched — the careful seat is
+  a different vendor from the worker in every preset of both families and still
+  sees images, and the reflex and small-work columns still never vary.
+
+  </details>
+
+- **Six cells of the fixed crew tables moved to the measured seats** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `chat` `engine`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - The all family's frugal careful seat is `qwen/qwen3.8-max-0902` (was `google/gemini-3.8-flash`). Its balanced mastermind is `anthropic/claude-opus-5` (was `anthropic/claude-fable-5.1`). Its max row works on `z-ai/glm-5.3` (was `anthropic/claude-fable-5.1`), checks on `anthropic/claude-fable-5.1` (was `openai/gpt-6-astra`) and plans on `anthropic/claude-opus-5` (was `anthropic/claude-fable-5.1`). The open family's frugal row works on `z-ai/glm-5.3-flash` (was `deepseek/deepseek-v4-flash-0731`).
+  - `config.DefaultMastermindModel` is `anthropic/claude-opus-5`, so the five shipped defaults are still exactly the default family's balanced row. An untouched profile plans on opus-5 and reads the crew as `balanced`; a profile that pinned the mastermind on the old default now reads `custom` until it pins again.
+  - Max now differs from balanced only in the worker seat, so an `auto` row on the worker can no longer tell the two presets apart — the stored-rows reading answers `balanced`, the default preset, and the worker's own id is what identifies max to the seam. The open family's frugal row has worker and careful on the same vendor, `glm-5.3-flash`, the one standing exception to the second-vendor law.
+
+  The cells move to the same measured plot the tables already name: expected bill
+  under each seat's call shape against published quality, nothing quoted. Max
+  spends on the seat that pays most of a task's bill; the careful and mastermind
+  seats settle at balanced and hold through max.
+
+  </details>
+
 - **The fuel meter asks an installed tariff first, and its table holds the ids this build ships** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `engine`
 
   <details><summary>3 things that are no longer true</summary>
@@ -2450,6 +2617,16 @@ rule.
 
   <details><summary>2 things that are no longer true</summary>
 
+  - `crewpick.SeatQuality` and `crewpick.Front` read a seat's quality from the catalog's published indexes alone. They now have `SeatQualityWith` and `FrontWith`, which blend a `crewpick.Prior` — a pool's measured quality per seat, per canonical model id — into each seat by N/(N+PriorWeightAt): a rating the prior holds with a positive count moves the seat towards the rating's mean, and `Crew.Measured` says which seats a rating entered. `SeatQuality` and `Front` keep their signatures and read no prior.
+  - `config.AutoPick` resolved a seat from the catalog's published figures and nothing else. It now reads `config.AutoIndex`, a Model Pool index seam beside `config.AutoModels`, and blends the index's `role_quality` cells (a gaussian metric only, through `config.PoolQualityMetric`) into the pick through `crewpick.FrontWith`. A nil index leaves the answer exactly what it was.
+
+  The table of published indexes is a statement about models, and a pool that has
+  actually run a model on a seat holds something the table cannot: what it scored
+  there, over however many observations. The blend carries each by its evidence,
+  so a handful of pool ratings nudges a seat and a large pool of them decides it,
+  while a picker with no index in hand is unchanged.
+
+  </details>
 
 - **The README telemetry section is one collapsed block at the end of Docs** — [#1115](https://github.com/Agent-Field/codeaf/pull/1115) · `docs`
 
@@ -2619,6 +2796,26 @@ rule.
 
   </details>
 
+- **the headless doors wait for the catalog rows a pick reads** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - `codeaf do`, `codeaf exec` and every door through `useAutoSeats` resolved their seats while the lazy catalog was still warming, so a pick taken off the table — or a tier row that says `auto` — read no rows and fell to the family's table row, reported as `crew balanced, table`, on a machine whose catalog was already cached beside the profile. They now wait for the warm within a three-second bound when the profile needs the rows, and fall exactly as before when the bound runs out — with the rung word saying which happened.
+  - internal/catalog's `Warmed(ctx)` is the bounded wait at the warm's door — true at once for an eagerly loaded catalog, false at the bound for one still fetching — and `config.AnyTierAutoAt` answers whether any tier row says `auto`, the second reason a door waits, beside `config.CrewPickAt`.
+
+  A pick off the table and a tier row that says `auto` are both computed from the
+  rows the process already holds (`config.AutoModels`), which the headless doors
+  set from a lazy catalog's non-blocking read. The chat surface never met the
+  defect because its picks happen after the warm has landed; a headless door's
+  picks happen a line after the read, so the warm was always still in flight and
+  the resolver saw no rows. The wait is bounded — three seconds, sized to the
+  disk read of a cached catalog — and the fetch is never waited on past it: a
+  cold cache on a slow network still resolves from the family's table row, and
+  the seat's receipt still names the rung that answered, so a run that fell says
+  it fell. A profile with neither a pick nor an auto row waits for nothing.
+
+  </details>
+
 - **No git command runs without a directory, and the checkout guard reads a linked worktree's own share** — [#1093](https://github.com/Agent-Field/codeaf/pull/1093) · `engine`
 
   <details><summary>3 things that are no longer true</summary>
@@ -2718,6 +2915,15 @@ rule.
 
   </details>
 
+- **a bare auto row under picked from = catalog reads the catalog's figures alone** — [#1120](https://github.com/Agent-Field/codeaf/pull/1120) · `chat` `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - Under `picked from = catalog` a tier row that says `auto` answered with the Model Pool's measurements blended in while its rung said `computed from the catalog`; it now answers the catalog's published figures alone, the same computation the pick word's own seat runs.
+  - The prior decision lived in two places — `AutoPick`, which always carried the measurements, and `pickedModel`, which carried them only under `learn`. Both seams now read one helper, `priorFor`, so a bare `auto` row and the pick word's own seat cannot disagree about what `catalog` means again.
+
+  </details>
+
 - **the do door seats its worker from the settings the run will use** — [#1122](https://github.com/Agent-Field/codeaf/pull/1122) · `engine`
 
   <details><summary>1 thing that is no longer true</summary>
@@ -2752,6 +2958,18 @@ rule.
   <details><summary>2 things that are no longer true</summary>
 
   - `internal/pool/index` held a cell against the document's `min_installs` by its `n`, the rows, so a cell one contributor filled with nine rows passed a floor of three while a cell three contributors shared over three rows was held below it. The floor is now counted on the cell's `installs` where it carries them, falling back to `n` where it does not, which is the shape the seed carries.
+  - A cell's `installs` field was unknown to the reader and dropped unread. It is now a reserved cell field, read for the floor, and a metric declaring an `installs` dim is skipped the way one declaring a `mean` dim is.
+
+  The relay computes `min_installs` over distinct contributors and folds their
+  rows into a cell's `n`, so flooring the client on rows admitted the one heavy
+  contributor and held the three light shares — the opposite of what the floor
+  is for. `crewpick.PriorFromCells` keeps its own floor on rows, which every
+  cell the reader now keeps still meets, since rows cannot be fewer than the
+  installs that produced them; the cells built outside a document, an
+  install's own sheet, carry rows alone. `N` keeps meaning rows everywhere, so
+  the learn blend still weighs a rating by its rows.
+
+  </details>
 
 - **The pool relay folds a retried batch once** — [#1128](https://github.com/Agent-Field/codeaf/pull/1128) · `engine`
 
@@ -3318,6 +3536,27 @@ rule.
 
   <details><summary>2 things that are no longer true</summary>
 
+  - `models.crew` was derived from the five tier rows and no reader consulted a stored one, so a run that wrote a single crew word into config.json and none of the tier rows seated the balanced crew whatever word it named. A stored preset word now names the budget its seats run at, and a seat nobody wrote reads that word's own row.
+  - Under `models.crew.pick=learn` a class row holding the preset's own table value was recomputed by the pick, so a run that pinned the crew table's own ids had them overridden. A class row written on its own is now a pin the pick leaves alone — and a stored crew word marks every row beside it as one — while a `/crew` apply, which writes all five rows at once, keeps the old computation.
+
+  The v3 task door resolves its worker seat through `internal/roles`
+  (`session`'s `defaultTaskModel` reads `roles.TierWorker` off the key map
+  `cmd/codeaf`'s `v3RolesSource` builds), and that map fills the seat from
+  `internal/config`'s tier ladder. The crew word a run stored was read by nothing:
+  the preset is derived from the five tier rows (`crewPresetUnder`), and a run that
+  wrote one word instead of the rows fell to the default preset — balanced — for
+  every arm.
+
+  `config.storedCrewWord` reads a `models.crew` word that names a preset, and both
+  the preset reading (`crewPresetUnder`, `crewStoredAt`) and the two ladders
+  (`tierSeatUnder`, `resolveSeat`) honor it: a seat nobody wrote reads that word's
+  own table row (`unwrittenSeat`). And `pickedSeat` now treats a class row written
+  on its own as a pin: it leaves the row alone when the profile stores the crew
+  word, when the five tier rows are not all written (`allTiersWritten` — a hand pin
+  writes one, a `/crew` apply writes all five), or when the row's id is not the
+  preset's own.
+
+  </details>
 
 - **internal/tui3: a test may not read a profile it did not create** — [#1173](https://github.com/Agent-Field/codeaf/pull/1173) · `chat`
 
@@ -4610,6 +4849,21 @@ rule.
   <details><summary>2 things that are no longer true</summary>
 
   - The manual was reachable only through the belt's `manual` tool, which is a model call — so reading a page needed an API key, cost money on every lookup, and returned the model's paraphrase rather than the writing. It is now a subcommand and a slash command as well: `aforge manual` and `/manual` read the same pages with no key, no model call and no spend, and print them as written. Anything that says the pages can only be reached through a model is out of date.
+  - The `/crew` rows on the command list said "the four models aforge uses on its own behalf". `config.CrewModels` sets FIVE seats in every preset — reflex, low, worker, high, mastermind — and the seat the row left out was the worker, which pays most of a task's bill. Both rows now say five, and a test reads the count out of `config.CrewModels` instead of trusting the string.
+
+  The manual is what aforge is built from and what it answers about itself out of,
+  and it had exactly one reader that was not the person. `aforge manual` lists every
+  page with its title, `aforge manual <page>` prints that page whole, and
+  `aforge manual "<question>"` prints the sections that answer it with the page and
+  heading over each one; `/manual` does the same three in the conversation. A page
+  asked for by NAME gets an exact answer or an exact refusal that names every page
+  there is, and from the terminal that refusal exits non-zero; a QUESTION the manual
+  has nothing on exits 0 saying so, because "aforge does not do that" is an answer.
+
+  Nothing on either door is cut short. The caps in `internal/manual` are a model's
+  context budget, and neither a terminal nor a person is on one.
+
+  </details>
 
 - **a real-model end-to-end lane proving the manual is reachable through the live chat surface** — [#309](https://github.com/Agent-Field/codeaf/pull/309) · `chat` `engine`
 
@@ -5721,7 +5975,7 @@ rule.
 
   <details><summary>1 thing that is no longer true</summary>
 
-  - The shipped reflex default was nex-agi/nex-n2-mini, in DefaultReflexModel. It is now mistralai/mistral-nemo everywhere a default names the tier; nex-n2-mini appears only in historical comments about what it did there.
+  - The shipped reflex default was nex-agi/nex-n2-mini, in DefaultReflexModel and in all three crew presets. It is now mistralai/mistral-nemo everywhere a default names the tier; nex-n2-mini appears only in historical comments about what it did there.
 
   nex-n2-mini's endpoint accepts the reasoning disable and thinks anyway, so every
   reflex call ran at the 2,000-token recovery ceiling and one overlong thinking
@@ -6274,6 +6528,35 @@ rule.
 
   </details>
 
+- **the crew has a worker seat, and its presets are open-weight models picked off the catalog's scores** — [#278](https://github.com/Agent-Field/codeaf/pull/278) · `chat` `engine` `docs`
+
+  <details><summary>7 things that are no longer true</summary>
+
+  - The crew was FOUR tiers — reflex, low, high, mastermind — and none of them governed a chat task's worker: `defaultTaskModel` (internal/session/taskmodel.go) put a task on the `task.model` row, else the conversation's live model, so a person on `frugal` talking to a frontier model handed every task to that frontier model. It is FIVE tiers now: `worker` (`models.tiers.worker`, `roles.TierWorker`, `config.ModelTierWorker`) sits between low and high, and a task's model resolves: a model named in the ask → `task.model` → the crew's worker row → the conversation. A level on the worker row (`vendor/model:high`) is NOT carried onto the task.
+  - `hands` in the crew line (`crew → balanced · brain … · hands … · checks …`, from `config.CrewClasses`) named the LOW tier. It names the WORKER tier now. The low and reflex tiers no longer appear in that line at all, because they are the same models in every preset.
+  - `roles.RoleWorker` (the adaptive-run node) rode `TierLow`. It rides `TierWorker`, and so does the work seat of `aforge do` / `exec` / `plan` / `run` (`config.ResolveSeats` reads `ModelTierWorker`, not `ModelTierLow`). A test source that sets only `tiers.low` and expects a worker to land on it is wrong now.
+  - The shipped balanced crew was mistral-nemo / deepseek-v4-flash / qwen3.8-27b / kimi-k3:low. It is mistral-nemo / deepseek-v4-flash-0731 / glm-5.3-flash / qwen3.8-27b / glm-5.3:high (reflex / low / worker / high / mastermind). frugal is deepseek-v4-flash-0731 working with glm-5.3-flash thinking (`:high`) and checking; max is glm-5.3 working with kimi-k3 thinking (`:high`) and checking. `config.DefaultWorkerModel` exists. kimi-k3:low is in no preset.
+  - The low tier's default was `deepseek/deepseek-v4-flash`, which OpenRouter resolves to the April 2026 build. It is `deepseek/deepseek-v4-flash-0731` — the July build at the same price, thirteen coding-index points higher — in every preset.
+  - A profile that applied a crew before this change has four `models.tiers.*` keys on disk and reads `custom` (`config.CrewAt`) until a preset is applied again; the fifth row reads the shipped default meanwhile. That is the honest reading and not a bug.
+  - The settings panel's Providers tab had four class rows under crew; it has five, with a `worker` row (`does the work · every task, its parts, every run node — most of the bill`) between `small work` and `careful work`, and the `small work` row's line no longer claims run nodes. The manual's crew, task-model, `/crew`, settings and adaptive-run pages say all of it, and `models-and-cost.md` has a new section *Which model does a task run on*.
+
+  The worker is twenty or thirty tool turns against a handful of one-shot role calls
+  around it; it is where a task's money goes, and the one seat the cost dial could
+  not reach. Naming it `hands` in the summary was already what everyone read the
+  word to mean.
+
+  The ids were picked on 2026-09-01 from `/api/v1/models`, which now carries
+  `benchmarks.artificial_analysis` (intelligence, coding and agentic indexes) on
+  every row, filtered to models that publish weights, against blended price. The
+  open-weight pareto front on the agentic index is four models long —
+  deepseek-v4-flash-0731, glm-5.3-flash, glm-5.3, and kimi-k3 on coding only — and
+  the worker column climbs it one step per preset. The careful column is always a
+  different vendor from the worker and always sees images, because the vision role
+  rides it. Closed models that are cheaper on their own vendor's platform than
+  through the router are deliberately in no preset. The sliding, self-refreshing
+  pick was designed and parked; this is the hand-picked crew until then.
+
+  </details>
 
 - **a proposed task waits while you type, a bare no means no, and the default window is fifteen seconds** — [#279](https://github.com/Agent-Field/codeaf/pull/279) · `chat` `engine` `remote`
 
@@ -6643,6 +6926,7 @@ rule.
   <details><summary>7 things that are no longer true</summary>
 
   - The chat manual said /cost prints up to six aligned lines; it can print eight, and the page now says eight.
+  - Four copies of the /crew max line in the chat manual named deepseek-v4-pro as the hands seat; the max preset's worker is z-ai/glm-5.3, so every copy now reads hands glm-5.3.
   - The chat manual had no heading of its own for a stopped reply that had come apart, and now says esc on one keeps nothing, quoting the sentence the surface prints.
   - The standing-orders page never used the words delete, remove or get rid of; there is no delete on that page, the word for it is stop, and the heading now carries all three.
   - Nothing in the chat manual said how often standing things are checked; a pass runs every five minutes from an open window or the machine's own timer, and an item fires on the cadence you gave it.
@@ -6652,7 +6936,7 @@ rule.
   Eight claims in the money and standing-order pages that the code does not make,
   found by reading the code beside the pages. The figures the pages quote are now
   rows in the truth table — the day's $500, the plan's $100, practice's $50, a
-  firing's $5 and the five-minute pass — so
+  firing's $5, the five-minute pass, and both spellings of the crew max line — so
   the next one to move goes red with its owner named rather than sitting on the
   page. Nine new probes, and one heading widened because a probe reached neither
   page that could answer it.
@@ -7602,6 +7886,18 @@ rule.
   - Onboarding did not offer a chat-model control alongside the work crew. It now shows the model in use and provides a searchable viewport over the available catalog, using the existing settings writer and configuration precedence.
   - Setup had no separate capability demonstration beside its form. At 112 columns and wider it now includes a labelled, bordered example panel whose short preview settles after one play or when typing begins; narrow and screen-reader layouts retain their supported static behavior.
   - The first empty conversation led with the wordmark and model information, and its greeting disappeared on the first keystroke. A first-time conversation now leads with a question, the folder, and three starters that fill an unsent draft; its composer stays in place while typing, while returning-user greetings keep their existing presentation.
+  - The onboarding crew chooser inherited preset descriptions that included a pennies-a-day claim. Its descriptions now explain the preset choice without a cost promise, with model details available on request.
+
+  The three controls open on effective settings. Custom crews and existing values are
+  preserved, Back retains pending edits, and cancelling a chooser does not select its
+  highlighted row. Memory, permission prompts, the task countdown, and spending defaults
+  are unchanged.
+
+  The compiled chat manual and docs/design/onboarding/DESIGN.md describe the flow, scope,
+  responsive layout, and example behavior. A real-terminal GIF and narrow capture accompany
+  the draft review.
+
+  </details>
 
 - **the landing card asks one question, in one word, with two answers** — [#689](https://github.com/Agent-Field/codeaf/pull/689) · `chat`
 
@@ -9714,16 +10010,17 @@ rule.
 
   <details><summary>7 things that are no longer true</summary>
 
+  - A crew set with `/crew` held in the chat and nowhere else: `aforge do`, `exec`, `plan`, `run`, `revise` and `run subharness` resolved their two models from `--model`/`--plan-model` and `AFORGE_MODEL`/`AFORGE_PLAN_MODEL` alone and never opened the profile. They now climb one ladder — flag, environment, the profile's crew (mastermind plans, small work works), the build's default — so a benchmark no longer has to hand-translate a preset into slugs.
   - The model flags said `(default AFORGE_MODEL)`, which named one rung of four. They now name the ladder: `flag › AFORGE_MODEL › crew › default`.
-  - A headless run said nothing about which models it was using unless a plan split happened to be in force. Every one of those doors now opens with a `models:` line on stderr naming both seats and the rung that chose each — `models: work deepseek/deepseek-v4-flash (crew) · plan qwen/qwen3.8-27b (crew)`.
-  - `aforge do --json` had no model fields. It now carries `model`, `plan_model`, `model_source` and `plan_model_source`; the two source fields name the rung (`--model`, `AFORGE_MODEL`, `crew`, `default`), and a campaign should record them beside the score.
-  - The plan role's seed origin in the journal always read `AFORGE_PLAN_MODEL` or `--plan-model`. It now reads whatever actually named the model, which may be the crew.
+  - A headless run said nothing about which models it was using unless a plan split happened to be in force. Every one of those doors now opens with a `models:` line on stderr naming both seats and the rung that chose each — `models: work deepseek/deepseek-v4-flash (crew frugal) · plan qwen/qwen3.8-27b (crew frugal)`.
+  - `aforge do --json` had no model fields. It now carries `model`, `plan_model`, `model_source` and `plan_model_source`; the two source fields name the rung (`--model`, `AFORGE_MODEL`, `crew frugal`, `default`), and a campaign should record them beside the score.
+  - The plan role's seed origin in the journal always read `AFORGE_PLAN_MODEL` or `--plan-model`. It now reads whatever actually named the model, which may be `crew frugal`.
   - A model value carrying a thinking level missed every catalog lookup: `moonshotai/kimi-k3:low` matched no row, so its window read zero, its price read unpublished, its capabilities read unknown, and its measured history filed under a second identity. `catalog.normalizeID` — the one place a value becomes a lookup key — now takes the level off alongside the `~` alias marker, and `config.panelTierWord` does the same.
   - A model id carrying a thinking level was sent to the provider whole, so `--plan-model moonshotai/kimi-k3:low` asked for a slug no provider publishes — a 404 on every planning call. `Config.providerConfig` and `ClientFor` now split the level off the slug; the seat, the plan role binding and the receipt keep the whole value, and the role ladder applies the level per call as it always has.
 
   The crew is the product's own word for a model policy, and headless invented a
   second one. Reported from a benchmark (#166) that ran the same task under two
-  crews and had to read `models.tiers.*` out of `config.json` by hand to do it —
+  presets and had to read `models.tiers.*` out of `config.json` by hand to do it —
   which is exactly the one-source-of-truth violation the crew exists to prevent.
 
   The resolution is one function beside `CrewAt`/`TierModelAt` — `config.ResolveSeats`
@@ -9732,6 +10029,11 @@ rule.
   planning seat the **mastermind** tier because those are the two the chat's own
   worker and planner ride (`roles.DefaultAssignment`), so the two surfaces now call
   the same two models for the same two jobs.
+
+  One decision worth stating: an untouched profile falls to the **build's default**
+  rather than reading its own shipped tier values back as `crew balanced`. The four
+  defaults *are* the balanced row, so the alternative would make the bottom rung
+  unreachable and quietly change the default headless work model for everybody.
 
   A crew value carrying a thinking level (`moonshotai/kimi-k3:low`) carries it the
   way a flag does — whole into the seat and into the plan role's binding, split
@@ -10595,6 +10897,7 @@ rule.
 
   - A crew profile pinned every seat. One written before #278 has no `models.tiers.worker` and never did; the work seat of every headless run came from it by inheritance, not from the key.
   - An unset tier key meant one thing: this build's default. It now means two — a key nobody ever held asks the row it was split out of first, and only a profile with no tier keys at all reaches `DefaultModel`.
+  - `SeatSource` had four rungs and a seat's rung read `crew <preset>` or `default`. There are five: `inherited` is the crew answering through an older row, and it prints as `crew custom, inherited` in the models line and in `--json`'s `model_source`.
   - A door printed `seats.Line()`. It prints `seats.Report()` — the models line plus the one line saying a seat was inherited — and a door that prints only the line swallows the reason.
 
   The worker row landed in #278 and the profiles people already had did not gain a
@@ -10638,6 +10941,7 @@ rule.
 
   - A conversation's task nodes could run on the build's own worker model while `/crew` showed a crew the person had picked, with no receipt anywhere. Both surfaces now read one ladder, and the one that inherits says so.
   - `TierModelAt` had two answers: the row somebody wrote, and this build's choice. It has three — a key that was NEVER HELD asks the row it was split out of first, so the settings sheet, `CrewAt` and the chat's role map all read the model a task ACTUALLY runs on. A row cleared on purpose and a profile with no tier keys are unchanged.
+  - `CrewAt` read a pre-#278 profile as though its worker row held this build's default. It reads the inherited value, so the preset word a profile of that vintage derives to may change — and it now agrees with the model the work runs on.
   - The inheritance receipt was a headless thing (#311). It is also one line in the thread, said once per session at the first task start, and one line on the `/crew` sheet: `your work seat is inherited from small work — picking one writes it`.
 
   #311 fixed the headless doors and left the surface where most tasks are started
@@ -10684,7 +10988,7 @@ rule.
 
   <details><summary>6 things that are no longer true</summary>
 
-  - The status line showed the crew on an ordinary launch — it did not, since crewSegment guarded on an empty profileDir, and AFORGE_PROFILE_DIR is unset on very nearly every launch. It guards on a hosted window now, so the crew is on the row for everybody.
+  - The status line showed the crew on an ordinary launch — it did not, since crewSegment guarded on an empty profileDir, and AFORGE_PROFILE_DIR is unset on very nearly every launch. It guards on a hosted window now, so `crew balanced` is on the row for everybody.
   - An empty profileDir meant a surface with no profile. It never has: internal/config resolves "" to this process's own profile in the state root, and the only window with no profile of its own is a hosted (`--host`) one.
   - The notices' ledger was written per profile. It was written for nobody: noticeLedgerPath answered "" on an ordinary launch and the board kept everything in RAM, so a hint retired by its own gesture came back at the next launch, a hint ignored was never counted past session one of three, and the news channel never had an older build to compare against. All three now work, which is a visible change: a hint you already acted on will stop coming back.
   - config.BudgetConfigPath was the place that knew what an empty profile directory means. config.ProfilePath is, and BudgetConfigPath, the notice ledger and cmd/aforge's chatLogPath all resolve through it.
@@ -11987,8 +12291,9 @@ rule.
 
   <details><summary>5 things that are no longer true</summary>
 
-  - The v3 surface did not know `--one-model` existed. It read the profile's four crew rows through `config.CrewAt` and drew its crew segment for the whole of a run in which those rows seated nothing, because the door had already emptied the roles source and the task model. `internal/tui3.Options` carries `OneModel`, set from the session's own `session.Config.OneModel`, and the surface reports the flag.
+  - The v3 surface did not know `--one-model` existed. It read the profile's four crew rows through `config.CrewAt` and drew `crew custom` (or `crew balanced`, or `crew max`) for the whole of a run in which those rows seated nothing, because the door had already emptied the roles source and the task model. `internal/tui3.Options` carries `OneModel`, set from the session's own `session.Config.OneModel`, and the surface reports the flag.
   - `app.crewReading` read the profile and nothing else. It answers the flag FIRST and returns a fixed reading under it — segment `one model`, word `one model · every call rides the model you are talking to` — taken once and never invalidated by the settings generation, because nothing a session can do moves it. The five surfaces that read through it therefore agree by construction: the status line's segment, `/status`'s crew line, the model picker's hint slot, the status note and the welcome box's clause.
+  - The welcome box built its clause at the draw as `reading.preset + " crew"`. `crewReading` carries a `clause` field now, because under the flag the preset word is not what stands behind the model and the reading is the one place that knows which.
   - A profile older than the worker row was told `your crew was set before the work seat existed · it is running on your small work model until you pick a crew again` when its first task started, under `--one-model` as well as without it — and "until you pick a crew again" promises a change picking one would not make. `app.workSeat` returns the zero `config.Seat` under the flag the way it already does over a connection, so the thread's receipt and the `/crew` sheet's inherited row are both silent. Without the flag the same profile still draws its crew word and still says the line once; the #311/#314 behaviour is unchanged.
   - `internal/manual/chat/models-and-cost.md` described what `--one-model` settles and said nothing about what the screen does under it. It has a section of its own for the screen: the crew segment reads `one model`, the rows are overridden rather than gone, and no crew receipt is posted.
 
@@ -13435,9 +13740,18 @@ rule.
 
   <details><summary>4 things that are no longer true</summary>
 
-  - A thinking level written onto a class value (`z-ai/glm-5.3:high`) reached the conversation's one-shot role calls and nothing else. The client seam took the level off the slug so a provider would be asked for a model it publishes, and discarded it in the same line, so every headless seat sent only the run-wide economy — which defaults to off, and which a model that cannot stop thinking answers at the lowest word it lists. A run seated at `z-ai/glm-5.3:high` recorded `effort='low'` on 149 of its 155 brain calls. The level now travels beside the bare slug on the client that was built from it, and reaches every request that seat sends at every headless door.
+  - A thinking level written onto a class value (`z-ai/glm-5.3:high`) reached the conversation's one-shot role calls and nothing else. The client seam took the level off the slug so a provider would be asked for a model it publishes, and discarded it in the same line, so every headless seat sent only the run-wide economy — which defaults to off, and which a model that cannot stop thinking answers at the lowest word it lists. A `crew balanced` run seated at `z-ai/glm-5.3:high` recorded `effort='low'` on 149 of its 155 brain calls. The level now travels beside the bare slug on the client that was built from it, and reaches every request that seat sends at every headless door.
   - `provider.Config` had no way to carry an operator's own thinking level, and the adapter could not tell an effort a call cannot work without from an ordinary economy: `WithRequiredReasoningEffort` and `WithConfiguredReasoningEffort` built the identical request. `provider.Config.Effort` is now the client's pin, it outranks any effort carried on a context, and only a request made with `WithRequiredReasoningEffort` — the reflex's disable, whose answer cap leaves a thinking pass no room — wins over it.
   - A model-call row recording `low` gave a reader no way to tell a deliberate downgrade from a dropped pin. Rows now carry `effort_pin` when the call carried something other than its client's pinned level, and nothing at all when the pin travelled or there was no pin; `aforge logs` prints it as `pinned high` beside the effort that won.
+  - The manual said the shipped mastermind carries `:low`. It has carried `:high` in all three crew presets; the page now reads that word off `config.DefaultMastermindModel` through the manual truth gate, so it cannot drift again.
+
+  A pin that does not reach the wire is a knob that does nothing, silently, for
+  whoever set it — and this one was drawn on the status line, printed on the
+  headless receipt and written into the plan role's binding all the way along.
+  The law is now the one the issue asked for: a pinned level reaches the wire on
+  every call its seat makes, or the row says what displaced it.
+
+  </details>
 
 - **a run that has not landed carries no landing time, and the index answers with the file's last word** — [#644](https://github.com/Agent-Field/codeaf/pull/644) · `chat` `engine`
 
@@ -14143,6 +14457,13 @@ rule.
 
   <details><summary>1 thing that is no longer true</summary>
 
+  - The max crew's confirmation line and its /status line read `brain kimi-k3:high`. Since #665 they read `brain kimi-k3`: a shipped preset buys a bigger planning model and leaves its generation behaviour to the provider, and the two chat tests that still asked for the rung were what kept dev red.
+
+  Test-only. Plain `origin/dev` at `5376c1e23` failed both tests with no other
+  change on it; this restates them as the law #665 made, and asserts the rung is
+  absent so the old spelling cannot be reintroduced by accident.
+
+  </details>
 
 - **Unusable naming replies recover and compact tabs reveal their full names on hover** — [#671](https://github.com/Agent-Field/codeaf/pull/671) · `chat` `engine` `docs`
 
@@ -15620,12 +15941,12 @@ rule.
   <details><summary>4 things that are no longer true</summary>
 
   - The lean prompt profile had three triggers — the pin, the crew's `worker` seat, and a window under 32,000 tokens. It now has two: the pin `AFORGE_PROMPT_PROFILE=lean`, and a context window under 32,000 tokens. `Config.atTheWorkerSeat` and the `THE SEAT BEFORE THE WINDOW` branch in `resolvePromptProfile` are gone.
-  - An open-weight model was treated as a small model. It is not: `deepseek/deepseek-v4-flash-0731` and `z-ai/glm-5.3-flash` — models often seated as the `worker` — are served with 128,000 tokens of room, so a conversation on one of them now renders the FULL page, byte-identically to any other 128,000-token model, with the full tool list and saved memories on. A licence is not a size.
+  - An open-weight model was treated as a small model. It is not: `deepseek/deepseek-v4-flash-0731` and `z-ai/glm-5.3-flash` — the models the frugal and balanced crew presets put in the `worker` seat — are served with 128,000 tokens of room, so a conversation on one of them now renders the FULL page, byte-identically to any other 128,000-token model, with the full tool list and saved memories on. A licence is not a size.
   - `internal/manual/chat/models-and-cost.md` said lean applied "under 32,000 tokens, or on that seat". It now says lean applies in exactly two cases, and it carries a second section, `## Is an open-weight or local model given the lean profile?`, saying that deepseek and glm with a large window are not lean.
   - There is still no `/settings` row for the profile. The environment pin is the only way to choose it by hand.
 
-  The seat trigger was silent, and that is what made it wrong. A person whose crew
-  seated an open-weight worker and who then picked their worker model in chat would have had sections
+  The seat trigger was silent, and that is what made it wrong. A person on the
+  frugal preset who then picked their worker model in chat would have had sections
   taken off the page, `propose_task`, `tasks`, `watch`, `track`, `commit`, `recall`
   and `read_document` shelved, and saved memories turned off — with nothing on
   screen saying so, because a derived profile has no row anywhere to read. A model

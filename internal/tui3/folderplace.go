@@ -209,20 +209,24 @@ const folderRemoteWord = "choosing a folder is not available over --host yet —
 // intent. See [app.openContextPick] for what the intent does and does not
 // decide.
 func (a *app) openFolderPick(query string) tea.Cmd {
+	a.noticeEvent(eventFolderPicked)
 	return a.openContextPick(query, true)
 }
 
-// openTargetFolderPick is /folder, /place and /dir TYPED AT HOME: the same one
-// browser, opened about the conversation home is about to start rather than
-// about the one this window is holding behind the screen.
+// openTargetContextPick is THE SHEET HOME OPENS, with either intent: a bare
+// /attach wants a FILE for the tray and a bare /project wants the folder the
+// next conversation opens in, and both are one sheet whose confirm already
+// does both (folderact.go's [app.targetFolderConfirm]). The intent decides
+// only which tip the gesture retires (notice.go).
 //
-// IT IS THE SAME SHEET AND NOT A SECOND ONE. Home's own answer to "which
-// folder" used to be one line under the box — `alt+p moves the next conversation
-// · or type a path` — which named a chord and a gesture and drew nothing a
-// person could walk. The owner's word for it was that they did not notice it.
-// So the command opens the browser every other surface opens, with three
-// differences that all come from the same fact — the conversation this is about
-// does not exist yet (folderpick.go's [folderPick.forTarget]):
+// IT IS THE SAME SHEET AS THE CONVERSATION'S AND NOT A SECOND ONE. Home's own
+// answer to "which folder" used to be one line under the box — `alt+p moves
+// the next conversation · or type a path` — which named a chord and a gesture
+// and drew nothing a person could walk. The owner's word for it was that they
+// did not notice it. So the command opens the browser every other surface
+// opens, with three differences that all come from the same fact — the
+// conversation this is about does not exist yet (folderpick.go's
+// [folderPick.forTarget]):
 //
 //   - NO FOLDER DOOR IS REQUIRED. A pin is a string on this window; nothing is
 //     referred to any agent, so a session that cannot hold a folder is no reason
@@ -238,7 +242,16 @@ func (a *app) openFolderPick(query string) tea.Cmd {
 // read are the laptop's and the work is on the other machine, which is
 // [folderRemoteWord]'s argument said about the target: the pin would name a
 // directory the next conversation cannot open.
-func (a *app) openTargetFolderPick(query string) tea.Cmd {
+//
+// THE FOLDER DOOR ONTO IT IS /project SINCE 2026-09-22 (projectcmd.go), and
+// not /folder: on home /folder opens a conversation and gives that one a
+// folder, like every other command about a conversation.
+func (a *app) openTargetContextPick(query string, files bool) tea.Cmd {
+	if files {
+		a.noticeEvent(eventAttached)
+	} else {
+		a.noticeEvent(eventProjectSet)
+	}
 	if a.hosted() {
 		a.home.say(folderRemoteWord, "")
 		return nil
@@ -310,6 +323,14 @@ func (a *app) closeFolderSheet() tea.Cmd {
 //     needs no folder door whatever. The sheet opens; a folder row on it then
 //     refuses with the same sentence when it is confirmed (folderact.go).
 func (a *app) openContextPick(query string, folders bool) tea.Cmd {
+	// THE DOOR FIRES ITS OWN EVENT AND THIS SHEET FIRES NONE (notice.go). One
+	// surface has three doors onto it — /folder, a bare /attach and /project —
+	// and a door found is a door learned, whatever the list then answers. It
+	// used to be decided HERE, off the `folders` flag, which is the flag that
+	// says whether a folder DOOR IS REQUIRED rather than which command was
+	// typed: home's sheet passes false for that reason, so opening it to pick
+	// a project retired the two /attach tips about a tray nothing went onto.
+	//
 	// THE INTENT CHOOSES THE REFUSAL BEFORE THE LIST IS BUILT. The connection's
 	// sentence used to be said for BOTH doors, which answered a request about a
 	// file with an answer about folders and left the person who did not know the
@@ -1168,12 +1189,22 @@ func (a *app) tookFolderStore(msg folderStoreMsg) tea.Cmd {
 	hidden, gen, cols := a.folder.hidden, a.folder.gen, a.folder.cols
 	marks, pane := a.folder.marks, a.folder.pane
 	paneTop, paneLeft := a.folder.paneTop, a.folder.paneLeft
+	forTarget := a.folder.forTarget
 	a.folder.start(a.folderCandidates(), a.tilde)
 	a.folder.filter, a.folder.facts = filter, facts
 	a.folder.kids, a.folder.asking, a.folder.hidden = kids, asking, hidden
 	a.folder.marks, a.folder.pane = marks, pane
 	a.folder.paneTop, a.folder.paneLeft = paneTop, paneLeft
-	a.markFolderHeld()
+	// AND SO DOES WHO THE SHEET IS ABOUT. Home's sheet chooses for the
+	// conversation that does not exist yet ([app.openTargetContextPick]), and a
+	// rebuild that dropped the flag turned the first `/project` or bare `/attach`
+	// of a launch into `add context` a second after it opened, so the folder
+	// chosen on it went to the conversation BEHIND home. Its sheet holds nothing
+	// either, for the reason that function gives.
+	a.folder.forTarget = forTarget
+	if !forTarget {
+		a.markFolderHeld()
+	}
 	// The COLUMNS are kept whole and not re-seated: which level they are on and
 	// which row of it the cursor is on are facts about where a person has walked
 	// to, and a store arriving is not news about either.

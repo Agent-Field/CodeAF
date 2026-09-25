@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/router"
 )
 
@@ -91,6 +92,11 @@ type crewHealth struct {
 	fail map[string]float64
 	// resets is provider → the latest reset a cooling route said.
 	resets map[string]time.Time
+	// lowBalance are providers whose balance was READ as low before any call
+	// ([CreditsLowAt]). They stay unaffordable while a task is probing: the
+	// reading is taken again at every launch while it is low
+	// ([CreditsNeedRead]), so a top-up is noticed without a refused call.
+	lowBalance map[string]bool
 }
 
 // crewRouteFacts are what a candidate list is built with beyond the rule and
@@ -107,6 +113,13 @@ func crewHealthAt(profileDir string) crewHealth {
 		history = CrewRouteHistory(profileDir)
 	}
 	h := crewHealthOf(history, time.Now())
+	// AN OPENROUTER BALANCE KNOWN TO BE LOW ([CreditsLowAt]) is an account out
+	// of credit before any call is made: the seats reach for free routes and
+	// the crew line says so, instead of a first paid call being refused.
+	if useFreeDefaultsAt(profileDir) {
+		h.unaffordable[modelsource.DefaultID] = true
+		h.lowBalance = map[string]bool{modelsource.DefaultID: true}
+	}
 	if CrewAccounts != nil {
 		for _, p := range CrewProvidersAt(profileDir) {
 			if state, ok := CrewAccounts(profileDir, p.ID); ok && state.CreditKnown && state.CreditUSD <= 0 {
@@ -181,9 +194,13 @@ func crewHealthOf(history []router.CrewRouteOutcome, now time.Time) crewHealth {
 
 // probing is this health with the accounts it holds out of credit and the
 // providers whose key it saw refused put back on trial: what a new task is
-// routed under, so its first call asks them again ([RouteCrew]).
+// routed under, so its first call asks them again ([RouteCrew]). An account
+// whose balance was read as low is not put on trial ([crewHealth.lowBalance]).
 func (h crewHealth) probing() crewHealth {
 	h.unaffordable, h.disconnected = map[string]bool{}, map[string]bool{}
+	for id := range h.lowBalance {
+		h.unaffordable[id] = true
+	}
 	return h
 }
 

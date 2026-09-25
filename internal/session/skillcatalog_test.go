@@ -1,10 +1,14 @@
 package session
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 
 	store "github.com/Agent-Field/codeaf/internal/store"
 )
@@ -25,43 +29,113 @@ func activeSkill(t *testing.T, brain *store.Store, scope, body, artifact string)
 	return candidate
 }
 
-// bulletLines is the skill bullets and nothing else: the section header, the
-// routing sentence and the "- … and N more skills" overflow line are all not
-// one skill.
+// bulletLines is the described skill lines and nothing else: the section
+// header, the routing sentence, the names-only line and the "- … and N more
+// skills" overflow line are all not one described skill.
 func bulletLines(catalog string) []string {
-	bullets := make([]string, 0, skillCatalogMaxLines)
+	bullets := make([]string, 0)
 	for _, line := range strings.Split(catalog, "\n") {
-		if strings.HasPrefix(line, "- ") && !strings.Contains(line, "more skills") {
+		if strings.HasPrefix(line, "- ") && !strings.Contains(line, "more skills") && !strings.HasPrefix(line, skillCatalogNamesLead) {
 			bullets = append(bullets, line)
 		}
 	}
 	return bullets
 }
 
-// TestSkillCatalogWindowsALargeShelf: a shelf past the cap renders exactly
-// [skillCatalogMaxLines] bullets and one overflow line naming what did not fit,
-// so the section can never grow with the notebook.
-func TestSkillCatalogWindowsALargeShelf(t *testing.T) {
+// THE CATALOG NAMES EVERY SKILL A SHELF OF ORDINARY SIZE HOLDS. It used to
+// window the shelf to eight lines scored against the workspace path, so a
+// person with forty skills was shown eight, chosen by a path that says nothing
+// about the message — and the model could not pick a skill it was never shown.
+// Sixty skills with descriptions of an ordinary length all get their line.
+func TestSkillCatalogNamesEverySkillOnAnOrdinaryShelf(t *testing.T) {
 	brain := openTestBrain(t)
-	for index := 0; index < 15; index++ {
+	for index := 0; index < 60; index++ {
 		activeSkill(t, brain,
-			"domain:alpha",
-			"skill number "+strconv.Itoa(index)+" checks a thing",
+			"harness:claude",
+			"skill number "+strconv.Itoa(index)+" drafts, checks and formats one kind of document for review",
 			"/shelf/skill-"+strconv.Itoa(index),
 		)
 	}
-
 	catalog := renderSkillCatalog(Config{Memory: brain, Workspace: "/srv/app"})
-	if catalog == "" {
-		t.Fatal("a shelf of fifteen skills rendered nothing")
+	if got := len(bulletLines(catalog)); got != 60 {
+		t.Fatalf("catalog describes %d of sixty skills:\n%s", got, catalog)
 	}
+	if strings.Contains(catalog, "more skills") || strings.Contains(catalog, skillCatalogNamesLead) {
+		t.Fatalf("a shelf that fits was cut:\n%s", catalog)
+	}
+}
+
+// A SHELF PAST THE BUDGET IS BOUNDED BY BYTES, and nothing on it vanishes
+// silently: the described lines stop at the budget, the names of the rest are
+// listed alone within their own budget, and whatever is past both is counted.
+// Every description is clipped to one line of its own budget.
+func TestSkillCatalogIsBoundedByBytes(t *testing.T) {
+	brain := openTestBrain(t)
+	// Long enough to be clipped, and short enough for the store's own limit on
+	// one fact.
+	long := strings.Repeat("a very thorough description of what this skill is for ", 8)
+	for index := 0; index < 300; index++ {
+		activeSkill(t, brain, "harness:claude", long, "/shelf/skill-with-a-longish-name-"+strconv.Itoa(1000+index))
+	}
+	catalog := renderSkillCatalog(Config{Memory: brain, Workspace: "/srv/app"})
 	bullets := bulletLines(catalog)
-	if len(bullets) != skillCatalogMaxLines {
-		t.Fatalf("catalog carries %d bullets, want the %d-line cap:\n%s", len(bullets), skillCatalogMaxLines, catalog)
+	spent := 0
+	for _, line := range bullets {
+		spent += len(line) + 1
+		doc := line[strings.Index(line, ": ")+2:]
+		if utf8.RuneCountInString(doc) > skillCatalogDocRunes {
+			t.Fatalf("a description was not clipped to %d runes: %q", skillCatalogDocRunes, doc)
+		}
 	}
-	// 15 skills, 8 shown: the overflow line names the other 7.
-	if !strings.Contains(catalog, "… and 7 more skills") {
-		t.Fatalf("catalog overflow line is wrong, want \"… and 7 more skills\":\n%s", catalog)
+	if spent > skillCatalogBudget {
+		t.Fatalf("the described lines cost %d bytes, over the %d budget", spent, skillCatalogBudget)
+	}
+	if !strings.Contains(catalog, skillCatalogNamesLead) {
+		t.Fatalf("the skills past the budget are not named:\n%s", catalog)
+	}
+	if !strings.Contains(catalog, "more skills") {
+		t.Fatalf("the skills past both budgets are not counted:\n%s", catalog)
+	}
+	if len(catalog) > len(skillCatalogHeader)+skillCatalogBudget+skillCatalogNamesBudget+len(skillCatalogNamesLead)+200 {
+		t.Fatalf("the catalog is %d bytes, past both budgets", len(catalog))
+	}
+}
+
+// THE SAME SHELF RENDERS THE SAME BYTES, whatever order the store hands it
+// back in and whether a skill was just used: the section sits in the cached
+// prefix, and a reordering would cost every byte cached behind it.
+func TestSkillCatalogIsStableAcrossRenders(t *testing.T) {
+	brain := openTestBrain(t)
+	activeSkill(t, brain, "harness:claude", "writes release notes", "/shelf/zeta-notes")
+	first := activeSkill(t, brain, "harness:codex", "formats a spreadsheet", "/shelf/alpha-sheets")
+	activeSkill(t, brain, "harness:agents", "reviews a pull request", "/shelf/mid-review")
+	before := renderSkillCatalog(Config{Memory: brain, Workspace: "/srv/app"})
+	// Reading a skill's accessors is what records a use (store's
+	// SkillFactAccessors), which is what moved the old recency bonus.
+	if _, _, _, _, err := brain.SkillFactAccessors(first.Seq); err != nil {
+		t.Fatalf("use the skill: %v", err)
+	}
+	after := renderSkillCatalog(Config{Memory: brain, Workspace: "/srv/app"})
+	if before != after {
+		t.Fatalf("one use reordered the catalog:\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+	bullets := bulletLines(before)
+	if len(bullets) != 3 || !strings.Contains(bullets[0], "alpha-sheets") || !strings.Contains(bullets[2], "zeta-notes") {
+		t.Fatalf("the catalog is not in name order:\n%s", before)
+	}
+}
+
+// A WORKER THAT CANNOT FETCH A SKILL IS NOT SHOWN THE MENU. The section names
+// `use_skill`, and a node on the floor of its tree has no such verb.
+func TestSkillCatalogIsAbsentWhereUseSkillIs(t *testing.T) {
+	brain := openTestBrain(t)
+	activeSkill(t, brain, "harness:claude", "writes release notes", "/shelf/notes")
+	floor := Config{Memory: brain, Workspace: "/srv/app", InTask: true}
+	if floor.mayProposeTask() {
+		t.Skip("this shape may hand work out, so it carries use_skill")
+	}
+	if got := renderSkillCatalog(floor); got != "" {
+		t.Fatalf("a belt without use_skill was shown the catalog:\n%s", got)
 	}
 }
 
@@ -149,7 +223,7 @@ func TestSkillCatalogAlwaysCarriesItsHeader(t *testing.T) {
 	if !strings.HasPrefix(catalog, "## Available skills\n") {
 		t.Fatalf("catalog does not open on its heading:\n%s", catalog)
 	}
-	if !strings.Contains(catalog, "Skills suited to a message are attached to it, and `use_skill` reaches any of them by name") {
+	if !strings.Contains(catalog, "fetch it with `use_skill` (mode get) and follow it before starting") {
 		t.Fatalf("catalog does not carry the routing sentence:\n%s", catalog)
 	}
 	if !strings.Contains(catalog, "- only-skill: one skill on the shelf") {
@@ -201,36 +275,62 @@ func TestSkillCatalogRendersOnThePageWhenSkillsExist(t *testing.T) {
 	}
 }
 
-// SWITCHED OFF IS NOT THE SAME AS EMPTY, and this is the whole of #1379. A
-// person with eighty-one skills on disk and memory off asked the chat whether
-// it could use skills and was told codeaf has no such mechanism, because the
-// model had no shelf, no verb, and no sentence about either, so it reasoned
-// from the silence and denied a feature that had shipped.
-func TestTheCatalogSaysSkillsAreSwitchedOffRatherThanMissing(t *testing.T) {
-	catalog := renderSkillCatalog(Config{SkillsAwaitMemory: true})
-	if catalog == "" {
-		t.Fatal("a machine with skills and memory off rendered nothing, which is the silence the model denied the feature from")
+// MEMORY OFF IS NOT SKILLS OFF, and this is the whole of #1379 answered in
+// full rather than explained. A person with eighty-one skills on disk and
+// memory off asked the chat whether it could use skills and was told codeaf
+// has no such mechanism; #1382 made the chat say they were switched off. Now a
+// session handed no memory and a shelf of its own reads that shelf everywhere
+// the shelf is read — the catalog, the skills a message carries, and
+// `use_skill` — while everything memory is stays off: no `remember` on the
+// belt and no memory block.
+func TestASkillShelfWorksWithMemoryOff(t *testing.T) {
+	shelf := openTestBrain(t)
+	agentskillsShelfSkill(t, shelf, "release-notes", "drafts release notes from merged changes")
+
+	catalog := renderSkillCatalog(Config{Skills: shelf, Workspace: "/srv/app"})
+	if !strings.Contains(catalog, "- release-notes: drafts release notes from merged changes") {
+		t.Fatalf("a memory-off session with a shelf rendered no catalog line for its skill:\n%s", catalog)
 	}
-	// IT NAMES THE SETTING, because "switched off" a person cannot act on is
-	// half an answer.
-	if !strings.Contains(catalog, "memory.enabled") {
-		t.Fatalf("the notice does not name the setting that turns skills back on:\n%s", catalog)
+
+	completer := &scriptedCompleter{steps: []step{
+		func(_ context.Context, _ []ai.Message) (*ai.Response, error) {
+			return textResponse("drafted"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Skills = shelf
+	})
+	if !beltHas(agent, useSkillToolName) {
+		t.Fatal("use_skill is not on the belt of a memory-off session that has a shelf")
 	}
-	// AND IT SAYS THEY EXIST. The failure was not that the model said the
-	// shelf was empty, it was that the model said codeaf has no shelf.
-	if !strings.Contains(strings.ToLower(catalog), "switched off") {
-		t.Fatalf("the notice does not say the skills are switched off:\n%s", catalog)
+	if beltHas(agent, "remember") {
+		t.Fatal("remember is on the belt of a session whose memory is off")
 	}
-	// A MACHINE WITH NO SKILLS PAYS NOTHING. The flag is the difference
-	// between the two silences and a person with no folders keeps the old one.
-	if got := renderSkillCatalog(Config{}); got != "" {
-		t.Fatalf("a machine with no skills and memory off rendered %q, want the empty string", got)
+	if block := agent.memoryBlock(context.Background(), "draft the release notes"); block != "" {
+		t.Fatalf("a memory-off session rendered a memory block %q", block)
 	}
-	// AND A STORE THAT IS THERE ANSWERS FOR ITSELF. The flag can only be set
-	// by a door that found memory nil, but the catalog must not be the thing
-	// that assumes it: an empty shelf with a store is still zero bytes.
-	brain := openTestBrain(t)
-	if got := renderSkillCatalog(Config{Memory: brain, Workspace: "/srv/app", SkillsAwaitMemory: true}); got != "" {
-		t.Fatalf("a readable empty shelf rendered %q, want the empty string", got)
+	if out := useSkill(t, agent, `{"mode":"list"}`); !strings.Contains(out, "release-notes") {
+		t.Fatalf("use_skill list on the memory-off shelf = %q", out)
+	}
+
+	events, err := agent.Submit(context.Background(), "please draft the release notes for the merged changes")
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	notice := drainSkillsNotice(t, events)
+	if !strings.Contains(notice, "release-notes") {
+		t.Fatalf("the memory-off turn did not carry the matching skill: notice %q", notice)
+	}
+	if sent := userTextIn(completer.request(0)); !strings.Contains(sent, "drafts release notes from merged changes") {
+		t.Fatalf("the message the model read does not carry the skill:\n%s", sent)
+	}
+}
+
+// AND A SESSION WITH NEITHER A MEMORY NOR A SHELF STILL PAYS NOTHING: no
+// section, and no sentence about a setting. The one door that used to explain
+// the gap now closes it, so there is nothing left to explain.
+func TestNoShelfAtAllRendersNothing(t *testing.T) {
+	if got := renderSkillCatalog(Config{Workspace: "/srv/app"}); got != "" {
+		t.Fatalf("a session with no shelf rendered %q, want the empty string", got)
 	}
 }

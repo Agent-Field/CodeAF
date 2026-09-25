@@ -130,6 +130,14 @@ type headlessOutcome struct {
 	// unexported because the sentence leaves through Deliverable, while Settled
 	// is already the machine signal and the JSON contract needs no second key.
 	unfinishedTree string
+	// recordKept is printed after the receipt's own stderr lines, so a kept
+	// private run folder is always the last line a person sees there.
+	recordKept string
+	// machineHeld says BlockedOn is the machine's hold rather than a question:
+	// the wall arrived while the machine held every start, so nothing began.
+	// stderr already said so when the hold began ([machineHold]), and saying
+	// "it stopped to ask" over it would name a question nobody asked.
+	machineHeld bool
 	// Run, Calls, Rounds and Redispatches are what a person went to
 	// `calls.jsonl` to reconstruct: which run this was, how many model calls it
 	// made, how many times it bought more work after looking at what it had,
@@ -578,12 +586,17 @@ func doErrand(request doRequest) error {
 	outcome, err := errandRun(request, seats, started)
 	if err != nil {
 		if !request.asJSON {
+			if outcome.recordKept != "" {
+				fmt.Fprintf(request.stderr, "record kept at %s\n", outcome.recordKept)
+			}
 			if seats.Crew != nil {
 				config.LogCrewOutcome(profileDir, call, *seats.Crew, repo, crewTitle(request.task), router.CrewNotKept, 0)
 			}
 			return err
 		}
+		recordKept := outcome.recordKept
 		outcome = failedErrand(err, started)
+		outcome.recordKept = recordKept
 	}
 	outcome.seated(seats)
 	// THE CREW'S OUTCOME, beside its decision in the router's log: accepted
@@ -697,7 +710,7 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 	}
 	// THE RUN ENGINE IS THE DEFAULT ROAD, BEHIND THE SAME SWITCH AS THE BASH
 	// BELT. With the belt on — every machine that has set nothing — the errand
-	// is dispatched by the run engine over the project's own plan store rather
+	// is dispatched by the run engine over a private plan store rather
 	// than by the resident's reconciler below. CODEAF_TASK_BELT set to one of
 	// the words that turn the belt off is the only way onto the road below, and
 	// with it set not one byte of that road moves.
@@ -3390,6 +3403,9 @@ func withoutSummaryFileList(deliverable string, artifacts []string) string {
 // most common thing anyone does with a one-shot is pipe it somewhere.
 func reportErrand(request doRequest, outcome headlessOutcome) error {
 	sayBlocked(request.stderr, outcome)
+	if outcome.recordKept != "" && request.stderr != nil {
+		fmt.Fprintf(request.stderr, "record kept at %s\n", outcome.recordKept)
+	}
 	if request.asJSON {
 		encoded, err := json.MarshalIndent(errandEnvelope(outcome), "", "  ")
 		if err != nil {
@@ -3484,7 +3500,7 @@ func errandFooter(outcome headlessOutcome) string {
 // question verbatim and the one line that says nobody here could answer it.
 func sayBlocked(stderr io.Writer, outcome headlessOutcome) {
 	question := strings.TrimSpace(outcome.BlockedOn)
-	if stderr == nil || question == "" {
+	if stderr == nil || question == "" || outcome.machineHeld {
 		return
 	}
 	fmt.Fprintln(stderr, "it stopped to ask:")
@@ -3544,9 +3560,9 @@ func parseSlots(raw string) (*int, error) {
 }
 
 // runErrand is `codeaf do` on the run engine: the same errand as the road above
-// — the same store, the same worker, the same exit ladder and the same JSON
-// envelope — dispatched by [internal/run]'s supervisor over the project's own
-// plan store instead of by the resident's reconciler. It is taken whenever the
+// — the same worker, the same exit ladder and the same JSON envelope —
+// dispatched by [internal/run]'s supervisor over a private plan store instead
+// of by the resident's reconciler. It is taken whenever the
 // bash belt is on ([session.BashBeltAsked]), which it is unless the person set
 // CODEAF_TASK_BELT to one of the words that turn it off, because the worker it
 // dispatches is the belt's.
@@ -3563,10 +3579,10 @@ func parseSlots(raw string) (*int, error) {
 // envelope calls the deliverable. Nothing here compiles or plans — the ask the
 // door was handed is the whole assignment, which is the same verbatim contract
 // the resident road keeps.
-func runErrand(request doRequest, seats config.Seats) (headlessOutcome, error) {
+func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, runErr error) {
 	// A FLAG THIS ROAD CANNOT HONOUR IS REFUSED IN WORDS, NEVER DROPPED. `--db`
-	// names a store the older engine works in; a run keeps its plan in the
-	// working copy's own store instead, and a run that quietly worked somewhere
+	// names a store the older engine works in; a run keeps its plan in its own
+	// private folder instead, and a run that quietly worked somewhere
 	// other than the store it was pointed at would leave the person reading an
 	// untouched file for the answer.
 	if strings.TrimSpace(request.database) != "" {
@@ -3601,6 +3617,20 @@ func runErrand(request doRequest, seats config.Seats) (headlessOutcome, error) {
 	if err != nil {
 		return headlessOutcome{}, err
 	}
+	// THE DIRECTORY IS ADMITTED BEFORE THE PRIVATE RECORD. The older road
+	// creates a missing workspace while building its brain; this road must do
+	// so here, and refuse a file here, before opening a record or a worker.
+	if info, statErr := os.Stat(workspace); statErr == nil {
+		if !info.IsDir() {
+			return headlessOutcome{}, fmt.Errorf("%s is not a directory", workspace)
+		}
+	} else if os.IsNotExist(statErr) {
+		if err := os.MkdirAll(workspace, 0o700); err != nil {
+			return headlessOutcome{}, fmt.Errorf("create directory %s: %w", workspace, err)
+		}
+	} else {
+		return headlessOutcome{}, fmt.Errorf("inspect directory %s: %w", workspace, statErr)
+	}
 	// THE RUN WORKS IN PLACE AND COMMITS NOTHING, which is what `--dir` has
 	// always promised: "the directory to work in, edited in place". The copy is
 	// read before the run starts so that, afterwards, the files this run names
@@ -3609,10 +3639,29 @@ func runErrand(request doRequest, seats config.Seats) (headlessOutcome, error) {
 	// run's business ([session.RunTreeSnapshot]).
 	before := session.SnapshotRunTree(workspace)
 	title := topicTitle(request.task)
-	store, err := session.OpenRunPlan(workspace, title, request.task)
+	_, recordDir, _, err := headlessStore("")
 	if err != nil {
 		return headlessOutcome{}, err
 	}
+	admitted := false
+	// The record is private and unique per invocation. The existing headless
+	// home owns both its location and the rule for when it survives a run.
+	defer func() {
+		if !admitted {
+			_ = os.RemoveAll(recordDir)
+			return
+		}
+		if !keepPrivateStore(request.keep, trace.Enabled(), errandSucceeded(outcome, runErr)) {
+			_ = os.RemoveAll(recordDir)
+			return
+		}
+		outcome.recordKept = recordDir
+	}()
+	store, err := session.OpenRunPlanAt(filepath.Join(recordDir, "plandb.db"), title, request.task)
+	if err != nil {
+		return headlessOutcome{}, err
+	}
+	admitted = true
 	defer store.Close()
 
 	completerFor := request.newBeltCompleter
@@ -3642,6 +3691,14 @@ func runErrand(request doRequest, seats config.Seats) (headlessOutcome, error) {
 	ctx, cancel := context.WithTimeout(signalled, request.timeout)
 	defer cancel()
 
+	// THE MACHINE'S HOLD IS SAID, because nothing else here would say it: the
+	// chat draws `waiting · machine busy` on the run's rail, and a headless run
+	// held by task.max_load or task.min_free_mb used to wait in silence until
+	// its --timeout and end with nothing started and nothing to say why.
+	maxLoad, minFreeMB := config.TaskMaxLoadAt(settings.ProfileDir), config.TaskMinFreeMBAt(settings.ProfileDir)
+	hold := watchMachineHold(session.NewRunAdmission(maxLoad, minFreeMB, session.NewTaskLanes()),
+		request.stderr, maxLoad, minFreeMB)
+
 	_, summary := runengine.Start(ctx, runengine.Spec{
 		Store:     store,
 		Workspace: workspace,
@@ -3649,6 +3706,7 @@ func runErrand(request doRequest, seats config.Seats) (headlessOutcome, error) {
 		Brief:     request.task,
 		Slots:     request.slotsFor(settings.ProfileDir),
 		Limits:    limits,
+		Gate:      hold.runGate(),
 		Factory: runengine.CrewFactory(store, workspace, settings.ProfileDir, runengine.Seats{
 			Work:  seats.Work.Model,
 			Plan:  seats.Plan.Model,
@@ -3683,28 +3741,122 @@ func runErrand(request doRequest, seats config.Seats) (headlessOutcome, error) {
 	// deadline, and [headlessOutcome.status] says why.
 	if ctx.Err() == context.DeadlineExceeded {
 		errand.stop, errand.wall, errand.Settled = stopDeadline, true, false
+		// A WALL THAT ARRIVED WHILE THE MACHINE HELD EVERY START is not a run
+		// that was slow: nothing began. `stop` keeps the wall's word, which is
+		// the one vocabulary every headless verb speaks, and `blocked_on` says
+		// what it was blocked on, so a script can tell the two walls apart.
+		if held := hold.heldLine(); held != "" && summary.Nodes == 0 {
+			errand.BlockedOn, errand.machineHeld = held+" · nothing started before --timeout", true
+		}
 	}
 	// WHAT THE RUN CHANGED IS WHERE IT STANDS: in the directory it was handed,
 	// uncommitted, on whatever branch was checked out there. The envelope's
 	// files are those paths and no others, on every ending — a run stopped short
 	// still left its edits on disk, and a caller has to be able to find them.
 	errand.Artifacts = landedPaths(workspace, before.Changed())
-	// `--keep` ASKED FOR THE RECORD BY NAME. On this road the record is the
-	// working copy's own plan store, which is never deleted, so the flag's
-	// promise is kept by saying where it is.
-	if request.keep && request.stderr != nil {
-		fmt.Fprintf(request.stderr, "record kept at %s\n", session.PlanStorePath(workspace))
-	}
 	return errand, nil
+}
+
+// machineHold is `codeaf do`'s voice for the machine gate on the run road. The
+// chat has a rail to draw `waiting · machine busy` on; a headless run has only
+// stderr, so the first start the gate refuses is said there in the rail's own
+// words, with the settings row whose ceiling held it, and the first start
+// after that says the machine has room again. ONE LINE EACH: the gate is
+// re-asked every supervisor pass, and a line per refusal would be a line every
+// 300 milliseconds for as long as the machine stays busy.
+type machineHold struct {
+	session.RunAdmission
+	stderr    io.Writer
+	maxLoad   float64
+	minFreeMB int
+
+	mu sync.Mutex
+	// said is the held line once it has been printed, and empty before.
+	said    string
+	resumed bool
+}
+
+// machineResumedLine is what stderr says when a start the machine held begins.
+const machineResumedLine = "starting · the machine has room again"
+
+// watchMachineHold wraps the run's machine gate. A nil gate — both rows at 0 —
+// can hold nothing, and nil comes back.
+func watchMachineHold(gate session.RunAdmission, stderr io.Writer, maxLoad float64, minFreeMB int) *machineHold {
+	if gate == nil {
+		return nil
+	}
+	return &machineHold{RunAdmission: gate, stderr: stderr, maxLoad: maxLoad, minFreeMB: minFreeMB}
+}
+
+// MayStart asks the machine, and says the first refusal.
+func (h *machineHold) MayStart() bool {
+	if h.RunAdmission.MayStart() {
+		return true
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.said == "" {
+		h.said = h.heldWords(h.RunAdmission.HeldBy())
+		if h.stderr != nil {
+			fmt.Fprintln(h.stderr, h.said)
+		}
+	}
+	return false
+}
+
+// Started counts the worker, and says the first start after a hold.
+func (h *machineHold) Started() {
+	h.RunAdmission.Started()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.said != "" && !h.resumed {
+		h.resumed = true
+		if h.stderr != nil {
+			fmt.Fprintln(h.stderr, machineResumedLine)
+		}
+	}
+}
+
+// heldWords is the held line: the rail's words, then the limit that held it
+// when the governor named one.
+func (h *machineHold) heldWords(heldBy string) string {
+	line := "waiting · " + session.MachineBusy
+	switch heldBy {
+	case config.KeyTaskMaxLoad:
+		return line + fmt.Sprintf(" · load per core at or above %s %g", config.KeyTaskMaxLoad, h.maxLoad)
+	case config.KeyTaskMinFreeMB:
+		return line + fmt.Sprintf(" · available memory under %s %d MiB", config.KeyTaskMinFreeMB, h.minFreeMB)
+	}
+	return line
+}
+
+// heldLine is the held line if one was said, and empty when the machine never
+// held a start.
+func (h *machineHold) heldLine() string {
+	if h == nil {
+		return ""
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.said
+}
+
+// runGate is the wrapper as the engine's gate. A nil wrapper is a nil gate,
+// never a typed nil inside the interface that the supervisor would call.
+func (h *machineHold) runGate() runengine.AdmissionGate {
+	if h == nil {
+		return nil
+	}
+	return h
 }
 
 // runRoadRefusesStore is the sentence `codeaf do --db` answers on the run
 // engine. The flag names a store the older engine works in, and a run keeps its
-// plan in the directory it works in, so there is nothing for the flag to point
+// plan in a private folder, so there is nothing for the flag to point
 // at; the sentence says where the plan is instead and how to reach the engine
 // that takes the flag.
 const runRoadRefusesStore = "--db names a store only the older engine works in; " +
-	"a run keeps its plan in .codeaf/plandb.db inside the directory it works in. " +
+	"a run keeps its plan in a private folder under the state root's runs directory. " +
 	"Drop --db, or set CODEAF_TASK_BELT=node to run this on the older engine"
 
 // runSpend is the spending bound a run on this road is held to: the dollars

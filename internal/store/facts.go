@@ -23,9 +23,14 @@ import (
 // MaxFactBytes bounds one fact. A fact is one standalone line, not a report.
 const MaxFactBytes = 512
 
-// SkillShelfLimit is the one bound every shelf reader uses — the shelf is
-// a curated few, and reading past it would only slow dispatch or the prompt.
-const SkillShelfLimit = 100
+// SkillShelfLimit is the one bound every shelf reader uses. It was a hundred
+// when the shelf was a curated few the distiller promoted; the shelf now also
+// holds every skill a person installed for another harness, read in place,
+// and a person with more than a hundred of those would have had the oldest
+// cut off every reader by the newest-first read. Every reader bounds what it
+// DRAWS separately (the catalog by bytes, the message's own skills by count,
+// `use_skill` by the list it prints), so this bounds only the read.
+const SkillShelfLimit = 400
 
 // FactKind classifies what a notebook entry teaches.
 // AgeLabel renders how old a fact is, for retrieval surfaces: every reader

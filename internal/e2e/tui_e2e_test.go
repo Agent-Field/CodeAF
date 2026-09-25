@@ -96,7 +96,7 @@ const tuiShortRows = 14
 func TestTUIE2E(t *testing.T) {
 	requireTmuxAndKey(t)
 
-	t.Run("home_opens_on_launch_as_seven_panels", testHomeShape)
+	t.Run("home_opens_on_launch_with_recent_sessions", testHomeShape)
 	t.Run("a_real_conversation_on_the_panels_and_its_search_card", testRealConversation)
 	t.Run("ask_here_end_to_end", testAskHere)
 	t.Run("the_firing_reaches_the_person", testFiringReachesThePerson)
@@ -114,6 +114,7 @@ func TestTUIE2E(t *testing.T) {
 	t.Run("space_in_the_task_room_pages_the_card", testTaskRoomKeepsSpace)
 	t.Run("TaskOnTheRunEngine", testTaskOnTheRunEngine)
 	t.Run("TaskOnTheDefaultBelt", testTaskOnTheDefaultBelt)
+	t.Run("foreign_skills_reach_the_conversation", testForeignSkills)
 }
 
 // testPlainLaunchConnectionsAndHarnesses is the engine-road regression: the
@@ -343,16 +344,8 @@ func testRefusedLanding(t *testing.T) {
 
 // ── 1 ───────────────────────────────────────────────────────────────────────
 
-// testHomeShape opens the product with five projects on the machine and reads
-// the shape home has TODAY (docs/design/home-mission-control/DESIGN.md): seven
-// panels under a four-word bar, every seeded conversation on `threads`,
-// an empty panel keeping its heading and its whisper, the foot's three verbs, and
-// the two doors in and out of the screen.
-//
-// WHAT THIS SUBTEST USED TO ASSERT AND NO LONGER CAN. It read one flat ranked
-// list with a `what wants you first` section line and a fold at its foot, and
-// before that a tree of projects under an `─ elsewhere` rule. Both went: what a
-// person has at a glance now is one panel per question, so that is what is read.
+// testHomeShape reads Home's current sessions, projects, spend, activity and
+// scheduled panels, then drives the command and double-space routes back to it.
 func testHomeShape(t *testing.T) {
 	home := newHome(t, nil)
 	for i, name := range []string{"alpha", "beta", "gamma", "delta", "epsilon"} {
@@ -364,20 +357,17 @@ func testHomeShape(t *testing.T) {
 	screen := r.waitFor(20*time.Second, say(t, "placeRestWord"), say(t, "homePanelProjects"))
 	t.Logf("home greeted on launch:\n%s", screen)
 
-	// EVERY PANEL IS ON THE PAGE. Forty rows is room for all seven at their
+	// EVERY PANEL IS ON THE PAGE. Forty rows is room for all five at their
 	// floors in two columns, so a heading missing here is a panel the grid lost
 	// rather than one a short frame squeezed out.
-	for _, name := range []string{"homeNeedsHeading", "homePanelProjects",
+	for _, name := range []string{"homePanelProjects",
 		"homePanelRunning", "switcherSinceLeft", "homePanelSpend", "homePanelNext"} {
 		if !strings.Contains(screen, say(t, name)) {
 			t.Errorf("home has no %q panel:\n%s", say(t, name), screen)
 		}
 	}
-	// AN EMPTY PANEL WHISPERS. Nothing runs on a machine of seeded transcripts,
-	// so `running` keeps its heading and says what arrives there — never that it
-	// is empty.
-	if !strings.Contains(screen, say(t, "homeRunningWhisper")) {
-		t.Errorf("the empty `running` panel does not whisper %q:\n%s", say(t, "homeRunningWhisper"), screen)
+	if strings.Contains(screen, say(t, "homeRunningWhisper")) {
+		t.Errorf("populated sessions still show the empty-panel hint:\n%s", screen)
 	}
 	// THE BAR IS FOUR WORDS. Standing, memory and search are places reached by
 	// command and by alt+5…7, and a bar that still named them is the seven-word
@@ -387,10 +377,10 @@ func testHomeShape(t *testing.T) {
 		t.Errorf("the tab bar reads %q, want %q:\n%s", got, want, screen)
 	}
 
-	// Saved history is searchable but is not an open tab on this launch.
+	// Home includes recent saved conversations, even before a tab opens them.
 	for _, title := range []string{"Seed Alpha", "Seed Beta", "Seed Gamma", "Seed Delta", "Seed Epsilon"} {
-		if strings.Contains(screen, title) {
-			t.Errorf("unopened history appeared as a tab: %q", title)
+		if !strings.Contains(screen, title) {
+			t.Errorf("recent history is missing from Home: %q", title)
 		}
 	}
 	// Home keeps the command door but omits the ordinary navigation hints.
@@ -422,19 +412,27 @@ func testHomeShape(t *testing.T) {
 	}
 	t.Logf("padding row above the foot rule (row %d) is blank", foot-1)
 
-	// Open the selected conversation, then return with Escape. Home is the
-	// final destination even after repeated presses.
-	r.keys("Down", "Enter")
-	r.waitFor(15*time.Second, say(t, "homeDoorWord"), say(t, "microcopy"))
-	r.keys("Space", "Space")
-	spaces := r.waitFor(15*time.Second, say(t, "homeDoorWord"))
-	if strings.Contains(spaces, say(t, "placeRestWord")) {
-		t.Fatalf("two spaces navigated instead of typing:\n%s", spaces)
+	// esc closes home into the conversation the launch loaded, and the rule over
+	// that conversation's box names both doors back.
+	r.keys("Escape")
+	closed := r.waitFor(15*time.Second, say(t, "homeDoorWord"), say(t, "microcopy"))
+	t.Logf("esc closed home into the conversation the launch loaded:\n%s", closed)
+	if strings.Contains(closed, say(t, "placeRestWord")) {
+		t.Errorf("esc did not close home:\n%s", closed)
 	}
-	r.keys("Escape", "Escape", "Escape")
+	r.lit("/home")
+	time.Sleep(700 * time.Millisecond)
+	r.keys("Enter")
 	back := r.waitFor(15*time.Second, say(t, "placeRestWord"), "Seed Alpha")
-	t.Logf("Escape settled on Home:\n%s", back)
+	t.Logf("/home reopened it:\n%s", back)
 
+	// And two spaces on an empty box is the other door.
+	r.keys("Escape")
+	time.Sleep(1200 * time.Millisecond)
+	r.keys("Space")
+	r.keys("Space")
+	gesture := r.waitFor(15*time.Second, say(t, "placeRestWord"))
+	t.Logf("space space opened home:\n%s", gesture)
 }
 
 // ── 2 ───────────────────────────────────────────────────────────────────────
@@ -582,13 +580,19 @@ func testAskHere(t *testing.T) {
 	r.keys("Enter")
 	r.waitFor(20*time.Second, say(t, "placeRestWord"))
 
-	r.lit("/ask remind me in 1 minute to drink water")
+	r.lit("remind me in 1 minute to drink water")
 	time.Sleep(700 * time.Millisecond)
 	typed := r.capture()
-	if strings.Contains(typed, "? ask here:") || strings.Contains(typed, "+ start a new conversation:") {
-		t.Errorf("submission action rows remain above the composer:\n%s", typed)
+	if !strings.Contains(typed, say(t, "homeAskHereWord")+": ") ||
+		!strings.Contains(typed, say(t, "homeStartWord")+": ") {
+		t.Errorf("the two action rows are not both drawn while something is typed:\n%s", typed)
 	}
-	r.keys("Enter")
+	t.Logf("the action rows while typing:\n%s", typed)
+
+	// ctrl+enter, sent as the CSI 13;5u a kitty-protocol terminal sends. It
+	// hands the keyboard straight to the pane, and a pane holding the keyboard
+	// always names both ways back out of it.
+	r.ctrlEnter()
 	pane := r.waitFor(25*time.Second, say(t, "homeAskHereWord"), say(t, "exchangeBack"))
 	t.Logf("the exchange took the screen:\n%s", pane)
 
@@ -628,7 +632,7 @@ func testAskHere(t *testing.T) {
 	// card, which is the case asking-from-home.md states outright: closing home
 	// does not touch it, and neither does opening another conversation. The
 	// keyboard is already on the list, so ONE esc closes home.
-	r.keys("C-t") // leave Home through the new-conversation page
+	r.keys("Escape") // home closes into the conversation underneath
 	time.Sleep(2500 * time.Millisecond)
 	r.lit("/home")
 	time.Sleep(700 * time.Millisecond)
@@ -643,7 +647,8 @@ func testAskHere(t *testing.T) {
 	// IS THE ORACLE for where the cursor is standing: the switcher's rows carry
 	// no `›` lead of their own, and the one line that changes with the cursor is
 	// the hint (internal/tui3's homeHint).
-	if !walkTo(r, say(t, "homeAnswerHint"), "Up") {
+	// The exchange follows the conversation row selected when Home opens.
+	if !walkTo(r, say(t, "homeAnswerHint"), "Down") {
 		t.Fatalf("could not put the cursor back on the exchange row:\n%s", r.capture())
 	}
 	r.keys("Enter")
@@ -929,8 +934,8 @@ func testFiringReachesThePerson(t *testing.T) {
 	// ── the second half: nobody is here when it fires ──
 	//
 	// A firing wakes the conversation it lands in, so the model may still be
-	// answering it. Ctrl+C stops the turn before the next errand.
-	r.keys("C-c")
+	// answering it. esc ends whatever is in flight before the next errand.
+	r.keys("Escape")
 	time.Sleep(2 * time.Second)
 	openHome(t, r)
 	standReminder(t, r, "remind me in 1 minute to stretch")
@@ -1134,7 +1139,7 @@ func testAnswerFromHome(t *testing.T) {
 	// and the clock, because the panels are the counts; in a conversation it keeps
 	// `1 want you` (DESIGN §1 law 11), read on the chat's own ten-second beat. So
 	// B steps into its own conversation, reads its head, and comes back.
-	b.keys("Down", "Enter")
+	b.keys("Escape")
 	inChat := b.waitFor(30*time.Second, say(t, "homeDoorWord"), say(t, "pulseWantWord"))
 	t.Logf("window B's own conversation counts the question on its top line:\n%s", firstMatch(inChat, say(t, "pulseWantWord")))
 	openHome(t, b)
@@ -1197,7 +1202,7 @@ func testHover(t *testing.T) {
 	// The seeds share a word, so typing it lists all three; the cursor rests on
 	// the action row, whose card is empty because that chat does not exist yet.
 	r.lit("Seed")
-	screen := r.waitFor(15*time.Second, "› Seed", "Seed Beta")
+	screen := r.waitFor(15*time.Second, say(t, "homeStartWord"), "Seed Beta")
 	rows := r.lines()
 	target := -1
 	for i, line := range rows {
@@ -1253,7 +1258,7 @@ func testFold(t *testing.T) {
 	// AND TYPING SEES STRAIGHT THROUGH IT: a search matches every conversation on
 	// the machine, including the ones no panel is drawing.
 	r.lit("Seed T")
-	found := r.waitFor(15*time.Second, "› Seed T")
+	found := r.waitFor(15*time.Second, say(t, "homeStartWord"))
 	deadline := time.Now().Add(15 * time.Second)
 	for matchRow(found, "Seed T") == "" && time.Now().Before(deadline) {
 		time.Sleep(500 * time.Millisecond)
@@ -1264,7 +1269,7 @@ func testFold(t *testing.T) {
 	} else {
 		t.Logf("typing found the row behind the fold: %q", row)
 	}
-	r.keys("C-u")
+	r.keys("Escape")
 	time.Sleep(1500 * time.Millisecond)
 	back := r.capture()
 	if strings.Contains(back, "Seed T") || !strings.Contains(back, say(t, "placeRestWord")) {
@@ -1639,7 +1644,7 @@ func testOneSpendFigure(t *testing.T) {
 	} else {
 		t.Logf("FINDING: the live strip was never caught — the turn may have finished first")
 	}
-	r.keys("C-c")
+	r.keys("Escape")
 	// The ledger's writer is a background goroutine and both places read the
 	// file on a three-second beat, so the reading is taken after one beat has
 	// certainly turned rather than in the same instant as the keystroke.

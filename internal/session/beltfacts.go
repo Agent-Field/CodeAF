@@ -381,7 +381,7 @@ var beltFacts = []beltFact{{
 	// and a shape with no shelf behind it is told the shelf is not reachable
 	// rather than reaching for a verb that is not on its belt.
 	tools:   []string{useSkillToolName},
-	holds:   func(c Config) bool { return c.mayProposeTask() && c.Memory != nil },
+	holds:   func(c Config) bool { return c.mayProposeTask() && c.skillShelf() != nil },
 	present: "- `use_skill` lists active skills (name + one-line doc) or resolves one by name to its shelf path.",
 	absent:  "- Skills on the shelf are not reachable from here.",
 }, {

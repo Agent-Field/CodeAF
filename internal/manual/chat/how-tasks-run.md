@@ -2536,9 +2536,11 @@ more may start:
 | `task.max_load` | one-minute load average divided by core count, from `/proc/loadavg` | **1.5** per core | at or above it, no new task starts |
 | `task.min_free_mb` | `MemAvailable` (not free memory) from `/proc/meminfo`, in MiB | **1536** (1.5 GiB) | below it, no new task starts |
 
-Either one set to 0 turns that check off. Readings are cached for **1 second**. When a
-task is held back this way it is re-asked every **5 seconds** — a machine getting quieter
-is not an event, so it has to be looked at on a clock.
+Either one set to 0 turns that check off. With both at 0 there is no machine gate.
+Readings are cached for **1 second**. A held node on the older task road is
+re-asked every **5 seconds**; the run engine checks again on each supervisor
+pass, every **300 milliseconds**, so a quiet machine starts held work without
+another request. `codeaf do` uses the same governor from its profile.
 
 **How many start at once when a lot of work is handed out together.** A task that has just
 started is invisible to the memory reading — its own memory arrives with its first build,
