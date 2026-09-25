@@ -92,6 +92,8 @@ func TestWallClickPicksTilesAndMakesATeam(t *testing.T) {
 	if len(a.wall.marked) != 0 || a.wall.made != offered {
 		t.Fatalf("after create: marked=%v made=%q", a.wall.marked, a.wall.made)
 	}
+	// `Made` is said once the store took the team (teamwritesaid.go).
+	teamsFlush(t, a)
 	if !strings.Contains(ansi.Strip(a.wallFrame(a.width, a.height)[a.wall.headRows+1]), "Made "+offered) {
 		t.Fatal("the chips row does not say the team was made")
 	}

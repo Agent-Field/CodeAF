@@ -57,6 +57,9 @@ type wallReadMsg struct {
 	entries []session.DisplayEntry
 	at      time.Time
 	live    bool
+	// books is what the conversation's books said on the same trip
+	// ([Agent.Usage]), which takes the same lock the transcript does.
+	books float64
 }
 
 // wallTickMsg is the wall's clock.
@@ -136,6 +139,21 @@ func wallEntryLines(e session.DisplayEntry) []wallLine {
 		}
 		return out
 	case "note", "aside":
+		// A team delivery is its lines and a team wake with nothing in it is
+		// nothing, as the conversation draws them (teamcard.go's
+		// [asideShapeOf]).
+		if e.Role == "aside" {
+			switch asideShapeOf(e) {
+			case asideHidden:
+				return nil
+			case asideTeam:
+				var out []wallLine
+				for _, c := range teamCardsOf(e, teamManagerGlyph) {
+					out = append(out, wallLine{kind: wallNote, text: c.from + " → " + c.to + "  " + wallFirstLine(c.text)})
+				}
+				return out
+			}
+		}
 		// A compaction summary is pages long and a task's note a paragraph; the
 		// tile says that one happened, in its first line.
 		if text := wallFirstLine(e.Text); text != "" {
@@ -333,7 +351,7 @@ func (a *app) wallReadCmd(keys ...string) tea.Cmd {
 		key := key
 		cmds = append(cmds, func() tea.Msg {
 			at := time.Now()
-			return wallReadMsg{key: key, entries: agent.Transcript(), at: at, live: live}
+			return wallReadMsg{key: key, entries: agent.Transcript(), at: at, live: live, books: agent.Usage().CostUSD}
 		})
 	}
 	switch len(cmds) {
@@ -370,6 +388,7 @@ func (a *app) wallTakeRead(msg wallReadMsg) {
 	if !tail.seen.IsZero() && !msg.at.After(tail.seen) {
 		return
 	}
+	tail.books = max(tail.books, msg.books)
 	tail.take(msg.entries, msg.at, msg.live)
 }
 
@@ -419,6 +438,7 @@ func (a *app) wallTick() tea.Cmd {
 	if a.wallSpinning() {
 		next = tea.Batch(next, a.wake())
 	}
+	next = tea.Batch(next, a.wallTreeCmd())
 	if read := a.wallReadCmd(keys...); read != nil {
 		return tea.Batch(read, next)
 	}
@@ -494,6 +514,7 @@ func (a *app) wallTiles(now time.Time) []wallTile {
 		if tile.signal == tabNeedsPerson {
 			tile.question = a.wallQuestion(tab, tail)
 		}
+		tile.spent = a.wallSpent(tab.key, tail)
 		tiles = append(tiles, tile)
 	}
 	return tiles

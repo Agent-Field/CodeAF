@@ -216,6 +216,8 @@ func TestOrganizeApplyThenUndoRestoresTheExactList(t *testing.T) {
 	if hue := a.wall.teams[1].HueSpec(); hue == a.wall.teams[0].HueSpec() {
 		t.Fatal("the new team took an existing team's colour")
 	}
+	// `Organized` is said once the store took the Apply (teamwritesaid.go).
+	teamsFlush(t, a)
 	frame := orgFrame(a)
 	if !strings.Contains(frame, "Organized · 1 new team  ") || !strings.Contains(frame, " Undo ") {
 		t.Fatalf("the Teams row does not offer Undo:\n%s", frame)
@@ -225,7 +227,18 @@ func TestOrganizeApplyThenUndoRestoresTheExactList(t *testing.T) {
 		t.Fatalf("the Undo target lies on %q", got)
 	}
 	_, _ = a.wallPress(undo.x0+1, undo.y0)
-	if !reflect.DeepEqual(a.wall.teams, prior) {
+	// The same teams, with the times compared as instants: once the Apply's
+	// write is back the window holds times read from the file, whose location
+	// is UTC's and not the clock's (teamwritesaid.go makes `Organized` wait
+	// for that write).
+	instants := func(ts []team) []team {
+		out := teamsClone(ts)
+		for i := range out {
+			out[i].Made, out[i].ClosedAt = out[i].Made.UTC(), out[i].ClosedAt.UTC()
+		}
+		return out
+	}
+	if !reflect.DeepEqual(instants(a.wall.teams), instants(prior)) {
 		t.Fatalf("Undo left %+v\nwant %+v", a.wall.teams, prior)
 	}
 	teamsFlush(t, a)

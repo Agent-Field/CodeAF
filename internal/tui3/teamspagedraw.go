@@ -337,6 +337,9 @@ type teamsTopKey struct {
 	undoing       bool
 	moving        string
 	dragging      bool
+	// wrap is the selected team's wrap-up words, which move with the clock
+	// on a boundary of their own rather than the minute's.
+	wrap string
 }
 
 // teamsTopSig is a digest of the members' states this window can see change
@@ -409,9 +412,9 @@ func (a *app) teamsSpendWords(t team) string {
 		if s.USD <= 0 {
 			return ""
 		}
-		return dollars(s.USD) + " today"
+		return teamsMoney(teamstore.RoundMoney(s.USD)) + " today"
 	}
-	words := dollars(s.USD) + " of " + teamsMoney(e.CapUSDDay) + " today"
+	words := teamsMoney(teamstore.RoundMoney(s.USD)) + " of " + teamsMoney(e.CapUSDDay) + " today"
 	if owner != t.ID {
 		if o, ok := a.teamByID(owner); ok {
 			name := o.Name
@@ -744,7 +747,7 @@ func (a *app) teamsCard(d *teamsDraw, p teamstore.Packet, width, y int) []string
 		if t, ok := a.teamByID(c.Team); ok {
 			pool = t.Name
 		}
-		said := "spent " + dollars(c.SpentUSD) + " of " + dollars(c.CapUSD) + " today " + a.teamsDot() + " " + pool + "'s cap"
+		said := "spent " + teamsMoney(c.SpentUSD) + " of " + teamsMoney(c.CapUSD) + " today " + a.teamsDot() + " " + pool + "'s cap"
 		out = append(out, "   "+pal.dim(fit(said, max(width-4, 8))))
 	}
 	if r := p.Report; r != nil {

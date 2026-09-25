@@ -29,8 +29,55 @@ import (
 	"github.com/Agent-Field/codeaf/internal/modelsource/sourcestub"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
+
+// Contract 6.1: A plain launch reads a closed team's report from the engine profile on this machine.
+func TestPlainLaunchReadsClosedTeamReportFromEngineProfile(t *testing.T) {
+	engineProfile := t.TempDir()
+	surfaceProfile := t.TempDir()
+	t.Setenv("CODEAF_HOME", surfaceProfile)
+	t.Setenv("CODEAF_PROFILE_DIR", surfaceProfile)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(config.APIKeyEnv, "not-a-real-key")
+	t.Cleanup(func() { stopPoolErrands(surfaceProfile) })
+	const harbor = "0a0a0a0a0a0a"
+	if err := teamstore.Save(engineProfile, []teamstore.Team{{ID: harbor, Name: "harbor", Manager: "hm",
+		Members: []teamstore.Member{{Key: "hm", Handle: "boss"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := teamstore.Raise(engineProfile, teamstore.Packet{Team: teamstore.Person, Origin: harbor,
+		Kind: teamstore.PacketClosing, RaisedBy: teamstore.FromManager, Question: "close harbor?",
+		Options: []teamstore.Option{{ID: teamstore.OptionClose, Label: "Close", Consequence: "the team closes"}},
+		Report:  &teamstore.ClosingReport{Done: "the parser"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err = teamstore.Decide(engineProfile, p.ID, teamstore.Person, teamstore.OptionClose, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if closed, err := teamstore.AcceptClosing(engineProfile, p); err != nil || !closed {
+		t.Fatalf("close on report: %v, %v", closed, err)
+	}
+	welcome := remote.Welcome{Version: remote.Version, Workspace: "/srv/app", ProfileDir: engineProfile,
+		Teams: true, Delegation: true, WrapUp: true}
+	fleet := onePipeFleet("", hostedClient(t))
+	t.Cleanup(fleet.closeAll)
+	options, settings := hostOptions(fleet, welcome, false)
+	if options.Teams.Load == nil {
+		t.Fatal("the engine did not hand teams to the plain launch")
+	}
+	localDoors(&options, welcome, settings)
+	if options.Teams.History == nil {
+		t.Fatal("the plain launch has no history door")
+	}
+	got, err := options.Teams.History(harbor)
+	if err != nil || len(got) != 1 || got[0].ID != p.ID || got[0].Report == nil || got[0].Report.Done != "the parser" {
+		t.Fatalf("closed team's report from engine profile: %+v, %v", got, err)
+	}
+}
 
 // consentSource is an OpenAI-shaped fake whose turn always asks for the same
 // harmless bash command and then finishes after the tool result comes back.

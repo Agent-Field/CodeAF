@@ -48,6 +48,9 @@ type teamsUndo struct {
 	name string
 	shut []string
 	at   time.Time
+	// said ties `harbor is closed` to the write that carried the close
+	// (teamwritesaid.go); a close the report's own door made is said already.
+	said teamWriteSaid
 }
 
 // teamsCloseKeys is every conversation a close of team id stops and whose tab
@@ -192,7 +195,9 @@ func (a *app) teamsCloseNow(id, report string) tea.Cmd {
 		a.touch()
 		return nil
 	}
-	return a.teamsAfterClose(t, shut, now, true)
+	cmd := a.teamsAfterClose(t, shut, now, true)
+	a.tp.undo.said = a.teamWriteWatch(nil)
+	return cmd
 }
 
 // teamsStopMembers is the interface's half of every close (DESIGN.md 8.5):
@@ -268,7 +273,7 @@ func (a *app) teamsAfterClose(t team, shut []string, now time.Time, tell bool) t
 // teamsUndoing reports whether Undo is still offered for the last close.
 func (a *app) teamsUndoing() bool {
 	u := a.tp.undo
-	return u.team != "" && a.now().Sub(u.at) < teamsUndoFor
+	return u.team != "" && u.said.said() && a.now().Sub(u.at) < teamsUndoFor
 }
 
 // teamsUndoClose takes the last close back: the team reopened, and the tabs it

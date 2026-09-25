@@ -211,3 +211,42 @@ func (a *app) teamCardRows(e entry, width int) []string {
 	}
 	return out
 }
+
+// asideShape is how a surface draws one session aside, decided once for the
+// reopened conversation (replay.go) and the wall's tiles (wallmini.go,
+// walltail.go), so a tile shows what the conversation shows.
+type asideShape uint8
+
+const (
+	// asideLine is every other aside: its first line, in the session's lane.
+	asideLine asideShape = iota
+	// asideTeam is a team delivery: the lines as cards, never the sentence
+	// the session put above them for the model.
+	asideTeam
+	// asideHidden is a team wake with nothing delivered in it: the note that
+	// started a turn nobody typed, which the live conversation never draws
+	// (followup.go), so no surface draws it.
+	asideHidden
+)
+
+// asideShapeOf is [asideShape] for one aside's entry.
+func asideShapeOf(e session.DisplayEntry) asideShape {
+	text := strings.TrimSpace(e.Text)
+	switch {
+	case len(e.Team) > 0 || strings.HasPrefix(text, teamAsideLead):
+		return asideTeam
+	case session.TeamWakeNote(text):
+		return asideHidden
+	}
+	return asideLine
+}
+
+// teamCardsOf is a team delivery's lines as cards: the session's own parse
+// when the entry carries it, the note's text read back otherwise.
+func teamCardsOf(e session.DisplayEntry, mark string) []teamCard {
+	cards, ok := teamLineCards(e.Team, e.Text, mark)
+	if !ok {
+		cards, _ = teamAsideCards(e.Text, mark)
+	}
+	return cards
+}
