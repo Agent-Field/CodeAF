@@ -15,10 +15,15 @@ func TestTabHoverRevealsFullTitleWithoutMovingTargets(t *testing.T) {
 	frame := strings.Repeat(strings.Repeat(" ", a.width)+"\n", a.height-1)
 	rows := strings.Split(frame, "\n")
 	rows[placeTabRow] = before
+	seal := rule(a.width)
+	rows[placeTabRow+1] = seal
 	frame = strings.Join(rows, "\n")
-	shown := a.tabTitlePreview(frame)
-	if !strings.Contains(plain(shown), a.title) {
-		t.Fatal("hover lost the full title")
+	shown := strings.Split(a.tabTitlePreview(frame), "\n")
+	if !strings.Contains(plain(shown[placeHeadRows-1]), a.title) {
+		t.Fatal("hover did not put the full title on the head's blank row")
+	}
+	if shown[placeTabRow+1] != seal {
+		t.Fatal("preview covered the rule under the strip")
 	}
 	if a.tabsRow(a.width) != before || tabSpanFor(t, a, a.title) != span {
 		t.Fatal("preview moved the tab")

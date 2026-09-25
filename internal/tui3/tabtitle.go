@@ -5,9 +5,10 @@ import (
 	"strings"
 )
 
-// tabTitlePreview reveals the full name beneath the hovered label. It overlays
-// existing rows so neither the tab targets nor the transcript scroll position
-// move. Reading text stays still, including in the reduced-motion tier.
+// tabTitlePreview reveals the full name beneath the hovered label, on the head's
+// blank row under the rule (head.go) so the rule that seals the head stays drawn.
+// It overlays existing rows so neither the tab targets nor the transcript scroll
+// position move. Reading text stays still, including in the reduced-motion tier.
 func (a *app) tabTitlePreview(frame string) string {
 	hit, ok := a.hotTab()
 	if !ok || (hit.kind != tabHere && hit.kind != tabOther) || hit.tab.start {
@@ -29,7 +30,7 @@ func (a *app) tabTitlePreview(frame string) string {
 	}
 	preview := strings.Split(ansi.Wrap(title, width-2*headLabelAt, ""), "\n")
 	for i, line := range preview {
-		at := placeTabRow + 1 + i
+		at := placeHeadRows - 1 + i
 		if at >= len(rows) {
 			break
 		}
