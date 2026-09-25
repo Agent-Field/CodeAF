@@ -939,6 +939,59 @@ so the picker you opened looking for the change tells you the crew is a separate
 The one session with no `crew` line at all is a **remote** one opened with `--host`: that
 crew lives on the other machine.
 
+## How do I change the model the task worker uses — pin the worker, not /model
+
+A task's **worker** is the seat that does its work, and unless you choose it the crew picks
+it for each task from what kind of work it is. `/model` does not move it: `/model` changes
+the model you talk to, and nothing about a task.
+
+To choose the worker yourself:
+
+- **`/crew pin worker <model>`** — every task from now on, until `/crew unpin worker`.
+  `/crew pin worker <model>@<provider>` pins the route too. `/crew` shows the seat.
+- **the `task model` row** under `/settings` → Tasks — the worker for every task that
+  names no other model; blank, it reads `the crew's worker`.
+- **for one task** — name the model in the ask ("do this on deepseek"), or from a terminal
+  `codeaf do --pin worker=<model>` or `--model <model>`.
+
+A model named in the ask wins over the `task model` row, and the row wins over a `/crew`
+pin. The task's crew line says which worker it got.
+
+## Is my code sent anywhere that logs it — where my prompts and code go, free routes
+
+What you type, and the files and command output the chat or a task reads, go to the model
+provider serving each call: the model you talk to, and each task's worker, planner and
+checker on the providers you connected. Whether a provider keeps or trains on it is that
+provider's policy and your account's settings there. codeaf's own usage counts carry no
+content (`codeaf telemetry info` says what they carry).
+
+**Free routes may log prompts.** A provider's free pool of a model (an OpenRouter `…:free`
+id) may log or train on what it is sent. The crew uses free routes only when you turn
+them on — the `free routes` switch at the end of `/crew`'s providers list — with one
+exception: when every paid route a seat could use is out of reach, a seat moves onto a
+free pool rather than leave the task unable to run. "Out of reach" is one of: your
+OpenRouter balance is known to be low, a paid call on that provider was refused for
+payment, or the provider reports its credit at zero. A seat tries at most three free pools
+in one task; your allowed models (`/crew models`) still limit which ones; and the task's
+crew line then says `free routes in use (may log prompts)`. A paid call answering again
+puts the next task back on paid routes.
+
+## Which model are you using, and what does a task cost — the chat model and the crew
+
+The model you are talking to is on the status line at the bottom, and `/model` changes it.
+It answers you and runs this conversation's own tool calls.
+
+A task you hand off does not run on it. Each task gets a **crew** — a worker, a planner and
+a checker — picked for each task from what kind of work it is; `/crew` shows the seats and
+`/crew pin` fixes one.
+
+What a task costs is on its crew line. When it starts, the line gives the estimate —
+`task 2 crew · bugfix · worker glm-5.3-flash (openrouter) · checker glm-5.3-flash · est $0.013`
+— and when it lands the line moves to the end of the conversation with what it actually
+cost beside the estimate. Every task is held to the per-task limit, and all crews together
+to the crew daily cap when one is set (both on `/crew`'s cap row). `/cost` says what this
+conversation has spent, and `/spend` the whole machine.
+
 ## Which model does a task run on — why did my task run on glm-5.3-flash and not my chat model
 
 **The crew's worker**, unless you said otherwise. The ladder, first answer wins:

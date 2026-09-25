@@ -271,6 +271,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// `no` that used to decline and now corrects, and the model shortlist,
 		// which is a hole in a sentence walked with the arrows rather than a
 		// row of chips answered with the digits.
+		// THE FRESH-INSTALL CHECK (2026-09-25) asked three things a new user asks
+		// in their own words, and the chat answered from the wrong pages: the
+		// per-task `/model` and never `/crew pin worker`; "your code goes to the
+		// provider and nowhere else", which leaves out the crew's fall onto free
+		// routes that may log prompts; and a model answer that never named the
+		// crew or what a task costs.
+		{"how do I change the model the task worker uses?", "models-and-cost"},
+		{"is my code sent anywhere that logs it?", "models-and-cost"},
+		{"which model are you using and what does a task cost?", "models-and-cost"},
 		{"how do I say no to a task it wants to start", "tasks"},
 		{"I typed no to the task and it started anyway", "tasks"},
 		{"where did the model chips on the proposal go", "tasks"},
@@ -3328,6 +3337,29 @@ func TestNoChatPageSaysAPlaceCanRefuseToOpen(t *testing.T) {
 				t.Errorf("%s · %q still says a place can refuse to open: %q",
 					section.Page, section.Title, phrase)
 			}
+		}
+	}
+}
+
+// THE FRESH-INSTALL QUESTIONS REACH THE SECTION THAT ANSWERS THEM, not only
+// the right page: the worker question has to meet `/crew pin worker`, the
+// privacy question the crew's fall onto free routes that may log prompts, and
+// the model-and-cost question the crew picked per task and its estimate.
+func TestTheFreshInstallQuestionsReachTheirAnswers(t *testing.T) {
+	for _, probe := range []struct{ asked, says string }{
+		{"how do I change the model the task worker uses?", "/crew pin worker"},
+		{"is my code sent anywhere that logs it?", "free routes in use (may log prompts)"},
+		{"which model are you using and what does a task cost?", "picked for each task"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == "models-and-cost" && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach the models-and-cost section that says %q", probe.asked, probe.says)
 		}
 	}
 }
