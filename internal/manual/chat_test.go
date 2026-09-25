@@ -88,6 +88,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I switch between tasks and traffic in a manager chat", "team-manager"},
 		{"what does Traffic 3 new mean in the column header", "team-manager"},
 		{"who is a traffic row from and who is it to", "team-manager"},
+		{"how old is a traffic row", "team-manager"},
+		{"what does pressing a traffic row open", "team-manager"},
 		{"what does chats on the tab bar do", "places"},
 		{"how do I get back to my conversation from a place", "places"},
 		// The places sit on the top line. The chat strip is only inside a chat
