@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/steploop"
 	"github.com/Agent-Field/codeaf/internal/seniordev/tool"
-	"github.com/Agent-Field/codeaf/internal/seniordev/util"
 )
 
 // A command the model writes and the finishing hand must give the same run
@@ -100,7 +100,7 @@ func TestProgramFinishCreditsTheEnginesOwnCheckpointAtTheTip(t *testing.T) {
 		t.Fatal(err)
 	}
 	mustGit(t, repo, "add", "engine.txt")
-	mustGit(t, repo, "-c", "user.name="+util.CommitterName, "-c", "user.email="+util.CommitterEmail,
+	mustGit(t, repo, "-c", "user.name="+gitidentity.EngineName, "-c", "user.email="+gitidentity.EngineEmail,
 		"commit", "-q", "--no-verify", "-m", "wip(write): engine.txt")
 	tree := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD^{tree}"))
 	folder.Finish("done")

@@ -2,6 +2,8 @@
 
 package util
 
+import "github.com/Agent-Field/codeaf/internal/gitidentity"
+
 // The identity senior-dev's own commits carry.
 //
 // senior-dev commits as it works: its exact starting tree, every file its
@@ -16,7 +18,13 @@ package util
 // commit codeaf makes of whatever the run left uncommitted when it ended,
 // which carries codeaf's identity rather than this one. The address is a local
 // one: it names the program that made a commit and no account anywhere.
-// The constants themselves are in runshape.go, which every platform builds.
+
+// The values live in internal/gitidentity, which codeaf's own side of a run
+// reads on every platform.
+const (
+	CommitterName  = gitidentity.EngineName
+	CommitterEmail = gitidentity.EngineEmail
+)
 
 // GitArgv is a git command line that carries senior-dev's commit identity.
 func GitArgv(args ...string) []string {

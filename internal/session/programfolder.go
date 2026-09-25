@@ -79,8 +79,8 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/home"
-	"github.com/Agent-Field/codeaf/internal/seniordev/util"
 )
 
 // programFolderDir is where the hold on each folder a program works in, and
@@ -897,7 +897,7 @@ func (f *ProgramFolder) creditModelCommit() string {
 // a run commits under: codeaf's, or senior-dev's own.
 func runGitIdentity(name, email string) bool {
 	return (name == codeafGitName && email == codeafGitEmail) ||
-		(name == util.CommitterName && email == util.CommitterEmail)
+		(name == gitidentity.EngineName && email == gitidentity.EngineEmail)
 }
 
 func (f *ProgramFolder) excludedFromCommit(path string) bool {
@@ -909,7 +909,7 @@ func (f *ProgramFolder) excludedFromCommit(path string) bool {
 			return true
 		}
 	}
-	return util.GeneratedRunPath(path)
+	return gitidentity.GeneratedRunPath(path)
 }
 
 // goBack checks out the person's own branch again (or the commit their

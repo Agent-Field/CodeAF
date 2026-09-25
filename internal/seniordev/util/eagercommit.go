@@ -6,6 +6,7 @@ package util
 import (
 	"context"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"os"
 	"path/filepath"
 	"strings"
@@ -161,3 +162,9 @@ func resolveExisting(path string) string {
 	}
 	return filepath.Join(resolveExisting(parent), filepath.Base(path))
 }
+
+// GeneratedRunPaths and GeneratedRunPath are internal/gitidentity's, where
+// codeaf's own side of a run reads them on every platform.
+const GeneratedRunPaths = gitidentity.GeneratedRunPaths
+
+func GeneratedRunPath(path string) bool { return gitidentity.GeneratedRunPath(path) }
