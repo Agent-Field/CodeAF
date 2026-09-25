@@ -1347,6 +1347,12 @@ type app struct {
 	// tsheet is a team's card: its settings, its close and its delete
 	// (teamsheet.go).
 	tsheet teamSheet
+	// tmove is the `Move into…` picker, and tdrag a drag in the teams page's
+	// rail (teammove.go, teamdrag.go); tcrew is the teams page's members card
+	// (teamcrew.go).
+	tmove teamMove
+	tdrag teamDrag
+	tcrew teamCrew
 	// homeGen is home's own clock generation. It belongs to the SURFACE rather
 	// than to any conversation, because there is one home — and it is bumped by
 	// every close, so a tick armed by a home that has since been closed cannot
@@ -3711,7 +3717,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.teamMenu.on {
 			a.closeTeamMenu()
 		}
-		if a.tsheet.on {
+		if a.tsheet.on || a.tmove.on {
 			return a, nil
 		}
 		if a.wall.on {
@@ -3931,8 +3937,15 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.teamMenu.on && msg.Mouse().Button == tea.MouseLeft {
 			return a, a.teamMenuPress(msg.Mouse().X, msg.Mouse().Y)
 		}
-		// A team's card owns the press while it is up, on the same terms
-		// (teamsheet.go).
+		// The move picker, over everything, and then a team's card own the
+		// press while they are up, on the same terms (teammove.go,
+		// teamsheet.go).
+		if a.tmove.on {
+			if msg.Mouse().Button == tea.MouseLeft {
+				return a, a.teamMovePress(msg.Mouse().X, msg.Mouse().Y)
+			}
+			return a, nil
+		}
 		if a.tsheet.on {
 			if msg.Mouse().Button == tea.MouseLeft {
 				return a, a.teamSheetPress(msg.Mouse().X, msg.Mouse().Y)
@@ -4331,6 +4344,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// (wall.go).
 		if a.teamMenu.on {
 			a.teamMenuMotion(msg.Mouse().X, msg.Mouse().Y)
+			return a, nil
+		}
+		if a.tmove.on {
+			a.teamMoveMotion(msg.Mouse().X, msg.Mouse().Y)
 			return a, nil
 		}
 		if a.tsheet.on {

@@ -439,20 +439,23 @@ func TestTeamsMemberPressResumesItBehind(t *testing.T) {
 		return Conversation{Agent: &fakeAgent{model: "m"}, Workspace: where, SessionFile: file}, nil
 	}
 	front := a.frontTabKey()
+	// An idle member is not on the header; the members card lists it, with
+	// `Resume` for one this window does not hold, and never says `not open`.
+	drive(t, a, runCmd(a.teamsDo(teamsTargetOf(t, a, teamsActCrew, harbor)))...)
 	text := teamsFrameText(a)
-	if !strings.Contains(text, "@far") || !strings.Contains(text, "not open") {
-		t.Fatalf("a member this window does not hold is not listed:\n%s", text)
+	if !strings.Contains(text, "@far") || !strings.Contains(text, "Resume") || strings.Contains(text, "not open") {
+		t.Fatalf("the members card does not list the member this window does not hold:\n%s", text)
 	}
-	var member teamsTarget
-	for _, tg := range a.tp.targets {
-		if tg.act == teamsActMember && tg.arg == a.convKey(far) {
-			member = tg
+	var member teamsCrewRow
+	for _, r := range a.teamCrewRows() {
+		if r.key == a.convKey(far) {
+			member = r
 		}
 	}
-	if member.arg == "" {
-		t.Fatalf("no target for @far:\n%s", teamsFrameText(a))
+	if member.key == "" {
+		t.Fatalf("no row for @far:\n%s", teamsFrameText(a))
 	}
-	drive(t, a, runCmd(a.teamsDo(member))...)
+	drive(t, a, runCmd(a.teamCrewGo(member))...)
 	if opened != far {
 		t.Fatalf("the press opened %q", opened)
 	}
@@ -666,7 +669,21 @@ func TestTeamsCardShowsWakeAndASharedMemberSaysWhoseItIs(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.tp.top = teamsTopCache{}
-	if text := teamsFrameText(a); !strings.Contains(text, "reports to orbit") {
-		t.Fatalf("the shared member does not say whose it is:\n%s", text)
+	// It says so on the members card, as a quiet tag whose hint names the
+	// manager, never as prose on the header.
+	if text := teamsFrameText(a); strings.Contains(text, "reports to orbit") {
+		t.Fatalf("the header still says whose the shared member is in prose:\n%s", text)
+	}
+	drive(t, a, runCmd(a.teamCrewOpen(harbor))...)
+	if text := teamsFrameText(a); !strings.Contains(text, "also in orbit") {
+		t.Fatalf("the members card does not tag the shared member:\n%s", text)
+	}
+	for i, r := range a.teamCrewRows() {
+		if r.key == m.Key {
+			a.tcrew.cursor = i
+		}
+	}
+	if hint := a.teamCrewHint(); !strings.Contains(hint, "reports to orbit's manager") {
+		t.Fatalf("the shared member's hint does not say whose it is: %q", hint)
 	}
 }

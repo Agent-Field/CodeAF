@@ -687,9 +687,11 @@ func wallTeamsSegments(pal palette, g wallGlyphs, v wallView, k wallKeys, y int,
 		}
 		segment(-1, "", "All", strconv.Itoa(v.total), v.team == "", true)
 		for i, t := range v.teams {
+			// The name is cut already, each part on its own (wall.go's
+			// [app.wallTeamLabel]): `harbor › api` is wider than one name.
 			name := t.name
-			if ansi.StringWidth(name) > wallChipCap {
-				name = ansi.Truncate(name, wallChipCap, g.more)
+			if ansi.StringWidth(name) > 2*wallChipCap {
+				name = ansi.Truncate(name, 2*wallChipCap, g.more)
 			}
 			if !segment(i, t.id, name, strconv.Itoa(t.count), t.id == v.team, true) {
 				whole = false
@@ -1218,7 +1220,11 @@ func wallNameCard(pal palette, g wallGlyphs, v wallView, width, height int) wall
 	x := (width - w) / 2
 	gridH := height - wallChromeRows
 	y := wallGridTop + max((gridH-wallNameCardRows)/2, 0)
-	return wallCardBuild(pal, "New team", []wallCardLine{l1, l2, l3, l4}, x, y, w, wallCardPadX, wallCardPadY)
+	title := "New team"
+	if v.nameIn != "" {
+		title += " in " + v.nameIn
+	}
+	return wallCardBuild(pal, title, []wallCardLine{l1, l2, l3, l4}, x, y, w, wallCardPadX, wallCardPadY)
 }
 
 // ── POPOVERS ────────────────────────────────────────────────────────────────

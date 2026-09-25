@@ -366,7 +366,11 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	if a.teamMenu.on && !door {
 		return a.teamMenuKey(msg)
 	}
-	// A team's card has the keyboard while it is up (teamsheet.go).
+	// The move picker, over everything, and then a team's card have the
+	// keyboard while they are up (teammove.go, teamsheet.go).
+	if a.tmove.on && !door {
+		return a.teamMoveKey(msg)
+	}
 	if a.tsheet.on && !door {
 		return a.teamSheetKey(msg)
 	}

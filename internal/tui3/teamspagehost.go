@@ -115,6 +115,7 @@ func (a *app) teamsHostTop(width int) []string {
 		cur: a.tp.cur, hot: a.tp.hot, focus: a.tp.focus, sig: a.teamsTopSig(t),
 		minute: a.now().Unix() / 60, answering: a.tp.answering, answer: string(a.tp.answer.value),
 		expand: a.tp.expand, ascii: a.pal.ascii, linear: a.linear, undoing: a.teamsUndoing(),
+		moving: a.teamMoveSig(), dragging: a.tdrag.on,
 	}
 	if c := &a.tp.top; c.ok && c.key == key {
 		return c.rows
@@ -127,6 +128,36 @@ func (a *app) teamsHostTop(width int) []string {
 	}
 	a.tp.top = teamsTopCache{key: key, rows: rows, targets: d.targets, ok: true}
 	return rows
+}
+
+// teamsNoticeRows is the pane's first rows: a move waiting on `Move` or
+// `Cancel`, else the newest of a move and a close with its Undo, else nothing.
+// One Undo at a time, so `u` and the button always mean the same thing.
+func (a *app) teamsNoticeRows(d *teamsDraw, width, y int) []string {
+	if p := a.tmove.pend; len(p.ids) > 0 && p.from == teamMoveFromPage {
+		return a.teamsMoveRows(d, width, y)
+	}
+	if a.teamsUndoMoveNewer() {
+		return a.teamsMoveRows(d, width, y)
+	}
+	return a.teamsUndoRow(d, width, y)
+}
+
+// teamsUndoMoveNewer reports whether the Undo on offer is a move's rather than a
+// close's.
+func (a *app) teamsUndoMoveNewer() bool {
+	if !a.teamMoveUndoing() || a.tmove.undo.from != teamMoveFromPage {
+		return false
+	}
+	return !a.teamsUndoing() || a.tmove.undo.at.After(a.tp.undo.at)
+}
+
+// teamsUndoAny is `u` and the Undo button: the move or the close on offer.
+func (a *app) teamsUndoAny() tea.Cmd {
+	if a.teamMoveUndoing() && (a.teamsUndoMoveNewer() || !a.teamsUndoing()) {
+		return a.teamMoveUndo()
+	}
+	return a.teamsUndoClose()
 }
 
 // teamsUndoRow is the one row that offers Undo for a close, while it is offered.
@@ -222,7 +253,7 @@ func (a *app) teamsHostFrame() ([]string, []placeHit, int, int, bool) {
 // conversation it hosts. It is read at the top of [app.route], and answers
 // false at once on every other place and with a card or a menu up.
 func (a *app) teamsRoute(msg tea.Msg) (tea.Cmd, bool) {
-	if !a.at(pageTeams) || a.tp.forwarding || a.tsheet.on || a.teamMenu.on || a.wall.on {
+	if !a.at(pageTeams) || a.tp.forwarding || a.tsheet.on || a.teamMenu.on || a.wall.on || a.tmove.on {
 		return nil, false
 	}
 	switch m := msg.(type) {
@@ -247,8 +278,22 @@ func (a *app) teamsRouteKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if key == "ctrl+c" {
 		return nil, false
 	}
-	if key == "u" && a.teamsUndoing() && a.teamsHasKeys() {
-		return a.teamsUndoClose(), true
+	if key == "u" && (a.teamsUndoing() || a.teamMoveUndoing()) && a.teamsHasKeys() {
+		return a.teamsUndoAny(), true
+	}
+	// A DRAG IS DROPPED BY esc, and nothing happens (teamdrag.go).
+	if key == "esc" && a.tdrag.press {
+		a.teamDragCancel()
+		return nil, true
+	}
+	// THE MEMBERS CARD has the keyboard while it is up (teamcrew.go).
+	if a.tcrew.on {
+		return a.teamCrewKey(msg), true
+	}
+	// A MOVE WAITING ON THE PERSON is answered by esc too.
+	if key == "esc" && len(a.tmove.pend.ids) > 0 && a.tmove.pend.from == teamMoveFromPage {
+		a.teamMoveCancel()
+		return nil, true
 	}
 	if !a.teamsHosting() {
 		// The shared place grammar and the page's own keys ([placeTeams.key]).
@@ -301,6 +346,29 @@ func (a *app) teamsRouteKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // conversation is handed to it with its column moved into its own cells.
 func (a *app) teamsRouteMouse(msg tea.Msg, m tea.Mouse) (tea.Cmd, bool) {
 	hosted := a.teamsHosting()
+	// THE MEMBERS CARD, AND A DRAG, TAKE THE POINTER FIRST (teamcrew.go,
+	// teamdrag.go): a drag that started on the card goes on over the rail.
+	if a.tdrag.press {
+		switch msg.(type) {
+		case tea.MouseMotionMsg:
+			a.teamDragMotion(m.X, m.Y, m.Button == tea.MouseLeft)
+			return nil, true
+		case tea.MouseReleaseMsg:
+			cmd, _ := a.teamDragRelease()
+			return cmd, true
+		case tea.MouseClickMsg:
+			// A second press with the first never let go: the first is over.
+			a.teamDragCancel()
+		}
+	}
+	if a.tcrew.on {
+		if cmd, took := a.teamCrewMouse(msg, m); took {
+			return cmd, true
+		}
+		if _, click := msg.(tea.MouseClickMsg); click {
+			return nil, true
+		}
+	}
 	if m.Y < placeHeadRows && a.tabRow >= 0 {
 		if !hosted {
 			return nil, false
@@ -313,6 +381,17 @@ func (a *app) teamsRouteMouse(msg tea.Msg, m tea.Mouse) (tea.Cmd, bool) {
 		case tea.MouseClickMsg:
 			if m.Button == tea.MouseLeft {
 				a.tp.hot = t.ref()
+				// A TEAM ROW OR A MEMBER CHIP MAY BE DRAGGED (teamdrag.go). A team
+				// row selects on the press, as it always has; a member's door
+				// waits for the release, so a drag from it never opens it.
+				if a.teamDraggable(t) {
+					member := t.act == teamsActMember
+					id := t.id
+					a.teamDragPress(m.X, m.Y, member, id, t.arg, t, member)
+					if member {
+						return nil, true
+					}
+				}
 				return a.teamsDo(t), true
 			}
 		case tea.MouseMotionMsg:

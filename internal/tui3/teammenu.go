@@ -71,6 +71,9 @@ type teamMenuRow struct {
 	code int
 	id   string
 	rule bool
+	// depth is how far a team's row is indented: a sub-team stands under the
+	// team it is in, as it does on the teams page's rail.
+	depth int
 }
 
 // teamMenuRows is the switcher's rows in order: each team, All, a rule, then
@@ -78,8 +81,10 @@ type teamMenuRow struct {
 // while a team is shown, and Add only for a conversation that can be a member.
 func (a *app) teamMenuRows() []teamMenuRow {
 	var rows []teamMenuRow
-	for _, t := range a.wallTeams() {
-		rows = append(rows, teamMenuRow{code: wallPopTeam, id: t.ID})
+	// THE TEAMS ARE THE TREE, each sub-team indented under its team, in the
+	// order the teams page's rail draws them (ruling c-12).
+	for _, r := range a.teamsOpenTree() {
+		rows = append(rows, teamMenuRow{code: wallPopTeam, id: r.id, depth: r.depth})
 	}
 	rows = append(rows, teamMenuRow{code: teamMenuAll})
 	// THE CLOSED TEAMS ARE ONE FOLDED ROW (ruling c-9), never a team on the
@@ -199,7 +204,19 @@ func (a *app) teamMenuDo(r teamMenuRow) tea.Cmd {
 // front already picked. A team shown that it is not a member of would hide its
 // tile, so the wall widens to All first: the card makes a team of the tiles it
 // can see.
-func (a *app) teamMenuNewTeam() tea.Cmd {
+func (a *app) teamMenuNewTeam() tea.Cmd { return a.teamMenuNewTeamIn("") }
+
+// teamMenuNewTeamIn is [app.teamMenuNewTeam] with the new team made inside
+// team parent ("" the top level): the teams page's `+ New team in harbor`. A
+// parent that cannot take one more level says why and opens nothing.
+func (a *app) teamMenuNewTeamIn(parent string) tea.Cmd {
+	if parent != "" {
+		if ok, why := a.teamsCanNest(parent); !ok {
+			a.tp.msg = why
+			a.touch()
+			return nil
+		}
+	}
 	var open tea.Cmd
 	if !a.wall.on {
 		open = a.openWall()
@@ -216,7 +233,9 @@ func (a *app) teamMenuNewTeam() tea.Cmd {
 			a.wallMove(i, len(tiles))
 		}
 	}
-	return tea.Batch(open, a.wallStartNaming(tiles))
+	naming := a.wallStartNaming(tiles)
+	a.wall.nameParent = parent
+	return tea.Batch(open, naming)
 }
 
 // teamMenuKey is a key while the switcher is up: the arrows walk its rows,
@@ -364,8 +383,9 @@ func (a *app) teamMenuCard(width, height int) wallCard {
 					n++
 				}
 			}
-			ln.left = pal.ink(radio) + " " + a.tabTeamDot(t) + " " + pal.ink(name)
-			ln.leftW = ansi.StringWidth(radio) + 3 + ansi.StringWidth(name)
+			indent := strings.Repeat("  ", min(r.depth, 4))
+			ln.left = pal.ink(radio) + " " + indent + a.tabTeamDot(t) + " " + pal.ink(name)
+			ln.leftW = ansi.StringWidth(radio) + 3 + len(indent) + ansi.StringWidth(name)
 			ln.right = strconv.Itoa(n)
 		case teamMenuAll:
 			radio := off

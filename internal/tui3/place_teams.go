@@ -69,6 +69,10 @@ func (placeTeams) close(a *app) {
 	a.tp.focus, a.tp.host, a.tp.targets = false, "", nil
 	a.tp.answering = ""
 	a.tp.top = teamsTopCache{}
+	// A drag, the members card and a move waiting on its line belong to the
+	// page and go with it; a move made keeps its Undo for the next visit.
+	a.tdrag, a.tcrew = teamDrag{}, teamCrew{}
+	a.tmove.pend = teamMovePend{}
 }
 
 func (placeTeams) body(a *app, width, room int) []placeRow { return a.teamsBody(width, room) }
@@ -130,11 +134,23 @@ func (placeTeams) note(a *app, width int) []string {
 // hint is what the pointer or the cursor is on, with its key, and otherwise
 // the page's keys.
 func (placeTeams) hint(a *app) string {
+	if a.tmove.on {
+		return a.teamMoveHint()
+	}
 	if a.tsheet.on {
 		return a.teamSheetHint()
 	}
+	if words := a.teamDragHint(); words != "" {
+		return words
+	}
+	if a.tcrew.on {
+		return a.teamCrewHint()
+	}
 	if words := a.teamsTargetHint(); words != "" {
 		return words
+	}
+	if n := len(a.teamsPickedIDs()); n > 0 {
+		return itoa(n) + " picked · m moves them into… · space picks · esc clears"
 	}
 	if a.tp.answering != "" {
 		return "enter decide · esc put it away"
@@ -142,7 +158,7 @@ func (placeTeams) hint(a *app) string {
 	if !a.teamsAny() {
 		return "o organize · n new team · " + homeDoorWord
 	}
-	return "↑↓ walk · enter open · s settings · c close · w wall · n new team · o organize · " + homeDoorWord
+	return "↑↓ walk · enter open · m move into… · space pick · p members · s settings · c close · n new team · o organize · " + homeDoorWord
 }
 
 // changed is how many packets wait on the person, which is the count a person
@@ -310,10 +326,17 @@ func (a *app) teamsWalk(dx, dy int) bool {
 
 // teamsLetters are the page's bare-letter keys, each the button of the same
 // word on the selected team.
+//
+// `m` IS MOVE INTO… (ruling c-12), so starting a manager moved to `M`: the
+// ruling names the letter, and a manager is started once per team while a
+// team is moved whenever the tree is reshaped.
 var teamsLetters = map[string]teamsAct{
 	"s": teamsActSettings, "c": teamsActClose, "w": teamsActWall, "n": teamsActNewTeam,
-	"o": teamsActOrganize, "m": teamsActManager, "r": teamsActReopen, "d": teamsActDelete,
+	"o": teamsActOrganize, "M": teamsActManager, "r": teamsActReopen, "d": teamsActDelete,
 }
+
+// teamsMoveLetter is `Move into…`, on the selected team or the picked ones.
+const teamsMoveLetter = "m"
 
 // teamsKey is a key while the page has the keyboard. It reports whether it
 // took it.
@@ -360,8 +383,33 @@ func (a *app) teamsKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			a.touch()
 			return nil, true
 		}
+		// SPACE PICKS A TEAM ON THE RAIL, as it picks a tile on the wall, so
+		// several can be moved with one `Move into…`.
+		if key == "space" && t.act == teamsActSelect && !t.pane {
+			if u, ok := a.teamByID(t.id); ok && !u.Root && !u.Closed() {
+				a.teamsPick(t.id)
+				return nil, true
+			}
+		}
 		return a.teamsDo(t), true
+	case teamsMoveLetter:
+		ids := a.teamsMoveIDs()
+		if len(ids) == 0 {
+			return nil, true
+		}
+		return a.teamMoveOpen(ids, teamMoveFromPage), true
+	case teamCrewLetter:
+		if t, ok := a.teamsSelected(); ok && !t.Closed() {
+			return a.teamCrewOpen(t.ID), true
+		}
+		return nil, true
 	case "esc":
+		if len(a.tp.picked) > 0 {
+			a.tp.picked = nil
+			a.tp.top = teamsTopCache{}
+			a.touch()
+			return nil, true
+		}
 		if a.tp.host != "" {
 			a.tp.focus = false
 			a.touch()

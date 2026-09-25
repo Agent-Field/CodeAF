@@ -115,6 +115,7 @@ func (a *app) teamsRail(d *teamsDraw, width, height int) []string {
 		tailRows = tailRows[:max(0, min(len(tailRows), height-len(headRows)))]
 	}
 	out := make([]string, 0, height)
+	topSaid := false
 	paint := func(r teamsRailRow, y int) string {
 		switch r.kind {
 		case railRowAll:
@@ -123,8 +124,20 @@ func (a *app) teamsRail(d *teamsDraw, width, height int) []string {
 			t, _ := a.teamByID(r.id)
 			return a.teamsRailTeam(d, t, r.depth, width, y)
 		case railRowNew:
-			return d.row(" + "+teamsNewTeamWord, width, teamsTarget{act: teamsActNewTeam, y: y,
-				hint: "Make a team of the conversation in front" + hintSegment + "n"}, false)
+			return a.teamsRailNew(d, width, y, false)
+		case railRowNewIn:
+			return a.teamsRailNew(d, width, y, true)
+		case railRowBlank:
+			// DURING A TEAM DRAG THE FIRST BLANK UNDER THE TREE SAYS WHAT IT IS:
+			// the top level, where a drop on the empty rail puts the team.
+			if a.tdrag.on && !a.tdrag.member && !topSaid {
+				topSaid = true
+				word := "   " + a.linearMark("↳", "->") + " Top level"
+				if a.teamDropLit(teamMoveTop) {
+					return a.pal.cursor(teamsPad(a.pal.ink(word), width), width)
+				}
+				return teamsPad(a.pal.dim(word), width)
+			}
 		case railRowOrganize:
 			return d.row(" "+a.teamsSpark()+" Organize", width, teamsTarget{act: teamsActOrganize, y: y,
 				hint: "Suggest teams for your conversations, and close quiet ones" + hintSegment + "o"}, false)
@@ -213,7 +226,13 @@ func (a *app) teamsRailTeam(d *teamsDraw, t team, depth, width, y int) string {
 	if ansi.StringWidth(name) > room {
 		name = ansi.Truncate(name, room, a.linearMark("…", "~"))
 	}
-	text := lead + a.tabTeamDot(t) + " " + pal.ink(name)
+	// A TEAM PICKED WITH space wears the wall's own picked mark in place of
+	// its dot, so the rail says which teams one `Move into…` will move.
+	dot := a.tabTeamDot(t)
+	if a.tp.picked[t.ID] {
+		dot = pal.accent(wallGlyphsFor(pal.ascii).marked)
+	}
+	text := lead + dot + " " + pal.ink(name)
 	if t.Manager != "" {
 		text += " " + pal.dim(a.teamManagerMark())
 	}
@@ -227,7 +246,65 @@ func (a *app) teamsRailTeam(d *teamsDraw, t team, depth, width, y int) string {
 	} else {
 		hint += hintSegment + "no manager yet"
 	}
-	return d.row(text, width, teamsTarget{act: teamsActSelect, id: t.ID, y: y, hint: hint + hintSegment + "enter"}, a.tp.sel == t.ID)
+	if !t.Root {
+		hint += hintSegment + "m move into…" + hintSegment + "space pick" + hintSegment + "drag to move"
+	}
+	tg := teamsTarget{act: teamsActSelect, id: t.ID, y: y, hint: hint + hintSegment + "enter"}
+	// DURING A DRAG only a row that takes the drop is grounded, and the row
+	// being dragged is dim, so the person sees what moves and where it can go.
+	if dr := a.tdrag; dr.on {
+		tg.x1 = tg.x0 + width
+		d.targets = append(d.targets, tg)
+		switch {
+		case a.teamDropLit(t.ID):
+			return pal.cursor(teamsPad(text, width), width)
+		case !dr.member && (dr.id == t.ID || a.tp.picked[dr.id] && a.tp.picked[t.ID]):
+			return teamsPad(pal.dim(ansi.Strip(text)), width)
+		}
+		return teamsPad(text, width)
+	}
+	return d.row(text, width, tg, a.tp.sel == t.ID)
+}
+
+// teamsRailNew is the rail's `+ New team`, which with a team chosen reads
+// `+ New team in harbor` and makes the new team inside it. On a rail too narrow
+// for that on one row it is two, `+ New team` and `in harbor` under it, each a
+// press on the same thing (second says which row this is); a name is never cut
+// to make it fit. A chosen team that cannot take one more level dims it and
+// says why.
+func (a *app) teamsRailNew(d *teamsDraw, width, y int, second bool) string {
+	pal := a.pal
+	t, ok := a.teamsSelected()
+	if !ok || t.Closed() || t.Root {
+		return d.row(" + "+teamsNewTeamWord, width, teamsTarget{act: teamsActNewTeam, y: y,
+			hint: "Make a team of the conversation in front" + hintSegment + "n"}, false)
+	}
+	words, split := a.teamsRailNewWords()
+	tg := teamsTarget{act: teamsActNewTeam, id: t.ID, y: y,
+		hint: "Make a team inside " + t.Name + " of the conversation in front" + hintSegment + "n"}
+	switch {
+	case split && second:
+		words = "   in " + t.Name
+		tg.opt = "in"
+	case split:
+		words = " + " + teamsNewTeamWord
+	}
+	if ok, why := a.teamsCanNest(t.ID); !ok {
+		tg.hint = why
+		return d.row(pal.dim(words), width, tg, false)
+	}
+	return d.row(words, width, tg, false)
+}
+
+// teamsRailNewWords is `+ New team in harbor` for the chosen team, and whether
+// the rail is too narrow to hold it on one row.
+func (a *app) teamsRailNewWords() (string, bool) {
+	t, ok := a.teamsSelected()
+	if !ok || t.Closed() || t.Root {
+		return " + " + teamsNewTeamWord, false
+	}
+	words := " + " + teamsNewTeamWord + " in " + t.Name
+	return words, a.tp.railW > 0 && ansi.StringWidth(words) > a.tp.railW-2
 }
 
 // ── THE PANE'S HEAD: HEADER, MEMBERS, INBOX ─────────────────────────────────
@@ -256,6 +333,8 @@ type teamsTopKey struct {
 	expand        string
 	ascii, linear bool
 	undoing       bool
+	moving        string
+	dragging      bool
 }
 
 // teamsTopSig is a digest of the members' states this window can see change
@@ -279,9 +358,13 @@ func (a *app) teamsTopSig(t team) uint64 {
 func (a *app) teamsTop(d *teamsDraw, width int) []string {
 	pal := a.pal
 	t, ok := a.teamsSelected()
-	// A CLOSE JUST MADE offers its Undo first, over whichever team is shown
-	// now (teamclose.go).
-	out := a.teamsUndoRow(d, width, 0)
+	// A MOVE WAITING ON THE PERSON, OR A CLOSE OR A MOVE JUST MADE, is said
+	// first, over whichever team is shown now (teammove.go, teamclose.go).
+	out := a.teamsNoticeRows(d, width, 0)
+	if len(out) > 0 {
+		// Air between the notice and the team it is not about.
+		out = append(out, "")
+	}
 	if !ok {
 		if a.tp.sel == teamsAllRow {
 			out = append(out, " "+pal.bold(pal.ink(teamstore.RootName)))
@@ -293,7 +376,8 @@ func (a *app) teamsTop(d *teamsDraw, width int) []string {
 	if t.Closed() {
 		return out
 	}
-	out = append(out, a.teamsMembersRows(d, t, width, len(out))...)
+	// THE MEMBERS ARE ON THE HEADER (teamcrew.go): the ones doing something
+	// as chips, everyone else one word that opens the members card.
 	out = append(out, a.teamsNoManagerRows(d, t, width, len(out))...)
 	if !a.teamsSeam().delegation() && !a.teamsOff() && a.hosted() {
 		out = append(out, "", " "+pal.dim(fit(teamsHostedWord, width-2)))
@@ -301,65 +385,6 @@ func (a *app) teamsTop(d *teamsDraw, width int) []string {
 	out = append(out, a.teamsPromptRows(d, t, width, len(out))...)
 	out = append(out, a.teamsInboxRows(d, width, len(out))...)
 	return out
-}
-
-// teamsHeader is the header row: the team's name, today's spend against the
-// cap that applies to it, and the three word buttons.
-//
-//	● harbor ◆   $1.20 of $5 today · harbor's cap        Settings  Close…  Open ▦
-func (a *app) teamsHeader(d *teamsDraw, t team, width, y int) string {
-	pal := a.pal
-	name := t.Name
-	if t.Root {
-		name = teamstore.RootName
-	}
-	left := " " + a.tabTeamDot(t) + " " + pal.bold(pal.ink(name))
-	if t.Manager != "" {
-		left += " " + pal.accent(a.teamManagerMark())
-	}
-	type btn struct {
-		word string
-		t    teamsTarget
-	}
-	var bs []btn
-	if t.Closed() {
-		bs = append(bs,
-			btn{"Reopen", teamsTarget{act: teamsActReopen, id: t.ID, hint: "Reopen " + t.Name + ": its tabs come back and its manager resumes" + hintSegment + "r"}},
-			btn{"Delete" + a.linearMark("…", "..."), teamsTarget{act: teamsActDelete, id: t.ID, hint: "Forget this team, its Traffic and its packets; the conversations stay" + hintSegment + "d"}})
-		if p, ok := a.teamsParentClosed(t); ok {
-			bs = append([]btn{{"Reopen " + p.Name + " too", teamsTarget{act: teamsActReopenParent, id: t.ID,
-				hint: t.Name + " sits under " + p.Name + ", which is closed" + hintSegment + "r"}}}, bs[1:]...)
-		}
-	} else {
-		bs = append(bs,
-			btn{"Settings", teamsTarget{act: teamsActSettings, id: t.ID, hint: "What this team overrides, and what it inherits" + hintSegment + "s"}})
-		if !t.Root {
-			bs = append(bs, btn{"Close" + a.linearMark("…", "..."), teamsTarget{act: teamsActClose, id: t.ID, hint: "Close " + t.Name + ": wrap up first, or now" + hintSegment + "c"}})
-		}
-		bs = append(bs, btn{"Open " + a.linearMark("▦", "#"), teamsTarget{act: teamsActWall, id: t.ID, hint: "The wall, showing " + name + "'s open conversations" + hintSegment + "w"}})
-	}
-	bw := 0
-	for _, b := range bs {
-		bw += ansi.StringWidth(b.word) + 2
-	}
-	spend := a.teamsSpendWords(t)
-	if t.Closed() {
-		spend = a.teamsClosedWords(t)
-	}
-	room := width - bw - 1
-	head := left
-	if spend != "" && ansi.StringWidth(head)+3+ansi.StringWidth(spend) <= room {
-		head += "   " + pal.dim(spend)
-	}
-	head = teamsPad(head, max(room, 0))
-	x := max(room, 0)
-	for _, b := range bs {
-		b.t.x0, b.t.y = x, y
-		s, w := d.button(b.word, b.t, pal.ink)
-		head += s
-		x += w
-	}
-	return head
 }
 
 // teamsSpendWords is today's spend against the cap that applies: `$1.20
@@ -384,7 +409,7 @@ func (a *app) teamsSpendWords(t team) string {
 		}
 		return dollars(s.USD) + " today"
 	}
-	words := dollars(s.USD) + " of " + dollars(e.CapUSDDay) + " today"
+	words := dollars(s.USD) + " of " + teamsMoney(e.CapUSDDay) + " today"
 	if owner != t.ID {
 		if o, ok := a.teamByID(owner); ok {
 			name := o.Name
@@ -429,24 +454,11 @@ func (a *app) teamsMembersRows(d *teamsDraw, t team, width, y int) []string {
 	var pieces []string
 	var targets []teamsTarget
 	now := a.now()
-	tree := a.teamTree()
 	for _, m := range t.Members {
 		if m.Key == t.Manager {
 			continue
 		}
 		st := a.teamsMember(m)
-		// A SHARED MEMBER SAYS WHOSE IT IS (DESIGN.md 8.8): it reports to the
-		// manager of its home team, and this team's manager may only read it
-		// and send it a note. Running, it is busy for that team.
-		if home, ok := tree.Home(m.Key); ok && t.Manager != "" && home.Team != t.ID && home.Via != t.ID {
-			if ht, ok := a.teamByID(home.Team); ok {
-				if st.word == "running" {
-					st.word = "busy for " + ht.Name
-				} else {
-					st.word += ", reports to " + ht.Name
-				}
-			}
-		}
 		name := m.Word
 		if m.Handle != "" {
 			name = "@" + m.Handle

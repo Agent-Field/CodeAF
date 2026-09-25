@@ -135,6 +135,9 @@ type teamsPage struct {
 	top teamsTopCache
 	// undo is the last close, while Undo is offered (teamclose.go).
 	undo teamsUndo
+	// picked is the teams picked on the rail with `space`, which one `Move
+	// into…` moves together (teammove.go).
+	picked map[string]bool
 }
 
 // teamsTarget is one pressable thing on the page, in frame cells.
@@ -189,6 +192,12 @@ const (
 	teamsActUndo
 	teamsActRetryManager
 	teamsActOpenInChats
+	// The nesting acts (teammove.go, teamcrew.go): `Move` and `Cancel` on a
+	// move's consequence line, the header's `◆ Manager` and its members word.
+	teamsActMoveYes
+	teamsActMoveNo
+	teamsActManagerGo
+	teamsActCrew
 )
 
 // ── THE TREE ────────────────────────────────────────────────────────────────
@@ -208,6 +217,9 @@ const (
 	railRowOrganize
 	railRowClosed
 	railRowClosedTeam
+	// railRowNewIn is the second row of `+ New team in harbor` on a rail too
+	// narrow to say it on one: `in harbor`, under `+ New team`.
+	railRowNewIn
 )
 
 // teamsRoot is the root team, false when there is none. Memory only.
@@ -255,7 +267,11 @@ func (a *app) teamsClosed() []team {
 func (a *app) teamsRailRows() []teamsRailRow {
 	rows := []teamsRailRow{{kind: railRowAll}}
 	rows = append(rows, a.teamsOpenTree()...)
-	rows = append(rows, teamsRailRow{kind: railRowBlank}, teamsRailRow{kind: railRowNew}, teamsRailRow{kind: railRowOrganize})
+	rows = append(rows, teamsRailRow{kind: railRowBlank}, teamsRailRow{kind: railRowNew})
+	if _, split := a.teamsRailNewWords(); split {
+		rows = append(rows, teamsRailRow{kind: railRowNewIn})
+	}
+	rows = append(rows, teamsRailRow{kind: railRowOrganize})
 	if closed := a.teamsClosed(); len(closed) > 0 {
 		rows = append(rows, teamsRailRow{kind: railRowBlank}, teamsRailRow{kind: railRowClosed})
 		if a.tp.closedOpen {
@@ -344,6 +360,48 @@ func (a *app) teamsSubtree(sel, id string) bool {
 	return false
 }
 
+// teamsPickedIDs is the teams picked with `space`, in rail order, the ones
+// that went (closed, gone) left out.
+func (a *app) teamsPickedIDs() []string {
+	var out []string
+	for _, r := range a.teamsOpenTree() {
+		if a.tp.picked[r.id] {
+			out = append(out, r.id)
+		}
+	}
+	return out
+}
+
+// teamsPick picks team id on the rail with `space`, or unpicks it.
+func (a *app) teamsPick(id string) {
+	t, ok := a.teamByID(id)
+	if !ok || t.Root || t.Closed() {
+		return
+	}
+	if a.tp.picked == nil {
+		a.tp.picked = map[string]bool{}
+	}
+	if a.tp.picked[id] {
+		delete(a.tp.picked, id)
+	} else {
+		a.tp.picked[id] = true
+	}
+	a.tp.top = teamsTopCache{}
+	a.touch()
+}
+
+// teamsMoveIDs is what `Move into…` moves: the picked teams, else the selected
+// one, else nothing.
+func (a *app) teamsMoveIDs() []string {
+	if ids := a.teamsPickedIDs(); len(ids) > 0 {
+		return ids
+	}
+	if t, ok := a.teamsSelected(); ok && !t.Root && !t.Closed() {
+		return []string{t.ID}
+	}
+	return nil
+}
+
 // ── WHAT A TEAM IS DOING ────────────────────────────────────────────────────
 
 // teamsMemberState is one member as the page draws it: a word, whether it is
@@ -384,9 +442,11 @@ func (a *app) teamsMember(m teamMember) teamsMemberState {
 	case known && row.Live && row.Presence.State != "" && string(row.Presence.State) != "idle":
 		st.word, st.open = "running", true
 	case known && row.Open:
-		st.word, st.open = "open elsewhere", true
+		// Open in another window is a fact about that window, not the team:
+		// on this page it is idle like any other member at rest.
+		st.word, st.open = "idle", true
 	default:
-		st.word = "not open"
+		st.word = "idle"
 	}
 	return st
 }
