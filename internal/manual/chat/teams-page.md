@@ -13,6 +13,15 @@ A team is a group of conversations you name, and a team's **manager** is a conve
 runs it for you (the **team manager** page). The conversations view (`alt+v`) is where you see
 every conversation at once and group them; this page is where you steer the teams you made.
 
+## Where a team link in a chat opens
+
+A team link in a chat opens this page. That is a team's name written as a team (`team harbor`,
+`the harbor team`, `"harbor"`), a team name on a team card or in a team tool's row, and a
+`●harbor` you sent with `@`. A press selects that team: the rail's cursor on it, the pane
+showing it. A closed team is selected inside `Closed`, and that fold is opened. The hint says
+`Open harbor on the teams page · click`. Over `--host`, when the engine has no teams doors,
+the press opens the conversations view on that team instead, and the hint says so.
+
 ## The rail: your teams as a tree
 
 The left column is the **rail**:

@@ -6895,7 +6895,7 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 // a place where missing costs you the page.
 //
 // A TEAM REFERENCE IS THE SAME KIND OF DOOR (teamlink.go): a member opens, or
-// is resumed and opened, and a team's name opens the conversations view on it.
+// is resumed and opened, and a team's name opens the teams page on it.
 func (a *app) linkPress(x int, r row) (bool, tea.Cmd) {
 	if len(r.links) == 0 || a.welcome.open {
 		return false, nil

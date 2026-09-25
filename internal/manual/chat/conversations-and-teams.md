@@ -270,7 +270,7 @@ Teams list makes an existing conversation the manager. While the manager is in f
 **team manager** page. The **teams page** (`/teams`, `alt+2`) lists every team as a tree
 and puts the chosen team's manager conversation beside it, with what waits on you.
 
-## Team names and handles in a conversation are links
+## What clicking a team name in a chat does, and how team names and handles are links
 
 In a conversation that is in a team, every **handle** of a member of that team, like
 `@security`, is a link wherever it appears: in a reply, in a team's quoted card, in the
@@ -278,8 +278,12 @@ surface's own notes and in a team tool's call such as `team_send @security`. So 
 name where it is written as a team: `team harbor`, `the harbor team` or `"harbor"`. The
 pointer on one puts a ground under it and the hint line says what a press does, like
 `Open @security · santosh dev2 branch code… · click`. A press opens that member, resuming it
-first when this window does not have it open; a team's name opens the conversations view on
-that team. An `@word` that is no member's handle is left as plain text.
+first when this window does not have it open. A press on a team's name opens the **teams
+page** with that team selected: the rail's cursor on it and the pane showing it. The hint
+says `Open harbor on the teams page · click`. A closed team is selected inside `Closed`, and
+that fold is opened. Over `--host`, against an engine that has no teams doors, the teams page
+cannot open, so the press opens the conversations view on that team instead and the hint says
+so. An `@word` that is no member's handle is left as plain text.
 
 ## Mention a team or another conversation with @
 
@@ -296,7 +300,9 @@ filters every section that is still showing.
 Choosing a team inserts `●harbor` in the team's colour. Choosing a conversation
 inserts `@handle`, or a short slug of its title when it has none, and the row's
 hint is the full title. After you send, both stay links. A press on the team opens
-the conversations view on it. A press on the conversation opens that conversation.
+the teams page with it selected. A press on the conversation opens that conversation.
+Over `--host`, against an engine with no teams doors, a press on the team opens the
+conversations view on it instead.
 
 The model receives a short digest of each reference: for a team, its members,
 handles, states and recent traffic; for a chat, its title, its state and an excerpt

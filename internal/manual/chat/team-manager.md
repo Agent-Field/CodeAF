@@ -34,7 +34,11 @@ happens on the far machine, where the conversation and the model are.
 
 In the manager's replies, in the team's quoted cards and in a team tool's call, every member's
 handle is a link: point at it for its title in the hint line, press it to open that member,
-which resumes it first when this window does not have it open.
+which resumes it first when this window does not have it open. A team's name in those same
+places, written as a team (`team harbor`, `the harbor team` or `"harbor"`), is a link too. A
+press opens the **teams page** with that team selected. The hint says `Open harbor on the
+teams page · click`. Over `--host`, against an engine with no teams doors, the press opens the
+conversations view on that team instead, and the hint says so.
 
 ## Making a manager
 

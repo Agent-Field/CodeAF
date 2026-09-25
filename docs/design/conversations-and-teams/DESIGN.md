@@ -260,8 +260,12 @@ task link's own pass (`markdown.go`, `teamlink.go`): columns recorded on the row
 resolved before the row's own answer, the hover held as (block, ordinal) with team
 references numbered from their own offset. The hover is a ground; the hint line says
 `Open @security · santosh dev2 branch… · click` (`Resume` when it is not open here). A press
-opens the member through the strip's door, resuming it first; a team's name opens the wall
-on that team. They are resolved from memory only; an `@word` that is no member's handle stays
+opens the member through the strip's door, resuming it first; a team's name opens the teams
+page with that team selected (the rail's cursor on its row, the pane showing it, the keyboard
+left on the row). A closed team is selected inside `Closed`, and that fold is opened. The
+hint is `Open harbor on the teams page · click`. Over `--host` against an engine without the
+teams doors (`teamsOff`) the page cannot open, so the press still opens the wall on that team
+and the hint says the conversations view. They are resolved from memory only; an `@word` that is no member's handle stays
 text.
 
 **Where it lives.** The manager is an ordinary session file. Traffic is
@@ -428,7 +432,9 @@ move. Choosing a conversation keeps `@` and writes the handle, or `TaskSlug` of 
 title when the conversation has no handle. The row's note is the title.
 
 After send, the same link pass inks those tokens on the person's own message
-(`mentionLinkPass`). A `●slug` opens the wall on that team. An `@handle` or `@slug`
+(`mentionLinkPass`). A `●slug` opens the teams page on that team, the same door a team's
+name uses, including the wall fallback over `--host` when the engine has no teams doors.
+An `@handle` or `@slug`
 of a conversation this window can name, including one in no team, opens it through
 the tab strip. Model prose keeps the older door: an `@handle` of a member of a team
 this conversation is in, and a team name written as a team.
