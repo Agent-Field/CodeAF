@@ -48,10 +48,10 @@ func ConnectionOutcomeWord(service string, outcome modelsource.Outcome) string {
 		// `error: API error (429): …` is what the turn drew before this existed —
 		// three pieces of machinery vocabulary on a line a person reads, and a
 		// number that tells them nothing they can act on. The vendor's own words
-		// are the only part that says what to do, and they go through verbatim,
-		// cut at a word boundary so the line never ends in half a word.
+		// are the only part that says what to do, and the top-up link may be at
+		// the end. The display wraps this whole sentence instead of cutting it.
 		line := service + " accepted the key but the account cannot pay"
-		if said := ConnectionDetailWords(outcome.VendorSaid, 120); said != "" {
+		if said := ConnectionDetailWords(outcome.VendorSaid, 0); said != "" {
 			line += " — " + said
 		}
 		return line

@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -74,10 +75,15 @@ func TestTheFateReadsTheArgumentWhereItChangesTheAnswer(t *testing.T) {
 		{"task", "port the parser", fateNeedsChat},
 		{"memory", "", fatePlace},
 		{"memory", "branches", fateAnswers},
-		{"folder", "", fateTargetFolder},
-		{"folder", "~/src", fateTargetFolder},
+		// /folder MEANS ONE THING EVERYWHERE since 2026-09-22: give THIS
+		// conversation a folder, so on home it needs one opened first. The pin
+		// it used to be here is /project (projectcmd.go).
+		{"folder", "", fateNeedsChat},
+		{"folder", "~/src", fateNeedsChat},
+		{"project", "", fateTargetFolder},
+		{"project", "~/src", fateTargetFolder},
 		{"attach", "", fateTray},
-		{"image", "shot.png", fateTray},
+		{"attach", "shot.png", fateTray},
 		{"pricing", "", ""},
 	} {
 		if got := homeFate(want.word, want.rest); got != want.fate {
@@ -86,19 +92,19 @@ func TestTheFateReadsTheArgumentWhereItChangesTheAnswer(t *testing.T) {
 	}
 }
 
-// ── /folder: the browser, aimed at the target ───────────────────────────────
+// ── /project: the pin, and the browser behind it ────────────────────────────
 
-// BARE /folder OPENS THE ONE BROWSER, AIMED AT THE TARGET, and a folder
+// BARE /project OPENS THE ONE BROWSER, AIMED AT THE TARGET, and a folder
 // confirmed there PINS THE NEXT CONVERSATION'S FOLDER rather than moving the
 // conversation behind home. Home comes back under it with the rule already
 // saying the new folder, which is the whole of what the owner asked to see.
-func TestFolderAtHomeBrowsesForTheTargetAndPinsIt(t *testing.T) {
+func TestProjectAtHomeBrowsesForTheTargetAndPinsIt(t *testing.T) {
 	a, _, root := mixedLab(t)
 	runCmd(a.openHome())
 
-	settleFolder(t, a, a.homeSlash("/folder"))
+	settleFolder(t, a, a.homeSlash("/project"))
 	if !a.folder.open || !a.folder.forTarget {
-		t.Fatalf("bare /folder did not open the browser for the target: open=%v target=%v",
+		t.Fatalf("bare /project did not open the browser for the target: open=%v target=%v",
 			a.folder.open, a.folder.forTarget)
 	}
 	// The action row says what enter would do, in the target's own words.
@@ -124,9 +130,10 @@ func TestFolderAtHomeBrowsesForTheTargetAndPinsIt(t *testing.T) {
 	if a.home.msg != "" {
 		t.Fatalf("the project selection added a footer message: %q", a.home.msg)
 	}
-	// THE RULE ABOVE THE BOX SAYS IT ON THE VERY NEXT FRAME.
-	if text := homeText(a); !strings.Contains(text, targetPathWord(a)) {
-		t.Fatalf("the rule does not name the folder that was just pinned:\n%s", text)
+	// THE KEYS ROW UNDER THE BOX SAYS IT ON THE VERY NEXT FRAME (hometip.go), read
+	// at a width where a temp-dir path is not cut.
+	if text := ansi.Strip(a.homeFootLine(400, a.pal)); !strings.Contains(text, targetPathWord(a)) {
+		t.Fatalf("the keys row does not name the folder that was just pinned:\n%s", text)
 	}
 	// AND NOTHING REACHED THE CONVERSATION BEHIND HOME. A pin is a decision about
 	// a conversation that does not exist yet.
@@ -135,19 +142,152 @@ func TestFolderAtHomeBrowsesForTheTargetAndPinsIt(t *testing.T) {
 	}
 }
 
-// /folder WITH A PATH IS THE SAME SHEET, opened on that path — one question, one
-// surface, whichever way it was asked.
-func TestFolderWithAPathAtHomeIsTheSameTargetSheet(t *testing.T) {
+// THE STORE LANDING DOES NOT CHANGE WHO THE SHEET IS ABOUT. The first browser of
+// a launch opens before the background read of the pick counts answers, and
+// that answer rebuilds the sheet; a rebuild that forgot [folderPick.forTarget]
+// turned home's `the next conversation's folder` into `add context`, and the
+// folder chosen a second later was referred to the conversation BEHIND home —
+// caught in a real terminal on a fresh profile, where every test here had
+// already read the store.
+func TestTheStoreLandingKeepsHomesSheetAboutTheNextConversation(t *testing.T) {
 	a, _, root := mixedLab(t)
 	runCmd(a.openHome())
 
-	settleFolder(t, a, a.homeSlash("/folder "+filepath.Join(root, "here")+"/"))
+	settleFolder(t, a, a.homeSlash("/project"))
 	if !a.folder.open || !a.folder.forTarget {
-		t.Fatalf("/folder <path> at home did not open the target's browser: open=%v target=%v",
+		t.Fatalf("bare /project did not open the browser for the target: open=%v target=%v",
 			a.folder.open, a.folder.forTarget)
 	}
-	if a.folder.cols.dir != filepath.Join(root, "here") {
-		t.Fatalf("the sheet opened on %q, want the path that was typed", a.folder.cols.dir)
+
+	// The store lands, exactly as the background read delivers it.
+	settleFolder(t, a, func() tea.Msg {
+		return folderStoreMsg{store: folderStore{Roots: []string{filepath.Join(root, "here")}}}
+	})
+	if !a.folder.open || !a.folder.forTarget {
+		t.Fatalf("the store landing turned home's sheet into the conversation's: open=%v target=%v",
+			a.folder.open, a.folder.forTarget)
+	}
+	if len(a.folder.held) > 0 {
+		t.Fatalf("the store landing marked the conversation behind home's folders as held: %v", a.folder.held)
+	}
+
+	onFolderRow(t, a, "inner")
+	settleFolder(t, a, a.folderConfirm())
+
+	inner := filepath.Join(root, "here", "inner")
+	if a.target.where != inner {
+		t.Fatalf("the pick pinned %q, want %q", a.target.where, inner)
+	}
+	if !a.at(pageHome) {
+		t.Fatal("the pick did not land back on home")
+	}
+	if len(a.attachedPlaces()) > 0 {
+		t.Fatalf("the pick was referred to the conversation behind home: %v", a.attachedPlaces())
+	}
+}
+
+// /project WITH A PATH TAKES THE PATH AND OPENS NOTHING. A person who typed the
+// folder has already answered the question the browser exists to ask, and the
+// pin is a string on this window rather than a round trip — so the keys row
+// says the new folder on the very next frame.
+func TestProjectWithAPathAtHomePinsItWithoutTheBrowser(t *testing.T) {
+	a, _, root := mixedLab(t)
+	runCmd(a.openHome())
+
+	inner := filepath.Join(root, "here", "inner")
+	runCmd(a.homeSlash("/project " + inner))
+
+	if a.folder.open {
+		t.Fatal("/project <path> opened the browser instead of taking the path")
+	}
+	if a.target.where != inner {
+		t.Fatalf("/project <path> pinned %q, want %q", a.target.where, inner)
+	}
+	if !a.at(pageHome) {
+		t.Fatal("/project <path> left home")
+	}
+	// AND IT SAYS NOTHING, because the row it would be drawn over is the row
+	// that answers. Home's sentence is drawn IN PLACE OF the keys row and
+	// stands until the next keystroke, so a success reported there hid the
+	// keys and said what `project: <path>` at their right end was already
+	// saying (projectcmd.go states the law).
+	if a.home.msg != "" {
+		t.Fatalf("a taken path wrote %q over home's keys row", a.home.msg)
+	}
+	text := ansi.Strip(a.homeFootLine(400, a.pal))
+	if !strings.Contains(text, targetPathWord(a)) {
+		t.Fatalf("the keys row does not name the folder that was just pinned:\n%s", text)
+	}
+	if !strings.Contains(text, homeOptionsWord) {
+		t.Fatalf("the keys are missing from the row that just pinned a folder:\n%s", text)
+	}
+}
+
+// AND A PATH THAT IS NOT A FOLDER IS REFUSED IN THE WORDS THAT WERE TYPED.
+// Nothing is pinned: a destination that is not there would be found out one
+// `enter` later, in the conversation that could not open.
+func TestProjectRefusesAPathThatIsNotAFolder(t *testing.T) {
+	a, _, root := mixedLab(t)
+	runCmd(a.openHome())
+
+	for _, rest := range []string{
+		filepath.Join(root, "here", "notes.md"),
+		filepath.Join(root, "nowhere-at-all"),
+	} {
+		runCmd(a.homeSlash("/project " + rest))
+		if a.target.where != "" {
+			t.Fatalf("/project %s pinned %q", rest, a.target.where)
+		}
+		if want := projectNoFolderWord + rest; a.home.msg != want {
+			t.Fatalf("home said %q, want %q", a.home.msg, want)
+		}
+		if a.folder.open {
+			t.Fatalf("/project %s opened the browser", rest)
+		}
+	}
+}
+
+// /project IS HOME'S, AND A CONVERSATION SAYS SO. It used to be the home half
+// of /folder, which is one keystroke apart in spelling from the command that
+// does the neighbouring job here — so the answer names both.
+func TestProjectInAConversationSaysItIsHomes(t *testing.T) {
+	a := newTestApp(&fakeAgent{})
+	runCmd(a.slash("/project ~/src"))
+
+	if a.target.where != "" {
+		t.Fatalf("/project in a conversation pinned %q", a.target.where)
+	}
+	if a.folder.open {
+		t.Fatal("/project in a conversation opened the browser")
+	}
+	if text := transcriptText(a); !strings.Contains(text, projectIsHomesWord) {
+		t.Fatalf("the conversation does not say where /project lives:\n%s", text)
+	}
+}
+
+// AND /folder ON HOME OPENS A CONVERSATION FIRST. It means one thing
+// everywhere now — give THIS conversation a folder — and home has no this.
+func TestFolderAtHomeOpensAConversationAndBrowsesThere(t *testing.T) {
+	lab := newHomeLab(t)
+	a := lab.door("")
+	goHome(t, a)
+	if got := homeFate("folder", ""); got != fateNeedsChat {
+		t.Fatalf("the drop-up says /folder %q on home", got)
+	}
+
+	settleFolder(t, a, a.homeSlash("/folder"))
+
+	if a.at(pageHome) {
+		t.Fatal("/folder at home stayed on home")
+	}
+	if !a.folder.open {
+		t.Fatal("/folder at home did not open the browser in the conversation it started")
+	}
+	if a.folder.forTarget {
+		t.Fatal("/folder at home opened the target's sheet, which is /project's")
+	}
+	if a.target.where != "" {
+		t.Fatalf("/folder at home pinned %q", a.target.where)
 	}
 }
 
@@ -159,7 +299,7 @@ func TestEscOutOfTheTargetBrowserLandsBackOnHome(t *testing.T) {
 	runCmd(a.openHome())
 	was := a.targetWhere()
 
-	settleFolder(t, a, a.homeSlash("/folder"))
+	settleFolder(t, a, a.homeSlash("/project"))
 	drive(t, a, key("esc"))
 
 	if a.folder.open {
@@ -198,9 +338,9 @@ func TestAttachAtHomeLandsOnHomesTrayAndSaysSo(t *testing.T) {
 	}
 
 	// A picture goes the same way, through the same tray.
-	runCmd(a.homeSlash("/image " + filepath.Join(root, "here", "shot.png")))
+	runCmd(a.homeSlash("/attach " + filepath.Join(root, "here", "shot.png")))
 	if !a.at(pageHome) {
-		t.Fatal("/image <path> at home opened a conversation")
+		t.Fatal("/attach <picture> at home opened a conversation")
 	}
 	if len(a.chips) != 2 || a.chips[1].name() != "shot.png" {
 		t.Fatalf("the picture did not reach home's tray: %+v", a.chips)
@@ -210,22 +350,21 @@ func TestAttachAtHomeLandsOnHomesTrayAndSaysSo(t *testing.T) {
 	}
 }
 
-// A BARE /attach ASKS FOR THE PATH WHERE IT WAS TYPED. It used to open a
-// conversation to hold a browser, which is a conversation started for a
-// question — and the two ways a file reaches home's tray are named instead.
-func TestBareAttachAtHomeAsksForThePath(t *testing.T) {
+// A BARE /attach AT HOME OPENS THE BROWSER, aimed at the next conversation's
+// folder the way a bare /folder is, and a file chosen there lands on home's
+// tray (folderact.go's [app.targetFolderConfirm]). It used to answer `type
+// the path after /attach`, a correction where a person wanted a door.
+func TestBareAttachAtHomeOpensTheBrowserForTheTarget(t *testing.T) {
 	a, _, _ := mixedLab(t)
 	runCmd(a.openHome())
 
 	runCmd(a.homeSlash("/attach"))
-	if !a.at(pageHome) {
-		t.Fatal("a bare /attach at home left the screen")
+	if !a.folder.open || !a.folder.forTarget {
+		t.Fatalf("a bare /attach at home did not open the target's browser: open=%v target=%v",
+			a.folder.open, a.folder.forTarget)
 	}
-	if a.folder.open {
-		t.Fatal("a bare /attach at home opened the browser")
-	}
-	if a.home.msg != homeTypeThePathWord {
-		t.Fatalf("home said %q, want %q", a.home.msg, homeTypeThePathWord)
+	if a.home.msg != "" {
+		t.Fatalf("a bare /attach at home said %q instead of opening the sheet", a.home.msg)
 	}
 }
 

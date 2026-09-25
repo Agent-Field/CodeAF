@@ -151,7 +151,8 @@ const (
 
 // homeExchangeRow is the row kind an exchange wears in the left column.
 //
-// It is numbered outside the homeRowKind block to keep its identity separate. The
+// IT IS DECLARED HERE FOR [homeAskHere]'S REASON and given the next value above
+// it, so neither can collide with the iota block another lane is editing. The
 // name carries `Row` because [homeExchange] is the thing itself and this is its
 // line on the screen — two names for two objects that must not be confused.
 const homeExchangeRow homeRowKind = 201
@@ -165,6 +166,15 @@ const homeExchangeRow homeRowKind = 201
 // because one shows a tool call and hides the reply growing under it, and three
 // starts to be a second transcript in a pane forty cells wide.
 const exchangeStripRows = 2
+
+// homeAskHere is the row kind of that second action row.
+//
+// IT IS DECLARED HERE AND NOT IN [homeRowKind]'s OWN BLOCK, on purpose: the
+// iota block in home.go is being edited by another lane in the same wave, and a
+// constant appended to it would be a conflict over a line that says nothing.
+// The value is far above the block's last member so the two can never collide,
+// and [homeLine.stop] and [app.homeEnter] name it the way they name the rest.
+const homeAskHere homeRowKind = 200
 
 // exchangeKind is what one drawn line of the exchange is.
 type exchangeKind uint8
@@ -962,6 +972,8 @@ func (a *app) askHereWith(text string, orders ErrandOrders) tea.Cmd {
 	if text == "" {
 		return nil
 	}
+	// The door was found, whatever it answers below (notice.go).
+	a.noticeEvent(eventAsked)
 	if a.updateStopsTurn() {
 		return nil
 	}
@@ -1277,7 +1289,14 @@ func (a *app) exchangeKey(ex *homeExchange, msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 
 	case "esc":
-		// Leave the reply draft in place when returning to the list.
+		// ONE LAYER AT A TIME, home's own rule: a half-typed follow-up is
+		// cleared first and the second esc hands the keyboard back. NEITHER
+		// CLOSES THE EXCHANGE — it stands as a row on the column, which on a
+		// narrow frame is also how the list comes back over the stacked pane.
+		if !ex.box.empty() {
+			ex.box.reset()
+			return nil
+		}
 		ex.focused, ex.onOffer, ex.changing = false, false, false
 		return nil
 
@@ -2148,7 +2167,7 @@ func exchangeAnswerWords(q session.Question) string {
 // does, and `continue as a conversation` when the first reply has landed.
 func exchangeHint(ex *homeExchange) string {
 	if ex.changing {
-		return homeAskChangeWord + " · esc back"
+		return homeAskChangeWord + " · esc clear"
 	}
 	var parts []string
 	if ex.asking() {

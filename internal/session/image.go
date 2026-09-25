@@ -121,6 +121,14 @@ func (a *Agent) SubmitImage(ctx context.Context, text string, images []Image) (<
 	if err != nil {
 		return nil, err
 	}
+	// AND IT OPENS ON WHAT IS RUNNING, the way [Agent.Submit]'s sentence does
+	// (plandigest.go). A picture is often the very thing that changes the plan
+	// — a screenshot of the wrong page, the error the run is building on — and a
+	// digest the person's plain sentence carried and their picture did not
+	// would leave the conversation blind on exactly that turn.
+	if digest := a.planDigest(); digest != "" {
+		user = planDigestedParts(digest, user)
+	}
 
 	a.mu.Lock()
 	if a.closed {

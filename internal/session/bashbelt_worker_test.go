@@ -72,7 +72,7 @@ func newRunBeltWorker(t *testing.T, taskRung effort.Rung) *Agent {
 	if taskRung.Valid() {
 		config.Effort = taskRung
 	}
-	agent, err := NewBeltWorker(config, &scriptedCompleter{}, task, store.Path())
+	agent, err := NewBeltWorker(config, &scriptedCompleter{}, task, store.Path(), store.RootID())
 	if err != nil {
 		t.Fatalf("NewBeltWorker: %v", err)
 	}

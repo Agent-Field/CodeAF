@@ -2,23 +2,18 @@
 
 ## Can I set a reminder from home
 
-Yes. Type `/ask remind me at 6 to leave` on Home and press Enter. Choosing `/ask`
-from the command menu writes `/ask `, ready for your question, like `/task`. A bare
-`/ask` waits for your words. An inline `/ask` tag works too.
+Yes. Type it on the home screen, press `↑` once — which lands on the row spelled
+`ask here: "…"` — and press `enter`.
 
 ```
- ─ glm-5.3-flash:auto · ◇ asks ─── project: ~/codeaf
- › /ask remind me at 6 to leave
- alt+p project · alt+e effort · alt+a approvals · alt+k chats · / commands
+ ? ask here: "remind me at 6 to leave"
+ + start a new conversation: "remind me at 6 to leave"
+ ─ glm-5.3-flash:auto · ◇ asks ──────────────────────────────────────────────
+ › remind me at 6 to leave
+ enter starts a new conversation and sends this · ↑ ask here · esc clear   project: ~/codeaf
 ```
 
-Plain text followed by Enter starts a new conversation by default. Only search results
-appear above the seam; the old ask/new action rows and their footer hints are gone.
-One Up selects the best result. Down past the last result returns to composing.
-Removing `/ask` returns to ordinary submission. From a conversation, `/ask` opens
-Home and asks there. A refusal leaves the question editable.
-
-What you get is **a row at the top of home's `threads` panel and a pane holding the exchange**. The row
+What you get is **a row in home's conversation list and a pane holding the exchange**. The row
 stays there — with what the errand is doing written in its tail — until the errand is
 finished and you have read what it came to. The pane is the exchange itself: what you said,
 the reply as it streams, one line per tool call, and the card when one arrives. On an
@@ -51,7 +46,7 @@ done**. They sit at the very **top of home's `threads` panel**, above every
 conversation — an errand is a thing you asked for a minute ago.
 
 `enter` or `→` on the row hands the keyboard to the pane. The hint under the box says so:
-`↑↓ move · enter or tab answer this ask here`. (`tab` on the row was the way in
+`↑↓ move · enter or tab answer this ask here · esc close`. (`tab` on the row was the way in
 until the places arrived and took that key for the next place; `→` points at the column the
 pane is drawn in, which is where the gesture went.)
 
@@ -184,8 +179,8 @@ it:
   its own keys, which is why one half of the toggle stayed and the other moved to the arrow
   that points at the pane.) It works from
   `continue as a conversation` row, an open card. It never loses what is in the pane.
-- **`esc`** in the pane hands the keyboard to the list, preserving any half-written
-  follow-up for when you return.
+- **`esc`** in the pane hands the keyboard to the list. One layer at a time: if you have
+  half a follow-up typed, the first `esc` clears that and the second one leaves.
 - **`enter`** on the exchange's row in the list hands the keyboard to its pane.
 - **clicking** puts the keyboard where the pointer is. A click on a list row opens that
   row, as `enter` would, *and* takes the keyboard to the column; a click anywhere in the
@@ -302,7 +297,7 @@ created until you answer it:
   keyboard goes back to the list. **This is the only way to say no in this pane**: `esc` here
   hands the keyboard back to the list without answering anything, and a card left standing on
   the column is not an answer. It is the same key on home's answer row and in a conversation,
-  where `esc` also defers; `0` explicitly declines.
+  where `esc` also declines.
 
 Those four answers are the only four, and a card draws three of them where `3` is not one
 it can offer. Each answer is a row of its own and **a click anywhere along it takes that

@@ -1640,17 +1640,20 @@ func (a *app) wallZoomed(frame string) string {
 	}
 	rows := strings.Split(frame, "\n")
 	edge := a.pal.dim
+	// THE CORNERS ARE THE ONE FRAME'S (frame.go), asked for through its pieces
+	// so the zoom closes its box the way every other box on this surface does.
+	pieces := framePiecesOf(a.pal)
 	inner := r.x1 - r.x0 - 2
 	for y := range rows {
 		switch {
 		case y < r.y0 || y >= r.y1:
 			rows[y] = ""
 		case y == r.y0:
-			rows[y] = strings.Repeat(" ", r.x0) + edge("╭"+strings.Repeat("─", inner)+"╮")
+			rows[y] = strings.Repeat(" ", r.x0) + edge(pieces.tl+strings.Repeat(pieces.edge, inner)+pieces.tr)
 		case y == r.y1-1:
-			rows[y] = strings.Repeat(" ", r.x0) + edge("╰"+strings.Repeat("─", inner)+"╯")
+			rows[y] = strings.Repeat(" ", r.x0) + edge(pieces.bl+strings.Repeat(pieces.edge, inner)+pieces.br)
 		default:
-			rows[y] = strings.Repeat(" ", r.x0) + edge("│") + wallFit(ansi.Cut(rows[y], r.x0+1, r.x1-1), inner) + "\x1b[0m" + edge("│")
+			rows[y] = strings.Repeat(" ", r.x0) + edge(pieces.side) + wallFit(ansi.Cut(rows[y], r.x0+1, r.x1-1), inner) + "\x1b[0m" + edge(pieces.side)
 		}
 	}
 	return strings.Join(rows, "\n")

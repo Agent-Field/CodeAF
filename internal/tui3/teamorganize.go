@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── ORGANIZE: TEAMS SUGGESTED FOR THE CONVERSATIONS, NEVER APPLIED ALONE ────
@@ -875,11 +876,11 @@ type wallOrgPiece struct {
 }
 
 // wallOrgMarks is the button's two glyphs in the palette's tier.
-func wallOrgMarks(ascii bool) (spark, check string) {
-	if ascii {
+func wallOrgMarks(pal palette) (spark, check string) {
+	if pal.ascii {
 		return "*", ""
 	}
-	return "✦", " ✓"
+	return "✦", " " + pal.glyph(tokens.GSettled)
 }
 
 // wallOrganizeButton is Organize's part of the Teams row on row y: for a few
@@ -910,7 +911,7 @@ func wallOrganizeButton(pal palette, g wallGlyphs, v wallView, y int) wallOrgPie
 	if v.team != "" {
 		return wallOrgPiece{}
 	}
-	spark, check := wallOrgMarks(pal.ascii)
+	spark, check := wallOrgMarks(pal)
 	hot := v.hover == wallHitRef{kind: wallHitAction, arg: int(wallActOrganize)}
 	var s string
 	switch {

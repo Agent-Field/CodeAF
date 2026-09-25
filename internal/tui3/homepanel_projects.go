@@ -10,7 +10,7 @@ import (
 // projectsPanel is `projects`: every folder this machine has conversations in,
 // this window's own first and then the most recently spoken in — its path, how
 // many chats are in it and how many are running, and where its repository
-// stands. Enter on one starts a fresh conversation there ([app.homeProjectEnter]).
+// stands. Clicking one selects the next message’s project ([app.pinTargetProject]).
 //
 // IT IS NEVER EMPTY, so it has no whisper: the folder this window was launched
 // in is always one of its rows.
@@ -21,15 +21,9 @@ type projectsPanel struct{ homePanelBase }
 // row.
 const homeProjectPad = 24
 
-// homeProjectRow is ONE PROJECT ON THE PROJECTS PANEL: a reading and never a
-// door. It was a cursor stop whose enter started a conversation in that folder
-// and whose strip offered its chats and its folder; the owner ruled
-// (2026-09-17) that the panel and its rows carry no interactivity at all — the
-// heading opens nothing, the rows are not stops, a press on one does nothing —
-// so a person walking the field can never wander onto the rail. `ctrl+t` from
-// a conversation and the folder on any field row's strip are the ways to a
-// folder now. It is numbered beside the switcher's own kinds (place_home.go)
-// for their reason: the iota block in home.go is edited by other lanes.
+// homeProjectRow selects the draft's project when clicked. It is not a keyboard
+// stop, so arrow navigation stays in the field and Option+P cycles projects.
+// Its number stays outside the shared iota block to avoid shifting other rows.
 const homeProjectRow homeRowKind = 244
 
 func (projectsPanel) rows(in *homeGridInput) homePanelRows {

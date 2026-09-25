@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── THE TRAFFIC VIEW (sidecol.go says what the column is) ──────────────────
@@ -584,9 +585,9 @@ func (s *sideSheet) member(r trafficReply) {
 	}
 	switch r.state {
 	case teamstore.StateFinished:
-		words = s.a.linearMark("✓", "ok") + " " + words
+		words = s.a.linearMark(s.a.icon(tokens.GSettled), "ok") + " " + words
 	case teamstore.StateFailed:
-		words = s.a.linearMark("✗", "x") + " " + words
+		words = s.a.linearMark(s.a.icon(tokens.GFailed), "x") + " " + words
 	case teamstore.StateAsking:
 		words = "asking: " + strings.TrimSpace(strings.TrimPrefix(words, "asks:"))
 	case "working":
@@ -700,9 +701,9 @@ func (s *sideSheet) messages(handle string) {
 		words := s.says(e)
 		switch {
 		case e.State == teamstore.StateFinished:
-			words = s.a.linearMark("✓", "ok") + " " + words
+			words = s.a.linearMark(s.a.icon(tokens.GSettled), "ok") + " " + words
 		case e.State == teamstore.StateFailed:
-			words = s.a.linearMark("✗", "x") + " " + words
+			words = s.a.linearMark(s.a.icon(tokens.GFailed), "x") + " " + words
 		}
 		segs = append(segs, sideSeg{text: "  ", door: -1}, sideSeg{text: words, paint: s.a.pal.muted, door: -1, flex: true})
 		row.hint = words + hintSegment + "click shows it in this chat"

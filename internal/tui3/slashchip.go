@@ -50,7 +50,6 @@ const (
 	sendDoorNone sendDoor = iota
 	sendDoorStanding
 	sendDoorTask
-	sendDoorAsk
 )
 
 const (
@@ -213,9 +212,6 @@ func (a *app) slashTagHint() string {
 	word := string(a.input.value[tags[0].from+1 : tags[0].to])
 	if commandDoor(word) == sendDoorStanding {
 		return slashTagHintStanding
-	}
-	if commandDoor(word) == sendDoorAsk {
-		return ""
 	}
 	return slashTagHintTask
 }

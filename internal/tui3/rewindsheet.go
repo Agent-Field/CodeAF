@@ -25,9 +25,14 @@ import (
 //	 ⟲ drops 1 turn — everything below the pick is let go
 //	 esc close · ↑↓ move · enter picks the point
 //
-// /rewind opens this timeline explicitly. Escape only backs out; it never
-// enters a rewind mode. The full history stays reachable here even when the
-// transcript view has loaded only its most recent blocks.
+// THERE ARE TWO REWINDS AND THEY ANSWER TWO DIFFERENT QUESTIONS. esc esc opens
+// the INLINE mode (rewind.go), which is the quick take-back: the transcript on
+// screen is the picker, the answer is almost always "the thing I just said", and
+// the whole gesture is over in two keystrokes. This page is the DELIBERATE one —
+// "take me back to before we started down this road" — and the question it
+// answers cannot be answered by the inline mode at all, because the inline mode
+// walks the DRAWN blocks and a resumed conversation draws only its last
+// [replayTail] entries. Everything older than that was unreachable.
 //
 // SO THIS PAGE IS BUILT FROM THE SESSION AND NOT FROM THE SCREEN. Its rows come
 // out of [session.Agent.Transcript] and its points out of
@@ -202,6 +207,7 @@ func (a *app) openRewindSheet() tea.Cmd {
 	if len(points) == 0 {
 		return a.sayRewind(rewindEmptyWord)
 	}
+	a.disarmRewind()
 	a.closeLists()
 	a.dropHover()
 	// THE OTHER FULLSCREEN PAGES STAND DOWN, which is the law settings.go states:

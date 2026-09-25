@@ -1830,7 +1830,7 @@ func (a *app) compactRow(e *entry, width int) string {
 // The bottom of this surface is TWO ROWS, and every element on them has exactly
 // one job (foot.go states the whole law):
 //
-//	─ porting the parser · gpt-4.1-mini · ⠿ high · ◇ asks · via deepinfra ──── esc back · / commands ─
+//	─ porting the parser · gpt-4.1-mini · ⠿ high · ◇ asks · via deepinfra ──── space space home · / commands ─
 //	$0.14 · ⟲ saved $0.02 · 89% cached   12.4k/128k · 10%   2 jobs      92 tok/s · ⠹ working · 4s
 //
 // THE SEAM IS IDENTITY — which conversation, what is answering it, and the keys
@@ -3377,10 +3377,12 @@ func (a *app) legend(width int) string {
 			ledger, alive = a.seamRungParts(parts, rung.steps)
 			painted, right = a.seamTelemetryLabel(ledger, alive)
 		}
-		// The project is the final right-hand field, after the numbers. Its
-		// extra columns never move the ledger's doors relative to that label.
+		// THE PROJECT IS THE KEYS ROW'S NOW (footswap.go's [app.hintRow]), and
+		// it stays on the seam only at the phone tier, where the seam IS the
+		// keys row and the last row is the deck. Its extra columns never move
+		// the ledger's doors relative to that label.
 		projectSpan := hudSpan{}
-		if !a.roomOpen() {
+		if !a.roomOpen() && !telemetry {
 			original := right
 			right, projectSpan = seamProjectRight(left, right, pieces.project, width)
 			if projectSpan.pressable() {
@@ -3564,12 +3566,12 @@ func (a *app) legendLinePainted(left, right, rightPainted string, width int, pai
 	// a bug the breadcrumb bar exposed: this line is laid out by the pinned
 	// header as well as by the legend (room.go, roomcrumbs.go), and the header is
 	// drawn AFTER the chrome — so a header clearing the span erased a door the
-	// legend had just recorded, and `esc back` became a label nothing
+	// legend had just recorded, and `space space home` became a label nothing
 	// answered for. What makes the span its own answer to "was it drawn" is
 	// [app.legend] clearing it before its own ladder starts.
-	if offset := strings.Index(right, a.escapeDoorWord()); offset >= 0 {
+	if offset := strings.Index(right, homeDoorWord); offset >= 0 {
 		from := at + ansi.StringWidth(right[:offset])
-		a.homeDoor = hudSpan{from: from, to: from + ansi.StringWidth(a.escapeDoorWord())}
+		a.homeDoor = hudSpan{from: from, to: from + ansi.StringWidth(homeDoorWord)}
 	}
 	line := a.pal.dim("─")
 	if left != "" {
@@ -3755,11 +3757,16 @@ func (a *app) footHint(width int) string {
 	if a.chordLost && a.chords.meta == chordMetaWord {
 		return a.chords.chordShortWords()
 	}
-	// AND UNDER EVERY STATE'S OWN KEYS, THE EARNED HINT (notice.go). It is the
+	// AND UNDER EVERY STATE'S OWN KEYS, THE EARNED TIP (notice.go). It is the
 	// lowest rung there is — a tip about a gesture the person has not used yet,
 	// drawn only over an idle box — and it takes the slot from the rest state
 	// below because that is what the rest state is for: the one line a newcomer
 	// reads when nothing is happening.
+	//
+	// IT LEFT THIS ROW FOR ONE BUILD ON 2026-09-22, for a row of its own over
+	// the rule with a clock and a cross, and the owner put it back here. Home's
+	// row keeps that newer shape; the two boxes are read differently and are
+	// allowed to differ (notice.go's [noticeBoard.pick]).
 	if tip := a.noticeHint(); tip != "" {
 		return tip
 	}
@@ -3783,7 +3790,7 @@ func (a *app) idleHint() string {
 	}
 	doors = append(doors, microcopy)
 	if a.homeDoorShowing() {
-		doors = append(doors, a.escapeDoorWord())
+		doors = append(doors, homeDoorWord)
 	}
 	return strings.Join(doors, hintSegment)
 }
@@ -3819,6 +3826,7 @@ const hopDoorWord = hopOpenKey + " chats"
 //	  inside a fold       enter choose · ← back · esc · crew max
 //	the sessions are up   enter open · esc
 //	copy mode is on       v select · a block · y yank · esc
+//	rewind is armed       esc again to rewind        (rewind.go's double esc)
 //	rewind mode is up     nothing — the mode bar prints its own keys
 //	the welcome box is up ↑↓ recent · enter open
 //	a path is completing  tab take · enter run · esc
@@ -3911,12 +3919,22 @@ func (a *app) hintWord() string {
 		// (subharness.go).
 		return a.subVerbs()
 	case a.copy.on:
-		return "v select · a block · y yank · esc"
+		return copyKeysWord
 	case a.rew.on:
 		// The rewind mode prints its own keys in the bar that replaced the draft
 		// box (rewind.go), and a slot repeating them would be the surface saying
 		// the same thing twice on one screen.
 		return ""
+	case a.rewindArmed() && a.rewindReady():
+		// The first esc has landed and the second one means something else for
+		// half a second. This outranks "esc interrupt" below for exactly that
+		// reason: while the window is open, that is no longer what the key does.
+		//
+		// It asks [app.rewindReady] as well as the clock, because the two can come
+		// apart: a question can be raised in the half second the window is open,
+		// and from that moment esc belongs to the question. The slot promises what
+		// the NEXT esc does, so it has to ask the same thing that key will.
+		return rewindArmWord
 	case a.rewindSaying():
 		return a.rewSay
 	case a.welcome.open:
@@ -3968,7 +3986,7 @@ func (a *app) hintWord() string {
 		// everything the draft would have got. And it ranks ABOVE the two lines
 		// below for the reason this whole slot is ordered the way it is — while a
 		// room is open, esc leaves the page and does not touch the conversation's
-		// turn, so "ctrl+c interrupt" would be naming a key that is spoken for.
+		// turn, so "esc interrupt" would be naming a key that is spoken for.
 		return a.roomHint()
 	case a.state == stateWorking:
 		// ONE RUNNING STATE, ONE COMPOSED LINE (steer.go's [app.runHint]). Its

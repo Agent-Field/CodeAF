@@ -130,8 +130,15 @@ func (a *app) replayList(all []session.DisplayEntry) {
 	// and typed straight away had their message appended to and then buried by
 	// the history that arrived behind it.
 	inTheGap := a.entries
+	// AND WHAT THIS SURFACE ALREADY DREW FROM THE RECORD WAS NOT SAID AFTER ANY
+	// OF IT. It is the same conversation, and keeping it puts the record on top
+	// of itself: the same answers twice, and a second seam. Only the rows said
+	// into this window since the last replay are in the gap ([app.recordRows]).
+	if drawn := min(a.recordRows, len(inTheGap)); drawn > 0 {
+		inTheGap = inTheGap[drawn:]
+	}
 	a.entries = append(blocks[:len(blocks):len(blocks)], inTheGap...)
-	_ = inTheGap
+	a.recordRows = len(blocks)
 	a.turn += turns
 	a.replayFrom = from
 	// A CONVERSATION THAT WAS COMPACTED AND THEN PUT DOWN HAS ALMOST NO TAIL — a
@@ -413,6 +420,11 @@ func (a *app) prepend(entries []session.DisplayEntry, seam bool) {
 	// AND EVERY POSITION THIS SURFACE HOLDS IN THE BLOCK LIST MOVES WITH IT.
 	a.shiftBlockIndices(len(blocks))
 	a.entries = append(blocks, a.entries...)
+	// AND THEY ARE THE RECORD'S OWN ROWS, which is exactly what they are: one
+	// helping of it, and the seam too when this was the crossing. A replay that
+	// arrives later has to be able to tell them from a sentence somebody typed
+	// ([app.recordRows]).
+	a.recordRows += len(blocks)
 	a.replayFloor = shift
 	// The pointer was over a row of a list that has just been rebuilt around it,
 	// which is the same claim [app.dropHover] makes wherever the rows are

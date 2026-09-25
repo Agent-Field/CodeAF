@@ -151,12 +151,13 @@ keyboard decides for itself and says on the record that it decided.
 
 | flag | what it does |
 | --- | --- |
-| `--db <path>` | work in this durable store instead of a private one |
-| `--keep` | keep the private store instead of deleting it on the way out |
-| `-w <dir>` | the directory to work in, edited in place — the current directory by default |
+| `--db <path>` | work in this durable store instead of a private one (older engine only) |
+| `--keep` | keep the store instead of deleting it on the way out |
+| `-w <dir>` | the directory to work in, edited in place, never committed — the current directory by default |
 | `--timeout` | a hard wall on the whole run |
 | `--json` | print one machine-readable object instead of the deliverable |
-| `--yes-spend` | approve a plan whose price crosses the consent threshold |
+| `--yes-spend` | spend past today's limit and the plan price without stopping |
+| `--slots <n>` | how many workers may run at once for this run; `0` is no limit. Unset, it is your `task.parallel` setting, which is no limit out of the box |
 | `--model <slug>` | the work model for this run |
 | `--plan-model <slug>` | the model that plans, when it should differ from the work model |
 | `--check-model <slug>` | the model that checks finished work; then `CODEAF_CHECK_MODEL`, then a plan seat pinned by flag or environment, then the crew's careful row |
@@ -611,7 +612,8 @@ quote back out of your request is dropped. **Three things then happen with it.**
 - **The gate checks the files the run changed against it**, before any review is bought.
   A run told to touch nothing is stopped by any file it left in your workspace — **or
   deleted from it**; a run told to stay in one folder, by anything it wrote outside that
-  folder. codeaf's own bookkeeping — its `.codeaf/` logs and traces — is never counted, and
+  folder. codeaf's own bookkeeping is never counted, whether the older road wrote it
+  under `.codeaf/` or the run road kept it in a private folder, and
   neither is a dependency tree something installed. A rule no such arithmetic can settle —
   "don't use the network" — is put to the review as the standard beside your request
   instead, and **a review that fails the work by quoting one of your rules ends it the same
@@ -726,45 +728,30 @@ check what it did, not a run that ran out of time.
 
 ## My headless run failed — where is its record, why is there a folder left behind after `codeaf do`, how do I keep the run's files with `--keep`
 
-`codeaf do` works in a private store of its own unless you point it somewhere durable with
-`--db`. What becomes of that store depends on how the run ended:
+Both engines make a private folder under `~/.codeaf/runs/codeaf-do-*` (or
+`CODEAF_HOME/runs/`) for each `codeaf do` invocation. Two runs in the same
+working directory have separate records; neither writes a record into the
+repository. The older engine (`CODEAF_TASK_BELT=node`) can instead use a store
+you named with `--db`. The default run engine refuses `--db`.
 
-- **It worked** — exit 0 — and the store is deleted on the way out. Nothing is left behind,
-  which is the point of a one-shot.
-- **It fell over at the door** — no API key, a `-w` directory that cannot be made, a store
-  that will not open — and there is nothing to keep: the folder goes and no path is printed.
-  Nothing ever ran, so a `record kept at` line would only point you at an empty directory on
-  the one line where you are already looking for the cause. `--keep` and `--debug` still
-  keep it, because those asked for it by name.
-- **It did not** — exit 1, or the partial exit 2 above, or a run you stopped with Ctrl+C —
-  and the store is **kept**, with no flag and nothing decided in advance. The last thing the
-  run writes on the error stream is where it is:
+- **Done, exit 0:** the private folder is removed unless `--keep` or debug mode
+  asked for it.
+- **Incomplete, limited, timed out or interrupted:** the folder is retained
+  without a flag. The final line on stderr is `record kept at <folder>`.
+- **Refused before work began:** the default run engine makes no record. The
+  older engine can retain an empty folder when `--keep` or debug was requested.
 
-  ```
-  record kept at ~/.codeaf/runs/codeaf-do-3f81c2
-  ```
+A default run's folder holds `plandb.db`, the worker shim (`bin/plandb`), and
+task transcripts and trajectories under `tasks/<id>/`. Read its plan with
+`codeaf plandb --db <folder>/plandb.db`. The older engine's folder holds
+`graph.db`; that engine can reopen it with `codeaf do --db <folder>/graph.db`.
+A store explicitly named with `--db` remains at the path you gave it.
 
-Kept records live under `runs/` in codeaf's own folder — `~/.codeaf/runs/`, or wherever
-`CODEAF_HOME` points — and **not** in the machine's temporary directory, so nothing sweeps
-one away before you go looking for it. That directory holds `graph.db`: the journal every
-worker wrote to, the plan as it stood, the deliverables, the receipts and the spend. Hand it
-back with `codeaf do --db <that path>/graph.db "…"` to work in it again, and it is an
-ordinary directory otherwise — read it, copy it, delete it when you are done with it.
-
-Stopping a run yourself keeps it too. Ctrl+C — or a `SIGTERM` from whatever launched it —
-lands the run rather than vanishing it: the work in flight is settled, what it produced is
-reported, and the `record kept at` line is printed on the way out. Press Ctrl+C a second time
-and the process dies immediately; the folder is still there, because nothing got as far as
-deleting it.
-
-Two ways to keep it whatever happened: `--keep` on the run, or the environment variable
-`CODEAF_DEBUG` set to anything but `0`, `false` or `off`, which keeps every run's store for
-as long as it is set. Neither is needed to keep a failure any more. This used to be the
-other way round — every run's store was deleted on the way out, worked or not — so a person
-discovered they wanted the record after the failure, which was after it was gone.
-
-A run pointed at `--db` never had a private store to keep: that store is yours and is left
-exactly where you put it, whatever the run did.
+Ctrl+C or `SIGTERM` lands work in flight and reports what it produced before
+printing the record path. A second Ctrl+C kills the process immediately; its
+folder remains. `--keep` retains a completed run's record. Setting
+`CODEAF_DEBUG` to anything except `0`, `false` or `off` does the same for work
+that was admitted. A failed run needs neither flag.
 
 ## When codeaf decides there is nothing left to do — and when it may not
 
@@ -1822,7 +1809,7 @@ back, each saying what is true of it:
 `interrupted` means **nothing is driving it, and everything it did is kept**. It is not
 `stopped`, which is you ending the work, and it is not `incomplete`, which is work that
 ran and came up short. Nothing went wrong and nobody decided anything: the window closed.
-The row wears the asking mark, and its line reads:
+The row asks nothing of you and raises no `needs you` mark, and its line reads:
 
 ```
 nothing is driving it; everything it did is kept

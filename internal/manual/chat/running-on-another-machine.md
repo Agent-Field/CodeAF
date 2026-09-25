@@ -167,18 +167,16 @@ as another build. Three things can be true:
 
 - **It is this build.** Your window attaches to it exactly as before. This is the ordinary
   case, and it costs one question on a local socket.
-- **It is another build, holding nothing** — no window attached, no turn running, no
-  question waiting. It is asked to go, closes its conversations, flushes their transcripts,
-  and a fresh one starts from the binary that is on disk now. You see none of it.
-- **It is another build and something is still going in it.** Nobody's turn is ended for
-  you. The connection is refused instead, in these words:
+- **It is an older build** — built earlier, from any file, or too old to answer the
+  question at all. It is replaced, busy or not: it closes its conversations, flushes their
+  transcripts, and a fresh one starts from the binary that is on disk now. The window says
+  `replaced the older engine on spark (pid <n>, <build>, <binary>) — this build holds the
+  workspace now`.
+- **It is a newer build.** Your window joins it. If its wire is one this binary cannot
+  speak, the connection is refused, naming this binary as the older one and
+  `codeaf engine --status` as the way to see which is newer.
 
-```
-engine: spark is still running an older codeaf and something is still going in it — let that finish, or run codeaf engine --stop --workspace /home/you/project on spark
-```
-
-A copy too old to answer the question at all is refused the same way and left alone,
-because a process that cannot say whether it is busy is not one to guess about:
+Only if the older engine will not go is the connection refused, in these words:
 
 ```
 engine: spark is still holding this conversation on an older codeaf — run codeaf engine --stop --workspace /home/you/project on spark
@@ -217,7 +215,7 @@ The **near** machine — the one you are sitting at — owns the surface:
   so what you typed while working on `devbox:code/app` belongs to that place
 - the model picker's cached list
 - the terminal itself
-- **the paths for `/image`, `/attach` and `@` completion**, which are anchored here; a bare
+- **the paths for `/attach` and `@` completion**, which are anchored here; a bare
   `/attach` opens the chooser on this machine
 - **the browser, the viewer and the file door** — the small `127.0.0.1` listener this
   window opens so that a path in a reply, `/files` and `/files <path>` can show you a file
@@ -556,7 +554,7 @@ The task roster lists this far conversation's work. Its rows come from the far
    `room unavailable — this session has no task rooms`; the far task id opens its live
    room, and steering and stopping cross to that task's engine.
 
-10. **`/image`, `/attach` and `@` are local, deliberately** — and this one is a capability as
+10. **`/attach` and `@` are local, deliberately** — and this one is a capability as
     much as a limit. The picture or file is on the machine you are sitting at and its bytes
     travel with the message, so a relative path and the completion walk are anchored here
     rather than on the remote workspace. What you attach really does arrive over there; see
@@ -774,10 +772,10 @@ own stream, so a turn whose words match a registered harness still asks you, and
 
 ## Attaching a picture or file, a bare /attach chooser, and @ paths, over --host
 
-`/image`, `/attach` and `@` completion are **local on purpose**. The picture or file is on
+`/attach` and `@` completion are **local on purpose**. The picture or file is on
 the machine you are sitting at, and its bytes travel with the message.
 
-So a relative path you type after `/image` or `/attach`, and the `@` completion walk, are
+So a relative path you type after `/attach`, and the `@` completion walk, are
 anchored **here** — to the directory you launched from — and not to the remote workspace.
 A bare `/attach` opens the add context chooser here too, already browsing the machine you
 are sitting at. Files chosen there reach the tray and travel with the next message.

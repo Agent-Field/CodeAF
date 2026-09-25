@@ -118,7 +118,7 @@ type wallBox struct{ tl, tr, bl, br, h, v string }
 
 var (
 	wallBoxHeavy = wallBox{"┏", "┓", "┗", "┛", "━", "┃"}
-	wallBoxLight = wallBox{"╭", "╮", "╰", "╯", "─", "│"}
+	wallBoxLight = wallBox{"╭", tokens.GlyphFrameTopRight, "╰", tokens.GlyphFrameBottomRight, "─", "│"}
 	// The ASCII floor keeps focus as weight: `#` and `=` for the focused tile,
 	// `+` and `-` for the rest.
 	wallBoxHeavyASCII = wallBox{"#", "#", "#", "#", "=", "#"}
@@ -141,7 +141,7 @@ func wallGlyphsFor(ascii bool) wallGlyphs {
 	if ascii {
 		return wallGlyphs{sep: "-", tool: ">", cursor: "_", marked: "@", cell: ".", seenCell: "o", gt: ">", more: "~"}
 	}
-	return wallGlyphs{sep: "·", tool: "▸", cursor: "▌", marked: "☑", cell: "▪", seenCell: "▣", gt: "›", more: "…"}
+	return wallGlyphs{sep: "·", tool: "▸", cursor: "▌", marked: "☑", cell: tokens.GlyphActionWork, seenCell: "▣", gt: "›", more: "…"}
 }
 
 // wallGrid is the grid for n tiles on a frame width by height (the whole frame,

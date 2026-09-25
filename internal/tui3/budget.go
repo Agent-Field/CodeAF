@@ -71,6 +71,7 @@ func budgetWords() string {
 //	/budget plan 20    one row by name
 //	/budget plan       the tab, on that row
 func (a *app) budget(rest string) tea.Cmd {
+	a.noticeEvent(eventBudgetShown)
 	rest = strings.TrimSpace(rest)
 	if rest == "" {
 		return a.openSpending(config.KeyDailyBudget)

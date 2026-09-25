@@ -27,7 +27,9 @@ import (
 // So the far side's two facts are CACHED BY THE WATCHER THAT WAS ALREADY
 // WATCHING, at the transitions it was already computing (keeper.go's
 // [behindWatch.waits] and [behindWatch.turning]), and reading them here is two
-// atomic loads per tab. The near side's are read off the surface itself.
+// atomic loads per tab. The near side's question is cached the same way, by the
+// loop after each message ([app.frontWaits]), and its work is read off the
+// surface itself.
 //
 // ── WHAT COUNTS AS NEEDING A PERSON ─────────────────────────────────────────
 //
@@ -38,9 +40,12 @@ import (
 // proposal carrying a deadline is a countdown, which proceeds whether or not
 // anybody looks at it, and is not a request.
 //
-// The front tab is answered from the surface instead of from the agent, and its
-// two states are written to mean the same thing: a consent card on screen, and a
-// task proposal that is genuinely waiting rather than counting down. INTERNAL
+// The front tab reads THE SAME PREDICATE, asked on the loop once per message
+// rather than by the frame ([app.frontWaits]), with the cards already on its own
+// screen beside it. It used to read the surface alone, which counted a consent
+// card and a waiting proposal and none of a landed `your call`, the model's own
+// blocking question or a sub-harness's, so a `?` on the tab beside went away
+// the moment that conversation came forward (#1316). INTERNAL
 // WAITS ARE NOT ON EITHER LIST. A tool checking something, a node waiting on a
 // dependency, a provider being retried — all of those are WORK, and a strip that
 // spelled them `?` would put an amber question mark on every tab at once and
@@ -114,14 +119,28 @@ func (w *behindWatch) signal() tabSignal {
 	switch {
 	case w.waits.Load():
 		return tabNeedsPerson
-	case w.turning.Load(), w.tasking.Load(), w.jobbing.Load():
-		// A TURN IN FLIGHT, OR WORK THAT OUTLIVED ONE. The second is the whole
-		// reason this is two loads rather than one: the watcher's turn flag goes
-		// false the moment the conversation's own stream ends, and the nodes it
-		// started keep running afterwards (keeper.go's [behindWatch.tasking]).
+	case w.working():
 		return tabWorking
 	}
 	return tabIdle
+}
+
+// working says this held conversation has work in flight, whatever else it is
+// waiting on.
+//
+// IT IS A TURN IN FLIGHT, OR WORK THAT OUTLIVED ONE. The second is the whole
+// reason this is three loads rather than one: the watcher's turn flag goes
+// false the moment the conversation's own stream ends, and the nodes it
+// started keep running afterwards (keeper.go's [behindWatch.tasking]).
+//
+// IT IS SEPARATE FROM [behindWatch.signal] BECAUSE A QUESTION OUTRANKS WORK ON
+// A TAB AND NOT ON HOME. The tab has one cell, so the question takes it; a Home
+// conversation row carries the question only when the question is the
+// conversation's own, and a landed task's `your call` is drawn on the task's
+// row instead (homepanel_needs.go's [needsLandingsSpeakFor]). Reading the
+// ranked signal there drew a conversation at rest while its other task ran.
+func (w *behindWatch) working() bool {
+	return w != nil && (w.turning.Load() || w.tasking.Load() || w.jobbing.Load())
 }
 
 // tabSignalFor is one conversation's state, by its canonical key ([app.convKey])
@@ -143,20 +162,13 @@ func (a *app) tabSignalFor(key string, here bool) tabSignal {
 // asksStanding reports whether the surface holds a standing answer, which is a
 // question a firing put to this person and which nothing else will answer.
 //
-// IT NAMES ONE KIND RATHER THAN TREATING EVERY OPEN QUESTION AS A SIGNAL, and
-// the two it leaves out are left out for different reasons. A task proposal
-// carrying a deadline is a countdown, and a countdown answers itself. A LANDED
-// `your call` IS DELIBERATELY ABSENT, and not because it is unimportant: a
-// landing's question object stays open through the whole settle AFTER the
-// person has answered it (session's publishLandingQuestion retires it only when
-// the node leaves TaskUnverified, and an accept does not move the state until
-// the merge finishes). Counting it here would hold a mark up over an answer
-// already given, which is the one thing a mark must never do. The fact that
-// would tell a live landing from a settling one is not on this surface in any
-// usable shape, so until it is, this lane says nothing rather than saying
-// something stale. The landing is not lost from the screen: it is drawn in the
-// conversation itself ([app.questionDrawnHere] returns true for it) and on its
-// own card, so the person on this tab is already looking at it.
+// IT NAMES ONE KIND RATHER THAN TREATING EVERY OPEN QUESTION AS A SIGNAL. A
+// task proposal carrying a deadline is a countdown, and a countdown answers
+// itself. A LANDED `your call` is not read here either, because this surface
+// cannot tell a live landing from one already answered and still settling; the
+// engine can (session's personAskLanding skips a settling landing, #1322), and
+// its answer reaches the front tab through [app.frontWaits]. So the landing
+// does wear the mark, from the one reader that knows when to take it off.
 func (a *app) asksStanding() bool {
 	for _, open := range a.questions {
 		if open.question.Kind == session.QuestionStanding {
@@ -174,17 +186,35 @@ func (a *app) asksStanding() bool {
 // reading tells a question from a countdown (session's [Agent.waitingOnPerson]).
 // A proposal that will proceed on its own is work, and it wears the working mark
 // or none.
+//
+// THE ENGINE'S ANSWER COMES FIRST, AND IT IS THE SAME ANSWER A HELD TAB READS.
+// [app.frontWaits] is [session.Agent.NeedsPerson] asked once per message on the
+// loop, which is exactly what [behindWatch.waits] caches for every other tab
+// (#1316). The surface's own list below it is not a second opinion: every lane
+// on it is one of the engine's, and it stays so the mark is up on the frame the
+// card arrives and so a scripted agent that cannot want anything still reads
+// the cards it was handed.
 func (a *app) frontSignal() tabSignal {
+	if a.frontWaits {
+		return tabNeedsPerson
+	}
 	if run := a.orchOf(); run != nil && run.gate != nil {
 		return tabNeedsPerson
 	}
 	if a.asking() || a.asksConnect() || a.asksHarness() || a.asksStanding() || (a.awaitingTask() && a.task != nil && a.task.deadline.IsZero()) {
 		return tabNeedsPerson
 	}
-	if a.state == stateWorking || a.tasksInFlight() || a.jobsRunning() > 0 {
+	if a.frontWorking() {
 		return tabWorking
 	}
 	return tabIdle
+}
+
+// frontWorking is [behindWatch.working] for the conversation on screen: a turn
+// in flight, a task node still going, or a background command still running,
+// whatever question is also open.
+func (a *app) frontWorking() bool {
+	return a.state == stateWorking || a.tasksInFlight() || a.jobsRunning() > 0
 }
 
 // tasksInFlight says this conversation has a task node still going, which is the

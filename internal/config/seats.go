@@ -277,7 +277,7 @@ func tierSeatUnder(profileDir, family, tier string) Seat {
 	if source == "" {
 		source = SeatDefault
 		if !cleared {
-			model = defaultTierModel(family, tier)
+			model = freeTierModelAt(profileDir, family, tier)
 			if seat, ok := unwrittenSeat(profileDir, family, tier); ok {
 				model, source, byWord = seat.Model, seat.Source, seat.Crew
 			}
@@ -594,7 +594,7 @@ func withNotice(line, notice string) string {
 // model policy this whole file exists to remove.
 func ResolveSeats(profileDir, flagModel, flagPlanModel string) Seats {
 	return Seats{
-		Work: resolveSeat(SeatWork, profileDir, flagModel, ModelTierWorker, DefaultModel),
+		Work: resolveSeat(SeatWork, profileDir, flagModel, ModelTierWorker, ChatDefaultAt(profileDir)),
 		Plan: resolveSeat(SeatPlan, profileDir, flagPlanModel, ModelTierMastermind, ""),
 	}
 }
@@ -669,6 +669,9 @@ func resolveSeat(role SeatRole, profileDir, flag, tier, fallback string) Seat {
 	// and it lands on the same bottom rung a profile that said nothing does.
 	model, from, source, cleared := crewRow(profileDir, tier)
 	if source == "" {
+		if cleared && role == SeatWork {
+			fallback = DefaultModel
+		}
 		// THE PICK ANSWERS BEFORE THE BOTTOM RUNG: an unwritten seat under a
 		// pick of catalog or learn is computed at the crew's preset
 		// ([pickedSeat]), the same answer the conversation reads, and a row

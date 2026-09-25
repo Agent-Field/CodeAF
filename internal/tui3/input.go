@@ -609,14 +609,17 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// frees every printable key for the filter box and, on the card, for the
 	// value somebody is typing into a field.
 	//
-	// An agent-raised card can be deferred with Escape and resumed with
-	// /subharness; only an explicit answer resolves the offer.
+	// WITH ONE CARD THAT IS NOT OPENED BY A COMMAND: the intake chat itself
+	// raised. It comes through this same door because it is the same overlay,
+	// and the only thing that differs is what esc means on it — a NO, answered
+	// back to the turn that is waiting on it, rather than a way out of a page
+	// somebody opened to read ([app.answerSubharnessOffer]).
 	if a.subPage.open && msg.String() != "ctrl+c" {
 		return a.subPageKey(msg)
 	}
 
 	if msg.String() == "ctrl+c" {
-		// INTERRUPT FIRST. While a turn runs ctrl+c stops it —
+		// INTERRUPT FIRST. While a turn runs ctrl+c is the same key esc is —
 		// a person hitting it mid-turn is reaching for the model, not for the
 		// door, and every terminal habit in the world says that keystroke stops
 		// the RUNNING thing.
@@ -844,7 +847,17 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			a.recallCancel()
 			return nil
 		}
-		return a.openHome()
+		// THE DOUBLE ESC IS THE REWIND'S DOOR, and it is read here rather than
+		// above the interrupt because the interrupt is not for sale (rewind.go):
+		// the first esc means exactly what it always meant and ARMS the mode on its
+		// way past, and only a second one inside the window is taken. A stray esc
+		// after the window has lapsed changes nothing.
+		cmd, taken := a.escRewind()
+		if taken {
+			return cmd
+		}
+		a.interrupt()
+		return cmd
 
 	case "enter":
 		if a.steerAvailable() {
@@ -1317,6 +1330,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.syncLists()
 	}
 
+	// TWO SPACES IN AN EMPTY BOX ARE THE DOOR HOME (home.go). It is read here,
+	// at the very bottom of the router, because it must lose to every other
+	// meaning a space could have on this surface — inside a paste bracket, in a
+	// filter box, in copy mode, in any overlay — and because the first of the
+	// two spaces has already typed itself perfectly ordinarily one keystroke
+	// ago, through the line below.
+	if a.homeGesture(msg) {
+		a.input.reset()
+		return tea.Batch(a.edited(), a.openHome())
+	}
 	if text := msg.Key().Text; text != "" {
 		// The ordinary case: a key that carries text types it.
 		//
@@ -1504,8 +1527,6 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 			return a.openStanding()
 		}
 		return a.standingSayShown(tagWords, tagShown)
-	case sendDoorAsk:
-		return a.runAskCommand(tagWords)
 	case sendDoorTask:
 		return a.runTaskCommand(tagWords)
 	}

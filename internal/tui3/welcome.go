@@ -199,7 +199,7 @@ func (a *app) openWelcome() {
 
 // dismissWelcome puts the unit away for good, and says the two keys that leave.
 //
-// THE EXIT IS TAUGHT AFTER THE ENTRANCE. `esc back · ctrl+c interrupts or quits`
+// THE EXIT IS TAUGHT AFTER THE ENTRANCE. `esc interrupts · ctrl+c quits`
 // used to be the first line of every session, drawn above a greeting whose whole
 // job was to get somebody to type their first sentence — a way out, offered
 // before the way in. So while the unit is up the transcript carries nothing,

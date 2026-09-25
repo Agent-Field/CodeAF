@@ -63,8 +63,9 @@ on the tray above the message box, and it goes with the next thing you send.
 /attach                     the browser, so you can find the file and look at it first
 ```
 
-**On the home screen a bare `/attach` does not open that sheet** — it says
-`type the path after /attach · or drop the file here`, and `/folder` is the browser there.
+**On the home screen a bare `/attach` opens the browser** for the next
+conversation's folder. `/project` opens that browser to pin the folder itself;
+`/folder` opens a conversation first and chooses a folder for that conversation.
 Everything below is about `/attach` inside a conversation; *Attaching a file from home* has
 the home half.
 
@@ -82,9 +83,11 @@ more than one — and `enter` does exactly what it says. Over `--host`, the shee
 machine you are sitting at and selected files travel with the message. "Choosing a folder"
 is the full account of that sheet, its keys and its preview.
 
-Path rules are `/image`'s: `~` is your home directory, a bare name is under the directory
-this conversation is about, and an absolute path is left alone. Tab completes the path as
-you type it. Over `--host`, that completion walks the machine you are sitting at, because
+Path rules: `~` is your home directory, a bare name is under the directory this
+conversation is about, an absolute path is left alone, and a path wrapped in quotes or with
+its spaces backslashed — `/attach '/Users/me/Screenshot 2026-09-18 at 1.35.20 PM.png'`, the
+shape Finder and a terminal drop hand you — is read as the one path it is (until
+2026-09-22 that was answered `no such file`). Tab completes the path as you type it. Over `--host`, that completion walks the machine you are sitting at, because
 those are the bytes `/attach` is about to send.
 
 The file lands on the tray as its own chip — `▤ server.log`, or `+ server.log` on a
@@ -253,7 +256,7 @@ local only when its distro is this WSL distro.
 
 `/mnt` is WSL's default automount root. If `[automount] root` in `/etc/wsl.conf` names
 another root, codeaf uses that instead: `root = /drives` makes `c:/Users/…` read from
-`/drives/c/Users/…`. This applies to a drag, a pasted path, `/attach`, `/image`, `/export`,
+`/drives/c/Users/…`. This applies to a drag, a pasted path, `/attach`, `/export`,
 and a local copy destination chosen in `/files` because all use the same path reading.
 
 ## I copied a screenshot and pasted it — nothing happened
@@ -271,7 +274,7 @@ only in the clipboard, save it as a file first.
 
 ## A drop into a box that already holds a command
 
-**It stays text, and that is on purpose.** Type `/attach ` or `/image ` first and then
+**It stays text, and that is on purpose.** Type `/attach ` first and then
 drop the file: the path is the command's argument, and turning it into `[image #1]` would
 break the one line on this surface whose whole job is to take a path. `enter` then runs
 the command and the file lands on the tray by that road instead.
@@ -337,7 +340,7 @@ swept away while the transcript still refers to it.
 Yes — this is what `/attach` does over `--host`, and it is the point of it.
 
 The path you type is anchored to **this** machine, the one you are sitting at, exactly the
-way `/image` and the `@` completion are. You are naming a file on your own laptop. Its
+way the `@` completion is. You are naming a file on your own laptop. Its
 bytes travel with the message, and the far machine writes them down under that
 conversation's `attachments/` folder before the turn opens.
 
@@ -395,8 +398,8 @@ The numbers come from the wire, not from taste: a whole message travels as one l
 line may weigh 64MB, and bytes inside it cost a third more than the file does. 16MB per
 file leaves room for two large ones, a screenshot and the sentence they came with.
 
-Pictures are counted separately and have their own ceiling of **10MB each** — see the
-`/image` refusals.
+Pictures are counted separately and have their own ceiling of **10MB each** — see *What
+codeaf says when a picture is refused* on the keys page.
 
 ## Every refusal /attach can give you
 
@@ -434,9 +437,9 @@ used to answer
 `<name> is a folder · attach a file`; locally it now goes to the folder door and says
 `folder · ~/code/thing`. Over `--host`, it registers nothing and says
 `choosing a folder is not available over --host yet — the folders here are this machine's, not the ones the conversation is on.`
-On home it pins the next conversation's folder instead and says
-`next conversation opens in ~/code/thing`, because there is no conversation there to attach
-one to. Dropping a folder on the window still refuses with the old
+On home it pins the next conversation's folder instead, because there is no conversation
+there to attach one to: it says nothing, and `project: ~/code/thing` at the right of the keys
+row under the box shows the pin. Dropping a folder on the window still refuses with the old
 `<name> is a folder · attach a file` sentence — see "Choosing a folder".
 
 ## Attaching a file from home — /attach on the home screen, before there is a conversation
@@ -444,13 +447,16 @@ one to. Dropping a folder on the window still refuses with the old
 **Home has a tray of its own and `/attach <path>` fills it.** No conversation is opened for
 it: the chip appears above home's box, home says
 `attached · server.log · rides with the next conversation`, and the file is attached to the
-first message of whatever conversation you start next. `/image <path>` is the same for a
-picture, and a drop or a paste onto home does it with no command at all.
+first message of whatever conversation you start next. A picture goes the same way, and a
+drop or a paste onto home does it with no command at all.
 
-**A bare `/attach` there asks for the path** — `type the path after /attach · or drop the file
-here` — rather than opening the browser. `/folder` is the browser on local home, and it is
-aimed at which folder the next conversation opens in (see "Choosing a folder"). Over
-`--host`, `/folder` says why this machine's folder cannot be that far conversation's folder.
+**A bare `/attach` there opens the browser**, the same sheet a bare `/project` opens, aimed
+at the folder the next conversation opens in; a file chosen on it lands on home's tray and a
+folder chosen on it becomes that folder. (Until 2026-09-22 it answered `type the path after
+/attach · or drop the file here` — rather than opening the browser.) `/project` is the
+browser on local home, and it is aimed at which folder the next conversation opens in (see
+"Choosing a folder"); `/folder` on home opens a conversation first and browses there. Over
+`--host`, both say why this machine's folder cannot be that far conversation's folder.
 
 **The tray survives the walk.** Attach a file on home, go into a conversation, come back: it
 is still there. Home's tray row cannot be clicked; a chip comes off on a conversation's own
@@ -464,23 +470,14 @@ engine: an attached file arrived with no name
 engine: "../../etc/passwd" is a path and not a name — an attachment names itself and the engine chooses where it goes
 ```
 
-## Attaching a picture is a different thing
+## Attaching a picture is a different thing — is there an /image command
 
-`/image <path>` is the door for a picture, and a picture travels **as content** so it can
-actually be looked at.
-
-You do not have to remember which word is which. **A picture handed to `/attach` is still
-treated as a picture** — it goes on the tray as `▣ #1 shot.png`, gets its `[image #1]`
-token in your sentence, and is looked at rather than read. png, jpeg, webp and gif are the
-five codeaf accepts.
-
-The reverse is not true: `/image` refuses anything that is not one of those five, with
-
-```
-<name> is not a picture · png, jpeg, webp and gif are
-```
-
-so `/attach` is the general word and `/image` is the specific one.
+There is one word, `/attach`, and it tells a picture from a file by the name: **a picture
+handed to `/attach` is treated as a picture** — it goes on the tray as `▣ #1 shot.png`, gets
+its `[image #1]` token in your sentence, and travels **as content** so it can actually be
+looked at rather than read. png, jpeg, webp and gif are the five codeaf accepts; anything
+else is a file. There is no `/image` command: until 2026-09-22 it was a second word that
+took only pictures and refused the rest, and it is gone.
 
 On the tray the two are told apart by their own glyph — `▣ #1 shot.png` for a picture,
 `▤ server.log` for a file — and by the number, which only a picture carries. In the
@@ -499,7 +496,7 @@ left in the box as text; it is not any more, because over `--host` a path in a s
 names a file the far machine has never seen, and a chip is what makes the bytes travel.
 
 To keep a dropped path as *text* — to talk about a path rather than send the file — type
-`/attach ` or `/image ` first and drop onto that line, or write the path yourself after
+`/attach ` first and drop onto that line, or write the path yourself after
 some words. A box that already begins with `/` keeps the path as the command's argument.
 
 Over `--host` the difference matters more than it looks. A path left as plain text is a

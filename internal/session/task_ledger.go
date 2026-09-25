@@ -68,13 +68,13 @@ func absorbedLedger(node *TaskNode, changed []string) []string {
 // down. While the fold lived at the merge alone, an accepted mirror family laid
 // the parent's slice over the person's folder and dropped every part's file —
 // the same loss as before, one road further along.
-func landHome(node *TaskNode, tree taskTree, changed []string, sign bool) ([]string, string, string, landingRefusal) {
+func landHome(node *TaskNode, tree taskTree, changed []string, sign gitSignature) ([]string, string, string, landingRefusal) {
 	ledger := absorbedLedger(node, changed)
 	// AND WHY IT DID NOT COME HOME TRAVELS WITH THE OUTCOME. A landing that failed
 	// is answered by somebody, and whether asking them again could change anything
 	// is decided where the refusal happened, not read back out of the sentence
 	// afterwards (task_land_unsaved.go's [landingRefusal]).
-	merge, detail, clashing, why := tree.comeHome(node.title(), ledger, sign)
+	merge, detail, clashing, why := tree.comeHome(node.title(), ledger, sign.ranOn(signedModel(node)))
 	// AND THE NAMES ARE KEPT ON THE NODE, at the one moment they exist. git's index
 	// held them while the refused merge stood and was made to give them back before
 	// the merge was abandoned (groundcarry.go's [taskTree.refuseMerge]); a row drawn
@@ -107,8 +107,8 @@ func (a *Agent) landUnreadDirections(node *TaskNode, tree taskTree, changed []st
 // person is being offered has to hold the whole family's work ([keptWork] is
 // what commits it), and the list the node settles with is what a later accept
 // will land.
-func keepHome(node *TaskNode, tree taskTree, changed []string, sign bool) (string, []string) {
-	return keptWork(tree, node.title(), absorbedLedger(node, changed), sign)
+func keepHome(node *TaskNode, tree taskTree, changed []string, sign gitSignature) (string, []string) {
+	return keptWork(tree, node.title(), absorbedLedger(node, changed), sign.ranOn(signedModel(node)))
 }
 
 // landFinished is THE ONE ENDING FOR WORK THAT HOLDS, and it is one function

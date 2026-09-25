@@ -126,7 +126,7 @@ const (
 	// key the binary carries. The environment pin CODEAF_MODEL_POOL_PUBLIC_KEY
 	// outranks it, through the same resolver.
 	KeyModelPoolPublicKey = "models.pool.public_key"
-	KeyAttribution        = "attribution"
+	KeyAttributionModel   = "attribution.model"
 	KeySplitPct           = "split_pct"
 
 	// The two rows the v3 chat surface keeps on disk BESIDE the conversation:
@@ -1328,18 +1328,15 @@ var OperatorEnvPins = []string{
 	// shape, under `make demo-home`'s terms. A row offering to persist a
 	// fixture would put a demo question in front of a person every morning.
 	"CODEAF_QUESTION_DEMO",
-	// CODEAF_TASK_BELT builds a task worker on the bash belt instead of the
-	// shipped belt (internal/session's bashbelt.go,
-	// docs/design/bash-task-loop/DESIGN.md): the one `bash` tool plus the
-	// hands that cannot be a shell command, so both arms of the comparison
-	// run from one binary. It is plumbing for the reason CODEAF_SWARM and
-	// CODEAF_SPLITGATE are — it picks which belt an experiment runs, not
-	// something the product has an opinion about — and it shares their
-	// lifetime: it disappears when the experiment has won or lost, which is
-	// exactly the lifetime a persisted setting must not have. A row would
-	// also be wrong the way the exit-code hatch is: it would put every future
-	// task worker on an experiment's belt on a machine where the variable is
-	// nowhere in sight. Unset, every worker is where it was.
+	// CODEAF_TASK_BELT sends a task worker BACK to the older node belt
+	// (internal/session's bashbelt.go, docs/design/worker-harness/DESIGN.md).
+	// The bash belt is the shipped default, so the variable is an escape
+	// hatch rather than the way in: `node`, `legacy` and `off` are the only
+	// words that turn it off, and one binary still runs both roads. It stays
+	// plumbing rather than a settings row for the reason the exit-code hatch
+	// is — a persisted row would pin a machine to the older engine long after
+	// whoever set it had forgotten, and an escape hatch must be as easy to
+	// stop using as it was to start. It disappears when the older belt does.
 	"CODEAF_TASK_BELT",
 	// CODEAF_PLANDB_BIN names the binary a bash-belt worker's `plandb` shim
 	// execs (internal/session's plandb_plan.go) when the running program is
@@ -1388,10 +1385,12 @@ const (
 	// before it earns tenure.
 	DefaultTenureAfter = 3
 
-	// DefaultAttribution signs by default, because the signature is provenance:
-	// work the user did not type should be readable as such by whoever reads
-	// the history later. One row turns it off.
-	DefaultAttribution = true
+	// DefaultAttributionModel names the model in the `Assisted-by` line by
+	// default, because the line is provenance and the model is the part of it
+	// somebody auditing the history later actually wants. The signature itself
+	// has no row and no off: work the person did not type is always readable as
+	// such (internal/exec's AttributionLaw).
+	DefaultAttributionModel = true
 
 	// The divider clamps so neither pane can be set into uselessness. The TUI
 	// reads these so the drag, the [ ] nudge, and the sheet agree.
@@ -1586,6 +1585,21 @@ type Setting struct {
 	// suppress its own echo while typing reads this.
 	Secret bool
 
+	// read RETURNS WHAT THE PRODUCT WILL ACTUALLY USE, and not what is stored
+	// in the profile. Where a value passes through a resolver before anything
+	// acts on it, this reads THE RESOLVER, so a person who types something the
+	// resolver will not honour watches it change in front of them instead of
+	// believing the row.
+	//
+	// That is what makes a lossy store safe, and it is the only thing that
+	// does. A 0 that means "use the default" downstream has lost the
+	// difference between unset and chosen the moment it is written, and
+	// nothing below this row can recover it; what stops the loss being
+	// invisible is that the row types the default back at the person. A read
+	// that hands over the raw stored value instead will show somebody a
+	// setting nothing obeys, and no test downstream can catch it, because
+	// downstream never sees what was typed. [persistedCount] is the lossy
+	// store this applies to today.
 	read    func() string
 	write   func(string) error
 	receipt func() string
@@ -2683,28 +2697,38 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return formatBool(DraftPersistAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyDraftPersist, raw) },
 		},
+		// THE ROW READS THE OTHER WAY UP FROM ITS KEY. `ui.hints` persists
+		// whether tips are SHOWN, and keeps doing so — a persisted identifier keeps
+		// its bytes — while the row a person reads is `disable hints`, off by
+		// default (the owner's word for it, 2026-09-22). The inversion lives here,
+		// once, so the chat's settings panel and `codeaf config` cannot disagree.
 		Setting{
 			Key: KeyHints, Category: CategoryInterface, Kind: SettingBool,
-			Label: "hints",
-			Hint: "one-line tips above the message box, each shown until the key or command " +
-				"it names has been used once. Off silences them, and the what's-new line a " +
-				"new build may say with them. A change lands at the end of the next turn.",
-			read:  func() string { return formatBool(HintsAt(dir)) },
-			write: func(raw string) error { return writeBool(dir, KeyHints, raw) },
+			Label: "disable hints",
+			Hint: "on silences the one-line tips — the keys row's in a conversation and the " +
+				"row above the rule on home — and the what's-new line a new build may say " +
+				"with them. Off, the default, shows each tip until the key or command it " +
+				"names has been used once. A change lands at the end of the next turn.",
+			read: func() string { return formatBool(!HintsAt(dir)) },
+			write: func(raw string) error {
+				disabled, err := parseBool(raw)
+				if err != nil {
+					return err
+				}
+				return writeProfileValue(dir, KeyHints, !disabled)
+			},
 		},
 		Setting{
-			Key: KeyAttribution, Category: CategoryInterface, Kind: SettingBool,
-			Label: "attribution", Env: "CODEAF_ATTRIBUTION",
-			// THE ROW GOVERNS BOTH SURFACES NOW, so the hint says both. The chat
-			// resolves it once when it starts (cmd/codeaf's applyV3Governance) and a
-			// job resolves it when the job begins, which is why a change lands at two
-			// different moments and the person is told which.
-			Hint: "signs the commits, pull requests, issues and comments codeaf writes for " +
-				"you — one commit trailer, one footer line on a body, one small line on the " +
-				"first comment in a thread, and nothing anywhere else. A change lands on the " +
-				"next job, and in a conversation the next time codeaf starts.",
-			read:  func() string { return formatBool(AttributionAt(dir)) },
-			write: func(raw string) error { return writeBool(dir, KeyAttribution, raw) },
+			Key: KeyAttributionModel, Category: CategoryInterface, Kind: SettingBool,
+			Label: "model in commits", Env: "CODEAF_ATTRIBUTION_MODEL",
+			// ONE SHORT SENTENCE, AND IT IS THE TWO LINES. The signature itself is
+			// not a row any more — codeaf always signs what it writes — so the only
+			// thing left to choose is whether the `Assisted-by` line names the
+			// model, and the hint shows both answers rather than describing them.
+			// internal/exec's test holds these bytes to the line exec writes.
+			Hint:  AttributionModelHint,
+			read:  func() string { return formatBool(AttributionModelAt(dir)) },
+			write: func(raw string) error { return writeBool(dir, KeyAttributionModel, raw) },
 		},
 		// The ssh carrier is local surface policy, so its overrides live beside
 		// the other interface choices. Keeping them in the registry matters more
@@ -3241,20 +3265,35 @@ func TenureAfterAt(profileDir string) int {
 // leave it turning. When the learning loop that wants them lands it brings its
 // own rows, and the completeness gate will make sure of it.
 
-// AttributionAt resolves whether codeaf signs the git work it does for the
-// user. A malformed pin reads as the default rather than refusing a launch over
-// a signature.
-func AttributionAt(profileDir string) bool {
-	if raw := strings.TrimSpace(env.Get("CODEAF_ATTRIBUTION")); raw != "" {
+// AttributionModelHint is the `attribution.model` row's hint: what the line
+// says with the row on, and what it says with the row off.
+const AttributionModelHint = "On, commits say `Assisted-by: CodeAF (<model>)`; off, `Assisted-by: CodeAF`."
+
+// AttributionModelAt resolves whether the `Assisted-by` line codeaf signs its
+// commits with names the model. A malformed pin reads as the default rather
+// than refusing a launch over a name.
+func AttributionModelAt(profileDir string) bool {
+	if raw := strings.TrimSpace(env.Get("CODEAF_ATTRIBUTION_MODEL")); raw != "" {
 		if value, err := parseBool(raw); err == nil {
 			return value
 		}
-		return DefaultAttribution
+		return DefaultAttributionModel
 	}
-	if value, ok := persistedBool(profileDir, KeyAttribution); ok {
+	if value, ok := persistedBool(profileDir, KeyAttributionModel); ok {
 		return value
 	}
-	return DefaultAttribution
+	return DefaultAttributionModel
+}
+
+// AssistedByModelAt is the model a door hands the attribution line: this model
+// when the `attribution.model` row is on, and nothing when it is off, which
+// leaves the line bare. It is the ONE place the row is turned into a name, so
+// every door that builds a leaf loop answers it the same way.
+func AssistedByModelAt(profileDir, model string) string {
+	if !AttributionModelAt(profileDir) {
+		return ""
+	}
+	return model
 }
 
 // HistoryEnabledAt resolves whether the v3 chat surface records what was typed
@@ -4788,6 +4827,20 @@ func contextLaw(profileDir string) ctxbudget.Limits {
 // "did a person set this?" — the same file [Settings.PersistedKeys] reads to
 // draw a provenance chip — narrowed to a single key for a caller that needs the
 // value with it.
+//
+// IT DESTROYS THE DIFFERENCE BETWEEN UNSET AND ZERO, and that is a law about
+// its callers rather than a note about its body. A key nobody wrote and a key
+// written as 0 both come back 0, so no caller downstream can tell which it
+// was or decide what the person meant. Every caller today feeds
+// [ctxbudget.Limits], where 0 means use the default and the row's read
+// returns the resolver, so a person who types 0 sees the default appear in
+// the row and the loss is visible to them. That is what makes it safe here.
+//
+// A CALLER THAT NEEDS TO TELL UNSET FROM ZERO MUST NOT USE THIS. Use
+// [persistedInt], which returns the value and whether it was present, and
+// decide at the call site. Reaching for this one because it hands back a
+// bare int is how a setting acquires a zero whose meaning lives somewhere
+// other than where the setting is declared.
 func persistedCount(profileDir, key string) int {
 	if value, ok := persistedInt(profileDir, key); ok && value > 0 {
 		return value

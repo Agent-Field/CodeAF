@@ -19,10 +19,7 @@ import (
 // homeKindAt is the kind of the line the cursor rests on, for asserting where
 // the arrows landed without trusting the order the drop-up was built in.
 func homeKindAt(a *app) homeRowKind {
-	if line, ok := a.home.focusedLine(); ok {
-		return line.kind
-	}
-	return homeRowKind(255)
+	return a.home.lines[a.home.cursor].kind
 }
 
 // TestHomeSlashOffersCommandRows: typing a slash word offers the matching
@@ -49,21 +46,21 @@ func TestHomeSlashOffersCommandRows(t *testing.T) {
 	// "/clea" reaches /new through its clear alias, and the row that appears
 	// must be the canonical one — the word this surface runs — with the alias
 	// printed beside it, the same bargain chat's list makes.
-	a.homeKey(key("ctrl+u"))
+	a.homeKey(key("esc"))
 	typeHome(a, "/clea")
 	if text := homeText(a); !strings.Contains(text, "/new") {
 		t.Fatalf("typing clea did not offer the canonical /new row:\n%s", text)
 	}
 
 	// "/mo" offers /model — the acceptance's own word.
-	a.homeKey(key("ctrl+u"))
+	a.homeKey(key("esc"))
 	typeHome(a, "/mo")
 	if text := homeText(a); !strings.Contains(text, "/model") {
 		t.Fatalf("typing /mo did not offer the model command row:\n%s", text)
 	}
 
 	// "/conf" reaches /settings through its config alias.
-	a.homeKey(key("ctrl+u"))
+	a.homeKey(key("esc"))
 	typeHome(a, "/conf")
 	if text := homeText(a); !strings.Contains(text, "/settings") {
 		t.Fatalf("typing /conf did not offer the canonical settings row:\n%s", text)
@@ -168,6 +165,23 @@ func TestHomePlainSentenceStillStarts(t *testing.T) {
 	}
 	if len(next.sent) != 1 || next.sent[0] != "hello there" {
 		t.Fatalf("the sentence did not reach the agent: %q", next.sent)
+	}
+}
+
+func TestHomeSkillPathOpensAConversationWithThePathStillInThePicker(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "reading the skill shelf", "/tmp/alpha", time.Now())
+	a := lab.app(mine)
+	runCmd(a.openHome())
+	a.start = func(string) (Conversation, error) {
+		return Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: "/tmp/alpha/next/transcript.jsonl"}, nil
+	}
+	a.homeSlash("/skills ./tools/reviewer")
+	if a.at(pageHome) {
+		t.Fatal("the skill command stayed on home")
+	}
+	if got := a.input.String(); got != "/skill ./tools/reviewer" {
+		t.Fatalf("the new conversation's skill picker lost its path: %q", got)
 	}
 }
 
@@ -293,12 +307,17 @@ func TestHomesRuleShortensTheProjectAfterItsRoot(t *testing.T) {
 	if !strings.Contains(a.homeHint(), targetFolderKeyWord) {
 		t.Fatalf("the foot does not carry the folder chord:\n%s", a.homeHint())
 	}
-	// A long path keeps its root and yields its tail before the model.
+	// A long path keeps its root on the keys row and yields its tail to the
+	// keys; the rule carries the model and never the path (hometip.go).
 	a.target.where = "/tmp/" + strings.Repeat("nested/", 20)
 	narrow, drew := a.targetLegend(80, a.pal)
 	stripped := ansi.Strip(narrow)
-	if !drew || !strings.HasPrefix(stripped, "─ "+a.modelIdentity(a.model)) || !strings.Contains(stripped, "project: /tmp/") || !strings.Contains(stripped, "… ─") {
-		t.Fatalf("the model or project root was lost: %q", stripped)
+	if !drew || !strings.HasPrefix(stripped, "─ "+a.modelIdentity(a.model)) || strings.Contains(stripped, targetProjectLead) {
+		t.Fatalf("the model was lost or the project is still on the rule: %q", stripped)
+	}
+	foot := ansi.Strip(a.homeFootLine(80, a.pal))
+	if !strings.Contains(foot, "project: /tmp/") || !strings.HasSuffix(foot, "…") {
+		t.Fatalf("the keys row lost the project root or its ellipsis: %q", foot)
 	}
 }
 
@@ -438,8 +457,8 @@ func TestModelThenEscLeavesNoPickerOverTheConversation(t *testing.T) {
 	}
 	runCmd(a.key(key("esc")))
 	runCmd(a.key(key("esc")))
-	if !a.at(pageHome) {
-		t.Fatal("two escapes left home")
+	if a.at(pageHome) {
+		t.Fatal("two escapes did not leave home")
 	}
 	if a.pick.open || a.target.pick.open {
 		t.Fatal("a model list is standing over the conversation home was in front of")
@@ -505,7 +524,7 @@ func TestAltWCyclesWhereTheNextConversationOpens(t *testing.T) {
 			runCmd(a.key(key("alt+p")))
 		} else {
 			homeText(a)
-			if _, took := a.placeTargetPress(a.targetFolderSpan.from, a.targetRow); !took {
+			if _, took := a.placeTargetPress(a.targetFolderSpan.from, a.footRow); !took {
 				t.Fatal("the seam project did not accept the click")
 			}
 		}
@@ -541,14 +560,17 @@ func TestResumeAnswersOnHomesOwnLineAndFolderOpensTheBrowser(t *testing.T) {
 		t.Fatalf("/resume said %q, want %q", a.home.msg, homeIsTheResumeWord)
 	}
 
-	// /folder is the other half of this test's original claim and it moved: it
-	// used to answer in one line — `alt+p moves the next conversation · or type
-	// a path` — which named two gestures and drew neither. It opens the browser
-	// now, aimed at the target (folderplace.go), and the browser takes the frame.
-	typeHome(a, "/folder")
+	// /project is the other half of this test's original claim and it moved
+	// twice: home's answer to "which folder" used to be one line — `alt+p moves
+	// the next conversation · or type a path` — which named two gestures and
+	// drew neither; then it was a bare /folder, which meant one thing here and
+	// another in a conversation. It is /project since 2026-09-22
+	// (projectcmd.go), it opens the browser aimed at the target, and the
+	// browser takes the frame.
+	typeHome(a, "/project")
 	runCmd(a.key(key("enter")))
 	if !a.folder.open {
-		t.Fatal("/folder at home did not open the folder browser")
+		t.Fatal("/project at home did not open the folder browser")
 	}
 	if !a.folder.forTarget {
 		t.Fatal("the browser home opened is not aimed at the target")
@@ -576,6 +598,7 @@ func TestHomeSlashSelectionSurvivesTheSlowTick(t *testing.T) {
 	runCmd(a.openHome())
 
 	typeHome(a, "/set")
+	a.homeKey(key("up"))
 	a.homeKey(key("up"))
 	if k := homeKindAt(a); k != homeCommand {
 		t.Fatalf("two ↑ landed on %v, want a command row", k)
@@ -629,14 +652,14 @@ func TestHomeOfferedPlaceSelectionSurvivesTheSlowTick(t *testing.T) {
 	}
 }
 
-// TestHomeSlashDoesNotAddASubmissionRow: the resting row and the foot under it
+// TestHomeSlashActionRowSaysItWillRun: the resting row and the foot under it
 // both name what enter will actually do with a slash line.
 //
 // THE ROW MAY NOT PROMISE A CONVERSATION IT WILL NOT START. Enter on the action
 // row dispatches a "/" line ([app.homeEnter]), and the row went on reading
 // `+ start a new conversation: "/settings"` while it did — which is the one row
 // on this screen whose whole job is to say what the key means.
-func TestHomeSlashDoesNotAddASubmissionRow(t *testing.T) {
+func TestHomeSlashActionRowSaysItWillRun(t *testing.T) {
 	lab := newHomeLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", time.Now())
 	a := lab.app(mine)
@@ -648,13 +671,13 @@ func TestHomeSlashDoesNotAddASubmissionRow(t *testing.T) {
 		t.Fatalf("the cursor left the action row onto %v", k)
 	}
 	text := homeText(a)
-	if strings.Contains(text, homeStartGlyph+" run /settings") {
-		t.Fatalf("a removed run-command action row was rendered:\n%s", text)
+	if !strings.Contains(text, "/settings") {
+		t.Fatalf("the action row does not say it will run the command:\n%s", text)
 	}
 	if strings.Contains(text, homeStartWord+`: "/settings"`) {
 		t.Fatalf("the action row still offers to start a conversation with the command:\n%s", text)
 	}
-	if hint := a.homeHintWords(); strings.Contains(hint, "enter runs this command") {
+	if hint := a.homeHintWords(); !strings.Contains(hint, "enter") {
 		t.Fatalf("the foot reads %q, want it naming the run", hint)
 	}
 
@@ -662,10 +685,10 @@ func TestHomeSlashDoesNotAddASubmissionRow(t *testing.T) {
 	// always said, quoted words and all.
 	a.homeKey(key("esc"))
 	typeHome(a, "pricing")
-	if text := homeText(a); strings.Contains(text, homeStartWord+`: "pricing"`) {
-		t.Fatalf("a sentence rendered a removed action row:\n%s", text)
+	if text := homeText(a); !strings.Contains(text, homeStartWord+`: "pricing"`) {
+		t.Fatalf("a sentence lost the row it has always had:\n%s", text)
 	}
-	if hint := a.homeHintWords(); strings.Contains(hint, "enter starts a new conversation and sends this") {
+	if hint := a.homeHintWords(); !strings.Contains(hint, "enter starts a new conversation and sends this") {
 		t.Fatalf("a sentence's foot reads %q", hint)
 	}
 }
@@ -688,7 +711,7 @@ func TestHomeSlashChosenRowWritesTheNameAndNotThePlaceholder(t *testing.T) {
 	// the argless form, which runs and opens the picker instead, so the walk
 	// looks for the row by what it is rather than counting keystrokes.
 	for i := 0; i < len(a.home.lines); i++ {
-		if line, ok := a.home.focusedLine(); ok && line.kind == homeCommand && line.cmd.args != "" {
+		if line := a.home.lines[a.home.cursor]; line.kind == homeCommand && line.cmd.args != "" {
 			break
 		}
 		a.homeKey(key("down"))
@@ -751,7 +774,7 @@ func TestHomeSlashDoesNotSwallowAPastedPath(t *testing.T) {
 	// The label itself rather than the painted row: a temp directory's path is
 	// longer than the column, and this test is about which of the two readings
 	// the row took, not about where it was cut.
-	if got := a.home.pastedProject(); got != dir {
+	if got := a.home.startLabel(); got != homeStartWord+" in "+dir {
 		t.Fatalf("the action row says %q, want it offering the folder", got)
 	}
 	if hint := a.homeHintWords(); strings.Contains(hint, "enter runs this command") {

@@ -1,0 +1,10 @@
+{
+  "model": "a-model",
+  "enabledPlugins": {
+    "tidy@market": true,
+    "suite@split": true,
+    "dormant@market": false,
+    "projonly@market": true,
+    "never@market": true
+  }
+}

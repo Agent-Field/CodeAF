@@ -10,6 +10,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/orientation"
+	"github.com/Agent-Field/codeaf/internal/plan"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
@@ -232,16 +233,97 @@ the file holds the evidence, the detail and the reasoning behind them.`
 // avatar.
 const AttributionTrailer = "Co-Authored-By: CodeAF <267109073+agentfield-bot@users.noreply.github.com>"
 
-// AttributionAssistedBy is the trailer line above the co-author that names the
-// model which wrote the commit, so `git interpret-trailers` can answer who
-// typed it beyond the account. The %s is that model's id, and it is filled in
-// by the one surface that knows the model — the chat's belt fact formats it
-// with the session's configured model (internal/session's beltfacts.go) —
-// while the co-author stays last, the order GitHub reads. The leaf loop's
-// standing contract carries the co-author alone, because exec is handed
-// facts about the model and never its name: the line that needs the name is
-// delivered where the name is.
-const AttributionAssistedBy = "Assisted-by: CodeAF (%s)"
+// AttributionAssistedBy is the line above the co-author, and on its own it is
+// the whole of that line: `Assisted-by: CodeAF`. It names the model that wrote
+// the commit only through [AssistedBy], which adds ` (<model>)` when there is a
+// model to name, so that `git interpret-trailers` can answer who typed it
+// beyond the account while the co-author stays last, the order GitHub reads.
+//
+// THERE IS NO EMPTY `()`. A path that does not know its model, and a person who
+// turned the model's name off (internal/config's `attribution.model` row), both
+// get the bare line, which is still true; a pair of empty brackets would be a
+// line that looks like it lost something.
+const AttributionAssistedBy = "Assisted-by: CodeAF"
+
+// AssistedBy is the `Assisted-by` line for a commit written by this model: the
+// model's bare name in brackets ([BareModelName]), or the bare line when there
+// is no name to give. It is the ONE place that line is spelled with a model in
+// it, and every writer of the line comes through here — the chat's belt fact,
+// the leaf loop's contract and the harness's own landing commits — so the three
+// cannot drift into three spellings of one model.
+func AssistedBy(model string) string {
+	if name := BareModelName(model); name != "" {
+		return AttributionAssistedBy + " (" + name + ")"
+	}
+	return AttributionAssistedBy
+}
+
+// AttributionTrailers is the whole trailer block codeaf ends a commit with: the
+// `Assisted-by` line and then the co-author, two lines, in that order, and
+// nothing else.
+func AttributionTrailers(model string) string {
+	return AssistedBy(model) + "\n" + AttributionTrailer
+}
+
+// SignCommitMessage is a commit message as codeaf leaves it: the message with
+// its trailing newlines taken off, ONE blank line, and the trailer block.
+//
+// A blank line and the lines after it is what a trailer block IS, in every
+// version of git there has ever been, which is why this appends rather than
+// handing the lines to `git commit --trailer`: that flag arrived in git 2.32,
+// and a person on an older git would get a commit that silently carried no
+// attribution at all.
+func SignCommitMessage(message, model string) string {
+	return strings.TrimRight(message, "\n") + "\n\n" + AttributionTrailers(model)
+}
+
+// BareModelName is a model id as the `Assisted-by` line names it: the model and
+// nothing about who served it or how.
+//
+// Two things come off, and nothing else does:
+//
+//	the provider or company  everything up to the last `/`, and OpenRouter's
+//	                         leading `~` alias marker with it:
+//	                         `deepseek/deepseek-v4-flash` → `deepseek-v4-flash`
+//	a routing suffix         a trailing `:free`, `:nitro` and their kind, which
+//	                         say how the request was routed or how hard to
+//	                         think, never which model answered
+//
+// THE MODEL'S OWN VERSION OR DATE STAYS, and that is the difference between this
+// and the word a status line shows (internal/tui2/modelui's ModelWord, which
+// drops a release date to save cells): a trailer is provenance, and
+// `deepseek-v4-flash-0731` and `deepseek-v4-flash` are two different models to
+// anybody reading the history later.
+//
+// THE SUFFIX LIST IS CLOSED ([routingSuffixes]), for the reason internal/lane
+// closes its own: an open rule would read a local model's size tag — the `:32b`
+// of `qwen3:32b` — as routing and strip the one part of the name that says which
+// weights ran. A suffix this build has not been taught is kept.
+func BareModelName(id string) string {
+	name := strings.TrimSpace(id)
+	if index := strings.LastIndexByte(name, '/'); index >= 0 {
+		name = name[index+1:]
+	}
+	name = strings.TrimPrefix(name, "~")
+	for {
+		index := strings.LastIndexByte(name, ':')
+		if index <= 0 || !routingSuffixes[strings.ToLower(name[index+1:])] {
+			break
+		}
+		name = name[:index]
+	}
+	return name
+}
+
+// routingSuffixes are the words a router hangs off a model id that say how to
+// route or how hard to think, and never which weights answered: OpenRouter's
+// published variants, and the reasoning-effort words codeaf itself appends.
+var routingSuffixes = map[string]bool{
+	"free": true, "nitro": true, "floor": true, "online": true, "extended": true,
+	"thinking": true, "beta": true, "exacto": true, "batch": true,
+	"off": true, "minimal": true, "low": true, "medium": true, "high": true,
+	"xhigh": true, "max": true,
+}
 
 // AttributionSeparator is the em-dash line that opens the body footer.
 const AttributionSeparator = "—"
@@ -289,6 +371,13 @@ const AttributionCommentFooter = "<sub>drafted with [CodeAF](https://agentfield.
 // reason they are constants: the exact bytes are the feature, and a paragraph
 // that retyped the trailer would be the one copy nobody re-read.
 //
+// THE COMMIT SENTENCE SPELLS BOTH TRAILER LINES, and the `Assisted-by` one is a
+// slot ([AttributionAssistedBySlot]) because only the surface knows which
+// model it is running: [FillAttribution] puts [AssistedBy]'s line there. One
+// sentence carrying both lines in their order is what keeps every commit the
+// model writes shaped like the ones the harness writes itself — the same two
+// lines after one blank line, and nothing else.
+//
 // The issue footer is named by the ONE PARAMETER THAT DIFFERS rather than
 // spelled a second time. Everything ahead of that parameter is byte-identical
 // to the pull footer, and this sentence rides in front of every request the
@@ -301,19 +390,39 @@ const AttributionCommentFooter = "<sub>drafted with [CodeAF](https://agentfield.
 // It is ONE PARAGRAPH so that the chat can carry it as a single belt bullet
 // beside the tools it names, which is the register that section is written in.
 // Three of its sentences are the three places, one each, and the fourth is the
-// whole of where it may never go. THREE HUNDRED AND FIFTY-FOUR OF ITS BYTES
-// ARE THE THREE CONSTANTS THEMSELVES, which is the floor: a footer the model
-// half-remembers is a footer that attributes nobody and counts as nothing, so
-// this is the one law on the belt that cannot be paraphrased down.
+// whole of where it may never go. MOST OF ITS BYTES ARE THE CONSTANTS
+// THEMSELVES, which is the floor: a footer the model half-remembers is a footer
+// that attributes nobody and counts as nothing, so this is the one law on the
+// belt that cannot be paraphrased down.
+//
+// IT HAS NO OFF. Signing used to be a settings row; since 2026-09-23 it is
+// always on, and the only thing a person may turn off is the model's name in
+// the `Assisted-by` line. What still wins is a repository's own CONTRIBUTING
+// policy against AI trailers, which is the repository's rule and not a person's
+// setting, and the law's last sentence says so.
 const AttributionLaw = "SIGN GIT WORK YOU DO WITH `bash`, GENTLY AND ONCE. A commit ends with a blank " +
-	"line and then `" + AttributionTrailer + "`. A pull request or issue body ends with " + AttributionSeparator +
+	"line, then `" + AttributionAssistedBySlot + "` and `" + AttributionTrailer + "` as its last two lines. " +
+	"A pull request or issue body ends with " + AttributionSeparator +
 	" alone on a line and then `" + AttributionPullFooter + "`, `utm_medium=issue` on an issue. " +
 	"A comment ends with `" + AttributionCommentFooter + "` on its own last line, ONCE per thread — never on a " +
 	"one-liner, in a code or suggestion block, or on words they dictated. " +
 	"Nowhere else: not in code, a commit subject, a README, a deliverable or your reply. " +
 	"A CONTRIBUTING policy banning AI trailers wins: leave them out and say so."
 
-// attributionPrompt is unconditional once the setting is on: the instruction
+// AttributionAssistedBySlot is where [AttributionLaw] holds the `Assisted-by`
+// line until a surface that knows its model fills it ([FillAttribution]). It is
+// spelled so that a page which forgot to fill it reads as broken to anybody who
+// looks, rather than as a plausible line crediting nobody.
+const AttributionAssistedBySlot = "{assisted-by}"
+
+// FillAttribution puts the `Assisted-by` line for this model ([AssistedBy])
+// into every slot the text holds. An empty model fills the bare line, never an
+// empty `()`.
+func FillAttribution(text, model string) string {
+	return strings.ReplaceAll(text, AttributionAssistedBySlot, AssistedBy(model))
+}
+
+// attributionPrompt is unconditional: signing has no off, and the instruction
 // carries its own condition, so no task-type detection has to guess whether a
 // job will touch git.
 //
@@ -350,8 +459,10 @@ type Linear struct {
 	maxTurns  int
 	maxTokens int
 	deadline  time.Duration
-	// attribution carries the user's settings row into the standing contract.
-	attribution bool
+	// assistedBy is the model the contract's `Assisted-by` line names, and empty
+	// when there is none to name: the surface did not say, or the person turned
+	// the model's name off. It never turns the signature itself off.
+	assistedBy string
 	// contextTokens is how much the working model can hold in one request, and
 	// it is the only honest input to the observation window. Zero means nobody
 	// could say; see observationWindow, which has a default for exactly that.
@@ -402,17 +513,19 @@ func (l *Linear) WithContextLength(tokens int) *Linear {
 // WithContextLength leaves it, and every reader has a named fallback for that.
 func (l *Linear) ContextLength() int { return l.contextTokens }
 
-// WithAttribution admits the attribution law into the standing contract. Off is
-// the absence of the paragraph rather than a paragraph saying not to: a worker
-// told nothing about attribution does not attribute.
-func (l *Linear) WithAttribution(on bool) *Linear {
-	l.attribution = on
+// WithAssistedBy names the model the contract's `Assisted-by` line credits. The
+// surface passes the model this leaf runs on, or the empty string when the
+// person turned the model's name off (internal/config's AssistedByModelAt), and
+// the line is then the bare `Assisted-by: CodeAF`. The attribution law itself is
+// in every contract whatever this is handed.
+func (l *Linear) WithAssistedBy(model string) *Linear {
+	l.assistedBy = model
 	return l
 }
 
 // WithSwarm arms the cooperative division tool for this loop.
 //
-// It is a setter carrying a settings row, exactly as WithAttribution is, and
+// It is a setter carrying a settings row, exactly as WithAssistedBy is, and
 // for the same reason: the surface owns config and this package is handed
 // facts. Off is the absence of request_split from the schema rather than a
 // paragraph saying not to divide — a worker that has never been told it can
@@ -647,7 +760,7 @@ func NewLinear(client Completer, workspace *Workspace, web *Web, maxTurns, maxTo
 func (l *Linear) Subharness() string { return LinearSubharness }
 
 // system is the leaf's standing contract: the harness's invariants, then the
-// laws the user has switched on, then the narrowing for this assignment. It is
+// attribution law, then the narrowing for this assignment. It is
 // what a specialised harness would have hand-written for this domain —
 // generated instead, which is what keeps the loop generic.
 //
@@ -662,7 +775,7 @@ func (l *Linear) Subharness() string { return LinearSubharness }
 // for the invariants all four of them were reading verbatim. The contract moved
 // to the head of the brief, which is the first place two leaves were always
 // going to diverge anyway, and the three inputs left here are the model, the
-// operator's attribution setting and whether this is a reflex — a handful of
+// model the attribution line names and whether this is a reflex — a handful of
 // shapes across a whole run instead of one per node.
 // The last block is assembled rather than written: each tool the leaf is
 // actually holding contributes its own standing guidance, and a leaf holding
@@ -671,10 +784,7 @@ func (l *Linear) Subharness() string { return LinearSubharness }
 // the toolbox, and everything ahead of it stays the byte-identical prefix four
 // sibling leaves share.
 func (l *Linear) system(task Task, guidelines []string) string {
-	system := systemPrompt
-	if l.attribution {
-		system += attributionPrompt
-	}
+	system := systemPrompt + FillAttribution(attributionPrompt, l.assistedBy)
 	if task.Reflex {
 		system += reflexSystemPrompt
 	}
@@ -1767,6 +1877,13 @@ func (l *Linear) brief(task Task) string {
 	if contract := strings.TrimSpace(task.Contract); contract != "" {
 		fmt.Fprintf(&block, "How this particular kind of job is done well:\n%s\n\n", contract)
 	}
+	// The shelf's own recipes for this leaf, attached by the plan, rendered
+	// beside the method they refine. Zero attached skills renders zero bytes —
+	// no header, no placeholder — so a leaf with nothing attached reads byte
+	// for byte what it read before attachment existed.
+	if entries := l.skillEntries(task.Skills); len(entries) > 0 {
+		fmt.Fprintf(&block, "Skills attached to this work:\n%s\n\n", plan.RenderSkillsBlock(entries))
+	}
 	if task.Goal != "" {
 		fmt.Fprintf(&block, "This work is part of a larger goal:\n%s\n\n", task.Goal)
 	}
@@ -1841,6 +1958,45 @@ func (l *Linear) brief(task Task) string {
 	}
 	block.WriteString(outputClause(task))
 	return block.String()
+}
+
+// skillResolveLimit bounds the shelf read one brief's resolution makes, from
+// the one source of truth in internal/store.
+const skillResolveLimit = store.SkillShelfLimit
+
+// skillEntries resolves the leaf's attached skill names against the active
+// shelf, keeping the order the plan composed — that order is the precedence
+// the rendered block states. A name the shelf does not hold is dropped rather
+// than rendered as an empty bullet, and a loop with no store has no shelf to
+// resolve against, so it renders nothing and changes no prompt byte. Each
+// entry is built by plan.SkillEntryFromFact, the one construction path, so an
+// agentskills folder's SKILL.md reaches the worker where an executable
+// directory still does.
+func (l *Linear) skillEntries(names []string) []plan.SkillEntry {
+	if len(names) == 0 || l.history == nil {
+		return nil
+	}
+	facts, err := l.history.SkillFacts(store.FactActive, skillResolveLimit)
+	if err != nil {
+		return nil
+	}
+	byName := make(map[string]store.Fact, len(facts))
+	for _, fact := range facts {
+		if name := fact.SkillName(); name != "" {
+			if _, held := byName[name]; !held {
+				// SkillFacts returns newest first; the first fact under a name
+				// is the one every other reader of that name serves.
+				byName[name] = fact
+			}
+		}
+	}
+	entries := make([]plan.SkillEntry, 0, len(names))
+	for _, name := range names {
+		if fact, held := byName[name]; held {
+			entries = append(entries, plan.SkillEntryFromFact(fact))
+		}
+	}
+	return entries
 }
 
 // briefIsWhole reports that the brief this leaf is about to read is the whole of

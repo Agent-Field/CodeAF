@@ -165,6 +165,12 @@ type tasksMineRow struct {
 	entry session.TaskIndexEntry
 	runs  bool
 	live  *session.TaskStatus
+	// planTask is WHICH TASK OF THE RUN'S PLAN STORE this row is, when the row
+	// is one the run's door published ([taskNode.planTask]). It rides the row
+	// rather than the entry because it is a fact about the LIVE row and not
+	// about the project's record: the index has never carried a store id and a
+	// row written to it would be claiming one for work whose store has gone.
+	planTask string
 }
 
 // tasksChatView carries the same current title and activity flags Home reads.
@@ -201,12 +207,11 @@ type tasksReading struct {
 	// empty — `work codeaf ran on its own. nothing.` across the top of a machine
 	// that had run ten pieces of work. The news that nothing matches already has
 	// its own home on the note line ([taskSheetFilterLine]).
-	whole      int
-	wholeCost  float64
-	win        session.UsageWindow
-	seen       time.Time
-	now        time.Time
-	summaryNow string
+	whole     int
+	wholeCost float64
+	win       session.UsageWindow
+	seen      time.Time
+	now       time.Time
 	// open is what a person has SET about the folds on this page, and it is the
 	// PLACE'S state handed in rather than the reading's own: a snapshot is
 	// replaced whole every time a node lands (place_tasks.go), and a fold that
@@ -221,13 +226,6 @@ type tasksReading struct {
 	// it on: a query. A row that matched and is behind a fold is a row the query
 	// appears not to have found ([tasksPlace.filtered]).
 	unfolded bool
-	// kinFloor is the least number of indent levels the layout draws whatever
-	// the width says ([tasksKinRoom]). The page leaves it zero. The chat's rail
-	// sets it ([tasksReading.planRows]): a run's tree is what the rail is for,
-	// and at the rail's width the page's budget is one level, which drew a task
-	// and the task under it at one indent, two siblings to the eye. One more
-	// level costs a grandchild's row two cells and no other row anything.
-	kinFloor int
 	// folder is the project THIS WINDOW is standing in and tilde this machine's
 	// home directory. They are the two facts [chatProjectWord] needs to decide
 	// whether a conversation root also names its folder — a tag on every row of
@@ -266,7 +264,15 @@ func tasksKeyOf(entry session.TaskIndexEntry) tasksKey {
 // seconds ago and are the only authority for work that has not landed.
 func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by tasksSort, seen, now time.Time) tasksReading {
 	by = tasksSort{back: by.back}
-	r := tasksReading{win: win.Normalized(), seen: seen, now: now, summaryNow: strings.TrimSpace(mine.now), tilde: mine.tilde, order: by}
+	r := tasksReading{win: win.Normalized(), seen: seen, now: now, tilde: mine.tilde, order: by}
+	// THE ROWS THE RUN'S STORE ANSWERS FOR ARE TAKEN OUT FIRST, before anything
+	// reads them: they are drawn as the store's own plan rows below, and this is
+	// the one line that keeps the pair from being drawn twice or drawn as the
+	// wrong half (taskplan.go's [planStoreDraws] says which half and why). It is
+	// done here rather than in either loop so the title dedupe further down sees
+	// the same set of rows the page does — a run's row left in the name set
+	// would hide its own plan row.
+	mine.rows = planStoreDraws(mine.rows, mine.plan)
 	// order keeps the pass stable: a map alone would re-order the page on every
 	// frame it was rebuilt, and the sections below are drawn in the order the
 	// rows arrived within each one.
@@ -632,10 +638,6 @@ func (r tasksReading) lay(width int) []tasksLine {
 	tree := r.tree()
 	column := tree.column()
 	levels := tasksKinRoom(width)
-	// THE RAIL ALWAYS AFFORDS A GRANDCHILD ITS STEP ([tasksReading.kinFloor]).
-	if r.kinFloor > levels {
-		levels = r.kinFloor
-	}
 	add := func(kind tasksLineKind, text string) {
 		lines = append(lines, tasksLine{kind: kind, text: text, owner: -1})
 	}
@@ -656,18 +658,6 @@ func (r tasksReading) lay(width int) []tasksLine {
 	// cells and three things they could say; the fold is a key a person can press,
 	// the connector is furniture, and the indent in front of both has already said
 	// where the row sits.
-	var familyDone func(tasksItem) bool
-	familyDone = func(item tasksItem) bool {
-		if item.plan == nil || (item.plan.Status != "done" && item.plan.Status != "failed" && item.plan.Status != "cancelled") {
-			return false
-		}
-		for _, kid := range tree.kids[tasksKeyOf(item.entry)] {
-			if !familyDone(kid) {
-				return false
-			}
-		}
-		return true
-	}
 	// rails says, for every step of indent in front of a row, whether the
 	// family line runs through it ([tasksKinTree]). A row's descendants and the
 	// lines under it carry the rule of every ancestor that still has a sibling
@@ -677,52 +667,11 @@ func (r tasksReading) lay(width int) []tasksLine {
 	work = func(item tasksItem, depth int, last, named, nested bool, rails, branches []bool) {
 		key := tasksKeyOf(item.entry)
 		kids := tree.kids[key]
-		if r.kinFloor > 0 && item.plan != nil && len(kids) > 0 {
-			kept := make([]tasksItem, 0, len(kids))
-			var folded *tasksItem
-			done := 0
-			for _, kid := range kids {
-				if kid.plan != nil && kid.plan.Status == "done" {
-					done++
-					if folded == nil {
-						copy := kid
-						folded = &copy
-					}
-					continue
-				}
-				kept = append(kept, kid)
-			}
-			if folded != nil {
-				folded.entry.Title, folded.entry.Label = "done", "done"
-				folded.entry.Activity = itoa(done) + " done"
-				kept = append(kept, *folded)
-			}
-			kids = kept
-		}
 		own := len(lines)
 		line := tasksLine{kind: tasksLineTask, item: item, owner: own, under: named || nested,
 			rank: tree.rank[key], branches: append([]bool(nil), branches...), treeChild: named || nested, lastChild: last}
 		mark := ""
 		switch {
-		case r.kinFloor > 0 && len(kids) > 0 && item.plan != nil:
-			line.folds, line.family, line.kids = familyDone(item), key, len(kids)
-			line.open = !line.folds
-			if line.folds {
-				ending := "done"
-				if item.plan.Status != "done" {
-					ending = "failed"
-				}
-				line.item.entry.Activity = itoa(len(kids)) + " " + ending
-			}
-			mark = tasksKinPad
-			if line.folds {
-				mark = tasksFoldShut
-			} else if nested {
-				mark = tasksKinCont
-				if last {
-					mark = tasksKinLast
-				}
-			}
 		case len(kids) > 0:
 			line.folds, line.family, line.kids = true, key, len(kids)
 			line.open = r.opens(key)
@@ -796,10 +745,7 @@ func (r tasksReading) lay(width int) []tasksLine {
 		// each fold shut or open by its own default ([tasksReading.opens]).
 		for _, g := range groups {
 			depth := 0
-			// THE RAIL IS ALREADY INSIDE THE CONVERSATION, so its projection draws
-			// no conversation row and spends no indent on one: the run's root
-			// stands at the rail's own edge ([tasksReading.kinFloor]).
-			named := g.named && r.kinFloor == 0
+			named := g.named
 			if named {
 				line := tasksLine{
 					kind: tasksLineChat, chat: g.chat, owner: len(lines),
@@ -1560,36 +1506,6 @@ func (r tasksReading) rows(width int, pal palette) []string {
 	return out
 }
 
-// planRows draws only this reading's store-backed plan rows — the rail's own
-// projection of the tree, through the same layout pass that owns it on the
-// tasks page. ONE LINE PER TASK: the rail is a narrow column beside a
-// conversation somebody is reading, and the page's own row at this width is a
-// two-line card with the steps and the money under the title, so a run of four
-// tasks would spend eleven of the rail's rows saying what four lines say
-// ([planRailRow]). Page chrome is not part of the projection: the rail already
-// owns its section label and controls, while the task rows remain one tree.
-func (r tasksReading) planRows(width int, pal palette) []string {
-	rows := r.planRailRows(width, pal)
-	if len(rows) == 0 {
-		return nil
-	}
-	out := make([]string, len(rows))
-	for i, row := range rows {
-		out[i] = row.text
-	}
-	return out
-}
-
-// planRailLine is one drawn line of a run on the rail and the stored task it
-// belongs to, which is what makes the line a door ([app.openRailPlan]). Every
-// line a task draws carries its id, the dots and the live line under the title
-// included, so the whole of a task's block opens that task.
-type planRailLine struct {
-	text  string
-	id    string
-	title string
-}
-
 // railTree keeps the rail's running-first order without changing the Sessions page.
 func (r tasksReading) railTree() tasksTree {
 	tree := r.tree()
@@ -1634,55 +1550,6 @@ func (r tasksReading) railTree() tasksTree {
 		})
 	}
 	return tree
-}
-
-// planRailRows is [tasksReading.planRows] with each line's task beside it.
-func (r tasksReading) planRailRows(width int, pal palette) []planRailLine {
-	if width <= 0 {
-		return nil
-	}
-	items := make([]tasksItem, 0, len(r.items))
-	for _, item := range r.items {
-		if item.plan != nil {
-			items = append(items, item)
-		}
-	}
-	if len(items) == 0 {
-		return nil
-	}
-	plan := r
-	plan.items, plan.held, plan.whole = items, len(items), len(items)
-	plan.chats, plan.shape = nil, nil
-	// THE RAIL HAS NO FOLDS OF ITS OWN TO OPEN. On the page everything opens shut
-	// ([tasksReading.opens]) and a person opens the conversation they want; the
-	// rail is already inside that conversation, so its run is drawn open. A
-	// family's finished rows still fold to their one line, which is the tree's
-	// own rule and not a fold a person sets.
-	plan.unfolded = true
-	plan.kinFloor = planRailLevels
-	tree := plan.railTree()
-	plan.shape = &tree
-	lines := plan.lay(width)
-	out := make([]planRailLine, 0, len(lines))
-	for i := range lines {
-		if lines[i].kind != tasksLineTask || lines[i].item.plan == nil {
-			continue
-		}
-		id, title := lines[i].item.plan.ID, strings.TrimSpace(lines[i].item.plan.Title)
-		out = append(out, planRailLine{planRailRow(lines[i], width, pal, r.now), id, title})
-		if dots := planRailDots(lines[i], width, pal); dots != "" {
-			out = append(out, planRailLine{dots, id, title})
-			if lines[i].item.plan.Parent == "" {
-				for _, text := range planRailNow(lines[i], width, pal, r.summaryNow) {
-					out = append(out, planRailLine{text, id, title})
-				}
-			}
-		}
-		if live := planRailLive(lines[i], width, pal); live != "" {
-			out = append(out, planRailLine{live, id, title})
-		}
-	}
-	return out
 }
 
 // paint draws ONE line of the layout, lit where the cursor or the pointer is on
