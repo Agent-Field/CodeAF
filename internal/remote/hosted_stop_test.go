@@ -91,7 +91,7 @@ func (r hostedSlowRun) Start(ctx context.Context, spec session.RunSpec) session.
 	return session.RunSummary{Outcome: "ran and did not finish", Cut: []string{spec.Store.RootID()}, Nodes: 1, Steps: 1}
 }
 
-func (hostedSlowRun) Land(context.Context, *plandb.Store, string, string) (session.RunLanding, error) {
+func (hostedSlowRun) Land(context.Context, *plandb.Store, string, string, string) (session.RunLanding, error) {
 	return session.RunLanding{}, nil
 }
 

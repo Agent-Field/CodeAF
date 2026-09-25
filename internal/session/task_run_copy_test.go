@@ -65,7 +65,7 @@ func TestAskingForARunsCopyASecondTimeDestroysTheWorkInIt(t *testing.T) {
 func TestARunsCopyIsWrittenDownFromTheTreeItIsWorkingIn(t *testing.T) {
 	tree := taskTree{
 		dir: "/w/trees/7", root: "/w/repo", branch: "task/port-the-parser-9c1a2f",
-		home: "work", homeSha: "abc123", ground: "/w/repo", mode: TaskModeWorktree,
+		home: "work", homeSha: "abc123", checkBase: "base123", ground: "/w/repo", mode: TaskModeWorktree,
 	}
 	record := runCopyOf(tree)
 	if record == nil {
@@ -80,6 +80,9 @@ func TestARunsCopyIsWrittenDownFromTheTreeItIsWorkingIn(t *testing.T) {
 	if record.Home != tree.home || record.HomeSha != tree.homeSha {
 		t.Fatalf("the record forgets the checkout the copy was cut from: %+v", record)
 	}
+	if record.CheckBase != tree.checkBase {
+		t.Fatalf("the record forgets the run's commit base: %+v", record)
+	}
 }
 
 // AND IT SURVIVES THE ROUND TRIP THROUGH THE STORE, which is the only trip that
@@ -87,7 +90,7 @@ func TestARunsCopyIsWrittenDownFromTheTreeItIsWorkingIn(t *testing.T) {
 func TestTheCopySurvivesBeingWrittenDownAndReadBack(t *testing.T) {
 	notice := TaskNotice{
 		ID: 7, Title: "port the parser", State: TaskRunning,
-		Copy: &TaskCopyRecord{Dir: "/w/trees/7", Branch: "task/port-the-parser-9c1a2f", Root: "/w/repo"},
+		Copy: &TaskCopyRecord{Dir: "/w/trees/7", Branch: "task/port-the-parser-9c1a2f", Root: "/w/repo", CheckBase: "base123"},
 	}
 	restored := runRowNotice(runRowRecord(notice))
 	if restored.Copy == nil {
@@ -98,6 +101,9 @@ func TestTheCopySurvivesBeingWrittenDownAndReadBack(t *testing.T) {
 	}
 	if restored.Copy.Dir != "/w/trees/7" {
 		t.Fatalf("the directory came back as %q", restored.Copy.Dir)
+	}
+	if restored.Copy.CheckBase != "base123" {
+		t.Fatalf("the commit base came back as %q", restored.Copy.CheckBase)
 	}
 	// AND THE ROW IS STILL READ AS INTERRUPTED, which is the state this record
 	// exists to make actionable rather than merely honest.
@@ -144,7 +150,7 @@ func TestACopyThatIsThereIsAdoptedAndNothingIsCut(t *testing.T) {
 	dir := t.TempDir()
 	tree, err := runCopyTree(&TaskCopyRecord{
 		Dir: dir, Branch: "task/port-the-parser-9c1a2f", Root: "/w/repo",
-		Ground: "/w/repo", Mode: TaskModeWorktree, Home: "work", HomeSha: "abc123",
+		Ground: "/w/repo", Mode: TaskModeWorktree, Home: "work", HomeSha: "abc123", CheckBase: "base123",
 	}, Place{Dir: "/w/place"})
 	if err != nil {
 		t.Fatalf("adopting a copy that is there: %v", err)
@@ -154,6 +160,9 @@ func TestACopyThatIsThereIsAdoptedAndNothingIsCut(t *testing.T) {
 	}
 	if tree.ground != "/w/repo" || tree.mode != TaskModeWorktree {
 		t.Fatalf("the adopted tree forgot what it stands on: %+v", tree)
+	}
+	if tree.checkBase != "base123" {
+		t.Fatalf("the adopted tree forgot the run's commit base: %+v", tree)
 	}
 	if !tree.bashBelt {
 		t.Fatal("the adopted tree is not a shell worker's, so its landing would expect a write ledger no run fills")

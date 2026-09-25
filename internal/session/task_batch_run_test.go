@@ -53,7 +53,7 @@ func (d *batchRunDouble) Start(ctx context.Context, spec RunSpec) RunSummary {
 	return RunSummary{Outcome: beltRunOutcomeDone, Result: "done"}
 }
 
-func (d *batchRunDouble) Land(context.Context, *plandb.Store, string, string) (RunLanding, error) {
+func (d *batchRunDouble) Land(context.Context, *plandb.Store, string, string, string) (RunLanding, error) {
 	return RunLanding{}, nil
 }
 
