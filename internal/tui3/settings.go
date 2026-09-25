@@ -579,10 +579,12 @@ var settingUI = map[string]settingMeta{
 			everyWord(standing.Interval) + " with no window open. " +
 			"Off checks only while one is.",
 	},
-	config.KeyAttribution: {
-		tab: tabWorkspace, label: "attribution", widget: widgetToggle,
-		about: "signs the commits and PRs codeaf writes for you — one trailer, " +
-			"one footer line.",
+	// THE SIGNATURE HAS NO ROW, only the model's name inside it: codeaf always
+	// signs the commits and pull requests it writes, and what a person may
+	// choose is whether the `Assisted-by` line says which model it was.
+	config.KeyAttributionModel: {
+		tab: tabWorkspace, label: "model in commits", widget: widgetToggle,
+		about: config.AttributionModelHint,
 	},
 	// The three rows Google and Slack connections are signed with. They belong on this tab
 	// and not under Providers because they are not about which model answers
@@ -634,10 +636,16 @@ var settingUI = map[string]settingMeta{
 		about: "ctrl+tab switches on the press where the terminal can send it. " +
 			"Off, it waits for enter. alt+k always opens the list and waits for your choice.",
 	},
+	// THE ROW IS ON WORKSPACE AND READS THE OTHER WAY UP (the owner's placing,
+	// 2026-09-22): `disable hints`, off by default, on to silence them. The key
+	// underneath is still `ui.hints` meaning shown — a persisted identifier keeps
+	// its bytes — and internal/config's row inverts on the way in and out, so
+	// this door and `codeaf config` say the same word.
 	config.KeyHints: {
-		tab: tabDisplay, label: "hints", widget: widgetToggle,
-		about: "one-line tips above the box until you have used what each one " +
-			"teaches. Off silences them, and what's-new lines with them.",
+		tab: tabWorkspace, label: "disable hints", widget: widgetToggle,
+		about: "on silences the one-line tips — home's row above the rule and the " +
+			"keys row's — and what's-new lines with them. Off shows each until you " +
+			"have used what it teaches.",
 	},
 	config.KeySplitPct: {
 		tab: tabDisplay, label: "chat width", widget: widgetText,
@@ -2110,7 +2118,8 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		if a.connEsc() {
 			return nil, true
 		}
-		return a.openHome(), true
+		a.closeSettings()
+		return nil, true
 
 	// ← AND → MOVE THIS PANEL'S OWN SECTIONS, and `tab` no longer does. `tab` is
 	// the way to the NEXT PLACE now (pages.go), and a key that meant "next

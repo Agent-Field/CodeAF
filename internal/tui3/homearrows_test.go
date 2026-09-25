@@ -170,8 +170,8 @@ func TestAHeldRosterDoesNotTakeNarrowHomesKeys(t *testing.T) {
 	}
 	// And esc is home's own way out rather than the roster's.
 	drive(t, a, key("esc"))
-	if !a.at(pageHome) {
-		t.Fatal("esc left Home for the hidden roster")
+	if a.at(pageHome) {
+		t.Fatal("esc handed the keyboard back to a roster instead of closing home")
 	}
 }
 
@@ -190,9 +190,7 @@ func TestAHeldRosterDoesNotTakeTheFollowUpEnterOnANarrowHome(t *testing.T) {
 	a.railTake(true)
 	a.openHome()
 	typeHome(a, "remind me at 6")
-	a.home.box.setText("/ask " + a.home.box.String())
-	a.home.build()
-	drive(t, a, key("enter"))
+	drive(t, a, key("up"), key("enter"))
 
 	ex := theExchange(a)
 	if ex == nil {

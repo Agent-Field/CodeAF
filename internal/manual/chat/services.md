@@ -2,11 +2,12 @@
 
 ## Add a key — connect a service, add an api key for another provider, use a different model service
 
-Another model service is added here. Open `/connect` or `/connections`. The `models`
-group lists DeepSeek, Z.ai, Moonshot, MiniMax, Alibaba Qwen, Codex, Ollama and **Custom
-OpenAI-compatible API**, followed by any service already connected and an `add custom
-connection` row. Codex says `browser`; it signs in a ChatGPT plan instead of asking for
-an API key. Ollama needs no key. The other named vendors ask for theirs.
+An api key for another provider, or another model service, is added here. Open `/connect` or
+`/connections`. The `models` group lists DeepSeek, Z.ai, Moonshot, MiniMax, Alibaba Qwen, Codex,
+Ollama and **Custom OpenAI-compatible API**, followed by any service already connected and, once
+a custom connection is connected, an `add custom connection` row. Codex says `browser`; it signs
+in a ChatGPT plan instead of asking for an API key. Ollama needs no key. The other named vendors
+ask for theirs.
 Pick a row and answer its fields. A successful listed service says
 `deepseek-direct is connected · 6 models`; one without a list says only
 `deepseek-direct is connected`. A service with more than one billing door names the one it
@@ -127,6 +128,10 @@ service is connected and stored as before. For a multi-door service, codeaf trie
 remaining doors; if every one refuses for plan or payment reasons, it stores nothing and
 says, for example,
 `z-ai accepted the key but the account cannot pay — Insufficient balance or no resource package. Please recharge.`
+A payment refusal on OpenRouter also asks for its balance again, subject to the
+30-second quiet period after the last completed read. If OpenRouter
+says it can afford a smaller positive output cap, codeaf retries that request
+once with that cap. The final refusal keeps the vendor's whole sentence.
 A plain `429` with no recognised payment or plan code still means the service is busy and
 is waited out. Every saved key lives in the profile `config.json`, owner-readable only.
 

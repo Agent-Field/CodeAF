@@ -616,6 +616,10 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 	}
 	discovery := catalog.Options{BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: profileDir}
 	models := catalog.LoadLazy(context.Background(), discovery)
+	// THE WARM IS THE WINDOW'S, and the window's fleet joins it when the door
+	// lets go (#1274): its fetch writes a cache when it lands, and one nobody
+	// joined could write after this window had closed.
+	fleet.own(models.Close)
 	// A tier row that says auto is answered from this catalog (config.AutoModels):
 	// the same non-blocking read, never a fetch, and set once at start-up.
 	config.AutoModels = models.ModelsNow

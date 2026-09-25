@@ -177,7 +177,7 @@ func TestAnchoringAnOwnedSessionPersistsAndReloadsProjectInstructions(t *testing
 	if list := gitOut(t, resolved, "worktree", "list"); !strings.Contains(list, tree.dir) {
 		t.Fatalf("anchored repository does not register the task tree:\n%s", list)
 	}
-	if merge, detail, _, _ := tree.comeHome("anchored work", nil, false); merge != mergeMerged {
+	if merge, detail, _, _ := tree.comeHome("anchored work", nil, gitSignature{}); merge != mergeMerged {
 		t.Fatalf("cleanup merge = %q: %s", merge, detail)
 	}
 }

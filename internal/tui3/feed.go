@@ -286,11 +286,17 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 		f.note("guardian allowed · " + ev.Tool)
 
 	case session.EventNotice:
-		// The adapter had to reshape the request to get it accepted — which
-		// attempt it is on, and what it took off (internal/provider's
-		// endpoints.go). Same dim one-liner as the nudge, and for the same
-		// reason: it is already being handled, the person only needs to see it.
-		f.note(ev.Text)
+		// A notice is either the skills this turn carried or the adapter reshaping
+		// a request to get it accepted. Both are dim status, already handled and
+		// never asking for the person's attention.
+		if len(ev.Skills) > 0 {
+			f.note("skills · " + strings.Join(ev.Skills, ", "))
+			if n := len(f.entries); n > 0 && f.entries[n-1].kind == entryNote {
+				f.entries[n-1].carried = true
+			}
+		} else {
+			f.note(ev.Text)
+		}
 
 	case session.EventRowNews:
 		// A ROW THE PERSON WROTE IS NO LONGER BEING SENT — their pinned machine

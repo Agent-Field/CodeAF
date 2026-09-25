@@ -452,3 +452,181 @@ func TestNamedReadsTheUpstreamAndNothingElse(t *testing.T) {
 		}
 	}
 }
+
+// A PERSON ON ONE MACHINE IS THE CASE THE SHORT ALLOWANCE WAS WRONG ABOUT.
+// `Rerouted` false is narrowed because the next attempt is drawn from the same
+// pool by the same rules and buys nothing. With no pool at all — a person's own
+// base url, a local server, one connected service — the next attempt is the
+// only move there is, and the thing that mends a machine which answered nothing
+// is time. So the allowance is longer AND the wait comes back.
+func TestACutAgainstOneMachineAsksLongerAndWaitsBetweenAsks(t *testing.T) {
+	limits := Limits{TransportBackoff: time.Second}
+	if OneMachineCutAttempts <= BlindCutAttempts {
+		t.Fatalf("one machine gets %d attempts, which is no more than the %d a blind cut in a pool gets",
+			OneMachineCutAttempts, BlindCutAttempts)
+	}
+	for spent := 1; spent < OneMachineCutAttempts; spent++ {
+		verdict := Classify(Evidence{Cut: true, OneMachine: true, Cuts: spent}, limits)
+		if !verdict.Retries() {
+			t.Fatalf("cut %d of %d did %q, want a retry", spent, OneMachineCutAttempts, verdict.Action)
+		}
+		if verdict.Attempts != OneMachineCutAttempts {
+			t.Errorf("cut %d reads an allowance of %d, want %d", spent, verdict.Attempts, OneMachineCutAttempts)
+		}
+		// THE WAIT IS THE POINT. Asking the same server again the same instant
+		// is not patience; it is the same request twice.
+		if want := time.Second << (spent - 1); verdict.Backoff != want {
+			t.Errorf("cut %d waits %s, want %s", spent, verdict.Backoff, want)
+		}
+	}
+	// AND THE ENDING IS THE SAME ENDING. A spent allowance hops when there is a
+	// next model and says so when there is not.
+	full := Evidence{Cut: true, OneMachine: true, Cuts: OneMachineCutAttempts}
+	if verdict := Classify(full, limits); verdict.Action != ActionGiveUp {
+		t.Errorf("a spent allowance with no chain did %q, want %q", verdict.Action, ActionGiveUp)
+	}
+	full.FallbackAvailable = true
+	if verdict := Classify(full, limits); verdict.Action != ActionHop {
+		t.Errorf("a spent allowance with a chain did %q, want %q", verdict.Action, ActionHop)
+	}
+}
+
+// AND A POOL KEEPS ITS OWN ANSWER. The field narrows nothing: a cut that had
+// endpoint diversity still spends the short allowance with no wait, because
+// what mends it is being served by somebody else.
+func TestOneMachineChangesNothingForACutThatHadAPool(t *testing.T) {
+	limits := Limits{TransportBackoff: time.Second}
+	verdict := Classify(Evidence{Cut: true, Rerouted: true, Cuts: 1}, limits)
+	if verdict.Attempts != SilentCutAttempts {
+		t.Errorf("a rerouted cut reads an allowance of %d, want %d", verdict.Attempts, SilentCutAttempts)
+	}
+	if verdict.Backoff != 0 {
+		t.Errorf("a rerouted cut waits %s, want no wait", verdict.Backoff)
+	}
+}
+
+// A PERSON WAITING ON THEIR OWN MACHINE IS NOT GIVEN UP ON. Every other bound
+// in this policy exists because the time could be spent on something else —
+// another endpoint, another model, an ending that frees the person to go and
+// fix it. A watched conversation against one machine with no chain has none of
+// those, so it keeps asking and the person ends it when they choose.
+func TestAWatchedWaitOnOneMachineIsNeverGivenUpOn(t *testing.T) {
+	limits := Limits{TransportBackoff: time.Second}
+	waiting := Evidence{Cut: true, OneMachine: true, Watched: true}
+	for _, spent := range []int{1, 2, 5, 40, 4000} {
+		evidence := waiting
+		evidence.Cuts = spent
+		verdict := Classify(evidence, limits)
+		if !verdict.Retries() {
+			t.Fatalf("ask %d did %q, want a retry for ever", spent, verdict.Action)
+		}
+		// NO DENOMINATOR, because there is no count to reach. The surface reads
+		// this to know it must say the waiting some other way.
+		if verdict.Attempts != 0 {
+			t.Errorf("ask %d carries an allowance of %d, want none", spent, verdict.Attempts)
+		}
+		// AND IT SAYS SO IN A FIELD OF ITS OWN. Zero attempts already means
+		// something older and different — an ordinary failure bounded by the
+		// caller's deadline rather than by a count — so a caller reading the
+		// two as one ending would end the deadline for every failure there is.
+		if !verdict.Unbounded {
+			t.Errorf("ask %d does not declare itself unbounded", spent)
+		}
+	}
+	// AND THE DEADLINE DOES NOT END IT EITHER, which is the one place in this
+	// policy where running out of time is not the last word.
+	outOfTime := waiting
+	outOfTime.Cuts, outOfTime.OutOfTime = 9, true
+	if verdict := Classify(outOfTime, limits); !verdict.Retries() {
+		t.Errorf("the give-up ended a watched wait: %q", verdict.Action)
+	}
+}
+
+// AND THE THREE THINGS THAT END IT ARE EACH ENOUGH ON THEIR OWN. A chain the
+// person configured is the move they asked for; nobody watching makes the same
+// loop a hang; and a pool means the next ask is somewhere else already.
+func TestEachMissingPieceEndsTheUnboundedWait(t *testing.T) {
+	limits := Limits{TransportBackoff: time.Second}
+	for _, shape := range []struct {
+		name   string
+		remove func(*Evidence)
+	}{
+		{"a chain to hop to", func(e *Evidence) { e.FallbackAvailable = true }},
+		{"nobody watching", func(e *Evidence) { e.Watched = false }},
+		{"a pool behind it", func(e *Evidence) { e.OneMachine, e.Rerouted = false, true }},
+	} {
+		evidence := Evidence{Cut: true, OneMachine: true, Watched: true, Cuts: 40}
+		shape.remove(&evidence)
+		verdict := Classify(evidence, limits)
+		if verdict.Unbounded {
+			t.Errorf("%s: still waiting for ever after 40 asks", shape.name)
+		}
+	}
+}
+
+// THE WAIT CLIMBS AND THEN HOLDS. Doubling away is a manner towards a shared
+// service under strain; the machine here belongs to the person waiting on it,
+// asking costs nothing, and a schedule that reached four minutes would turn a
+// server that came back in ninety seconds into four more minutes of spinner.
+func TestTheWaitOnOneMachineClimbsToACeilingAndStaysThere(t *testing.T) {
+	cut := Evidence{Cut: true, OneMachine: true, Watched: true}
+	base := time.Second
+	var last time.Duration
+	for ask := 1; ask <= 20; ask++ {
+		wait := waitFor(cut, ask, base)
+		if wait > OneMachineCutCeiling {
+			t.Fatalf("ask %d waits %s, past the %s ceiling", ask, wait, OneMachineCutCeiling)
+		}
+		if ask > 1 && wait < last {
+			t.Fatalf("ask %d waits %s, less than the %s before it", ask, wait, last)
+		}
+		last = wait
+	}
+	if last != OneMachineCutCeiling {
+		t.Errorf("the schedule settled at %s, want the %s ceiling", last, OneMachineCutCeiling)
+	}
+	// AND A CUT WITH A POOL STILL WAITS NOT AT ALL, because what mends that one
+	// is a different endpoint and it costs no time.
+	if wait := waitFor(Evidence{Cut: true, Rerouted: true}, 4, base); wait != 0 {
+		t.Errorf("a pooled cut waits %s, want none", wait)
+	}
+}
+
+// AND IT HOLDS FOR EVER, NOT FOR TWENTY ASKS (#1358). The ramp was a signed
+// shift, and past about thirty-five asks of a one-second base it wrapped to
+// zero or below, which the turn loop reads as no wait at all: the unbounded
+// wait turned back into a hot loop on its thirty-sixth ask. The test above
+// stopped at twenty and never saw it.
+func TestTheWaitOnOneMachineNeverWrapsToNothing(t *testing.T) {
+	cut := Evidence{Cut: true, OneMachine: true, Watched: true}
+	for ask := 5; ask <= 500; ask++ {
+		if wait := waitFor(cut, ask, time.Second); wait != OneMachineCutCeiling {
+			t.Fatalf("ask %d waits %s, want the %s ceiling", ask, wait, OneMachineCutCeiling)
+		}
+	}
+	// A refusal has no ceiling, and its doubling saturates rather than wraps.
+	for ask := 1; ask <= 500; ask++ {
+		if wait := waitFor(Evidence{}, ask, time.Second); wait <= 0 {
+			t.Fatalf("refusal %d waits %s, want a positive wait", ask, wait)
+		}
+	}
+}
+
+// AN ORDINARY FAILURE IS BOUNDED BY THE CALLER'S DEADLINE AND NOT BY A COUNT,
+// which is what [Verdict.Attempts] of zero has meant since the count was
+// removed. It is the reason the unbounded wait needs a field of its own: a
+// caller that read zero attempts as "nothing may end this" would stop the
+// deadline ending any failing request at all.
+func TestZeroAttemptsIsNotTheSameClaimAsUnbounded(t *testing.T) {
+	limits := Limits{TransportBackoff: time.Second}
+	ordinary := Classify(Evidence{Status: 429, Attempt: 2}, limits)
+	if !ordinary.Retries() {
+		t.Fatalf("an ordinary refusal did %q, want a retry", ordinary.Action)
+	}
+	if ordinary.Attempts != 0 {
+		t.Errorf("an ordinary refusal carries an allowance of %d, want none", ordinary.Attempts)
+	}
+	if ordinary.Unbounded {
+		t.Error("an ordinary refusal declares itself unbounded, so no deadline could end it")
+	}
+}

@@ -13,6 +13,7 @@ api_key
 approval.guardian
 approval.timeout_seconds
 attribution
+attribution.model
 bash.background_after_seconds
 brief_after
 completion_reserve
@@ -27,6 +28,7 @@ google_oauth_secret
 history.enabled
 lane.guard
 lane.talk
+lane.talk.borrow
 linear_mode
 memory.consolidation
 memory.enabled

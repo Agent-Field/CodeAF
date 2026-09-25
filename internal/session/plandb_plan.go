@@ -42,7 +42,12 @@ type planState struct {
 	// chat is the conversation's tag: the session folder's own name, stamped on
 	// every row the seed makes so the plan can be read back as this chat's
 	// (PlanTasks). It is settled with the path at the seed and never moves.
-	chat    string
+	chat string
+	// root is the run a worker's plan belongs to, set only on a run worker's
+	// own plan ([NewBeltWorker]) from the run's open handle. It is what the
+	// worker's `plandb` checks the store at path against ([plandb.RunEnv]), so
+	// a later store at the same path cannot take the worker's writes.
+	root    string
 	shimmed bool
 	// archives holds read handles for ended stores. Ended stores are immutable,
 	// so each is opened at most once for the life of this conversation.
@@ -122,22 +127,28 @@ func (g *TaskGraph) planPath() string {
 	return ""
 }
 
-// PlanStorePath is where a run's plan store lives under a working copy that has
-// no session folder of its own: <dir>/.codeaf/plandb.db. It is the same name and
-// the same folder [planPath] falls to for a session with no Place, so a run
-// dispatched by a headless door and a session that seeds one of its own find one
-// file — two spellings of the path would be two stores with half a run in each.
+// PlanStorePath is the flat-layout fallback for a session with no Place:
+// <dir>/.codeaf/plandb.db. A new headless run uses [OpenRunPlanAt] in a
+// private folder instead; this path remains for the session fallback.
 func PlanStorePath(dir string) string {
 	return filepath.Join(dir, ".codeaf", planStoreFilename)
 }
 
-// OpenRunPlan opens the plan store a headless door outside a session runs over:
-// the working copy's own .codeaf/plandb.db, seeded with the run's words when it
-// is not there, adopted when it holds a live run, and replaced by a fresh one
-// when the run it holds has finished — the same three roads [planSeed] takes,
-// because a finished plan is not a live one and a door that ran on a done root
-// would report the previous run's result as its own. The store is the caller's
-// to close.
+// OpenRunPlan opens the older flat-layout plan path, seeded with the run's words.
+// The headless do door now uses [OpenRunPlanAt] in its private folder. A store
+// already at that path is SET ASIDE beside it first ([setAsideRunStore]) — a
+// finished one as it ended, and one nothing is driving as interrupted — and a
+// fresh one is seeded, so a second errand in one project is a second run rather
+// than a reader of the first one's ending. The store is the caller's to close.
+//
+// A NEW ERRAND NEVER ADOPTS A RUN IT DID NOT START. This door used to adopt a
+// store whose root was still open, on the reading that an open root was a live
+// run to resume. Nothing resumes through this door: every call carries a new
+// request's words, and a store left open by a run that was interrupted — a
+// timeout, an interrupt, a process that died — was run again under its old
+// title and brief while the new request was dropped. Measured on this door: a
+// directory holding a left-open store answered `status=running title="rename
+// the logger"` for a request about something else entirely.
 func OpenRunPlan(dir, title, brief string) (*plandb.Store, error) {
 	path := PlanStorePath(dir)
 	if _, err := os.Stat(path); err != nil {
@@ -149,30 +160,17 @@ func OpenRunPlan(dir, title, brief string) (*plandb.Store, error) {
 		}
 		return plandb.Open(path, title, planRootID, title, brief)
 	}
-	// ADOPT: the store under this name is the run's, and its own root says
-	// whether there is still work in it. The title and the brief are the store's
-	// own on this road — a resumed run reads the words it was seeded with — which
-	// is why the adopt demands the root id and nothing else.
-	adopted, err := plandb.Open(path, "", planRootID, "", "")
-	if err != nil {
+	if err := setAsideRunStore(path); err != nil {
 		return nil, err
 	}
-	if root := adopted.Task(planRootID); root != nil && !terminalStoreStatus(root.Status) {
-		return adopted, nil
-	}
-	_ = adopted.Close()
-	// A FINISHED PLAN IS NOT A LIVE ONE. The finished store is archived beside
-	// the run with its own number and a fresh one is seeded, the way planSeed
-	// archives it, so a second errand in one project is a second run rather than
-	// a reader of the first one's ending.
-	for suffix := 1; ; suffix++ {
-		archived := fmt.Sprintf("%s.%d", path, suffix)
-		if _, err := os.Stat(archived); os.IsNotExist(err) {
-			if err := os.Rename(path, archived); err != nil {
-				return nil, err
-			}
-			break
-		}
+	return plandb.Open(path, title, planRootID, title, brief)
+}
+
+// OpenRunPlanAt seeds one run at an explicit store path. A headless run puts
+// this path in its private home, leaving the working copy for the work alone.
+func OpenRunPlanAt(path, title, brief string) (*plandb.Store, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, err
 	}
 	return plandb.Open(path, title, planRootID, title, brief)
 }
@@ -747,7 +745,18 @@ func (g *TaskGraph) planBashPrefix() string {
 	if bin == "" {
 		return ""
 	}
-	return "export PATH=" + quoteShWord(bin) + ":$PATH PLANDB_DB=" + quoteShWord(plan.path) + "; "
+	prefix := "export PATH=" + quoteShWord(bin) + ":$PATH PLANDB_DB=" + quoteShWord(plan.path)
+	// AND THE RUN IS BOUND, NOT ONLY THE PATH. A path says where the run's store
+	// was when the run opened it; a later request can set that store aside and
+	// seed another at the same path, and a worker bound by the path alone then
+	// wrote its children and its `done`s into a run that was not its own
+	// (measured on the owner's session: four children and ten `done`s). The
+	// root names which run this is, and the CLI refuses a store at the path
+	// whose root is another's ([plandb.RunEnv]).
+	if plan.root != "" {
+		prefix += " " + plandb.RunEnv + "=" + quoteShWord(plan.root)
+	}
+	return prefix + "; "
 }
 
 // planCLIBinEnv is the resolver's one override: it names a binary that

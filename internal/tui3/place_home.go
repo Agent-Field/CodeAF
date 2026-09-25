@@ -527,7 +527,8 @@ func (placeHome) wheel(a *app, delta int) (tea.Cmd, bool) { return nil, false }
 // nothing, which is what it costs to never be stale.
 func (placeHome) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
 	answered := a.homeKey(msg)
-	return tea.Batch(answered, a.refreshHomeCard(a.now()))
+	// AND THE `@` LIST'S WALK STARTS THE KEY THAT OPENED IT (homeat.go).
+	return tea.Batch(answered, a.loadHomeFiles(), a.refreshHomeCard(a.now()))
 }
 
 // owns is the two layers of home that take the WHOLE keyboard, `tab` included,
@@ -536,8 +537,8 @@ func (placeHome) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
 //
 // The phone tier's sheet over the inbox is the first (homesheet.go). The second
 // is a FOCUSED ERRAND: while it holds the keyboard, `tab` hands it back to the
-// list; `esc` also returns there while preserving a half-typed follow-up. This
-// is the zone law homeexchange.go states in full — a `tab` the router took first
+// list and `esc` clears a half-typed follow-up before it does, which is the two-
+// zone law homeexchange.go states in full — and a `tab` the router took first
 // would walk the person out of home mid-sentence.
 //
 // THE KEYBOARD IS SETTLED BEFORE THE KEY IS READ. An exchange holds it only

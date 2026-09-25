@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/charmbracelet/x/ansi"
 )
 
 // summaryPlanFake is the store-backed plan seam with every call counted. The
@@ -110,56 +109,20 @@ func TestRunSummaryRefreshIsOffFrameStaleOnlySingleFlightAndMinuteThrottled(t *t
 	}
 }
 
-func TestPlanRowsDrawStoredNowUnderDotsAndRespectAbsenceAndWidth(t *testing.T) {
-	const sentence = "reviewing the deterministic summary contract across a rail that has only two lines to spare and must cut the rest"
-	rail := func(now string, width int, wide bool) (*app, []string) {
-		a, _ := planAppWith(t, c266PlanRows(), nil)
-		a.runSummaryNow = now
-		a.width, a.height, a.railWide = width, 30, wide
-		a.refreshElsewhere()
-		return a, a.railRows(a.viewHeight())
+// THE RAIL DRAWS NO SUMMARY SENTENCE UNDER A RUN. A run's row is a task row, and
+// a task row on the column says its call and its clock and money while it runs
+// and nothing else; the stored sentence is the tasks place's to draw.
+func TestTheRailDrawsNoSummarySentenceUnderARun(t *testing.T) {
+	a, _ := planAppWith(t, c266PlanRows(), nil)
+	a.runSummaryNow = "reviewing the deterministic summary contract"
+	a.taskSheet.mine.now = a.runSummaryNow
+	a.width, a.height = 150, 30
+	a.refreshElsewhere()
+	text := plain(strings.Join(a.railRows(a.viewHeight()), "\n"))
+	if !strings.Contains(text, "rewrite the auth") {
+		t.Fatalf("the rail lacks the run:\n%s", text)
 	}
-	a, got := rail(sentence, 150, false)
-	pal := a.pal
-	text := plain(strings.Join(got, "\n"))
-	if !strings.Contains(text, "reviewing the") {
-		t.Fatalf("the rail lacks the stored now sentence:\n%s", text)
-	}
-
-	// The sentence sits beneath the run's dot row, starting in the dot row's
-	// own column, and every cell of it is dim. The rail's border and padding
-	// are the rail's, so the columns are read off the plain text.
-	column := func(row string) int {
-		body := strings.TrimLeft(plain(row), "│ ")
-		return ansi.StringWidth(plain(row)) - ansi.StringWidth(body)
-	}
-	var nowRows []string
-	for i, row := range got {
-		if strings.Contains(plain(row), "reviewing") {
-			if i == 0 || !strings.HasSuffix(strings.TrimSpace(plain(got[i-1])), "2/4") {
-				t.Fatalf("the now sentence is not under the run's dot row:\n%s", text)
-			}
-			if column(row) != column(got[i-1]) {
-				t.Fatalf("the now sentence starts in column %d and the dot row in %d:\n%s", column(row), column(got[i-1]), text)
-			}
-			nowRows = append(nowRows, row, got[i+1])
-			break
-		}
-	}
-	if len(nowRows) != 2 || column(nowRows[1]) != column(nowRows[0]) {
-		t.Fatalf("the now sentence does not take two lines in one column:\n%s", text)
-	}
-	for _, row := range nowRows {
-		words := strings.TrimSpace(strings.TrimLeft(plain(row), "│ "))
-		if !strings.Contains(row, pal.dim(words)) {
-			t.Fatalf("now body is not wholly dim: %q", row)
-		}
-	}
-	if !strings.Contains(plain(nowRows[1]), "…") {
-		t.Fatalf("the second now line was not cut with the rail ellipsis:\n%s", text)
-	}
-
-	if _, empty := rail("", 150, false); strings.Contains(plain(strings.Join(empty, "\n")), "reviewing") {
-		t.Fatal("an empty now sentence left a summary row behind")
+	if strings.Contains(text, "reviewing") {
+		t.Fatalf("the rail drew the run's summary sentence under a task row:\n%s", text)
 	}
 }

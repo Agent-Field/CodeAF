@@ -169,7 +169,7 @@ type homePanelSlot struct {
 // growth budget (owner, 2026-09-10: a fifty-five-row terminal was two short
 // columns over thirty rows of air). Spend's budget is its rest: it never grows.
 // The head column is where a press on a heading goes. The conversation list
-// has no heading; projects is read-only. The explainer is the dim clause a
+// has no heading; the projects heading opens nothing. The explainer is the dim clause a
 // heading may carry after its word — see [homePanelSlot.explainer].
 var homePanelOrder = []homePanelSlot{
 	{panel: sessionsPanel{homePanelBase{panelSessions}}, word: sessionsWord, keep: 7, least: 4, rest: homeSessionsLimit, most: homeSessionsLimit, place: pageTasks, head: pageTasks},
@@ -178,7 +178,7 @@ var homePanelOrder = []homePanelSlot{
 	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", pinned: true, keep: 4, least: 3, rest: 5, most: 8},
 	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageMemory},
 	{panel: spendPanel{homePanelBase{panelSpend}}, word: "spend", pinned: true, keep: 1, least: 3, rest: 3, most: 3, place: pageSpend, head: pageSpend},
-	{panel: nextPanel{homePanelBase{panelNext}}, word: homeScheduledWord, keep: 0, least: 3, rest: 3, most: 5, place: pageStanding, head: pageStanding},
+	{panel: nextPanel{homePanelBase{panelNext}}, word: (placeStanding{}).word(), keep: 0, least: 3, rest: 3, most: 5, place: pageStanding, head: pageStanding},
 }
 
 // homeNeedsTaskFresh is how long a task's call stays a row of `needs you` after
@@ -453,6 +453,8 @@ type homeCell struct {
 	note, tag, right string
 	// bold is this window's own conversation.
 	bold bool
+	// underline marks a hovered project name without lighting its facts.
+	underline bool
 	// closed conversations stay dim even when the cursor is on them.
 	closed bool
 	// path says the title is a folder's path, which is cut FROM THE LEFT —
@@ -1087,7 +1089,7 @@ func (p homeGridPanel) lines() []homeLine {
 // and a line that named a place `enter` did not go to would be a door drawn on
 // a wall (review of #1046). The way to the rest is the panel's HEADING, which
 // opens the place that owns the panel (law 10): tasks for `needs you`,
-// `tasks` and `since you left`, standing for `scheduled`. `threads` has no
+// `tasks` and `since you left`, standing for `standing`. `threads` has no
 // place of its own to open (the search place was its door until 2026-09-17;
 // the box under home is the search now), so its heading names only the panel.
 // It used to be the other way round: law 9 said the fold IS the door, `N more
@@ -1535,7 +1537,7 @@ func (a *app) refreshGridReadings(now time.Time) tea.Cmd {
 // homePreselect puts the cursor on THE CONVERSATION THIS WINDOW WAS IN BEFORE
 // THIS ONE (law 6): the most recent key on this window's own stack that is not
 // the one in front and is on the grid. Enter is then a switch in two keys, and
-// repeated Escape presses stay on Home.
+// Escape returns to the conversation behind Home.
 func (a *app) homePreselect() {
 	if !a.home.gridOn() {
 		return

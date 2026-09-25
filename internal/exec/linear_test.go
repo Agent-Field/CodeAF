@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/plan"
 	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // scriptedCompleter plays back a fixed sequence of model turns and records
@@ -715,5 +716,84 @@ func TestARefusalOfOurOwnRequestIsNotRetried(t *testing.T) {
 	}
 	if len(client.seen) != 1 {
 		t.Fatalf("calls = %d, want exactly one: the refusal is the answer", len(client.seen))
+	}
+}
+
+// shelfOnDisk puts one active skill on a real store's shelf — the candidate
+// plus the activation, the only transition [Store.SkillFacts] surfaces — and
+// returns the store, as every other reader of the shelf opens it.
+func shelfOnDisk(t *testing.T, name, body string) *store.Store {
+	t.Helper()
+	db, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	candidate, err := db.RecordSkillCandidate(store.RootID, "repo:/test", body, "/shelf/"+name)
+	if err != nil {
+		t.Fatalf("record skill candidate %q: %v", body, err)
+	}
+	if err := db.ActivateSkill(candidate.Seq, "/shelf/"+name, ""); err != nil {
+		t.Fatalf("activate skill %q: %v", name, err)
+	}
+	return db
+}
+
+// TestABriefRendersAttachedSkillsInOrder is the render half of the
+// attachment: a leaf whose plan attached skills reads them beside the working
+// method, in the order the plan composed, each with its doc and shelf path —
+// and a name the shelf does not hold renders as nothing rather than as an
+// empty bullet.
+func TestABriefRendersAttachedSkillsInOrder(t *testing.T) {
+	db := shelfOnDisk(t, "imgshrink", "optimize images without losing quality")
+	candidate, err := db.RecordSkillCandidate(store.RootID, "repo:/test", "gofmt vet and lint the tree", "/shelf/lint")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ActivateSkill(candidate.Seq, "/shelf/lint", ""); err != nil {
+		t.Fatal(err)
+	}
+	linear := NewLinear(&scriptedCompleter{}, workspace(t), nil, 10, 1_000_000, time.Minute).WithStore(db)
+	got := linear.brief(Task{Brief: "Do the thing.", Skills: []string{"lint", "imgshrink", "nothere"}})
+
+	if !strings.Contains(got, "Skills attached to this work:\n") {
+		t.Fatalf("the brief never rendered the attached skills:\n%s", got)
+	}
+	if !strings.Contains(got, "- gofmt vet and lint the tree [/shelf/lint]\n") {
+		t.Errorf("the lint skill's doc line is missing:\n%s", got)
+	}
+	if !strings.Contains(got, "- optimize images without losing quality [/shelf/imgshrink]\n") {
+		t.Errorf("the imgshrink skill's doc line is missing:\n%s", got)
+	}
+	if !strings.Contains(got, "Earlier-listed skills win when two skills conflict.") {
+		t.Errorf("the precedence line is missing:\n%s", got)
+	}
+	// Order is precedence: the plan pinned lint first, so its line leads.
+	if lint, shrink := strings.Index(got, "- gofmt vet and lint"), strings.Index(got, "- optimize images"); lint < 0 || shrink < 0 || lint > shrink {
+		t.Errorf("skill lines are not in the composed order (lint at %d, imgshrink at %d):\n%s", lint, shrink, got)
+	}
+	if strings.Contains(got, "nothere") {
+		t.Errorf("a name the shelf does not hold rendered anyway:\n%s", got)
+	}
+}
+
+// TestABriefWithoutSkillsRendersExactlyAsBefore is the zero render: a leaf
+// with nothing attached — and a leaf whose names resolve to nothing, and a
+// loop with no store at all — reads byte for byte what it read before
+// attachment existed.
+func TestABriefWithoutSkillsRendersExactlyAsBefore(t *testing.T) {
+	db := shelfOnDisk(t, "imgshrink", "optimize images without losing quality")
+	withShelf := NewLinear(&scriptedCompleter{}, workspace(t), nil, 10, 1_000_000, time.Minute).WithStore(db)
+	withoutShelf := NewLinear(&scriptedCompleter{}, workspace(t), nil, 10, 1_000_000, time.Minute)
+
+	base := withShelf.brief(Task{Brief: "Do the thing."})
+	if got := withShelf.brief(Task{Brief: "Do the thing.", Skills: nil}); got != base {
+		t.Fatalf("nil skills changed the brief:\ngot:  %q\nwant: %q", got, base)
+	}
+	if got := withShelf.brief(Task{Brief: "Do the thing.", Skills: []string{"nothere"}}); got != base {
+		t.Fatalf("unresolvable names changed the brief:\ngot:  %q\nwant: %q", got, base)
+	}
+	if got := withoutShelf.brief(Task{Brief: "Do the thing.", Skills: []string{"imgshrink"}}); got != base {
+		t.Fatalf("attached names with no shelf behind them changed the brief:\ngot:  %q\nwant: %q", got, base)
 	}
 }

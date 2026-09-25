@@ -251,15 +251,18 @@ func (a *app) placeTargetPress(x, y int) (tea.Cmd, bool) {
 	if !a.placeHasDraft() || a.composer.open || a.target.pick.open {
 		return nil, false
 	}
+	// THE PROJECT IS ON THE KEYS ROW, and it is the same door it was on the
+	// rule (hometip.go's [app.homeFootLine] records the span).
+	if a.footRow >= 1 && y == a.footRow && a.targetFolderSpan.holds(x) {
+		a.moveTarget()
+		return nil, true
+	}
 	if a.targetRow < 1 || y != a.targetRow {
 		return nil, false
 	}
 	switch {
 	case a.targetModelSpan.holds(x):
 		a.openTargetPicker()
-		return nil, true
-	case a.targetFolderSpan.holds(x):
-		a.moveTarget()
 		return nil, true
 	case a.targetEffortSpan.holds(x):
 		return a.cycleTargetEffort(), true

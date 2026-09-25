@@ -1,0 +1,1 @@
+Notes that belong to a folder no harness would call a skill.

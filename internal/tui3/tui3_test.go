@@ -1851,14 +1851,14 @@ func TestTheSameNoteTwiceRunningIsOneNote(t *testing.T) {
 	}
 }
 
-func TestCtrlCInterruptsThenCloses(t *testing.T) {
+func TestEscInterruptsAndCtrlCCloses(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		text(session.EventTextDelta, "thinking about it"),
 	}}}
 	a := newTestApp(agent)
 	typeLine(t, a, "long one")
 
-	drive(t, a, key("ctrl+c"))
+	drive(t, a, key("esc"))
 	if agent.stops != 1 {
 		t.Fatalf("ctrl+c did not interrupt (%d)", agent.stops)
 	}

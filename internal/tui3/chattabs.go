@@ -594,7 +594,12 @@ func (a *app) tabsRow(width int) string {
 			chipW = ansi.StringWidth(chipWord) + 1
 		}
 	}
-	homeWidth := len(" Home ") + 2
+	// HOME WEARS THE PLACES BAR'S OWN WORD AND PADDING, so crossing between the
+	// dashboard and a conversation never changes its label or its target; the
+	// two rows already share this row's lead ([placeBarLead]).
+	homeChip := tabPad + pageHome.word() + tabPad
+	homeCols := ansi.StringWidth(homeChip)
+	homeWidth := homeCols + 2
 	home := a.homeDoorOpen() && room-homeWidth >= max(chipNeed, tabWordFloor+tabCloseCells+tabInsetCells)
 	if !home {
 		homeWidth = 0
@@ -612,7 +617,7 @@ func (a *app) tabsRow(width int) string {
 	}
 	a.chatTabHits = tabsAt(hits, headLabelAt+homeWidth+chipW)
 	if home {
-		a.chatTabHits = append([]tabHit{{span: hudSpan{from: headLabelAt, to: headLabelAt + len(" Home ")}, kind: tabHome}}, a.chatTabHits...)
+		a.chatTabHits = append([]tabHit{{span: hudSpan{from: headLabelAt, to: headLabelAt + homeCols}, kind: tabHome}}, a.chatTabHits...)
 	}
 	// The door is laid out with the tabs, so it follows the new-chat `+`
 	// wherever that lands, and is then kept apart from them.
@@ -627,7 +632,7 @@ func (a *app) tabsRow(width int) string {
 	a.chatTabHits = kept
 	line := strings.Repeat(" ", headLabelAt)
 	if home {
-		line += a.tabsPaint([]tabPiece{{word: " Home ", kind: tabHome}, {word: "  ", quiet: true}})
+		line += a.tabsPaint([]tabPiece{{word: homeChip, kind: tabHome}, {word: "  ", quiet: true}})
 	}
 	if chipW > 0 {
 		line += a.tabTeamPaint(chipWord, headLabelAt+homeWidth) + " "
@@ -1034,7 +1039,7 @@ func (a *app) tabsPaint(pieces []tabPiece) string {
 				if a.pal.profile < tokens.ANSI256 {
 					switch piece.kind {
 					case tabHome:
-						word = a.linearMark("·", ".") + "Home "
+						word = a.linearMark("·", ".") + pageHome.word() + tabPad
 					case tabNew:
 						word = a.linearMark("·", ".") + "+ "
 					case tabScrollLeft, tabScrollRight:

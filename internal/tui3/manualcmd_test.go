@@ -5,70 +5,101 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/config"
-	"github.com/Agent-Field/codeaf/internal/manual"
 )
 
-// manualNote runs one /manual form through the dispatch and hands back the note
-// it left, the way the loop would.
-func manualNote(t *testing.T, a *app, line string) string {
+// manualSent runs one /manual form through the dispatch, the way the loop
+// would, and hands back what the model was given and what the transcript says
+// the person typed — the two halves [app.submitShown] keeps apart.
+func manualSent(t *testing.T, a *app, fake *fakeAgent, line string) (sent, shown string) {
 	t.Helper()
-	if cmd := a.slash(line); cmd != nil {
-		a.Update(cmd())
+	before := len(fake.sent)
+	typeLine(t, a, line)
+	if len(fake.sent) != before+1 {
+		t.Fatalf("%s sent %d messages, want one", line, len(fake.sent)-before)
 	}
-	return lastNote(t, a)
-}
-
-func TestManualCommandListsThePagesThereAre(t *testing.T) {
-	a, _ := sheetApp(t)
-	note := manualNote(t, a, "/manual")
-	for _, page := range manual.Chat().Pages() {
-		if !strings.Contains(note, page) {
-			t.Errorf("the listing does not name the page %q", page)
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		if a.entries[i].kind == entryUser {
+			return fake.sent[before], a.entries[i].text
 		}
 	}
+	t.Fatalf("%s left no line of the person's in the transcript", line)
+	return "", ""
 }
 
-// AS WRITTEN, NOT RETOLD — which is the whole reason this door exists beside the
-// model's tool. A page that arrived summarized would be the paraphrase again,
-// wearing a slash.
-func TestManualCommandShowsAPageAsItIsWritten(t *testing.T) {
-	a, _ := sheetApp(t)
-	note := manualNote(t, a, "/manual permissions")
-	page, found := manual.Chat().Page("permissions")
-	if !found {
-		t.Fatal("there is no permissions page to show")
+// A QUESTION IS A TURN, since 2026-09-22: the model is handed the question with
+// the manual named as where to answer from, and the transcript keeps what the
+// person actually typed.
+func TestManualCommandPutsTheQuestionToTheModelWithTheManualOpen(t *testing.T) {
+	fake := &fakeAgent{model: "m"}
+	a := newTestApp(fake)
+	sent, shown := manualSent(t, a, fake, "/manual how do I change the effort level")
+	if sent != manualQuestionLead+"how do I change the effort level" {
+		t.Fatalf("the model was handed %q", sent)
 	}
-	if note != page {
-		t.Errorf("the note is not the page as written (note %d bytes, page %d)", len(note), len(page))
+	if !strings.Contains(sent, "manual tool") || !strings.Contains(sent, "which page") {
+		t.Fatalf("the question does not name the manual and ask for the page: %q", sent)
+	}
+	if shown != "/manual how do I change the effort level" {
+		t.Fatalf("the transcript says %q, not what was typed", shown)
+	}
+	if !a.notices.retired("manual-answers") {
+		t.Fatal("asking did not retire the tip that teaches the command")
 	}
 }
 
-func TestManualCommandAnswersAQuestionWithLabelledSections(t *testing.T) {
-	a, _ := sheetApp(t)
-	note := manualNote(t, a, "/manual who can see my files")
-	sections := manual.Chat().Search("who can see my files", manualChatSections)
-	if len(sections) == 0 {
-		t.Fatal("the question reaches nothing at all")
+// A BARE /manual IS THE TOUR — what codeaf can do, from its own account —
+// rather than a listing nobody asked the model for.
+func TestABareManualAsksTheModelForTheTour(t *testing.T) {
+	fake := &fakeAgent{model: "m"}
+	a := newTestApp(fake)
+	sent, shown := manualSent(t, a, fake, "/manual")
+	if sent != manualTourAsk {
+		t.Fatalf("the model was handed %q", sent)
 	}
-	for _, section := range sections {
-		if !strings.Contains(note, "## "+section.Page+" · "+section.Title) {
-			t.Errorf("the answer does not say where %s · %s came from", section.Page, section.Title)
+	if shown != "/manual" {
+		t.Fatalf("the transcript says %q, not what was typed", shown)
+	}
+	if last := a.entries[len(a.entries)-1]; last.kind == entryNote {
+		t.Fatalf("a bare /manual still prints a note: %q", last.text)
+	}
+}
+
+// ON HOME THE QUESTION OPENS A CONVERSATION FIRST AND IS ASKED THERE. It used to
+// be an answer echoed to home's line, and the answer — the pages, printed —
+// went into the conversation behind home, where the person who typed it could
+// see nothing happen at all (the owner met it, 2026-09-22).
+func TestManualOnHomeOpensAConversationAndAsksThere(t *testing.T) {
+	lab := newHomeLab(t)
+	a := lab.door("")
+	goHome(t, a)
+	if got := homeFate("manual", "how do I change the effort level"); got != fateNeedsChat {
+		t.Fatalf("the drop-up says /manual %q on home", got)
+	}
+	typeLine(t, a, "/manual how do I change the effort level")
+	if a.at(pageHome) {
+		t.Fatal("the question did not open a conversation")
+	}
+	var fake *fakeAgent
+	switch agent := a.agent.(type) {
+	case *switchAgent:
+		fake = agent.fakeAgent
+	case *fakeAgent:
+		fake = agent
+	default:
+		t.Fatalf("the conversation that opened runs on a %T", a.agent)
+	}
+	if len(fake.sent) == 0 || fake.sent[len(fake.sent)-1] != manualQuestionLead+"how do I change the effort level" {
+		t.Fatalf("the new conversation was handed %q", fake.sent)
+	}
+	said := ""
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		if a.entries[i].kind == entryUser {
+			said = a.entries[i].text
+			break
 		}
 	}
-}
-
-// A NAME IS AN EXACT REQUEST. A near miss is refused rather than answered with
-// something else, and the refusal leaves the person able to act.
-func TestManualCommandRefusesAPageThatDoesNotExist(t *testing.T) {
-	a, _ := sheetApp(t)
-	note := manualNote(t, a, "/manual no-such-page")
-	if !strings.Contains(note, "there is no manual page named no-such-page") {
-		t.Errorf("the refusal does not name what was asked for: %q", note)
-	}
-	for _, page := range manual.Chat().Pages() {
-		if !strings.Contains(note, page) {
-			t.Errorf("the refusal does not name the page %q that does exist", page)
-		}
+	if said != "/manual how do I change the effort level" {
+		t.Fatalf("the transcript says %q, not what was typed on home", said)
 	}
 }
 

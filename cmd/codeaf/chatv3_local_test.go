@@ -176,7 +176,7 @@ func TestAPlainLaunchKeepsThisMachinesDoorsWhileAHostLaunchDoesNot(t *testing.T)
 
 	if local.Connections == nil || local.Harnesses == nil || local.SaveApproval == nil ||
 		local.SaveBashApproval == nil || local.SaveModel == nil || local.Sources.Empty() ||
-		local.ApplyModelSources == nil || local.ConnectCodex == nil {
+		local.ApplyModelSources == nil || local.ConnectCodex == nil || local.ReadCredits == nil {
 		t.Fatalf("the plain launch was handed incomplete local doors: %+v", local)
 	}
 	if local.ApplyApprovals != nil {
@@ -229,7 +229,7 @@ func TestAPlainLaunchKeepsThisMachinesDoorsWhileAHostLaunchDoesNot(t *testing.T)
 	hosted, _ := hostOptions(onePipeFleet("devbox", client), welcome, false)
 	if hosted.Connections != nil || hosted.Harnesses != nil || hosted.SaveApproval != nil ||
 		hosted.SaveBashApproval != nil || hosted.SaveModel != nil || !hosted.Sources.Empty() ||
-		hosted.ApplyModelSources != nil || hosted.ConnectCodex != nil {
+		hosted.ApplyModelSources != nil || hosted.ConnectCodex != nil || hosted.ReadCredits != nil || hosted.ImplicitTalk {
 		t.Fatalf("the --host builder grew this machine's doors: %+v", hosted)
 	}
 }

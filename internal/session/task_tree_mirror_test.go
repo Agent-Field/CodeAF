@@ -127,7 +127,7 @@ func TestPartsOfAFolderFamilyWorkApartAndLandInTheFamilyTree(t *testing.T) {
 		tree taskTree
 		file string
 	}{{first, "one.md"}, {second, "two.md"}} {
-		merge, detail, _, _ := part.tree.comeHome("the section", []string{part.file}, false)
+		merge, detail, _, _ := part.tree.comeHome("the section", []string{part.file}, gitSignature{})
 		if merge != mergeMerged {
 			t.Fatalf("%s came home as %q (%s), want it merged into the family tree", part.file, merge, detail)
 		}

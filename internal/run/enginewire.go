@@ -12,6 +12,7 @@ package run
 import (
 	"context"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -40,11 +41,18 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 		// them itself (the enginewire spec's WorkModel and PlanModel), so the
 		// factory seats the work and plan roles on the door's answer rather than
 		// asking the profile again for a row the door already moved.
+		//
+		// AND THE CHECK SEAT CLIMBS THE SAME LADDER `codeaf do` CLIMBS, minus
+		// the flag no chat has ([chatCheckSeat]), so CODEAF_CHECK_MODEL reaches
+		// a `/task` run the way the manual says it reaches a headless one.
 		Factory: CrewFactory(spec.Store, spec.Workspace, spec.ProfileDir, Seats{
-			Work: spec.WorkModel,
-			Plan: spec.PlanModel,
+			Work:  spec.WorkModel,
+			Plan:  spec.PlanModel,
+			Check: chatCheckSeat(),
 		}, spec.CompleterFor),
 		OnSpend: spec.OnSpend,
+		Gate:    spec.Admission,
+		OnHold:  spec.OnHold,
 	})
 	return session.RunSummary{
 		Outcome: string(outcome),
@@ -63,6 +71,20 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 		Steps: summary.Steps,
 		USD:   summary.USD,
 	}
+}
+
+// chatCheckSeat is the check seat a chat's run rides: the check seat's own
+// ladder ([config.CheckSeat]) with no flag, because a conversation has none,
+// and with no pinned plan seat, because a conversation's plan seat is its own
+// mastermind row rather than a pin — so CODEAF_CHECK_MODEL, and empty
+// otherwise, which the crew factory fills from the profile's careful row.
+//
+// ONE LADDER, TWO DOORS. `codeaf do` resolves the same seat through the same
+// function with its `--check-model` flag in front, so the environment rung the
+// manual documents is one rung and not a promise one door kept and the other
+// did not.
+func chatCheckSeat() string {
+	return config.CheckSeat("", config.Seat{}).Model
 }
 
 // runLimitOf is the seam's one mapping of the limit fact: the run's words and

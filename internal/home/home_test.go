@@ -264,3 +264,51 @@ func TestContainsComparesPathElementsAndNotPrefixes(t *testing.T) {
 		t.Error("an empty root claimed a file")
 	}
 }
+
+// H10: the login home follows the override, follows a pinned HOME, and a test
+// binary that named neither is handed the quarantine rather than the home of
+// whoever ran it — the gate Dir() already applies, aimed at the container the
+// inherited state root lives in, so a foreign-skill scan can never read a real
+// person's dot-folders out of a throwaway store.
+func TestH10LoginHomeFollowsOverrideAndQuarantinesTheInherited(t *testing.T) {
+	originalHome := os.Getenv("HOME")
+
+	named := t.TempDir()
+	t.Setenv(EnvVar, named)
+	got, err := Login()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != named {
+		t.Fatalf("Login with the override = %q, want %q", got, named)
+	}
+
+	login := t.TempDir()
+	t.Setenv("HOME", login)
+	if err := os.Unsetenv(EnvVar); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Unsetenv(env.Legacy(EnvVar)); err != nil {
+		t.Fatal(err)
+	}
+	if got, err = Login(); err != nil || got != login {
+		t.Fatalf("Login with a pinned HOME = %q err = %v, want %q", got, err, login)
+	}
+
+	// With nothing named, the inherited root was resolved at process start
+	// from the login home this process started with, so putting that home
+	// back and asking again has to hit the containment gate: the scan must
+	// not read the dot-folders of whoever ran the test.
+	if originalHome == "" {
+		t.Skip("no HOME was set for this process, so there is no inherited home to quarantine")
+	}
+	if err := os.Setenv("HOME", originalHome); err != nil {
+		t.Fatal(err)
+	}
+	if got, err = Login(); err != nil {
+		t.Fatal(err)
+	}
+	if got != quarantine {
+		t.Fatalf("Login with nothing named = %q, want the quarantine %q", got, quarantine)
+	}
+}

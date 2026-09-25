@@ -68,6 +68,9 @@ func (a *app) reopenTabKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if a.railHold {
 		a.railTake(false)
 	}
+	// The chord was reached for, whether or not there was a tab to bring back
+	// (notice.go).
+	a.noticeEvent(eventTabReopened)
 	return a.reopenClosedTab(), true
 }
 

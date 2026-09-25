@@ -1,91 +1,53 @@
 package tui3
 
-// /manual — WHAT codeaf KNOWS ABOUT ITSELF, READ RATHER THAN RETOLD.
+// /manual — A QUESTION ABOUT codeaf, PUT TO THE MODEL WITH THE MANUAL OPEN.
 //
-// The manual (internal/manual's chat pages) had exactly one reader for its whole
-// life and it was not the person: the only door onto it was the belt's `manual`
-// tool, which is a model call. That means a key, a bill on every lookup, and —
-// the part that actually costs something — a PARAPHRASE. What came back was the
-// model's retelling of a page, and a retelling is indistinguishable from an
-// invention right up until somebody acts on it, which is the exact failure the
-// pages were written to prevent.
+// The manual (internal/manual's chat pages) is what the model reads to answer
+// anything about codeaf itself — the belt's `manual` tool, which the system
+// prompt sends every such question to. This command is the person's door onto
+// that same reading: the words after `/manual` go to the model as a turn, told
+// to answer out of the manual and to say which page the answer came from, and
+// the answer lands in the conversation the way every other answer does.
 //
-// So this command hands over the writing itself. It reaches the same corpus the
-// tool reaches and prints it AS WRITTEN, with the page and heading over every
-// piece, so what is on the screen can be traced back to the page that authorized
-// it. It makes no model call and spends nothing: the pages are inside the binary
-// and reading them is a lookup, not a turn.
+// IT USED TO PRINT THE PAGES AS WRITTEN, with no model call, on the argument
+// that a retelling is indistinguishable from an invention until somebody acts
+// on it. That door was replaced on 2026-09-22: a person who typed `/manual how
+// do I change the effort level` on home saw nothing at all, because the printed
+// note landed in the conversation BEHIND home, and what they expected was the
+// chosen model's answer in a conversation. The as-written reading lives on
+// where it is most wanted — the command line's `codeaf manual` (cmd/codeaf's
+// manual.go), for the questions people ask before there is a key to open a
+// conversation with.
 //
-// THE COMMAND LINE HAS THE SAME DOOR (cmd/codeaf's manual.go) and it is not a
-// duplicate of this one — it is the door for the questions people ask BEFORE
-// there is a key to open a conversation with.
+// ON HOME THE COMMAND OPENS A CONVERSATION FIRST (homeslash.go's
+// [fateNeedsChat]): the folder and the model on the rule above the box, home
+// closing behind you, and the question sent there. In a conversation it is a
+// turn of that conversation.
 
 import (
 	"strings"
 
-	"github.com/Agent-Field/codeaf/internal/manual"
+	tea "charm.land/bubbletea/v2"
 )
 
-// manualChatSections is how many sections a question typed here is answered
-// from. It is the number the belt tool hands a model ([manual.DefaultResults])
-// doubled, for the reason the terminal door uses a bigger one: that four is a
-// context budget, and a person reading their own manual is not on one.
-const manualChatSections = 2 * manual.DefaultResults
+// The two sentences the model is handed. The person's own line in the
+// transcript is what they typed — `/manual` or `/manual <question>` — and these
+// are the words behind it ([app.submitShown] keeps the two apart). Both name
+// the tool so the answer is read out of the pages rather than remembered from
+// somewhere else, and both ask for the page, so the person can go on to read it.
+const (
+	// manualTourAsk is a bare /manual: what codeaf can do, from its own account.
+	manualTourAsk = "What can codeaf do? Answer from codeaf's own manual — the manual tool — and name the pages worth reading first."
+	// manualQuestionLead is put in front of a question typed after the word.
+	manualQuestionLead = "Answer from codeaf's own manual — the manual tool — and say which page it came from: "
+)
 
-// runManualCommand is /manual: the pages there are, one page, or the sections
-// that answer a question.
-//
-// ONE WORD IS A NAME AND MORE THAN ONE IS A QUESTION. A name is an exact request
-// and gets an exact answer or an exact refusal — never a near miss shown as
-// though it had been asked for, which would read as though the page existed —
-// and the refusal prints the pages that do exist, because somebody one letter
-// away from the name they wanted should not have to guess at it twice.
-// THE LISTING IS A BLOCK AND NOT PROSE, and that is the whole of row 7 of the
-// polish audit. [manual.Corpus.Listing] builds one line per page — the name a
-// person types, then the title the page gives itself — and an ordinary note
-// RE-FLOWS its text to the frame ([app.note], render.go's [wrap]). So a title
-// longer than the room left after the name column wrapped, and its last word
-// landed on the next line flush at the column the page NAMES are in: the first
-// list of pages anybody ever sees had a page called `later` on it, and typing
-// `/manual later` then answered "there is no manual page named later". A
-// listing that shows a page that does not exist is worse than one that shows
-// fewer pages.
-//
-// [app.noteBlock] is the door for exactly this shape — a note whose LINE
-// STRUCTURE IS ITS MEANING — and it cuts a line too wide rather than re-flowing
-// it, so a long title now ends in an ellipsis on its own row and the name
-// column is the only thing at the margin.
-func (a *app) runManualCommand(rest string) {
+// runManualCommand is /manual: the question, or the tour, sent to the model as
+// a turn of this conversation.
+func (a *app) runManualCommand(rest string) tea.Cmd {
 	asked := strings.TrimSpace(rest)
-	switch {
-	case asked == "":
-		a.noteBlock(manual.Chat().Listing())
-	case strings.ContainsAny(asked, " \t"):
-		a.runManualQuestion(asked)
-	default:
-		text, found := manual.Chat().Page(asked)
-		if !found {
-			a.noteBlock("there is no manual page named " + asked + "\n\n" + manual.Chat().Listing())
-			return
-		}
-		a.note(text)
+	if asked == "" {
+		return a.submitShown(manualTourAsk, "/manual")
 	}
-}
-
-// runManualQuestion answers in the person's own words, out of every page at
-// once, so nobody has to know which page a thing is written on before they can
-// ask about it.
-func (a *app) runManualQuestion(question string) {
-	sections := manual.Chat().Search(question, manualChatSections)
-	if len(sections) == 0 {
-		// NOT A REFUSAL. The manual having nothing on a topic is a fact about
-		// codeaf worth saying — it usually means the answer is "no, it does not
-		// do that" — and the pages go under it so the next question is one
-		// keystroke away rather than a guess.
-		// AND THE LISTING UNDER IT IS A BLOCK for [app.runManualCommand]'s reason
-		// exactly: one page per line, cut rather than re-flowed.
-		a.noteBlock("the manual has nothing on that, which usually means codeaf does not do it\n\n" + manual.Chat().Listing())
-		return
-	}
-	a.note(manual.RenderWhole(sections))
+	return a.submitShown(manualQuestionLead+asked, "/manual "+asked)
 }

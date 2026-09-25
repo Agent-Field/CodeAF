@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -20,6 +22,15 @@ import (
 
 // MaxFactBytes bounds one fact. A fact is one standalone line, not a report.
 const MaxFactBytes = 512
+
+// SkillShelfLimit is the one bound every shelf reader uses. It was a hundred
+// when the shelf was a curated few the distiller promoted; the shelf now also
+// holds every skill a person installed for another harness, read in place,
+// and a person with more than a hundred of those would have had the oldest
+// cut off every reader by the newest-first read. Every reader bounds what it
+// DRAWS separately (the catalog by bytes, the message's own skills by count,
+// `use_skill` by the list it prints), so this bounds only the read.
+const SkillShelfLimit = 400
 
 // FactKind classifies what a notebook entry teaches.
 // AgeLabel renders how old a fact is, for retrieval surfaces: every reader
@@ -236,6 +247,15 @@ func ChannelForWriter(writer FactWriter) FactChannel {
 	}
 }
 
+// CostCardT is the token budget a skill carries: zero until measured.
+// ReadTokens cover reading the skill's body; RunTokens cover executing
+// the check and run; DelegateTokens cover handing a sub-task to the skill.
+type CostCardT struct {
+	RunTokens      int64 `json:"run,omitempty"`
+	ReadTokens     int64 `json:"read,omitempty"`
+	DelegateTokens int64 `json:"delegate,omitempty"`
+}
+
 // Fact is one materialized notebook entry.
 type Fact struct {
 	Seq          int64
@@ -269,6 +289,16 @@ type Fact struct {
 	LastUsed time.Time
 	// Confidence is the current shrunk survival rate for Kind x Channel.
 	Confidence float64
+
+	// Trust is the provenance tier for skill facts: "authored" (default),
+	// "imported-provisional", or "forged". Empty is stored and read back as
+	// "authored" by SkillFactAccessors.
+	Trust string
+	// CostCard is the measured token budget for read/run/delegate operations.
+	CostCard CostCardT
+	// Digest is the content-addressable digest of the payload directory,
+	// computed at install time from all files' contents.
+	Digest string
 }
 
 const factsSchema = `
@@ -288,7 +318,10 @@ CREATE TABLE IF NOT EXISTS facts (
     evidence_seq INTEGER NOT NULL DEFAULT 0,
     status_origin TEXT NOT NULL DEFAULT '',
     uses      INTEGER NOT NULL DEFAULT 0,
-    last_used TEXT NOT NULL DEFAULT ''
+    last_used TEXT NOT NULL DEFAULT '',
+    trust     TEXT NOT NULL DEFAULT '',
+    cost_card TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(cost_card)),
+    digest    TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS facts_scope ON facts (scope, status);
 -- Territory scoping asks for active facts by node, which the scope-leading
@@ -341,11 +374,15 @@ type factPayload struct {
 	Unsettled *UnsettledPair `json:"unsettled,omitempty"`
 	Status    string         `json:"status,omitempty"`
 	Artifact  string         `json:"artifact,omitempty"`
+	Trust     string         `json:"trust,omitempty"`
+	CostCard  string         `json:"cost_card,omitempty"`
+	Digest    string         `json:"digest,omitempty"`
 }
 
 type factActivatedPayload struct {
 	FactSeq  int64  `json:"fact_seq"`
 	Artifact string `json:"artifact"`
+	Digest   string `json:"digest,omitempty"`
 }
 
 type factSupersededPayload struct {
@@ -467,7 +504,7 @@ func (s *Store) RecordFactFrom(writer FactWriter, nodeID, scope string, kind Fac
 	if kind == FactTrait {
 		return Fact{}, fmt.Errorf("record fact: %w: traits require the measured trait lifecycle", ErrInvalid)
 	}
-	return s.recordFact(writer, nodeID, scope, kind, body, nil, 0, FactActive, "", true)
+	return s.recordFact(writer, nodeID, scope, kind, body, nil, 0, FactActive, "", "", true)
 }
 
 // RecordUnsettledFact appends one structured competing pair. Its Body is
@@ -481,7 +518,7 @@ func (s *Store) RecordUnsettledFactFrom(writer FactWriter, nodeID, scope string,
 	if err := pair.Validate(); err != nil {
 		return Fact{}, fmt.Errorf("record unsettled fact: %w: %v", ErrInvalid, err)
 	}
-	return s.recordFact(writer, nodeID, scope, FactUnsettled, FormatUnsettledPair(pair), &pair, 0, FactActive, "", true)
+	return s.recordFact(writer, nodeID, scope, FactUnsettled, FormatUnsettledPair(pair), &pair, 0, FactActive, "", "", true)
 }
 
 // ReplaceFact records a new ordinary fact and supersedes factSeq in the same
@@ -507,7 +544,7 @@ func (s *Store) ReplaceFactFrom(writer FactWriter, factSeq int64, nodeID, scope 
 	if kind == FactTrait {
 		return Fact{}, fmt.Errorf("replace fact: %w: traits require the measured trait lifecycle", ErrInvalid)
 	}
-	return s.recordFact(writer, nodeID, scope, kind, body, nil, factSeq, FactActive, "", true)
+	return s.recordFact(writer, nodeID, scope, kind, body, nil, factSeq, FactActive, "", "", true)
 }
 
 // ReplaceUnsettledFactFrom carries a pair forward on writer's channel.
@@ -518,23 +555,27 @@ func (s *Store) ReplaceUnsettledFactFrom(writer FactWriter, factSeq int64, nodeI
 	if err := pair.Validate(); err != nil {
 		return Fact{}, fmt.Errorf("replace unsettled fact: %w: %v", ErrInvalid, err)
 	}
-	return s.recordFact(writer, nodeID, scope, FactUnsettled, FormatUnsettledPair(pair), &pair, factSeq, FactActive, "", true)
+	return s.recordFact(writer, nodeID, scope, FactUnsettled, FormatUnsettledPair(pair), &pair, factSeq, FactActive, "", "", true)
 }
 
 // RecordSkillCandidate journals a procedure the distiller found in one job.
 // It is intentionally absent from retrieval until a later execution event
-// activates it.
-func (s *Store) RecordSkillCandidate(nodeID, scope, body, artifact string) (Fact, error) {
-	return s.RecordSkillCandidateFrom(FactWriterOther, nodeID, scope, body, artifact)
+// activates it. Trust defaults to "authored" when empty.
+func (s *Store) RecordSkillCandidate(nodeID, scope, body, artifact string, trust ...string) (Fact, error) {
+	return s.RecordSkillCandidateFrom(FactWriterOther, nodeID, scope, body, artifact, trust...)
 }
 
 // RecordSkillCandidateFrom records a candidate on writer's channel.
-func (s *Store) RecordSkillCandidateFrom(writer FactWriter, nodeID, scope, body, artifact string) (Fact, error) {
+func (s *Store) RecordSkillCandidateFrom(writer FactWriter, nodeID, scope, body, artifact string, trust ...string) (Fact, error) {
 	artifact = strings.TrimSpace(artifact)
 	if artifact == "" {
 		return Fact{}, fmt.Errorf("record skill candidate: %w: empty artifact", ErrInvalid)
 	}
-	return s.recordFact(writer, nodeID, scope, FactSkill, body, nil, 0, FactCandidate, artifact, false)
+	trustVal := ""
+	if len(trust) > 0 {
+		trustVal = trust[0]
+	}
+	return s.recordFact(writer, nodeID, scope, FactSkill, body, nil, 0, FactCandidate, artifact, trustVal, false)
 }
 
 // RewriteActiveSkillFrom rewrites an active skill on writer's channel.
@@ -547,10 +588,10 @@ func (s *Store) RewriteActiveSkillFrom(writer FactWriter, nodeID, scope, body st
 	if len(sources) != 1 || strings.TrimSpace(sources[0].Artifact) == "" {
 		return Fact{}, fmt.Errorf("rewrite active skill: %w: source %d is not active", ErrInvalid, sourceSeq)
 	}
-	return s.recordFact(writer, nodeID, scope, FactSkill, body, nil, 0, FactActive, sources[0].Artifact, true)
+	return s.recordFact(writer, nodeID, scope, FactSkill, body, nil, 0, FactActive, sources[0].Artifact, sources[0].Trust, true)
 }
 
-func (s *Store) recordFact(writer FactWriter, nodeID, scope string, kind FactKind, body string, unsettled *UnsettledPair, replaces int64, status, artifact string, deduplicate bool) (Fact, error) {
+func (s *Store) recordFact(writer FactWriter, nodeID, scope string, kind FactKind, body string, unsettled *UnsettledPair, replaces int64, status, artifact, trust string, deduplicate bool) (Fact, error) {
 	body = strings.TrimSpace(body)
 	if body == "" {
 		return Fact{}, fmt.Errorf("record fact: %w: empty fact", ErrInvalid)
@@ -642,7 +683,7 @@ func (s *Store) recordFact(writer FactWriter, nodeID, scope string, kind FactKin
 
 	channel := ChannelForWriter(writer)
 	payload := factPayload{NodeID: nodeID, Scope: scope, Kind: kind, Channel: channel, Body: body,
-		Unsettled: unsettled, Status: status, Artifact: artifact}
+		Unsettled: unsettled, Status: status, Artifact: artifact, Trust: trust, CostCard: "{}"}
 	seq, at, err := appendEvent(tx, nodeID, EventFactLearned, payload)
 	if err != nil {
 		return Fact{}, fmt.Errorf("record fact: %w", err)
@@ -671,12 +712,14 @@ func (s *Store) recordFact(writer FactWriter, nodeID, scope string, kind FactKin
 		return Fact{}, fmt.Errorf("record fact: %w", err)
 	}
 	return Fact{Seq: seq, Time: at, NodeID: nodeID, Scope: scope, Kind: kind, Channel: channel, Body: body,
-		Status: status, StatusSeq: seq, Unsettled: unsettled, Artifact: artifact}, nil
+		Status: status, StatusSeq: seq, Unsettled: unsettled, Artifact: artifact, Trust: trust}, nil
 }
 
 // ActivateSkill journals the only transition that makes a candidate
 // retrievable. The caller has already copied and executed the artifact check.
-func (s *Store) ActivateSkill(factSeq int64, artifact string) error {
+// Digest is the content digest of the payload directory, computed at install
+// time by installSkillTrial.
+func (s *Store) ActivateSkill(factSeq int64, artifact, digest string) error {
 	artifact = strings.TrimSpace(artifact)
 	if artifact == "" {
 		return fmt.Errorf("activate skill: %w: empty artifact", ErrInvalid)
@@ -687,7 +730,7 @@ func (s *Store) ActivateSkill(factSeq int64, artifact string) error {
 	}
 	defer tx.Rollback()
 
-	payload := factActivatedPayload{FactSeq: factSeq, Artifact: artifact}
+	payload := factActivatedPayload{FactSeq: factSeq, Artifact: artifact, Digest: digest}
 	if _, _, err := appendEvent(tx, "", EventFactActivated, payload); err != nil {
 		return fmt.Errorf("activate skill: %w", err)
 	}
@@ -725,6 +768,48 @@ func (s *Store) SupersedeFactWithReason(factSeq, bySeq int64, reason string) err
 	return tx.Commit()
 }
 
+// SkillName is the shelf name of a skill fact — the one spelling every reader
+// of the shelf matches on. It is the directory the artifact points at, or the
+// scope when the fact predates installation. use_skill answers names spelled
+// this way (tools_skill.go's get), so a reader matching anything else answers
+// a name the worker was never shown.
+func (f Fact) SkillName() string {
+	if artifact := strings.TrimSpace(f.Artifact); artifact != "" {
+		if base := filepath.Base(artifact); base != "." && base != "/" {
+			return base
+		}
+	}
+	return strings.TrimSpace(f.Scope)
+}
+
+// SkillBodyFile reports the readable body of one skill's artifact: its
+// top-level SKILL.md, present when the skill arrived from Claude Code, Codex
+// or any other agentskills.io harness rather than the forge. There is nothing
+// to run in such a folder — the content is the markdown — so the doors that
+// hand a worker a path hand out this FILE where the forge's own skills hand
+// out the directory holding the executable.
+//
+// The convention keys on the folder and never on the fact's trust tier, so
+// it cannot drift from how the skill was recorded. ok is false for every
+// other artifact: the forge's executable skill directories, a path that does
+// not resolve, an artifact that is itself a plain file, an empty one. A
+// false answer leaves the caller rendering the artifact exactly as it
+// always has, which is the compatibility law this sits under. SKILL.md must
+// be a REGULAR file — a directory of that name is not a body, and neither
+// is a dangling symlink.
+func SkillBodyFile(artifact string) (string, bool) {
+	dir := strings.TrimSpace(artifact)
+	if dir == "" {
+		return "", false
+	}
+	body := filepath.Join(dir, "SKILL.md")
+	info, err := os.Stat(body)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", false
+	}
+	return body, true
+}
+
 // SkillFacts lists skills in one status, newest first. Empty status includes
 // candidates, active skills, and retired entries for reconciliation.
 func (s *Store) SkillFacts(status string, limit int) ([]Fact, error) {
@@ -738,6 +823,34 @@ func (s *Store) SkillFacts(status string, limit int) ([]Fact, error) {
 		return nil, fmt.Errorf("query skills: %w: invalid status %q", ErrInvalid, status)
 	}
 	return s.factsWhere(`kind = ? AND status = ? ORDER BY seq DESC LIMIT ?`, FactSkill, status, limit)
+}
+
+// SkillFactAccessors returns the three accessor projections for one skill:
+// shelf path, the skill doc, and the content digest. It records one use
+// through the existing Uses/LastUsed telemetry. Trust defaults to "authored"
+// when the stored value is empty.
+func (s *Store) SkillFactAccessors(seq int64) (artifact, doc, digest, trust string, err error) {
+	fact, found, err := s.FactBySeq(seq)
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("skill service: %w", err)
+	}
+	if !found || fact.Kind != FactSkill {
+		return "", "", "", "", fmt.Errorf("skill service: %w: no skill at seq %d", ErrNotFound, seq)
+	}
+	artifact = strings.TrimSpace(fact.Artifact)
+	doc = strings.TrimSpace(fact.Body)
+	digest = strings.TrimSpace(fact.Digest)
+	trust = strings.TrimSpace(fact.Trust)
+	if trust == "" {
+		trust = "authored"
+	}
+	// Record consumption through existing telemetry.
+	now := formatTime(time.Now())
+	if tx, txErr := s.beginWrite(); txErr == nil {
+		_, _ = tx.Exec(`UPDATE facts SET uses = uses + 1, last_used = ? WHERE seq = ?`, now, seq)
+		_ = tx.Commit()
+	}
+	return artifact, doc, digest, trust, nil
 }
 
 // RecordFactInjection attributes one bounded notebook batch to the node whose
@@ -1026,7 +1139,7 @@ func (s *Store) RecordTasteCandidate(nodeID, subject, body string) (Fact, error)
 	if len(existing) > 0 {
 		return Fact{}, fmt.Errorf("record taste candidate: %w: shelf %q is already open", ErrInvalid, scope)
 	}
-	return s.recordFact(FactWriterDistiller, nodeID, scope, FactPreference, body, nil, 0, FactCandidate, "", false)
+	return s.recordFact(FactWriterDistiller, nodeID, scope, FactPreference, body, nil, 0, FactCandidate, "", "", false)
 }
 
 // PromoteTasteRule stands one candidate up as a rule the gate is held to.
@@ -1059,7 +1172,7 @@ func (s *Store) restandTasteRule(seq int64, status string) (Fact, error) {
 		return Fact{}, fmt.Errorf("restand taste rule: %w: rule %d is %s", ErrInvalid, seq, rule.Status)
 	}
 	return s.recordFact(FactWriterDistiller, rule.NodeID, rule.Scope, FactPreference, rule.Body,
-		nil, seq, status, "", false)
+		nil, seq, status, "", "", false)
 }
 
 // NeighbouringCorrections ranks the corrections already in the notebook
@@ -1336,7 +1449,7 @@ func (s *Store) searchFacts(query FactQuery, countUses bool) ([]Fact, error) {
 		args = append(args, candidateDraw)
 		rows, err := s.db.Query(`
 			SELECT f.seq, f.ts, f.node_id, f.scope, f.kind, f.channel, f.body, f.unsettled, f.status, f.artifact, f.status_note,
-			       f.status_seq, f.evidence_seq, f.status_origin, f.uses, f.last_used
+			       f.status_seq, f.evidence_seq, f.status_origin, f.uses, f.last_used, f.trust, f.cost_card, f.digest
 			FROM facts_fts
 			JOIN facts AS f ON f.seq = facts_fts.rowid
 			WHERE facts_fts MATCH ? AND f.status = ?`+kindClause+`
@@ -1554,7 +1667,7 @@ func (s *Store) Fact(seq int64) (Fact, bool, error) {
 func factInTx(tx *sql.Tx, seq int64) (Fact, bool, error) {
 	rows, err := tx.Query(`
 		SELECT seq, ts, node_id, scope, kind, channel, body, unsettled, status, artifact, status_note,
-		       status_seq, evidence_seq, status_origin, uses, last_used
+		       status_seq, evidence_seq, status_origin, uses, last_used, trust, cost_card, digest
 		FROM facts WHERE seq = ?`, seq)
 	if err != nil {
 		return Fact{}, false, fmt.Errorf("query fact: %w", err)
@@ -1569,7 +1682,7 @@ func factInTx(tx *sql.Tx, seq int64) (Fact, bool, error) {
 func (s *Store) factsWhere(where string, args ...any) ([]Fact, error) {
 	rows, err := s.db.Query(`
 		SELECT seq, ts, node_id, scope, kind, channel, body, unsettled, status, artifact, status_note,
-		       status_seq, evidence_seq, status_origin, uses, last_used
+		       status_seq, evidence_seq, status_origin, uses, last_used, trust, cost_card, digest
 		FROM facts WHERE `+where, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query facts: %w", err)
@@ -1586,10 +1699,11 @@ func scanFacts(rows *sql.Rows) ([]Fact, error) {
 	facts := make([]Fact, 0)
 	for rows.Next() {
 		var fact Fact
-		var timestamp, unsettled, lastUsed string
+		var timestamp, unsettled, lastUsed, costCardStr string
 		if err := rows.Scan(&fact.Seq, &timestamp, &fact.NodeID, &fact.Scope, &fact.Kind, &fact.Channel,
 			&fact.Body, &unsettled, &fact.Status, &fact.Artifact, &fact.StatusNote,
-			&fact.StatusSeq, &fact.EvidenceSeq, &fact.StatusOrigin, &fact.Uses, &lastUsed); err != nil {
+			&fact.StatusSeq, &fact.EvidenceSeq, &fact.StatusOrigin, &fact.Uses, &lastUsed,
+			&fact.Trust, &costCardStr, &fact.Digest); err != nil {
 			return nil, fmt.Errorf("scan fact: %w", err)
 		}
 		at, err := parseTime(timestamp)
@@ -1605,6 +1719,11 @@ func scanFacts(rows *sql.Rows) ([]Fact, error) {
 		if lastUsed != "" {
 			if used, err := parseTime(lastUsed); err == nil {
 				fact.LastUsed = used
+			}
+		}
+		if costCardStr != "" && costCardStr != "{}" {
+			if err := json.Unmarshal([]byte(costCardStr), &fact.CostCard); err != nil {
+				return nil, fmt.Errorf("decode cost card fact %d: %w", fact.Seq, err)
 			}
 		}
 		facts = append(facts, fact)
@@ -1659,9 +1778,10 @@ func applyFactView(tx *sql.Tx, payload factPayload, seq int64, at time.Time) err
 		channel = FactChannelInferred
 	}
 	if _, err := tx.Exec(`
-		INSERT INTO facts (seq, ts, node_id, scope, kind, channel, body, unsettled, status, artifact, status_seq)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		seq, formatTime(at), payload.NodeID, scope, kind, channel, payload.Body, string(encoded), status, payload.Artifact, seq); err != nil {
+		INSERT INTO facts (seq, ts, node_id, scope, kind, channel, body, unsettled, status, artifact, status_seq, trust, cost_card, digest)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		seq, formatTime(at), payload.NodeID, scope, kind, channel, payload.Body, string(encoded), status, payload.Artifact, seq,
+		payload.Trust, defaultCostCard(payload.CostCard), payload.Digest); err != nil {
 		return err
 	}
 	if status != FactActive {
@@ -1689,9 +1809,10 @@ func requireUnsettledEvidence(tx *sql.Tx, pair UnsettledPair) error {
 
 func applyFactActivation(tx *sql.Tx, payload factActivatedPayload) error {
 	result, err := tx.Exec(`
-		UPDATE facts SET status = ?, artifact = ?, status_note = ''
+		UPDATE facts SET status = ?, artifact = ?, status_note = '', digest = ?
 		WHERE seq = ? AND kind = ? AND status = ?`,
-		FactActive, payload.Artifact, payload.FactSeq, FactSkill, FactCandidate)
+		FactActive, payload.Artifact, payload.Digest,
+		payload.FactSeq, FactSkill, FactCandidate)
 	if err != nil {
 		return err
 	}
@@ -2001,6 +2122,14 @@ func defaultFactStatus(kind FactKind) string {
 	return FactActive
 }
 
+// defaultCostCard ensures cost_card is valid JSON for CHECK constraints.
+func defaultCostCard(card string) string {
+	if card == "" || card == "null" {
+		return "{}"
+	}
+	return card
+}
+
 func validFactChangeOrigin(origin FactChangeOrigin) bool {
 	switch origin {
 	case FactOriginUser, FactOriginCLI, FactOriginConsolidator, FactOriginSupersession:
@@ -2020,6 +2149,7 @@ func migrateFactsSchema(db *sql.DB) error {
 	}
 	hasScope, hasUnsettled, hasArtifact, hasStatusNote, hasChannel := false, false, false, false, false
 	hasStatusSeq, hasEvidenceSeq, hasStatusOrigin := false, false, false
+	hasTrust, hasCostCard, hasDigest := false, false, false
 	for rows.Next() {
 		var cid int
 		var name, kind string
@@ -2046,6 +2176,12 @@ func migrateFactsSchema(db *sql.DB) error {
 			hasStatusOrigin = true
 		case "channel":
 			hasChannel = true
+		case "trust":
+			hasTrust = true
+		case "cost_card":
+			hasCostCard = true
+		case "digest":
+			hasDigest = true
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -2059,6 +2195,7 @@ func migrateFactsSchema(db *sql.DB) error {
 	}
 	if hasScope && hasUnsettled && hasArtifact && hasStatusNote &&
 		hasStatusSeq && hasEvidenceSeq && hasStatusOrigin && hasChannel &&
+		hasTrust && hasCostCard && hasDigest &&
 		strings.Contains(createSQL, "'unsettled'") &&
 		strings.Contains(createSQL, "'skill'") && strings.Contains(createSQL, "'playbook'") &&
 		strings.Contains(createSQL, "'question'") && strings.Contains(createSQL, "'trait'") && strings.Contains(createSQL, "'practicing'") &&

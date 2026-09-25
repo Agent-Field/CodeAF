@@ -2,12 +2,16 @@ package plan
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 type contractCaptureClient struct {
@@ -404,5 +408,300 @@ func TestTheMethodWriterMayNotEscalateAConfirmationIntoATranscript(t *testing.T)
 		if !strings.Contains(contractPrompt, required) {
 			t.Errorf("the contract prompt lost the no-escalation law: %q", required)
 		}
+	}
+}
+func TestComposeSkillsOrdersPinnedFirstThenCandidates(t *testing.T) {
+	pinned := []string{"imgshrink", "lint"}
+	candidates := []string{"test", "build", "imgshrink"}
+	got := ComposeSkills(pinned, candidates)
+	want := []string{"imgshrink", "lint", "test", "build"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ComposeSkills(%q, %q) = %q, want %q", pinned, candidates, got, want)
+	}
+}
+
+func TestComposeSkillsEmptyInputs(t *testing.T) {
+	if got := ComposeSkills(nil, nil); len(got) != 0 {
+		t.Fatalf("ComposeSkills(nil, nil) = %q, want empty", got)
+	}
+	if got := ComposeSkills([]string{}, nil); len(got) != 0 {
+		t.Fatalf("ComposeSkills([], nil) = %q, want empty", got)
+	}
+	if got := ComposeSkills(nil, []string{"a", "b"}); !reflect.DeepEqual(got, []string{"a", "b"}) {
+		t.Fatalf("ComposeSkills(nil, [a,b]) = %q, want [a b]", got)
+	}
+}
+
+func TestComposeSkillsDeduplicates(t *testing.T) {
+	pinned := []string{"a", "b"}
+	candidates := []string{"b", "c", "a"}
+	got := ComposeSkills(pinned, candidates)
+	want := []string{"a", "b", "c"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ComposeSkills(%q, %q) = %q, want %q", pinned, candidates, got, want)
+	}
+}
+
+func TestComposeSkillsSkipsEmptyNames(t *testing.T) {
+	pinned := []string{"a", "", "b"}
+	candidates := []string{"", "c"}
+	got := ComposeSkills(pinned, candidates)
+	want := []string{"a", "b", "c"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ComposeSkills(%q, %q) = %q, want %q", pinned, candidates, got, want)
+	}
+}
+
+// skillFact is a shelf fact as the store holds it: named by the directory on
+// the shelf, described by the one line the notebook recorded.
+func skillFact(artifact, scope, body string) store.Fact {
+	return store.Fact{Artifact: artifact, Scope: scope, Body: body}
+}
+
+func TestPinnedSkillsMatchesShelfNamesInTheText(t *testing.T) {
+	skills := []store.Fact{
+		{Artifact: "/home/.codeaf/skills/imgshrink", Body: "optimize images without losing quality"},
+		{Artifact: "/home/.codeaf/skills/lint", Body: "run linters"},
+	}
+	got := PinnedSkills("shrink the report images with imgshrink", skills)
+	if want := []string{"imgshrink"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("PinnedSkills = %q, want %q", got, want)
+	}
+}
+
+func TestPinnedSkillsKeepsShelfOrder(t *testing.T) {
+	skills := []store.Fact{
+		{Artifact: "/skills/lint", Body: "run linters"},
+		{Artifact: "/skills/build", Body: "build the project"},
+	}
+	got := PinnedSkills("lint first, then build", skills)
+	if want := []string{"lint", "build"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("PinnedSkills = %q, want shelf order %q", got, want)
+	}
+}
+
+func TestPinnedSkillsMatchesNothingWhenNothingIsNamed(t *testing.T) {
+	skills := []store.Fact{
+		{Artifact: "/skills/imgshrink", Body: "optimize images without losing quality"},
+	}
+	if got := PinnedSkills("review the pull request and deliver REVIEW.md", skills); len(got) != 0 {
+		t.Fatalf("PinnedSkills = %q, want nothing attached", got)
+	}
+}
+
+func TestPinnedSkillsMatchesHyphenatedName(t *testing.T) {
+	skills := []store.Fact{
+		{Artifact: "/home/.codeaf/skills/repo-audit", Body: "audit repo structure and dependencies"},
+	}
+	got := PinnedSkills("use repo-audit on this repo", skills)
+	if want := []string{"repo-audit"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("PinnedSkills = %q, want %q", got, want)
+	}
+}
+
+func TestPinnedSkillsHyphenatedNoSpuriousSplit(t *testing.T) {
+	skills := []store.Fact{
+		{Artifact: "/home/.codeaf/skills/flaky-test", Body: "find flaky tests in the suite"},
+	}
+	// "flaky" and "test" both appear in the text, but not contiguously as
+	// "flaky-test" — the hyphenated name must NOT match.
+	got := PinnedSkills("the flaky integration test flaked again", skills)
+	if len(got) != 0 {
+		t.Fatalf("PinnedSkills = %q, want nothing (discontiguous tokens)", got)
+	}
+}
+
+func TestRetrieveSkillsScoresScopeAndSharedDocWords(t *testing.T) {
+	skills := []store.Fact{
+		{Artifact: "/skills/parser", Scope: "repo:/work/parser", Body: "validate and format parser fixtures"},
+		{Artifact: "/skills/lint", Scope: "tool:lint", Body: "gofmt vet and lint the tree"},
+	}
+	// The workspace names the parser repo, so the scoped skill scores high
+	// even where the instruction shares none of its doc words.
+	got := RetrieveSkills("tidy the fixtures in the parser repository", "/tmp/work/parser", skills)
+	if want := []string{"parser"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("RetrieveSkills = %q, want %q", got, want)
+	}
+}
+
+func TestRetrieveSkillsDoesNotFalselyMatchRepoScopePaths(t *testing.T) {
+	skills := []store.Fact{
+		{Artifact: "/skills/secret", Scope: "repo:/Users/bob/secret-backend", Body: "handle authentication tokens"},
+	}
+	// An unrelated workspace under /Users/alice should NOT match /Users/bob/secret-backend
+	// merely because both have "Users" in their path.
+	got := RetrieveSkills("run the test suite", "/Users/alice/frontend", skills)
+	if len(got) != 0 {
+		t.Fatalf("RetrieveSkills = %q, want no match for unrelated repo scope", got)
+	}
+}
+
+func TestRetrieveSkillsCuesOnTwoSharedDocWordsNotOne(t *testing.T) {
+	skills := []store.Fact{
+		{Artifact: "/skills/imgshrink", Body: "optimize images without losing quality"},
+		{Artifact: "/skills/lint", Body: "gofmt vet and lint the tree"},
+	}
+	// One shared word is coincidence — "and" and "the" share with every
+	// instruction there is — so a single-word overlap attaches nothing.
+	got := RetrieveSkills("review the change and deliver REVIEW.md", "", skills)
+	if len(got) != 0 {
+		t.Fatalf("RetrieveSkills = %q, want nothing from one shared word", got)
+	}
+	// Two shared doc words are a cue.
+	got = RetrieveSkills("optimize the images the report embeds", "", skills)
+	if want := []string{"imgshrink"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("RetrieveSkills = %q, want %q", got, want)
+	}
+}
+
+func TestRetrieveSkillsCapsCandidates(t *testing.T) {
+	skills := make([]store.Fact, 0, retrieveSkillCap+1)
+	for index := 0; index < retrieveSkillCap+1; index++ {
+		skills = append(skills, store.Fact{
+			Artifact: fmt.Sprintf("/skills/worker-%02d", index),
+			Body:     "polish the README prose and cover",
+		})
+	}
+	got := RetrieveSkills("rewrite the README prose and cover page", "", skills)
+	if len(got) != retrieveSkillCap {
+		t.Fatalf("RetrieveSkills = %d candidates, want the cap %d", len(got), retrieveSkillCap)
+	}
+}
+
+func TestRenderSkillsBlockRendersDocAndPath(t *testing.T) {
+	skills := []SkillEntry{
+		{Name: "imgshrink", Doc: "optimize images without losing quality", ShelfPath: "~/.codeaf/skills/imgshrink"},
+		{Name: "parser", Doc: "validate and format parser fixtures", ShelfPath: "~/.codeaf/skills/parser"},
+	}
+	got := RenderSkillsBlock(skills)
+	want := "- optimize images without losing quality [~/.codeaf/skills/imgshrink]\n- validate and format parser fixtures [~/.codeaf/skills/parser]\nEarlier-listed skills win when two skills conflict."
+	if got != want {
+		t.Fatalf("RenderSkillsBlock:\ngot:  %q\nwant: %q", got, want)
+	}
+}
+
+func TestRenderSkillsBlockEmpty(t *testing.T) {
+	if got := RenderSkillsBlock(nil); got != "" {
+		t.Fatalf("RenderSkillsBlock(nil) = %q, want \"\"", got)
+	}
+	if got := RenderSkillsBlock([]SkillEntry{}); got != "" {
+		t.Fatalf("RenderSkillsBlock([]) = %q, want \"\"", got)
+	}
+}
+
+func TestRenderSkillsBlockPreservesPrecedenceOrder(t *testing.T) {
+	skills := []SkillEntry{
+		{Name: "lint", Doc: "run linters", ShelfPath: "~/.codeaf/skills/lint"},
+		{Name: "test", Doc: "run tests", ShelfPath: "~/.codeaf/skills/test"},
+		{Name: "build", Doc: "build the project", ShelfPath: "~/.codeaf/skills/build"},
+	}
+	got := RenderSkillsBlock(skills)
+	lines := strings.Split(got, "\n")
+	if len(lines) != 4 {
+		t.Fatalf("expected 4 lines (3 skills + 1 precedence), got %d", len(lines))
+	}
+	if !strings.HasPrefix(lines[0], "- run linters") {
+		t.Errorf("first skill should be 'lint', got: %s", lines[0])
+	}
+	if !strings.HasPrefix(lines[1], "- run tests") {
+		t.Errorf("second skill should be 'test', got: %s", lines[1])
+	}
+	if !strings.HasPrefix(lines[2], "- build the project") {
+		t.Errorf("third skill should be 'build', got: %s", lines[2])
+	}
+}
+
+// writeSkillFile puts one file inside a skill's artifact directory, making
+// the directory first — the fixture half of the agentskills convention, whose
+// whole test is what the artifact directory holds at its top level.
+func writeSkillFile(t *testing.T, dir, name string, mode os.FileMode) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("make skill directory %s: %v", dir, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), []byte("body\n"), mode); err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
+}
+
+// TestSkillEntryFromFactPointsAnAgentskillsFolderAtItsBodyFile: a skill that
+// arrived as an agentskills folder — a directory whose top level holds a
+// SKILL.md — is read through that FILE, because `read` refuses the directory,
+// so the attached entry carries the SKILL.md path and the rendered line says
+// the body is in it.
+func TestSkillEntryFromFactPointsAnAgentskillsFolderAtItsBodyFile(t *testing.T) {
+	folder := filepath.Join(t.TempDir(), "pdf-extract")
+	writeSkillFile(t, folder, "SKILL.md", 0o644)
+
+	entry := SkillEntryFromFact(skillFact(folder, "tool:pdf", "extract pages from PDFs"))
+	want := SkillEntry{
+		Name:       "pdf-extract",
+		Doc:        "extract pages from PDFs",
+		ShelfPath:  filepath.Join(folder, "SKILL.md"),
+		BodyInPath: true,
+	}
+	if entry != want {
+		t.Fatalf("SkillEntryFromFact = %+v, want %+v", entry, want)
+	}
+
+	got := RenderSkillsBlock([]SkillEntry{entry})
+	wantLine := "- extract pages from PDFs [" + filepath.Join(folder, "SKILL.md") + " — body in this file]\n"
+	if !strings.Contains(got, wantLine) {
+		t.Fatalf("RenderSkillsBlock agentskills line:\ngot:  %q\nwant: %q", got, wantLine)
+	}
+	if strings.Contains(got, "["+folder+"]") {
+		t.Fatalf("the bare directory is still rendered:\n%s", got)
+	}
+}
+
+// TestSkillEntryFromFactKeepsNonAgentskillsFoldersByteForByte is the
+// compatibility law: a skill whose directory has no top-level SKILL.md — the
+// forge's own executable shape, a folder where SKILL.md is itself a directory,
+// an empty directory — renders exactly the line this block has always
+// rendered, asserted literally.
+func TestSkillEntryFromFactKeepsNonAgentskillsFoldersByteForByte(t *testing.T) {
+	shelf := t.TempDir()
+	executive := filepath.Join(shelf, "imgshrink")
+	writeSkillFile(t, filepath.Join(executive, "scripts"), "shrink.sh", 0o755)
+	writeSkillFile(t, executive, "run.sh", 0o755)
+	writeSkillFile(t, executive, "check.sh", 0o755)
+	empty := filepath.Join(shelf, "empty")
+	if err := os.MkdirAll(empty, 0o755); err != nil {
+		t.Fatalf("make empty skill directory: %v", err)
+	}
+	nested := filepath.Join(shelf, "nested-skill-md")
+	if err := os.MkdirAll(filepath.Join(nested, "SKILL.md"), 0o755); err != nil {
+		t.Fatalf("make SKILL.md directory: %v", err)
+	}
+
+	for _, artifact := range []string{executive, empty, nested} {
+		entry := SkillEntryFromFact(skillFact(artifact, "tool:img", "optimize images without losing quality"))
+		if entry.BodyInPath {
+			t.Fatalf("%s was mistaken for an agentskills folder: %+v", artifact, entry)
+		}
+		got := RenderSkillsBlock([]SkillEntry{entry})
+		want := "- optimize images without losing quality [" + artifact + "]\n" +
+			"Earlier-listed skills win when two skills conflict."
+		if got != want {
+			t.Fatalf("RenderSkillsBlock for %s:\ngot:  %q\nwant: %q", artifact, got, want)
+		}
+	}
+}
+
+// TestSkillEntryFromFactToleratesAMissingArtifact: the shelf has always held
+// facts whose directories come and go, so a path that does not resolve renders
+// as it always did — no error, no panic, the artifact untouched.
+func TestSkillEntryFromFactToleratesAMissingArtifact(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "gone")
+
+	entry := SkillEntryFromFact(skillFact(missing, "tool:gone", "a skill whose directory left"))
+	if entry.ShelfPath != missing || entry.BodyInPath {
+		t.Fatalf("SkillEntryFromFact = %+v, want the artifact untouched", entry)
+	}
+	got := RenderSkillsBlock([]SkillEntry{entry})
+	want := "- a skill whose directory left [" + missing + "]\n" +
+		"Earlier-listed skills win when two skills conflict."
+	if got != want {
+		t.Fatalf("RenderSkillsBlock:\ngot:  %q\nwant: %q", got, want)
 	}
 }
