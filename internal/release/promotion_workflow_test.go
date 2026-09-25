@@ -215,9 +215,7 @@ func containsNeed(needs []any, name string) bool {
 // R1 and R3: A failed plan and an unexpected finish error still post a summary without calling the Go tool.
 func TestPromotionFallbackMessagesSurviveToolFailure(t *testing.T) {
 	jobs := obj(t, workflowDocument(t, "promote-staging.yml")["jobs"])
-	failed := obj(t, jobs["plan-failed"])
-	step := obj(t, list(t, failed["steps"])[0])
-	run := stringField(t, step["run"])
+	run := runStep(t, jobs, "plan-failed")
 	for _, want := range []string{"scripts/slack-post.sh", "jq -n", "promotion could not choose a dev commit", "DRY_RUN"} {
 		if !strings.Contains(run, want) {
 			t.Errorf("plan-failed lacks %q", want)
@@ -240,13 +238,49 @@ func TestPromotionFallbackMessagesSurviveToolFailure(t *testing.T) {
 	}
 }
 
+// runStep returns the one shell block a job runs, wherever it sits among the job's steps.
+func runStep(t *testing.T, jobs map[string]any, name string) string {
+	t.Helper()
+	for _, raw := range list(t, obj(t, jobs[name])["steps"]) {
+		if run, ok := obj(t, raw)["run"]; ok {
+			return stringField(t, run)
+		}
+	}
+	t.Fatalf("%s runs no shell block", name)
+	return ""
+}
+
+// R4: A job starts in an empty workspace, so every job that runs a repository
+// script checks the repository out first. The shell-block test below copies the
+// poster into its own directory and so cannot see a job that never had it.
+func TestPromotionJobsCheckOutTheScriptsTheyRun(t *testing.T) {
+	jobs := obj(t, workflowDocument(t, "promote-staging.yml")["jobs"])
+	for name, raw := range jobs {
+		job := obj(t, raw)
+		if _, called := job["uses"]; called {
+			continue
+		}
+		checkedOut := false
+		for i, rawStep := range list(t, job["steps"]) {
+			step := obj(t, rawStep)
+			if uses, ok := step["uses"].(string); ok && strings.HasPrefix(uses, "actions/checkout@") {
+				checkedOut = true
+			}
+			run, ok := step["run"].(string)
+			if ok && (strings.Contains(run, "scripts/") || strings.Contains(run, "./cmd/")) && !checkedOut {
+				t.Errorf("%s step %d runs a repository file before any checkout", name, i)
+			}
+		}
+	}
+}
+
 // R1 and R3: The real shell blocks send a message when planning fails or the finish tool exits early.
 func TestPromotionFallbackShellBlocks(t *testing.T) {
 	if _, err := exec.LookPath("jq"); err != nil {
 		t.Skip("jq is not on PATH")
 	}
 	jobs := obj(t, workflowDocument(t, "promote-staging.yml")["jobs"])
-	planFailed := stringField(t, obj(t, list(t, obj(t, jobs["plan-failed"])["steps"])[0])["run"])
+	planFailed := runStep(t, jobs, "plan-failed")
 	finish := stringField(t, obj(t, list(t, obj(t, jobs["finish"])["steps"])[2])["run"])
 	for _, row := range []struct {
 		name, script, want string
