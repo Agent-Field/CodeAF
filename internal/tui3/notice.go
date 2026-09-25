@@ -1053,8 +1053,8 @@ func (a *app) noticeFill(slot noticeSlot) bool {
 // exists to tell apart.
 //
 // THE CONVERSATION'S ROW IS NEVER LIVE IN THIS SENSE, because it does not
-// measure a standing at all: its showing is counted when the slot takes a tip,
-// once per session ([noticeBoard.take]).
+// measure a standing at all: its showing is counted when the keys row draws
+// the tip, once per session ([app.chatTipCount], [noticeBoard.seenOnce]).
 func (a *app) noticeLive(slot noticeSlot) bool {
 	if a.notices.hidden[slot] {
 		return false

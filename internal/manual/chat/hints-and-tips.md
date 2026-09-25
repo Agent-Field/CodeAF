@@ -239,8 +239,8 @@ Open the settings panel with `/settings` (or `ctrl+,`), go to the **Workspace** 
 the **disable hints** row on. The line under the row reads
 `disable💡 tips everywhere (requires restart)`. Enter or space toggles it; it is off by
 default, which means the tips show. (Until 2026-09-22 it was a **hints** row on the Display
-tab, on by default.) The change lands at the end of the next turn in a conversation that is
-already open, and from the start in one opened after — restarting codeaf is the sure way. On silences the tips — over a conversation's
+tab, on by default.) Inside a running codeaf the change lands at the end of the next turn,
+in every conversation and on home alike; restarting codeaf is the only way to have it at once. On silences the tips — over a conversation's
 box and over home's alike — and the what's-new lines together; it does not touch the keys
 row's own words for a live state — `esc interrupt` and the rest are not hints and cannot
 be turned off.
