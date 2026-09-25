@@ -28,6 +28,10 @@ and an absent list and an empty list arrive with the same uncertainty. codeaf ca
 therefore draw a non-empty list, but it cannot honestly turn silence into a claim
 that the turn used none.
 
+A message that carries a picture draws no line because it carries no skills, the
+ones you attached with `/skill` included. The attachment stays on, and your next
+message without a picture carries it again.
+
 ## Why is that line under my message?
 
 The skills belong to the turn your message opened, so their row sits with that

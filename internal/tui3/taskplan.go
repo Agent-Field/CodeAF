@@ -169,6 +169,9 @@ func planStateWord(row session.PlanTaskRow) string {
 	if row.Stopped {
 		return "stopped"
 	}
+	if row.Hold != "" && (row.Status == "ready" || row.Status == "running") {
+		return "queued"
+	}
 	if row.Interrupted {
 		return "interrupted"
 	}
@@ -212,6 +215,12 @@ func planStatus(row session.PlanTaskRow) session.TaskStatus {
 		}
 	}
 	store := row.Status
+	if row.Hold != "" && (strings.TrimSpace(store) == "ready" || strings.TrimSpace(store) == "running") {
+		return session.TaskStatus{
+			Tier: session.TaskTierMoving, Presence: session.TaskPresenceQueued,
+			Word: planStateWord(row), On: session.TaskWaitMachine, Reason: row.Hold,
+		}
+	}
 	switch strings.TrimSpace(store) {
 	case "pending":
 		// ADMITTED, NOT STARTED — the queued presence, and the moving tier

@@ -45,6 +45,9 @@ type PlanTaskRow struct {
 	ID      string
 	Title   string
 	Status  string
+	// Hold is why a ready part or an unstarted root has no worker yet. It
+	// crosses the remote wire only while admission refused this row's start.
+	Hold string `json:",omitempty"`
 	// Stopped is true only when this task's own ending records a person's stop.
 	// It is established from store data here and crosses remote reads as row data.
 	Stopped bool
@@ -123,6 +126,9 @@ const planWordRunning = "running"
 func (row PlanTaskRow) StateWord() string {
 	if row.Stopped {
 		return taskWordStopped
+	}
+	if row.Hold != "" && (row.Status == string(plandb.StatusReady) || row.Status == string(plandb.StatusRunning)) {
+		return taskWordQueued
 	}
 	switch strings.TrimSpace(row.Status) {
 	case string(plandb.StatusPending):
@@ -271,6 +277,7 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 		root := store.RootID()
 		for _, task := range tasks {
 			row := planTaskRow(store, dir, task, spend, live)
+			a.markPlanMachineHold(&row, store.Path(), task.ID == root)
 			row.Folder = a.planTaskRunCopy(task.ID)
 			row.LiveParts = planStepDisplayFacts(PlanStep{Command: row.Live.Command}, copies.or(row.Folder), planShimFilename).Parts
 			row.Archived = archived
@@ -318,6 +325,7 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	depths := map[string]int{task.ID: -1}
 	for _, child := range all {
 		row := planTaskRow(store, dir, child, spend, live)
+		a.markPlanMachineHold(&row, store.Path(), child.ID == store.RootID())
 		row.Folder = a.planTaskRunCopy(child.ID)
 		row.LiveParts = planStepDisplayFacts(PlanStep{Command: row.Live.Command}, copies.or(row.Folder), planShimFilename).Parts
 		rows[child.ID] = row
@@ -371,6 +379,18 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 		Children:    children,
 		WaitRows:    waitRows,
 	}, true
+}
+
+// markPlanMachineHold copies only this row's refused start. An archived store
+// and a worker already running have no admission to wait for.
+func (a *Agent) markPlanMachineHold(row *PlanTaskRow, path string, root bool) {
+	a.beltMu.Lock()
+	run := a.beltRun
+	held := run != nil && run.machineHeld[row.ID] && run.store != nil && filepath.Clean(run.store.Path()) == filepath.Clean(path)
+	a.beltMu.Unlock()
+	if held && (row.Status == string(plandb.StatusReady) || root && row.Status == string(plandb.StatusRunning)) {
+		row.Hold = waitingMachineBusy
+	}
 }
 
 // openPlanReadHandles opens every ended run oldest-first and then the live run.

@@ -55,11 +55,11 @@ While a run is live the task pane draws its **plan**: one row per task in the
 store, in the place's own row machinery, so a plan row looks like every other row.
 Each row wears one state word, mapped off the store's own status:
 
-- `queued` — the store says `pending`: the work is admitted and not started, with
-  nothing in its way but a slot. A row held behind named work says what is holding
-  it: `queued · waits: <the work it hangs under>` — see *Why does it say queued?*.
-- `running` — the store says `ready`, `claimed` or `running`: the work is
-  deliverable, or a worker has it.
+- `queued` — the store says `pending`: the work is admitted and not started. A
+  row held behind named work says `queued · waits: <the work it hangs under>`;
+  a ready row held by the machine says `queued · machine busy`.
+- `running` — the store says `ready`, `claimed` or `running` and there is no
+  machine hold: the work is deliverable, or a worker has it.
 - `done` — the store says `done`.
 - `incomplete` — the store says `failed`, or `cancelled` by anything but your own
   stop. Nothing judged it, so the word must not send you looking for a fault.
@@ -660,16 +660,17 @@ requirement in them, and speed is no permission to skip the walk.
   `--max-cost` when codeaf was started with one and that is the smaller. What the run
   spends counts against it while it works. The run's width and its dollar ceiling are the
   conversation's own numbers, so a run costs what the conversation costs and runs as wide
-  as the conversation may.
+  as the conversation may. A run started when that figure is already spent still gets
+  one paid call — its first worker's — before the limit ends it.
 - **Reaching the dollar limit ends every worker in flight**, whichever worker's
   spending crossed it: a live reading and a worker's final receipt end the rest alike.
   The run's own task is ended with `a limit you set stopped it`.
 - **The time limit.** An elapsed-time limit on the session ends a run too: see
   "Does a time limit stop a running task?" on the page about starting codeaf.
 - **The step cap.** A worker stops at **200** finished tool calls — the same
-  figure a node worker carries. The cap is a bound on spend and not a finding about
-  the work: the turn is stopped there rather than judged, and a worker stopped this
-  way did not finish.
+  figure a node worker carries. If the last call itself finished or parked the task
+  in the store, that ending wins. Otherwise the cap stops the worker there without
+  judging its work.
 - **Spend rows by seat.** Every call a run makes lands one row in the plan store's
   ledger, tagged with the task, the model, and the role — the **seat** — it ran on.
   Read it back with `plandb spend`, by role and by model, or rolled up under one
@@ -748,8 +749,10 @@ by comparing the folder before and after: a file it wrote, a file of yours it ed
 further, and anything it committed itself. A folder that is not a git repository
 names no files, though the run's edits are still on disk.
 
-The run's plan is kept in `.codeaf/plandb.db` inside that directory, and that file
-is never named among the run's files.
+The run's plan and worker transcripts stay in a private folder under
+`~/.codeaf/runs/` (or `CODEAF_HOME/runs/`). The run leaves no `.codeaf/`
+record in the directory it edits, and its record is never named among the
+run's files.
 
 ## How much can a codeaf do run spend — --yes-spend, the plan price and today's limit
 
@@ -773,11 +776,13 @@ figure is a ceiling instead.
 ## codeaf do --db on the run engine, and where a run's store is
 
 - **`--db` is refused**, with exit 1 and a sentence saying why: it names a store
-  only the older engine works in, and a run holds its plan in `.codeaf/plandb.db`
-  inside the directory it works in. Drop the flag, or set `CODEAF_TASK_BELT=node`
+  only the older engine works in, and a run holds its plan in a private folder
+  under the state root's `runs/`. Drop the flag, or set `CODEAF_TASK_BELT=node`
   to run on the older engine, which takes it.
-- **That store is never deleted.** Pass `--keep` and the run names it on the error
-  stream: `record kept at <dir>/.codeaf/plandb.db`.
+- **A done run removes its private folder** unless `--keep` or debug mode asked
+  for it. A run that did not finish keeps it. The last line on the error stream
+  names any kept folder: `record kept at <folder>`. It holds `plandb.db` and
+  `tasks/` with the workers' trajectories and command transcripts.
 
 ## How do I tell the check what to run?
 

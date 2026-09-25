@@ -260,7 +260,7 @@ func contentDigest(dir string) (string, error) {
 		if _, err := io.WriteString(h, relative+"\x00"); err != nil {
 			return "", err
 		}
-		f, err := os.Open(path)
+		f, err := skills.OpenRegular(path)
 		if err != nil {
 			return "", err
 		}
@@ -322,7 +322,7 @@ func copySkillDirectory(source, target string) error {
 }
 
 func copySkillFile(source, target string, mode fs.FileMode) error {
-	reader, err := os.Open(source)
+	reader, err := skills.OpenRegular(source)
 	if err != nil {
 		return err
 	}

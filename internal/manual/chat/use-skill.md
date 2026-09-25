@@ -32,8 +32,9 @@ name the shelf actually holds. An empty shelf says so in one plain line.
 ## Why it exists
 
 A skill whose description shares words with a message is already carried with
-it (the dim `skills ·` line), and the prompt lists every skill on the shelf
-with what it is for. `use_skill` is the door onto their bodies: the model
+it (the dim `skills ·` line) — except a message that carries a picture, which
+carries no skills, attached ones included — and the prompt lists every skill on
+the shelf with what it is for. `use_skill` is the door onto their bodies: the model
 opens the one a request fits, even when the request shares no words with it.
 
 ## Can you use skills with memory off
