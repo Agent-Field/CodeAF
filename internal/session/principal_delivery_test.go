@@ -270,7 +270,7 @@ func TestAKeptBranchNobodyCanCompareIsNotFinished(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(tree.dir, "fix.txt"), "the fix\n")
-	merge, detail, _, _ := tree.comeHome("write the fix", []string{"fix.txt"}, false)
+	merge, detail, _, _ := tree.comeHome("write the fix", []string{"fix.txt"}, gitSignature{})
 	if merge != mergeKept {
 		t.Fatalf("protected landing=%s: %s", merge, detail)
 	}
@@ -313,7 +313,7 @@ func TestCheckpointKeepsProtectedBranchDeliveryUnfinished(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(tree.dir, "fix.txt"), "the fix\n")
-	merge, detail, _, _ := tree.comeHome("write the fix", []string{"fix.txt"}, false)
+	merge, detail, _, _ := tree.comeHome("write the fix", []string{"fix.txt"}, gitSignature{})
 	if merge != mergeKept {
 		t.Fatalf("protected landing=%s: %s", merge, detail)
 	}

@@ -285,7 +285,7 @@ func TestTheOpeningHintNamesBothDoors(t *testing.T) {
 	// THE EXIT IS TAUGHT AFTER THE ENTRANCE (welcome.go's [app.dismissWelcome]):
 	// the greeting's frame carries no line about leaving, and the line lands the
 	// moment the conversation begins.
-	if strings.Contains(plain(frame(a)), "esc back · ctrl+c interrupts or quits") {
+	if strings.Contains(plain(frame(a)), "esc interrupts · ctrl+c quits") {
 		t.Fatalf("the greeting teaches the way out before the way in:\n%s", plain(frame(a)))
 	}
 	drive(t, a, key("h"))
@@ -295,15 +295,14 @@ func TestTheOpeningHintNamesBothDoors(t *testing.T) {
 	if !strings.Contains(plain(frame(a)), welcomeStarterKeysWord) {
 		t.Fatalf("typing moved the first conversation's composer out from under the person:\n%s", plain(frame(a)))
 	}
-	if strings.Contains(plain(frame(a)), "esc back · ctrl+c interrupts or quits") {
+	if strings.Contains(plain(frame(a)), "esc interrupts · ctrl+c quits") {
 		t.Fatalf("a keystroke dismissed the first conversation's greeting:\n%s", plain(frame(a)))
 	}
 	// THE HINT LANDS WHEN THE CONVERSATION BEGINS — the send, not the typing
 	// (welcome.go's [app.spendWelcome]). IT HAS TO BE TRUE ON THAT FRAME, where
-	// a turn has just started: esc goes back, and ctrl+c interrupts while
-	// working or quits at rest.
+	// a turn has just started: esc interrupts and ctrl+c quits at rest.
 	drive(t, a, key("enter"))
-	if !strings.Contains(plain(frame(a)), "esc back · ctrl+c interrupts or quits") {
+	if !strings.Contains(plain(frame(a)), "esc interrupts · ctrl+c quits") {
 		t.Fatalf("the hint has to name both doors truthfully, and it lands at the send:\n%s", plain(frame(a)))
 	}
 	// CASE TWO, A PROFILE THAT HAS MET THE SETUP: the marker is in the test's
@@ -316,18 +315,18 @@ func TestTheOpeningHintNamesBothDoors(t *testing.T) {
 	b := newApp(t.Context(), Options{Agent: &fakeAgent{model: "m"}, Workspace: "/tmp/lab", ProfileDir: metSetup})
 	b.width, b.height = 90, 30
 	b.touch()
-	if strings.Contains(plain(frame(b)), "esc back · ctrl+c interrupts or quits") {
+	if strings.Contains(plain(frame(b)), "esc interrupts · ctrl+c quits") {
 		t.Fatalf("the greeting taught the way out before the way in on a profile that has met the setup:\n%s", plain(frame(b)))
 	}
 	drive(t, b, key("h"))
-	if !strings.Contains(plain(frame(b)), "esc back · ctrl+c interrupts or quits") {
+	if !strings.Contains(plain(frame(b)), "esc interrupts · ctrl+c quits") {
 		t.Fatalf("a keystroke on a profile that has met the setup did not land the hint:\n%s", plain(frame(b)))
 	}
 	// And a session that opens on a transcript gets it on its first frame.
 	resumed := newApp(t.Context(), Options{Agent: &fakeAgent{model: "m", past: []session.DisplayEntry{{Role: "user", Text: "hi"}}},
 		Workspace: "/tmp/lab", Resumed: true, ProfileDir: t.TempDir()})
 	resumed.width, resumed.height = 90, 30
-	if !strings.Contains(plain(frame(resumed)), "esc back · ctrl+c interrupts or quits") {
+	if !strings.Contains(plain(frame(resumed)), "esc interrupts · ctrl+c quits") {
 		t.Fatalf("a resumed session lost its opening line:\n%s", plain(frame(resumed)))
 	}
 	if !strings.Contains(helpText("", chordSpelling{}), "alt+enter") {
@@ -691,7 +690,7 @@ func TestSlashOpensTheCommandListFiltersItAndRunsIt(t *testing.T) {
 		t.Fatalf("a bare slash has to offer everything (%d hits)", len(a.menu.hits))
 	}
 	drawn := plain(strings.Join(a.overlayRows(a.width, a.overlayHeight()), "\n"))
-	if !strings.Contains(drawn, "/ask") || !strings.Contains(drawn, "ask here on home") {
+	if !strings.Contains(drawn, "/attach") || !strings.Contains(drawn, "attach") {
 		t.Fatalf("the list draws a name and a line about it:\n%s", drawn)
 	}
 
@@ -874,7 +873,7 @@ func TestHelpPrintsTheAliasesFromTheSameTable(t *testing.T) {
 		"also /exit /q",
 		"also /?",
 		"/rewind",
-		"go back to an earlier point",
+		"go back to an earlier point · esc esc takes back the last",
 		"also /undo /back",
 	} {
 		if !strings.Contains(text, want) {

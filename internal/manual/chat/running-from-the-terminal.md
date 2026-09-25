@@ -279,6 +279,11 @@ you have a script written against the old numbers, `CODEAF_EXIT_CODES=legacy` pu
 back for one release — see below — and the rest is in
 `docs/design/polish/envelope-and-exits.md`, which sets old and new side by side.
 
+**A wall on the default run road leaves with 124.** When `--timeout` ends a `codeaf do`
+on the worker harness, `$?` is 124 — the number `timeout(1)` uses — rather than 3, and
+`stop` still says `deadline`. The run engine reports a wall and a failed part with the
+same word, so the number is where the two are told apart.
+
 **Exit 3 and exit 2 are different questions.** 3 says the work was going when something you
 set cut it off, so raising `--timeout`, `--token-budget` or `--max-turns` and running it
 again is the remedy. 2 says it got to the end and part of it does not stand, so what came
@@ -817,6 +822,32 @@ a resident is running (pid 41207) — close it before rebuilding
 
 Conversations, settings and credentials were not worked out from the journal and are not
 touched.
+
+## codeaf do is waiting and nothing happens — machine busy on a headless run
+
+**A `codeaf do` the machine is holding says so on stderr, once.** The same two limits
+that hold a task in the chat hold its workers here: `task.max_load` (load per core)
+and `task.min_free_mb` (available memory). The chat draws `waiting · machine busy` on
+the run's rail; a headless run has no rail, so the first time a worker is held,
+stderr gets one line in the same words and the limit that held it:
+
+```
+waiting · machine busy · load per core at or above task.max_load 1.5
+waiting · machine busy · available memory under task.min_free_mb 1536 MiB
+```
+
+Those figures are the defaults; the line prints your own. It is not repeated while
+the machine stays busy. When a held worker starts, stderr says `starting · the machine has room again`,
+once, and the run goes on as usual.
+
+**If `--timeout` arrives first, nothing started.** The run leaves with 124 and `stop`
+says `deadline`, as every wall does; `--json` also carries `blocked_on`, the held line
+followed by ` · nothing started before --timeout`, so a script can tell a run the
+machine held from one that was slow. Nothing was spent.
+
+To let it start, wait for the machine to clear, raise `--timeout`, or set that row
+to `0` in `/settings`, which turns that half of the check off. On a machine with no
+`/proc` (macOS, Windows) the limits never hold, and this line never appears.
 
 ## What goes to stdout and what goes to stderr — piping a headless command
 

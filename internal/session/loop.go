@@ -501,6 +501,9 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// still streaming. It belongs to the turn and is emptied per attempt — see
 	// [warmBatch] for the law that decides what may start early at all.
 	warm := &warmBatch{}
+	// The turn's read sweep ledger (readhandoff.go): same lifetime as the warm
+	// batch, consulted at the one seam every batch passes through below.
+	sweep := &readSweep{}
 
 	// forming holds the calls this turn has watched ARRIVE but not yet finish
 	// (toolhint.go). It has the warm batch's lifetime and is emptied in the same
@@ -1336,7 +1339,22 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			continue
 		}
 
-		results := a.runToolsWarm(toolCtx, episode, calls, hub, warm)
+		// A SWEEP THE MODEL WILL NOT HAND OFF IS HANDED OFF HERE (readhandoff.go).
+		// The prompt taught the judgement and the models recited it without acting,
+		// so the loop — the one place the reading's cost is a fact rather than an
+		// instruction — spends the hand-off itself. Conversations only: a task
+		// worker's own reads are its work, not a sweep.
+		var results []toolResult
+		if !a.config.InTask && chatRunEngine != nil && sweep.due(calls) {
+			if handed := a.handoffReadSweep(toolCtx, episode, hub, user, calls, sweep, warm); handed != nil {
+				results = handed
+			} else {
+				results = a.runToolsWarm(toolCtx, episode, calls, hub, warm)
+			}
+		} else {
+			results = a.runToolsWarm(toolCtx, episode, calls, hub, warm)
+			sweep.count(calls)
+		}
 		// THE GAP THE LAW IS ABOUT STARTS HERE. Everything between this line and
 		// the next request leaving is the turn's own work — recording the results,
 		// the fold, the readings that ride beside it — and the law says it is
@@ -1790,6 +1808,15 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 	// ledger, so the attempts since then were genuinely served by somebody else.
 	// It is what [cutBudget] narrows on; the law is stated there.
 	rerouted := false
+	// oneMachine says every cut this step took came back from a request with no
+	// endpoint diversity at all. It is ANDed rather than ORed: one cut that did
+	// have a pool to draw from means the step had one, and the narrower
+	// allowance is the honest one (provider's [provider.StreamCut.OneMachine]).
+	oneMachine := true
+	// waitingSince is when the first of this step's cuts arrived, which is what
+	// the person is told the length of while an unbounded wait goes on
+	// ([waitingOnOneMachine]). Zero until there is a cut to date.
+	waitingSince := time.Time{}
 	// hopped is the models this step has already moved to, in order, and its
 	// length is where the chain is read from next. It is what the failure
 	// sentence names when even the fallbacks could not answer. `origin` is kept
@@ -1847,7 +1874,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// against the session's own model (steer.go's [Agent.rideModel]).
 		a.rideModel(next)
 		rung = a.effortFor(model)
-		cuts, rerouted = 0, false
+		cuts, rerouted, oneMachine, waitingSince = 0, false, true, time.Time{}
 		deadline, owed, unpaid = turnNow().Add(a.giveUp()), 0, 0
 	}
 	// takeTheModel is THE ONE PLACE THIS STEP CHANGES MODEL, and `root` is the
@@ -2086,6 +2113,12 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			if cut.Rerouted {
 				rerouted = true
 			}
+			if !cut.OneMachine {
+				oneMachine = false
+			}
+			if waitingSince.IsZero() {
+				waitingSince = turnNow()
+			}
 			cuts++
 		}
 		// AND THE BOUNDARY READS IT. The row above says WHAT the provider said;
@@ -2179,6 +2212,8 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			cuts:       cuts,
 			degenerate: isCut && degenerateCut(cut),
 			rerouted:   rerouted,
+			oneMachine: cuts > 0 && oneMachine,
+			watched:    a.config.Interactive && !a.config.isWorker(),
 			fallback:   haveFallback,
 			outOfTime:  !spentAt().Before(deadline),
 		}
@@ -2201,11 +2236,22 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// the deadline over this ladder is reached as fast as the endpoint can
 		// fail ([nextMoveWait] states the whole argument).
 		wait := time.Duration(0)
-		if verdict.Retries() && !isCut {
-			if wait = verdict.Backoff; wait <= 0 && attempt > 0 {
+		if verdict.Retries() {
+			if wait = verdict.Backoff; wait <= 0 && attempt > 0 && !isCut {
 				wait = nextMoveWait(unpaid, a.failureLimits().TransportBackoff)
 			}
-			if !spentAt().Add(wait).Before(deadline) {
+			// A CUT USED TO BE UNABLE TO ASK FOR A WAIT AT ALL, and the guard
+			// that did it read `!isCut` here — written when no cut had a backoff
+			// to ask for, and left standing when one did. A verdict carrying a
+			// wait that the loop then dropped is the loop and the boundary
+			// disagreeing in silence, so the verdict's own figure is honoured
+			// whatever shape produced it, and only the FALLBACK wait for a
+			// failure that named none stays a refusal's alone.
+			//
+			// AND AN UNBOUNDED WAIT IS NOT CONVERTED BY THE DEADLINE. It is the
+			// one verdict the give-up does not end (taxonomy's [waitsForEver]),
+			// because the person who can see it waiting is the bound.
+			if !verdict.Unbounded && !spentAt().Add(wait).Before(deadline) {
 				ladder.outOfTime = true
 				verdict, evidence = a.weighLadder(err, ladder)
 			}
@@ -2264,11 +2310,28 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			// not one anybody outside this process can act on ([endingWords]).
 			return nil, model, endingWords(err, verdict, a.failureServiceWord(model))
 		case verdict.Retries():
+			// A CUT IS SAID AT ONCE AND THEN PAYS THE VERDICT'S WAIT LIKE ANY
+			// OTHER FAILURE. Its junk is already gone from the page, so the
+			// discard is announced before the wait rather than after it, and the
+			// loop's own attempt number does not advance for it (a cut is not
+			// evidence the endpoint is failing).
+			//
+			// THIS BRANCH USED TO `continue` HERE, ABOVE THE WAIT (#1358). A pool
+			// cut asks for no wait, so nothing was lost there; but the one
+			// machine's unbounded retry carries a wait that climbs to
+			// [taxonomy.OneMachineCutCeiling], and skipping it re-asked a server
+			// that keeps cutting in a tight loop for ever — forty cuts were
+			// forty-one requests in a millisecond, with no status line, and the
+			// held-down attempt number kept the deadline from ever being read.
 			if isCut {
 				hub.send(Event{Kind: EventRetrying, Text: cutNotice(cut),
 					Retry: retryNews(model, cuts, verdict, cut, "")})
 				attempt--
-				continue
+				if wait <= 0 {
+					continue
+				}
+			} else {
+				unpaid = wait
 			}
 			// AND THE WAIT IS SAID OUT LOUD. This ladder is the longest silence
 			// in the whole request path — two seconds, then four, then eight,
@@ -2284,9 +2347,19 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			// failure and keeps its arithmetic for a reply that came apart, which
 			// has a real allowance ([taxonomy.transportBudget]). Nothing is
 			// invented to fill the gap: unknown renders as nothing.
-			unpaid = wait
-			a.tellPhase(provider.PhaseRetrying,
-				retryOrdinal(attempt+2, verdict.Attempts), time.Now())
+			// AND AN UNBOUNDED WAIT SAYS HOW LONG IT HAS BEEN WAITING, because
+			// it is the one retry with no denominator to count towards, and a
+			// phase that says only `retrying` for ten minutes is a hang as far
+			// as the person can tell ([waitingOnOneMachine]). A bounded cut
+			// counts its own allowance, which is cuts and not attempts.
+			detail := retryOrdinal(attempt+2, verdict.Attempts)
+			if isCut {
+				detail = retryOrdinal(cuts+1, verdict.Attempts)
+			}
+			if verdict.Unbounded && cuts > 0 {
+				detail = waitingOnOneMachine(cuts, turnNow().Sub(waitingSince))
+			}
+			a.tellPhase(provider.PhaseRetrying, detail, time.Now())
 			waitBegan := turnNow()
 			waitErr := turnBackoff(ctx, wait)
 			if took := turnNow().Sub(waitBegan); took < wait {
@@ -2300,8 +2373,9 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			// resets partial, reasoning and forming before requesting a
 			// replacement; a phase-clock update alone cannot remove the old
 			// streamed answer. Say this only after the wait succeeds: a stop
-			// during backoff keeps its partial reply.
-			if hub != nil {
+			// during backoff keeps its partial reply. A cut said its own discard
+			// before the wait, so it is not said twice.
+			if hub != nil && !isCut {
 				hub.send(Event{Kind: EventRetrying, Text: retryNotice,
 					Retry: retryNews(model, attempt+1, verdict, nil, "")})
 			}
@@ -2371,6 +2445,44 @@ func retryOrdinal(at, of int) string {
 		return ""
 	}
 	return fmt.Sprintf("%d of %d", at, of)
+}
+
+// waitingOnOneMachine is what a person reads while the harness keeps asking the
+// only machine there is.
+//
+// IT IS THE HALF THAT MAKES THE OTHER HALF SAFE. Asking for ever is patience
+// when somebody can see it happening and dishonest when they cannot: the same
+// loop behind a phase that says `retrying` and nothing else is indistinguishable
+// from a wedged program, and the person's only move is to guess. So the line
+// carries the two facts they would ask for, how many times it has asked and how
+// long that has taken, and the one thing they can do about it.
+//
+// It says nothing about WHY the machine is quiet, because this layer does not
+// know: weights still loading, one slot already busy, and a request the server
+// will never accept all arrive here as the same silence.
+func waitingOnOneMachine(asks int, waited time.Duration) string {
+	if asks < 1 {
+		return ""
+	}
+	times := "once"
+	if asks > 1 {
+		times = fmt.Sprintf("%d times", asks)
+	}
+	return fmt.Sprintf("no answer %s in %s · still asking · esc stops", times, roundWait(waited))
+}
+
+// roundWait is a waiting length in the shortest honest words: seconds under a
+// minute, whole minutes over one. A person watching a spinner wants to know
+// whether this has been going for twenty seconds or twenty minutes, and no
+// grain finer than that changes anything they would do.
+func roundWait(d time.Duration) string {
+	if d < time.Minute {
+		if s := int(d.Round(time.Second) / time.Second); s > 0 {
+			return fmt.Sprintf("%ds", s)
+		}
+		return "0s"
+	}
+	return fmt.Sprintf("%dm", int(d.Round(time.Minute)/time.Minute))
 }
 
 // giveUp is how long one model may spend answering this agent's turn: the
@@ -3303,7 +3415,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 	// the row.
 	for index, call := range calls {
 		if results[index].isError {
-			hub.send(Event{
+			a.sendBeltStep(ctx, hub, Event{
 				Kind:   EventToolFailed,
 				Tool:   call.Function.Name,
 				Hint:   clip(firstLine(results[index].text), hintLimit),
@@ -3325,7 +3437,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 		// A successful tool's hint is empty: the result belongs to the model,
 		// and the person already read what the call was going to do. Output is
 		// there for a person who asks to see it anyway.
-		hub.send(Event{
+		a.sendBeltStep(ctx, hub, Event{
 			Kind:   EventToolEnd,
 			Tool:   call.Function.Name,
 			Args:   rendered[index],
@@ -4796,7 +4908,10 @@ func (a *Agent) compact(_ context.Context, hub *eventHub) (bool, error) {
 		// row on the first and settles it on the second; a pass that announced
 		// itself and then said nothing would leave that row open for the rest of
 		// the session, so a pass that found nothing says exactly that.
-		hub.send(Event{Kind: EventCompacted, Hint: "nothing to compact"})
+		// AND IT SAYS WHICH OF THE TWO THINGS THIS EVENT MEANS. The kind alone
+		// cannot: it is sent on both paths, so a reader that rebased on it
+		// rebased on a replacement that did not happen ([Event.Unchanged]).
+		hub.send(Event{Kind: EventCompacted, Hint: "nothing to compact", Unchanged: true})
 		return false, ErrNothingToCompact
 	}
 

@@ -11,7 +11,7 @@ import (
 //
 //	─ glm-5.3-flash (deepinfra):high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s   project: ~/src/parser ─
 //	 › your sentence
-//	 alt+e effort · alt+a approvals · alt+k chats · / commands · esc back
+//	 alt+e effort · alt+a approvals · alt+k chats · / commands · space space home
 //
 // THE SEAM IS WHAT ANSWERS AND HOW MUCH. The rule above the box carries the
 // model answering the conversation on the left, and the numbers on the right
@@ -528,7 +528,7 @@ func (a *app) seamPieces(width int) seamPieces {
 	// one place the pin is written on the chrome: the status row and the phone
 	// deck take the same word from the same function.
 	pieces := seamPieces{host: a.host, model: a.modelWord(),
-		project: a.hostedPath(a.placeWord(tildePath(a.workspace, a.tilde)))}
+		project: a.seamProjectWord()}
 	if pieces.model != "" {
 		// A rung with no model beside it has nothing to be about, and the ladder
 		// it belongs to is reached by name (`/effort`) rather than from a cell

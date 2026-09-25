@@ -155,7 +155,7 @@ func TestAtOneEightyTheFieldIsOneColumnAndTheMiddleIsNoPanels(t *testing.T) {
 	}
 	// AND THE QUIET PANELS ARE ALL IN THE LAST COLUMN, none of them left behind
 	// in the field beside a panel that has something to say.
-	for _, word := range []string{"spend", "since you left", homeScheduledWord} {
+	for _, word := range []string{"spend", "since you left", "standing"} {
 		if _, at := homeRowOf(frame, word); at != railCol {
 			t.Fatalf("%q is at cell %d, want the rail at %d:\n%s", word, at, railCol, frame)
 		}
@@ -710,7 +710,7 @@ func TestTheArrowsStayInTheFieldAndTheFootIsTheRestingSentence(t *testing.T) {
 }
 
 // AND THE SAME ON EVERY KIND OF FIELD ROW at three columns: a conversation, a
-// `scheduled` order and a `since you left` line all rest on the one sentence,
+// `standing` order and a `since you left` line all rest on the one sentence,
 // and `ctrl+o` opens the folder each belongs to.
 func TestEveryFieldRowRestsOnTheOneFootAndOpensItsFolder(t *testing.T) {
 	var opened string

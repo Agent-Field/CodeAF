@@ -15,6 +15,8 @@
 package home
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -84,6 +86,43 @@ func directoryExists(path string) bool {
 // Join names a file inside the state root.
 func Join(elements ...string) string {
 	return filepath.Join(append([]string{Dir()}, elements...)...)
+}
+
+// Login is the directory the OTHER harnesses keep their own state under —
+// the "~" whose dot-folders hold Claude Code's, Codex's and their kin's
+// skills, which the resident imports in place. It follows the state root's
+// override — CODEAF_HOME moves it wholesale, the same way it moves everything
+// else codeaf reads — and otherwise answers the login home the state root
+// itself is resolved from.
+//
+// It carries Dir's test-binary gate, aimed at the container instead of the
+// root: a suite that named no home of its own gets the quarantine, not the
+// home of whoever ran it, because a scan of a real home imports a real
+// person's skills into a throwaway store. A test that pins HOME or CODEAF_HOME
+// — the two ways a test says where its state goes — still gets exactly the
+// home it asked for.
+func Login() (string, error) {
+	if override := strings.TrimSpace(env.Get(EnvVar)); override != "" {
+		if resolved, err := filepath.Abs(override); err == nil {
+			return resolved, nil
+		}
+		return override, nil
+	}
+	base, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(base) == "" {
+		if err == nil {
+			err = errors.New("no home directory")
+		}
+		return "", fmt.Errorf("resolve the login home: %w", err)
+	}
+	// The inherited root lives INSIDE the login home it was resolved from,
+	// so the containment runs the other way from Dir's gate: quarantining the
+	// home that holds the inherited state root quarantines the scan that would
+	// have read the person's real dot-folders out of it.
+	if underTest && Contains(base, inherited) {
+		return quarantine, nil
+	}
+	return base, nil
 }
 
 // StoreDir names one of a store's own directories — the workspace its jobs

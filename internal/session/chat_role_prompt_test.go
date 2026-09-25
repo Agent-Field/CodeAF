@@ -63,7 +63,7 @@ func TestTheConversationUnderTheBeltHasOneWayToPutWorkOut(t *testing.T) {
 func TestTheConversationWithoutTheBeltKeepsBothVerbs(t *testing.T) {
 	now := time.Date(2026, 9, 18, 12, 0, 0, 0, time.FixedZone("EDT", -4*60*60))
 
-	t.Setenv("CODEAF_TASK_BELT", "")
+	t.Setenv("CODEAF_TASK_BELT", "node")
 	registerBeltRunEngine(t, newBeltRunDouble("unused"))
 	agent, _ := newTestAgent(t, beltRunCompleter{text: "unused"}, func(config *Config) {
 		config.Workspace = t.TempDir()

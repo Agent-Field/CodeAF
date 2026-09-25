@@ -134,7 +134,7 @@ func TestARemoteAttachmentTravelsAsBytesAndNamesNoLocalPath(t *testing.T) {
 func TestAPictureAndAFileRideOneMessage(t *testing.T) {
 	a, agent, _ := fileLab(t, "devbox", map[string]int{"a.log": 8, "shot.png": 8, "b.csv": 8})
 	a.attachFilePath("a.log")
-	a.attachPath("shot.png")
+	a.attachFilePath("shot.png")
 	a.attachFilePath("b.csv")
 
 	labels := chipLabels(a.chips, a.pal)
@@ -256,8 +256,8 @@ func TestAPictureHandedToAttachGoesOnAsAPicture(t *testing.T) {
 func TestRemovingAFileLeavesThePictureNumbersAlone(t *testing.T) {
 	a, _, _ := fileLab(t, "", map[string]int{"a.log": 8, "one.png": 8, "two.png": 8})
 	a.attachFilePath("a.log")
-	a.attachPath("one.png")
-	a.attachPath("two.png")
+	a.attachFilePath("one.png")
+	a.attachFilePath("two.png")
 	typeText(t, a, "compare [image #1] and [image #2]")
 
 	a.removeChip(0) // the file

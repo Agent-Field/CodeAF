@@ -491,7 +491,7 @@ func placeFootText(frame string) string {
 
 // A PANEL'S HEADING IS A DOOR INTO THE PLACE IT NAMES, on the grid at two
 // columns and at three: `needs you`, `tasks` and `since you left` open tasks,
-// `spend` opens spend and `scheduled` standing — and `projects` and `threads`,
+// `spend` opens spend and `standing` opens standing — and `projects` and `threads`,
 // which name nothing but their own panels, open nothing and leave home up
 // (`threads` opened the typed search until 2026-09-17; the box under home is
 // the search now). The heading is found by its WORDS on the painted frame and

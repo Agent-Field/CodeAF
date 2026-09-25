@@ -31,12 +31,13 @@ import (
 // here because they are not built from a literal state: their notices copy the
 // node's state, and the graph is the owner `task:N` has always reached.
 var stoppableRowPublishers = map[string]struct{ kind, proof string }{
-	"startKnownTaskRun":    {CancelTask, "TestAStopOnARunsOwnRowEndsTheRun"},
-	"ContinueRun":          {CancelTask, "TestAStopReachesARunThatWasCarriedOn"},
-	"newOrchestrateFamily": {CancelRun, "TestCancelStopsAnAdaptiveRun"},
-	"sayForming":           {CancelRun, "TestCancelStopsAnAdaptiveRun"},
-	"pauseRun":             {CancelRun, "TestCancelStopsAnAdaptiveRun"},
-	"rename":               {CancelRun, "TestCancelStopsAnAdaptiveRun"},
+	"startOrJoinTaskRun":    {CancelTask, "TestAStopOnARunsOwnRowEndsTheRun"},
+	"setBeltRunMachineHold": {CancelTask, "TestAStopOnARunsOwnRowEndsTheRun"},
+	"ContinueRun":           {CancelTask, "TestAStopReachesARunThatWasCarriedOn"},
+	"newOrchestrateFamily":  {CancelRun, "TestCancelStopsAnAdaptiveRun"},
+	"sayForming":            {CancelRun, "TestCancelStopsAnAdaptiveRun"},
+	"pauseRun":              {CancelRun, "TestCancelStopsAnAdaptiveRun"},
+	"rename":                {CancelRun, "TestCancelStopsAnAdaptiveRun"},
 }
 
 // stoppableStates are the states a stop means something in, by the names this

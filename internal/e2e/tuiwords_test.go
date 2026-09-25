@@ -135,6 +135,32 @@ var tuiWords = map[string]tuiWord{
 		screen: "interrupted",
 		why:    "the status word once a stopped turn is genuinely over — what the bound is measured against",
 	},
+	"idleWord": {
+		screen: "idle",
+		why: "the status word once a turn has finished of its own accord — the other end of the same reading " +
+			"[interruptedWord] is one state of ([app.runState]). It is HOW THIS SUITE KNOWS A MODEL HAS " +
+			"STOPPED without guessing at a number of seconds, on a scenario whose own card offers nothing " +
+			"to wait for",
+	},
+	// ── the skills a person already has ──────────────────────────────────────
+	"skillsCarriedWord": {
+		screen: "skills · ",
+		pkg:    "internal/tui3",
+		why: "the dim note under a message naming the skills its turn carried, kept above the turn's " +
+			"`▸ worked` chip — the only screen evidence that a skill from another tool's folder reached " +
+			"a turn by itself or by /skill ([testForeignSkills]); the headless --once door prints the " +
+			"engine's own `skills carried: ` sentence instead",
+	},
+	"skillNoShelfWord": {
+		screen: "this conversation has no skill shelf",
+		why: "the picker row's tail when there is no shelf to attach against. It must be ABSENT on the " +
+			"ordinary launch with memory on and off: it once read `memory is off` on every machine",
+	},
+	"skillCannotCarryWord": {
+		screen: "this conversation cannot carry attached skills",
+		why: "what choosing a skill says when the session under the surface has no attachment doors — " +
+			"which was every choice on the ordinary launch before the doors crossed the session host's socket",
+	},
 	"stopDetachedWord": {
 		screen: "detached — the turn was let go of and nothing is waiting for it",
 		why:    "the note a turn let go of at the bound leaves in the conversation",
@@ -146,7 +172,7 @@ var tuiWords = map[string]tuiWord{
 		why:    "the promise in home's box with nothing typed into it — the one box on a place",
 	},
 	"homeDoorWord": {
-		screen: "esc back",
+		screen: "space space home",
 		why:    "the gesture back to home, named on the conversation's own rule",
 	},
 	"microcopy": {
@@ -163,11 +189,14 @@ var tuiWords = map[string]tuiWord{
 	// panel is there and says nothing about whether anything is in it.
 	"homeNeedsHeading": {
 		screen: "needs you",
-		why:    "the top of the left column: every question on the machine lands in it, and every resting home draws it",
+		why: "every question on the machine lands in it, and every resting home draws it. The two words are " +
+			"the whole heading — it carried its live count (`needs you · 2`) until #1046 struck it — and they " +
+			"are also the front of the gate's own `needs your ok …`, so a test that wants the HEADING has to " +
+			"read the column the heading opens rather than grep for the word",
 	},
 	"homePanelProjects": {
 		screen: "projects",
-		why:    "the panel of folders, never empty, read and never stood on since 2026-09-17 — the view by project alt+g used to be",
+		why:    "the panel of folders, never empty; clicking a project selects the next message’s folder",
 	},
 	"homePanelRunning": {
 		screen: "sessions",
@@ -183,7 +212,7 @@ var tuiWords = map[string]tuiWord{
 		why:    "the day and the fortnight on home, and the third word of the four-place bar",
 	},
 	"homePanelNext": {
-		screen: "scheduled",
+		screen: "standing",
 		why:    "every standing order this machine will act on — reminders, routines, watches, rules — soonest first",
 	},
 	"homeRunningWhisper": {
@@ -223,11 +252,17 @@ var tuiWords = map[string]tuiWord{
 		screen: "last active ",
 		why:    "the facts line on the card beside a search — the one card left once the resting card went",
 	},
+	"homeStartWord": {
+		screen: "start a new conversation",
+		why:    "the action row under anything typed at home",
+	},
 
 	// ── asking from home ─────────────────────────────────────────────────────
 	"homeAskHereWord": {
 		screen: "ask here",
-		why:    "the heading of the home pane opened by /ask",
+		why: "what one ↑ off the action row starts, drawn as the row's own heading over the pane. " +
+			"`ctrl+enter` is still bound and is no longer advertised — most terminals cannot send it " +
+			"and `alt+enter` belongs to the task layer (home.go's [app.homeHintWords])",
 	},
 	"notifyAskWord": {
 		screen: "waiting on you",
@@ -516,7 +551,7 @@ var tuiWords = map[string]tuiWord{
 			"words home's own row draws, so this gate holds the spelling without a second copy of it here",
 	},
 	"landingKeysWord": {
-		screen: "esc back · ctrl+c interrupts or quits",
+		screen: "esc interrupts · ctrl+c quits",
 		why:    "the notice a conversation greets on, and what a window that RESUMED an earlier one draws instead of home",
 	},
 	"questionWaitingWord": {
@@ -525,6 +560,27 @@ var tuiWords = map[string]tuiWord{
 		why: "the row a place that is NOT the conversation draws over an open question " +
 			"(questiondelivery.go's questionWaitingLine). It stands in the roster's foot where the " +
 			"enter-door would be, so a task that landed `your call` and asked something is read here",
+	},
+	// ── the tasks place's own fold ───────────────────────────────────────────
+	//
+	// The place groups its rows by conversation and draws every group SHUT, so a
+	// scenario that reads a piece of work inside one has to open it — and has to
+	// know the press landed. These two words are the two answers the foot gives,
+	// and they are the suite's only honest way to tell a page with nothing in it
+	// from a page whose fold has not opened yet.
+	"tasksFoldShutWord": {
+		screen: "→ what ran under it",
+		why: "the tasks place's foot over a SHUT conversation group (place_tasks.go's tasksOpenWord). " +
+			"It is waited for before the `→` is pressed, because a key that reached the program before " +
+			"the place was up is a key nothing answered — and the page then held no row for the work, " +
+			"which a screen-wide wait for a state word read straight past",
+	},
+	"tasksFoldOpenWord": {
+		screen: "← fold it back up",
+		why: "the same foot once the group is OPEN (place_tasks.go's tasksShutWord), which is what says " +
+			"the `→` landed and the rows inside are drawn. Waiting on it rather than sleeping is what " +
+			"made the run-engine scenarios repeatable: two runs of one binary split on whether the fold " +
+			"had opened by the time the assertion read a row",
 	},
 	"tasksEnterInsideWord": {
 		screen: "enter go inside it",
@@ -555,8 +611,9 @@ var tuiWords = map[string]tuiWord{
 
 	// ── the run engine's plan, on the tasks place ────────────────────────────
 	//
-	// A `/task` under CODEAF_TASK_BELT=bash starts a RUN rather than a node of
-	// this session's own tree: the conversation seeds a plan store, the engine
+	// A `/task` on the worker harness — the default, and what CODEAF_TASK_BELT=bash
+	// names outright — starts a RUN rather than a node of this session's own
+	// tree: the conversation seeds a plan store, the engine
 	// drives it, and the store's root lands on the tasks place beside the record
 	// (internal/tui3's taskplan.go). These rows are what the tmux suite reads to
 	// prove the run happened, moved, and left a page of its own.
@@ -582,7 +639,19 @@ var tuiWords = map[string]tuiWord{
 		why: "the command a bash-belt worker finishes its store task with, recorded in the task's own " +
 			"trajectory and drawn as a step line on the plan page (taskplan.go's taskPlanBody reads " +
 			"PlanTaskPage.Steps). THE PAGE DOES NOT SPELL IT — the worker runs it — so the gate looks where " +
-			"it is written: internal/session's plandb_plan.go, the sentence that teaches the finish",
+			"it is written: internal/session's plandb_plan.go, the sentence that teaches the finish. " +
+			"IT IS OBSERVED AND NEVER WAITED OUT, because whether it is on a page is the WORKER'S " +
+			"choice: the run writes the ending itself for a task whose worker stopped calling tools " +
+			"without writing one (internal/run's worker.go), which a small brief on a fast model " +
+			"regularly is. What the suite asserts about that page instead is that it is the store's " +
+			"page at all — planNoteBoxWord and planStepsSpend, two words no room draws",
+	},
+	"planNoteBoxWord": {
+		screen: "a note for this task",
+		why: "the plan page's own note box (taskplan.go's taskPlanNoteWord), and the one word on it " +
+			"that is there whatever state the task is in. It is what says the press over a run's row " +
+			"opened THE STORE'S PAGE rather than a room — the assertion that defect #1359 was about — " +
+			"where the live step beside it is a moment and is only ever observed",
 	},
 	"planLiveGlyph": {
 		screen: tokens.GlyphStepRunning,

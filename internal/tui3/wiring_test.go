@@ -594,7 +594,7 @@ func TestAnInterruptDropsWhatWasQueued(t *testing.T) {
 	}
 	_ = agent
 
-	drive(t, a, key("ctrl+c"))
+	drive(t, a, key("esc"))
 	if len(a.follows) != 0 {
 		t.Fatal("the interrupt kept the queue the session just dropped")
 	}
@@ -661,7 +661,7 @@ func TestFollowUpsDrainInOrderBeforeTheParkedMessage(t *testing.T) {
 
 // M10: Esc drops both session-owned queues, closes every follow-up stream, and
 // drops the surface-owned parked queue before the stopped stream ends.
-func TestCtrlCClosesQueuedStreamsAndDropsTheParkedTurn(t *testing.T) {
+func TestEscClosesQueuedStreamsAndDropsTheParkedTurn(t *testing.T) {
 	agent, a := wired([]session.Event{text(session.EventTextDelta, "working")})
 	typeLine(t, a, "the first turn")
 	settleAsk(a)
@@ -672,17 +672,17 @@ func TestCtrlCClosesQueuedStreamsAndDropsTheParkedTurn(t *testing.T) {
 	parkLine(t, a, "the parked message")
 	firstTurn := a.turn
 
-	drive(t, a, key("ctrl+c"))
+	drive(t, a, key("esc"))
 	if len(a.follows) != 0 {
-		t.Fatalf("Ctrl+C left %d follow-ups on the surface", len(a.follows))
+		t.Fatalf("Esc left %d follow-ups on the surface", len(a.follows))
 	}
 	for index, stream := range agent.followStreams {
 		if _, open := <-stream; open {
-			t.Fatalf("follow-up stream %d remained open after Ctrl+C", index)
+			t.Fatalf("follow-up stream %d remained open after Esc", index)
 		}
 	}
 	if len(agent.sent) != 1 || len(a.parks) != 0 {
-		t.Fatalf("Ctrl+C did not drop the parked message: sent=%q parks=%+v", agent.sent, a.parks)
+		t.Fatalf("Esc did not drop the parked message: sent=%q parks=%+v", agent.sent, a.parks)
 	}
 
 	agent.finish()

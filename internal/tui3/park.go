@@ -251,7 +251,7 @@ func (a *app) recallParkedAt(i int) bool {
 // same question the stop is, because a turn that is winding down has no
 // boundary left to steer into either.
 var parkedHint = []string{
-	"waits for this answer", "ctrl+c stops and drops", steerArrowWord, "↑ or click to edit",
+	"waits for this answer", "esc stops and drops", steerArrowWord, "↑ or click to edit",
 }
 
 // parkedHeight is how many rows the block takes: the messages, then the one dim

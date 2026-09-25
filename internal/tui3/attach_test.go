@@ -419,10 +419,12 @@ func TestEnterSendsAPictureWithNoWords(t *testing.T) {
 	}
 }
 
-// /image IS THE OTHER DOOR: a path this directory's walk never offered.
-func TestTheImageCommandAttachesAPath(t *testing.T) {
+// /attach IS THE OTHER DOOR: a path this directory's walk never offered, and
+// a picture handed to it is a picture (/image, the word that took only
+// pictures, is gone).
+func TestTheAttachCommandAttachesAPicturePath(t *testing.T) {
 	a, _, dir := attachLab(t, map[string]int{"shot.png": 8, "notes.md": 8})
-	typeLine(t, a, "/image shot.png")
+	typeLine(t, a, "/attach shot.png")
 	if want := []string{"shot.png"}; !equalStrings(chipNames(a), want) {
 		t.Fatalf("chips are %v, want %v", chipNames(a), want)
 	}
@@ -430,27 +432,24 @@ func TestTheImageCommandAttachesAPath(t *testing.T) {
 		t.Fatalf("the chip holds %q, want it resolved against the workspace", got)
 	}
 
-	typeLine(t, a, "/image notes.md")
-	if len(a.chips) != 1 {
-		t.Fatalf("a markdown file was attached: %v", chipNames(a))
-	}
-	if body := strings.Join(plainRows(a), "\n"); !strings.Contains(body, "not a picture") {
-		t.Fatalf("nothing said why:\n%s", body)
+	typeLine(t, a, "/attach notes.md")
+	if len(a.chips) != 2 || a.chips[1].name() != "notes.md" {
+		t.Fatalf("a markdown file did not join the tray as a file: %v", chipNames(a))
 	}
 
-	typeLine(t, a, "/image missing.png")
-	if body := strings.Join(plainRows(a), "\n"); !strings.Contains(body, "no such picture") {
+	typeLine(t, a, "/attach missing.png")
+	if body := strings.Join(plainRows(a), "\n"); !strings.Contains(body, "no such file") {
 		t.Fatalf("a path that is not there said nothing:\n%s", body)
 	}
 }
 
 // TAB COMPLETES THE COMMAND'S PATH, and enter belongs to the line under it: a
 // path typed out in full must not be swapped for whatever the list ranked first.
-func TestTabCompletesTheImageCommandsPath(t *testing.T) {
+func TestTabCompletesTheAttachCommandsPath(t *testing.T) {
 	a, _, dir := attachLab(t, map[string]int{"pictures/shot.png": 8})
 	// An argument with nothing typed after it does not open a list of its own
 	// accord — six hundred rows over an empty query is a list nobody asked for.
-	typeText(t, a, "/image ")
+	typeText(t, a, "/attach ")
 	if a.comp.open {
 		t.Fatal("the path list opened over an empty argument")
 	}
@@ -460,7 +459,7 @@ func TestTabCompletesTheImageCommandsPath(t *testing.T) {
 	}
 	typeText(t, a, "pictures/sh")
 	drive(t, a, tab())
-	if got, want := a.input.String(), "/image pictures/shot.png"; got != want {
+	if got, want := a.input.String(), "/attach pictures/shot.png"; got != want {
 		t.Fatalf("the draft is %q, want %q", got, want)
 	}
 	if a.comp.open {

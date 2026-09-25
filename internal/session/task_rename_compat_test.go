@@ -63,7 +63,7 @@ func TestLegacyRegisteredWorktreeResumesLandsAndCleansUp(t *testing.T) {
 	if !ok || resumed.dir != canonicalPath(legacyDir) {
 		t.Fatalf("resume = %q %v, want former registered tree", resumed.dir, ok)
 	}
-	merge, problem, _, refusal := resumed.comeHome("resume former worktree", []string{"restored.txt"}, false)
+	merge, problem, _, refusal := resumed.comeHome("resume former worktree", []string{"restored.txt"}, gitSignature{})
 	if merge != mergeMerged || problem != "" || refusal != refusedNothing {
 		t.Fatalf("landing = %q %q %v", merge, problem, refusal)
 	}
@@ -86,7 +86,11 @@ func TestLegacyRegisteredWorktreeResumesLandsAndCleansUp(t *testing.T) {
 		t.Fatal("repository lock could not be opened")
 	}
 	defer lock.Close()
-	wantLock := filepath.Join(repo, filepath.FromSlash(legacyTasksDirName), gitRootLockName)
+	// THE LOCK'S OWN BOUNDARY CANONICALIZES THE ROOT — two spellings of one
+	// repository must never make two locks — so the expectation is spelled the
+	// way this filesystem spells it: /var/… and /private/var/… are one directory
+	// on a Mac, and only the resolved form is the one git and the lock share.
+	wantLock := canonicalPath(filepath.Join(repo, filepath.FromSlash(legacyTasksDirName), gitRootLockName))
 	if lock.Name() != wantLock {
 		t.Fatalf("repository lock = %q, want pre-rename lock %q", lock.Name(), wantLock)
 	}
@@ -96,7 +100,7 @@ func TestLegacyRegisteredWorktreeResumesLandsAndCleansUp(t *testing.T) {
 		t.Fatal("fresh repository lock could not be opened")
 	}
 	defer freshLock.Close()
-	if want := filepath.Join(fresh, filepath.FromSlash(tasksDirName), gitRootLockName); freshLock.Name() != want {
+	if want := canonicalPath(filepath.Join(fresh, filepath.FromSlash(tasksDirName), gitRootLockName)); freshLock.Name() != want {
 		t.Fatalf("fresh repository lock = %q, want current path %q", freshLock.Name(), want)
 	}
 	if _, err := os.Stat(filepath.Join(fresh, filepath.FromSlash(legacyTasksDirName))); !os.IsNotExist(err) {

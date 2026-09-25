@@ -29,6 +29,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		page     string
 	}{
 		{"what can you do", "what-i-can-do"},
+		{"can you use my claude code skills", "skills-from-other-tools"},
+		{"why is my claude code plugin skill missing", "skills-from-other-tools"},
+		{"do codex skills work here", "skills-from-other-tools"},
+		{"do skills work with memory off", "skills-from-other-tools"},
+		{"two skills with the same name which one wins", "skills-from-other-tools"},
+		{"why does a skill row say it cannot be attached", "putting-a-skill-in-front"},
+		{"my message with a picture did not carry the skill I attached", "putting-a-skill-in-front"},
+		{"out of credits", "openrouter-credits"},
+		{"only free models", "openrouter-credits"},
+		{"it worked and then stopped", "openrouter-credits"},
+		{"why is my model a free one", "openrouter-credits"},
+		{"low on credits warning", "openrouter-credits"},
 		{"can I use my own deepseek key", "services"},
 		{"how do I connect glm", "services"},
 		{"how do I add an api key for another provider", "services"},
@@ -174,6 +186,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"stop adding a co-author trailer to my commits", "permissions"},
 		{"does it sign every comment it leaves on my pull request", "permissions"},
 		{"what is the small drafted with line under its comment", "permissions"},
+		// The owner's rulings on #1410 (2026-09-24): signing has no off, a
+		// person who had turned it off is told so, and a task landed on the
+		// worker harness, the belt tasks run on by default, names no model.
+		{"I turned attribution off before, why are my commits signed again", "permissions"},
+		{"why does the commit my task landed not name the model", "permissions"},
 		// AND THE TASK PROPOSAL AS IT IS DRAWN NOW that it is that block too
 		// (internal/tui3's task.go), asked the four ways somebody meets the
 		// keys that moved: the answers row that replaced the chips, the typed
@@ -317,6 +334,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// ways somebody meets an empty file list after spending time and money.
 		{"the run finished and my directory is empty where did the work go", "running-from-the-terminal"},
 		{"codeaf do spent money and wrote no files", "running-from-the-terminal"},
+		// A headless run the machine holds (#1410's review): it used to wait in
+		// silence until its --timeout, and the person asking has only stderr.
+		{"codeaf do is waiting and nothing happens", "running-from-the-terminal"},
+		{"why did codeaf do exit 124 without starting anything", "running-from-the-terminal"},
 		// And the reader itself: a person with a log in front of them wants one
 		// call out of it, or wants the rows a program can read.
 		{"find one call in the log", "models-and-cost"},
@@ -537,11 +558,31 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// all until they said so.
 		{"where did my changes go", "choosing-a-folder"},
 		{"merge what you did into my folder", "choosing-a-folder"},
+		// /project split off from /folder on 2026-09-22: the person setting one,
+		// the person who typed /folder on home the old way, and the person who
+		// tried /project in a conversation.
+		{"how do I set the project on home", "choosing-a-folder"},
+		{"which folder will my next conversation open in", "choosing-a-folder"},
+		{"what happened to /folder on the home screen", "choosing-a-folder"},
 		{"put the changes into the folder", "choosing-a-folder"},
 		{"you changed my files?", "choosing-a-folder"},
 		{"undo what you did to my folder", "choosing-a-folder"},
 		{"work in that folder directly", "choosing-a-folder"},
 		{"what does ctrl+b do", "keys"},
+		// ctrl+b on home, asked by the person who pressed it there and saw
+		// nothing, and by the one who wants a title off the list.
+		{"ctrl+b on home does nothing", "keys"},
+		{"can I copy text off the home screen", "keys"},
+		// Copy mode, asked by somebody who wants to get words off the screen.
+		// It was taken out on 2026-09-22 and put back on 2026-09-23 — the owner
+		// wanted the feature kept and only its tip dropped — so these have to
+		// reach the pages that describe it working.
+		{"how do I copy text out of the conversation", "keys"},
+		{"is there a copy mode", "keys"},
+		{"what does /copy do", "commands"},
+		// The cross on a tip row, asked by somebody who pressed it and watched
+		// the row answer with a different sentence.
+		{"what does the x on the hint row do", "hints-and-tips"},
 		// The spell-it-out gesture, asked the three ways people meet it: wanting
 		// it, seeing the hint and not knowing what it is, and being unhappy about
 		// what came back.
@@ -1313,6 +1354,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where do I set what codeaf may spend", "models-and-cost"},
 		{"how much money can a task spend of its own", "models-and-cost"},
 		{"why does the limit say no limit instead of $0", "models-and-cost"},
+		{"I started a task after my dollar limit was spent and it still paid for a call", "models-and-cost"},
 		// Issue #168: work a conversation started was on the machine's day figure
 		// twice, and the person who notices is the one asking what their tasks
 		// are costing.
@@ -2377,6 +2419,20 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I turn off hints", "hints-and-tips"},
 		{"stop showing tips", "hints-and-tips"},
 		{"what is a news line", "hints-and-tips"},
+		{"what is the dim sentence above the rule on home", "hints-and-tips"},
+		{"does the @ file list work on home", "home"},
+		{"is there an /image command", "attaching-files"},
+		{"the tip on home changed by itself", "hints-and-tips"},
+		{"every hint codeaf can show", "hints-and-tips"},
+		{"is a retired tip gone for good", "hints-and-tips"},
+		{"a tip appeared in my conversation after a while", "hints-and-tips"},
+		{"why does the hint only show up when I stop typing", "hints-and-tips"},
+		// The showing rule, and the day the row went blank: asked by the
+		// owner, whose afternoon of stepping through home had spent the table.
+		{"how long does a tip have to be on screen to count", "hints-and-tips"},
+		{"no hints at all any more, home's row is blank", "hints-and-tips"},
+		{"can I search my conversations with memory off", "places"},
+		{"search says what was said is not indexed", "places"},
 
 		// The wave that made the places follow the session's machine. These are
 		// the owner's own sentences, from the report that started it: they
@@ -2615,6 +2671,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I read the manual from the terminal", "commands"},
 		{"does reading the manual cost anything", "commands"},
 		{"list every page of the manual", "commands"},
+		// /manual is a question put to the model since 2026-09-22, asked by
+		// somebody who typed it on home and watched a conversation open, and by
+		// somebody who remembers it printing the page.
+		{"why did /manual open a conversation", "commands"},
+		{"does /manual ask the model or just print the page", "commands"},
 		// The wave that gave /status a second form. Each of these is asked by
 		// somebody who wants the session's facts for a PROGRAM rather than for
 		// their own eyes — the plain wish, the flag met in the command list, and
@@ -2735,6 +2796,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I add a note to a running task", "worker-harness"},
 		{"why did the task refuse my cancel", "worker-harness"},
 		{"how do I stop a run", "worker-harness"},
+		{"does codeaf do commit my changes", "worker-harness"},
+		{"how much can a codeaf do run spend without yes-spend", "worker-harness"},
 		{"stop it did nothing and the task kept running", "worker-harness"},
 		{"what happens to a run's branch after I stop it", "worker-harness"},
 		{"what can the task worker actually run", "worker-harness"},
@@ -2753,6 +2816,28 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// watching something the plan does not name is the shape the note was
 		// written for, and these are the words of a person holding it.
 		{"my task is waiting on a build outside the plan", "worker-harness"},
+		// Notes as a channel rather than a log (internal/run's note channel and
+		// the chat's own `tasks` listing): whether the note was read, when, and
+		// where anyone else can see it. The first four are the question a person
+		// asks after typing into the note box and watching nothing happen.
+		{"does the worker actually read the note I left", "worker-harness"},
+		{"when does a task read a note", "worker-harness"},
+		{"I left a note and the task ignored it", "worker-harness"},
+		{"can a note change what a task is supposed to do", "worker-harness"},
+		{"where do I see the notes on a run", "worker-harness"},
+		{"why didn't the chat know about the note", "worker-harness"},
+		{"can one task tell another task something", "worker-harness"},
+		// The plan the conversation reads when you speak: the questions of
+		// somebody who has just changed their mind with work in flight.
+		{"I changed my mind while work was underway", "worker-harness"},
+		{"does the chat know what is running while I talk to it", "worker-harness"},
+		{"it kept going after I said to skip that part", "worker-harness"},
+		{"how do I drop work I no longer want", "worker-harness"},
+		// #1430: the engine's own account of itself, the window that will not
+		// let go, and the time limit that now closes the window.
+		{"which engine process is holding my folder", "staying-on-that-machine"},
+		{"the other window will not let go of my conversation", "home"},
+		{"does max-hours close the window when the time runs out", "starting-codeaf"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

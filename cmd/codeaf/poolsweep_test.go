@@ -7,7 +7,10 @@ package main
 // pending file.
 
 import (
+	"context"
+	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -123,5 +126,69 @@ func TestPoolJudgeSweepToleratesATornPendingLine(t *testing.T) {
 	}
 	if alreadyJudged(poolDir, 99, 0) {
 		t.Fatal("the torn row was judged; it should have been skipped")
+	}
+}
+
+// pendingIDs reads the landing ids a pending file or a claim holds, the way the
+// sweep reads them: one row a line, a torn line counted as nothing.
+func pendingIDs(t *testing.T, path string) map[uint64]bool {
+	t.Helper()
+	ids := map[uint64]bool{}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ids
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		var row pendingLanding
+		if json.Unmarshal([]byte(strings.TrimSpace(line)), &row) == nil {
+			ids[row.Landing.ID] = true
+		}
+	}
+	return ids
+}
+
+// TestPoolJudgeSweepCutShortKeepsALeftoverClaimsRows: a sweep that stops
+// before it has reached every row of a leftover claim leaves that claim for the
+// next start. The fresh pending file must not then be renamed over it, which
+// replaced the leftover's unjudged rows with the new ones and lost them for good.
+func TestPoolJudgeSweepCutShortKeepsALeftoverClaimsRows(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_MODEL_POOL", "on")
+	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
+	restoreOwnCells(t)
+
+	profileDir := t.TempDir()
+	poolDir := config.ProfilePath(profileDir, "pool")
+	settings := config.Config{APIKey: "k"}
+
+	// A LEFTOVER CLAIM, from a sweep a process death cut short.
+	leftover := poolTestLanding()
+	leftover.ID = 101
+	if err := writePendingLanding(profileDir, "do", leftover); err != nil {
+		t.Fatalf("write leftover row: %v", err)
+	}
+	claim := pendingPath(poolDir) + ".sweeping"
+	if err := os.Rename(pendingPath(poolDir), claim); err != nil {
+		t.Fatalf("leave the claim behind: %v", err)
+	}
+	// AND A ROW A DOOR WROTE SINCE.
+	fresh := poolTestLanding()
+	fresh.ID = 202
+	if err := writePendingLanding(profileDir, "do", fresh); err != nil {
+		t.Fatalf("write fresh row: %v", err)
+	}
+
+	// THE CLOSE HAS ALREADY CANCELLED THE SWEEP.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var asked []string
+	sweepPendingContext(ctx, settings, profileDir, poolDir, poolTestCatalog, poolTestAsk(settings, &asked), time.Now, time.Now().Add(time.Minute))
+
+	inClaim, inPending := pendingIDs(t, claim), pendingIDs(t, pendingPath(poolDir))
+	if !inClaim[101] {
+		t.Fatalf("the leftover claim lost its unjudged row 101: the claim holds %v, pending holds %v", inClaim, inPending)
+	}
+	if !inClaim[202] && !inPending[202] {
+		t.Fatalf("the fresh row 202 is in neither file: the claim holds %v, pending holds %v", inClaim, inPending)
 	}
 }

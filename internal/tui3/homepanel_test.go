@@ -236,42 +236,71 @@ func TestProjectsListsThisFolderFirstWithItsCountsAndRepository(t *testing.T) {
 	}
 }
 
-// A PROJECT'S ROW IS READ AND NOT STOOD ON (owner, 2026-09-17): the cursor
-// steps over every row of `projects`, a press on one leaves home up and moves
-// nothing, and the panel offers no verbs — its heading opens nothing either.
-// `enter` used to start a conversation in the folder and `→` offered its chats
-// and its folder; both are gone with the rail's interactivity.
-func TestAProjectsRowIsReadAndNotStoodOn(t *testing.T) {
-	lab := newSwitchLab(t)
-	a := lab.open(120, 45)
-	placeFrameText(a)
-	rows := 0
-	for _, line := range a.home.lines {
-		if line.kind != homeProjectRow {
-			continue
-		}
-		rows++
-		if line.stop() {
-			t.Fatalf("a project's row is a cursor stop: %+v", line.cell)
-		}
-	}
-	if rows == 0 {
-		t.Fatalf("no project rows on the frame:\n%s", homeText(a))
-	}
-	x, y, ok := homeHeadingAt(a, "projects")
-	if !ok {
-		t.Fatalf("the projects heading is not on the frame:\n%s", homeText(a))
-	}
-	was := a.home.cursor
-	frame := strings.Split(homeText(a), "\n")
-	for dy := 0; dy <= rows; dy++ {
-		drive(t, a, tea.MouseClickMsg{X: x + homeGridLead, Y: y + dy, Button: tea.MouseLeft})
-		if a.page != pageHome || a.home.cursor != was || a.strip.open {
-			t.Fatalf("a press on %q (page %q, cursor %d→%d, strip %v) did something", strings.TrimSpace(frame[y+dy]), a.page.word(), was, a.home.cursor, a.strip.open)
-		}
-	}
-	if line, ok := a.home.previewLine(); ok && line.kind == homeProjectRow {
-		t.Fatal("a project's row is the row being read")
+// Project clicks choose the next message's folder without moving the keyboard
+// cursor. Exercise the painted names at every layout width, then send through
+// the real home entry point to prove the selection is more than a label.
+func TestHomeProjectClickSelectsNextMessageDestination(t *testing.T) {
+	for _, width := range []int{80, 120, 180} {
+		t.Run(itoa(width), func(t *testing.T) {
+			lab := newSwitchLab(t)
+			a := lab.open(width, 60)
+			a.tilde = lab.work
+			a.home.tilde = lab.work
+			a.home.build()
+			frame := homeText(a)
+			y, x := homeRowOf(frame, "~/beta")
+			if y < 0 {
+				t.Fatalf("the project name is missing:\n%s", frame)
+			}
+			for _, line := range a.home.lines {
+				if line.kind == homeProjectRow && line.stop() {
+					t.Fatal("a project became a keyboard stop")
+				}
+			}
+			cursor, file, workspace := a.home.cursor, a.file, a.workspace
+			before := a.targetWhere()
+			drive(t, a, tea.MouseMotionMsg{X: x, Y: y})
+			if a.home.cursor != cursor || a.targetWhere() != before {
+				t.Fatal("hover changed the cursor or selected project")
+			}
+			if row := homeFrameRow(a, y); !strings.Contains(row, a.pal.underline(a.pal.ink("~/beta"))) {
+				t.Fatalf("the hovered project did not underline: %q", row)
+			}
+			beta := lab.workspace("beta")
+			for i := 0; i < 2; i++ {
+				drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+				if a.target.where != beta || a.page != pageHome || a.home.cursor != cursor || a.file != file || a.workspace != workspace || a.strip.open {
+					t.Fatalf("project click changed more than its target: target=%q page=%v cursor=%d file=%q workspace=%q", a.target.where, a.page, a.home.cursor, a.file, a.workspace)
+				}
+				if a.home.msg != "" || !strings.Contains(homeText(a), targetProjectLead+targetPathWord(a)) {
+					t.Fatal("the message-region project did not show the selection quietly")
+				}
+			}
+			drive(t, a, key("alt+p"))
+			if a.target.where != lab.workspace("alpha") {
+				t.Fatal("Option+P did not continue from the clicked project")
+			}
+			drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+			drive(t, a, tea.MouseMotionMsg{X: 0, Y: 0})
+			if a.home.projectHover != -1 {
+				t.Fatal("the project stayed hovered after the pointer left")
+			}
+			var opened string
+			next := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
+			a.start = func(where string) (Conversation, error) {
+				opened = where
+				return Conversation{Agent: next, SessionFile: where + "/next/transcript.jsonl", Workspace: where}, nil
+			}
+			typeHome(a, "explain the lexer")
+			runCmd(a.homeEnter())
+			if opened != beta || len(next.sent) != 1 || next.sent[0] != "explain the lexer" {
+				t.Fatalf("message missed the clicked project: opened=%q sent=%q", opened, next.sent)
+			}
+			runCmd(a.openHome())
+			if a.targetWhere() != beta {
+				t.Fatal("returning home forgot the clicked project")
+			}
+		})
 	}
 }
 
@@ -564,7 +593,7 @@ func TestNextUpIsSoonestFirstAndFoldsIntoStanding(t *testing.T) {
 	}
 }
 
-// A `scheduled` ROW SAYS ITS TIME ONCE, IN ITS DESCRIPTION, IN THE ONE SHAPE
+// A `standing` ROW SAYS ITS TIME ONCE, IN ITS DESCRIPTION, IN THE ONE SHAPE
 // ITS KIND HAS (owner, 2026-09-15): a reminder the moment it goes off, a routine
 // its cadence, its next and its last outcome, a watch how often it looks, when
 // it last looked and what it found, a rule its own words. Nothing at the
@@ -631,7 +660,7 @@ func TestScheduledSaysEachKindsTimeOneWayInItsDescription(t *testing.T) {
 		if homeDescOn(a.home.cols) {
 			t.Fatalf("%d columns has a description column; the test wants a frame without one", width)
 		}
-		// A narrow frame squeezes `scheduled` first (law 5), so the claim is
+		// A narrow frame squeezes `standing` first (law 5), so the claim is
 		// about every row it still draws and not about how many those are.
 		sentence := map[string]string{}
 		for _, w := range want {

@@ -68,7 +68,6 @@ var commands = []command{
 	// not where they learn its grammar; the manual's model page has the four
 	// forms in a table ([modelArg] at the foot of this file).
 	{name: "model", args: "<slug>", desc: "switch the model for the conversation or open task"},
-	{name: "image", args: "<path>", desc: "attach a picture · tab completes the path"},
 	// /set and /config were already answered by the dispatch before aliases
 	// existed, and /connections and /sessions with them. They are written here
 	// now because the table is the one place: a word the surface accepts and the
@@ -108,6 +107,13 @@ var commands = []command{
 	// three should have to find out which one this build chose.
 	{name: "folder", desc: "choose a folder to work in · type a path to browse", alias: []string{"place", "dir"}},
 	{name: "folder", args: "<path>", desc: "…open it already pointed at that path"},
+	// AND THE OTHER HALF OF THE WORD, SPLIT OFF ON 2026-09-22. /folder gives
+	// THIS conversation a folder; this sets the one the next conversation
+	// opens in, and home is the only screen that has a next conversation
+	// (projectcmd.go). They sit together because a person who types either
+	// one meant one of the two and reads both rows on the way past.
+	{name: "project", desc: "the folder your next conversation opens in · on home"},
+	{name: "project", args: "<path>", desc: "…that folder, without opening the browser"},
 	// AND ITS OTHER END. Choosing a folder is where work aimed somewhere else
 	// starts; this is where it arrives. It sits directly under /folder because
 	// nobody reaches for it who has not already done the first — and because
@@ -150,7 +156,7 @@ var commands = []command{
 	// pick a point out of (rewindsheet.go) — and then the gesture that takes the
 	// last message back without opening anything (rewind.go). Two tiers, one row,
 	// in the order a person meets them.
-	{name: "rewind", desc: "go back to an earlier point", alias: []string{"undo", "back"}},
+	{name: "rewind", desc: "go back to an earlier point · esc esc takes back the last", alias: []string{"undo", "back"}},
 	// WHAT HAS ALREADY BEEN ANSWERED, and the way to take one back
 	// (permissions.go). It BELONGS beside /settings and /connect — those two are
 	// "what may this thing do" and "what may it reach", and this is "what has it
@@ -225,6 +231,14 @@ var commands = []command{
 	{name: "subharness", desc: "the programs you can run · type to filter · enter opens its card",
 		alias: []string{"sub"}},
 	{name: "subharness", args: "<name>", desc: "…straight to that one's card"},
+	// THE SKILLS THIS CONVERSATION CAN BE HANDED (skillpick.go). It sits
+	// directly under the subharness rows because it is the neighbouring
+	// question — those are the programs this conversation can run, and this is
+	// what it can be told to know — and on the picker's own terms: a space
+	// after it opens the shelf, enter on a row toggles that skill on or off,
+	// and a query that looks like a path offers the skill in that folder.
+	{name: "skill", desc: "what you can hand this conversation · a space picks more than one",
+		alias: []string{"skills"}},
 	// WHAT IT KNOWS ABOUT YOU, and the two ways to change it. They sit beside
 	// /harness because they answer the neighbouring question — one is what this
 	// conversation has learned to DO, these are what it has been told about YOU
@@ -276,7 +290,6 @@ var commands = []command{
 	{name: "effort", desc: "how hard this conversation thinks · the five rungs, and what each buys",
 		alias: []string{"think", "thinking"}},
 	{name: "effort", args: "<rung>", desc: "…set it outright · " + effortKey + " walks it, or press it on the seam"},
-	{name: "ask", args: "<question>", desc: "ask here on home", door: sendDoorAsk},
 	{name: "task", args: "<brief>", desc: "start work you can walk away from", door: sendDoorTask},
 	{name: "task", args: "solo <brief>", desc: "…with one worker, and no sizing call before it", door: sendDoorTask},
 	// THE THIRD ROW IS GONE, AND ITS ABSENCE IS THE FEATURE. It typed
@@ -399,38 +412,42 @@ var commands = []command{
 	// conversation and this one puts something INTO it — a log, a CSV, a PDF, on
 	// the same tray a picture rides and read rather than looked at (attach.go).
 	//
-	// IT BELONGS DIRECTLY UNDER /image, and it sits down here instead for the
-	// reason /permissions and /harness do, which is a fact about the LIST rather
-	// than about the command: [menuRows] shows eight rows at once, position in
-	// this table is a claim about frequency, and a row inserted beside /image
-	// would push /compact — which people reach for daily — into a scroll.
-	// standingpage_test.go pins exactly that. So it lands with the doors onto
-	// moving a file, which is the other errand it shares.
+	// ITS PLACE IN THIS LIST KEEPS /compact VISIBLE. [menuRows] shows eight
+	// rows at once, so position is a claim about frequency. /attach stands with
+	// the doors onto moving a file, an errand it shares with /files; putting it
+	// higher would push /compact, which people reach for daily, into a scroll.
+	// standingpage_test.go pins that ordering.
 	//
-	// It is NOT a second spelling of /image, and the two rows say so in their own
-	// words: a picture is looked at, a file is read. A picture handed to /attach
-	// still goes on as a picture, because somebody who learned one word should
-	// not have to find out this build has two.
+	// A PICTURE HANDED TO /attach STILL GOES ON AS A PICTURE. Its extension
+	// decides whether the model looks at it or reads a file, so one command
+	// covers both kinds of cargo.
 	//
 	// /upload is here because it is the word people bring from every chat program
 	// they have used. /file is deliberately NOT an alias: it shares four
 	// characters with /files one row above, and a word that narrowed the list to
 	// both errands at once is the near-miss /history was named to avoid.
-	{name: "attach", args: "<path>", desc: "attach a file · tab completes the path", alias: []string{"upload"}},
+	//
+	// TWO ROWS, /folder'S REASON EXACTLY: the bare form is the browser and
+	// enter on its row opens it at once, where one row with a placeholder
+	// left `/attach ` in the box waiting for a path nobody had — a second
+	// enter to reach the sheet the word already meant (the owner met it,
+	// 2026-09-22).
+	{name: "attach", desc: "choose a file to attach · the browser opens", alias: []string{"upload"}},
+	{name: "attach", args: "<path>", desc: "…attach that file · tab completes the path"},
 	// AND DIRECTLY ABOVE /help, THE OTHER QUESTION SOMEBODY HAS WHEN THEY ARE
 	// LOST. /help is what you can TYPE; this is what codeaf DOES, in the writing
 	// codeaf is built from (manualcmd.go). They sit together because a person who
 	// has just read a list of commands and still does not know what one of them
 	// means is one row away from the page that says.
 	//
-	// Three rows for one command, /export's reason exactly: the bare form is the
-	// listing nearly everybody wants and is the only one that can be RUN from
-	// this list, since [app.runMenu] puts a row that TAKES something into the
-	// draft instead of running it. The two that take something ride under it
-	// wearing the "…".
-	{name: "manual", desc: "codeaf's own manual · every page, one per line"},
-	{name: "manual", args: "<page>", desc: "…that page, as it is written"},
-	{name: "manual", args: "<question>", desc: "…the sections that answer it, page and heading named"},
+	// Two rows for one command, /export's reason exactly: the bare form is the
+	// only one that can be RUN from this list, since [app.runMenu] puts a row
+	// that TAKES something into the draft instead of running it. The one that
+	// takes something rides under it wearing the "…". Both are turns since
+	// 2026-09-22 — the question goes to the model with the manual open — where
+	// three rows used to print the pages as written.
+	{name: "manual", desc: "asks the model what codeaf can do, from its own manual"},
+	{name: "manual", args: "<question>", desc: "…puts that question to the model, answered from the manual"},
 	// AND THE ROW FOR THE DAY SOMETHING GOES WRONG, directly above /help for the
 	// reason /manual sits there: it is the third thing a person reaches for when
 	// they are stuck, after the list of commands and the page that explains one.
@@ -977,7 +994,7 @@ func helpText(file string, chords chordSpelling) string {
 		// THE DOOR IS NAMED HERE BECAUSE ONE KEY CARRIES TWO MEANINGS
 		// (leaving.go): at rest it leaves, mid-turn it stops the model, and a
 		// person whose ctrl+c "only interrupted" looks here before anywhere else.
-		"ctrl+c         quits everything · mid-turn it interrupts instead",
+		"ctrl+c         quits everything · mid-turn it interrupts instead, like esc",
 		// tab is the seventeenth rung of the key router (input.go) and does
 		// nothing at all when this terminal holds one conversation — which is
 		// why the line says what it needs rather than promising it always works.
@@ -1081,7 +1098,7 @@ func helpText(file string, chords chordSpelling) string {
 		// the machine, and one word meaning two places on the same list is a
 		// person pressing ← ← to find out where they end up.
 		"← ←            out of a task room · the conversation, at the live edge",
-		"esc            back one layer · home when no layer remains · /home",
+		"space space    over an empty box: home · /home · esc back",
 		// THE WORD KILL IS NAMED BY THE KEYS THAT STILL REACH THE BOX. ctrl+w was
 		// on this row until it became the close-tab chord above, and a sheet that
 		// went on offering it would be teaching a keystroke that shuts the window
