@@ -711,9 +711,9 @@ read happens after the box has been quiet for a moment, never on the keystroke, 
 never waits on a search.
 
 `enter` opens the conversation the matching turn was said in, and **the foot says so**:
-`enter opens it at that turn · ↑↓ pick · type to search · esc clears the words · tab next
+`enter opens it at that turn · ↑↓ pick · type to search · esc clear the words · tab next
 place`. With nothing typed there is no row to stand on, so the foot drops to `type to
-search · esc clears the words · tab next place` — `enter` is not named where it does
+search · esc clear the words · tab next place` — `enter` is not named where it does
 nothing. (This foot used to be the router's own default, which said `enter talk about it`
 and was wrong in both states.) Above the results, a legend counts the projects the matches
 came from. Twelve conversations are shown and the rest fold into one line, `▸ 38 more`;

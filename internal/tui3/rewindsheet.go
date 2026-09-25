@@ -82,7 +82,7 @@ const (
 	// which is the task page's own law about its foot ([app.taskSheetKeysLine]).
 	rewindSheetKeys       = "esc close · ↑↓ move · enter picks the point"
 	rewindSheetPickedKeys = "esc close · ↑↓ move · enter again rewinds here"
-	rewindSheetSearchKeys = "esc clears the search · ↑↓ move · enter picks the point"
+	rewindSheetSearchKeys = "esc clear the search · ↑↓ move · enter picks the point"
 	// rewindSheetSearchWord opens the line that says what was typed, and
 	// rewindSheetSearchNone is what that line adds when the search has taken every
 	// row off the page. A filtered page with nothing on it and nothing said is a
