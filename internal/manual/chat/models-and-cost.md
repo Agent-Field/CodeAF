@@ -688,6 +688,9 @@ way ends on the same sentence.
 less than $0.05. A check that reaches it stops there, on `the check stopped at its spend
 ceiling of $0.26, three times its estimate, before it finished`, and the task ends
 unchecked rather than on a bill ten times its estimate.
+Only the checker's own calls count toward that ceiling, whatever model the worker or
+planner runs, including a crew whose three seats use one model. The ceiling follows
+the checker when it moves to another model.
 
 This cap is the crew's own. The day's limit under `/settings` → Spending counts everything
 codeaf spends, and still applies.

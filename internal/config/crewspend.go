@@ -64,12 +64,12 @@ func CrewTaskMoney(usd float64) string {
 }
 
 // CrewSeatCeilings is each seat's own spend ceiling on one task, keyed by the
-// ids the seat is asked for: the CHECKER'S, a few times what it is expected to
+// seat rather than its model: the CHECKER'S, a few times what it is expected to
 // cost and never under a floor. A check is the seat whose length nothing else
 // bounds — it reads until it is satisfied — and one that ran to eleven times
 // its estimate on a dear model was the whole of a day's overshoot. A seat on a
 // route that bills nothing has no ceiling.
-func CrewSeatCeilings(d crewroute.Decision) map[string]float64 {
+func CrewSeatCeilings(d crewroute.Decision) map[crewroute.Seat]float64 {
 	checker := d.Seat(crewroute.Checker)
 	if checker.EstUSD <= 0 {
 		return nil
@@ -78,21 +78,13 @@ func CrewSeatCeilings(d crewroute.Decision) map[string]float64 {
 	if ceiling < crewCheckCeilingFloor {
 		ceiling = crewCheckCeilingFloor
 	}
-	// A CHECKER ON A MODEL ANOTHER SEAT ALSO SITS has no ceiling: the guard
-	// keeps a model's spend, not a seat's, and a crew whose three seats are one
-	// model would stop its WORKER at the checker's line.
-	for _, pick := range d.Crew {
-		if pick.Seat != crewroute.Checker && (pick.Send == checker.Send || pick.Model == checker.Model) {
-			return nil
-		}
-	}
-	out := map[string]float64{}
-	for _, id := range []string{checker.Send, checker.Model} {
-		if id != "" {
-			out[id] = ceiling
-		}
-	}
-	return out
+	// THE CEILING BELONGS TO THE SEAT, NOT TO A MODEL. A fresh profile's
+	// narrow fix can put one model in all three seats, and a ceiling keyed by
+	// model had to be dropped there or it would have stopped the worker at the
+	// checker's line. The guard attributes each call to the seat that made it
+	// (internal/session's SeatCompleter), so the checker keeps its ceiling
+	// whatever the other seats run, and across a fallback to another model.
+	return map[crewroute.Seat]float64{crewroute.Checker: ceiling}
 }
 
 // CrewCheckCeilingAction is the sentence a check its ceiling ends says, with

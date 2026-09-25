@@ -585,7 +585,7 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 		}
 		helper = a.helperGuard(task)
 		var err error
-		if held, err = helper.before(model, messages, options); err != nil {
+		if held, err = helper.before(ctx, model, messages, options); err != nil {
 			return nil, model, err
 		}
 		if helper != nil {
@@ -607,7 +607,7 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 	// is this package's to change (callwindow.go says why it cannot be earlier).
 	response, err := client.CompleteWithMessages(toldItsWindow(ctx), messages, append(options, ai.WithModel(wire))...)
 	if helper != nil {
-		helper.after(model, response, held)
+		helper.after(ctx, model, response, held)
 		crewTaskOf(ctx).addHelperSpend(response)
 	}
 	return response, called, err

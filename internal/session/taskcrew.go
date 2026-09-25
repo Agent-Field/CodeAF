@@ -351,7 +351,7 @@ func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []
 			}
 			continue
 		}
-		held, err := crew.guard.before(current, messages, options)
+		held, err := crew.guard.before(ctx, current, messages, options)
 		if err != nil {
 			// THE CALL THAT WOULD CROSS THE LINE IS NOT MADE, and the line
 			// says which line it met — never "/redo stronger".
@@ -360,7 +360,7 @@ func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []
 		// A SEAT NEVER WAITS OUT A LIMIT: a 429 goes back at once, and the
 		// seat moves to its next route or model ([provider.WithoutPatientRateLimits]).
 		response, err := c.agent.completeWithModel(provider.WithoutPatientRateLimits(asCrewSeatCall(ctx)), purposeInherited, messages, current, options...)
-		crew.guard.after(current, response, held)
+		crew.guard.after(ctx, current, response, held)
 		if err == nil {
 			c.agent.crewAnswered(c.run, current)
 			return response, nil
@@ -525,7 +525,7 @@ func crewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *Sp
 	taskCap, taskAction := config.CrewTaskSpendCap(profileDir)
 	guard := &SpendGuard{
 		Price: config.CrewCallPrice, Cap: capUSD, CapAction: action,
-		Ceilings: config.CrewSeatCeilings(d), CeilingAction: config.CrewCheckCeilingAction,
+		SeatCeilings: config.CrewSeatCeilings(d), CeilingAction: config.CrewCheckCeilingAction,
 		TaskCap: taskCap, TaskAction: taskAction, Task: &SpendTask{},
 	}
 	if capUSD > 0 {

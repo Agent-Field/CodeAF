@@ -37,8 +37,8 @@ func TestTheCheckerStopsAtItsCeilingAndTheDayAtItsCap(t *testing.T) {
 	messages := []ai.Message{textMessage("user", strings.Repeat("the diff and the tests ", 800))}
 	checker := &spendingCompleter{usd: 0.06}
 	guard := &SpendGuard{Price: kimiPrice, Day: NewSpendDay(0), Cap: 1, CapAction: "today's spending limit of $1.00 is reached · raise it with /budget",
-		Ceilings: map[string]float64{"moonshotai/kimi-k3": 0.0882 * 3}, CeilingAction: "the check stopped at its spend ceiling of $%.2f"}
-	seat := guard.Wrap("moonshotai/kimi-k3", checker)
+		SeatCeilings: map[crewroute.Seat]float64{crewroute.Checker: 0.0882 * 3}, CeilingAction: "the check stopped at its spend ceiling of $%.2f"}
+	seat := SeatCompleter(crewroute.Checker, guard.Wrap("moonshotai/kimi-k3", checker))
 	var stopped ErrSpendStopped
 	for i := 0; i < 20; i++ {
 		if _, err := seat.CompleteWithMessages(t.Context(), messages, ai.WithMaxTokens(2000)); err != nil {
@@ -105,9 +105,9 @@ func TestATaskStopsAtItsLimitAcrossEveryModel(t *testing.T) {
 
 	// The checker's own ceiling still binds inside the task's limit.
 	ceilinged := &SpendGuard{Price: kimiPrice, Day: NewSpendDay(0), TaskCap: 5, TaskAction: config.CrewTaskCapAction(5),
-		Ceilings: map[string]float64{"moonshotai/kimi-k3": 0.5}, CeilingAction: "the check stopped at its spend ceiling of $%.2f"}
+		SeatCeilings: map[crewroute.Seat]float64{crewroute.Checker: 0.5}, CeilingAction: "the check stopped at its spend ceiling of $%.2f"}
 	check := &spendingCompleter{usd: 0.4}
-	seat := ceilinged.Wrap("moonshotai/kimi-k3", check)
+	seat := SeatCompleter(crewroute.Checker, ceilinged.Wrap("moonshotai/kimi-k3", check))
 	var err error
 	for i := 0; i < 5 && err == nil; i++ {
 		_, err = seat.CompleteWithMessages(t.Context(), messages, ai.WithMaxTokens(2000))
@@ -142,5 +142,53 @@ func TestTheTaskLimitIsOnEveryGuard(t *testing.T) {
 	}
 	if loose := a.helperGuard(nil); loose.TaskCap != 0 {
 		t.Fatalf("a helper for no task is held to a task limit of %v", loose.TaskCap)
+	}
+}
+
+// A SHARED MODEL DOES NOT SHARE A SEAT'S CEILING. The checker also keeps its
+// tally when its next call goes through another model on the fallback ladder.
+func TestSharedModelCheckerCeilingFollowsTheSeat(t *testing.T) {
+	d := crewroute.Decision{Crew: []crewroute.Pick{
+		{Seat: crewroute.Worker, Model: "vendor/cheap", Send: "vendor/cheap"},
+		{Seat: crewroute.Planner, Model: "vendor/cheap", Send: "vendor/cheap"},
+		{Seat: crewroute.Checker, Model: "vendor/cheap", Send: "vendor/cheap", EstUSD: 0.01},
+	}}
+	guard := CrewSpendGuard(t.TempDir(), d, false)
+	guard.Price = func(string) (float64, float64, float64, bool) { return 0, 1e-6, 0, true }
+	worker := &spendingCompleter{usd: 0.02}
+	check := &spendingCompleter{usd: 0.02}
+	workCall := SeatCompleter(crewroute.Worker, guard.Wrap("vendor/cheap", worker))
+	checkCall := SeatCompleter(crewroute.Checker, guard.Wrap("vendor/cheap", check))
+	messages := []ai.Message{textMessage("user", "check")}
+	for i := 0; i < 4; i++ {
+		if _, err := workCall.CompleteWithMessages(t.Context(), messages, ai.WithMaxTokens(20000)); err != nil {
+			t.Fatalf("worker call %d: %v", i, err)
+		}
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := checkCall.CompleteWithMessages(t.Context(), messages, ai.WithMaxTokens(20000)); err != nil {
+			t.Fatalf("checker call %d: %v", i, err)
+		}
+	}
+	fallback := SeatCompleter(crewroute.Checker, guard.Wrap("vendor/fallback", check))
+	_, err := fallback.CompleteWithMessages(t.Context(), messages, ai.WithMaxTokens(20000))
+	var stopped ErrSpendStopped
+	if !errors.As(err, &stopped) || stopped.Action != "the check stopped at its spend ceiling of $0.05, three times its estimate, before it finished" || check.calls != 2 || worker.calls != 4 {
+		t.Fatalf("fallback after a shared model: %v, %d checker and %d worker calls", err, check.calls, worker.calls)
+	}
+	// A call without a seat still has the task limit, but not this ceiling.
+	if _, err := guard.Wrap("vendor/cheap", worker).CompleteWithMessages(t.Context(), messages, ai.WithMaxTokens(20000)); err != nil {
+		t.Fatalf("a call without a crew seat: %v", err)
+	}
+}
+
+// THE SEAT MARK KEEPS THE MODEL CHAIN: a wrapper that dropped it would end
+// model fallback for every run task it wraps.
+func TestSeatCompleterKeepsTheModelFallbackChain(t *testing.T) {
+	next := chained([]string{"vendor/fallback"})
+	marked := SeatCompleter(crewroute.Checker, (&SpendGuard{}).Wrap("vendor/first", next))
+	chain, ok := marked.(modelChain)
+	if !ok || len(chain.FallbackModels("vendor/first")) != 1 || chain.FallbackModels("vendor/first")[0] != "vendor/fallback" {
+		t.Fatalf("the seat wrapper dropped the fallback chain: %T", marked)
 	}
 }
