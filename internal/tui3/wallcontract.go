@@ -93,6 +93,10 @@ type wallTile struct {
 	// teams is the id of every team this conversation is in. A conversation
 	// may be in several.
 	teams []string
+	// spent is what the conversation has spent, the figure its own status line
+	// would show (treespend.go's [spendOf]); 0 is nothing known, drawn as
+	// nothing.
+	spent float64
 }
 
 // wallTailCap is the most logical lines a reading keeps per conversation.
@@ -350,6 +354,12 @@ type wallState struct {
 	hits     []wallHit
 	// tails is the reading cache, by chatTab.key (walltail.go owns it).
 	tails map[string]*wallTail
+	// treeAsking says a ledger reading for the held tiles is out, treeAt when
+	// the last one left, and treeCache the wall's own tail-reading cache of the
+	// ledger file, used only by that one reading (wallspend.go).
+	treeAsking bool
+	treeAt     time.Time
+	treeCache  *session.UsageCache
 	// teams is the loaded set and activeID the id of the one the strip is
 	// narrowed to, "" for none (teams.go owns both).
 	teams    []team
@@ -428,12 +438,16 @@ type wallState struct {
 
 // wallTail is one conversation's cached reading (walltail.go fills it).
 type wallTail struct {
-	lines   []wallLine
-	count   int // transcript entries seen at the last reading
-	textLen int // total text length seen, so a growing last entry counts as activity
-	seen    time.Time
-	fresh   int
-	freshAt time.Time
+	// books is what the conversation's own books said at the last reading,
+	// and tree what its tree on the ledger came to at the last ledger reading
+	// (wallspend.go). Both only ever grow.
+	books, tree float64
+	lines       []wallLine
+	count       int // transcript entries seen at the last reading
+	textLen     int // total text length seen, so a growing last entry counts as activity
+	seen        time.Time
+	fresh       int
+	freshAt     time.Time
 	// spark is a ring of per-second activity, newest at sparkAt.
 	spark   [wallSparkLen]uint8
 	sparkAt time.Time

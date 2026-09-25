@@ -66,7 +66,10 @@ A tile reads top to bottom:
 - **the title** on the top border, the brightest thing in the tile, after the dots of the
   teams it is in (up to three, then `+N`)
 - **one dim line** saying what the conversation is doing now, like `running bash · 2m`,
-  `writing` or `? waiting on you · 3m`, or when it last moved, like `updated 5m ago`
+  `writing` or `? waiting on you · 3m`, or when it last moved, like `updated 5m ago`, and at
+  its right end **what the conversation has spent**, like `$0.42`: the same figure its own
+  status line shows, the work it started included. A conversation that has spent nothing
+  shows no figure, and on a narrow tile the figure gives way before the words do
 - **the conversation's own newest lines**, drawn the way the conversation draws them, fading
   with age so the newest are where your eye lands; lines that just arrived are lifted for a
   moment and then settle. A turn a team started shows what the team sent (`◆ manager →

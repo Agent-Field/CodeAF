@@ -52,6 +52,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can a team cap be less than a cent", "team-questions-and-caps"},
 		{"the wall said my team was not saved", "conversations-and-teams"},
 		{"how long does my team have left to wrap up", "team-questions-and-caps"},
+		{"does the conversations view show what each conversation spent", "conversations-and-teams"},
 		{"where do I change one team's settings", "teams-page"},
 		{"what does the ? 2 mark on a team mean", "teams-page"},
 		// Nesting on the teams page (teams-page.md).
