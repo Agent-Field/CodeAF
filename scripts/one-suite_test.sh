@@ -5,7 +5,21 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 tmp="$(mktemp -d /tmp/codeaf-one-suite-test.XXXXXX)"
 trap 'rm -rf "$tmp"' EXIT
 helper="$tmp/codeaf-suite-lock"
+# The pre-#1264 reader, kept as it was apart from a private lock path.
+legacy="$root/scripts/testdata/pre-1264/one-suite.sh"
 go build -o "$helper" "$root/cmd/codeaf-suite-lock"
+
+# read_lock_line waits for the file lock's line and prints it.
+#
+# THE LOCK IS NAMED AFTER THE SUITE STARTS, never before (main.go), so a suite
+# that has said "ready" says nothing yet about the file. Reading it at once lost
+# that race on a loaded box and quoted an empty line; the Go test beside this
+# script reads until the line is there for the same reason, and so does this.
+read_lock_line() {
+	local waited=0
+	while [ ! -s "$1" ] && [ "$waited" -lt 100 ]; do sleep 0.1; waited=$((waited + 1)); done
+	cat "$1"
+}
 
 run_order() {
 	local first="$1" lock="$tmp/$1.lock" fifo="$tmp/$1.fifo"
@@ -21,7 +35,7 @@ run_order() {
 	read -r ready <"$fifo"
 	[ "$ready" = ready ]
 	local metadata output status suite_pid since
-	metadata="$(cat "$lock")"
+	metadata="$(read_lock_line "$lock")"
 	# The lock file records the suite's pid, when it started, and the pid of the
 	# holder that carries the lock beside it, so read the two the refusal quotes
 	# by field rather than by splitting the line in two.
@@ -69,7 +83,7 @@ run_host_b_after_cell() {
 	local holder_pid=$! ready
 	read -r ready <"$fifo"
 	[ "$ready" = ready ]
-	local metadata suite_pid since; metadata="$(cat "$lock")"
+	local metadata suite_pid since; metadata="$(read_lock_line "$lock")"
 	suite_pid="${metadata%% *}"
 	since="${metadata#* }"
 	since="${since%% *}"
@@ -184,25 +198,127 @@ run_both_locks() {
 # AND A STALE HOLDER TURNS A CURRENT RUN AWAY, which is the direction that has
 # been costing unattributable reds: a current tree reads the flock, sees free,
 # and starts beside a suite it cannot see.
+#
+# THE HOLDER IS A REAL OLD CHECKOUT, not a pid written by hand. Since #1324 a
+# directory whose pid is not an old checkout's is a dead lock and is taken back
+# (the arm after next), so the only honest stand-in for an old tree is the old
+# script itself, kept under testdata with a private lock path.
 run_refused_by_directory() {
-	local lock="$tmp/stale.lock" dir="$tmp/stale.lock.dir"
-	mkdir "$dir"
-	printf '%d\n' "$$" >"$dir/pid"
+	local lock="$tmp/stale.lock" dir="$tmp/stale.lock.dir" fifo="$tmp/stale.fifo"
+	mkfifo "$fifo"
+	env CODEAF_LEGACY_SUITE_DIRLOCK="$dir" "$legacy" sh -c 'echo ready >"$1"; exec sleep 30' sh "$fifo" &
+	local old_pid=$! ready
+	read -r ready <"$fifo"
+	[ "$ready" = ready ]
 	local out status
 	set +e
 	out="$(env CODEAF_SUITE_LOCK_HELPER="$helper" CODEAF_SUITE_LOCK_PATH="$lock" CODEAF_SUITE_DIRLOCK_PATH="$dir" "$root/scripts/one-suite.sh" true 2>&1)"
 	status=$?
 	set -e
-	[ "$status" -eq 1 ] || { printf 'a run started beside a directory-lock holder (status %d): %s\n' "$status" "$out" >&2; return 1; }
+	[ "$status" -eq 1 ] || { printf 'a run started beside a directory-lock holder (status %d): %s\n' "$status" "$out" >&2; kill -TERM "$old_pid"; return 1; }
 	case "$out" in
-		*"another heavy suite is already running on this box (directory lock $dir, pid $$)."*) ;;
-		*) printf 'the refusal did not name the directory holder: %s\n' "$out" >&2; return 1 ;;
+		*"another heavy suite is already running on this box (directory lock $dir, pid $old_pid)."*) ;;
+		*) printf 'the refusal did not name the directory holder %s: %s\n' "$old_pid" "$out" >&2; kill -TERM "$old_pid"; return 1 ;;
 	esac
 	# A REFUSED RUN LEAVES THE LOCK WHERE IT FOUND IT. It never held it, so
 	# clearing it here would unlock a box somebody else is still using.
-	[ -d "$dir" ] || { printf 'a refused run removed a directory lock it never held\n' >&2; return 1; }
-	[ "$(cat "$dir/pid")" = "$$" ] || { printf 'a refused run rewrote the holder name\n' >&2; return 1; }
-	rm -rf "$dir"
+	[ -d "$dir" ] || { printf 'a refused run removed a directory lock it never held\n' >&2; kill -TERM "$old_pid"; return 1; }
+	[ "$(cat "$dir/pid")" = "$old_pid" ] || { printf 'a refused run rewrote the holder name\n' >&2; kill -TERM "$old_pid"; return 1; }
+	kill -TERM "$old_pid"
+	wait "$old_pid" || true
+	[ ! -d "$dir" ] || { printf 'the old checkout left its directory lock behind\n' >&2; return 1; }
+}
+
+# AN OLD CHECKOUT SEES A CURRENT HOLDER AS ALIVE (#1324).
+#
+# The arm above is one direction; this is the other, and the one the second
+# lock exists for. The old reader accepts a live pid only when its command line
+# says one-suite.sh, and the directory used to name the SUITE, whose command
+# line does not — so the old tree judged a live lock stale, moved it aside and
+# ran its suite beside ours. This arm runs THE OLD READER ITSELF against a
+# current holder, which run_both_locks never did: it only checked that the
+# directory existed and named a live pid, and a live pid was never the old
+# reader's whole test.
+run_old_reader_sees_current_holder() {
+	local lock="$tmp/old-reader.lock" dir="$tmp/old-reader.lock.dir" fifo="$tmp/old-reader.fifo"
+	mkfifo "$fifo"
+	env CODEAF_SUITE_LOCK_HELPER="$helper" CODEAF_SUITE_LOCK_PATH="$lock" CODEAF_SUITE_DIRLOCK_PATH="$dir" \
+		"$root/scripts/one-suite.sh" bash -c "echo ready >'$fifo'; exec sleep 30" &
+	local wrapper_pid=$! ready
+	read -r ready <"$fifo"
+	[ "$ready" = ready ]
+	local waited=0
+	while [ ! -s "$lock" ] && [ "$waited" -lt 50 ]; do sleep 0.1; waited=$((waited + 1)); done
+	local owner; owner="$(sed -n 's/.*holder=\([0-9]*\).*/\1/p' "$lock" 2>/dev/null)"
+	[ -n "$owner" ] || { printf 'the file lock named no holder\n' >&2; kill -TERM "$wrapper_pid"; return 1; }
+	# The directory is asked twice: once whoever it names now, and once the
+	# holder has named itself, which is the state it spends the suite in.
+	local pass out status
+	for pass in early holder; do
+		if [ "$pass" = holder ]; then
+			waited=0
+			while [ "$(cat "$dir/pid" 2>/dev/null)" != "$owner" ] && [ "$waited" -lt 50 ]; do sleep 0.1; waited=$((waited + 1)); done
+			[ "$(cat "$dir/pid" 2>/dev/null)" = "$owner" ] || { printf 'the holder %s never named itself in the directory lock\n' "$owner" >&2; kill -TERM "$wrapper_pid"; return 1; }
+		fi
+		set +e
+		out="$(env CODEAF_LEGACY_SUITE_DIRLOCK="$dir" "$legacy" sh -c 'echo STALE TREE RAN ITS SUITE BESIDE THE CURRENT ONE' 2>&1)"
+		status=$?
+		set -e
+		case "$out" in
+			*"STALE TREE RAN ITS SUITE BESIDE THE CURRENT ONE"*)
+				printf 'the old reader (%s pass) ran its suite beside a live current holder: %s\n' "$pass" "$out" >&2; kill -TERM "$wrapper_pid"; return 1 ;;
+		esac
+		[ "$status" -eq 1 ] || { printf 'the old reader (%s pass) exited %d, want its refusal: %s\n' "$pass" "$status" "$out" >&2; kill -TERM "$wrapper_pid"; return 1; }
+		case "$out" in
+			*"another heavy suite is already running on this box"*) ;;
+			*) printf 'the old reader (%s pass) did not refuse in its own words: %s\n' "$pass" "$out" >&2; kill -TERM "$wrapper_pid"; return 1 ;;
+		esac
+		[ -d "$dir" ] || { printf 'the old reader (%s pass) moved a live lock aside\n' "$pass" >&2; kill -TERM "$wrapper_pid"; return 1; }
+	done
+	kill -TERM "$wrapper_pid"
+	wait "$wrapper_pid" || true
+	waited=0
+	while kill -0 "$owner" 2>/dev/null && [ "$waited" -lt 600 ]; do sleep 0.1; waited=$((waited + 1)); done
+	[ ! -d "$dir" ] || { printf 'the directory lock %s outlived its holder %s\n' "$dir" "$owner" >&2; return 1; }
+}
+
+# A DEAD DIRECTORY LOCK IS TAKEN BACK, NOT OBEYED FOR EVER (#1324).
+#
+# An out-of-memory sweep or a SIGKILL of the holder frees the flock, because
+# the kernel closes a dead process's descriptors, and leaves the directory,
+# because nothing closes a name. Until #1324 every later run was then refused
+# naming a pid that no longer existed. The holder killed here is the one this
+# arm started, read back from the lock file its own launch wrote.
+run_dead_directory_lock_is_taken_back() {
+	local lock="$tmp/dead.lock" dir="$tmp/dead.lock.dir" fifo="$tmp/dead.fifo"
+	mkfifo "$fifo"
+	env CODEAF_SUITE_LOCK_HELPER="$helper" CODEAF_SUITE_LOCK_PATH="$lock" CODEAF_SUITE_DIRLOCK_PATH="$dir" \
+		"$root/scripts/one-suite.sh" bash -c "echo ready >'$fifo'; exec sleep 30" &
+	local wrapper_pid=$! ready
+	read -r ready <"$fifo"
+	[ "$ready" = ready ]
+	local waited=0
+	while [ ! -s "$lock" ] && [ "$waited" -lt 50 ]; do sleep 0.1; waited=$((waited + 1)); done
+	local owner; owner="$(sed -n 's/.*holder=\([0-9]*\).*/\1/p' "$lock" 2>/dev/null)"
+	[ -n "$owner" ] || { printf 'the file lock named no holder\n' >&2; kill -TERM "$wrapper_pid"; return 1; }
+	waited=0
+	while [ "$(cat "$dir/pid" 2>/dev/null)" != "$owner" ] && [ "$waited" -lt 50 ]; do sleep 0.1; waited=$((waited + 1)); done
+	kill -KILL "$owner"
+	waited=0
+	while ! flock -n "$lock" -c true 2>/dev/null && [ "$waited" -lt 50 ]; do sleep 0.1; waited=$((waited + 1)); done
+	[ -d "$dir" ] || { printf 'the killed holder %s took its directory with it, so this arm tests nothing\n' "$owner" >&2; kill -TERM "$wrapper_pid"; return 1; }
+	local out status
+	set +e
+	out="$(env CODEAF_SUITE_LOCK_HELPER="$helper" CODEAF_SUITE_LOCK_PATH="$lock" CODEAF_SUITE_DIRLOCK_PATH="$dir" "$root/scripts/one-suite.sh" true 2>&1)"
+	status=$?
+	set -e
+	kill -TERM "$wrapper_pid"
+	wait "$wrapper_pid" || true
+	[ "$status" -eq 0 ] || { printf 'a dead directory lock (holder %s, killed) still refused the next run (status %d): %s\n' "$owner" "$status" "$out" >&2; return 1; }
+	[ ! -d "$dir" ] || { printf 'the run that took back the dead lock left its own directory behind\n' >&2; return 1; }
+	flock -n "$lock" -c true 2>/dev/null || { printf 'the flock is still held after both runs ended\n' >&2; return 1; }
+	ls -d "$dir".stale.* >/dev/null 2>&1 && { printf 'the dead directory was moved aside and left there\n' >&2; return 1; }
+	return 0
 }
 
 # THE SUITE DOES NOT INHERIT THE LOCK'S NAME, and this arm exists because the
@@ -227,6 +343,16 @@ run_suite_does_not_inherit_the_lock_name() {
 	[ ! -d "$dir" ] || { printf 'the directory lock outlived a suite that had already ended\n' >&2; return 1; }
 }
 
+# NAMED ARMS RUN ALONE, so a red arm can be shown red without the arms before
+# it deciding whether it runs at all: `scripts/one-suite_test.sh run_dead_directory_lock_is_taken_back`.
+if [ "$#" -gt 0 ]; then
+	for arm in "$@"; do
+		"$arm"
+		printf '%s: ok\n' "$arm"
+	done
+	exit 0
+fi
+
 # The namespace arms need bubblewrap to make one host PID have two different
 # views. The lock's other acceptance remains meaningful without that fixture,
 # so a missing tool skips only these arms rather than blocking on a readiness
@@ -242,6 +368,8 @@ else
 fi
 run_both_locks
 run_refused_by_directory
+run_old_reader_sees_current_holder
+run_dead_directory_lock_is_taken_back
 run_suite_does_not_inherit_the_lock_name
 if [ -n "$namespace_ran" ]; then
 	printf 'one-suite namespace and dual-lock acceptance: ok\n'

@@ -582,6 +582,19 @@ func sweepPending(settings config.Config, profileDir, poolDir string, models fun
 func sweepPendingContext(ctx context.Context, settings config.Config, profileDir, poolDir string, models func() []catalog.Model, ask func(model string) judge.Ask, now func() time.Time, deadline time.Time) (judged, left int) {
 	claim := pendingPath(poolDir) + ".sweeping"
 	judged, left = sweepClaimContext(ctx, settings, profileDir, poolDir, claim, models, ask, now, deadline)
+	// A CLAIM THAT IS STILL THERE WAS NOT FINISHED, and the fresh file must not be
+	// renamed over it. The sweep removes a claim only when it reached every row;
+	// one a cancel or the deadline cut short keeps its unjudged rows for the next
+	// start, and renaming the pending file onto the same name replaced those rows
+	// with the new ones and lost them for good (#1267). The pending file waits
+	// where it is, and the next start takes the leftover first, as this one did.
+	// Its rows are waiting too, so they are counted among the ones left.
+	if _, err := os.Lstat(claim); err == nil {
+		if data, err := os.ReadFile(pendingPath(poolDir)); err == nil {
+			left += countUnjudged(poolDir, strings.Split(string(data), "\n"))
+		}
+		return judged, left
+	}
 	if err := os.Rename(pendingPath(poolDir), claim); err != nil {
 		return judged, left
 	}

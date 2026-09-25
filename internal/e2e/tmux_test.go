@@ -214,7 +214,18 @@ func start(t *testing.T, name, home, ws string, cols, rows int, args ...string) 
 	// THE RIG IS HANDED THE KEY THE PRODUCT WOULD HAVE FOUND, whichever road it
 	// came down: a key that lives only in the profile reaches the child through
 	// the variable here, exactly as a key exported in the shell does.
-	r := startWithEnv(t, []string{config.APIKeyEnv + "=" + liveKey(t)},
+	//
+	// AND IT NAMES ITS BELT. Every scenario that starts here was written against
+	// the node road and reads that road's words, and it said so by saying
+	// nothing while unset meant node. The default is the worker harness now, and
+	// a scenario that relied on the absence of a word would have moved to the
+	// other road with every assertion still green — the fault that would have
+	// had both belt benchmarks comparing the harness to itself. `node` is the
+	// word because it reaches the older engine on this binary and is simply not
+	// `bash` on an older one. A scenario that wants the harness says `bash`
+	// itself through [startWithEnv], and the one that tests the default says no
+	// word at all ([testTaskOnTheDefaultBelt]).
+	r := startWithEnv(t, []string{config.APIKeyEnv + "=" + liveKey(t), "CODEAF_TASK_BELT=node"},
 		name, home, ws, cols, rows, args...)
 	r.skipSetup(t)
 	return r
@@ -333,7 +344,13 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	// The pid LEADS the name: tmux falls back to prefix matching on -t, so a
 	// sibling's `kill-session -t afe2e_a` would still reach `afe2e_a-<pid>`.
 	name = fmt.Sprintf("p%d-%s", os.Getpid(), name)
-	command := []string{"env"}
+	// THE RUNNER'S OWN BELT WORD DOES NOT REACH THE CHILD. `env` without -i
+	// hands the child everything this process has, so a developer with
+	// CODEAF_TASK_BELT exported in their shell would be choosing which road
+	// every scenario tests. The variable is dropped first; an assignment in env
+	// follows the -u and wins, so a scenario that names a word still gets it,
+	// and a scenario that names none really runs with the variable absent.
+	command := []string{"env", "-u", "CODEAF_TASK_BELT"}
 	command = append(command, env...)
 	command = append(command,
 		"CODEAF_HOME="+home,

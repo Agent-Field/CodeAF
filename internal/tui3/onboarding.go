@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"sort"
 	"strings"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/fuzzy"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -614,18 +616,34 @@ func (a *app) setupModelChoices() []Model {
 			models = append([]Model{{ID: current}}, models...)
 		}
 	}
-	find := strings.ToLower(strings.TrimSpace(a.setup.modelFind))
+	find := strings.TrimSpace(a.setup.modelFind)
 	if find == "" {
 		return models
 	}
-	out := make([]Model, 0, len(models))
+	// THE SAME MATCHER /model USES ([picker.rank], internal/fuzzy), so what a
+	// person types finds the same models in setup as it does there. A plain
+	// substring test found nothing for `ds v4`, which /model answers with
+	// deepseek/deepseek-v4-flash: the query is tokens, every one must match, and
+	// the best alignment ranks first, ties keeping the catalog's order (#1321).
+	// The words are folded and made into terms exactly as the picker makes them
+	// ([fuzzyTerms]), so a capital typed here means what it means there.
+	terms := fuzzyTerms(strings.Fields(strings.ToLower(find)))
+	type hit struct {
+		model Model
+		score int
+	}
+	hits := make([]hit, 0, len(models))
 	for _, model := range models {
 		// A person types what they can SEE, so the friendly name is searched
 		// beside the id: "sonnet" and "Claude Sonnet" reach the same row.
-		if strings.Contains(strings.ToLower(model.ID), find) ||
-			strings.Contains(strings.ToLower(modelWord(model.ID)), find) {
-			out = append(out, model)
+		if score, ok := fuzzy.ScoreFields([]string{model.ID, modelWord(model.ID)}, terms); ok {
+			hits = append(hits, hit{model: model, score: score})
 		}
+	}
+	sort.SliceStable(hits, func(i, j int) bool { return hits[i].score > hits[j].score })
+	out := make([]Model, 0, len(hits))
+	for _, h := range hits {
+		out = append(out, h.model)
 	}
 	return out
 }

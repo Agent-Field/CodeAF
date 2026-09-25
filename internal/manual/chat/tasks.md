@@ -327,8 +327,9 @@ start together.
 **How many of them run at once is decided by memory, not by a number here.** Each piece
 that begins sets aside a footprint — one core's share of memory, or more where this
 session's pieces were seen to need more — so a wide hand-out runs as many pieces as the
-memory above `task.min_free_mb` can hold and leaves the rest queued, each row reading
-`waiting · machine busy`. Those begin by themselves as earlier pieces finish; there is
+memory above `task.min_free_mb` can hold and leaves the rest queued. The run's rail row
+reads `waiting · machine busy`; held parts on its plan page read
+`queued · machine busy`. Those begin by themselves as earlier pieces finish; there is
 nothing to do about it and nothing to come back for. how-tasks-run has the arithmetic.
 
 What it will *not* do is watch them. Each landing writes one dim line in the
@@ -4129,8 +4130,8 @@ because there is nowhere dearer to move it to.
 
 **A busy machine is not one of these tests.** `task.max_load` and `task.min_free_mb` never
 refuse a split. If the machine is over one of them when the work divides, the split happens
-and the parts simply **wait** — the same wait any queued task does, drawn as
-`waiting · machine busy` — and they start themselves as soon as the machine clears. The
+and the parts simply **wait** — the run's rail row reads
+`waiting · machine busy` and held plan parts read `queued · machine busy` — and they start themselves as soon as the machine clears. The
 worker is told so in its receipt and has nothing to come back for.
 
 **A `/task` can be split for its worker, too.** The sizing call reads a `/task <brief>` for
@@ -4224,15 +4225,19 @@ What actually runs out is the machine, not a count of tasks. Two real ceilings h
 starts instead:
 
 - `task.max_load` — the one-minute load average divided by core count, default **1.5** per
-  core. At or above it, nothing new starts and a held task's row reads
-  `waiting · machine busy`.
+  core. At or above it, nothing new starts. The run's rail row reads
+  `waiting · machine busy`; its held plan parts read `queued · machine busy`.
 - `task.min_free_mb` — a floor under available memory, default **1536** MiB. Below it,
   nothing new starts — and each running piece sets aside a footprint of memory against
   that floor until a reading shows it, so a wide hand-out runs what the memory can hold
   and queues the rest on `machine busy` (how-tasks-run has the arithmetic).
 
-Both gate starts only. Nothing already running is ever touched; the pressure drains as
-running work finishes, and the check is re-asked every 5 seconds.
+Both gate starts only. Nothing already running is ever touched; pressure drains
+as running work finishes. The older node road re-asks every 5 seconds; the
+default run road re-asks each supervisor pass, every 300 milliseconds. `codeaf do`
+uses the same profile limits and, having no rail, says a hold on stderr, once:
+`waiting · machine busy` and the limit that held it (see *codeaf do is waiting and
+nothing happens* on the terminal page).
 
 **The honest caveat:** these two governors read `/proc/loadavg` and `/proc/meminfo`, so
 they only apply on a machine that has them. Where there is no `/proc` — macOS, Windows —
@@ -5541,8 +5546,7 @@ and breadcrumbs remain available.
 ## will the chat do it itself or start a task?
 
 One read, one edit or one command the chat does itself. Anything with parts goes
-out as tasks. With `CODEAF_TASK_BELT=bash` set there is **one way** the chat puts
-work out, a task:
+out as tasks. There is **one way** the chat puts work out, a task:
 
 - **hand off:** the chat proposes a task; approving the card, or letting its
   countdown run out, starts it as a run in the conversation's plan.
@@ -5554,17 +5558,17 @@ work out, a task:
 - **ask about:** the chat reads the run's rows and the task's own steps and
   answers from them. It never redoes the work.
 
-## is there a quick task with the bash belt on? can the chat still start quick tasks?
+## is there a quick task? can the chat still start quick tasks?
 
-**No. With `CODEAF_TASK_BELT=bash` set the conversation has no quick task.** The
+**No. The conversation has no quick task.** The
 chat's only verb for putting work out is a task, and every task it starts is part
 of the conversation's plan, where the tree shows it and a check reads it. A quick
 task ran outside the plan, in the folder you stand in, with no check, so it was
 left off rather than kept as a second road. Asked to parallelize, the chat proposes
 several tasks at once. Small work it simply does itself.
 
-With the variable unset nothing changes: quick tasks work as *What a quick task is*
-describes.
+With `CODEAF_TASK_BELT` set to `node`, `legacy` or `off` the older engine returns
+and quick tasks work as *What a quick task is* describes.
 
 ## what are the what, since, now and next lines?
 

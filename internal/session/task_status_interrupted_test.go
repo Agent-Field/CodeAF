@@ -32,34 +32,20 @@ func TestWorkNothingIsDrivingSaysSoInTheOneWord(t *testing.T) {
 	}
 }
 
-// IT WILL NOT MOVE WITHOUT THE PERSON, which is the whole reason it sits in
-// their tier. Continuing spends money and nothing continues on its own.
-func TestInterruptedWorkIsThePersonsCallAndSaysWhatTheAnswersAre(t *testing.T) {
+// IT SAYS THE TWO FACTS A PERSON NEEDS AND ASKS NOTHING NOTHING CAN ANSWER.
+// It used to sit in the person's tier offering `continue it` and `leave it`,
+// with the needs-you mark raised; the door that carries a run on has no caller,
+// so the question had no answer and the mark could never be cleared
+// (run_lifecycle_test.go holds that half). What stays is the line.
+func TestInterruptedWorkSaysWhatIsTrueOfIt(t *testing.T) {
 	status := interruptedStatus()
-	if status.Tier != TaskTierYourCall {
-		t.Fatalf("it sits in the %q tier, where nobody would be asked", status.Tier)
-	}
-	if !status.Attention {
-		t.Fatal("it does not ask for anybody, so nothing would ever pick it up")
-	}
-	if status.On != TaskWaitPerson {
-		t.Fatalf("it waits on %q", status.On)
-	}
-	if status.Ask.Kind != TaskAskContinue {
-		t.Fatalf("it asks %q, so the card would have no answers written for it", status.Ask.Kind)
-	}
-	if status.Ask.Yes != "continue it" || status.Ask.No != "leave it" {
-		t.Fatalf("the two answers are %q and %q", status.Ask.Yes, status.Ask.No)
-	}
-	// AND THE REASON SAYS BOTH FACTS A PERSON NEEDS BEFORE THEY ANSWER. Without
-	// the second one the only safe-looking answer is to start over.
+	// AND THE REASON SAYS BOTH FACTS A PERSON NEEDS. Without the second one the
+	// only safe-looking move is to start over.
 	if status.Reason != "nothing is driving it; everything it did is kept" {
 		t.Fatalf("the reason is %q", status.Reason)
 	}
-	// AND THE ANSWER IS NEVER THE MODEL'S, whatever a settle policy says:
-	// continuing spends money.
-	if status.Ask.Owner != TaskAskOwnerPerson {
-		t.Fatalf("the decision was handed to %q", status.Ask.Owner)
+	if status.Ask != (TaskAsk{}) {
+		t.Fatalf("it asks %+v, and no door takes an answer", status.Ask)
 	}
 }
 

@@ -359,6 +359,14 @@ func renderSystemAt(config Config, now time.Time) string {
 		out.WriteString("\n\n")
 		out.WriteString(strings.TrimRight(quickPrompt, "\n"))
 	}
+	// AND THE SHELF THIS CONVERSATION ALREADY OWNS, when it has one. The skill
+	// catalog is dynamic CONTENT rather than a fact about the shape, so it is
+	// composed here from the store and not from beltfacts.go, and it renders
+	// nothing at all on an empty shelf (skillcatalog.go).
+	if catalog := renderSkillCatalog(config); catalog != "" {
+		out.WriteString("\n\n")
+		out.WriteString(catalog)
+	}
 
 	out.WriteString(workerFooter(config, now))
 	return out.String()
@@ -380,6 +388,17 @@ func renderSystemAt(config Config, now time.Time) string {
 // does not have. A page naming a hand the belt lacks is the prompt lying, and
 // every step of every worker pays for the sentences again, so neither page rides
 // this one.
+//
+// AND THE SHELF IS NOT ON THIS PAGE, for the same law read forward. The verb
+// that lists and fetches a skill is gated on [Config.mayProposeTask] and on a
+// store to read the shelf from (tools_skill.go), and this belt has neither: the
+// predicate is false for every bash-belt worker by construction (beltfacts.go),
+// and the seat a run builds carries no store at all, so the catalog section,
+// the per-message block and the verb are all absent here. Nothing above the
+// worker puts a skill in its brief either — the attachment road runs through
+// the plan graph's own executor and not through this seat — so a paragraph
+// telling this worker to reach the shelf would name a hand it has no way to
+// use. A capability that cannot work is absent, not broken.
 //
 // THE ORDER IS THE POINT. A task on this belt is a planner first — it frames,
 // plans, dispatches and integrates — and a page opening on the chat colleague or
@@ -531,8 +550,61 @@ func (a *Agent) rerenderSystemLocked(now time.Time) {
 	if !a.systemOwn {
 		return
 	}
-	a.system = renderSystemAt(a.config, now)
+	a.system = renderSystemAt(a.liveModelConfigLocked(), now)
 	a.systemAt = now
+	a.refreshSystemLocked()
+}
+
+// liveModelConfigLocked is this agent's config with the model it is talking to
+// NOW in place of the one it was launched on, which is the config the page is
+// rendered from. The two differ after a `/model`: [Agent.setModel] moves
+// [Agent.model] and leaves [Config.Model] where the launch put it, and a page
+// rendered from the launch model names that model in the one line that is
+// supposed to say which model wrote the work — `Assisted-by`
+// (beltfacts.go's attribution fact).
+//
+// The caller holds a.mu.
+func (a *Agent) liveModelConfigLocked() Config {
+	config := a.config
+	if model := strings.TrimSpace(a.model); model != "" {
+		config.Model = model
+	}
+	return config
+}
+
+// followModelOnThePageLocked re-renders the page after the model changed, and
+// touches nothing when the page does not say which model it is.
+//
+// THE `Assisted-by` LINE NAMES THE MODEL, AND IT WENT STALE AFTER `/model`. The
+// page was rendered once from [Config.Model] and a switch never rendered it
+// again, so every commit after one still credited the model the conversation
+// was launched on.
+//
+// WHY THIS DOES NOT COST THE PREFIX CACHE ANYTHING IT WAS STILL GOING TO HAVE.
+// A prompt cache belongs to one model: the first request on the model just
+// picked is written cold whatever the page says, so re-rendering it on the
+// switch buys the right name for nothing. Two things keep it that way:
+//
+//   - THE CLOCK IS NOT MOVED. The page is rendered at [Agent.systemAt], the
+//     moment it was last rendered, so the only bytes that change are the ones
+//     that follow the model. Switching back to the model before is then the
+//     page that model already has cached, byte for byte, rather than a second
+//     cold write for a newer minute.
+//   - A PAGE THAT DOES NOT NAME THE MODEL IS LEFT ALONE. With the model's name off
+//     the render comes back identical and message[0] is not touched at all.
+//
+// A prompt this agent did not write is never re-rendered ([Agent.systemOwn]).
+//
+// The caller holds a.mu.
+func (a *Agent) followModelOnThePageLocked() {
+	if !a.systemOwn {
+		return
+	}
+	page := renderSystemAt(a.liveModelConfigLocked(), a.systemAt)
+	if page == a.system {
+		return
+	}
+	a.system = page
 	a.refreshSystemLocked()
 }
 

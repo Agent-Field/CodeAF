@@ -93,7 +93,16 @@ func (a *Agent) SubmitStanding(ctx context.Context, text string) (<-chan Event, 
 	if a.standingItems() == nil {
 		return nil, errors.New(standingMarkAbsent)
 	}
-	return a.submitUser(ctx, standingMarked(text))
+	user := standingMarked(text)
+	// AND IT OPENS ON WHAT IS RUNNING, the way [Agent.Submit]'s sentence does
+	// (plandigest.go): a rule the person marked is still a sentence they said
+	// while work was underway, and it can make a running row wrong as surely as
+	// any other. The digest goes in front of the instruction, and the journal
+	// still keeps their sentence alone ([userMessage.said]).
+	if digest := a.planDigest(); digest != "" {
+		user.message = textMessage("user", digest+"\n\n"+messageContentText(user.message))
+	}
+	return a.submitUser(ctx, user)
 }
 
 // standingMarked is the message itself: what the model reads, and what the

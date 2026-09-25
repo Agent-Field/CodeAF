@@ -362,6 +362,13 @@ func (a *Agent) sayToTask(id uint64, text string, origin messageOrigin, source s
 	}
 	node := a.taskNode(id)
 	if node == nil {
+		// A RUN'S ROWS WEAR TASK NUMBERS AND ARE NOT NODES, so the run is asked
+		// before the answer that there is no such task (stoprun.go's
+		// [Agent.sayToRunRow]). A row the rail draws running must never be
+		// answered as though it did not exist.
+		if receipt, owned, err := a.sayToRunRow(id, text, origin); owned {
+			return receipt, err
+		}
 		return SteerReceipt{}, fmt.Errorf("no task %d in this session", id)
 	}
 	// WHAT THIS TASK ALREADY HOLDS IS ASKED BEFORE WHETHER IT IS STILL RUNNING,

@@ -115,7 +115,7 @@ func TestStoppedWorkIsCommittedToTheBranchItsReportNames(t *testing.T) {
 	// And the harness's own droppings, which are not the node's work either.
 	writeFile(t, filepath.Join(tree.dir, codeafDroppings, "jobs", "1.log"), "building\n")
 
-	merge, changed := keptWork(tree, "make the sheets", []string{"marketing/linkedin.png"}, false)
+	merge, changed := keptWork(tree, "make the sheets", []string{"marketing/linkedin.png"}, gitSignature{})
 	if merge != mergeAborted {
 		t.Fatalf("merge = %q, want %q — a kept branch is still not a merged one", merge, mergeAborted)
 	}

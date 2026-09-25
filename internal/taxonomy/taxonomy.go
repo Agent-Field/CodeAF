@@ -377,6 +377,31 @@ type Evidence struct {
 	// so the extra asks buy nothing and the allowance narrows.
 	Rerouted bool
 
+	// Watched says A PERSON IS SITTING IN FRONT OF THIS TURN and can see what
+	// it is doing — a conversation, rather than a task worker or a standing
+	// check that nobody is looking at.
+	//
+	// IT IS WHAT MAKES WAITING FOR EVER SAFE. A harness that keeps asking a
+	// machine that answers nothing, and says so on the screen, is being patient:
+	// the person reads the line and stops it whenever they like. The same loop
+	// where nobody is watching is a hang — it spends a worker's whole wall clock
+	// on a server that may never answer, and there is no one to notice. So the
+	// unbounded wait below is offered to the first and withheld from the second,
+	// and the second keeps a count ([transportBudget]).
+	Watched bool
+
+	// OneMachine says the cut request had NO ENDPOINT DIVERSITY AT ALL — it
+	// named no machine and none served it, which is a build with no router
+	// behind it and a set of one.
+	//
+	// IT IS THE OPPOSITE CASE TO THE ONE ABOVE, not a second spelling of it.
+	// Rerouted false with a pool means the next attempt lands in the same place
+	// by the same rules, so the extra asks buy nothing. Rerouted false with ONE
+	// machine means asking again is the only move there is, and the thing that
+	// mends a machine which answered nothing is time — so the allowance grows
+	// and a wait goes in front of each ask ([transportBudget], [waitFor]).
+	OneMachine bool
+
 	// FallbackAvailable says the caller has a NEXT MODEL to ask when this one's
 	// budget is spent. It is the whole difference between [ActionHop] and
 	// [ActionGiveUp], and it is the caller's fact: an empty chain, a completer
@@ -464,6 +489,15 @@ type Verdict struct {
 	// underneath can arrange it. It is true for exactly the failures where the
 	// endpoint is the suspect.
 	Rotate bool
+
+	// Unbounded says this retry has NO LIMIT OF ANY KIND — not a count, and not
+	// the caller's deadline either. It is the one verdict a caller may not
+	// convert into an ending by running out of time ([waitsForEver]), and it is
+	// a field rather than an inference from [Verdict.Attempts] being zero
+	// because zero already means something else and older: an ordinary failure
+	// keeps no count HERE and is bounded by the deadline instead. Reading the
+	// two as one ended the deadline for every ordinary failure in the build.
+	Unbounded bool
 }
 
 // Escalates reports whether this verdict is one that buys a stronger tier. It

@@ -12,7 +12,7 @@ import (
 // them is a setting the user cannot trust. The construction sites sit deep
 // inside the resident dispatch and the headless run, past a live provider and a
 // real store, so this reads the wiring instead: every place that builds a leaf
-// loop has to pass the attribution row into it.
+// loop has to pass the model-name row into its signature.
 //
 // The resident's site is the constructor table now rather than chat.go — a
 // worker is chosen per node, so the choice and the construction moved together —
@@ -30,8 +30,8 @@ func TestBothExecutorConstructionSitesCarryAttribution(t *testing.T) {
 		if strings.Count(source, "exec.NewLinear(") != 1 {
 			t.Fatalf("%s no longer builds exactly one leaf loop", name)
 		}
-		if !strings.Contains(source, "WithAttribution(") {
-			t.Fatalf("%s builds an executor without wiring the attribution setting", name)
+		if !strings.Contains(source, "WithAssistedBy(config.AssistedByModelAt(") {
+			t.Fatalf("%s builds an executor without wiring the model-name row into its signature", name)
 		}
 	}
 	raw, err := os.ReadFile("chat.go")
@@ -46,7 +46,7 @@ func TestBothExecutorConstructionSitesCarryAttribution(t *testing.T) {
 // A capability codeaf has and cannot explain is one the user meets first as a
 // surprise in their own git history.
 func TestManualExplainsAttribution(t *testing.T) {
-	for _, term := range []string{"attribution", "CODEAF_ATTRIBUTION", "sharing", "CONTRIBUTING"} {
+	for _, term := range []string{"attribution", "attribution.model", "CODEAF_ATTRIBUTION_MODEL", "Assisted-by", "sharing", "CONTRIBUTING"} {
 		if !manual.Mentions(term) {
 			t.Fatalf("no manual page mentions %q", term)
 		}

@@ -21,6 +21,29 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
+func TestPlanReadyPartHeldByMachineReadsAsQueuedWithReason(t *testing.T) {
+	row := session.PlanTaskRow{ID: "t-leaf", Title: "build the change", Status: "ready", Hold: "machine busy"}
+	status := planStatus(row)
+	if status.Presence != session.TaskPresenceQueued || status.On != session.TaskWaitMachine || status.Reason != "machine busy" {
+		t.Fatalf("held plan status = %+v", status)
+	}
+	if got := status.RowWord(); !strings.Contains(got, "queued") || !strings.Contains(got, "machine busy") {
+		t.Fatalf("held plan row = %q", got)
+	}
+}
+
+func TestPlanUnstartedRunningRootShowsMachineHold(t *testing.T) {
+	row := session.PlanTaskRow{ID: "t-root", Status: "running", Hold: "machine busy"}
+	status := planStatus(row)
+	if got := status.RowWord(); got != "queued · machine busy" {
+		t.Fatalf("held root row = %q", got)
+	}
+	row.Hold = ""
+	if got := planStatus(row).RowWord(); got != "running" {
+		t.Fatalf("started root row = %q", got)
+	}
+}
+
 // planFake is [taskFake] widened by the plan seam this place asserts: the rows a
 // conversation's store answers, the page one row opens, and the six steering
 // verbs a person's keys turn into. It is the same fake the pane's other tests
@@ -1030,7 +1053,9 @@ func TestThePlanPageShowsChildrenUnderItsSteps(t *testing.T) {
 	if !strings.Contains(text, "Alpha") {
 		t.Fatalf("the page does not draw the task's child:\n%s", text)
 	}
-	if !strings.Contains(text, "$ go test ./internal/api") {
+	// THE CHILD IS THE RAIL'S ROW, and the rail names a call in flight the way a
+	// node row names one.
+	if !strings.Contains(text, "bash go test ./internal/api") {
 		t.Fatalf("the page does not draw the child's live line:\n%s", text)
 	}
 	if !strings.Contains(text, taskPlanNoteWord) {

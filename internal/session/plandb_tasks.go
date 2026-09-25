@@ -45,11 +45,18 @@ type PlanTaskRow struct {
 	ID      string
 	Title   string
 	Status  string
+	// Hold is why a ready part or an unstarted root has no worker yet. It
+	// crosses the remote wire only while admission refused this row's start.
+	Hold string `json:",omitempty"`
 	// Stopped is true only when this task's own ending records a person's stop.
 	// It is established from store data here and crosses remote reads as row data.
 	Stopped bool
-	Seat    string
-	Parent  string
+	// Interrupted is true only when this task was ended because nothing was
+	// driving its run when the next request arrived ([planTaskInterrupted]). It
+	// crosses remote reads as row data, the way Stopped does.
+	Interrupted bool
+	Seat        string
+	Parent      string
 	// Depth is the row's level below the page task; direct children are zero.
 	Depth int
 	// Waits is the tasks this row is held behind that are not its parent: the ids
@@ -83,6 +90,51 @@ type PlanTaskRow struct {
 	// Folder is the run copy this row works in. A surface says it once in the
 	// page head and may omit only a leading change into this exact directory.
 	Folder string
+	// Archived is true for a row read from an ENDED run's store, one of the
+	// runs this conversation finished before the one it holds now. The rows
+	// arrive oldest run first, so a reader that wants the live run first — the
+	// digest in front of the person's sentence — has to be able to tell them
+	// apart without reopening a store ([planDigestOrder]).
+	Archived bool `json:",omitempty"`
+}
+
+// planWordRunning is the rail's word for a row whose work is under way. It is
+// not [taskWordWorking], and that is the rail's own ruling rather than a slip:
+// the plan list has always said `running` for a claimed row, and the word the
+// conversation reads about a row is the word the person reads beside it.
+const planWordRunning = "running"
+
+// StateWord is the row's state IN THE WORDS THE RAIL DRAWS: queued, running,
+// done, stopped, incomplete, your call. It is the ONE mapping from the store's
+// own words (pending, ready, claimed, failed, cancelled, paused) to the ones a
+// person reads, and it lives beside the row so every reader of a row — the
+// side list, the `tasks` listing, the digest in front of the person's sentence
+// — says the same word about the same row. Two readings of one row were two
+// states to the model: the digest said `cancelled` and `claimed` of rows the
+// person saw as `stopped` and `running`.
+//
+// A status this build has never heard of reads as NOTHING rather than a word
+// invented for it — the emptiness law, applied to a vocabulary that may grow.
+func (row PlanTaskRow) StateWord() string {
+	if row.Stopped {
+		return taskWordStopped
+	}
+	if row.Hold != "" && (row.Status == string(plandb.StatusReady) || row.Status == string(plandb.StatusRunning)) {
+		return taskWordQueued
+	}
+	switch strings.TrimSpace(row.Status) {
+	case string(plandb.StatusPending):
+		return taskWordQueued
+	case string(plandb.StatusReady), string(plandb.StatusClaimed), string(plandb.StatusRunning):
+		return planWordRunning
+	case string(plandb.StatusDone):
+		return taskWordDone
+	case string(plandb.StatusFailed), string(plandb.StatusCancelled):
+		return taskWordIncomplete
+	case "paused":
+		return taskWordYourCall
+	}
+	return ""
 }
 
 // PlanTaskNote is one note on a task's page: what was said, who said it, and
@@ -204,6 +256,9 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 	copies := a.planDisplayRunCopy()
 	for _, store := range stores {
 		dir := filepath.Dir(store.Path())
+		// AN ENDED RUN'S STORE IS NAMED FOR ITS PLACE IN THE LINE (`plan.db.1`,
+		// [planArchivePaths]); the live run's is the plan's own path.
+		archived := filepath.Clean(store.Path()) != filepath.Clean(plan.path)
 		spend := planSpendByTask(store.Path())
 		live := store.LiveSteps()
 		tasks := store.Tasks(plandb.Filter{Chat: plan.chat})
@@ -214,8 +269,10 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 		root := store.RootID()
 		for _, task := range tasks {
 			row := planTaskRow(store, dir, task, spend, live)
+			a.markPlanMachineHold(&row, store.Path(), task.ID == root)
 			row.Folder = a.planTaskRunCopy(task.ID)
 			row.LiveParts = planStepDisplayFacts(PlanStep{Command: row.Live.Command}, copies.or(row.Folder), planShimFilename).Parts
+			row.Archived = archived
 			rows = append(rows, row)
 			if task.ID == root {
 				applyPlanRootProgress(&rows[len(rows)-1], tasks, root)
@@ -260,6 +317,7 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 	depths := map[string]int{task.ID: -1}
 	for _, child := range all {
 		row := planTaskRow(store, dir, child, spend, live)
+		a.markPlanMachineHold(&row, store.Path(), child.ID == store.RootID())
 		row.Folder = a.planTaskRunCopy(child.ID)
 		row.LiveParts = planStepDisplayFacts(PlanStep{Command: row.Live.Command}, copies.or(row.Folder), planShimFilename).Parts
 		rows[child.ID] = row
@@ -307,6 +365,18 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 		Children:    children,
 		WaitRows:    waitRows,
 	}, true
+}
+
+// markPlanMachineHold copies only this row's refused start. An archived store
+// and a worker already running have no admission to wait for.
+func (a *Agent) markPlanMachineHold(row *PlanTaskRow, path string, root bool) {
+	a.beltMu.Lock()
+	run := a.beltRun
+	held := run != nil && run.machineHeld[row.ID] && run.store != nil && filepath.Clean(run.store.Path()) == filepath.Clean(path)
+	a.beltMu.Unlock()
+	if held && (row.Status == string(plandb.StatusReady) || root && row.Status == string(plandb.StatusRunning)) {
+		row.Hold = waitingMachineBusy
+	}
 }
 
 // openPlanReadHandles opens every ended run oldest-first and then the live run.
@@ -591,6 +661,7 @@ func planTaskRow(store *plandb.Store, dir string, task *plandb.Task, spend map[s
 		Title:          task.Title,
 		Status:         status,
 		Stopped:        planTaskStopped(store, task),
+		Interrupted:    planTaskInterrupted(task),
 		Seat:           seat,
 		Steps:          len(planTrajectory(dir, task.ID)),
 		USD:            spend[task.ID],
@@ -649,6 +720,18 @@ func planTaskStopped(store *plandb.Store, task *plandb.Task) bool {
 	return false
 }
 
+// planTaskInterrupted is the store property a run set aside as interrupted
+// leaves on its rows: the run's own task and every part still open when the next
+// request arrived were ended under the word `interrupted` ([setAsideRunStore]).
+// Such a row is not a failure and not a stop, and reading it as either would say
+// something happened to the work when nothing did: nobody was driving it.
+func planTaskInterrupted(task *plandb.Task) bool {
+	if task == nil || (task.Status != plandb.StatusFailed && task.Status != plandb.StatusCancelled) {
+		return false
+	}
+	return strings.TrimSpace(task.Error) == taskWordInterrupted
+}
+
 // planStopReason reports whether an ending's reason is the one a person's stop
 // writes: the word alone, or the word and what they said.
 func planStopReason(reason string) bool {
@@ -664,6 +747,24 @@ func planLastNote(store *plandb.Store, taskID string) string {
 		return ""
 	}
 	return notes[len(notes)-1].Body
+}
+
+// planNoteAuthorWord names the hand behind one note in the words a reader
+// knows, and it is the one spelling this package uses for that: the person
+// steering the run, the sibling task whose worker wrote it when the store kept
+// a name, and otherwise another worker on the run. It exists so the listing and
+// the task page cannot come to say the same author two different ways.
+func planNoteAuthorWord(note PlanTaskNote) string {
+	if note.Person {
+		return "the person"
+	}
+	switch name := strings.TrimSpace(note.Author); {
+	case name == plandb.NoteAgentChat:
+		return "you"
+	case name != "" && name != "default":
+		return "task " + name
+	}
+	return "a worker on this run"
 }
 
 // planTaskNotes answers every note on a task, oldest first, each with its

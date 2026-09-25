@@ -469,3 +469,69 @@ func TestTheWatcherFoldsTaskNoticesOffTheLaneItAlreadyDrains(t *testing.T) {
 	lane <- signalSettled(21, session.TaskDone)
 	await(t, false, "the work behind the turn ended")
 }
+
+// ── ONE PREDICATE ON BOTH SIDES OF THE STRIP (#1316) ─────────────────────────
+
+// frontAskAgent answers the engine's one question about a person from a flag a
+// test can move while a watcher is reading it, and counts every time it is
+// asked, which is how a frame that asks the agent is caught.
+type frontAskAgent struct {
+	*fakeAgent
+	waits atomic.Bool
+	asked atomic.Int64
+}
+
+func (g *frontAskAgent) NeedsPerson() bool {
+	g.asked.Add(1)
+	return g.waits.Load()
+}
+
+// THE SAME CONVERSATION WEARS THE SAME MARK IN FRONT AND BEHIND. The tab beside
+// the one in front read [session.Agent.NeedsPerson], which counts a landed
+// `your call`, the model's own blocking question, the sub-harness intake card
+// and a running sub-harness's question; the tab in front read the surface's own
+// short list, which counted none of them. So a `?` stood on the tab beside, and
+// went away the moment a person brought that conversation forward to answer it.
+// This drives ONE agent in one state through both readings, and the answer is
+// the engine's on both sides, with the frame still asking the agent nothing.
+func TestOneConversationWearsTheSameMarkInFrontAndBehind(t *testing.T) {
+	agent := &frontAskAgent{fakeAgent: &fakeAgent{model: "m"}}
+	agent.waits.Store(true)
+
+	out := make(chan behindStirMsg, stirDepth)
+	watch := startBehindWatch("/tmp/lab/two.jsonl", agent, out)
+	deadline := time.Now().Add(2 * time.Second)
+	for !watch.waits.Load() && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	watch.stop()
+	behind := watch.signal()
+	if behind != tabNeedsPerson {
+		t.Fatalf("the held tab reads %v for a conversation the engine says is waiting on a person", behind)
+	}
+
+	a := newTestApp(agent)
+	a.file, a.workspace = "/tmp/lab/two.jsonl", "/tmp/lab"
+	emptyMachine(a)
+	drive(t, a, frameMsg{})
+	if front := a.tabSignalFor(a.file, true); front != behind {
+		t.Fatalf("one conversation reads %v in front and %v behind", front, behind)
+	}
+
+	// THE FRAME READS WHAT THE LOOP WROTE DOWN. The strip is laid out on every
+	// frame, and the agent's predicate takes its lock.
+	before := agent.asked.Load()
+	for i := 0; i < 200; i++ {
+		a.tabSignalFor(a.file, true)
+	}
+	if n := agent.asked.Load() - before; n != 0 {
+		t.Fatalf("two hundred front marks asked the agent %d times", n)
+	}
+
+	// AND AN ANSWER TAKES THE MARK OFF THE FRONT TAB AT THE NEXT MESSAGE.
+	agent.waits.Store(false)
+	drive(t, a, frameMsg{})
+	if front := a.tabSignalFor(a.file, true); front == tabNeedsPerson {
+		t.Fatal("the front tab kept its question after the engine stopped waiting")
+	}
+}

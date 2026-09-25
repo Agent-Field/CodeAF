@@ -79,4 +79,10 @@ fi
 # Replace the shell with the lock holder so killing the starter closes the
 # descriptor immediately. The helper forwards ordinary stops to the suite and
 # waits for it before releasing.
-exec "$helper" "$lock" "${suite[@]}"
+#
+# AND IT KEEPS THIS SCRIPT'S NAME AS ITS argv[0]. A checkout behind #1264 reads
+# the directory lock's pid as alive only when that pid's command line contains
+# `one-suite.sh`, and until the holder names itself the directory names this
+# process. Without the name an old tree judged a live lock stale and ran its
+# suite beside ours (#1324).
+exec -a "$0" "$helper" "$lock" "${suite[@]}"

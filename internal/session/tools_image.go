@@ -184,11 +184,17 @@ func (a *Agent) recordImageArtifact(path, prompt string) {
 // a bad minute are all things a caller can act on, and none of them is a
 // reason to crash anything.
 func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) (string, bool) {
-	// An empty prompt is refused before anything is paid for, the way the
-	// video and music doors refuse theirs: a provider asked to draw nothing
-	// still bills the call, and the answer it sends back reads as its own
-	// fault rather than the caller's. The guard lives here, not on the belt,
-	// so the command line's image door refuses the same call the same way.
+	// AN EMPTY PROMPT IS REFUSED BEFORE ANYTHING IS PAID FOR, the way the video
+	// and music doors refuse theirs (tools_video.go, tools_music.go). A provider
+	// asked to draw nothing still bills the call, and the answer it sends back
+	// reads as its own fault rather than the caller's.
+	//
+	// THE GUARD LIVES HERE AND NOT ON THE BELT, so the command line's picture
+	// door refuses the same call the same way (cmd/codeaf's image.go calls this
+	// function too). It was here until the web pair and the picture hand were
+	// made plain functions a command line could share: the block around it moved
+	// and the check did not come with it, which left the one paid door of the
+	// three with no argument check at all.
 	prompt := strings.TrimSpace(parsed.Prompt)
 	if prompt == "" {
 		return "Invalid arguments: prompt is required", true

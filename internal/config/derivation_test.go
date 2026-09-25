@@ -125,7 +125,10 @@ var settingReaders = map[string]string{
 	KeyTenureAfter:    "CODEAF_TENURE_AFTER",
 	KeyDocumentEngine: "DocumentEngine",
 	KeyVisionModel:    "VisionModel",
-	KeyAttribution:    "Attribution",
+	// The model-name row names the one resolver every door turns it into a
+	// name through: the leaf loops' doors hand [AssistedByModelAt]'s answer to
+	// the attribution line.
+	KeyAttributionModel: "AssistedByModelAt",
 	// The pool row is read through [ModelPoolAt] since the telemetry off switch
 	// started capping the pool at read: `codeaf pool` and `codeaf telemetry`
 	// call [ModelPoolResolved] with their injected environment, and every

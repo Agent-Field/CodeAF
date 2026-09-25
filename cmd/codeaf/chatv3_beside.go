@@ -144,6 +144,31 @@ type engineFleet struct {
 
 	mu    sync.Mutex
 	conns []*engineConn
+	// closers are what this window opened beside its connections and must join
+	// when it lets them go — the model catalog [hostOptions] warms, whose warm
+	// writes a cache when it lands (#1274). [engineFleet.closeAll] runs them.
+	closers []func()
+}
+
+// own hands one close to [engineFleet.closeAll]. A nil fleet or a nil close is
+// nothing to own.
+func (f *engineFleet) own(shut func()) {
+	if f == nil || shut == nil {
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.closers = append(f.closers, shut)
+}
+
+// takeClosers hands over everything [engineFleet.own] was given and empties the
+// list, so the joins run after the lock is let go.
+func (f *engineFleet) takeClosers() []func() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	closers := f.closers
+	f.closers = nil
+	return closers
 }
 
 // machineReadings is the handful of per-window facts a beside conversation needs
@@ -239,7 +264,10 @@ func (f *engineFleet) take(ask engineAsk) (tui3.Conversation, error) {
 	}
 	conn, err := f.dial(ask)
 	if err != nil {
-		return tui3.Conversation{}, err
+		// A journal another window holds comes back over the socket as the
+		// engine's sentence; it is handed to the surface as the lock it is, so
+		// home asks that window for it (chatv3.go's [engineHeldRefusal]).
+		return tui3.Conversation{}, asHeldRefusal(err)
 	}
 	welcome := conn.client.Welcome()
 	if strings.TrimSpace(welcome.SessionFile) == "" {
@@ -303,6 +331,11 @@ func (f *engineFleet) closeAll() {
 		}
 	}
 	_ = f.boot.close()
+	// AND WHAT THE WINDOW OPENED BESIDE THEM, joined last: nothing it warmed may
+	// write after the door has let go.
+	for _, shut := range f.takeClosers() {
+		shut()
+	}
 }
 
 // takeAll hands over every connection this window opened and empties the list,

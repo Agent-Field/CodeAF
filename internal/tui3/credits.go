@@ -1,7 +1,9 @@
 package tui3
 
 import (
+	"context"
 	"strings"
+	"sync"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -19,6 +21,44 @@ type creditWakeMsg struct{}
 type creditReadMsg struct {
 	reading credits.Reading
 	err     error
+}
+
+// ownedCreditReader closes the gap in Bubble Tea's command lifetime: Run does
+// not wait for a command it started. A balance read may be in flight when the
+// terminal closes, so the surface cancels it and joins it before returning to
+// the process that owns the profile. The lock makes adding a read and closing
+// the owner mutually exclusive, as WaitGroup.Wait requires.
+func ownedCreditReader(ctx context.Context, read func(context.Context) (credits.Reading, error)) (func(context.Context) (credits.Reading, error), func()) {
+	ownerCtx, stopOwner := context.WithCancel(ctx)
+	var mu sync.Mutex
+	var reads sync.WaitGroup
+	closed := false
+	wrapped := func(callCtx context.Context) (credits.Reading, error) {
+		mu.Lock()
+		if closed {
+			mu.Unlock()
+			return credits.Reading{}, context.Canceled
+		}
+		reads.Add(1)
+		mu.Unlock()
+		defer reads.Done()
+		if callCtx == nil {
+			callCtx = ownerCtx
+		}
+		readCtx, stopRead := context.WithCancel(callCtx)
+		stopOnClose := context.AfterFunc(ownerCtx, stopRead)
+		defer stopOnClose()
+		defer stopRead()
+		return read(readCtx)
+	}
+	closeReads := func() {
+		mu.Lock()
+		closed = true
+		stopOwner()
+		mu.Unlock()
+		reads.Wait()
+	}
+	return wrapped, closeReads
 }
 
 // askCredits may be called by a provider goroutine. The doorbell lets the

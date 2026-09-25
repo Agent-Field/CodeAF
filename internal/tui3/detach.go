@@ -351,6 +351,7 @@ func (a *app) clearConversation() {
 	a.discussionFeeds = nil
 	a.questionReplacement = nil
 	a.entries = nil
+	a.recordRows = 0
 	abandonLive(a.entries, &a.live)
 	abandonLive(a.entries, &a.think)
 	a.sel = -1
@@ -380,6 +381,9 @@ func (a *app) clearConversation() {
 	// And the picked harness with them: a chip is a choice about the NEXT
 	// message of this conversation (harnesspick.go).
 	a.harnPick, a.harnChip = harnessPick{}, ""
+	// The skill picker goes with them; the names it attached belong to the
+	// session being put down, not to the one taking the box (skillpick.go).
+	a.skillPick = skillPick{}
 	a.abandonConnects()
 	a.turn = 0
 	// The scrollback's mark and the compacted region both belong to the

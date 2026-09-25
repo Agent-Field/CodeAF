@@ -171,10 +171,12 @@ func TestAReadThatGivesUpEndsTheHold(t *testing.T) {
 	}
 }
 
-// STOP TYPED WHILE THE RUN'S OWN PAGE OPENS REACHES A STOP THAT WORKS. The key
-// is kept for the page and replayed onto it, and on the run's own page that key
-// raises the card.
-func TestStopTypedWhileTheRunsOwnPageOpensReachesTheCard(t *testing.T) {
+// STOP TYPED WHILE THE RUN'S OWN PAGE OPENS IS A LETTER IN ITS NOTE. The keys
+// typed in the gap are the page's note and never its verbs (#1244): a person
+// typing at a page they cannot see yet is writing to its box, and a stop raised
+// by a key typed blind would be a question about a page nobody has read. The
+// stop is one key away once the page is drawn.
+func TestStopTypedWhileTheRunsOwnPageOpensIsALetterInItsNote(t *testing.T) {
 	a, counted := railTaskPageApp(t, true)
 	held := &heldRailPlan{railPlanCounter: counted, started: make(chan struct{}), release: make(chan struct{})}
 	a.agent = held
@@ -188,11 +190,13 @@ func TestStopTypedWhileTheRunsOwnPageOpensReachesTheCard(t *testing.T) {
 	}
 	close(held.release)
 	drive(t, a, <-answer)
-	if !a.stopping() {
-		t.Fatal("stop typed while the run's own page opened raised no card once it had")
+	if a.stopping() || len(counted.cancelled) != 0 {
+		t.Fatalf("stop typed before the run's own page opened acted: card up %t, cancelled %v", a.stopping(), counted.cancelled)
 	}
-	answerStopCard(t, a)
-	if len(counted.cancelled) != 1 || counted.cancelled[0] != "2" {
-		t.Fatalf("the card's stop reached %v, want the run's own task", counted.cancelled)
+	if !a.railTaskPlanOn {
+		t.Fatal("the answer did not open the run's own page")
+	}
+	if got := a.taskSheet.planNote.String(); got != stopRaiseKey {
+		t.Fatalf("the page's box holds %q, want the letter typed while it opened", got)
 	}
 }

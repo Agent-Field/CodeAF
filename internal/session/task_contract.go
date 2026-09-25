@@ -349,9 +349,10 @@ const (
 	// "The work did not finish" and "nobody was there to carry it on" are
 	// different news with different consequences, and collapsing the second into
 	// the first is how a run whose window was closed came back reading as though
-	// it had gone wrong. A person's answer is the only thing that moves it, and
-	// the answer is to continue it or to leave it ([TaskAskContinue]); continuing
-	// spends money, so nothing here moves on its own.
+	// it had gone wrong. Nothing here moves it on its own, because continuing
+	// spends money; and nothing a person can press moves it yet either, so the
+	// row asks no question and raises no mark (task_status.go's
+	// [taskInterruptedReason]) until the card that carries a run on lands.
 	TaskInterrupted TaskState = "interrupted"
 )
 
@@ -602,6 +603,28 @@ type TaskNotice struct {
 	// carries these facts in its own record. Nil is a row whose copy was never
 	// recorded, which is a run that cannot be carried on.
 	Copy *TaskCopyRecord
+	// PlanTask is WHICH TASK OF THE PLAN STORE THIS ROW IS, and it is the one
+	// fact that tells a row the store answers for from a row the graph holds a
+	// node for. It is set on a RUN's row and nowhere else, by the door that
+	// minted both halves in one breath (task_run_belt.go's
+	// [Agent.startKnownTaskRun] names the store task with the number the row
+	// wears), and it is empty on every node of the session's own tree.
+	//
+	// IT IS SPELLED THE ONE WAY A STORE ID CROSSES THIS SEAM ([planStoreID]):
+	// the same spelling [PlanTaskRow.ID] carries and [Agent.PlanTaskPage] is
+	// asked for. The store's own bare id is answered under by nothing a surface
+	// can reach, so a row carrying that instead would name an identity no read
+	// in this package joins.
+	//
+	// IT IS AN IDENTITY AND NOT A DESCRIPTION. A surface reading it knows this
+	// row and that store task are one piece of work read from two ends, so it
+	// can draw the one of them the store is the authority for — its state word,
+	// and the page carrying its worker's trajectory. Before this field existed
+	// the only link was the TITLE the two halves happened to share, which
+	// cannot tell a run's row from a node that merely wears the same words, and
+	// the place drew the row whose Enter opened a room the engine holds no node
+	// for (internal/tui3's taskplan.go).
+	PlanTask string
 	// Merge is how the branch came home: "merged", "kept" (finished but left
 	// on its branch), "conflicted" (branch kept), "inplace" (a non-git
 	// workspace ran in the person's tree), or "" while running.

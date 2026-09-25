@@ -209,6 +209,16 @@ type transportLadder struct {
 	// endpoint out of the routing underneath.
 	degenerate bool
 	rerouted   bool
+	// watched says a person is steering this conversation and can see the
+	// waiting ([Config.Interactive], which every worker door leaves unset). It
+	// is what makes an unbounded wait patience rather than a hang
+	// (taxonomy's [taxonomy.Evidence.Watched]).
+	watched bool
+	// oneMachine says the cuts under this step had no endpoint diversity to try
+	// at all — a build with no router behind it and a set of one. It is the
+	// opposite case to `rerouted` being false with a pool, and the boundary
+	// answers it the opposite way (taxonomy's [taxonomy.Evidence.OneMachine]).
+	oneMachine bool
 	// fallback says the caller has a next model to ask. It is the whole
 	// difference between moving on and giving up, and it is the caller's fact.
 	fallback bool
@@ -226,6 +236,8 @@ func (l transportLadder) mark(evidence *taxonomy.Evidence) {
 	evidence.Cuts = l.cuts
 	evidence.Degenerate = l.degenerate
 	evidence.Rerouted = l.rerouted
+	evidence.OneMachine = l.oneMachine
+	evidence.Watched = l.watched
 	evidence.FallbackAvailable = l.fallback
 	evidence.OutOfTime = l.outOfTime
 }

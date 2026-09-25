@@ -3,6 +3,7 @@ package tui3
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
@@ -24,8 +25,37 @@ import (
 // still arriving.
 func stoppingApp(t *testing.T) (*app, *fakeAgent) {
 	t.Helper()
+	a, agent, _ := stoppingAppOnAHeldClock(t)
+	return a, agent
+}
+
+// stoppingAppOnAHeldClock is the same turn WITH THE CLOCK IN THE TEST'S HAND,
+// the way stopbound_test.go's [boundedStopApp] holds its own.
+//
+// THE HEAD DRAWS THE TIME OF DAY ON EVERY FRAME (pulse.go's [pulseClock], off
+// [app.now]), so a test that compares two whole frames is comparing the wall
+// clock too whether it meant to or not. Left on [time.Now] that comparison
+// fails whenever its two captures straddle a minute boundary, which is about
+// three quarters of one percent of runs at these durations: measured at one
+// failure in eighty one, and read on a pull request as a regression in a change
+// that could not reach the path (#1370).
+//
+// THE CLOCK IS PINNED RATHER THAN THE HEAD BEING EXCLUDED FROM THE COMPARISON,
+// because the comparison catching ANY drawing after a stop is the whole of what
+// these tests are for, and an exclusion would buy the same green by making the
+// assertion weaker. [TestTheStoppedFramesComparisonStillCoversTheHead] is what
+// holds that line.
+//
+// It is pinned HERE and not in [newTestApp], which has calling files in the
+// hundreds: pinning it there would change the observable time for every test in
+// this package at once, including the ones asserting on elapsed durations and
+// relative words, which is a package-wide behaviour change and not a flake fix.
+func stoppingAppOnAHeldClock(t *testing.T) (*app, *fakeAgent, func(time.Duration)) {
+	t.Helper()
 	agent := &fakeAgent{model: "m"}
 	a := newTestApp(agent)
+	now := time.Now()
+	a.clock = func() time.Time { return now }
 	drive(t, a, submittedMsg{ch: make(chan session.Event)})
 	a.state = stateWorking
 	a.turnBegan = a.now()
@@ -36,7 +66,7 @@ func stoppingApp(t *testing.T) (*app, *fakeAgent) {
 			Tool: "bash", CallID: "c1"}},
 		streamEventMsg{gen: a.gen, ev: text(session.EventTextDelta, "half a sentence")},
 	)
-	return a, agent
+	return a, agent, func(d time.Duration) { now = now.Add(d) }
 }
 
 // ── 1. the frame stills on the key ──────────────────────────────────────────
@@ -118,7 +148,7 @@ func TestNothingArrivingAfterTheStopIsDrawn(t *testing.T) {
 	a, _ := stoppingApp(t)
 	drive(t, a, key("esc"))
 	was := len(a.entries)
-	said := plain(frame(a))
+	said := stoppedFrame(a)
 
 	drive(t, a,
 		streamEventMsg{gen: a.gen, ev: text(session.EventTextDelta, " and one more clause")},
@@ -132,8 +162,72 @@ func TestNothingArrivingAfterTheStopIsDrawn(t *testing.T) {
 	if got := len(a.entries); got != was {
 		t.Fatalf("the conversation grew from %d blocks to %d after the stop", was, got)
 	}
-	if got := plain(frame(a)); got != said {
+	if got := stoppedFrame(a); got != said {
 		t.Fatalf("the frame moved after the stop:\nwas:\n%s\nnow:\n%s", said, got)
+	}
+}
+
+// stoppedFrame is WHAT THE TEST ABOVE COMPARES, and the reason it has a name is
+// that it must stay the WHOLE frame.
+//
+// Narrowing it is the cheap way to stop that test flaking and it costs the test
+// most of what it is for: comparing everything is how it catches drawing
+// nobody predicted, which is the only kind a stop leaks.
+// [TestTheStoppedFramesComparisonStillCoversTheHead] is red the moment this
+// stops covering the head, which is the part that was moving.
+//
+// AND IT EXISTS IN ORDER TO BE SHARED. The guard is a guard only because it
+// calls the same function the real test calls, so inlining this back into its
+// callers reads like removing a pointless indirection, leaves every test
+// green, and detaches the guard from the comparison it guards in the same
+// stroke. Keep the call.
+func stoppedFrame(a *app) string { return plain(frame(a)) }
+
+// AND THE FRAME ABOVE IS COMPARED AGAINST A CLOCK THAT DOES NOT MOVE ON ITS
+// OWN. Two readings of this surface's time taken one after the other are the
+// same reading, so nothing in the head can differ between two captures that
+// nothing happened between.
+//
+// This is the test that is red without the pinned clock, and it is red at
+// nanosecond resolution rather than at the minute boundary, which is the whole
+// point: the defect it stands for only SHOWS itself about once in eighty one
+// runs, and a check that can only fail that often is not a check.
+func TestTheStoppedSurfaceReadsAClockThatDoesNotMoveOnItsOwn(t *testing.T) {
+	a, _ := stoppingApp(t)
+	drive(t, a, key("esc"))
+
+	first := a.now()
+	if second := a.now(); !second.Equal(first) {
+		t.Fatalf("two readings of the stopped surface's clock differ by %v, so the head can move between two frames nothing happened between", second.Sub(first))
+	}
+	was := stoppedFrame(a)
+	if got := stoppedFrame(a); got != was {
+		t.Fatalf("two frames of a still surface differ:\nwas:\n%s\nnow:\n%s", was, got)
+	}
+}
+
+// AND THE COMPARISON STILL COVERS THE HEAD, which is the guard on the FIX
+// rather than on the product.
+//
+// There are two ways to make [TestNothingArrivingAfterTheStopIsDrawn] stop
+// flaking and they produce the same green: pin the clock, or stop comparing the
+// part of the frame the clock is drawn in. The second one also stops that test
+// noticing a real change to the head after a stop, which is inside what it
+// exists to catch. So this drives the clock across a minute boundary and
+// insists the compared frame SEES it.
+func TestTheStoppedFramesComparisonStillCoversTheHead(t *testing.T) {
+	a, _, elapse := stoppingAppOnAHeldClock(t)
+	drive(t, a, key("esc"))
+
+	was := stoppedFrame(a)
+	elapse(time.Minute)
+	got := stoppedFrame(a)
+	if got == was {
+		t.Fatalf("a minute passed and the compared frame did not move, so the head is no longer inside the comparison:\n%s", got)
+	}
+	wasHead, gotHead := firstLine(was), firstLine(got)
+	if wasHead == gotHead {
+		t.Fatalf("the frame moved somewhere other than the head, which is not the field this guard is about:\nwas:\n%s\nnow:\n%s", was, got)
 	}
 }
 

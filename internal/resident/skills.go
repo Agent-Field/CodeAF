@@ -2,6 +2,7 @@ package resident
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +16,8 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/skills"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -24,21 +27,31 @@ const (
 	skillFailureBytes       = 400
 )
 
-// Both halves of the shelf are gated on the journal (memo.go), and for the same
-// reason: each of them exists to make the disk agree with the fact shelf, the
-// fact shelf only moves when something is journaled, and neither of them was
-// cheap. Promotion walks every candidate's parent chain back to its top-level
-// job — one node read per generation, per candidate. The bin sync stats and
-// readlinks the whole shelf directory. A tick that runs for a reason unrelated
-// to either — a clock deadline, the standing ceiling — used to pay for both
-// anyway, twice a second, forever, which is what an idle laptop heard as a disk
-// that never spun down.
+// All three passes of the shelf are gated on the journal (memo.go), and for
+// the same reason: each of them exists to make the disk agree with the fact
+// shelf, the fact shelf only moves when something is journaled, and none of
+// them was cheap. Promotion walks every candidate's parent chain back to its
+// top-level job — one node read per generation, per candidate. The bin sync
+// stats and readlinks the whole shelf directory. The import scan stats the
+// foreign roots and reads every SKILL.md it finds. A tick that runs for a
+// reason unrelated to any of them — a clock deadline, the standing ceiling —
+// used to pay for them all anyway, twice a second, forever, which is what an idle
+// laptop heard as a disk that never spun down.
 //
-// The gates are separate because the two passes do not run back to back and a
-// shared one would let whichever ran first suppress the other. They are in
-// memory rather than durable, unlike the consolidation lane's: the consolidator
-// spends a model call, so a restart buying another one is expensive, whereas a
-// restart here costs one extra read of a shelf that is almost always empty.
+// The gates are separate because the passes do not run back to back and a
+// shared one would let whichever ran first suppress the others. They are in
+// memory rather than durable, unlike the consolidation lane's: the
+// consolidator spends a model call, so a restart buying another one is
+// expensive, whereas a restart here costs one extra read of a shelf that is
+// almost always empty.
+//
+// The import pass has one more wrinkle than its siblings: it watches the
+// FOREIGN disk, which the journal cannot see at all. The journal gate is
+// therefore the quiet-machine discipline and nothing more — a skill dropped
+// into ~/.claude/skills while nothing is journaled is imported by the first
+// pass where anything was, which on a machine in use is minutes, and on a
+// machine that idle is a disk that stays quiet. That trade is the one the
+// other two passes already made.
 
 type skillRecurrence struct {
 	facts []store.Fact
@@ -97,7 +110,7 @@ func (r *Reconciler) promoteRecurringSkills(ctx context.Context) {
 		}
 		sort.Strings(jobs)
 
-		installed, err := installSkillTrial(ctx, root, selected, jobs)
+		installed, digest, err := installSkillTrial(ctx, root, selected, jobs)
 		if ctx.Err() != nil {
 			return
 		}
@@ -108,7 +121,7 @@ func (r *Reconciler) promoteRecurringSkills(ctx context.Context) {
 			}
 			continue
 		}
-		if err := r.store.ActivateSkill(selected.Seq, installed); err != nil {
+		if err := r.store.ActivateSkill(selected.Seq, installed, digest); err != nil {
 			continue
 		}
 		r.queueLearningMoment(selected.NodeID, forgedSkillMoment(filepath.Base(installed)))
@@ -147,61 +160,117 @@ func skillMatchKey(fact store.Fact) string {
 	return scope + "\x00" + doc
 }
 
-func installSkillTrial(ctx context.Context, root string, candidate store.Fact, jobs []string) (string, error) {
+func installSkillTrial(ctx context.Context, root string, candidate store.Fact, jobs []string) (string, string, error) {
 	rawSource := strings.TrimSpace(candidate.Artifact)
 	if !filepath.IsAbs(rawSource) {
-		return "", fmt.Errorf("candidate artifact %q is not absolute", rawSource)
+		return "", "", fmt.Errorf("candidate artifact %q is not absolute", rawSource)
 	}
 	source, err := filepath.Abs(rawSource)
 	if err != nil {
-		return "", fmt.Errorf("resolve candidate artifact: %w", err)
+		return "", "", fmt.Errorf("resolve candidate artifact: %w", err)
 	}
 	if pathsOverlap(source, root) {
-		return "", fmt.Errorf("candidate artifact %q overlaps the skill shelf", source)
+		return "", "", fmt.Errorf("candidate artifact %q overlaps the skill shelf", source)
 	}
 	staging, err := os.MkdirTemp(root, ".candidate-")
 	if err != nil {
-		return "", fmt.Errorf("create skill staging directory: %w", err)
+		return "", "", fmt.Errorf("create skill staging directory: %w", err)
 	}
 	defer os.RemoveAll(staging)
 
 	if err := copySkillDirectory(source, staging); err != nil {
-		return "", fmt.Errorf("prepare skill trial: %w", err)
+		return "", "", fmt.Errorf("prepare skill trial: %w", err)
 	}
 	provenance := strings.Join(jobs, "\n") + "\n"
 	if err := os.WriteFile(filepath.Join(staging, "PROVENANCE"), []byte(provenance), 0o644); err != nil {
-		return "", fmt.Errorf("write skill provenance: %w", err)
+		return "", "", fmt.Errorf("write skill provenance: %w", err)
 	}
 	if err := runSkillCheck(ctx, staging); err != nil {
-		return "", err
+		return "", "", err
 	}
 	if _, err := skillExecutable(staging); err != nil {
-		return "", fmt.Errorf("check.sh removed the skill executable: %w", err)
+		return "", "", fmt.Errorf("check.sh removed the skill executable: %w", err)
 	}
 	if err := os.WriteFile(filepath.Join(staging, "PROVENANCE"), []byte(provenance), 0o644); err != nil {
-		return "", fmt.Errorf("rewrite skill provenance: %w", err)
+		return "", "", fmt.Errorf("rewrite skill provenance: %w", err)
 	}
 
 	slug := skillSlug(filepath.Base(source))
 	target := filepath.Join(root, slug)
 	if _, err := os.Lstat(target); err == nil {
-		// The artifact's own name is the command workers were taught. Preserve
-		// it normally; only a real shelf collision earns a durable sequence
-		// suffix, so installation never overwrites another learned capability.
 		slug += "-" + strconv.FormatInt(candidate.Seq, 10)
 		target = filepath.Join(root, slug)
 	} else if !errors.Is(err, fs.ErrNotExist) {
-		return "", fmt.Errorf("install skill: inspect target: %w", err)
+		return "", "", fmt.Errorf("install skill: inspect target: %w", err)
 	}
 	if _, err := os.Lstat(target); err == nil {
-		return "", fmt.Errorf("install skill: target %q already exists", target)
+		return "", "", fmt.Errorf("install skill: target %q already exists", target)
 	} else if !errors.Is(err, fs.ErrNotExist) {
-		return "", fmt.Errorf("install skill: inspect target: %w", err)
+		return "", "", fmt.Errorf("install skill: inspect target: %w", err)
 	}
 	if err := os.Rename(staging, target); err != nil {
-		return "", fmt.Errorf("install skill: %w", err)
+		return "", "", fmt.Errorf("install skill: %w", err)
 	}
-	return target, nil
+
+	digest, err := contentDigest(target)
+	if err != nil {
+		return "", "", fmt.Errorf("install skill: compute digest: %w", err)
+	}
+	return target, digest, nil
+}
+
+// contentDigest returns a sha256 digest of all regular files under dir,
+// sorted by relative path. Symlinks are refused — installSkillTrial rejects
+// them earlier, and this read ensures the digest covers only what the trial
+// copied.
+func contentDigest(dir string) (string, error) {
+	entries := make([]string, 0)
+	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		relative, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		entries = append(entries, relative)
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	sort.Strings(entries)
+
+	h := sha256.New()
+	for _, relative := range entries {
+		path := filepath.Join(dir, relative)
+		// Write the relative path as a prefix so two directories with
+		// different file structures but the same content after concatenation
+		// produce different digests.
+		if _, err := io.WriteString(h, relative+"\x00"); err != nil {
+			return "", err
+		}
+		f, err := skills.OpenRegular(path)
+		if err != nil {
+			return "", err
+		}
+		if _, err := io.Copy(h, f); err != nil {
+			f.Close()
+			return "", err
+		}
+		f.Close()
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
 func copySkillDirectory(source, target string) error {
@@ -253,7 +322,7 @@ func copySkillDirectory(source, target string) error {
 }
 
 func copySkillFile(source, target string, mode fs.FileMode) error {
-	reader, err := os.Open(source)
+	reader, err := skills.OpenRegular(source)
 	if err != nil {
 		return err
 	}
@@ -281,8 +350,7 @@ func runSkillCheck(ctx context.Context, skillDir string) error {
 	defer cancel()
 	cmd := exec.CommandContext(trialCtx, filepath.Join(skillDir, "check.sh"))
 	cmd.Dir = clean
-	const skillDirEnv = "CODEAF_SKILL_DIR"
-	cmd.Env = append(os.Environ(), skillDirEnv+"="+skillDir, env.Legacy(skillDirEnv)+"="+skillDir)
+	cmd.Env = safeSkillCheckEnv(skillDir)
 	cmd.WaitDelay = time.Second
 	output, runErr := cmd.CombinedOutput()
 	if trialCtx.Err() == context.DeadlineExceeded {
@@ -300,6 +368,54 @@ func boundedSkillOutput(output []byte) string {
 		return text
 	}
 	return clipBlock(text, skillFailureBytes)
+}
+
+func safeSkillCheckEnv(skillDir string) []string {
+	safeKeys := map[string]bool{
+		"PATH":        true,
+		"HOME":        true,
+		"TMPDIR":      true,
+		"USER":        true,
+		"LOGNAME":     true,
+		"SHELL":       true,
+		"LANG":        true,
+		"LC_ALL":      true,
+		"TERM":        true,
+		"GOROOT":      true,
+		"GOPATH":      true,
+		"CARGO_HOME":  true,
+		"RUSTUP_HOME": true,
+	}
+	var envs []string
+	for _, kv := range os.Environ() {
+		parts := strings.SplitN(kv, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		k := parts[0]
+		upper := strings.ToUpper(k)
+		if strings.Contains(upper, "KEY") ||
+			strings.Contains(upper, "TOKEN") ||
+			strings.Contains(upper, "SECRET") ||
+			strings.Contains(upper, "AUTH") ||
+			strings.Contains(upper, "PASSWORD") ||
+			strings.Contains(upper, "CREDENTIAL") ||
+			strings.HasPrefix(upper, "ANTHROPIC_") ||
+			strings.HasPrefix(upper, "OPENAI_") ||
+			strings.HasPrefix(upper, "GEMINI_") ||
+			strings.HasPrefix(upper, "DEEPSEEK_") ||
+			strings.HasPrefix(upper, "SLACK_") ||
+			strings.HasPrefix(upper, "GITHUB_") ||
+			strings.HasPrefix(upper, "AWS_") {
+			continue
+		}
+		if safeKeys[k] || strings.HasPrefix(k, "LC_") {
+			envs = append(envs, kv)
+		}
+	}
+	const skillDirEnv = "CODEAF_SKILL_DIR"
+	envs = append(envs, skillDirEnv+"="+skillDir, env.Legacy(skillDirEnv)+"="+skillDir)
+	return envs
 }
 
 func skillFailureReason(err error) string {
@@ -479,4 +595,176 @@ func removeSkillBinLink(root, bin, artifact string) {
 		return
 	}
 	_ = os.Remove(link)
+}
+
+// importedSkillTrust is the tier every foreign skill is registered under. It
+// is the fence the whole import pass is built on: the sync touches ONLY facts
+// carrying exactly this tier, so a forged or authored skill — anything the
+// forge itself taught or a person wrote — is never superseded, rewritten or
+// otherwise disturbed by a folder it never heard of changing on disk.
+const importedSkillTrust = "imported-provisional"
+
+// importForeignSkills is the shelf's third pass: it registers skills a person
+// already has for another harness — Claude Code, Codex, any agentskills.io
+// reader — from where those harnesses keep them, in place, with no copy and
+// no reinstall.
+func (r *Reconciler) importForeignSkills() {
+	if !r.skillImportGate.due(r.store) {
+		return
+	}
+	// The project directory is the working directory, derived exactly the way
+	// the rest of the tree derives a surface's own ground: the head's
+	// workspaceRoot and the errand surface's errandWorkspace both fall back to
+	// it, so the resident reads the same directory and invents no new source.
+	projectDir, err := os.Getwd()
+	if err != nil {
+		return
+	}
+	// The home directory is the one door internal/home owns: CODEAF_HOME
+	// moves it wholesale, and a test binary that named no home of its own is
+	// handed the quarantine rather than the home of whoever ran it, so the
+	// scan never imports a real person's skills into a throwaway store.
+	homeDir, err := home.Login()
+	if err != nil {
+		return
+	}
+	r.reconcileImportedSkills(projectDir, homeDir)
+}
+
+// reconcileImportedSkills is the reconciler's own door into the import pass:
+// the gate and the working directory are the resident's, and the store-bound
+// work is shared with the v3 chat door, which runs the same pass on every
+// launch because it claims no residency of its own.
+func (r *Reconciler) reconcileImportedSkills(projectDir, homeDir string) {
+	ReconcileImportedSkills(r.store, projectDir, homeDir)
+}
+
+// ReconcileImportedSkills makes the fact shelf agree with the foreign roots:
+// every discovered skill that is not shadowed gets one active fact whose
+// artifact is the ORIGINAL directory, and every previously imported fact
+// whose folder went away or stopped being readable is superseded with the
+// reason why. Both directories come in as arguments and the store is the
+// caller's, so the same pass serves the resident reconciler's gated tick and
+// a chat door that runs it once per launch — and it is idempotent: a second
+// run over an unchanged disk journals nothing.
+//
+// The pass never fails loudly. A folder that cannot be digested, a fact that
+// cannot be recorded: each is skipped and picked up by the next pass, because
+// half-imported is a state the next pass repairs and a failed pass is one
+// nothing repairs.
+func ReconcileImportedSkills(st *store.Store, projectDir, homeDir string) {
+	discovered, err := skills.Discover(skills.Options{ProjectDir: projectDir, HomeDir: homeDir})
+	if err != nil {
+		return
+	}
+	active, err := st.SkillFacts(store.FactActive, skillCandidateScanLimit)
+	if err != nil {
+		return
+	}
+	// Only facts this pass itself recorded are its business. The map is
+	// keyed by the original directory because that is the skill's identity
+	// across runs — names, scopes and docs may change, the folder is what the
+	// person deleted or edited. SkillFacts is newest first, so the first fact
+	// seen for a directory is the one to keep; a second one can only exist
+	// when a crash landed between one import's activation and the supersede it
+	// was about to journal, and it retires here so the shelf keeps its
+	// one-active-fact-per-folder shape.
+	imported := make(map[string]store.Fact)
+	for _, fact := range active {
+		if fact.Trust != importedSkillTrust {
+			continue
+		}
+		dir := filepath.Clean(strings.TrimSpace(fact.Artifact))
+		if dir == "" {
+			continue
+		}
+		if existing, seen := imported[dir]; seen {
+			_ = st.SupersedeFactWithReason(fact.Seq, existing.Seq, "duplicate import record")
+			continue
+		}
+		imported[dir] = fact
+	}
+
+	// alive is every directory this scan still endorses — shadowed ones
+	// included, because a folder another root outranks has not gone away, and
+	// superseding a live folder because it lost a naming contest would retire
+	// a working skill for a cosmetic reason. A skill that LOADED endorses its
+	// folder even when it carries a soft warning — a name that does not match
+	// its folder is still a working skill, per the spec's client guide — while
+	// a skipped one (no name, no description, unparseable) endorses nothing.
+	alive := make(map[string]bool)
+	for _, skill := range discovered {
+		if skill.Name == "" || skill.Description == "" {
+			continue
+		}
+		dir := filepath.Clean(skill.Dir)
+		alive[dir] = true
+		if skill.Shadowed {
+			continue
+		}
+		// A skill folder reached through a link is digested at the folder the
+		// link names. The fact keeps the link as its artifact, because the
+		// link's name is the skill's name; but the walk below does not descend
+		// through a link at its root, so digesting the link itself would hash
+		// nothing and an edited skill would never be read again.
+		digestDir := dir
+		if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+			digestDir = resolved
+		}
+		digest, err := contentDigest(digestDir)
+		if err != nil {
+			continue
+		}
+		if existing, ok := imported[dir]; ok && existing.Digest == digest {
+			continue
+		}
+		candidate, err := st.RecordSkillCandidateFrom(store.FactWriterOther, store.RootID,
+			importedSkillScope(skill, projectDir), clipFactBody(skill.Description), dir, importedSkillTrust)
+		if err != nil {
+			continue
+		}
+		if err := st.ActivateSkill(candidate.Seq, dir, digest); err != nil {
+			continue
+		}
+		if existing, ok := imported[dir]; ok {
+			_ = st.SupersedeFactWithReason(existing.Seq, candidate.Seq,
+				"imported skill changed on disk")
+		}
+	}
+
+	// What the disk no longer endorses must retire: a deleted folder and a
+	// folder whose SKILL.md stopped parsing read the same from here, and the
+	// reason names the file because that is the thing a person goes looking
+	// for. A shadowed folder stays alive, so it never reaches this arm.
+	gone := make([]string, 0, len(imported))
+	for dir := range imported {
+		if !alive[dir] {
+			gone = append(gone, dir)
+		}
+	}
+	sort.Strings(gone)
+	for _, dir := range gone {
+		_ = st.SupersedeFactWithReason(imported[dir].Seq, 0,
+			"skill folder no longer holds a readable SKILL.md")
+	}
+}
+
+// importedSkillScope names where a discovered skill came from, in the tree's
+// kind:value convention (notebook.go builds "repo:"+dir and "tool:"+word the
+// same way). The rule is deterministic and read off the discovery, never the
+// clock: a project skill is scoped to its project directory, so the catalog's
+// scorer surfaces it exactly when the work is in that directory; a user skill
+// is scoped to the harness folder it was read from, which names its source
+// without naming any one machine's paths.
+//
+// THE HARNESS IS THE ROOT'S FIRST FOLDER, which is the same answer as before
+// for the six skills folders and the right one for the two roots that sit
+// deeper: a skill out of a Claude Code plugin is a Claude Code skill, and one
+// out of Codex's bundled folder is a Codex skill.
+func importedSkillScope(skill skills.Skill, projectDir string) string {
+	if skill.Scope == skills.ScopeProject {
+		return "repo:" + projectDir
+	}
+	harness, _, _ := strings.Cut(strings.TrimPrefix(filepath.ToSlash(skill.Root), "."), "/")
+	return "harness:" + harness
 }

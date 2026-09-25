@@ -9,8 +9,9 @@ package main
 // bashworker tests make.
 //
 // THREE FACTS ARE UNDER TEST. A brief the scripted model completes leaves with
-// exit 0 and an envelope naming the root's result, its landed file and the
-// branch the landing answered. A ceiling of nothing leaves with exit 3 and
+// exit 0 and an envelope naming the root's result and the file it wrote, left
+// in place and uncommitted (do_engine_contract_test.go holds the rest of that
+// contract). A ceiling of nothing leaves with exit 3 and
 // `blocked_on` naming the price it was held to. And the usage ledger is the
 // session's own — the worker the run hosts writes it, so the door adds no
 // second accounting.
@@ -118,14 +119,33 @@ func beltStubCLI(t *testing.T) string {
 // beltRunEnv puts the door on the run road: the belt's switch, the shim's
 // override, a home of its own to read the ledger under, and a profile the crew
 // resolves its seats from.
+//
+// THE PROFILE TURNS THE MACHINE GATE OFF. The run road asks the host's own
+// load and memory before every worker it starts, from the profile's
+// `task.max_load` and `task.min_free_mb` rows, and both are on out of the box.
+// A scripted run here is not a measurement of the machine running it: on a box
+// busy with other suites the gate held every root until the run's wall, and a
+// test about spending or landing failed as a deadline. The gate has its own
+// tests (do_machine_gate_test.go), which set the rows they mean.
 func beltRunEnv(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("CODEAF_HOME", home)
-	t.Setenv("CODEAF_PROFILE_DIR", filepath.Join(home, "profile"))
+	profile := filepath.Join(home, "profile")
+	t.Setenv("CODEAF_PROFILE_DIR", profile)
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	t.Setenv("CODEAF_PLANDB_BIN", beltStubCLI(t))
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
+	settings := config.NewSettings(config.SettingsOptions{ProfileDir: profile})
+	for _, key := range []string{config.KeyTaskMaxLoad, config.KeyTaskMinFreeMB} {
+		row, ok := settings.Row(key)
+		if !ok {
+			t.Fatalf("the %s row is absent", key)
+		}
+		if err := row.Apply("0"); err != nil {
+			t.Fatalf("turn %s off: %v", key, err)
+		}
+	}
 	return home
 }
 
@@ -237,9 +257,8 @@ func beltGit(t *testing.T, dir string, args ...string) {
 // THE RUN ROAD COMPLETES A BRIEF AND NAMES THE ROOT'S RESULT.
 //
 // The scripted worker writes one file through bash and then finishes its task
-// in the store with the result as its words; the run lands that file on the copy's branch, and the caller reads on
-// stdout the root's own result, the landed path, and the branch the landing
-// answered — the whole of what the run road owes an envelope.
+// in the store with the result as its words; the caller reads on stdout the
+// root's own result and the path the run wrote.
 // A ROOT FINISH THAT LANDS IN THE STORE BEFORE ITS WORKER RETURNS STILL NAMES THE ROOT RESULT.
 //
 // The finish command writes the root done row before its shell exits. Holding that
@@ -272,7 +291,7 @@ func TestDoOnTheRunEngineRootStoreFinishBeforeWorkerReturnNamesRootResult(t *tes
 	var stdout, stderr strings.Builder
 	err := doErrand(doRequest{
 		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
-		timeout: 60 * time.Second, slots: 1, stdout: &stdout, stderr: &stderr,
+		timeout: 60 * time.Second, slots: bound(1), stdout: &stdout, stderr: &stderr,
 		newBeltCompleter: func(string) session.Completer { return seat },
 	})
 	if err != nil {
@@ -313,7 +332,7 @@ func TestDoOnTheRunEngineCompletesABriefAndNamesTheRootResult(t *testing.T) {
 	var stdout, stderr strings.Builder
 	err := doErrand(doRequest{
 		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
-		timeout: 60 * time.Second, slots: 1, stdout: &stdout, stderr: &stderr,
+		timeout: 60 * time.Second, slots: bound(1), stdout: &stdout, stderr: &stderr,
 		newBeltCompleter: func(string) session.Completer { return seat },
 	})
 	if err != nil {
@@ -330,14 +349,11 @@ func TestDoOnTheRunEngineCompletesABriefAndNamesTheRootResult(t *testing.T) {
 	if outcome.Seconds <= 0 {
 		t.Fatal("the run reported no elapsed time")
 	}
-	// The landing committed the worker's file, and both the file and the
-	// branch it went to are on the object.
+	// The worker's file is on the object, where the run left it: in the
+	// directory it was handed, edited in place and not committed.
 	want := filepath.Join(workspace, "out.txt")
 	if len(outcome.Artifacts) != 1 || outcome.Artifacts[0] != want {
-		t.Fatalf("artifacts = %v, want the one landed path %s", outcome.Artifacts, want)
-	}
-	if !strings.Contains(outcome.Deliverable, "landed on work") {
-		t.Fatalf("the answer never named the branch the landing answered:\n%s", outcome.Deliverable)
+		t.Fatalf("artifacts = %v, want the one path the run wrote %s", outcome.Artifacts, want)
 	}
 }
 
@@ -419,7 +435,7 @@ func TestDoOnTheRunEngineSeatsEveryLaunchOnTheDoorsModels(t *testing.T) {
 	var stdout, stderr strings.Builder
 	err = doErrand(doRequest{
 		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
-		timeout: 60 * time.Second, slots: 1, model: workModel, planModel: planModel,
+		timeout: 60 * time.Second, slots: bound(1), model: workModel, planModel: planModel,
 		stdout: &stdout, stderr: &stderr, newBeltCompleter: newBelt,
 	})
 	if err != nil {
@@ -485,7 +501,7 @@ func TestDoOnTheRunEngineChecksALeafAndExitsZeroWhenItHolds(t *testing.T) {
 	var stdout, stderr strings.Builder
 	if err := doErrand(doRequest{
 		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
-		timeout: 60 * time.Second, slots: 1, stdout: &stdout, stderr: &stderr,
+		timeout: 60 * time.Second, slots: bound(1), stdout: &stdout, stderr: &stderr,
 		newBeltCompleter: func(string) session.Completer { return seat },
 	}); err != nil {
 		t.Fatalf("a run whose check held left with %v, want 0\nstdout:\n%s\nstderr:\n%s",
@@ -524,8 +540,8 @@ func TestDoOnTheRunEngineChecksASelfFinishedRootAndExitsZeroWhenItHolds(t *testi
 
 	var stdout, stderr strings.Builder
 	if err := doErrand(doRequest{
-		task: "do the work alone and say what you did", workspace: workspace, asJSON: true,
-		timeout: 60 * time.Second, slots: 1, stdout: &stdout, stderr: &stderr,
+		task: "do the work alone and say what you did", workspace: workspace, keep: true, asJSON: true,
+		timeout: 60 * time.Second, slots: bound(1), stdout: &stdout, stderr: &stderr,
 		newBeltCompleter: func(string) session.Completer { return seat },
 	}); err != nil {
 		t.Fatalf("a self-finished root whose check held left with %v, want 0\nstdout:\n%s\nstderr:\n%s",
@@ -536,7 +552,7 @@ func TestDoOnTheRunEngineChecksASelfFinishedRootAndExitsZeroWhenItHolds(t *testi
 		t.Fatalf("the envelope does not carry the root worker's result: %q", outcome.Deliverable)
 	}
 
-	store, err := plandb.Open(session.PlanStorePath(workspace), "", "root", "", "")
+	store, err := plandb.Open(filepath.Join(keptRunFolder(t, stderr.String()), "plandb.db"), "", "root", "", "")
 	if err != nil {
 		t.Fatalf("open the do run's plan: %v", err)
 	}
@@ -562,7 +578,7 @@ func TestDoOnTheRunEngineChecksASelfFinishedRootAndExitsZeroWhenItHolds(t *testi
 // admits no work at all. Exit 3 is the ladder's rung for a limit, and
 // `blocked_on` names the price so a caller knows what to raise.
 func TestDoOnTheRunEngineStopsAtACostCapOfZero(t *testing.T) {
-	beltRunEnv(t)
+	home := beltRunEnv(t)
 	workspace := t.TempDir()
 	zero := 0.0
 
@@ -582,6 +598,9 @@ func TestDoOnTheRunEngineStopsAtACostCapOfZero(t *testing.T) {
 	}
 	if strings.TrimSpace(outcome.Deliverable) != "" {
 		t.Fatalf("a run that did nothing carried a deliverable: %q", outcome.Deliverable)
+	}
+	if stores, err := filepath.Glob(filepath.Join(home, "runs", "codeaf-do-*")); err != nil || len(stores) != 0 {
+		t.Fatalf("a run refused before admission left a record: %v, %v", stores, err)
 	}
 }
 
@@ -620,7 +639,7 @@ func TestDoOnTheRunEngineLeavesTheUsageLedgerToTheSession(t *testing.T) {
 	var stdout, stderr strings.Builder
 	if err := doErrand(doRequest{
 		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
-		timeout: 60 * time.Second, slots: 1, stdout: &stdout, stderr: &stderr,
+		timeout: 60 * time.Second, slots: bound(1), stdout: &stdout, stderr: &stderr,
 		newBeltCompleter: func(string) session.Completer { return seat },
 	}); err != nil {
 		t.Fatalf("errand: %v\n%s", err, stderr.String())
@@ -705,7 +724,7 @@ func TestDoOnTheRunEngineSeatsACheckOnTheCheckModel(t *testing.T) {
 	var stdout, stderr strings.Builder
 	err = doErrand(doRequest{
 		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
-		timeout: 60 * time.Second, slots: 1,
+		timeout: 60 * time.Second, slots: bound(1),
 		model: workModel, planModel: planModel, checkModel: checkModel,
 		stdout: &stdout, stderr: &stderr, newBeltCompleter: newBelt,
 	})
@@ -796,7 +815,7 @@ func TestDoOnTheRunEngineSeatsAnUnpinnedCheckOnTheCrewsChecker(t *testing.T) {
 	var stdout, stderr strings.Builder
 	err = doErrand(doRequest{
 		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
-		timeout: 60 * time.Second, slots: 1,
+		timeout: 60 * time.Second, slots: bound(1),
 		stdout: &stdout, stderr: &stderr, newBeltCompleter: newBelt,
 	})
 	if err != nil {
@@ -825,3 +844,6 @@ func TestDoOnTheRunEngineSeatsAnUnpinnedCheckOnTheCrewsChecker(t *testing.T) {
 		t.Fatalf("the completer was never asked for the crew's careful row; the check was seated elsewhere (built %v)", models)
 	}
 }
+
+// bound is a named slot count for a request, the way the flag would name one.
+func bound(n int) *int { return &n }

@@ -258,7 +258,7 @@ func TestRetiringAToolQuietensTheBeliefAtOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := graph.ActivateSkill(skill.Seq, skill.Artifact); err != nil {
+	if err := graph.ActivateSkill(skill.Seq, skill.Artifact, ""); err != nil {
 		t.Fatal(err)
 	}
 

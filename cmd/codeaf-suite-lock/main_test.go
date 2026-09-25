@@ -63,11 +63,24 @@ func TestLockFollowsSuiteAfterWrapperKilled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse suite pid %q: %v", line, err)
 	}
-	metadata, err := os.ReadFile(lock)
-	if err != nil {
-		t.Fatal(err)
+	// THE LOCK IS NAMED AFTER THE SUITE STARTS, never before (main.go), so the
+	// suite's own pid on the pipe says the suite is up and nothing about the
+	// file. The fixture's short sleep used to stand in for that wait, and on a
+	// loaded box the wrapper had not yet written the line when it ran out. The
+	// file is read until it holds the line or a generous deadline passes.
+	var metadata []byte
+	var fields []string
+	for deadline := time.Now().Add(10 * time.Second); ; {
+		metadata, err = os.ReadFile(lock)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fields = strings.Fields(string(metadata))
+		if len(fields) == 3 || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
-	fields := strings.Fields(string(metadata))
 	if len(fields) != 3 {
 		t.Fatalf("metadata %q", metadata)
 	}
@@ -347,7 +360,7 @@ func TestTheDirectoryLockNamesItsHolderAsSoonAsItIsClaimed(t *testing.T) {
 	if !taken {
 		t.Fatalf("a fresh path reported the lock already held by %q", held)
 	}
-	defer dropDirLock(dir)
+	defer dropDirLock(dir, os.Getpid())
 
 	raw, err := os.ReadFile(filepath.Join(dir, "pid"))
 	if err != nil {

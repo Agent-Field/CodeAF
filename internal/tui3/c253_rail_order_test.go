@@ -61,36 +61,6 @@ func TestPlanRailKeepsStoreOrderInsideFamilyExceptRunningFloatsTop(t *testing.T)
 	}
 }
 
-func TestPlanRailFoldsDoneRowsToOneCountAtFamilyBottom(t *testing.T) {
-	rows := []session.PlanTaskRow{
-		{ID: "root", Title: "family", Status: "running"},
-		{ID: "done-a", Parent: "root", Title: "done A", Status: "done"},
-		{ID: "live", Parent: "root", Title: "live child", Status: "running"},
-		{ID: "done-b", Parent: "root", Title: "done B", Status: "done"},
-		{ID: "queued", Parent: "root", Title: "queued child", Status: "ready"},
-	}
-	items := c253PlanItems(rows, "chat")
-	reading := tasksReading{items: items, held: len(items), now: taskFixtureNow, kinFloor: planRailLevels}
-	lines := reading.lay(55)
-	var titles []string
-	var folded *tasksLine
-	for i := range lines {
-		if lines[i].kind != tasksLineTask {
-			continue
-		}
-		titles = append(titles, lines[i].item.entry.Title)
-		if lines[i].item.entry.Activity == "2 done" {
-			folded = &lines[i]
-		}
-	}
-	if strings.Contains(strings.Join(titles, "|"), "done A") || strings.Contains(strings.Join(titles, "|"), "done B") {
-		t.Fatalf("done rows were drawn separately: %v", titles)
-	}
-	if folded == nil || titles[len(titles)-1] != folded.item.entry.Title {
-		t.Fatalf("done fold is not one counted task line at the family bottom: titles=%v fold=%v", titles, folded)
-	}
-}
-
 func TestPlanRailRunRowWearsFiveProgressCells(t *testing.T) {
 	root := session.PlanTaskRow{ID: "root", Title: "run", Status: "running", Done: 3, Running: 1, Queued: 6, Total: 10}
 	item := planItem(root, "chat", planKinOf([]session.PlanTaskRow{root}))
@@ -121,8 +91,8 @@ func TestTheRailDoesNotReorderTheSessionsTree(t *testing.T) {
 	tree := tasksTreeOf(items, taskFixtureNow, tasksSort{})
 	reading := tasksReading{items: items, held: len(items), now: taskFixtureNow, shape: &tree}
 	before := strings.Join(reading.rows(140, palette{}), "\n")
-	rail := reading.planRailRows(55, palette{})
-	if len(rail) < 2 || rail[0].id != "old" {
+	rail := reading.planRailForest(rows)
+	if len(rail) < 2 || rail[0].row.ID != "old" {
 		t.Fatalf("the compact rail lost running-first order: %v", rail)
 	}
 	if after := strings.Join(reading.rows(140, palette{}), "\n"); after != before {

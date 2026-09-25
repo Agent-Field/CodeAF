@@ -2,7 +2,7 @@
 
 Wave 3 of the bash-task-loop experiment
 ([DESIGN.md](../../docs/design/bash-task-loop/DESIGN.md)): the same briefs run
-on both belts — arm A with `CODEAF_TASK_BELT` unset (the belt as shipped),
+on both belts — arm A with `CODEAF_TASK_BELT=node` (the older belt),
 arm B with `CODEAF_TASK_BELT=bash` — n replicates, cells interleaved so the
 arms share the day. Every cell is graded by code: the fixture's own suite, a
 mechanical diff, or a document's presence and coverage. No LLM judges

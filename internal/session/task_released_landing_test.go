@@ -49,7 +49,7 @@ func settledNeedingALook(t *testing.T, agent *Agent, node *TaskNode, repo, renam
 	// THE NODE RENAMES THE BRANCH IT IS STANDING ON, exactly as the run did.
 	mustGit(t, tree.dir, "branch", "-m", renamed)
 
-	merge, changed := keptWork(tree, "repair the duty log", []string{"dutylog.py"}, false)
+	merge, changed := keptWork(tree, "repair the duty log", []string{"dutylog.py"}, gitSignature{})
 	if merge != mergeAborted {
 		t.Fatalf("the settle answered %q, want the mark a kept branch wears", merge)
 	}

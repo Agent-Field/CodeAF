@@ -1,6 +1,7 @@
 package taxonomy
 
 import (
+	"math"
 	"sort"
 	"sync"
 	"time"
@@ -138,6 +139,31 @@ func (transportPolicy) Decide(e Evidence, l Limits) Verdict {
 		}
 		return Verdict{Action: ActionGiveUp, Reason: ReasonUnservable, Attempts: spent}
 	}
+	// AND A PERSON WAITING ON THE ONLY MACHINE THERE IS WAITS FOR AS LONG AS
+	// THEY LIKE. This rung is above the deadline on purpose, which nothing else
+	// here is.
+	//
+	// Every bound below exists because SOMETHING ELSE could be done with the
+	// time: another endpoint, another model, an ending that frees the person to
+	// go and fix it. A watched conversation against one machine with no chain
+	// has none of those. Giving up returns the person to a prompt from which
+	// the only sensible move is to ask the same question again, so the ending is
+	// not a move, it is the harness doing the retrying for them badly. What it
+	// costs to keep asking is nothing — the machine is theirs, the tokens are
+	// free, and the loop says on the screen what it is doing and stops the
+	// moment they say so.
+	//
+	// The deadline still ends every other shape, and it still ends this one
+	// where nobody is watching ([Evidence.Watched]).
+	if waitsForEver(e) {
+		return Verdict{
+			Action:    ActionRetry,
+			Reason:    transportReason(e),
+			Attempts:  0,
+			Backoff:   waitFor(e, spent, l.TransportBackoff),
+			Unbounded: true,
+		}
+	}
 	// AND A CALLER WITH NO TIME LEFT HAS NOTHING TO SPEND EITHER. It is the
 	// count's replacement: the plan's deadline is what bounds a failing request
 	// now, and a caller whose deadline is gone says so
@@ -180,6 +206,20 @@ func (transportPolicy) Decide(e Evidence, l Limits) Verdict {
 		Reason:   transportReason(e),
 		Attempts: allowed,
 	}
+}
+
+// waitsForEver is the one shape with no bound at all: a cut stream, against a
+// machine there is no alternative to, with no model chain behind it, in front
+// of a person who can see the waiting and end it.
+//
+// ALL FOUR ARE LOAD-BEARING. A cut rather than a refusal, because a refusal is
+// an endpoint saying no and a cut is one saying nothing yet. One machine,
+// because with a pool the next attempt is somewhere else and has its own short
+// allowance. No chain, because a person who configured a next model asked for
+// the hop and should get it. And watched, because the same loop with nobody in
+// front of it is a hang.
+func waitsForEver(e Evidence) bool {
+	return e.Cut && e.OneMachine && e.Watched && !e.FallbackAvailable
 }
 
 // transportBudget is how much of this model's budget is gone and how much it
@@ -238,6 +278,8 @@ func transportBudget(e Evidence, l Limits) (spent, allowed int) {
 	switch {
 	case e.Degenerate:
 		return spent, DegenerateCutAttempts
+	case e.OneMachine:
+		return spent, OneMachineCutAttempts
 	case !e.Rerouted:
 		return spent, BlindCutAttempts
 	}
@@ -255,7 +297,14 @@ const (
 	SilentCutAttempts     = 3
 	DegenerateCutAttempts = 2
 	BlindCutAttempts      = 2
+	OneMachineCutAttempts = 4
 )
+
+// OneMachineCutCeiling is the longest a wait between two asks of the same
+// machine ever grows to. It is short because the thing being waited for is
+// local and free to ask, and the cost of asking too often is nothing while the
+// cost of asking too rarely is the person's own time ([waitFor]).
+const OneMachineCutCeiling = 10 * time.Second
 
 // waitFor is how long to wait before asking again, and it is TWO answers
 // because there are two kinds of transport failure.
@@ -274,16 +323,50 @@ func waitFor(e Evidence, attempt int, base time.Duration) time.Duration {
 	if e.Empty || e.Malformed {
 		return 0
 	}
-	// AND NEITHER IS A CUT STREAM. The request was served and the reply came
-	// apart; there is no failing endpoint here to give a moment to, and the
-	// caller that walks this shape has never waited between two of them.
-	if e.Cut {
+	// AND NEITHER IS A CUT STREAM, WHEN THERE IS SOMEWHERE ELSE TO SEND IT. The
+	// request was served and the reply came apart; what mends that is a
+	// different endpoint, which costs no time at all.
+	//
+	// ONE MACHINE IS THE EXCEPTION AND IT IS THE WHOLE POINT OF THE FIELD. A
+	// person on their own base url has no other endpoint, so the move that
+	// makes waiting pointless does not exist for them: the identical request
+	// goes back to the identical server, and sending it again the same instant
+	// asks a machine that has just answered nothing to answer now. Time is the
+	// only mend left, so the cut takes the same doubling schedule a refusal
+	// does. Two immediate asks ten seconds apart, which is what this returned
+	// before, is not patience.
+	if e.Cut && !e.OneMachine {
 		return 0
 	}
 	if base <= 0 || attempt < 1 {
 		return 0
 	}
-	return base << (attempt - 1)
+	// THE DOUBLING SATURATES RATHER THAN WRAPS. `base << (attempt-1)` is a
+	// signed shift, and past about thirty-five asks of a one-second base it
+	// runs off the top of an int64 into zero or a negative duration, which a
+	// caller reads as "no wait" — so the unbounded wait on one machine went
+	// back to asking as fast as the machine could fail after its thirty-fifth
+	// ask (#1358's hot loop, one level down).
+	wait := time.Duration(math.MaxInt64)
+	if shift := attempt - 1; shift < 63 && base <= time.Duration(math.MaxInt64)>>shift {
+		wait = base << shift
+	}
+	// AND A WAIT ON ONE MACHINE CLIMBS TO A CEILING AND STAYS THERE, which is
+	// the difference between polling and doubling away.
+	//
+	// The doubling is a manner towards a SHARED service: every attempt costs
+	// somebody money, adds load to something under strain, and the polite thing
+	// is to back away. None of that is true of a machine that belongs to the
+	// person waiting on it. What they are waiting for — weights finishing their
+	// load, a single slot coming free — finishes at a moment nobody can predict
+	// and everybody wants noticed AT ONCE, and a schedule that has reached four
+	// minutes between asks turns a server that came back in ninety seconds into
+	// four more minutes of a person watching a spinner. So it doubles while
+	// doubling is cheap and then holds, and the asks go on arriving.
+	if e.Cut && e.OneMachine && wait > OneMachineCutCeiling {
+		return OneMachineCutCeiling
+	}
+	return wait
 }
 
 // transportReason is the phrase the journal carries. It names the SHAPE and not

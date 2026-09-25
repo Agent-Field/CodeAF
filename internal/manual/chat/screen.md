@@ -434,7 +434,7 @@ circle — and it carries at most one:
 
 | Mark | Means |
 | --- | --- |
-| `?` | That conversation is **waiting on you** — an approval, a sign-in, a proposal with no clock on it, or work out of fuel |
+| `?` | That conversation is **waiting on you** — an approval, a sign-in, a proposal with no clock on it, a question the model asked and is waiting on, a program's offer or question, a finished task that is `your call`, or work out of fuel |
 | `◐` | A queued or running piece of work, a turn, or a background job is **running** in it |
 | nothing | At rest, or nothing is known about it |
 
@@ -442,6 +442,12 @@ circle — and it carries at most one:
 the same width in all three states, so a name never moves sideways when a turn starts. On a
 terminal with no box characters `◐` is drawn `*`; `?` is already plain text, so the three
 stay apart with color off.
+
+**A conversation wears the same mark in front and behind.** The tab you are on and the tabs
+beside it read one answer to "is this waiting on a person", so a `?` does not vanish the
+moment you bring that conversation forward to answer it; it goes when the question is
+answered. A `your call` that has already been accepted and is still settling is not a
+question, and wears no `?` on either side.
 
 **The `alt+k` switcher rows carry the same two marks from the same reading.** A tab and
 its row cannot disagree, including the row for the conversation you are standing on. A
@@ -1556,8 +1562,10 @@ another. What is supported:
   two visible marks. Where the terminal has no raised plane (16 colours and below), the
   **backticks come back** rather than ordinary code reading as prose.
 - **Fenced and indented code blocks** — syntax-highlighted at 256 colours and above,
-  ordinary text below. Drawn at the full width, because a figure is looked at, not read
-  along. **A line too long for the frame wraps rather than being cut**, at every width:
+  ordinary text below, **only for a fence labelled with one of the forty or so languages
+  codeaf carries**; an unlabelled block and any other language draw as plain text (see
+  "Which languages a code block is coloured in" below). Drawn at the full width, because
+  a figure is looked at, not read along. **A line too long for the frame wraps rather than being cut**, at every width:
   there is no horizontal scroll anywhere on this screen, so a cut line was a line that
   could not be read, copied or trusted. See "Long lines inside a fence" below.
 - **Lists** — bullets and ordered. Wrapped items hang under their own first word, never
@@ -1572,6 +1580,26 @@ another. What is supported:
   the label and the destination are the same string, the address is drawn once.
   Autolinks get the same treatment.
 - **Tables** — see the table sections.
+
+## Which languages a code block is coloured in — and why my code block is plain text
+
+A code block in a reply is coloured only when its fence names a language codeaf
+carries, and only at 256 colours and above. It carries about forty: Go, Python, Rust,
+TypeScript, JavaScript, Java, Kotlin, Swift, C, C++, C#, Objective-C, Dart, Zig, Scala,
+Haskell, Elixir, Ruby, PHP, Perl, Lua, R, bash and shell, SQL, GraphQL, protobuf, HTML,
+CSS, XML, JSON, YAML, TOML, INI, HCL, Terraform, Nix, Dockerfile, Makefile, diff and
+markdown, under their usual names and aliases (`py`, `ts`, `yml`, `sh`).
+
+**Everything else draws as plain text**, still as a code block at the full width:
+
+- a fence naming a language outside that set — ` ```fortran `, ` ```vue `;
+- a fence with no label at all, ` ``` ` on its own;
+- an indented block, which has no label to read.
+
+codeaf does not guess a language from the code, because a wrong guess colours
+somebody's code as something it is not. Nothing is lost: the text, its wrapping and
+copying it are the same as for a coloured block. To get colour, ask for the block with
+its language on the fence.
 
 ## What markdown codeaf does not render
 
@@ -4025,8 +4053,9 @@ of one of the sentences above is running an older codeaf.
 ## The ? on the terminal tab — which codeaf tab is waiting on me, and the title after quitting
 
 A `?` in front of a conversation's title — `? Token counter · codeaf` — means that
-conversation is waiting on you: a permission question, a sign-in, an offer, or a task
-proposal waiting for your answer. It is the same fact the `?` on its tab in the tab strip
+conversation is waiting on you: a permission question, a sign-in, an offer, a task
+proposal waiting for your answer, a question the model asked, or a finished task that is
+`your call`. It is the same fact the `?` on its tab in the tab strip
 says, and it goes the moment you answer. On home the same news is the count, `3 want
 you · codeaf`, over every conversation at once.
 
