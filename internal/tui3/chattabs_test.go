@@ -74,8 +74,8 @@ func TestTheStripNamesEveryConversationAndKeepsItsOrderAcrossASwitch(t *testing.
 	a, _, _ := tabApp(t)
 	strip := plain(a.tabsRow(a.width))
 	// The names as a tab spells them: a tab is a label somebody recognises, so a
-	// long one is cut to [tabWordCap] rather than given the whole row.
-	for _, want := range []string{"openrouter price scrape", "Refactor the rail scop...", "Shipping the parser"} {
+	// long one is cut to [tabWordCap], at a word, rather than given the whole row.
+	for _, want := range []string{"openrouter price scrape", "Refactor the rail scope...", "Shipping the parser"} {
 		if !strings.Contains(strip, want) {
 			t.Fatalf("the strip is missing %q:\n%q", want, strip)
 		}
@@ -394,5 +394,164 @@ func TestASharedSwitchKeepsTheUnsentSentenceOfTheConversationItLeaves(t *testing
 	}
 	if keep, how := readDraftKeep(draftKeepPath(conv.DraftFile)); how != draftKeepFound || len(keep.Slots) == 0 {
 		t.Fatalf("the composer left no record under its own identity: how=%v keep=%+v", how, keep)
+	}
+}
+
+// THE STRIP'S PIECES STAND ONE GAP APART, AND A TAB IS AS WIDE ON ITS RIGHT AS
+// ON ITS LEFT. Every button on the row carries its own pad, so the air between
+// two of them is exactly one blank cell: the chip and the first tab, two tabs,
+// a tab and `+`, `+` and `▦ All`, and the left arrow and what stands before it.
+// The row's first ground is at [headLabelAt] with a chip or without one. And a
+// tab at rest leads its name with as many blank cells as it closes it with.
+func TestTheStripsPiecesStandOneGapApart(t *testing.T) {
+	for _, team := range []bool{false, true} {
+		for _, width := range []int{80, 110, 160} {
+			var a *app
+			if team {
+				a, _, _, _ = trafficApp(t)
+			} else {
+				a, _, _ = tabApp(t)
+			}
+			a.width = width
+			a.touch()
+			row := plain(a.tabsRow(width))
+			type piece struct {
+				from, to int
+				pinned   bool
+			}
+			var pieces []piece
+			if a.wall.chip.pressable() {
+				pieces = append(pieces, piece{from: a.wall.chip.from, to: a.wall.chip.to})
+			}
+			for _, hit := range a.chatTabHits {
+				switch hit.kind {
+				case tabClose:
+					// The close cells are the tab's own closing cells.
+					pieces[len(pieces)-1].to = hit.span.to
+				case tabFold:
+					// The count is a fact at the row's end, not a packed piece.
+				case tabScrollRight:
+					// The right arrow is pinned to the window's end, so the air in
+					// front of it is the window's; what follows it is packed.
+					pieces = append(pieces, piece{hit.span.from, hit.span.to, true})
+				default:
+					pieces = append(pieces, piece{from: hit.span.from, to: hit.span.to})
+				}
+			}
+			if a.wall.door.pressable() {
+				pieces = append(pieces, piece{from: a.wall.door.from, to: a.wall.door.to})
+			}
+			if len(pieces) < 3 {
+				t.Fatalf("team=%v at %d the strip drew %d pieces: %q", team, width, len(pieces), row)
+			}
+			if pieces[0].from != headLabelAt {
+				t.Fatalf("team=%v at %d the first ground is at %d, want %d: %q", team, width, pieces[0].from, headLabelAt, row)
+			}
+			for i := 1; i < len(pieces); i++ {
+				// A right arrow with nowhere to go is drawn dim and answers nothing,
+				// so it has no hit; it is still the window's pinned end.
+				between := ansi.Cut(row, pieces[i-1].to, pieces[i].from)
+				if strings.Contains(between, "›") || strings.Contains(between, "‹") {
+					continue
+				}
+				if gap := pieces[i].from - pieces[i-1].to; gap != 1 && !pieces[i].pinned {
+					t.Fatalf("team=%v at %d pieces %d and %d are %d cells apart, want 1:\n%q\n%+v", team, width, i-1, i, gap, row, pieces)
+				}
+			}
+			for _, hit := range a.chatTabHits {
+				if hit.kind != tabOther || hit.tab.signal != tabIdle {
+					continue
+				}
+				var close hudSpan
+				for _, c := range a.chatTabHits {
+					if c.kind == tabClose && c.tab.key == hit.tab.key {
+						close = c.span
+					}
+				}
+				tab := ansi.Cut(row, hit.span.from, close.to)
+				lead := len(tab) - len(strings.TrimLeft(tab, " "))
+				tail := len(tab) - len(strings.TrimRight(tab, " "))
+				if lead != tail {
+					t.Fatalf("team=%v at %d the tab %q leads with %d blanks and closes with %d", team, width, tab, lead, tail)
+				}
+			}
+		}
+	}
+}
+
+// A LONG NAME IS CUT AT A WORD, not through one, where a word boundary is near.
+func TestATabNameIsCutAtAWord(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		width int
+		want  string
+	}{
+		{"Refactor the rail scope model", 25, "Refactor the rail..."},
+		{"Refactor the rail scope model", 29, "Refactor the rail scope model"},
+		{"Refactor the rail scope model", 27, "Refactor the rail scope..."},
+		{"abcdefghijklmnopqrstuvwxyz", 12, "abcdefghi..."},
+		{"Refactor the rail scope model", 14, "Refactor..."},
+		{"openrouter price scrape", 13, "openrouter..."},
+	} {
+		if got := fitTabTitle(c.name, c.width); got != c.want || ansi.StringWidth(got) > c.width {
+			t.Fatalf("%q at %d is %q, want %q", c.name, c.width, got, c.want)
+		}
+	}
+}
+
+// EVERY DOOR ON THE STRIP SAYS WHAT IT DOES while the pointer rests on it: a
+// tab its dock square's sentence, `×` that the work keeps running, `+` its key,
+// the arrows which way. A SCROLLING STRIP DRAWS BOTH ARROWS, the one with
+// nowhere to go dim and answering nothing, so the cells it holds never read as
+// a gap nobody meant.
+func TestEveryDoorOnTheStripSaysWhatItDoes(t *testing.T) {
+	a := manyTabApp(t)
+	a.start = nil
+	said := map[tabKind]bool{}
+	for _, width := range []int{80, 120, 160} {
+		a.width = width
+		a.hot = hoverAt{}
+		a.chatTabBar = tabBar{}
+		row := plain(a.tabsRow(width))
+		hits := append([]tabHit(nil), a.chatTabHits...)
+		scrolls := false
+		for _, hit := range hits {
+			if hit.kind == tabScrollLeft || hit.kind == tabScrollRight {
+				scrolls = true
+			}
+		}
+		if scrolls && (!strings.Contains(row, "‹") || !strings.Contains(row, "›")) {
+			t.Fatalf("at %d a scrolling strip does not draw both arrows: %q", width, row)
+		}
+		for _, hit := range hits {
+			a.hot = hoverAt{kind: hoverTab, index: hit.span.from}
+			a.chatTabBar = tabBar{}
+			a.tabsRow(width)
+			words := a.dockHoverWords()
+			want := ""
+			switch hit.kind {
+			case tabOther:
+				want = dockCellHint(hit.tab)
+			case tabClose:
+				want = "Close this tab" + hintSegment + "the work keeps running"
+			case tabNew:
+				want = "New chat" + hintSegment
+			case tabScrollLeft:
+				want = "More tabs to the left"
+			case tabScrollRight:
+				want = "More tabs to the right"
+			default:
+				continue
+			}
+			if !strings.HasPrefix(words, want) {
+				t.Fatalf("at %d the pointer on %v says %q, want %q", width, hit.kind, words, want)
+			}
+			said[hit.kind] = true
+		}
+	}
+	for _, kind := range []tabKind{tabOther, tabClose, tabScrollRight} {
+		if !said[kind] {
+			t.Fatalf("no frame drew a %v to point at", kind)
+		}
 	}
 }

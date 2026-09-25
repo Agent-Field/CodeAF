@@ -102,24 +102,35 @@ in a row of their own under the top line, with a thin rule separating navigation
 reading. The strip is on every page, a place included:
 
 ```
- >● codeaf   home  teams  chats  sessions  spend  settings            $1.20  thu 10:31pm
-   openrouter price scrape    Refactor the rail sco…    [Shipping the parser] ×  +   ▦ All   +2
-  ────────────────────────────────────────────────────────────────────────────────────────
+ >● codeaf   home  teams  chats  sessions  spend  settings                 $1.20 / $20 · thu 10:31pm
+     openrouter price scrape       Refactor the rail scope...      Shipping the parser ×   +   ▦ All
+  ──────────────────────────────────────────────────────────────────────────────────────────────────
 ```
 
 While a team is shown its chip, `● harbor ▾`, comes first on the strip, before the tabs it
 narrows, with the team's `◆ Manager` after it (see *The team switcher on the tab strip*).
 On a place no tab is lit, and a press on a tab opens that chat.
 
-Each tab is a **padded target** separated by quiet space. The filled surface includes
-one blank cell before its status icon and after its close mark; the leading inset
-selects the tab and the trailing inset belongs to the close target. The gaps do nothing.
-Every tab has a filled background. The active tab reverses the surface contrast
-and has stronger text; brackets identify it on
-terminals without background color. **Every tab reacts to the pointer**,
-including the one you are already in, and the highlight it wears as the *chosen* tab stays
-put when the pointer leaves. Without color, hovering adds a dot beside the tab’s
-close mark; Home, `+`, and the scroll arrows gain a pointer dot.
+Each tab is a **padded target**, and **one blank cell separates any two pieces of the
+row**: the team chip and the first tab, two tabs, the last tab and `+`, `+` and `▦ All`.
+The row's first piece starts in the same column with a team chip or without one. A tab is
+the same width on both sides of its name: one blank cell, the status mark's cell and a
+space lead it, and a space, the `×` cell and one blank cell close it (` ◐ name × `). The
+status and `×` cells are kept even while they are empty, so a tab never changes width when
+work starts or the pointer arrives. The leading cells select the tab and the `×` and the
+cell after it close it. The gaps do nothing. Every tab has a filled background. The active
+tab reverses the surface contrast and has stronger text; brackets identify it on terminals
+without background color. **Every tab reacts to the pointer**, including the one you are
+already in, and the highlight it wears as the *chosen* tab stays put when the pointer
+leaves. Where colour cannot show a ground (16 colours or none), the tab under the pointer
+wears `·` in its first cell, as a top-line word does, and shows its `×`; `+` and the scroll
+arrows gain the same dot.
+
+**Every piece of the strip says what it does on the hint line** while the pointer rests
+on it: a tab says `Go to openrouter price scrape · running · click` (the same sentence its
+square in the dock says), its `×` says `Close this tab · the work keeps running · click`
+(`ctrl+w` on the tab you are in), `+` says `New chat · ctrl+t`, and `‹` `›` say
+`More tabs to the left · click` and `More tabs to the right · click`.
 
 **Clicking a tab goes to that conversation** — the same switch `alt+k` makes. Clicking the
 tab you are already in does nothing while you are in the conversation itself, and takes you
@@ -132,9 +143,11 @@ them, so the one you reached for a minute ago is still in the same place. At mos
 remembered; past that the one you have not been in for longest falls off, and the tab you
 are in never does. This is a presentation limit, not a limit on running work or history.
 
-**Many tabs scroll horizontally instead of shrinking their names.** On a roomy strip,
-`‹` and `›` appear at the edges when more tabs exist in that direction (`<` and `>` in
-ASCII). Click an arrow, or wheel vertically or horizontally over the header, to browse
+**Names shrink first, then the tabs scroll.** A long name is cut at a word where one is
+near (`Refactor the rail...`, not `Refactor the rail scop...`). While every tab still fits
+with at least 16 cells each, the names shrink so every tab stays on the row, as a browser's
+tabs do. Past that the strip scrolls: `‹` and `›` both appear at the edges, the one with
+nothing further in its direction dim and inert (`<` and `>` in ASCII). Click an arrow, or wheel vertically or horizontally over the header, to browse
 the names. This changes neither the conversation, its draft nor the transcript position.
 The selected tab may leave view while you browse; choosing a conversation or closing a
 tab brings the selection back. Narrow frames keep the selected tab without spending its

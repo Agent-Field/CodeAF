@@ -313,6 +313,9 @@ func (a *app) dockHoverWords() string {
 		if a.wall.door.pressable() && a.hot.index == a.wall.door.from {
 			return dockWallWord
 		}
+		if words := a.stripHoverWords(); words != "" {
+			return words
+		}
 	case hoverDockLabel, hoverDockWall:
 		if (a.hot.kind == hoverDockLabel && a.dock.label.pressable()) || (a.hot.kind == hoverDockWall && a.dock.wall.pressable()) {
 			return dockChatsWord
@@ -331,6 +334,43 @@ func (a *app) dockHoverWords() string {
 	}
 	// AND A JUMP THAT FOUND NOTHING SAYS SO, for a moment (teamjump.go).
 	return a.trafficJumpWords()
+}
+
+// stripHoverWords is what the hint slot says while the pointer rests on a
+// piece of the strip that has no sentence of its own elsewhere: a tab, its
+// `×`, the new-chat `+` and the scroll arrows. EVERY DOOR ON THE ROW SAYS WHAT
+// IT DOES, so none of them is a mark a person has to press to learn about.
+// A tab says what its square in the dock says ([dockCellHint]), because they
+// are one conversation and one door.
+func (a *app) stripHoverWords() string {
+	hit, ok := a.hotTab()
+	if !ok {
+		return ""
+	}
+	name := hit.tab.full
+	if name == "" {
+		name = hit.tab.word
+	}
+	switch hit.kind {
+	case tabHere, tabOther:
+		if hit.kind == tabHere && (a.roomOpen() || a.startingChat()) {
+			return "Back to " + name + hintSegment + "click"
+		}
+		return dockCellHint(hit.tab)
+	case tabClose:
+		words := "Close this tab" + hintSegment + "the work keeps running"
+		if hit.tab.here {
+			return words + hintSegment + a.chords.say(closeTabChord)
+		}
+		return words + hintSegment + "click"
+	case tabNew:
+		return "New chat" + hintSegment + a.chords.say(newChatChord)
+	case tabScrollLeft:
+		return "More tabs to the left" + hintSegment + "click"
+	case tabScrollRight:
+		return "More tabs to the right" + hintSegment + "click"
+	}
+	return ""
 }
 
 // dockAt is the dock's piece under column x on the keys row, as a hover.

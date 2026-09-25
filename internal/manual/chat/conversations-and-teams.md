@@ -14,7 +14,7 @@ Open it any of these ways:
 - `/wall`
 - `▦ All` at the right end of the row under the message box, drawn once a
   second conversation is open (the word goes first when the row is narrow)
-- `▦ All` on the tab strip, after the new-chat `+` (just `▦` on a narrow window). The strip
+- `▦ All` on the tab strip, after the new-chat `+` (not drawn under 60 columns). The strip
   is the second line of every page, a place included, so `▦ All` is always one press away
 
 Close it with `alt+v` again, `esc`, the `‹ Back` button at the bottom left, or a press on

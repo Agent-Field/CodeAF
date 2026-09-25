@@ -42,8 +42,9 @@ func TestTabWallDoorStandsAfterTheNewChat(t *testing.T) {
 			plus = hit
 		}
 	}
-	if !plus.span.pressable() || plus.span.to != door.from {
-		t.Fatalf("the door does not touch the +: + %+v door %+v\n%q", plus.span, door, plain(row))
+	// ONE GAP AFTER THE `+`, the gap between any two pieces of the strip.
+	if !plus.span.pressable() || plus.span.to+1 != door.from || plain(ansi.Cut(row, plus.span.to, door.from)) != " " {
+		t.Fatalf("the door does not stand one gap after the +: + %+v door %+v\n%q", plus.span, door, plain(row))
 	}
 	// The same blank either side as the +.
 	pw := plain(ansi.Cut(row, plus.span.from, plus.span.to))
@@ -112,9 +113,9 @@ func TestTabWallDoorOpensAndCloses(t *testing.T) {
 	}
 }
 
-// THE DOOR NARROWS AND GOES WITH THE ROW: the word first, then the glyph, and
-// the count of hidden tabs stays the last thing on it. The row is exactly the
-// frame's width.
+// THE DOOR GOES WITH THE ROW, WORD AND GLYPH TOGETHER: ` ▦ All ` wherever it
+// is drawn and nothing under [tabWallFrom], never a lone glyph; the count of
+// hidden tabs stays the last thing on it. The row is exactly the frame's width.
 func TestTabWallDoorAtEveryWidth(t *testing.T) {
 	for _, width := range []int{40, 60, 80, 120, 160} {
 		a := wallDoorApp(t, width)
