@@ -4010,7 +4010,7 @@ func (a *app) hintWord() string {
 		// It costs no rows, for the reason the line above it costs none: this is
 		// the legend, which is on the frame in every state.
 		return spellOutHint
-	case a.railAway && a.railAvail():
+	case a.railAway && a.railAvail() && a.headHint() == "":
 		// THE COLUMN IS AWAY AND THIS SESSION HAS RUN SOMETHING (task.go's
 		// [app.railStow]). It ranks LAST, under every state above it, because it is
 		// the only line here that is not about the next keystroke — it is where the
@@ -4023,7 +4023,9 @@ func (a *app) hintWord() string {
 		// there. This is that sign. With nothing run at all it stays quiet — the
 		// column a person closed was empty, ctrl+g still brings it back, and a
 		// standing hint about a roster of nothing is the emptiness law broken in
-		// the one slot a person reads most.
+		// the one slot a person reads most. A word of the head under the pointer
+		// outranks it too ([app.footHint] asks [app.headHint] next): the pointer
+		// is on a word, and the line says that word.
 		return a.sideBackHint()
 	}
 	return ""
