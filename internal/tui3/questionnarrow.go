@@ -276,10 +276,18 @@ func (a *app) questionNarrowBody(body string, width int) []string {
 // consequence the card draws beside it is dropped here: a band is a target and
 // reads at a glance, and a word cut off mid-reach says less than a short one.
 func (a *app) questionBandWord(word, key string, width int) string {
-	if room := width - len(questionBandPad) - ansi.StringWidth(key) - 4; ansi.StringWidth(word) > room {
-		return fit(word, room)
+	room := width - len(questionBandPad) - ansi.StringWidth(key) - 4
+	if ansi.StringWidth(word) <= room {
+		return word
 	}
-	return word
+	// A YES THAT CARRIES A CADENCE LOSES THE CADENCE BEFORE ANY CHARACTER IS
+	// CUT. "Set it up · every 3 hours" becomes "Set it up", and only then is
+	// the stem truncated.
+	plain := session.StandingPlainLabel(word)
+	if ansi.StringWidth(plain) <= room {
+		return plain
+	}
+	return fit(plain, room)
 }
 
 // questionBandRow is one answer, drawn as a row: the pointer where the pointer

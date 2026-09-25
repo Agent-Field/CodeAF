@@ -339,7 +339,7 @@ Where you said it sets the default; the words in your sentence can move it:
 So "always run the tests before you say you are done, everywhere" said in a chat stands
 over every project, and "keep this branch green, just in this conversation" dies when
 the chat does. If you say nothing about it, the card still tells you which one it picked
-before anything stands — read the `where ·` band before you press `1 yes, set it up`.
+before anything stands. Read the `where ·` band before you press `1`.
 
 **And if the reach is wrong, change it on the card.** `o other` turns the box
 below into a place to say either one: "only in this project", "everywhere", "just this

@@ -137,25 +137,22 @@ passed".
 Because "once" would not be a smaller version of what you asked for; it would be
 a different thing at the wrong moment.
 
-`3 just once` means **do the action now, as an ordinary turn, and leave
-nothing behind**. For a watch, a rule, a routine or overnight work that is a real
-answer: you wanted the tests run, not the arrangement. For "remind me at 6 to
-leave" the whole content of the request is the **6** — doing it now says
-`time to leave` hours early, or says nothing at all. So the card does not offer
-it there:
+`3` means **do the action now, as an ordinary turn, and leave nothing
+behind**. On a repeating check the button reads `Only now, don't repeat`. On a
+watch it reads `Check once now`. It used to say `just once`. For "remind me at 6
+to leave" the whole content of the request is the **6**. Doing it now says
+`time to leave` hours early, or says nothing at all. A rule never runs. So
+neither of those cards offers `3`:
 
 ```
-?  wants to keep an eye on: remind me at 6 to leave
-     1  yes, set it up   it keeps happening until you stop it
-     0  no               nothing happens, now or later
+?  wants to remind you
+     1  Remind me at 6   Reminds you then. Nothing repeats.
+     0  Don't remind me  You are not reminded.
 ```
 
-Two answers, `1` and `0`, and `3` does nothing — on the question in the
-conversation, in home's `ask here` pane, and on home's own answer row. The hint
-under the box says so too: `1 yes, set it up · 0 no · esc later`. The **way out
-is still drawn**: `0 no` is on every standing card there is.
-
-Everything else keeps all three: a watch, a rule, a routine, overnight work.
+Two answers, `1` and `0`, and `3` does nothing. A rule is the same shape: it
+never runs, so there is no once. A repeating check and a watch keep `3`. The
+**way out is still drawn**, and it is last, so a narrow row does not drop it.
 
 ## Why did it set my reminder for a time that already passed — it cannot any more
 
@@ -265,9 +262,9 @@ yes nor a clear no, codeaf treats it as a no and the log says
 ## How long do I have to answer the card — the card does not time out
 
 As long as it takes. The card carries **no clock**: no countdown, no bar, and no
-moment when it answers on somebody's behalf. It waits until you press `1 yes,
-set it up`, `0 no`, `c` to change it, or — where the card offers it —
-`3 just once`.
+moment when it answers on somebody's behalf. It waits until you press the yes
+(`1`), the no (`0`), `o` to change it, or, where the card offers it,
+`3` to do it once. `3` used to read `just once`.
 
 `esc` **puts it off and does not answer it**. The question folds away so you can
 type, the work stays waiting on it, and the count beside the box goes on
@@ -280,64 +277,60 @@ still takes the decline.
 
 It does not have to be answered in that window either. A window sitting on this
 card says so on **home**, and the row there carries the same answers the card is
-offering — `1 yes`, `3 once` and `0 not set up`, or `1 yes` and `0 not set up` on
-a one-off reminder — so the card can be **answered or declined** from the
-dashboard without opening the conversation (home's own page has the whole rule).
-`o other` stays here, where there is a box to say the new time or
-place into.
+offering. A repeating check reads `Set it up · <cadence>`, `Only now, don't repeat`
+and `Don't set it up`. A reminder reads `Remind me <when>` and `Don't remind me`.
+The card can be **answered or declined** from the dashboard without opening the
+conversation (home's own page has the whole rule). `o Change…` stays here, where
+there is a box to say the new time or place into.
 
-## I don't understand these options — what each answer on the card does, how to change the time on a standing card, and how to cancel
+## I don't understand these options. What kind of standing card is this, how do I cancel this card, where did 2 change when or where go
 
 The card in the conversation shows what is being proposed — your own words, when it would
 wake, where it reaches, what it costs. The **question sits above the message box**, where
 every decision on this screen is put, and every answer carries what it costs beside it:
 
 ```
-?  wants to keep an eye on: every Monday at 9, post the standup note from the git log
-     1  yes, set it up   it keeps happening until you stop it
-     3  just once        it happens now, and nothing is kept
-     0  no               nothing happens, now or later
-   esc later · o other · ? clarify
+?  wants to set up a repeating check
+   every Monday at 9, post the standup note from the git log
+   Mondays at 9am · about $0.02 a run
+     1  Set it up · Mondays at 9am   It repeats on that cadence until you stop it.
+     3  Only now, don't repeat       Runs the check one time now. Nothing repeats.
+     0  Don't set it up              Nothing is set up, and nothing runs.
+   esc later · o Change… · ? clarify
 ```
 
-- **`1 yes, set it up`** — it gets set up and starts happening, and goes on until you stop
-  it. The `when ·` and `where ·` bands on the card above say when and how far.
-- **`c` change when or where** — you want it, but not like that. Press `c` and the box below
-  becomes a place to say the **time or the place** instead — "make it 8", "only in this
-  project", "everywhere" — and `enter` sends your words back. Nothing is set up until a new
-  card comes with them in it. (This was `2 change when or where` on the card's own row of
-  chips; `c` is the key every question on this screen uses to say "I will take one of these,
-  but not as it stands".)
-- **`3 just once`** — do the thing now, this once, and keep nothing. Some cards do not
-  offer it; the section above says why.
-- **`0 no`** — **this is cancel**. Nothing is set up, nothing is run, and the card settles
-  as `not set up`.
-- **`esc`** — later. Nothing is decided, the rows come off the screen so you can type, and
-  the question is still counted beside the box. It used to be the outright no here; it is
-  not any more.
+The first line says what kind of thing it is. The second line is what it does.
+The third is when, and what one time costs.
+
+- **A reminder** says `wants to remind you`. `1` is `Remind me <when>` (reminds you then, nothing repeats), `0` is `Don't remind me`. There is no once.
+- **A repeating check** says `wants to set up a repeating check`. `1` is `Set it up · <cadence>` (it repeats until you stop it), `3` is `Only now, don't repeat` (runs once now, nothing repeats), `0` is `Don't set it up`. On a narrow row the cadence drops off the yes before any word is cut. `3` used to say `just once`.
+- **A watch** says `wants to watch for something`. `1` is `Watch for it`, `3` is `Check once now`, `0` is `Don't watch`.
+- **A rule** says `wants to keep a rule`. `1` is `Keep this rule`, `o` is `Change where…`, `0` is `Don't keep it`. There is no once.
+
+`o Change…` turns the box into a place to say the time or the place, and `enter` sends your words back. Nothing is set up until a new card comes with them in it. That is where `2 change when or where` went: it is `o` now, and it does not resolve the card. `0` is how you cancel this card: nothing is set up and nothing runs, and the no is never dropped when the row is narrow. **`esc`** is later. Nothing is decided, the rows come off the screen so you can type, and the question is still counted beside the box.
 
 Each answer is a row of its own and **a click anywhere along it takes that answer**. The
 digit takes it too.
 
-Answering leaves a line where the question was — `✓ wants to keep an eye on: … → yes,
-set it up · you · 14:02` — and the card in the conversation settles with the answer and what
-it came to on its bottom edge: `yes, set it up · set up`.
+Answering leaves a line where the question was, the kind and the button you pressed,
+and the card in the conversation settles with that button and what it came to:
+`Set it up · Mondays at 9am · set up`.
 
 ## How do I decline a standing card or say no to a reminder — 0, esc, or the no on the card
 
-`0 no` is the way out, and it is one keystroke and **one visible answer** everywhere
+`0` is the way out, and it is one keystroke and **one visible answer** everywhere
 a card like this is drawn: in the conversation, on home's answer row, and in
 home's `ask here` pane. Nothing is created, nothing is run, and the card settles
-as `not set up`. On home's answer row the chip reads `0 not set up`, which is the
-same answer said as its outcome, because that row has no card under it to settle.
+as `not set up`. The chip's words are the kind's own no: `Don't set it up`,
+`Don't remind me`, `Don't watch`, or `Don't keep it`.
 
 **`esc` is not the no.** It used to be, in the conversation, and it is *later*
 now: the question folds away, nothing is decided, and the count beside the box
 goes on counting it. That is the same thing `esc` does to every question this
 program asks, and it is why the no had to become something you can see and click.
 
-It is a `0` and not a `4` because the answers are numbered by where they sit —
-`1 yes`, `3 just once` — so a fourth digit would move under your hand on a card
+It is a `0` and not a `4` because the answers are numbered by where they sit.
+`1` is yes and `3` is once, so a fourth digit would move under your hand on a card
 that drew one answer fewer. `0` is off the end of that numbering, on every card,
 always the same answer.
 

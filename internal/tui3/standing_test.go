@@ -132,8 +132,9 @@ func TestAStandingProposalDrawsWhenAndCost(t *testing.T) {
 	text := standText(a)
 	for _, want := range []string{
 		taskHeadCorner + " " + glyphAsk + " " + standWaitGlyph,
-		standWhenTag + "Mondays at 9am",
-		standCostTag + "about $0.02 a run, at most once a day",
+		"Mondays at 9am",
+		"about $0.02 a run, at most once a day",
+		session.StandingHeadCheck,
 		standEndsWord + "30s",
 		taskFootCorner,
 	} {
@@ -236,7 +237,11 @@ func TestTheThreeKeysSendTheThreeAnswers(t *testing.T) {
 	if kept.stand == nil || !kept.stand.settled() {
 		t.Fatal("the answered card left the transcript")
 	}
-	if page := standText(kept); !strings.Contains(page, standYesWord+" · "+standSetWord) {
+	// The chosen word is the kind's own yes, cadence included. The verdict sits
+	// after it, so a later reading says both which button was pressed and what
+	// that button did.
+	wantFoot := standAnswerWord(standItem(), "1") + " · " + standSetWord
+	if page := standText(kept); !strings.Contains(page, wantFoot) {
 		t.Fatalf("the settled card does not carry the answer and what it came to:\n%s", page)
 	}
 
@@ -514,7 +519,7 @@ func TestAOneOffReminderCardDrawsTwoChips(t *testing.T) {
 	})
 
 	block := standBlock(a)
-	for _, want := range []string{"1  " + standYesWord, "0  " + standNoWordChip} {
+	for _, want := range []string{"1  Remind me", "0  Don't remind me"} {
 		if !strings.Contains(block, want) {
 			t.Fatalf("a reminder's card is missing %q:\n%s", want, block)
 		}
@@ -535,7 +540,7 @@ func TestAOneOffReminderCardDrawsTwoChips(t *testing.T) {
 	// The derivation names the keys the card drew and not one more. (The slot
 	// itself is quiet while the block draws them — hints pick A — and this is
 	// the reading behind it, which is where the defect would be.)
-	const twoHint = "1 yes, set it up · 0 no · esc later"
+	const twoHint = "1 Remind me in 1 minute — 07:35 · 0 Don't remind me · esc later"
 	if got := a.questionHintFor(); got != twoHint {
 		t.Fatalf("the hint is %q, want %q", got, twoHint)
 	}
@@ -580,10 +585,10 @@ func TestAWatchCardStillDrawsThreeChips(t *testing.T) {
 	})
 
 	block := standBlock(a)
-	if !strings.Contains(block, "3  "+standOnceWord) {
-		t.Fatalf("a watch lost its `%s` answer:\n%s", standOnceWord, block)
+	if !strings.Contains(block, "3  Check once now") {
+		t.Fatalf("a watch lost its once answer:\n%s", block)
 	}
-	const threeHint = "1 yes, set it up · 3 just once · 0 no · esc later"
+	const threeHint = "1 Watch for it · 3 Check once now · 0 Don't watch · esc later"
 	if got := a.questionHintFor(); got != threeHint {
 		t.Fatalf("the hint is %q, want %q", got, threeHint)
 	}
@@ -672,7 +677,13 @@ func TestZeroSaysNoToAStandingCardWhereverItIsDrawn(t *testing.T) {
 			Item: item, WhenWords: "every few minutes", CostWords: "about $0.02 a check",
 			Options: session.StandingOptions(item),
 		})
-		if block := standBlock(a); !strings.Contains(block, session.StandingNoKey+"  "+standNoWordChip) {
+		label := ""
+		for _, option := range session.StandingOptions(item) {
+			if option.Key == session.StandingNoKey {
+				label = option.Label
+			}
+		}
+		if block := standBlock(a); !strings.Contains(block, session.StandingNoKey+"  "+label) {
 			t.Fatalf("the card does not draw the decline:\n%s", block)
 		}
 	}
@@ -985,9 +996,9 @@ func TestEveryStandingAnswerSaysWhatItWillDo(t *testing.T) {
 	})
 	block := standBlock(a)
 	for key, want := range map[string]string{
-		"1":                     standYesCost,
-		session.StandingOnceKey: standOnceCost,
-		session.StandingNoKey:   standNoCost,
+		"1":                     "It watches until you stop it.",
+		session.StandingOnceKey: "Checks once now. Nothing keeps watching.",
+		session.StandingNoKey:   "Nothing watches.",
 	} {
 		if !strings.Contains(block, want) {
 			t.Fatalf("the answer under %q does not say %q:\n%s", key, want, block)
@@ -1125,5 +1136,18 @@ func TestAStandingQuestionArrivingByBothRoadsDrawsOnce(t *testing.T) {
 	block := standBlock(a)
 	if !strings.Contains(block, "1  "+standYesWord) {
 		t.Fatalf("the lane's copy respelled the answers:\n%s", block)
+	}
+}
+
+// A NARROW BAND DROPS THE CADENCE BEFORE IT CUTS A CHARACTER. "Set it up ·
+// every 3 hours" becomes "Set it up", and only a still-too-narrow stem is cut.
+func TestANarrowStandingLabelDropsTheCadenceFirst(t *testing.T) {
+	a := newTestApp(&fakeAgent{})
+	full := "Set it up · every 3 hours"
+	if got := a.questionBandWord(full, "1", 24); got != "Set it up" {
+		t.Fatalf("the cadence was not dropped: %q", got)
+	}
+	if got := a.questionBandWord("Don't set it up", "0", 80); got != "Don't set it up" {
+		t.Fatalf("the no was rewritten: %q", got)
 	}
 }

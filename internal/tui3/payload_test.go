@@ -262,8 +262,8 @@ func TestTheHintGrammarReadsEveryHintThisSurfaceWrites(t *testing.T) {
 		// question rather than written down (homeexchange.go's
 		// [exchangeAnswerWords]): the digits the card drew, then the key that
 		// asks for the box instead.
-		{"1 yes, set it up · 3 just once · 0 no · c change",
-			[]string{"1", "3", "0", "c"}},
+		{"1 Set it up · 3 Only now, don't repeat · 0 Don't set it up · o Change…",
+			[]string{"1", "3", "0", "o"}},
 		{"1-3 shape · esc never mind", []string{"1-3", "esc"}},
 		{"y allow · n deny · a always", []string{"y", "n", "a"}},
 		{"↑↓ move · →← tree · enter open · alt+w wide · esc",

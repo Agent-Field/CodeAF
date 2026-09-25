@@ -1751,15 +1751,14 @@ func TestAOneOffReminderOffersNoOnce(t *testing.T) {
 	}
 }
 
-// AND EVERYWHERE ELSE IT KEEPS IT: a watch, a rule, a routine and overnight
-// work are all things a person may reasonably want done once, now.
-func TestEverythingButAOneOffReminderKeepsOnce(t *testing.T) {
+// A WATCH AND A CADENCE KEEP ONCE. A reminder has nothing to do now that is
+// different from reminding, and a rule never runs, so neither offers it.
+func TestAWatchAndACadenceKeepOnce(t *testing.T) {
 	for _, item := range []standing.Item{
 		{When: standing.When{Kind: standing.WhenProbe}, Does: standing.Action{Kind: standing.ActionSay}},
 		{When: standing.When{Kind: standing.WhenEvery}, Does: standing.Action{Kind: standing.ActionTask}},
 		{When: standing.When{Kind: standing.WhenFile}, Does: standing.Action{Kind: standing.ActionTask}},
 		{When: standing.When{Kind: standing.WhenIdle}, Does: standing.Action{Kind: standing.ActionTask}},
-		{When: standing.When{Kind: standing.WhenAt}, Does: standing.Action{Kind: standing.ActionTask}},
 	} {
 		if !StandingOnceIsAnAnswer(item) {
 			t.Fatalf("%s/%s lost its `once` answer", item.When.Kind, item.Does.Kind)
