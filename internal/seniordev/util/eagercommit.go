@@ -92,27 +92,6 @@ func EagerCommit(ctx context.Context, options EagerCommitOptions) {
 	), RunOptions{ProcessOptions: ProcessOptions{Cwd: root}, NoThrow: true})
 }
 
-// GeneratedRunPaths is the one narrow list of test droppings this run is
-// known to create. A general guess would hide a person's actual deliverable.
-const GeneratedRunPaths = "__pycache__/,.pytest_cache/,*.pyc"
-
-func GeneratedRunPath(path string) bool {
-	for _, pattern := range strings.Split(GeneratedRunPaths, ",") {
-		if strings.HasPrefix(pattern, "*.") {
-			if strings.HasSuffix(path, strings.TrimPrefix(pattern, "*")) {
-				return true
-			}
-			continue
-		}
-		for _, part := range strings.Split(filepath.ToSlash(path), "/") {
-			if part == strings.TrimSuffix(pattern, "/") {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // IgnoredAtStart reads the parent's frozen ignore list. It is a small file in
 // the run record, since ignored directories can contain thousands of files.
 func IgnoredAtStart(path string) bool {

@@ -16,10 +16,7 @@ package util
 // commit codeaf makes of whatever the run left uncommitted when it ended,
 // which carries codeaf's identity rather than this one. The address is a local
 // one: it names the program that made a commit and no account anywhere.
-const (
-	CommitterName  = "senior-dev"
-	CommitterEmail = "senior-dev@localhost"
-)
+// The constants themselves are in runshape.go, which every platform builds.
 
 // GitArgv is a git command line that carries senior-dev's commit identity.
 func GitArgv(args ...string) []string {
