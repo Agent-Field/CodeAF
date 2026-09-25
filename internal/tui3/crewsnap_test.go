@@ -49,6 +49,27 @@ func TestCrewSnapshotPanel(t *testing.T) {
 ╰─ enter change · esc close · ? keys ──────────────────────────────────────────────────────────────╯`)
 }
 
+// A WEAK PINNED CHECKER IS WARNED ABOUT BY NAME, under the rows, however strong
+// the other allowed models are: the pin is what runs.
+func TestCrewSnapshotWeakPinnedChecker(t *testing.T) {
+	a, dir := crewLab(t)
+	if err := config.SetCrewPin(dir, crewroute.Checker, "deepseek/deepseek-v4-flash"); err != nil {
+		t.Fatal(err)
+	}
+	typeLine(t, a, "/crew")
+	crewSnap(t, a, "weak pinned checker", `
+╭─ crew ───────────────────────────────────────────────────────────────────────────────────── esc ─╮
+│› worker    auto · likely glm-5.3-flash                                                           │
+│  planner   auto · likely glm-5.3-flash                                                           │
+│  checker   {pin} deepseek-v4-flash                                                                   │
+│                                                                                                  │
+│  models    ‹ all › (4)                                                                           │
+│  providers {tick} openrouter  +                                                                       │
+│  cap       per task $5 · daily none                                                              │
+│  checker pinned to deepseek-v4-flash · open-ended work will be checked weakly                    │
+╰─ enter change · esc close · ? keys ──────────────────────────────────────────────────────────────╯`)
+}
+
 func TestCrewSnapshotSeatList(t *testing.T) {
 	a, _ := crewLab(t)
 	typeLine(t, a, "/crew")

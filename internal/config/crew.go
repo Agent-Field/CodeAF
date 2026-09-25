@@ -1026,9 +1026,19 @@ func RestoreCrewState(profileDir string, state CrewState) error {
 }
 
 // CrewGapsAt names what the allowed models leave uncovered, for the panel's
-// one-line warning.
+// one-line warning. A pinned seat is judged by its pin alone, read from the
+// catalog whether or not a route to it is healthy right now, because the pin
+// is what the seat runs.
 func CrewGapsAt(profileDir string) []crewroute.Gap {
-	return crewroute.Gaps(CrewCandidatesAt(profileDir))
+	pins := map[crewroute.Seat]crewroute.Model{}
+	for seat, pin := range CrewPinsAt(profileDir) {
+		model, known := crewCatalogModel(pin.Model)
+		if !known {
+			model = crewroute.Model{ID: pin.Model}
+		}
+		pins[seat] = model
+	}
+	return crewroute.Gaps(CrewCandidatesAt(profileDir), pins)
 }
 
 // ── one task's crew ─────────────────────────────────────────────────────────
