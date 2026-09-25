@@ -35,6 +35,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I switch teams from the tab strip", "conversations-and-teams"},
 		{"does deleting a team close its conversations", "conversations-and-teams"},
 		{"where are my teams saved", "conversations-and-teams"},
+		{"how do I mention a team or another conversation with @", "conversations-and-teams"},
 		// The team manager (team-manager.md).
 		{"what can the team manager do", "team-manager"},
 		{"can the manager answer a member's permission prompt", "team-manager"},
@@ -2449,6 +2450,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I paste an image from the clipboard", "attaching-files"},
 		{"can I drop a file after a slash command", "attaching-files"},
 		{"can I attach a whole folder", "attaching-files"},
+		{"how do I mention a file, a team or another chat with @", "attaching-files"},
 		{"how do I download a file from my dev box", "opening-files-from-that-machine"},
 		{"can I drag a file onto the browse page to upload it", "opening-files-from-that-machine"},
 		{"where do the files I fetched from the other machine go", "opening-files-from-that-machine"},

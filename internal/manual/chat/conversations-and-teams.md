@@ -229,6 +229,28 @@ pointer on one puts a ground under it and the hint line says what a press does, 
 first when this window does not have it open; a team's name opens the conversations view on
 that team. An `@word` that is no member's handle is left as plain text.
 
+## Mention a team or another conversation with @
+
+In the message box, `@` opens the same list files use. Teams are a section of it,
+each row a coloured dot and the team's name. Conversations are the next section:
+the ones open in this window first, then recent ones. A conversation in no team is
+on that list.
+
+The first row is the words **team**, **chat** and **file**. Each is a button with a
+background under the pointer and a one-line hint (`only teams · click`). A press
+types `@team:`, `@chat:` or `@file:`, and the list keeps only that section. Typing
+filters every section that is still showing.
+
+Choosing a team inserts `●harbor` in the team's colour. Choosing a conversation
+inserts `@handle`, or a short slug of its title when it has none, and the row's
+hint is the full title. After you send, both stay links. A press on the team opens
+the conversations view on it. A press on the conversation opens that conversation.
+
+The model receives a short digest of each reference: for a team, its members,
+handles, states and recent traffic; for a chat, its title, its state and an excerpt
+of the last reply. It does not receive the transcript. Mentioning a conversation
+does not message it and does not wake it. Your transcript keeps the words you typed.
+
 ## Where teams are kept
 
 Teams are saved in your profile, in `teams.json`, every time one changes, and never in

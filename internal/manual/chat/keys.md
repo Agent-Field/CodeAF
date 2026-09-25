@@ -1496,9 +1496,18 @@ the original**. Replaying a conversation starts its attachments collapsed again.
 
 ## Completing a path with `@`
 
-Type `@` and codeaf offers **tasks first, then files and folders**, in one list under
-the message box. It opens on the bare `@` — you do not have to type a letter first. It
-closes on `esc`, on committing, or when the token stops being one.
+Type `@` and codeaf offers one list under the message box. The first row is the
+words **team**, **chat** and **file**. Under them: **teams**, then **conversations**,
+then **tasks**, then **files and folders**. It opens on the bare `@`. You do not have
+to type a letter first. It closes on `esc`, on committing, or when the token stops
+being one.
+
+**team**, **chat** and **file** are presses. The word under the pointer takes a
+background, and the hint says `only teams · click`, `only conversations · click` or
+`only files · click`. A press types that prefix, `@team:`, `@chat:` or `@file:`, and
+the list keeps only that section. Press the same word again and the prefix comes off.
+Typing still filters every section that is showing. A command's path argument
+(`/image `, `/export `, `/attach `) stays a file list and has no prefix row.
 
 **Folders are on the list too**, spelled with a trailing slash — `internal/tui3/` — and
 marked `folder` on the right the way a picture row is marked `img`. Choosing one puts
@@ -1521,11 +1530,14 @@ will not appear in the list.
 Ranking puts a prefix match above a substring above a subsequence; the whole path and
 the base name are both tried at each tier, the base name a hair below the path.
 Inside a tier the earlier match wins, then the shorter path. File hits are capped at
-32. The list shows 8 rows, or **14** when there are tasks on it; task rows are capped
-at 8 and searched to a pool of 40.
+32. The list shows 8 rows, or **14** when a team, a conversation or a task is on it.
+Team rows, conversation rows and task rows are each capped at 8. Tasks are searched
+to a pool of 40.
 
-While the walk is still running the list reads exactly `  looking…`; with no match it
-reads `  no file matches`. Only the file half waits — the task index lands first.
+The prefix words are there at once. Teams and the conversations already open in this
+window are there at once, from memory. Recent conversations and the file walk arrive
+as they are read. With no match the line is `no matches`. A prefix that finds nothing
+says `no team matches`, `no conversation matches` or `no file matches`.
 
 ## What `@` puts into your message
 
@@ -1537,15 +1549,26 @@ reads `  no file matches`. Only the file half waits — the task index lands fir
   instead.
 - **A task:** the task's name goes in after the `@`. The pointer block is minted when
   you send, not here.
+- **A team:** the `@` comes out and a coloured dot plus the team's slug goes in,
+  `●harbor`, in that team's colour. On a screen that draws no colour the dot is `*`.
+- **A conversation:** `@` and its handle, or a short slug of its title when it has
+  no handle. The row's note is the full title. A conversation in no team is still
+  on the list.
 - **Under a command's path argument:** the path replaces the argument whole, with no
   `@` in front, and an image is written into the line like any other file.
 
 **When you send,** every `@<slug>` that names a task codeaf already knows about grows
-a pointer-block footnote after the message — one block per task, in token order,
-deduplicated. Unknown tokens are left alone in silence. This resolves against the
-snapshot already in memory and never touches the disk, so a slug pasted whole and
-sent in the same beat resolves to nothing and stays plain text. The entry remembered
-for `↑` is the sentence as you typed it, before expansion.
+a pointer-block footnote after the message, one block per task, in token order,
+deduplicated. A team mark and a chat mark do something else, on the engine: the
+model is handed a short digest of that team or that conversation, and your
+transcript keeps the words you typed. The digest is members, handles, states and
+recent traffic for a team, and the title, the state and an excerpt of the last
+reply for a chat. It is never the whole transcript. Mentioning a conversation does
+not message it and does not start its turn. Unknown tokens are left alone in
+silence. A task slug pasted whole and sent in the same beat resolves against the
+snapshot already in memory and never touches the disk, so it may stay plain text.
+The entry remembered for `↑` is the sentence as you typed it, before the task
+footnote.
 
 **The honest limit: `/image `, `/attach ` (and its `/upload ` alias), and `/export `
 get path completion.** That is the whole list. Any other command that takes a path gets
@@ -1562,7 +1585,7 @@ follows what you type. Only these keys are taken from you:
 | `up` / `ctrl+p` | Move the list cursor up |
 | `down` / `ctrl+n` | Move the list cursor down |
 | `esc` | Close the list. For the command list it also **seals that word** — the list does not reopen on the next letter of it. It does **not** interrupt a running turn |
-| `enter` | Command list: take the highlighted command. At the start of an otherwise empty box that **runs** it; anywhere else it replaces just that word with the command's name and runs nothing. If nothing matched, the line is sent as typed. `@` list: insert the highlighted task or file; if nothing is picked, the line is sent |
+| `enter` | Command list: take the highlighted command. At the start of an otherwise empty box that **runs** it; anywhere else it replaces just that word with the command's name and runs nothing. If nothing matched, the line is sent as typed. `@` list: insert the highlighted team, conversation, task or file; if nothing is picked, the line is sent |
 | `tab` | Read **before** the list. It only opens or commits an *argument* completion, over `/image ` or `/export `. With nothing to complete and an empty box it goes back to the last conversation |
 | `enter`, with an argument completion open | Closes the list and runs the line **as typed**. Your path is never swapped for the top-ranked row |
 
