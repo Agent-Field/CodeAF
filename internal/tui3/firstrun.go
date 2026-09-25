@@ -950,7 +950,7 @@ func (a *app) setupKeysWord() string {
 		return a.setupControlsKeys(max(width-2*setupMargin, 1))
 	}
 	if s.authStarting || s.authFlow != nil {
-		return "esc cancels"
+		return "esc cancel"
 	}
 	if strings.TrimSpace(s.text) == "" {
 		if a.routerConnect != nil {
