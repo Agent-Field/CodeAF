@@ -1600,12 +1600,13 @@ const (
 	// sent, and the sentence says that rather than reporting a second delivery
 	// that did not happen.
 	steerAgainWord = "already on the task's record from the same message — nothing was sent a second time"
-	// steerRunNoteWord is a line said to a run's own row. A run's task has no
-	// worker to splice into; its worker reads the notes on its task's page
-	// between its steps, so the line is left there, and the sentence says when
-	// it is read rather than claiming it arrived now (stoprun.go's
+	// steerRunNoteWord is what a note on a run's own row answers. A run's task
+	// has no worker to splice a line into. The words are a note on the task,
+	// and the worker reads a note at its next step, which is the same sentence
+	// the task room says once the store has the note. Saying the note arrived
+	// now would claim a read that has not happened (stoprun.go's
 	// [Agent.sayToRunRow]).
-	steerRunNoteWord = "left on the task's page — its worker reads it between steps"
+	steerRunNoteWord = "the worker reads a note at its next step"
 )
 
 // steerRecord is what the JOURNAL keeps about this line when it is a correction
