@@ -21,7 +21,6 @@ place and in a conversation alike. This manual still calls that row of words **t
 
 ```
  >● codeaf   home  teams  chats  sessions  spend  settings      3 moving · $1.20  thu 10:31pm
-   ● harbor ▾   ◆ Manager ×   Refactor the rail… ×   +   ▦ All
 ──────────────────────────────────────────────────────────────────────────────────────────
 ```
 
@@ -30,16 +29,16 @@ Inside a conversation the lit word is `chats`. Nothing else on the surface looks
 row, so "which place am I in" is one glance, and the words sit in the same cells on every
 page, so moving between a place and a chat never moves the top of the screen.
 
-Every place is drawn in the same frame, and a conversation wears the same first four rows:
+Every place is drawn in the same frame. A place spends three rows before its body. A
+conversation spends four, because the tab strip is that conversation's own row:
 
 1. the top line: the wordmark, the places, and on the far end this machine's own signs,
-   what wants you, what is moving, what today has cost, the time
-2. the **tab strip** of your open chats, the same strip a conversation has (no tab is lit on
-   a place; a press on one opens that chat)
-3. a dim rule
-4. the place's own body
-5. a rule, then the **composer**, one line you can type into, wherever you are
-6. the hint line: what the keys do here
+   what wants you, what is moving, what today has cost, the time. This row does not move.
+2. a dim rule, then a blank. In a conversation the **tab strip** of your open chats sits
+   between the top line and that rule. A place does not draw it.
+3. the place's own body, one row higher than a chat's body
+4. a rule, then the **composer**, one line you can type into, wherever you are
+5. the hint line: what the keys do here
 
 `esc` dismisses an editor or filter first, then returns to Home. The resting tasks,
 spend and settings footers say `esc home`, including compact task screens. Places are not
@@ -53,8 +52,8 @@ the conversation that was in front before you opened it is in front again, with 
 and its scroll where you left them. With no conversation open at all, it opens the new-chat
 page instead, so the word never leads nowhere.
 
-It is not a room. It is the lit word while you are in a conversation, because the tab strip
-under it is your chats; `tab` and `shift+tab` step over it (they walk the rooms), and it has
+It is not a room. It is the lit word while you are in a conversation, because that is where
+the tab strip of your chats is drawn; `tab` and `shift+tab` step over it (they walk the rooms), and it has
 no count. Its hint says `every conversation, one at a time`, which is how it differs from
 `▦ All` on the strip: that one is the grid of the tabs you have open, all at once. `esc` still goes to home, as on every place.
 `alt+k` is a different key: it opens the chats switcher to choose *which* conversation, while
@@ -186,22 +185,32 @@ thrown away.
 **Clicking still opens.** A press on a word goes there; a press on the air around the words
 does nothing; a press on the word you are already standing on does nothing.
 
-## Where did the places go: the top line holds the places, and the chat tabs are on every page
+## Where did the places go: the top line holds the places, and why chat tabs are not showing on the home page
 
-**The places moved up onto the top line, after the `codeaf` wordmark, and the tab strip of
-your chats is now on every page.** The places used to be a row of their own under the top
-line on a place, and the chat strip took that same row inside a conversation, so the words
-changed under your hand every time you walked between them, and your open chats disappeared
-the moment you stepped onto a place. Now:
+**The places sit on the top line, after the `codeaf` wordmark. The tab strip of your chats
+is drawn only while a conversation is in front.** It is not on home, teams, sessions, spend,
+settings, or any other place. Chat tabs on the home page are not a thing this screen does.
+`chats` on the top line, `alt+k`, and home's sessions list are how you get to one.
+
+The places used to be a row of their own under the top line on a place, and the chat strip
+took that same row inside a conversation. For a while after that the strip stayed on every
+page, which repeated the teams rail and home's sessions. Now:
 
 - **The top line** is the wordmark, the six places, and the machine's signs on the far end.
-  It is identical on every page; only which word is lit changes.
-- **The second line** is the tab strip: the team chip (` ● harbor ▾ `, or a quiet ` teams ▾ `),
-  `◆ Manager`, your tabs, `+` and `▦ All`. It has no `home` piece any more, since home is
-  the first word of the line above. On a place no tab is lit, and a press on a tab opens
-  that chat.
-- **The head is four rows everywhere**, so the page under it starts on the same row on
-  every page.
+  It is identical on every page; only which word is lit changes. It never moves.
+- **The second line of a chat** is the tab strip: the team chip (` ● harbor ▾ `, or a quiet
+  ` teams ▾ `), `◆ Manager`, your tabs, `+` and `▦ All`. It has no `home` piece, since home
+  is the first word of the line above.
+- **On a place the second line is the rule**, then a blank, and the page starts on the next
+  row. A click there is the page's. There is no invisible tab under it.
+
+## Why is there no tab strip on the teams page
+
+**The tab strip is a chat's row.** Teams is a place, like home, sessions, spend and
+settings, so the row under the top line is the rule, then a blank, and the page starts
+there. The manager's conversation in the pane does not bring the strip back. `chats` on
+the top line, `alt+k`, and home's sessions list open a conversation, and the strip is on
+that chat.
 
 ## The mouse on a place — clicking a row, hovering, and the wheel
 
@@ -730,7 +739,7 @@ repetition — the upper one is the places, the lower one is settings' own pages
 `→` move between sections. `tab` does **not**: it is the way to the next place, here as
 everywhere.
 
-## Why the tab bar looks squashed on a narrow terminal: the places at 60 columns, and `more ▾`
+## Why the tab bar looks squashed on a narrow terminal: the places at 60 columns, and what does more on the top line do
 
 **The top line gives things up in a fixed order as the window narrows**, and the air between
 the words never changes (two blank cells between two words, one blank cell at each end of
@@ -761,7 +770,7 @@ bar's cursor is on or a place wearing a count. `alt+1`…`alt+9` still go straig
 whether or not its word is on the row, and the numbers never move: the six on the bar are
 `alt+1`…`alt+6`, then standing, memory and search are `alt+7`…`alt+9`.
 
-The tab strip on the line under it keeps its own narrowing: long names are cut at a word,
+The tab strip, drawn only inside a chat, keeps its own narrowing: long names are cut at a word,
 the names shrink until every tab fits, then the strip scrolls with `‹` `›`, and `+3` counts
 the tabs it could not spell.
 

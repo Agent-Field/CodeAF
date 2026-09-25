@@ -15,7 +15,7 @@ Open it any of these ways:
 - `▦ All` at the right end of the row under the message box, drawn once a
   second conversation is open (the word goes first when the row is narrow)
 - `▦ All` on the tab strip, after the new-chat `+` (not drawn under 60 columns). The strip
-  is the second line of every page, a place included, so `▦ All` is always one press away
+  is the second line of a chat, not of a place, so from home or teams use `alt+v` or `/wall`
 
 Close it with `alt+v` again, `esc`, the `‹ Back` button at the bottom left, or a press on
 the strip's `▦ All`. Nothing you do in the view ends any work: closing a tile closes its
@@ -240,7 +240,8 @@ strip and right before the tabs it narrows, with the manager's place after it:
 ```
 
 The chip is a filter over the tabs, so it sits with them. There is no `home` on the strip:
-home is the first place on the top line, over the strip, on every page. When the row runs
+home is the first place on the top line, over the strip while a chat is in front. The
+strip is not drawn on a place. When the row runs
 short the chip goes, and never the tab in front. With teams but none shown, the chip is a quiet `teams ▾`; with no teams at all there
 is no chip. A press on the
 chip opens the **team switcher** under it, on any page the strip is on, the conversations view

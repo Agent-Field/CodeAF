@@ -2337,7 +2337,9 @@ to it. `ctrl+c` does not close home — it quits codeaf, with home still up.
 
 **On every place, `↑` from the first row of the page lands the cursor on the tab bar**,
 the six place words on the top line after the `codeaf` wordmark (seven while you stand in
-standing, memory or search, whose word is drawn after the six). The word you are standing in wears the cursor's
+standing, memory or search, whose word is drawn after the six). The chat tab strip is
+not on a place. It is the row under that top line only while a conversation is in front.
+The word you are standing in wears the cursor's
 band there instead of its usual mark, and five keys mean something on that row:
 
 | Chord | What it does while the cursor is on the bar |

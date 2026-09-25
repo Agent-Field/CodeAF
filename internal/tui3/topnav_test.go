@@ -46,17 +46,20 @@ func navChat(t *testing.T) *app {
 
 // headRowsOf is the frame's first rows, as a reader sees them.
 func headRowsOf(a *app) []string {
+	n := placeHeadRows + 1
+	if !a.pageShowing() {
+		n = chatHeadRows + 1
+	}
 	rows := strings.Split(plain(frame(a)), "\n")
-	if len(rows) > placeHeadRows+1 {
-		rows = rows[:placeHeadRows+1]
+	if len(rows) > n {
+		rows = rows[:n]
 	}
 	return rows
 }
 
-// THE HEAD IS THE SAME FOUR ROWS ON EVERY PAGE, AT EVERY WIDTH. The nav on row
-// zero, the strip on row one, the rule, a blank, and the body under exactly
-// those rows, on a chat and on a place alike, so nothing moves when a person
-// walks between them.
+// ROW ZERO IS THE SAME ON EVERY PAGE. A chat then draws the strip, the rule
+// and a blank, and the body under those four rows. A place draws the rule and
+// a blank and no strip, and the body starts on the next row.
 func TestTheHeadIsTheSameFourRowsOnEveryPage(t *testing.T) {
 	for _, width := range navWidths {
 		a := navChat(t)
@@ -64,22 +67,26 @@ func TestTheHeadIsTheSameFourRowsOnEveryPage(t *testing.T) {
 		a.touch()
 		chat := headRowsOf(a)
 		chatNav := append([]placeTabSpan(nil), a.tabs...)
-		if a.tabRow != navRow || a.headHeight() != placeHeadRows {
+		if a.tabRow != navRow || a.headHeight() != chatHeadRows {
 			t.Fatalf("at %d the chat's nav is on row %d and its head is %d rows", width, a.tabRow, a.headHeight())
+		}
+		if !strings.Contains(chat[tabStripRow], "harbor") || !strings.HasPrefix(chat[2], "─") || strings.TrimSpace(chat[3]) != "" {
+			t.Fatalf("at %d the chat's head is not the nav, the strip, the rule and a blank:\n%s", width, strings.Join(chat, "\n"))
 		}
 		for _, to := range []page{pageHome, pageTeams, pageSpend} {
 			walkTo(t, a, to)
 			place := headRowsOf(a)
-			if a.tabRow != navRow {
-				t.Fatalf("at %d %s drew its nav on row %d", width, to.word(), a.tabRow)
+			if a.tabRow != navRow || a.headHeight() != placeHeadRows {
+				t.Fatalf("at %d %s drew its nav on row %d and a %d-row head", width, to.word(), a.tabRow, a.headHeight())
 			}
-			for i := range []int{navRow, tabStripRow} {
-				if !strings.HasPrefix(place[i], " ") || ansi.StringWidth(place[i]) > width {
-					t.Fatalf("at %d %s's row %d is not inset or runs past the frame: %q", width, to.word(), i, place[i])
-				}
+			if place[navRow] != chat[navRow] {
+				t.Fatalf("at %d %s moved row zero:\nchat %q\nplace %q", width, to.word(), chat[navRow], place[navRow])
 			}
-			if !strings.Contains(place[tabStripRow], "harbor") || place[2] != chat[2] || strings.TrimSpace(place[3]) != "" {
-				t.Fatalf("at %d %s's head is not the nav, the strip, the rule and a blank:\n%s", width, to.word(), strings.Join(place, "\n"))
+			if !strings.HasPrefix(place[1], "─") || strings.TrimSpace(place[2]) != "" || strings.Contains(place[1], "harbor") {
+				t.Fatalf("at %d %s drew a strip where the rule belongs:\n%s", width, to.word(), strings.Join(place, "\n"))
+			}
+			if len(a.chatTabHits) != 0 {
+				t.Fatalf("at %d %s kept %d strip targets for a row it did not draw", width, to.word(), len(a.chatTabHits))
 			}
 			// AND THE WORDS STAND IN THE SAME CELLS: every button the chat drew
 			// is where the place drew it, wherever both drew one.
@@ -214,47 +221,36 @@ func TestAPressOnEachNavWordOpensThatPlace(t *testing.T) {
 	}
 }
 
-// A PRESS ON A TAB FROM A PLACE OPENS THAT CHAT. The strip is on every page;
-// on a place no tab is lit, since the place is what is on screen, and a press
-// on any tab leaves the place for that conversation.
-func TestAPressOnATabFromAPlaceOpensThatChat(t *testing.T) {
+// A PRESS ON ROW 1 OF A PLACE IS THE PAGE'S. The strip is not drawn there, so
+// the row under the nav is the rule, and a click on it does not open a chat.
+// The page's own first row is the next one after the blank.
+func TestAPressOnRowOneOfAPlaceIsThePages(t *testing.T) {
 	a := navChat(t)
 	a.width = 160
 	front := a.frontTabKey()
-	walkTo(t, a, pageSpend)
-	frame(a)
-	var other tabHit
-	for _, hit := range a.chatTabHits {
-		if hit.kind == tabHere {
-			t.Fatalf("a tab is lit on a place: %+v", hit.tab.word)
+	for _, id := range placeOrder {
+		if id == pageChats {
+			continue
 		}
-		if hit.kind == tabOther && hit.tab.key != front && other.span.to == 0 {
-			other = hit
+		walkTo(t, a, id)
+		frame(a)
+		if len(a.chatTabHits) != 0 {
+			t.Fatalf("%s kept strip targets", id.word())
 		}
-		if hit.kind == tabOther && hit.tab.key == front {
-			// The tab of the conversation under the place is a door back to it.
-			defer func(h tabHit) {
-				walkTo(t, a, pageSpend)
-				frame(a)
-				drive(t, a, tea.MouseClickMsg{X: h.span.from, Y: tabStripRow, Button: tea.MouseLeft})
-				if a.pageShowing() || a.frontTabKey() != front {
-					t.Fatalf("a press on the front conversation's tab from a place left %q up", a.page.word())
-				}
-			}(hit)
+		if _, ok := a.tabAt(4, tabStripRow); ok {
+			t.Fatalf("%s still has a tab on row 1", id.word())
 		}
-	}
-	if other.span.to == 0 {
-		t.Fatal("the fixture has no other tab on the place's strip")
-	}
-	// AND THE POINTER RESTING ON IT PUTS IT ON THE HOVER GROUND, on a place as
-	// on a chat.
-	drive(t, a, tea.MouseMotionMsg{X: other.span.from, Y: tabStripRow})
-	if a.hot.kind != hoverTab || a.hot.index != other.span.from {
-		t.Fatalf("the pointer on a tab from a place lights nothing: %+v", a.hot)
-	}
-	drive(t, a, tea.MouseClickMsg{X: other.span.from, Y: tabStripRow, Button: tea.MouseLeft})
-	if a.pageShowing() || a.frontTabKey() != other.tab.key {
-		t.Fatalf("a press on %q from a place left %q up with %q in front", other.tab.word, a.page.word(), a.frontTabKey())
+		rows := strings.Split(plain(frame(a)), "\n")
+		if len(rows) <= placeHeadRows || !strings.HasPrefix(rows[1], "─") {
+			t.Fatalf("%s row 1 is not the rule:\n%s", id.word(), strings.Join(rows[:placeHeadRows+1], "\n"))
+		}
+		drive(t, a, tea.MouseClickMsg{X: 4, Y: tabStripRow, Button: tea.MouseLeft})
+		if !a.at(id) || a.frontTabKey() != front {
+			t.Fatalf("a press on row 1 of %s left %q with %q in front", id.word(), a.page.word(), a.frontTabKey())
+		}
+		if line, ok := placeBodyLine(placeHeadRows, 0, 8); !ok || line != 0 {
+			t.Fatalf("%s body does not start at row %d", id.word(), placeHeadRows)
+		}
 	}
 }
 
@@ -359,13 +355,12 @@ func TestEveryNavWordSaysWhatItOpens(t *testing.T) {
 		}
 	}
 	a.navHover(-1, -1)
+	frame(a)
 	if !a.wall.door.pressable() {
 		t.Fatal("the strip drew no `▦ All`")
 	}
-	walkTo(t, a, pageSpend)
-	frame(a)
 	drive(t, a, tea.MouseMotionMsg{X: a.wall.door.from, Y: tabStripRow})
-	all := a.placeHintSaid()
+	all := a.footHint(a.width)
 	if !strings.Contains(all, "grid of your open tabs") || strings.Contains(all, placeFor(pageChats).about()) {
 		t.Fatalf("`▦ All` does not say it is the grid of open tabs: %q", all)
 	}

@@ -461,7 +461,13 @@ func (a *app) chatFrameLines(width, height int) ([]string, int, int) {
 	// conversation that is and which others this window can go back to
 	// (chattabs.go). They are two rows because they are two questions — the one
 	// that used to carry both carried neither well.
-	tabs := a.tabsRow(width)
+	// THE STRIP IS LAID OUT ONLY WHILE A CONVERSATION IS IN FRONT. The teams
+	// page's hosted pane is drawn through here with the page set aside, and
+	// that pane wears the place's head, which has no strip (head.go).
+	tabs := ""
+	if a.stripInHead() {
+		tabs = a.tabsRow(width)
+	}
 	head := a.roomHeadRows(width)
 	// AND THE TASK STRIP IS THE ROW UNDER IT, for the same reason and at the same
 	// width: what is running is a fact about the SESSION, not about the
@@ -478,15 +484,17 @@ func (a *app) chatFrameLines(width, height int) ([]string, int, int) {
 	// the whole window rather than about the transcript (task.go).
 
 	rows := make([]string, 0, height)
-	if tabs != "" {
-		// THE HEAD IS THE PLACES' HEAD — the pulse, the strip, the rule and the
-		// blank — drawn by the one function both frames call (head.go), and a
-		// room lays its trail under the blank (chattabs.go's
-		// [app.headSealHeight]). The prefix is cut at exactly the count
-		// [app.headHeight] charges, so the rows the frame draws and the rows the
-		// scrolling subtracts are the same rows by construction.
-		head := a.headRows(width, tabs, a.pal)
-		rows = append(rows, head[:a.tabsHeight(width)+a.headSealHeight(width)]...)
+	if n := a.tabsHeight(width) + a.headSealHeight(width); n > 0 {
+		// THE HEAD IS DRAWN BY THE ONE FUNCTION BOTH FRAMES CALL (head.go):
+		// the nav, the strip while a conversation is in front, the rule and
+		// the blank. A room lays its trail under the blank. The prefix is cut
+		// at exactly the count [app.headHeight] charges, so the rows the frame
+		// draws and the rows the scrolling subtracts are the same rows.
+		drawn := a.headRows(width, tabs, a.pal)
+		if n > len(drawn) {
+			n = len(drawn)
+		}
+		rows = append(rows, drawn[:n]...)
 	}
 	if len(head) > 0 {
 		rows = append(rows, head...)
@@ -1270,11 +1278,9 @@ func (a *app) topHeight() int {
 // through, rather than at the frame — a header the frame drew and the scrolling
 // did not know about would put the room's last row under the input box.
 func (a *app) headHeight() int {
-	// THE PULSE AND THE TAB STRIP ARE THE FIRST OF THOSE ROWS AND ARE CHARGED
-	// FOR HERE, on the strip's own two floors (chattabs.go's [app.tabsHeight]):
-	// they are drawn over the conversation and over every page inside it,
-	// because which conversation this is stays true wherever you have walked to
-	// inside one.
+	// THE NAV, AND THE STRIP WHILE A CONVERSATION IS IN FRONT, ARE THE FIRST
+	// OF THOSE ROWS AND ARE CHARGED FOR HERE (chattabs.go's [app.tabsHeight]).
+	// On a place the strip is not drawn, so the page starts one row higher.
 	//
 	// AND THE SEAM UNDER THE STRIP — the rule and the blank that are the head's
 	// last two rows on every frame, a room's included — which is what closes the

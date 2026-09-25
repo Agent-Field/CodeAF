@@ -197,7 +197,10 @@ func (a *app) teamsHostFrame() ([]string, []placeHit, int, int, bool) {
 	a.tabRow = -1
 	head := []string(nil)
 	if headN > 0 {
-		head = a.headRows(width, a.tabsRow(width), a.pal)
+		// THE PLACE'S HEAD HAS NO STRIP. The pane under it is the manager's
+		// conversation; the strip is that conversation's row when it is in
+		// front on its own, not while the teams place is the page.
+		head = a.headRows(width, "", a.pal)
 		for len(head) < headN {
 			head = append(head, "")
 		}

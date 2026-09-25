@@ -110,9 +110,9 @@ func TestTheStripKeepsItsActiveTabAndTheHeadItsShapeAtEverySize(t *testing.T) {
 			if active != 1 {
 				t.Fatalf("lost active tab at %dx%d: %q", width, height, plain(line))
 			}
-			if a.tabsHeight(width) != tabStripRow+1 || a.headHeight() != placeHeadRows {
+			if a.tabsHeight(width) != tabStripRow+1 || a.headHeight() != chatHeadRows {
 				t.Fatalf("at %dx%d the head is %d rows with the strip on row %d; it is %d, strip on %d",
-					width, height, a.headHeight(), a.tabsHeight(width)-1, placeHeadRows, tabStripRow)
+					width, height, a.headHeight(), a.tabsHeight(width)-1, chatHeadRows, tabStripRow)
 			}
 		}
 	}
@@ -165,8 +165,8 @@ func TestHeaderAirDoesNotShrinkReadingWhenTerminalGrows(t *testing.T) {
 		for height := airyFloor; height <= 45; height++ {
 			a.height = height
 			a.touch()
-			if pinned && a.headHeight() != placeHeadRows {
-				t.Fatalf("%s at %d rows the head is %d rows, not the places' %d", where, height, a.headHeight(), placeHeadRows)
+			if pinned && a.headHeight() != chatHeadRows {
+				t.Fatalf("%s at %d rows the head is %d rows, not the chat's %d", where, height, a.headHeight(), chatHeadRows)
 			}
 			available := height - a.headHeight()
 			if previous > available {

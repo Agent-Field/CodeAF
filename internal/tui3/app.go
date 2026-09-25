@@ -4011,16 +4011,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		if msg.Mouse().Button == tea.MouseLeft {
-			// THE HEAD IS READ BEFORE EVERY PAGE'S OWN ROWS, because it is the
-			// router's and not any page's: the nav and the strip are drawn on
-			// every one of them, in the same cells, and a press answered by the
-			// page under them would be the one row of the frame that means
-			// something different depending on where you happen to be standing
-			// (topnav.go's [app.navPress] and [app.headStripPress]).
+			// THE NAV IS READ BEFORE EVERY PAGE'S OWN ROWS, because it is the
+			// router's and not any page's: row zero is the places on every
+			// page, and a press answered by the page under it would be the one
+			// row of the frame that means something different depending on
+			// where you happen to be standing (topnav.go's [app.navPress]).
+			// The strip is a chat's row. On a place it is not drawn, so the
+			// row under the nav is the page's.
 			if cmd, took := a.navPress(msg.Mouse().X, msg.Mouse().Y); took {
-				return a, cmd
-			}
-			if cmd, took := a.headStripPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
 			// AND HOME'S RULE IS READ BEFORE HOME'S OWN ROWS, on the tab bar's

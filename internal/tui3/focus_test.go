@@ -91,7 +91,7 @@ func TestARoomPinsAFocusHeader(t *testing.T) {
 	// What is left over a conversation is the places' head — the pulse, the
 	// strip, the rule and the blank — which is the seam between the head and the
 	// transcript (head.go).
-	if a.headHeight() != placeHeadRows || !strings.Contains(head, a.chatDisplayName()) {
+	if a.headHeight() != chatHeadRows || !strings.Contains(head, a.chatDisplayName()) {
 		t.Fatalf("the conversation's strip is %d rows and reads:\n%q", a.headHeight(), head)
 	}
 	for _, gone := range []string{"Fix the nil-map", roomBackWord, roomCrumbSep} {

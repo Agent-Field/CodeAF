@@ -3345,7 +3345,7 @@ local conversation the same page tails that log live.
 | how you stop the work | `esc` | `x` over an empty box, which raises the confirmation card |
 | the box's own line | the bare `› ` | a tinted segment naming the task, in its state's hue, then `› ` |
 | box placeholder | the draft prompt | `Steer this task… (esc: main)`, or `Steer <title>… (esc: main)` where the frame is too narrow for the segment |
-| pinned top rows | the pulse line, the tab strip under it, one thin rule and a blank — the same four rows every place draws; a dim `+N` at the strip's right end counts the tabs it could not spell, and `alt+k` opens the chats card | the same four rows — pulse, tab strip, rule, blank — so the rule does not move when you walk in; then a breadcrumb row (conversation → ancestor tasks → current task) and a quiet facts row under it |
+| pinned top rows | the pulse line, then the tab strip, one thin rule and a blank. That strip is the chat's own row, so a place draws three rows (pulse, rule, blank) and the page starts one higher. A dim `+N` at the strip's right end counts the tabs it could not spell, and `alt+k` opens the chats card | the same four rows as the conversation: pulse, tab strip, rule, blank. Then a breadcrumb row (conversation, ancestor tasks, current task) and a quiet facts row under it |
 | legend word | the model, effort and approvals, with the remote machine when connected | `room · esc/←← main`, and `room · esc your line back` while a history walk is on |
 | legend hint | `ctrl+c interrupt` while a turn runs | `x stop` while there is work to stop, `↑↓ history` mid-walk, nothing otherwise |
 | the model on the status row | the conversation's model | `task <the task's model>` |
