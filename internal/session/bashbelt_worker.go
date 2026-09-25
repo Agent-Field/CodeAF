@@ -228,11 +228,20 @@ func askSection(ask string) string {
 // A DOER: it reads the acceptance above against the result above, proves each
 // sentence with the leaf's own tests or one probe, and answers in one of the two
 // shapes the finding is read from ([internal/run]'s recordCheckFinding reads
-// "does not hold:"). It is written to stay under 120 words, because the whole
+// "does not hold:"). It is written to stay under 200 words, because the whole
 // job is one comparison and a wall of instruction is the drift it exists to stop.
+//
+// AND IT SAYS WHERE THE WORK IS. Nothing else in a check's opening does: the
+// footer's working directory is the run's copy, and its path spells the
+// person's checkout inside the project folder's name. A check told nothing
+// decoded that name, stood in the person's checkout, read an unrelated diff
+// there, and was moved home only when a write was refused — and a check that
+// only reads is never refused, so it would have answered on the wrong tree.
 const checkSection = `## Who checks this work
 
 You are the check, not the doer: you read the acceptance above against the result above, and you do not redo the work.
+
+The work is in your working directory: that copy holds the worker's result, so run every check and probe there. The person's own checkout is not the work — it does not hold this result until the run lands, and it may hold changes that are not this task's — so never check it.
 
 Read the acceptance sentence by sentence. First run every command declared under Checks:, in order and exactly as spelled. Then, for every acceptance sentence those checks do not cover, run one probe — the smallest command that would fail were that sentence not met.
 
