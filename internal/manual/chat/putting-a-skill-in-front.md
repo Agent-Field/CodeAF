@@ -40,6 +40,22 @@ in front of this conversation, read where it lives; nothing is copied
 anywhere. A folder with no `SKILL.md` is refused in one line that says what
 was missing.
 
+## Why a message with a picture carried no skills — not even the ones I attached
+
+**A message that carries a picture carries no skills at all.** That is a message
+with an `[image #1]` token in it, from `/attach`, a drop or a paste. It carries
+neither the skills codeaf would have chosen for its words nor the ones you
+turned on with `/skill`. No `skills ·` line is drawn under it, and
+`codeaf chat --once` prints no `skills carried:` line for it.
+
+Nothing is taken off. An attached skill's chip stays above the message box, and
+your next message without a picture carries the skill again. The model still
+has the shelf during a picture turn: the skill list in its prompt and
+`use_skill` both work, so it can open a skill by itself.
+
+When a skill has to shape the answer about a picture, send the picture, then say
+what you want in a message of its own. That message carries the attached skills.
+
 ## How do I turn a skill off
 
 Open `/skill` and press `enter` on the skill's row, or click the skill's chip

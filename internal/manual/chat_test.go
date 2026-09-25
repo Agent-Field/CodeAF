@@ -35,6 +35,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"do skills work with memory off", "skills-from-other-tools"},
 		{"two skills with the same name which one wins", "skills-from-other-tools"},
 		{"why does a skill row say it cannot be attached", "putting-a-skill-in-front"},
+		{"my message with a picture did not carry the skill I attached", "putting-a-skill-in-front"},
 		{"out of credits", "openrouter-credits"},
 		{"only free models", "openrouter-credits"},
 		{"it worked and then stopped", "openrouter-credits"},
@@ -185,6 +186,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"stop adding a co-author trailer to my commits", "permissions"},
 		{"does it sign every comment it leaves on my pull request", "permissions"},
 		{"what is the small drafted with line under its comment", "permissions"},
+		// The owner's rulings on #1410 (2026-09-24): signing has no off, a
+		// person who had turned it off is told so, and a task landed on the
+		// worker harness, the belt tasks run on by default, names no model.
+		{"I turned attribution off before, why are my commits signed again", "permissions"},
+		{"why does the commit my task landed not name the model", "permissions"},
 		// AND THE TASK PROPOSAL AS IT IS DRAWN NOW that it is that block too
 		// (internal/tui3's task.go), asked the four ways somebody meets the
 		// keys that moved: the answers row that replaced the chips, the typed
@@ -1344,6 +1350,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where do I set what codeaf may spend", "models-and-cost"},
 		{"how much money can a task spend of its own", "models-and-cost"},
 		{"why does the limit say no limit instead of $0", "models-and-cost"},
+		{"I started a task after my dollar limit was spent and it still paid for a call", "models-and-cost"},
 		// Issue #168: work a conversation started was on the machine's day figure
 		// twice, and the person who notices is the one asking what their tasks
 		// are costing.

@@ -3001,6 +3001,26 @@ conversation has spent four fifths of its own limit — the figure leaves the di
 nothing else changes. With no `per conversation` limit set there is no fraction and no
 colour.
 
+## I started a task after my dollar limit was spent — why did it still pay for a call
+
+**A task started after this conversation's dollar limit is already spent still gets
+one paid call before it ends.** `/task` is not a turn, so the refusal that stops the
+next turn — `conversation limit reached · … · /budget changes it` — is not asked in
+front of it. The run is handed the smallest figure above nothing rather than zero,
+because zero would mean no limit at all. Its first worker makes one model call, that
+call puts the run over the figure, and the run ends there: its row says
+`a dollar limit you set stopped it`. The call is small, but it is real money, and it
+shows in `/cost`.
+
+The dollar limit here is the smaller of `per conversation` and `--max-cost`, measured
+against what this conversation has already spent. To let the task do its work, raise
+`per conversation` first — `/budget conversation 20`, or `/budget conversation none`
+to remove it — or relaunch with a larger `--max-cost`, then start the task again.
+
+`codeaf do` has no such call: when today's spending limit is already spent it starts
+nothing and says, for a $5 limit,
+`today's spending limit of $5.00 is spent, so nothing was started; rerun with --yes-spend to spend past it`.
+
 ## Which provider answers, and what it charges
 
 One model id is served by many providers, and they differ in two ways at once: how fast they answer, and what they charge. The published list price beside a model is the model's own figure — no provider is obliged to match it, and the fastest one often does not.

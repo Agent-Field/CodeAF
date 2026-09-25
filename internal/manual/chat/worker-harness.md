@@ -668,7 +668,8 @@ requirement in them, and speed is no permission to skip the walk.
   `--max-cost` when codeaf was started with one and that is the smaller. What the run
   spends counts against it while it works. The run's width and its dollar ceiling are the
   conversation's own numbers, so a run costs what the conversation costs and runs as wide
-  as the conversation may.
+  as the conversation may. A run started when that figure is already spent still gets
+  one paid call — its first worker's — before the limit ends it.
 - **Reaching the dollar limit ends every worker in flight**, whichever worker's
   spending crossed it: a live reading and a worker's final receipt end the rest alike.
   The run's own task is ended with `a limit you set stopped it`.
