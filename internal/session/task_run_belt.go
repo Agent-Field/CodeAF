@@ -769,7 +769,10 @@ func (a *Agent) endInterruptedProgramRun() {
 	if a.config.InTask {
 		return
 	}
-	g := a.graph()
+	// READ, NEVER BUILT: an interrupted row exists only where [Agent.recoverTasks]
+	// read a checkpoint back, and that already built the graph. A conversation
+	// with none is not given one by being opened.
+	g := a.tasker()
 	if g == nil || !g.holdsInterruptedRun() {
 		return
 	}
