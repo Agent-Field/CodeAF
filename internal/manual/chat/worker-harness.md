@@ -174,8 +174,9 @@ aside, and none of it starts on the older engine instead.
 **A task whose run could not start says so, and nothing else starts.** If the run's
 plan could not be opened or its copy could not be cut, the answer is
 `task N did not start: <the reason>. Nothing is running for it and nothing was
-started in its place; propose it again, or tell the person what stopped it.` A typed
-`/task` answers the same sentence. It reads as a failure, never as `task N started`,
+started in its place.` A typed `/task` answers the same sentence; the model, reading
+it at the proposal door, is told besides to propose it again or tell you what stopped
+it — words for the model, never shown to you. It reads as a failure, never as `task N started`,
 and the task is not quietly put on the older engine's tree. Only a build with no run
 engine at all, or a conversation with nowhere to keep a plan, uses the older engine,
 because there the run road was never there to take.

@@ -1659,6 +1659,19 @@ func (p *crewPanel) pinTrouble(pin config.CrewPin) string {
 			return ""
 		}
 	}
+	// A PINNED FREE POOL RUNS whatever the free-routes switch says — a pin is
+	// the person's own choice, and the switch governs only what the router
+	// picks — so it is reachable wherever the default service is on.
+	if crewroute.IsFree(strings.TrimPrefix(pin.Model, "openrouter/")) {
+		for _, provider := range p.providers {
+			if provider.ID == modelsource.DefaultID {
+				if !provider.On {
+					return crewProviderOff
+				}
+				return ""
+			}
+		}
+	}
 	lineage := crewroute.Lineage(strings.TrimPrefix(pin.Model, "openrouter/"))
 	for _, offer := range p.offers {
 		if crewroute.Lineage(offer.Model.ID) == lineage {
