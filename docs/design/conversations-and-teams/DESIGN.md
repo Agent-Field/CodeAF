@@ -1061,6 +1061,29 @@ or `busy for <team>` (`MemberState.ReportsTo`).
   `Open in chats`; a manager whose transcript is gone offers `+ Manager`, which replaces it.
   Before this the pane read `opening ◆ <team>'s manager…` whenever the manager was not in front,
   with nothing behind the word (reported by the owner, 2026-09-24).
+  One open per manager is out at a time: choosing the team again while it is out takes that
+  open up instead of asking the door twice, an answer for the manager the page is asking about
+  is the page's whichever attempt carried it, and a refusal about a conversation the window now
+  holds is no refusal. Only `Retry` asks again while an open is out. Over a connection that holds
+  one conversation at a time the swap is asked on the ordered door line, never from Update.
+- **How the page loads.** The rail, the header and the pane's frame are drawn from memory on the
+  opening frame (the teams file is the one read made on the loop, and it does not block), and
+  every reading fills in place: the spend is the header's last piece, members start as members
+  and become chips, and nothing on the page says it is loading. The reads are one command off
+  the loop, on the opening, a choice, a gesture and the router's beat while a team has a
+  manager. It asks the packets, the defaults, the selection's pool spend and the members' rows
+  side by side, because over `--host` each is a round trip. The rows are the open teams'
+  members only: read by name off this machine's disk (`session.ReadRows`), or cut out of the
+  world a connection already holds. The page used to walk every session on the machine on its
+  opening and every beat to find them. One read is out at a time and none is dropped: a read
+  asked while one is out is made when that one is folded, for the selection as it then stands.
+  Measured on Spark over a 320-session, 5-team, 25-member fixture (2026-09-24): opening to the
+  first full reading 33 ms before, 3.3 ms after (the walk was 22 to 29 ms of it, the member
+  rows are 2 ms); a team chosen while the beat's read was out never showed its spend until the
+  next beat, and shows it in 3 to 12 ms now; a double press on a cold manager's team left the
+  pane saying `open in another window` in 2 of 5 runs, and in none now. The store's own reads
+  are microseconds locally and were left alone; so was the in-process door's resume, whose
+  bucket scan costs 3 to 5 ms of a 10 to 40 ms open.
 - **A message handed to the hosted manager that puts another conversation in front takes the
   person to it.** A Traffic row goes to its member through the chat surface's own door
   (`trafficGo`), and the page steps down for it as a press on a member row does.
