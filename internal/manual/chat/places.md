@@ -3,12 +3,12 @@
 ## What a place is, and the eight of them
 
 A **place** is a full-screen room in codeaf that is not this conversation. There are eight,
-and they are always in the same order: the five on the tab bar, then the three reached by
-their command, with `chats`, the way back to your conversations, third on the bar:
+and they are always in the same order: the words on the top line, then the three reached by
+their command, with `chats`, the way back to your conversations, third on the line:
 
 `home` · `teams` · `chats` · `sessions` · `spend` · `settings` · `standing` · `memory` · `search`
 
-**The tab bar draws six words:** `home  teams  chats  sessions  spend  settings`. **Teams** is
+**The top line draws six places:** `home  teams  chats  sessions  spend  settings`. **Teams** is
 right after home: your teams, what waits on you from them, and the selected team's manager
 conversation (the **Teams page** of this manual has all of it). `chats` is not a room: it is
 the way back to your conversations (*The `chats` word on the bar* below). Standing, memory and search are
@@ -16,22 +16,30 @@ places all the same — `/standing`, `/memory`, `/search`, their digit, the map 
 box all reach them — and while you are standing in one its word is on the bar after the
 six, so the bar always says where you are.
 
-They are drawn as a **tab bar** on the second row of every place, under the top line — the
-row of words at the top of the screen, `home  teams  chats  sessions  spend  settings`, is this bar. It
-is the same row as the conversation's tab strip: the same line, the first word in the same
-column, the same air between two words, and the word you are in on the same ground as the
-conversation in front, so moving between a place and a chat never moves the top of the screen. The
-one you are standing in wears a filled band; the rest are dim. Nothing else on the surface
-looks like that bar, so "which place am I in" is one glance.
+They are drawn on the **top line of every page**, right after the `codeaf` wordmark, on a
+place and in a conversation alike. This manual still calls that row of words **the bar**:
 
-Every place is drawn in the same frame:
+```
+ >● codeaf   home  teams  chats  sessions  spend  settings      3 moving · $1.20  thu 10:31pm
+   ● harbor ▾   ◆ Manager ×   Refactor the rail… ×   +   ▦ All
+──────────────────────────────────────────────────────────────────────────────────────────
+```
 
-1. the top line — this machine's own signs: what is on watch, what today has cost, the time
-2. the tab bar: the six words, and the one you are in when it is not one of them
+The place you are standing in is **lit in the accent colour**; the other words are muted.
+Inside a conversation the lit word is `chats`. Nothing else on the surface looks like that
+row, so "which place am I in" is one glance, and the words sit in the same cells on every
+page, so moving between a place and a chat never moves the top of the screen.
+
+Every place is drawn in the same frame, and a conversation wears the same first four rows:
+
+1. the top line: the wordmark, the places, and on the far end this machine's own signs,
+   what wants you, what is moving, what today has cost, the time
+2. the **tab strip** of your open chats, the same strip a conversation has (no tab is lit on
+   a place; a press on one opens that chat)
 3. a dim rule
 4. the place's own body
-5. a rule, then the **composer** — one line you can type into, wherever you are
-6. the hint line — what the keys do here
+5. a rule, then the **composer**, one line you can type into, wherever you are
+6. the hint line: what the keys do here
 
 `esc` dismisses an editor or filter first, then returns to Home. The resting tasks,
 spend and settings footers say `esc home`, including compact task screens. Places are not
@@ -45,8 +53,10 @@ the conversation that was in front before you opened it is in front again, with 
 and its scroll where you left them. With no conversation open at all, it opens the new-chat
 page instead, so the word never leads nowhere.
 
-It is not a room. It never wears the filled band, `tab` and `shift+tab` step over it
-(they walk the rooms), and it has no count. `esc` still goes to home, as on every place.
+It is not a room. It is the lit word while you are in a conversation, because the tab strip
+under it is your chats; `tab` and `shift+tab` step over it (they walk the rooms), and it has
+no count. Its hint says `every conversation, one at a time`, which is how it differs from
+`▦ All` on the strip: that one is the grid of the tabs you have open, all at once. `esc` still goes to home, as on every place.
 `alt+k` is a different key: it opens the chats switcher to choose *which* conversation, while
 `chats` on the bar goes straight back to the one you were in.
 
@@ -80,10 +90,11 @@ Four ways, and they all reach the same eight rooms:
   to count, or nothing in it, says `a place` alone.
 - **a command** — `/home`, `/history`, `/standing`, `/memory`, `/settings`. Each opens the
   place it names.
-- **click the word** — the tab bar itself is the control. A press on a place's word goes
-  there; a press in the gap between two words does nothing, and a press on the word you are
-  already standing on does nothing (going there would throw away what you have typed and
-  the row you are on).
+- **click the word**: the top line itself is the control, from a place or from a
+  conversation. Each word is a button a cell wider than the word on both sides, and a press
+  anywhere on that button goes there; a press on the air before the first word or after the
+  last does nothing, and a press on the word you are already standing on does nothing (going
+  there would throw away what you have typed and the row you are on).
 
 `alt+<digit>` arrives in every terminal codeaf runs in. `ctrl+<digit>` does not exist as a
 thing a terminal can send, which is why the numbers are on `alt`.
@@ -102,7 +113,7 @@ over one line: `work you send off with /task lands here, and its record stays`.
 ## How do I move between the tabs with the arrow keys — the tab bar is a row the cursor can stand on
 
 **Press `↑` from the first row of the page you are on.** The cursor leaves the list and
-lands on the **tab bar** — the row of place words under the top line — and from there:
+lands on the **bar**, the row of place words on the top line, and from there:
 
 | Key | What it does on the bar |
 | --- | --- |
@@ -110,7 +121,7 @@ lands on the **tab bar** — the row of place words under the top line — and f
 | `enter` | go into the place under the cursor |
 | `↓` | the same as `enter` — go in |
 | `esc` | back into the page, on the row you walked up from |
-| `↑` | nothing. There is nothing above the bar but the top line, which is a reading rather than a control |
+| `↑` | nothing. The bar is the top line; there is nothing above it |
 | `tab` `shift+tab` | the next and the previous place, exactly as everywhere else |
 | `alt+1` … `alt+9` | jump straight to one, exactly as everywhere else |
 | any printable key | goes to the composer, and the cursor comes back down into the page with it |
@@ -140,23 +151,45 @@ page; a second `esc` is the page's own, and that one leaves.
 
 ## Does the tab bar do anything when I hover over it — the pointer on the words
 
-**Yes: the word under your pointer lifts.** Resting the mouse on a place's word paints that
-word in the brighter ink the word you are standing in wears, without the band under it — so
-the bar says "this one is a door" without pretending you are already in it. Moving the
-pointer off the word puts the ink back, and moving it into the gap between two words lifts
-nothing, because the gap belongs to no room.
+**Yes: the word under your pointer takes a ground**, the same hover ground every button on
+this surface wears, and the ground covers the button's pad cells too, so what lights is
+exactly what a press acts on. On a plain or 16-colour terminal, where a ground cannot show,
+the word wears a `·` in the cell before it instead. Moving the pointer off the word puts it
+back.
 
-**Hovering moves nothing else at all.** No cursor, no page, no window — the pointer
-previews the tab words; list rows instead share one selection with the keyboard. If the
-keyboard cursor is standing on the bar as well you will see both marks at once: the band on
-the word the cursor is on, the lifted ink on the word the pointer is on.
+**The hint line says what the word opens and its key** while the pointer rests on it:
+`alt+2 teams · the teams you hand work to`, `alt+3 chats · every conversation, one at a
+time`. On `more ▾` it says `more · the places this row has no room for`; on the strip's
+`▦ All` it says `The grid of your open tabs, and your teams · alt+v`.
 
-**The wheel over the bar walks the places**, one room a turn — `tab` and `shift+tab` under
-the hand that is already there. It is one room a notch and not three, because each step
-opens a room, and two rooms nobody asked to see is two filters thrown away.
+**Hovering moves nothing else at all.** No cursor, no page, no window, no focus. If the
+keyboard cursor is standing on the bar as well you will see both marks at once: the
+cursor's band on the word the cursor is on, the hover ground on the word the pointer is on.
 
-**Clicking still opens.** A press on a word goes there; a press in the gap does nothing;
-a press on the word you are already standing on does nothing.
+**The wheel over the bar walks the places** while you are on a place, one room a turn:
+`tab` and `shift+tab` under the hand that is already there. It is one room a notch and not
+three, because each step opens a room, and two rooms nobody asked to see is two filters
+thrown away.
+
+**Clicking still opens.** A press on a word goes there; a press on the air around the words
+does nothing; a press on the word you are already standing on does nothing.
+
+## Where did the places go: the top line holds the places, and the chat tabs are on every page
+
+**The places moved up onto the top line, after the `codeaf` wordmark, and the tab strip of
+your chats is now on every page.** The places used to be a row of their own under the top
+line on a place, and the chat strip took that same row inside a conversation, so the words
+changed under your hand every time you walked between them, and your open chats disappeared
+the moment you stepped onto a place. Now:
+
+- **The top line** is the wordmark, the six places, and the machine's signs on the far end.
+  It is identical on every page; only which word is lit changes.
+- **The second line** is the tab strip: the team chip (` ● harbor ▾ `, or a quiet ` teams ▾ `),
+  `◆ Manager`, your tabs, `+` and `▦ All`. It has no `home` piece any more, since home is
+  the first word of the line above. On a place no tab is lit, and a press on a tab opens
+  that chat.
+- **The head is four rows everywhere**, so the page under it starts on the same row on
+  every page.
 
 ## The mouse on a place — clicking a row, hovering, and the wheel
 
@@ -685,43 +718,36 @@ repetition — the upper one is the places, the lower one is settings' own pages
 `→` move between sections. `tab` does **not**: it is the way to the next place, here as
 everywhere.
 
-## Why the tab bar looks squashed on a narrow terminal — the places at 60 columns
+## Why the tab bar looks squashed on a narrow terminal: the places at 60 columns, and `more ▾`
 
-**All six words are on the bar at 60 columns, and down to 49.** The six words with the
-padding each chip carries and the air between them are 59 cells; under that the bar gives up
-the *air between the chips*, a cell at a time, before it gives up a word, so a 49-column pane
-draws
+**The top line gives things up in a fixed order as the window narrows**, and the air between
+the words never changes (two blank cells between two words, one blank cell at each end of
+the line):
 
-```
-   home  teams  chats  sessions  spend  settings
-```
+1. the clock goes first, and the `on <machine>` name with it over `--host`;
+2. then the counts, `3 moving` before `2 want you`;
+3. then the allowance behind the day's figure (`$1.20 / $20` becomes `$1.20`);
+4. then the trailing places fold, one at a time from the right, into a **`more ▾`** word;
+5. and last the day's figure itself.
 
-with two cells between the words instead of four. Nothing else changes: the band under the
-word you are standing in, the counts, `tab`, `←` `→` and `alt+1`…`alt+9` all mean exactly
-what they mean on a wide screen.
-
-**Under 49 columns the bar carries what it can and counts the rest.** It keeps the place
-you are standing in, the word the cursor is on, and any place wearing a count, then fills in
-the bar's own order until the row is full and ends with a dim `▸ 2` — the number of the
-bar's words that are not on the row (standing, memory and search are never counted: they
-are not the bar's to give up):
+At 80 columns all six places fit beside the day's figure. At 60 they read
 
 ```
-   home  teams  chats  sessions  ▸ 2
+ >● codeaf   home  teams  chats  sessions  more ▾     $1.20
 ```
 
-`▸ 3 more` where there are cells for the longer spelling, `▸ 3` where there are not — the
-same fold mark every other list on this surface puts over the rows it is not drawing, so a
-count on the bar reads as the same idea as `▸ 11 more` at the foot of the spend place. The word gives
-way before the mark does: `▸` is what says there is more behind the row. **The
-count is a sign and not a button** — pressing it does nothing, because it stands for several
-places at once and no single one of them is the answer.
+**`more ▾` is a door.** Click it and a small menu hangs under it listing exactly the places it
+folded, each with its key (`spend  alt+5`, `settings  alt+6`). The pointer lights a row and a
+click goes there; `↑` `↓` and `enter` do the same from the keyboard; `esc`, or a click
+anywhere off the menu, puts it away and leaves everything else as it was.
 
-**The key that reaches them is `tab`**, and it is named on the foot of every place —
-`… · tab next place`, which is the last clause a narrow foot gives up. `alt+1`…`alt+9`
-still go straight to a place whether or not its word is on the row, and the numbers never
-move: the six on the bar are `alt+1`…`alt+6`, then standing, memory and search are
-`alt+7`…`alt+9`, whatever happens to be drawn.
+**The wordmark and the place you are standing in never fold**, and neither does the word the
+bar's cursor is on or a place wearing a count. `alt+1`…`alt+9` still go straight to a place
+whether or not its word is on the row, and the numbers never move: the six on the bar are
+`alt+1`…`alt+6`, then standing, memory and search are `alt+7`…`alt+9`.
+
+The tab strip on the line under it keeps its own narrowing: long names are cut, the strip
+scrolls with `‹` `›`, and `+3` counts the tabs it could not spell.
 
 ## Why a nearly-empty place says what it is for — why is the tasks page empty
 
@@ -795,7 +821,7 @@ walk in.
 one of the eight. It is something you do to *this conversation*: pick a point and cut back
 to it — rather than a room in the machine, so it has no tab and `tab` does not walk to it.
 
-## The places over --host — whose machine am I looking at
+## The places over --host: whose machine am I looking at, and what `on spark` at the end of the tab bar means
 
 **A place is a listing of one machine's disk, and over `--host` that machine is the one your
 session runs on.** Home lists the conversations under `~/.codeaf/v3`; tasks lists the work
@@ -825,10 +851,12 @@ say why. A screen full of the wrong machine's work is a confident lie, and one h
 sentence is better than eight rows and a total in dollars that belong to somebody else's
 afternoon.
 
-**The tab bar says whose machine it is.** Over a connection the right end of the bar reads
-`on <machine>` — the same name you typed after `--host`, and the same one the status line's
-place segment and the legend under the box already carry. On a local session it is not there
-at all: a machine name is worth a word only when there is more than one machine in play.
+**The top line says whose machine it is: `on spark` at the end of the tab bar.** Over a
+connection the far end of the top line, where the places are, reads `on <machine>`, just
+before the clock: the same name you typed after `--host`, and the same
+one the status line's place segment and the legend under the box already carry. On a local
+session it is not there at all: a machine name is worth a word only when there is more than
+one machine in play. On a narrow window it goes with the clock, before anything else.
 
 ## Why is home empty over ssh when I connect to another machine — Escape over --host
 
