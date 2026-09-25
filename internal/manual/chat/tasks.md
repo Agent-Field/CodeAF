@@ -5421,7 +5421,8 @@ A task page opened from another conversation keeps a separate draft, identified 
 conversation and task. Its words do not replace your conversation draft or a local task
 with the same number. The page is a reading view: sending, steering, and stopping belong
 to the conversation that owns the work. If its status connection closes, the footer says
-`reading` and the page keeps the last known state with an explanation.
+`current status unavailable — showing the last known state` and the page keeps its last
+known state.
 
 A reading view continues checking its owner after the task finishes. If that
 conversation opens something else, the page explains that it is showing its last

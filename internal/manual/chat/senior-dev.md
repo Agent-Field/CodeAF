@@ -443,6 +443,9 @@ again`. senior-dev's own `.senior-dev/` does not count. A checkout in the middle
 merge, a rebase, a cherry-pick or a revert is refused the same way: `<folder> is in the
 middle of a merge; finish it or abort it, then ask again`.
 
+Typing `/senior-dev <brief>` in that checkout shows the refusal without `/task`'s note
+about unsaved edits travelling into a copy: senior-dev makes no copy.
+
 In the chat the model is told this before you are shown a card, and can commit or stash
 the changes itself if you ask it to; at a shell the run prints `error:` and the sentence,
 and leaves.

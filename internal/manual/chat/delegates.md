@@ -40,8 +40,8 @@ Type its name as a command, then the brief:
 /<name> rewrite the auth middleware to use the new session store
 ```
 
-That is `/task` with the worker chosen. A run starts at once in your folder, the turn goes
-on, and the row appears on the rail.
+That starts a task with the program as its worker. A run starts at once in your folder,
+the turn goes on, and the row appears on the rail.
 
 The model can choose one as well, and reaches for one by itself (see *When codeaf hands
 work to a program by itself*). `propose_task` takes `via` naming the program, and the
@@ -219,7 +219,8 @@ most 70 seconds, so the call it was cut in is in those figures too.
 
 A program's command exists only in a build that carries it. On Windows codeaf carries
 none: their engines need a Unix shell, process groups and file locks, so the commands are
-absent there rather than failing every time.
+absent there rather than failing every time. With no program available, the model is not
+told about one and `propose_task` does not offer `via`.
 
 Over `--host`, the programs are the far machine's build's. The rows come from that build,
 and a run you start happens there, in that machine's folder, on a branch of its own.
