@@ -848,6 +848,20 @@ or `busy for <team>` (`MemberState.ReportsTo`).
 - **Choosing a team with a manager brings that manager's conversation in front.** It is the
   person's own selection, so this is not focus moving by itself; the conversation they were in
   stays open behind on the strip. Resuming a member not open opens it behind, without moving.
+- **The manager comes into the pane on every road, and the pane says why when it cannot**
+  (`teamsopen.go`). The attempt is state the page holds: `teamsSync`, run after every message,
+  starts one whenever the selected team's manager is not in front and none was made for it, so
+  teams arriving after the page opened or a manager set on the file by a session are brought
+  in too. A manager this window is not holding is opened off the loop in its own folder, held
+  behind, and brought forward only if the page still wants it, so the person stays on the page
+  (the switcher's door it used before steps off any place standing). A refusal, or an open with
+  no answer after 4 seconds, reads `couldn't open ◆ <team>'s manager: <reason>` with `Retry` and
+  `Open in chats`; a manager whose transcript is gone offers `+ Manager`, which replaces it.
+  Before this the pane read `opening ◆ <team>'s manager…` whenever the manager was not in front,
+  with nothing behind the word (reported by the owner, 2026-09-24).
+- **A message handed to the hosted manager that puts another conversation in front takes the
+  person to it.** A Traffic row goes to its member through the chat surface's own door
+  (`trafficGo`), and the page steps down for it as a press on a member row does.
 - **`Close now` keeps the front tab.** Every other member's tab closes, but the conversation the
   person is looking at stays, so a close never moves them.
 - **Over `--host` the seam's `History` and `Append` doors are nil**: a closed team's report is
