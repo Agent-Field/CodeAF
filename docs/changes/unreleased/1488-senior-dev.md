@@ -35,6 +35,7 @@ invalidates:
   - "The chat manual said a stale task page opened from another window showed a footer reading `reading`. It now quotes the footer the page draws: `current status unavailable — showing the last known state`."
   - "A draft that installed programs from manifests in `~/.codeaf/delegates` was built and never shipped; it is kept on the tag `delegate-manifest-v1` for when programs from outside the binary return."
   - "A restore after submission or a failed suite could erase later edits and new files; it now copies each differing file outside the project before restoring and names the rescue folder in the ending."
+  - "A submitted run built its terminal before restoring the frozen tree, so rescued concurrent edits had no location in the shell ending, task end record or chat landing. It now restores before building that terminal, and all three endings name the rescue folder when one was made."
   - "An eager write followed HEAD onto the person's branch, and the moved-HEAD ending denied existing task commits; eager commits now require the run's branch and the ending names committed and uncommitted work truthfully."
   - "Changing `.gitignore` could commit a secret ignored when the run began, and test caches entered the task commit; the start-time ignored paths and the narrow generated-path list are excluded from eager and finishing commits."
   - "The folder hold let workspace restore, workspace merge and unnamed generated output write inside the held folder; it now fences those writes with the other file tools."

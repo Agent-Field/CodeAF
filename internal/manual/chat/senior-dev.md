@@ -364,7 +364,8 @@ earlier checkpoint has to be restored, codeaf first copies every changed tracked
 file and new file not ignored when the run started that restore would replace into a rescue folder under
 codeaf's state root, outside your project. The submitted candidate is then put
 back. The ending says exactly: `Files that changed in the folder before senior-dev
-restored its checkpoint were set aside in <path>`. The path holds the bytes as they
+restored its checkpoint were set aside in <path>`. The shell ending, the task's
+end record and the chat's landing all carry that path. The path holds the bytes as they
 were before the restore. A tracked file deleted after submission is named in
 `deleted-files.txt` there, and the ending names that manifest. A later restore in
 the same run has its own subfolder. With nothing to rescue, no folder is created

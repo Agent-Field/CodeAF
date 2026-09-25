@@ -43,11 +43,12 @@ func (runner *pipeline) soloShip(
 	// build as evidence against the candidate, which would be a false red.
 	if reason, blocked := runner.verificationUnaffordable(ctx); blocked {
 		outcome.Status = "pass-unverified"
-		runner.soloTerminal(outcome, fmt.Sprintf(
+		endingReason := fmt.Sprintf(
 			"%s; shipping the submitted candidate, which nothing checked: %s",
 			reason, candidate.describe(),
-		))
+		)
 		runner.soloRestoreIfDiverged(state, outcome)
+		runner.soloTerminal(outcome, endingReason)
 		return
 	}
 
@@ -58,25 +59,26 @@ func (runner *pipeline) soloShip(
 	outcome.Verification = &verification
 	failing := countFailingEntrypoints(verification)
 
+	var endingReason string
 	switch {
 	case verification.TimedOut && ctx.Err() != nil:
 		// The run was stopped while the check ran. What ships is the frozen
 		// candidate, and what the run can truthfully say is that it submitted
 		// and nothing finished checking it.
 		outcome.Status = "pass-unverified"
-		runner.soloTerminal(outcome, fmt.Sprintf(
+		endingReason = fmt.Sprintf(
 			"the run was stopped while the project's build and tests ran; "+
 				"shipping the submitted candidate, which nothing finished checking: %s",
 			candidate.describe(),
-		))
+		)
 	case verification.TimedOut:
 		// A hung entrypoint is an incomplete observation, not a verdict. The
 		// candidate stands.
 		outcome.Status = "pass-unverified"
-		runner.soloTerminal(outcome, fmt.Sprintf(
+		endingReason = fmt.Sprintf(
 			"verification did not complete (an entrypoint hung); shipping the submitted candidate: %s",
 			candidate.describe(),
-		))
+		)
 	case verification.Failed == nil:
 		// Failed, not the failing-command count, is the verdict. An expected
 		// build or test entrypoint that could not be DISCOVERED sets Failed
@@ -84,22 +86,25 @@ func (runner *pipeline) soloShip(
 		// project whose suite was never found -- the vacuous-green shape -- a
 		// verified pass.
 		outcome.Status = "pass"
-		runner.soloTerminal(outcome, fmt.Sprintf(
+		endingReason = fmt.Sprintf(
 			"submitted, and its build and tests passed: %s (%s)", candidate.describe(), candidate.Reason,
-		))
+		)
 	default:
 		// The candidate does not verify. It is still what ships: it is the only
 		// tree this run ever declared finished, and there is no better one --
 		// the alternative is the unverified live tree, which by construction is
 		// the same tree. What changes is the honesty of the terminal.
 		outcome.Status = "fail"
-		runner.soloTerminal(outcome, fmt.Sprintf(
+		endingReason = fmt.Sprintf(
 			"submitted candidate failed verification (%s); "+
 				"shipping it anyway as the run's own answer: %s",
 			verificationFailureSummary(verification, failing), candidate.describe(),
-		))
+		)
 	}
+	// The restore can set later edits aside. Build the terminal only after it
+	// finishes so the one ending carries their durable location on every road.
 	runner.soloRestoreIfDiverged(state, outcome)
+	runner.soloTerminal(outcome, endingReason)
 }
 
 // verificationUnaffordable reports whether post-submit verification can still
