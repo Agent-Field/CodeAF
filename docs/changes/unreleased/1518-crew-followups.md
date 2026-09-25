@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: the checker's ceiling holds on a one-model crew, the crew names its cap apart from the daily limit, and a task's landing line is where you are reading
+title: crew follow-ups — seat-kept checker ceiling, route pins beside the tier row, landing line at the end
 pr: 1518
 surface: [chat, engine, docs]
 invalidates:
