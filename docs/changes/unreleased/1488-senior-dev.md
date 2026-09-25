@@ -59,6 +59,9 @@ invalidates:
   - "The general task pages said a task has no dollar limit of its own and is never stopped on its own dollar count. They now say that of an ordinary `/task` and point to senior-dev's run ceiling."
   - "`/budget conversation` in an open chat saved the figure and showed it as active while the conversation kept the limit it was opened with, so its next turn, task and senior-dev run spent against the old one. The open conversation now takes the new limit before the receipt says so, on the engine road and `--no-host`; if an older engine host cannot take it, the receipt says it applies to the next conversation."
   - "A commit senior-dev's model made itself through bash took the person's git identity and carried no `Assisted-by`. The model's commands now commit as the run, and a run-made tip without the credit has it added at the finish; a commit from before the run is never amended."
+  - "A restore that could not set the person's later edits aside left the folder as it was (nothing lost) but still ended with `the project's own build and tests passed`, about a folder holding changes nothing checked. The run now ends unchecked and says the folder could not be put back, and why."
+  - "In the common ending, where every write was already checkpointed by the engine and nothing was left to stage, no commit on the run's branch carried `Assisted-by`. The engine's own checkpoint at the tip is now credited too, and a tip the model already pushed is never amended."
+  - "The Windows build of codeaf stopped compiling once internal/session read senior-dev's generated-path list, because every file of internal/seniordev/util is !windows. The two run facts codeaf reads now live in the package's one file without a build constraint."
 ---
 
 `docs/design/delegate/PROTOCOL.md` is the internal protocol (version 2); `internal/delegate`
