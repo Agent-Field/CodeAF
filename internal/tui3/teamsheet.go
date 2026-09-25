@@ -72,6 +72,12 @@ const (
 	tsCancel
 	tsDelete
 	tsKeep
+	// `Inside: harbor ▾` and the move it asks for (teammove.go): its
+	// consequence line's `Move` and `Cancel`, and the Undo after it.
+	tsInside
+	tsMoveYes
+	tsMoveNo
+	tsMoveUndo
 	// The reset words sit on their rows; a reset is its row's code plus this.
 	tsReset = 100
 	// A colour swatch is its choice plus this.
@@ -305,7 +311,9 @@ func (a *app) teamSheetSettingsLines(t team, inner int) []wallCardLine {
 	if s.cursor == tsColour {
 		colour += "  " + pal.dim("←→")
 	}
-	lines = append(lines, wallCardLine{s: colour, hits: swh}, wallCardLine{rule: true})
+	lines = append(lines, wallCardLine{s: colour, hits: swh})
+	lines = append(lines, a.teamSheetInsideLines(t, inner, labelW)...)
+	lines = append(lines, wallCardLine{rule: true})
 	const valueX = 31
 	for _, r := range a.teamSheetRows(t) {
 		value := r.value
@@ -359,6 +367,45 @@ func (a *app) teamSheetSettingsLines(t team, inner int) []wallCardLine {
 	row = teamsPad(row, doneX) + done
 	lines = append(lines, wallCardLine{s: row, hits: append(hits, doneHit), bleed: true})
 	return lines
+}
+
+// teamSheetInsideLines is `Inside: harbor ▾`, the team's place in the tree,
+// which opens the move picker; under it, while one is asked from here, the
+// move's consequence line with `Move` and `Cancel`, or the move just made with
+// `Undo`. The root has no place to move to and draws none.
+func (a *app) teamSheetInsideLines(t team, inner, labelW int) []wallCardLine {
+	if t.Root {
+		return nil
+	}
+	pal := a.pal
+	s := &a.tsheet
+	where := "Top level"
+	if p, ok := a.teamByID(t.Parent); ok && !p.Root {
+		where = p.Name
+	}
+	value := pal.ink(where + " " + a.linearMark("▾", "v"))
+	line := pal.dim(teamsPad("Inside", labelW)) + value
+	if s.cursor == tsInside || s.hot == tsInside {
+		line = pal.cursor(teamsPad(line, inner), inner)
+	}
+	out := []wallCardLine{{s: line, hits: []wallHit{{x0: 0, x1: inner, y1: 1, kind: wallHitPopRow, arg: tsInside}}}}
+	if p := a.tmove.pend; len(p.ids) > 0 && p.from == teamMoveFromCard {
+		for _, l := range wrap(p.words, max(inner-labelW, 12)) {
+			out = append(out, wallCardLine{s: strings.Repeat(" ", labelW) + pal.ink(l)})
+		}
+		// The line bleeds a cell to the left (wallCardLine), so a button's cell
+		// of air stands where the value's first letter's left neighbour is, and
+		// its word lines up with the value above it.
+		yes, hy, wy := a.teamSheetButton("Move", "", tsMoveYes, labelW, true)
+		no, hn, _ := a.teamSheetButton("Cancel", "esc", tsMoveNo, labelW+wy+1, false)
+		out = append(out, wallCardLine{s: strings.Repeat(" ", labelW) + yes + " " + no, hits: []wallHit{hy, hn}, bleed: true})
+	} else if a.teamMoveUndoing() && a.tmove.undo.from == teamMoveFromCard {
+		said := pal.dim(a.tmove.undo.word) + " "
+		x := labelW + 1 + ansi.StringWidth(a.tmove.undo.word) + 1
+		undo, hu, _ := a.teamSheetButton("Undo", "u", tsMoveUndo, x, false)
+		out = append(out, wallCardLine{s: strings.Repeat(" ", labelW+1) + said + undo, hits: []wallHit{hu}, bleed: true})
+	}
+	return out
 }
 
 // teamSheetButtonW is a button's width as [app.teamSheetButton] draws it.
@@ -464,8 +511,18 @@ func (a *app) teamSheetStops() []int {
 	s := &a.tsheet
 	switch s.mode {
 	case teamSheetSettings:
-		stops := []int{tsName, tsColour, tsQuestions, tsWake, tsCap, tsDepth, tsShare}
-		if t, ok := a.teamByID(s.team); ok && !t.Root {
+		stops := []int{tsName, tsColour}
+		t, ok := a.teamByID(s.team)
+		if ok && !t.Root {
+			stops = append(stops, tsInside)
+			if p := a.tmove.pend; len(p.ids) > 0 && p.from == teamMoveFromCard {
+				stops = append(stops, tsMoveYes, tsMoveNo)
+			} else if a.teamMoveUndoing() && a.tmove.undo.from == teamMoveFromCard {
+				stops = append(stops, tsMoveUndo)
+			}
+		}
+		stops = append(stops, tsQuestions, tsWake, tsCap, tsDepth, tsShare)
+		if ok && !t.Root {
 			stops = append(stops, tsCloseTeam)
 		}
 		return append(stops, tsDone)
@@ -511,6 +568,11 @@ func (a *app) teamSheetKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	switch key {
 	case "esc":
+		// A move waiting on its line is answered first.
+		if p := a.tmove.pend; len(p.ids) > 0 && p.from == teamMoveFromCard {
+			a.teamMoveCancel()
+			return nil
+		}
 		if s.mode == teamSheetSettings {
 			a.teamSheetShut()
 		} else {
@@ -552,6 +614,9 @@ func (a *app) teamSheetKey(msg tea.KeyPressMsg) tea.Cmd {
 			}
 		}
 		return nil
+	}
+	if s.mode == teamSheetSettings && key == "u" && a.teamMoveUndoing() && a.tmove.undo.from == teamMoveFromCard {
+		return a.teamSheetDo(tsMoveUndo)
 	}
 	if s.mode == teamSheetSettings && (key == "r" || key == "delete") && s.cursor >= tsQuestions && s.cursor <= tsShare {
 		return a.teamSheetDo(s.cursor + tsReset)
@@ -600,6 +665,17 @@ func (a *app) teamSheetDo(code int) tea.Cmd {
 	case tsCap, tsDepth, tsShare:
 		s.cursor, s.editing = code, code
 		s.box.reset()
+	case tsInside:
+		s.cursor = code
+		return a.teamMoveOpen([]string{id}, teamMoveFromCard)
+	case tsMoveYes:
+		s.cursor = tsInside
+		return a.teamMoveConfirm()
+	case tsMoveNo:
+		a.teamMoveCancel()
+	case tsMoveUndo:
+		s.cursor = tsInside
+		return a.teamMoveUndo()
 	case tsCloseTeam:
 		a.teamSheetShut()
 		return a.teamsCloseAsk(id)
@@ -763,6 +839,14 @@ func (a *app) teamSheetHint() string {
 		return "←→ colour · esc done"
 	case tsQuestions, tsCap, tsDepth, tsShare:
 		return "enter change it for this team · r reset to inherit · esc done"
+	case tsInside:
+		return "enter Move into… another team, or the top level · esc done"
+	case tsMoveYes:
+		return a.teamMoveDoing(a.tmove.pend.ids, a.tmove.pend.parent) + " · enter · esc cancel"
+	case tsMoveNo:
+		return "Leave it where it is · enter"
+	case tsMoveUndo:
+		return "Put it back where it was · u"
 	}
 	return "↑↓ move · enter · esc done"
 }

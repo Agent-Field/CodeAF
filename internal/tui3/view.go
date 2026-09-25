@@ -273,8 +273,12 @@ func (a *app) frame() (string, int, int) {
 	// The strip's team switcher hangs over whatever page is drawn under it
 	// (teammenu.go); the frame as it was when it is down.
 	body = a.teamMenuOver(body)
-	// A team's card (teamsheet.go) hangs over whatever is drawn under it.
+	// The teams page's members card hangs over its pane (teamcrew.go), a
+	// team's card (teamsheet.go) over whatever is drawn under it, and the move
+	// picker (teammove.go) over both, since the card opens it.
+	body = a.teamCrewOver(body)
 	body = a.teamSheetOver(body)
+	body = a.teamMoveOver(body)
 	return norm.NFC.String(body), caretX, caretY
 }
 

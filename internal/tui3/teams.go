@@ -376,6 +376,15 @@ func (a *app) teamHues(skip string) []teamHueSpec {
 // offers several and the person may take any. A team remade under a name it
 // already has keeps its id, its place in the tree and its colour.
 func (a *app) teamMakeHued(name string, tabs []chatTab, hue teamHueSpec) (string, error) {
+	return a.teamMakeIn(name, tabs, hue, "")
+}
+
+// teamMakeIn is [app.teamMakeHued] with the team made inside parent ("" the
+// top level). A new team under a parent with a cap is handed the parent's
+// sub-team share of it as its own cap ([teamstore.File.SubTeamCap]), as the
+// session's own sub-team start does, and a team remade under a name it
+// already has stays where it is.
+func (a *app) teamMakeIn(name string, tabs []chatTab, hue teamHueSpec, parent string) (string, error) {
 	a.teamsEnsure()
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -390,12 +399,21 @@ func (a *app) teamMakeHued(name string, tabs []chatTab, hue teamHueSpec) (string
 	// times.
 	fresh := newTeamID()
 	id := fresh
+	defaults := a.tp.defaults
 	err := a.teamEdit(func(f *teamstore.File) error {
 		at := teamNamed(f.Teams, name)
 		if at < 0 {
 			made := t.Clone()
 			made.ID = fresh
 			made.SetHue(hue)
+			if parent != "" {
+				if p, ok := f.Team(parent); ok && !p.Closed() {
+					made.Parent = parent
+					if c := f.SubTeamCap(parent, defaults); c > 0 {
+						made.Settings.CapUSDDay = &c
+					}
+				}
+			}
 			f.Teams = append(f.Teams, made)
 			id = fresh
 			return nil

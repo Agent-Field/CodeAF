@@ -224,6 +224,7 @@ func (a *app) wallFrame(width, height int) []string {
 		name:      a.wall.name,
 		nameFresh: a.wall.nameFresh,
 		asking:    a.wall.nameAsking,
+		nameIn:    a.teamNameOf(a.wall.nameParent),
 		made:      a.wall.made,
 		madeN:     a.wall.madeN,
 		madeAt:    a.wall.madeAt,
@@ -269,7 +270,7 @@ func (a *app) wallFrame(width, height int) []string {
 				n++
 			}
 		}
-		view.teams = append(view.teams, wallTeamRow{id: t.ID, name: t.Name, hue: t.HueSpec(), count: n})
+		view.teams = append(view.teams, wallTeamRow{id: t.ID, name: a.wallTeamLabel(t), hue: t.HueSpec(), count: n})
 	}
 	rows, hits := renderWall(a.pal, view, width, room)
 	// A scroll moved the tiles under a pointer that did not move: the target
@@ -630,6 +631,7 @@ func (a *app) wallStartNaming(tiles []wallTile) tea.Cmd {
 	a.wall.naming = true
 	a.wall.filterOn = false
 	a.wall.pop = wallPop{}
+	a.wall.nameParent = ""
 	a.wall.name = teamFreshName(marked, a.teamNames(), "", rand.IntN)
 	a.wall.nameFresh = true
 	// The colours offered are the farthest from every team's, best first,
@@ -770,7 +772,9 @@ func (a *app) wallMakeTeam(tiles []wallTile) tea.Cmd {
 	if a.wall.choice >= 0 && a.wall.choice < len(a.wall.choices) {
 		hue = a.wall.choices[a.wall.choice]
 	}
-	id, err := a.teamMakeHued(name, a.wallMarkedTabs(tiles), hue)
+	parent := a.wall.nameParent
+	a.wall.nameParent = ""
+	id, err := a.teamMakeIn(name, a.wallMarkedTabs(tiles), hue, parent)
 	made, ok := a.teamByID(id)
 	if !ok {
 		return nil
@@ -1523,4 +1527,25 @@ func dropLastRune(s string) string {
 		return s
 	}
 	return string(r[:len(r)-1])
+}
+
+// wallTeamLabel is a team's name on the wall's flat Teams row: `harbor › api`
+// for a team inside another (its parent's name first, so two teams called api
+// are told apart), and the bare name at the top level. The row stays one flat
+// row (ruling c-12); the tree is the teams page's and the switcher's. Each part
+// is cut on its own, so the team's own name is never the part that is lost.
+func (a *app) wallTeamLabel(t team) string {
+	name := t.Name
+	if ansi.StringWidth(name) > wallChipCap {
+		name = ansi.Truncate(name, wallChipCap, a.linearMark("…", "~"))
+	}
+	p, ok := a.teamByID(t.Parent)
+	if !ok || p.Root {
+		return name
+	}
+	parent := p.Name
+	if ansi.StringWidth(parent) > wallChipCap/2 {
+		parent = ansi.Truncate(parent, wallChipCap/2, a.linearMark("…", "~"))
+	}
+	return parent + " " + a.linearMark("›", ">") + " " + name
 }

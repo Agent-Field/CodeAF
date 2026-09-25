@@ -255,16 +255,38 @@ func (a *app) trafficLine(t team, e teamstore.Entry, width int) (string, string,
 	arrow := a.linearMark("→", "->")
 	text := strings.Join(strings.Fields(e.Text), " ")
 	var head, plainHead, tag, target string
-	switch e.Kind {
-	case teamstore.KindStop, teamstore.KindStart:
+	switch {
+	case teamstore.IsRuling(e):
+		// A RULING IS NOT THIS TEAM'S MANAGER'S OWN ORDER (DESIGN.md 8.10): it
+		// is the decision on a conflict, by whichever manager decided it or by
+		// the person, written into every party's team. It says so, and names the
+		// packet in the hint.
+		by := a.trafficAddr(e.From)
+		if e.From == teamstore.FromYou {
+			by = "you"
+		}
+		plainHead = by + " ruling " + arrow + " " + a.trafficAddr(e.To)
+		head = pal.accent(by) + pal.muted(" ruling") + pal.dim(" "+arrow+" ") + pal.ink(a.trafficAddr(e.To))
+		text = trafficRulingText(text)
+		target = trafficMemberKey(t, e.To, e.Member)
+	case e.Kind == teamstore.KindStop || e.Kind == teamstore.KindStart:
 		word := "stopped"
 		if e.Kind == teamstore.KindStart {
 			word = "started"
 		}
 		plainHead = a.trafficAddr(e.From) + " " + word + " " + a.trafficAddr(e.To)
+		// A START THAT NAMES A TEAM made a sub-team for the started
+		// conversation to run (DESIGN.md 8.10).
+		if e.Kind == teamstore.KindStart && e.Team != "" {
+			name := e.Team
+			if sub, ok := a.teamByID(e.Team); ok {
+				name = sub.Name
+			}
+			plainHead += " to run " + name
+		}
 		head = pal.muted(plainHead)
 		target = trafficMemberKey(t, e.To, e.Member)
-	case teamstore.KindEvent:
+	case e.Kind == teamstore.KindEvent:
 		if text == "" {
 			text = e.State
 		}
@@ -327,6 +349,9 @@ func (a *app) trafficLine(t team, e teamstore.Entry, width int) (string, string,
 		if text != "" {
 			hint += ": " + text
 		}
+		if teamstore.IsRuling(e) {
+			hint += hintSegment + "the ruling on conflict " + e.Packet
+		}
 		if m, ok := t.Member(target); ok && m.Handle != "" {
 			hint += hintSegment + "click opens @" + m.Handle
 		} else {
@@ -382,4 +407,18 @@ func (a *app) trafficMarkSeen(t team) {
 		a.traffic.seen = map[string]string{}
 	}
 	a.traffic.seen[t.ID] = rows[len(rows)-1].ID
+}
+
+// trafficRulingText is a ruling's words without the lead the store writes
+// (`ruling on the conflict p…, `), which the row's head already says.
+func trafficRulingText(text string) string {
+	const lead = "ruling on the conflict "
+	if !strings.HasPrefix(text, lead) {
+		return text
+	}
+	rest := text[len(lead):]
+	if at := strings.Index(rest, ", "); at >= 0 && at < 40 {
+		return rest[at+2:]
+	}
+	return rest
 }

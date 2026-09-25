@@ -36,7 +36,8 @@ func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 		a.touch()
 		return nil
 	case teamsActNewTeam:
-		return a.teamMenuNewTeam()
+		// On the rail with a team chosen, the new team is made inside it.
+		return a.teamMenuNewTeamIn(t.id)
 	case teamsActOrganize:
 		open := a.openWall()
 		a.wallSetTeam("")
@@ -78,13 +79,35 @@ func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 	case teamsActPrompt:
 		return a.teamsPrompt(t.arg, t.opt)
 	case teamsActUndo:
-		return a.teamsUndoClose()
+		return a.teamsUndoAny()
 	case teamsActRetryManager:
 		return a.teamsRetryManager()
 	case teamsActOpenInChats:
 		return a.teamsOpenInChats()
+	case teamsActMoveYes:
+		return a.teamMoveConfirm()
+	case teamsActMoveNo:
+		a.teamMoveCancel()
+		return nil
+	case teamsActManagerGo:
+		return a.teamsManagerGo(t.id)
+	case teamsActCrew:
+		return a.teamCrewOpen(t.id)
 	}
 	return nil
+}
+
+// teamDraggable reports whether a press on target t may become a drag
+// (teamdrag.go): an open team's row on the rail, or a member's chip.
+func (a *app) teamDraggable(t teamsTarget) bool {
+	switch t.act {
+	case teamsActMember:
+		return t.arg != ""
+	case teamsActSelect:
+		u, ok := a.teamByID(t.id)
+		return ok && !t.pane && !u.Root && !u.Closed()
+	}
+	return false
 }
 
 // teamsSelect puts the pane on team id and, when it has a manager, brings that
