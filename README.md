@@ -55,6 +55,9 @@ curl -fsSL https://agentfield.ai/get/codeaf | bash
 codeaf
 ```
 
+<details>
+<summary>Pin a version, or build from source</summary>
+
 The script puts the release binary for your platform in `~/.codeaf/bin`. To
 pin a version, give it a tag from the
 [releases page](https://github.com/Agent-Field/codeaf/releases), where the
@@ -66,6 +69,8 @@ curl -fsSL https://agentfield.ai/get/codeaf | VERSION=<tag> bash
 
 To build it yourself: `git clone`, `make build`, `bin/codeaf`
 ([guide](docs/GUIDE.md#install)).
+
+</details>
 
 On first start it connects OpenRouter in your browser, or takes a key. Codex signs in
 a ChatGPT plan from `/connect` or `codeaf connect codex`; DeepSeek, GLM, Kimi, MiniMax
