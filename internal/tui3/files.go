@@ -119,6 +119,21 @@ type completion struct {
 	// the count the "older" rule carries when the cap left no room to draw them.
 	older int
 
+	// teams and chats are the catalogs this list ranks, copied from memory on
+	// the update loop (mention.go). recents is the recent-conversation snapshot
+	// loaded once, off the loop, because that list can touch the disk.
+	teams   []mentionTeam
+	chats   []mentionChat
+	recents []mentionChat
+	// teamHits and chatHits are what this query kept, already capped.
+	teamHits []mentionTeam
+	chatHits []mentionChat
+	// scope is which section a prefix narrowed to: "team", "chat", "file", or
+	// "" for every section at once.
+	scope string
+	// recentsHeld says a read of the recent list is already in flight.
+	recentsHeld bool
+
 	// lines is what the overlay DRAWS, section rules included, and sel is the
 	// line each selectable row sits on, in cursor order. The split is what lets
 	// a list with headings in it keep one cursor that cannot land on a heading:
@@ -130,12 +145,21 @@ type completion struct {
 	top    int
 }
 
-// compLine is one drawn row: a section rule, a task, or a file. Exactly one of
-// the three is set — header non-empty, or task >= 0, or file >= 0.
+// compLine is one drawn row: a section rule, the prefix words, a team, a
+// conversation, a task, or a file. Exactly one of those is set. The index
+// fields are -1 when they are not the row.
 type compLine struct {
-	header string
-	task   int
-	file   int
+	header  string
+	filters bool
+	task    int
+	file    int
+	team    int
+	chat    int
+}
+
+// deadLine is a row that is not a team, a chat, a task or a file.
+func deadLine() compLine {
+	return compLine{task: -1, file: -1, team: -1, chat: -1}
 }
 
 // sync opens, narrows or closes the completion from the draft and the caret. It
@@ -171,7 +195,11 @@ func (c *completion) sync(e *editor) {
 		c.open = false
 		return
 	}
-	if at == c.at && query == c.done {
+	// done == "" is the zero value, and it is also a team insertion, which
+	// takes the "@" out. Matching it here closed a list on the first "@" of
+	// a draft, because that token sits at rune 0 with an empty query and the
+	// zero at is 0 too.
+	if c.done != "" && at == c.at && query == c.done {
 		c.open = false
 		return
 	}
@@ -250,27 +278,38 @@ func atToken(value []rune, cursor int) (int, string, bool) {
 	return start, string(value[start+1 : cursor]), true
 }
 
-// rank scores every path and every task against the query, keeps what matched,
-// and lays the two out as one list.
+// rank scores every path, team, conversation and task against the query, keeps
+// what matched, and lays them out as one list.
 func (c *completion) rank() {
 	if cap(c.score) < len(c.all) {
 		c.score = make([]int, len(c.all))
 	}
-	needle := strings.ToLower(c.query)
+	scope, needle := mentionScope(c.query)
+	c.scope = scope
+	needle = strings.ToLower(needle)
 	c.hits = c.hits[:0]
-	for i, path := range c.all {
-		score, ok := pathScore(path, needle)
-		if !ok {
-			continue
+	// A prefix that is not "file" hides the paths. The argument list is only
+	// ever paths, so it never takes a prefix.
+	if c.arg || c.scope == "" || c.scope == scopeFile {
+		for i, path := range c.all {
+			score, ok := pathScore(path, needle)
+			if !ok {
+				continue
+			}
+			c.score[i] = score
+			c.hits = append(c.hits, i)
 		}
-		c.score[i] = score
-		c.hits = append(c.hits, i)
+		sort.SliceStable(c.hits, func(a, b int) bool { return c.score[c.hits[a]] < c.score[c.hits[b]] })
+		if len(c.hits) > completeRows*4 {
+			c.hits = c.hits[:completeRows*4]
+		}
 	}
-	sort.SliceStable(c.hits, func(a, b int) bool { return c.score[c.hits[a]] < c.score[c.hits[b]] })
-	if len(c.hits) > completeRows*4 {
-		c.hits = c.hits[:completeRows*4]
+	c.rankMentions(needle)
+	if c.arg || c.scope != "" {
+		c.taskHits, c.taskSection, c.older = c.taskHits[:0], c.taskSection[:0], 0
+	} else {
+		c.rankTasks()
 	}
-	c.rankTasks()
 	c.layout()
 	c.cursor = moveCursor(c.cursor, 0, len(c.sel))
 	c.follow(c.rowsWanted())
@@ -284,17 +323,34 @@ func (c *completion) rank() {
 // the one thing on screen would be a label saying what a person can already see.
 func (c *completion) layout() {
 	c.lines, c.sel = c.lines[:0], c.sel[:0]
+	if !c.arg {
+		line := deadLine()
+		line.filters = true
+		c.lines = append(c.lines, line)
+	}
+	c.lines = c.layoutMentions(c.lines)
+	above := len(c.teamHits) > 0 || len(c.chatHits) > 0 || len(c.taskHits) > 0
 	if len(c.taskHits) > 0 {
 		c.lines = c.layoutTasks(c.lines)
-		if len(c.hits) > 0 {
-			c.lines = append(c.lines, compLine{header: compFilesRule, task: -1, file: -1})
-		}
+	}
+	if len(c.hits) > 0 && above {
+		line := deadLine()
+		line.header = compFilesRule
+		c.lines = append(c.lines, line)
 	}
 	for _, at := range c.hits {
-		c.lines = append(c.lines, compLine{task: -1, file: at})
+		line := deadLine()
+		line.file = at
+		c.lines = append(c.lines, line)
+	}
+	selectable := len(c.teamHits) > 0 || len(c.chatHits) > 0 || len(c.taskHits) > 0 || len(c.hits) > 0
+	if !c.arg && !selectable && c.loaded {
+		line := deadLine()
+		line.header = c.emptyWord()
+		c.lines = append(c.lines, line)
 	}
 	for at, line := range c.lines {
-		if line.header == "" {
+		if line.header == "" && !line.filters {
 			c.sel = append(c.sel, at)
 		}
 	}
@@ -304,7 +360,7 @@ func (c *completion) layout() {
 // screenful, or the taller screenful a sectioned list needs to show both halves
 // of itself. [app.overlayHeight] is what actually decides, and it clamps.
 func (c *completion) rowsWanted() int {
-	if len(c.taskHits) > 0 {
+	if len(c.taskHits) > 0 || len(c.teamHits) > 0 || len(c.chatHits) > 0 {
 		return completeTall
 	}
 	return completeRows
@@ -486,8 +542,12 @@ func isFolderPath(path string) bool { return strings.HasSuffix(path, "/") }
 func (c *completion) lineNote(at int) string {
 	line := c.lines[at]
 	switch {
-	case line.header != "":
+	case line.header != "" || line.filters:
 		return ""
+	case line.team >= 0:
+		return mentionCount(c.teamHits[line.team])
+	case line.chat >= 0:
+		return c.chatHits[line.chat].note
 	case line.task >= 0:
 		return taskNoteWord(c.taskHits[line.task])
 	case isFolderPath(c.all[line.file]):
@@ -502,7 +562,7 @@ func (c *completion) lineNote(at int) string {
 	}
 }
 
-func (c *completion) rows(width, n int, pal palette, hover int) []string {
+func (c *completion) rows(width, n int, pal palette, hover int, headKey string) []string {
 	if n <= 0 {
 		return nil
 	}
@@ -510,7 +570,7 @@ func (c *completion) rows(width, n int, pal palette, hover int) []string {
 		if !c.loaded {
 			return []string{pal.dim("  looking…")}
 		}
-		return []string{pal.dim("  no file matches")}
+		return []string{pal.dim("  " + c.emptyWord())}
 	}
 	c.follow(overlayItems(n, width))
 	fill := newOverlayFill(width, n, pal, hover)
@@ -518,8 +578,14 @@ func (c *completion) rows(width, n int, pal palette, hover int) []string {
 		line := c.lines[at]
 		var ok bool
 		switch {
+		case line.filters:
+			ok = fill.plain(mentionHeadLine(pal, c.scope, headKey, width))
 		case line.header != "":
 			ok = fill.plain(pal.dim("  " + fit(line.header, width-2)))
+		case line.team >= 0:
+			ok = fill.add(at, mentionTeamLabel(c.teamHits[line.team], pal), c.lineNote(at), at == c.selLine(), false)
+		case line.chat >= 0:
+			ok = fill.add(at, mentionChatLabel(c.chatHits[line.chat]), c.lineNote(at), at == c.selLine(), false)
 		case line.task >= 0:
 			note := c.lineNote(at)
 			ok = fill.add(at, taskRowLabel(c.taskHits[line.task], note, width, pal), note, at == c.selLine(), false)

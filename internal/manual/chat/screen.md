@@ -49,8 +49,8 @@ the strip along the top, and the keys row under the box reads `ctrl+g tasks` onc
 session has tasks to come back to and no running-turn line owns that row.
 
 **Seven places take the whole frame instead of sharing it**, at every width: home, tasks,
-standing, memory, spend, search and settings. Four are on the tab bar — `home  tasks
-spend  settings` — and `tab` walks those; `alt+1` … `alt+7` (`opt+1` … `opt+7` on a Mac) jump
+standing, memory, spend, search and settings. Four are on the tab bar with the way back to the chats, `home  chats
+tasks  spend  settings`, and `tab` walks the four rooms; `alt+1` … `alt+8` (`opt+1` … `opt+8` on a Mac) jump
 straight to any of the seven from wherever you are standing — a place or a conversation —
 and each
 has commands of its own (`/home`, `/history`, `/standing`,
@@ -106,6 +106,9 @@ tabs in a row of their own, with a thin rule separating navigation from reading:
   home    openrouter price scrape    Refactor the rail sco…    [Shipping the parser] ×  +    +2
   ────────────────────────────────────────────────────────────────────────────────────────
 ```
+
+While a team is shown its chip, `● harbor ▾`, comes right after `Home` and before the tabs it
+narrows, with the team's `◆ Manager` after it (see *The team switcher on the tab strip*).
 
 Each tab is a **padded target** separated by quiet space. The filled surface includes
 one blank cell before its status icon and after its close mark; the leading inset
@@ -2931,10 +2934,10 @@ back to plain ASCII (`!` `*` `o` `-` `+`) and the screen still reads.
 ## alt or option or opt — how the chords are spelled on a Mac, on Linux and on Windows, and why not the option symbol
 
 **It is one key and two spellings, and codeaf picks the spelling from the platform it is
-running on.** On macOS every chord is drawn with `opt+` — `opt+1`…`opt+7`, `opt+.`,
+running on.** On macOS every chord is drawn with `opt+`, `opt+1`…`opt+8`, `opt+.`,
 `opt+enter`, `opt+g`, `opt+q`, `opt+s`, `opt+w`, `opt+o` — because the key that Mac keycap
 calls **option** is the key you press. On Linux, on Windows, and everywhere else the same
-chords are drawn `alt+1`…`alt+7`, `alt+.`, `alt+enter` and so on. Every hint line, the key
+chords are drawn `alt+1`…`alt+8`, `alt+.`, `alt+enter` and so on. Every hint line, the key
 map, the composer layer's rows and the key sheet `/help` draws read that one spelling, so
 what is on your screen is what is on your keyboard.
 
@@ -2967,7 +2970,7 @@ appears under the list:
 
 It names the terminal you are actually in, it is said once, and the first real chord that
 arrives retires it for the rest of the session. The first-run setup says the same thing ahead
-of time, as a condition rather than a diagnosis: `the seven places answer opt+1…opt+7 · if opt types
+of time, as a condition rather than a diagnosis: `the places answer opt+1…opt+8 · if opt types
 a character instead, turn on "use option as meta" in …`.
 
 **`alt+b` and `alt+f` do not retire it, and that is deliberate.** iTerm2's Natural Text
@@ -2999,8 +3002,8 @@ are worth the one setting.
 
 **And on kitty, ghostty and WezTerm there is a way in that needs no setting at all.** Those
 terminals run the kitty keyboard protocol and report it, and where that report arrives codeaf
-binds `ctrl+1` … `ctrl+7` as a second spelling of the jump and `ctrl+.` as a second spelling of
-the map. The map's own line says `alt+1…7 or ctrl+1…7 go to a place` exactly when the alias is
+binds `ctrl+1` … `ctrl+8` as a second spelling of the jump and `ctrl+.` as a second spelling of
+the map. The map's own line says `alt+1…8 or ctrl+1…8 go to a place` exactly when the alias is
 live, so you never have to guess. `ctrl+<digit>` has no encoding in the older scheme, which is
 why it can only ever be the second spelling and never the first — a terminal that has said
 nothing is never promised it.

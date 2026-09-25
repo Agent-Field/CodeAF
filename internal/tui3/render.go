@@ -71,6 +71,10 @@ const (
 	// opens its whole step under its line, and a press on it again — or on the
 	// step it opened — shuts it. The action's key rides in [row.turn].
 	hitAction
+	// hitThread is a line of a thread card (teamthreadcard.go): the words of a
+	// manager's message or of a member's answer, which a press lays out in
+	// full and a second press folds again. The row's open field says whose.
+	hitThread
 )
 
 // row is one visible screen row and what it points at. It is the single
@@ -108,6 +112,12 @@ type row struct {
 	// Picture controls retain their index and original-file action through gutter layout.
 	pictureIndex int
 	pictureOpen  hudSpan
+	// plan is the store task a row in a run's task room stands for, on the rows
+	// the room draws under its transcript (planroom.go): a press on one opens
+	// that task's room.
+	plan string
+	// open is a [hitThread] row's message, by team and entry id.
+	open string
 }
 
 // toolWindow is how many of a turn's tool calls stay on screen. Three is the
@@ -745,6 +755,10 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	// the cells that open it — a press on its number landed in the sentence
 	// beside it. That was true of every moved row with a link in it before this
 	// pass moved every row; it is not true of any row now.
+	// THE TEAM HALF OF THE LINK PASS, over the rows as they were laid out and
+	// before the indent law moves them with their spans (teamlink.go).
+	a.teamLinkPass(out, es)
+	a.mentionLinkPass(out, es)
 	if workIndent(width) != "" {
 		cols := workIndentCols(width)
 		for i := range out {
@@ -926,6 +940,11 @@ func (a *app) entryRows(d deck, i, width int) []string {
 	// out of the per-frame path; tool rows make the opposite trade because their
 	// lines already bypass this cache.
 	key := renderedEntryKey{identity: e.identity, width: width, ink: a.inkState}
+	// A TEAM NOTE DRAWS ANSWERS OUT OF THE TRAFFIC CACHE (teamthreadcard.go), so
+	// its rows go stale when that cache moves, and only then.
+	if a.teamNoteStale(e, width) {
+		e.stale = true
+	}
 	if e.built && e.rowKey == key && !e.stale {
 		return e.rows
 	}
@@ -1225,6 +1244,9 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 
 	case entryHarness:
 		return a.harnessFeedRows(e.harness, width, a.sel == i)
+
+	case entryTeam:
+		return a.teamCardRows(*e, width)
 
 	case entryNote:
 		// A LINE MAY BE QUIET; THE FACT IT CARRIES MAY NOT BE (payload.go). The
@@ -1984,6 +2006,7 @@ func (a *app) statusRows(width int) []string {
 	// where they landed (foot.go). The ledger's doors are the seam's now and
 	// are cleared there; the deck records its own.
 	a.modelSpan = hudSpan{}
+	a.dockClear()
 	if a.startingChat() {
 		return []string{a.pal.dim(fit("New chat · first message starts the conversation", width))}
 	}
@@ -3911,6 +3934,9 @@ func (a *app) hintWord() string {
 		// enter belongs to the LINE rather than to the list (input.go).
 		return "tab take · enter run · esc"
 	case a.menu.open || a.comp.open:
+		if hint := a.mentionHeadHint(); hint != "" {
+			return hint
+		}
 		return "↑↓ · enter · esc"
 	case a.shaping():
 		// The widening answer is part-way given and the block is on its second

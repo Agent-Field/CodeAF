@@ -210,7 +210,7 @@ func (a *app) taskModelDoors() (taskModelDoor, bool) {
 func (a *app) roomModelMovable() bool {
 	// A PROGRAM'S RUN IS NOT A NODE OF THE GRAPH, so the task model door has
 	// nothing to move: the program chooses its own models (programroom.go).
-	if a.room == nil || a.room.orch != nil || a.room.program != nil {
+	if a.room == nil || a.room.orch != nil || a.room.program != nil || a.room.plan != nil {
 		return false
 	}
 	// AND A PAGE READ THROUGH SOMEBODY ELSE'S CONVERSATION MOVES NOTHING. The door
@@ -391,6 +391,15 @@ type taskRoom struct {
 	// program's conversation with codeaf read from the task's stored page
 	// instead of a worker's transcript.
 	program *programRoom
+	// plan is set when this page is A RUN'S TASK, read from the run's plan store
+	// rather than from a node's journal and lane (planroom.go). It is a field on
+	// this struct for [taskRoom.orch]'s reason: there is one page type, and
+	// everything a room promises has to hold for a run's task too.
+	plan *planRoom
+
+	// tab is which of the page's two tabs is on screen: the transcript, or the
+	// work it changed (roomtabs.go).
+	tab roomTab
 
 	// harnessProgress is the design lane's one evolving thought inside the
 	// design node's room. It is display-only: no journal line is minted for live
@@ -1150,6 +1159,11 @@ func (a *app) roomStandingOn(node *taskNode) bool {
 	if a.room == nil || node == nil || a.roomIsGuest() {
 		return false
 	}
+	// A RUN'S TASK IS MATCHED BY ITS STORE ID, which the run's own row and every
+	// row lent to one of its parts carry alike ([taskNode.planTask]).
+	if plan := a.room.plan; plan != nil {
+		return strings.TrimSpace(node.planTask) != "" && strings.TrimSpace(node.planTask) == plan.id
+	}
 	if run := a.orchOf(); run != nil {
 		if node.run == "" || node.run != run.id {
 			return false
@@ -1186,10 +1200,11 @@ func (a *app) openRoomFor(id uint64, title string) {
 // openRailRoom makes list selection idempotent. Repeated clicks must not close
 // the page or replace its draft, scroll position and live subscription.
 //
-// A ROW WHOSE TASK HAS A STORED PAGE OPENS THAT PAGE, and the question is asked
-// of the store at the gesture, off the loop ([app.taskSheetPlanAsk]). What the
-// row opens when the store has no page for it is fixed HERE, from the row as it
-// was pressed: the read may come back after the rail has been redrawn, and an
+// EVERY TASK OPENS THE TASK ROOM. A row whose task has a stored page opens the
+// room over that store task (planroom.go), and the question is asked of the
+// store at the gesture, off the loop ([app.openRailPlan]). What the row opens
+// when the store has no page for it is fixed HERE, from the row as it was
+// pressed: the read may come back after the rail has been redrawn, and an
 // absent page still opens exactly what this gesture chose.
 func (a *app) openRailRoom(node *taskNode) tea.Cmd {
 	if node == nil || a.roomStandingOn(node) {
@@ -1203,6 +1218,18 @@ func (a *app) openRailRoom(node *taskNode) tea.Cmd {
 		a.openProgramRoom(id, title, a.heldProgramPage(id))
 		return a.takeRoomPump()
 	}
+	// THE STORE TASK IS THE ONE THE ROW NAMES, and a row that names none is asked
+	// for under its own number, which is the number a run's door gives the
+	// store task it seeds ([session.TaskNotice.PlanTask]).
+	store := strings.TrimSpace(node.planTask)
+	if store == "" {
+		store = strconv.FormatUint(id, 10)
+	}
+	// A ROW LENT TO A STORE TASK HAS NO NODE BEHIND IT, so a store with no page
+	// for it opens nothing rather than a room onto an id the engine never gave.
+	if node.planRow != nil {
+		return a.openRailPlan(store, nil)
+	}
 	_, hasPlan := a.planReader()
 	room := func() tea.Cmd {
 		if run != "" && !hasPlan {
@@ -1213,29 +1240,63 @@ func (a *app) openRailRoom(node *taskNode) tea.Cmd {
 		}
 		return a.takeRoomPump()
 	}
-	return a.openRailPlan(strconv.FormatUint(id, 10), room)
+	return a.openRailPlan(store, room)
 }
 
-// openRailPlan opens one task's stored page FROM THE CHAT, over the
-// conversation, for a press on a rail row or on one of a run's own rows under
-// it. `missing` is what the gesture does when the store has no such page.
+// openRailPlan opens the task room over one store task FROM THE CHAT, for a
+// press on a rail row, on one of a run's own rows under it, on a crumb, on the
+// tasks place or on the run's tab. `missing` is what the gesture does when the
+// store has no such page.
+//
+// THE KEYS TYPED WHILE THE READ IS OUT ARE THE ROOM'S ([railPlanPending]): they
+// go into the room's box once it is up, and nowhere else.
 func (a *app) openRailPlan(id string, missing func() tea.Cmd) tea.Cmd {
 	if a.railPlanPending.id == id {
 		return nil
 	}
-	a.beginRailPlan(id)
-	return a.taskSheetPlanAsk(id, nil, func() tea.Cmd { return a.finishRailPlan(id) }, func() tea.Cmd {
-		if a.railPlanPending.id != id {
-			return nil
-		}
-		a.railPlanPending = railPlanPending{}
-		if !a.railPlanFront() {
-			return nil
-		}
+	agent, ok := a.planReader()
+	if !ok {
 		if missing != nil {
 			return missing()
 		}
 		return nil
+	}
+	a.beginRailPlan(id)
+	return a.offLoop(func() func(bool) tea.Cmd {
+		page, found := agent.PlanTaskPage(id)
+		return func(here bool) tea.Cmd {
+			// EVERY ENDING OF THE READ ENDS THE HOLD IT WAS MADE FOR. A second press
+			// replaced this one, or `esc` withdrew it, and then the answer opens
+			// nothing.
+			if a.railPlanPending.id != id {
+				return nil
+			}
+			keys := a.railPlanPending.keys
+			a.railPlanPending = railPlanPending{}
+			if !here {
+				return nil
+			}
+			if !found {
+				if missing != nil {
+					return missing()
+				}
+				return nil
+			}
+			// A PROGRAM'S TASK OPENS THE PROGRAM'S ROOM, whichever door it came
+			// through — the tasks place, a crumb, a row the surface did not yet
+			// hold as a program's: its page is the program's actions and calls,
+			// not a worker's steps, and it reads no note (programroom.go).
+			if program, ok := a.programRoomFor(page); ok {
+				a.openProgramRoom(program, page.Row.Title, page)
+				return a.takeRoomPump()
+			}
+			cmd := a.openPlanRoom(page)
+			for _, key := range keys {
+				a.railPlanReplay(key)
+			}
+			a.touch()
+			return cmd
+		}
 	})
 }
 
@@ -1520,6 +1581,11 @@ func (a *app) steer() tea.Cmd {
 	// on its next call.
 	if room.orch != nil {
 		return a.orchSteer()
+	}
+	// A RUN'S TASK TAKES THE LINE AS A NOTE ON ITS STORE TASK (planroom.go): the
+	// same box and the same enter, through the plan's own note door.
+	if room.plan != nil {
+		return a.planRoomSteer(line)
 	}
 	// A PAGE READ THROUGH ANOTHER CONVERSATION SAYS IT IS READING, a program's
 	// page included: the program's refusal names this window's main as the door,
@@ -2046,10 +2112,18 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// input.go, which spends it on [app.navBack] over an empty box and on the
 	// caret over a sentence.
 
+	case roomTabKey:
+		// THE OTHER TAB, over an empty box (roomtabs.go). A box with words in it
+		// keeps the key for what it does there.
+		if a.roomHasTabs() && a.input.empty() && !a.comp.open {
+			return a.roomTabNext(), true
+		}
+		return nil, false
+
 	case "enter":
 		// A PROGRAM'S RUN IS NOT A NODE THE RETRY DOOR CAN REOPEN, so enter over an
 		// empty box on its room offers nothing (programroom.go).
-		if !a.roomIsGuest() && a.room.program == nil && strings.TrimSpace(a.input.String()) == "" {
+		if !a.roomIsGuest() && a.room.program == nil && a.room.plan == nil && strings.TrimSpace(a.input.String()) == "" {
 			entry := a.roomRetryEntry()
 			if a.taskCanRetry(entry) {
 				return a.retryTask(entry), true
@@ -2070,7 +2144,9 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// own card, bound here to the node whose page this is (taskeffort.go).
 		// Everything that outranks the room outranks it, because it is read from
 		// inside the room's own switch and never above it.
-		a.cycleTaskEffort()
+		if a.room.plan == nil {
+			a.cycleTaskEffort()
+		}
 		return nil, true
 
 	case "ctrl+b":
@@ -2541,7 +2617,7 @@ func (a *app) railSeamAt(x, y int) bool {
 // in the roster's last thirty columns: the box did not focus, the hint did not
 // act, and nothing at all happened. Below the region a press is somebody else's.
 func (a *app) railAt(x, y int) bool {
-	if !a.railFull() && (!a.railShowing() || x < a.bodyWidth()) {
+	if !a.railFull() && (!a.railShowing() || x < a.bodyWidth() || x >= a.bodyWidth()+a.railWidth()) {
 		return false
 	}
 	top := a.bodyTop()
@@ -2701,7 +2777,7 @@ func (a *app) roomTrailRow(width int) string {
 	if a.roomOrganized() {
 		left, hits = a.roomAncestorParts(width)
 	}
-	a.crumbs, a.roomBackSpan = hits, hudSpan{}
+	a.crumbs, a.roomBackSpan, a.roomTabSpans = hits, hudSpan{}, nil
 	line := strings.Repeat(" ", headLabelAt) + a.paintCrumbs(left, headLabelAt, a.pal.accent)
 	leftWidth := headLabelAt + ansi.StringWidth(left)
 	back := " " + roomBackWord + " "
@@ -2712,6 +2788,16 @@ func (a *app) roomTrailRow(width int) string {
 		shown := a.pal.dim(back)
 		if a.hoveringRoomBack() {
 			shown = a.pal.cursor(shown, 0)
+		}
+		// THE TABS STAND BESIDE THE WAY OUT, where they cost no row of the page,
+		// and only where the whole of both names fits (roomtabs.go). A frame too
+		// narrow for them keeps the trail and the way out, and `tab` still moves.
+		if tabs, cols, spans := a.roomTabsLabel(); tabs != "" && leftWidth+2+cols+2 <= from {
+			at := from - 2 - cols
+			for _, span := range spans {
+				a.roomTabSpans = append(a.roomTabSpans, hudSpan{from: at + span.from, to: at + span.to})
+			}
+			return line + strings.Repeat(" ", at-leftWidth) + tabs + "  " + shown + " "
 		}
 		return line + strings.Repeat(" ", from-leftWidth) + shown + " "
 	}
@@ -3294,6 +3380,9 @@ func (a *app) roomNode() *taskNode {
 	if guest := a.room.guest; guest != nil {
 		return guest.node
 	}
+	if plan := a.room.plan; plan != nil {
+		return plan.node
+	}
 	return a.tasks[a.room.id]
 }
 
@@ -3656,7 +3745,22 @@ func (a *app) roomRows(width int) []row {
 	// the same cost. A RUN'S PAGE IS NOT — a graph of cards is not a paragraph —
 	// which is why the branch that returns one does so above this line.
 	inner := gutterInner(width)
+	// THE WORK TAB IS WHAT THE TASK CHANGED, and it is the same page with a
+	// different body: the head, the box and the keys are the room's (roomtabs.go).
+	if room.tab == roomTabWork {
+		out := a.roomWorkRows(inner)
+		gutterPass(out, width)
+		a.hoverPass(out, width)
+		room.rows, room.width, room.height, room.dirty = out, width, height, false
+		return out
+	}
 	out, closed := a.deckRows(room.deck(), inner)
+	// A RUN'S TASK SHOWS ITS PARTS UNDER ITS TRANSCRIPT, each drawn as the rail
+	// draws a task (planroom.go).
+	if parts := a.planRoomPartRows(inner); len(parts) > 0 {
+		out = append(out, parts...)
+		closed = false
+	}
 	if room.harnessProgress != "" && !room.done {
 		out = append(out, row{text: a.pal.dim(fit(room.harnessProgress, inner)), entry: -1})
 		closed = false
@@ -4160,6 +4264,10 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 		// says the fact and the place the words can go, the same line enter over a
 		// sentence says (programroom.go).
 		lane = a.programRoomRefusal().fit(room)
+	} else if a.room.plan != nil {
+		// A RUN'S TASK TAKES THE WORDS AS A NOTE (planroom.go), and the box says
+		// so: the worker reads a note at its next step, not the instant it is sent.
+		lane = taskPlanNoteWord + roomSteerBack
 	}
 	if a.roomIsGuest() {
 		// A BORROWED PAGE DOES NOT OFFER A KEYBOARD IT DOES NOT HAVE. This window is

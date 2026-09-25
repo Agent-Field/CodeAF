@@ -553,7 +553,7 @@ func TestTheMentionListPaysForTheBadgeOutOfTheTitle(t *testing.T) {
 		{100, "[senior-dev]"}, {60, "[senior-dev]"}, {45, "[senior-dev]"}, {28, "[sd]"},
 	} {
 		found := ""
-		for _, row := range a.comp.rows(probe.width, completeRows, a.pal, -1) {
+		for _, row := range a.comp.rows(probe.width, completeRows, a.pal, -1, "") {
 			if line := plain(row); strings.Contains(line, "Rewrite") {
 				found = line
 			}

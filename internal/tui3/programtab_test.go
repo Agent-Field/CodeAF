@@ -94,8 +94,7 @@ func TestAProgramsTaskOpensInsideTheConversationsTab(t *testing.T) {
 					t.Fatalf("the door did not put the program's conversation on screen:\n%s", shot.text)
 				}
 				if !shot.drawn {
-					t.Errorf("SYMPTOM: the page took the whole frame and no tab strip is drawn (railTaskPlanOn=%v workTabOn=%v)",
-						l.a.railTaskPlanOn, l.a.workTabOn)
+					t.Errorf("SYMPTOM: the page took the whole frame and no tab strip is drawn (room=%v)", l.a.roomOpen())
 					return
 				}
 				if len(shot.selected) != 1 {

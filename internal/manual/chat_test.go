@@ -29,6 +29,31 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		page     string
 	}{
 		{"what can you do", "what-i-can-do"},
+		// The conversations view and its teams (conversations-and-teams.md).
+		{"how do I see all my conversations at once", "conversations-and-teams"},
+		// The product's own words for that view are the wall: `/wall`, `alt+v`
+		// opens the wall. A person asks for it by that word.
+		{"what is the conversations wall", "conversations-and-teams"},
+		{"how do I open the wall", "conversations-and-teams"},
+		{"what is the chats dock under the message box", "conversations-and-teams"},
+		{"how do I group conversations into a team", "conversations-and-teams"},
+		{"how do I switch teams from the tab strip", "conversations-and-teams"},
+		{"does deleting a team close its conversations", "conversations-and-teams"},
+		{"where are my teams saved", "conversations-and-teams"},
+		{"how do I mention a team or another conversation with @", "conversations-and-teams"},
+		// The team manager (team-manager.md).
+		{"what can the team manager do", "team-manager"},
+		{"can the manager answer a member's permission prompt", "team-manager"},
+		{"how does a member post to the room", "team-manager"},
+		{"does a directive wake an idle member", "team-manager"},
+		{"what happens when auto-wake is off and the manager starts a member", "team-manager"},
+		{"why is a member still asking after it crashed", "team-manager"},
+		{"does it ask again if the handle model times out", "team-manager"},
+		{"how does a member reply to a thread", "team-manager"},
+		{"why is the traffic rail drawn as threads", "team-manager"},
+		{"open a member's chat at the message it answered from the traffic", "team-manager"},
+		{"what does chats on the tab bar do", "places"},
+		{"how do I get back to my conversation from a place", "places"},
 		{"can you use my claude code skills", "skills-from-other-tools"},
 		{"why is my claude code plugin skill missing", "skills-from-other-tools"},
 		{"do codex skills work here", "skills-from-other-tools"},
@@ -2568,6 +2593,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I paste an image from the clipboard", "attaching-files"},
 		{"can I drop a file after a slash command", "attaching-files"},
 		{"can I attach a whole folder", "attaching-files"},
+		{"how do I mention a file, a team or another chat with @", "attaching-files"},
 		{"how do I download a file from my dev box", "opening-files-from-that-machine"},
 		{"can I drag a file onto the browse page to upload it", "opening-files-from-that-machine"},
 		{"where do the files I fetched from the other machine go", "opening-files-from-that-machine"},

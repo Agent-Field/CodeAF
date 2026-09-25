@@ -1132,6 +1132,17 @@ type Options struct {
 	// watch. Nothing half-works and nothing claims to.
 	Standing StandingSeam
 
+	// Teams is where the teams file and the Traffic logs are: the profile of
+	// the machine the SESSION runs on, because the team tools a model calls
+	// keep them there ([TeamsSeam] says what each function owes).
+	//
+	// The zero value is this machine's own profile ([Options.ProfileDir]),
+	// which is every local launch. The --host door hands one that asks the
+	// engine; over --host with no seam (an engine without the teams doors) the
+	// window keeps no teams at all rather than keeping them here, where the far
+	// session would never read them (host.go).
+	Teams TeamsSeam
+
 	// Link is what the door can tell this surface about the connection the
 	// conversation is on the far end of: the sentence to draw while a dropped
 	// link is being redialled, the empty round trip to measure on a slow clock,

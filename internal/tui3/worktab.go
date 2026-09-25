@@ -37,7 +37,7 @@ func (a *app) workTab() (chatTab, bool) {
 	if word == "" {
 		return chatTab{}, false
 	}
-	return chatTab{key: a.frontTabKey() + "#work", file: a.file, word: word, full: word, here: a.workTabOn, held: true, work: true}, true
+	return chatTab{key: a.frontTabKey() + "#work", file: a.file, word: word, full: word, here: a.workTabHere(workTabRow(rows).ID), held: true, work: true}, true
 }
 
 // beltRows is the rows of runs the belt switch drives, which are the only runs
@@ -64,37 +64,23 @@ func (a *app) workTabStable() bool {
 	now := sig.String()
 	stable := now != "" && now == a.workTabSettled
 	a.workTabSettled = now
-	if stable {
-		a.workTabOn = false
-	}
 	return stable
 }
 
-// openWorkTab opens the run's tab on the rows the surface holds and asks for
-// the run's page OFF THE LOOP. The tab is only offered while rows are held
+// openWorkTab opens the run's own task in the task room, the one page every
+// task has (planroom.go). The tab is only offered while rows are held
 // ([app.workTab]), so there is nothing to read before it can open; the page
 // arrives through the one door every stored page arrives through
-// ([app.taskSheetPlanAsk]), and until it does the pane draws the run's own row.
+// ([app.openRailPlan]).
 func (a *app) openWorkTab() tea.Cmd {
 	rows, ok := a.heldPlanRows()
 	rows = beltRows(rows)
 	if !ok || len(rows) == 0 {
 		return nil
 	}
-	// THE READING IS TAKEN AT THE OPENING, ONCE, the way the tasks place takes
-	// it ([app.showTaskPlace]): the disk is walked here and the frames that
-	// follow draw what the place holds, refreshed on the paint clock through
-	// [tasksPlace.regroup]. A frame that took its own reading would read the
-	// disk on every paint (framedisk_law_test.go).
-	a.refreshElsewhere()
-	a.taskSheet = a.takeTaskReading()
-	a.workTabOn, a.taskSheet.planOn, a.taskSheet.detailOn = true, true, true
-	row := workTabRow(rows)
-	a.taskSheet.plan = session.PlanTaskPage{Row: row}
-	a.taskSheet.planNote.reset()
 	a.chatTabBar = tabBar{}
 	a.touch()
-	return a.taskSheetPlanAsk(row.ID, nil, nil, nil)
+	return a.openRailPlan(workTabRow(rows).ID, nil)
 }
 
 // workTabRow is the row the run's tab is about: the first one still working,
@@ -110,81 +96,20 @@ func workTabRow(rows []session.PlanTaskRow) session.PlanTaskRow {
 	return rows[0]
 }
 
-func (a *app) workTabKey(msg tea.KeyPressMsg) tea.Cmd {
-	if cmd, taken := a.hopKey(msg); taken {
-		return cmd
-	}
-	if msg.String() == "esc" {
-		a.workTabOn = false
-		a.closeTaskPlan()
-		a.chatTabBar = tabBar{}
-		return nil
-	}
-	return a.taskPlanKey(msg)
+// workTabHere reports whether the run's tab is the page on screen: the room is
+// open on the run's own task.
+func (a *app) workTabHere(root string) bool {
+	plan := a.roomPlan()
+	return plan != nil && plan.id == strings.TrimSpace(root)
 }
 
-// workTabFrame reuses the tasks place reading and painter; there is no second
-// work-row renderer. THE FRAME NEVER TAKES THE READING: [app.takeTaskReading]
-// walks the disk and stamps the look, which is an opening's work, so the frame
-// draws the reading the place already holds through [app.tasksFiltered], the
-// one door the rail and the tasks place read through (framedisk_law_test.go).
-func (a *app) workTabFrame(width, height int) []string {
-	a.workTabStable()
-	out := a.headRows(width, a.tabsRow(width), a.pal)
-	reading := a.tasksFiltered()
-	reading.unfolded = true
-	rows := reading.rows(width, a.pal)
-	room := height - len(out) - 3
-	if room < 0 {
-		room = 0
-	}
-	if len(rows) > room {
-		rows = rows[:room]
-	}
-	out = append(out, rows...)
-	for len(out) < height-3 {
-		out = append(out, "")
-	}
-	for _, note := range a.taskSheet.plan.Notes {
-		// AN AUTHOR IS DRAWN ONLY AS A WORD A PERSON WOULD RECOGNISE, the page's
-		// own rule ([planNoteWho]): every other author the store holds is an id,
-		// and this row used to draw it (`2ytmh2 · …`). A note with no word for its
-		// author is its body alone, with no separator left hanging before it.
-		line := a.pal.ink(note.Body)
-		if who := planNoteWho(note); who != "" {
-			line = a.pal.dim(who+railSep) + line
-		}
-		out = append(out, line)
-	}
-	text := a.taskSheet.planNote.String()
-	if strings.TrimSpace(text) == "" {
-		text = taskPlanNoteWord
-	}
-	return append(out, prompt+a.pal.dim(text))
-}
-
-// leaveTaskOverlays stands down the two task pages the belt switch still draws
-// over the conversation — the work tab, and a run's page opened from the side
-// list — and is a no-op when neither is up.
+// withdrawRailPlan withdraws a row's page still on its way ([railPlanPending]).
 //
-// EVERY DOOR OUT OF THE CONVERSATION'S FRAME CALLS IT, because both pages are
-// drawn before any place is (view.go's [app.frameBody]): a place opened under
-// one of them was a place nobody could see, and Home opened that way dropped
-// off the strip the work tab went on drawing. Every place opens through
-// [app.standDownRest], and the conversation's own tab calls it on the way back
-// ([app.tabGo]).
-//
-// AND A ROW'S PAGE STILL ON ITS WAY IS WITHDRAWN WITH THEM ([railPlanPending]).
-// A person who pressed a run's row and then went Home has left the press
-// behind, and its answer — milliseconds later here, seconds over a connection
-// — opened the run's page over Home, or a room under it with the box pointed
-// at the run while Home's box was the one on screen.
-func (a *app) leaveTaskOverlays() {
+// EVERY DOOR OUT OF THE CONVERSATION'S FRAME CALLS IT: every place opens
+// through [app.standDownRest]. A person who pressed a run's row and then went
+// Home has left the press behind, and its answer — milliseconds later here,
+// seconds over a connection — opened the run's room under Home, with the box
+// pointed at the run while Home's box was the one on screen.
+func (a *app) withdrawRailPlan() {
 	a.railPlanPending = railPlanPending{}
-	if !a.workTabOn && !a.railTaskPlanOn {
-		return
-	}
-	a.workTabOn, a.railTaskPlanOn = false, false
-	a.closeTaskPlan()
-	a.chatTabBar = tabBar{}
 }

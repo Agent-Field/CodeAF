@@ -88,26 +88,66 @@ func programPage(row session.PlanTaskRow, turns []delegate.Turn) session.PlanTas
 	}
 }
 
-// programPageApp opens the program's page at a width and a height, the two
-// keys a person presses, on a surface whose clock is the fixture's.
+// programPageApp opens the program's task from the tasks place at a width and
+// a height, the two keys a person presses, on a surface whose clock is the
+// fixture's: it opens the program's room (programroom.go).
 func programPageApp(t *testing.T, page session.PlanTaskPage, width, height int) (*app, *planFake) {
 	t.Helper()
-	a, fake := planAppWith(t, []session.PlanTaskRow{page.Row}, map[string]session.PlanTaskPage{page.Row.ID: page})
+	// The room reads its page by the task's own number, and the tasks place
+	// asks under the store's id; the store answers to both.
+	a, fake := planAppWith(t, []session.PlanTaskRow{page.Row}, map[string]session.PlanTaskPage{page.Row.ID: page, planTaskIDWord(page.Row.ID): page})
 	a.width, a.height = width, height
 	openPlanPage(t, a)
-	if !a.taskPlanIsProgram() {
-		t.Fatalf("the page opened is not a program's: %+v", a.taskSheet.plan.Program)
+	if a.programOf() == nil {
+		t.Fatalf("the tasks place did not open the program's room: room=%v", a.room != nil)
 	}
 	return a, fake
 }
 
-// programPageLines is the page as drawn, one plain string per screen row.
-func programPageLines(a *app) []string {
-	width, height := a.size()
-	lines, _, _ := a.taskPlanFrame(width, height)
-	out := make([]string, len(lines))
+// openPlanPage opens the tasks place over the plan's rows and presses enter on
+// the first, which opens its task's room.
+func openPlanPage(t *testing.T, a *app) {
+	t.Helper()
+	if !openTaskPlaceWithRows(a) {
+		t.Fatal("the place refused to open over a plan")
+	}
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
+	drain(t, a, a.takeRoomPump())
+}
+
+// programPinnedLine is the room's facts row as drawn — the line its stored page
+// pins — without the rule it rides on: the row under the trail to the task.
+func programPinnedLine(t *testing.T, lines []string) string {
+	t.Helper()
 	for i, line := range lines {
-		out[i] = plain(line)
+		if strings.Contains(line, "▸ rewrite the auth") && i+1 < len(lines) {
+			facts := strings.TrimSpace(lines[i+1])
+			facts = strings.TrimPrefix(facts, "─ ")
+			if cut := strings.Index(facts, " ─"); cut >= 0 {
+				facts = facts[:cut]
+			}
+			return facts
+		}
+	}
+	t.Fatalf("no trail row leads to the task:\n%s", strings.Join(lines, "\n"))
+	return ""
+}
+
+// programPageLines is the room as drawn, one plain string per screen row: its
+// head — the trail to the task and the pinned line under it — and its body, down
+// to the rule over the box, which is the conversation's and not the page's.
+func programPageLines(a *app) []string {
+	frame, _, _ := a.frame()
+	var out []string
+	for _, line := range strings.Split(frame, "\n") {
+		line = plain(line)
+		if len(out) == 0 && !strings.Contains(line, "rewrite the auth middleware") {
+			continue
+		}
+		if len(out) > 0 && strings.HasPrefix(strings.TrimSpace(line), "─ room") {
+			break
+		}
+		out = append(out, line)
 	}
 	return out
 }
@@ -160,11 +200,8 @@ func TestAProgramsPageDrawsItsActionsUnderItsSteps(t *testing.T) {
 	page := strings.Join(lines, "\n")
 	t.Logf("a program's page, mid-way:\n%s", page)
 
-	if trail := strings.TrimSpace(lines[0]); !strings.Contains(trail, "rewrite the auth middleware [senior-dev]") || !strings.HasSuffix(trail, taskCardBackWord) {
-		t.Fatalf("the head's first row is %q, want the trail to the task with its program's badge, and the way back", lines[0])
-	}
-	if lines[1] != "implement · $1.24 · 3 calls · 14m 3s" {
-		t.Fatalf("the pinned line is %q, want the step, the spend, the calls and the age", lines[1])
+	if pinned := programPinnedLine(t, lines); pinned != "implement · $1.24 · 3 calls · 14m 3s" {
+		t.Fatalf("the pinned line is %q, want the step, the spend, the calls and the age", pinned)
 	}
 	for _, said := range []struct{ step, words string }{
 		{actBriefWord, "rewrite the auth middleware to use the new session store"},
@@ -216,77 +253,24 @@ func TestAProgramsPageDrawsItsActionsUnderItsSteps(t *testing.T) {
 	}
 }
 
-// A PROGRAM'S PAGE HAS NO BOX. A program reads no note, so the page draws no
-// composer, never promises that a worker reads a note at its next step, offers
-// no send, hides the caret, and a letter typed at it is nothing — never a note
-// sent to the store and never a letter in a box that is not there.
+// A PROGRAM'S ROOM TAKES NO NOTE. A program reads no note, so a sentence typed
+// into its room and sent is never a note written to the store, and the room
+// stays up.
 func TestAProgramsPageHasNoNoteBoxAndTakesNoNote(t *testing.T) {
 	a, fake := programPageApp(t, programPage(programRow(), programTurns()), 80, 30)
 	page := strings.Join(programPageLines(a), "\n")
-	for _, never := range []string{taskPlanNoteWord, taskPlanPickupWord, "enter send", "notes", "steps"} {
-		if strings.Contains(page, never) {
-			t.Fatalf("a program's page says %q:\n%s", never, page)
-		}
-	}
-	if !strings.Contains(page, tasksPlanCancelWord) || !strings.Contains(page, taskCardBackWord) {
-		t.Fatalf("a program's page lost its stop or its way back:\n%s", page)
-	}
-	if a.caret {
-		t.Fatal("a program's page shows a caret over no box")
+	if strings.Contains(page, taskPlanPickupWord) {
+		t.Fatalf("a program's room promises a note is read:\n%s", page)
 	}
 	for _, r := range "pause it" {
 		drive(t, a, key(string(r)))
 	}
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-	if len(fake.noted) != 0 || len(fake.paused) != 0 || !a.taskSheet.planNote.empty() {
-		t.Fatalf("typing on a program's page wrote notes %v, paused %v, box %q", fake.noted, fake.paused, a.taskSheet.planNote.String())
+	if len(fake.noted) != 0 || len(fake.paused) != 0 {
+		t.Fatalf("typing into a program's room wrote notes %v, paused %v", fake.noted, fake.paused)
 	}
-	if !a.taskSheet.planOn {
-		t.Fatal("typing on a program's page closed it")
-	}
-}
-
-// THE PINNED LINE IS PINNED. The page opens stuck to its bottom edge and follows
-// the actions down, and a page longer than the frame scrolls — the pinned line
-// stays under the title at the bottom, part way up, and back at the bottom
-// again, while the newest action is what the bottom shows.
-func TestAProgramsPinnedLineSurvivesScrollingToTheBottom(t *testing.T) {
-	row := programRow()
-	var actions []delegate.Shown
-	for i := 1; i <= 40; i++ {
-		actions = append(actions, delegate.Shown{At: programRunBegan.Add(time.Duration(i) * 10 * time.Second), Step: "implement", Text: "ran step " + itoa(i), Outcome: "passes"})
-	}
-	page := programPage(row, nil)
-	page.Program.Actions, page.Program.Calls = actions, 40
-	a, _ := programPageApp(t, page, 80, 20)
-	pinned := "implement · $1.24 · 40 calls · 14m 3s"
-	check := func(when string) []string {
-		t.Helper()
-		lines := programPageLines(a)
-		if lines[1] != pinned {
-			t.Fatalf("%s: the row under the title is %q, want the pinned line %q", when, lines[1], pinned)
-		}
-		return lines
-	}
-	lines := check("opened")
-	if !strings.Contains(strings.Join(lines, "\n"), "ran step 40") {
-		t.Fatalf("a page opened at its bottom edge does not show the newest action:\n%s", strings.Join(lines, "\n"))
-	}
-	for i := 0; i < 12; i++ {
-		drive(t, a, key("up"))
-	}
-	if a.taskSheet.planStick {
-		t.Fatal("scrolling up left the page stuck to its bottom edge")
-	}
-	check("scrolled up")
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyPgDown})
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyPgDown})
-	if !a.taskSheet.planStick {
-		t.Fatal("scrolling back to the bottom did not take the follow up again")
-	}
-	lines = check("back at the bottom")
-	if !strings.Contains(strings.Join(lines, "\n"), "ran step 40") {
-		t.Fatalf("back at the bottom, the newest action is not on screen:\n%s", strings.Join(lines, "\n"))
+	if a.programOf() == nil {
+		t.Fatal("typing into a program's room closed it")
 	}
 }
 
@@ -303,7 +287,7 @@ func TestTheCallInFlightLeavesWhenItReturns(t *testing.T) {
 	back := programPage(row, programTurns())
 	back.Program.Turns[2].Ended = taskFixtureNow
 	back.Program.Actions = append(back.Program.Actions, delegate.Shown{At: taskFixtureNow, Step: "implement", Text: "ran go test ./internal/auth/...", Outcome: "passes"})
-	fake.pages[row.ID] = back
+	fake.pages[row.ID], fake.pages[planTaskIDWord(row.ID)] = back, back
 	planBeat(t, a)
 	lines := programPageLines(a)
 	page := strings.Join(lines, "\n")
@@ -327,8 +311,8 @@ func TestAProgramsPageDrawsNothingForZeroOrUnknown(t *testing.T) {
 	page.Program.Calls, page.Program.Actions = 0, nil
 	a, _ := programPageApp(t, page, 80, 20)
 	lines := programPageLines(a)
-	if lines[1] != "running" {
-		t.Fatalf("the pinned line of a program that has said nothing is %q, want its state word alone", lines[1])
+	if pinned := programPinnedLine(t, lines); pinned != "running" {
+		t.Fatalf("the pinned line of a program that has said nothing is %q, want its state word alone", pinned)
 	}
 	text := strings.Join(lines, "\n")
 	for _, never := range []string{"$0.00", "0 calls", "0s", actEarlierWord} {
@@ -348,8 +332,8 @@ func TestAProgramsPageDrawsNothingForZeroOrUnknown(t *testing.T) {
 	if strings.Contains(done, b.icon(tokens.GStepRunning)) {
 		t.Fatalf("an ended run's page draws a call in flight:\n%s", done)
 	}
-	if lines := programPageLines(b); lines[1] != "done · $1.24 · 3 calls · 13m 3s" {
-		t.Fatalf("an ended run's pinned line is %q, want its state, spend, calls and the age it ended at", lines[1])
+	if pinned := programPinnedLine(t, programPageLines(b)); pinned != "done · $1.24 · 3 calls · 13m 3s" {
+		t.Fatalf("an ended run's pinned line is %q, want its state, spend, calls and the age it ended at", pinned)
 	}
 }
 
@@ -451,11 +435,14 @@ func TestAProgramsPageAtNarrowWidthAndWithEarlierActions(t *testing.T) {
 	if !strings.Contains(text, "142 "+actEarlierWord) {
 		t.Fatalf("the page does not say how many earlier actions it leaves out:\n%s", text)
 	}
-	if !strings.HasPrefix(lines[1], "implement · $1.24 of $5.00") {
-		t.Fatalf("the pinned line is %q, want the ceiling beside the spend", lines[1])
+	if pinned := a.programPinned(page, 80, ""); !strings.HasPrefix(pinned, "implement · $1.24 of $5.00") {
+		t.Fatalf("the pinned line is %q, want the ceiling beside the spend", pinned)
 	}
-	if !strings.Contains(text, "\n EXPLORE\n") || !strings.Contains(text, "\n   read internal/auth/") {
-		t.Fatalf("at forty columns the step words do not stand on lines of their own:\n%s", text)
+	// THE STEP WORDS STAND ON LINES OF THEIR OWN where the words beside them
+	// would have too little room.
+	stacked := strings.Join(a.programBody(page, 38, false, false), "\n")
+	if stacked = plain(stacked); !strings.Contains(stacked, "\nEXPLORE\n") || !strings.Contains(stacked, "\n  read internal/auth/") {
+		t.Fatalf("in thirty-eight columns the step words do not stand on lines of their own:\n%s", stacked)
 	}
 	for i, line := range lines {
 		if cells := ansi.StringWidth(line); cells > 40 {
@@ -526,14 +513,16 @@ func TestALongRunFromBeforeTheActionLogSaysHowManyCallsItLeavesOut(t *testing.T)
 // turns it back to the actions.
 func TestTheRawCallsAreOneKeyAway(t *testing.T) {
 	a, _ := programPageApp(t, programPage(programRow(), programTurns()), 80, 30)
+	// The key row is the room's foot, under the box.
+	keys := func() string { frame, _, _ := a.frame(); return plain(frame) }
 	page := strings.Join(programPageLines(a), "\n")
-	if !strings.Contains(page, programCallsWord) || strings.Contains(page, "I'll read the middleware") {
+	if !strings.Contains(keys(), programCallsWord) || strings.Contains(page, "I'll read the middleware") {
 		t.Fatalf("the actions do not offer the calls, or draw them:\n%s", page)
 	}
 	drive(t, a, key(programCallsKey))
 	lines := programPageLines(a)
 	calls := strings.Join(lines, "\n")
-	if !saidBy(lines, "deepseek-v4-flash", "I'll read the middleware and the store first.") || !strings.Contains(calls, programActionsWord) {
+	if !saidBy(lines, "deepseek-v4-flash", "I'll read the middleware and the store first.") || !strings.Contains(keys(), programActionsWord) {
 		t.Fatalf("the key did not turn the page to its calls:\n%s", calls)
 	}
 	drive(t, a, key(programCallsKey))
@@ -555,7 +544,7 @@ func TestDrawingAProgramsPageReadsNothing(t *testing.T) {
 	rows, pages := counted.rows, counted.pages
 	for i := 0; i < 3; i++ {
 		programPageLines(a)
-		a.taskSheet.planCalls = !a.taskSheet.planCalls
+		a.programOf().calls = !a.programOf().calls
 	}
 	if counted.rows != rows || counted.pages != pages {
 		t.Fatalf("drawing the page read the agent: rows %d→%d, pages %d→%d", rows, counted.rows, pages, counted.pages)
@@ -622,7 +611,7 @@ func TestAProgramsRunOpensNoWorkTab(t *testing.T) {
 	if tab, ok := a.workTab(); ok {
 		t.Fatalf("the program's run is offered a tab of its own, %q", tab.word)
 	}
-	if cmd := a.openWorkTab(); cmd != nil || a.workTabOn {
+	if cmd := a.openWorkTab(); cmd != nil || a.roomPlan() != nil {
 		t.Fatal("the work tab opened on a program's run")
 	}
 }
@@ -681,8 +670,8 @@ func TestEveryDoorIntoAProgramsTaskOpensItsActions(t *testing.T) {
 			a, fake := planAppWith(t, []session.PlanTaskRow{row}, map[string]session.PlanTaskPage{"7": programPage(row, programTurns())})
 			a.width, a.height = 120, 28
 			a.openRoomFor(7, row.Title)
-			if a.programOf() == nil || a.railTaskPlanOn || a.taskSheet.planOn {
-				t.Fatalf("the door did not open the program's room: room=%v railPage=%v page=%v", a.room != nil, a.railTaskPlanOn, a.taskSheet.planOn)
+			if a.programOf() == nil {
+				t.Fatalf("the door did not open the program's room: room=%v", a.room != nil)
 			}
 			cmd := a.takeRoomPump()
 			if cmd == nil {
@@ -755,9 +744,6 @@ func TestARoomOpenedOnAProgramsTaskBecomesItsRoom(t *testing.T) {
 	drive(t, a, cmd())
 	if a.programOf() == nil || a.room.id != 7 {
 		t.Fatalf("the room did not become the program's room: room=%v", a.room != nil)
-	}
-	if a.railTaskPlanOn || a.taskSheet.planOn {
-		t.Fatal("the program's task was drawn as a page over the conversation")
 	}
 	if text := roomText(a); !strings.Contains(text, "wrote your brief down as its spec") {
 		t.Fatalf("the room does not show the program's actions:\n%s", text)

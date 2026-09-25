@@ -295,7 +295,7 @@ func (a *app) roomTitleRow(width int) string {
 	right, painted := "", ""
 	if node := a.roomNode(); node != nil && a.programOf() == nil {
 		f := a.roomFactsOf(node)
-		right = rowAll([]rowField{f.state, f.live, f.clock, f.spend})
+		right = rowAll([]rowField{f.state, f.live, f.clock, f.spend, f.model, f.tokens})
 		state := rowAll([]rowField{f.state})
 		painted = a.taskStateInk(node)(state) + a.pal.muted(strings.TrimPrefix(right, state))
 	} else if a.programOf() != nil {
@@ -402,7 +402,9 @@ func taskSetupLater(node *taskNode) bool {
 }
 
 func taskSetupAvailable(node *taskNode) bool {
-	if node == nil || node.run != "" {
+	// A ROW LENT TO A RUN'S TASK HAS NO NODE TO SET UP: its worker is the run's,
+	// and no door here reaches it (planroom.go).
+	if node == nil || node.run != "" || node.planRow != nil {
 		return false
 	}
 	if node.state == session.TaskRunning || node.state == session.TaskQueued {

@@ -190,6 +190,25 @@ all re-fit it. Only the overflow folds. The conversation keeps exactly the last 
 calls in the no-caption fallback above a line reading `N earlier tool calls · ctrl+o`,
 and scrolling the conversation never opens a fold — `ctrl+o` or a click does.
 
+## See what a task changed: the `transcript` and `work` tabs, and the `tab` key
+
+Two tabs are named at the right of the top line, beside the way back: `transcript` and
+`work`. They are there for every task on either engine. `transcript` is everything this
+manual describes: the brief, the steps, the notes and the report. `work` shows the files
+changed.
+
+- On this window's own engine, `work` lists the files once the task has landed:
+  `files this task changed`, or `this task changed no files`. Before it lands it says
+  `the files this task changes are listed here when it lands`.
+- On a run's task, `work` is the run's working copy read against the commit it was cut
+  from: the difference, and the files added, with the files codeaf keeps there left out.
+  The whole run shares that one copy, and the tab says so at its top. Once the run has
+  ended its copy is given back, and the tab reads the work off the run's branch instead.
+  With that branch gone too, it says `the run's working copy is not here any more`.
+
+`tab` over an empty box moves from one tab to the other, and a click on a tab's name opens
+it. With words in the box, `tab` is the box's own key.
+
 ## What the line at the top of a task's page tells you
 
 **It is drawn under the conversation tabs, not above them.** Those say which conversation
@@ -408,12 +427,11 @@ the page says it in one dim line, above whatever else it already knows:
 - a read that came back with an error says `couldn't read this task's conversation ·
   retrying`, which is a different fact from either of the two above and keeps its beat
 
-**A run's task page follows its newest step the same way.** The page `enter` opens on a run's
-row — a row drawn in the tasks place — keeps up with the work: the newest step walks in at the
-bottom, and the page stays stuck to that live edge until you scroll up, which releases it.
-Scrolling back to the bottom resumes the follow, and a page on a task that has settled is a
-still page, never re-read. The step being run right now is drawn one step early, the running
-glyph beside its command.
+**A run's task follows its newest step the same way.** A task on the run engine opens this
+same room, read from the run's store, and keeps up with the work: the newest step walks in at
+the bottom, and the room stays stuck to that live edge until you scroll up, which releases it.
+Scrolling back to the bottom resumes the follow, and a room on a task that has settled is a
+still page, never re-read. The step being run right now is the newest call, drawn running.
 
 ## Why is a task I just started showing an empty page
 
@@ -587,11 +605,13 @@ until you answer it. A task that is still running is never refused: if nobody is
 to read you — it is being checked, or its worker has just closed — the line is held on the
 task's record instead, which the clause above says out loud.
 
-**A run task's page carries this box too**, and it says when the note is read rather than merely
-saved. Under the box the run page writes `the worker reads a note at its next step`: the note
-goes to the task's store and waits until the worker asks for its next step, which is when it
-reads what you wrote. A task that has ended, `done` or `incomplete`, takes no next step, so
-its page leaves that sentence out.
+**A run task's room carries this box too**, and it says when the note is read rather than merely
+saved. Once the store has the note the room writes `the worker reads a note at its next step`
+under it: the note waits in the store until the next step, which is when it is read. Once the
+work has ended, `done` or `incomplete`, there is no next step, so the room leaves that sentence
+out and takes no note: `enter` says `this task has finished` and where to say them instead, and
+leaves them in the box. A note the store refuses for another reason shows the store's own
+sentence on the line you typed.
 
 ## Task page says finished but the work is still running
 
@@ -749,7 +769,7 @@ tree's own connectors (`├─`, `└─`). A part that is running says the comm
 on, such as `bash go test ./...`, and under that how long it has run and what it
 has cost, each left out when the store has not got it.
 
-Select any row there and press `enter` to open that task's page. Press `esc` to
-return to the page you came from; the trail at the top of the page reads
-`<conversation> ▸ <parent title> ▸ <this task>` so you can see where it returns.
-This opens a page rather than changing the rail's fold.
+Click any row there to open that task's room. The trail at the top of the room reads
+`<conversation> ▸ <parent title> ▸ <this task>`, and a click on the parent's name in it
+opens the parent's room again. `esc` returns to the conversation. This opens a room
+rather than changing the rail's fold.

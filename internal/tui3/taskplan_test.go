@@ -13,10 +13,8 @@ import (
 	"testing"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
@@ -215,9 +213,7 @@ func firstRowsReadHome(t *testing.T, a *app) {
 // openWorkTabNow opens the run's tab and answers the page read it asks for.
 func openWorkTabNow(t *testing.T, a *app) {
 	t.Helper()
-	if cmd := a.openWorkTab(); cmd != nil {
-		drive(t, a, cmd())
-	}
+	spend(t, a, a.openWorkTab())
 }
 
 // planLine is the drawn line a row's title is on, and whether there is one.
@@ -275,91 +271,6 @@ func TestThePaneDrawsThisChatsPlanRowsWithTheirStateWords(t *testing.T) {
 	}
 }
 
-// ENTER OPENS THE PAGE THE STORE KEEPS: the description, the notes with their
-// moment and `you` on the person's own, and the trajectory's steps, each command
-// on its own line.
-func TestEnterOnAPlanRowDrawsItsPage(t *testing.T) {
-	rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "claimed"}}
-	pages := map[string]session.PlanTaskPage{
-		"t-alpha": {
-			Row:         rows[0],
-			Description: "the work order",
-			Notes: []session.PlanTaskNote{
-				{Author: "worker-1", Body: "a handoff", At: taskFixtureNow},
-				{Author: "7", Body: "landed on work: 2 files", At: taskFixtureNow},
-				{Author: "person-handle", Person: true, Body: "mind the vault", At: taskFixtureNow},
-			},
-			Steps: []session.PlanStep{
-				{Step: 1, Command: "$ echo one", Observation: "one"},
-				{Step: 2, Command: "$ echo two", Observation: "two"},
-				{Step: 3, Command: "$ echo three", Observation: "three"},
-			},
-		},
-	}
-	a, _ := planAppWith(t, rows, pages)
-	if !openTaskPlaceWithRows(a) {
-		t.Fatal("the place refused to open over a plan")
-	}
-	if item, ok := a.taskSheetCurrent(); !ok || item.plan == nil {
-		t.Fatalf("the cursor is not on a plan row: %+v", item.entry)
-	}
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-	if !a.taskSheet.planOn {
-		t.Fatal("enter over a plan row did not open its page")
-	}
-	page := taskSheetText(a)
-	for _, want := range []string{"the work order", "a handoff", "landed on work: 2 files", "mind the vault", "you", "$ echo one", "$ echo two", "$ echo three"} {
-		if !strings.Contains(page, want) {
-			t.Fatalf("the plan page is missing %q:\n%s", want, page)
-		}
-	}
-	// AN AUTHOR IS A WORD A PERSON WOULD RECOGNISE OR IT IS NOT DRAWN. The person
-	// is `you`; a worker's handle, the run's own number and the person's store
-	// handle are ids, and no id of the store's is anywhere on the page.
-	for _, never := range []string{"worker-1", "person-handle", "t-alpha", "7 " + strings.TrimSpace(railSep)} {
-		if strings.Contains(page, never) {
-			t.Fatalf("the plan page draws the store's own id %q:\n%s", never, page)
-		}
-	}
-	// THE HEAD OPENS ON THE TASK AS GIVEN TO THE PERSON: title, a folded brief,
-	// and declared checks. Worker-only addressing, the run copy, and ids never leak.
-	a.taskSheet.plan = session.PlanTaskPage{
-		Row:         rows[0],
-		Description: "first line of the brief\nsecond line\nthird line\nfourth line with t-store-secret and node 47",
-		Checks:      []string{"go test ./internal/tui3"},
-		Folder:      "/tmp/the-run-copy",
-		Steps: []session.PlanStep{{Step: 1, Command: "cd /tmp/the-run-copy && printf worker-bytes", Parts: []session.PlanCommandPart{
-			displayPart("cd /tmp/the-run-copy", " && ", false, true), displayPart("printf worker-bytes", "", false, false),
-		}}},
-	}
-	page = taskSheetText(a)
-	for _, want := range []string{"Alpha", "first line of the brief", "third line", "more lines", "checks", "go test ./internal/tui3", "printf worker-bytes"} {
-		if !strings.Contains(page, want) {
-			t.Fatalf("the plan page head is missing %q:\n%s", want, page)
-		}
-	}
-	for _, forbidden := range []string{"t-alpha", "t-store-secret", "node 47", "is your task in the plan"} {
-		if strings.Contains(page, forbidden) {
-			t.Fatalf("the person-facing page leaked %q:\n%s", forbidden, page)
-		}
-	}
-	if strings.Contains(page, "/tmp/the-run-copy") {
-		t.Fatalf("page drew the run copy path:\n%s", page)
-	}
-	if strings.Contains(page, "cd /tmp/the-run-copy") {
-		t.Fatalf("the page repeated its own folder in a command row:\n%s", page)
-	}
-	if got := a.taskSheet.plan.Steps[0].Command; got != "cd /tmp/the-run-copy && printf worker-bytes" {
-		t.Fatalf("drawing changed the recorded command to %q", got)
-	}
-
-	// AND esc BACKS OUT ONE LAYER to the list, the card's own bargain.
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEscape})
-	if a.taskSheet.planOn || !a.at(pageTasks) {
-		t.Fatal("esc did not back out of the plan page to the list")
-	}
-}
-
 // THE CANCEL KEY A NODE ROW HAS ENDS A PLAN TASK, through the store's own
 // cancel verb rather than the engine's (plandb_steer.go). It is the roster's
 // `x`, taken over an empty box exactly as a node row takes it, so the same key
@@ -414,41 +325,6 @@ func TestPOnAPlanRowPausesThenResumes(t *testing.T) {
 	}
 }
 
-// TYPING ON THE PAGE IS A NOTE AND NOT A CHAT TURN: the words go to the store's
-// note verb and never to the model, the composer says what typing there does,
-// and a note is sent with enter.
-func TestSendingOnThePlanPageWritesANoteAndStartsNoTurn(t *testing.T) {
-	rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "claimed"}}
-	pages := map[string]session.PlanTaskPage{
-		"t-alpha": {Row: rows[0], Description: "the work order"},
-	}
-	a, fake := planAppWith(t, rows, pages)
-	if !openTaskPlaceWithRows(a) {
-		t.Fatal("the place refused to open over a plan")
-	}
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-	if !a.taskSheet.planOn {
-		t.Fatal("enter over a plan row did not open its page")
-	}
-	if !strings.Contains(taskSheetText(a), taskPlanNoteWord) {
-		t.Fatalf("the page's composer does not say what typing there does:\n%s", taskSheetText(a))
-	}
-	for _, r := range "a note" {
-		drive(t, a, key(string(r)))
-	}
-	if got := a.taskSheet.planNote.String(); got != "a note" {
-		t.Fatalf("the composer holds %q, want %q", got, "a note")
-	}
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-	want := planCall{id: "t-alpha", text: "a note"}
-	if len(fake.noted) != 1 || fake.noted[0] != want {
-		t.Fatalf("enter wrote %v, want one note %+v", fake.noted, want)
-	}
-	if len(fake.sent) != 0 {
-		t.Fatalf("sending a note started a chat turn: %v", fake.sent)
-	}
-}
-
 // A REFUSAL FROM A VERB IS THE PANE'S ONE LINE, the sentence the store
 // answered — never a card, which a place cannot draw over itself. It is read on
 // the list, where the router's line rides beside the hint.
@@ -468,28 +344,6 @@ func TestAPlanVerbRefusalIsSpokenOnThePanesLine(t *testing.T) {
 	}
 	if !strings.Contains(taskSheetText(a), "cannot be cancelled") {
 		t.Fatalf("the refusal is not drawn:\n%s", taskSheetText(a))
-	}
-}
-
-// AND THE DEFAULT PAGE DRAWS IT TOO, on its closing rule, because the page draws
-// its own frame and the router's line has no place on it.
-func TestAPlanVerbRefusalIsSpokenOnThePage(t *testing.T) {
-	// AN ORDINARY TASK HANGS UNDER ITS RUN, as every row the engine answers for
-	// one does; a row under nothing is the run's own task, whose stop is the
-	// card's and which nothing holds (stoprun_page_test.go).
-	rows := []session.PlanTaskRow{{ID: "t-alpha", Parent: "t-run", Title: "Alpha", Status: "claimed"}}
-	pages := map[string]session.PlanTaskPage{
-		"t-alpha": {Row: rows[0], Description: "the work order"},
-	}
-	a, fake := planAppWith(t, rows, pages)
-	fake.refuse = errors.New("a task that has finished cannot be paused")
-	if !openTaskPlaceWithRows(a) {
-		t.Fatal("the place refused to open over a plan")
-	}
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-	drive(t, a, key("p"))
-	if !strings.Contains(taskSheetText(a), "cannot be paused") {
-		t.Fatalf("the page does not draw the store's refusal:\n%s", taskSheetText(a))
 	}
 }
 
@@ -694,178 +548,6 @@ func appendPlanStep(fake *planFake, id string, n int) {
 	fake.pages[id] = page
 }
 
-// openPlanPage opens the tasks place over the fixture and enters the plan page
-// under the cursor, the two keys a person presses.
-func openPlanPage(t *testing.T, a *app) {
-	t.Helper()
-	if !openTaskPlaceWithRows(a) {
-		t.Fatal("the place refused to open over a plan")
-	}
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-	if !a.taskSheet.planOn {
-		t.Fatal("enter over a plan row did not open its page")
-	}
-}
-
-// A PAGE OPEN ON A RUNNING TASK FOLLOWS ITS LIVE EDGE: a step the worker takes
-// while somebody reads is at the bottom of the page at the next frame, exactly
-// as the room follows its own live edge. It is that same reading-on-the-beat,
-// spent on the store rather than a journal ([app.taskPlanFollow]).
-func TestThePlanPageFollowsAStepAppendedWhileItIsOpen(t *testing.T) {
-	rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "claimed"}}
-	pages := map[string]session.PlanTaskPage{"t-alpha": planPageWithSteps(rows[0], 30)}
-	a, fake := planAppWith(t, rows, pages)
-	openPlanPage(t, a)
-
-	if !strings.Contains(taskSheetText(a), planStepCommand(30)) {
-		t.Fatalf("a page stuck to the live edge did not draw its newest step:\n%s", taskSheetText(a))
-	}
-	// THE STORE MOVES UNDER IT, the way it does while a worker runs.
-	appendPlanStep(fake, "t-alpha", 31)
-	planBeat(t, a)
-	if !strings.Contains(taskSheetText(a), planStepCommand(31)) {
-		t.Fatalf("the page did not follow the step appended while it was open:\n%s", taskSheetText(a))
-	}
-}
-
-// planBeat is the paint clock turning once, one beat after the page was last
-// read: the follow is taken on the rail's own beat and not on every tick
-// ([app.taskPlanFollow]), so a fixture that wants the page to have caught up
-// moves its clock a beat on and then offers the frame.
-func planBeat(t *testing.T, a *app) {
-	t.Helper()
-	at := a.now().Add(elsewhereEvery)
-	a.clock = func() time.Time { return at }
-	drive(t, a, frameMsg{})
-}
-
-// AND A SCROLL UP RELEASES THE PIN, so the newest step no longer walks in from
-// under the reader — until they reach the bottom again, which takes the pin
-// back. It is the room's own bargain ([app.roomScroll], [app.taskPlanScroll]).
-func TestScrollUpOnThePlanPageStopsTheFollow(t *testing.T) {
-	rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "claimed"}}
-	pages := map[string]session.PlanTaskPage{"t-alpha": planPageWithSteps(rows[0], 30)}
-	a, fake := planAppWith(t, rows, pages)
-	openPlanPage(t, a)
-
-	for i := 0; i < 3; i++ {
-		drive(t, a, key("up"))
-	}
-	if a.taskSheet.planStick {
-		t.Fatal("scrolling up left the page pinned to the live edge")
-	}
-	appendPlanStep(fake, "t-alpha", 31)
-	planBeat(t, a)
-	if strings.Contains(taskSheetText(a), planStepCommand(31)) {
-		t.Fatalf("the page followed a step after somebody scrolled up off the edge:\n%s", taskSheetText(a))
-	}
-	// AND REACHING THE BOTTOM AGAIN RESUMES IT.
-	for i := 0; i < 16; i++ {
-		drive(t, a, key("down"))
-	}
-	if !a.taskSheet.planStick {
-		t.Fatal("scrolling back to the bottom did not take the pin again")
-	}
-	appendPlanStep(fake, "t-alpha", 32)
-	planBeat(t, a)
-	if !strings.Contains(taskSheetText(a), planStepCommand(32)) {
-		t.Fatalf("the page did not resume following at the bottom:\n%s", taskSheetText(a))
-	}
-}
-
-// A NOTE LEFT ON THE PAGE IS THE PAGE'S OWN RECEIPT: the words go to the store,
-// the page is read again, and the note is drawn under `notes` with its author —
-// `you` for the person — and its moment. It starts no chat turn (it is not a
-// message to the model), which the note test next door already holds.
-func TestANoteLeftOnThePlanPageAppearsWithYouAndItsMoment(t *testing.T) {
-	rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "claimed"}}
-	pages := map[string]session.PlanTaskPage{"t-alpha": {Row: rows[0], Description: "the work order"}}
-	a, fake := planAppWith(t, rows, pages)
-	openPlanPage(t, a)
-
-	for _, r := range "a longer sleep" {
-		drive(t, a, key(string(r)))
-	}
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-	if len(fake.noted) != 1 || fake.noted[0] != (planCall{id: "t-alpha", text: "a longer sleep"}) {
-		t.Fatalf("enter wrote %v, want one note on t-alpha", fake.noted)
-	}
-	page := taskSheetText(a)
-	for _, want := range []string{"notes", "you", "now", "a longer sleep"} {
-		if !strings.Contains(page, want) {
-			t.Fatalf("the note's receipt is missing %q:\n%s", want, page)
-		}
-	}
-}
-
-// THE PAGE ALSO SAYS WHEN A NOTE IS READ — the worker is a separate loop, so a
-// note waits in the store until the worker asks for its next step. That sentence
-// is on the page, not only in the manual, because the page is where the box is.
-func TestThePlanPageSaysWhenANoteIsRead(t *testing.T) {
-	rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "claimed"}}
-	pages := map[string]session.PlanTaskPage{"t-alpha": {Row: rows[0], Description: "the work order"}}
-	a, _ := planAppWith(t, rows, pages)
-	openPlanPage(t, a)
-	if !strings.Contains(taskSheetText(a), taskPlanPickupWord) {
-		t.Fatalf("the page does not say when a note is read:\n%s", taskSheetText(a))
-	}
-}
-
-// A SENTENCE THAT HAS STOPPED BEING TRUE IS ABSENT. A task that has ended takes
-// no further step, so its page never says a worker reads a note at its next
-// one; a task that can still move keeps the sentence.
-func TestAnEndedTasksPageNeverPromisesANextStep(t *testing.T) {
-	for _, tc := range []struct {
-		status string
-		said   bool
-	}{
-		{"claimed", true},
-		{"paused", true},
-		{"done", false},
-		{"failed", false},
-		{"cancelled", false},
-	} {
-		rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: tc.status}}
-		pages := map[string]session.PlanTaskPage{"t-alpha": {Row: rows[0], Description: "the work order"}}
-		a, _ := planAppWith(t, rows, pages)
-		openPlanPage(t, a)
-		if got := strings.Contains(taskSheetText(a), taskPlanPickupWord); got != tc.said {
-			t.Fatalf("a %s task's page says %q: %v, want %v:\n%s", tc.status, taskPlanPickupWord, got, tc.said, taskSheetText(a))
-		}
-	}
-}
-
-// THE LIVE STEP IS DRAWN ONE STEP EARLY and leaves the page when the task ends:
-// the running glyph in place of the number, the command in ink, and the call's
-// own clock dim under it — and the next read after the store cleared the live
-// row draws none of it (taskPlanBody, internal/plandb's live.go).
-func TestTheLiveStepLeavesThePlanPageWhenTheTaskEnds(t *testing.T) {
-	rows := []session.PlanTaskRow{{ID: "t-alpha", Title: "Alpha", Status: "claimed", Steps: 3}}
-	page := planPageWithSteps(rows[0], 3)
-	page.Live = plandb.LiveStep{Step: 4, Command: "go test ./...", Since: taskFixtureNow.Add(-41 * time.Second)}
-	pages := map[string]session.PlanTaskPage{"t-alpha": page}
-	a, fake := planAppWith(t, rows, pages)
-	openPlanPage(t, a)
-
-	text := taskSheetText(a)
-	if !strings.Contains(text, "$ go test ./...") {
-		t.Fatalf("the live step's command is not on the page:\n%s", text)
-	}
-	if !strings.Contains(text, "running 41s") {
-		t.Fatalf("the live step's clock is not under it:\n%s", text)
-	}
-	// THE TASK ENDS: the store clears the live row and the root lands.
-	ended := fake.pages["t-alpha"]
-	ended.Live = plandb.LiveStep{}
-	ended.Row.Status = "done"
-	fake.pages["t-alpha"] = ended
-	planBeat(t, a)
-	text = taskSheetText(a)
-	if strings.Contains(text, "go test ./...") {
-		t.Fatalf("the live step outlived the task that was running it:\n%s", text)
-	}
-}
-
 // planDrawnKin is the connector cell the place draws each plan row with, in draw
 // order and keyed by the row's own id — the layout the place actually paints, so
 // a test reads the same string the person does.
@@ -991,78 +673,6 @@ func TestThePlanTreeDrawsTheLiveStepAtTheNodesIndentation(t *testing.T) {
 	}
 }
 
-// STEERING IS UNCHANGED BY THE TREE: a note left on a CHILD from its page still
-// lands through PlanNote, on the child's own id.
-func TestANoteOnAPlanChildStillLandsThroughPlanNote(t *testing.T) {
-	alpha := session.PlanTaskRow{ID: "t-alpha", Title: "Alpha", Parent: "t-root", Status: "claimed"}
-	rows := []session.PlanTaskRow{{ID: "t-root", Title: "Root", Status: "claimed"}, alpha}
-	pages := map[string]session.PlanTaskPage{"t-alpha": {Row: alpha, Description: "the work order"}}
-	a, fake := planAppWith(t, rows, pages)
-	if !openTaskPlaceWithRows(a) {
-		t.Fatal("the place refused to open over a plan")
-	}
-	var want session.TaskIndexEntry
-	for _, item := range a.tasksFiltered().items {
-		if item.plan != nil && item.entry.ID == "t-alpha" {
-			want = item.entry
-		}
-	}
-	if want.ID == "" {
-		t.Fatal("the child row was not on the page to point at")
-	}
-	a.taskSheetPointAt(want)
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-	if !a.taskSheet.planOn {
-		t.Fatal("enter over the child row did not open its page")
-	}
-	for _, r := range "a longer sleep" {
-		drive(t, a, key(string(r)))
-	}
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-	wantNote := planCall{id: "t-alpha", text: "a longer sleep"}
-	if len(fake.noted) != 1 || fake.noted[0] != wantNote {
-		t.Fatalf("enter wrote %v, want one note %+v", fake.noted, wantNote)
-	}
-}
-
-// THE TASK'S PAGE SHOWS ITS CHILDREN UNDER ITS STEPS, each with its live line,
-// the way the rail draws a family — and leaves the note composer and its receipt
-// exactly where they were.
-func TestThePlanPageShowsChildrenUnderItsSteps(t *testing.T) {
-	root := session.PlanTaskRow{ID: "t-root", Title: "Root", Status: "running", Steps: 2}
-	child := session.PlanTaskRow{ID: "t-alpha", Title: "Alpha", Parent: "t-root", Status: "running", Steps: 3}
-	child.Live.Step = 3
-	child.Live.Command = "go test ./internal/api"
-	rows := []session.PlanTaskRow{root, child}
-	pages := map[string]session.PlanTaskPage{
-		"t-root": {
-			Row:      root,
-			Steps:    []session.PlanStep{{Step: 1, Command: "git status"}},
-			Children: []session.PlanTaskRow{child},
-		},
-	}
-	a, _ := planAppWith(t, rows, pages)
-	if !openTaskPlaceWithRows(a) {
-		t.Fatal("the place refused to open over a plan")
-	}
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-	if !a.taskSheet.planOn {
-		t.Fatal("enter over the root row did not open its page")
-	}
-	text := taskSheetText(a)
-	if !strings.Contains(text, "Alpha") {
-		t.Fatalf("the page does not draw the task's child:\n%s", text)
-	}
-	// THE CHILD IS THE RAIL'S ROW, and the rail names a call in flight the way a
-	// node row names one.
-	if !strings.Contains(text, "bash go test ./internal/api") {
-		t.Fatalf("the page does not draw the child's live line:\n%s", text)
-	}
-	if !strings.Contains(text, taskPlanNoteWord) {
-		t.Fatalf("the tree changed the page's note composer:\n%s", text)
-	}
-}
-
 // THE RUN'S PLAN IS READ AGAIN ON ITS OWN BEAT, WHATEVER ELSE THE WINDOW KNOWS.
 // A run's workers move the store and publish nothing, so a part the run added is
 // on the rail only once the plan has been read again. That read rode on the
@@ -1102,93 +712,5 @@ func TestPlanRailAndTreeOmitTheNamedFolderFromLiveCommands(t *testing.T) {
 	text := planTextFor(t, []session.PlanTaskRow{root, child})
 	if strings.Contains(text, "cd /tmp/run-copy") || !strings.Contains(text, "$ go test ./internal/tui3") || !strings.Contains(text, "$ go vet ./internal/session") {
 		t.Fatalf("rail/tree command display did not omit only the named folder:\n%s", text)
-	}
-}
-
-// A TASK THAT HAS ENDED IS OFFERED NEITHER VERB. The store refuses to stop or
-// hold work that is done or incomplete, so naming both keys under a finished
-// task was two offers that could only be refused.
-func TestAFinishedTasksPageOffersNoVerbItWouldRefuse(t *testing.T) {
-	for _, tc := range []struct {
-		status string
-		want   []string
-		never  []string
-	}{
-		{"running", []string{tasksPlanCancelWord, tasksPlanPauseWord}, []string{tasksPlanResumeWord}},
-		{"paused", []string{tasksPlanCancelWord, tasksPlanResumeWord}, []string{tasksPlanPauseWord}},
-		{"done", nil, []string{tasksPlanCancelWord, tasksPlanPauseWord, tasksPlanResumeWord}},
-		{"failed", nil, []string{tasksPlanCancelWord, tasksPlanPauseWord, tasksPlanResumeWord}},
-		{"cancelled", nil, []string{tasksPlanCancelWord, tasksPlanPauseWord, tasksPlanResumeWord}},
-	} {
-		row := session.PlanTaskRow{ID: "t-1", Parent: "t-run", Title: "Alpha", Status: tc.status}
-		a, _ := planAppWith(t, []session.PlanTaskRow{row}, map[string]session.PlanTaskPage{"t-1": {Row: row}})
-		a.taskSheet.plan = session.PlanTaskPage{Row: row}
-		keys := a.taskPlanKeys()
-		for _, word := range tc.want {
-			if !strings.Contains(keys, word) {
-				t.Fatalf("a %s task's page does not offer %q: %s", tc.status, word, keys)
-			}
-		}
-		for _, word := range tc.never {
-			if strings.Contains(keys, word) {
-				t.Fatalf("a %s task's page offers %q, which the store would refuse: %s", tc.status, word, keys)
-			}
-		}
-		if !strings.Contains(keys, taskCardBackWord) {
-			t.Fatalf("a %s task's page lost its way back: %s", tc.status, keys)
-		}
-	}
-}
-
-// THE BRIEF SECTION DRAWS THE WORK ORDER THROUGH THE READER THE TRANSCRIPT
-// ALREADY USES. A store task's description can be the generated work order a
-// run hands its workers — the same document the conversation's own transcript
-// reshapes through [requestDisplayText] — and a page that drew it raw opened on
-// the machinery addressed to the model: the shouted scaffold heading, the rule
-// under it, and only then the person's ask. A person must never read machinery,
-// so the page draws the brief through the reader's own reshaping: plain
-// headings, this task's own work first. THE STORE'S TEXT IS THE STORE'S: only
-// the drawing changes, and a brief that is not the generated document draws
-// exactly as it always did.
-func TestThePlanPageDrawsItsBriefThroughTheRequestReader(t *testing.T) {
-	rows := []session.PlanTaskRow{{ID: "t-alpha", Parent: "t-run", Title: "Alpha", Status: "claimed"}}
-	// The generated opening and the shouted headings under it, with the
-	// person's own sentence carried in the work order's own work section.
-	brief := strings.Join([]string{
-		taskRequestAsk + "\nThis is the message the whole job came out of, and this task is ONE PIECE of it: preserve the scope.\n\nthe page a person opens for one task of a run draws that task's brief plainly",
-		"THE WORK\n\nthe page a person opens for one task of a run draws that task's brief through the reader the transcript already uses",
-		"DONE WHEN\n\nthe drawn lines carry the person's own sentence and no scaffold heading",
-	}, "\n\n")
-	pages := map[string]session.PlanTaskPage{
-		"t-alpha": {Row: rows[0], Description: brief},
-	}
-	a, _ := planAppWith(t, rows, pages)
-	if !openTaskPlaceWithRows(a) {
-		t.Fatal("the place refused to open over a plan")
-	}
-	if item, ok := a.taskSheetCurrent(); !ok || item.plan == nil {
-		t.Fatalf("the cursor is not on a plan row: %+v", item.entry)
-	}
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-	if !a.taskSheet.planOn {
-		t.Fatal("enter over a plan row did not open its page")
-	}
-	page := taskSheetText(a)
-	// THE DRAWN LINES CARRY THE PERSON'S OWN SENTENCE, under the reader's plain
-	// heading for the work, and none of the machinery the work order opens with.
-	for _, want := range []string{"brief", "Task request", "the page a person opens for one task of a run draws that task's brief through the reader"} {
-		if !strings.Contains(page, want) {
-			t.Fatalf("the plan page is missing %q:\n%s", want, page)
-		}
-	}
-	for _, never := range []string{taskRequestAsk, "ONE PIECE", "THE WORK", "DONE WHEN"} {
-		if strings.Contains(page, never) {
-			t.Fatalf("the plan page drew the work order's machinery %q:\n%s", never, page)
-		}
-	}
-	// THE STORED BRIEF DOES NOT CHANGE: the page drew through the reader and the
-	// sheet still holds the work order byte for byte.
-	if a.taskSheet.plan.Description != brief {
-		t.Fatalf("drawing changed the stored brief:\n%s", a.taskSheet.plan.Description)
 	}
 }

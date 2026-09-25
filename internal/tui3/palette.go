@@ -3275,7 +3275,11 @@ func (a *app) overlayRows(width, n int) []string {
 	case a.menu.open:
 		return a.menu.rows(width, n, a.pal, hover, a.chords)
 	case a.comp.open:
-		return a.comp.rows(width, n, a.pal, hover)
+		head := ""
+		if a.hot.kind == hoverOverlay {
+			head = a.hot.key
+		}
+		return a.comp.rows(width, n, a.pal, hover, head)
 	}
 	return nil
 }

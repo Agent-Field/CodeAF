@@ -1372,10 +1372,9 @@ func (a *app) standDownRest() {
 		a.closeRewindSheet(true)
 	}
 	a.closeJobPage()
-	// AND THE TASK PAGES THE BELT SWITCH DRAWS OVER THE CONVERSATION, which are
-	// drawn before any place is: a place opened under one of them was a place
-	// nobody could see (worktab.go's [app.leaveTaskOverlays]).
-	a.leaveTaskOverlays()
+	// AND A ROW'S PAGE STILL ON ITS WAY, which would open under the place
+	// (worktab.go's [app.withdrawRailPlan]).
+	a.withdrawRailPlan()
 }
 
 func (s *sheet) searching() bool { return strings.TrimSpace(s.query.String()) != "" }
