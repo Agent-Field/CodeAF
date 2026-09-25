@@ -235,6 +235,7 @@ func (a *app) wallFrame(width, height int) []string {
 		made:      a.wall.made,
 		madeN:     a.wall.madeN,
 		madeAt:    a.wall.madeAt,
+		madeSaid:  a.wall.madeSaid,
 		hover:     a.wall.hover,
 		choices:   a.wall.choices,
 		choice:    a.wall.choice,
@@ -796,12 +797,15 @@ func (a *app) wallMakeTeam(tiles []wallTile) tea.Cmd {
 	if err != nil {
 		a.note("the team is kept for this window, but " + err.Error())
 	}
+	// `Made` WAITS FOR THE STORE: the row says it once the write that carried
+	// this team is back, and says it was not saved if that write was refused.
+	a.wall.madeSaid = a.teamWriteWatch(err)
 	// THE VIEW STAYS WHERE IT WAS. A person making a team is usually sorting
 	// several at once, and a wall that jumped into the new one would hide the
 	// conversations they were about to sort next. The chip row names the team
 	// and its chip is one press away.
 	a.wall.marked = map[string]bool{}
-	a.wall.made, a.wall.madeN, a.wall.madeAt = made.Name, len(made.Members), time.Now()
+	a.wall.made, a.wall.madeN, a.wall.madeAt = made.Name, len(made.Members), a.now()
 	return nil
 }
 

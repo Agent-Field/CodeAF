@@ -1224,7 +1224,9 @@ other, timing a benchmark cell, or attributing a cost.
 
 It settles four things on your model: the crew's three seats and the two small rows, any role you pinned, the model
 that work leaving the conversation runs on, and the fallback chain codeaf would otherwise
-move to when a model cannot answer. Under this flag **nothing hops** — not on a refusal,
+move to when a model cannot answer. That includes every seat of a `/task` run — its worker,
+planner, checker and probe — whatever your crew rows say, and `CODEAF_CHECK_MODEL` stands
+down too. Under this flag **nothing hops** — not on a refusal,
 not on a reply that keeps stalling, not on rate limiting that will not clear — because a
 run whose cost is being attributed to one model cannot have finished a single reply on
 another. That includes the catalog's own guess: with no `fallback models` row written, an

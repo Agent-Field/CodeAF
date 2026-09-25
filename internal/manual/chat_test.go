@@ -49,6 +49,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"will closing a sub-team stop its manager if that manager is also in the parent team", "teams-page"},
 		{"the pane said the manager was open in another window", "teams-page"},
 		{"how do I reopen a closed team", "teams-page"},
+		{"why does my closed team say its report is not readable", "teams-page"},
+		{"can a team cap be less than a cent", "team-questions-and-caps"},
+		{"the wall said my team was not saved", "conversations-and-teams"},
+		{"how long does my team have left to wrap up", "team-questions-and-caps"},
+		{"does the conversations view show what each conversation spent", "conversations-and-teams"},
 		{"where do I change one team's settings", "teams-page"},
 		{"what does the ? 2 mark on a team mean", "teams-page"},
 		// Nesting on the teams page (teams-page.md).
@@ -808,6 +813,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I open my tasks on a phone", "tasks"},
 		{"how do I get back from a task on my phone", "tasks"},
 		{"do tasks touch my working copy", "how-tasks-run"},
+		// The run's checker is told the work is in its own copy; a person who
+		// saw it read their checkout asks in these words.
+		{"did the checker read my checkout instead of the task's copy", "how-tasks-run"},
+		{"can a task stop a job it started", "how-tasks-run"},
 		// C14: repository placement, protected landings and kept dependency
 		// inheritance are reachable in the words a person uses after meeting them.
 		{"why didn't my task merge", "how-tasks-run"},
@@ -2881,6 +2890,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// second road for a task and the plan pane a run draws, each asked the
 		// way somebody meets it rather than in the machinery's own words.
 		{"how do I pause a task", "worker-harness"},
+		{"why did __pycache__ files not land in my task's commit", "worker-harness"},
 		{"how do I open one part of a run from the side list", "worker-harness"},
 		{"can I add a note to a running task", "worker-harness"},
 		{"why did the task refuse my cancel", "worker-harness"},

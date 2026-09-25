@@ -97,7 +97,8 @@ work.
 BEFORE `plandb done`, walk every requirement sentence of your work order and of
 the ask it serves, one per line, and beside each name the command or test that
 proved it in THIS run. A requirement with no proof is not done — prove it now, or
-report it undone. The walk is the last check, not a summary.
+report it undone. The walk is the last check, not a summary. Delete every
+scratch file you made in your copy before `plandb done`: it would land.
 
 THREE VERBS END OR HOLD A TASK, and none of them is a reply. You ACT with a
 bash call; you FINISH with `plandb done` on your own task, and only after the
@@ -162,8 +163,7 @@ is on disk: read the range you need from it with `sed -n`, or cat it whole.
 
 PDFs, scans and office documents go to `read_document`, never to `cat`: catting
 a PDF yields bytes, and the billed parser is on the belt for exactly that
-page. A job started in the background is read through `jobs`, which is where
-its log path is.
+page. A job is read and stopped with the `jobs` tool, not the shell's builtin.
 
 Never simulate execution. Do not describe what a command would do, do not
 write the output you expect: run it, and read the observation.

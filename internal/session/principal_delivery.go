@@ -85,7 +85,7 @@ func anythingToCompare(root, branch string, changed []string) bool {
 		pathspec := ":(literal)" + path
 		branchArgs = append(branchArgs, pathspec)
 		workspaceArgs = append(workspaceArgs, pathspec)
-		wanted[strings.TrimSpace(path)] = true
+		wanted[path] = true
 	}
 	branchNames, branchErr := git(root, branchArgs...)
 	if namesOne(wanted, branchNames, branchErr) {
@@ -107,8 +107,8 @@ func namesOne(wanted map[string]bool, out string, err error) bool {
 	if err != nil {
 		return false
 	}
-	for _, name := range strings.Split(out, "\x00") {
-		if wanted[strings.TrimSpace(name)] {
+	for _, name := range gitNULPaths(out) {
+		if wanted[name] {
 			return true
 		}
 	}

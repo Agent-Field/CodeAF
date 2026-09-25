@@ -85,6 +85,10 @@ type wallOrganize struct {
 	// and added what the Teams row says while Undo is offered.
 	undo   []team
 	doneAt time.Time
+	// said ties `Organized` to the write that carried the Apply
+	// (teamwritesaid.go): nothing is said until it is back, and a refusal is
+	// said in its place.
+	said teamWriteSaid
 	// undoMade and undoJoins are what the last Apply did, the teams it made by
 	// id and the members it added, so Undo can take exactly those back.
 	undoMade   []string
@@ -718,6 +722,7 @@ func (a *app) wallOrganizeApply() {
 	if err != nil {
 		a.note("the teams are kept for this window, but " + err.Error())
 	}
+	o.said = a.teamWriteWatch(err)
 	for _, id := range closes {
 		if a.wall.activeID == id {
 			a.wall.activeID = ""
@@ -890,7 +895,18 @@ func wallOrgMarks(pal palette) (spark, check string) {
 // has changed. It is drawn nowhere else.
 func wallOrganizeButton(pal palette, g wallGlyphs, v wallView, y int) wallOrgPiece {
 	o := v.org
-	if !o.doneAt.IsZero() && v.now.Sub(o.doneAt) < wallOrganizedFor && v.now.Sub(o.doneAt) >= 0 {
+	if o.said.said() && o.said.why != "" && teamSaidWithin(o.doneAt, v.now, wallOrganizedFor) {
+		// A REFUSED APPLY SAYS SO where `Organized` would have been, and keeps
+		// its Undo: the teams it made are still in this window, and taking them
+		// back is what a person who reads this may want.
+		word := teamNotSaved("", o.said.why) + "  "
+		undo := wallButton{act: wallActOrgUndo, label: "Undo"}
+		hot := v.hover == wallHitRef{kind: wallHitAction, arg: int(wallActOrgUndo)}
+		ww, bw := ansi.StringWidth(word), wallButtonW(undo)
+		return wallOrgPiece{s: pal.warn(word) + wallButtonPaint(pal, undo, hot), w: ww + bw,
+			hits: []wallHit{{x0: ww, y0: y, x1: ww + bw, y1: y + 1, kind: wallHitAction, arg: int(wallActOrgUndo)}}}
+	}
+	if o.said.said() && teamSaidWithin(o.doneAt, v.now, wallOrganizedFor) {
 		var said []string
 		if o.made > 0 {
 			said = append(said, strconv.Itoa(o.made)+" new "+wallPlural(o.made, "team"))

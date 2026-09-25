@@ -283,7 +283,8 @@ func (f *File) CanNest(parent string, d Defaults) bool {
 }
 
 // SubTeamCap is the cap a new sub-team under parent is made with: the
-// parent's effective cap times its effective share, rounded to the cent. A
+// parent's effective cap times its effective share, rounded by [RoundMoney]
+// (to the cent, or finer under a cent, so a sub-cent share is not zero). A
 // parent with no cap gives none (0), and the sub-team then shares whatever
 // pool is above it. The caller writes the answer on the new team
 // ([File.SetSettings]), so a later change to the share moves no team that
@@ -293,5 +294,5 @@ func (f *File) SubTeamCap(parent string, d Defaults) float64 {
 	if e.CapUSDDay <= 0 {
 		return 0
 	}
-	return math.Round(e.CapUSDDay*e.SubShare*100) / 100
+	return RoundMoney(e.CapUSDDay * e.SubShare)
 }

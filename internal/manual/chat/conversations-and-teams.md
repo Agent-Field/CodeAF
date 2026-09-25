@@ -66,10 +66,15 @@ A tile reads top to bottom:
 - **the title** on the top border, the brightest thing in the tile, after the dots of the
   teams it is in (up to three, then `+N`)
 - **one dim line** saying what the conversation is doing now, like `running bash · 2m`,
-  `writing` or `? waiting on you · 3m`, or when it last moved, like `updated 5m ago`
+  `writing` or `? waiting on you · 3m`, or when it last moved, like `updated 5m ago`, and at
+  its right end **what the conversation has spent**, like `$0.42`: the same figure its own
+  status line shows, the work it started included. A conversation that has spent nothing
+  shows no figure, and on a narrow tile the figure gives way before the words do
 - **the conversation's own newest lines**, drawn the way the conversation draws them, fading
   with age so the newest are where your eye lands; lines that just arrived are lifted for a
-  moment and then settle
+  moment and then settle. A turn a team started shows what the team sent (`◆ manager →
+  @api  do` and its words) and the reply, never the note codeaf wrote to start the turn, the
+  same as the conversation itself
 - a small **activity line** on the bottom border while there is activity to show
 
 A conversation this window can only show as a snapshot (over a shared connection only the one
@@ -335,6 +340,16 @@ Teams are saved in your profile, in `teams.json`, every time one changes, and ne
 names, members and colours, and it is renamed to `spaces.json.migrated`. A teams file that
 cannot be read is moved aside as `teams.json.unreadable-<number>` rather than written over,
 so nothing you made is lost.
+
+## The wall said my team was not saved
+
+A change to your teams shows in this window at once and is saved a moment later. What says
+it happened waits for the save: `Made harbor · 2` on the Teams row, `Organized · 1 new team`,
+and on the teams page `harbor is closed` or a move's words. When the save is refused (another
+codeaf holding the file, a file that would not read, a far machine whose teams kept changing),
+those words never show. The row says `harbor was not saved · <the reason>` instead, and the
+teams page says `the close of harbor was not saved` or `the move was not saved`. The change is
+still in this window, and Undo is still offered where it was.
 
 ## Every key in the conversations view
 
