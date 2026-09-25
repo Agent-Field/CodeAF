@@ -546,3 +546,29 @@ func TestCrewProvidersKeepOneThatRoutes(t *testing.T) {
 		t.Fatalf("every seat pinned to the custom endpoint, and still refused: %v", err)
 	}
 }
+
+// A PIN'S THINKING LEVEL RIDES ITS SEND. A seat pinned to `moonshotai/kimi-k3:high`
+// is asked at high on every task, the way the same id given as --plan-model
+// always was: the level is the person's, and the catalog listing the model
+// without it is not a reason to send it without it.
+func TestAPinnedThinkingLevelIsSentWithThePin(t *testing.T) {
+	dir := crewProfile(t)
+	if err := SetCrewPin(dir, crewroute.Planner, "moonshotai/kimi-k3:high"); err != nil {
+		t.Fatal(err)
+	}
+	seats, err := ResolveSeats(dir, SeatFlags{}, CrewAsk{Task: crewroute.Task{Text: fixTask},
+		Pins: map[crewroute.Seat]CrewPin{crewroute.Checker: {Model: "z-ai/glm-5.3-flash:low"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seats.Plan.Source != SeatPinned || seats.Plan.Model != "moonshotai/kimi-k3:high" {
+		t.Errorf("planner %+v, want the profile pin sent at its level", seats.Plan)
+	}
+	if seats.Check.Source != SeatPinned || seats.Check.Model != "z-ai/glm-5.3-flash:low" {
+		t.Errorf("checker %+v, want the one-task pin sent at its level", seats.Check)
+	}
+	if send := seats.Crew.Seat(crewroute.Planner).Send; send != "moonshotai/kimi-k3:high" {
+		t.Errorf("the decision sends the planner as %q", send)
+	}
+}
+

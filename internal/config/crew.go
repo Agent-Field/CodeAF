@@ -1287,12 +1287,24 @@ func RouteCrew(profileDir string, ask CrewAsk) (crewroute.Decision, error) {
 // names, or the connection its own prefix names, or the default service.
 func resolveCrewPin(pin CrewPin, providers []CrewProvider) (out crewroute.Pin) {
 	out = crewroute.Pin{Model: stripCrewRoute(pin.Model), Provider: pin.Provider, Send: pin.Model, Kind: crewroute.Metered}
+	// A THINKING LEVEL IS THE PIN'S OWN (`z-ai/glm-5.3:high`), NOT PART OF THE
+	// MODEL'S NAME: the catalog and the routes are asked about the model alone,
+	// and the level rides whatever send they answer, to be split off at the
+	// call ([roles.SplitEffort]) the way a --plan-model flag's level always was.
+	if base, level := roles.SplitEffort(pin.Model); level != "" {
+		pin.Model = base
+		defer func() {
+			if _, has := roles.SplitEffort(out.Send); has == "" && out.Send != "" {
+				out.Send += ":" + level
+			}
+		}()
+	}
 	if crewroute.IsFree(out.Model) {
 		// A pinned free pool runs on that pool and is weighed as one.
 		defer func() { out.Kind = crewroute.Free }()
 	}
 	model, known := crewCatalogModel(pin.Model)
-	if known && !crewroute.IsFree(out.Model) && !strings.EqualFold(model.ID, out.Model) {
+	if known && !crewroute.IsFree(out.Model) && !strings.EqualFold(model.ID, stripCrewRoute(pin.Model)) {
 		// THE CATALOG DOES NOT LIST THE ID AS WRITTEN, only a variant of it:
 		// the pin is sent as that variant, and the line says so.
 		pin.Model, out.Send = model.ID, model.ID
