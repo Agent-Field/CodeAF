@@ -293,14 +293,15 @@ func TestTabLeavesEveryPlaceAndComesBack(t *testing.T) {
 	}
 }
 
-// alt+1…7 JUMPS FROM EVERY PLACE. The numbers are the bar's own order and they
+// alt+1…8 JUMPS FROM EVERY PLACE. The numbers are the bar's own order and they
 // mean the same thing wherever you are standing — or, for a room with nothing
 // in it, they say why and leave you where you were. What they may never do is
 // nothing at all.
 func TestTheNumbersJumpFromEveryPlace(t *testing.T) {
 	for _, place := range everyPlaceTable() {
 		t.Run(place.id.word(), func(t *testing.T) {
-			for at, id := range pages() {
+			for _, id := range pages() {
+				at := placeDigitOf(id) - 1
 				a := place.open(t)
 				drive(t, a, key("alt+"+itoa(at+1)))
 				switch {
@@ -458,7 +459,8 @@ func TestEveryPlaceBringsItsOwnLab(t *testing.T) {
 			t.Fatalf("the %s place is registered and has no lab in everyPlaceTable", id.word())
 		}
 	}
-	if len(labs) != len(placeRegistry) {
+	// The chats are registered for the bar and are no room (place_chats.go).
+	if len(labs) != len(placeRegistry)-1 {
 		t.Fatalf("%d labs for %d registered places", len(labs), len(placeRegistry))
 	}
 }

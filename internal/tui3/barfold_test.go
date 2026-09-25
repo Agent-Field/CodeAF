@@ -50,7 +50,7 @@ func TestTheBarsRemainderWearsTheSameFoldMarkTheMenusDoes(t *testing.T) {
 // AND THE MAP'S CLAUSE ABOUT `→` SAYS WHAT THE KEY DOES.
 //
 // It read `→ verbs on this row` on a line where every other clause names an act:
-// `alt+1…7 go to a place`, `alt+enter send it off as a task`, `esc close`.
+// `alt+1…8 go to a place`, `alt+enter send it off as a task`, `esc close`.
 // `verbs` is the machinery's name for the strip, not anybody's word for what
 // pressing the key gets them.
 func TestTheMapNamesWhatTheArrowDoesAndNotWhatItIsCalled(t *testing.T) {

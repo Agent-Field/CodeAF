@@ -348,8 +348,9 @@ stops a turn. `ctrl+c` interrupts a running turn and quits when idle; `/rewind` 
 rewind timeline.
 
 The double-space binding has been removed. Spaces type normally in message boxes.
-`/home` and `alt+1` (`opt+1` on a Mac) also open Home. Open a conversation row or use
-`alt+k` to return to a conversation; Escape does not leave Home.
+`/home` and `alt+1` (`opt+1` on a Mac) also open Home. Open a conversation row, press `alt+2`
+(`chats` on the bar) to go straight back to the conversation you were in, or use `alt+k`
+to choose one; Escape does not leave Home.
 
 ## Interrupting a running turn — how do I stop it mid answer
 
@@ -2160,22 +2161,24 @@ to filter, `↑↓` to walk, `enter` to use it, `esc` to go back to the layer.
 
 **Press `esc` to back out one layer at a time until Home.** `/home` opens it too.
 
-**There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the four places on
-the tab bar — `home  tasks  spend  settings` — and each answers to its position there,
-`alt+1` through `alt+4`. **`alt+5`, `alt+6` and `alt+7` are kept**, on the three places that
+**There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the five words on
+the tab bar, `home  chats  tasks  spend  settings`, and each answers to its position there,
+`alt+1` through `alt+5`. **`alt+6`, `alt+7` and `alt+8` are kept**, on the three places that
 are off the bar — standing, memory and search — so those keys still open a room rather than
-doing nothing; `alt+.` draws all seven with their numbers. Hold
+doing nothing; `alt+.` draws them all with their numbers. `alt+2` is `chats`, the way back
+to the conversation in front (a new chat when none is open); it is not a room, so `tab` steps
+over it. Hold
 `alt` and press the digit. On macOS codeaf draws the modifier as `opt+`, after the name on
 that keycap; it is the same key and the same chord, and on Linux and on Windows it is drawn
 `alt+`. It arrives in every terminal codeaf runs in, which is why the numbers are on `alt`
 rather than on `ctrl`.
 
-**`ctrl+1` … `ctrl+7` are a second spelling, on the terminals that can send them.** `ctrl`
+**`ctrl+1` … `ctrl+8` are a second spelling, on the terminals that can send them.** `ctrl`
 and a digit has no encoding in the forty-year-old scheme most terminals speak, so it is not
 the first spelling and never will be — but a terminal running the kitty keyboard protocol
 sends exactly the keys that scheme cannot spell, and it tells codeaf it does. Where that
-report arrives, `ctrl+1` … `ctrl+7` jump to the same seven places and `ctrl+.` draws the same
-map, and the map's own line says `alt+1…7 or ctrl+1…7 go to a place` so you can see it is
+report arrives, `ctrl+1` … `ctrl+8` jump to the same seven places and `ctrl+.` draws the same
+map, and the map's own line says `alt+1…8 or ctrl+1…8 go to a place` so you can see it is
 live. Where it does not, those chords do nothing and are never advertised. kitty, ghostty,
 WezTerm, foot and Windows Terminal are the usual ones that report it. **On a Mac this is the
 way in that needs no setting at all** — see "Why my option key types ¡ ™ £ instead of
@@ -2198,8 +2201,9 @@ Escape never starts rewind or stops a turn. `ctrl+c` interrupts a running turn a
 when idle; `/rewind` opens the rewind timeline.
 
 The double-space binding has been removed. Spaces type normally in message boxes.
-`/home` and `alt+1` (`opt+1` on a Mac) also open Home. Open a conversation row or use
-`alt+k` to return to a conversation; Escape does not leave Home.
+`/home` and `alt+1` (`opt+1` on a Mac) also open Home. Open a conversation row, press `alt+2`
+(`chats` on the bar) to go straight back to the conversation you were in, or use `alt+k`
+to choose one; Escape does not leave Home.
 
 Once it is open, **home is seven panels in one, two or three columns** (the home page has
 what each holds), and its keys are a small grammar:
@@ -2326,7 +2330,7 @@ band there instead of its usual mark, and five keys mean something on that row:
 | `↑` | nothing. Above the bar is the top line, which is a reading rather than a control |
 
 Everything else means exactly what it means everywhere else: `tab` and `shift+tab` are the
-next and previous place, `alt+1` … `alt+7` jump, `alt+.` draws the map, and **any printable
+next and previous place, `alt+1` … `alt+8` jump, `alt+.` draws the map, and **any printable
 key goes into the composer** — taking the cursor back down into the page with it, because
 somebody who has started typing has stopped looking at the bar.
 
@@ -2346,7 +2350,7 @@ between the tabs with the arrow keys*.
 
 ## `b` on the spend place — the letter that opens the limits, and the money figure you can press
 
-On the spend place (`/spend`, or `alt+3`) two things lead to the money limits, and neither
+On the spend place (`/spend`, or `alt+4`) two things lead to the money limits, and neither
 one is an editor on that page — the page answers *what did it cost*, and the Spending tab
 of `/settings` is the one place *what may it spend* is set.
 
@@ -2866,7 +2870,7 @@ snapshot.
 **The terminal is too narrow for the word you are aiming at.** The tab bar gives up words
 as the frame narrows, and at its narrowest it carries only the place you are standing in —
 so on a narrow window there is no other place-word on screen to click. `tab`, `shift+tab`
-and `alt+1`…`alt+7` still go everywhere.
+and `alt+1`…`alt+8` still go everywhere.
 
 **A file path is your terminal's click, not codeaf's** — usually **cmd+click**
 (ctrl+click on Linux). If a plain click on a path does nothing, that is why.
@@ -3073,7 +3077,7 @@ answer:
 | `alt+e` | **Bound**, on three surfaces: it moves how hard the thing you are standing on thinks — this conversation from the message box, a task, or a standing item on home. The machine's own default is the `thinking` row of `/settings` and is not on this chord. See "The thinking chip above the message box" and "alt+e — how hard the thing you are looking at thinks". Anywhere else it does nothing. On macOS it is shown as `opt+e`; the terminal must send Option as Alt/Meta, as for the other Option shortcuts |
 | `ctrl+x` | Bound in three places: it drops a harness design from inside its room; on home it stops a standing item for good; and on a `tasks` row of home that this window holds it asks to stop that task (`ctrl+x stop it` on the `alt+.` map; the foot under a field row is the resting sentence and does not name it). Not bound anywhere else |
 | `ctrl+y`, `ctrl+z` | Not bound |
-| `ctrl+<digit>` | **Bound as a second spelling of the place keys, on the terminals that report they can send it.** `ctrl` and a digit has no encoding in the scheme most terminals speak — which is why `alt+1` … `alt+7` (`opt+1` … `opt+7` on a Mac) are the first spelling and always will be — but a terminal running the kitty keyboard protocol sends it and says so, and where that report arrives `ctrl+1` … `ctrl+7` reach the same seven places. The map's line says `alt+1…7 or ctrl+1…7 go to a place` exactly when the alias is live. Where the terminal has said nothing, the chord does nothing and is never drawn |
+| `ctrl+<digit>` | **Bound as a second spelling of the place keys, on the terminals that report they can send it.** `ctrl` and a digit has no encoding in the scheme most terminals speak — which is why `alt+1` … `alt+8` (`opt+1` … `opt+8` on a Mac) are the first spelling and always will be — but a terminal running the kitty keyboard protocol sends it and says so, and where that report arrives `ctrl+1` … `ctrl+8` reach the same seven places. The map's line says `alt+1…8 or ctrl+1…8 go to a place` exactly when the alias is live. Where the terminal has said nothing, the chord does nothing and is never drawn |
 | `ctrl+.` | Two meanings, on two screens that cannot both be up. In a conversation it is every task this project has run (`/history`); while a place is standing it draws the key map, on the terminals that can send `ctrl+<digit>` |
 | `alt+<letter>` | Bound **only where a place says so, and only on that place**. `alt+s` changes the shelf on the memory place; `alt+b` and `alt+f` are the word jumps inside every box and are never taken by a place. Every other `alt+<letter>` does nothing |
 | `shift+←` `shift+→` `shift+↑` `shift+↓` | The **time window** of a place that has one: `shift+←→` moves it by its own length, `shift+↑↓` changes how coarse it is. Three places have one — tasks (when it ran), standing (when it fired) and spend (which days) — and each draws the same control on its head row, `shift+← aug 12 – aug 25 →` with `shift+↑ coarser` beside it. Anywhere else, on a terminal too narrow to draw the control, and (for the zoom alone) on a line with no room for its clause, they do nothing |

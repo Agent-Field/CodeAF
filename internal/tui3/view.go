@@ -337,7 +337,7 @@ func (a *app) frameBody() (string, int, int) {
 	// with a refusal under a box that should never have been on the page.
 	//
 	// IT IS UNDER THE PLACES because a place is a room in the machine and this is
-	// one job in one conversation; alt+1…7 leaves it, and [app.standDownRest]
+	// one job in one conversation; alt+1…8 leaves it, and [app.standDownRest]
 	// closes it on the way out so it cannot reappear under a place somebody has
 	// since walked away from.
 	//
