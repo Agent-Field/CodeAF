@@ -372,7 +372,7 @@ func standingPassed(field string, moment, now time.Time, tail string) string {
 // The minute is the right grain everywhere else, because a person names minutes
 // and a model writes them back. It is the wrong grain for [standingRetires],
 // where the whole mistake can live inside one minute: a model that wrote
-// `in 1 minute — 23:11` for the words and `23:11` for the end, against a moment
+// `in 1 minute · 23:11` for the words and `23:11` for the end, against a moment
 // the engine resolved to 23:11:11, would otherwise be told that 23:11 is not
 // after 23:11 and have nothing to work with.
 func standingClockExact(moment time.Time) string { return moment.Format("15:04:05 -07:00") }
@@ -642,7 +642,7 @@ func standingWhen(parsed standArguments, now time.Time) (standing.When, string) 
 		// THE ECHO IS A FALLBACK AND NEVER AN OVERRIDE. [Agent.standingItem]
 		// puts the model's own when_words over the top of this when it sent
 		// any; what is left here is the case it sent none, where a card reading
-		// "in 2 minutes — 06:54" is the difference between a person checking a
+		// "in 2 minutes · 06:54" is the difference between a person checking a
 		// stamp and a person reading a sentence.
 		when.Words = echo
 	case standing.WhenEvery:
@@ -775,7 +775,7 @@ func standingRails(parsed standArguments, when standing.When, now time.Time) (st
 		// for the same reason.
 		//
 		// The defect this pins is exact arithmetic and not a slip: the model
-		// wrote `in 1 minute — 23:11` for the words and took `23:11` for the end
+		// wrote `in 1 minute · 23:11` for the words and took `23:11` for the end
 		// from the same words, while the engine resolved the moment to
 		// 23:11:11 — eleven seconds later. So the refusal is spelled to the
 		// SECOND, or it would read as a moment that is not after itself.
@@ -889,7 +889,7 @@ func standingAtMoment(rawAt, rawIn string, now time.Time) (moment time.Time, ech
 			return time.Time{}, "", "Invalid arguments: when.in has to be a distance into the future"
 		}
 		landed := now.Add(span)
-		return landed, "in " + standingSpanWords(span) + " — " + landed.Format("15:04"), ""
+		return landed, "in " + standingSpanWords(span) + " · " + landed.Format("15:04"), ""
 	}
 	parsed, err := standingMoment(rawAt)
 	if err != nil {

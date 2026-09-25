@@ -356,6 +356,12 @@ func TestStandingCardWordsFollowTheKind(t *testing.T) {
 		if c.item.When.Kind == standing.WhenAt && StandingPlainLabel(c.yes) != "Remind me" {
 			t.Errorf("reminder plain label %q", StandingPlainLabel(c.yes))
 		}
+		if c.item.When.Kind == standing.WhenAt {
+			clocked := "Remind me in 1 minute · 07:35"
+			if got := StandingPlainLabel(clocked); got != "Remind me" {
+				t.Errorf("a reminder with a clock kept %q", got)
+			}
+		}
 	}
 	long := standing.When{Words: "every Monday morning after the deploy window closes and the board has signed off"}
 	if got := long.ShortWords(); len(got) > 40 || !strings.HasSuffix(got, "...") {
