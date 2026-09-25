@@ -70,6 +70,14 @@ type PlanTaskRow struct {
 	// USD is the sum of the task's spend rows: what this piece of the plan has
 	// cost so far.
 	USD float64
+	// Model is the model this task's own spend rows spent most through, and
+	// Tokens the tokens those rows carried, in and out together. Both are read
+	// off the same ledger as USD and both are EMPTY WHEN THE LEDGER NAMES NONE:
+	// a task that has written no spend row has no known model and no known
+	// token count, which is not the same fact as a model called "" or a count
+	// of zero, and a surface draws nothing for either.
+	Model  string `json:",omitempty"`
+	Tokens int    `json:",omitempty"`
 	// Started is when the task was created and Ended when it completed; a task
 	// still open carries the zero Ended. A PROGRAM's task carries its run's one
 	// pair instead — the hand-off and the instant the program was gone
@@ -382,6 +390,12 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 				break
 			}
 		}
+	}
+	// THE PAGE'S OWN ROW CARRIES WHO SPENT AND HOW MUCH THEY READ AND WROTE, off
+	// the same ledger its price comes from. A listing does not: the figures are
+	// drawn on a task's page and nowhere else.
+	if usage, ok := planUsageByTask(store.Path())[task.ID]; ok {
+		pageRow.Model, pageRow.Tokens = usage.model, usage.tokens
 	}
 	return PlanTaskPage{
 		Row:         pageRow,
@@ -892,6 +906,61 @@ func planSpendByTask(path string) map[string]float64 {
 		totals[id] = usd
 	}
 	return totals
+}
+
+// planTaskUsage is one task's model and token figures, read off its spend rows.
+type planTaskUsage struct {
+	model  string
+	tokens int
+}
+
+// planUsageByTask reads the run's spend ledger per task for the two figures a
+// task's page draws beside its price: the model the task's rows spent most
+// through, and the tokens they carried. It is [planSpendByTask]'s reading, on
+// its own read-only connection for the same reason. A row that names no model
+// names none, and a task whose rows carry no tokens has none known.
+func planUsageByTask(path string) map[string]planTaskUsage {
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+	if err != nil {
+		return nil
+	}
+	defer db.Close()
+	rows, err := db.Query(`SELECT task_id, model, SUM(usd), COUNT(*), SUM(in_tokens + out_tokens) FROM spend GROUP BY task_id, model`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	type tally struct {
+		usd   float64
+		calls int
+	}
+	best := map[string]tally{}
+	out := map[string]planTaskUsage{}
+	for rows.Next() {
+		var id, model string
+		var usd float64
+		var calls, tokens int
+		if rows.Scan(&id, &model, &usd, &calls, &tokens) != nil {
+			return out
+		}
+		usage := out[id]
+		if tokens > 0 {
+			usage.tokens += tokens
+		}
+		// THE MODEL IS THE ONE THE TASK SPENT MOST THROUGH, with the call count
+		// and then the name breaking a tie, so the same ledger always names the
+		// same model ([planSpendBySeat] chooses a seat's model the same way).
+		if model = strings.TrimSpace(model); model != "" {
+			held, seen := best[id]
+			if !seen || usd > held.usd || (usd == held.usd && calls > held.calls) ||
+				(usd == held.usd && calls == held.calls && model < usage.model) {
+				best[id] = tally{usd: usd, calls: calls}
+				usage.model = model
+			}
+		}
+		out[id] = usage
+	}
+	return out
 }
 
 // planRunCopies says which folders are a run's own copy. live is the copy of

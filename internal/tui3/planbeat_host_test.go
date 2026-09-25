@@ -180,8 +180,8 @@ func TestHostedRailPageOwnsKeysWhileItsReadIsInFlight(t *testing.T) {
 	}
 	close(held.release)
 	drive(t, a, <-answer)
-	if !a.taskSheet.planOn || !a.railTaskPlanOn {
-		t.Fatal("the delayed answer did not open the task page")
+	if a.roomPlan() == nil {
+		t.Fatal("the delayed answer did not open the task room")
 	}
 }
 
@@ -189,7 +189,7 @@ func TestHostedRailPagePendingEscCancelsAndSecondPressSupersedes(t *testing.T) {
 	a, _, _ := hostedPlanApp(t, false)
 	a.railPlanPending = railPlanPending{id: "first", keys: []tea.KeyPressMsg{key("x")}}
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEscape})
-	if a.railPlanPending.id != "" || a.taskSheet.planOn {
+	if a.railPlanPending.id != "" || a.roomOpen() {
 		t.Fatal("esc did not cancel the pending page")
 	}
 	a.railPlanPending = railPlanPending{id: "first", keys: []tea.KeyPressMsg{key("x")}}
@@ -199,8 +199,8 @@ func TestHostedRailPagePendingEscCancelsAndSecondPressSupersedes(t *testing.T) {
 	}
 }
 
-// openHostedPage opens the run's own page the way `enter` on its row does, over
-// the real wire, and answers the run's id.
+// openHostedPage opens the run's own task room the way a press on its row does,
+// over the real wire, and answers the run's id.
 func openHostedPage(t *testing.T, a *app) string {
 	t.Helper()
 	// THE RUN'S SUMMARY IS KEPT OUT OF A TEST THAT COUNTS THE PAGE'S READS. The
@@ -213,26 +213,24 @@ func openHostedPage(t *testing.T, a *app) string {
 		t.Fatal("the first reading did not hold the run's row")
 	}
 	id := a.taskSheet.mine.plan[0].ID
-	cmd := a.taskSheetPlan(id)
-	if cmd == nil {
-		t.Fatal("the page was not asked for")
-	}
-	drive(t, a, cmd())
-	if !a.taskSheet.planOn || a.taskSheet.plan.Row.ID != id {
-		t.Fatal("the run's page did not open")
+	openPlanRoomNow(t, a, id)
+	if plan := a.roomPlan(); plan == nil || plan.id != id {
+		t.Fatal("the run's task room did not open")
 	}
 	return id
 }
 
-// paintTicks is the paint clock turning `ticks` times inside one beat: every
-// tick offers the page its follow, and whatever the follow asks is answered and
-// folded before the next tick, the way a fast local engine answers.
+// paintTicks is the paint clock turning `ticks` times inside one beat and then
+// the room's own beat once: a frame never reads the page, and the beat reads it
+// once, answered and folded before the next, the way a fast local engine
+// answers.
 func paintTicks(t *testing.T, a *app, ticks int) {
 	t.Helper()
 	for tick := 0; tick < ticks; tick++ {
-		if cmd := a.taskPlanFollow(); cmd != nil {
-			drive(t, a, cmd())
-		}
+		drive(t, a, frameMsg{})
+	}
+	if a.room != nil {
+		drive(t, a, planRoomTickMsg{gen: a.room.gen})
 	}
 }
 
@@ -247,8 +245,8 @@ func TestAnOpenPageOnARunningTaskReadsOncePerBeat(t *testing.T) {
 	now := taskFixtureNow
 	a.clock = func() time.Time { return now }
 	openHostedPage(t, a)
-	if !a.taskPlanFollows() {
-		t.Fatalf("the fixture's run is %q, which the page does not follow, so the test proves nothing", a.taskSheet.plan.Row.Status)
+	if !a.planRoomRunning() {
+		t.Fatalf("the fixture's run is %q, which the room does not follow, so the test proves nothing", a.room.plan.page.Row.Status)
 	}
 	opened := counted.pages.Load()
 	const beats = 5
@@ -256,7 +254,6 @@ func TestAnOpenPageOnARunningTaskReadsOncePerBeat(t *testing.T) {
 		paintTicks(t, a, 20)
 		now = now.Add(elsewhereEvery)
 	}
-	paintTicks(t, a, 20)
 	if got := counted.pages.Load() - opened; got != beats {
 		t.Fatalf("an open page on a moving task crossed the wire %d times over %d beats of twenty ticks each, want one read a beat", got, beats)
 	}
@@ -327,8 +324,21 @@ func TestHostedPlanPartsCrossTheWireAndFilterThePage(t *testing.T) {
 		t.Fatalf("hosted page step = %#v, want the head withheld for a row that leaves out a record part", page.Steps[0])
 	}
 
+	// THE PAGE CARRIES ITS LIVE STEP, and the room draws it as a call in flight
+	// beside the recorded one, the two under one running line. The screen is
+	// read on the recorded step alone, so the live step is settled first.
+	store, err = plandb.Open(path, "", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ClearLive("root"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
 	openHostedPage(t, a)
-	screen := taskSheetText(a)
+	screen := planRoomText(t, a)
 	for _, never := range []string{workspace, "plandb task overview", "recorded-output"} {
 		if strings.Contains(screen, never) {
 			t.Fatalf("hosted page contains filtered %q:\n%s", never, screen)
@@ -376,20 +386,17 @@ func TestHostedTaskPageOmitsEngineEstablishedNotRunStep(t *testing.T) {
 		t.Fatal(err)
 	}
 	openHostedPage(t, a)
-	page := taskSheetText(a)
-	shell := a.actionLead(session.ActionRun, true)
-	for _, want := range []string{shell + "printf ran-one", shell + "printf ran-three", shell + "printf older-record"} {
-		if !strings.Contains(page, want) {
-			t.Fatalf("hosted page lost %q:\n%s", want, page)
-		}
+	page := roomCallText(t, a)
+	if got, want := roomCommands(a), []string{"printf ran-one", "printf ran-three", "printf older-record"}; strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("hosted room's calls are %q, want %q", got, want)
 	}
 	for _, forbidden := range []string{"cat first second third", "[not run]", "no action executed", "this belt has one hand"} {
 		if strings.Contains(page, forbidden) {
 			t.Fatalf("hosted page drew engine-established refusal text %q:\n%s", forbidden, page)
 		}
 	}
-	if !strings.Contains(page, "4 steps") {
-		t.Fatalf("the record count changed when a row was omitted:\n%s", page)
+	if got := roomStepsWord(a); got != "4 steps" {
+		t.Fatalf("the record count changed when a row was omitted: %q", got)
 	}
 }
 
@@ -426,23 +433,24 @@ func TestHostedTaskPageDrawsARefusedActionAsOneLineAndACorrectionAsNone(t *testi
 		t.Fatal(err)
 	}
 	openHostedPage(t, a)
-	page := taskSheetText(a)
+	page := roomCallText(t, a)
 	refused := taskPlanRefusedWord + railSep + "touch /outside/the-ground"
 	var drawn []string
-	for _, line := range strings.Split(page, "\n") {
+	for _, line := range strings.Split(planRoomText(t, a), "\n") {
 		if strings.Contains(line, "touch /outside/the-ground") {
-			drawn = append(drawn, strings.TrimSpace(line))
+			drawn = append(drawn, strings.TrimSpace(strings.TrimRight(line, " │")))
 		}
 	}
-	if len(drawn) != 1 || drawn[0] != refused {
+	if len(drawn) != 1 || !strings.HasSuffix(drawn[0], refused) || strings.ContainsAny(drawn[0], "0123456789") {
 		t.Fatalf("a refused action draws as exactly one line, %q, with no number; drew %q:\n%s", refused, drawn, page)
 	}
-	shell := a.actionLead(session.ActionRun, true)
-	for _, want := range []string{shell + "printf ran-one", shell + "printf ran-four", "4 steps"} {
-		if !strings.Contains(page, want) {
-			t.Fatalf("the page lost %q:\n%s", want, page)
-		}
+	if got, want := roomCommands(a), []string{"printf ran-one", "printf ran-four"}; strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("the room's calls are %q, want %q", got, want)
 	}
+	if got := roomStepsWord(a); got != "4 steps" {
+		t.Fatalf("the room counts %q, want the record's 4 steps", got)
+	}
+	shell := a.actionLead(session.ActionRun, true)
 	for _, forbidden := range []string{doorSentence, formSentence, "cat first second third", shell + "touch"} {
 		if strings.Contains(page, forbidden) {
 			t.Fatalf("the page drew %q, which is the worker's answer, a correction's row, or a shell mark on a call that never ran:\n%s", forbidden, page)
@@ -470,20 +478,11 @@ func TestHostedPageDrawsContinuedTaskStepsOnceInOrder(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(taskDir, "trajectory.jsonl"), []byte(record), 0o600); err != nil {
 		t.Fatalf("record the continued task: %v", err)
 	}
-	cmd := a.taskSheetPlan(id)
-	if cmd == nil {
-		t.Fatal("the continued page was not asked for")
-	}
-	drive(t, a, cmd())
+	a.closeRoom()
+	openPlanRoomNow(t, a, id)
 
-	var got []string
-	shell := a.actionLead(session.ActionRun, true) + "printf "
-	for _, line := range strings.Split(taskSheetText(a), "\n") {
-		if at := strings.Index(line, shell); at >= 0 {
-			got = append(got, strings.TrimSpace(line[at+len(shell):]))
-		}
-	}
-	if want := []string{"one", "two", "three", "four", "five"}; strings.Join(got, " ") != strings.Join(want, " ") {
-		t.Fatalf("drawn step rows = %q, want %q exactly once and in order:\n%s", got, want, taskSheetText(a))
+	got := roomCommands(a)
+	if want := []string{"printf one", "printf two", "printf three", "printf four", "printf five"}; strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("the room's step rows = %q, want %q exactly once and in order", got, want)
 	}
 }

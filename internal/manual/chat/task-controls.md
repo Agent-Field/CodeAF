@@ -150,14 +150,15 @@ The task request keeps its existing three-line preview and clickable disclosure;
 that request. Completed work keeps its existing `ctrl+e` disclosure. The sidebar
 does not repeat the request or change the transcript's presentation.
 
-## Reading a note on a run task's page — and the page following the newest step
+## Reading a note on a run task's room, and the room following the newest step
 
-A run's task page — the one `enter` opens on a run's row in the tasks place — keeps up with
+A run's task opens the same task room as any other task: from its row on the side list,
+from `enter` on its row in the tasks place, or from the run's tab. The room keeps up with
 its newest step, reading the task again every three seconds while it is queued or running,
 and follows it until you scroll up; scrolling back to the bottom resumes the follow, and a
-page on a settled task is a still page. Its foot is a **note box**, under the
-placeholder `a note for this task`: type in it and press `enter`, and the words go to the
-task's store rather than to a model. The page says when they are read:
+room on a settled task is a still page. Its box says `a note for this task`: type in it and
+press `enter`, and the words go to the task's store rather than to a model. Once the store
+has the note, the room says when it is read:
 
 ```
 the worker reads a note at its next step
@@ -165,20 +166,20 @@ the worker reads a note at its next step
 
 A worker is a separate loop, so a note waits until the worker asks for its next step, and that
 is when it reads what you wrote. A task that has ended, `done` or `incomplete`, takes no next
-step, so its page leaves that sentence out. `x stop it` and `p pause` are read only over an empty box: the
-moment there is a note to type, a letter is a letter. Under a run's own task `x stop it` raises
-the `Stop this task?` card before anything ends, and `p pause` is not offered, because a run
-cannot be paused as a whole. On a task that has ended neither key is offered and neither acts:
-both are letters in the note.
+step, so its room takes no note: `enter` there says `this task has finished` and where the
+words can go, and leaves them in the box. `x` is read only over an empty box: the moment
+there is a note to type, a letter is a letter. `x` raises the `Stop this task?` card before
+anything ends. On a task that has ended it is not offered and does nothing: it is a letter in
+the box. `p` is always a letter in the room; a part is held from its row in the tasks place.
 
-## Typing while a task page is still loading — the letters land in its note box
+## Typing while a task's room is still loading: the letters land in its box
 
-A plan task's page can take a moment to arrive, most of all over `--host`. Everything you type
-between the press that asks for it and the page appearing is kept for the page and **typed into
-its note box, and nowhere else**: none of it reaches the conversation's box, and none of it is
-taken as one of the page's keys. So a note that happens to begin with `x` or `p` never stops or holds the
-task, and an `enter` pressed in that gap does not send anything — the words wait in the box,
-unsent, until you have seen the page they are going to and press `enter` there. `esc` in the gap
+A run task's room can take a moment to arrive, most of all over `--host`. Everything you type
+between the press that asks for it and the room appearing is kept for the room and **typed into
+its box, and nowhere else**: none of it reaches the conversation's box, and none of it is
+taken as one of the room's keys. So a note that happens to begin with `x` never stops the
+task, and an `enter` pressed in that gap does not send anything. The words wait in the box,
+unsent, until you have seen the room they are going to and press `enter` there. `esc` in the gap
 withdraws the press and drops what was typed.
 
 ## Task setup through the session host

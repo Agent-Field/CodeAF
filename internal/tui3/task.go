@@ -3000,6 +3000,11 @@ func railColsFor(width int) int {
 // person's — a terminal that cannot afford thirty columns cannot afford
 // forty-six either.
 func (a *app) railColumns(width int) int {
+	// THE MANAGER'S TASKS STAND IN THE TRAFFIC'S COLUMN, at its width, so
+	// swapping the two moves nothing in the conversation (teamrail.go).
+	if a.trafficOn() {
+		return trafficColsFor(width)
+	}
 	if a.railWide && width >= railFloor {
 		return railWideCols
 	}
@@ -3042,7 +3047,12 @@ func (a *app) railCanWiden() bool {
 // gets instead is one dim line at the foot of the column naming the page that
 // holds it ([taskSheetPastHint]).
 func (a *app) railShowing() bool {
-	if a.railAway || a.railQuiet() {
+	// WITH THE MANAGER IN FRONT THE COLUMN IS THE TRAFFIC'S, and the tasks are
+	// on it only when the person chose them there (teamrail.go).
+	if a.trafficOn() {
+		return a.trafficTasksShowing() && !a.railQuiet()
+	}
+	if a.railAway || a.railQuiet() || a.trafficHoldsRail() {
 		return false
 	}
 	width, _ := a.size()
@@ -3144,7 +3154,10 @@ func (a *app) railRoom() int {
 // positive — so the right-hand strip of the frame always belongs to the roster
 // in one of its two shapes, and never to nobody.
 func (a *app) railStowed() bool {
-	if !a.railAway || a.railQuiet() {
+	// AND WITH THE MANAGER IN FRONT THERE IS NO EDGE AT ALL: the right is the
+	// Traffic's, and the person's own answer in railAway is kept for the next
+	// conversation (teamrail.go).
+	if a.trafficOn() || !a.railAway || a.railQuiet() {
 		return false
 	}
 	width, _ := a.size()
@@ -3244,7 +3257,7 @@ func (a *app) railGripState() (string, func(string) string) {
 // [app.railAt]'s own bargain: a strip that answered a click it would not light
 // under the pointer is a strip that disagrees with itself about what it is.
 func (a *app) railGripAt(x, y int) bool {
-	if !a.railStowed() || x < a.bodyWidth() {
+	if !a.railStowed() || x < a.bodyWidth() || x >= a.bodyWidth()+a.railWidth() {
 		return false
 	}
 	top := a.bodyTop()
@@ -3255,9 +3268,13 @@ func (a *app) railGripAt(x, y int) bool {
 // question about the transcript resolves through — what the frame draws, where
 // the wheel lands, which row a click hit. A rail the layout knew about and the
 // hit-testing did not would deliver clicks to rows wrapped at another width.
+//
+// THE TRAFFIC RAIL IS CHARGED HERE TOO, while the manager is in front
+// (teamtraffic.go): it stands to the right of this column, and the conversation
+// is what gives it the columns.
 func (a *app) bodyWidth() int {
 	width, _ := a.size()
-	if body := width - a.railWidth(); body > 0 {
+	if body := width - a.railWidth() - a.trafficWidth(); body > 0 {
 		return body
 	}
 	return width
@@ -3396,7 +3413,11 @@ func (a *app) railView(height int) ([]railLine, int) {
 	// The hide control belongs to the sidebar, outside every scrolling list
 	// and task panel. Neither a new task nor a deeper page may displace it.
 	var head []railLine
-	if !a.railFull() && ansi.StringWidth(a.railDoorHint())+2 <= a.railRoom() {
+	if a.trafficOn() && !a.railFull() {
+		// THE TRAFFIC'S HEADER STAYS ON ITS COLUMN with the tasks laid in it:
+		// the whole line is the way back to the traffic (teamrail.go).
+		head = append(head, railLine{text: a.trafficTasksHead(a.railRoom()), entry: -1, stow: true})
+	} else if !a.railFull() && ansi.StringWidth(a.railDoorHint())+2 <= a.railRoom() {
 		head = append(head, railLine{text: a.railDoorLine(), entry: -1, stow: true})
 	}
 	if a.roomOpen() && len(head) < height {
@@ -4061,6 +4082,16 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// away, a column that is away comes back — and it is the only key on this
 		// map a person may press without having asked for the roster first.
 		//
+		// WITH THE MANAGER IN FRONT IT SWAPS THE TRAFFIC'S COLUMN between the
+		// traffic and the manager's own tasks, and with no live tasks it has
+		// nothing to swap to and does nothing (teamrail.go).
+		if a.trafficOn() {
+			if a.trafficTaskCount() == 0 {
+				return nil, false
+			}
+			a.trafficTasksShow(!a.trafficTasksShowing())
+			return nil, true
+		}
 		// IT ONLY ACTS ON A ROSTER THAT IS ON THE FRAME, or on one it has already
 		// taken off. The column stands empty now ([app.railShowing]), so "on the
 		// frame" no longer needs any tasks behind it — a column carrying nothing but
@@ -4070,10 +4101,10 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// alt+t does. A keystroke that silently moved a state nothing is drawing is a
 		// keystroke a person cannot tell they pressed, and this one would move it into
 		// the NEXT session as well.
-		if !(a.railStanding() || a.railAway) {
+		if !(a.railStanding() || a.railAway || a.railStowed()) {
 			return nil, false
 		}
-		a.railStow(!a.railAway)
+		a.railStow(!a.railStowed())
 		return nil, true
 	}
 	if key == railHoldChord {
@@ -4375,6 +4406,14 @@ func (a *app) railWiden(wide bool) {
 // session opens where the last one was told to, which is the behaviour of a
 // session that has never been told anything.
 func (a *app) railStow(away bool) {
+	// WITH THE MANAGER IN FRONT THE ASK IS ANSWERED IN THE TRAFFIC'S COLUMN and
+	// the saved answer is not touched: bringing the tasks back shows them there
+	// when the manager has any, and putting them away shows the traffic
+	// (teamrail.go).
+	if a.trafficOn() {
+		a.trafficTasksShow(!away)
+		return
+	}
 	if a.railAway == away {
 		return
 	}

@@ -964,6 +964,33 @@ func TestAStandingCallThatFailsSaysSoRatherThanAnsweringNothing(t *testing.T) {
 	}
 }
 
+// THE WORK TAB'S READ CROSSES THE SAME WAY THE PAGE DOES. An engine that
+// answers it hands back the copy's difference. An engine that has never heard
+// of the door answers "no such method", and that is the absence the tab draws,
+// not an empty difference.
+func TestPlanTaskWorkCrossesAndAnOldEngineHasNoDoor(t *testing.T) {
+	client, e := newEngine(t)
+	want := session.PlanTaskWork{
+		Dir: "/work/copy", Read: true, Added: []string{"notes.txt"},
+		Patch: "diff --git a/load.go b/load.go\n+new line\n",
+	}
+	e.answers[MethodPlanTaskWork] = PlanTaskWorkResult{Work: want, OK: true}
+	got, ok := client.Agent().PlanTaskWork("t-6")
+	if !ok || !reflect.DeepEqual(got, want) {
+		t.Fatalf("PlanTaskWork = (%#v, %v), want the copy", got, ok)
+	}
+	var args PlanTaskArgs
+	if err := json.Unmarshal(e.calls(MethodPlanTaskWork)[0].Payload, &args); err != nil || args.ID != "t-6" {
+		t.Fatalf("PlanTaskWork args = %+v, %v", args, err)
+	}
+
+	e.fails[MethodPlanTaskWork] = `engine: no such method "PlanTaskWork"`
+	got, ok = client.Agent().PlanTaskWork("t-6")
+	if ok || !got.NoDoor {
+		t.Fatalf("an engine without the door answered (%#v, %v), want no door", got, ok)
+	}
+}
+
 func TestPlanTasksAndPlanTaskPageCrossWhole(t *testing.T) {
 	client, e := newEngine(t)
 	started := time.Date(2026, 9, 18, 1, 2, 3, 4, time.UTC)

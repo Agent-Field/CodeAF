@@ -687,3 +687,67 @@ func TestASocketPathFitsOnlyWithRoomForItsEnd(t *testing.T) {
 		t.Fatal("a 104-byte path was said to fit; macOS refuses to bind it")
 	}
 }
+
+// THE TASK PAGE'S MODEL IS THE LEDGER'S, and it has to cross the host: the
+// room head reads it off the page the engine served, and a page that arrives
+// without it draws the price and the tokens and never the model.
+func TestHostedPlanPageCarriesTheLedgersModel(t *testing.T) {
+	workspace := t.TempDir()
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	store, err := session.OpenRunPlan(workspace, "Hosted run", "prove the model crosses the host")
+	if err != nil {
+		t.Fatalf("open run plan: %v", err)
+	}
+	if _, err := store.AddMany([]plandb.TaskSpec{{ID: "seeded", Title: "Seeded task", Description: "the real row"}}); err != nil {
+		t.Fatalf("seed run plan: %v", err)
+	}
+	if err := store.AddSpend("seeded", "z-ai/glm-5.3-flash", "worker", 0.0017, 20000, 1000); err != nil {
+		t.Fatalf("write spend: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("close seeded plan: %v", err)
+	}
+
+	engine, err := session.New(session.Config{
+		Workspace: workspace,
+		Model:     "test/model",
+		APIKey:    "fixture",
+		BaseURL:   "http://127.0.0.1:1/v1",
+		System:    "Test only.",
+	})
+	if err != nil {
+		t.Fatalf("build real session agent: %v", err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+
+	host := &Host{
+		workspace: workspace,
+		opts: Options{Boot: func(remote.Hello) (*remote.Engine, error) {
+			return &remote.Engine{Agent: engine, Workspace: workspace}, nil
+		}},
+		sessions: map[string]*remote.Session{},
+		done:     make(chan struct{}),
+	}
+	surface, hosted := net.Pipe()
+	go host.attach(hosted)
+	client, err := remote.Dial(surface, "", remote.Hello{Version: remote.Version, Workspace: workspace})
+	if err != nil {
+		t.Fatalf("dial hosted session: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+
+	page, ok := client.Agent().PlanTaskPage("t-seeded")
+	if !ok {
+		t.Fatal("PlanTaskPage over the host answered no page")
+	}
+	if page.Row.Model != "z-ai/glm-5.3-flash" {
+		t.Fatalf("page model = %q, want the ledger's z-ai/glm-5.3-flash (tokens %d usd %v)", page.Row.Model, page.Row.Tokens, page.Row.USD)
+	}
+	if page.Row.Tokens != 21000 {
+		t.Fatalf("page tokens = %d, want 21000", page.Row.Tokens)
+	}
+	work, found := client.Agent().PlanTaskWork("t-seeded")
+	if !found || work.NoDoor {
+		t.Fatalf("PlanTaskWork over the host = (%+v, %v), want the door to answer", work, found)
+	}
+}

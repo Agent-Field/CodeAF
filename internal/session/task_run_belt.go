@@ -252,7 +252,7 @@ type RunLanding struct {
 // copy onto its branch and answers where the work went.
 type RunEngine interface {
 	Start(ctx context.Context, spec RunSpec) RunSummary
-	Land(ctx context.Context, store *plandb.Store, workspace, rootID string) (RunLanding, error)
+	Land(ctx context.Context, store *plandb.Store, workspace, base, rootID string) (RunLanding, error)
 }
 
 // chatRunEngine is the registered engine, set once by [RegisterRunEngine] and
@@ -1610,7 +1610,7 @@ func (a *Agent) releaseBeltRun(run *beltRun) {
 // branch the conversation's note names is the ground's, and a merge that would
 // not go in answers with the sentence that names the kept branch and the files.
 func (a *Agent) landBeltRun(ctx context.Context, engine RunEngine, run *beltRun) RunLanding {
-	landing, err := engine.Land(ctx, run.store, run.workspace, run.root)
+	landing, err := engine.Land(ctx, run.store, run.workspace, run.tree.checkBase, run.root)
 	if err != nil {
 		if g := a.graph(); g != nil {
 			g.planNote("the run's landing failed: " + err.Error())

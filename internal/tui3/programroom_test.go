@@ -386,7 +386,7 @@ func TestAProgramRunReadsOneFigureOnTheRoomTheRailAndTheCard(t *testing.T) {
 	if !strings.HasSuffix(facts, rowSep+"29m 8s") {
 		t.Fatalf("the landed room's facts read %q, want the span 29m 8s", facts)
 	}
-	if pinned := a.taskPlanPinned(agent.planFake.pages["7"], 120); !strings.HasSuffix(pinned, rowSep+"29m 8s") {
+	if pinned := a.programPinned(agent.planFake.pages["7"], 120, a.taskPlanAge(agent.planFake.pages["7"].Row)); !strings.HasSuffix(pinned, rowSep+"29m 8s") {
 		t.Fatalf("the stored page pins %q, want the span 29m 8s", pinned)
 	}
 	var card *taskDone
@@ -421,7 +421,7 @@ func TestAProgramRoomsClockStopsAtTheProgramsExit(t *testing.T) {
 	if !strings.HasSuffix(facts, rowSep+"20m") {
 		t.Fatalf("the room's facts read %q sixty-five seconds after a twenty-minute run's exit, want 20m", facts)
 	}
-	if pinned := a.taskPlanPinned(page, 120); !strings.HasSuffix(pinned, rowSep+"20m") {
+	if pinned := a.programPinned(page, 120, a.taskPlanAge(page.Row)); !strings.HasSuffix(pinned, rowSep+"20m") {
 		t.Fatalf("the stored page pins %q after the program exited, want 20m", pinned)
 	}
 	// A RUN STILL WORKING COUNTS ON, whatever the store's row says about the end
@@ -490,4 +490,13 @@ func TestAStepThatChangedAFileWearsItsLinesInTheDiffsColours(t *testing.T) {
 	if strings.Contains(plain(read), "+") {
 		t.Fatalf("a read wears lines: %q", plain(read))
 	}
+}
+
+// planBeat moves the clock one follow beat on and draws a frame, which is when
+// a room on work that can still move reads its page again.
+func planBeat(t *testing.T, a *app) {
+	t.Helper()
+	at := a.now().Add(elsewhereEvery)
+	a.clock = func() time.Time { return at }
+	drive(t, a, frameMsg{})
 }

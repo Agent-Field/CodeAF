@@ -8,10 +8,10 @@ package tui3
 // An ordinary task's room is the contrast: it is drawn under the
 // conversation's own strip, with that conversation's tab the one selected tab
 // and Home beside it, and `esc`, a press on the conversation's tab and a press
-// on Home all leave it. The two pages the belt switch still draws over the
-// conversation (CODEAF_TASK_BELT) — the work tab, and a run's page opened from
-// the side list — are held to the same laws here. A program's task, which used
-// to be one of those pages, is a room now and has its own file
+// on Home all leave it. The rooms the belt switch (CODEAF_TASK_BELT) opens — the
+// work tab's, and a run's task opened from the side list — used to be pages
+// drawn over the conversation, and are held to the same laws here. A
+// program's task is a room of its own and has its own file
 // (programtab_test.go).
 
 import (
@@ -126,8 +126,7 @@ func checkLeft(t *testing.T, l *tabLab, way string, home bool, said string) {
 	t.Helper()
 	shot := l.shoot()
 	if strings.Contains(shot.text, said) {
-		t.Errorf("SYMPTOM: the page is still drawn after %s (page=%v railTaskPlanOn=%v workTabOn=%v)",
-			way, l.a.page, l.a.railTaskPlanOn, l.a.workTabOn)
+		t.Errorf("SYMPTOM: the page is still drawn after %s (page=%v room=%v)", way, l.a.page, l.a.roomOpen())
 	}
 	if home {
 		if !l.a.at(pageHome) {
@@ -185,7 +184,7 @@ func TestAnOrdinaryTasksRoomKeepsTheConversationsTab(t *testing.T) {
 	}
 }
 
-// ── THE PAGES THE BELT SWITCH STILL DRAWS OVER THE CONVERSATION ─────────────
+// ── THE ROOMS THE BELT SWITCH OPENS ─────────────────────────────────────────
 
 // beltTabLab is [workTabFixture] under the strip a person sees.
 func beltTabLab(t *testing.T) *tabLab {
@@ -206,7 +205,7 @@ func beltTabLab(t *testing.T) *tabLab {
 func TestTheWorkTabIsTheOneSelectedTabAndTheStripLeavesIt(t *testing.T) {
 	l := beltTabLab(t)
 	l.press(t, workTabPiece)
-	if !l.a.workTabOn {
+	if l.a.roomPlan() == nil {
 		t.Fatal("the work tab did not open")
 	}
 	if shot := l.shoot(); len(shot.selected) != 1 || !shot.home {
@@ -228,7 +227,7 @@ func TestTheWorkTabIsTheOneSelectedTabAndTheStripLeavesIt(t *testing.T) {
 func TestCtrlCIsNeverTakenByTheWorkTab(t *testing.T) {
 	l := beltTabLab(t)
 	l.press(t, workTabPiece)
-	if !l.a.workTabOn {
+	if l.a.roomPlan() == nil {
 		t.Fatal("the work tab did not open")
 	}
 	control := beltTabLab(t)
@@ -250,8 +249,8 @@ func TestAPressNeverReachesTheStripATaskPageCovers(t *testing.T) {
 	l := &tabLab{a: a}
 	l.shoot()
 	clickRail(t, a, 0)
-	if !a.railTaskPlanOn {
-		t.Fatal("the run's row did not open its page")
+	if a.roomPlan() == nil {
+		t.Fatal("the run's row did not open its room")
 	}
 	if shot := l.shoot(); shot.drawn {
 		t.Skip("the page draws the strip, so a press on it is a press on something drawn")
@@ -260,42 +259,5 @@ func TestAPressNeverReachesTheStripATaskPageCovers(t *testing.T) {
 	if len(a.tabShut) != 0 || a.at(pageHome) || a.closingTab() {
 		t.Errorf("SYMPTOM: a press on a strip nobody can see closed tabs %v, moved to place %v, raised the close card %v",
 			a.tabShut, a.page, a.closingTab())
-	}
-}
-
-// AND THE WHEEL SCROLLS THE PAGE THAT IS DRAWN. Turned over a run's page opened
-// from the side list, it was answered by the side list, the tab names or the
-// transcript under the page; it moves the page now, which lets go of the
-// page's live edge the way a scroll up always does.
-func TestTheWheelScrollsARunsPageAndNothingUnderIt(t *testing.T) {
-	a, _ := railTaskPageApp(t, true)
-	a.width, a.height = 160, 40
-	clickRail(t, a, 0)
-	if !a.railTaskPlanOn || !a.taskSheet.planStick {
-		t.Fatalf("the run's page did not open at its live edge: page=%v stick=%v", a.railTaskPlanOn, a.taskSheet.planStick)
-	}
-	offset, railTop := a.offset, a.railTop
-	drive(t, a, tea.MouseWheelMsg{X: a.width - 2, Y: 10, Button: tea.MouseWheelUp})
-	if a.taskSheet.planStick {
-		t.Error("the wheel over the page did not scroll it")
-	}
-	if a.offset != offset || a.railTop != railTop {
-		t.Errorf("the wheel over the page moved what it covers: offset %d→%d, rail %d→%d", offset, a.offset, railTop, a.railTop)
-	}
-}
-
-// ONE `esc` LEAVES A RUN'S PAGE OPENED BY `enter` ON ITS ROW. The side list kept
-// the keyboard it was handed, under a page that covers it, so the first `esc`
-// was spent giving back a keyboard nobody could see and the page stayed up.
-func TestOneEscLeavesARunsPageOpenedByEnterOnItsRow(t *testing.T) {
-	a, _ := railTaskPageApp(t, true)
-	a.railWhere, a.railHold = railSpot{id: 2}, true
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-	if !a.railTaskPlanOn {
-		t.Fatal("enter on the run's row did not open its page")
-	}
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEscape})
-	if a.railTaskPlanOn || a.taskSheet.planOn {
-		t.Fatalf("one esc left the run's page up (railHold=%v)", a.railHold)
 	}
 }

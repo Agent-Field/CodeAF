@@ -73,15 +73,6 @@ const (
 	convProgramFallback = "program"
 )
 
-// taskPlanIsProgram reports whether the open stored page is a program's: its
-// read carries the program's conversation, or its row names the program, which
-// is how a read that came back for a side-list press is known to belong in the
-// program's room instead ([app.finishRailPlan]).
-func (a *app) taskPlanIsProgram() bool {
-	page := a.taskSheet.plan
-	return page.Program != nil || strings.TrimSpace(page.Row.Program) != ""
-}
-
 // convProgramOf is the page's program, never nil on a program's page: a page
 // whose read has not come back yet is a program with nothing said, named off
 // its row.
@@ -92,7 +83,7 @@ func convProgramOf(page session.PlanTaskPage) *session.PlanProgram {
 	return &session.PlanProgram{Name: strings.TrimSpace(page.Row.Program)}
 }
 
-// taskPlanPinned is the one line a program's page pins under its title, which
+// programPinned is the one line a program's room pins under its title, which
 // no scroll moves: where the program is, what it has spent, how many calls it
 // has made, and how long it has been going.
 //
@@ -107,15 +98,9 @@ func convProgramOf(page session.PlanTaskPage) *session.PlanProgram {
 // conversation total is not — and it names the ceiling beside it only when the
 // page knows the ceiling. The line is ranked and fitted by [rowTail], so a
 // narrow frame gives up the clock before the calls and the calls before the
-// money.
-func (a *app) taskPlanPinned(page session.PlanTaskPage, width int) string {
-	return a.programPinned(page, width, a.taskPlanAge(page.Row))
-}
-
-// programPinned is [app.taskPlanPinned] with the clock handed in: the program's
-// room ([app.programFactsWord]) draws the same line with the clock of the
-// node it is standing on, which is the clock the rail and the landed card
-// read, so the one run reads one figure wherever it is drawn.
+// money. The room ([app.programFactsWord]) hands in the clock of the node it
+// is standing on, which is the clock the rail and the landed card read, so the
+// one run reads one figure wherever it is drawn.
 func (a *app) programPinned(page session.PlanTaskPage, width int, clock string) string {
 	if (page.Program == nil && strings.TrimSpace(page.Row.Program) == "") || width < 1 {
 		return ""
@@ -186,30 +171,11 @@ func (a *app) taskPlanAge(row session.PlanTaskRow) string {
 	return countUpWord(span)
 }
 
-// taskProgramBody is what a person reads on a program's page, under the pinned
-// line: the actions the program took, and under them the notes the run left —
-// its outcome and where its work went, which arrive when it ends and so belong
-// at the bottom edge the page opens on, not above an hour of work.
-//
-// EVERYTHING AN ORDINARY PAGE SPENDS ON ITS OWN MACHINERY IS ABSENT. The
-// telemetry line is the pinned one; the brief opens the actions; and a
-// program's run needs no list of steps of its own when the actions that did
-// the work are on the page.
-func (a *app) taskProgramBody(width int) []string {
-	page, pal := a.taskSheet.plan, a.pal
-	var out []string
-	if n := len(a.taskSheet.planBack); n > 0 {
-		out = append(out, pal.dim("esc/← "+a.taskSheet.planBack[n-1].Row.Title))
-	}
-	return append(out, a.programBody(page, width, a.taskSheet.planBriefFull, a.taskSheet.planCalls)...)
-}
-
-// programBody is what both of a program's pages draw under their head — the
-// tasks place's stored page ([app.taskProgramBody]) and the program's room in
-// the conversation's own tab (programroom.go): the program's actions, or its
-// raw calls when the page's own [programCallsKey] asked for them, and the
-// notes. briefFull and calls are the page's own, because each page folds its
-// brief and turns to its calls with its own keys.
+// programBody is what a program's room draws under its head (programroom.go):
+// the program's actions, or its raw calls when the room's own
+// [programCallsKey] asked for them, and the notes. briefFull and calls are the
+// room's own, because it folds its brief and turns to its calls with its own
+// keys.
 //
 // A RUN FROM BEFORE ITS CALLS WERE LOGGED still has the steps its program
 // reported: the actions draw them in their own shape, and the calls, which
@@ -733,18 +699,9 @@ func taskConversationBrief(page session.PlanTaskPage, text int, briefFull bool) 
 		bandFoldWord(len(lines)-briefFoldLines, briefFoldWhat, true)+railSep+briefFoldKey)
 }
 
-// taskConversationFolds reports whether a program's brief is long enough to
-// fold at the frame's own width, which is what `ctrl+o` asks before it opens
-// or closes it ([app.taskPlanKey]). It measures the brief at the width the
-// page draws it at, so the key and the fold line cannot disagree.
-func (a *app) taskConversationFolds() bool {
-	width, _ := a.size()
-	return convBriefFolds(a.taskSheet.plan, width-2, a.taskSheet.planCalls)
-}
-
-// convBriefFolds is whether a program's brief folds when its page is drawn at
-// this width — as its actions, or as its calls — the one measure both of a
-// program's pages ask before their `ctrl+o` opens or closes it.
+// convBriefFolds is whether a program's brief folds when its room is drawn at
+// this width — as its actions, or as its calls — the measure the room asks
+// before its `ctrl+o` opens or closes it.
 func convBriefFolds(page session.PlanTaskPage, width int, calls bool) bool {
 	_, text := actColumns(actLines(page), width)
 	if calls {
@@ -920,4 +877,66 @@ func convJSONString(body string) string {
 		}
 	}
 	return out.String()
+}
+
+// planNoteWho is the one word a note's author is drawn as: `you` for a note a
+// person left, and nothing for every other author, because the store holds
+// those as ids (the run's number, a worker's handle) and no internal name goes
+// on a person's screen.
+func planNoteWho(note session.PlanTaskNote) string {
+	if note.Person {
+		return "you"
+	}
+	return ""
+}
+
+// taskPlanNoteRows is every note on a program's task as its room draws them
+// under its `notes` heading: each one's author and moment on a dim line, then
+// its words.
+func (a *app) taskPlanNoteRows(notes []session.PlanTaskNote, width int) []string {
+	pal := a.pal
+	var out []string
+	for _, note := range notes {
+		// AN AUTHOR IS DRAWN ONLY AS A WORD A PERSON WOULD RECOGNISE ([planNoteWho]).
+		// The moment is kept and the id is never drawn.
+		who := planNoteWho(note)
+		when := sinceAt(note.At, a.now())
+		switch {
+		case who != "" && when != "":
+			out = append(out, pal.dim(who+railSep+when))
+		case who != "":
+			out = append(out, pal.dim(who))
+		case when != "":
+			out = append(out, pal.dim(when))
+		}
+		for _, para := range strings.Split(note.Body, "\n") {
+			if strings.TrimSpace(para) == "" {
+				continue
+			}
+			for _, line := range wrap(strings.TrimSpace(para), width) {
+				out = append(out, pal.ink(line))
+			}
+		}
+	}
+	return out
+}
+
+func planBriefLines(text string, width int) []string {
+	var lines []string
+	for _, para := range strings.Split(text, "\n") {
+		if para = strings.TrimSpace(para); para != "" {
+			lines = append(lines, wrap(para, width)...)
+		}
+	}
+	return lines
+}
+
+// planBriefRows is a program's brief as its room reads it: the work order
+// drawn through the reader the conversation's transcript already uses
+// ([requestDisplayFor]) before the room wraps it, so every surface that holds
+// this text gives a person the same reading of it, and the fold counts the
+// lines this function draws. A description that is not the generated document
+// is wrapped as it was always wrapped.
+func planBriefRows(desc string, width int) []string {
+	return planBriefLines(requestDisplayFor(strings.TrimSpace(desc)), width)
 }

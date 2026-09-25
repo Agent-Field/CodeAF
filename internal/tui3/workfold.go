@@ -278,6 +278,12 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 			if es[i].kind == entrySeam {
 				blocked = true
 			}
+			// NOR IS A MANAGER'S QUESTION TO ITS TEAM. Its answers land under
+			// it after the turn has ended (teamthreadcard.go), and a chip that
+			// swallowed the card would hide the one place they arrive.
+			if es[i].kind == entryTool && es[i].tool == "team_send" && es[i].status == toolOK {
+				blocked = true
+			}
 		}
 		// AN ASK STANDS, AND THE WORK BEFORE IT STILL FOLDS. A task proposal, a
 		// sign-in or a standing card is a thing the work could not decide alone,

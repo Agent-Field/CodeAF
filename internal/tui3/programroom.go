@@ -114,6 +114,20 @@ func planTaskIDWord(id string) string {
 	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(id), "t-"))
 }
 
+// programRoomFor is the task a stored page opens a program's room on: the
+// page's own number, when the page is a program's. A program's run is always
+// its store's root, rooted at the task's own number ([app.programRowNode]).
+func (a *app) programRoomFor(page session.PlanTaskPage) (uint64, bool) {
+	if pageProgram(page) == "" {
+		return 0, false
+	}
+	id, err := strconv.ParseUint(planTaskIDWord(page.Row.ID), 10, 64)
+	if err != nil || id == 0 {
+		return 0, false
+	}
+	return id, true
+}
+
 // heldProgramPage is the page a door can open on before the store answers: the
 // row the surface holds for the task, and nothing else yet.
 func (a *app) heldProgramPage(id uint64) session.PlanTaskPage {

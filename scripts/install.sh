@@ -7,14 +7,6 @@ LEGACY_REPOSITORY="Agent-Field/aforge-v2" # Remove after the one-release reposit
 CHANNEL="${CHANNEL:-stable}"
 INSTALL_NAME="${CODEAF_INSTALL_NAME:-codeaf}"
 VERSION="${VERSION:-}"
-# The installer's three-line telemetry notice, verbatim from docs/TELEMETRY.md.
-# The binary prints the full notice before the first session's events leave;
-# the installer says the fact, the inspector and the switch. It writes a local
-# install marker and prints this text, never sends telemetry, and makes no
-# request that the download steps did not already make.
-TELEMETRY_NOTICE='codeaf shares anonymous performance data with AgentField
-codeaf does NOT share your prompts, code, files, or any private information
-see what is shared: codeaf telemetry info · turn off: CODEAF_TELEMETRY=off'
 VERBOSE="${VERBOSE:-0}"
 NO_MODIFY_PATH="${CODEAF_NO_MODIFY_PATH:-${AFORGE_NO_MODIFY_PATH:-0}}" # legacy-name
 INSTALL_DIR="${CODEAF_INSTALL_DIR:-${AFORGE_INSTALL_DIR:-${HOME}/.codeaf/bin}}" # legacy-name
@@ -51,7 +43,6 @@ Environment:
   CODEAF_NO_MODIFY_PATH, VERBOSE
   GITHUB_TOKEN or GH_TOKEN: GitHub answers anonymous API calls sixty times an hour per address; a token raises that.
   CODEAF_GITHUB_API and CODEAF_GITHUB_DOWNLOAD for mirrors and tests
-  CODEAF_TELEMETRY=off, or DO_NOT_TRACK=1, turns the anonymous usage counts off
 EOF
 }
 
@@ -64,18 +55,6 @@ usage_error() {
   printf 'codeaf: %s\n\n' "$*" >&2
   usage >&2
   exit 2
-}
-
-telemetry_off() {
-  local value
-  case "${DO_NOT_TRACK:-}" in
-    1|[Tt]|[Tt][Rr][Uu][Ee]) return 0 ;;
-  esac
-  value=$(echo "${CODEAF_TELEMETRY:-}" | tr '[:upper:]' '[:lower:]')
-  case "$value" in
-    off|0|false) return 0 ;;
-  esac
-  return 1
 }
 
 # The install marker is a local record only: it names how and when this
@@ -92,22 +71,19 @@ write_install_marker() {
     stable|rc|staging|dev) channel="$CHANNEL" ;;
     *) channel="unknown" ;;
   esac
+  # The marker is background bookkeeping: a failure skips it without a word.
   if ! mkdir -p "$directory/telemetry" 2>/dev/null; then
-    printf 'codeaf: could not create %s/telemetry; skipping the install marker\n' "$directory" >&2
     return 0
   fi
   chmod 0700 "$directory/telemetry"
   file="$directory/telemetry/install.json"
   if ! { printf '{"install_method":"script","channel":"%s","installed_at":"%s"}' \
     "$channel" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"; } > "$file" 2>/dev/null; then
-    printf 'codeaf: could not write %s; skipping the install marker\n' "$file" >&2
     return 0
   fi
   chmod 0600 "$file"
 }
 
-# Printed once, at the very end of a successful install. The binary repeats it
-# before the first session's counts are ever sent.
 # The one line a person still has to paste, printed last of all, between a
 # blank line above and a blank line below, bold green on a terminal. Bare
 # `export PATH=...` and nothing else, so it can be selected and pasted without
@@ -122,14 +98,6 @@ print_path_hint() {
     off=$'\033[0m'
   fi
   printf '\n%s%s%s\n\n' "$on" "$hint" "$off"
-}
-
-print_telemetry_notice() {
-  if telemetry_off; then
-    printf 'codeaf: anonymous usage counts are off (CODEAF_TELEMETRY=off or DO_NOT_TRACK=1)\n' >&2
-    return 0
-  fi
-  printf '\n%s\n' "$TELEMETRY_NOTICE" >&2
 }
 
 while [[ $# -gt 0 ]]; do
@@ -509,7 +477,7 @@ append_path_line() {
 }
 
 # The PATH line is not printed here. It is the last thing the installer says,
-# after `codeaf version` and the telemetry notice, so the one line a person
+# after `codeaf version`, so the one line a person
 # has to paste sits at the bottom of the screen where their eye already is.
 PATH_HINT=""
 if [[ "$OS" != "windows" ]] && ! path_has_dir; then
@@ -552,5 +520,4 @@ printf 'installed %s\n' "$version_line"
 if [[ "$RUN_BOOT_ADOPTION" == "1" || -d "$STATE_ROOT" ]]; then
   write_install_marker "$STATE_ROOT"
 fi
-print_telemetry_notice
 print_path_hint "$PATH_HINT"

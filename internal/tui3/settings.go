@@ -643,9 +643,8 @@ var settingUI = map[string]settingMeta{
 	// this door and `codeaf config` say the same word.
 	config.KeyHints: {
 		tab: tabWorkspace, label: "disable hints", widget: widgetToggle,
-		about: "on silences the one-line tips — home's row above the rule and the " +
-			"keys row's — and what's-new lines with them. Off shows each until you " +
-			"have used what it teaches.",
+		// NO `about` OF ITS OWN: the line under the row is the registry's hint,
+		// the owner's own wording (2026-09-24), said once ([settingMetaFor]).
 	},
 	config.KeySplitPct: {
 		tab: tabDisplay, label: "chat width", widget: widgetText,
@@ -1367,10 +1366,9 @@ func (a *app) standDownRest() {
 		a.closeRewindSheet(true)
 	}
 	a.closeJobPage()
-	// AND THE TASK PAGES THE BELT SWITCH DRAWS OVER THE CONVERSATION, which are
-	// drawn before any place is: a place opened under one of them was a place
-	// nobody could see (worktab.go's [app.leaveTaskOverlays]).
-	a.leaveTaskOverlays()
+	// AND A ROW'S PAGE STILL ON ITS WAY, which would open under the place
+	// (worktab.go's [app.withdrawRailPlan]).
+	a.withdrawRailPlan()
 }
 
 func (s *sheet) searching() bool { return strings.TrimSpace(s.query.String()) != "" }

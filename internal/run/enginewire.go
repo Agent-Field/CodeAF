@@ -145,8 +145,8 @@ func programEndingOf(ended *ProgramEndedError) *session.ProgramEnding {
 	return &session.ProgramEnding{Status: ended.Status, Reason: ended.Reason, Result: ended.Result}
 }
 
-func (engine) Land(ctx context.Context, store *plandb.Store, workspace, rootID string) (session.RunLanding, error) {
-	landing, err := Land(ctx, store, workspace, rootID)
+func (engine) Land(ctx context.Context, store *plandb.Store, workspace, base, rootID string) (session.RunLanding, error) {
+	landing, err := Land(ctx, store, workspace, base, rootID)
 	if err != nil {
 		return session.RunLanding{}, err
 	}
