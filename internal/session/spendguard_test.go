@@ -232,3 +232,23 @@ func TestHelperGuardRefusesUnpricedCallAtDailyCap(t *testing.T) {
 		t.Fatalf("helper at cap: %v after %d calls", err, calls.calls)
 	}
 }
+
+// A CALL THAT COSTS NOTHING IS NEVER STOPPED BY A DOLLAR LINE: a free pool, a
+// local model and a subscription plan are priced at nothing — a price that is
+// KNOWN — so a day past its cap, a task at its limit and a checker at its
+// ceiling all let it through. Only a call whose price nobody knows is held at
+// a line it cannot be estimated against.
+func TestACallThatCostsNothingPassesEveryDollarLine(t *testing.T) {
+	free := func(string) (float64, float64, float64, bool) { return 0, 0, 0, true }
+	task := &SpendTask{}
+	task.settle(0, 6)
+	guard := &SpendGuard{Price: free, Day: NewSpendDay(0.6), Cap: 0.5, CapAction: "daily cap",
+		TaskCap: 5, TaskAction: "task limit", Task: task,
+		SeatCeilings: map[crewroute.Seat]float64{crewroute.Checker: 0.05}, CeilingAction: "ceiling $%.2f"}
+	guard.seatTally(crewroute.Checker).settle(0, 0.06)
+	calls := &spendingCompleter{}
+	seat := SeatCompleter(crewroute.Checker, guard.Wrap("ollama/gemma4:12b", calls))
+	if _, err := seat.CompleteWithMessages(t.Context(), []ai.Message{textMessage("user", "hi")}, ai.WithMaxTokens(2000)); err != nil || calls.calls != 1 {
+		t.Fatalf("a call that costs nothing past every line: %v after %d calls", err, calls.calls)
+	}
+}

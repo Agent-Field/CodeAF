@@ -683,8 +683,10 @@ to cost, which is never less than what the same model charged for its last call 
 A call that would pass the cap is not made: the task stops on `today's crew spend has reached the daily cap
 of $5.00 · raise it with /crew cap`, with what it had done so far. A checker cut off this
 way ends on the same sentence.
-At the cap, a call codeaf cannot price — a model with no catalog price, a free pool,
-or a local model — is not sent either, and ends on the same sentence.
+At the cap, a call whose price codeaf does not know — a model the catalog lists with no
+price — is not sent either, and ends on the same sentence. A call that costs nothing — a
+free pool, a local model, a subscription plan — is never stopped by the cap, the per-task
+limit or the checker's ceiling.
 
 **A checker has a ceiling of its own on each task**: three times its estimate, and never
 less than $0.05. A check that reaches it stops there, on `the check stopped at its spend

@@ -524,7 +524,7 @@ func crewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *Sp
 	capUSD, action := config.CrewSpendCap(profileDir, withDaily)
 	taskCap, taskAction := config.CrewTaskSpendCap(profileDir)
 	guard := &SpendGuard{
-		Price: config.CrewCallPrice, Cap: capUSD, CapAction: action,
+		Price: config.CrewCallPriceAt(profileDir), Cap: capUSD, CapAction: action,
 		SeatCeilings: config.CrewSeatCeilings(d), CeilingAction: config.CrewCheckCeilingAction,
 		TaskCap: taskCap, TaskAction: taskAction, Task: &SpendTask{},
 	}
@@ -552,7 +552,7 @@ func (a *Agent) helperGuard(crew *taskCrew) *SpendGuard {
 	if a.config.RouteCrew == nil {
 		return nil
 	}
-	guard := &SpendGuard{Price: config.CrewCallPrice, Day: a.crewDay()}
+	guard := &SpendGuard{Price: config.CrewCallPriceAt(a.config.ProfileDir), Day: a.crewDay()}
 	if capUSD, action := config.CrewSpendCap(a.config.ProfileDir, false); capUSD > 0 {
 		guard.Cap, guard.CapAction = capUSD, action
 	}
@@ -645,7 +645,7 @@ func CrewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *Sp
 // the per-task limit alone.
 func TaskSpendGuard(profileDir string) *SpendGuard {
 	taskCap, taskAction := config.CrewTaskSpendCap(profileDir)
-	return &SpendGuard{Price: config.CrewCallPrice, TaskCap: taskCap, TaskAction: taskAction, Task: &SpendTask{}}
+	return &SpendGuard{Price: config.CrewCallPriceAt(profileDir), TaskCap: taskCap, TaskAction: taskAction, Task: &SpendTask{}}
 }
 
 // spentTodayOnLedger is today's spend as the usage ledger has it; nothing

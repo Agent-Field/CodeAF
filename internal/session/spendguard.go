@@ -31,7 +31,8 @@ import (
 // after, so the next estimate starts from the truth.
 
 // SpendPrice is a model's price per token: prompt, completion and cache read.
-// ok is false for a model nobody prices; a cap already reached still stops it.
+// ok is false for a model whose price nobody knows; a line already reached
+// still stops it. A known price of nothing is never stopped.
 type SpendPrice func(model string) (prompt, completion, cacheRead float64, ok bool)
 
 // SpendDay is today's spend as this process knows it: what the ledger said
@@ -242,12 +243,11 @@ func (g *SpendGuard) before(ctx context.Context, model string, messages []ai.Mes
 		prompt, completion, cacheRead, ok = g.Price(model)
 	}
 	if !ok {
-		// A CALL NOBODY PRICES HAS NO ESTIMATE, BUT A LINE ALREADY REACHED
-		// STOPS IT: a day at its cap, a task at its limit and a checker at its
-		// ceiling make no more calls of any kind — a model with no catalog
-		// price, a free pool and a local model included — on the same sentence
-		// a priced call ends on. Below every line it goes as it always has, and
-		// what it cost is counted after when the provider says.
+		// A CALL WHOSE PRICE NOBODY KNOWS HAS NO ESTIMATE, BUT A LINE ALREADY
+		// REACHED STOPS IT: a day at its cap, a task at its limit and a checker
+		// at its ceiling make no more such calls, on the same sentence a priced
+		// call ends on. Below every line it goes as it always has, and what it
+		// cost is counted after when the provider says.
 		if g.Cap > 0 && g.Day.Total() >= g.Cap {
 			return 0, ErrSpendStopped{Action: g.CapAction}
 		}
@@ -258,6 +258,13 @@ func (g *SpendGuard) before(ctx context.Context, model string, messages []ai.Mes
 			ceiling := g.SeatCeilings[seat]
 			return 0, ErrSpendStopped{Action: fmt.Sprintf(g.CeilingAction, ceiling)}
 		}
+		return 0, nil
+	}
+	if prompt <= 0 && completion <= 0 {
+		// A CALL THAT COSTS NOTHING IS NEVER STOPPED BY A DOLLAR LINE. A free
+		// pool, a local model and a subscription plan are priced at nothing,
+		// and a price of nothing is a price: no cap, limit or ceiling can be
+		// crossed by it, so none of them holds it.
 		return 0, nil
 	}
 	g.mu.Lock()

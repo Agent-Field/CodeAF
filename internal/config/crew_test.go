@@ -740,3 +740,27 @@ func TestAutoInAHelperRowReadsTheDefaultAndMigrates(t *testing.T) {
 		t.Error("a cleared small-work row was deleted")
 	}
 }
+
+// A PRICE OF NOTHING IS A PRICE: a free pool, and a call sent through a
+// subscription plan or a model on this machine, bills nothing per token and is
+// priced at nothing — known — while a model the catalog has no price for stays
+// unknown. The spend guard stops only the unknown at a dollar line.
+func TestACallThatBillsNothingIsPricedAtNothing(t *testing.T) {
+	dir := crewProfile(t)
+	if err := writeProfileValue(dir, keyModelSources, []PersistedSource{{ID: "z-ai", Written: "z-ai", Key: "zai-key-0123456789", Door: "coding-plan", Order: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	if prompt, completion, _, ok := CrewCallPrice("z-ai/glm-5.3-flash:free"); !ok || prompt != 0 || completion != 0 {
+		t.Errorf("a free pool is priced %v/%v, known %v — want nothing, known", prompt, completion, ok)
+	}
+	price := CrewCallPriceAt(dir)
+	if prompt, completion, _, ok := price("z-ai/glm-5.3-flash"); !ok || prompt != 0 || completion != 0 {
+		t.Errorf("a call through the coding plan is priced %v/%v, known %v — want nothing, known", prompt, completion, ok)
+	}
+	if prompt, _, _, ok := price("moonshotai/kimi-k3"); !ok || prompt <= 0 {
+		t.Errorf("a metered catalog model is priced %v, known %v", prompt, ok)
+	}
+	if _, _, _, ok := price("vendor/nobody-prices-this"); ok {
+		t.Error("a model nobody prices reads as known")
+	}
+}

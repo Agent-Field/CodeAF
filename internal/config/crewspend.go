@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
+	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 )
@@ -13,14 +15,42 @@ import (
 // seat's own ceiling on one task.
 
 // CrewCallPrice is a model's prices per token — prompt, completion, cache
-// read — as the catalog or the evidence table knows them. ok is false for a
-// model neither prices, and for a free pool.
+// read — as the catalog or the evidence table knows them. ok is false only for
+// a price NOBODY KNOWS: a model the catalog does not list, lists with no price,
+// or lists at nothing without being a free pool. A free pool's price is known,
+// and it is nothing.
 func CrewCallPrice(model string) (prompt, completion, cacheRead float64, ok bool) {
+	if crewroute.IsFree(model) {
+		return 0, 0, 0, true
+	}
 	m, known := crewCatalogModel(model)
 	if !known || (m.PromptPrice <= 0 && m.CompletionPrice <= 0) {
 		return 0, 0, 0, false
 	}
 	return m.PromptPrice, m.CompletionPrice, m.CacheReadPrice, true
+}
+
+// CrewCallPriceAt is [CrewCallPrice] on one profile's connections: a call SENT
+// THROUGH A SUBSCRIPTION PLAN OR TO A MODEL ON THIS MACHINE bills nothing per
+// token, so it is priced at nothing whatever the catalog lists for the model —
+// a z-ai coding plan answers `z-ai/…` ids the catalog prices as metered. The
+// connections are read once, on the first call priced.
+func CrewCallPriceAt(profileDir string) func(model string) (prompt, completion, cacheRead float64, ok bool) {
+	var once sync.Once
+	nothing := map[string]bool{}
+	return func(model string) (float64, float64, float64, bool) {
+		once.Do(func() {
+			for _, p := range CrewProvidersAt(profileDir) {
+				if p.Kind == crewroute.Plan || p.Kind == crewroute.Local {
+					nothing[strings.ToLower(strings.TrimSpace(p.Written))] = true
+				}
+			}
+		})
+		if slash := strings.Index(model, "/"); slash > 0 && nothing[strings.ToLower(strings.TrimSpace(model[:slash]))] {
+			return 0, 0, 0, true
+		}
+		return CrewCallPrice(model)
+	}
 }
 
 // CrewSpendCap is the day's cap a crew's seat calls are held to, and the one
