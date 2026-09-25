@@ -4235,7 +4235,9 @@ starts instead:
 Both gate starts only. Nothing already running is ever touched; pressure drains
 as running work finishes. The older node road re-asks every 5 seconds; the
 default run road re-asks each supervisor pass, every 300 milliseconds. `codeaf do`
-uses the same profile limits.
+uses the same profile limits and, having no rail, says a hold on stderr, once:
+`waiting · machine busy` and the limit that held it (see *codeaf do is waiting and
+nothing happens* on the terminal page).
 
 **The honest caveat:** these two governors read `/proc/loadavg` and `/proc/meminfo`, so
 they only apply on a machine that has them. Where there is no `/proc` — macOS, Windows —

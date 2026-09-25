@@ -334,6 +334,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// ways somebody meets an empty file list after spending time and money.
 		{"the run finished and my directory is empty where did the work go", "running-from-the-terminal"},
 		{"codeaf do spent money and wrote no files", "running-from-the-terminal"},
+		// A headless run the machine holds (#1410's review): it used to wait in
+		// silence until its --timeout, and the person asking has only stderr.
+		{"codeaf do is waiting and nothing happens", "running-from-the-terminal"},
+		{"why did codeaf do exit 124 without starting anything", "running-from-the-terminal"},
 		// And the reader itself: a person with a log in front of them wants one
 		// call out of it, or wants the rows a program can read.
 		{"find one call in the log", "models-and-cost"},
