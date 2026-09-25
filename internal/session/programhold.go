@@ -248,11 +248,11 @@ func (h programHold) where(dir string) string {
 // every guard here is one: [Agent.executeTool] is the single door every call
 // passes through (hooks.go).
 //
-// IT BINDS EVERY HAND THAT PUTS A FILE ON THE PERSON'S DISK AT A PATH THE CALL
-// NAMES ([savingPath]): write and edit, edit_video's writing actions, and the
-// generated picture, music, video and speech a path was given for. A
-// generation that names no path lands in this session's own folders, which no
-// program holds.
+// IT BINDS EVERY HAND THAT PUTS A FILE ON THE PERSON'S DISK AT A NAMED OR
+// IMPLIED PATH ([savingPath]): write and edit, workspace restore and merge,
+// edit_video's writing actions, and the generated picture, music, video and
+// speech. An unnamed generation uses its real default folder, which can be
+// inside the held workspace.
 type programHoldGuard struct{ agent *Agent }
 
 func (programHoldGuard) Name() string { return "program-hold" }
@@ -283,11 +283,23 @@ func programHoldWriteRefusal(shown string, hold programHold) string {
 // against the workspace the way [Agent.mutatingPath] does, which answers for
 // the hands it knows.
 func (a *Agent) savingPath(call ai.ToolCall) (string, string, bool) {
+	name := call.Function.Name
+	workspace := strings.TrimSpace(a.config.Workspace)
+	if name == "workspace_restore" || name == "workspace_merge" {
+		var args struct {
+			Confirm bool `json:"confirm"`
+			Preview bool `json:"preview"`
+		}
+		if json.Unmarshal([]byte(call.Function.Arguments), &args) != nil || workspace == "" ||
+			(name == "workspace_restore" && !args.Confirm) || (name == "workspace_merge" && args.Preview) {
+			return "", "", false
+		}
+		return workspace, workspace, true
+	}
 	if path, shown, ok := a.mutatingPath(call); ok {
 		return path, shown, true
 	}
-	name := call.Function.Name
-	if _, known := mutatingTools[name]; known || !producedAFile(name, call.Function.Arguments) {
+	if !producedAFile(name, call.Function.Arguments) {
 		return "", "", false
 	}
 	var args struct {
@@ -296,7 +308,25 @@ func (a *Agent) savingPath(call ai.ToolCall) (string, string, bool) {
 	if err := decodeToolArguments(json.RawMessage(call.Function.Arguments), &args); err != nil {
 		return "", "", false
 	}
-	path, workspace := strings.TrimSpace(args.Path), strings.TrimSpace(a.config.Workspace)
+	path := strings.TrimSpace(args.Path)
+	if path == "" {
+		// A media hand with no named path still writes into its default folder.
+		// Resolve that folder before applying the same hold as a named output.
+		var destination string
+		switch name {
+		case "generate_image":
+			destination = ImagesDir(a.config.Place, workspace)
+		case "speak":
+			destination = AudioDir(a.config.Place, workspace)
+		case "generate_music":
+			destination = MusicDir(a.config.Place, workspace)
+		case "generate_video", "edit_video":
+			destination = VideoDir(a.config.Place, workspace)
+		}
+		if destination != "" {
+			return destination, destination, true
+		}
+	}
 	if path == "" || (workspace == "" && !filepath.IsAbs(path)) {
 		return "", "", false
 	}

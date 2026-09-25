@@ -139,6 +139,10 @@ func TestTheChatsFileToolsAreRefusedAFolderAProgramHolds(t *testing.T) {
 		withdrawnCall("c5", "speak", `{"text":"hello","path":"clips/hello"}`),
 		withdrawnCall("c6", "generate_music", `{"description":"a tune","path":"tune"}`),
 		withdrawnCall("c7", "generate_video", `{"prompt":"a boat","path":"boat"}`),
+		withdrawnCall("c12", "generate_image", `{"prompt":"a harbour"}`),
+		withdrawnCall("c13", "workspace_restore", `{"snapshot":"before","confirm":true}`),
+		withdrawnCall("c14", "workspace_merge", `{"fork":"try-it"}`),
+		withdrawnCall("c18", "edit_video", `{"action":"join"}`),
 	} {
 		if _, refusal, ok := guard.PreAction(context.Background(), nil, nil, call); ok || !refusal.isError || !strings.Contains(refusal.text, "where fake, task 4 (Fix the parser), is working, so nothing was written") {
 			t.Fatalf("%s into the held folder = %+v (let through %v)", call.Function.Name, refusal, ok)
@@ -147,7 +151,6 @@ func TestTheChatsFileToolsAreRefusedAFolderAProgramHolds(t *testing.T) {
 	elsewhere := t.TempDir()
 	for _, call := range []ai.ToolCall{
 		scopedCall("write", filepath.Join(elsewhere, "notes.md")),
-		withdrawnCall("c8", "generate_image", `{"prompt":"a harbour"}`),
 		withdrawnCall("c9", "edit_video", `{"action":"measure","path":"cut.mp4"}`),
 		withdrawnCall("c10", "bash", `{"command":"echo hi > note.txt"}`),
 	} {
@@ -156,9 +159,79 @@ func TestTheChatsFileToolsAreRefusedAFolderAProgramHolds(t *testing.T) {
 		}
 	}
 	held.Finish("")
+	for _, call := range []ai.ToolCall{
+		withdrawnCall("c15", "workspace_restore", `{"snapshot":"before","confirm":true}`),
+		withdrawnCall("c16", "workspace_merge", `{"fork":"try-it"}`),
+		withdrawnCall("c17", "generate_image", `{"prompt":"a harbour"}`),
+	} {
+		if _, refusal, ok := guard.PreAction(context.Background(), nil, nil, call); !ok {
+			t.Fatalf("%s was refused after the hold ended: %q", call.Function.Name, refusal.text)
+		}
+	}
 	if again := agent.executeTool(context.Background(), agent.newEpisode(), nil,
 		withdrawnCall("c11", "write", `{"path":"NOTES.md","content":"the chat's note\n"}`), ""); again.isError {
 		t.Fatalf("the write was still refused after the run ended: %q", again.text)
+	}
+}
+
+// Every registered chat hand has an explicit disposition at a folder hold.
+// Bash is deliberately open because its command's effects cannot be known
+// from its arguments; task tools have their separate folder admission guard.
+func TestProgramHoldClassifiesEveryRegisteredChatTool(t *testing.T) {
+	workspace := t.TempDir()
+	agent := &Agent{config: Config{Workspace: workspace}}
+	fenced := map[string]bool{
+		"write": true, "edit": true, "edit_video": true,
+		"generate_image": true, "generate_music": true, "generate_video": true, "speak": true,
+		"workspace_restore": true, "workspace_merge": true,
+	}
+	// These verbs read, write codeaf's state outside the held folder, or start
+	// work whose own admission guard refuses a held folder. Bash is the one
+	// unguarded file writer because a shell command has no knowable path set.
+	notFolderWrites := map[string]bool{
+		"bash": true, "read": true, "ls": true, "find": true, "grep": true,
+		"manual": true, "ask": true, "jobs": true, "watch": true,
+		"track": true, "commit": true, "recall": true, "remember": true, "forget": true,
+		"propose_task": true, "tasks": true, "quick_task": true,
+		"use_skill": true, "load_capability": true, "view_image": true,
+		"read_document": true, "search_conversations": true,
+		"workspace": true, "workspace_snapshots": true, "workspace_fork": true,
+		"services": true, "use_service": true,
+		"settings": true, "change_setting": true,
+		"stand": true, "items": true, "revise_assignment": true, "divide_work": true,
+		"build_harness": true, "list_harnesses": true, "list_subharnesses": true,
+		"propose_subharness": true, "revise_design": true,
+		"web_search": true, "web_fetch": true,
+		"gmail_read": true, "gmail_search": true, "gmail_send": true,
+		"calendar_list": true, "calendar_create": true,
+		"slack_search": true, "slack_read_thread": true, "slack_send": true, "slack_list_channels": true,
+	}
+	for name := range universeToolNames(t) {
+		if !fenced[name] && !notFolderWrites[name] {
+			t.Errorf("registered tool %q has no folder hold disposition", name)
+		}
+	}
+	for _, name := range []string{"workspace_restore", "workspace_merge", "generate_image"} {
+		if !fenced[name] {
+			t.Fatalf("%s lost its folder hold", name)
+		}
+	}
+	for _, call := range []ai.ToolCall{
+		withdrawnCall("h1", "write", `{"path":"file.txt","content":"x"}`),
+		withdrawnCall("h2", "edit", `{"path":"file.txt","old":"x","new":"y"}`),
+		withdrawnCall("h3", "edit_video", `{"action":"join","path":"cut.mp4"}`),
+		withdrawnCall("h10", "edit_video", `{"action":"join"}`),
+		withdrawnCall("h4", "generate_image", `{"prompt":"a harbour"}`),
+		withdrawnCall("h5", "generate_music", `{"description":"a song","path":"song.mp3"}`),
+		withdrawnCall("h6", "generate_video", `{"prompt":"a boat","path":"boat.mp4"}`),
+		withdrawnCall("h7", "speak", `{"text":"hello","path":"voice.wav"}`),
+		withdrawnCall("h8", "workspace_restore", `{"snapshot":"before","confirm":true}`),
+		withdrawnCall("h9", "workspace_merge", `{"fork":"try-it"}`),
+	} {
+		path, _, ok := agent.savingPath(call)
+		if !ok || !strings.HasPrefix(canonicalPath(path), canonicalPath(workspace)+string(filepath.Separator)) && canonicalPath(path) != canonicalPath(workspace) {
+			t.Errorf("%s has no path inside the workspace for its folder hold: %q, %v", call.Function.Name, path, ok)
+		}
 	}
 }
 
