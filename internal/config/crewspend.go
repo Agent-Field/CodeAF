@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"math"
+	"strconv"
 
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 )
@@ -74,9 +75,9 @@ func CrewSeatCeilings(d crewroute.Decision) map[crewroute.Seat]float64 {
 	if checker.EstUSD <= 0 {
 		return nil
 	}
-	ceiling := checker.EstUSD * crewCheckCeilingTimes
-	if ceiling < crewCheckCeilingFloor {
-		ceiling = crewCheckCeilingFloor
+	ceiling := checker.EstUSD * CrewCheckCeilingTimes
+	if ceiling < CrewCheckCeilingFloor {
+		ceiling = CrewCheckCeilingFloor
 	}
 	// THE CEILING BELONGS TO THE SEAT, NOT TO A MODEL. A fresh profile's
 	// narrow fix can put one model in all three seats, and a ceiling keyed by
@@ -88,11 +89,25 @@ func CrewSeatCeilings(d crewroute.Decision) map[crewroute.Seat]float64 {
 }
 
 // CrewCheckCeilingAction is the sentence a check its ceiling ends says, with
-// the ceiling's dollars.
-const CrewCheckCeilingAction = "the check stopped at its spend ceiling of $%.2f, three times its estimate, before it finished"
+// the ceiling's dollars. The multiplier is spelled from
+// [CrewCheckCeilingTimes], so the sentence cannot promise a figure the guard
+// does not hold.
+var CrewCheckCeilingAction = "the check stopped at its spend ceiling of $%.2f, " +
+	crewCeilingTimesWord() + " times its estimate, before it finished"
 
 // The checker's ceiling: how many times its estimate, and the least it is.
+// The manual quotes both (internal/manual's truth_test.go holds it to them).
 const (
-	crewCheckCeilingTimes = 3.0
-	crewCheckCeilingFloor = 0.05
+	CrewCheckCeilingTimes = 3.0
+	CrewCheckCeilingFloor = 0.05
 )
+
+// crewCeilingTimesWord is the multiplier as a sentence says it: a small whole
+// number in words, the way prose spells a count, and anything else in digits.
+func crewCeilingTimesWord() string {
+	words := []string{"zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"}
+	if n := int(CrewCheckCeilingTimes); float64(n) == CrewCheckCeilingTimes && n >= 0 && n < len(words) {
+		return words[n]
+	}
+	return strconv.FormatFloat(CrewCheckCeilingTimes, 'f', -1, 64)
+}
