@@ -935,8 +935,9 @@ A row your environment has pinned refuses like it does everywhere else:
 
 ## Does codeaf sign my commits — why is there a co-author on my commit, who is agentfield-bot, how do I turn the trailer off
 
-Yes, always, and it cannot be turned off. There are three marks and no others,
-and this is exactly what each one looks like.
+codeaf signs commits it writes, and its worker harness signs the commits its
+workers make. The commit mark cannot be turned off unless the repository's
+CONTRIBUTING policy forbids AI trailers.
 
 **A commit** ends with one blank line and two trailer lines, `Assisted-by`
 first and the co-author last, and nothing after them:
@@ -950,20 +951,39 @@ The name in brackets is the model that wrote the commit — the model the
 conversation is talking to at that moment — and only the model: the provider or
 company in front of it (`z-ai/`) and a routing suffix such as `:free` or
 `:nitro` come off, and the model's own version or date stays. Switch with
-`/model` and the next commit names the model you switched to.
+`/model` and the next commit names the model you switched to. To hide only the
+model name, turn off the **model in commits** row (`attribution.model`) in
+`/settings`, or set `CODEAF_ATTRIBUTION_MODEL=0`. Then the first line is bare
+`Assisted-by: CodeAF`; the co-author line remains.
 
-**A commit a task lands names no model on the default way tasks run.** A task
-on the worker harness — what `/task` and `codeaf do` use unless
-`CODEAF_TASK_BELT` says `node` — lands with the bare line,
-`Assisted-by: CodeAF`, with no brackets, whatever the row below says: a run's
-record does not say which model did its work, so the landing names none. Only
-on the older node belt (`CODEAF_TASK_BELT=node`) does a landing name the model
-that task ran on.
+**A task on the worker harness (the default) names no model.** Its workers'
+own commits and its landing commit carry the bare `Assisted-by: CodeAF` and the
+co-author line. The section "Does the task sign the commits it makes itself"
+explains when those commits are signed or left alone.
 
-**The one part you can turn off is the model's name.** Switch the **model in
-commits** row (`attribution.model`) off in `/settings`, or set
-`CODEAF_ATTRIBUTION_MODEL=0`, and the first line is just `Assisted-by: CodeAF`.
-It is on by default.
+`agentfield-bot` is codeaf's GitHub account. The numeric ID in
+`267109073+agentfield-bot@users.noreply.github.com` makes GitHub link the
+co-author to that account and show its avatar. The marks record provenance.
+
+## Does the task sign the commits it makes itself — when are worker commits left unsigned
+
+The worker harness signs its workers' commits when the run ends,
+before its work comes home, and signs a landing commit for leftover edits.
+It uses the bare `Assisted-by: CodeAF` line and the codeaf co-author once.
+`codeaf do` signs its workers' commits in your folder when its run ends, even
+when the repository had no commits before the run. It makes no landing commit
+of its own. A commit you make in that folder during the run may be signed too.
+An already signed commit gets no duplicate lines. codeaf keeps the commit's
+author, committer, tree and message body, and leaves your repository's hooks
+alone. A commit your git signed with GPG or SSH keeps what the worker wrote:
+changing its message would invalidate that signature. The same is true of the
+whole run's range if one commit has such a signature. A commit already pushed,
+tagged, pointed at by another branch, or fetched from elsewhere and merged is
+left as it is. A detached HEAD or a folder that was not a git repository when
+the run started has no commits to sign. CONTRIBUTING files that forbid AI
+trailers stop codeaf from adding them to its own commits too.
+
+## What marks appear on pull requests, issues and comments
 
 **A pull request or an issue** ends its body with a line holding an em dash, and
 then one sentence:
@@ -982,13 +1002,8 @@ with one small muted line, no em dash above it:
 <sub>drafted with [CodeAF](https://agentfield.ai/github/codeaf?utm_source=github&utm_medium=comment&utm_campaign=drafted_with)</sub>
 ```
 
-`agentfield-bot` is codeaf's own GitHub account. The address is written with
-the account's numeric id in front — `267109073+agentfield-bot@users.noreply.github.com`
-— because that ID-prefixed form is the one GitHub links to the CodeAF account
-and renders the co-author with its avatar. The `Assisted-by` line above it
-names the model that wrote the commit when there is one to name, so
-`git interpret-trailers` can answer who typed it beyond the account. The marks are provenance — another pair of
-hands typed this — and they are the only trace left on your work.
+These marks tell a reader codeaf drafted the text. A repository policy or a
+policy you state can forbid them.
 
 ## Will it sign every comment it leaves — how gentle the comment line is, and where none of the three ever appear
 
@@ -998,14 +1013,19 @@ is also left off entirely on a one-line reply, on anything inside a code block o
 a suggestion block, and on a comment you dictated word for word — those are your
 words and codeaf does not sign them.
 
-None of the three ever appear in a commit subject, in a code file, in a README,
+The commit, pull-request and comment marks never appear in a commit subject, in a code file, in a README,
 in anything codeaf writes for you such as a report or a deck, or in what it says
 back to you in this conversation. If you see one somewhere else, that is a fault
 worth reporting.
 
-**A repository that says no wins.** If a CONTRIBUTING file or a stated policy
-forbids AI trailers or generated-by lines, codeaf leaves all three out and tells
-you it did.
+**A repository that says no wins.** codeaf reads the first 256 KiB of regular
+`CONTRIBUTING`, `CONTRIBUTING.md`, `.rst` and `.txt` files (case-insensitive
+names) at the top of the repository, in `.github/` and in `docs/`. It skips
+links and other non-file entries. If any forbids AI trailers or
+co-author lines, codeaf adds none to its own landing commits or the worker
+commits it signs at the end of a run. The model is also told to follow
+CONTRIBUTING or a policy you state when it writes pull requests, issues and
+comments.
 
 The commit a task writes when its work lands carries the same two lines — with
 the bare `Assisted-by: CodeAF` on the worker harness, the default belt. Those
@@ -1013,8 +1033,10 @@ commits are authored as `codeaf <agentfield-bot@users.noreply.github.com>`: code
 reads that identity to tell its own commits from yours when it lands a branch.
 Older task commits authored as `codeaf <codeaf@localhost>` are still recognised
 as codeaf's own work, as are those under its earlier local address
-`aforge <aforge@localhost>` <!-- legacy-name -->. Your own commits are authored
-by you and are never touched.
+`aforge <aforge@localhost>` <!-- legacy-name -->. `/task` works in a private
+copy, so your own commits are outside its signing range. `codeaf do` works in
+your folder, where a commit you make during its run cannot be distinguished
+from a worker commit and may be signed at the end.
 
 ## I turned signing off before — why are my commits signed again, can I turn attribution off
 
@@ -1041,9 +1063,10 @@ codeaf cannot change the row for you — ask it to and it says so and points you
 at `/settings`. A change lands on the next piece of work handed off, and on
 the next codeaf you start.
 
-**The only thing that takes every mark off is the repository.** A CONTRIBUTING
-file or a stated policy that forbids AI trailers or generated-by lines makes
-codeaf leave all three out and tell you it did.
+**A repository policy can forbid the marks.** When a CONTRIBUTING file in the
+repository's top level, `.github/` or `docs/` forbids AI trailers, codeaf's
+own commits and its signing of worker commits add none. Tell the model about
+any further policy for pull requests, issues or comments.
 
 ## A timeout is not a deny — why it said "denied by the person" when nobody said no
 
