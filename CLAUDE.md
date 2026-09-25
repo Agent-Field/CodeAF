@@ -70,6 +70,8 @@ than only in `docs/rules/` because they are the ones that must never be looked u
   of the three.** Promotion is the deliberate fast-forward below.
 - **`staging` and `main` move by fast-forward onto tested `dev` history** —
   `git push origin <sha>:staging`, then `git push origin <sha>:main`, never a merge.
+  `staging` moves by itself every Friday at the Toronto 17:00 cutoff through
+  Promote to staging; a person still moves `main`.
 - **Pushes publish channel builds.** `dev` and `staging` publish their named
   channels; `main` publishes an rc. A person cuts stable by dispatching `Release`
   on `main`. The workflow refuses rc or stable commits not already on `staging`,

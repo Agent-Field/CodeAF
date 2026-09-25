@@ -2703,6 +2703,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I install the latest dev build beside my codeaf", "running-from-the-terminal"},
 		{"what is devaf", "running-from-the-terminal"},
 		{"devaf", "running-from-the-terminal"},
+		{"what is stageaf", "running-from-the-terminal"},
+		{"stageaf", "running-from-the-terminal"},
+		{"how do I install the staging build", "running-from-the-terminal"},
+		{"how often does staging update", "running-from-the-terminal"},
 		{"can I run two versions of codeaf side by side", "running-from-the-terminal"},
 		{"how do I keep my dev build up to date", "running-from-the-terminal"},
 		{"install codeaf with a different file name", "running-from-the-terminal"},
@@ -2889,6 +2893,22 @@ func TestV9DevafQuestionsReachTheTerminalManual(t *testing.T) {
 		"can I run two versions of codeaf side by side",
 		"how do I keep my dev build up to date",
 	} {
+		var reached bool
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if section.Page == "running-from-the-terminal" {
+				reached = true
+				break
+			}
+		}
+		if !reached {
+			t.Errorf("%q does not reach running-from-the-terminal", asked)
+		}
+	}
+}
+
+// C24: Staging installer and cadence questions reach the terminal manual section.
+func TestC24StageafQuestionsReachTheTerminalManual(t *testing.T) {
+	for _, asked := range []string{"what is stageaf", "stageaf", "how do I install the staging build", "how often does staging update"} {
 		var reached bool
 		for _, section := range Chat().Search(asked, DefaultResults) {
 			if section.Page == "running-from-the-terminal" {
