@@ -66,6 +66,14 @@ When the pool reaches its cap:
 A manager can never raise a cap: money is yours. Every held wake is one line in the traffic,
 `held @web: harbor reached its $5 cap today`.
 
+## What if today's team spending cannot be read
+
+When a capped team's usage ledger or team list cannot be read, no new paid team work starts.
+The Traffic says `held @web: harbor has a $5 daily cap and today's spend could not be read
+(<error>), so nothing new starts until it can be read`. `team_start` gives the same reason
+after `No new member starts:`. No cap card is raised against an unreadable figure. The next
+check reads again, and an uncapped team does not read the ledger for this check.
+
 ## Two windows ask once when a team reaches its cap
 
 You are asked once for that team, that day, and that ceiling. A second codeaf window, or a

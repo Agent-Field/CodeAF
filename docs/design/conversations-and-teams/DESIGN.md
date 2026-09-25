@@ -1097,6 +1097,10 @@ different crossing and a new packet. A decided `raise` lifts the ceiling to
 the person's own words hold until the day turns or the cap is changed. Spend is read through
 `TeamSpend` only when `TeamSpendStamp` moved (per pool, per session), never per model request.
 
+(Changed 2026-09-25: if a capped pool's spend read fails, the start is held
+with the read error, no cap packet is raised, and the failed reading is retried
+on the next check. An uncapped pool does not read spend.)
+
 **Wrap up first: the door and the marker (for d2).** The interface appends ONE Traffic entry to
 the team's log:
 

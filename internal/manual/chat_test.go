@@ -73,6 +73,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does a member's question go to the manager or to me", "team-questions-and-caps"},
 		{"what is a decision packet", "team-questions-and-caps"},
 		{"what happens when a team reaches its daily cap", "team-questions-and-caps"},
+		{"what if codeaf cannot read today's team spending", "team-questions-and-caps"},
 		{"why did two windows both ask me about the team cap", "team-questions-and-caps"},
 		{"how do I wrap up a team before closing it", "team-questions-and-caps"},
 		{"what happens to a wrap-up when codeaf restarts", "team-questions-and-caps"},
