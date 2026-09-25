@@ -671,6 +671,30 @@ func TestV8TerminalFailureUsesTheRunningFilesCurlLine(t *testing.T) {
 	}
 }
 
+// C22: A staging build installed as stageaf offers the same installer on a failed update.
+func TestC22StageafFailureUsesTheStageafCurlLine(t *testing.T) {
+	const running = "staging-20260918-aaaaaaaaaaaa"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if strings.HasSuffix(request.URL.Path, "/releases") {
+			fmt.Fprint(w, `[{"tag_name":"staging-20260921-bbbbbbbbbbbb","published_at":"2026-09-21T12:00:00Z"}]`)
+			return
+		}
+		http.NotFound(w, request)
+	}))
+	defer server.Close()
+	target := filepath.Join(t.TempDir(), "stageaf")
+	if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	client := &codeupdate.Client{HTTP: server.Client(), APIBase: server.URL, DownloadBase: server.URL}
+	_, _ = withUpdateDoor(t, running, client, target)
+	err := runUpdate(nil)
+	const want = "install a release with: curl -fsSL https://agentfield.ai/get/stageaf | bash"
+	if err == nil || !strings.Contains(err.Error(), want) || strings.Contains(err.Error(), "/get/codeaf/staging") {
+		t.Fatalf("failure = %v", err)
+	}
+}
+
 // TestC14RestartArgumentsPassTheRealChatFlagParser proves C14.
 func TestC14RestartArgumentsPassTheRealChatFlagParser(t *testing.T) {
 	for _, original := range [][]string{nil, {"chat", "--model", "x"}, {"resume", "--session", "/tmp/this.jsonl"}} {

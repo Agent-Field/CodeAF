@@ -2326,6 +2326,9 @@ func (a *app) showPage(id page) (cmd tea.Cmd) {
 		return nil
 	}
 	a.page = id
+	// AND THE CONVERSATION GOES OUT OF SIGHT UNDER THE PLACE, which is what
+	// lifts a cross pressed on its tip row (notice.go's [app.liftChatTipCross]).
+	a.liftChatTipCross()
 	// AND THE DOOR IS THE GESTURE THE TIPS ABOUT IT WAIT FOR (notice.go): a
 	// place reached by any road retires its tip, and every visit to home
 	// moves home's row on to the next.

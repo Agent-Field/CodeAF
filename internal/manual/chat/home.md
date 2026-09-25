@@ -1445,9 +1445,9 @@ home and every two minutes at rest, and each tip goes away for good the first ti
 what it names. It sits at the right, led by a bulb and closed by a small cross: clicking it
 means ENOUGH FOR NOW, and the row stays blank until you leave home and come back, when a
 different tip is there. The tip you put away keeps its whole allowance and comes round
-again. **A conversation says its tips differently**: there the tip is the lowest rung of
-the keys row at the very foot, with no bulb, no cross and no clock — it is simply there
-whenever nothing else is happening. Both rows draw from the same one list. The whole list,
+again. **A conversation says its tips differently**: its tip stands at the right end of
+the keys row, over the project, with the bulb and the cross, and it appears only after
+15 seconds in which you have not pressed, clicked, scrolled or pasted anything. Both rows draw from the same one list. The whole list,
 what makes each one appear and disappear, and the **disable hints** row on the Workspace
 tab that turns them off, are on the *hints and tips* page.
 
@@ -1506,6 +1506,11 @@ already has — and it **vanishes the moment you type anything**, because it is 
 and not decoration. It also goes while a turn is running, where the same row has something
 more urgent to say (`esc interrupt`); the gesture still works then, it is just not being
 advertised. (Until 2026-09-17 these words were the right end of the rule above the box.)
+
+**It stays when a tip is showing.** A conversation's tip covers the project at the keys
+row's right end, never the keys. Until 2026-09-24 a tip took the whole row and the
+door went with it. One of the tips is about the door itself:
+`space space takes you back to home`.
 
 **You can click it.** A press on the words `space space home` opens home; a press on the
 rule beside them is a press on a rule.

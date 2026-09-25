@@ -2,9 +2,9 @@
 
 ## What happens when I type /task
 
-On this road, `/task <brief>` starts a **run** rather than a node of the
-conversation's own tree. Everything here hangs on one switch, named under *How to
-turn it on* below, and the older road is what a build without it does.
+On this shipped default road, `/task <brief>` starts a **run** rather than a
+node of the conversation's own tree. *How to turn it off* below names the
+switch to the older road.
 
 Typing `/task` asks you nothing and waits for nothing in front of it: the work
 exists as soon as you press enter. What it does instead is:
@@ -31,23 +31,28 @@ copy cut from your folder as the first run left it. A task handed off in the few
 while a run is finishing (its work landing, its summary being written) waits until that
 run is over and then starts its own: it never joins a run on its way out.
 
-**When the run ends its work comes home by itself.** The copy's work is committed and
+## When does a task run's work come home, including commits its workers made
+
+When a `/task` run on the worker harness ends, its copy's uncommitted work is committed and
 merged into the folder it was cut from, the copy is given back, and the run's page
 carries `its work is in <folder> on <branch>`. The conversation is woken with the same
 note a landed task sends: the outcome word, the result the root reported, and where the
 work went (`landed on <branch>: N files`, or the sentence saying why it did not). Work
 that will not go in is never forced: the branch is kept in your repository and the note
 names it, for example `its branch <branch> was kept`, when your checkout moved on after
-the copy was cut. A run that only read says `nothing to land: the run's working copy holds no change` and changes no file. The
+the copy was cut. A run whose workers committed everything still names its
+branch and changed files; codeaf signs those commits before the work comes home.
+A run that only read says `nothing to land: the run's working copy holds no change`
+and changes no file. The
 landing card says `merged` when the work is in your folder and `branch kept` only for a
 branch that is waiting. A hand-off that joined the run ends with it: its row settles
 `done` or `incomplete` when the run's does. The
 row the run was published under settles `done` when the run finished whole and
 `incomplete` on any other ending.
 
-**With the switch unset, none of this is reached.** `/task` raises an ordinary
-task on this session's own tree, briefed beside its worker and landed through the
-task graph. See *How to turn it on*.
+**With the switch unset, this is the road `/task` takes.** Set
+`CODEAF_TASK_BELT=node` to use the older session tree road instead. See *How
+to turn it off*.
 
 ## The tasks pane and a task's page
 
@@ -742,12 +747,14 @@ it was (`done`, `error`, `incomplete`, `unchecked`, `budget`, `turn-cap`,
 `deadline`, `price`, `question`), and `ok` is true on exactly the runs that leave
 with 0.
 
-## Does codeaf do commit my changes? It edits the folder in place and commits nothing
+## Does codeaf do commit my changes? It edits the folder in place and makes no commit of its own
 
 `codeaf do` works in the directory you hand it with `-w` / `--dir` (the current
-directory by default), **edited in place, on whatever branch is checked out there,
-and nothing is committed**. The run's files are left uncommitted for you to read,
-commit or throw away, exactly as the older engine left them.
+directory by default), **edited in place, on whatever branch is checked out there**.
+codeaf makes no commit of its own. Its workers can commit their changes; when
+the run ends, codeaf adds the bare `Assisted-by: CodeAF` and co-author lines to
+those commits once. Any work still uncommitted is left for you to read, commit
+or throw away.
 
 Your own work is never touched by the run's accounting: an edit you had not
 committed, or an untracked file such as a secrets file, is still yours after the
