@@ -1905,6 +1905,9 @@ func v3BuiltinApprovals() map[string]any {
 		// the person its closing report: each is a line in the team's own
 		// record, and none spends or starts anything.
 		"team_decide": "allow", "team_escalate": "allow", "team_close_report": "allow",
+		// A conflict raised to the manager above the parties: a packet and a
+		// line of Traffic, and nothing spent or started.
+		"team_raise": "allow",
 	}
 }
 

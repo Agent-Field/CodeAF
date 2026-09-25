@@ -65,7 +65,7 @@ const teamGroup = "team"
 var teamToolNames = []string{
 	teamStatusToolName, teamReadToolName, teamSendToolName, teamStopToolName, teamStartToolName,
 	teamDecideToolName, teamEscalateToolName, teamCloseReportToolName,
-	teamPostToolName,
+	teamPostToolName, teamRaiseToolName,
 }
 
 // The optional `team` argument every verb takes. It is needed only by a
@@ -104,10 +104,15 @@ const teamStopSchema = `{"type":"object","properties":{"handle":{"type":"string"
 
 const teamStartDescription = "Start a new member conversation in this team with a handle and a brief. The person is asked first. " +
 	"The new conversation opens in the team's folder and its first message is your brief, marked as from the manager. " +
-	"Write the brief as a complete assignment: the goal, what done looks like, and which files are its to touch."
+	"Write the brief as a complete assignment: the goal, what done looks like, and which files are its to touch. " +
+	"kind team starts a sub-team instead: a new team under yours (name) whose manager is the new conversation, with its share of your pool; members you name move into it. " +
+	"Its manager reports to you and takes your orders; its members are its manager's to direct, not yours."
 
-const teamStartSchema = `{"type":"object","properties":{"handle":{"type":"string","description":"2 to 12 lowercase letters or digits, unique in the team."},` +
+const teamStartSchema = `{"type":"object","properties":{"handle":{"type":"string","description":"2 to 12 lowercase letters or digits, unique in the team. For kind team, the new team's manager."},` +
 	`"brief":{"type":"string","description":"The whole assignment, as its first message."},` +
+	`"kind":{"type":"string","enum":["member","team"],"description":"Default member."},` +
+	`"name":{"type":"string","description":"kind team: the new team's name."},` +
+	`"members":{"type":"array","items":{"type":"string"},"description":"kind team: handles of your members to move into it."},` +
 	teamArgSchema + `},"required":["handle","brief"],"additionalProperties":false}`
 
 const teamPostDescription = "Post a message in your team: to the room (every member and the manager), to one member by handle, or to the manager. " +
@@ -198,6 +203,9 @@ func (a *Agent) teamTarget(want string, manager bool) (teams.Team, teamRole, str
 		return teams.Team{}, teamRole{}, "You are in more than one team: " + strings.Join(sortedTeamNames(fits), ", ") + ". Say which with team."
 	}
 	team, _ := file.Team(fits[0].id)
+	if manager {
+		team = managedView(file, team)
+	}
 	return team, fits[0], ""
 }
 
@@ -302,7 +310,15 @@ func (a *Agent) teamReadTool(ctx context.Context, args json.RawMessage) (string,
 	}
 	member, ok := teamMemberByHandle(team, parsed.Handle)
 	if !ok {
-		return fmt.Sprintf("No member of %q has the handle %q. Its members are: %s.", team.Name, parsed.Handle, teamHandles(team, "")), true, nil
+		// A READ REACHES DOWN THE TREE: it changes nothing, so a manager may
+		// read a conversation in a team under its own (the parties of a
+		// conflict it is deciding, most often), named as team/@handle.
+		if below, found := readableBelow(a.config.teamProfile(), team, parsed.Handle); found {
+			member, ok = below, true
+		}
+	}
+	if !ok {
+		return fmt.Sprintf("No member of %q has the handle %q. Its members are: %s. A member of a team under yours is named team/@handle.", team.Name, parsed.Handle, teamHandles(team, "")), true, nil
 	}
 	if member.Key == team.Manager {
 		return "That is this conversation. Its own transcript is already in front of you.", true, nil
@@ -446,6 +462,9 @@ func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (string,
 	} else {
 		member, ok := teamMemberByHandle(team, to)
 		if !ok || member.Key == team.Manager {
+			if pointer := subTeamPointer(file, team, to, "a message"); pointer != "" && !ok {
+				return pointer, true, nil
+			}
 			return fmt.Sprintf("No member of %q has the handle %q. Send to one of %s, or to everyone.", team.Name, parsed.To, teamHandles(team, team.Manager)), true, nil
 		}
 		if where := reportsElsewhere(file, team, member); where != "" && kind == teams.KindDirective {
@@ -548,11 +567,14 @@ func (a *Agent) teamStopTool(ctx context.Context, args json.RawMessage) (string,
 	if refusal != "" {
 		return refusal, true, nil
 	}
+	file, _, _, _ := a.teamSnapshot(a.config.teamProfile())
 	member, ok := teamMemberByHandle(team, parsed.Handle)
 	if !ok || member.Key == team.Manager {
+		if pointer := subTeamPointer(file, team, parsed.Handle, "a stop"); pointer != "" && !ok {
+			return pointer, true, nil
+		}
 		return fmt.Sprintf("No member of %q has the handle %q. Its members are: %s.", team.Name, parsed.Handle, teamHandles(team, team.Manager)), true, nil
 	}
-	file, _, _, _ := a.teamSnapshot(a.config.teamProfile())
 	if where := reportsElsewhere(file, team, member); where != "" {
 		return linkRefusal(member, where, "a stop"), true, nil
 	}
@@ -571,12 +593,20 @@ func (a *Agent) teamStopTool(ctx context.Context, args json.RawMessage) (string,
 
 func (a *Agent) teamStartTool(ctx context.Context, args json.RawMessage) (string, bool, error) {
 	var parsed struct {
-		Handle string `json:"handle"`
-		Brief  string `json:"brief"`
-		Team   string `json:"team"`
+		Handle  string   `json:"handle"`
+		Brief   string   `json:"brief"`
+		Kind    string   `json:"kind"`
+		Name    string   `json:"name"`
+		Members []string `json:"members"`
+		Team    string   `json:"team"`
 	}
 	if err := decodeToolArguments(args, &parsed); err != nil {
 		return invalidArgumentsPrefix + err.Error(), true, nil
+	}
+	switch strings.TrimSpace(parsed.Kind) {
+	case "", "member", "team":
+	default:
+		return invalidArgumentsPrefix + "kind is member or team", true, nil
 	}
 	brief := strings.TrimSpace(parsed.Brief)
 	if brief == "" {
@@ -589,6 +619,13 @@ func (a *Agent) teamStartTool(ctx context.Context, args json.RawMessage) (string
 	team, role, refusal := a.teamTarget(parsed.Team, true)
 	if refusal != "" {
 		return refusal, true, nil
+	}
+	if strings.TrimSpace(parsed.Kind) == "team" {
+		said, failed := a.teamStartSubTeam(team, role, handle, brief, parsed.Name, parsed.Members)
+		return said, failed, nil
+	}
+	if strings.TrimSpace(parsed.Name) != "" || len(parsed.Members) > 0 {
+		return invalidArgumentsPrefix + "name and members are for kind team", true, nil
 	}
 	if reason := a.teamCapHold(a.config.teamProfile(), []teamRole{role}); reason != "" {
 		return "No new member starts: " + reason + ".", true, nil
@@ -617,9 +654,18 @@ func teamStartArgs(arguments string) (handle, brief string) {
 	var parsed struct {
 		Handle string `json:"handle"`
 		Brief  string `json:"brief"`
+		Kind   string `json:"kind"`
+		Name   string `json:"name"`
 	}
 	if json.Unmarshal([]byte(arguments), &parsed) != nil {
 		return "", ""
+	}
+	// A SUB-TEAM'S CARD SAYS SO: what the person is agreeing to is a new team
+	// as well as a new conversation.
+	if strings.TrimSpace(parsed.Kind) == "team" {
+		if name := strings.Join(strings.Fields(parsed.Name), " "); name != "" {
+			parsed.Brief = "a new team " + strconv.Quote(name) + " under yours, managed by it. " + parsed.Brief
+		}
 	}
 	handle = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(parsed.Handle)), "@")
 	if teams.ValidHandle(handle) != nil {
@@ -682,6 +728,12 @@ func (a *Agent) teamPostTool(ctx context.Context, args json.RawMessage) (string,
 		} else {
 			entry.To, entry.Member = member.Handle, member.Key
 		}
+	}
+	if entry.To == teams.ToManager && role.boss != "" && role.boss != team.ID {
+		// A SUB-TEAM WITH NO MANAGER OF ITS OWN POSTS TO THE ONE ABOVE: the
+		// line goes to that team's log, where its manager reads it, saying
+		// which team it came from.
+		return a.teamPostUp(team, role, entry)
 	}
 	if err := teams.AppendTraffic(a.config.teamProfile(), team.ID, entry); err != nil {
 		return "The post could not be written to the team's traffic: " + err.Error(), true, nil

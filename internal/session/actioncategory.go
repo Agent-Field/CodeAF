@@ -251,7 +251,7 @@ func ActionCategoryForTool(tool string) ActionCategory {
 	case "slack_send", "gmail_send", "speak", "ask",
 		// A line into a team's traffic, from its manager or one of its members,
 		// a packet sent up, and a closing report to the person.
-		"team_send", "team_post", "team_escalate", "team_close_report":
+		"team_send", "team_post", "team_escalate", "team_close_report", "team_raise":
 		return ActionCommunicate
 
 	// Work handed out, or this mind copied to run beside itself.

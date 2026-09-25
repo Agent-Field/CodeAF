@@ -86,10 +86,22 @@ type teamRole struct {
 	handle string
 	// manager says this conversation is the team's manager.
 	manager bool
-	// managed says the team has a manager at all. A member's `team_post` is
+	// managed says the team has a manager at all, its own or, for a sub-team
+	// with none, the nearest one above it (boss). A member's `team_post` is
 	// offered only in a team that has one, because the manager is the one the
 	// room is run by (docs/design/conversations-and-teams/DESIGN.md, section 5).
 	managed bool
+	// boss is the managed team whose manager this membership answers to: the
+	// team itself when it has a manager, and otherwise the nearest open
+	// ancestor with one (team_nest.go's [bossOf]). A member of an unmanaged
+	// sub-team asks that manager its questions and posts to it; it is not
+	// that manager's to direct, because it is not a member of its team.
+	boss     string
+	bossName string
+	// root says the team is the root, `All teams` (teams' root.go): its
+	// manager is the global manager, and its other members are the top-level
+	// teams' managers.
+	root bool
 	// key is the conversation key this conversation is stored under in the
 	// team, the one spelling of [Agent.teamKeysLocked] the file holds. An event
 	// this conversation writes names it ([teams.Entry.Member]).
@@ -174,6 +186,10 @@ type teamSeat struct {
 	// (team_wrapup.go).
 	spends map[string]spendMemo
 	wraps  map[string]*wrapUp
+	// claims are the sub-teams this conversation's start named it to manage,
+	// found by the delivery that handed it the brief and made good after it
+	// (team_nest.go's [Agent.claimSubTeams]).
+	claims []subTeamClaim
 }
 
 // teamLogStart is the cursor that reads a Traffic log from its first entry:
@@ -339,12 +355,16 @@ func rolesFor(file *teams.File, keys []string, d teams.Defaults) []teamRole {
 			continue
 		}
 		effective := file.Effective(team.ID, d)
+		boss, bossName := bossOf(file, team, member.Key)
 		role := teamRole{
 			id:          team.ID,
 			name:        team.Name,
 			handle:      member.Handle,
 			manager:     team.Manager != "" && team.Manager == member.Key,
-			managed:     team.Manager != "",
+			managed:     boss != "",
+			boss:        boss,
+			bossName:    bossName,
+			root:        team.Root,
 			key:         member.Key,
 			wakes:       effective.Wake,
 			questionsUp: effective.QuestionsUp,
@@ -352,7 +372,7 @@ func rolesFor(file *teams.File, keys []string, d teams.Defaults) []teamRole {
 		if hasHome {
 			role.questionsUp = file.Effective(home.Team, d).QuestionsUp
 		}
-		if role.managed && !role.manager && hasHome && home.Team != team.ID {
+		if role.managed && !role.manager && hasHome && home.Team != boss {
 			role.shared = true
 			if at, ok := file.Team(home.Team); ok {
 				role.reportsTo = at.Name
@@ -396,6 +416,17 @@ func (a *Agent) teamBoundary() string {
 	a.team.mu.Lock()
 	roles := a.teamRolesLocked(profile)
 	news := a.teamNewsLocked(profile, roles)
+	claims := a.team.claims
+	a.team.claims = nil
+	if len(claims) > 0 {
+		// A START THAT NAMED A TEAM FOR THIS CONVERSATION TO RUN is made good
+		// before the role is composed, so the request that carries the brief
+		// also says this conversation is that team's manager.
+		a.team.mu.Unlock()
+		a.claimSubTeams(profile, claims)
+		a.team.mu.Lock()
+		roles = a.teamRolesLocked(profile)
+	}
 	role := teamRoleBlock(roles, a.team.file)
 	a.team.mu.Unlock()
 	a.setTeamRole(role)
@@ -418,6 +449,9 @@ func (a *Agent) armTeamTools(roles []teamRole) {
 	}
 	if member {
 		arriving = append(arriving, a.memberTools()...)
+	}
+	if manager || member {
+		arriving = append(arriving, a.raiseTools()...)
 	}
 	if len(arriving) == 0 {
 		return
@@ -541,6 +575,13 @@ func (a *Agent) teamEntryLineLocked(profile string, role teamRole, entry teams.E
 	switch {
 	case entry.Kind == teams.KindPacket:
 		return teamPacketLine(profile, role, entry)
+	case entry.Kind == teams.KindStart && entry.Team != "":
+		line := teamBriefLine(role, entry)
+		if line == "" {
+			return ""
+		}
+		a.team.claims = append(a.team.claims, subTeamClaim{team: entry.Team, parent: role.id, key: role.key})
+		return subTeamBriefLine(a.team.file, entry, line)
 	case role.manager && teams.IsWrapUp(entry):
 		a.teamWrapUpBeginLocked(role, entry.At)
 		return wrapUpLine(role, entry)
@@ -557,6 +598,14 @@ func (a *Agent) teamEntryLineLocked(profile string, role teamRole, entry teams.E
 // own lines, the person's (which reach it in its own chat), a start or a stop
 // (which the interface performs) or an event (which the digest carries).
 func teamLine(role teamRole, entry teams.Entry) string {
+	// A CONFLICT'S RULING reaches the party it names whoever wrote it and
+	// whatever this conversation is in the team (team_nest.go).
+	if teams.IsRuling(entry) {
+		if rulingFor(role, entry) {
+			return rulingLine(entry)
+		}
+		return ""
+	}
 	if entry.Kind == teams.KindStart {
 		return teamBriefLine(role, entry)
 	}
@@ -824,6 +873,7 @@ func (a *Agent) teamDigest(profile string) string {
 		if !ok {
 			continue
 		}
+		team = managedView(file, team)
 		log, _ := teams.ReadTraffic(profile, role.id, "", teamStateLook)
 		states := memberStates(team, keys, now, log, &a.team.journals)
 		markShared(file, team, states)
@@ -1130,13 +1180,14 @@ const teamRoleWithdrawn = "You are no longer the manager or a member of any team
 
 // teamManagerLaws is how a manager works, stated once in the role. The verbs'
 // own descriptions carry how each is called.
-const teamManagerLaws = "Six laws:\n" +
+const teamManagerLaws = "Seven laws:\n" +
 	"1. Hand real work to members with team_send, or team_start for a new member, rather than doing it yourself, and keep track with team_status and team_read. Asked what is happening, answer from the team.\n" +
 	"2. The person outranks you: what they say in a member's own conversation stands over your directive, and a conflict goes to them.\n" +
 	"3. You cannot answer a member's permission prompt; tell the person it is waiting.\n" +
-	"4. You direct only the members who report to you. A member team_status marks `reports to` another team is shared: read it and send it notes, never a directive or a stop.\n" +
+	"4. You direct only the members who report to you, one level down: a team under yours is its manager's to run, so you direct that manager, never its members. A member team_status marks `reports to` another team is shared: read it and send it notes, never a directive or a stop.\n" +
 	"5. Members' questions come to you as decision packets: answer with team_decide, or send one up with team_escalate when it is not yours to decide. Your own questions go up the same way.\n" +
-	"6. A team's daily cap is the person's: you cannot raise it, and at the cap nothing new starts until they answer."
+	"6. A team's daily cap is the person's: you cannot raise it, and at the cap nothing new starts until they answer.\n" +
+	"7. A conflict between conversations is declared with team_raise and goes to the lowest manager above every party; when it waits on you, your team_decide reaches every party as a directive."
 
 // teamRosterMax is how many members the role names before it sends the model
 // to team_status for the rest, and teamRosterWord how much of each member's
@@ -1171,10 +1222,57 @@ func teamManagerRole(role teamRole, file *teams.File) string {
 	fmt.Fprintf(&b, "You are the manager of the team %q. The person talks to you and you run the team for them: you decide who does what, hand the work out, and tell the person where it stands.\n", role.name)
 	b.WriteString(teamRoster(role, file))
 	b.WriteString("\n")
+	if scope := teamManagerScope(role, file); scope != "" {
+		b.WriteString(scope)
+		b.WriteString("\n")
+	}
 	b.WriteString(teamManagerDelivery(role))
 	b.WriteString("\n")
 	b.WriteString(teamManagerLaws)
 	return b.String()
+}
+
+// teamManagerScope is where the manager's team sits in the tree, "" for a
+// team alone at the top with nothing under it: whom it reports to (a
+// sub-team's manager reports one level up; a top-level team's to the global
+// manager when there is one), what runs under it, and, for the global manager,
+// what its members are.
+func teamManagerScope(role teamRole, file *teams.File) string {
+	if file == nil {
+		return ""
+	}
+	var parts []string
+	if role.root {
+		parts = append(parts, fmt.Sprintf("You are the global manager: %q holds every team, and your members are the managers of the top-level teams, never their members. "+
+			"Direct those managers and they pass it on. Their questions and conflicts between teams come to you before the person. team_start with kind team starts a new top-level team.", role.name))
+	} else if home, ok := file.Home(role.key); ok && home.Team != role.id {
+		boss := "its manager"
+		if t, ok := file.Team(home.Team); ok {
+			if m, ok := t.Member(t.Manager); ok && m.Handle != "" {
+				boss = "its manager, @" + m.Handle
+			}
+			what := "a team under"
+			if t.Root {
+				what = "a top-level team, under the global manager of"
+			}
+			parts = append(parts, fmt.Sprintf("Your team is %s %q: you report to %s. Post to it with team_post; your questions go to it before the person.", what, t.Name, boss))
+		}
+	}
+	var under []string
+	for _, child := range file.Children(role.id) {
+		if child.Closed() || role.root {
+			continue
+		}
+		who := "no manager yet"
+		if m, ok := child.Member(child.Manager); ok && m.Handle != "" {
+			who = "run by @" + m.Handle
+		}
+		under = append(under, fmt.Sprintf("%q (%s)", child.Name, who))
+	}
+	if len(under) > 0 {
+		parts = append(parts, "Teams under yours: "+strings.Join(under, ", ")+". Direct their managers, never their members.")
+	}
+	return strings.Join(parts, " ")
 }
 
 // teamManagerDelivery is what happens to what the manager sends and what comes
@@ -1198,6 +1296,7 @@ func teamRoster(role teamRole, file *teams.File) string {
 	if !ok {
 		return "team_status lists its members."
 	}
+	team = managedView(file, team)
 	var named []string
 	for _, member := range team.Members {
 		if member.Key == role.key {
@@ -1228,13 +1327,25 @@ func teamMemberRole(role teamRole) string {
 	if role.handle != "" {
 		you = "@" + role.handle
 	}
+	if role.root {
+		return fmt.Sprintf("You are %s in %q because you manage a top-level team: you report to its manager, the global manager. Its directives reach you marked \"◆ from manager\", "+
+			"your questions go to it before the person, and you report to it with team_post to the manager.", you, role.name)
+	}
+	if role.boss != "" && role.boss != role.id && !role.shared {
+		said := fmt.Sprintf("You are %s in the team %q, which has no manager of its own, so you answer to the manager of %q: team_post to the manager reaches it, and to the room or a teammate stays in %q.",
+			you, role.name, role.bossName, role.name)
+		if role.questionsUp {
+			said += " Your clarifying questions (ask) go to that manager first, and its answer comes back marked \"◆ answered\"; permission prompts still go to the person."
+		}
+		return said
+	}
 	if role.shared {
 		return fmt.Sprintf("You are %s in the team %q too, but you report to the manager of %q: that manager's word directs you, and this team's manager may only send you notes (fyi). "+
 			"Post to this team with team_post.", you, role.name, role.reportsTo)
 	}
 	said := fmt.Sprintf("You are %s in the team %q, which has a manager. "+
 		"Lines from the manager arrive marked \"◆ from manager\" and from teammates \"from @handle\"; none of them is the person, whose own words outrank the manager's. "+
-		"Report progress, findings and blockers with team_post, to the manager, a teammate or the room.", you, role.name)
+		"Report progress, findings and blockers with team_post, to the manager, a teammate or the room. A conflict you cannot settle with another member or team goes up with team_raise.", you, role.name)
 	if role.questionsUp {
 		said += " Your clarifying questions (ask) go to your manager first, and its answer comes back marked \"◆ answered\"; permission prompts still go to the person."
 	}

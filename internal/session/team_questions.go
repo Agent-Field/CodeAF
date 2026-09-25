@@ -137,7 +137,7 @@ func (a *Agent) askUp(q Question) (string, bool) {
 	upThere := hasHome && file.Effective(home.Team, d).QuestionsUp
 	packet := askPacket(q)
 	switch {
-	case member != nil && askGoesUp(q.Ask, false) && upThere && home.Team == member.id:
+	case member != nil && askGoesUp(q.Ask, false) && upThere && home.Team == member.boss:
 		if member.handle == "" {
 			return "", false
 		}
@@ -435,6 +435,18 @@ func packetLineFor(role teamRole, entry teams.Entry, p teams.Packet) string {
 		// decision above, and of nothing else about these two here.
 		return ""
 	}
+	if p.Kind == teams.PacketConflict {
+		// A CONFLICT'S DECISION REACHES THE PARTIES AS A RULING, a directive
+		// the store writes to each (team_nest.go), so its packet line hands
+		// them nothing more; a party that did not raise it is told it was
+		// raised.
+		if entry.State == teams.PacketDecided {
+			return ""
+		}
+		if told := partyTold(role, entry, p); told != "" && !(role.manager && p.Team == role.id) {
+			return told
+		}
+	}
 	switch entry.State {
 	case teams.PacketOpen, teams.PacketEscalated:
 		if role.manager && p.Waiting() && p.Team == role.id && entry.State == p.State {
@@ -479,6 +491,13 @@ func packetDecider(p teams.Packet) string {
 func packetBrief(p teams.Packet) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "◆ %s %s from %s, waiting on you: %s", p.Kind, p.ID, raiserName(p.RaisedBy), oneLineTeam(p.Question))
+	if p.Kind == teams.PacketConflict {
+		var sides []string
+		for _, party := range p.Parties {
+			sides = append(sides, "@"+party.Handle)
+		}
+		fmt.Fprintf(&b, "\n    parties: %s. Your ruling reaches each of them as a directive; you may team_read a party first (team/@handle for one in a team under yours).", strings.Join(sides, ", "))
+	}
 	for _, party := range p.Parties {
 		if context := strings.TrimSpace(party.Context); context != "" {
 			who := "@" + party.Handle
@@ -525,6 +544,10 @@ func teamPacketWakes(profile string, role teamRole, entry teams.Entry) bool {
 	}
 	if closingDecided(role, entry, p) {
 		return true
+	}
+	if partyTold(role, entry, p) != "" && !(role.manager && p.Team == role.id) {
+		// Told, not woken: the ruling is what it acts on.
+		return false
 	}
 	return packetLineFor(role, entry, p) != "" && (role.manager || entry.State == teams.PacketDecided)
 }
