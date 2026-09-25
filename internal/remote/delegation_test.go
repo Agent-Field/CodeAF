@@ -151,3 +151,36 @@ func TestTheWrapUpDoorsCrossToTheEngine(t *testing.T) {
 		t.Fatal("the engine's team did not close")
 	}
 }
+
+// A CONFLICT RAISED AND RULED OVER THE WIRE REACHES EVERY PARTY ON THE ENGINE.
+// The window's Teams.Raise and Teams.Decide are the engine's own store calls,
+// so the ruling is written as a directive to each party in its own team's log
+// on the engine, and a manager who is a party is refused there too.
+func TestAConflictRuledOverTheWireReachesEveryPartyOnTheEngine(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	loop, dir := teamsLoop(t)
+	if err := teamstore.Save(dir, []teamstore.Team{
+		{ID: "0a0a0a0a0a0a", Name: "harbor", Manager: "hm", Members: []teamstore.Member{{Key: "hm", Handle: "boss"}}},
+		{ID: "0b0b0b0b0b0b", Name: "front", Parent: "0a0a0a0a0a0a", Members: []teamstore.Member{{Key: "w", Handle: "web"}}},
+		{ID: "0c0c0c0c0c0c", Name: "back", Parent: "0a0a0a0a0a0a", Members: []teamstore.Member{{Key: "a", Handle: "api"}}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := loop.Client.TeamsRaise(teamstore.Packet{Team: "0a0a0a0a0a0a", Origin: "0b0b0b0b0b0b", Kind: teamstore.PacketConflict,
+		RaisedBy: "web", Question: "JSON or form data?",
+		Parties: []teamstore.Party{{Key: "w", Handle: "web", Team: "0b0b0b0b0b0b"}, {Key: "a", Handle: "api", Team: "0c0c0c0c0c0c"}},
+		Options: []teamstore.Option{{Label: "JSON", Consequence: "the handler changes"}, {Label: "form data", Consequence: "the form changes"}}})
+	if err != nil {
+		t.Fatalf("raise: %v", err)
+	}
+	if _, err := loop.Client.TeamsDecide(p.ID, teamstore.Person, "1", "matches the rest"); err != nil {
+		t.Fatalf("decide: %v", err)
+	}
+	for team, handle := range map[string]string{"0b0b0b0b0b0b": "web", "0c0c0c0c0c0c": "api"} {
+		log, _ := teamstore.ReadTraffic(dir, team, "", 0)
+		ruling := log[len(log)-1]
+		if !teamstore.IsRuling(ruling) || ruling.To != handle || ruling.From != teamstore.FromYou || !strings.Contains(ruling.Text, "JSON: the handler changes") {
+			t.Fatalf("%s on the engine: %+v", team, log)
+		}
+	}
+}
