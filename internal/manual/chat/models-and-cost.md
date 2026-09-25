@@ -656,9 +656,11 @@ what was spent, and the two ways on — raise it with `/crew cap`, or ask for th
 `--cheap`. `codeaf do` refuses the same way unless you pass `-yes-spend`; `codeaf exec`,
 `codeaf run` and `codeaf plan` say one line about it and go ahead.
 
-**Nor does a call that would cross it.** Every seat's call is priced before it is made —
-what the day has spent, plus what this call is expected to cost — and a call that would
-pass the cap is not made: the task stops on `today's crew spend has reached the daily cap
+**Nor does a call that would cross it.** Every call a task makes — its seats', and the
+helpers around them, such as the run's closing summary — is priced before it is made:
+what the day has spent, plus every call still on its way, plus what this call is expected
+to cost, which is never less than what the same model charged for its last call today.
+A call that would pass the cap is not made: the task stops on `today's crew spend has reached the daily cap
 of $5.00 · raise it with /crew cap`, with what it had done so far. A checker cut off this
 way ends on the same sentence.
 
@@ -736,7 +738,9 @@ is not waited on — the seat moves on at once, and with nothing left the task s
 its action within seconds. A pool that answered at its limit is not asked again in that
 task by any seat, and no helper call reaches a route that refused — it is refused before
 it is sent. A model the catalog lists at no price that is not a free pool (a stealth or
-preview model) is never picked unless you pin it. The line says each seat's net move and
+preview model) is never picked unless you pin it, and neither is a model that
+publishes no benchmark figure the seat is read by: with nothing measured and nothing
+published there is nothing to rank it on but its price. The line says each seat's net move and
 its first cause — `worker glm-5.3-flash → gemma-4-31b-it (credit unavailable on
 openrouter; +3 tried)` — and the router's log keeps every rung. A seat that cannot start moves to a model at a similar cost before a
 dearer one. A task that ran on an account out of credit and failed ends on the credit action,

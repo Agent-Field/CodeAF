@@ -39,6 +39,14 @@ type SpendDay struct {
 	mu    sync.Mutex
 	usd   float64
 	since float64
+	// held is what calls in flight were estimated at: a call is priced
+	// against the day AND every call already on its way, so seats asked at
+	// the same moment cannot all pass on one figure.
+	held float64
+	// last is each model's most recent actual call cost today. A call is
+	// estimated at no less: a price sheet that says a call costs a tenth of a
+	// cent is not believed after the provider charged four tenths for one.
+	last map[string]float64
 }
 
 // NewSpendDay is a day that had spent base when it was read.
@@ -54,13 +62,54 @@ func (d *SpendDay) Total() float64 {
 	return d.usd + d.since
 }
 
-func (d *SpendDay) add(usd float64) {
-	if d == nil || usd <= 0 {
+// hold prices one call to model at est — raised to the model's last actual
+// cost — against the cap (none when capUSD is zero) and, when it fits, holds
+// it until [SpendDay.settle]. It answers what was held.
+func (d *SpendDay) hold(model string, est, capUSD float64) (float64, bool) {
+	if d == nil {
+		return 0, true
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if last := d.last[model]; last > est {
+		est = last
+	}
+	if capUSD > 0 && d.usd+d.since+d.held+est > capUSD {
+		return 0, false
+	}
+	d.held += est
+	return est, true
+}
+
+// settle releases a call's hold and books what it actually cost.
+func (d *SpendDay) settle(model string, held, usd float64) {
+	if d == nil {
 		return
 	}
 	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.held -= held
+	if d.held < 0 {
+		d.held = 0
+	}
+	if usd <= 0 {
+		return
+	}
 	d.since += usd
-	d.mu.Unlock()
+	if d.last == nil {
+		d.last = map[string]float64{}
+	}
+	d.last[model] = usd
+}
+
+// lastCost is model's most recent actual call cost today.
+func (d *SpendDay) lastCost(model string) float64 {
+	if d == nil {
+		return 0
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.last[model]
 }
 
 // SpendGuard holds a task's seat calls to the day's cap and to each seat's
@@ -105,26 +154,31 @@ func (g *SpendGuard) Wrap(model string, next Completer) Completer {
 	return guarded
 }
 
-// before is whether a call to model with these messages may be made.
-func (g *SpendGuard) before(model string, messages []ai.Message, options []ai.Option) error {
+// before is whether a call to model with these messages may be made, and
+// what it holds on the day until [SpendGuard.after] settles it.
+func (g *SpendGuard) before(model string, messages []ai.Message, options []ai.Option) (float64, error) {
 	if g == nil || g.Price == nil {
-		return nil
+		return 0, nil
 	}
 	prompt, completion, cacheRead, ok := g.Price(model)
 	if !ok {
-		return nil
+		return 0, nil
 	}
 	g.mu.Lock()
 	seatSpent := g.spent[model]
 	g.mu.Unlock()
 	est := g.estimate(messages, options, prompt, completion, cacheRead, seatSpent > 0)
-	if g.Cap > 0 && g.Day != nil && g.Day.Total()+est > g.Cap {
-		return ErrSpendStopped{Action: g.CapAction}
+	if last := g.Day.lastCost(model); last > est {
+		est = last
 	}
 	if ceiling := g.Ceilings[model]; ceiling > 0 && seatSpent+est > ceiling {
-		return ErrSpendStopped{Action: fmt.Sprintf(g.CeilingAction, ceiling)}
+		return 0, ErrSpendStopped{Action: fmt.Sprintf(g.CeilingAction, ceiling)}
 	}
-	return nil
+	held, fits := g.Day.hold(model, est, g.Cap)
+	if !fits {
+		return 0, ErrSpendStopped{Action: g.CapAction}
+	}
+	return held, nil
 }
 
 // estimate is one call's expected cost.
@@ -146,9 +200,13 @@ func (g *SpendGuard) estimate(messages []ai.Message, options []ai.Option, prompt
 	return tokens*in + out*completion
 }
 
-// after records what a call to model cost.
-func (g *SpendGuard) after(model string, response *ai.Response) {
-	if g == nil || response == nil || response.Usage == nil {
+// after releases what before held and records what a call to model cost.
+func (g *SpendGuard) after(model string, response *ai.Response, held float64) {
+	if g == nil {
+		return
+	}
+	if response == nil || response.Usage == nil {
+		g.Day.settle(model, held, 0)
 		return
 	}
 	usd := 0.0
@@ -161,10 +219,10 @@ func (g *SpendGuard) after(model string, response *ai.Response) {
 				float64(response.Usage.CompletionTokens)*completion
 		}
 	}
+	g.Day.settle(model, held, usd)
 	if usd <= 0 {
 		return
 	}
-	g.Day.add(usd)
 	g.mu.Lock()
 	if g.spent == nil {
 		g.spent = map[string]float64{}
@@ -189,11 +247,12 @@ func (c guardedCompleter) CompleteWithMessages(ctx context.Context, messages []a
 	if request.Model != "" {
 		model = request.Model
 	}
-	if err := c.guard.before(model, messages, options); err != nil {
+	held, err := c.guard.before(model, messages, options)
+	if err != nil {
 		return nil, err
 	}
 	response, err := c.next.CompleteWithMessages(ctx, messages, options...)
-	c.guard.after(model, response)
+	c.guard.after(model, response, held)
 	return response, err
 }
 

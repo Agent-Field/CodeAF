@@ -200,7 +200,7 @@ func (h crewHealth) probing() crewHealth {
 // refusal on every summary.
 func CrewHealthySend(profileDir, send, chatModel string) string {
 	send = strings.TrimSpace(send)
-	if profileDir == "" || send == "" {
+	if send == "" {
 		return send
 	}
 	health := crewHealthCached(profileDir)
@@ -224,7 +224,7 @@ func CrewHealthySend(profileDir, send, chatModel string) string {
 // at once, without reading its providers.
 func CrewRouteAnswers(profileDir, send string) bool {
 	send = strings.TrimSpace(send)
-	if profileDir == "" || send == "" {
+	if send == "" {
 		return true
 	}
 	health := crewHealthCached(profileDir)

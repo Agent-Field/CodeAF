@@ -1,11 +1,14 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -30,6 +33,8 @@ type crewStub struct {
 	paid  int
 	free  map[string]int
 	only  map[string]int
+	// cost is what each answered call reports it cost; zero reports none.
+	cost float64
 }
 
 func newCrewStub(t *testing.T, paid int, free map[string]int) *crewStub {
@@ -57,8 +62,12 @@ func newCrewStub(t *testing.T, paid int, free map[string]int) *crewStub {
 		w.Header().Set("Content-Type", "application/json")
 		switch status {
 		case http.StatusOK:
-			_ = json.NewEncoder(w).Encode(map[string]any{"model": body.Model, "choices": []any{map[string]any{
-				"index": 0, "finish_reason": "stop", "message": map[string]any{"role": "assistant", "content": "done"}}}})
+			reply := map[string]any{"model": body.Model, "choices": []any{map[string]any{
+				"index": 0, "finish_reason": "stop", "message": map[string]any{"role": "assistant", "content": "done"}}}}
+			if stub.cost > 0 {
+				reply["usage"] = map[string]any{"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12, "cost": stub.cost}
+			}
+			_ = json.NewEncoder(w).Encode(reply)
 		case http.StatusPaymentRequired:
 			w.WriteHeader(status)
 			_, _ = io.WriteString(w, `{"error":{"message":"Insufficient credits. Add more using https://openrouter.ai/settings/credits","code":402}}`)
@@ -357,5 +366,181 @@ func TestNoRoadReachesARouteThatRefusedThisTask(t *testing.T) {
 	}
 	if n := glm(); n != 1 {
 		t.Errorf("the resting route was asked %d times after the seat left it: %v", n-1, stub.models())
+	}
+}
+
+// THE CHAT'S TASK ROAD CARRIES THE REACH: a task started in a conversation is
+// routed through the same RouteCrew, and the hermes report's worker sits a
+// rung above the one-line fix's.
+func TestAChatTaskWithReachGetsTheStrongerWorker(t *testing.T) {
+	stub := newCrewStub(t, http.StatusOK, map[string]int{})
+	agent, _ := crewStubAgent(t, stub)
+	previous := config.CrewCatalog
+	rows := append(previous(), catalog.Model{ID: "moonshotai/kimi-k3", OpenWeights: true, PromptPrice: 3e-6, CompletionPrice: 1.5e-5,
+		IntelligenceIndex: 43.6, CodingIndex: 76.2, AgenticIndex: 50, ContextLength: 1048576, Parameters: []string{"tools"}})
+	config.CrewCatalog = func() []catalog.Model { return rows }
+	report, err := os.ReadFile("../crewroute/testdata/hermes-7680.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	title, brief, _ := strings.Cut(string(report), "\n")
+	hard, err := agent.routeTaskCrew(t.Context(), 1, title, brief)
+	if err != nil {
+		t.Fatal(err)
+	}
+	simple, err := agent.routeTaskCrew(t.Context(), 2, "fix: typo in the loop bound of paginate() skips the last page", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, s := hard.current(), simple.current()
+	if h.Subclass != "complex" || s.Subclass != "simple" {
+		t.Fatalf("subclasses %q and %q", h.Subclass, s.Subclass)
+	}
+	if h.Seat(crewroute.Worker).Quality <= s.Seat(crewroute.Worker).Quality {
+		t.Errorf("the complex task's worker %s is no stronger than %s", h.Seat(crewroute.Worker).Model, s.Seat(crewroute.Worker).Model)
+	}
+}
+
+// crewStubAgentOnDefault is [crewStubAgent] on the DEFAULT profile — the
+// empty ProfileDir every ordinary launch has, resolved to CODEAF_HOME — which
+// is the state every crew guard once read as "no profile" and switched off.
+func crewStubAgentOnDefault(t *testing.T, stub *crewStub, values map[string]any) *Agent {
+	t.Helper()
+	agent, dir := crewStubAgent(t, stub)
+	if len(values) > 0 {
+		raw, err := os.ReadFile(filepath.Join(dir, "config.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		held := map[string]any{}
+		_ = json.Unmarshal(raw, &held)
+		for k, v := range values {
+			held[k] = v
+		}
+		out, _ := json.Marshal(held)
+		if err := os.WriteFile(filepath.Join(dir, "config.json"), out, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	defaulted, err := New(Config{
+		Workspace: t.TempDir(), Model: "somelab/the-chat-model", ProfileDir: "",
+		Sources:   modelsource.NewSet(modelsource.Connected{Source: modelsource.DefaultSource(stub.URL), Key: "sk-or-v1-crewstub-0123456789", Address: stub.URL}),
+		RouteCrew: func(ask config.CrewAsk) (crewroute.Decision, error) { return config.RouteCrew("", ask) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = defaulted.Close() })
+	_ = agent
+	// The default profile is the home directory: every crew read below
+	// resolves the empty ProfileDir there, as an ordinary launch does.
+	t.Setenv("CODEAF_HOME", dir)
+	t.Setenv(config.ProfileDirEnv, "")
+	return defaulted
+}
+
+// THE 403 HOME ON THE DEFAULT PROFILE: after the seat's own first call, no
+// helper — the run summary at its widened ceiling — and no client built for
+// the refused model reaches it. Every guard once bailed on an empty profile
+// directory, which is what every ordinary launch has.
+func TestTheDefaultProfileKeepsHelpersOffARefusedRoute(t *testing.T) {
+	stub := newCrewStub(t, http.StatusOK, map[string]int{"z-ai/glm-5.3-flash:free": http.StatusOK})
+	stub.only = map[string]int{"z-ai/glm-5.3-flash": http.StatusForbidden}
+	agent := crewStubAgentOnDefault(t, stub, nil)
+	if _, err := askWorker(t, agent, 1); err != nil {
+		t.Fatalf("task 1: %v (asked %v)", err, stub.models())
+	}
+	_, _, _ = agent.callRole(t.Context(), roles.RoleWorker, "z-ai/glm-5.3-flash",
+		[]ai.Message{textMessage("user", "summarise the task")}, ai.WithMaxTokens(320))
+	client, wire, _, err := agent.completerFor("z-ai/glm-5.3-flash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = client.CompleteWithMessages(provider.WithCallTag(t.Context(), "worker"),
+		[]ai.Message{textMessage("user", "one more errand")}, ai.WithModel(wire))
+	n := 0
+	for _, model := range stub.models() {
+		if model == "z-ai/glm-5.3-flash" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("the refused route was asked %d times, want only the seat's first call: %v", n, stub.models())
+	}
+}
+
+// THE TINY CAP ON THE DEFAULT PROFILE, seats and helpers alike: a $0.01 day
+// at $0.004 a call makes two calls and refuses the third, whichever of a seat
+// or a helper asks it, and the task's line carries the helper's spend.
+func TestATinyCapHoldsSeatsAndHelpersOnTheDefaultProfile(t *testing.T) {
+	stub := newCrewStub(t, http.StatusOK, map[string]int{})
+	stub.cost = 0.004
+	agent := crewStubAgentOnDefault(t, stub, map[string]any{config.KeyCrewCap: 0.01})
+	run, err := askWorker(t, agent, 1)
+	if err != nil {
+		t.Fatalf("the first seat call: %v", err)
+	}
+	ctx := withCrewTask(t.Context(), run.crew)
+	if _, _, err := agent.callRole(ctx, roles.RoleWorker, agent.Model(),
+		[]ai.Message{textMessage("user", "summarise the task")}, ai.WithMaxTokens(320)); err != nil {
+		t.Fatalf("the helper under the cap: %v", err)
+	}
+	worker := run.crew.current().Seat(crewroute.Worker).Send
+	_, err = crewSeatCompleter{agent: agent, run: run}.CompleteWithMessages(t.Context(),
+		[]ai.Message{textMessage("user", "and again")}, ai.WithModel(worker))
+	var stopped crewStopped
+	if !errors.As(err, &stopped) || !strings.Contains(stopped.action, "daily cap of $0.010") {
+		t.Fatalf("the call over the cap ended %v", err)
+	}
+	if got := len(stub.models()); got != 2 {
+		t.Errorf("the stub was asked %d times, want 2 ($0.008 under a $0.01 cap): %v", got, stub.models())
+	}
+	if got := run.crew.taskSpent(0.004); got < 0.008-1e-9 {
+		t.Errorf("the task's line carries $%.3f, want the helper's spend too", got)
+	}
+}
+
+// A CREW'S LAST WORD ENDS THE TURN AT ONCE. A seat that ran out of routes
+// answers its action wrapping the provider's refusal — a 429 with an hour's
+// Retry-After — and the turn that meets it ends in well under a second
+// rather than sitting out a backoff and asking the crew again.
+func TestACrewStopEndsTheTurnWithoutABackoff(t *testing.T) {
+	limited := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "3600")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"error":{"message":"Rate limit exceeded: free-models-per-day.","code":429}}`)
+	}))
+	t.Cleanup(limited.Close)
+	client, err := provider.NewClient(provider.Config{BaseURL: limited.URL, Model: "vendor/pool:free", APIKey: "sk-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, cause := client.CompleteWithMessages(provider.WithoutPatientRateLimits(t.Context()), []ai.Message{textMessage("user", "hi")})
+	if cause == nil {
+		t.Fatal("the limited pool answered")
+	}
+	asked := 0
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			asked++
+			return nil, crewStopped{action: "add credit on openrouter to continue", cause: cause}
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			asked++
+			return nil, crewStopped{action: "add credit on openrouter to continue", cause: cause}
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+	began := time.Now()
+	events, err := agent.Submit(t.Context(), "work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	drain(t, events)
+	if took := time.Since(began); took > 2*time.Second {
+		t.Errorf("the turn took %v to end on the crew's action", took)
+	}
+	if asked != 1 {
+		t.Errorf("the crew was asked %d times, want once", asked)
 	}
 }

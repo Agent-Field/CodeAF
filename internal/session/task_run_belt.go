@@ -869,7 +869,7 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	// owns the short beltRunSummaryDeadline: refusal, malformed output, or a
 	// slow provider leaves the stored reading alone and cannot hold the run
 	// beyond that bound. RefreshRunSummary itself declines without a store.
-	refreshCtx, cancelRefresh := context.WithTimeout(ctx, beltRunSummaryDeadline)
+	refreshCtx, cancelRefresh := context.WithTimeout(withCrewTask(ctx, run.crew), beltRunSummaryDeadline)
 	a.RefreshRunSummary(refreshCtx, run.root, time.Time{})
 	cancelRefresh()
 	if _, err := run.store.AddNote(run.root, run.root, beltRunOutcomeNote(run.store, run.root, summary, landing)); err != nil {
@@ -890,7 +890,7 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	if crewKept(summary.Outcome, landing) {
 		outcome = router.CrewAccepted
 	}
-	a.settleTaskCrew(run.row, outcome, summary.USD)
+	a.settleTaskCrew(run.row, outcome, run.crew.taskSpent(summary.USD))
 }
 
 // crewKept is whether a run's ending counts as its crew's work kept: it
@@ -1159,7 +1159,7 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 		Changed: landing.Changed,
 		// THE CREW THAT DID IT AND WHAT IT COST, beside the estimate it was
 		// picked under, for the card's crew line.
-		Crew: run.crewDecision(), Model: run.crewWorker(), CostUSD: summary.USD,
+		Crew: run.crewDecision(), Model: run.crewWorker(), CostUSD: run.crew.taskSpent(summary.USD),
 	}
 	if state == TaskFailed && run.crew != nil {
 		decision := run.crew.stoppedIfCutOff()

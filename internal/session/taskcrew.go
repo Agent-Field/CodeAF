@@ -104,6 +104,15 @@ type taskCrew struct {
 	// failed is how each send that failed its first call on this task failed:
 	// it is not asked again on this task, by any seat.
 	failed map[string]crewFailure
+	// helperUSD is what helper calls made for this task cost — its run's
+	// closing summary — added to the seats' spend on the crew line.
+	helperUSD float64
+	// day and dayAtStart are the conversation's guarded day and what it had
+	// spent when this task was routed: a helper the surface asked for before
+	// the run was registered (its first summary) carries no task, and is on
+	// this task's line through the day's own figure.
+	day        *SpendDay
+	dayAtStart float64
 }
 
 // current is the crew as it stands, fallbacks taken.
@@ -186,6 +195,8 @@ func (a *Agent) routeTaskCrew(ctx context.Context, row uint64, title, brief stri
 		crew.original[pick.Seat] = pick.Send
 	}
 	crew.guard = crewSpendGuard(a.config.ProfileDir, decision, false)
+	crew.guard.Day = a.crewDay()
+	crew.day, crew.dayAtStart = a.crewDay(), a.crewDay().Total()
 	a.crews.put(row, crew)
 	config.LogCrewDecision(a.config.ProfileDir, crew.call, decision, repo, title)
 	return crew, nil
@@ -337,7 +348,8 @@ func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []
 			}
 			continue
 		}
-		if err := crew.guard.before(current, messages, options); err != nil {
+		held, err := crew.guard.before(current, messages, options)
+		if err != nil {
 			// THE CALL THAT WOULD CROSS THE LINE IS NOT MADE, and the line
 			// says which line it met — never "/redo stronger".
 			return nil, c.agent.stopCrew(c.run, err)
@@ -345,7 +357,7 @@ func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []
 		// A SEAT NEVER WAITS OUT A LIMIT: a 429 goes back at once, and the
 		// seat moves to its next route or model ([provider.WithoutPatientRateLimits]).
 		response, err := c.agent.completeWithModel(provider.WithoutPatientRateLimits(asCrewSeatCall(ctx)), purposeInherited, messages, current, options...)
-		crew.guard.after(current, response)
+		crew.guard.after(current, response, held)
 		if err == nil {
 			c.agent.crewAnswered(c.run, current)
 			return response, nil
@@ -412,6 +424,16 @@ func (c *taskCrew) failedHere(send string) (crewFailure, bool) {
 	return failure, ok && !c.started[send]
 }
 
+// crewFinal is whether err is a crew's own last word — a seat with nowhere
+// left to go, a call a spend line stopped, a route resting — which ends the
+// turn it reaches rather than being retried as the failure under it.
+func crewFinal(err error) bool {
+	var stopped crewStopped
+	var spend ErrSpendStopped
+	var resting errRouteResting
+	return errors.As(err, &stopped) || errors.As(err, &spend) || errors.As(err, &resting)
+}
+
 // crewSeatEnd is the error a seat with nowhere left to go ends on: its one
 // action when the failures name one, the failure itself otherwise.
 func crewSeatEnd(action string, cause error) error {
@@ -440,7 +462,10 @@ func isCrewSeatCall(ctx context.Context) bool {
 // MODEL AND A CREW SEAT'S CALL ARE NEVER REROUTED: the first two are the
 // person's choice, and a seat walks its own ladder and says so on its line.
 func (a *Agent) healthyModel(ctx context.Context, purpose callPurpose, model string) string {
-	if a.config.RouteCrew == nil || a.config.ProfileDir == "" || isCrewSeatCall(ctx) || strings.TrimSpace(model) == "" {
+	// AN EMPTY ProfileDir IS THE DEFAULT PROFILE, not no profile: every
+	// ordinary launch leaves it empty (config.ProfileDir is the override
+	// variable) and every read below resolves it to the home directory.
+	if a.config.RouteCrew == nil || isCrewSeatCall(ctx) || strings.TrimSpace(model) == "" {
 		return model
 	}
 	// ONLY THE PERSON'S OWN TURN ON THEIR OWN MODEL is theirs to send where
@@ -462,7 +487,7 @@ func (a *Agent) healthyModel(ctx context.Context, purpose callPurpose, model str
 // is routed to, and the person's turn, whose model is theirs. send is the id
 // the client was built for and wire how it is spelled on the wire.
 func (c Config) routeGate(send, wire string) func(context.Context, string, string) error {
-	if c.RouteCrew == nil || c.ProfileDir == "" {
+	if c.RouteCrew == nil {
 		return nil
 	}
 	dir := c.ProfileDir
@@ -492,9 +517,6 @@ func (e errRouteResting) Error() string {
 // ledger has it, the day's cap (the daily spending limit too when withDaily)
 // and the checker's ceiling. Nil for a profile nothing is read from.
 func crewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *SpendGuard {
-	if profileDir == "" {
-		return nil
-	}
 	capUSD, action := config.CrewSpendCap(profileDir, withDaily)
 	guard := &SpendGuard{
 		Price: config.CrewCallPrice, Cap: capUSD, CapAction: action,
@@ -504,6 +526,103 @@ func crewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *Sp
 		guard.Day = NewSpendDay(spentTodayOnLedger())
 	}
 	return guard
+}
+
+// crewDay is the day's spend this conversation holds its crews and their
+// helpers to: the usage ledger's figure when first asked, and every guarded
+// call after — seats and helpers alike — so a helper's call counts against
+// the cap a seat's next call is priced under, and the other way round.
+func (a *Agent) crewDay() *SpendDay {
+	a.crewDayOnce.Do(func() { a.crewDayHeld = NewSpendDay(spentTodayOnLedger()) })
+	return a.crewDayHeld
+}
+
+// helperGuard is the guard an auxiliary call in a conversation with crews is
+// held to: the crew's day cap, on the same day its seats are priced against.
+// Nil where there is no crew — a conversation under --one-model.
+func (a *Agent) helperGuard() *SpendGuard {
+	if a.config.RouteCrew == nil {
+		return nil
+	}
+	capUSD, action := config.CrewSpendCap(a.config.ProfileDir, false)
+	if capUSD <= 0 {
+		return &SpendGuard{Price: config.CrewCallPrice, Day: a.crewDay()}
+	}
+	return &SpendGuard{Price: config.CrewCallPrice, Day: a.crewDay(), Cap: capUSD, CapAction: action}
+}
+
+// crewTaskKey marks a helper call made for one task — its run's closing
+// summary — so what it cost is on that task's crew line.
+type crewTaskKey struct{}
+
+func withCrewTask(ctx context.Context, crew *taskCrew) context.Context {
+	if crew == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, crewTaskKey{}, crew)
+}
+
+func crewTaskOf(ctx context.Context) *taskCrew {
+	crew, _ := ctx.Value(crewTaskKey{}).(*taskCrew)
+	return crew
+}
+
+// addHelperSpend puts a helper call's cost on the task it was made for.
+func (c *taskCrew) addHelperSpend(response *ai.Response) {
+	if c == nil || response == nil || response.Usage == nil || response.Usage.Cost == nil || *response.Usage.Cost <= 0 {
+		return
+	}
+	c.mu.Lock()
+	c.helperUSD += *response.Usage.Cost
+	c.mu.Unlock()
+}
+
+// liveCrewFor is the crew of the run this conversation is driving under
+// root, when there is one: a summary a surface asks for while the run is live
+// is that task's helper, and its cost is on that task's line.
+func (a *Agent) liveCrewFor(root string) *taskCrew {
+	a.beltMu.Lock()
+	defer a.beltMu.Unlock()
+	if a.beltRun == nil || a.beltRun.root != root {
+		return nil
+	}
+	return a.beltRun.crew
+}
+
+// stoppedAction is the action this task stopped on, if it stopped on one or
+// saw its account cut off.
+func (c *taskCrew) stoppedAction() string {
+	if c == nil {
+		return ""
+	}
+	return c.stoppedIfCutOff().Stopped
+}
+
+// helperSpent is what helpers spent on this task.
+func (c *taskCrew) helperSpent() float64 {
+	if c == nil {
+		return 0
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.helperUSD
+}
+
+// taskSpent is what this task cost for its crew line and its log row: the
+// seats' spend and the helpers made for it, or — when more — every guarded
+// call the conversation made since the task was routed, which a conversation
+// running one task at a time spent on this task.
+func (c *taskCrew) taskSpent(seats float64) float64 {
+	if c == nil {
+		return seats
+	}
+	spent := seats + c.helperSpent()
+	if c.day != nil {
+		if since := c.day.Total() - c.dayAtStart; since > spent {
+			spent = since
+		}
+	}
+	return spent
 }
 
 // CrewSpendGuard is [crewSpendGuard] for a headless run's seats.
