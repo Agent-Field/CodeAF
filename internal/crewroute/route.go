@@ -1269,9 +1269,10 @@ func Gaps(candidates []Candidate) []Gap {
 //	bugfix · worker glm-5.3-flash (openrouter) · checker glm-5.3-flash · $0.021 (est $0.023)
 //
 // pinMark is drawn in front of a pinned seat's model; the chat surface hands
-// its own glyph and a headless door hands 📌. actual below zero is not known
-// yet, and the line then ends on the estimate alone (the emptiness law: an
-// unknown is absent, never $0.00).
+// its own glyph, and a headless door hands none, so the seat says `(pinned)`
+// in words a script and a plain terminal both read. actual below zero is not
+// known yet, and the line then ends on the estimate alone (the emptiness law:
+// an unknown is absent, never $0.00).
 func (d Decision) Line(pinMark string, actual float64) string {
 	var b strings.Builder
 	if len(d.Retried) > 0 {

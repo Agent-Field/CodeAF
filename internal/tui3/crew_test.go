@@ -301,3 +301,36 @@ func TestCrewMoneyDrawsNoZero(t *testing.T) {
 		t.Errorf("a day that spent reads %q", got)
 	}
 }
+
+// THE LANDING LINE IS SAID WHERE THE TASK LANDS. A task runs for minutes while
+// the conversation goes on, so by the time it lands its start line is far up
+// the thread; rewriting that line in place drew the actual and `/redo
+// stronger` where nobody was looking (the fresh-install check saw a 22-minute
+// task land with no crew line in view). The landing moves the one line to the
+// end of the thread — still one line per task, never two.
+func TestTheLandingCrewLineIsSaidWhereTheTaskLands(t *testing.T) {
+	a, _ := sheetApp(t)
+	crew := &crewroute.Decision{Class: crewroute.Bugfix, EstUSD: 0.013, Crew: []crewroute.Pick{
+		{Seat: crewroute.Worker, Model: "z-ai/glm-5.3-flash", Provider: "openrouter"},
+		{Seat: crewroute.Checker, Model: "z-ai/glm-5.3-flash", Provider: "openrouter"},
+	}}
+	a.sayTaskCrew(session.TaskNotice{ID: 2, State: session.TaskRunning, Crew: crew})
+	for _, line := range []string{"what does this repo do?", "is my code sent anywhere that logs it?"} {
+		a.feed.said(entry{kind: entryUser, text: line, turn: a.feed.turn})
+		a.noteFacts("an answer to " + line)
+	}
+	a.sayTaskCrew(session.TaskNotice{ID: 2, State: session.TaskDone, Crew: crew, CostUSD: 0.004, Merge: "kept", Branch: "task/fix"})
+	last := a.entries[len(a.entries)-1]
+	if last.kind != entryNote || !strings.Contains(last.text, "task 2 crew · ") || !strings.Contains(last.text, "$0.004 (est $0.013) · not right? /redo stronger") {
+		t.Fatalf("the thread ends on %q, not the landing crew line", last.text)
+	}
+	count := 0
+	for _, e := range a.entries {
+		if strings.Contains(e.text, "task 2 crew") {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("the task's crew is said %d times, want once", count)
+	}
+}

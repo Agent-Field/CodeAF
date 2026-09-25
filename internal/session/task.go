@@ -851,7 +851,7 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 		// before it: in a batch committed at one moment none of the hand-offs
 		// could see a live run beforehand, and the one that opened the run is
 		// decided under the start lock ([Agent.startOrJoinTaskRun]).
-		joined, err := a.startOrJoinTaskRun(withCrewWish(context.WithoutCancel(ctx), crewWish{effort: spec.crewEffort}), p.id, spec.title, description, spec.dependsOn, p.stand, question)
+		joined, err := a.startOrJoinTaskRun(withCrewWish(context.WithoutCancel(ctx), crewWish{effort: spec.crewEffort, worker: namedModel(spec)}), p.id, spec.title, description, spec.dependsOn, p.stand, question)
 		if refusal := (standsElsewhereError{}); errors.As(err, &refusal) {
 			return refusal.Error(), true, nil
 		}
@@ -869,6 +869,15 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	state := graph.admit(p.id, spec)
 	admitted = true
 	return taskReceipt(p.id, spec, state, p.stand, elsewhere), false, nil
+}
+
+// namedModel is the model a hand-off named for its work, and nothing when it
+// named none — a task that names nothing is the crew's to seat.
+func namedModel(spec taskSpec) string {
+	if spec.modelWord == "" {
+		return ""
+	}
+	return spec.model
 }
 
 // taskReceipt is what an admitted proposal hands back to the model.

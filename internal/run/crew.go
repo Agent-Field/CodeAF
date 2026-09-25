@@ -157,7 +157,12 @@ func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats,
 				return seatlessWorker{tier: tier}
 			}
 		}
-		return NewBashWorker(store, workspace, model, completerFor(model))
+		// EVERY CALL IS MARKED WITH THE SEAT THE TASK SITS, because this is the
+		// one place that knows it: the spend guard holds the checker to its own
+		// ceiling by seat, and a crew whose seats share one model would give it
+		// nothing else to tell a check's call from a worker's.
+		seat, _ := config.CrewTierSeat(tier)
+		return NewBashWorker(store, workspace, model, session.SeatCompleter(seat, completerFor(model)))
 	}
 }
 
