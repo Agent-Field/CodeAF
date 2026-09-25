@@ -35,7 +35,7 @@ func tabWords(a *app) []string {
 	for _, hit := range a.chatTabHits {
 		// The close cells are a target of their own on every tab (chattabs.go),
 		// so a walk of the hit map that counted them would count every tab twice.
-		if hit.kind == tabFold || hit.kind == tabClose || hit.kind == tabNew || hit.kind == tabHome || hit.kind == tabScrollLeft || hit.kind == tabScrollRight {
+		if hit.kind == tabFold || hit.kind == tabClose || hit.kind == tabNew || hit.kind == tabScrollLeft || hit.kind == tabScrollRight {
 			continue
 		}
 		words = append(words, hit.tab.word)
@@ -46,7 +46,7 @@ func tabWords(a *app) []string {
 // clickTab presses one column of the frame's first row, which is the strip's.
 func clickTab(t *testing.T, a *app, x int) {
 	t.Helper()
-	if cmd, took := a.tabPress(x, placeTabRow); took {
+	if cmd, took := a.tabPress(x, tabStripRow); took {
 		_ = cmd
 		return
 	}
@@ -289,10 +289,10 @@ func TestEveryTabIsRecordedOnTheCellsItWasDrawnOn(t *testing.T) {
 				t.Fatalf("at %d columns a tab was recorded past the end of the row: %+v\n%q",
 					width, hit.span, line)
 			}
-			if _, ok := a.tabAt(hit.span.from, placeTabRow); !ok {
+			if _, ok := a.tabAt(hit.span.from, tabStripRow); !ok {
 				t.Fatalf("at %d columns the strip does not answer for its own cell %d", width, hit.span.from)
 			}
-			if _, ok := a.tabAt(hit.span.from, placeTabRow+1); ok {
+			if _, ok := a.tabAt(hit.span.from, tabStripRow+1); ok {
 				t.Fatalf("at %d columns the strip answers for the row under it", width)
 			}
 		}
@@ -309,7 +309,7 @@ func TestTheStripIsChargedToTheBodyRegionAndMovesTheHeaderUnderIt(t *testing.T) 
 	if got := plain(rows[0]); !strings.HasPrefix(got, " "+plain(a.pal.wordmark(a.width))) {
 		t.Fatalf("the frame's first row is not the pulse: %q", got)
 	}
-	if got := plain(rows[placeTabRow]); !strings.Contains(got, a.chatDisplayName()) {
+	if got := plain(rows[tabStripRow]); !strings.Contains(got, a.chatDisplayName()) {
 		t.Fatalf("the row under the pulse is not the strip: %q", got)
 	}
 	// THE ROOM'S TRAIL IS THE FIRST ROW UNDER THE WHOLE HEAD — the rule and the

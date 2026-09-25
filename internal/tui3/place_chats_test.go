@@ -5,13 +5,13 @@ import (
 	"testing"
 )
 
-// THE BAR HAS A WAY BACK TO THE CHATS, second after home, and a press on it,
+// THE NAV HAS A WAY BACK TO THE CHATS, third after home and teams, and a press on it,
 // its digit and enter on it with the bar's cursor all do one thing: the place
 // closes and the conversation that was in front is in front again.
 func TestTheChatsOnTheBarGoBackToTheConversation(t *testing.T) {
 	a := placeApp(t)
 	front := a.file
-	bar := plain(a.placeTabBar(a.width, false, a.pal))
+	bar := navPlaces(a, a.width, false)
 	if h, c, k := strings.Index(bar, "home"), strings.Index(bar, "chats"), strings.Index(bar, pageTasks.word()); h < 0 || c < h || k < c {
 		t.Fatalf("the bar does not read home, chats: %q", bar)
 	}
@@ -25,7 +25,7 @@ func TestTheChatsOnTheBarGoBackToTheConversation(t *testing.T) {
 	if chats.to == 0 {
 		t.Fatalf("the chats word has no span: %+v", a.tabs)
 	}
-	cmd, took := a.placeTabPress(chats.from+1, a.tabRow)
+	cmd, took := a.navPress(chats.from+1, a.tabRow)
 	if !took {
 		t.Fatal("the press on chats was not taken")
 	}

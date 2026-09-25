@@ -447,9 +447,9 @@ func (a *app) remoteProfileWord(thing string) string {
 // CLAUDE.md states about the manual said about the code.
 //
 // AND THE FRAME SAYS WHOSE MACHINE IT IS. A room whose rows quietly changed which
-// disk they describe would be the same fault walked backwards, so the tab bar
-// carries the machine's name at its right end and nothing at all on a local
-// session ([app.placeBarMachine]). It is [app.host], the same field the status
+// disk they describe would be the same fault walked backwards, so the nav
+// carries the machine's name at its far end and nothing at all on a local
+// session (topnav.go's [app.navTails]). It is [app.host], the same field the status
 // line's place segment, /status and the legend under the input all read, because
 // the connection is shown as the place and is shown nowhere else.
 const (

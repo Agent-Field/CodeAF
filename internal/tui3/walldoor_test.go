@@ -50,7 +50,7 @@ func TestTabWallDoorStandsAfterTheNewChat(t *testing.T) {
 	if !strings.HasPrefix(pw, " ") || !strings.HasSuffix(pw, " ") || len(pw) != 3 {
 		t.Fatalf("the + is %q", pw)
 	}
-	if hit, ok := a.tabAt(door.from, placeTabRow); !ok || hit.kind != tabWall {
+	if hit, ok := a.tabAt(door.from, tabStripRow); !ok || hit.kind != tabWall {
 		t.Fatalf("the strip does not answer for the door: %+v", hit)
 	}
 	for _, w := range tabWords(a) {
@@ -66,7 +66,7 @@ func TestTabWallDoorHover(t *testing.T) {
 	a := wallDoorApp(t, 120)
 	rest := a.tabsRow(120)
 	door := a.wall.door
-	hover, ok := a.tabHoverAt(door.from+2, placeTabRow)
+	hover, ok := a.tabHoverAt(door.from+2, tabStripRow)
 	if !ok {
 		t.Fatal("the door does not take the pointer")
 	}
@@ -101,7 +101,7 @@ func TestTabWallDoorOpensAndCloses(t *testing.T) {
 		t.Fatal("the door is not lit while the view is up")
 	}
 	t.Logf("120 columns with the view up:\n%q", plain(open))
-	if _, took := a.wallPress(door.from+1, placeTabRow); !took || a.wall.on {
+	if _, took := a.wallPress(door.from+1, tabStripRow); !took || a.wall.on {
 		t.Fatalf("a press on the door from inside the view: took %v on %v", took, a.wall.on)
 	}
 	// And the tab strip's own press closes it too.

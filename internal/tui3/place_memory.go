@@ -881,6 +881,8 @@ func (placeMemory) note(a *app, width int) []string {
 // hint is WHAT THE ROW UNDER THE CURSOR CAN BE ASKED FOR (pages.go's
 // [place.hint]), which on this place is two different sentences: a shelf heading
 // unrolls and a line is talked about.
+func (placeMemory) about() string { return "what the agents remember" }
+
 func (placeMemory) hint(a *app) string {
 	if a.mem.edit != nil {
 		return memoryEditHint

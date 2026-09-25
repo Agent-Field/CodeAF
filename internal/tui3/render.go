@@ -3733,6 +3733,12 @@ func (a *app) footHint(width int) string {
 	if hint := a.hintWord(); hint != "" {
 		return hint
 	}
+	// A WORD OF THE HEAD UNDER THE POINTER says what it opens and its key
+	// (topnav.go's [app.headHint]), under a state's own keys and over every
+	// resting sentence.
+	if hint := a.headHint(); hint != "" {
+		return hint
+	}
 	// AND UNDER THE STATES, BUT OVER EVERY TIP AND DOOR: THE CHORD THAT DID NOT
 	// ARRIVE. A Mac whose Option key is composing accents answers the switcher's
 	// chord with the character `˚`, and the legend's own door would go on naming

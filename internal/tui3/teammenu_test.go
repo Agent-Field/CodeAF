@@ -76,7 +76,7 @@ func menuHit(t *testing.T, a *app, code int, id string) wallHit {
 func TestTeamMenuIsTheStripsSwitcher(t *testing.T) {
 	a, harbor, orbit := menuApp(t)
 	front := a.frontTabKey()
-	if _, took := a.tabPress(a.wall.chip.from+1, placeTabRow); !took || !a.teamMenu.on {
+	if _, took := a.tabPress(a.wall.chip.from+1, tabStripRow); !took || !a.teamMenu.on {
 		t.Fatal("the chip did not open the switcher")
 	}
 	frame, rows := menuFrame(t, a)
@@ -86,7 +86,7 @@ func TestTeamMenuIsTheStripsSwitcher(t *testing.T) {
 		}
 	}
 	card := a.teamMenu.card
-	if card.y0 != placeTabRow+1 || card.x0 != a.wall.chip.from {
+	if card.y0 != tabStripRow+1 || card.x0 != a.wall.chip.from {
 		t.Fatalf("the switcher hangs at %+v, the chip is at %+v", card, a.wall.chip)
 	}
 	for i, h := range a.teamMenu.hits {
@@ -203,7 +203,7 @@ func TestTeamMenuClosesOnAPressOffItAndOnEsc(t *testing.T) {
 	// The chip that opened it closes it.
 	a.openTeamMenu()
 	_, _ = menuFrame(t, a)
-	_, _ = a.Update(tea.MouseClickMsg{X: a.wall.chip.from + 1, Y: placeTabRow, Button: tea.MouseLeft})
+	_, _ = a.Update(tea.MouseClickMsg{X: a.wall.chip.from + 1, Y: tabStripRow, Button: tea.MouseLeft})
 	if a.teamMenu.on {
 		t.Fatal("the chip did not close its own switcher")
 	}
@@ -237,7 +237,7 @@ func TestTeamMenuOpensTheCardAndTheSettings(t *testing.T) {
 		_ = a.openWall()
 	}
 	_, _ = menuFrame(t, a)
-	if _, took := a.wallPress(a.wall.chip.from+1, placeTabRow); !took || !a.teamMenu.on {
+	if _, took := a.wallPress(a.wall.chip.from+1, tabStripRow); !took || !a.teamMenu.on {
 		t.Fatal("the chip on the wall did not open the switcher")
 	}
 	if frame, _ := menuFrame(t, a); !strings.Contains(frame, "╭─ Teams ─") {
@@ -260,7 +260,7 @@ func TestTeamMenuQuietChipWithNoTeamShown(t *testing.T) {
 	if !strings.Contains(row, " teams ▾ ") || !a.wall.chip.pressable() {
 		t.Fatalf("no quiet chip: %q", row)
 	}
-	if _, took := a.tabPress(a.wall.chip.from+1, placeTabRow); !took || !a.teamMenu.on {
+	if _, took := a.tabPress(a.wall.chip.from+1, tabStripRow); !took || !a.teamMenu.on {
 		t.Fatal("the quiet chip did not open the switcher")
 	}
 	frame, _ := menuFrame(t, a)

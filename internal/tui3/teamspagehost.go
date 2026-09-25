@@ -190,15 +190,14 @@ func (a *app) teamsHostFrame() ([]string, []placeHit, int, int, bool) {
 	topAt := a.headHeight() + a.stripHeight()
 	a.tp.forwarding, a.page = false, pageTeams
 	// THE HEAD IS THE PLACES' HEAD, AT THE FULL WIDTH, drawn exactly as every
-	// place draws it, so the bar says where the person is standing.
+	// place draws it, so the nav says where the person is standing.
 	was := a.pal
 	a.pal = was.onPlaces()
 	a.pal.placeRows = true
 	a.tabRow = -1
 	head := []string(nil)
 	if headN > 0 {
-		a.tabRow = placeTabRow
-		head = a.headRows(width, a.placeTabBar(width, a.mapShowing, a.pal), a.pal)
+		head = a.headRows(width, a.tabsRow(width), a.pal)
 		for len(head) < headN {
 			head = append(head, "")
 		}

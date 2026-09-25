@@ -1612,7 +1612,7 @@ func TestANarrowWindowStacksTheExchangeOverTheList(t *testing.T) {
 	if _, ok := a.homeStacked(); !ok {
 		t.Fatal("a narrow frame did not stack the exchange over the list")
 	}
-	frame := homeText(a)
+	frame := homeBodyText(a)
 	if !strings.Contains(frame, homeAskHereWord) || !strings.Contains(frame, "› remind me at 6 to leave") {
 		t.Fatalf("the stacked pane is not on the screen:\n%s", frame)
 	}
