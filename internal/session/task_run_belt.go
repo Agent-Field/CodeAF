@@ -1502,7 +1502,11 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 	refreshCtx, cancelRefresh := context.WithTimeout(ctx, beltRunSummaryDeadline)
 	a.RefreshRunSummary(refreshCtx, run.root, time.Time{})
 	cancelRefresh()
-	if _, err := run.store.AddNote(run.root, run.root, beltRunOutcomeNote(run.store, run.root, summary, landing, a.beltRunSpan(run))); err != nil {
+	note := beltRunOutcomeNote(run.store, run.root, summary, landing, a.beltRunSpan(run))
+	if run.delegate != nil {
+		note = programPageNote(programName(run.delegate), landing)
+	}
+	if _, err := run.store.AddNote(run.root, run.root, note); err != nil {
 		if g := a.graph(); g != nil {
 			g.planNote("the run's outcome note failed: " + err.Error())
 		}

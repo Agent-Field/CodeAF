@@ -310,12 +310,27 @@ func (a *app) roomTitleRow(width int) string {
 		}
 	}
 	room := max(width-headLabelAt-2-ansi.StringWidth(right)-3, 1)
+	// A PROGRAM'S ROOM HANGS THE BRIEF'S DROPDOWN AFTER THE BADGE, paid for
+	// before the title is fitted (programroom.go's [app.programHeadBriefRows]).
+	chevron := ""
+	if p := a.programOf(); p != nil && a.programHeadsRoom() {
+		chevron = " " + programBriefChevron(p.briefFull)
+		room -= ansi.StringWidth(chevron)
+	}
 	// A PROGRAM'S TASK WEARS ITS PROGRAM'S BADGE BESIDE ITS TITLE, the one its row
 	// wears on the side list (programbadge.go), paid for out of the title's half
 	// of the row and never the facts'. An ordinary task spends nothing on it.
-	wears := programSpelling(programBadge(a.roomProgram()), left, room, railTitleFloor)
-	left = fit(left, room-programCells(wears))
-	return strings.Repeat(" ", headLabelAt) + a.pal.bold(a.pal.ink(left)) + a.pal.programAfter(wears) + strings.Repeat(" ", max(width-headLabelAt-2-ansi.StringWidth(left)-programCells(wears)-ansi.StringWidth(right), 1)) + painted + "  "
+	wears := programSpelling(programBadge(a.roomProgram()), left, max(room, 1), railTitleFloor)
+	left = fit(left, max(room-programCells(wears), 1))
+	used := headLabelAt + ansi.StringWidth(left) + programCells(wears)
+	shownChevron := ""
+	if chevron != "" {
+		p := a.programOf()
+		p.briefSpan = hudSpan{from: used + 1, to: used + ansi.StringWidth(chevron)}
+		shownChevron = a.pal.dim(chevron)
+		used += ansi.StringWidth(chevron)
+	}
+	return strings.Repeat(" ", headLabelAt) + a.pal.bold(a.pal.ink(left)) + a.pal.programAfter(wears) + shownChevron + strings.Repeat(" ", max(width-used-2-ansi.StringWidth(right), 1)) + painted + "  "
 }
 
 // roomProgram is the program the open room's task was handed to: the name its
@@ -369,6 +384,12 @@ func (a *app) roomAncestorParts(width int) (string, []crumbHit) {
 
 // Rendering and height accounting share the recipient row's one predicate.
 func (a *app) roomRecipientHeight() int {
+	// A PROGRAM'S ROOM NAMES ITS TASK ONCE, on its title row: the box's
+	// `Reading: <title>` label was the third spelling of it on one screen, and
+	// its placeholder already says the program reads no messages.
+	if a.programOf() != nil {
+		return 0
+	}
 	if a.roomOrganized() && a.breathingRows() > 0 && !a.welcomeHolds() {
 		return 1
 	}

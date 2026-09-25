@@ -2638,7 +2638,10 @@ func (a *app) roomHeadRows(width int) []string {
 		return []string{a.roomTrailRow(width)}
 	}
 	head := []string{a.roomTrailRow(width), a.roomFactsLine(width)}
-	if a.roomOrganized() {
+	switch {
+	case a.programHeadsRoom():
+		head = append([]string{a.roomTitleRow(width)}, a.programHeadBriefRows(width)...)
+	case a.roomOrganized():
 		head = []string{a.roomTrailRow(width), a.roomTitleRow(width)}
 	}
 	if rows > a.roomHeadCount() {
@@ -2659,6 +2662,10 @@ const roomHeadRowCount = 2
 
 // Compact frames already name the task in their navigation row.
 func (a *app) roomHeadCount() int {
+	if a.programHeadsRoom() {
+		width, _ := a.size()
+		return 1 + len(a.programHeadBriefRows(width))
+	}
 	if a.roomOrganized() {
 		return roomHeadRowCount
 	}

@@ -516,6 +516,11 @@ func (a *app) roomFactsRow() int {
 	if a.roomHeadHeight(width) < a.roomHeadCount() {
 		return -1
 	}
+	// A PROGRAM'S ROOM HAS ONE HEAD ROW WITH FACTS ON IT, its title row, and
+	// the brief's rows under it are the dropdown's (programroom.go).
+	if a.programHeadsRoom() {
+		return a.roomHeadRow()
+	}
 	return a.roomHeadRow() + a.roomHeadCount() - 1
 }
 

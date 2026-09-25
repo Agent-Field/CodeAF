@@ -215,8 +215,20 @@ func (a *app) taskProgramBody(width int) []string {
 // reported: the actions draw them in their own shape, and the calls, which
 // have none to draw, list them under their own heading as they always did.
 func (a *app) programBody(page session.PlanTaskPage, width int, briefFull, calls bool) []string {
+	out, _ := a.programBodyRows(page, width, briefFull, calls, true, nil)
+	return out
+}
+
+// programBodyRows is [app.programBody] with the two things only the program's
+// room asks for: whether the actions open under the brief (the room draws the
+// brief behind its head's dropdown instead, programroom.go), and which actions
+// are open to their whole step. Beside every line it answers the action the
+// line belongs to — its key, zero for a line that belongs to none — so the
+// room can make the line a press that opens or shuts that action.
+func (a *app) programBodyRows(page session.PlanTaskPage, width int, briefFull, calls, brief bool, open map[int64]bool) ([]string, []int64) {
 	pal := a.pal
 	var out []string
+	var keys []int64
 	if calls {
 		out = a.programCalls(page, width, briefFull)
 		if len(convProgramOf(page).Turns) == 0 && len(page.Steps) > 0 {
@@ -231,7 +243,7 @@ func (a *app) programBody(page session.PlanTaskPage, width int, briefFull, calls
 			}
 		}
 	} else {
-		out = a.taskConversation(page, width, briefFull)
+		out, keys = a.taskConversationRows(page, width, briefFull, brief, open)
 	}
 	if len(page.Notes) > 0 {
 		if len(out) > 0 {
@@ -240,7 +252,10 @@ func (a *app) programBody(page session.PlanTaskPage, width int, briefFull, calls
 		out = append(out, pal.dim("notes"))
 		out = append(out, a.taskPlanNoteRows(page.Notes, width)...)
 	}
-	return out
+	for len(keys) < len(out) {
+		keys = append(keys, 0)
+	}
+	return out, keys
 }
 
 // The words this page says in its own voice, each quoted in the manual as it is
@@ -281,6 +296,11 @@ type actLine struct {
 	outcome string
 	steer   bool
 	quiet   bool
+	// detail is the whole of the step ([delegate.Shown.Detail]) and key the
+	// action's identity for opening it — the moment it was received — both
+	// empty for a line with nothing more to show.
+	detail string
+	key    int64
 }
 
 // taskConversation is a program's page where an ordinary page draws its steps:
@@ -294,8 +314,16 @@ type actLine struct {
 // line instead, and its actions hang under it. The column is as wide as the
 // widest word on the page, so it does not move as the run goes on.
 func (a *app) taskConversation(page session.PlanTaskPage, width int, briefFull bool) []string {
+	out, _ := a.taskConversationRows(page, width, briefFull, true, nil)
+	return out
+}
+
+// taskConversationRows is [app.taskConversation] with the brief left out when
+// brief is false, the actions in open drawn with their whole step under them,
+// and beside each line the key of the action it belongs to (zero for none).
+func (a *app) taskConversationRows(page session.PlanTaskPage, width int, briefFull, brief bool, open map[int64]bool) ([]string, []int64) {
 	if width < 1 {
-		return nil
+		return nil, nil
 	}
 	program := convProgramOf(page)
 	pal := a.pal
@@ -303,15 +331,19 @@ func (a *app) taskConversation(page session.PlanTaskPage, width int, briefFull b
 	column, text := actColumns(lines, width)
 
 	var out []string
+	var keys []int64
 	// THE BRIEF OPENS THE PAGE, under its own word: it is what the program was
 	// handed, in the person's own words, folded to the brief's own three lines
-	// with the key that unfolds it, the way every other page folds a brief.
-	for i, line := range taskConversationBrief(page, text, briefFull) {
-		word := ""
-		if i == 0 {
-			word = actBriefWord
+	// with the key that unfolds it, the way every other page folds a brief. The
+	// program's room draws it behind its head's dropdown instead.
+	if brief {
+		for i, line := range taskConversationBrief(page, text, briefFull) {
+			word := ""
+			if i == 0 {
+				word = actBriefWord
+			}
+			out = append(out, actRow(pal, word, pal.ink(fit(line, text)), column, width)...)
 		}
-		out = append(out, actRow(pal, word, pal.ink(fit(line, text)), column, width)...)
 	}
 	// THE ACTIONS THE PAGE LEAVES OUT ARE COUNTED AT THE PAGE'S OWN EDGE, spelled
 	// the way every fold line on this surface is ([bandFoldWord]).
@@ -328,13 +360,31 @@ func (a *app) taskConversation(page session.PlanTaskPage, width int, briefFull b
 	case len(program.Actions) == 0 && program.Earlier > 0:
 		out = append(out, pal.dim(fit(glyphMore+itoa(program.Earlier)+" "+convEarlierWord, width)))
 	}
+	for len(keys) < len(out) {
+		keys = append(keys, 0)
+	}
 	current := ""
 	for _, line := range lines {
 		word := ""
 		if line.step != "" && line.step != current {
 			word, current = line.step, line.step
 		}
-		out = append(out, actRow(pal, word, a.actBody(line, text), column, width)...)
+		key := int64(0)
+		if strings.TrimSpace(line.detail) != "" {
+			key = line.key
+		}
+		for _, drawn := range actRow(pal, word, a.actBody(line, text), column, width) {
+			out, keys = append(out, drawn), append(keys, key)
+		}
+		// AN OPEN ACTION SHOWS ITS WHOLE STEP UNDER ITS LINE, in the dim ink,
+		// hung where the actions' words start; the same press shuts it.
+		if key != 0 && open[key] {
+			for _, detail := range actDetailRows(line.detail, text) {
+				for _, drawn := range actRow(pal, "", pal.dim(detail), column, width) {
+					out, keys = append(out, drawn), append(keys, key)
+				}
+			}
+		}
 	}
 	// THE CALL IN FLIGHT IS THE LIVE EDGE, drawn only while the task can still be
 	// waiting on it: a call whose ending never reached the log before the run
@@ -346,7 +396,34 @@ func (a *app) taskConversation(page session.PlanTaskPage, width int, briefFull b
 			}
 		}
 	}
-	return out
+	for len(keys) < len(out) {
+		keys = append(keys, 0)
+	}
+	return out, keys
+}
+
+// actDetailMost is how many rows one open action may spend; the rest is
+// counted, the way every capped expansion on this surface is.
+const actDetailMost = 40
+
+// actDetailRows is an action's whole step laid out at the room the actions'
+// words get: each line of it wrapped, a blank line kept, and a step longer
+// than [actDetailMost] rows cut with the count of what was left out.
+func actDetailRows(detail string, width int) []string {
+	var rows []string
+	for _, line := range strings.Split(strings.TrimRight(detail, "\n"), "\n") {
+		line = strings.TrimRight(line, " \t\r")
+		if line == "" {
+			rows = append(rows, "")
+			continue
+		}
+		rows = append(rows, railWrap(line, max(width, 1))...)
+	}
+	if len(rows) > actDetailMost {
+		cut := len(rows) - (actDetailMost - 1)
+		rows = append(rows[:actDetailMost-1], bandFoldWord(cut, "lines", true))
+	}
+	return rows
 }
 
 // actRow lays one row out: the step's word in the column and the body beside
@@ -461,7 +538,8 @@ func actLines(page session.PlanTaskPage) []actLine {
 			// the model's side; the program's line gives it its reason.
 			continue
 		}
-		lines = append(lines, actLine{at: shown.At, step: shown.Step, text: shown.Text, outcome: shown.Outcome, steer: shown.Steer})
+		lines = append(lines, actLine{at: shown.At, step: shown.Step, text: shown.Text, outcome: shown.Outcome, steer: shown.Steer,
+			detail: shown.Detail, key: shown.At.UnixNano()})
 	}
 	lines = append(lines, actFromCalls(program)...)
 	if len(program.Actions) == 0 && len(program.Turns) == 0 {

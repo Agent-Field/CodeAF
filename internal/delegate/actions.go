@@ -165,6 +165,10 @@ type Shown struct {
 	// Outcome is how it came out, in a word or two: `passes`, `fails · exit 2`,
 	// `4 files`. Empty when there is nothing to say.
 	Outcome string `json:"outcome,omitempty"`
+	// Detail is the whole of the step as the log kept it — the command or
+	// argument, and what came back — which the page opens under the action's
+	// one line when it is clicked. Empty for a line with nothing more to show.
+	Detail string `json:"detail,omitempty"`
 	// Steer marks the program steering its own model — a nudge, a last turn, a
 	// retry after a dropped call, a correction — rather than working through it.
 	Steer bool `json:"steer,omitempty"`

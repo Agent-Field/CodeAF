@@ -154,7 +154,22 @@ func presentStep(action delegate.Action) (delegate.Shown, bool) {
 	default:
 		shown.Text = strings.TrimSpace(action.Command)
 	}
+	shown.Detail = stepDetail(action)
 	return shown, strings.TrimSpace(shown.Text) != ""
+}
+
+// stepDetail is the whole of one step as the log kept it: the command or
+// argument the tool was called with, and what came back, for the page to open
+// under the step's one line.
+func stepDetail(action delegate.Action) string {
+	var parts []string
+	if command := strings.TrimSpace(action.Command); command != "" {
+		parts = append(parts, command)
+	}
+	if observation := strings.TrimRight(action.Observation, " \n\t"); strings.TrimSpace(observation) != "" {
+		parts = append(parts, observation)
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 // ownRecord is how the page names one of senior-dev's own records when an

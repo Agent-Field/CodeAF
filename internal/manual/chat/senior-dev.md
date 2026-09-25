@@ -57,12 +57,18 @@ tab**: the tab strip stays on top, with the conversation's tab selected and the 
 it. senior-dev gets no tab of its own.
 
 The task shows **what senior-dev is doing**, action by action, each under the step of its
-process it served — its brief, the workspace it set up, what it read and ran and changed,
-its hand-in, the build and tests it ran itself, and how it finished — with the call to its
+process it served — the workspace it set up, what it read and ran and changed, its
+hand-in, the build and tests it ran itself, and how it finished — with the call to its
 model in flight as the last line, `◐ thinking` and its seconds. The next section says what
-each step means. The line over it pins the step, the spend of the run's ceiling, the
-number of model calls and how long the run has been going — the same time the side list
-and the landed card show, counted from the moment codeaf handed the work over. While the
+each step means. **Click an action to see the whole step** — the command or file it was
+called with and what came back — and click it again to fold it.
+
+The one line over it is the task's title with its `[senior-dev]` badge, a `▸ brief`
+dropdown, and the step, the spend of the run's ceiling, the number of model calls and how
+long the run has been going — the same time the side list and the landed card show,
+counted from the moment codeaf handed the work over. **The brief is behind the dropdown**:
+click `▸ brief`, or press `ctrl+o`, and the whole brief senior-dev was handed is drawn in
+grey under the title; the same again hides it. While the
 task is open, its row on the side list leaves its clock out rather than show a time that
 stopped when you clicked; the true time is back on the row the moment you leave.
 

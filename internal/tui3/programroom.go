@@ -44,10 +44,19 @@ import (
 // of the brief, the width its body was last laid out at (which `ctrl+o`
 // measures the brief against), and the lines the page itself has said.
 type programRoom struct {
-	page      session.PlanTaskPage
-	readAt    time.Time
-	reading   bool
+	page    session.PlanTaskPage
+	readAt  time.Time
+	reading bool
+	// briefFull says the head's dropdown is open: the whole brief the program
+	// was handed, drawn between the head's rules ([app.programHeadBriefRows]).
+	// It opens shut, and `ctrl+o` or a press on the dropdown turns it.
 	briefFull bool
+	// briefSpan is where the dropdown was drawn on the title row, for the
+	// press that turns it ([app.programBriefPress]).
+	briefSpan hudSpan
+	// open is the actions whose whole step is shown under their one line, by
+	// the moment each was received ([app.toggleProgramAction]).
+	open map[int64]bool
 	// calls says the room shows the program's raw calls instead of its actions
 	// ([programCallsKey]); a room opens on the actions.
 	calls bool
@@ -282,8 +291,15 @@ func (a *app) programRoomRows(width int) []row {
 	p.inner = inner
 	pal := a.pal
 	var out []row
-	for _, line := range a.programBody(p.page, inner, p.briefFull, p.calls) {
-		out = append(out, row{text: line, entry: -1})
+	// THE BRIEF IS THE HEAD'S (its dropdown), so the actions open the body; and
+	// every action with more to show is a press that opens its whole step.
+	lines, keys := a.programBodyRows(p.page, inner, p.briefFull, p.calls, !a.programHeadsRoom(), p.open)
+	for i, line := range lines {
+		r := row{text: line, entry: -1}
+		if keys[i] != 0 {
+			r.hit, r.turn = hitAction, int(keys[i])
+		}
+		out = append(out, r)
 	}
 	if len(p.said) > 0 {
 		out = append(out, row{entry: -1})
@@ -438,13 +454,9 @@ func (a *app) programRoomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 	switch msg.String() {
 	case "ctrl+o":
-		width := p.inner
-		if width <= 0 {
-			width = gutterInner(a.bodyWidth())
-		}
-		if !convBriefFolds(p.page, width, p.calls) {
-			return nil, false
-		}
+		// THE KEY TURNS THE HEAD'S DROPDOWN, whatever the brief's length: the
+		// brief is drawn whole up there or not at all ([app.programHeadBriefRows]).
+		// On the raw calls it still unfolds the brief those draw in their body.
 		p.briefFull = !p.briefFull
 		a.room.dirty = true
 		a.touch()
@@ -458,4 +470,83 @@ func (a *app) programRoomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 	}
 	return nil, false
+}
+
+// ── THE HEAD: ONE TITLE, AND THE BRIEF BEHIND A DROPDOWN ─────────────────────
+//
+// A program's room used to open under two titles: the trail's crumb — the
+// conversation's name, which a conversation named after its work spells the
+// same as the task — and the task's own bold title under it, and a third in the
+// box's `Reading:` label. The owner asked on 2026-09-25 for one: the head is
+// the title row alone (the task's name, its badge, the dropdown, the pinned
+// facts), and the brief the program was handed is behind the dropdown, drawn
+// whole in the dim ink between the head's rules. The way back is `esc`, named
+// on the key line, and the side list's `‹ Back to main`.
+
+// programBriefChevron is the dropdown on the title row: shut, or open.
+func programBriefChevron(open bool) string {
+	if open {
+		return glyphOpen + " brief"
+	}
+	return glyphShut + " brief"
+}
+
+// programHeadsRoom says the open room is a program's in the frame that draws
+// the head as its own rows ([app.roomOrganized]): the one layout the dropdown
+// lives in. A frame too short for it keeps the compact trail, which names the
+// task already.
+func (a *app) programHeadsRoom() bool {
+	return a.programOf() != nil && a.roomOrganized()
+}
+
+// programHeadBriefRows is the brief, whole, between the head's rules while the
+// dropdown is open, and nothing while it is shut. It is pinned with the head,
+// so a brief longer than half the frame gives up its tail to a count rather
+// than the body its rows.
+func (a *app) programHeadBriefRows(width int) []string {
+	p := a.programOf()
+	if p == nil || !p.briefFull || !a.roomOrganized() {
+		return nil
+	}
+	text := max(width-headLabelAt-2, 1)
+	lines := planBriefRows(p.page.Description, text)
+	if len(lines) == 0 {
+		return nil
+	}
+	_, height := a.size()
+	if most := max(height/2, 3); len(lines) > most {
+		cut := len(lines) - (most - 1)
+		lines = append(append([]string(nil), lines[:most-1]...), bandFoldWord(cut, briefFoldWhat, true))
+	}
+	rows := make([]string, len(lines))
+	for i, line := range lines {
+		rows[i] = strings.Repeat(" ", headLabelAt) + a.pal.dim(fit(line, text))
+	}
+	return rows
+}
+
+// programBriefPress turns the dropdown when the press landed on it.
+func (a *app) programBriefPress(x, y int) bool {
+	p := a.programOf()
+	if p == nil || !a.programHeadsRoom() || a.headHeight() == 0 || y != a.roomHeadRow() || !p.briefSpan.holds(x) {
+		return false
+	}
+	p.briefFull = !p.briefFull
+	a.room.dirty = true
+	a.touch()
+	return true
+}
+
+// toggleProgramAction opens or shuts one action's whole step under its line.
+func (a *app) toggleProgramAction(key int64) {
+	p := a.programOf()
+	if p == nil {
+		return
+	}
+	if p.open == nil {
+		p.open = map[int64]bool{}
+	}
+	p.open[key] = !p.open[key]
+	a.room.dirty = true
+	a.touch()
 }

@@ -236,3 +236,17 @@ func (a *Agent) programLandingNote(run *beltRun, summary RunSummary, line string
 	note.programOutcome = &outcome
 	return note
 }
+
+// programPageNote is what a program run's own page keeps as its ending: that
+// the ending went to the conversation, and where the work is. THE PROGRAM'S
+// STATUS IS NOT ON IT. The page's notes used to carry the whole outcome line —
+// the program's status sentence, what its model claimed, what it observed —
+// which is the account codeaf acts on, not one a person reads; the chat's reply
+// says what came of the work, and the program's own words are on its actions.
+func programPageNote(program string, landing RunLanding) string {
+	said := program + "'s ending went to the chat"
+	if line := beltLandingLine(landing); line != "" {
+		said += " · " + line
+	}
+	return said
+}

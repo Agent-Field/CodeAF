@@ -14,6 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -90,25 +91,82 @@ func TestAProgramsRoomSendsNothingAndSaysSo(t *testing.T) {
 	}
 }
 
-// A LONG BRIEF FOLDS, AND ctrl+o OPENS AND CLOSES IT, in the room exactly as on
-// the stored page: the fold line names how many lines and the key.
-func TestCtrlOFoldsAProgramRoomsBrief(t *testing.T) {
+// THE ROOM NAMES ITS TASK ONCE, AND ITS BRIEF IS BEHIND A DROPDOWN. The head is
+// the title row alone — no trail crumb repeating the conversation's name, no
+// `Reading:` label over the box — with `▸ brief` after the badge; the brief is
+// not in the body, and ctrl+o or a press on the dropdown draws it whole between
+// the head's rules, and shuts it again.
+func TestAProgramRoomNamesItsTaskOnceAndHidesItsBriefBehindADropdown(t *testing.T) {
 	a, agent := programRoomApp(t, 120, 40)
 	page := agent.planFake.pages["7"]
-	page.Description = strings.Repeat("the store interface changes and every caller moves with it. ", 12)
+	page.Description = strings.Repeat("the store interface changes and every caller moves with it. ", 12) + "THE LAST WORDS"
 	agent.planFake.pages["7"] = page
 	openProgramRoomNow(t, a)
-	fold := briefFoldWhat + railSep + briefFoldKey
-	if !strings.Contains(roomText(a), fold) {
-		t.Fatalf("a long brief is not folded with its key:\n%s", roomText(a))
+	width, _ := a.size()
+	head := func() []string {
+		var out []string
+		for _, line := range a.roomHeadRows(width) {
+			out = append(out, plain(line))
+		}
+		return out
+	}
+	shut := head()
+	if len(shut) < 1 || !strings.Contains(shut[0], "rewrite the auth middleware") || !strings.Contains(shut[0], programBriefChevron(false)) {
+		t.Fatalf("the head's first row is not the title with its dropdown: %q", shut)
+	}
+	if strings.Contains(strings.Join(shut, "\n"), "THE LAST WORDS") || strings.Contains(roomText(a), "THE LAST WORDS") {
+		t.Fatal("the brief is drawn while its dropdown is shut")
+	}
+	if a.roomRecipientHeight() != 0 {
+		t.Fatal("the box still carries a `Reading:` label naming the task a third time")
 	}
 	drive(t, a, key("ctrl+o"))
-	if strings.Contains(roomText(a), fold) {
-		t.Fatalf("ctrl+o did not unfold the brief:\n%s", roomText(a))
+	open := strings.Join(head(), "\n")
+	if !strings.Contains(open, "THE LAST WORDS") || !strings.Contains(open, programBriefChevron(true)) {
+		t.Fatalf("ctrl+o did not draw the whole brief in the head:\n%s", open)
 	}
-	drive(t, a, key("ctrl+o"))
-	if !strings.Contains(roomText(a), fold) {
-		t.Fatalf("a second ctrl+o did not fold the brief again:\n%s", roomText(a))
+	if strings.Contains(roomText(a), "THE LAST WORDS") {
+		t.Fatal("the open brief is drawn in the body as well as the head")
+	}
+	p := a.programOf()
+	if !a.programBriefPress(p.briefSpan.from, a.roomHeadRow()) || strings.Contains(strings.Join(head(), "\n"), "THE LAST WORDS") {
+		t.Fatal("a press on the dropdown did not shut the brief")
+	}
+}
+
+// A STEP OPENS TO ITS WHOLE SELF. An action with more to show is a press on
+// the room: it draws the step's command and what came back under its line, and
+// the same press shuts it.
+func TestAProgramsStepOpensToItsWholeStepAndShutsAgain(t *testing.T) {
+	a, agent := programRoomApp(t, 120, 40)
+	page := agent.planFake.pages["7"]
+	program := *page.Program
+	program.Actions = append([]delegate.Shown(nil), program.Actions...)
+	at := program.Actions[len(program.Actions)-1].At.Add(time.Second)
+	program.Actions = append(program.Actions, delegate.Shown{At: at, Step: "explore", Text: "ran go test ./...",
+		Outcome: "fails · exit 1", Detail: "bash: go test ./...\n\n--- FAIL: TestTheWholeOutput"})
+	page.Program = &program
+	agent.planFake.pages["7"] = page
+	openProgramRoomNow(t, a)
+	var target row
+	for _, r := range a.roomRows(a.bodyWidth()) {
+		if strings.Contains(plain(r.text), "ran go test ./...") {
+			target = r
+		}
+	}
+	if target.hit != hitAction {
+		t.Fatalf("the step is not a press: %+v", target)
+	}
+	if strings.Contains(roomText(a), "TestTheWholeOutput") {
+		t.Fatal("the step's whole output is drawn before it was opened")
+	}
+	a.toggleProgramAction(int64(target.turn))
+	if !strings.Contains(roomText(a), "TestTheWholeOutput") {
+		t.Fatalf("opening the step did not draw its whole step:\n%s", roomText(a))
+	}
+	a.toggleProgramAction(int64(target.turn))
+	if strings.Contains(roomText(a), "TestTheWholeOutput") {
+		t.Fatal("the same press did not shut the step")
 	}
 }
 

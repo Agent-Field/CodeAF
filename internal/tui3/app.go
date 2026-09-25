@@ -4227,6 +4227,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.roomBackPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
+			if a.programBriefPress(msg.Mouse().X, msg.Mouse().Y) {
+				return a, nil
+			}
 			// THE TASK STRIP IS READ BEFORE THE RAIL, because the strip spans the
 			// WHOLE window and the rail claims every press in its own columns
 			// whether or not one landed on a row (room.go) — asked the other way
@@ -6833,6 +6836,8 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		a.togglePictureAt(r.entry, r.pictureIndex)
 	case hitBrief:
 		a.toggleBriefFoldAt(r.entry)
+	case hitAction:
+		a.toggleProgramAction(int64(r.turn))
 	case hitTask:
 		// A CLICK ON A SPAWN CARD IS THE DOOR INTO THE NODE. It used to open the
 		// brief, which is the card's own text one fold down — and the question a
