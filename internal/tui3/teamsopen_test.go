@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -263,5 +264,88 @@ func TestTeamsHostedTrafficRowGoesToTheMember(t *testing.T) {
 	}
 	if a.at(pageTeams) {
 		t.Fatalf("the page stayed over a conversation it does not host:\n%s", teamsFrameText(a))
+	}
+}
+
+// lockingOpen makes the lab's door behave like the real one about the
+// transcript's lock: the first open of a file takes it, and every later open of
+// the same file while it is held is refused as another window's.
+func (l *teamsOpenLab) lockingOpen() {
+	held := map[string]bool{}
+	l.a.open = func(where, file string) (Conversation, error) {
+		l.asked = append(l.asked, where+" "+file)
+		if held[file] {
+			return Conversation{}, session.ErrSessionLocked
+		}
+		held[file] = true
+		return Conversation{Agent: &fakeAgent{model: "m"}, Workspace: where, SessionFile: file}, nil
+	}
+}
+
+// A TEAM CHOSEN TWICE WHILE ITS MANAGER IS OPENING ASKS THE DOOR ONCE, AND THE
+// MANAGER COMES IN. The second choice used to ask again: the first answer came
+// back as a stale attempt and was put behind, the second met its lock, and the
+// pane said the manager was open in another window until Retry was pressed.
+// The two answers are run one after the other, first ask first, which is the
+// order that stuck.
+func TestTeamsManagerChosenTwiceWhileOpeningAsksOnceAndComesIn(t *testing.T) {
+	l := newTeamsOpenLab(t, true)
+	l.lockingOpen()
+	first := l.a.teamsSelect(l.orbit)
+	second := l.a.teamsSelect(l.orbit)
+	drive(t, l.a, runCmd(first)...)
+	drive(t, l.a, runCmd(second)...)
+	if len(l.asked) != 1 {
+		t.Fatalf("the door was asked %d times for one manager: %q", len(l.asked), l.asked)
+	}
+	if l.a.frontTabKey() != l.key || !l.a.teamsHosting() || l.a.tp.open.why != "" {
+		t.Fatalf("the manager is not in the pane (front %q, pane says %q):\n%s", l.a.frontTabKey(), l.a.tp.open.why, teamsFrameText(l.a))
+	}
+}
+
+// A RETRY PRESSED WHILE THE FIRST OPEN IS STILL OUT ASKS AGAIN, and whichever
+// answer lands the manager is the page's: the first one, which the Retry made
+// stale, brings the manager in, and the Retry's refusal about a conversation
+// this window now holds is no refusal.
+func TestTeamsManagerRetryRacingTheFirstOpenStillComesIn(t *testing.T) {
+	l := newTeamsOpenLab(t, true)
+	l.lockingOpen()
+	first := l.a.teamsSelect(l.orbit)
+	again := l.a.teamsRetryManager()
+	drive(t, l.a, runCmd(first)...)
+	drive(t, l.a, runCmd(again)...)
+	if len(l.asked) != 2 {
+		t.Fatalf("Retry did not ask the door again: %q", l.asked)
+	}
+	if l.a.frontTabKey() != l.key || !l.a.teamsHosting() || l.a.tp.open.why != "" {
+		t.Fatalf("the manager is not in the pane (front %q, pane says %q):\n%s", l.a.frontTabKey(), l.a.tp.open.why, teamsFrameText(l.a))
+	}
+	if strings.Contains(teamsFrameText(l.a), sessionBusyWord) {
+		t.Fatalf("the pane says the manager is busy:\n%s", teamsFrameText(l.a))
+	}
+}
+
+// OVER A CONNECTION THAT HOLDS ONE CONVERSATION AT A TIME THE SWAP IS NOT MADE
+// FROM UPDATE. Choosing the team asks nothing on the keystroke; the swap is a
+// command, and when it answers the manager is the conversation in front.
+func TestTeamsManagerSwapOverASharedConnectionIsAskedOffTheLoop(t *testing.T) {
+	l := newTeamsOpenLab(t, true)
+	l.a.shared = true
+	l.a.open = nil
+	swapped := 0
+	l.a.resume = func(file string) (Agent, error) {
+		swapped++
+		return &fakeAgent{model: "m"}, nil
+	}
+	cmd := l.a.teamsSelect(l.orbit)
+	if swapped != 0 {
+		t.Fatal("the swap was asked on the keystroke, from Update")
+	}
+	drive(t, l.a, runCmd(cmd)...)
+	if swapped != 1 {
+		t.Fatalf("the swap was asked %d times", swapped)
+	}
+	if l.a.frontTabKey() != l.key || !l.a.teamsHosting() {
+		t.Fatalf("the swapped manager is not in the pane (front %q):\n%s", l.a.frontTabKey(), teamsFrameText(l.a))
 	}
 }

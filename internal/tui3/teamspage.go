@@ -3,6 +3,7 @@ package tui3
 import (
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -108,8 +109,10 @@ type teamsPage struct {
 	// default here, because this page has a rail of its own on the left.
 	traffic bool
 	// reading says a read is out, so a beat that comes round before it is
-	// answered does not start a second.
-	reading bool
+	// answered does not start a second; again says a read was asked for while
+	// it was out, and againWorld that the ask wanted the members' rows too.
+	// Neither is ever dropped: the fold asks again ([app.teamsFold]).
+	reading, again, againWorld bool
 	// The readings the frame draws from, each with the stamp the next read
 	// asks the seam to answer `same` to.
 	packets      []teamstore.Packet
@@ -130,7 +133,11 @@ type teamsPage struct {
 	msg string
 	// open is the attempt to bring the selected team's manager in front, so
 	// the pane says what it is doing and, when it cannot, why (teamsopen.go).
-	open teamsOpen
+	// opens is every open a door has not answered yet, by manager, and
+	// openSeq the last attempt's number.
+	open    teamsOpen
+	opens   map[string]teamsOpenOut
+	openSeq int
 	// top is the hosted pane's header rows, kept between frames.
 	top teamsTopCache
 	// undo is the last close, while Undo is offered (teamclose.go).
@@ -569,14 +576,36 @@ type teamsGot struct {
 // or spends a team's money, so a page of plain teams reads nothing at all.
 // Each read is stamped, so a quiet store answers `same` and the frame before
 // it stands.
+//
+// ONE READ IS OUT AT A TIME, AND NONE IS EVER DROPPED. A read asked for while
+// one is out (a team chosen while the beat's read is on the wire) is kept, and
+// made the moment the one out is folded, with what the page wants THEN: the
+// selection's own pool, not the pool of the team that was selected when the
+// first read left. It used to be dropped, and the spend of a team chosen in that
+// window waited for the next beat, or for ever on a page whose clock was not
+// turning.
+//
+// AND IT READS WHAT THE PAGE DRAWS, NOT THE MACHINE. The rows are the members'
+// of the open teams, twenty-five on a big machine: on this machine's disk they
+// are read by name ([session.ReadRows]), where the page used to walk every
+// session under the root on its opening and on every beat to find them, and
+// over a connection they are taken out of the world the window already holds
+// (tui3.go's [Options.World]), which costs nothing here. The store's doors are
+// asked side by side rather than one after another, because over --host each
+// of them is a round trip.
 
 // teamsRead asks the seam, beside the door line, for what the page draws: the
 // packets and the spend of the selection's pool (each with its stamp, so a
-// quiet file is answered `same`), the defaults, and the world reading that says
-// what a member this window does not hold is doing. withWorld is false for a
-// read a gesture asked for, which needs only the store.
+// quiet file is answered `same`), the defaults, and the rows that say what a
+// member this window does not hold is doing. withWorld is false for a read a
+// gesture asked for, which needs only the store.
 func (a *app) teamsRead(withWorld bool) tea.Cmd {
-	if a.tp.reading || a.teamsOff() {
+	if a.teamsOff() {
+		return nil
+	}
+	if a.tp.reading {
+		a.tp.again = true
+		a.tp.againWorld = a.tp.againWorld || withWorld
 		return nil
 	}
 	a.tp.reading = true
@@ -595,50 +624,142 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 			}
 		}
 	}
-	spendSince := map[string]string{}
-	for _, id := range pools {
-		spendSince[id] = a.tp.spendStamp[id]
+	spendSince := make([]string, len(pools))
+	for i, id := range pools {
+		spendSince[i] = a.tp.spendStamp[id]
 	}
-	worldDoor, placesRoot, hosted := a.world, a.placesRoot(), a.hosted()
+	var files []string
+	if withWorld {
+		files = a.teamsMemberFiles()
+	}
+	worldDoor, hosted, rowsDoor := a.world, a.hosted(), a.teamsDisk.rows
+	if rowsDoor == nil {
+		rowsDoor = session.ReadRows
+	}
 	return a.besideLine(func() func(bool) tea.Cmd {
 		got := teamsGot{spend: map[string]teamstore.Spend{}, spendStamp: map[string]string{}}
+		var wg sync.WaitGroup
+		side := func(read func()) {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				read()
+			}()
+		}
+		type spendGot struct {
+			spend teamstore.Spend
+			stamp string
+			ok    bool
+		}
+		spends := make([]spendGot, len(pools))
 		if seam.delegation() {
-			got.packets, got.packetsStamp, got.packetsSame, got.packetsErr = seam.Packets(teamstore.ScopeAll, packetsSince)
-			if d, err := seam.Defaults(); err == nil {
-				got.defaults, got.defaultsOK = d, true
-			}
-			for _, id := range pools {
-				s, stamp, same, err := seam.Spend(id, "", spendSince[id])
-				if err != nil || same {
-					continue
+			side(func() {
+				got.packets, got.packetsStamp, got.packetsSame, got.packetsErr = seam.Packets(teamstore.ScopeAll, packetsSince)
+			})
+			side(func() {
+				if d, err := seam.Defaults(); err == nil {
+					got.defaults, got.defaultsOK = d, true
 				}
-				got.spend[id], got.spendStamp[id] = s, stamp
+			})
+			for i, id := range pools {
+				side(func() {
+					s, stamp, same, err := seam.Spend(id, "", spendSince[i])
+					if err == nil && !same {
+						spends[i] = spendGot{spend: s, stamp: stamp, ok: true}
+					}
+				})
 			}
 		}
+		var histories [][]teamstore.Packet
 		if seam.History != nil && len(closedReports) > 0 {
-			got.history = map[string][]teamstore.Packet{}
-			for _, id := range closedReports {
-				if list, err := seam.History(id); err == nil {
-					got.history[id] = list
-				}
+			histories = make([][]teamstore.Packet, len(closedReports))
+			for i, id := range closedReports {
+				side(func() {
+					if list, err := seam.History(id); err == nil {
+						histories[i] = list
+					}
+				})
 			}
 		}
 		if withWorld {
 			got.worldAsked = true
-			if world, known := worldSeam(worldDoor, placesRoot, hosted); known {
-				got.worldKnown = true
-				got.world = map[string]session.SessionRow{}
-				for _, p := range world.Projects {
-					for _, row := range p.Sessions {
-						if strings.TrimSpace(row.Transcript) != "" {
-							got.world[filepath.Clean(row.Transcript)] = row
-						}
-					}
+			side(func() { got.world, got.worldKnown = teamsMemberRows(worldDoor, hosted, rowsDoor, files) })
+		}
+		wg.Wait()
+		for i, id := range pools {
+			if spends[i].ok {
+				got.spend[id], got.spendStamp[id] = spends[i].spend, spends[i].stamp
+			}
+		}
+		for i, id := range closedReports {
+			if histories[i] != nil {
+				if got.history == nil {
+					got.history = map[string][]teamstore.Packet{}
 				}
+				got.history[id] = histories[i]
 			}
 		}
 		return func(bool) tea.Cmd { return a.teamsFold(got) }
 	})
+}
+
+// teamsMemberFiles is every member transcript of the open teams, cleaned and
+// once each: what the page's rows are read for. Memory only.
+func (a *app) teamsMemberFiles() []string {
+	seen := map[string]bool{}
+	var files []string
+	for _, t := range a.wall.teams {
+		if t.Closed() {
+			continue
+		}
+		for _, m := range t.Members {
+			file := strings.TrimSpace(m.File)
+			if file == "" {
+				continue
+			}
+			file = filepath.Clean(file)
+			if !seen[file] {
+				seen[file] = true
+				files = append(files, file)
+			}
+		}
+	}
+	return files
+}
+
+// teamsMemberRows is the rows of files, keyed by cleaned transcript, and
+// whether that is an answer: out of the world a connection's door holds, none
+// at all over a connection with no such door (the rule [worldSeam] states),
+// and otherwise read by name off this machine's disk. It runs off the loop.
+func teamsMemberRows(door func() (session.World, bool), hosted bool,
+	read func([]string) map[string]session.SessionRow, files []string) (map[string]session.SessionRow, bool) {
+	switch {
+	case door != nil:
+		world, known := door()
+		if !known {
+			return nil, false
+		}
+		want := make(map[string]bool, len(files))
+		for _, f := range files {
+			want[f] = true
+		}
+		rows := map[string]session.SessionRow{}
+		for _, p := range world.Projects {
+			for _, row := range p.Sessions {
+				if key := strings.TrimSpace(row.Transcript); key != "" && want[filepath.Clean(key)] {
+					rows[filepath.Clean(key)] = row
+				}
+			}
+		}
+		return rows, true
+	case hosted:
+		return nil, false
+	}
+	rows := read(files)
+	if rows == nil {
+		rows = map[string]session.SessionRow{}
+	}
+	return rows, true
 }
 
 // teamsFold folds one read in. A read that found nothing new leaves the frame
@@ -681,6 +802,15 @@ func (a *app) teamsFold(got teamsGot) tea.Cmd {
 		a.touch()
 	} else {
 		a.ptr.still = a.drawn
+	}
+	// A read asked for while this one was out is made now, for the page as it
+	// stands now ([app.teamsRead]).
+	if a.tp.again {
+		world := a.tp.againWorld
+		a.tp.again, a.tp.againWorld = false, false
+		if a.at(pageTeams) {
+			return a.teamsRead(world)
+		}
 	}
 	return nil
 }
