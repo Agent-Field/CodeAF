@@ -43,6 +43,24 @@ import (
 // within [teamsOpenBound] is said too, and both offer `Retry` and
 // `Open in chats` (the chat surface's own door, [app.trafficGo]). A manager
 // whose transcript is gone offers `+ Manager`, which makes a new one.
+//
+// ONE OPEN PER MANAGER IS OUT AT A TIME. A team chosen twice (a double press, or
+// away and back while the first open was on the wire) used to ask the door
+// twice for the same transcript. The first answer came back as a stale attempt
+// and was put behind, the second met the first one's lock, and the pane said
+// the conversation was open in another window, about a conversation this window
+// was holding, until the person pressed Retry. Now a choice while an open is
+// out takes that open up as its own ([teamsOpenOut]), an answer for the manager
+// the page is asking about is the page's answer whichever attempt it was, and a
+// refusal about a conversation this window already holds is no refusal. `Retry`
+// alone asks again while an open is out, because it is pressed when that open
+// has not answered.
+//
+// AND THE DOOR IS NEVER ASKED FROM UPDATE. Over a connection that holds one
+// conversation at a time the open is the engine's swap; it was made on the
+// loop, and the window froze for the round trip. It goes through the ordered
+// door line now ([app.offLoop]), because a swap is a gesture whose order
+// matters, and the swap is taken when it answers.
 
 // teamsOpenBound is how long the pane says `opening` before it says the engine
 // has not answered. Long enough for an ordinary open over the socket, short
@@ -75,6 +93,13 @@ type teamsOpen struct {
 	done bool
 }
 
+// teamsOpenOut is one open a door has not answered yet: its attempt and when
+// it was asked.
+type teamsOpenOut struct {
+	gen int
+	at  time.Time
+}
+
 // teamsBringManager brings the selected team's manager in front when it is not
 // there yet. It is the one move of the front this page makes, and only ever
 // for the team the person chose: the conversation that was in front stays
@@ -90,7 +115,7 @@ func (a *app) teamsBringManager() tea.Cmd {
 		a.tp.open = teamsOpen{key: t.Manager, gen: a.tp.open.gen, done: true}
 		return nil
 	}
-	return a.teamsOpenManager(t)
+	return a.teamsOpenManager(t, false)
 }
 
 // teamsKeepManager is [app.teamsSync]'s half: an attempt for the selected
@@ -101,18 +126,25 @@ func (a *app) teamsKeepManager(t team) tea.Cmd {
 	if a.tp.open.key == t.Manager {
 		return nil
 	}
-	return a.teamsOpenManager(t)
+	return a.teamsOpenManager(t, false)
 }
 
 // teamsOpenManager asks for team t's manager: brought forward at once when this
 // window holds it behind, and otherwise opened off the loop, landed behind, and
-// brought forward when the answer comes back if the page still wants it.
-func (a *app) teamsOpenManager(t team) tea.Cmd {
+// brought forward when the answer comes back if the page still wants it. An
+// open for the same manager that is still out is taken up rather than asked
+// again, unless again says the person pressed Retry.
+func (a *app) teamsOpenManager(t team, again bool) tea.Cmd {
 	key := t.Manager
-	gen := a.tp.open.gen + 1
-	a.tp.open = teamsOpen{key: key, gen: gen, at: a.now(), out: true}
 	a.tp.top = teamsTopCache{}
 	a.touch()
+	if out, ok := a.tp.opens[key]; ok && !again {
+		a.tp.open = teamsOpen{key: key, gen: out.gen, at: out.at, out: true}
+		return nil
+	}
+	a.tp.openSeq++
+	gen := a.tp.openSeq
+	a.tp.open = teamsOpen{key: key, gen: gen, at: a.now(), out: true}
 	if held := a.behind[key]; held != nil {
 		cmd, _ := a.bringForward(held.conv.SessionFile)
 		a.tp.open.out, a.tp.open.done = false, true
@@ -128,29 +160,35 @@ func (a *app) teamsOpenManager(t team) tea.Cmd {
 	case a.shared:
 		// ONE CONVERSATION PER CONNECTION: the engine swaps in place and there
 		// is nothing to hold behind ([Options.SharedAgent]), so the swap is the
-		// open, made here as every door over such a connection makes it.
-		cmd, refusal := a.openBeside(where, file)
-		if refusal != "" {
-			a.teamsOpenFailed(gen, refusal, false)
+		// open. The identity is asked here, from memory ([app.openBeside]'s
+		// rule); the swap itself is a door, asked on the line.
+		if cmd, ours := a.bringForward(file); ours {
+			a.tp.open.out, a.tp.open.done = false, true
+			return cmd
+		}
+		if !a.canOpen() {
+			a.teamsOpenFailed(gen, resumeUnavailableWord, false)
 			return nil
 		}
-		a.tp.open.out, a.tp.open.done = false, true
-		return cmd
 	case !a.canOpen():
 		a.teamsOpenFailed(gen, resumeUnavailableWord, false)
 		return nil
 	}
-	open, resume, local := a.open, a.resume, !a.hosted()
-	return a.besideLine(func() func(bool) tea.Cmd {
+	if a.tp.opens == nil {
+		a.tp.opens = map[string]teamsOpenOut{}
+	}
+	a.tp.opens[key] = teamsOpenOut{gen: gen, at: a.tp.open.at}
+	open, resume, local, shared := a.open, a.resume, !a.hosted(), a.shared
+	ask := func() func(bool) tea.Cmd {
 		var conv Conversation
 		var err error
 		missing := false
 		switch {
-		case local && transcriptGone(file):
+		case local && !shared && transcriptGone(file):
 			// A local path is this machine's, so its absence is a fact; over
 			// --host the path is the far machine's and only its engine can say.
 			missing, err = true, errors.New(teamsManagerGoneWord)
-		case local && !homeFolderThere(where):
+		case local && !shared && !homeFolderThere(where):
 			err = errors.New(WorkspaceGoneWord + " · " + where)
 		case open != nil:
 			conv, err = open(where, file)
@@ -159,8 +197,15 @@ func (a *app) teamsOpenManager(t team) tea.Cmd {
 			agent, err = resume(file)
 			conv = Conversation{Agent: agent, Workspace: where, SessionFile: file}
 		}
-		return func(bool) tea.Cmd { return a.teamsOpened(gen, key, conv, err, missing) }
-	})
+		if shared {
+			return func(bool) tea.Cmd { return a.teamsSwapped(gen, key, conv, err) }
+		}
+		return func(bool) tea.Cmd { return a.teamsOpened(gen, key, file, conv, err, missing) }
+	}
+	if shared {
+		return a.offLoop(ask)
+	}
+	return a.besideLine(ask)
 }
 
 // transcriptGone reports whether a local transcript is not on the disk. Only a
@@ -170,15 +215,26 @@ func transcriptGone(file string) bool {
 	return errors.Is(err, fs.ErrNotExist)
 }
 
-// teamsOpened folds one open's answer in, on the loop. A refusal is said on the
-// pane when it is the current attempt's. A conversation that opened is held
-// behind, and brought forward only when this is still the attempt the page
-// wants: an answer that arrives after the person chose another team, or left
-// the page, stays a tab of its own rather than moving them.
-func (a *app) teamsOpened(gen int, key string, conv Conversation, err error, missing bool) tea.Cmd {
-	current := a.tp.open.gen == gen && a.tp.open.key == key
+// teamsOpened folds one open's answer in, on the loop. A conversation that
+// opened is held behind, and brought forward only when the page still wants
+// that manager: an answer that arrives after the person chose another team, or
+// left the page, stays a tab of its own rather than moving them. An answer
+// about the manager the page is asking for is the page's answer whichever
+// attempt carried it, and a refusal is said only when it is the page's current
+// attempt and the conversation is not in this window's hands after all.
+func (a *app) teamsOpened(gen int, key, file string, conv Conversation, err error, missing bool) tea.Cmd {
+	if out, ok := a.tp.opens[key]; ok && out.gen == gen {
+		delete(a.tp.opens, key)
+	}
+	mine := a.tp.open.key == key
+	current := mine && a.tp.open.gen == gen
 	if err != nil || conv.Agent == nil {
-		if current {
+		switch {
+		case mine && a.holding(file):
+			// Another answer for this manager landed it while this one was
+			// out, and this one met its lock: the manager is here.
+			return a.teamsLanded(key, file)
+		case current:
 			why := "the conversation did not open"
 			switch {
 			case errors.Is(err, session.ErrSessionLocked):
@@ -199,13 +255,55 @@ func (a *app) teamsOpened(gen int, key string, conv Conversation, err error, mis
 		cmd = a.stow(conv, nil)
 		a.chatTabBar = tabBar{}
 	}
-	if current {
-		a.tp.open.out = false
-		if a.teamsWantsManager(key) {
-			front, _ := a.bringForward(conv.SessionFile)
-			cmd = tea.Batch(cmd, front)
-			a.tp.open.done = true
+	if mine {
+		cmd = tea.Batch(cmd, a.teamsLanded(key, conv.SessionFile))
+	}
+	a.tp.top = teamsTopCache{}
+	a.touch()
+	return cmd
+}
+
+// teamsLanded is the page's attempt for key answered with the conversation
+// held: the pane stops waiting, and the manager comes in front if the page
+// still wants it.
+func (a *app) teamsLanded(key, file string) tea.Cmd {
+	a.tp.open.out, a.tp.open.why, a.tp.open.missing = false, "", false
+	a.tp.top = teamsTopCache{}
+	a.touch()
+	if !a.teamsWantsManager(key) {
+		return nil
+	}
+	cmd, _ := a.bringForward(file)
+	a.tp.open.done = true
+	return cmd
+}
+
+// teamsSwapped folds a swap over a connection that holds one conversation at a
+// time. The engine has already moved when it answers, so a conversation that
+// opened is taken in front whatever the page wants now ([app.takeBeside]): the
+// window must show the conversation its one handle names. A refusal is said
+// when it is the page's current attempt.
+func (a *app) teamsSwapped(gen int, key string, conv Conversation, err error) tea.Cmd {
+	if out, ok := a.tp.opens[key]; ok && out.gen == gen {
+		delete(a.tp.opens, key)
+	}
+	current := a.tp.open.key == key && a.tp.open.gen == gen
+	if err != nil || conv.Agent == nil {
+		if current {
+			why := "the conversation did not open"
+			switch {
+			case errors.Is(err, session.ErrSessionLocked):
+				why = sessionBusyWord
+			case err != nil:
+				why = err.Error()
+			}
+			a.teamsOpenFailed(gen, why, false)
 		}
+		return nil
+	}
+	cmd := a.takeBeside(conv)
+	if a.tp.open.key == key {
+		a.tp.open.out, a.tp.open.why, a.tp.open.done = false, "", true
 	}
 	a.tp.top = teamsTopCache{}
 	a.touch()
@@ -239,7 +337,7 @@ func (a *app) teamsRetryManager() tea.Cmd {
 	if !ok || t.Closed() || t.Manager == "" {
 		return nil
 	}
-	return a.teamsOpenManager(t)
+	return a.teamsOpenManager(t, true)
 }
 
 // teamsOpenInChats is `Open in chats`: the manager opened through the chat

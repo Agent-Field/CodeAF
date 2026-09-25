@@ -5,6 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -231,6 +232,10 @@ type teamsDisk struct {
 	// fetch says an opening found nothing held ([TeamsSeam.Load]'s known
 	// false) and a read is wanted; fetching says it is out.
 	fetch, fetching bool
+	// rows reads named conversations' rows off this machine's disk for the
+	// teams page ([app.teamsRead]); nil is [session.ReadRows]. It is a field
+	// so a test can see exactly which conversations a read asked about.
+	rows func(transcripts []string) map[string]session.SessionRow
 }
 
 // teamsSeam is the seam this window reads and writes teams through, bound now,
