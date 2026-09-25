@@ -37,21 +37,21 @@ import (
 // around them and the keyboard, which is the whole of what that wave claimed.
 
 // placeHeadRows is how many rows every place spends before its body: the nav,
-// the rule, and the blank under it (pages.go's [placeFrame]).
+// the air row under it, the rule, and the blank under that (pages.go's
+// [placeFrame]).
 //
 // THE STRIP IS NOT ONE OF THEM. It is a chat's own row, drawn only while a
 // conversation is in front (head.go), so a place's body starts one row higher
-// than a chat's and a click on that row is the page's.
-//
+// than a chat's and a click on that row is the page's.//
 // IT IS A CONSTANT AND THE POINTER DEPENDS ON IT. A press arrives as a row of
 // the terminal and has to become a row of the body, and the only honest way to
 // subtract the head is to have exactly one number for how tall the head is.
 // A head row added or removed is a change to this constant and to nothing else.
-const placeHeadRows = 3
+const placeHeadRows = 4
 
-// chatHeadRows is the head while a conversation is in front: the places' three
-// rows with the strip between the nav and the rule. A room inside a chat wears
-// it too. A place does not.
+// chatHeadRows is the head while a conversation is in front: the places' four
+// rows with the strip between the air row and the rule. A room inside a chat
+// wears it too. A place does not.
 const chatHeadRows = placeHeadRows + 1
 
 // placeNote is the one line a place says about what it is holding, drawn under

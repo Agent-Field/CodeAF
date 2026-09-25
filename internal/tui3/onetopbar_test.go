@@ -60,8 +60,8 @@ func TestOneTopNavOnAChatAndOnAPlace(t *testing.T) {
 			t.Fatalf("at %d the place drew the strip on row %d", width, py2)
 		}
 		placeRows := strings.Split(plain(frame), "\n")
-		if len(placeRows) <= placeHeadRows || !strings.HasPrefix(placeRows[1], "─") || strings.TrimSpace(placeRows[2]) != "" {
-			t.Fatalf("at %d the place's head is not the nav, the rule and a blank", width)
+		if len(placeRows) <= placeHeadRows || !strings.HasPrefix(placeRows[placeHeadRows-2], "─") || strings.TrimSpace(placeRows[placeHeadRows-1]) != "" {
+			t.Fatalf("at %d the place's head is not the nav, the air row, the rule and a blank", width)
 		}
 		lit := a.pal.onPlaces()
 		if !strings.Contains(frame, lit.bold(lit.accent(tabPad+"spend"+tabPad))) {
