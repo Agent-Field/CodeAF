@@ -168,12 +168,29 @@ func TestTheTrafficsHoverGroundIsItsClickTarget(t *testing.T) {
 	a.dropHover()
 }
 
+// rowEndsWithAge reports that a Traffic row keeps its age at the right:
+// `now`, `2m`, `3h`, `1d`.
+func rowEndsWithAge(row string) bool {
+	row = strings.TrimRight(row, " ")
+	if strings.HasSuffix(row, "now") {
+		return true
+	}
+	if len(row) < 2 {
+		return false
+	}
+	unit := row[len(row)-1]
+	if (unit == 'm' || unit == 'h' || unit == 'd' || unit == 's') && row[len(row)-2] >= '0' && row[len(row)-2] <= '9' {
+		return true
+	}
+	return false
+}
+
 // rowKeepsTheArrow reports that a Traffic row still says who it is from and
-// who it is for, cuts its words at a word, and carries no age. full is the
+// who it is for, cuts its words at a word, and keeps its age. full is the
 // words the row was cut from.
 func rowKeepsTheArrow(row, full string) bool {
 	row = strings.TrimRight(row, " ")
-	if !strings.Contains(row, "→") || strings.HasSuffix(row, "now") {
+	if !strings.Contains(row, "→") || !rowEndsWithAge(row) {
 		return false
 	}
 	// A cut through a word of full leaves a prefix of that word and the
@@ -193,8 +210,8 @@ func rowKeepsTheArrow(row, full string) bool {
 }
 
 // EVERY WIDTH DRAWS `from → to` AND CUTS ONLY THE WORDS. At a column of 28,
-// 32 and 40 the arrow and the names stay, the words stop at a word, and the
-// age is on the hint line. The same is true of a member's own rows.
+// 32 and 40 the arrow and the names stay, the age stays at the right, and the
+// words stop at a word. The same is true of a member's own rows.
 func TestTrafficRowsKeepTheArrowAtEveryWidth(t *testing.T) {
 	a, harbor, _, _ := trafficApp(t)
 	price, priceKey := trafficHandle(t, a, harbor, "openrouter")
@@ -213,8 +230,8 @@ func TestTrafficRowsKeepTheArrowAtEveryWidth(t *testing.T) {
 			t.Fatalf("at column %d the work row lost its arrow or cut a word:\n%s", a.railWidth(), strings.Join(rows, "\n"))
 		}
 		hint := a.sideRowOf("thread/" + q).hint
-		if !strings.Contains(hint, hintSegment+"now"+hintSegment+"click") {
-			t.Fatalf("at column %d the age is not on the hint: %q", a.railWidth(), hint)
+		if !strings.Contains(hint, "Open ") || !strings.Contains(hint, hintSegment+"now"+hintSegment) || !strings.Contains(hint, hintSegment+"click") {
+			t.Fatalf("at column %d the hint does not open the message at its age: %q", a.railWidth(), hint)
 		}
 	}
 	spend(t, a, a.trafficGo(priceKey))
@@ -227,8 +244,8 @@ func TestTrafficRowsKeepTheArrowAtEveryWidth(t *testing.T) {
 		if told < 0 || !rowKeepsTheArrow(rows[told], full) {
 			t.Fatalf("at column %d a member row is not `from → you`:\n%s", a.railWidth(), strings.Join(rows, "\n"))
 		}
-		if hint := a.sideRowOf(railKeyOfReply(t, a, teamManagerGlyph+" → you")).hint; !strings.Contains(hint, "now") {
-			t.Fatalf("at column %d the member row's hint has no age: %q", a.railWidth(), hint)
+		if hint := a.sideRowOf(railKeyOfReply(t, a, teamManagerGlyph+" → you")).hint; !strings.Contains(hint, "Open ") || !strings.Contains(hint, "now") {
+			t.Fatalf("at column %d the member row's hint does not open the message: %q", a.railWidth(), hint)
 		}
 	}
 }

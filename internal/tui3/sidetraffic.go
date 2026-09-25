@@ -12,28 +12,30 @@ import (
 // ── THE TRAFFIC VIEW (sidecol.go says what the column is) ──────────────────
 //
 // One line a row, newest first, and a thin `new` line under what arrived
-// since the person last looked. EVERY ROW READS `from → to  words`: who sent
-// it, who it is for, then what it says. The manager is `◆`. Several
-// recipients are the first handle and `+N`. In a member's chat that member
-// is `you`. The age is never on the row. The hint line says it, at every
-// width, so the arrow and the names keep their cells and only the words are
-// cut, at a word.
+// since the person last looked. EVERY ROW READS `from → to  words  age`: who
+// sent it, who it is for, then what it says, and how long ago at the right,
+// dim (`2m`, `3h`, `1d`, `now`, the same ladder a task row uses). The
+// manager is `◆`. Several recipients are the first handle and `+N`. In a
+// member's chat that member is `you`. The arrow and the names keep their
+// cells, then the age, and only the words are cut, at a word.
 //
-//	◆ → @security +2  parser numbers   running ▸
-//	  ↳ @review → ◆  ✓ 2 findings, both minor
-//	General                             5 msgs ▸
+//	◆ → @security +2  parser numbers   running ▸  2m
+//	  ↳ @review → ◆  ✓ 2 findings…                 3m
+//	General                             5 msgs ▸  1d
 //
 // A press on ▸ lays the thread's replies open under it, one line each in the
 // same `from → to`, and a second press folds them. A press on a handle opens
-// that member at the message, and a press anywhere else on a row takes the
-// person to the message in the conversation in front (teamjump.go). Whatever
-// answers nothing and is answered by nothing (a note, a start, a stop, an
-// event) is chatter, and all of it is the one `General` thread. Laid open,
-// its lines read `from → to` too.
+// that member at the message. A press anywhere else on a row opens the
+// conversation the message belongs to, at that message (teamjump.go): one
+// the sender wrote opens the sender's chat, and one put to the person opens
+// the manager's. Already in front, it scrolls in place. Whatever answers
+// nothing and is answered by nothing (a note, a start, a stop, an event) is
+// chatter, and all of it is the one `General` thread. Laid open, its lines
+// read `from → to` too.
 //
 // IN A MEMBER'S CHAT A ROW IS A MESSAGE, one of those involving that member,
-// `◆ → you` for what it was told and `you → ◆` for what it said, and a press
-// on it goes to it in the chat in front.
+// `◆ → you` for what it was told and `you → ◆` for what it said. A press on
+// `you → ◆` scrolls this chat; a press on `◆ → you` opens the manager.
 //
 // WHAT THE BAND CARRIES IS NOT DRAWN AGAIN HERE: a member's question waiting
 // on the person is the band's row, `? @model → ◆  …`, and its own row would
@@ -160,8 +162,7 @@ func (s *sideSheet) newer(id string) {
 }
 
 // sideHintWith is a row's hint with a fact the row gave up said in it, before
-// the click the hint ends on. The age is always one of those facts: it used
-// to sit at the right of the row, and the arrow had no cells left.
+// the click the hint ends on.
 func sideHintWith(hint, fact string) string {
 	if fact == "" {
 		return hint
@@ -208,15 +209,30 @@ func fitAtWord(words string, width int, tail string) string {
 }
 
 // add lays one row: the segments from the left, the words cut at a word where
-// they run out of room, and nothing for the time. The age goes to the hint
-// line at every width, so the arrow and the names keep their cells. A door
-// keeps the columns its words ended up in.
+// they run out of room, and the age at the right, dim. The arrow and the
+// names keep their cells, then the age, and only the words are cut. A door
+// keeps the columns its words ended up in. The age is not a door: a press on
+// it is a press on the row.
 func (s *sideSheet) add(row *sideRow, segs []sideSeg, right []sideSeg, age string) {
 	pal := s.a.pal
+	ageText := ""
+	ageW := 0
 	if age != "" {
-		row.hint = sideHintWith(row.hint, age)
+		ageText = " " + age
+		ageW = ansi.StringWidth(ageText)
 	}
-	room := s.width
+	// NAMES OUTRANK THE AGE. When the address alone fills the column, the age
+	// is the cell that goes, and the hint still says it.
+	fixedLeft := 0
+	for _, seg := range segs {
+		if !seg.flex {
+			fixedLeft += ansi.StringWidth(seg.text)
+		}
+	}
+	if fixedLeft+ageW > s.width {
+		ageText, ageW = "", 0
+	}
+	room := s.width - ageW
 	rightW := 0
 	for _, seg := range right {
 		rightW += ansi.StringWidth(seg.text)
@@ -298,6 +314,10 @@ func (s *sideSheet) add(row *sideRow, segs []sideSeg, right []sideSeg, age strin
 	}
 	for _, seg := range right {
 		paint(seg, seg.text, ansi.StringWidth(seg.text))
+	}
+	if ageW > 0 {
+		b.WriteString(pal.dim(ageText))
+		used += ageW
 	}
 	for i := range row.doors {
 		row.doors[i].span = spans[i]
@@ -409,13 +429,10 @@ func (s *sideSheet) says(e teamstore.Entry) string {
 	return act + " · " + words
 }
 
-// clock is the time an entry was written, as the replies under a thread say
-// it: the hour and minute.
-func (s *sideSheet) clock(e teamstore.Entry) string {
-	if e.At.IsZero() {
-		return ""
-	}
-	return e.At.In(s.a.now().Location()).Format("15:04")
+// jumpHint is the hint a press on the row says: whose message, how long ago,
+// then any fact the row itself gave up (its state, the words that were cut).
+func (s *sideSheet) jumpHint(from, self, age, extra string) string {
+	return trafficOpenHint(s.a.trafficSenderWord(from, self), age, extra)
 }
 
 // ── A MANAGER'S WORK ────────────────────────────────────────────────────────
@@ -494,8 +511,9 @@ func (s *sideSheet) work(th teamstore.Thread, last teamstore.Entry) {
 	key := sideThreadKey(s.t.ID, e.ID)
 	open := s.a.side.threads[key]
 	lines := replyLines(th)
+	age := s.a.trafficAge(last)
 	row := &sideRow{key: "thread/" + e.ID,
-		act: sideAct{kind: sideActJump, entry: e.ID}}
+		act: sideAct{kind: sideActJump, key: s.a.trafficBelongsTo(s.t, e), entry: e.ID}}
 	// EVERY WORK ROW READS `from → to`: the manager's mark to the members it
 	// asked, or the member that wrote it back to the manager.
 	named := e.Recipients()
@@ -541,17 +559,17 @@ func (s *sideSheet) work(th teamstore.Thread, last teamstore.Entry) {
 		right = append(right, sideSeg{text: " ", door: -1}, sideSeg{text: glyph, paint: pal.muted, door: len(row.doors) - 1})
 	}
 	// THE HINT SAYS THE STATE TOO, because the row gives it up first when
-	// the column is narrow.
-	row.hint = title
+	// the column is narrow. A RULING'S HINT NAMES THE CONFLICT IT DECIDED
+	// (DESIGN.md 8.10).
+	extra := title
 	if words != "" {
-		row.hint += hintSegment + words
+		extra += hintSegment + words
 	}
-	// A RULING'S HINT NAMES THE CONFLICT IT DECIDED (DESIGN.md 8.10).
 	if teamstore.IsRuling(e) && e.Packet != "" {
-		row.hint += hintSegment + "the ruling on conflict " + e.Packet
+		extra += hintSegment + "the ruling on conflict " + e.Packet
 	}
-	row.hint += hintSegment + "click shows it in this chat"
-	s.add(row, segs, right, s.a.trafficAge(last))
+	row.hint = s.jumpHint(e.From, "", age, extra)
+	s.add(row, segs, right, age)
 	if !open {
 		return
 	}
@@ -563,14 +581,16 @@ func (s *sideSheet) work(th teamstore.Thread, last teamstore.Entry) {
 // member lays one member's line under an open thread, with its events folded
 // into it the way replyLines folds them: `↳ @review → ◆  ✓ 2 findings`, or
 // `working…` for a member woken on the thread with nothing said yet. A wake or
-// a finishing is never a line of its own. The clock stays on the hint line.
+// a finishing is never a line of its own. The age sits at the right, the same
+// ladder as the thread above it.
 func (s *sideSheet) member(r trafficReply) {
 	pal := s.a.pal
 	e := r.last
 	if r.said {
 		e = r.entry
 	}
-	row := &sideRow{key: "reply/" + e.ID, act: sideAct{kind: sideActJump, entry: e.ID}}
+	age := s.a.trafficAge(e)
+	row := &sideRow{key: "reply/" + e.ID, act: sideAct{kind: sideActJump, key: s.a.trafficBelongsTo(s.t, e), entry: e.ID}}
 	segs := []sideSeg{{text: "  " + s.a.linearMark("↳", "->") + " ", paint: pal.dim, door: -1}}
 	// A MEMBER'S LINE RUNS BACK TO THE MANAGER. A line the manager, the
 	// person or codeaf wrote runs the other way, to whoever it names.
@@ -594,8 +614,8 @@ func (s *sideSheet) member(r trafficReply) {
 		words = "working" + s.a.linearMark("…", "...")
 	}
 	segs = append(segs, sideSeg{text: "  ", door: -1}, sideSeg{text: words, paint: pal.muted, door: -1, flex: true})
-	row.hint = sideHintWith(words+hintSegment+"click shows it in this chat", s.clock(e))
-	s.add(row, segs, nil, "")
+	row.hint = s.jumpHint(r.who, "", age, words)
+	s.add(row, segs, nil, age)
 }
 
 // sideThreadState is the one word a thread's answers leave it in: someone
@@ -639,17 +659,17 @@ func sideThreadState(lines []trafficReply) string {
 	return "answered"
 }
 
-// reply lays one chatter line under General: `↳ ◆ → @price  an older aside`.
-// The clock stays on the hint line, as a work row's age does.
+// reply lays one chatter line under General: `↳ ◆ → @price  an older aside  2m`.
 func (s *sideSheet) reply(e teamstore.Entry) {
 	pal := s.a.pal
-	row := &sideRow{key: "reply/" + e.ID, act: sideAct{kind: sideActJump, entry: e.ID}}
+	age := s.a.trafficAge(e)
+	row := &sideRow{key: "reply/" + e.ID, act: sideAct{kind: sideActJump, key: s.a.trafficBelongsTo(s.t, e), entry: e.ID}}
 	segs := []sideSeg{{text: "  " + s.a.linearMark("↳", "->") + " ", paint: pal.dim, door: -1}}
 	segs = append(segs, s.route(row, e.From, e.ID, "", e.Recipients(), e.To)...)
 	words := s.says(e)
 	segs = append(segs, sideSeg{text: "  ", door: -1}, sideSeg{text: words, paint: pal.muted, door: -1, flex: true})
-	row.hint = sideHintWith(words+hintSegment+"click shows it in this chat", s.clock(e))
-	s.add(row, segs, nil, "")
+	row.hint = s.jumpHint(e.From, "", age, words)
+	s.add(row, segs, nil, age)
 }
 
 // general lays the chatter as one thread, `General`, and its entries under
@@ -694,7 +714,8 @@ func (s *sideSheet) messages(handle string) {
 			continue
 		}
 		s.newer(e.ID)
-		row := &sideRow{key: "msg/" + e.ID, act: sideAct{kind: sideActJump, entry: e.ID}}
+		age := s.a.trafficAge(e)
+		row := &sideRow{key: "msg/" + e.ID, act: sideAct{kind: sideActJump, key: s.a.trafficBelongsTo(s.t, e), entry: e.ID}}
 		// THIS MEMBER IS `you`. What it was told reads `◆ → you`, what it
 		// said reads `you → ◆` or `you → @other`.
 		segs := s.route(row, e.From, e.ID, handle, e.Recipients(), e.To)
@@ -706,7 +727,7 @@ func (s *sideSheet) messages(handle string) {
 			words = s.a.linearMark(s.a.icon(tokens.GFailed), "x") + " " + words
 		}
 		segs = append(segs, sideSeg{text: "  ", door: -1}, sideSeg{text: words, paint: s.a.pal.muted, door: -1, flex: true})
-		row.hint = words + hintSegment + "click shows it in this chat"
-		s.add(row, segs, nil, s.a.trafficAge(e))
+		row.hint = s.jumpHint(e.From, handle, age, words)
+		s.add(row, segs, nil, age)
 	}
 }
