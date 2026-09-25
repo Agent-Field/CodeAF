@@ -93,6 +93,30 @@ func TestTeamWakeADirectiveWakesAnIdleMemberOnce(t *testing.T) {
 	}
 }
 
+// A DIRECTIVE TO SEVERAL WAKES EACH IDLE MEMBER IT NAMES. A send to several is
+// one entry carrying their handles, and it is as much a directive to each of
+// them as a line to one handle would be, so each is woken, and once.
+func TestTeamWakeADirectiveToSeveralWakesEachMemberItNames(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	web, parser := oneAnswer(2), oneAnswer(2)
+	teamAgent(t, fixture, fixture.web, web, nil)
+	teamAgent(t, fixture, fixture.parser, parser, nil)
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindDirective, From: teams.FromManager, To: teams.ToSeveral, Handles: []string{"web", "parser"}, Text: "Fix the header."})
+	for name, completer := range map[string]*scriptedCompleter{"web": web, "parser": parser} {
+		waitRequests(t, completer, 1)
+		if said := userTextIn(completer.request(0)); !strings.Contains(said, "Fix the header.") {
+			t.Errorf("@%s was woken without the directive:\n%s", name, said)
+		}
+	}
+	quietFor()
+	for name, completer := range map[string]*scriptedCompleter{"web": web, "parser": parser} {
+		if got := completer.requests(); got != 1 {
+			t.Errorf("one directive to several started %d requests for @%s, want 1", got, name)
+		}
+	}
+}
+
 // A NOTE WAKES NOBODY; it is read at the member's next turn.
 func TestTeamWakeANoteDoesNotWakeAMember(t *testing.T) {
 	fastTeamWake(t)
