@@ -733,7 +733,8 @@ The next task is back on the ordinary pick.
 ### What a task says about its crew
 
 A routed task says its crew in ONE line, under the line that says it started, and the line
-is rewritten in place as the task goes. When it starts:
+is rewritten in place while the task goes. When the task lands the line moves to the end of
+the conversation, beside the landing, so the cost is where you are reading. When it starts:
 
 ```
 task 12 crew · open-ended · worker glm-5.3-flash (openrouter) · planner kimi-k3 · checker ⌖ kimi-k3 · est $0.121
