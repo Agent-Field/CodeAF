@@ -69,7 +69,9 @@ A tile reads top to bottom:
   `writing` or `? waiting on you · 3m`, or when it last moved, like `updated 5m ago`
 - **the conversation's own newest lines**, drawn the way the conversation draws them, fading
   with age so the newest are where your eye lands; lines that just arrived are lifted for a
-  moment and then settle
+  moment and then settle. A turn a team started shows what the team sent (`◆ manager →
+  @api  do` and its words) and the reply, never the note codeaf wrote to start the turn, the
+  same as the conversation itself
 - a small **activity line** on the bottom border while there is activity to show
 
 A conversation this window can only show as a snapshot (over a shared connection only the one

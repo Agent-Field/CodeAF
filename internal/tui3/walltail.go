@@ -136,6 +136,21 @@ func wallEntryLines(e session.DisplayEntry) []wallLine {
 		}
 		return out
 	case "note", "aside":
+		// A team delivery is its lines and a team wake with nothing in it is
+		// nothing, as the conversation draws them (teamcard.go's
+		// [asideShapeOf]).
+		if e.Role == "aside" {
+			switch asideShapeOf(e) {
+			case asideHidden:
+				return nil
+			case asideTeam:
+				var out []wallLine
+				for _, c := range teamCardsOf(e, teamManagerGlyph) {
+					out = append(out, wallLine{kind: wallNote, text: c.from + " → " + c.to + "  " + wallFirstLine(c.text)})
+				}
+				return out
+			}
+		}
 		// A compaction summary is pages long and a task's note a paragraph; the
 		// tile says that one happened, in its first line.
 		if text := wallFirstLine(e.Text); text != "" {
