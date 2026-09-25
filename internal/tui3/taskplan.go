@@ -672,12 +672,12 @@ const (
 	// a run's task: what the words become, which is a note on the task
 	// (planroom.go's [app.planRoomSteer]).
 	taskPlanNoteWord = "a note for this task"
-	// taskPlanPickupWord is WHEN a note is read. A worker is a separate loop, so
-	// a note waits in the store until the worker asks for its next step — the
-	// manual's own account of a note (worker-harness.md, "Steering a task"),
-	// said under the note in the task's room once the store has it
-	// (planroom.go's [app.planRoomSteer]).
-	taskPlanPickupWord = "the worker reads a note at its next step"
+	// taskPlanPickupWord is WHEN a note is read, said under the note in the
+	// task's room once the store has it (planroom.go's [app.planRoomSteer]). It
+	// is TAKEN from the session's receipt rather than spelled again, because the
+	// chat row and the room answer the same note and two spellings of one
+	// promise were two sentences waiting to disagree.
+	taskPlanPickupWord = session.RunNotePickupWord
 	// taskPlanRefusedWord leads the line a refused action draws in a step's
 	// place. It is the permissions page's own word for a call that was refused,
 	// taken from that constant so the two places cannot come to disagree.

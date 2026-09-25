@@ -508,6 +508,58 @@ func TestStartTaskBashBeltPassesTheConversationWallLeftToTheRun(t *testing.T) {
 	endBeltRun(t, agent, double)
 }
 
+// UNDER `--one-model` EVERY SEAT OF A RUN RIDES THE CONVERSATION'S MODEL
+// (contract 3a, 3b and 3c). The flag withholds the roles ladder and the crew
+// router, and the spec used to hand the engine three empty seats, which the
+// engine's crew factory filled from the profile's crew rows and from
+// CODEAF_CHECK_MODEL: a run under the flag billed models nobody named. The
+// seats are read at the run's start, so a /model typed before it moves them,
+// and a conversation without the flag hands the engine what it always did.
+func TestUnderOneModelEveryRunSeatRidesTheConversationsModel(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_CHECK_MODEL", "vendor/env-check")
+	for _, test := range []struct {
+		name     string
+		oneModel bool
+		switchTo string
+		want     string
+	}{
+		{"the launch model", true, "", "test/model"},
+		{"the model switched to before the run", true, "vendor/switched", "vendor/switched"},
+		{"no flag leaves the seats to the engine", false, "", ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			double := newBeltRunDouble("done")
+			registerBeltRunEngine(t, double)
+			dir := t.TempDir()
+			agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+				config.Workspace = newTestRepo(t)
+				config.Place = Place{Dir: dir}
+				config.AskConsent = false
+				config.OneModel = test.oneModel
+			})
+			if test.switchTo != "" {
+				agent.SetModel(test.switchTo)
+			}
+			if _, _, _, err := agent.StartTask(context.Background(), "write the file", false); err != nil {
+				t.Fatalf("StartTask: %v", err)
+			}
+			<-double.entered
+			double.mu.Lock()
+			spec := double.spec
+			double.mu.Unlock()
+			for seat, got := range map[string]string{
+				"work": spec.WorkModel, "plan": spec.PlanModel, "check": spec.CheckModel, "every": spec.OneModel,
+			} {
+				if got != test.want {
+					t.Errorf("the %s seat the engine was handed is %q, want %q", seat, got, test.want)
+				}
+			}
+			endBeltRun(t, agent, double)
+		})
+	}
+}
+
 func TestDriveBeltRunLimitUsesTheOrdinaryLandingRoad(t *testing.T) {
 	agent, _, run, _ := landingSummaryFixture(t, &scriptedCompleter{})
 	landCalls := 0

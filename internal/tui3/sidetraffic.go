@@ -45,6 +45,8 @@ type sideTrafficCacheKey struct {
 	kind, rows, width, height, hotDoor, moved      int
 	ascii, held                                    bool
 	minute                                         int64
+	// wrap is the team's wrap-up words (teamwrapclock.go).
+	wrap string
 }
 
 // sideTrafficCache is the Traffic view's rows as last laid.
@@ -94,12 +96,18 @@ func (a *app) sideTrafficView(height int) ([]railLine, int) {
 		team: t.ID, handle: handle, last: last, divider: a.side.divider[t.ID], hot: hot, focus: focus, front: a.frontTabKey(),
 		kind: kind, rows: len(rows), width: width, height: height, hotDoor: hotDoor, moved: a.side.moved,
 		ascii: a.pal.ascii, held: a.railHold, minute: a.now().Unix() / 60,
+		wrap: a.teamWrapWords(t, a.now()),
 	}
 	a.trafficMarkSeen(t)
 	if c := &a.side.traffic; c.lines != nil && c.key == key {
 		return c.lines, -1
 	}
 	s := &sideSheet{a: a, t: t, width: width, hot: hot, hotDoor: hotDoor, divider: key.divider}
+	// A TEAM THAT IS WRAPPING UP SAYS HOW LONG IT HAS, first, above its
+	// Traffic (teamwrapclock.go).
+	if key.wrap != "" {
+		s.lines = append(s.lines, railLine{text: a.pal.warn(ansi.Truncate(key.wrap, width, a.linearMark("…", "~"))), entry: -1})
+	}
 	if kind == sideKindManager {
 		s.threads(kind, handle)
 	} else {

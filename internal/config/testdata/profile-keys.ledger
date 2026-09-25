@@ -50,6 +50,9 @@ models.crew.cap
 models.crew.free_routes
 models.crew.pick
 models.crew.providers.off
+models.crew.route.checker
+models.crew.route.planner
+models.crew.route.worker
 models.crew.source
 models.crew.task_cap
 models.fallbacks

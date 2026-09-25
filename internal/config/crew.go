@@ -38,12 +38,13 @@ import (
 // /crew panel says what is allowed and it persists; the words in an ask say
 // how hard to try that one task; nothing else sticks.
 //
-// THE PINS LIVE IN THE TIER ROWS THE CREW HAS ALWAYS LIVED IN. The worker
+// THE PINNED MODELS LIVE IN THE TIER ROWS THE CREW HAS ALWAYS LIVED IN. The worker
 // seat is the `worker` tier row, the planner is the `mastermind` row, the
 // checker is the `high` row — the rows the role ladder already reads, so the
 // auxiliary calls that ride those tiers (the brief a task is shaped into, an
 // image read for a model that cannot see one, the plan of an adaptive run)
-// follow a pin without a second place to write it. An unwritten row is `auto`:
+// follow a pin. A named provider route lives beside that row, so an older
+// build reading the tier still sends a model id. An unwritten row is `auto`:
 // the seat is routed. The reflex and small-work rows are not crew seats and
 // keep their shipped defaults.
 
@@ -70,7 +71,29 @@ const (
 	// (crewroute's providers.go says why), and PROFILE-ONLY for the allowed
 	// rule's reason.
 	KeyCrewProvidersOff = "models.crew.providers.off"
+	// KeyCrewRouteWorker, KeyCrewRoutePlanner and KeyCrewRouteChecker hold a
+	// seat's pinned ROUTE, as the whole pin `model@provider`, beside the tier
+	// row that holds the model alone. The route used to be written into the
+	// tier row itself, and a build from before routed crews reads that row as
+	// a model id and would send `model@provider` to the provider; kept apart,
+	// an older build reads a valid id and simply takes its default route.
+	// The whole pin is kept so a route is applied only to the model it was
+	// chosen for ([CrewPinAt]). PROFILE-ONLY, like the rows beside them.
+	KeyCrewRouteWorker  = "models.crew.route.worker"
+	KeyCrewRoutePlanner = "models.crew.route.planner"
+	KeyCrewRouteChecker = "models.crew.route.checker"
 )
+
+// crewRouteKey is the row a seat's pinned route is kept in.
+func crewRouteKey(seat crewroute.Seat) string {
+	switch seat {
+	case crewroute.Planner:
+		return KeyCrewRoutePlanner
+	case crewroute.Checker:
+		return KeyCrewRouteChecker
+	}
+	return KeyCrewRouteWorker
+}
 
 // CrewAuto is the word a seat reads when it is not pinned.
 const CrewAuto = "auto"
@@ -131,7 +154,7 @@ type CrewPin struct {
 	Provider string
 }
 
-// String is the pin the way it is written and stored: `model[@provider]`.
+// String is the pin the way a person writes and reads it: `model[@provider]`.
 func (p CrewPin) String() string {
 	if p.Provider == "" {
 		return p.Model
@@ -177,6 +200,16 @@ func CrewPinAt(profileDir string, seat crewroute.Seat) (CrewPin, bool) {
 	if auto || err != nil {
 		return CrewPin{}, false
 	}
+	// THE ROUTE IS READ FROM ITS OWN ROW, and only for the model it was pinned
+	// with: an older build that rewrote the tier row to another model left the
+	// route behind, and a route chosen for one model says nothing about another.
+	if pin.Provider == "" {
+		if route, held := persistedString(profileDir, crewRouteKey(seat)); held {
+			if routed, auto, err := ParseCrewPin(route); err == nil && !auto && routed.Model == pin.Model {
+				pin.Provider = routed.Provider
+			}
+		}
+	}
 	return pin, true
 }
 
@@ -217,7 +250,12 @@ func SetCrewPin(profileDir string, seat crewroute.Seat, raw string) error {
 	if err := CrewPinAllowed(profileDir, pin); err != nil {
 		return err
 	}
-	values := map[string]any{tierKeyFor(CrewSeatTier(seat)): pin.String()}
+	// THE TIER ROW HOLDS THE MODEL ALONE and the route goes in its own row
+	// ([KeyCrewRouteWorker] says why); a pin with no route clears the old one.
+	values := map[string]any{tierKeyFor(CrewSeatTier(seat)): pin.Model, crewRouteKey(seat): removeProfileKey}
+	if pin.Provider != "" {
+		values[crewRouteKey(seat)] = pin.String()
+	}
 	// A profile carrying retired rows is migrated in the same write.
 	for key, value := range legacyCrewClearing(profileDir) {
 		if _, set := values[key]; !set {
@@ -231,6 +269,7 @@ func SetCrewPin(profileDir string, seat crewroute.Seat, raw string) error {
 func ClearCrewPin(profileDir string, seat crewroute.Seat) error {
 	values := legacyCrewClearing(profileDir)
 	values[tierKeyFor(CrewSeatTier(seat))] = removeProfileKey
+	values[crewRouteKey(seat)] = removeProfileKey
 	return writeProfileValues(profileDir, values)
 }
 
@@ -239,6 +278,7 @@ func ClearCrewPins(profileDir string) error {
 	values := legacyCrewClearing(profileDir)
 	for _, seat := range crewroute.Seats {
 		values[tierKeyFor(CrewSeatTier(seat))] = removeProfileKey
+		values[crewRouteKey(seat)] = removeProfileKey
 	}
 	return writeProfileValues(profileDir, values)
 }
@@ -995,7 +1035,7 @@ type CrewState struct {
 func crewStateKeys() []string {
 	keys := []string{KeyCrewAllowed, KeyCrewCap, KeyCrewTaskCap, KeyCrewProvidersOff, KeyCrewFreeRoutes}
 	for _, seat := range crewroute.Seats {
-		keys = append(keys, tierKeyFor(CrewSeatTier(seat)))
+		keys = append(keys, tierKeyFor(CrewSeatTier(seat)), crewRouteKey(seat))
 	}
 	return keys
 }

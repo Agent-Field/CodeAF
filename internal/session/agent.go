@@ -1629,13 +1629,17 @@ const (
 	// sent, and the sentence says that rather than reporting a second delivery
 	// that did not happen.
 	steerAgainWord = "already on the task's record from the same message — nothing was sent a second time"
-	// steerRunNoteWord is what a note on a run's own row answers. A run's task
-	// has no worker to splice a line into. The words are a note on the task,
-	// and the worker reads a note at its next step, which is the same sentence
-	// the task room says once the store has the note. Saying the note arrived
-	// now would claim a read that has not happened (stoprun.go's
-	// [Agent.sayToRunRow]).
-	steerRunNoteWord = "the worker reads a note at its next step"
+	// RunNotePickupWord is WHEN a note on a run's task is read, and it is ONE
+	// SENTENCE IN TWO PLACES: the receipt a note typed at a run's own row
+	// answers in the chat (stoprun.go's [Agent.sayToRunRow]), and the line the
+	// task room writes under the note once the store has it (internal/tui3's
+	// taskPlanPickupWord takes it from here). A run's task has no worker to
+	// splice a line into; a worker is a separate loop, so the words wait in the
+	// store as a note until the worker asks for its next step. Saying the note
+	// arrived now would claim a read that has not happened. It is exported
+	// because the room must say the same thing about the same note, and the
+	// manual quotes it exactly (worker-harness.md, task-controls.md).
+	RunNotePickupWord = "the worker reads a note at its next step"
 )
 
 // steerRecord is what the JOURNAL keeps about this line when it is a correction

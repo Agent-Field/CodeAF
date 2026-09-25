@@ -388,6 +388,11 @@ var nonSettingProfileFields = []string{
 	// turns on and off.
 	KeyCrewFreeRoutes,
 	KeyCrewProvidersOff,
+	// Route pins are read beside the model-only tier rows and have no
+	// settings row of their own, so the unread-key notice must know them.
+	KeyCrewRouteWorker,
+	KeyCrewRoutePlanner,
+	KeyCrewRouteChecker,
 }
 
 // retiredProfileKeys are top-level config.json keys that a shipped version once

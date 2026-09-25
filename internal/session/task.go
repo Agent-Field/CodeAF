@@ -875,7 +875,7 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	// and why ([runDidNotStart]), and reads as a failure. Only a run road that
 	// is not there at all (no engine linked, no place for a store) leaves this
 	// door for the older one ([Agent.commitProposalToRun]).
-	ctx = withCrewWish(ctx, crewWish{effort: spec.crewEffort})
+	ctx = withCrewWish(ctx, crewWish{effort: spec.crewEffort, worker: namedModel(spec)})
 	if answer, refused, handled := a.commitProposalToRun(ctx, p, spec, elsewhere); handled {
 		return answer, refused, nil
 	}
@@ -958,6 +958,15 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 		return withElsewhere(runDidNotStart(p.id, err), elsewhere), true, true
 	}
 	return "", false, false
+}
+
+// namedModel is the model a hand-off named for its work, and nothing when it
+// named none — a task that names nothing is the crew's to seat.
+func namedModel(spec taskSpec) string {
+	if spec.modelWord == "" {
+		return ""
+	}
+	return spec.model
 }
 
 // taskReceipt is what an admitted proposal hands back to the model.

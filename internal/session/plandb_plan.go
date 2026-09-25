@@ -58,8 +58,9 @@ type planState struct {
 // path helper, the CLI's walk-up, and the store's own creation all spell it
 // the same way.
 const (
-	planStoreFilename = "plandb.db"
-	planShimFilename  = "plandb"
+	planStoreFilename  = "plandb.db"
+	planShimFilename   = "plandb"
+	codeafShimFilename = "codeaf"
 )
 
 // planRootID is the store's root task. The reference loop's supervisor seeds
@@ -719,19 +720,34 @@ func (p *planState) armShim() error {
 	if err := os.MkdirAll(bin, 0o700); err != nil {
 		return err
 	}
-	shim := filepath.Join(bin, planShimFilename)
 	words := make([]string, 0, len(argv)+1)
 	for _, word := range argv {
 		words = append(words, quoteShWord(word))
 	}
-	script := "#!/bin/sh\nexec " + strings.Join(words, " ") + " \"$@\"\n"
-	if existing, err := os.ReadFile(shim); err != nil || string(existing) != script {
-		if err := os.WriteFile(shim, []byte(script), 0o755); err != nil {
-			return err
-		}
+	if err := writeShim(filepath.Join(bin, planShimFilename), "#!/bin/sh\nexec "+strings.Join(words, " ")+" \"$@\"\n"); err != nil {
+		return err
+	}
+	// AND `codeaf` BESIDE IT, for the same reason and on the same PATH entry. The
+	// worker is taught to edit with `codeaf patch` (prompts/bashworker.md), and a
+	// `codeaf` resolved on the machine's PATH is a coin toss: nothing at all on an
+	// install whose file is devaf or stageaf, and on the fresh-install check of
+	// 2026-09-25 an older codeaf that answered `there is no \`codeaf patch\``.
+	// The shim makes the one word the page teaches mean the codeaf that is
+	// running, whatever its file is called ([codeafShimScript]).
+	if err := writeShim(filepath.Join(bin, codeafShimFilename), codeafShimScript()); err != nil {
+		return err
 	}
 	p.shimmed = true
 	return nil
+}
+
+// writeShim writes one shim executable, and leaves a file already holding the
+// same script alone so a run's many workers do not rewrite it under each other.
+func writeShim(path, script string) error {
+	if existing, err := os.ReadFile(path); err == nil && string(existing) == script {
+		return nil
+	}
+	return os.WriteFile(path, []byte(script), 0o755)
 }
 
 // shimDir is the directory the armed shim lives in — beside the store, the
@@ -749,7 +765,8 @@ func (p *planState) shimDir() string {
 // planBashPrefix is the assignment that puts the shim's directory FIRST on the
 // PATH of ONE command and binds that same command to the run's store — the
 // prefix a bash-belt worker's command carries, and the whole of the mechanism.
-// THE LAW IT CARRIES: THE ONLY `plandb` A WORKER CAN REACH IS THE RUN'S OWN.
+// THE LAW IT CARRIES: THE ONLY `plandb` A WORKER CAN REACH IS THE RUN'S OWN, AND
+// THE ONLY `codeaf` IS THE ONE RUNNING.
 //
 // IT IS AN `export`, NOT A BARE COMMAND-PREFIX ASSIGNMENT, and that is the fix,
 // not decoration: `PATH=x:$PATH cmd` binds only the FIRST simple command of the
@@ -792,6 +809,39 @@ func (g *TaskGraph) planBashPrefix() string {
 	return prefix + "; "
 }
 
+// runningCLI is the running codeaf binary, as the codeaf command registered it
+// at its own start ([SetRunningCLI]), and empty in every process that is not
+// the codeaf command: a bench driver that answers only `plandb`, a go test
+// binary. It is what a worker's `codeaf` shim execs.
+//
+// IT IS REGISTERED, NOT PROBED, because the one thing this shim must never do is
+// run a binary that is not codeaf with codeaf's words. The plan CLI's resolver
+// may probe (resolvePlanCLI), since `<bin> plandb status` is a read; there is no
+// such harmless read for every verb a worker might type, and a bench driver
+// handed `patch` would parse it as its own flags and start its grid. So the
+// codeaf command says what it is, and anything that has not said is refused.
+var runningCLI string
+
+// SetRunningCLI registers the path of the running codeaf binary — the one the
+// person started, under whatever file name it was installed (codeaf, devaf,
+// stageaf, a `--name` word). cmd/codeaf calls it once, at start.
+func SetRunningCLI(path string) { runningCLI = strings.TrimSpace(path) }
+
+// codeafShimRefusal is the one line a worker's `codeaf` says when this process
+// never registered a running codeaf. It refuses rather than falling through to
+// the machine's PATH, where a different codeaf answers with the wrong verbs.
+const codeafShimRefusal = "codeaf is not reachable from this shell in this run; edit with sed -i or a heredoc instead"
+
+// codeafShimScript is the `codeaf` shim's whole text: an exec of the running
+// codeaf, or the refusal and exit 127 — the shell's own "not found" status —
+// when there is none to exec.
+func codeafShimScript() string {
+	if runningCLI == "" {
+		return "#!/bin/sh\necho " + quoteShWord(codeafShimRefusal) + " >&2\nexit 127\n"
+	}
+	return "#!/bin/sh\nexec " + quoteShWord(runningCLI) + " \"$@\"\n"
+}
+
 // planCLIBinEnv is the resolver's one override: it names a binary that
 // answers `<bin> plandb …` — the codeaf-shaped door — and it wins unprobed,
 // because an override that needs a probe is a suggestion.
@@ -812,7 +862,8 @@ const planCLIBinEnv = "CODEAF_PLANDB_BIN"
 // instead of answering.
 //
 // THE ORDER IS HOW WELL EACH CANDIDATE KNOWS ITSELF: the explicit override
-// first; the running binary, only when it passes the probe (a driver that
+// first; the running codeaf as it registered itself ([SetRunningCLI]),
+// unprobed; the running binary, only when it passes the probe (a driver that
 // routes the door passes — the bench's own binary is how the in-process arm
 // gets a CLI at all); the sibling `plandb` beside the executable, whose own
 // name is the whole contract — cmd/plandb builds it beside bin/codeaf — so
@@ -824,6 +875,15 @@ const planCLIBinEnv = "CODEAF_PLANDB_BIN"
 func resolvePlanCLI(storeDir string) []string {
 	if override := strings.TrimSpace(env.Get(planCLIBinEnv)); override != "" {
 		return []string{override, "plandb"}
+	}
+	// THE RUNNING CODEAF WINS UNPROBED TOO, because it said what it is
+	// ([SetRunningCLI]) and the probe was only ever standing in for that. The
+	// probe is a read beside a store the run is writing, and on 2026-09-25 it met
+	// `database is locked` there: the resolver fell through to the codeaf on the
+	// machine's PATH — an older version, answering this run's plan — and on a
+	// clean devaf install to nothing, which failed the task with the error below.
+	if runningCLI != "" {
+		return []string{runningCLI, "plandb"}
 	}
 	if self, err := os.Executable(); err == nil && !looksLikeTestBinary(self) {
 		if planCLIProbes(self, storeDir) {

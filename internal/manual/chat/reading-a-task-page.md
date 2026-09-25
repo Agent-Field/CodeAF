@@ -202,6 +202,9 @@ changed.
   `the files this task changes are listed here when it lands`.
 - On a run's task, `work` is the run's working copy read against the commit it was cut
   from: the difference, and the files added, with the files codeaf keeps there left out.
+  Every file is listed under its own name, including spaces, quotes and accents. Only
+  codeaf's own files are left out: `plandb.db` and the files beside it at the copy's
+  top, the `.codeaf` folder and the `bin/plandb` shim.
   The whole run shares that one copy, and the tab says so at its top. Once the run has
   ended its copy is given back, and the tab reads the work off the run's branch instead.
   With that branch gone too, it says `the run's working copy is not here any more`.

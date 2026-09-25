@@ -94,9 +94,11 @@ exactly once, or what it fetched is not a shell script, it answers 502.
 Building from source needs nothing published: clone the repository, run `make build`,
 then run `bin/codeaf` from the checkout.
 
-The installer writes `~/.codeaf/bin/codeaf` and prints three things: one line
-naming the installed file's `version`, the three-line telemetry notice, and last,
-when the folder is not yet on `PATH`, the bare `export PATH=…` line to paste.
+The installer writes `~/.codeaf/bin/codeaf` and prints two things: one line
+naming the installed file's `version` (`installed codeaf <tag> built …`), and last,
+when the folder is not yet on `PATH`, the bare `export PATH=…` line to paste. It
+prints nothing about telemetry; codeaf itself shows that notice before any count
+is sent.
 `/update` in the chat or `codeaf update` in a terminal replaces it in place;
 running the install line again works too.
 
@@ -113,6 +115,9 @@ That proxy serves the installer from the `dev` branch and rewrites exactly two
 default lines: the channel becomes dev and the installed name becomes devaf. It
 writes `~/.codeaf/bin/devaf` and leaves `~/.codeaf/bin/codeaf` untouched. On
 Windows the file is `devaf.exe`. `devaf version` still starts with `codeaf`.
+The installer's receipt names the command to type first:
+`installed devaf · codeaf dev-<date>-<commit> built …`. Any `--name` install
+reads the same way, with its own word first.
 
 The general spelling is `--name WORD` or `CODEAF_INSTALL_NAME=WORD`; the name
 may contain ASCII letters, digits, `.`, `_`, and `-`, and must begin with a
@@ -394,12 +399,12 @@ rung answered it — and under it the class the task was read as and the estimat
 
 ```
 models: worker z-ai/glm-5.3-flash (routed) · planner z-ai/glm-5.3-flash (routed) · checker moonshotai/kimi-k3 (pinned)
-crew: bugfix · worker glm-5.3-flash (openrouter) · checker 📌 kimi-k3 · est $0.023
+crew: bugfix · worker glm-5.3-flash (openrouter) · checker kimi-k3 (pinned) · est $0.023
 ```
 
-A seat you pinned wears `📌`, so `checker 📌 kimi-k3` is a checker pinned with `/crew pin`.
+A seat you pinned reads `checker kimi-k3 (pinned)` on the headless crew line.
 When the run ends, the `crew:` line is said again with what it actually cost beside the
-estimate: `crew: bugfix · worker glm-5.3-flash (openrouter) · checker 📌 kimi-k3 · $0.021 (est $0.023)`.
+estimate: `crew: bugfix · worker glm-5.3-flash (openrouter) · checker kimi-k3 (pinned) · $0.021 (est $0.023)`.
 
 **Every model flag is a one-task pin.** `--model`, `--plan-model` and `--check-model` pin the
 worker, planner and checker for this run and no other, and `CODEAF_MODEL`,
@@ -437,7 +442,7 @@ are a person at a terminal running one thing, so they **warn and go on**:
 `note: today's crew spend has reached the daily cap · this run goes ahead; `codeaf do` would have stopped`.
 
 With `--json`, `codeaf do` carries the crew too: `class` (the kind of work the task was read
-as), `crew` (each seat's `model`, `provider`, `kind`, `pinned` and `est_usd`), `est_usd` for
+as), `crew` (each seat's `model`, `provider`, `kind`, `pinned` and `est_usd`; `crew.<seat>.pinned` is true for a pin), `est_usd` for
 the whole crew beside `spend_usd`, `effort` when `--best` or `--cheap` was given, and
 `check_model` with `check_model_source` beside the worker's `model_source` and the planner's
 `plan_model_source`.
@@ -787,7 +792,10 @@ wait in `outbox.jsonl` beside the sheet, to leave with the pool's other
 measurements; `read` keeps them local, and `off` asks no judge at all and
 writes nothing. The call itself is billed to the `judge` seat, so it shows up
 in the spend pages beside the crew seats rather than inside a task's own
-cost.
+cost. The judge asks with the key the install holds at that moment, so a task
+that lands just after you paste a key into first-run setup is scored with that key.
+A task that lands while there is no key at all is not judged. It is not marked
+judged either, so the next start scores it once a key exists.
 
 With `model_pool` on, the rows leave for the relay after each judged run and
 once more at start-up, under this install's own nonce and nothing else. The
@@ -1001,8 +1009,10 @@ usage counts go quiet and the Model Pool is capped at `read`, so it still picks 
 from the index and sends nothing. The pool's own switch, `model_pool` in `/settings` or
 `CODEAF_MODEL_POOL`, adds `off`, which asks no judge at all. It reads and
 sends nothing of its own — it is a command about the counts, not a session. The
-notice the first session prints names the bargain before the first byte leaves, and
-`CODEAF_TELEMETRY=off` or `DO_NOT_TRACK=1` turns the counts off entirely. See
+notice names the bargain before the first byte leaves. A chat shows it once, dim,
+on the first conversation's screen under the starting points, and nothing is sent
+until a frame has drawn it. A task command and `chat --once` print it to stderr
+instead. `CODEAF_TELEMETRY=off` or `DO_NOT_TRACK=1` turns the counts off entirely. See
 docs/TELEMETRY.md for the whole contract.
 
 ## Reading a plan by hand — codeaf plan new, show, revise and run

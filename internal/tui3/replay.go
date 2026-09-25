@@ -773,9 +773,15 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 				continue
 			}
 			// A LINE THE TEAM SENT IS A CARD, headed by who said it to whom
-			// (teamcard.go), and never the person's `›`.
-			if len(e.Team) > 0 || strings.HasPrefix(text, teamAsideLead) {
+			// (teamcard.go), and never the person's `›`. A TEAM WAKE WITH
+			// NOTHING DELIVERED IN IT IS NOT DRAWN: it is the sentence that told
+			// the model nobody typed this turn, which the live conversation
+			// never draws either (followup.go).
+			switch asideShapeOf(e) {
+			case asideTeam:
 				blocks = append(blocks, entry{kind: entryTeam, text: text, team: e.Team, turn: turn})
+				continue
+			case asideHidden:
 				continue
 			}
 			// A LINE THE SESSION WROTE GOES IN THE SESSION'S OWN LANE — the dim

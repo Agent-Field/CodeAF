@@ -33,6 +33,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/subharness"
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
 )
@@ -368,6 +369,13 @@ func localDoors(options *tui3.Options, welcome remote.Welcome, settings config.C
 		profileDir = settings.ProfileDir
 	}
 	options.ProfileDir = profileDir
+	if options.Teams.Load != nil {
+		// The linked-local engine keeps its profile on this machine, so its closed
+		// teams' packets can be read here without borrowing the --host wire.
+		options.Teams.History = func(team string) ([]teamstore.Packet, error) {
+			return teamstore.Packets(profileDir, team)
+		}
+	}
 	options.EngineRoad = true
 	options.ReadCredits = v3LocalCreditReader(settings)
 	options.Connections = v3Connections(v3Connect(profileDir))

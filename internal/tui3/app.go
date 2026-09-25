@@ -855,6 +855,18 @@ type (
 )
 
 type app struct {
+	// telemetryNotice is the usage notice still owed to the person, drawn on the
+	// first conversation's greeting ([app.welcomeNoticeRows]); empty when nothing
+	// is owed or once the greeting that showed it has gone.
+	telemetryNotice string
+	// telemetryNoticeShown is the door's "it was seen" record, and
+	// telemetryNoticeOnFrame is a frame's note that it drew the notice. The frame
+	// only notes; the update loop calls the door, once
+	// ([app.settleTelemetryNotice]), and telemetryNoticeSettled says it has.
+	telemetryNoticeShown   func()
+	telemetryNoticeOnFrame bool
+	telemetryNoticeSettled bool
+
 	questionReplacement *questionReplacement
 
 	discussionFeeds map[string]*discussionFeed
@@ -2973,6 +2985,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		lastQuestionKey: time.Now(),
 		questionReach:   newQuestionDeliveryRule(),
 	}
+	a.telemetryNotice, a.telemetryNoticeShown = opts.TelemetryNotice, opts.TelemetryNoticeShown
 	// THE MEMOS ARE BUILT BEFORE ANYTHING ASKS THEM ANYTHING, because the frame's
 	// door onto each is a memo lookup and nothing else: a memo with no reader
 	// behind it answers "nobody has read that" forever (learned.go). They are
@@ -3434,6 +3447,10 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 	model, cmd := a.update(msg)
+	// A USAGE NOTICE THE LAST FRAME DREW IS RECORDED HERE, on the loop and once:
+	// the frame may only note that it drew it (view.go), because the door's
+	// record is a write to disk.
+	a.settleTelemetryNotice()
 	// A JUMP TO A MESSAGE WAITING FOR ITS CONVERSATION lands here, on the first
 	// message after that conversation is in front (teamjump.go).
 	if a.traffic.jump.key != "" {
@@ -3836,6 +3853,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case wallReadMsg:
 		a.wallTakeRead(msg)
+		return a, nil
+
+	case wallTreeMsg:
+		a.wallTakeTree(msg)
 		return a, nil
 
 	case wallTickMsg:

@@ -468,6 +468,19 @@ type Options struct {
 	UpdateArgs    []string
 	Restart       *codeupdate.Plan
 
+	// TelemetryNotice is the anonymous usage counts' notice while this install
+	// still owes it to the person, and empty once it has been seen. The first
+	// conversation's screen draws it whole, beside the greeting, because the
+	// notice promises to be read BEFORE any count is sent, and a line printed on
+	// the normal screen just before this surface covered it was read only after
+	// quitting, by which time the exit had already sent (docs/TELEMETRY.md).
+	TelemetryNotice string
+	// TelemetryNoticeShown is the door's record that the notice was seen. It is
+	// called once, on the update loop, after a frame has drawn TelemetryNotice —
+	// never from the frame, which may not touch the disk — and never for a notice
+	// that no frame drew: a frame too short for it, or a setup standing in front.
+	TelemetryNoticeShown func()
+
 	// Memory is the durable memory store behind the memory place. Nil means the
 	// place is unavailable; the live door passes the same store it gave the
 	// session, wrapped so that the two READING methods are spelled the way this

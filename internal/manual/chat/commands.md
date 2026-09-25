@@ -1856,7 +1856,7 @@ order:
     rather than the settings registry.
 
 **worker**, **checker** and **planner** are the crew's three seats, and on the tab they are
-one row, **seats** (`auto · 1 pinned · models open · 3 of 4 providers · per task $5 · daily $5.00`).
+one row, **seats** (`auto · 1 pinned · models open · 3 of 4 providers · per task $5 · crew daily cap $5.00`).
 `enter` on it opens the `/crew` panel, where the seats, the allowed models, the providers
 and the per-task and daily caps are changed; `esc` there comes back to the row.
 

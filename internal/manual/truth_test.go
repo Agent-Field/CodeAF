@@ -113,6 +113,23 @@ func quotedFacts(t *testing.T) []quotedFact {
 	steps, notSteps := counted(sourceNumber(t, "../router/crew.go", "redoOffsetCeiling"))
 	shortlist, notShortlist := counted(sourceNumber(t, "../session/taskmodel.go", "taskModelShortlist"))
 	minutesWord, notMinutesWord := counted(int(standing.Interval / time.Minute))
+	ceilingTimes, otherCeilingTimes := counted(int(config.CrewCheckCeilingTimes))
+	taskDollars := config.CrewTaskMoney(config.CrewTaskCapDefault)
+	var otherTaskDollars []string
+	for amount := 1; amount <= 10; amount++ {
+		word := config.CrewTaskMoney(float64(amount))
+		if word != taskDollars {
+			otherTaskDollars = append(otherTaskDollars, word)
+		}
+	}
+	ceilingFloor := fmt.Sprintf("$%.2f", config.CrewCheckCeilingFloor)
+	var otherCeilingFloors []string
+	for cents := 1; cents <= 10; cents++ {
+		word := fmt.Sprintf("$0.%02d", cents)
+		if word != ceilingFloor {
+			otherCeilingFloors = append(otherCeilingFloors, word)
+		}
+	}
 
 	facts := []quotedFact{{
 		// THE THINKING WALK HAS ONE OWNER for both surface doors and every page
@@ -174,6 +191,38 @@ func quotedFacts(t *testing.T) []quotedFact {
 		value:  strconv.Itoa(sourceByteLimit(t, "../skills/regular.go", "maxPluginJSONBytes") / (1 << 20)),
 		quotes: []quotedIn{{"skills-from-other-tools", "over %s MiB"}},
 	}, {
+		fact: "the crew's default per-task limit", owner: "config.CrewTaskCapDefault",
+		value: taskDollars, others: otherTaskDollars,
+		quotes: []quotedIn{
+			{"models-and-cost", "**cap** — `per task %s · crew daily cap none`"},
+			{"models-and-cost", "No task may cost more than its limit: **%s** unless you set another"},
+			{"models-and-cost", "(`per task %s · crew daily cap none`)"},
+			{"models-and-cost", "an emptied box is %s again"},
+			{"models-and-cost", "this task reached its %s limit · raise it in /crew"},
+			{"models-and-cost", "held under the %s.00 task limit"},
+			{"models-and-cost", "| **per task** | `%s a task`"},
+			{"models-and-cost", "## What may a task spend — %s a task unless you set another"},
+			{"models-and-cost", "**A task carries a dollar limit of its own: %s unless you set another.**"},
+			{"models-and-cost", "`per task` row — `%s a task`"},
+			{"commands", "the most one task may spend — %s unless set"},
+			{"commands", "the most one task may spend — %s unless set."},
+			{"commands", "per task %s · crew daily cap $5.00"},
+			{"running-from-the-terminal", "**Every run is held to the per-task limit**, %s unless"},
+			{"running-from-the-terminal", "this task reached its %s limit · raise it in /crew"},
+			{"tasks", "**Every task also has a money limit of its own: %s unless you set another**"},
+		},
+	}, {
+		fact: "the checker's ceiling multiplier", owner: "config.CrewCheckCeilingTimes",
+		value: ceilingTimes, others: otherCeilingTimes,
+		quotes: []quotedIn{
+			{"models-and-cost", "**A checker has a ceiling of its own on each task**: %s times its estimate"},
+			{"models-and-cost", "ceiling of $0.26, %s times its estimate, before it finished"},
+		},
+	}, {
+		fact: "the checker's ceiling floor", owner: "config.CrewCheckCeilingFloor",
+		value: ceilingFloor, others: otherCeilingFloors,
+		quotes: []quotedIn{{"models-and-cost", "less than %s. A check that reaches it"}},
+	}, {
 		// THE CREW IS THREE SEATS, and every page that counts them counts
 		// them from the router's own list.
 		fact: "how many seats the crew is", owner: "crewroute.Seats", value: seats, others: notSeats,
@@ -210,9 +259,9 @@ func quotedFacts(t *testing.T) []quotedFact {
 		},
 	}, {
 		// The mark a pinned seat wears on a headless line.
-		fact: "the mark a pinned seat wears headless", owner: "config.PinMark",
-		value:  config.PinMark,
-		quotes: []quotedIn{{"running-from-the-terminal", "checker %s kimi-k3"}},
+		fact: "the mark a pinned seat wears headless", owner: "crewroute.seatModel",
+		value:  "(pinned)",
+		quotes: []quotedIn{{"running-from-the-terminal", "checker kimi-k3 %s"}},
 	}, {
 		// The rule an untouched profile allows.
 		fact: "the allowed rule nobody wrote", owner: "config.CrewAllowedAt",
