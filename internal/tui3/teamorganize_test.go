@@ -216,6 +216,8 @@ func TestOrganizeApplyThenUndoRestoresTheExactList(t *testing.T) {
 	if hue := a.wall.teams[1].HueSpec(); hue == a.wall.teams[0].HueSpec() {
 		t.Fatal("the new team took an existing team's colour")
 	}
+	// `Organized` is said once the store took the Apply (teamwritesaid.go).
+	teamsFlush(t, a)
 	frame := orgFrame(a)
 	if !strings.Contains(frame, "Organized · 1 new team  ") || !strings.Contains(frame, " Undo ") {
 		t.Fatalf("the Teams row does not offer Undo:\n%s", frame)

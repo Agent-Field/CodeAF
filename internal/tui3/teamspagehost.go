@@ -167,6 +167,9 @@ func (a *app) teamsUndoRow(d *teamsDraw, width, y int) []string {
 	}
 	pal := a.pal
 	word := " " + pal.dim(a.tp.undo.name+" is closed") + "  "
+	if why := a.tp.undo.said.why; why != "" {
+		word = " " + pal.warn(teamNotSaved("the close of "+a.tp.undo.name, why)) + "  "
+	}
 	s, _ := d.button("Undo", teamsTarget{act: teamsActUndo, x0: ansi.StringWidth(word), y: y,
 		hint: "Reopen " + a.tp.undo.name + " and its tabs" + hintSegment + "u"}, pal.ink)
 	return []string{word + s}

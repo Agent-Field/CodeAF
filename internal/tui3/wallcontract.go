@@ -149,6 +149,9 @@ type wallView struct {
 	made   string
 	madeN  int
 	madeAt time.Time
+	// madeSaid says whether the store took the team: `Made` waits for it, and
+	// a refusal is said in its place (teamwritesaid.go).
+	madeSaid teamWriteSaid
 	// pointerOn says pointerY holds the row the pointer is on, in the painter's
 	// own rows (the head's rows taken off). Some targets share a ref on two
 	// rows, a waiting tile's Answer and its row's Answer, or a picked tile's ☐
@@ -380,6 +383,8 @@ type wallState struct {
 	made       string
 	madeN      int
 	madeAt     time.Time
+	// madeSaid ties `Made` to the write that carried it (teamwritesaid.go).
+	madeSaid teamWriteSaid
 
 	// The motion and the pointer's memory (wall.go). revealAt is when the
 	// opening's row-by-row reveal began, zero once it is done; zoomAt and

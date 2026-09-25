@@ -240,8 +240,13 @@ type teamsDisk struct {
 	// watch is the local seam's stat-before-read memory of the logs.
 	watch teamstore.Watch
 	// queue is every edit made to what this window holds and not yet handed
-	// to the store, in the order they were made.
-	queue []func(*teamstore.File) error
+	// to the store, in the order they were made, and queueSeq each one's
+	// number: seq counts every edit this window has made, so a notice that
+	// says an edit happened can ask whether the store took THAT edit
+	// ([app.teamsWriteSettled]).
+	queue    []func(*teamstore.File) error
+	queueSeq []int
+	seq      int
 	// fetch says an opening found nothing held ([TeamsSeam.Load]'s known
 	// false) and a read is wanted; fetching says it is out.
 	fetch, fetching bool
@@ -323,6 +328,11 @@ type teamsWrote struct {
 	// was the opening's read rather than a write.
 	covers int
 	read   bool
+	// seqs is the number of every edit this write carried, and refused the
+	// ones the store did not take, with why: an edit the file refused alone,
+	// or every edit when the whole write was refused.
+	seqs    []int
+	refused map[int]error
 }
 
 // teamsWrite hands the queued edits to the store in one command on the door
@@ -350,18 +360,22 @@ func (a *app) teamsWrite() tea.Cmd {
 		}))
 	}
 	if len(a.teamsDisk.queue) > 0 {
-		changes := a.teamsDisk.queue
-		a.teamsDisk.queue = nil
+		changes, seqs := a.teamsDisk.queue, a.teamsDisk.queueSeq
+		a.teamsDisk.queue, a.teamsDisk.queueSeq = nil, nil
 		seam, words, reserved, covers := a.teamsSeam(), a.teamTabWords(), teamReservedHues(a.pal), a.traffic.edits
 		cmds = append(cmds, a.offLoop(func() func(bool) tea.Cmd {
 			var refused error
+			var refusedBy map[int]error
 			teams, stamp, err := seam.Update(func(f *teamstore.File) error {
-				refused = nil
-				for _, change := range changes {
+				refused, refusedBy = nil, map[int]error{}
+				for i, change := range changes {
 					mine := &teamstore.File{Version: f.Version, Teams: teamsClone(f.Teams)}
 					if err := change(mine); err != nil {
 						if refused == nil {
 							refused = err
+						}
+						if i < len(seqs) {
+							refusedBy[seqs[i]] = err
 						}
 						continue
 					}
@@ -371,11 +385,17 @@ func (a *app) teamsWrite() tea.Cmd {
 				f.Colour(reserved)
 				return nil
 			})
-			if err == nil {
+			if err != nil {
+				// THE WHOLE WRITE WAS REFUSED, so no edit in it was taken.
+				refusedBy = map[int]error{}
+				for _, seq := range seqs {
+					refusedBy[seq] = err
+				}
+			} else {
 				err = refused
 			}
 			return func(bool) tea.Cmd {
-				a.teamsTake(teamsWrote{teams: teams, stamp: stamp, err: err, covers: covers})
+				a.teamsTake(teamsWrote{teams: teams, stamp: stamp, err: err, covers: covers, seqs: seqs, refused: refusedBy})
 				return nil
 			}
 		}))
@@ -396,6 +416,7 @@ func (a *app) teamsTake(w teamsWrote) {
 		a.teamsDisk.fetching = false
 	} else {
 		a.traffic.wrote = w.covers
+		a.teamsWriteSettled(w)
 	}
 	if w.err != nil {
 		if !w.read {

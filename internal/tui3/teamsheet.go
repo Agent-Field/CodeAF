@@ -415,7 +415,11 @@ func (a *app) teamSheetInsideLines(t team, inner, labelW int) []wallCardLine {
 		no, hn, _ := a.teamSheetButton("Cancel", "esc", tsMoveNo, labelW+wy+1, false)
 		out = append(out, wallCardLine{s: strings.Repeat(" ", labelW) + yes + " " + no, hits: []wallHit{hy, hn}, bleed: true})
 	} else if a.teamMoveUndoing() && a.tmove.undo.from == teamMoveFromCard {
-		said := pal.dim(a.tmove.undo.word) + " "
+		ink := pal.dim
+		if a.tmove.undo.said.why != "" {
+			ink = pal.warn
+		}
+		said := ink(a.tmove.undo.word) + " "
 		x := labelW + 1 + ansi.StringWidth(a.tmove.undo.word) + 1
 		undo, hu, _ := a.teamSheetButton("Undo", "u", tsMoveUndo, x, false)
 		out = append(out, wallCardLine{s: strings.Repeat(" ", labelW+1) + said + undo, hits: []wallHit{hu}, bleed: true})

@@ -336,6 +336,16 @@ names, members and colours, and it is renamed to `spaces.json.migrated`. A teams
 cannot be read is moved aside as `teams.json.unreadable-<number>` rather than written over,
 so nothing you made is lost.
 
+## The wall said my team was not saved
+
+A change to your teams shows in this window at once and is saved a moment later. What says
+it happened waits for the save: `Made harbor · 2` on the Teams row, `Organized · 1 new team`,
+and on the teams page `harbor is closed` or a move's words. When the save is refused (another
+codeaf holding the file, a file that would not read, a far machine whose teams kept changing),
+those words never show. The row says `harbor was not saved · <the reason>` instead, and the
+teams page says `the close of harbor was not saved` or `the move was not saved`. The change is
+still in this window, and Undo is still offered where it was.
+
 ## Every key in the conversations view
 
 `?` (or `Help ?`) opens a sheet of all of these, and every row on it is a button that does
