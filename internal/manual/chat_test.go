@@ -933,6 +933,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"which models does senior-dev use", "senior-dev"},
 		{"make senior-dev use my crew models", "senior-dev"},
 		{"how long did the senior-dev run take", "senior-dev"},
+		{"can a senior-dev task wait for another task to finish first", "senior-dev"},
+		{"retry a senior-dev task that failed", "senior-dev"},
 		{"senior-dev's page still says running after codeaf crashed", "senior-dev"},
 		{"codeaf closed while senior-dev was running where is its work", "senior-dev"},
 		{"my ssh connection dropped during codeaf senior-dev", "senior-dev"},

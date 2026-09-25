@@ -3154,6 +3154,9 @@ and counted as the section above on work that is your call says. Ids can only po
 and only ids `propose_task` itself returned count: a job or adaptive-run number is a
 different kind of work, and naming one — or a task that already failed — refuses the
 proposal on the spot instead of queueing work that could never start.
+A task handed to a program such as senior-dev cannot wait at all, because it starts the
+moment it is approved: its `depends_on` may name only work that has already landed. A
+program's run that ended done may be named by any task; one still going may not.
 
 **`model`** — which model this task runs on. Set only when you asked for a particular model
 or class of model for this work. Left out, the task runs on `task.model` if set, otherwise

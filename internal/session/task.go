@@ -656,6 +656,9 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 	if refusal := a.refuseProposedTask(spec); refusal != nil {
 		return refusal
 	}
+	// A PROGRAM'S RUN THAT ENDED DONE IS A DEPENDENCY MET, and the graph knows
+	// no node by its id (program_depends.go).
+	spec.dependsOn = a.withoutEndedProgramRuns(spec.dependsOn)
 	// A DELEGATE IS RESOLVED BEFORE THE CARD, so a name this machine has no
 	// delegate for is answered with the names it has and nobody is asked to
 	// approve work that could not start (delegate_door.go).

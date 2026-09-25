@@ -167,11 +167,26 @@ brief that tells senior-dev to make a checkout of its own somewhere else does no
 its file tools refuse to write outside its folder, and what a shell command changes out
 there is not part of the task.
 
-## What senior-dev cannot do — it cannot ask you anything, no step cap, no Windows
+## What senior-dev cannot do — it cannot ask you anything, wait on another task, be retried or carried on, no step cap, no Windows
 
 **It cannot ask you anything.** Nobody is at its keyboard: a question its model tries to
 ask is turned down inside the program, and after three it is told questions are not
 available. Put everything it would stop and ask into the brief.
+
+**It cannot wait on another task.** A task handed to senior-dev starts the moment it is
+approved, so a proposal whose `depends_on` names work that has not finished is refused
+before its card: `depends_on names task 3, which has not finished, and senior-dev starts
+the moment it is approved — it cannot wait. Propose it again once task 3 has landed, or
+with depends_on left out if nothing must finish first.` The chat is told when that task
+lands and can propose it again then. The other way round, a task may name a senior-dev
+run that ended done in its `depends_on` (the run's work is on its branch, in its folder),
+but not one still going: `depends_on names task 5, a program's run that has not ended,
+and a task cannot wait on one.`
+
+**It is never retried or carried on.** A run that ended, however it ended, is not
+started again: `senior-dev's run is never carried on: its work is left where it ended, and
+a new hand-off starts a new run`. Its card offers no retry, and the `@` list offers no
+steer on a running one, because it reads no messages; a follow-up is a new `/senior-dev`.
 
 **It has no step cap.** It is held to the conversation's dollar and time ceilings instead,
 and codeaf enforces both from outside whatever it does. On a service that reports no

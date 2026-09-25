@@ -80,13 +80,8 @@ func (a *Agent) refuseProposedTask(spec taskSpec) bare.Staged {
 	if verb != "" && spec.via == "" {
 		return bare.Settled(spawnFloorRefusal, true)
 	}
-	if missing, failed := a.graph().doomedDependencies(spec.dependsOn); len(missing)+len(failed) > 0 {
-		if bashBeltAsked() {
-			missing = a.missingRunDependencies(missing)
-		}
-		if len(missing)+len(failed) > 0 {
-			return bare.Settled(dependencyRefusal(missing, failed), true)
-		}
+	if refusal := a.proposalDependencyRefusal(spec); refusal != "" {
+		return bare.Settled(refusal, true)
 	}
 	return nil
 }
