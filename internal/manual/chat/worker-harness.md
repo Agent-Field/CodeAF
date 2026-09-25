@@ -715,7 +715,9 @@ named on a door or in the profile:
 
 The seat a person names is the seat **every** launch takes — a task launched
 after the door resolved the seats still runs on them, not on whichever row the
-profile happens to hold. Read it back with `plandb spend --by seat`.
+profile happens to hold. Read it back with `plandb spend --by seat`. A conversation
+started with `--one-model` seats all four — work, plan, check and probe — on the model you
+are talking to, and neither the crew rows nor `CODEAF_CHECK_MODEL` moves them.
 
 ## Headless: codeaf do — the exit code it leaves with
 
