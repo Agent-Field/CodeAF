@@ -164,6 +164,17 @@ func TestOrderedListsShareARightEdge(t *testing.T) {
 	}
 }
 
+// TestABareNumberedReplyStillDraws holds the reply boundary where Markdown
+// parses a number and full stop as an ordered list with an empty item.
+func TestABareNumberedReplyStillDraws(t *testing.T) {
+	for _, src := range []string{"32.", "1024."} {
+		rows := plain(render(t, src, Options{Width: 80}))
+		if got, want := strings.Join(rows, "\n"), src; got != want {
+			t.Errorf("Render(%q) = %q, want %q", src, got, want)
+		}
+	}
+}
+
 // TestBlockquoteCarriesItsGutter checks that the bar runs down EVERY row of the
 // quote including the blank one between its paragraphs — a dashed bar reads as
 // two quotes.
