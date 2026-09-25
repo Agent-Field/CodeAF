@@ -282,6 +282,12 @@ func (h *eventHub) turnError() error {
 
 // ── reading them back ───────────────────────────────────────────────────────
 
+// askingStaleBound is how long an asking event may keep a member asking. A
+// permission prompt nobody has answered in half an hour is not still waiting
+// in the digest, and a process that died on one leaves the event as its last
+// word with the journal unmoved.
+const askingStaleBound = 30 * time.Minute
+
 // askingFromEvents is a member's state with its newest event weighed in.
 //
 // A PERMISSION PROMPT IS NOT IN THE JOURNAL: the call it is about was written
@@ -290,13 +296,23 @@ func (h *eventHub) turnError() error {
 // asking event says otherwise, and it holds while the journal has not moved
 // since: a journal line written after the event (the call's result, a turn's
 // pace line) is the member having moved on, whatever the log says after.
-func askingFromEvents(state teams.MemberState, last time.Time, member teams.Member, log []teams.Entry) teams.MemberState {
+//
+// IT GOES STALE TWO WAYS, and then the member reads idle. Nothing holding the
+// transcript lock means the process that raised the prompt is gone (the same
+// probe a wake uses, [journalHeld]). An event older than [askingStaleBound]
+// is over even while a process still holds the lock.
+func askingFromEvents(state teams.MemberState, last time.Time, member teams.Member, log []teams.Entry, now time.Time) teams.MemberState {
 	for index := len(log) - 1; index >= 0; index-- {
 		entry := log[index]
 		if entry.Kind != teams.KindEvent || !eventConcerns(entry, member) {
 			continue
 		}
 		if entry.State != teams.StateAsking || entry.At.Before(last) {
+			return state
+		}
+		if askingStale(member, entry, now) {
+			state.State = teams.StateIdle
+			state.Question = ""
 			return state
 		}
 		state.State = teams.StateAsking
@@ -306,6 +322,15 @@ func askingFromEvents(state teams.MemberState, last time.Time, member teams.Memb
 		return state
 	}
 	return state
+}
+
+// askingStale reports whether an asking event no longer means the member is
+// waiting on the person.
+func askingStale(member teams.Member, entry teams.Entry, now time.Time) bool {
+	if !entry.At.IsZero() && now.Sub(entry.At) >= askingStaleBound {
+		return true
+	}
+	return !journalHeld(member.File)
 }
 
 // eventConcerns reports whether an event is about member.

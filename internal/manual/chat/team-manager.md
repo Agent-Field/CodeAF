@@ -120,7 +120,14 @@ would never write in a message:
 
 Each is one line of traffic per change, never one per step. They are the session's own words;
 nothing you type is ever written to the traffic. `team_status` reads them too, so a member held
-on a permission prompt shows as `asking` rather than `running`.
+on a permission prompt shows as `asking` rather than `running`, for as long as some process
+holds that conversation's transcript and the wait is under 30 minutes.
+
+## Why a member stays asking after it crashed
+
+It does not. `asking` means a live process is held on the prompt. If that process dies, the
+transcript lock is free and the member reads as idle. The same happens when the wait is older
+than 30 minutes, even if a process still holds the transcript: nothing is still asking.
 
 ## Who outranks whom
 
