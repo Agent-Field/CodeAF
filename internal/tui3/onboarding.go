@@ -103,7 +103,7 @@ const controlLabelWidth = 19
 // row where it can. Everything else this screen could say about a control is
 // behind `?` on that control.
 const (
-	controlLimitWord = "When everything " + product + " spends today reaches this amount, " +
+	controlLimitWord = "When all " + product + " spends today reaches this amount, " +
 		"new work waits until midnight or you raise it."
 	controlModelWord = "The model you talk to in this conversation."
 )

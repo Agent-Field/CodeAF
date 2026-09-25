@@ -131,8 +131,8 @@ The first control is **Daily limit**, and it opens on the amount that is actuall
 force — `$500` on a profile that has never chosen one, or your own figure if you have.
 Its one line reads:
 
-> When everything codeaf spends today reaches this amount, new work waits until midnight or
-> you raise it.
+> When all codeaf spends today reaches this amount, new work waits until midnight or you
+> raise it.
 
 Type a number to change it — the `$` is drawn for you rather than typed — or type
 **`none`** for no limit, which is a first-class answer and makes the row read `no limit`.
