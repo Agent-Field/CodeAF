@@ -43,8 +43,15 @@ when it has no manager above it. Your answer is handed to the manager marked `�
 and wakes it.
 
 Packets are kept in the profile of the machine the conversations run on, in
-`teams/<id>/decisions.jsonl` for the team each was raised from. Past a megabyte the file starts
-a new one, keeping every packet still waiting.
+`teams/<id>/decisions.jsonl` for the team each was raised from.
+
+## Do answered team questions survive packet file rotation
+
+Past a megabyte the packet file starts a new one. It keeps every packet still waiting,
+today's cap decisions, and decided answers not yet handed to their raisers, newest first
+within half the rotation size. Older owed answers beyond that bound remain readable for one
+more rotation. Once a raiser has been handed an answer, codeaf records that and keeps it
+readable for one more rotation.
 
 ## A team's daily cap
 
@@ -65,6 +72,21 @@ When the pool reaches its cap:
 
 A manager can never raise a cap: money is yours. Every held wake is one line in the traffic,
 `held @web: harbor reached its $5 cap today`.
+
+## Can a team cap be less than a cent
+
+Yes. A cap is spelled as you set it everywhere it appears, on the card, the teams page and the
+team's settings: `$5`, `$5.50`, and under a cent `$0.001`, never rounded to `$0.00`. **Raise
+to** always offers twice the ceiling the team reached, and names exactly that figure: a
+`$0.001` cap offers `Raise to $0.002`.
+
+## What if today's team spending cannot be read
+
+When a capped team's usage ledger or team list cannot be read, no new paid team work starts.
+The Traffic says `held @web: harbor has a $5 daily cap and today's spend could not be read
+(<error>), so nothing new starts until it can be read`. `team_start` gives the same reason
+after `No new member starts:`. No cap card is raised against an unreadable figure. The next
+check reads again, and an uncapped team does not read the ledger for this check.
 
 ## Two windows ask once when a team reaches its cap
 
@@ -87,6 +109,15 @@ team closes only when you pick Close.
 The wrap-up has 15 minutes and $2 of team spend. When it runs out of either before the
 manager reports, codeaf brings you the report itself, marked `wrap-up incomplete`, with
 **Close now** and **Keep going**.
+
+## How long does my team have left to wrap up
+
+While a team is wrapping up, the teams page's header for it and the Traffic column beside its
+manager say how long it has: `wrapping up · 12m left`, then `wrapping up · under a minute
+left`, and `wrapping up · out of time` once the 15 minutes are gone and the report has not
+come yet. The words go when the report arrives. The time is counted from when the wrap-up
+began, kept with the team, so it reads the same after a restart. The team's chip on the tab
+strip does not show it.
 
 ## What if the wrap-up report could not be sent, the decisions file was busy
 

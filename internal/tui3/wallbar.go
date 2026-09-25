@@ -755,10 +755,18 @@ func wallTeamsSegments(pal palette, g wallGlyphs, v wallView, k wallKeys, y int,
 			*hits = append(*hits, wallHit{x0: *x, y0: y, x1: *x + len(add), y1: y + 1, kind: wallHitAddTeam})
 			put(s, len(add))
 		}
-		// A team just made says so for a moment, in the row it now sits in.
-		if v.made != "" && !v.madeAt.IsZero() && v.now.Sub(v.madeAt) < wallMadeFor {
-			word := "  Made " + v.made + " " + g.sep + " " + strconv.Itoa(v.madeN)
-			if fitsAt(ansi.StringWidth(word)) {
+		// A team just made says so for a moment, in the row it now sits in, once
+		// the store took it; a team the store refused says that instead.
+		if v.made != "" && v.madeSaid.said() && teamSaidWithin(v.madeAt, v.now, wallMadeFor) {
+			if v.madeSaid.why != "" {
+				word := "  " + teamNotSaved(v.made, v.madeSaid.why)
+				if !fitsAt(ansi.StringWidth(word)) {
+					word = "  " + teamNotSaved(v.made, "")
+				}
+				if fitsAt(ansi.StringWidth(word)) {
+					put(pal.warn(word), ansi.StringWidth(word))
+				}
+			} else if word := "  Made " + v.made + " " + g.sep + " " + strconv.Itoa(v.madeN); fitsAt(ansi.StringWidth(word)) {
 				put(pal.dim(word), ansi.StringWidth(word))
 			}
 		}

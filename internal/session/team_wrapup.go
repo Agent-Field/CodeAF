@@ -217,8 +217,8 @@ func (a *Agent) teamWrapUpDue(profile string, now time.Time) {
 	a.team.mu.Unlock()
 	for _, w := range going {
 		why := ""
-		spent := a.teamPoolSpend(profile, w.team, teamToday())
-		if !w.measured {
+		spent, spendErr := a.teamPoolSpend(profile, w.team, teamToday())
+		if !w.measured && spendErr == nil {
 			a.team.mu.Lock()
 			if held, ok := a.team.wraps[w.team]; ok {
 				held.spentAt, held.measured = spent, true
@@ -229,8 +229,8 @@ func (a *Agent) teamWrapUpDue(profile string, now time.Time) {
 		switch {
 		case now.Sub(w.started) >= wrapBound(w):
 			why = fmt.Sprintf("the wrap-up ran out of time (%s) before the manager brought its report", wrapBound(w).Round(time.Minute))
-		case spent-w.spentAt >= wrapUpSpendUSD:
-			why = fmt.Sprintf("the wrap-up spent %s, its limit, before the manager brought its report", teamMoney(spent-w.spentAt))
+		case spendErr == nil && w.measured && spent-w.spentAt >= wrapUpSpendUSD:
+			why = fmt.Sprintf("the wrap-up spent %s, its limit, before the manager brought its report", teamSpendMoney(spent-w.spentAt))
 		default:
 			continue
 		}
@@ -341,7 +341,11 @@ func (a *Agent) teamCloseReportTool(ctx context.Context, args json.RawMessage) (
 			files = append(files, file)
 		}
 	}
-	spent := a.teamPoolSpend(profile, team.ID, teamToday())
+	// A SPEND THAT CANNOT BE READ LEAVES THE FIGURE OUT of the report rather
+	// than holding the report back: the person is waiting on it to close the
+	// team, and a report drawn with no spend line is the emptiness law's
+	// unknown, where a refused report would leave the wrap-up to run out.
+	spent, _ := a.teamPoolSpend(profile, team.ID, teamToday())
 	raised, err := teams.Raise(profile, closingPacket(team.Name, team.ID, teams.ClosingReport{
 		Done: done, Left: strings.TrimSpace(parsed.Left), Files: files, SpendUSD: roundCents(spent),
 	}))

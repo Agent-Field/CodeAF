@@ -157,6 +157,99 @@ func TestTheManagerIsOfferedTheManagersVerbsAndNotThePost(t *testing.T) {
 	}
 }
 
+func TestTeamRoleDemotionRemovesOnlyLostVerbsAndRearmingAppends(t *testing.T) {
+	fixture := newTeamFixture(t, true)
+	manager := teamAgent(t, fixture, fixture.manager, nil, nil)
+	manager.teamBoundary()
+	before := manager.beltTools()
+	if err := teams.Update(fixture.profile, func(f *teams.File) error {
+		return f.SetManager(fixture.teamID, convKeyOf(t, fixture.parser))
+	}); err != nil {
+		t.Fatal(err)
+	}
+	manager.teamBoundary()
+	for _, name := range teamToolNames[:8] {
+		if holds(manager, name) {
+			t.Errorf("demoted manager still holds %s", name)
+		}
+	}
+	if !holds(manager, teamPostToolName) || !holds(manager, teamRaiseToolName) {
+		t.Error("a demoted manager lost member verbs")
+	}
+	result := manager.executeTool(context.Background(), nil, nil, withdrawnCall("c1", teamSendToolName, `{}`), "")
+	if want := "team_send is no longer one of your tools: this conversation no longer manages a team."; result.text != want {
+		t.Errorf("removed manager verb answered %q, want %q", result.text, want)
+	}
+	kept := manager.beltTools()
+	j := 0
+	for _, tool := range before {
+		for _, current := range kept {
+			if current.Name == tool.Name {
+				if kept[j].Name != tool.Name {
+					t.Fatal("surviving tools changed relative order")
+				}
+				j++
+				break
+			}
+		}
+	}
+	if err := teams.Update(fixture.profile, func(f *teams.File) error {
+		return f.SetManager(fixture.teamID, convKeyOf(t, fixture.manager))
+	}); err != nil {
+		t.Fatal(err)
+	}
+	manager.teamBoundary()
+	last := manager.beltTools()
+	if last[len(last)-1].Name != teamCloseReportToolName || !holds(manager, teamSendToolName) {
+		t.Fatal("manager verbs were not rearmed at the tail")
+	}
+	path := teams.Path(fixture.profile)
+	original, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("["), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager.teamBoundary()
+	if !holds(manager, teamSendToolName) {
+		t.Fatal("an unreadable teams file removed the last known manager verbs")
+	}
+	if err := os.WriteFile(path, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := teams.Update(fixture.profile, func(f *teams.File) error {
+		return f.RemoveMember(fixture.teamID, convKeyOf(t, fixture.manager))
+	}); err != nil {
+		t.Fatal(err)
+	}
+	manager.teamBoundary()
+	for _, name := range teamToolNames {
+		if holds(manager, name) {
+			t.Errorf("a conversation outside the team kept %s", name)
+		}
+	}
+	result = manager.executeTool(context.Background(), nil, nil, withdrawnCall("c2", teamPostToolName, `{}`), "")
+	if want := "team_post is no longer one of your tools: this conversation is no longer a member of a team with a manager."; result.text != want {
+		t.Errorf("removed member verb answered %q, want %q", result.text, want)
+	}
+}
+
+func TestTeamToolsLeaveWhenTheTeamsFileIsGone(t *testing.T) {
+	fixture := newTeamFixture(t, true)
+	manager := teamAgent(t, fixture, fixture.manager, nil, nil)
+	manager.teamBoundary()
+	if err := os.Remove(teams.Path(fixture.profile)); err != nil {
+		t.Fatal(err)
+	}
+	manager.teamBoundary()
+	for _, name := range teamToolNames {
+		if holds(manager, name) {
+			t.Errorf("a missing teams file left %s on the belt", name)
+		}
+	}
+}
+
 func TestAMemberIsOfferedThePostAndNoManagersVerb(t *testing.T) {
 	fixture := newTeamFixture(t, true)
 	web := teamAgent(t, fixture, fixture.web, nil, nil)
