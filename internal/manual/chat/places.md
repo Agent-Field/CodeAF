@@ -54,7 +54,7 @@ Four ways, and they all reach the same seven rooms:
 
 - **`tab`** — the next place **on the bar**, round again from the last. **`shift+tab`** —
   the one before. From standing, memory or search, `tab` goes on round the bar to home.
-- **`alt+1`** … **`alt+8`** (**`opt+1`** … **`opt+8`** on a Mac) — jump straight to one, **from a
+- **`alt+1`** … **`alt+8`** (**`opt+1`** … **`opt+8`** on a Mac), jump straight to one, **from a
   place or from a conversation**. `alt+1` … `alt+5` are the tab bar's own order (home,
   chats, tasks, spend, settings), and `alt+6`, `alt+7`, `alt+8` are the three places off the bar:
   standing, memory, search. Hold `alt` and press the digit. macOS draws the modifier as `opt`
@@ -62,7 +62,7 @@ Four ways, and they all reach the same seven rooms:
   chord either way. `tab` and the shift-arrows are not like them: in a conversation those
   already belong to path completion and to the caret, so the digits are the one class of
   place key that means the same thing wherever you are standing.
-- **`ctrl+1`** … **`ctrl+8`** — the same jump, on the terminals that can send it. `ctrl` and
+- **`ctrl+1`** … **`ctrl+8`**, the same jump, on the terminals that can send it. `ctrl` and
   a digit has no encoding in the scheme most terminals speak, so this is a second spelling and
   never the first: it works only where the terminal runs the kitty keyboard protocol and says
   so (kitty, ghostty, WezTerm, foot, Windows Terminal are the usual ones). `ctrl+.` draws the
@@ -549,7 +549,7 @@ The standing orders page has the whole of it.
 ## memory — what is held true
 
 What codeaf holds true about you and this machine, with what kind of thing each line is, how
-it has done — `helped 19 · bore on 3` — and how old it is out at the right. `/memory` and `/memories` open it, and so does `alt+7`. It is not on the tab bar.
+it has done, `helped 19 · bore on 3`, and how old it is out at the right. `/memory` and `/memories` open it, and so does `alt+7`. It is not on the tab bar.
 
 The page is **shelves** — you, this project, this machine — biggest first, with the biggest
 one open and the rest rolled up. Type to filter what is already on the page, **every letter
@@ -621,7 +621,7 @@ different thing — its head row stays, with the arrows that page it back.
 
 ## search — finding anything said or run
 
-Everything that has been said on this machine. `alt+8` opens it — it is not on the tab
+Everything that has been said on this machine. `alt+8` opens it, it is not on the tab
 bar — and typing searches: the
 matches come back with the conversation they were said in, how long ago, and the project it
 belongs to, with your own words picked out in the line.
@@ -703,7 +703,7 @@ count is a sign and not a button** — pressing it does nothing, because it stan
 places at once and no single one of them is the answer.
 
 **The key that reaches them is `tab`**, and it is named on the foot of every place —
-`… · tab next place` — which is the last clause a narrow foot gives up. `alt+1`…`alt+8`
+`… · tab next place`, which is the last clause a narrow foot gives up. `alt+1`…`alt+8`
 still go straight to a place whether or not its word is on the row, and the numbers never
 move: the five on the bar are `alt+1`…`alt+5`, then standing, memory and search are
 `alt+6`…`alt+8`, whatever happens to be drawn.

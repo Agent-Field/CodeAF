@@ -85,7 +85,7 @@ they are gone; nothing else keeps a second copy.
 
 ## How do I see what codeaf remembers about me?
 
-Open `/memory` — or `/memories`, or `alt+7` from anywhere (memory is not on the tab bar). **Memory is a
+Open `/memory`, or `/memories`, or `alt+7` from anywhere (memory is not on the tab bar). **Memory is a
 place**, one of seven, taking the whole screen with the tab bar above it and a composer at
 the foot.
 

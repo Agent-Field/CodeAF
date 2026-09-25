@@ -190,8 +190,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/history` | — | — | opens the full-screen sessions place — every task this machine has run, filterable (also ctrl+.) |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/status` | `/info`, `/context` | `--json` | prints the same facts as one JSON object, keys in the same order |
-| `/search` | — | — | opens the search place — everything said on this machine (also `alt+8`) |
-| `/spend` | — | — | opens the spend place — what this machine has cost, by the day (also `alt+4`) |
+| `/search` | none | none | opens the search place, everything said on this machine (also `alt+8`) |
+| `/spend` | none | none | opens the spend place, what this machine has cost, by the day (also `alt+4`) |
 | `/wall` | | | every open conversation at once, as a grid of live tiles, and the teams you group them into (also `alt+v`, or `▦` under the box) |
 | `/cost` | `/usage`, `/tokens` | — | prints what this conversation has spent, and on what |
 | `/budget` | `/limits` | — | what codeaf may spend · every limit on one tab |
