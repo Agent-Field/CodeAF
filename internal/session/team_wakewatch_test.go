@@ -205,6 +205,72 @@ func TestTeamWakeTheManagersWakeCoalescesABurst(t *testing.T) {
 	}
 }
 
+func TestTeamStopEndsAHeadlessMembersCurrentTurn(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	manager := teamAgent(t, fixture, fixture.manager, nil, nil)
+	streaming := make(chan struct{})
+	web := teamAgent(t, fixture, fixture.web, &scriptedCompleter{steps: []step{thinkingStep(streaming)}}, nil)
+	events := mustSubmit(t, web, "work on the header")
+	select {
+	case <-streaming:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the member did not start")
+	}
+	said, failed := callTool(t, manager.teamStopTool, `{"handle":"web"}`)
+	if want := "Asked to stop @web's current turn. It ends the way the person's Stop does, whether a window has it open or codeaf opened it in the background: nothing is deleted, and its background tasks and jobs keep running."; failed || said != want {
+		t.Fatalf("team_stop answered %q (failed %v), want %q", said, failed, want)
+	}
+	collected := collect(t, events)
+	if last := collected[len(collected)-1]; last.Kind != EventTurnDone {
+		t.Fatalf("the member did not end after the manager's stop: %v", kinds(collected))
+	}
+	if note, ok := firstOfKind(collected, EventNotice); !ok || note.Text != "the manager stopped this turn" {
+		t.Fatalf("the stopped turn said %+v (present %v)", note, ok)
+	}
+	if got := stopSentence(StopByManager, ""); got != "the manager stopped this turn" {
+		t.Fatalf("the manager stop sentence is %q", got)
+	}
+	if err := web.Close(); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, row := range journaledErrors(t, fixture.web) {
+		found = found || strings.Contains(row.Message, string(StopByManager))
+	}
+	if !found {
+		t.Fatal("the stopped turn's journal did not name the manager's door")
+	}
+}
+
+func TestTeamStopIgnoresOldOtherAndSharedStops(t *testing.T) {
+	fastTeamWake(t)
+	fixture, sharedTeam, _ := linkedFixture(t)
+	started := make(chan struct{})
+	web := teamAgent(t, fixture, fixture.web, &scriptedCompleter{steps: []step{thinkingStep(started)}}, nil)
+	// An old stop is history before this turn begins.
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindStop, From: teams.FromManager, To: "web", Member: convKeyOf(t, fixture.web)})
+	events := mustSubmit(t, web, "keep working")
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the member did not start")
+	}
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindStop, From: teams.FromManager, To: "parser", Member: convKeyOf(t, fixture.parser)})
+	if err := teams.AppendTraffic(fixture.profile, sharedTeam, teams.Entry{Kind: teams.KindStop, From: teams.FromManager, To: "web", Member: convKeyOf(t, fixture.web)}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(10 * teamWatchEvery)
+	web.mu.Lock()
+	running := web.running
+	web.mu.Unlock()
+	if !running {
+		t.Fatal("an old, other-member, or shared stop ended this turn")
+	}
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindStop, From: teams.FromManager, To: "web", Member: convKeyOf(t, fixture.web)})
+	collect(t, events)
+}
+
 // A MEMBER'S EVENTS THAT ASK NOTHING WAKE NOBODY: a stop, a question coming
 // down, and the wake lines themselves.
 func TestTeamWakeTheManagerSleepsThroughLinesThatAskNothing(t *testing.T) {

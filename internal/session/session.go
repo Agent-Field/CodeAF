@@ -2745,6 +2745,10 @@ type Agent struct {
 	// the transcript, so without this bit a digest can only repeat the cut-off
 	// prose and falsely make the node look complete.
 	lastTurnTruncated bool
+	// teamTurnAt and teamTurnSerial identify the current turn for a manager's
+	// stop, so a late watch read cannot stop a later turn.
+	teamTurnAt     time.Time
+	teamTurnSerial uint64
 	// memoryText is the <memory> block message[0] currently carries: what the
 	// router asked for at the start of this turn, or the block a task node was
 	// opened with (memory.go). It is under mu because it is rendered into the

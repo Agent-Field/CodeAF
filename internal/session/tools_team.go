@@ -26,7 +26,8 @@ package session
 //
 // THE CHANNEL IS THE TRAFFIC LOG AND NOTHING ELSE. Every write here is one
 // [teams.AppendTraffic]: a message is a note or a directive, a stop is a
-// [teams.KindStop] entry the interface performs as the person's own Stop, and a
+// [teams.KindStop] entry the member's engine watches while its turn runs, and
+// a window holding it may also perform as the person's own Stop; a
 // start is a [teams.KindStart] entry the interface performs by opening the new
 // conversation, and the new conversation reads its brief off that same entry
 // (teamevent.go's [teamBriefLine]), marked as the manager's and never the person's. None of these verbs reaches into another
@@ -620,7 +621,7 @@ func (a *Agent) teamStopTool(ctx context.Context, args json.RawMessage) (string,
 	if err := teams.AppendTraffic(a.config.teamProfile(), team.ID, entry); err != nil {
 		return "The stop could not be written to the team's traffic: " + err.Error(), true, nil
 	}
-	return fmt.Sprintf("Asked to stop @%s's current turn. A window that has it open ends the turn the way the person's Stop does. A member codeaf opened in the background, with no window on it, is not stopped: its turn runs to its end.", member.Handle), false, nil
+	return fmt.Sprintf("Asked to stop @%s's current turn. It ends the way the person's Stop does, whether a window has it open or codeaf opened it in the background: nothing is deleted, and its background tasks and jobs keep running.", member.Handle), false, nil
 }
 
 // ── team_start ──────────────────────────────────────────────────────────────

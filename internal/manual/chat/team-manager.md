@@ -159,8 +159,8 @@ message. With auto-wake off the conversation is still opened behind the one you 
 no turn is started; the traffic says `opened @lexer; this team's auto-wake is off, so no turn
 was started. It reads the brief when it next runs.`, and the brief arrives on that next turn
 the same way. When the manager stops a member,
-this window stops it the way your own Stop would. Both happen only in a window that has those
-conversations open.
+its current turn ends the way your own Stop would, including when codeaf opened it in the
+background without a window. Starting a new member still needs a window holding the manager.
 
 ## Who a Traffic row is from and who it is to
 
@@ -221,7 +221,7 @@ on one waits for you.
 | `team_status` | every member's handle, title and state (running, asking, idle, failed), the question waiting, the files touched, and recent traffic | no |
 | `team_read` | the end of one member's conversation, bounded; the member is not told | no |
 | `team_send` | a message to one member, to several (one message, every handle in `to`), or to everyone, as a note (information, which waits) or a directive (an instruction, which starts an idle member) | no |
-| `team_stop` | ends one member's current turn, the way your own Stop does: nothing is deleted, and its background tasks and jobs keep running. It is carried out by a window that has the member open; a member codeaf opened in the background, with no window on it, is not stopped and its turn runs to its end | no |
+| `team_stop` | ends one member's current turn, the way your own Stop does, whether a window has it open or codeaf opened it in the background: nothing is deleted, and its background tasks and jobs keep running | no |
 | `team_start` | a new member conversation with a handle and a brief; it opens in the team's folder and is handed the brief, marked as the manager's, on its first request. With kind `team` it starts a sub-team instead (see **Sub-teams**) | yes |
 | `team_decide` | answers a decision packet waiting on the manager, most often a member's question: an option, or its own words | no |
 | `team_escalate` | sends a packet waiting on the manager up, to its own manager or to you, with the reason it is not the manager's to decide | no |

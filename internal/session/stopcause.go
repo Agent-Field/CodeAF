@@ -41,6 +41,10 @@ type StopDoor string
 const (
 	// StopByPerson is the stop key and nothing else: the person asked.
 	StopByPerson StopDoor = "person stopped"
+	// StopByManager is a team manager's team_stop reaching this member's own
+	// session (team_wakewatch.go): the person's Stop in every respect but who
+	// asked, so the member's conversation says the manager did it.
+	StopByManager StopDoor = "stopped by its manager"
 	// StopByTakeover is another window taking this conversation over
 	// (takeover.go). The turn dies where it stands, mid-reply or not.
 	StopByTakeover StopDoor = "taken over"
@@ -155,6 +159,8 @@ func stopSentence(door StopDoor, name string) string {
 	switch door {
 	case StopByPerson:
 		return ""
+	case StopByManager:
+		return "the manager stopped this turn"
 	case StopByTakeover:
 		return "this conversation was opened in another window, so the reply stopped here — ask again to pick it up"
 	case StopByLeaving:
