@@ -515,6 +515,10 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		RefreshModels:           proc.Shelf.refresh,
 		ModelsForService:        proc.Shelf.modelsForService,
 		RefreshModelsForService: proc.Shelf.refreshService,
+		RefreshAllModels:        proc.refreshAllModels,
+		WarmEmptyProviders:      proc.warmEmptyProviders,
+		OnServiceModels:         proc.onServiceModelsLanded,
+		ProviderFetchError:      proc.Shelf.fetchErrorFor,
 		Sources:                 settings.Sources,
 		// The same deliverables index the session's config carries, so the
 		// surface's /export rows and the session's own land in one file.

@@ -69,6 +69,10 @@ type v3Process struct {
 	// session readers that answer about a model somebody may have just picked
 	// out of that list — can it see, may a task be handed to it — read here.
 	Shelf *v3ModelShelf
+	// serviceNotices are the surfaces to tell when a provider's listing lands.
+	// Appended by each launch that opens the surface, never read on the draw
+	// path.
+	serviceNotices []func(string, string)
 	// Harnesses is the registry under the state root. The law is already written
 	// at [openV3Launch]: two stores at one directory is how /harness and the
 	// offer card come to name different harnesses.
@@ -388,6 +392,94 @@ func (p *v3Process) setModelSources(sources modelsource.Set) {
 	for _, agent := range p.agents {
 		agent.SetSources(sources)
 	}
+}
+
+// refreshAllModels is [tui3.Options.RefreshAllModels]: ctrl+r in /model walks
+// the router's catalog AND every connected provider's listing (issue #1508).
+// One provider's refusal never stops the walk: each fetch is its own call and
+// its own error, and the group that could not list names its own reason
+// ([v3ModelShelf.fetchErrors]). Runs as a command off the event loop.
+func (p *v3Process) refreshAllModels(ctx context.Context) {
+	if p == nil || p.Shelf == nil {
+		return
+	}
+	if _, _, err := p.Shelf.refresh(ctx); err != nil {
+		// The default provider's own refusal is recorded on the shelf like any
+		// other: nothing here writes to a terminal that is not ours to write.
+		p.Shelf.fetchError(modelsource.DefaultID, err)
+	} else {
+		p.Shelf.fetchError(modelsource.DefaultID, nil)
+	}
+	for _, fetch := range p.Shelf.warmAll(ctx, false) {
+		if fetch.err == nil {
+			p.noteServiceModels(fetch.service)
+		}
+	}
+}
+
+// warmEmptyProviders is [tui3.Options.WarmEmptyProviders]: the launch half of
+// issue #1508. Every connected provider that lists models and whose cache file
+// is missing or empty is fetched once, off the loop, through the connect path's
+// own door. It is called after setSources has filled what the caches could,
+// so a warm provider costs nothing and a cold one fills its group without a
+// reopen.
+func (p *v3Process) warmEmptyProviders(ctx context.Context) {
+	if p == nil || p.Shelf == nil {
+		return
+	}
+	for _, fetch := range p.Shelf.warmAll(ctx, true) {
+		if fetch.err == nil {
+			p.noteServiceModels(fetch.service)
+		}
+	}
+}
+
+// onServiceModelsLanded is the closure a launch hands its surface as
+// [tui3.Options.OnServiceModels]: the process fans the news out and nothing
+// here needs the surface's own app. The fan-out registers nothing per launch —
+// [v3Process.noteServiceModels] walks the doors the process retained — so a
+// second window in this process hears its own provider news the same way.
+func (p *v3Process) onServiceModelsLanded(source, address string) {
+	p.noteServiceModelsTo(source, address)
+}
+
+// registerServiceNotice adds one surface's door to the fan-out. The launch
+// calls it with the closure its surface answered [tui3.Options.OnServiceModels]
+// with, so a fetch that lands in THIS process — a launch warm or a ctrl+r walk
+// in another window's conversation — reaches every open picker without a
+// reopen. A closed surface takes itself off the list.
+func (p *v3Process) registerServiceNotice(tell func(source, address string)) func() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.serviceNotices = append(p.serviceNotices, tell)
+	at := len(p.serviceNotices) - 1
+	return func() {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		p.serviceNotices[at] = nil
+	}
+}
+
+// noteServiceModelsTo is one surface's slice of the news: the drop of its memo
+// and the restock of its open picker happen on ITS loop, through the callback
+// the surface itself supplied — which is the only side allowed to touch the
+// app's memos.
+func (p *v3Process) noteServiceModelsTo(source, address string) {
+	p.mu.Lock()
+	notify := append([]func(string, string){nil}, p.serviceNotices...)
+	p.mu.Unlock()
+	for _, tell := range notify {
+		if tell != nil {
+			tell(source, address)
+		}
+	}
+}
+
+// noteServiceModels tells every live surface one provider's listing changed,
+// so its memo is dropped and an open picker restocks. The process holds the
+// launch doors; each registers itself here when it opens the surface.
+func (p *v3Process) noteServiceModels(service modelsource.Connected) {
+	p.noteServiceModelsTo(service.Source.ID, service.Address)
 }
 
 // refreshModelSources re-reads this process's own profile and makes that

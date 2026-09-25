@@ -823,6 +823,27 @@ type Options struct {
 	// shelf. The connect command runs it off the event loop, just as ctrl+r runs
 	// RefreshModels, so opening /model never waits on the network.
 	RefreshModelsForService func(context.Context, modelsource.Connected, []Model) ([]Model, error)
+	// RefreshAllModels refreshes the default catalog AND every connected
+	// provider's listing, on the same ctrl+r chord (issue #1508). One provider's
+	// failure must not stop the others: the door walks them all and reports
+	// nothing here — the groups say their own reasons. The door owns the
+	// per-provider memo drops and the open picker's restock through
+	// OnServiceModels; when this is set it REPLACES the single-catalog meaning
+	// of the chord and the surface offers the key unconditionally as before.
+	RefreshAllModels func(ctx context.Context)
+	// WarmEmptyProviders fetches, off the loop, every connected provider whose
+	// cache is missing or empty. The door calls it once at launch (issue
+	// #1508's first acceptance); groups fill as each fetch lands, without a
+	// reopen. Nil keeps the old launch: cache only, nothing fetched.
+	WarmEmptyProviders func(ctx context.Context)
+	// OnServiceModels tells the surface one provider's listing changed — a warm
+	// or a ctrl+r fetch stocked that provider's compartment. The surface drops
+	// its memo for the pair and restocks an open picker. Nil is a door that
+	// never lands anything.
+	OnServiceModels func(source, address string)
+	// ProviderFetchError reports the error from the most recent fetch attempt
+	// for a connected provider, if any, for rendering status lines in /model.
+	ProviderFetchError func(id string) string
 
 	// ProfileDir is the profile the settings panel reads and writes — the same
 	// directory internal/config resolves every other row out of. Empty is the
@@ -1344,6 +1365,23 @@ func Run(ctx context.Context, opts Options) error {
 		program = append(program, tea.WithWindowSize(opts.Width, opts.Height))
 	}
 	surface := newApp(ctx, opts)
+	// A FETCH THAT LANDS OFF THE LOOP STILL HAS TO BE READ ON IT: the door's
+	// [Options.OnServiceModels] is called from a goroutine, so it is wrapped to
+	// SEND a message to this program rather than touch the app directly. The
+	// wrapper is what the process's fan-out sees.
+	if opts.OnServiceModels != nil {
+		// THE DOORBELL, NOT THE SEND: nothing in this surface may call
+		// Program.Send (doorbell_test.go's law). The callback arrives on a
+		// goroutine, so it writes one pair into the desk the loop reads
+		// (serviceLands) and rings the surface's own door; the Update that
+		// takes the ring reads the desk ON the loop.
+		surface.serviceLands = &serviceLands{pairs: map[[2]string]bool{}}
+		surface.landedBell = newDoorbell(serviceModelsLandedMsg{})
+		opts.OnServiceModels = func(source, address string) {
+			surface.serviceLands.put(source, address)
+			surface.landedBell.ring()
+		}
+	}
 	p := tea.NewProgram(surface, program...)
 	// AND THE ENGINE IS GIVEN SOMEWHERE TO PUT ITS NEWS, and the loop a door to
 	// be rung through that never waits for it ([listenForNews], doorbell.go). They

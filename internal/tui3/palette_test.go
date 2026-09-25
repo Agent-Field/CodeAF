@@ -26,6 +26,11 @@ func pickerApp(t *testing.T, agent *fakeAgent, models []Model) *app {
 func pickerIDs(a *app) []string {
 	out := make([]string, 0, len(a.pick.hits))
 	for _, at := range a.pick.hits {
+		// THE DOOR IS NOT A MODEL: the add-provider row rides the list's end
+		// and is chosen, not compared — these helpers read the models.
+		if a.pick.all[at].AddProvider {
+			continue
+		}
 		out = append(out, a.pick.all[at].ID)
 	}
 	return out
@@ -214,7 +219,10 @@ func TestThePickerIsBottomAnchoredAndMarksTheCurrentModel(t *testing.T) {
 	// it — that is what "bottom-anchored" means here, and it is where the caret
 	// has to be. The only thing below it is the status line, which is the last
 	// row of every frame as of the status-down wave (view.go).
-	tail := lines[len(lines)-1-len(pickerCatalog) : len(lines)-1]
+	// THE DOOR IS A ROW OF THE LIST ([app.modelPickerList]), so the drawn list
+	// carries one row more than the catalog: the window is read one row further
+	// up, and the door is the row the loop below does not walk.
+	tail := lines[len(lines)-2-len(pickerCatalog) : len(lines)-1]
 	// THE ROWS ARE IN THE LIST'S OWN ORDER, which is its first column — the name,
 	// ascending — because every table on this surface opens sorted (pickersort.go).
 	// This test is about WHERE the list sits and not what order it is in, so it
@@ -226,7 +234,9 @@ func TestThePickerIsBottomAnchoredAndMarksTheCurrentModel(t *testing.T) {
 	}
 	// The foot keeps no blank under the box (view.go's [app.footClearance]), so
 	// the filter box is the row directly above the list.
-	box := lines[len(lines)-len(pickerCatalog)-2]
+	// THE DOOR IS A ROW OF THE LIST TOO ([app.modelPickerList]), so the box is
+	// one row further up than the catalog alone would put it.
+	box := lines[len(lines)-len(pickerCatalog)-3]
 	if !strings.Contains(box, rowAll(pickerHintFieldsBare)) {
 		t.Fatalf("the filter box is %q, want the hint", box)
 	}
@@ -234,7 +244,7 @@ func TestThePickerIsBottomAnchoredAndMarksTheCurrentModel(t *testing.T) {
 	// chip costs the text ([draftBlockTacked]): the chip is not editable, so the
 	// first character a person types goes to its right.
 	wantX := len(inputPad) + 2 + ansi.StringWidth(slashPickerTack) + 1
-	if caretY != a.height-2-len(pickerCatalog) || caretX != wantX {
+	if caretY != a.height-2-len(pickerCatalog)-1 || caretX != wantX {
 		t.Fatalf("the caret is at %d,%d — it belongs in the filter box after the tack (x=%d)",
 			caretX, caretY, wantX)
 	}

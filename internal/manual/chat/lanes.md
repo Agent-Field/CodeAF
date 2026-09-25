@@ -1,13 +1,13 @@
-# Providers — which provider answers your model, and the question a slow one asks
+# Hosts — which host answers your model, and the question a slow one asks
 
-**The word is provider.** Earlier builds called the same thing a *lane*, and the
+**The word is host.** Earlier builds called the same thing a *lane*, and the
 settings row, the picker's hints and this page all said so; `lane` still spells the
 setting on disk (`lane.talk`) and the file of learned speeds (`lanes.json`), but
 nothing you read says it any more. If you are looking for lanes, or for the machine
 or endpoint behind a model, this page is the one.
 
-A model name is an address, not a provider. Behind one name there are usually a
-dozen **providers** — different companies running the same model — and they are not
+A model name is an address, not a host. Behind one name there are usually a
+dozen **hosts** — different companies running the same model — and they are not
 alike: on a measured day in August, seventeen of them serving one model differed by
 **7×** on how long they took to say their first word and by **12×** on how fast they
 wrote, at roughly the same price. Which one answers you is often a bigger
@@ -34,26 +34,26 @@ terminal a leading `~` means your home folder, and codeaf still reads it that wa
 is followed by a slash — `~/` is a path, `~deepseek/…` is a model.
 
 What that costs is the next section: a floating name and the build it points at are two
-different names, and only one of them has providers behind it.
+different names, and only one of them has hosts behind it.
 
 ## A model name that ends in latest — what the pointer names, and what via says instead
 
 `…-latest` is the other half of the same row. Two things about it are worth knowing,
 because neither is guessable.
 
-**A pointer is not a provider, so what is learned is filed under what it points at.**
+**A pointer is not a host, so what is learned is filed under what it points at.**
 `…-latest` names whichever dated build the model's makers published most recently — today
 `deepseek/deepseek-v4-flash-0731` — and it is that dated build the router publishes
-providers for. So the providers codeaf asks about, the speeds it writes down, and the row it
+hosts for. So the hosts codeaf asks about, the speeds it writes down, and the row it
 keeps in `~/.codeaf/v3/lanes.json` are all filed under the dated name, never under the
 pointer.
 
 That name is not something the screen says back to you, which is why it surprises people
 who go looking. The picker and the status line show the name **you** chose, and `via
-cloudflare` names the provider that answered rather than the model it answered for.
+cloudflare` names the host that answered rather than the model it answered for.
 
 **When the pointer moves, nothing is carried across.** The newer build is a different
-model with its own providers and its own speeds, so it starts its own record from the sheet
+model with its own hosts and its own speeds, so it starts its own record from the sheet
 the router publishes for it, and the older build's record stays where it is instead of
 being spent on a model nobody has measured. That is the same rule as everywhere else here:
 a measured thing is about the thing that was measured.
@@ -61,29 +61,29 @@ a measured thing is about the thing that was measured.
 ## Auto, and who is actually choosing (this used to be called the lane) — the router first, and when codeaf takes over
 
 Left alone, codeaf is on **auto**, and `auto` means the router routes. OpenRouter
-balances the providers behind your model on its own queues and prices, and codeaf
-watches: every answer names the provider that served it, so the speed and the
+balances the hosts behind your model on its own queues and prices, and codeaf
+watches: every answer names the host that served it, so the speed and the
 quality of what the router hands you are learned exactly as if codeaf had asked
-for them. You see the provider in the status line — `via cloudflare · 0.6s · 61 t/s`
+for them. You see the host in the status line — `via cloudflare · 0.6s · 61 t/s`
 — and the picker's `auto` row tells you what codeaf would choose if it were
 choosing.
 
-**Why did it pick that provider on the very first message?** Because on the first
+**Why did it pick that host on the very first message?** Because on the first
 message nobody has chosen anything: no pin, no takeover earned yet, so the pick
-is the router's own — whichever provider its balance landed on. The provider is
+is the router's own — whichever host its balance landed on. The host is
 named in the status line so the choice is never invisible, and from that first
 answer on it is being learned like any other.
 
 **codeaf takes over when the router lets go.** If a model's answers start coming
-back refused (a 429, a provider that cannot serve the shape) or unusable (the
+back refused (a 429, a host that cannot serve the shape) or unusable (the
 thread lost, tool markup, a stream that had to be cut) — twice in a short while —
-codeaf stops lending the router the choice and picks the provider itself, from the
-providers it has been watching all along. Only a refusal the ROUTER earned counts:
-once codeaf is the one choosing a provider — during a takeover, or under your
+codeaf stops lending the router the choice and picks the host itself, from the
+hosts it has been watching all along. Only a refusal the ROUTER earned counts:
+once codeaf is the one choosing a host — during a takeover, or under your
 pin — a refusal of that pick is about the pick, not another strike against
 the router, so a takeover's own demands cannot keep it alive. The conversation
 says so once, in one sentence, and after about half an hour of good answers the
-choice is the router's again. Pinning a provider yourself in `/model` ends it
+choice is the router's again. Pinning a host yourself in `/model` ends it
 there and then: your word outranks either of them.
 
 **`openrouter` is `auto` without the safety.** It is the same router routing, and
@@ -92,116 +92,116 @@ rather have the router's price balance than be rescued from its bad minute.
 
 The rest of this page — the closed set, the refusal walk, the probe — describes
 what happens while codeaf is choosing: during a takeover, and whenever you have
-pinned a provider yourself. All of it is written about `routing` at `latency` or
+pinned a host yourself. All of it is written about `routing` at `latency` or
 `price`. With the row at `simple` — which is what it ships as — none of it runs:
 no takeover, no ranking, no measuring, because that row sends exactly what you
-asked for and nothing else; *How do I stop codeaf choosing the provider itself* below has it. With
+asked for and nothing else; *How do I stop codeaf choosing the host itself* below has it. With
 the row at `off` the choosing stops too, and the last section says what that
 leaves standing.
 
 **A run started from a terminal is routed on the same terms.** `codeaf do`, `codeaf run`
 and `codeaf plan run` open no conversation and draw no status line, and they used to
-take whatever provider the router happened to hand them. They fetch the same sheet now and
+take whatever host the router happened to hand them. They fetch the same sheet now and
 rank it with the same arithmetic — so a headless machine, one that only ever runs work
-from a terminal, is choosing between providers rather than between none, and every run
+from a terminal, is choosing between hosts rather than between none, and every run
 leaves a record the next one starts from. Nobody is sitting in front of an errand, so it is
 the price ranking above that applies to it. `auto` is the answer only while your home's
-provider row says auto; a pin in that home replaces this ranking at every terminal door.
+host row says auto; a pin in that home replaces this ranking at every terminal door.
 
 **A model it has never sent to is not a model it knows nothing about.** The
-public sheet names every provider serving it, and what codeaf has learned about
+public sheet names every host serving it, and what codeaf has learned about
 a *company* — that this one is quick, that one queues — carries across every
 model that company serves. So the first request to a brand-new model is still
 routed, still has a clock on it, and asks for a fresh sheet in the background
 while it goes. You never wait for that fetch.
 
-## The providers your message may go to are asked for by name — and the router may not go outside them
+## The hosts your message may go to are asked for by name — and the router may not go outside them
 
 When codeaf has measured enough to have an opinion, it does not merely *rank* the
-providers it wants. It **names the set it will accept, and closes it**: the
-router may not serve your message from a provider outside that set.
+hosts it wants. It **names the set it will accept, and closes it**: the
+router may not serve your message from a host outside that set.
 
 The list used to be advice. The router read it, weighed it against its own
 queues and prices, and was free to hand your message to somebody else — and often
-did. Over ten days of this build's own call record, the provider codeaf asked for
-first served 29 requests in every 100; the provider a closed set names served 93.
-Everything codeaf works out before sending — which providers can do the job at all,
+did. Over ten days of this build's own call record, the host codeaf asked for
+first served 29 requests in every 100; the host a closed set names served 93.
+Everything codeaf works out before sending — which hosts can do the job at all,
 which are quick enough for how long this kind of work waits, what each one costs —
 was being spent on a list the router could put aside.
 
 **What it costs, and it is a real cost.** A closed set can run out. If every
-provider in it is busy at once, your message is refused rather than handed to
-whoever happened to be free. What follows is a move, not an ending: the provider
+host in it is busy at once, your message is refused rather than handed to
+whoever happened to be free. What follows is a move, not an ending: the host
 that refused comes off the set and the request goes straight to the next one in
-it, with no wait (`trying another provider · 2 of 3`); and when the last one has
+it, with no wait (`trying another host · 2 of 3`); and when the last one has
 gone, the set comes off the request entirely, so the router has its whole
 roster back for the one send that needs it.
 
-**A set of one is never made this way.** One provider named with nothing to fall
-back on is a pin — it is exactly what pinning a provider yourself sends — so codeaf
-closes a set only when it has at least two providers it is happy with. With one,
-it ranks what it has and leaves the router its usual freedom. Pinning a provider
+**A set of one is never made this way.** One host named with nothing to fall
+back on is a pin — it is exactly what pinning a host yourself sends — so codeaf
+closes a set only when it has at least two hosts it is happy with. With one,
+it ranks what it has and leaves the router its usual freedom. Pinning a host
 still means what it always did, and nothing here narrows a set you asked for.
 
-## The providers one message may go to are decided once — why a retry walks the same set, and why something learned mid-answer waits for your next message
+## The hosts one message may go to are decided once — why a retry walks the same set, and why something learned mid-answer waits for your next message
 
-Before the first byte of a request leaves, codeaf decides which providers that
+Before the first byte of a request leaves, codeaf decides which hosts that
 request may go to: the ranked few it asks for by name, and the ones it asks the
 router to skip. **That decision is made once and it lasts the whole request.**
 
 It matters because one message is often sent more than once without you seeing
-it. A provider answers with a fault, a pool turns out to be full, the shape has to
+it. A host answers with a fault, a pool turns out to be full, the shape has to
 be widened and tried again: each of those is the same request going out afresh.
 What changes between them is only what this request has learned about itself —
-the providers that have already refused *it*, which are left off the next one.
+the hosts that have already refused *it*, which are left off the next one.
 What does not change is the ranking.
 
-So something measured while your message is in flight — the provider list
+So something measured while your message is in flight — the host list
 finishing a refresh a second late, another conversation discovering that a
-provider has got quick — is spent on your **next** message and not this one. That
+host has got quick — is spent on your **next** message and not this one. That
 is deliberate. The line that tells you what is happening (`trying another
-provider · 2 of 3`), the clock that decides when to stop waiting on a provider, and
-the names on the request itself all have to be about one set of providers. A
+host · 2 of 3`), the clock that decides when to stop waiting on a host, and
+the names on the request itself all have to be about one set of hosts. A
 ranking that appeared on the third try would be a set nothing else had heard of,
-and you would be told about a walk through providers that were never asked for.
+and you would be told about a walk through hosts that were never asked for.
 
 If a request starts on a model codeaf has measured nothing about, it has nothing
 to rank and asks for nothing by name — the router chooses — and it stays that way
-for the whole of that request even if the provider list lands halfway through.
+for the whole of that request even if the host list lands halfway through.
 Your next message is routed.
 
-## When the provider list says a machine cannot take tool calls, or is half down — why codeaf tries it anyway
+## When the host list says a machine cannot take tool calls, or is half down — why codeaf tries it anyway
 
-The public sheet carries three claims about each provider that codeaf used to
+The public sheet carries three claims about each host that codeaf used to
 treat as final: whether it honours a tool call, what share of the last five
 minutes it was answering, and whether the router's own operators have marked it
-down. A provider failing any of them was removed from the candidate set outright.
+down. A host failing any of them was removed from the candidate set outright.
 
-**They are opinions now, not doors.** A provider the sheet doubts is **ranked
-last** — behind every provider nothing is doubted about, never asked first while
-something better can serve you — and it is still there when the providers in
+**They are opinions now, not doors.** A host the sheet doubts is **ranked
+last** — behind every host nothing is doubted about, never asked first while
+something better can serve you — and it is still there when the hosts in
 front of it are busy or refuse. About **one request in ten** is sent to it first
-on purpose, because a provider nobody ever asks can never show the sheet was
+on purpose, because a host nobody ever asks can never show the sheet was
 wrong about it.
 
 This changed because the sheet was measurably wrong. On 2026-09-10 a task was
-answered three times in a row, six seconds each, by a provider the sheet flags as
-unable to take tool calls — while the same task sat on a busy provider collecting
+answered three times in a row, six seconds each, by a host the sheet flags as
+unable to take tool calls — while the same task sat on a busy host collecting
 nine refusals, because the one that was working had been removed from every
 request carrying tools.
 
-**What a provider's own answers say beats what the sheet says about it.** Once
-codeaf has seen a provider return usable answers to this kind of work, the sheet's
+**What a host's own answers say beats what the sheet says about it.** Once
+codeaf has seen a host return usable answers to this kind of work, the sheet's
 doubt stops applying to it and it is ranked on its numbers like anything else.
-That belief fades over about an hour if the provider stops answering well, so
+That belief fades over about an hour if the host stops answering well, so
 nothing learned here is learned forever.
 
 One claim is still a closed door, and it is not the sheet's: when the **router
-itself** answers that a provider cannot serve this model, that provider is not a
+itself** answers that a host cannot serve this model, that host is not a
 candidate at any rank. That is an answer to a request codeaf really made, not a
 page published some minutes ago.
 
-## Learning which provider finishes my work faster — why the first message does not go to the most expensive provider
+## Learning which host finishes my work faster — why the first message does not go to the most expensive host
 
 Auto considers both the first words and the generation that must finish before
 the next step can run. Readable prose can arrive while you read. Reasoning and
@@ -211,44 +211,44 @@ Completed calls teach codeaf how much of each kind to expect for that model,
 whether tools are available, and its reasoning setting. Recent evidence counts
 more; stale evidence gives way to the conversation's previous answers. A new
 conversation with no evidence still has no measurement of how long its first
-answer will run. To compare providers, codeaf reads that absence as a typical
-readable answer rather than no answer at all, so a provider that charges ten
+answer will run. To compare hosts, codeaf reads that absence as a typical
+readable answer rather than no answer at all, so a host that charges ten
 times as much to write does not win the first turn on its first word alone. It
 does not keep that comparison as a measurement. The request's output limit
 bounds a learned estimate. Capped, interrupted and unusable replies do not teach
 it that a complete answer is short.
 
 The measurements share the existing local routing history across sessions, with
-a bounded number of remembered request types. Provider names, prices and speeds
-come from the provider information and actual calls; there is no preferred-provider
-list to maintain. A successful provider stays preferred for that conversation's
-cache, while the slow-response monitor watches that provider and can still rescue
+a bounded number of remembered request types. Host names, prices and speeds
+come from the host information and actual calls; there is no preferred-host
+list to maintain. A successful host stays preferred for that conversation's
+cache, while the slow-response monitor watches that host and can still rescue
 a stalled request under the existing spending limits.
 
 Text arriving in a batch earns progress for its approximate token count, so a
-provider that sends whole phrases is not judged as though each phrase were one
+host that sends whole phrases is not judged as though each phrase were one
 token. Tool-only replies also teach the first-token and generation clocks.
 
 When a watched request fails and this call's own budget can pay for another
-provider, that provider is tried before repeating the failed request. Rate
+host, that host is tried before repeating the failed request. Rate
 limits still respect their retry delay. Without an affordable alternative, the
 existing bounded retries and wait reporting remain.
 
-## Pinning one provider yourself (pinning a lane) — how to change the provider for a model, left and right arrows in the model picker, the @ after the model name, and whether codeaf do uses the lane I pinned
+## Pinning one host yourself (pinning a lane) — how to change the host for a model, left and right arrows in the model picker, the @ after the model name, and whether codeaf do uses the lane I pinned
 
-You can name the provider yourself. Open `/model` and press `→` (or `tab`) on the model:
-its providers — the machines serving it — open under it, the cursor **moves into them**,
-onto the provider you pinned or onto `auto` when you have not, and the list scrolls so the
-model and every provider are in view. `enter` pins the provider under the cursor — every request
+You can name the host yourself. Open `/model` and press `→` (or `tab`) on the model:
+its hosts — the machines serving it — open under it, the cursor **moves into them**,
+onto the host you pinned or onto `auto` when you have not, and the list scrolls so the
+model and every host are in view. `enter` pins the host under the cursor — every request
 for that model goes there until you say otherwise — and `←` (or `tab`) walks back out.
-The hint slot says which: `→ providers · alt+s sort · enter switch · ctrl+t effort · esc` on a
+The hint slot says which: `→ hosts · alt+s sort · enter switch · ctrl+t effort · esc` on a
 model, `← back · alt+s sort · enter choose · esc` inside. On the default service, the `openrouter` row means
 "no opinion from me — let the router balance it".
 
 ## What enter on the openrouter row does — it chooses default and opens the list under it
 
 `enter` on the bare `openrouter` row writes the same answer the `default` row **inside** that
-row's own list writes: ask for no provider, let the router balance. It is that answer reached
+row's own list writes: ask for no host, let the router balance. It is that answer reached
 one press earlier, not a fourth option.
 
 **So it opens the list as well as choosing**, and the cursor lands on `default` with the
@@ -262,62 +262,62 @@ this list — `←` or `tab` is the way back out.
 
 ## Going back to auto — unpinning with the same key that pinned, and filtering inside an open fold
 
-**`enter` on the provider you are already pinned to takes the pin off.** It is a toggle on
+**`enter` on the host you are already pinned to takes the pin off.** It is a toggle on
 the one key that put it there, and the hint slot says so while the cursor is on that row:
-`enter unpin · ← back · esc`. The row goes back to `auto`, the `@provider` comes off the
-model's name, and the next request carries no provider at all. The `auto` row at the top of
+`enter unpin · ← back · esc`. The row goes back to `auto`, the `@host` comes off the
+model's name, and the next request carries no host at all. The `auto` row at the top of
 the fold still does the same thing and is still the explicit way to say it — the toggle
-exists because reaching that row meant walking `↑` past every provider in the list, and one
+exists because reaching that row meant walking `↑` past every host in the list, and one
 press too far lands on another model's row, where `enter` switches the model instead.
 
-One case is deliberately not a toggle: after the provider you pinned has refused the model
+One case is deliberately not a toggle: after the host you pinned has refused the model
 (below), nothing is asking for it any more, so `enter` there **pins it again** rather than
 unpinning — which is the "pinning again puts it straight back" the refusal promises.
 
-**Typing in the box while a fold is open filters the providers, not the models.** With
-`morph`'s fold open, typing `mor` narrows it to the providers whose names carry those
+**Typing in the box while a fold is open filters the hosts, not the models.** With
+`morph`'s fold open, typing `mor` narrows it to the hosts whose names carry those
 letters and leaves the fold standing. The matching is the same as for a model id — every
 word you type has to match, prefix first — and a query that matches none of that model's
-providers falls through to filtering the model list as it always has, closing the fold with
+hosts falls through to filtering the model list as it always has, closing the fold with
 it.
 
 **But `@cloudflare` in the picker's box finds nothing.** Until 2026-09-17 typing it there
-kept the models that provider serves and opened the first of them on it; the box searches
+kept the models that host serves and opened the first of them on it; the box searches
 names only now, and no model id carries an `@`, so the list comes back empty. The two doors
-onto a provider are still open and are the ones to use: `→` on a model lists its providers,
+onto a host are still open and are the ones to use: `→` on a model lists its hosts,
 and `/model @cloudflare` from the box pins one outright.
 
-**The provider you are pinned to is written on the model's name** — `deepseek-v4-flash@cloudflare`
+**The host you are pinned to is written on the model's name** — `deepseek-v4-flash@cloudflare`
 on the line above the box and on a phone's status deck — with the same `@` you would
 type in `/model @cloudflare`. `/status` says it on a `lane` line under `model` — that one row
 keeps the old word because it is also the key `/status --json` prints. On `auto`
 and `openrouter` there is no `@`, and none once a pin has been retired. Pressing the
-name opens the picker with the cursor on the pinned provider.
+name opens the picker with the cursor on the pinned host.
 
 A pin is an instruction, so codeaf keeps it. It does not quietly send your work
 somewhere else because it thinks it knows better.
 
 **The pin belongs to your home, not to one conversation.** Every door reads the same
 profile row when it opens: `codeaf do`, `codeaf exec`, `codeaf plan`, `codeaf run` and
-the background pass all honour the provider you picked, just as the chat does. A run from a
-terminal and a task running overnight therefore ask for your pinned provider too.
+the background pass all honour the host you picked, just as the chat does. A run from a
+terminal and a task running overnight therefore ask for your pinned host too.
 
-## A model with no providers measured yet — the model picker says no machine has been measured for this model, and no provider list opens
+## A model with no hosts measured yet — the model picker says no machine has been measured for this model, and no host list opens
 
 **A model nobody has measured still opens**, onto `auto` and `openrouter` — and
 `openrouter` opens too, because the `default` row is always inside it. Where the machines
 would be there is one line:
-`no provider has been measured for this model yet — providers show up after its first answer`.
-Opening it asks for that model's list of providers in the background. With the routing
+`no host has been measured for this model yet — hosts show up after its first answer`.
+Opening it asks for that model's list of hosts in the background. With the routing
 row at `off` nothing opens at all.
 
-## When the provider I pinned cannot serve the model — a machine that will not serve it, the one thing that ends a pin without me
+## When the host I pinned cannot serve the model — a machine that will not serve it, the one thing that ends a pin without me
 
-**There is exactly one thing that ends a pin without you: the provider you named
+**There is exactly one thing that ends a pin without you: the host you named
 saying it will not serve that model at all.** That is not a wait and not a bad
-afternoon — the router answers `No allowed providers are available for the
-selected model. … but your request's provider.only preference permits only:
-coreweave`, which is the wire saying this provider and this model do not go
+afternoon — the router answers `No allowed hosts are available for the
+selected model. … but your request's host.only preference permits only:
+coreweave`, which is the wire saying this host and this model do not go
 together. Asking again buys the same 404, so codeaf stops asking, and says so
 once, in the conversation, at the moment it happens:
 
@@ -327,29 +327,29 @@ coreweave cannot serve this model; routing on auto for this model until you pin 
 
 What that means, exactly:
 
-- **for that model**, every later request in this run goes out with no provider
+- **for that model**, every later request in this run goes out with no host
   demanded at all — routed the way `auto` routes;
 - **the request that collected the refusal is widened and sent again**, once, so
   your answer still arrives. If that is refused too the turn ends, and says so;
 - **the line stays in the conversation.** It is not one of the dim retry notes
   the work chip collapses when an answer lands, so it is still on the screen
   after the turn finishes;
-- **your settings row is not touched.** The `provider` row on the Providers tab still reads
+- **your settings row is not touched.** The `host` row on the Providers tab still reads
   `pinned: coreweave`, exactly as you wrote it. What changes is everything that names the
-  provider **requests are going to**: the `@coreweave` comes off the model's name, the tail
+  host **requests are going to**: the `@coreweave` comes off the model's name, the tail
   on the `your model` row reads `auto (coreweave cannot serve this model)`, and the fold's
   mark moves to `auto`;
-- **every other model still goes to that provider.** The refusal was about one
+- **every other model still goes to that host.** The refusal was about one
   pairing;
 - **pinning again puts it straight back**, on the very next request — and that
-  includes choosing the provider you already had, which is a row that did not
+  includes choosing the host you already had, which is a row that did not
   change and an instruction that did;
 - it lasts until you pin again or you close the window, and a task the
   conversation starts inherits it rather than paying for the refusal again.
 
-The sentence is said **once** per provider and model, for the whole run.
+The sentence is said **once** per host and model, for the whole run.
 
-## When a pinned provider goes quiet — the `switch to auto?` question, and how to say no to it
+## When a pinned host goes quiet — the `switch to auto?` question, and how to say no to it
 
 It still has to do something about a wait, and what it does is **ask you**:
 
@@ -358,14 +358,14 @@ coreweave is slow · switch to auto? (y)
 ```
 
 Press **y** and the answer is fetched from somewhere else, at once, from the
-provider that was already ranked second — no new decision made at the worst
+host that was already ranked second — no new decision made at the worst
 possible moment. The question is asked **once** per answer, and it disappears
 the moment your answer starts arriving, because by then it is moot.
 
-**You are only ever asked about a provider you pinned yourself.** On auto, codeaf
-also asks for providers by name — the closed set above — but that set is its own,
-so a slow provider in it is simply left: the answer is started somewhere else and
-you are told what is happening (`trying another provider`) rather than asked to
+**You are only ever asked about a host you pinned yourself.** On auto, codeaf
+also asks for hosts by name — the closed set above — but that set is its own,
+so a slow host in it is simply left: the answer is started somewhere else and
+you are told what is happening (`trying another host`) rather than asked to
 decide anything. The question is what your own instruction earns.
 
 **`y` is the only key the question takes.** There is nothing to press to say no, because
@@ -377,11 +377,11 @@ is still your own.
 Two things it does not do. It does **not** take the `y` out of a sentence you
 are typing: the key only counts while the box is empty, and while you are
 writing, `y` is a `y`. And it does **not** change your pin. Saying yes rescues
-*this* answer; the next request goes to the provider you pinned, because that is
+*this* answer; the next request goes to the host you pinned, because that is
 what pinning means.
 
 With nobody watching — a task running unattended, a standing order firing
-overnight — there is nobody to ask, so a pinned provider that has gone quiet
+overnight — there is nobody to ask, so a pinned host that has gone quiet
 past the patience for that kind of work borrows another one for that answer and
 says so in the log. An instruction whose author cannot be reached is honoured by
 getting them their answer.
@@ -396,7 +396,7 @@ thought codeaf has timed for it, at the effort it was asked at, and from nothing
 else.
 
 So a thought that has gone quiet far beyond that model's usual thinking is
-treated as a stall and rescued the same way a slow provider is: a second request
+treated as a stall and rescued the same way a slow host is: a second request
 goes out and the status line shows `slow · trying …`. A deep thought that is
 still arriving is left alone for all the patience it needs, because leaving one
 costs a whole fresh thought and buys you nothing.
@@ -408,14 +408,14 @@ just picked.
 
 **The ceiling on silence is a ceiling on a still wire.** A model writing
 reasoning is writing, so the clock the ceiling runs on is the time since the
-provider last sent anything at all — readable or not. A thought that has been
+host last sent anything at all — readable or not. A thought that has been
 arriving steadily for two minutes has never been silent for one second of it,
 and nothing acts on it. The moment the deltas stop, the ceiling starts from
 there and fires exactly where it always did.
 
 Keepalives buy nothing. A router that holds the connection open by saying
 nothing in a well-formed way is proof about the path and about nothing else, so
-a provider that has stopped writing reaches the ceiling however politely it keeps
+a host that has stopped writing reaches the ceiling however politely it keeps
 the line open.
 
 Before 2026-09-09 that clock ran from the last word you could READ, which is
@@ -437,8 +437,8 @@ counting up under it.
 
 **The second is action, and it is ten seconds.** Ten seconds of nothing arriving
 is when codeaf stops waiting and does something about it: a second request to
-another provider, and the line changes to `switching`. That is a ceiling, not a
-target — a provider codeaf has timed is acted on at its own measured pace, which
+another host, and the line changes to `switching`. That is a ceiling, not a
+target — a host codeaf has timed is acted on at its own measured pace, which
 for a fast one is a second or two.
 
 Ten seconds is measured, not chosen. Across ten days of real calls the first
@@ -455,16 +455,16 @@ and a second request costs money. They are never silent either — the same
 sentence is on their row.
 
 **Ten seconds always does something, even when a second request is too
-expensive.** A second request to another provider costs real money, so every
+expensive.** A second request to another host costs real money, so every
 rescue is priced before it goes out — against what THIS call may spend, which is
 how long it is allowed to keep trying converted into money at what a second of
 your waiting is worth. A rescue costing a couple of cents against a minute and a
 half of your time is afforded; one costing more than the whole wait is worth is
-not. When a rescue is refused and the provider has sent nothing at all, not one
+not. When a rescue is refused and the host has sent nothing at all, not one
 byte, codeaf stops that attempt instead and asks somewhere else. Before
-2026-09-10 it did neither: four tasks that evening sat on one provider for six and
+2026-09-10 it did neither: four tasks that evening sat on one host for six and
 seven minutes after the ten seconds were up, because the only way to act was the
-one codeaf could not afford. If the provider IS sending something — the router is
+one codeaf could not afford. If the host IS sending something — the router is
 talking, or the model is writing where you cannot see it — nothing is stopped,
 because nine such calls in ten turn out to be seconds from an answer.
 
@@ -473,7 +473,7 @@ in any twenty requests, and at most a tenth of the last hour's bill, shared by
 everything running in codeaf at once. That is gone, and it is gone because it
 answered the wrong question — a count spread over twenty requests cannot tell the
 one that needs rescuing from the nineteen that do not, so it refused whichever
-asked last. On 2026-09-11 that is exactly what happened: a provider wrote 604
+asked last. On 2026-09-11 that is exactly what happened: a host wrote 604
 words in 86 seconds with somebody watching, the rescue was called for, and the
 quota said no on behalf of requests that had already finished. What bounds a
 rescue now is this call's own budget and how many requests one question may have
@@ -483,12 +483,12 @@ running at once, which is four.
 at all, and tells you so in one line. It is the point where every model in the
 chain has had one fair try with a move between them: of the calls that recovered
 in ten days of logs, two thirds had landed by then, and the ones that took
-longer were spending the time asking the same provider again — which codeaf no
+longer were spending the time asking the same host again — which codeaf no
 longer does.
 
 **And that one number is the whole of how long a failed call goes on trying.**
 There is no separate allowance for how many times to ask, how long to wait out a
-busy provider, how many providers to walk, or how many things to take off the
+busy host, how many hosts to walk, or how many things to take off the
 request — each of those was its own number until 2026-09-11, and together they
 came to a total nobody could have told you. Now there is a clock, it scales with
 who the work is for, and it is the same clock for every kind of failure:
@@ -500,8 +500,8 @@ who the work is for, and it is the same clock for every kind of failure:
 | a standing order, a check, a design pass | 9 minutes |
 | the one-token measurement behind the model list | 45 seconds |
 
-While it is trying, the status row counts the providers rather than the tries:
-`2 of 5` means the second of five providers that can serve this model, and when
+While it is trying, the status row counts the hosts rather than the tries:
+`2 of 5` means the second of five hosts that can serve this model, and when
 codeaf cannot tell how many there are it shows no number instead of a made-up
 one.
 
@@ -522,9 +522,9 @@ response.attempts: 3      # every give-up above, three times as long
 said how many times one request would be repeated — so asking for more patience
 bought more identical requests inside the same deadline, which ended the call
 anyway. The intent behind the setting was always "try harder before you tell me
-you could not", and trying harder is time: more providers walked, more shapes of
+you could not", and trying harder is time: more hosts walked, more shapes of
 the request tried, longer waited out of a busy pool. **What it will never buy is
-the same bytes sent to the same provider again.** If you had written a number into
+the same bytes sent to the same host again.** If you had written a number into
 this row when it meant sends, it now means that many times the patience — a `3`
 you set to get three tries is three times ninety seconds.
 
@@ -536,7 +536,7 @@ ceiling it was allowed.
 
 **Nothing waits behind a busy moment in silence.** When every request codeaf is
 allowed to have in the air at once is already in the air — which happens when
-several windows and a task are working at the same time, or a provider has been
+several windows and a task are working at the same time, or a host has been
 pacing the account — the next call queues. It says `connecting` while it does,
 with no countdown, because nothing in codeaf knows which of the calls ahead of it
 will finish first, and a countdown to a moment nobody can name is worse than
@@ -551,11 +551,11 @@ longest was twelve minutes.
 ## Why is it writing one word at a time — it never stopped, it just crawled
 
 A stream does not have to stop completely to need rescuing. Once codeaf has
-measured how quickly a provider normally puts visible words on the page, it watches
+measured how quickly a host normally puts visible words on the page, it watches
 the gaps between those words together. A long run at a small fraction of that
 usual rate stops counting as progress toward the patience limit. If the crawl
 continues for that kind of work's full ceiling, codeaf acts just as it does on a
-stream that went silent: it tries another provider, asks before leaving a pin, or
+stream that went silent: it tries another host, asks before leaving a pin, or
 says the wait is real when there is nowhere to go.
 
 One slow gap is still only one slow gap. The judgment comes from the run of
@@ -565,84 +565,84 @@ per-token rate, so ordinary batching does not look like a crawl.
 Hidden thinking does not count as a visible word, so a model that interleaves
 long thoughts between single words can still be rescued this way — but only
 once its MEASURED visible rate has collapsed. A pause between words is not
-enough on its own, however long, as long as the provider is still writing
+enough on its own, however long, as long as the host is still writing
 something.
 
-If codeaf has never measured a visible rate for that provider, it invents none and
+If codeaf has never measured a visible rate for that host, it invents none and
 cannot judge a crawl this way. Only a period with no visible progress long
 enough to reach the ordinary ceiling can then trigger action.
 
-## Why a fast provider was skipped, or a cheap one never used — how long the work has to wait decides which providers it may go to
+## Why a fast host was skipped, or a cheap one never used — how long the work has to wait decides which hosts it may go to
 
 Every kind of call this build makes says how long it is willing to wait before
 something is done about a silence: ten seconds for a chat turn, for a step of a
 task you are watching, and for the quick lookups behind a keypress; thirty for
 work running in the background; a minute for a standing pass; five seconds for
-the one-token checks codeaf makes of a provider itself. That number is not only a
-stopwatch. It is also what decides which providers the
+the one-token checks codeaf makes of a host itself. That number is not only a
+stopwatch. It is also what decides which hosts the
 request is allowed to go to at all.
 
-Before sending, codeaf works out for every provider serving the model how long
+Before sending, codeaf works out for every host serving the model how long
 it expects the WHOLE answer to take there — how long until the first word, plus
-how long the rest takes at the speed that provider writes, plus the fact that a
-provider which refuses four requests in five is really being asked five times.
-Providers are ranked by that number, and any provider whose number is longer than
+how long the rest takes at the speed that host writes, plus the fact that a
+host which refuses four requests in five is really being asked five times.
+Hosts are ranked by that number, and any host whose number is longer than
 the wait this kind of call is willing to sit through is **left off the request
 altogether**, by name, so the router cannot fall back onto it.
 
-There is no separate rule and no threshold anybody picked. A provider is refused
+There is no separate rule and no threshold anybody picked. A host is refused
 exactly when the answer is expected to take longer than this work waits. Two
 things follow from that, and both are deliberate:
 
-- **The same provider is refused for one kind of call and used for another.** A
-  provider that takes twenty seconds is out of the question for something in
+- **The same host is refused for one kind of call and used for another.** A
+  host that takes twenty seconds is out of the question for something in
   front of your typing and perfectly fine for a standing pass.
-- **Nothing is ever refused when there is nothing better.** If every provider
+- **Nothing is ever refused when there is nothing better.** If every host
   serving a model is beyond the limit, none of them is refused — the request
   goes to the best of them rather than nowhere.
 
-The speed that counts is the whole answer and not just the first word. A provider
+The speed that counts is the whole answer and not just the first word. A host
 can say its first word promptly and then write at two tokens a second, which is
 a healthy start and a four-minute answer; that is what the 2026-09-11 reading of
 a task step stuck for three and a half minutes turned out to be.
 
-## A provider that is usually fast and sometimes takes a minute
+## A host that is usually fast and sometimes takes a minute
 
-For the answers you READ as they arrive, codeaf does not rank providers by their
+For the answers you READ as they arrive, codeaf does not rank hosts by their
 typical speed. It ranks them by how long an unlucky request takes.
 
-A provider that starts in three seconds nine times out of ten and in a minute the
-tenth is not a three-second provider to whoever drew the tenth, and a typical
+A host that starts in three seconds nine times out of ten and in a minute the
+tenth is not a three-second host to whoever drew the tenth, and a typical
 figure cannot tell it apart from one that takes three seconds every time. So for
-anything you watch, each provider is judged at roughly its own worst-in-ten, using
+anything you watch, each host is judged at roughly its own worst-in-ten, using
 how much its answers have actually been seen to vary rather than an assumed
-figure. A provider that is genuinely steady is barely moved by this and loses
-nothing; an erratic one falls behind a slightly slower provider that is reliable.
+figure. A host that is genuinely steady is barely moved by this and loses
+nothing; an erratic one falls behind a slightly slower host that is reliable.
 
 For work nobody reads as it arrives, the typical figure is used instead — those
 calls are many and small and what matters is their total.
 
-## When a provider suddenly gets slower than it has ever been
+## When a host suddenly gets slower than it has ever been
 
-Beliefs about a provider are built from many answers, which normally makes them
+Beliefs about a host are built from many answers, which normally makes them
 steady and occasionally makes them stubborn: one bad answer against fifty good
 ones barely moves anything. So codeaf also watches for a **step change** — a
-run of answers that is not bad luck but a different provider than the one it was
+run of answers that is not bad luck but a different host than the one it was
 measuring. When it sees one, the old evidence is thrown away rather than
 averaged, and the next choice is made on what is happening now.
 
-Before this, a provider whose writing speed collapsed about ninefold was still
+Before this, a host whose writing speed collapsed about ninefold was still
 being chosen five steps later, over half an hour, because each slow answer
 arrived as one reading against a belief far too settled to move.
 
-## When every provider is slow — `all providers slow`, which older builds spelled `all lanes slow`
+## When every host is slow — `all hosts slow`, which older builds spelled `all lanes slow`
 
 Sometimes there is nowhere better to go — everything serving that model is
 believed slow at once, which happens when a whole region is having a bad
 afternoon. Switching would buy nothing, so codeaf says the true thing instead:
 
 ```
-all providers slow · still waiting · 12s
+all hosts slow · still waiting · 12s
 ```
 
 That line means the wait is real, it is not a stall this build can end, and
@@ -658,7 +658,7 @@ it is asking you to sit through.
 ## When the answer is arriving too slowly to read
 
 This is not the same thing as the line above, and it took a real afternoon to
-learn the difference. `all providers slow · still waiting` is about a **silence** —
+learn the difference. `all hosts slow · still waiting` is about a **silence** —
 nothing is arriving. Sometimes words ARE arriving and the wait is just as real,
 because they are arriving at a crawl:
 
@@ -666,9 +666,9 @@ because they are arriving at a crawl:
 answering slowly · nowhere faster · 1m 26s
 ```
 
-That line means codeaf measured the words appearing against the pace the provider
+That line means codeaf measured the words appearing against the pace the host
 it asked for was expected to write at, found the stream far under it, and has
-nowhere better to send the question — every other provider has been tried, or
+nowhere better to send the question — every other host has been tried, or
 this call cannot pay for a second request. The answer is still coming and the
 words still appear as they arrive; the line is there so that the wait has a name.
 
@@ -676,11 +676,11 @@ On 2026-09-11 the same call showed one nudge and then nothing for eighty-six
 seconds, because neither of the two lines codeaf had was true: it was not
 writing at any speed a person would call writing, and it was not silent either.
 
-**A provider is judged against the pace its question was sent expecting**, not
+**A host is judged against the pace its question was sent expecting**, not
 against its own recent form. That distinction is the whole fix: as codeaf learned
-that one provider had slowed to a seventh of its usual speed, every stream it
-served started to look normal *for that provider*, and the guard quietly stopped
-firing. What it is held to now is the provider the routing choice named — the
+that one host had slowed to a seventh of its usual speed, every stream it
+served started to look normal *for that host*, and the guard quietly stopped
+firing. What it is held to now is the host the routing choice named — the
 reason the request went out at all — so a router that quietly hands your question
 to something ten times slower is noticed.
 
@@ -690,130 +690,130 @@ to something ten times slower is noticed.
 | --- | --- |
 | `via cloudflare · 0.6s · 61 t/s` | an ordinary answer, and who wrote it |
 | `deepseek-v4-flash@cloudflare` | you pinned cloudflare, and every request for the model goes there |
-| `slow · trying parasail…` | a provider was late or its visible answer had slowed to a crawl; a second request is out and the first to answer wins |
-| `refused · trying parasail…` | a provider said it will not serve this model; the answer has already moved |
-| `parasail refused` | the provider that second request went to said no as well |
+| `slow · trying parasail…` | a host was late or its visible answer had slowed to a crawl; a second request is out and the first to answer wins |
+| `refused · trying parasail…` | a host said it will not serve this model; the answer has already moved |
+| `parasail refused` | the host that second request went to said no as well |
 | `via parasail · rescued` | it worked, for this answer only |
-| `coreweave is slow · switch to auto? (y)` | your pinned provider is quiet, and you can end the wait |
-| `coreweave cannot serve this model; routing on auto for this model until you pin again` | the provider you pinned said no, so the pin is retired for this model |
-| `all providers slow · still waiting · 12s` | everywhere is slow; nothing to be done but tell you, and how long you have waited |
-| `answering slowly · nowhere faster · 1m 26s` | words ARE arriving, too slowly to be worth reading, and there is no faster provider to move to |
+| `coreweave is slow · switch to auto? (y)` | your pinned host is quiet, and you can end the wait |
+| `coreweave cannot serve this model; routing on auto for this model until you pin again` | the host you pinned said no, so the pin is retired for this model |
+| `all hosts slow · still waiting · 12s` | everywhere is slow; nothing to be done but tell you, and how long you have waited |
+| `answering slowly · nowhere faster · 1m 26s` | words ARE arriving, too slowly to be worth reading, and there is no faster host to move to |
 
-## When a provider refuses to serve the model — a machine that will not serve my model
+## When a host refuses to serve the model — a machine that will not serve my model
 
 `slow` and `refused` are two different facts and the row says which. **Slow** is
-a wait: the provider is answering and taking its time, or its visible words have
-slowed far below the rate codeaf measured for it. **Refused** is a provider saying
+a wait: the host is answering and taking its time, or its visible words have
+slowed far below the rate codeaf measured for it. **Refused** is a host saying
 it will not serve this model at all — the router answers
-`No allowed providers are available for the selected model. Providers serving
-<model>: digitalocean, deepinfra, … but your request's provider.only preference
-permits only: coreweave`, which means the provider codeaf asked for is not in the
+`No allowed hosts are available for the selected model. Hosts serving
+<model>: digitalocean, deepinfra, … but your request's host.only preference
+permits only: coreweave`, which means the host codeaf asked for is not in the
 set that serves this model right now.
 
-A refusal is final for that provider, immediately:
+A refusal is final for that host, immediately:
 
-- the next request leaves at once, for a different provider, and does not name
+- the next request leaves at once, for a different host, and does not name
   the refused one;
-- that provider is taken out of the set codeaf will choose from for this model,
+- that host is taken out of the set codeaf will choose from for this model,
   so it is not picked again later in the session;
 - if there is nowhere left to move to, the request itself is widened — the
-  demand for one provider is the first thing dropped — and the answer usually
+  demand for one host is the first thing dropped — and the answer usually
   arrives from wherever the router picks. This happens even when the last
-  provider tried failed some other way (busy, or went quiet): a widening that was
+  host tried failed some other way (busy, or went quiet): a widening that was
   put off for a move is always done before you are shown anything, with its
   `Retry 1/N: relaxed the endpoint filter` lines. If nothing lands, the error you
-  see is the most useful one — a provider's rate limit and its wait before an
-  earlier provider's refusal.
+  see is the most useful one — a host's rate limit and its wait before an
+  earlier host's refusal.
 
-**A provider refusing your request is a move too, not the end of the turn.** When
-the answer carries the name of the provider that produced it — a `400`, a `404`,
-an account policy, a model that provider will not serve — that is one provider's
+**A host refusing your request is a move too, not the end of the turn.** When
+the answer carries the name of the host that produced it — a `400`, a `404`,
+an account policy, a model that host will not serve — that is one host's
 answer about this request and the others have said nothing about it, so codeaf
-sends the next one straight to a different provider with that one left off. It is
-the same walk a busy provider gets, and until 2026-09-11 it was not: the turn
+sends the next one straight to a different host with that one left off. It is
+the same walk a busy host gets, and until 2026-09-11 it was not: the turn
 ended there, and the move only happened on your *next* message, after codeaf had
 remembered the refusal. What still ends a turn is a refusal that names **nobody**
-— that is the router reading the request itself and saying no, and every provider
+— that is the router reading the request itself and saying no, and every host
 alive would say the same thing.
 
-If a later provider accepts the request and starts writing but that stream is
+If a later host accepts the request and starts writing but that stream is
 cut, the cut is the failure codeaf acts on. The partial reply is cleared and the
-existing bounded call retry routes around the provider that failed. An earlier
+existing bounded call retry routes around the host that failed. An earlier
 `No endpoints found` answer is not shown as the final error after another
-provider demonstrably accepted the request.
+host demonstrably accepted the request.
 
-## When a provider is too busy — a rate limit, too many requests, a 429, and how long codeaf stays away from it
+## When a host is too busy — a rate limit, too many requests, a 429, and how long codeaf stays away from it
 
-**Too many requests is not a refusal.** A provider that answers
-`API error (429): Provider returned error (via Io Net)` has not said anything
+**Too many requests is not a refusal.** A host that answers
+`API error (429): Host returned error (via Io Net)` has not said anything
 about your request — its queue is full for the moment. So it is not written off
 the way a refusal is. It is **stepped around for a while**, and it comes back on
 its own.
 
-- **When the answer names the provider, codeaf stops sending there.** Every
-  request after it goes to a different provider for as long as that one asked to
+- **When the answer names the host, codeaf stops sending there.** Every
+  request after it goes to a different host for as long as that one asked to
   be left alone, and for **five minutes** when it named no time.
 - **And that includes the request that collected it.** Its next try is written
-  fresh, with the busy provider left off, so it walks on to another one instead
+  fresh, with the busy host left off, so it walks on to another one instead
   of queueing behind the same full queue. Before 2026-09-10 it did not: the
   request was written once and sent again unchanged, which is how a single ask
-  spent seventeen tries on one provider over eleven minutes and still ended
+  spent seventeen tries on one host over eleven minutes and still ended
   `too many requests`. You see the walk as `2 of 6` on the status row while it
   happens.
-- **The same provider is only ever asked twice when it is the only one there
-  is** — a provider you pinned yourself, or a model with one provider behind it —
-  and then codeaf waits exactly as long as that provider asked for before trying
+- **The same host is only ever asked twice when it is the only one there
+  is** — a host you pinned yourself, or a model with one host behind it —
+  and then codeaf waits exactly as long as that host asked for before trying
   again. That wait is shown as what it is: `waiting for coreweave · 12s`,
-  counting down to the moment the provider named.
-- **Moving to another provider costs no wait at all.** A pause between tries is
-  what codeaf pays to ask the *same* provider again; going somewhere else is a
+  counting down to the moment the host named.
+- **Moving to another host costs no wait at all.** A pause between tries is
+  what codeaf pays to ask the *same* host again; going somewhere else is a
   different request and it goes out immediately.
-- **You never have to switch models to get past this.** When every provider
+- **You never have to switch models to get past this.** When every host
   behind the model is busy at once, codeaf stops waiting and moves your turn to
   the next model instead, because another model is always quicker than a window.
   Work running inside a task has no other model to move to, so that is the one
-  place codeaf waits the window out — and it tells you which provider it is
+  place codeaf waits the window out — and it tells you which host it is
   waiting for and how long is left.
 - **It counts wherever the message arrived.** A rate limit can come back before
   a single word is written, or in the middle of a reply that had already started
-  arriving. The provider is stepped around either way. Before 2026-09-10 only the
-  first kind counted, so a busy provider that said "too many requests" halfway
+  arriving. The host is stepped around either way. Before 2026-09-10 only the
+  first kind counted, so a busy host that said "too many requests" halfway
   through a reply was handed the next request, and the one after that — three
   times in a minute and a half, on one measured turn.
-- **A rate limit that names nobody is your whole account**, not one provider, and
-  nothing is stepped around: every provider behind the model is behind the same
+- **A rate limit that names nobody is your whole account**, not one host, and
+  nothing is stepped around: every host behind the model is behind the same
   ceiling, so there is nowhere better to go and nothing to leave off the next
   request. codeaf waits **once**, for exactly as long as the answer itself asked
   for — and not at all when it asked for nothing, because a wait nobody named is
   a wait codeaf would be inventing — and then moves to another model, because a
-  second provider would only
+  second host would only
   spend the account's allowance faster, and a different model is not on the same
   allowance at all. With no model left to move to you are handed what the
-  provider said. On your screen it reads `we are being asked to slow down`.
+  host said. On your screen it reads `we are being asked to slow down`.
   (Until 2026-09-11 this kept re-sending the identical request behind a wait that
   doubled each time — 0.7s, 1.4, 2.8, 5.6 and on — for the whole of the time that
   kind of work is given: ninety seconds on a turn, four and a half minutes inside
   a task. Nothing changed between those sends, because there was nothing that
   could change.)
-- **And a provider that keeps answering after you have stepped around it stops
+- **And a host that keeps answering after you have stepped around it stops
   the walk.** The name in `(via Io Net)` is the upstream's, and not every
   upstream name is one the router will route around — so when the next request
   says "not that one" and that one answers it anyway, codeaf has learned that
   routing cannot help this request, and it goes on to the wider set and then to
   another model instead of asking a third time. Until 2026-09-11 only a plain
   refusal did this and a rate limit was exempt, which cost one measured task
-  eight sends to one provider over ninety seconds while six other providers on the
+  eight sends to one host over ninety seconds while six other hosts on the
   same model were answering in under five.
 
-## What all providers have been ignored means — a refusal from nobody
+## What all hosts have been ignored means — a refusal from nobody
 
 When the router answers `All
-providers have been ignored`, no provider was ever asked: a list had removed the
+hosts have been ignored`, no host was ever asked: a list had removed the
 whole set before the request left — either codeaf's own running list of slow and
-unavailable providers, or the ignored providers set on your account. Nothing is
-taken away from any provider on that answer, because a provider that never got the
+unavailable hosts, or the ignored hosts set on your account. Nothing is
+taken away from any host on that answer, because a host that never got the
 request has said nothing about it — it keeps its place for every other request.
-If the provider you had pinned is the one nobody could reach, the pin itself is
+If the host you had pinned is the one nobody could reach, the pin itself is
 still stood down and you are told, because a pairing your account cannot use is
 one to stop asking for. codeaf stops sending the list that emptied the set for
 that model and the next request lands, so this is at most one wasted round trip
@@ -824,10 +824,10 @@ while the answer is moving, and if parasail refuses too the promise is **taken
 back** rather than left standing. The row reads `parasail refused`, which is what
 actually happened; it never says `trying …` about a request that has already failed.
 
-## When the base refuses a provider choice — why a proxy may not honour my pinned lane
+## When the base refuses a host choice — why a proxy may not honour my pinned lane
 
 Some bases
-take no provider choice at all — a plain OpenAI-compatible endpoint behind
+take no host choice at all — a plain OpenAI-compatible endpoint behind
 `CODEAF_BASE_URL`, a proxy that strips the field, a gateway that never heard of
 it. codeaf finds out by asking: your pin goes out on a real request, once, and
 if that is refused the same request is sent again without it — whether *that*
@@ -835,38 +835,38 @@ lands is the answer, so an unrelated bad request never costs you your pin. If
 the base will not take the choice, you are told once, in the conversation:
 
 ```
-api.example.com does not take a provider choice; coreweave is not being asked for, and your requests still go out
+api.example.com does not take a host choice; coreweave is not being asked for, and your requests still go out
 ```
 
 Your work still goes out; only the choice is left off. The settings row says it
 too, so `pinned:` never stands as a claim about a request that did not carry it:
 `pinned: coreweave (not taken on this base)`.
 
-## Providers switched off on your account — OpenRouter's ignored-providers list, and the one refused round trip it costs
+## Hosts switched off on your account — OpenRouter's ignored-hosts list, and the one refused round trip it costs
 
-Your OpenRouter account can carry its own ignored-providers list: providers you
+Your OpenRouter account can carry its own ignored-hosts list: hosts you
 switched off and OpenRouter will not use. codeaf cannot read that list.
-Separately, codeaf keeps its own running list of providers that are slow or have
-refused. The two lists can leave no provider to ask even though neither list
-emptied the set alone. OpenRouter then says `All providers have been ignored`
-before any provider is asked.
+Separately, codeaf keeps its own running list of hosts that are slow or have
+refused. The two lists can leave no host to ask even though neither list
+emptied the set alone. OpenRouter then says `All hosts have been ignored`
+before any host is asked.
 
-That sentence is the only thing that tells codeaf which providers your account
-will not reach. Every provider codeaf has timed for this model that codeaf was
+That sentence is the only thing that tells codeaf which hosts your account
+will not reach. Every host codeaf has timed for this model that codeaf was
 not itself refusing in that request stops being counted as somewhere the request
-can land. On the next request, codeaf drops the provider on its own list that is
-nearest returning, and the request lands. A switched-off provider therefore
+can land. On the next request, codeaf drops the host on its own list that is
+nearest returning, and the request lands. A switched-off host therefore
 costs one refused round trip per model in a session, rather than one on every
 request.
 
-If a provider later answers, codeaf counts it again immediately. Switching a
-provider back on needs nothing from you.
+If a host later answers, codeaf counts it again immediately. Switching a
+host back on needs nothing from you.
 
-The **privacy switch for providers that may train on paid prompts** is the same
+The **privacy switch for hosts that may train on paid prompts** is the same
 kind of list, and OpenRouter names it: `0 endpoints out of 1 requested are
 available matching your guardrail restrictions and data policy … Paid model
-training violation (account settings)`. When that answer is about a provider
-codeaf asked for by name, the provider is remembered as out of reach for your
+training violation (account settings)`. When that answer is about a host
+codeaf asked for by name, the host is remembered as out of reach for your
 account — for **every model**, for **a day**, and across restarts
 (`~/.codeaf/v3/account-exclusions.json`) — so no later request names it and it
 costs one refused round trip, once. A strict pin on it is stood down on every
@@ -878,16 +878,16 @@ The row promises that what you wrote is what goes on the wire, so the pin is
 sent — once — and OpenRouter is left to be the one that says no. You pay the
 refused round trip again on the first turn of a new window, and you get the
 `cannot serve this model` line in the conversation, in the same breath as the
-`@provider` coming off the model on the status line. That is the trade: a
+`@host` coming off the model on the status line. That is the trade: a
 sentence you can act on instead of a request that quietly went somewhere else.
 
-## Providers (lanes) on a custom base URL, a proxy, a mirror, or a self-hosted router — `CODEAF_BASE_URL`
+## Hosts (lanes) on a custom base URL, a proxy, a mirror, or a self-hosted router — `CODEAF_BASE_URL`
 
-Providers are not tied to the OpenRouter hostname. Point codeaf at any base with
+Hosts are not tied to the OpenRouter hostname. Point codeaf at any base with
 `CODEAF_BASE_URL` — a proxy in front of the router, a mirror, a router of your
 own, the router by its IP — and it **asks that base whether it publishes an
 endpoints page**: the first background fetch of a model's sheet is the question.
-A base that answers with a page has providers exactly as the built-in endpoint does,
+A base that answers with a page has hosts exactly as the built-in endpoint does,
 with the same auto ranking, pins, hedges and status line. Nothing about the
 address is inspected; a router is recognised by what it answers.
 
@@ -898,60 +898,60 @@ A router that has the page but **does not publish that one model** says so in
 its own words, about the model, and nothing is remembered about the base. A 500,
 a timeout or a rate limit is a bad afternoon rather than an answer.
 
-## Does a proxy honour my pinned provider, the lane I pinned — how a custom base answers
+## Does a proxy honour my pinned host, the lane I pinned — how a custom base answers
 
-**Whether a base honours a provider choice is learned the same way**, never from
+**Whether a base honours a host choice is learned the same way**, never from
 its address. A base that served an endpoints page takes one. Any other base is
 asked once, and only once you have **pinned** something — a pin is the only
-thing there is to ask with, so a base nobody pinned anything on is sent no provider
+thing there is to ask with, so a base nobody pinned anything on is sent no host
 opinion at all, exactly as before. Your pin goes out on a real request; if the
 base refuses it, codeaf sends that request again once without it, and whether
 *that* lands is the answer. A base that refuses the choice, or that answers
-without ever naming the provider that served, is remembered as not taking one and
+without ever naming the host that served, is remembered as not taking one and
 **says so** (the refusal section above has the sentence).
 
-**A proxy that forwards to the router but strips the provider name out of its
+**A proxy that forwards to the router but strips the host name out of its
 answers is read as not taking your choice**, deliberately. codeaf cannot tell
 that proxy from one honouring your pin silently — nothing in the answer says
-which provider served — so it tells you, sends later requests bare, and the proxy
+which host served — so it tells you, sends later requests bare, and the proxy
 then routes your model however it likes. Your work still goes out; your pin is
 not honoured there, and you know rather than guess.
 
 Neither question costs an extra call of its own, and pointing `CODEAF_BASE_URL`
 somewhere else asks the new address afresh about both.
 
-A directly connected service is simpler: it has one provider, so there is nothing to choose
-between and no provider sheet to open. That is not a fault. The service name carried by the
+A directly connected service is simpler: it has one host, so there is nothing to choose
+between and no host sheet to open. That is not a fault. The service name carried by the
 model id is already the whole route.
 
-## How do I stop codeaf choosing the provider itself — the simple routing mode, OpenRouter's default routing, and what my pinned provider still sends
+## How do I stop codeaf choosing the host itself — the simple routing mode, OpenRouter's default routing, and what my pinned host still sends
 
 The `routing` row (`/settings` → **Providers**) has a fourth answer, **`simple`**,
-for exactly this. Under it codeaf keeps no opinion of its own about the providers
+for exactly this. Under it codeaf keeps no opinion of its own about the hosts
 behind your model, and sends none:
 
-- **No provider pinned** — the request carries no routing preference at all: no sort
-  word, no price ceiling, no providers named or excluded. OpenRouter's own default
-  routing picks the provider, exactly as it would for a request codeaf had never
+- **No host pinned** — the request carries no routing preference at all: no sort
+  word, no price ceiling, no hosts named or excluded. OpenRouter's own default
+  routing picks the host, exactly as it would for a request codeaf had never
   touched. There is no measuring, no second request hedged alongside yours, not
   even the one-token measurement sent while you type, and no takeover when
   answers come back refused.
-- **A provider pinned** (`/model @deepseek`, or enter on the **provider** row) — your
-  turn demands exactly that one provider: `only`, fallbacks off, and nothing else
+- **A host pinned** (`/model @deepseek`, or enter on the **host** row) — your
+  turn demands exactly that one host: `only`, fallbacks off, and nothing else
   rides along. Your word is the whole request. A pin written `borrow when slow`
   changes nothing here — there is no rescue running for it to borrow. The row is
   named `lane.talk` and that is its scope: the errands that run beside a turn go
   out bare (the next section).
 
-What does not change: the provider that answered is still named on the status
-line, and the `switch to auto?` question a slow pinned provider asks still has
-somewhere to send you. A pin the router itself refuses — the provider saying it
+What does not change: the host that answered is still named on the status
+line, and the `switch to auto?` question a slow pinned host asks still has
+somewhere to send you. A pin the router itself refuses — the host saying it
 cannot serve that model at all — is still retired for that model, with the same
 one-sentence note, and pinning again puts it straight back on the very next
 request.
 
 `simple` is not `off`. `off` stops the measuring, and with nothing measured
-there is no provider to choose, no sheet of providers to open and no speed guard.
+there is no host to choose, no sheet of hosts to open and no speed guard.
 `simple` leaves the pin standing: the one instruction you gave is the only one
 sent. **`simple` is also what the row ships as**, so this is what a home nobody
 has changed does; everything else this page describes — the ranking, the
@@ -970,61 +970,61 @@ next section says how.
 That was not always true. Until 2026-09-13 those extra roads were built without
 the row and ran `latency` whatever you had written — which was quiet and wrong
 in one specific way. A road on `latency` is allowed to stand a pin down on
-codeaf's own saved belief that your account cannot reach the provider, and that
+codeaf's own saved belief that your account cannot reach the host, and that
 stand-down covers the whole window: your very next message, on `simple`, doing
-nothing wrong, went out with no provider demanded while the status line still
+nothing wrong, went out with no host demanded while the status line still
 read `@deepseek`. The row reaching every road is what closes it.
 
-If you want to check: pin a provider, set `routing` to `simple`, and send a
-message. Either the answer comes from the provider you named, or you get the
-`cannot serve this model` sentence and the `@provider` disappears from the model
+If you want to check: pin a host, set `routing` to `simple`, and send a
+message. Either the answer comes from the host you named, or you get the
+`cannot serve this model` sentence and the `@host` disappears from the model
 word. There is no third outcome — a bare request under a pin that is still
 being drawn is the bug above, and it is worth reporting.
 
-## Does my pinned provider apply to the title, the memory reflex and a subharness too, or only to what I type
+## Does my pinned host apply to the title, the memory reflex and a subharness too, or only to what I type
 
 **Only to the calls you are reading.** Under `routing: simple` the pinned
-provider is demanded on your own turn, on a task room you are sitting in front
+host is demanded on your own turn, on a task room you are sitting in front
 of, and on a headless `codeaf exec` you typed — all three are you, waiting. The
-errands that run beside a turn send no provider name at all: a conversation's
+errands that run beside a turn send no host name at all: a conversation's
 conversation title, the memory reflex, the question that routes your message, a
 hand asking a model about a document, a subharness node. The row is spelled
 `lane.talk` and the slot is its whole scope.
 
 That is what one refusal costs. A pin the router refuses is retired **per
-provider and model** — one refused round trip, once — but an errand runs on a
+host and model** — one refused round trip, once — but an errand runs on a
 model of its own, and before 2026-09-13 a single turn bought three of them:
 yours, the title's and the reflex's, on three different models, each with its
-own 404 and none of them a provider you had asked for. One turn, one refusal,
+own 404 and none of them a host you had asked for. One turn, one refusal,
 one sentence.
 
 Under `latency` and `price` nothing changes: there is no demand to scope,
 because a pin on those roads is drawn against everything the belief knows about
-the providers behind each model.
+the hosts behind each model.
 
-## Turning provider routing off — endpoint routing, lane routing, all the same row
+## Turning host routing off — endpoint routing, lane routing, all the same row
 
 Set routing off (`/settings`, or the `routing` row) and codeaf sends every
 request with no opinion at all. It still will not let you wait forever — a
 ceiling on how long a silence runs before *something* is said about it is not
-steering, it is the promise this surface makes — but it stops choosing providers
+steering, it is the promise this surface makes — but it stops choosing hosts
 for you, stops sending second requests, and stops spending anything on speed.
 
 **The row has four answers, and the two quiet ones are not the same nothing.** Left alone
-it reads `simple`, and codeaf does not pick a provider for you at all — it asks for no
-fastest provider and no cheapest one, sends no preference of its own, and your pin, if you
+it reads `simple`, and codeaf does not pick a host for you at all — it asks for no
+fastest host and no cheapest one, sends no preference of its own, and your pin, if you
 made one, is the whole request (the section above). Writing another word in the row turns
-the choosing on everywhere: `latency` picks the fastest provider on every call, background
+the choosing on everywhere: `latency` picks the fastest host on every call, background
 work included; `price` ranks on price alone on every call, your own turns included, which
 is you saying that speed is not worth money anywhere; and `off` is the paragraph above.
 Under `latency` and `price` the work you are not watching still weighs speed, at a quarter
 of the weight your own turns give it — a task ends when its slowest call ends, and a
-provider that refuses four requests in five costs five sends for one answer, so its seconds
+host that refuses four requests in five costs five sends for one answer, so its seconds
 are never free. That is the split the rest of this page describes.
-`price` still measures providers and still chooses between them. `simple` and `off` stop the choosing.
+`price` still measures hosts and still chooses between them. `simple` and `off` stop the choosing.
 
 **`off` does not stop the remembering, and that is deliberate.** codeaf still writes down
-which provider answered and which one refused, because that is what lets a request that
+which host answered and which one refused, because that is what lets a request that
 has just been refused go somewhere else instead of back to the same place — recovery is
 not steering, and a build that forgot a refusal the moment you switched routing off would
 be a build that could only ever retry into it. Nothing it remembers reaches the wire:

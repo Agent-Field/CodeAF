@@ -602,7 +602,7 @@ needs a yes and nobody was able to say one. The item still records that it looke
 the count of what was examined is honest and the record of the pass carries one error.
 
 Set the default key — `/settings` → **openrouter key**, say "set up my api key", or use
-the `models` group in `/connect` to add a service — and the
+the `providers` group in `/connect` to add a provider — and the
 next pass judges normally. Nothing has to be re-made and nothing was lost while there
 was no key.
 

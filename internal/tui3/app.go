@@ -1435,6 +1435,12 @@ type app struct {
 	// reader could reach before it existed would be a race on this field.
 	news    *doorbell
 	leaving *doorbell
+	// landedBell and serviceLands are the third and fourth of those doors: a
+	// provider listing that a launch warm or a ctrl+r walk stocked behind the
+	// frame (servicelands.go). Made with the surface for the same reason news
+	// is — the fan-out may ring before Init — and read only on the loop.
+	landedBell   *doorbell
+	serviceLands *serviceLands
 	// frontGen counts the conversations this window has taken up, and it is
 	// WHICH ONE IS IN FRONT rather than how many there have been: a door asked
 	// of one conversation and answered after the person switched to another
@@ -1798,6 +1804,11 @@ type app struct {
 	connAsks  []connAsk
 	conns     Connections
 	connPanel connectPanel
+	// addPanel the add-a-provider door ([app.openAddProvider]): opened from
+	// the model picker's last row, it walks the machine for live servers and
+	// offers the vendored catalog beside them. Every row it activates ends in
+	// the one mint flow (startModelConnect, startCustomAdd).
+	addPanel addProviderPanel
 	// sources and sourceModels are the live model-service side of /connect.
 	// The default catalog still comes through models; only additional services
 	// live in sourceModels, keyed by their stable persisted id.
@@ -2193,7 +2204,16 @@ type app struct {
 	// list reopened while it is out must not start a second one.
 	refreshModels       func(ctx context.Context) ([]Model, time.Time, error)
 	serviceModelRefresh func(context.Context, modelsource.Connected, []Model) ([]Model, error)
-	modelsFetching      bool
+	// refreshAllModels is [Options.RefreshAllModels]: ctrl+r walks every
+	// provider, not only the default catalog.
+	refreshAllModels func(ctx context.Context)
+	// warmEmptyProviders is [Options.WarmEmptyProviders]: the launch fetch.
+	warmEmptyProviders func(ctx context.Context)
+	// onServiceModels is [Options.OnServiceModels]: one provider's listing
+	// changed behind the frame.
+	onServiceModels    func(source, address string)
+	providerFetchError func(id string) string
+	modelsFetching     bool
 
 	// sheet is the settings panel (settings.go): the FIRST fullscreen thing this
 	// surface drew, and the only overlay that is modal for the pointer as well
@@ -2901,6 +2921,10 @@ func newApp(ctx context.Context, opts Options) *app {
 		sources:             opts.Sources,
 		refreshModels:       opts.RefreshModels,
 		serviceModelRefresh: opts.RefreshModelsForService,
+		refreshAllModels:    opts.RefreshAllModels,
+		warmEmptyProviders:  opts.WarmEmptyProviders,
+		onServiceModels:     opts.OnServiceModels,
+		providerFetchError:  opts.ProviderFetchError,
 		history:             opts.History,
 		draftFile:           opts.DraftFile,
 		artifacts:           opts.ArtifactsIndex,
@@ -3362,10 +3386,17 @@ func (a *app) Init() tea.Cmd {
 		a.setupDemoCmd(), a.checkForUpdate(), a.launchCredits(), a.creditWake.waitRing(), titleSend(a.titleSent),
 		// AND THE TWO DOORS INTO THE LOOP FROM ELSEWHERE, each with its one
 		// command parked on it (doorbell.go).
-		a.news.waitRing(), a.leaving.waitRing(),
+		a.news.waitRing(), a.leaving.waitRing(), a.landedBell.waitRing(),
 		// AND THE TEAMS' FIRST READ, when the seam held nothing to load above
 		// (teamseam.go); nil on every local launch.
 		a.teamsWrite()}
+	if a.warmEmptyProviders != nil {
+		warm := a.warmEmptyProviders
+		standing = append(standing, func() tea.Msg {
+			warm(context.Background())
+			return nil
+		})
+	}
 	if a.welcome.animating() {
 		standing = append(standing, a.wake())
 	}
@@ -3561,6 +3592,26 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// door is parked again in the same breath, which is what keeps exactly
 		// one command waiting on it (doorbell.go).
 		return a, a.news.waitRing()
+
+	case localServersProbedMsg:
+		// THE PROBE LANDED: the panel is open and waiting for exactly this.
+		p := &a.addPanel
+		p.loading = false
+		p.rebuild(msg.probes, nil)
+		a.touch()
+		return a, nil
+	case serviceModelsLandedMsg:
+		// A PROVIDER'S LISTING LANDED BEHIND THE FRAME (servicelands.go): a
+		// launch warm or a ctrl+r walk stocked that provider's compartment off
+		// the loop. The desk is read HERE, on the loop, each pair's memo is
+		// dropped, and an open picker restocks — so a group fills without a
+		// reopen. The door is parked again in the same breath (doorbell.go).
+		if a.serviceLands != nil {
+			for _, pair := range a.serviceLands.take() {
+				a.serviceModelsLanded(pair[0], pair[1])
+			}
+		}
+		return a, a.landedBell.waitRing()
 
 	case sigQuitMsg:
 		// A REAL SIGNAL, forwarded by this package's own handler (tui3.go's

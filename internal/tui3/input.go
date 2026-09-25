@@ -568,6 +568,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.connectPanelKey(msg)
 	}
 
+	// And the add-provider panel, which is that panel's door raised from the
+	// model picker's last row: opened by a row, nothing being typed under it,
+	// and esc leaving the conversation exactly as it was (addprovider.go).
+	if a.addPanel.open && msg.String() != "ctrl+c" {
+		return a.addPanelKey(msg)
+	}
+
 	// And the harness panel, which is that panel's twin in every respect that
 	// matters here: opened by a command, nothing being typed under it, and esc
 	// leaving the conversation exactly as it was (harnesspanel.go).

@@ -1647,7 +1647,7 @@ With the providers open, `enter` on one of them pins it instead of switching mod
 
 Its placeholder reads exactly `filter by name · ctrl+r refresh` — the keys are on the FOOT, because
 a placeholder vanishes under the first typed character and the foot does not. The hint slot
-follows the cursor: `→ providers · alt+s sort · enter switch · ctrl+t effort · esc` on a model, `← back · alt+s sort · enter choose · esc` inside its
+follows the cursor: `→ hosts · alt+s sort · enter switch · ctrl+t effort · esc` on a model, `← back · alt+s sort · enter choose · esc` inside its
 providers, and `enter unpin · ← back · esc` on the provider already pinned, where `enter` takes
 the pin off — with `tab providers` and `tab back` in place of the arrows while you are
 mid-typing and the arrow would step over a character instead. The foot always names whichever

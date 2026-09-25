@@ -436,11 +436,11 @@ func TestTheFootReadsInOneOrderAtEveryLevel(t *testing.T) {
 		want  []string
 	}{
 		{"a model row", nil,
-			[]string{"→ providers", sortKeyWord, "enter switch", effortKeyWord}},
+			[]string{"→ hosts", sortKeyWord, "enter switch", effortKeyWord}},
 		{"the auto row", []tea.Msg{key("right")},
 			[]string{"← back", sortKeyWord, "enter choose"}},
 		{"the openrouter row", []tea.Msg{key("right"), key("down")},
-			[]string{"← back", "→ providers", sortKeyWord, "enter choose"}},
+			[]string{"← back", "→ hosts", sortKeyWord, "enter choose"}},
 		{"a machine", []tea.Msg{key("right"), key("down"), key("right")},
 			[]string{"← back", sortKeyWord, "enter choose"}},
 	} {
@@ -707,8 +707,8 @@ func TestASortOrdersRowsInsideAServiceAndNeverTheServices(t *testing.T) {
 	}
 	// AND EVERY HEADING IS STILL DRAWN ONCE, in the order the services are held.
 	lines := groupPickerLines(a)
-	homelabAt, studioAt := lineIndex(lines, func(l string) bool { return l == "homelab" }),
-		lineIndex(lines, func(l string) bool { return l == "studio" })
+	homelabAt, studioAt := lineIndex(lines, func(l string) bool { return l == "homelab" || strings.HasPrefix(l, "homelab   ") }),
+		lineIndex(lines, func(l string) bool { return l == "studio" || strings.HasPrefix(l, "studio   ") })
 	if homelabAt < 0 || studioAt < 0 || homelabAt > studioAt {
 		t.Fatalf("the sorted list drew its headings out of order:\n%s", strings.Join(lines, "\n"))
 	}
