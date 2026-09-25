@@ -85,3 +85,24 @@ func TestARedoIsNotDecayedByItsOwnAcceptance(t *testing.T) {
 		t.Errorf("a later accepted task left the offset at %d", got)
 	}
 }
+
+// THE ESTIMATE LEARNS FROM THIS INSTALL'S TASKS: tasks of a class that cost
+// twice their estimate move the next one's up, shrunk toward the estimate
+// while there are few, and a class with none learns nothing.
+func TestTheCostFactorLearnsFromSettledTasks(t *testing.T) {
+	dir := t.TempDir()
+	for i := 0; i < 12; i++ {
+		record := CrewRecord{TaskClass: "bugfix", Repo: "repo", Seats: map[string]string{"worker": "z-ai/glm-5.3"}, EstUSD: 0.1, EstBase: 0.1}
+		call := CrewCallID("")
+		LogCrewDecision(dir, call, record, nil)
+		LogCrewOutcome(dir, call, record, CrewAccepted, 0.2)
+	}
+	log := ReadCrewLog(dir, time.Now())
+	f := log.CostFactor["bugfix"]
+	if f < 1.5 || f >= 2 {
+		t.Errorf("twelve tasks at twice their estimate learned a factor of %.2f, want most of the way to 2", f)
+	}
+	if _, ok := log.CostFactor["openended"]; ok {
+		t.Error("a class with no tasks learned a factor")
+	}
+}

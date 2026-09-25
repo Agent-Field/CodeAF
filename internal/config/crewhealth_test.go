@@ -331,3 +331,88 @@ func TestAFreePoolCanBePinnedByName(t *testing.T) {
 		t.Errorf("a pinned free pool resolves to %+v", got)
 	}
 }
+
+// A PIN SENDS THE ID THE PERSON WROTE when the catalog lists it, though a
+// dated snapshot of the same model is listed first; an id the catalog does
+// not list is sent as the variant it resolves to, and the line says which.
+func TestAPinSendsExactlyTheIdWritten(t *testing.T) {
+	dir := crewProfile(t)
+	rows := append([]catalog.Model{{ID: "deepseek/deepseek-v4-flash-0731", OpenWeights: true, PromptPrice: 8e-8, CompletionPrice: 1.6e-7,
+		IntelligenceIndex: 24.2, CodingIndex: 56.2, AgenticIndex: 22.2, ContextLength: 1048576, Parameters: []string{"tools"}}}, CrewCatalog()...)
+	CrewCatalog = func() []catalog.Model { return rows }
+	var history []router.CrewRouteOutcome
+	withRouteHistory(t, &history)
+	if err := SetCrewPin(dir, crewroute.Checker, "deepseek/deepseek-v4-flash"); err != nil {
+		t.Fatal(err)
+	}
+	d, err := RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: fixTask}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := d.Seat(crewroute.Checker); got.Send != "deepseek/deepseek-v4-flash" || got.Model != "deepseek/deepseek-v4-flash" {
+		t.Fatalf("the pinned checker is %+v, want exactly the id written", got)
+	}
+	if strings.Contains(d.Line("", -1), "→") {
+		t.Errorf("an exact pin reads as resolved: %q", d.Line("", -1))
+	}
+
+	if err := SetCrewPin(dir, crewroute.Checker, "z-ai/glm-5.3-flash-latest"); err != nil {
+		t.Fatal(err)
+	}
+	d, err = RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: fixTask}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := d.Seat(crewroute.Checker); got.Send != "z-ai/glm-5.3-flash" {
+		t.Fatalf("a pin the catalog lists only as a variant is %+v", got)
+	}
+	if line := d.Line("", -1); !strings.Contains(line, "glm-5.3-flash-latest → glm-5.3-flash") {
+		t.Errorf("the resolved pin is not said: %q", line)
+	}
+
+	for _, c := range CrewCandidatesAt(dir) {
+		if crewroute.Lineage(c.Model.ID) == "deepseek/deepseek-v4-flash" && c.Model.ID != "deepseek/deepseek-v4-flash" {
+			t.Errorf("the candidate is read from the snapshot %s, not the model's own row", c.Model.ID)
+		}
+	}
+}
+
+// A MODEL IS PRICED FROM ITS OWN ROW, never from a route spelling of it the
+// catalog listed first (`:floor` is the cheapest provider's price, not the
+// model's list price).
+func TestAModelIsPricedFromItsOwnRow(t *testing.T) {
+	dir := crewProfile(t)
+	rows := append([]catalog.Model{{ID: "moonshotai/kimi-k3:floor", OpenWeights: true, PromptPrice: 8.8e-7, CompletionPrice: 1.053e-5,
+		IntelligenceIndex: 43.6, CodingIndex: 76.2, AgenticIndex: 50, ContextLength: 1048576, Parameters: []string{"tools"}}}, CrewCatalog()...)
+	CrewCatalog = func() []catalog.Model { return rows }
+	var history []router.CrewRouteOutcome
+	withRouteHistory(t, &history)
+	for _, offer := range CrewOffersAt(dir) {
+		if crewroute.Lineage(offer.Model.ID) == "moonshotai/kimi-k3" && (offer.Model.ID != "moonshotai/kimi-k3" || offer.Model.PromptPrice != 3e-6) {
+			t.Errorf("kimi-k3 is offered as %s at %v/token in", offer.Model.ID, offer.Model.PromptPrice)
+		}
+	}
+}
+
+// A DECISION ROW EXPLAINS ITSELF: only candidates that can sit a seat are
+// named, and each seat carries its best three with route, quality, cost and
+// score.
+func TestADecisionRowNamesOnlySeatableCandidatesAndItsTopThree(t *testing.T) {
+	dir := crewProfile(t)
+	var history []router.CrewRouteOutcome
+	withRouteHistory(t, &history)
+	for _, name := range CrewCandidateNames(dir) {
+		if name == "vendor/no-tools" {
+			t.Errorf("a model that cannot sit a seat is named a candidate")
+		}
+	}
+	d, err := RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: fixTask}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	top := crewTop(dir, d)
+	worker := top["worker"]
+	if len(worker) == 0 || len(worker) > 3 || worker[0].Model != d.Seat(crewroute.Worker).Model || worker[0].Route == "" {
+		t.Errorf("the worker's top is %+v, want the pick first with its route", worker)
+	}
+}

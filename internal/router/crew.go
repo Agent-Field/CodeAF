@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"math"
 	"os"
 	"sort"
 	"strings"
@@ -74,6 +75,21 @@ type CrewRecord struct {
 	// redo's own and decays no offset — only a LATER accepted task of the
 	// class there does.
 	Redo bool `json:"redo,omitempty"`
+	// EstBase is the estimate before this install's learned factor, the one
+	// the factor is learned against ([CrewLog.CostFactor]).
+	EstBase float64 `json:"est_base,omitempty"`
+	// Top is, per seat, the best few candidates the decision weighed, with
+	// their route, quality, cost and score: why the crew is the crew.
+	Top map[string][]CrewScore `json:"top,omitempty"`
+}
+
+// CrewScore is one weighed candidate on a decision row, kept short.
+type CrewScore struct {
+	Model string  `json:"m"`
+	Route string  `json:"r,omitempty"`
+	Q     float64 `json:"q"`
+	C     float64 `json:"c"`
+	S     float64 `json:"s"`
 }
 
 // LogCrewDecision appends a crew's decision row. Best-effort by construction:
@@ -172,6 +188,48 @@ type CrewLog struct {
 	// Routes are the recent first-call outcomes of every route a crew seat
 	// was sent on, oldest first — what route health is read from.
 	Routes []CrewRouteOutcome
+	// CostFactor is, per class, what this install's recent paid tasks cost
+	// against the estimate they were routed with — the geometric mean of
+	// actual over estimate, shrunk toward one while there are few, and kept
+	// within a factor of three. A class with no settled paid task has none.
+	CostFactor map[string]float64
+}
+
+// The cost factor's three numbers: how many recent tasks it reads, how many
+// tasks' worth of "the estimate was right" it starts from, and how far it may
+// move the estimate.
+const (
+	costFactorTasks = 30
+	costFactorPrior = 4.0
+	costFactorLimit = 3.0
+)
+
+// costFactors reads [CrewLog.CostFactor] off the settled tasks, oldest first.
+func costFactors(order []string, tasks map[string]*CrewTask) map[string]float64 {
+	logs := map[string][]float64{}
+	for i := len(order) - 1; i >= 0; i-- {
+		task := tasks[order[i]]
+		class := task.Record.TaskClass
+		base := task.Record.EstBase
+		if base <= 0 {
+			base = task.Record.EstUSD
+		}
+		if !task.Settled || base <= 0 || task.CostUSD <= 0 || len(logs[class]) >= costFactorTasks {
+			continue
+		}
+		logs[class] = append(logs[class], math.Log(task.CostUSD/base))
+	}
+	out := map[string]float64{}
+	for class, ls := range logs {
+		var sum float64
+		for _, l := range ls {
+			sum += l
+		}
+		n := float64(len(ls))
+		f := math.Exp(sum / (n + costFactorPrior))
+		out[class] = math.Min(costFactorLimit, math.Max(1/costFactorLimit, f))
+	}
+	return out
 }
 
 // The learning rule's two numbers. A redo raises its repository and class by
@@ -249,6 +307,7 @@ func ReadCrewLog(dir string, now time.Time) CrewLog {
 		}
 	}
 	sort.SliceStable(order, func(i, j int) bool { return tasks[order[i]].At.Before(tasks[order[j]].At) })
+	out.CostFactor = costFactors(order, tasks)
 	year, month, day := now.Local().Date()
 	accepted := map[string]int{}
 	for _, call := range order {

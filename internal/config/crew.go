@@ -530,9 +530,21 @@ func crewSpeaksText(row catalog.Model) bool {
 
 // crewCatalogModel is one model as the router would read it, from the
 // catalog or the evidence table, false when neither knows it.
+//
+// THE EXACT ID WINS. A pin names what the person wrote, and a catalog that
+// lists that id serves that id — never a dated snapshot that happens to share
+// its lineage and to be listed first. Only an id the catalog does not list is
+// read through its lineage.
 func crewCatalogModel(id string) (crewroute.Model, bool) {
-	lineage := crewroute.Lineage(stripCrewRoute(id))
-	for _, row := range crewCatalogRows() {
+	exact := stripCrewRoute(id)
+	rows := crewCatalogRows()
+	for _, row := range rows {
+		if strings.EqualFold(row.ID, exact) && !row.PriceUnknown {
+			return crewModelOf(row), true
+		}
+	}
+	lineage := crewroute.Lineage(exact)
+	for _, row := range rows {
 		if crewroute.Lineage(row.ID) == lineage && !row.PriceUnknown {
 			return crewModelOf(row), true
 		}
@@ -728,16 +740,23 @@ func crewCandidatesWith(rule crewroute.Allowed, providers []CrewProvider, facts 
 	var free map[string]string // canonical id → the free row's id
 	if rows := crewCatalogRows(); len(rows) > 0 {
 		paid := map[string]bool{}
+		at := map[string]int{}
 		for _, row := range rows {
 			if row.PriceUnknown || strings.HasPrefix(row.ID, "~") || crewroute.IsFree(row.ID) {
 				continue
 			}
-			if paid[crewroute.Lineage(row.ID)] {
+			lineage := crewroute.Lineage(row.ID)
+			if paid[lineage] {
 				// The same model again — a dated snapshot beside its name —
-				// is one candidate, read from the first row that lists it.
+				// is one candidate, read from the row that lists the model
+				// by its own name when there is one, so a seat is sent the
+				// name and not whichever snapshot the catalog listed first.
+				if strings.EqualFold(row.ID, lineage) {
+					models[at[lineage]] = crewModelOf(row)
+				}
 				continue
 			}
-			paid[crewroute.Lineage(row.ID)] = true
+			paid[lineage], at[lineage] = true, len(models)
 			models = append(models, crewModelOf(row))
 		}
 		if facts.free {
@@ -979,7 +998,7 @@ var ErrCrewAtCap = errors.New("today's crew spend has reached the daily cap")
 // state of a fresh install, not an error.
 var CrewHistory = func(profileDir string) CrewDay {
 	log := router.ReadCrewLog(ProfilePath(profileDir, ""), time.Now())
-	return CrewDay{SpentUSD: log.SpentUSD, Offsets: log.Offsets}
+	return CrewDay{SpentUSD: log.SpentUSD, Offsets: log.Offsets, CostFactor: log.CostFactor}
 }
 
 // CrewRecordOf is one decision as the router's log keeps it.
@@ -987,7 +1006,10 @@ func CrewRecordOf(d crewroute.Decision, repo, title string) router.CrewRecord {
 	record := router.CrewRecord{
 		TaskClass: string(d.Class), Repo: repo, Title: title, Effort: string(d.Effort), Steps: d.Steps,
 		Seats: map[string]string{}, Providers: map[string]string{}, Kinds: map[string]string{}, EstUSD: d.EstUSD,
-		Redo: d.Redo,
+		Redo: d.Redo, EstBase: d.EstUSD,
+	}
+	if d.CostFactor > 0 {
+		record.EstBase = d.EstUSD / d.CostFactor
 	}
 	for _, pick := range d.Crew {
 		record.Seats[string(pick.Seat)] = pick.Send
@@ -1007,7 +1029,9 @@ func CrewRecordOf(d crewroute.Decision, repo, title string) router.CrewRecord {
 // LogCrewDecision writes one task's crew decision into the profile's router
 // log, under the call id the outcome will settle.
 func LogCrewDecision(profileDir, call string, d crewroute.Decision, repo, title string) {
-	router.LogCrewDecision(ProfilePath(profileDir, ""), call, CrewRecordOf(d, repo, title), CrewCandidateNames(profileDir))
+	record := CrewRecordOf(d, repo, title)
+	record.Top = crewTop(profileDir, d)
+	router.LogCrewDecision(ProfilePath(profileDir, ""), call, record, CrewCandidateNames(profileDir))
 }
 
 // LogCrewOutcome settles it: accepted, redone stronger, or not kept.
@@ -1016,9 +1040,47 @@ func LogCrewOutcome(profileDir, call string, d crewroute.Decision, repo, title, 
 }
 
 // CrewCandidateNames is what a logged decision was made among.
+//
+// ONLY WHAT COULD SIT A SEAT IS NAMED: a speech, image or embedding model the
+// catalog lists is no candidate for a crew, and a log row naming it would
+// claim the router weighed it.
 func CrewCandidateNames(profileDir string) []string {
-	return crewroute.Names(CrewCandidatesAt(profileDir))
+	return crewroute.Names(crewSeatableOnly(CrewCandidatesAt(profileDir)))
 }
+
+// crewSeatableOnly is the candidates that can sit at least one seat.
+func crewSeatableOnly(candidates []crewroute.Candidate) []crewroute.Candidate {
+	var out []crewroute.Candidate
+	for _, c := range candidates {
+		for _, seat := range crewroute.Seats {
+			if crewroute.Seatable(seat, c) {
+				out = append(out, c)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// crewTop is a decision's best three per seat, re-weighed at its λ over the
+// candidates it was routed among, for the log row.
+func crewTop(profileDir string, d crewroute.Decision) map[string][]router.CrewScore {
+	candidates, _ := crewCandidatesNoticed(profileDir, crewHealthAt(profileDir).probing())
+	out := map[string][]router.CrewScore{}
+	for seat, ranked := range crewroute.Explain(d.Class, d.Lambda, candidates, crewTopN) {
+		for _, s := range ranked {
+			route := s.Provider
+			if s.Kind != "" {
+				route += ":" + string(s.Kind)
+			}
+			out[string(seat)] = append(out[string(seat)], router.CrewScore{Model: s.Model, Route: route, Q: s.Quality, C: s.CostUSD, S: s.Score})
+		}
+	}
+	return out
+}
+
+// crewTopN is how many candidates a log row keeps per seat.
+const crewTopN = 3
 
 // CrewLogAt is the router log's account of crews on this profile, for the
 // panel: today's spend and tasks and the recent ones.
@@ -1031,6 +1093,9 @@ func CrewLogAt(profileDir string) router.CrewLog {
 type CrewDay struct {
 	SpentUSD float64
 	Offsets  map[string]int
+	// CostFactor is the learned estimate factor per class
+	// ([router.CrewLog.CostFactor]).
+	CostFactor map[string]float64
 }
 
 // OffsetKey is the key [CrewDay.Offsets] is read under.
@@ -1099,6 +1164,12 @@ func RouteCrew(profileDir string, ask CrewAsk) (crewroute.Decision, error) {
 	}
 	d.Why, d.Sure = reading.Why, reading.Sure
 	d.Redo = ask.Stronger != nil || ask.Again != nil
+	// THE ESTIMATE LEARNS FROM THIS INSTALL: what its tasks of the class
+	// actually cost against their estimates moves the next one's.
+	if f := day.CostFactor[string(d.Class)]; f > 0 {
+		d.CostFactor = f
+		d.EstUSD *= f
+	}
 	if atCap {
 		return d, ErrCrewAtCap
 	}
@@ -1114,6 +1185,11 @@ func resolveCrewPin(pin CrewPin, providers []CrewProvider) (out crewroute.Pin) {
 		defer func() { out.Kind = crewroute.Free }()
 	}
 	model, known := crewCatalogModel(pin.Model)
+	if known && !crewroute.IsFree(out.Model) && !strings.EqualFold(model.ID, out.Model) {
+		// THE CATALOG DOES NOT LIST THE ID AS WRITTEN, only a variant of it:
+		// the pin is sent as that variant, and the line says so.
+		pin.Model, out.Send = model.ID, model.ID
+	}
 	if pin.Provider != "" {
 		if p, ok := crewProviderByID(providers, pin.Provider); ok {
 			if r, ok := p.route(pin.Model, model, known); ok {
