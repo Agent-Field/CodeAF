@@ -487,8 +487,9 @@ func tabsCapped(tabs []chatTab, prev []string) []chatTab {
 // those numbers.
 
 // tabsHeight is what the head costs the body region DOWN TO AND INCLUDING THE
-// STRIP: the pulse, and the strip under it on the bar's own row
-// ([tabStripRow]).
+// STRIP when a conversation is in front: the pulse, and the strip under it
+// ([tabStripRow]). On a place the strip is not drawn, so this is the nav's
+// one row and the page owns the row under it (head.go's [app.stripInHead]).
 //
 // IT STANDS DOWN ON THE TWO FLOORS THE CONVERSATION'S BAR STOOD DOWN ON. A frame
 // too narrow for a name and a way out is too narrow for this, and a terminal too
@@ -507,11 +508,15 @@ func (a *app) tabsHeight(width int) int {
 	if width < roomHeadFloor || a.breathingRows() < 2 {
 		return 0
 	}
+	if !a.stripInHead() {
+		return navRow + 1
+	}
 	return tabStripRow + 1
 }
 
-// headSealHeight is the rule and the blank under the strip — the rest of the
-// head's [placeHeadRows] — in the conversation and in every room inside it.
+// headSealHeight is the rule and the blank under the strip, or under the nav
+// on a place. It is two rows wherever the head is drawn, so a chat's head is
+// [chatHeadRows] and a place's is [placeHeadRows].
 //
 // IT IS WHAT SEPARATES THE HEAD FROM THE TRANSCRIPT AND FROM THE ROSTER BESIDE
 // IT, and it is a drawn rule rather than a blank because a blank separates
@@ -528,7 +533,7 @@ func (a *app) headSealHeight(width int) int {
 	if a.tabsHeight(width) == 0 {
 		return 0
 	}
-	return placeHeadRows - a.tabsHeight(width)
+	return chatHeadRows - (tabStripRow + 1)
 }
 
 // roomHeadRow is the frame row a room's TRAIL is drawn on — the breadcrumbs and
@@ -577,19 +582,6 @@ func (a *app) tabsRow(width int) string {
 		}
 		if name := promptName(a.input.String()); name != "" {
 			tabs = append(tabs, chatTab{word: name, full: name, here: true, start: true})
-		}
-	}
-	// ON A PLACE NO TAB IS LIT. The strip is on every page (head.go), and the
-	// tab in front wears the lit ground because it is the page on screen; on a
-	// place it is not, and a lit tab there would be two answers to where the
-	// person is standing. The nav's lit word is the one answer; a press on
-	// any tab opens its chat (topnav.go's [app.headStripPress]).
-	if a.pageShowing() {
-		if _, ok := a.teamActive(); !ok {
-			tabs = append([]chatTab(nil), tabs...)
-		}
-		for i := range tabs {
-			tabs[i].here = false
 		}
 	}
 	hot := -1

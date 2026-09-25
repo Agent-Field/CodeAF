@@ -66,7 +66,7 @@ import (
 const navRow = 0
 
 // tabStripRow is the row the chat strip is drawn on: under the nav and over
-// the rule, on every page.
+// the rule, and only while a conversation is in front (head.go).
 const tabStripRow = 1
 
 const (
@@ -468,56 +468,18 @@ func (a *app) navHover(x, y int) bool {
 	return true
 }
 
-// headHover is the pointer over the head: the nav on every page, and the
-// strip on a place, where the conversation's own hover ([app.setHover]) is not
-// asked. It reports whether the pointer is on a row the head answers for.
+// headHover is the pointer over the head. On every page that is the nav. The
+// strip is a chat's row, and the conversation's own hover ([app.setHover])
+// answers it there. It reports whether the pointer is on a row the head
+// answers for.
 func (a *app) headHover(x, y int) bool {
 	onNav := a.navHover(x, y)
-	if !a.pageShowing() {
-		if onNav {
-			// THE CONVERSATION'S OWN HOVER LETS GO of whatever it was on, a tab
-			// of the strip included, since the pointer is on neither.
-			a.setHover(x, y)
-		}
-		return onNav
+	if onNav && !a.pageShowing() {
+		// THE CONVERSATION'S OWN HOVER LETS GO of whatever it was on, a tab
+		// of the strip included, since the pointer is on neither.
+		a.setHover(x, y)
 	}
-	next := hoverAt{}
-	onStrip := false
-	if !onNav && y == tabStripRow && a.tabRow >= 0 {
-		if at, ok := a.tabHoverAt(x, y); ok {
-			next, onStrip = at, true
-		} else {
-			_, onStrip = a.tabAt(x, y)
-		}
-	}
-	if next != a.hot && (next.kind == hoverTab || a.hot.kind == hoverTab) {
-		a.hot = next
-		a.touch()
-	}
-	return onNav || onStrip
-}
-
-// headStripPress is a press on the strip while a place is up. THE STRIP IS ON
-// EVERY PAGE AND IT MEANS ONE THING ON ALL OF THEM: a tab opens its chat, `+`
-// opens a new one, the chip opens the team switcher and `▦ All` the grid of
-// open tabs. A press that opens a chat leaves the place first, so the chat is
-// what is on screen; the chip and the grid keep it underneath.
-func (a *app) headStripPress(x, y int) (tea.Cmd, bool) {
-	if !a.pageShowing() || a.tabRow < 0 || y != tabStripRow {
-		return nil, false
-	}
-	hit, ok := a.tabAt(x, y)
-	if !ok {
-		return nil, false
-	}
-	switch hit.kind {
-	case tabOther, tabHere, tabNew, tabManager:
-		leave := a.showPage(pageNone)
-		cmd, _ := a.tabPress(x, y)
-		return tea.Batch(leave, cmd), true
-	}
-	cmd, _ := a.tabPress(x, y)
-	return cmd, true
+	return onNav
 }
 
 // ── THE HINT ────────────────────────────────────────────────────────────────

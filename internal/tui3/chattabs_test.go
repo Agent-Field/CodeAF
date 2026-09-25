@@ -314,8 +314,8 @@ func TestTheStripIsChargedToTheBodyRegionAndMovesTheHeaderUnderIt(t *testing.T) 
 	}
 	// THE ROOM'S TRAIL IS THE FIRST ROW UNDER THE WHOLE HEAD — the rule and the
 	// blank under the strip are drawn in a room too (head.go).
-	if a.roomHeadRow() != placeHeadRows {
-		t.Fatalf("the room's header is on row %d, not under the %d-row head", a.roomHeadRow(), placeHeadRows)
+	if a.roomHeadRow() != chatHeadRows {
+		t.Fatalf("the room's header is on row %d, not under the %d-row head", a.roomHeadRow(), chatHeadRows)
 	}
 	if got := plain(rows[a.roomHeadRow()]); !strings.Contains(got, "Write the tree") {
 		t.Fatalf("the trail is not on the row under the head: %q", got)

@@ -90,11 +90,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"who is a traffic row from and who is it to", "team-manager"},
 		{"what does chats on the tab bar do", "places"},
 		{"how do I get back to my conversation from a place", "places"},
-		// The places moved onto the top line and the strip is on every page
-		// (places.md, topnav.go).
+		// The places sit on the top line. The chat strip is only inside a chat
+		// (places.md, head.go).
 		{"where did the places go", "places"},
 		{"what does more on the top line do", "places"},
 		{"why are my chat tabs showing on the home page", "places"},
+		{"why is there no tab strip on the teams page", "places"},
 		{"can I use my own deepseek key", "services"},
 		{"how do I connect glm", "services"},
 		{"how do I add an api key for another provider", "services"},

@@ -96,9 +96,10 @@ while preserving the content's indentation.
 
 ## Conversation tabs — switching conversations by clicking, the tab strip over a chat, clicking a chat name
 
-**The header's second line is the conversations this window has been in**, drawn as tabs
-in a row of their own under the top line, with a thin rule separating navigation from
-reading. The strip is on every page, a place included:
+**The header's second line, inside a chat, is the conversations this window has been in**,
+drawn as tabs in a row of their own under the top line, with a thin rule separating
+navigation from reading. The strip is that chat's row. Home, teams, sessions, spend,
+settings and every other place do not draw it:
 
 ```
  >● codeaf   home  teams  chats  sessions  spend  settings                 $1.20 / $20 · thu 10:31pm
@@ -108,7 +109,8 @@ reading. The strip is on every page, a place included:
 
 While a team is shown its chip, `● harbor ▾`, comes first on the strip, before the tabs it
 narrows, with the team's `◆ Manager` after it (see *The team switcher on the tab strip*).
-On a place no tab is lit, and a press on a tab opens that chat.
+The strip is not on a place, so there is no unlit tab there and a press on that row is
+the page's.
 
 Each tab is a **padded target**, and **one blank cell separates any two pieces of the
 row**: the team chip and the first tab, two tabs, the last tab and `+`, `+` and `▦ All`.

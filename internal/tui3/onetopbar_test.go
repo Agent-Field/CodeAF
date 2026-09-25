@@ -20,9 +20,10 @@ func barGeometry(frame, first string) (y, x, gap int) {
 }
 
 // ONE TOP NAV. A conversation and a place draw the same nav: the places on the
-// wordmark's row, in the same cells, with the same air between two words, and
-// the strip of chats on the row under it on both. The one thing that differs
-// is which word is lit: `chats` over a conversation, the place over a place.
+// wordmark's row, in the same cells, with the same air between two words. The
+// strip of chats is the next row only in a conversation. On a place that row
+// is the rule. The one thing that differs on row zero is which word is lit:
+// `chats` over a conversation, the place over a place.
 func TestOneTopNavOnAChatAndOnAPlace(t *testing.T) {
 	for _, width := range []int{80, 110, 160} {
 		a, _, _, _ := trafficApp(t)
@@ -51,11 +52,16 @@ func TestOneTopNavOnAChatAndOnAPlace(t *testing.T) {
 				t.Fatalf("at %d the button %d moved between the chat and the place: %+v, %+v", width, i, chatSpans[i], a.tabs[i])
 			}
 		}
-		// AND THE STRIP IS UNDER IT ON BOTH, the team chip in the same cells.
-		if sy, sx, _ := barGeometry(chat, "harbor ▾"); sy != tabStripRow {
+		// THE STRIP IS UNDER THE NAV IN THE CHAT, and absent on the place.
+		if sy, _, _ := barGeometry(chat, "harbor ▾"); sy != tabStripRow {
 			t.Fatalf("at %d the chat's strip is on row %d", width, sy)
-		} else if py2, px2, _ := barGeometry(frame, "harbor ▾"); py2 != tabStripRow || px2 != sx {
-			t.Fatalf("at %d the place's strip is at row %d x %d, the chat's at row %d x %d", width, py2, px2, sy, sx)
+		}
+		if py2, _, _ := barGeometry(frame, "harbor ▾"); py2 >= 0 {
+			t.Fatalf("at %d the place drew the strip on row %d", width, py2)
+		}
+		placeRows := strings.Split(plain(frame), "\n")
+		if len(placeRows) <= placeHeadRows || !strings.HasPrefix(placeRows[1], "─") || strings.TrimSpace(placeRows[2]) != "" {
+			t.Fatalf("at %d the place's head is not the nav, the rule and a blank", width)
 		}
 		lit := a.pal.onPlaces()
 		if !strings.Contains(frame, lit.bold(lit.accent(tabPad+"spend"+tabPad))) {

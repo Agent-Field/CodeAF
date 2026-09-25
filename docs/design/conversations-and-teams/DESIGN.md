@@ -141,8 +141,10 @@ steps over it, and `alt+k` stays the switcher that chooses a conversation. Its h
 `every conversation, one at a time`, and `▦ All` says `The grid of your open tabs`: the place
 and the grid are two doors, one row apart, and they say so.
 
-**The top nav (ruled 2026-09-24, replacing "one top bar").** The places move onto the
-wordmark's row and the strip is on every page, so the head is the same four rows everywhere:
+**The top nav (ruled 2026-09-24, replacing "one top bar"; the strip ruled 2026-09-25).**
+The places sit on the wordmark's row on every page, and that row never moves. The strip
+is a chat's own row. On a place the head is three rows: the nav, the rule, a blank. In a
+chat it is four: the nav, the strip, the rule, a blank.
 
 ```
  >● codeaf   home  teams  chats  sessions  spend  settings      3 moving · $1.20  thu 10:31pm
@@ -158,9 +160,10 @@ wordmark's row and the strip is on every page, so the head is the same four rows
   in its pads. The hover ground covers the pads, the press target is exactly that ground, and a
   terminal that cannot show a ground puts `·` in the leading pad. The hint line says
   `alt+N word · what it opens`, read off each place's `about()`.
-- Row 1 (`tabStripRow`): the chat strip on every page. On a place no tab is lit, a press on a
-  tab (or `+`, or the manager's place) leaves the place for that chat, and the chip and
-  `▦ All` open their menu and the grid over it. The strip keeps its own narrowing.
+- Row 1 (`tabStripRow`): the chat strip, only while a conversation is in front (a chat, a
+  room inside one, the grid, the work tab). On a place this row is the rule, and a click
+  there is the page's. There is no unlit strip and no place-only press path. The strip
+  keeps its own narrowing.
 - The strip's spacing (2026-09-25): every piece carries its own one-cell pad and ONE blank cell
   separates any two pieces (chip and first tab, tab and tab, tab and `+`, `+` and `▦ All`, the
   left arrow and what stands before it); the first ground is at column 2 with or without a

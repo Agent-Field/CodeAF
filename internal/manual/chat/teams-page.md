@@ -58,7 +58,9 @@ The left column is the **rail**:
 
 `↑` `↓` walk the rail, `enter` or a press chooses a team, and `←` `→` cross between the rail
 and the pane beside it. Choosing a team with a manager brings that manager's conversation in
-front, in the pane; the conversation you were in stays open behind, one `tab` away on the strip.
+front, in the pane. The tab strip is not drawn on this place. The conversation you were
+in stays open behind: `chats` on the top line, or `tab`, brings it back, and its tab is
+on the strip once that chat is in front.
 
 ## The pane: the team you chose
 

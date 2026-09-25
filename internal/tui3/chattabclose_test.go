@@ -405,13 +405,13 @@ func headerBudgeted(t *testing.T, a *app, where string) {
 			t.Fatalf("%s at %dx%d the header draws %d rows and is charged %d",
 				where, size.w, size.h, drawn, a.headHeight())
 		}
-		if a.room == nil && drawn != 0 && drawn != placeHeadRows {
-			t.Fatalf("%s at %dx%d the head is %d rows, not the places' %d",
-				where, size.w, size.h, drawn, placeHeadRows)
+		if a.room == nil && drawn != 0 && drawn != chatHeadRows {
+			t.Fatalf("%s at %dx%d the head is %d rows, not the chat's %d",
+				where, size.w, size.h, drawn, chatHeadRows)
 		}
 		// AND THE ROWS CHARGED ARE THE ROWS DRAWN: the pulse on top, the rule
 		// where the geometry says the seam is.
-		if a.room == nil && drawn == placeHeadRows &&
+		if a.room == nil && drawn == chatHeadRows &&
 			(!strings.HasPrefix(plain(rows[0]), " "+plain(a.pal.wordmark(a.width))) || strings.Trim(plain(rows[tabStripRow+1]), "─") != "") {
 			t.Fatalf("%s at %dx%d the head is charged as the places' and drawn as something else:\n%q\n%q",
 				where, size.w, size.h, plain(rows[0]), plain(rows[tabStripRow+1]))

@@ -598,9 +598,10 @@ under it.
 
 The top line is the program's name, the places you can go, and, right-aligned, what is true
 of the **whole machine** right now. It is the first row of **every** frame: home, every
-place, and the chat itself. Under it is the tab strip of your chats, then a rule and a
-blank, the same four rows at the top wherever you are standing. **Inside a chat** and on
-every place but home it reads:
+place, and the chat itself, and it does not move. Under it, **inside a chat**, is the tab
+strip of your chats, then a rule and a blank: four rows. On home and every other place
+there is no strip. The rule and a blank come next, three rows, and the page starts one
+row higher. **Inside a chat** and on every place but home the top line reads:
 
 ```
  >● codeaf   home  teams  chats  sessions  spend  settings   2 want you · 4 moving · $0.55 / $500 · tue 1:11pm

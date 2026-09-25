@@ -935,10 +935,9 @@ func placeLineHits(hits []placeHit) []int { return placeHitsOf(hits, -1) }
 // placeFrame is THE frame. Every place is drawn in it, and the head, the foot
 // and the clamp below belong to the router rather than to any place:
 //
-//	row 0        the pulse — this machine's vital signs (pulse.go)
-//	row 1        the tab bar — the seven places, and where you are
-//	row 2        a dim rule
-//	row 3        blank
+//	row 0        the nav: the wordmark, the places, the pulse (topnav.go)
+//	row 1        a dim rule
+//	row 2        blank
 //	...          the body — the place's own rows
 //	...          blank, then a dim rule
 //	...          the composer, with the scope chip at the right of its box row
@@ -987,10 +986,10 @@ func placeFrameWithBar(a *app, width, height int,
 		hits = append(hits, hit)
 	}
 
-	// THE HEAD IS THE CONVERSATION'S HEAD, drawn by the same function with the
-	// same strip of chats as its second row (head.go): the nav on row zero,
-	// the chats this window has under it, whichever page is up.
-	for _, row := range a.headRows(width, a.tabsRow(width), pal) {
+	// THE HEAD IS THE NAV, THE RULE AND A BLANK. The strip is a chat's row and
+	// is not drawn on a place (head.go), so this frame does not lay it out and
+	// does not keep its hit spans.
+	for _, row := range a.headRows(width, "", pal) {
 		add(row, nil)
 	}
 
@@ -1311,10 +1310,9 @@ func placeFrameWithBar(a *app, width, height int,
 
 	if len(lines) > height {
 		removed := len(lines) - height
-		// A FRAME TOO SHORT FOR ITS OWN CONTENTS KEEPS THE NAV AND LOSES THE
-		// STRIP, and the pointer is told that too: the strip's targets are
-		// dropped, so a press on the body row now drawn on the strip's row
-		// cannot open a chat (topnav.go's [app.headStripPress]).
+		// A FRAME TOO SHORT FOR ITS OWN CONTENTS KEEPS THE NAV. A place draws
+		// no strip, so there is no strip row to give back; the targets are
+		// cleared anyway so a stale span from a chat cannot catch the press.
 		a.chatTabHits = nil
 		a.wall.chip, a.wall.door = hudSpan{}, hudSpan{}
 		keep, keepHits := lines[:1], hits[:1]
