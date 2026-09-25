@@ -304,10 +304,11 @@ var (
 	// while home is in front and stands down the moment it is not, so the one
 	// list can hold a sentence that would be a lie over a conversation's box.
 	onHome = func(a *app) bool { return a.at(pageHome) }
-	// awayFromHome is a conversation that has had an exchange and is in
-	// front: the other half of [onHome], for a tip about the way back, which
-	// would be a lie over home's own box.
-	awayFromHome = func(a *app) bool { return a.turn >= 1 && !a.at(pageHome) }
+	// awayFromHome is a conversation that has had an exchange, with the door
+	// home open from where it stands ([app.homeDoorOpen]): the other half of
+	// [onHome], for a tip about the way back, which would be a lie over home's
+	// own box and over a door that cannot open anything.
+	awayFromHome = func(a *app) bool { return a.turn >= 1 && a.homeDoorOpen() }
 )
 
 // notices is the table, and ITS ORDER IS THE ORDER THE ROWS COME ROUND IN on
@@ -399,6 +400,21 @@ var notices = []notice{
 	// until 2026-09-22 and came off ahead of the door it taught: /ask is on
 	// its way out, and a tip is a thing to teach somebody who will still have
 	// it tomorrow. The command itself is untouched.
+	{
+		// THE WAY BACK, AT THE OWNER'S WORD ON 2026-09-24. The foot names the
+		// door as `space space home` beside every tip ([app.footHint]), but a
+		// label of three words reads as chrome after the first day, and this
+		// row says what it is in a sentence. It is never armed on home, where
+		// there is nowhere to go back to, and it retires on the gesture itself
+		// rather than on reaching home by `/home` or the tab. IT RANKS FIRST of
+		// the rows a conversation earns by talking, because a person who does
+		// not know the way back out of a conversation has no use yet for any
+		// of the commands below it.
+		id: "home-by-two-spaces", slot: slotHint,
+		armed:  awayFromHome,
+		text:   "space space takes you back to home",
+		retire: eventHomeGesture,
+	},
 	{
 		id: "task-in-chat", slot: slotHint,
 		armed:  spoken,
@@ -502,18 +518,6 @@ var notices = []notice{
 		armed:  ready,
 		text:   "ctrl+t starts a fresh chat in this project",
 		retire: eventChatStarted,
-	},
-	{
-		// THE WAY BACK, AT THE OWNER'S WORD ON 2026-09-24. The foot names the
-		// door as `space space home` beside every tip ([app.footHint]), but a
-		// label of three words reads as chrome after the first day, and this
-		// row says what it is in a sentence. It is never armed on home, where
-		// there is nowhere to go back to, and it retires on the gesture itself
-		// rather than on reaching home by `/home` or the tab.
-		id: "home-by-two-spaces", slot: slotHint,
-		armed:  awayFromHome,
-		text:   "space space takes you back to home",
-		retire: eventHomeGesture,
 	},
 	// ── memory, accounts and the rest ───────────────────────────────────────
 	{

@@ -124,6 +124,11 @@ build if the two disagree), so a tip you saw is on it word for word.
   a conversation. Retired when you run `/resume`.
 - `/standing turns a message into a rule work must follow` — once this directory has three or more earlier
   conversations. Retired when a standing order is made or the standing page opened.
+- `space space takes you back to home` — after the first exchange, in a conversation only
+  (never on home itself). Retired the first time two spaces in an empty box open home,
+  from a conversation or from a place; reaching home by `/home` or the tab does not retire
+  it. While it is the tip, the row does not add `space space home` after it a second time. It is
+  the first tip a conversation says, ahead of `/task`.
 - `/task starts a single-shot task on the side` — after the first exchange. Retired when
   `/task` is typed, bare or with a brief.
 - `ctrl+enter makes your message a rule instead of a request` — retired when a standing
@@ -163,10 +168,6 @@ build if the two disagree), so a tip you saw is on it word for word.
 **Moving around**
 
 - `ctrl+t starts a fresh chat in this project` — retired when the new-chat page opens.
-- `space space takes you back to home` — after the first exchange, in a conversation only
-  (never on home itself). Retired the first time two spaces in an empty box open home,
-  from a conversation or from a place; reaching home by `/home` or the tab does not retire
-  it. While it is the tip, the row does not add `space space home` after it a second time.
 
 **Memory, accounts and the rest**
 
