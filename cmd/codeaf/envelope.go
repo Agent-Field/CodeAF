@@ -550,6 +550,30 @@ func legacyErrandFields(outcome headlessOutcome) map[string]any {
 		"subharness":        outcome.Subharness,
 		"workspace":         outcome.workspace,
 	}
+	// THE CREW THE TASK WAS ROUTED TO, and the third seat beside the two
+	// above: the class the task was read as, each seat's model, route and
+	// whether it was pinned, and the estimate beside `spend`, which is the
+	// actual. Present on every run that was routed, absent on one that
+	// failed before a crew existed.
+	if strings.TrimSpace(outcome.checkModel) != "" {
+		fields["check_model"] = outcome.checkModel
+		fields["check_model_source"] = outcome.checkModelSource
+	}
+	if outcome.crew != nil {
+		fields["class"] = string(outcome.crew.Class)
+		fields["est_usd"] = outcome.crew.EstUSD
+		crew := map[string]any{}
+		for _, pick := range outcome.crew.Crew {
+			crew[string(pick.Seat)] = map[string]any{
+				"model": pick.Model, "provider": pick.Provider, "kind": string(pick.Kind),
+				"pinned": pick.Pinned, "est_usd": pick.CostUSD,
+			}
+		}
+		fields["crew"] = crew
+		if outcome.crew.Effort != "" {
+			fields["effort"] = string(outcome.crew.Effort)
+		}
+	}
 	if fields["artifacts"] == nil {
 		fields["artifacts"] = []string{}
 	}

@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/crewpick"
 	"github.com/Agent-Field/codeaf/internal/pool/judge"
 	"github.com/Agent-Field/codeaf/internal/pool/outbox"
 	"github.com/Agent-Field/codeaf/internal/pool/tally"
@@ -317,7 +316,7 @@ func TestCellsAnswerSortedAndCarryTheMeanAndCount(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("%d cells answered, want the three plain ones: %+v", len(got), got)
 	}
-	want := []crewpick.Cell{
+	want := []Cell{
 		{Role: "high", Model: "c/top", Mean: 70, N: 1},
 		{Role: "worker", Model: "a/first", Mean: 85, N: 2},
 		{Role: "worker", Model: "b/later", Mean: 60, N: 1},

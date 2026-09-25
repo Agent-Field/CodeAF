@@ -6,8 +6,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/credits"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/router"
 )
 
 func TestCreditsRecordChangesImplicitDefaultsWithoutSavingModels(t *testing.T) {
@@ -22,10 +25,10 @@ func TestCreditsRecordChangesImplicitDefaultsWithoutSavingModels(t *testing.T) {
 	if err := WriteCreditsReading(dir, "secret-key", credits.Reading{Known: true, Low: true}); err != nil {
 		t.Fatal(err)
 	}
-	if SettingsGeneration() <= before || !CreditsLowAt(dir) || ChatDefaultAt(dir) != FreeChatModel || CrewAt(dir) != CrewFree {
-		t.Fatalf("low record did not move chat and crew defaults: chat=%q crew=%q", ChatDefaultAt(dir), CrewAt(dir))
+	if SettingsGeneration() <= before || !CreditsLowAt(dir) || ChatDefaultAt(dir) != FreeChatModel || !crewHealthAt(dir).unaffordable[modelsource.DefaultID] {
+		t.Fatalf("low record did not move chat default and crew health: chat=%q", ChatDefaultAt(dir))
 	}
-	for tier, want := range freeCrewModels {
+	for tier, want := range freeHelperModels {
 		if got := TierModelAt(dir, tier); got != want {
 			t.Errorf("%s = %q, want %q", tier, got, want)
 		}
@@ -58,7 +61,7 @@ func TestCreditsRecordChangesImplicitDefaultsWithoutSavingModels(t *testing.T) {
 	if err := WriteCreditsReading(dir, "secret-key", credits.Reading{Known: true}); err != nil {
 		t.Fatal(err)
 	}
-	if CreditsLowAt(dir) || ChatDefaultAt(dir) != DefaultModel || CrewAt(dir) != DefaultCrew || CreditsNeedRead(dir, "secret-key") {
+	if CreditsLowAt(dir) || ChatDefaultAt(dir) != DefaultModel || crewHealthAt(dir).unaffordable[modelsource.DefaultID] || CreditsNeedRead(dir, "secret-key") {
 		t.Fatal("healthy re-read did not restore implicit defaults")
 	}
 }
@@ -75,7 +78,7 @@ func TestCannotPayKeepsTheWholeVendorSentence(t *testing.T) {
 	}
 }
 
-func TestFreeCrewIsAReadingAndExplicitRowsWin(t *testing.T) {
+func TestFreeHelpersAreAReadingAndExplicitRowsWin(t *testing.T) {
 	dir := t.TempDir()
 	if err := WriteAPIKey(dir, "key"); err != nil {
 		t.Fatal(err)
@@ -89,35 +92,30 @@ func TestFreeCrewIsAReadingAndExplicitRowsWin(t *testing.T) {
 	if ChatModelAt(dir) != "openai/gpt-4" {
 		t.Fatal("saved talk model changed")
 	}
-	if err := ApplyCrew(dir, CrewMax); err != nil {
-		t.Fatal(err)
-	}
-	if CrewAt(dir) != CrewMax {
-		t.Fatalf("explicit crew became %q", CrewAt(dir))
-	}
-	if TierModelAt(dir, ModelTierWorker) == FreeChatModel {
-		t.Fatal("a written seat was replaced")
-	}
-	if strings.Split(freeCrewModels[ModelTierHigh], "/")[0] == strings.Split(freeCrewModels[ModelTierWorker], "/")[0] {
-		t.Fatal("careful and worker share a vendor")
-	}
-	for _, model := range freeCrewModels {
+	for _, model := range freeHelperModels {
 		if !strings.HasSuffix(model, ":free") {
 			t.Fatalf("%q is not free", model)
 		}
 	}
+	if strings.Split(freeHelperModels[ModelTierReflex], "/")[0] == strings.Split(freeHelperModels[ModelTierLow], "/")[0] {
+		t.Fatal("reflex and small work share a vendor")
+	}
 }
 
-func TestLowBalanceDoesNotReplaceClearedStoredOrComputedSeats(t *testing.T) {
+// A ROW SOMEBODY WROTE IS NEVER REPLACED by the low reading: a crew pin stays
+// the pin, a written helper row stays theirs, a cleared helper row stays
+// empty, and no crew seat is handed a model this build chose.
+func TestLowBalanceDoesNotReplaceWrittenOrClearedRows(t *testing.T) {
 	for _, tc := range []struct {
-		name  string
-		write func(string) error
-		tier  string
-		want  string
+		name string
+		key  string
+		raw  string
+		tier string
+		want string
 	}{
-		{"cleared work row", func(dir string) error { return writeProfileValue(dir, KeyTierWorkerModel, "") }, ModelTierWorker, ""},
-		{"stored crew word", func(dir string) error { return writeProfileValue(dir, KeyCrew, CrewMax) }, ModelTierWorker, crewAllModels[CrewMax][ModelTierWorker]},
-		{"catalog pick", func(dir string) error { return SetCrewPick(dir, CrewPickCatalog) }, ModelTierReflex, DefaultReflexModel},
+		{"pinned worker", KeyTierWorkerModel, "openai/gpt-4", ModelTierWorker, "openai/gpt-4"},
+		{"written reflex row", KeyTierReflexModel, "vendor/reflex", ModelTierReflex, "vendor/reflex"},
+		{"cleared small-work row", KeyTierLowModel, "", ModelTierLow, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -127,14 +125,11 @@ func TestLowBalanceDoesNotReplaceClearedStoredOrComputedSeats(t *testing.T) {
 			if err := WriteCreditsReading(dir, "key", credits.Reading{Known: true, Low: true}); err != nil {
 				t.Fatal(err)
 			}
-			if err := tc.write(dir); err != nil {
+			if err := writeProfileValue(dir, tc.key, tc.raw); err != nil {
 				t.Fatal(err)
 			}
 			if got := TierModelAt(dir, tc.tier); got != tc.want {
-				t.Fatalf("explicit seat became %q, want %q", got, tc.want)
-			}
-			if tc.name == "cleared work row" && ResolveSeats(dir, "", "").Work.Model != DefaultModel {
-				t.Fatal("cleared headless work row became the free implicit default")
+				t.Fatalf("explicit row became %q, want %q", got, tc.want)
 			}
 		})
 	}
@@ -154,7 +149,7 @@ func TestLowCreditsBelongOnlyToTheCurrentKey(t *testing.T) {
 	if err := WriteAPIKey(dir, "key-B"); err != nil {
 		t.Fatal(err)
 	}
-	if CreditsLowAt(dir) || ChatDefaultAt(dir) != DefaultModel || CrewAt(dir) != DefaultCrew {
+	if CreditsLowAt(dir) || ChatDefaultAt(dir) != DefaultModel || crewHealthAt(dir).unaffordable[modelsource.DefaultID] {
 		t.Fatal("key A's low record changed key B's defaults before B was read")
 	}
 	if !CreditsNeedRead(dir, APIKeyAt(dir)) {
@@ -178,5 +173,43 @@ func TestFreeModelNeedsASuffixOrAKnownZeroTariff(t *testing.T) {
 		if got := IsFreeModel(tc.id, tc.known, tc.prompt, tc.completion, tc.request); got != tc.free {
 			t.Errorf("IsFreeModel(%q) = %v, want %v", tc.id, got, tc.free)
 		}
+	}
+}
+
+// A BALANCE READ AS LOW PUTS THE CREW ON FREE ROUTES before any call: the
+// three seats are routed to free pools, the decision says so once, and no
+// paid OpenRouter route is tried first. A healthy reading routes as usual.
+func TestALowBalanceRoutesTheCrewToFreePools(t *testing.T) {
+	dir := crewProfile(t)
+	rows := CrewCatalog()
+	rows = append(rows, catalog.Model{ID: "z-ai/glm-5.3-flash:free", OpenWeights: true, IntelligenceIndex: 41.8, CodingIndex: 71.5,
+		AgenticIndex: 50.9, ArenaElo: 1348, ContextLength: 1310720, Parameters: []string{"tools"}})
+	CrewCatalog = func() []catalog.Model { return rows }
+	var history []router.CrewRouteOutcome
+	withRouteHistory(t, &history)
+	if err := WriteCreditsReading(dir, APIKeyAt(dir), credits.Reading{Known: true, Low: true}); err != nil {
+		t.Fatal(err)
+	}
+	d, err := RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: fixTask}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, seat := range crewroute.Seats {
+		if pick := d.Seat(seat); !crewroute.IsFree(pick.Send) {
+			t.Errorf("%s on a low balance sends %q, want a free pool", seat, pick.Send)
+		}
+	}
+	if strings.Count(d.Note, "free routes in use (may log prompts)") != 1 {
+		t.Errorf("the decision note is %q, want the free-routes notice once", d.Note)
+	}
+	if err := WriteCreditsReading(dir, APIKeyAt(dir), credits.Reading{Known: true}); err != nil {
+		t.Fatal(err)
+	}
+	d, err = RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: fixTask}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if crewroute.IsFree(d.Seat(crewroute.Worker).Send) || strings.Contains(d.Note, "free routes") {
+		t.Errorf("a healthy balance still routed free: %s · %q", d.Seat(crewroute.Worker).Send, d.Note)
 	}
 }

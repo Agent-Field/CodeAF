@@ -1833,6 +1833,18 @@ move · `enter` activate. Its foot reads `esc close · ↑↓ move`.
 `end`/`G` bottom · `ctrl+o` lifts the line cap. Its foot reads exactly
 `esc close · ↑↓ scroll`, or `esc close · ↑↓ scroll · tap … for the rest`.
 
+**Crew panel** (`/crew`): `up`/`k`/`ctrl+p`, `down`/`j`/`ctrl+n`, `home`, `end` walk the six
+rows · `enter` changes the row · `esc` goes back one level and closes · `?` lists every key ·
+`z` undoes the last change while the bottom edge offers `z undo`. On the **models** row
+`←`/`→` step `all`, `open`, `price`, `custom`, and `enter` steps forward like `→` until
+`price` or `custom`, where it opens the ceilings or the checklist. On the **providers** row `←`/`→` walk the
+chips and `space` turns the one under the cursor off or on — the foot reads
+`enter change · space toggle · esc close · ? keys` there and nowhere else — and `space` on
+the `+` opens `/connect`, whose `esc` comes back to this row; `enter` opens the providers list, whose foot reads
+`space or enter toggle · esc back`. On the **cap** row a digit starts the figure. A click on
+a row is `enter`, a click on a provider chip toggles it, and the wheel walks. The models
+page has every key (*Crew panel keys*).
+
 All of these are modal: while one is up, every chord except `ctrl+c` belongs to it.
 `ctrl+c` does not close the panel — it quits codeaf, with the panel still up.
 

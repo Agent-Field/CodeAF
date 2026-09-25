@@ -160,22 +160,28 @@ Every number, the method and the limits: [docs/benchmarks/deepswe](docs/benchmar
 
 ## The right model for each call
 
-One session, many models. The model you talk to is one seat. Five more, the
-crew, take the calls you did not type:
+One session, many models. The model you talk to is one seat. Every task you hand
+off runs on a crew of three more, picked for that task from what kind of work it
+is — a bug fix, a complex fix, open-ended work, or something else:
 
-| seat | what it answers |
+| seat | what it does |
 | --- | --- |
-| reflex | memory, titles, the safety gate. Near free, reads every turn. |
-| small work | digests, task names, yes-or-no checks |
-| worker | every task you hand off. Most of the bill. |
-| careful work | checks on finished work, the brief a task is shaped into, vision |
-| mastermind | plans runs and designs subharnesses |
+| worker | does the work. Most of the bill. |
+| planner | plans runs and designs subharnesses |
+| checker | checks finished work before it lands |
 
-`/crew frugal`, `balanced` or `max` sets all five in one word. Any seat can be
-pinned.
+The crew is auto by default. Each seat is scored from its catalog metadata by
+learned weights, moved by how this install's own tasks ended, over every model your
+connected providers serve. The method is in the paper,
+[Pareto Crewing](docs/design/model-pool/pareto-crewing.pdf). `/crew` shows it: the seats, the allowed models, the
+providers, a per-task limit ($5 unless set) and an optional daily cap, and today's
+spend. `/crew pin checker <model>` pins one seat, `/crew models open` limits every
+seat to open-weight models, and `/task --best` or `/task --cheap` moves one task.
+Each task says its crew and what it cost against the estimate, and `/redo
+stronger` runs it again a step up. Two cheap rows, reflex and small work, take
+the small calls you did not type: memory, titles, digests, the safety gate.
 
-Every finished task is graded by the check it already had to pass. Work that
-keeps failing on the worker seat moves up to careful work on its own, and each
+Every finished task is graded by the check it already had to pass, and each
 request goes to the provider that has been fastest for that kind of call.
 `codeaf models` prints the ratings.
 
@@ -186,7 +192,7 @@ ChatGPT plan, Ollama and any OpenAI-compatible endpoint.
 
 ## Model Pool
 
-The picker can choose models from what other installs have found. It is on by
+Installs can pool what they have measured about models. It is on by
 default: what an install sends is computed, text-free numbers about the models
 it ran (role, model, a number, which model judged, door, size bucket, day) under
 a per-install nonce, never code,
@@ -194,7 +200,7 @@ prompts, paths or an identity, and `codeaf pool status` shows exactly what is
 waiting to go. Turn it off with `model_pool = off` on the settings sheet or
 `CODEAF_MODEL_POOL=off`; `read` uses the pool and sends nothing, and
 `CODEAF_TELEMETRY=off` caps it at `read` along with the usage counts. The relay
-publishes a signed index the crew picker reads under `picked from = learn`. The index is mirrored on the `model-pool` branch at
+publishes a signed index of what the installs measured. The index is mirrored on the `model-pool` branch at
 `pool/index.json`. The design is [Pareto Crewing](docs/design/model-pool/pareto-crewing.pdf);
 the relay's code is under `relay/`, with a [runbook](docs/design/model-pool/RUNBOOK.md)
 that includes running your own.

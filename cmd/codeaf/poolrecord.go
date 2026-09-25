@@ -30,7 +30,6 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
-	"github.com/Agent-Field/codeaf/internal/crewpick"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/pool/judge"
@@ -277,12 +276,6 @@ func poolJudgeLandingContext(ctx context.Context, settings config.Config, profil
 	// never judges it again. The live hook writes this but does not read it, so a
 	// resettle still re-judges; only the sweep reads it.
 	markJudged(poolDir, landing.ID, landing.Attempt)
-	// The next pick in this process reads the new cells at once, the same way
-	// the picker reads them at start-up (poolindex.go's poolOwnCellsFor): a
-	// closing one is the install's own evidence and is never held to the
-	// index's min_installs.
-	cells := record.Cells(sheet)
-	config.AutoOwnCells = func() []crewpick.Cell { return cells }
 	// The sheet is saved, so what the recorder appended is the install's own
 	// evidence now; the copies waiting in the outbox leave for the relay
 	// here, on this hook's own goroutine (the session runs TaskLanded on

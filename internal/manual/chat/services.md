@@ -26,12 +26,12 @@ does not open, and codeaf does not show
 `openrouter is not connected · enter on your message connects in a browser, or export OPENROUTER_API_KEY`.
 Ollama counts as connected without a key because its local service explicitly needs none.
 
-The crew follows the same road. Its small background calls — naming a session, titling a
-task, the reflex and the judges — normally use the configured crew models. If one of those
+The small background calls follow the same road — naming a session, titling a task, the
+reflex and the judges — which normally use the models on the reflex and small-work rows. If one of those
 models belongs to the default service and that service has no key, the call instead uses
 the conversation's model on the connected service. Tools, tasks and child agents launched
 from that turn inherit the same rule, so none of them makes an OpenRouter request. If the
-default service does have a key, the crew keeps using its configured models as usual.
+default service does have a key, those calls keep using their configured models as usual.
 
 ## What model do I get after connecting a service — why did my model change
 
@@ -268,7 +268,7 @@ opens it for editing with the address and name pre-filled, and an empty key box 
 the saved key. A changed name is a rename: every model id already picked under the old
 name is re-spelled with the new one, the conversation's own pick first (a turn still
 answering is waited out), and with it the stored ones: reasoning levels, the
-crew's role models, role pins, the fallback chain and the capability slots. A rename changes a label and nothing
+worker, checker and planner pins, role pins, the fallback chain and the capability slots. A rename changes a label and nothing
 else; it does not move the conversation onto a different model. `ctrl+r` on the row
 reconnects with the saved details. The `add custom connection` row runs the same three
 questions for a new connection, so the tab never sends you to `/connect` to add one.

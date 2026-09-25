@@ -3171,8 +3171,6 @@ func (a *app) overlayHeight() int {
 	switch {
 	case a.pick.open:
 		want = a.pick.height(width)
-	case a.crewPick.open:
-		want = a.crewPick.height()
 	case a.effPick.open:
 		want = a.effPick.height()
 	case a.roster.open:
@@ -3183,6 +3181,8 @@ func (a *app) overlayHeight() int {
 		want = a.connPanel.height(width)
 	case a.harnPanel.open:
 		want = a.harnPanel.height(width)
+	case a.crewUI.open:
+		want = a.crewHeight(width)
 	case a.harnPick.open:
 		want = a.harnPick.height(width)
 	case a.skillPick.open:
@@ -3231,8 +3231,6 @@ func (a *app) overlayRows(width, n int) []string {
 	switch {
 	case a.pick.open:
 		return a.pick.rows(width, n, a.pal, hover, a.reasoningFor)
-	case a.crewPick.open:
-		return a.crewPick.rows(width, n, a.pal, hover, a)
 	case a.effPick.open:
 		return a.effPick.rows(width, n, a.pal, hover)
 	case a.roster.open:
@@ -3243,6 +3241,8 @@ func (a *app) overlayRows(width, n int) []string {
 		return a.connPanel.draw(width, n, a.pal, hover)
 	case a.harnPanel.open:
 		return a.harnPanel.draw(width, n, a.pal, hover)
+	case a.crewUI.open:
+		return a.crewDraw(width, n, hover)
 	case a.harnPick.open:
 		return a.harnPick.draw(width, n, a.pal, hover)
 	case a.skillPick.open:

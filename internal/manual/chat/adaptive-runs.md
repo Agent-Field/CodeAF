@@ -139,7 +139,7 @@ None of this happens without a folder to weigh in. A run with no `-w`, or a goal
 no file that exists, is not treated as small — it is treated as unmeasured, and every one of
 these passes behaves exactly as it did before any of it was read.
 
-## Running one task without the screen — codeaf do, headless, from a script: what flags it takes, what it prints, and what its exit code means
+## Running one task without the screen — codeaf do, headless, from a script: what flags it takes, what it prints, what its last line and its exit code mean
 
 ```
 codeaf do "<task>"
@@ -158,9 +158,10 @@ keyboard decides for itself and says on the record that it decided.
 | `--json` | print one machine-readable object instead of the deliverable |
 | `--yes-spend` | spend past today's limit and the plan price without stopping |
 | `--slots <n>` | how many workers may run at once for this run; `0` is no limit. Unset, it is your `task.parallel` setting, which is no limit out of the box |
-| `--model <slug>` | the work model for this run |
-| `--plan-model <slug>` | the model that plans, when it should differ from the work model |
-| `--check-model <slug>` | the model that checks finished work; then `CODEAF_CHECK_MODEL`, then a plan seat pinned by flag or environment, then the crew's careful row |
+| `--model <slug>` | the worker for this run |
+| `--plan-model <slug>` | the planner for this run |
+| `--check-model <slug>` | the checker for this run; never the planner |
+| `--best` / `--cheap` / `--pin` | the crew for this one task — see *running from the terminal* |
 | `--context-fill <percent>` | how full a model's context window may get before it is compacted |
 | `--completion-reserve <tokens>` | tokens every call keeps free for its answer and its reasoning |
 
@@ -254,7 +255,7 @@ working. `exec` plans nothing, so naming it changes nothing, and it says so once
 error stream.
 
 Without `--json`, standard output is the worker's own text and nothing else. It opens on the
-error stream naming one model rather than two — `models: work <model> (crew frugal)` —
+error stream naming one model rather than three — `models: worker <model> (routed)` —
 because only one of them runs anything.
 
 ## What one costs and what happens when the money runs out
@@ -360,14 +361,14 @@ nobody made a finding about it. The row carries the node's own spend, and a land
 row carries its digest.
 
 **Each node row names the model it runs on, and it is not the planner's.** A run is
-deliberately two classes of model: the root row carries the **mastermind** class that cuts
-the goal, and every node row under it carries the **worker** class that does it — one
-careful call deciding what happens, many cheaper ones doing it. It is the same class a task
-handed off in conversation runs on. So opening a node and reading
+deliberately two seats: the root row carries the **planner** that cuts the goal, and every
+node row under it carries the **worker** that does it — one careful call deciding what
+happens, many cheaper ones doing it. They are the run's crew, picked for it the way a task
+handed off in conversation has its crew picked. So opening a node and reading
 `task <model>` at the foot of the frame is how you see your crew actually working; the run's
 own row above it will be naming something else, and that is the arrangement rather than a
 disagreement. The id is settled once, when the run starts, so a `/model` half way through
-does not move it. A run whose classes resolved nothing says nothing rather than guessing.
+does not move it. A run whose seats resolved nothing says nothing rather than guessing.
 
 ## What the rows under a run are called — sub task names that were just the prompt, and workers all named "You are a"
 

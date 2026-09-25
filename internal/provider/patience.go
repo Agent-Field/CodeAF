@@ -1,6 +1,9 @@
 package provider
 
-import "context"
+import (
+	"context"
+	"net/http"
+)
 
 // Patience is how ONE OUTBOUND CALL answers a provider that is pacing it, and
 // the two seams here are the whole of it: how long a 429 is worth waiting out,
@@ -65,6 +68,37 @@ type pacingKey struct{}
 // provider failing, and repeating a failure is not patience.
 func WithPatientRateLimits(ctx context.Context) context.Context {
 	return context.WithValue(ctx, patienceKey{}, true)
+}
+
+// WithoutPatientRateLimits takes the patience off every call made under ctx,
+// whatever an outer context granted: a 429 on every machine the request may
+// use is handed straight back. A crew seat asks this way, because its answer
+// to "not yet" is its next route or its next model, never a wait — a pool at
+// its daily limit that is waited on a minute at a time holds a task for as
+// long as the limit lasts.
+//
+// AND IT NEVER WAITS ON THE SAME MACHINE AFTER A 429: a free move to another
+// machine is still made at once, but the wait that would follow — the
+// machine's named window, or our doubling — is not sat out; the refusal is
+// handed back instead ([handsBackRateLimits]).
+func WithoutPatientRateLimits(ctx context.Context) context.Context {
+	return context.WithValue(context.WithValue(ctx, patienceKey{}, false), handBackKey{}, true)
+}
+
+// handBackKey marks a call that hands a rate limit back rather than wait.
+type handBackKey struct{}
+
+// handsBackRateLimits is whether lastErr is a rate limit this call hands back
+// rather than wait out.
+func handsBackRateLimits(ctx context.Context, lastErr error) bool {
+	if ctx == nil || lastErr == nil {
+		return false
+	}
+	if on, _ := ctx.Value(handBackKey{}).(bool); !on {
+		return false
+	}
+	refusal, ok := RefusalFrom(lastErr)
+	return ok && refusal.Status == http.StatusTooManyRequests
 }
 
 // patientRateLimits reports whether this call waits pacing out.

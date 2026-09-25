@@ -189,6 +189,9 @@ const (
 	// was sent: the ring of them behind /drafts and the ↑ walk's dim end
 	// (internal/tui3's draftring.go, draftpage.go).
 	GDraftUnsent
+	// GPinned marks a crew seat a person pinned, which the router does not move
+	// (internal/tui3's crew.go).
+	GPinned
 	glyphIDCount
 )
 

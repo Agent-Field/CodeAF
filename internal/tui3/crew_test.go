@@ -1,1008 +1,303 @@
 package tui3
 
 import (
-	"encoding/json"
-	"os"
+	"context"
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/config"
-	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/router"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// /crew, FROM THE FOUR SIDES A PERSON MEETS IT: the chooser, applying one, a word
-// that is not one of the three, and the reading over a crew somebody assembled
-// themselves.
+// /crew, FROM THE SIDES A PERSON MEETS IT: the panel, the four shortcuts, a
+// form that is none of them, and the crew line a routed task says.
 
-// The bare form is the three presets with yours marked, each naming the four
-// models it would set, and opens on the current one.
-func TestCrewOpensTheThreePresetsOnYours(t *testing.T) {
+// The bare form is the panel: the three seats (all auto on a profile nobody
+// touched), the allowed models and the daily cap, over the conversation rather
+// than written into it (crewpanel_test.go drives it).
+func TestCrewIsThePanel(t *testing.T) {
 	a, _ := sheetApp(t)
-	a.width = 240
 	a.slash("/crew")
-
-	if !a.crewPick.open {
-		t.Fatal("bare /crew did not open the chooser")
+	if !a.crewUI.open {
+		t.Fatal("/crew opened no panel")
 	}
-	if a.crewPick.cursor != 1 {
-		t.Fatalf("the cursor opened on row %d, want balanced at 1", a.crewPick.cursor)
-	}
-	text := plain(strings.Join(a.overlayRows(a.width, a.overlayHeight()), "\n"))
-	for _, preset := range config.CrewPresets {
-		if !strings.Contains(text, preset) {
-			t.Errorf("the listing does not mention %q:\n%s", preset, text)
-		}
-		if !strings.Contains(text, config.CrewLine(preset)) {
-			t.Errorf("the listing does not say what %q is:\n%s", preset, text)
-		}
-		models, _ := config.CrewModels(preset)
-		for _, tier := range roles.Tiers {
-			if !strings.Contains(text, models[string(tier)]) {
-				t.Errorf("the listing does not name %s's %s model:\n%s", preset, tier, text)
-			}
-		}
-	}
-	// THE SHIPPED CREW IS MARKED BY THE GROUND IT WEARS, and it is balanced — the
-	// four tier defaults are that row (internal/config's crew.go).
-	//
-	// The crew in force is the chosen thing, so it takes THE GROUND LADDER's
-	// selected step; the cursor takes the step under it. This list used to say
-	// "in force" with the POINTER's own `·` in the lead, which meant the two
-	// facts fought over one cell — and because the current preset was tested
-	// first, the cursor's own `›` vanished whenever it landed on the preset
-	// already running, which is the row a person arrows onto most.
-	painted := a.overlayRows(a.width, a.overlayHeight())
-	chosen := "\x1b[48;5;" + itoa(int(hueSelected.idx)) + "m"
-	cursorStep := "\x1b[48;5;" + itoa(int(hueCursor.idx)) + "m"
-	var onChosen, onOthers int
-	for _, line := range painted {
-		switch {
-		case strings.Contains(line, config.CrewBalanced):
-			onChosen++
-			if !strings.Contains(line, chosen) {
-				t.Errorf("the crew in force wears no ground:\n%q", line)
-			}
-		case strings.Contains(line, config.CrewFrugal) || strings.Contains(line, config.CrewMax):
-			onOthers++
-			if strings.Contains(line, chosen) {
-				t.Errorf("a preset nobody is on wears the chosen ground:\n%q", line)
-			}
-		}
-	}
-	if onChosen == 0 || onOthers == 0 {
-		t.Fatalf("the listing did not draw the presets it was asked about:\n%s", text)
-	}
-	// The cursor opened on balanced, which is also the crew in force. The louder
-	// step wins the ground and the `›` still says where enter is aimed.
-	if !strings.Contains(strings.Join(painted, "\n"), a.pal.accent("› ")) {
-		t.Errorf("the cursor lost its mark on the row it opened on:\n%s", text)
-	}
-	if strings.Contains(strings.Join(painted, "\n"), cursorStep) {
-		t.Errorf("a second row took the cursor step with no pointer on the list:\n%s", text)
-	}
-	// The four classes are named in the words their own settings rows use, so
-	// somebody told "mastermind" here can find the row there.
-	for _, tier := range roles.Tiers {
-		want := settingUI[tierSettingKey(tier)].label
+	text := strings.Join(plainOverlay(a), "\n")
+	for _, want := range []string{"worker", "planner", "checker", "auto", "models", "‹ all ›", "cap", "none"} {
 		if !strings.Contains(text, want) {
-			t.Errorf("the listing does not use the row's own word %q:\n%s", want, text)
+			t.Errorf("the panel does not say %q:\n%s", want, text)
+		}
+	}
+	for _, retired := range []string{"frugal", "balanced", "mastermind", "preset"} {
+		if strings.Contains(text, retired) {
+			t.Errorf("the panel still says the retired %q:\n%s", retired, text)
 		}
 	}
 }
 
-func TestCrewChooserAppliesAndCloses(t *testing.T) {
-	a, dir := sheetApp(t)
-	a.openSettings()
-	toProviders(t, a)
-	a.slash("/crew")
-	a.crewPickerKey(key("down"))
-	a.crewPickerKey(key("enter"))
-
-	if a.crewPick.open {
-		t.Fatal("enter left the crew chooser open")
+// A PIN IS WRITTEN, SHOWN WITH THE VOCABULARY'S PIN GLYPH, AND UNDONE.
+func TestCrewPinAndUnpin(t *testing.T) {
+	// A pin that names a provider needs that provider connected and a catalog
+	// that lists the model.
+	a, dir := crewLab(t)
+	a.slash("/crew pin checker moonshotai/kimi-k3@openrouter")
+	pin, ok := config.CrewPinAt(dir, crewroute.Checker)
+	if !ok || pin.Model != "moonshotai/kimi-k3" || pin.Provider != "openrouter" {
+		t.Fatalf("the checker pin reads %+v (%v)", pin, ok)
 	}
-	if got := config.CrewAt(dir); got != config.CrewMax {
-		t.Fatalf("enter applied %q, want max", got)
+	if note := lastNote(t, a); !strings.Contains(note, a.icon(tokens.GPinned)) || !strings.Contains(note, "kimi-k3@openrouter") {
+		t.Fatalf("the confirmation does not show the pin: %q", note)
 	}
-	if got := lastNote(t, a); !strings.Contains(got, "crew → max") {
-		t.Fatalf("the chooser noted %q", got)
+	if !a.crewUI.open {
+		t.Fatal("the pin did not open the panel on what it changed")
 	}
-	refreshed := false
-	for _, row := range a.sheet.rows {
-		if row.Key == config.KeyCrew && row.Value() == config.CrewMax {
-			refreshed = true
-		}
+	if panel := strings.Join(plainOverlay(a), "\n"); !strings.Contains(panel, a.icon(tokens.GPinned)+" kimi-k3 @openrouter") {
+		t.Fatalf("the panel does not mark the pinned seat:\n%s", panel)
 	}
-	if !refreshed {
-		t.Fatal("the open settings rows were not refreshed to max")
+	a.slash("/crew unpin checker")
+	if _, ok := config.CrewPinAt(dir, crewroute.Checker); ok {
+		t.Fatal("unpin left the checker pinned")
 	}
-}
-
-func TestCrewChooserEscChangesNothing(t *testing.T) {
-	a, dir := sheetApp(t)
-	a.slash("/crew")
-	drive(t, a, key("down"))
-	drive(t, a, key("esc"))
-
-	if a.crewPick.open {
-		t.Fatal("esc left the crew chooser open")
-	}
-	if got := config.CrewAt(dir); got != config.CrewBalanced {
-		t.Fatalf("esc changed the crew to %q", got)
+	// A seat that is not one of the three is refused with the form.
+	a.slash("/crew pin judge vendor/x")
+	if note := lastNote(t, a); !strings.Contains(note, "usage: /crew pin") {
+		t.Fatalf("a pin on an unknown seat said %q", note)
 	}
 }
 
-// A preset writes all five classes and confirms in one line.
-func TestCrewAppliesAPresetAndConfirmsInOneLine(t *testing.T) {
+// A PIN OUTSIDE THE ALLOWED MODELS IS REFUSED, not written.
+func TestCrewRefusesAPinOutsideTheAllowedModels(t *testing.T) {
 	a, dir := sheetApp(t)
-	a.slash("/crew max")
+	a.slash("/crew models z-ai/glm-5.3-flash")
+	if got := config.CrewAllowedAt(dir).String(); !strings.Contains(got, "glm-5.3-flash") {
+		t.Fatalf("the allowed rule reads %q", got)
+	}
+	a.slash("/crew pin worker vendor/elsewhere")
+	if _, ok := config.CrewPinAt(dir, crewroute.Worker); ok {
+		t.Fatal("a pin outside the allowed models was written")
+	}
+	if note := lastNote(t, a); !strings.Contains(note, "could not pin") {
+		t.Fatalf("the refusal said %q", note)
+	}
+}
 
-	want, _ := config.CrewModels(config.CrewMax)
-	for _, tier := range config.ModelTiers {
-		if got := config.TierModelAt(dir, tier); got != want[tier] {
-			t.Errorf("after /crew max the %s class reads %q, want %q", tier, got, want[tier])
+// THE CAP IS WRITTEN AND SAID with today's spend beside it; `off` clears it.
+// The day has spent something here: a day that spent nothing says no spend
+// at all (TestCrewMoneyDrawsNoZero).
+func TestCrewCap(t *testing.T) {
+	a, dir := sheetApp(t)
+	config.LogCrewOutcome(dir, "crew-cap-test", crewroute.Decision{Class: crewroute.Bugfix}, "", "a task", router.CrewAccepted, 0.02)
+	a.slash("/crew cap 5")
+	if got := config.CrewCapAt(dir); got != 5 {
+		t.Fatalf("the cap reads %v", got)
+	}
+	if note := lastNote(t, a); !strings.Contains(note, "$5.00") || !strings.Contains(note, "spent today") {
+		t.Fatalf("the cap confirmation said %q", note)
+	}
+}
+
+// THE PER-TASK LIMIT IS `/crew cap task <$>`, said back in whole dollars, and
+// `none` is refused: a task always has a limit.
+func TestCrewCapTask(t *testing.T) {
+	a, dir := sheetApp(t)
+	a.slash("/crew cap task 3")
+	if got := config.CrewTaskCapAt(dir); got != 3 {
+		t.Fatalf("the per-task limit reads %v", got)
+	}
+	if note := lastNote(t, a); !strings.Contains(note, "per-task limit · $3") {
+		t.Fatalf("the confirmation said %q", note)
+	}
+	if got := config.CrewCapAt(dir); got != 0 {
+		t.Fatalf("/crew cap task moved the daily cap to %v", got)
+	}
+	a.slash("/crew cap task none")
+	if got := config.CrewTaskCapAt(dir); got != 3 {
+		t.Fatalf("none moved the per-task limit to %v", got)
+	}
+	if note := lastNote(t, a); !strings.Contains(note, "could not set the per-task limit") {
+		t.Fatalf("the refusal said %q", note)
+	}
+}
+
+// A FORM THAT IS NONE OF THE FOUR changes nothing and says them — and the
+// retired preset words are exactly such forms now.
+func TestCrewRefusesARetiredPresetWord(t *testing.T) {
+	a, dir := sheetApp(t)
+	a.slash("/crew frugal")
+	if note := lastNote(t, a); !strings.Contains(note, "not a crew form") || !strings.Contains(note, "/crew pin") {
+		t.Fatalf("a retired preset word said %q", note)
+	}
+	if pins := config.CrewPinsAt(dir); len(pins) != 0 {
+		t.Fatalf("a retired word pinned %v", pins)
+	}
+}
+
+// THE STATUS SEGMENT names the crew in the fewest cells: auto, and how many
+// seats are pinned when any is.
+func TestCrewSegment(t *testing.T) {
+	a, dir := sheetApp(t)
+	if got := a.crewSegment(); got != "crew auto" {
+		t.Fatalf("an untouched profile's segment is %q", got)
+	}
+	if err := config.SetCrewPin(dir, crewroute.Planner, "vendor/planner"); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.crewSegment(); got != "crew auto · 1 pinned" {
+		t.Fatalf("a profile with one pin reads %q", got)
+	}
+}
+
+// A ROUTED TASK SAYS ITS CREW when it starts, with the estimate, and when it
+// lands, with the actual beside the estimate and the door to asking again.
+func TestARoutedTaskSaysItsCrewTwice(t *testing.T) {
+	a, _ := sheetApp(t)
+	crew := &crewroute.Decision{Class: crewroute.Bugfix, EstUSD: 0.02, Crew: []crewroute.Pick{
+		{Seat: crewroute.Worker, Model: "z-ai/glm-5.3-flash", Provider: "openrouter"},
+		{Seat: crewroute.Planner, Model: "z-ai/glm-5.3-flash", Provider: "openrouter"},
+		{Seat: crewroute.Checker, Model: "moonshotai/kimi-k3", Provider: "openrouter", Pinned: true},
+	}}
+	a.sayTaskCrew(session.TaskNotice{ID: 7, State: session.TaskRunning, Crew: crew})
+	a.sayTaskCrew(session.TaskNotice{ID: 7, State: session.TaskRunning, Crew: crew})
+	started := lastNote(t, a)
+	if !strings.Contains(started, "task 7 crew · bugfix · worker glm-5.3-flash (openrouter)") || !strings.Contains(started, "est $0.020") {
+		t.Fatalf("the start line reads %q", started)
+	}
+	if !strings.Contains(started, a.icon(tokens.GPinned)+" kimi-k3") {
+		t.Fatalf("the pinned checker is not marked: %q", started)
+	}
+	count := 0
+	for _, e := range a.entries {
+		if e.kind == entryNote && strings.Contains(e.text, "task 7 crew") {
+			count++
 		}
 	}
-	text := lastNote(t, a)
-	if strings.Count(text, "\n") != 0 {
-		t.Fatalf("the confirmation is more than one line:\n%s", text)
+	if count != 1 {
+		t.Fatalf("the start line was said %d times", count)
 	}
-	// The three class names come from the table rather than being spelled here:
-	// a preset that moves onto better models must not leave this test asserting
-	// the ids it used to name.
-	for _, part := range []string{
-		"crew → max",
-		"brain " + modelBase(want[config.ModelTierMastermind]),
-		"hands " + modelBase(want[config.ModelTierWorker]),
-		"checks " + modelBase(want[config.ModelTierHigh]),
+	a.sayTaskCrew(session.TaskNotice{ID: 7, State: session.TaskDone, Crew: crew, CostUSD: 0.018})
+	if landed := lastNote(t, a); !strings.Contains(landed, "$0.018 (est $0.020)") || !strings.Contains(landed, "/redo stronger") {
+		t.Fatalf("the landing line reads %q", landed)
+	}
+}
+
+// crewEffortAgent is a task door that records the effort word it was handed.
+type crewEffortAgent struct {
+	*fakeAgent
+	effort, brief string
+	redone        bool
+}
+
+func (c *crewEffortAgent) StartTask(ctx context.Context, brief string, solo bool) (uint64, string, string, error) {
+	c.brief = brief
+	return 1, brief, "", nil
+}
+
+func (c *crewEffortAgent) StartTaskEffort(ctx context.Context, brief string, solo bool, effort string) (uint64, string, string, error) {
+	c.brief, c.effort = brief, effort
+	return 1, brief, "", nil
+}
+
+func (c *crewEffortAgent) RedoStronger(ctx context.Context, row uint64) (uint64, string, error) {
+	c.redone = true
+	return 2, "again", nil
+}
+
+// `/task --best` and `/task --cheap` hand the word to the session and keep it
+// out of the brief; a task without either uses the ordinary door.
+func TestTaskEffortWordsReachTheSession(t *testing.T) {
+	for _, c := range []struct{ typed, effort, brief string }{
+		{"/task --best fix the parser", "best", "fix the parser"},
+		{"/task --cheap rename the flag", "cheap", "rename the flag"},
+		{"/task fix the parser --best", "", "fix the parser --best"},
 	} {
-		if !strings.Contains(text, part) {
-			t.Errorf("the confirmation is missing %q: %q", part, text)
+		a, _ := sheetApp(t)
+		door := &crewEffortAgent{fakeAgent: &fakeAgent{model: "openai/gpt-4.1-mini"}}
+		a.agent = door
+		runCmd(a.runTaskCommand(strings.TrimPrefix(c.typed, "/task ")))
+		if door.effort != c.effort || door.brief != c.brief {
+			t.Errorf("%q reached the session as effort %q brief %q", c.typed, door.effort, door.brief)
 		}
-	}
-	// AND NO RUNG RIDES A SHIPPED PRESET. A preset buys a bigger planning model
-	// and leaves its generation behaviour to the provider (#665); the `:high`
-	// the max crew used to carry on its brain is an instruction only a person's
-	// own class value may add.
-	if strings.Contains(text, ":high") {
-		t.Errorf("a shipped preset carried a rung: %q", text)
 	}
 }
 
-// AN UNKNOWN WORD CHANGES NOTHING AND SAYS THE SIX — the three presets and the
-// three pick words — the shape every choice this surface refuses takes
-// (effortchip.go's [app.runEffort]): a refusal that only said "no" would leave
-// a person guessing at a word they were one letter away from.
-func TestCrewRefusesAWordThatIsNotOneOfTheThree(t *testing.T) {
+// `/redo stronger` is the one form of /redo, and it reaches the session.
+func TestRedoStrongerReachesTheSession(t *testing.T) {
+	a, _ := sheetApp(t)
+	door := &crewEffortAgent{fakeAgent: &fakeAgent{model: "openai/gpt-4.1-mini"}}
+	a.agent = door
+	runCmd(a.runRedo("stronger"))
+	if !door.redone {
+		t.Fatal("/redo stronger never reached the session")
+	}
+	door.redone = false
+	runCmd(a.runRedo("harder"))
+	if door.redone {
+		t.Fatal("/redo with another word reached the session")
+	}
+	if note := lastNote(t, a); !strings.Contains(note, "usage: /redo stronger") {
+		t.Fatalf("/redo harder said %q", note)
+	}
+}
+
+// A TASK THAT STOPPED ON A CAUSE A PERSON CAN FIX LEADS WITH THE FIX: the one
+// action, first, no "/redo stronger" (a stronger crew meets the same wall),
+// and no $0.000 for a run that spent nothing.
+func TestAStoppedTaskLeadsWithItsOneAction(t *testing.T) {
+	a, _ := sheetApp(t)
+	crew := &crewroute.Decision{Class: crewroute.Bugfix, EstUSD: 0.02, Stopped: "add credit on openrouter to continue", Crew: []crewroute.Pick{
+		{Seat: crewroute.Worker, Model: "z-ai/glm-5.3-flash", Provider: "openrouter"},
+		{Seat: crewroute.Planner, Model: "z-ai/glm-5.3-flash", Provider: "openrouter"},
+		{Seat: crewroute.Checker, Model: "moonshotai/kimi-k3", Provider: "openrouter"},
+	}}
+	a.sayTaskCrew(session.TaskNotice{ID: 3, State: session.TaskFailed, Crew: crew})
+	line := lastNote(t, a)
+	if !strings.HasPrefix(line, "task 3 crew · failed — add credit on openrouter to continue · ") {
+		t.Errorf("the stopped line reads %q", line)
+	}
+	if strings.Contains(line, "/redo stronger") || strings.Contains(line, "$0.000") {
+		t.Errorf("the stopped line offers a redo or a free success: %q", line)
+	}
+}
+
+// A NEW CONVERSATION'S TASK 1 SAYS ITS CREW, though the last conversation's
+// task 1 had landed: the lines are the conversation's, and go with it.
+func TestANewConversationsTaskSaysItsCrew(t *testing.T) {
+	a, _ := sheetApp(t)
+	crew := &crewroute.Decision{Class: crewroute.Bugfix, EstUSD: 0.02, Crew: []crewroute.Pick{
+		{Seat: crewroute.Worker, Model: "z-ai/glm-5.3-flash", Provider: "openrouter"},
+		{Seat: crewroute.Planner, Model: "z-ai/glm-5.3-flash"}, {Seat: crewroute.Checker, Model: "moonshotai/kimi-k3"},
+	}}
+	a.sayTaskCrew(session.TaskNotice{ID: 1, State: session.TaskDone, Crew: crew, CostUSD: 0.01})
+	a.dropTasks()
+	before := len(a.entries)
+	a.sayTaskCrew(session.TaskNotice{ID: 1, State: session.TaskRunning, Crew: crew})
+	if len(a.entries) == before || !strings.Contains(lastNote(t, a), "task 1 crew · bugfix") {
+		t.Fatalf("the new conversation's task 1 said no crew line")
+	}
+}
+
+// THE CREW'S MONEY OBEYS THE EMPTINESS LAW: a day with nothing spent draws no
+// `$0.000` — not on the /crew cap note, not on the panel's today line — and
+// the sentence stays whole without it. Money that was spent is still said.
+func TestCrewMoneyDrawsNoZero(t *testing.T) {
 	a, dir := sheetApp(t)
-	a.slash("/crew cheap")
-
-	if got := config.CrewAt(dir); got != config.DefaultCrew {
-		t.Fatalf("an unknown word changed the crew to %q", got)
+	if got := a.crewCapWords(); got != "none" {
+		t.Errorf("no cap and nothing spent reads %q, want %q", got, "none")
 	}
-	text := lastNote(t, a)
-	if !strings.Contains(text, "not a crew word") {
-		t.Fatalf("the refusal reads %q", text)
-	}
-	words := make([]string, 0, len(config.CrewPresets)+len(config.CrewPicks))
-	words = append(words, config.CrewPresets...)
-	words = append(words, config.CrewPicks...)
-	for _, word := range words {
-		if !strings.Contains(text, word) {
-			t.Errorf("the refusal does not offer %q:\n%s", word, text)
-		}
-	}
-	if got := config.CrewPickAt(dir); got != config.CrewPickTable {
-		t.Fatalf("an unknown word changed the pick to %q", got)
-	}
-}
-
-// A CREW SOMEBODY ASSEMBLED THEMSELVES READS AS CUSTOM, and the listing says how
-// to put it back rather than pretending custom is a fourth choice.
-func TestCrewReadsCustomOverAHandSetClass(t *testing.T) {
-	a, dir := sheetApp(t)
-	a.slash("/crew balanced")
-	a.openSettings()
-	toProviders(t, a)
-	setRow(t, a, config.KeyTierMastermindModel, "openai/gpt-5")
-	a.closeSettings()
-
-	if got := config.CrewAt(dir); got != config.CrewCustom {
-		t.Fatalf("a hand-set class left the crew reading %q", got)
-	}
-	a.slash("/crew")
-	text := plain(strings.Join(a.overlayRows(a.width, a.overlayHeight()), "\n"))
-	if !strings.Contains(text, "none of the three") {
-		t.Fatalf("the chooser does not say the crew is nobody's preset:\n%s", text)
-	}
-	if !strings.Contains(text, "picking one puts all five back") {
-		t.Fatalf("the chooser does not say how to put it back:\n%s", text)
-	}
-	if strings.Contains(text, "· "+config.CrewBalanced) {
-		t.Fatalf("balanced is marked over a custom crew:\n%s", text)
-	}
-
-	// And one word heals all four.
-	a.slash("/crew balanced")
-	if got := config.CrewAt(dir); got != config.CrewBalanced {
-		t.Fatalf("the crew reads %q after balanced was set again", got)
-	}
-}
-
-// THE CREW ROW CYCLES, like every other enum row on the sheet, and a custom
-// reading enters the cycle at its first step rather than sticking.
-func TestTheCrewRowCyclesThroughTheThreePresets(t *testing.T) {
-	a, dir := sheetApp(t)
-	a.openSettings()
-	toProviders(t, a)
-	cursorTo(t, a, config.KeyCrew)
-
-	drive(t, a, key("enter"))
-	if got := config.CrewAt(dir); got != config.CrewMax {
-		t.Fatalf("enter on balanced landed on %q, want %q", got, config.CrewMax)
-	}
-	drive(t, a, key("enter"))
-	if got := config.CrewAt(dir); got != config.CrewFrugal {
-		t.Fatalf("enter on max landed on %q, want %q", got, config.CrewFrugal)
-	}
-	drive(t, a, key("enter"))
-	if got := config.CrewAt(dir); got != config.CrewBalanced {
-		t.Fatalf("enter on frugal landed on %q, want %q", got, config.CrewBalanced)
-	}
-
-	// From custom the cycle starts at the cheapest, which is the one answer that
-	// cannot surprise anybody: it never spends more than the person asked for.
-	setRow(t, a, config.KeyTierLowModel, "openai/gpt-5")
-	if got := config.CrewAt(dir); got != config.CrewCustom {
-		t.Fatalf("the crew reads %q over a hand-set class", got)
-	}
-	cursorTo(t, a, config.KeyCrew)
-	drive(t, a, key("enter"))
-	if got := config.CrewAt(dir); got != config.CrewFrugal {
-		t.Fatalf("enter on custom landed on %q, want %q", got, config.CrewFrugal)
-	}
-}
-
-// THE CREW ROW SAYS WHAT EACH OF THE THREE IS, in the line under it. A cycle row
-// walks its choices in place — there is never a moment where three rows are shown
-// side by side — so this line is the only place the comparison can happen, and it
-// is built from the same table /crew prints from.
-func TestTheCrewRowsLineNamesAllThreePresets(t *testing.T) {
-	a, _ := sheetApp(t)
-	a.openSettings()
-	toProviders(t, a)
-	cursorTo(t, a, config.KeyCrew)
-
-	item, ok := a.sheet.current()
-	if !ok {
-		t.Fatal("the cursor is not on the crew row")
-	}
-	for _, preset := range config.CrewPresets {
-		if !strings.Contains(item.meta.about, preset) {
-			t.Errorf("the crew row's line does not name %q: %q", preset, item.meta.about)
-		}
-		if !strings.Contains(item.meta.about, config.CrewLine(preset)) {
-			t.Errorf("the crew row's line does not say what %q is: %q", preset, item.meta.about)
-		}
-	}
-	if !strings.Contains(item.meta.about, config.CrewCustom) {
-		t.Errorf("the crew row's line does not say what makes it custom: %q", item.meta.about)
-	}
-	// And it is drawn, which is the whole point of a line nobody can see three
-	// rows for.
-	if !strings.Contains(plain(frame(a)), config.CrewLine(config.CrewBalanced)) {
-		t.Fatalf("the crew row's line is not on the screen:\n%s", plain(frame(a)))
-	}
-}
-
-// THE CLASS WORDS ON DISK AND THE TIER NAMES IN THE REGISTRY ARE ONE SET. The
-// listing indexes the preset table by [roles.Tier], and internal/config keys that
-// table by its own tier words; a rename on either side would silently print a
-// blank model beside a class.
-func TestTheTierWordsAndTheClassKeysAreTheSameSet(t *testing.T) {
-	if len(roles.Tiers) != len(config.ModelTiers) {
-		t.Fatalf("internal/roles has %d tiers and internal/config has %d classes",
-			len(roles.Tiers), len(config.ModelTiers))
-	}
-	for at, tier := range roles.Tiers {
-		if string(tier) != config.ModelTiers[at] {
-			t.Errorf("tier %d is %q in internal/roles and %q in internal/config",
-				at, tier, config.ModelTiers[at])
-		}
-		if settingUI[tierSettingKey(tier)].label == "" {
-			t.Errorf("tier %q has no row of its own on the sheet", tier)
-		}
-	}
-}
-
-// ── THE FAMILY ROW: WHICH POOL THE PRESETS DRAW FROM ─────────────────────
-//
-// models.crew.source is one row, and the chooser is where it moves: a header
-// the ←→ keys walk, above the presets it steers, staged until enter commits it
-// beside the preset as one decision.
-
-// THE FAMILY IS SAID ABOVE THE PRESETS, with the keys that move it named in
-// the hint under the ladder: a header row that takes ←→ while the presets
-// below keep ↑↓, so the two axes stay two axes.
-func TestTheCrewChooserNamesTheTwoFamiliesAboveThePresets(t *testing.T) {
-	a, _ := sheetApp(t)
-	a.width = 240
-	a.slash("/crew")
-
-	rows := a.overlayRows(a.width, a.overlayHeight())
-	text := plain(strings.Join(rows, "\n"))
-	// The two families are one row, third on the sheet, sitting directly above
-	// the first preset after the scope line and seat one.
-	family := plain(rows[2])
-	if !strings.Contains(family, "open models") || !strings.Contains(family, "all models") {
-		t.Fatalf("the two families are not one row above the presets:\n%s", text)
-	}
-	for i, preset := range config.CrewPresets {
-		if row := plain(rows[3+2*i]); !strings.Contains(row, preset+" — "+config.CrewLine(preset)) {
-			t.Errorf("row %d is not %s's:\n%q", 3+2*i, preset, row)
-		}
-	}
-	// THE SHIPPED FAMILY IS THE WORD LIFTED, and it is the only one: the word
-	// the next enter writes is the fact the row answers, and a second lifted
-	// word would be a second answer on a row with one question.
-	if !strings.Contains(rows[2], a.pal.accent("all models")) {
-		t.Fatalf("the all family is not the word in force:\n%q", rows[2])
-	}
-	if strings.Contains(rows[2], a.pal.accent("open models")) {
-		t.Fatalf("both families are lifted at once:\n%q", rows[2])
-	}
-	// AND ←→ MOVES THE WORD while the preset cursor keeps its place and its
-	// mark: the family is a second axis, not a row the ↑↓ list gained.
-	a.crewPickerKey(key("left"))
-	rows = a.overlayRows(a.width, a.overlayHeight())
-	if !strings.Contains(rows[2], a.pal.accent("open models")) {
-		t.Fatalf("← did not walk the family to open:\n%q", rows[2])
-	}
-	// AND THE PRESETS BELOW IT ANSWER IN THAT FAMILY: a header saying open above
-	// rows still naming frontier models is the contradiction this chooser exists
-	// to prevent, and it is the one regression a header-only check would pass.
-	for i, preset := range config.CrewPresets {
-		if row := plain(rows[3+2*i]); !strings.Contains(row, config.CrewLineFor(config.CrewSourceOpen, preset)) {
-			t.Errorf("row %d under the open family is not %s's open line:\n%q", 3+2*i, preset, row)
-		}
-	}
-	// AND THE IN-FORCE MARK DOES NOT MOVE WITH THE FAMILY. The row that wears the
-	// selected ground is the preset the profile holds IN THE FAMILY IT HOLDS, so
-	// once ←→ lifts the family no row on screen is in force: one that kept the
-	// mark would name models the profile does not run.
-	if strings.Contains(rows[3+2*1], a.pal.accent("balanced — "+config.CrewLineFor(config.CrewSourceOpen, config.CrewBalanced))) {
-		t.Errorf("the balanced row is still marked in force after ←:\n%q", rows[3+2*1])
-	}
-	if a.crewPick.cursor != 1 {
-		t.Fatalf("walking the family moved the preset cursor to row %d", a.crewPick.cursor)
-	}
-	if !strings.Contains(strings.Join(rows, "\n"), a.pal.accent("› ")) {
-		t.Fatalf("the preset cursor lost its mark to the family row:\n%s", plain(strings.Join(rows, "\n")))
-	}
-}
-
-// THE FAMILY IS READ FROM THE PROFILE, and the chooser opens on the word the
-// person last committed to, not on the default.
-func TestTheCrewChooserOpensOnThePersistedFamily(t *testing.T) {
-	a, dir := sheetApp(t)
-	seed := map[string]any{config.KeyCrewSource: config.CrewSourceAll}
-	encoded, err := json.Marshal(seed)
-	if err != nil {
+	if err := config.SetCrewCap(dir, "0.3"); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(config.BudgetConfigPath(dir), encoded, 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	a.slash("/crew")
-	rows := a.overlayRows(a.width, a.overlayHeight())
-	if !strings.Contains(rows[2], a.pal.accent("all models")) {
-		t.Fatalf("the chooser opened on a family other than the persisted one:\n%q", rows[2])
-	}
-	// THE SEGMENT DOES NOT CARRY THE FAMILY, and the frame-disk law is why
-	// (the family section in crew.go says it once): it reads the crew word and
-	// nothing else, so a profile on the all family keeps the same segment shape.
-	if got := a.crewSegment(); got != "crew "+config.CrewBalanced {
-		t.Fatalf("the crew segment reads %q over an all profile", got)
-	}
-	// AND ESC LEAVES THE ROW ALONE: walking a family and walking away writes
-	// nothing, for the esc test's own reason.
-	a.crewPickerKey(key("right"))
-	a.crewPickerKey(key("esc"))
-	if got := config.CrewSourceAt(dir); got != config.CrewSourceAll {
-		t.Fatalf("esc wrote the family to %q", got)
-	}
-}
-
-// CHOOSING A FAMILY AND A PRESET WRITES BOTH ROWS, as one decision and one file
-// write: the family and the five ids land together through
-// [config.ApplyCrewUnder].
-func TestChoosingAFamilyAndAPresetWritesTheSourceRow(t *testing.T) {
-	a, dir := sheetApp(t)
-	// A NEIGHBOUR THE WRITE MUST NOT TOUCH, because the family row lands
-	// through the same whole-file read-and-replace config's own writer uses.
-	seed := map[string]any{"test.neighbour": true}
-	encoded, err := json.Marshal(seed)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(config.BudgetConfigPath(dir), encoded, 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	a.slash("/crew")
-	a.crewPickerKey(key("left"))
-	a.crewPickerKey(key("enter"))
-
-	if a.crewPick.open {
-		t.Fatal("enter left the chooser open")
-	}
-	// ← walked the family OFF the default, so the row is written: this is the
-	// case the family row exists for, and the one a write that skipped an
-	// unchanged family would still have to land.
-	if got := config.CrewSourceAt(dir); got != config.CrewSourceOpen {
-		t.Fatalf("enter wrote the family %q, want open", got)
-	}
-	if got := config.CrewAt(dir); got != config.CrewBalanced {
-		t.Fatalf("enter applied %q, want balanced", got)
-	}
-	open, _ := config.CrewModelsForSource(config.CrewSourceOpen, config.CrewBalanced)
-	for _, tier := range config.ModelTiers {
-		if got := config.TierModelAt(dir, tier); got != open[tier] {
-			t.Errorf("enter wrote %s as %q, want the open family's %q", tier, got, open[tier])
-		}
-	}
-	// The neighbour survived the one write.
-	data, err := os.ReadFile(config.BudgetConfigPath(dir))
-	if err != nil {
-		t.Fatal(err)
-	}
-	held := make(map[string]json.RawMessage)
-	if err := json.Unmarshal(data, &held); err != nil {
-		t.Fatal(err)
-	}
-	if string(held["test.neighbour"]) != "true" {
-		t.Fatalf("the family write lost its neighbour: %s", data)
-	}
-	// AND THE SEGMENT KEEPS ITS SHAPE: it reads the crew word and not the family
-	// (the family section in crew.go says it once).
-	if got := a.crewSegment(); got != "crew "+config.CrewBalanced {
-		t.Fatalf("the crew segment reads %q after the write", got)
-	}
-}
-
-// A ROW NOBODY WROTE READS AS THE SHIPPED FAMILY, and so does a word this build
-// does not know: the chooser offers two options and a stray string off the disk
-// is not a third.
-func TestTheCrewSourceRowDefaultsToAll(t *testing.T) {
-	dir := t.TempDir()
-	if got := config.CrewSourceAt(dir); got != config.CrewSourceAll {
-		t.Fatalf("a profile with no row read %q", got)
-	}
-	for _, row := range []string{
-		`{"models.crew.source": true}`,
-		`{"models.crew.source": "everyone"}`,
-		`{`,
-	} {
-		if err := os.WriteFile(config.BudgetConfigPath(dir), []byte(row), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if got := config.CrewSourceAt(dir); got != config.CrewSourceAll {
-			t.Fatalf("the row %s read %q, want all", row, got)
-		}
-	}
-	if err := os.WriteFile(config.BudgetConfigPath(dir), []byte(`{"models.crew.source": "open"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if got := config.CrewSourceAt(dir); got != config.CrewSourceOpen {
-		t.Fatalf("the open row read %q", got)
-	}
-}
-
-// ── THE CREW IS READABLE WHERE PEOPLE GO TO CHECK ───────────────────────────
-//
-// /crew writes four class models and the session picks them up on its next
-// call, and NOTHING ON THE FRAME MOVES: the status line's model readout is the
-// conversation's model, which the crew never touches. Before these three
-// surfaces existed, the whole of the evidence was one note that scrolled away,
-// and a person who set the crew and then went to look for it concluded the
-// command had not worked.
-
-// /status NAMES THE CREW, directly under the model it is not.
-func TestStatusNamesTheCrewUnderTheModel(t *testing.T) {
-	a, _ := sheetApp(t)
-	a.slash("/crew max")
-
-	a.slash("/status")
-	text := lastNote(t, a)
-	lines := strings.Split(text, "\n")
-	at := -1
-	for i, line := range lines {
-		if strings.HasPrefix(line, "crew ") {
-			at = i
-		}
-	}
-	if at < 0 {
-		t.Fatalf("/status says nothing about the crew:\n%s", text)
-	}
-	// The preset word first, then the same three class names the confirmation
-	// prints — base names, in [config.CrewClasses]'s own order, read off the
-	// table rather than spelled here.
-	max, _ := config.CrewModels(config.CrewMax)
-	for _, want := range []string{
-		config.CrewMax,
-		"brain " + modelBase(max[config.ModelTierMastermind]),
-		"hands " + modelBase(max[config.ModelTierWorker]),
-		"checks " + modelBase(max[config.ModelTierHigh]),
-	} {
-		if !strings.Contains(lines[at], want) {
-			t.Errorf("the crew line lost %q: %q", want, lines[at])
-		}
-	}
-	if strings.Contains(lines[at], ":high") {
-		t.Errorf("/status shows a rung on a shipped preset's brain: %q", lines[at])
-	}
-	// AND IT IS THE LINE UNDER THE MODEL, because the two are read together or
-	// not at all: one is what the conversation talks to, the other is what codeaf
-	// makes its own calls on.
-	if at == 0 || !strings.HasPrefix(lines[at-1], "model ") {
-		t.Fatalf("the crew line does not sit under the model line:\n%s", text)
-	}
-}
-
-// A CREW SOMEBODY ASSEMBLED THEMSELVES READS AS CUSTOM HERE TOO. The word is
-// derived from the four live rows, so the line cannot say "max" over a class
-// that was hand-set out of it.
-func TestStatusSaysCustomOverAHandSetClass(t *testing.T) {
-	a, _ := sheetApp(t)
-	a.slash("/crew max")
-	a.openSettings()
-	toProviders(t, a)
-	setRow(t, a, config.KeyTierMastermindModel, "openai/gpt-5")
-	a.closeSettings()
-
-	a.slash("/status")
-	text := lastNote(t, a)
-	line := ""
-	for _, row := range strings.Split(text, "\n") {
-		if strings.HasPrefix(row, "crew ") {
-			line = row
-		}
-	}
-	if line == "" {
-		t.Fatalf("/status says nothing about the crew:\n%s", text)
-	}
-	if !strings.Contains(line, config.CrewCustom) {
-		t.Fatalf("the crew line reads %q over a hand-set class, want custom", line)
-	}
-	if strings.Contains(line, config.CrewMax) {
-		t.Fatalf("the crew line still claims the preset it left: %q", line)
-	}
-	if !strings.Contains(line, "brain gpt-5") {
-		t.Fatalf("the crew line does not name the class that was hand-set: %q", line)
-	}
-}
-
-// THE EMPTINESS LAW, AIMED AT THE RIGHT FACT: a window with no four tier rows
-// to read has no crew line at all — not a label with a default beside it, which
-// would be a claim about a file nobody is writing. That window is the HOSTED
-// one, where the crew lives on the far machine.
-func TestStatusSaysNothingAboutACrewInAHostedWindow(t *testing.T) {
-	a := newTestApp(&fakeAgent{model: "m"})
-	a.model = "m"
-	a.host = "devbox"
-
-	a.slash("/status")
-	for _, line := range strings.Split(lastNote(t, a), "\n") {
-		if strings.HasPrefix(line, "crew") {
-			t.Fatalf("a hosted window grew a crew line: %q", line)
-		}
-	}
-}
-
-// AND AN EMPTY PROFILE DIRECTORY IS THE ORDINARY LAUNCH, WHICH HAS A CREW.
-//
-// CODEAF_PROFILE_DIR is exported by almost nobody, so the empty string is what
-// nearly every launch carries and internal/config resolves it to this process's
-// own profile in the state root. The guard that read it as "no profile" left the
-// crew off /status, off the status line and out of the picker's hint on every
-// one of those launches (#315).
-func TestAnEmptyProfileDirectoryIsTheOrdinaryProfileAndStillHasACrew(t *testing.T) {
-	// THE SURFACE IS OPENED THE WAY A BARE `codeaf` OPENS IT — NO PROFILE
-	// DIRECTORY NAMED — which is the very fact this test is about. It is
-	// [ordinaryLaunch] and not [newTestApp] for that reason: [newTestApp] now gives
-	// every app a profile of its own, and this test means the launch that names
-	// none. [ordinaryLaunch] still gives it a state root of this test's own, so the
-	// profile it resolves is this test's and not the run's.
-	a := ordinaryLaunch(t, Options{}, nil)
-	a.model = "m"
-	if a.profileDir != "" {
-		t.Fatalf("this app names a profile at %q and cannot test the ordinary launch", a.profileDir)
-	}
-
-	if word := a.crewWord(); !strings.HasPrefix(word, config.CrewBalanced+" ·") {
-		t.Fatalf("the ordinary launch reads its crew as %q", word)
-	}
-	if got := a.crewSegment(); got != "crew "+config.CrewBalanced {
-		t.Fatalf("the ordinary launch's crew segment reads %q", got)
-	}
-	a.slash("/status")
-	if got := noteFact(lastNote(t, a), "crew"); !strings.HasPrefix(got, config.CrewBalanced+" ·") {
-		t.Fatalf("/status says the crew as %q on an ordinary launch:\n%s", got, lastNote(t, a))
-	}
-}
-
-// THE MODEL PICKER SAYS THE CREW'S NAME BESIDE ITS KEYS, because this list is
-// where a person lands hunting for a change /crew did not make here. It is the
-// word alone: the slot's cells come out of the conversation's name at the other
-// end of the legend, and every printable key is going into the filter box, so a
-// command named here would be a door that cannot be walked through.
-func TestTheModelPickerNamesTheCrewInTheHintSlot(t *testing.T) {
-	a, _ := sheetApp(t)
-	a.slash("/crew max")
-	a.pick.open = true
-
-	if got := a.hintWord(); got != "enter switch · esc · crew max" {
-		t.Fatalf("the picker's hint reads %q", got)
-	}
-
-	// And a hosted window — the one window with no crew of its own — is the hint
-	// exactly as it was.
-	hostedWindow := newTestApp(&fakeAgent{model: "m"})
-	hostedWindow.host = "devbox"
-	hostedWindow.pick.open = true
-	if got := hostedWindow.hintWord(); got != "enter switch · esc" {
-		t.Fatalf("the hint in a hosted window reads %q", got)
-	}
-}
-
-// AND THE CONFIRMATION NAMES WHAT IT DID NOT CHANGE, in the same line and at
-// the moment the question is raised: the conversation's model by id, spelled as
-// the status line spells it, and the one command that moves it. It is still one
-// line.
-func TestTheCrewConfirmationPointsAtTheModelItDidNotChange(t *testing.T) {
-	a, _ := sheetApp(t)
-	a.slash("/crew max")
-
-	text := lastNote(t, a)
-	if strings.Count(text, "\n") != 0 {
-		t.Fatalf("the confirmation is more than one line:\n%s", text)
-	}
-	if !strings.HasSuffix(text, "· you are still talking to gpt-4.1-mini — /model changes that") {
-		t.Fatalf("the confirmation does not name the model it left alone: %q", text)
-	}
-	// The id is the status line's spelling — the basename — and not the routing
-	// address, so a person can check the clause against the foot of the frame.
-	if strings.Contains(text, "openai/gpt-4.1-mini") {
-		t.Fatalf("the confirmation spells the model as a routing address: %q", text)
-	}
-	// AND THE SPELLING FOLLOWS THE REASONING LEVEL, because the status line's does.
-	// Set on the AGENT rather than through ctrl+t, which is a session that was
-	// dialled somewhere this surface did not watch — so the level is learned the
-	// way the frame clock learns it (reasoninglevel.go).
-	a.agent.SetReasoningFor("openai/gpt-4.1-mini", "high")
-	settleLevels(a, "openai/gpt-4.1-mini")
-	a.slash("/crew balanced")
-	if text := lastNote(t, a); !strings.Contains(text, "you are still talking to gpt-4.1-mini:high —") {
-		t.Fatalf("the confirmation lost the level the status line shows: %q", text)
-	}
-}
-
-// ── THE FIVE SEATS ──────────────────────────────────────────────────────────
-//
-// codeaf runs five model seats — the one you talk to, plus reflex, small work,
-// careful work and mastermind — and /crew moves only the last four. Every
-// surface that names the crew now names the fifth seat beside it, so the two
-// dials are visibly two dials.
-
-// BARE /crew IS THE FIVE-SEAT READING: a scope line saying what the presets
-// change and what they do not, seat one on a line of its own, the three presets
-// exactly as before, and a closing line pointing at where a single seat is
-// pinned.
-func TestBareCrewReadsTheFiveSeats(t *testing.T) {
-	a, _ := sheetApp(t)
-	a.width = 240
-	a.slash("/crew")
-
-	rows := a.overlayRows(a.width, a.overlayHeight())
-	if len(rows) != a.crewPick.height() {
-		t.Fatalf("the chooser drew %d rows and promised %d", len(rows), a.crewPick.height())
-	}
-	text := plain(strings.Join(rows, "\n"))
-	if !strings.HasPrefix(plain(rows[0]), crewScopeLine) {
-		t.Fatalf("the chooser does not open with the scope line:\n%s", text)
-	}
-	if seat := plain(rows[1]); !strings.Contains(seat, crewSeatLead+" · gpt-4.1-mini") {
-		t.Fatalf("seat one is not the second row:\n%s", text)
-	}
-	if !strings.HasSuffix(plain(rows[len(rows)-1]), crewPinLine) {
-		t.Fatalf("the chooser does not close on the pinning note:\n%s", text)
-	}
-	// SEAT ONE IS NOT A ROW ENTER COULD APPLY: it wears no lead, no cursor and no
-	// ground, and the cursor still opens on the crew in force below it.
-	if strings.Contains(rows[1], a.pal.accent("› ")) {
-		t.Fatalf("seat one took the cursor:\n%q", rows[1])
-	}
-	if strings.Contains(rows[1], "\x1b[48;5;"+itoa(int(hueSelected.idx))+"m") {
-		t.Fatalf("seat one wears the chosen ground:\n%q", rows[1])
-	}
-	if a.crewPick.cursor != 1 {
-		t.Fatalf("the cursor opened on row %d, want balanced at 1", a.crewPick.cursor)
-	}
-	// The presets follow, in their own order, after the three reading lines: the
-	// scope line, seat one and the family selector.
-	for i, preset := range config.CrewPresets {
-		if row := plain(rows[3+2*i]); !strings.Contains(row, preset+" — "+config.CrewLine(preset)) {
-			t.Errorf("row %d is not %s's:\n%q", 3+2*i, preset, row)
-		}
-	}
-	// And enter still applies the preset under the cursor, seat one untouched.
-	a.crewPickerKey(key("down"))
-	a.crewPickerKey(key("enter"))
-	if got := config.CrewAt(a.profileDir); got != config.CrewMax {
-		t.Fatalf("enter applied %q, want max", got)
-	}
-	if a.model != "openai/gpt-4.1-mini" {
-		t.Fatalf("the chooser moved the conversation's model to %q", a.model)
-	}
-}
-
-// THE CREW IS SAID ON THE PAGES AND NOT ON THE ROW, and every page says the
-// same word — /status, the sheet, the picker's hint and the chooser all derive
-// it from the four live rows through one function.
-//
-// It stood at the head of the telemetry, across the gap from the conversation's
-// model, until 2026-09-09. It is a SETTING rather than a measurement and it is
-// said in full elsewhere, so it came off a row that is read at a glance and
-// acted on segment by segment (foot.go's [groupOff]).
-func TestTheCrewWordIsSaidTheSameWayOnEveryPageThatSaysIt(t *testing.T) {
-	a, _ := sheetApp(t)
-	a.width = 200
-	a.slash("/crew max")
-
-	if line := plain(a.legend(a.width)); strings.Contains(line, "crew") {
-		t.Fatalf("the status line is still naming the crew:\n%q", line)
-	}
-	if segGroup(segCrew) != groupOff {
-		t.Fatalf("the crew is drawn on the status row: %v", segGroup(segCrew))
-	}
-	// ONE SOURCE FOR THE WORD, wherever it is said.
-	if a.crewHint() != a.crewSegment() {
-		t.Fatalf("the hint says %q and the segment says %q", a.crewHint(), a.crewSegment())
-	}
-	a.slash("/status")
-	if got := noteFact(lastNote(t, a), "crew"); !strings.HasPrefix(got, "max ·") {
-		t.Fatalf("/status reads %q rather than the same word:\n%s", got, lastNote(t, a))
-	}
-	// A hand-set seat turns every reading to custom at once.
-	a.openSettings()
-	toProviders(t, a)
-	setRow(t, a, config.KeyTierMastermindModel, "openai/gpt-5")
-	a.closeSettings()
-	if got := a.crewSegment(); got != "crew custom" {
-		t.Fatalf("the crew reads %q after a hand-set seat, want crew custom", got)
-	}
-	if got := deckValue(a.deckItems(), "crew"); !strings.HasPrefix(got, config.CrewCustom) {
-		t.Fatalf("the sheet's crew row is %q after a hand-set seat", got)
-	}
-}
-
-// THE CREW IS NOT ON THE ROW AT ANY WIDTH. It used to be the first segment a
-// crowded row gave up, which is the shape of a fact that did not belong there:
-// the row is a ledger of things a person acts on from it, and a preset is
-// changed on a page. The bill and the meter keep every width they had.
-func TestTheCrewIsOffTheRowAtEveryWidth(t *testing.T) {
-	a, _ := sheetApp(t)
-	a.title = "a conversation with a name long enough to crowd"
-	a.ctxWindow, a.ctxTokens = 200_000, 24_000
-	a.cost = 0.31
-
-	for _, width := range []int{200, 100} {
-		row := plain(a.legend(width))
-		if strings.Contains(row, "crew") {
-			t.Fatalf("the %d-column row carries the crew:\n%q", width, row)
-		}
-		// The meter and the state word outlast every width here; the bill is
-		// the last number the seam gives up before the meter ([dropOrder]),
-		// and a long name at a hundred columns costs it.
-		kept := []string{"$0.31", "24k/200k", "idle"}
-		if width < 120 {
-			kept = kept[1:]
-		}
-		for _, want := range kept {
-			if !strings.Contains(row, want) {
-				t.Fatalf("the %d-column row lost %q:\n%q", width, want, row)
-			}
-		}
-	}
-	// The crew is not on the line at all any more (foot.go's [groupOff]), so it
-	// is not on the ladder either: the sheet and /status are where it is said.
-	if segGroup(segCrew) != groupOff {
-		t.Fatalf("the crew is drawn on the status row: %v", segGroup(segCrew))
-	}
-}
-
-// THE EMPTINESS LAW ON THE ROW: a hosted window has no crew to read — it is on
-// the far machine — and the status line says nothing rather than guessing a word.
-func TestTheStatusLineSaysNothingAboutACrewInAHostedWindow(t *testing.T) {
-	a := newTestApp(&fakeAgent{model: "m"})
-	a.model = "m"
-	a.host = "devbox"
-	if line := plain(a.legend(200)); strings.Contains(line, "crew") {
-		t.Fatalf("a hosted window grew a crew segment:\n%q", line)
-	}
-	for _, part := range a.telemetry(200) {
-		if part.kind == segCrew {
-			t.Fatalf("a hosted window assembled a crew segment: %+v", part)
-		}
-	}
-}
-
-// AND AN ORDINARY LAUNCH READS IT ON ITS OWN PAGE, at both the widths a person
-// actually sits at.
-//
-// This is the issue's headline said the way a person meets it: a crew picked in
-// a profile of this test's own, nothing exported into the environment, and the
-// word reachable without a flag or a variable. It was the FRAME that carried it
-// when #315 was fixed — the crew word rode the status row — and since 2026-09-09
-// the row does not carry settings, so what this asserts is the door that
-// replaced it: the sheet and /status, which every width reaches the same way. A
-// hosted window still shows none: its crew is on the far machine.
-func TestAnOrdinaryLaunchCarriesTheCrewOnItsPageAtEveryWidth(t *testing.T) {
-	dir := t.TempDir()
-	if err := config.ApplyCrew(dir, config.CrewMax); err != nil {
-		t.Fatal(err)
-	}
-	for _, width := range []int{80, 120} {
-		// TWO SURFACES OVER ONE PROFILE, ON PURPOSE: the crew the preset put on
-		// `dir` is what both read, so both name the same directory rather than one
-		// of their own.
-		a := newTestAppWithProfile(dir, &fakeAgent{model: "openai/gpt-4.1-mini"})
-		a.model = "openai/gpt-4.1-mini"
-		a.width, a.height = width, 24
-		painted, _, _ := a.frame()
-		if frame := plain(painted); strings.Contains(frame, "crew ") {
-			t.Fatalf("the %d-column frame of an ordinary launch still carries the crew:\n%s", width, frame)
-		}
-		if got := deckValue(a.deckItems(), "crew"); !strings.HasPrefix(got, config.CrewMax) {
-			t.Fatalf("at %d columns the sheet's crew row is %q, want the picked preset", width, got)
-		}
-
-		hostedWindow := newTestAppWithProfile(dir, &fakeAgent{model: "openai/gpt-4.1-mini"})
-		hostedWindow.host = "devbox"
-		hostedWindow.model = "openai/gpt-4.1-mini"
-		hostedWindow.width, hostedWindow.height = width, 24
-		if got := deckValue(hostedWindow.deckItems(), "crew"); got != "" {
-			t.Fatalf("at %d columns a hosted window read a crew: %q", width, got)
-		}
-	}
-}
-
-// AND THE STATUS SHEET CARRIES THE CREW UNDER THE MODEL, the way /status does,
-// because the two are one list: the phone's sheet was the one surface that did
-// not say it.
-func TestTheStatusSheetCarriesTheCrewUnderTheModel(t *testing.T) {
-	a, _ := sheetApp(t)
-	a.slash("/crew max")
-
-	items := a.deckItems()
-	for i, item := range items {
-		if item.label != "crew" {
-			continue
-		}
-		if i == 0 || items[i-1].label != "model" {
-			t.Fatalf("the crew is not under the model: %+v", items)
-		}
-		if item.value != a.crewWord() {
-			t.Fatalf("the sheet's crew reads %q, want %q", item.value, a.crewWord())
-		}
-		// Once, and in full — never a second time as the row's short word.
-		for _, other := range items[i+1:] {
-			if other.label == "crew" || other.value == "crew max" {
-				t.Fatalf("the crew is on the sheet twice: %+v", items)
-			}
-		}
-		return
-	}
-	t.Fatalf("the sheet has no crew line: %+v", items)
-}
-
-// ── the pick row ────────────────────────────────────────────────────────────
-
-// THE THREE PICK WORDS ARE DOOR WORDS, beside the presets: `/crew learn` says
-// where the seats come from and moves no model id, and the confirmation, the
-// crew word and the segment all carry it. `/crew table` is the way back.
-func TestCrewTakesThePickWords(t *testing.T) {
-	a, dir := sheetApp(t)
-	a.slash("/crew learn")
-
-	if got := config.CrewPickAt(dir); got != config.CrewPickLearn {
-		t.Fatalf("/crew learn left the pick reading %q", got)
-	}
-	if got := config.CrewAt(dir); got != config.DefaultCrew {
-		t.Fatalf("a pick word moved the crew to %q", got)
-	}
-	// THE CREW WORD AND THE SEGMENT SAY IT: `balanced · learn` on the page,
-	// `crew balanced · learn` on the status line — the word a person reads in
-	// /status is the word the frame carries.
-	if word := a.crewWord(); !strings.Contains(word, "· learn") {
-		t.Fatalf("the crew word reads %q, want the pick beside the preset", word)
-	}
-	if seg := a.crewSegment(); seg != "crew balanced · learn" {
-		t.Fatalf("the segment reads %q, want crew balanced · learn", seg)
-	}
-	if text := lastNote(t, a); !strings.Contains(text, "crew → "+config.DefaultCrew+" · learn") {
-		t.Fatalf("the confirmation reads %q, want the pick named", text)
-	}
-
-	a.slash("/crew table")
-	if got := config.CrewPickAt(dir); got != config.CrewPickTable {
-		t.Fatalf("/crew table left the pick reading %q", got)
-	}
-	if seg := a.crewSegment(); seg != "crew "+config.DefaultCrew {
-		t.Fatalf("the segment reads %q after the way back, want the plain crew word", seg)
-	}
-}
-
-// THE CHOOSER NAMES THE PICK when it is off the table, and says nothing about
-// the default: the table is where the seats have always come from, and a line
-// naming it would say something nobody chose.
-func TestTheCrewChooserNamesThePickWhenItIsOffTheTable(t *testing.T) {
-	a, _ := sheetApp(t)
-	a.slash("/crew learn")
-	a.slash("/crew")
-	text := plain(strings.Join(a.overlayRows(a.width, a.overlayHeight()), "\n"))
-	if !strings.Contains(text, "picked from learn") {
-		t.Fatalf("the chooser does not name the pick:\n%s", text)
-	}
-	a.crewPick.close()
-	a.slash("/crew table")
-	a.slash("/crew")
-	text = plain(strings.Join(a.overlayRows(a.width, a.overlayHeight()), "\n"))
-	if strings.Contains(text, "picked from") {
-		t.Fatalf("the chooser names the default pick:\n%s", text)
-	}
-}
-
-// THE PICK ROW SITS UNDER THE CREW ROW AND CYCLES, like every other enum row
-// on the sheet: the crew word above it says how much to spend, and this says
-// where the models for that money come from.
-func TestThePickRowSitsUnderTheCrewRowAndCycles(t *testing.T) {
-	a, dir := sheetApp(t)
-	a.openSettings()
-	toProviders(t, a)
-
-	// THE PLACE: directly under the crew row, before the classes it seats. A
-	// pick row a tab away from the crew word would be two errands on two
-	// screens for one decision.
-	crew, pick := -1, -1
-	for i, item := range a.sheet.items {
-		switch item.row.Key {
-		case config.KeyCrew:
-			crew = i
-		case config.KeyCrewPick:
-			pick = i
-		}
-	}
-	if crew < 0 || pick < 0 {
-		t.Fatalf("the Providers tab holds no crew/pick pair (crew %d, pick %d)", crew, pick)
-	}
-	if pick != crew+1 {
-		t.Fatalf("the pick row sits at %d with the crew at %d, want it directly under", pick, crew)
-
-	}
-
-	cursorTo(t, a, config.KeyCrewPick)
-	drive(t, a, key("enter"))
-	if got := config.CrewPickAt(dir); got != config.CrewPickCatalog {
-		t.Fatalf("enter on table landed on %q, want %q", got, config.CrewPickCatalog)
-	}
-	drive(t, a, key("enter"))
-	if got := config.CrewPickAt(dir); got != config.CrewPickLearn {
-		t.Fatalf("enter on catalog landed on %q, want %q", got, config.CrewPickLearn)
-	}
-	drive(t, a, key("enter"))
-	if got := config.CrewPickAt(dir); got != config.CrewPickTable {
-		t.Fatalf("enter on learn landed on %q, want %q", got, config.CrewPickTable)
+	if got := a.crewCapWords(); got != "$0.300" {
+		t.Errorf("a cap and nothing spent reads %q, want %q", got, "$0.300")
+	}
+	a.crewUI.log = router.CrewLog{Tasks: 1}
+	if got := a.crewTodayWord(); got != "today 1 task" {
+		t.Errorf("a task that spent nothing reads %q, want %q", got, "today 1 task")
+	}
+	a.crewUI.log = router.CrewLog{Tasks: 2, SpentUSD: 0.006}
+	if got := a.crewTodayWord(); got != "today $0.006 · 2 tasks" {
+		t.Errorf("a day that spent reads %q", got)
 	}
 }

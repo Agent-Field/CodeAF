@@ -5,17 +5,17 @@
 For the default OpenRouter service, codeaf reads the account's credit balance and
 the key's own spending cap, whichever is smaller. A known remaining balance of $0.50
 or less is low. While it is low, a new conversation on a profile where you never
-chose a model opens on `qwen/qwen3.8-27b:free`, and the five crew seats nobody set
-use `nvidia/nemotron-3.5-lightning:free` for reflex,
-`thinkingmachines/inkling-small:free` for small work, `qwen/qwen3.8-27b:free` for
-worker, `thinkingmachines/inkling:free` for careful work and
-`qwen/qwen3.8-27b:free` for mastermind. `/status` and the setup screen call that
-crew `free`; `/crew` still offers `frugal`, `balanced` and `max`, and choosing one
-writes it.
+chose a model opens on `qwen/qwen3.8-27b:free`, and the two helper rows nobody set
+use `nvidia/nemotron-3.5-lightning:free` for reflex and
+`thinkingmachines/inkling-small:free` for small work. The crew's three seats — worker,
+planner and checker — are picked per task, and a low balance reaches them as an
+OpenRouter account out of credit: a seat nobody pinned is routed to a free pool, and the
+task's crew line says `free routes in use (may log prompts) · credit unavailable on
+openrouter` (*Route health* in *Models and cost*).
 
 Free ids are defaults only. A model you chose with `/model` or the setup screen,
-`--model`, `CODEAF_MODEL`, a crew you applied or a tier row you set stays chosen,
-and the free defaults are never written into your settings. Nothing is spent
+`--model`, `CODEAF_MODEL`, a seat you pinned with `/crew pin` or a helper row you set stays
+chosen, and the free defaults are never written into your settings. Nothing is spent
 reading the balance: it is two account lookups and no model call.
 
 OpenRouter limits free models to 20 requests per minute, and to 50 requests per
@@ -61,8 +61,8 @@ A conversation that has sent nothing and whose model nobody chose follows the
 default both ways: onto the free model when the account reads low, and back to
 the usual default when a later read finds more than $0.50. A conversation that has
 sent a message keeps its model either way. After a top-up, the next new
-conversation opens on the usual default and the crew seats nobody set return to the
-`balanced` models.
+conversation opens on the usual default, the helper rows return to their usual models,
+and the crew is routed over paid routes again.
 
 ## Low on credits warning under the message box
 

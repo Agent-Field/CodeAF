@@ -35,7 +35,7 @@ package session
 // a hundred and twenty-eight thousand tokens of room. That is a NORMAL SYSTEM and
 // it must get the full page: the seat rule would have taken sections off the page,
 // shelved `propose_task` and `tasks`, and turned saved memories OFF for anybody
-// who picked the frugal preset and then chose that same model in chat — silently,
+// whose crew ran on an open model and who then chose that same model in chat — silently,
 // with nothing on screen saying so, because a derived profile has no row anywhere
 // for a person to read. Open weights are a licence, not a size. A model that is
 // genuinely small announces it the way every other model does: llama.cpp, ollama

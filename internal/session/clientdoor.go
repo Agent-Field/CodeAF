@@ -567,6 +567,33 @@ func (a *Agent) completeWithModel(ctx context.Context, purpose callPurpose, mess
 // missing default-service key moved the call onto the live seat; asking the pool
 // a second time afterwards could observe a different model or source set.
 func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose, messages []ai.Message, model string, options ...ai.Option) (*ai.Response, string, error) {
+	// AN AUXILIARY CALL NEVER ASKS A ROUTE HEALTH SAYS WILL NOT ANSWER
+	// (taskcrew.go's [Agent.healthyModel]).
+	model = a.healthyModel(ctx, purpose, model)
+	// A HELPER'S CALL IS PRICED LIKE A SEAT'S: against the crew's day cap —
+	// and, made for a task, that task's limit — before it is made, and on the
+	// day after. A crew seat's own call is its
+	// task's guard's (taskcrew.go), and the person's turn is theirs.
+	var helper *SpendGuard
+	var held float64
+	if purpose != purposeTurn && !isCrewSeatCall(ctx) {
+		task := crewTaskOf(ctx)
+		if stopped := task.stoppedAction(); stopped != "" {
+			// A TASK THAT STOPPED ON ITS ACTION buys no more helpers: every
+			// route it could reach already said no.
+			return nil, model, crewStopped{action: stopped}
+		}
+		helper = a.helperGuard(task)
+		var err error
+		if held, err = helper.before(model, messages, options); err != nil {
+			return nil, model, err
+		}
+		if helper != nil {
+			// NOBODY WAITS ON A HELPER, so it never sits out a limit: a 429
+			// comes back at once and the errand's next rung is asked.
+			ctx = provider.WithoutPatientRateLimits(ctx)
+		}
+	}
 	client, wire, called, err := a.completerFor(model)
 	if err != nil {
 		return nil, called, err
@@ -579,6 +606,10 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 	// A CALL UNDER A TOLD WINDOW IS TOLD IT HERE, at the last moment the context
 	// is this package's to change (callwindow.go says why it cannot be earlier).
 	response, err := client.CompleteWithMessages(toldItsWindow(ctx), messages, append(options, ai.WithModel(wire))...)
+	if helper != nil {
+		helper.after(model, response, held)
+		crewTaskOf(ctx).addHelperSpend(response)
+	}
 	return response, called, err
 }
 
@@ -625,6 +656,7 @@ func (c Config) clientConfig(model string, timeout time.Duration) provider.Confi
 	if configured.ModelPrice == nil {
 		configured.ModelPrice = c.ModelPrice
 	}
+	configured.RouteGate = c.routeGate(model, configured.Model)
 	return configured
 }
 

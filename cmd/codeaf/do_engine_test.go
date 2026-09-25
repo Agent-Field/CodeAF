@@ -435,7 +435,7 @@ func TestDoOnTheRunEngineSeatsEveryLaunchOnTheDoorsModels(t *testing.T) {
 	var stdout, stderr strings.Builder
 	err = doErrand(doRequest{
 		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
-		timeout: 60 * time.Second, slots: bound(1), model: workModel, planModel: planModel,
+		timeout: 60 * time.Second, slots: bound(1), model: workModel, planModel: planModel, checkModel: planModel,
 		stdout: &stdout, stderr: &stderr, newBeltCompleter: newBelt,
 	})
 	if err != nil {

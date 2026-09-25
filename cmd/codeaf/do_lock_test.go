@@ -31,6 +31,8 @@ func TestDoFailsFastWhenAnotherProcessHoldsTheResidentLock(t *testing.T) {
 	err = doErrand(doRequest{
 		task:     "write the release note",
 		database: path,
+		// Every seat is named, so the crew needs no router to reach the lock.
+		model: "test/model", planModel: "test/model", checkModel: "test/model",
 		// The wall is long and the bound is short on purpose: the thing under
 		// test is that the run leaves on the bound rather than on the wall.
 		timeout:      5 * time.Minute,

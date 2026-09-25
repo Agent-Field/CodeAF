@@ -2318,11 +2318,43 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
+		// AN EFFORT WORD THIS ENGINE CANNOT HONOUR IS REFUSED, NEVER DROPPED:
+		// the person said how hard to try this task, and a start on the crew
+		// they would have had anyway is the silence version 18 exists to end.
+		if args.Effort != "" {
+			effortDoor, ok := agent.(interface {
+				StartTaskEffort(context.Context, string, bool, string) (uint64, string, string, error)
+			})
+			if !ok {
+				return nil, errors.New("engine: this session cannot choose a task's crew")
+			}
+			id, title, note, err := effortDoor.StartTaskEffort(context.Background(), args.Brief, args.Solo, args.Effort)
+			if err != nil {
+				return nil, err
+			}
+			return json.Marshal(TaskStarted{ID: id, Title: title, Note: note})
+		}
 		id, title, note, err := door.StartTask(context.Background(), args.Brief, args.Solo)
 		if err != nil {
 			return nil, err
 		}
 		return json.Marshal(TaskStarted{ID: id, Title: title, Note: note})
+	case MethodTaskRedoStronger:
+		door, ok := agent.(interface {
+			RedoStronger(context.Context, uint64) (uint64, string, error)
+		})
+		if !ok {
+			return nil, errors.New("engine: this session has no task door")
+		}
+		args, err := arg[TaskRedoArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		id, title, err := door.RedoStronger(context.Background(), args.ID)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(TaskStarted{ID: id, Title: title})
 	case MethodPlannerStart:
 		door, ok := agent.(interface {
 			StartPlannerRun(context.Context, string, string) (string, string, error)

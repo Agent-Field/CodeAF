@@ -940,7 +940,9 @@ func TestTheTierRowsAndTheVisionRowAreAnsweredByThePicker(t *testing.T) {
 	// The classes sit on the Providers tab, with the model they answer under
 	// (settings.go's [modelsSection]).
 	toProviders(t, a)
-	for _, row := range []string{config.KeyTierLowModel, config.KeyTierHighModel} {
+	// The seats — worker, planner, checker — are one row that opens /crew
+	// (settings.go's [sheet.crewDoorItem]); the small-work row is the class row left.
+	for _, row := range []string{config.KeyTierLowModel} {
 		cursorTo(t, a, row)
 		if got := a.sheet.items[a.sheet.cursor].meta.widget; got != widgetSelect {
 			t.Fatalf("%s is answered by widget %v, want the picker", row, got)
@@ -987,7 +989,7 @@ func TestEachSlotFiltersTheModelsByWhatItNeeds(t *testing.T) {
 	a.openSettings()
 	toProviders(t, a)
 
-	cursorTo(t, a, config.KeyTierHighModel)
+	cursorTo(t, a, config.KeyTierLowModel)
 	drive(t, a, key("enter"))
 	// Alphabetical, which is what a table opens in on this surface
 	// (pickersort.go). What this test is about is WHICH models are on offer.
@@ -2275,7 +2277,7 @@ func TestTheHintSlotFollowsTheStateAndIsEmptyAtRest(t *testing.T) {
 	a.pick.open = true
 	// The crew rides the end of the picker's hint (crew.go's [app.crewHint]),
 	// and an ordinary launch has one.
-	if got := a.hintWord(); got != "enter switch · esc · crew "+config.DefaultCrew {
+	if got := a.hintWord(); got != "enter switch · esc · crew auto" {
 		t.Fatalf("an open picker offered %q", got)
 	}
 	a.pick.open = false

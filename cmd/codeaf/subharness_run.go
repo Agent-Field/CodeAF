@@ -118,7 +118,7 @@ func runSubharnessCommand(args []string) error {
 	// same ladder every other headless door climbs, so a profile's crew reaches
 	// this one too (config.ResolveSeats).
 	useAutoSeats(settings)
-	seats := config.ResolveSeats(settings.ProfileDir, *model, "")
+	seats := doorSeats(settings, *model, "", "")
 	applySeats(&settings, seats)
 	fmt.Fprintln(os.Stderr, seats.Work.Report())
 	// The measured ruler is seated for the same reason `run` seats it: this is a

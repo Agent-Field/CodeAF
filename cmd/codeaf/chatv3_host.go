@@ -620,11 +620,11 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 	// lets go (#1274): its fetch writes a cache when it lands, and one nobody
 	// joined could write after this window had closed.
 	fleet.own(models.Close)
-	// A tier row that says auto is answered from this catalog (config.AutoModels):
+	// The crew router picks its seats from this catalog (config.CrewCatalog):
 	// the same non-blocking read, never a fetch, and set once at start-up.
-	config.AutoModels = models.ModelsNow
-	// The pool's index is seated beside it, read once here and refreshed in the
-	// background, against the same profile the catalog was read from.
+	seatCrewRows(models.ModelsNow)
+	// The pool's errands start beside it, against the same profile the catalog
+	// was read from.
 	wirePoolIndex(profileDir)
 	// The refresh key in /model asks the same router THIS machine's list came
 	// from, and refills the same shelf — the list is this laptop's list of

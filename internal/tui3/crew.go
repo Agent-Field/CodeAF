@@ -1,159 +1,217 @@
 package tui3
 
 import (
+	"strconv"
 	"strings"
 
-	"charm.land/bubbletea/v2"
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/Agent-Field/codeaf/internal/config"
-	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// /crew — THE FIVE MODELS codeaf WORKS WITH, ANSWERED IN ONE WORD.
+// /crew — WHAT IS ALLOWED, AND WHAT IS PINNED. NOTHING ELSE STICKS.
 //
-// The settings panel has the same five rows and a crew row above them, and this
-// command exists anyway for the reason /model exists beside the model slot: the
-// panel is where you go to READ a decision, and a command is where you go to
-// CHANGE one you have already made up your mind about. Somebody whose planner is
-// not thinking hard enough types `/crew max` and gets one line back; the same
-// person in the panel opens a sheet, walks a tab bar, finds a row and presses a
-// key three times.
+// A task's crew is three seats — the WORKER that does the work, the PLANNER
+// that structures it, the CHECKER that reads the result — and by default all
+// three are AUTO: codeaf reads what kind of task it is and picks each seat for
+// that task, at the point on the quality-for-money curve past which paying more
+// stops buying much (internal/crewroute). The panel is where a person says what
+// PERSISTS: which seat is pinned to which model, which models may be picked at
+// all, and how much the crews may spend in a day. How hard to try ONE task is
+// said in the ask — `/task --best`, `/task --cheap`, or `/redo stronger` after
+// the fact — and moves nothing here.
 //
-// The bare form is the FIVE-SEAT READING: the model the person talks to on a
-// line of its own, then the three presets as a chooser. Each preset row keeps
-// the comparison the old listing supplied — its sentence first and the four
-// class models underneath — and the seat above them is the one thing on the
-// list no key can move ([crewPicker.rows] says why it is there anyway).
+// /model IS UNTOUCHED BY ALL OF IT. The model a person talks to is the
+// conversation's; the crew is the models codeaf spends on its own behalf.
 //
-// EVERY CREW WRITE GOES THROUGH config's own writers: a preset through
-// [config.ApplyCrew], and the chooser's family-and-preset decision through
-// [config.ApplyCrewUnder] in one file write. A second writer anywhere else is how
-// a command and a panel end up disagreeing about which crew is on.
+// THE BARE FORM IS THE PANEL (crewpanel.go): the five rows a person changes
+// — three seats, the allowed models, the daily cap — edited where they stand.
+// The four shortcuts write the same rows through the same writers and then
+// open the panel with the tick on the row they changed, so a command and the
+// panel cannot disagree about which crew is on:
+//
+//	/crew pin <seat> <model[@provider]>   /crew unpin <seat|all>
+//	/crew models <all|open|≤in/out|list|+model|-model>
+//	/crew cap <dollars|off>   /crew cap task <dollars>
 
-// runCrew is /crew: the three presets with the current one marked, or one applied.
-func (a *app) runCrew(arg string) {
+// crewUsage is the one line every refused /crew form answers with.
+const crewUsage = "/crew · /crew pin <worker|planner|checker> <model[@provider]> · /crew unpin <seat|all> · " +
+	"/crew models <all|open|≤in/out|ids…|+id|-id> · /crew cap <dollars|off> · /crew cap task <dollars>"
+
+// runCrew is /crew: the panel, or one of its four shortcuts. It answers the
+// tick that takes the panel's undo offer down after a shortcut opened it.
+func (a *app) runCrew(arg string) tea.Cmd {
 	a.noticeEvent(eventCrewShown)
 	if a.hosted() {
 		a.note(a.remoteProfileWord("the crew"))
-		return
+		return nil
 	}
-	arg = strings.ToLower(strings.TrimSpace(arg))
-	if arg == "" {
-		a.closeLists()
-		a.crewPick.start(config.CrewAt(a.profileDir), config.CrewSourceAt(a.profileDir),
-			a.crewInheritedLine(), config.CrewPickAt(a.profileDir))
-		a.touch()
-		return
+	arg = strings.TrimSpace(arg)
+	word, rest, _ := strings.Cut(arg, " ")
+	rest = strings.TrimSpace(rest)
+	switch strings.ToLower(word) {
+	case "":
+		a.openCrew()
+		return nil
 	}
-	// THE THREE PICK WORDS, beside the presets: `/crew learn` says where the
-	// seats come from without moving any of them. The row is written alone and
-	// the confirmation is [app.crewApplied]'s, which names the pick beside the
-	// preset ([config.CrewSummaryPick]) — the same word the segment and
-	// /status now carry, so the answer and the frame cannot drift apart.
-	for _, pick := range config.CrewPicks {
-		if arg != pick {
-			continue
-		}
-		if err := config.SetCrewPick(a.profileDir, pick); err != nil {
-			a.note("could not set the pick · " + err.Error())
-			return
+	// EVERY SHORTCUT KEEPS THE ROWS AS THEY STOOD, so the panel it opens can
+	// offer the same undo a change made on the panel offers.
+	before := config.CrewStateAt(a.profileDir)
+	stop := -1
+	switch strings.ToLower(word) {
+	case "pin":
+		stop = a.crewPin(rest)
+	case "unpin":
+		stop = a.crewUnpin(rest)
+	case "models":
+		stop = a.crewAllowedModels(rest)
+	case "cap":
+		stop = a.crewCap(rest)
+	default:
+		a.note("/crew " + arg + " · not a crew form · " + crewUsage)
+	}
+	if stop < 0 {
+		return nil
+	}
+	return a.crewNow(stop, before)
+}
+
+// crewPin is `/crew pin <seat> <model[@provider]>`. A pin outside the allowed
+// models is REFUSED rather than written, because a pin the router would have
+// to break is not a pin ([config.SetCrewPin] says the rule once).
+//
+// Each shortcut answers the panel row it changed, or -1 when it changed
+// nothing — a refusal, or a question it answered with a note.
+func (a *app) crewPin(rest string) int {
+	seatWord, model, _ := strings.Cut(rest, " ")
+	seat, ok := config.ParseCrewSeat(seatWord)
+	model = strings.TrimSpace(model)
+	if !ok || model == "" {
+		a.note("usage: /crew pin <worker|planner|checker> <model[@provider]>")
+		return -1
+	}
+	if err := config.SetCrewPin(a.profileDir, seat, model); err != nil {
+		a.note("could not pin the " + string(seat) + " · " + err.Error())
+		return -1
+	}
+	a.crewApplied()
+	pin, _ := config.CrewPinAt(a.profileDir, seat)
+	a.noteFacts(string(seat)+" "+a.crewMark(tokens.GPinned)+" "+pin.String()+" · every task until you unpin it · "+
+		a.crewUnchangedClause(), pin.String())
+	return crewSeatStop(seat)
+}
+
+// crewUnpin is `/crew unpin <seat|all>`: the seat goes back to auto.
+func (a *app) crewUnpin(rest string) int {
+	rest = strings.ToLower(strings.TrimSpace(rest))
+	if rest == "all" {
+		if err := config.ClearCrewPins(a.profileDir); err != nil {
+			a.note("could not unpin · " + err.Error())
+			return -1
 		}
 		a.crewApplied()
-		return
+		a.note("every seat is auto · codeaf picks the worker, planner and checker for each task")
+		return 0
 	}
-	if _, ok := config.CrewModels(arg); !ok {
-		// AN UNKNOWN WORD CHANGES NOTHING AND SAYS THE SIX, the shape every
-		// choice this surface refuses takes (effortchip.go's [app.runEffort]):
-		// a refusal that only said "no" would leave a person guessing at a word
-		// they were one letter away from, and the words are the answer to the
-		// question they were really asking. The listing is kept under them,
-		// because it is the comparison between the presets the words set.
-		// The listing is a two-column page — a class word, then the model it
-		// would set — so its right-hand column is what THE PAYLOAD RULE lifts,
-		// read back off the text this call just built (payload.go's
-		// [columnFacts]).
-		words := make([]string, 0, len(config.CrewPresets)+len(config.CrewPicks))
-		words = append(words, config.CrewPresets...)
-		words = append(words, config.CrewPicks...)
-		listing := a.crewListing()
-		facts := append(words, columnFacts(listing, false)...)
-		a.noteFacts("/crew "+arg+" · not a crew word · "+strings.Join(words, " · ")+"\n\n"+listing,
-			facts...)
-		return
+	seat, ok := config.ParseCrewSeat(rest)
+	if !ok {
+		a.note("usage: /crew unpin <worker|planner|checker|all>")
+		return -1
 	}
-	a.applyCrew(arg)
-}
-
-// applyCrew is the ONE path from either /crew form to the profile write, the
-// settings refresh and the person-facing summary.
-func (a *app) applyCrew(preset string) {
-	if err := config.ApplyCrew(a.profileDir, preset); err != nil {
-		a.note("could not set the crew · " + err.Error())
-		return
+	if err := config.ClearCrewPin(a.profileDir, seat); err != nil {
+		a.note("could not unpin the " + string(seat) + " · " + err.Error())
+		return -1
 	}
 	a.crewApplied()
+	a.note(string(seat) + " is auto · picked for each task")
+	return crewSeatStop(seat)
 }
 
-// crewApplied is the tail both crew writes share: the panel rebuild and the
-// person-facing confirmation.
-func (a *app) crewApplied() {
-	// The panel may be holding rows read before this write, so it is rebuilt if
-	// it is open. Everything else is live: the crew source the session resolves
-	// through re-reads on its next call (cmd/codeaf's v3RolesSource).
-	a.refreshSettings()
-	// AND THE CONFIRMATION NAMES WHAT IT DID NOT CHANGE, BY ITS ID. The status
-	// line's model readout is the CONVERSATION's model and the crew never touches
-	// it — so the person who typed /crew to make codeaf think harder reads three
-	// model names, looks down at a bottom row that says exactly what it said
-	// before, and concludes the command did nothing. The clause used to say only
-	// that "the model you talk to is /model", and a person who had not yet
-	// learned the two dials read that as a hint about a command rather than as a
-	// fact about their session; naming the model they are still on, in the same
-	// spelling the status line draws it, makes the unchanged thing something they
-	// can see is unchanged. The clause is on the note rather than in
-	// [config.CrewSummary] because it is an answer to a question this MOMENT
-	// raises: the same summary inside /status is being read by somebody who is
-	// reading a page, not by somebody who just changed one dial of two.
-	//
-	// AND THE FOUR MODELS ARE THE PART THIS LINE IS FOR (payload.go). The prose
-	// around them — `crew →`, the preset word the person has just typed, the three
-	// role words, `you are still talking to` — stays in the dim tier every note
-	// wears, and the ids step up, because "which models am I on now" is the whole
-	// question and it used to be answered at exactly the weight of the sentence
-	// carrying it. /model is a door, so it wears the chip a door wears.
-	facts := config.CrewClassModels(a.profileDir)
-	if id := a.talkingTo(); id != "" {
-		facts = append(facts, id)
+// crewAllowedModels is `/crew models <rule>`: the whole rule, or a `+id`/`-id`
+// changing the rule in force. A bare `/crew models` says the rule.
+func (a *app) crewAllowedModels(rest string) int {
+	if rest == "" {
+		a.noteFacts("allowed models · "+config.CrewAllowedAt(a.profileDir).String(), config.CrewAllowedAt(a.profileDir).String())
+		return -1
 	}
-	// THE SUMMARY IS THE PICK-AWARE ONE ([config.CrewSummaryPick]), so a crew
-	// applied under a pick of catalog or learn confirms with the pick named
-	// beside the preset — the half the frame's segment and /status now carry.
-	// At the default pick it is the line the command has always confirmed
-	// with.
-	a.noteFacts(config.CrewSummaryPick(a.profileDir)+" · "+a.crewUnchangedClause(), facts...)
-}
-
-// applyCrewUnder is the chooser's enter: the family and the preset are ONE
-// decision, and [config.ApplyCrewUnder] lands them as one file write. Landing
-// them apart would leave a window in which a reader sees the family set to `all`
-// while the five rows still hold open ids, which is the half-written crew the
-// chooser is the one place to promise against.
-func (a *app) applyCrewUnder(source, preset string) {
-	if err := config.ApplyCrewUnder(a.profileDir, source, preset); err != nil {
-		a.note("could not set the crew · " + err.Error())
-		return
+	var err error
+	switch {
+	case strings.HasPrefix(rest, "+") && !strings.Contains(rest, " "):
+		err = config.ModifyCrewAllowed(a.profileDir, true, strings.TrimPrefix(rest, "+"))
+	case strings.HasPrefix(rest, "-") && !strings.Contains(rest, " "):
+		err = config.ModifyCrewAllowed(a.profileDir, false, strings.TrimPrefix(rest, "-"))
+	default:
+		err = config.SetCrewAllowed(a.profileDir, rest)
+	}
+	if err != nil {
+		a.note("could not set the allowed models · " + err.Error())
+		return -1
 	}
 	a.crewApplied()
+	rule := config.CrewAllowedAt(a.profileDir).String()
+	a.noteFacts("allowed models · "+rule+" · every seat nobody pinned is picked from these", rule)
+	return crewModels
 }
 
-// crewUnchangedClause is the tail of every crew confirmation: the model the
+// crewCap is `/crew cap <dollars|off>`. The router paces toward it — dearer
+// crews cost more of the day's quality as the day's spend climbs — and at it a
+// task does not start until the person raises it or asks for `--cheap`.
+func (a *app) crewCap(rest string) int {
+	if word, figure, _ := strings.Cut(rest, " "); strings.EqualFold(word, "task") {
+		return a.crewTaskCap(strings.TrimSpace(figure))
+	}
+	if rest == "" {
+		a.note("daily cap · " + a.crewCapWords())
+		return -1
+	}
+	if err := config.SetCrewCap(a.profileDir, rest); err != nil {
+		a.note("could not set the daily cap · " + err.Error())
+		return -1
+	}
+	a.crewApplied()
+	a.note("daily cap · " + a.crewCapWords())
+	return crewCap
+}
+
+// crewTaskCap is `/crew cap task <dollars>`: the most one task may spend.
+// A call that would take a task past it is not made.
+func (a *app) crewTaskCap(rest string) int {
+	if rest == "" {
+		a.note("per-task limit · " + config.CrewTaskMoney(config.CrewTaskCapAt(a.profileDir)))
+		return -1
+	}
+	if err := config.SetCrewTaskCap(a.profileDir, rest); err != nil {
+		a.note("could not set the per-task limit · " + err.Error())
+		return -1
+	}
+	a.crewApplied()
+	a.note("per-task limit · " + config.CrewTaskMoney(config.CrewTaskCapAt(a.profileDir)))
+	return crewCap
+}
+
+// crewCapWords is the cap, or `none` for no cap, and today's spend when there
+// was any — a day with nothing spent draws no $0.000 (the emptiness law).
+func (a *app) crewCapWords() string {
+	words := "none"
+	if capUSD := config.CrewCapAt(a.profileDir); capUSD > 0 {
+		words = crewroute.Money(capUSD)
+	}
+	if spent := config.CrewLogAt(a.profileDir).SpentUSD; spent > 0 {
+		words += " · " + crewroute.Money(spent) + " spent today"
+	}
+	return words
+}
+
+// crewApplied is the tail every crew write shares: an open panel re-reads and
+// an open settings sheet is rebuilt, because either may be holding rows read
+// before the write ([app.crewRefreshed]).
+func (a *app) crewApplied() { a.crewRefreshed() }
+
+// crewUnchangedClause is the tail of a pin's confirmation: the model the
 // conversation is still on, and the one command that moves it.
-//
-//	you are still talking to deepseek-v4-flash — /model changes that
-//
-// THE EMPTINESS LAW has a sentence-shaped edge here. A session that has not been
-// told its model yet has nothing to name, and "you are still talking to" with a
-// gap after it would be a line that looks cut; the clause says the fact without
-// the id instead, which is still true and still points at the right door.
 func (a *app) crewUnchangedClause() string {
 	if id := a.talkingTo(); id != "" {
 		return "you are still talking to " + id + " — /model changes that"
@@ -163,14 +221,7 @@ func (a *app) crewUnchangedClause() string {
 
 // talkingTo is the conversation's model spelled the way the status line's model
 // segment spells it: the basename, with the reasoning level riding on it when
-// one is set (render.go's [app.identityParts], view.go's [app.statusRow]).
-//
-// It reads a.model and NOT whatever the status row is naming at the moment,
-// because inside a task room the row names the node's model, and the crew
-// confirmation is a fact about the conversation whichever page is open. A person
-// checking the clause against the foot of the frame from outside a room finds
-// the same spelling; from inside one they find the node's, which the room's own
-// lead word already says is a different thing.
+// one is set.
 func (a *app) talkingTo() string {
 	id := modelBase(a.model)
 	if id == "" {
@@ -182,14 +233,198 @@ func (a *app) talkingTo() string {
 	return id
 }
 
-// crewWord is the crew as a page states it: the preset word or `custom`, then
-// the three class names ([config.CrewClasses]). It is what /status prints and
-// what [app.crewHint] shortens.
+// ── the crew line on a task ──────────────────────────────────────────────────
+
+// crewLine is one task's crew as the card and its landing say it:
 //
-// THE EMPTINESS LAW: a window with no crew to read prints nothing rather than a
-// word about a file nobody is writing — and the window with no crew to read is
-// the HOSTED one ([app.crewReading]), never the ordinary launch this used to
-// silence.
+//	openended · worker glm-5.3-flash (openrouter) · checker (pin) kimi-k3 · $0.108 (est $0.112)
+//
+// actual below zero is not known yet, and the line then ends on the estimate.
+// The pin mark is the vocabulary's own glyph, never a literal.
+func (a *app) crewLine(d *crewroute.Decision, actual float64) string {
+	if d == nil {
+		return ""
+	}
+	return d.Line(crewPinMark(a.linear), actual)
+}
+
+// crewMark is a mark on the crew's own surfaces — the /crew panel, its
+// notes, the crew line — in the PLAIN tier whatever the icon setting says: a
+// pin, a tick, a ring, a cross, a diamond that every terminal draws. The rich
+// tier's private-use codepoints are a blank cell on a terminal without the
+// font, and on these surfaces a blank is a pinned seat or a connected
+// provider that reads as nothing at all. The linear and ASCII readings keep
+// their own spellings.
+func (a *app) crewMark(id tokens.GlyphID) string {
+	if a.linear || a.pal.ascii {
+		return tokens.ASCII.Glyph(id)
+	}
+	return tokens.Plain.Glyph(id)
+}
+
+// crewPinMark is the pin in a crew line: the plain glyph, ⌖, and never the
+// rich tier's. The line is TEXT kept in the transcript — read back tomorrow,
+// copied out, drawn in a terminal whose font was never asked — and a private-
+// use codepoint there is a blank cell, which is how a pinned checker read as
+// "checker  kimi-k3". Under the linear reading there is no glyph, and the line
+// says the word instead (crewroute's seatModel).
+func crewPinMark(linear bool) string {
+	if linear {
+		return ""
+	}
+	return tokens.Plain.Glyph(tokens.GPinned)
+}
+
+// sayTaskCrew keeps a routed task's crew line in the thread: ONE line, said
+// when the task starts with the estimate, and REWRITTEN IN PLACE as the task
+// goes — a seat that failed to start and moved to its fallback, and at the end
+// what it cost beside the estimate and the one door to asking again harder.
+// Two lines for one crew read as two crews; the second said nothing the first
+// could not carry.
+func (a *app) sayTaskCrew(notice session.TaskNotice) {
+	if notice.Crew == nil {
+		return
+	}
+	if a.crewSaid == nil {
+		a.crewSaid = map[uint64]crewLineSaid{}
+	}
+	said := a.crewSaid[notice.ID]
+	if said.landed {
+		return
+	}
+	lead := "task " + strconv.FormatUint(notice.ID, 10) + " crew · "
+	var text string
+	var facts []string
+	switch notice.State {
+	case session.TaskRunning:
+		text = lead + a.crewLine(notice.Crew, -1)
+		facts = []string{crewroute.ShortModel(notice.Crew.Seat(crewroute.Worker).Model)}
+	case session.TaskFailed:
+		// A TASK THAT FAILED ASKS FOR THE NEXT STEP BY NAME: the stronger crew
+		// is the one thing on this line a person can do about it.
+		// AND THE FAILURE IS SAID FIRST, before any figure: a stopped seat's
+		// one action where the cause is known — no stronger crew would get
+		// past it — and the stronger crew otherwise. Nothing spent names no
+		// money, never a $0.000 that reads as a free success.
+		failed := crewFailedWord
+		if stop := notice.Crew.Stopped; stop != "" {
+			failed = crewStoppedWord + stop
+		}
+		actual := notice.CostUSD
+		if actual <= 0 {
+			actual = crewroute.Unspent
+		}
+		text = lead + failed + " · " + a.crewLine(notice.Crew, actual)
+		facts = []string{failed}
+		said.landed = true
+	case session.TaskDone, session.TaskUnverified:
+		text = lead + a.crewLine(notice.Crew, notice.CostUSD) + " · not right? /redo stronger"
+		if notice.CostUSD > 0 {
+			facts = []string{crewroute.Money(notice.CostUSD)}
+		}
+		said.landed = true
+	default:
+		return
+	}
+	if text == said.text {
+		return
+	}
+	if said.text == "" || !a.feed.renote(said.text, text, facts) {
+		a.noteFacts(text, facts...)
+	}
+	said.text, said.facts = text, facts
+	a.crewSaid[notice.ID] = said
+}
+
+// crewAfterStarted keeps a task's two lines in one order: `started` first,
+// then its crew. The two arrive on different roads — the start answer from
+// the command, the crew on the task's first row — and either can come first;
+// when the crew line is already in the thread, it is rewritten into the
+// started line and said again after it, so the thread reads the same every
+// time. It answers whether it wrote the started line.
+func (a *app) crewAfterStarted(id string, started string, startedFacts []string) bool {
+	n, err := strconv.ParseUint(id, 10, 64)
+	if err != nil {
+		return false
+	}
+	said, ok := a.crewSaid[n]
+	if !ok || said.text == "" || !a.feed.renote(said.text, started, startedFacts) {
+		return false
+	}
+	a.noteFacts(said.text, said.facts...)
+	return true
+}
+
+// crewLineSaid is one task's crew line as the thread holds it.
+type crewLineSaid struct {
+	text   string
+	facts  []string
+	landed bool
+}
+
+// crewFailedWord ends a failed task's crew line.
+const crewFailedWord = "failed — /redo stronger runs it again on a stronger crew"
+
+// crewStoppedWord leads a failed line whose seat stopped on a cause a person
+// can fix; the action follows it.
+const crewStoppedWord = "failed — "
+
+// ── the one reading every crew surface answers from ─────────────────────────
+
+// crewReading is the profile's crew as this surface last read it: the word
+// /status prints, the status line's segment, the welcome box's clause and the
+// pinned models, read at the door and not at the draw.
+type crewReading struct {
+	word    string
+	segment string
+	clause  string
+	// models are the pinned ids, which /status lifts as its facts.
+	models     []string
+	dir        string
+	generation uint64
+	taken      bool
+}
+
+// crewReading is THE ONE READING every crew surface answers from, and reports
+// false for a window that has no crew of its own — the hosted one.
+//
+// IT IS READ AT THE DOOR AND NOT AT THE DRAW. The status line asks for the
+// segment on every frame; the snapshot is invalidated by the one counter
+// every persisted write bumps ([config.SettingsGeneration]).
+func (a *app) crewReading() (crewReading, bool) {
+	if a.hosted() {
+		return crewReading{}, false
+	}
+	// UNDER `--one-model` THE CREW SEATS NOTHING (#444): every text call rides
+	// the conversation's model, so the reading names the flag.
+	if a.oneModel {
+		return crewReading{word: crewOneModelWord, segment: crewOneModelSegment, clause: crewOneModelSegment, dir: a.profileDir, taken: true}, true
+	}
+	if generation := config.SettingsGeneration(); !a.crew.taken || a.crew.generation != generation || a.crew.dir != a.profileDir {
+		pins := config.CrewPinsAt(a.profileDir)
+		word, segment := "auto · codeaf picks the worker, planner and checker for each task", "crew auto"
+		var models []string
+		if len(pins) > 0 {
+			var said []string
+			for _, seat := range crewroute.Seats {
+				if pin, ok := pins[seat]; ok {
+					said = append(said, string(seat)+" "+pin.String())
+					models = append(models, pin.String())
+				}
+			}
+			word = "auto · pinned " + strings.Join(said, ", ")
+			segment = "crew auto · " + strconv.Itoa(len(pins)) + " pinned"
+		}
+		if rule := config.CrewAllowedAt(a.profileDir).String(); rule != "all" {
+			word += " · allowed " + rule
+		}
+		a.crew = crewReading{word: word, segment: segment, clause: "auto crew", models: models,
+			dir: a.profileDir, generation: generation, taken: true}
+	}
+	return a.crew, true
+}
+
+// crewWord is the crew as a page states it (/status).
 func (a *app) crewWord() string {
 	crew, ok := a.crewReading()
 	if !ok {
@@ -198,21 +433,8 @@ func (a *app) crewWord() string {
 	return crew.word
 }
 
-// crewSegment is the crew in the fewest cells that still answer it — `crew max`,
-// or `crew custom` over four rows the person arranged themselves. It is the
-// status line's crew segment (render.go's [app.telemetry]) and the word the
-// model picker's hint slot borrows ([app.crewHint]).
-//
-// ONE SOURCE FOR THE WORD. The status line, the picker's hint, /status's crew
-// line and the settings row all answer "which crew" through [config.CrewAt],
-// which derives the preset from the four live class rows rather than reading a
-// stored word — so none of them can say `max` over a mastermind somebody pinned
-// out of it, and none of them can disagree with the others.
-//
-// THE EMPTINESS LAW: a window with no four rows to read has no segment, and a
-// segment with no text is a segment the row never draws ([app.telemetry] skips
-// it). That window is the hosted one — see [app.crewReading] for why it is not
-// the empty profile directory this guard used to ask about.
+// crewSegment is the status line's crew segment: `crew auto`, or
+// `crew auto · 1 pinned`.
 func (a *app) crewSegment() string {
 	crew, ok := a.crewReading()
 	if !ok {
@@ -221,606 +443,14 @@ func (a *app) crewSegment() string {
 	return crew.segment
 }
 
-// ── the one reading of the four rows ────────────────────────────────────────
+// crewHint is [app.crewSegment] for the hint slot under the model picker.
+func (a *app) crewHint() string { return a.crewSegment() }
 
-// crewReading is the profile's crew as this surface last read it: the preset
-// word [config.CrewAt] derives from the live rows, the pick row's word
-// ([config.CrewPickAt]) when it is not the default one, the three class names
-// beside it, and the settings generation the pair was read at.
-type crewReading struct {
-	// word and segment are the two readings BUILT AT THE READING and not at the
-	// draw. The status line asks for the segment on every frame, and a surface
-	// that joined `"crew " + preset` there would put an allocation on the frame
-	// clock for a sentence that cannot change between two settings writes
-	// (inputsmooth_test.go's allocation law).
-	word    string
-	segment string
-	// clause is the welcome line's tail — `balanced crew` — built here for word
-	// and segment's reason and not at the draw: the welcome box is on the frame
-	// clock too, and under `--one-model` the preset word is not what belongs in
-	// it anyway (welcome.go's [app.welcomeModelLine]).
-	clause  string
-	preset  string
-	classes string
-	// pick is the pick row's word as the reading read it, and is the default
-	// word rather than empty — a surface that wants to know whether the pick
-	// is off the table compares it with [config.CrewPickTable], the way the
-	// word and segment above were built.
-	pick string
-	// dir is the profile the pair was read from, so a surface handed a
-	// different one answers from that one and not from a snapshot of the last.
-	dir string
-	// generation is [config.SettingsGeneration] as of the reading, and taken
-	// separates "read at generation zero" from "never read".
-	generation uint64
-	taken      bool
-}
-
-// crewReading is THE ONE READING every crew surface answers from — the status
-// line's segment, the model picker's hint, /status's crew line and the welcome
-// box's clause — and it reports false for a window that has no crew of its own.
-//
-// AN EMPTY PROFILE DIRECTORY IS THE NORMAL CASE, NOT THE ABSENT CASE, AND
-// ABSENCE IS A HOSTED WINDOW. [config.ProfileDir] is CODEAF_PROFILE_DIR, which
-// almost nobody exports, and every reader in internal/config resolves the empty
-// string to this process's own profile in the state root
-// ([config.ProfilePath]) — so the guard these surfaces used to carry was true on
-// very nearly every launch, and the crew segment the status line exists to show
-// was drawn only for the handful of people who had exported that variable
-// (#315). The real absence is a CONNECTION: over --host the crew lives on the
-// far machine and this window's profile is the laptop's, which is the refusal
-// [app.runCrew] already opens with and the fact [app.workSeat] guards on.
-//
-// AND IT IS READ AT THE DOOR AND NOT AT THE DRAW. Answering the status line
-// straight from the profile would put SEVEN config file reads on the frame
-// clock — four for the preset, three for the classes — for four rows that change
-// a few times a year, which is the cost [crewPicker.inherited] refuses for the
-// same reason. The snapshot is invalidated by the ONE counter every persisted
-// write bumps ([config.SettingsGeneration]), so /crew, the settings row and the
-// `change_setting` tool all move it and none of them needs to know this cache
-// exists; what the counter does not see — a config file edited by another
-// process — lands on the next launch, exactly as it does for the role source
-// the tasks resolve through (cmd/codeaf's v3Crew).
-func (a *app) crewReading() (crewReading, bool) {
-	if a.hosted() {
-		return crewReading{}, false
-	}
-	// THE STATUS LINE NAMES WHAT SEATS THE CALL. Under `--one-model` the door
-	// hands the session no roles source and no task model, so every text call
-	// this run makes rides the conversation's own model and the four rows on
-	// disk seat nothing (cmd/codeaf's applyV3Governance). Reading the profile
-	// here drew `crew custom` — a true statement about the file and a false one
-	// about the run — over a crew that was not in force (#444). So the flag is
-	// answered before the rows are, and the reading names the flag.
-	//
-	// ONE ANSWER HERE IS FIVE SURFACES THAT CANNOT DISAGREE, which is the reason
-	// this function exists at all: the status line's segment (render.go's
-	// [app.telemetry]), the model picker's hint ([app.crewHint]), /status's crew
-	// line (statusdeck.go), the settings note (statusnote.go) and the welcome
-	// box's clause (welcome.go's [app.welcomeModelLine]) all read through it.
-	//
-	// AND IT IS FIXED, so the settings generation is not asked. Nothing this
-	// session can do moves it: /crew still writes the four rows and the four
-	// rows still do not seat this run, and the strings are constants no frame
-	// has to build. The model itself is not spelled into the word because every
-	// surface that prints the word prints the model on the row directly above
-	// it, and a second copy here is a second place to drift.
-	if a.oneModel {
-		return crewReading{
-			word:    crewOneModelWord,
-			segment: crewOneModelSegment,
-			clause:  crewOneModelSegment,
-			dir:     a.profileDir,
-			taken:   true,
-		}, true
-	}
-	if generation := config.SettingsGeneration(); !a.crew.taken || a.crew.generation != generation || a.crew.dir != a.profileDir {
-		preset, classes := config.CrewAt(a.profileDir), config.CrewClasses(a.profileDir)
-		pick := config.CrewPickAt(a.profileDir)
-		// THE PICK RIDES THE WORD WHEN IT IS NOT THE DEFAULT ONE, in both the
-		// page's word and the status line's segment: `balanced · learn` says
-		// the budget and where the models for it come from in one word, and a
-		// segment that said only `balanced` under a learn pick would be the
-		// half-answer the crew segment exists to prevent. At the default pick
-		// the word is exactly what it has always been — the table is where the
-		// seats have always come from, and a word that named it would say
-		// something a person did not choose.
-		word, segment := preset+" · "+classes, "crew "+preset
-		if pick != config.CrewPickTable {
-			word = preset + " · " + pick + " · " + classes
-			segment = "crew " + preset + " · " + pick
-		}
-		a.crew = crewReading{
-			word:       word,
-			segment:    segment,
-			clause:     preset + " crew",
-			preset:     preset,
-			classes:    classes,
-			pick:       pick,
-			dir:        a.profileDir,
-			generation: generation,
-			taken:      true,
-		}
-	}
-	return a.crew, true
-}
-
-// The crew as `--one-model` leaves it, spelled once so the segment, the page and
-// the welcome box cannot say it three ways.
-//
-// The segment is `one model` and NOT `crew one model`, because the word `crew`
-// is precisely what is not in force: the status line reads
-// `… · deepseek-v4-flash   one model · …`, two facts and one gap, and neither of
-// them is a preset. The page's word says the whole of it in the register /status
-// already uses — lowercase, a middle dot, no full stop — and answers the
-// question somebody opening /status under the flag is actually asking, which is
-// which model is spending their money.
+// The crew as `--one-model` leaves it, spelled once.
 const (
 	crewOneModelSegment = "one model"
 	crewOneModelWord    = "one model · every call rides the model you are talking to"
 )
-
-// crewHint is [app.crewSegment] for the hint slot under the model picker
-// (render.go's [app.hintWord]).
-//
-// It is the WORD and not the three class names, and it names no door. The slot
-// is three cells wide in the sense that matters: every cell it takes is a cell
-// the conversation's own name gives up at the other end of the legend
-// (render.go's [app.legend]). And the slot's law is that it names only what the
-// keyboard will do RIGHT NOW — while the picker is open every printable key
-// goes into its filter box, so "/crew" printed there would be a door a person
-// cannot walk through until they press esc. The word alone is a FACT, which is
-// all this slot has to carry: somebody hunting the model they just changed the
-// crew for reads that the crew is a different thing with a name of its own.
-func (a *app) crewHint() string { return a.crewSegment() }
-
-// ── the work seat, and the one line about it ────────────────────────────────
-//
-// A CREW OLDER THAN THE WORK SEAT FILLS IT ANYWAY, AND THE CONVERSATION SAYS SO
-// ONCE.
-//
-// The worker row arrived after the other four (#278), so a crew chosen before it
-// exists on disk as four rows with no worker among them. Headless doors read
-// that shape through the ladder and print one line about it (#311); this surface
-// read the row, found nothing, and handed every task to the build's own worker
-// model without a word — on the surface where most tasks are started, and where
-// there is no `models:` line for a person to notice a word on (#312).
-//
-// So the seat is resolved through the SAME ladder (config.TierSeatAt) and the
-// line is the SAME string (config.Seat.Notice), and it is said in the two places
-// a person is already looking: in the thread, the moment work actually starts on
-// that seat, and on the /crew sheet, which is where somebody goes to check.
-
-// workSeat is this conversation's work seat, resolved the way the role map that
-// runs its tasks resolves it (cmd/codeaf's v3Crew).
-//
-// AN EMPTY profileDir IS THE ORDINARY PROFILE AND NOT THE ABSENCE OF ONE.
-// [config.ProfileDir] is CODEAF_PROFILE_DIR, which almost nobody sets, and every
-// reader in internal/config takes the empty string to mean "this process's own
-// profile" — so a guard on the field would silence the line on precisely the
-// launch it was written for. The absence is a CONNECTION: over --host the crew
-// lives on the far machine and this window's profile is the laptop's, which is
-// the same refusal [app.runCrew] opens with.
-// AND `--one-model` HAS ALREADY ANSWERED THE QUESTION THE SEAT ASKS, so it is
-// empty under the flag for the same shape of reason the connection is. The
-// receipt below exists to report a SUBSTITUTION — a crew written before the
-// worker row existed, so the build's own model spends the person's money without
-// a word — and under the flag there is no substitution: the flag seats every
-// call on the conversation's model, which is the person's own answer to it.
-// Said anyway, "until you pick a crew again" promises that picking one would
-// change what runs, and under the flag it would not (#444). One empty seat takes
-// both surfaces quiet at once — the thread's receipt ([app.sayWorkSeat]) and the
-// /crew sheet's inherited row ([app.crewInheritedLine], which every caller of
-// [crewPicker.start] passes).
-func (a *app) workSeat() config.Seat {
-	if a.hosted() || a.oneModel {
-		return config.Seat{}
-	}
-	return config.TierSeatAt(a.profileDir, config.ModelTierWorker)
-}
-
-// sayWorkSeat puts the one line in the thread, ONCE PER SESSION, and is called
-// where work actually starts on the seat (task.go's [app.taskUpdate]).
-//
-// THE MOMENT IS THE FIRST RUNNING NODE, and not the launch. A person who never
-// hands anything off never meets this seat, and a line at boot about a model
-// nothing has used yet is a notice competing with the greeting for a fact that
-// may never become true. A person who hands off twenty things meets it once.
-//
-// THE QUESTION IS ASKED ONCE TOO. The flag is set whether or not there was
-// anything to say, because the answer cannot change under a session in a way
-// that owes a person a line: picking a crew ends the substitution, and clearing
-// the row is somebody saying "follow the conversation" on purpose. That also
-// keeps the profile off the path of every task update, which is where a file
-// read has no business being.
-//
-// IT IS NOT ONE OF THE HINTS (notice.go). Those age out after a few sessions and
-// go quiet when a person turns hints off, which is right for a tip about a key
-// and wrong for a receipt about which model is spending their money: this is
-// true until they answer it, and it is said every session until they do.
-func (a *app) sayWorkSeat() {
-	if a.workSeatSaid {
-		return
-	}
-	a.workSeatSaid = true
-	if notice := a.workSeat().Notice(); notice != "" {
-		a.note(notice)
-	}
-}
-
-// ── the family row: which pool the presets draw from ──────────────────────────
-//
-// models.crew.source says whether the three presets pick their five ids from
-// open models or from all models. THE CONFIG PACKAGE OWNS THE ROW:
-// [config.CrewSourceAt] reads it. [config.SetCrewSource] writes it alone for the
-// settings row, and [config.ApplyCrewUnder] commits it with a preset as one write
-// for this chooser. The two tables behind them answer it.
-//
-// THE SEGMENT DOES NOT NAME THE FAMILY. The chooser reads the row at its open
-// ([app.runCrew]) and enter writes it through [config.ApplyCrewUnder], and the
-// crew word the status segment shows resolves through the same row: it is read
-// there, and it is not printed above the presets.
-
-// crewSourceLead is this row's one word in the chooser. The settings panel labels
-// the same row `model family`; here it is abbreviated to fit one line, and both
-// name the family the presets draw from.
-const crewSourceLead = "family"
-
-// crewPicker is the fixed, bottom-anchored chooser opened by bare /crew. Its
-// zero value is closed, like [picker], and its cursor is an index into
-// [config.CrewPresets].
-type crewPicker struct {
-	open    bool
-	cursor  int
-	current string
-	// source is the family the presets below draw from: open models or all
-	// models. IT IS STAGED AND NOT WRITTEN: ←→ moves the word, and enter
-	// writes it beside the preset as one decision ([app.applyCrewUnder]): flip the family, watch the
-	// preset rows take it, then commit. esc leaves the row exactly as it
-	// was.
-	source string
-	// persistedSource is the family the SAVED crew is in, read at the door beside
-	// current. The row in force is the one the profile holds IN THE FAMILY THE
-	// PROFILE HOLDS: once ←→ moves the staged family, no preset on screen is in
-	// force any more, and a row that kept the mark would name models the profile
-	// does not run.
-	persistedSource string
-	// inherited is the line naming the seat this profile has no row for, or
-	// empty when every row was written. IT IS READ AT THE DOOR AND NOT AT THE
-	// DRAW: the rows are built every frame and the answer is three lines of a
-	// file, so a picker that asked the profile per frame would put a disk read
-	// on the frame clock for a fact that cannot move while the list is up.
-	inherited string
-	// pick is the pick row's word as the door read it, and the default word
-	// rather than empty. IT IS NOT STAGED: the family below is staged and
-	// enter writes it, but a pick word typed at the door is written at once
-	// ([app.runCrew]), so the pick on screen is always the pick in force — a
-	// reading, and not a row the list's keys could move.
-	pick string
-}
-
-func (p *crewPicker) start(current, source, inherited, pick string) {
-	// source is already a word this build knows: every caller hands it
-	// [config.CrewSourceAt]'s answer, which folds blank, unknown and retired words
-	// back to the default family. The fold lives there and nowhere else.
-	*p = crewPicker{open: true, current: current, persistedSource: source, inherited: inherited, source: source, pick: pick}
-	for i, preset := range config.CrewPresets {
-		if preset == current {
-			p.cursor = i
-			return
-		}
-	}
-}
-
-func (p *crewPicker) close() { *p = crewPicker{} }
-
-func (p *crewPicker) move(delta int) {
-	p.cursor = (p.cursor + delta + len(config.CrewPresets)) % len(config.CrewPresets)
-}
-
-// moveSource walks the two families, ←→ in [crewPickerKey]. It wraps rather
-// than clamps for [move]'s own reason: with two options a clamp would leave
-// one of the two keys a dead key on the word it started at.
-func (p *crewPicker) moveSource(delta int) {
-	at := 0
-	for i, source := range config.CrewSources {
-		if source == p.source {
-			at = i
-		}
-	}
-	p.source = config.CrewSources[(at+delta+len(config.CrewSources))%len(config.CrewSources)]
-}
-
-// The chooser's fixed lines around the three presets, spelled once so the
-// height and the rows cannot count them differently.
-const (
-	// crewScopeLine is the header: what the presets below move, and what they
-	// do not. It is the one sentence the whole surface exists to make plain.
-	crewScopeLine = "the five models codeaf uses on its own behalf — not the one you chat with"
-	// crewSeatLead is seat one's label. It is a plain phrase and not a class word,
-	// because the class words are what the presets change and this seat is not.
-	crewSeatLead = "you talk to"
-	// crewPinLine is the closing note: the door to moving one seat on its own,
-	// which this chooser deliberately does not offer.
-	crewPinLine = "each of the five can be pinned on its own in /settings → Providers"
-	// crewCustomLine is the fourth reading, said as a fact about where the person
-	// is rather than as a fourth row they could pick.
-	crewCustomLine = "yours is none of the three — picking one puts all five back"
-	// crewPickLead is the pick's lead in the chooser — `picked from learn` —
-	// the same words the crew word and the segment ride when the pick is off
-	// its default ([app.crewReading]). It is said as a reading and not a row:
-	// the pick is written by a word at the door, not by anything this list's
-	// keys move.
-	crewPickLead = "picked from "
-	// crewInheritedLead and crewInheritedTail wrap the row a profile older than
-	// a seat never wrote:
-	//
-	//	your work seat is inherited from small work — picking one writes it
-	//
-	// It is said as a fact about a ROW on this sheet, which is what this list is
-	// for, while the thread's line ([config.Seat.Notice], said once when work
-	// starts) is the receipt. `inherited` is the same word the headless models
-	// line prints beside the model, so a person who has seen one surface
-	// recognises the other.
-	crewInheritedLead = "your "
-	crewInheritedMid  = " seat is inherited from "
-	crewInheritedTail = " — picking one writes it"
-	// crewFrameRows is how many of the chooser's rows are not preset rows: the
-	// scope line, seat one, the family selector and the closing note.
-	crewFrameRows = 4
-)
-
-func (p *crewPicker) height() int {
-	if !p.open {
-		return 0
-	}
-	height := crewFrameRows + len(config.CrewPresets)*2
-	if p.current == config.CrewCustom {
-		height++
-	}
-	if p.pick != "" && p.pick != config.CrewPickTable {
-		height++
-	}
-	if p.inherited != "" {
-		height++
-	}
-	return height
-}
-
-// rows uses the model picker's bottom-overlay row vocabulary, but always gives
-// the models their own dim line: with three fixed choices, comparison matters
-// more than fitting a fourth choice that does not exist.
-//
-// THE CHOOSER IS THE FIVE-SEAT READING. codeaf runs five model seats — the one
-// you talk to, then reflex, small work, careful work and mastermind — and until
-// this wave the chooser showed four of them and said nothing about the fifth,
-// which is the one seat a person can see on the frame and the one `/crew` never
-// moves. So the list opens with a header saying what the presets below change
-// and what they do not, then seat one on a line of its own — labelled, with no
-// lead and no ground, so it cannot be mistaken for a row enter would apply —
-// then the three presets exactly as before, and a closing note pointing at the
-// settings row where any one of the five can be pinned by itself. Per-seat
-// picking is NOT built in here: settings already owns it, and a chooser that
-// both applied presets and moved single seats would be two controls wearing one
-// set of keys.
-func (p *crewPicker) rows(width, n int, pal palette, hover int, a *app) []string {
-	if !p.open || n <= 0 {
-		return nil
-	}
-	out := make([]string, 0, p.height())
-	out = append(out, pal.dim(fit(crewScopeLine, width)))
-	// Seat one wears the data hue on its id and the dim tier on its label, which
-	// is THE PAYLOAD RULE's own split (payload.go): the id is the answer, the
-	// label is the question. It takes neither the cursor's `›` nor a ground,
-	// because nothing on this list can move it.
-	if id := a.talkingTo(); id != "" {
-		out = append(out, "  "+pal.dim(crewSeatLead+" · ")+pal.data(fit(id, width-2-len(crewSeatLead)-3)))
-	} else {
-		// A session with no model yet has no seat one to show, and a labelled gap
-		// would be a claim about a model nobody has named. The line is kept, empty,
-		// so the chooser's height stays what [crewPicker.height] promised.
-		out = append(out, "")
-	}
-	// THE FAMILY IS A HEADER THE ←→ KEYS WALK, not a fourth row on the ↑↓
-	// list: the presets are one axis and the family is a second one steering
-	// them, and a list that made ↑↓ pass through the family on the way from
-	// frugal to max would be moving an axis the person never aimed at. So the
-	// row sits directly above the presets it steers, it answers to ←→, and the
-	// two options are drawn beside each other so the move it offers is visible
-	// before it is taken.
-	//
-	// THE WORD THE NEXT ENTER WRITES IS THE WORD LIFTED, and the lifted word is
-	// the accent: it is the fact this row answers and the only fact on it. This
-	// row takes no `›` lead and no ground of its own, for a reason of its own
-	// rather than seat one's: it is not on the ↑↓ axis, so no cursor sits on it
-	// for a lead to mark, and the lifted word is its whole mark.
-	words := make([]string, 0, len(config.CrewSources))
-	for _, source := range config.CrewSources {
-		if source == p.source {
-			words = append(words, pal.accent(source+" models"))
-			continue
-		}
-		words = append(words, pal.dim(source+" models"))
-	}
-	out = append(out, fit("  "+pal.dim(crewSourceLead+" ‹ ")+strings.Join(words, pal.dim(" · "))+pal.dim(" ›"), width))
-	for i, preset := range config.CrewPresets {
-		models, _ := config.CrewModelsForSource(p.source, preset)
-		parts := make([]string, 0, len(roles.Tiers))
-		for _, tier := range roles.Tiers {
-			parts = append(parts, strings.TrimSpace(a.crewClassWord(tier))+" "+models[string(tier)])
-		}
-		// THE CREW IN FORCE AND THE CURSOR ARE TWO FACTS, AND A ROW CAN BE BOTH.
-		// The crew a person is actually running is chosen and persistent, so it
-		// takes THE GROUND LADDER's selected step; the cursor is where ↑/↓ has got
-		// to, so it takes the cursor step, the same step the pointer takes.
-		//
-		// This list used to say both with the LEAD and lose one of them: the
-		// current preset borrowed the pointer's own `·`, and because it was tested
-		// first, the cursor's `›` disappeared the moment the cursor landed on the
-		// preset already in force — which is the one row a person is most likely
-		// to arrow onto, and the one moment they most need to know enter is aimed.
-		oncursor, current := i == p.cursor, preset == p.current && p.source == p.persistedSource
-		hovered := hover == len(out) || hover == len(out)+1
-		lead := "  "
-		switch {
-		case oncursor:
-			lead = pal.accent("› ")
-		case hovered:
-			lead = pal.accent("· ")
-		}
-		label := preset + " — " + config.CrewLineFor(p.source, preset)
-		switch {
-		case current:
-			label = pal.accent(label)
-		case oncursor:
-			label = pal.ink(label)
-		default:
-			label = pal.dim(label)
-		}
-		head := lead + fit(label, width-2)
-		// The models are the half of the row a person stopped on it to compare, so
-		// they come up to ink wherever the row wears a ground: dim on a raised
-		// ground is grey on grey.
-		tail := "    " + fit(strings.Join(parts, " · "), width-4)
-		if oncursor || hovered || current {
-			tail = pal.ink(tail)
-		} else {
-			tail = pal.dim(tail)
-		}
-		switch {
-		case current:
-			head, tail = pal.selected(head, width), pal.selected(tail, width)
-		case oncursor, hovered:
-			head, tail = pal.cursor(head, width), pal.cursor(tail, width)
-		}
-		out = append(out, head, tail)
-	}
-	// The custom line is about the SAVED crew, so it shows whichever family is
-	// staged: hiding it would drop a row [crewPicker.height] still counts.
-	if p.current == config.CrewCustom {
-		out = append(out, pal.dim(fit(crewCustomLine, width)))
-	}
-	// AND THE PICK, a fact about the saved crew like the custom line above it.
-	// It is said only when it is off the default — the table is where the
-	// seats have always come from, and a line naming it would say something
-	// nobody chose — and it takes no cursor and no ground, because the pick is
-	// not staged here: a word typed at the door writes it at once.
-	if p.pick != "" && p.pick != config.CrewPickTable {
-		out = append(out, pal.dim(fit(crewPickLead+p.pick, width)))
-	}
-	// AND THE ROW NOBODY WROTE, said last among the readings and before the door
-	// out: it is the one fact on this list that is about the person's own five
-	// rows rather than about the three on offer, and the answer to it is the
-	// same enter every row above it takes.
-	if p.inherited != "" {
-		out = append(out, pal.dim(fit(p.inherited, width)))
-	}
-	out = append(out, pal.dim(fit(crewPinLine, width)))
-	if len(out) > n {
-		out = out[:n]
-	}
-	return out
-}
-
-// crewInheritedLine is the sheet's own sentence about a seat this profile has no
-// row for, and empty for every profile that wrote all five.
-//
-// ONE READING OF THE SEAT FEEDS BOTH SURFACES. The words differ because the
-// places do — the thread is told what is running right now, the sheet is told
-// which of its rows is not yours — and the FACT is one call to one ladder
-// ([app.workSeat]), so neither surface can name a row the other does not.
-func (a *app) crewInheritedLine() string {
-	seat := a.workSeat()
-	if seat.Source != config.SeatInherited {
-		return ""
-	}
-	return crewInheritedLead + string(seat.Role) + crewInheritedMid + seat.FromWords() + crewInheritedTail
-}
-
-func (a *app) crewPickerKey(msg tea.KeyPressMsg) {
-	switch msg.String() {
-	case "esc":
-		a.crewPick.close()
-	case "enter":
-		preset := config.CrewPresets[a.crewPick.cursor]
-		source := a.crewPick.source
-		a.crewPick.close()
-		a.applyCrewUnder(source, preset)
-	case "up", "ctrl+p":
-		a.crewPick.move(-1)
-	case "down", "ctrl+n":
-		a.crewPick.move(1)
-	case "left":
-		a.crewPick.moveSource(-1)
-	case "right":
-		a.crewPick.moveSource(1)
-	}
-	a.touch()
-}
-
-// crewListing is the three presets, the current one marked, each with its own
-// line and the four models it would set.
-//
-// The four are named by CLASS and not by tier word, because the classes are what
-// the settings rows are called and a person reading this is being invited to open
-// them. The marked row is marked with the same chip the model picker marks the
-// model in use with, so "this is the one you are on" is one gesture across the
-// surface.
-func (a *app) crewListing() string {
-	current := config.CrewAt(a.profileDir)
-	source := config.CrewSourceAt(a.profileDir)
-	var out strings.Builder
-	// THE WORDS ARE THE SAME IN EITHER FAMILY, so the listing names the pool
-	// whenever it is not the default one: two listings that looked exactly alike
-	// over two different sets of ids is the ambiguity this whole feature is about.
-	if source != config.DefaultCrewSource {
-		out.WriteString(crewSourceLead + " · " + source + " models\n")
-	}
-	for at, preset := range config.CrewPresets {
-		if at > 0 {
-			out.WriteString("\n")
-		}
-		lead := "  "
-		if preset == current {
-			lead = "· "
-		}
-		out.WriteString(lead + preset + " — " + config.CrewLineFor(source, preset) + "\n")
-		models, _ := config.CrewModelsForSource(source, preset)
-		for _, tier := range roles.Tiers {
-			out.WriteString("    " + a.crewClassWord(tier) + "  " + models[string(tier)] + "\n")
-		}
-	}
-	if current == config.CrewCustom {
-		// THE FOURTH READING IS NOT A CHOICE and it is said last, as a fact about
-		// where they are rather than as a fourth row they could pick. Naming the
-		// four live models here would repeat the settings panel; naming the row
-		// that made it custom is what they need to undo it.
-		out.WriteString("\nyours is none of the three — " + config.CrewSummary(a.profileDir) +
-			"\n/crew balanced puts all five back")
-	}
-	return strings.TrimRight(out.String(), "\n")
-}
-
-// crewClassWord is a class in the words its own settings row is labelled with,
-// padded so the four ids line up. It reads the skin rather than spelling the
-// words again, for [sheet.tierWord]'s reason: a person told "mastermind" here has
-// to find a row called "mastermind" there.
-func (a *app) crewClassWord(tier roles.Tier) string {
-	word := string(tier)
-	if meta, ok := settingUI[tierSettingKey(tier)]; ok && meta.label != "" {
-		word = meta.label
-	}
-	for len(word) < crewClassWidth {
-		word += " "
-	}
-	return word
-}
-
-// crewClassWidth is the column the class words are padded to — "careful work" is
-// the longest of the four and this is its width. It is a constant rather than a
-// measurement because the four words are fixed and a loop to find the longest of
-// four literals is machinery for nothing.
-const crewClassWidth = 12
 
 // refreshSettings rebuilds an open settings panel from the registry. A command
 // that wrote a row while the panel was open would otherwise leave the panel

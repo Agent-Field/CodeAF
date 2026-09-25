@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	executor "github.com/Agent-Field/codeaf/internal/exec"
@@ -107,11 +108,9 @@ func TestEveryFigureAChatPageQuotesComesFromTheCodeThatOwnsIt(t *testing.T) {
 // crew's own three by five — is appended by [crewFacts].
 func quotedFacts(t *testing.T) []quotedFact {
 	t.Helper()
-	seats, notSeats := counted(len(config.ModelTiers))
-	presets, notPresets := counted(len(config.CrewPresets))
-	// The chooser reads one seat more than the crew has: the model you talk to,
-	// which it shows and deliberately cannot move.
-	chooser, notChooser := counted(len(config.ModelTiers) + 1)
+	seats, notSeats := counted(len(crewroute.Seats))
+	decay, notDecay := counted(sourceNumber(t, "../router/crew.go", "redoDecayAfter"))
+	steps, notSteps := counted(sourceNumber(t, "../router/crew.go", "redoOffsetCeiling"))
 	shortlist, notShortlist := counted(sourceNumber(t, "../session/taskmodel.go", "taskModelShortlist"))
 	minutesWord, notMinutesWord := counted(int(standing.Interval / time.Minute))
 
@@ -175,38 +174,55 @@ func quotedFacts(t *testing.T) []quotedFact {
 		value:  strconv.Itoa(sourceByteLimit(t, "../skills/regular.go", "maxPluginJSONBytes") / (1 << 20)),
 		quotes: []quotedIn{{"skills-from-other-tools", "over %s MiB"}},
 	}, {
-		fact: "how many models the crew is", owner: "config.ModelTiers", value: seats, others: notSeats,
+		// THE CREW IS THREE SEATS, and every page that counts them counts
+		// them from the router's own list.
+		fact: "how many seats the crew is", owner: "crewroute.Seats", value: seats, others: notSeats,
 		quotes: []quotedIn{
-			{"commands", "the %s models codeaf uses on its own behalf"},
-			{"commands", "The other %s — reflex, small work"},
-			{"commands", "picking one puts all %s back"},
-			{"commands", "sets the %s and confirms"},
-			{"commands", "each of the %s classes funds"},
-			{"commands", "of the %s classes are **select** rows"},
-			{"getting-started", "the %s models codeaf uses on its own behalf"},
-			{"getting-started", "The crew is the %s class rows"},
-			{"screen", "the preset the %s models codeaf"},
-			{"permissions", "one of the %s crew classes"},
-			{"permissions", "set all %s at once"},
-			{"models-and-cost", "worked out from the %s"},
-			{"what-i-remember", "the cheapest of the %s crew classes"},
+			{"models-and-cost", "The crew is %s seats"},
+			{"commands", "the %s seats a task runs on"},
+			{"getting-started", "the crew is %s seats"},
 		},
 	}, {
-		fact: "how many crew presets there are", owner: "config.CrewPresets", value: presets, others: notPresets,
+		// THE TWO NUMBERS `/redo stronger` TEACHES WITH are the log reader's
+		// own, so a page promising a decay the code does not keep names itself.
+		fact: "how many accepted tasks decay a learned step", owner: "router.redoDecayAfter",
+		value: decay, others: notDecay,
+		quotes: []quotedIn{{"models-and-cost", "after %s accepted task"}},
+	}, {
+		fact: "how many steps a class can learn", owner: "router.redoOffsetCeiling",
+		value: steps, others: notSteps,
+		quotes: []quotedIn{{"models-and-cost", "at most %s steps"}},
+	}, {
+		// THE ONE-TASK WORDS are the router's, on the chat door and the
+		// headless one alike.
+		fact: "the word for the strongest crew", owner: "crewroute.EffortBest",
+		value: string(crewroute.EffortBest),
 		quotes: []quotedIn{
-			{"commands", "Then the %s presets"},
-			{"getting-started", "draws the %s presets"},
-			{"models-and-cost", "opens all %s as a chooser"},
-			{"models-and-cost", "same near-free models in all %s"},
+			{"tasks", "`/task --%s <brief>`"},
+			{"running-from-the-terminal", "`--%s`"},
 		},
 	}, {
-		fact: "how many seats the crew chooser reads", owner: "config.ModelTiers and the seat you talk to",
-		value: chooser, others: notChooser,
+		fact: "the word for the cheapest crew", owner: "crewroute.EffortCheap",
+		value: string(crewroute.EffortCheap),
 		quotes: []quotedIn{
-			{"commands", "codeaf runs **%s model seats**"},
-			{"commands", "the %s-seat reading"},
-			{"commands", "reads all %s and sets the"},
+			{"tasks", "`/task --%s <brief>`"},
+			{"running-from-the-terminal", "`--%s`"},
 		},
+	}, {
+		// The mark a pinned seat wears on a headless line.
+		fact: "the mark a pinned seat wears headless", owner: "config.PinMark",
+		value:  config.PinMark,
+		quotes: []quotedIn{{"running-from-the-terminal", "checker %s kimi-k3"}},
+	}, {
+		// The rule an untouched profile allows.
+		fact: "the allowed rule nobody wrote", owner: "config.CrewAllowedAt",
+		value:  config.CrewAllowedAt(t.TempDir()).String(),
+		quotes: []quotedIn{{"models-and-cost", "An unwritten rule is `%s`"}},
+	}, {
+		// THE MIGRATION'S ONE LINE, as the function that writes it says it.
+		fact: "the line a migrated profile is told", owner: "config.MigrateCrew",
+		value:  migrationLine(t),
+		quotes: []quotedIn{{"models-and-cost", "%s"}},
 	}, {
 		fact: "how long a shortlist of models is", owner: "session.taskModelShortlist",
 		value: shortlist, others: notShortlist,
@@ -307,111 +323,24 @@ func quotedFacts(t *testing.T) []quotedFact {
 			{"adaptive-runs", "picked up again from 9 recorded turns — it was still working when it ran out of %s"},
 		},
 	}}
-	return append(facts, crewFacts(t)...)
+	return facts
 }
 
-// crewFacts is the crew table as the pages copy it out by hand: the chooser's
-// line for each preset, and the models page's row for each seat.
-//
-// IT PINS THE MAPPING AND NOT ONLY THE IDS. A fact per id would go green on a
-// page that had frugal's worker and max's worker the wrong way round, because
-// both ids are on the page somewhere. So a fact is a whole LINE — every seat of
-// one preset in order, or one seat across all three presets in order — built
-// from [config.CrewModels] with the seat words the settings registry owns. Point
-// a preset at a better model and the page still printing the old table names
-// itself.
-func crewFacts(t *testing.T) []quotedFact {
-	t.Helper()
-	seats := seatLabels(t)
-	crews := make(map[string]map[string]string, len(config.CrewPresets))
-	facts := make([]quotedFact, 0, 2*len(config.CrewPresets)+len(config.ModelTiers)+1)
-	for _, preset := range config.CrewPresets {
-		crews[preset], _ = config.CrewModels(preset)
-		line := make([]string, 0, len(config.ModelTiers))
-		for _, tier := range config.ModelTiers {
-			line = append(line, seats[tier]+" "+crews[preset][tier])
-		}
-		facts = append(facts,
-			quotedFact{
-				fact: preset + "'s own line", owner: "config.CrewLine(" + strconv.Quote(preset) + ")",
-				value:  config.CrewLine(preset),
-				quotes: []quotedIn{{"commands", "%s"}, {"models-and-cost", "%s"}},
-			},
-			quotedFact{
-				fact: preset + "'s row in the crew chooser", owner: "config.CrewModels(" + strconv.Quote(preset) + ")",
-				value:  strings.Join(line, " · "),
-				quotes: []quotedIn{{"commands", "%s"}},
-			})
-	}
-	for _, tier := range config.ModelTiers {
-		row := make([]string, 0, len(config.CrewPresets))
-		for _, preset := range config.CrewPresets {
-			row = append(row, "`"+baseModel(crews[preset][tier])+"`")
-		}
-		facts = append(facts, quotedFact{
-			fact: "the " + tier + " seat across the presets", owner: "config.CrewModels",
-			value:  "| " + seats[tier] + " | " + strings.Join(row, " | ") + " |",
-			quotes: []quotedIn{{"models-and-cost", "%s"}},
-		})
-	}
-	return append(facts, quotedFact{
-		fact: "the shipped mastermind model", owner: "config.DefaultMastermindModel",
-		value:  config.DefaultMastermindModel,
-		others: []string{"z-ai/glm-5.3:high"},
-		quotes: []quotedIn{{
-			"models-and-cost", "| mastermind | `%s` |",
-		}},
-	}, quotedFact{
-		fact: "the line /crew max confirms with", owner: "config.CrewSummary after config.ApplyCrew",
-		value:  crewConfirmLine(t, config.CrewMax),
-		quotes: []quotedIn{{"commands", "%s"}, {"models-and-cost", "%s"}},
-	}, quotedFact{
-		// THE SAME THREE SEATS WITHOUT THE CONFIRM LINE'S OWN PREFIX, which is
-		// how /status prints them and how both pages print /status back at the
-		// reader. It is a second row rather than a second pattern on the one
-		// above because the prefix differs — `crew → ` where the command
-		// confirms, a padded label where the reading is listed — and the four
-		// copies of this line drifted onto a worker the max crew has not used
-		// since the presets moved, with nothing red for it.
-		fact: "max's three classes as /status lists them", owner: "config.CrewClasses under the max crew",
-		value:  strings.TrimPrefix(crewConfirmLine(t, config.CrewMax), "crew → "),
-		quotes: []quotedIn{{"commands", "crew %s"}, {"models-and-cost", "crew %s"}},
-	})
-}
-
-// crewConfirmLine is the sentence a person reads after /crew, taken from the
-// function that builds it rather than rebuilt here: a gate that spelled the line
-// itself would go on passing through a change to the words or the order, which
-// is the drift it exists to catch.
-func crewConfirmLine(t *testing.T, preset string) string {
+// migrationLine is the sentence a profile from before the crew was routed is
+// told once, taken from the function that writes it: a profile holding a
+// retired preset word is migrated in a temporary directory and the line it
+// answers is what the page must quote.
+func migrationLine(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	if err := config.ApplyCrew(dir, preset); err != nil {
-		t.Fatalf("the %s crew would not apply: %v", preset, err)
+	if err := os.WriteFile(config.BudgetConfigPath(dir), []byte(`{"models.crew": "balanced"}`), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	return config.CrewSummary(dir)
-}
-
-// seatLabels is the word each crew seat wears on a settings surface, read from
-// the registry that owns it. The chooser and the models page both print these
-// beside the ids, so a gate on a line of ids has to spell them the same way.
-func seatLabels(t *testing.T) map[string]string {
-	t.Helper()
-	registry := config.NewSettings(config.SettingsOptions{ProfileDir: t.TempDir()})
-	labels := make(map[string]string, len(config.ModelTiers))
-	for _, tier := range config.ModelTiers {
-		row, ok := registry.Row(seatKey(tier))
-		if !ok {
-			// A seat with no settings row is worth saying on its own, but it must
-			// not stop the pages being read: the run that adds a seat is exactly
-			// the run that needs the list of pages now behind.
-			t.Errorf("the settings registry has no %s row for the %s seat", seatKey(tier), tier)
-			labels[tier] = tier
-			continue
-		}
-		labels[tier] = row.Label
+	line, err := config.MigrateCrew(dir)
+	if err != nil || line == "" {
+		t.Fatalf("a profile with a retired preset word did not migrate: %q (%v)", line, err)
 	}
-	return labels
+	return line
 }
 
 // seatKey is one seat's settings row, which is also the word the pages print.
@@ -453,11 +382,8 @@ func TestEveryPageQuotingAShippedSentenceQuotesItWhole(t *testing.T) {
 	for _, quoted := range []struct{ page, file, name string }{
 		{"getting-started", "../tui3/onboarding.go", "controlLimitWord"},
 		{"getting-started", "../tui3/onboarding.go", "controlModelWord"},
-		{"getting-started", "../tui3/onboarding.go", "controlCrewWord"},
-		{"commands", "../tui3/crew.go", "crewScopeLine"},
-		{"commands", "../tui3/crew.go", "crewPinLine"},
-		{"commands", "../tui3/crew.go", "crewCustomLine"},
-		{"models-and-cost", "../tui3/crew.go", "crewScopeLine"},
+		{"commands", "../tui3/crew.go", "crewUsage"},
+		{"models-and-cost", "../tui3/crew.go", "crewUsage"},
 	} {
 		onScreen := sourceString(t, quoted.file, quoted.name)
 		if !strings.Contains(pages[quoted.page], onScreen) {
@@ -467,32 +393,26 @@ func TestEveryPageQuotingAShippedSentenceQuotesItWhole(t *testing.T) {
 	}
 }
 
-// THE COMMAND LIST AND THE MANUAL COUNT THE SAME SEATS.
+// THE COMMAND LIST AND THE MANUAL NAME THE SAME SEATS.
 //
-// The row a person reads on /help and the page they read afterwards are two
-// hand-written sentences about one table, and the row is the one nothing was
-// checking. Both are compared to config here rather than to each other, so the
-// failure names the figure rather than only saying they differ.
-func TestTheCrewCommandRowCountsTheSeatsConfigOwns(t *testing.T) {
-	seats, notSeats := counted(len(config.ModelTiers))
+// The rows a person reads on /help and the page they read afterwards are two
+// hand-written sets of sentences about one crew. Both are compared to the
+// router's own seat list here rather than to each other, so the failure names
+// the seat rather than only saying they differ.
+func TestTheCrewCommandRowsNameTheSeatsTheRouterOwns(t *testing.T) {
 	rows := strings.Join(crewCommandRows(t), "\n")
 	if rows == "" {
 		t.Fatal("internal/tui3/commands.go offers no /crew row")
 	}
-	// The two sentences the rows say the count in, as [quotedIn] writes them:
-	// a hole where the figure goes, filled from config rather than from either
-	// sentence. A reword that loses one of them fails here too, loudly, which is
-	// the right answer for a row that has stopped saying how many seats there are.
-	for _, pattern := range []string{"the %s models codeaf uses", "set the %s to"} {
-		if want := fmt.Sprintf(pattern, seats); !strings.Contains(rows, want) {
-			t.Errorf("no /crew row says %q — config.ModelTiers has %d seats:\n%s",
-				want, len(config.ModelTiers), rows)
+	for _, seat := range crewroute.Seats {
+		if !strings.Contains(rows, string(seat)) {
+			t.Errorf("no /crew row names the %s — crewroute.Seats has it:\n%s", seat, rows)
 		}
-		for _, other := range notSeats {
-			if stale := fmt.Sprintf(pattern, other); strings.Contains(rows, stale) {
-				t.Errorf("a /crew row still says %q — config.ModelTiers has %d seats, spelled %q",
-					stale, len(config.ModelTiers), seats)
-			}
+	}
+	pages := flatChatPages(t)
+	for _, seat := range crewroute.Seats {
+		if !strings.Contains(pages["models-and-cost"], "**"+string(seat)+"**") {
+			t.Errorf("models-and-cost never names the %s seat in bold", seat)
 		}
 	}
 }

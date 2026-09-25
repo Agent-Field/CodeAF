@@ -164,7 +164,7 @@ const (
 	// eventModelListOpened is the model list raised, over a conversation or
 	// over home's draft (palette.go, homedraft.go).
 	eventModelListOpened = "model-list-opened"
-	// eventCrewShown is /crew answered, bare or with a preset (crew.go).
+	// eventCrewShown is /crew answered, bare or with a subcommand (crew.go).
 	eventCrewShown = "crew-shown"
 	// eventBudgetShown is /budget answered, bare or with a figure (budget.go).
 	eventBudgetShown = "budget-shown"

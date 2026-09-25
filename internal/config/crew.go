@@ -1,729 +1,1360 @@
 package config
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/router"
 )
 
-// THE CREW: five classes of model, answered as one word.
+// THE CREW: THREE SEATS, EACH PINNED OR PICKED FOR THE TASK IN FRONT OF IT.
 //
-// The five tier rows are the honest shape of the decision — a class of call has
-// a class of model, and a new call joins a class instead of growing a knob — and
-// they are still five model ids somebody has to know. Nobody arrives at a
-// settings sheet wanting to name five model ids. They arrive wanting to spend
-// pennies, or wanting to spend what it takes. So there is one row above the five
-// that takes that sentence and writes all of them.
+// A task is done by a crew of three — the worker that does it, the planner
+// that cuts and steers it, the checker that reads the result against what was
+// asked — and which model sits each seat is decided PER TASK by the router
+// (internal/crewroute), from the kind of work the task is. Nothing about that
+// decision is stored. What IS stored, and is the whole of what a person
+// configures, is what the router may pick from:
 //
-// THREE PRESETS AND NO MORE. A fourth would be a fourth thing to explain, and
-// the axis they move along has exactly three interesting points: everything
-// cheap, one model thinking over cheap ones working, everything capable and
-// asked to think.
+//   - a PIN per seat, `model` or `model@provider`, which that seat always runs
+//     and the router never overrides;
+//   - the ALLOWED MODELS, one rule ([crewroute.ParseAllowed]) — `all` unless
+//     somebody narrowed it;
+//   - an optional DAILY CAP on what crews spend, which the router paces toward;
+//   - the PROVIDERS TURNED OFF, a set of connections the crew may not route
+//     through — empty unless somebody switched one off.
 //
-// TWO FAMILIES BEHIND THE SAME THREE WORDS. Every preset exists twice: once in
-// the all family, the same three words resolved over the whole catalog with
-// closed and frontier models in it; and once in the open family, every seat an
-// open-weight model, for the person who wants the three words to stay on that
-// shelf whatever the catalog does around it. Which family the words draw from
-// is one row, [KeyCrewSource], and all is what it reads when nobody has
-// answered it. Both the derived reading and the write resolve through the row
-// ([CrewSourceAt]), so the word on the sheet can never mean one family while
-// the five values it summarizes were drawn from the other.
+// The providers a crew can use are the connections the person made, read off
+// the profile the way every call reads them; what persists is only which of
+// them the crew leaves alone, so a connection made tomorrow is on the day it
+// is made. That is the one-sentence model the whole feature is built on — the
+// /crew panel says what is allowed and it persists; the words in an ask say
+// how hard to try that one task; nothing else sticks.
 //
-// THE PRESET IS DERIVED AND NEVER STORED. [CrewAt] reads the five live tier
-// values and answers which preset they are, or "custom". A stored word would be
-// a claim about five other rows that any one of them could falsify, and a sheet
-// that said "balanced" over a hand-pinned mastermind would be lying in exactly
-// the place somebody went to check. This is the one-source-of-truth law applied
-// to a summary: a summary that can drift from what it summarizes is not a
-// summary.
-//
-// THE BUILD WRITES NO WORD, AND READS ONE THAT IS THERE ([storedCrewWord]). Every
-// profile this product shapes derives the preset from the rows; a run that wrote
-// the word itself — a harness, a hand edit — named a budget, and a word on disk
-// that nothing read is a crew word that reached nobody. The word is the budget
-// when present, and the class rows under it are then that run's own pins.
+// THE PINS LIVE IN THE TIER ROWS THE CREW HAS ALWAYS LIVED IN. The worker
+// seat is the `worker` tier row, the planner is the `mastermind` row, the
+// checker is the `high` row — the rows the role ladder already reads, so the
+// auxiliary calls that ride those tiers (the brief a task is shaped into, an
+// image read for a model that cannot see one, the plan of an adaptive run)
+// follow a pin without a second place to write it. An unwritten row is `auto`:
+// the seat is routed. The reflex and small-work rows are not crew seats and
+// keep their shipped defaults.
 
-// The preset words. They are the values [KeyCrew] takes, and they are strings
-// on disk in the same sense every other choice row's words are — spelled here
-// once, read by the row, the command and the manual.
+// Crew rows, spelled once.
 const (
-	CrewFrugal   = "frugal"
-	CrewBalanced = "balanced"
-	CrewMax      = "max"
-	// CrewCustom is a READING and never a write. It is what the row says when
-	// the five tier values are somebody's own arrangement rather than one of the
-	// three, which is what happens the moment a person answers one tier row
-	// directly. It is deliberately absent from [CrewPresets]: "set the crew to
-	// custom" is not a sentence with a meaning — custom is what you get, not
-	// what you ask for.
-	CrewCustom = "custom"
+	// KeyCrewAllowed is the allowed-models rule. PROFILE-ONLY for the worker
+	// row's own reason: a repository that could widen it could send a
+	// visitor's work, and their credit, to a model nobody on that machine chose.
+	KeyCrewAllowed = "models.crew.allowed"
+	// KeyCrewCap is the daily cap on what crews spend, in dollars; absent or
+	// zero is no cap.
+	KeyCrewCap = "models.crew.cap"
+	// KeyCrewTaskCap is the most one task may spend, in dollars; absent or
+	// zero is [CrewTaskCapDefault].
+	KeyCrewTaskCap = "models.crew.task_cap"
+	// KeyCrewFreeRoutes is whether the crew may use providers' free pools
+	// (a `:free` route of a model). PROFILE-ONLY and OFF unless somebody
+	// turned it on: a free pool may log or train on what it is sent, which is
+	// a choice about a person's code, not a price.
+	KeyCrewFreeRoutes = "models.crew.free_routes"
+	// KeyCrewProvidersOff is the connected providers a person turned off for
+	// the crew, a list of provider ids; absent is every provider on. It is a
+	// row of its own beside the allowed rule and never a `-x` inside it
+	// (crewroute's providers.go says why), and PROFILE-ONLY for the allowed
+	// rule's reason.
+	KeyCrewProvidersOff = "models.crew.providers.off"
 )
 
-// CrewPresets lists the words a person may WRITE, cheapest first. [CrewCustom]
-// is not among them; see its own comment.
-var CrewPresets = []string{CrewFrugal, CrewBalanced, CrewMax}
+// CrewAuto is the word a seat reads when it is not pinned.
+const CrewAuto = "auto"
 
-// DefaultCrew is what a profile nobody has touched reads. It is balanced because
-// the five shipped tier defaults ARE the balanced row of the DEFAULT FAMILY —
-// see [crewAllModels] — and that identity is asserted by a test rather than
-// trusted.
-const DefaultCrew = CrewBalanced
+// CrewCommand is the one door a person reaches the crew through, spelled once
+// so a sentence naming it cannot drift from the command that answers.
+const CrewCommand = "/crew"
 
-// The two families the preset words can draw from. They are the values
-// [KeyCrewSource] takes, spelled here once and read by the row, the resolver
-// and the manual.
-const (
-	// CrewSourceOpen is the open-weight family.
-	CrewSourceOpen = "open"
-	// CrewSourceAll is the whole catalog, closed and frontier models included,
-	// and the family a profile that has answered nothing resolves.
-	CrewSourceAll = "all"
-)
+// CrewSeatTier is the tier row a seat's pin is written in.
+func CrewSeatTier(seat crewroute.Seat) string {
+	switch seat {
+	case crewroute.Planner:
+		return ModelTierMastermind
+	case crewroute.Checker:
+		return ModelTierHigh
+	}
+	return ModelTierWorker
+}
 
-// CrewSources lists them, open first, which is the order the row widens in: the
-// narrower shelf, then the whole catalog. The default is the second of them,
-// [DefaultCrewSource], because this list is about width and not about which one
-// a profile starts on.
-var CrewSources = []string{CrewSourceOpen, CrewSourceAll}
+// CrewSeatKey is the registry row a seat's pin is written in — the settings
+// sheet's one way of telling a seat's row from the other tier rows.
+func CrewSeatKey(seat crewroute.Seat) string { return tierKeyFor(CrewSeatTier(seat)) }
 
-// DefaultCrewSource is all: the three words are read off the whole catalog
-// unless the row says otherwise, and the five shipped tier defaults are that
-// family's balanced row.
-const DefaultCrewSource = CrewSourceAll
-
-// ── where the seats are picked from ────────────────────────────────────────
-
-// THE THIRD ROW THE CREW WORDS ARE ANSWERED THROUGH. The crew row says how
-// much to spend and the family row says which shelf those budgets name; the
-// pick row says where the models for that money come from when a tier row
-// does not hold a model id of its own:
-//
-//   - `table` — the rows this build measured and shipped ([crewModels] and
-//     [crewAllModels]), which is what an unwritten seat has always read;
-//   - `catalog` — the same three budgets recomputed off the catalog's own
-//     published prices and scores, on every read, with no measurement of
-//     anybody's own runs in it ([AutoPickWith] with no prior);
-//   - `learn` — the catalog computation plus the Model Pool's measurements
-//     and the person's own judged runs, carried as a quality prior
-//     ([autoPrior]).
-//
-// THE DEFAULT IS THE TABLE because the table is what a profile has always
-// read: an unwritten seat names the preset's own row, and nothing about a
-// profile that has answered nothing moves until somebody answers a row. The
-// other two words are an opt-in to a read that keeps moving — a seat that
-// follows the catalog follows it whether or not the shipped rows do — and a
-// person has to say so.
-//
-// A PICK NEVER OVERRIDES A MODEL ID. The row answers for the seats a person
-// did not name, and the seats they did — written by hand, or by a preset —
-// keep their ids until the crew is picked again, except that a row holding
-// the preset's own table value is the preset answering, not a person pinning
-// one model by id. The rule is [pickedSeat]'s to apply and the manual's to
-// state.
-const (
-	// CrewPickTable is the measured rows this build ships, and the default.
-	CrewPickTable = "table"
-	// CrewPickCatalog is the catalog's own published figures, with nothing
-	// measured on top.
-	CrewPickCatalog = "catalog"
-	// CrewPickLearn is the catalog computation plus the Model Pool's
-	// measurements and the person's own judged runs.
-	CrewPickLearn = "learn"
-)
-
-// CrewPicks lists the words a person may WRITE, narrowest first: the shipped
-// table, then the catalog on its own, then the catalog with what runs
-// measured. A pick word is not a preset and names no budget — the crew row
-// above it still does that.
-var CrewPicks = []string{CrewPickTable, CrewPickCatalog, CrewPickLearn}
-
-// DefaultCrewPick is the table: the rows this build measured are where an
-// unwritten seat's model comes from until somebody answers the row.
-const DefaultCrewPick = CrewPickTable
-
-// knownCrewPick folds a word and says whether it is one of the picks this
-// build knows. It is the ONE place the fold is spelled: [SetCrewPick] and the
-// ladder's [pickedSeat] both go through it, so a pick added to [CrewPicks] is
-// accepted everywhere at once. A reader folds a word it does not know to the
-// default pick; a writer refuses it.
-func knownCrewPick(pick string) (string, bool) {
-	pick = strings.ToLower(strings.TrimSpace(pick))
-	for _, known := range CrewPicks {
-		if pick == known {
-			return known, true
-		}
+// CrewTierSeat is the seat a tier row pins, false for a tier that is not a
+// crew seat (reflex, small work).
+func CrewTierSeat(tier string) (crewroute.Seat, bool) {
+	switch tier {
+	case ModelTierWorker:
+		return crewroute.Worker, true
+	case ModelTierMastermind:
+		return crewroute.Planner, true
+	case ModelTierHigh:
+		return crewroute.Checker, true
 	}
 	return "", false
 }
 
-// normalCrewPick folds a pick word to one of the three this build knows,
-// reading a word it does not know as the default pick.
-func normalCrewPick(pick string) string {
-	if known, ok := knownCrewPick(pick); ok {
-		return known
+// ParseCrewSeat reads a person's word for a seat. Only the three seat names
+// are accepted: the tier words behind them are machinery.
+func ParseCrewSeat(word string) (crewroute.Seat, bool) {
+	switch strings.ToLower(strings.TrimSpace(word)) {
+	case "worker":
+		return crewroute.Worker, true
+	case "planner":
+		return crewroute.Planner, true
+	case "checker":
+		return crewroute.Checker, true
 	}
-	return DefaultCrewPick
+	return "", false
 }
 
-// CrewPickAt is where the seats are picked from on this profile,
-// [DefaultCrewPick] when the row is absent. A word this build does not know
-// reads as the default pick, silently, the way a retired choice reads
-// everywhere else on this sheet.
-func CrewPickAt(profileDir string) string {
-	if value, ok := persistedString(profileDir, KeyCrewPick); ok {
-		return normalCrewPick(value)
-	}
-	return DefaultCrewPick
+// ── pins ────────────────────────────────────────────────────────────────────
+
+// CrewPin is one pinned seat: a model id, and the provider route it was
+// pinned to when somebody wrote `model@provider`.
+type CrewPin struct {
+	Model    string
+	Provider string
 }
 
-// AnyTierAutoAt answers whether any of the five tier rows reads `auto` on this
-// profile — written directly, or reaching the word through an older row
-// ([crewRow]) — which is the second way a seat resolution is computed from the
-// catalog's rows, beside the pick row ([CrewPickAt]). A door that resolves
-// seats asks both before it resolves, because both answers are computed from
-// the rows the process already holds, and a door that asks before they land
-// reads the family's table row over a profile that never chose it.
-func AnyTierAutoAt(profileDir string) bool {
-	for _, tier := range ModelTiers {
-		if model, _, _, _ := crewRow(profileDir, tier); IsAuto(model) {
+// String is the pin the way it is written and stored: `model[@provider]`.
+func (p CrewPin) String() string {
+	if p.Provider == "" {
+		return p.Model
+	}
+	return p.Model + "@" + p.Provider
+}
+
+// ParseCrewPin reads a written pin. Blank and `auto` are not pins — auto is
+// true — and a pin whose model carries a thinking level (`vendor/model:high`)
+// is checked by the gate every tier row shares ([ValidateTierValue]).
+func ParseCrewPin(raw string) (pin CrewPin, auto bool, err error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || strings.EqualFold(raw, CrewAuto) {
+		return CrewPin{}, true, nil
+	}
+	model, provider := raw, ""
+	if at := strings.LastIndex(raw, "@"); at > 0 {
+		model, provider = strings.TrimSpace(raw[:at]), strings.ToLower(strings.TrimSpace(raw[at+1:]))
+		if provider == "" {
+			return CrewPin{}, false, fmt.Errorf("%q: name the provider after @, or leave the @ off", raw)
+		}
+	}
+	// A FREE POOL IS A ROUTE, NOT A THINKING LEVEL: `…:free` names the model's
+	// free route, and only what is left of the id is a tier value.
+	if err := ValidateTierValue(strings.TrimSuffix(model, ":free")); err != nil {
+		return CrewPin{}, false, err
+	}
+	return CrewPin{Model: model, Provider: provider}, false, nil
+}
+
+// CrewPinAt is one seat's pin, false when the seat is auto.
+//
+// A row that says `auto`, a row that is empty and a retired preset word are
+// all auto; any model id is a pin. A row that does not parse is auto too, and the
+// panel says so, because a seat that silently ran a half-read id would be the
+// one thing worse than a seat that ignores it.
+func CrewPinAt(profileDir string, seat crewroute.Seat) (CrewPin, bool) {
+	value, held := persistedString(profileDir, tierKeyFor(CrewSeatTier(seat)))
+	if !held {
+		return CrewPin{}, false
+	}
+	pin, auto, err := ParseCrewPin(value)
+	if auto || err != nil {
+		return CrewPin{}, false
+	}
+	return pin, true
+}
+
+// crewSeatRow is a seat's settings row: the pin as written, or empty — which
+// the row draws as `auto`.
+func crewSeatRow(profileDir string, seat crewroute.Seat) string {
+	if pin, ok := CrewPinAt(profileDir, seat); ok {
+		return pin.String()
+	}
+	return ""
+}
+
+// CrewPinsAt is every pinned seat.
+func CrewPinsAt(profileDir string) map[crewroute.Seat]CrewPin {
+	pins := map[crewroute.Seat]CrewPin{}
+	for _, seat := range crewroute.Seats {
+		if pin, ok := CrewPinAt(profileDir, seat); ok {
+			pins[seat] = pin
+		}
+	}
+	return pins
+}
+
+// SetCrewPin pins one seat, IN ONE FILE WRITE. `auto` or blank unpins it.
+//
+// A PIN OUTSIDE THE ALLOWED MODELS IS REFUSED WITH THE REASON, never written
+// and quietly ignored: the rule is the person's own and a pin that broke it
+// would be the one decision on the panel that contradicted another. A pin
+// naming a provider must name one that is connected, for the same reason.
+func SetCrewPin(profileDir string, seat crewroute.Seat, raw string) error {
+	pin, auto, err := ParseCrewPin(raw)
+	if err != nil {
+		return err
+	}
+	if auto {
+		return ClearCrewPin(profileDir, seat)
+	}
+	if err := CrewPinAllowed(profileDir, pin); err != nil {
+		return err
+	}
+	values := map[string]any{tierKeyFor(CrewSeatTier(seat)): pin.String()}
+	// A profile carrying retired rows is migrated in the same write.
+	for key, value := range legacyCrewClearing(profileDir) {
+		if _, set := values[key]; !set {
+			values[key] = value
+		}
+	}
+	return writeProfileValues(profileDir, values)
+}
+
+// ClearCrewPin unpins one seat: the row is removed, and the seat is routed.
+func ClearCrewPin(profileDir string, seat crewroute.Seat) error {
+	values := legacyCrewClearing(profileDir)
+	values[tierKeyFor(CrewSeatTier(seat))] = removeProfileKey
+	return writeProfileValues(profileDir, values)
+}
+
+// ClearCrewPins unpins every seat in one write.
+func ClearCrewPins(profileDir string) error {
+	values := legacyCrewClearing(profileDir)
+	for _, seat := range crewroute.Seats {
+		values[tierKeyFor(CrewSeatTier(seat))] = removeProfileKey
+	}
+	return writeProfileValues(profileDir, values)
+}
+
+// CrewPinAllowed says why a pin may not be written, or nil. The model must be
+// one the allowed rule admits — by its figures when the catalog knows it, by
+// name otherwise — and a pinned provider must be connected and must reach it.
+func CrewPinAllowed(profileDir string, pin CrewPin) error {
+	rule := CrewAllowedAt(profileDir)
+	model, known := crewCatalogModel(pin.Model)
+	switch {
+	case known && !rule.AdmitsModel(model):
+		return fmt.Errorf("%s is outside the models you allow (%s) · widen them with /crew models +%s",
+			pin.Model, rule.String(), crewroute.ShortModel(pin.Model))
+	case !known && rule.Base != crewroute.BaseAll && !rule.NamesModel(pin.Model):
+		return fmt.Errorf("%s is not in the catalog, so the rule %s cannot admit it by price or licence · name it with /crew models +%s",
+			pin.Model, rule.String(), pin.Model)
+	case !known && rule.Base == crewroute.BaseAll && !rule.AdmitsModel(crewroute.Model{ID: pin.Model}):
+		return fmt.Errorf("%s is outside the models you allow (%s)", pin.Model, rule.String())
+	}
+	if pin.Provider != "" {
+		provider, ok := crewProviderByID(CrewProvidersAt(profileDir), pin.Provider)
+		if !ok {
+			return fmt.Errorf("%s is not a connected provider · connect it with /connect, or pin the model without @%s", pin.Provider, pin.Provider)
+		}
+		if !rule.AdmitsRoute(provider.ID) {
+			return fmt.Errorf("%s is a provider your allowed models exclude (%s)", provider.ID, rule.String())
+		}
+		if !provider.On {
+			return fmt.Errorf("%s is turned off for the crew · turn it on in /crew's providers row", provider.ID)
+		}
+		if _, ok := provider.route(pin.Model, model, known); !ok {
+			return fmt.Errorf("%s does not serve %s", provider.Name, pin.Model)
+		}
+	}
+	return nil
+}
+
+// ── allowed models and the cap ──────────────────────────────────────────────
+
+// CrewAllowedAt is the allowed-models rule. A rule that does not parse — a
+// hand edit — reads as the default, the way a retired choice reads everywhere
+// else on this sheet; the writer refuses one.
+func CrewAllowedAt(profileDir string) crewroute.Allowed {
+	value, _ := persistedString(profileDir, KeyCrewAllowed)
+	rule, err := crewroute.ParseAllowed(value)
+	if err != nil {
+		rule, _ = crewroute.ParseAllowed(crewroute.DefaultAllowed)
+	}
+	return rule
+}
+
+// SetCrewAllowed writes the rule in its canonical spelling, refusing one that
+// does not parse and one that would leave a pinned seat outside it.
+func SetCrewAllowed(profileDir, raw string) error {
+	rule, err := crewroute.ParseAllowed(raw)
+	if err != nil {
+		return err
+	}
+	return writeCrewAllowed(profileDir, rule)
+}
+
+// ModifyCrewAllowed is `/crew models +x` and `-x`: the rule with one word
+// added or taken away.
+func ModifyCrewAllowed(profileDir string, add bool, word string) error {
+	word = strings.TrimSpace(word)
+	if word == "" {
+		return errors.New("name a model or a provider after the + or -")
+	}
+	return writeCrewAllowed(profileDir, CrewAllowedAt(profileDir).With(add, word))
+}
+
+// writeCrewAllowed is the rule's one writer.
+func writeCrewAllowed(profileDir string, rule crewroute.Allowed) error {
+	for _, seat := range crewroute.Seats {
+		pin, ok := CrewPinAt(profileDir, seat)
+		if !ok {
+			continue
+		}
+		if model, known := crewCatalogModel(pin.Model); (known && !rule.AdmitsModel(model)) || (!known && rule.Base != crewroute.BaseAll && !rule.NamesModel(pin.Model)) {
+			return fmt.Errorf("your %s is pinned to %s, which that rule leaves out · /crew unpin %s first, or add +%s",
+				seat, pin.Model, seat, crewroute.ShortModel(pin.Model))
+		}
+	}
+	return writeProfileValue(profileDir, KeyCrewAllowed, rule.String())
+}
+
+// CrewCapAt is the daily cap on crew spend, zero for none.
+func CrewCapAt(profileDir string) float64 {
+	value, ok := persistedFloat(profileDir, KeyCrewCap)
+	if !ok || value < 0 {
+		return 0
+	}
+	return value
+}
+
+// SetCrewCap writes the cap: a dollar amount, or `none`.
+func SetCrewCap(profileDir, raw string) error {
+	return writeDollars(profileDir, KeyCrewCap, raw)
+}
+
+// CrewTaskCapDefault is the per-task limit when none is set.
+const CrewTaskCapDefault = 5.0
+
+// CrewTaskCapAt is the most one task may spend, in dollars: the stored figure
+// when it is above zero, [CrewTaskCapDefault] otherwise. There is always one.
+func CrewTaskCapAt(profileDir string) float64 {
+	value, ok := persistedFloat(profileDir, KeyCrewTaskCap)
+	if !ok || value <= 0 {
+		return CrewTaskCapDefault
+	}
+	return value
+}
+
+// SetCrewTaskCap writes the per-task limit: a dollar amount above zero. A
+// task always has a limit, so `none` and zero are refused.
+func SetCrewTaskCap(profileDir, raw string) error {
+	value, err := parseDollars(raw)
+	if err != nil {
+		return err
+	}
+	if value <= 0 {
+		return errors.New("a task always has a limit — a dollar amount above zero")
+	}
+	return writeProfileValue(profileDir, KeyCrewTaskCap, value)
+}
+
+// CrewFreeRoutesAt is whether the crew may route to providers' free pools.
+// Absent is off.
+//
+// A FREE ROUTE IS A ROUTE, NOT A MODEL. On, a model's free pool joins its other
+// routes ([crewroute.Free]) and is weighed at what it is expected to cost —
+// its refusals included — and a seat on it falls through to the same model's
+// paid route before any other model. Off, the free pools are not routes at
+// all; a person can still pin one by name.
+func CrewFreeRoutesAt(profileDir string) bool {
+	on, _ := persistedBool(profileDir, KeyCrewFreeRoutes)
+	return on
+}
+
+// SetCrewFreeRoutes turns the free routes on or off.
+func SetCrewFreeRoutes(profileDir string, on bool) error {
+	return writeProfileValue(profileDir, KeyCrewFreeRoutes, on)
+}
+
+// ── the providers turned off ────────────────────────────────────────────────
+
+// ErrCrewLastProvider is the refusal to turn off the last provider on: a crew
+// with nothing to route through is not a narrower crew but no crew, and the
+// way to say "none of these" is to disconnect them, which /connect does.
+var ErrCrewLastProvider = errors.New("at least one provider must stay on")
+
+// ErrCrewNoRoutableProvider is the same refusal one step wider: the providers
+// left on would route no seat — only a custom endpoint, say, which a pin
+// reaches and the router never picks — while every seat is not pinned to a
+// provider still on.
+var ErrCrewNoRoutableProvider = errors.New("at least one provider that can route a seat must stay on")
+
+// CrewProvidersOffAt is the providers turned off for the crew. A row that does
+// not read — a hand edit — reads as none off, the way a rule that does not
+// parse reads as the default.
+func CrewProvidersOffAt(profileDir string) crewroute.ProvidersOff {
+	raw, ok := persistedValue(profileDir, KeyCrewProvidersOff)
+	if !ok {
+		return nil
+	}
+	var ids []string
+	if json.Unmarshal(raw, &ids) != nil {
+		return nil
+	}
+	off := crewroute.ProvidersOff{}
+	for _, id := range ids {
+		if id = strings.ToLower(strings.TrimSpace(id)); id != "" {
+			off[id] = true
+		}
+	}
+	return off
+}
+
+// SetCrewProviderOn turns one connected provider on or off for the crew, IN
+// ONE FILE WRITE, refusing to turn off the last one on ([ErrCrewLastProvider])
+// and a provider that is not connected.
+//
+// THE ROW KEEPS ONLY CONNECTED PROVIDERS. An id left behind by a connection
+// since removed is dropped on the next write, so a provider disconnected and
+// connected again is on — the same as any connection made after the row was
+// written — and the row never grows a list of names nobody can see.
+func SetCrewProviderOn(profileDir, id string, on bool) error {
+	providers := CrewProvidersAt(profileDir)
+	provider, ok := crewProviderByID(providers, id)
+	if !ok {
+		return fmt.Errorf("%s is not a connected provider · connect it with /connect", strings.TrimSpace(id))
+	}
+	var ids []string
+	still := 0
+	for _, p := range providers {
+		stays := p.On
+		if p.ID == provider.ID {
+			stays = on
+		}
+		if stays {
+			still++
+			continue
+		}
+		ids = append(ids, p.ID)
+	}
+	if still == 0 {
+		return ErrCrewLastProvider
+	}
+	if !on && !crewStillRoutes(profileDir, providers, provider.ID) {
+		return ErrCrewNoRoutableProvider
+	}
+	if len(ids) == 0 {
+		return writeProfileValues(profileDir, map[string]any{KeyCrewProvidersOff: removeProfileKey})
+	}
+	return writeProfileValue(profileDir, KeyCrewProvidersOff, ids)
+}
+
+// crewStillRoutes is whether turning one more provider off leaves the crew
+// able to seat every seat: some allowed model a seat can sit is reached by a
+// provider still on, or every seat is pinned to a provider still on. A
+// profile that could route nothing before the change is not refused for
+// routing nothing after it — the refusal is about THIS change.
+func crewStillRoutes(profileDir string, providers []CrewProvider, id string) bool {
+	rule := CrewAllowedAt(profileDir)
+	all := crewCandidates(rule, providers)
+	before, after := crewroute.ProvidersOff{}, crewroute.ProvidersOff{}
+	for _, p := range providers {
+		if !p.On {
+			before[p.ID], after[p.ID] = true, true
+		}
+	}
+	after[id] = true
+	if !crewSeatable(before.Candidates(all)) || crewSeatable(after.Candidates(all)) {
+		return true
+	}
+	pins := CrewPinsAt(profileDir)
+	for _, seat := range crewroute.Seats {
+		pin, ok := pins[seat]
+		if !ok {
+			return false
+		}
+		route := resolveCrewPin(pin, providers)
+		if _, connected := crewProviderByID(providers, route.Provider); !connected || !after.On(route.Provider) {
+			return false
+		}
+	}
+	return true
+}
+
+// crewSeatable is whether any candidate can sit a seat: a model that takes
+// tools, on at least one route.
+func crewSeatable(candidates []crewroute.Candidate) bool {
+	for _, c := range candidates {
+		if c.Model.Tools && len(c.Routes) > 0 {
 			return true
 		}
 	}
 	return false
 }
 
-// SetCrewPick writes the pick row ALONE, in one file write. The word is
-// refused the way every choice row refuses one, so a typo cannot land a pick
-// nothing reads. It writes no tier row: the pick says where seats are read
-// from, and the seats keep the ids on disk until the crew is picked again.
-func SetCrewPick(profileDir, pick string) error {
-	known, ok := knownCrewPick(pick)
-	if !ok {
-		return fmt.Errorf("pick one of: %s", strings.Join(CrewPicks, ", "))
+// ── what the router may pick from ───────────────────────────────────────────
+
+// CrewCatalog is how the catalog reaches crew routing: the binary holding the
+// catalog sets it ONCE AT START-UP, from its non-blocking read, and never a
+// fetch — a task is routed on whatever the catalog already holds. Nil, and a
+// func answering no rows, are ordinary states rather than errors: the router
+// then has no candidates, and a task's crew comes from its rescue ladder —
+// the last crew that worked here, the model the person is talking to.
+var CrewCatalog func() []catalog.Model
+
+// crewCatalogRows is [CrewCatalog] read with its ordinary absences folded.
+func crewCatalogRows() []catalog.Model {
+	if CrewCatalog == nil {
+		return nil
 	}
-	return writeProfileValue(profileDir, KeyCrewPick, known)
+	return CrewCatalog()
 }
 
-// crewModels is the open-weight table: one row per preset, one model per class.
-//
-// THE WORKER COLUMN IS THE DIAL. It holds glm-5.3-flash through balanced, and
-// max is the preset that takes it to glm-5.3, because it is the seat that pays
-// most of a task's bill, and a preset that moved every other seat while leaving
-// it alone would change everything about a task except its cost. The careful
-// column always sees images (the vision role rides it) and is a second vendor
-// from balanced upward; frugal keeps worker and careful on the same
-// glm-5.3-flash, because at that bill the open-weight front has no second
-// vendor to take the careful seat. The reflex and low columns never vary: they
-// are the same near-free models in all three presets, and a column that never
-// varies is not a dial.
-//
-// HOW THE IDS WERE READ OFF, on 2026-09-16 and seat by seat. Every open-weight
-// row of the catalog was placed on two axes: the expected bill that seat's own
-// call shape runs up, built from the catalog's published prompt, completion and
-// cache-read prices, against that seat's quality, taken from its published
-// intelligence, coding and agentic indexes. THE CALL SHAPE IS PART OF THE
-// PRICE. The worker and the careful seats were costed as LONG CACHED LOOPS — a
-// large prompt read back turn after turn, so the cache-read price carries most
-// of the weight — and the mastermind as ONE-SHOT CALLS, where the prompt is
-// paid in full each time and there are few of them. Each preset then takes, for
-// each seat, a point on the pareto front of that plot at the bill it is willing
-// to run: nothing on the front costs less at the same quality, and nothing at
-// the same bill scores higher.
-//
-// That is why the columns do not climb together. Under one-shot pricing
-// glm-5.3-flash is on the front at frugal's bill and glm-5.3 is the next point
-// above it, so the mastermind column reads flash, glm-5.3, glm-5.3; under
-// long-loop pricing the same plot puts kimi-k3 on the careful seat from
-// balanced upward, which is also the second vendor that seat has to be.
-//
-// No closed model is here: the open family is the shelf that stands on the
-// open-weight rows alone, and the `all` family is where a closed model goes.
-var crewModels = map[string]map[string]string{
-	CrewFrugal: {
-		ModelTierReflex:     "mistralai/mistral-nemo",
-		ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
-		ModelTierWorker:     "z-ai/glm-5.3-flash",
-		ModelTierHigh:       "z-ai/glm-5.3-flash",
-		ModelTierMastermind: "z-ai/glm-5.3-flash",
-	},
-	CrewBalanced: {
-		ModelTierReflex:     "mistralai/mistral-nemo",
-		ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
-		ModelTierWorker:     "z-ai/glm-5.3-flash",
-		ModelTierHigh:       "moonshotai/kimi-k3",
-		ModelTierMastermind: "z-ai/glm-5.3",
-	},
-	CrewMax: {
-		ModelTierReflex:     "mistralai/mistral-nemo",
-		ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
-		ModelTierWorker:     "z-ai/glm-5.3",
-		ModelTierHigh:       "moonshotai/kimi-k3",
-		ModelTierMastermind: "z-ai/glm-5.3",
-	},
-}
-
-// crewAllModels is the same three presets answered from the whole catalog
-// rather than its open-weight shelf, which is what the `all` family of
-// [KeyCrewSource] draws from AND WHAT A PROFILE THAT HAS ANSWERED NOTHING
-// RESOLVES ([DefaultCrewSource]). The careful column is a DIFFERENT VENDOR
-// from the worker in every preset here — the open family's frugal row is the
-// one standing exception — and the reflex and low columns still never vary.
-// Closed models live here and only here.
-//
-// The ids come off the same plot [crewModels] describes, run on 2026-09-16 over
-// every row of the catalog rather than the open-weight ones: expected task bill
-// against seat quality, the bill built from the published prompt, completion
-// and cache-read prices under each seat's own call shape — the worker and the
-// careful seats as long cached loops, the mastermind as one-shot calls — and
-// the quality from the published intelligence, coding and agentic indexes.
-//
-// THE WORKER STAYS ON glm-5.3-flash THROUGH BALANCED, and that is the whole
-// shape of this table. The worker seat carries most of a task's tokens, so a
-// step there multiplies through the entire bill while a step on the careful or
-// the mastermind seat is paid a handful of times. The money therefore goes to
-// the two low-volume seats first: frugal to balanced moves the careful seat to
-// claude-fable-5.1 and the mastermind to claude-opus-5, and max moves the
-// worker itself, with the careful seat staying on fable beside it.
-var crewAllModels = map[string]map[string]string{
-	CrewFrugal: {
-		ModelTierReflex:     "google/gemini-2.5-flash",
-		ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
-		ModelTierWorker:     "z-ai/glm-5.3-flash",
-		ModelTierHigh:       "qwen/qwen3.8-max-0902",
-		ModelTierMastermind: "z-ai/glm-5.3-flash",
-	},
-	CrewBalanced: {
-		ModelTierReflex:     "google/gemini-2.5-flash",
-		ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
-		ModelTierWorker:     "z-ai/glm-5.3-flash",
-		ModelTierHigh:       "anthropic/claude-fable-5.1",
-		ModelTierMastermind: "anthropic/claude-opus-5",
-	},
-	CrewMax: {
-		ModelTierReflex:     "google/gemini-2.5-flash",
-		ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
-		ModelTierWorker:     "z-ai/glm-5.3",
-		ModelTierHigh:       "anthropic/claude-fable-5.1",
-		ModelTierMastermind: "anthropic/claude-opus-5",
-	},
-}
-
-// crewTableFor is the family one source word names. It is total: `open` names
-// the open-weight family, and every other reading (blank, misspelt, a word a
-// later build retired) names the catalog-wide one, because an unreadable answer
-// resolves the same family an absent answer does ([DefaultCrewSource]).
-func crewTableFor(source string) map[string]map[string]string {
-	if normalCrewSource(source) == CrewSourceOpen {
-		return crewModels
+// crewModelOf reads one catalog row the way the router reads a model.
+func crewModelOf(row catalog.Model) crewroute.Model {
+	return crewroute.Model{
+		ID: row.ID, Open: row.OpenWeights,
+		PromptPrice: row.PromptPrice, CompletionPrice: row.CompletionPrice, CacheReadPrice: row.CacheReadPrice,
+		Intelligence: row.IntelligenceIndex, Coding: row.CodingIndex, Agentic: row.AgenticIndex,
+		ArenaElo: row.ArenaElo, Released: crewReleased(row),
+		Context: row.ContextLength, Tools: crewTakesTools(row) && crewSpeaksText(row),
 	}
-	return crewAllModels
 }
 
-// knownCrewSource folds a word and says whether it is one of the families this
-// build knows. It is the ONE place the fold is spelled: [normalCrewSource],
-// [ApplyCrewUnder] and [SetCrewSource] all go through it, so a family added to
-// [CrewSources] is accepted everywhere at once. A reader folds a word it does
-// not know to the default family; a writer refuses it.
-func knownCrewSource(source string) (string, bool) {
-	source = strings.ToLower(strings.TrimSpace(source))
-	for _, known := range CrewSources {
-		if source == known {
-			return known, true
+// crewReleased is when a catalog row's model was released: the row's own
+// listing time, or the date a canonical slug ends on (`…-20260826`), or the
+// zero time when the row says neither.
+func crewReleased(row catalog.Model) time.Time {
+	if row.Created > 0 {
+		return time.Unix(row.Created, 0).UTC()
+	}
+	slug := strings.TrimSpace(row.CanonicalSlug)
+	if at := strings.LastIndex(slug, "-"); at >= 0 && len(slug)-at-1 == 8 {
+		if day, err := time.Parse("20060102", slug[at+1:]); err == nil && day.Year() >= 2020 {
+			return day
 		}
 	}
-	return "", false
+	return time.Time{}
 }
 
-// normalCrewSource folds a source word to one of the two this build knows,
-// reading a word it does not know as the default family.
-func normalCrewSource(source string) string {
-	if known, ok := knownCrewSource(source); ok {
-		return known
+// crewIndexesFrom is m with every published figure it lacks — an index, the
+// arena Elo, the release date — read from other, a row of the same model.
+func crewIndexesFrom(m, other crewroute.Model) crewroute.Model {
+	if m.Intelligence <= 0 {
+		m.Intelligence = other.Intelligence
 	}
-	return DefaultCrewSource
-}
-
-// CrewSourceAt is which family the preset words draw from on this profile,
-// [DefaultCrewSource] when the row is absent. A word this build does not know
-// reads as the default family, silently, the way a retired choice reads
-// everywhere else on this sheet.
-func CrewSourceAt(profileDir string) string {
-	if value, ok := persistedString(profileDir, KeyCrewSource); ok {
-		return normalCrewSource(value)
+	if m.Coding <= 0 {
+		m.Coding = other.Coding
 	}
-	return DefaultCrewSource
+	if m.Agentic <= 0 {
+		m.Agentic = other.Agentic
+	}
+	if m.ArenaElo <= 0 {
+		m.ArenaElo = other.ArenaElo
+	}
+	if m.Released.IsZero() {
+		m.Released = other.Released
+	}
+	return m
 }
 
-// storedCrewWord is the crew word a profile STORES on the crew row, when it
-// names one of this build's presets.
+// crewTakesTools is whether a catalog row says the model takes tool calls.
 //
-// THIS BUILD NEVER WRITES IT. The crew row is derived from the five tier rows,
-// not stored ([KeyCrew] argues it), so on every profile this product shapes the
-// row is absent. But a run that writes ONE word into config.json instead of the
-// five rows — a harness driven arm, a hand edit — is asking for a budget, and a
-// word sitting on disk that nothing reads is a crew word that reached nobody.
-// The word is read here, at the one place a preset is decided ([crewPresetUnder]
-// and [crewStoredAt]), so a word that is present seats the crew it names whether
-// the five rows were written or not.
-//
-// A word this build does not know names no preset and is read as no word at all,
-// the way the family and pick rows fold a retired choice. The family is still
-// [CrewSourceAt]'s: the word names a budget, not a shelf.
-func storedCrewWord(profileDir string) (string, bool) {
-	value, held := persistedString(profileDir, KeyCrew)
-	if !held {
-		return "", false
+// A ROW THAT LISTS NO PARAMETERS HAS SAID NOTHING, and a crew seat is an agent
+// loop: a model whose tool support is unknown is not sent to find out in the
+// middle of somebody's task.
+func crewTakesTools(row catalog.Model) bool {
+	return len(row.Parameters) > 0 && listHolds(row.Parameters, "tools")
+}
+
+// crewSpeaksText is whether a catalog row reads text and writes text. A crew
+// seat is a conversation of text and tool calls: a speech, transcription or
+// image model that lists tool parameters is still no seat. A row that lists
+// no modalities has said nothing either way and is judged on its tools alone.
+func crewSpeaksText(row catalog.Model) bool {
+	if len(row.InputModalities) > 0 && !listHolds(row.InputModalities, "text") {
+		return false
 	}
-	word := strings.ToLower(strings.TrimSpace(value))
-	for _, preset := range CrewPresets {
-		if word == preset {
-			return preset, true
+	return len(row.OutputModalities) == 0 || listHolds(row.OutputModalities, "text")
+}
+
+// crewCatalogModel is one model as the router would read it, from the
+// catalog, false when the catalog does not know it.
+//
+// THE EXACT ID WINS. A pin names what the person wrote, and a catalog that
+// lists that id serves that id — never a dated snapshot that happens to share
+// its lineage and to be listed first. Only an id the catalog does not list is
+// read through its lineage.
+func crewCatalogModel(id string) (crewroute.Model, bool) {
+	exact := stripCrewRoute(id)
+	rows := crewCatalogRows()
+	for _, row := range rows {
+		if strings.EqualFold(row.ID, exact) && !row.PriceUnknown {
+			return crewModelOf(row), true
 		}
 	}
-	return "", false
-}
-
-// CrewModelsForSource is the five models one preset would set under one
-// family, by tier word, false for a word that is not a preset. It returns a
-// copy for [CrewModels]'s reason.
-func CrewModelsForSource(source, preset string) (map[string]string, bool) {
-	row, ok := crewTableFor(source)[strings.ToLower(strings.TrimSpace(preset))]
-	if !ok {
-		return nil, false
-	}
-	out := make(map[string]string, len(row))
-	for tier, model := range row {
-		out[tier] = model
-	}
-	return out, true
-}
-
-// crewLines is the one line each preset says about itself, IN THE FAMILY IT
-// DRAWS FROM. It is what /crew prints beside each option and what the settings
-// chooser shows under it, so it must name the models the preset actually picks
-// in the family on screen: a line naming open models above frontier ids is the
-// contradiction the chooser exists to prevent.
-var crewLines = map[string]map[string]string{
-	CrewSourceOpen: {
-		CrewFrugal:   "glm-flash works, checks and thinks · pennies a day",
-		CrewBalanced: "glm-flash works, kimi-k3 checks, glm-5.3 thinks",
-		CrewMax:      "glm-5.3 works and thinks, kimi-k3 checks",
-	},
-	CrewSourceAll: {
-		CrewFrugal:   "glm-flash works and thinks, qwen-max checks",
-		CrewBalanced: "glm-flash works, fable checks, opus thinks",
-		CrewMax:      "glm-5.3 works, fable checks, opus thinks",
-	},
-}
-
-// CrewLine is one preset's own line in the DEFAULT family, empty for a word
-// that is not a preset. The family-aware spelling is [CrewLineFor].
-func CrewLine(preset string) string {
-	return CrewLineFor(DefaultCrewSource, preset)
-}
-
-// CrewLineFor is one preset's own line in one family, empty for a word that is
-// not a preset. A family this build does not know reads as the default one, the
-// way the row does.
-func CrewLineFor(source, preset string) string {
-	return crewLines[normalCrewSource(source)][strings.ToLower(strings.TrimSpace(preset))]
-}
-
-// CrewModels is the five models one preset would set in the DEFAULT family, by
-// tier word: the family a profile nobody has touched reads, and the spelling
-// the callers hold. The family-aware spelling is
-// [CrewModelsForSource]. It returns a copy, because a caller printing the
-// table must not be able to edit it.
-func CrewModels(preset string) (map[string]string, bool) {
-	return CrewModelsForSource(DefaultCrewSource, preset)
-}
-
-// CrewAt is the crew as the five live tier values make it: the preset they are,
-// or [CrewCustom].
-//
-// It reads through [TierModelAt], so a profile that has never been touched reads
-// the shipped defaults and therefore reads [DefaultCrew] — the five defaults are
-// the balanced row and nothing here needs to know that separately. A tier a
-// person cleared on purpose reads empty, matches no preset, and turns the answer
-// to custom, which is the truth: "one of these follows the conversation" is not
-// any of the three.
-//
-// The comparison runs against the family [CrewSourceAt] names, so the reading
-// moves with the row and never behind it: flip the family and a crew the old
-// family wrote matches nothing, which reads as custom and is true, because one
-// family's five ids are not any preset of the other.
-func CrewAt(profileDir string) string {
-	family := CrewSourceAt(profileDir)
-	if CrewPickAt(profileDir) != CrewPickTable {
-		// WITH THE PICK OFF THE TABLE the three dial seats are computed ids the
-		// preset tables do not hold, and comparing the live seats would read
-		// custom over a crew the person chose. The word answers what the STORED
-		// rows make instead — the budget the seats are computed at ([pickedSeat]
-		// reads the same rows) — so the word on the sheet stays the decision it
-		// summarizes while the ids underneath move with the catalog.
-		return crewStoredAt(profileDir, family)
-	}
-	live := make(map[string]string, len(ModelTiers))
-	for _, tier := range ModelTiers {
-		live[tier] = tierSeatUnder(profileDir, family, tier).Model
-	}
-	if sameCrew(live, freeCrewModels) {
-		return CrewFree
-	}
-	table := crewTableFor(family)
-	for _, preset := range CrewPresets {
-		if sameCrew(live, table[preset]) {
-			return preset
+	lineage := crewroute.Lineage(exact)
+	for _, row := range rows {
+		if crewroute.Lineage(row.ID) == lineage && !row.PriceUnknown {
+			return crewModelOf(row), true
 		}
 	}
-	return CrewCustom
+	return crewroute.Model{}, false
 }
 
-// crewStoredAt is the crew the STORED five rows make, in the family given:
-// the preset they are, or [CrewCustom]. It is [CrewAt]'s reading when the
-// pick row takes the seats off the table, where the live comparison would
-// compare computed ids.
-//
-// Each row is read through the ladder's own row reader ([crewRow]). A row the
-// reader cannot answer because the key was NEVER HELD reads the family's
-// default-preset id, which is what that tier runs until somebody writes it;
-// a row CLEARED ON PURPOSE reads empty and matches nothing, because
-// "follows the conversation" is not any of the three; a row that says auto is
-// skipped, because auto is the one row with no opinion of its own — it runs
-// at whatever budget the rows around it name ([crewPresetUnder]).
-func crewStoredAt(profileDir, family string) string {
-	// A STORED CREW WORD NAMES THE BUDGET OUTRIGHT. A run that wrote one word
-	// instead of the five rows made its decision on the word, and the five rows
-	// under it are that word's own table rows — so the word is the answer, and
-	// the row comparison below is only for a profile whose budget is the rows.
-	if word, ok := storedCrewWord(profileDir); ok {
-		return word
-	}
-	defaults := crewTableFor(family)[DefaultCrew]
-	stored := make(map[string]string, len(ModelTiers))
-	for _, tier := range ModelTiers {
-		value, _, source, cleared := crewRow(profileDir, tier)
-		switch {
-		case cleared:
-			stored[tier] = ""
-		case source == "":
-			stored[tier] = strings.ToLower(strings.TrimSpace(defaults[tier]))
-		case IsAuto(value):
-			stored[tier] = AutoValue
-		default:
-			stored[tier] = strings.ToLower(strings.TrimSpace(value))
-		}
-	}
-	table := crewTableFor(family)
-	// THE DEFAULT PRESET WINS EVERY TIE, the law [crewPresetUnder] states: a
-	// profile whose every row says auto is a crew with no opinion of its own,
-	// and it reads balanced rather than whichever preset the loop met first.
-	if crewStoredMatches(stored, table[DefaultCrew]) {
-		return DefaultCrew
-	}
-	for _, preset := range CrewPresets {
-		if preset != DefaultCrew && crewStoredMatches(stored, table[preset]) {
-			return preset
-		}
-	}
-	return CrewCustom
+// stripCrewRoute takes a connection's prefix off an id a person wrote with
+// one (`openrouter/z-ai/glm-5.3-flash`), leaving the catalog id.
+func stripCrewRoute(id string) string {
+	return strings.TrimPrefix(strings.TrimSpace(id), modelsource.DefaultID+"/")
 }
 
-// crewStoredMatches compares a stored reading with one preset row, skipping
-// the tiers whose row says auto.
-func crewStoredMatches(stored, preset map[string]string) bool {
-	for _, tier := range ModelTiers {
-		if stored[tier] == AutoValue {
+// listHolds says whether a row's own list carries the word, case folded.
+func listHolds(words []string, word string) bool {
+	for _, held := range words {
+		if strings.EqualFold(strings.TrimSpace(held), word) {
+			return true
+		}
+	}
+	return false
+}
+
+// CrewProvider is one connected provider as the crew can use it.
+type CrewProvider struct {
+	// ID is the connection's own id — `openrouter`, `z-ai`, `codex`,
+	// `ollama` — and the word an `@provider` pin names.
+	ID string
+	// Name is how the panel says it.
+	Name string
+	// Written is the id prefix that sends a call to this connection.
+	Written string
+	// Kind is how it bills: metered, a subscription plan, or local.
+	Kind crewroute.RouteKind
+	// Serves is the models a plan door serves, empty for every model the
+	// vendor lists.
+	Serves []string
+	// On is whether the crew may route through it: every connection is, until
+	// a person turns it off ([SetCrewProviderOn]).
+	On bool
+	// vendors are the catalog vendor prefixes this connection serves directly.
+	vendors []string
+	// collides lists the catalog vendors whose ids this connection's Written
+	// prefix would capture, so the default route spells them `openrouter/…`.
+	collides map[string]bool
+}
+
+// crewVendors maps a direct connection to the catalog vendor prefixes it
+// serves. A connection whose Written is the vendor's own prefix needs no row.
+var crewVendors = map[string][]string{
+	"moonshot": {"moonshotai"},
+	"codex":    {"openai"},
+}
+
+// CrewProvidersAt is every provider the crew can route through: each
+// connection this profile has with a key, in the person's own order, the
+// default service first when it has one. It is DERIVED, never a setting —
+// connecting a provider is what adds it.
+func CrewProvidersAt(profileDir string) []CrewProvider {
+	off := CrewProvidersOffAt(profileDir)
+	set := ResolveSources(profileDir, APIKeyAt(profileDir), DefaultBaseURL)
+	written := map[string]bool{}
+	for _, service := range set.All() {
+		written[strings.ToLower(service.Source.Written)] = true
+	}
+	var out []CrewProvider
+	for _, service := range set.All() {
+		source := service.Source
+		if strings.TrimSpace(service.Key) == "" && !source.KeyOptional {
 			continue
 		}
-		if stored[tier] != strings.ToLower(strings.TrimSpace(preset[tier])) {
-			return false
+		p := CrewProvider{ID: strings.ToLower(source.ID), Name: source.Name, Written: source.Written, Kind: crewroute.Metered}
+		p.On = off.On(p.ID)
+		switch {
+		case strings.EqualFold(source.ID, modelsource.DefaultID):
+			p.collides = map[string]bool{}
+			for w := range written {
+				if w != modelsource.DefaultID {
+					p.collides[w] = true
+				}
+			}
+		case strings.EqualFold(source.ID, "codex"):
+			p.Kind = crewroute.Plan
+			p.Serves = []string{source.Preferred}
+		case strings.EqualFold(source.ID, "ollama"):
+			p.Kind = crewroute.Local
+		case modelsource.IsCustomID(source.ID):
+			// A custom endpoint serves models the catalog does not describe;
+			// it is reachable by a pin that names it and by nothing else.
+		case service.Door.ID != "" && !service.Door.Metered:
+			p.Kind = crewroute.Plan
+			p.Serves = append([]string(nil), service.Door.Models...)
+		}
+		if !strings.EqualFold(source.ID, modelsource.DefaultID) && !modelsource.IsCustomID(source.ID) && !strings.EqualFold(source.ID, "ollama") {
+			p.vendors = append([]string{strings.ToLower(source.Written)}, crewVendors[strings.ToLower(source.ID)]...)
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// crewProviderByID finds a connected provider by the word a pin names.
+func crewProviderByID(providers []CrewProvider, id string) (CrewProvider, bool) {
+	id = strings.ToLower(strings.TrimSpace(id))
+	for _, p := range providers {
+		if p.ID == id || strings.EqualFold(p.Written, id) {
+			return p, true
 		}
 	}
-	return true
+	return CrewProvider{}, false
 }
 
-// sameCrew compares two crews class by class, case-folded, because a model id is
-// matched case-insensitively everywhere else on this surface.
-func sameCrew(live, preset map[string]string) bool {
-	for _, tier := range ModelTiers {
-		if !strings.EqualFold(strings.TrimSpace(live[tier]), preset[tier]) {
-			return false
+// route is how this provider reaches one catalog model, false when it does
+// not. The send is the id that makes an ordinary call go this way — the
+// connection-routing grammar every call already obeys ([modelsource.Split]).
+func (p CrewProvider) route(id string, model crewroute.Model, known bool) (crewroute.Route, bool) {
+	id = stripCrewRoute(id)
+	vendor, tail := id, id
+	if slash := strings.Index(id, "/"); slash >= 0 {
+		vendor, tail = strings.ToLower(id[:slash]), id[slash+1:]
+	}
+	if p.ID == modelsource.DefaultID {
+		if !known {
+			return crewroute.Route{}, false
+		}
+		send := id
+		if p.collides[vendor] {
+			send = modelsource.DefaultID + "/" + id
+		}
+		return crewroute.Route{Provider: p.ID, Send: send, Kind: p.Kind}, true
+	}
+	// A pin written with this connection's own prefix is already its send.
+	if strings.EqualFold(vendor, p.Written) && !known {
+		return crewroute.Route{Provider: p.ID, Send: id, Kind: p.Kind}, true
+	}
+	served := false
+	for _, v := range p.vendors {
+		if v == vendor {
+			served = true
+			break
 		}
 	}
-	return true
+	if !served {
+		return crewroute.Route{}, false
+	}
+	if len(p.Serves) > 0 {
+		ok := false
+		for _, s := range p.Serves {
+			if strings.EqualFold(crewroute.Lineage(s), crewroute.Lineage(tail)) {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return crewroute.Route{}, false
+		}
+	}
+	return crewroute.Route{Provider: p.ID, Send: p.Written + "/" + tail, Kind: p.Kind}, true
 }
 
-// ApplyCrew writes all five tier rows from one preset, IN ONE FILE WRITE.
+// CrewCandidatesAt is what the router may pick from on this profile: every
+// catalog model the allowed rule admits, with every route a connected
+// provider offers it on — plans and local models first, then a direct
+// connection, then the default service, which is the order a tie between
+// routes of equal cost is broken in. A model no connected provider reaches is
+// not a candidate, however cheap.
 //
-// The five keys land together or not at all. Five separate writes would leave a
-// window — one process crash, one full disk — in which two classes belong to the
-// old crew and two to the new, and the crew row would read "custom" about a
-// state nobody chose. It is also the only shape in which a reader that happens
-// to be resolving a role while somebody presses enter cannot see half a crew.
-//
-// The preset is resolved under the family [CrewSourceAt] names, so the row and
-// the write cannot disagree about which table the word means: flip to `all`,
-// press the crew again, and the five ids that land are the all-family ones.
-func ApplyCrew(profileDir, preset string) error {
-	// An empty family means KEEP THE ONE THE PROFILE HOLDS, so this path reads the
-	// profile once inside ApplyCrewUnder rather than once here and again there, and
-	// the write is exactly the five tiers. One resolve-and-write serves both callers
-	// rather than two that can drift apart.
-	return ApplyCrewUnder(profileDir, "", preset)
+// A provider the person turned off carries none of those routes
+// ([crewroute.ProvidersOff]), so a model only it reached is no candidate
+// either — the route cost the router weighs is always a route it may take.
+func CrewCandidatesAt(profileDir string) []crewroute.Candidate {
+	candidates, _ := crewCandidatesNoticed(profileDir, crewHealthAt(profileDir))
+	return candidates
 }
 
-// ApplyCrewUnder writes a FAMILY AND A PRESET AS ONE DECISION, IN ONE FILE
-// WRITE. The family row and the five tier rows are one state, so writing them
-// apart leaves a window in which a reader sees the family set to `all` while the
-// rows still hold open ids, which is the half-written crew [ApplyCrew] forbids, read as
-// `custom` about a state nobody chose.
+// crewCandidates is [CrewCandidatesAt] over a rule and a set of providers
+// already read, which is how [CrewOffersAt] asks the same question under `all`.
+// It is asked with no free routes.
+func crewCandidates(rule crewroute.Allowed, providers []CrewProvider) []crewroute.Candidate {
+	return crewCandidatesWith(rule, providers, crewRouteFacts{})
+}
+
+// crewCandidatesWith is [crewCandidates] with the profile's route facts.
 //
-// The family row rides along ONLY WHEN IT CHANGES, so an enter that keeps the
-// family does not pin a setting the person never answered: the five tier rows are
-// written and the family row stays unanswered, free to follow a later default
-// family.
-func ApplyCrewUnder(profileDir, source, preset string) error {
-	// An empty source keeps the family the profile holds, which is how [ApplyCrew]
-	// asks for the five tiers alone. The profile is read ONCE here, so there is no
-	// window between a check and the write in which the family could move.
-	persisted := CrewSourceAt(profileDir)
-	if strings.TrimSpace(source) == "" {
-		source = persisted
+// ONE MODEL IS ONE CANDIDATE, WHATEVER IT IS SPELLED. Catalog rows are grouped
+// by their canonical identity ([crewroute.Canonical]), so a model's free pool
+// (`…:free`) is not a second, free model beside it but one more route of the
+// same one — kept only when free routes are on ([CrewFreeRoutesAt]). A free
+// pool whose paid model the catalog does not list is a model with that one
+// route, weighed at what the route is expected to cost, never at zero.
+func crewCandidatesWith(rule crewroute.Allowed, providers []CrewProvider, facts crewRouteFacts) []crewroute.Candidate {
+	var models []crewroute.Model
+	var free map[string]string // canonical id → the free row's id
+	if rows := crewCatalogRows(); len(rows) > 0 {
+		paid := map[string]bool{}
+		at := map[string]int{}
+		for _, row := range rows {
+			if crewUnpriced(row) || strings.HasPrefix(row.ID, "~") || crewroute.IsFree(row.ID) {
+				continue
+			}
+			lineage := crewroute.Lineage(row.ID)
+			if paid[lineage] {
+				// The same model again — a dated snapshot beside its name —
+				// is one candidate, read from the row that lists the model
+				// by its own name when there is one, so a seat is sent the
+				// name and not whichever snapshot the catalog listed first.
+				// THE FIGURES ARE THE MODEL'S, whichever row carried them: an
+				// index the snapshot's row published is not lost because the
+				// model's own row did not repeat it.
+				if strings.EqualFold(row.ID, lineage) {
+					models[at[lineage]] = crewIndexesFrom(crewModelOf(row), models[at[lineage]])
+				} else {
+					models[at[lineage]] = crewIndexesFrom(models[at[lineage]], crewModelOf(row))
+				}
+				continue
+			}
+			paid[lineage], at[lineage] = true, len(models)
+			models = append(models, crewIndexesFrom(crewModelOf(row), crewroute.Model{}))
+		}
+		if facts.free {
+			free = map[string]string{}
+			for _, row := range rows {
+				if !crewroute.IsFree(row.ID) || strings.HasPrefix(row.ID, "~") || crewUnpriced(row) {
+					continue
+				}
+				key := crewroute.Lineage(row.ID)
+				free[key] = row.ID
+				if !paid[key] {
+					paid[key] = true
+					m := crewModelOf(row)
+					m.ID = strings.TrimSuffix(m.ID, ":free")
+					models = append(models, m)
+				}
+			}
+		}
 	}
-	known, ok := knownCrewSource(source)
-	if !ok {
-		return fmt.Errorf("pick one of: %s", strings.Join(CrewSources, ", "))
+	var out []crewroute.Candidate
+	for _, m := range models {
+		if !rule.AdmitsModel(m) {
+			continue
+		}
+		var plans, direct, fallback []crewroute.Route
+		for _, p := range providers {
+			if !rule.AdmitsRoute(p.ID) {
+				continue
+			}
+			r, ok := p.route(m.ID, m, true)
+			if !ok {
+				continue
+			}
+			switch {
+			case r.Kind != crewroute.Metered:
+				plans = append(plans, r)
+			case p.ID == modelsource.DefaultID:
+				fallback = append(fallback, r)
+			default:
+				direct = append(direct, r)
+			}
+		}
+		if send, ok := free[crewroute.Lineage(m.ID)]; ok {
+			for _, p := range providers {
+				if p.ID == modelsource.DefaultID && rule.AdmitsRoute(p.ID) {
+					plans = append(plans, crewroute.Route{Provider: p.ID, Send: send, Kind: crewroute.Free})
+				}
+			}
+		}
+		// Only a free pool: the model is reachable on nothing else.
+		fallback = withoutPaidPool(fallback, free[crewroute.Lineage(m.ID)], m)
+		// AND ONLY THE ROUTES THAT ARE HEALTHY: a route quarantined, cooling
+		// down, on a disconnected provider, or paid on an account out of
+		// credit is not offered, and the rest carry their learned failure
+		// rate ([crewHealth.usable]).
+		routes := facts.health.usable(append(append(plans, direct...), fallback...))
+		if len(routes) == 0 {
+			continue
+		}
+		out = append(out, crewroute.Candidate{Model: m, Routes: routes})
 	}
-	preset = strings.ToLower(strings.TrimSpace(preset))
-	models, ok := CrewModelsForSource(known, preset)
-	if !ok {
-		return fmt.Errorf("pick one of: %s", strings.Join(CrewPresets, ", "))
+	return out
+}
+
+// crewUnpriced is a catalog row the router may not weigh: one whose provider
+// published no price, or a paid id priced at nothing — a stealth or preview
+// model, a meta-router — whose zero promises nothing about the next call and
+// would win every seat at $0. ONLY A FREE POOL (`…:free`) PRICED AT AN
+// EXPLICIT ZERO IS FREE. A pin still names such a model by its id; the router
+// never picks one on its own.
+func crewUnpriced(row catalog.Model) bool {
+	if row.PriceUnknown {
+		return true
 	}
-	values := make(map[string]any, len(models)+1)
-	for tier, model := range models {
-		values[tierKeyFor(tier)] = model
+	return !crewroute.IsFree(row.ID) && row.PromptPrice <= 0 && row.CompletionPrice <= 0 && row.RequestPrice <= 0
+}
+
+// withoutPaidPool drops the default service's metered route for a model the
+// catalog lists ONLY as a free pool: there is no paid route to it, and a
+// metered route at the free row's zero prices would be the free pool again
+// under another kind.
+func withoutPaidPool(routes []crewroute.Route, freeSend string, m crewroute.Model) []crewroute.Route {
+	if freeSend == "" || m.PromptPrice > 0 || m.CompletionPrice > 0 {
+		return routes
 	}
-	if known != persisted {
-		values[KeyCrewSource] = known
+	out := routes[:0]
+	for _, r := range routes {
+		if r.Provider != modelsource.DefaultID {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// CrewOffer is one model a seat could be pinned to on this profile: a model
+// some connected provider reaches, WHETHER OR NOT THE ALLOWED RULE ADMITS IT.
+//
+// THE PICKER LISTS WHAT THE RULE LEAVES OUT, AND SAYS SO. A list that hid
+// every model outside the rule would answer "why can't I pick kimi?" with
+// silence; one that shows it dim, with the one key that lets it in, answers
+// the question on the row where it was asked ([SetCrewPin] still refuses a pin
+// outside the rule — the panel's key widens the rule first, out loud).
+type CrewOffer struct {
+	Model crewroute.Model
+	// Routes are every connected provider reaching it, in [CrewCandidatesAt]'s
+	// order — plans and local first, the default service last — and the
+	// cheapest route is the first one.
+	Routes []crewroute.Route
+	// Served is whether a provider that is ON reaches it: a model only a
+	// provider turned off reaches is still listed, and is not allowed.
+	Served bool
+	// Allowed is whether the rule admits the model on at least one route
+	// through a provider that is on.
+	Allowed bool
+}
+
+// CrewOffersAt is every model a connected provider reaches, allowed or not,
+// in the catalog's order. It is [CrewCandidatesAt] asked under `all` and then
+// read against the rule in force, so the two can never disagree about which
+// route reaches what.
+func CrewOffersAt(profileDir string) []CrewOffer {
+	rule := CrewAllowedAt(profileDir)
+	off := CrewProvidersOffAt(profileDir)
+	providers := CrewProvidersAt(profileDir)
+	var out []CrewOffer
+	facts := crewRouteFacts{free: CrewFreeRoutesAt(profileDir), health: crewHealthAt(profileDir)}
+	for _, c := range crewCandidatesWith(crewroute.Allowed{Base: crewroute.BaseAll}, providers, facts) {
+		// ── ONLY WHAT A SEAT CAN RUN ──
+		// A picker offers exactly what the router could seat: a model that takes
+		// tool calls and holds a seat's context — not an embedding, image or
+		// video model — on a route that is healthy (quarantined and cooling
+		// routes were left out above).
+		if !crewroute.Seatable(crewroute.Planner, c) {
+			continue
+		}
+		// ── end of the seat check ──
+		offer := CrewOffer{Model: c.Model, Routes: c.Routes}
+		offer.Served = len(off.Routes(c.Routes)) > 0
+		if rule.AdmitsModel(c.Model) {
+			for _, r := range off.Routes(c.Routes) {
+				if rule.AdmitsRoute(r.Provider) {
+					offer.Allowed = true
+					break
+				}
+			}
+		}
+		out = append(out, offer)
+	}
+	return out
+}
+
+// SetCrewAllowedRule writes a rule the panel composed ([crewroute.Allowed]'s
+// edits) through the rule's one writer, so a checklist tick is refused for
+// exactly the reason the typed form would be — a pinned seat it would leave
+// outside.
+func SetCrewAllowedRule(profileDir string, rule crewroute.Allowed) error {
+	return writeCrewAllowed(profileDir, rule)
+}
+
+// CrewState is the crew's persisted rows as they stand — the three seats, the
+// allowed rule, the cap, the providers turned off and the free-routes switch,
+// raw — which is what the panel's undo puts back.
+//
+// IT IS THE ROWS AND NOT A READING OF THEM. An undo that re-wrote what the
+// readers made of the rows would turn a hand-written `auto` into an absent
+// row, or a preset's legacy row into a pin; putting the bytes back is the only
+// undo that restores exactly what was there.
+type CrewState struct {
+	values map[string]json.RawMessage
+}
+
+// crewStateKeys are the rows a [CrewState] carries.
+func crewStateKeys() []string {
+	keys := []string{KeyCrewAllowed, KeyCrewCap, KeyCrewTaskCap, KeyCrewProvidersOff, KeyCrewFreeRoutes}
+	for _, seat := range crewroute.Seats {
+		keys = append(keys, tierKeyFor(CrewSeatTier(seat)))
+	}
+	return keys
+}
+
+// CrewStateAt reads the crew's rows as they stand.
+func CrewStateAt(profileDir string) CrewState {
+	state := CrewState{values: map[string]json.RawMessage{}}
+	for _, key := range crewStateKeys() {
+		if raw, ok := persistedValue(profileDir, key); ok {
+			state.values[key] = raw
+		}
+	}
+	return state
+}
+
+// RestoreCrewState writes a [CrewState] back, IN ONE FILE WRITE: a row that
+// was absent is removed, and every other row gets its old bytes.
+func RestoreCrewState(profileDir string, state CrewState) error {
+	values := map[string]any{}
+	for _, key := range crewStateKeys() {
+		if raw, ok := state.values[key]; ok {
+			values[key] = raw
+			continue
+		}
+		values[key] = removeProfileKey
 	}
 	return writeProfileValues(profileDir, values)
 }
 
-// writeCrew is the row's writer: the same refusal wording every choice row uses,
-// and then the atomic write.
-func writeCrew(profileDir, raw string) error {
-	return ApplyCrew(profileDir, raw)
+// CrewGapsAt names what the allowed models leave uncovered, for the panel's
+// one-line warning.
+func CrewGapsAt(profileDir string) []crewroute.Gap {
+	return crewroute.Gaps(CrewCandidatesAt(profileDir))
 }
 
-// SetCrewSource writes the family row ALONE, in one file write. The settings
-// row is its caller; the chooser commits the family and the preset together
-// through [ApplyCrewUnder]. The word is refused the way every choice row refuses
-// one, so a typo cannot land a family nothing reads.
-func SetCrewSource(profileDir, source string) error {
-	known, ok := knownCrewSource(source)
-	if !ok {
-		return fmt.Errorf("pick one of: %s", strings.Join(CrewSources, ", "))
+// ── one task's crew ─────────────────────────────────────────────────────────
+
+// CrewAsk is one task's request for a crew.
+type CrewAsk struct {
+	Task crewroute.Task
+	// Effort is the one-task word: best, cheap, or the knee.
+	Effort crewroute.Effort
+	// Pins are ONE-TASK pins, laid over the profile's: `--pin` and the seat
+	// flags. They never persist.
+	Pins map[crewroute.Seat]CrewPin
+	// Sends are seats a door has already filled with an id to send as it
+	// stands — a flag, a variable — which the router treats as pins.
+	Sends map[crewroute.Seat]string
+	// Stronger is the crew that ran, for a redo that asks for a stronger one.
+	Stronger *crewroute.Decision
+	// Again is the crew that ran and never started, for a redo of it: the
+	// next-best models at the same cost, not a stronger crew.
+	Again *crewroute.Decision
+	// ChatModel is the model the person is talking to — proven reachable —
+	// the last rung of a seat's ladder when nothing routed can start.
+	ChatModel string
+	// Repo keys the learned offset: a repository whose work of one class was
+	// redone stronger starts that class a step higher.
+	Repo string
+}
+
+// ErrCrewAtCap is a crew asked for with the day's crew spend already at the
+// daily cap. The decision still comes back: the chat asks the person, and a
+// headless run refuses unless told `-yes-spend`.
+var ErrCrewAtCap = errors.New("today's crew spend has reached the daily cap")
+
+// CrewHistory is how the router's log reaches crew routing: today's crew
+// spend and the learned offsets, read out of the profile's router-events log
+// (internal/router's crew.go). It is a variable so a test can hand a day of
+// its own; nil reads as a day with nothing spent and nothing learned — the
+// state of a fresh install, not an error.
+var CrewHistory = func(profileDir string) CrewDay {
+	log := router.ReadCrewLog(ProfilePath(profileDir, ""), time.Now())
+	return CrewDay{SpentUSD: log.SpentUSD, Offsets: log.Offsets, CostFactor: log.CostFactor, Learned: crewLearned(log.Quality)}
+}
+
+// crewLearned is the log's learned quality moves keyed the way the router
+// reads them ([crewroute.LearnKey]): the ids a seat ran folded to their
+// lineage, the moves of one lineage averaged.
+func crewLearned(quality map[string]float64) map[string]float64 {
+	if len(quality) == 0 {
+		return nil
 	}
-	return writeProfileValue(profileDir, KeyCrewSource, known)
-}
-
-// CrewSummary is the one line a crew change confirms itself with:
-//
-//	crew → balanced · brain claude-opus-5 · hands glm-5.3-flash · checks claude-fable-5.1
-//
-// The three names are the classes a person actually asked about — what thinks,
-// what works, what checks — and HANDS IS THE WORKER: the seat that does the
-// task, which is what everybody reading the word took it to mean back when it
-// named the small-work tier. The reflex and small-work models are deliberately
-// absent: they are the same near-free models in all three presets, so naming
-// them would be facts that never vary. The ids are shortened to their base names
-// because the vendor prefix is the half nobody reads twice.
-func CrewSummary(profileDir string) string {
-	return crewSummaryWith(profileDir, "")
-}
-
-// CrewSummaryPick is the confirmation with the pick named when it is not the
-// default one:
-//
-//	crew → balanced · learn · brain claude-opus-5 · hands glm-5.3-flash · checks claude-fable-5.1
-//
-// The pick rides the preset word because the two are one decision read at two
-// heights — how much to spend, and where the models for that money come from
-// — and a confirmation that said only `balanced` would drop the half the
-// person just changed. At the default pick this is [CrewSummary] itself, so a
-// profile nobody has taught the pick to confirms exactly as it always has.
-func CrewSummaryPick(profileDir string) string {
-	return crewSummaryWith(profileDir, CrewPickAt(profileDir))
-}
-
-// crewSummaryWith is the line both summaries are built from: the pick named
-// between the preset and the three classes when one was given that is not the
-// default, and never otherwise — a profile at the default pick confirms in
-// the words it has always confirmed in.
-func crewSummaryWith(profileDir, pick string) string {
-	head := "crew → " + CrewAt(profileDir)
-	if pick != "" && pick != CrewPickTable {
-		head += " · " + pick
+	sums, counts := map[string]float64{}, map[string]int{}
+	for key, move := range quality {
+		parts := strings.SplitN(key, "\x00", 3)
+		if len(parts) != 3 {
+			continue
+		}
+		k := crewroute.LearnKey(crewroute.Class(parts[0]), crewroute.Seat(parts[1]), parts[2])
+		sums[k] += move
+		counts[k]++
 	}
-	return head + " · " + CrewClasses(profileDir)
+	out := make(map[string]float64, len(sums))
+	for k, sum := range sums {
+		out[k] = sum / float64(counts[k])
+	}
+	return out
 }
 
-// CrewClasses is the three class names alone:
-//
-//	brain claude-opus-5 · hands glm-5.3-flash · checks claude-fable-5.1
-//
-// It is the tail of [CrewSummary] lifted out because a second surface prints the
-// crew now — /status, where the word already has a label of its own and "crew →"
-// in front of it would say the word twice. ONE SOURCE OF TRUTH: the three names,
-// their order and their separator are spelled here once, so the confirmation a
-// person reads after /crew and the line they read in /status cannot drift into
-// naming the same four models differently.
-func CrewClasses(profileDir string) string {
-	ids := CrewClassModels(profileDir)
-	return "brain " + ids[0] + " · hands " + ids[1] + " · checks " + ids[2]
+// CrewRecordOf is one decision as the router's log keeps it.
+func CrewRecordOf(d crewroute.Decision, repo, title string) router.CrewRecord {
+	record := router.CrewRecord{
+		TaskClass: string(d.Class), Repo: repo, Title: title, Effort: string(d.Effort), Steps: d.Steps,
+		Seats: map[string]string{}, Providers: map[string]string{}, Kinds: map[string]string{}, EstUSD: d.EstUSD,
+		Redo: d.Redo, EstBase: d.EstUSD, TaskSubclass: d.Subclass, TaskReach: d.Reach,
+	}
+	if d.CostFactor > 0 {
+		record.EstBase = d.EstUSD / d.CostFactor
+	}
+	for _, pick := range d.Crew {
+		if pick.Learned != 0 {
+			if record.Learned == nil {
+				record.Learned = map[string]float64{}
+			}
+			record.Learned[string(pick.Seat)] = pick.Learned
+		}
+		record.Seats[string(pick.Seat)] = pick.Send
+		if pick.Provider != "" {
+			record.Providers[string(pick.Seat)] = pick.Provider
+		}
+		if pick.Kind != "" {
+			record.Kinds[string(pick.Seat)] = string(pick.Kind)
+		}
+		if pick.Pinned {
+			record.Pinned = append(record.Pinned, string(pick.Seat))
+		}
+	}
+	return record
 }
 
-// CrewClassModels is the three ids [CrewClasses] names, in that order and
-// without the role words in front of them:
-//
-//	claude-opus-5, glm-5.3-flash, claude-fable-5.1
-//
-// It exists because a surface drawing the crew line has to be able to say which
-// runs of it are the ANSWER — the ids a person typed /crew to change — and which
-// are the labels around them (internal/tui3's payload.go). Reading them back out
-// of the sentence would be a second parser for a string this file just built, so
-// the sentence is built from this list instead and the two cannot disagree about
-// how many models there are or which order they come in.
-func CrewClassModels(profileDir string) []string {
-	return []string{
-		shortModel(TierModelAt(profileDir, ModelTierMastermind)),
-		shortModel(TierModelAt(profileDir, ModelTierWorker)),
-		shortModel(TierModelAt(profileDir, ModelTierHigh)),
-	}
+// LogCrewDecision writes one task's crew decision into the profile's router
+// log, under the call id the outcome will settle.
+func LogCrewDecision(profileDir, call string, d crewroute.Decision, repo, title string) {
+	record := CrewRecordOf(d, repo, title)
+	record.Top = crewTop(profileDir, d)
+	router.LogCrewDecision(ProfilePath(profileDir, ""), call, record, CrewCandidateNames(profileDir))
 }
 
-// shortModel is a model id without its vendor prefix, and the level kept. THE
-// EMPTINESS LAW: a class that follows the conversation has no id to print, and
-// says so in words rather than leaving a gap a reader has to interpret.
-func shortModel(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "the conversation"
+// LogCrewOutcome settles it: accepted, redone stronger, or not kept.
+func LogCrewOutcome(profileDir, call string, d crewroute.Decision, repo, title, outcome string, costUSD float64) {
+	router.LogCrewOutcome(ProfilePath(profileDir, ""), call, CrewRecordOf(d, repo, title), outcome, costUSD)
+}
+
+// CrewCandidateNames is what a logged decision was made among.
+//
+// ONLY WHAT COULD SIT A SEAT IS NAMED: a speech, image or embedding model the
+// catalog lists is no candidate for a crew, and a log row naming it would
+// claim the router weighed it.
+func CrewCandidateNames(profileDir string) []string {
+	return crewroute.Names(crewSeatableOnly(CrewCandidatesAt(profileDir)))
+}
+
+// crewSeatableOnly is the candidates that can sit at least one seat.
+func crewSeatableOnly(candidates []crewroute.Candidate) []crewroute.Candidate {
+	var out []crewroute.Candidate
+	for _, c := range candidates {
+		for _, seat := range crewroute.Seats {
+			if crewroute.Seatable(seat, c) {
+				out = append(out, c)
+				break
+			}
+		}
 	}
-	if at := strings.LastIndex(value, "/"); at >= 0 {
-		return value[at+1:]
+	return out
+}
+
+// crewTop is a decision's best three per seat, re-weighed at its λ over the
+// candidates it was routed among, for the log row.
+func crewTop(profileDir string, d crewroute.Decision) map[string][]router.CrewScore {
+	candidates, _ := crewCandidatesNoticed(profileDir, crewHealthAt(profileDir).probing())
+	var learned map[string]float64
+	if CrewHistory != nil {
+		learned = CrewHistory(profileDir).Learned
 	}
-	return value
+	out := map[string][]router.CrewScore{}
+	for seat, ranked := range crewroute.Explain(d.Class, d.Lambda, candidates, learned, crewTopN) {
+		for _, s := range ranked {
+			route := s.Provider
+			if s.Kind != "" {
+				route += ":" + string(s.Kind)
+			}
+			out[string(seat)] = append(out[string(seat)], router.CrewScore{Model: s.Model, Route: route, Q: s.Quality, C: s.CostUSD, S: s.Score})
+		}
+	}
+	return out
+}
+
+// crewTopN is how many candidates a log row keeps per seat.
+const crewTopN = 3
+
+// CrewLogAt is the router log's account of crews on this profile, for the
+// panel: today's spend and tasks and the recent ones.
+func CrewLogAt(profileDir string) router.CrewLog {
+	return router.ReadCrewLog(ProfilePath(profileDir, ""), time.Now())
+}
+
+// CrewDay is what the log says about crews: today's spend, and the learned
+// escalation offset per repository and class.
+type CrewDay struct {
+	SpentUSD float64
+	Offsets  map[string]int
+	// CostFactor is the learned estimate factor per class
+	// ([router.CrewLog.CostFactor]).
+	CostFactor map[string]float64
+	// Learned is this install's learned quality moves, keyed
+	// [crewroute.LearnKey] ([router.CrewLog.Quality]).
+	Learned map[string]float64
+}
+
+// OffsetKey is the key [CrewDay.Offsets] is read under.
+func OffsetKey(repo string, class crewroute.Class) string {
+	return strings.TrimSpace(repo) + "\x00" + string(class)
+}
+
+// RouteCrew picks one task's crew on this profile: the seats pinned there or
+// for this task run their pins, and every other seat is routed.
+//
+// The class is read first, so the learned offset for this repository and this
+// class of work can move the price of a point before the seats are picked. A
+// day at its cap still answers with the crew it would run, beside
+// [ErrCrewAtCap]; a seat nothing allowed can sit is a [crewroute.NoCandidateError].
+func RouteCrew(profileDir string, ask CrewAsk) (crewroute.Decision, error) {
+	reading := crewroute.Classify(ask.Task)
+	providers := CrewProvidersAt(profileDir)
+	pins := map[crewroute.Seat]crewroute.Pin{}
+	for seat, pin := range CrewPinsAt(profileDir) {
+		pins[seat] = resolveCrewPin(pin, providers)
+	}
+	for seat, pin := range ask.Pins {
+		pins[seat] = resolveCrewPin(pin, providers)
+	}
+	for seat, send := range ask.Sends {
+		if send = strings.TrimSpace(send); send != "" {
+			pins[seat] = resolveCrewPin(CrewPin{Model: send}, providers)
+		}
+	}
+	day := CrewDay{}
+	if CrewHistory != nil {
+		day = CrewHistory(profileDir)
+	}
+	pace, atCap := crewroute.Pace(day.SpentUSD, CrewCapAt(profileDir))
+	health := crewHealthAt(profileDir)
+	// AN ACCOUNT OUT OF CREDIT, OR A KEY REFUSED, IS PROBED BY THE NEXT TASK:
+	// its paid routes are routed as usual, so the task's first seat call is
+	// the probe. A 200 clears the account on the spot; another refusal moves
+	// the seat down its ladder inside the task (to a free pool, when nothing
+	// paid is left), costing one refused call. Without the probe an account
+	// topped up would never be asked again.
+	candidates, notice := crewCandidatesNoticed(profileDir, health.probing())
+	req := crewroute.Request{
+		Task:       ask.Task,
+		Class:      reading.Class,
+		Reading:    &reading,
+		Candidates: candidates,
+		Pins:       pins,
+		Effort:     ask.Effort,
+		Steps:      day.Offsets[OffsetKey(ask.Repo, reading.Class)],
+		Pace:       pace,
+		Stronger:   ask.Stronger,
+		Again:      ask.Again,
+		Avoid:      health.demoted,
+		Learned:    day.Learned,
+		CostFactor: day.CostFactor[string(reading.Class)],
+		TaskCap:    CrewTaskCapAt(profileDir),
+	}
+	d, err := crewroute.Decide(req)
+	if err != nil && !errors.Is(err, crewroute.ErrStrongest) {
+		// NO CREW CAN BE FORMED: the seat nothing can sit goes down the rest of
+		// the ladder — the last crew that worked here, the person's own model
+		// — and with nothing left the answer is the one thing to do.
+		d, err = crewRescued(profileDir, req, health, ask.ChatModel, err)
+	}
+	if err != nil {
+		return crewroute.Decision{}, err
+	}
+	if notice != "" {
+		d.Note = strings.TrimSpace(strings.TrimPrefix(d.Note+" · "+notice, " · "))
+	}
+	d.Why, d.Sure = reading.Why, reading.Sure
+	d.Redo = ask.Stronger != nil || ask.Again != nil
+	if atCap {
+		return d, ErrCrewAtCap
+	}
+	return d, nil
+}
+
+// resolveCrewPin is a pin with the route it will run on: the provider it
+// names, or the connection its own prefix names, or the default service.
+func resolveCrewPin(pin CrewPin, providers []CrewProvider) (out crewroute.Pin) {
+	out = crewroute.Pin{Model: stripCrewRoute(pin.Model), Provider: pin.Provider, Send: pin.Model, Kind: crewroute.Metered}
+	// A THINKING LEVEL IS THE PIN'S OWN (`z-ai/glm-5.3:high`), NOT PART OF THE
+	// MODEL'S NAME: the catalog and the routes are asked about the model alone,
+	// and the level rides whatever send they answer, to be split off at the
+	// call ([roles.SplitEffort]) the way a --plan-model flag's level always was.
+	if base, level := roles.SplitEffort(pin.Model); level != "" {
+		pin.Model = base
+		defer func() {
+			if _, has := roles.SplitEffort(out.Send); has == "" && out.Send != "" {
+				out.Send += ":" + level
+			}
+		}()
+	}
+	if crewroute.IsFree(out.Model) {
+		// A pinned free pool runs on that pool and is weighed as one.
+		defer func() { out.Kind = crewroute.Free }()
+	}
+	model, known := crewCatalogModel(pin.Model)
+	if known && !crewroute.IsFree(out.Model) && !strings.EqualFold(model.ID, stripCrewRoute(pin.Model)) {
+		// THE CATALOG DOES NOT LIST THE ID AS WRITTEN, only a variant of it:
+		// the pin is sent as that variant, and the line says so.
+		pin.Model, out.Send = model.ID, model.ID
+	}
+	if pin.Provider != "" {
+		if p, ok := crewProviderByID(providers, pin.Provider); ok {
+			if r, ok := p.route(pin.Model, model, known); ok {
+				out.Provider, out.Send, out.Kind = r.Provider, r.Send, r.Kind
+			}
+		}
+		return out
+	}
+	// No provider named: the id itself says where it goes, the way every call
+	// reads it — a connection's own prefix, or the default service.
+	for _, p := range providers {
+		if p.ID == modelsource.DefaultID {
+			continue
+		}
+		if prefix := strings.ToLower(p.Written) + "/"; strings.HasPrefix(strings.ToLower(pin.Model), prefix) {
+			out.Provider, out.Kind = p.ID, p.Kind
+			return out
+		}
+	}
+	for _, p := range providers {
+		if p.ID == modelsource.DefaultID {
+			out.Provider = p.ID
+		}
+	}
+	return out
+}
+
+// standingCrewSeat is a routed seat for the calls that ride a crew seat's
+// tier without a task in front of them — the conversation's own planner and
+// careful calls. They are routed as work of no particular class, so an
+// unpinned seat never falls back to a model this build chose for everybody.
+// A profile with nothing the router can pick answers empty, which is the role
+// ladder's own floor: the model the person is talking to.
+func standingCrewSeat(profileDir string, seat crewroute.Seat) string {
+	d, err := crewroute.Decide(crewroute.Request{Class: crewroute.Other, Candidates: CrewCandidatesAt(profileDir)})
+	if err != nil {
+		return ""
+	}
+	return d.Seat(seat).Send
 }
 
 // ── the gate on a tier value ────────────────────────────────────────────────
 
-// writeTierModel is the writer all five tier rows share: validate the notation,
-// then persist. It is one function rather than five closures so a sixth tier
-// cannot arrive with a gate somebody forgot to put on it.
+// writeTierModel is the writer the two rows that are not crew seats share:
+// validate the notation, then persist. The crew's three rows write through
+// [SetCrewPin], which runs the same gate and the allowed-models rule besides.
 func writeTierModel(profileDir, tier, raw string) error {
 	raw = strings.TrimSpace(raw)
 	if err := ValidateTierValue(raw); err != nil {

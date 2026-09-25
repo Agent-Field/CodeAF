@@ -179,7 +179,7 @@ func TestTaskModelAmbiguityBecomesAShortlistRatherThanARefusal(t *testing.T) {
 
 // THE CREW'S WORKER SEAT SITS BETWEEN THE CONFIGURED ROW AND THE CONVERSATION.
 // It is the seat that pays most of a task's bill, and before it was on this
-// ladder a person on `frugal` who was talking to a frontier model handed every
+// ladder a person whose crew seated a cheap worker, talking to a frontier model handed every
 // task to that frontier model — the crew moved everything about a task except
 // its cost. The row a person pinned still wins, a cleared seat still falls to
 // the conversation, and a level on the seat stays on the seat.

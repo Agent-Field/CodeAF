@@ -244,7 +244,9 @@ func TestRenameConnectionWithAnInvalidTierValueLeavesEveryRowUnchanged(t *testin
 	if got := TierModelAt(dir, ModelTierLow); got != "homelab/b:low" {
 		t.Fatalf("the low tier moved before the failure: %q", got)
 	}
-	if got := TierModelAt(dir, ModelTierHigh); got != "homelab/a:mid" {
+	// The checker row is a crew seat, and a value the tier gate refuses is not
+	// a pin it runs — so the row is read as it stands on disk.
+	if got, _ := persistedString(dir, KeyTierHighModel); got != "homelab/a:mid" {
 		t.Fatalf("the high tier did not keep the value the rename refused: %q", got)
 	}
 	if got := ModelFallbacksAt(dir); got != "homelab/a, openai/x" {

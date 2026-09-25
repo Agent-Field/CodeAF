@@ -469,7 +469,7 @@ func TestReconnectingACollidingServiceKeepsTheFirstSuggestedName(t *testing.T) {
 func TestAnUnqualifiedIdResolvesExactlyAsItDidBefore(t *testing.T) {
 	models := []string{
 		DefaultModel, DefaultVoiceModel, DefaultReflexModel, DefaultLowModel,
-		DefaultWorkerModel, DefaultHighModel, DefaultMastermindModel,
+		"z-ai/glm-5.3-flash", "moonshotai/kimi-k3", "anthropic/claude-opus-5",
 	}
 	for _, base := range []string{DefaultBaseURL, "https://company.example/v1"} {
 		for _, model := range models {

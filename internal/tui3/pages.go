@@ -2115,10 +2115,10 @@ func (a *app) closeModals() {
 	a.roster.close()
 	a.folder.close()
 	a.shelf.close()
-	a.crewPick.close()
 	a.effPick.close()
 	a.connPanel.close()
 	a.harnPanel.close()
+	a.crewUI.close()
 	a.permPanel.close()
 	a.subPage.close()
 	// AND HOME'S OWN MODEL LIST, which IS drawn where it stands and is still a

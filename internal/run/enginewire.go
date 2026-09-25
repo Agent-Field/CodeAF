@@ -11,6 +11,7 @@ package run
 
 import (
 	"context"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/plandb"
@@ -48,7 +49,7 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 		Factory: CrewFactory(spec.Store, spec.Workspace, spec.ProfileDir, Seats{
 			Work:  spec.WorkModel,
 			Plan:  spec.PlanModel,
-			Check: chatCheckSeat(),
+			Check: chatCheckSeat(spec.CheckModel),
 		}, spec.CompleterFor),
 		OnSpend: spec.OnSpend,
 		Gate:    spec.Admission,
@@ -73,18 +74,19 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 	}
 }
 
-// chatCheckSeat is the check seat a chat's run rides: the check seat's own
-// ladder ([config.CheckSeat]) with no flag, because a conversation has none,
-// and with no pinned plan seat, because a conversation's plan seat is its own
-// mastermind row rather than a pin — so CODEAF_CHECK_MODEL, and empty
-// otherwise, which the crew factory fills from the profile's careful row.
+// chatCheckSeat is the check seat a chat's run rides: the checker the router
+// picked for this task when the run was routed, and otherwise the check seat's
+// own environment rung, CODEAF_CHECK_MODEL — empty past both, which the crew
+// factory fills from the profile's checker row ([config.TierSeatAt]).
 //
-// ONE LADDER, TWO DOORS. `codeaf do` resolves the same seat through the same
-// function with its `--check-model` flag in front, so the environment rung the
-// manual documents is one rung and not a promise one door kept and the other
-// did not.
-func chatCheckSeat() string {
-	return config.CheckSeat("", config.Seat{}).Model
+// THE CHECK SEAT NEVER INHERITS THE PLAN SEAT. It once did, when only the plan
+// seat was named, so a person who pinned a planner had their work graded by
+// it; a pin on the planner says something about planning and nothing else.
+func chatCheckSeat(routed string) string {
+	if routed = strings.TrimSpace(routed); routed != "" {
+		return routed
+	}
+	return config.CheckEnvModel()
 }
 
 // runLimitOf is the seam's one mapping of the limit fact: the run's words and

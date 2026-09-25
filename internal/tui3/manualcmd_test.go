@@ -3,8 +3,6 @@ package tui3
 import (
 	"strings"
 	"testing"
-
-	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // manualSent runs one /manual form through the dispatch, the way the loop
@@ -103,25 +101,24 @@ func TestManualOnHomeOpensAConversationAndAsksThere(t *testing.T) {
 	}
 }
 
-// THE ROW COUNTS THE SEATS THE CODE ACTUALLY SETS. Both /crew rows said "four"
-// for as long as [config.CrewModels] set five, and the seat they left out was
-// the worker — the one that pays most of a task's bill. A hand-written number
-// beside a table that owns it is a claim that drifts, so this reads the table.
-func TestTheCrewRowsCountTheSeatsConfigSets(t *testing.T) {
-	seats, ok := config.CrewModels(config.DefaultCrew)
-	if !ok {
-		t.Fatalf("config has no crew preset named %q", config.DefaultCrew)
-	}
-	counted := map[int]string{4: "four", 5: "five", 6: "six"}[len(seats)]
-	if counted == "" {
-		t.Fatalf("the crew now has %d seats and nothing here can spell that", len(seats))
-	}
+// THE /crew ROWS NAME THE THREE SEATS A PERSON CAN PIN, by the words the
+// router uses for them, and every shortcut the command takes has a row.
+func TestTheCrewRowsNameTheSeatsAndTheShortcuts(t *testing.T) {
+	var said []string
 	for _, row := range commands {
-		if row.name != "crew" {
-			continue
+		if row.name == "crew" {
+			said = append(said, row.args+" "+row.desc)
 		}
-		if !strings.Contains(row.desc, counted) {
-			t.Errorf("/crew %s says %q; the crew is %s models (%v)", row.args, row.desc, counted, seats)
+	}
+	text := strings.Join(said, "\n")
+	for _, want := range []string{"pin", "unpin", "models", "cap", "worker", "planner", "checker"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the /crew rows never say %q:\n%s", want, text)
+		}
+	}
+	for _, retired := range []string{"frugal", "balanced", "preset", "mastermind"} {
+		if strings.Contains(text, retired) {
+			t.Errorf("the /crew rows still say the retired %q:\n%s", retired, text)
 		}
 	}
 }

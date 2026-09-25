@@ -377,6 +377,7 @@ func (a *app) clearConversation() {
 	// are drawings rather than questions.
 	a.dropHarnessAsks()
 	a.harnPanel = harnessPanel{}
+	a.crewUI = crewPanel{}
 	a.harnessStep = ""
 	// And the picked harness with them: a chip is a choice about the NEXT
 	// message of this conversation (harnesspick.go).

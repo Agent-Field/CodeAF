@@ -881,15 +881,6 @@ func newTestAppWithProfile(profileDir string, agent Agent) *app {
 	// developer who turned it off in their own codeaf would run a different
 	// suite. The quick behaviour has tests of its own that turn it on outright.
 	a.hopQuick = false
-	// AND IT PINS THE WORK SEAT'S QUESTION AS ALREADY ASKED, for the seventh
-	// time for the reason the six pins above exist. The one line about a crew
-	// older than the work seat is read from the PROFILE (crew.go's
-	// [app.workSeat]), and a bare app has no profile of its own — so a suite run
-	// on a machine whose own crew predates the worker row would grow a note in
-	// every test that starts a node, and one run on a machine whose crew does
-	// not would grow none. A test that means the line builds a profile and asks
-	// for it outright (crewseat_test.go's crewSeatLab).
-	a.workSeatSaid = true
 	// AND IT PINS THE NOTICES TO THIS SESSION, for the eighth time for the same
 	// reason. The ledger is a file in the state root now that an empty profile
 	// directory resolves there like every other persisted thing (#315), and this

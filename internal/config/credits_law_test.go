@@ -18,8 +18,8 @@ func TestEveryImplicitModelRungUsesTheBalanceCheck(t *testing.T) {
 		{"credits.go", "ChatDefaultAt", "useFreeDefaultsAt"},
 		{"freecrew.go", "freeTierModelAt", "useFreeDefaultsAt"},
 		{"config.go", "load", "ChatDefaultAt"},
-		{"seats.go", "tierSeatUnder", "freeTierModelAt"},
-		{"seats.go", "ResolveSeats", "ChatDefaultAt"},
+		{"seats.go", "TierSeatAt", "freeTierModelAt"},
+		{"crewhealth.go", "crewHealthAt", "useFreeDefaultsAt"},
 		{"../../internal/tui3/modelservices.go", "reachableModelAfterDisconnect", "ChatDefaultAt"},
 		{"../../cmd/codeaf/chatv3.go", "v3TalkModel", "ChatDefaultAt"},
 		{"../../cmd/codeaf/chatv3.go", "openV3Launch", "v3TalkModel"},
@@ -64,7 +64,6 @@ func TestNoUnlistedRuntimeReaderUsesThePaidDefault(t *testing.T) {
 		"cmd/codeaf/main.go:<package>":                   "prints the compile-time fallback in environment help",
 		"cmd/codeaf/competence.go:runCompetenceTo":       "the separate competence command has its own fallback",
 		"internal/config/credits.go:ChatDefaultAt":       "owns the paid side of the profile-aware bottom rung",
-		"internal/config/seats.go:resolveSeat":           "a deliberately cleared work row keeps its former fallback",
 		"internal/tui3/credits.go:refreshCreditWarnings": "recognises an untouched paid conversation before moving it",
 	}
 	seen := make(map[string]int)

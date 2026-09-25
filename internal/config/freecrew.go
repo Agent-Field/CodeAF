@@ -3,27 +3,26 @@ package config
 // FreeChatModel is the build's chat bottom rung while a known account is low.
 const FreeChatModel = "qwen/qwen3.8-27b:free"
 
-// CrewFree is a derived reading of the five free seats, never a saved preset.
-const CrewFree = "free"
-
-// The free table is hand-picked because the ordinary crew picker rejects zero
-// tariffs; each seat must remain usable without an account top-up.
-var freeCrewModels = map[string]string{
-	ModelTierReflex:     "nvidia/nemotron-3.5-lightning:free",
-	ModelTierLow:        "thinkingmachines/inkling-small:free",
-	ModelTierWorker:     FreeChatModel,
-	ModelTierHigh:       "thinkingmachines/inkling:free",
-	ModelTierMastermind: FreeChatModel,
+// freeHelperModels are the free models the two rows that are not crew seats —
+// reflex and small work — read while a known account is low. The table is
+// hand-picked because an ordinary pick rejects zero tariffs; each row must
+// stay usable without an account top-up.
+//
+// The three crew seats are not here: they are routed per task, and a known-low
+// account reaches the router as an OpenRouter account out of credit
+// ([crewHealthAt]), which moves the seats onto free routes with the router's
+// own notice.
+var freeHelperModels = map[string]string{
+	ModelTierReflex: "nvidia/nemotron-3.5-lightning:free",
+	ModelTierLow:    "thinkingmachines/inkling-small:free",
 }
 
-// freeTierModelAt is the only low-credit check beneath an unwritten table seat.
-func freeTierModelAt(profileDir, family, tier string) string {
-	if useFreeDefaultsAt(profileDir) && CrewPickAt(profileDir) == CrewPickTable {
-		if _, stored := storedCrewWord(profileDir); !stored {
-			if model := freeCrewModels[tier]; model != "" {
-				return model
-			}
+// freeTierModelAt is the only low-credit check beneath an unwritten helper row.
+func freeTierModelAt(profileDir, tier string) string {
+	if useFreeDefaultsAt(profileDir) {
+		if model := freeHelperModels[tier]; model != "" {
+			return model
 		}
 	}
-	return defaultTierModel(family, tier)
+	return builtinTierModel(tier)
 }

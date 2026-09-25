@@ -13,6 +13,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/fuzzy"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -357,68 +358,30 @@ var settingUI = map[string]settingMeta{
 		about: "the model a task runs on when you have not asked for another. " +
 			"Blank runs it on the model you are talking to.",
 	},
-	// THE CREW LIVES ON THE PROVIDERS TAB, with the model it answers under.
-	//
-	// It was on Session for four waves, one tab away from the row that says which
-	// model the conversation is on — so "which model does the planning" and
-	// "which model am I talking to" were two errands on two screens, and a person
-	// comparing them had to remember one while they walked to the other. They are
-	// one question: which model answers what (docs/CHAT-V3.md Decision 6 gives
-	// this tab exactly that job, per-role models included). [modelsSection] is
-	// the order they read in.
-	//
-	// EVERY ONE OF THEM IS A MODEL CHOICE AND IS ANSWERED AS ONE. The tier rows
-	// were a text box for four waves, which meant the only way to name the cheap
-	// model was to type its id from memory — in a panel that already knows every
-	// id, what each one holds, what it costs and how it scores.
-	config.KeyCrew: {
-		tab: tabProviders, label: "crew", widget: widgetCycle,
-		// The one line under this row NAMES ALL THREE OPTIONS AND WHAT EACH ONE IS,
-		// and it is built in [init] from the preset table rather than written here:
-		// a cycle row walks its choices in place, so there is no moment at which a
-		// person is shown three rows to compare — the only place the comparison can
-		// happen is the line they are reading while they press the key.
-	},
+	// THE CREW'S THREE SEATS ARE REGISTRY ROWS AND ARE NOT DRAWN AS THREE ROWS.
+	// Each is empty for AUTO — codeaf routes that seat per task — and a model id
+	// written there is a PIN, the same pin `/crew pin` writes (internal/config's
+	// crew.go). They are kept on this map because the map is total over the
+	// registry, and the Providers tab draws them as ONE row, `seats`, whose
+	// enter opens the crew panel ([sheet.crewDoorItem], crewpanel.go): one
+	// place edits a seat, and it is the place that also says which models a
+	// seat may be picked from and what the crews may spend.
 	config.KeyTierReflexModel: {
 		tab: tabProviders, label: "reflex", widget: widgetSelect,
 		about: "near-free · reads every turn — memory, titles, safety",
 	},
 
-	// The row is placed by build(), not by this map, and it sits directly under
-	// the crew word because it changes what that word means rather than pinning a
-	// model of its own: the three presets answer from open weights or from the
-	// whole catalog, and this is the switch.
-	config.KeyCrewSource: {
-		tab: tabProviders, label: "model family", widget: widgetCycle,
-		about: "which models the crew word draws from: open weights, or the whole " +
-			"catalog with closed and frontier models in it. All is the default.",
-	},
-	// WHERE THE CREW'S MODELS COME FROM, beside the crew word itself. The crew
-	// row says how much to spend and this says where the models for that money
-	// are read from when a class row does not hold a person's own id: the rows
-	// this build measured, or the same budgets recomputed off the catalog on
-	// every read, with or without what the Model Pool and the person's own
-	// judged runs measured. The about is the registry's own hint whole, not its
-	// first sentence, because the three words are the answer and the first
-	// sentence alone would send a person hunting for what catalog means.
-	config.KeyCrewPick: {
-		tab: tabProviders, label: "picked from", widget: widgetCycle,
-		about: "where the crew's models come from. table: the rows we measured. " +
-			"catalog: recomputed from today's published prices and scores at your " +
-			"crew's budget. learn: catalog plus the Model Pool's measurements and " +
-			"your own judged runs.",
-	},
 	config.KeyTierLowModel: {
 		tab: tabProviders, label: "small work", widget: widgetSelect,
 		about: "cheap · the small calls — names, digests, the safety gate",
 	},
 	config.KeyTierWorkerModel: {
 		tab: tabProviders, label: "worker", widget: widgetSelect,
-		about: "does the work · every task, its parts, every run node — most of the bill",
+		about: "does the work · every task, its parts, every run node — most of the bill. Empty is auto: routed per task",
 	},
 	config.KeyTierHighModel: {
-		tab: tabProviders, label: "careful work", widget: widgetSelect,
-		about: "careful · checks what must not be wrong — audits, briefs, vision",
+		tab: tabProviders, label: "checker", widget: widgetSelect,
+		about: "reads finished work and checks what must not be wrong. Empty is auto: routed per task",
 	},
 	// The fourth class is the one whose value may name a LEVEL as well as a
 	// model, so it is a TEXT box and not a picker: the picker returns an id, and
@@ -426,8 +389,8 @@ var settingUI = map[string]settingMeta{
 	// picker dials the CONVERSATION's effort and lives on the session; this one is
 	// written down and outlives it.
 	config.KeyTierMastermindModel: {
-		tab: tabProviders, label: "mastermind", widget: widgetText,
-		about: "thinks · plans runs and designs harnesses — add :low, :medium or :high",
+		tab: tabProviders, label: "planner", widget: widgetText,
+		about: "plans runs and designs harnesses — add :low, :medium or :high. Empty is auto: routed per task",
 	},
 	config.KeyModelRoles: {
 		tab: tabProviders, label: "pinned roles", widget: widgetText,
@@ -823,33 +786,11 @@ func init() {
 	// list of models codeaf uses and wants to know which one is theirs. It is the
 	// same row, the same write, the same live seam onto [app.switchModel] — only
 	// the word above the Models section changed.
-	crew := settingUI[config.KeyCrew]
-	crew.about = crewAbout(config.DefaultCrewSource)
-	settingUI[config.KeyCrew] = crew
-
 	talk := settingUI[config.ModelSettingKey(talkSlot)]
 	talk.label = "your model"
 	talk.about = "the model you are talking to. Everything below it is a model codeaf " +
 		"uses on your behalf."
 	settingUI[config.ModelSettingKey(talkSlot)] = talk
-}
-
-// crewAbout is the crew row's one line: the five rows it writes, then each preset
-// with its own sentence, then what makes the row read custom. The sentences are
-// [config.CrewLineFor]'s IN THE FAMILY ON SCREEN, so the panel and /crew say the
-// same words about the same thing and neither names an open model above frontier
-// ids. The init-time value is the default family; [sheet.metaFor] re-says it from
-// the profile, which is where a family that is not the default comes from.
-func crewAbout(source string) string {
-	said := make([]string, 0, len(config.CrewPresets))
-	for _, preset := range config.CrewPresets {
-		said = append(said, preset+" — "+config.CrewLineFor(source, preset))
-	}
-	// The three options lead, because they are what the keypress chooses between
-	// and the panel gives a row's line the width it has: what gets cut on a narrow
-	// terminal should be the footnote, not the choice.
-	return "the five below, chosen as one word: " + strings.Join(said, "; ") +
-		". Answer one yourself and this reads custom."
 }
 
 // modelsSection is the order the Models rows LEAD the Providers tab in: your
@@ -885,11 +826,6 @@ func modelsSectionOrder() []string {
 		config.KeyLaneGuard,
 		config.KeyRouting,
 		config.KeyPromptProfile,
-		config.KeyCrew,
-		// THE PICK ANSWERS THE CREW WORD'S OWN QUESTION ONE LEVEL DOWN — where
-		// the models for that budget come from — so it reads directly under the
-		// crew word, before the classes it seats.
-		config.KeyCrewPick,
 	}
 	for _, tier := range roles.Tiers {
 		order = append(order, tierSettingKey(tier))
@@ -970,6 +906,11 @@ type sheetItem struct {
 	// they are kept by the engine rather than by the registry, and they draw
 	// through this page's own row grammar.
 	autonomy *autonomyRow
+	// crewDoor is set on the Providers tab's one `seats` row, which stands where
+	// the crew's three seat rows would and opens the crew panel (crewpanel.go);
+	// crewValue is what it says about the crew beside its name.
+	crewDoor  bool
+	crewValue string
 	// read is set on a row of the Spending tab that is a RECEIPT and not a
 	// setting — `today`, and the two rails this build has but does not keep a
 	// registry row for (settingspend.go). It hangs here for [sheetItem.conn]'s
@@ -1487,7 +1428,17 @@ func (s *sheet) build() {
 			s.cursor = s.clampCursor(s.cursor)
 			return
 		}
+		door := false
 		for _, row := range s.tabRows() {
+			// THE THREE SEATS ARE ONE ROW HERE, standing where the first of them
+			// would ([sheet.crewDoorItem]).
+			if crewSeatKey(row.Key) {
+				if !door {
+					s.items = append(s.items, s.crewDoorItem(nil))
+					door = true
+				}
+				continue
+			}
 			meta, _ := s.metaFor(row)
 			s.items = append(s.items, sheetItem{row: row, meta: meta})
 			if row.Key == config.KeyAPIKey && !s.sources.Empty() {
@@ -1542,7 +1493,7 @@ func (s *sheet) build() {
 		matched := make([]settingHit, 0, len(s.rows)/len(settingTabs)+1)
 		for _, row := range s.rows {
 			meta, ok := s.metaFor(row)
-			if !ok || meta.tab != title {
+			if !ok || meta.tab != title || crewSeatKey(row.Key) {
 				continue
 			}
 			score, hit, at, n := s.settingMatch(row, meta, title, terms)
@@ -1563,6 +1514,14 @@ func (s *sheet) build() {
 		// the word is not in one — so the section answers the search itself, under
 		// the tab it lives on.
 		if title == tabProviders {
+			// THE SEATS ROW ANSWERS FOR THE THREE IT STANDS FOR: a search for
+			// "checker", "pin" or "cap" finds the one door to all of them.
+			if door := s.crewDoorItem(terms); door.crewDoor {
+				if len(s.items) == start {
+					s.items = append(s.items, sheetItem{head: title})
+				}
+				s.items = append(s.items, door)
+			}
 			if matched := s.roleItems(terms); len(matched) > 0 {
 				if len(s.items) == start {
 					s.items = append(s.items, sheetItem{head: title})
@@ -1604,11 +1563,6 @@ func (s *sheet) metaFor(row config.Setting) (settingMeta, bool) {
 	meta, ok := settingMetaFor(row)
 	if ok && row.Key == config.KeySearchProvider {
 		meta.about = config.SearchProviderHintAt(s.profileDir)
-	}
-	// The crew row names three presets in whichever family the profile is on, so
-	// its sentence is read from the profile for the same reason.
-	if ok && row.Key == config.KeyCrew {
-		meta.about = crewAbout(config.CrewSourceAt(s.profileDir))
 	}
 	// AND THE `lane` ROW IS EXPLAINED BY THE ROUTING IN FORCE, because `auto` is
 	// a different promise under `simple` than under the row codeaf ships with —
@@ -2015,10 +1969,71 @@ func (s *sheet) roleAbout(row *roleRow) string {
 	if said != "" {
 		said += " · "
 	}
-	if row.pin != "" {
-		return said + "pinned, so it ignores " + row.tierLabel + " above. del clears the pin."
+	// A CREW SEAT IS NOT A ROW ABOVE ANY MORE: the three seats are the one
+	// `seats` row, so a role riding one names the seat and the panel it is
+	// set on rather than pointing up at a row that is not there.
+	class := row.tierLabel + " above"
+	if crewSeatKey(tierSettingKey(row.tier)) {
+		class = "the " + row.tierLabel + " seat (/crew)"
 	}
-	return said + "follows " + row.tierLabel + " above. enter pins it to a model of its own."
+	if row.pin != "" {
+		return said + "pinned, so it ignores " + class + ". del clears the pin."
+	}
+	return said + "follows " + class + ". enter pins it to a model of its own."
+}
+
+// crewSeatKey says whether a registry row is one of the crew's three seats.
+func crewSeatKey(key string) bool {
+	for _, seat := range crewroute.Seats {
+		if key == config.CrewSeatKey(seat) {
+			return true
+		}
+	}
+	return false
+}
+
+// crewDoorWords are what the `seats` row is found by in a search: its name,
+// the panel it opens, and the words for what that panel holds.
+var crewDoorWords = []string{"seats", "crew", "worker planner checker pin", "allowed models providers daily cap"}
+
+// crewDoorItem is the `seats` row: the crew's three seat rows as one, whose
+// enter opens the crew panel. Its value is the crew in the fewest words — how
+// many seats are pinned, which models are allowed, how many of the connected
+// providers are on, the cap — read here, on a
+// build, and never on a draw. With terms it is the row only if they match it,
+// and otherwise an item that is not a door.
+func (s *sheet) crewDoorItem(terms []fuzzy.Term) sheetItem {
+	var hitAt, hitLen int
+	if len(terms) > 0 {
+		_, ok, at, n := s.matchHits(crewDoorWords, terms)
+		if !ok {
+			return sheetItem{}
+		}
+		hitAt, hitLen = at, n
+	}
+	seats := "auto"
+	if n := len(config.CrewPinsAt(s.profileDir)); n > 0 {
+		seats = "auto · " + strconv.Itoa(n) + " pinned"
+	}
+	value := seats + " · models " + config.CrewAllowedAt(s.profileDir).String()
+	if providers := config.CrewProvidersAt(s.profileDir); len(providers) > 0 {
+		on := 0
+		for _, provider := range providers {
+			if provider.On {
+				on++
+			}
+		}
+		value += " · " + strconv.Itoa(on) + " of " + strconv.Itoa(len(providers)) + " providers"
+	}
+	value += " · per task " + config.CrewTaskMoney(config.CrewTaskCapAt(s.profileDir))
+	if capUSD := config.CrewCapAt(s.profileDir); capUSD > 0 {
+		value += " · daily " + crewroute.Money(capUSD)
+	}
+	return sheetItem{
+		crewDoor: true, crewValue: value, hitAt: hitAt, hitLen: hitLen,
+		meta: settingMeta{tab: tabProviders, label: "seats",
+			about: "the worker, planner and checker, the models they may be picked from, the providers they may route through, and the per-task and daily caps · enter opens /crew"},
+	}
 }
 
 // roleFilter is the question a role's picker asks. Two registered roles are not
@@ -2311,6 +2326,13 @@ func (a *app) activate() tea.Cmd {
 	}
 	if item.conn != nil {
 		return a.connAct(item.conn)
+	}
+	if item.crewDoor {
+		// THE SEATS ROW OPENS THE CREW PANEL, and the sheet steps aside for it:
+		// a place cannot draw an overlay, and esc on the panel brings this row
+		// back ([app.openCrew]).
+		a.openCrew()
+		return nil
 	}
 	if item.service != nil {
 		if item.service.planPause {
@@ -3421,6 +3443,9 @@ func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, bo
 	}
 	if item.role != nil {
 		return s.roleRowLines(item.role, s.itemHit(item), selected, hovered, width, pal)
+	}
+	if item.crewDoor {
+		return overlayLinesHit(item.meta.label, item.crewValue, s.itemHit(item), selected, false, hovered, width, pal)
 	}
 	if item.autonomy != nil {
 		return s.autonomyRowLines(item.autonomy, s.itemHit(item), selected, hovered, width, pal)

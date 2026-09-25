@@ -306,7 +306,7 @@ sign in once in your browser. openrouter makes the default service's key for thi
 Where it is not, the same page is headed `your openrouter key` and reads `codeaf talks
 to models on its default service through openrouter, on your key and your card. nothing
 is sent until you do.` Either way the foot takes a pasted key and `esc` skips setup.
-The second page is `Daily limit`, `Chat model` and `Work crew`.
+The second page is `Daily limit` and `Chat model`.
 
 </details>
 
@@ -323,7 +323,7 @@ object, while a pinned call asks for exactly that lane. `latency` and `price` re
 opt-in settings.
 
 The default daily rail is `$500`; setting that row to `0` removes it. First run asks for
-`Daily limit`, `Chat model`, and `Work crew`.
+`Daily limit` and `Chat model`; a task's crew is picked per task, and `/crew` shows it.
 
 State lives under `$CODEAF_HOME`, or `~/.codeaf` when it is unset or empty: settings and credentials
 in `config.json`, memory in `graph.db`, and project sessions under `v3/projects/`.

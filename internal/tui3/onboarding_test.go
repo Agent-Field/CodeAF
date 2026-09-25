@@ -59,110 +59,6 @@ func walkToControl(t *testing.T, a *app, want setupControl) {
 	t.Fatalf("tab never reached control %v", want)
 }
 
-// A CREW SOMEBODY ARRANGED BY HAND SURVIVES THE SETUP.
-//
-// This is the defect the screen was built around. A profile with hand-pinned
-// tiers and no daily limit still opens the controls screen — the limit is
-// missing — and the old code applied CrewPresets[0], Frugal, to it on the way
-// out, because the chooser's cursor started at zero and leaving committed the
-// cursor. Five model rows replaced, silently, by a form that never mentioned
-// them.
-func TestAHandPinnedCrewIsNotOverwrittenByLeavingTheSetup(t *testing.T) {
-	a, dir := controlsApp(t, func(dir string) {
-		// One seat pinned by hand, which is what config.CrewConfigured is about
-		// and what makes CrewAt read `custom`.
-		seedRow(t, dir, config.KeyTierWorkerModel, "openai/gpt-4.1")
-	})
-	if got := config.CrewAt(dir); got != config.CrewCustom {
-		t.Fatalf("the fixture's crew reads %q, want a crew that is nobody's preset", got)
-	}
-	// THE ROW SAYS SO rather than naming a preset it is not.
-	if screen := setupScreen(a); !strings.Contains(screen, presetWord(config.CrewCustom)) {
-		t.Fatalf("a crew that is none of the three must read %q; got:\n%s",
-			presetWord(config.CrewCustom), screen)
-	}
-	walkToControl(t, a, controlStart)
-	pressSetup(a, key("enter"))
-	if a.setup.open {
-		t.Fatalf("the setup did not finish: %s", a.setup.refusal)
-	}
-	if got := config.TierModelAt(dir, config.ModelTierWorker); got != "openai/gpt-4.1" {
-		t.Fatalf("the worker seat reads %q — the setup wrote a preset over a pinned tier", got)
-	}
-	if got := config.CrewAt(dir); got != config.CrewCustom {
-		t.Fatalf("the crew reads %q after the setup, want it untouched", got)
-	}
-}
-
-// AND A PROFILE WITH NO CREW AT ALL RECORDS THE ONE IT WAS SHOWN. That is the
-// other half of the same rule: nothing to preserve, and the value on the screen
-// becomes the value in the file, so what the person agreed to is what they get.
-func TestAFreshProfileRecordsTheCrewItWasShown(t *testing.T) {
-	a, dir := controlsApp(t, nil)
-	if config.CrewConfigured(dir) {
-		t.Fatal("the fixture already has a crew")
-	}
-	shown := a.setupCrewReading()
-	walkToControl(t, a, controlStart)
-	pressSetup(a, key("enter"))
-	if !config.CrewConfigured(dir) || config.CrewAt(dir) != shown {
-		t.Fatalf("the profile reads %q, want the %q the screen showed", config.CrewAt(dir), shown)
-	}
-}
-
-// ESC OUT OF THE CREW CHOOSER CHOOSES NOTHING.
-//
-// The cursor inside the list is provisional. Walking it to Max and pressing esc
-// must leave the row — and the profile — on what was there before, because a
-// cursor is not an answer.
-func TestEscOutOfTheCrewChooserKeepsTheCrewThatWasThere(t *testing.T) {
-	a, dir := controlsApp(t, nil)
-	before := a.setupCrewReading()
-	walkToControl(t, a, controlCrew)
-	pressSetup(a, key("enter"))
-	if !a.setup.crewOpen {
-		t.Fatal("enter on the crew row did not open the list")
-	}
-	pressSetup(a, key("down"), key("down"), key("esc"))
-	if a.setup.crewOpen {
-		t.Fatal("esc left the list open")
-	}
-	if got := a.setupCrewReading(); got != before {
-		t.Fatalf("the crew row reads %q after esc, want the %q it had", got, before)
-	}
-	walkToControl(t, a, controlStart)
-	pressSetup(a, key("enter"))
-	if got := config.CrewAt(dir); got != before {
-		t.Fatalf("the profile reads %q, want %q — esc committed the cursor", got, before)
-	}
-}
-
-// AND ENTER IN THE CHOOSER IS THE ANSWER. The same walk, ended with enter,
-// lands the preset under the cursor and nothing else.
-func TestEnterInTheCrewChooserTakesThePresetUnderTheCursor(t *testing.T) {
-	a, dir := controlsApp(t, nil)
-	walkToControl(t, a, controlCrew)
-	pressSetup(a, key("enter"))
-	at := a.setup.crewAt
-	pressSetup(a, key("down"))
-	want := config.CrewPresets[a.setup.crewAt]
-	if a.setup.crewAt == at {
-		t.Fatal("↓ did not move the chooser's cursor")
-	}
-	pressSetup(a, key("enter"))
-	if a.setup.crewOpen {
-		t.Fatal("enter left the list open")
-	}
-	if got := a.setupCrewReading(); got != want {
-		t.Fatalf("the row reads %q, want the %q under the cursor", got, want)
-	}
-	walkToControl(t, a, controlStart)
-	pressSetup(a, key("enter"))
-	if got := config.CrewAt(dir); got != want {
-		t.Fatalf("the profile reads %q, want %q", got, want)
-	}
-}
-
 // THE MODEL LIST IS THE WHOLE CATALOG AND NOT THE FIRST FIVE OF IT.
 //
 // The form shows five rows at a time. An earlier build TRUNCATED the catalog to
@@ -331,33 +227,6 @@ func TestAModelThatCouldNotBeSavedSaysSoWithoutClaimingItFailed(t *testing.T) {
 	}
 }
 
-// AN ENVIRONMENT-PINNED ROW IS SHOWN, NAMED, AND NOT OFFERED AS EDITABLE.
-//
-// The registry refuses a write to a pinned row in its own words. A form that
-// opened a chooser over it would be offering a choice that cannot land.
-func TestAPinnedDailyLimitIsNamedAndNeverWritten(t *testing.T) {
-	a, dir := controlsApp(t, func(string) {
-		// The fixture clears every pin before it builds the surface, so the
-		// variable is exported HERE — inside the seed — where it survives.
-		t.Setenv("CODEAF_DAILY_BUDGET", "7")
-	})
-	screen := setupScreen(a)
-	if !strings.Contains(screen, "CODEAF_DAILY_BUDGET") {
-		t.Fatalf("a pinned limit must name the variable that owns it; got:\n%s", screen)
-	}
-	walkToControl(t, a, controlStart)
-	pressSetup(a, key("enter"))
-	if a.setup.open {
-		t.Fatalf("the setup refused to finish over a pinned row: %q", a.setup.refusal)
-	}
-	// Nothing was written into the file: the variable is still the answer.
-	for _, key := range config.NewSettings(config.SettingsOptions{ProfileDir: dir}).PersistedKeys() {
-		if key == config.KeyDailyBudget {
-			t.Fatal("a pinned row was written into the profile")
-		}
-	}
-}
-
 // NO LIMIT IS A FIRST-CLASS ANSWER, typed in the word the screen offers.
 func TestNoneOnTheDailyLimitWritesNoLimit(t *testing.T) {
 	a, dir := controlsApp(t, nil)
@@ -374,37 +243,16 @@ func TestNoneOnTheDailyLimitWritesNoLimit(t *testing.T) {
 	}
 }
 
-// AN UNTOUCHED LIMIT WRITES BACK THE FIGURE IT DREW, and a profile that already
-// had one keeps ITS figure rather than being handed the default.
-func TestAConfiguredLimitIsShownAndKept(t *testing.T) {
-	a, dir := controlsApp(t, func(dir string) {
-		if err := config.WriteDailyBudgetUSD(dir, 12); err != nil {
-			t.Fatal(err)
-		}
-	})
-	if screen := setupScreen(a); !strings.Contains(screen, "$12") {
-		t.Fatalf("the screen must show the profile's own limit; got:\n%s", screen)
-	}
-	walkToControl(t, a, controlStart)
-	pressSetup(a, key("enter"))
-	if amount, err := config.DailyBudgetUSDAt(dir); err != nil || amount != 12 {
-		t.Fatalf("the limit read back as %v (%v), want the 12 it had", amount, err)
-	}
-}
-
 // GOING BACK TO THE CONNECTION AND RETURNING KEEPS WHAT WAS TYPED.
 //
 // startSetupControls seeds the screen from the profile ONCE. A form that re-read
-// itself on the way back would throw away the amount somebody had typed and the
-// crew they had picked before they went to look at something.
+// itself on the way back would throw away the amount somebody had typed before
+// they went to look at something.
 func TestGoingBackToTheConnectionAndReturningKeepsTheFormsEdits(t *testing.T) {
 	a, _ := controlsApp(t, nil)
 	for _, letter := range []string{"4", "2"} {
 		pressSetup(a, key(letter))
 	}
-	walkToControl(t, a, controlCrew)
-	pressSetup(a, key("enter"), key("down"), key("enter"))
-	picked := a.setupCrewReading()
 
 	// esc with a step behind this one goes back rather than leaving.
 	pressSetup(a, key("esc"))
@@ -417,9 +265,6 @@ func TestGoingBackToTheConnectionAndReturningKeepsTheFormsEdits(t *testing.T) {
 	}
 	if a.setup.limitText != "42" || !a.setup.limitTyped {
 		t.Fatalf("the typed limit came back as %q (typed=%v)", a.setup.limitText, a.setup.limitTyped)
-	}
-	if got := a.setupCrewReading(); got != picked {
-		t.Fatalf("the crew came back as %q, want the %q that was picked", got, picked)
 	}
 }
 
@@ -448,10 +293,10 @@ func TestTheDetailIsBehindAQuestionMarkAndGoesWithTheFocus(t *testing.T) {
 
 // A TASK-MODEL OVERRIDE IS ON THE SCREEN WITHOUT BEING ASKED FOR.
 //
-// It contradicts the crew row above it — the worker seat is out of the preset's
-// hands — so it is a fact rather than a detail, and the emptiness law keeps it
-// off every screen where no override is set.
-func TestATaskModelOverrideIsSaidBesideTheCrew(t *testing.T) {
+// It says the worker seat is out of the router's hands, so it is a fact rather
+// than a detail, and the emptiness law keeps it off every screen where no
+// override is set.
+func TestATaskModelOverrideIsSaid(t *testing.T) {
 	a, _ := controlsApp(t, nil)
 	if strings.Contains(setupScreen(a), controlTaskPinLead) {
 		t.Fatalf("a profile with no override drew a line about one:\n%s", setupScreen(a))
@@ -460,7 +305,7 @@ func TestATaskModelOverrideIsSaidBesideTheCrew(t *testing.T) {
 		seedRow(t, dir, config.KeyTaskModel, "anthropic/claude-opus-5")
 	})
 	if screen := setupScreen(b); !strings.Contains(screen, controlTaskPinLead) {
-		t.Fatalf("a pinned task model must be said beside the crew; got:\n%s", screen)
+		t.Fatalf("a pinned task model must be said; got:\n%s", screen)
 	}
 }
 
@@ -507,7 +352,7 @@ func TestTheControlsScreenStaysUsableDownToFortyColumns(t *testing.T) {
 		frame, _, _ := a.frame()
 		screen := plain(frame)
 		where := itoa(size[0]) + "x" + itoa(size[1])
-		for _, want := range []string{controlLimitLabel, controlModelLabel, controlCrewLabel, controlStartWord} {
+		for _, want := range []string{controlLimitLabel, controlModelLabel, controlStartWord} {
 			if !strings.Contains(screen, want) {
 				t.Fatalf("%s lost %q:\n%s", where, want, screen)
 			}
@@ -655,17 +500,17 @@ func TestTheExampleColumnIsLabelledFollowsTheFocusAndHidesWhenNarrow(t *testing.
 	if again := setupScreen(a); again != screen {
 		t.Fatal("the example moved between two frames with no keypress")
 	}
-	walkToControl(t, a, controlCrew)
-	if want := setupExamples[exampleForControl(controlCrew)].title; !strings.Contains(setupScreen(a), want) {
-		t.Fatalf("the crew's example is %q; got:\n%s", want, setupScreen(a))
+	walkToControl(t, a, controlReview)
+	if want := setupExamples[exampleForControl(controlReview)].title; !strings.Contains(setupScreen(a), want) {
+		t.Fatalf("the review row's example is %q; got:\n%s", want, setupScreen(a))
 	}
 	// ←/→ browse without touching anything.
-	before := a.setupCrewReading()
+	limit := a.setup.limitText
 	pressSetup(a, key("right"))
-	if a.setup.example == exampleForControl(controlCrew) {
+	if a.setup.example == exampleForControl(controlReview) {
 		t.Fatal("→ did not move the example")
 	}
-	if a.setupCrewReading() != before {
+	if a.setup.limitText != limit {
 		t.Fatal("browsing the examples changed a control")
 	}
 	// And below the width the pair needs, the column is gone entirely.
@@ -788,37 +633,6 @@ func TestTheExampleDemonstrationDoesNotAnimateInTheLinearTier(t *testing.T) {
 	}
 }
 
-// THE CREW CHOOSER MAKES NO CLAIM ABOUT WHAT ANYTHING COSTS.
-//
-// The registry's own preset line ends `· pennies a day`, which is a forecast
-// about somebody else's usage on somebody else's pricing — said, before this
-// fix, on the one screen that also asks a person to name their own daily
-// ceiling. The three lines here are about the CHOICE, and each is whole.
-func TestTheCrewChooserDescribesTheChoiceAndPromisesNoPrice(t *testing.T) {
-	a, _ := controlsApp(t, nil)
-	// Read at eighty columns, where the panel is not drawn: the two columns share
-	// every row on a wide frame, and a sentence read across both is not a
-	// sentence either of them said.
-	a.width, a.height = 80, 24
-	walkToControl(t, a, controlCrew)
-	pressSetup(a, key("enter"))
-	screen := setupScreen(a)
-	for _, preset := range config.CrewPresets {
-		if word := crewChoiceWord(preset); !strings.Contains(screen, word) {
-			t.Fatalf("the %s row must carry %q whole; got:\n%s", preset, word, screen)
-		}
-	}
-	// And the registry's own line, cost promise and all, is nowhere on it.
-	for _, preset := range config.CrewPresets {
-		if line := config.CrewLine(preset); strings.Contains(screen, line) {
-			t.Fatalf("the crew chooser inherited the registry's line %q:\n%s", line, screen)
-		}
-	}
-	if strings.Contains(screen, "pennies") {
-		t.Fatalf("the crew chooser promises a price:\n%s", screen)
-	}
-}
-
 // MODEL NAMES ARE READ AS NAMES AND THE ID IS STILL AVAILABLE. The form is a
 // place to decide between two models, not to type an address into.
 func TestModelNamesReadAsNamesAndKeepTheirLevel(t *testing.T) {
@@ -859,8 +673,6 @@ func TestTheControlsScreenSendsNoPrompt(t *testing.T) {
 	a.models = func() []Model { return []Model{{ID: "z/zulu"}, {ID: "openai/gpt-4.1-mini"}} }
 	walkToControl(t, a, controlChatModel)
 	pressSetup(a, key("enter"), key("up"), key("enter"))
-	walkToControl(t, a, controlCrew)
-	pressSetup(a, key("enter"), key("down"), key("enter"))
 	walkToControl(t, a, controlStart)
 	pressSetup(a, key("enter"))
 	if len(agent.sent) != 0 {

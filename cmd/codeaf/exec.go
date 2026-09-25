@@ -117,7 +117,7 @@ func runExec(args []string) error {
 	// would be the parity it claims in name only. Only the work seat is printed,
 	// because only the work seat runs anything.
 	useAutoSeats(settings)
-	seats := config.ResolveSeats(settings.ProfileDir, *model, *planModel)
+	seats := doorSeats(settings, *model, *planModel, prompt)
 	applySeats(&settings, seats)
 	fmt.Fprintln(os.Stderr, seats.Work.Report())
 	modelCatalog := sharedCatalog(settings)

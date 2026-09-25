@@ -103,7 +103,8 @@ The usage counts are not the only thing this binary sends to AgentField. With
 `model_pool` set to `on` — the default — a judge scores each crew seat after a
 task lands, and one row per seat leaves for
 `https://codeaf.agentfield.ai/pool/v1/rows`: the model slug that held the
-seat, the judge's slug, the seat (worker, high or mastermind), a 0-100 score,
+seat, the judge's slug, the seat (the worker, checker or planner, spelled on the wire as `worker`,
+`high` and `mastermind`), a 0-100 score,
 the door the run came in by (task, do, exec or run), the crew size and the UTC
 day, under a random per-install nonce in an `X-Codeaf-Install` header. No prompt, code, path or name rides in a row. **Every way of turning the
 counts off turns this stream off too** — `CODEAF_TELEMETRY=off`,

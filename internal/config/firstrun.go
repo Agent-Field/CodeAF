@@ -60,23 +60,6 @@ func APIKeyConfigured(profileDir string) bool {
 	return APIKeyAt(profileDir) != ""
 }
 
-// CrewConfigured is whether a person has ever answered the crew: any of the
-// tier rows, or the family row above them, is in the profile file. It is any
-// rather than all because [ApplyCrew] writes the tier rows together, and a
-// person who pinned one tier by hand, or chose a family, has an opinion the
-// setup must not paper over with a preset.
-func CrewConfigured(profileDir string) bool {
-	if _, ok := persistedString(profileDir, KeyCrewSource); ok {
-		return true
-	}
-	for _, tier := range ModelTiers {
-		if _, ok := persistedString(profileDir, tierKeyFor(tier)); ok {
-			return true
-		}
-	}
-	return false
-}
-
 // DailyBudgetConfigured is whether a person has answered the daily ceiling: the
 // environment pins it, or the profile file holds it.
 func DailyBudgetConfigured(profileDir string) bool {

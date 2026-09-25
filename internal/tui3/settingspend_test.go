@@ -280,7 +280,7 @@ func TestARowsReceiptIsThereWhenItIsKnownAndAbsentWhenItIsNot(t *testing.T) {
 		t.Fatalf("a conversation that spent nothing invented %q", got)
 	}
 	// And the two readings carry theirs.
-	if got := taskReading().receipt.full; !strings.Contains(got, "against the day") {
+	if got := taskReading(t.TempDir()).receipt.full; !strings.Contains(got, "set in /crew") {
 		t.Fatalf("per task's receipt = %q", got)
 	}
 	if got := standingReading().value.full; got != "$5 a firing" {
@@ -436,7 +436,7 @@ func TestAtSixtyColumnsEveryLabelSurvivesAndTheReceiptGoesFirst(t *testing.T) {
 	}
 	// AND EVERY VALUE IS STILL READABLE AT SIXTY.
 	frame := strings.Join(sheetLabels(a), "\n")
-	for _, want := range []string{config.NoLimitWord, "$500", "no limit of its own"} {
+	for _, want := range []string{config.NoLimitWord, "$500", "$5 a task"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("%q did not survive sixty columns:\n%s", want, frame)
 		}

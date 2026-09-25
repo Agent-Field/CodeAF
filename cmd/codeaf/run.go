@@ -191,7 +191,7 @@ func runGraph(name string, args []string) error {
 		return err
 	}
 	useAutoSeats(settings)
-	seats := config.ResolveSeats(settings.ProfileDir, *model, *planModel)
+	seats := doorSeats(settings, *model, *planModel, graph.Goal)
 	applySeats(&settings, seats)
 	// A graph may be loaded from disk and expanded again after an overrun, so
 	// run installs the measured ruler before any planning-capable work starts.
