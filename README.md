@@ -146,39 +146,11 @@ A run is a task like any other, on `home`, with a room and a stop.
 <img src="assets/readme/benchmark-deepswe.webp" alt="First on DeepSWE: senior-dev, CodeAF's developer subharness, solved the most tasks (54.9%) at the lowest cost per solved task (1x). Every other harness solved less and paid more per solve: mini-swe-agent 1.9x, codex 2.1x, pi 2.4x, claude-code 3.4x, omp, kilo and opencode about 4.5x, muse-code 11.3x, deepseek-harness 26.6x." width="100%">
 
 `/senior-dev`, CodeAF's developer subharness, against nine other coding harnesses
-on the full DeepSWE set: 113 real GitHub issues, one
-attempt each, the same model (DeepSeek V4 Flash through OpenRouter), graded by the
-official verifiers.
+on the same model, DeepSeek V4 Flash: 113 real GitHub issues from DeepSWE, graded
+by the official verifiers. It solved the most issues and paid the least for each
+one it solved.
 
-| harness | solved | cost per task | cost per solved issue | mean time |
-| --- | --- | --- | --- | --- |
-| **senior-dev** | **62 of 113, 54.9%** | **22¢** | **1x** | 54 min |
-| mini-swe-agent | 56, 49.6% | 38¢ | 1.9x | 44 min |
-| codex | 51, 45.1% | 37¢ | 2.1x | 46 min |
-| pi | 42, 37.2% | 35¢ | 2.4x | 52 min |
-| omp | 31, 27.4% | 50¢ | 4.5x | 49 min |
-| opencode | 30, 26.6% | 50¢ | 4.8x | 48 min |
-| kilo | 30, 26.6% | 48¢ | 4.6x | 54 min |
-| claude-code | 16, 14.2% | 19¢ | 3.4x | 32 min |
-| deepseek-harness | 16, 14.2% | 150¢ | 26.6x | 94 min |
-| muse-code | 3, 2.7% | 12¢ | 11.3x | 16 min |
-
-senior-dev solved the most issues and paid the least for each one it solved:
-nearly 4x the issues claude-code solved, at about half the cost per solve of the
-next best harness.
-
-Read it with its limits. One seed per harness, so the gap to mini-swe-agent is
-not statistically resolved. senior-dev sent the provider's default sampling; the
-other nine sent temperature 1.0 and top-p 0.95. Five tasks in four other harnesses
-produced no verifier result and count as unsolved. Cost is billed OpenRouter
-spend divided by 113.
-
-Since then, on the same 113 tasks: 88 solved (77.9%, 95% CI 69.1% to 85.1%) with
-DeepSeek V4.1 Flash, and 78 (69.0%) with Kimi K3. Those runs are senior-dev
-alone, not a comparison.
-
-Per-harness numbers: [docs/benchmarks/deepswe](docs/benchmarks/deepswe/).
-Earlier single-repository comparisons: [BENCHMARKS.md](BENCHMARKS.md).
+Every number, the method and the limits: [docs/benchmarks/deepswe](docs/benchmarks/deepswe/).
 
 ## The right model for each call
 
