@@ -1124,6 +1124,8 @@ type app struct {
 	// (moneydoor.go's [app.moneyNearRail]).
 	spendRail float64
 	railRead  bool
+	// The settings panel takes this command with its key or mouse response.
+	spendRailBindCmd tea.Cmd
 	// ctxWindow is the model's context in tokens as this surface last set it,
 	// and ctxTokens what the conversation currently weighs. The pair is the
 	// meter in the status line. The window is TRACKED rather than asked for

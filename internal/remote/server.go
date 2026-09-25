@@ -2548,6 +2548,17 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		s.session.announce()
 		return nil, nil
 
+	case MethodSetSpendRail:
+		usd, err := arg[float64](call)
+		if err != nil {
+			return nil, err
+		}
+		binder, ok := agent.(interface{ SetSpendRail(float64) error })
+		if !ok {
+			return nil, errors.New("conversation limit cannot be changed here")
+		}
+		return nil, binder.SetSpendRail(usd)
+
 	case MethodSetContext:
 		tokens, err := arg[int](call)
 		if err != nil {

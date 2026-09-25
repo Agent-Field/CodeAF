@@ -237,10 +237,12 @@ cross) and `senior-dev's ending went to the chat`; the chat's own reply is where
 what came of the work. `ctrl+o` on the card still shows senior-dev's own words.
 
 **It has no step cap.** Every run has finite dollar and wall-clock ceilings: by default,
-**up to $10.00 and 3h**. A conversation's `/budget` limits can lower either ceiling to
+**up to $10.00 and 3h**. `/budget conversation` can lower the dollar ceiling to
 what remains. At a shell, `--max-cost` and `--max-hours` set either ceiling explicitly.
 The proposal card, typed command's start note and shell run's first line say which ceiling
 applies. These ceilings are enforced outside senior-dev whatever it does.
+`/budget conversation 1.5` in an open chat binds $1.50 to that conversation before
+its receipt appears, so the next approval card and run use $1.50 or what remains.
 
 **It reaches a model only through codeaf.** Its engine receives a short-lived token for
 codeaf's loopback model API, but its model-written shell commands inherit neither that
@@ -407,6 +409,10 @@ The finishing commit's model credit names only models recorded as answering a ca
 that run, including a model that answered in place of the one asked for. If no model
 answered, there is no `Assisted-by` trailer. The attribution setting still decides
 whether answered model names are shown.
+If senior-dev runs `git commit` itself, the commit uses codeaf's run identity rather
+than your Git identity. When that commit is the branch tip and there is nothing
+left to stage, codeaf adds the answered model's `Assisted-by` credit to its message
+without changing its files. It never rewrites a commit from before the run.
 
 The ending keeps two witnesses apart: what senior-dev's model said it did
 (`senior-dev's model said: …`) and what senior-dev saw when it ran the project's build
@@ -541,8 +547,8 @@ price does not mean the service charged nothing.
 codeaf reserves half the run's dollar ceiling for a call with no known model price and
 admits at most one such call in flight once the recorded spend reaches half the ceiling.
 This limits simultaneous calls but cannot say what an unpriced service actually charged.
-The run's wall-clock ceiling still ends it; set a different one with `/budget` or
-`--max-hours` if you need a shorter or longer run.
+The run's wall-clock ceiling still ends it; use `--max-hours` at the shell
+if you need a shorter or longer run.
 
 ## Why a stopped senior-dev run takes a moment to end — the price of the call it was in the middle of
 

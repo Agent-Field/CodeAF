@@ -1782,6 +1782,13 @@ func (a *Agent) SetModel(model string) {
 	_, _ = a.c.call(nil, MethodSetModel, model)
 }
 
+// SetSpendRail waits for the engine to bind the new conversation limit before
+// a setting receipt can claim that the open chat has it.
+func (a *Agent) SetSpendRail(usd float64) error {
+	_, err := a.c.call(nil, MethodSetSpendRail, usd)
+	return err
+}
+
 // SetContextWindow is deliberately a no-op here. The surface's catalog belongs
 // to the laptop; SetModel makes the engine consult its own catalog and move its
 // own compaction point. The method remains on the interface for local agents

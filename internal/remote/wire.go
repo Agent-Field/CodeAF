@@ -469,6 +469,7 @@ const (
 	MethodClose           = "Close"                  // nothing → nothing
 	MethodModel           = "Model"                  // nothing → string
 	MethodSetModel        = "SetModel"               // string → nothing
+	MethodSetSpendRail    = "SetSpendRail"           // dollars → nothing
 	MethodSetContext      = "SetContextWindow"       // legacy version-5 hint; current remote surfaces do not send it
 	MethodReasoningFor    = "ReasoningFor"           // string → string
 	MethodSetReasoningFor = "SetReasoningFor"        // ReasoningArgs → nothing

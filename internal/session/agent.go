@@ -2919,7 +2919,7 @@ func (a *Agent) bashBeltFrame(hub *eventHub) string {
 	rail := 0.0
 	if home := graph.home; home != nil {
 		home.mu.Lock()
-		rail = home.config.SpendRailUSD
+		rail = home.spendRailUSD()
 		home.mu.Unlock()
 	}
 	runSpend := graph.planRunSpend()

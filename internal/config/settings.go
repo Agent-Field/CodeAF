@@ -2406,7 +2406,7 @@ func (s *Settings) build() []Setting {
 			Hint: "what one conversation may spend before it stops starting new turns. " +
 				"When it is reached the next turn is refused and your message is still " +
 				"yours to send again once you raise it; the turn in flight always " +
-				"finishes. Say none for no limit. A change lands on the next session.",
+				"finishes. Say none for no limit. A change binds this conversation before the row confirms it.",
 			read:    func() string { return moneyValue(SpendRailUSDAt(dir)) },
 			write:   func(raw string) error { return writeDollars(dir, KeySpendRail, raw) },
 			receipt: s.spentThisSessionReceipt,

@@ -1234,12 +1234,6 @@ func (a *app) registry() *config.Settings {
 			if key == config.KeyAPIKey {
 				a.handAPIKey()
 			}
-			// AND THE CONVERSATION'S OWN CEILING IS RE-READ HERE and nowhere
-			// else, so the status line's warm ink follows an edit without the
-			// paint ever touching the disk (moneydoor.go).
-			if key == config.KeySpendRail {
-				a.readSpendRail()
-			}
 		},
 	})
 	return a.settings
@@ -2073,7 +2067,12 @@ func formatModelRoles(pins map[string]string) string {
 // leaves the process: a service on the Connections tab that is not connected
 // yet starts the same browser trip /connect starts, and a sign-in is a thing
 // that reaches the network (connectcaps.go).
-func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+func (a *app) sheetKey(msg tea.KeyPressMsg) (cmd tea.Cmd, took bool) {
+	defer func() {
+		if bind := a.takeSpendRailBindCmd(); bind != nil {
+			cmd = tea.Batch(cmd, bind)
+		}
+	}()
 	if !a.at(pageSettings) {
 		return nil, false
 	}
@@ -2455,6 +2454,11 @@ const gateNextSessionWord = "saved" + nextSessionWord
 // window has a conversation to push a gate into. A push from there would be a
 // seam called with nothing on the other end.
 func (a *app) applySetting(item sheetItem, raw string) {
+	if item.row.Key == config.KeySpendRail && !a.railRead {
+		// The panel's file write must not make the status line's first lazy
+		// read claim an active limit the engine has not accepted yet.
+		a.readSpendRail()
+	}
 	if err := item.row.Apply(raw); err != nil {
 		a.sheet.msg = err.Error()
 		return
@@ -2515,6 +2519,19 @@ func (a *app) applySetting(item sheetItem, raw string) {
 			a.approval = a.approvalPosture()
 		} else {
 			note = gateNextSessionWord
+		}
+	case config.KeySpendRail:
+		a.spendRailBindCmd = a.bindSpendRail(func(err error) {
+			if err != nil {
+				a.sheet.msg = "saved for the next conversation · this one still has its previous limit"
+			} else {
+				a.sheet.msg = ""
+			}
+			a.sheet.rows = a.sheet.registry.Rows()
+			a.sheet.build()
+		})
+		if a.spendRailBindCmd != nil {
+			note = "applying to this conversation…"
 		}
 	}
 	a.sheet.msg = note
@@ -2676,7 +2693,12 @@ type sheetHit struct {
 // sheetPress is a click inside the panel: a tab word switches tabs, a row
 // selects and answers, anything else does nothing. It hands back a command for
 // the reason [app.sheetKey] does — a sign-in reaches the network.
-func (a *app) sheetPress(x, y int) tea.Cmd {
+func (a *app) sheetPress(x, y int) (cmd tea.Cmd) {
+	defer func() {
+		if bind := a.takeSpendRailBindCmd(); bind != nil {
+			cmd = tea.Batch(cmd, bind)
+		}
+	}()
 	if a.sheet.conn.entry != nil {
 		// A BOX BEING TYPED INTO IS NOT A LIST. Every press is swallowed and none
 		// of them acts — esc is the way out, which is the way out of every box on

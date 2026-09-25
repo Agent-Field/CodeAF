@@ -141,7 +141,10 @@ everything it would stop and ask is already settled. The model is told the same 
 it proposes one.
 
 **It has no step cap.** senior-dev has finite dollar and wall-clock ceilings even when
-the conversation sets none; `/budget` can lower them, and shell flags set them directly.
+the conversation sets none; `/budget conversation` can lower the dollar ceiling,
+and shell flags set either ceiling directly.
+An open chat's `/budget conversation` change binds its next proposal, run and turn
+as soon as the setting receipt appears.
 Before forwarding a call, codeaf reserves the larger estimate from the requested model
 and its possible fallback seat when both have known prices, using input size and output
 cap; if either price is unknown, it uses the unpriced bound. It refuses a call whose

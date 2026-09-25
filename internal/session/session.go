@@ -2254,7 +2254,12 @@ type Agent struct {
 	discussionPending []string
 
 	config Config
-	client Completer
+	// An open conversation's changed rail is separate from its launch config:
+	// proposal cards read it while holding mu, while runs also read it outside
+	// that lock. Atomic publication keeps both roads on the same figure.
+	liveSpendRail    atomic.Uint64
+	liveSpendRailSet atomic.Bool
+	client           Completer
 	// managedClient distinguishes the provider adapter built by New from a test
 	// completer handed to newAgent. clientAccount is the resolved account the
 	// adapter holds, so a service-set change can replace it before another call.
