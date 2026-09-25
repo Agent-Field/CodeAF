@@ -549,3 +549,23 @@ own record, so on a connection that has no file door it still says as it opens:
 ```
 these are the files made on this machine — what that session made is written down on the other one
 ```
+
+## Mention a file, a team or another chat with @
+
+Type `@` in the message box. The list under it has three words on the first row,
+**team**, **chat** and **file**, then teams, conversations, tasks, and files. Typing
+filters every section at once. `@file:` keeps only files, `@team:` only teams,
+`@chat:` only conversations. The three words are buttons: a press types that prefix,
+the word under the pointer takes a background, and the hint names the key, `click`.
+
+Choosing a file still puts `@` and the path in the sentence, and nothing is read
+until the model asks. Choosing a team puts `●harbor` in the team's colour. Choosing
+a conversation puts `@handle`, or a short slug of the title when it has no handle,
+and the hint on the row is the full title. A conversation that is in no team is
+still on the list.
+
+After you send, that team mark and that `@handle` stay clickable. A press on the
+team opens the conversations view on it. A press on the conversation opens it. The
+model is handed a short digest of each one, not the transcript, and the other
+conversation is not messaged and not woken. The words in your transcript are the
+words you typed.

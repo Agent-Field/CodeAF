@@ -3689,7 +3689,8 @@ marked failed, because nobody watched what became of it.
 
 ## Mentioning a task in the conversation
 
-Type `@` in the draft and a list drops up with task rows above the file rows. The sections
+Type `@` in the draft and a list drops up. Teams and conversations come first, then
+task rows above the file rows. The task sections
 are `running`, `recent` (ended inside 24 hours) and `older`, in that order; the `older`
 heading carries `older · N more` when the list was cut. At most 8 task rows are drawn,
 though the search itself goes 40 deep so a match three sections down is still counted. A

@@ -304,6 +304,41 @@ the person to type again is not running a team, so the lines that ask for an ans
   `"wake": false`. The settings to turn it off from the interface come with the delegation
   work; until then it is the field and the manual's line.
 
+**Mentioning a team or a chat from the composer.** `@` is still the one list
+(`internal/tui3`'s `files.go`, `mention.go`). Its first row is the words team, chat
+and file, each a press that types `@team:`, `@chat:` or `@file:` and keeps that
+section. The word under the pointer takes the cursor ground, and the hint is
+`only teams · click` (or conversations, or files). Typing filters every section that
+is showing. Argument completion (`/image `, `/export `, `/attach `) stays files only.
+
+Under the words: teams from the window's in-memory list, a colour dot and the name;
+then conversations, open tabs in this window first and then the recent snapshot the
+door already holds, loaded once inside a command; then the task sections; then
+files. A prefix hides the other sections, including tasks. A conversation in no team
+is still offered. The conversation in front is not.
+
+Choosing a team replaces the `@` token with `●` and the team's slug (`●harbor`),
+drawn in that team's colour. The runes are the token, so the caret's column does not
+move. Choosing a conversation keeps `@` and writes the handle, or `TaskSlug` of the
+title when the conversation has no handle. The row's note is the title.
+
+After send, the same link pass inks those tokens on the person's own message
+(`mentionLinkPass`). A `●slug` opens the wall on that team. An `@handle` or `@slug`
+of a conversation this window can name, including one in no team, opens it through
+the tab strip. Model prose keeps the older door: an `@handle` of a member of a team
+this conversation is in, and a team name written as a team.
+
+The digest is built on the engine (`internal/session`'s `mention.go`), inside
+`Submit` and before the lock, so `--host` works and the frame never reads it. The
+journal stores the person's words (`user.said`). The model reads those words plus
+one block per reference: a team is `teams.Digest` at 800 runes (members, handles,
+states, recent traffic); a chat is its title, its state and an excerpt of the last
+reply, cut at 1536 runes. The read is `teams.Load`, `teams.ReadTraffic`,
+`journalState` and `Peek`. It does not call `teamRouse`, `AppendTraffic` or
+`Submit` on the conversation it names. A token with a slash is a file path and is
+not a chat. An unknown `@word` is left as text. A standing mark does not take this
+road; `Submit` does, and steering goes through `Submit`.
+
 **Known limits of v1.** A stop or a start takes effect only in a window that holds those
 conversations. A member waiting on a permission prompt shows as running, because the prompt is
 not in its session file, until its own asking event says so. The loop breaker's needs-you is
