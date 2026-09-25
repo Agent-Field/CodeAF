@@ -584,6 +584,10 @@ up and directives down, were built later: 8.9.)
   the sessions place, through one helper (`homeName`). It is never the session id.
 - A resize drops hover that pointed at a door the new layout may not draw (`more ▾`,
   a nav word), so the hint line does not keep naming it.
+- A person's answer on a card this turn is part of what the completion check reads,
+  after the clipped account, as `the person answered the card "<title>": <what they chose>`. A
+  `just once` answer reads `only now, don't repeat`, so the check does not treat
+  "nothing was set up" as work still owed.
 
 ## 7. Later, each needing its own go
 

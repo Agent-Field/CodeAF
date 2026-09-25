@@ -2215,6 +2215,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I don't understand these options", "keeping-an-eye"},
 		{"what does just once mean", "keeping-an-eye"},
 		{"what kind of standing card is this", "keeping-an-eye"},
+		{"why did it say the reminder was never set up after I said just once", "keeping-an-eye"},
 		{"can I change everywhere to just this project", "standing-orders"},
 		// The twelfth wave: answering a question from home. Both are asked by
 		// somebody looking at a `▲` row and wondering whether they have to walk

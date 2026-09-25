@@ -125,6 +125,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -1884,7 +1885,7 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 	// is left, and nothing inside a tool result changes that shape.
 	asked := a.turnAsk()
 	snapshot := a.snapshot()
-	page := checkpointCompletionPage(asked, snapshot)
+	page := a.checkerPage(asked, snapshot)
 	if page == "" {
 		// NOTHING TO READ IS NOT A READING. A turn with no ask, no tool call and
 		// nothing said has nothing for a second mind to be shown, and a call made
@@ -1963,7 +1964,7 @@ func (a *Agent) readMark(ctx context.Context) checkpointRead {
 	// writer can weigh beneath it (task_divide_sketch.go). The handoff page adds
 	// the complete ask in its own section, so carrying it here would send the
 	// same request twice.
-	read.digest = checkpointDigest("", snapshot)
+	read.digest = withPersonCardAnswers(checkpointDigest("", snapshot), a.personCardAnswerLines())
 	return read
 }
 
@@ -3799,7 +3800,7 @@ func (a *Agent) readRemains(ctx context.Context) readerLine {
 	}
 	// THE ASK IS THE ONE THIS TURN OWES, which on a woken turn is the request its
 	// result belongs to and not whatever was typed last (wakecause.go).
-	page := checkpointCompletionPage(a.turnAsk(), a.completionSnapshot())
+	page := a.checkerPage(a.turnAsk(), a.completionSnapshot())
 	if page == "" {
 		return readerLine{}
 	}
@@ -3846,6 +3847,95 @@ func (a *Agent) completionSnapshot() []ai.Message {
 		)
 	}
 	return messages
+}
+
+// checkerPage is the account a completion check is shown, with this turn's
+// card answers kept after the clipped digest. A person's answer is final for
+// the gap it chose, and a result that said "nothing was set up" is not.
+func (a *Agent) checkerPage(asked string, messages []ai.Message) string {
+	page := checkpointCompletionPage(asked, messages)
+	if page == "" {
+		return ""
+	}
+	return withPersonCardAnswers(page, a.personCardAnswerLines())
+}
+
+// checkpointDigestAnswered heads the card answers. It sits outside the digest
+// clip, so a long ledger cannot drop the one fact that closes a chosen gap.
+const checkpointDigestAnswered = "WHAT THE PERSON ANSWERED ON A CARD"
+
+// withPersonCardAnswers appends the lines. An empty list leaves the page
+// untouched, which is the emptiness law: a turn with no card says nothing
+// about cards.
+func withPersonCardAnswers(page string, lines []string) string {
+	if len(lines) == 0 {
+		return page
+	}
+	var out strings.Builder
+	if strings.TrimSpace(page) != "" {
+		out.WriteString(strings.TrimSpace(page))
+		out.WriteString("\n\n")
+	}
+	out.WriteString(checkpointDigestAnswered)
+	out.WriteString("\n")
+	for _, line := range lines {
+		if line = strings.TrimSpace(line); line == "" {
+			continue
+		}
+		out.WriteString(line)
+		out.WriteString("\n")
+	}
+	return strings.TrimSpace(out.String())
+}
+
+// personCardAnswerLine is one card, compact, in the shape the checker reads.
+// A standing "just once" is spelled "only now, don't repeat" because the tool
+// result says nothing was set up, and that sentence is the gap the person
+// chose. Every other recorded answer keeps the words on the card.
+func personCardAnswerLine(q Question, answer Answer) string {
+	title := strings.TrimSpace(q.Head)
+	gloss := personCardAnswerGloss(q, answer)
+	if title == "" || gloss == "" {
+		return ""
+	}
+	return "the person answered the card " + strconv.Quote(title) + ": " + gloss
+}
+
+// personCardAnswerGloss is the half of the line after the colon.
+func personCardAnswerGloss(q Question, answer Answer) string {
+	if answer.DecidedBy != "" && answer.DecidedBy != DecidedByPerson {
+		return ""
+	}
+	if q.Kind == QuestionStanding && answer.FirstKey() == StandingOnceKey {
+		return "only now, don't repeat"
+	}
+	words := strings.TrimSpace(decisionRecordOf(q, answer).Words())
+	if change := strings.Join(strings.Fields(answer.Change), " "); change != "" {
+		if words == "" {
+			words = change
+		} else if !strings.Contains(words, change) {
+			words += "; " + change
+		}
+	}
+	return strings.Join(strings.Fields(words), " ")
+}
+
+// rememberPersonCardAnswer keeps one resolved card for the checker. A decision
+// the person did not make (a dial, an earlier record) is not their answer.
+func (a *Agent) rememberPersonCardAnswer(q Question, answer Answer) {
+	line := personCardAnswerLine(q, answer)
+	if line == "" {
+		return
+	}
+	a.mu.Lock()
+	a.personCardAnswers = append(a.personCardAnswers, line)
+	a.mu.Unlock()
+}
+
+func (a *Agent) personCardAnswerLines() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]string(nil), a.personCardAnswers...)
 }
 
 func checkpointCompletionPage(asked string, messages []ai.Message) string {

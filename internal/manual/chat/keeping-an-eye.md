@@ -917,6 +917,17 @@ arrives".
 A firing's run folder is a normal session folder outside your projects, so its
 transcript reads with the same tools as any other conversation.
 
+## Why did it say the reminder was never set up after I said just once
+
+The completion check reads a short account of the turn, and a long turn clips
+that account. Your answer on a card this turn is kept on the account anyway,
+after the clip, as one line. For `3 just once` that line is `the person
+answered the card "<the card's own sentence>": only now, don't repeat`. Any
+other card you answered is the same shape, with the words that were on the
+chip. The check is deciding what is still owed. An answer you already gave is
+in front of it, so "nothing was set up" is the choice on the card and not a
+piece of the ask still to do.
+
 ## What it will not do
 
 - **It will not set anything up when nobody is watching.** A headless `--once`
