@@ -495,7 +495,7 @@ func standReminder() standing.Item {
 		ID:        "abc",
 		Words:     "remind me to sleep in 1 min",
 		Workspace: "/tmp/lab",
-		When:      standing.When{Kind: standing.WhenAt, Words: "in 1 minute — 07:35", At: time.Now().Add(time.Minute)},
+		When:      standing.When{Kind: standing.WhenAt, Words: "in 1 minute · 07:35", At: time.Now().Add(time.Minute)},
 		Does:      standing.Action{Kind: standing.ActionSay, Say: "time to sleep"},
 		Rails:     standing.Rails{PerRunUSD: 0.05, MaxPerDay: 1},
 		Status:    standing.StatusActive,
@@ -513,7 +513,7 @@ func TestAOneOffReminderCardDrawsTwoChips(t *testing.T) {
 	a, agent, tick := standApp(t)
 	standAsk(t, a, tick, session.StandingNotice{
 		Item:      standReminder(),
-		WhenWords: "in 1 minute — 07:35",
+		WhenWords: "in 1 minute · 07:35",
 		CostWords: "about a cent, once",
 		Options:   session.StandingOptions(standReminder()),
 	})
@@ -540,7 +540,7 @@ func TestAOneOffReminderCardDrawsTwoChips(t *testing.T) {
 	// The derivation names the keys the card drew and not one more. (The slot
 	// itself is quiet while the block draws them — hints pick A — and this is
 	// the reading behind it, which is where the defect would be.)
-	const twoHint = "1 Remind me in 1 minute — 07:35 · 0 Don't remind me · esc later"
+	const twoHint = "1 Remind me in 1 minute · 07:35 · 0 Don't remind me · esc later"
 	if got := a.questionHintFor(); got != twoHint {
 		t.Fatalf("the hint is %q, want %q", got, twoHint)
 	}

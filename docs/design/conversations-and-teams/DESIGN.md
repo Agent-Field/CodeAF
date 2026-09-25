@@ -1502,7 +1502,7 @@ depth block is not shown and the store's own `SetParent` is the only check.
 
 A proposal card names its kind on the first line, then what it does, then when and what one time costs. The words live in `session.StandingOptions` so the conversation, home, `--host` and the recorded `labels` say the same thing.
 
-- A reminder (`when.at`): `wants to remind you`. `Remind me <when>`, `Change…`, `Don't remind me`. No once.
+- A reminder (`when.at`): `wants to remind you`. `Remind me <when>`, `Change…`, `Don't remind me`. No once. A distance from now is said back with the clock it landed on, joined by a middle dot: `Remind me in 1 minute · 07:35`.
 - A repeating check (`when.every`): `wants to set up a repeating check`. `Set it up · <cadence>`, `Change…`, `Only now, don't repeat`, `Don't set it up`.
 - A watch (file, idle, probe): `wants to watch for something`. `Watch for it`, `Change…`, `Check once now`, `Don't watch`.
 - A rule (`when.hold`): `wants to keep a rule`. `Keep this rule`, `Change where…`, `Don't keep it`. No once.

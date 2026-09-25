@@ -119,7 +119,7 @@ that instant, then says back the moment it landed on. That is what the card
 shows:
 
 ```
-in 2 minutes — 06:54
+in 2 minutes · 06:54
 ```
 
 so you can check the time it settled on without reading a timestamp.
@@ -214,7 +214,7 @@ been marked `expired`, and the only trace would be a line in its own log:
 `its time ran out — no longer watching`.
 
 The mistake it exists to catch is arithmetic, not carelessness: a reminder said
-as "in 1 minute — 23:11" lands at 23:11:11, and an end taken from the same words
+as "in 1 minute · 23:11" lands at 23:11:11, and an end taken from the same words
 lands at 23:11:00 — eleven seconds too early. That is why the refusal spells
 both stamps out to the second.
 

@@ -1100,7 +1100,7 @@ func TestStandInResolvesTheDurationAndSaysTheMomentBack(t *testing.T) {
 			item.When.At.Format(time.RFC3339), before.Format(time.RFC3339), after.Format(time.RFC3339))
 	}
 	// AND IT IS SAID BACK, in both places a person and the model read.
-	want := "in 2 minutes — " + item.When.At.Format("15:04")
+	want := "in 2 minutes · " + item.When.At.Format("15:04")
 	if item.When.Words != want {
 		t.Fatalf("the cadence in words = %q, want %q", item.When.Words, want)
 	}
@@ -1149,11 +1149,11 @@ func TestStandingAtMomentReadsAStampOrADistanceAndNeverBoth(t *testing.T) {
 		problem string
 	}{
 		{name: "a stamp", at: "2026-08-21T18:00:00Z", moment: time.Date(2026, 8, 21, 18, 0, 0, 0, time.UTC)},
-		{name: "two minutes", in: "2m", moment: now.Add(2 * time.Minute), echo: "in 2 minutes — 06:54"},
-		{name: "one minute", in: "60s", moment: now.Add(time.Minute), echo: "in 1 minute — 06:53"},
-		{name: "ninety seconds", in: "90s", moment: now.Add(90 * time.Second), echo: "in 2 minutes — 06:53"},
-		{name: "under a minute", in: "30s", moment: now.Add(30 * time.Second), echo: "in 30 seconds — 06:52"},
-		{name: "an hour and a half", in: "1h30m", moment: now.Add(90 * time.Minute), echo: "in 1 hour 30 minutes — 08:22"},
+		{name: "two minutes", in: "2m", moment: now.Add(2 * time.Minute), echo: "in 2 minutes · 06:54"},
+		{name: "one minute", in: "60s", moment: now.Add(time.Minute), echo: "in 1 minute · 06:53"},
+		{name: "ninety seconds", in: "90s", moment: now.Add(90 * time.Second), echo: "in 2 minutes · 06:53"},
+		{name: "under a minute", in: "30s", moment: now.Add(30 * time.Second), echo: "in 30 seconds · 06:52"},
+		{name: "an hour and a half", in: "1h30m", moment: now.Add(90 * time.Minute), echo: "in 1 hour 30 minutes · 08:22"},
 		{name: "both", at: "2026-08-21T18:00:00Z", in: "2m", problem: "two answers to one question"},
 		{name: "backwards", in: "-2m", problem: "a distance into the future"},
 		{name: "not a duration", in: "two minutes", problem: "when.in is a duration"},
@@ -1498,7 +1498,7 @@ func TestADistanceFromNowIsUntouchedByTheRefusal(t *testing.T) {
 	if !moment.Equal(now.Add(time.Minute)) {
 		t.Fatalf("moment = %s, want one minute on", moment.Format(time.RFC3339))
 	}
-	if echo != "in 1 minute — 07:35" {
+	if echo != "in 1 minute · 07:35" {
 		t.Fatalf("echo = %q", echo)
 	}
 }
@@ -1536,7 +1536,7 @@ func TestAnExpiryAlreadyPassedIsRefused(t *testing.T) {
 // it was attached to stood up an item the pass could only ever retire.
 //
 // The receipt this pins is the one from that issue, to the second. The model
-// wrote "in 1 minute — 23:11" for the words and took 23:11 for the end out of
+// wrote "in 1 minute · 23:11" for the words and took 23:11 for the end out of
 // the same words, while the engine resolved the moment to 23:11:11 — so the
 // item was born eleven seconds past its own end, ran zero times, and was retired
 // as `expired` by rail one of the pass (internal/standing/tick.go).
