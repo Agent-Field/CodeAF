@@ -3618,6 +3618,9 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 	if notice, withdrawn := a.withdrawalNotice(call.Function.Name); withdrawn {
 		return toolResult{text: notice, isError: true, harness: true}
 	}
+	if notice, retired := a.teamRetiredNotice(call.Function.Name); retired {
+		return toolResult{text: notice, isError: true, harness: true}
+	}
 	// A name nobody ever had keeps the old answer, and keeps it word for word:
 	// that one IS a sentence about the model.
 	return toolResult{text: "Unknown tool: " + call.Function.Name, isError: true}

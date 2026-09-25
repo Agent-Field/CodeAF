@@ -360,6 +360,43 @@ func TestTeamsCloseWithNothingRunningIsOneClickAndUndo(t *testing.T) {
 	}
 }
 
+func TestTeamsCloseCountsAndStopsASubteamManagerSharedWithItsParent(t *testing.T) {
+	a, harbor, orbit := teamsPlaceLabIDs(t)
+	var shared chatTab
+	for _, tab := range a.tabList() {
+		if tab.key != a.frontTabKey() {
+			if parent, ok := a.teamByID(harbor); ok && parent.Holds(tab.key) {
+				shared = tab
+				break
+			}
+		}
+	}
+	if shared.key == "" {
+		t.Fatal("no shared member in the fixture")
+	}
+	if err := a.teamAdd(orbit, []chatTab{shared}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.teamMakeManager(orbit, shared); err != nil {
+		t.Fatal(err)
+	}
+	member := &fakeAgent{model: "m"}
+	watch := &behindWatch{}
+	watch.turning.Store(true)
+	a.behind[shared.key] = &kept{conv: Conversation{Agent: member, SessionFile: shared.file}, watch: watch}
+	drive(t, a, runCmd(a.teamsCloseAsk(orbit))...)
+	if !a.tsheet.on || a.tsheet.cursor != tsWrapUp {
+		t.Fatalf("the working sub-team manager was skipped: %+v", a.tsheet)
+	}
+	if text := teamsFrameText(a); !strings.Contains(text, a.teamManagerMark()+" manager") {
+		t.Fatalf("the card does not name the working manager:\n%s", text)
+	}
+	drive(t, a, runCmd(a.teamSheetDo(tsCloseNow))...)
+	if member.stops != 1 || a.tabShut[shared.key] {
+		t.Fatalf("Close now stopped %d turns and shut the parent's tab=%v", member.stops, a.tabShut[shared.key])
+	}
+}
+
 // SOMETHING RUNNING PUTS UP THE CARD: `Close now` first when no manager runs
 // the team, `Wrap up first` first when one does, and Cancel changes nothing.
 func TestTeamsCloseCardOffersWrapUpNowAndCancel(t *testing.T) {

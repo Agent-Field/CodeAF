@@ -63,17 +63,17 @@ type spendMemo struct {
 
 // teamPoolSpend is the pool owner's spend today, read again only when its
 // stamp moved.
-func (a *Agent) teamPoolSpend(profile, owner, day string) float64 {
+func (a *Agent) teamPoolSpend(profile, owner, day string) (float64, error) {
 	stamp := teamSpendStamp(profile, owner, day)
 	a.team.mu.Lock()
 	if held, ok := a.team.spends[owner]; ok && held.stamp == stamp {
 		a.team.mu.Unlock()
-		return held.usd
+		return held.usd, nil
 	}
 	a.team.mu.Unlock()
 	spend, err := teamSpendOf(profile, owner, day)
 	if err != nil {
-		return 0
+		return 0, err
 	}
 	a.team.mu.Lock()
 	if a.team.spends == nil {
@@ -81,7 +81,7 @@ func (a *Agent) teamPoolSpend(profile, owner, day string) float64 {
 	}
 	a.team.spends[owner] = spendMemo{stamp: stamp, usd: spend.USD}
 	a.team.mu.Unlock()
-	return spend.USD
+	return spend.USD, nil
 }
 
 // capPool is the pool team id draws on: its owner and the cap, 0 for none.
@@ -140,7 +140,10 @@ func (a *Agent) teamCapHold(profile string, roles []teamRole) string {
 // poolHold is why owner's pool is held, "" when it is not.
 func (a *Agent) poolHold(profile string, owner teams.Team, cap float64) string {
 	day := teamToday()
-	spent := a.teamPoolSpend(profile, owner.ID, day)
+	spent, err := a.teamPoolSpend(profile, owner.ID, day)
+	if err != nil {
+		return fmt.Sprintf("%s has a %s daily cap and today's spend could not be read (%s), so nothing new starts until it can be read", owner.Name, teamMoney(cap), oneLineTeam(err.Error()))
+	}
 	latest, found := latestCapPacket(profile, owner.ID, day)
 	ceiling := cap
 	if found && latest.State == teams.PacketDecided && latest.Decision == teams.OptionRaiseCap && latest.Cap.RaiseTo > ceiling {
