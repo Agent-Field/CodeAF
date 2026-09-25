@@ -55,11 +55,17 @@ package tui3
 //
 //   - THE LADDER IS THE NAV'S NOW (topnav.go's [app.navTails]). The line shares
 //     its row with the places, and the owner ruled the order the row gives
-//     things up in (2026-09-24): the clock, then the counts, then the places
-//     fold, and the day's figure is the last clause standing. This file used
-//     to rank `2 want you` last to go, on the argument that nothing else on
-//     the machine says it; a place's own rows and the strip's marks now say
-//     it on every page, and the places are how a person gets to them.
+//     things up in (2026-09-24): the clock, then the moving count, then the
+//     words of `2 want you` (never its count), then the places fold, and the
+//     day's figure is the last clause but one standing.
+//
+//   - AND THE COUNT THAT WANTS YOU NEVER LEAVES THE ROW. It was allowed to,
+//     for one wave, on the argument that a place's own rows and the strip's
+//     marks say it too; at eighty columns that left a conversation's frame
+//     with no number anywhere on its top line for the things stopped on the
+//     person reading it, which is the one fact a glance at this row is for.
+//     So `2 want you` shortens to `2 ?` in the same amber before anything
+//     else is given up, and it outlasts the money and the places.
 //
 //   - THE ALLOWANCE IS A FRACTION HERE, AND THE OWNER OVERRULED THIS FILE TO PUT
 //     IT THERE. What stood here for four waves was the opposite law, and it read:
@@ -162,7 +168,13 @@ func (a *app) pulseSegments(now time.Time, pal palette) []string {
 // `money` and `spend` are the two spellings of one clause — the fraction and the
 // figure — and they are the ladder's way of giving up the allowance without
 // giving up the day's bill.
-type pulseParts struct{ wants, hands, money, spend, clock string }
+//
+// `wants` and `ask` are the two spellings of the other clause that has two:
+// `2 want you` and `2 ?`, the same count in the same amber, the second in the
+// mark every tab and square waiting on a person wears ([tabSignalGlyph]). It
+// is how the ladder keeps the one thing that may never vanish on a row too
+// narrow for the words.
+type pulseParts struct{ wants, ask, hands, money, spend, clock string }
 
 func (a *app) pulseParts(now time.Time, pal palette, mode pulseMode) pulseParts {
 	facts := a.machine
@@ -180,6 +192,7 @@ func (a *app) pulseParts(now time.Time, pal palette, mode pulseMode) pulseParts 
 		// loudest thing this line can say and it is the first thing on it, which
 		// is the sort order of the list underneath said in one segment.
 		p.wants = pal.warn(itoa(facts.wants) + pulseWantWord)
+		p.ask = pal.warn(itoa(facts.wants) + " " + tabSignalGlyph(tabNeedsPerson, pal.ascii))
 	}
 	if facts.hands > 0 {
 		// CYAN, AND THE WHOLE CLAUSE, for the same reason: in flight is one fact.

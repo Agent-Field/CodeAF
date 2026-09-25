@@ -1381,14 +1381,15 @@ When there is not room for all of it, things give way **one at a time, in a fixe
 (the owner's order, 2026-09-24):
 
 ```
-clock (and `on <machine>`) → moving → want you → the allowance → the places fold into `more ▾` → the day's spend
+clock (and `on <machine>`) → moving → `2 want you` becomes `2 ?` → the allowance → the places fold into `more ▾` → the day's spend
 ```
 
-So the clock is the first thing off the line, the counts go next, and the places fold only
+So the clock is the first thing off the line, `moving` goes next, and the places fold only
 after that, into a `more ▾` word that opens a menu of exactly the places it folded. The
-day's figure is the last clause standing. Within the counts, `moving` goes before
-`want you` because a stopped thing needs you and a moving one does not; a stopped thing
-still wears its amber mark on its own tab in the strip under the line.
+day's figure goes after the places. **The count of things waiting on you never goes**: its
+words shorten to `2 ?`, the same count in the same amber and the mark a waiting tab wears,
+and that is on the line at every width. `moving` goes first because a stopped thing needs
+you and a moving one does not.
 
 **The allowance goes by respelling, not by slicing.** `$0.55 / $20` becomes `$0.55`,
 never `$0.55 /` and never a bound with nothing in front of it. And when the money segment

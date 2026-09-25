@@ -725,12 +725,15 @@ the words never changes (two blank cells between two words, one blank cell at ea
 the line):
 
 1. the clock goes first, and the `on <machine>` name with it over `--host`;
-2. then the counts, `3 moving` before `2 want you`;
-3. then the allowance behind the day's figure (`$1.20 / $20` becomes `$1.20`);
-4. then the trailing places fold, one at a time from the right, into a **`more ▾`** word;
-5. and last the day's figure itself.
+2. then `3 moving`;
+3. then the words of `2 want you`, which becomes `2 ?`, the same count in the same amber;
+4. then the allowance behind the day's figure (`$1.20 / $20` becomes `$1.20`);
+5. then the trailing places fold, one at a time from the right, into a **`more ▾`** word;
+6. and then the day's figure itself.
 
-At 80 columns all six places fit beside the day's figure. At 60 they read
+**The count of things waiting on you never goes.** `2 ?` outlasts the money and the places,
+at every width. At 80 columns all six places fit beside `2 ? · $1.20 / $20`. At 60, with
+nothing waiting on you, they read
 
 ```
  >● codeaf   home  teams  chats  sessions  more ▾     $1.20
