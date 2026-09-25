@@ -19,9 +19,10 @@ import (
 // said was a provider error. Now the door lets that launch open with no key
 // (cmd/codeaf's chatv3.go) and this screen asks for what a first day needs, in
 // TWO steps: the key every model call rides, and then one screen of controls —
-// the day's spending limit, the model you talk to, and the crew codeaf works
-// with. Under a minute; every control opens on the value already in force; the
-// way out is `Start a conversation`.
+// the day's spending limit and the model you talk to. The crew is not asked:
+// a task's crew is picked per task, and /crew is where it is seen. Under a
+// minute; every control opens on the value already in force; the way out is
+// `Start a conversation`.
 //
 // THE SECOND STEP IS ONE SCREEN AND NOT THREE QUESTIONS. It used to be a crew
 // chooser followed by a rails screen carrying three money rows, which is five
@@ -39,7 +40,7 @@ import (
 //     different because it is not a preference: with no key the default model
 //     provider cannot work, so its one-step connection returns on a later local
 //     interactive launch until it is answered.
-//   - IT ASKS ONLY WHAT IS MISSING. A key in the shell, a crew already chosen,
+//   - IT ASKS ONLY WHAT IS MISSING. A key in the shell, a model already chosen,
 //     a ceiling already written — each drops its step. A person who has some of
 //     it configured sees only the rest, and one who has all of it sees nothing.
 //   - IT STEALS NO KEYSTROKE FROM A CONVERSATION. The first-run questions open
@@ -54,9 +55,9 @@ import (
 // is what it shows before that, and the box's arrival animation starts fresh the
 // moment this screen goes ([app.endSetup]).
 //
-// Every write goes through the settings registry rows — the key row, the crew
-// row, the daily budget row — so what this screen lands in the profile is
-// byte-for-byte what /settings, /crew and a hand edit would have landed, and
+// Every write goes through the settings registry rows — the key row, the chat
+// model row, the daily budget row — so what this screen lands in the profile is
+// byte-for-byte what /settings, /model and a hand edit would have landed, and
 // changing any of it later is those three doors.
 
 // setupStep is one of the two questions.
@@ -92,11 +93,6 @@ type setupFlow struct {
 	//     viewport and a filter over the WHOLE catalog rather than a truncation
 	//     of it, because a form with five rows must still reach two hundred
 	//     models.
-	//   - crewOpen and crewAt are the crew chooser's cursor, which is
-	//     PROVISIONAL; crewPick is the preset a person actually accepted with
-	//     enter, and is empty until they do. That is what makes esc out of the
-	//     chooser choose nothing, and what stops `Start a conversation` writing a
-	//     preset over somebody's hand-pinned tiers.
 	//   - reviewOpen is the optional reading of the settings this screen
 	//     deliberately does not ask about, example is which illustration the
 	//     right-hand column is showing, and seeded says the screen has already
@@ -110,10 +106,6 @@ type setupFlow struct {
 	modelAt    int
 	modelTop   int
 	modelFind  string
-	crewOpen   bool
-	crewAt     int
-	crewPick   string
-	crewSource string
 	reviewOpen bool
 	example    int
 	seeded     bool
@@ -143,23 +135,20 @@ type setupFlow struct {
 // setupSteps is which of the two questions this conversation still needs
 // answered, in the order they are asked. The provider question uses the same
 // answer as enter, so setup cannot ask for a default-service key a connected
-// service carrying this conversation does not need. The controls keep using
-// internal/config's own predicates, so the screen cannot ask for a crew /crew
-// would already report.
+// service carrying this conversation does not need.
 //
-// THE CONTROLS SCREEN IS ONE STEP AND SO IT IS ASKED AS ONE. It carries three
-// controls and it opens when EITHER of the two persisted ones is still unwritten
-// — a profile that has a crew and no limit is shown both, with the crew already
-// on the value it chose, because a screen that dropped the row a person had
-// answered would read as a different screen every time it opened. The chat model
-// is not in the condition: it resolves from the build and from CODEAF_MODEL until
-// somebody chooses, so a profile is never MISSING one.
+// THE CONTROLS SCREEN IS ONE STEP AND SO IT IS ASKED AS ONE. It carries two
+// controls and it opens while the persisted one — the daily limit — is still
+// unwritten. The chat model is not in the condition: it resolves from the
+// build and from CODEAF_MODEL until somebody chooses, so a profile is never
+// MISSING one. The crew is not in it either: a task's crew is picked per task
+// and asks nothing up front.
 func (a *app) setupSteps() []setupStep {
 	steps := make([]setupStep, 0, 2)
 	if a.defaultProviderNeeded() {
 		steps = append(steps, setupKey)
 	}
-	if !config.CrewConfigured(a.profileDir) || !config.DailyBudgetConfigured(a.profileDir) {
+	if !config.DailyBudgetConfigured(a.profileDir) {
 		steps = append(steps, setupControls)
 	}
 	return steps
@@ -185,7 +174,7 @@ func (a *app) setupSteps() []setupStep {
 //
 // THE HOSTED WINDOW IS THE ONE THAT KEEPS ITS EARLY RETURN, and it is the whole
 // of what the old guard was reaching for. What this screen writes — a key, a
-// crew, three spending rails, the marker saying it was shown — lands in the
+// chat model, a spending rail, the marker saying it was shown — lands in the
 // profile of the machine the AGENT is on, and over --host that machine is not
 // this one. A form here would write this laptop's answers about somebody else's
 // session, so a connection is asked nothing.
@@ -250,7 +239,7 @@ func (a *app) endSetup(skipped bool) tea.Cmd {
 	a.cancelSetupAuth()
 	// THE QUESTIONS THIS ESC WALKED PAST GET A DOOR. `setup_seen_at` is stamped
 	// whichever way this screen ended and only the key-only form ever reopens,
-	// so the crew and the day's limit are retired here — silently, until this
+	// so the chat model and the day's limit are retired here — silently, until this
 	// line. It names the step ON SCREEN and the ones under it, because esc left
 	// that one unanswered too, and nothing a person already answered.
 	var later []string
@@ -305,7 +294,7 @@ const setupNoKeyWord = "no openrouter key yet · paste one into /settings, or ex
 // flow. It is a constant because it was SIX spellings of one key and one of them
 // disagreed with the other five: the browser-connect step said `esc not now`,
 // which reads as a promise that the question comes back, and esc on any step
-// stamps `setup_seen_at` and the crew and budget questions never open again
+// stamps `setup_seen_at` and the model and budget questions never open again
 // ([app.endSetup]).
 const setupSkipKeysWord = "esc skips setup"
 
@@ -672,7 +661,7 @@ const (
 // THE TEST IS STRUCTURAL AND NOT A GUESS AT THE PROSE. Every refusal the
 // registry authors is a plain fmt.Errorf with nothing wrapped inside it —
 // `that's not a dollar amount — a number, or none for no limit`,
-// `pick one of: frugal, balanced, max`, `OpenRouter key is set by
+// `pick one of: on, off`, `OpenRouter key is set by
 // OPENROUTER_API_KEY` — while every failure that came off the disk is wrapped
 // around the operating system's own error (internal/config's
 // writeProfileValues wraps each one with %w). So an error that wraps another

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"io"
 	"os"
 	"path/filepath"
@@ -937,7 +938,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// engine's own nothing. The ask is built once and a client is made from it
 	// per call, each billed to the judge's own seat.
 	taskLanded := poolJudgeHook(settings, settings.ProfileDir, workspace,
-		config.AutoModels, poolJudgeAsk(settings, settings.ProfileDir), time.Now, "task")
+		config.CrewCatalog, poolJudgeAsk(settings, settings.ProfileDir), time.Now, "task")
 	// The runs a live process would have judged but a process death left unjudged,
 	// and the headless doors that never had this hook: at start, on a goroutine
 	// nobody waits on, judge the resumed session's own final-state nodes and the
@@ -945,7 +946,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// process tracker cancels and joins it at close.
 	poolErrandGoCtx(settings.ProfileDir, "pool/judge-sweep", func(ctx context.Context) {
 		poolJudgeSweepRun(ctx, settings, settings.ProfileDir, found.Place.Tasks(),
-			config.AutoModels, poolJudgeAsk(settings, settings.ProfileDir), time.Now)
+			config.CrewCatalog, poolJudgeAsk(settings, settings.ProfileDir), time.Now)
 	})
 
 	cfg := session.Config{
@@ -1627,6 +1628,16 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	cfg.ApprovalPolicy = policy
 	cfg.RolesSource = source
 	cfg.OneModel = oneModel
+	// EVERY TASK THIS CONVERSATION STARTS IS ROUTED ITS OWN CREW — worker,
+	// planner, checker picked for that task from the profile's allowed models
+	// and pins (internal/config's RouteCrew, internal/session's taskcrew.go).
+	// Under `--one-model` there is no crew: every call rides the conversation's
+	// model, which is what the flag says, so no router is handed over.
+	if !oneModel {
+		cfg.RouteCrew = func(ask config.CrewAsk) (crewroute.Decision, error) {
+			return config.RouteCrew(profileDir, ask)
+		}
+	}
 	cfg.SpendRailUSD = rail
 	// The fallback chain reads PROFILE-ONLY, like the search keys below and
 	// unlike the three rows above it. A repository that could answer this could
@@ -2153,7 +2164,7 @@ func v3SearchSeam(brain *store.Store) tui3.SearchStore {
 // IT IS LIVE. It used to be resolved once, at boot, on the argument that two
 // calls in one conversation must not answer to different settings — and the
 // crew is what makes that argument the wrong way round. A person who types
-// `/crew max` because the planner is not thinking hard enough has said something
+// `/crew pin planner …` because the planner is not thinking hard enough has said something
 // about the run they are about to start, not about the next launch, and a source
 // that made them restart to be heard would be a knob that does nothing on the
 // surface that offers it.
@@ -2284,6 +2295,12 @@ func (c *v3Crew) snapshot() (map[string]string, error) {
 	// the cheapest question in it. The mastermind tier: it plans adaptive runs
 	// and designs saved harnesses, and a repository that could point it at a
 	// model would be spending a visitor's credit on the run it asked for.
+	// A CHECKER NO PROJECT NAMED IS THE CREW'S: its pin, or the router's
+	// standing pick ([config.TierModelAt]) — never an empty row that would
+	// fall to the conversation's model.
+	if strings.TrimSpace(high) == "" {
+		high = config.TierModelAt(c.profileDir, config.ModelTierHigh)
+	}
 	values := map[string]string{
 		roles.TierKey(roles.TierReflex):     config.TierModelAt(c.profileDir, config.ModelTierReflex),
 		roles.TierKey(roles.TierMastermind): config.TierModelAt(c.profileDir, config.ModelTierMastermind),

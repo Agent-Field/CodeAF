@@ -5245,17 +5245,14 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		a.landedCard(node)
 	}
 	var pilot tea.Cmd
+	// A ROUTED TASK SAYS ITS CREW TWICE: which crew it got and the estimate
+	// when it starts, and what it cost beside the estimate when it lands
+	// (crew.go's [app.sayTaskCrew], once per end per task).
+	a.sayTaskCrew(*notice)
 	switch notice.State {
 	case session.TaskRunning:
 		// The node is alive, so the surface starts WATCHING it (see [taskPilot]).
 		pilot = a.flyPilot(notice.ID)
-		// AND THIS IS THE MOMENT THE WORK SEAT IS ACTUALLY SPENT, which is where
-		// the one line about a seat nobody pinned belongs (crew.go's
-		// [app.sayWorkSeat], said once per session). It is here rather than at
-		// either door — the /task command's own receipt, and the proposal a
-		// person answers — because both roads end at this fold and a line hung
-		// on one of them would be silent on the other.
-		a.sayWorkSeat()
 	case session.TaskDone, session.TaskFailed, session.TaskUnverified:
 		// UNVERIFIED IS A LANDING. The run is over, the slot is handed back and
 		// the pilot's lane has ended, so a surface that waited for one of the
@@ -5373,6 +5370,10 @@ func (a *app) dropTasks() {
 	a.closeRoom()
 	a.task = nil
 	a.tasks = nil
+	// THE CREW LINES GO WITH THEIR TASKS. They are keyed by task number, and
+	// the next conversation numbers its tasks from 1 again: a line remembered
+	// as landed would silence that conversation's own task 1.
+	a.crewSaid = nil
 	a.typedTaskBriefs = nil
 	a.taskOrder = nil
 	a.taskSeen = nil

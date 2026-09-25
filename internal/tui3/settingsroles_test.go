@@ -97,15 +97,15 @@ func TestTheRolesSectionSaysWhatAnswersEachRole(t *testing.T) {
 		role       roles.Role
 		tier, want string
 	}{
-		// The two masterminds sit apart from the careful work now: one answer
-		// that decides what every other call does is a different bill from many
-		// short answers that must not be wrong.
-		{roles.RolePlanner, "mastermind", "test/thinking-model"},
-		{roles.RoleDesigner, "mastermind", "test/thinking-model"},
+		// The two planning roles sit on the planner seat, apart from the
+		// checker: one answer that decides what every other call does is a
+		// different bill from many short answers that must not be wrong.
+		{roles.RolePlanner, "planner", "test/thinking-model"},
+		{roles.RoleDesigner, "planner", "test/thinking-model"},
 		// The worker is the seat that does the work, and sits apart from the
 		// small calls beside it.
 		{roles.RoleWorker, "worker", "test/worker-model"},
-		{roles.RoleAuditor, "careful work", "test/careful-model"},
+		{roles.RoleAuditor, "checker", "test/careful-model"},
 		{roles.RoleTitle, "small work", "test/cheap-model"},
 	} {
 		row := roleItem(t, a, c.role)
@@ -149,7 +149,7 @@ func TestTheRolesSectionSaysWhatAnswersEachRole(t *testing.T) {
 	}
 	want := []string{
 		rolesHead + " · reflex", rolesHead + " · small work", rolesHead + " · worker",
-		rolesHead + " · careful work", rolesHead + " · mastermind",
+		rolesHead + " · checker", rolesHead + " · planner",
 	}
 	if strings.Join(heads, "|") != strings.Join(want, "|") {
 		t.Fatalf("the class headings read %v, want %v", heads, want)
@@ -174,19 +174,18 @@ func TestTheRolesSectionSaysWhatAnswersEachRole(t *testing.T) {
 	if !strings.Contains(selected.meta.about, roles.Describe(roles.RolePlanner)) {
 		t.Fatalf("the selected role's line does not say what it is: %q", selected.meta.about)
 	}
-	if !strings.Contains(selected.meta.about, "follows mastermind above") {
+	// THE PLANNER IS A CREW SEAT, and a crew seat is set on the crew panel
+	// rather than on a row above this one (settings.go's [sheet.roleAbout]).
+	if !strings.Contains(selected.meta.about, "follows the planner seat (/crew)") {
 		t.Fatalf("the selected role's line reads %q", selected.meta.about)
 	}
 }
 
-// A ROLE WHOSE CLASS SHIPS WITH A MODEL ANSWERS ON IT, and a role whose class was
-// CLEARED falls to the conversation — [roles.Resolve]'s floor, and not a failure.
-//
-// The first half is new since the crew landed: all five classes arrive pointed at
-// a model (internal/config's crew.go), because a whole crew following the
-// conversation means the most expensive model in the build answering the cheapest
-// questions in it. The second half is the answer a person can still give.
-func TestARoleFollowsItsShippedClassAndThenTheConversation(t *testing.T) {
+// A ROLE ON A SMALL-WORK CLASS ANSWERS ON THE MODEL THAT CLASS SHIPS WITH, a
+// role on a crew seat answers on its pin, and a crew seat nothing pinned — with
+// no catalog to route from — falls to the conversation, [roles.Resolve]'s
+// floor, never a model this build chose for everybody.
+func TestARoleFollowsItsClassAndThenTheConversation(t *testing.T) {
 	a, _ := sheetApp(t)
 	a.openSettings()
 	toProviders(t, a)
@@ -195,22 +194,20 @@ func TestARoleFollowsItsShippedClassAndThenTheConversation(t *testing.T) {
 		role roles.Role
 		want string
 	}{
-		{roles.RolePlanner, config.DefaultMastermindModel},
-		{roles.RoleWorker, config.DefaultWorkerModel},
 		{roles.RoleTitle, config.DefaultLowModel},
-		{roles.RoleAuditor, config.DefaultHighModel},
 		{roles.RoleReflex, config.DefaultReflexModel},
 	} {
 		if got := roleItem(t, a, c.role).model; got != c.want {
 			t.Errorf("%s resolves to %q, want its class's shipped %q", c.role, got, c.want)
 		}
 	}
-
-	// Cleared on purpose is an ANSWER: the class follows the conversation and so
-	// does every role on it.
+	setRow(t, a, config.KeyTierMastermindModel, "vendor/pinned-planner")
+	if got := roleItem(t, a, roles.RolePlanner).model; got != "vendor/pinned-planner" {
+		t.Errorf("with the planner pinned, the planner role resolves to %q", got)
+	}
 	setRow(t, a, config.KeyTierMastermindModel, "")
 	if got := roleItem(t, a, roles.RolePlanner).model; got != a.model {
-		t.Errorf("with the mastermind cleared, the planner resolves to %q, want %q", got, a.model)
+		t.Errorf("with the planner back on auto and nothing to route from, the planner resolves to %q, want %q", got, a.model)
 	}
 }
 
@@ -335,11 +332,11 @@ func TestSearchingFindsARoleByName(t *testing.T) {
 // panel grew, so it must not touch whatever the cursor happens to be on.
 func TestDelOnAnOrdinaryRowChangesNothing(t *testing.T) {
 	a := tieredSheet(t)
-	cursorTo(t, a, config.KeyTierHighModel)
+	cursorTo(t, a, config.KeyTierLowModel)
 	drive(t, a, key("delete"))
 
-	row, _ := a.sheet.registry.Row(config.KeyTierHighModel)
-	if row.Value() != "test/careful-model" {
+	row, _ := a.sheet.registry.Row(config.KeyTierLowModel)
+	if row.Value() != "test/cheap-model" {
 		t.Fatalf("del changed a tier row to %q", row.Value())
 	}
 	if got := roleItem(t, a, roles.RoleWorker); got.pin != "" {

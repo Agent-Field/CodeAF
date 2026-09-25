@@ -244,9 +244,9 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	}
 	processCtx, processStop := context.WithCancel(context.Background())
 	models := catalog.LoadLazy(processCtx, discovery)
-	// A tier row that says auto is answered from this catalog (config.AutoModels):
+	// The crew router picks its seats from this catalog (config.CrewCatalog):
 	// the same non-blocking read, never a fetch, and set once at start-up.
-	config.AutoModels = models.ModelsNow
+	seatCrewRows(models.ModelsNow)
 	wirePoolIndex(settings.ProfileDir)
 	shelf := newV3ModelShelf(models, discovery)
 	shelf.setSources(settings.Sources)

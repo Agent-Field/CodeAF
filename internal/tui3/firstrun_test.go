@@ -105,15 +105,12 @@ func TestTheSetupOpensOverAnEmptyProfileAndNotOverAConfiguredOne(t *testing.T) {
 		if err := config.WriteAPIKey(dir, "sk-or-v1-0123456789abcdef"); err != nil {
 			t.Fatal(err)
 		}
-		if err := config.ApplyCrew(dir, config.CrewFrugal); err != nil {
-			t.Fatal(err)
-		}
 		if err := config.WriteDailyBudgetUSD(dir, 9); err != nil {
 			t.Fatal(err)
 		}
 	})
 	if b.setup.open {
-		t.Fatal("a profile with all three answered must not be asked")
+		t.Fatal("a profile with the key and the limit answered must not be asked")
 	}
 	if config.SetupSeenAt(dir).IsZero() {
 		t.Fatal("a launch with nothing to ask still records that the setup was met")
@@ -268,7 +265,7 @@ func TestTakingTheControlsAsTheyStandLandsTheDefaultsInTheProfile(t *testing.T) 
 	screen := setupScreen(a)
 	for _, want := range []string{
 		"Models and spending", "Keep these choices or change them.",
-		"Daily limit", "Chat model", "Work crew", "Start a conversation",
+		"Daily limit", "Chat model", "Start a conversation",
 	} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("the controls screen must say %q; got:\n%s", want, screen)
@@ -280,26 +277,28 @@ func TestTakingTheControlsAsTheyStandLandsTheDefaultsInTheProfile(t *testing.T) 
 	if want := "$" + setupBudgetDefault(); !strings.Contains(screen, want) {
 		t.Fatalf("the limit must show %s, the amount it will keep; got:\n%s", want, screen)
 	}
-	// THE THREE ONE-LINE EXPLANATIONS ARE ON THE SCREEN, all three at once,
-	// because they are what makes three unfamiliar words into three decisions.
-	for _, want := range []string{controlLimitWord, controlModelWord, controlCrewWord} {
+	// THE ONE-LINE EXPLANATIONS ARE ON THE SCREEN, both at once, because they
+	// are what makes unfamiliar words into decisions.
+	for _, want := range []string{controlLimitWord, controlModelWord} {
 		if !strings.Contains(screen, strings.Join(strings.Fields(want), " ")) {
 			t.Fatalf("the controls screen must explain itself with %q; got:\n%s", want, screen)
 		}
 	}
 
 	// tab down to `Start a conversation`, and take it.
-	pressSetup(a, key("tab"), key("tab"), key("tab"), key("tab"))
+	pressSetup(a, key("tab"), key("tab"), key("tab"))
 	if a.setup.control != controlStart {
-		t.Fatalf("four tabs from the limit reach the way out, got %v", a.setup.control)
+		t.Fatalf("three tabs from the limit reach the way out, got %v", a.setup.control)
 	}
 	pressSetup(a, key("enter"))
 	if a.setup.open {
 		t.Fatal("enter on `Start a conversation` closes the setup")
 	}
 
-	if !config.CrewConfigured(dir) || config.CrewAt(dir) != config.CrewBalanced {
-		t.Fatalf("taking the crew as it stands must write balanced; profile reads %q", config.CrewAt(dir))
+	// AND THE CREW IS NOT WRITTEN: it is auto, picked per task, and nothing
+	// on this screen answers it.
+	if pins := config.CrewPinsAt(dir); len(pins) != 0 {
+		t.Fatalf("taking the controls pinned a seat: %v", pins)
 	}
 	if !config.DailyBudgetConfigured(dir) {
 		t.Fatal("taking the limit as it stands must write it into the profile")
@@ -350,7 +349,7 @@ func TestATypedOrPastedKeyIsWrittenAndHandedToTheSession(t *testing.T) {
 		t.Fatalf("the running session must be handed the key once, got %v", *handed)
 	}
 	// And on the controls screen a typed amount replaces the figure that was
-	// drawn, and the crew chosen in the list is the one that lands.
+	// drawn.
 	if a.setup.step() != setupControls {
 		t.Fatalf("a written key goes on to the controls; step = %v", a.setup.step())
 	}
@@ -361,17 +360,9 @@ func TestATypedOrPastedKeyIsWrittenAndHandedToTheSession(t *testing.T) {
 	if rail, _ := config.DailyBudgetUSDAt(dir); rail != 7.5 {
 		t.Fatalf("a typed ceiling replaces the default, profile reads %v", rail)
 	}
-	pressSetup(a, key("tab"))
-	if a.setup.control != controlCrew {
-		t.Fatalf("the focus is on %v, want the crew", a.setup.control)
-	}
-	pressSetup(a, key("enter"), key("down"), key("enter"))
-	pressSetup(a, key("tab"), key("tab"), key("enter"))
+	pressSetup(a, key("tab"), key("tab"), key("tab"), key("enter"))
 	if a.setup.open {
 		t.Fatalf("`Start a conversation` did not finish the flow: %s", a.setup.refusal)
-	}
-	if config.CrewAt(dir) != config.CrewMax {
-		t.Fatalf("↓ then enter takes the next preset; profile reads %q", config.CrewAt(dir))
 	}
 	for _, e := range a.entries {
 		if e.kind == entryNote && strings.Contains(e.text, "no openrouter key") {
@@ -412,8 +403,8 @@ func TestEscSkipsTheWholeFlowAndWritesNothingButTheMarker(t *testing.T) {
 	if cmd == nil || a.welcome.step != 0 {
 		t.Fatal("the box's arrival starts from its first frame when the setup goes")
 	}
-	if config.CrewConfigured(dir) || config.DailyBudgetConfigured(dir) || config.APIKeyConfigured(dir) {
-		t.Fatal("skipping writes none of the three")
+	if len(config.CrewPinsAt(dir)) != 0 || config.DailyBudgetConfigured(dir) || config.APIKeyConfigured(dir) {
+		t.Fatal("skipping writes none of them")
 	}
 	if config.SetupSeenAt(dir).IsZero() {
 		t.Fatal("skipping counts as shown")

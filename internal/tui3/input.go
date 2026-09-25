@@ -529,10 +529,6 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	if a.pick.open && msg.String() != "ctrl+c" {
 		return a.pickerKey(msg)
 	}
-	if a.crewPick.open && msg.String() != "ctrl+c" {
-		a.crewPickerKey(msg)
-		return nil
-	}
 	// AND THE THINKING CHOOSER IS MODAL ON THE CREW CHOOSER'S TERMS AND FOR ITS
 	// REASON (effortchip.go): it is five fixed words with no filter under them, so
 	// a plain letter falling through to the box would be a letter typed into a
@@ -577,6 +573,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// leaving the conversation exactly as it was (harnesspanel.go).
 	if a.harnPanel.open && msg.String() != "ctrl+c" {
 		return a.harnessPanelKey(msg)
+	}
+
+	// And the crew panel, on those panels' terms exactly (crewpanel.go): opened
+	// by a command, nothing typed under it — its filters and holes are its own —
+	// and esc stepping back one level at a time until it closes.
+	if a.crewUI.open && msg.String() != "ctrl+c" {
+		return a.crewKey(msg)
 	}
 
 	// And the permissions panel, which is those panels' twin (permissions.go):
@@ -1692,6 +1695,19 @@ func (a *app) inputBlockUnfloored(width int) ([]string, int, int) {
 		}
 		if a.connPanel.filtering {
 			return draftBlock(&a.connPanel.filter, a.pal, width, 1, connectFilterHint, "")
+		}
+	}
+	// AND THE CREW PANEL'S TWO LISTS TAKE IT ON THE SAME TERMS: the seat list's
+	// filter and the checklist's are this surface's one-line box, in the place
+	// /model's filter stands (crewpanel.go). A hole on one of its rows is typed
+	// on the row itself, and the caret then has no box to live in and is hidden,
+	// on the law the /connect panel's choice follows above.
+	if a.crewUI.open {
+		if box := a.crewBox(); box != nil {
+			return draftBlock(box, a.pal, width, 1, crewPickHint, "")
+		}
+		if a.crewUI.edit != nil {
+			a.caret = false
 		}
 	}
 	// AND WHERE THE DRAFT ITSELF WOULD BE, ONE DIM LINE WHEN ANOTHER WINDOW HAS

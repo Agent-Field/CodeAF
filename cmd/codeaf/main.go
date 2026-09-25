@@ -13,6 +13,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"io"
 	"log"
 	"os"
@@ -800,7 +801,7 @@ func runPlanNew(name string, args []string) error {
 		return err
 	}
 	useAutoSeats(settings)
-	seats := config.ResolveSeats(settings.ProfileDir, *model, *planModel)
+	seats := doorSeats(settings, *model, *planModel, goal)
 	applySeats(&settings, seats)
 	workClient, err := settings.Client()
 	if err != nil {
@@ -980,7 +981,7 @@ func runRevise(name string, args []string) error {
 		return err
 	}
 	useAutoSeats(settings)
-	seats := config.ResolveSeats(settings.ProfileDir, *model, *planModel)
+	seats := doorSeats(settings, *model, *planModel, graph.Goal+"\n\n"+event)
 	applySeats(&settings, seats)
 	workClient, err := settings.Client()
 	if err != nil {
@@ -1212,22 +1213,21 @@ func applyModelFlags(settings *config.Config, model, planModel string) {
 	}
 }
 
-// THE TWO MODEL FLAGS SAY THE SAME THING AT EVERY DOOR, so they say it once.
+// THE THREE MODEL FLAGS SAY THE SAME THING AT EVERY DOOR, so they say it once.
 //
-// The wording they replaced was `(default CODEAF_MODEL)`, which named one rung
-// of four and hid the two that decide most runs: a profile's crew, and this
-// build's own default when nobody has said anything at all. A help string that
-// names the whole ladder is the shortest place a person can learn that their
-// crew reaches this command (config.ResolveSeats).
+// Each is a ONE-TASK PIN: the flag, then its variable, then the crew — a pin
+// the profile holds (/crew pin) or the router's pick for this task
+// (config.ResolveSeats). The check seat never falls to the plan seat, and no
+// seat falls to a model this build chose for everybody.
 const (
-	workLadderHelp    = "flag › CODEAF_MODEL › crew › default"
-	planLadderHelp    = "flag › CODEAF_PLAN_MODEL › crew mastermind › the work model"
-	checkLadderHelp   = "flag › CODEAF_CHECK_MODEL › plan pinned by flag or environment › crew careful"
-	modelFlagHelp     = "work model for this run (" + workLadderHelp + ")"
-	planModelFlagHelp = "model that plans, when different from the work model (" + planLadderHelp + ")"
-	// The check seat's ladder names its environment rung and the resolved
-	// plan seat fallback before the crew's careful row.
-	checkModelFlagHelp = "model that checks finished work (" + checkLadderHelp + ")"
+	workLadderHelp    = "flag › CODEAF_MODEL › crew pin › crew routed per task"
+	planLadderHelp    = "flag › CODEAF_PLAN_MODEL › crew pin › crew routed per task"
+	checkLadderHelp   = "flag › CODEAF_CHECK_MODEL › crew pin › crew routed per task"
+	modelFlagHelp     = "work model for this run, a one-task pin (" + workLadderHelp + ")"
+	planModelFlagHelp = "model that plans, a one-task pin (" + planLadderHelp + ")"
+	// The check seat's ladder is its own: a pinned planner says something about
+	// planning and nothing about who grades the work.
+	checkModelFlagHelp = "model that checks finished work, a one-task pin (" + checkLadderHelp + ")"
 )
 
 // yesSpendFlagHelp is what `--yes-spend` MEANS, said once, on both doors that
@@ -1294,6 +1294,32 @@ func debugRecordRoot() string {
 // environment reading underneath. One assignment per seat, so the models a
 // door's receipt names and the clients it then builds cannot be different
 // models.
+// doorSeats is the crew every headless door that is not `codeaf do` runs on:
+// the flags as one-task pins, and every seat nothing named routed for the task
+// text the door has (empty reads as open-ended work, the router's safe
+// default). A profile written before crews were routed is migrated first, with
+// its one line.
+//
+// AT THE DAILY CAP THESE DOORS WARN AND GO ON. `codeaf do` refuses there
+// unless told -yes-spend, because it is the door campaigns run through; these
+// are a person at a terminal running one plan step or one program, and the
+// line on stderr is said before anything is spent. A seat nothing allowed can
+// sit is said too, and the seat is left for the door's own model to fill.
+func doorSeats(settings config.Config, model, planModel, task string) config.Seats {
+	if line, _ := config.MigrateCrew(settings.ProfileDir); line != "" {
+		fmt.Fprintln(os.Stderr, line)
+	}
+	seats, err := config.ResolveSeats(settings.ProfileDir, config.SeatFlags{Model: model, PlanModel: planModel},
+		config.CrewAsk{Task: crewroute.Task{Text: task}})
+	switch {
+	case errors.Is(err, config.ErrCrewAtCap):
+		fmt.Fprintln(os.Stderr, "note: today's crew spend has reached the daily cap · this run goes ahead; `codeaf do` would have stopped")
+	case err != nil:
+		fmt.Fprintln(os.Stderr, "note: "+err.Error())
+	}
+	return seats
+}
+
 func applySeats(settings *config.Config, seats config.Seats) {
 	settings.Model = seats.Work.Model
 	settings.PlanModel = seats.Plan.Model

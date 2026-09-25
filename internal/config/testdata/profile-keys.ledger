@@ -45,8 +45,13 @@ model.work
 model_pool
 model_sources
 models.crew
+models.crew.allowed
+models.crew.cap
+models.crew.free_routes
 models.crew.pick
+models.crew.providers.off
 models.crew.source
+models.crew.task_cap
 models.fallbacks
 models.pool.public_key
 models.roles

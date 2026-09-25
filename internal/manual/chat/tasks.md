@@ -594,7 +594,7 @@ alongside the reply rather than in front of it, which is its own section below.
 
 **A yes is asked twice.** The cheap model only screens — it reads every substantial message
 and every wordy turn, which is why it is cheap — and it cannot start anything on its own. Before a task exists, the same
-question is put once more to your **mastermind** model, in the same words, with none of the
+question is put once more to your **planner** model, in the same words, with none of the
 first answer in front of it. Only if both say yes does the work start, and then one dim line
 goes into the transcript:
 
@@ -1017,7 +1017,7 @@ thinking tier, and both are deliberately crew-only — with no crew they are ski
 handed to the model that has just written the answer and would be editing itself. So if nothing
 is set for them, they have no model at all, and this is the sentence that says so.
 
-**What to do about it.** Set a thinking-tier model with `/crew`, or pin the two roles on the
+**What to do about it.** Pin a planner with `/crew pin planner <model>`, or pin the two roles on the
 **pinned roles** row in `/settings` → Providers — they are called `markreader` and `handoff`,
 so the row reads `markreader:openai/gpt-5, handoff:openai/gpt-5`. Or run with `--one-model`,
 which settles them on the model you are talking to along with everything else. Either way the
@@ -2288,11 +2288,9 @@ proposal card and the model's own proposals run under the conversation's own lim
 you set it — and under the day's limit above it. An adaptive run they start opens on the
 $100.00 default.
 
-**A task has no dollar limit of its own**, which the Spending tab says on its `per task`
-row in those words: `no limit of its own · it spends against the day and this conversation`.
-Its own bounds are steps and time. The composer layer's third line is the one place a
-figure is put on a single piece of work, and there is no per-task money row to edit
-anywhere in settings.
+**Every task also has a money limit of its own: $5 unless you set another**, shown on the
+Spending tab's `per task` row and set with `/crew cap task <$>`. A call that would spend
+past it is not made, whichever way the task was started, and the task stops there.
 
 Changing the engine's default changes the figure the composer layer opens on; the two are
 meant to be one number and are stated in both places on purpose.
@@ -3944,7 +3942,7 @@ because a second model read it and drew its parts, that drawing is put to this s
 beside the new task's worker, which starts at once rather than waiting for the reading — so
 the parts somebody already named are handed out without the worker having to find them
 again. Everything below applies to it without exception: the same tests, the same reading
-by the mastermind, the same refusals. The receipt reads the same too, and reaches the worker
+by the planner, the same refusals. The receipt reads the same too, and reaches the worker
 while it works, telling it the parts are now somebody else's so it does not do them again;
 an answer that arrives after the worker has finished is dropped. *When a reply is taken out of your hands* is where that happens.
 
@@ -4011,7 +4009,7 @@ parameters, not piles, and evidence that names no pile at all counts zero.
 read your request and judged it broad — the wide line before a `/task`, a proposal I marked
 wide, a message the harness moved to a task — and the count then says the evidence names too
 few items, those are two readings of the same work disagreeing. The count is not the last
-word there: the division goes to the mastermind, which decides it on the parts themselves.
+word there: the division goes to the planner, which decides it on the parts themselves.
 That is the whole of the exception, it exists only while the count is on, and the free-lane
 test is never waived by anything.
 
@@ -4028,27 +4026,27 @@ worker split out and a part a second model drew — so a part never depends on t
 doing the splitting remembering to restate the job once per part. Your own sentence still
 appears exactly once, at the top, where it appears on every task.
 
-**And then the plan itself is read once, by your `mastermind` model.** The tests above are
+**And then the plan itself is read once, by your `planner` model.** The tests above are
 about whether a split is worth it; neither of them reads the parts. But what a part owns is
 everything that worker will act on — it is not handed your conversation and cannot
 ask anybody anything, though the brief names the journal path and line of your original
 words so it can read them if the restatement was cut — and the scopes were written by whatever model the task itself runs on.
-So once those have passed, the whole division goes to the mastermind at once: the
+So once those have passed, the whole division goes to the planner at once: the
 evidence, the work it came out of, and every part beside its siblings. It can sharpen a
 scope, fix a boundary two parts share, fold two parts into one, or say the parts are really
 stages of one procedure and not a division at all — in which case nothing is split and the
 worker carries on, exactly as a no from a test above. So the parts you see may be fewer
 than the worker asked for, and what they own may not be word for word what it wrote.
 
-**And it has one more answer, which is not about the split at all.** The mastermind may
+**And it has one more answer, which is not about the split at all.** The planner may
 read the work and find that what is left of it **cannot be done by a worker** — an approving
 review only a named person may give, a credential or an account nobody here holds, a
 decision that is yours to make, or a step that is somebody else's system doing something by
 itself. When it says that, the task does **not** start a worker: it lands straight away
-needing your look, with the mastermind's own sentence as its report, and the only thing
+needing your look, with the planner's own sentence as its report, and the only thing
 spent on it is that one reading. The next section, *A task that landed needing your look
-without doing anything*, is what you see. This is a deliberate word the mastermind has to
-reach for; a mastermind that merely thinks the split unwise, or would rather one worker did
+without doing anything*, is what you see. This is a deliberate word the planner has to
+reach for; a planner that merely thinks the split unwise, or would rather one worker did
 this, has refused a division and the worker carries on with the work exactly as above.
 
 ## Two parts cannot own the same file — a division refused over an overlap
@@ -4099,31 +4097,31 @@ the same loss the rule above exists to stop. A part that finds something wrong i
 material says so in its report and leaves the file as it stands. Nothing checks this: the
 reading compares the parts **with each other**, never a part against the work it started
 from. What holds it is what the parts are told — the splitting worker is asked to say it in
-the brief of any part it hands shared material to, and the mastermind that reads the plan is
+the brief of any part it hands shared material to, and the planner that reads the plan is
 asked to write the file a part produces into that part's done-condition where the brief names
 files and the done-condition names none.
 
 **It is checked twice, and the first one is free.** The parts as the worker wrote them are
-read before the mastermind is, so the commonest case — a worker that drew its own
+read before the planner is, so the commonest case — a worker that drew its own
 boundaries badly — is refused for **nothing at all**, and the worker is told so. The parts
-the mastermind settled are read again afterwards, because it can sharpen a part onto a
+the planner settled are read again afterwards, because it can sharpen a part onto a
 file its sibling already owns; a refusal there has cost that one reading and nothing else,
 and its wording does not pretend otherwise. Only the **same file** counts either time. Two
 parts working in one directory on different files are independent and always were, and so
 is one part owning a folder while another owns a file inside it.
 
-**This reading can only ever improve a split; it cannot lose you one.** If the mastermind
+**This reading can only ever improve a split; it cannot lose you one.** If the planner
 cannot be reached, times out, or answers something unusable, the division goes ahead **as the
 worker wrote it**. It had already passed everything that was going to refuse it, and a second
 opinion that cannot be had is not a reason to throw work away.
 
 **Except on the one division it is deciding rather than sharpening** — the exception above,
 where the count said too few items and a model's reading of your request said broad. There
-the mastermind is the only thing that has said yes to those parts, so if it cannot be
+the planner is the only thing that has said yes to those parts, so if it cannot be
 reached nothing is admitted — and the worker is told exactly that: nothing was decided, ask
 once more. The unanswered ask costs nothing and is not held against the work; only a
-mastermind that actually answers settles the question, and its no is then final for that
-task. Nothing is lost either way: an unreachable mastermind cannot admit a split, and it
+planner that actually answers settles the question, and its no is then final for that
+task. Nothing is lost either way: an unreachable planner cannot admit a split, and it
 cannot cancel any work.
 
 ## Which model each part runs on — ordinary parts, careful parts, and the grade the worker sets
@@ -4133,11 +4131,10 @@ sets. Most parts are ordinary work — the failure mode is simply not being done
 can see whether it happened — and those run on the same model the task itself is on. A part
 graded **careful** is one whose failure mode is subtle wrongness: a design decision, a tricky
 piece of debugging, a judgement about somebody else's code, where the work can look finished
-and be quietly wrong. Those run on your **careful work** model instead — the same class
-the check at the end of a task uses. The mastermind that reads the plan can promote a part to
-careful too. If you have not set the four class rows at all, every part runs where its task
-runs and the grade costs you nothing; *Models and cost* has the rows and the `/crew` word
-that writes all four.
+and be quietly wrong. Those run on the task's **checker** instead — the same seat the
+check at the end of a task uses. The planner that reads the plan can promote a part to
+careful too. Where the checker is the same model as the worker, every part runs where its
+task runs and the grade costs you nothing; *Models and cost* has the crew and `/crew`.
 
 **And the grade is not the last word — what has actually happened here is.** Every task
 that settles writes down what the check said about it, against the model it ran on and
@@ -4145,12 +4142,12 @@ the name the work was given: `codeaf models` is where those rows show up. When a
 about to be handed out as ordinary work, codeaf looks that record up first. If work
 named like this one has been turned down by the check **twice or more** on the model the
 task is on, and the balance of those answers is against it, the part is minted on your
-**careful work** model instead — even though the worker called it ordinary. Two names
+**checker** model instead — even though the worker called it ordinary. Two names
 count as the same kind of work when they share half their words or more, so *tests for
 the rail* and *tests for the composer* are one thing and *the eleven adapters* is not.
 Nothing is spent to work any of this out: the check had already read the work and said
 so, and no extra model call is made to grade it. A part the worker itself graded careful
-is never moved back down, and an install with no class rows set never moves anything,
+is never moved back down, and a task whose checker is its worker never moves anything,
 because there is nowhere dearer to move it to.
 
 **A busy machine is not one of these tests.** `task.max_load` and `task.min_free_mb` never
@@ -4278,6 +4275,58 @@ how long, and nothing counts tries. See how-tasks-run.
 The frontier used to hold two tasks at once. Two was a guess standing in for a resource
 nobody had measured: idle on a sixteen-core box, one too many on a laptop already compiling.
 
+## How hard to try one task — /task --best, /task --cheap, and the crew a task says it ran on
+
+Every task runs on a **crew** of three seats — the worker, the planner and the checker —
+and unless you pinned a seat, codeaf picks each one for that task from what kind of work
+it is: a bug fix, a complex fix, open-ended work, or something else. On open-ended work the
+extra money goes to the checker first. The panel is `/crew`; the whole story
+is on the models page. What you say about **one** task is two words:
+
+- **`/task --best <brief>`** — the strongest crew the allowed models make, for this task.
+- **`/task --cheap <brief>`** — the cheapest crew that does the work, for this task.
+
+The word comes first, before `solo` if you use that too, and it moves this task's crew and
+nothing after it: the next task is picked the ordinary way again. A pinned seat stays
+pinned either way. Asked in words — "do this one properly, cost no object" — the model
+that grooms the work sets the hand-off's `effort` field to `best` or `cheap`, and it means
+the same; it leaves the field out unless you said how hard to try.
+
+**The task says its crew in one line, rewritten in place.** When it starts, it gives the
+class it was read as, the models on the seats and what it is expected to cost:
+
+```
+task 4 crew · bugfix · worker glm-5.3-flash (openrouter) · checker kimi-k3 · est $0.023
+```
+
+When it lands, the same line becomes what it actually cost beside the estimate, and the way
+to ask again:
+
+```
+task 4 crew · bugfix · worker glm-5.3-flash (openrouter) · checker kimi-k3 · $0.021 (est $0.023) · not right? /redo stronger
+```
+
+A seat you pinned wears the pin mark `⌖` in front of its model.
+
+**`/redo stronger`** runs the last task this conversation started again, one rung stronger:
+the one seat nobody pinned whose next model up buys the most moves to it, and the line names
+the rung. A task that never started is asked again on the next-best models instead. It also
+teaches the crew: the next task of the same kind in this repository starts a rung higher,
+until an accepted task brings it back. A crew
+that is already the strongest allowed says so and starts nothing —
+`this crew is already the strongest allowed · pin a stronger model with /crew pin, or widen /crew models`.
+A task still running is not redone; stop it first.
+
+**At the daily cap a task does not start.** `/crew cap` sets what crews may spend in a day;
+a task asked for once today's spend has reached it is refused with the cap, the spend and
+the ways on — `--cheap` and `--best` are refused the same, because a dollar cap is a cap:
+
+```
+today's crew spend ($5.01) has reached the daily cap of $5.00 · raise it or turn it off with /crew cap, or wait until midnight
+```
+
+The day turns over at midnight on this machine's clock, and the spend starts again from nothing.
+
 ## Naming a model for one task
 
 You ask in words — "let opus do this one", "run that on gpt-5". There is no key, command or
@@ -4307,17 +4356,17 @@ The digits are the question's answers and never the models — `1` is `start it`
 `no`. That is the same grammar on every question codeaf asks you, which is why the models
 moved off the digits and onto the arrows.
 
-Name nothing and the task runs on `task.model` if you have set it, otherwise on your crew's
-**worker** class (`hands` in the `/crew` line — `z-ai/glm-5.3-flash` on the shipped
-`balanced` crew), and only when that row is blank on the model the conversation was on
-**when the task was admitted**. The id is settled at that
+Name nothing and the task runs on `task.model` if you have set it, otherwise on its crew's
+**worker** — pinned with `/crew pin worker`, or picked for this task from what kind of work
+it is — and only when neither answers on the model the conversation was on. It is settled
+**when the task is admitted**. The id is settled at that
 moment and remembered for the task's whole life — it survives a restart, and switching the
 conversation's model afterwards does not move work that was already handed over. This
 holds for `/task` and for a task the model proposed alike. What *can* move it afterwards is
 you, from inside that task's own room — see the next section.
 
 **A model you named is kept even when the work is sent back.** If a check finds gaps, the
-worker that closes them normally runs on your crew's careful model rather than the task's
+worker that closes them normally runs on the task's checker rather than its worker
 (see *What happens when the work is not right yet*) — but only where nobody named a model.
 Name one, here or in the task's room, and every round of that task runs on it.
 
@@ -4382,7 +4431,7 @@ What that does, exactly:
   chose>`, so the change is on the record where every other model change is.
 - **New tasks are unaffected.** Work admitted after this still follows the ordinary
   ladder: `task.model` from settings if you have set one, otherwise the crew's worker
-  class, otherwise the model the conversation is on. A pick made inside one room is not a
+  for that task, otherwise the model the conversation is on. A pick made inside one room is not a
   preference the session learns.
 - **The row, the roster and the finished card all say the new model** from that moment on,
   and the change survives a restart. A pick that was saved for the next run instead leaves

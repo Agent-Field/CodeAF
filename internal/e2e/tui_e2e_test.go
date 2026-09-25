@@ -109,7 +109,6 @@ func TestTUIE2E(t *testing.T) {
 	t.Run("plain_launch_opens_connections_and_harnesses", testPlainLaunchConnectionsAndHarnesses)
 	t.Run("a_nested_landing_asks_and_a_key_answers_it", testNestedGate)
 	t.Run("a_refused_landing_is_incomplete", testRefusedLanding)
-	t.Run("a_crew_older_than_the_work_seat_says_so_once", testInheritedWorkSeat)
 	t.Run("a_fresh_install_is_shown_the_setup", testFreshInstallSetup)
 	t.Run("a_refused_task_proposal_draws_no_schema_sentence", testRefusedTaskProposal)
 	t.Run("space_in_the_task_room_pages_the_card", testTaskRoomKeepsSpace)
@@ -176,6 +175,22 @@ func testPlainLaunchConnectionsAndHarnesses(t *testing.T) {
 		t.Fatalf("the plain launch lost this machine's harness registry:\n%s", harnesses)
 	}
 	t.Logf("the local engine road opened this machine's harness registry:\n%s", harnesses)
+
+	// AND THE CREW PANEL, which is the same kind of door onto this machine's
+	// profile: /crew opens it framed over the conversation, enter on the first
+	// seat opens that seat's list on `auto`, and esc steps back out one level at
+	// a time. Nothing is chosen, so nothing is written and no model is asked.
+	r.keys("Escape")
+	r.lit("/crew")
+	r.keys("Enter")
+	crew := r.waitFor(20*time.Second, say(t, "crewMainKeys"))
+	t.Logf("the crew panel opened:\n%s", crew)
+	r.keys("Enter")
+	seats := r.waitFor(20*time.Second, say(t, "crewAutoWord"))
+	t.Logf("the worker's seat list opened on auto:\n%s", seats)
+	r.keys("Escape")
+	r.waitFor(20*time.Second, say(t, "crewMainKeys"))
+	r.keys("Escape")
 	r.quit()
 }
 
@@ -1736,117 +1751,6 @@ func moneyIn(t *testing.T, screen, needle string, after bool) string {
 
 // ── 12 ──────────────────────────────────────────────────────────────────────
 
-// testInheritedWorkSeat is #312's acceptance on the real screen: a crew older
-// than the work seat, met where a person actually meets it.
-//
-// THE PROFILE IS THE DEFECT. A crew applied before the worker class existed
-// (#278) holds four `models.tiers.*` rows and no `worker` among them. Headless
-// doors learned to read that shape in #311; the conversation did not, so every
-// task started from a thread ran on the build's own worker model and nothing
-// anywhere said which model that was or why. This subtest builds exactly that
-// profile — four real rows, the fifth key deleted — starts one small task, and
-// reads back two things a unit test cannot: that the LINE is on the screen once,
-// and that the model the node actually called is the row the person pinned.
-//
-// THE MODEL IS READ OUT OF THE CALL LOG, which is always on and writes one line
-// per model call with the tag the caller set (internal/calllog, and session's
-// loop.go tags a node's calls `task`). That is the node's own journal, and it is
-// the only evidence in this suite that comes off the wire rather than off the
-// screen.
-//
-// IT IS DELIBERATELY THE CHEAPEST SHAPE THERE IS: `/task solo`, which runs one
-// worker and makes no sizing call before it, on a brief that is one file.
-func testInheritedWorkSeat(t *testing.T) {
-	// The row the work must land on. It is a DIFFERENT id from the model the
-	// conversation talks on (newHome pins that) and from this build's own worker
-	// default, because the whole question is which of the three answered.
-	const smallWork = "deepseek/deepseek-v4-flash-0731"
-	home := newHome(t, map[string]any{
-		"models.tiers.reflex":     "mistralai/mistral-nemo",
-		"models.tiers.low":        smallWork,
-		"models.tiers.high":       smallWork,
-		"models.tiers.mastermind": smallWork,
-	})
-	dropWorkerRow(t, home)
-	ws := newWorkspace(t, "seatws", false)
-	r := start(t, "afe2e_seat", home, ws, tuiWide, 40)
-
-	// Whichever door the launch took — home on a machine with several
-	// conversations, and straight into a greeted conversation on a fresh one,
-	// which is what a state root built one minute ago always is. THE GREETED
-	// CONVERSATION HAS TWO SHAPES and this waits for both: the starter line under
-	// the wordmark, and the starting POINTS a conversation nobody has typed in
-	// yet stands on, whose foot is [welcomeStarterKeysWord] — the screen that
-	// entry's own `why` warns a subtest about waiting past.
-	r.waitForAny(20*time.Second, say(t, "placeRestWord"), say(t, "starterTaskWord"),
-		say(t, "welcomeStarterKeysWord"))
-	r.keys("Escape")
-	r.lit("/task solo write a file called hello.txt containing the word hello")
-	r.keys("Enter")
-
-	// THE LINE, WHEN THE WORK STARTS. Both halves of it: the observation about
-	// the profile and the promise about what ends it.
-	screen := r.waitFor(4*time.Minute, say(t, "inheritedSeatObservation"), say(t, "inheritedSeatPromise"))
-	t.Logf("the conversation says which row filled its work seat:\n%s", screen)
-
-	// AND ONCE. A node divides into parts and each part starts; a line that
-	// arrived with each of them is the noise this mechanism refused headless.
-	if got := strings.Count(screen, say(t, "inheritedSeatObservation")); got != 1 {
-		t.Errorf("the line is on the screen %d times, want once:\n%s", got, screen)
-	}
-
-	// AND THE WORK IS ON THE ROW THE PERSON PINNED. The node's calls carry the
-	// `task` tag, and no call anywhere may have gone to the build's own worker.
-	// The log is POLLED rather than read once: the receipt is written when the
-	// node starts and the node's first call goes out a moment later, and this
-	// subtest deliberately stops as soon as there is something to read rather
-	// than paying for the whole piece of work.
-	models := waitForTaskCalls(t, home, 3*time.Minute)
-	if len(models) == 0 {
-		t.Fatalf("no call in the log was tagged as a task's; the log held %v", callModels(t, home))
-	}
-	t.Logf("the node called: %v", models)
-	for _, model := range models {
-		if model != smallWork {
-			t.Errorf("a task call went to %q, want the small-work row %q the crew pinned", model, smallWork)
-		}
-	}
-	for _, model := range callModels(t, home) {
-		if model == "z-ai/glm-5.3-flash" {
-			t.Errorf("a call went to this build's own worker model, which is the substitution the issue is about")
-		}
-	}
-	r.quit()
-}
-
-// dropWorkerRow deletes `models.tiers.worker` from a rig's config, so the
-// profile is the shape a crew set before that class existed actually has.
-//
-// It is a DELETE and not an empty string: the two are different answers
-// everywhere in this build — a row emptied on purpose means "follow the
-// conversation" — and it is the one this suite must write, because [newHome]
-// copies the person's own config and theirs may hold the key.
-func dropWorkerRow(t *testing.T, home string) {
-	t.Helper()
-	path := filepath.Join(home, "config.json")
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("config: %v", err)
-	}
-	rows := map[string]any{}
-	if err := json.Unmarshal(raw, &rows); err != nil {
-		t.Fatalf("config: %v", err)
-	}
-	delete(rows, "models.tiers.worker")
-	out, err := json.MarshalIndent(rows, "", " ")
-	if err != nil {
-		t.Fatalf("config: %v", err)
-	}
-	if err := os.WriteFile(path, out, 0o600); err != nil {
-		t.Fatalf("config: %v", err)
-	}
-}
-
 // waitForTaskCalls polls the call log until a node's own call is in it, and
 // answers every model those calls asked for.
 func waitForTaskCalls(t *testing.T, home string, within time.Duration) []string {
@@ -1931,7 +1835,7 @@ func callLogModels(t *testing.T, home, tag string) []string {
 // that ran it.
 //
 // IT IS DELIBERATELY THE CHEAPEST TASK THERE IS — `/task solo` on a one-file
-// brief, the shape [testInheritedWorkSeat] already pays for. The measured run
+// brief, the cheapest shape a task comes in. The measured run
 // lands in about thirty seconds and costs five cents.
 //
 // AND IT RUNS SHORT ON PURPOSE ([tuiShortRows]): a record that fits on the

@@ -925,10 +925,9 @@ conversation's own model (`model.talk`) is changed with `/model`, and the other
 role slots — `model.plan`, `model.work`, `model.verify`, `model.scribe` — are
 bindings the running session holds rather than values in your profile, so
 neither `change_setting` nor the panel can write them. To send codeaf's own
-auxiliary calls somewhere, set one of the five crew classes
-(`models.tiers.reflex`, `models.tiers.low`, `models.tiers.worker`,
-`models.tiers.high`, `models.tiers.mastermind`), set all five at once with
-`models.crew`, or pin one role in `models.roles`.
+auxiliary calls somewhere, set the reflex or small work row on the Providers tab, pin a
+crew seat — worker, checker or planner — with `/crew pin` or on the `/crew` panel that the
+tab's one **seats** row opens, or pin one role in `models.roles`.
 
 A row your environment has pinned refuses like it does everywhere else:
 `<label> is set by <NAME>`.

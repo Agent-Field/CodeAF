@@ -473,7 +473,7 @@ machine that runs the session, but this build has no wire door for them. They do
 or change this machine's copy. The cache, permissions, crew and harness commands name the
 connected machine and say `change it on that machine`; the memory commands say `memory
 shows what this machine has learned, and this session is on another`. In particular,
-`/cache clean now` deletes nothing here, `/crew <preset>` writes nothing here, and
+`/cache clean now` deletes nothing here, `/crew pin` writes nothing here, and
 `/subharness` does not claim the far registry is empty.
 
 ## Did cache clean delete the laptop cache or the remote machine's cache?
@@ -482,11 +482,12 @@ Neither. Over `--host`, `/cache`, `/cache clean`, and `/cache clean now` cannot 
 connected machine's build cache and refuse before touching this machine's cache. The
 answer names the connected machine and says to change it there.
 
-## Why didn't crew max change the crew on the remote machine?
+## Why didn't /crew pin change the crew on the remote machine?
 
-`/crew` has no far-profile door yet. Over `--host`, both the picker and `/crew <preset>`
-refuse before reading or writing this machine's profile, name the connected machine, and
-say to change the crew there.
+`/crew` has no far-profile door yet. Over `--host`, the panel and every shortcut —
+`pin`, `unpin`, `models`, `cap` — refuse before reading or writing this machine's profile,
+name the connected machine, and say to change the crew there:
+`devbox owns the crew · change it on that machine`.
 
 ## Why does remember over host not say whether memory is off?
 

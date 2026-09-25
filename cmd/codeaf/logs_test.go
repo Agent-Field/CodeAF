@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/calllog"
+	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // TestMain switches the model-call log OFF for this package and gives the
@@ -46,6 +48,14 @@ func TestMain(m *testing.M) {
 		os.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/v1/rows")
 	}
 	restore := isolateTestEnvironment()
+	// AND THE CREW ROUTER READS ONE FIXED CATALOG. The process's catalog is
+	// seated once, by whichever test first builds it, from whatever server that
+	// test stood up — so every later door would route its unpinned seats against
+	// a stranger's rows, or none. Two priced, tool-serving rows make routing
+	// deterministic for the whole binary; seatCrewCatalog still overrides it for
+	// a test that means a catalog of its own.
+	config.CrewCatalog = func() []catalog.Model { return crewDoorCatalog() }
+	seatCrewRows = func(func() []catalog.Model) {}
 	// AND THE TELEMETRY OFF SWITCH IS CLEARED, because since the pool learned
 	// to hear it (config.ModelPoolResolved) a shell that exports it quiets the
 	// pool to `read`, and every pool test here that means the default would

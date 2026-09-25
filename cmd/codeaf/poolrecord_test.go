@@ -83,14 +83,6 @@ func poolTildeCatalog() []catalog.Model {
 	}
 }
 
-// restoreOwnCells puts the picker's own-cells seam back after a test that
-// repointed it, so no other test in the process reads this test's sheet.
-func restoreOwnCells(t *testing.T) {
-	t.Helper()
-	previous := config.AutoOwnCells
-	t.Cleanup(func() { config.AutoOwnCells = previous })
-}
-
 // TestPoolJudgeHookScoresALandedTaskIntoItsOwnSheetAndAnswersTheNewCells runs
 // one landing through the real hook and reads back the whole of it: one cell
 // per held seat in the install's own sheet, the seam answering those cells at
@@ -100,7 +92,6 @@ func TestPoolJudgeHookScoresALandedTaskIntoItsOwnSheetAndAnswersTheNewCells(t *t
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
-	restoreOwnCells(t)
 
 	profileDir := t.TempDir()
 	settings := config.Config{}
@@ -130,13 +121,6 @@ func TestPoolJudgeHookScoresALandedTaskIntoItsOwnSheetAndAnswersTheNewCells(t *t
 		if !seen[seat] {
 			t.Fatalf("the sheet holds no cell for %s: %+v", seat, cells)
 		}
-	}
-
-	if config.AutoOwnCells == nil {
-		t.Fatal("the picker's own-cells seam was not repointed after the landing")
-	}
-	if answered := config.AutoOwnCells(); len(answered) != 2 {
-		t.Fatalf("the seam answers %d cells, want the 2 the sheet now holds", len(answered))
 	}
 
 	if len(asked) != 2 || asked[0] != "other/judge" || asked[1] != "other/judge" {
@@ -174,7 +158,6 @@ func TestPoolJudgeHookSpellsASeatByItsBareModelID(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
-	restoreOwnCells(t)
 
 	profileDir := t.TempDir()
 	settings := config.Config{}
@@ -265,7 +248,6 @@ func TestWritePendingLandingSpellsThePoolSeatsBare(t *testing.T) {
 // records locally only.
 func TestPoolJudgeHookAppendsOutboxRowsOnlyWhenTheModeSends(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
-	restoreOwnCells(t)
 
 	profileDir := t.TempDir()
 	outboxFile := filepath.Join(config.ProfilePath(profileDir, "pool"), "outbox.jsonl")
@@ -319,7 +301,6 @@ func TestPoolJudgeHookAppendsOutboxRowsOnlyWhenTheModeSends(t *testing.T) {
 func TestPoolJudgeHookDoesNothingUnderModeOff(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_MODEL_POOL", "off")
-	restoreOwnCells(t)
 
 	profileDir := t.TempDir()
 	settings := config.Config{}
@@ -379,7 +360,6 @@ func TestPoolJudgeHookGivesEachSeatsQuestionItsOwnShareOfTheLandingTime(t *testi
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
-	restoreOwnCells(t)
 
 	profileDir := t.TempDir()
 	settings := config.Config{}
@@ -462,7 +442,6 @@ func TestPoolJudgeHookStillScoresTheSecondSeatWhenTheFirstSeatsShareRunsOut(t *t
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
-	restoreOwnCells(t)
 
 	profileDir := t.TempDir()
 	settings := config.Config{}
@@ -525,7 +504,6 @@ func TestPoolJudgeHookRecordsTheJudgeThatScoredTheLanding(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
-	restoreOwnCells(t)
 
 	profileDir := t.TempDir()
 	settings := config.Config{}
@@ -564,7 +542,6 @@ func TestPoolJudgeHookRecordsTheCandidatesAndReasonWhenEveryJudgeFails(t *testin
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
-	restoreOwnCells(t)
 
 	profileDir := t.TempDir()
 	settings := config.Config{}
@@ -594,7 +571,6 @@ func TestPoolJudgeHookRecordsTheDeclineWhenThereIsNoCandidate(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
-	restoreOwnCells(t)
 
 	profileDir := t.TempDir()
 	settings := config.Config{}
@@ -689,7 +665,6 @@ func TestPoolJudgeHookMovesToTheNextCandidateWhenTheCheapestAnswersNothing(t *te
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
-	restoreOwnCells(t)
 
 	profileDir := t.TempDir()
 	settings := config.Config{}
@@ -767,7 +742,6 @@ func TestPoolJudgeHookWritesNothingWhenEveryCandidateAnswersNothing(t *testing.T
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
-	restoreOwnCells(t)
 
 	profileDir := t.TempDir()
 	settings := config.Config{}
@@ -839,7 +813,6 @@ func TestPoolJudgeSweepJudgesThePendingRowsAndLeavesARecordOfItself(t *testing.T
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
-	restoreOwnCells(t)
 
 	profileDir := t.TempDir()
 	settings := config.Config{APIKey: "test-key"}
@@ -889,7 +862,6 @@ func TestPoolJudgeSweepCutByItsBudgetLeavesTheRestAndSaysSo(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
-	restoreOwnCells(t)
 
 	profileDir := t.TempDir()
 	settings := config.Config{APIKey: "test-key"}
@@ -944,7 +916,6 @@ func TestPoolJudgeSweepCutByItsBudgetLeavesTheRestAndSaysSo(t *testing.T) {
 func TestPoolJudgeSweepLeavesNoRecordWhenThePoolCannotRead(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_MODEL_POOL", "off")
-	restoreOwnCells(t)
 
 	profileDir := t.TempDir()
 	poolJudgeSweep(config.Config{APIKey: "test-key"}, profileDir, "", poolTestCatalog, poolTestAsk(config.Config{}, new([]string)), time.Now)

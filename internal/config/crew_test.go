@@ -1,643 +1,610 @@
 package config
 
 import (
-	"encoding/json"
-	"os"
+	"errors"
+	"slices"
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/codeaf/internal/roles"
+	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 )
 
-// THE CREW, from the three sides a person meets it: what a preset writes, what
-// the row says about four values it did not write, and what the row refuses.
-
-// THE SHIPPED DEFAULTS ARE A PRESET AND NOT FOUR OPINIONS. This is the identity
-// the whole derived reading rests on: if the four defaults were not exactly one
-// preset's row, a profile nobody had touched would read "custom" about values
-// this build chose itself.
-func TestTheShippedTierDefaultsAreExactlyTheBalancedCrew(t *testing.T) {
-	balanced, ok := CrewModels(CrewBalanced)
-	if !ok {
-		t.Fatal("there is no balanced preset")
+// crewProfile is a profile with an OpenRouter key and a small catalog, the
+// ordinary state a crew is routed in. Every variable a seat or a key reads
+// is cleared so the machine running the test cannot answer for it.
+func crewProfile(t *testing.T) string {
+	t.Helper()
+	for _, name := range []string{APIKeyEnv, "OPENAI_API_KEY", ModelEnv, PlanModelEnv, CheckModelEnv, "CODEAF_BASE_URL",
+		"DEEPSEEK_API_KEY", "ZHIPU_API_KEY", "MOONSHOT_API_KEY", "MINIMAX_API_KEY", "DASHSCOPE_API_KEY"} {
+		t.Setenv(name, "")
 	}
-	for _, c := range []struct{ tier, want string }{
-		{ModelTierReflex, DefaultReflexModel},
-		{ModelTierLow, DefaultLowModel},
-		{ModelTierWorker, DefaultWorkerModel},
-		{ModelTierHigh, DefaultHighModel},
-		{ModelTierMastermind, DefaultMastermindModel},
-	} {
-		if balanced[c.tier] != c.want {
-			t.Errorf("balanced sets %s to %q, and the shipped default is %q",
-				c.tier, balanced[c.tier], c.want)
-		}
-	}
-	if got := CrewAt(t.TempDir()); got != DefaultCrew {
-		t.Fatalf("a profile nobody has touched reads the crew as %q, want %q", got, DefaultCrew)
-	}
-}
-
-// THE OPEN FAMILY IS LOCKED TOO, and this is its page. It is read through
-// [CrewModelsForSource] and not [CrewModels], because the bare spelling answers
-// the DEFAULT family and the default family is the catalog-wide one — the all
-// table's own page is [TestTheAllFamilyNamesTheLockedModels].
-func TestCrewPresetsNameTheApprovedModels(t *testing.T) {
-	want := map[string]map[string]string{
-		CrewFrugal: {
-			ModelTierReflex:     "mistralai/mistral-nemo",
-			ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
-			ModelTierWorker:     "z-ai/glm-5.3-flash",
-			ModelTierHigh:       "z-ai/glm-5.3-flash",
-			ModelTierMastermind: "z-ai/glm-5.3-flash",
-		},
-		CrewBalanced: {
-			ModelTierReflex:     "mistralai/mistral-nemo",
-			ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
-			ModelTierWorker:     "z-ai/glm-5.3-flash",
-			ModelTierHigh:       "moonshotai/kimi-k3",
-			ModelTierMastermind: "z-ai/glm-5.3",
-		},
-		CrewMax: {
-			ModelTierReflex:     "mistralai/mistral-nemo",
-			ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
-			ModelTierWorker:     "z-ai/glm-5.3",
-			ModelTierHigh:       "moonshotai/kimi-k3",
-			ModelTierMastermind: "z-ai/glm-5.3",
-		},
-	}
-	for preset, expected := range want {
-		got, ok := CrewModelsForSource(CrewSourceOpen, preset)
-		if !ok {
-			t.Fatalf("there is no %s preset", preset)
-		}
-		for _, tier := range ModelTiers {
-			if got[tier] != expected[tier] {
-				t.Errorf("%s sets %s to %q, want %q", preset, tier, got[tier], expected[tier])
-			}
-		}
-	}
-}
-
-// Every preset names every class, and every model in it is a whole slug. A
-// preset with a gap in it would write a blank into a tier row, which means
-// "follow the conversation" — the opposite of choosing a crew.
-func TestEveryPresetNamesEveryClass(t *testing.T) {
-	for _, preset := range CrewPresets {
-		models, ok := CrewModels(preset)
-		if !ok {
-			t.Fatalf("%s is in CrewPresets and has no models", preset)
-		}
-		for _, tier := range ModelTiers {
-			model := models[tier]
-			if strings.TrimSpace(model) == "" {
-				t.Errorf("%s leaves %s blank, which means follow the conversation", preset, tier)
-			}
-			if !strings.Contains(model, "/") {
-				t.Errorf("%s sets %s to %q, which is not a provider-qualified id", preset, tier, model)
-			}
-			// A level is only ever legible on a value the gate accepts.
-			if err := ValidateTierValue(model); err != nil {
-				t.Errorf("%s sets %s to %q, which its own row would refuse: %v", preset, tier, model, err)
-			}
-		}
-		if CrewLine(preset) == "" {
-			t.Errorf("%s has no line to say about itself", preset)
-		}
-	}
-	if CrewLine(CrewCustom) != "" {
-		t.Error("custom has a line, and custom is a reading rather than a choice")
-	}
-	if _, ok := CrewModels(CrewCustom); ok {
-		t.Error("custom names four models, and it is not a preset")
-	}
-}
-
-// Setting a preset writes all five tier keys, and the row reads that preset back.
-func TestSettingAPresetWritesAllFiveTiers(t *testing.T) {
 	dir := t.TempDir()
-	rows := registry(t, dir)
-	crew := mustRow(t, rows, KeyCrew)
+	if err := WriteAPIKey(dir, "sk-or-v1-crewtest-0123456789"); err != nil {
+		t.Fatal(err)
+	}
+	previous := CrewCatalog
+	t.Cleanup(func() { CrewCatalog = previous })
+	rows := []catalog.Model{
+		{ID: "z-ai/glm-5.3-flash", CanonicalSlug: "z-ai/glm-5.3-flash-20260826", OpenWeights: true, PromptPrice: 1.5e-7, CompletionPrice: 5e-7, CacheReadPrice: 5e-8,
+			IntelligenceIndex: 41.8, CodingIndex: 71.5, AgenticIndex: 50.9, ArenaElo: 1348, ContextLength: 1310720, Parameters: []string{"tools"}},
+		{ID: "moonshotai/kimi-k3", CanonicalSlug: "moonshotai/kimi-k3-20260715", OpenWeights: true, PromptPrice: 3e-6, CompletionPrice: 1.5e-5, CacheReadPrice: 3e-7,
+			IntelligenceIndex: 43.6, CodingIndex: 76.2, AgenticIndex: 50, ArenaElo: 1421, ContextLength: 1048576, Parameters: []string{"tools"}},
+		{ID: "deepseek/deepseek-v4-flash", CanonicalSlug: "deepseek/deepseek-v4-flash-20260423", OpenWeights: true, PromptPrice: 8.246e-8, CompletionPrice: 1.6492e-7, CacheReadPrice: 1.6492e-8,
+			IntelligenceIndex: 24.2, CodingIndex: 56.2, AgenticIndex: 22.2, ArenaElo: 1216, ContextLength: 1048576, Parameters: []string{"tools"}},
+		{ID: "anthropic/claude-opus-5", CanonicalSlug: "anthropic/claude-opus-5-20260723", PromptPrice: 5e-6, CompletionPrice: 2.5e-5, CacheReadPrice: 5e-7,
+			IntelligenceIndex: 50.8, CodingIndex: 78, AgenticIndex: 56.5, ArenaElo: 1372, ContextLength: 1000000, Parameters: []string{"tools"}},
+		{ID: "vendor/no-tools", PromptPrice: 1e-9, CompletionPrice: 1e-9, Parameters: []string{"temperature"}},
+		{ID: "vendor/unpriced", PriceUnknown: true, Parameters: []string{"tools"}},
+	}
+	CrewCatalog = func() []catalog.Model { return rows }
+	return dir
+}
 
-	if err := crew.Apply(CrewMax); err != nil {
-		t.Fatalf("setting the crew to max: %v", err)
-	}
-	want, _ := CrewModels(CrewMax)
-	for _, tier := range ModelTiers {
-		if got := TierModelAt(dir, tier); got != want[tier] {
-			t.Errorf("after max, the %s tier reads %q, want %q", tier, got, want[tier])
-		}
-	}
-	if got := CrewAt(dir); got != CrewMax {
-		t.Fatalf("the crew reads %q after max was set", got)
-	}
-	// THE FIVE KEYS ARE ON DISK, all of them, in one file — a preset is not a
-	// word stored beside four rows it claims to have written.
-	values := map[string]json.RawMessage{}
-	raw, err := os.ReadFile(BudgetConfigPath(dir))
+const (
+	fixTask  = "fix: crash when the config file is empty\n\nTraceback (most recent call last):\nValueError: empty"
+	openTask = "Add a --json flag to the status command so scripts can read it"
+)
+
+func TestAnUntouchedProfileRoutesEverySeat(t *testing.T) {
+	dir := crewProfile(t)
+	seats, err := ResolveSeats(dir, SeatFlags{}, CrewAsk{Task: crewroute.Task{Text: fixTask}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := json.Unmarshal(raw, &values); err != nil {
-		t.Fatal(err)
-	}
-	for _, tier := range ModelTiers {
-		if _, written := values[tierKeyFor(tier)]; !written {
-			t.Errorf("%s is not in config.json after a preset was applied", tierKeyFor(tier))
+	// A fix: the model the catalog reads as able for its price in every seat —
+	// the cheaper v4-flash publishes weaker indexes, and a checker's ability
+	// must reach the floor.
+	for seat, want := range map[Seat]string{seats.Work: "z-ai/glm-5.3-flash", seats.Plan: "z-ai/glm-5.3-flash", seats.Check: "z-ai/glm-5.3-flash"} {
+		if seat.Source != SeatRouted || seat.Model != want {
+			t.Errorf("%s: %+v, want routed to %s on a fix", seat.Role, seat, want)
 		}
 	}
-	if _, written := values[KeyCrew]; written {
-		t.Error("models.crew was stored — the reading is derived, and a stored word can become a lie")
+	if seats.Crew == nil || seats.Crew.Class != crewroute.Bugfix {
+		t.Fatalf("crew %+v, want a bugfix decision", seats.Crew)
 	}
-
-	if err := crew.Apply(CrewFrugal); err != nil {
-		t.Fatalf("setting the crew to frugal: %v", err)
-	}
-	if got := CrewAt(dir); got != CrewFrugal {
-		t.Fatalf("the crew reads %q after frugal was set", got)
-	}
-}
-
-// ANSWERING ONE TIER ROW TURNS THE CREW TO CUSTOM, because that is what happened.
-func TestAnsweringOneTierRowMakesTheCrewCustom(t *testing.T) {
-	dir := t.TempDir()
-	rows := registry(t, dir)
-
-	if err := mustRow(t, rows, KeyCrew).Apply(CrewBalanced); err != nil {
-		t.Fatal(err)
-	}
-	if err := mustRow(t, rows, KeyTierMastermindModel).Apply("openai/gpt-5"); err != nil {
-		t.Fatal(err)
-	}
-	if got := CrewAt(dir); got != CrewCustom {
-		t.Fatalf("the crew reads %q over a hand-set mastermind, want %q", got, CrewCustom)
-	}
-	// And the row itself says so, which is the whole point: the summary cannot
-	// disagree with the four rows it summarizes.
-	if got := mustRow(t, registry(t, dir), KeyCrew).Value(); got != CrewCustom {
-		t.Fatalf("the crew row reads %q", got)
-	}
-
-	// A tier CLEARED on purpose is custom too — "one of these follows the
-	// conversation" is not any of the three presets.
-	if err := mustRow(t, rows, KeyTierMastermindModel).Apply(""); err != nil {
-		t.Fatal(err)
-	}
-	if got := CrewAt(dir); got != CrewCustom {
-		t.Fatalf("the crew reads %q with a cleared mastermind, want %q", got, CrewCustom)
-	}
-
-	// Putting the preset back is one keystroke and heals all five.
-	if err := mustRow(t, registry(t, dir), KeyCrew).Apply(CrewBalanced); err != nil {
-		t.Fatal(err)
-	}
-	if got := CrewAt(dir); got != CrewBalanced {
-		t.Fatalf("the crew reads %q after balanced was set again", got)
-	}
-}
-
-// The row refuses a word that is not a preset, in the words every choice row
-// refuses in — and it refuses "custom", which is a reading and not a choice.
-func TestTheCrewRowRefusesAWordThatIsNotAPreset(t *testing.T) {
-	dir := t.TempDir()
-	crew := mustRow(t, registry(t, dir), KeyCrew)
-	for _, word := range []string{"cheap", CrewCustom, ""} {
-		err := crew.Apply(word)
-		if err == nil {
-			t.Fatalf("the crew row took %q", word)
-		}
-		if !strings.Contains(err.Error(), CrewBalanced) {
-			t.Errorf("refusing %q does not name the choices: %v", word, err)
-		}
-	}
-	if got := CrewAt(dir); got != DefaultCrew {
-		t.Fatalf("a refused write changed the crew to %q", got)
-	}
-}
-
-// ── the family the three words draw from ────────────────────────────────────
-
-// THE CAREFUL SEAT IS A SECOND VENDOR, IN EVERY PRESET OF THE ALL FAMILY.
-// A check from the same vendor as the work it checks is a check that shares
-// that vendor's blind spots. The open family's frugal row is the one standing
-// exception: worker and careful both sit on glm-5.3-flash there, because at
-// that preset's bill the open-weight front has no second vendor to take the
-// careful seat.
-func TestTheCarefulSeatIsAlwaysASecondVendorInEveryFamily(t *testing.T) {
-	vendor := func(id string) string {
-		if at := strings.Index(id, "/"); at > 0 {
-			return id[:at]
-		}
-		return id
-	}
-	for _, family := range CrewSources {
-		for _, preset := range CrewPresets {
-			if family == CrewSourceOpen && preset == CrewFrugal {
-				continue
-			}
-			models, ok := CrewModelsForSource(family, preset)
-			if !ok {
-				t.Fatalf("there is no %s preset in the %s family", preset, family)
-			}
-			if vendor(models[ModelTierWorker]) == vendor(models[ModelTierHigh]) {
-				t.Errorf("%s under %s has %q working and %q checking, and a check from "+
-					"the same vendor catches what that vendor lets through",
-					preset, family, models[ModelTierWorker], models[ModelTierHigh])
-			}
-		}
-	}
-}
-
-// THE ALL FAMILY IS LOCKED, not derived: this is the page that says which ids
-// the three words mean. A wrong id here is a person's bill, and a silent
-// rewrite of the locked table would be a decision made by a diff.
-func TestTheAllFamilyNamesTheLockedModels(t *testing.T) {
-	want := map[string]map[string]string{
-		CrewFrugal: {
-			ModelTierReflex:     "google/gemini-2.5-flash",
-			ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
-			ModelTierWorker:     "z-ai/glm-5.3-flash",
-			ModelTierHigh:       "qwen/qwen3.8-max-0902",
-			ModelTierMastermind: "z-ai/glm-5.3-flash",
-		},
-		CrewBalanced: {
-			ModelTierReflex:     "google/gemini-2.5-flash",
-			ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
-			ModelTierWorker:     "z-ai/glm-5.3-flash",
-			ModelTierHigh:       "anthropic/claude-fable-5.1",
-			ModelTierMastermind: "anthropic/claude-opus-5",
-		},
-		CrewMax: {
-			ModelTierReflex:     "google/gemini-2.5-flash",
-			ModelTierLow:        "deepseek/deepseek-v4-flash-0731",
-			ModelTierWorker:     "z-ai/glm-5.3",
-			ModelTierHigh:       "anthropic/claude-fable-5.1",
-			ModelTierMastermind: "anthropic/claude-opus-5",
-		},
-	}
-	for preset, expected := range want {
-		got, ok := CrewModelsForSource(CrewSourceAll, preset)
-		if !ok {
-			t.Fatalf("there is no %s preset in the all family", preset)
-		}
-		for _, tier := range ModelTiers {
-			if got[tier] != expected[tier] {
-				t.Errorf("%s under all sets %s to %q, want %q", preset, tier, got[tier], expected[tier])
-			}
-			if !strings.Contains(got[tier], "/") {
-				t.Errorf("%s under all sets %s to %q, which is not a provider-qualified id", preset, tier, got[tier])
-			}
-			if err := ValidateTierValue(got[tier]); err != nil {
-				t.Errorf("%s under all sets %s to %q, which its own row would refuse: %v", preset, tier, got[tier], err)
-			}
-		}
-	}
-	// THE LINES ARE PART OF THE TABLE, and they are the words a person reads while
-	// deciding to spend frontier money: a line naming a model the preset does not
-	// pick is the contradiction the chooser exists to prevent.
-	wantLines := map[string]map[string]string{
-		CrewSourceOpen: {
-			CrewFrugal:   "glm-flash works, checks and thinks · pennies a day",
-			CrewBalanced: "glm-flash works, kimi-k3 checks, glm-5.3 thinks",
-			CrewMax:      "glm-5.3 works and thinks, kimi-k3 checks",
-		},
-		CrewSourceAll: {
-			CrewFrugal:   "glm-flash works and thinks, qwen-max checks",
-			CrewBalanced: "glm-flash works, fable checks, opus thinks",
-			CrewMax:      "glm-5.3 works, fable checks, opus thinks",
-		},
-	}
-	for family, lines := range wantLines {
-		for preset, line := range lines {
-			if got := CrewLineFor(family, preset); got != line {
-				t.Errorf("the %s family's %s line is %q, want %q", family, preset, got, line)
-			}
-		}
-	}
-}
-
-// A SOURCE NOBODY SET IS THE DEFAULT FAMILY, which is the catalog-wide one. The
-// open table exists beside it, but a profile that never answered the row
-// resolves `all`: the shipped defaults, the all presets under the same words,
-// and a write that lands the all ids. This is the default-preservation law for
-// the FAMILY. An unknown word is held to the same law, silently, the way a
-// retired choice reads everywhere else.
-func TestASourceNobodyAnsweredReadsTheDefaultFamily(t *testing.T) {
-	dir := t.TempDir()
-	if got := CrewSourceAt(dir); got != DefaultCrewSource {
-		t.Fatalf("an untouched profile reads the source as %q, want %q", got, DefaultCrewSource)
-	}
-	if got := CrewAt(dir); got != DefaultCrew {
-		t.Fatalf("an untouched profile reads the crew as %q, want %q", got, DefaultCrew)
-	}
-	if err := ApplyCrew(dir, CrewMax); err != nil {
-		t.Fatal(err)
-	}
-	want, _ := CrewModelsForSource(DefaultCrewSource, CrewMax)
-	for _, tier := range ModelTiers {
-		if got := TierModelAt(dir, tier); got != want[tier] {
-			t.Errorf("with no source set, max wrote %s to %q, want the default family's %q", tier, got, want[tier])
-		}
-	}
-	// A WORD THIS BUILD DOES NOT KNOW READS AS THE DEFAULT FAMILY, silently.
-	// Being told a preference from an older build is now an error is the one
-	// thing a retirement must never do, and a family is not a thing to guess
-	// either.
-	if err := writeProfileValue(dir, KeyCrewSource, "wide"); err != nil {
-		t.Fatal(err)
-	}
-	if got := CrewSourceAt(dir); got != DefaultCrewSource {
-		t.Fatalf("an unknown source word reads as %q, want %q", got, DefaultCrewSource)
-	}
-	if got := CrewAt(dir); got != CrewMax {
-		t.Fatalf("an unknown source word moved the crew to %q", got)
-	}
-}
-
-// FLIPPING TO ALL MAKES THE SAME WORDS MEAN THE ALL FAMILY. Seats nobody pinned
-// move at once, because an unwritten seat is the default crew resolved in the
-// current family; the five ids already written are theirs, so a flip is a
-// meaning change to them rather than a write, and they read custom against the
-// new family until one keystroke re-applies them.
-func TestFlippingToAllMakesTheWordsMeanTheAllFamily(t *testing.T) {
-	dir := t.TempDir()
-	rows := registry(t, dir)
-	if err := mustRow(t, rows, KeyCrewSource).Apply(CrewSourceAll); err != nil {
-		t.Fatalf("setting the family to all: %v", err)
-	}
-	if got := CrewSourceAt(dir); got != CrewSourceAll {
-		t.Fatalf("the source row reads %q after all was set", got)
-	}
-	// The crew row never writes the source: a stored tier id is not a family claim,
-	// and the family is not stored in the crew row either.
-	if err := mustRow(t, registry(t, dir), KeyCrew).Apply(CrewBalanced); err != nil {
-		t.Fatalf("setting the crew to balanced: %v", err)
-	}
-	want, _ := CrewModelsForSource(CrewSourceAll, CrewBalanced)
-	for _, tier := range ModelTiers {
-		if got := TierModelAt(dir, tier); got != want[tier] {
-			t.Errorf("under all, balanced wrote %s to %q, want the all-family %q", tier, got, want[tier])
-		}
-	}
-	if got := CrewAt(dir); got != CrewBalanced {
-		t.Fatalf("the crew reads %q after balanced was applied under all", got)
-	}
-
-	// And the same five ids are NOT balanced in the open family, which is the
-	// point of the toggle: the words changed family, and the reading follows.
-	if err := mustRow(t, registry(t, dir), KeyCrewSource).Apply(CrewSourceOpen); err != nil {
-		t.Fatal(err)
-	}
-	if got := CrewAt(dir); got != CrewCustom {
-		t.Fatalf("after flipping back to open, the all-family five read %q, want %q", got, CrewCustom)
-	}
-	// One keystroke heals it, and heals it open.
-	if err := mustRow(t, registry(t, dir), KeyCrew).Apply(CrewBalanced); err != nil {
-		t.Fatal(err)
-	}
-	if got := CrewAt(dir); got != CrewBalanced {
-		t.Fatalf("the crew reads %q after balanced was applied under open again", got)
-	}
-	open, _ := CrewModelsForSource(CrewSourceOpen, CrewBalanced)
-	for _, tier := range ModelTiers {
-		if got := TierModelAt(dir, tier); got != open[tier] {
-			t.Errorf("after re-applying under open, %s reads %q, want the open %q", tier, got, open[tier])
-		}
-	}
-}
-
-// ── the level on a tier value ───────────────────────────────────────────────
-
-// A LEVEL IS ACCEPTED AND ANY OTHER SUFFIX IS REFUSED IN WORDS.
-func TestTheTierRowsTakeALevelAndRefuseAMisspeltOne(t *testing.T) {
-	dir := t.TempDir()
-	row := mustRow(t, registry(t, dir), KeyTierMastermindModel)
-
-	for _, value := range []string{
-		"moonshotai/kimi-k3:low",
-		"moonshotai/kimi-k3:medium",
-		"moonshotai/kimi-k3:high",
-		"deepseek/deepseek-v4-flash",
-		"",
-	} {
-		if err := row.Apply(value); err != nil {
-			t.Errorf("the mastermind row refused %q: %v", value, err)
-		}
-	}
-
-	for _, value := range []string{
-		// off is an effort word this build knows and a tier value may not carry
-		// it: it is a different request shape, and some endpoints refuse it.
-		"moonshotai/kimi-k3:off",
-		"moonshotai/kimi-k3:max",
-		"moonshotai/kimi-k3:none",
-		"moonshotai/kimi-k3:xhigh",
-		"moonshotai/kimi-k3:ultra",
-		"moonshotai/kimi-k3:",
-	} {
-		err := row.Apply(value)
-		if err == nil {
-			t.Errorf("the mastermind row took %q", value)
-			continue
-		}
-		for _, level := range roles.Efforts {
-			if !strings.Contains(err.Error(), level) {
-				t.Errorf("refusing %q does not name %q: %v", value, level, err)
-			}
-		}
-	}
-
-	// EVERY TIER ROW HAS THE SAME GATE. A sixth tier must not be able to arrive
-	// with the check missing.
-	for _, key := range []string{KeyTierReflexModel, KeyTierLowModel, KeyTierWorkerModel, KeyTierHighModel} {
-		if err := mustRow(t, registry(t, dir), key).Apply("some/model:off"); err == nil {
-			t.Errorf("%s took a level it cannot honour", key)
-		}
-	}
-}
-
-// A level written into a tier row reaches [roles.ResolveCall] as its own half,
-// and never as part of the model id.
-func TestALevelOnATierRowResolvesAsAnEffortAndNotAsAnId(t *testing.T) {
-	dir := t.TempDir()
-	if err := mustRow(t, registry(t, dir), KeyTierMastermindModel).Apply("moonshotai/kimi-k3:high"); err != nil {
-		t.Fatal(err)
-	}
-	source := roles.Source(func(key string) (string, bool) {
-		if key == roles.TierKey(roles.TierMastermind) {
-			return TierModelAt(dir, ModelTierMastermind), true
-		}
-		return "", false
-	})
-	call, err := roles.ResolveCall(source, roles.RolePlanner, "vendor/conversation")
+	fixEst := seats.Crew.EstUSD
+	seats, err = ResolveSeats(dir, SeatFlags{}, CrewAsk{Task: crewroute.Task{Text: openTask}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if call.Model != "moonshotai/kimi-k3" || call.Effort != "high" {
-		t.Fatalf("the planner resolved to %+v", call)
+	if seats.Work.Model != "z-ai/glm-5.3-flash" || seats.Crew.EstUSD <= fixEst {
+		t.Errorf("open-ended: worker %s at $%.3f; want the flash worker on a dearer crew than the fix's $%.3f",
+			seats.Work.Model, seats.Crew.EstUSD, fixEst)
 	}
-}
-
-// Every persisted write bumps the generation, which is the signal a live crew
-// source invalidates its snapshot on (cmd/codeaf's v3RolesSource).
-func TestEverySettingsWriteBumpsTheGeneration(t *testing.T) {
-	dir := t.TempDir()
-	before := SettingsGeneration()
-	if err := mustRow(t, registry(t, dir), KeyCrew).Apply(CrewMax); err != nil {
-		t.Fatal(err)
-	}
-	after := SettingsGeneration()
-	if after <= before {
-		t.Fatalf("the generation went %d → %d across a write", before, after)
-	}
-	// A refused write changes nothing, so it must not move the counter — a
-	// reader that rebuilt on every rejected keystroke would be paying for
-	// somebody's typing.
-	_ = mustRow(t, registry(t, dir), KeyCrew).Apply("nonsense")
-	if got := SettingsGeneration(); got != after {
-		t.Fatalf("a refused write moved the generation to %d", got)
-	}
-}
-
-// THE FAMILY ROW REFUSES A WORD THAT IS NOT A FAMILY, the way the crew row
-// refuses a word that is not a preset, and a refused write leaves the row absent
-// rather than half-written.
-func TestSetCrewSourceRefusesAWordThatIsNotAFamily(t *testing.T) {
-	dir := t.TempDir()
-	if err := SetCrewSource(dir, "wide"); err == nil {
-		t.Fatal("SetCrewSource accepted a word that is not a family")
-	}
-	if got := CrewSourceAt(dir); got != DefaultCrewSource {
-		t.Fatalf("a refused write left the row reading %q", got)
-	}
-	if CrewConfigured(dir) {
-		t.Fatal("a refused write marked the crew as answered")
-	}
-}
-
-// AN UNWRITTEN SEAT FOLLOWS THE FAMILY, which is what makes the hint true: a
-// profile on the all family with no rows runs the frontier crew without anyone
-// picking it, and the crew word already reads the default preset.
-func TestAnUnwrittenSeatFollowsTheFamily(t *testing.T) {
-	dir := t.TempDir()
-	if err := SetCrewSource(dir, CrewSourceAll); err != nil {
-		t.Fatal(err)
-	}
-	want, ok := CrewModelsForSource(CrewSourceAll, DefaultCrew)
-	if !ok {
-		t.Fatal("there is no default preset in the all family")
-	}
-	for tier, model := range want {
-		if got := TierModelAt(dir, tier); got != model {
-			t.Fatalf("%s on an all profile with no row is %q, want the all default %q", tier, got, model)
+	for _, m := range []string{seats.Work.Model, seats.Plan.Model, seats.Check.Model} {
+		if strings.Contains(m, "opus") || strings.Contains(m, "fable") {
+			t.Errorf("a seat fell to %s", m)
 		}
 	}
-	if got := CrewAt(dir); got != CrewBalanced {
-		t.Fatalf("an all profile with no rows reads the crew as %q, want %q", got, CrewBalanced)
-	}
 }
 
-// ── the pick row ────────────────────────────────────────────────────────────
-
-// THE PICK ROW DEFAULTS TO THE TABLE, and a word that is not one of the three
-// is refused the way every choice row refuses one.
-func TestCrewPickDefaultsToTheTable(t *testing.T) {
-	dir := t.TempDir()
-	if got := CrewPickAt(dir); got != CrewPickTable {
-		t.Fatalf("an untouched profile reads the pick %q, want %q", got, CrewPickTable)
-	}
-	if got := CrewAt(dir); got != DefaultCrew {
-		t.Fatalf("an untouched profile reads the crew %q, want %q", got, DefaultCrew)
-	}
-	if err := SetCrewPick(dir, CrewPickLearn); err != nil {
-		t.Fatalf("learn would not set: %v", err)
-	}
-	if got := CrewPickAt(dir); got != CrewPickLearn {
-		t.Fatalf("the pick reads %q after learn was set", got)
-	}
-	if err := SetCrewPick(dir, "measured"); err == nil {
-		t.Fatal("a word that is not one of the three was accepted")
-	}
-	if got := CrewPickAt(dir); got != CrewPickLearn {
-		t.Fatalf("a refused write left the pick reading %q", got)
-	}
-}
-
-// THE AUTO ROW IS THE OTHER WAY A SEAT IS COMPUTED FROM THE CATALOG'S ROWS,
-// beside the pick row this section's tests read. A pick off the table and a
-// tier row that says auto both compute from the rows the process holds, and
-// the door that waits for them asks [AnyTierAutoAt] for the second. A row
-// cleared on purpose says nothing about models, and a crew of model ids asks
-// for nothing — but the word reaches the read through the lineage too, so a
-// profile older than the worker seat counts its small-work row as well.
-func TestAnyTierAutoAtAnswersWhenARowSaysAuto(t *testing.T) {
-	dir := t.TempDir()
-	if AnyTierAutoAt(dir) {
-		t.Fatal("an untouched profile has no auto row to wait for")
-	}
-	if err := ApplyCrew(dir, CrewBalanced); err != nil {
-		t.Fatal(err)
-	}
-	if AnyTierAutoAt(dir) {
-		t.Fatal("a crew of model ids has no auto row to wait for")
-	}
-	if err := writeProfileValue(dir, tierKeyFor(ModelTierWorker), AutoValue); err != nil {
-		t.Fatal(err)
-	}
-	if !AnyTierAutoAt(dir) {
-		t.Fatal("a worker row that says auto went unnoticed")
-	}
-	if err := writeProfileValue(dir, tierKeyFor(ModelTierWorker), ""); err != nil {
-		t.Fatal(err)
-	}
-	if AnyTierAutoAt(dir) {
-		t.Fatal("a row cleared on purpose read as an auto row")
-	}
-	vintage := t.TempDir()
-	if err := writeProfileValue(vintage, tierKeyFor(ModelTierLow), AutoValue); err != nil {
-		t.Fatal(err)
-	}
-	if !AnyTierAutoAt(vintage) {
-		t.Fatal("an auto row reached through the lineage went unnoticed")
-	}
-}
-
-// THE PICK-AWARE CREW WORD READS THE BUDGET THE SEATS ARE COMPUTED AT. The
-// live seats are computed ids the preset tables do not hold, so the word is
-// read off the STORED rows — a profile that applied a crew and then set the
-// pick keeps saying the crew it picked — and a row the person emptied on
-// purpose still reads custom, because "follows the conversation" is not any
-// of the three.
-func TestTheCrewWordReadsThePresetThePickComputesAt(t *testing.T) {
-	dir := t.TempDir()
-	if err := ApplyCrew(dir, CrewMax); err != nil {
-		t.Fatal(err)
-	}
-	if err := SetCrewPick(dir, CrewPickLearn); err != nil {
-		t.Fatal(err)
-	}
-	if got := CrewAt(dir); got != CrewMax {
-		t.Fatalf("a max crew under learn reads %q, want %q", got, CrewMax)
-	}
-	// And a hand-typed row makes the word custom, as it always has: the stored
-	// comparison is the honest one, not a second way to say balanced.
-	rows, err := os.ReadFile(BudgetConfigPath(dir))
+// THE CHECK SEAT NEVER QUIETLY INHERITS THE PLANNER. A person who pinned the
+// planner said something about planning; the checker is routed for the task.
+func TestAPlanFlagDoesNotSeatTheChecker(t *testing.T) {
+	dir := crewProfile(t)
+	seats, err := ResolveSeats(dir, SeatFlags{PlanModel: "anthropic/claude-opus-5"}, CrewAsk{Task: crewroute.Task{Text: fixTask}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	values := map[string]string{}
-	if err := json.Unmarshal(rows, &values); err != nil {
+	if seats.Plan.Source != SeatFlag || seats.Plan.Model != "anthropic/claude-opus-5" {
+		t.Errorf("planner %+v, want the flag", seats.Plan)
+	}
+	if seats.Check.Source != SeatRouted || seats.Check.Model == "anthropic/claude-opus-5" {
+		t.Errorf("checker %+v inherited the planner's flag", seats.Check)
+	}
+	if !seats.Crew.Seat(crewroute.Planner).Pinned {
+		t.Error("the flag did not reach the router as a one-task pin")
+	}
+}
+
+func TestTheLadderFlagThenEnvThenPinThenRouter(t *testing.T) {
+	dir := crewProfile(t)
+	if err := SetCrewPin(dir, crewroute.Checker, "moonshotai/kimi-k3"); err != nil {
 		t.Fatal(err)
 	}
-	values[tierKeyFor(ModelTierMastermind)] = "openai/gpt-5"
-	raw, err := json.Marshal(values)
+	t.Setenv(ModelEnv, "deepseek/deepseek-v4-flash")
+	seats, err := ResolveSeats(dir, SeatFlags{}, CrewAsk{Task: crewroute.Task{Text: fixTask}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(BudgetConfigPath(dir), raw, 0o600); err != nil {
+	if seats.Work.Source != SeatEnv || seats.Work.Rung() != ModelEnv {
+		t.Errorf("worker %+v, want the variable", seats.Work)
+	}
+	if seats.Check.Source != SeatPinned || seats.Check.Model != "moonshotai/kimi-k3" {
+		t.Errorf("checker %+v, want the profile pin", seats.Check)
+	}
+	if seats.Plan.Source != SeatRouted {
+		t.Errorf("planner %+v, want routed", seats.Plan)
+	}
+	seats, _ = ResolveSeats(dir, SeatFlags{Model: "z-ai/glm-5.3-flash"}, CrewAsk{Task: crewroute.Task{Text: fixTask},
+		Pins: map[crewroute.Seat]CrewPin{crewroute.Checker: {Model: "deepseek/deepseek-v4-flash"}}})
+	if seats.Work.Source != SeatFlag {
+		t.Errorf("a flag lost to the variable: %+v", seats.Work)
+	}
+	if seats.Check.Model != "deepseek/deepseek-v4-flash" || seats.Check.Source != SeatPinned {
+		t.Errorf("a one-task --pin lost to the profile pin: %+v", seats.Check)
+	}
+	// And the one-task pin did not persist.
+	if pin, _ := CrewPinAt(dir, crewroute.Checker); pin.Model != "moonshotai/kimi-k3" {
+		t.Errorf("the profile pin moved to %q", pin.Model)
+	}
+}
+
+func TestPinsRoundTripAndRefuseWhatTheRuleLeavesOut(t *testing.T) {
+	dir := crewProfile(t)
+	if err := SetCrewPin(dir, crewroute.Worker, "z-ai/glm-5.3-flash@openrouter"); err != nil {
 		t.Fatal(err)
 	}
-	if got := CrewAt(dir); got != CrewCustom {
-		t.Fatalf("a hand-typed row under learn reads the crew %q, want custom", got)
+	pin, ok := CrewPinAt(dir, crewroute.Worker)
+	if !ok || pin.Model != "z-ai/glm-5.3-flash" || pin.Provider != "openrouter" {
+		t.Fatalf("pin read back %+v, %v", pin, ok)
+	}
+	if got := mustRow(t, registry(t, dir), KeyTierWorkerModel).Value(); got != "z-ai/glm-5.3-flash@openrouter" {
+		t.Errorf("the worker row reads %q", got)
+	}
+	if err := SetCrewAllowed(dir, "open"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetCrewPin(dir, crewroute.Planner, "anthropic/claude-opus-5"); err == nil || !strings.Contains(err.Error(), "outside the models you allow") {
+		t.Errorf("a closed model pinned under `open`: %v", err)
+	}
+	if err := SetCrewPin(dir, crewroute.Planner, "moonshotai/kimi-k3@fireworks"); err == nil || !strings.Contains(err.Error(), "not a connected provider") {
+		t.Errorf("a pin on an unconnected provider: %v", err)
+	}
+	// A rule that would strand a pin is refused and names the pin.
+	if err := SetCrewAllowed(dir, "≤0.1/0.2"); err == nil || !strings.Contains(err.Error(), "pinned to z-ai/glm-5.3-flash") {
+		t.Errorf("a rule that strands the worker pin: %v", err)
+	}
+	if err := SetCrewPin(dir, crewroute.Worker, "auto"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := CrewPinAt(dir, crewroute.Worker); ok {
+		t.Error("`auto` did not unpin the worker")
+	}
+	if got := mustRow(t, registry(t, dir), KeyTierWorkerModel).Value(); got != CrewAuto {
+		t.Errorf("an unpinned worker row reads %q, want auto", got)
+	}
+}
+
+func TestTheAllowedRuleNarrowsTheCandidates(t *testing.T) {
+	dir := crewProfile(t)
+	ids := func() []string { return crewroute.Names(CrewCandidatesAt(dir)) }
+	all := ids()
+	for _, want := range []string{"anthropic/claude-opus-5", "z-ai/glm-5.3-flash"} {
+		if !slices.Contains(all, want) {
+			t.Errorf("all: %v is missing %s", all, want)
+		}
+	}
+	if slices.Contains(all, "vendor/unpriced") {
+		t.Errorf("an unpriced row is a candidate: %v", all)
+	}
+	if err := ModifyCrewAllowed(dir, false, "anthropic"); err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(); slices.Contains(got, "anthropic/claude-opus-5") {
+		t.Errorf("-anthropic left %v", got)
+	}
+	if got := CrewAllowedAt(dir).String(); got != "all -anthropic" {
+		t.Errorf("rule reads %q", got)
+	}
+}
+
+func TestADailyCapPacesAndThenStops(t *testing.T) {
+	dir := crewProfile(t)
+	if err := SetCrewCap(dir, "1"); err != nil {
+		t.Fatal(err)
+	}
+	previous := CrewHistory
+	t.Cleanup(func() { CrewHistory = previous })
+	spent := 0.99
+	CrewHistory = func(string) CrewDay { return CrewDay{SpentUSD: spent} }
+	d, err := RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: openTask}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Seat(crewroute.Checker).Model == "moonshotai/kimi-k3" {
+		t.Error("at 99% of the cap an open-ended task still bought the dear checker")
+	}
+	spent = 1.2
+	if _, err := RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: openTask}}); !errors.Is(err, ErrCrewAtCap) {
+		t.Errorf("over the cap: %v, want ErrCrewAtCap", err)
+	}
+}
+
+func TestALearnedOffsetStartsARedoneClassHigher(t *testing.T) {
+	dir := crewProfile(t)
+	previous := CrewHistory
+	t.Cleanup(func() { CrewHistory = previous })
+	CrewHistory = func(string) CrewDay {
+		return CrewDay{Offsets: map[string]int{OffsetKey("repo", crewroute.Bugfix): 1}}
+	}
+	d, err := RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: fixTask}, Repo: "repo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, _ := RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: fixTask}, Repo: "elsewhere"})
+	if d.Quality <= plain.Quality || d.EstUSD <= plain.EstUSD {
+		t.Errorf("a fix class redone here starts at quality %.2f ($%.3f), not above another repository's %.2f ($%.3f)",
+			d.Quality, d.EstUSD, plain.Quality, plain.EstUSD)
+	}
+	if plain.Seat(crewroute.Worker).Model != "z-ai/glm-5.3-flash" {
+		t.Errorf("another repository inherited the offset: %s", plain.Seat(crewroute.Worker).Model)
+	}
+}
+
+// A CONNECTED PLAN IS PREFERRED: its marginal cost is nothing, and the send
+// goes out through the plan's own prefix.
+func TestAPlanRouteIsFreeAndCollidingIdsKeepTheirRouterSpelling(t *testing.T) {
+	dir := crewProfile(t)
+	if err := writeProfileValue(dir, keyModelSources, []PersistedSource{{ID: "z-ai", Written: "z-ai", Key: "zai-key-0123456789", Door: "coding-plan", Order: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	var zai CrewProvider
+	for _, p := range CrewProvidersAt(dir) {
+		if p.ID == "z-ai" {
+			zai = p
+		}
+	}
+	if zai.Kind != crewroute.Plan {
+		t.Fatalf("z-ai on its coding plan: %+v", zai)
+	}
+	d, err := RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: fixTask}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := d.Seat(crewroute.Worker)
+	if w.Provider != "z-ai" || w.CostUSD != 0 || w.Send != "z-ai/glm-5.3-flash" {
+		t.Errorf("worker %+v, want glm-5.3-flash on the coding plan", w)
+	}
+	// A z-ai model pinned to OpenRouter is spelled so the call goes there.
+	if err := SetCrewPin(dir, crewroute.Planner, "z-ai/glm-5.3-flash@openrouter"); err != nil {
+		t.Fatal(err)
+	}
+	d, _ = RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: fixTask}})
+	if p := d.Seat(crewroute.Planner); p.Send != "openrouter/z-ai/glm-5.3-flash" || p.Provider != "openrouter" {
+		t.Errorf("planner pinned @openrouter: %+v", p)
+	}
+}
+
+func TestMigratingARetiredCrew(t *testing.T) {
+	dir := crewProfile(t)
+	// A balanced preset applied in the `open` family: all five rows written,
+	// the three seat rows exactly the preset's, and the family and pick rows.
+	// The ids stay pins: no row says which hand wrote it.
+	if err := writeProfileValues(dir, map[string]any{
+		KeyTierReflexModel: "mistralai/mistral-nemo", KeyTierLowModel: "deepseek/deepseek-v4-flash-0731",
+		KeyTierWorkerModel: "z-ai/glm-5.3-flash", KeyTierHighModel: "moonshotai/kimi-k3", KeyTierMastermindModel: "z-ai/glm-5.3",
+		legacyKeyCrewSource: "open", legacyKeyCrewPick: "learn",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	line, err := MigrateCrew(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(line, "kept your pins: worker z-ai/glm-5.3-flash, planner z-ai/glm-5.3, checker moonshotai/kimi-k3") || !strings.Contains(line, "allowed models: open") {
+		t.Errorf("notice %q", line)
+	}
+	if got := CrewAllowedAt(dir).String(); got != "open" {
+		t.Errorf("the open family became %q", got)
+	}
+	for _, key := range []string{legacyKeyCrewSource, legacyKeyCrewPick} {
+		if _, held := persistedValue(dir, key); held {
+			t.Errorf("%s survived the migration", key)
+		}
+	}
+	if pins := CrewPinsAt(dir); len(pins) != 3 {
+		t.Errorf("the seat rows are pins %v, want all three kept", pins)
+	}
+	if got := TierModelAt(dir, ModelTierReflex); got != "mistralai/mistral-nemo" {
+		t.Errorf("the reflex row, not a crew seat, moved to %q", got)
+	}
+	// Once: the second run has nothing to say.
+	if again, _ := MigrateCrew(dir); again != "" {
+		t.Errorf("a second migration said %q", again)
+	}
+}
+
+// THE OWNER'S PROFILE: the three seats all hold the id an old preset shipped,
+// beside written low and reflex rows. Nothing retired is on it, so nothing
+// moves: all three stay pins, every run.
+func TestAPresetsIdsAPersonWroteStayPinned(t *testing.T) {
+	dir := crewProfile(t)
+	if err := writeProfileValues(dir, map[string]any{
+		KeyTierReflexModel: "mistralai/mistral-nemo", KeyTierLowModel: "z-ai/glm-5.3-flash",
+		KeyTierWorkerModel: "z-ai/glm-5.3-flash", KeyTierHighModel: "z-ai/glm-5.3-flash", KeyTierMastermindModel: "z-ai/glm-5.3-flash",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for run := 0; run < 2; run++ {
+		if line, err := MigrateCrew(dir); err != nil || line != "" {
+			t.Fatalf("run %d migrated a profile with nothing retired: %q %v", run, line, err)
+		}
+	}
+	for _, seat := range crewroute.Seats {
+		if pin, ok := CrewPinAt(dir, seat); !ok || pin.Model != "z-ai/glm-5.3-flash" {
+			t.Errorf("the %s is %+v, %v, want its pin kept", seat, pin, ok)
+		}
+	}
+	for _, key := range []string{KeyTierWorkerModel, KeyTierHighModel, KeyTierMastermindModel, KeyTierLowModel, KeyTierReflexModel} {
+		if _, held := persistedValue(dir, key); !held {
+			t.Errorf("%s was deleted", key)
+		}
+	}
+}
+
+// A CHECKER PINNED ALONE BESIDE A RETIRED WORD IS KEPT, and the line says so;
+// migrating again changes nothing.
+func TestAPinnedCheckerSurvivesMigration(t *testing.T) {
+	dir := crewProfile(t)
+	if err := writeProfileValues(dir, map[string]any{KeyTierHighModel: "moonshotai/kimi-k3", legacyKeyCrew: "balanced"}); err != nil {
+		t.Fatal(err)
+	}
+	line, err := MigrateCrew(dir)
+	if err != nil || !strings.Contains(line, "kept your pins: checker moonshotai/kimi-k3") {
+		t.Fatalf("notice %q %v", line, err)
+	}
+	if again, _ := MigrateCrew(dir); again != "" {
+		t.Errorf("a second migration said %q", again)
+	}
+	if pin, ok := CrewPinAt(dir, crewroute.Checker); !ok || pin.Model != "moonshotai/kimi-k3" {
+		t.Errorf("the checker is %+v, %v", pin, ok)
+	}
+}
+
+func TestMigrationKeepsAHandWrittenIdAsAPin(t *testing.T) {
+	dir := crewProfile(t)
+	if err := writeProfileValues(dir, map[string]any{
+		KeyTierHighModel: "anthropic/claude-opus-5", KeyTierWorkerModel: "auto", legacyKeyCrew: "frugal",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	line, err := MigrateCrew(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(line, "kept your pins: checker anthropic/claude-opus-5") {
+		t.Errorf("notice %q", line)
+	}
+	if pin, ok := CrewPinAt(dir, crewroute.Checker); !ok || pin.Model != "anthropic/claude-opus-5" {
+		t.Errorf("the hand-written checker is %+v, %v", pin, ok)
+	}
+	if _, ok := CrewPinAt(dir, crewroute.Worker); ok {
+		t.Error("an `auto` row became a pin")
+	}
+	if _, held := persistedValue(dir, legacyKeyCrew); held {
+		t.Error("the preset word survived")
+	}
+}
+
+func TestParseCrewPin(t *testing.T) {
+	cases := []struct {
+		raw   string
+		pin   CrewPin
+		auto  bool
+		fails bool
+	}{
+		{"", CrewPin{}, true, false},
+		{"auto", CrewPin{}, true, false},
+		{"moonshotai/kimi-k3", CrewPin{Model: "moonshotai/kimi-k3"}, false, false},
+		{"moonshotai/kimi-k3:high@OpenRouter", CrewPin{Model: "moonshotai/kimi-k3:high", Provider: "openrouter"}, false, false},
+		{"moonshotai/kimi-k3@", CrewPin{}, false, true},
+		{"moonshotai/kimi-k3:hgih", CrewPin{}, false, true},
+	}
+	for _, tc := range cases {
+		pin, auto, err := ParseCrewPin(tc.raw)
+		if (err != nil) != tc.fails || auto != tc.auto || (!tc.fails && pin != tc.pin) {
+			t.Errorf("ParseCrewPin(%q) = %+v, %v, %v", tc.raw, pin, auto, err)
+		}
+	}
+}
+
+// THE PICKER'S OFFERS ARE EVERY REACHABLE MODEL, and the rule only marks them:
+// a model the rule leaves out is still offered, as not allowed.
+func TestCrewOffersMarkWhatTheRuleLeavesOut(t *testing.T) {
+	dir := crewProfile(t)
+	if err := SetCrewAllowed(dir, "open"); err != nil {
+		t.Fatal(err)
+	}
+	allowed := map[string]bool{}
+	for _, offer := range CrewOffersAt(dir) {
+		if len(offer.Routes) == 0 {
+			t.Errorf("%s was offered with no route", offer.Model.ID)
+		}
+		allowed[offer.Model.ID] = offer.Allowed
+	}
+	if got, ok := allowed["anthropic/claude-opus-5"]; !ok || got {
+		t.Fatalf("a closed model under `open` reads offered=%v allowed=%v", ok, got)
+	}
+	if !allowed["moonshotai/kimi-k3"] {
+		t.Fatal("an open model under `open` is not allowed")
+	}
+	if _, ok := allowed["vendor/unpriced"]; ok {
+		t.Fatal("an unpriced row was offered")
+	}
+}
+
+// UNDO PUTS THE ROWS BACK, absent ones included, in one write.
+func TestCrewStateRestoresTheRows(t *testing.T) {
+	dir := crewProfile(t)
+	before := CrewStateAt(dir)
+	if err := SetCrewPin(dir, crewroute.Checker, "moonshotai/kimi-k3"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetCrewCap(dir, "5"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetCrewAllowedRule(dir, crewroute.Allowed{Base: crewroute.BaseOpen}); err != nil {
+		t.Fatal(err)
+	}
+	if err := RestoreCrewState(dir, before); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := CrewPinAt(dir, crewroute.Checker); ok {
+		t.Fatal("the restored profile still pins the checker")
+	}
+	if CrewCapAt(dir) != 0 || CrewAllowedAt(dir).String() != "all" {
+		t.Fatalf("restored cap %v rule %q", CrewCapAt(dir), CrewAllowedAt(dir).String())
+	}
+	if _, held := persistedValue(dir, KeyCrewCap); held {
+		t.Fatal("an absent row came back as a written one")
+	}
+}
+
+// A PROVIDER TURNED OFF IS A ROUTE TAKEN AWAY, in a row of its own: the router
+// never picks through it, the offers mark a model only it reached as not
+// allowed, the last provider on cannot be turned off, a pin naming it is
+// refused, and the undo puts the row back with the others.
+func TestCrewProvidersTurnedOff(t *testing.T) {
+	dir := crewProfile(t)
+	if err := writeProfileValue(dir, keyModelSources, []PersistedSource{{ID: "z-ai", Written: "z-ai", Key: "zai-key-0123456789", Door: "coding-plan", Order: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	before := CrewStateAt(dir)
+	for _, p := range CrewProvidersAt(dir) {
+		if !p.On {
+			t.Fatalf("a connection nobody turned off reads off: %+v", p)
+		}
+	}
+	if err := SetCrewProviderOn(dir, "z-ai", false); err != nil {
+		t.Fatal(err)
+	}
+	if got := CrewProvidersOffAt(dir); !got["z-ai"] || len(got) != 1 {
+		t.Fatalf("the row reads %v", got)
+	}
+	if rule := CrewAllowedAt(dir).String(); rule != "all" {
+		t.Fatalf("turning a provider off wrote the allowed rule: %q", rule)
+	}
+	for _, c := range CrewCandidatesAt(dir) {
+		for _, r := range c.Routes {
+			if r.Provider == "z-ai" {
+				t.Fatalf("%s is still routed through a provider that is off", c.Model.ID)
+			}
+		}
+	}
+	d, err := RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: fixTask}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := d.Seat(crewroute.Worker); w.Provider != "openrouter" {
+		t.Fatalf("the worker rode %s with z-ai off", w.Provider)
+	}
+	if err := SetCrewPin(dir, crewroute.Worker, "z-ai/glm-5.3-flash@z-ai"); err == nil || !strings.Contains(err.Error(), "turned off") {
+		t.Fatalf("a pin through a provider that is off: %v", err)
+	}
+	// THE LAST ONE ON STAYS ON.
+	if err := SetCrewProviderOn(dir, "openrouter", false); !errors.Is(err, ErrCrewLastProvider) {
+		t.Fatalf("turning off the last provider on: %v", err)
+	}
+	if err := SetCrewProviderOn(dir, "nobody", false); err == nil {
+		t.Fatal("a provider that is not connected was turned off")
+	}
+	// ONLY OPENROUTER ON, AND ONLY IT SERVES: every offer is still served.
+	for _, offer := range CrewOffersAt(dir) {
+		if !offer.Served {
+			t.Errorf("%s reads unserved while openrouter is on", offer.Model.ID)
+		}
+	}
+	if err := RestoreCrewState(dir, before); err != nil {
+		t.Fatal(err)
+	}
+	if _, held := persistedValue(dir, KeyCrewProvidersOff); held {
+		t.Fatal("undo left the providers row written")
+	}
+	// TURNING THE LAST ONE BACK ON REMOVES THE ROW rather than writing an empty list.
+	if err := SetCrewProviderOn(dir, "z-ai", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetCrewProviderOn(dir, "z-ai", true); err != nil {
+		t.Fatal(err)
+	}
+	if _, held := persistedValue(dir, KeyCrewProvidersOff); held {
+		t.Fatal("every provider on left the row written")
+	}
+}
+
+// THE GUARD IS ON ROUTING, NOT ON COUNTING: a custom endpoint left on alone
+// routes no seat, so turning OpenRouter off beside it is refused — unless
+// every seat is pinned to a provider still on.
+func TestCrewProvidersKeepOneThatRoutes(t *testing.T) {
+	dir := crewProfile(t)
+	custom := PrepareCustomSource(dir, "http://127.0.0.1:9001/v1", "my-vllm")
+	custom.Key, custom.Order = "sk-my-vllm-0123456789", 1
+	if err := WriteSources(dir, []PersistedSource{custom}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetCrewProviderOn(dir, "openrouter", false); !errors.Is(err, ErrCrewNoRoutableProvider) {
+		t.Fatalf("turning off the one provider that routes beside a custom endpoint: %v", err)
+	}
+	for _, seat := range crewroute.Seats {
+		if err := SetCrewPin(dir, seat, "my-vllm/qwen-coder"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := SetCrewProviderOn(dir, "openrouter", false); err != nil {
+		t.Fatalf("every seat pinned to the custom endpoint, and still refused: %v", err)
+	}
+}
+
+// A PIN'S THINKING LEVEL RIDES ITS SEND. A seat pinned to `moonshotai/kimi-k3:high`
+// is asked at high on every task, the way the same id given as --plan-model
+// always was: the level is the person's, and the catalog listing the model
+// without it is not a reason to send it without it.
+func TestAPinnedThinkingLevelIsSentWithThePin(t *testing.T) {
+	dir := crewProfile(t)
+	if err := SetCrewPin(dir, crewroute.Planner, "moonshotai/kimi-k3:high"); err != nil {
+		t.Fatal(err)
+	}
+	seats, err := ResolveSeats(dir, SeatFlags{}, CrewAsk{Task: crewroute.Task{Text: fixTask},
+		Pins: map[crewroute.Seat]CrewPin{crewroute.Checker: {Model: "z-ai/glm-5.3-flash:low"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seats.Plan.Source != SeatPinned || seats.Plan.Model != "moonshotai/kimi-k3:high" {
+		t.Errorf("planner %+v, want the profile pin sent at its level", seats.Plan)
+	}
+	if seats.Check.Source != SeatPinned || seats.Check.Model != "z-ai/glm-5.3-flash:low" {
+		t.Errorf("checker %+v, want the one-task pin sent at its level", seats.Check)
+	}
+	if send := seats.Crew.Seat(crewroute.Planner).Send; send != "moonshotai/kimi-k3:high" {
+		t.Errorf("the decision sends the planner as %q", send)
+	}
+}
+
+// `auto` IN THE REFLEX OR SMALL-WORK ROW WAS THIS BUILD'S OWN MODEL for that
+// row before crews were routed, and it still is: it is never sent to a
+// provider as a model id, and the migration takes the row away. A row a person
+// cleared on purpose (empty) is theirs and stays.
+func TestAutoInAHelperRowReadsTheDefaultAndMigrates(t *testing.T) {
+	dir := crewProfile(t)
+	if err := writeProfileValues(dir, map[string]any{KeyTierLowModel: "auto", KeyTierReflexModel: "AUTO"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, tier := range []string{ModelTierLow, ModelTierReflex} {
+		if got := TierModelAt(dir, tier); got == "" || strings.EqualFold(got, "auto") {
+			t.Errorf("before migration the %s row reads %q", tier, got)
+		}
+	}
+	if line, err := MigrateCrew(dir); err != nil || line == "" {
+		t.Fatalf("migration said %q %v", line, err)
+	}
+	for _, key := range []string{KeyTierLowModel, KeyTierReflexModel} {
+		if _, held := persistedValue(dir, key); held {
+			t.Errorf("%s still holds auto after the migration", key)
+		}
+	}
+	if again, _ := MigrateCrew(dir); again != "" {
+		t.Errorf("a second migration said %q", again)
+	}
+	cleared := crewProfile(t)
+	if err := writeProfileValues(cleared, map[string]any{KeyTierLowModel: ""}); err != nil {
+		t.Fatal(err)
+	}
+	if line, _ := MigrateCrew(cleared); line != "" {
+		t.Errorf("a cleared small-work row was migrated: %q", line)
+	}
+	if _, held := persistedValue(cleared, KeyTierLowModel); !held {
+		t.Error("a cleared small-work row was deleted")
 	}
 }

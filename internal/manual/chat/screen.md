@@ -899,7 +899,7 @@ What steps up, in the lines you will see it in:
 
 | Line | What is drawn brighter |
 | --- | --- |
-| the crew line after `/crew` | the three crew model ids and the model you are still talking to — `brain`, `hands`, `checks` and `you are still talking to` stay grey |
+| the `/crew` panel and its confirmations | the model ids, the allowed rule and the model you are still talking to — `worker`, `auto · now`, `every task until you unpin it` and `you are still talking to` stay grey |
 | `model · <id>` after `/model` | the model id |
 | `harness · <name>` | the harness's name |
 | `<mode> task <id> started · <title>` | the id and the title |
@@ -1121,8 +1121,8 @@ are looking at a different one is counted in `N waiting` on the next frame. `tab
 empty box goes to the last one — see the keys page, and home's *Switch between projects
 without leaving*.
 
-**Six facts are on `/status` and the phone sheet but not on the row:** `crew` (the preset
-the five models codeaf uses on its own behalf are on), `changes` (`Σ +128 −14`, lines
+**Six facts are on `/status` and the phone sheet but not on the row:** `crew` (auto, and
+any seat you pinned), `changes` (`Σ +128 −14`, lines
 added and removed by this session), `rate` (`1.2k tok/s avg`, this turn's output over
 this turn's whole wall time, waits and tool calls included — which is why it is not the
 figure at the right edge of the row), the compaction sparkline's readings, `open` and
@@ -1461,6 +1461,41 @@ Beyond the four tiers, these are the exact points where parts of the screen give
 | opened-table columns | become stacked records below 8 |
 | landed task card | nothing below width 8 |
 | turn receipt | none below width 8 |
+
+## The crew panel on screen — the /crew frame, its providers row, and what gives way when narrow
+
+`/crew` hangs one frame over the conversation, in the place every overlay takes, with the
+input line under it. Its rows, top to bottom: the three seats, a blank line, **models**,
+**providers**, **cap**, then the dim `today` line and any warning.
+
+```
+│  models    ‹ all › (96)                                             │
+│› providers ✓ openrouter  ✓ z-ai sub  ✓ ollama local  ○ my-vllm  +   │
+│  cap       none                                                     │
+```
+
+A provider chip is `✓` and its name when it is on, `○` and dim when it is off; the chip
+under the cursor is bold, and `+` at the end is `/connect`. The row that just changed wears
+a tick `✓` at its end, and the frame's bottom edge offers `z undo` for five seconds.
+
+`enter` on the providers row swaps the rows for the providers list, titled
+`crew · providers · 3 of 4 on`:
+
+```
+│› ✓ openrouter  api key          96 models · today $1.20    on       │
+│  ✓ z-ai        subscription     4 models  · nothing today  on       │
+│  ✓ ollama      local            2 models  · nothing today  on       │
+│  ○ my-vllm     custom endpoint  pins only · nothing today  off      │
+│                                                                     │
+│  free routes  off · rate-limited, may log prompts                   │
+```
+
+What gives way when the window narrows, in order: the seats drop their
+`usually <model>` hint, the provider chips drop their `local` word, and then the chips fold
+into one count — `providers 3 of 4 on` — where `space` and `enter` open the list instead.
+The list itself drops the day's spend first, then the model count, then how a provider
+bills, and always keeps `on` or `off`.
+Nothing on the panel is cut with `…`: a row that does not fit is said shorter.
 
 ## The two-row status deck at phone width
 
@@ -4052,7 +4087,7 @@ with its name in bold, the way a row on home does.
 The step above that is for the thing you have actually **chosen**, and it stays drawn
 when nobody is touching the list: the roster row and the strip chip of the room you are
 standing in, the model in use in `/model`, the conversation you are in on home and in
-`/resume`, the crew in force in `/crew`, the tab you are on in `/settings`. Both can be
+`/resume`, the tab you are on in `/settings`. Both can be
 on screen at once — that is what two steps are for — and the roster is where you will
 see it: the room you walked into on the louder ground, the row `↑↓` has reached on the
 quieter one. Where a cursor lands on the chosen row itself, the louder ground wins, so a

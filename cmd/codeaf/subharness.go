@@ -441,52 +441,41 @@ func newSharedCatalog() func(config.Config) *catalog.Catalog {
 			resolved = catalog.LoadLazy(context.Background(), catalog.Options{
 				BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
 			})
-			// A tier row that says auto is answered from this catalog (config.AutoModels):
-			// the same non-blocking read, never a fetch, and set once at start-up so every
-			// headless door resolves the word against the list it already holds.
-			config.AutoModels = resolved.ModelsNow
-			// and the pool's index beside it, in the same one-time manner: a tier
-			// row that says auto is answered from the index this process was seated
-			// with, the seed when no cache is fresher, and the one fetch it makes
-			// runs in the background and never blocks this read.
+			// The crew router picks its seats from this catalog
+			// (config.CrewCatalog): the same non-blocking read, never a fetch,
+			// and set once at start-up so every headless door routes against
+			// the list it already holds.
+			seatCrewRows(resolved.ModelsNow)
+			// and the pool's errands beside it, in the same one-time manner.
 			wirePoolIndex(settings.ProfileDir)
 		})
 		return resolved
 	}
 }
 
+// seatCrewRows hands the router the catalog's rows. It is a variable so a
+// test that seats a catalog of its own is not overwritten by the first door
+// that warms the shared one.
+var seatCrewRows = func(rows func() []catalog.Model) { config.CrewCatalog = rows }
+
 // autoSeatRowsBound is how long a headless door waits for the catalog's rows
-// when the profile's pick or a tier row needs them. It is sized to cover the
-// disk read of a cached catalog and nothing more. It is a variable because the
-// test of the bound must not spend three seconds proving the bound is honoured.
+// before it routes its crew. It is sized to cover the disk read of a cached
+// catalog and nothing more. It is a variable because the test of the bound must
+// not spend three seconds proving the bound is honoured.
 var autoSeatRowsBound = 3 * time.Second
 
-// useAutoSeats seats this process's catalog under the seat ladder, and is what
+// useAutoSeats seats this process's catalog under the crew router, and is what
 // a headless door calls BEFORE it resolves its seats.
 //
-// The order is the whole of it. A tier row that says `auto` is answered from
-// the rows already in hand ([config.AutoModels]), and every headless door
-// climbed the ladder before it asked for a catalog at all — so the word read
-// against nothing and landed on the family's table row on every run, on a
-// machine whose catalog was sitting in its own cache file. It is the same lazy,
-// memoised catalog every one of those doors goes on to use; asking for it a few
-// lines earlier waits for nothing.
-//
-// AND WHEN THE ANSWER NEEDS THE ROWS, THE DOOR WAITS FOR THEM, within
-// [autoSeatRowsBound]: a pick taken off the table ([config.CrewPickAt]) and a
-// tier row that says auto ([config.AnyTierAutoAt]) are both computed from those
-// rows, and the chat surface never met the defect because its picks happen after
-// the warm has landed. The bound is a bound on the wait, not on the fetch — when
-// it runs out the warm carries on in the background, the resolver falls to the
-// family's table row exactly as it did before, and the seat's receipt names the
-// rung that answered (`table`), so a run that fell says it fell. A profile with
-// neither a pick nor an auto row reads no rows at all, and waits for nothing,
-// the way it always has.
+// THE ORDER IS THE WHOLE OF IT. Every seat nobody pinned is routed per task
+// from the catalog's rows ([config.CrewCatalog]), and a door that climbed the
+// ladder before it asked for a catalog would route from nothing. So the door
+// waits for the rows, within [autoSeatRowsBound]: the bound is a bound on the
+// wait, not on the fetch — when it runs out the warm carries on in the
+// background and the router works from the models it can still price (a pin, a
+// flag), and says so in the error it answers when it cannot seat a seat.
 func useAutoSeats(settings config.Config) {
 	resolved := sharedCatalog(settings)
-	if config.CrewPickAt(settings.ProfileDir) == config.CrewPickTable && !config.AnyTierAutoAt(settings.ProfileDir) {
-		return
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), autoSeatRowsBound)
 	defer cancel()
 	resolved.Warmed(ctx)

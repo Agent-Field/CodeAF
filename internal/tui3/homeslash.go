@@ -138,6 +138,8 @@ const (
 //	opens a conversation here first      it opens one AT THE TARGET (homedraft.go)
 //	                                     and runs there, the door `enter` uses
 //	answers here                         a note, echoed onto home's own line
+//	opens the crew panel                 /crew, bare or a shortcut — home steps
+//	                                     aside for it and esc comes back
 //	runs on the conversation behind home  /land /workspace — and they say so
 //	a fresh conversation behind home     /new
 //	closes the conversation behind home  /quit
@@ -158,6 +160,7 @@ const (
 	fateTray         = "onto home's tray"
 	fateNeedsChat    = "opens a conversation here first"
 	fateAnswers      = "answers here"
+	fateCrew         = "opens the crew panel"
 	fateBehind       = "runs on the conversation behind home"
 	fateFresh        = "a fresh conversation behind home"
 	fateQuit         = "closes the conversation behind home"
@@ -169,10 +172,9 @@ const (
 // may touch a disk or a door; and the test that walks [commands] can then ask it
 // about every row without an app.
 //
-// THE ARGUMENT IS PART OF THE QUESTION, because four commands mean two different
+// THE ARGUMENT IS PART OF THE QUESTION, because three commands mean two different
 // things with and without one: `/standing` is a page and `/standing <words>`
-// raises a card in a conversation; `/crew` is a picker and `/crew frugal` is a
-// note; `/task` is the task page and `/task <brief>` starts work; `/memory` is
+// raises a card in a conversation; `/task` is the task page and `/task <brief>` starts work; `/memory` is
 // the place and `/memory <query>` prints. A table keyed on the name alone would
 // send a person to the wrong one of each pair. The drop-up asks with the row's
 // own placeholder ([command.args]), which is empty on exactly the bare rows.
@@ -229,11 +231,15 @@ func homeFate(word, rest string) string {
 		}
 		return fateNeedsChat
 	case "crew":
-		// Bare it is a picker this screen cannot draw; with a word it is a note.
-		if rest == "" {
-			return fateNeedsChat
-		}
-		return fateAnswers
+		// THE PANEL AND ITS FOUR SHORTCUTS ALL OPEN THE PANEL — the bare form to
+		// change something, a shortcut to show what it changed — and a place
+		// cannot draw an overlay, so every form steps off home onto the
+		// conversation behind it, and esc on the panel steps back (crewpanel.go).
+		return fateCrew
+	case "redo":
+		// A redo runs a task this conversation started again, so there has to
+		// be one.
+		return fateNeedsChat
 	case "effort":
 		// BOTH FORMS NEED A CONVERSATION, and that is what tells this apart from
 		// /crew and /model. The crew is the machine's, the model has a target
@@ -333,7 +339,7 @@ func (a *app) homeSlash(line string) tea.Cmd {
 		return tea.Batch(started, a.slash(line))
 	}
 	// AND THE ANSWER OF EVERYTHING ELSE IS ECHOED WHERE IT WAS TYPED. /help,
-	// /status, /cost, /crew frugal, /budget 20 and `there is no command called
+	// /status, /cost, /crew, /budget 20 and `there is no command called
 	// /x · / lists them` all answer with a note, which lands in the conversation
 	// behind this screen — true, kept, and unreadable until you leave. The flag
 	// puts the first line of it on home's own message line as well

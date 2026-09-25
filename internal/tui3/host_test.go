@@ -249,7 +249,7 @@ func TestCommandsWithoutAFarDoorNameTheMachineAndTouchNoLocalState(t *testing.T)
 	}{
 		{"cache", func() { a.runCacheCommand("clean now") }},
 		{"permissions", a.openPermissions},
-		{"crew", func() { a.runCrew("frugal") }},
+		{"crew", func() { a.runCrew("cap 5") }},
 		{"memories", func() { a.runMemories("") }},
 		{"memory query", func() { a.runMemories("Ada") }},
 		{"remember", func() { a.runRemember("Ada likes tea") }},

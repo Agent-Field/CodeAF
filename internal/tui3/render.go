@@ -1909,7 +1909,7 @@ const ctxRingSize = 6
 type hudSeg uint8
 
 const (
-	// segCrew is the crew's preset word — `crew max` — the OTHER model dial,
+	// segCrew is the crew's reading — `crew auto` — the OTHER model dial,
 	// drawn at the head of the telemetry so it stands beside the conversation's
 	// model across the gap (crew.go's [app.crewSegment] says why it is one word).
 	segCrew hudSeg = iota
@@ -3813,8 +3813,8 @@ const hopDoorWord = hopOpenKey + " chats"
 // What replaces it is a slot that only ever names the keys that WORK RIGHT NOW:
 //
 //	the pointer is theirs drag to select · any key ends it
-//	the picker is open    → lanes · enter switch · esc · crew max
-//	  inside a fold       enter choose · ← back · esc · crew max
+//	the picker is open    → lanes · enter switch · esc · crew auto
+//	  inside a fold       enter choose · ← back · esc · crew auto
 //	the sessions are up   enter open · esc
 //	copy mode is on       v select · a block · y yank · esc
 //	rewind is armed       esc again to rewind        (rewind.go's double esc)
@@ -3859,11 +3859,11 @@ func (a *app) hintWord() string {
 		return "drag to select · any key ends it"
 	case a.pick.open:
 		// AND THE CREW IS NAMED BESIDE THE KEYS, because this list is where a
-		// person lands when the crew they just set did not change anything they
-		// can see. The status line's model readout is the conversation's model,
-		// which /crew never touches by design — so somebody who typed `/crew max`
-		// opens /model hunting for the change, and the one word this slot can
-		// afford tells them the crew is a separate thing that is already set.
+		// person lands when a crew change did not change anything they can see.
+		// The status line's model readout is the conversation's model, which
+		// /crew never touches by design — so somebody who pinned a seat opens
+		// /model hunting for the change, and the one word this slot can afford
+		// tells them the crew is a separate thing.
 		// The picker's rows are the list itself and are reused whole inside the
 		// settings panel ([picker.rowsOwned]), so it has no header or foot of its
 		// own to spend on a sentence; this slot is the line that is already there.
@@ -3877,8 +3877,6 @@ func (a *app) hintWord() string {
 			return keys + " · " + crew
 		}
 		return keys
-	case a.crewPick.open:
-		return "↑↓ · ←→ family · enter apply · esc"
 	case a.effPick.open:
 		// The chord is named beside the keys because this list is the only place
 		// on the surface that can teach it: the chip it opens from prints a mark
@@ -3903,6 +3901,10 @@ func (a *app) hintWord() string {
 		// another project cannot be excepted from a place it never reached
 		// ([standingPlace.hint]).
 		return a.orders.hint(a)
+	case a.crewUI.open:
+		// The crew panel prints its keys in its own bottom edge (crewpanel.go),
+		// and a slot repeating them would say the same thing twice on one screen.
+		return ""
 	case a.subPage.open:
 		// /subharness names its verbs here PER ROW, because enter means two
 		// things on the intake card — fill this field in, or start the run — and

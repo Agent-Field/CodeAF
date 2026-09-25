@@ -1136,8 +1136,8 @@ and an explicit zero temperature or output limit is preserved.
 Explicit choices remain explicit. `CODEAF_REASONING`,
 `CODEAF_EXEC_REASONING`, a model or crew value with `:low`, `:medium` or
 `:high`, a saved task or standing-work rung, and an embedder's `ai.Option` still
-travel. The three shipped crew presets contain bare model ids and add no effort
-level. `cmd/harness-design` is a development command with explicit CLI-sized
+travel. A crew seat nobody pinned is routed to a bare model id and adds no
+effort level. `cmd/harness-design` is a development command with explicit CLI-sized
 requests and retains its caps.
 
 The local process remains bounded independently of provider generation:

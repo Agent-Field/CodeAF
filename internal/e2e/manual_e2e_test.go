@@ -52,7 +52,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/manual"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -311,17 +311,19 @@ func mentionsAny(text string, words ...string) bool {
 // TestManualQuotesTheCrewsRealSize is #293 §3, which is the failure class this
 // whole lane exists for: a page that has stopped being true reads exactly like
 // one that is, and the person asked precisely because they could not check. The
-// count is derived from [config.ModelTiers] and cross-checked against every
-// preset's own row, so the day a seat is added or removed this test moves with
-// the code and the manual is what turns red.
+// count is derived from [crewroute.Seats], the router's own list of the seats a
+// task runs on, so the day a seat is added or removed this test moves with the
+// code and the manual is what turns red.
 func TestManualQuotesTheCrewsRealSize(t *testing.T) {
-	seats := crewSeatCount(t)
-	t.Logf("internal/config owns the figure: %d seats (%v), the same count in all %d presets",
-		seats, config.ModelTiers, len(config.CrewPresets))
+	seats := len(crewroute.Seats)
+	if seats == 0 {
+		t.Fatalf("crewroute.Seats is empty")
+	}
+	t.Logf("internal/crewroute owns the figure: %d seats (%v)", seats, crewroute.Seats)
 
 	w := newManualWorld(t)
 	runManualScenario(t, w, "how many models the crew is",
-		"how many models does codeaf run on its own behalf?",
+		"how many models is a task's crew?",
 		func(p *probe, out turn, calls []manualCall) {
 			if len(calls) == 0 {
 				p.missf("the model answered a question about codeaf out of memory: it called %v and never opened the manual", out.names())
@@ -329,11 +331,11 @@ func TestManualQuotesTheCrewsRealSize(t *testing.T) {
 			}
 			// NAMING THE SEATS IS SAYING HOW MANY OF THEM THERE ARE, and it is
 			// the more checkable of the two: #293 §3's own worked example is two
-			// pages that listed four seat names and omitted the one that pays
+			// pages that listed some seat names and omitted the one that pays
 			// most of a task's bill, which a count alone would not have caught.
-			// The words are the settings registry's, not this file's.
-			if named := seatsNamedIn(out.Reply, crewSeatLabels(t)); len(named) == seats {
-				t.Logf("  the reply names all %d crew seats the registry owns: %v", seats, named)
+			// The words are the router's, not this file's.
+			if named := seatsNamedIn(out.Reply, crewSeatLabels()); len(named) == seats {
+				t.Logf("  the reply names all %d crew seats the router owns: %v", seats, named)
 				return
 			}
 			said := countsClaimedAbout(out.Reply, crewNouns)
@@ -350,62 +352,26 @@ func TestManualQuotesTheCrewsRealSize(t *testing.T) {
 					seats, said, out.Reply, indent(manualResults(calls), "    "))
 				return
 			}
-			t.Logf("  the reply says %d, which is what internal/config says", seats)
+			t.Logf("  the reply says %d, which is what internal/crewroute says", seats)
 		})
 }
 
 // crewNouns are the words a claim about the crew's size lands on. A number that
 // is not next to one of these is a number about something else — how many
-// presets there are, how many pages the manual has — and grading it would be
+// rows the settings sheet has, how many pages the manual has — and grading it would be
 // grading a sentence nobody asked about.
 var crewNouns = []string{"model", "models", "seat", "seats", "tier", "tiers", "crew"}
 
-// crewSeatCount is the figure the CODE owns, read the way the settings sheet
-// reads it and checked against the table underneath, so a count that only one
-// of the two agreed with could not pass as the answer.
-func crewSeatCount(t *testing.T) int {
-	t.Helper()
-	seats := len(config.ModelTiers)
-	if seats == 0 {
-		t.Fatalf("config.ModelTiers is empty")
-	}
-	for _, preset := range config.CrewPresets {
-		models, found := config.CrewModels(preset)
-		if !found {
-			t.Fatalf("config.CrewModels(%q) answers nothing", preset)
-		}
-		if len(models) != seats {
-			t.Fatalf("the %s preset sets %d models where there are %d tiers; the count this test grades is not one number",
-				preset, len(models), seats)
-		}
-	}
-	return seats
-}
-
-// crewSeatLabels is the word each crew seat is KNOWN BY, read off the settings
-// registry rows that front the five tiers — "reflex", "small work", "worker",
-// "careful work", "mastermind". They are the registry's because a seat's name is
-// the registry's to change, and a test that spelled them here would be the
-// second copy that #293 §3 is about.
-func crewSeatLabels(t *testing.T) []string {
-	t.Helper()
-	registry := config.NewSettings(config.SettingsOptions{})
-	labels := make([]string, 0, len(config.ModelTiers))
-	for _, tier := range config.ModelTiers {
-		row, found := registry.Row(tierRowKey(tier))
-		if !found || strings.TrimSpace(row.Label) == "" {
-			t.Fatalf("the settings registry has no labelled row for the %s tier", tier)
-		}
-		labels = append(labels, row.Label)
+// crewSeatLabels is the word each crew seat is KNOWN BY — "worker", "planner",
+// "checker" — read off the router's own list. They are the router's because a
+// seat's name is the router's to change, and a test that spelled them here
+// would be the second copy that #293 §3 is about.
+func crewSeatLabels() []string {
+	labels := make([]string, 0, len(crewroute.Seats))
+	for _, seat := range crewroute.Seats {
+		labels = append(labels, string(seat))
 	}
 	return labels
-}
-
-// tierRowKey is the settings key one tier's model row answers to. The prefix is
-// taken off a key the package already exports rather than typed again, so the
-// day the rows are renamed this moves with them.
-func tierRowKey(tier string) string {
-	return strings.TrimSuffix(config.KeyTierReflexModel, config.ModelTierReflex) + tier
 }
 
 // seatsNamedIn is which of those words a reply carries.

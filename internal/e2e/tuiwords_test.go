@@ -121,6 +121,14 @@ var tuiWords = map[string]tuiWord{
 		screen: "harnesses are unavailable here",
 		why:    "the refusal that must be absent from an ordinary launch and remain available to the hosted seam",
 	},
+	"crewMainKeys": {
+		screen: "enter change · esc close · ? keys",
+		why:    "/crew opened its panel, framed, with its keys in the bottom edge",
+	},
+	"crewAutoWord": {
+		screen: "auto — codeaf picks per task",
+		why:    "enter on a seat opened the seat list on its first row, auto",
+	},
 
 	// ── the bounded stop ─────────────────────────────────────────────────────
 	"stoppingWord": {
@@ -706,26 +714,6 @@ var tuiWords = map[string]tuiWord{
 			"planFigures). It is the same `N steps` and `$` the row already spends in its two columns",
 	},
 
-	// ── the seat a crew older than it never wrote ────────────────────────────
-	//
-	// The two halves of one line, and it is the ENGINE'S sentence: the surface
-	// says it in the thread and every headless door prints it under the models
-	// line, out of one composer (internal/config's Seat.Notice), so the gate
-	// looks for it where it is spelled rather than in the surface that relays it.
-	"inheritedSeatObservation": {
-		screen: "your crew was set before the work seat existed",
-		source: "your crew was set before the ",
-		pkg:    "internal/config",
-		why:    "the observation half: a profile older than the seat is told so, once, when work starts on it",
-	},
-	"inheritedSeatPromise": {
-		screen: "it is running on your small work seat's model",
-		source: "it is running on your ",
-		pkg:    "internal/config",
-		why: "the promise half, naming the row the work is actually on. It stops at the row rather " +
-			"than at `until you pick a crew again` because a transcript line is cut to make room for " +
-			"the task rail, and the sentence is longer than an ordinary window minus that column",
-	},
 	"taskLookWord": {
 		screen: "your call",
 		pkg:    "internal/session",

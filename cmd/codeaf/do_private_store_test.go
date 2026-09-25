@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
-	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -65,7 +64,7 @@ func TestDoRunRefusesFileDirectoryBeforeOpeningRecord(t *testing.T) {
 	}
 	seat := &beltSeat{}
 	_, err := runErrand(doRequest{task: "work", workspace: file, timeout: time.Second,
-		newBeltCompleter: func(string) session.Completer { return seat }}, config.ResolveSeats(config.ProfileDir(), "", ""))
+		newBeltCompleter: func(string) session.Completer { return seat }}, stubErrandSeats())
 	if err == nil || !strings.Contains(err.Error(), file) {
 		t.Fatalf("bad --dir error = %v", err)
 	}
@@ -98,7 +97,7 @@ func TestDoRunCreatesMissingDirectoryWithoutRepositoryRecord(t *testing.T) {
 	seat := finishingSeat(0)
 	var stderr strings.Builder
 	outcome, err := runErrand(doRequest{task: "work", workspace: want, timeout: 30 * time.Second,
-		stderr: &stderr, newBeltCompleter: func(string) session.Completer { return seat }}, config.ResolveSeats(config.ProfileDir(), "", ""))
+		stderr: &stderr, newBeltCompleter: func(string) session.Completer { return seat }}, stubErrandSeats())
 	if err != nil || outcome.Nodes == 0 {
 		t.Fatalf("missing --dir did not run: nodes=%d err=%v", outcome.Nodes, err)
 	}

@@ -1597,9 +1597,6 @@ type app struct {
 	// pick is the model overlay (palette.go). Closed, it costs the frame
 	// nothing; open, it owns the keyboard and the bottom of the screen.
 	pick picker
-	// crewPick is the three-row /crew chooser (crew.go). It is separate from the
-	// model picker because it has no filter and every item always takes two lines.
-	crewPick crewPicker
 	// effPick is the five-row thinking chooser `/effort` opens (effortchip.go).
 	// It is the crew chooser's shape for the crew chooser's reason: a fixed
 	// ladder is a thing you read rather than a thing you search.
@@ -1819,6 +1816,9 @@ type app struct {
 	// it, because that path runs entirely on session events (harness.go).
 	harn      *subharness.Store
 	harnPanel harnessPanel
+	// crewUI is /crew: the five rows a person changes about the crew, edited
+	// where they stand, over the conversation (crewpanel.go).
+	crewUI crewPanel
 	// harnPick is the filtering list "/harness " opens over that same registry,
 	// and harnChip the name it was answered with — the one harness the next
 	// message will run, held in the tray above the box rather than in the draft
@@ -2508,13 +2508,11 @@ type app struct {
 	// call on the conversation's own model and the crew on disk seats nothing,
 	// so the readings built from it name the flag ([Options.OneModel], #444).
 	oneModel bool
-	// workSeatSaid is whether this session has already asked whether its work
-	// seat was inherited (crew.go's [app.sayWorkSeat]). It is a fact about the
-	// SESSION and not about the profile: the line is a receipt for work that is
-	// starting now, said once where a person is already looking, and a surface
-	// that said it again per task — or per node of one task — would be the
-	// warning-on-every-call this whole mechanism refused headless (#311, #312).
-	workSeatSaid bool
+	// crewSaid is the crew line this session has said for each routed task,
+	// and whether the task has landed (crew.go's [app.sayTaskCrew]): the line
+	// is said once and rewritten in place, so a row that updates twenty times
+	// is one line in the thread.
+	crewSaid map[uint64]crewLineSaid
 	// notices is what this surface has told the person and may tell them next —
 	// the earned hints and the news line, over the profile's ledger (notice.go).
 	notices noticeBoard
@@ -3123,6 +3121,16 @@ func newApp(ctx context.Context, opts Options) *app {
 	// directory having an earlier conversation can see the welcome's list.
 	a.noticeEvent(eventBoot)
 	a.showUnreadProfileKeys(opts.UnreadProfileKeys)
+	// A PROFILE WRITTEN BEFORE CREWS WERE ROUTED IS MIGRATED ONCE, here on the
+	// first frame, and says so in one line: its preset words became auto, the
+	// ids a person wrote stayed pinned (internal/config's crewmigrate.go). A
+	// hosted window's profile is the far machine's, and is not this one's to
+	// migrate.
+	if !a.hosted() {
+		if line, _ := config.MigrateCrew(a.profileDir); line != "" {
+			a.note(line)
+		}
+	}
 	if notice := strings.TrimSpace(opts.Notice); notice != "" {
 		a.note(notice)
 	}
@@ -3921,6 +3929,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.questionDialogWheel(msg) {
 			return a, nil
 		}
+		// THE CREW PANEL TAKES THE WHEEL WHILE IT IS UP: its lists are longer
+		// than its frame, and the conversation under a modal is not live
+		// (crewpanel.go).
+		if a.crewUI.open {
+			a.crewWheel(placeWheelDelta(msg.Mouse().Button))
+			return a, nil
+		}
 		// THE NAV IS READ BEFORE EVERY PLACE'S OWN ROWS, exactly as it is for
 		// the press: it is the router's row, drawn on every page in the same
 		// cells, so a wheel answered by the place under it would scroll a list
@@ -4273,6 +4288,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.harnPanel.open {
 				return a, a.harnessPanelPress(msg.Mouse().Y)
 			}
+			// AND THE CREW PANEL, on the same terms, with the one difference that
+			// it reads the column too: the models row's two arrows are targets of
+			// their own (crewpanel.go).
+			if a.crewUI.open {
+				return a, a.crewPress(msg.Mouse().X, msg.Mouse().Y)
+			}
 			// AND THE PERMISSIONS PANEL IS THE THIRD OF THEM, on the same terms
 			// (permissions.go): a press on a row acts on that row, and a press
 			// anywhere else closes the list.
@@ -4525,6 +4546,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case approvalFlashMsg:
 		// And the approvals chip's, on the same terms (approvalchip.go).
+		a.touch()
+		return a, nil
+
+	case crewUndoMsg:
+		// And the crew panel's undo window closing (crewpanel.go): one repaint,
+		// so the tick and the `z undo` offer come down.
 		a.touch()
 		return a, nil
 
@@ -5078,7 +5105,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// person names this node to any other command on the surface and the
 			// title is how they recognize it in the roster, so those two step up
 			// while the mode word and `started` stay in the note's own dim.
-			a.noteFacts(msg.kind+" task "+msg.id+" started · "+msg.title, msg.id, msg.title)
+			started := msg.kind + " task " + msg.id + " started · " + msg.title
+			if !a.crewAfterStarted(msg.id, started, []string{msg.id, msg.title}) {
+				a.noteFacts(started, msg.id, msg.title)
+			}
 			// AND WHERE THE WORK STANDS, when the engine had something to say
 			// about it: the ground ladder's redirect, said when the work goes
 			// somewhere other than where it was asked to go. Its own dim line
@@ -6460,7 +6490,7 @@ func (a *app) note(text string) { a.noteWritten(text, false, nil) }
 // whole, so a note written into the conversation behind it is written where
 // nobody can read it — and the answers that landed there were the ones a person
 // most needed: `there is no command called /x · / lists them`, /help's key
-// sheet, /status, /cost, `crew · frugal`, a budget that was set. Home has had a
+// sheet, /status, /cost, the /crew panel, a budget that was set. Home has had a
 // line for exactly this since it was built (pages.go's [app.placeMsgLine]) and
 // the dispatcher never reached it.
 //
@@ -7657,12 +7687,10 @@ func (a *app) slash(line string) tea.Cmd {
 		return nil
 
 	case "crew":
-		// The four models codeaf uses on your own behalf, as one word (crew.go).
-		// The bare form is the three presets with yours marked; a word applies
-		// one. An unknown word shows the three and changes nothing, which is the
-		// shape every choice row on this surface refuses in.
-		a.runCrew(rest)
-		return nil
+		// The crew panel and its four shortcuts (crew.go, crewpanel.go): what is
+		// allowed and what is pinned, which persists; nothing else about a crew
+		// sticks.
+		return a.runCrew(rest)
 
 	case "effort":
 		// How hard THIS conversation thinks (effortchip.go). The bare form opens
@@ -7673,6 +7701,11 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "task":
 		return a.runTaskCommand(rest)
+
+	case "redo":
+		// `/redo stronger` — the last task again on a stronger crew (crew.go,
+		// taskcommand.go's [app.runRedo]).
+		return a.runRedo(rest)
 
 	case "history":
 		// The place onto every task this MACHINE has run, this session's and every

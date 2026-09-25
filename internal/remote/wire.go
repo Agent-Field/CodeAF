@@ -344,7 +344,13 @@ import (
 // ReplaceQuestion. It also carries whether a caller has no approval resolver.
 // Older peers must refuse before a question or an unwatched tool can run under
 // semantics the other side does not understand.
-const Version = 17
+// VERSION 18 IS THE CREW PICKED PER TASK. [TaskStartArgs] carries the one-task
+// effort word (`/task --best`, `/task --cheap`), and [MethodTaskRedoStronger]
+// runs the last task again on a stronger crew. The number moves because both
+// fail as silence on an older engine: a version-17 engine reads `effort` as a
+// field it does not know and starts the task on the crew it would have had,
+// and the person is never told their word did nothing. NEVER TO SILENCE.
+const Version = 18
 
 // AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods
 // rode version 5's: neither half can be surprised by them. "phase" and "lane"

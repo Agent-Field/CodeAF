@@ -1,22 +1,17 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
-	"github.com/Agent-Field/codeaf/internal/roles"
-	"github.com/Agent-Field/codeaf/internal/store"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/router"
 )
 
 // ONE LADDER, EVERY HEADLESS DOOR, AND NO SECOND COPY OF IT.
@@ -25,112 +20,114 @@ import (
 // resolving their two models their own way, so a crew that reached the chat
 // reached none of them (#166). The next door will be written by copying one of
 // these, and the copy is only safe while the resolution is a call rather
-// than a paragraph worth of lookups. So this reads the source: every door asks
-// config.ResolveSeats, and no door reaches past it for the environment or the
-// build's default on its own.
+// than a paragraph worth of lookups. So this reads the source: `codeaf do`
+// asks config.ResolveSeats itself, every other door asks doorSeats (which asks
+// it once), and no door reaches past it for the environment on its own.
 func TestEveryHeadlessDoorResolvesItsSeatsThroughTheOneLadder(t *testing.T) {
-	// main.go carries two doors — plan and revise — and the other three files
-	// carry one each.
-	doors := map[string]int{
-		"do.go": 1, "exec.go": 1, "run.go": 1, "main.go": 2, "subharness_run.go": 1,
+	ladder := map[string]int{"do.go": 1, "main.go": 1}
+	doors := map[string]int{"exec.go": 1, "run.go": 1, "main.go": 3, "subharness_run.go": 1}
+	for name, wanted := range ladder {
+		raw, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Count(string(raw), "config.ResolveSeats("); got != wanted {
+			t.Errorf("%s climbs the ladder %d times, want %d", name, got, wanted)
+		}
 	}
 	for name, wanted := range doors {
 		raw, err := os.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		source := string(raw)
-		if got := strings.Count(source, "config.ResolveSeats("); got != wanted {
-			t.Errorf("%s climbs the ladder %d times, want %d — a door that resolves its models "+
+		if got := strings.Count(string(raw), "doorSeats("); got != wanted {
+			t.Errorf("%s asks doorSeats %d times, want %d — a door that resolves its models "+
 				"another way is a door the crew does not reach", name, got, wanted)
 		}
-		// A door either seats the answer on its own settings or hands it to the
-		// brain that does (brainOptions.seats). What it may not do is resolve
-		// the seats and then build its clients from something else.
-		if !strings.Contains(source, "applySeats(") && !strings.Contains(source, "seats:") {
-			t.Errorf("%s resolves the seats and never seats them", name)
-		}
-		for _, reach := range []string{
-			`os.Getenv("CODEAF_MODEL")`,
-			`os.Getenv("CODEAF_PLAN_MODEL")`,
-			"os.Getenv(config.ModelEnv)",
-			"os.Getenv(config.PlanModelEnv)",
-		} {
-			if strings.Contains(source, reach) {
-				t.Errorf("%s reads %s for itself; the ladder reads the environment, "+
-					"and it is the only rung that can tell the environment from the default", name, reach)
-			}
-		}
 	}
-
-	// The build's default is the ladder's bottom rung and nothing else's. It
-	// survives in main.go exactly once — in the usage table, where the row for
-	// CODEAF_MODEL prints the default it falls back to — and that is prose, not
-	// resolution.
-	for _, name := range []string{"do.go", "exec.go", "run.go", "subharness_run.go"} {
-		raw, err := os.ReadFile(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if strings.Contains(string(raw), "config.DefaultModel") {
-			t.Errorf("%s names the build's default model itself instead of falling to the ladder's last rung", name)
-		}
-	}
-	raw, err := os.ReadFile("main.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, line := range strings.Split(string(raw), "\n") {
-		if strings.Contains(line, "config.DefaultModel") && !strings.Contains(line, "CODEAF_MODEL") {
-			t.Errorf("main.go reads the build's default outside the usage table: %q", strings.TrimSpace(line))
-		}
-	}
-}
-
-// The help text is where a person learns that their crew reaches this command,
-// so it names the whole ladder rather than one rung of it.
-func TestTheModelFlagsNameTheWholeLadder(t *testing.T) {
 	for _, name := range []string{"do.go", "exec.go", "run.go", "main.go", "subharness_run.go"} {
 		raw, err := os.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(string(raw), "run (default CODEAF_MODEL)") {
-			t.Errorf("%s still says the work model defaults to CODEAF_MODEL, which was one rung of four", name)
+		source := string(raw)
+		if !strings.Contains(source, "applySeats(") && !strings.Contains(source, "seats:") && !strings.Contains(source, "seats.Work.Model") {
+			t.Errorf("%s resolves the seats and never seats them", name)
 		}
-	}
-	for _, want := range []string{"CODEAF_MODEL", "crew", "default"} {
-		if !strings.Contains(modelFlagHelp, want) {
-			t.Errorf("--model's help does not mention %q: %q", want, modelFlagHelp)
+		for _, reach := range []string{
+			`os.Getenv("CODEAF_MODEL")`,
+			`os.Getenv("CODEAF_PLAN_MODEL")`,
+			`os.Getenv("CODEAF_CHECK_MODEL")`,
+			"os.Getenv(config.ModelEnv)",
+			"os.Getenv(config.PlanModelEnv)",
+		} {
+			if strings.Contains(source, reach) {
+				t.Errorf("%s reads %s for itself; the ladder reads the environment", name, reach)
+			}
 		}
-	}
-	if !strings.Contains(planModelFlagHelp, "CODEAF_PLAN_MODEL") || !strings.Contains(planModelFlagHelp, "crew") {
-		t.Errorf("--plan-model's help does not name its own ladder: %q", planModelFlagHelp)
-	}
-	for _, want := range []string{"CODEAF_CHECK_MODEL", "plan", "crew"} {
-		if !strings.Contains(checkModelFlagHelp, want) {
-			t.Errorf("--check-model's help does not mention %q: %q", want, checkModelFlagHelp)
+		// NO SEAT FALLS TO A MODEL THIS BUILD CHOSE FOR EVERYBODY.
+		if name != "main.go" && strings.Contains(source, "config.DefaultModel") {
+			t.Errorf("%s names the build's default model itself", name)
 		}
 	}
 }
 
-// THE ACCEPTANCE CASE, END TO END: a profile that says `frugal` and a command
-// line that says nothing.
+// The help text is where a person learns that the flag is a one-task pin and
+// that the crew is routed per task when nothing is pinned.
+func TestTheModelFlagsNameTheWholeLadder(t *testing.T) {
+	for _, help := range []string{modelFlagHelp, planModelFlagHelp, checkModelFlagHelp} {
+		for _, want := range []string{"one-task pin", "crew pin", "routed per task"} {
+			if !strings.Contains(help, want) {
+				t.Errorf("a model flag's help does not say %q: %q", want, help)
+			}
+		}
+	}
+	if !strings.Contains(checkModelFlagHelp, "CODEAF_CHECK_MODEL") {
+		t.Errorf("--check-model's help does not name its variable: %q", checkModelFlagHelp)
+	}
+	// THE CHECK SEAT'S LADDER NEVER PASSES THROUGH THE PLAN SEAT.
+	if strings.Contains(checkLadderHelp, "plan") {
+		t.Errorf("the check seat's ladder still names the plan seat: %q", checkLadderHelp)
+	}
+}
+
+// crewDoorCatalog is a catalog the router can price: a cheap model and a
+// dear, better one, both open and both serving tools.
+func crewDoorCatalog() []catalog.Model {
+	return []catalog.Model{
+		{ID: "vendor/cheap", PromptPrice: 0.1e-6, CompletionPrice: 0.4e-6, CodingIndex: 40, AgenticIndex: 40, IntelligenceIndex: 40,
+			Parameters: []string{"tools"}, ContextLength: 200000, OpenWeights: true},
+		{ID: "vendor/strong", PromptPrice: 3e-6, CompletionPrice: 15e-6, CodingIndex: 70, AgenticIndex: 70, IntelligenceIndex: 70,
+			Parameters: []string{"tools"}, ContextLength: 200000, OpenWeights: true},
+	}
+}
+
+// seatCrewCatalog points the router at a catalog for one test.
+func seatCrewCatalog(t *testing.T, rows []catalog.Model) {
+	t.Helper()
+	previous, seat := config.CrewCatalog, seatCrewRows
+	config.CrewCatalog = func() []catalog.Model { return rows }
+	seatCrewRows = func(func() []catalog.Model) {}
+	t.Cleanup(func() { config.CrewCatalog, seatCrewRows = previous, seat })
+}
+
+// THE ACCEPTANCE CASE, END TO END: a command line that says nothing, on a
+// profile that pinned only the checker.
 //
-// The errand must plan on the profile's mastermind and work on its working tier
-// — the two seats the chat's planner and worker ride (roles.DefaultAssignment)
-// — and it must SAY SO, on the opening line and in the object a harness reads.
-// Both halves matter: a benchmark that cannot read back which crew ran is the
-// position this issue was reported from.
-func TestAnErrandWithNoFlagsRunsTheProfilesCrewAndSaysSo(t *testing.T) {
+// The worker and the planner are ROUTED for this task and the checker is the
+// pin, and the run says so — on the opening lines, in the summary line with the
+// actual beside the estimate, and in the object a harness reads (`class`,
+// `crew`, `est_usd`, `check_model`). The decision and its outcome land in the
+// router's log.
+func TestAnErrandWithNoFlagsRunsARoutedCrewAndSaysSo(t *testing.T) {
 	script := newScriptedBrain(t)
 	defer script.close()
-	// The variables are cleared rather than left to the shell this suite runs
-	// in: the rung under test is the one below them.
 	t.Setenv(config.ModelEnv, "")
 	t.Setenv(config.PlanModelEnv, "")
-	if err := config.ApplyCrew(script.dir, config.CrewFrugal); err != nil {
-		t.Fatalf("writing the frugal crew: %v", err)
+	t.Setenv(config.CheckModelEnv, "")
+	seatCrewCatalog(t, crewDoorCatalog())
+	if err := config.SetCrewPin(script.dir, crewroute.Checker, "vendor/strong"); err != nil {
+		t.Fatalf("pinning the checker: %v", err)
 	}
 
 	var mu sync.Mutex
@@ -138,6 +135,7 @@ func TestAnErrandWithNoFlagsRunsTheProfilesCrewAndSaysSo(t *testing.T) {
 	var stdout, stderr strings.Builder
 	err := doErrand(doRequest{
 		task:    "write the release note and include the migration steps",
+		run:     "crew-door-run",
 		timeout: 60 * time.Second,
 		asJSON:  true,
 		stdout:  &stdout,
@@ -152,63 +150,48 @@ func TestAnErrandWithNoFlagsRunsTheProfilesCrewAndSaysSo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the errand did not settle cleanly: %v\nstderr:\n%s", err, stderr.String())
 	}
-
-	// THE WORK SEAT IS THE WORKER ROW, which is what [config.ResolveSeats] fills
-	// it from. It used to be read off the small-work row here and pass anyway,
-	// because the frugal preset happened to put one id on both.
-	work := config.TierModelAt(script.dir, config.ModelTierWorker)
-	plan := config.TierModelAt(script.dir, config.ModelTierMastermind)
-	for _, model := range []string{work, plan} {
-		found := false
-		mu.Lock()
-		for _, built := range built {
-			found = found || built == model
-		}
-		models := append([]string(nil), built...)
-		mu.Unlock()
-		if !found {
-			t.Fatalf("no client was built on %q; the run used %v", model, models)
-		}
+	if !strings.Contains(stderr.String(), "crew: ") || !strings.Contains(stderr.String(), config.PinMark+" strong") {
+		t.Fatalf("the run never said its crew with the pinned checker marked:\n%s", stderr.String())
 	}
 
-	if line := config.ResolveSeats(script.dir, "", "").Line(); !strings.Contains(stderr.String(), line) {
-		t.Fatalf("the opening lines never named the crew:\nwant %q\nstderr:\n%s", line, stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "crew frugal") {
-		t.Fatalf("the receipt did not name the preset:\n%s", stderr.String())
-	}
-
-	var outcome headlessOutcome
-	if err := json.Unmarshal([]byte(stdout.String()), &outcome); err != nil {
+	var fields map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &fields); err != nil {
 		t.Fatalf("--json did not print one object: %v\n%s", err, stdout.String())
 	}
-	if outcome.Model != work || outcome.PlanModel != plan {
-		t.Fatalf("--json named model %q and plan_model %q, want %q and %q",
-			outcome.Model, outcome.PlanModel, work, plan)
+	for _, key := range []string{"class", "crew", "est_usd", "check_model", "model_source"} {
+		if _, ok := fields[key]; !ok {
+			t.Fatalf("--json carries no %q:\n%s", key, stdout.String())
+		}
 	}
-	if outcome.ModelSource != "crew frugal" || outcome.PlanModelSource != "crew frugal" {
-		t.Fatalf("--json named the rungs %q and %q, want the crew for both",
-			outcome.ModelSource, outcome.PlanModelSource)
+	if fields["check_model"] != "vendor/strong" || fields["check_model_source"] != "pinned" {
+		t.Fatalf("--json named the checker %v (%v), want the pin", fields["check_model"], fields["check_model_source"])
+	}
+	if fields["model_source"] != "routed" {
+		t.Fatalf("--json named the worker's rung %v, want routed", fields["model_source"])
+	}
+
+	log := router.ReadCrewLog(config.ProfilePath(script.dir, ""), time.Now())
+	if len(log.Recent) != 1 || !log.Recent[0].Settled {
+		t.Fatalf("the router's log holds %+v, want one settled crew", log.Recent)
 	}
 }
 
-// The flag still wins, and the receipt still says which rung answered — the two
-// halves of the ladder that a benchmark pinning one seat depends on.
-func TestAFlaggedSeatOutranksTheCrewAndTheReceiptSaysWhich(t *testing.T) {
+// The flag still wins, and it is a ONE-TASK PIN: the receipt says which rung
+// answered, and the check seat does not inherit a flagged planner.
+func TestAFlaggedPlannerNeverSeatsTheChecker(t *testing.T) {
 	script := newScriptedBrain(t)
 	defer script.close()
 	t.Setenv(config.ModelEnv, "")
 	t.Setenv(config.PlanModelEnv, "")
-	if err := config.ApplyCrew(script.dir, config.CrewFrugal); err != nil {
-		t.Fatal(err)
-	}
+	t.Setenv(config.CheckModelEnv, "")
+	seatCrewCatalog(t, crewDoorCatalog())
 
 	var stdout, stderr strings.Builder
 	err := doErrand(doRequest{
 		task:      "write the release note and include the migration steps",
 		timeout:   60 * time.Second,
 		asJSON:    true,
-		model:     "vendor/pinned-worker",
+		planModel: "vendor/flagged-planner",
 		stdout:    &stdout,
 		stderr:    &stderr,
 		newClient: script.client,
@@ -220,346 +203,76 @@ func TestAFlaggedSeatOutranksTheCrewAndTheReceiptSaysWhich(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout.String()), &outcome); err != nil {
 		t.Fatalf("--json did not print one object: %v\n%s", err, stdout.String())
 	}
-	if outcome.Model != "vendor/pinned-worker" || outcome.ModelSource != "--model" {
-		t.Fatalf("the flagged seat reads %q (%s)", outcome.Model, outcome.ModelSource)
+	if outcome.PlanModel != "vendor/flagged-planner" || outcome.PlanModelSource != "--plan-model" {
+		t.Fatalf("the flagged seat reads %q (%s)", outcome.PlanModel, outcome.PlanModelSource)
 	}
-	// And the seat nobody flagged still climbs to the crew.
-	if outcome.PlanModelSource != "crew frugal" {
-		t.Fatalf("the plan seat reads %q (%s)", outcome.PlanModel, outcome.PlanModelSource)
+	var fields map[string]any
+	_ = json.Unmarshal([]byte(stdout.String()), &fields)
+	if fields["check_model"] == "vendor/flagged-planner" {
+		t.Fatal("the check seat inherited the flagged planner")
 	}
 }
 
-// A crew preset fills the run and durable role binding with its bare model id.
-// Presets choose models and leave generation behavior to them.
-func TestACrewsBareModelReachesTheRunWhole(t *testing.T) {
+// AT THE DAILY CAP `codeaf do` REFUSES, and -yes-spend is the one way past.
+func TestAnErrandAtTheDailyCapRefusesUnlessToldToSpend(t *testing.T) {
 	script := newScriptedBrain(t)
 	defer script.close()
 	t.Setenv(config.ModelEnv, "")
 	t.Setenv(config.PlanModelEnv, "")
-	if err := config.ApplyCrew(script.dir, config.CrewBalanced); err != nil {
+	t.Setenv(config.CheckModelEnv, "")
+	seatCrewCatalog(t, crewDoorCatalog())
+	if err := config.SetCrewCap(script.dir, "1"); err != nil {
 		t.Fatal(err)
 	}
-	written := config.TierModelAt(script.dir, config.ModelTierMastermind)
-	if _, level := roles.SplitEffort(written); level != "" {
-		t.Fatalf("the balanced mastermind reads %q and imposes level %q", written, level)
-	}
+	previous := config.CrewHistory
+	config.CrewHistory = func(string) config.CrewDay { return config.CrewDay{SpentUSD: 2} }
+	t.Cleanup(func() { config.CrewHistory = previous })
 
-	// A durable store, because the plan role's binding is the record under test
-	// and an ephemeral one evaporates with the run.
-	database := filepath.Join(t.TempDir(), "graph.db")
-	var mu sync.Mutex
-	var built []string
 	var stdout, stderr strings.Builder
 	err := doErrand(doRequest{
-		task:     "write the release note and include the migration steps",
-		database: database,
-		timeout:  60 * time.Second,
-		asJSON:   true,
-		stdout:   &stdout,
-		stderr:   &stderr,
-		newClient: func(settings config.Config, model string) (*liveClient, error) {
-			mu.Lock()
-			built = append(built, model)
-			mu.Unlock()
-			return script.client(settings, model)
-		},
+		task: "write the release note and include the migration steps", timeout: 60 * time.Second,
+		stdout: &stdout, stderr: &stderr, newClient: script.client,
 	})
-	if err != nil {
-		t.Fatalf("the errand did not settle cleanly: %v\nstderr:\n%s", err, stderr.String())
+	if err == nil || !strings.Contains(err.Error(), "daily cap") {
+		t.Fatalf("an errand at the cap was not refused: %v", err)
 	}
-
-	mu.Lock()
-	models := append([]string(nil), built...)
-	mu.Unlock()
-	found := false
-	for _, model := range models {
-		found = found || model == written
+	// THE REFUSAL NAMES ONLY THE WAYS ON THAT WORK: /crew cap, -yes-spend and
+	// the day turning over. --cheap is refused at the cap too, so it is not one.
+	for _, way := range []string{"/crew cap", "-yes-spend", "midnight"} {
+		if !strings.Contains(err.Error(), way) {
+			t.Errorf("the refusal does not name %q: %q", way, err)
+		}
 	}
-	if !found {
-		t.Fatalf("the plan seat was filled with %v, none of them the crew's own %q", models, written)
+	if strings.Contains(err.Error(), "--cheap") {
+		t.Errorf("the refusal offers --cheap: %q", err)
 	}
-
-	// The binding the ladder resolves calls through carries the level, and says
-	// the crew put it there rather than naming a variable nobody set.
-	graph, err := store.Open(database)
-	if err != nil {
-		t.Fatal(err)
+	err = doErrand(doRequest{
+		task: "write the release note and include the migration steps", timeout: 60 * time.Second,
+		effort: crewroute.EffortCheap, stdout: &stdout, stderr: &stderr, newClient: script.client,
+	})
+	if err == nil || !strings.Contains(err.Error(), "daily cap") {
+		t.Fatalf("--cheap got past the cap: %v", err)
 	}
-	defer graph.Close()
-	binding, ok, err := graph.RoleBindingAt(store.RolePlan, store.ScopeGlobal)
-	if err != nil || !ok {
-		t.Fatalf("plan binding: found=%t err=%v", ok, err)
-	}
-	if binding.Value != written {
-		t.Fatalf("the plan role is bound to %q, want the crew's %q", binding.Value, written)
-	}
-	if binding.Origin != store.RoleSeedOriginPrefix+"crew balanced" {
-		t.Fatalf("the binding says %q named the model", binding.Origin)
-	}
-
-	// And what the run reports is what the person wrote in the sheet.
-	var outcome headlessOutcome
-	if err := json.Unmarshal([]byte(stdout.String()), &outcome); err != nil {
-		t.Fatalf("--json did not print one object: %v\n%s", err, stdout.String())
-	}
-	if outcome.PlanModel != written {
-		t.Fatalf("--json named plan_model %q, want %q", outcome.PlanModel, written)
-	}
-	if !strings.Contains(stderr.String(), "plan "+written+" (crew balanced)") {
-		t.Fatalf("the receipt did not print the value as the sheet holds it:\n%s", stderr.String())
+	if script.count("chat") != 0 {
+		t.Fatal("an errand at the cap spent before it refused")
 	}
 }
 
-// The plan seat resolved from an unoverridden balanced profile sends its bare
-// model on both contexts a headless run uses, with no reasoning object.
-func TestACrewsBareModelReachesTheHeadlessWire(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv(config.ModelEnv, "")
-	t.Setenv(config.PlanModelEnv, "")
-	if err := config.ApplyCrew(dir, config.CrewBalanced); err != nil {
+// --pin is repeatable, names a seat, and refuses what is not a pin.
+func TestThePinFlagReadsSeatEqualsModel(t *testing.T) {
+	var pins pinFlags
+	if err := pins.Set("checker=moonshotai/kimi-k3@openrouter"); err != nil {
 		t.Fatal(err)
 	}
-
-	type requestShape struct {
-		Model     string          `json:"model"`
-		Reasoning json.RawMessage `json:"reasoning"`
-	}
-	var received []requestShape
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodPost {
-			writer.Header().Set("Content-Type", "application/json")
-			_, _ = io.WriteString(writer, `[]`)
-			return
-		}
-		raw, err := io.ReadAll(request.Body)
-		if err != nil {
-			t.Errorf("read request: %v", err)
-			http.Error(writer, `{"error":"unreadable"}`, http.StatusBadRequest)
-			return
-		}
-		var body requestShape
-		if err := json.Unmarshal(raw, &body); err != nil {
-			t.Errorf("decode request: %v", err)
-			http.Error(writer, `{"error":"invalid"}`, http.StatusBadRequest)
-			return
-		}
-		received = append(received, body)
-		writer.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(writer, `{"model":"stub","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`)
-	}))
-	defer server.Close()
-
-	settings := config.Config{
-		APIKey:        "test-key",
-		BaseURL:       server.URL,
-		Timeout:       config.DefaultTimeout,
-		Reasoning:     config.DefaultReasoning,
-		ExecReasoning: config.DefaultExecReasoning,
-		ProfileDir:    dir,
-	}
-	seats := config.ResolveSeats(dir, "", "")
-	applySeats(&settings, seats)
-	client, err := settings.ClientFor(settings.PlanModelResolved())
-	if err != nil {
+	if err := pins.Set("worker=z-ai/glm-5.3-flash"); err != nil {
 		t.Fatal(err)
 	}
-	contexts := []context.Context{
-		settings.Context(context.Background(), "plan this"),
-		settings.ExecContext(settings.Context(context.Background(), "do this")),
+	if got := pins.pins[crewroute.Checker]; got.Model != "moonshotai/kimi-k3" || got.Provider != "openrouter" {
+		t.Fatalf("the checker pin reads %+v", got)
 	}
-	for _, ctx := range contexts {
-		if _, err := client.CompleteWithMessages(ctx,
-			[]ai.Message{{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: "hello"}}}}); err != nil {
-			t.Fatal(err)
+	for _, bad := range []string{"judge=vendor/x", "worker", "worker=auto"} {
+		if err := (&pinFlags{}).Set(bad); err == nil {
+			t.Errorf("--pin %q was accepted", bad)
 		}
 	}
-
-	wantModel, wantEffort := roles.SplitEffort(config.DefaultMastermindModel)
-	if wantEffort != "" {
-		t.Fatalf("shipped mastermind %q imposes effort %q", config.DefaultMastermindModel, wantEffort)
-	}
-	if seats.Plan.Model != config.DefaultMastermindModel {
-		t.Fatalf("balanced plan seat = %q, want %q", seats.Plan.Model, config.DefaultMastermindModel)
-	}
-	if len(received) != len(contexts) {
-		t.Fatalf("provider received %d requests, want %d", len(received), len(contexts))
-	}
-	for index, body := range received {
-		if body.Model != wantModel || len(body.Reasoning) != 0 {
-			t.Errorf("call %d carried model %q and reasoning %s, want bare %q and no reasoning object",
-				index, body.Model, body.Reasoning, wantModel)
-		}
-	}
-}
-
-// THE WHOLE ROAD, ON A PROFILE OLDER THAN THE WORKER SEAT (#302).
-//
-// The unit test pins the rung; this pins what a person actually gets: a config
-// written before the worker row existed — the four keys and no fifth — must send
-// every client the errand builds to the crew's own models, never to the build's
-// default, and the run must SAY on its way past that the seat was inherited. The
-// second half is the part that makes the first half checkable from outside,
-// which is the property the defect took away.
-func TestAnErrandOnACrewOlderThanTheWorkerSeatNeverTouchesTheBuildsDefault(t *testing.T) {
-	script := newScriptedBrain(t)
-	defer script.close()
-	t.Setenv(config.ModelEnv, "")
-	t.Setenv(config.PlanModelEnv, "")
-
-	// The pre-#278 crew shape, written as a profile of that vintage holds it.
-	pinned := "vendor/pinned-small-work"
-	profile := map[string]string{
-		config.KeyTierReflexModel:     "vendor/pinned-reflex",
-		config.KeyTierLowModel:        pinned,
-		config.KeyTierHighModel:       "vendor/pinned-careful",
-		config.KeyTierMastermindModel: "vendor/pinned-thinking",
-	}
-	raw, err := json.Marshal(profile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(config.BudgetConfigPath(script.dir), raw, 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	var mu sync.Mutex
-	var built []string
-	var stdout, stderr strings.Builder
-	if err := doErrand(doRequest{
-		task:    "write the release note and include the migration steps",
-		timeout: 60 * time.Second,
-		asJSON:  true,
-		stdout:  &stdout,
-		stderr:  &stderr,
-		newClient: func(settings config.Config, model string) (*liveClient, error) {
-			mu.Lock()
-			built = append(built, model)
-			mu.Unlock()
-			return script.client(settings, model)
-		},
-	}); err != nil {
-		t.Fatalf("the errand did not settle cleanly: %v\nstderr:\n%s", err, stderr.String())
-	}
-
-	mu.Lock()
-	models := append([]string(nil), built...)
-	mu.Unlock()
-	for _, model := range models {
-		if model == config.DefaultModel {
-			t.Fatalf("a client was built on the build's default %q; the run used %v",
-				config.DefaultModel, models)
-		}
-	}
-	worked := false
-	for _, model := range models {
-		worked = worked || model == pinned
-	}
-	if !worked {
-		t.Fatalf("nothing ran on the small-work model the crew pinned; the run used %v", models)
-	}
-
-	// The receipt: the work seat says the crew answered and that the row was
-	// inherited, and the one line saying why is printed ONCE.
-	seats := config.ResolveSeats(script.dir, "", "")
-	if !strings.Contains(stderr.String(), "work "+pinned+" (crew custom, inherited)") {
-		t.Fatalf("the opening line does not name the inherited seat:\n%s", stderr.String())
-	}
-	if strings.Contains(stderr.String(), "work "+config.DefaultModel) {
-		t.Fatalf("the opening line still seats the build's default:\n%s", stderr.String())
-	}
-	notice := seats.Notice()
-	if notice == "" {
-		t.Fatal("the seats resolved by inheritance and the run has nothing to say about it")
-	}
-	if got := strings.Count(stderr.String(), notice); got != 1 {
-		t.Fatalf("the run said the line %d times, want once:\n%s", got, stderr.String())
-	}
-
-	// And the object a script reads carries the same fact.
-	var outcome headlessOutcome
-	if err := json.Unmarshal([]byte(stdout.String()), &outcome); err != nil {
-		t.Fatalf("--json did not print one object: %v\n%s", err, stdout.String())
-	}
-	if outcome.Model != pinned || outcome.ModelSource != "crew custom, inherited" {
-		t.Fatalf("--json named model %q (%s), want the inherited crew row",
-			outcome.Model, outcome.ModelSource)
-	}
-}
-
-// AND THE CONVERSATION SEATS THE SAME ROW (#312).
-//
-// The chat resolves its five classes through [v3RolesSource], which is a
-// different road from [config.ResolveSeats] on purpose — a conversation has no
-// flag and no campaign variable for its crew, only a profile — but it must end
-// at the same model, or a person's crew means one thing in `codeaf do` and
-// another in the window they actually work in. This is the ladder read the way
-// the door reads it: the key internal/roles asks for, on a profile older than
-// the worker seat.
-func TestTheChatRoleMapSeatsTheInheritedWorkerRow(t *testing.T) {
-	pinned := "vendor/pinned-small-work"
-	dir := writeVintageProfile(t, map[string]string{
-		config.KeyTierReflexModel:     "vendor/pinned-reflex",
-		config.KeyTierLowModel:        pinned,
-		config.KeyTierHighModel:       "vendor/pinned-careful",
-		config.KeyTierMastermindModel: "vendor/pinned-thinking",
-	})
-
-	read, err := v3RolesSource(t.TempDir(), dir)
-	if err != nil {
-		t.Fatalf("building the conversation's role map: %v", err)
-	}
-	worker, ok := read(roles.TierKey(roles.TierWorker))
-	if !ok || worker != pinned {
-		t.Fatalf("the conversation's worker class reads %q (held=%t), want the small-work model the crew pinned",
-			worker, ok)
-	}
-	if worker == config.DefaultWorkerModel {
-		t.Fatalf("the conversation's worker class fell to the build's default %q", config.DefaultWorkerModel)
-	}
-	// The rows the profile does hold are untouched by any of it.
-	if got, _ := read(roles.TierKey(roles.TierMastermind)); got != "vendor/pinned-thinking" {
-		t.Fatalf("the thinking class reads %q", got)
-	}
-
-	// A row written by hand wins over the lineage, and a row cleared on purpose
-	// still means "follow the conversation" — which on this surface is a class
-	// the role ladder does not hold at all.
-	own := writeVintageProfile(t, map[string]string{
-		config.KeyTierLowModel:    pinned,
-		config.KeyTierWorkerModel: "vendor/my-own-worker",
-	})
-	read, err = v3RolesSource(t.TempDir(), own)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, _ := read(roles.TierKey(roles.TierWorker)); got != "vendor/my-own-worker" {
-		t.Fatalf("a pinned worker row reads %q", got)
-	}
-	cleared := writeVintageProfile(t, map[string]string{
-		config.KeyTierLowModel:    pinned,
-		config.KeyTierWorkerModel: "",
-	})
-	read, err = v3RolesSource(t.TempDir(), cleared)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, held := read(roles.TierKey(roles.TierWorker)); held {
-		t.Fatalf("a worker row cleared on purpose is held as %q instead of following the conversation", got)
-	}
-}
-
-// writeVintageProfile writes a profile holding exactly these rows: a value for a
-// row somebody wrote, the empty string for one they cleared, and no key at all
-// for a class of a vintage that never had one.
-func writeVintageProfile(t *testing.T, rows map[string]string) string {
-	t.Helper()
-	dir := t.TempDir()
-	raw, err := json.Marshal(rows)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(config.BudgetConfigPath(dir), raw, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	return dir
 }

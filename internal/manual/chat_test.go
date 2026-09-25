@@ -1440,7 +1440,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why won't you change my approval mode", "permissions"},
 		{"why won't permissions show the rules on the machine I used with host", "running-on-another-machine"},
 		{"did cache clean delete the cache on my laptop or the remote machine", "running-on-another-machine"},
-		{"why didn't crew max change the crew on the remote machine", "running-on-another-machine"},
+		{"why didn't /crew pin change the crew on the remote machine", "running-on-another-machine"},
 		{"why does remember over host not say whether memory is off", "running-on-another-machine"},
 		{"does subharness know whether the remote machine has saved programs", "running-on-another-machine"},
 		{"what does the indented part mean", "keys"},
@@ -2000,36 +2000,28 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it started answering and then handed the work over", "tasks"},
 		{"why did my reply stop halfway and become a task", "tasks"},
 
-		// The fifteenth wave: the crew that looks like it did nothing. `/crew max`
-		// writes four class models and the session picks them up on its next
-		// call — and the model on the status line does not move, because that one
-		// is the CONVERSATION's and the crew never touches it. So a person reads
-		// the confirmation, looks at a frame that says exactly what it said
-		// before, and asks these in front of it.
+		// The fifteenth wave: the crew that looks like it did nothing. `/crew pin`
+		// moves the next task's seat — and the model on the status line does not
+		// move, because that one is the CONVERSATION's and the crew never touches
+		// it. So a person reads the confirmation, looks at a frame that says
+		// exactly what it said before, and asks these in front of it.
 		{"I changed the crew but the model didn't change", "models-and-cost"},
 		{"why does the bottom still show the old model after /crew", "models-and-cost"},
 		{"does /crew change the model I'm talking to", "models-and-cost"},
-		// A crew older than the worker class: the run says `inherited` and the
-		// person asks about the word, or about the model they never picked.
-		{"why does my run say inherited", "models-and-cost"},
-		{"my crew was set before the work seat existed", "models-and-cost"},
-		// And the same substitution met in the conversation, where the person
-		// has no models line to read the word off — they ask about the task.
+		// The crew picked per task: the person meets a model they never named on
+		// a task's crew line and asks where it came from.
 		{"why is my task running on a model I did not pick", "models-and-cost"},
-		{"my work seat is inherited from small work", "models-and-cost"},
+		{"which model does a task run on", "models-and-cost"},
 		// The same crew question asked from outside the conversation, by
 		// somebody whose runs happen with nobody watching.
 		{"what models does a headless run use", "models-and-cost"},
-		// The onboarding wave: the five seats. /crew and /model became two dials
-		// a person can see as two — the confirm line names the model it left
-		// alone, bare /crew opens with seat one, and the status line carries
-		// `crew max` beside the model — and these are the questions the framing
-		// invites.
-		{"what are the five models", "models-and-cost"},
+		// The panel and its shortcuts, asked the ways the panel invites.
 		{"does /crew change my chat model", "models-and-cost"},
 		{"why did my model not change", "models-and-cost"},
-		{"what does crew max on the status line mean", "models-and-cost"},
-		{"what is the you talk to line in /crew", "commands"},
+		{"how do I pin the checker", "models-and-cost"},
+		{"what is the daily cap on the crew", "models-and-cost"},
+		{"what does /redo stronger do", "models-and-cost"},
+		{"my old crew preset is gone", "models-and-cost"},
 
 		{"how do I quit", "keys"},
 		{"how do I exit codeaf", "keys"},

@@ -461,209 +461,398 @@ another conversation cannot use this model-changing door. `/model` says
 behind that page. Provider pinning with `@provider` or `auto` remains available
 from the conversation's `/model`.
 
-Changing the conversation model does not move existing tasks. New tasks resolve
-their model from an explicit choice, the task model setting, the crew's worker
-class, then the conversation model when that worker class is blank.
+Changing the conversation model does not move existing tasks. A new task's
+worker comes from an explicit choice, then the task model setting, then the
+crew's **worker** seat — a pin, or the model the crew picked for that task —
+and only when nothing answers, the conversation model.
 
-## The crew — which models codeaf uses on my behalf, and /crew
+## The crew — which models a task runs on, and /crew
 
-codeaf makes calls you did not type: naming a session, naming a piece of work on the roster,
-the brief a task opens on, the safety gate, the check on finished task work, the second
-look before a task starts itself, the reading of a task's parts before they are handed out,
-the planner of an adaptive run and the nodes under it, the designer of a saved harness page,
-looking at an image. Each of those is a
-**role**, and every role sits on one of five **classes** — the **crew** — which you set in
-`/settings` → Providers, or in one word with `/crew`:
+The crew is three seats: the **worker** that does the work, the **planner** that
+structures it, and the **checker** that reads the result. **By default all three are auto.**
+codeaf picks each seat for each task: it reads what kind of work the task is — a
+**bugfix**, a **complex fix**, **open-ended** work, or **other** — and picks the model for
+each seat from what its catalog row says about it, weighed against what the model costs.
+Every model a connected provider serves is a candidate, frontier models included, as long
+as the allowed models admit it. A model that publishes any index — the intelligence, coding
+or agentic index, or an arena rating — is scored on those alone, through learned weights
+that ship with codeaf, for that seat on that kind of work; price never counts as ability, so a model
+no dearer than another and at least as good on every index they both publish is never ranked
+below it. A model that publishes none is scored from its context, release date, licence and
+family, never above the average model, and less surely. Each seat weighs a model a little
+below its score by how unsure the score is, and a row is scored again when the catalog next
+lists new figures for it. How this install's own tasks ended — accepted, kept, redone, failed — moves
+a model's score in a seat a little each time, within a bound, and never freezes it. A task it
+cannot read with confidence counts as open-ended, because that is where a weak crew costs
+the most.
 
-- **reflex** — near-free · reads every turn — memory, titles, safety.
-- **small work** — cheap · the small calls — names, digests, the safety gate.
-- **worker** — does the work · every task you hand off, the parts it divides into, every
-  node of an adaptive run. Most of what a task costs is spent here.
-- **careful work** — careful · checks what must not be wrong — audits, briefs, vision.
-- **mastermind** — thinks · plans runs and designs harnesses.
+The pick stops where more money stops buying much. Every seat pays for ability, and
+open-ended work pays more for it than a fix does, so a small fix usually runs on a cheap crew
+and open-ended work buys a stronger model sooner as prices rise. On open-ended and other work
+that upgrade goes to the **checker** first — the seat that accepts the work — and the planner
+stays on the base model; `--best` upgrades every seat. The worker and the checker are never
+simply the cheapest model: their score must reach the ability of the weakest model seen doing
+the work, whenever an allowed model's does, and `--cheap` takes a clearly stronger worker when
+it costs no more than half again as much. A fix whose report shows **reach** —
+more than one file, an API or protocol, language rules, a long report or several repros,
+a security defect, existing tests that must keep passing, two of these at least — is a
+**complex fix**: its worker is one rung stronger than a simple fix's; its planner and
+checker are the fix's own, the line still says bugfix, and a worker you pinned stays
+pinned. An issue's own labels count most:
+a `bug` label in any spelling (`bug :bug:`, `type/bug`) makes the task a bugfix. The price is the one you
+would actually pay: a model you reach through a subscription plan you connected costs
+nothing extra, and a local model costs nothing at all, so the crew prefers those routes
+whenever one serves the model.
 
-**All five arrive with a model already in them**, and on an account that is not
-known low on OpenRouter credits the five together are the `balanced` preset.
-While the account is known low, unwritten table seats use the free crew described
-in *OpenRouter credits and free models*, and `/status` calls that crew `free`:
+The crew is three seats because those are the calls a task spends most of its money on.
+codeaf also makes smaller calls on your behalf — naming a session, the safety gate, memory
+— and those ride two rows of their own in `/settings` → Providers, **reflex** and
+**small work**, which ship pointed at near-free models and are not part of the crew.
 
-| class | as shipped |
-| --- | --- |
-| reflex | `google/gemini-2.5-flash` |
-| small work | `deepseek/deepseek-v4-flash-0731` |
-| worker | `z-ai/glm-5.3-flash` |
-| careful work | `anthropic/claude-fable-5.1` |
-| mastermind | `anthropic/claude-opus-5` |
+**`/model` is untouched.** It is the model you talk to, and nothing about the crew moves
+it.
 
-None of them is the model you are talking to. A crew that followed your conversation would
-put the most expensive model in the build on the cheapest questions in it — a call made
-twice every turn on a frontier model is a bill nobody agreed to. That is also why the two
-seats that read every turn stay on near-free models while the frontier ids sit on the seats
-that answer a handful of times. You can pin any vendor's model on any row yourself, and you
-can connect that vendor as a direct service; the
-[services page](services.md) explains its names, limits and missing Phase 1 cost record.
+### The /crew panel
 
-**The `model family` row** (`models.crew.source`) decides which family
-the three preset words draw from. `all` is the default and is the table above: the whole
-catalog, closed and frontier models included, costing what those models cost. `open` reads the
-same three words, `frugal`, `balanced` and `max`, off the open-weight rows only, so no seat is a
-bet on one vendor's pricing. Flip the row and the seats nobody pinned move with it at once,
-because an unwritten seat is the default crew resolved in the family you are on; the rows already
-on disk keep their ids until you pick the crew again, and the crew word reads `custom` while they
-match no preset in the family you flipped to.
+Bare `/crew` opens the crew panel: a framed panel over the conversation, with six rows you
+can change and one line about the day.
 
-Under `open`, the same three words resolve to these:
+```
+╭─ crew ──────────────────────────────────────────────────────── esc ─╮
+│› worker    auto · usually glm-5.3-flash                             │
+│  planner   auto · usually glm-5.3-flash                             │
+│  checker   ⌖ kimi-k3                                                │
+│                                                                     │
+│  models    ‹ all › (96)                                             │
+│  providers ✓ openrouter  ✓ z-ai sub  ✓ ollama local  ○ my-vllm  +   │
+│  cap       per task $5 · daily none                                 │
+│                                                                     │
+│  today $1.84 · 14 tasks                                             │
+╰─ enter change · esc close · ? keys ─────────────────────────────────╯
+```
 
-| class | frugal | balanced | max |
-| --- | --- | --- | --- |
-| reflex | `mistralai/mistral-nemo` | `mistralai/mistral-nemo` | `mistralai/mistral-nemo` |
-| small work | `deepseek/deepseek-v4-flash-0731` | `deepseek/deepseek-v4-flash-0731` | `deepseek/deepseek-v4-flash-0731` |
-| worker | `z-ai/glm-5.3-flash` | `z-ai/glm-5.3-flash` | `z-ai/glm-5.3` |
-| careful work | `z-ai/glm-5.3-flash` | `moonshotai/kimi-k3` | `moonshotai/kimi-k3` |
-| mastermind | `z-ai/glm-5.3-flash` | `z-ai/glm-5.3` | `z-ai/glm-5.3` |
+- **the seats** — `auto · usually <model>` for a seat codeaf picks, naming the model the
+  recent tasks — the last eight — ran there most (`likely` before there is any history,
+  and whatever the router would pick now when the usual model is no longer reachable); or the pin mark `⌖` and the
+  model, with `@provider` when a route is pinned too. A pin nothing connected can run says
+  `unavailable`.
+- **models** — which models a seat may be picked from, walked with `←`/`→` in place:
+  `all`, `open`, `price`, `custom`, with the number of models each admits in brackets. The
+  number counts only models a provider that is on still serves.
+- **providers** — one chip per connected provider: `✓` on, `○` off and dim. An API key is
+  its plain name, a subscription says `sub`, a model on this machine says `local` when there
+  is room, and a custom endpoint is the name you gave it. The `+` at the end opens
+  `/connect`. On a narrow window the chips fold to `3 of 4 on`.
+- **cap** — `per task $5 · daily none`: the most one task may spend, and the most crews
+  may spend in a day, `none` for no daily cap.
+- **today** — what crews spent today and how many tasks ran. Spend that is nothing is not
+  drawn (`today 1 task`, never `$0.000`), and a day with nothing in it has no line.
 
-The worker column is the dial in that family — it holds `glm-5.3-flash` through `balanced`, and
-`max` moves it to `glm-5.3` — because it is the seat that pays most of a task's bill and a
-preset that moved every other seat would change everything about a task except its cost.
+**The allowed models are the models rule less every model no provider that is on serves.**
+Turning a provider off takes its routes away, never a model: a model another provider still
+serves stays allowed on that route, and the crew's routing and its route costs only ever
+use providers that are on. Which providers are off is saved beside the rule, not inside it,
+so walking the models row to a new answer never turns a provider back on. A provider you
+connect later is on the day you connect it. **At least one provider must stay on**: turning
+off the last one is refused under the rows with `at least one provider must stay on`, and
+turning off the last one that can route a seat — leaving on only a custom endpoint, which a
+pin reaches and the crew never picks — is refused with
+`at least one provider that can route a seat must stay on`, unless every seat is pinned to
+a provider still on. A
+pinned seat whose only provider is off says `provider off` on its row.
 
-**Why these ids.** Every row of the catalog was placed on two axes on 2026-09-16: the bill a
-seat's own call shape runs up, built from the catalog's published prompt, completion and
-cache-read prices, against that seat's quality, taken from its published intelligence, coding
-and agentic indexes. The call shape is part of the price, so the seats were priced apart — the
-worker and the careful seats as long cached loops, where a large prompt is read back turn
-after turn and the cache-read price carries most of the weight, and the mastermind as one-shot
-calls, where the prompt is paid in full each time and there are few of them. Each preset then
-takes, for each seat, a point on the pareto front of that plot at the bill it is willing to
-run: nothing on the front costs less at the same quality, and nothing at the same bill scores
-higher. The two families are the same plot over two sets of rows, which is why the columns do
-not climb together in either of them.
+With nothing connected the panel says `no providers connected — /connect adds one`; a pin
+whose provider is not connected says `unavailable`. A rule that leaves open-ended work
+without a strong checker says so under the rows.
 
-In the `all` family the worker stays on `glm-5.3-flash` through `balanced`, because the worker
-seat carries most of a task's tokens: a step there multiplies through the whole bill, where a
-step on the careful or the mastermind seat is paid a handful of times. So `frugal` to
-`balanced` spends on those two low-volume seats, and `max` moves the worker itself. The
-careful and mastermind seats are settled by `balanced` and stay there through `max`.
+Every change is saved the moment you make it, and the next task uses it with no relaunch.
+The changed row wears a tick `✓`, and for five seconds the bottom edge offers `z undo`,
+which puts things back exactly as they were.
 
-The careful class always sees images — the vision role rides that row — and is a different
-vendor from the worker in every preset of the `all` family; the open family's `frugal` row
-is the one standing exception, with worker and careful both on `glm-5.3-flash`, because at
-that bill the open-weight front has no second vendor for the careful seat. The small-work row is pinned to
-the July build of DeepSeek V4 Flash on purpose: the bare `deepseek/deepseek-v4-flash` id
-resolves to the April build, and the July build costs the same.
+## Crew panel keys — how to pin, unpin, set the cap or the allowed models on /crew
 
-**Clearing a row is still an answer.** A class you empty on purpose reads
-`follows the conversation`, and every role on it runs on the model you are talking to. That
-is the only way to say "use my model for this", and it is deliberately something you have to
-say rather than the default.
+`enter` is the one verb:
 
-### The three presets
+- **enter on a seat** opens that seat's list: `auto — codeaf picks per task` first, then
+  the router's suggestion marked with the star and `suggested`, then every model your
+  providers reach with its price in and out per million tokens and one provider. Type to
+  filter; `enter` pins. **Unpinning is choosing `auto`** — the list opens on it, so it is
+  `enter enter`. `→` on a model shows its routes (`any route · cheapest`, then each
+  provider); `enter` on one pins the model to that provider, `←` folds them.
+- **A model outside your allowed models** is on the list marked `not allowed`. `enter` on it
+  says `<model> is not in your allowed models (<rule>) — enter to allow it`; a second
+  `enter` adds the model to the rule and pins it.
+- **models row**: `←`/`→` step between `all`, `open`, `price` and `custom`, saving each;
+  `enter` steps forward too, the way `→` does, until `price` or `custom`, where it opens
+  what that answer holds.
+  On `price` the row becomes two boxes, `≤ $[ 1 ] in / $[ 5 ] out`; `enter` edits the
+  first, `enter` (or `tab`) moves to the second, `enter` saves. On `custom`, `enter` opens
+  a checklist of every model your providers reach — models only; providers are the
+  providers row's — ticked where the rule admits it: type to filter, `space` or `enter`
+  ticks and unticks, and each tick is saved as the shortest rule that says it
+  (`open -deepseek`, `all -moonshotai/kimi-k3`).
+- **providers row**: `←`/`→` walk the chips, `space` turns the one under the cursor off or
+  on (the bottom edge says `space toggle` only on this row), and `space` on `+` opens
+  `/connect` — `esc` there brings you back to this row. `enter` opens the providers list: one line per provider with how it bills
+  (`api key`, `subscription`, `local`, `custom endpoint`), how many models it serves, what it
+  carried today and `on` or `off`; `space` or `enter` toggles the line under the cursor, `z`
+  undoes, `esc` goes back to the row. On a narrow window the list drops what it carried
+  today first, then the model count, then how it bills; `on` or `off` always stays. The
+  list's last line is
+  `free routes  off · rate-limited, may log prompts`: turned on, the crew may also use a
+  model's free `:free` route, which is rate-limited and may log what it is sent. It is off
+  until you turn it on, and it is on the list only, never on the panel's rows.
+- **cap row**: type a figure (a digit starts it) and `enter`; empty it and `enter` for none.
+  A figure that is not dollars is refused under the rows.
+- `z` undoes the last change while the bottom edge offers it; `?` shows every key;
+  `esc` goes back exactly one level, and on the panel closes it.
+- **Mouse**: a click on a row is `enter`; a click on `‹` or `›` steps the models row; a
+  click on a provider chip toggles it; the wheel scrolls a list.
+- **Filtering a seat's list** finds a model from the front of its name: a prefix of the id
+  or the name comes first, then a word inside it (`flash`), then the letters anywhere inside
+  it. A row whose letters only match scattered — `kim` in `grok-imagine` — is shown only
+  when nothing matched better.
 
-These are the three in the family you are on unless you changed the `model family` row — the
-default one, `all`:
+Typical keystrokes: pin the checker is `/crew ↓ ↓ enter kim enter`; allow open-weight
+models only is `/crew ↓ ↓ ↓ →`; a $5 cap is `/crew`, down to `cap`, `5`, `enter`.
 
-| | frugal | balanced | max |
-| --- | --- | --- | --- |
-| reflex | `gemini-2.5-flash` | `gemini-2.5-flash` | `gemini-2.5-flash` |
-| small work | `deepseek-v4-flash-0731` | `deepseek-v4-flash-0731` | `deepseek-v4-flash-0731` |
-| worker | `glm-5.3-flash` | `glm-5.3-flash` | `glm-5.3` |
-| careful work | `qwen3.8-max-0902` | `claude-fable-5.1` | `claude-fable-5.1` |
-| mastermind | `glm-5.3-flash` | `claude-opus-5` | `claude-opus-5` |
+The shortcuts do the same writes from the box and then open the panel with the tick on the
+row they changed:
 
-- **frugal**: glm-flash works and thinks, qwen-max checks
-- **balanced**: glm-flash works, fable checks, opus thinks
-- **max**: glm-5.3 works, fable checks, opus thinks
+```
+/crew · /crew pin <worker|planner|checker> <model[@provider]> · /crew unpin <seat|all> · /crew models <all|open|≤in/out|ids…|+id|-id> · /crew cap <dollars|off> · /crew cap task <dollars>
+```
 
-The reflex and small-work columns never vary — they are the
-same near-free models in all three — so `/crew` never names them: the confirmation and
-`/status` say **brain**, **hands** and **checks**, which are the mastermind, the worker and
-the careful class.
+### Pinning a seat
 
-`/crew` opens all three as a chooser with yours marked, under a scope line — `the five
-models codeaf uses on its own behalf — not the one you chat with` — and a `you talk to ·
-<model>` line naming the seat the presets do not touch. ↑ / ctrl+p and ↓ / ctrl+n move;
-enter applies and esc cancels. If the five classes make a custom crew, no row is marked and
-the chooser says picking one puts all five back. `/crew max` still sets it directly and
-confirms in one line, which ends `· you are still talking to deepseek-v4-flash — /model
-changes that` — naming the conversation's own model by id, because the crew changes
-nothing about it and the model segment on the status line goes on saying what it said
-before. `/crew learn`, `/crew catalog` and `/crew table` move the **picked from** row and
-nothing else — the three words the row takes, answered without touching a model id — and
-when the pick is off `table` the crew word says so beside the preset: `balanced · learn`
-in `/status`, `crew balanced · learn` on the status line. The **crew** row in `/settings`
-→ Providers is the same thing: enter or space walks it frugal → balanced → max, and the
-**picked from** row under it walks table → catalog → learn.
+`/crew pin checker moonshotai/kimi-k3` pins the checker, and every task from then on runs
+its checker on that model until `/crew unpin checker` puts the seat back on auto.
+`/crew unpin all` puts all three back.
 
-**The crew row is not stored by codeaf — it is worked out from the five.** Answer any one
-of the five rows yourself and the crew row reads `custom`, because that is what is true.
-`/crew balanced` puts all five back in one write. A profile that applied a crew before the
-worker row existed reads `custom` until a preset is applied again, because its four old
-rows and the new fifth are not any of the three. A run that writes the crew word into the
-profile itself — nothing this build does, but a harness or a hand edit may — is read as
-the budget its seats run at, and the class rows under it are that run's own pins.
+**A pin may name the provider too**: `/crew pin worker z-ai/glm-5.3-flash@openrouter` sends
+that seat through OpenRouter even when a direct connection also serves the model. Without
+`@provider` the crew picks the cheapest route that reaches the pinned model.
 
-### Where the seats are picked from — table, catalog, learn
+**A pin outside the allowed models is refused**, in words, and nothing is written — a pin
+the rule would have to break is not a pin. And a pinned model none of your connections can
+reach is not quietly swapped: the task does not start, and says why.
 
-The **picked from** row (`models.crew.pick`, just under the crew row) says where the
-seats' models come from when a class row does not hold a model id of its own. The crew
-row above it still says how much to spend; this row says where the models for that
-money are read from:
+In `/settings` → Providers the three seats are one row, **seats**, which says how many are
+pinned, the allowed rule, how many providers are on, the per-task limit and the daily cap; `enter` on it opens the crew panel, and `esc` there
+brings you back to the row.
 
-- **table** — the rows we measured: the ids this build shipped with, the same ones every
-  preset table holds. This is the default, and it is what an unwritten class has always
-  read.
-- **catalog** — recomputed from today's published prices and scores at your crew's
-  budget, on every read. Nothing is stored; a catalog that moves moves the seat with it,
-  and your profile never holds a model id this build chose for you.
-- **learn** — the catalog computation plus the Model Pool's measurements and your own
-  judged runs, carried as a quality rating the better-measured models read on top of
-  their published scores.
+### Which models are allowed
 
-`catalog` and `learn` are Pareto crewing: the crew is picked on the cost-quality front,
-per role and per task, from evidence rather than from a fixed table.
+`/crew models` says which models a seat nobody pinned may be picked from. An unwritten rule is `all`.
 
-A pick moves the three seats the presets dial — **worker**, **careful work** and
-**mastermind** — and never the two that read every turn: **reflex** and **small work**
-keep their near-free ids, the same ones in every preset.
+- **`all`** — every model a connected provider can reach.
+- **`open`** — open-weight models only, so no seat is a bet on one vendor's pricing.
+- **`≤1/5`** (or `<=1/5`) — at most $1 per million tokens in and $5 out.
+- **a list** — `glm-5.3-flash, kimi-k3`: exactly these. A word may be a full id, the name
+  after the vendor, or a vendor or provider name.
 
-**A model you typed by hand wins.** The pick answers for the seats nobody named. A class
-row YOU wrote keeps its model, spelled as you typed it — the crew table's own id included
-— and a `models.crew` word stored in the profile marks every class row beside it as yours.
-`/crew balanced` writes all five classes at once, so it is the preset answering rather
-than a pin and the pick computes its three dial seats. **A flag or an environment variable
-still outranks the pick** — the pick reads the profile, and `--model` and `CODEAF_MODEL`
-are what an invocation said.
+Any rule can be followed by `+x` and `-x`, read left to right: `open -deepseek` is every
+open model but DeepSeek's, and `≤1/5 +moonshotai/kimi-k3` is the price rule with one
+exception let in. `/crew models +kimi-k3` or `/crew models -deepseek` changes the rule in
+force by one word. A `-x` naming a **provider** — `-openrouter` — takes that provider's
+routes away rather than any model; to switch a provider off for the crew, use the panel's
+**providers** row, which keeps the choice when the rule changes.
 
-When the catalog cannot compute a seat — no catalog yet, or no pick off its front — the
-seat falls back to the table row for your preset, never to `auto` and never to empty. A
-seat the pick computed names it where the preset would be: `crew balanced, computed
-from the catalog` under **catalog**, `crew balanced, learned` under **learn**.
+A rule that would leave a pinned seat outside it is refused until you unpin the seat, and
+a rule that does not parse is refused with the reason — a typo that silently allowed
+everything would be a setting somebody thinks is protecting them. When the allowed models
+leave a kind of work without a strong enough checker, the panel says so on a `gap` line.
 
-**The per-seat alias is the bare word `auto`.** Any of the five class rows may hold the
-bare word `auto` instead of a model id, case folded. The seat's model is then
-**computed from the catalog** — the three published capability indexes against the three
-published prices, under that seat's own call shape — every time the row is read. The
-word stays on disk; the id is worked out on every read.
+### The daily cap
 
-**The budget it computes at comes from the other four rows.** `auto` has no opinion about
-cost of its own, so it runs at whatever preset the rows around it name: four rows that are
-`balanced`'s make an `auto` row a balanced seat, four that are `max`'s make it a max seat.
+`/crew cap 5` caps what crews may spend in a day at $5; `/crew cap off` takes the cap
+away. The crew **paces toward it**: once half the day's cap is spent, a dearer crew costs
+more of the day's quality to justify, so the picks lean cheaper as the cap gets close.
 
-**When the other rows match more than one preset, `balanced` wins.** It is the default
-preset, and the budget an undecided profile runs at is the budget an `auto` seat runs at.
-This is not a rare corner: `max` differs from `balanced` only in the worker seat, so a
-crew with `auto` on the worker and the other four rows as shipped matches both, and reads
-as `balanced`. Pin the worker to `max`'s own id and put the `auto` row on a seat above it
-if you want a computed seat at `max`'s budget.
+**At the cap a task does not start**, whatever it asks for — `--cheap` and `--best` are
+refused the same, because a dollar cap is a cap. In a conversation the task is refused with
+the cap, what was spent, and the ways on: raise it or turn it off with `/crew cap`, or wait
+until midnight on this machine's clock, when the day's spend starts again from nothing.
+`codeaf do` refuses the same way unless you pass `-yes-spend`; `codeaf exec`, `codeaf run`
+and `codeaf plan` say one line about it and go ahead.
 
-A seat on a computed row names both facts where a seat is shown — `crew balanced,
-computed from the catalog` — so the reading is never a guess.
+**Nor does a call that would cross it.** Every call a task makes — its seats', and the
+helpers around them, such as the run's closing summary — is priced before it is made:
+what the day has spent, plus every call still on its way, plus what this call is expected
+to cost, which is never less than what the same model charged for its last call today.
+A call that would pass the cap is not made: the task stops on `today's crew spend has reached the daily cap
+of $5.00 · raise it with /crew cap`, with what it had done so far. A checker cut off this
+way ends on the same sentence.
 
-### The roles under each class
+**A checker has a ceiling of its own on each task**: three times its estimate, and never
+less than $0.05. A check that reaches it stops there, on `the check stopped at its spend
+ceiling of $0.26, three times its estimate, before it finished`, and the task ends
+unchecked rather than on a bill ten times its estimate.
 
-Directly under the **pinned roles** row the panel lists **every registered role**, grouped
-under the class answering it, saying which model comes out. As shipped:
+This cap is the crew's own. The day's limit under `/settings` → Spending counts everything
+codeaf spends, and still applies.
 
-| role | class | what it is |
+### The per-task limit
+
+No task may cost more than its limit: **$5** unless you set another. `/crew cap task 10`
+sets it to $10; on the panel it is the first figure on the **cap** row
+(`per task $5 · daily none`) — `enter` on the row, `tab` to the per-task box, type, `enter`.
+A task always has a limit: `none` and `0` are refused, and an emptied box is $5 again.
+
+Every priced call of one task — each seat's, on every model, and the helpers made for it —
+counts against one figure: what the task has spent, plus every call of it still on its
+way, plus what this call is expected to cost. A call that would pass the limit is not made,
+and the task stops on `this task reached its $5 limit · raise it in /crew`, with what it had
+done so far. The checker's own ceiling still applies inside it.
+
+`-yes-spend` does not lift it. `codeaf do` holds every run to the same limit, with or
+without a routed crew; the flag answers the day's questions and the plan-price question,
+not this one.
+
+### How hard to try one task — --best and --cheap
+
+The panel says what persists. **How hard to try one task is said in the ask, and sticks to
+nothing**:
+
+- `/task --best <brief>` puts the strongest crew the allowed models make on that task.
+- `/task --cheap <brief>` puts the cheapest crew that still does the work on it.
+- In a conversation, just say so — "do this properly", "cheapest is fine" — and the task
+  codeaf hands off carries the word as its `effort` (`best` or `cheap`).
+- From a terminal, `codeaf do --best` and `codeaf do --cheap` do the same (see *Running
+  from the terminal*).
+
+The next task is back on the ordinary pick.
+
+### What a task says about its crew
+
+A routed task says its crew in ONE line, under the line that says it started, and the line
+is rewritten in place as the task goes. When it starts:
+
+```
+task 12 crew · open-ended · worker glm-5.3-flash (openrouter) · planner kimi-k3 · checker ⌖ kimi-k3 · est $0.121
+```
+
+and when it lands, the same line with what it actually cost beside the estimate:
+
+```
+task 12 crew · open-ended · worker glm-5.3-flash (openrouter) · planner kimi-k3 · checker ⌖ kimi-k3 · $0.108 (est $0.121) · not right? /redo stronger
+```
+
+The estimate is what crews like this one cost: each seat's token profile for that kind of
+work at the model's catalog prices, then moved by what this install's own paid tasks of the
+kind cost against their estimates. A seat on a plan, a local model or a free pool adds
+nothing to it. No crew estimated over the per-task limit is picked, `--best` included: the
+pick is the best crew under it, and the line says `held under the $5.00 task limit` when that
+changed it.
+
+A pin sends exactly the id you wrote when the catalog lists it. An id the catalog lists
+only as a variant — a dated snapshot — is sent as that variant, and the line says which:
+`checker ⌖ deepseek-v4-flash → -0731`.
+
+The first word is the kind of work the task was read as. The worker's provider is named
+because it is where the money goes; the planner is named when it is another model than the
+worker; a seat you pinned wears the pin mark `⌖`. A task that failed leads its line with
+`failed — /redo stronger runs it again on a stronger crew`, and one that spent nothing
+names no money. `/task --best` that changes
+nothing says `best · already the strongest crew allowed`, and one that does names the rung
+(`worker glm-5.3-flash → kimi-k3`).
+
+**A seat whose model cannot start moves, inside the task.** When a seat's first call is
+refused, the seat goes down its ladder: the same model on its next route, then the next
+model for the seat at a similar cost, then the model the last good crew here used, then the
+model you are talking to — never a rung on an account that has just said it is out of
+credit or refused its key. The line says so first — `running on fallback crew · worker
+glm-5.3-flash → deepseek-v4-flash (credit unavailable on openrouter)` — and with nothing left
+the task stops on the one thing to do, which leads its line in place of `/redo stronger`
+(a stronger crew would meet the same wall): `failed — add credit on openrouter to
+continue`, `reconnect openrouter with /connect`, or when the limit resets. What each route did is kept: a route
+that refused a model is left out for a week, one at its limit rests until its reset, an
+account out of credit is skipped until a paid call on it answers again. Free routes are
+off unless you turn them on; when every paid route is out of reach they are used anyway,
+and the line says `free routes in use (may log prompts)`. A rescue never takes a model
+whose name says it was tuned for one domain (finance, medicine, law) or is too small for
+a seat's work, and a seat tries at most three free pools in a task; a pool at its limit
+is not waited on — the seat moves on at once, and with nothing left the task stops on
+its action within seconds. A pool that answered at its limit is not asked again in that
+task by any seat, and no helper call reaches a route that refused — it is refused before
+it is sent. A model the catalog lists at no price that is not a free pool (a stealth or
+preview model) is never picked unless you pin it, and neither is a model whose catalog row
+carries too little to score it: with no index, rating, release date or lineage to read there
+is nothing to rank it on but its price. The line says each seat's net move and
+its first cause — `worker glm-5.3-flash → gemma-4-31b-it (credit unavailable on
+openrouter; +3 tried)` — and the router's log keeps every rung. A seat that cannot start moves to a model at a similar cost before a
+dearer one. A task that ran on an account out of credit and failed ends on the credit action,
+not on `/redo stronger`. A free pool can be pinned by name —
+`/crew pin worker vendor/model:free` — and picking a model's `free` route in a seat's
+list pins that pool, not the paid route beside it.
+
+### Route health
+
+**What each route did is kept, and the next pick reads it.** Every seat's first call is
+logged with how it ended, and routes are weighed by it:
+
+- a route that **refused a model** outright — no such model, not allowed on this key — is
+  left out for a week;
+- a route **at its rate limit** rests until the reset it gave;
+- a route that **fails often** is weighed at what those failures cost, so a cheaper route
+  that rarely answers can lose to a dearer one that does;
+- an **account out of credit** or a **key refused** is skipped by helpers, and the next
+  task's first seat call asks it again, once: an answer puts it back at once;
+- an **OpenRouter balance read as low** (*OpenRouter credits and free models*) counts as out
+  of credit before any call is made and is not asked again by a task: with no other paid
+  provider connected, the crew goes to free routes and the line says
+  `free routes in use (may log prompts) · credit unavailable on openrouter`. The balance is
+  read again at every launch while it is low, so a top-up puts routing back to ordinary.
+
+Helper calls — summaries, briefs, a landing's answer — never go to a route health says will
+not answer: they are handed the router's own pick for the seat, or its rescue, instead.
+
+### Redo stronger
+
+`/redo stronger` runs the last task again ONE RUNG stronger: every seat keeps what it ran,
+and the one seat whose next model up buys the most moves to that next model — never to the
+top of the catalog in one step. The line says the rung it took (`checker glm-5.3-flash →
+deepseek-v4-flash`); a second redo takes the next rung. It is one task's ask — your pins and
+your allowed rule are untouched — and a crew already at the strongest the allowed models
+make says so and starts nothing. A task still running cannot be redone; stop it first.
+
+**A task that never started is asked again, not escalated.** When no seat answered a single
+call — the route refused it, the account was out of credit — nothing ran to be too weak, so
+the redo takes the next-best models at the same cost.
+
+**It also teaches the crew.** A redo says the crew under-served that kind of work in that
+repository, so the next task of the same kind there starts a rung higher — at most three
+steps — and a step comes off after one accepted task of that kind, so work that was
+under-served once is not overpaid for ever. A task counts as accepted when it finished and
+its result was not refused: merged, kept on its branch, or an answer with nothing to land.
+
+Every decision and how it ended — accepted, redone stronger, or not kept — is written to
+the router's log beside your settings, `router-events.jsonl`, which is what the panel's
+recent tasks and today's spend are read from.
+
+### A profile from before the crew was picked per task
+
+Earlier builds set the crew with a preset word, a model family and a pick word. A profile
+that still carries them is migrated once, on the first launch of this build, and told in
+one line:
+
+```
+your crew is auto now · codeaf picks the worker, planner and checker for each task · /crew to see it
+```
+
+The preset and pick words, and a seat row that said `auto`, become auto. A seat holding
+any model id stays pinned — even an id an old preset shipped, since nothing on the row
+says which hand wrote it — and a profile with pins is told so instead
+(`kept your pins: worker …, planner …, checker …`). A profile with nothing retired on it
+is not touched. A family of
+`open` becomes the allowed rule `open`; the default family needs no rule.
+
+### The roles under each row
+
+Directly under the **pinned roles** row, `/settings` → Providers lists **every registered
+role**, grouped under the row answering it, saying which model comes out:
+
+| role | row | what it is |
 | --- | --- | --- |
 | `reflex` | reflex | reads every turn for memory — routing and keeping |
 | `title` | small work | the name a session gives itself |
@@ -672,31 +861,31 @@ under the class answering it, saying which model comes out. As shipped:
 | `router` | small work | whether a turn should have been work |
 | `consolidate` | small work | tidies what is remembered while nobody is here |
 | `taskname` | small work | the two or three words a task is called |
-| `auditor` | careful work | whether finished-looking work is actually finished |
-| `vision` | careful work | reads images for a model that cannot see them |
-| `shaper` | careful work | the brief a task you started yourself is given |
-| `careful` | careful work | a part of a task that needs judgement |
-| `repair` | careful work | the second go at work a check found gaps in |
-| `planner` | mastermind | the plan that steers an adaptive run |
-| `designer` | mastermind | writes and reviews a harness page |
-| `routerconfirm` | mastermind | a second look before work starts itself |
-| `markreader` | mastermind | what is left of an answer that is being taken out of your hands, drawn as parts |
-| `handoff` | mastermind | the instruction a handed-over turn gives whoever finishes it |
-| `division` | mastermind | the parts a worker hands its own work out in |
+| `auditor` | checker | whether finished-looking work is actually finished |
+| `vision` | checker | reads images for a model that cannot see them |
+| `shaper` | checker | the brief a task you started yourself is given |
+| `careful` | checker | a part of a task that needs judgement |
+| `repair` | checker | the second go at work a check found gaps in |
+| `planner` | planner | the plan that steers an adaptive run |
+| `designer` | planner | writes and reviews a harness page |
+| `routerconfirm` | planner | a second look before work starts itself |
+| `markreader` | planner | what is left of an answer that is being taken out of your hands, drawn as parts |
+| `handoff` | planner | the instruction a handed-over turn gives whoever finishes it |
+| `division` | planner | the parts a worker hands its own work out in |
 
 The list is built from what is registered in the running binary, so it is the truth about
 this build rather than a table someone kept up to date. Stop on a row and the line under the
-list is that role's own description followed by which class it follows.
+list is that role's own description followed by which row it follows. A role on a crew seat
+that has no task in front of it — a title, a check outside any task — is answered by the
+seat's pin, or by the model the crew would pick for work of no particular kind.
 
-**What the mastermind's roles have in common is that one answer decides what all the other
-calls do.** `planner` and `designer` used to sit on careful work beside the check on
-finished work, which made one model id answer two unrelated bills: the careful calls are
-many and short, and these are few. A planner that cuts badly spends a whole run on work nobody wanted;
-a designer that writes badly puts a wrong answer on the menu with a name on it;
-`routerconfirm` stands between a cheap model's "that should have been work" and a task
-starting itself, and it is asked on nothing else, so it costs a call only where something was
-about to be spent; `division` reads a task's parts before any of them exists, and every turn
-every part ever takes runs on the brief it leaves behind.
+**What the planner's roles have in common is that one answer decides what all the other
+calls do.** A planner that cuts badly spends a whole run on work nobody wanted; a designer
+that writes badly puts a wrong answer on the menu with a name on it; `routerconfirm` stands
+between a cheap model's "that should have been work" and a task starting itself, and it is
+asked on nothing else, so it costs a call only where something was about to be spent;
+`division` reads a task's parts before any of them exists, and every turn every part ever
+takes runs on the brief it leaves behind.
 
 `markreader` and `handoff` are the two calls a long answer makes (*Tasks*). `markreader` is
 asked **at most once during an answer** — only when that answer can no longer work where it
@@ -705,258 +894,92 @@ of any answer that touched a tool at all. It reads the account of the work and s
 left of your question. **It runs beside the work rather than stopping it**: the next step of
 the answer goes out immediately and the reading happens alongside it. What it draws is the
 list the work carries on with; the step it lands beside is stopped either way, because the
-decision to stop was taken before it was asked. It used to be awaited, and a measured one held
-the work for 8.1 seconds to decide nothing. **A long answer no longer buys one of these
+decision to stop was taken before it was asked. **A long answer no longer buys one of these
 every ten rounds**: the two earlier moments cost no call at all now — codeaf tells the model
 what its answer has run up and the model decides for itself (*Tasks*, under *An answer that
 runs long is told*). `handoff` writes the instruction the task
-opens on when an answer is handed over. Both sit on mastermind for the same measured reason:
+opens on when an answer is handed over. Both sit on the planner for the same measured reason:
 a cheap model asked "is this finished" answered `(done)` about half-finished work 15 times out
 of 18, and that is the one answer that quietly drops a handover you were owed. There is no
 cheaper reading of that question — there is only a wrong one.
 
 **`careful` is not a call at all** — it is the model a *part* of a divided task runs on when
-the worker graded that part careful (*Tasks*). It sits on careful work beside the audit for
+the worker graded that part careful (*Tasks*). It sits on the checker beside the audit for
 the same reason: the failure it guards against is work that looks finished and is quietly
 wrong.
 
-## I changed the crew but the model at the bottom did not change — why did my model not change
+## I changed the crew but the model at the bottom did not change — does /crew change my chat model
 
-That is right, and nothing is broken. **`/crew` does not change the model you are talking
-to**, and the readout at the bottom of the frame is that model — the conversation's. The
-only thing that moves it is `/model`, the model row in `/settings`, or naming one with
-`/model <name>`. The confirmation says so by name: `/crew max` ends
-`· you are still talking to deepseek-v4-flash — /model changes that`, and `/status` prints
-`model` and `crew` on neighbouring lines so the two dials read as two.
+No, and nothing is broken. **`/crew` does not change the model you are talking to**, and
+the readout at the bottom of the frame is that model — the conversation's. The only things
+that move it are `/model`, the model row in `/settings`, or naming one with
+`/model <name>`. A pin confirms by naming the model you are still on:
+`checker ⌖ moonshotai/kimi-k3 · every task until you unpin it · you are still talking to
+deepseek-v4-flash — /model changes that`.
 
-The crew is a different dial: the five **classes** codeaf makes its own calls on — reflex,
-small work, worker, careful work, mastermind — used for titles, memory, the safety gate,
-the work inside every task, checks on finished work, the brief a task is shaped into, adaptive-run
-planners and their nodes, harness pages, and looking at an image. Setting it writes all
-five class rows in one write, and **it is live from that moment**: the next call codeaf
-makes on its own uses the new crew, with no relaunch and no new session. A task already
-running keeps the model it was admitted on.
-
-**Where to read the crew back:**
-
-- `/status` prints a `crew` line directly under `model`:
-  `crew     max · brain claude-opus-5 · hands glm-5.3 · checks claude-fable-5.1`. The word is
-  the preset, or `custom` when the five classes are your own arrangement. **brain** is the
-  mastermind, **hands** is the worker, **checks** is the careful class.
-- `/settings` → Providers has the **crew** row above the five class rows.
-- Bare `/crew` opens the three presets with yours marked, under a `you talk to · <model>`
-  line naming the seat they do not touch.
-- `/status` and the phone status sheet say `crew max` on their own line — the status row
-  itself stopped carrying the crew word on 2026-09-09; it is a setting, not a measurement.
-- The hint line under the model picker says `crew max` beside its keys, so the picker you
-  opened looking for the change tells you the crew is a separate thing.
-
-**Tasks DO follow the crew, through its worker seat.** A plain task runs on the
-`task.model` row if you set one, otherwise on the crew's **worker** class, and only when
-that row is blank on the conversation's model. An **adaptive run** uses the classes the
-same way: its planner takes the **mastermind** class and every node under it takes the
-**worker** class. Those ids are settled once, when the task or run is admitted, so changing
-the crew — or `/model` — half way through does not move work already going.
+`/status` prints `model` and `crew` on neighbouring lines so the two dials read as two:
+`crew  auto · codeaf picks the worker, planner and checker for each task`, or
+`auto · pinned checker moonshotai/kimi-k3` when you pinned a seat. The phone status sheet
+says the same, and the hint line under the model picker says `crew auto` beside its keys,
+so the picker you opened looking for the change tells you the crew is a separate thing.
+The one session with no `crew` line at all is a **remote** one opened with `--host`: that
+crew lives on the other machine.
 
 ## Which model does a task run on — why did my task run on glm-5.3-flash and not my chat model
 
-**The crew's worker seat**, unless you said otherwise. The ladder, first answer wins:
+**The crew's worker**, unless you said otherwise. The ladder, first answer wins:
 
 1. a model named in the ask — "do this on deepseek" — or picked on the proposal's chips;
 2. the `task model` row under `/settings` → Tasks, when you have set one;
-3. the crew's **worker** class — `hands` in the `/crew` confirmation and the `/status`
-   crew line;
-4. the model you are talking to, only when the worker row is blank.
+3. the crew's **worker** — your pin, or the model the crew picked for this task;
+4. the model you are talking to, only when nothing above answers.
 
-So on the shipped `balanced` crew a task runs on `z-ai/glm-5.3-flash` whatever you are
-chatting on, and `/crew max` moves the next task onto `z-ai/glm-5.3`. While a known
-OpenRouter balance is low, an unwritten worker row uses the free worker model
-instead; a crew or worker row you chose keeps its model. The task's row on the
-roster, its room's status line and its finished card all name the model it actually ran
-on. The worker of an adaptive run's nodes is the same seat, and so is the work model of
-`codeaf do` — one row, every door.
+The task's crew line, its row on the roster, its room's status line and its finished card
+all name the model it actually ran on. The seats are settled when the task starts, so
+changing the crew — or `/model` — half way through does not move work already going. A
+second task handed off while one is still running joins it and rides its crew.
 
-This is new: until the worker seat existed a task rode the model you were talking to, and
-the crew moved everything about a task except its cost.
+## Does my crew reach a run from the shell, or only this conversation — what models a headless run uses
 
-## Does my crew reach codeaf do, or only this conversation — what models a headless run uses
+**It reaches both.** The pins, the allowed rule and the cap you set here are the ones
+`codeaf do`, `codeaf exec`, `codeaf run`, `codeaf plan new`, `codeaf plan revise` and
+`codeaf plan run` use, and each of those runs is routed for its own task the same way.
+*Running from the terminal* has the flags and the models line a run opens with.
 
-**It reaches both.** A crew you set here is the crew a run started from a script or a
-terminal uses — `codeaf do`, `codeaf exec`, `codeaf run`, `codeaf plan new`,
-`codeaf plan revise` and `codeaf plan run`. Set it once with `/crew frugal` and the same policy holds
-whether the work is asked for here or run with nobody watching.
+## Asking a seat to think harder — a level on a pin
 
-Those runs seat two models, and each one is resolved the same way. The first of these that
-answers wins:
-
-1. a model named on the command line: `--model` for the work, `--plan-model` for the
-   planning, and `--check-model` for the checks;
-2. `CODEAF_MODEL`, `CODEAF_PLAN_MODEL`, or `CODEAF_CHECK_MODEL` in the environment.
-   Without its own pin, a check rides a plan seat pinned by flag or environment,
-   so a third model never arrives from the profile;
-3. **your crew** — the planning seat takes the **mastermind** class, the work seat takes
-   the **worker** class, the same row a task handed off in conversation rides;
-4. **your crew again, through an older class**, when your profile was set before a class
-   existed — the worker class inherits the small-work class it was split out of, and the
-   run says it did;
-5. what the build ships with.
-
-So `--model` is one voice of four rather than the only one. This was not always true: until
-recently a run outside the chat read only the flag and the environment, and a crew set here
-was silently lost the moment the same brain ran from a script.
-
-Each of those runs opens by saying which voice answered, so nothing has to be guessed at:
-
-```
-models: work z-ai/glm-5.3-flash (crew frugal) · plan z-ai/glm-5.3-flash (crew frugal)
-```
-
-Two details worth knowing. A crew answers only once you have actually set one — a profile
-nobody has touched takes the build's default rather than reading its own shipped values back
-as a crew. And a class carrying a thinking level, like `kimi-k3:low`, carries it there too:
-the run plans on that model at that level, the same as it does here.
-
-## Why does my run say inherited — my crew is older than the worker class
-
-The worker class arrived after the other four. A crew set before it exists on disk as four
-classes with no worker among them, so a run has no worker row of its own to read. It does
-**not** fall back to the shipped default: it takes the class the worker was split out of —
-**small work**, the row that used to do this job — and it tells you, in one line under the
-models line:
-
-```
-models: work deepseek/deepseek-v4-flash (crew custom, inherited) · plan deepseek/deepseek-v4-flash (crew custom)
-your crew was set before the work seat existed · it is running on your small work seat's model until you pick a crew with /crew in the conversation
-```
-
-`inherited` beside the class means exactly that: **the model came from your crew, but from a
-row you did not write.** The line is said once, when the run opens, and never again — not on
-every call.
-
-The same thing happens in the conversation, where there is no models line to carry the word —
-see "Why is my task running on a model I did not pick".
-
-To end it, set the crew again with `/crew frugal`, `/crew balanced` or `/crew max`, which
-writes all five classes including the worker, or pin the worker row alone in `/settings` →
-Providers. Either one, and the next run reads `crew frugal` with no second line.
-
-A crew set with this build already pins every class, so this only ever appears on a profile
-older than the class. And it is only for a row you never wrote: a row you **emptied on
-purpose** means "follow the conversation", which a run outside the chat has no conversation
-for, so that falls to the build's default the way it always has.
-
-## Why is my task running on a model I did not pick — inherited work seat in the conversation
-
-Tasks you hand off in a conversation run on the **worker** class, not on the model you are
-talking to. If your crew was set before that class existed, you have no worker row — so the
-work takes the class the worker was split out of, **small work**, and the thread tells you
-once, the first time a task starts:
-
-```
-your crew was set before the work seat existed · it is running on your small work seat's model until you pick a crew with /crew in the conversation
-```
-
-**It is said once per session**, when work actually starts, and never per task or per part.
-Twenty tasks in one sitting is one line. Start codeaf again tomorrow with the same profile and
-you get it again — it is true until you answer it.
-
-`/crew` shows the same fact about the row itself, under the three presets:
-
-```
-your work seat is inherited from small work — picking one writes it
-```
-
-**To end it, pick any crew** — `/crew frugal`, `/crew balanced`, `/crew max`, or the chooser
-that bare `/crew` opens. Every preset writes all five classes including the worker, so the
-line stops on both surfaces at once. You can also pin the worker row on its own in
-`/settings` → Providers.
-
-Three things this is **not**:
-
-- It is not the model you talk to. That one is on the status line and only `/model` moves it.
-- It is not a row you emptied. A worker row you cleared on purpose means "follow the
-  conversation", and a task then rides the model you are talking to — that is an answer, and
-  nothing is said about it.
-- It is not a fresh install. A profile that has never named any model runs this build's own
-  choice for each class, silently, the way it always has.
-
-The word `inherited` is the same word `codeaf do` prints beside the model on its `models:`
-line, so the two surfaces are telling you about one thing.
-
-## What are the six models — the one you talk to and the five crew seats
-
-codeaf runs **six model seats**. **Seat one is the model you talk to**: it answers every
-message you type, it is the id written above the message box, and `/model` is the only thing
-that moves it. The other five are the **crew** — the models codeaf uses on its own behalf,
-for calls you did not type:
-
-| seat | word | what it answers |
-| --- | --- | --- |
-| 1 | you talk to | your messages — set with `/model` |
-| 2 | reflex | memory, titles, the safety gate — near-free, reads every turn |
-| 3 | small work | digests, task names, the safety gate's yes-or-no — cheap |
-| 4 | worker | every task you hand off, its parts, every run node — most of the bill |
-| 5 | careful work | checks on finished work, the brief a task is shaped into, vision |
-| 6 | mastermind | plans adaptive runs and designs harnesses — thinks |
-
-`/crew` shows all six and sets seats two to six in one word — `frugal`, `balanced` or
-`max` — and never seat one. Bare `/crew` opens with `you talk to · <model>` above the three
-presets, so the seat the presets do not touch is on the same page as the ones they do.
-`/settings` → Providers pins any one of the five on its own, which turns the crew word to
-`custom`. Seat one is the model named above the message box; the other five are the
-`crew` line of `/status`.
-
-## Does /crew change my chat model — no, and what crew max on the status line means
-
-No. `/crew max` moves the five crew seats and leaves the model you talk to exactly where it
-was. The confirmation names it:
-
-```
-crew → max · brain claude-opus-5 · hands glm-5.3 · checks claude-fable-5.1 · you are still talking to deepseek-v4-flash — /model changes that
-```
-
-`/model`, `/model <name>` or the model row in `/settings` are the only ways to change the
-chat model, and `/crew` never offers to. The two dials also stay separate on the frame: the
-chat model is written above the message box, and `crew max` — or `crew balanced`,
-`crew frugal`, `crew custom` when you pinned a seat yourself — is a line of `/status` and of
-the phone status sheet. It is not on the status row: a setting is not a measurement, and
-the row is for numbers now. `/status` prints `model` and `crew` on neighbouring lines at any
-width. The one session with no `crew` line at all is a **remote** one opened with
-`--host`: that crew lives on the other machine.
-
-## Asking a class to think harder — a level on a class value
-
-A class value may carry a thinking level as well as a model:
+A pin, or any model row, may carry a thinking level as well as a model:
 
 ```
 moonshotai/kimi-k3:high
 ```
 
-`:low`, `:medium` and `:high` are the three. No shipped crew preset adds one; a level travels only when you add it.
+`:low`, `:medium` and `:high` are the three. Nothing codeaf picks adds one; a level travels only when you add it.
 The level is not part of the model id. It travels as its own request option, exactly as
 the picker's **ctrl+t** effort does, so the example sends model `moonshotai/kimi-k3` and
 asks for high thinking separately.
 
-- **Any of the five class rows takes one**, though the mastermind is the one it is for. On
-  the worker row in a conversation it reaches the one-shot role calls only, never the work
-  inside a task. At a headless door — `codeaf do`, `exec`, `plan` or `run` — that row fills
-  a seat instead, and every request the seat sends carries its level.
+- **Any pin and any model row takes one**, though the planner is the seat it is for:
+  `/crew pin planner moonshotai/kimi-k3:high`. On the worker in a conversation it reaches
+  the one-shot role calls only, never the work inside a task. At a headless door —
+  `codeaf do`, `exec`, `plan` or `run` — the pin fills a seat instead, and every request
+  the seat sends carries its level.
 - **Any other suffix is refused**, in words: *"off" is not a thinking level. Add `low`, `medium`,
   `high` to a model id, or leave the level off*. It is a different request shape — it asks the
   provider to suppress thinking outright — and some endpoints refuse it. `:max`, `:none`,
   `:xhigh` and the other near-misses are refused the same way. That refusal is about this
   notation alone — the effort ladder has rungs called `xhigh` and `max`, and they are a
-  separate thing from a suffix on a class value (see *Making the model think harder, deeper,
+  separate thing from a suffix on a pin (see *Making the model think harder, deeper,
   or less*).
 - Where a level is set, the role rows print it after the id, `kimi-k3:low`, which is the
   same notation the model picker and `/status` use.
 
-The **mastermind** row is a text box because a picker hands back a bare id, while this row may
-hold an id with a thinking instruction on it.
+The **planner** row in `/settings` → Providers is a text box because a picker hands back a
+bare id, while this row may hold an id with a thinking instruction on it.
 
 ## Why is my crew thinking at low — the pin is being ignored, effort=low in the log
 
-A level written onto a class value is a pin, and it reaches the wire on **every** request the
+A level written onto a pin is a pin too, and it reaches the wire on **every** request the
 seat that holds it sends — the conversation's one-shot role calls, and every call of a
 `codeaf do`, `exec`, `plan` or `run`. It is not a preference something further in gets to
 reconsider.
@@ -1009,8 +1032,8 @@ next to the money it is spending:
 
 `planner: <model>` is the model amending the plan after every node — resolved once when the
 run started, from the model whatever started the run named, then the `planner` role's pin,
-then the **mastermind** class, then the model you are talking to. Since the mastermind ships
-with a model in it, this is usually *not* the model in the rest of this conversation, which
+then the crew's **planner** — its pin, or the model the crew would pick — then the model you
+are talking to. That is usually *not* the model in the rest of this conversation, which
 is why the run's own page says it rather than leaving you to work it out. You cannot name it
 yourself from a conversation, because a conversation cannot start a run at all — see
 *adaptive runs*.
@@ -1021,7 +1044,7 @@ On a narrow screen (**under 60 columns**) the segment comes off that line and is
 on the first row of the page instead, above the chips. It is moved, not dropped — what the
 header sheds first is the goal, which you can still read in the conversation.
 
-The nodes under the planner run on the `worker` role, which sits on the **worker** class —
+The nodes under the planner run on the `worker` role, which sits on the crew's **worker** —
 a different model, and not on this line. `/settings` → Providers lists both.
 
 ## Pinning one role to its own model, and unpinning it
@@ -1030,7 +1053,7 @@ In `/settings` → Providers, move onto any row of the roles list and press **en
 opens the model picker — the same one `/model` opens, same filter box, same ranking — and
 what you choose is **pinned** to that role alone. The row then reads
 `<model>  pinned`, and the legend at the foot offers **del unpin**. Press
-**del** on a pinned row to clear it; the role goes back to following its class.
+**del** on a pinned row to clear it; the role goes back to following its row.
 
 The picker a role opens asks that role's own question. `vision` offers only models that
 can see; every other role offers the models you can hold a conversation with.
@@ -1042,13 +1065,13 @@ and pinning from the list rewrites the row without disturbing the other pins in 
 
 **A third door: just ask.** "Use `deepseek/deepseek-v4-pro` for planning and for designing
 harnesses" is a sentence codeaf acts on — it looks the row up with `settings` and writes it
-with `change_setting`, into the same `models.roles` row, after asking you. The five class
-rows (`models.tiers.reflex`, `models.tiers.low`, `models.tiers.worker`, `models.tiers.high`,
-`models.tiers.mastermind`), the crew word (`models.crew`) and the pins are all writable that
-way; only the role **slots** further down the Providers tab are not, because those are
-bindings the running session holds rather than values in your profile.
+with `change_setting`, into the same `models.roles` row, after asking you. The reflex and
+small work rows of the Providers tab, and the crew's worker, checker and planner pins behind
+its one **seats** row, are writable that way too — a pin outside your allowed models is
+refused there as it is on `/crew`; only the role **slots** further down the Providers tab are not,
+because those are bindings the running session holds rather than values in your profile.
 
-So the ladder for any role, most specific first: **its pin**, then **its class's model**,
+So the ladder for any role, most specific first: **its pin**, then **its row's model**,
 then **the model you are talking to**.
 
 Two things worth knowing:
@@ -1082,11 +1105,11 @@ Until something has settled at all it says
 `nothing measured yet. Ratings appear once calls have been graded.`
 
 **What codeaf does with it** is one thing only: when a task splits itself, a part the
-worker called ordinary work is minted on your **careful work** model instead if work
+worker called ordinary work is minted on your **checker**'s model instead if work
 named like it has been turned down twice or more on the model the task is on. That is the
-whole of it — no model is ever swapped out from under you, your chat model is untouched,
-and an install with no crew classes set never lifts anything, because there is nowhere
-dearer to lift it to. *Tasks*, under *When a task turns out to be too wide for one
+whole of it — no model is ever swapped out from under you, and your chat model is
+untouched. The crew learns from the same record in one more way, which you ask for:
+`/redo stronger` (see *The crew*). *Tasks*, under *When a task turns out to be too wide for one
 worker*, has the rest.
 
 The record lives with your settings, in `router-ledger.json` and `router-events.jsonl`.
@@ -1101,7 +1124,7 @@ small model that was down cost you the name and said nothing, while the model yo
 talking to sat there able to do it.
 
 Now the call **falls through one rung of the same ladder** and asks again: pin, then the
-class's model, then the model you are talking to. That last rung is the floor, and it is a
+row's model, then the model you are talking to. That last rung is the floor, and it is a
 model that demonstrably works — it is the one answering your own turns. The cost lands
 against the model that actually answered, not the one that refused, so `/cost` and the
 usage rows reconcile.
@@ -1111,9 +1134,9 @@ would turn one bad minute at a provider into three charges and three waits for a
 nobody asked for. Nothing is said on screen either way — these are errands you did not ask
 for, and there is no state for "a small thing did not work".
 
-**Each of these calls also has its own patience**, taken from its class rather than from a
-per-call setting: a reflex call has **45s**, a cheap-class call **2m**, a capable-class one
-**5m**, and a mastermind call **10m**. Some calls set something tighter still and keep it —
+**Each of these calls also has its own patience**, taken from its row rather than from a
+per-call setting: a reflex call has **45s**, a small-work call **2m**, a checker call
+**5m**, and a planner call **10m**. Some calls set something tighter still and keep it —
 the guardian answers in ten seconds or not at all, the memory lookup moves to another machine
 after **two seconds** and stops after **eighteen**, and the two readers at the end of an
 answer get **20s** and **30s**. What this replaced was the ordinary
@@ -1132,7 +1155,7 @@ correct behaviour and a surprise to anyone reading a bill, so this is the flag f
 where **one model has to answer for the whole run** — comparing two models against each
 other, timing a benchmark cell, or attributing a cost.
 
-It settles four things on your model: the five crew classes, any role you pinned, the model
+It settles four things on your model: the crew's three seats and the two small rows, any role you pinned, the model
 that work leaving the conversation runs on, and the fallback chain codeaf would otherwise
 move to when a model cannot answer. Under this flag **nothing hops** — not on a refusal,
 not on a reply that keeps stalling, not on rate limiting that will not clear — because a
@@ -1142,12 +1165,12 @@ ordinary run falls back to the nearest same-class model, and this flag withholds
 
 **The two calls that ordinarily refuse the conversation's model ride it too.** The reader that
 decides whether a long answer is moved to a task, and the writer of the brief that task opens
-on, normally run on the thinking tier and on nothing else: with no crew they are skipped
+on, normally run on the crew's planner and on nothing else: with no planner they are skipped
 rather than handed to the model that just wrote the answer. Under this flag they run on your
 model like everything else, because you have said your model is the crew. Without the flag and
-without a thinking-tier row, a move that needs them says `no second model is set`.
+without a planner to seat, a move that needs them says `no second model is set`.
 
-**It changes no setting and writes nothing.** Your crew rows and pins are untouched, `/crew`
+**It changes no setting and writes nothing.** Your pins and rows are untouched, `/crew`
 still says what it said, and the next session without the flag reads them exactly as before.
 It is a posture for one run, not an edit.
 
@@ -1164,28 +1187,18 @@ Two things it deliberately does not do:
 Standing items never take this posture, whatever the session that set them up was started
 with. They fire on their own clock long after your run ended, and the crew answers for them.
 
-## What the screen says under `--one-model` — why does the status line say one model, where did my crew word go, no crew receipt when a task starts
+## What the screen says under `--one-model` — why does the status line say one model, where did my crew word go, no crew line when a task starts
 
 **The crew line names the flag, because the flag is what seats the call.** Under
-`--one-model` the crew line of `/status` and the phone sheet reads `one model` rather than the preset your four
-rows derive to, and `/status` answers its crew line with `one model · every call rides the model
+`--one-model` the crew line of `/status` and the phone sheet reads `one model` rather than
+`auto`, and `/status` answers its crew line with `one model · every call rides the model
 you are talking to`. The model picker's hint slot and the welcome line under the wordmark say
 the same word. All of them read one answer, so none of them can disagree with another.
 
-**Your crew word is not gone, it is overridden.** The rows are untouched on disk — this flag
-writes nothing — and the next session started without it draws `crew balanced`, `crew max` or
-`crew custom` again exactly as before. What the flag refuses to do is print a crew that is not
-seating anything this run.
-
-**And no crew receipt is posted.** The line a profile older than the work seat ordinarily gets
-when its first task starts — `your crew was set before the work seat existed · it is running on
-your small work seat's model until you pick a crew with /crew in the conversation` — is not said
-under this flag. That line
-reports a substitution, and under the flag there is none: every call is already on the model
-you are talking to, which is your own answer to the question it asks. Picking a crew would not
-change what runs, so the sentence is not offered, and the `/crew` sheet says nothing about an
-inherited work seat either. Without the flag, the same profile draws `crew custom` and says
-that line once, exactly as it always did.
+**Your crew is not gone, it is overridden.** Your pins are untouched on disk — this flag
+writes nothing — and the next session started without it draws `crew auto` again exactly as
+before. What the flag refuses to do is print a crew that is not seating anything this run,
+so no task says a crew line under it either: nothing was picked.
 
 ## What temperature does codeaf use — sampling settings like temperature, top-p and seed
 
@@ -1334,7 +1347,7 @@ Neither happens now.
 
 What still travels is what somebody asked for: a level you dialled, an explicit
 `--reasoning` level, `CODEAF_REASONING` and `CODEAF_EXEC_REASONING` at a headless
-door, a crew class value like `moonshotai/kimi-k3:high`, and a rung on a task or
+door, a pinned value like `moonshotai/kimi-k3:high`, and a rung on a task or
 a standing card. `off` on the headless environment settings really does send the
 disable; `off` on the chat dial is the legacy spelling of `auto`. Errands the
 session runs for itself — naming a conversation, judging a route — still ask for
@@ -1368,7 +1381,7 @@ answer: it cannot think harder than its own ceiling.
 - A model whose catalog row says it takes no reasoning knob at all is sent nothing about
   thinking.
 
-These rungs are not the same notation as a thinking level written onto a crew class value
+These rungs are not the same notation as a thinking level written onto a pin
 (`moonshotai/kimi-k3:high`), which still takes only `low`, `medium` and `high`.
 
 ## The model went quiet, or stopped answering halfway through — the request is cut when nothing comes back, and how long it waits first
@@ -2342,7 +2355,7 @@ same three-second beat every place runs on, and it draws three things:
   is bound to planning" are opposite facts about the same blank. There is no figure on that
   row: no line in the ledger names a slot, so there is nothing measured to put there.
   **Today only the conversation slot is drawn at all.** A window holds a client for the
-  model you are talking to and for no other; the five crew slots are answered where their
+  model you are talking to and for no other; the other slots are answered where their
   own session is opened, so this window cannot tell "nothing is bound" from "I cannot ask" —
   and the emptiness law says an unknown is drawn as nothing rather than guessed at;
 - **by topic** — the three things money is ever spent on, because the ledger holds
@@ -2503,14 +2516,14 @@ their own words — `background`, `changes`, `spend`, `context`, `cache`, `rate`
 finally `file`.
 Labels are padded into two aligned columns.
 
-The `crew` line sits directly under `model` and reads the preset word — or `custom` — with
-the three classes after it:
+The `crew` line sits directly under `model` and says the crew is auto, with any seat you
+pinned after it:
 
 ```
-crew     max · brain claude-opus-5 · hands glm-5.3 · checks claude-fable-5.1
+crew     auto · pinned checker moonshotai/kimi-k3
 ```
 
-On the live status line the crew is one short segment — `crew max`, or `crew custom` — at
+On the live status line the crew is one short segment — `crew auto`, or `crew auto · 1 pinned` — at
 the head of the telemetry beside the model, and among the first a narrow row gives up; the
 `crew` line here and on the phone's status sheet is the full reading. A **remote** session
 opened with `--host` has no crew of its own to read — it is the other machine's — and gets
@@ -2795,7 +2808,7 @@ They live on **one tab**: `/settings` → **Spending**, which `/budget` opens di
 | **per day** | `$500` | new work waits for midnight or for you to raise it here |
 | **per conversation** | `no limit` | this conversation stops starting new turns; the turn in flight always finishes |
 | **per plan** | `asks first above $100` | a planned job estimated above it quotes its step count and its price and waits for your go-ahead — it asks, it does not stop |
-| **per task** | `no limit of its own` | nothing of its own; a task spends against the day and this conversation |
+| **per task** | `$5 a task` | that task's next priced call is not made; set in `/crew` |
 | **per standing run** | `$5 a firing` | that one firing stops there; each order may name its own |
 | **practice** | `$50 of the day` | codeaf's practice on itself stops until tomorrow, and your own work is untouched |
 
@@ -2936,30 +2949,24 @@ The row was called `ask before spending` when it lived on the Workspace tab, and
 setting key behind it is still `plan_consent_usd` — the panel's search matches the key as
 well as the label, so typing either finds it.
 
-## What may a task spend — a task has no dollar limit of its own
+## What may a task spend — $5 a task unless you set another
 
-**A task carries no dollar cap of its own.** The Spending tab says so on the `per task`
-row, in those words: `no limit of its own`, with the dim receipt `it spends against the
-day and this conversation`.
+**A task carries a dollar limit of its own: $5 unless you set another.** The Spending tab
+shows it on the `per task` row — `$5 a task`, with the dim receipt `set in /crew · it also
+spends against the day and this conversation`. It is set on the `/crew` panel's **cap** row
+or with `/crew cap task 10`; see [The per-task limit](#the-per-task-limit).
 
-That is not a missing feature — it is what the rail actually is. A task's own bounds are
-**steps and time**, not money: a deadline it may renew, a step count, and a limit on how
-long it may go without progress. The money it spends is counted against the day's limit
-and against the limit on the conversation that started it, which are the two rows above it
-on the same tab.
+Every priced call of one task counts against it, and a call that would pass it is not
+made. A task's other bounds are **steps and time**: a deadline it may renew, a step count,
+and a limit on how long it may go without progress. Its money is also counted against the day's limit and
+against the limit on the conversation that started it, the two rows above it on the same
+tab.
 
-**What you get instead of a per-task limit is seeing it happen.** The `$` on the status
-line counts what the tasks are spending while they are spending it, and `/cost` splits that
-figure into `conversation` and `tasks`. A task is bounded by the wallet and watched on the
-row — it is never stopped on its own dollar count.
+The `$` on the status line counts what the tasks are spending while they spend it, and
+`/cost` splits that figure into `conversation` and `tasks`.
 
-So **there is no per-task money row to edit**, and `/budget task 20` is not a shape this
-command takes. Where you *can* put a figure on one piece of work is the **composer layer**:
-`alt+enter` before you send a task, and its third line reads `it may spend up to $100.00
-before it asks`. Type a number there and that errand gets that ceiling — it stops before
-its next turn once it reaches it, and any adaptive run it starts is held to a tank no
-bigger. A task started any other way — `/task <brief>`, a proposal card, codeaf's own
-hands — runs under the day's limit and this conversation's.
+`/budget task 20` is not a shape this command takes; the per-task figure lives in `/crew`.
+The **composer layer** can put a further figure on one errand; see the tasks page.
 
 `per standing run` beside it is the same kind of reading for a different reason: it reads
 `$5 a firing · each order may name its own`, because that rail is written **per standing
@@ -3898,7 +3905,7 @@ lean.
 So an open-weight model with a large window is NOT lean. `glm-5.3-flash` and
 `glm-5.3` are served with 128,000 tokens of room, so they get the full
 page, the full tool list and saved memories, exactly like any other
-128,000-token model — including when they are the model your crew preset picked
+128,000-token model — including when they are the model the crew picked
 for the `worker` seat, and including when you then choose that same model in
 chat. Open weights are a licence, not a size.
 
