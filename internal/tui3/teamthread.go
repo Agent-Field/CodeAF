@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── THE RAIL'S THREADS (teamrail.go says what the rail is) ─────────────────
@@ -421,9 +422,9 @@ func (s *trafficSheet) replies(th teamstore.Thread) {
 		mark := ""
 		switch r.state {
 		case teamstore.StateFinished:
-			mark = s.a.linearMark("✓", "ok") + " "
+			mark = s.a.linearMark(s.a.icon(tokens.GSettled), "ok") + " "
 		case teamstore.StateFailed:
-			mark = s.a.linearMark("✗", "x") + " "
+			mark = s.a.linearMark(s.a.icon(tokens.GFailed), "x") + " "
 		}
 		switch {
 		case r.state == teamstore.StateAsking:
@@ -469,7 +470,7 @@ func (s *trafficSheet) event(e teamstore.Entry) {
 		s.words(quote, segs, "    ", pal.ask, s.a.trafficAge(e), doors)
 		return
 	case e.State == teamstore.StateFinished:
-		segs = append(segs, railSeg{text: s.a.linearMark("✓", "ok") + " finished", paint: pal.muted, door: -1})
+		segs = append(segs, railSeg{text: s.a.linearMark(s.a.icon(tokens.GSettled), "ok") + " finished", paint: pal.muted, door: -1})
 		if text != "" && text != e.State {
 			segs = append(segs, railSeg{text: " · " + text, paint: pal.dim, door: -1})
 		}
@@ -477,7 +478,7 @@ func (s *trafficSheet) event(e teamstore.Entry) {
 		if text == "" {
 			text = "failed"
 		}
-		segs = append(segs, railSeg{text: s.a.linearMark("✗", "x") + " " + text, paint: pal.muted, door: -1})
+		segs = append(segs, railSeg{text: s.a.linearMark(s.a.icon(tokens.GFailed), "x") + " " + text, paint: pal.muted, door: -1})
 	default:
 		if text == "" {
 			text = e.State

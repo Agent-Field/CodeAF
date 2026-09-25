@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // railLines is the rail's column on the next frame, plain, one string a row,
@@ -142,7 +143,7 @@ func TestTrafficThreadEventsFoldAndOldEntriesStand(t *testing.T) {
 	}
 	trafficAppend(t, a, harbor, teamstore.Entry{Kind: teamstore.KindEvent, From: price, To: teamstore.ToManager, State: teamstore.StateFailed, Text: "the migration failed: lock timeout", Answers: q})
 	trafficReadNow(t, a)
-	if rows := railLines(t, a); railRowOf(rows, "└ @"+price+"  ✗ the migration failed") < 0 {
+	if rows := railLines(t, a); railRowOf(rows, "└ @"+price+"  "+tokens.GlyphFailed+" the migration failed") < 0 {
 		t.Fatalf("the failure did not fold into the member's line:\n%s", strings.Join(rows, "\n"))
 	}
 }

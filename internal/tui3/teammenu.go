@@ -6,6 +6,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── THE STRIP'S TEAM SWITCHER ───────────────────────────────────────────────
@@ -309,7 +311,7 @@ func (a *app) teamMenuCard(width, height int) wallCard {
 	pal := a.pal
 	g := wallGlyphsFor(pal.ascii)
 	k := wallKeysFor(pal.ascii)
-	on, off := "◉", "○"
+	on, off := "◉", pal.glyph(tokens.GEmptyCell)
 	if pal.ascii {
 		on, off = "*", "o"
 	}
