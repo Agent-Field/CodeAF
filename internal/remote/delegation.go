@@ -3,6 +3,7 @@ package remote
 import (
 	"encoding/json"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -16,7 +17,7 @@ import (
 // was one of them at all.
 func (s *server) delegationCall(call Frame) (json.RawMessage, bool, error) {
 	switch call.Method {
-	case MethodTeamsDefaults, MethodTeamsPackets, MethodTeamsRaise, MethodTeamsDecide,
+	case MethodTeamsDefaults, MethodTeamsApplyDefault, MethodTeamsPackets, MethodTeamsRaise, MethodTeamsDecide,
 		MethodTeamsEscalate, MethodTeamsSpend, MethodTeamsDelete,
 		MethodTeamsWrapUp, MethodTeamsAcceptClosing:
 	default:
@@ -38,6 +39,20 @@ func (s *server) delegationCall(call Frame) (json.RawMessage, bool, error) {
 func delegationAnswer(dir string, call Frame) (any, error) {
 	switch call.Method {
 	case MethodTeamsDefaults:
+		return teamstore.DefaultsAt(dir), nil
+
+	case MethodTeamsApplyDefault:
+		args, err := arg[TeamDefaultArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		// THE SAME WRITE THE LOCAL TAB MAKES. ApplyTeamDefault is the registry
+		// row's own Apply, so a value the panel would refuse is refused here
+		// in the same words, and a value it would keep is the file the far
+		// session reads.
+		if err := config.ApplyTeamDefault(dir, args.Key, args.Raw); err != nil {
+			return nil, err
+		}
 		return teamstore.DefaultsAt(dir), nil
 
 	case MethodTeamsPackets:
@@ -136,6 +151,12 @@ func delegationAnswer(dir string, call Frame) (any, error) {
 // TeamsDefaults is the engine profile's `teams.` defaults.
 func (c *Client) TeamsDefaults() (teamstore.Defaults, error) {
 	return delegationAsk[teamstore.Defaults](c, MethodTeamsDefaults, struct{}{})
+}
+
+// TeamsApplyDefault writes one `teams.` row on the engine and answers the
+// five defaults as they stand after the write.
+func (c *Client) TeamsApplyDefault(key, raw string) (teamstore.Defaults, error) {
+	return delegationAsk[teamstore.Defaults](c, MethodTeamsApplyDefault, TeamDefaultArgs{Key: key, Raw: raw})
 }
 
 // TeamsPackets is the packets waiting on scope, or Same when the packet files

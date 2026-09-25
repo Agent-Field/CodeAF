@@ -1631,6 +1631,17 @@ these rows are this machine's — the ones that govern the conversation are read
 
 and then opens anyway.
 
+## Can I edit team defaults over --host
+
+The **Teams** tab is the one section that edits the other machine. Over `--host` its five
+rows (`questions go to the manager`, `team messages wake`, `daily cap per team`,
+`team depth`, `sub-team share`) are that machine's defaults, and a change is saved there.
+Each value says `from Settings`, the same words a team's card uses when it inherits the
+row. The foot line says `a team can override any of these on its card · saved on <machine>`.
+
+An older engine keeps the tab read only and says
+`changing them is not available over this connection`. The other tabs stay this computer's.
+
 Refusals inside the panel, exactly as written:
 
 - A row pinned by an environment variable refuses, and the foot says

@@ -2461,6 +2461,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I work on the same conversation from two computers", "running-on-another-machine"},
 		{"what is the difference between another window and another machine", "running-on-another-machine"},
 		{"does home work over --host", "running-on-another-machine"},
+		{"can I change the Teams settings on another machine", "running-on-another-machine"},
+		{"where do team defaults go over a connection", "running-on-another-machine"},
+		{"can I edit team defaults over --host", "commands"},
 
 		// The wave that stopped a rebuild on the far machine from trapping
 		// somebody. These are the words a person actually uses at the moment it

@@ -31,6 +31,11 @@ import (
 const (
 	// MethodTeamsDefaults is the engine profile's five `teams.` defaults.
 	MethodTeamsDefaults = "Teams.Defaults" // struct{} → teamstore.Defaults
+	// MethodTeamsApplyDefault writes one of those rows, the same way the
+	// settings tab writes it locally (config's ApplyTeamDefault). The answer
+	// is the five defaults after the write. [Welcome.TeamSettings] says an
+	// engine has the door; an engine without it leaves the tab read-only.
+	MethodTeamsApplyDefault = "Teams.ApplyDefault" // TeamDefaultArgs → teamstore.Defaults
 	// MethodTeamsPackets is the packets waiting on a scope, or word that the
 	// packet files have not moved since the stamp the window holds.
 	MethodTeamsPackets = "Teams.Packets" // PacketsArgs → PacketsReading
@@ -77,6 +82,13 @@ type AcceptClosingArgs struct {
 type AcceptClosingReply struct {
 	Closed bool   `json:"closed"`
 	Stamp  string `json:"stamp"`
+}
+
+// TeamDefaultArgs is one `teams.` row, as the settings tab would apply it:
+// Key is the registry key, Raw is what was typed (on, off, a number, or blank).
+type TeamDefaultArgs struct {
+	Key string `json:"key"`
+	Raw string `json:"raw"`
 }
 
 // PacketsArgs is a scope (a team id, teamstore.Person, or "" for every

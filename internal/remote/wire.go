@@ -1167,6 +1167,15 @@ type Welcome struct {
 	// rather than reading this laptop's files.
 	Delegation bool `json:"delegation,omitempty"`
 
+	// TeamSettings says this engine ANSWERS [MethodTeamsApplyDefault]: the
+	// settings tab can change the five `teams.` defaults on this machine.
+	//
+	// IT IS A FLAG OF ITS OWN beside [Welcome.Delegation] for that flag's
+	// reason. An engine can read the defaults and still have no door that
+	// writes them. ABSENCE IS false, and false leaves the Teams tab read-only
+	// over the connection, said as such, rather than writing this laptop's file.
+	TeamSettings bool `json:"team_settings,omitempty"`
+
 	// WrapUp says this engine ANSWERS THE WRAP-UP'S TWO DOORS
 	// ([MethodTeamsWrapUp], [MethodTeamsAcceptClosing]). A third flag for
 	// [Welcome.Delegation]'s reason: an engine built between the two has the
