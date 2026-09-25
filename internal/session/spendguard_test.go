@@ -26,8 +26,8 @@ func (c *spendingCompleter) CompleteWithMessages(context.Context, []ai.Message, 
 // kimiPrice is a checker's prices per token.
 func kimiPrice(string) (float64, float64, float64, bool) { return 3e-6, 1.5e-5, 3e-7, true }
 
-// THE DARTS CASE: an open-ended task under a $0.25 day whose kimi checker ran
-// to $0.75 against an estimate of $0.07. Every call is priced before it is
+// A DEAR CHECKER UNDER A SMALL DAY: an open-ended task under a $0.25 day whose
+// checker would run far past its estimate. Every call is priced before it is
 // made: the checker stops at its own ceiling, three times its estimate, and
 // the day never passes its cap by more than one call's misjudgement.
 func TestTheCheckerStopsAtItsCeilingAndTheDayAtItsCap(t *testing.T) {

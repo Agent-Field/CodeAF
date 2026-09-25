@@ -12,21 +12,19 @@
 //
 // ── WHY IT ROUTES ON THE CLASS OF WORK ──
 //
-// The evidence behind it is in docs/design/model-pool/pareto-crewing.pdf. In
-// short: on narrow fixes the cheapest crew was as mergeable as a dear one and
-// a strong checker added nothing; on open-ended work the cheap crew alone was
-// rarely mergeable, and a strong checker — and only a checker — made the
-// difference. So the policy is read off a table ([prior]) rather than written
-// into branches: classify the task ([Classify]), then pick each seat to
-// maximise quality minus λ times cost.
+// The design is in docs/design/model-pool/pareto-crewing.pdf. The rule it
+// follows: narrow fixes use the cheapest qualified crew, and open-ended work
+// gets a stronger checker, the one seat worth paying for there. The policy is
+// read off a table ([prior]) rather than written into branches: classify the
+// task ([Classify]), then pick each seat to maximise quality minus λ times
+// cost.
 //
 // ── WHAT IT DOES NOT DO ──
 //
 // It does not escalate on its own. A done-verdict that misses real solves and
 // passes failures would make an escalation loop spend on the wrong tasks, so
 // [AutoEscalate] is off, and a stronger crew is something a person asks for
-// (`redo stronger`) until the checker's agreement with a human reviewer is
-// measured high enough to trust.
+// (`redo stronger`).
 //
 // It is PURE: no disk, no network, no clock. The same request gives the same
 // crew, in the same order, every time — which is what lets a decision be
@@ -43,10 +41,10 @@ import (
 )
 
 // AutoEscalate is whether a crew is ever made stronger without somebody
-// asking. It is OFF, and a constant rather than a setting, because the number
-// that would justify turning it on — how often the checker's verdict agrees
-// with a reviewer's — is a property of the checker, not a preference, and it
-// is not yet high enough for automatic escalations to pay for themselves.
+// asking. It is OFF, and a constant rather than a setting, because whether an
+// automatic escalation pays for itself depends on how far the checker's
+// verdict can be trusted, which is a property of the checker, not a
+// preference.
 const AutoEscalate = false
 
 // Seat is one of the crew's three seats, by the name a person reads.
@@ -142,7 +140,7 @@ type Pin struct {
 type Effort string
 
 const (
-	// EffortKnee is the default: the knee of the measured front.
+	// EffortKnee is the default: the knee of the quality-cost front.
 	EffortKnee Effort = ""
 	// EffortBest buys the most quality the table believes in, whatever it
 	// costs (λ → 0, ties to the cheaper).
@@ -168,13 +166,10 @@ func ParseEffort(word string) (Effort, bool) {
 // The price of quality, spelled once.
 //
 // THE KNEE is [Knee] quality points per dollar (prior.json). It sits where the
-// measured front bends: the fix class's only paid upgrade, kimi in every seat,
-// buys +0.29 points for about $0.33 (under one point per dollar) and is below
-// it; the open-ended class's strong checker buys +4 points for about $0.09
-// (over forty per dollar), and the step from a cheap strong-ish checker to the
-// strong one, +1.9 for $0.085, is above it. So the default buys the checker
-// on open-ended work and nothing on a fix — the routed policy the evidence
-// measured — and it does so because of the prices, not because of a branch.
+// table's quality-cost front bends: a step up that buys fewer than [Knee]
+// points per dollar is not taken, and one that buys more is. On the table's
+// rows that buys a strong checker on open-ended work and nothing on a fix, and
+// it does so because of the prices, not because of a branch.
 //
 // cheapFactor makes cheap ten times as stingy: quality must come at under
 // half a cent a point. stepFactor is one escalation step: a quarter of the
@@ -932,7 +927,7 @@ func pinned(t *table, class Class, seat Seat, pin Pin, candidates []Candidate) P
 // catalog skipped every mid-price model and multiplied the bill for one
 // sentence of dissatisfaction; a ladder is walked a rung at a time, and a
 // second redo takes the next rung. Ties go to the checker, then the worker,
-// then the planner — the checker is the lever the evidence found.
+// then the planner — the checker is the seat the routing rule upgrades first.
 func stronger(t *table, class Class, candidates []Candidate, pins map[Seat]Pin, lambda float64, ran *Decision) ([]Pick, float64, error) {
 	crew := make([]Pick, 0, len(Seats))
 	for _, seat := range Seats {
@@ -1101,7 +1096,7 @@ func Pace(spent, cap float64) (multiplier float64, atCap bool) {
 }
 
 // Gap is one class of work the allowed models leave without a seat the
-// evidence says it needs.
+// routing rule requires.
 type Gap struct {
 	Class Class
 	Seat  Seat
@@ -1109,13 +1104,13 @@ type Gap struct {
 }
 
 // strongCheckerFloor is the open-ended checker quality below which the
-// allowed models have no strong checker: between the measured cheap checkers
-// (1.0 and 3.1) and the measured strong one (5.0).
+// allowed models have no strong checker: between the table's cheap checkers
+// and its strong one.
 const strongCheckerFloor = 4.0
 
 // Gaps names what the allowed models cannot cover. Today that is one thing,
-// because it is the one lever the evidence found: open-ended work with no
-// strong checker among the models allowed.
+// the seat the routing rule depends on: open-ended work with no strong checker
+// among the models allowed.
 func Gaps(candidates []Candidate) []Gap {
 	t := prior()
 	best := math.Inf(-1)

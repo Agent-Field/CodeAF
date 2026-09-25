@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-// The evidence table's own model set, priced as the catalog published it on the day
-// the evidence was measured, each reachable on OpenRouter only.
+// The evidence table's own model set, priced as prior.json snapshots it, each
+// reachable on OpenRouter only.
 func evidenceCandidates() []Candidate {
 	var out []Candidate
 	for _, id := range []string{"z-ai/glm-5.3-flash", "moonshotai/kimi-k3", "deepseek/deepseek-v4-flash"} {
@@ -38,8 +38,8 @@ func TestThePriorTableParsesAndIsSmall(t *testing.T) {
 	}
 }
 
-// THE MEASURED CREWS ADD BACK UP TO WHAT WAS MEASURED, and cost about what
-// they cost. If a split or a shape moves, this is where it says so.
+// THE TABLE'S CREWS ADD BACK UP TO THEIR ROWS, and cost about what prior.json
+// says. If a split or a shape moves, this is where it says so.
 func TestTheTableReproducesTheEvidence(t *testing.T) {
 	tab := prior()
 	flash, _ := Snapshot("z-ai/glm-5.3-flash")
@@ -69,10 +69,10 @@ func TestTheTableReproducesTheEvidence(t *testing.T) {
 	for _, tc := range cases {
 		q, usd := crew(tc.class, tc.w, tc.p, tc.c)
 		if math.Abs(q-tc.quality) > 1e-6 {
-			t.Errorf("%s: quality %.3f, measured %.2f", tc.name, q, tc.quality)
+			t.Errorf("%s: quality %.3f, want %.2f", tc.name, q, tc.quality)
 		}
 		if math.Abs(usd-tc.usd) > tc.slack {
-			t.Errorf("%s: cost $%.4f, measured about $%.3f", tc.name, usd, tc.usd)
+			t.Errorf("%s: cost $%.4f, want about $%.3f", tc.name, usd, tc.usd)
 		}
 	}
 }
@@ -111,9 +111,9 @@ func TestEffortMovesOnlyWhereTheEvidenceSaysItPays(t *testing.T) {
 	if best.Seat(Worker).Model != "moonshotai/kimi-k3" || best.Seat(Planner).Model != "moonshotai/kimi-k3" {
 		t.Errorf("--best on a fix: %+v, want kimi worker and planner", best.Crew)
 	}
-	// The checker adds nothing on a fix, so even --best keeps the cheaper one.
+	// A fix does not pay for a stronger checker, so even --best keeps the cheaper one.
 	if best.Seat(Checker).Model != "z-ai/glm-5.3-flash" {
-		t.Errorf("--best on a fix put %s in the checker seat; the evidence says a strong checker adds nothing there", best.Seat(Checker).Model)
+		t.Errorf("--best on a fix put %s in the checker seat; a fix keeps the cheapest checker", best.Seat(Checker).Model)
 	}
 	cheap, _ := Decide(Request{Class: OpenEnded, Candidates: cands, Effort: EffortCheap})
 	if cheap.Seat(Checker).Model != "deepseek/deepseek-v4-flash" {
@@ -301,7 +301,7 @@ func TestPaceGrowsAsTheCapNears(t *testing.T) {
 
 func TestGapsNameAMissingStrongChecker(t *testing.T) {
 	if gaps := Gaps(evidenceCandidates()); len(gaps) != 0 {
-		t.Errorf("the evidence set has a strong checker, got gaps %+v", gaps)
+		t.Errorf("the table's model set has a strong checker, got gaps %+v", gaps)
 	}
 	flashOnly := evidenceCandidates()[:1]
 	gaps := Gaps(flashOnly)

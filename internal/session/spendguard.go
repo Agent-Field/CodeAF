@@ -14,8 +14,8 @@ import (
 // A run's dollar limit is read off what its workers have already spent
 // (internal/run's countLiveSpend), so a limit is reached only by the call that
 // crosses it — and one long checker round on a dear model is many calls, each
-// of which started under the line. Measured: a $0.25 day spent $0.81, the
-// checker alone $0.75 against an estimate of $0.07. The guard answers the
+// of which started under the line, so one checker round can overrun a small
+// day's cap several times over before the limit is read. The guard answers the
 // question BEFORE each call instead: what the day has spent, plus what this
 // call is expected to cost, against the day's cap; and, for a seat given one,
 // what the seat has spent on this task, plus this call, against its own

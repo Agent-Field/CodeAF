@@ -701,11 +701,11 @@ and when it lands, the same line with what it actually cost beside the estimate:
 task 12 crew · open-ended · worker glm-5.3-flash (openrouter) · planner kimi-k3 · checker ⌖ kimi-k3 · $0.108 (est $0.121) · not right? /redo stronger
 ```
 
-The estimate is what crews like this one have cost: each seat's measured cost per task
-in the crew trial for that kind of work, where a model was measured in that seat — so a
-model that writes a lot costs what it wrote — and the seat's token profile scaled to the
-trial otherwise; then moved by what this install's own paid tasks of the kind cost against
-their estimates. A seat on a plan, a local model or a free pool adds nothing to it.
+The estimate is what crews like this one cost: each seat's cost per task in the
+router's table for that kind of work, where the table has that model in that seat — so
+a model that writes a lot costs what it wrote — and the seat's token profile scaled to
+the table otherwise; then moved by what this install's own paid tasks of the kind cost
+against their estimates. A seat on a plan, a local model or a free pool adds nothing to it.
 
 A pin sends exactly the id you wrote when the catalog lists it. An id the catalog lists
 only as a variant — a dated snapshot — is sent as that variant, and the line says which:

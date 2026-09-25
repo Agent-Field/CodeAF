@@ -7,15 +7,12 @@ import (
 
 // WHAT KIND OF WORK A TASK IS, READ OFF ITS OWN WORDS.
 //
-// The router routes on a task's CLASS and on nothing finer, and that is a
-// measured choice rather than a shortcut (docs/design/model-pool/
-// pareto-crewing.pdf): the text of a task did not predict how hard that one
-// task would be beyond the kind of work it was, and what the kind of work DID
-// predict was large and one-sided — a narrow fix is done as well by the
-// cheapest crew as by a dear one, and open-ended work (a feature, a refactor,
-// docs, a design) is only mergeable with a strong checker behind it. So the
-// question this file answers is the only one worth asking of the text: which
-// of the two is this?
+// The router routes on a task's CLASS and on nothing finer, by design
+// (docs/design/model-pool/pareto-crewing.pdf): the class decides the crew. A
+// narrow fix goes to the cheapest qualified crew, and open-ended work (a
+// feature, a refactor, docs, a design) gets a strong checker behind it. So the
+// question this file answers is the only one the router asks of the text:
+// which of the two is this?
 //
 // ── THE SIGNALS ──
 //
@@ -41,9 +38,9 @@ import (
 // When the signals do not clearly favour one class, the answer is
 // [OpenEnded], and that is the safe side on purpose: calling a narrow fix
 // open-ended costs a strong checker it did not need — cents — while calling
-// open-ended work a narrow fix sends it to a crew that was measured merging
-// almost none of it. The two mistakes are not the same size, so the
-// tie does not go to the cheaper one.
+// open-ended work a narrow fix sends it to a crew without the checker that
+// work needs. The two mistakes are not the same size, so the tie does not go
+// to the cheaper one.
 
 // Class is the kind of work a task is. It is a string because it is written
 // into the router's event log and onto a task's card, and a script reading
@@ -52,16 +49,15 @@ type Class string
 
 const (
 	// Bugfix is a NARROW, VERIFIABLE change: a defect, a regression, a missing
-	// check, a test that should exist. The evidence says the cheapest crew does
-	// it as well as any.
+	// check, a test that should exist. It goes to the cheapest qualified crew.
 	Bugfix Class = "bugfix"
 	// OpenEnded is work whose shape the task does not fix: a feature, a
-	// refactor, documentation, a design. The evidence says the checker is the
-	// lever here, and a strong one is the difference between mergeable and not.
+	// refactor, documentation, a design. It gets a strong checker: the checker
+	// is the seat worth paying for here.
 	OpenEnded Class = "openended"
 	// Other is work that changes nothing in particular — a question, an
-	// investigation, a review. It is read on the average of the two measured
-	// classes, because nothing measured it on its own.
+	// investigation, a review. It is read on the average of the other two
+	// classes, because the table has no rows of its own for it.
 	Other Class = "other"
 )
 
@@ -337,9 +333,9 @@ func taskTitle(text string) (title, body string) {
 	return title, strings.Join(kept, "\n")
 }
 
-// A FIX WITH REACH IS NOT A ONE-LINE FIX. The evidence that the cheapest
-// worker fixes as well as any was measured on fixes of the ordinary size, and
-// a defect whose repair crosses files, a wire contract or a language's rules
+// A FIX WITH REACH IS NOT A ONE-LINE FIX. The cheapest worker is the pick for
+// fixes of the ordinary size, and a defect whose repair crosses files, a wire
+// contract or a language's rules
 // is a different job wearing the same word: the cheap worker's patch is the
 // narrow one, and the checker then rejects it or — worse — passes it. So a
 // bugfix is read once more for REACH, off its body, on signals that say what

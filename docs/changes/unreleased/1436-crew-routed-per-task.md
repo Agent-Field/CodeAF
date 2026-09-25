@@ -21,7 +21,7 @@ allowed model on every connected route (a subscription plan or a local model
 costs nothing to route to), and sits each seat where quality minus λ times cost
 is highest, λ at the knee of the curve. `--best` and `--cheap` (on `/task`, on
 the conversation's hand-off as `effort`, and on `codeaf do`) move λ for one task
-only. The evidence the defaults are read from is in
+only. The design behind the defaults is in
 `docs/design/model-pool/pareto-crewing.pdf`.
 
 **What persists is what the panel says.** `/crew` opens an interactive panel:

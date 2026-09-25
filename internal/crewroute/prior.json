@@ -1,6 +1,6 @@
 {
   "measured": "2026-09-24",
-  "source": "measured crews per class of work, scored on a 0-10 mergeability scale; see the Pareto Crewing paper (docs/design/model-pool/pareto-crewing.pdf)",
+  "source": "measured crews per class of work; see the Pareto Crewing paper",
   "knee_per_usd": 5,
   "shapes": {
     "worker": {"prompt": 15000, "cached": 250000, "completion": 4000},
@@ -28,7 +28,7 @@
     {"class": "openended", "seat": "checker", "model": "moonshotai/kimi-k3", "quality": 5.00, "n": 8},
     {"class": "openended", "seat": "checker", "model": "deepseek/deepseek-v4-flash", "quality": 3.10, "n": 8}
   ],
-  "costs_source": "mean dollars per seat per task for the measured crews",
+  "costs_source": "measured crews per class of work; see the Pareto Crewing paper",
   "costs": [
     {"class": "bugfix", "seat": "worker", "model": "z-ai/glm-5.3-flash", "usd": 0.0179, "n": 14},
     {"class": "bugfix", "seat": "planner", "model": "z-ai/glm-5.3-flash", "usd": 0.0037, "n": 14},

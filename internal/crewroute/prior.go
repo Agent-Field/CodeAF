@@ -16,16 +16,15 @@ import (
 // order they are trusted:
 //
 //  1. THE EVIDENCE TABLE (prior.json, embedded). Measured crews per class of
-//     work, each scored on a ten-point mergeability scale
-//     (docs/design/model-pool/pareto-crewing.pdf). A crew's score is read here
-//     as the SUM of what its three seats add, split so the measured crews add
-//     back up exactly; the cells are prior.json's own.
+//     work (docs/design/model-pool/pareto-crewing.pdf). A crew's quality is
+//     read here as the SUM of what its three seats add, split so the table's
+//     crews add back up exactly; the cells are prior.json's own.
 //
-//     The split between the worker and the planner of one crew is a choice the
-//     evidence does not make — both moved together — and it is made in the
-//     worker's favour because the worker carries the work. The checker's share
-//     on a fix is the SAME for both models because the evidence says a strong
-//     checker adds nothing to a narrow fix.
+//     The split between the worker and the planner of one crew is a choice
+//     the table does not make, and it is made in the worker's favour because
+//     the worker carries the work. The checker's share on a fix is the SAME
+//     for every model, because the rule is that a narrow fix does not pay for
+//     a stronger checker.
 //
 //  2. THE CATALOG'S OWN FIGURES, for a model nobody measured. Its published
 //     intelligence, coding and agentic indexes, weighed the way each seat uses
@@ -35,16 +34,15 @@ import (
 //     somebody has. One that reads far under the worst measured model does
 //     not sit the seat at all ([table.credible]), and when it is weighed its
 //     cost is never taken as less than the cheapest measured model's
-//     ([table.costFloor]): a price of zero is not evidence of anything. The published indexes predicted the measured checkers
-//     badly (the weakest-indexed model was the second-best checker), which is
-//     why they only move an unmeasured model half as far as the measured
+//     ([table.costFloor]): a price of zero is not evidence of anything. A
+//     published index is a weaker signal than a measured row, which is why
+//     the indexes only move an unmeasured model half as far as the measured
 //     spread, and why a measured row always wins a tie.
 //
 // The cost of a seat is the seat's token shape — how much it reads fresh, how
 // much it reads back from a warm cache, how much it writes on an ordinary task
-// — priced at the route's published per-token prices. The three shapes were
-// fitted so the measured crews cost what they cost: all-flash about $0.023 a
-// task, all-kimi about $0.35, flash with a kimi checker about $0.117.
+// — priced at the route's published per-token prices. The three shapes are
+// fitted so the table's crews cost what prior.json's costs say.
 
 //go:embed prior.json
 var priorJSON []byte
@@ -260,9 +258,9 @@ func (t *table) indexCosts() {
 }
 
 // estCost is what a seat is expected to cost per task, for the estimate a
-// task's line shows: the measured cost of this model in this seat and class
-// where the trial measured it — a model's own verbosity included — and the
-// flat token shape scaled by the class and seat's measured ratio otherwise.
+// task's line shows: the cost prior.json holds for this model in this seat and
+// class where the table has it — a model's own verbosity included — and the
+// flat token shape scaled by the class and seat's cost ratio otherwise.
 //
 // IT IS THE ESTIMATE, NOT THE WEIGHT. Routing weighs [table.seatCost], the
 // figure the knee was set against; this is what a person is told to expect.
@@ -517,5 +515,5 @@ func Measured() []string {
 }
 
 // Knee is the default price of a quality point, in points per dollar — see
-// [Route] for why this is the knee of the measured front.
+// [Route] for how the knee is read.
 func Knee() float64 { return prior().Knee }
