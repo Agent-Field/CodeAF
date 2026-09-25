@@ -39,7 +39,10 @@ func (placeSettings) open(a *app) tea.Cmd {
 	// change when somebody changes them — but the tab bar's numbers are
 	// recomputed on that beat, and a room that armed no clock stopped the whole
 	// bar counting while it was up ([placeSettings.tick]).
-	return a.armPlaceClock()
+	//
+	// OVER --host THE TEAMS TAB READS THE FAR MACHINE, once, off the loop. A
+	// local launch asks for nothing.
+	return tea.Batch(a.armPlaceClock(), a.readHostTeamDefaults())
 }
 
 // tick re-reads nothing and keeps the beat: see the note over [placeSettings.open].
@@ -207,9 +210,10 @@ func (placeSettings) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
 // title bar (connectcaps.go).
 func (placeSettings) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	s := &a.sheet
+	var cmd tea.Cmd
 	switch {
 	case s.edit != nil:
-		a.sheetEditKey(msg)
+		cmd = a.sheetEditKey(msg)
 	case s.sel != nil:
 		a.sheetSelectKey(msg)
 	case s.conn.entry != nil:
@@ -218,7 +222,7 @@ func (placeSettings) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	a.touch()
-	return nil, true
+	return cmd, true
 }
 
 // caretRow is the connections key entry: a box this sheet draws INSIDE the row

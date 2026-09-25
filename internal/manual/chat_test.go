@@ -81,6 +81,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how does a member reply to a thread", "team-manager"},
 		{"why is the traffic rail drawn as threads", "team-manager"},
 		{"open a member's chat at the message it answered from the traffic", "team-manager"},
+		// The one column (sidecol.go): the two words in a team chat, and the
+		// band of what waits on the person above them.
+		{"how do I switch between tasks and traffic in a manager chat", "team-manager"},
+		{"what does Traffic 3 new mean in the column header", "team-manager"},
 		{"what does chats on the tab bar do", "places"},
 		{"how do I get back to my conversation from a place", "places"},
 		// The places moved onto the top line and the strip is on every page
@@ -2461,6 +2465,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I work on the same conversation from two computers", "running-on-another-machine"},
 		{"what is the difference between another window and another machine", "running-on-another-machine"},
 		{"does home work over --host", "running-on-another-machine"},
+		{"can I change the Teams settings on another machine", "running-on-another-machine"},
+		{"where do team defaults go over a connection", "running-on-another-machine"},
+		{"can I edit team defaults over --host", "commands"},
 
 		// The wave that stopped a rebuild on the far machine from trapping
 		// somebody. These are the words a person actually uses at the moment it

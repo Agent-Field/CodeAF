@@ -34,13 +34,26 @@ func bandSeq() string { return "\x1b[48;5;" + itoa(int(hueSelected.idx)) + "m" }
 // walked into, not which row it happened to be on.
 func clickRailNode(t *testing.T, a *app, id uint64) {
 	t.Helper()
+	// THE ROW IS PRESSED WHERE IT IS DRAWN: under its group, opened first, or
+	// in the band when it needs the person (sidecol.go).
+	railOpenAll(a)
+	for _, key := range []string{"task/" + itoa(int(id)), "fail/" + itoa(int(id))} {
+		if a.sideRowOf(key) == nil {
+			a.railRows(a.viewHeight())
+		}
+		if a.sideRowOf(key) != nil {
+			x, y := sideRowOn(t, a, key)
+			drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+			drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
+			return
+		}
+	}
 	top := a.bodyTop()
 	for y := top; y < top+a.viewHeight(); y++ {
 		if node := a.railNodeAt(y); node != nil && node.id == id {
 			// Past the seam and past the state cell, on the title. The two cells
-			// before it are the column's handle at this width, and the one after
-			// them is the fold while the pointer is on it (task.go's
-			// [app.railLead]) — this press wants neither.
+			// before it are the column's handle at this width, and this press
+			// does not want it.
 			drive(t, a, tea.MouseClickMsg{X: a.bodyWidth() + ansi.StringWidth(railSeam) + 6,
 				Y: y, Button: tea.MouseLeft})
 			drive(t, a, tea.MouseReleaseMsg{X: a.bodyWidth() + ansi.StringWidth(railSeam) + 6,
@@ -188,8 +201,8 @@ func roomID(a *app) uint64 {
 	return a.room.id
 }
 
-// AND THE COLUMN'S OWN DOOR IS STILL PRESSABLE FROM INSIDE A ROOM — the last
-// line of the roster, which names ctrl+g (task.go's [railStowHint]).
+// AND THE COLUMN'S OWN DOOR IS STILL PRESSABLE FROM INSIDE A ROOM: the key
+// at the right of its header, which names alt+l (sidecol.go's [sideHideKey]).
 func TestTheColumnsStowLineStillAnswersFromInsideARoom(t *testing.T) {
 	a, _, _ := roomApp(t)
 	a.profileDir = t.TempDir()
@@ -198,18 +211,9 @@ func TestTheColumnsStowLineStillAnswersFromInsideARoom(t *testing.T) {
 	if !a.roomOpen() {
 		t.Fatal("the rail did not open a room")
 	}
-	at := -1
-	for y := a.bodyTop(); y < a.bodyTop()+a.viewHeight(); y++ {
-		if line, ok := a.railLineAt(y); ok && line.stow {
-			at = y
-			break
-		}
-	}
-	if at < 0 {
-		t.Fatal("the column drew no door out of itself")
-	}
-	drive(t, a, tea.MouseClickMsg{X: a.bodyWidth() + 2, Y: at, Button: tea.MouseLeft})
-	drive(t, a, tea.MouseReleaseMsg{X: a.bodyWidth() + 2, Y: at, Button: tea.MouseLeft})
+	x, y := sideDoorOf(t, a, sideActHide)
+	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	drive(t, a, tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 	if a.railShowing() {
 		t.Fatal("a press on the column's own door did not put it away")
 	}

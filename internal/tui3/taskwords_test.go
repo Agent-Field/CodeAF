@@ -58,8 +58,8 @@ func TestAFinishingNodeSaysWhatItIsClosingAtEveryWidth(t *testing.T) {
 		width int
 		want  []string
 	}{
-		{underWidth(railCols), []string{"finishing · adding amp-la…", "42s · 9.9k · $0.31 · gpt-5"}},
-		{underWidth(railSlimCols), []string{"finishing · adding …", "42s · 9.9k · $0.31"}},
+		{underWidth(underCols), []string{"finishing · adding amp-la…", "42s · 9.9k · $0.31 · gpt-5"}},
+		{underWidth(underSlimCols), []string{"finishing · adding …", "42s · 9.9k · $0.31"}},
 	} {
 		rows := a.railUnder(node, tc.width)
 		if len(rows) != len(tc.want) {
@@ -79,18 +79,18 @@ func TestAFinishingNodeSaysWhatItIsClosingAtEveryWidth(t *testing.T) {
 	// at two ([railUnderRows]) and the call the node happens to be inside of says
 	// nothing the finishing line and the telemetry do not already say better.
 	node.tool, node.toolBegan = "bash go test ./...", a.now().Add(-24*time.Second)
-	rows := a.railUnder(node, underWidth(railCols))
+	rows := a.railUnder(node, underWidth(underCols))
 	if len(rows) != railUnderRows || plain(rows[0]) != "finishing · adding amp-la…" {
 		t.Fatalf("a live call displaced the finishing line:\n%q", rows)
 	}
 	node.tool, node.toolBegan = "", time.Time{}
 
-	// AND THE COLUMN ITSELF DRAWS IT, at both widths the roster has. The rows
-	// above are the block; this is the block on screen, under the node's own name
-	// and in the running group.
+	// AND THE COLUMN ITSELF SAYS IT, at both widths the roster has. The rows
+	// above are the block; this is the block on screen, on the hint line over
+	// the node's own row in the running group.
 	for _, width := range []int{200, 110} {
 		a.width = width
-		roster := rosterText(a, 12)
+		roster := rosterText(a, 12) + "\n" + railHint(a, 7)
 		if !strings.Contains(roster, "finishing · adding") {
 			t.Fatalf("the roster at %d columns does not say what the node is finishing:\n%s", width, roster)
 		}
@@ -108,7 +108,7 @@ func TestTheFinishingLineDropsWhenTheGapIsClosed(t *testing.T) {
 	node := a.tasks[7]
 	advance(42 * time.Second)
 	node.tool, node.toolBegan = "bash go test ./...", a.now().Add(-24*time.Second)
-	if got := plain(a.railUnder(node, underWidth(railCols))[0]); !strings.HasPrefix(got, taskFinishingWord) {
+	if got := plain(a.railUnder(node, underWidth(underCols))[0]); !strings.HasPrefix(got, taskFinishingWord) {
 		t.Fatalf("the finishing line is not on the node at all: %q", got)
 	}
 
@@ -120,7 +120,7 @@ func TestTheFinishingLineDropsWhenTheGapIsClosed(t *testing.T) {
 	if node.mending != "" {
 		t.Fatalf("the node still carries %q", node.mending)
 	}
-	rows := a.railUnder(node, underWidth(railCols))
+	rows := a.railUnder(node, underWidth(underCols))
 	if len(rows) != railUnderRows {
 		t.Fatalf("the under-block is %d rows after the gap closed:\n%q", len(rows), rows)
 	}
@@ -195,7 +195,7 @@ func TestAHeldNodeSaysWhatIsHoldingItAtEveryWidth(t *testing.T) {
 			for _, w := range []struct {
 				width int
 				want  string
-			}{{underWidth(railCols), tc.full}, {underWidth(railSlimCols), tc.slim}} {
+			}{{underWidth(underCols), tc.full}, {underWidth(underSlimCols), tc.slim}} {
 				rows := a.railUnder(node, w.width)
 				if len(rows) != 1 || plain(rows[0]) != w.want {
 					t.Fatalf("at %d cells the under-block is %q, want one row %q", w.width, rows, w.want)
@@ -204,10 +204,11 @@ func TestAHeldNodeSaysWhatIsHoldingItAtEveryWidth(t *testing.T) {
 					t.Fatalf("at %d cells the row is %d cells wide", w.width, got)
 				}
 			}
-			// AND THE COLUMN ITSELF DRAWS IT, at both widths the roster has.
+			// AND THE COLUMN ITSELF SAYS IT, at both widths the roster has, on
+			// the hint line over the row.
 			for _, width := range []int{200, 110} {
 				a.width = width
-				if roster := rosterText(a, 12); !strings.Contains(roster, a.taskStatus(node).Word+" · ") {
+				if roster := rosterText(a, 12) + "\n" + railHint(a, 7); !strings.Contains(roster, a.taskStatus(node).Word+" · ") {
 					t.Fatalf("the roster at %d columns does not say the node is held:\n%s", width, roster)
 				}
 			}
@@ -222,7 +223,7 @@ func TestAHeldNodeSaysWhatIsHoldingItAtEveryWidth(t *testing.T) {
 			if node.waiting != "" {
 				t.Fatalf("the node still carries %q", node.waiting)
 			}
-			if rows := a.railUnder(node, underWidth(railCols)); len(rows) != 0 {
+			if rows := a.railUnder(node, underWidth(underCols)); len(rows) != 0 {
 				t.Fatalf("the under-block outlived the hold: %q", rows)
 			}
 			if strings.Contains(rosterText(a, 12), taskHeldWord) {
@@ -249,8 +250,8 @@ func TestAPacedNodeWaitsWhereItsToolLineWouldBe(t *testing.T) {
 		width int
 		want  []string
 	}{
-		{underWidth(railCols), []string{"waiting · rate limited", "42s · 9.9k · $0.31 · gpt-5"}},
-		{underWidth(railSlimCols), []string{"waiting · rate limi…", "42s · 9.9k · $0.31"}},
+		{underWidth(underCols), []string{"waiting · rate limited", "42s · 9.9k · $0.31 · gpt-5"}},
+		{underWidth(underSlimCols), []string{"waiting · rate limi…", "42s · 9.9k · $0.31"}},
 	} {
 		rows := a.railUnder(node, tc.width)
 		if len(rows) != len(tc.want) {
@@ -273,7 +274,7 @@ func TestAPacedNodeWaitsWhereItsToolLineWouldBe(t *testing.T) {
 	// but the hold.
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Write the report", session.TaskRunning,
 		session.TaskNotice{Model: "openai/gpt-5", CostUSD: 0.31})})
-	rows := a.railUnder(node, underWidth(railCols))
+	rows := a.railUnder(node, underWidth(underCols))
 	if len(rows) != railUnderRows || plain(rows[0]) != "bash go test ./... · 24s" {
 		t.Fatalf("the call row did not come back:\n%q", rows)
 	}
@@ -291,7 +292,7 @@ func TestAWaitingDependencyOutranksTheHoldWord(t *testing.T) {
 		})},
 	)
 	node := a.tasks[2]
-	got := plain(strings.Join(a.railUnder(node, underWidth(railCols)), "\n"))
+	got := plain(strings.Join(a.railUnder(node, underWidth(underCols)), "\n"))
 	if !strings.Contains(got, "waits: Collect sources") {
 		t.Fatalf("the blocked node says %q, want the prerequisite it waits on", got)
 	}
@@ -306,7 +307,7 @@ func TestAWaitingDependencyOutranksTheHoldWord(t *testing.T) {
 	// unblocked, it is still not running, and the row says why.
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(1, "Collect sources", session.TaskDone,
 		session.TaskNotice{Merge: mergeWordMerged})})
-	if got := plain(strings.Join(a.railUnder(node, underWidth(railCols)), "\n")); got != "queued · slot" {
+	if got := plain(strings.Join(a.railUnder(node, underWidth(underCols)), "\n")); got != "queued · slot" {
 		t.Fatalf("the unblocked node says %q, want the hold", got)
 	}
 }
@@ -423,7 +424,8 @@ func TestNoTerminalStateEverSpeaksOfTheMachinery(t *testing.T) {
 				card.open = true
 				a.touch()
 			}
-			seen := strings.ToLower(taskText(a) + "\n" + rosterText(a, 20))
+			railOpenAll(a)
+			seen := strings.ToLower(taskText(a) + "\n" + rosterText(a, 20) + "\n" + railHint(a, 7))
 			// A SWEEP OVER AN EMPTY SCREEN PASSES EVERYTHING, so the screen is
 			// proved to have the node on it before it is proved to be clean.
 			if !strings.Contains(seen, "port the parser") {

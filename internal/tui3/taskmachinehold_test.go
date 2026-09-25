@@ -31,7 +31,7 @@ func TestAHeldChildSaysTheMachineHeldItAndNotTheCap(t *testing.T) {
 	if held.waiting != waitWordMachine {
 		t.Fatalf("the held part carries %q, want %q", held.waiting, waitWordMachine)
 	}
-	if rows := a.railUnder(held, underWidth(railCols)); len(rows) != 1 || !strings.Contains(plain(rows[0]), waitWordMachine) {
+	if rows := a.railUnder(held, underWidth(underCols)); len(rows) != 1 || !strings.Contains(plain(rows[0]), waitWordMachine) {
 		t.Fatalf("the held part's row is %q, want it to say %q", rows, waitWordMachine)
 	}
 	if status := a.taskStatus(held); status.Reason != waitWordMachine {
@@ -42,7 +42,7 @@ func TestAHeldChildSaysTheMachineHeldItAndNotTheCap(t *testing.T) {
 	// cursor wears its reason under its own row.
 	drive(t, a, altT())
 	railFocusOn(t, a, 3)
-	roster := rosterText(a, 12)
+	roster := rosterText(a, 12) + "\n" + a.sideHoverWords() + "\n" + railHint(a, 3)
 	if !strings.Contains(roster, waitWordMachine) {
 		t.Fatalf("the roster does not say the machine is holding a part:\n%s", roster)
 	}

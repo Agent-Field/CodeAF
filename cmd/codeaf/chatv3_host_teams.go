@@ -35,13 +35,16 @@ type hostTeams struct {
 
 	// The delegation doors, nil when the engine does not answer them
 	// ([remote.Welcome.Delegation]); the seam then hands the surface none.
-	defaults  func() (teamstore.Defaults, error)
-	packets   func(scope, stamp string) (remote.PacketsReading, error)
-	raise     func(p teamstore.Packet) (teamstore.Packet, error)
-	decide    func(id, by, decision, reason string) (teamstore.Packet, error)
-	escalate  func(id, by, to, reason string) (teamstore.Packet, error)
-	spend     func(team, day, stamp string) (remote.SpendReading, error)
-	deleteOne func(team string) (remote.DeleteTeamReply, error)
+	defaults func() (teamstore.Defaults, error)
+	// applyDefault writes one `teams.` row ([remote.Welcome.TeamSettings]).
+	// Nil leaves the settings Teams tab read-only.
+	applyDefault func(key, raw string) (teamstore.Defaults, error)
+	packets      func(scope, stamp string) (remote.PacketsReading, error)
+	raise        func(p teamstore.Packet) (teamstore.Packet, error)
+	decide       func(id, by, decision, reason string) (teamstore.Packet, error)
+	escalate     func(id, by, to, reason string) (teamstore.Packet, error)
+	spend        func(team, day, stamp string) (remote.SpendReading, error)
+	deleteOne    func(team string) (remote.DeleteTeamReply, error)
 	// The wrap-up's two doors, nil when the engine does not answer them
 	// ([remote.Welcome.WrapUp]).
 	wrapUp        func(team, text string) error
@@ -65,7 +68,7 @@ const hostTeamsTries = 3
 // errHostTeamsBusy is a write that met another writer on every try.
 var errHostTeamsBusy = errors.New("the teams on the far machine kept changing while this was written; try again")
 
-func newHostTeams(far hostFar, delegation, wrapUp bool) *hostTeams {
+func newHostTeams(far hostFar, delegation, wrapUp, settings bool) *hostTeams {
 	h := &hostTeams{
 		read:    far.client.TeamsRead,
 		write:   far.client.TeamsUpdate,
@@ -79,6 +82,9 @@ func newHostTeams(far hostFar, delegation, wrapUp bool) *hostTeams {
 			h.wrapUp, h.acceptClosing = c.TeamsWrapUp, c.TeamsAcceptClosing
 		}
 	}
+	if settings && far.client != nil {
+		h.applyDefault = far.client.TeamsApplyDefault
+	}
 	return h
 }
 
@@ -90,7 +96,7 @@ func hostTeamsSeam(far hostFar, welcome remote.Welcome) tui3.TeamsSeam {
 	if far.client == nil || !welcome.Teams {
 		return tui3.TeamsSeam{}
 	}
-	return newHostTeams(far, welcome.Delegation, welcome.WrapUp).seam()
+	return newHostTeams(far, welcome.Delegation, welcome.WrapUp, welcome.TeamSettings).seam()
 }
 
 // seam is h as the surface's functions. The delegation doors are handed only
@@ -98,6 +104,9 @@ func hostTeamsSeam(far hostFar, welcome remote.Welcome) tui3.TeamsSeam {
 // delegation doors are nil, which the surface says rather than guesses at.
 func (h *hostTeams) seam() tui3.TeamsSeam {
 	s := tui3.TeamsSeam{Load: h.load, ReadSince: h.readSince, Update: h.update, Traffic: h.readTraffic}
+	if h.applyDefault != nil {
+		s.ApplyDefault = h.applyDefault
+	}
 	if h.defaults == nil {
 		return s
 	}

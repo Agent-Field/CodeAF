@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -18,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
 // THE SETTINGS PANEL: /settings, or ctrl+, — the FIRST of the three fullscreen
@@ -988,10 +990,15 @@ func (i sheetItem) restful() bool { return i.head == "" && i.read == nil }
 // frame nothing.
 type sheet struct {
 	tab int
-	// host is the machine the session runs on over --host, "" otherwise. The
-	// Teams tab reads it: the teams there inherit that machine's defaults,
-	// which this window cannot read yet, so its rows are shown and not edited.
+	// host is the machine the session runs on over --host, "" otherwise.
 	host string
+	// teamDefaultsWrite says the teams seam can change that machine's `teams.`
+	// rows ([TeamsSeam.ApplyDefault]). False over --host against an engine
+	// without the door, and the Teams tab stays read-only.
+	teamDefaultsWrite bool
+	// farTeams is that machine's five defaults, once the seam has answered.
+	// Nil until then, and nil on a local launch.
+	farTeams *teamstore.Defaults
 
 	registry *config.Settings
 	// profileDir is retained only for live explanations derived from several
@@ -1326,10 +1333,15 @@ func (a *app) raiseSettings() {
 	// [app.spentThisSessionUSD], issue #269). It is a tail read
 	// ([session.UsageCache]) and it happens once per visit, never on a draw.
 	a.readTreeSpend()
+	write := false
+	if a.hosted() && a.teamsDisk.door.present() && a.teamsDisk.door.ApplyDefault != nil && a.teamsDisk.door.Defaults != nil {
+		write = true
+	}
 	a.sheet = sheet{
-		host:       a.host,
-		registry:   a.registry(),
-		profileDir: a.profileDir,
+		host:              a.host,
+		teamDefaultsWrite: write,
+		registry:          a.registry(),
+		profileDir:        a.profileDir,
 		// AND WHAT THIS PROJECT DOES WITH A QUESTION WHILE NOBODY IS THERE. The
 		// rows are the engine's rather than the registry's (settingsautonomy.go),
 		// and a page that asked the engine per frame would be paying for an
@@ -1779,8 +1791,12 @@ func (s *sheet) changed(item sheetItem) bool {
 	case config.SettingModel, config.SettingPercent:
 		return false
 	}
+	value := item.row.Value()
+	if raw, ok := s.farTeamValue(item.row.Key); ok {
+		value = raw
+	}
 	was, known := s.defaults[item.row.Key]
-	return known && was != item.row.Value()
+	return known && was != value
 }
 
 // ── the roles ───────────────────────────────────────────────────────────────
@@ -2292,11 +2308,12 @@ func (a *app) activate() tea.Cmd {
 		return a.startModelConnect(modelConnectionStatus(source, true), true)
 	}
 	s.msg = ""
-	// OVER --host THE TEAMS DEFAULTS ARE THAT MACHINE'S, and this window has no
-	// door to them yet: an edit here would change this laptop's file and no team
-	// anybody is running. The row says so instead of taking the edit.
-	if s.host != "" && item.meta.tab == tabTeams {
-		s.msg = "the teams on " + s.host + " inherit that machine's Settings; change them there"
+	// OVER --host THE TEAMS DEFAULTS ARE THAT MACHINE'S. With the seam's write
+	// door they are edited there, the same keys the local tab writes. Without
+	// it an edit here would change this laptop's file and no team anybody is
+	// running, so the row says so instead.
+	if s.host != "" && item.meta.tab == tabTeams && !s.teamDefaultsWrite {
+		s.msg = s.hostTeamsLockedWord()
 		return nil
 	}
 	if item.autonomy != nil {
@@ -2319,8 +2336,15 @@ func (a *app) activate() tea.Cmd {
 	switch item.meta.widget {
 	case widgetToggle:
 		next := "on"
-		if item.row.Value() == "on" {
+		cur := item.row.Value()
+		if raw, ok := s.farTeamValue(item.row.Key); ok {
+			cur = raw
+		}
+		if cur == "on" {
 			next = "off"
+		}
+		if cmd := a.writeHostTeamDefault(item, next); cmd != nil || s.hostTeamRow(item) {
+			return cmd
 		}
 		a.applySetting(item, next)
 
@@ -2377,6 +2401,9 @@ func (a *app) activate() tea.Cmd {
 
 	default:
 		value := item.row.Value()
+		if raw, ok := s.farTeamValue(item.row.Key); ok {
+			value = raw
+		}
 		if value == item.row.EmptyLabel {
 			// The empty label is what the row SAYS when it holds nothing
 			// ("none", "follows the conversation"). Putting that word in the box
@@ -2561,29 +2588,34 @@ func (a *app) applySetting(item sheetItem, raw string) {
 
 // sheetEditKey drives the text submenu. enter saves, an empty box clears the
 // row, esc leaves it exactly as it was.
-func (a *app) sheetEditKey(msg tea.KeyPressMsg) {
+func (a *app) sheetEditKey(msg tea.KeyPressMsg) tea.Cmd {
 	s := &a.sheet
 	edit := s.edit
 	// The word and line jumps are the surface's, said once (editkeys.go).
 	if editorMotion(&edit.box, msg.String()) {
-		return
+		return nil
 	}
 	// AND ctrl+z TAKES BACK WHAT WAS TYPED, in every box on this surface and not
 	// only in the message one (editundo.go).
 	if editorUndo(&edit.box, msg.String()) {
-		return
+		return nil
 	}
 	switch msg.String() {
 	case "esc":
 		s.edit = nil
 	case "enter":
 		row, ok := s.registry.Row(edit.key)
+		raw := edit.box.String()
 		s.edit = nil
 		if !ok {
-			return
+			return nil
 		}
 		meta, _ := settingMetaFor(row)
-		a.applySetting(sheetItem{row: row, meta: meta}, edit.box.String())
+		item := sheetItem{row: row, meta: meta}
+		if cmd := a.writeHostTeamDefault(item, raw); cmd != nil || s.hostTeamRow(item) {
+			return cmd
+		}
+		a.applySetting(item, raw)
 	case "backspace":
 		edit.box.deleteBackward()
 	case "delete":
@@ -2611,6 +2643,145 @@ func (a *app) sheetEditKey(msg tea.KeyPressMsg) {
 			edit.box.insert(text)
 		}
 	}
+	return nil
+}
+
+// hostTeamRow reports whether this row is a Teams default edited on the far
+// machine. The local registry is not the writer then.
+func (s *sheet) hostTeamRow(item sheetItem) bool {
+	return s.host != "" && s.teamDefaultsWrite && item.meta.tab == tabTeams
+}
+
+// hostTeamsLockedWord is the one line an older engine gets: the tab can be
+// read and cannot be changed over this connection.
+func (s *sheet) hostTeamsLockedWord() string {
+	if s.farTeams != nil {
+		return "changing them is not available over this connection"
+	}
+	return "the teams on " + s.host + " inherit that machine's Settings; change them there"
+}
+
+// farTeamValue is one Teams row as the registry's Value would read it from the
+// far machine's defaults. The bool is false until that read has landed, and
+// false for every other row.
+func (s *sheet) farTeamValue(key string) (string, bool) {
+	if s.farTeams == nil {
+		return "", false
+	}
+	d := s.farTeams
+	switch key {
+	case config.KeyTeamsQuestionsUp:
+		if d.QuestionsUp {
+			return "on", true
+		}
+		return "off", true
+	case config.KeyTeamsWake:
+		if d.Wake {
+			return "on", true
+		}
+		return "off", true
+	case config.KeyTeamsCapUSDDay:
+		if d.CapUSDDay == 0 {
+			return "no cap", true
+		}
+		return "$" + strconv.FormatFloat(d.CapUSDDay, 'f', -1, 64), true
+	case config.KeyTeamsDepthLimit:
+		return strconv.Itoa(d.DepthLimit), true
+	case config.KeyTeamsSubSharePct:
+		return strconv.Itoa(int(d.SubShare*100 + 0.5)), true
+	}
+	return "", false
+}
+
+// hostedTeamReading is that value as the row draws it, with the unit the
+// registry would add and the provenance the team card uses for a value that
+// comes from these rows ([teamstore.Origin.Words], `from Settings`).
+func (s *sheet) hostedTeamReading(item sheetItem) (string, bool) {
+	raw, ok := s.farTeamValue(item.row.Key)
+	if !ok {
+		return "", false
+	}
+	value := raw
+	switch item.row.Key {
+	case config.KeyTeamsDepthLimit:
+		unit := "levels"
+		if raw == "1" {
+			unit = "level"
+		}
+		value = raw + " " + unit
+	case config.KeyTeamsSubSharePct:
+		value = raw + "%"
+	}
+	if words := (teamstore.Origin{Kind: teamstore.OriginSettings}).Words(); words != "" {
+		value += " · " + words
+	}
+	return value, true
+}
+
+// readHostTeamDefaults asks the seam for the far machine's `teams.` rows, off
+// the loop. It is nil locally and against an engine that cannot answer.
+func (a *app) readHostTeamDefaults() tea.Cmd {
+	if !a.hosted() {
+		return nil
+	}
+	door := a.teamsDisk.door
+	if !door.present() || door.Defaults == nil {
+		return nil
+	}
+	read := door.Defaults
+	return a.besideLine(func() func(bool) tea.Cmd {
+		d, err := read()
+		return func(here bool) tea.Cmd {
+			if !here || !a.at(pageSettings) {
+				return nil
+			}
+			if err != nil {
+				a.sheet.msg = err.Error()
+				a.touch()
+				return nil
+			}
+			a.sheet.farTeams = &d
+			a.sheet.build()
+			a.touch()
+			return nil
+		}
+	})
+}
+
+// writeHostTeamDefault sends one Teams row through the seam, off the loop.
+// A nil command with [sheet.hostTeamRow] false means this row is local and
+// the caller writes it the usual way.
+func (a *app) writeHostTeamDefault(item sheetItem, raw string) tea.Cmd {
+	if !a.sheet.hostTeamRow(item) {
+		return nil
+	}
+	if a.sheet.farTeams == nil {
+		return nil
+	}
+	door := a.teamsDisk.door.ApplyDefault
+	if door == nil {
+		a.sheet.msg = a.sheet.hostTeamsLockedWord()
+		return nil
+	}
+	key := item.row.Key
+	return a.offLoop(func() func(bool) tea.Cmd {
+		d, err := door(key, raw)
+		return func(here bool) tea.Cmd {
+			if !here || !a.at(pageSettings) {
+				return nil
+			}
+			if err != nil {
+				a.sheet.msg = err.Error()
+			} else {
+				copied := d
+				a.sheet.farTeams = &copied
+				a.sheet.msg = ""
+			}
+			a.sheet.build()
+			a.touch()
+			return nil
+		}
+	})
 }
 
 // sheetSelectKey drives the model picker while a slot row owns it. Only the two
@@ -3245,6 +3416,9 @@ func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, bo
 	// beside the default, rather than spelled again by every surface that draws
 	// a number ([config.Setting.Reading]).
 	value := item.row.Reading()
+	if hosted, ok := s.hostedTeamReading(item); ok {
+		value = hosted
+	}
 	if value == "" {
 		value = "—"
 	}
@@ -3413,8 +3587,14 @@ func (s *sheet) footNote() string {
 	// own overrides are on its card on the teams page (teamsheet.go). Over
 	// --host it says whose defaults the teams there really read.
 	if settingTabs[s.tab] == tabTeams {
-		if s.host != "" {
+		if s.host != "" && !s.teamDefaultsWrite {
+			if s.farTeams != nil {
+				return "on " + s.host + " the teams inherit that machine's Settings · changing them is not available over this connection"
+			}
 			return "on " + s.host + " the teams inherit that machine's Settings · these are this one's, shown and not edited"
+		}
+		if s.host != "" {
+			return "a team can override any of these on its card · saved on " + s.host
 		}
 		return "a team can override any of these on its card · saved to your profile"
 	}

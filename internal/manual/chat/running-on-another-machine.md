@@ -689,6 +689,21 @@ machine's profile — which is the profile the conversation actually obeys. So o
 connection the two doors land in two different files: the panel edits this laptop, and
 asking edits the machine the work is on.
 
+## Can I change the Teams settings on another machine, and where do team defaults go over a connection
+
+The **Teams** tab is the exception. Team defaults over a connection are what every team on
+the far machine inherits, so the tab shows that machine's values and a change is saved
+there, not on this computer. A value reads `from Settings`, the same words a team's own
+card uses when the team has not overridden it.
+
+You can change `questions go to the manager`, `team messages wake`, `daily cap per team`,
+`team depth` and `sub-team share`. The foot line says
+`a team can override any of these on its card · saved on <machine>`.
+
+An older engine, one that can show the teams but cannot take this change, keeps the tab
+read only. The foot line says `changing them is not available over this connection`, and
+pressing enter on a row says the same sentence. Nothing is written on either machine.
+
 ## Approvals over --host
 
 **Approvals are read from the far machine's own settings, not from the laptop you are
