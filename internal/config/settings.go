@@ -1074,6 +1074,11 @@ var OperatorEnvPins = []string{
 	// and the footer names them and never shows a value.
 	"CODEAF_MODEL_API",
 	"CODEAF_MODEL_TOKEN",
+	// The mark codeaf sets on a program's process so that, if the program's
+	// engine is killed outright, the processes its commands left behind can
+	// still be found and ended (internal/processgroup). codeaf sets it and reads
+	// it back, and a person has nothing to say to it, so it is plumbing too.
+	"CODEAF_DELEGATE_RUN",
 	// The release check's one-launch opt-out and its two mirror addresses
 	// (internal/update). They are plumbing rather than settings rows: the first
 	// is a shell's decision not to make a launch request, while the other two

@@ -133,7 +133,9 @@ func ModelAPIFromEnv() (ModelAPI, bool) {
 // redirection left here would let a program reach a model outside the API,
 // the one road codeaf can meter and show a person.
 func ChildEnv(api ModelAPI) []string {
-	strip := []string{EnvModelAPI, EnvModelToken, envBaseURL, "CODEAF_API_KEY", "OPENAI_API_KEY", modelsource.DefaultSource("").KeyEnv} // legacy-name
+	// Every *_API_KEY name, codeaf's own and the older spelling included, goes
+	// by its suffix below, so it is not named here.
+	strip := []string{EnvModelAPI, EnvModelToken, envBaseURL, modelsource.DefaultSource("").KeyEnv}
 	for _, source := range modelsource.Vendored() {
 		if source.KeyEnv != "" {
 			strip = append(strip, source.KeyEnv)
