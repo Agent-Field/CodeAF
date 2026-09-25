@@ -307,9 +307,19 @@ var errRunRoadUnavailable = errors.New("the run road is unavailable")
 // IT MUST NOT READ LIKE SUCCESS. A receipt that said `task N started` over work
 // that never started is one output with two meanings, and the person reading it
 // cannot tell them apart; so this one opens on the one fact that differs.
+//
+// IT IS SAID TO THE PERSON, so it carries no instruction meant for the model:
+// the proposal door, whose answer the model reads, adds that itself
+// ([runDidNotStartToModel]).
 func runDidNotStart(id uint64, err error) string {
 	reason := strings.TrimSuffix(strings.TrimSpace(err.Error()), ".")
-	return fmt.Sprintf("task %d did not start: %s. Nothing is running for it and nothing was started in its place; propose it again, or tell the person what stopped it.", id, reason)
+	return fmt.Sprintf("task %d did not start: %s. Nothing is running for it and nothing was started in its place.", id, reason)
+}
+
+// runDidNotStartToModel is [runDidNotStart] as the model reads it at the
+// proposal door: the same facts, and what it may do next.
+func runDidNotStartToModel(id uint64, err error) string {
+	return runDidNotStart(id, err) + " Propose it again, or tell the person what stopped it."
 }
 
 // standsElsewhereError is the one refusal that STAYS AT THE RUN'S DOOR: a task

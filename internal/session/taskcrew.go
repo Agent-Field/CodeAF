@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -313,7 +314,7 @@ func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []
 	retried := false
 	for {
 		current := crew.sendFor(key)
-		response, err := c.agent.completeWithModel(ctx, purposeInherited, messages, current, options...)
+		response, err := c.agent.completeWithModel(asCrewSeatCall(ctx), purposeInherited, messages, current, options...)
 		if err == nil {
 			c.agent.crewAnswered(c.run, current)
 			return response, nil
@@ -337,6 +338,35 @@ func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []
 			return response, crewStopped{action: action, cause: err}
 		}
 	}
+}
+
+// crewSeatCallKey marks a context as a crew seat's own call, which walks its
+// own ladder and must reach exactly the route it names ([Agent.healthyModel]).
+type crewSeatCallKey struct{}
+
+func asCrewSeatCall(ctx context.Context) context.Context {
+	return context.WithValue(ctx, crewSeatCallKey{}, true)
+}
+
+func isCrewSeatCall(ctx context.Context) bool {
+	on, _ := ctx.Value(crewSeatCallKey{}).(bool)
+	return on
+}
+
+// healthyModel is the model an auxiliary call asks: model, unless route
+// health says model's route will not answer, in which case the router's
+// healthy pick ([config.CrewHealthySend]). THE PERSON'S TURN, THEIR OWN
+// MODEL AND A CREW SEAT'S CALL ARE NEVER REROUTED: the first two are the
+// person's choice, and a seat walks its own ladder and says so on its line.
+func (a *Agent) healthyModel(ctx context.Context, purpose callPurpose, model string) string {
+	if a.config.RouteCrew == nil || a.config.ProfileDir == "" || purpose == purposeTurn || isCrewSeatCall(ctx) {
+		return model
+	}
+	chat := a.Model()
+	if strings.TrimSpace(model) == "" || model == chat {
+		return model
+	}
+	return config.CrewHealthySend(a.config.ProfileDir, model, chat)
 }
 
 // crewStopped is a seat with nowhere left to go: its text is the one action,
@@ -423,8 +453,8 @@ func (a *Agent) moveCrewSeat(run *beltRun, key, current string, kind provider.Ro
 		}
 	}
 	if next.Send == "" {
-		action := crewActionFor(kind, provided, until)
-		stopped := crewStopsOn(kind)
+		action := crew.actionLocked(kind, provided, until)
+		stopped := crewStopsOn(kind) || len(crew.broke) > 0 || len(crew.gone) > 0
 		if stopped {
 			// THE CAUSE IS KNOWN, SO THE LINE SAYS THE ONE THING TO DO — and
 			// not "/redo stronger", which no stronger crew on the same
@@ -504,6 +534,33 @@ func (c *taskCrew) nextRung(ladder []crewroute.Pick) (crewroute.Pick, bool) {
 		}
 	}
 	return crewroute.Pick{}, false
+}
+
+// actionLocked is the one thing to do when a seat has nowhere left to go,
+// read off EVERYTHING this task saw fail rather than the last failure alone:
+// an account out of credit is the cause even when the free pool tried after
+// it was at its limit, and a refused key is the cause of every call after it.
+// The caller holds c.mu.
+func (c *taskCrew) actionLocked(kind provider.RouteFailure, on string, until time.Time) string {
+	switch {
+	case len(c.broke) > 0:
+		return crewActionFor(provider.RoutePayment, strings.Join(crewKeys(c.broke), ", "), until)
+	case len(c.gone) > 0:
+		return crewActionFor(provider.RouteAuth, strings.Join(crewKeys(c.gone), ", "), until)
+	}
+	return crewActionFor(kind, on, until)
+}
+
+// crewKeys is a set's members, sorted.
+func crewKeys(set map[string]bool) []string {
+	out := make([]string, 0, len(set))
+	for k, on := range set {
+		if on && k != "" {
+			out = append(out, k)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // crewFreeNotice is what the crew line says when a seat fell to a free pool:

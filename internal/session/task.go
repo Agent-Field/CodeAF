@@ -863,7 +863,7 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 			return receipt, false, nil
 		}
 		if !errors.Is(err, errRunRoadUnavailable) {
-			return withElsewhere(runDidNotStart(p.id, err), elsewhere), true, nil
+			return withElsewhere(runDidNotStartToModel(p.id, err), elsewhere), true, nil
 		}
 	}
 	state := graph.admit(p.id, spec)

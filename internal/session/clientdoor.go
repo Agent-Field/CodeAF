@@ -567,6 +567,9 @@ func (a *Agent) completeWithModel(ctx context.Context, purpose callPurpose, mess
 // missing default-service key moved the call onto the live seat; asking the pool
 // a second time afterwards could observe a different model or source set.
 func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose, messages []ai.Message, model string, options ...ai.Option) (*ai.Response, string, error) {
+	// AN AUXILIARY CALL NEVER ASKS A ROUTE HEALTH SAYS WILL NOT ANSWER
+	// (taskcrew.go's [Agent.healthyModel]).
+	model = a.healthyModel(ctx, purpose, model)
 	client, wire, called, err := a.completerFor(model)
 	if err != nil {
 		return nil, called, err
