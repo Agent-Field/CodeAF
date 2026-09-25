@@ -32,6 +32,10 @@ hand work off, see what is moving across every project, and step in only where
 your judgment is needed. A factory, on your own machine, and the more you hand it
 the more it does.
 
+**#1 on DeepSWE** of ten coding harnesses on the same model, ahead of Claude Code,
+Codex, OpenCode, Kilo and DeepSeek's own harness, at the lowest cost per solved
+issue ([benchmarks](#benchmarks)).
+
 Written in Go as one small binary, with nothing else to install or run. Apache
 2.0. By [AgentField AI](https://agentfield.ai?utm_source=github-readme&utm_campaign=codeaf-readme&utm_id=codeaf-readme-byline).
 
@@ -51,6 +55,9 @@ curl -fsSL https://agentfield.ai/get/codeaf | bash
 codeaf
 ```
 
+<details>
+<summary>Pin a version, or build from source</summary>
+
 The script puts the release binary for your platform in `~/.codeaf/bin`. To
 pin a version, give it a tag from the
 [releases page](https://github.com/Agent-Field/codeaf/releases), where the
@@ -62,6 +69,8 @@ curl -fsSL https://agentfield.ai/get/codeaf | VERSION=<tag> bash
 
 To build it yourself: `git clone`, `make build`, `bin/codeaf`
 ([guide](docs/GUIDE.md#install)).
+
+</details>
 
 On first start it connects OpenRouter in your browser, or takes a key. Codex signs in
 a ChatGPT plan from `/connect` or `codeaf connect codex`; DeepSeek, GLM, Kimi, MiniMax
@@ -133,19 +142,21 @@ A run is a task like any other, on `home`, with a room and a stop.
 
 - **Coming soon, native:** [PR-AF](https://github.com/Agent-Field/pr-af), the #1
   open-source code reviewer on Martian Code-Review-Bench.
-- **Coming soon, in the benchmark below:** the developer subharness against
-  general harnesses on the same open model.
+- **Native now:** `/senior-dev`, the developer subharness. First of ten
+  harnesses on DeepSWE, in the [benchmark below](#benchmarks).
 - **Your own:** "make me a harness for triaging flaky tests" designs one, saves
   it, and `/subharness` runs it.
 
 ## Benchmarks
 
-Coming soon. The run is held-out GitHub issues, several seeds each, through
-CodeAF's developer subharness and the general harnesses on the same open model:
-pass rate, cost per issue and time per issue, with every failure, timeout and
-unpriced call written up in [BENCHMARKS.md](BENCHMARKS.md). The chart and the
-table land here when the run completes, and `bench/` runs it on your own
-repository.
+<img src="assets/readme/benchmark-deepswe.webp" alt="First on DeepSWE: senior-dev, CodeAF's developer subharness, solved the most tasks (54.9%) at the lowest cost per solved task (1x). Every other harness solved less and paid more per solve: mini-swe-agent 1.9x, codex 2.1x, pi 2.4x, claude-code 3.4x, omp, kilo and opencode about 4.5x, muse-code 11.3x, deepseek-harness 26.6x." width="100%">
+
+`/senior-dev`, CodeAF's developer subharness, against nine other coding harnesses
+on the same model, DeepSeek V4 Flash: 113 real GitHub issues from DeepSWE, graded
+by the official verifiers. It solved the most issues and paid the least for each
+one it solved.
+
+Every number, the method and the limits: [docs/benchmarks/deepswe](docs/benchmarks/deepswe/).
 
 ## The right model for each call
 
