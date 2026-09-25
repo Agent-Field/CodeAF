@@ -635,7 +635,12 @@ func taskPointerBlock(entry session.TaskIndexEntry) string {
 	if entry.TranscriptURI != "" {
 		where = append(where, "Transcript: "+entry.TranscriptURI)
 	}
-	if entry.Live() {
+	if program := strings.TrimSpace(entry.Program); program != "" && entry.Live() {
+		// A PROGRAM'S RUNNING WORK OFFERS NO STEER, because the program reads no
+		// messages ([programRoomNoMessages]) and a `say` would be refused. The
+		// one door it has is the stop.
+		where = append(where, program+programRoomNoMessages+`; stop it with tasks id `+entry.ID+` stop`)
+	} else if entry.Live() {
 		// TWO DOORS ON ONE RUNNING NODE, and the block is read by the model, so
 		// it names the model's first: `tasks id N say "…"` reaches the node's
 		// loop exactly as the person's own line does (session.SteerTask). The
