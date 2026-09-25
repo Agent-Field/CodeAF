@@ -425,3 +425,39 @@ func TestAnEndedTasksRoomRefusesANoteInItsOwnWords(t *testing.T) {
 		t.Fatalf("the room does not say the task has finished:\n%s", text)
 	}
 }
+
+// THE WORK TAB DRAWS SOMEBODY ELSE'S BYTES, and they reach no frame unparsed. A
+// file the work changed is whatever a worker wrote into it: a carriage return
+// from a file with Windows line ends, a title escape, a screen clear. Drawn raw,
+// each one repaints rows this surface owns; the transcript draws a call's
+// output through [drawableLine] for the same reason, and so does this tab.
+func TestTheWorkTabDrawsNoControlBytesFromTheDifference(t *testing.T) {
+	row := session.PlanTaskRow{ID: "t-6", Title: "fix the loader", Status: "running"}
+	fake := &planWorkFake{work: session.PlanTaskWork{
+		Dir: "/work/copy", Read: true, Added: []string{"odd\x1b]0;named\x07.txt"},
+		Patch: "diff --git a/load.go b/load.go\n--- a/load.go\n+++ b/load.go\n@@ -1 +1 @@\n" +
+			"-old line\r\n+new\x1b]0;title\x07 line\x1b[2J\r\n",
+	}}
+	a, plan := planAppWith(t, []session.PlanTaskRow{row}, map[string]session.PlanTaskPage{row.ID: {Row: row, Description: "b"}})
+	fake.planFake = plan
+	a.agent = fake
+	openPlanRoomNow(t, a, row.ID)
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyTab})
+	rows := a.roomWorkRows(80)
+	var drawn strings.Builder
+	for _, r := range rows {
+		drawn.WriteString(r.text)
+		drawn.WriteByte('\n')
+	}
+	text := drawn.String()
+	for _, raw := range []string{"\r", "\a", "\x1b]", "\x1b[2J"} {
+		if strings.Contains(text, raw) {
+			t.Fatalf("the work tab drew the control bytes %q from the difference:\n%q", raw, text)
+		}
+	}
+	for _, want := range []string{"old line", "new", "line", "odd"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the work tab lost the words %q:\n%q", want, text)
+		}
+	}
+}

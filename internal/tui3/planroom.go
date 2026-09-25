@@ -532,7 +532,7 @@ func (a *app) roomWorkRows(width int) []row {
 		}
 		out := []row{dim(planWorkHeadWord), {entry: -1}}
 		for _, path := range work.Added {
-			out = append(out, row{text: a.pal.add(fit(a.icon(tokens.GDiffAdd)+planWorkNewWord+path, width)), entry: -1})
+			out = append(out, row{text: a.pal.add(fit(a.icon(tokens.GDiffAdd)+planWorkNewWord+drawableLine(path), width)), entry: -1})
 		}
 		if len(work.Added) > 0 && work.Patch != "" {
 			out = append(out, row{entry: -1})
@@ -554,7 +554,7 @@ func (a *app) roomWorkRows(width int) []row {
 	}
 	out := []row{dim(nodeWorkHeadWord), {entry: -1}}
 	for _, path := range node.changed {
-		out = append(out, row{text: a.pal.ink(fit(path, width)), entry: -1})
+		out = append(out, row{text: a.pal.ink(fit(drawableLine(path), width)), entry: -1})
 	}
 	return out
 }
@@ -562,11 +562,16 @@ func (a *app) roomWorkRows(width int) []row {
 // planWorkLines paints a unified patch the way a diff in a question is painted
 // ([app.questionDiffLines]): the mark from the vocabulary and the hue from the
 // ramp, with each file's header in ink so the eye finds where one file ends.
+//
+// EVERY LINE IS SOMEBODY ELSE'S BYTES, whatever a worker wrote into a file, and
+// goes through [drawableLine] as a call's output does: a carriage return from a
+// file with Windows line ends or an escape inside one would repaint rows this
+// surface owns.
 func (a *app) planWorkLines(patch string, width int) []string {
 	lines := strings.Split(strings.TrimRight(patch, "\n"), "\n")
 	out := make([]string, 0, len(lines))
 	for _, line := range lines {
-		line = expandTabs(line)
+		line = drawableLine(line)
 		switch {
 		case strings.HasPrefix(line, "diff --git "):
 			if len(out) > 0 {
