@@ -17,9 +17,10 @@
 // and no stdout it writes to but the host's records.
 //
 // ON WINDOWS IT IS ABSENT. Its engine leans on process groups, file locks and
-// a bash shell it has never had a Windows form of, so every file under this
-// tree carries a !windows constraint and the build's list carries nothing
-// there (internal/delegate/builtin/carried_windows.go).
+// a bash shell it has never had a Windows form of, so every runnable file
+// under this tree carries a !windows constraint and the build's list carries
+// nothing there (internal/delegate/builtin/carried_windows.go). The guide
+// lives outside this Unix-only tree so the prefix gate can weigh it anywhere.
 package seniordev
 
 import (
@@ -32,6 +33,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/delegate"
+	"github.com/Agent-Field/codeaf/internal/programguide"
 	"github.com/Agent-Field/codeaf/internal/seniordev/app"
 )
 
@@ -82,9 +84,7 @@ var Program = delegate.Delegate{
 	// BRIEF CARRIES THE ISSUE IN FULL: a summary of a bug report is the one
 	// thing senior-dev cannot check against, since there is nobody it can ask
 	// what the report said.
-	Guide: "For complex, multi-part coding work: fixing an issue in a mature codebase whose cause " +
-		"spans files, a feature with its tests, a rewrite across a package, a migration. Its brief " +
-		"carries the issue or ask in full, what done means and how to check it, and what must not change.",
+	Guide: programguide.SeniorDev,
 	Lands: delegate.LandsTree,
 	// Its recorder is git unless it is told --in-place, which keeps its
 	// checkpoints outside the folder and commits nothing. codeaf passes it for

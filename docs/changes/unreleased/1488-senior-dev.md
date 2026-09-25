@@ -59,3 +59,5 @@ an offline machine with no cache uses conservative model limits and still runs.
 - C5: A hosted senior-dev run no longer offers `question` when nobody can answer it.
 - C6: The manual now names senior-dev's default web fetch, opt-in Exa and Parallel search, models.dev request, and macOS detached-process limit.
 - C7: Python unittest projects without pytest now run unittest discovery; projects that have or declare pytest keep it.
+- E1: A senior-dev run's `ended` card now stands in the conversation outside the chat wake turn's `worked` fold, even when its task page was open at landing; the chat's own work still folds.
+- E2: The fixed and lean prefix tests now weigh the same declared senior-dev guide and tool shape on every build platform. The guide says the same work in eight fewer bytes, keeping the existing 57,124 and 49,590 byte caps after the previously recorded measurement proved eight bytes short on Linux.

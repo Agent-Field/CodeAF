@@ -1351,6 +1351,15 @@ costs another **27**. The first spelling of the full cap was 53,100, measured at
 weighs both varying sentences at their widest wherever it runs, so the cap no
 longer depends on who runs it.
 
+**The senior-dev prefix is measured against one declared program shape
+(2026-09-25).** The full cap is **57,124** bytes and the lean cap is **49,590**.
+Both tests include senior-dev's guide even on Windows, where the program cannot
+run, and the guide is shared with the Unix program instead of copied into the
+test. The cap-setting commit already measured eight bytes over both caps on this
+Linux machine; no byte changed when `HOME`, `USER`, `TMPDIR`, the launch directory
+or `TZ` changed. Eight bytes were removed from two equivalent phrases in the
+guide, so both caps remain at their measured values without raising a waiver.
+
 ## Following through on a completion claim
 
 A turn may decline handoff once per request when its own continuation says no
