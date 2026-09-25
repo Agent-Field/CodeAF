@@ -2,6 +2,9 @@ package session
 
 import (
 	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -144,6 +147,64 @@ func TestAnIncompleteReplyIsAskedAgainWithoutKeepingItsText(t *testing.T) {
 			if strings.Contains(part.Text, partial) {
 				t.Fatalf("the incomplete reply was saved in the conversation: %q", part.Text)
 			}
+		}
+	}
+}
+
+func TestATruncatedProviderReplyIsNotSettledByTheSession(t *testing.T) {
+	const partial = "Partial ans"
+	const complete = "The complete answer"
+	var attempts int
+	var requests [][]byte
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Errorf("read request: %v", err)
+			return
+		}
+		requests = append(requests, body)
+		attempts++
+		writer.Header().Set("Content-Type", "text/event-stream")
+		if attempts == 1 {
+			_, _ = io.WriteString(writer, "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\""+partial+"\"}}]}\n\n")
+			return
+		}
+		_, _ = io.WriteString(writer, "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\""+complete+"\"},\"finish_reason\":\"stop\"}]}\n\n")
+	}))
+	defer server.Close()
+
+	client, err := provider.NewClient(provider.Config{
+		APIKey: "k", BaseURL: server.URL, Model: "test/model", HTTPClient: server.Client(),
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	agent, _ := newTestAgent(t, client, nil)
+	events, err := agent.Submit(context.Background(), "what happened?")
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	collected := collect(t, events)
+
+	if attempts != 2 || len(requests) != 2 {
+		t.Fatalf("provider attempts = %d, requests = %d, want one truncated call and one retry", attempts, len(requests))
+	}
+	if strings.Contains(string(requests[1]), partial) {
+		t.Fatalf("the truncated text was sent in the retry request: %s", requests[1])
+	}
+	if _, failed := firstOfKind(collected, EventError); failed {
+		t.Fatalf("a recovered reply ended in an error; events were %v", kinds(collected))
+	}
+	var sawComplete bool
+	for _, event := range collected {
+		sawComplete = sawComplete || event.Kind == EventTextDelta && strings.Contains(event.Text, complete)
+	}
+	if !sawComplete {
+		t.Fatalf("the complete retry answer was not delivered; events were %v", kinds(collected))
+	}
+	for _, message := range agent.snapshot() {
+		if strings.Contains(messageText(message), partial) {
+			t.Fatalf("the truncated reply was kept in the conversation: %q", messageText(message))
 		}
 	}
 }
