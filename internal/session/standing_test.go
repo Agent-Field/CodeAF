@@ -590,8 +590,19 @@ func TestStandingOnceCreatesNothing(t *testing.T) {
 	if len(store.created) != 0 {
 		t.Fatalf("a once answer created %d items", len(store.created))
 	}
-	if output := toolOutput(t, collected, "stand"); !strings.Contains(output, "do it once, now, as an ordinary turn") {
-		t.Fatalf("tool result = %q", output)
+	output := toolOutput(t, collected, "stand")
+	for _, want := range []string{
+		"Do it now as an ordinary step and report what happened.",
+		"The person chose not to repeat it.",
+		"Do not set it up again unless they ask.",
+		"Do not investigate codeaf.",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("tool result missing %q\n%s", want, output)
+		}
+	}
+	if strings.Contains(output, "\u2014") || strings.Contains(output, "\u2013") {
+		t.Errorf("tool result still has a dash: %q", output)
 	}
 }
 

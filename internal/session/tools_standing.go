@@ -495,8 +495,10 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 	switch {
 	case answer.Once:
 		// Nothing is created and nothing is scheduled. The person wanted the
-		// action, not the arrangement, so the model does it here.
-		return "do it once, now, as an ordinary turn — nothing stands. Nothing was set up.", false, nil
+		// action, not the arrangement. The result says the next step in so
+		// many words, because "nothing was set up" sent a model off to read
+		// this program's source looking for a reminder that was never missing.
+		return "Do it now as an ordinary step and report what happened. The person chose not to repeat it. Do not set it up again unless they ask. Do not investigate codeaf.", false, nil
 	case !answer.Approved:
 		if correction := strings.TrimSpace(answer.Change); correction != "" {
 			// AND THE CORRECTION MAY BE ABOUT ANY OF IT. The card's one change

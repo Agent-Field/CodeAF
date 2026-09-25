@@ -940,7 +940,7 @@ piece of the ask still to do.
   task proposal, where silence starts the work: a task is bounded work somebody
   is watching, and a standing item spends money at times nobody chose.
 - **A "do it once" answer sets nothing up.** It answers
-  `do it once, now, as an ordinary turn — nothing stands. Nothing was set up.`
+  `Do it now as an ordinary step and report what happened. The person chose not to repeat it. Do not set it up again unless they ask. Do not investigate codeaf.`
   and codeaf does the thing in front of you instead. A **one-off reminder's card
   does not offer that answer** — see "Why is there no once on my reminder card".
 - **It will not set a reminder for a moment that has already passed.** The stamp

@@ -587,7 +587,9 @@ up and directives down, were built later: 8.9.)
 - A person's answer on a card this turn is part of what the completion check reads,
   after the clipped account, as `the person answered the card "<title>": <what they chose>`. A
   `just once` answer reads `only now, don't repeat`, so the check does not treat
-  "nothing was set up" as work still owed.
+  "nothing was set up" as work still owed. The tool result for that answer tells
+  the model to do the step now and report it, and not to set it up again or to
+  investigate codeaf.
 
 ## 7. Later, each needing its own go
 
