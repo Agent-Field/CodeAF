@@ -882,6 +882,22 @@ or `busy for <team>` (`MemberState.ReportsTo`).
   settings`, `alt+1` … `alt+8`). The owner's order puts `chats` third; when that place lands,
   every digit after `teams` in the manual and the help moves by one.
 
+- **The header is one line, and the members are a card** (owner feedback 2026-09-24, built on
+  `task/nest-ui`, `teamcrew.go`). The two wrapped rows of every member as prose
+  (`@review not open, reports to test 1d · …`) are gone. The line is the name, `◆ Manager` (a
+  door to the manager), a chip for each member with something happening (`⠿ working`, `?
+  asking` in the needs-you amber, `✗ failed` from its newest Traffic event), one quiet word for
+  everyone else (`+4 idle`, or `6 members` when nobody is doing anything), the spend (only with
+  a spend or a cap to set it against, the cap in whole dollars, `$0.42 of $5 today`), and the
+  three buttons. Narrow, it drops the idle word first, then the spend, then the chips from the
+  last, then `◆ Manager`, then the buttons from the right, never the name. The idle word (or
+  `p`) opens the **members card**: handle, title, state, last active, `also in test` for a
+  shared member (its hint says whose manager it reports to) and `Open` or `Resume`. `not open`
+  is said nowhere on the page: it is a fact about the window, and the button carries it. The
+  card hangs over the pane, clear of the rail, because its rows are the drag source for adding
+  a member to another team (8.11). On the root with a manager the header and the card list
+  `TopManagers()` (8.10), never their members.
+
 **Known gaps.** A switcher row `Closed · N` has no hover hint. The wall popover's delete code
 is unreached and kept until the wall is next reworked. Over `--host` the Settings tab cannot
 show the engine's `teams.` rows.
@@ -1014,3 +1030,82 @@ stays until the person removes it (the session's view ignores it). A sub-team st
 conversation never runs (the window refused the start) leaves an unmanaged child team; the
 parent's Traffic shows the refused start only in the window. The root's folder for a
 top-level start is whatever the interface's `teamWhere` gives the root.
+
+### 8.11 Nesting, as the interface built it (d3u)
+
+Built on `task/nest-ui` from rulings c-12 and c-13, in `internal/tui3` (`teammove.go`,
+`teamdrag.go`, `teamcrew.go`) and one store file, `internal/teams/move.go`. The person's guide
+is `teams-page.md`, *Moving a team inside another team, and adding a chat to a team*.
+
+**The store answers two questions** (`move.go`), because the session's own restructuring tools
+will ask them too. `(*File).MoveCheck(ids, parent, d)` says whether teams may go inside a
+parent ("" is the top level, which is the root when there is one, `MoveTarget`) and when not a
+`MoveBlock` with its facts: `self`, `inside` (a team under the moved one), `closed`, `depth`
+(the target's depth, the levels the moved subtree takes, the target's effective limit and its
+origin), `here` (already there), `root`, `gone`. A team picked together with its parent rides
+inside it (`MoveRoots`). `(*File).MoveEffects(ids, parent, d)` is what the move changes, on
+tidied copies of the file: every carried conversation whose `Home` changes, every moved team
+whose capped pool above it changes (the pool owner by the `teamsPool` rule), and every moved
+team whose conflicts `LCA` over its own conversations changes. `(*File).Move` writes it through
+`SetParent`.
+
+**Move into…** (`m` on the rail, or `Inside: harbor ▾` on the team's card) opens one picker: a
+card with a filter box (every printable key filters; only the arrows walk), `Top level`, then
+the open tree indented. Every row is drawn; a row that cannot take the move is dim and its
+reason is the card's foot and the hint line, in the ruling's words
+(`orbit is 2 levels deep · limit 2 · Settings`, `set on harbor` when a team set the limit).
+`enter` on a dim row moves nothing. `space` on a rail row picks teams (the wall's `☑` in place
+of the dot) and `m` moves them all; `esc` clears the picks.
+
+**The drag** is the rail's shortcut. A press on a team row selects it as a click always did; it
+becomes a drag only after two cells of held movement. A member's chip or a members card row is
+a drag source too, and its press waits for the release so a drag never opens it. During a drag
+only a target that takes the drop is grounded, the dragged row is dim, the first blank row under
+the tree reads `↳ Top level` (the empty rail under the tree is the top level), and the hint
+says `Drop to move api into harbor` or the block's reason. A member dropped on a team is
+ADDED (`AddMember` with what its own team kept of it) and never removed from where it came
+from. `esc`, or a second press before the release, drops the drag.
+
+**The consequence line.** Every move goes through one door (`teamMoveAsk`): with no changes it
+is written at once; otherwise one line on the pane (or on the card) says
+`api will report to harbor's manager · its $3/day becomes part of harbor's $10 pool` with
+`Move` (the accent, where the keyboard lands) and `Cancel` (`esc`). A conflicts clause is said
+only when the conflicts go somewhere the report clause has not named. Every move, confirmed or
+not, is offered back for `teamsUndoFor` (six seconds) with `Undo` or `u`: the old parents are
+written back, and every carried conversation's home flag is put back where the membership can
+still hold one. The pane shows one Undo at a time, the newer of a close and a move.
+
+**`+ New team in harbor`.** With a team chosen the rail's `+ New team` makes the team inside it
+(the wall's naming card says `New team in harbor`), and writes `SubTeamCap(parent)` as its own
+cap when that is above zero, as the session's `team_start` of kind team does. A rail too narrow
+for the words draws two rows rather than cutting the name. A team at its depth limit dims the
+row and its hint and press say why.
+
+**The switcher and the wall.** The strip's switcher lists the open tree, each sub-team indented
+under its team. The wall's Teams row stays flat and names a nested team `harbor › api`, each
+part cut on its own so the team's own name is never the part lost.
+
+**Traffic (8.10's asks).** A start carrying `Team` reads `◆ started @api to run backend`. A
+ruling (`teams.IsRuling`) reads `◆ ruling → @web` (or `you ruling`) with the decision's words
+and the packet named in the hint, never as the team's own manager's `do`.
+
+**Where it departs, and why.**
+
+- **`m` is Move into…, so starting a manager moved to `M`.** The ruling names the letter; a
+  manager is started once per team, a move whenever the tree is reshaped.
+- **The picker is a card over the frame, not a menu hung from the row**, because the same
+  picker opens from the team's card, which is itself a card in the middle of the frame.
+- **A drag from a team row still selects it on the press.** The shared place laws hold that a
+  press on a row does what `enter` on it does; a team's select is harmless under a drag, while a
+  member's door (which opens a conversation, possibly leaving the page) waits for the release.
+- **The members card's rows, not the header's chips, are the everyday member drag source**,
+  because idle members (most of them) are only on the card.
+- **A consequence line wraps on a narrow pane** rather than cutting the thing being decided; the
+  buttons follow the last line, or stand on their own row when it is full.
+
+**Known gaps.** The picker has no pointer scroll; a list longer than the frame scrolls with the
+cursor only. A move is told to no team's Traffic (the file change is what the sessions read).
+Multi-select is keyboard only (`space`); there is no pointer gesture for picking. Over `--host`
+the move writes through the seam like every edit, but the defaults the picker reads for the
+depth limit are the engine's only once the page has read them (`Teams.Defaults`); before that a
+depth block is not shown and the store's own `SetParent` is the only check.

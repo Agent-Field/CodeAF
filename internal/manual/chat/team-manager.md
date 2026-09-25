@@ -54,7 +54,10 @@ bottom:
 - `◆ → @web  do  take the scope model` for a directive, and `fyi` for a note;
 - `@parser → @web  fyi  the lexer is in` for a member's message;
 - `◆ stopped @web  going in circles` and `◆ started @lexer  rewrite the lexer…`, with the
-  reason and the brief;
+  reason and the brief; a start that made a sub-team reads `◆ started @api to run backend`;
+- `◆ ruling → @web  JSON: the form stays…` (or `you ruling → @web` when you decided it) for
+  the decision on a conflict, written into every party's team; it is a ruling, not that team's
+  manager's own order, and its hint names the conflict it settles;
 - `@web  finished`, `failed`, and `asking`, which is the only line in the needs-you amber.
 
 Each row ends with its age (`now`, `2m`, `3h`). Your own messages are not on the rail; they are

@@ -1690,9 +1690,12 @@ the *Conversations and teams* page.
 **Teams page** (`alt+2`, `/teams`): while the manager's conversation has the box, keys type
 into it; `alt+↑` `alt+↓` put the keyboard on the page's buttons and `esc` gives it back. On
 the buttons: `↑` `↓` walk, `←` `→` cross between the rail and the pane, `enter` presses,
-`s` the team's card · `c` close · `w` open on the conversations view · `n` new team ·
-`o` Organize · `m` a manager · `r` reopen · `d` delete a closed team · `u` Undo. The whole map
-is on the *teams page* page.
+`s` the team's card · `c` close · `w` open on the conversations view · `n` new team (inside
+the chosen team) · `o` Organize · `m` Move into… another team · `space` pick a team for a
+move of several · `p` the members card · `M` a manager · `r` reopen · `d` delete a closed
+team · `u` Undo a close or a move · `esc` cancels a drag or a move's question. In the Move
+into… picker, typing filters, `↑` `↓` walk, `enter` moves, `esc` cancels. The whole map is on
+the *teams page* page.
 
 **Settings panel** (`ctrl+,`): `esc` backs out one layer at a time — search, then an
 open account, then the panel · `left`/`shift+tab` and `right`/`tab` change tab ·

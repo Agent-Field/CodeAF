@@ -23,7 +23,7 @@ The left column is the **rail**:
    ● orbit           ⠿   │
  ● docs                  │
                          │
- + New team              │
+ + New team in harbor    │
  ✦ Organize              │
                          │
  ▸ Closed · 2            │
@@ -39,8 +39,11 @@ The left column is the **rail**:
   decision addressed to you, or a member stopped on a question only you can answer. A team
   where nothing is happening draws no mark at all.
 - **`+ New team`** makes a team of the conversation in front (the new-team card of the
-  conversations view). **`✦ Organize`** suggests teams for your conversations and offers to
-  close the quiet ones (see *Organize closes quiet teams* below).
+  conversations view). With a team chosen it reads **`+ New team in harbor`** and the new team
+  is made inside that team; on a narrow rail it takes two rows, `+ New team` and `in harbor`.
+  A team already at its depth limit dims it and says why. **`✦ Organize`** suggests teams for
+  your conversations and offers to close the quiet ones (see *Organize closes quiet teams*
+  below).
 - **`▸ Closed · N`**, folded at the foot, holds the teams you closed. A press opens the fold
   and lists them; a press on one shows what it left behind.
 
@@ -52,19 +55,37 @@ front, in the pane; the conversation you were in stays open behind, one `tab` aw
 
 The right side is the team you chose, from the top:
 
-**The header.** The team's name, then what it has spent today: `$1.20 today`, or
-`$1.20 of $5 today` when a daily cap applies. When the cap is inherited from the team above,
-the header names whose it is, `$1.20 of $5 today · harbor's cap`, because a cap is one pool
-for a team and every team under it. An idle team with no cap draws no figure. Then three word
-buttons: **`Settings`** (the team's card, `s`), **`Close…`** (`c`), and **`Open ▦`** (the
-conversations view narrowed to this team, `w`).
+**The header** is one line:
 
-**The members.** Every member of the team, open in this window or not, as
-`@parser running · @model idle 3m · @docs not open`. A member stopped on a question reads in
-amber. A member shared with another team says whose manager it reports to,
-`@web idle, reports to orbit`, or `busy for orbit` while it works for that team. A press on a
-member you have open goes to it. A press on one that is not open **resumes it behind**, in a
-tab of its own, without moving you: the page says `@docs is open behind, in its own tab`.
+```
+ ● harbor  ◆ Manager   @news ⠿ working   @review ? asking   +4 idle     $0.42 today   Settings  Close…  Open ▦
+```
+
+The team's name; **`◆ Manager`**, a door to its manager (the conversation below it on this
+page); then only the members that are doing something, each a door with its title and state
+in the hint (`@news · weekly news digest · working · click opens`): `⠿ working`, `? asking` in
+amber when a member is stopped on a question for you, `✗ failed` in red when its last turn
+failed. Everyone else is one quiet word, **`+4 idle`**, or **`6 members`** when nobody is doing
+anything, and a press on it opens the members card. Then what the team spent today, shown
+only when there is a spend or a cap to compare it with: `$0.42 today`, or `$0.42 of $5 today`
+under a daily cap. When the cap is inherited from the team above, the header names whose it
+is, `$1.20 of $5 today · harbor's cap`, because a cap is one pool for a team and every team
+under it. Then three word buttons: **`Settings`** (the team's card, `s`), **`Close…`** (`c`),
+and **`Open ▦`** (the conversations view narrowed to this team, `w`).
+
+On a narrow screen the line gives up its parts in order: the idle word first, then the spend,
+then the members' chips from the last, then `◆ Manager`, then the buttons from the right. The
+team's name always stays. `p` opens the members card whatever the width.
+
+**The members card** (`+4 idle`, `6 members`, or `p`) lists every member, one row each: its
+handle, its title, what it is doing, when it last moved, and **`Open`** for a conversation this
+window has open or **`Resume`** for one it does not. A member that reports to another team's
+manager carries a small `also in test` tag, and its hint says `reports to test's manager`.
+`Open` goes to the conversation. `Resume` opens it **behind**, in a tab of its own, without
+moving you: the page says `@docs is open behind, in its own tab`, and the row turns to `Open`.
+`↑` `↓` walk the rows, `enter` opens or resumes, `esc` or `Close` puts the card away. The
+page never says `not open`: whether a conversation is open is a fact about this window, not
+about the team.
 
 **What waits on you.** Each decision addressed to you is a card:
 
@@ -110,6 +131,65 @@ makes it the team's manager.
 manager does; a press starts a new conversation in the team's folder and makes it the manager.
 Choosing `All teams` shows every decision waiting on you from any team.
 
+## Moving a team inside another team, and adding a chat to a team
+
+Teams nest: a team can sit inside another, the way `orbit` sits inside `harbor` on the rail.
+You move a team by choosing where it goes.
+
+**Move into…** Choose a team on the rail and press `m`, or open the team's card and press its
+**`Inside: harbor ▾`** row. A picker opens with every team as a tree and `Top level` first:
+
+```
+╭─ Move dock into ─────────────────────────────╮
+│  Filter    ▏type to filter                   │
+│  ─────────────────────────────────────────── │
+│  Top level                                   │
+│    ● harbor                                  │
+│      ● orbit                                 │
+│    ● dock                                    │
+│  ─────────────────────────────────────────── │
+│  orbit is 2 levels deep · limit 2 · Settings │
+╰──────────────────────────────────────────────╯
+```
+
+Typing filters the list and the tree keeps its indent. `↑` `↓` walk, `enter` moves, `esc`
+cancels. **A team that cannot take the move is dimmed, not hidden**, and the line at the foot
+(and the hint line) says why: the team itself (`a team cannot go inside itself`), a team inside
+it (`orbit is inside dock`), a closed team, a team already at the **depth limit**
+(`orbit is 2 levels deep · limit 2 · Settings`, and `set on harbor` when a team above set the
+limit), or where it already is. The depth limit is `team depth` under **Teams** in
+`/settings`, and any team can override it on its card.
+
+**Several teams at once.** `space` on a team's row picks it, and it wears `☑` in place of its
+dot; `m` then moves every picked team with one choice. `esc` clears the picks. A picked team
+inside another picked team moves along inside it.
+
+**Dragging.** On the rail you can also drag a team with the pointer. A drag starts only after
+you move two cells with the button held, so a click still only chooses the team. While you
+drag, only a team that can take it is highlighted, and the hint line says
+`Drop to move dock into harbor`, or why the team under the pointer cannot take it. The empty
+rail under the teams is the top level, marked `↳ Top level` while you drag. `esc` drops the
+drag and nothing moves.
+
+**Adding a chat to another team.** Open the members card and drag a member's row onto a team
+on the rail: the hint says `Add @crane to harbor`, and the conversation is **added** to that
+team. It stays in the team it came from; a drag never takes a conversation out of a team.
+Removing one is always its own step, in the team switcher or the conversations view.
+
+**When a move changes who is in charge, you are asked first**, in one line at the top of the
+pane (or on the team's card):
+
+```
+ dock will report to harbor's manager · its $3/day becomes part of harbor's $10 pool   Move   Cancel
+```
+
+It appears only when the move changes one of three things: which manager the team's
+conversations report to, which capped pool its spending counts toward, or which manager decides
+a conflict inside it. Any other move happens at once.
+
+**Every move can be undone.** For a few seconds after a move, confirmed or not, the pane (or the
+card) says `dock is in harbor now   Undo`; `Undo` or `u` puts it back where it was.
+
 ## Keys on the teams page
 
 While the manager's conversation has the message box, keys type into it, as in any
@@ -132,13 +212,16 @@ On the page's buttons, and on a team with no manager in the pane:
 | `s` | the chosen team's card (its settings) |
 | `c` | close the chosen team |
 | `w` | open the conversations view on the chosen team |
-| `n` | new team |
+| `n` | new team (inside the chosen team) |
 | `o` | Organize |
-| `m` | start a manager for the chosen team |
+| `m` | Move into…: move the chosen team, or the picked ones, inside another team |
+| `space` | on a team's row, pick it for a move of several |
+| `p` | the members card |
+| `M` | start a manager for the chosen team |
 | `r` | reopen a closed team |
 | `d` | delete a closed team (it asks first) |
-| `u` | Undo a close, while it is offered |
-| `esc` | back to the message box, or home when there is none |
+| `u` | Undo a close or a move, while it is offered |
+| `esc` | cancel a drag or a move's question, clear the picks, then back to the message box, or home when there is none |
 
 Any letter not in that list goes back to the message box and types there.
 
@@ -235,5 +318,10 @@ over the connection yet, and the page says so where the report would be.
   here.
 - **Choosing a team is the one thing that changes which conversation is in front.** Nothing
   else on the page moves you, and resuming a member opens it behind.
+- **A team moves by choosing where it goes**, not by indenting it: the rail keeps teams in the
+  order they were made, so a move changes one team's place and nothing else's. A drag adds a
+  chat and never removes one, so a slip of the pointer cannot lose a conversation from a team.
+- **`m` is Move into…, so starting a manager is `M`.** The move is the everyday gesture; a
+  manager is started once per team.
 - **A team is deleted only once it is closed**, so the everyday gesture is a close you can undo,
   and the one that forgets things asks first.
