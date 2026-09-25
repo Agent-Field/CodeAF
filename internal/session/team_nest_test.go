@@ -133,8 +133,9 @@ func TestTeamStartOfKindTeamMakesASubTeamWhoseManagerReportsUp(t *testing.T) {
 	if start.Kind != teams.KindStart || start.To != "api" || start.Team != backend.ID {
 		t.Fatalf("harbor's start line: %+v", start)
 	}
-	if here, _ := teams.ReadTraffic(n.fixture.profile, backend.ID, "", 0); len(here) != 1 || !strings.Contains(here[0].Text, "its manager @api starts on the brief") {
-		t.Fatalf("backend's own line: %+v", here)
+	here, _ := teams.ReadTraffic(n.fixture.profile, backend.ID, "", 0)
+	if len(here) != 2 || here[0].Text != "@parser joined from harbor" || !strings.Contains(here[1].Text, "its manager @api starts on the brief") {
+		t.Fatalf("backend's own lines: %+v", here)
 	}
 
 	// The interface carries out the start: the new conversation joins harbor
@@ -148,7 +149,7 @@ func TestTeamStartOfKindTeamMakesASubTeamWhoseManagerReportsUp(t *testing.T) {
 	}
 	api := n.agent(t, "api")
 	news := api.teamBoundary()
-	for _, want := range []string{`◆ you were started to manage the team "backend", under "harbor"`, "◆ brief from manager #1: Build the signup API."} {
+	for _, want := range []string{`◆ you were started to manage the team "backend", under "harbor"`, "◆ brief from manager #2: Build the signup API."} {
 		if !strings.Contains(news, want) {
 			t.Errorf("the new manager's first delivery lacks %q:\n%s", want, news)
 		}

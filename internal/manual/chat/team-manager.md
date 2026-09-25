@@ -220,6 +220,15 @@ the manager), to one teammate by handle, or to the manager. Members use it to re
 share a finding, ask a teammate, or say they are blocked. It also has `team_raise`, for a
 conflict it cannot settle with the other side itself.
 
+## A manager is told when a member moves
+
+Moving a conversation from one team to another, or moving a team under another, writes one
+line to the Traffic of each team it touches. The team that lost the member says
+`@web moved to harbor`. The team that gained the member says `@web joined from ops`. For a
+team moved under another, that is the moved team's Traffic and its new parent's. A manager
+reads those lines the next time it wakes, in the Traffic it already reads. Nothing about the
+move wakes it by itself, and a move that was refused writes no line.
+
 ## Sub-teams
 
 A manager can start a **sub-team**: `team_start` with kind `team`, a name for the new team, a

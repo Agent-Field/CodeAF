@@ -532,3 +532,28 @@ func TestTrafficSaysRulingsAndSubTeamStarts(t *testing.T) {
 		t.Fatalf("the sub-team start rows: %q", got)
 	}
 }
+
+// THE MOVE ACTION WRITES TRAFFIC. dock (member @crane) into harbor is one
+// line on the team that moved and one on the team it joined, each once.
+func TestMoveIntoWritesTraffic(t *testing.T) {
+	a, harbor, _, dock := nestLab(t)
+	if log, _ := teamstore.ReadTraffic(a.profileDir, dock, "", 0); len(log) != 0 {
+		t.Fatalf("traffic before the move: %+v", log)
+	}
+	drive(t, a, key("m"), key("enter"))
+	if parentOf(a, dock) != harbor {
+		t.Fatalf("dock is under %q", parentOf(a, dock))
+	}
+	one := func(team, text string) {
+		t.Helper()
+		log, err := teamstore.ReadTraffic(a.profileDir, team, "", 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(log) != 1 || log[0].Kind != teamstore.KindEvent || log[0].Text != text {
+			t.Fatalf("%s traffic: %+v, want one %q", team, log, text)
+		}
+	}
+	one(dock, "@crane moved to harbor")
+	one(harbor, "@crane joined from the top")
+}

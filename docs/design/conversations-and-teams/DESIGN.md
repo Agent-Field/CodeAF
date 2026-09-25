@@ -1356,9 +1356,16 @@ and the packet named in the hint, never as the team's own manager's `do`.
 - **A consequence line wraps on a narrow pane** rather than cutting the thing being decided; the
   buttons follow the last line, or stand on their own row when it is full.
 
+**Traffic of a move.** A committed move appends one `KindEvent` to each affected team's log,
+through the store, beside the write (`MoveNotices`, `MemberMoveNotices`, `WriteMoveNotices`).
+The team left and the team that moved say `@handle moved to harbor`. The team joined says
+`@handle joined from ops`. For a team moved under another, that is the moved team and its new
+parent (and the parent it left, when it had one). A refused move appends nothing. The lines are
+from `system` to `everyone` with no member state, so the existing Traffic read hands them to a
+manager on its next wake and they do not start a wake of their own.
+
 **Known gaps.** The picker has no pointer scroll; a list longer than the frame scrolls with the
-cursor only. A move is told to no team's Traffic (the file change is what the sessions read).
-Multi-select is keyboard only (`space`); there is no pointer gesture for picking. Over `--host`
+cursor only. Multi-select is keyboard only (`space`); there is no pointer gesture for picking. Over `--host`
 the move writes through the seam like every edit, but the defaults the picker reads for the
 depth limit are the engine's only once the page has read them (`Teams.Defaults`); before that a
 depth block is not shown and the store's own `SetParent` is the only check.
