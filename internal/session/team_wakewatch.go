@@ -458,7 +458,7 @@ func (a *Agent) teamWakeMember(profile string, roles []teamRole, now time.Time) 
 		// handed the directive over already; there is nothing left to wake on.
 		return
 	}
-	text := "Your manager started this turn (a directive, or the answer to your question); the person did not speak.\n\n" + news
+	text := teamWakeMemberLead + "\n\n" + news
 	woke, reason := a.teamWakeWith(text)
 	if woke {
 		a.teamWakeCount(now)
@@ -524,7 +524,7 @@ func (a *Agent) teamWakeManager(profile string, roles []teamRole, batch map[stri
 	if len(groups) == 0 {
 		return
 	}
-	text := "Your team's replies started this turn; the person did not speak. Act on them: hand out what comes next, or tell the person where the work stands.\n\n" +
+	text := teamWakeManagerLead + "\n\n" +
 		strings.Join(groups, "\n\n")
 	woke, reason := a.teamWakeWith(text)
 	if woke {

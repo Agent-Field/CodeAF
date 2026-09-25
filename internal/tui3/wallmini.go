@@ -121,6 +121,18 @@ func (a *app) wallDraw(entries []session.DisplayEntry, width int) []string {
 		case "tool":
 			last := i == len(entries)-1 || entries[i+1].Role != "tool"
 			rows = a.wallToolRows(e, last, width)
+		case "aside":
+			// AN ASIDE IS DRAWN AS THE CONVERSATION DRAWS IT (teamcard.go's
+			// [asideShapeOf]): a team delivery as its lines, a team wake with
+			// nothing in it not at all, anything else as its first line.
+			switch asideShapeOf(e) {
+			case asideTeam:
+				rows = a.wallTeamRows(e, width)
+			case asideLine:
+				if line := strings.TrimSpace(firstLine(e.Text)); line != "" {
+					rows = []string{a.pal.italic(a.pal.dim(ansi.Truncate(line, width, "…")))}
+				}
+			}
 		default:
 			if line := strings.TrimSpace(firstLine(e.Text)); line != "" {
 				rows = []string{a.pal.italic(a.pal.dim(ansi.Truncate(line, width, "…")))}
@@ -185,6 +197,27 @@ func (a *app) wallReplyRows(text string, width int) []string {
 	// No path linking: resolving a code span as a path asks the workspace, and
 	// this is drawn for conversations that are not the one in front.
 	return renderMarkdownWithCode(a.styler(), text, width, nil)
+}
+
+// wallTeamRows is a team delivery as the conversation's card draws it
+// (teamcard.go): each line headed by who said it to whom, its words under a
+// bar, fit to the tile. It is the card's words without the card's memory of the
+// conversation in front, which a tile of another conversation must not read.
+func (a *app) wallTeamRows(e session.DisplayEntry, width int) []string {
+	pal := a.pal
+	arrow, bar := a.linearMark("→", "->"), a.linearMark("│", "|")
+	var out []string
+	for _, c := range teamCardsOf(e, a.teamManagerMark()) {
+		head := pal.muted(c.from) + pal.dim(" "+arrow+" ") + pal.muted(c.to)
+		if c.tag != "" {
+			head += "  " + pal.dim(c.tag)
+		}
+		out = append(out, ansi.Truncate(head, width, "…"))
+		if text := strings.TrimSpace(firstLine(c.text)); text != "" {
+			out = append(out, pal.dim(bar+" ")+pal.ink(ansi.Truncate(text, max(width-2, 1), "…")))
+		}
+	}
+	return out
 }
 
 // wallToolRows is one call on the rail: its name in muted, its target after
