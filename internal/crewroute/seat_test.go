@@ -323,8 +323,7 @@ func TestARedoLineSaysEachSeatOnce(t *testing.T) {
 
 // THE ESTIMATE IS CALIBRATED ON THE TRIAL: for every crew the trial ran, in
 // each class, the estimate a task's line shows is within 1.5× of what the
-// crew actually cost on average (docs/design/model-pool/data's
-// trial_class_arm.csv and the two ladder rungs of trial_candidates.csv).
+// crew actually cost on average, as recorded in the prior's measured costs.
 func TestTheEstimateIsWithinHalfAgainOfTheTrialsCosts(t *testing.T) {
 	const flash, kimi, v4, glm53, pro = "z-ai/glm-5.3-flash", "moonshotai/kimi-k3", "deepseek/deepseek-v4-flash", "z-ai/glm-5.3", "deepseek/deepseek-v4-pro"
 	cases := []struct {
