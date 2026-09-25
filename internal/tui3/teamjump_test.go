@@ -41,19 +41,24 @@ func TestTrafficJumpOpensTheMemberAtTheMessage(t *testing.T) {
 	price, priceKey := trafficHandle(t, a, harbor, "openrouter")
 	rail, _ := trafficHandle(t, a, harbor, "Refactor")
 	q := threadScenario(t, a, harbor, price, rail)
-	// The rail's doors carry where they land.
+	// The column's handles carry where they land: the work row's at the
+	// directive, and a reply's, laid open, at the member's own post.
+	a.sideToggleThread(sideThreadKey(harbor, q))
 	_ = railLines(t, a)
 	var header, answer string
-	for _, row := range a.traffic.drawn.doors {
-		for _, d := range row {
-			if d.member == priceKey && d.land == q && header == "" {
-				header = d.land
-			} else if d.member == priceKey && d.land != q && d.land != "" {
-				answer = d.land
+	for _, row := range a.side.last {
+		for _, d := range row.doors {
+			if d.act.kind != sideActJump || d.act.key != priceKey {
+				continue
+			}
+			if row.key == "thread/"+q {
+				header = d.act.entry
+			} else if strings.HasPrefix(row.key, "reply/") {
+				answer = d.act.entry
 			}
 		}
 	}
-	if header != q || answer == "" {
+	if header != q || answer == "" || answer == q {
 		t.Fatalf("the handles do not carry their message: header %q answer %q", header, answer)
 	}
 	// In the member's conversation the directive sits above a long tail.
@@ -108,9 +113,9 @@ func TestTrafficJumpToAnOlderMessage(t *testing.T) {
 	}
 }
 
-// IN THE MANAGER'S CONVERSATION a press on an answer's words on the rail lays
-// them out and brings the thread card into view, lifted; a handle on the
-// card's answer opens the member at its own post.
+// IN THE MANAGER'S CONVERSATION a press on a row of work brings the thread
+// card into view, lifted, and the conversation in front stays in front; a
+// handle on the card's answer opens the member at its own post.
 func TestTrafficJumpBringsTheCardIntoView(t *testing.T) {
 	a, harbor, _, _ := trafficApp(t)
 	a.width, a.height = 160, 30
@@ -124,13 +129,12 @@ func TestTrafficJumpBringsTheCardIntoView(t *testing.T) {
 	if shown, _ := landedRow(a, "│ status?"); shown {
 		t.Fatal("the card is on screen before the press")
 	}
-	rows := railLines(t, a)
-	y := railRowOf(rows, "prices are cached")
-	x := a.width - a.trafficWidth() + strings.Index(rows[y], "prices") + 1
-	cmd, took := a.trafficPress(x, y)
-	spend(t, a, cmd)
-	if shown, lifted := landedRow(a, "│ status?"); !took || !shown || !lifted {
-		t.Fatalf("the press did not bring the card into view, lifted (shown %v lifted %v)", shown, lifted)
+	front := a.frontTabKey()
+	_ = railLines(t, a)
+	x, y := sideRowOn(t, a, "thread/"+q)
+	sideClick(t, a, x, y)
+	if shown, lifted := landedRow(a, "│ status?"); !shown || !lifted || a.frontTabKey() != front {
+		t.Fatalf("the press did not bring the card into view, lifted, here (shown %v lifted %v)", shown, lifted)
 	}
 	// The card's answer row names the answer for its handle.
 	body, _ := bodyRows(a)

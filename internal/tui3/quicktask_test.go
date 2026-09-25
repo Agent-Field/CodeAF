@@ -71,12 +71,12 @@ func TestAQuickRowSaysWhatItIsDoingAndNamesNoBranch(t *testing.T) {
 	}
 }
 
-// AND A QUICK NODE STARTED FROM A TASK HANGS UNDER THAT TASK. Nesting is
+// AND A QUICK NODE STARTED FROM A TASK IS FILED UNDER THAT TASK. Nesting is
 // [session.TaskNotice.Parent] and nothing else, so a quick node the engine
-// files under its caller is drawn on the caller's stem with no surface change —
-// which is worth pinning because it is the whole of what "it shows on the rail
-// like any task" buys.
-func TestAQuickNodeUnderATaskIsDrawnOnItsParentsStem(t *testing.T) {
+// files under its caller carries its caller with no surface change. The column
+// draws what each piece of work is doing rather than a tree, so the quick node
+// is its own one-line row in the running group beside its caller.
+func TestAQuickNodeUnderATaskIsFiledUnderItsParent(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
 	notice := quickNotice()
@@ -87,19 +87,14 @@ func TestAQuickNodeUnderATaskIsDrawnOnItsParentsStem(t *testing.T) {
 		t.Fatalf("the quick node's parent is %q, want the task it was started from", got)
 	}
 	rows := railText(a, a.viewHeight())
-	child, ok := railRowFor(a, a.viewHeight(), "compare files")
-	if !ok {
-		t.Fatalf("the quick node has no row:\n%s", strings.Join(rows, "\n"))
-	}
-	// THE STEM IS THE CLAIM. A row drawn flat beside its caller says the two
-	// pieces of work are unrelated, which is the one thing the rail knows they
-	// are not.
-	if !strings.Contains(child, "└─") && !strings.Contains(child, "├─") {
-		t.Fatalf("the quick node was drawn flat rather than under its parent:\n%s", strings.Join(rows, "\n"))
-	}
-	parent, ok := railRowFor(a, a.viewHeight(), "Ship the port")
-	if !ok || strings.Contains(parent, "└─") || strings.Contains(parent, "├─") {
-		t.Fatalf("the parent is not the root of the family:\n%s", strings.Join(rows, "\n"))
+	for _, title := range []string{"compare files", "Ship the port"} {
+		row, ok := railRowFor(a, a.viewHeight(), title)
+		if !ok {
+			t.Fatalf("%q has no row:\n%s", title, strings.Join(rows, "\n"))
+		}
+		if strings.Contains(row, "└─") || strings.Contains(row, "├─") {
+			t.Fatalf("the column drew a tree:\n%s", strings.Join(rows, "\n"))
+		}
 	}
 }
 

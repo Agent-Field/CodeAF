@@ -1980,39 +1980,32 @@ type app struct {
 	// stamp stands still for ever and this is the only thing that says a task
 	// somebody just started belongs on the page they are looking at.
 	railStamp uint64
-	// THE ROSTER'S OWN FACTS (task.go's rail). railOpen holds the FAMILIES a
-	// person has folded or opened AGAINST their default — nil is the design as
-	// shipped, and an absent key is a family nobody has touched, which is why this
-	// is a map keyed by node id and not a flag on the node. railTop is the
-	// window's offset into the SCROLLING PART of the roster's line list — the part
-	// under the pinned live head ([app.railLiveHead]), because work that is still
-	// going never leaves this column — resolved by the same [listTop] every other
-	// list on this surface scrolls with. railWhere is the focused row,
-	// named by id rather than by index because a fold takes rows out from under a
-	// cursor while nobody is looking, and railHold says the roster has been GIVEN
-	// the keyboard (alt+t) — without it there is no cursor, and every key still
-	// belongs to the draft.
+	// THE ROSTER'S OWN FACTS (task.go's rail). railTop is the window's offset
+	// into the roster's line list, resolved by the same [listTop] every other
+	// list on this surface scrolls with. railWhere is the focused row, named by
+	// identity rather than by index because a fold takes rows out from under a
+	// cursor while nobody is looking, and railHold says the roster has been
+	// GIVEN the keyboard (alt+t): without it there is no cursor, and every key
+	// still belongs to the draft.
 	//
-	// railWide is the third width tier, asked for with w and sticky until it is
-	// asked for again. railCramped is what earns the offer of it: the last layout
-	// cut a title with its own indent, and it is written where that is discovered
-	// ([app.railEntryRows]) and read by the footer, the way [app.railTop] is
-	// written by the window it resolves.
+	// railWide is the third width tier, asked for with alt+w and sticky until
+	// it is asked for again.
 	//
 	// railAway is the person's own standing answer to whether there is a column at
-	// all (ctrl+g, [app.railStow]). It outranks every width tier and the roster's
-	// own "one node raises it" rule alike — a column somebody put away stays away,
-	// through landings and new work and the next session, until they ask for it
-	// back — and it is the one piece of this block that survives the process,
-	// because it is the only one a person chose deliberately (config's
-	// ui.task_column).
-	railOpen    map[uint64]bool
-	railTop     int
-	railWhere   railSpot
-	railHold    bool
-	railWide    bool
-	railCramped bool
-	railAway    bool
+	// all (alt+l or ctrl+g, [app.railStow]). It outranks every width tier: a
+	// column somebody put away stays away, through landings and new work and the
+	// next session, until they ask for it back, and it is the one piece of this
+	// block that survives the process, because it is the only one a person chose
+	// deliberately (config's ui.task_column).
+	railTop   int
+	railWhere railSpot
+	railHold  bool
+	railWide  bool
+	railAway  bool
+	// side is the side column's own memory for the session: which of its two
+	// words is in front per kind of chat, what is folded, and where the
+	// Traffic's `new` line stands (sidecol.go).
+	side sideState
 	// away is the last reading of what the project's OTHER windows have out
 	// right now, and when it was taken (taskview.go's [app.refreshElsewhere]).
 	// It is a CACHE and not a subscription: the reading is a readdir and a
@@ -4245,11 +4238,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// the body for the same reason: the two are drawn side by side, so
 			// which one was pressed is a question about x (room.go). A rail row
 			// is a door into that node's room.
-			// AND THE TRAFFIC RAIL BEFORE IT, at the frame's right edge while the
-			// manager is in front: a row goes to its member (teamtraffic.go).
-			if cmd, took := a.trafficPress(msg.Mouse().X, msg.Mouse().Y); took {
-				return a, cmd
-			}
 			if cmd, took := a.railPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}

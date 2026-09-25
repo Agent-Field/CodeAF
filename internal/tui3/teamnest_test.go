@@ -504,13 +504,23 @@ func TestTrafficSaysRulingsAndSubTeamStarts(t *testing.T) {
 	a, harbor, orbit := teamsPlaceLabIDs(t)
 	h, _ := a.teamByID(harbor)
 	lay := func(e teamstore.Entry) (string, string) {
-		s := &trafficSheet{a: a, t: h, width: 90, hotRow: -1}
-		s.thread(teamstore.Thread{Root: e, Latest: e.ID})
+		// A ruling is a row of work and a start is chatter, a line under
+		// General: each is laid the way the manager's Traffic lays it.
+		s := &sideSheet{a: a, t: h, width: 90, hotDoor: -1}
+		th := teamstore.Thread{Root: e, Latest: e.ID}
+		if sideChatter(th) {
+			s.reply(e)
+		} else {
+			s.work(th, e)
+		}
 		var rows, hints []string
-		for _, r := range s.rows {
-			rows = append(rows, plain(r.text))
-			for _, d := range r.doors {
-				hints = append(hints, d.hint)
+		for _, l := range s.lines {
+			rows = append(rows, plain(l.text))
+			if l.side != nil {
+				hints = append(hints, l.side.hint)
+				for _, d := range l.side.doors {
+					hints = append(hints, d.hint)
+				}
 			}
 		}
 		return strings.Join(rows, "\n"), strings.Join(hints, "\n")
