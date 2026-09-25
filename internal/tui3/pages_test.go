@@ -105,7 +105,7 @@ func TestATabWearsNoCountUntilSomethingAnswersForIt(t *testing.T) {
 	if a.places != nil {
 		t.Fatal("a surface that has not counted yet wired a counter")
 	}
-	bar := plain(a.placeTabBar(a.width, false, a.pal))
+	bar := navPlaces(a, a.width, false)
 	for _, digit := range "0123456789" {
 		if strings.ContainsRune(bar, digit) {
 			t.Fatalf("the bar wears a figure with nothing to count: %q", bar)
@@ -221,38 +221,41 @@ func TestNothingIsEverPutBackBecauseNothingRefuses(t *testing.T) {
 // placelaws_test.go, over every registered place at six widths — [tierPhone]
 // among them, which this one never reached for the four places it did not name.
 
-// THE TAB BAR GIVES UP WORDS IN A STATED ORDER RATHER THAN BEING CUT IN HALF. A
-// bar trimmed mid-word is a bar lying about how many places there are.
+// THE NAV FOLDS WORDS IN A STATED ORDER RATHER THAN BEING CUT IN HALF. A row
+// trimmed mid-word is a row lying about how many places there are.
 //
-// THE COUNT IS OF THE BAR'S OWN WORDS. The bar is four places (DESIGN.md's law
-// 10); a fold that counted the three reached by command would say `▸ 5` over a
-// bar that only ever had four to give up.
-func TestTheTabBarFoldsRatherThanBeingCut(t *testing.T) {
+// THE FOLD IS OF THE NAV'S OWN WORDS. The row is six places (DESIGN.md's law
+// 10); a fold that stood for the three reached by command would offer rooms
+// the row never had to give up.
+func TestTheNavFoldsRatherThanBeingCut(t *testing.T) {
 	a := placeApp(t)
 	shown := barPages(a.page, false)
-	wide := plain(a.placeTabBar(160, false, a.pal))
+	wide := navPlaces(a, 160, false)
 	for _, id := range shown {
 		if !strings.Contains(wide, id.word()) {
-			t.Fatalf("the wide bar is missing %q: %q", id.word(), wide)
+			t.Fatalf("the wide nav is missing %q: %q", id.word(), wide)
 		}
 	}
-	narrow := plain(a.placeTabBar(24, false, a.pal))
-	if ansi.StringWidth(narrow) > 24 {
-		t.Fatalf("the narrow bar runs past its frame: %q", narrow)
+	narrow := navPlaces(a, 40, false)
+	if ansi.StringWidth(plain(a.navLine(40, a.pal))) > 40 {
+		t.Fatalf("the narrow nav runs past its frame: %q", narrow)
 	}
 	// AND WHAT SURVIVES IS THE PLACE YOU ARE STANDING IN. Everything else is
-	// something you can still reach; this is the one fact the bar exists for.
+	// something you can still reach; this is the one fact the row exists for.
 	if !strings.Contains(narrow, a.page.word()) {
-		t.Fatalf("the narrow bar dropped the place you are on: %q", narrow)
+		t.Fatalf("the narrow nav dropped the place you are on: %q", narrow)
 	}
 	missing := 0
 	for _, id := range shown {
 		if !strings.Contains(narrow, id.word()) {
 			missing++
+			if !pagesHold(a.navMore.folded, id) {
+				t.Fatalf("%q left the narrow nav and is not behind `more`: %q", id.word(), narrow)
+			}
 		}
 	}
-	if want := tokens.GlyphCollapsed + " " + itoa(missing); missing == 0 || !strings.Contains(narrow, want) {
-		t.Fatalf("the narrow bar left %d of its four words off and should end in %q: %q", missing, want, narrow)
+	if missing == 0 || missing != len(a.navMore.folded) || !strings.HasSuffix(narrow, a.navMoreWord(a.pal)) {
+		t.Fatalf("the narrow nav left %d of its words off and should end in `more ▾` over them: %q, %v", missing, narrow, a.navMore.folded)
 	}
 }
 
@@ -313,7 +316,7 @@ func TestTheMapDrawsInTheCellsThatWereAlreadyThere(t *testing.T) {
 	// THE NUMBERS ARE ON THE TABS, and the three places off the bar are drawn
 	// after the six with theirs: the map is the one surface whose job is to show
 	// every key, so `alt+7`…`alt+9` are on it.
-	if bar := after[placeTabRow]; !strings.Contains(bar, "1 home") || !strings.Contains(bar, "2 teams") || !strings.Contains(bar, "3 chats") ||
+	if bar := after[navRow]; !strings.Contains(bar, "1 home") || !strings.Contains(bar, "2 teams") || !strings.Contains(bar, "3 chats") ||
 		!strings.Contains(bar, "6 settings") || !strings.Contains(bar, "7 standing") || !strings.Contains(bar, "9 search") {
 		t.Fatalf("the map put no numbers on the tab bar: %q", bar)
 	}
@@ -702,7 +705,7 @@ func TestATabWearsTheCountTheSeamGivesIt(t *testing.T) {
 		pageSpend.word():    9,
 		pageStanding.word(): 0,
 	}
-	bar := plain(a.placeTabBar(160, false, a.pal))
+	bar := navPlaces(a, 160, false)
 	if !strings.Contains(bar, "sessions 2") {
 		t.Fatalf("the tasks tab does not wear its count: %q", bar)
 	}
@@ -802,13 +805,13 @@ func TestTheNumbersOpenAPlaceFromTheConversationToo(t *testing.T) {
 // 10, with teams after home by the teams page ruling, c-2, and the chats third,
 // the owner's order). The ladder
 // that gives words up is for terminals narrower than any of these
-// ([app.placeTabBar]); at 80 columns and up nothing is dropped. Standing,
+// (topnav.go); at 80 columns and up nothing is folded. Standing,
 // memory and search are rooms reached by command, by their digit and by the
 // map — not words on the row a person reads a hundred times a day.
 func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	a := placeApp(t)
 	for _, width := range []int{80, 120, 200} {
-		bar := plain(a.placeTabBar(width, false, a.pal))
+		bar := navPlaces(a, width, false)
 		if !placeWordsInOrder(bar, "home", "teams", "chats", "sessions", "spend", "settings") {
 			t.Fatalf("at %d columns the bar is not the six places in order: %q", width, bar)
 		}
@@ -821,7 +824,7 @@ func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	// AND A ROOM OFF THE BAR IS ON IT WHILE YOU STAND IN IT. A bar with no word
 	// lit is a bar that does not know where you are.
 	walkTo(t, a, pageMemory)
-	if bar := plain(a.placeTabBar(120, false, a.pal)); !strings.Contains(bar, "settings    memory") {
+	if bar := navPlaces(a, 120, false); !strings.Contains(bar, "settings  memory") {
 		t.Fatalf("standing in memory, the bar does not say so: %q", bar)
 	}
 }

@@ -1,12 +1,13 @@
 package tui3
 
-// THE PULSE: THE ONE LINE AT THE TOP OF EVERY FRAME.
+// THE PULSE: THE FAR END OF THE LINE AT THE TOP OF EVERY FRAME.
 //
-//	codeaf          2 want you · 4 moving · $0.55 / $20.00 · tue 1:11pm
-//	codeaf                                  $0.55 / $20.00 · tue 1:11pm
+//	 >● codeaf   home  teams  chats …   2 want you · 4 moving · $0.55 / $20.00 · tue 1:11pm
+//	 >● codeaf   home  teams  chats …                     $0.55 / $20.00 · tue 1:11pm
 //
-// The program's name on the left, and right-aligned on the other end — quiet
-// unless it has a reason not to be — the machine's own vital signs. The first
+// The program's name and the places on the left (topnav.go), and right-aligned
+// on the other end, quiet unless it has a reason not to be, the machine's own
+// vital signs. The first
 // line is a conversation's and every place's; the second is home's, which leaves
 // its counts to the panels under it (DESIGN.md's law 11, [pulseBudget]). It is the
 // watch made visible (docs/HOME-BRIDGE.md): a person who has just sat down learns
@@ -50,7 +51,15 @@ package tui3
 //     sheds a word about the machine. (What this law used to say was "THE CLOCK
 //     ALWAYS DRAWS", and it was read as a width law as well as an emptiness law,
 //     which is how sixty columns came to spend twelve cells on `thu 12:01am`
-//     while the whole right end went unwritten — see [app.pulseRungs].)
+//     while the whole right end went unwritten.)
+//
+//   - THE LADDER IS THE NAV'S NOW (topnav.go's [app.navTails]). The line shares
+//     its row with the places, and the owner ruled the order the row gives
+//     things up in (2026-09-24): the clock, then the counts, then the places
+//     fold, and the day's figure is the last clause standing. This file used
+//     to rank `2 want you` last to go, on the argument that nothing else on
+//     the machine says it; a place's own rows and the strip's marks now say
+//     it on every page, and the places are how a person gets to them.
 //
 //   - THE ALLOWANCE IS A FRACTION HERE, AND THE OWNER OVERRULED THIS FILE TO PUT
 //     IT THERE. What stood here for four waves was the opposite law, and it read:
@@ -78,8 +87,6 @@ package tui3
 import (
 	"strings"
 	"time"
-
-	"github.com/charmbracelet/x/ansi"
 )
 
 // The words the pulse says, quoted in internal/manual/chat/home.md exactly as
@@ -124,110 +131,6 @@ const (
 	pulseBudget
 )
 
-// pulseLine is that line, painted, exactly `width` cells wide at most.
-//
-// THE NAME NEVER GIVES WAY TO THE SEGMENTS. A frame too narrow to hold both
-// draws the name alone: the segments are a glance somebody takes and the name is
-// what tells them which program they are looking at, and a top line that clipped
-// the second to fit the first would have got the order of those two backwards.
-//
-// AND THE SEGMENTS GIVE WAY ONE AT A TIME, BY RANK. This line used to be drawn
-// ALL OR NOTHING: everything, or the name alone. So a sixty-column frame — a
-// split pane, an ssh session from a train — spent twelve of its cells on
-// `thu 12:01am` and then, one segment later, threw the whole right end away and
-// said nothing about the machine at all. It walks [app.pulseRungs] now, which is
-// [rowfit.go]'s ranked-prefix law applied to this line: the widest rung that
-// fits is the one drawn, and what a narrow frame shows is a SUBSET of what a
-// wide one shows rather than a different line.
-func (a *app) pulseLine(width int, pal palette, mode pulseMode) string {
-	// THE NAME IS STRUCTURE, SO IT WEARS A QUIET ROLE. THE ACCENT BUDGET IS ONE
-	// THING PER SCREEN and it is always the live one — the row waiting on
-	// somebody, the work in flight, the card under the cursor. A product name is
-	// none of those: it is the same word on every frame home has ever drawn,
-	// which is the definition of a thing the eye learns to skip, and spending the
-	// loudest hue on it left home with two places claiming to be first.
-	//
-	// So it takes the second tier — one rung above the margin it shares the line
-	// with, so it still reads as the line's head — and keeps the WEIGHT, which is
-	// what says "this is the title" on a sixteen-colour terminal that has no rungs
-	// to spend.
-	// AND IT IS THE ONE NAME, READ OFF THE ONE CONSTANT (styles.go's [product]).
-	// This line used to hold a second spelling of its own (`pulseName`), which is
-	// how the surface came to greet a fresh install with one name in the wordmark
-	// and another in the prose under it.
-	name := " " + pal.wordmark(width)
-	for _, tail := range a.pulseRungs(a.now(), pal, mode) {
-		if tail == "" {
-			break
-		}
-		gap := width - ansi.StringWidth(name) - ansi.StringWidth(tail) - 1
-		if gap >= 1 {
-			return name + strings.Repeat(" ", gap) + tail
-		}
-	}
-	return name
-}
-
-// pulseRungs is every line the right end of the pulse is allowed to be, WIDEST
-// FIRST, and it is where this file's ranking is written down.
-//
-// ── THE RANK, AND THE ARGUMENT FOR IT ──
-//
-// From the top of the ladder down, the order things are given up in is: the
-// clock, then the day's ALLOWANCE, then the day's SPEND, then what is moving,
-// and the count of what has stopped on a person is the last thing on the line to
-// go. THE ARGUMENT IS ONE SENTENCE: the terminal's own bar, the window manager
-// and the wall clock all say what time it is, and nothing anywhere else on this
-// machine says that two pieces of work have stopped and will not move until
-// somebody looks — so a cell that could carry either carries the one that is
-// only available here, and the whole ladder falls out of ranking the segments by
-// how much a person could have learned that fact any other way.
-//
-// Within that, `2 want you` outranks `4 moving` because a thing that has stopped
-// needs a person and a thing in flight does not, which is the sort order of the
-// list underneath this line said again; and the spend outranks the allowance
-// because a figure is a fact and a fraction is that fact plus a bound, so the
-// bound is the half that can go while the clause still says something true.
-//
-// ── AND A DROPPED SEGMENT MAY NOT MAKE THE LINE LIE ──
-//
-// This is the constraint that shapes the money rungs. The allowance is dropped
-// by RESPELLING the money clause — `$0.55 / $20.00` becomes `$0.55`, which is
-// what this line said for four waves and is true — and the spend is dropped by
-// removing the clause whole, which leaves no `$` on the line at all. What must
-// never happen is a narrow frame drawing `$0.00`, or a `/ $20.00` with nothing
-// in front of it: either would be the line reporting a figure it had actually
-// given up on. (The ONE sanctioned `$0.00` on this surface is the live status
-// line of a conversation, so its segments do not jump sideways as money arrives
-// — that is what [dollars] returning `$0.00` at zero is for. It is not this
-// line, and this line never borrows the exception: the emptiness law keeps a
-// zero day off the pulse ([app.pulseParts]) and the ladder never puts one back.
-func (a *app) pulseRungs(now time.Time, pal palette, mode pulseMode) []string {
-	p := a.pulseParts(now, pal, mode)
-	rung := func(parts ...string) string {
-		var kept []string
-		for _, part := range parts {
-			if part != "" {
-				kept = append(kept, part)
-			}
-		}
-		return strings.Join(kept, pulseGap)
-	}
-	// The rungs, in the order the ladder is climbed down. Two neighbours can come
-	// out identical — a machine with no allowance set has one money spelling, a
-	// quiet day has none — and a rung that is the same string as the one above it
-	// simply fails the same measurement twice, which costs nothing and keeps the
-	// ladder readable as the list of decisions it is.
-	return []string{
-		rung(p.wants, p.hands, p.money, p.clock),
-		rung(p.wants, p.hands, p.money),
-		rung(p.wants, p.hands, p.spend),
-		rung(p.wants, p.hands),
-		rung(p.wants),
-		"",
-	}
-}
-
 // pulseSegments is what the right of the line says, in order and already
 // painted, with every segment that is not true left out.
 //
@@ -238,8 +141,8 @@ func (a *app) pulseRungs(now time.Time, pal palette, mode pulseMode) []string {
 // all three at once, which is why the design put them here — it is the whole
 // machine in four clauses.
 //
-// It is the TOP RUNG of [app.pulseRungs] and it is built out of the same pieces,
-// so the widest line this file can draw and the line the ladder starts from can
+// It is the TOP RUNG of the nav's ladder ([app.navTails]) and it is built out of
+// the same pieces, so the widest line and the line the ladder starts from can
 // never come to disagree about how a segment is spelled.
 func (a *app) pulseSegments(now time.Time, pal palette) []string {
 	p := a.pulseParts(now, pal, pulseWhole)
@@ -254,7 +157,7 @@ func (a *app) pulseSegments(now time.Time, pal palette) []string {
 
 // pulseParts is every clause the top line can carry, each already painted and
 // each "" where the emptiness law says it is not true. It is ONE FUNCTION rather
-// than two so that [app.pulseSegments] and [app.pulseRungs] cannot drift.
+// than two so that [app.pulseSegments] and [app.navTails] cannot drift.
 //
 // `money` and `spend` are the two spellings of one clause — the fraction and the
 // figure — and they are the ladder's way of giving up the allowance without

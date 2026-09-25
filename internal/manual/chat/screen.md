@@ -61,9 +61,10 @@ a room in the machine.
 While any of them is up nothing else is drawn — no conversation, no box, no status line —
 and `esc` gives the frame back. **Only one is ever up:** opening any one closes the rest.
 
-Every place is drawn in one frame, top to bottom: the machine's own top line, the tab bar
-naming the four (and the one you stand in, when it is off the bar), a dim rule, the place's body, a rule carrying the place's own count or note, and
-the hint line last. See the **Places** page.
+Every place is drawn in one frame, top to bottom: the top line (the `codeaf` wordmark, the
+six places with the one you stand in lit, and the machine's own signs on the far end), the
+tab strip of your chats, a dim rule, the place's body, a rule carrying the place's own count
+or note, and the hint line last. See the **Places** page.
 
 **Only home has a box under that rule.** Its seam starts with the model, a colon and
 its effort word and approvals, with the project at the far right:
@@ -96,16 +97,19 @@ while preserving the content's indentation.
 
 ## Conversation tabs — switching conversations by clicking, the tab strip over a chat, clicking a chat name
 
-**The header begins with Home and the conversations this window has been in**, drawn as
-tabs in a row of their own, with a thin rule separating navigation from reading:
+**The header's second line is the conversations this window has been in**, drawn as tabs
+in a row of their own under the top line, with a thin rule separating navigation from
+reading. The strip is on every page, a place included:
 
 ```
-  Home    openrouter price scrape    Refactor the rail sco…    [Shipping the parser] ×  +    +2
+ >● codeaf   home  teams  chats  sessions  spend  settings            $1.20  thu 10:31pm
+   openrouter price scrape    Refactor the rail sco…    [Shipping the parser] ×  +   ▦ All   +2
   ────────────────────────────────────────────────────────────────────────────────────────
 ```
 
-While a team is shown its chip, `● harbor ▾`, comes right after `Home` and before the tabs it
+While a team is shown its chip, `● harbor ▾`, comes first on the strip, before the tabs it
 narrows, with the team's `◆ Manager` after it (see *The team switcher on the tab strip*).
+On a place no tab is lit, and a press on a tab opens that chat.
 
 Each tab is a **padded target** separated by quiet space. The filled surface includes
 one blank cell before its status icon and after its close mark; the leading inset
@@ -179,14 +183,14 @@ door that had to close the conversation to leave it.
 ## Why did my tabs disappear on a small terminal — how wide and tall the tab bar needs
 
 **The tab strip stands down below 12 columns or below 16 rows.** At 16 rows and taller,
-the conversation keeps the same four-row head as every place: the machine pulse, the tabs,
-a rule, and a blank. From 6 through 15 rows the whole head stands down, while the blank and
+the conversation keeps the same four-row head as every place: the top line with the places
+and the machine pulse, the tabs, a rule, and a blank. From 6 through 15 rows the whole head stands down, while the blank and
 rule above the message box remain. Below 6 rows those give way too, leaving the conversation,
 the box, and the status line. Blank rows cannot activate the content beneath them.
 
-**Home at the left opens the home page**, keeping your conversation and unsent words.
-It is separate from the tabs and breadcrumbs. Escape backs out to Home. Home disappears when the connection cannot open conversations, and on
-very narrow frames the current tab takes priority.
+**`home`, the first place on the top line, opens the home page**, keeping your
+conversation and unsent words. It is separate from the tabs and breadcrumbs, and it is on
+the top line of every page. Escape backs out to Home.
 
 The switcher floats on a separate background inside a rounded outline, with space
 above and below its contents when the window is tall enough. `>` marks the keyboard
@@ -1366,39 +1370,35 @@ On top of those eight: preview blocks under a pending call are capped at 4 rows 
 
 ## What the top line of home drops when it is narrow — the clock goes first
 
-Home's top line is the program's name on the left and the machine's vital signs on the
-right:
+The top line is the program's name and the places on the left, and the machine's vital
+signs on the right:
 
 ```
- codeaf          2 want you · 4 moving · $0.55 / $20.00 · thu 1:11pm
+ >● codeaf   home  teams  chats  sessions  spend  settings   2 want you · 4 moving · $0.55 / $20 · thu 1:11pm
 ```
 
-When there is not room for all of it, the segments give way **one at a time, in a fixed
-order**, exactly the way the status line's do:
+When there is not room for all of it, things give way **one at a time, in a fixed order**
+(the owner's order, 2026-09-24):
 
 ```
-clock → the allowance ($20.00) → the day's spend → moving → want you
+clock (and `on <machine>`) → moving → want you → the allowance → the places fold into `more ▾` → the day's spend
 ```
 
-So the clock is the first thing off the line and `2 want you` is the last. The reason is
-one sentence: the terminal's own bar, the window and the wall clock all say what time it
-is, and nothing anywhere else says that two things have stopped and will not move until
-you look — a cell that could carry either carries the one you can only get here. Within
-that, `want you` outranks `moving` because a stopped thing needs you and a moving one does
-not, and the day's spend outranks the allowance because a figure is a fact and a fraction
-is that fact plus a bound.
+So the clock is the first thing off the line, the counts go next, and the places fold only
+after that, into a `more ▾` word that opens a menu of exactly the places it folded. The
+day's figure is the last clause standing. Within the counts, `moving` goes before
+`want you` because a stopped thing needs you and a moving one does not; a stopped thing
+still wears its amber mark on its own tab in the strip under the line.
 
-**The allowance goes by respelling, not by slicing.** `$0.55 / $20.00` becomes `$0.55` —
+**The allowance goes by respelling, not by slicing.** `$0.55 / $20` becomes `$0.55`,
 never `$0.55 /` and never a bound with nothing in front of it. And when the money segment
 goes entirely there is **no `$` left on the line at all**: a narrow top line never says
 `$0.00`, because that would be the line reporting a figure it had actually given up on.
 (The one `$0.00` on the whole surface is the live status line of a conversation, so its
 segments do not jump sideways as the first money arrives. It is a different line.)
 
-**The name never gives way.** A window too narrow even for `2 want you` beside it draws
-` codeaf` alone. This used to be all-or-nothing — everything, or the name by itself — so a
-sixty-column window spent twelve cells on `thu 12:01am` and then, one segment later, said
-nothing about the machine whatsoever.
+**The name and the place you are standing in never give way.** Nor does the air: two blank
+cells between two place words and one at each end of the line, at every width.
 
 ## Other width thresholds worth knowing
 

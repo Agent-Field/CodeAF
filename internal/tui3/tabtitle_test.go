@@ -10,11 +10,11 @@ func TestTabHoverRevealsFullTitleWithoutMovingTargets(t *testing.T) {
 	a.title = "Shipping the parser with complete unicode support"
 	a.tabsRow(a.width)
 	span := tabSpanFor(t, a, a.title)
-	a.hot, _ = a.tabHoverAt(span.from, placeTabRow)
+	a.hot, _ = a.tabHoverAt(span.from, tabStripRow)
 	before := a.tabsRow(a.width)
 	frame := strings.Repeat(strings.Repeat(" ", a.width)+"\n", a.height-1)
 	rows := strings.Split(frame, "\n")
-	rows[placeTabRow] = before
+	rows[tabStripRow] = before
 	frame = strings.Join(rows, "\n")
 	shown := a.tabTitlePreview(frame)
 	if !strings.Contains(plain(shown), a.title) {

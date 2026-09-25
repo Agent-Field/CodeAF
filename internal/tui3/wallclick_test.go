@@ -224,7 +224,7 @@ func TestTabTeamChipNamesTheShownTeam(t *testing.T) {
 			t.Fatalf("a tab was drawn under the chip: %+v", hit)
 		}
 	}
-	if _, took := a.tabPress(a.wall.chip.from+1, placeTabRow); !took || !a.teamMenu.on || a.wall.on {
+	if _, took := a.tabPress(a.wall.chip.from+1, tabStripRow); !took || !a.teamMenu.on || a.wall.on {
 		t.Fatal("the chip did not open the team switcher")
 	}
 	t.Logf("%q", row)

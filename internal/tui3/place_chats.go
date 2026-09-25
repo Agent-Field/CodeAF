@@ -31,9 +31,11 @@ type placeChats struct{ placeBase }
 
 func init() { registerPlace(placeChats{}) }
 
-func (placeChats) id() page             { return pageChats }
-func (placeChats) word() string         { return "chats" }
-func (placeChats) cursorAt(a *app) int  { return 0 }
+func (placeChats) id() page            { return pageChats }
+func (placeChats) word() string        { return "chats" }
+func (placeChats) cursorAt(a *app) int { return 0 }
+func (placeChats) about() string       { return "every conversation, one at a time" }
+
 func (placeChats) hint(a *app) string   { return "back to your chats" }
 func (placeChats) open(a *app) tea.Cmd  { return nil }
 func (placeChats) enter(a *app) tea.Cmd { return a.goChats() }

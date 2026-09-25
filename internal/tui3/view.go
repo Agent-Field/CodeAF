@@ -273,6 +273,9 @@ func (a *app) frame() (string, int, int) {
 	// The strip's team switcher hangs over whatever page is drawn under it
 	// (teammenu.go); the frame as it was when it is down.
 	body = a.teamMenuOver(body)
+	// And the nav's fold menu hangs under `more ▾` on the same terms
+	// (navmore.go).
+	body = a.navMoreOver(body)
 	// The teams page's members card hangs over its pane (teamcrew.go), a
 	// team's card (teamsheet.go) over whatever is drawn under it, and the move
 	// picker (teammove.go) over both, since the card opens it.
@@ -286,6 +289,14 @@ func (a *app) frame() (string, int, int) {
 // one composition pass [app.frame] puts over the whole of it.
 func (a *app) frameBody() (string, int, int) {
 	a.inlineWaitShowing = false
+	// AND THERE IS NO NAV UNTIL A FRAME DRAWS ONE. Every frame with a head goes
+	// through [app.headRows], which records the row it put the nav on; the
+	// frames that do not (home's phone inbox and sheet, the task record card, a
+	// conversation under the strip's floors) draw something else in those cells
+	// entirely, and a press resolved against the last nav this window happened
+	// to paint would open a place for a click on a rule (topnav.go's
+	// [app.navPress]).
+	a.tabRow = -1
 	width, height := a.size()
 	if a.pasteEdit.open {
 		return a.pasteEditorFrame(width, height)
@@ -305,13 +316,6 @@ func (a *app) frameBody() (string, int, int) {
 		lines := a.workTabFrame(width, height)
 		return strings.Join(lines, "\n"), 2, max(len(lines)-1, 0)
 	}
-	// AND THERE IS NO TAB BAR UNTIL A FRAME DRAWS ONE. Every place goes through
-	// [placeFrame], which records the row it put the bar on; the frames that do
-	// not — home's phone inbox and sheet, the task record card — draw something
-	// else in those cells entirely, and a press resolved against the last bar
-	// this window happened to paint would open a place for a click on a rule
-	// (placemouse.go's [app.placeTabPress]).
-	a.tabRow = -1
 	// THE FIRST-RUN SETUP IS DECIDED BEFORE EVERY OTHER FULLSCREEN SURFACE,
 	// because it is the one that may be open before any of them exists and it
 	// goes away to reveal whichever of them was decided underneath (firstrun.go).

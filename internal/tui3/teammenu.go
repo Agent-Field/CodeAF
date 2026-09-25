@@ -439,7 +439,7 @@ func (a *app) teamMenuCard(width, height int) wallCard {
 	const padX = 1
 	w := inner + 2 + 2*padX
 	h := len(lines) + 2
-	top := placeTabRow + 1
+	top := tabStripRow + 1
 	if w > width-2 || top+h > height {
 		return wallCard{}
 	}

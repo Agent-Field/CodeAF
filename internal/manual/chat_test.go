@@ -75,6 +75,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"open a member's chat at the message it answered from the traffic", "team-manager"},
 		{"what does chats on the tab bar do", "places"},
 		{"how do I get back to my conversation from a place", "places"},
+		// The places moved onto the top line and the strip is on every page
+		// (places.md, topnav.go).
+		{"where did the places go", "places"},
+		{"what does more on the top line do", "places"},
+		{"why are my chat tabs showing on the home page", "places"},
 		{"can I use my own deepseek key", "services"},
 		{"how do I connect glm", "services"},
 		{"how do I add an api key for another provider", "services"},

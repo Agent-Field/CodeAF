@@ -14,7 +14,8 @@ Open it any of these ways:
 - `/wall`
 - `chats` or `▦` at the right end of the row under the message box, drawn once a
   second conversation is open (the word goes first when the row is narrow)
-- `▦ All` on the tab strip, after the new-chat `+` (just `▦` on a narrow window)
+- `▦ All` on the tab strip, after the new-chat `+` (just `▦` on a narrow window). The strip
+  is the second line of every page, a place included, so `▦ All` is always one press away
 
 Close it with `alt+v` again, `esc`, the `‹ Back` button at the bottom left, or a press on
 the strip's `▦ All`. Nothing you do in the view ends any work: closing a tile closes its
@@ -31,9 +32,13 @@ shown, and at the bottom a toolbar with `Filter /`,
 `New team s`, `Columns − +` and `Help ?`. While the pointer rests on any control, the middle
 of the toolbar says in one dim line what it does and which key does the same; on a narrow
 window `Columns` and the other buttons step aside for that line so it is always whole, and
-come back when the pointer leaves. Pointing at `▦ All` says `Every open conversation, and your
-teams · alt+v`; pointing at a square of the chats dock under the box names that conversation
-(see below).
+come back when the pointer leaves. Pointing at `▦ All` says `The grid of your open tabs, and
+your teams · alt+v`; pointing at a square of the chats dock under the box names that
+conversation (see below).
+
+**`▦ All` and the `chats` place are two different doors.** `chats` on the top line is the
+place: every conversation, one at a time, with the tab strip over it. `▦ All` is this view:
+the tabs this window has open, all at once, as a grid.
 
 ## The chats dock under the message box
 
@@ -46,7 +51,7 @@ while it is idle. Amber is only for waiting on you. One open conversation draws 
 Rest the pointer on a square and that square takes the hover ground. The hint line says
 `Go to Shipping the parser · running · click`, with `waiting on you` or `idle` in the
 middle. On the square in front it says `Shipping the parser · you are here`. On `chats`
-or on `▦` it says `Every open conversation, and your teams · alt+v`, the same as `▦ All`.
+or on `▦` it says `The grid of your open tabs, and your teams · alt+v`, the same as `▦ All`.
 
 A press on a square goes to that conversation and does not open this view. A press on
 `chats` or on `▦` opens the conversations view, the same as `alt+v`. A press on the
@@ -218,16 +223,16 @@ change; it can still be pressed.
 
 ## The team switcher on the tab strip
 
-While a team is shown, the tab strip carries a chip naming it, `● harbor ▾`, right after
-`home` and right before the tabs it narrows, with the manager's place after it:
+While a team is shown, the tab strip carries a chip naming it, `● harbor ▾`, first on the
+strip and right before the tabs it narrows, with the manager's place after it:
 
 ```
-  home   ● harbor ▾   ◆ Manager ×   Refactor the rail sco… ×   openrouter price scrape ×   +   ▦ All
+   ● harbor ▾   ◆ Manager ×   Refactor the rail sco… ×   openrouter price scrape ×   +   ▦ All
 ```
 
-`home` is a fixed door and stands first; the chip is a filter over the tabs, so it sits with
-them. When the row runs short `home` is the first to go, then the chip, and never the tab in
-front. With teams but none shown, the chip is a quiet `teams ▾`; with no teams at all there
+The chip is a filter over the tabs, so it sits with them. There is no `home` on the strip:
+home is the first place on the top line, over the strip, on every page. When the row runs
+short the chip goes, and never the tab in front. With teams but none shown, the chip is a quiet `teams ▾`; with no teams at all there
 is no chip. A press on the
 chip opens the **team switcher** under it, on any page the strip is on, the conversations view
 included:

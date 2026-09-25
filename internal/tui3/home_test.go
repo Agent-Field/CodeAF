@@ -259,6 +259,17 @@ func homeText(a *app) string {
 	return ansi.Strip(strings.Join(lines, "\n"))
 }
 
+// homeBodyText is [homeText] under the head. THE STRIP OF CHATS IS ON EVERY
+// PAGE (head.go), so a conversation's name stands on it over home as well as
+// on home's own rows, and a test about what home's rows list reads these.
+func homeBodyText(a *app) string {
+	lines := strings.Split(homeText(a), "\n")
+	if len(lines) > placeHeadRows {
+		lines = lines[placeHeadRows:]
+	}
+	return strings.Join(lines, "\n")
+}
+
 // homeCardNow is the detail column exactly as it stands, without moving the
 // cursor and without widening anything.
 //
@@ -605,7 +616,7 @@ func TestTypingFiltersLiveWhileTheComposerStaysTheDefault(t *testing.T) {
 	for _, r := range "pricing" {
 		a.homeKey(key(string(r)))
 	}
-	text := homeText(a)
+	text := homeBodyText(a)
 	if !strings.Contains(text, "Pricing Research") {
 		t.Fatalf("the query lost the conversation it should have found:\n%s", text)
 	}
@@ -1228,7 +1239,7 @@ func TestAQueryMatchesWhatATaskCameTo(t *testing.T) {
 	for _, r := range "postgres" {
 		a.homeKey(key(string(r)))
 	}
-	text := homeText(a)
+	text := homeBodyText(a)
 	if !strings.Contains(text, "Wednesday") {
 		t.Fatalf("a query over what the work came to found nothing:\n%s", text)
 	}
@@ -1417,7 +1428,7 @@ func TestHomeMarksARowWhoseFolderIsGoneWhereverItsAddressIsDrawn(t *testing.T) {
 	a.openHome()
 
 	// AT REST: THE ROW'S OWN MARGIN.
-	for _, line := range strings.Split(homeText(a), "\n") {
+	for _, line := range strings.Split(homeBodyText(a), "\n") {
 		if strings.Contains(line, "A Project That Moved") && !strings.Contains(line, homeGoneShort) {
 			t.Fatalf("the resting row does not say %q:\n%s", homeGoneShort, homeText(a))
 		}

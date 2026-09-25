@@ -914,7 +914,9 @@ func (placeStanding) rowID(a *app) string  { return a.orders.rowID() }
 func (placeStanding) window(a *app, key string) (bool, tea.Cmd) {
 	return a.orders.window(a, key), nil
 }
-func (placeStanding) note(a *app, width int) []string     { return a.orders.note(a, width) }
+func (placeStanding) note(a *app, width int) []string { return a.orders.note(a, width) }
+func (placeStanding) about() string                   { return "the standing orders" }
+
 func (placeStanding) hint(a *app) string                  { return a.orders.hint(a) }
 func (placeStanding) changed(a *app, since time.Time) int { return a.orders.changed(a, since) }
 

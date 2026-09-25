@@ -922,9 +922,13 @@ func (a *app) wallMotion(x, y int) {
 	a.wall.ptrX, a.wall.ptrY, a.wall.ptrIn = x, y, y >= a.wall.headRows
 	if y < a.wall.headRows {
 		a.wallSetHover(wallHitRef{})
+		// The nav is on the head's first row here as on every page
+		// (topnav.go).
+		a.navHover(x, y)
 		a.setHover(x, y)
 		return
 	}
+	a.navHover(x, y)
 	if a.hot != (hoverAt{}) {
 		a.hot = hoverAt{}
 		a.touch()
