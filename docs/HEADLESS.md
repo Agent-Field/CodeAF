@@ -41,7 +41,7 @@ work done.
 | `--keep` | off | Keep the private store instead of deleting it; the path is printed to stderr. |
 | `--timeout D` | `15m` | Hard wall, as a duration with a unit: `5m`, `2h`, `90s`. A bare number is still read as seconds for one release, so `--timeout 900` keeps working. A wall, not a schedule — the length of rope at which a wedged run is more useful dead. |
 | `--json` | off | Print one machine-readable object instead of the prose deliverable. |
-| `--yes-spend` | off | Spend past today's limit and past the plan-price question, without stopping to ask. The same flag with the same one sentence on `codeaf plan run`. Equivalent to `CODEAF_PREAUTHORIZE_SPEND=1`. |
+| `--yes-spend` | off | Spend past today's limit and past the plan-price question, without stopping to ask. The same flag with the same one sentence on `codeaf plan run`. Equivalent to `CODEAF_PREAUTHORIZE_SPEND=1`. It does not lift the per-task limit (`/crew cap task`, $5 unless set). |
 | `--model slug` | the ladder below | The worker for this run — a one-task pin. |
 | `--plan-model slug` | the ladder below | The planner for this run — a one-task pin: plans, replans, writes contracts, and runs the delivery gate. |
 | `--check-model slug` | the ladder below | The checker for this run — a one-task pin. It never inherits the planner. |
@@ -175,6 +175,11 @@ estimate — `$0.021 (est $0.023)`.
 the daily cap of $5.00 · raise it with `/crew cap`, run with --cheap, or pass
 -yes-spend` — and `--yes-spend` is the one way past. The other doors warn on
 stderr and go on.
+
+**The per-task limit.** Every run is held to the most one task may spend, $5
+unless `/crew cap task` set another. A call that would take the run past it is
+not made, and the run stops on `this task reached its $5 limit · raise it in
+/crew`. `--yes-spend` does not lift it.
 
 so a campaign can verify what actually ran instead of trusting the shell it
 launched from. `do --json` carries the same facts as fields.

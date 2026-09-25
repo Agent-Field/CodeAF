@@ -405,7 +405,10 @@ stay what `/crew` last set.
 today's crew spend has reached the daily cap of $5.00 · raise it with `/crew cap`, run with --cheap, or pass -yes-spend
 ```
 
-`-yes-spend` is the one way past it. The other headless doors — `exec`, `run`, `plan run` —
+`-yes-spend` is the one way past it — past the daily cap, never past the per-task limit.
+**Every run is held to the per-task limit**, $5 unless `/crew cap task` set another: a call
+that would take the run past it is not made, and the run stops on
+`this task reached its $5 limit · raise it in /crew`. The other headless doors — `exec`, `run`, `plan run` —
 are a person at a terminal running one thing, so they **warn and go on**:
 `note: today's crew spend has reached the daily cap · this run goes ahead; `codeaf do` would have stopped`.
 

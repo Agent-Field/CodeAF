@@ -151,7 +151,7 @@ repository.
 
 One session, many models. The model you talk to is one seat. Every task you hand
 off runs on a crew of three more, picked for that task from what kind of work it
-is — a bug fix, open-ended work, or something else:
+is — a bug fix, a complex fix, open-ended work, or something else:
 
 | seat | what it does |
 | --- | --- |
@@ -159,8 +159,11 @@ is — a bug fix, open-ended work, or something else:
 | planner | plans runs and designs subharnesses |
 | checker | checks finished work before it lands |
 
-The crew is auto by default. `/crew` shows it, with today's spend against a daily
-cap; `/crew pin checker <model>` pins one seat, `/crew models open` limits every
+The crew is auto by default. Each seat is scored from its catalog metadata by
+learned weights, moved by how this install's own tasks ended, over every model your
+connected providers serve. `/crew` shows it: the seats, the allowed models, the
+providers, a per-task limit ($5 unless set) and an optional daily cap, and today's
+spend. `/crew pin checker <model>` pins one seat, `/crew models open` limits every
 seat to open-weight models, and `/task --best` or `/task --cheap` moves one task.
 Each task says its crew and what it cost against the estimate, and `/redo
 stronger` runs it again a step up. Two cheap rows, reflex and small work, take

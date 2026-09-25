@@ -471,11 +471,12 @@ and only when nothing answers, the conversation model.
 The crew is three seats: the **worker** that does the work, the **planner** that
 structures it, and the **checker** that reads the result. **By default all three are auto.**
 codeaf picks each seat for each task: it reads what kind of work the task is — a
-**bugfix**, **open-ended** work, or **other** — and picks the model for each seat from what
-its catalog row says about it, weighed against what the model costs. Every model the catalog
-lists is a candidate, frontier models included. A model that publishes any index — the
-intelligence, coding or agentic index, or an arena rating — is scored on those alone, through
-fitted weights, for that seat on that kind of work; price never counts as ability, so a model
+**bugfix**, a **complex fix**, **open-ended** work, or **other** — and picks the model for
+each seat from what its catalog row says about it, weighed against what the model costs.
+Every model a connected provider serves is a candidate, frontier models included, as long
+as the allowed models admit it. A model that publishes any index — the intelligence, coding
+or agentic index, or an arena rating — is scored on those alone, through learned weights
+that ship with codeaf, for that seat on that kind of work; price never counts as ability, so a model
 no dearer than another and at least as good on every index they both publish is never ranked
 below it. A model that publishes none is scored from its context, release date, licence and
 family, never above the average model, and less surely. Each seat weighs a model a little
@@ -494,9 +495,10 @@ simply the cheapest model: their score must reach the ability of the weakest mod
 the work, whenever an allowed model's does, and `--cheap` takes a clearly stronger worker when
 it costs no more than half again as much. A fix whose report shows **reach** —
 more than one file, an API or protocol, language rules, a long report or several repros,
-existing tests that must keep passing, two of these at least — gets its worker one rung
-stronger than a one-line fix would; its planner and checker are the fix's own, the line
-still says bugfix, and a worker you pinned stays pinned. An issue's own labels count most:
+a security defect, existing tests that must keep passing, two of these at least — is a
+**complex fix**: its worker is one rung stronger than a simple fix's; its planner and
+checker are the fix's own, the line still says bugfix, and a worker you pinned stays
+pinned. An issue's own labels count most:
 a `bug` label in any spelling (`bug :bug:`, `type/bug`) makes the task a bugfix. The price is the one you
 would actually pay: a model you reach through a subscription plan you connected costs
 nothing extra, and a local model costs nothing at all, so the crew prefers those routes
@@ -523,14 +525,15 @@ can change and one line about the day.
 │                                                                     │
 │  models    ‹ all › (96)                                             │
 │  providers ✓ openrouter  ✓ z-ai sub  ✓ ollama local  ○ my-vllm  +   │
-│  cap       none                                                     │
+│  cap       per task $5 · daily none                                 │
 │                                                                     │
 │  today $1.84 · 14 tasks                                             │
 ╰─ enter change · esc close · ? keys ─────────────────────────────────╯
 ```
 
-- **the seats** — `auto · usually <model>` for a seat codeaf picks, naming the model recent
-  tasks ran there most (`likely` before there is any history); or the pin mark `⌖` and the
+- **the seats** — `auto · usually <model>` for a seat codeaf picks, naming the model the
+  recent tasks — the last eight — ran there most (`likely` before there is any history,
+  and whatever the router would pick now when the usual model is no longer reachable); or the pin mark `⌖` and the
   model, with `@provider` when a route is pinned too. A pin nothing connected can run says
   `unavailable`.
 - **models** — which models a seat may be picked from, walked with `←`/`→` in place:
@@ -540,7 +543,8 @@ can change and one line about the day.
   its plain name, a subscription says `sub`, a model on this machine says `local` when there
   is room, and a custom endpoint is the name you gave it. The `+` at the end opens
   `/connect`. On a narrow window the chips fold to `3 of 4 on`.
-- **cap** — the most crews may spend in a day, `none` for no cap.
+- **cap** — `per task $5 · daily none`: the most one task may spend, and the most crews
+  may spend in a day, `none` for no daily cap.
 - **today** — what crews spent today and how many tasks ran. A day with nothing in it has
   no line.
 
@@ -779,6 +783,27 @@ dearer one. A task that ran on an account out of credit and failed ends on the c
 not on `/redo stronger`. A free pool can be pinned by name —
 `/crew pin worker vendor/model:free` — and picking a model's `free` route in a seat's
 list pins that pool, not the paid route beside it.
+
+### Route health
+
+**What each route did is kept, and the next pick reads it.** Every seat's first call is
+logged with how it ended, and routes are weighed by it:
+
+- a route that **refused a model** outright — no such model, not allowed on this key — is
+  left out for a week;
+- a route **at its rate limit** rests until the reset it gave;
+- a route that **fails often** is weighed at what those failures cost, so a cheaper route
+  that rarely answers can lose to a dearer one that does;
+- an **account out of credit** or a **key refused** is skipped by helpers, and the next
+  task's first seat call asks it again, once: an answer puts it back at once;
+- an **OpenRouter balance read as low** (*OpenRouter credits and free models*) counts as out
+  of credit before any call is made and is not asked again by a task: with no other paid
+  provider connected, the crew goes to free routes and the line says
+  `free routes in use (may log prompts) · credit unavailable on openrouter`. The balance is
+  read again at every launch while it is low, so a top-up puts routing back to ordinary.
+
+Helper calls — summaries, briefs, a landing's answer — never go to a route health says will
+not answer: they are handed the router's own pick for the seat, or its rescue, instead.
 
 ### Redo stronger
 

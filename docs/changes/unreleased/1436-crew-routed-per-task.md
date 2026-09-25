@@ -13,11 +13,13 @@ invalidates:
   - "The settings rows for the working, careful and planning tiers are one `seats` row that opens the `/crew` panel. The `crew`, `model family` and `picked from` rows are gone."
   - "`codeaf do`'s `model_source`/`plan_model_source` read `crew <preset>` or `default`. They read `--model`, the variable, `pinned` or `routed`, and `-json` also carries `class`, `crew`, `est_usd`, `check_model` and `check_model_source`."
   - "A task carried no dollar limit of its own, and the Spending tab's `per task` row read `no limit of its own`. A task is held to the per-task limit set in `/crew` ($5 by default), and the row reads that figure."
+  - "On an OpenRouter balance read as low, the five tier rows nobody set read a hand-picked free crew and `/status` called that crew `free`. Only reflex and small work read free models now; the three crew seats see the OpenRouter account as out of credit before any call and are routed to free pools, and the crew line says `free routes in use (may log prompts) · credit unavailable on openrouter`."
   - "Remote protocol version 17 is replaced by 18: `Task.Start` carries the one-task effort word and `Task.RedoStronger` runs a task again on a stronger crew. An older engine refuses at the handshake rather than starting the task on the crew the person asked it not to use."
 ---
 A task's crew — the worker that does the work, the planner that structures it
 and the checker that reads the result — is picked for that task. The router
-classifies the task as a narrow fix, open-ended work or other, prices every
+classifies the task as a bugfix, a complex fix (a bugfix whose report shows
+reach), open-ended work or other, prices every
 allowed model on every connected route (a subscription plan or a local model
 costs nothing to route to), and sits each seat where quality minus λ times cost
 is highest, λ at the knee of the curve. `--best` and `--cheap` (on `/task`, on
@@ -68,7 +70,8 @@ and the task stops on `this task reached its $5 limit · raise it in /crew`.
 **Redo is how a crew learns.** `/redo stronger` runs the last task again with
 every unpinned seat one step stronger, and the router's log records that this
 class of work in this repository was under-served, so the next such task starts
-a step higher; five accepted tasks take the step back off. Nothing escalates on
+a step higher, at most three steps; each accepted task of that kind takes a
+step back off. Nothing escalates on
 its own.
 
 **Old profiles migrate once**, with one line: preset, pick and `auto` rows

@@ -189,6 +189,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/crew` | — | `unpin <seat\|all>` | puts a seat back on auto |
 | `/crew` | — | `models <rule>` | which models a seat may be picked from — `all`, `open`, `≤in/out`, ids |
 | `/crew` | — | `cap <dollars\|off>` | the most tasks' crews may spend in a day |
+| `/crew` | — | `cap task <dollars>` | the most one task may spend — $5 unless set; `-yes-spend` does not lift it |
 | `/task` | — | — | opens the full-screen task page — the same page as `/history` and ctrl+. |
 | `/task` | — | `<brief>` | starts one worker at once; its brief is written and its width read beside it, and wide work splits |
 | `/task` | — | `solo <brief>` | starts one worker at once, with no reading of its width |

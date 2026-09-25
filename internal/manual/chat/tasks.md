@@ -4254,7 +4254,8 @@ nobody had measured: idle on a sixteen-core box, one too many on a laptop alread
 
 Every task runs on a **crew** of three seats — the worker, the planner and the checker —
 and unless you pinned a seat, codeaf picks each one for that task from what kind of work
-it is: a bug fix, open-ended work, or something else. The panel is `/crew`; the whole story
+it is: a bug fix, a complex fix, open-ended work, or something else. On open-ended work the
+extra money goes to the checker first. The panel is `/crew`; the whole story
 is on the models page. What you say about **one** task is two words:
 
 - **`/task --best <brief>`** — the strongest crew the allowed models make, for this task.
