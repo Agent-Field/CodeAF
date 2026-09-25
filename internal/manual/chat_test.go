@@ -799,6 +799,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I open my tasks on a phone", "tasks"},
 		{"how do I get back from a task on my phone", "tasks"},
 		{"do tasks touch my working copy", "how-tasks-run"},
+		// The run's checker is told the work is in its own copy; a person who
+		// saw it read their checkout asks in these words.
+		{"did the checker read my checkout instead of the task's copy", "how-tasks-run"},
+		{"can a task stop a job it started", "how-tasks-run"},
 		// C14: repository placement, protected landings and kept dependency
 		// inheritance are reachable in the words a person uses after meeting them.
 		{"why didn't my task merge", "how-tasks-run"},
