@@ -91,28 +91,29 @@ top. Every row reads who it is from and who it is for, then the words:
 
 ```
 Tasks 14 · Traffic 8                 alt+l
-? @model → ◆  keep the old schema?
+? @model → ◆  keep the old schema?  3m
 ✕ parser bench incomplete
 ──────────────────────────────────────────
-◆ → @scrape +2  Please provide a st…   ▸
-◆ → @model      Refactor the rail…     ▾
-  ↳ @model → ◆  ✓ done, 3 files changed
-  ↳ @model → ◆  working…
-General                     2 msgs     ▸
+◆ → @scrape +2  Please provide a st… ▸ 2m
+◆ → @model      Refactor the rail…  ▾ 1h
+  ↳ @model → ◆  ✓ done, 3 files…      4m
+  ↳ @model → ◆  working…              now
+General                     2 msgs   ▸ 1d
 ```
 
 - A row is a thread (below): `◆ → @scrape +2` is the manager to the first member, and `+2`
   for the ones that do not fit, then what it said. The state its answers leave it in
   (`running`, `asking`, `done`, `failed`) and how many messages it holds sit at the right
-  when they fit, and the hint line always says them. The age is not on the row at any width.
-  Pointing at the row says the age on the hint line, and the band's questions do the same.
-  In a narrow column the arrow and the names stay, and only the words are cut, at a word,
-  with `…`.
+  when they fit, and the hint line always says them. How long ago sits at the right of
+  every row, dim: `now`, `2m`, `3h`, `1d`, the same words a task row uses. The band's
+  questions carry it too. In a narrow column the arrow and the names stay, then the age,
+  and only the words are cut, at a word, with `…`.
 - `▸` lays the thread's replies open under it, one `↳` line per member, each `from → to`
-  the same way (`↳ @model → ◆  ✓ done, 3 files changed`): `✓` on an answer from a member
+  the same way (`↳ @model → ◆  ✓ done, 3 files changed  4m`): `✓` on an answer from a member
   that finished its turn, `✗` for one that failed, `working…` for a member the message woke
-  that has not answered. The reply's time is on the hint line, not on the row. `▾` (or
-  `enter` on the row, with the column holding the keyboard) folds them.
+  that has not answered. Each reply keeps its own age at the right. `▾` (or
+  `enter` on the row, with the column holding the keyboard) folds them. `▸` and `▾` are the
+  only part of a thread row that folds it. The rest of the row opens the message.
 - Everything that answers nothing and is answered by nothing (notes, starts, stops, handle
   changes, anything written before threads) is the one **General** thread, laid open the
   same way. A start that made a sub-team reads `◆ manager started @api to run backend`; the
@@ -123,17 +124,23 @@ General                     2 msgs     ▸
 Every `@handle` is a link: point at it for the member's title in the hint line, press it to open
 that member (resumed first when this window does not have it open) **scrolled to the
 message**: a handle on a thread's row opens the member at the directive as it was told it, and a
-handle on a reply opens it at its own post. The message is brought into view and lifted for a
-moment; the focus stays on that conversation. A message from before the conversation's history
-opens it at the bottom, and the hint line says `that message is older than this chat's history`.
-Point anywhere else on a row to read it whole in the hint line; press it to bring that message
-in the manager's conversation into view. Nothing in the column moves your focus but a handle or a question in the band.
+handle on a reply opens it at its own post. A press anywhere else on the row opens the
+conversation that message belongs to, at that message, and lifts it the same way. A message the
+sender wrote opens the sender's chat: `◆ → all` opens the manager at that directive, and
+`you → ◆` in a member's chat scrolls that chat to the reply. A message to you opens the
+manager's chat. If that conversation is already in front, the row scrolls it in place and does
+not open another. The hint says `Open ◆'s message · 2m ago · click` (or `Open your message`
+when the row is yours, and `now` with no "ago" when it just arrived). The message is brought
+into view and lifted for a moment; nothing here takes the keyboard, and nothing opens a new
+window. A message from before the conversation's history opens it at the bottom, and the hint
+line says `that message is older than this chat's history`.
 
 In a member's chat the Traffic is the messages to or from that member (and to the whole team),
-one line each, newest first, and that member is `you`: `◆ → you  parser numbers?` from the
-manager, `you → ◆  ✓ p50 41ms, p99 180ms` back, `you → @gravity  rebase done` to another
-member. Press one to go to it in the member's conversation. General, laid open, uses the same
-`from → to` on each of its lines.
+one line each, newest first, and that member is `you`: `◆ → you  parser numbers?  2m` from the
+manager, `you → ◆  ✓ p50 41ms, p99 180ms  now` back, `you → @gravity  rebase done  3h` to another
+member. Press the member's own line to scroll this chat to it. Press a line the manager wrote
+to open the manager at it. General, laid open, uses the same `from → to` and the same age on
+each of its lines.
 
 `alt+l` puts the column away and brings it back, and this window remembers the answer (`ctrl+g`
 is the same key under its older name). Put away, the column is an edge down the right with a
@@ -167,10 +174,28 @@ conversations open.
 Every Traffic row reads `from → to`, then the words. The manager is `◆`. Several recipients
 are the first handle and `+2` for the rest. In a member's chat that member is `you`, so a
 question to it reads `◆ → you` and its answer reads `you → ◆`. A reply under a thread is the
-same shape after `↳` (`↳ @model → ◆  working…`). The band's question is the same shape in
-amber (`? @model → ◆  keep the old schema?`). The age and the reply's time are on the hint
-line at every width, never on the row. A narrow column keeps the arrow and the names and cuts
-only the words, at a word, with `…`. Press a handle to open that member at the message.
+same shape after `↳` (`↳ @model → ◆  working…  now`). The band's question is the same shape in
+amber (`? @model → ◆  keep the old schema?  3m`). How long ago is on the row, at the right,
+dim, at every width: `now`, `2m`, `3h`, `1d`. A narrow column keeps the arrow and the names,
+then the age, and cuts only the words, at a word, with `…`. Press a handle to open that
+member at the message. Press anywhere else on the row to open the chat that message belongs
+to, at that message. The hint says `Open @model's message · 3m ago · click`.
+
+## How old a Traffic row is, and what pressing it opens
+
+Every Traffic row ends with how long ago it was, dim and at the right: `now` (under a minute),
+`2m`, `3h`, `1d`. The same words a task row and a home session use. It is on a thread
+(`◆ → @scrape +2  Please provide… ▸  2m`), on a reply (`↳ @model → ◆  ✓ done  4m`), on General,
+on the band's question, and on a member's own lines (`you → ◆  now`). A narrow column keeps
+the arrow, the names and the age, and cuts only the words, at a word, with `…`.
+
+Press anywhere on the row, not only on a handle, to open the conversation that message belongs
+to, at that message. A message the sender wrote opens the sender's chat: `◆ → all` opens the
+manager at the directive, and `you → ◆` in a member's chat scrolls that chat to the reply. A
+message to you opens the manager's chat. If that chat is already in front, the row scrolls it
+and does not open another window. The focus stays where it was. The hint says
+`Open ◆'s message · 2m ago · click`, or `Open your message · now · click` for your own line.
+`▸` and `▾` still only fold the thread. A handle still opens that member.
 
 ## What members say without being asked
 

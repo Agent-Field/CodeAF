@@ -107,7 +107,7 @@ func TestTrafficColumnBesideTheManager(t *testing.T) {
 	}
 	head := railRowOf(rows, sideTasksWord+" 0"+sideWordSep+sideTrafficWord)
 	general := railRowOf(rows, "General")
-	work := railRowOf(rows, "@"+rail+"  take the scope model")
+	work := railRowOf(rows, "take the scope")
 	note := railRowOf(rows, "@"+price+" → ")
 	if head < 0 || !strings.HasSuffix(rows[head], sideHideKey) || general != head+1 || note != general+1 || work <= note {
 		t.Fatalf("the column does not draw its header, General open with the note, and the work under it (%d, %d, %d, %d):\n%s", head, general, note, work, joined)
@@ -138,7 +138,7 @@ func TestTrafficColumnBesideTheManager(t *testing.T) {
 	a.dropHover()
 
 	// The note's handle goes to the member who wrote it.
-	px, py := sideRowDoor(t, a, railKeyOfReply(t, a, "prices are in"), sideActJump)
+	px, py := sideRowDoor(t, a, railKeyOfReply(t, a, "prices are"), sideActJump)
 	sideClick(t, a, px, py)
 	if a.frontTabKey() != priceKey {
 		t.Fatalf("the handle went to %q, want %q", a.frontTabKey(), priceKey)
