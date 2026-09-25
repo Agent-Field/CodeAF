@@ -536,12 +536,9 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 		end(sink.steps, reason, "")
 		return report, err
 	}
-	// THE CEILING, NOT A CRASH. A program the model API refused at the run's
-	// dollar ceiling ends however it ends — senior-dev, whose own sum of its
-	// answers' costs never reached the figure it was given, ends as `crashed` —
-	// but what stopped it was the limit a person set, and the run says so. The
-	// supervisor's own ledger has reached the same ceiling, so the run ends on
-	// its cost limit; this is the worker's half, the words the task keeps.
+	// THE CEILING, NOT A CRASH. An estimated reservation can be refused before
+	// metered spend reaches the ceiling, so the worker carries the limit as a
+	// fact instead of asking the supervisor to infer it from dollars spent.
 	if t := result.Reading.Terminal; api.RefusedAtCeiling() > 0 && (t == nil || t.Status != delegate.StatusPass) {
 		reason := fmt.Sprintf("%s reached the run's dollar ceiling of $%.2f", w.program.Name, w.cost)
 		if t != nil {
@@ -551,7 +548,7 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 			}
 		}
 		end(sink.steps, reason, report.Result)
-		return report, errors.New(reason)
+		return report, &ProgramEndedError{Status: delegate.StatusBudget, Reason: reason, Result: report.Result, Limit: LimitCost}
 	}
 	if errors.Is(err, delegate.ErrNoTerminal) {
 		reason := fmt.Sprintf("%s exited %d without a terminal record", w.program.Name, result.ExitCode)
@@ -602,6 +599,8 @@ type ProgramEndedError struct {
 	// Result is the program's account: its message, what its model claimed
 	// and what it observed ([delegateResult]).
 	Result string
+	// Limit names a refusal made before actual spend reached the ceiling.
+	Limit Limit
 }
 
 func (e *ProgramEndedError) Error() string { return e.Reason }

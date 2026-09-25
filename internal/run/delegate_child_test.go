@@ -36,8 +36,12 @@ const delegateChildEnv = "RUN_TEST_DELEGATE_CHILD"
 // FAKE_ENDING=wait, waits to be told to stop and says it stopped. Its terminal
 // claims a cost of its own that no bank may believe.
 func childProgram() delegate.Delegate {
+	name := os.Getenv("FAKE_PROGRAM_NAME")
+	if name == "" {
+		name = "fake"
+	}
 	return delegate.Delegate{
-		Name: "fake", Summary: "a fake program", Default: "run", Page: "fake",
+		Name: name, Summary: "a fake program", Default: "run", Page: name,
 		Commands: []delegate.Command{{
 			Name: "run", Usage: "[flags] -- <brief>", Summary: "does the whole task",
 			Bind: func(*flag.FlagSet) delegate.Body { return childBody },

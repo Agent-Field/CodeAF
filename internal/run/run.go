@@ -886,6 +886,14 @@ func (s *Supervisor) absorb(ret workerReturn) {
 				var ended *ProgramEndedError
 				if errors.As(ret.err, &ended) {
 					s.rootProgram = ended
+					if ended.Limit != "" && s.limitHit == "" {
+						s.limitHit = ended.Limit
+						// A refusal at the estimated ceiling ends peer work too,
+						// even when metered spend has not reached the figure.
+						for _, cancel := range s.cancels {
+							cancel()
+						}
+					}
 				}
 			}
 		} else {
