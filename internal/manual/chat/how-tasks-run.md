@@ -1403,7 +1403,9 @@ to the full log, all in the one turn. This is why a task does not `sleep` and `t
 build or test run — the waiting is done for it, and those nine `sleep N && tail` steps above
 are what the counter catches when something is polled that nobody is waiting on. A command
 started with `background: true` is the other case: a server or a sweep the task deliberately
-left running holds nothing up, and the task is asked its next step straight away.
+left running holds nothing up, and the task is asked its next step straight away. Either kind
+of job is the task's own to read and to stop, with the `jobs` tool's `output` and `kill`,
+and a job still running when the task ends is stopped with it.
 
 **A task that repeats itself is told what the work has been doing.** Before it is stopped it
 gets a `[stuck]` note, and that note now carries one more fact than the repetition itself:
