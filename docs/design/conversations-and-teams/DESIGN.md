@@ -161,8 +161,11 @@ and removing it returns it to an ordinary chat with its history. What makes it s
   files touched, recent traffic), never whole transcripts;
 - its messages reach members marked `◆ from manager`, never as if the person had typed them;
 - nothing it does moves the person's focus: a member it starts opens behind the conversation
-  in front, as a tab named `@handle`, and takes its first turn on its own (the session sees
-  itself started and wakes), reading the brief as the manager's.
+  in front, as a tab named `@handle`. With the team's auto-wake on it takes its first turn on
+  its own (the session sees itself started and wakes), reading the brief as the manager's.
+  With auto-wake off the member is still opened and the brief still waits for its first turn,
+  but no turn is started; the Traffic says `opened @handle; this team's auto-wake is off, so
+  no turn was started. It reads the brief when it next runs.`
 
 **Why not one stream of chat bubbles.** Members do not all read everything; each receives only
 what is addressed to it. A shared stream would look like a group chat and teach the person
@@ -301,8 +304,11 @@ the person to type again is not running a team, so the lines that ask for an ans
 - **Visibility.** Every wake is a Traffic event, `◆ woke @web` and `@web woke ◆`, and every
   refusal is one too.
 - **Off switch.** A team's `wake` field in `teams.json`, on when absent and written only as
-  `"wake": false`. The settings to turn it off from the interface come with the delegation
-  work; until then it is the field and the manual's line.
+  `"wake": false`. With it off, a directive, a reply and a `team_start` start no turn: the
+  new member is opened and reads its brief on the first turn something else starts, and the
+  Traffic says `opened @handle; this team's auto-wake is off, so no turn was started.` The
+  settings to turn it off from the interface come with the delegation work; until then it is
+  the field and the manual's line.
 
 **Mentioning a team or a chat from the composer.** `@` is still the one list
 (`internal/tui3`'s `files.go`, `mention.go`). Its first row is the words team, chat

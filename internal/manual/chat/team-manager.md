@@ -97,9 +97,13 @@ When the manager starts a member with `team_start`, you are asked first, on a ca
 it spends until it stops`. When you allow it, this window opens the new conversation in the
 team's folder **behind** the one you are in, never in front of it: what you were typing stays
 where it was. Its tab arrives at the end of the team's run, named `@lexer` until it has a title,
-and its working mark is the only thing that moves. The member starts on its own: it is handed
-the brief on its first request, marked `◆ brief from manager`, and its page shows the brief as a
-quoted card headed `◆ manager → @lexer`, never as your message. When the manager stops a member,
+and its working mark is the only thing that moves. With the team's auto-wake on, the member
+starts on its own: it is handed the brief on its first request, marked `◆ brief from manager`,
+and its page shows the brief as a quoted card headed `◆ manager → @lexer`, never as your
+message. With auto-wake off the conversation is still opened behind the one you are in, and
+no turn is started; the traffic says `opened @lexer; this team's auto-wake is off, so no turn
+was started. It reads the brief when it next runs.`, and the brief arrives on that next turn
+the same way. When the manager stops a member,
 this window stops it the way your own Stop would. Both happen only in a window that has those
 conversations open.
 
@@ -171,7 +175,9 @@ by its team with nothing from you stops being woken and asks you instead, as a w
 the traffic. It is woken again after you next say something to it.
 
 A team's auto-wake can be turned off: its entry in `teams.json` in the profile carries
-`"wake": false`. With it off, every message waits for each conversation's next turn.
+`"wake": false`. With it off, every message waits for each conversation's next turn, and a
+member the manager starts with `team_start` is opened and handed its brief on that next turn,
+with no turn started for it. The traffic says so.
 
 A member busy in one long command reads a message when that command returns, which is what
 `team_stop` is for. Nothing is delivered twice, and a conversation that joins a team is not

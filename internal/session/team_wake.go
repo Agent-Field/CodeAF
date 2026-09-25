@@ -31,6 +31,11 @@ import (
 // The watch ends at the first of: the wake, a turn begun some other way, the
 // window running out, or the session closing.
 //
+// A TEAM WHOSE AUTO-WAKE IS OFF IS THE EXCEPTION. The member is still opened,
+// and the brief is still waiting in the Traffic for its first turn, but no
+// turn is started for it. The Traffic says so, in the same voice as a wake
+// that could not run.
+//
 // A conversation that is never started by a manager pays one stat of the teams
 // file at open and, where a team has a manager, one stat every
 // [teamWakeEvery] for [teamWakeFor].
@@ -107,8 +112,28 @@ func (a *Agent) awaitTeamStart(profile string, base int) {
 		if grown, busy := a.teamWakeState(); busy || grown > base {
 			return
 		}
-		if !a.teamStartWaiting(profile) {
+		started := a.teamStarts(profile)
+		if len(started) == 0 {
 			continue
+		}
+		var waking []teamRole
+		for _, role := range started {
+			if role.wakes {
+				waking = append(waking, role)
+				continue
+			}
+			// WAKE OFF HONOURS THE SWITCH. The conversation is already open,
+			// which is what "opened" means here, and the brief stays unread
+			// until a turn something else starts. Consuming it now would hand
+			// it over with nobody to read it.
+			a.teamSay(profile, role.id, teams.Entry{
+				Kind: teams.KindEvent, From: teams.FromSystem, To: role.handle, Member: role.key,
+				State: teams.StateIdle,
+				Text:  "opened @" + role.handle + "; this team's auto-wake is off, so no turn was started. It reads the brief when it next runs.",
+			})
+		}
+		if len(waking) == 0 {
+			return
 		}
 		if news := a.teamBoundary(); news != "" {
 			a.enqueueNote(userMessage{message: textMessage("user", news), wake: true})
@@ -117,9 +142,11 @@ func (a *Agent) awaitTeamStart(profile string, base int) {
 	}
 }
 
-// teamStartWaiting reports whether this conversation is a member with a
-// handle, and a start addressed to that handle is in its team's recent traffic.
-func (a *Agent) teamStartWaiting(profile string) bool {
+// teamStarts is every team this conversation was just started into: a member
+// with a handle, and a start addressed to that handle in the team's recent
+// traffic.
+func (a *Agent) teamStarts(profile string) []teamRole {
+	var started []teamRole
 	for _, role := range a.teamRoles() {
 		if role.manager || role.handle == "" {
 			continue
@@ -131,9 +158,10 @@ func (a *Agent) teamStartWaiting(profile string) bool {
 		for _, entry := range tail {
 			if entry.Kind == teams.KindStart && entry.To == role.handle &&
 				!entry.At.Before(a.startedAt.Add(-teamStartGrace)) {
-				return true
+				started = append(started, role)
+				break
 			}
 		}
 	}
-	return false
+	return started
 }
