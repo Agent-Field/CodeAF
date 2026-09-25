@@ -117,6 +117,10 @@ type StepRecord struct {
 	// command and learned how it exited — which is why it is a pointer: a
 	// command that exited 0 and an action that ran none are two facts.
 	Exit *int `json:"exit,omitempty"`
+	// Added and Removed are the lines an action that changed a file added and
+	// removed, present only when the program counted them.
+	Added   *int `json:"added,omitempty"`
+	Removed *int `json:"removed,omitempty"`
 }
 
 // stageData is a record's data as a reader keeps it: a JSON object of at most
@@ -322,6 +326,8 @@ func Read(r io.Reader, sink Sink) (Reading, error) {
 				Tool        json.RawMessage `json:"tool"`
 				Step        json.RawMessage `json:"step"`
 				Exit        json.RawMessage `json:"exit"`
+				Added       json.RawMessage `json:"added"`
+				Removed     json.RawMessage `json:"removed"`
 			}
 			if json.Unmarshal([]byte(line), &rec) != nil || strings.TrimSpace(rec.Command) == "" {
 				reading.Ignored++
@@ -335,6 +341,8 @@ func Read(r io.Reader, sink Sink) (Reading, error) {
 					Tool:        label(rawText(rec.Tool)),
 					Step:        label(rawText(rec.Step)),
 					Exit:        rawWhole(rec.Exit),
+					Added:       rawWhole(rec.Added),
+					Removed:     rawWhole(rec.Removed),
 				})
 			}
 		case RecordTerminal:

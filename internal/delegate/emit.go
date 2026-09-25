@@ -107,6 +107,12 @@ func (e *Emitter) Step(step StepRecord) error {
 	if step.Exit != nil {
 		record["exit"] = *step.Exit
 	}
+	if step.Added != nil {
+		record["added"] = *step.Added
+	}
+	if step.Removed != nil {
+		record["removed"] = *step.Removed
+	}
 	return e.write(record)
 }
 

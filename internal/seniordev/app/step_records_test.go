@@ -140,3 +140,44 @@ func TestNonToolPayloadsAreNotSteps(t *testing.T) {
 		t.Fatal("a session event was read as a step")
 	}
 }
+
+// A FILE TOOL'S STEP CARRIES THE LINES IT ADDED AND REMOVED, read off the
+// metadata the tool wrote: write's and edit's counts for the one file, and
+// apply_patch's summed; every other tool carries none.
+func TestAFileToolsStepCarriesItsLinesAddedAndRemoved(t *testing.T) {
+	with := func(payload bus.Payload, metadata map[string]any) bus.Payload {
+		part := payload.Properties.(map[string]any)["part"].(map[string]any)
+		part["state"].(map[string]any)["metadata"] = metadata
+		return payload
+	}
+	for _, tc := range []struct {
+		name           string
+		payload        bus.Payload
+		added, removed int
+		none           bool
+	}{
+		{"write", with(toolPartPayload("w", "write", "completed", map[string]any{"filePath": "a.go"}, "ok", ""),
+			map[string]any{"additions": float64(7), "deletions": float64(2)}), 7, 2, false},
+		{"edit", with(toolPartPayload("e", "edit", "completed", map[string]any{"filePath": "a.go"}, "ok", ""),
+			map[string]any{"filediff": map[string]any{"additions": float64(3), "deletions": float64(1)}}), 3, 1, false},
+		{"apply_patch", with(toolPartPayload("p", "apply_patch", "completed", map[string]any{"patchText": "x"}, "ok", ""),
+			map[string]any{"files": []any{map[string]any{"additions": float64(4), "deletions": float64(0)}, map[string]any{"additions": float64(1), "deletions": float64(5)}}}), 5, 5, false},
+		{"bash", with(toolPartPayload("b", "bash", "completed", map[string]any{"command": "ls"}, "ok", ""),
+			map[string]any{"exitCode": float64(0)}), 0, 0, true},
+		{"a failed edit", toolPartPayload("f", "edit", "error", map[string]any{"filePath": "a.go"}, "", "no match"), 0, 0, true},
+	} {
+		record, ok := toolStepRecord(tc.payload)
+		if !ok {
+			t.Fatalf("%s: no step record", tc.name)
+		}
+		if tc.none {
+			if record.added != nil || record.removed != nil {
+				t.Errorf("%s: lines %v/%v, want none", tc.name, record.added, record.removed)
+			}
+			continue
+		}
+		if record.added == nil || record.removed == nil || *record.added != tc.added || *record.removed != tc.removed {
+			t.Errorf("%s: lines %v/%v, want +%d -%d", tc.name, record.added, record.removed, tc.added, tc.removed)
+		}
+	}
+}

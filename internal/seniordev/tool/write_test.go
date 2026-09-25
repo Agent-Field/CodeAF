@@ -27,7 +27,7 @@ func TestWriteBOMAndMetadata(t *testing.T) {
 	}
 	// write results expose the unified diff of the actual change.
 	diffPrefix := "Index: " + path + "\n===================================================================\n--- " + path + "\n+++ " + path + "\n"
-	wantMetadata := `{"diagnostics":{},"diff":` + quotedJSON(diffPrefix+"@@ -0,0 +1,1 @@\n+first\n\\ No newline at end of file\n") + `,"filepath":` + quotedJSON(path) + `,"exists":false}`
+	wantMetadata := `{"diagnostics":{},"diff":` + quotedJSON(diffPrefix+"@@ -0,0 +1,1 @@\n+first\n\\ No newline at end of file\n") + `,"filepath":` + quotedJSON(path) + `,"exists":false,"additions":1,"deletions":0}`
 	if string(result.Metadata) != wantMetadata {
 		t.Fatalf("Metadata = %s, want %s", result.Metadata, wantMetadata)
 	}
@@ -46,7 +46,7 @@ func TestWriteBOMAndMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute overwrite: %v", err)
 	}
-	wantMetadata = `{"diagnostics":{},"diff":` + quotedJSON(diffPrefix+"@@ -1,1 +1,1 @@\n-first\n\\ No newline at end of file\n+second\n\\ No newline at end of file\n") + `,"filepath":` + quotedJSON(path) + `,"exists":true}`
+	wantMetadata = `{"diagnostics":{},"diff":` + quotedJSON(diffPrefix+"@@ -1,1 +1,1 @@\n-first\n\\ No newline at end of file\n+second\n\\ No newline at end of file\n") + `,"filepath":` + quotedJSON(path) + `,"exists":true,"additions":1,"deletions":1}`
 	if string(result.Metadata) != wantMetadata {
 		t.Fatalf("Metadata = %s", result.Metadata)
 	}

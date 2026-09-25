@@ -20,6 +20,11 @@ type writeMetadata struct {
 	Diff        string         `json:"diff"`
 	FilePath    string         `json:"filepath"`
 	Exists      bool           `json:"exists"`
+	// Additions and Deletions are the lines the write added and removed, the
+	// counts edit and apply_patch already report. Nothing reaches the model:
+	// they are metadata, read by the run's step record (app/step_records.go).
+	Additions int `json:"additions"`
+	Deletions int `json:"deletions"`
 }
 
 func (r *Registry) executeWrite(ctx context.Context, call steploop.ToolCall) (steploop.ToolResult, error) {
@@ -78,6 +83,7 @@ func (r *Registry) executeWrite(ctx context.Context, call steploop.ToolCall) (st
 		title = resolved
 	}
 	diff := TrimDiff(patchpkg.GenerateTwoFilesPatch(resolved, contentOld, content))
+	additions, deletions := writeLineCounts(exists, contentOld, content)
 	return steploop.ToolResult{
 		Title:  title,
 		Output: "Wrote file successfully.",
@@ -86,8 +92,23 @@ func (r *Registry) executeWrite(ctx context.Context, call steploop.ToolCall) (st
 			Diff:        diff,
 			FilePath:    resolved,
 			Exists:      exists,
+			Additions:   additions,
+			Deletions:   deletions,
 		}),
 	}, nil
+}
+
+// writeLineCounts is a write's lines added and removed. A new file is all
+// additions, counted without the line-by-line comparison, which a large new
+// file would pay for with nothing to compare against.
+func writeLineCounts(exists bool, oldContent, newContent string) (int, int) {
+	if !exists || oldContent == "" {
+		if newContent == "" {
+			return 0, 0
+		}
+		return strings.Count(strings.TrimSuffix(newContent, "\n"), "\n") + 1, 0
+	}
+	return lineChangeCounts(oldContent, newContent)
 }
 
 func splitBOM(value string) (bool, string) {

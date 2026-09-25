@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // recorder is a Sink that keeps what it was told, in order. It is read after
@@ -231,5 +232,48 @@ func TestTheReaderCarriesTheOptionalFieldsAndForgivesTheirShape(t *testing.T) {
 		if data := sink.stageRecords[i].Data; data != nil {
 			t.Fatalf("stage %d data = %s, want none: not an object, past the cap, or never sent", i, data)
 		}
+	}
+}
+
+// A STEP THAT CHANGED A FILE CARRIES ITS LINES, added and removed, and a zero
+// is a count like any other; an odd shape is left off and the step kept.
+func TestTheReaderCarriesAStepsLinesAddedAndRemoved(t *testing.T) {
+	stream := strings.Join([]string{
+		`{"type":"step","command":"edit: a.go","tool":"edit","added":12,"removed":0}`,
+		`{"type":"step","command":"write: b.go","tool":"write","added":"many"}`,
+	}, "\n")
+	sink := &recorder{}
+	if _, err := Read(strings.NewReader(stream), sink); err != nil {
+		t.Fatal(err)
+	}
+	first := sink.stepRecords[0]
+	if first.Added == nil || *first.Added != 12 || first.Removed == nil || *first.Removed != 0 {
+		t.Fatalf("an edit's lines = %+v, want +12 and a kept zero", first)
+	}
+	action := StepAction(time.Time{}, first)
+	if action.Added == nil || *action.Added != 12 || action.Removed == nil || *action.Removed != 0 {
+		t.Fatalf("the action log's line = %+v, want the step's lines", action)
+	}
+	if odd := sink.stepRecords[1]; odd.Added != nil || odd.Removed != nil {
+		t.Fatalf("an odd-shaped count = %+v, want it left off", odd)
+	}
+}
+
+// AND THE LINES CROSS THE WIRE: what a program's emitter writes for a step's
+// lines is what codeaf's reader takes back, a zero included. The emitter wrote
+// a fixed list of a step's fields, and a count it did not name never left the
+// program.
+func TestAStepsLinesSurviveTheEmitterAndTheReader(t *testing.T) {
+	var wire strings.Builder
+	added, removed := 7, 0
+	if err := NewEmitter(&wire).Step(StepRecord{Command: "write: a.go", Tool: "write", Added: &added, Removed: &removed}); err != nil {
+		t.Fatal(err)
+	}
+	sink := &recorder{}
+	if _, err := Read(strings.NewReader(wire.String()), sink); err != nil {
+		t.Fatal(err)
+	}
+	if got := sink.stepRecords[0]; got.Added == nil || *got.Added != 7 || got.Removed == nil || *got.Removed != 0 {
+		t.Fatalf("the step read back = %+v from %q, want +7,-0", got, wire.String())
 	}
 }

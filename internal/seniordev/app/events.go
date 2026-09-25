@@ -35,6 +35,9 @@ type event struct {
 	Tool        string `json:"tool,omitempty"`
 	Step        string `json:"step,omitempty"`
 	Exit        *int   `json:"exit,omitempty"`
+	// Added and Removed are a file tool's lines added and removed.
+	Added   *int `json:"added,omitempty"`
+	Removed *int `json:"removed,omitempty"`
 }
 
 // recordSink is where the run's protocol records go: codeaf, through the
@@ -139,6 +142,7 @@ func (writer *eventWriter) emit(value event) {
 			writer.records.Step(delegate.StepRecord{
 				Command: value.Command, Observation: value.Observation,
 				Tool: value.Tool, Step: value.Step, Exit: value.Exit,
+				Added: value.Added, Removed: value.Removed,
 			})
 		}
 	}
@@ -194,6 +198,7 @@ func (writer *eventWriter) busEvent(value bus.Payload) {
 		writer.emit(event{
 			Type: "step", Command: step.command, Observation: step.observation,
 			Tool: step.action.tool, Step: step.step, Exit: step.exit,
+			Added: step.added, Removed: step.removed,
 		})
 	}
 	// The running total, after the message that moved it, for the log only:

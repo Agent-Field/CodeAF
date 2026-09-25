@@ -56,6 +56,10 @@ type Action struct {
 	Command     string `json:"command,omitempty"`
 	Observation string `json:"observation,omitempty"`
 	Exit        *int   `json:"exit,omitempty"`
+	// Added and Removed are a step's lines added and removed, when the program
+	// counted them.
+	Added   *int `json:"added,omitempty"`
+	Removed *int `json:"removed,omitempty"`
 	// Message is the ending's one sentence.
 	Message string `json:"message,omitempty"`
 }
@@ -70,6 +74,7 @@ func StepAction(at time.Time, record StepRecord) Action {
 	return Action{
 		At: at, Kind: ActionStep, Tool: record.Tool, Step: record.Step,
 		Command: record.Command, Observation: record.Observation, Exit: record.Exit,
+		Added: record.Added, Removed: record.Removed,
 	}
 }
 
@@ -169,6 +174,12 @@ type Shown struct {
 	// argument, and what came back — which the page opens under the action's
 	// one line when it is clicked. Empty for a line with nothing more to show.
 	Detail string `json:"detail,omitempty"`
+	// Lines says the action changed a file and counted how: Added and Removed
+	// are its lines added and removed, drawn as `+N,-M` in the diff's own
+	// colours beside the action. False for every other action.
+	Lines   bool `json:"lines,omitempty"`
+	Added   int  `json:"added,omitempty"`
+	Removed int  `json:"removed,omitempty"`
 	// Steer marks the program steering its own model — a nudge, a last turn, a
 	// retry after a dropped call, a correction — rather than working through it.
 	Steer bool `json:"steer,omitempty"`

@@ -301,6 +301,11 @@ type actLine struct {
 	// empty for a line with nothing more to show.
 	detail string
 	key    int64
+	// lines says the action changed a file and counted how: added and removed
+	// are drawn `+N,-M` at its right edge in the diff's own colours
+	// ([delegate.Shown.Lines]).
+	lines          bool
+	added, removed int
 }
 
 // taskConversation is a program's page where an ordinary page draws its steps:
@@ -471,13 +476,28 @@ func (a *app) actBody(line actLine, width int) string {
 		ink = pal.narr
 	}
 	text, outcome := convHead(line.text), convHead(line.outcome)
+	painted := pal.dim(outcome)
+	if line.lines {
+		// THE LINES A CHANGE ADDED AND REMOVED, git's `+N,-M`, in the diff's own
+		// green and red: the one figure on the page a person reads for how much
+		// the work moved at each step.
+		plus, minus := "+"+itoa(line.added), "-"+itoa(line.removed)
+		badge := plus + "," + minus
+		painted = pal.add(plus) + pal.dim(",") + pal.del(minus)
+		if outcome != "" {
+			painted = pal.dim(outcome+railSep) + painted
+			outcome += railSep + badge
+		} else {
+			outcome = badge
+		}
+	}
 	if outcome == "" {
 		return ink(fit(text, width))
 	}
 	cells := ansi.StringWidth(outcome)
 	if room := width - cells - convGap; room >= convTextLeast/2 {
 		words, measured := fitWidth(text, room)
-		return ink(words) + strings.Repeat(" ", width-measured-cells) + pal.dim(outcome)
+		return ink(words) + strings.Repeat(" ", width-measured-cells) + painted
 	}
 	return ink(fit(text+railSep+outcome, width))
 }
@@ -539,7 +559,8 @@ func actLines(page session.PlanTaskPage) []actLine {
 			continue
 		}
 		lines = append(lines, actLine{at: shown.At, step: shown.Step, text: shown.Text, outcome: shown.Outcome, steer: shown.Steer,
-			detail: shown.Detail, key: shown.At.UnixNano()})
+			detail: shown.Detail, key: shown.At.UnixNano(),
+			lines: shown.Lines, added: shown.Added, removed: shown.Removed})
 	}
 	lines = append(lines, actFromCalls(program)...)
 	if len(program.Actions) == 0 && len(program.Turns) == 0 {

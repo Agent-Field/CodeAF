@@ -456,3 +456,38 @@ func TestAProgramRoomTurnsToItsRawCallsAndBack(t *testing.T) {
 		t.Fatalf("the key did not turn the room back to its actions:\n%s", text)
 	}
 }
+
+// A STEP THAT CHANGED A FILE WEARS git's `+N,-M` at its right edge, the added
+// lines in the diff's green and the removed in its red; a step with no count
+// wears none.
+func TestAStepThatChangedAFileWearsItsLinesInTheDiffsColours(t *testing.T) {
+	a, agent := programRoomApp(t, 120, 40)
+	page := agent.planFake.pages["7"]
+	program := *page.Program
+	program.Actions = append([]delegate.Shown(nil), program.Actions...)
+	at := program.Actions[len(program.Actions)-1].At.Add(time.Second)
+	program.Actions = append(program.Actions,
+		delegate.Shown{At: at, Step: "implement", Text: "edited internal/auth/middleware.go", Lines: true, Added: 123, Removed: 21},
+		delegate.Shown{At: at.Add(time.Second), Step: "implement", Text: "read internal/auth/store.go"})
+	page.Program = &program
+	agent.planFake.pages["7"] = page
+	openProgramRoomNow(t, a)
+	var edited, read string
+	for _, r := range a.roomRows(a.bodyWidth()) {
+		switch {
+		case strings.Contains(plain(r.text), "edited internal/auth/middleware.go"):
+			edited = r.text
+		case strings.Contains(plain(r.text), "read internal/auth/store.go"):
+			read = r.text
+		}
+	}
+	if !strings.HasSuffix(strings.TrimSpace(plain(edited)), "+123,-21") {
+		t.Fatalf("the edit's row = %q, want +123,-21 at its edge", plain(edited))
+	}
+	if !strings.Contains(edited, a.pal.add("+123")) || !strings.Contains(edited, a.pal.del("-21")) {
+		t.Fatalf("the edit's lines are not in the diff's colours: %q", edited)
+	}
+	if strings.Contains(plain(read), "+") {
+		t.Fatalf("a read wears lines: %q", plain(read))
+	}
+}

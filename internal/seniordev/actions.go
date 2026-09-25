@@ -155,6 +155,12 @@ func presentStep(action delegate.Action) (delegate.Shown, bool) {
 		shown.Text = strings.TrimSpace(action.Command)
 	}
 	shown.Detail = stepDetail(action)
+	// A CHANGE TO THE WORK WEARS ITS LINES, `+N,-M`, the way git counts them.
+	// senior-dev's own records — its spec, pinned check and checklist — are
+	// its bookkeeping, not the work, and wear none.
+	if (tool == "write" || tool == "edit" || tool == "apply_patch") && own == "" && action.Added != nil && action.Removed != nil {
+		shown.Lines, shown.Added, shown.Removed = true, *action.Added, *action.Removed
+	}
 	return shown, strings.TrimSpace(shown.Text) != ""
 }
 

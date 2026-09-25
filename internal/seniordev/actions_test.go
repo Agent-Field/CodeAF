@@ -168,3 +168,29 @@ func TestASwitchAndACompactionSayWhatHappened(t *testing.T) {
 		t.Fatalf("the fallback compaction read %+v", fallback)
 	}
 }
+
+// A CHANGE TO THE WORK WEARS ITS LINES, and senior-dev's own records do not:
+// an implement step's edit counts `+N,-M`, the checklist it writes counts
+// nothing, a step whose program counted nothing wears nothing, and every step
+// keeps its whole self for the page to open.
+func TestAChangeToTheWorkWearsItsLinesAndItsOwnRecordsDoNot(t *testing.T) {
+	counted := func(action delegate.Action, added, removed int) delegate.Action {
+		action.Added, action.Removed = &added, &removed
+		action.Observation = "Edit applied successfully."
+		return action
+	}
+	read := Program.Reader()
+	edit, _ := read(counted(step("edit", "implement", "internal/auth/middleware.go"), 12, 3))
+	if !edit.Lines || edit.Added != 12 || edit.Removed != 3 {
+		t.Fatalf("an implement edit = %+v, want +12,-3", edit)
+	}
+	if edit.Detail != "edit: internal/auth/middleware.go\n\nEdit applied successfully." {
+		t.Fatalf("the edit's whole step = %q", edit.Detail)
+	}
+	if own, _ := read(counted(step("write", "checklist", ".senior-dev/checklist.md"), 9, 0)); own.Lines {
+		t.Fatalf("its own checklist wears lines: %+v", own)
+	}
+	if bare, _ := read(step("write", "implement", "a.go")); bare.Lines {
+		t.Fatalf("a write nobody counted wears lines: %+v", bare)
+	}
+}

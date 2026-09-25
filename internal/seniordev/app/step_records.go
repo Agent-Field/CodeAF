@@ -45,6 +45,9 @@ type stepRecord struct {
 	action      stepAction
 	step        string
 	exit        *int
+	// added and removed are the lines a file tool's call added and removed,
+	// read off its metadata ([lineCounts]); nil for every other call.
+	added, removed *int
 }
 
 // toolStepRecord reads a bus payload and reports the finished tool call in it,
@@ -69,6 +72,9 @@ func toolStepRecord(value bus.Payload) (stepRecord, bool) {
 		key:    "tool:" + stringAt(part, "callID") + ":" + status,
 		action: stepAction{tool: tool, target: stepTarget(input), failed: status == "error"},
 		exit:   exitCode(mapAt(state, "metadata")),
+	}
+	if status == "completed" {
+		record.added, record.removed = lineCounts(tool, mapAt(state, "metadata"))
 	}
 	if argument := toolArgument(input); argument != "" {
 		record.command = tool + ": " + argument
@@ -98,6 +104,51 @@ func stepTarget(input map[string]any) string {
 		}
 	}
 	return ""
+}
+
+// lineCounts is the lines a file tool's call added and removed, from the
+// metadata the tool itself wrote: write's and edit's counts for the one file,
+// and apply_patch's summed over the files it touched. nil, nil for every other
+// tool, and for one whose metadata carried no counts.
+func lineCounts(tool string, metadata map[string]any) (*int, *int) {
+	switch tool {
+	case "write":
+		return wholeAt(metadata, "additions"), wholeAt(metadata, "deletions")
+	case "edit":
+		diff := mapAt(metadata, "filediff")
+		return wholeAt(diff, "additions"), wholeAt(diff, "deletions")
+	case "apply_patch":
+		files, _ := metadata["files"].([]any)
+		if len(files) == 0 {
+			return nil, nil
+		}
+		added, removed := 0, 0
+		for _, file := range files {
+			entry := object(file)
+			if n := wholeAt(entry, "additions"); n != nil {
+				added += *n
+			}
+			if n := wholeAt(entry, "deletions"); n != nil {
+				removed += *n
+			}
+		}
+		return &added, &removed
+	}
+	return nil, nil
+}
+
+// wholeAt is a whole number in a metadata object, nil when it is absent.
+func wholeAt(value map[string]any, key string) *int {
+	var n int
+	switch number := value[key].(type) {
+	case float64:
+		n = int(number)
+	case int:
+		n = number
+	default:
+		return nil
+	}
+	return &n
 }
 
 // exitCode is a tool's exit code from its metadata, nil when it reported none:

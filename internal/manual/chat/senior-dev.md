@@ -61,7 +61,10 @@ process it served — the workspace it set up, what it read and ran and changed,
 hand-in, the build and tests it ran itself, and how it finished — with the call to its
 model in flight as the last line, `◐ thinking` and its seconds. The next section says what
 each step means. **Click an action to see the whole step** — the command or file it was
-called with and what came back — and click it again to fold it.
+called with and what came back — and click it again to fold it. **Every change to your
+files wears git's `+N,-M`** at the right of its line — the lines it added in green and the
+lines it removed in red — so you can see how much each step moved the work; senior-dev's
+own spec, pinned check and checklist wear none.
 
 The one line over it is the task's title with its `[senior-dev]` badge, a `▸ brief`
 dropdown, and the step, the spend of the run's ceiling, the number of model calls and how
