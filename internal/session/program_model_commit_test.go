@@ -14,9 +14,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/seniordev/tool"
 )
 
-// A command the model writes and the finishing hand must give the same run
-// credit, without rewriting a commit that was present before the run.
-func TestProgramModelCommitHasRunIdentityAndFinishingCredit(t *testing.T) {
+// A model's own commit uses the run identity, and finishing an otherwise clean
+// branch cannot rewrite either that commit or the base it started from.
+func TestProgramModelCommitKeepsRunIdentityAndCommitObject(t *testing.T) {
 	repo := newTestRepo(t)
 	mustGit(t, repo, "config", "user.name", "Person")
 	mustGit(t, repo, "config", "user.email", "person@example.test")
@@ -47,10 +47,13 @@ func TestProgramModelCommitHasRunIdentityAndFinishingCredit(t *testing.T) {
 		t.Fatalf("model commit identity = %q, want %q", identity, wantIdentity)
 	}
 	tree := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD^{tree}"))
+	object := gitOut(t, repo, "cat-file", "-p", "HEAD")
 	folder.Finish("completed the change")
-	message := gitOut(t, repo, "show", "-s", "--format=%B", "HEAD")
-	if !strings.Contains(message, "Assisted-by:") || !strings.Contains(message, "glm-5.3-flash") {
-		t.Fatalf("model commit lacks answered-model credit: %q", message)
+	if after := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD")); after != tip {
+		t.Fatalf("finishing rewrote the model's commit: %s -> %s", tip, after)
+	}
+	if after := gitOut(t, repo, "cat-file", "-p", "HEAD"); after != object {
+		t.Fatal("finishing changed the model's commit object")
 	}
 	if after := gitOut(t, repo, "show", "-s", "--format=%an <%ae>|%cn <%ce>|%B", base); after != before {
 		t.Fatalf("pre-run commit changed:\nbefore %q\nafter %q", before, after)
@@ -82,11 +85,9 @@ func TestProgramFinishDoesNotAmendThePreRunTip(t *testing.T) {
 	}
 }
 
-// THE COMMON ENDING CARRIES THE CREDIT TOO. When every write was already
-// checkpointed by the engine, nothing is left to stage, and the tip of the run's
-// branch is one of senior-dev's own checkpoints; that tip is the run's work and
-// gets the credit, with its tree unchanged.
-func TestProgramFinishCreditsTheEnginesOwnCheckpointAtTheTip(t *testing.T) {
+// An engine checkpoint at the tip is already a commit. With nothing left to
+// stage, finishing cannot rewrite it just to add model attribution.
+func TestProgramFinishLeavesTheEnginesOwnCheckpointAtTheTip(t *testing.T) {
 	repo := newTestRepo(t)
 	folder, err := PrepareProgramFolder(ProgramFolderOrder{
 		Program: testPrograms("fake")[0], Dir: repo, Title: "Engine work",
@@ -102,14 +103,14 @@ func TestProgramFinishCreditsTheEnginesOwnCheckpointAtTheTip(t *testing.T) {
 	mustGit(t, repo, "add", "engine.txt")
 	mustGit(t, repo, "-c", "user.name="+gitidentity.EngineName, "-c", "user.email="+gitidentity.EngineEmail,
 		"commit", "-q", "--no-verify", "-m", "wip(write): engine.txt")
-	tree := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD^{tree}"))
+	tip := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
+	object := gitOut(t, repo, "cat-file", "-p", "HEAD")
 	folder.Finish("done")
-	message := gitOut(t, repo, "show", "-s", "--format=%B", "HEAD")
-	if !strings.Contains(message, "Assisted-by:") || !strings.Contains(message, "wip(write): engine.txt") {
-		t.Fatalf("the engine's checkpoint at the tip was not credited:\n%s", message)
+	if after := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD")); after != tip {
+		t.Fatalf("the engine's checkpoint was rewritten: %s -> %s", tip, after)
 	}
-	if after := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD^{tree}")); after != tree {
-		t.Fatalf("crediting the tip changed its tree: %s -> %s", tree, after)
+	if after := gitOut(t, repo, "cat-file", "-p", "HEAD"); after != object {
+		t.Fatal("the engine's checkpoint object changed")
 	}
 }
 
