@@ -159,8 +159,8 @@ message. With auto-wake off the conversation is still opened behind the one you 
 no turn is started; the traffic says `opened @lexer; this team's auto-wake is off, so no turn
 was started. It reads the brief when it next runs.`, and the brief arrives on that next turn
 the same way. When the manager stops a member,
-this window stops it the way your own Stop would. Both happen only in a window that has those
-conversations open.
+its current turn ends the way your own Stop would, including when codeaf opened it in the
+background without a window. Starting a new member still needs a window holding the manager.
 
 ## Who a Traffic row is from and who it is to
 
@@ -221,7 +221,7 @@ on one waits for you.
 | `team_status` | every member's handle, title and state (running, asking, idle, failed), the question waiting, the files touched, and recent traffic | no |
 | `team_read` | the end of one member's conversation, bounded; the member is not told | no |
 | `team_send` | a message to one member, to several (one message, every handle in `to`), or to everyone, as a note (information, which waits) or a directive (an instruction, which starts an idle member) | no |
-| `team_stop` | ends one member's current turn, the way your own Stop does: nothing is deleted, and its background tasks and jobs keep running. It is carried out by a window that has the member open; a member codeaf opened in the background, with no window on it, is not stopped and its turn runs to its end | no |
+| `team_stop` | ends one member's current turn, the way your own Stop does, whether a window has it open or codeaf opened it in the background: nothing is deleted, and its background tasks and jobs keep running | no |
 | `team_start` | a new member conversation with a handle and a brief; it opens in the team's folder and is handed the brief, marked as the manager's, on its first request. With kind `team` it starts a sub-team instead (see **Sub-teams**) | yes |
 | `team_decide` | answers a decision packet waiting on the manager, most often a member's question: an option, or its own words | no |
 | `team_escalate` | sends a packet waiting on the manager up, to its own manager or to you, with the reason it is not the manager's to decide | no |
@@ -233,6 +233,17 @@ refused while the team is at its daily cap. The others act only inside the team 
 every one of them is logged in the team's traffic. Questions, packets, caps and wrapping up are
 on the page **Team questions, decisions and caps**.
 Like any tool, each can be set to ask or allow in `/settings` under the tool approvals.
+
+## What happens when a conversation stops being the manager
+
+At its next step, a conversation removed as manager loses `team_status`, `team_read`,
+`team_send`, `team_stop`, `team_start`, `team_decide`, `team_escalate` and
+`team_close_report`. If it is still a member of a managed team, it keeps `team_post` and
+`team_raise`; outside a team it loses those too. A remembered call to a removed manager
+tool says `team_send is no longer one of your tools: this conversation no longer manages a
+team.` A removed member tool says `team_post is no longer one of your tools: this
+conversation is no longer a member of a team with a manager.` Made a manager again, it gets
+the manager tools back at its next step.
 
 ## The member's verbs
 
@@ -348,9 +359,10 @@ working, that is straight away. When it is idle, it depends on the kind of messa
 - A **directive** starts an idle member's turn. The member is handed the directive, marked
   `◆ directive from manager`, never as if you had typed it.
 - A **note** wakes nobody. An idle member reads it when it next runs, for whatever reason.
-- A member's **reply to the manager** (`team_post` to the manager), and a member finishing,
-  failing or starting to wait on you, start an idle manager's turn. Replies that arrive within
-  a few seconds of each other are gathered into one turn rather than one turn each.
+- A member's **reply to the manager** (`team_post` to the manager), and a member finishing
+  without a reply, failing or starting to wait on you, start an idle manager's turn. A reply
+  and the end of the same turn are one wake, even if the ending arrives after the manager
+  already ran. Replies arriving within a few seconds are gathered into one turn.
 
 A member no window has open is opened by codeaf in the background so it can run, and a window
 that opens it later joins the running conversation. When that cannot be done, the traffic says
@@ -361,6 +373,7 @@ conversation is running. A wake spends through the same limits a turn you start 
 more bound it: one conversation is woken at most 20 times an hour, and a manager woken 10 times
 by its team with nothing from you stops being woken and asks you instead, as a waiting line in
 the traffic. It is woken again after you next say something to it.
+The ten wakes count ten replies when each member turn replies and then finishes.
 
 A team's auto-wake can be turned off. `team messages wake` in `/settings` under **Teams** is
 the default every team inherits (on), and a team can override it for itself and the teams
