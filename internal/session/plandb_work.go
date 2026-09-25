@@ -144,14 +144,14 @@ func readPlanWork(copied *TaskCopyRecord) PlanTaskWork {
 		if base == "" {
 			base = "HEAD"
 		}
-		patch, err := git(work.Dir, "diff", "--no-color", "--no-ext-diff", base, "--", ".")
+		patch, err := git(work.Dir, planWorkDiffArgs(base, "--", ".")...)
 		if err != nil {
 			return work
 		}
 		work.Patch, work.Cut = planWorkPatch(patch)
 		if out, err := git(work.Dir, "ls-files", "--others", "--exclude-standard", "-z", "--", "."); err == nil {
-			for _, name := range strings.Split(out, "\x00") {
-				if name = strings.TrimSpace(name); name != "" && !harnessWrote(filepath.ToSlash(name)) {
+			for _, name := range gitNULPaths(out) {
+				if !harnessWrote(filepath.ToSlash(name)) {
 					work.Added = append(work.Added, name)
 				}
 			}
@@ -163,7 +163,7 @@ func readPlanWork(copied *TaskCopyRecord) PlanTaskWork {
 	if root == "" || branch == "" || base == "" {
 		return work
 	}
-	patch, err := git(root, "diff", "--no-color", "--no-ext-diff", base, "refs/heads/"+branch, "--")
+	patch, err := git(root, planWorkDiffArgs(base, "refs/heads/"+branch, "--")...)
 	if err != nil {
 		return work
 	}
@@ -172,13 +172,27 @@ func readPlanWork(copied *TaskCopyRecord) PlanTaskWork {
 	return work
 }
 
+// planWorkDiffArgs is the one spelling of the difference the work tab reads,
+// on the live copy and off a given-back copy's branch alike, with the caller's
+// revisions and pathspec after it.
+//
+// THE HEADER'S SHAPE IS PINNED HERE, NOT LEFT TO THE PERSON'S GIT CONFIG, because
+// [PatchSectionPath] reads the file's name off it. `diff.noprefix` would write
+// `diff --git P P` and `diff.mnemonicPrefix` `diff --git i/P w/P`, so the two
+// prefixes are said outright. `core.quotePath=false` lets an accent arrive as
+// itself rather than as octal escapes; a name with a quote or a newline is still
+// quoted, and the reader unquotes it.
+func planWorkDiffArgs(rest ...string) []string {
+	return append([]string{"-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/"}, rest...)
+}
+
 // planWorkPatch drops every file section the harness wrote and caps what is
 // left. The sections are cut on git's own header line, so a file the harness
 // owns is left out whole and never half.
 func planWorkPatch(patch string) (string, bool) {
 	var kept strings.Builder
-	for _, section := range planPatchSections(patch) {
-		if harnessWrote(planPatchPath(section)) {
+	for _, section := range PatchSections(patch) {
+		if harnessWrote(PatchSectionPath(section)) {
 			continue
 		}
 		kept.WriteString(section)
@@ -192,44 +206,4 @@ func planWorkPatch(patch string) (string, bool) {
 		cut = cut[:at+1]
 	}
 	return cut, true
-}
-
-// planPatchSections splits a unified patch into one piece per file, each
-// starting at its `diff --git` line.
-func planPatchSections(patch string) []string {
-	var out []string
-	start := -1
-	for at := 0; at < len(patch); {
-		end := strings.IndexByte(patch[at:], '\n')
-		line := patch[at:]
-		next := len(patch)
-		if end >= 0 {
-			line = patch[at : at+end]
-			next = at + end + 1
-		}
-		if strings.HasPrefix(line, "diff --git ") {
-			if start >= 0 {
-				out = append(out, patch[start:at])
-			}
-			start = at
-		}
-		at = next
-	}
-	if start >= 0 {
-		out = append(out, patch[start:])
-	} else if strings.TrimSpace(patch) != "" {
-		out = append(out, patch)
-	}
-	return out
-}
-
-// planPatchPath is the path one file section is about, read off its header's
-// `b/` side, which is the file as it stands now.
-func planPatchPath(section string) string {
-	head, _, _ := strings.Cut(section, "\n")
-	head = strings.TrimPrefix(head, "diff --git ")
-	if at := strings.LastIndex(head, " b/"); at >= 0 {
-		return head[at+3:]
-	}
-	return head
 }
