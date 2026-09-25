@@ -487,9 +487,12 @@ the most.
 
 The pick stops where more money stops buying much. Every seat pays for ability, and
 open-ended work pays more for it than a fix does, so a small fix usually runs on a cheap crew
-and open-ended work buys a stronger model sooner as prices rise. The checker is never simply
-the cheapest model: its score must reach the ability of the weakest model seen doing the work,
-whenever an allowed model's does. A fix whose report shows **reach** —
+and open-ended work buys a stronger model sooner as prices rise. On open-ended and other work
+that upgrade goes to the **checker** first — the seat that accepts the work — and the planner
+stays on the base model; `--best` upgrades every seat. The worker and the checker are never
+simply the cheapest model: their score must reach the ability of the weakest model seen doing
+the work, whenever an allowed model's does, and `--cheap` takes a clearly stronger worker when
+it costs no more than half again as much. A fix whose report shows **reach** —
 more than one file, an API or protocol, language rules, a long report or several repros,
 existing tests that must keep passing, two of these at least — gets its worker one rung
 stronger than a one-line fix would; its planner and checker are the fix's own, the line

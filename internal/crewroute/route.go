@@ -159,6 +159,10 @@ const (
 	EffortCheap Effort = "cheap"
 )
 
+// cheapTolerance is how many times the cheapest fitting worker's cost a
+// cheap crew pays for a stronger worker.
+const cheapTolerance = 1.5
+
 // ParseEffort reads a person's word for effort. Empty is the knee; anything
 // else that is not one of the two words is refused by the caller's own form.
 func ParseEffort(word string) (Effort, bool) {
@@ -374,6 +378,9 @@ var ErrStrongest = errors.New("this is already the strongest crew the models you
 func Decide(r Request) (Decision, error) {
 	t := forDecision(r.Candidates, r.Learned)
 	t.rescue = r.Rescue
+	if r.Effort == EffortCheap {
+		t.cheapTolerance = cheapTolerance
+	}
 	reading := readingOf(r)
 	d := Decision{Class: reading.Class, Why: reading.Why, Sure: reading.Sure, Effort: r.Effort, Steps: r.Steps, Considered: len(r.Candidates)}
 	pins := r.Pins
@@ -450,7 +457,9 @@ func Decide(r Request) (Decision, error) {
 	if (r.Effort == EffortBest || r.Effort == EffortCheap) && r.Stronger == nil && r.Again == nil {
 		plain := r
 		plain.Effort, plain.Steps = "", 0
-		if kneeCrew, err := pickCrew(t, d.Class, candidates, pins, baseLambda(t, plain)); err == nil {
+		kneeT := *t
+		kneeT.cheapTolerance = 0
+		if kneeCrew, err := pickCrew(&kneeT, d.Class, candidates, pins, baseLambda(t, plain)); err == nil {
 			knee = &Decision{Crew: kneeCrew}
 			if sameCrew(kneeCrew, crew) && d.Note == "" {
 				if r.Effort == EffortBest {
@@ -603,6 +612,12 @@ const (
 //     seat would have had without this model — so the fallback costs about
 //     what the pick did rather than whatever is left.
 func ladderFor(t *table, class Class, pick Pick, candidates []Candidate, lambda float64) []Pick {
+	// A SEAT THAT CANNOT START falls back to a credible model at a similar
+	// cost; the ability floor a first pick must reach does not send it to a
+	// model many times dearer.
+	fallback := *t
+	fallback.abilityFloor = false
+	t = &fallback
 	var ladder []Pick
 	own := Lineage(pick.Model)
 	for _, c := range candidates {
@@ -737,9 +752,80 @@ func pickCrew(t *table, class Class, candidates []Candidate, pins map[Seat]Pin, 
 		if !ok {
 			return nil, NoCandidateError{Seat: seat}
 		}
+		if seat == Worker && t.cheapTolerance > 1 {
+			pick = strongerWithin(t, class, seat, candidates, pick, t.cheapTolerance)
+		}
 		crew = append(crew, pick)
 	}
+	if lambda > 0 && class != Bugfix {
+		crew = checkerFirst(t, class, crew, candidates, pins)
+	}
 	return crew, nil
+}
+
+// checkerFirst puts a support upgrade in the checker's seat. ON WORK WHOSE
+// SUPPORT SEATS THE WEIGHTS DO NOT TELL APART — their slopes within one
+// standard deviation of each other — the stronger of the two support picks
+// goes to the checker, which decides whether the work is accepted, and the
+// weaker to the planner. A pinned seat is never moved, and a model that
+// cannot sit the other seat stays where it was.
+func checkerFirst(t *table, class Class, crew []Pick, candidates []Candidate, pins map[Seat]Pin) []Pick {
+	if _, ok := pins[Planner]; ok {
+		return crew
+	}
+	if _, ok := pins[Checker]; ok {
+		return crew
+	}
+	link := t.linkOf(class)
+	p, c := link.Seats[Planner], link.Seats[Checker]
+	if math.Abs(p.Slope-c.Slope) > math.Max(p.SlopeSD, c.SlopeSD) {
+		return crew
+	}
+	pi, ci := -1, -1
+	for i, pick := range crew {
+		switch pick.Seat {
+		case Planner:
+			pi = i
+		case Checker:
+			ci = i
+		}
+	}
+	if pi < 0 || ci < 0 || Lineage(crew[pi].Model) == Lineage(crew[ci].Model) {
+		return crew
+	}
+	byID := map[string]Candidate{}
+	for _, cand := range candidates {
+		byID[cand.Model.ID] = cand
+	}
+	planCand, okP := byID[crew[pi].Model]
+	checkCand, okC := byID[crew[ci].Model]
+	if !okP || !okC {
+		return crew
+	}
+	asChecker, okC := eligible(t, class, Checker, planCand)
+	asPlanner, okP := eligible(t, class, Planner, checkCand)
+	if !okC || !okP || asChecker.Quality <= crew[ci].Quality+1e-9 {
+		return crew
+	}
+	out := append([]Pick(nil), crew...)
+	out[pi], out[ci] = asPlanner, asChecker
+	return out
+}
+
+// strongerWithin is a cheap seat's pick traded for the strongest eligible
+// model that costs at most tolerance times as much: a model barely dearer and
+// clearly stronger is the better buy even when quality is nearly free.
+func strongerWithin(t *table, class Class, seat Seat, candidates []Candidate, pick Pick, tolerance float64) Pick {
+	limit := weighedCost(t, class, seat, pick) * tolerance
+	best := pick
+	for _, c := range candidates {
+		other, ok := eligible(t, class, seat, c)
+		if !ok || weighedCost(t, class, seat, other) > limit+1e-12 || other.Quality <= best.Quality+1e-9 {
+			continue
+		}
+		best = other
+	}
+	return best
 }
 
 // bestFor is one seat's best pick at λ among the models whose quality is

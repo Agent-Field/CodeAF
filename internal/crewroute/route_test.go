@@ -596,3 +596,68 @@ func TestAFamilyIsTheNameWithoutItsVersion(t *testing.T) {
 		}
 	}
 }
+
+// ON OPEN-ENDED AND OTHER WORK A SUPPORT UPGRADE GOES TO THE CHECKER: the
+// weights do not tell the planner from the checker, and the checker is the
+// seat that accepts the work. At the knee the checker is never weaker than
+// the planner; a pinned planner stays where it was.
+func TestAtTheKneeTheCheckerIsNeverWeakerThanThePlanner(t *testing.T) {
+	for _, cands := range [][]Candidate{catalogCandidates(), frontierCandidates()} {
+		byID := map[string]Model{}
+		for _, c := range cands {
+			byID[c.Model.ID] = c.Model
+		}
+		for _, class := range []Class{OpenEnded, Other} {
+			d, err := Decide(Request{Class: class, Candidates: cands})
+			if err != nil {
+				t.Fatal(err)
+			}
+			w := load()
+			plan, check := w.abilityOf(byID[d.Seat(Planner).Model]), w.abilityOf(byID[d.Seat(Checker).Model])
+			if check.UScore < plan.UScore {
+				t.Errorf("%s: checker %s (%.3f) weaker than planner %s (%.3f)", class,
+					d.Seat(Checker).Model, check.UScore, d.Seat(Planner).Model, plan.UScore)
+			}
+		}
+	}
+	strong := glm53.ID
+	d, err := Decide(Request{Class: OpenEnded, Candidates: frontierCandidates(), Pins: map[Seat]Pin{
+		Planner: {Model: strong, Send: strong, Kind: Metered}}})
+	if err != nil || d.Seat(Planner).Model != strong {
+		t.Errorf("a pinned planner moved: %+v %v", d.Seat(Planner), err)
+	}
+}
+
+// --CHEAP DOES NOT BUY A WORKER ON PRICE ALONE: the worker's mean ability must
+// reach the floor, and a clearly stronger worker within half again the cost
+// is preferred.
+func TestACheapWorkerIsStillCredible(t *testing.T) {
+	thin := Model{ID: "inclusionai/ling-3.0-flash", Open: true, PromptPrice: 2.1e-8, CompletionPrice: 6.3e-8, CacheReadPrice: 4.2e-9,
+		Coding: 50.6, Context: 262144, Released: released(2026, 7, 23), Tools: true}
+	cands := []Candidate{candidateOf(thin), candidateOf(glmFlash), candidateOf(kimiK3)}
+	for _, class := range []Class{Bugfix, OpenEnded} {
+		d, err := Decide(Request{Class: class, Effort: EffortCheap, Candidates: cands})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := d.Seat(Worker).Model; got != glmFlash.ID {
+			t.Errorf("%s cheap: worker %s", class, got)
+		}
+	}
+	// Within the tolerance the stronger model wins; beyond it the cheaper one.
+	tab := forDecision(cands, nil)
+	base, _ := eligible(tab, Bugfix, Worker, candidateOf(glmFlash))
+	dear := glm53
+	dear.ID = "acme/near-price"
+	scale := 1.2 * tab.classCost(Bugfix, Worker, glmFlash) / tab.classCost(Bugfix, Worker, glm53)
+	dear.PromptPrice, dear.CompletionPrice, dear.CacheReadPrice = glm53.PromptPrice*scale, glm53.CompletionPrice*scale, glm53.CacheReadPrice*scale
+	if got := strongerWithin(tab, Bugfix, Worker, []Candidate{candidateOf(glmFlash), candidateOf(dear)}, base, cheapTolerance); got.Model != dear.ID {
+		t.Errorf("a stronger worker at 1.2x the cost lost to %s", got.Model)
+	}
+	far := dear
+	far.ID = "acme/far-price"
+	far.PromptPrice, far.CompletionPrice, far.CacheReadPrice = dear.PromptPrice*2, dear.CompletionPrice*2, dear.CacheReadPrice*2
+	if got := strongerWithin(tab, Bugfix, Worker, []Candidate{candidateOf(glmFlash), candidateOf(far)}, base, cheapTolerance); got.Model != glmFlash.ID {
+		t.Errorf("a stronger worker at 2.4x the cost was bought: %s", got.Model)
+	}
+}

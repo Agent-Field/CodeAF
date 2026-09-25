@@ -133,9 +133,13 @@ type table struct {
 	cache      map[string]ability
 	// rescue is a table asked for a seat's last rungs ([Request.Rescue]).
 	rescue bool
-	// checkerFloor is whether any candidate's mean ability reaches the
-	// floor as a checker ([table.seatCredible]).
-	checkerFloor bool
+	// abilityFloor is whether any candidate's mean ability reaches the
+	// floor ([table.seatCredible]).
+	abilityFloor bool
+	// cheapTolerance, above one, is how many times a cheap pick's cost a
+	// worker may cost and still be preferred for being stronger
+	// ([Request.Effort] cheap).
+	cheapTolerance float64
 }
 
 var (
@@ -490,16 +494,17 @@ func (t *table) credibleAt(a ability) bool {
 	return a.Known && a.U+2*math.Sqrt(a.VarU) >= t.UFloor
 }
 
-// seatCredible is [table.credibleAt] for one seat. THE CHECKER IS NEVER "ANY
-// MODEL WILL DO": it is the seat that decides whether the work is accepted,
-// so its ability's mean — not only its upper bound — must reach the floor,
-// whenever any candidate's does. A set of allowed models with none that
-// reaches it is still crewed, and [Gaps] says the checker is weak.
+// seatCredible is [table.credibleAt] for one seat. THE WORKER AND THE
+// CHECKER ARE NEVER "ANY MODEL WILL DO": one does the work and the other
+// decides whether it is accepted, so each one's ability mean — not only its
+// upper bound — must reach the floor, whenever any candidate's does. A set of
+// allowed models with none that reaches it is still crewed, and [Gaps] says
+// the checker is weak.
 func (t *table) seatCredible(seat Seat, a ability) bool {
 	if !t.credibleAt(a) {
 		return false
 	}
-	return seat != Checker || !t.checkerFloor || a.U >= t.UFloor
+	return seat == Planner || !t.abilityFloor || a.U >= t.UFloor
 }
 
 // pricePoint is one ability on a seat's price ladder and the least a
@@ -523,7 +528,7 @@ func (t *table) floorsOf(candidates []Candidate) map[Seat]float64 {
 			continue
 		}
 		if a.U >= t.UFloor && seatable(Checker, c) {
-			t.checkerFloor = true
+			t.abilityFloor = true
 		}
 		for _, seat := range Seats {
 			if !seatable(seat, c) {

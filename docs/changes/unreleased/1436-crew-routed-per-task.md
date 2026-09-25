@@ -33,8 +33,10 @@ good on every shared index never ranks below another; a row with none is
 scored from context, release date (the catalog's `created` field, now read),
 licence and family, never above the population mean. Price is never read as
 ability. Seats weigh a model at its score less one standard deviation of
-ability; a checker's mean ability must reach the floor when any allowed model's
-does. A model whose row is too thin for a finite score is not picked unless
+ability; a worker's and a checker's mean ability must reach the floor when any
+allowed model's does. On open-ended and other work at the knee a support
+upgrade goes to the checker, the planner staying on the base model; `--cheap`
+takes a stronger worker within 1.5× the cheapest one's cost. A model whose row is too thin for a finite score is not picked unless
 pinned. Reach is read over a one-paragraph ask's whole text, a security fix is
 a reach signal, and "wrongly", "rejected", "instead of" and a rename or version
 bump read as fixes. No per-model table ships, and
