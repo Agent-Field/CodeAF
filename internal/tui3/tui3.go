@@ -1346,6 +1346,11 @@ func Run(ctx context.Context, opts Options) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if opts.ReadCredits != nil {
+		var closeReads func()
+		opts.ReadCredits, closeReads = ownedCreditReader(ctx, opts.ReadCredits)
+		defer closeReads()
+	}
 	// THE SIGNAL HANDLER IS OURS, and [tea.WithoutSignalHandler] is what takes
 	// Bubble Tea's out of the way — see [forwardSignals] for what was wrong with
 	// the one it installs.

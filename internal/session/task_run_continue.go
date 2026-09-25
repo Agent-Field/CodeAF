@@ -19,7 +19,6 @@ package session
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 )
@@ -45,12 +44,15 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 	engine := chatRunEngine
 	g := a.graph()
 	if engine == nil || g == nil || g.planPath() == "" {
-		return "", errors.New("the run road is unavailable")
+		return "", errRunRoadUnavailable
 	}
 
-	// A RUN ALREADY GOING IS NOT CARRIED ON. Read under the belt's own lock,
-	// because a run installed between this look and the work below would be a
-	// second run on one conversation's store.
+	// A RUN ALREADY GOING IS NOT CARRIED ON. Read under the start lock, held
+	// until the carried-on run is registered, because a run installed between
+	// this look and the work below would be a second run on one conversation's
+	// store ([Agent.lockBeltStart]).
+	a.lockBeltStart()
+	defer a.beltStartMu.Unlock()
 	a.beltMu.Lock()
 	live := a.beltRun
 	a.beltMu.Unlock()
@@ -70,7 +72,7 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 		// copy (the program works in the folder itself), so the copy road below
 		// would refuse it in a sentence about a copy, and nothing here seats the
 		// program itself: the run rebuilt would be codeaf's own workers.
-		return "", errors.New(why)
+		return "", fmt.Errorf("%s", why)
 	}
 	if kept.State != TaskInterrupted {
 		// A run that finished, failed or was stopped has said its last word.
@@ -87,12 +89,14 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 		return "", err
 	}
 
-	// AND THE STORE THAT IS ALREADY THERE. The store road adopts a live store
-	// rather than seeding one ([Agent.openBeltRunStore]); what it must not do
-	// here is archive it and start fresh, which is what it does for a store
-	// whose root has ENDED — and an interrupted root has not ended, which is
-	// exactly the distinction [TaskInterrupted] draws.
-	plan, store, err := a.openBeltRunStore(g, g.planPath(), strconv.FormatUint(row, 10), kept.Title, "")
+	// AND THE STORE THAT IS ALREADY THERE, AND ONLY IF IT IS THIS RUN'S. The
+	// store road sets aside whatever it finds for a NEW request
+	// ([Agent.openBeltRunStore]); asked to carry on, it adopts the store only
+	// when that store's own root is this run and has not ended. A later request
+	// that set this run aside as interrupted left a different run at the path,
+	// and carrying THAT one on under this row's name is the adoption this door
+	// must never make.
+	plan, store, err := a.openBeltRunStore(g, g.planPath(), strconv.FormatUint(row, 10), kept.Title, "", true)
 	if err != nil {
 		return "", err
 	}
@@ -101,7 +105,7 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 	run := &beltRun{
 		plan: plan, store: store, root: store.RootID(), row: row, title: kept.Title,
 		workspace: tree.dir, ground: tree.ground, tree: tree, cut: cut,
-		born: a.taskClockNow(),
+		born: a.taskClockNow(), over: make(chan struct{}),
 	}
 	a.installBeltRun(g, run)
 	// THE ROW GOES BACK TO RUNNING AND KEEPS THE COPY IT NAMED. Publishing

@@ -146,11 +146,15 @@ func (a *app) workTabFrame(width, height int) []string {
 		out = append(out, "")
 	}
 	for _, note := range a.taskSheet.plan.Notes {
-		who := strings.TrimSpace(note.Author)
-		if note.Person {
-			who = "you"
+		// AN AUTHOR IS DRAWN ONLY AS A WORD A PERSON WOULD RECOGNISE, the page's
+		// own rule ([planNoteWho]): every other author the store holds is an id,
+		// and this row used to draw it (`2ytmh2 · …`). A note with no word for its
+		// author is its body alone, with no separator left hanging before it.
+		line := a.pal.ink(note.Body)
+		if who := planNoteWho(note); who != "" {
+			line = a.pal.dim(who+railSep) + line
 		}
-		out = append(out, a.pal.dim(who+railSep)+a.pal.ink(note.Body))
+		out = append(out, line)
 	}
 	text := a.taskSheet.planNote.String()
 	if strings.TrimSpace(text) == "" {

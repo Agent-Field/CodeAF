@@ -259,7 +259,7 @@ func TestSpendRowsFollowThePlanNode(t *testing.T) {
 	// AND SO DOES THE FLAG-OFF WORKER, whatever its node carries: the switch
 	// gates the wiring whole, so with it off nothing is armed and not one row
 	// is written anywhere — not by this worker, and not by the store road.
-	t.Setenv("CODEAF_TASK_BELT", "")
+	t.Setenv("CODEAF_TASK_BELT", "node")
 	osession, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	ograph := osession.graph()
 	path := filepath.Join(t.TempDir(), planStoreFilename)

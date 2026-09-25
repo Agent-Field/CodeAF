@@ -228,7 +228,7 @@ func TestATaskThatWasRunningLandsBesideAHeldFolder(t *testing.T) {
 		writeFile(t, filepath.Join(tree.dir, "CHANGELOG.md"), "a line\n")
 		held := holdFolder(t, repo, "Fix the parser")
 		programTip := strings.TrimSpace(gitOut(t, repo, "rev-parse", held.Branch))
-		merge, said, _, _ := tree.comeHome("update the changelog", []string{"CHANGELOG.md"}, false)
+		merge, said, _, _ := tree.comeHome("update the changelog", []string{"CHANGELOG.md"}, gitSignature{})
 		if merge != mergeKept || !strings.Contains(said, "its branch "+tree.branch+" was kept: fake, task 4 (Fix the parser), is working in it — bring it in when that run has ended") {
 			t.Fatalf("the landing = %q %q, want its branch kept beside the held folder", merge, said)
 		}
@@ -244,7 +244,7 @@ func TestATaskThatWasRunningLandsBesideAHeldFolder(t *testing.T) {
 		writeFile(t, filepath.Join(copy, "notes.md"), "the family's notes\n")
 		held := holdFolder(t, plain, "Fix the parser")
 		mirror := taskTree{dir: copy, ground: plain, mode: TaskModeMirror}
-		merge, said, _, refusal := mirror.comeHome("notes", []string{"notes.md"}, false)
+		merge, said, _, refusal := mirror.comeHome("notes", []string{"notes.md"}, gitSignature{})
 		if merge != mergeAborted || refusal != refusedByTheWork || !strings.HasPrefix(said, "its work was not laid into "+plain+" and is kept in "+copy+": ") {
 			t.Fatalf("the mirror's landing = %q %q %v, want it kept in its copy", merge, said, refusal)
 		}
@@ -252,7 +252,7 @@ func TestATaskThatWasRunningLandsBesideAHeldFolder(t *testing.T) {
 			t.Fatalf("the mirror was laid into the held folder: %v", err)
 		}
 		held.Finish("")
-		if merge, said, _, _ := mirror.comeHome("notes", []string{"notes.md"}, false); merge != mergeInPlace {
+		if merge, said, _, _ := mirror.comeHome("notes", []string{"notes.md"}, gitSignature{}); merge != mergeInPlace {
 			t.Fatalf("the mirror's landing once the run ended = %q %q", merge, said)
 		}
 	})

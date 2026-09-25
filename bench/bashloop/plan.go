@@ -40,8 +40,13 @@ func setPinnedModel(m string) {
 	}
 }
 
-// The belt switch, in the engine's own spelling. Arm A runs with it unset —
-// the belt as shipped; arm B runs with it set to "bash".
+// The belt switch, in the engine's own spelling. Arm A runs with it set to the
+// word that turns the harness OFF; arm B runs with it set to "bash".
+//
+// BOTH ARMS SET IT, AND THAT IS THE POINT. The bash belt is the default now, so
+// an arm that left the variable unset would ride the same belt as arm B and the
+// driver would report a comparison it never ran — a difference of zero that
+// looks like a measurement. Neither arm may rely on the default.
 const beltEnvVar = "CODEAF_TASK_BELT"
 
 // defaultCellWall is the per-invocation wall. It is a spend backstop, not a
@@ -52,7 +57,7 @@ const defaultCellWall = 30 * time.Minute
 type Arm string
 
 const (
-	// ArmShipped is the belt as shipped: the belt env unset.
+	// ArmShipped is the older node belt: the belt env set to "node".
 	ArmShipped Arm = "A"
 	// ArmBash is the bash belt: the belt env set to bash.
 	ArmBash Arm = "B"
@@ -64,7 +69,7 @@ func beltEnvFor(arm Arm) string {
 	if arm == ArmBash {
 		return "bash"
 	}
-	return "" // unset: the belt as shipped
+	return "node" // the older belt, named rather than defaulted to
 }
 
 // Seats names which seats an arm runs on: the one pinned model on every seat,
@@ -219,13 +224,11 @@ func (iv invocation) label() string {
 }
 
 // envLine is the arm's belt env as the dry run prints it and as the test
-// compares it. Unset is spelled, not blank, so a reader can see the arm A
-// case is a deliberate absence and not a missing line.
+// compares it. Every arm names a word, so there is no absent case to spell: an
+// arm with a blank env would be an arm riding whatever the default is, which is
+// the one thing this comparison may not do.
 func (iv invocation) envLine() string {
-	if value := beltEnvFor(iv.Arm); value != "" {
-		return beltEnvVar + "=" + value
-	}
-	return beltEnvVar + "=(unset)"
+	return beltEnvVar + "=" + beltEnvFor(iv.Arm)
 }
 
 // spec is everything about one invocation that BOTH arms must share: the

@@ -106,6 +106,33 @@ var tasksSchemaJSON = `{"type":"object","properties":{` +
 	`"forward":{"type":"boolean","description":"Sends what the person just said into the running task named by id, verbatim and as theirs: the one door by which a correction typed here moves what that task is judged by. Their words go alone."}` +
 	`},"additionalProperties":false}`
 
+// tasksSchemaWithNote is [tasksSchemaJSON] with the plan road's own field on
+// it, and it is built rather than typed twice so the two cannot drift.
+//
+// THE FIELD IS ABSENT WHERE IT CANNOT WORK, which is this package's own law
+// stated in beltfacts.go and applied here: a note lands in a plan store, and a
+// conversation whose hand-offs are nodes of the session tree has no plan store
+// at all. Carrying the field there would be a verb the model would reach for
+// once and be refused by forever, and — the reason it matters more than tidiness
+// — the node road's request bytes would change, which is a thing this change is
+// not allowed to do.
+var tasksSchemaWithNote = strings.TrimSuffix(tasksSchemaJSON, `},"additionalProperties":false}`) +
+	// A NOTE IS NOT `say`, AND THE DESCRIPTION IS WHERE THAT IS SETTLED. `say`
+	// is a correction aimed at a node of this session's own tree; a note is a
+	// fact written onto a row of the run's plan, which the worker is handed the
+	// moment its current step ends ([Agent.Steer] carries it, so a reply being
+	// written is cut and re-asked) and every other worker and the person can
+	// read too. It says what it cannot do in the same breath, because a model
+	// that believed a note moved a task's work order would be changing what the
+	// work is judged by with no version check behind it.
+	//
+	// AND IT NAMES NO DOOR THAT DOES. It used to end "revise_assignment does
+	// that", and `revise_assignment` is a worker's verb that no conversation
+	// carries ([Config.mayRevise]): the schema was pointing the model at a tool
+	// it did not have.
+	`,"note":{"type":"string","description":"A fact written onto the run row named by id (\"2\", \"2.1\"): its worker is handed it when its current step ends, and it stays on the row for the person and the other workers. It is information, not an order: it cannot change what that task was asked for or is judged by. It ends nothing."}` +
+	`},"additionalProperties":false}`
+
 // tasksArguments is the wire form. The id is RAW because a model that has just
 // read "7 · fix-the-nil-map-crash" will send either `"7"` or `7`, and both of
 // them mean task seven: a schema type is a request, not a guarantee, and
@@ -122,6 +149,12 @@ type tasksArguments struct {
 	Forward  bool            `json:"forward"`
 	Continue bool            `json:"continue"`
 	Resolve  string          `json:"resolve"`
+	// Note is the plan road's own field: a fact written onto one row of the
+	// live run, which that row's worker is handed when its current step ends.
+	// It is decoded on every road, because a model that sent it where the schema
+	// does not offer it is better answered with a sentence than with a parse
+	// error.
+	Note string `json:"note"`
 }
 
 // The two words `scope` takes. They are constants because the schema's enum,
@@ -179,10 +212,18 @@ func taskScopeWord(raw string) (string, bool) {
 //     failed or finished. Same brief, same working copy, last report as this
 //     round's finding. A new propose_task is the wrong door.
 func (a *Agent) tasksTool() bare.Tool {
+	// THE SCHEMA THE CALL CARRIES IS THE ONE THIS AGENT CAN ANSWER. The plan
+	// road's `note` field is offered only where a plan store exists to hold it
+	// ([Config.oneTaskRoad]), which is the same predicate the hand-off facts
+	// branch on, so the page and the schema cannot disagree about the verb.
+	schema := tasksSchemaJSON
+	if a.config.oneTaskRoad() {
+		schema = tasksSchemaWithNote
+	}
 	return bare.Tool{
 		Name:        "tasks",
 		Description: tasksDescription,
-		Schema:      json.RawMessage(tasksSchemaJSON),
+		Schema:      json.RawMessage(schema),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed tasksArguments
 			// An absent argument object is a valid call — "what has been going
@@ -213,6 +254,9 @@ func (a *Agent) tasksTool() bare.Tool {
 				if parsed.Stop {
 					return "Invalid arguments: stop needs an id — it ends one running task, not a search", true, nil
 				}
+				if strings.TrimSpace(parsed.Note) != "" {
+					return "Invalid arguments: note needs an id — it is written onto one row of the run, not onto a search", true, nil
+				}
 				// THE RUN'S TASKS LEAD AND THE SHIPPED LISTING FOLLOWS. A conversation
 				// that has handed work to a run still has the tasks of earlier
 				// sittings and of other windows, and a listing that showed only the
@@ -227,8 +271,63 @@ func (a *Agent) tasksTool() bare.Tool {
 				}
 				return markTaskLook(ctx, listing), false, nil
 			}
+			// A STOP ON A ROW OF THE LIVE RUN IS THE RUN'S OWN STOP, and it is
+			// routed here because the reader below cannot find these rows at all.
+			//
+			// MEASURED ON THE REAL BINARY, 2026-09-22: a person said "I do not want
+			// division in this package at all" while three hand-offs were running;
+			// the conversation read the digest, worked out that row #2 was the one
+			// that had gone wrong — which is the whole of what change 2 is for — and
+			// called `tasks {"id":"2","stop":true}`. It was answered `No task "2" in
+			// this project`, four times, under four spellings of the same row. Then
+			// it told the person "Task #2 stopped", and task 2 ran to completion,
+			// was checked, and landed. A false report to a person, from a door that
+			// refuses the one thing the turn had correctly decided to do.
+			//
+			// The cause is that a hand-off on this road publishes a run ROW and
+			// never a node of the session tree ([Agent.startKnownTaskRun]), so
+			// [Agent.taskByToken] misses and [Agent.oneTask] refuses before
+			// stoprun.go is ever reached. The person's own stop does reach it, by
+			// the number the row wears ([Agent.CancelWithReason]), and this is the
+			// model taking that same door with the same number.
+			if parsed.Stop {
+				if answer, ok := a.stopPlanRow(token, parsed.Say); ok {
+					return answer, false, nil
+				}
+			}
+			// A NOTE IS WRITTEN ONTO THE RUN'S OWN ROW, and only there. It is the
+			// chat's half of the note channel: a worker writes to a sibling's row
+			// through `plandb task note`, the person writes from the task's page,
+			// and this is the one mind holding the conversation writing what the
+			// plan does not know. The row is named the way the model has just read
+			// it in the listing (`#2`, `#2.1`), which is the only spelling of a run
+			// row that exists outside the store.
+			if note := strings.TrimSpace(parsed.Note); note != "" {
+				return a.planNoteFromChat(token, note)
+			}
+			// `say` AND `forward` ON A ROW OF THE RUN ARE ANSWERED HERE, for the
+			// reason `stop` is: the reader below cannot find these rows at all, so
+			// both used to come back `No task "2" in this project` about a row the
+			// digest had just shown the conversation, which is a refusal that
+			// denies the row exists rather than saying what the door can do.
+			//
+			// `say` is a line to the work and a note IS that line on this road, so
+			// it is delivered as one and the answer says it went that way. `forward`
+			// is refused: it promises to move what a task is judged by, and nothing
+			// a conversation holds moves that for a row of the run — so it says so,
+			// and names the doors that do exist. A `say` that rides with `continue`
+			// or `resolve` is that verb's reason, not a line to the work, and goes
+			// on to the reader below as before.
+			if parsed.Forward || (strings.TrimSpace(parsed.Say) != "" && !parsed.Continue && strings.TrimSpace(parsed.Resolve) == "") {
+				if row, want, ok := a.planRowNamed(token); ok {
+					if parsed.Forward {
+						return fmt.Sprintf(planForwardRefusal, want), true, nil
+					}
+					return a.writePlanNote(row, want, strings.TrimSpace(parsed.Say), planSayLead)
+				}
+			}
 			// A READ OF A TASK THE RUN'S STORE HOLDS IS ANSWERED FROM THE STORE, by the
-			// number the rail shows for it. Anything else about it (say, stop,
+			// number the rail shows for it. Anything else about it (stop,
 			// continue, settle) and any id the store does not hold go on to the
 			// shipped reader below, exactly as before.
 			if reading := !parsed.Continue && !parsed.Forward && !parsed.Stop && strings.TrimSpace(parsed.Say) == "" && strings.TrimSpace(parsed.Resolve) == ""; reading {
@@ -1490,16 +1589,26 @@ func planTaskLabels(rows []PlanTaskRow) map[string]string {
 }
 
 // planTasksText is the run's tasks as a listing: the name a person sees, the
-// title, the state, how long it ran, and the first line of what came back.
-// Empty when there is no run or nothing in it matches, so the caller's own
-// listing stands alone.
+// title, the state, how long it ran, what it cost, the first line of what came
+// back, and the newest note anybody left on it. Empty when there is no run or
+// nothing in it matches, so the caller's own listing stands alone.
 //
 // A PROGRAM'S RUN SAYS HOW LONG IT TOOK AND WHAT IT COST, off the run's one pair
 // ([planRowSpanWord], task_run_clock.go) and its spend rows ([taskDollarWord]):
 // the tool said neither, and a model asked how long senior-dev took or what it
-// cost could only guess. AND IT SAYS WHICH
-// PROGRAM HAS IT, after the clock, in [taskViaWord]'s one spelling — the same
-// place on the line [taskRowText] puts it.
+// cost could only guess. AND IT SAYS WHICH PROGRAM HAS IT, after the clock, in
+// [taskViaWord]'s one spelling — the same place on the line [taskRowText] puts
+// it.
+//
+// THE NOTE IS ON THE ROW BECAUSE NOBODY WAS READING IT. A note is the channel a
+// worker uses to say that another task's premise is wrong, and a person uses to
+// tell a task something the plan does not hold; both were drawn on the task's
+// page and nowhere else, so the conversation — the one mind holding what the
+// person actually asked for — could list every row of a run and never learn
+// that one of them had found the plan wrong. The row carries the newest note
+// alone, cut to a line: the whole of them is [Agent.planTaskText]'s job, and a
+// listing that grew with every note would be the context this tool exists to
+// spend sparingly.
 func (a *Agent) planTasksText(rows []PlanTaskRow, query string) string {
 	query = strings.ToLower(strings.TrimSpace(query))
 	labels := planTaskLabels(rows)
@@ -1507,10 +1616,18 @@ func (a *Agent) planTasksText(rows []PlanTaskRow, query string) string {
 	var b strings.Builder
 	for _, row := range rows {
 		page, _ := a.PlanTaskPage(row.ID)
-		if query != "" && !strings.Contains(strings.ToLower(row.Title+" "+row.Status+" "+page.Result), query) {
+		// THE ROW SAYS THE RAIL'S WORD ([PlanTaskRow.StateWord]), the one the
+		// digest in front of the person's sentence says of the same row. A search
+		// still matches the store's own word too, because a model that has read
+		// `claimed` in a worker's own output will search for it.
+		word := row.StateWord()
+		if query != "" && !strings.Contains(strings.ToLower(row.Title+" "+word+" "+row.Status+" "+page.Result+" "+row.Note), query) {
 			continue
 		}
-		fmt.Fprintf(&b, "%s · %s · %s", labels[row.ID], cutChars(row.Title, runAskLineChars), row.Status)
+		fmt.Fprintf(&b, "%s · %s", labels[row.ID], cutChars(row.Title, runAskLineChars))
+		if word != "" {
+			fmt.Fprintf(&b, " · %s", word)
+		}
 		if span := planRowSpanWord(row, now); span != "" {
 			fmt.Fprintf(&b, " · %s", span)
 		}
@@ -1523,10 +1640,135 @@ func (a *Agent) planTasksText(rows []PlanTaskRow, query string) string {
 		if line := summaryFirstLine(page.Result, runAskLineChars); line != "" {
 			fmt.Fprintf(&b, " · %s", line)
 		}
+		if note := summaryFirstLine(row.Note, runAskLineChars); note != "" {
+			fmt.Fprintf(&b, " · note: %s", note)
+		}
 		b.WriteByte('\n')
 	}
 	return b.String()
 }
+
+// stopPlanRow ends one row of the live run, named the way the model read it in
+// the listing or the digest — `#2`, `#2.1` — and answers false for a token that
+// names no row of this run, so the caller goes on to the session tree's own
+// reader exactly as before.
+//
+// TWO ROADS, BECAUSE THE TWO KINDS OF ROW ARE DIFFERENT THINGS. A row whose id
+// is a number is a hand-off: the run publishes it under that number, and the
+// number is what a person's own stop names ([Agent.CancelWithReason] →
+// stoprun.go), which ends the run itself when the number is the run's and one
+// joined hand-off when it is not — settling the row so a stopped part does not
+// go on spinning until everything beside it finishes. A part the run made for
+// itself has no number of its own, so it is ended through the store the way the
+// task page's own `x stop it` ends one ([Agent.PlanCancel]), which cascades to
+// its descendants and to the work hard-depending on it.
+//
+// THE ANSWER SAYS WHAT A STOP DOES AND DOES NOT DO, for stopOneTask's reason: a
+// model that goes looking for a landing to judge is a model spending a turn on
+// work nothing will check.
+func (a *Agent) stopPlanRow(token, why string) (string, bool) {
+	rows := a.runPlanTasks()
+	labels := planTaskLabels(rows)
+	want := "#" + strings.TrimPrefix(strings.TrimSpace(token), "#")
+	for _, row := range rows {
+		if labels[row.ID] != want {
+			continue
+		}
+		bare := planTaskID(row.ID)
+		// The parse is the QUESTION and not the value: a row whose id is a number
+		// is a hand-off the run published under that number, and the number is
+		// what the person's own stop names. Anything else is a part the run made
+		// for itself, which has no number and takes the store's road below.
+		if _, err := strconv.ParseUint(bare, 10, 64); err == nil {
+			line, stopErr := a.CancelWithReason(CancelTask+":"+bare, strings.TrimSpace(why))
+			if stopErr != nil {
+				return capitalized(stopErr.Error()) + ".", true
+			}
+			return line + ". It is not checked and nothing re-runs it.", true
+		}
+		if err := a.PlanCancel(row.ID); err != nil {
+			return capitalized(err.Error()) + ".", true
+		}
+		return fmt.Sprintf("stopped %s · %s%s. Everything under it and the work waiting on it ends with it; it is not checked and nothing re-runs it.",
+			want, cutChars(row.Title, runAskLineChars), stopReasonClause(why)), true
+	}
+	return "", false
+}
+
+// stopReasonClause is the reason a stop carried, said the way the answer reads
+// it, and nothing at all when the caller gave none — the emptiness law applied
+// to a sentence rather than to a screen.
+func stopReasonClause(why string) string {
+	if why = strings.TrimSpace(why); why != "" {
+		return " — " + why
+	}
+	return ""
+}
+
+// planNoteFromChat writes one note onto a row of the live run, named the way
+// the model read it — `#2`, `#2.1` — and answers the sentence the model reads
+// back. A token that names no row of this run falls through to false, and the
+// caller says so in the words it already has for an id it does not hold.
+//
+// THE RECEIPT SAYS WHAT THE NOTE CANNOT DO, in the same breath as the delivery.
+// A model told only that its words arrived will reach for this field again the
+// next time it wants a task to do something different, and a note that was read
+// as a direction is a task quietly working to a contract nobody versioned. So
+// the answer says that nothing the conversation holds moves a work order, and
+// names what it does hold ([Agent.writePlanNote]).
+func (a *Agent) planNoteFromChat(token, note string) (string, bool, error) {
+	row, want, ok := a.planRowNamed(token)
+	if !ok {
+		return fmt.Sprintf("No task %q in this run. Call tasks with no arguments to see its rows.", token), true, nil
+	}
+	return a.writePlanNote(row, want, note, "")
+}
+
+// writePlanNote puts one note onto a row this conversation has already found,
+// and answers the receipt. lead is a sentence said before the receipt — the
+// one `say` owes about the door its words actually went through.
+//
+// THE RECEIPT NAMES NO VERB THIS CONVERSATION HAS NOT GOT. It used to send the
+// model to `revise_assignment`, which is a WORKER'S verb and is never on a
+// conversation's belt ([Config.mayRevise]): a model told the door was there went
+// looking for a tool it did not hold. What the conversation does hold over a row
+// whose work is wrong is `stop`, and a fresh hand-off with the right ask.
+func (a *Agent) writePlanNote(row PlanTaskRow, want, note, lead string) (string, bool, error) {
+	if err := a.PlanNoteFromChat(row.ID, note); err != nil {
+		return capitalized(err.Error()) + ".", true, nil
+	}
+	return fmt.Sprintf("%snoted on %s · %s: %s\nIts worker is handed it as soon as the step it is on ends, and it stays on the row for the person and the other workers. It does not change what that task was asked for, and nothing you hold does: if the work itself is wrong, stop it and hand off the right ask.", lead, want, cutChars(row.Title, runAskLineChars), note), false, nil
+}
+
+// planRowNamed finds the row of this conversation's runs that a token names,
+// spelled the way the model read it in the listing or the digest — `2`, `#2`,
+// `#2.1` — and answers that row, its label, and false for a token that names
+// none, so the caller goes on to the session tree's own reader as before.
+func (a *Agent) planRowNamed(token string) (PlanTaskRow, string, bool) {
+	rows := a.runPlanTasks()
+	labels := planTaskLabels(rows)
+	want := "#" + strings.TrimPrefix(strings.TrimSpace(token), "#")
+	for _, row := range rows {
+		if labels[row.ID] == want {
+			return row, want, true
+		}
+	}
+	return PlanTaskRow{}, "", false
+}
+
+// planSayLead is what a `say` routed onto a run row answers before its
+// receipt. The model asked for one door and was given another, and it must know
+// which, because the two promise different things: a line into a node of this
+// session's own tree, against a note on a row of the run that its worker is
+// handed at its next step.
+const planSayLead = "A row of the run takes `say` as a note, so your line went through `note`: "
+
+// planForwardRefusal is what `forward` answers for a row of the run. It is a
+// refusal, and it says why in the words the model needs to choose again: the
+// person's words cannot move what a row of the run is judged by, because
+// nothing this conversation holds can, and `note` is the door that carries
+// their words to the worker as information.
+const planForwardRefusal = "%s is a row of the run, and `forward` does not reach one: nothing you hold can move what a run's task is judged by. Put the person's words on it with `note` — its worker is handed them as soon as the step it is on ends, as information and not as an order — or, if the work itself is now wrong, `stop` it and hand off the right ask."
 
 // planTaskText is ONE task of the run, answered from the store: what it was
 // asked, what came back in full, what the run's checks found, and its last
@@ -1550,7 +1792,10 @@ func (a *Agent) planTaskText(rows []PlanTaskRow, token string) (string, bool) {
 		return "", false
 	}
 	var b strings.Builder
-	head := labels[id] + " · " + cutChars(page.Row.Title, runAskLineChars) + " · " + page.Row.Status
+	head := labels[id] + " · " + cutChars(page.Row.Title, runAskLineChars)
+	if word := page.Row.StateWord(); word != "" {
+		head += " · " + word
+	}
 	if span := planRowSpanWord(page.Row, a.taskClockNow()); span != "" {
 		head += " · " + span
 	}
@@ -1571,6 +1816,23 @@ func (a *Agent) planTaskText(rows []PlanTaskRow, token string) (string, bool) {
 		if check, _ := a.PlanTaskPage(row.ID); check.Result != "" {
 			fmt.Fprintf(&b, "\n%s · %s:\n%s\n", labels[row.ID], cutChars(row.Title, runAskLineChars), cutChars(check.Result, runAskBodyChars))
 		}
+	}
+	// EVERY NOTE ON THE TASK, oldest first and bounded, between what came back
+	// and the steps that made it. The page is where the whole channel is read:
+	// the listing carries only the newest note, and a conversation that has seen
+	// one and wants the rest opens the task rather than being handed all of them
+	// on every row. The bound is [runAskNotesPerTask]'s, the same figure the run
+	// summary spends on one task's notes, and the oldest go first because a
+	// worker's later note usually answers its earlier one.
+	notes := page.Notes
+	if len(notes) > runAskNotesPerTask {
+		notes = notes[len(notes)-runAskNotesPerTask:]
+	}
+	if len(notes) > 0 {
+		b.WriteString("\nnotes:\n")
+	}
+	for _, note := range notes {
+		fmt.Fprintf(&b, "%s · %s\n", planNoteAuthorWord(note), cutChars(note.Body, runAskLineChars))
 	}
 	steps := page.Steps
 	if len(steps) > runAskNotesPerTask*4 {

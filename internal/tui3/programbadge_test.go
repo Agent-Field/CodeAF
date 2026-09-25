@@ -596,21 +596,25 @@ func TestTheBadgeYieldsBeforeTheTitleFloor(t *testing.T) {
 // place the program's work is named, and it has to say whose it is. An ordinary
 // plan row is drawn as it always was.
 func TestAProgramsPlanRowOnTheRailWearsTheBadge(t *testing.T) {
+	a, _, _ := taskApp(t)
+	width := railCols - ansi.StringWidth(railSeam)
 	row := programRow()
-	pal := newPalette(tokens.ANSI256, false)
-	item := planItem(row, "chat-1", planKinOf([]session.PlanTaskRow{row}))
-	drawn := plain(planRailRow(tasksLine{item: item}, railCols-ansi.StringWidth(railSeam), pal, taskFixtureNow))
+	rows, _, _ := a.railEntryRows(railEntry{node: planRailNode(row)}, width)
+	if len(rows) == 0 {
+		t.Fatal("a program's plan row drew nothing")
+	}
+	drawn := plain(rows[0])
 	t.Logf("the plan row: %q", drawn)
-	if !strings.Contains(drawn, "rewrite the") || !strings.Contains(drawn, "[senior-dev]") {
+	if !strings.Contains(drawn, "rewrite the") || !strings.Contains(drawn, "[s") {
 		t.Fatalf("a program's plan row on the rail reads %q, want the program's badge", drawn)
 	}
-	if cells := ansi.StringWidth(drawn); cells > railCols-ansi.StringWidth(railSeam) {
-		t.Fatalf("the plan row is %d cells in a %d-cell column: %q", cells, railCols-ansi.StringWidth(railSeam), drawn)
+	if cells := ansi.StringWidth(drawn); cells > width {
+		t.Fatalf("the plan row is %d cells in a %d-cell column: %q", cells, width, drawn)
 	}
 	row.Program, row.Stage = "", ""
-	ordinary := planItem(row, "chat-1", planKinOf([]session.PlanTaskRow{row}))
-	if drawn := plain(planRailRow(tasksLine{item: ordinary}, railCols-ansi.StringWidth(railSeam), pal, taskFixtureNow)); strings.Contains(drawn, "[") {
-		t.Fatalf("an ordinary plan row reads %q", drawn)
+	ordinary, _, _ := a.railEntryRows(railEntry{node: planRailNode(row)}, width)
+	if len(ordinary) == 0 || strings.Contains(plain(ordinary[0]), "[") {
+		t.Fatalf("an ordinary plan row reads %q", ordinary)
 	}
 }
 

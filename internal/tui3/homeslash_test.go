@@ -168,6 +168,23 @@ func TestHomePlainSentenceStillStarts(t *testing.T) {
 	}
 }
 
+func TestHomeSkillPathOpensAConversationWithThePathStillInThePicker(t *testing.T) {
+	lab := newHomeLab(t)
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "reading the skill shelf", "/tmp/alpha", time.Now())
+	a := lab.app(mine)
+	runCmd(a.openHome())
+	a.start = func(string) (Conversation, error) {
+		return Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: "/tmp/alpha/next/transcript.jsonl"}, nil
+	}
+	a.homeSlash("/skills ./tools/reviewer")
+	if a.at(pageHome) {
+		t.Fatal("the skill command stayed on home")
+	}
+	if got := a.input.String(); got != "/skill ./tools/reviewer" {
+		t.Fatalf("the new conversation's skill picker lost its path: %q", got)
+	}
+}
+
 // TestHomeSlashSmokeWalks: a handful of commands walked through home's
 // dispatcher, each doing what it does HERE — which is not always what it does
 // in chat, and the difference is the gate (homeslash.go).

@@ -6261,6 +6261,15 @@ func (n *TaskNode) resumeTree(place Place, workspace string) (taskTree, bool) {
 	n.graph.mu.Unlock()
 	if interrupted && strings.TrimSpace(dir) != "" {
 		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			// AND THE CHECKPOINT'S SPELLING IS BROUGHT UP TO GIT'S. Git resolves
+			// symlinks before it registers a worktree, and taskOwnFolder records
+			// that same spelling so checkpoint, cleanup and git name one directory;
+			// a checkpoint written before that law can carry the raw path it was
+			// handed — /var/… where git says /private/var/… — and a tree resumed
+			// under the other spelling is one directory known to cleanup by two
+			// names. Stat runs first, so a copy that no longer exists still takes
+			// its not-resumed road.
+			dir = canonicalPath(dir)
 			ground, mode := n.groundNow()
 			if merge == mergeInPlace {
 				// AND A RESUMED FAMILY REVALIDATES ITS TREE THROUGH THE ONE CALL THAT
@@ -6344,7 +6353,7 @@ func abortedMerge(tree taskTree) string {
 // was checked reaches the person's branch (the gate in [Agent.workTaskNode]);
 // "not proven" is not "throw it away", and it is not "land it either" — the
 // person is told where it is and brings it home themselves.
-func keptWork(tree taskTree, title string, changed []string, sign bool) (string, []string) {
+func keptWork(tree taskTree, title string, changed []string, sign gitSignature) (string, []string) {
 	if tree.merge == mergeInPlace || tree.root == "" || strings.TrimSpace(tree.dir) == "" {
 		return abortedMerge(tree), changed
 	}
@@ -7821,15 +7830,13 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// audited by a different rule than the conversation would be the setting
 		// meaning two things (task_audit.go).
 		TaskAudit: parent.TaskAudit,
-		// AND SO DOES WHETHER codeaf SIGNS THE GIT WORK IT DOES IN THEIR NAME.
-		// A node commits — its landing writes one ([commitTaskWorkAs]) and its
-		// worker may write more with `bash` — and the `attribution` row is the
-		// person's answer for their whole machine, not for the window they
-		// happened to be looking at. A node is handed no ProfileDir either
+		// AND SO DOES WHETHER THE SIGNATURE NAMES THE MODEL. A node commits —
+		// its landing writes one ([commitTaskWorkAs]) and its worker may write
+		// more with `bash` — and the `attribution.model` row is the person's
+		// answer for their whole machine. A node is handed no ProfileDir
 		// (Config.ProfileDir says why), so a child that did not carry this
-		// would re-read the row as its DEFAULT, which is on, and sign for
-		// somebody who had turned signing off.
-		Attribution: parent.Attribution,
+		// would name the model for somebody who had turned the name off.
+		AttributionModelOff: parent.AttributionModelOff,
 		// And so does who decides a landing nobody could check. A parent node's
 		// own agent is the reader of its children's landing notes, so a family
 		// running under a different `task.settle` than the conversation would tell
@@ -8654,7 +8661,7 @@ var unfiledSession = sync.OnceValue(func() string { return "unfiled-" + shortID(
 // land. If git cannot do it — a real conflict, or local changes it would have
 // to overwrite — the branch is KEPT and named, and nothing of the node's work
 // is lost.
-func (t taskTree) comeHome(title string, wrote []string, sign bool) (string, string, []string, landingRefusal) {
+func (t taskTree) comeHome(title string, wrote []string, sign gitSignature) (string, string, []string, landingRefusal) {
 	if t.mode == TaskModeMirror {
 		return t.landMirror(wrote)
 	}
@@ -9079,7 +9086,7 @@ func nonEmptyLines(out string) []string {
 // be staged into, the index could not be read, or git refused the commit. A
 // landing read them as nothing to do, merged a branch holding nothing and
 // removed the working copy the work was sitting in (task_land_unsaved.go, #255).
-func commitTaskWork(dir, title string, wrote []string, sign bool, bashBelt bool) ([]string, string, landingRefusal) {
+func commitTaskWork(dir, title string, wrote []string, sign gitSignature, bashBelt bool) ([]string, string, landingRefusal) {
 	saved, _, why, err := commitTaskWorkAs(dir, "task: "+clip(firstLine(title), 72), wrote, sign, bashBelt)
 	if err != nil {
 		return nil, firstLine(err.Error()), why
@@ -9112,7 +9119,7 @@ func commitTaskWork(dir, title string, wrote []string, sign bool, bashBelt bool)
 // the edits, or — at a division — pin a world believing it held work that was
 // still on the floor. A caller that cannot act on the answer may still discard
 // it; a caller that can is now able to.
-func commitTaskWorkAs(dir, message string, wrote []string, sign bool, bashBelt bool) ([]string, string, landingRefusal, error) {
+func commitTaskWorkAs(dir, message string, wrote []string, sign gitSignature, bashBelt bool) ([]string, string, landingRefusal, error) {
 	if problem, why := stageTaskWork(dir, wrote, bashBelt); problem != "" {
 		return nil, "", why, errors.New(problem)
 	}
@@ -9148,16 +9155,13 @@ func commitTaskWorkAs(dir, message string, wrote []string, sign bool, bashBelt b
 // signed is the attribution law applied to a commit NOBODY WAS ASKED ABOUT: the
 // one this harness writes itself when a node's work lands or a family's world is
 // frozen. The model is told the same law in words where it does the committing
-// (beltfacts.go's [Config.signsGitWork], out of internal/exec's
+// (beltfacts.go's attribution fact, out of internal/exec's
 // [exec.AttributionLaw]); this is the other half, and it is mechanical because
 // there is no model in the loop here to tell.
 //
-// THE TRAILER IS APPENDED RATHER THAN HANDED TO `git commit --trailer`. The
-// result is the same block and the same bytes, and the bytes are the feature —
-// but --trailer arrived in git 2.32 and a person on an older git would get a
-// commit that silently carried no attribution at all, which is the failure this
-// law exists to prevent. A blank line and one line after it is what a trailer
-// block IS, in every version of git there has ever been.
+// IT ALWAYS SIGNS, with the same two lines the model is told to write — one
+// blank line, `Assisted-by`, then the co-author, and nothing else
+// ([gitSignature.sign]). There is no off: the row that was one is gone.
 //
 // AND THE AUTHOR DOES NOT MOVE. These commits stay authored as
 // codeaf <agentfield-bot@users.noreply.github.com> ([codeafGitIdentity]) rather
@@ -9168,11 +9172,8 @@ func commitTaskWorkAs(dir, message string, wrote []string, sign bool, bashBelt b
 // not a second answer to the same question — which is why it is a trailer, where
 // a reader already looks for who else had a hand in the commit, and why the
 // address in it is the codeaf GitHub account rather than a local one.
-func signed(message string, sign bool) string {
-	if !sign {
-		return message
-	}
-	return strings.TrimRight(message, "\n") + "\n\n" + attributionTrailer
+func signed(message string, sign gitSignature) string {
+	return sign.sign(message)
 }
 
 // unheldLedgerPaths is every path the node's ledger names that this tree does
@@ -9377,15 +9378,14 @@ func beltTreeWork(dir string) []string {
 	}
 	var paths []string
 	for _, path := range porcelainPaths(out) {
-		switch {
-		case isTaskDropping(path):
-		case path == "bench-results" || strings.HasPrefix(path, "bench-results/"):
-		case path == planStoreFilename || strings.HasPrefix(path, planStoreFilename+"."):
-		case path == "bin/plandb":
-		case strings.HasSuffix(path, ".lock"):
-		default:
-			paths = append(paths, literalPathspec+path)
+		// WHAT IS MACHINERY IS ANSWERED IN ONE PLACE ([harnessWrote]), by where
+		// the harness itself writes, and never by a name project files share: a
+		// `.lock` suffix here once kept every lockfile a run changed off the
+		// branch, and a `bench-results` directory is a project's own folder.
+		if harnessWrote(path) {
+			continue
 		}
+		paths = append(paths, literalPathspec+path)
 	}
 	return paths
 }

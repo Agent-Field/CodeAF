@@ -43,8 +43,13 @@ package session
 // run that is stopping says so, and a press on a run that is over says that.
 
 import (
+	"errors"
+	"fmt"
+	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
 // beltStoppedWhere is how a stopped run says where its work is and what a
@@ -70,7 +75,7 @@ func (a *Agent) stopBeltRow(id uint64, why string) (string, bool, error) {
 	run := a.beltRun
 	if run == nil {
 		a.beltMu.Unlock()
-		return a.endedBeltRow(id)
+		return a.endedBeltRow(id, why)
 	}
 	if run.row == id {
 		name := taskStopName(id, run.title)
@@ -105,7 +110,7 @@ func (a *Agent) stopBeltRow(id uint64, why string) (string, bool, error) {
 	}
 	a.beltMu.Unlock()
 	if !joined {
-		return a.endedBeltRow(id)
+		return a.endedBeltRow(id, why)
 	}
 	return a.stopJoinedRow(run, id, why)
 }
@@ -167,7 +172,13 @@ func (a *Agent) stopJoinedRow(run *beltRun, id uint64, why string) (string, bool
 		title = task.Title
 	}
 	name := taskStopName(id, title)
-	if task == nil || terminalStoreStatus(task.Status) {
+	if task == nil {
+		// A JOINED ROW WHOSE STORE TASK IS GONE is a row nothing can move, and
+		// answering "already finished" over a row the rail draws running is the
+		// same row saying two things. It is settled as stopped instead.
+		return a.stopUndrivenRow(id, run.row, why)
+	}
+	if terminalStoreStatus(task.Status) {
 		return name + " has already finished; there is nothing to stop", true, nil
 	}
 	if _, err := run.store.Cancel(key, stopBecause(taskStoppedWord, why)); err != nil {
@@ -191,17 +202,103 @@ func (a *Agent) stopJoinedRow(run *beltRun, id uint64, why string) (string, bool
 // endedBeltRow answers a stop on a run's row whose run is already over. The
 // row is still on the person's screen, so the press is a real one and is owed
 // the sentence every settled task answers, not the graph's "there is no task".
-func (a *Agent) endedBeltRow(id uint64) (string, bool, error) {
+func (a *Agent) endedBeltRow(id uint64, why string) (string, bool, error) {
 	g := a.graph()
 	if g == nil {
 		return "", false, nil
 	}
 	for _, kept := range g.runRows(id) {
 		if kept.ID == id && kept.Run == "" {
+			// A ROW STILL SAYING RUNNING WITH NO RUN BEHIND IT is not finished,
+			// and the stop is what clears it ([Agent.stopUndrivenRow]).
+			if kept.State == TaskRunning {
+				return a.stopUndrivenRow(id, kept.Parent, why)
+			}
 			return taskStopName(id, kept.Title) + " has already finished; there is nothing to stop", true, nil
 		}
 	}
 	return "", false, nil
+}
+
+// runRowUndrivenWord is the one sentence a run row with nothing behind it
+// answers a message with: the run that published it is not the one this
+// conversation is driving, or the plan it names holds no such task, so no
+// worker can read the words. It says the one thing a person can do about it.
+const runRowUndrivenWord = "nothing is driving this task any more, so no worker can read a message; stop it to clear the row"
+
+// stopUndrivenRow settles a run row nothing drives: a row the rail draws
+// running whose run is gone, or whose task the run's plan does not hold. THERE
+// IS NO WORK TO CUT, so the stop is the row's ending and nothing else, written
+// where every run row's ending is written ([Agent.publishRunRow]) so the rail
+// and the conversation read back tomorrow agree that it stopped.
+func (a *Agent) stopUndrivenRow(id, parent uint64, why string) (string, bool, error) {
+	g := a.graph()
+	notice := TaskNotice{ID: id, Parent: parent}
+	for _, kept := range g.runRows(id) {
+		if kept.ID == id {
+			notice = kept
+		}
+	}
+	notice.State, notice.Stopped = TaskFailed, true
+	notice.Report = stopBecause(taskStoppedWord, why) + " · nothing was driving it any more"
+	notice.EndedAt = a.taskClockNow()
+	if g != nil {
+		a.publishRunRow(g, notice)
+	} else {
+		a.emitTaskUpdate(notice)
+	}
+	return "stopped " + stopBecause(taskStopName(id, notice.Title), why) + " — nothing was driving it any more", true, nil
+}
+
+// sayToRunRow is a message to a row a run owns, and it reports whether the
+// number is a run's at all: false sends the caller on to the answer that there
+// is no such task.
+//
+// A RUN'S ROWS ARE NOT NODES, so the node door ([Agent.sayToTask]) had nothing
+// to deliver to and answered every one of them `no task N in this session`,
+// over a row the rail was drawing running. The live run's own rows take the
+// words as a note on their task's page, which is where a run's worker reads
+// what it is told between its steps (the page's own box writes the same note,
+// [Agent.PlanNote]). A row nothing drives says so, and says it can be stopped.
+func (a *Agent) sayToRunRow(id uint64, text string, origin messageOrigin) (SteerReceipt, bool, error) {
+	a.beltMu.Lock()
+	run := a.beltRun
+	owned := run != nil && (run.row == id || slices.Contains(run.joined, id))
+	a.beltMu.Unlock()
+	if owned {
+		key := strconv.FormatUint(id, 10)
+		task := run.store.Task(key)
+		if task == nil {
+			return SteerReceipt{}, true, errors.New(taskStopName(id, "") + ": " + runRowUndrivenWord)
+		}
+		if terminalStoreStatus(task.Status) {
+			return SteerReceipt{}, true, fmt.Errorf("%s has finished, not running", taskStopName(id, task.Title))
+		}
+		var err error
+		if origin == fromPerson {
+			_, err = run.store.AddPersonNote(key, text)
+		} else {
+			_, err = run.store.AddNote(key, plandb.NoteAgentChat, text)
+		}
+		if err != nil {
+			return SteerReceipt{}, true, err
+		}
+		return SteerReceipt{Landing: steerRunNoteWord}, true, nil
+	}
+	g := a.graph()
+	if g == nil {
+		return SteerReceipt{}, false, nil
+	}
+	for _, kept := range g.runRows(id) {
+		if kept.ID != id || kept.Run != "" {
+			continue
+		}
+		if kept.State == TaskRunning {
+			return SteerReceipt{}, true, errors.New(taskStopName(id, kept.Title) + ": " + runRowUndrivenWord)
+		}
+		return SteerReceipt{}, true, fmt.Errorf("%s is %s, not running", taskStopName(id, kept.Title), kept.State)
+	}
+	return SteerReceipt{}, false, nil
 }
 
 // beltRunStopped reports whether a person stopped this run, and the words they

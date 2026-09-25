@@ -38,7 +38,10 @@ func Land(ctx context.Context, store *plandb.Store, workspace, rootID string) (L
 	if root == nil {
 		return Landing{}, fmt.Errorf("land a run: no task %s in the store", rootID)
 	}
-	branch, changed, refusal, err := session.LandRunTree(workspace, root.Title, true)
+	// THE LANDING IS SIGNED WITH THE BARE `Assisted-by` LINE. A run's store
+	// records no model on its root, and a line naming a guessed one would be a
+	// provenance claim nobody made.
+	branch, changed, refusal, err := session.LandRunTree(workspace, root.Title, "")
 	if err != nil {
 		return Landing{}, err
 	}

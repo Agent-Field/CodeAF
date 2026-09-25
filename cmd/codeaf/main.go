@@ -657,7 +657,8 @@ than fighting your shell.
   CODEAF_BRIEF_AFTER   4h  minimum absence before an arrival brief (0 = always)
   CODEAF_MAX_HOURS     how many hours an unattended chat --yolo session may
                        carry its own work on (default none: it stops when the
-                       model stops). --max-hours wins.
+                       model stops); the window closes itself ` + strconv.Itoa(int(launchWallGrace/time.Minute)) + ` minutes
+                       after. --max-hours wins.
   CODEAF_MAX_COST      the same ceiling in dollars. --max-cost wins. Either one
                        alone is a budget; without one, --yolo is only the
                        approval posture it has always been.

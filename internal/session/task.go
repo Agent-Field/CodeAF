@@ -845,9 +845,16 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	// and its depends_on as the store's own dependencies, and takes the person's
 	// ask with it when this turn owes one (CHAT-ROLE.md, "A landing speaks only
 	// when an answer is owed"). A task about ANOTHER FOLDER than the work
-	// already underway is refused here ([standsElsewhereError]); any other
-	// failure of the run road falls through to the shipped engine, exactly as a
-	// typed /task does, and that engine cuts its own copy from the same stand.
+	// already underway is refused here ([standsElsewhereError]).
+	//
+	// AND A RUN ROAD THAT FAILS IS SAID, NOT HIDDEN. Any other failure of the run
+	// road used to fall through to the older engine's tree, which is the one
+	// thing this comment's first line says an approved hand-off never becomes:
+	// a batch of eight approved at once raced to one store and six of them
+	// quietly became old-tree nodes. The receipt now says the task did not start
+	// and why ([runDidNotStart]), and reads as a failure. Only a run road that
+	// is not there at all (no engine linked, no place for a store) leaves this
+	// door for the older one ([Agent.commitProposalToRun]).
 	if answer, refused, handled := a.commitProposalToRun(ctx, p, spec, elsewhere); handled {
 		return answer, refused, nil
 	}
@@ -866,11 +873,12 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 // admits it then — and handled=true with the model's answer otherwise.
 //
 // A task about ANOTHER FOLDER than the work already underway is refused here
-// ([standsElsewhereError]); any other failure of the run road for an ordinary
-// hand-off falls through to the shipped engine, exactly as a typed /task does,
-// and that engine cuts its own copy from the same stand. A DELEGATE HAS NO OTHER
-// ROAD: the shipped engine would seat a worker of its own on the brief, which is
-// not what was asked for, so its failure is answered as a refusal.
+// ([standsElsewhereError]). Any other failure ON the run road is said, as a
+// task that did not start ([runDidNotStart]); only a run road that is not there
+// at all ([errRunRoadUnavailable]) leaves an ordinary hand-off to the shipped
+// engine. A DELEGATE HAS NO OTHER ROAD: the shipped engine would seat a worker
+// of its own on the brief, which is not what was asked for, so its failure is
+// answered as a refusal.
 func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec taskSpec, elsewhere string) (string, bool, bool) {
 	if !(bashBeltAsked() || spec.via != "") || chatRunEngine == nil || a.config.InTask {
 		return "", false, false
@@ -893,13 +901,17 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 	// the moment the model finished its sentence. The values ride along, the
 	// cancellation does not. What ends it instead is the conversation: the
 	// person's stop (stoprun.go) or the room closing ([Agent.cutBeltRun]).
-	joined := a.beltRunStandsOn(p.stand)
+	//
+	// WHETHER IT JOINED is the start door's answer and not a look taken
+	// before it: in a batch committed at one moment none of the hand-offs
+	// could see a live run beforehand, and the one that opened the run is
+	// decided under the start lock ([Agent.startOrJoinTaskRunVia]).
 	stand := p.stand
 	if via != nil {
 		stand = delegateStand(stand.dir)
 	}
 	asked := programAsked(spec)
-	err := a.startKnownTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, stand, question, via, asked...)
+	joined, err := a.startOrJoinTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, stand, question, via, asked...)
 	if refusal := (standsElsewhereError{}); errors.As(err, &refusal) {
 		return refusal.Error(), true, true
 	}
@@ -915,6 +927,9 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 	}
 	if via != nil {
 		return via.Name + " could not start: " + err.Error(), true, true
+	}
+	if !errors.Is(err, errRunRoadUnavailable) {
+		return withElsewhere(runDidNotStart(p.id, err), elsewhere), true, true
 	}
 	return "", false, false
 }

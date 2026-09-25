@@ -185,6 +185,28 @@ type taskNode struct {
 	// only run; a child carries both, so the same door opens the run's page at
 	// the card this row represents. Empty is an ordinary task, unchanged.
 	run, node string
+	// planTask is WHICH TASK OF THE RUN'S PLAN STORE this row is
+	// (session's TaskNotice.PlanTask), and it is set on the rows the run's door
+	// publishes and on nothing else. Empty is an ordinary node of this
+	// session's own tree, which is every row until a `/task` takes the run road.
+	//
+	// IT IS AN IDENTITY THIS SURFACE COULD NOT WORK OUT FOR ITSELF. A row the
+	// run's door published wears the store root's own title, so the tasks place
+	// matched the two halves on those words and drew the row the engine holds no
+	// node for — whose Enter opens an empty room. The store says which task it
+	// is now, so the place can draw the half the store answers for
+	// (taskplan.go's [planStoreDraws]).
+	planTask string
+	// planRow is set on the rows the rail and a task's page DRAW FOR A STORE
+	// TASK, and on nothing the engine published: a run's parts are store rows
+	// with no node in this window's graph, and they are drawn through the node
+	// renderer by lending them a node of their own (planrail.go's
+	// [planRailNode]). Its presence makes the state the store's word
+	// ([app.taskStatus]), so the mark, the group and the under-block read one
+	// reading. handle is that row's own trailing `#id`, the store's name for it,
+	// which a numeric node id cannot spell.
+	planRow *session.PlanTaskRow
+	handle  string
 	// stopped says a PERSON ended this node rather than the work ending on its
 	// own (session's TaskNotice.Stopped). It rides beside the state rather than
 	// replacing it — a stopped node still settles as failed — and it is what the
@@ -3549,97 +3571,170 @@ func (a *app) railDrawnView(height int) ([]railLine, int) {
 	if len(view) == 0 {
 		return nil, focus
 	}
-	// A RUN PLAN IS THE TASKS PLACE'S TREE, not a second rail renderer. The
-	// reading paints every plan row; this column only gives those fitted rows
-	// their place in its existing tasks section.
-	if plan := a.tasksFiltered().planRailRows(a.railRoom(), a.pal); len(plan) > 0 {
-		// THE TITLES COME OUT OF THE READING THE PLACE ALREADY HOLDS, never out
-		// of the store: this is a frame, and a frame never reads the disk. The
-		// reading is refreshed on the paint clock ([tasksPlace.regroup]).
-		//
-		// A NODE ROW GIVES WAY ONLY TO A PLAN ROW THAT IS DRAWN. The reading
-		// leaves the run's own row to the node that carries it (one piece of
-		// work, one row: [planRowShown]), and this column used to drop that node
-		// row as well because the STORE held its title, so a run was drawn as its
-		// parts with nothing over them. The node row stays, and the run's rows
-		// hang under it, which is where a tree's rows go.
-		// EACH RUN HANGS UNDER ITS OWN ROW. A conversation may hold several runs,
-		// an ended one beside the live one, and every drawn row is filed under the
-		// run it belongs to by walking the store's own parents.
-		drawn := make(map[string]bool)
-		for _, row := range plan {
-			drawn[row.title] = true
-		}
-		parent, rootTitle := make(map[string]string), make(map[string]string)
-		for _, row := range a.taskSheet.mine.plan {
-			parent[row.ID] = strings.TrimSpace(row.Parent)
-			if parent[row.ID] == "" {
-				rootTitle[row.ID] = planTitleFor(row.Title)
-			}
-		}
-		rootOf := func(id string) string {
-			for hops := 0; parent[id] != "" && hops < len(parent); hops++ {
-				id = parent[id]
-			}
-			return id
-		}
-		entries := a.railEntries()
-		nodeOf := func(line railLine) *taskNode {
-			if line.entry < 0 || line.entry >= len(entries) {
-				return nil
-			}
-			return entries[line.entry].node
-		}
-		// under is, for each run, the last line of the node row that carries it.
-		// A run no row on the column carries keeps the place the rows always
-		// had, ahead of the first entry.
-		under := make(map[string]int)
-		for i, line := range view {
-			node := nodeOf(line)
-			if node == nil || drawn[strings.TrimSpace(node.label)] {
-				continue
-			}
-			for root, title := range rootTitle {
-				if title == planTitleFor(node.label) {
-					under[root] = i
-				}
-			}
-		}
-		after := make(map[int][]railLine)
-		var ahead []railLine
-		for _, row := range plan {
-			line := railLine{text: row.text, entry: -1, plan: row.id}
-			if at, ok := under[rootOf(row.id)]; ok {
-				after[at] = append(after[at], line)
-			} else {
-				ahead = append(ahead, line)
-			}
-		}
-		next := make([]railLine, 0, len(view)+len(plan))
-		placed := len(ahead) == 0
-		for i, line := range view {
-			if !placed && line.entry >= 0 {
-				next = append(next, ahead...)
-				placed = true
-			}
-			if node := nodeOf(line); node != nil && drawn[strings.TrimSpace(node.label)] {
-				continue
-			}
-			next = append(next, line)
-			next = append(next, after[i]...)
-		}
-		if !placed {
-			next = append(append([]railLine{}, ahead...), next...)
-		}
-		if len(next) > height {
-			next = next[:height]
-		}
-		for len(next) < height {
-			next = append(next, railLine{entry: -1})
-		}
-		view = next
+	// THE TREES COME OUT OF THE READING THE PLACE ALREADY HOLDS, never out of the
+	// store: this is a frame, and a frame never reads the disk. The reading is
+	// refreshed on the paint clock ([tasksPlace.regroup]).
+	forest := a.tasksFiltered().planRailForest(a.taskSheet.mine.plan)
+	if len(forest) == 0 {
+		return view, focus
 	}
-	return view, focus
+	// EVERY RUN IS FILED UNDER ITS OWN ROOT by walking the store's own parents,
+	// because a conversation may hold several runs, an ended one beside the live
+	// one, and a part must hang under the run it belongs to.
+	parent, rootTitle := make(map[string]string), make(map[string]string)
+	for _, row := range a.taskSheet.mine.plan {
+		id := strings.TrimSpace(row.ID)
+		parent[id] = strings.TrimSpace(row.Parent)
+		if parent[id] == "" {
+			rootTitle[id] = planTitleFor(row.Title)
+		}
+	}
+	rootOf := func(id string) string {
+		id = strings.TrimSpace(id)
+		for hops := 0; parent[id] != "" && hops < len(parent); hops++ {
+			id = parent[id]
+		}
+		return id
+	}
+	// ONE BLOCK PER RUN: the run's own row when the reading holds it, and the
+	// parts whose run's row it does not hold.
+	type runBlock struct {
+		self  *planTwig
+		loose []*planTwig
+	}
+	blocks := make(map[string]*runBlock)
+	var order []string
+	drawn := make(map[string]bool)
+	var mark func(twig *planTwig)
+	mark = func(twig *planTwig) {
+		drawn[planTitleFor(twig.row.Title)] = true
+		for _, kid := range twig.kids {
+			mark(kid)
+		}
+	}
+	for _, twig := range forest {
+		mark(twig)
+		run := rootOf(twig.row.ID)
+		block := blocks[run]
+		if block == nil {
+			block = &runBlock{}
+			blocks[run] = block
+			order = append(order, run)
+		}
+		if strings.TrimSpace(twig.row.Parent) == "" {
+			block.self = twig
+		} else {
+			block.loose = append(block.loose, twig)
+		}
+	}
+	entries := a.railEntries()
+	nodeOf := func(line railLine) *taskNode {
+		if line.entry < 0 || line.entry >= len(entries) {
+			return nil
+		}
+		return entries[line.entry].node
+	}
+	// A NODE ROW THAT CARRIES A RUN IS THAT RUN'S ROW. The door that takes the
+	// run road publishes a node row for the run's own task, naming it
+	// ([taskNode.planTask]) — and an older row is matched by the title it
+	// wears. That row is kept, drawn as the head of a family, and the run's
+	// parts hang under it: one piece of work, one row.
+	carrier := make(map[string]int)
+	for _, line := range view {
+		node := nodeOf(line)
+		if node == nil || !line.head {
+			continue
+		}
+		for _, run := range order {
+			if _, held := carrier[run]; held {
+				continue
+			}
+			if strings.TrimSpace(node.planTask) == run ||
+				(rootTitle[run] != "" && rootTitle[run] == planTitleFor(node.label)) {
+				carrier[run] = line.entry
+			}
+		}
+	}
+	width := a.railRoom()
+	under := make(map[int][]railLine)
+	var ahead []railLine
+	for _, run := range order {
+		block := blocks[run]
+		kids := append([]*planTwig(nil), block.loose...)
+		if block.self != nil {
+			kids = append(kids, block.self.kids...)
+		}
+		if at, ok := carrier[run]; ok {
+			under[at] = append(under[at], a.planRailLines(kids, entries[at].stems, entries[at].root, width)...)
+			continue
+		}
+		if block.self != nil {
+			ahead = append(ahead, a.planRailRoot(block.self, width)...)
+			continue
+		}
+		// A PART WHOSE RUN IS NOT ON THE COLUMN AT ALL stands as a row of its
+		// own, which is where a row with nothing above it goes.
+		for _, twig := range block.loose {
+			ahead = append(ahead, a.planRailRoot(twig, width)...)
+		}
+	}
+	carried := make(map[int]bool, len(carrier))
+	for _, at := range carrier {
+		carried[at] = true
+	}
+	next := make([]railLine, 0, len(view)+len(ahead))
+	placed := len(ahead) == 0
+	for _, line := range view {
+		if !placed && line.entry >= 0 {
+			next = append(next, ahead...)
+			placed = true
+		}
+		node := nodeOf(line)
+		if node != nil && !carried[line.entry] && drawn[planTitleFor(node.label)] {
+			// A node row wearing the title of a row the run draws is the same
+			// work, and the run's own row is the one that stays.
+			continue
+		}
+		if node != nil && carried[line.entry] {
+			if !line.head {
+				continue
+			}
+			// THE CARRIER IS DRAWN AGAIN AS THE HEAD OF ITS FAMILY, by the
+			// same renderer, so its under-block keeps the stem the parts
+			// below it hang from.
+			e := entries[line.entry]
+			kids := len(under[line.entry]) > 0
+			if kids && !e.folded {
+				e.root = true
+			}
+			rows, glyph, badge := a.railEntryRows(e, width)
+			for j, text := range rows {
+				redrawn := line
+				redrawn.text, redrawn.head = text, j == 0
+				if j == 0 {
+					redrawn.glyph, redrawn.badge = glyph, badge
+				} else {
+					redrawn.glyph, redrawn.badge = hudSpan{}, hudSpan{}
+				}
+				next = append(next, redrawn)
+			}
+			if !e.folded {
+				next = append(next, under[line.entry]...)
+			}
+			continue
+		}
+		next = append(next, line)
+	}
+	if !placed {
+		next = append(append([]railLine{}, ahead...), next...)
+	}
+	if len(next) > height {
+		next = next[:height]
+	}
+	for len(next) < height {
+		next = append(next, railLine{entry: -1})
+	}
+	return next, focus
 }
 
 // railRows draws the roster to exactly height rows, or nil when there is none.
@@ -5042,7 +5137,16 @@ func (a *app) railTreeGlyph(node *taskNode) string {
 const railTitleFloor = 12
 
 // railMetaWord is the node's handle: the id the engine calls it by.
-func railMetaWord(node *taskNode) string { return "#" + itoa(int(node.id)) }
+//
+// A STORE TASK'S HANDLE IS THE STORE'S. A run's parts have no node number, so
+// the row lent to one carries the store's own id ([taskNode.handle]) and wears
+// it in the same slot, in the same dim, as a node wears its number.
+func railMetaWord(node *taskNode) string {
+	if node.handle != "" {
+		return "#" + node.handle
+	}
+	return "#" + itoa(int(node.id))
+}
 
 // railModelWord is the model this node runs on, as a column this narrow can say
 // it: the part of the id AFTER THE VENDOR, which is the part that names the
@@ -5446,7 +5550,13 @@ func planLiveLine(row session.PlanTaskRow, width int, pal palette) string {
 // glyph (the mark comes off the vocabulary's own door, [palette.glyph], so this
 // line gets this terminal's repertoire).
 func planLiveRow(command string, parts []session.PlanCommandPart, width int, pal palette) string {
-	command = planDisplayCommand(command, parts)
+	command = strings.TrimSpace(planDisplayCommand(command, parts))
+	// A LINE WITH NO COMMAND ON IT IS NO LINE. The mark and the shell lead said
+	// a step was in flight with nothing after them — `◑ $` under a part that had
+	// landed — which is a row claiming a present it cannot name.
+	if command == "" {
+		return ""
+	}
 	lead := pal.glyph(tokens.GStepRunning) + " " + tokens.GlyphShell + " "
 	if width < ansi.StringWidth(lead) {
 		return ""
@@ -5614,13 +5724,16 @@ func (a *app) railWaiting(node *taskNode, width int) []string {
 // on it at all is no row.
 func (a *app) railTelemetry(node *taskNode, width int) string {
 	segs := make([]string, 0, 5)
-	// A NODE WITH NO ANCHOR HAS NO AGE TO DRAW. Counted from the zero instant it
-	// read `2562047h 47m`, which is not a measurement of anything. And a node
-	// whose room is open draws none either ([app.taskNow]): the room's own header
+	// A NODE NOBODY DATED HAS NO CLOCK. A store task whose store never said when
+	// it started is lent a node with no start ([planRailNode]), and the age of
+	// the zero instant is a number of hours that is nobody's. And a node whose
+	// room is open draws none either ([app.taskNow]): the room's own header
 	// carries the live figure, and a number stopped at the moment of the click
 	// read `2s` beside a senior-dev page reading `1m 21s`.
-	if clock := countUpWord(a.taskNow(node).Sub(node.began)); clock != "" && !node.began.IsZero() && node.froze.IsZero() {
-		segs = append(segs, clock)
+	if !node.began.IsZero() && node.froze.IsZero() {
+		if clock := countUpWord(a.taskNow(node).Sub(node.began)); clock != "" {
+			segs = append(segs, clock)
+		}
 	}
 	if node.tokens > 0 {
 		// BARE, WITH NO UNIT ON IT. The footer's figure wears "tok" because it sits
@@ -6002,6 +6115,13 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	}
 	if notice.Node != "" {
 		node.node = notice.Node
+	}
+	// AND WHICH STORE TASK THIS ROW IS, kept on the run door's own rule: the
+	// identity was settled when the row was minted and is true for the row's
+	// whole life, so an update quiet about it has not turned a run's row back
+	// into a node of this session's tree ([taskNode.planTask]).
+	if notice.PlanTask != "" {
+		node.planTask = notice.PlanTask
 	}
 	if notice.Branch != "" {
 		node.branch = notice.Branch

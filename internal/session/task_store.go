@@ -754,6 +754,15 @@ type runRecord struct {
 	// loud rather than repairing.
 	Copy *TaskCopyRecord `json:"copy,omitempty"`
 
+	// PlanTask is WHICH TASK OF THE PLAN STORE THIS ROW IS
+	// ([TaskNotice.PlanTask]), carried across a restart for the same reason the
+	// copy is: the conversation reopened tomorrow reads its store off the disk
+	// and has to know which of its tasks the row it is redrawing already
+	// answers for. A record written before this field existed decodes with "",
+	// which is the honest reading — that row carries no identity and the title
+	// is all the place has.
+	PlanTask string `json:"planTask,omitempty"`
+
 	// ElapsedMS is whatever age the row was last published with, frozen. A
 	// hand-off's run row carries its wall time from the row that settles it —
 	// the span from the hand-off to the instant its program was gone, or its
@@ -1104,6 +1113,7 @@ func runRowRecord(notice TaskNotice) runRecord {
 		Merge:     notice.Merge,
 		Result:    notice.Result,
 		Changed:   append([]string(nil), notice.Changed...),
+		PlanTask:  notice.PlanTask,
 	}
 }
 
@@ -1148,6 +1158,7 @@ func runRowNotice(record runRecord) TaskNotice {
 		Merge:     record.Merge,
 		Result:    record.Result,
 		Changed:   append([]string(nil), record.Changed...),
+		PlanTask:  record.PlanTask,
 	}
 	if !notice.State.settled() {
 		// WORK NOTHING IS DRIVING IS INTERRUPTED, NOT FAILED. This row was live
@@ -1196,9 +1207,8 @@ func runRowNotice(record runRecord) TaskNotice {
 // not true. `it ended when codeaf closed; its journal is kept` said the work was
 // over, and the work is not over — nothing is driving it and every step it took
 // is in its store. What the sentence was carrying is now carried by the reading:
-// the state is [TaskInterrupted] and the row asks whether to continue it
-// ([TaskAskContinue]), whose own words say that nothing is driving it and that
-// everything it did is kept.
+// the state is [TaskInterrupted], and the line beside the word says that
+// nothing is driving it and that everything it did is kept.
 
 // recordLocked copies one node out, with the graph held.
 func (n *TaskNode) recordLocked() taskRecord {

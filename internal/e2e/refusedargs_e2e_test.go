@@ -50,12 +50,20 @@ func testRefusedTaskProposal(t *testing.T) {
 	// The turn's end is where a spilled row would linger longest, and where a
 	// second refusal — the model sending the composed check again — would draw
 	// the sentence a second time. The suite's own way of knowing a model turn
-	// has finished is waiting for a word that only comes back with it: the
-	// settled card's foot here, the way [testAskHere] waits for the answer
-	// hint after its model's reply — and what is read then is the absence the
-	// whole subtest exists for.
+	// has finished is waiting for a word that only comes back with it, and here
+	// that word is the status line's `idle`.
+	//
+	// IT WAS [exchangeAnswerHint], AND THAT WORD CANNOT ARRIVE IN THIS SCENARIO.
+	// That needle is the answer line a ONE-OFF REMINDER's card offers — `1 yes,
+	// set it up · 0 no · c change` — which is what [testAskHere] is waiting for
+	// when it waits for a turn to finish. #938 took the five-second sleep out of
+	// this subtest and copied that call without its scenario: a proposal the tool
+	// REFUSED has no answers to offer, so the card settles on `not started · the
+	// call was refused` and the foot the suite was waiting for is one the product
+	// is right never to draw. The wait burned ninety seconds of every run and
+	// then failed, in front of two assertions that were passing.
 	final := r.waitFor(modelPatience, say(t, "refusedCallRowWord"))
-	final = r.waitFor(modelPatience, say(t, "exchangeAnswerHint"))
+	final = r.waitFor(modelPatience, say(t, "idleWord"))
 	if strings.Contains(final, "Invalid arguments:") {
 		t.Errorf("the schema's refusal sentence is on the screen after the turn:\n%s", final)
 	} else {

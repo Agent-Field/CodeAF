@@ -125,7 +125,7 @@ stale is running.
 | `--once "<text>"` | send one message and print its replies — normally it then exits; with `--yolo` and a budget it stays until handed-over work is home or the limit ends it |
 | `--no-compact` | never shorten the conversation automatically |
 | `--yolo` | run every tool without asking, subject to the limits that nothing lifts |
-| `--max-hours <n>` | with `--yolo`: elapsed-time limit; interactive chat checks before new turns |
+| `--max-hours <n>` | with `--yolo`: elapsed-time limit; interactive chat checks before new turns, and the window closes itself two minutes after it |
 | `--max-cost <n>` | with `--yolo`: dollar limit; interactive chat checks before new turns |
 | `--one-model` | every text call this session makes runs on the session model |
 
@@ -149,7 +149,9 @@ spend is counted as each model call is paid for, while its tasks are still worki
 one long task cannot carry the run far past the figure. A run that reaches it ends the
 work still going and its row says `a dollar limit you set stopped it`, just as a
 run its elapsed-time limit ended names the time limit. The call that reached the limit is
-already paid for, so the run can end a little over it.
+already paid for, so the run can end a little over it. A task started when nothing is
+left of that figure is not refused before it starts: its first worker makes one paid
+call and the run ends there, with the same line.
 
 ## Leaving it running on its own · leaving a headless run going with a budget · --once yolo · no screen · unattended · overnight · nobody watching
 
@@ -195,6 +197,21 @@ states which launch limit was reached.
 
 The local persistent host carries these launch settings. Explicit `--host` still
 refuses the budget flags at its door; configure that machine's launch instead.
+
+## Does --max-hours close the window · the process keeps running after the time limit
+
+Yes. **Two minutes after `--max-hours` runs out, the window closes itself**, with or without
+`--no-host`. The limit first stops the work at the time you gave — the running work ends
+where it is and the ending line is written — and the two minutes are there so you can read
+it. Then codeaf leaves the way a `kill` asks it to: the unsent sentence kept, every
+conversation closed and its transcript flushed. If that has not finished thirty seconds
+later, it exits at once.
+
+It used to stop the work and then sit on the message box for a person. A window with
+nobody at it — a script, a benchmark, a terminal left in the background — stayed open for
+days: three `--max-hours 0.15` windows were found alive forty-three hours later.
+
+`--max-cost` does not close the window; it stops the work and leaves the conversation open.
 
 ## What changes when you give it a budget — done when, carrying on by itself, tidying up after itself
 

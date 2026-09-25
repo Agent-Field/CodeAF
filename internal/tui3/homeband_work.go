@@ -293,15 +293,22 @@ func homeWorkGlyph(status session.TaskStatus, pal palette) string {
 			return homeLiveASCII
 		}
 		return homeLiveGlyph
-	case session.TaskPresenceNeedsLook, session.TaskPresenceInterrupted:
-		// WORK NOTHING IS DRIVING WEARS THE ASKING MARK. It is the person's call
-		// in exactly the way the rows beside it are — it will not move until they
-		// answer — and it is where they answer it. The word beside the mark is
-		// what tells the two apart, and the word is the reading's own.
+	case session.TaskPresenceNeedsLook:
 		if pal.ascii {
 			return homeAskASCII
 		}
 		return homeAskGlyph
+	case session.TaskPresenceInterrupted:
+		// WORK NOTHING IS DRIVING DOES NOT WEAR THE ASKING MARK. It used to, on
+		// the reading that it was the person's call and this was where they
+		// answered it; but nothing a person can press carries a run on yet, so
+		// the mark asked a question no key could answer. It wears the mark of
+		// work that stopped short without a fault, and the word beside it —
+		// `interrupted`, the reading's own — says which.
+		if pal.ascii {
+			return homeStuckASCII
+		}
+		return homeStuckGlyph
 	case session.TaskPresenceIncomplete:
 		if status.Fault {
 			return pal.glyph(tokens.GFailed)

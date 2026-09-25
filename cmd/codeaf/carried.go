@@ -123,10 +123,11 @@ type carriedRoad struct {
 	completerFor func(model string) modelapi.Completer
 	serves       func(model string) bool
 	seat         string
-	// sign is the person's `attribution` row, which puts the trailer on the
-	// one commit codeaf writes when the run ends (internal/session's
-	// ProgramFolder.Finish).
-	sign bool
+	// signModel is the model the attribution line on the one commit codeaf
+	// writes when the run ends names (internal/session's ProgramFolder.Finish):
+	// the work seat when the person's `attribution.model` row is on, and ""
+	// for the line that names none. The commit is signed either way.
+	signModel string
 }
 
 // carriedModels resolves a shell run's road. It is the person's own profile,
@@ -153,8 +154,17 @@ func profileRoad() (carriedRoad, error) {
 		completerFor: adapters.forModel,
 		serves:       func(model string) bool { return session.ServesModel(sources, model) },
 		seat:         seats.Work.Model,
-		sign:         settings.Attribution,
+		signModel:    signedSeat(settings.ProfileDir, seats.Work.Model),
 	}, nil
+}
+
+// signedSeat is the model a shell run's commit names: the work seat when the
+// person's `attribution.model` row is on, and "" when it is off.
+func signedSeat(profileDir, seat string) string {
+	if !config.AttributionModelAt(profileDir) {
+		return ""
+	}
+	return seat
 }
 
 // carriedAdapters is one adapter per model a shell run's program asks for,
@@ -233,7 +243,7 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 	// not committed, another program's run in it — before a cent is spent. A
 	// plain folder is no longer the program's first-line failure: codeaf says
 	// so on the program's line.
-	folder, err := carriedFolder(inv, record, road.sign)
+	folder, err := carriedFolder(inv, record, road.signModel)
 	if err != nil {
 		fmt.Fprintln(carriedStderr, "error:", err)
 		return exitCannotRun
@@ -372,13 +382,13 @@ var carriedAPIClose = (*modelapi.Server).Close
 // carriedFolder readies the folder a shell run's program works in
 // (internal/session's PrepareProgramFolder); nil for a program that edits no
 // files, which reads the folder where it is.
-func carriedFolder(inv *delegate.Invocation, record string, sign bool) (*session.ProgramFolder, error) {
+func carriedFolder(inv *delegate.Invocation, record string, signModel string) (*session.ProgramFolder, error) {
 	if !inv.Program.LandsTree() {
 		return nil, nil
 	}
 	return session.PrepareProgramFolder(session.ProgramFolderOrder{
 		Program: inv.Program, Dir: inv.Workspace, Brief: inv.Brief(),
-		Holder: "a run started at a shell", Keep: record, Sign: sign,
+		Holder: "a run started at a shell", Keep: record, SignModel: signModel,
 		Instead: "run it in the project's folder, or name that folder with --dir",
 	})
 }

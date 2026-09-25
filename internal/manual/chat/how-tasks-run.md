@@ -630,11 +630,11 @@ where it stands.
 
 A task is the same agent you talk to, with the same tools, in a quieter place.
 
-**On the worker harness road its belt is not the conversation's.** With
-`CODEAF_TASK_BELT=bash` set, a worker carries one shell and the plan CLI rather than
-these tools, and the verbs for handing work out come off it; the *worker harness* page
-names what that belt carries. Everything below is the belt the older road composes,
-which is what a build without the switch gives every task.
+**On the worker harness road its belt is not the conversation's.** That road is the
+default: a worker carries one shell and the plan CLI rather than these tools, and the
+verbs for handing work out come off it; the *worker harness* page names what that belt
+carries. Everything below is the belt the older road composes, which is what a build
+reaches only when `CODEAF_TASK_BELT` is set to `node`, `legacy` or `off`.
 
 It inherits the conversation's provider client, context window, image support, roles
 source, search provider and fetcher, **connected accounts**, image-generation model and
@@ -1992,8 +1992,9 @@ away. Nothing went wrong with the work and nobody decided anything about it.
 **Nothing is lost.** Every step the work took is in its own store, on disk, exactly as it
 was at the moment the last process went away.
 
-It is the one landing word that does not mean the work is over. The row waits for you,
-wearing the asking mark. Its line reads:
+It is the one landing word that does not mean the work is over. The row asks nothing of
+you and raises no `needs you` mark, because nothing you can press carries it on yet.
+Its line reads:
 
 ```
 nothing is driving it; everything it did is kept
@@ -2005,9 +2006,11 @@ nothing here came up short. Reading either over work whose only misfortune was a
 window would be telling you something that did not happen.
 
 **Nothing picks it up again today.** There is no key, no command and no background pass
-that starts an interrupted run's work a second time. The word and the line above are the
-whole of what the row says about it, and the store keeps every step in the meantime.
-Starting work again spends money, so nothing will ever do it without being asked.
+that starts an interrupted run's work a second time, and a new task never does: the next
+`/task` sets the interrupted run aside, readable with the earlier runs, and starts a run of
+its own. The word and the line above are the whole of what the row says about it, and the
+store keeps every step in the meantime. Starting work again spends money, so nothing will
+ever do it without being asked.
 
 **A background job is different.** A job is a process codeaf forked, and a forked process
 cannot outlive the program that forked it — so a job that was running comes back `stopped`,
@@ -2521,6 +2524,11 @@ By default, **no limit**. `task.parallel` is 0 (blank) out of the box, and 0 mea
 A cap, if you set one, is a **queue and never a refusal**: a ready task past the cap sits
 and starts when a slot frees.
 
+The same row answers for every road work runs on: a task this conversation puts on the
+worker harness runs as many of its parts at once as `task.parallel` allows, and so does
+`codeaf do`. That command can also name a figure for one run with `--slots <n>`, where
+`0` is no limit, and a figure named there outranks the setting for that run only.
+
 The real ceiling is the machine. Before starting **each** task, codeaf asks whether one
 more may start:
 
@@ -2529,9 +2537,11 @@ more may start:
 | `task.max_load` | one-minute load average divided by core count, from `/proc/loadavg` | **1.5** per core | at or above it, no new task starts |
 | `task.min_free_mb` | `MemAvailable` (not free memory) from `/proc/meminfo`, in MiB | **1536** (1.5 GiB) | below it, no new task starts |
 
-Either one set to 0 turns that check off. Readings are cached for **1 second**. When a
-task is held back this way it is re-asked every **5 seconds** — a machine getting quieter
-is not an event, so it has to be looked at on a clock.
+Either one set to 0 turns that check off. With both at 0 there is no machine gate.
+Readings are cached for **1 second**. A held node on the older task road is
+re-asked every **5 seconds**; the run engine checks again on each supervisor
+pass, every **300 milliseconds**, so a quiet machine starts held work without
+another request. `codeaf do` uses the same governor from its profile.
 
 **How many start at once when a lot of work is handed out together.** A task that has just
 started is invisible to the memory reading — its own memory arrives with its first build,

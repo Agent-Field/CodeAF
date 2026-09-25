@@ -115,9 +115,11 @@ type ProgramFolderOrder struct {
 	// repository's git lock lives ([lockGitRoot]); zero for a shell run,
 	// which takes none.
 	Place Place
-	// Sign puts the attribution trailer on the commit that finishes the run
-	// ([signed]).
-	Sign bool
+	// SignModel is the model the attribution line on the commit that finishes
+	// the run names, and "" for the line that names none: codeaf signs every
+	// commit it writes, and the only choice is whether the model is named
+	// ([gitSignature]).
+	SignModel string
 }
 
 // ProgramFolder is one program run's folder as [PrepareProgramFolder] readied
@@ -145,10 +147,11 @@ type ProgramFolder struct {
 	// it was already there when the run began, which leaves it where it is.
 	Notes          string `json:"notes,omitempty"`
 	NotesWereThere bool   `json:"notesWereThere,omitempty"`
-	// Keep is the run's record folder ([ProgramFolderOrder.Keep]) and Sign is
-	// its attribution ([ProgramFolderOrder.Sign]).
-	Keep string `json:"keep,omitempty"`
-	Sign bool   `json:"sign,omitempty"`
+	// Keep is the run's record folder ([ProgramFolderOrder.Keep]) and
+	// SignModel the model its attribution line names
+	// ([ProgramFolderOrder.SignModel]).
+	Keep      string `json:"keep,omitempty"`
+	SignModel string `json:"signModel,omitempty"`
 	// Ended is the sentence the run's folder was finished with. Empty is a
 	// folder still owed its ending.
 	Ended string `json:"ended,omitempty"`
@@ -182,7 +185,7 @@ func PrepareProgramFolder(order ProgramFolderOrder) (*ProgramFolder, error) {
 	}
 	folder := &ProgramFolder{
 		Program: order.Program.Name, Title: title, Dir: dir, Outer: outer,
-		Notes: order.Program.Notes, Keep: order.Keep, Sign: order.Sign,
+		Notes: order.Program.Notes, Keep: order.Keep, SignModel: order.SignModel,
 		key: canonicalPath(dir), place: order.Place,
 	}
 	lock, hold, busy := claimProgramFolder(folder.key, order.Program.Name+", "+order.Holder)
@@ -710,7 +713,7 @@ func (f *ProgramFolder) commitLeftovers(result string) string {
 		message += "\n\n" + result
 	}
 	args := append([]string{"-c", "commit.gpgsign=false"}, codeafGitIdentity()...)
-	args = append(args, "commit", "-q", "--no-verify", "-m", signed(message, f.Sign))
+	args = append(args, "commit", "-q", "--no-verify", "-m", signed(message, gitSignature{named: f.SignModel != "", model: f.SignModel}))
 	if out, err := git(f.Dir, args...); err != nil {
 		return "git commit: " + firstLine(out)
 	}

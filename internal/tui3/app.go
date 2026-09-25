@@ -21,6 +21,7 @@ import (
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/skills"
 	"github.com/Agent-Field/codeaf/internal/subharness"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
@@ -288,6 +289,15 @@ type entry struct {
 	// `@deepseek` gone from the model word and `▸ worked 1.6s · ctrl+e` where
 	// the explanation should have been (session's EventRowNews).
 	told bool
+
+	// carried marks the note naming the skills a turn carried (session's
+	// turnSkillsNotice). It is not addressed to the person, so it does not hold
+	// a turn open the way [entry.told] does; it is a record of what the
+	// person's message took with it, so it sits under that message and a chip
+	// starts below it rather than swallowing it ([countWork]). Folded, the line
+	// vanished for good: an opened chip lists calls, not notes, so the only
+	// screen evidence that a skill reached a turn lasted as long as the turn.
+	carried bool
 
 	// context is the NAMED WORKING CONTEXT this turn was routed into, in the
 	// engine's own person-facing words (session's TaskNotice.Context) — and empty
@@ -997,6 +1007,26 @@ type app struct {
 	// exactly that boundary (the entryCompact block), and a second line saying
 	// the same thing two rows above it is the surface stuttering.
 	earlierSeam bool
+	// recordRows is how many blocks at the FRONT of entries were drawn from the
+	// session's own record rather than said into this window: the opening
+	// replay, every helping [app.backfill] handed up afterwards, and the seam
+	// rows drawn between them.
+	//
+	// IT EXISTS SO A SECOND REPLAY CANNOT DRAW THE CONVERSATION ON TOP OF
+	// ITSELF. [app.replayList] keeps what is already on screen, and that is
+	// right for what it was written for: the record is fetched off the loop and
+	// the box is live the whole time it is in flight, so a person can type while
+	// it is coming and their sentence must not be buried. But it kept ALL of it,
+	// and rows a PREVIOUS replay drew from this same record are not something
+	// said afterwards. A replay arriving onto a surface already drawing the
+	// record put the whole conversation above itself: the same answers twice and
+	// two seams, which is the one thing [session.EarlierHistory] is written to
+	// prevent.
+	//
+	// It is counted in the walk that draws the rows rather than recognised
+	// afterwards by their text, because two rows of one conversation are equal
+	// in every field a comparison could reach.
+	recordRows int
 	// historyLoading admits one page command at a time, and historyGen makes its
 	// answer belong to the replay that asked for it.
 	historyLoading bool
@@ -1348,6 +1378,12 @@ type app struct {
 	// THE KEY IS THE CANONICAL TRANSCRIPT PATH ([convKey]), because that is what
 	// home names a row by and what the flock is taken on.
 	behind map[string]*kept
+	// frontWaits is the engine's answer to whether the conversation in front is
+	// stopped on a person ([session.Agent.NeedsPerson]), asked once per message
+	// on the loop and read by every frame ([app.frontSignal]). It is the front
+	// tab's copy of the fact [behindWatch.waits] holds for every other tab, so
+	// the two sides of the strip read ONE predicate (tabsignal.go).
+	frontWaits bool
 	// homeGen is home's own clock generation. It belongs to the SURFACE rather
 	// than to any conversation, because there is one home — and it is bumped by
 	// every close, so a tick armed by a home that has since been closed cannot
@@ -1757,10 +1793,22 @@ type app struct {
 	// and harnChip the name it was answered with — the one harness the next
 	// message will run, held in the tray above the box rather than in the draft
 	// (harnesspick.go).
-	harnPick  harnessPick
-	harnChip  string
-	connNames map[string]string
-	connFlows map[string]*connect.Flow
+	harnPick harnessPick
+	harnChip string
+	// skillPick is the filtering list "/skill " opens over the shelf
+	// (skillpick.go). It holds no attachment state of its own: the names live
+	// in the session, and the tray chip reads them there.
+	skillPick skillPick
+	// skillShelfSeen is the session's shelf as its last reading answered, nil
+	// until one has (skillpick.go's [app.readSkillShelf]). It outlives the
+	// list, so a list opened again draws the last answer while the next read
+	// is on its way.
+	skillShelfSeen *skillShelfReading
+	// skillDiskSeen is the last foreign folder scan. It outlives the picker
+	// so reopening can draw those rows while a fresh scan is in flight.
+	skillDiskSeen []skills.Skill
+	connNames     map[string]string
+	connFlows     map[string]*connect.Flow
 	// codexFlow is the model-service browser sign-in. Its result is tokens rather
 	// than a connected-account status, so it cannot live in connFlows; it is held
 	// for the same reason, so replacing the conversation can cancel its listener.
@@ -3309,6 +3357,13 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.ruler.noteModeReport(mode)
 	}
 	model, cmd := a.update(msg)
+	// THE ENGINE'S ONE QUESTION ABOUT A PERSON IS ASKED HERE, once per message,
+	// and never by a frame. It is what every held tab's watcher asks after every
+	// event its conversation produces (keeper.go), asked of the conversation in
+	// front at the same beat, so a `?` cannot stand on a tab beside this one and
+	// go away when that conversation comes forward (tabsignal.go). It is read
+	// BEFORE the title below, which is drawn from it.
+	a.frontWaits = needsPerson(a.agent)
 	// AND WHATEVER THE LAST FRAME ASKED THE DISK ABOUT IS READ HERE, on the loop,
 	// before the next frame draws (learned.go). `open` and `tick` may read the
 	// disk and `body` may not, so a frame that met a picture nobody had stat'd
@@ -3607,7 +3662,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.ok {
 			a.runSummaryNow = strings.TrimSpace(msg.summary.Now)
 			a.taskSheet.mine.now = a.runSummaryNow
-			a.taskSheet.reading.summaryNow = a.runSummaryNow
 			a.touch()
 		}
 		return a, nil
@@ -4085,6 +4139,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// still typing, so a press anywhere else is a press on whatever is
 			// there (harnesspick.go).
 			if cmd, took := a.harnessPickPress(msg.Mouse().Y); took {
+				return a, cmd
+			}
+			// AND THE SKILL PICKER TAKES A PRESS ON ITS OWN ROWS AND NOTHING
+			// ELSE, on exactly the harness picker terms (skillpick.go).
+			if cmd, took := a.skillPickPress(msg.Mouse().Y); took {
 				return a, cmd
 			}
 			// AND THE THINKING LADDER TAKES A PRESS ON ITS OWN ROWS AND NOTHING
@@ -5649,7 +5708,17 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		// blocks the next time a person scrolled off the top. [app.rebase] carries
 		// the place over into the region the pass just created, so the history
 		// stays reachable and stays in order.
-		a.rebase()
+		//
+		// AND ONLY FOR A PASS THAT ACTUALLY HAPPENED. The event is sent on both
+		// paths, so this used to hand the bookkeeping over on a pass that found
+		// nothing to stub and nothing to fold: replayFrom was dropped to a floor
+		// the reader was nowhere near, the seam was marked drawn without being
+		// drawn, and the conversation between the two went quiet. The surface
+		// then said there was nothing above it. Nothing had moved, so there is
+		// nothing to carry over ([session.Event.Unchanged]).
+		if !ev.Unchanged {
+			a.rebase()
+		}
 		// AND RE-READ THE METER HERE. The pass just changed what the
 		// conversation weighs by an order of magnitude, and the status line's
 		// only other reader is the end of the turn — which is a long way off
@@ -7274,6 +7343,19 @@ func (a *app) slash(line string) tea.Cmd {
 		a.openHarness()
 		return nil
 
+	case "skill", "skills":
+		// THE SHELF, AS A PICKER. Bare, it opens the list on the whole shelf
+		// with the attached ones at the top, which is the same answer the
+		// space after the command gives (skillpick.go); the surface writes
+		// the command and its query into the box rather than opening the list
+		// from nowhere. A path typed on home must survive the new conversation
+		// that home opens before this command reaches the picker.
+		a.input.reset()
+		a.input.insert("/skill " + rest)
+		cmd := a.edited()
+		a.touch()
+		return cmd
+
 	case "subharness":
 		a.noticeEvent(eventSubharnessOpened)
 		// THE PROGRAMS THIS CONVERSATION CAN RUN, as a filterable list, and the
@@ -8522,6 +8604,14 @@ func (a *app) listKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			return cmd, true
 		}
 	}
+	// AND THE SKILL PICKER ANSWERS FOR ITSELF, beside the harness picker and
+	// for its reason: its enter is a toggle rather than a commit, so it cannot
+	// be handed to the lists below (skillpick.go).
+	if a.skillPick.open {
+		if cmd, taken := a.skillPickKey(msg); taken {
+			return cmd, true
+		}
+	}
 	if !a.menu.open && !a.comp.open {
 		return nil, false
 	}
@@ -8618,6 +8708,7 @@ func (a *app) syncLists() tea.Cmd {
 	if a.menu.open {
 		a.comp.close()
 		a.harnPick.close()
+		a.skillPick.close()
 		return nil
 	}
 	// AND THE HARNESS PICKER IS THE THIRD OF THEM, asked after the command list
@@ -8626,7 +8717,15 @@ func (a *app) syncLists() tea.Cmd {
 	// one command the argument has a list of its own (harnesspick.go).
 	if a.syncHarnessPick() {
 		a.comp.close()
+		a.skillPick.close()
 		return nil
+	}
+	// AND THE SKILL PICKER IS THE FOURTH OF THEM, on the harness picker own
+	// terms: the same space that begins an argument begins the shelf
+	// (skillpick.go).
+	if open, read := a.syncSkillPick(); open {
+		a.comp.close()
+		return read
 	}
 	was := a.comp.open
 	a.comp.sync(&a.input)
@@ -8645,6 +8744,7 @@ func (a *app) closeLists() {
 	a.menu.close()
 	a.comp.close()
 	a.harnPick.close()
+	a.skillPick.close()
 }
 
 // dismissLists is esc over a typed list, which is [app.closeLists] plus the one

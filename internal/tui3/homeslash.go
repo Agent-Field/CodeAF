@@ -129,11 +129,11 @@ const (
 // and quietly taking the last road ([TestEveryCommandHasAFateAtHome]).
 //
 //	pins the next conversation's model   /model — the target, and home says so
-//	next conversation's folder           /folder /place /dir — the browser, aimed
-//	                                     at the target (folderplace.go)
+//	next conversation's folder           /project — the browser, aimed at the
+//	                                     target (projectcmd.go)
 //	opens the page                       a place replaces a place
 //	this list is /resume                 the thing asked for is on the screen
-//	onto home's tray                     /attach /image — the files home is
+//	onto home's tray                     /attach — the files home is
 //	                                     already carrying into the next one
 //	opens a conversation here first      it opens one AT THE TARGET (homedraft.go)
 //	                                     and runs there, the door `enter` uses
@@ -205,8 +205,8 @@ func homeFate(word, rest string) string {
 		return fateFresh
 	case "land", "workspace":
 		return fateBehind
-	case "files", "permissions", "connect", "harness", "subharness", "autonomy",
-		"copy", "select", "rewind", "compact", "export", "drafts", "manual", "folder":
+	case "files", "permissions", "connect", "harness", "subharness", "skill",
+		"autonomy", "copy", "select", "rewind", "compact", "export", "drafts", "manual", "folder":
 		// /manual IS HERE SINCE 2026-09-22 and not among the answers: it is a
 		// turn of a conversation now (manualcmd.go), and a turn needs one. As
 		// an answer it printed the pages into the conversation BEHIND home,
@@ -353,25 +353,23 @@ func (a *app) homeSlash(line string) tea.Cmd {
 	return a.slash(line)
 }
 
-// homeTrayCommand is /attach <path> and /image <path> at home: the tray HOME is
+// homeTrayCommand is /attach <path> at home: the tray HOME is
 // already carrying, and the line says which conversation those files are for.
 //
 // THE TRAY IS THE PERSON'S AND NOT THE CONVERSATION'S (attach.go's law, said
 // again by home.go's [app.homeStart], which carries the chips into the
-// conversation it opens). So these two commands needed no conversation to be
-// opened for them — /image opened one, ran there, and left home behind for a
-// picture that would have travelled anyway — and what they DID need was a
-// sentence: the chip appears on a row above the box, which is easy to miss on a
-// screen full of projects.
+// conversation it opens). So /attach needs no conversation to be opened for a
+// file, but it DOES need a sentence: the chip appears on a row above the box,
+// which is easy to miss on a screen full of projects.
 //
 // A DIRECTORY AFTER /attach IS THE TARGET'S. The dispatcher hands one to
 // [app.referPlace], which gives it to the conversation behind home — invisibly,
 // where the person cannot read the answer. Here it is the same decision
-// `/folder` makes, said in the same words.
+// `/project` makes, said in the same words.
 func (a *app) homeTrayCommand(word, rest string) tea.Cmd {
 	if rest == "" {
 		// A BARE /attach IS THE BROWSER, aimed at the next conversation's folder
-		// the way a bare /folder is (folderplace.go's [app.openTargetContextPick]):
+		// the way a bare /project is (folderplace.go's [app.openTargetContextPick]):
 		// a file chosen there lands on home's tray. It used to answer `type the
 		// path after /attach`, which is a correction rather than an answer.
 		return a.openTargetContextPick("", true)

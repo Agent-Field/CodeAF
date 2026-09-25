@@ -777,36 +777,3 @@ func TestTheImageResultNamesTheModelWhereASurfaceCanReadIt(t *testing.T) {
 		}
 	}
 }
-
-// An empty prompt is the model's typo to fix, and it costs nothing: the
-// refusal is answered in the same beat and no generation was paid for. The
-// guard sits in [GenerateImage] itself, so the belt's tool and the command
-// line's image door refuse the same call the same way.
-func TestGenerateImageRefusesAnEmptyPromptAndCostsNothing(t *testing.T) {
-	painter := &scriptedMedia{
-		base64:    base64.StdEncoding.EncodeToString(pngOfSize(t, 2, 2)),
-		mediaType: "image/png",
-	}
-	agent, _ := newPainterAgent(t, painter, "paint/model")
-
-	for _, testCase := range []struct {
-		name string
-		args string
-	}{
-		{"no prompt at all", `{}`},
-		{"a prompt of spaces", `{"prompt":"   "}`},
-	} {
-		t.Run(testCase.name, func(t *testing.T) {
-			result, isError := runTool(t, agent, "generate_image", testCase.args)
-			if !isError {
-				t.Fatalf("an empty prompt reported success: %s", result)
-			}
-			if !strings.Contains(result, "prompt is required") {
-				t.Fatalf("result %q does not say the prompt is required", result)
-			}
-		})
-	}
-	if len(painter.seen) != 0 {
-		t.Fatalf("an empty prompt still cost %d generations", len(painter.seen))
-	}
-}

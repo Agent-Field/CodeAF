@@ -122,6 +122,9 @@ type Host struct {
 	// started. A host whose own binary has been replaced retires the moment it
 	// is holding nothing (binary.go states why).
 	binary hostBinary
+	// started is when this process began holding the workspace, for the one
+	// person who asks `codeaf engine --status` how long it has been there.
+	started time.Time
 
 	mu       sync.Mutex
 	sessions map[string]*remote.Session
@@ -199,6 +202,7 @@ func Run(workspace string, opts Options) error {
 		dir:       dir,
 		opts:      opts,
 		binary:    thisBinary(),
+		started:   time.Now(),
 		listener:  listener,
 		lock:      lock,
 		sessions:  map[string]*remote.Session{},
@@ -224,6 +228,7 @@ func (h *Host) serve() error {
 	}()
 
 	guard.Go("enginehost/sweep", h.sweep)
+	guard.Go("enginehost/doorstep", h.doorstep)
 
 	for {
 		conn, err := h.listener.Accept()
@@ -483,6 +488,19 @@ func (h *Host) whois(ask remote.WhoIs) remote.HostSelf {
 	// anything is measured, so that the measurement is right.
 	h.probes++
 	self := remote.HostSelf{Workspace: h.workspace, Busy: !h.idleLocked()}
+	// AND WHAT THIS PROCESS IS, for `codeaf engine --status` and for the door
+	// deciding which of two builds is the older one. The counts are read under
+	// the same lock as busy, so the three never disagree with each other.
+	self.PID = os.Getpid()
+	self.Binary = h.binary.path
+	self.Started = h.started
+	self.BuiltAt = h.binary.builtAt()
+	self.Surfaces = h.live - h.probes
+	for _, sess := range h.sessions {
+		if sess != nil && !sess.Ended() {
+			self.Conversations++
+		}
+	}
 	going := ask.StandDown && (ask.Anyway || !self.Busy)
 	switch {
 	case h.closed || h.retiring:
@@ -614,6 +632,73 @@ func (h *Host) sweepOnce() bool {
 		h.note("the file this host was started from has been replaced; retiring so the next connection starts the current one")
 	}
 	return leaving
+}
+
+// takeoverDoorstep is how often the host looks for a conversation another
+// window has asked for. The agent inside already looks at its own doorstep four
+// times a second (internal/session's takeover.go); this is one lock and a walk
+// of a small map, at half that rate, so a window waiting on the journal's flock
+// sees it free within about a second of asking.
+const takeoverDoorstep = 500 * time.Millisecond
+
+// doorstep is the host honouring a move-it-here request for a conversation it
+// holds (internal/remote's takeover.go says why the host has to be the one that
+// looks): the conversation asked for is closed, which releases its journal to
+// the window that asked.
+func (h *Host) doorstep() {
+	ticker := time.NewTicker(takeoverDoorstep)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-h.done:
+			return
+		case <-ticker.C:
+		}
+		h.releaseAsked()
+	}
+}
+
+// releaseAsked is one look. THE CLOSE HAPPENS OFF THE HOST'S LOCK, for the
+// sweep's reason: closing a conversation flushes its journal, and every
+// connection arriving meanwhile would stall behind it.
+func (h *Host) releaseAsked() {
+	type asked struct {
+		key  string
+		sess *remote.Session
+	}
+	h.mu.Lock()
+	holding := make([]asked, 0, len(h.sessions))
+	for key, sess := range h.sessions {
+		if sess != nil {
+			holding = append(holding, asked{key: key, sess: sess})
+		}
+	}
+	h.mu.Unlock()
+	// The agents are asked off the host's lock too: each answer takes the
+	// agent's own lock, and nothing here may queue the host behind a turn.
+	var found []asked
+	for _, one := range holding {
+		if one.sess.TakeoverAsked() {
+			found = append(found, one)
+		}
+	}
+	for _, one := range found {
+		_ = one.sess.ReleaseForTakeover()
+		h.note("let go of " + one.sess.File() + ": another window on this machine asked for it")
+	}
+	if len(found) == 0 {
+		return
+	}
+	h.mu.Lock()
+	for _, one := range found {
+		if h.sessions[one.key] == one.sess {
+			delete(h.sessions, one.key)
+		}
+	}
+	if h.live == 0 && len(h.sessions) == 0 && h.quiet.IsZero() {
+		h.quiet = time.Now()
+	}
+	h.mu.Unlock()
 }
 
 // stop asks the host to end. It is idempotent because the signal handler, the

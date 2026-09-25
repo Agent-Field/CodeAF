@@ -92,7 +92,10 @@ func TestTheWorkerSeatWithALargeWindowGetsTheFullPageByteForByte(t *testing.T) {
 	at := time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)
 	pageFor := func(model string) string {
 		t.Helper()
-		config := Config{Workspace: workspace, Model: model, ContextWindow: 128_000, ProfileDir: profileDir}
+		// The model's name in the `Assisted-by` line is the one byte run that
+		// follows the model on every page, and it is not the profile's to
+		// decide; with the name off, what is left is the page the profile chose.
+		config := Config{Workspace: workspace, Model: model, ContextWindow: 128_000, ProfileDir: profileDir, AttributionModelOff: true}
 		if got := config.promptProfile(); got.lean() {
 			t.Fatalf("a 128,000-token window on %q resolved to %s", model, got)
 		}

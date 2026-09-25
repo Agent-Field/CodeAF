@@ -167,18 +167,16 @@ as another build. Three things can be true:
 
 - **It is this build.** Your window attaches to it exactly as before. This is the ordinary
   case, and it costs one question on a local socket.
-- **It is another build, holding nothing** — no window attached, no turn running, no
-  question waiting. It is asked to go, closes its conversations, flushes their transcripts,
-  and a fresh one starts from the binary that is on disk now. You see none of it.
-- **It is another build and something is still going in it.** Nobody's turn is ended for
-  you. The connection is refused instead, in these words:
+- **It is an older build** — built earlier, from any file, or too old to answer the
+  question at all. It is replaced, busy or not: it closes its conversations, flushes their
+  transcripts, and a fresh one starts from the binary that is on disk now. The window says
+  `replaced the older engine on spark (pid <n>, <build>, <binary>) — this build holds the
+  workspace now`.
+- **It is a newer build.** Your window joins it. If its wire is one this binary cannot
+  speak, the connection is refused, naming this binary as the older one and
+  `codeaf engine --status` as the way to see which is newer.
 
-```
-engine: spark is still running an older codeaf and something is still going in it — let that finish, or run codeaf engine --stop --workspace /home/you/project on spark
-```
-
-A copy too old to answer the question at all is refused the same way and left alone,
-because a process that cannot say whether it is busy is not one to guess about:
+Only if the older engine will not go is the connection refused, in these words:
 
 ```
 engine: spark is still holding this conversation on an older codeaf — run codeaf engine --stop --workspace /home/you/project on spark

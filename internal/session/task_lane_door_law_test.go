@@ -18,16 +18,21 @@ var theLaneDoor = map[string]string{
 	"giveLaneLocked": "give",
 }
 
+// A run worker has no graph-local count. Its gate writes only the process
+// account, so these are the two additional doors that account for that road.
+var runLaneDoor = map[string]string{
+	"Started":  "take",
+	"Returned": "give",
+}
+
 // A LANE IS TAKEN AND HANDED BACK THROUGH ONE DOOR, AND THE DOOR KEEPS BOTH
 // COUNTS IN STEP.
 //
-// Two numbers say how much work is running: this graph's, which the person's
-// task.parallel cap is measured against, and the process's ([TaskLanes]),
-// which the machine reading is divided by — and the reading is of the whole
-// process tree, so a start written to one and not the other is exactly the
-// attribution gap #907 closed. It was open in the first place because there
-// were five places a lane moved and no one of them that could be made to tell
-// the account; this law is what keeps there being one.
+// A node has two counts: its graph's, which task.parallel reads, and the
+// process's ([TaskLanes]), which the machine reading uses. The node doors move
+// both together. A run worker has no graph count, but still moves that same
+// process account through its own admission gate. Every other write remains
+// a breach of the one process-wide account.
 //
 // It reads the package's own source, so it is on the pull-request gate
 // (scripts/laws.sh) and decides in well under a second.
@@ -91,7 +96,9 @@ func TestEveryLaneMovesThroughTheOneDoor(t *testing.T) {
 		}
 	}
 	for where := range account {
-		if _, isDoor := theLaneDoor[where]; !isDoor {
+		_, nodeDoor := theLaneDoor[where]
+		_, runDoor := runLaneDoor[where]
+		if !nodeDoor && !runDoor {
 			t.Errorf("%s writes the process's lane account directly, outside the door that keeps it in step with the graph's own count", where)
 		}
 	}
@@ -103,6 +110,14 @@ func TestEveryLaneMovesThroughTheOneDoor(t *testing.T) {
 		}
 		if !account[door] {
 			t.Errorf("%s no longer tells the process's lane account, so the two counts can drift apart", door)
+		}
+	}
+	for door := range runLaneDoor {
+		if !account[door] {
+			t.Errorf("%s no longer tells the process's lane account for a run worker", door)
+		}
+		if counter[door] {
+			t.Errorf("%s moves a graph count for a worker outside that graph", door)
 		}
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,6 +26,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/leave"
 	"github.com/Agent-Field/codeaf/internal/openrouterauth"
+	"github.com/Agent-Field/codeaf/internal/resident"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/search"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -108,7 +110,8 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// posture this build has always had. They mean nothing without --yolo, and
 	// the check below says so rather than letting a flag do nothing in silence.
 	maxHours := flags.Float64("max-hours", envFloat("CODEAF_MAX_HOURS"),
-		"how many hours an unattended --yolo session may carry its own work on (env CODEAF_MAX_HOURS)")
+		"how many hours an unattended --yolo session may carry its own work on; the window closes itself "+
+			strconv.Itoa(int(launchWallGrace/time.Minute))+" minutes after (env CODEAF_MAX_HOURS)")
 	maxCost := flags.Float64("max-cost", envFloat("CODEAF_MAX_COST"),
 		"how many dollars an unattended --yolo session may carry its own work on (env CODEAF_MAX_COST)")
 	debug := flags.Bool("debug", false,
@@ -185,6 +188,13 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// said here — before a session file is opened — instead of being ignored.
 	if pickSession && strings.TrimSpace(*once) != "" {
 		return fmt.Errorf(`codeaf resume opens the session picker; for one headless message use: codeaf chat --once "text"`)
+	}
+	// --max-hours ENDS THE PROCESS, a grace after the wall (chatwall.go). The
+	// session's own reader stops its work AT the wall; this is what closes the
+	// window afterwards, because a window nobody is watching was found alive
+	// forty hours past a nine-minute cap.
+	if wall := chatBudget(*maxHours, *maxCost).Wall; wall > 0 && *yolo {
+		defer armLaunchWall(wall, time.AfterFunc, leaveThisProcess)()
 	}
 	// The level is validated HERE, before anything is opened, so a typo is a
 	// usage error and not a knob that silently did nothing for a whole session.
@@ -891,7 +901,14 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// has a good answer without it, and an unknown window leaves the session on
 	// its conservative default.
 	models := proc.Models
-	activeModels, activeModel, activeListsModels := v3CatalogForModel(context.Background(), settings, chosen, models)
+	// A DIRECT SERVICE'S OWN CATALOG IS A WARM OF ITS OWN, and it is owned the
+	// way the process's is (#1274): it runs under the process lifetime and
+	// closeAll cancels and joins it, so no cache write can land after the
+	// process has closed or in a later home.
+	activeModels, activeModel, activeListsModels := v3CatalogForModel(proc.lifetime(), settings, chosen, models)
+	if activeModels != models {
+		proc.ownCatalog(activeModels)
+	}
 	harnesses := proc.Harnesses
 
 	// The typed programs this conversation can reach, and the two stores they are
@@ -957,6 +974,11 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// memory row is on, which is what makes "memory off makes no calls" a
 		// fact about the wiring instead of a branch every caller has to keep.
 		Memory: proc.Memory,
+		// AND THE SKILL SHELF, which is the line above when memory is on and a
+		// shelf of the skill folders alone when it is off ([v3SkillShelf]):
+		// the skills a person installed for another harness are not memory,
+		// and turning memory off never asked for them to go.
+		Skills: proc.skillShelf(),
 		// And the file the old memory lived in, carried into the store on the
 		// first turn and then renamed out of the way. It is named here rather
 		// than derived down there for the reason every other path is.
@@ -1143,6 +1165,17 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// needs is the line above.
 	subharnesses.UsePages(harnesses, cfg.RunHarness)
 
+	// THE SHELF IS IMPORTED BEFORE THE FIRST MESSAGE. A person's skills for
+	// other harnesses — Claude Code, Codex, any agentskills.io reader — reach
+	// the shelf when the graph opens, not when some later tick finds the time:
+	// this door claims no residency (runChatV3's header), so the pass the
+	// resident reconciler runs on its own clock is run here, synchronously,
+	// after [v3Memory]'s graph is open and before the first prompt is built.
+	// The pass is idempotent — an unchanged disk journals nothing — so an open
+	// costs one scan and no writes, and a skill edited since the last open is
+	// re-read before the model ever sees the shelf.
+	importForeignSkillsBeforeFirstMessage(proc.skillShelf(), workspace)
+
 	// AND THIS PROCESS STARTS KEEPING TIME. Any open window takes the store's
 	// lock and runs the pass; the OS timer is the backup for "no terminal open"
 	// (chatv3_standing.go). It is here, beside [startPlaceSweep], because every
@@ -1166,6 +1199,74 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		Bucket:       found.Bucket,
 		Subharnesses: subharnesses,
 	}, nil
+}
+
+// importForeignSkillsBeforeFirstMessage runs the foreign-skill import pass
+// against the conversation's own shelf, in place: every SKILL.md folder a
+// person already has for another harness becomes one active skill fact whose
+// artifact is the ORIGINAL directory, before the first message is built. The
+// resident reconciler keeps the same pass behind its gate for the processes
+// that tick; a launch runs it on the open itself, because a shelf that
+// arrives after the first message is a shelf the first conversation cannot
+// use.
+//
+// A launch with no shelf runs no pass, and a home that cannot be resolved is
+// skipped, never fatal: a scan that finds nothing must not be the reason a
+// conversation does not open.
+func importForeignSkillsBeforeFirstMessage(shelf *store.Store, workspace string) {
+	if shelf == nil {
+		return
+	}
+	homeDir, err := home.Login()
+	if err != nil {
+		return
+	}
+	resident.ReconcileImportedSkills(shelf, workspace, homeDir)
+}
+
+// v3SkillShelf is the store the skill shelf lives in for one process: the
+// memory store when there is one, and with memory off a store of its own in a
+// fresh temporary folder, which the process removes when it closes. The
+// second answer is the folder it made, so the close knows what to remove; it
+// is empty when the shelf is the memory store.
+//
+// MEMORY OFF IS NOT SKILLS OFF. The setting promises a conversation that
+// carries nothing about the person across conversations and makes no memory
+// calls, and the skills a person installed for Claude Code or Codex are
+// neither: they are folders on disk that say nothing about them. So the shelf
+// is still built, from those folders and nothing else, by the same import
+// pass that fills it with memory on — the folders stay the one source of
+// truth either way, and nothing is written into the memory database the
+// person turned off. The shelf is thrown away with the process, so it never
+// becomes a second, older copy of what the folders say.
+//
+// A shelf that cannot be made is no shelf: the conversation opens without
+// skills, the way it would have with no skill folders at all, and the /skill
+// picker says on each row that it cannot attach.
+func v3SkillShelf(memory *store.Store) (*store.Store, string) {
+	if memory != nil {
+		return memory, ""
+	}
+	dir, err := os.MkdirTemp("", "codeaf-skills-")
+	if err != nil {
+		return nil, ""
+	}
+	shelf, err := store.Open(filepath.Join(dir, "shelf.db"))
+	if err != nil {
+		_ = os.RemoveAll(dir)
+		return nil, ""
+	}
+	return shelf, dir
+}
+
+// skillShelf is the shelf this process's conversations read, falling back to
+// the memory store for a process assembled without [v3SkillShelf] (the
+// suite's own processes are built by hand).
+func (p *v3Process) skillShelf() *store.Store {
+	if p.Skills != nil {
+		return p.Skills
+	}
+	return p.Memory
 }
 
 // v3SavedEffort is the rung this conversation was last left on, read back off
@@ -1438,6 +1539,34 @@ func hostHeldRefusal(err error) bool {
 	return err != nil && strings.Contains(err.Error(), sessionHeldElsewhereOpening)
 }
 
+// engineHeldRefusal is that refusal given its identity back: the sentence the
+// engine wrote, which still reads exactly as it did, and
+// [session.ErrSessionLocked], which is what every surface door tests for.
+//
+// WITHOUT IT, MOVE-IT-HERE COULD NOT WORK AGAINST A WINDOW. On 2026-09-23 a
+// window on today's build met a conversation held by an older in-process
+// window, pressed enter on the row, and was shown the engine's sentence — "open
+// codeaf here and press enter on it to move it here" — which is the instruction
+// it had just followed. Home reads a held conversation's refusal as
+// [session.ErrSessionLocked] and takes the asking road on it (internal/tui3's
+// homeHeldEnter); a bare string over the socket was not that, so the request
+// was never written, and the only way out was killing the other window by hand.
+type engineHeldRefusal struct{ said error }
+
+func (e *engineHeldRefusal) Error() string { return e.said.Error() }
+func (e *engineHeldRefusal) Unwrap() []error {
+	return []error{e.said, session.ErrSessionLocked}
+}
+
+// asHeldRefusal is [engineHeldRefusal] applied where it belongs, and the error
+// unchanged everywhere else.
+func asHeldRefusal(err error) error {
+	if err == nil || errors.Is(err, session.ErrSessionLocked) || !hostHeldRefusal(err) {
+		return err
+	}
+	return &engineHeldRefusal{said: err}
+}
+
 // ── governance: what a session may do, on whose models, for how much ────────
 //
 // The settings rows and one flag reach internal/session here, and this is the
@@ -1568,16 +1697,17 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// law; taskaudit_law_test.go now makes a second reader or an unwired door fail
 	// on the day it lands.
 	cfg.TaskAudit = config.TaskAuditEnabledAt(profileDir)
-	// AND WHETHER codeaf SIGNS THE GIT WORK IT DOES IN THE PERSON'S NAME, read
-	// here for the reason the audit row above it is read here: every v3 door
-	// comes through this function, and a row honoured in the conversation but
-	// not in a standing firing is a row the person cannot trust. PROFILE-ONLY —
-	// a repository that could turn this on would be putting its own advert in a
-	// visitor's commit by being cloned, and one that could turn it off would be
-	// stripping provenance the visitor asked for. The CONTRIBUTING file a
-	// repository writes still wins, but it wins by being read and obeyed, not by
-	// silently rewriting somebody's profile (internal/exec's AttributionLaw).
-	cfg.Attribution = config.AttributionAt(profileDir)
+	// AND WHETHER THE SIGNATURE ON THE GIT WORK codeaf DOES NAMES THE MODEL,
+	// read here for the reason the audit row above it is read here: every v3
+	// door comes through this function, and a row honoured in the conversation
+	// but not in a standing firing is a row the person cannot trust. The
+	// signature itself has no row: codeaf always signs. PROFILE-ONLY — a
+	// repository that could change what a visitor's commits say about them by
+	// being cloned would be writing into somebody else's provenance. The
+	// CONTRIBUTING file a repository writes still wins over the signature, but
+	// it wins by being read and obeyed, not by rewriting somebody's profile
+	// (internal/exec's AttributionLaw).
+	cfg.AttributionModelOff = !config.AttributionModelAt(profileDir)
 	// Whether a reply that comes apart is cut and asked again. PROFILE-ONLY, and
 	// the reason is not trust this time but taste: it is a judgement about
 	// somebody's own replies, and a repository has no business turning off a

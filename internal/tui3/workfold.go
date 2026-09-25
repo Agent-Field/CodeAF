@@ -404,13 +404,19 @@ func confirmedReasoningTail(es []entry) bool {
 // grammar, and a chip that counted differently on two pages would be the same
 // sentence meaning two things. THE PERSON'S OWN ROWS ARE NOT WORK and never
 // start a chip: a question, a divider and an elbow are all things a fold stops
-// at rather than things it measures.
+// at rather than things it measures. Nor is the line naming the skills the
+// question carried ([entry.carried]) while it still sits directly under the
+// question: the chip starts below it, so the record stays beside the words it
+// belongs to.
 func countWork(es []entry, from, to int, f *workfold) {
 	f.start = -1
 	var began, ended time.Time
 	for i := from; i < to; i++ {
 		e := &es[i]
 		if e.kind == entryUser || e.kind == entryDivider || e.kind == entrySteer {
+			continue
+		}
+		if f.start < 0 && e.kind == entryNote && e.carried {
 			continue
 		}
 		if f.start < 0 {

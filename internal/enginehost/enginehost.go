@@ -390,6 +390,13 @@ func Stop(workspace string) (bool, error) {
 		}
 		return false, errors.New("engine host: the host did not agree to go")
 	}
+	// A SOCKET WHOSE OTHER END IS THIS PROCESS IS NEVER SIGNALLED. It is the
+	// asker itself — a test's stand-in host, or a host that is somehow asking
+	// about its own slot — and a stop sent there ends the one process that was
+	// trying to clean up.
+	if pid == os.Getpid() {
+		return false, errors.New("engine host: the process holding that socket is this one")
+	}
 	if err := signalHost(pid); err != nil {
 		return false, fmt.Errorf("engine host: %w", err)
 	}

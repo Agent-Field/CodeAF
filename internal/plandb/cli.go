@@ -228,6 +228,12 @@ func cliRefusal(p *cliParsed) (string, bool) {
 	return "", false
 }
 
+// RunEnv names the run a worker belongs to, by its root task's id. The door
+// that seats a run worker exports it beside PLANDB_DB, and a store found at
+// that path whose root is ANOTHER run's is refused rather than written: a path
+// says where a run's store was, and only the root says which run it is.
+const RunEnv = "PLANDB_RUN"
+
 // cliStore opens the run's store without being told where it is: --db, then
 // PLANDB_DB, then the first ancestor holding plandb.db or
 // .codeaf/plandb.db. One store per file; --project is accepted and checked
@@ -252,6 +258,14 @@ func cliStore(p *cliParsed) (*Store, error) {
 	}
 	if want := p.vals["project"]; want != "" && st.Project() != want {
 		return nil, fmt.Errorf("the plan store at %s belongs to project %q, not %q", path, st.Project(), want)
+	}
+	// A STORE THAT IS ANOTHER RUN'S IS REFUSED WHOLE, reads and writes alike: a
+	// worker reading another run's plan would plan against work that is not its
+	// own, and one writing it filed its children under the other run's root.
+	if want := os.Getenv(RunEnv); want != "" && st.RootID() != want {
+		root := st.RootID()
+		_ = st.Close()
+		return nil, fmt.Errorf("the plan store at %s is another run's (t-%s), not this worker's run (t-%s), so nothing was read or written; this worker's run is over or was set aside", path, root, want)
 	}
 	return st, nil
 }

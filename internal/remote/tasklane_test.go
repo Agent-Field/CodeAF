@@ -209,13 +209,22 @@ func TestAStandingFiringReachesTheHostedConversation(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = loop.Close() })
 
-	lane, stop := loop.Client.Agent().WatchTaskUpdates()
-	t.Cleanup(stop)
-	// WatchTaskUpdates asks asynchronously so the surface loop never waits on a
-	// round trip. This synchronous repeat is the test's receipt that the far
-	// subscription exists before the firing; replacing it is the door's normal
-	// idempotent behaviour.
-	if _, err := loop.Client.call(context.Background(), MethodTaskWatch, nil); err != nil {
+	// THE LANE IS OPENED THE WAY WatchTaskUpdates OPENS IT, WITH THE ASK MADE
+	// ONCE AND IN THE TEST'S HAND. The door asks off the surface loop, so a
+	// test that wants a receipt before the firing used to repeat the ask
+	// synchronously — and the door's own ask could then reach the engine AFTER
+	// the firing, replace the far subscription the firing went down, and take
+	// the row with it. On a loaded box that order failed the test about one
+	// run in ten. One ask, answered before the firing, leaves no second
+	// subscription to race.
+	client := loop.Client
+	hosted := newStream()
+	client.mu.Lock()
+	client.tasks = hosted
+	client.mu.Unlock()
+	t.Cleanup(hosted.finish)
+	lane := hosted.events()
+	if _, err := client.call(context.Background(), MethodTaskWatch, nil); err != nil {
 		t.Fatalf("open the hosted standing lane: %v", err)
 	}
 
