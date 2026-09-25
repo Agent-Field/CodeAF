@@ -574,6 +574,26 @@ func sideTaskOf(key string) uint64 {
 // sideBandRows lays the band width wide: at most [sideBandCap] items and a
 // `+N more` row, or every item when the person asked for them, and a rule
 // under them. Nothing at all when nothing needs the person.
+// fitClauses is words cut to width with the ellipsis where they run out, and
+// A CUT THAT LEAVES A CLAUSE ITS SEPARATOR AND NOTHING ELSE ends at the clause
+// before it instead: `Ship the price table…`, never `Ship the price table · …`,
+// which spends three cells on saying there was more.
+func fitClauses(words string, width int, tail string) (string, int) {
+	if ansi.StringWidth(words) <= width {
+		return words, ansi.StringWidth(words)
+	}
+	cut := ansi.Truncate(words, max(width, 0), tail)
+	body := strings.TrimRight(strings.TrimSuffix(cut, tail), " ·")
+	if at := strings.LastIndex(body, " · "); at > 0 && ansi.StringWidth(body[at+len(" · "):]) < 4 {
+		body = strings.TrimRight(body[:at], " ·")
+	}
+	if body == "" {
+		return cut, ansi.StringWidth(cut)
+	}
+	cut = body + tail
+	return cut, ansi.StringWidth(cut)
+}
+
 func (a *app) sideBandRows(width int) []railLine {
 	items := a.sideBand()
 	if len(items) == 0 || width < 8 {
@@ -597,11 +617,16 @@ func (a *app) sideBandRows(width int) []railLine {
 		}
 		room := width - ansi.StringWidth(mark) - 1
 		age := ""
-		if item.age != "" && room-ansi.StringWidth(item.age)-1 >= 12 {
+		// A NARROW COLUMN SAYS THE AGE ON THE HINT LINE, as the Traffic's
+		// rows do ([sideAgeFrom]): what is asked is worth the cells more.
+		switch {
+		case item.age != "" && width >= sideAgeFrom && room-ansi.StringWidth(item.age)-1 >= 12:
 			age = item.age
 			room -= ansi.StringWidth(age) + 1
+		case item.age != "":
+			row.hint = sideHintWith(row.hint, item.age)
 		}
-		words, w := fitWidth(item.words, room)
+		words, w := fitClauses(item.words, room, a.linearMark("…", "~"))
 		line := lead + " " + paint(words) + strings.Repeat(" ", max(room-w, 0))
 		if age != "" {
 			line += " " + a.pal.dim(age)
