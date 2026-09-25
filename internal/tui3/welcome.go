@@ -801,7 +801,7 @@ const welcomeUnitWidth = 76
 // to type — so a small window simply opens on the prompt, which is what it
 // would have done anyway.
 const (
-	welcomeMinRows = 12
+	welcomeMinRows = 11 // the head's air row is paid out of the greeting's reserve
 	welcomeMinCols = 40
 )
 

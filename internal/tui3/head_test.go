@@ -11,10 +11,9 @@ import (
 // ── THE ONE HEAD ────────────────────────────────────────────────────────────
 //
 // Row zero is the same on a conversation and on every place. A conversation
-// then draws the strip, the rule and a blank ([chatHeadRows]). A place draws
-// the rule and a blank and no strip ([placeHeadRows]), so its body starts one
-// row higher.
-
+// then draws the air row, the strip, the rule and a blank ([chatHeadRows]). A
+// place draws the air row, the rule and a blank and no strip
+// ([placeHeadRows]), so its body starts one row higher.
 // headSizes are the three frames the one head is pinned at: the classic
 // terminal, a tall one, and a wide one.
 var headSizes = []struct{ w, h int }{{80, 24}, {80, 40}, {120, 45}}
@@ -65,11 +64,11 @@ func headPulseWhole() string {
 	return "2 want you · 1 moving · $0.14 / " + railFigure(20) + " · thu 9:49am"
 }
 
-// THE CONVERSATION'S HEAD IS THE NAV, THE STRIP, THE RULE AND A BLANK.
-// The body starts under exactly those four rows. At eighty columns the pulse
-// has given up the clock, the moving count and the words of `2 want you`, whose
-// count stays as `2 ?`, to keep every place on the row (topnav.go's ladder);
-// wider, it says everything.
+// THE CONVERSATION'S HEAD IS THE NAV, THE AIR ROW, THE STRIP, THE RULE AND A
+// BLANK. The body starts under exactly those five rows. At eighty columns the
+// pulse has given up the clock, the moving count and the words of `2 want you`,
+// whose count stays as `2 ?`, to keep every place on the row (topnav.go's
+// ladder); wider, it says everything.
 func TestTheConversationWearsThePlacesHead(t *testing.T) {
 	a := headLab(t)
 	for _, size := range headSizes {
@@ -89,8 +88,8 @@ func TestTheConversationWearsThePlacesHead(t *testing.T) {
 		if strings.Contains(head[tabStripRow], " home ") || !strings.Contains(head[tabStripRow], a.chatDisplayName()) {
 			t.Fatalf("at %dx%d the strip is not under the nav, on its own:\n%q", size.w, size.h, head[tabStripRow])
 		}
-		if head[2] != strings.Repeat("─", size.w) || head[3] != "" {
-			t.Fatalf("at %dx%d the head does not close with a rule and a blank:\n%q\n%q", size.w, size.h, head[2], head[3])
+		if head[tabStripRow+1] != strings.Repeat("─", size.w) || head[tabStripRow+2] != "" {
+			t.Fatalf("at %dx%d the head does not close with a rule and a blank:\n%q\n%q", size.w, size.h, head[tabStripRow+1], head[tabStripRow+2])
 		}
 		if a.headHeight() != chatHeadRows || a.bodyTop() != chatHeadRows+a.stripHeight() {
 			t.Fatalf("at %dx%d the head draws %d rows and is charged %d, body at %d",
@@ -108,10 +107,11 @@ func TestTheConversationWearsThePlacesHead(t *testing.T) {
 // (roompanel.go's [app.roomOrganized]).
 var headFrameSizes = []struct{ w, h int }{{80, 24}, {120, 45}, {180, 45}}
 
-// A TASK ROOM SPENDS THE CONVERSATION'S HEAD ABOVE ITS BODY: the nav, the
-// strip, the rule and a blank, and the room's own trail on the first row under
-// them. A place spends three rows and no strip, so its body starts where the
-// chat's strip is. The room used to lay the trail where the rule stands
+// A TASK ROOM SPENDS THE CONVERSATION'S HEAD ABOVE ITS BODY: the nav, the air
+// row, the strip, the rule and a blank, and the room's own trail on the first
+// row under them. A place spends four rows and no strip, so its body starts
+// one row above a conversation's. The room used to lay the trail where the
+// rule stands
 // (PLACES-AUDIT.md, lane K).
 func TestATaskRoomSpendsThePlacesHeadAboveItsBody(t *testing.T) {
 	room, chat := crumbApp(t), headLab(t)
@@ -127,13 +127,13 @@ func TestATaskRoomSpendsThePlacesHeadAboveItsBody(t *testing.T) {
 			}
 			f.a.touch()
 			head := headOf(t, f.a)
-			ruleAt := 2
+			ruleAt := tabStripRow + 1
 			if f.to != pageNone {
-				ruleAt = 1
+				ruleAt = placeHeadRows - 2
 			}
 			if !strings.HasPrefix(head[0], " "+plain(f.a.pal.wordmark(f.a.width))) || head[ruleAt] != strings.Repeat("─", size.w) || strings.TrimSpace(head[ruleAt+1]) != "" {
 				t.Fatalf("at %dx%d %s's head is not the nav, then %s:\n%s",
-					size.w, size.h, f.where, map[bool]string{true: "the rule and a blank", false: "the strip, the rule and a blank"}[f.to != pageNone], strings.Join(head, "\n"))
+					size.w, size.h, f.where, map[bool]string{true: "the air row, the rule and a blank", false: "the air row, the strip, the rule and a blank"}[f.to != pageNone], strings.Join(head, "\n"))
 			}
 			if f.to != pageNone {
 				f.a.showPage(pageNone)
@@ -242,7 +242,7 @@ func TestThePulseOverAChatIsThePulseOverAPlace(t *testing.T) {
 	if !strings.Contains(place[navRow], "home") || !strings.Contains(place[navRow], "sessions") {
 		t.Fatalf("the nav is not on the first row: %q", place[navRow])
 	}
-	if strings.Contains(place[tabStripRow], a.chatDisplayName()) || !strings.HasPrefix(place[1], "─") {
+	if strings.Contains(place[tabStripRow], a.chatDisplayName()) || !strings.HasPrefix(place[tabStripRow], "─") {
 		t.Fatalf("the tasks place drew a strip under the nav: %q", place[tabStripRow])
 	}
 	a.showPage(pageNone)
