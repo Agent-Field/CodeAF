@@ -510,7 +510,7 @@ func (a *app) teamMoveCard(width, height int) wallCard {
 	if w > width-2 || h > height {
 		return wallCard{}
 	}
-	x := (width - w) / 2
+	x := a.teamsCardX(width, w)
 	y := max((height-h)/3, 1)
 	return wallCardBuild(pal, title, lines, x, y, w, wallCardPadX, wallCardPadY)
 }

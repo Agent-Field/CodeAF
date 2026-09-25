@@ -35,7 +35,11 @@ or not, belongs to the teams page on home (section 7).
 
 **Doors in.** `alt+v`, `/wall`, the `▦` dock under the input box, and `▦ All` beside the tab
 strip's `+`. The dock is a one-row map of every open conversation coloured by state; a click
-on a cell switches to that conversation without opening the wall.
+on a cell switches to that conversation without opening the wall, and its hint says so
+(`openrouter price scrape · running · click opens it`). Hovered, `▦ All` and the dock's `▦`
+say `Every open conversation, and your teams · alt+v`: with no team yet it is the only door
+on the strip that leads to making one, and the word `Conversations` alone gave a first-time
+person no reason to look there.
 
 **A tile, in reading order.** Title, then state, then now, then history:
 
@@ -61,7 +65,10 @@ toggles. The wheel scrolls the view by one tile row per notch, clamped, and neve
 unless focus would leave the screen.
 
 **Discovery.** Every control explains itself in the toolbar while hovered
-(`Add this conversation to teams · m`). `?` opens a sheet of everything the page can do,
+(`Add this conversation to teams · m`). The sentence outranks the buttons: while it shows,
+`Columns` and then the acts on the right step aside until it is whole (never the button under
+the pointer, never `Help`), and come back when the pointer leaves. Before, it was cut between
+`Back` and the buttons and read `Resume the …` at 80 columns and lost its key at 110. `?` opens a sheet of everything the page can do,
 every row clickable. Next-needing-you is `n`.
 
 **Sizes.** A tile is at least 44 columns and 12 rows; past that the grid scrolls rather than
@@ -331,6 +338,11 @@ nothing saying which reply answered which question. So:
   chat's history` in the hint line. A message's words are a door: hover puts them whole in the
   hint line, a press lays them out under the row and brings its thread card in the manager's
   conversation into view, a second folds them. Rows are cached on the entries, width, pointer, minute and what is laid out.
+- **A manager's steps are captioned as team work.** The fold over a manager's turn read
+  `▾ team_send 1 call … 1 call`, the tool's own name and the count twice; the team tools now
+  gloss like the others: `messaging @scrape @model` (past, `messaged`), `posting to manager`,
+  `starting @lexer`, `stopping @web`, `reading @web`, `checking the team`, and a run of sends
+  `sending 3 messages`. The tool row under it keeps the tool's name, as every tool row does.
 - **The manager's chat has the thread where it asked.** A `team_send` row reads
   `team_send ◆ to @agent @checking @review · do`, the words quoted under it, and each member's
   answer attached under that in muted ink as the Traffic cache brings it, one line each; the
@@ -774,10 +786,17 @@ its card`.
   permission prompt shows as a needs-you row in the header with `Allow once` / `Always` /
   `Deny`, the person's own gate (a manager never answers it).
 - **The inbox.** Above the conversation, the packets waiting on the person or on this team's
-  manager, one card each, newest last, folded to one line each beyond three:
+  manager, one card each, newest last, folded to one line each beyond three. Hosted, the
+  cards also have a height: about a third of the frame (at least 8 rows); the newest, or the
+  one a press unfolded, is always whole, older ones stay whole while they fit, the rest fold
+  to `▸ kind · question   waiting on you`. Measured at 110x34 with three packets before the
+  change: the cards took every pinned row and left the manager's conversation one row, the
+  Traffic edge cut to `T`. A card leads with whose it is: `?` in the needs-you amber when it
+  waits on the person, `◆` when it waits on a manager (every card led with `◆` before, which
+  read as the manager's own question):
 
   ```
-  ◆ conflict · raised by @web                              waiting on you
+  ? conflict · raised by @web                              waiting on you
   which shape does the signup form send?
     @web   the form posts JSON
     @api   the endpoint takes form data
@@ -835,7 +854,12 @@ it), and `Close team…`. Closable with `esc`.
   forgets the grouping, the Traffic and the packets; conversations stay in history). Delete
   exists only here.
 - **Organize** adds one proposal kind: `Close N quiet teams` (`Quiet`, 7 days without activity
-  and no open packet), each named, with `Undo`, never applied without the person.
+  and no open packet), each named, with `Undo`, never applied without the person. Its row is
+  the sentence whole and then the teams (`☑ Close 2 quiet teams  harbor, orbit`): it is not a
+  team, so it wears no colour dot and no second count (it read `☑ ● Close 2 quiet t… 2`).
+- **A team's cards stand over the pane.** The settings, close and move cards are centred over
+  the teams page's pane while that page stands, so the rail beside them still says which team
+  they are about; they covered the rail before. Elsewhere they are centred on the frame.
 
 ### 8.6 Where this departs from the brief, and why
 
@@ -1061,7 +1085,9 @@ or `busy for <team>` (`MemberState.ReportsTo`).
   a spend or a cap to set it against, the cap in whole dollars, `$0.42 of $5 today`), and the
   three buttons. Narrow, it drops the idle word first, then the spend, then the chips from the
   last, then `◆ Manager`, then the buttons from the right, never the name. The idle word (or
-  `p`) opens the **members card**: handle, title, state, last active, `also in test` for a
+  `p`) opens the **members card**, titled with the header's own count (`harbor · ◆ Manager ·
+  1 member`, where it used to say `2 members` beside a header saying `1 member`): handle,
+  title, state, last active, `also in test` for a
   shared member (its hint says whose manager it reports to) and `Open` or `Resume`. `not open`
   is said nowhere on the page: it is a fact about the window, and the button carries it. The
   card hangs over the pane, clear of the rail, because its rows are the drag source for adding

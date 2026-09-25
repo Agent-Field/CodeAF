@@ -1093,6 +1093,14 @@ func wallOrgRow(pal palette, g wallGlyphs, k wallKeys, v wallView, p orgProp, i,
 	count := wallOrgCount(p)
 	left := box + " " + mark + " " + pal.ink(name) + strings.Repeat(" ", nameW-ansi.StringWidth(name)+1) +
 		strings.Repeat(" ", countW-len(count)) + pal.dim(count) + "  "
+	// THE QUIET-TEAMS ROW IS NOT A TEAM. It has no colour to wear and its
+	// count is already in its words, so it is its sentence whole (`Close 2
+	// quiet teams`), then the teams it names; cut to a team name's width it
+	// read `● Close 2 quiet t… 2`.
+	if p.team == orgCloseRow {
+		name = fit(p.name, max(inner/2, 8))
+		left = box + " " + pal.ink(name) + "  "
+	}
 	detail := "from the folder"
 	if !p.folder || p.team != "" {
 		cut := make([]string, 0, len(p.names))

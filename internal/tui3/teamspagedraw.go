@@ -323,6 +323,7 @@ type teamsTopCache struct {
 // without the page hearing of it.
 type teamsTopKey struct {
 	width, edits  int
+	height        int
 	stamp, sel    string
 	cur, hot      teamsRef
 	focus         bool
@@ -576,30 +577,89 @@ func (a *app) teamsHandleOf(t team, file string) string {
 // teamsInboxRows is the packets waiting on the person or on this team's
 // manager, one card each, newest last, each beyond the last three folded to
 // one line a press unfolds.
+//
+// BESIDE THE MANAGER THE INBOX HAS A HEIGHT. While the pane hosts the
+// manager's conversation, the cards are rows pinned over it, so three whole
+// cards on a laptop's 34 rows left the conversation one row: the person could
+// decide packets and could no longer read or steer the manager, which is what
+// the page is for. So hosted, the cards may take about a third of the
+// frame: the newest (or the one a press unfolded) is always whole, older ones
+// stay whole while they fit, and the rest are one line each, as the fourth
+// card always was. Unhosted, nothing else shares the pane and the old rule
+// stands.
 func (a *app) teamsInboxRows(d *teamsDraw, width, y int) []string {
 	pal := a.pal
 	if !a.teamsCanDelegate() {
 		return nil
 	}
 	packets := a.teamsInbox()
+	whole := make([]bool, len(packets))
+	for i := range packets {
+		whole[i] = i >= len(packets)-teamsInboxWhole || a.tp.expand == packets[i].ID
+	}
+	if a.teamsHosting() && len(packets) > 1 {
+		budget := max(a.height/3-y, teamsInboxFloor)
+		// Measured on a scratch draw so the real one records only the targets
+		// it draws.
+		height := func(p teamstore.Packet) int {
+			return len(a.teamsCard(&teamsDraw{a: a}, p, width, 0)) + 1
+		}
+		used := 0
+		order := make([]int, 0, len(packets))
+		for i := len(packets) - 1; i >= 0; i-- {
+			if a.tp.expand == packets[i].ID {
+				order = append([]int{i}, order...)
+				continue
+			}
+			order = append(order, i)
+		}
+		for n, i := range order {
+			if !whole[i] {
+				used++
+				continue
+			}
+			h := height(packets[i])
+			if n > 0 && used+h > budget && a.tp.expand != packets[i].ID {
+				whole[i] = false
+				used++
+				continue
+			}
+			used += h
+		}
+	}
 	var out []string
-	fold := len(packets) - teamsInboxWhole
 	for i, p := range packets {
-		out = append(out, "")
-		if i < fold && a.tp.expand != p.ID {
+		if !whole[i] {
+			// One blank line over a run of folded lines, not one each.
+			if i == 0 || whole[i-1] {
+				out = append(out, "")
+			}
 			line := " " + pal.muted(a.linearMark("▸", ">")+" "+p.Kind+" "+a.teamsDot()+" ") + pal.ink(p.Question)
+			if p.Team == teamstore.Person {
+				line = teamsPad(line, width-ansi.StringWidth(teamsFoldWaiting)-1) + pal.ask(teamsFoldWaiting)
+			}
 			out = append(out, d.row(line, width, teamsTarget{act: teamsActOption, arg: p.ID, opt: "", y: y + len(out),
 				hint: "Unfold this card" + hintSegment + "enter"}, false))
 			continue
 		}
+		out = append(out, "")
 		out = append(out, a.teamsCard(d, p, width, y+len(out))...)
 	}
 	return out
 }
 
+// teamsInboxFloor is the fewest rows the hosted inbox is given however short
+// the frame: one card's head, question and a couple of options.
+const teamsInboxFloor = 8
+
+// teamsFoldWaiting is a folded card's right edge when it waits on the person:
+// the same needs-you word its whole card carries, so folding a card never
+// hides that it is the person's to answer.
+const teamsFoldWaiting = "waiting on you"
+
 // teamsCard is one decision packet as a card:
 //
-//	◆ conflict · raised by @web                              waiting on you
+//	? conflict · raised by @web                              waiting on you
 //	which shape does the signup form send?
 //	  @web   the form posts JSON
 //	  @api   the endpoint takes form data
@@ -610,6 +670,12 @@ func (a *app) teamsInboxRows(d *teamsDraw, width, y int) []string {
 // The options are word buttons with their consequence dim beside them; the
 // recommended one says so; a packet waiting on a manager is dim and says whose,
 // and the person may still decide it (authority: the person first).
+//
+// THE LEAD MARK SAYS WHOSE IT IS, never what a manager is. A card waiting on
+// the person opens with the needs-you `?` the rail and the tabs already use;
+// one waiting on a manager opens with the manager's mark. Every card used to
+// open with the manager's mark, so `◆ question · raised by @boss` read as the
+// manager's question.
 func (a *app) teamsCard(d *teamsDraw, p teamstore.Packet, width, y int) []string {
 	pal := a.pal
 	mine := p.Team == teamstore.Person
@@ -618,7 +684,11 @@ func (a *app) teamsCard(d *teamsDraw, p teamstore.Packet, width, y int) []string
 	if p.Kind == teamstore.PacketClosing && p.Report != nil && p.Report.Incomplete {
 		kind += " " + a.teamsDot() + " wrap-up incomplete"
 	}
-	head := a.teamManagerMark() + " " + kind
+	lead := a.teamManagerMark()
+	if mine {
+		lead = "?"
+	}
+	head := kind
 	if by := strings.TrimSpace(p.RaisedBy); by != "" {
 		switch by {
 		case teamstore.FromManager:
@@ -634,7 +704,7 @@ func (a *app) teamsCard(d *teamsDraw, p teamstore.Packet, width, y int) []string
 	if t, ok := a.teamByID(p.Origin); ok && p.Origin != a.tp.sel {
 		head += " " + a.teamsDot() + " " + t.Name
 	}
-	waiting := "waiting on you"
+	waiting := teamsFoldWaiting
 	right := pal.ask(waiting)
 	if !mine {
 		name := p.Team
@@ -644,12 +714,12 @@ func (a *app) teamsCard(d *teamsDraw, p teamstore.Packet, width, y int) []string
 		waiting = "waiting on " + a.teamManagerMark() + " " + name
 		right = pal.dim(waiting)
 	}
-	headInk := pal.muted
+	headInk, leadInk := pal.muted, pal.muted
 	if mine {
-		headInk = pal.ink
+		headInk, leadInk = pal.ink, pal.ask
 	}
-	room := width - ansi.StringWidth(waiting) - 3
-	line := " " + headInk(fit(head, room))
+	room := width - ansi.StringWidth(waiting) - 3 - ansi.StringWidth(lead) - 1
+	line := " " + leadInk(lead) + " " + headInk(fit(head, room))
 	line = teamsPad(line, width-ansi.StringWidth(waiting)-1) + right
 	out = append(out, line)
 	for _, l := range wrap(p.Question, max(width-3, 8)) {

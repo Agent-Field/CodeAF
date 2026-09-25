@@ -111,7 +111,7 @@ func (a *app) teamsHostTopHeight() int {
 func (a *app) teamsHostTop(width int) []string {
 	t, _ := a.teamsSelected()
 	key := teamsTopKey{
-		width: width, edits: a.traffic.edits, stamp: a.traffic.stamp, sel: a.tp.sel,
+		width: width, height: a.height, edits: a.traffic.edits, stamp: a.traffic.stamp, sel: a.tp.sel,
 		cur: a.tp.cur, hot: a.tp.hot, focus: a.tp.focus, sig: a.teamsTopSig(t),
 		minute: a.now().Unix() / 60, answering: a.tp.answering, answer: string(a.tp.answer.value),
 		expand: a.tp.expand, ascii: a.pal.ascii, linear: a.linear, undoing: a.teamsUndoing(),
