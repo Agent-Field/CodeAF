@@ -581,6 +581,12 @@ same code path the tool runs, so the two cannot drift:
 - `codeaf web fetch URL` / `codeaf web search QUERY` — the belt's web verbs.
 - `codeaf image PROMPT --out PATH` — one picture the way `generate_image` makes one.
 
+**`codeaf` in a worker's shell is always the codeaf that is running**, whatever
+file name it was installed under — `devaf`, `stageaf`, or a `--name` word. The
+run's own `bin/codeaf` sits first on the worker's PATH, so an older or different
+codeaf elsewhere on the machine is never reached, and a devaf install does not
+answer `command not found`.
+
 A few hands a shell cannot be are kept too, and a worker calls them directly, one call
 per response exactly as it calls `bash` — the billed `read_document`, `jobs` (which
 reads and stops a job the worker started), `manual`, and the web, media and services

@@ -156,6 +156,10 @@ type welcome struct {
 	// move it (see [app.welcomeKey]).
 	sel    int
 	recent []Session
+	// noticeDrawn says the last layout of this unit carried the whole usage
+	// notice ([app.welcomeNoticeRows]). It is the frame's own note, read by the
+	// frame that drew it (view.go) and by nothing that only measures.
+	noticeDrawn bool
 }
 
 func (w *welcome) animating() bool { return w.open && w.step < welcomeFrames }
@@ -223,6 +227,12 @@ func (a *app) dismissWelcome() {
 		return
 	}
 	a.welcome = welcome{spent: true}
+	// THE NOTICE GOES WITH THE GREETING THAT SHOWED IT. Once a frame has drawn it
+	// and the door has recorded it, the next greeting in this process — a `/new`,
+	// a second tab — is not owed it again.
+	if a.telemetryNoticeSettled {
+		a.telemetryNotice = ""
+	}
 	a.noteLandingKeys()
 	a.touch()
 }
@@ -1090,6 +1100,25 @@ func (a *app) welcomeUnit(width int) ([]string, []welcomeMark, int, int) {
 		add(pal.dim(line), welcomeMark{})
 	}
 
+	// THE USAGE NOTICE, WHOLE OR NOT AT ALL. An install that has not yet shown
+	// the anonymous usage counts' notice shows it here, dim, under the starting
+	// points, because this is the first screen a new person reads with the
+	// surface up, and the notice promises to be read before any count is sent
+	// (docs/TELEMETRY.md). Half a notice is not a notice, so a frame without the
+	// room draws none of it, and a notice no frame drew is not counted as seen
+	// ([app.settleTelemetryNotice]); it is still owed on the next launch.
+	w.noticeDrawn = false
+	if notice := a.welcomeNoticeRows(unit); len(notice) > 0 {
+		spare := a.welcomeRowsLeft() - a.statusHeight(width) - len(rows) - 1
+		if len(notice)+1 <= spare {
+			add("", welcomeMark{})
+			for _, line := range notice {
+				add(pal.dim(line), welcomeMark{})
+			}
+			w.noticeDrawn = true
+		}
+	}
+
 	// THE SESSIONS TAKE ONLY THE ROOM THE WINDOW HAS LEFT. A twelve-row window
 	// with four sessions to list would draw the last of them over the status row;
 	// the list is cut to what fits with a row of slack to spare, and a list that
@@ -1107,6 +1136,39 @@ func (a *app) welcomeUnit(width int) ([]string, []welcomeMark, int, int) {
 		}
 	}
 	return rows, marks, caretX, caretRow
+}
+
+// welcomeNoticeRows is the owed usage notice as the unit's rows, or nil when
+// nothing is owed. A line wider than the unit is wrapped at its own indent
+// rather than cut, because every word of the notice is part of what it says.
+func (a *app) welcomeNoticeRows(unit int) []string {
+	if a.telemetryNotice == "" || unit <= 0 {
+		return nil
+	}
+	var rows []string
+	for _, line := range strings.Split(a.telemetryNotice, "\n") {
+		if ansi.StringWidth(line) <= unit {
+			rows = append(rows, line)
+			continue
+		}
+		body := strings.TrimLeft(line, " ")
+		indent := strings.Repeat(" ", len(line)-len(body))
+		for _, part := range wrap(body, max(1, unit-len(indent))) {
+			rows = append(rows, indent+part)
+		}
+	}
+	return rows
+}
+
+// settleTelemetryNotice tells the door, once, that a frame has drawn the owed
+// notice. It runs on the update loop and never inside a frame, because the door
+// writes the record to disk and the frame may not touch the disk.
+func (a *app) settleTelemetryNotice() {
+	if !a.telemetryNoticeOnFrame || a.telemetryNoticeSettled || a.telemetryNoticeShown == nil {
+		return
+	}
+	a.telemetryNoticeSettled = true
+	a.telemetryNoticeShown()
 }
 
 // welcomeStarterKeysWord is the line under the three starting points: the two

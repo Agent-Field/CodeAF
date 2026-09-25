@@ -123,8 +123,9 @@ curl -fsSL https://agentfield.ai/get/codeaf | VERSION=<tag> bash
 The script needs `curl` or `wget`, plus `sha256sum` or `shasum`. It downloads
 `checksums.txt` and refuses a sha256 mismatch. Unless `--no-modify-path` is set, it
 appends one `export PATH=… # codeaf installer` line to the applicable shell file. On a
-normal run it prints three things and nothing else: `installed codeaf v… built … ·
-go… os/arch` (the installed file naming itself), the three-line telemetry notice, and,
+normal run it prints two things and nothing else: `installed codeaf v… built … ·
+go… os/arch` (the installed file naming itself; an install under another name puts
+that name first, `installed devaf · codeaf dev-… built …`), and,
 when the folder is not yet on `PATH`, the bare `export PATH=…` line to paste into the
 current shell, bold green on a terminal, last, with a blank line above and below.
 `--verbose` also reports the channel, the tag and the install path on stderr. The

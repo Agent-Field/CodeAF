@@ -742,7 +742,8 @@ you named with `--db`. The default run engine refuses `--db`.
 - **Refused before work began:** the default run engine makes no record. The
   older engine can retain an empty folder when `--keep` or debug was requested.
 
-A default run's folder holds `plandb.db`, the worker shim (`bin/plandb`), and
+A default run's folder holds `plandb.db`, the worker shims (`bin/plandb`, and
+`bin/codeaf`, which is the codeaf that is running under whatever name), and
 task transcripts and trajectories under `tasks/<id>/`. Read its plan with
 `codeaf plandb --db <folder>/plandb.db`. The older engine's folder holds
 `graph.db`; that engine can reopen it with `codeaf do --db <folder>/graph.db`.

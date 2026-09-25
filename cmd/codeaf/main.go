@@ -35,6 +35,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/plan"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/router"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/telemetry"
 	"github.com/Agent-Field/codeaf/internal/trace"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
@@ -42,7 +43,20 @@ import (
 
 func main() {
 	home.Adopt(log.Printf)
+	registerRunningCLI()
 	os.Exit(execute())
+}
+
+// registerRunningCLI tells the worker harness which binary a worker's `codeaf`
+// reaches: THIS one, under whatever file name it was installed. A worker's shell
+// is taught `codeaf patch`, and without this the word resolved on the machine's
+// PATH — nothing on a devaf install, an older codeaf on the fresh-install check
+// of 2026-09-25 (internal/session's [session.SetRunningCLI] says why it is
+// registered here rather than probed there).
+func registerRunningCLI() {
+	if self, err := os.Executable(); err == nil {
+		session.SetRunningCLI(self)
+	}
 }
 
 // surfaceMaxProcs is the GOMAXPROCS a surface runs under on a machine bigger

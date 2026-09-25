@@ -138,7 +138,8 @@ func (s RunTreeSnapshot) harnessOwns(path string) bool {
 // harnessWrote is THE ONE ANSWER to which paths inside a working copy are the
 // harness's own rather than the work: its folder of droppings, its plan store
 // under the name every road agrees on ([planStoreFilename], and the files the
-// store's engine keeps beside it), and the shim it arms. It is read by the belt
+// store's engine keeps beside it), and the two shims it arms (`plandb` and
+// `codeaf`, plandb_plan.go's armShim). It is read by the belt
 // landing ([beltTreeWork]) and by an in-place run's account of what it changed
 // ([RunTreeSnapshot.Changed]), so the two cannot disagree about it.
 //
@@ -156,7 +157,7 @@ func harnessWrote(path string) bool {
 		strings.HasPrefix(path, planStoreFilename+"."),
 		strings.HasPrefix(path, planStoreFilename+"-"):
 		return true
-	case path == "bin/"+planShimFilename:
+	case path == "bin/"+planShimFilename, path == "bin/"+codeafShimFilename:
 		return true
 	}
 	return false

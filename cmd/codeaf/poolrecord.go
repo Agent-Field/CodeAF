@@ -200,6 +200,15 @@ func poolJudgeLandingContext(ctx context.Context, settings config.Config, profil
 			judgeID = candidate
 			break
 		}
+		// A JUDGE WITH NO KEY IS AN ABSENT JUDGE, NOT A FAILED ONE. Every
+		// candidate would meet the same missing key, so none is asked after this
+		// one, and the landing is left exactly as it was: no reason naming the
+		// key in judge-last.json and, above all, no judged marker — the marker is
+		// permanent, and a landing marked here was one no later start, key in
+		// hand, would ever score. The restart sweep judges it then.
+		if errors.Is(err, provider.ErrNoAPIKey) {
+			return
+		}
 		// No seat at all came back: that is the judge's own failure — a 429, a
 		// timeout, a refusal — and not a verdict on the run, so its reason is
 		// said here and the next candidate is asked.
@@ -308,9 +317,17 @@ func outboxPath(poolDir string) string {
 // poolJudgeAsk builds the maker of one judge's ask: a client per call, built
 // from the model's own config, the answer read as the judge's plain string,
 // and the call billed to the judge's own seat.
-func poolJudgeAsk(settings config.Config, profileDir string) func(model string) judge.Ask {
+//
+// THE SETTINGS ARE READ WHEN THE JUDGE ASKS, NOT WHEN IT IS BUILT. The chat
+// builds its judge with the conversation, and on a first launch that is before
+// setup has a key: a judge holding the boot's copy asked every landing of the
+// install's first session keyless, and failed each one. live is the door's
+// answer at the moment of asking ([v3Process.liveSettings]), so a key pasted
+// into setup, or changed in /settings, is the key the next judgment carries.
+func poolJudgeAsk(live func() config.Config, profileDir string) func(model string) judge.Ask {
 	return func(model string) judge.Ask {
 		return func(ctx context.Context, system, user string) (string, error) {
+			settings := live()
 			client, err := provider.NewClient(settings.ClientConfig(model))
 			if err != nil {
 				return "", err
