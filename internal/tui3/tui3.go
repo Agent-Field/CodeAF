@@ -388,6 +388,21 @@ type TaskOwnerView struct {
 	// Nil is a door that cannot offer it. The page then says exactly what it said
 	// before, which is what a capability that cannot work is owed.
 	Questions func() (<-chan session.Event, func())
+	// TaskPage reads ONE TASK'S STORED PAGE in the owner's own store — the page
+	// a program's task is drawn from, since a program writes no worker journal
+	// for [TaskOwnerView.Room] to read ([session.PlanTaskPage.Program]). It is
+	// the same read this window's own program room makes of its own store
+	// ([session.Agent.PlanTaskPage]), made on this view's connection so the id
+	// is answered in the owner's numbering and never in this window's.
+	//
+	// IT KEEPS THE ENGINE'S REFUSAL, where the agent's own read folds every
+	// failure into "not found": a page this window is reading learns that the
+	// conversation under it was replaced from exactly this error
+	// ([remote.ErrJoinedGone]), and a program's page reads nothing else.
+	//
+	// Nil is a door that cannot offer it, and every page opened through that
+	// door is the journal reading it always was.
+	TaskPage func(id string) (session.PlanTaskPage, bool, error)
 	// Close gives back THIS VIEW'S connection and nothing else. The conversation
 	// goes on running, the window that owns it keeps its keyboard, and the
 	// engine is untouched.

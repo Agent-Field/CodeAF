@@ -1028,6 +1028,21 @@ func TestPlanTasksAndPlanTaskPageCrossWhole(t *testing.T) {
 	}
 }
 
+// A READING WINDOW'S PAGE READ KEEPS THE ENGINE'S REFUSAL. The plan
+// capability folds every failure into "not found"; a page onto another
+// conversation's program task reads nothing else, and the refusal is how it
+// learns that conversation was replaced.
+func TestReadPlanTaskPageKeepsTheEnginesRefusal(t *testing.T) {
+	client, e := newEngine(t)
+	e.fails[MethodPlanTaskPage] = "engine: that conversation is not open here any more"
+	if _, found, err := client.Agent().ReadPlanTaskPage("7"); found || err == nil || !strings.Contains(err.Error(), "not open here any more") {
+		t.Fatalf("ReadPlanTaskPage = (found %v, %v), want the engine's own refusal", found, err)
+	}
+	if _, found := client.Agent().PlanTaskPage("7"); found {
+		t.Fatal("PlanTaskPage found a page the engine refused")
+	}
+}
+
 func TestRunSummariesCrossWholeAndDroppedRefreshKeepsNothing(t *testing.T) {
 	client, e := newEngine(t)
 	want := session.RunPlanSummary{

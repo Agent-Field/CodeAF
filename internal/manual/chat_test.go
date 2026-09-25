@@ -937,6 +937,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"codeaf closed while senior-dev was running where is its work", "senior-dev"},
 		{"my ssh connection dropped during codeaf senior-dev", "senior-dev"},
 		{"can my other window see the senior-dev run", "senior-dev"},
+		{"watch a senior-dev run from another window", "senior-dev"},
 		// Its page is the actions it took, each under the step of its process,
 		// asked the ways somebody watching it would ask.
 		{"what is senior-dev doing", "senior-dev"},

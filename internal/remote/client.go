@@ -2001,15 +2001,30 @@ func (a *Agent) PlanTasks() []session.PlanTaskRow {
 
 // PlanTaskPage reads one complete task page from the engine.
 func (a *Agent) PlanTaskPage(id string) (session.PlanTaskPage, bool) {
-	payload, err := a.c.call(nil, MethodPlanTaskPage, PlanTaskPageArgs{ID: id})
+	page, found, err := a.ReadPlanTaskPage(id)
 	if err != nil {
 		return session.PlanTaskPage{}, false
 	}
-	var result PlanTaskPageResult
-	if json.Unmarshal(payload, &result) != nil {
-		return session.PlanTaskPage{}, false
+	return page, found
+}
+
+// ReadPlanTaskPage is [Agent.PlanTaskPage] with the engine's refusal kept.
+//
+// A READING WINDOW NEEDS THE REFUSAL. A page opened onto another
+// conversation's program task reads nothing but this, and the one way it
+// learns the conversation under it was replaced is the engine's own sentence
+// ([ErrJoinedGone]) — which the plan capability's (page, found) shape has
+// nowhere to put (internal/tui3's [tui3.TaskOwnerView.TaskPage]).
+func (a *Agent) ReadPlanTaskPage(id string) (session.PlanTaskPage, bool, error) {
+	payload, err := a.c.call(nil, MethodPlanTaskPage, PlanTaskPageArgs{ID: id})
+	if err != nil {
+		return session.PlanTaskPage{}, false, err
 	}
-	return result.Page, result.OK
+	var result PlanTaskPageResult
+	if err := json.Unmarshal(payload, &result); err != nil {
+		return session.PlanTaskPage{}, false, err
+	}
+	return result.Page, result.OK, nil
 }
 
 func (a *Agent) PlanNote(id, text string) error {

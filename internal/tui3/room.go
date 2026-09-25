@@ -918,7 +918,11 @@ func (a *app) readRoomRecord() tea.Cmd {
 	}
 	if guest := a.room.guest; guest != nil {
 		read, id, gen := guest.room, a.room.id, a.room.gen
-		if read == nil || guest.lost {
+		// A PROGRAM'S TASK HAS NO JOURNAL TO READ. What it did is its page in the
+		// owner's store, which the program room reads on its own beat
+		// ([app.guestPageRead]); asking the owner for a journal as well would be
+		// four calls a second for nothing.
+		if read == nil || guest.lost || a.room.program != nil {
 			return nil
 		}
 		return func() tea.Msg {
@@ -1517,15 +1521,18 @@ func (a *app) steer() tea.Cmd {
 	if room.orch != nil {
 		return a.orchSteer()
 	}
+	// A PAGE READ THROUGH ANOTHER CONVERSATION SAYS IT IS READING, a program's
+	// page included: the program's refusal names this window's main as the door,
+	// and the words belong in the conversation that owns the work.
+	if a.roomIsGuest() {
+		a.roomNote(roomGuestReadingWord)
+		return nil
+	}
 	// A PROGRAM READS NO MESSAGE (programroom.go). Nothing is sent and nothing is
 	// taken out of the box: the page says so, names where the words can go, and
 	// leaves the sentence where the person can carry it there.
 	if room.program != nil {
 		a.roomNote(a.programRoomRefusal().line())
-		return nil
-	}
-	if a.roomIsGuest() {
-		a.roomNote(roomGuestReadingWord)
 		return nil
 	}
 	if room.done {
@@ -3238,6 +3245,41 @@ func (a *app) roomNodeModel() string {
 	return strings.TrimSpace(node.model)
 }
 
+// roomGuestTail is what a page read through another conversation says under
+// whatever it read, and nothing on every other page. Both of a guest page's
+// bodies end with it — the owner's journal, and a program's actions read out
+// of the owner's store (programroom.go) — because both lines are about the
+// READING, not about what was read.
+func (a *app) roomGuestTail(inner int) []row {
+	var out []row
+	// A READING PAGE WITH NO WAY TO ASK ITS OWNER SAYS SO, once, under whatever
+	// it did read. It is not a refusal and not an error — the transcript above it
+	// is real — it is the one thing the page cannot know, said rather than
+	// papered over with a state word that stopped being true (taskowner.go's
+	// [app.roomGuestStale]).
+	if a.roomGuestStale() {
+		out = append(out, row{text: a.pal.dim(fit(roomGuestStaleWord, inner)), entry: -1})
+	}
+	// AND A CONVERSATION THAT HAS STOPPED AND IS WAITING ON SOMEBODY SAYS SO,
+	// under what it has done so far. The roster cannot say it — a node sitting on
+	// a question is still `running` — so a page reading somebody else's work drew
+	// a clock over work that had not moved since somebody was asked something
+	// (taskowner.go's questions lane).
+	//
+	// IT IS DIM AND NOT AMBER, AND THAT IS THE HUE LAW RATHER THAN AN OVERSIGHT.
+	// Amber is waiting on YOU and nothing else (docs/design/questions/DESIGN.md);
+	// this question is waiting on the window that owns the work, this page has no
+	// key that would answer it, and a row here in the colour that means "press
+	// something" would be asking a person for a keystroke that does not exist.
+	if asked, waiting := a.roomGuest().waiting(); waiting {
+		if head := strings.TrimSpace(asked.Head); head != "" {
+			line := a.icon(tokens.GNeedsHuman) + " " + head + railSep + roomGuestAskedWord
+			out = append(out, row{text: a.pal.dim(fit(line, inner)), entry: -1})
+		}
+	}
+	return out
+}
+
 func (a *app) roomNode() *taskNode {
 	if a.room == nil {
 		return nil
@@ -3650,31 +3692,7 @@ func (a *app) roomRows(width int) []row {
 	if call, ok := a.roomCallRow(inner); ok {
 		out = append(out, call)
 	}
-	// AND A READING PAGE WITH NO WAY TO ASK ITS OWNER SAYS SO, once, under
-	// whatever it did read. It is not a refusal and not an error — the transcript
-	// above it is real — it is the one thing the page cannot know, said rather
-	// than papered over with a state word that stopped being true (taskowner.go's
-	// [app.roomGuestStale]).
-	if a.roomGuestStale() {
-		out = append(out, row{text: a.pal.dim(fit(roomGuestStaleWord, inner)), entry: -1})
-	}
-	// AND A CONVERSATION THAT HAS STOPPED AND IS WAITING ON SOMEBODY SAYS SO,
-	// under what it has done so far. The roster cannot say it — a node sitting on
-	// a question is still `running` — so a page reading somebody else's work drew
-	// a clock over work that had not moved since somebody was asked something
-	// (taskowner.go's questions lane).
-	//
-	// IT IS DIM AND NOT AMBER, AND THAT IS THE HUE LAW RATHER THAN AN OVERSIGHT.
-	// Amber is waiting on YOU and nothing else (docs/design/questions/DESIGN.md);
-	// this question is waiting on the window that owns the work, this page has no
-	// key that would answer it, and a row here in the colour that means "press
-	// something" would be asking a person for a keystroke that does not exist.
-	if asked, waiting := a.roomGuest().waiting(); waiting {
-		if head := strings.TrimSpace(asked.Head); head != "" {
-			line := a.icon(tokens.GNeedsHuman) + " " + head + railSep + roomGuestAskedWord
-			out = append(out, row{text: a.pal.dim(fit(line, inner)), entry: -1})
-		}
-	}
+	out = append(out, a.roomGuestTail(inner)...)
 	if room.done {
 		// THE FOOT. A room on a node that has landed says so once, at the bottom,
 		// where the next thing would have appeared — which is the place a person
