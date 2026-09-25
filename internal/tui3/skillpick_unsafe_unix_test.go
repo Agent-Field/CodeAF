@@ -67,7 +67,11 @@ func TestFolderRowRefusesPipeSkillInOneLine(t *testing.T) {
 	if len(agent.held) != 0 {
 		t.Fatalf("pipe skill attached %v", agent.held)
 	}
-	if screen := strings.Join(strings.Fields(strings.Join(plainRows(a), "\n")), " "); !strings.Contains(screen, "SKILL.md is not a regular file in "+folder) {
+	// The sentence carries a temporary path long enough to wrap, and the
+	// surface may break it at any hyphen, so the screen and the sentence are
+	// compared with every space and line break taken out of both.
+	squeeze := func(text string) string { return strings.Join(strings.Fields(text), "") }
+	if screen := squeeze(strings.Join(plainRows(a), "\n")); !strings.Contains(screen, squeeze("SKILL.md is not a regular file in "+folder)) {
 		t.Fatalf("folder refusal = %q", screen)
 	}
 }
