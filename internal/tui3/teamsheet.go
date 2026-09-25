@@ -282,9 +282,24 @@ func (a *app) teamSheetCard(width, height int) wallCard {
 	if w > width-2 || h > height-1 {
 		return wallCard{}
 	}
-	x := (width - w) / 2
+	x := a.teamsCardX(width, w)
 	y := max((height-h)/3, 1)
 	return wallCardBuild(a.pal, title, lines, x, y, w, wallCardPadX, wallCardPadY)
+}
+
+// teamsCardX is where a card w wide stands on a frame width wide: centred over
+// the teams page's pane while that page stands and the pane can hold it, so
+// the rail beside it stays readable (the card is about the team the rail has
+// selected, and covering the rail hid which one); centred on the frame
+// everywhere else.
+func (a *app) teamsCardX(width, w int) int {
+	if a.at(pageTeams) {
+		rail := teamsRailCols(width)
+		if pane := width - rail; rail > 0 && w <= pane-2 {
+			return rail + (pane-w)/2
+		}
+	}
+	return (width - w) / 2
 }
 
 // teamSheetSettingsLines is the settings card's lines.

@@ -527,6 +527,13 @@ func TestOrganizeOffersToCloseQuietTeamsWithUndo(t *testing.T) {
 	if quiet == nil || len(quiet.closes) != 2 || quiet.name != "Close 2 quiet teams" {
 		t.Fatalf("Organize did not offer the quiet teams: %+v", a.wall.org.props)
 	}
+	// Its row is its sentence whole, then the teams: no colour dot and no
+	// second count, and not cut to a team name's width.
+	a.width, a.height = 110, 30
+	frame := wallPlainFrame(a.wallFrame(a.width, a.height))
+	if !strings.Contains(frame, "☑ Close 2 quiet teams  harbor, orbit") {
+		t.Fatalf("the quiet-teams row reads:\n%s", frame)
+	}
 	for _, id := range []string{harbor, orbit} {
 		if got, _ := a.teamByID(id); got.Closed() {
 			t.Fatal("a suggestion closed a team before Apply")
@@ -685,5 +692,98 @@ func TestTeamsCardShowsWakeAndASharedMemberSaysWhoseItIs(t *testing.T) {
 	}
 	if hint := a.teamCrewHint(); !strings.Contains(hint, "reports to orbit's manager") {
 		t.Fatalf("the shared member's hint does not say whose it is: %q", hint)
+	}
+}
+
+// BESIDE THE MANAGER THE INBOX LEAVES THE CONVERSATION ROOM. Three packets on
+// a laptop's 34 rows used to take the whole pane, leaving the manager's chat
+// one row; now the newest card is whole, the older ones fold to one line each
+// that still says whose they are, and a press unfolds one. Each card leads
+// with whose it is: the needs-you `?`, never the manager's mark.
+func TestTeamsHostedInboxLeavesTheConversationRoom(t *testing.T) {
+	a, harbor, _ := teamsHostedLab(t)
+	a.width, a.height = 110, 34
+	flushTeams(t, a)
+	seam := a.teamsSeam()
+	raise := func(kind, q string) teamstore.Packet {
+		p, err := seam.Raise(teamstore.Packet{Team: teamstore.Person, Origin: harbor, Kind: kind, RaisedBy: "boss", Question: q,
+			Options:        []teamstore.Option{{ID: "a", Label: "One way", Consequence: "this happens"}, {ID: "b", Label: "The other", Consequence: "that happens"}},
+			Recommendation: &teamstore.Recommendation{Option: "b", Reason: "it is cheaper"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	first := raise(teamstore.PacketQuestion, "Ship on Friday or Monday?")
+	raise(teamstore.PacketConflict, "Which parser wins?")
+	raise(teamstore.PacketQuestion, "Keep the old field names?")
+	drive(t, a, runCmd(a.teamsRead(false))...)
+	a.teamsSync()
+	if top := a.teamsHostTopHeight(); top > a.height/2 {
+		t.Fatalf("the inbox takes %d of %d rows over the manager's chat:\n%s", top, a.height, teamsFrameText(a))
+	}
+	text := teamsFrameText(a)
+	if !strings.Contains(text, "Keep the old field names?") || !strings.Contains(text, "The other") {
+		t.Fatalf("the newest card is not whole:\n%s", text)
+	}
+	lines := strings.Split(text, "\n")
+	folded := 0
+	for _, l := range lines {
+		if strings.Contains(l, "▸ question · Ship on Friday") || strings.Contains(l, "▸ conflict · Which parser") {
+			folded++
+			if !strings.Contains(l, "waiting on you") {
+				t.Fatalf("a folded card does not say it waits on you: %q", l)
+			}
+		}
+		if strings.Contains(l, teamManagerGlyph+" question") || strings.Contains(l, teamManagerGlyph+" conflict") {
+			t.Fatalf("a card waiting on the person leads with the manager's mark: %q", l)
+		}
+	}
+	if folded != 2 {
+		t.Fatalf("%d cards folded, want 2:\n%s", folded, text)
+	}
+	if !strings.Contains(text, "? question · raised by @boss") {
+		t.Fatalf("the whole card does not lead with the needs-you mark:\n%s", text)
+	}
+	// A press on a folded card unfolds it and keeps the budget.
+	var fold teamsTarget
+	for _, tg := range a.tp.targets {
+		if tg.act == teamsActOption && tg.arg == first.ID && tg.opt == "" {
+			fold = tg
+		}
+	}
+	drive(t, a, runCmd(a.teamsDo(fold))...)
+	if text := teamsFrameText(a); !strings.Contains(text, "One way") || !strings.Contains(text, "Ship on Friday or Monday?") {
+		t.Fatalf("the press did not unfold the oldest card:\n%s", text)
+	}
+	if top := a.teamsHostTopHeight(); top > a.height/2 {
+		t.Fatalf("an unfolded card let the inbox take %d of %d rows", top, a.height)
+	}
+}
+
+// THE MEMBERS CARD COUNTS WHAT THE HEADER COUNTS: `◆ Manager  1 member` on the
+// header is `◆ Manager · 1 member` on the card, never `2 members`.
+func TestTeamsMembersCardCountsLikeTheHeader(t *testing.T) {
+	a, harbor, _ := teamsHostedLab(t)
+	head := teamsFrameText(a)
+	if !strings.Contains(head, "1 member") {
+		t.Fatalf("the header's count:\n%s", head)
+	}
+	drive(t, a, runCmd(a.teamCrewOpen(harbor))...)
+	if text := teamsFrameText(a); !strings.Contains(text, "harbor · "+teamManagerGlyph+" Manager · 1 member") {
+		t.Fatalf("the card's title does not count like the header:\n%s", text)
+	}
+}
+
+// A TEAM'S CARD STANDS OVER THE PANE, so the rail beside it still says which
+// team is selected.
+func TestTeamsCardsStandOverThePane(t *testing.T) {
+	a, harbor, _ := teamsPlaceLabIDs(t)
+	a.width, a.height = 110, 34
+	a.teamsSync()
+	drive(t, a, runCmd(a.teamSheetOpen(harbor, teamSheetSettings))...)
+	teamsFrameText(a)
+	if rail := teamsRailCols(a.width); a.tsheet.rect.x0 < rail {
+		t.Fatalf("the settings card starts at %d, over the rail's %d columns:\n%s", a.tsheet.rect.x0, rail, teamsFrameText(a))
 	}
 }

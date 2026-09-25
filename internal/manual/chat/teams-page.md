@@ -77,7 +77,8 @@ On a narrow screen the line gives up its parts in order: the idle word first, th
 then the members' chips from the last, then `◆ Manager`, then the buttons from the right. The
 team's name always stays. `p` opens the members card whatever the width.
 
-**The members card** (`+4 idle`, `6 members`, or `p`) lists every member, one row each: its
+**The members card** (`+4 idle`, `6 members`, or `p`) is titled the way the header counts,
+`harbor · ◆ Manager · 1 member`, and lists every member, one row each: its
 handle, its title, what it is doing, when it last moved, and **`Open`** for a conversation this
 window has open or **`Resume`** for one it does not. A member that reports to another team's
 manager carries a small `also in test` tag, and its hint says `reports to test's manager`.
@@ -87,10 +88,11 @@ moving you: the page says `@docs is open behind, in its own tab`, and the row tu
 page never says `not open`: whether a conversation is open is a fact about this window, not
 about the team.
 
-**What waits on you.** Each decision addressed to you is a card:
+**What waits on you.** Each decision addressed to you is a card, led by the same `?` the rail
+and the tabs use for something that needs you:
 
 ```
- ◆ conflict · raised by @boss                         waiting on you
+ ? conflict · raised by @boss                         waiting on you
  Which lexer do we keep?
    @parser   the new lexer is 3x faster and passes every test
    @model    the old one is what the grammar tool emits
@@ -107,9 +109,12 @@ what it spent; a cap card shows `spent $5.20 of $5.00 today · harbor's cap` and
 `Raise to $10` or `Stop for today`, which only you can decide. A member stopped on a
 permission prompt shows `? @web asks` with the same answer buttons home offers for it, the
 prompt's own options. The newest three cards show whole; older ones fold to one line each,
-`▸ question · which port?`, and a press unfolds one. A card waiting on a manager
-instead of you reads `waiting on ◆ harbor`, dim, and you can still decide it: you outrank
-every manager. The **team questions and caps** page says what a packet is and where questions
+`▸ question · which port?   waiting on you`, and a press unfolds one. While the manager's
+conversation is under them, the cards take about a third of the window: the newest (or the
+one you unfolded) is whole, older ones stay whole while they fit, and the rest fold, so
+there is always room to read and steer the manager. A card waiting on a manager instead of
+you leads with `◆`, reads `waiting on ◆ harbor`, dim, and you can still decide it: you
+outrank every manager. The **team questions and caps** page says what a packet is and where questions
 go.
 
 **The manager's conversation.** Under all of that is the team manager's own conversation, the

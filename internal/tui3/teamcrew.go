@@ -726,9 +726,23 @@ func (a *app) teamCrewCard(x, y, w, h int) wallCard {
 	}
 	lines = append(lines, wallCardLine{s: strings.Repeat(" ", max(inner-cw, 0)) + cs,
 		hits: []wallHit{{x0: inner - cw, x1: inner, y1: 1, kind: crewHitClose, arg: -1}}})
-	count := itoa(len(rows)) + " members"
-	if len(rows) == 1 {
+	// THE COUNT IS THE HEADER'S COUNT: the members beside the manager, with
+	// the manager named apart, so the header's `◆ Manager  1 member` and this
+	// title never disagree about the same team.
+	members, managed := 0, false
+	for _, r := range rows {
+		if r.manager {
+			managed = true
+			continue
+		}
+		members++
+	}
+	count := itoa(members) + " members"
+	if members == 1 {
 		count = "1 member"
+	}
+	if managed {
+		count = a.teamManagerMark() + " Manager " + a.teamsDot() + " " + count
 	}
 	title := t.Name + " " + a.teamsDot() + " " + count
 	if t.Root {
