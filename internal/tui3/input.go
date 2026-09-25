@@ -1313,7 +1313,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// ago, through the line below.
 	if a.homeGesture(msg) {
 		a.input.reset()
-		return tea.Batch(a.edited(), a.openHome())
+		return tea.Batch(a.edited(), a.homeByTwoSpaces())
 	}
 	if text := msg.Key().Text; text != "" {
 		// The ordinary case: a key that carries text types it.

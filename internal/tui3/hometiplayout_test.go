@@ -189,6 +189,13 @@ func TestDisableHintsIsAWorkspaceRowThatReadsTheOtherWayUp(t *testing.T) {
 	if item.meta.tab != tabWorkspace || item.meta.label != "disable hints" {
 		t.Fatalf("the hints row is %q on the %s tab, want \"disable hints\" on Workspace", item.meta.label, item.meta.tab)
 	}
+	// THE LINE UNDER IT IS THE OWNER'S OWN WORDING (2026-09-24).
+	if want := "disable💡 tips everywhere (requires restart)"; item.meta.about != want {
+		t.Fatalf("the line under the hints row reads %q, want %q", item.meta.about, want)
+	}
+	if !strings.Contains(plain(frame(a)), "disable💡 tips everywhere (requires restart)") {
+		t.Fatal("the panel does not draw the line under the selected hints row")
+	}
 	if got := item.row.Value(); got != "off" {
 		t.Fatalf("a fresh profile reads %q, want off (hints shown)", got)
 	}

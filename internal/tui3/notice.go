@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/config"
 )
@@ -20,7 +22,7 @@ import (
 //
 //   - EARNED HINTS. One dim line beside the box — `/files finds files codeaf
 //     wrote for you` — on the row directly above the rule over home's box, and
-//     on the lowest rung of a conversation's keys row. A tip RETIRES FOR GOOD
+//     over the project at the right of a conversation's keys row. A tip RETIRES FOR GOOD
 //     the first time the gesture it teaches is used (the files place opened),
 //     or after it has been shown [noticeShownDefault] times without being
 //     acted on. A hint that stays
@@ -72,9 +74,9 @@ import (
 type noticeSlot uint8
 
 const (
-	// slotHint is the lowest rung of a conversation's keys row at the foot
-	// (render.go's [app.footHint] draws it), taken whenever the frame is quiet
-	// enough for a tip to be read over an idle box ([app.noticeHint]).
+	// slotHint is a conversation's tip, at the right end of its keys row over
+	// the project (footswap.go's [app.hintRow], [app.chatTip]), drawn once the
+	// conversation has been quiet for [chatTipQuiet] over an idle box.
 	slotHint noticeSlot = iota
 	// slotNote is one calm transcript line through [feed.note]. It is reserved
 	// for news: a hint belongs beside the box it is about, and a line in the
@@ -189,6 +191,12 @@ const (
 	// eventAutonomyAsked is /autonomy reaching its command, bare or with a
 	// rule (autonomysheet.go).
 	eventAutonomyAsked = "autonomy-asked"
+	// eventHomeGesture is two spaces over an empty box opening home, from a
+	// conversation or from a place (input.go, placekeys.go). It is the
+	// gesture alone and not every way home: `/home` and a click on the tab
+	// are doors a person already knows, and the tip is about the one they
+	// cannot see.
+	eventHomeGesture = "home-gesture"
 )
 
 // noticeEvents is every event there is, in one list, so the table check can
@@ -202,7 +210,7 @@ var noticeEvents = []string{
 	eventFolderPicked, eventProjectSet, eventModelListOpened, eventCrewShown, eventBudgetShown,
 	eventSpendOpened, eventSteered, eventQueued, eventChatStarted,
 	eventPlaceJumped, eventRemembered, eventSearchOpened, eventSubharnessOpened,
-	eventConnectOpened, eventAutonomyAsked,
+	eventConnectOpened, eventAutonomyAsked, eventHomeGesture,
 }
 
 // notice is one thing the surface may tell a person, and the whole of the rule
@@ -299,6 +307,11 @@ var (
 	// while home is in front and stands down the moment it is not, so the one
 	// list can hold a sentence that would be a lie over a conversation's box.
 	onHome = func(a *app) bool { return a.at(pageHome) }
+	// awayFromHome is a conversation that has had an exchange, with the door
+	// home open from where it stands ([app.homeDoorOpen]): the other half of
+	// [onHome], for a tip about the way back, which would be a lie over home's
+	// own box and over a door that cannot open anything.
+	awayFromHome = func(a *app) bool { return a.turn >= 1 && a.homeDoorOpen() }
 )
 
 // notices is the table, and ITS ORDER IS THE ORDER THE ROWS COME ROUND IN on
@@ -307,11 +320,12 @@ var (
 // and the page say the same words — and notice_test.go holds the page to every
 // line here, so the table cannot say a thing the manual does not.
 //
-// TWENTY-TWO ROWS, AND EVERY CUT WAS DELIBERATE. A survey of the surface on
+// TWENTY-THREE ROWS, AND EVERY CUT WAS DELIBERATE. A survey of the surface on
 // 2026-09-21 turned up forty-eight lines worth saying; thirty of those shipped,
 // /project made thirty-one when it became a command of its own on 2026-09-22,
 // and three reads of the whole list by the owner that same day took it to
-// twenty-two. `alt+3`, `alt+1`–`alt+7`, `/search` and `/subharness` came off
+// twenty-two; the way home by two spaces made it twenty-three on 2026-09-24,
+// at the owner's word. `alt+3`, `alt+1`–`alt+7`, `/search` and `/subharness` came off
 // as rows the foot or the tab bar already teaches; the two lines about a
 // running answer became one; `/ask`'s came off ahead of the door it taught;
 // `/folder`'s came off because it was not true and /attach's line now covers
@@ -388,6 +402,21 @@ var notices = []notice{
 	// `/ask answers right here without opening a conversation` stood here
 	// until 2026-09-22 and came off with the command it taught. Asking from
 	// home now uses the ask-here row, so that tip would point at a dead door.
+	{
+		// THE WAY BACK, AT THE OWNER'S WORD ON 2026-09-24. The controls name
+		// the door as `space space home` ([app.idleHint]), but a label of three
+		// words reads as chrome after the first day, and this
+		// row says what it is in a sentence. It is never armed on home, where
+		// there is nowhere to go back to, and it retires on the gesture itself
+		// rather than on reaching home by `/home` or the tab. IT RANKS FIRST of
+		// the rows a conversation earns by talking, because a person who does
+		// not know the way back out of a conversation has no use yet for any
+		// of the commands below it.
+		id: "home-by-two-spaces", slot: slotHint,
+		armed:  awayFromHome,
+		text:   "space space takes you back to home",
+		retire: eventHomeGesture,
+	},
 	{
 		id: "task-in-chat", slot: slotHint,
 		armed:  spoken,
@@ -649,9 +678,10 @@ type noticeBoard struct {
 	// counted from it when the tip leaves or the row goes out of sight
 	// ([noticeBoard.settle]), and only if it stood [noticeReadTime].
 	since [noticeSlots]time.Time
-	// hidden is the cross on home's row having been pressed: the row draws
-	// nothing at all until HOME ITSELF GOES OUT OF VIEW ([app.dropHome]),
-	// which is the only thing that lifts it. Deciding the slot again does not
+	// hidden is the cross on a tip row having been pressed: the row draws
+	// nothing at all until HOME ITSELF GOES OUT OF VIEW ([app.dropHome]), or
+	// for a conversation's row until the conversation does
+	// ([app.liftChatTipCross]), which is the only thing that lifts it. Deciding the slot again does not
 	// lift it, and neither does the two-minute beat: a cross answered with
 	// another sentence on the same screen is the surface talking over somebody
 	// who asked it to stop (the owner's ruling, 2026-09-22). It is this
@@ -859,8 +889,7 @@ func (b *noticeBoard) rotate(slot noticeSlot, cands []noticeCandidate) string {
 // how long it stood ([noticeBoard.settle]). A slot re-decided to the same tip
 // is nothing at all, which is what keeps an hour of events on one tip at one
 // showing; and a slot deciding while its row cannot be seen — home's while a
-// conversation is in front, the conversation's before its quiet minute —
-// starts no standing, because what has not been read has not been shown
+// conversation is in front — starts no standing, because what has not been read has not been shown
 // ([app.noticeLive]). Until 2026-09-22 every visible change of hands counted,
 // and [noticeReadTime] says what that cost.
 func (b *noticeBoard) take(slot noticeSlot, id string, live bool, now time.Time, limitOf func(string) int, turn int) (changed, wrote bool) {
@@ -870,16 +899,12 @@ func (b *noticeBoard) take(slot noticeSlot, id string, live bool, now time.Time,
 	wrote = b.settle(slot, now, limitOf)
 	b.current[slot] = id
 	if slot == slotHint {
-		// THE CONVERSATION'S ROW COUNTS ON ARRIVAL, ONCE PER SESSION. Its tip
-		// stands on the keys row for as long as the frame is quiet, with no
-		// clock over it and no cross to end it, so there is no departure to
-		// measure — and an hour in the slot is one showing, not one per event.
+		// THE CONVERSATION'S ROW IS NOT COUNTED HERE. Its tip waits out the
+		// quiet clock before it is drawn, so a tip taken by the slot may never
+		// be seen at all; it is counted when the keys row draws it
+		// ([app.chatTipCount]).
 		b.lastHintTurn = turn
-		if id == "" || b.shown[id] {
-			return true, wrote
-		}
-		b.shown[id] = true
-		return true, b.count(id, limitOf(id)) || wrote
+		return true, wrote
 	}
 	if id == "" || !live {
 		return true, wrote
@@ -901,6 +926,17 @@ func (b *noticeBoard) visible(slot noticeSlot, now time.Time) {
 	if b.current[slot] != "" && b.since[slot].IsZero() {
 		b.since[slot] = now
 	}
+}
+
+// seenOnce counts id as shown on the conversation's row, ONCE PER SESSION
+// however many times the tip comes and goes with the quiet clock, and reports
+// whether the ledger changed.
+func (b *noticeBoard) seenOnce(id string, limit int) bool {
+	if id == "" || b.shown[id] {
+		return false
+	}
+	b.shown[id] = true
+	return b.count(id, limit)
 }
 
 // settle ends the standing of the tip in a slot, counting a showing when it
@@ -1009,7 +1045,7 @@ func (a *app) noticeFill(slot noticeSlot) bool {
 
 // noticeLive is whether a slot's row can be seen at all right now — which is
 // what makes a change of hands a showing ([noticeBoard.take]): home's row
-// while home is in front, the conversation's once its quiet minute has passed.
+// while home is in front.
 //
 // A ROW WHOSE CROSS HAS BEEN PRESSED IS NOT LIVE. It draws nothing until home
 // goes out of view ([noticeBoard.hidden]), and a tip standing behind a blank
@@ -1017,8 +1053,8 @@ func (a *app) noticeFill(slot noticeSlot) bool {
 // exists to tell apart.
 //
 // THE CONVERSATION'S ROW IS NEVER LIVE IN THIS SENSE, because it does not
-// measure a standing at all: its showing is counted when the slot takes a tip,
-// once per session ([noticeBoard.take]).
+// measure a standing at all: its showing is counted when the keys row draws
+// the tip, once per session ([app.chatTipCount], [noticeBoard.seenOnce]).
 func (a *app) noticeLive(slot noticeSlot) bool {
 	if a.notices.hidden[slot] {
 		return false
@@ -1128,9 +1164,9 @@ func (a *app) noticeHomeQuiet() bool {
 // noticeDismiss is the cross on a tip row, and what it means is ENOUGH OF
 // THESE FOR NOW — not "say something else". The row goes blank and STAYS
 // blank for the rest of this sitting: on home, until home is left and come
-// back to; in a conversation, until the row goes out of sight under a key and
-// the next quiet minute brings it back ([noticeBoard.hidden] names both, and
-// they are the same law — the cross is lifted by the row going out of view).
+// back to; in a conversation, until the conversation is left and come back to
+// ([noticeBoard.hidden] names both, and they are the same law — the cross is
+// lifted by the row's screen going out of view).
 //
 // THE OWNER'S RULING, 2026-09-22: "do not show another hint until the user
 // comes back to the home tab after leaving it". A cross answered with a second
@@ -1166,16 +1202,9 @@ func (a *app) noticeShow(slot noticeSlot, id string) {
 	}
 }
 
-// noticeHint is the conversation's tip: the lowest rung of the KEYS ROW at the
-// foot (render.go's [app.footHint]), drawn whenever the frame is quiet enough
-// for a tip to be read over an idle box.
-//
-// IT IS ON NO CLOCK AND HAS NO CROSS. For one build on 2026-09-22 it had both
-// — a row of its own over the rule, a quiet minute before it appeared, a
-// two-minute rotation and a cross — and the owner put it back where it was:
-// the foot, decided by the events that prove what is happening, shown while
-// nothing is happening. Home's row keeps the newer shape; the two boxes are
-// read differently and are allowed to differ ([noticeBoard.pick]).
+// noticeHint is the tip standing in the conversation's slot, whenever the frame
+// is quiet enough for a tip to be read over an idle box — before the quiet
+// clock and the cross are asked ([app.chatTip] asks them).
 //
 // IT DRAWS OVER NOTHING THAT IS HAPPENING. A running turn, a list, a layer, a
 // box with words in it — each of those belongs to the thing being done, and
@@ -1188,6 +1217,123 @@ func (a *app) noticeHint() string {
 	}
 	return a.chords.say(a.noticeLine(id))
 }
+
+// ── THE CONVERSATION'S TIP ──────────────────────────────────────────────────
+//
+// A conversation's tip stands at the right end of its keys row, over the
+// project, led by home's bulb and closed by a cross (hometip.go's
+// [app.tipLine], footswap.go's [app.hintRow]) — the owner's placing on
+// 2026-09-24, after builds that had it replacing the controls, in the gap
+// before the project, and on a row of its own above the rule. That last one
+// had to be told where the rule's numbers and the task column's divider were;
+// the keys row's right end is where the project already stands, wherever the
+// column is.
+//
+// IT WAITS FOR FIFTEEN SECONDS OF QUIET, on conversations alone. A
+// conversation is a screen somebody works in, and a sentence appearing under
+// the answer they are reading, or between two things they are typing, is the
+// surface talking over them. Every key, press, wheel and paste starts the
+// wait again ([app.stirred]), and so does a turn ending, because the answer
+// arriving is exactly when somebody starts reading. Home's row does not wait:
+// home is a screen people pass through.
+
+// chatTipQuiet is how long a conversation has to be left alone before its tip
+// is drawn.
+const chatTipQuiet = 15 * time.Second
+
+// chatTipDueMsg is the one alarm the quiet clock sets, landing when the wait
+// it was armed for is up ([app.chatTipAlarm]).
+type chatTipDueMsg struct{}
+
+// stirred is somebody doing something in this window, or the conversation
+// giving them something to read: the quiet clock starts again.
+func (a *app) stirred() { a.tipQuietFrom = a.now() }
+
+// chatTipQuietEnough is whether the conversation has been left alone for
+// [chatTipQuiet]. A window nothing has stirred yet has been quiet forever.
+func (a *app) chatTipQuietEnough() bool {
+	return a.tipQuietFrom.IsZero() || a.now().Sub(a.tipQuietFrom) >= chatTipQuiet
+}
+
+// chatTipReady is the tip a conversation's keys row may draw, before the quiet
+// clock is asked: "" while hints are off, while the cross is down,
+// or while the frame is saying anything other than its rest state — a list, a
+// panel, a question, the chord diagnosis — because a sentence over keys that
+// are not the rest state's would be read as one of them.
+func (a *app) chatTipReady() string {
+	if a.notices.hidden[slotHint] || a.at(pageHome) {
+		return ""
+	}
+	// THE CLOSED TASK COLUMN IS NOT ONE OF THOSE STATES. `ctrl+g tasks` is what
+	// the keys row says at rest once the column is put away ([railBackHint]),
+	// and a tip that went quiet whenever it did was a tip that only ever
+	// appeared with the sidebar open (the owner's report, 2026-09-24).
+	if word := a.hintWord(); a.questionRoomOpen() || (word != "" && word != railBackHint) ||
+		(a.chordLost && a.chords.meta == chordMetaWord) {
+		return ""
+	}
+	return a.noticeHint()
+}
+
+// chatTip is the tip a conversation's keys row draws over its project: the
+// ready tip, once the conversation has been quiet for [chatTipQuiet].
+func (a *app) chatTip() string {
+	if !a.chatTipQuietEnough() {
+		return ""
+	}
+	return a.chatTipReady()
+}
+
+// chatTipAlarm sets the alarm that draws the tip when its wait is up, and it
+// is asked after every message (app.go's [app.Update]).
+//
+// THERE IS ONLY EVER ONE ALARM PENDING. A key restarts the wait, and arming a
+// timer per key would leave a sleeping goroutine per keystroke; instead the
+// alarm that lands finds the wait moved and sets the next one for what is
+// left of it ([chatTipDueMsg]).
+func (a *app) chatTipAlarm() tea.Cmd {
+	if !a.tipAlarm.IsZero() || a.chatTipQuietEnough() || a.chatTipReady() == "" {
+		return nil
+	}
+	due := a.tipQuietFrom.Add(chatTipQuiet)
+	a.tipAlarm = due
+	return surfaceTick(due.Sub(a.now()), func(time.Time) tea.Msg { return chatTipDueMsg{} })
+}
+
+// chatTipPress is a press on the cross at the end of the conversation's tip.
+// It puts the tip away, and gives the project back, until the conversation is left and come back to
+// ([app.noticeDismiss], [app.liftChatTipCross]).
+func (a *app) chatTipPress(x, y int) bool {
+	if a.showing() != nil {
+		return false
+	}
+	mark, ok := a.chromeAt(y)
+	if !ok || mark.kind != a.hintRowKind() || !a.chatTipClose.holds(x) {
+		return false
+	}
+	a.noticeDismiss(slotHint)
+	return true
+}
+
+// chatTipCount counts the tip the keys row last drew ([app.chatTipDrawn]) as
+// shown, once per session ([noticeBoard.seenOnce]). It is asked after every
+// message (app.go's [app.Update]) rather than from the draw, because a draw
+// writes nothing to disk.
+func (a *app) chatTipCount() {
+	b := &a.notices
+	if b.seen == nil || a.chatTipDrawn == "" {
+		return
+	}
+	if b.seenOnce(a.chatTipDrawn, a.noticeLimit(a.chatTipDrawn)) {
+		b.save()
+	}
+}
+
+// liftChatTipCross is the conversation going out of sight — a place or home
+// opening over it, or another conversation taken up — which is the only thing
+// that lifts its cross, as leaving home is the only thing that lifts home's
+// ([noticeBoard.hidden]).
+func (a *app) liftChatTipCross() { a.notices.hidden[slotHint] = false }
 
 // noticeQuiet is whether nothing on the frame outranks a tip.
 func (a *app) noticeQuiet() bool {

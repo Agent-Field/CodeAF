@@ -214,9 +214,9 @@ on home and in conversations. On both boxes `project: <path>` is at the right en
 conversation opens, a conversation's names its own workspace. The keys keep their room: a
 long path truncates on the right, and the field disappears if there is less than a word
 of room. **On home** the dim line above the rule, when there is one, is a tip (see *hints
-and tips*), there from the first minute. **In a conversation** the tip is not that row at
-all: it is the lowest rung of the keys row itself, taking the slot from the rest state
-whenever nothing else is happening. The bottom row names the available project, effort
+and tips*), there from the first minute. **In a conversation** the tip covers `project:` at the
+keys row's right end, bulb and cross included, after 15 quiet seconds, and the project is
+back when it goes. The bottom row names the available project, effort
 and approval controls; the cells can also be pressed:
 
 | cell | chord | or |
