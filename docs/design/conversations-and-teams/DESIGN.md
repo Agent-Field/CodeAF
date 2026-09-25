@@ -575,6 +575,10 @@ up and directives down, were built later: 8.9.)
 - One accent on the screen; state claims one step of the ladder each.
 - An empty profile directory is the ordinary launch.
 - A block's live edge settles through `livestate.go`; nothing else names a field `edge`.
+- An untitled conversation is called `new conversation` on home's sessions list and on
+  the sessions place, through one helper (`homeName`). It is never the session id.
+- A resize drops hover that pointed at a door the new layout may not draw (`more ▾`,
+  a nav word), so the hint line does not keep naming it.
 
 ## 7. Later, each needing its own go
 

@@ -374,6 +374,42 @@ func TestEveryNavWordSaysWhatItOpens(t *testing.T) {
 // THE FOLD IS A WORD DOOR, NEVER A COUNT. The places' bar used to end a narrow
 // row in `▸ 3`, a count nobody could press; `more ▾` is a word that opens the
 // places it stands for, and its menu's caret is the one every menu here wears.
+// Widening the window so `more ▾` is no longer drawn used to leave the hint
+// on `more · the places this row has no room for` until the pointer moved.
+// A resize drops that hover, and the nav word hover with it.
+func TestAResizeDropsTheMoreHint(t *testing.T) {
+	a := navChat(t)
+	a.width, a.height = 48, 24
+	navPlaces(a, 48, false)
+	if !a.navMore.span.pressable() {
+		t.Fatal("at 48 the nav drew no more")
+	}
+	a.navHover(a.navMore.span.from, navRow)
+	if hint := a.footHint(48); !strings.Contains(hint, "more · the places this row has no room for") {
+		t.Fatalf("hovering more, the hint reads %q", hint)
+	}
+	for _, span := range a.tabs {
+		if span.id == pageSettings {
+			a.navHover(span.from, navRow)
+		}
+	}
+	if a.tabHover != pageSettings && !a.navMore.hot {
+		t.Fatal("neither the nav word nor more is hovered")
+	}
+	a.navHover(a.navMore.span.from, navRow)
+	drive(t, a, tea.WindowSizeMsg{Width: 110, Height: 24})
+	navPlaces(a, a.width, false)
+	if a.navMore.span.pressable() {
+		t.Fatal("at 110 more is still a door")
+	}
+	if hint := a.footHint(a.width); strings.Contains(hint, "more") {
+		t.Fatalf("after the resize the hint still says more: %q", hint)
+	}
+	if a.tabHover != pageNone || a.navMore.hot {
+		t.Fatalf("resize left hover: word %q more %v", a.tabHover.word(), a.navMore.hot)
+	}
+}
+
 func TestTheNavsFoldIsAWordDoorNotACount(t *testing.T) {
 	a := placeApp(t)
 	for width := 30; width <= 200; width++ {

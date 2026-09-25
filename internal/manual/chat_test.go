@@ -1070,6 +1070,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does the status line not show the cost before I type", "empty-screen"},
 		{"what does try what is in this folder mean", "empty-screen"},
 		{"where did the recent sessions list go", "empty-screen"},
+		{"why does home show a session id for an untitled chat", "home"},
+		{"the hint line stayed after I resized", "places"},
 
 		// A task's page with heavy tool use, asked the ways the screenshot
 		// provoked: the wheel doing nothing, the calls that are not there, and
