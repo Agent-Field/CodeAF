@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: a run lands and lists every file under its real name, --one-model reaches every seat of a run, and build caches stay out of a landing
+title: runs land every file by its real name, --one-model reaches every run seat, caches stay out
 pr: 1517
 surface: [chat, engine]
 invalidates:
