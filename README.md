@@ -32,8 +32,9 @@ hand work off, see what is moving across every project, and step in only where
 your judgment is needed. A factory, on your own machine, and the more you hand it
 the more it does.
 
-On DeepSWE its developer subharness solved the most issues of ten harnesses on
-the same open model, at the lowest cost per solved issue ([benchmarks](#benchmarks)).
+**#1 on DeepSWE** of ten coding harnesses on the same model, ahead of Claude Code,
+Codex, OpenCode, Kilo and DeepSeek's own harness, at the lowest cost per solved
+issue ([benchmarks](#benchmarks)).
 
 Written in Go as one small binary, with nothing else to install or run. Apache
 2.0. By [AgentField AI](https://agentfield.ai?utm_source=github-readme&utm_campaign=codeaf-readme&utm_id=codeaf-readme-byline).
