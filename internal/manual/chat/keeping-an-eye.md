@@ -145,9 +145,9 @@ to leave" the whole content of the request is the **6**. Doing it now says
 neither of those cards offers `3`:
 
 ```
-?  wants to remind you
-     1  Remind me at 6   Reminds you then. Nothing repeats.
-     0  Don't remind me  You are not reminded.
+?  wants to set this up: remind me at 6 to leave
+     1  yes, set it up   it happens at the time, and then it retires
+     0  no               nothing happens, now or later
 ```
 
 Two answers, `1` and `0`, and `3` does nothing. A rule is the same shape: it
@@ -290,13 +290,11 @@ wake, where it reaches, what it costs. The **question sits above the message box
 every decision on this screen is put, and every answer carries what it costs beside it:
 
 ```
-?  wants to set up a repeating check
-   every Monday at 9, post the standup note from the git log
-   Mondays at 9am · about $0.02 a run
-     1  Set it up · Mondays at 9am   It repeats on that cadence until you stop it.
-     3  Only now, don't repeat       Runs the check one time now. Nothing repeats.
-     0  Don't set it up              Nothing is set up, and nothing runs.
-   esc later · o Change… · ? clarify
+?  wants to set this up: every Monday at 9, post the standup note from the git log
+     1  yes, set it up   it keeps happening until you stop it
+     3  just once        it happens now, and nothing is kept
+     0  no               nothing happens, now or later
+   esc later · o other · ? clarify
 ```
 
 The first line says what kind of thing it is. The second line is what it does.
@@ -312,9 +310,9 @@ The third is when, and what one time costs.
 Each answer is a row of its own and **a click anywhere along it takes that answer**. The
 digit takes it too.
 
-Answering leaves a line where the question was, the kind and the button you pressed,
-and the card in the conversation settles with that button and what it came to:
-`Set it up · Mondays at 9am · set up`.
+Answering leaves a line where the question was — `✓ wants to set this up: … → yes,
+set it up · you · 14:02` — and the card in the conversation settles with the answer and what
+it came to on its bottom edge: `yes, set it up · set up`.
 
 ## How do I decline a standing card or say no to a reminder — 0, esc, or the no on the card
 

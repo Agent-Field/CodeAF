@@ -1543,7 +1543,7 @@ func (a *Agent) standingAsk(id uint64, notice StandingNotice) Question {
 
 // StandingAskLead is the old opening, kept so a reader of an older line can
 // find what a card used to say. New cards open with [StandingHead].
-const StandingAskLead = "wants to keep an eye on: "
+const StandingAskLead = "wants to set this up: "
 
 // StandingAskReason is why the card is up, in the one sentence that is true of
 // every standing card there is. The when and the cost are the card's to show, in

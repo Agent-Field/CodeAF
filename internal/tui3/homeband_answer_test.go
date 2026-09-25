@@ -335,7 +335,7 @@ func TestHomeCanSayNoToAStandingCard(t *testing.T) {
 		When:  standing.When{Kind: standing.WhenProbe},
 		Does:  standing.Action{Kind: standing.ActionSay},
 	}
-	lab := newAnswerLab(t, standingQuestion(9, watch, "wants to keep an eye on: tell me when ci goes red"), time.Now())
+	lab := newAnswerLab(t, standingQuestion(9, watch, "wants to set this up: tell me when ci goes red"), time.Now())
 	text := homeText(lab.a)
 	for _, chip := range []string{"1 Watch for it", "3 Check once now", "0 Don't watch"} {
 		if !strings.Contains(text, chip) {
@@ -370,7 +370,7 @@ func TestHomeCanSayNoToAReminderThatOffersNoOnce(t *testing.T) {
 		When:  standing.When{Kind: standing.WhenAt},
 		Does:  standing.Action{Kind: standing.ActionSay},
 	}
-	lab := newAnswerLab(t, standingQuestion(9, reminder, "wants to keep an eye on: remind me at 6 to leave"), time.Now())
+	lab := newAnswerLab(t, standingQuestion(9, reminder, "wants to set this up: remind me at 6 to leave"), time.Now())
 	text := homeText(lab.a)
 	if strings.Contains(text, "Check once now") || strings.Contains(text, "Only now") {
 		t.Fatalf("a one-off reminder was offered `once` from home:\n%s", text)
@@ -397,7 +397,7 @@ func TestHomeDecliningItsOwnStandingCardSettlesItAsNotSetUp(t *testing.T) {
 		Does:  standing.Action{Kind: standing.ActionSay},
 	}
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", "/tmp/alpha", now)
-	lab.asking("-tmp-alpha", "aaaa000000000001", standingQuestion(11, item, "wants to keep an eye on: tell me when ci goes red"), now)
+	lab.asking("-tmp-alpha", "aaaa000000000001", standingQuestion(11, item, "wants to set this up: tell me when ci goes red"), now)
 
 	agent := &standFake{fakeAgent: &fakeAgent{model: "m"}}
 	a := newTestApp(agent)

@@ -182,10 +182,14 @@ const (
 	// bands two rows above are for. Under a card that draws both, that sentence
 	// was the two-renderings defect one size smaller. What no band can say is how
 	// LONG each answer lasts, so that is what is left.
-	standYesCost    = "It repeats on that cadence until you stop it."
-	standOnceCost   = "Runs the check one time now. Nothing repeats."
-	standNoCost     = "Nothing is set up, and nothing runs."
-	standChangeCost = "Say a different time or place. Nothing is set up yet."
+	standYesCost = "it keeps happening until you stop it"
+	// standYesOnceCost is the yes clause for an AT-item, which runs once at its
+	// moment and then retires (internal/standing's kinds). It is a separate
+	// constant because [standAnswerCost] chooses it by the item.
+	standYesOnceCost = "it happens at the time, and then it retires"
+	standOnceCost    = "Runs the check one time now. Nothing repeats."
+	standNoCost      = "Nothing is set up, and nothing runs."
+	standChangeCost  = "Say a different time or place. Nothing is set up yet."
 )
 
 // The glyphs a standing row wears, and their stand-ins on a terminal that
@@ -589,6 +593,28 @@ func standAnswerWord(item standing.Item, key string) string {
 		if option.Key == key {
 			return option.Label
 		}
+	}
+	return ""
+}
+
+// standAnswerCost is what one answer costs, by the key that takes it.
+//
+// THE YES CLAUSE READS THE ITEM, because how long a yes lasts is a fact about
+// the item and not about the key. An at-thing happens once at its moment and
+// then retires — "keeps happening until you stop it" promised a forever the
+// when band two rows above had already ruled out — and every other kind really
+// does go on until it is stopped.
+func standAnswerCost(key string, item standing.Item) string {
+	switch key {
+	case standYesKey:
+		if item.When.Kind == standing.WhenAt {
+			return standYesOnceCost
+		}
+		return standYesCost
+	case session.StandingOnceKey:
+		return standOnceCost
+	case session.StandingNoKey:
+		return standNoCost
 	}
 	return ""
 }
