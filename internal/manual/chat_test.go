@@ -2881,6 +2881,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// second road for a task and the plan pane a run draws, each asked the
 		// way somebody meets it rather than in the machinery's own words.
 		{"how do I pause a task", "worker-harness"},
+		{"why did __pycache__ files not land in my task's commit", "worker-harness"},
 		{"how do I open one part of a run from the side list", "worker-harness"},
 		{"can I add a note to a running task", "worker-harness"},
 		{"why did the task refuse my cancel", "worker-harness"},
