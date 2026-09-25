@@ -1,0 +1,263 @@
+package tui3
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+)
+
+// ── THE MANAGER BROUGHT INTO THE PANE (teamsopen.go) ────────────────────────
+
+// teamsOpenLab is the teams page lab with orbit given a manager this window is
+// NOT holding: a transcript in a folder of its own, which is not the window's
+// (`/tmp/lab`). made says whether the transcript is on the disk. The open door
+// is a fake that records what it was asked and answers with err when set.
+type teamsOpenLab struct {
+	a             *app
+	harbor, orbit string
+	file, where   string
+	key           string
+	asked         []string
+	err           error
+}
+
+func newTeamsOpenLab(t *testing.T, made bool) *teamsOpenLab {
+	t.Helper()
+	l := &teamsOpenLab{}
+	l.a, l.harbor, l.orbit = teamsPlaceLabIDs(t)
+	l.where = t.TempDir()
+	l.file = filepath.Join(l.where, "manager.jsonl")
+	if made {
+		if err := os.WriteFile(l.file, []byte("{}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	l.key = l.a.convKey(l.file)
+	l.a.open = func(where, file string) (Conversation, error) {
+		l.asked = append(l.asked, where+" "+file)
+		if l.err != nil {
+			return Conversation{}, l.err
+		}
+		return Conversation{Agent: &fakeAgent{model: "m"}, Workspace: where, SessionFile: file}, nil
+	}
+	if err := l.a.teamEdit(func(f *teamstore.File) error {
+		if err := f.AddMember(l.orbit, teamstore.Member{Key: l.key, File: l.file, Where: l.where, Word: "run orbit", Handle: "boss"}); err != nil {
+			return err
+		}
+		return f.SetManager(l.orbit, l.key)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return l
+}
+
+// selectOrbit chooses orbit on the rail, as a press does, and runs what that
+// asked for.
+func (l *teamsOpenLab) selectOrbit(t *testing.T) {
+	t.Helper()
+	drive(t, l.a, runCmd(l.a.teamsSelect(l.orbit))...)
+}
+
+// A MANAGER THIS WINDOW IS NOT HOLDING OPENS IN THE PANE, AND THE PERSON STAYS
+// ON THE PAGE. It is opened in its own folder, not the window's, off the loop,
+// and the pane hosts it; the conversation that was in front stays open behind.
+// Before the fix the open went through the switcher's door, which steps off
+// the place standing, and the person was taken off the page to it.
+func TestTeamsManagerNotHeldOpensInThePane(t *testing.T) {
+	l := newTeamsOpenLab(t, true)
+	was := l.a.frontTabKey()
+	l.selectOrbit(t)
+	if len(l.asked) != 1 || l.asked[0] != l.where+" "+l.file {
+		t.Fatalf("the door was asked %q, want the manager in its own folder %q", l.asked, l.where)
+	}
+	if !l.a.at(pageTeams) {
+		t.Fatalf("opening the manager took the person off the page, to %q", l.a.page.word())
+	}
+	if l.a.frontTabKey() != l.key || !l.a.teamsHosting() {
+		t.Fatalf("the pane does not host the manager (front %q):\n%s", l.a.frontTabKey(), teamsFrameText(l.a))
+	}
+	if !l.a.trafficHeld(was) {
+		t.Fatal("the conversation that was in front is not held behind")
+	}
+	if strings.Contains(teamsFrameText(l.a), "opening") {
+		t.Fatalf("the hosted pane still says opening:\n%s", teamsFrameText(l.a))
+	}
+}
+
+// A MANAGER HELD BEHIND COMES FORWARD at once, with no door asked.
+func TestTeamsManagerHeldBehindComesForward(t *testing.T) {
+	a, _, orbit := teamsPlaceLabIDs(t)
+	m := mustTeam(t, a, orbit).Members[0]
+	if err := a.teamEdit(func(f *teamstore.File) error { return f.SetManager(orbit, m.Key) }); err != nil {
+		t.Fatal(err)
+	}
+	asked := 0
+	a.open = func(where, file string) (Conversation, error) {
+		asked++
+		return Conversation{}, errors.New("not asked")
+	}
+	drive(t, a, runCmd(a.teamsSelect(orbit))...)
+	if asked != 0 || a.frontTabKey() != m.Key || !a.teamsHosting() {
+		t.Fatalf("the held manager did not come forward (asked %d, front %q)", asked, a.frontTabKey())
+	}
+}
+
+// A MANAGER SET WHILE THE PAGE STANDS IS BROUGHT IN without anybody choosing
+// the team again: a session naming one on the file, or the teams arriving
+// after the page opened. The pane used to say `opening` with nothing behind it.
+func TestTeamsManagerSetWhileThePageStandsIsBroughtIn(t *testing.T) {
+	a, _, orbit := teamsPlaceLabIDs(t)
+	drive(t, a, runCmd(a.teamsSelect(orbit))...)
+	where := t.TempDir()
+	file := filepath.Join(where, "later.jsonl")
+	if err := os.WriteFile(file, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.open = func(w, f string) (Conversation, error) {
+		return Conversation{Agent: &fakeAgent{model: "m"}, Workspace: w, SessionFile: f}, nil
+	}
+	key := a.convKey(file)
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		if err := f.AddMember(orbit, teamstore.Member{Key: key, File: file, Where: where, Word: "later", Handle: "later"}); err != nil {
+			return err
+		}
+		return f.SetManager(orbit, key)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Any message: the page settles after every one.
+	drive(t, a, tea.WindowSizeMsg{Width: a.width, Height: a.height})
+	if a.frontTabKey() != key || !a.teamsHosting() || !a.at(pageTeams) {
+		t.Fatalf("the manager set on the file was not brought in (front %q):\n%s", a.frontTabKey(), teamsFrameText(a))
+	}
+}
+
+// A REFUSAL IS SAID ON THE PANE WITH ITS REASON, and offers Retry and
+// Open in chats. Retry asks again and hosts it; the refusal is not asked
+// again on every beat.
+func TestTeamsManagerRefusedSaysWhyAndRetries(t *testing.T) {
+	l := newTeamsOpenLab(t, true)
+	l.err = errors.New("the engine said no")
+	l.selectOrbit(t)
+	drive(t, l.a, tea.WindowSizeMsg{Width: l.a.width, Height: l.a.height})
+	text := teamsFrameText(l.a)
+	for _, want := range []string{"couldn't open " + teamManagerGlyph + " orbit's manager: the engine said no", "Retry", teamsOpenInChatsWord} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the pane does not say %q:\n%s", want, text)
+		}
+	}
+	if len(l.asked) != 1 {
+		t.Fatalf("the refused open was asked %d times without a Retry", len(l.asked))
+	}
+	if !l.a.at(pageTeams) {
+		t.Fatal("a refusal took the person off the page")
+	}
+	l.err = nil
+	drive(t, l.a, runCmd(l.a.teamsDo(teamsTargetOf(t, l.a, teamsActRetryManager, l.orbit)))...)
+	if l.a.frontTabKey() != l.key || !l.a.teamsHosting() {
+		t.Fatalf("Retry did not host the manager:\n%s", teamsFrameText(l.a))
+	}
+}
+
+// AN OPEN THE ENGINE HAS NOT ANSWERED IS SAID AFTER THE BOUND: `opening` for
+// the beat it takes, then the reason and the way forward. Open in chats goes
+// through the chat surface's own door, off the page.
+func TestTeamsManagerSlowOpenIsSaidAfterTheBound(t *testing.T) {
+	l := newTeamsOpenLab(t, true)
+	now := time.Date(2026, 9, 24, 20, 0, 0, 0, time.UTC)
+	l.a.clock = func() time.Time { return now }
+	// The ask is left out: the engine has not answered.
+	_ = l.a.teamsSelect(l.orbit)
+	text := teamsFrameText(l.a)
+	if !strings.Contains(text, "opening "+teamManagerGlyph+" orbit's manager") || strings.Contains(text, "Retry") {
+		t.Fatalf("the pane does not say opening for the beat:\n%s", text)
+	}
+	now = now.Add(teamsOpenBound + time.Second)
+	l.a.tp.top = teamsTopCache{}
+	text = teamsFrameText(l.a)
+	for _, want := range []string{"couldn't open " + teamManagerGlyph + " orbit's manager: no answer in 4s", "Retry", teamsOpenInChatsWord} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("after the bound the pane does not say %q:\n%s", want, text)
+		}
+	}
+	drive(t, l.a, runCmd(l.a.teamsDo(teamsTargetOf(t, l.a, teamsActOpenInChats, l.orbit)))...)
+	if l.a.at(pageTeams) || l.a.frontTabKey() != l.key {
+		t.Fatalf("Open in chats did not open the manager off the page (page %q, front %q)", l.a.page.word(), l.a.frontTabKey())
+	}
+}
+
+// A MANAGER WHOSE TRANSCRIPT IS GONE SAYS SO AND OFFERS `+ Manager`, which
+// makes a new conversation the team's manager and hosts it.
+func TestTeamsManagerGoneOffersANewManager(t *testing.T) {
+	l := newTeamsOpenLab(t, false)
+	l.selectOrbit(t)
+	text := teamsFrameText(l.a)
+	for _, want := range []string{"couldn't open " + teamManagerGlyph + " orbit's manager: " + teamsManagerGoneWord, teamManagerSlotWord, "Retry"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the pane does not say %q:\n%s", want, text)
+		}
+	}
+	if len(l.asked) != 0 {
+		t.Fatalf("the door was asked for a transcript that is not there: %q", l.asked)
+	}
+	fresh := filepath.Join(t.TempDir(), "fresh.jsonl")
+	l.a.start = func(where string) (Conversation, error) {
+		return Conversation{Agent: &fakeAgent{model: "m"}, Workspace: where, SessionFile: fresh}, nil
+	}
+	drive(t, l.a, runCmd(l.a.teamsDo(teamsTargetOf(t, l.a, teamsActManager, l.orbit)))...)
+	teamsFlush(t, l.a)
+	if got := mustTeam(t, l.a, l.orbit).Manager; got != l.a.convKey(fresh) {
+		t.Fatalf("+ Manager did not replace the gone manager: %q", got)
+	}
+	if !l.a.teamsHosting() || !l.a.at(pageTeams) {
+		t.Fatalf("the new manager is not in the pane:\n%s", teamsFrameText(l.a))
+	}
+}
+
+// A PRESS ON A TRAFFIC ROW IN THE HOSTED MANAGER GOES THROUGH THE CHAT'S OWN
+// DOOR and takes the person to that member, as a press on a member row does,
+// rather than leaving the page over a conversation it does not host with the
+// pane saying `opening`.
+func TestTeamsHostedTrafficRowGoesToTheMember(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	a.width, a.height = 180, 40
+	price, priceKey := trafficHandle(t, a, harbor, "openrouter")
+	trafficAppend(t, a, harbor, teamstore.Entry{Kind: teamstore.KindNote, From: price, To: teamstore.ToManager, Text: "prices are in"})
+	trafficReadNow(t, a)
+	if cmd := a.showPage(pageTeams); cmd != nil {
+		drive(t, a, runCmd(cmd)...)
+	}
+	drive(t, a, runCmd(a.teamsSelect(harbor))...)
+	a.tp.traffic = true
+	a.teamsSync()
+	if !a.teamsHosting() {
+		t.Fatalf("the pane does not host harbor's manager:\n%s", teamsFrameText(a))
+	}
+	frame, _, _ := a.frame()
+	rows := strings.Split(ansi.Strip(frame), "\n")
+	cols := a.trafficWidth()
+	at := -1
+	for y, r := range rows {
+		if strings.Contains(plainCells(r, a.width-cols, a.width), "prices a") {
+			at = y
+		}
+	}
+	if at < 0 {
+		t.Fatalf("no Traffic row in the hosted pane:\n%s", strings.Join(rows, "\n"))
+	}
+	drive(t, a, tea.MouseClickMsg{X: a.width - cols + 3, Y: at, Button: tea.MouseLeft})
+	if a.frontTabKey() != priceKey {
+		t.Fatalf("the row went to %q, want %q", a.frontTabKey(), priceKey)
+	}
+	if a.at(pageTeams) {
+		t.Fatalf("the page stayed over a conversation it does not host:\n%s", teamsFrameText(a))
+	}
+}

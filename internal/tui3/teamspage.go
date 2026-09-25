@@ -128,9 +128,9 @@ type teamsPage struct {
 	answer    editor
 	// msg is the page's one line of news, said on its note.
 	msg string
-	// opening is the manager being brought in front, so the pane can say so
-	// for the beat it takes.
-	opening string
+	// open is the attempt to bring the selected team's manager in front, so
+	// the pane says what it is doing and, when it cannot, why (teamsopen.go).
+	open teamsOpen
 	// top is the hosted pane's header rows, kept between frames.
 	top teamsTopCache
 	// undo is the last close, while Undo is offered (teamclose.go).
@@ -187,6 +187,8 @@ const (
 	teamsActDelete
 	teamsActTraffic
 	teamsActUndo
+	teamsActRetryManager
+	teamsActOpenInChats
 )
 
 // ── THE TREE ────────────────────────────────────────────────────────────────

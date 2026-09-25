@@ -749,8 +749,8 @@ func (a *app) teamsPaneRest(d *teamsDraw, width, y int) []string {
 	case t.Manager == "":
 		// Its offer is drawn under the members ([app.teamsNoManagerRows]).
 	default:
-		word := "opening " + a.teamManagerMark() + " " + t.Name + "'s manager" + a.linearMark("…", "...")
-		out = append(out, "", " "+pal.dim(fit(word, width-2)))
+		// The manager on its way in, or why it is not (teamsopen.go).
+		out = append(out, a.teamsOpeningRows(d, t, width, y+len(out))...)
 	}
 	return out
 }
