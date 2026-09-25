@@ -371,7 +371,11 @@ them.
   (`+ /task`, standing, jobs, `ctrl+. earlier`) and a run's plan rows stay.
 - **Traffic in a manager's chat is work**: one row per thread (`teams.Threads`), whom it went
   to and what it said, the state its answers leave it in and its message count (the count and
-  then the state give way to the words when the column is narrow; the hint says them), `▸`
+  then the state give way to the words when the column is narrow; the hint says them). A column
+  under 32 cells (the 27 of a 110 frame) draws no ages or reply times and one cell of air after
+  the handle, where a work row kept six letters of its title (`@scrape +2  Please … ▸ now`); the
+  hint line says the age before its click, and the band says it the same way. A band row is cut
+  at a clause, never leaving ` · …`. `▸`
   laying the replies open as `↳ 09:58 @review: ✓ two findings…` (events folded into the
   member's line), and every unthreaded line under one `General` thread. A thin `new` line
   marks what arrived since the Traffic was last in front and holds still while it is read. A

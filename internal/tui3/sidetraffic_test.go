@@ -167,3 +167,52 @@ func TestTheTrafficsHoverGroundIsItsClickTarget(t *testing.T) {
 	}
 	a.dropHover()
 }
+
+// A NARROW COLUMN SPENDS ITS CELLS ON WHAT THE WORK IS. At 110 columns the
+// column is under [sideAgeFrom], so a work row draws no age and one cell of air
+// after whom it is with, and keeps a dozen letters of what it asked where it
+// kept six; the age is on the row's hint line, before the click. A wide
+// column still draws the age at the right.
+func TestANarrowColumnGivesTheWorkRowsTheirWords(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	price, _ := trafficHandle(t, a, harbor, "openrouter")
+	rail, _ := trafficHandle(t, a, harbor, "Refactor")
+	a.width, a.height = 110, 40
+	q := threadScenario(t, a, harbor, price, rail)
+	a.touch()
+	rows := railLines(t, a)
+	at := railRowOf(rows, "@"+price+" +2 Please prov")
+	if a.railRoom() >= sideAgeFrom || at < 0 {
+		t.Fatalf("at 110 (column %d) the work row does not keep its words:\n%s", a.railRoom(), strings.Join(rows, "\n"))
+	}
+	if strings.HasSuffix(strings.TrimRight(rows[at], " "), "now") {
+		t.Fatalf("a narrow column still spends cells on the age: %q", rows[at])
+	}
+	hint := a.sideRowOf("thread/" + q).hint
+	if !strings.Contains(hint, hintSegment+"now"+hintSegment+"click") {
+		t.Fatalf("the age is not on the hint line before the click: %q", hint)
+	}
+	a.width = 180
+	a.touch()
+	rows = railLines(t, a)
+	if at := railRowOf(rows, "@"+price+" +2  Pleas"); at < 0 || !strings.HasSuffix(strings.TrimRight(rows[at], " "), "now") {
+		t.Fatalf("a wide column lost the age:\n%s", strings.Join(rows, "\n"))
+	}
+}
+
+// A CUT NEVER LEAVES A CLAUSE ITS SEPARATOR AND NOTHING ELSE.
+func TestABandRowIsCutAtAClause(t *testing.T) {
+	for _, c := range []struct {
+		words string
+		width int
+		want  string
+	}{
+		{"Ship the price table · your call", 24, "Ship the price table…"},
+		{"Ship the price table · your call", 29, "Ship the price table · your…"},
+		{"Ship the price table", 30, "Ship the price table"},
+	} {
+		if got, w := fitClauses(c.words, c.width, "…"); got != c.want || w > c.width {
+			t.Fatalf("%q at %d is %q, want %q", c.words, c.width, got, c.want)
+		}
+	}
+}

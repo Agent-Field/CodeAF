@@ -104,7 +104,10 @@ General                     2 msgs ▸   now
 - A row is a thread (below): whom the manager's message went to (`+2` for the ones that do
   not fit) and what it said, the state its answers leave it in (`running`, `asking`, `done`,
   `failed`), how many messages it holds, and its age. When the column is narrow the count
-  and then the state give way to the words; the hint line always says them.
+  and then the state give way to the words; the hint line always says them. In a column under
+  32 cells wide (a 110-column window) the ages and the reply times are not drawn, so a row keeps
+  more of what the work is (`@scrape +2 Please provi… ▸`); pointing at the row says the age on
+  the hint line, and the band's questions do the same.
 - `▸` lays the thread's replies open under it, one `↳` line per member with the time: `✓` on
   an answer from a member that finished its turn, `✗` for one that failed, `working…` for a
   member the message woke that has not answered, `asking:` for one waiting on you. `▾` (or

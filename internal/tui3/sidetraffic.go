@@ -152,16 +152,52 @@ func (s *sideSheet) newer(id string) {
 	s.ruled = true
 }
 
+// sideAgeFrom is the narrowest column a row's age is drawn in. Under it the
+// age is said on the row's hint line instead, and the double space after who
+// a row is with closes to one: at 110 columns the column is 27 cells, and a
+// work row kept `@scrape +2  Please … ▸ now`, six letters of what the work
+// is, because the time and the air took the cells the words needed.
+const sideAgeFrom = 32
+
+// sideHintWith is a row's hint with a fact the row gave up said in it, before
+// the click the hint ends on.
+func sideHintWith(hint, fact string) string {
+	if fact == "" {
+		return hint
+	}
+	if at := strings.LastIndex(hint, hintSegment+"click"); at >= 0 {
+		return hint[:at] + hintSegment + fact + hint[at:]
+	}
+	if hint == "" {
+		return fact
+	}
+	return hint + hintSegment + fact
+}
+
 // add lays one row: the segments from the left, cut with an ellipsis where
 // they run out of room, and the time flush right. A door keeps the columns
 // its words ended up in.
 func (s *sideSheet) add(row *sideRow, segs []sideSeg, right []sideSeg, age string) {
 	pal := s.a.pal
 	room := s.width
-	if age != "" && s.width >= 24 {
+	switch {
+	case age != "" && s.width >= sideAgeFrom:
 		room -= ansi.StringWidth(age) + 1
-	} else {
+	case age != "":
+		// THE WORDS OUTRANK THE CLOCK in a narrow column: the age goes to the
+		// hint line, before the click it names, and the air between who and
+		// what closes to one cell.
+		row.hint = sideHintWith(row.hint, age)
 		age = ""
+		fallthrough
+	default:
+		if s.width < sideAgeFrom {
+			for i := range segs {
+				if segs[i].text == "  " {
+					segs[i].text = " "
+				}
+			}
+		}
 	}
 	rightW := 0
 	for _, seg := range right {
@@ -482,8 +518,10 @@ func (s *sideSheet) member(r trafficReply) {
 	}
 	row := &sideRow{key: "reply/" + e.ID, act: sideAct{kind: sideActJump, entry: e.ID}}
 	segs := []sideSeg{{text: "  " + s.a.linearMark("↳", "->") + " ", paint: pal.dim, door: -1}}
-	if c := s.clock(e); c != "" {
-		segs = append(segs, sideSeg{text: c + " ", paint: pal.dim, door: -1})
+	clock := s.clock(e)
+	if clock != "" && s.width >= sideAgeFrom {
+		segs = append(segs, sideSeg{text: clock + " ", paint: pal.dim, door: -1})
+		clock = ""
 	}
 	switch r.who {
 	case teamstore.FromManager, teamstore.FromSystem, teamstore.FromYou:
@@ -507,7 +545,8 @@ func (s *sideSheet) member(r trafficReply) {
 		words = "working" + s.a.linearMark("…", "...")
 	}
 	segs = append(segs, sideSeg{text: words, paint: pal.muted, door: -1})
-	row.hint = words + hintSegment + "click shows it in this chat"
+	// A NARROW COLUMN SAYS THE TIME ON THE HINT LINE, as it does a row's age.
+	row.hint = sideHintWith(words+hintSegment+"click shows it in this chat", clock)
 	s.add(row, segs, nil, "")
 }
 
@@ -557,13 +596,15 @@ func (s *sideSheet) reply(e teamstore.Entry) {
 	pal := s.a.pal
 	row := &sideRow{key: "reply/" + e.ID, act: sideAct{kind: sideActJump, entry: e.ID}}
 	segs := []sideSeg{{text: "  " + s.a.linearMark("↳", "->") + " ", paint: pal.dim, door: -1}}
-	if c := s.clock(e); c != "" {
-		segs = append(segs, sideSeg{text: c + " ", paint: pal.dim, door: -1})
+	clock := s.clock(e)
+	if clock != "" && s.width >= sideAgeFrom {
+		segs = append(segs, sideSeg{text: clock + " ", paint: pal.dim, door: -1})
+		clock = ""
 	}
 	segs = append(segs, s.who(row, e), sideSeg{text: ": ", paint: pal.dim, door: -1})
 	words := s.says(e)
 	segs = append(segs, sideSeg{text: words, paint: pal.muted, door: -1})
-	row.hint = words + hintSegment + "click shows it in this chat"
+	row.hint = sideHintWith(words+hintSegment+"click shows it in this chat", clock)
 	s.add(row, segs, nil, "")
 }
 
