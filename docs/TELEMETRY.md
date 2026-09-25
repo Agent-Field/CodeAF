@@ -6,7 +6,7 @@ about you or your work ever leaves this machine.
 
 ## The notice
 
-Before the first session's events are sent, codeaf prints this to stderr once:
+Before the first session's events are sent, codeaf shows this once:
 
 ```
 codeaf sends anonymous usage counts to AgentField.
@@ -18,7 +18,12 @@ codeaf sends anonymous usage counts to AgentField.
 ```
 
 The installer prints nothing about telemetry; the notice above arrives with the
-first session, before anything is sent.
+first session, before anything is sent. A chat shows it on the first
+conversation's screen, dim, under the starting points, and it counts as shown
+only once a frame has drawn it: a window too short to hold all six lines, or the
+first-run setup standing in front, leaves it owed for the next launch. A task
+command (`do`, `run`, `plan run`) and `chat --once` draw no screen, so they print
+it to stderr before they start. Until it has been shown, nothing is sent.
 
 ## What is sent
 

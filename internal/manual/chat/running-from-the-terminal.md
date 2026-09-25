@@ -1009,8 +1009,10 @@ usage counts go quiet and the Model Pool is capped at `read`, so it still picks 
 from the index and sends nothing. The pool's own switch, `model_pool` in `/settings` or
 `CODEAF_MODEL_POOL`, adds `off`, which asks no judge at all. It reads and
 sends nothing of its own — it is a command about the counts, not a session. The
-notice the first session prints names the bargain before the first byte leaves, and
-`CODEAF_TELEMETRY=off` or `DO_NOT_TRACK=1` turns the counts off entirely. See
+notice names the bargain before the first byte leaves. A chat shows it once, dim,
+on the first conversation's screen under the starting points, and nothing is sent
+until a frame has drawn it. A task command and `chat --once` print it to stderr
+instead. `CODEAF_TELEMETRY=off` or `DO_NOT_TRACK=1` turns the counts off entirely. See
 docs/TELEMETRY.md for the whole contract.
 
 ## Reading a plan by hand — codeaf plan new, show, revise and run

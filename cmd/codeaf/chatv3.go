@@ -347,6 +347,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	chosen, cfg := launch.Model, launch.Config
 
 	if text := strings.TrimSpace(*once); text != "" {
+		// A --once chat draws no surface, so an owed usage notice is printed
+		// here, ahead of the answer it would otherwise never be seen beside.
+		payTelemetryNoticeOnStderr()
 		// Nobody is watching a --once run, so nobody can answer a question. The
 		// policy's "prompt" therefore refuses the call with a result the model
 		// can act on (internal/session's consent.go), and a person who wants
