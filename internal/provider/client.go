@@ -63,6 +63,13 @@ type Config struct {
 	Effort  Effort
 	Timeout time.Duration
 
+	// RouteGate, when set, is asked before every body this client sends, with
+	// the model the body names and the call's tag ([WithCallTag]); an error
+	// is the call's answer and nothing is sent. It is how a session keeps
+	// EVERY road — a helper, a child's loop, a road that carries a client of
+	// its own — off a route its route health says will not answer, at the one
+	// door every body passes, rather than caller by caller.
+	RouteGate func(ctx context.Context, model, tag string) error
 	// SupportsParameter answers "does this model accept this request field?"
 	// from data already in memory. It must not block or perform I/O; an unknown
 	// answer is reported by returning known=false, never by waiting.

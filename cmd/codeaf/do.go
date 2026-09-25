@@ -3623,6 +3623,14 @@ func runErrand(request doRequest, seats config.Seats) (headlessOutcome, error) {
 		}
 		completerFor = crewCompleters(settings, newClient)
 	}
+	// EVERY SEAT CALL IS PRICED BEFORE IT IS MADE (internal/session's
+	// spendguard.go): the day's cap — the daily spending limit too unless
+	// -yes-spend lifted it — and the checker's own ceiling on this run.
+	if seats.Crew != nil {
+		guard := session.CrewSpendGuard(config.ProfileDir(), *seats.Crew, !spendPreauthorized(request.yesSpend, env.Value))
+		unguarded := completerFor
+		completerFor = func(model string) session.Completer { return guard.Wrap(model, unguarded(model)) }
+	}
 	// THE REVIEW ROUND IS ON for every `do` run: a leaf that lands done is
 	// checked against its acceptance, and a check that does not hold becomes a
 	// fix task under the leaf's parent the run waits on.

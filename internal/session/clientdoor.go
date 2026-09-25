@@ -628,6 +628,7 @@ func (c Config) clientConfig(model string, timeout time.Duration) provider.Confi
 	if configured.ModelPrice == nil {
 		configured.ModelPrice = c.ModelPrice
 	}
+	configured.RouteGate = c.routeGate(model, configured.Model)
 	return configured
 }
 

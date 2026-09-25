@@ -260,6 +260,11 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 	tellRetiredPins(ctx)
 	tellUncarriedPins(ctx)
 	tellTakeover(ctx)
+	if gate := c.config.RouteGate; gate != nil {
+		if err := gate(ctx, c.modelFor(request), callTag(ctx)); err != nil {
+			return nil, err
+		}
+	}
 	var lastErr error
 	// The wait is sized for the reply the request PERMITS — the caller's answer
 	// plus the thinking pass's room — and not for the caller's figure alone.

@@ -93,11 +93,17 @@ type taskCrew struct {
 	// bad are routes that failed here; broke are accounts that ran out of
 	// credit here; gone are providers whose key was refused here.
 	bad, broke, gone map[string]bool
+	// guard holds every seat call to the day's cap and the checker to its
+	// own ceiling (spendguard.go); nil when nothing prices the crew.
+	guard *SpendGuard
 	// freeTried is how many free pools each seat has been moved onto in this
 	// task: at most crewFreePools, so a task on an account out of credit
 	// whose every free pool is at its limit stops on its action in seconds,
 	// not after walking every pool the catalog lists.
 	freeTried map[crewroute.Seat]int
+	// failed is how each send that failed its first call on this task failed:
+	// it is not asked again on this task, by any seat.
+	failed map[string]crewFailure
 }
 
 // current is the crew as it stands, fallbacks taken.
@@ -179,6 +185,7 @@ func (a *Agent) routeTaskCrew(ctx context.Context, row uint64, title, brief stri
 	for _, pick := range decision.Crew {
 		crew.original[pick.Seat] = pick.Send
 	}
+	crew.guard = crewSpendGuard(a.config.ProfileDir, decision, false)
 	a.crews.put(row, crew)
 	config.LogCrewDecision(a.config.ProfileDir, crew.call, decision, repo, title)
 	return crew, nil
@@ -306,15 +313,9 @@ type crewSeatCompleter struct {
 
 func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
 	crew := c.run.crew
-	var request ai.Request
-	for _, option := range options {
-		if err := option(&request); err != nil {
-			return nil, err
-		}
-	}
-	key := strings.TrimSpace(request.Model)
-	if key == "" {
-		key = c.agent.Model()
+	key, err := c.seatKey(options)
+	if err != nil {
+		return nil, err
 	}
 	if !crew.seats(key) {
 		// NOT A SEAT OF THIS CREW: a tier the run asks for that the crew does
@@ -326,9 +327,25 @@ func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []
 	retried := false
 	for {
 		current := crew.sendFor(key)
+		if failed, ok := crew.failedHere(current); ok {
+			// A SEND THAT FAILED ON THIS TASK IS NOT ASKED AGAIN, by this seat
+			// or any other: a pool that answered 429 with an hour's
+			// Retry-After is rested for the task, and the seat walks on — or
+			// ends on its action — without another request.
+			if action, moved := c.agent.moveCrewSeat(c.run, key, current, failed.kind, failed.until); !moved {
+				return nil, crewSeatEnd(action, failed.err)
+			}
+			continue
+		}
+		if err := crew.guard.before(current, messages, options); err != nil {
+			// THE CALL THAT WOULD CROSS THE LINE IS NOT MADE, and the line
+			// says which line it met — never "/redo stronger".
+			return nil, c.agent.stopCrew(c.run, err)
+		}
 		// A SEAT NEVER WAITS OUT A LIMIT: a 429 goes back at once, and the
 		// seat moves to its next route or model ([provider.WithoutPatientRateLimits]).
 		response, err := c.agent.completeWithModel(provider.WithoutPatientRateLimits(asCrewSeatCall(ctx)), purposeInherited, messages, current, options...)
+		crew.guard.after(current, response)
 		if err == nil {
 			c.agent.crewAnswered(c.run, current)
 			return response, nil
@@ -345,6 +362,7 @@ func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []
 			continue
 		}
 		retried = false
+		crew.noteFailed(current, crewFailure{kind: kind, until: until, err: err})
 		if action, moved := c.agent.moveCrewSeat(c.run, key, current, kind, until); !moved {
 			if action == "" {
 				return response, err
@@ -352,6 +370,55 @@ func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []
 			return response, crewStopped{action: action, cause: err}
 		}
 	}
+}
+
+// seatKey is the send id a seat call names — the seat as routed — or the
+// conversation's model when it names none.
+func (c crewSeatCompleter) seatKey(options []ai.Option) (string, error) {
+	var request ai.Request
+	for _, option := range options {
+		if err := option(&request); err != nil {
+			return "", err
+		}
+	}
+	if key := strings.TrimSpace(request.Model); key != "" {
+		return key, nil
+	}
+	return c.agent.Model(), nil
+}
+
+// crewFailure is how a send failed its first call on this task.
+type crewFailure struct {
+	kind  provider.RouteFailure
+	until time.Time
+	err   error
+}
+
+// noteFailed remembers how send failed on this task.
+func (c *taskCrew) noteFailed(send string, failure crewFailure) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.failed == nil {
+		c.failed = map[string]crewFailure{}
+	}
+	c.failed[send] = failure
+}
+
+// failedHere is how send failed on this task, if it did and never answered.
+func (c *taskCrew) failedHere(send string) (crewFailure, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	failure, ok := c.failed[send]
+	return failure, ok && !c.started[send]
+}
+
+// crewSeatEnd is the error a seat with nowhere left to go ends on: its one
+// action when the failures name one, the failure itself otherwise.
+func crewSeatEnd(action string, cause error) error {
+	if action == "" {
+		return cause
+	}
+	return crewStopped{action: action, cause: cause}
 }
 
 // crewSeatCallKey marks a context as a crew seat's own call, which walks its
@@ -385,6 +452,90 @@ func (a *Agent) healthyModel(ctx context.Context, purpose callPurpose, model str
 		return model
 	}
 	return config.CrewHealthySend(a.config.ProfileDir, model, chat)
+}
+
+// routeGate is the provider's last word on a route ([provider.Config.RouteGate]):
+// a body naming a model whose route health says will not answer is not sent,
+// WHICHEVER ROAD IT CAME BY — the door's own reroute ([Agent.healthyModel])
+// runs first, and this is what holds when a road skipped it. Two calls pass:
+// a crew seat's own, which walks its ladder and probes an account the task
+// is routed to, and the person's turn, whose model is theirs. send is the id
+// the client was built for and wire how it is spelled on the wire.
+func (c Config) routeGate(send, wire string) func(context.Context, string, string) error {
+	if c.RouteCrew == nil || c.ProfileDir == "" {
+		return nil
+	}
+	dir := c.ProfileDir
+	return func(ctx context.Context, model, tag string) error {
+		if isCrewSeatCall(ctx) || tag == string(purposeTurn) {
+			return nil
+		}
+		asked := strings.TrimSpace(model)
+		if asked == "" || asked == wire {
+			asked = send
+		}
+		if config.CrewRouteAnswers(dir, asked) {
+			return nil
+		}
+		return errRouteResting{model: asked}
+	}
+}
+
+// errRouteResting is a call the route gate did not send.
+type errRouteResting struct{ model string }
+
+func (e errRouteResting) Error() string {
+	return e.model + " was not asked: its route refused it recently and is resting"
+}
+
+// crewSpendGuard is a crew's spend guard: its prices, the day as the usage
+// ledger has it, the day's cap (the daily spending limit too when withDaily)
+// and the checker's ceiling. Nil for a profile nothing is read from.
+func crewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *SpendGuard {
+	if profileDir == "" {
+		return nil
+	}
+	capUSD, action := config.CrewSpendCap(profileDir, withDaily)
+	guard := &SpendGuard{
+		Price: config.CrewCallPrice, Cap: capUSD, CapAction: action,
+		Ceilings: config.CrewSeatCeilings(d), CeilingAction: config.CrewCheckCeilingAction,
+	}
+	if capUSD > 0 {
+		guard.Day = NewSpendDay(spentTodayOnLedger())
+	}
+	return guard
+}
+
+// CrewSpendGuard is [crewSpendGuard] for a headless run's seats.
+func CrewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *SpendGuard {
+	return crewSpendGuard(profileDir, d, withDaily)
+}
+
+// spentTodayOnLedger is today's spend as the usage ledger has it; nothing
+// when the ledger cannot be read.
+func spentTodayOnLedger() float64 {
+	now := time.Now()
+	lines, err := ReadUsage(UsageLedgerPath(), now.Add(-48*time.Hour))
+	if err != nil {
+		return 0
+	}
+	return SpendToday(lines, now)
+}
+
+// stopCrew records a guard's stop on the crew — the line leads with it — and
+// answers the error the seat call ends on.
+func (a *Agent) stopCrew(run *beltRun, err error) error {
+	var stopped ErrSpendStopped
+	if !errors.As(err, &stopped) {
+		return err
+	}
+	crew := run.crew
+	crew.mu.Lock()
+	crew.decision.Stopped = stopped.Action
+	decision := crew.decision
+	crew.mu.Unlock()
+	a.republishCrew(run, decision, stopped.Action)
+	return crewStopped{action: stopped.Action, cause: err}
 }
 
 // crewStopped is a seat with nowhere left to go: its text is the one action,
@@ -510,9 +661,14 @@ func (a *Agent) moveCrewSeat(run *beltRun, key, current string, kind provider.Ro
 // provider the route was on. The caller holds crew.mu.
 func (a *Agent) crewFailedLocked(crew *taskCrew, current string, kind provider.RouteFailure, until time.Time) string {
 	var provided string
+	// A send another seat already found failed is written down once.
+	again := crew.bad[current]
 	for _, seat := range crewroute.Seats {
 		if pick := crew.decision.Seat(seat); pick.Send == current {
 			provided = pick.Provider
+			if again {
+				continue
+			}
 			config.LogCrewRoute(a.config.ProfileDir, crew.call, crew.decision, crew.repo, crew.title, seat, pick, string(kind), until)
 		}
 	}

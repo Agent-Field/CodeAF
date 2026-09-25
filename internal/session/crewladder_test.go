@@ -281,11 +281,19 @@ func TestEveryRouteDownStopsWithinThreeFreePools(t *testing.T) {
 	}
 	run := &beltRun{row: 1, crew: crew}
 	began := time.Now()
-	_, err = crewSeatCompleter{agent: agent, run: run}.CompleteWithMessages(provider.WithPatientRateLimits(t.Context()),
-		[]ai.Message{textMessage("user", "fix it")}, ai.WithModel(crew.current().Seat(crewroute.Worker).Send))
-	var stopped crewStopped
-	if !errors.As(err, &stopped) || stopped.action != "add credit on openrouter to continue" {
-		t.Fatalf("every route down ended %v, want the one action", err)
+	// EVERY SEAT, AND THE WORKER AGAIN: the engine asks each seat, and asks a
+	// seat that failed again. A pool that answered 429 is rested for the
+	// whole task, whichever seat meets it next.
+	routed := crew.current()
+	keys := []string{routed.Seat(crewroute.Worker).Send, routed.Seat(crewroute.Planner).Send,
+		routed.Seat(crewroute.Checker).Send, routed.Seat(crewroute.Worker).Send}
+	for i, key := range keys {
+		_, err = crewSeatCompleter{agent: agent, run: run}.CompleteWithMessages(provider.WithPatientRateLimits(t.Context()),
+			[]ai.Message{textMessage("user", "fix it")}, ai.WithModel(key))
+		var stopped crewStopped
+		if !errors.As(err, &stopped) || stopped.action != "add credit on openrouter to continue" {
+			t.Fatalf("call %d on %s: every route down ended %v, want the one action", i, key, err)
+		}
 	}
 	if took := time.Since(began); took > 30*time.Second {
 		t.Errorf("reaching the action took %v", took)
@@ -296,12 +304,58 @@ func TestEveryRouteDownStopsWithinThreeFreePools(t *testing.T) {
 			asked[model]++
 		}
 	}
-	if len(asked) > 3 {
-		t.Errorf("the seat walked %d free pools: %v", len(asked), asked)
+	if len(asked) > 3*len(crewroute.Seats) {
+		t.Errorf("the seats walked %d free pools: %v", len(asked), asked)
 	}
 	for model, n := range asked {
 		if n > 1 {
-			t.Errorf("%s was asked %d times through an hour's Retry-After", model, n)
+			t.Errorf("%s was asked %d times in one task through an hour's Retry-After", model, n)
 		}
+	}
+}
+
+// THE 403 HOME, END TO END: the worker's paid route refuses on this task and
+// the seat moves to its free pool. Every call after that — the run's
+// worker-role errand at a large answer ceiling, and a client built for the
+// model and called directly, the lowest road there is — is refused at the
+// provider's door without a request, though route health had been read (and
+// cached) a moment before the refusal. The stub counts the seat's own first
+// call and nothing else.
+func TestNoRoadReachesARouteThatRefusedThisTask(t *testing.T) {
+	stub := newCrewStub(t, http.StatusOK, map[string]int{"z-ai/glm-5.3-flash:free": http.StatusOK})
+	stub.only = map[string]int{"z-ai/glm-5.3-flash": http.StatusForbidden}
+	agent, dir := crewStubAgent(t, stub)
+	if !config.CrewRouteAnswers(dir, "z-ai/glm-5.3-flash") {
+		t.Fatal("the route was resting before anything refused it")
+	}
+	if _, err := askWorker(t, agent, 1); err != nil {
+		t.Fatalf("task 1: %v (asked %v)", err, stub.models())
+	}
+	glm := func() int {
+		n := 0
+		for _, model := range stub.models() {
+			if model == "z-ai/glm-5.3-flash" {
+				n++
+			}
+		}
+		return n
+	}
+	if n := glm(); n != 1 {
+		t.Fatalf("the seat asked the paid route %d times, want its one first call (%v)", n, stub.models())
+	}
+	_, _, _ = agent.callRole(t.Context(), roles.RoleWorker, "z-ai/glm-5.3-flash",
+		[]ai.Message{textMessage("user", "summarise the task")}, ai.WithMaxTokens(6400))
+	client, wire, _, err := agent.completerFor("z-ai/glm-5.3-flash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.CompleteWithMessages(provider.WithCallTag(t.Context(), "worker"),
+		[]ai.Message{textMessage("user", "one more errand")}, ai.WithModel(wire), ai.WithMaxTokens(6400))
+	var resting errRouteResting
+	if !errors.As(err, &resting) {
+		t.Errorf("a direct call on the resting route ended %v, want it refused at the door (%v)", err, stub.models())
+	}
+	if n := glm(); n != 1 {
+		t.Errorf("the resting route was asked %d times after the seat left it: %v", n-1, stub.models())
 	}
 }
