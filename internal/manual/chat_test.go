@@ -41,6 +41,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I reopen a closed team", "teams-page"},
 		{"where do I change one team's settings", "teams-page"},
 		{"what does the ? 2 mark on a team mean", "teams-page"},
+		// Nesting on the teams page (teams-page.md).
+		{"how do I move a team inside another team", "teams-page"},
+		{"can I drag a team onto another team", "teams-page"},
+		{"how do I add a chat to another team from the teams page", "teams-page"},
+		{"why is a team greyed out when I move a team", "teams-page"},
+		{"how do I undo moving a team", "teams-page"},
+		{"what does +4 idle mean on a team", "teams-page"},
 		// The team manager (team-manager.md).
 		{"what can the team manager do", "team-manager"},
 		{"can the manager answer a member's permission prompt", "team-manager"},

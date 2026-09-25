@@ -119,9 +119,15 @@ start page, `ctrl+t`, and a folder typed on home all start a new conversation, a
 the team that is shown. Going back to a conversation that already exists changes no team.
 
 **Team settings.** `e`, the dot on a team's segment, or the `⋯` the pointer brings up where its
-count was, opens the team's **card**: its name, which you edit as you type, its colour, the
+count was, opens the team's **card**: its name, which you edit as you type, its colour,
+**`Inside: harbor ▾`** (which team it sits in; a press opens the Move into… picker), the
 settings it overrides (each one saying where an inherited value comes from) and
 **Close team…**. The **teams page** has the card whole.
+
+**Teams inside teams.** A team can sit inside another. The Teams row stays one flat row and
+names a team inside another with its parent first, `harbor › api`; the team switcher and the
+teams page draw the tree. You move a team on the **teams page** (`m`, Move into…, or a drag in
+its rail) or with `Inside` on its card, and every move can be undone for a few seconds.
 
 **Closing a team.** `D` closes the team that is shown: at once, with Undo, when nothing in it
 is running, and with a card offering **Wrap up first**, **Close now** and **Cancel** when
@@ -191,7 +197,8 @@ included:
 ```
 ╭─ Teams ────────────────────╮
 │ ◉ ● harbor              2  │
-│ ○ ● orbit               1  │
+│ ○   ● orbit             1  │
+│ ○ ● dock                0  │
 │ ○   All                 3  │
 │     Closed · 2 ▸           │
 │ ────────────────────────── │
@@ -202,7 +209,8 @@ included:
 ```
 
 - a team, or **All**, narrows or widens the strip; the conversation in front stays in front
-  unless it is not in the team, and then the team's first conversation comes forward
+  unless it is not in the team, and then the team's first conversation comes forward. The
+  teams are the tree: a team inside another stands indented under it
 - **+ Add this conversation** puts the conversation in front into the team that is shown, and
   the row turns into **− Remove this conversation**
 - **Closed · 2** is there while you have closed teams: a press opens the teams page with its
