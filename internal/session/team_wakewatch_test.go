@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -202,6 +203,131 @@ func TestTeamWakeTheManagersWakeCoalescesABurst(t *testing.T) {
 	woke := waitEvent(t, fixture, "woke ◆")
 	if woke.From != "web" || !strings.Contains(woke.Text, "(with @parser)") {
 		t.Errorf("the manager's wake line is %+v, want from @web with @parser", woke)
+	}
+}
+
+func TestTeamWakeAReplyAndItsFinishedTurnWakeTheManagerOnce(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	completer := oneAnswer(3)
+	manager := teamAgent(t, fixture, fixture.manager, completer, nil)
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindNote, From: "web", To: teams.ToManager, Text: "The header is fixed."})
+	waitRequests(t, completer, 1)
+	waitIdle(t, manager)
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindEvent, From: "web", To: teams.ToManager, State: teams.StateFinished, Text: "finished"})
+	time.Sleep(3*teamWakeSettle + 10*teamWatchEvery)
+	if got := trafficEvents(t, fixture, "woke ◆"); len(got) != 1 {
+		t.Fatalf("one reply and its ending woke the manager %d times", len(got))
+	}
+	if got := trafficEvents(t, fixture, "finished"); len(got) != 1 {
+		t.Fatalf("the member's finished line was lost: %+v", got)
+	}
+	if got := completer.requests(); got != 1 {
+		t.Fatalf("the ending started %d extra model requests", got-1)
+	}
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindEvent, From: "web", To: teams.ToManager, State: teams.StateFailed, Text: "failed: try again"})
+	waitRequests(t, completer, 2)
+	if said := userTextIn(completer.request(1)); !strings.Contains(said, "@web finished its turn") {
+		t.Fatalf("the next manager turn did not receive the finished line:\n%s", said)
+	}
+	waitIdle(t, manager)
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindEvent, From: "web", To: teams.ToManager, State: teams.StateAsking, Text: "asks: which file?"})
+	waitRequests(t, completer, 3)
+}
+
+func TestTeamWakeFinishedAfterReplyStillDeduplesAfterManagerRestart(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	firstCalls := oneAnswer(1)
+	manager := teamAgent(t, fixture, fixture.manager, firstCalls, nil)
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindNote, From: "web", To: teams.ToManager, Text: "The header is fixed."})
+	waitRequests(t, firstCalls, 1)
+	waitIdle(t, manager)
+	if err := manager.Close(); err != nil {
+		t.Fatal(err)
+	}
+	secondCalls := oneAnswer(1)
+	teamAgent(t, fixture, fixture.manager, secondCalls, nil)
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindEvent, From: "web", To: teams.ToManager, State: teams.StateFinished, Text: "finished"})
+	time.Sleep(3*teamWakeSettle + 10*teamWatchEvery)
+	if got := secondCalls.requests(); got != 0 {
+		t.Fatalf("the restarted manager made %d requests for the already answered ending", got)
+	}
+	if woke := trafficEvents(t, fixture, "woke ◆"); len(woke) != 1 {
+		t.Fatalf("the reply caused %d wakes across a restart", len(woke))
+	}
+}
+
+func TestTeamWakeTheLoopBreakerCountsTenMemberReplies(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	managerCalls := oneAnswer(teamLoopRounds + 1)
+	manager := teamAgent(t, fixture, fixture.manager, managerCalls, nil)
+	posted := make(chan int, teamLoopRounds+1)
+	releases := make([]chan struct{}, teamLoopRounds+1)
+	for i := range releases {
+		releases[i] = make(chan struct{})
+	}
+	var web *Agent
+	// THE MEMBER'S ROUNDS ARE ARMED, NOT QUEUED. A positional script let any
+	// other request of the member's (an errand beside its turn, or a second
+	// look at a turn that had already replied) take the next round's step, post
+	// that round early and block the turn on a release nobody had given; under
+	// a long package run that is exactly what happened. Here only the request
+	// the test armed runs a round, and every other request is answered as done.
+	rounds := &armedRounds{armed: -1, run: func(ctx context.Context, i int) (*ai.Response, error) {
+		_, failed, err := web.teamPostTool(ctx, json.RawMessage(`{"to":"manager","text":"round `+strconv.Itoa(i)+` done"}`))
+		if failed || err != nil {
+			return nil, errors.New("team_post failed")
+		}
+		posted <- i
+		select {
+		case <-releases[i]:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		return textResponse("finished"), nil
+	}}
+	web = teamAgent(t, fixture, fixture.web, rounds, nil)
+	for i := 0; i <= teamLoopRounds; i++ {
+		rounds.arm(i)
+		events := mustSubmit(t, web, "answer the manager")
+		select {
+		case got := <-posted:
+			if got != i {
+				t.Fatalf("posted round %d before %d", got, i)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("the member did not post")
+		}
+		if i < teamLoopRounds {
+			waitRequests(t, managerCalls, i+1)
+			waitIdle(t, manager)
+		} else {
+			waitEvent(t, fixture, "the team has woken me 10 times")
+		}
+		close(releases[i])
+		collect(t, events)
+		time.Sleep(3*teamWakeSettle + 10*teamWatchEvery)
+		if got := managerCalls.requests(); got != min(i+1, teamLoopRounds) {
+			t.Fatalf("after round %d the manager made %d calls", i, got)
+		}
+	}
+	if woke := trafficEvents(t, fixture, "woke ◆"); len(woke) != teamLoopRounds {
+		t.Fatalf("the team logged %d manager wakes, want %d", len(woke), teamLoopRounds)
+	}
+	log, err := teams.ReadTraffic(fixture.profile, fixture.teamID, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	posts := 0
+	for _, e := range log {
+		if e.Kind == teams.KindNote && e.From == "web" && e.To == teams.ToManager {
+			posts++
+		}
+	}
+	if posts < teamLoopRounds {
+		t.Fatalf("the loop had only %d member posts", posts)
 	}
 }
 
@@ -487,4 +613,35 @@ func TestTeamWakeAMemberThatCannotBeOpenedIsSaidInTheTraffic(t *testing.T) {
 	if got := trafficEvents(t, fixture, "the host would not start"); len(got) != 1 {
 		t.Fatalf("a failed open was said %d times, want once", len(got))
 	}
+}
+
+// armedRounds is a member completer that runs one scripted round per request
+// the test armed, whatever else the member asks in between: a namer, a
+// narrator or a second look at its own turn is answered as done and never
+// takes a round.
+type armedRounds struct {
+	mu    sync.Mutex
+	armed int
+	run   func(ctx context.Context, round int) (*ai.Response, error)
+}
+
+// arm makes the member's next turn request run round.
+func (c *armedRounds) arm(round int) {
+	c.mu.Lock()
+	c.armed = round
+	c.mu.Unlock()
+}
+
+func (c *armedRounds) CompleteWithMessages(ctx context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+	if isNameCall(messages) || isTitleCall(messages) || isCaptionCall(messages) {
+		return textResponse(""), nil
+	}
+	c.mu.Lock()
+	round := c.armed
+	c.armed = -1
+	c.mu.Unlock()
+	if round < 0 {
+		return textResponse(checkpointNothingLeft), nil
+	}
+	return c.run(ctx, round)
 }

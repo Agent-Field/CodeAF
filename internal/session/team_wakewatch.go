@@ -28,7 +28,8 @@ import (
 //     ([Agent.teamBoundary]).
 //   - A MEMBER'S REPLY WAKES THE MANAGER: a team_post addressed to the manager,
 //     and the events a member writes on its own (finished, failed, asking,
-//     teamevent.go). They COALESCE: the first one arms [teamWakeSettle], and one
+//     teamevent.go). A finished event after a reply in the same member turn
+//     starts no second wake. Other arrivals COALESCE: the first arms [teamWakeSettle], and one
 //     turn carries everything that arrived by the time it runs out, because
 //     three members finishing within a few seconds of each other is one thing
 //     to act on, not three turns that each see a third of it.
@@ -201,6 +202,10 @@ func (a *Agent) teamWatchTick(profile string, now time.Time) bool {
 		arrived := a.teamWatchReadLocked(profile, role)
 		var waking []teams.Entry
 		for _, entry := range arrived {
+			if role.manager && entry.Kind == teams.KindEvent && entry.State == teams.StateFinished &&
+				teamFinishedAfterReply(profile, role.id, entry) {
+				continue
+			}
 			if teamWakes(role, entry) || teamPacketWakes(profile, role, entry) {
 				waking = append(waking, entry)
 			}
@@ -324,6 +329,39 @@ func (a *Agent) interruptTeamTurn(serial uint64) {
 	cancel(stopFor(StopByManager))
 }
 
+// teamFinishedAfterReply reports whether a member's finished event ends a turn
+// that already replied to the manager: scanning back from it through the same
+// member's lines, a note to the manager comes before that member's previous
+// turn ending (finished, failed, or stopped).
+//
+// ONE REPLY IS ONE WAKE. The reply woke the manager, or reached a turn it was
+// already running; the ending of the same member turn arrives seconds later,
+// often after the settle has handed the reply over, and waking again for it
+// paid a second manager turn for news the first one already acted on, and
+// tripped the loop breaker after half its rounds. It is read from the log and
+// not remembered, because the manager may have restarted in between; and only
+// when a finished event would otherwise wake or be handed over, which is rare.
+// A failed or asking event still wakes: that is news the reply did not carry.
+func teamFinishedAfterReply(profile, teamID string, finished teams.Entry) bool {
+	tail, err := teams.ReadTraffic(profile, teamID, "", teamFirstLook)
+	if err != nil {
+		return false
+	}
+	for i := len(tail) - 1; i >= 0; i-- {
+		e := tail[i]
+		if e.ID >= finished.ID || e.From != finished.From || (finished.Member != "" && e.Member != "" && e.Member != finished.Member) {
+			continue
+		}
+		if e.Kind == teams.KindEvent && (e.State == teams.StateFinished || e.State == teams.StateFailed || e.State == teams.StateIdle) {
+			return false
+		}
+		if e.Kind == teams.KindNote && e.To == teams.ToManager && strings.TrimSpace(e.Text) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // teamWatchReadLocked is what has been written to one team's log since this
 // conversation last looked, or nothing when the log has not moved. The caller
 // holds a.team.mu.
@@ -369,7 +407,8 @@ func (a *Agent) teamWatchReadLocked(profile string, role teamRole) []teams.Entry
 // teamWakes reports whether an entry starts this conversation's turn when it
 // is idle: a directive from the manager to its handle or to everyone, for a
 // member; a member's post to the manager, or a member's finished, failed or
-// asking event, for the manager.
+// asking event, for the manager. The watch suppresses a finished event when
+// the same turn already posted a reply.
 func teamWakes(role teamRole, entry teams.Entry) bool {
 	if role.manager && teams.IsWrapUp(entry) {
 		return true

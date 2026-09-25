@@ -530,6 +530,10 @@ the person to type again is not running a team, so the lines that ask for an ans
 (Changed 2026-09-25: a running managed member stats its team's Traffic once per
 tick and reads it when it moves, to honor a manager's stop.)
 
+(Changed 2026-09-25: a member's reply and the finished event from that same turn
+start one manager wake, even when the event arrives after the settle. Ten wakes
+therefore mean ten such reply rounds.)
+
 **Mentioning a team or a chat from the composer.** `@` is still the one list
 (`internal/tui3`'s `files.go`, `mention.go`). Its first row is the words team, chat
 and file, each a press that types `@team:`, `@chat:` or `@file:` and keeps that

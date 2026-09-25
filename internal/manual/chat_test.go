@@ -69,6 +69,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can the manager answer a member's permission prompt", "team-manager"},
 		{"how does a member post to the room", "team-manager"},
 		{"does a directive wake an idle member", "team-manager"},
+		{"why did my manager wake twice for one reply", "team-manager"},
 		{"can a manager stop a member working in the background without a window", "team-manager"},
 		{"what tools does a conversation lose when it stops being the manager", "team-manager"},
 		// Questions, packets, caps and wrapping up (team-questions-and-caps.md).

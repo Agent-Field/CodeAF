@@ -359,9 +359,10 @@ working, that is straight away. When it is idle, it depends on the kind of messa
 - A **directive** starts an idle member's turn. The member is handed the directive, marked
   `◆ directive from manager`, never as if you had typed it.
 - A **note** wakes nobody. An idle member reads it when it next runs, for whatever reason.
-- A member's **reply to the manager** (`team_post` to the manager), and a member finishing,
-  failing or starting to wait on you, start an idle manager's turn. Replies that arrive within
-  a few seconds of each other are gathered into one turn rather than one turn each.
+- A member's **reply to the manager** (`team_post` to the manager), and a member finishing
+  without a reply, failing or starting to wait on you, start an idle manager's turn. A reply
+  and the end of the same turn are one wake, even if the ending arrives after the manager
+  already ran. Replies arriving within a few seconds are gathered into one turn.
 
 A member no window has open is opened by codeaf in the background so it can run, and a window
 that opens it later joins the running conversation. When that cannot be done, the traffic says
@@ -372,6 +373,7 @@ conversation is running. A wake spends through the same limits a turn you start 
 more bound it: one conversation is woken at most 20 times an hour, and a manager woken 10 times
 by its team with nothing from you stops being woken and asks you instead, as a waiting line in
 the traffic. It is woken again after you next say something to it.
+The ten wakes count ten replies when each member turn replies and then finishes.
 
 A team's auto-wake can be turned off. `team messages wake` in `/settings` under **Teams** is
 the default every team inherits (on), and a team can override it for itself and the teams

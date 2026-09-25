@@ -729,6 +729,14 @@ func (a *Agent) teamEntryLineLocked(profile string, role teamRole, entry teams.E
 	case role.manager && teams.IsWrapUp(entry):
 		a.teamWrapUpBeginLocked(role, entry.At)
 		return wrapUpLine(role, entry)
+	case role.manager && entry.Kind == teams.KindEvent && entry.State == teams.StateFinished &&
+		teamFinishedAfterReply(profile, role.id, entry):
+		// A reply's ending starts no second wake, but the manager still reads
+		// that ending at its next boundary after the earlier wake has run.
+		lines := teamEventLines([]teams.Entry{entry})
+		if len(lines) > 0 {
+			return lines[0]
+		}
 	}
 	return teamLine(role, entry)
 }
