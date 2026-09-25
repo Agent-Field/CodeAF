@@ -51,7 +51,7 @@ func TestAStartedMemberWakesOnItsOwnWithTheBriefOnce(t *testing.T) {
 		t.Fatal("the started member never took its first turn")
 	}
 	first := userTextIn(completer.request(0))
-	if !strings.Contains(first, teamBriefWord+" #1: Rewrite the lexer.") {
+	if !briefIn(first, "Rewrite the lexer.") {
 		t.Fatalf("the first request did not carry the brief:\n%s", first)
 	}
 	for _, entry := range lexer.Transcript() {
@@ -107,7 +107,21 @@ func TestAStartedMemberWithWakeOffIsOpenedAndNotWoken(t *testing.T) {
 	}
 	collect(t, events)
 	first := userTextIn(completer.request(0))
-	if !strings.Contains(first, teamBriefWord+": Rewrite the lexer.") {
+	if !briefIn(first, "Rewrite the lexer.") {
 		t.Fatalf("the first turn did not carry the brief:\n%s", first)
 	}
+}
+
+// briefIn reports whether a request's text hands over the manager's brief
+// with text as its words. It reads the line the way a surface does
+// ([teamLineParts]) rather than matching its wording, so the line's number
+// (" #42" at the end of its head) is the delivery's to write.
+func briefIn(request, text string) bool {
+	for _, line := range strings.Split(request, "\n") {
+		parsed, ok := teamLineParts(strings.TrimSpace(line))
+		if ok && parsed.Kind == teams.KindStart && parsed.From == teams.FromManager && parsed.Text == text {
+			return true
+		}
+	}
+	return false
 }
