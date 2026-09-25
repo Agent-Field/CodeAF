@@ -2,6 +2,29 @@
 
 Ten coding harnesses, one model, the same 113 tasks, one attempt each.
 
+| harness | solved | cost per task | cost per solved issue | mean time |
+| --- | --- | --- | --- | --- |
+| **senior-dev** | **62 of 113, 54.9%** | **22¢** | **1x** | 54 min |
+| mini-swe-agent | 56, 49.6% | 38¢ | 1.9x | 44 min |
+| codex | 51, 45.1% | 37¢ | 2.1x | 46 min |
+| pi | 42, 37.2% | 35¢ | 2.4x | 52 min |
+| omp | 31, 27.4% | 50¢ | 4.5x | 49 min |
+| opencode | 30, 26.6% | 50¢ | 4.8x | 48 min |
+| kilo | 30, 26.6% | 48¢ | 4.6x | 54 min |
+| claude-code | 16, 14.2% | 19¢ | 3.4x | 32 min |
+| deepseek-harness | 16, 14.2% | 150¢ | 26.6x | 94 min |
+| muse-code | 3, 2.7% | 12¢ | 11.3x | 16 min |
+
+senior-dev solved the most issues and paid the least for each one it solved:
+nearly 4x the issues claude-code solved, at about half the cost per solve of the
+next best harness.
+
+Since then, on the same 113 tasks: 88 solved (77.9%, exact 95% CI 69.1% to 85.1%)
+with DeepSeek V4.1 Flash, and 78 (69.0%, 59.6% to 77.4%) with Kimi K3. Those runs
+are senior-dev alone, not a comparison.
+
+## Setup
+
 | | |
 | --- | --- |
 | Benchmark | full DeepSWE set, 113 tasks, one seed per harness |
