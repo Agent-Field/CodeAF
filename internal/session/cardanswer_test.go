@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -43,7 +44,7 @@ func TestAPersonsCardAnswerReachesTheCheckerAndClosesTheGap(t *testing.T) {
 			}
 			switch call := done.Add(1); call {
 			case 1:
-				return toolResponse("s1", "stand", aReminder()), nil
+				return toolResponse("s1", "stand", aRepeatingCheck()), nil
 			case 2:
 				// The last act is a write, so the cheap turn is still read
 				// (checkpoint.go's exposure gate) without climbing a mark.
@@ -60,7 +61,7 @@ func TestAPersonsCardAnswerReachesTheCheckerAndClosesTheGap(t *testing.T) {
 		config.standingItems = store
 	})
 
-	events, err := agent.Submit(watchedContext(agent), "remind me at 6 to leave")
+	events, err := agent.Submit(watchedContext(agent), "check the marketing slack every 3 hours")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
@@ -72,7 +73,7 @@ func TestAPersonsCardAnswerReachesTheCheckerAndClosesTheGap(t *testing.T) {
 		}
 	})
 	shown, _ := page.Load().(string)
-	if !strings.Contains(shown, `the person answered the card "wants to keep an eye on: remind me at 6 to leave": only now, don't repeat`) {
+	if !strings.Contains(shown, `the person answered the card "`+StandingHeadCheck+`": only now, don't repeat`) {
 		t.Fatalf("the checker was not shown the card answer:\npage:\n%s\ntranscript:\n%s\nevents: %v", shown, transcriptText(agent), kinds(collected))
 	}
 	if strings.Contains(transcriptText(agent), checkpointCarryOnLead) {
@@ -82,6 +83,21 @@ func TestAPersonsCardAnswerReachesTheCheckerAndClosesTheGap(t *testing.T) {
 		t.Fatal("a once answer created a standing item")
 	}
 	_ = collected
+}
+
+// aRepeatingCheck is the measured proposal: a check every three hours, the
+// one kind whose card offers only now.
+func aRepeatingCheck() string {
+	body := map[string]any{
+		"op":         "propose",
+		"words":      "check the marketing slack every 3 hours",
+		"when":       map[string]any{"kind": "every", "every": "3h"},
+		"does":       map[string]any{"kind": "say", "say": "check the marketing slack"},
+		"when_words": "every 3 hours",
+		"cost_words": "nothing to speak of, one line each time",
+	}
+	raw, _ := json.Marshal(body)
+	return string(raw)
 }
 
 func TestPersonCardAnswerLineKeepsOnceAndAnyOtherCard(t *testing.T) {
