@@ -12,7 +12,7 @@ import (
 //
 // The foot of either box is three rows: the tip, the rule, the keys.
 //
-//	                                  💡 /ask answers right here without opening a conversation ✕
+//	                                  💡 /manual answers any question about codeaf ✕
 //	─ glm-5.3-flash:auto · ◇ asks ───────────────────────────────────────────────────────────────
 //	 › type to search or start something new
 //	 → options · alt+p project · alt+e effort · alt+a approvals · / commands     project: ~/codeaf

@@ -622,9 +622,21 @@ func loadProfileKeyLedger(t *testing.T) map[string]bool {
 // in the ledger. Half (b): every ledger key is either consumed at head or in
 // retiredProfileKeys. Adding a settings row forces a ledger line; removing one
 // leaves its line behind and turns this red until the key is retired on purpose.
+//
+// THE WRITER SET IS WHAT THE WRITERS ACTUALLY WRITE, and not only the consumed
+// set restated. It used to be derived from [consumedProfileKeys] alone, which
+// made half (a) a check of the consumed set against itself: a writer that put
+// down a key nothing registered was invisible to it. `lane.talk.borrow` was
+// exactly that — [WriteLaneRow] writes it on every save of the `provider` row
+// and [LaneBorrowAt] reads it, and because no list held it, every launch after
+// the row was saved warned that it was ignored. So every settings row is now
+// driven through its own writer in an empty profile ([profileKeysWrittenByRows])
+// and every key that lands in the file is held to the same two halves, plus a
+// third: a key the product writes must be one the unread check knows.
 func TestProfileKeyLedgerLaw(t *testing.T) {
 	ledger := loadProfileKeyLedger(t)
 	consumed := consumedProfileKeys(t.TempDir())
+	written := profileKeysWrittenByRows(t)
 
 	for key := range consumed {
 		if key == "" {
@@ -632,6 +644,15 @@ func TestProfileKeyLedgerLaw(t *testing.T) {
 		}
 		if !ledger[key] {
 			t.Errorf("writer key %q is not in testdata/profile-keys.ledger; add it", key)
+		}
+	}
+	for key, row := range written {
+		if !ledger[key] {
+			t.Errorf("the %q row writes %q, which is not in testdata/profile-keys.ledger; add it", row, key)
+		}
+		if !consumed[key] && !retiredProfileKeys[key] {
+			t.Errorf("the %q row writes %q, which consumedProfileKeys does not hold, so every launch after the row is saved "+
+				"reports it unread: register it (a settings row, or nonSettingProfileFields when a reader consumes it)", row, key)
 		}
 	}
 	for key := range ledger {
@@ -649,12 +670,91 @@ func TestProfileKeyLedgerLaw(t *testing.T) {
 	}
 }
 
+// profileKeysWrittenByRows drives every settings row through its own writer, one
+// row to one empty profile, and answers every top-level key that landed in the
+// file with the row that wrote it.
+//
+// THE VALUE WRITTEN IS THE ROW'S OWN READING FIRST — what an untouched profile
+// shows for it, which every writer must take back, because that is what a
+// person saving the row unchanged sends. A row that refuses it is offered the
+// few other shapes a row takes (blank, its choices, on and off, a small count),
+// and a row that takes none of them fails here rather than being skipped: a row
+// this law cannot write is a row whose keys it cannot see.
+//
+// Only one thing is kept out of it, and by the property rather than by name:
+// a row pinned by an environment variable is unpinned for the drive, since a
+// pinned row refuses every write and this law is about what the writer does.
+func profileKeysWrittenByRows(t *testing.T) map[string]string {
+	t.Helper()
+	// writeTenure hands its value to the process environment as well as the
+	// file; this puts the variable back when the law is done.
+	t.Setenv("CODEAF_TENURE_AFTER", os.Getenv("CODEAF_TENURE_AFTER"))
+	written := map[string]string{}
+	for _, listed := range registry(t, t.TempDir()).Rows() {
+		if listed.Key == "" {
+			continue
+		}
+		if listed.Env != "" {
+			t.Setenv(listed.Env, "")
+		}
+		dir := t.TempDir()
+		row := mustRow(t, registry(t, dir), listed.Key)
+		candidates := append([]string{row.Value(), ""}, row.Choices...)
+		candidates = append(candidates, "on", "off", "auto", "1", "10", "none")
+		accepted := false
+		for _, value := range candidates {
+			if row.Apply(value) == nil {
+				accepted = true
+				break
+			}
+		}
+		if !accepted {
+			if name, pinned := row.PinnedBy(); pinned {
+				t.Logf("the %q row is pinned by %s and cannot be driven here", row.Key, name)
+				continue
+			}
+			t.Errorf("the %q row refused every value this law offers it (%q), so the keys its writer puts down are "+
+				"invisible here: add a value it takes", row.Key, candidates)
+			continue
+		}
+		data, err := os.ReadFile(BudgetConfigPath(dir))
+		if os.IsNotExist(err) {
+			// A row that keeps its value somewhere else — the chat prefs, a
+			// callback the surface owns — writes nothing to this file.
+			continue
+		}
+		if err != nil {
+			t.Fatalf("read what the %q row wrote: %v", row.Key, err)
+		}
+		var values map[string]json.RawMessage
+		if err := json.Unmarshal(data, &values); err != nil {
+			t.Fatalf("the %q row left a profile that is not a JSON object: %v", row.Key, err)
+		}
+		for key := range values {
+			if _, seen := written[key]; !seen {
+				written[key] = row.Key
+			}
+		}
+	}
+	if len(written) == 0 {
+		t.Fatal("no settings row wrote any key, so this law would pass on nothing")
+	}
+	return written
+}
+
 // TestRetiredProfileKeysAreNotReportedUnread pins that a profile carrying a
 // retired key is silent, and that a genuinely unknown key is still named.
 func TestRetiredProfileKeysAreNotReportedUnread(t *testing.T) {
 	dir := t.TempDir()
+	for name := range retiredRowEnv {
+		t.Setenv(retiredRowEnv[name], "")
+	}
 	for key := range retiredProfileKeys {
 		key := key
+		if RetiredRowNote(key) != "" {
+			// A told row is the other half of the mechanism, pinned below.
+			continue
+		}
 		t.Run(key, func(t *testing.T) {
 			values := map[string]json.RawMessage{key: json.RawMessage(`"x"`)}
 			if unread := warnUnreadProfileKeys(dir, values); len(unread) != 0 {
@@ -664,11 +764,52 @@ func TestRetiredProfileKeysAreNotReportedUnread(t *testing.T) {
 	}
 	values := map[string]json.RawMessage{}
 	for key := range retiredProfileKeys {
-		values[key] = json.RawMessage(`"x"`)
+		if RetiredRowNote(key) == "" {
+			values[key] = json.RawMessage(`"x"`)
+		}
 	}
 	values["totally_unknown_key"] = json.RawMessage(`"x"`)
 	unread := warnUnreadProfileKeys(dir, values)
 	if len(unread) != 1 || unread[0] != "totally_unknown_key" {
 		t.Fatalf("with retired keys plus one unknown, expected only totally_unknown_key unread, got %v", unread)
+	}
+}
+
+// THE ATTRIBUTION ROW IS RETIRED, AND A PROFILE THAT STILL SAYS IT IS TOLD SO.
+// Signing has no off since 2026-09-23. A profile holding `attribution: false`
+// holds a person's decision, so it is neither obeyed (the row is gone, nothing
+// reads it) nor ignored in silence (the rest of the retired keys are): the key
+// is reported unread, and the surface prints the row's own sentence, which
+// names the one thing that can still be turned off. `CODEAF_ATTRIBUTION` set in
+// the shell is the same decision and is told the same way.
+func TestTheRetiredAttributionRowIsToldPlainly(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CODEAF_ATTRIBUTION", "")
+	if !retiredProfileKeys["attribution"] {
+		t.Fatal("attribution is not a retired profile key")
+	}
+	for _, row := range NewSettings(SettingsOptions{ProfileDir: dir}).Rows() {
+		if row.Key == "attribution" || row.Env == "CODEAF_ATTRIBUTION" {
+			t.Fatalf("a settings row still reads the retired attribution switch: %+v", row)
+		}
+	}
+	note := RetiredRowNote("attribution")
+	for _, want := range []string{"attribution", "CODEAF_ATTRIBUTION", "gone", "always signs", KeyAttributionModel} {
+		if !strings.Contains(note, want) {
+			t.Fatalf("the retired row's sentence does not say %q: %q", want, note)
+		}
+	}
+
+	values := map[string]json.RawMessage{"attribution": json.RawMessage(`false`)}
+	if unread := warnUnreadProfileKeys(dir, values); len(unread) != 1 || unread[0] != "attribution" {
+		t.Fatalf("a profile saying attribution: false was not told; unread = %v", unread)
+	}
+
+	t.Setenv("CODEAF_ATTRIBUTION", "off")
+	if unread := warnUnreadProfileKeys(dir, nil); len(unread) != 1 || unread[0] != "attribution" {
+		t.Fatalf("CODEAF_ATTRIBUTION=off was not told; unread = %v", unread)
+	}
+	if unread := warnUnreadProfileKeys(dir, values); len(unread) != 1 {
+		t.Fatalf("the profile and the shell saying it together were told twice: %v", unread)
 	}
 }

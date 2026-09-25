@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // THE NOTICES: telling a person one thing at the moment it becomes true.
@@ -385,9 +386,8 @@ var notices = []notice{
 	// ── starting work ───────────────────────────────────────────────────────
 	//
 	// `/ask answers right here without opening a conversation` stood here
-	// until 2026-09-22 and came off ahead of the door it taught: /ask is on
-	// its way out, and a tip is a thing to teach somebody who will still have
-	// it tomorrow. The command itself is untouched.
+	// until 2026-09-22 and came off with the command it taught. Asking from
+	// home now uses the ask-here row, so that tip would point at a dead door.
 	{
 		id: "task-in-chat", slot: slotHint,
 		armed:  spoken,
@@ -1217,8 +1217,14 @@ func buildStamp() string {
 // showUnreadProfileKeys uses the notice ledger for a profile-scoped, set-scoped
 // conversation note. The keys are the config loader's result; this layer only
 // identifies and renders that result.
+//
+// IT IS NOT A TIP, SO THE HINTS ROW DOES NOT SILENCE IT. The Display tab's
+// `hints` switch is for the one-line lessons in the border; this is a fact about
+// the person's own settings file — something they wrote is being ignored and a
+// default is in force instead — and a person who turned tips off still needs to
+// hear it once. The ledger is borrowed only for its once-per-set memory.
 func (a *app) showUnreadProfileKeys(keys []string) {
-	if len(keys) == 0 || !a.notices.enabled {
+	if len(keys) == 0 {
 		return
 	}
 	encoded, err := json.Marshal(keys)
@@ -1233,5 +1239,19 @@ func (a *app) showUnreadProfileKeys(keys []string) {
 	a.notices.ledger.show(id)
 	a.notices.ledger.retire(id)
 	a.notices.save()
-	a.note("config.json keys are not read: " + strings.Join(keys, ", ") + "; anything set under them is ignored and defaults apply.")
+	// A KEY WHOSE ROW WAS RETIRED ON PURPOSE GETS ITS OWN SENTENCE. "Ignored and
+	// defaults apply" is true of it and says nothing a person can act on: the
+	// row's note says what is always true now and what can still be chosen
+	// (internal/config's RetiredRowNote).
+	var unknown []string
+	for _, key := range keys {
+		if note := config.RetiredRowNote(key); note != "" {
+			a.note(note)
+			continue
+		}
+		unknown = append(unknown, key)
+	}
+	if len(unknown) > 0 {
+		a.note("config.json keys are not read: " + strings.Join(unknown, ", ") + "; anything set under them is ignored and defaults apply.")
+	}
 }

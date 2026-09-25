@@ -231,6 +231,14 @@ var commands = []command{
 	{name: "subharness", desc: "the programs you can run · type to filter · enter opens its card",
 		alias: []string{"sub"}},
 	{name: "subharness", args: "<name>", desc: "…straight to that one's card"},
+	// THE SKILLS THIS CONVERSATION CAN BE HANDED (skillpick.go). It sits
+	// directly under the subharness rows because it is the neighbouring
+	// question — those are the programs this conversation can run, and this is
+	// what it can be told to know — and on the picker's own terms: a space
+	// after it opens the shelf, enter on a row toggles that skill on or off,
+	// and a query that looks like a path offers the skill in that folder.
+	{name: "skill", desc: "what you can hand this conversation · a space picks more than one",
+		alias: []string{"skills"}},
 	// WHAT IT KNOWS ABOUT YOU, and the two ways to change it. They sit beside
 	// /harness because they answer the neighbouring question — one is what this
 	// conversation has learned to DO, these are what it has been told about YOU
@@ -404,18 +412,15 @@ var commands = []command{
 	// conversation and this one puts something INTO it — a log, a CSV, a PDF, on
 	// the same tray a picture rides and read rather than looked at (attach.go).
 	//
-	// IT BELONGS DIRECTLY UNDER /image, and it sits down here instead for the
-	// reason /permissions and /harness do, which is a fact about the LIST rather
-	// than about the command: [menuRows] shows eight rows at once, position in
-	// this table is a claim about frequency, and a row inserted beside /image
-	// would push /compact — which people reach for daily — into a scroll.
-	// standingpage_test.go pins exactly that. So it lands with the doors onto
-	// moving a file, which is the other errand it shares.
+	// ITS PLACE IN THIS LIST KEEPS /compact VISIBLE. [menuRows] shows eight
+	// rows at once, so position is a claim about frequency. /attach stands with
+	// the doors onto moving a file, an errand it shares with /files; putting it
+	// higher would push /compact, which people reach for daily, into a scroll.
+	// standingpage_test.go pins that ordering.
 	//
-	// It is NOT a second spelling of /image, and the two rows say so in their own
-	// words: a picture is looked at, a file is read. A picture handed to /attach
-	// still goes on as a picture, because somebody who learned one word should
-	// not have to find out this build has two.
+	// A PICTURE HANDED TO /attach STILL GOES ON AS A PICTURE. Its extension
+	// decides whether the model looks at it or reads a file, so one command
+	// covers both kinds of cargo.
 	//
 	// /upload is here because it is the word people bring from every chat program
 	// they have used. /file is deliberately NOT an alias: it shares four

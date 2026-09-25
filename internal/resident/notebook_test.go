@@ -328,7 +328,7 @@ func TestNotebookDigestRetrievesPathScopeAndEmptyNotebook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := graph.ActivateSkill(skill.Seq, "/home/test/.codeaf/skills/notebook-audit"); err != nil {
+	if err := graph.ActivateSkill(skill.Seq, "/home/test/.codeaf/skills/notebook-audit", ""); err != nil {
 		t.Fatal(err)
 	}
 	got := NotebookDigest(graph, "leaf", "inspect internal/resident/notebook.go", "fix cue lookup", 5)

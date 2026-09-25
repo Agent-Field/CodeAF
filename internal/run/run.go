@@ -69,6 +69,18 @@ type workerReturn struct {
 	err    error
 }
 
+// AdmissionGate is the machine's answer at each worker start and the shared
+// count of workers it has admitted. A nil gate admits every start. The gate
+// stays outside the store lock because its host reading may take time.
+type AdmissionGate interface {
+	// MayStart answers whether one more worker fits the current machine reading.
+	MayStart() bool
+	// Started counts a worker only after its factory has returned.
+	Started()
+	// Returned gives that worker's lane back on every return road.
+	Returned()
+}
+
 // Supervisor is the launch loop over one plan store. It claims ready leaves
 // as the task's own agent — the name its finish command answers to — and
 // records the process that holds the claim beside it, so a run is owned per
@@ -90,6 +102,11 @@ type Supervisor struct {
 	slots     int
 	limits    Limits
 	factory   WorkerFactory
+	gate      AdmissionGate
+	onHold    func([]string)
+	held      map[string]bool
+	passHeld  map[string]bool
+	blocked   bool
 
 	// after provides the run elapsed-limit signal. Production uses time.After;
 	// a test supplies a driven channel so the limit law needs no real sleep.
@@ -183,12 +200,20 @@ type Supervisor struct {
 
 // NewSupervisor builds a run over store. The workspace is the run's own
 // working copy, carried for the worker seat and the landing that follow this
-// loop; slots bounds how many workers run at once (a slot count below one
-// runs one at a time, which keeps a misconfigured run alive rather than
-// dead); limits bound the run's cost and, per task, its steps.
+// loop; slots bounds how many workers run at once; limits bound the run's
+// cost and, per task, its steps.
+//
+// A SLOT COUNT BELOW ONE IS NO BOUND AT ALL. That is the word the setting the
+// chat door reads gives it — `task.parallel` is 0 out of the box and 0 means no
+// limit (internal/config's DefaultTaskParallel) — and the door passes the
+// figure through as given. This constructor used to read the same 0 as 1 "to
+// keep a misconfigured run alive", which quietly ran every task a conversation
+// put on the harness one worker at a time while the setting beside it promised
+// no limit. Machine pressure is checked by the admission gate at each launch;
+// the number of workers is not itself the resource.
 func NewSupervisor(store *plandb.Store, workspace string, slots int, limits Limits, factory WorkerFactory) *Supervisor {
-	if slots < 1 {
-		slots = 1
+	if slots < 0 {
+		slots = 0
 	}
 	return &Supervisor{
 		Owner:     ownerName(),
@@ -198,7 +223,7 @@ func NewSupervisor(store *plandb.Store, workspace string, slots int, limits Limi
 		limits:    limits,
 		factory:   factory,
 		after:     time.After,
-		finished:  make(chan workerReturn, slots+1),
+		finished:  make(chan workerReturn, returnsBuffer(slots)),
 		liveMoved: make(chan struct{}, 1),
 		cancels:   make(map[string]context.CancelFunc),
 		cut:       make(map[string]bool),
@@ -258,6 +283,7 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 	s.wakes = make(map[string]int)
 	s.reported = make(map[string]map[string]bool)
 	s.lastReport = make(map[string]string)
+	defer s.reportHold(nil)
 	s.staleAfter = s.limits.StaleAfter
 	if s.staleAfter <= 0 {
 		s.staleAfter = defaultStaleAfter
@@ -333,6 +359,11 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 // pass takes one look at the store, launches what is ready, and answers the
 // run's outcome word when the run is over — an empty word means it is not.
 func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
+	// A HOLD IS A FACT ABOUT THIS PASS'S ELIGIBLE STARTS. Rebuild it even when
+	// there is no admission request, so cancelling a held task clears its word.
+	s.passHeld = make(map[string]bool)
+	s.blocked = false
+	defer func() { s.reportHold(s.passHeld) }()
 	if s.store.Task(rootID) == nil {
 		return OutcomeCannotRun
 	}
@@ -365,6 +396,14 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 		// Other in-flight workers may be remnants of an already completed tree;
 		// they must be drained rather than mistaken for the root return.
 		if root.Status != plandb.StatusDone || !s.hasUnlandedDone() {
+			// A REVIEW THE STORE WOULD NOT SEAT OUTRANKS A ROOT THAT READS DONE.
+			// A root worker can write its own done before its return seats the
+			// review, and a seating the store refused marks the run failed
+			// ([addReviewCheck]); read after this return, that mark was never
+			// read at all, and the run answered done with its review absent.
+			if s.rootFailed && root.Status == plandb.StatusDone {
+				return OutcomeIncomplete
+			}
 			return s.outcomeForRoot(root.Status)
 		}
 		// Preserve an ending written directly through the store while the run
@@ -386,7 +425,7 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 		}
 		return OutcomeIncomplete
 	}
-	if s.inFlight < s.slots && !s.dispatchedRoot {
+	if !s.full() && !s.dispatchedRoot && s.mayStart(rootID) {
 		// The root is the first worker of the run. It is claimed by the runtime
 		// in the store, so it needs no claim here — only a seat.
 		s.dispatchedRoot = true
@@ -394,11 +433,14 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 	}
 	if s.limitHit == "" {
 		for _, ready := range s.store.ReadySet().Runnable {
-			if s.inFlight >= s.slots {
+			if s.full() {
 				break
 			}
 			task := *ready
 			if task.ID == rootID || s.hasCancelledAncestor(task) {
+				continue
+			}
+			if !s.mayStart(task.ID) {
 				continue
 			}
 			// THE AGENT NAME IS THE TASK'S OWN ID, the store's naming trick:
@@ -432,7 +474,12 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 // step cap and, when wake is not empty, the resume clause a woken parent opens
 // with. The goroutine reports back on the channel and ends.
 func (s *Supervisor) launch(ctx context.Context, task plandb.Task, wake string) {
+	// The factory can panic before a worker exists. A machine lane belongs only
+	// to a worker that can return it, so take the lane after the factory succeeds.
 	worker := s.factory(task)
+	if s.gate != nil {
+		s.gate.Started()
+	}
 	taskCtx, cancel := context.WithCancel(ctx)
 	if strings.TrimSpace(wake) != "" {
 		taskCtx = WithWakeClause(taskCtx, wake)
@@ -457,6 +504,12 @@ func (s *Supervisor) launch(ctx context.Context, task plandb.Task, wake string) 
 	go func() {
 		defer s.workers.Done()
 		report, err := Report{}, error(nil)
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("worker panic on task %s: %v", task.ID, r)
+				s.finished <- workerReturn{task: task, report: report, err: err}
+			}
+		}()
 		if worker == nil {
 			err = errors.New("no worker for task " + task.ID)
 		} else {
@@ -486,34 +539,107 @@ func (s *Supervisor) launch(ctx context.Context, task plandb.Task, wake string) 
 //
 // THE DOLLARS ARE NOT DROPPED, for absorb's own reason: what a run counts as
 // spent includes every paid call whatever way its task ended, and a worker the
-// run outlived was paid for like any other. Every worker has returned by the
-// time the wait is over and each left exactly one return in the channel, which
-// is deep enough to hold them all, so they are read here without waiting and
-// only their spend is settled. It also leaves the channel empty, so a return
-// from this run can never be read as one of the next.
+// run outlived was paid for like any other. Every worker leaves exactly one
+// return in the channel on its way out, and inFlight is the count of those not
+// yet read, so exactly that many are read here and only their spend is
+// settled. It also leaves the channel empty, so a return from this run can
+// never be read as one of the next.
+//
+// THE RETURNS ARE READ BEFORE THE GOROUTINES ARE WAITED FOR. A run with no
+// slot bound can have more workers out than the channel has room for, and a
+// worker blocked on handing its return in never reaches Done; waiting first
+// would wait forever. Reading first is right on a bounded run too, where it
+// changes nothing but the order.
 func (s *Supervisor) drain() {
 	for id, cancel := range s.cancels {
 		cancel()
 		delete(s.cancels, id)
 	}
+	for s.inFlight > 0 {
+		ret := <-s.finished
+		s.inFlight--
+		s.returned()
+		// THE ENDING IS DROPPED, BUT THE FACT OF WHO IT CUT IS NOT: a worker
+		// that came home with the run's own ending as its error was taken down
+		// by that ending, and the run records it where it knows ([Summary.Cut]).
+		// The ending itself stays dropped, for the reason the comment above
+		// gives.
+		if errors.Is(ret.err, context.Canceled) {
+			s.cut[ret.task.ID] = true
+		}
+		s.settleSpend(ret)
+	}
 	s.workers.Wait()
-	for {
-		select {
-		case ret := <-s.finished:
-			s.inFlight--
-			// THE ENDING IS DROPPED, BUT THE FACT OF WHO IT CUT IS NOT: a
-			// worker that came home with the run's own ending as its error was
-			// taken down by that ending, and the run records it where it knows
-			// ([Summary.Cut]). The ending itself stays dropped, for the reason
-			// the comment above gives.
-			if errors.Is(ret.err, context.Canceled) {
-				s.cut[ret.task.ID] = true
+}
+
+// full says whether the run may launch nothing more right now: a bounded run
+// with every slot taken. An unbounded run is never full.
+func (s *Supervisor) full() bool {
+	return s.slots > 0 && s.inFlight >= s.slots
+}
+
+// mayStart checks admission without a store lock. Once a start is refused, all
+// later eligible starts this pass are held without another machine reading.
+func (s *Supervisor) mayStart(id string) bool {
+	if s.blocked {
+		s.passHeld[id] = true
+		return false
+	}
+	if s.gate == nil || s.gate.MayStart() {
+		return true
+	}
+	s.blocked = true
+	s.passHeld[id] = true
+	return false
+}
+
+// reportHold sends a fresh set only when membership changes; an empty set
+// removes stale rail and plan words when the held work disappears.
+func (s *Supervisor) reportHold(held map[string]bool) {
+	if len(s.held) == len(held) {
+		same := true
+		for id := range held {
+			if !s.held[id] {
+				same = false
+				break
 			}
-			s.settleSpend(ret)
-		default:
+		}
+		if same {
 			return
 		}
 	}
+	s.held = make(map[string]bool, len(held))
+	ids := make([]string, 0, len(held))
+	for id := range held {
+		s.held[id] = true
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	if s.onHold == nil {
+		return
+	}
+	s.onHold(ids)
+}
+
+// returned gives back exactly the lane a launched worker took. The caller
+// invokes it both for absorbed endings and for endings discarded by drain.
+func (s *Supervisor) returned() {
+	if s.gate != nil {
+		s.gate.Returned()
+	}
+}
+
+// returnsBuffer sizes the channel workers hand their returns through. A
+// bounded run can have at most slots workers out, so slots+1 holds every
+// return without a sender ever waiting; an unbounded run has no such figure,
+// so it gets a modest depth and the loop's habit of reading the channel in
+// every select — and [drain]'s order — is what keeps a sender from waiting
+// long.
+func returnsBuffer(slots int) int {
+	if slots < 1 {
+		return 16
+	}
+	return slots + 1
 }
 
 // bankLive is the one thing a worker's goroutine does to the run's account: it
@@ -557,11 +683,34 @@ func (s *Supervisor) countLiveSpend() {
 	}
 	s.liveMu.Unlock()
 	s.publishSpend()
-	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD && s.limitHit == "" {
-		s.limitHit = LimitCost
-		for _, cancel := range s.cancels {
-			cancel()
-		}
+	s.reachCostLimit()
+}
+
+// reachCostLimit is THE ONE PLACE THE DOLLAR LIMIT IS REACHED, whichever road
+// carried the dollar that reached it: a live reading while the work goes
+// ([countLiveSpend]) or a returning worker's receipt ([settleSpend]). Either
+// way the limit is marked and every worker still in flight has its context
+// ended, and the loop goes on absorbing their returns until the pass that finds
+// nothing in flight answers the limit.
+//
+// IT WAS TWO PLACES, AND ONLY ONE OF THEM CANCELLED. A receipt that carried the
+// spend past the limit marked it and ended nothing; the live road's guard then
+// saw the limit already marked and skipped its own cancel, so the peers of the
+// worker that crossed the line worked on and spent on a run whose limit had
+// been reached. Measured: peers left running in ten runs of twenty, two dollars
+// spent against a one-dollar limit. The limit a person set ends the work in
+// flight, not the work that happens to come home next.
+//
+// THE FIRST LIMIT REACHED NAMES THE ENDING. A dollar that crosses the line
+// after the time limit already ended the run does not rename that ending, and
+// the workers are already ended by it.
+func (s *Supervisor) reachCostLimit() {
+	if s.limits.CostUSD <= 0 || s.spent < s.limits.CostUSD || s.limitHit != "" {
+		return
+	}
+	s.limitHit = LimitCost
+	for _, cancel := range s.cancels {
+		cancel()
 	}
 }
 
@@ -576,12 +725,9 @@ func (s *Supervisor) settleSpend(ret workerReturn) {
 		s.spent += ret.report.USD - counted
 	}
 	s.forgetLive(ret.task.ID)
-	// THE LIMIT THAT ENDED THE RUN IS THE FIRST ONE REACHED. A return that carries
-	// the spend past the dollar limit after the time limit already ended the run
-	// does not rename the ending.
-	if s.limits.CostUSD > 0 && s.spent >= s.limits.CostUSD && s.limitHit == "" {
-		s.limitHit = LimitCost
-	}
+	// A RETURN THAT REACHES THE LIMIT ENDS ITS PEERS, the same as a live reading
+	// that reaches it ([reachCostLimit] says why this is one place and not two).
+	s.reachCostLimit()
 	s.publishSpend()
 }
 
@@ -623,6 +769,7 @@ func (s *Supervisor) absorbQueued() {
 // that stays open would stall the whole run: nothing else can make it
 // terminal, and the run would wait on it forever.
 func (s *Supervisor) absorb(ret workerReturn) {
+	s.returned()
 	// A RETURN FOR A TASK THE STORE ALREADY ENDED is written as nothing. The
 	// ending the store carries — a cancellation that landed while the worker
 	// ran, which the same write cleared the claim and cascaded down — is the
@@ -997,8 +1144,11 @@ func (s *Supervisor) launchWakes(ctx context.Context, rootID string) {
 		if !needsWake(tasks, &task, s.cancels, s.wakes, s.reported) {
 			continue
 		}
-		if s.inFlight >= s.slots {
+		if s.full() {
 			return
+		}
+		if !s.mayStart(task.ID) {
+			continue
 		}
 		// THE WOKEN-PARENT LAW: every non-root launch holds the task under its
 		// own agent id, so wait and done work identically on a first turn and a wake.
@@ -1050,8 +1200,30 @@ func (s *Supervisor) launchWaits(ctx context.Context, rootID string) {
 		if len(moved) == 0 {
 			continue
 		}
-		if s.inFlight >= s.slots {
+		// THE WAIT IS OVER ON LANDINGS, NOT ON ROWS ([landed]). waitMoved reads
+		// the store, and a child's worker writes its own done before it comes
+		// home; waking the parent on that row lets the parent write its ending
+		// before the child's return seats the child's review beneath it, and
+		// the store then refuses the parent over a check that has not run. On a
+		// loaded box that order came up often enough to fail the run
+		// (review_order_test.go's parked root). The parent stays parked until
+		// the return is absorbed; the next pass reads the review as one more
+		// open wait and wakes it when that lands.
+		unlanded := false
+		for _, settled := range moved {
+			if !s.landed(settled) {
+				unlanded = true
+				break
+			}
+		}
+		if unlanded {
+			continue
+		}
+		if s.full() {
 			return
+		}
+		if !s.mayStart(task.ID) {
+			continue
 		}
 		// A READY LEAF IS CLAIMED, the same claim every dispatch makes, so its
 		// finish command still answers the ownership check. A composite is not
@@ -1519,14 +1691,18 @@ type Spec struct {
 	// assignment the root worker reads.
 	Title string
 	Brief string
-	// Slots bounds how many workers run at once, and Limits bound the run's
-	// cost and its per-task steps. Both pass through to the supervisor as
-	// given.
+	// Slots bounds how many workers run at once, and 0 is no bound; Limits
+	// bound the run's cost and its per-task steps. Both pass through to the
+	// supervisor as given.
 	Slots  int
 	Limits Limits
 	// Factory makes the worker for every task the run dispatches. Start holds
 	// no seat of its own: the root's worker comes from here like the rest.
 	Factory WorkerFactory
+	// Gate asks the machine before every worker, including the root and wakes.
+	Gate AdmissionGate
+	// OnHold announces the ids refused on a pass when their set changes.
+	OnHold func([]string)
 	// OnSpend observes the reconciled cumulative run spend whenever it rises.
 	OnSpend func(float64)
 }
@@ -1558,6 +1734,44 @@ type Summary struct {
 	Seconds float64
 }
 
+// endRootOn writes the run's own ending on its root task when the run ended on
+// something of its own that is not the tree's completion: a limit its person
+// set, its own worker failing, a review it could not seat, or the caller's
+// deadline. The store's verb is [plandb.Store.EndRoot], which fails the root and
+// cancels whatever is still open under it, and a root the run already ended —
+// completed, or stopped by a person — is left exactly as it ended.
+//
+// EVERY ENDING WRITES THE ROOT'S ENDING, OR THE NEXT REQUEST ADOPTS IT. Only a
+// person's stop and the tree's own completion used to write one, so a run that
+// hit its dollar limit, whose root worker failed or whose caller's timeout ran
+// out stayed `running` in its store, and the next hand-off over the same store
+// found a live run and took it for its own.
+//
+// A CONTEXT SOMEBODY CANCELLED IS THE ONE ENDING LEFT OPEN, ON PURPOSE. It is a
+// conversation closing, a process told to stop, or a person's stop that has
+// already written its own ending before it cut the context — and the first two
+// are not the run's ending at all: nothing decided anything about the work, and
+// every step it took is in the store. A store left open that way is work nothing
+// is driving, which is what `interrupted` means, and the doors that open a store
+// set such a run aside as interrupted rather than adopting it
+// ([session.OpenRunPlan]). A DEADLINE IS NOT THAT: it is a time bound the caller
+// set, and it ends the run the way the run's own time limit does.
+func endRootOn(ctx context.Context, store *plandb.Store, outcome Outcome) {
+	if outcome == OutcomeDone || outcome == OutcomeCannotRun {
+		return
+	}
+	reason := string(outcome)
+	if outcome != OutcomeLimit {
+		switch {
+		case errors.Is(ctx.Err(), context.DeadlineExceeded):
+			reason = string(OutcomeLimit)
+		case ctx.Err() != nil:
+			return
+		}
+	}
+	_ = store.EndRoot(reason)
+}
+
 // Start is the one door a caller runs a plan through: it puts the run's
 // words on the store's root task, runs the supervisor over the store to one
 // outcome word, and answers what came of it. The context is the run's wall —
@@ -1583,14 +1797,30 @@ func Start(ctx context.Context, spec Spec) (Outcome, Summary) {
 	// root opened bare takes the brief here — the store's one write onto a
 	// running task's description — and a resume of the same run finds the
 	// words already there and writes nothing.
-	if root := store.Task(store.RootID()); root != nil && strings.TrimSpace(root.Description) == "" && strings.TrimSpace(spec.Brief) != "" {
-		if _, err := store.Amend(root.ID, spec.Brief); err != nil {
+	//
+	// A ROOT THAT ALREADY CARRIES A DIFFERENT BRIEF IS ANOTHER RUN, AND IT IS
+	// NOT RUN. This door used to run whatever root it was handed, so a store an
+	// earlier run had left open ran that run's brief under the new request's
+	// name: the new words were dropped and the old ones spent money a second
+	// time, and nobody was asked. A door that means to carry an earlier run on
+	// hands no brief of its own, and one that hands a brief is asking for that
+	// brief and nothing else.
+	if root := store.Task(store.RootID()); root != nil && strings.TrimSpace(spec.Brief) != "" {
+		switch described := strings.TrimSpace(root.Description); {
+		case described == "":
+			if _, err := store.Amend(root.ID, spec.Brief); err != nil {
+				return OutcomeCannotRun, Summary{Outcome: OutcomeCannotRun}
+			}
+		case described != strings.TrimSpace(spec.Brief):
 			return OutcomeCannotRun, Summary{Outcome: OutcomeCannotRun}
 		}
 	}
 	supervisor := NewSupervisor(store, spec.Workspace, spec.Slots, spec.Limits, spec.Factory)
 	supervisor.onSpend = spec.OnSpend
+	supervisor.gate = spec.Gate
+	supervisor.onHold = spec.OnHold
 	outcome := supervisor.Run(ctx)
+	endRootOn(ctx, store, outcome)
 	result := supervisor.rootResult
 	// THE TERMINAL ROOT'S STORED RESULT IS DELIVERABLE even when its worker return lands after the supervisor stops absorbing returns.
 	if root := store.Task(store.RootID()); strings.TrimSpace(result) == "" && root != nil && root.Status == plandb.StatusDone {

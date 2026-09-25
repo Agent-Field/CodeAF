@@ -118,6 +118,11 @@ type tasksPlace struct {
 	// ([app.taskPlanNoteSend]); the row's own keys are read over an EMPTY box, so
 	// a note that starts with `p` or `x` is a letter the moment it has one.
 	planNote editor
+	// planSending is a note on its way to the store: set by the `enter` that sent
+	// it and cleared by the store's answer ([app.taskPlanNoteSend]). While it is
+	// set, `enter` sends nothing, because the box still holds the words until the
+	// answer empties it, and a second press sent the same note twice.
+	planSending bool
 	// planStick is whether the page is pinned to its live edge — the bottom of
 	// the trajectory, where the newest step arrives. It is the SAME mechanism the
 	// room follows its own live edge with ([app.roomOffsetFor] resolves
@@ -492,6 +497,10 @@ func (a *app) taskSheetMine() tasksMine {
 		if node := a.taskSheetNodeFor(&entry); node != nil {
 			status := a.taskStatus(node)
 			row.live = &status
+			// AND WHICH STORE TASK THE ROW IS, when the node is one the run's door
+			// published. It is read off the node and never off the entry, because
+			// the node is the half that was told ([taskNode.planTask]).
+			row.planTask = node.planTask
 		}
 		mine.rows = append(mine.rows, row)
 	}

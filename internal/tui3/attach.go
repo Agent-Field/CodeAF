@@ -618,8 +618,9 @@ func (a *app) chipStrip(width int) string {
 	// something every next message carries besides its words — and this is the
 	// one place on the surface those are kept.
 	places := a.placeTrayCells()
+	skills := a.skillTrayCells()
 	labels := chipLabels(a.chips, a.pal)
-	if len(cells) == 0 && len(places) == 0 && len(labels) == 0 {
+	if len(cells) == 0 && len(places) == 0 && len(skills) == 0 && len(labels) == 0 {
 		return ""
 	}
 	painted := make([]string, 0, len(cells)+len(places)+len(labels))
@@ -640,6 +641,16 @@ func (a *app) chipStrip(width int) string {
 		}
 		// The hint after it says what to do next; it is a sentence and comes off
 		// nothing, so it does not light.
+		painted = append(painted, a.pal.dim(cell))
+	}
+	// AND THE ATTACHED SKILLS RIDE THE SAME ROW, between the harness and the
+	// folders (skillpick.go), dim for the folders own reason: they are a fact
+	// about the conversation rather than a thing being said.
+	for _, cell := range skills {
+		if a.hoveringChip(traySkillChip) {
+			painted = append(painted, a.pal.cursor(a.pal.dim(cell), 0))
+			continue
+		}
 		painted = append(painted, a.pal.dim(cell))
 	}
 	for at, cell := range places {
@@ -693,6 +704,11 @@ func (a *app) chipPress(x, y int) (tea.Cmd, bool) {
 		a.dropHarnessChip()
 		return nil, true
 	}
+	// AND THE SKILL CELL TAKES EVERY ATTACHED SKILL OFF AT ONCE — the one
+	// gesture the chip promises, and the manual page names (skillpick.go).
+	if at == traySkillChip {
+		return a.dropSkillChip(), true
+	}
 	// AND A FOLDER'S CELL TAKES THE FOLDER OFF THE CONVERSATION — not off the
 	// message, which is what every other cargo cell up here does. It is the same
 	// gesture over a longer-lived object, and the work goes off the loop because
@@ -707,6 +723,11 @@ func (a *app) chipPress(x, y int) (tea.Cmd, bool) {
 // trayHarnessChip is what [app.chipTrayTarget] answers for the picked harness's
 // own cell, which is not one of [app.chips] and has a different thing done to it.
 const trayHarnessChip = -1
+
+// traySkillChip is what [app.chipTrayTarget] answers for the attached-skills
+// cell (skillpick.go), numbered on the folders own side of zero for their
+// reason: what a press does to it is different in kind from dropping a picture.
+const traySkillChip = -2
 
 // trayPlaceChip is what [app.chipTrayTarget] answers for the FIRST folder this
 // conversation is about, and the ones after it count DOWNWARD from here —
@@ -734,12 +755,13 @@ const trayPlaceChip = -3
 func (a *app) chipTrayTarget(x, y int) (int, bool) {
 	cells := a.harnessTrayCells()
 	places := a.placeTrayCells()
+	skills := a.skillTrayCells()
 	// AND A PLACE TAKING THE FRAME IS NOT THIS ROW AT ALL. Home draws a tray of
 	// its own over its own box (placebodies.go's [app.placeTray]) and resolves
 	// every press against its own two maps (homemouse.go); the geometry below is
 	// the CONVERSATION's, so a press answered here while a place is up would be a
 	// click on a chip the frame never drew.
-	if (len(a.chips) == 0 && len(cells) == 0 && len(places) == 0) ||
+	if (len(a.chips) == 0 && len(cells) == 0 && len(skills) == 0 && len(places) == 0) ||
 		a.at(pageSettings) || a.at(pageHome) || a.pick.open {
 		return 0, false
 	}
@@ -775,6 +797,14 @@ func (a *app) chipTrayTarget(x, y int) (int, bool) {
 			return trayHarnessChip, true
 		}
 		column -= harnessTrayWidth(cells)
+	}
+	// AND THE SKILLS ARE ASKED FOR NEXT BECAUSE THEY ARE DRAWN NEXT
+	// (skillpick.go), off the very cells the row was built from.
+	if len(skills) > 0 {
+		if chipAt(skills, column) == 0 {
+			return traySkillChip, true
+		}
+		column -= harnessTrayWidth(skills)
 	}
 	// AND THE FOLDERS ARE ASKED FOR NEXT BECAUSE THEY ARE DRAWN NEXT
 	// (folderchip.go), with the offset counted off the very cells the row was

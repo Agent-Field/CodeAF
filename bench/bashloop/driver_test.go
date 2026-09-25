@@ -41,7 +41,7 @@ func TestTheDryRunPrintsEveryInvocationOfBothArms(t *testing.T) {
 	// Every invocation carries what the brief says it must: arm, cell,
 	// replicate, env, brief — and the model the grid is pinned to.
 	for _, part := range []string{"arm=A", "arm=B", "cell=c1", "cell=c6", "replicate=3",
-		"env: CODEAF_TASK_BELT=(unset)", "env: CODEAF_TASK_BELT=bash", "brief:", pinnedModel} {
+		"env: CODEAF_TASK_BELT=node", "env: CODEAF_TASK_BELT=bash", "brief:", pinnedModel} {
 		if !strings.Contains(text, part) {
 			t.Fatalf("the dry run never printed %q", part)
 		}
@@ -75,7 +75,7 @@ func TestTheArmsDifferOnlyInTheBeltEnv(t *testing.T) {
 			if stripBelt(stripPaths(a)) != stripBelt(stripPaths(b)) {
 				t.Fatalf("%s r%d: the arms differ in more than the belt env:\nA: %s\nB: %s", c.id, r, a, b)
 			}
-			if !strings.Contains(a, "CODEAF_TASK_BELT=(unset)") {
+			if !strings.Contains(a, "CODEAF_TASK_BELT=node") {
 				t.Fatalf("arm A's %s r%d does not leave the belt unset", c.id, r)
 			}
 			if !strings.Contains(b, "CODEAF_TASK_BELT=bash") {
@@ -120,7 +120,7 @@ func TestTheDoDoorDryRunPrintsItsInvocations(t *testing.T) {
 			if stripBelt(stripPaths(stripInvocation(stripPaths(a)))) != stripBelt(stripPaths(stripInvocation(stripPaths(b)))) {
 				t.Fatalf("cell %s r%d: the do-door arms differ in more than the belt env:\nA: %s\nB: %s", c.id, r, a, b)
 			}
-			if !strings.Contains(a, "CODEAF_TASK_BELT=(unset)") || !strings.Contains(b, "CODEAF_TASK_BELT=bash") {
+			if !strings.Contains(a, "CODEAF_TASK_BELT=node") || !strings.Contains(b, "CODEAF_TASK_BELT=bash") {
 				t.Fatalf("cell %s r%d: the do-door arms' belt env is wrong", c.id, r)
 			}
 		}

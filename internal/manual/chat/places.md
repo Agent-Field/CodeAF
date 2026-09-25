@@ -466,8 +466,9 @@ naming what arrives there.
 
 Its own keys are in the **Home** page: `↑↓` walk a panel, `←→` cross columns, a digit
 answers the question row drawing its answers, and `enter` opens a row. `tab` is the way to the
-next place, and the errand pane is taken into with `→` rather than `tab`. Home has no
-`alt+<letter>` keys — `alt+g` and `alt+q` are unbound there.
+next place, and the errand pane is taken into with `→` rather than `tab`. Home uses
+`alt+p` for the next conversation's project, `alt+e` for effort, `alt+a` for
+approvals and `alt+k` for chats; `alt+g` and `alt+q` are unbound there.
 
 Clicking Home’s `since you left` heading opens memory. Questions appear as amber `?`
 bullets on the conversation or task, with no separate `needs you` heading.
@@ -890,11 +891,6 @@ walking the conversation's task roster it still widens that roster. Project sele
 on home and in the task composer now uses `alt+p` (`opt+p`), and clicking home's
 project path takes the same step through the same list. The selected project remains
 set when you start a conversation and return home.
-
-## Where is the model filter in Settings
-
-When choosing a model for a setting, type to filter. The filter text appears above
-the model list, and Enter applies the selected model.
 
 ## Where is the model filter in Settings
 

@@ -178,6 +178,19 @@ func (r *replica) referPlace(ref session.PlaceRef) {
 	r.facts.Places = places
 }
 
+// setSkills writes the attachment a skill door just answered, so the chip this
+// window draws next is the set the engine now holds, before the push that
+// states it to every other window arrives. Absence is stored as absence.
+func (r *replica) setSkills(names []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(names) == 0 {
+		r.facts.Skills = nil
+		return
+	}
+	r.facts.Skills = append([]string(nil), names...)
+}
+
 // removePlace drops a row by the path THE CALLER NAMED, which may not be the
 // path the engine holds: a person removing `~/code/repo/internal` is removing
 // the repository the engine snapped that to. A miss here costs nothing and is

@@ -516,6 +516,7 @@ func (a *app) rewindLand(point session.RewindPoint, word string, stash []rune, c
 // replaced points at somebody else's row.
 func (a *app) rebuildTranscript() {
 	a.entries = nil
+	a.recordRows = 0
 	a.turn = 0
 	abandonLive(a.entries, &a.live)
 	abandonLive(a.entries, &a.think)

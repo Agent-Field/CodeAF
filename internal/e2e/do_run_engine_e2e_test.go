@@ -1,8 +1,8 @@
 //go:build e2e
 
 // do_run_engine_e2e_test.go drives `codeaf do` ON THE RUN ENGINE end to end:
-// the built binary, a real provider, the bash belt, and a run that lands a file
-// on a branch.
+// the built binary, a real provider, the bash belt, and a run that writes a file
+// in the directory it was handed, in place and uncommitted.
 //
 // where the column of this lane comes from
 //
@@ -12,14 +12,14 @@
 // environment ([session.BashBeltAsked]), and reads back the one machine object
 // `do --json` promises ([resultEnvelope]). That is the only way to prove the
 // run road is reachable by a person at all — that the switch survives the door,
-// that the run engine dispatches the belt worker, and that the landing commits
-// onto the branch the envelope names.
+// that the run engine dispatches the belt worker, and that the run keeps the
+// door's contract with the directory: edited in place, nothing committed.
 //
-// THE WHOLE RUN IS ONE FILE AND ONE BRANCH. A throwaway repository is made with
-// one committed file; the run works in it in place and lands `HELLO.md` on its
-// branch; and the lane reads that file back with `git show <branch>:HELLO.md`
-// rather than off the working tree, because the branch is the one thing the
-// envelope promises and the working tree proves nothing about it.
+// THE WHOLE RUN IS ONE FILE AND NO COMMIT. A throwaway repository is made with
+// one committed file; the run works in it in place and writes `HELLO.md`; the
+// lane reads that file off the working tree, finds it among the envelope's
+// files, and checks the branch still stands on the commit it stood on, because
+// `--dir` promises the directory "edited in place" and never a commit.
 //
 // THE SEATS ARE THE PROFILE'S, AND THE PROFILE IS WHERE THEY ARE PINNED. The
 // run engine seats each task from the PROFILE's tier rows — [run.CrewFactory]
@@ -56,6 +56,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -65,8 +66,8 @@ import (
 )
 
 // doBrief is the one errand this lane runs: write a file with one known word in
-// it and stop. The word is the needle `git show <branch>:HELLO.md` looks for,
-// and HELLO.md is the path the landing note names.
+// it and stop. The word is the needle the lane reads HELLO.md for, and HELLO.md
+// is the path the envelope's files name.
 const doBrief = "write HELLO.md containing the word hello, then stop"
 
 // doWall is the wall this lane gives the run, and it is the run's own clock. It
@@ -95,8 +96,8 @@ type doEnvelope struct {
 }
 
 // TestDoOnTheRunEngine is the run road's completion lane: a real provider
-// finishes a trivial errand, the run lands the file it wrote, and the envelope
-// names the branch the landing answered.
+// finishes a trivial errand, the file it wrote is in the working tree and among
+// the envelope's files, and nothing was committed.
 func TestDoOnTheRunEngine(t *testing.T) {
 	key := liveKey(t)
 	product := binary(t)
@@ -112,9 +113,13 @@ func TestDoOnTheRunEngine(t *testing.T) {
 		config.KeyTierLowModel:        e2eModel,
 		config.KeyTierReflexModel:     e2eModel,
 	})
-	// The working copy is a real repository with one committed file: the
-	// landing needs a branch to commit onto and the envelope a branch to name.
+	// The working copy is a real repository with one committed file, so a
+	// commit the run should not have made would move its HEAD.
 	workspace := newWorkspace(t, "do-run-engine", false)
+	headBefore, err := exec.Command("git", "-C", workspace, "rev-parse", "HEAD").CombinedOutput()
+	if err != nil {
+		t.Fatalf("git rev-parse HEAD: %v\n%s", err, headBefore)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), doRunEngineLead)
 	defer cancel()
@@ -153,41 +158,35 @@ func TestDoOnTheRunEngine(t *testing.T) {
 		t.Fatalf("the envelope carries no deliverable, so nothing answered the brief:\n%s",
 			stdout.String())
 	}
-	branch, named := landedBranch(envelope.Deliverable)
-	if !named {
-		t.Fatalf("the deliverable never named the branch the run landed on:\n%s",
-			envelope.Deliverable)
-	}
-	// THE BRANCH IS THE ANSWER, NOT THE TREE. The file is read back through
-	// git at the branch the envelope named, so a run that wrote HELLO.md to the
-	// working copy but landed nothing would fail here rather than pass.
-	out, err := exec.Command("git", "-C", workspace, "show", branch+":HELLO.md").CombinedOutput()
+	// THE DIRECTORY IS THE ANSWER, EDITED IN PLACE. The file is read off the
+	// working tree the run was handed, it is among the files the envelope
+	// names, and the branch stands where it stood: a run that committed on the
+	// person's branch fails here.
+	out, err := os.ReadFile(filepath.Join(workspace, "HELLO.md"))
 	if err != nil {
-		t.Fatalf("git show %s:HELLO.md: %v\n%s", branch, err, out)
+		t.Fatalf("the run left no HELLO.md in the directory it was handed: %v", err)
 	}
 	if !strings.Contains(string(out), "hello") {
-		t.Fatalf("HELLO.md on %s does not contain the word hello:\n%s", branch, out)
+		t.Fatalf("HELLO.md does not contain the word hello:\n%s", out)
 	}
-	t.Logf("landed HELLO.md on %s:\n%s", branch, out)
-}
-
-// landedBranch reads the branch out of the landing note the deliverable ends
-// with — the one sentence [run.LandingNote] writes, "landed on <branch>: N
-// files". The note is the only place a caller learns the branch, so the parse
-// is written against its exact words rather than against anything looser.
-func landedBranch(deliverable string) (string, bool) {
-	const marker = "landed on "
-	at := strings.LastIndex(deliverable, marker)
-	if at < 0 {
-		return "", false
+	named := false
+	for _, file := range envelope.Files {
+		if filepath.Base(file) == "HELLO.md" {
+			named = true
+		}
 	}
-	rest := deliverable[at+len(marker):]
-	colon := strings.Index(rest, ":")
-	if colon <= 0 {
-		return "", false
+	if !named {
+		t.Fatalf("the envelope's files %v do not name HELLO.md", envelope.Files)
 	}
-	branch := strings.TrimSpace(rest[:colon])
-	return branch, branch != ""
+	headAfter, err := exec.Command("git", "-C", workspace, "rev-parse", "HEAD").CombinedOutput()
+	if err != nil {
+		t.Fatalf("git rev-parse HEAD: %v\n%s", err, headAfter)
+	}
+	if strings.TrimSpace(string(headAfter)) != strings.TrimSpace(string(headBefore)) {
+		t.Fatalf("the run committed on the person's branch: HEAD moved %s -> %s",
+			strings.TrimSpace(string(headBefore)), strings.TrimSpace(string(headAfter)))
+	}
+	t.Logf("HELLO.md left in place:\n%s", out)
 }
 
 // doRunEngineEnv is the environment the run rides: the throwaway home, the
