@@ -145,6 +145,7 @@ type Registry struct {
 	allowExternal     bool
 	confineWrites     bool
 	hardConfineShell  bool
+	shellProcesses    *shellProcessRegistry
 	question          *question.Service
 	questionEnabled   bool
 	questionRejects   *questionRejectionState
@@ -157,6 +158,14 @@ type Registry struct {
 type questionRejectionState struct {
 	mu     sync.Mutex
 	counts map[string]int
+}
+
+// All shallow workspace views of a run's registry share its shell groups, so
+// closing the run reaches commands started through any of those views.
+type shellProcessRegistry struct {
+	mu     sync.Mutex
+	groups map[int]struct{}
+	closed bool
 }
 
 type instructionRegistry struct {
@@ -280,7 +289,8 @@ func NewWithOptions(workDir string, options RegistryOptions) *Registry {
 		confineWrites:    options.ConfineWrites,
 		hardConfineShell: options.HardConfineShellPaths,
 		question:         questionService,
-		questionEnabled:  clientIdentity == "app" || clientIdentity == "cli" || clientIdentity == "desktop" || env.Enabled("SENIOR_DEV_ENABLE_QUESTION_TOOL"),
+		shellProcesses:   &shellProcessRegistry{groups: make(map[int]struct{})},
+		questionEnabled:  clientIdentity != "hosted" && (clientIdentity == "app" || clientIdentity == "cli" || clientIdentity == "desktop" || env.Enabled("SENIOR_DEV_ENABLE_QUESTION_TOOL")),
 		questionRejects:  &questionRejectionState{counts: map[string]int{}},
 		submitFreeze:     options.SubmitFreeze,
 		formatters:       newFormatterServices(),

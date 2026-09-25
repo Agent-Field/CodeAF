@@ -178,9 +178,8 @@ there is not part of the task.
 
 ## What senior-dev cannot do — it cannot ask you anything, wait on another task, be retried or carried on, no step cap, no Windows
 
-**It cannot ask you anything.** Nobody is at its keyboard: a question its model tries to
-ask is turned down inside the program, and after three it is told questions are not
-available. Put everything it would stop and ask into the brief.
+**It cannot ask you anything.** Nobody is at its keyboard, so the `question` tool is
+absent from the model's tools. Put everything it would stop and ask into the brief.
 
 **It cannot wait on another task.** A task handed to senior-dev starts the moment it is
 approved, so a proposal whose `depends_on` names work that has not finished is refused
@@ -239,8 +238,12 @@ and codeaf enforces both from outside whatever it does. On a service that report
 prices the dollar ceiling cannot hold, and a time limit is the only bound (see the section
 on services that report no prices).
 
-**It reaches a model only through codeaf.** It holds no key and reads none; a
-`senior-dev.json` in your folder that sets `apiKey`, `baseURL` or `providerRouting` is
+**It reaches a model only through codeaf.** Its engine receives a short-lived token for
+codeaf's loopback model API, but its model-written shell commands inherit neither that
+token nor provider-key environment variables codeaf recognizes. Those commands can
+still read files their process can read, including a profile stored on disk. A
+`senior-dev.json` in your folder that sets
+`apiKey`, `baseURL` or `providerRouting` is
 refused by name, because codeaf decides which model service serves each call.
 
 **It writes only inside its folder.** Its file tools (`write`, `edit`, `apply_patch`)
@@ -256,6 +259,26 @@ not a git repository).
 **On Windows it is absent**: there is no `/senior-dev` and no `codeaf senior-dev`. Its
 engine needs a Unix shell, process groups and file locks, so Windows builds leave it out
 rather than carry something that fails every time.
+
+## Can senior-dev use the internet — webfetch, websearch, models.dev, network off
+
+Yes. Its `webfetch` tool can fetch URLs by default. Web search through Exa and Parallel
+is opt-in: set `SENIOR_DEV_ENABLE_EXA=1` or `SENIOR_DEV_ENABLE_PARALLEL=1` before
+starting codeaf. `SENIOR_DEV_NET=off` withholds `webfetch` and `websearch` for that run.
+Senior-dev also requests model sizes and capabilities from models.dev when its cached
+catalog is absent or stale. If that site cannot be reached, the run uses conservative
+model limits and still calls models through codeaf's loopback API.
+
+## What happens to background commands after senior-dev ends — stop and detached processes
+
+codeaf ends background processes that senior-dev's shell started when the run ends or
+you stop it. On macOS, a process that detaches itself may outlive the run.
+
+## How does senior-dev run Python tests — pytest, unittest, missing pytest
+
+For a Python project with test files, senior-dev uses `python3 -m pytest` when pytest is
+installed or the project declares it. Otherwise it runs `python3 -m unittest discover`,
+so a project using Python's standard library tests does not fail for lack of pytest.
 
 ## Can I run senior-dev in a folder that is not a git repo — a plain folder, no git, --in-place, operation not permitted, .Trash
 
@@ -513,9 +536,10 @@ with kimi-k2.6", or several: "with kimi-k2.6 and deepseek-v4-pro" — and senior
 with exactly those, routing among them call by call when there are several; the card and
 the task's first line name them. A name that fits more than one model is put to you to
 settle. A model none of your connected services can serve is refused before the card, by
-name, rather than swapped for another. A model senior-dev's model catalog does not know how to size cannot be used: the
+name, rather than swapped for another. When a catalog was loaded, a model it cannot size cannot be used: the
 run ends before its first call with `senior-dev cannot work with <model>: …`, and nothing
-is spent. The models are fixed when the run starts; changing the crew later does not move
+is spent. If models.dev is unavailable and there is no cache, conservative limits let
+the run start. The models are fixed when the run starts; changing the crew later does not move
 a run already working. `/senior-dev` typed with a brief uses your crew.
 
 **Otherwise, from the chat it uses your crew.** codeaf hands senior-dev two of the conversation's

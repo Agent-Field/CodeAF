@@ -9,6 +9,8 @@ package delegate
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -101,7 +103,18 @@ var ErrNoTerminal = errors.New("the program exited without a terminal record")
 // reads `context.Canceled` off a worker knows its own ending cut the task.
 func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 	cmd := exec.Command(launch.Bin, launch.Args...)
-	cmd.Env = launch.Env
+	// A run marker survives a plain background job and a setsid escape, so a
+	// Linux host can find both after the engine exits or crashes.
+	markerBytes := make([]byte, 16)
+	if _, err := rand.Read(markerBytes); err != nil {
+		return Result{ExitCode: -1}, fmt.Errorf("mark %s's descendants: %w", launch.Name, err)
+	}
+	marker := hex.EncodeToString(markerBytes)
+	baseEnv := launch.Env
+	if baseEnv == nil {
+		baseEnv = os.Environ()
+	}
+	cmd.Env = append(append([]string(nil), baseEnv...), processgroup.RunMarkerEnv+"="+marker)
 	cmd.Dir = launch.Dir
 	cmd.Stdin = nil
 	processgroup.Configure(cmd)
@@ -163,6 +176,10 @@ func Run(ctx context.Context, launch Launch, sink Sink) (Result, error) {
 		}
 	}
 	result.Elapsed = time.Since(started)
+	// The engine's own group does not contain bash commands, which each start
+	// their own group, or a command that called setsid. Clean those descendants
+	// before draining stdout or releasing the folder, including on a crash.
+	processgroup.CleanupRun(marker)
 	if waitErr == nil {
 		result.ExitCode = 0
 	} else {

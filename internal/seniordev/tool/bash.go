@@ -124,6 +124,10 @@ func (r *Registry) executeBash(ctx context.Context, call steploop.ToolCall) (ste
 	command.Dir = cwd
 	command.Env = shellEnvironment(call.SessionID)
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// A plain `sleep 300 &` leaves stdout open after bash exits. Without a
+	// pipe-close bound, exec.Wait waits for that background job and turns a
+	// successful shell command into a timeout before the run can clean it up.
+	command.WaitDelay = 100 * time.Millisecond
 	var output bashOutput
 	command.Stdout = &output
 	command.Stderr = &output
@@ -136,6 +140,8 @@ func (r *Registry) executeBash(ctx context.Context, call steploop.ToolCall) (ste
 	if err := command.Start(); err != nil {
 		return steploop.ToolResult{}, fmt.Errorf("start shell command: %w", err)
 	}
+	r.registerShellGroup(command.Process.Pid)
+	defer r.pruneShellGroup(command.Process.Pid)
 
 	done := make(chan error, 1)
 	go func() {
@@ -155,6 +161,11 @@ func (r *Registry) executeBash(ctx context.Context, call steploop.ToolCall) (ste
 		killProcessGroup(command.Process.Pid)
 		<-done
 		return steploop.ToolResult{}, ctx.Err()
+	}
+	if errors.Is(runErr, exec.ErrWaitDelay) {
+		// The shell itself succeeded; only a background child held its output
+		// pipe open past the bounded drain after the shell exited.
+		runErr = nil
 	}
 
 	var exitCode *int
@@ -258,6 +269,38 @@ func normalizedExitCode(exitErr *exec.ExitError) int {
 
 func killProcessGroup(pid int) {
 	_ = syscall.Kill(-pid, syscall.SIGKILL)
+}
+
+func (r *Registry) registerShellGroup(pid int) {
+	processes := r.shellProcesses
+	processes.mu.Lock()
+	defer processes.mu.Unlock()
+	if processes.closed {
+		killProcessGroup(pid)
+		return
+	}
+	processes.groups[pid] = struct{}{}
+}
+
+func (r *Registry) pruneShellGroup(pid int) {
+	processes := r.shellProcesses
+	processes.mu.Lock()
+	defer processes.mu.Unlock()
+	if err := syscall.Kill(-pid, 0); err == syscall.ESRCH {
+		delete(processes.groups, pid)
+	}
+}
+
+// CloseShellProcesses ends background jobs left in the process groups that
+// the run's bash tool started before the run releases its workspace.
+func (r *Registry) CloseShellProcesses() {
+	processes := r.shellProcesses
+	processes.mu.Lock()
+	defer processes.mu.Unlock()
+	processes.closed = true
+	for pid := range processes.groups {
+		killProcessGroup(pid)
+	}
 }
 
 func appendOutputLine(output *bashOutput, line string) {

@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -207,13 +206,9 @@ func newConfiguredRuntime(workspace string, client backend, cfg *seniorDevConfig
 		runtime.bus = bus.New(bus.Context{Directory: workspace, Workspace: workspace})
 	}
 	options := cfg.registryOptions()
-	// The registry identifies its client as "cli" unless SENIOR_DEV_CLIENT names
-	// something else.
-	if clientIdentity, ok := os.LookupEnv("SENIOR_DEV_CLIENT"); ok {
-		options.ClientIdentity = clientIdentity
-	} else {
-		options.ClientIdentity = "cli"
-	}
+	// A hosted run has no channel for answering questions, regardless of a
+	// configured client identity, so its belt never advertises that verb.
+	options.ClientIdentity = "hosted"
 	runtime.question = question.NewService(runtime.bus, nil)
 	options.Question = runtime.question
 	runtime.registry = tool.NewWithOptions(workspace, options)
@@ -416,6 +411,9 @@ func (runtime *runtimeAdapter) Close() {
 	if runtime == nil {
 		return
 	}
+	if runtime.registry != nil {
+		runtime.registry.CloseShellProcesses()
+	}
 	if runtime.unsubscribeQuestionAutoReject != nil {
 		runtime.unsubscribeQuestionAutoReject()
 	}
@@ -506,7 +504,7 @@ func (resolver poolResolver) values(tier baked.Tier) []string {
 // serves it: an endpoint that answers in OpenRouter's chat-completions shape,
 // opened by a token that opens nothing else.
 //
-// IT HOLDS NO KEY. senior-dev read a provider key and a base URL out of its
+// IT INHERITS NO PROVIDER KEY. senior-dev read a provider key and a base URL out of its
 // environment before codeaf carried it; both reads are gone, and so is every
 // check that a key was set. The API's address and token arrive through the
 // delegate.Host, and fetch is the one door every model request leaves by.

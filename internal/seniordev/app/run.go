@@ -14,6 +14,8 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/delegate"
+	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/orclient"
 	"github.com/Agent-Field/codeaf/internal/seniordev/modelsdev"
 	"github.com/Agent-Field/codeaf/internal/seniordev/netpolicy"
@@ -93,6 +95,12 @@ func Run(ctx context.Context, host delegate.Host, options Options, notes io.Writ
 // neither needs the host's model API nor loads the model catalog, the shape
 // senior-dev's own in-process tests always ran in.
 func runWith(ctx context.Context, host delegate.Host, options Options, notes io.Writer, injected backend) delegate.Ending {
+	if marker := env.Get(processgroup.RunMarkerEnv); marker != "" {
+		// The engine owns its orphaned shell descendants while it is alive;
+		// the host repeats cleanup if this process crashes before this defer.
+		processgroup.EnableSubreaper()
+		defer processgroup.CleanupRun(marker)
+	}
 	if notes == nil {
 		notes = io.Discard
 	}
@@ -150,6 +158,9 @@ func runWith(ctx context.Context, host delegate.Host, options Options, notes io.
 		client.catalog = catalog
 		model = client
 		known := func(ref string) bool {
+			if len(catalog) == 0 {
+				return true
+			}
 			providerID, modelID := normalizeModelRef(splitModelID(ref))
 			if _, err := catalog.Resolve(providerID, modelID); err == nil {
 				return true
@@ -199,7 +210,11 @@ func loadCatalog(ctx context.Context, notes io.Writer) (modelsdev.Catalog, error
 	}
 	catalog, err := catalogClient.Get(ctx)
 	if err != nil {
-		return nil, err
+		// The host still serves and meters every model call when the third-party
+		// catalog is offline. An empty catalog selects the conservative engine
+		// limits below; a catalog outage cannot refuse the whole run.
+		_, _ = fmt.Fprintf(notes, "[senior-dev] models.dev is unavailable; using conservative model limits: %v\n", err)
+		return modelsdev.Catalog{}, nil
 	}
 	catalogClient.StartRefresh(ctx, func(refreshErr error) {
 		_, _ = fmt.Fprintf(notes, "[senior-dev] failed to fetch models.dev: %v\n", refreshErr)

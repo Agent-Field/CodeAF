@@ -158,6 +158,16 @@ func (models seniorDevModels) projection(
 }
 
 func (models seniorDevModels) catalogModel(providerID, modelID string) (calc.Model, error) {
+	if models.backend.catalog != nil && len(models.backend.catalog) == 0 {
+		// Unknown metadata must leave enough room for the baked prompt while
+		// limiting each request conservatively. codeaf's model API still prices
+		// actual usage; these zero prices never enter its ledger.
+		return calc.Model{
+			Cost:         &calc.ModelCost{Cache: &calc.CacheCost{}},
+			Limit:        calc.ModelLimit{Context: 16_384, Output: 2_048},
+			Capabilities: calc.ModelCapabilities{ToolCall: true, Temperature: true},
+		}, nil
+	}
 	if models.backend.catalog != nil {
 		metadata, err := models.backend.catalog.Resolve(providerID, modelID)
 		if err == nil {

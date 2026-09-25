@@ -62,7 +62,7 @@ func TestModelFilteringPreservesDisabledTools(t *testing.T) {
 	got := requestToolNames(runtime.definitionsFor(
 		"openrouter", "deepseek/deepseek-v4-pro", "coder", map[string]bool{"write": true},
 	))
-	want := []string{"question", "bash", "read", "glob", "grep", "edit", "webfetch"}
+	want := []string{"bash", "read", "glob", "grep", "edit", "webfetch"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("tools = %v, want %v", got, want)
 	}
