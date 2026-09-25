@@ -409,7 +409,7 @@ land, stops the answer and then quits. Nothing you typed is lost when it does: t
 and anything waiting for an answer are written to disk on the way out. See "Quitting
 codeaf — how do I exit, close it, or why did ctrl+c not quit" below.
 
-## Esc is not stopping it — how long does a stop take, why the turn is still finishing, how long stopping takes, and what happens if it will not let go
+## Esc is not stopping it — how long does a stop take, why the turn is still finishing, how long stopping takes, and what happens if it will not stop or will not let go
 
 **I pressed escape and it is still running.** That is this section: escape is not being
 ignored, the turn is being let go of, and if it will not let go codeaf ends it for you
