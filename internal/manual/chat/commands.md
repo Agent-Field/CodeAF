@@ -1847,9 +1847,10 @@ that has come apart is cut and asked again, on by default (see *Models, context,
 it costs*) — and one row per capability slot added automatically from the settings
 registry: drawing, speaking, composing, filming, voice.
 
-The reflex, small work, worker and checker rows are **select** rows and open the model
-picker. The **planner** row is a **text** box instead, because its value may carry a
-thinking level (`moonshotai/kimi-k3:high`) and a picker hands back a bare id.
+The reflex and small work rows are **select** rows and open the model picker. The crew's
+worker, checker and planner have no rows of their own here: the one **seats** row opens the
+`/crew` panel, and a seat is pinned there or with `/crew pin` — a pin may carry a thinking
+level, `/crew pin planner moonshotai/kimi-k3:high`, and the seat is then asked at that level.
 
 The connected model services have their own section on the tab, each with its billing
 door, the safe spelling of its key, its region and its order. The section ends with an
@@ -1908,14 +1909,16 @@ one call codeaf makes outside a turn — `title`, `guardian`, `auditor`,
 one of them you ask for yourself with `ctrl+r` (see the keys page) — drawn as
 `<role>    <model>`, with `pinned` after it when that role has a model of its own.
 
-The rows are **grouped under their row**, in the same order the five model rows are drawn
-above them: `roles · reflex`, `roles · small work`, `roles · worker`, `roles · checker`,
-`roles · planner`. The row is the heading, so it is not repeated on every role — which
+The rows are **grouped under the model they follow**: `roles · reflex` and
+`roles · small work` under the two rows of those names above, then `roles · worker`,
+`roles · checker` and `roles · planner` under the crew's three seats, which the tab draws as
+its one **seats** row. The group is the heading, so it is not repeated on every role — which
 leaves the widest part of the row for the model id it is there to show.
 
 Stop on a row and the line under the list says **what that role is** and where its answer
-came from: `the plan that steers an adaptive run · follows planner above. enter pins it
-to a model of its own.`
+came from: `the plan that steers an adaptive run · follows the planner seat (/crew). enter
+pins it to a model of its own.` A role under reflex or small work says `follows reflex
+above` or `follows small work above` instead.
 
 - **enter** opens the model picker and pins the role to what you choose.
 - **del** on a pinned row clears the pin. The legend says `del unpin` while you are on one,

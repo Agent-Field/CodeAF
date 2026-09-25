@@ -1065,9 +1065,10 @@ and pinning from the list rewrites the row without disturbing the other pins in 
 
 **A third door: just ask.** "Use `deepseek/deepseek-v4-pro` for planning and for designing
 harnesses" is a sentence codeaf acts on — it looks the row up with `settings` and writes it
-with `change_setting`, into the same `models.roles` row, after asking you. The model rows
-of the Providers tab — reflex, small work, and the crew's worker, checker and planner pins —
-are writable that way too; only the role **slots** further down the Providers tab are not,
+with `change_setting`, into the same `models.roles` row, after asking you. The reflex and
+small work rows of the Providers tab, and the crew's worker, checker and planner pins behind
+its one **seats** row, are writable that way too — a pin outside your allowed models is
+refused there as it is on `/crew`; only the role **slots** further down the Providers tab are not,
 because those are bindings the running session holds rather than values in your profile.
 
 So the ladder for any role, most specific first: **its pin**, then **its row's model**,
