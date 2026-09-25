@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: wall tiles say what each conversation spent, and the teams surface stops saying things that are not so
+title: wall tiles say what each conversation spent, and the teams surface stops saying untrue things
 pr: 1516
 surface: [chat, engine]
 invalidates:
