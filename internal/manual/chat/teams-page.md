@@ -147,6 +147,14 @@ page, where anything else wrong is said on its own line). When the manager's con
 gone from the disk, the pane offers **`+ Manager`** instead, which starts a new conversation and
 makes it the team's manager.
 
+## The pane said the manager was open in another window
+
+A refusal about a conversation this window already holds is not said. That includes
+a connection that keeps one conversation at a time: if the swap is told the
+transcript is locked and this window already holds that manager, behind or in
+front, the pane does not say `open in another window`. The manager is brought
+forward instead.
+
 **A team with no manager** shows `+ Manager` under its members, beside one line on what a
 manager does; a press starts a new conversation in the team's folder and makes it the manager.
 Choosing `All teams` shows every decision waiting on you from any team.

@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -422,6 +423,85 @@ func TestTeamWrapUpResumesWithTheTimeLeft(t *testing.T) {
 	_ = teamAgent(t, fixture, fixture.manager, nil, nil)
 	if waiting, _, _ := teams.OpenPackets(fixture.profile, teams.Person); len(waiting) != 1 {
 		t.Fatal("a second start raised the report again")
+	}
+}
+
+// holdDecisions is this test holding the team's decisions lock, the way a
+// writer that has not finished does. release lets the next raise through.
+func holdDecisions(t *testing.T, profile, teamID string) func() {
+	t.Helper()
+	path := strings.TrimSuffix(teams.DecisionsPath(profile, teamID), ".jsonl") + ".lock"
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := filelock.Lock(file, true, true); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	return func() {
+		_ = filelock.Unlock(file)
+		file.Close()
+	}
+}
+
+// A BUSY DECISIONS FILE DOES NOT FORGET THE WRAP-UP. The clock comes out of
+// memory before the report is raised, so a raise that cannot take the lock
+// used to leave it out: this process never tried again, and only a restart
+// sent the report. The next look tries again, and the report goes out once.
+func TestTeamWrapUpBusyDecisionsIsTriedAgain(t *testing.T) {
+	every := teamWatchEvery
+	teamWatchEvery = time.Hour
+	t.Cleanup(func() { teamWatchEvery = every })
+	fixture := newTeamFixture(t, true)
+	stubCapSpend(t, &capSpend{usd: 0.5, stamp: "s1"})
+	manager := teamAgent(t, fixture, fixture.manager, nil, nil)
+	manager.teamBoundary()
+	appendTraffic(t, fixture, teams.WrapUpRequest("Wrap up first"))
+	manager.teamBoundary()
+	release := holdDecisions(t, fixture.profile, fixture.teamID)
+	past := time.Now().Add(wrapUpFor)
+	manager.teamWrapUpDue(fixture.profile, past)
+	manager.team.mu.Lock()
+	_, due := manager.team.wraps[fixture.teamID]
+	manager.team.mu.Unlock()
+	if !due {
+		t.Fatal("a raise that could not take the decisions lock forgot the wrap-up")
+	}
+	f, err := teams.Load(fixture.profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if team, _ := f.Team(fixture.teamID); team.Wrap == nil {
+		t.Fatal("a failed raise cleared the clock on disk")
+	}
+	if waiting, _, _ := teams.OpenPackets(fixture.profile, teams.Person); len(waiting) != 0 {
+		t.Fatalf("a failed raise still left a report: %+v", waiting)
+	}
+	release()
+	manager.teamWrapUpDue(fixture.profile, past)
+	if waiting, _, err := teams.OpenPackets(fixture.profile, teams.Person); err != nil || len(waiting) != 1 {
+		t.Fatalf("the next look did not raise the one report: %+v %v", waiting, err)
+	}
+	f, err = teams.Load(fixture.profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if team, _ := f.Team(fixture.teamID); team.Wrap != nil {
+		t.Fatalf("the clock was left on the team: %+v", team.Wrap)
+	}
+	manager.team.mu.Lock()
+	_, still := manager.team.wraps[fixture.teamID]
+	manager.team.mu.Unlock()
+	if still {
+		t.Fatal("a sent report left the clock in memory")
+	}
+	manager.teamWrapUpDue(fixture.profile, past.Add(time.Minute))
+	if waiting, _, _ := teams.OpenPackets(fixture.profile, teams.Person); len(waiting) != 1 {
+		t.Fatal("the report was raised twice")
 	}
 }
 
