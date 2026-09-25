@@ -21,6 +21,10 @@ type projectVerificationResult struct {
 	Prompt   string
 	Failed   *fullverification.Entrypoint
 	Failure  string
+	// NoTests records a command that reported an empty suite, regardless of
+	// its process exit status. An empty suite does not verify a candidate.
+	NoTests        bool
+	NoTestsCommand string
 	// TimedOut is set when at least one entrypoint was killed at the
 	// fullVerificationTimeoutMS ceiling without ever producing an exit status.
 	// A hung suite is an INCOMPLETE observation, not a red one.

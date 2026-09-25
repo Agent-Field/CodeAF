@@ -549,11 +549,34 @@ func ecosystemDefaults(workspace string) []Entrypoint {
 			if declaresPytest(workspace) || pythonHasPytest(workspace) {
 				add(KindTest, "python3 -m pytest", "Python test files")
 			} else {
-				add(KindTest, "python3 -m unittest discover", "Python test files")
+				add(KindTest, unittestDiscoveryCommand(workspace), "Python test files")
 			}
 		}
 	}
 	return entries
+}
+
+// unittestDiscoveryCommand names each top-level test folder that actually
+// holds tests. Python 3.10 cannot use -t . for a folder without __init__.py:
+// omitting -t in that case still puts the project root on sys.path and runs
+// the tests instead of raising "Start directory is not importable".
+func unittestDiscoveryCommand(workspace string) string {
+	var commands []string
+	for _, dir := range []string{"test", "tests"} {
+		files, err := filepath.Glob(filepath.Join(workspace, dir, "test*.py"))
+		if err != nil || len(files) == 0 {
+			continue
+		}
+		command := "python3 -m unittest discover -s " + dir
+		if fileExists(filepath.Join(workspace, dir, "__init__.py")) {
+			command += " -t ."
+		}
+		commands = append(commands, command)
+	}
+	if len(commands) == 0 {
+		return "python3 -m unittest discover"
+	}
+	return strings.Join(commands, " && ")
 }
 
 // declaresPytest keeps an explicit project choice even if this machine lacks

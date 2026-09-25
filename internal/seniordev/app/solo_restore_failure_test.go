@@ -41,6 +41,9 @@ func TestAFailedRestoreEndsUncheckedAndSaysWhy(t *testing.T) {
 	outcome := &soloOutcome{Status: "pass", Frozen: state.candidate()}
 	runner.soloRestoreIfDiverged(state, outcome)
 	runner.soloTerminal(outcome, "submitted, and its build and tests passed")
+	if reason := outcome.TerminalData["reason"].(string); strings.Contains(reason, "build and tests passed") || !strings.Contains(reason, "could not be checked") {
+		t.Fatalf("terminal reason disagrees with unchecked status: %q", reason)
+	}
 	if outcome.Status != "pass-unverified" {
 		t.Fatalf("a restore that failed left the outcome %q; the folder is not what was checked", outcome.Status)
 	}

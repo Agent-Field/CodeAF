@@ -79,6 +79,14 @@ func (runner *pipeline) soloShip(
 			"verification did not complete (an entrypoint hung); shipping the submitted candidate: %s",
 			candidate.describe(),
 		)
+	case verification.NoTests && verification.NewFailures == 1:
+		// An empty suite gives no evidence about the candidate even when its
+		// command exits zero, so the ending must not call it a passed test.
+		outcome.Status = "pass-unverified"
+		endingReason = fmt.Sprintf(
+			"no tests were found by `%s`; shipping the submitted candidate unchecked: %s",
+			verification.NoTestsCommand, candidate.describe(),
+		)
 	case verification.Failed == nil:
 		// Failed, not the failing-command count, is the verdict. An expected
 		// build or test entrypoint that could not be DISCOVERED sets Failed
@@ -135,8 +143,11 @@ func (runner *pipeline) soloRestoreIfDiverged(state *soloState, outcome *soloOut
 	}
 	current, err := runner.currentTreeSHA()
 	if err != nil {
-		runner.note("[senior-dev] ship: could not compare the tree to the frozen candidate: " +
-			err.Error() + "\n")
+		outcome.RestoreFailed = "could not compare the folder with the submitted candidate: " + err.Error()
+		if outcome.Status == "pass" {
+			outcome.Status = "pass-unverified"
+		}
+		runner.note("[senior-dev] ship: " + outcome.RestoreFailed + "\n")
 		return
 	}
 	if current == candidate.TreeSHA {
@@ -182,6 +193,11 @@ func (runner *pipeline) soloRestoreIfDiverged(state *soloState, outcome *soloOut
 // soloTerminal records the reason the run ended and the evidence behind it.
 // "Why did it exit?" must be answerable from the event stream without a log.
 func (runner *pipeline) soloTerminal(outcome *soloOutcome, reason string) {
+	// THE CANDIDATE'S PASS IS NOT A PASS FOR A FOLDER WE COULD NOT COMPARE
+	// OR RESTORE. Replace any reason prepared before that final folder check.
+	if outcome.RestoreFailed != "" {
+		reason = "the folder could not be checked against what was verified: " + outcome.RestoreFailed
+	}
 	data := map[string]any{
 		"status": outcome.Status, "reason": reason,
 		"submitted": outcome.Frozen != nil, "nudges": outcome.Nudges,
@@ -251,6 +267,9 @@ func missingEntrypointFailure(result projectVerificationResult) bool {
 }
 
 func verificationFailureSummary(result projectVerificationResult, failing int) string {
+	if result.NoTests && result.NewFailures == 1 {
+		return "no tests were found by `" + result.NoTestsCommand + "`"
+	}
 	if missingEntrypointFailure(result) {
 		return "no " + string(result.Failed.Kind) + " entrypoint could be discovered"
 	}

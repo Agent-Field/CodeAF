@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,6 +16,13 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/home"
 )
+
+// A rescue can include newly ignored files that the person did not expect
+// codeaf to copy. Twenty-five MiB covers ordinary source files, while ten
+// such files fit in one rescue; larger generated output stays in the project
+// and leaves the checkout unchecked instead of filling the state root.
+const rescueFileLimitBytes int64 = 25 << 20
+const rescueTotalLimitBytes int64 = 250 << 20
 
 // soloLandingReserve sizes the landing window: two fifteenths of the wall
 // budget, at least 45 seconds and at most soloLandingReserveCap, but never more
@@ -259,16 +267,40 @@ func (runner *pipeline) soloRestoreTree(commitSHA, wantTree string) error {
 func (runner *pipeline) rescueBeforeRestore(paths []string) error {
 	var deleted []string
 	var existing []string
+	var total int64
 	for _, path := range paths {
-		_, err := os.Lstat(filepath.Join(runner.workspace, filepath.FromSlash(path)))
+		info, err := os.Lstat(filepath.Join(runner.workspace, filepath.FromSlash(path)))
 		switch {
 		case os.IsNotExist(err):
 			deleted = append(deleted, path)
 		case err != nil:
 			return err
 		default:
+			if !info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 {
+				return fmt.Errorf("cannot preserve %s before restore", path)
+			}
+			if info.Size() > rescueFileLimitBytes {
+				return fmt.Errorf("a changed file is larger than %d MiB: %s", rescueFileLimitBytes>>20, path)
+			}
+			if info.Size() < 0 || info.Size() > rescueTotalLimitBytes-total {
+				return fmt.Errorf("changed files exceed the %d MiB rescue limit", rescueTotalLimitBytes>>20)
+			}
+			total += info.Size()
 			existing = append(existing, path)
 		}
+	}
+	// The deletion manifest is a rescued file too. Check its prospective size
+	// before making any rescue folder or touching the project.
+	var manifestBytes int64
+	for _, path := range deleted {
+		if strings.ContainsAny(path, "\r\n") {
+			path = strconv.Quote(path)
+		}
+		entryBytes := int64(len(path) + 1)
+		if entryBytes > rescueFileLimitBytes-manifestBytes || entryBytes > rescueTotalLimitBytes-total-manifestBytes {
+			return fmt.Errorf("deletion manifest exceeds the rescue size limit")
+		}
+		manifestBytes += entryBytes
 	}
 	if len(deleted) == 0 && len(existing) == 0 {
 		return nil
@@ -278,6 +310,9 @@ func (runner *pipeline) rescueBeforeRestore(paths []string) error {
 		root = filepath.Join(os.TempDir(), "codeaf-rescued")
 	}
 	if err := os.MkdirAll(root, 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(root, 0o700); err != nil {
 		return err
 	}
 	if runner.rescuePath == "" {
@@ -291,6 +326,7 @@ func (runner *pipeline) rescueBeforeRestore(paths []string) error {
 	if runner.rescueCount > 0 {
 		destination = filepath.Join(destination, fmt.Sprintf("later-%d", runner.rescueCount+1))
 	}
+	remaining := rescueTotalLimitBytes - manifestBytes
 	for _, path := range existing {
 		from := filepath.Join(runner.workspace, filepath.FromSlash(path))
 		info, err := os.Lstat(from)
@@ -303,17 +339,23 @@ func (runner *pipeline) rescueBeforeRestore(paths []string) error {
 		}
 		switch {
 		case info.Mode().IsRegular():
-			if err := copyFile(from, to, info.Mode()); err != nil {
+			copied, err := copyRescueFile(from, to, remaining)
+			if err != nil {
 				return err
 			}
+			remaining -= copied
 		case info.Mode()&os.ModeSymlink != 0:
 			link, err := os.Readlink(from)
 			if err != nil {
 				return err
 			}
+			if int64(len(link)) > rescueFileLimitBytes || int64(len(link)) > remaining {
+				return fmt.Errorf("a changed file is larger than the rescue size limit: %s", path)
+			}
 			if err := os.Symlink(link, to); err != nil {
 				return err
 			}
+			remaining -= int64(len(link))
 		default:
 			return fmt.Errorf("cannot preserve %s before restore", from)
 		}
@@ -359,11 +401,60 @@ func (runner *pipeline) rescueBeforeRestore(paths []string) error {
 			all = append(all, path)
 		}
 		sort.Strings(all)
-		if err := os.WriteFile(manifest, []byte(strings.Join(all, "\n")+"\n"), 0o600); err != nil {
+		body := []byte(strings.Join(all, "\n") + "\n")
+		if int64(len(body)) > rescueFileLimitBytes || int64(len(body)) > remaining+manifestBytes {
+			return fmt.Errorf("deletion manifest exceeds the rescue size limit")
+		}
+		if err := os.WriteFile(manifest, body, 0o600); err != nil {
+			return err
+		}
+		if err := os.Chmod(manifest, 0o600); err != nil {
 			return err
 		}
 		runner.rescueDeleted = true
 	}
 	runner.rescueCount++
 	return nil
+}
+
+// copyRescueFile copies no more than either bound and refuses a source that
+// grew since preflight. The extra read detects growth without copying it.
+func copyRescueFile(source, destination string, remaining int64) (copied int64, err error) {
+	limit := min(rescueFileLimitBytes, remaining)
+	in, err := os.Open(source)
+	if err != nil {
+		return 0, err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		if err != nil {
+			_ = os.Remove(destination)
+		}
+	}()
+	copied, err = io.CopyN(out, in, limit)
+	if err != nil && err != io.EOF {
+		_ = out.Close()
+		return copied, err
+	}
+	var extra [1]byte
+	n, readErr := in.Read(extra[:])
+	if readErr != nil && readErr != io.EOF {
+		_ = out.Close()
+		return copied, readErr
+	}
+	if n > 0 {
+		_ = out.Close()
+		return copied, fmt.Errorf("a changed file is larger than the %d MiB per-file or %d MiB total rescue limit: %s", rescueFileLimitBytes>>20, rescueTotalLimitBytes>>20, source)
+	}
+	if err = out.Close(); err != nil {
+		return copied, err
+	}
+	if err = os.Chmod(destination, 0o600); err != nil {
+		return copied, err
+	}
+	return copied, nil
 }

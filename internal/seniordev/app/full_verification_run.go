@@ -31,6 +31,7 @@ type verificationObservation struct {
 	exitCode   int
 	timedOut   bool
 	tail       string
+	noTests    bool
 	evidence   map[string]any
 	// suiteDead marks a failure whose output shows the suite aborted before
 	// running at all (verification_deadtree.go).
@@ -158,6 +159,9 @@ func (run *projectVerificationRun) execute(observation *verificationObservation)
 		output = err.Error()
 	}
 	observation.tail = verificationOutputTail(output, 600)
+	if entrypoint.Kind == fullverification.KindTest && !observation.timedOut {
+		observation.noTests = noTestsReported(output)
+	}
 	// Suite-abort detection for the unsubmitted-tree finalizer
 	// (verification_deadtree.go).
 	if observation.exitCode != 0 && !observation.timedOut && suiteDeadOutput(output) {
@@ -213,6 +217,9 @@ func (run *projectVerificationRun) commandEvidence(
 	if observation.suiteDead {
 		evidence["suite_dead"] = true
 	}
+	if observation.noTests {
+		evidence["no_tests"] = true
+	}
 	if observation.safetyRegression {
 		evidence["safety_regression"] = true
 	}
@@ -236,8 +243,12 @@ func (run *projectVerificationRun) record(observation verificationObservation) {
 		"[senior-dev] full verification %s: %s (exit=%d, source=%s)\n",
 		entrypoint.Kind, entrypoint.Command, observation.exitCode, entrypoint.Source,
 	))
-	if observation.exitCode == 0 {
+	if observation.exitCode == 0 && !observation.noTests {
 		return
+	}
+	if observation.noTests {
+		run.result.NoTests = true
+		run.result.NoTestsCommand = entrypoint.Command
 	}
 	// Every non-zero exit is a failure, full stop. Excusing a red command as
 	// "pre-existing" on the strength of a pre-edit baseline probe would let a
@@ -277,6 +288,9 @@ func (run *projectVerificationRun) recordNewFailure(observation verificationObse
 		"project %s verification failed: `%s` exited %d",
 		entrypoint.Kind, entrypoint.Command, observation.exitCode,
 	)
+	if observation.noTests {
+		issue = fmt.Sprintf("no tests were found by `%s`", entrypoint.Command)
+	}
 	if observation.timedOut {
 		run.result.TimedOut = true
 		issue = fmt.Sprintf(

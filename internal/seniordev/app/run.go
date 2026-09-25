@@ -317,7 +317,11 @@ func endingOf(result pipelineResult) delegate.Ending {
 		}
 	}
 	if failed, _ := extra["restore_failed"].(string); failed != "" {
-		ending.Message += ". The folder changed after senior-dev's last check and could not be put back (" + failed + "), so it also holds later changes that nothing checked"
+		if strings.HasPrefix(failed, "could not compare the folder") {
+			ending.Message += ". The folder could not be checked against what was verified (" + failed + "), so it may hold later changes that nothing checked"
+		} else {
+			ending.Message += ". The folder changed after senior-dev's last check and could not be put back (" + failed + "), so it also holds later changes that nothing checked"
+		}
 	}
 	if reason, _ := extra["reason"].(string); reason != "" && reason != ending.Message {
 		ending.Reason = reason

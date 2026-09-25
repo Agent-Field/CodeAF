@@ -599,3 +599,23 @@ func planHasEntrypointKind(plan Plan, kind EntrypointKind) bool {
 	}
 	return false
 }
+
+// The fallback discovers both conventional top-level test folders, while an
+// explicit pytest project keeps its pytest command.
+func TestPythonDefaultsDiscoverBothTestFoldersAndKeepPytest(t *testing.T) {
+	workspace := t.TempDir()
+	writeDiscoveryFile(t, workspace, "test/__init__.py", "")
+	writeDiscoveryFile(t, workspace, "test/test_one.py", "")
+	writeDiscoveryFile(t, workspace, "tests/test_two.py", "")
+	want := "python3 -m unittest discover -s test -t . && python3 -m unittest discover -s tests"
+	if command := unittestDiscoveryCommand(workspace); command != want {
+		t.Fatalf("unittest fallback = %q, want %q", command, want)
+	}
+	writeDiscoveryFile(t, workspace, "pytest.ini", "[pytest]\n")
+	plan := Discover(workspace)
+	for _, entrypoint := range plan.Entrypoints {
+		if entrypoint.Kind == KindTest && entrypoint.Command != "python3 -m pytest" {
+			t.Fatalf("declared pytest changed to %q", entrypoint.Command)
+		}
+	}
+}

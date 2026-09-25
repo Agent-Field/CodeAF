@@ -288,9 +288,17 @@ work: `senior-dev cannot contain its shell processes on this machine: <error>`.
 
 ## How does senior-dev run Python tests — pytest, unittest, missing pytest
 
-For a Python project with test files, senior-dev uses `python3 -m pytest` when pytest is
-installed or the project declares it. Otherwise it runs `python3 -m unittest discover`,
-so a project using Python's standard library tests does not fail for lack of pytest.
+senior-dev chooses a project's test command in this order: CI, `AGENTS.md`, a
+declared script such as a Makefile `test` target, `README.md` or
+`CONTRIBUTING.md`, then an ecosystem default. For a Python project with test
+files, the default is `python3 -m pytest` when pytest is installed or declared.
+Otherwise it runs unittest discovery in each top-level `test/` or `tests/`
+folder holding `test*.py`; without either folder it runs plain
+`python3 -m unittest discover`. A folder with `__init__.py` uses `-t .` to
+resolve project imports. Older Python cannot use `-t .` on a folder without
+`__init__.py`, so that folder uses `-s <folder>` alone. A test command that
+reports it ran no tests leaves the submission unchecked, even if it exits zero;
+the ending says `no tests were found by <command>`.
 
 ## Can I run senior-dev in a folder that is not a git repo — a plain folder, no git, --in-place, operation not permitted, .Trash
 
@@ -373,9 +381,30 @@ or named. If the copy cannot be made, nothing is restored and your folder is lef
 as it was; the run then does not say its build and tests passed, and the ending
 adds `The folder changed after senior-dev's last check and could not be put back
 (<why>), so it also holds later changes that nothing checked`.
+If codeaf cannot compare the folder with the submitted candidate at all, it
+also leaves the folder untouched and ends unchecked: `The folder could not be
+checked against what was verified (<why>), so it may hold later changes that
+nothing checked`.
 Files git ignored when the run started are not committed even if senior-dev
 changes `.gitignore`. Python `__pycache__/`, `.pytest_cache/` and `*.pyc` files
 made by its checks are not committed either. Those files stay in your folder.
+
+## What does a rescue copy, where is it kept, and how large can it be?
+
+Before restoring a submitted candidate or checkpoint, senior-dev copies files
+changed after submission that the restore would replace, including files newly
+ignored by a rule added during the run. It records later deletions in
+`deleted-files.txt`; links are kept as links, and files ignored when the run
+started are left in place. The copy is under the state root at
+`v3/carried/senior-dev/rescued/run-…` (normally
+`~/.codeaf/v3/carried/senior-dev/rescued/run-…`), outside the project. If the
+state root itself is inside the project, the rescue instead uses the machine's
+temporary `codeaf-rescued/` folder so the restore cannot erase its own copy.
+The rescue folder is private to your account (mode `0700`); copied regular files
+and the deletion manifest use `0600`. Each copied file is limited to **25 MiB**
+and one rescue to **250 MiB** total. If a file or the total exceeds the limit,
+senior-dev refuses the restore before changing the folder; the ending says it
+could not be put back and that the folder holds later changes nothing checked.
 
 ## Its notes — .senior-dev, its checklist, its session database, moved out when it ends
 
@@ -414,9 +443,11 @@ that run, including a model that answered in place of the one asked for. If no m
 answered, there is no `Assisted-by` trailer. The attribution setting still decides
 whether answered model names are shown.
 If senior-dev runs `git commit` itself, the commit uses codeaf's run identity rather
-than your Git identity. When that commit is the branch tip and there is nothing
-left to stage, codeaf adds the answered model's `Assisted-by` credit to its message
-without changing its files. It never rewrites a commit from before the run.
+than your Git identity. The `Assisted-by` credit is added only to a finishing
+commit codeaf makes when there is something left to stage. When the branch is
+already clean, codeaf makes no commit for credit. It never amends, rebases or
+rewrites a commit, including one senior-dev or its model made earlier in the
+run, one you pushed, or one you signed.
 
 The ending keeps two witnesses apart: what senior-dev's model said it did
 (`senior-dev's model said: …`) and what senior-dev saw when it ran the project's build
@@ -594,11 +625,15 @@ work or a history summary.
 A crew model senior-dev's model catalog cannot size is left out, and its log says so;
 if that leaves no working model, it uses its own list instead.
 
+## Which models does a senior-dev shell run use — --high, fresh profile, no crew
+
 **Its own list** is six open models it routes among call by call, avoiding one for a
 while after it fails: deepseek-v4-flash, deepseek-v4-pro, qwen3.6-plus, kimi-k2.6,
 glm-5.1 and minimax-m2.7. A run with no usable crew model uses it. A shell run
-also reads one worker recommendation from your profile, then falls back to this list
-if that model cannot be used.
+without `--high` asks the profile for a worker recommendation; if no connected
+model can fill that seat, it says to widen or pin `/crew` models. An explicit
+`--high <model>` runs on a fresh profile with a provider key and no crew rows;
+that model is used without resolving a profile seat.
 
 **At a shell you choose**: `--high` replaces the list, `--low` sets the summaries' models,
 and `--variant` sets the reasoning effort every call asks for.
