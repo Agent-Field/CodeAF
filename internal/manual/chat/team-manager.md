@@ -294,7 +294,9 @@ answer attached under that in muted ink as it arrives, one line each. Press an a
 to read it in full and again to fold it; point at them for the whole text in the hint line; a
 handle opens its member at the message: on an answer, at the member's own post, and on the
 card's header, at the message as the member was told it. A turn that sent one is not folded into a `worked` chip, so the
-thread stays where you can see it.
+thread stays where you can see it. The step over it is captioned as the work it is,
+`messaged @agent @checking @review`, never by the tool's name, and a run of sends reads
+`sending 3 messages`.
 
 The answers also reach the manager as its team's note. So nothing is shown twice, a note
 whose answers are already under their question reads as one dim line,
