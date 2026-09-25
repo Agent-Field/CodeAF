@@ -280,7 +280,9 @@ hands work to the members and tells you where things stand. While a team is show
 place on the tab strip is the manager's, pinned at the left: a quiet `+ Manager` until there is
 one and `◆ Manager` after; `◆ Make this harbor's manager` in the team switcher or in a tile's
 Teams list makes an existing conversation the manager. The right-hand
-column of a chat in a team has two words, `Tasks` and `Traffic` (what passes in the team); the
+column of a chat in a team has two words, `Tasks` and `Traffic` (what passes in the team). A
+Traffic row reads who it is from and who it is for, `◆ → @scrape +2  Please provide…`, and in
+a member's chat that member is `you` (`◆ → you`, `you → ◆`). The
 manager's opens on the Traffic, a member's on its tasks, `←` `→` switch them while the column has
 the keyboard, `alt+l` shows or hides it, and `alt+m` goes to the manager. What a manager can do, and how members talk to each other, is on the
 **team manager** page. The **teams page** (`/teams`, `alt+2`) lists every team as a tree

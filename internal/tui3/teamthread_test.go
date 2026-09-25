@@ -145,9 +145,9 @@ func TestTrafficThreadOneQuestionIsOneWorkRow(t *testing.T) {
 	joined = strings.Join(rows, "\n")
 	want := []string{
 		"↳ ",
-		"@" + price + ": ✓ Status update",
-		"@" + rail + ": working…",
-		"@review: ✓ Status update",
+		"@" + price + " → " + teamManagerGlyph + "  ✓ Status update",
+		"@" + rail + " → " + teamManagerGlyph + "  working…",
+		"@review → " + teamManagerGlyph + "  ✓ Status update",
 	}
 	for i, w := range want[1:] {
 		if r := rows[top+1+i]; !strings.Contains(r, want[0]) || !strings.Contains(r, w) {
@@ -186,12 +186,20 @@ func TestTrafficThreadAnAskIsTheBandAndAFailureIsInk(t *testing.T) {
 	rows := railLines(t, a)
 	joined := strings.Join(rows, "\n")
 	head := railRowOf(rows, sideTrafficWord)
-	ask := railRowOf(rows, "@"+price+" asks: may I run")
+	ask := railRowOf(rows, "@"+price+" → "+teamManagerGlyph+"  may I run")
 	if head < 0 || ask != head+1 {
 		t.Fatalf("the ask is not the band's row under the header (%d, %d):\n%s", head, ask, joined)
 	}
-	work := railRowOf(rows, "@"+price+"  run the migra")
-	if work <= ask || !strings.Contains(rows[work], "asking") {
+	if strings.HasSuffix(strings.TrimRight(rows[ask], " "), "now") || strings.Contains(rows[ask], "asks:") {
+		t.Fatalf("the band row still carries its age or the old asks lead: %q", rows[ask])
+	}
+	for _, r := range a.side.last {
+		if strings.HasPrefix(r.key, "ask/") && !strings.Contains(r.hint, "now") {
+			t.Fatalf("the band's hint does not carry the age: %q", r.hint)
+		}
+	}
+	work := railRowOf(rows, teamManagerGlyph+" → @"+price)
+	if work <= ask || !strings.Contains(rows[work], "asking") || !strings.Contains(rows[work], "run the") {
 		t.Fatalf("the thread does not say it is asking, under the band:\n%s", joined)
 	}
 	if general := railRowOf(rows, "General"); general <= work {
@@ -219,8 +227,8 @@ func TestTrafficThreadAnAskIsTheBandAndAFailureIsInk(t *testing.T) {
 	if strings.Contains(joined, "asks: may I run") {
 		t.Fatalf("an answered ask is still in the band:\n%s", joined)
 	}
-	work = railRowOf(rows, "@"+price+"  run the migra")
-	if work < 0 || !strings.Contains(rows[work], "failed") {
+	work = railRowOf(rows, teamManagerGlyph+" → @"+price)
+	if work < 0 || !strings.Contains(rows[work], "failed") || !strings.Contains(rows[work], "run the") {
 		t.Fatalf("the thread does not say it failed:\n%s", joined)
 	}
 	if warm != "" && amber() != 0 {
@@ -228,7 +236,7 @@ func TestTrafficThreadAnAskIsTheBandAndAFailureIsInk(t *testing.T) {
 	}
 	x, y := sideRowDoor(t, a, "thread/"+q, sideActThread)
 	sideClick(t, a, x, y)
-	if rows := railLines(t, a); railRowOf(rows, "@"+price+": ✗ the migration") < 0 {
+	if rows := railLines(t, a); railRowOf(rows, "@"+price+" → "+teamManagerGlyph+"  ✗ the migration") < 0 {
 		t.Fatalf("the failure did not fold into the member's line:\n%s", strings.Join(rows, "\n"))
 	}
 }
@@ -255,7 +263,7 @@ func TestTrafficThreadRowsAreOneLineAndEnterFoldsThem(t *testing.T) {
 	a.railWhere = railSpot{key: "thread/" + q}
 	drive(t, a, key("enter"))
 	rows := railLines(t, a)
-	y := railRowOf(rows, "@"+price+": Status update")
+	y := railRowOf(rows, "@"+price+" → "+teamManagerGlyph+"  Status update")
 	if y < 0 || strings.Contains(strings.Join(rows, "\n"), "END") || !strings.Contains(rows[y], "…") {
 		t.Fatalf("enter did not lay the reply open as one cut line:\n%s", strings.Join(rows, "\n"))
 	}
@@ -263,7 +271,7 @@ func TestTrafficThreadRowsAreOneLineAndEnterFoldsThem(t *testing.T) {
 		t.Fatal("laying the thread open moved the focus or took the keyboard back")
 	}
 	x, ry := sideRowOn(t, a, "reply/"+reply)
-	a.setHover(x+ansi.StringWidth("  ↳ 00:00 @"+price+": ")+4, ry)
+	a.setHover(x, ry)
 	if words := a.dockHoverWords(); !strings.Contains(words, "END") {
 		t.Fatalf("the hint line does not say the reply whole: %q", words)
 	}

@@ -87,6 +87,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// band of what waits on the person above them.
 		{"how do I switch between tasks and traffic in a manager chat", "team-manager"},
 		{"what does Traffic 3 new mean in the column header", "team-manager"},
+		{"who is a traffic row from and who is it to", "team-manager"},
 		{"what does chats on the tab bar do", "places"},
 		{"how do I get back to my conversation from a place", "places"},
 		// The places moved onto the top line and the strip is on every page
