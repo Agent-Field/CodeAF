@@ -676,7 +676,7 @@ func (n TaskNotice) StatusFacts() TaskFacts {
 		// make some surface write those words a second time
 		// ([runCannotContinue]). It reads no disk, which is what keeps this
 		// method the pure function every drawing road relies on.
-		CannotContinue: runCannotContinue(n.Copy),
+		CannotContinue: runCannotContinue(n.Copy, n.Program),
 	}
 }
 

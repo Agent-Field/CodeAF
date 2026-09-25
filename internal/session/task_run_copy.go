@@ -88,6 +88,12 @@ func runCopyOf(tree taskTree) *TaskCopyRecord {
 // destructive road wearing a helpful face.
 var errNoRunCopy = fmt.Errorf("this run's working copy was not written down when it started, so there is nothing to carry on from")
 
+// programNotCarriedOn is the sentence a program's run is refused carrying on
+// in, by the door and on its row alike.
+func programNotCarriedOn(program string) string {
+	return program + "'s run is never carried on: its work is left where it ended, and a new hand-off starts a new run"
+}
+
 // runCannotContinue answers WHY a run cannot be carried on, in the words a
 // person reads, or the empty string when it can.
 //
@@ -103,7 +109,14 @@ var errNoRunCopy = fmt.Errorf("this run's working copy was not written down when
 // a copy that WAS written down and is no longer there — is a fact about this
 // moment, so the door finds it out at the moment it matters ([runCopyTree]) and
 // says so then.
-func runCannotContinue(record *TaskCopyRecord) string {
+//
+// A PROGRAM'S RUN IS NEVER CARRIED ON, whatever its record says: the program
+// did its one run alone and left its work where it ended, and the next hand-off
+// is a new run ([programNotCarriedOn]).
+func runCannotContinue(record *TaskCopyRecord, program string) string {
+	if program = strings.TrimSpace(program); program != "" {
+		return programNotCarriedOn(program)
+	}
 	if record == nil || strings.TrimSpace(record.Dir) == "" {
 		return errNoRunCopy.Error()
 	}
