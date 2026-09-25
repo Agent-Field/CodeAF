@@ -163,6 +163,14 @@ names a team inside another with its parent first, `harbor › api`; the team sw
 teams page draw the tree. You move a team on the **teams page** (`m`, Move into…, or a drag in
 its rail) or with `Inside` on its card, and every move can be undone for a few seconds.
 
+## Moving a conversation between teams is written to Traffic
+
+Moving a conversation from one team to another writes one Traffic line on each side:
+`@web moved to harbor` on the team it left, `@web joined from ops` on the team it joined.
+Moving a whole team under another writes the same kind of line on the team that moved and on
+its new parent. A move that does not go through writes nothing. The manager of a team that
+gained or lost a member is told on its next wake, from the Traffic it already reads.
+
 **Closing a team.** `D` closes the team that is shown: at once, with Undo, when nothing in it
 is running, and with a card offering **Wrap up first**, **Close now** and **Cancel** when
 something is. A closed team leaves the Teams row and the switcher and waits under

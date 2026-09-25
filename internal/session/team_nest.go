@@ -164,8 +164,13 @@ func (a *Agent) teamStartSubTeam(team teams.Team, role teamRole, handle, brief, 
 		capUSD  float64
 		moved   []string
 		pool    string
+		movedIn []teams.MoveNotice
 	)
 	err := teams.Update(profile, func(f *teams.File) error {
+		snap := &teams.File{Teams: make([]teams.Team, len(f.Teams))}
+		for i, t := range f.Teams {
+			snap.Teams[i] = t.Clone()
+		}
 		parent, ok := f.Team(team.ID)
 		if !ok || !teamHoldsKey(keys, parent.Manager) {
 			return errNest("This conversation is not the manager of " + strconv.Quote(team.Name) + " now. Nothing was done.")
@@ -222,6 +227,7 @@ func (a *Agent) teamStartSubTeam(team teams.Team, role teamRole, handle, brief, 
 			moved = append(moved, "@"+m.Handle)
 		}
 		childID = child.ID
+		movedIn = teams.MemberMoveNotices(snap, f)
 		return nil
 	})
 	var refused errNest
@@ -231,6 +237,10 @@ func (a *Agent) teamStartSubTeam(team teams.Team, role teamRole, handle, brief, 
 	if err != nil {
 		return "The team could not be made: " + err.Error(), true
 	}
+	// The members that left this team and joined the new one are told once,
+	// here, where the membership was written. A refusal returned above and
+	// wrote nothing.
+	_ = teams.WriteMoveNotices(profile, movedIn)
 	start := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Team: childID}
 	if err := teams.AppendTraffic(profile, team.ID, start); err != nil {
 		return "The team " + strconv.Quote(name) + " was made, but its manager's start could not be written to the traffic: " + err.Error(), true

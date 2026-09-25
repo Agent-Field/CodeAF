@@ -1,6 +1,9 @@
 package teams
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // moveFile is harbor (managed, $10 a day) over dock, with api at the top
 // level holding its own $3 cap, and a closed team shut beside them.
@@ -124,4 +127,128 @@ func TestMoveEffectsNameAuthorityPoolAndJudge(t *testing.T) {
 	if err != nil || e.Changes() {
 		t.Fatalf("a quiet move changes %+v (%v)", e, err)
 	}
+}
+
+// A COMMITTED MOVE WRITES ONE TRAFFIC LINE PER AFFECTED TEAM PER MEMBER, and a
+// refused move writes none. Writing the notices of that one move once is the
+// whole log: the same pair of files does not grow a second copy inside
+// MoveNotices, and a file that did not move has nothing to append.
+func TestMoveTrafficIsAppendedOnceAndNeverOnARefusal(t *testing.T) {
+	f := moveFile()
+	f.Teams = append(f.Teams, Team{ID: "ops", Name: "ops", Members: []Member{{Key: "lead", Handle: "lead"}}})
+	for i := range f.Teams {
+		if f.Teams[i].ID == "api" {
+			f.Teams[i].Parent = "ops"
+			f.Teams[i].Members[0].Handle = "web"
+			f.Teams[i].Members[1].Handle = "srv"
+		}
+	}
+	tidy(f.Teams)
+	before := f.tidyCopy()
+	d := Defaults{DepthLimit: 5}
+	if _, ok := f.MoveCheck([]string{"api"}, "shut", d); ok {
+		t.Fatal("a closed team accepted the move")
+	}
+	if n := MoveNotices(before, f, []string{"api"}); len(n) != 0 {
+		t.Fatalf("a refused move wrote %d lines", len(n))
+	}
+	if err := f.Move([]string{"api"}, "api"); err == nil {
+		t.Fatal("a team moved inside itself")
+	}
+	if n := MoveNotices(before, f, []string{"api"}); len(n) != 0 {
+		t.Fatalf("a move the store refused wrote %d lines", len(n))
+	}
+	if err := f.Move([]string{"api"}, "harbor"); err != nil {
+		t.Fatal(err)
+	}
+	notes := MoveNotices(before, f, []string{"api"})
+	want := map[string][]string{
+		"api":    {"@web moved to harbor", "@srv moved to harbor"},
+		"ops":    {"@web moved to harbor", "@srv moved to harbor"},
+		"harbor": {"@web joined from ops", "@srv joined from ops"},
+	}
+	if len(notes) != 6 {
+		t.Fatalf("got %d notices, want 6: %+v", len(notes), textsOf(notes))
+	}
+	got := map[string][]string{}
+	for _, n := range notes {
+		if n.Entry.Kind != KindEvent || n.Entry.From != FromSystem || n.Entry.To != ToEveryone || n.Entry.State != "" {
+			t.Fatalf("a move line is not an ordinary event: %+v", n.Entry)
+		}
+		got[n.Team] = append(got[n.Team], n.Entry.Text)
+	}
+	for team, lines := range want {
+		if strings.Join(got[team], "\n") != strings.Join(lines, "\n") {
+			t.Fatalf("%s traffic: %q, want %q", team, got[team], lines)
+		}
+	}
+	dir := t.TempDir()
+	if err := WriteMoveNotices(dir, notes); err != nil {
+		t.Fatal(err)
+	}
+	for team, lines := range want {
+		log, err := ReadTraffic(dir, team, "", 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(log) != len(lines) {
+			t.Fatalf("%s has %d lines, want %d (written once)", team, len(log), len(lines))
+		}
+		for i, line := range lines {
+			if log[i].Text != line {
+				t.Fatalf("%s line %d is %q, want %q", team, i, log[i].Text, line)
+			}
+		}
+	}
+	// The move already happened: asking again about the file as it stands
+	// adds nothing, so a second commit of the same move cannot double the log.
+	if n := MoveNotices(f, f, []string{"api"}); len(n) != 0 {
+		t.Fatalf("the move that already landed wrote %d more lines", len(n))
+	}
+}
+
+// A CONVERSATION MOVED FROM ONE TEAM TO ANOTHER is one line on each side, and
+// a transfer that did not happen (the same membership) is none.
+func TestMemberMoveTrafficIsAppendedOnceAndNeverOnARefusal(t *testing.T) {
+	before := &File{Teams: []Team{
+		{ID: "ops", Name: "ops", Members: []Member{{Key: "k", Handle: "web"}}},
+		{ID: "harbor", Name: "harbor"},
+	}}
+	if n := MemberMoveNotices(before, before); len(n) != 0 {
+		t.Fatalf("a refused transfer wrote %+v", textsOf(n))
+	}
+	after := before.tidyCopy()
+	if err := after.AddMember("harbor", Member{Key: "k", Handle: "web"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := after.RemoveMember("ops", "k"); err != nil {
+		t.Fatal(err)
+	}
+	notes := MemberMoveNotices(before, after)
+	if len(notes) != 2 {
+		t.Fatalf("got %+v", textsOf(notes))
+	}
+	by := map[string]string{}
+	for _, n := range notes {
+		by[n.Team] = n.Entry.Text
+	}
+	if by["ops"] != "@web moved to harbor" || by["harbor"] != "@web joined from ops" {
+		t.Fatalf("texts %+v", by)
+	}
+	dir := t.TempDir()
+	if err := WriteMoveNotices(dir, notes); err != nil {
+		t.Fatal(err)
+	}
+	log, err := ReadTraffic(dir, "ops", "", 0)
+	if err != nil || len(log) != 1 || log[0].Text != "@web moved to harbor" {
+		t.Fatalf("ops log %+v (%v)", log, err)
+	}
+}
+
+func textsOf(notes []MoveNotice) []string {
+	out := make([]string, len(notes))
+	for i, n := range notes {
+		out[i] = n.Team + ": " + n.Entry.Text
+	}
+	return out
 }

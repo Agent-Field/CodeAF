@@ -624,6 +624,11 @@ func (a *app) teamMoveApply(ids []string, parent string, from int) tea.Cmd {
 	}
 	target := teamMoveParent(parent)
 	word := a.teamMoveDone(roots, parent)
+	// The notices are taken from the tree before the edit and the tree after
+	// it. The edit runs twice (teams.go), so the append is not inside it: it
+	// would be written twice, and the first time on the loop. One command
+	// writes them, through the store, after the move has been accepted.
+	before := &teamstore.File{Teams: teamsClone(a.wall.teams)}
 	if err := a.teamEdit(func(f *teamstore.File) error { return f.Move(roots, target) }); err != nil {
 		a.tp.msg = "not moved: " + err.Error()
 		a.touch()
@@ -637,7 +642,17 @@ func (a *app) teamMoveApply(ids []string, parent string, from int) tea.Cmd {
 		a.tp.cur = teamsRef{act: teamsActUndo}
 	}
 	a.touch()
-	return nil
+	return a.teamMoveTraffic(teamstore.MoveNotices(before, a.teamTree(), roots))
+}
+
+// teamMoveTraffic appends the move's Traffic lines through the seam, off the
+// loop. A seam with no Traffic door tells nothing. Nothing here runs on a frame.
+func (a *app) teamMoveTraffic(notes []teamstore.MoveNotice) tea.Cmd {
+	var cmds []tea.Cmd
+	for _, n := range notes {
+		cmds = append(cmds, a.teamsTell(n.Team, n.Entry))
+	}
+	return tea.Batch(cmds...)
 }
 
 // teamMoveDone is what the Undo row says of a move made: `api is in harbor

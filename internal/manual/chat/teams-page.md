@@ -204,6 +204,14 @@ a conflict inside it. Any other move happens at once.
 **Every move can be undone.** For a few seconds after a move, confirmed or not, the pane (or the
 card) says `dock is in harbor now   Undo`; `Undo` or `u` puts it back where it was.
 
+## A move is written to Traffic
+
+When a move is kept, Traffic records it. The team that moved, and the team it left, each get
+`@crane moved to harbor`. The team it joined gets `@crane joined from ops`. One line per
+member, once. A move that was refused (the team could not go there) writes nothing. A manager
+whose team gained or lost someone reads that line the next time it wakes, from the Traffic it
+already reads. The move does not start a wake of its own.
+
 ## Keys on the teams page
 
 While the manager's conversation has the message box, keys type into it, as in any

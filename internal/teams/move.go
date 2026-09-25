@@ -1,5 +1,10 @@
 package teams
 
+import (
+	"sort"
+	"strings"
+)
+
 // ── MOVING TEAMS: WHERE ONE MAY GO, AND WHAT A MOVE CHANGES ─────────────────
 //
 // The person moves a team by putting it inside another (ruling c-12, amended
@@ -334,4 +339,198 @@ func (f *File) poolAbove(parent string, d Defaults) (string, float64) {
 		return top, e.CapUSDDay
 	}
 	return "", 0
+}
+
+// MoveNotice is one Traffic line a committed move writes: Team is whose log,
+// Entry the line. The store appends it; a frame never does.
+type MoveNotice struct {
+	Team  string
+	Entry Entry
+}
+
+// MoveNotices is the Traffic written when ids have moved, read off the file
+// before the move and the file after it. A team whose parent did not change
+// contributes nothing, so a refused move (the file left as it was) writes
+// nothing, and asking twice about the same pair does not invent a second move.
+//
+// EACH AFFECTED TEAM GETS ONE [KindEvent] PER MEMBER THAT MOVED WITH THE TEAM.
+// The team that was left, and the moved team, say `@handle moved to harbor`.
+// The team that was joined says `@handle joined from ops`. A manager reads
+// those on its next turn through the ordinary Traffic read. The lines are
+// from codeaf to everyone and carry no member state, so they do not start a
+// wake of their own. A member with no handle is named by the team's name,
+// once, so a team of unnamed conversations is still told.
+func MoveNotices(before, after *File, ids []string) []MoveNotice {
+	if before == nil || after == nil {
+		return nil
+	}
+	var out []MoveNotice
+	for _, id := range before.MoveRoots(ids) {
+		was, ok := before.Team(id)
+		if !ok {
+			continue
+		}
+		now, ok := after.Team(id)
+		if !ok || now.Parent == was.Parent {
+			continue
+		}
+		to := placeName(after, now.Parent)
+		from := placeName(before, was.Parent)
+		for _, h := range moveHandles(was) {
+			moved := "@" + h + " moved to " + to
+			joined := "@" + h + " joined from " + from
+			// The moved team, and the team it left, both lost the line it had.
+			out = append(out, moveEvent(id, moved))
+			if was.Parent != "" {
+				out = append(out, moveEvent(was.Parent, moved))
+			}
+			// The team it joined gained it.
+			if now.Parent != "" {
+				out = append(out, moveEvent(now.Parent, joined))
+			}
+		}
+	}
+	return out
+}
+
+// moveHandles is who a move names: each member's handle, or the team's name
+// once when nobody has one.
+func moveHandles(t Team) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, m := range t.Members {
+		h := strings.TrimPrefix(strings.TrimSpace(m.Handle), "@")
+		if h == "" || seen[h] {
+			continue
+		}
+		seen[h] = true
+		out = append(out, h)
+	}
+	if len(out) == 0 && strings.TrimSpace(t.Name) != "" {
+		out = append(out, t.Name)
+	}
+	return out
+}
+
+// placeName is team id's name, or "the top" when id is the top level.
+func placeName(f *File, id string) string {
+	if id == "" {
+		return "the top"
+	}
+	if t, ok := f.Team(id); ok && t.Name != "" {
+		return t.Name
+	}
+	return id
+}
+
+// moveEvent is one move line, from codeaf to everyone, with no member state
+// so the wake watch does not start a turn for it.
+func moveEvent(team, text string) MoveNotice {
+	return MoveNotice{Team: team, Entry: Entry{
+		Kind: KindEvent, From: FromSystem, To: ToEveryone, Text: text,
+	}}
+}
+
+// MemberMoveNotices is the Traffic for conversations that left one team and
+// joined another between before and after. A team move that only changes a
+// parent is not one of these (that is [MoveNotices]). A file that did not
+// change membership writes nothing, so a refused transfer writes nothing.
+// Each team left says `@handle moved to harbor`. Each team joined says
+// `@handle joined from ops`.
+func MemberMoveNotices(before, after *File) []MoveNotice {
+	if before == nil || after == nil {
+		return nil
+	}
+	type seat struct {
+		team Team
+		mem  Member
+	}
+	was := map[string][]seat{}
+	for _, t := range before.Teams {
+		for _, m := range t.Members {
+			if m.Key == "" {
+				continue
+			}
+			was[m.Key] = append(was[m.Key], seat{t, m})
+		}
+	}
+	now := map[string][]seat{}
+	for _, t := range after.Teams {
+		for _, m := range t.Members {
+			if m.Key == "" {
+				continue
+			}
+			now[m.Key] = append(now[m.Key], seat{t, m})
+		}
+	}
+	var out []MoveNotice
+	seen := map[string]bool{}
+	for key, froms := range was {
+		tos := now[key]
+		for _, from := range froms {
+			still := false
+			for _, to := range tos {
+				if to.team.ID == from.team.ID {
+					still = true
+					break
+				}
+			}
+			if still {
+				continue
+			}
+			h := moveHandle(from.mem)
+			if h == "" {
+				continue
+			}
+			for _, to := range tos {
+				if to.team.ID == from.team.ID {
+					continue
+				}
+				held := false
+				for _, back := range froms {
+					if back.team.ID == to.team.ID {
+						held = true
+						break
+					}
+				}
+				if held {
+					continue
+				}
+				mark := from.team.ID + "->" + to.team.ID + ":" + h
+				if seen[mark] {
+					continue
+				}
+				seen[mark] = true
+				out = append(out, moveEvent(from.team.ID, "@"+h+" moved to "+placeName(after, to.team.ID)))
+				out = append(out, moveEvent(to.team.ID, "@"+h+" joined from "+placeName(before, from.team.ID)))
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Team != out[j].Team {
+			return out[i].Team < out[j].Team
+		}
+		return out[i].Entry.Text < out[j].Entry.Text
+	})
+	return out
+}
+
+// moveHandle is the handle a move line uses, or "" when the member has none.
+func moveHandle(m Member) string {
+	return strings.TrimPrefix(strings.TrimSpace(m.Handle), "@")
+}
+
+// WriteMoveNotices appends each notice to that team's Traffic, once per
+// notice. A refused move hands none, and this writes none.
+func WriteMoveNotices(profileDir string, notes []MoveNotice) error {
+	var err error
+	for _, n := range notes {
+		if n.Team == "" || strings.TrimSpace(n.Entry.Text) == "" {
+			continue
+		}
+		if e := AppendTraffic(profileDir, n.Team, n.Entry); e != nil && err == nil {
+			err = e
+		}
+	}
+	return err
 }
