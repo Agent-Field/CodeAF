@@ -31,6 +31,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what can you do", "what-i-can-do"},
 		// The conversations view and its teams (conversations-and-teams.md).
 		{"how do I see all my conversations at once", "conversations-and-teams"},
+		// The product's own words for that view are the wall: `/wall`, `alt+v`
+		// opens the wall. A person asks for it by that word.
+		{"what is the conversations wall", "conversations-and-teams"},
+		{"how do I open the wall", "conversations-and-teams"},
 		{"what is the chats dock under the message box", "conversations-and-teams"},
 		{"how do I group conversations into a team", "conversations-and-teams"},
 		{"how do I switch teams from the tab strip", "conversations-and-teams"},

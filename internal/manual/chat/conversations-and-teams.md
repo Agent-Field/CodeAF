@@ -1,6 +1,6 @@
 # Conversations and teams
 
-## The conversations view: every open conversation at once
+## The conversations view (the wall): every open conversation at once
 
 To see all your conversations at once, open the **conversations view**: every conversation
 this window has open, as a grid of live tiles, so you can see at a glance which ones are working, which are waiting on you
