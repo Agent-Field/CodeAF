@@ -378,8 +378,10 @@ them.
   reads `from → to  words`. The manager is `◆`, several recipients are `@scrape +2`, and the
   words follow, and how long ago at the right (`◆ → @scrape +2  Please provide a st… ▸  2m`).
   The age is `now`, `2m`, `3h`, `1d`, the same ladder a task row and a home session use
-  (`sinceAt`), dim, on every kind of row: a thread, a `↳` reply, a band question, General,
-  and a member's own lines. It moves when the minute in the row cache moves, and nowhere
+  (`sinceAt`) through a day, dim, on every kind of row: a thread, a `↳` reply, a band question, General,
+  and a member's own lines. Past thirty days a task row and a home session print a date
+  (`sinceAt`). A Traffic row stays compact (`trafficAgeAt`): `30d`, weeks from six weeks
+  (`6w`, `12w` at ninety days), then years (`1y` at four hundred days). It moves when the minute in the row cache moves, and nowhere
   else. The state its answers leave it in and its message count give way to the words when
   the column is narrow; the hint says them. The arrow and the names keep their cells, then
   the age, and a narrow column cuts only the words, at a word, with `…`. A band row is

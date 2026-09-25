@@ -89,6 +89,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does Traffic 3 new mean in the column header", "team-manager"},
 		{"who is a traffic row from and who is it to", "team-manager"},
 		{"how old is a traffic row", "team-manager"},
+		{"how old is a traffic row after a month", "team-manager"},
 		{"what does pressing a traffic row open", "team-manager"},
 		{"what does chats on the tab bar do", "places"},
 		{"how do I get back to my conversation from a place", "places"},

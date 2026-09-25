@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -87,11 +88,52 @@ func trafficAsking(e teamstore.Entry) bool {
 	return strings.HasPrefix(text, "ask") || strings.HasPrefix(text, "needs you")
 }
 
-// trafficAge is how long ago an entry was written, in the same few cells a
-// task row and a home session use ([sinceAt]): `now`, `2m`, `3h`, `1d`. One
-// ladder, so a row and the home never disagree about what two minutes is.
+// trafficAge is how long ago an entry was written. Through a day it is the
+// same few cells a task row and a home session use ([sinceAt]): `now`, `2m`,
+// `3h`, `1d`. Past that a Traffic row keeps a compact age ([trafficAgeAt]),
+// because [sinceAt] prints a calendar date and a date in this margin is a
+// second clock.
 func (a *app) trafficAge(e teamstore.Entry) string {
-	return sinceAt(e.At, a.now())
+	return trafficAgeAt(e.At, a.now())
+}
+
+// trafficAgeAt is [sinceAt] for the spans where both say a count, and a
+// compact count after that.
+//
+// A TASK ROW AND A HOME SESSION PRINT A DATE PAST THIRTY DAYS, and that is
+// the right answer on a list of sessions a person is picking by the month.
+// A Traffic row is a few cells beside a message. `2 Jan` there does not say
+// how stale the line is, so the row stays on the count: days through the
+// forty-first (`41d`, which includes the thirtieth day [sinceAt] already
+// gives up), weeks from six weeks (`6w`, `12w`) until a year, then years
+// (`1y`). Six weeks is the first week reading, so the number does not step
+// backwards from `41d` to `4w`. The count truncates, so a row never claims
+// to be older than it is.
+func trafficAgeAt(at, now time.Time) string {
+	if at.IsZero() {
+		return ""
+	}
+	// A missing latch is the wall clock, the same fallback [sinceAt] takes,
+	// and the reading is still this ladder rather than a date.
+	if now.IsZero() {
+		now = time.Now()
+	}
+	d := now.Sub(at)
+	const day = 24 * time.Hour
+	switch {
+	case d < time.Minute:
+		return "now"
+	case d < time.Hour:
+		return itoa(int(d/time.Minute)) + "m"
+	case d < day:
+		return itoa(int(d/time.Hour)) + "h"
+	case d < 42*day:
+		return itoa(int(d/day)) + "d"
+	case d < 365*day:
+		return itoa(int(d/(7*day))) + "w"
+	default:
+		return itoa(int(d/(365*day))) + "y"
+	}
 }
 
 // trafficBelongsTo is the conversation a Traffic entry was written in. A

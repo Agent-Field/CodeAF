@@ -105,7 +105,8 @@ General                     2 msgs   ▸ 1d
   for the ones that do not fit, then what it said. The state its answers leave it in
   (`running`, `asking`, `done`, `failed`) and how many messages it holds sit at the right
   when they fit, and the hint line always says them. How long ago sits at the right of
-  every row, dim: `now`, `2m`, `3h`, `1d`, the same words a task row uses. The band's
+  every row, dim: `now`, `2m`, `3h`, `1d`, and past a month `30d`, `12w`, `1y`. A task row
+  switches to a date after thirty days. A Traffic row does not. The band's
   questions carry it too. In a narrow column the arrow and the names stay, then the age,
   and only the words are cut, at a word, with `…`.
 - `▸` lays the thread's replies open under it, one `↳` line per member, each `from → to`
@@ -176,7 +177,8 @@ are the first handle and `+2` for the rest. In a member's chat that member is `y
 question to it reads `◆ → you` and its answer reads `you → ◆`. A reply under a thread is the
 same shape after `↳` (`↳ @model → ◆  working…  now`). The band's question is the same shape in
 amber (`? @model → ◆  keep the old schema?  3m`). How long ago is on the row, at the right,
-dim, at every width: `now`, `2m`, `3h`, `1d`. A narrow column keeps the arrow and the names,
+dim, at every width: `now`, `2m`, `3h`, `1d`, and past a month `30d`, `12w`, `1y`. A narrow
+column keeps the arrow and the names,
 then the age, and cuts only the words, at a word, with `…`. Press a handle to open that
 member at the message. Press anywhere else on the row to open the chat that message belongs
 to, at that message. The hint says `Open @model's message · 3m ago · click`.
@@ -184,7 +186,9 @@ to, at that message. The hint says `Open @model's message · 3m ago · click`.
 ## How old a Traffic row is, and what pressing it opens
 
 Every Traffic row ends with how long ago it was, dim and at the right: `now` (under a minute),
-`2m`, `3h`, `1d`. The same words a task row and a home session use. It is on a thread
+`2m`, `3h`, `1d`. Past a month it stays a compact age: `30d`, then weeks from six weeks
+(`6w`, and `12w` at about three months), then years (`1y`). A task row and a home session switch
+to a date after thirty days (`26 Aug`). A Traffic row does not. It is on a thread
 (`◆ → @scrape +2  Please provide… ▸  2m`), on a reply (`↳ @model → ◆  ✓ done  4m`), on General,
 on the band's question, and on a member's own lines (`you → ◆  now`). A narrow column keeps
 the arrow, the names and the age, and cuts only the words, at a word, with `…`.
