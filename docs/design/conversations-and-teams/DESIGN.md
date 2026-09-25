@@ -126,6 +126,16 @@ lands. `chats` is not a room: a click, its digit or `enter` on it returns to the
 in front, or opens a new chat when none is open. It never wears the current band, `tab` steps
 over it, and `alt+k` stays the switcher that chooses a conversation.
 
+**One top bar.** The places bar and the chat strip are one row (ruled 2026-09-24): row 1 under
+the top line, the first word at column 3, two cells of air between two items (four between two
+words, counting each chip's pad), the current item on the strip's front-tab ground, then the
+same rule. Measured before the change at 80, 110 and 160 columns: both on row 1; the strip's
+first word at column 3 with 2 cells between chips, the places' at column 2 with 1, and the
+current place on the ground the strip gives a tab that is not in front. The strip's geometry
+was kept and the places bar moved to it, because the strip is the row a person lives on, its
+grounded chips and close marks need the air to read as separate things, and five short words
+have the room. `TestOneTopBarPlacesAndChatsShareGeometry` pins the row, column and gap on both.
+
 ## 3. Organize: one button, a proposal, never a silent change
 
 On the All view, `✦ Organize` (key `o`), with a quiet count when five or more conversations

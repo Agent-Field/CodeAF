@@ -15,7 +15,10 @@ box all reach them — and while you are standing in one its word is on the bar 
 four, so the bar always says where you are.
 
 They are drawn as a **tab bar** on the second row of every place, under the top line — the
-row of words at the top of the screen, `home  chats  tasks  spend  settings`, is this bar. The
+row of words at the top of the screen, `home  chats  tasks  spend  settings`, is this bar. It
+is the same row as the conversation's tab strip: the same line, the first word in the same
+column, the same air between two words, and the word you are in on the same ground as the
+conversation in front, so moving between a place and a chat never moves the top of the screen. The
 one you are standing in wears a filled band; the rest are dim. Nothing else on the surface
 looks like that bar, so "which place am I in" is one glance.
 
@@ -669,26 +672,27 @@ everywhere.
 
 ## Why the tab bar looks squashed on a narrow terminal — the places at 60 columns
 
-**All five words are on the bar at 60 columns, and down to 41.** The five words with the
-padding each chip carries and the air between them are 45 cells; under that the bar gives up
-the *air between the chips* before it gives up a word, so a 41-column pane draws
+**All five words are on the bar at 60 columns, and down to 42.** The five words with the
+padding each chip carries and the air between them are 50 cells; under that the bar gives up
+the *air between the chips*, a cell at a time, before it gives up a word, so a 42-column pane
+draws
 
 ```
-  home  chats  sessions  spend  settings
+   home  chats  sessions  spend  settings
 ```
 
-with two cells between the words instead of three. Nothing else changes: the band under the
+with two cells between the words instead of four. Nothing else changes: the band under the
 word you are standing in, the counts, `tab`, `←` `→` and `alt+1`…`alt+8` all mean exactly
 what they mean on a wide screen.
 
-**Under 41 columns the bar carries what it can and counts the rest.** It keeps the place
+**Under 42 columns the bar carries what it can and counts the rest.** It keeps the place
 you are standing in, the word the cursor is on, and any place wearing a count, then fills in
 the bar's own order until the row is full and ends with a dim `▸ 2` — the number of the
 bar's words that are not on the row (standing, memory and search are never counted: they
 are not the bar's to give up):
 
 ```
-  home  chats  sessions  ▸ 2
+   home  chats  sessions  ▸ 2
 ```
 
 `▸ 3 more` where there are cells for the longer spelling, `▸ 3` where there are not — the
