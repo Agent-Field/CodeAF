@@ -58,6 +58,9 @@ type TaskCopyRecord struct {
 	// landing outlives the run that made the world.
 	Rung GroundRung `json:"rung,omitempty"`
 	Seal string     `json:"seal,omitempty"`
+	// Continues says a program's run carries on on the branch an earlier run
+	// of it left ([ProgramFolder.Continues]), which its receipt says.
+	Continues bool `json:"continues,omitempty"`
 }
 
 // runCopyOf writes a live run's copy down. It is taken from the tree the run is
@@ -68,15 +71,16 @@ func runCopyOf(tree taskTree) *TaskCopyRecord {
 		return nil
 	}
 	return &TaskCopyRecord{
-		Dir:     tree.dir,
-		Branch:  tree.branch,
-		Root:    tree.root,
-		Ground:  tree.ground,
-		Mode:    tree.mode,
-		Home:    tree.home,
-		HomeSha: tree.homeSha,
-		Rung:    tree.rung,
-		Seal:    tree.seal,
+		Dir:       tree.dir,
+		Branch:    tree.branch,
+		Root:      tree.root,
+		Ground:    tree.ground,
+		Mode:      tree.mode,
+		Home:      tree.home,
+		HomeSha:   tree.homeSha,
+		Rung:      tree.rung,
+		Seal:      tree.seal,
+		Continues: tree.continues,
 	}
 }
 

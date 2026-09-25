@@ -911,6 +911,9 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 		stand = delegateStand(stand.dir)
 	}
 	asked := programAsked(spec)
+	if via != nil {
+		a.keepProgramAttempt(p.id, a.programAttemptOf())
+	}
 	joined, err := a.startOrJoinTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, stand, question, via, asked...)
 	if refusal := (standsElsewhereError{}); errors.As(err, &refusal) {
 		return refusal.Error(), true, true

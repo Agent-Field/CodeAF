@@ -308,8 +308,12 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// and the deadline it puts on the context both tells every request how long is
 	// left and cuts the turn itself ([Agent.settleBoundTripped] reads the ceiling
 	// at the loop's boundary). Every other turn is left exactly as it was.
-	if _, settle := settleWakeFrom(ctx); settle {
-		windowed, closeWindow := openCallWindow(ctx, a.settleWindow(), callWindow{})
+	if wake, settle := settleWakeFrom(ctx); settle {
+		window := a.settleWindow()
+		if wake.window > window {
+			window = wake.window
+		}
+		windowed, closeWindow := openCallWindow(ctx, window, callWindow{})
 		defer closeWindow()
 		ctx = windowed
 	}

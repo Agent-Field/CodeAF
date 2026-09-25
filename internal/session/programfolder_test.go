@@ -349,8 +349,11 @@ func TestTheNextRunCarriesOnInAFolderTheOneThatWentAwayLeftClean(t *testing.T) {
 		t.Fatalf("the next run was refused a clean folder: %v", err)
 	}
 	defer next.Finish("")
-	if next.Home != dead.Branch {
-		t.Fatalf("the next run was cut from %q, want the dead run's branch %q, which was left checked out", next.Home, dead.Branch)
+	// IT CARRIES ON ON THE DEAD RUN'S BRANCH, which was left checked out, and
+	// the person's branch it names is still theirs ([ProgramFolder.carryOn]).
+	if next.Branch != dead.Branch || next.Home != dead.Home || next.Start != dead.Start || !next.Continues {
+		t.Fatalf("the next run = branch %q home %q start %q continues %v, want it on the dead run's branch %q with its home %q and start %q",
+			next.Branch, next.Home, shortSha(next.Start), next.Continues, dead.Branch, dead.Home, shortSha(dead.Start))
 	}
 	if files := gitOut(t, repo, "ls-tree", "--name-only", dead.Branch); !strings.Contains(files, "done.txt") {
 		t.Fatalf("the dead run's committed work is not on its branch:\n%s", files)

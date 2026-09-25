@@ -83,6 +83,9 @@ func (a *Agent) refuseProposedTask(spec taskSpec) bare.Staged {
 	if refusal := a.proposalDependencyRefusal(spec); refusal != "" {
 		return bare.Settled(refusal, true)
 	}
+	if refusal := a.programRetryRefusal(spec.via); refusal != "" {
+		return bare.Settled(refusal, true)
+	}
 	return nil
 }
 

@@ -559,6 +559,7 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	var reason string
 	switch t.Status {
 	case delegate.StatusPass:
+		report.Verdict = t.Verdict()
 		end(sink.steps, "finished: "+t.Message, report.Result)
 		return report, nil
 	case delegate.StatusBudget:

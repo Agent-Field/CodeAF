@@ -74,6 +74,12 @@ var wakeRoads = map[string]string{
 		"session's goal owner answered about that landing ([Agent.addressLanding] → " +
 		"[Principal.Report]), so a run that lands while nobody is watching is told to whoever the " +
 		"run was started for rather than to an empty room",
+	"programLandingNote": "a program's run's landing, which [Agent.deliverBeltRunLanding] hands " +
+		"here instead of its own note. It is addressed to THE CONVERSATION'S OWN MODEL, not to a " +
+		"person: the program's ending is codeaf's to act on (program_outcome.go) — check the work, " +
+		"send it back within the retry cap, or stop and say where it stands — so an unattended " +
+		"session still has somebody to act on it, and the person reads the summary that turn writes, " +
+		"owed their question when the hand-off carried one ([owedLandingDocument])",
 }
 
 // TestEveryWakeRoadSaysWhoItIsAddressedTo fails when a new road into the wake

@@ -8143,6 +8143,10 @@ type taskTree struct {
 	// about the run the ground law was written from.
 	rung GroundRung
 	seal string
+	// continues says a program's run carries on on the branch an earlier run
+	// of it left checked out ([ProgramFolder.Continues]); false for every
+	// other tree.
+	continues bool
 	// base is the machine commit the parent's world was sealed into, when a rung
 	// made one. It is the replay point the landing takes the inheritance back out
 	// at ([taskTree.replayOwnWork]) and it is empty for a parent that had nothing

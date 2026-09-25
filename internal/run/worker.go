@@ -27,6 +27,10 @@ type Report struct {
 	Steps   int
 	USD     float64
 	Waiting bool
+	// Verdict is a program's own word for the finished work it handed in —
+	// senior-dev's `pass` or `pass-unverified` — when a delegated run's program
+	// finished; empty for every other worker ([delegate.Terminal.Verdict]).
+	Verdict string
 }
 
 // Worker is one task's executor. The supervisor never talks to a model

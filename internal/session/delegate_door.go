@@ -230,7 +230,11 @@ func delegateFolderReceipt(ground string, via delegate.Delegate, record *TaskCop
 		stays = "your branch " + record.Home + " has already moved, from " + shortSha(record.HomeSha) + " to " + shortSha(tip) +
 			", and codeaf does not move it"
 	}
-	return "It is " + via.Name + "'s: it works alone in " + ground + " itself, on a new branch " + record.Branch + "; " +
+	on := "on a new branch " + record.Branch
+	if record.Continues {
+		on = "carrying on on its branch " + record.Branch + ", where the last run left it"
+	}
+	return "It is " + via.Name + "'s: it works alone in " + ground + " itself, " + on + "; " +
 		stays + ", and when it ends " + record.Branch + " stays checked out there with its work."
 }
 

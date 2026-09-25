@@ -92,6 +92,9 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 		// status word and its sentence, so the row names what the program said
 		// and not the run's one word for every unfinished ending.
 		Program: programEndingOf(summary.Program),
+		// AND THE WORD A PROGRAM FINISHED ON, which is how the session tells
+		// work its program checked from work nothing checked.
+		ProgramVerdict: summary.Verdict,
 		// THE ROWS THE RUN'S OWN ENDING CUT CROSS AS THEMSELVES: the same
 		// one-for-one carrying as the limit fact, so the session draws a row
 		// the person's bound took down from the run's own record of it and

@@ -1262,6 +1262,14 @@ type userMessage struct {
 	// seat and dedicated role page; ordinary settle wakes leave both empty.
 	settleModel  string
 	settlePrompt string
+	// settleWindow widens the turn's window past the settle turn's own
+	// ([Agent.settleWindow]) — a program's ending may be checked by running the
+	// project's tests ([programOutcomeWindow]); zero leaves it as it is.
+	settleWindow time.Duration
+	// programOutcome is a program run's ending, on the note its landing wakes
+	// the conversation with ([Agent.programLandingNote]); nil on every other
+	// message.
+	programOutcome *programOutcome
 
 	// landingQuestion and landingOutcome preserve the two roles inside an owed
 	// landing document: what was asked and the evidence the run returned.
@@ -3726,6 +3734,7 @@ type settleWake struct {
 	ceiling int
 	model   string
 	prompt  string
+	window  time.Duration
 }
 
 type settleWakeKey struct{}
@@ -3761,6 +3770,9 @@ func (a *Agent) settleWakeLocked() (settleWake, bool) {
 		}
 		if note.settlePrompt != "" {
 			wake.model, wake.prompt = note.settleModel, note.settlePrompt
+		}
+		if note.settleWindow > wake.window {
+			wake.window = note.settleWindow
 		}
 	}
 	return wake, wake.ceiling != 0

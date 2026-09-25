@@ -226,7 +226,7 @@ func TestW7ThePromptNamesCodeafOnceAndNamesNoRetiredProduct(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantFiles := []string{"bashrules.md", "bashtask.md", "bashworker.md", "discipline.md", "divide.md", "fanout.md", "landing-answer.md", "quick.md", "revise.md", "runask.md", "runsummary.md", "shape.md", "system.md", "worker.md"}
+	wantFiles := []string{"bashrules.md", "bashtask.md", "bashworker.md", "discipline.md", "divide.md", "fanout.md", "landing-answer.md", "program-outcome.md", "quick.md", "revise.md", "runask.md", "runsummary.md", "shape.md", "system.md", "worker.md"}
 	var gotFiles []string
 	var corpus []byte
 	for _, entry := range entries {

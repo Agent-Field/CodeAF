@@ -166,6 +166,9 @@ type Supervisor struct {
 	// ended, when it ended without finishing ([ProgramEndedError]); nil for
 	// every other run.
 	rootProgram *ProgramEndedError
+	// rootVerdict is the program's own word for the work it finished
+	// ([Report.Verdict]); empty for every other run.
+	rootVerdict string
 	// rootFailure is the root worker's error when it failed, which the run's
 	// ending writes onto the root ([plandb.Store.FailRoot]).
 	rootFailure string
@@ -887,6 +890,7 @@ func (s *Supervisor) absorb(ret workerReturn) {
 			}
 		} else {
 			s.rootResult = ret.report.Result
+			s.rootVerdict = ret.report.Verdict
 			// THE CHILDLESS ROOT IS A LEAF, and it is checked like any other. If
 			// its worker already wrote the ending, the store preserves that result
 			// and moves the root back to waiting on the check; CompleteRoot writes
@@ -1772,6 +1776,10 @@ type Summary struct {
 	// finishing: its status word and its own account ([ProgramEndedError]).
 	// Nil for a run that finished, and for every run no program worked.
 	Program *ProgramEndedError
+	// Verdict is a delegated run's program's own word for the work it
+	// finished ([Report.Verdict]): senior-dev's `pass` or `pass-unverified`.
+	// Empty for every other run.
+	Verdict string
 	// Cut is every task the run's own ending cut mid-flight, by store id: its
 	// wall, its spend ceiling, or a person's stop ended the context their
 	// workers ran under. A task that failed on its own before the ending is
@@ -1882,6 +1890,7 @@ func Start(ctx context.Context, spec Spec) (Outcome, Summary) {
 		Result:  result,
 		Limit:   supervisor.limitHit,
 		Program: supervisor.rootProgram,
+		Verdict: supervisor.rootVerdict,
 		Cut:     supervisor.cutIDs(),
 		Nodes:   supervisor.nodes,
 		Steps:   supervisor.steps,

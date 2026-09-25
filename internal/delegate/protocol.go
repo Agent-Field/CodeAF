@@ -176,6 +176,11 @@ func (t Terminal) Observed() string {
 	return inner
 }
 
+// Verdict is the program's own word for how its work stood when it ended —
+// senior-dev's inner status (`pass`, `pass-unverified`, `fail`) — beside the
+// protocol's status word, and "" when the record carried none.
+func (t Terminal) Verdict() string { return t.text("status") }
+
 // Deliverable is the answer text of a delegate that lands text.
 func (t Terminal) Deliverable() string { return t.text("deliverable") }
 

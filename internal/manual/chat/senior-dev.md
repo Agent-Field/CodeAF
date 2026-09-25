@@ -183,10 +183,47 @@ run that ended done in its `depends_on` (the run's work is on its branch, in its
 but not one still going: `depends_on names task 5, a program's run that has not ended,
 and a task cannot wait on one.`
 
-**It is never retried or carried on.** A run that ended, however it ended, is not
+**A run is never resumed, but codeaf may send the work back.** A run that ended is not
 started again: `senior-dev's run is never carried on: its work is left where it ended, and
 a new hand-off starts a new run`. Its card offers no retry, and the `@` list offers no
-steer on a running one, because it reads no messages; a follow-up is a new `/senior-dev`.
+steer on a running one, because it reads no messages. What codeaf does instead is the next
+section.
+
+## What codeaf does when senior-dev ends — its ending, checked, sent back, retry, at most twice, ask before spending more
+
+**senior-dev's ending goes to the chat, not to you.** The moment a run ends, the
+conversation wakes on its own with how it came out — passed its own check of the project,
+nothing finished checking it, handed in work that does not pass, stopped on a limit, or
+broke — and acts on it:
+
+- **passed**: the chat looks at what changed against what was asked, then tells you where
+  the work is and offers to merge its branch;
+- **nothing checked it**: the chat runs the project's checks on its branch itself, then
+  acts on what they show;
+- **does not pass, or did not finish**: the chat fixes a small gap on its branch itself, or
+  hands the work back to senior-dev with a brief sharpened by what failed;
+- **stopped on a dollar or time limit**: the chat never sends it back on its own, because
+  another run spends more of your money: it says what is done and what is left, and asks;
+- **broke**: the chat hands it back once if the cause looks passing (a network or model
+  service failure), and otherwise tells you what broke.
+
+**codeaf sends senior-dev back at most twice on its own** for one piece of work. A third
+hand-off it tries, or one after a limit, is refused
+(`senior-dev has been sent back to this work 2 times already, the most codeaf does on its
+own: tell the person where the work stands and let them decide`), and you decide. A
+hand-off you ask for yourself is yours, and starts the count again. Each hand-off still
+shows its card, with the same countdown as any other, so you can stop one.
+
+**Every run on the same work stays on one branch.** A run handed a folder that the last
+senior-dev run left on its branch carries on on that branch rather than cutting another:
+`it works alone in <folder> itself, carrying on on its branch <branch>, where the last run
+left it; your branch main does not move`. Its ending names your own branch, and a run that
+adds nothing never deletes what an earlier one committed. Switch the folder to another
+branch first and the next run cuts its own.
+
+**The card stays quiet.** senior-dev's landed card says the run `ended` (never a red
+cross) and `senior-dev's ending went to the chat`; the chat's own reply is where you read
+what came of the work. `ctrl+o` on the card still shows senior-dev's own words.
 
 **It has no step cap.** It is held to the conversation's dollar and time ceilings instead,
 and codeaf enforces both from outside whatever it does. On a service that reports no
@@ -569,8 +606,8 @@ A run ends in one of these ways, and the task's ending says which:
 - `finished: …` — it submitted, and the words after say what the project's build and
   tests did on the frozen tree;
 - `senior-dev did not finish: …` — it ended without submitting, or what it submitted fails
-  the project's own build or tests. The task row shows this sentence as its reason; it is
-  not drawn as a fault, and what it made is still on its branch;
+  the project's own build or tests. It is not drawn as a fault, what it made is still on its
+  branch, and the chat acts on it (see what codeaf does when senior-dev ends);
 - `senior-dev reached the run's dollar ceiling of $5.00: …` — codeaf refused a model call
   at the dollar ceiling; the words after are senior-dev's own ending;
 - `senior-dev stopped on its own ceiling: …` — it stopped itself at the time ceiling;

@@ -155,6 +155,12 @@ type ProgramFolder struct {
 	// Ended is the sentence the run's folder was finished with. Empty is a
 	// folder still owed its ending.
 	Ended string `json:"ended,omitempty"`
+	// Continues says this run carries on on the branch an earlier finished
+	// run of the same program left checked out in the folder, rather than
+	// cutting one of its own ([ProgramFolder.carryOn]): Branch, Home and Start
+	// are that run's, so the person's branch is still the one named and a run
+	// that adds nothing never deletes what the earlier run left.
+	Continues bool `json:"continues,omitempty"`
 
 	key   string
 	place Place
@@ -224,7 +230,11 @@ func PrepareProgramFolder(order ProgramFolderOrder) (*ProgramFolder, error) {
 		folder.write()
 		return folder, nil
 	}
-	if err := folder.cutBranch(); err != nil {
+	carried, err := folder.carryOn()
+	if !carried && err == nil {
+		err = folder.cutBranch()
+	}
+	if err != nil {
 		folder.release()
 		if earlier != nil && earlier.Folder.Branch != "" && !earlier.Moved {
 			// AND THE REFUSAL SAYS WHOSE THE CHANGES MAY BE. codeaf cannot tell a
@@ -236,6 +246,45 @@ func PrepareProgramFolder(order ProgramFolderOrder) (*ProgramFolder, error) {
 		return nil, err
 	}
 	return folder, nil
+}
+
+// carryOn takes up the branch an earlier finished run of the same program left
+// checked out in this folder, and answers false when there is none to take up.
+//
+// A SECOND RUN STACKED A BRANCH ON THE FIRST AND CALLED THE FIRST "YOUR
+// BRANCH". The earlier run's branch is left checked out and nothing merges it,
+// so a run handed the same folder next — codeaf sending senior-dev back to
+// finish what it left, or a person asking for more — met a clean checkout on
+// `task/<first>` and cut `task/<second>` from it: its landing told the person
+// their branch was `task/<first>`, and a second attempt that changed nothing
+// deleted its own branch and switched the folder back to the first run's. The
+// run now carries on on that branch, with the person's branch and the commit
+// it stood on read from the earlier run's record: the page names the person's
+// real branch, every attempt's work is on one branch, and "changed nothing" is
+// measured from where the first run started, so it can never throw away what
+// an earlier attempt committed.
+//
+// Only a record whose run ENDED is taken up, and only while its branch is the
+// one checked out: a person who switched away has chosen where the next run
+// starts, and a record still owed its ending was settled above and is refused
+// by the checkout's own changes if it left any.
+func (f *ProgramFolder) carryOn() (bool, error) {
+	earlier, ok := readProgramFolder(f.key)
+	if !ok || earlier.Ended == "" || earlier.Branch == "" || earlier.Program != f.Program {
+		return false, nil
+	}
+	if canonicalPath(earlier.Dir) != f.key || currentBranch(f.Dir) != earlier.Branch {
+		return false, nil
+	}
+	if strings.TrimSpace(f.place.Dir) != "" {
+		defer lockGitRoot(f.place, f.key)()
+	}
+	if refusal := programCheckoutInTheWay(f.Dir, f.Notes); refusal != "" {
+		return true, errors.New(refusal)
+	}
+	f.Branch, f.Home, f.Start, f.Continues = earlier.Branch, earlier.Home, earlier.Start, true
+	f.write()
+	return true, nil
 }
 
 // cutBranch reads the person's checkout and cuts the program's branch in it,
@@ -800,6 +849,7 @@ func (f *ProgramFolder) tree() taskTree {
 	tree := taskTree{dir: f.Dir, merge: mergeInPlace, ground: f.Dir, mode: TaskModeInPlace, rung: GroundRungHere}
 	if f.Branch != "" {
 		tree.root, tree.branch, tree.home, tree.homeSha = f.Dir, f.Branch, f.Home, f.Start
+		tree.continues = f.Continues
 	}
 	return tree
 }

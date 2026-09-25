@@ -194,6 +194,10 @@ type RunSummary struct {
 	// Program is how a delegated run's program ended when it did not finish,
 	// nil otherwise ([ProgramEnding]).
 	Program *ProgramEnding
+	// ProgramVerdict is a delegated run's program's own word for the work it
+	// FINISHED — senior-dev's `pass` or `pass-unverified` — and empty for
+	// every other ending and every other run.
+	ProgramVerdict string
 	// Cut is every task the run's own ending cut mid-flight, by store id: the
 	// same typed fact as the limit, read where the run recorded it. A joined
 	// row in this set is drawn with the run's own ending and never as a fault.
@@ -1593,9 +1597,14 @@ func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
 }
 
 // deliverBeltRunLanding writes the run's digest into the conversation record.
-// A LANDING SPEAKS ONLY WHEN AN ANSWER IS OWED.
+// A LANDING SPEAKS ONLY WHEN AN ANSWER IS OWED — or when a program ended it,
+// whose ending is always the conversation's to act on (program_outcome.go).
 func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing RunLanding) {
 	line := beltRunOutcomeNote(run.store, run.root, summary, landing, a.beltRunSpan(run))
+	if run.delegate != nil {
+		a.accept(delivery{origin: fromRuntime, kind: msgResult, note: a.programLandingNote(run, summary, line)})
+		return
+	}
 	if task := run.store.Task(run.root); landingOwesAnswer(task) {
 		document := owedLandingDocument(task, line)
 		note := wakeNote(document.text())

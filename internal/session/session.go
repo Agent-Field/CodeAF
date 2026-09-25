@@ -2661,6 +2661,13 @@ type Agent struct {
 	// landingOutcomes are owed landing reports returned in this turn. They are
 	// completion evidence, not another part of the person's ask.
 	landingOutcomes []string
+	// programOutcomeNow is the program run's ending the turn now running was
+	// woken with, nil for every other turn: a hand-off it makes is a re-attempt
+	// of that run ([Agent.programRetryRefusal]). Cleared with owedAsks.
+	programOutcomeNow *programOutcome
+	// programAttempts is each started program run's place in its line of runs,
+	// by row ([Agent.keepProgramAttempt]).
+	programAttempts map[uint64]programAttempt
 	// turnResults are the tasks whose RESULTS ARRIVED IN THIS TURN, by id, in
 	// arrival order and cleared with owedAsks when a turn opens.
 	//

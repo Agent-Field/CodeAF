@@ -51,6 +51,11 @@ import (
 type taskDone struct {
 	id    uint64
 	ident taskIdent
+	// program is the program the work was handed to, "" for codeaf's own.
+	// Its ending is the conversation's to act on (session's program_outcome.go),
+	// so its card says it ended and that the chat has the rest
+	// ([doneProgramUnder]), never the program's own status.
+	program string
 	// title and subtitle are the identity (taskident.go), frozen at landing.
 	title, subtitle string
 	// status is THE READING, taken once at landing from the node's own facts
@@ -225,6 +230,7 @@ func (a *app) landedCard(node *taskNode) {
 	card := &taskDone{
 		id:          node.id,
 		ident:       node.ident,
+		program:     a.nodeProgram(node),
 		title:       title,
 		subtitle:    taskSubtitleOf(title, node.assignment),
 		status:      session.ProjectTask(doneNodeFacts(node)),
@@ -483,6 +489,11 @@ func (a *app) doneMark(card *taskDone) string {
 		// A person's own stop is not a finding, so it is neither a tick nor a cross.
 		return a.pal.dim(mark)
 	case session.TaskPresenceIncomplete:
+		// A PROGRAM'S ENDING IS NEVER PAINTED AS A FAULT: the chat acts on it
+		// and says what became of the work.
+		if card.program != "" {
+			return a.pal.dim(mark)
+		}
 		// THE CROSS IS DIM UNLESS SOMETHING BROKE. Running out of steps, losing the
 		// wire and a check that named gaps are all work that did not finish, and
 		// colouring them as failures reports a fault nobody found
@@ -511,6 +522,9 @@ func (a *app) doneMark(card *taskDone) string {
 func (a *app) doneTail(card *taskDone) string {
 	tail := ""
 	if word := strings.TrimSpace(card.status.Word); word != "" {
+		if card.program != "" && card.status.Presence == session.TaskPresenceIncomplete {
+			word = doneProgramEnded
+		}
 		tail = " · " + word
 	}
 	// ONE SEPARATOR MEANS ONE THING ON THIS ROW. The span used to be joined to
@@ -628,6 +642,9 @@ func (a *app) doneUnder(card *taskDone, width int) string {
 			return a.pal.dim("  " + fit(session.LandingDecidingWord, width-4))
 		}
 		return ""
+	}
+	if card.program != "" {
+		return a.doneProgramUnder(card, width)
 	}
 	// AND AN INCOMPLETE LANDING'S SECOND ROW IS WHY, dim, in the engine's own
 	// sentence ([session.TaskReasonOf] spells the table once). It stands INSTEAD
@@ -1245,4 +1262,24 @@ func (a *app) rollupRow(card *taskDone, width int, sel bool) string {
 		tail = ""
 	}
 	return lead + a.pal.ink(fit(card.title, room)) + a.pal.dim(tail)
+}
+
+// doneProgramEnded is the head's word for a program's run that did not finish:
+// it ended, and what became of the work is the chat's to say.
+const doneProgramEnded = "ended"
+
+// doneProgramUnder is a program's card's second row: that its ending went to
+// the chat, which acts on it and says where the work stands, and where the
+// whole of it is. THE PROGRAM'S STATUS IS NOT ON IT. It is codeaf's to act on
+// (session's program_outcome.go), and the person reads the chat's summary of
+// what came of it; the program's own words are one key away.
+func (a *app) doneProgramUnder(card *taskDone, width int) string {
+	said := card.program + "'s ending went to the chat"
+	if !card.started.IsZero() {
+		said += " · " + doneStartWord + card.started.Format("15:04")
+	}
+	if a.doneHasDetail(card) && !card.open {
+		said += " · " + doneOutputKey
+	}
+	return a.pal.dim("  " + fit(said, width-4))
 }
