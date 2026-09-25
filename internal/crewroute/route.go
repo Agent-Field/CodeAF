@@ -1348,11 +1348,16 @@ func (d Decision) Line(pinMark string, actual float64) string {
 	}
 	b.WriteString(" · checker ")
 	b.WriteString(said(checker))
+	// THE EMPTINESS LAW: a zero or unknown amount is not drawn, and its
+	// segment goes with it — a run that made no call names no $0.000 actual,
+	// and a crew nothing could price names no est $0.000.
 	switch {
 	case actual == Unspent:
-	case actual >= 0:
+	case actual > 0 && d.EstUSD > 0:
 		b.WriteString(" · " + Money(actual) + " (est " + Money(d.EstUSD) + ")")
-	default:
+	case actual > 0:
+		b.WriteString(" · " + Money(actual))
+	case d.EstUSD > 0:
 		b.WriteString(" · est " + Money(d.EstUSD))
 	}
 	if d.Note != "" {

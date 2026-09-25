@@ -545,8 +545,8 @@ can change and one line about the day.
   `/connect`. On a narrow window the chips fold to `3 of 4 on`.
 - **cap** — `per task $5 · daily none`: the most one task may spend, and the most crews
   may spend in a day, `none` for no daily cap.
-- **today** — what crews spent today and how many tasks ran. A day with nothing in it has
-  no line.
+- **today** — what crews spent today and how many tasks ran. Spend that is nothing is not
+  drawn (`today 1 task`, never `$0.000`), and a day with nothing in it has no line.
 
 **The allowed models are the models rule less every model no provider that is on serves.**
 Turning a provider off takes its routes away, never a model: a model another provider still
