@@ -137,6 +137,44 @@ func TestTheRunsTaskRoomHeadDropsTokensAndModelTheStoreHasNot(t *testing.T) {
 	}
 }
 
+// A TALL WINDOW DRAWS THE MODEL ON THE TITLE ROW. That is the header a person
+// actually sits in front of, and it is the row that used to keep the price and
+// the tokens and leave the model off.
+func TestAnOrganizedRunsTaskRoomHeadNamesTheModel(t *testing.T) {
+	row := session.PlanTaskRow{ID: "t-6", Title: "fix the loader", Status: "running", USD: 0.0017,
+		Model: "z-ai/glm-5.3-flash", Tokens: 21000,
+		Started: taskFixtureNow.Add(-20e9)}
+	a, _ := planAppWith(t, []session.PlanTaskRow{row}, map[string]session.PlanTaskPage{row.ID: {Row: row, Description: "b"}})
+	a.width, a.height = 120, 40
+	openPlanRoomNow(t, a, row.ID)
+	if !a.roomOrganized() {
+		t.Fatal("120×40 must be the organized layout the title row is drawn for")
+	}
+	head := plain(strings.Join(a.roomHeadRows(a.width), "\n"))
+	if !strings.Contains(head, "z-ai/glm-5.3-flash") {
+		t.Fatalf("the organized head does not name the model:\n%s", head)
+	}
+	if strings.Contains(head, " tok") && !strings.Contains(head, "21k tok") && !strings.Contains(head, "21.0k tok") {
+		t.Fatalf("the organized head lost the tokens beside the model:\n%s", head)
+	}
+}
+
+// AN ENGINE THAT ANSWERS THE DOOR AND SAYS IT HAS NONE still draws the absence
+// sentence. That is an older engine on the host road, not a copy that is gone.
+func TestTheWorkTabDrawsTheAbsenceSentenceWhenTheEngineHasNoDoor(t *testing.T) {
+	row := session.PlanTaskRow{ID: "t-6", Title: "fix the loader", Status: "running"}
+	fake := &planWorkFake{work: session.PlanTaskWork{NoDoor: true}}
+	a, plan := planAppWith(t, []session.PlanTaskRow{row}, map[string]session.PlanTaskPage{row.ID: {Row: row, Description: "b"}})
+	fake.planFake = plan
+	a.agent = fake
+	openPlanRoomNow(t, a, row.ID)
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyTab})
+	text := planRoomText(t, a)
+	if !strings.Contains(text, planWorkNoDoorWord) {
+		t.Fatalf("the work tab did not say the engine has no door:\n%s", text)
+	}
+}
+
 func TestTheWorkTabOfARunsTaskDrawsTheRunsWorkingCopyDifference(t *testing.T) {
 	row := session.PlanTaskRow{ID: "t-6", Title: "fix the loader", Status: "running"}
 	fake := &planWorkFake{work: session.PlanTaskWork{

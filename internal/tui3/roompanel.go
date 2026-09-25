@@ -290,7 +290,7 @@ func (a *app) roomTitleRow(width int) string {
 	right, painted := "", ""
 	if node := a.roomNode(); node != nil {
 		f := a.roomFactsOf(node)
-		right = rowAll([]rowField{f.state, f.live, f.clock, f.spend, f.tokens})
+		right = rowAll([]rowField{f.state, f.live, f.clock, f.spend, f.model, f.tokens})
 		state := rowAll([]rowField{f.state})
 		painted = a.taskStateInk(node)(state) + a.pal.muted(strings.TrimPrefix(right, state))
 	}

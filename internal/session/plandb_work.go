@@ -48,6 +48,11 @@ type PlanTaskWork struct {
 	// whose copy was never written down, or is no longer on disk, or is not a
 	// repository: a page has nothing to show and says so.
 	Read bool
+	// NoDoor says the engine that was asked has no working-copy read at all.
+	// It is set by a client whose engine answered "no such method", and it
+	// does not travel on the wire: a current engine never sets it, and a page
+	// draws the absence sentence rather than an empty difference.
+	NoDoor bool `json:"-"`
 }
 
 // planWorkPatchCap is the most of a patch a page is handed. A run that rewrote
