@@ -270,6 +270,11 @@ func teamWakes(role teamRole, entry teams.Entry) bool {
 	if role.manager && teams.IsWrapUp(entry) {
 		return true
 	}
+	// A CONFLICT'S RULING wakes the party it names, member or manager, whoever
+	// wrote it (team_nest.go).
+	if teams.IsRuling(entry) {
+		return rulingFor(role, entry)
+	}
 	if role.manager {
 		switch entry.From {
 		case "", teams.FromManager, teams.FromYou, teams.FromSystem:

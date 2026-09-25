@@ -3644,6 +3644,7 @@ var glossFields = map[string][]string{
 	"team_decide":       {"packet", "answer"},
 	"team_escalate":     {"packet", "to"},
 	"team_close_report": {"done"},
+	"team_raise":        {"question"},
 }
 
 // gloss renders one call as a person-readable line: the tool name and the one

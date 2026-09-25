@@ -132,10 +132,11 @@ on one waits for you.
 | `team_read` | the end of one member's conversation, bounded; the member is not told | no |
 | `team_send` | a message to one member or to everyone, as a note (information, which waits) or a directive (an instruction, which starts an idle member) | no |
 | `team_stop` | ends one member's current turn, the way your own Stop does: nothing is deleted, and its background tasks and jobs keep running | no |
-| `team_start` | a new member conversation with a handle and a brief; it opens in the team's folder and is handed the brief, marked as the manager's, on its first request | yes |
+| `team_start` | a new member conversation with a handle and a brief; it opens in the team's folder and is handed the brief, marked as the manager's, on its first request. With kind `team` it starts a sub-team instead (see **Sub-teams**) | yes |
 | `team_decide` | answers a decision packet waiting on the manager, most often a member's question: an option, or its own words | no |
 | `team_escalate` | sends a packet waiting on the manager up, to its own manager or to you, with the reason it is not the manager's to decide | no |
 | `team_close_report` | brings you the team's closing report (done, left, where the files are) after you asked it to wrap up | no |
+| `team_raise` | raises a conflict to the manager above every party (see **Conflicts between members and teams**); members have it too | no |
 
 `team_start` asks because a new conversation spends money for as long as it runs, and it is
 refused while the team is at its daily cap. The others act only inside the team you made, and
@@ -143,11 +144,75 @@ every one of them is logged in the team's traffic. Questions, packets, caps and 
 on the page **Team questions, decisions and caps**.
 Like any tool, each can be set to ask or allow in `/settings` under the tool approvals.
 
-## The member's verb
+## The member's verbs
 
 A member of a team that has a manager has `team_post`: a message to the room (every member and
 the manager), to one teammate by handle, or to the manager. Members use it to report progress,
-share a finding, ask a teammate, or say they are blocked.
+share a finding, ask a teammate, or say they are blocked. It also has `team_raise`, for a
+conflict it cannot settle with the other side itself.
+
+## Sub-teams
+
+A manager can start a **sub-team**: `team_start` with kind `team`, a name for the new team, a
+handle and a brief for its manager, and optionally members of its own team to move into it. You
+are asked first, on the same card as any start, which then reads `a new team "backend" under
+yours`. When you allow it:
+
+- the new team is made under the manager's team, with its share of the pool: the parent's daily
+  cap times `sub-team share` (`/settings`, **Teams**; 50% by default), written on the new team.
+  A parent with no cap gives none, and the new team spends from whatever pool is above it;
+- the members named move into it, and its manager is the new conversation, which opens behind
+  the one you are in like any start, is a member of the parent team, and is handed the brief
+  marked as the manager's together with the words `you were started to manage the team
+  "backend"`. It makes itself that team's manager and reports to the manager that started it;
+- the traffic of both teams says so: the start in the parent's, and in the new team's a line
+  naming who made it and who runs it.
+
+It is refused, with the reason, past the team depth (`team depth` in `/settings` under
+**Teams**, three levels by default, a team's own override first), under a closed team, at the
+team's daily cap, or when the name or the handle is taken.
+
+**Orders go one level down, reports one level up.** A manager directs its own team's members,
+and a sub-team's manager is one of them; it never directs a sub-team's members. A `team_send`
+directive or a `team_stop` naming one is refused with a sentence that names the sub-team's
+manager to send to instead. A message to `everyone` reaches the manager's own members only. A
+manager may still read a conversation in a team under its own with `team_read`, naming it
+`backend/@parser`. A sub-team's manager reports to the manager above: its `team_post` to the
+manager and its own questions go there first.
+
+**A sub-team with no manager of its own** answers to the nearest manager above it: its members'
+questions go to that manager, and their `team_post` to the manager reaches it, marked with the
+team it came from. Their posts to the room stay in their own team. That manager does not direct
+them; give the sub-team a manager, or move them up, for that.
+
+## The global manager
+
+With several top-level teams there is no one manager over all of them until you make one on the
+teams page's `All teams` row. That conversation is the **global manager**: the manager of a
+team that holds every other team. Its members are the managers of the top-level teams, and
+only them: codeaf adds each one to `All teams` for you, its account of its team lists only
+those managers, and its directives reach them and never their members. The top-level managers
+report to it, so their questions and conflicts between teams come to it before they come to
+you. It can start a new top-level team with `team_start` of kind `team`. Without a global
+manager, nothing here changes: each top-level manager reports to you.
+
+## Conflicts between members and teams
+
+When two or more conversations need incompatible things (the form posts JSON, the endpoint
+takes form data) and cannot settle it between themselves, one of them raises it with
+`team_raise`: the question, the other parties by handle (`@api`, or `back/@api` for a member
+of another team), its own side, and the options, each with what happens if it is chosen. A
+conflict is never detected for you; a party declares it.
+
+It goes, as one decision packet, to the **lowest manager above every party** who is not one of
+them, in one hop: two members of one team go to its manager, members of two sibling sub-teams to
+the manager of the team both sit under, and two top-level teams to the global manager. With no
+such manager it comes to you, in the inbox on the teams page. That manager is woken and handed
+the packet whole; the other parties are told it was raised. It rules with `team_decide`, or
+sends it up with `team_escalate`, never sideways. **The ruling reaches every party as a
+directive**, marked as a ruling on that conflict, in each party's own team's traffic, and wakes
+each of them, whoever ruled: a manager, or you. A party never decides its own case, even when
+it manages the team the packet waits on.
 
 ## When messages arrive
 
