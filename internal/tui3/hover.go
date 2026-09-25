@@ -315,6 +315,31 @@ const (
 	// the person's own notes, and a paragraph that brightened would be
 	// promising a door on every sentence of it.
 	hoverQuestionOption
+	// hoverDockLabel is the quiet word `chats` in front of the dock, and
+	// hoverDockWall the `▦` beside it. They are one door and two kinds,
+	// because a hover lights the piece under the pointer. hoverDockCell is
+	// one conversation's cell after them, held by the conversation's key
+	// rather than by its column (walldock.go): the dock narrows as the keys
+	// beside it change, and a hover stored as a column would follow the
+	// packing instead of the conversation.
+	hoverDockLabel
+	hoverDockWall
+	hoverDockCell
+	// hoverTraffic is one row of the manager's Traffic rail, held by its row
+	// on the last frame (teamtraffic.go), and hoverTrafficGrip the narrow
+	// frame's edge that lays the traffic over the body.
+	hoverTraffic
+	hoverTrafficGrip
+	// hoverTrafficHide is the rail header's `hide` word, and hoverTrafficClose
+	// the narrow frame's card's `Close esc` (teamrail.go).
+	hoverTrafficHide
+	hoverTrafficClose
+	// hoverTrafficTab is the header's `Tasks 2` word, which lays the manager's
+	// own tasks in the column (teamrail.go).
+	hoverTrafficTab
+	// hoverThread is a line of a thread card in the conversation, held by its
+	// entry and the message it shows (teamthreadcard.go).
+	hoverThread
 )
 
 // hoverAt is what the pointer is over, as an identity rather than as a screen
@@ -462,6 +487,12 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	// is on the frame none of the others can be: the roster is away, so every
 	// question below about a row of it answers about nothing (task.go's
 	// [app.railGripAt]).
+	// THE TRAFFIC RAIL IS ASKED BEFORE THE TASK COLUMN, for the reason the
+	// press asks it first: it stands at the frame's right edge, in columns the
+	// task column's own questions would otherwise claim (teamtraffic.go).
+	if at, ok := a.trafficHoverAt(x, y); ok {
+		return at
+	}
 	if a.railGripAt(x, y) {
 		return hoverAt{kind: hoverRailGrip}
 	}
@@ -527,8 +558,8 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 		// before it: the prose it sits in has no gesture of its own, and a paragraph
 		// that lit as a whole would promise a door on every word of it (markdown.go's
 		// [linkifyTasks]).
-		if at := a.linkHoverAt(x, r); at >= 0 {
-			return hoverAt{kind: hoverLink, entry: r.entry, index: at}
+		if at, key := a.linkHoverAt(x, r); at >= 0 {
+			return hoverAt{kind: hoverLink, entry: r.entry, index: at, key: key}
 		}
 		switch {
 		case r.foot.span.holds(x):
@@ -553,6 +584,8 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			return hoverAt{kind: hoverPictures, entry: r.entry, index: r.pictureIndex}
 		case r.hit == hitBrief:
 			return hoverAt{kind: hoverBrief, entry: r.entry}
+		case r.hit == hitThread:
+			return hoverAt{kind: hoverThread, entry: r.entry, key: r.open}
 		case r.hit == hitTool, r.hit == hitMore, r.hit == hitTask, r.hit == hitDone,
 			r.hit == hitHarness:
 			// THE ONES THAT WERE MISSING FROM THIS LIST, and every one of them is
@@ -602,6 +635,14 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 				return hoverAt{kind: hoverPaste, index: n}
 			}
 		case chromeOverlay:
+			// THE @ LIST'S PREFIX WORDS ARE COLUMNS OF ITS FIRST ROW. A press on
+			// "team" is not a press on the row, so the word rides the key
+			// (mention.go).
+			if a.comp.open && !a.comp.arg && a.comp.top == 0 && mark.index == 0 {
+				if word, ok := mentionHeadAt(x); ok {
+					return hoverAt{kind: hoverOverlay, index: mark.index, key: word}
+				}
+			}
 			// EVERY LIST DOWN HERE IS ROWS, AND THE FOLDER SHEET IS COLUMNS. Its
 			// three columns do three different things to a press — walk out, move
 			// the cursor, walk in — so a band across the row would offer to do one
@@ -678,9 +719,14 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			if a.seamProjectSpan.holds(x) {
 				return hoverAt{kind: hoverSeamProject}
 			}
-			// THE LAST ROW IS THE KEYS and lights nothing: the home door on it
-			// answers through its own reading (home.go's [app.homeDoorPress]),
-			// and the numbers' doors are on the seam (footswap.go).
+			// THE LAST ROW IS THE KEYS and lights nothing but the dock beside
+			// its right end, whose cells were recorded where the row drew them
+			// (walldock.go): the home door on it answers through its own
+			// reading (home.go's [app.homeDoorPress]), and the numbers' doors
+			// are on the seam (footswap.go).
+			if at, ok := a.dockAt(x); ok && !a.wall.on && !a.rew.on {
+				return at
+			}
 		}
 	}
 	return hoverAt{}

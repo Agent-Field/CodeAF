@@ -2424,7 +2424,7 @@ func (a *app) railSeamAt(x, y int) bool {
 // in the roster's last thirty columns: the box did not focus, the hint did not
 // act, and nothing at all happened. Below the region a press is somebody else's.
 func (a *app) railAt(x, y int) bool {
-	if !a.railFull() && (!a.railShowing() || x < a.bodyWidth()) {
+	if !a.railFull() && (!a.railShowing() || x < a.bodyWidth() || x >= a.bodyWidth()+a.railWidth()) {
 		return false
 	}
 	top := a.bodyTop()

@@ -363,6 +363,8 @@ func (a *Agent) publishTitle(ctx context.Context, title conversationTitle) {
 	if !a.setTitleIfUnnamed(title.full) {
 		return
 	}
+	// The title the handle is read off exists now (handlepick.go).
+	a.chooseTeamHandlesLater(title.full, nil)
 	event := Event{Kind: EventTitleChanged, Text: title.full}
 	a.mu.Lock()
 	hub := a.hub

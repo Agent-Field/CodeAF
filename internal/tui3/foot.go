@@ -529,6 +529,14 @@ func (a *app) seamPieces(width int) seamPieces {
 	// deck take the same word from the same function.
 	pieces := seamPieces{host: a.host, model: a.modelWord(),
 		project: a.seamProjectWord()}
+	// AND IN A MANAGED TEAM THE SLOT SAYS WHERE THE WORDS GO, once there are
+	// words: the empty box says it as its placeholder (teamrailpointer.go's
+	// [app.trafficHint]), and the first keystroke took the placeholder away with
+	// the one fact a person typing to a team needs. `to ◆ manager`, or
+	// `to @web` with a member in front.
+	if !a.input.empty() {
+		pieces.name = a.trafficHint()
+	}
 	if pieces.model != "" {
 		// A rung with no model beside it has nothing to be about, and the ladder
 		// it belongs to is reached by name (`/effort`) rather than from a cell

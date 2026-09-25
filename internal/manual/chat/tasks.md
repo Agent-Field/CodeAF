@@ -696,7 +696,7 @@ answer — with three more that belong to this moment alone:
 - **Nothing on a message with pictures in it.** A task is given words, so a message
   carrying images is always answered here, where they can be looked at.
 
-## Handing work over in the middle of an answer — this one wants more hands
+## Handing work over in the middle of an answer — this one wants more hands, why it handed my answer to a team of workers
 
 **Work can leave an answer that already started it.** A turn begins as an ordinary reply,
 a few tool calls go by, and the material turns out to be wider or longer than one answer.
@@ -1970,7 +1970,7 @@ ending in the dot row (*what are the dots next to a task?* has the cells). While
 worker is on a step, its row spends one line under it — the running glyph `◐`, the shell
 lead `$` and the command its worker is on right now — and nothing else, because the steps
 and the cost are the tasks place's own rows. That page (the page `/history`, `ctrl+.` and
-`alt+2` open) has the run whole.
+`alt+3` open) has the run whole.
 
 ## What is the diamond symbol next to each task? — why the sidebar has no diamond, the mark on the cards
 
@@ -2313,7 +2313,7 @@ still size, shape and start the work directly, with no proposal card in between 
 extra question. There is no third form: `/task adaptive` is retired.
 
 **There is still no `/tasks` command**, though `sessions` is the name of the PLACE `/history`
-opens — `alt+2` and `tab` get there without typing anything. As a slash word the plural is not one this surface answers to;
+opens, `alt+3` and `tab` get there without typing anything. As a slash word the plural is not one this surface answers to;
 the two things a bare `/task` and a `/task <brief>` do are the pair of errands a person has
 about tasks — go and look at the work, or give codeaf some.
 
@@ -2544,7 +2544,7 @@ nothing else, so a task you ran last week, in a session you have closed, is nowh
 screen until you open this.
 
 **There is no `/tasks` command** — though `sessions` is what the PLACE this opens is called on
-the tab bar, reached with `alt+2` or `tab`. `/task <brief>` starts work; `/history` opens the same sessions place
+the tab bar, reached with `alt+3` or `tab`. `/task <brief>` starts work; `/history` opens the same sessions place
 started — and so does a **bare `/task`**, which opens this very page rather than printing a
 usage line. The page is also reached from the one dim door line at the bottom of the task
 column — `ctrl+. earlier`, or `ctrl+. view more` where the column has merely folded a
@@ -2669,7 +2669,7 @@ it does not shrink as you type a filter. All levels start expanded. Folding a br
 hand adds the number of hidden rows to the section heading as `folded away`.
 
 **Every door onto this place opens it, on a machine that has run nothing too.** `/history`,
-a bare `/task`, `ctrl+.`, `alt+2` and `tab` all reach the same page, and with nothing on it
+a bare `/task`, `ctrl+.`, `alt+3` and `tab` all reach the same page, and with nothing on it
 the page is its heading and one line naming what arrives there, instead of counts:
 
 ```
@@ -3692,7 +3692,8 @@ marked failed, because nobody watched what became of it.
 
 ## Mentioning a task in the conversation
 
-Type `@` in the draft and a list drops up with task rows above the file rows. The sections
+Type `@` in the draft and a list drops up. Teams and conversations come first, then
+task rows above the file rows. The task sections
 are `running`, `recent` (ended inside 24 hours) and `older`, in that order; the `older`
 heading carries `older · N more` when the list was cut. At most 8 task rows are drawn,
 though the search itself goes 40 deep so a match three sections down is still counted. A

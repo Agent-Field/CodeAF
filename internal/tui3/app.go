@@ -176,6 +176,10 @@ const (
 	// records, and rather than a note because a note is a static sentence where
 	// this opens as a question with a clock on it.
 	entryStanding
+	// entryTeam is ONE NOTE A CONVERSATION'S TEAM SENT IT, drawn as the quoted
+	// cards it is (teamcard.go) rather than as the session's dim lane or the
+	// person's own line.
+	entryTeam
 )
 
 // toolState is where one call is in its life, and it is the whole of what the
@@ -247,6 +251,10 @@ type entry struct {
 	// Clarification entries are owned by their independent feed.
 	discussionID    string
 	discussionIndex int
+
+	// team is what a team delivery handed the conversation, line by line, on
+	// an [entryTeam] (teamcard.go); nil on every other entry.
+	team []session.TeamLine
 
 	kind entryKind
 	text string
@@ -492,6 +500,10 @@ type entry struct {
 	// a value it cost the idle frame seven percent, which is most of what the
 	// memo was buying.
 	hung *toolBlock
+	// thread is the memo of a thread card: what a manager's team_send row
+	// hangs, or the answers under a team note's quoted line
+	// (teamthreadcard.go). A pointer for the reason hung is one.
+	thread *threadMemo
 
 	// demoted says THIS PROSE WAS NARRATION AND NOT THE ANSWER, and it is the
 	// whole of THE ANSWER HIERARCHY as far as a renderer is concerned
@@ -1370,6 +1382,16 @@ type app struct {
 	// THE KEY IS THE CANONICAL TRANSCRIPT PATH ([convKey]), because that is what
 	// home names a row by and what the flock is taken on.
 	behind map[string]*kept
+	// wall is the grid of every open conversation and the teams (wallcontract.go).
+	wall wallState
+	// traffic is the Traffic log's cache, its clock and its rail
+	// (teamtraffic.go).
+	traffic trafficState
+	// teamsDisk is where the teams are kept and the edits not yet written
+	// there (teamseam.go).
+	teamsDisk teamsDisk
+	// teamMenu is the strip chip's team switcher (teammenu.go).
+	teamMenu teamMenu
 	// frontWaits is the engine's answer to whether the conversation in front is
 	// stopped on a person ([session.Agent.NeedsPerson]), asked once per message
 	// on the loop and read by every frame ([app.frontSignal]). It is the front
@@ -2332,6 +2354,11 @@ type app struct {
 	// pointer — the same arrangement the model segment and the jump chip use
 	// (render.go's [hudSpan]).
 	homeDoor hudSpan
+	// dock is where the row under the box drew its map of every open
+	// conversation on the last frame, and dockList the list it drew from,
+	// kept so the next frame refills it rather than allocating (walldock.go).
+	dock     dockMap
+	dockList []chatTab
 	// echoHome is raised around the one dispatch home makes on its own behalf
 	// ([app.homeSlash]), and it is what tells a command's answer apart from every
 	// other note this surface writes ([app.noteWritten] holds the argument).
@@ -2882,6 +2909,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		resume:              opts.Resume,
 		shared:              opts.SharedAgent,
 		stands:              opts.Standing,
+		teamsDisk:           teamsDisk{door: opts.Teams},
 		link:                opts.Link,
 		conns:               opts.Connections,
 		harn:                opts.Harnesses,
@@ -3237,6 +3265,10 @@ var _ tea.Model = (*app)(nil)
 // has no wakeups; a hosted one also owns hostlink.go's separate five-second
 // measurement clock.
 func (a *app) Init() tea.Cmd {
+	// THE TEAMS ARE READ ONCE, HERE, so the strip's switcher is there from the
+	// first frame for a person who has teams (teams.go, teammenu.go). It is one
+	// small file, and the frame only ever reads what this loaded.
+	a.teamsEnsure()
 	// EVERY PICTURE ALREADY ON SCREEN IS STAT'D HERE, before the first frame asks
 	// about any of them. This is `open`, which is one of the two loops the fourth
 	// law lets read the disk, and it is the only reason a RESUMED conversation
@@ -3308,7 +3340,10 @@ func (a *app) Init() tea.Cmd {
 		a.setupDemoCmd(), a.checkForUpdate(), a.launchCredits(), a.creditWake.waitRing(), titleSend(a.titleSent),
 		// AND THE TWO DOORS INTO THE LOOP FROM ELSEWHERE, each with its one
 		// command parked on it (doorbell.go).
-		a.news.waitRing(), a.leaving.waitRing()}
+		a.news.waitRing(), a.leaving.waitRing(),
+		// AND THE TEAMS' FIRST READ, when the seam held nothing to load above
+		// (teamseam.go); nil on every local launch.
+		a.teamsWrite()}
 	if a.welcome.animating() {
 		standing = append(standing, a.wake())
 	}
@@ -3356,7 +3391,16 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if mode, ok := msg.(tea.ModeReportMsg); ok {
 		a.ruler.noteModeReport(mode)
 	}
+	if _, ok := msg.(trafficLandedMsg); ok {
+		a.touch()
+		return a, nil
+	}
 	model, cmd := a.update(msg)
+	// A JUMP TO A MESSAGE WAITING FOR ITS CONVERSATION lands here, on the first
+	// message after that conversation is in front (teamjump.go).
+	if a.traffic.jump.key != "" {
+		cmd = tea.Batch(cmd, a.trafficLand())
+	}
 	// THE ENGINE'S ONE QUESTION ABOUT A PERSON IS ASKED HERE, once per message,
 	// and never by a frame. It is what every held tab's watcher asks after every
 	// event its conversation produces (keeper.go), asked of the conversation in
@@ -3400,6 +3444,20 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// (questionhold.go's [app.takeQuestionHolds] says why it is this line).
 	if hold := a.takeQuestionHolds(); hold != nil {
 		cmd = tea.Batch(cmd, hold)
+	}
+	// AND THE TRAFFIC CLOCK IS ARMED HERE, for the reason the title is asked
+	// here: a team made, a member joined, a manager opened, each happens by some
+	// message, and this is the one place every one of them has happened by
+	// (teamtraffic.go). It costs a walk of the loaded teams when it is not
+	// turning and nothing when it is.
+	if tick := a.trafficArm(); tick != nil {
+		cmd = tea.Batch(cmd, tick)
+	}
+	// AND AN EDIT TO THE TEAMS IS WRITTEN HERE, off the loop, for the same
+	// reason: every door that edits a team has happened by now, and it costs a
+	// length check when nothing was edited (teamseam.go).
+	if write := a.teamsWrite(); write != nil {
+		cmd = tea.Batch(cmd, write)
 	}
 	// AND THE TERMINAL'S TITLE IS ASKED AFTER EVERY MESSAGE, because this is
 	// the one place every change to where a person stands has already happened
@@ -3532,6 +3590,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.hopKey(msg); took {
 				return a, tea.Batch(flushed, cmd)
 			}
+		}
+		// THE TRAFFIC'S KEYS READ NEXT (teamrailpointer.go): esc while its card
+		// is over the body, and the two chords that show it and go to the
+		// manager, which carry no text and take nothing from the box.
+		if cmd, took := a.trafficKeyPress(msg); took {
+			return a, tea.Batch(flushed, cmd)
 		}
 		// THE ROSTER READS NEXT, and only ever once it has been HANDED the
 		// keyboard (alt+t, task.go). Explicit focus outranks ambient place: a room
@@ -3668,8 +3732,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		a.comp.all, a.comp.loaded, a.comp.loading = msg.paths, true, false
+		a.fillMentions()
 		a.comp.rank()
 		a.touch()
+		return a, nil
+
+	case mentionRecentsMsg:
+		a.mentionRecentsLoaded(msg.rows)
 		return a, nil
 
 	case tasksLoadedMsg:
@@ -3715,7 +3784,30 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// window to let go of (takeover.go).
 		return a, a.takeoverTick(msg)
 
+	case wallReadMsg:
+		a.wallTakeRead(msg)
+		return a, nil
+
+	case wallTickMsg:
+		return a, a.wallTick()
+
+	case trafficTickMsg:
+		// A TURN THAT FOUND NOTHING DRAWS NOTHING: the frame before it stands
+		// (teamtraffic.go), which is what a quiet second over ssh costs.
+		cmd, quiet := a.trafficTick(msg)
+		if quiet {
+			a.ptr.still = a.drawn
+		}
+		return a, cmd
+
+	case wallNameTimeMsg:
+		a.wallNameTimedOut(msg.gen)
+		return a, nil
+
 	case behindStirMsg:
+		if a.wall.on {
+			return a, tea.Batch(a.behindStir(msg), a.wallStir(msg.key))
+		}
 		// A conversation this process holds and is not drawing has something to
 		// say about itself. The message carries no content — the surface reads
 		// the agent it already has a pointer to (keeper.go).
@@ -3753,6 +3845,19 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.historyPrefetched(msg)
 
 	case tea.MouseWheelMsg:
+		// A notch, a press and a release are never a still frame, even when the
+		// motion spent ahead of them in the same message was one (wall.go's
+		// [app.wallMotion]).
+		a.ptr.still = false
+		// A wheel under the switcher puts it away: it hangs from the strip,
+		// and the page under it is about to move.
+		if a.teamMenu.on {
+			a.closeTeamMenu()
+		}
+		if a.wall.on {
+			a.wallWheel(msg.Mouse().X, msg.Mouse().Y, msg.Mouse().Button == tea.MouseWheelDown)
+			return a, nil
+		}
 		a.clearPlaceRowHover()
 		a.stirred()
 		a.placePointer.suspended = true
@@ -3959,6 +4064,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseClickMsg:
+		a.ptr.still = false
 		a.clearPlaceRowHover()
 		a.sawAPerson()
 		// THE QUIET CLOCK RESTARTS AFTER THE PRESS IS ANSWERED, not before. A
@@ -3966,6 +4072,16 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// and a clock restarted first would have taken the tip row — and the
 		// cross being pressed — off that layout (notice.go's [app.chatTipPress]).
 		defer a.stirred()
+		// THE TEAM SWITCHER OWNS THE PRESS WHILE IT IS UP, as a menu does:
+		// its rows answer, and a press off it only puts it away (teammenu.go).
+		if a.teamMenu.on && msg.Mouse().Button == tea.MouseLeft {
+			return a, a.teamMenuPress(msg.Mouse().X, msg.Mouse().Y)
+		}
+		if a.wall.on && msg.Mouse().Button == tea.MouseLeft {
+			if cmd, took := a.wallPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
+		}
 		// AND IT OWNS THE PRESS, on the same terms and for a sharper reason: a
 		// press that fell through a modal would switch a tab, open a tool call or
 		// answer a question behind a sheet somebody is looking at
@@ -4137,6 +4253,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.harnessPickPress(msg.Mouse().Y); took {
 				return a, cmd
 			}
+			// AND THE @ LIST'S PREFIX WORDS, which are columns of its first row
+			// (mention.go). A press anywhere else on that list still falls through.
+			if cmd, took := a.mentionHeadPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
 			// AND THE SKILL PICKER TAKES A PRESS ON ITS OWN ROWS AND NOTHING
 			// ELSE, on exactly the harness picker terms (skillpick.go).
 			if cmd, took := a.skillPickPress(msg.Mouse().Y); took {
@@ -4169,6 +4290,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// of the legend. Column-aware for the same reason again: the rest of
 			// that rule is a rule, and pressing a rule means nothing (home.go).
 			if cmd, took := a.homeDoorPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
+			// AND THE DOCK AT THE OTHER END OF THAT ROW, column-aware for the
+			// same reason: `▦` opens the wall and each cell goes to its
+			// conversation, and the blank between them and the keys is nothing
+			// (walldock.go).
+			if cmd, took := a.dockPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
 			// AND THE MODEL'S NAME IS THE FOURTH, at the left end of the same
@@ -4238,6 +4366,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// the body for the same reason: the two are drawn side by side, so
 			// which one was pressed is a question about x (room.go). A rail row
 			// is a door into that node's room.
+			// AND THE TRAFFIC RAIL BEFORE IT, at the frame's right edge while the
+			// manager is in front: a row goes to its member (teamtraffic.go).
+			if cmd, took := a.trafficPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
 			if cmd, took := a.railPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
@@ -4314,6 +4447,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseReleaseMsg:
+		a.ptr.still = false
 		// A RELEASE UNDER THE CHOOSER ENDS NOTHING, because nothing under it was
 		// started: the press it would close was taken by the sheet, and letting
 		// this one through would end a sweep of a transcript nobody swept
@@ -4349,6 +4483,17 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.MouseMotionMsg:
 		a.sawAPerson()
+		// THE WALL OWNS MOTION WHILE IT IS UP, as it owns the press: its own
+		// targets light under the pointer, and the strip above it still does
+		// (wall.go).
+		if a.teamMenu.on {
+			a.teamMenuMotion(msg.Mouse().X, msg.Mouse().Y)
+			return a, nil
+		}
+		if a.wall.on {
+			a.wallMotion(msg.Mouse().X, msg.Mouse().Y)
+			return a, nil
+		}
 		// AND THE CHOOSER OWNS MOTION TOO, ahead of the sweep and ahead of every
 		// place: [app.hoverTarget] already answers for the whole screen while the
 		// sheet is up, and this branch is what keeps a drag started under it from
@@ -5197,6 +5342,10 @@ func (a *app) paint() tea.Cmd {
 		// paragraph would freeze mid-word until something unrelated asked
 		// for a frame (reveal.go).
 		a.liveRevealing() ||
+		// AND THE WALL'S MOTION IS THE EIGHTEENTH: its tiles coming in row by
+		// row, an opened tile growing into the frame, and a working tile's
+		// spinner, each a function of this clock's time (wall.go).
+		a.wallAnimating() ||
 		// AND A PLAN PAGE ON A RUNNING TASK IS THE SEVENTEENTH, and it is the
 		// fourth that can be the whole of what is happening: the page follows a
 		// live edge the store writes from another process, and no turn of ours
@@ -5218,6 +5367,13 @@ func (a *app) paint() tea.Cmd {
 			every *= spinnerStep
 		}
 		return tea.Batch(kick, surfaceTick(every, func(time.Time) tea.Msg { return frameMsg{} }))
+	}
+	// A WORKING TILE ON THE WALL turns its spinner at the spinner's own
+	// cadence and no faster: the glyph changes once a step, and a whole wall
+	// drawn thirty times a second to move one glyph a quarter as often would be
+	// the costliest frame on this surface spent on nothing (wall.go).
+	if a.wallSpinning() {
+		return tea.Batch(kick, surfaceTick(a.frameEvery()*spinnerStep, func(time.Time) tea.Msg { return frameMsg{} }))
 	}
 	a.painting = false
 	return kick
@@ -6773,8 +6929,8 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 	// row's own answer: the prose it sits in has no gesture of its own, and a
 	// reference read after the body would be a door the body had already closed
 	// the room behind (markdown.go's [linkifyTasks]).
-	if a.linkPress(x, r) {
-		return
+	if took, open := a.linkPress(x, r); took {
+		return open
 	}
 	// AND THE FOOT UNDER A TABLE THAT WAS CUT IS THE OTHER ONE, resolved here for
 	// the same reason and in the same breath: it is a phrase inside a row of the
@@ -6819,6 +6975,8 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		a.toggleWorkfold(r.turn)
 	case hitMore:
 		a.showAll(r.entry)
+	case hitThread:
+		a.trafficToggle(r.open)
 	case hitPictureOriginal:
 		return a.openPictureAt(r.entry, r.pictureIndex)
 	case hitPictures:
@@ -6878,33 +7036,52 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 // answer, which for a paragraph is nothing at all. The gap between two links is
 // a sentence, not a seam, and swallowing a click on it would make the paragraph
 // a place where missing costs you the page.
-func (a *app) linkPress(x int, r row) bool {
+//
+// A TEAM REFERENCE IS THE SAME KIND OF DOOR (teamlink.go): a member opens, or
+// is resumed and opened, and a team's name opens the conversations view on it.
+func (a *app) linkPress(x int, r row) (bool, tea.Cmd) {
 	if len(r.links) == 0 || a.welcome.open {
-		return false
+		return false, nil
 	}
 	for _, link := range r.links {
 		if link.span.holds(x) {
+			// A HANDLE ON A THREAD CARD OPENS ITS MEMBER AT THE MESSAGE: an
+			// answer at the member's own post, the card's header at the message
+			// as the member was told it (teamjump.go).
+			if land := a.threadRowLand(r); land != "" && link.member != "" {
+				if t, ok := a.teamByID(link.team); ok {
+					if m, ok := t.Member(link.member); ok {
+						return true, a.trafficJump(m.Key, land)
+					}
+				}
+			}
+			if link.team != "" {
+				return true, a.teamLinkPress(link)
+			}
+			if link.member != "" && link.id == 0 {
+				return true, a.mentionChatPress(link.member)
+			}
 			a.openRoomFor(link.id, link.title)
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 // linkHoverAt is which reference of this row's BLOCK the pointer is over, and -1
-// for none. It is the ordinal rather than the position on the row for the reason
+// for none, with a team reference's identity for the hint line ([teamLinkKey]). It is the ordinal rather than the position on the row for the reason
 // [taskLink.ord] carries one (markdown.go), and it is the same test [app.linkPress]
 // makes so the words that light are the words that open something.
-func (a *app) linkHoverAt(x int, r row) int {
+func (a *app) linkHoverAt(x int, r row) (int, string) {
 	if len(r.links) == 0 || a.welcome.open {
-		return -1
+		return -1, ""
 	}
 	for _, link := range r.links {
 		if link.span.holds(x) {
-			return link.ord
+			return link.ord, teamLinkKey(link)
 		}
 	}
-	return -1
+	return -1, ""
 }
 
 // statusPress resolves a click on the status row's MODEL SEGMENT, and reports
@@ -7275,6 +7452,10 @@ func (a *app) slash(line string) tea.Cmd {
 		// same question that could rank its answers differently from the one the
 		// person then keeps typing into.
 		return a.showPage(pageSearch)
+
+	case "wall":
+		// EVERY OPEN CONVERSATION AT ONCE, as a grid of live tiles (wall.go).
+		return a.openWall()
 
 	case "spend":
 		// AND THE WHOLE MACHINE'S BILL, which is a place and not a note. This word
@@ -7847,6 +8028,9 @@ func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
 	if key := a.convKey(a.file); key != "" {
 		a.rememberOpen(key)
 	}
+	// A conversation started while a team is shown is one of that team
+	// (teams.go's [app.teamJoinFront]).
+	a.teamJoinFront()
 	return cmd, true
 }
 
@@ -8720,14 +8904,16 @@ func (a *app) syncLists() tea.Cmd {
 		return read
 	}
 	was := a.comp.open
+	a.fillMentions()
 	a.comp.sync(&a.input)
 	if a.comp.open && !was {
 		// The list coming up is the proof that `@` has been found (notice.go).
 		a.noticeEvent(eventAtOpened)
 		// Both halves of the list are asked for at the same moment, and neither
 		// waits for the other: the index is one small file and lands first, the
-		// walk lands when it lands (taskmention.go, files.go).
-		return tea.Batch(a.loadFiles(), a.loadTasks())
+		// walk lands when it lands (taskmention.go, files.go). The recent
+		// conversations ride the same opening (mention.go).
+		return tea.Batch(a.loadFiles(), a.loadTasks(), a.loadMentionRecents())
 	}
 	return nil
 }

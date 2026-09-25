@@ -1979,24 +1979,39 @@ func v3PolicyMode(workspace, profileDir, mode string) (*approval.Policy, error) 
 //   - Pure reads of this machine — read, grep, find, ls. Nothing here changes a
 //     file, so the blanket mode's prompt is free to land where it matters, on
 //     bash, edit and write.
+//
 //   - jobs, whose list and output are reads of processes the person already
 //     started. Its kill is not on the floor: it inherits the blanket mode,
 //     which asks.
+//
 //   - The agent's own bookkeeping — remember, track and recall. These write to
 //     and read from the memories and working state it keeps for itself
 //     (internal/session's memory.go and state.go); no hand outside this process
 //     reads them, and asking somebody to approve the agent writing itself a
 //     reminder is asking about the wrong thing.
+//
 //   - manual, which reads pages compiled into this binary and touches no disk
 //     at all (internal/session's tools_manual.go). A person who asks "what can
 //     you do" and is answered with a permission prompt has been asked to
 //     approve the program looking up its own documentation.
+//
 //   - settings, which reads the person's own settings rows back through the
 //     registry (internal/session's tools_settings.go). It is manual's shape one
 //     file over — the answer to "what is my daily budget" is a lookup, and the
 //     credential rows read MASKED through the registry itself
 //     ([config.Setting.Secret]), so there is nothing here a prompt would be
 //     protecting.
+//
+//   - The team verbs that stay inside a team the person made
+//     (internal/session's tools_team.go): a manager reading its members'
+//     states and pages, sending them a line, ending a member's turn the way
+//     the person's own Stop does, and a member posting to its room. Every one
+//     of them is a line in the team's own traffic log, which the person watches
+//     on the manager's rail, and none of them reaches a permission prompt.
+//
+// team_start is DELIBERATELY NOT HERE. It opens a new conversation that spends
+// money for as long as it runs, so the blanket mode asks, the way it asks about
+// propose_task.
 //
 // commit is DELIBERATELY NOT HERE, and it is the interesting half of the split.
 // It is the fifth hand on the same working state, but it is the only one that
@@ -2020,6 +2035,8 @@ func v3BuiltinApprovals() map[string]any {
 		"jobs":     "allow",
 		"remember": "allow", "track": "allow", "recall": "allow",
 		"manual": "allow", "settings": "allow",
+		"team_status": "allow", "team_read": "allow", "team_send": "allow",
+		"team_stop": "allow", "team_post": "allow",
 	}
 }
 

@@ -109,6 +109,10 @@ func runRemoteEngine(args []string) error {
 		return fmt.Errorf("usage: codeaf engine [--workspace path] [--session path] [--no-host] [--status] [--status-all] [--stop] [--stop-all]")
 	}
 
+	// AN ENGINE CAN OPEN A TEAM CONVERSATION NOBODY HOLDS, so team traffic can
+	// wake it (team_resume.go). Only the two roads below that serve sessions
+	// ever use the door; the splice between them serves none.
+	armTeamResume()
 	if *daemon {
 		return runEngineHost(*workspace, *file)
 	}

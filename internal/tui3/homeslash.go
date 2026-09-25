@@ -188,7 +188,7 @@ func homeFate(word, rest string) string {
 		// /project IS THE PIN AND /folder IS NOT, since 2026-09-22
 		// (projectcmd.go says what the two used to share).
 		return fateTargetFolder
-	case "settings", "search", "spend", "history", "home":
+	case "settings", "search", "spend", "history", "home", "wall":
 		return fatePlace
 	case "resume":
 		return fateResume

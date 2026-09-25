@@ -2539,7 +2539,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	a.pageMsg = ""
 	// THE ROUTER IS READ FIRST, AND IT IS ONE FUNCTION FOR EVERY PLACE
 	// (placekeys.go). It claims the chords that mean the same thing wherever you
-	// are standing — alt+1…7, tab, alt+enter, alt+., the shift arrows, and `→`
+	// are standing, alt+1…8, tab, alt+enter, alt+., the shift arrows, and `→`
 	// when the row has verbs — and hands everything else straight back, so this
 	// handler keeps its right of first refusal over its own keys.
 	if cmd, took := a.placeKey(msg); took {

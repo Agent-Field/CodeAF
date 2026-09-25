@@ -313,15 +313,21 @@ func (c *completion) layoutTasks(lines []compLine) []compLine {
 	for at := range c.taskHits {
 		if c.taskSection[at] != section {
 			section = c.taskSection[at]
-			lines = append(lines, compLine{header: c.sectionRule(section), task: -1, file: -1})
+			line := deadLine()
+			line.header = c.sectionRule(section)
+			lines = append(lines, line)
 		}
-		lines = append(lines, compLine{task: at, file: -1})
+		line := deadLine()
+		line.task = at
+		lines = append(lines, line)
 	}
 	if c.older > 0 && section != sectionOlder {
 		// Everything the cap cut is older than everything drawn, so its rule goes
-		// last — and with nothing under it, which is exactly what a collapsed
+		// last, and with nothing under it, which is exactly what a collapsed
 		// section is.
-		lines = append(lines, compLine{header: c.sectionRule(sectionOlder), task: -1, file: -1})
+		line := deadLine()
+		line.header = c.sectionRule(sectionOlder)
+		lines = append(lines, line)
 	}
 	return lines
 }
@@ -413,6 +419,14 @@ func taskNoteWord(entry session.TaskIndexEntry) string {
 // completeMention is enter on the list: a task becomes its slug, a file becomes
 // its path (files.go). It is the one door, so that enter means one thing.
 func (a *app) completeMention() {
+	if team, ok := a.comp.teamChoice(); ok {
+		a.completeTeam(team)
+		return
+	}
+	if chat, ok := a.comp.chatChoice(); ok {
+		a.completeChat(chat)
+		return
+	}
 	if entry, ok := a.comp.taskChoice(); ok {
 		a.completeTask(entry)
 		return

@@ -267,6 +267,12 @@ func (a *app) View() tea.View {
 // is the one somebody reaches for — fails rather than quietly costing a frame.
 func (a *app) frame() (string, int, int) {
 	body, caretX, caretY := a.frameBody()
+	// A tile just opened from the wall frames the conversation's first few
+	// pictures as it grows into the frame (wall.go); a string compare when not.
+	body = a.wallZoomed(body)
+	// The strip's team switcher hangs over whatever page is drawn under it
+	// (teammenu.go); the frame as it was when it is down.
+	body = a.teamMenuOver(body)
 	return norm.NFC.String(body), caretX, caretY
 }
 
@@ -285,6 +291,9 @@ func (a *app) frameBody() (string, int, int) {
 	if a.railTaskPlanOn {
 		lines, caretX, caretY := a.taskPlanFrame(width, height)
 		return strings.Join(lines, "\n"), caretX, caretY
+	}
+	if a.wall.on {
+		return strings.Join(a.wallFrame(width, height), "\n"), 0, 0
 	}
 	if a.workTabOn {
 		lines := a.workTabFrame(width, height)
@@ -328,7 +337,7 @@ func (a *app) frameBody() (string, int, int) {
 	// with a refusal under a box that should never have been on the page.
 	//
 	// IT IS UNDER THE PLACES because a place is a room in the machine and this is
-	// one job in one conversation; alt+1…7 leaves it, and [app.standDownRest]
+	// one job in one conversation; alt+1…8 leaves it, and [app.standDownRest]
 	// closes it on the way out so it cannot reappear under a place somebody has
 	// since walked away from.
 	//
@@ -500,7 +509,9 @@ func (a *app) chatFrameLines(width, height int) ([]string, int, int) {
 		rows = append(rows, lifted...)
 		return a.frameLines(rows, chrome, height, caretX, caretRow, lift, liftedAt)
 	}
-	rail := a.railRows(view)
+	// AND THE TRAFFIC RAIL BESIDE IT while the manager is in front, joined
+	// onto the task column's rows so one join lays both (teamtraffic.go).
+	rail := a.trafficBeside(a.railRows(view), view)
 	railAt := func(i int) string {
 		if i < len(rail) {
 			return rail[i]
@@ -539,6 +550,14 @@ func (a *app) chatFrameLines(width, height int) ([]string, int, int) {
 	// is two rows of body and thirty of pad, and a card centred in the body would
 	// sit at the top of an empty screen. What it is centred in is what a person
 	// sees, which is the region.
+	// ON A NARROW FRAME THE TRAFFIC IS LAID OVER THE BODY when the person asked
+	// for it (teamrail.go): a card over the lower rows, with the top of the
+	// conversation still drawn above it, and a press on a row of it is a press
+	// on it.
+	if a.trafficOverShowing() {
+		body, pad = a.trafficOverBody(body, pad, view)
+		selOn = false
+	}
 	if a.hopShowing() {
 		texts := make([]string, view)
 		for i, r := range body {
@@ -1102,7 +1121,10 @@ func (a *app) bodyRows(width, height int) ([]row, int) {
 	if a.roomOpen() {
 		return a.roomWindow(width, height)
 	}
-	return a.window(width, height)
+	// A MESSAGE SOMEBODY WAS JUST TAKEN TO IS LIFTED for a moment
+	// (teamjump.go). The draw only: the pointer resolves through window.
+	rows, pad := a.window(width, height)
+	return a.trafficLandRows(rows, width), pad
 }
 
 // bodyTop is the screen row the conversation starts on, or -1 when the frame is
