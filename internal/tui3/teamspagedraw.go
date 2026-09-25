@@ -177,7 +177,7 @@ func (a *app) teamsDot() string { return a.linearMark("·", "-") }
 
 // teamsSpark is Organize's mark.
 func (a *app) teamsSpark() string {
-	spark, _ := wallOrgMarks(a.pal.ascii)
+	spark, _ := wallOrgMarks(a.pal)
 	return spark
 }
 

@@ -1537,14 +1537,14 @@ func (a *app) taskPlanBody(width int) []string {
 		}
 	}
 	// A TASK WITH CHILDREN SHOWS THEM UNDER ITS STEPS, AND EACH ONE IS DRAWN AS
-	// THE RAIL DRAWS A TASK: through the node renderer, with the running spinner,
-	// its `#id`, the old tree's connectors and — while it runs — its call and
-	// its clock and money line under it ([app.planRailLines]). One kind of row for
-	// one kind of thing, on the column and on the page alike. The note composer
-	// and its receipt below are untouched by the tree.
+	// THE SIDE COLUMN DRAWS A TASK: through the node renderer, one line with its
+	// state glyph, its name and its time, a part's own parts a level in
+	// ([app.planRailLines]). One kind of row for one kind of thing, on the column
+	// and on the page alike. The note composer and its receipt below are
+	// untouched by the tree.
 	if kids := page.Children; len(kids) > 0 {
 		section("under it")
-		for _, line := range a.planRailLines(planTwigsOf(kids), nil, false, min(width, planPageKinWidth)) {
+		for _, line := range a.planRailLines(planTwigsOf(kids), 0, min(width, planPageKinWidth)) {
 			add(line.text)
 		}
 	}
@@ -1552,8 +1552,8 @@ func (a *app) taskPlanBody(width int) []string {
 }
 
 // planPageKinWidth is the most a task's page spends on one row of its parts. A
-// part's row is the rail's row, whose handle stands at the row's far end; on a
-// page the width of the terminal that handle would sit a screen away from the
+// part's row is the side column's row, whose time stands at the row's far end; on a
+// page the width of the terminal that time would sit a screen away from the
 // title it belongs to, so the rows are drawn at a width a column could have.
 const planPageKinWidth = 64
 

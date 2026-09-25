@@ -6,7 +6,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
-	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── THE TRAFFIC'S THREADS (teamrail.go says what the Traffic is) ──────────
