@@ -56,6 +56,8 @@ invalidates:
   - "A call the loopback API refused at the estimated ceiling ended the run as a crash, so no limit line was written and the chat could hand the work back. It now ends the run on its cost (or time) limit whatever the metered spend."
   - "A run in a gitignored folder inside a repository said at its start that the repository holds the home folder. The start receipt now says the folder is ignored there, so the run works in place without a branch."
   - "The general task pages said a task has no dollar limit of its own and is never stopped on its own dollar count. They now say that of an ordinary `/task` and point to senior-dev's run ceiling."
+  - "`/budget conversation` in an open chat saved the figure and showed it as active while the conversation kept the limit it was opened with, so its next turn, task and senior-dev run spent against the old one. The open conversation now takes the new limit before the receipt says so, on the engine road and `--no-host`; if an older engine host cannot take it, the receipt says it applies to the next conversation."
+  - "A commit senior-dev's model made itself through bash took the person's git identity and carried no `Assisted-by`. The model's commands now commit as the run, and a run-made tip without the credit has it added at the finish; a commit from before the run is never amended."
 ---
 
 `docs/design/delegate/PROTOCOL.md` is the internal protocol (version 2); `internal/delegate`
