@@ -487,10 +487,10 @@ func tabsCapped(tabs []chatTab, prev []string) []chatTab {
 // those numbers.
 
 // tabsHeight is what the head costs the body region DOWN TO AND INCLUDING THE
-// STRIP when a conversation is in front: the pulse, and the strip under it
-// ([tabStripRow]). On a place the strip is not drawn, so this is the nav's
-// one row and the page owns the row under it (head.go's [app.stripInHead]).
-//
+// STRIP when a conversation is in front: the pulse, the air row under it, and
+// the strip ([tabStripRow]). On a place the strip is not drawn, so this is the
+// nav and its air row, and the page owns the row under them (head.go's
+// [app.stripInHead]).//
 // IT STANDS DOWN ON THE TWO FLOORS THE CONVERSATION'S BAR STOOD DOWN ON. A frame
 // too narrow for a name and a way out is too narrow for this, and a terminal too
 // short for a blank above the draft has no row to spare for a fact that is true
@@ -509,7 +509,7 @@ func (a *app) tabsHeight(width int) int {
 		return 0
 	}
 	if !a.stripInHead() {
-		return navRow + 1
+		return navAirRow + 1
 	}
 	return tabStripRow + 1
 }

@@ -65,10 +65,14 @@ import (
 // frame with no head at all.
 const navRow = 0
 
-// tabStripRow is the row the chat strip is drawn on: under the nav and over
-// the rule, and only while a conversation is in front (head.go).
-const tabStripRow = 1
+// navAirRow is the row of air under the nav, on every frame that draws a
+// head: the spacing between the places' row and the strip or rule under it
+// (head.go).
+const navAirRow = 1
 
+// tabStripRow is the row the chat strip is drawn on: under the nav's air row
+// and over the rule, and only while a conversation is in front (head.go).
+const tabStripRow = navAirRow + 1
 const (
 	// navInset is the blank cell at each end of the row, the same inset every
 	// row of the head keeps.
