@@ -75,6 +75,10 @@ type soloOutcome struct {
 	FinalTree        string
 	SuiteDead        bool
 
+	// RestoreFailed is why putting a recorded tree back failed, when it did. The
+	// folder then holds whatever was there, and the ending has to say so.
+	RestoreFailed string
+
 	// TerminalData and TerminalReason are what the run has to say about how it
 	// ended. They travel to the CLI layer rather than being emitted here so the
 	// run emits exactly one terminal event; see soloTerminal.

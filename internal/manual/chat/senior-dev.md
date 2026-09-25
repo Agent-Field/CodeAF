@@ -369,7 +369,10 @@ end record and the chat's landing all carry that path. The path holds the bytes 
 were before the restore. A tracked file deleted after submission is named in
 `deleted-files.txt` there, and the ending names that manifest. A later restore in
 the same run has its own subfolder. With nothing to rescue, no folder is created
-or named.
+or named. If the copy cannot be made, nothing is restored and your folder is left
+as it was; the run then does not say its build and tests passed, and the ending
+adds `The folder changed after senior-dev's last check and could not be put back
+(<why>), so it also holds later changes that nothing checked`.
 Files git ignored when the run started are not committed even if senior-dev
 changes `.gitignore`. Python `__pycache__/`, `.pytest_cache/` and `*.pyc` files
 made by its checks are not committed either. Those files stay in your folder.

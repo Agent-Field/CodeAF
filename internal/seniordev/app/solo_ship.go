@@ -156,6 +156,14 @@ func (runner *pipeline) soloRestoreIfDiverged(state *soloState, outcome *soloOut
 			"error": err.Error(), "commit_sha": candidate.CommitSHA,
 		})
 		runner.note("[senior-dev] ship: RESTORE FAILED, shipping the diverged tree: " + err.Error() + "\n")
+		// A PASS WAS ABOUT THE CANDIDATE, AND THE CANDIDATE IS NO LONGER WHAT IS
+		// ON DISK. The folder keeps the later changes nobody checked, so the run
+		// cannot say its build and tests passed on what it leaves; it says the
+		// work is unchecked, and the ending says why.
+		outcome.RestoreFailed = err.Error()
+		if outcome.Status == "pass" {
+			outcome.Status = "pass-unverified"
+		}
 		return
 	}
 	runner.events.stage("ship", "restored", map[string]any{
@@ -190,6 +198,9 @@ func (runner *pipeline) soloTerminal(outcome *soloOutcome, reason string) {
 	}
 	if outcome.SuiteDead {
 		data["suite_dead"] = true
+	}
+	if outcome.RestoreFailed != "" {
+		data["restore_failed"] = outcome.RestoreFailed
 	}
 	if runner.rescuePath != "" {
 		data["rescue_path"] = runner.rescuePath

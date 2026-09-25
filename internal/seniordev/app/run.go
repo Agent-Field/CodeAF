@@ -316,6 +316,9 @@ func endingOf(result pipelineResult) delegate.Ending {
 			ending.Message += "; files deleted during the run are listed in " + manifest + " there"
 		}
 	}
+	if failed, _ := extra["restore_failed"].(string); failed != "" {
+		ending.Message += ". The folder changed after senior-dev's last check and could not be put back (" + failed + "), so it also holds later changes that nothing checked"
+	}
 	if reason, _ := extra["reason"].(string); reason != "" && reason != ending.Message {
 		ending.Reason = reason
 	}

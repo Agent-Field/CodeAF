@@ -218,6 +218,7 @@ func (runner *pipeline) soloFinalizeUnsubmitted(
 				runner.events.stage("landing", "restore-failed", map[string]any{
 					"source": target.Source, "error": err.Error(),
 				})
+				outcome.RestoreFailed = err.Error()
 			} else {
 				outcome.RestoreSource = target.Source
 				runner.events.stage("landing", "restored", map[string]any{
