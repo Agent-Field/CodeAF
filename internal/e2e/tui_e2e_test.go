@@ -687,7 +687,7 @@ func testAskHere(t *testing.T) {
 	time.Sleep(1500 * time.Millisecond)
 	settled = r.capture()
 	t.Logf("the settled exchange, reopened:\n%s", settled)
-	if !strings.Contains(settled, say(t, "standYesWord")+" · "+say(t, "standSetWord")) {
+	if !strings.Contains(settled, say(t, "standRemindYes")) || !strings.Contains(settled, say(t, "standSetWord")) {
 		t.Errorf("the settled card does not carry the answer and its verdict:\n%s", settled)
 	}
 	if !strings.Contains(settled, say(t, "homeAskStoodWord")) {

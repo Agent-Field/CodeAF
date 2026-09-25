@@ -2214,6 +2214,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I cancel this card", "keeping-an-eye"},
 		{"I don't understand these options", "keeping-an-eye"},
 		{"what does just once mean", "keeping-an-eye"},
+		{"what kind of standing card is this", "keeping-an-eye"},
 		{"can I change everywhere to just this project", "standing-orders"},
 		// The twelfth wave: answering a question from home. Both are asked by
 		// somebody looking at a `▲` row and wondering whether they have to walk

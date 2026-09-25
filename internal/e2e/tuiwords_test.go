@@ -265,8 +265,9 @@ var tuiWords = map[string]tuiWord{
 		why:    "the pane saying the exchange is filed under what it made",
 	},
 	"exchangeAnswerHint": {
-		screen: "1 yes, set it up · 0 no · o other",
-		source: "yes, set it up",
+		screen: "Don't remind me",
+		source: "Don't remind me",
+		pkg:    "internal/session",
 		why: "the answers a ONE-OFF REMINDER's card offers, spelled in full under the box at every width. " +
 			"There are two rows and the key that asks for the box: a reminder has no `3 just once` to give, " +
 			"and since #189 the line is built from the answers the question carries rather than typed out, so " +
@@ -286,9 +287,10 @@ var tuiWords = map[string]tuiWord{
 		screen: "enter or tab answer this ",
 		why:    "the hint while the cursor stands on an errand row that is asking something",
 	},
-	"standYesWord": {
-		screen: "yes, set it up",
-		why:    "the first chip on a standing card, and half of the settled card's `yes, set it up · set up`",
+	"standRemindYes": {
+		screen: "Remind me",
+		pkg:    "internal/session",
+		why:    "the yes on a one-off reminder, which is what the errand in this suite asks for",
 	},
 	"standSetWord": {
 		screen: "set up",
@@ -343,7 +345,7 @@ var tuiWords = map[string]tuiWord{
 	// THE PHASE CLOCK COMPOSES BOTH OF ITS SENTENCES AT THE DRAW, out of halves
 	// two packages own (internal/tui3's phase.go, and the clock that feeds it in
 	// internal/provider). So each half is its own row and the suite asserts the
-	// join, which is the shape `standYesWord` and `standSetWord` already have.
+	// join, which is the shape `standRemindYes` and `standSetWord` already have.
 	// What varies is not a needle: the machine that went quiet is whatever this
 	// run pinned, and the provider a rescue would go to is whatever the frontier
 	// named. What stands still is the clause around them.

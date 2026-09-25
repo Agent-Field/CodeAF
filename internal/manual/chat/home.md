@@ -1470,11 +1470,12 @@ The chips are the ones the question has:
 
 - It is **waiting for permission to run something**: `1 allow once  2 always  3 deny`.
 - It is **asking whether to start a task**: `1 yes  2 no`.
-- It is **asking whether to keep an eye on something**: `1 yes  3 just once  0 not set up`
-  — or `1 yes  0 not set up`, when what it is asking about is a **one-off reminder**, which
-  has no `once` answer at all. **`0` is how you say no from home**: nothing is set up,
-  nothing is run, and the card in that window settles as `not set up`. There is no
-  `2 change when or where` here, on purpose: that answer is a request for a text box; open
+- It is **asking whether to keep something going**. The chips are that card's own
+  words: a repeating check is `1 Set it up · <cadence>`, `3 Only now, don't repeat`,
+  `0 Don't set it up`. A one-off reminder has no once, and its no is `Don't remind me`.
+  A watch's no is `Don't watch`. A rule's no is `Don't keep it`. **`0` is how you say
+  no from home**: nothing is set up, nothing is run, and the card settles as `not set up`.
+  There is no change chip here, on purpose: that answer is a request for a text box. Open
   the conversation to say a different time or place.
 
 `2 always` means what it means in the window: **that session stops asking about that
@@ -1669,32 +1670,30 @@ standup note" — a card appears in the conversation and **nothing is set up unt
 you answer it**:
 
 ```
-╭─ ? ◦ every Monday at 9, post the standup ──────────────────────────────────
+╭─ ? wants to set up a repeating check ──────────────────────────────────────
 │ every Monday at 9, post the standup note from the git log
-│ when · Mondays at 9am
+│ Mondays at 9am · about $0.02 a run, at most once a day
 │ where · for this project
-│ costs · about $0.02 a run, at most once a day
-│ [ 1 yes, set it up ]  [ 2 change when or where ]  [ 3 just once ]  [ 0 no ]
-│ I'll keep doing this Mondays at 9am, for this project, until you stop it
 ╰────────────────────────────────────────────────────────────────────────────
 ```
 
-Three bands make it different from the card that proposes a task: **`when ·`**, in
-the words you said or the words it worked out; **`where ·`**, how far it reaches;
-and **`costs ·`** — what one run may spend and how often it may run. A watch that
-has to *look* at something adds `checked every 5 minutes`. If it made the timing up
-rather than reading it off what you said, the band asks instead of stating:
-`Mondays at 9am — you didn't say, so that's my guess. Right?`
+The head says what kind of thing it is. The next line is what it does. The line
+after that is when, and what one time costs. **`where ·`** is how far it reaches.
+A watch that has to look at something adds `checked every 5 minutes` on that
+cost line. If it made the timing up rather than reading it off what you said,
+the line asks instead of stating:
+`Mondays at 9am. You didn't say, so that's my guess. Right?`
 
 **The answers**, by key, by `←`/`→` and `enter`, or by clicking one:
 
-- `1 yes, set it up` — it gets set up and starts happening.
-- `2 change when or where` — the box below becomes a place to say the **time or
-  the place** you want instead: "make it 8", "only in this project", "everywhere".
-  Nothing is set up until a new card comes with them in it.
-- `3 just once` — do it now and leave nothing behind.
-- `0 no` — nothing is set up, nothing is run, and the row settles as
-  `not set up`. `esc` does exactly the same thing.
+- `1` sets it up. On a repeating check the button reads `Set it up · <cadence>`.
+- `o Change…` turns the box into a place to say the time or the place you want
+  instead: "make it 8", "only in this project", "everywhere". Nothing is set up
+  until a new card comes with them in it. On a rule the button reads `Change where…`.
+- `3` does it now and leaves nothing behind. On a check it reads `Only now, don't repeat`.
+  This used to say `just once`.
+- `0` sets nothing up. The button's words depend on the kind: `Don't set it up`,
+  `Don't remind me`, `Don't watch`, or `Don't keep it`. The row settles as `not set up`.
 
 **The line under the answers says what the one you are on will actually do**, written
 out of this card's own facts. A **one-off reminder's card draws no `3`**: "do it now" for

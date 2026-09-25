@@ -1479,3 +1479,14 @@ cursor only. Multi-select is keyboard only (`space`); there is no pointer gestur
 the move writes through the seam like every edit, but the defaults the picker reads for the
 depth limit are the engine's only once the page has read them (`Teams.Defaults`); before that a
 depth block is not shown and the store's own `SetParent` is the only check.
+
+## The standing card says what it is
+
+A proposal card names its kind on the first line, then what it does, then when and what one time costs. The words live in `session.StandingOptions` so the conversation, home, `--host` and the recorded `labels` say the same thing.
+
+- A reminder (`when.at`): `wants to remind you`. `Remind me <when>`, `Change…`, `Don't remind me`. No once.
+- A repeating check (`when.every`): `wants to set up a repeating check`. `Set it up · <cadence>`, `Change…`, `Only now, don't repeat`, `Don't set it up`.
+- A watch (file, idle, probe): `wants to watch for something`. `Watch for it`, `Change…`, `Check once now`, `Don't watch`.
+- A rule (`when.hold`): `wants to keep a rule`. `Keep this rule`, `Change where…`, `Don't keep it`. No once.
+
+Keys stay `1` yes, `3` once, `0` no. Once is never the cursor rest. On a narrow row the cadence drops off the yes before the label is cut, and the no is never the chip that is dropped.

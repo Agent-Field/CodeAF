@@ -350,7 +350,7 @@ func TestTheCardInThePaneIsAnsweredWithOne(t *testing.T) {
 	drive(t, a, key("enter"))
 
 	frame := homeText(a)
-	for _, want := range []string{"remind me at 6 to leave", "at 6 today", "about $0.02, once", "1 yes, set it up"} {
+	for _, want := range []string{"remind me at 6 to leave", "at 6 today", "about $0.02, once", "1 Remind me"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("the card does not say %q:\n%s", want, frame)
 		}
@@ -422,10 +422,10 @@ func TestTheErrandHintNamesOnlyTheAnswersTheCardDrew(t *testing.T) {
 		// A one-off reminder. "Do it once, now" says the wrong thing at the
 		// wrong moment for a line that was meant for six o'clock, so the card
 		// draws two numbered chips and the hint may name two digits.
-		{"a one-off reminder", standReminder(), "1 yes, set it up · 0 no · o other", 2},
-		// A watch is a thing a person may reasonably want done once, now — the
-		// third answer is drawn, so the third digit is named.
-		{"a watch", standItem(), "1 yes, set it up · 3 just once · 0 no · o other", 3},
+		{"a one-off reminder", standReminder(), "1 Remind me in 1 minute — 07:35 · 0 Don't remind me · o Change…", 2},
+		// A repeating check is a thing a person may reasonably want done once, now.
+		// The third answer is drawn, so the third digit is named.
+		{"a repeating check", standItem(), "1 Set it up · Mondays at 9am · 3 Only now, don't repeat · 0 Don't set it up · o Change…", 3},
 	} {
 		lab := newErrandLab(t)
 		mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
@@ -488,8 +488,8 @@ func TestTheErrandHintNamesOnlyTheAnswersTheCardDrew(t *testing.T) {
 // that hands the keyboard back to the list, and a card left standing on the
 // column is not an answer — so a person who asked for a reminder from home and
 // then thought better of it had nothing to press. The decline is the engine's
-// own `0 not set up` ([session.StandingNoKey]), which is the same key on this
-// pane, on home's answer band and in the conversation.
+// own `0` ([session.StandingNoKey]), in the kind's own words, which is the same
+// key on this pane, on home's answer band and in the conversation.
 func TestTheCardInThePaneIsDeclinedWithZero(t *testing.T) {
 	lab := newErrandLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
@@ -509,7 +509,7 @@ func TestTheCardInThePaneIsDeclinedWithZero(t *testing.T) {
 
 	// THE HINT NAMES IT, because this is the only way out of the question that
 	// answers it.
-	if frame := homeText(a); !strings.Contains(frame, "0 no") {
+	if frame := homeText(a); !strings.Contains(frame, "0 Don't remind me") {
 		t.Fatalf("the pane does not name the decline:\n%s", frame)
 	}
 	drive(t, a, key(session.StandingNoKey))
