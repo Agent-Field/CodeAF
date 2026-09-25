@@ -234,7 +234,7 @@ host, that host is tried before repeating the failed request. Rate
 limits still respect their retry delay. Without an affordable alternative, the
 existing bounded retries and wait reporting remain.
 
-## Pinning one host yourself (pinning a lane) — how to change the host for a model, left and right arrows in the model picker, the @ after the model name, and whether codeaf do uses the lane I pinned
+## Which host am I pinned to — pinning one host yourself (pinning a lane), how to change the host for a model, left and right arrows in the model picker, the @ after the model name, and whether codeaf do uses the lane I pinned
 
 You can name the host yourself. Open `/model` and press `→` (or `tab`) on the model:
 its hosts — the machines serving it — open under it, the cursor **moves into them**,

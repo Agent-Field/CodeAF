@@ -408,7 +408,7 @@ var tuiWords = map[string]tuiWord{
 			"an offer whose key was cut is a question nobody can answer",
 	},
 	"phaseAllSlowWord": {
-		screen: "all providers slow",
+		screen: "all hosts slow",
 		why:    "every reachable provider is believed slow, so there is nowhere better to be",
 	},
 	"phaseWaitingWord": {

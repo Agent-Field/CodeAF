@@ -464,10 +464,14 @@ func (p *v3Process) registerServiceNotice(tell func(source, address string)) fun
 // and the restock of its open picker happen on ITS loop, through the callback
 // the surface itself supplied — which is the only side allowed to touch the
 // app's memos.
-func (p *v3Process) noteServiceModelsTo(source, address string) {
+func (p *v3Process) serviceNoticesSnapshot() []func(string, string) {
 	p.mu.Lock()
-	notify := append([]func(string, string){nil}, p.serviceNotices...)
-	p.mu.Unlock()
+	defer p.mu.Unlock()
+	return append([]func(string, string){nil}, p.serviceNotices...)
+}
+
+func (p *v3Process) noteServiceModelsTo(source, address string) {
+	notify := p.serviceNoticesSnapshot()
 	for _, tell := range notify {
 		if tell != nil {
 			tell(source, address)
