@@ -2,10 +2,13 @@ package session
 
 import (
 	"context"
+	"errors"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -31,7 +34,8 @@ import (
 //   - once per process at a step boundary, for a conversation that already had
 //     its title and is in a team whose handle for it is still the word list's
 //     guess. That is the ONE-TIME pass over handles made before this: each is
-//     chosen again, the same way, on its conversation's next turn.
+//     chosen again, the same way, on its conversation's next turn. A timeout or
+//     a dropped connection is asked once more; a refusal is not.
 //
 // IT RUNS ON THE MACHINE THAT OWNS THE MODEL AND THE STORE. Over --host that is
 // the engine, where this session is, and the teams file is that machine's.
@@ -54,6 +58,14 @@ const handleAsk = "Give this conversation a handle: ONE lowercase English word t
 
 // handleTokens is the whole budget of one ask: three short words.
 const handleTokens = 24
+
+// handleRetryWait is the one pause before a handle ask is tried again. The
+// guess already stands, so the wait is short: long enough that a timeout or a
+// dropped connection has a chance to clear, and one try only.
+const handleRetryWait = 250 * time.Millisecond
+
+// handleBackoff is that wait's seam, so a test states it without spending it.
+var handleBackoff = backoffWait
 
 // handleChoices is how many words an answer is read for.
 const handleChoices = 3
@@ -173,9 +185,25 @@ func handleRenameEntry(old, now string) teams.Entry {
 	}
 }
 
-// askForHandle is one ask for the words, with no ladder of retries of its own:
-// the guess already stands, and a model that does not answer leaves it.
+// askForHandle is one question for the words. A transient failure, a timeout or
+// the network, is asked once more after [handleRetryWait]. A refusal is not,
+// and neither is an answer that names nothing: the guess already stands, and a
+// model that will not answer leaves it. A later turn does not ask again
+// ([Agent.chooseTeamHandlesLater] asks once per process).
 func (a *Agent) askForHandle(ctx context.Context, title, model string) []string {
+	choices, err := a.askForHandleOnce(ctx, title, model)
+	if len(choices) > 0 || !handleMayRetry(ctx, err) {
+		return choices
+	}
+	if handleBackoff(ctx, handleRetryWait) != nil {
+		return nil
+	}
+	choices, _ = a.askForHandleOnce(ctx, title, model)
+	return choices
+}
+
+// askForHandleOnce is one call for the words.
+func (a *Agent) askForHandleOnce(ctx context.Context, title, model string) ([]string, error) {
 	callCtx, cancel := context.WithTimeout(ctx, titleAskWindow)
 	defer cancel()
 	ask := "Conversation title:\n" + clip(title, titleClip) + "\n\n" + handleAsk
@@ -189,10 +217,26 @@ func (a *Agent) askForHandle(ctx context.Context, title, model string) []string 
 			return false
 		}, ai.WithMaxTokens(handleTokens))
 	if err != nil || response == nil {
-		return nil
+		return nil, err
 	}
 	a.addDetachedUsageAs(response, named, 1, auxRoleTitle)
-	return cleanHandleChoices(response.Text())
+	return cleanHandleChoices(response.Text()), nil
+}
+
+// handleMayRetry reports whether one failed handle ask may be tried again.
+// A cancelled errand is not a failure, and a refusal is the provider saying no
+// to the same question.
+func handleMayRetry(ctx context.Context, err error) bool {
+	if err == nil || ctx.Err() != nil {
+		return false
+	}
+	if _, refused := provider.RefusalFrom(err); refused {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	return isRetryable(err.Error())
 }
 
 // cleanHandleChoices is a model's answer as handle words: the first line's

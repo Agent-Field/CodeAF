@@ -43,6 +43,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does a directive wake an idle member", "team-manager"},
 		{"what happens when auto-wake is off and the manager starts a member", "team-manager"},
 		{"why is a member still asking after it crashed", "team-manager"},
+		{"does it ask again if the handle model times out", "team-manager"},
 		{"can I use my own deepseek key", "services"},
 		{"how do I connect glm", "services"},
 		{"how do I add an api key for another provider", "services"},
