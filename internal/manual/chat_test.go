@@ -32,7 +32,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does a wrapped help line stay under its key", "keys"},
 		// The conversations view and its teams (conversations-and-teams.md).
 		{"how do I see all my conversations at once", "conversations-and-teams"},
-		{"what is the chats dock under the message box", "conversations-and-teams"},
+		{"what is the tabs dock under the message box", "conversations-and-teams"},
 		{"how do I group conversations into a team", "conversations-and-teams"},
 		{"how do I switch teams from the tab strip", "conversations-and-teams"},
 		{"does deleting a team close its conversations", "conversations-and-teams"},
