@@ -575,7 +575,8 @@ which puts things back exactly as they were.
 
 - **enter on a seat** opens that seat's list: `auto — codeaf picks per task` first, then
   the router's suggestion marked with the star and `suggested`, then every model your
-  providers reach with its price in and out per million tokens and one provider. Type to
+  providers reach with its price in and out per million tokens, spelled the way `/model`
+  spells it (`$3/$15 per M`), and one provider. Type to
   filter; `enter` pins. **Unpinning is choosing `auto`** — the list opens on it, so it is
   `enter enter`. `→` on a model shows its routes (`any route · cheapest`, then each
   provider); `enter` on one pins the model to that provider, `←` folds them.

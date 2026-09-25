@@ -320,7 +320,7 @@ func TestCrewSeatListShapeAndRoutes(t *testing.T) {
 	if !strings.Contains(lines[2], a.icon(tokens.GRecommended)) || !strings.Contains(lines[2], "suggested") {
 		t.Fatalf("the suggestion is not second and marked:\n%s", strings.Join(lines, "\n"))
 	}
-	if row := crewLineWith(t, strings.Join(lines, "\n"), "kimi-k3"); !strings.Contains(row, "$3/$15") || !strings.Contains(row, "openrouter") {
+	if row := crewLineWith(t, strings.Join(lines, "\n"), "kimi-k3"); !strings.Contains(row, "$3/$15 per M") || !strings.Contains(row, "openrouter") {
 		t.Fatalf("a row does not say its price and provider: %q", row)
 	}
 	j.typed("kimi")

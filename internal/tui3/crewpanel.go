@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -2174,7 +2173,10 @@ func (a *app) crewOfferText(row crewPickRow, current bool, width int) string {
 	if current {
 		text += " " + a.crewMark(tokens.GPinned)
 	}
-	facts := []string{crewPerM(offer.Model)}
+	var facts []string
+	if price := crewPerM(offer.Model); price != "" {
+		facts = append(facts, price)
+	}
 	if len(offer.Routes) > 0 {
 		provider := offer.Routes[0].Provider
 		if extra := len(offer.Routes) - 1; extra > 0 {
@@ -2204,20 +2206,13 @@ func (a *app) crewRouteText(offer config.CrewOffer, route int, pin config.CrewPi
 	return a.pal.ink(r.Provider) + a.pal.dim(" · "+string(r.Kind))
 }
 
-// crewPerM is a model's price as the list shows it: dollars per million
-// tokens in and out, cents at most.
+// crewPerM is a model's price as the list shows it: the model picker's own
+// words ([priceWord]), `$0.08/$0.16 per M`, dollars per million tokens in and
+// out. It once drew the two figures bare, which a person had no way to read as
+// a unit, and a second spelling of one price is a second thing to keep true.
+// A model with no published price says nothing (the emptiness law).
 func crewPerM(m crewroute.Model) string {
-	return "$" + crewCents(m.PromptPrice*1e6) + "/$" + crewCents(m.CompletionPrice*1e6)
-}
-
-// crewCents spells a price to the cent: whole dollars bare, anything else to
-// two places, so a column of prices reads as money ($0.50, not $0.5).
-func crewCents(usd float64) string {
-	cents := math.Round(usd * 100)
-	if math.Mod(cents, 100) == 0 {
-		return strconv.FormatFloat(cents/100, 'f', 0, 64)
-	}
-	return strconv.FormatFloat(cents/100, 'f', 2, 64)
+	return priceWord(m.PromptPrice, m.CompletionPrice)
 }
 
 // crewCheckRows is the checklist's rows: a tick where the rule admits the
@@ -2237,7 +2232,10 @@ func (a *app) crewCheckRows(width, hover int) ([]string, []int) {
 		if p.ticked(line) {
 			mark = a.pal.ink(a.crewMark(tokens.GSettled)) + " "
 		}
-		text := mark + a.pal.ink(line.offer.Model.ID) + a.pal.dim("  "+crewPerM(line.offer.Model))
+		text := mark + a.pal.ink(line.offer.Model.ID)
+		if price := crewPerM(line.offer.Model); price != "" {
+			text += a.pal.dim("  " + price)
+		}
 		if !line.offer.Served {
 			text += a.pal.dim(" · " + crewProviderOff)
 		}
