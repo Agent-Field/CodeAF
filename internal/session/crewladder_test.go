@@ -9,12 +9,15 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // crewStub is the provider the owner's verification stood up: every paid id
@@ -66,6 +69,7 @@ func newCrewStub(t *testing.T, paid int, free map[string]int) *crewStub {
 			w.WriteHeader(status)
 			_, _ = io.WriteString(w, `{"error":{"message":"No auth credentials found","code":401}}`)
 		default:
+			w.Header().Set("Retry-After", "3600")
 			w.WriteHeader(http.StatusTooManyRequests)
 			_, _ = io.WriteString(w, `{"error":{"message":"Rate limit exceeded: free-models-per-day. ","code":429}}`)
 		}
@@ -229,6 +233,13 @@ func TestNoCallReachesAQuarantinedRoute(t *testing.T) {
 		[]ai.Message{textMessage("user", "a small errand")}, ai.WithModel("z-ai/glm-5.3-flash")); err != nil {
 		t.Fatalf("the errand: %v", err)
 	}
+	// And the end-of-task helper — the run summary, a worker-role errand whose
+	// floor is the conversation's model — with the person talking to the very
+	// model whose route was quarantined.
+	agent.SetModel("z-ai/glm-5.3-flash")
+	if _, _, err := agent.callRole(t.Context(), roles.RoleWorker, agent.Model(), []ai.Message{textMessage("user", "summarise the run")}, ai.WithMaxTokens(320)); err != nil {
+		t.Fatalf("the run summary: %v", err)
+	}
 	for _, model := range stub.models() {
 		if model == "z-ai/glm-5.3-flash" {
 			t.Fatalf("task 2 asked the quarantined route: %v", stub.models())
@@ -247,5 +258,50 @@ func TestAFailedRescuedTaskEndsOnTheCreditAction(t *testing.T) {
 	clean := &taskCrew{decision: crewroute.Decision{Class: crewroute.Bugfix}}
 	if got := clean.stoppedIfCutOff().Stopped; got != "" {
 		t.Errorf("a failed task that saw no account cut off stops on %q, want the redo offer", got)
+	}
+}
+
+// EVERY ROUTE DOWN ENDS IN SECONDS: paid calls out of credit, every free pool
+// at its daily limit with a Retry-After of an hour. The seat tries at most
+// three free pools, asks none of them twice — a patient task context
+// notwithstanding — and stops on the one action.
+func TestEveryRouteDownStopsWithinThreeFreePools(t *testing.T) {
+	stub := newCrewStub(t, http.StatusPaymentRequired, map[string]int{})
+	agent, _ := crewStubAgent(t, stub)
+	previous := config.CrewCatalog
+	rows := previous()
+	for _, id := range []string{"a/one:free", "b/two:free", "c/three:free", "d/four:free", "e/five:free", "f/six:free"} {
+		rows = append(rows, catalog.Model{ID: id, ContextLength: 262144, CodingIndex: 40, Parameters: []string{"tools"}})
+	}
+	config.CrewCatalog = func() []catalog.Model { return rows }
+
+	crew, err := agent.routeTaskCrew(t.Context(), 1, "fix: the parser crashes on empty input", "Traceback")
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := &beltRun{row: 1, crew: crew}
+	began := time.Now()
+	_, err = crewSeatCompleter{agent: agent, run: run}.CompleteWithMessages(provider.WithPatientRateLimits(t.Context()),
+		[]ai.Message{textMessage("user", "fix it")}, ai.WithModel(crew.current().Seat(crewroute.Worker).Send))
+	var stopped crewStopped
+	if !errors.As(err, &stopped) || stopped.action != "add credit on openrouter to continue" {
+		t.Fatalf("every route down ended %v, want the one action", err)
+	}
+	if took := time.Since(began); took > 30*time.Second {
+		t.Errorf("reaching the action took %v", took)
+	}
+	asked := map[string]int{}
+	for _, model := range stub.models() {
+		if strings.HasSuffix(model, ":free") {
+			asked[model]++
+		}
+	}
+	if len(asked) > 3 {
+		t.Errorf("the seat walked %d free pools: %v", len(asked), asked)
+	}
+	for model, n := range asked {
+		if n > 1 {
+			t.Errorf("%s was asked %d times through an hour's Retry-After", model, n)
+		}
 	}
 }

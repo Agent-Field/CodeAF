@@ -93,6 +93,11 @@ type taskCrew struct {
 	// bad are routes that failed here; broke are accounts that ran out of
 	// credit here; gone are providers whose key was refused here.
 	bad, broke, gone map[string]bool
+	// freeTried is how many free pools each seat has been moved onto in this
+	// task: at most crewFreePools, so a task on an account out of credit
+	// whose every free pool is at its limit stops on its action in seconds,
+	// not after walking every pool the catalog lists.
+	freeTried map[crewroute.Seat]int
 }
 
 // current is the crew as it stands, fallbacks taken.
@@ -321,7 +326,9 @@ func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []
 	retried := false
 	for {
 		current := crew.sendFor(key)
-		response, err := c.agent.completeWithModel(asCrewSeatCall(ctx), purposeInherited, messages, current, options...)
+		// A SEAT NEVER WAITS OUT A LIMIT: a 429 goes back at once, and the
+		// seat moves to its next route or model ([provider.WithoutPatientRateLimits]).
+		response, err := c.agent.completeWithModel(provider.WithoutPatientRateLimits(asCrewSeatCall(ctx)), purposeInherited, messages, current, options...)
 		if err == nil {
 			c.agent.crewAnswered(c.run, current)
 			return response, nil
@@ -366,11 +373,15 @@ func isCrewSeatCall(ctx context.Context) bool {
 // MODEL AND A CREW SEAT'S CALL ARE NEVER REROUTED: the first two are the
 // person's choice, and a seat walks its own ladder and says so on its line.
 func (a *Agent) healthyModel(ctx context.Context, purpose callPurpose, model string) string {
-	if a.config.RouteCrew == nil || a.config.ProfileDir == "" || purpose == purposeTurn || isCrewSeatCall(ctx) {
+	if a.config.RouteCrew == nil || a.config.ProfileDir == "" || isCrewSeatCall(ctx) || strings.TrimSpace(model) == "" {
 		return model
 	}
+	// ONLY THE PERSON'S OWN TURN ON THEIR OWN MODEL is theirs to send where
+	// they chose. An errand that falls back to the conversation's model —
+	// a run summary, a title — is still an errand, and is not sent to a route
+	// that refused that model a minute ago.
 	chat := a.Model()
-	if strings.TrimSpace(model) == "" || model == chat {
+	if purpose == purposeTurn && model == chat {
 		return model
 	}
 	return config.CrewHealthySend(a.config.ProfileDir, model, chat)
@@ -458,15 +469,12 @@ func (a *Agent) moveCrewSeat(run *beltRun, key, current string, kind provider.Ro
 		if pick.Send != current || pick.Pinned || crew.original[seat] != key {
 			continue
 		}
-		rung, ok := crew.nextRung(append(append([]crewroute.Pick(nil), crew.ladders[seat]...),
+		rung, ok := crew.takeRungLocked(seat, append(append([]crewroute.Pick(nil), crew.ladders[seat]...),
 			config.CrewRescue(a.config.ProfileDir, decision.Class, seat, a.Model())...))
 		if !ok {
 			continue
 		}
-		decision = decision.WithRung(seat, rung, crewWhy(kind, provided))
-		if rung.Kind == crewroute.Free && !strings.Contains(decision.Note, "free routes in use") {
-			decision.Note = strings.TrimSpace(decision.Note + " " + crewFreeNotice)
-		}
+		decision = withFreeNotice(decision.WithRung(seat, rung, crewWhy(kind, provided)), rung)
 		if next.Send == "" {
 			next = rung
 		}
@@ -583,6 +591,46 @@ func (c *taskCrew) stoppedIfCutOff() crewroute.Decision {
 	}
 	return c.decision
 }
+
+// takeRungLocked is the seat's next rung this task has not seen fail, within
+// its free pools, counted when it is a free pool. The caller holds c.mu.
+func (c *taskCrew) takeRungLocked(seat crewroute.Seat, rungs []crewroute.Pick) (crewroute.Pick, bool) {
+	rung, ok := c.nextRung(c.withinFreePools(seat, rungs))
+	if ok && rung.Kind == crewroute.Free {
+		if c.freeTried == nil {
+			c.freeTried = map[crewroute.Seat]int{}
+		}
+		c.freeTried[seat]++
+	}
+	return rung, ok
+}
+
+// withFreeNotice is d with the free-pool notice when rung is a free pool.
+func withFreeNotice(d crewroute.Decision, rung crewroute.Pick) crewroute.Decision {
+	if rung.Kind == crewroute.Free && !strings.Contains(d.Note, "free routes in use") {
+		d.Note = strings.TrimSpace(d.Note + " " + crewFreeNotice)
+	}
+	return d
+}
+
+// withinFreePools is rungs without the free pools once seat has been moved
+// onto crewFreePools of them in this task. The caller holds c.mu.
+func (c *taskCrew) withinFreePools(seat crewroute.Seat, rungs []crewroute.Pick) []crewroute.Pick {
+	if c.freeTried[seat] < crewFreePools {
+		return rungs
+	}
+	out := rungs[:0]
+	for _, r := range rungs {
+		if r.Kind != crewroute.Free {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// crewFreePools is how many free pools — models, not attempts — one seat is
+// moved onto in one task.
+const crewFreePools = 3
 
 // crewKeys is a set's members, sorted.
 func crewKeys(set map[string]bool) []string {
