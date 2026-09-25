@@ -70,72 +70,77 @@ While the manager is in front, the message box says `to ◆ manager`, and keeps 
 rule above the box once you start typing: everything you type goes to the manager and nowhere
 else. With a member in front the box says `to @web` the same way.
 
-On the right is the **Traffic** rail: who told whom inside the team, as threads. A thread is
-one message and everything that answered it, and the thread that moved last is at the top,
-straight under the header:
+On the right is the conversation's column, the same one every chat has. Its header is two
+words, `Tasks 14 · Traffic 8` with `alt+l` at its right: the word in front is in bold ink and
+the other is dim, each is a button (point at it for what it shows, press it to bring it to
+the front), and while the tasks are in front the Traffic word keeps counting what arrived,
+`Traffic 3 new`. With the manager in front the column opens on the **Traffic**; with a member
+in front it opens on the tasks. Each kind of chat remembers the word you last chose for the
+rest of the session. With the column holding the keyboard (`alt+t`), `←` and `→` switch the
+words. Nothing here moves the conversation: both words are drawn in the same columns.
+
+Under the header is what needs you, from both words: a member's question to you (`? @web
+asks: may I run the migration?`), a decision put to you, and your tasks that are waiting on
+you, in the needs-you amber; a task that failed and that you have not opened yet is its `✕` in
+ordinary ink. Three rows at most, then `+2 more`; a line closes the band, and when nothing
+needs you there is no band at all. Pressing a question opens the member at the question; a
+decision opens the teams page. What is in the band is not drawn again under it.
+
+In the manager's chat the Traffic is the team's **work**, one line each, the newest at the
+top:
 
 ```
-Traffic                                  hide alt+l
-◆ manager → @agent @checking @review  do        2m
-  Please provide a brief status update on your part
-├ @checking  ✓ Status update: the lexer is in   1m
-├ @agent  working…
-└ @review  asking: may I run the migration?    now
+Tasks 14 · Traffic 8                 alt+l
+? @model asks: may I run the migr…     now
+✕ parser bench incomplete
+──────────────────────────────────────────
+General                     2 msgs ▸   now
+@scrape +2  Please provide…  running ▾ now
+  ↳ 09:58 @scrape: ✓ Status update: pri…
+  ↳ 09:58 @model: working…
+  ↳ 09:58 @review: ✓ Status update: two…
 ```
 
-- The header says who sent it, to whom, and `do` for a directive or `fyi` for a note. When the
-  rail is too narrow for every handle it names whom it can and counts the rest, `+2`.
-- The message is on its own dim line under it.
-- Each member who answered, or was started on it, has one line of the tree, in the order it
-  happened. `working…` is a member the message woke that has not answered yet; `✓` is a member
-  that answered and finished its turn, `✗` one whose turn failed, and `asking:` is a member
-  waiting on you, the only line in the needs-you amber.
-- `◆ manager stopped @web · going in circles`, `◆ manager started @lexer` with the brief under
-  it, and `codeaf  @review is now @security` are lines of their own, as is anything written
-  before threads.
-- A start that made a sub-team reads `◆ manager started @api to run backend`. The name is
-  the team's name now, so a rename replaces `backend` on the next frame.
-- `◆ manager ruling → @web` (or `you ruling → @web` when you decided it) heads the decision on
-  a conflict, written into every party's team, with the ruling on its own line under it: it is
-  a ruling, not that team's manager's own order, and pointing at its words names the conflict
-  it settles.
-- A member's clarifying question to its manager reads `@web → ◆ manager  asks`, and the
-  manager's answer is a line of the tree under it. A decision packet raised, decided or
-  escalated (`codeaf  answered @web: JSON`), and a team closing or reopening, are lines of
-  their own.
+- A row is a thread (below): whom the manager's message went to (`+2` for the ones that do
+  not fit) and what it said, the state its answers leave it in (`running`, `asking`, `done`,
+  `failed`), how many messages it holds, and its age. When the column is narrow the count
+  and then the state give way to the words; the hint line always says them.
+- `▸` lays the thread's replies open under it, one `↳` line per member with the time: `✓` on
+  an answer from a member that finished its turn, `✗` for one that failed, `working…` for a
+  member the message woke that has not answered, `asking:` for one waiting on you. `▾` (or
+  `enter` on the row, with the column holding the keyboard) folds them.
+- Everything that answers nothing and is answered by nothing (notes, starts, stops, handle
+  changes, anything written before threads) is the one **General** thread, laid open the
+  same way. A start that made a sub-team reads `◆ manager started @api to run backend`; the
+  name is the team's name now, so a rename replaces `backend` on the next frame.
+- A thin `new` line stands under what arrived since you last looked, and stays put while you
+  read.
 
-Headers and answers end with their age (`now`, `2m`, `3h`); on a narrow rail only the header
-does. Your own messages are not on the rail; they are in the manager's conversation. Every
-`@handle` is a link, as in the chat: point at it for the member's title in the hint line, press
-it to open that member (resumed first when this window does not have it open) **scrolled to the
-message**: a handle on a thread's header opens the member at the directive as it was told it,
-and a handle on an answer opens it at its own post. The message is brought into view and
-lifted for a moment; the focus stays on that conversation. A message from before the
-conversation's history opens it at the bottom, and the hint line says `that message is older
-than this chat's history`. Point at a message's words to read them whole in the hint line,
-press them to lay them out in full under the row, and press again to fold them; the press also
-brings that thread's card in the manager's conversation into view. Nothing on the rail moves
-your focus but a handle.
+Every `@handle` is a link: point at it for the member's title in the hint line, press it to open
+that member (resumed first when this window does not have it open) **scrolled to the
+message**: a handle on a thread's row opens the member at the directive as it was told it, and a
+handle on a reply opens it at its own post. The message is brought into view and lifted for a
+moment; the focus stays on that conversation. A message from before the conversation's history
+opens it at the bottom, and the hint line says `that message is older than this chat's history`.
+Point anywhere else on a row to read it whole in the hint line; press it to bring that message
+in the manager's conversation into view. Nothing in the column moves your focus but a handle or a question in the band.
 
-With the manager in front the right-hand column is the Traffic, whatever you last told the task
-column with `ctrl+g`: the task column is not drawn beside it, not even as an edge. When the
-manager has live tasks of its own the header grows a second word, `Traffic · Tasks 2`; press
-`Tasks 2`, or `ctrl+g`, to lay the manager's tasks in the same column at the same width, and
-press the header line, or `ctrl+g` again, to go back to the Traffic. With no tasks there is no
-second word and `ctrl+g` does nothing here. Every other conversation's task column works as it
-always has. The rail's header reads `Traffic` with `hide alt+l` at its right. Put away, the rail is the word
-`Traffic` down the right edge with a count of what arrived since you last looked; press it or
-`alt+l` to bring it back. This window remembers whether you put it away.
+In a member's chat the Traffic is the messages to or from that member (and to the whole team),
+one line each, newest first: `◆  Please provide a brief status…` from the manager, `→ ◆  Status
+update: prices are in` from the member, `→ @model  the cache keys are in…` to another member.
+Press one to go to it in the member's conversation.
 
-On a window too narrow for the column (under 84 columns) the rail is only that edge. Pressing it, or `alt+l`, lays the Traffic over the lower part of the
-conversation as a card with `Close esc` in its foot; the top of the conversation stays in view.
-`esc` closes it.
+`alt+l` puts the column away and brings it back, and this window remembers the answer (`ctrl+g`
+is the same key under its older name). Put away, the column is an edge down the right with a
+count of what arrived in the Traffic since you last looked; press it or `alt+l` to bring it
+back. On a window under 100 columns there is no column and no edge: `alt+l` lays the column
+over the conversation, and `esc` or `alt+l` takes it off again.
 
 Over `--host` teams and the manager work as they do locally. The teams and their Traffic are
 kept on the machine the conversations run on, and the window reads and writes them there, so
-the rail is the team's own and a manager set from the laptop is the one the far session
+the Traffic is the team's own and a manager set from the laptop is the one the far session
 follows. Against a far machine running an older codeaf, `+ Manager` and the menus say managers
-are not available over `--host`, and there is no rail.
+are not available over `--host`, and the column has no Traffic word.
 
 When the manager starts a member with `team_start`, you are asked first, on a card that reads
 `◆ manager wants to start @lexer`, with the brief under it and the clause `a new conversation;
@@ -298,7 +303,7 @@ it manages the team the packet waits on.
 Every line a member is handed carries its number, `◆ directive from manager #42: …`. A
 member's `team_post` to the manager answers the last message the manager sent it, by itself;
 to answer another it names it, `thread: #41`. The member's finishing, failing or asking, and
-the wake that started it, answer the same message, which is how the rail and the chats draw
+the wake that started it, answer the same message, which is how the Traffic and the chats draw
 them under it. A message to several members is one message, so the question and its answers
 are one thread however many were asked.
 
@@ -336,7 +341,7 @@ A member no window has open is opened by codeaf in the background so it can run,
 that opens it later joins the running conversation. When that cannot be done, the traffic says
 `could not wake @web:` and why, and the message waits for the member's next turn.
 
-Every wake is a line in the traffic, `◆ woke @web` or `@web woke ◆`, so the rail shows why a
+Every wake is a line in the traffic, `◆ woke @web` or `@web woke ◆`, so the Traffic shows why a
 conversation is running. A wake spends through the same limits a turn you start does, and two
 more bound it: one conversation is woken at most 20 times an hour, and a manager woken 10 times
 by its team with nothing from you stops being woken and asks you instead, as a waiting line in

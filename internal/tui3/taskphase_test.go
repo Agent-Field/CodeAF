@@ -59,9 +59,9 @@ func TestANodeUnderTheCheckSaysWhatIsHappeningAtEveryWidth(t *testing.T) {
 		width int
 		want  []string
 	}{
-		{underWidth(railWideCols), []string{taskCheckingWord, "42s · 9.9k · $0.31 · gpt-5"}},
-		{underWidth(railCols), []string{taskCheckingWord, "42s · 9.9k · $0.31 · gpt-5"}},
-		{underWidth(railSlimCols), []string{"checking what it le…", "42s · 9.9k · $0.31"}},
+		{underWidth(underWideCols), []string{taskCheckingWord, "42s · 9.9k · $0.31 · gpt-5"}},
+		{underWidth(underCols), []string{taskCheckingWord, "42s · 9.9k · $0.31 · gpt-5"}},
+		{underWidth(underSlimCols), []string{"checking what it le…", "42s · 9.9k · $0.31"}},
 	} {
 		rows := a.railUnder(node, tc.width)
 		if len(rows) != len(tc.want) {
@@ -78,11 +78,11 @@ func TestANodeUnderTheCheckSaysWhatIsHappeningAtEveryWidth(t *testing.T) {
 	}
 
 	// And through the column a person actually reads, at the widths the rail
-	// itself narrows to — where the row is cut from the right and the words that
-	// name the moment are the ones that survive.
+	// itself narrows to: the row is one line, and what the block says is on the
+	// hint line over it (sidecol.go's [app.sideTaskHint]).
 	for width, want := range map[int]string{200: "checking what it le", 110: "checking what it le"} {
 		a.width = width
-		roster := rosterText(a, 12)
+		roster := rosterText(a, 12) + "\n" + railHint(a, 7)
 		if !strings.Contains(roster, want) {
 			t.Fatalf("the roster at %d columns does not say the work is being checked:\n%s", width, roster)
 		}
@@ -99,7 +99,7 @@ func TestARepairRoundSaysTheRoundAndTheFinding(t *testing.T) {
 	drive(t, a, taskEventMsg{gen: a.taskGen, ev: phaseMove(7, session.TaskPhaseRepairing, 1, 1,
 		"not done — go test reports no test files")})
 
-	rows := a.railUnder(node, underWidth(railWideCols))
+	rows := a.railUnder(node, underWidth(underWideCols))
 	want := []string{"closing gaps · round 1 of 1", "not done — go test reports no test files"}
 	if len(rows) != len(want) {
 		t.Fatalf("the under-block is %d rows, want %d:\n%q", len(rows), len(want), rows)
@@ -113,15 +113,14 @@ func TestARepairRoundSaysTheRoundAndTheFinding(t *testing.T) {
 	// engine that sends both is an engine whose repair round is running, and
 	// "closing gaps · round 1 of 1" is that same news with the round on it.
 	node.mending = "go test reports no test files"
-	if got := plain(a.railUnder(node, underWidth(railWideCols))[0]); got != "closing gaps · round 1 of 1" {
+	if got := plain(a.railUnder(node, underWidth(underWideCols))[0]); got != "closing gaps · round 1 of 1" {
 		t.Fatalf("the gap line took the row back: %q", got)
 	}
 
-	// And through the column a person actually reads, where the rail's own width
-	// cuts both rows from the right — the round and the opener, which are the
-	// halves that name the moment, always survive.
+	// And through the column a person actually reads: the hint line over the
+	// row carries both, the round and the opener.
 	a.width = 200
-	roster := rosterText(a, 12)
+	roster := rosterText(a, 12) + "\n" + railHint(a, 7)
 	for _, line := range []string{"closing gaps · round 1 of", "not done — go test report"} {
 		if !strings.Contains(roster, line) {
 			t.Fatalf("the roster does not carry %q:\n%s", line, roster)
@@ -146,7 +145,7 @@ func TestANodeBackAtWorkDrawsNothingExtra(t *testing.T) {
 	}
 
 	drive(t, a, taskEventMsg{gen: a.taskGen, ev: phaseMove(7, session.TaskPhaseWorking, 0, 0, "")})
-	rows := a.railUnder(node, underWidth(railCols))
+	rows := a.railUnder(node, underWidth(underCols))
 	if len(rows) != 1 {
 		t.Fatalf("a working node's under-block is %d rows, want the telemetry alone:\n%q", len(rows), rows)
 	}
@@ -258,7 +257,7 @@ func TestANodeBeingSizedSaysSoOnEveryColumn(t *testing.T) {
 	drive(t, a, taskEventMsg{gen: a.taskGen, ev: phaseMove(7, session.TaskPhaseSizing, 0, 0, "")})
 
 	// THE RAIL, with the telemetry a person opens this column for kept under it.
-	rows := a.railUnder(node, underWidth(railWideCols))
+	rows := a.railUnder(node, underWidth(underWideCols))
 	want := []string{taskSizingWord, "42s · 9.9k · $0.31 · gpt-5"}
 	if len(rows) != len(want) {
 		t.Fatalf("the under-block is %d rows, want %d:\n%q", len(rows), len(want), rows)
@@ -377,7 +376,7 @@ func TestARequestASizingIsWaitingOnIsDrawnOnTheRailAndInTheRoom(t *testing.T) {
 	}
 	frame := func() (rail, room string) {
 		a.room.dirty = true
-		return plain(strings.Join(a.railPhase(node, underWidth(railWideCols)), "\n")), roomText(a)
+		return plain(strings.Join(a.railPhase(node, underWidth(underWideCols)), "\n")), roomText(a)
 	}
 
 	// BEFORE: the phase and the ladder, and nothing that moves.

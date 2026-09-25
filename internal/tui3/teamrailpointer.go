@@ -4,127 +4,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// ── THE RAIL UNDER THE HAND AND THE KEYS (teamrail.go says what it is) ─────
+// ── THE TRAFFIC'S KEYS AND DOORS (teamrail.go says what it is) ─────────────
 
-// trafficEdgeAt reports whether the pointer is on the rail's edge: put away on
-// a wide frame, or the whole of it on a narrow one.
-func (a *app) trafficEdgeAt(x, y int) bool {
-	if a.trafficWidth() != trafficGripCols {
-		return false
-	}
-	width, _ := a.size()
-	top := a.bodyTop()
-	return top >= 0 && y >= top && y < top+a.viewHeight() && x >= width-trafficGripCols && x < width
-}
-
-// trafficRowAt is the rail's body row under the pointer, measured from the
-// body's top, and whether the pointer is over the column or the card at all.
-func (a *app) trafficRowAt(x, y int) (int, bool) {
-	d := a.traffic.drawn
-	switch d.mode {
-	case trafficColumn:
-		if !a.trafficHoldsRail() {
-			return -1, false
-		}
-	case trafficCard:
-		if !a.trafficOverShowing() {
-			return -1, false
-		}
-	default:
-		return -1, false
-	}
-	top := a.bodyTop()
-	rel := y - top
-	if top < 0 || x < d.x0 || x >= d.x1 || rel < d.y0 || rel >= d.y1 {
-		return -1, false
-	}
-	return rel, true
-}
-
-// trafficDoorAt is the door under column x on body row rel of the last frame's
-// rail, and its index on the row, -1 for none.
-func (d trafficDrawn) trafficDoorAt(rel, x int) (trafficDoor, int) {
-	if rel < 0 || rel >= len(d.doors) {
-		return trafficDoor{}, -1
-	}
-	for i, door := range d.doors[rel] {
-		if door.span.holds(x) {
-			return door, i
-		}
-	}
-	return trafficDoor{}, -1
-}
-
-// trafficHoverAt is the hover the rail answers with: a handle or a message's
-// words under the pointer. Anywhere else on the rail answers with nothing, so
-// it does not light: it is not a door.
-func (a *app) trafficHoverAt(x, y int) (hoverAt, bool) {
-	if rel, ok := a.trafficRowAt(x, y); ok {
-		d := a.traffic.drawn
-		switch {
-		case d.mode == trafficCard && rel == d.closeY && d.close.holds(x):
-			return hoverAt{kind: hoverTrafficClose}, true
-		case d.mode == trafficColumn && rel == d.hideY && d.hide.holds(x):
-			return hoverAt{kind: hoverTrafficHide}, true
-		case d.mode == trafficColumn && rel == d.hideY && d.tab.holds(x):
-			return hoverAt{kind: hoverTrafficTab}, true
-		}
-		if _, i := d.trafficDoorAt(rel, x); i >= 0 {
-			return hoverAt{kind: hoverTraffic, index: rel, entry: i}, true
-		}
-		return hoverAt{}, true
-	}
-	if a.trafficEdgeAt(x, y) {
-		return hoverAt{kind: hoverTrafficGrip}, true
-	}
-	return hoverAt{}, false
-}
-
-// trafficPress answers a press on the rail and reports whether it took it. A
-// handle goes to its member, and puts the card away; a message's words are
-// laid out in full or folded again; `hide` puts the column away; `Close esc`
-// puts the card away; the edge brings the column back, or on a narrow frame
-// lays the card over the body or takes it off. The rail's other cells are
-// furniture and take the press to do nothing.
-func (a *app) trafficPress(x, y int) (tea.Cmd, bool) {
-	if rel, ok := a.trafficRowAt(x, y); ok {
-		d := a.traffic.drawn
-		switch {
-		case d.mode == trafficCard && rel == d.closeY && d.close.holds(x):
-			a.trafficShow(false)
-			return nil, true
-		case d.mode == trafficColumn && rel == d.hideY && d.hide.holds(x):
-			a.trafficShow(false)
-			return nil, true
-		case d.mode == trafficColumn && rel == d.hideY && d.tab.holds(x):
-			a.trafficTasksShow(true)
-			return nil, true
-		}
-		door, i := d.trafficDoorAt(rel, x)
-		switch {
-		case i < 0:
-		case door.member != "":
-			a.traffic.over = false
-			return a.trafficJump(door.member, door.land), true
-		case door.expand != "":
-			a.trafficToggle(door.expand)
-			// AND THE MESSAGE'S CARD IN THE MANAGER'S OWN CONVERSATION COMES
-			// INTO VIEW, lifted (teamjump.go).
-			if door.here != "" {
-				return a.trafficJump("", door.here), true
-			}
-		}
-		return nil, true
-	}
-	if a.trafficEdgeAt(x, y) {
-		a.trafficShow(!a.trafficShowing())
-		return nil, true
-	}
-	return nil, false
-}
-
-// trafficToggle lays one message out in full, or folds it again. It moves no
-// focus and changes nothing but what the rail and the thread cards draw.
+// trafficToggle lays one message out in full under a thread card, or folds it
+// again. It moves no focus and changes nothing but what the cards draw.
 func (a *app) trafficToggle(key string) {
 	if a.traffic.open == nil {
 		a.traffic.open = map[string]bool{}
@@ -135,31 +18,6 @@ func (a *app) trafficToggle(key string) {
 		a.traffic.open[key] = true
 	}
 	a.traffic.opened++
-	a.touch()
-}
-
-// trafficShowing reports whether the Traffic is in front of the person: the
-// column on a wide frame, the card on a narrow one.
-func (a *app) trafficShowing() bool {
-	if a.trafficFits() {
-		return !a.trafficHidden()
-	}
-	return a.traffic.over
-}
-
-// trafficShow shows the Traffic or puts it away, in whichever shape this frame
-// has for it. The column's answer is kept for the window; the card is only
-// ever laid over for as long as the person is reading it.
-func (a *app) trafficShow(on bool) {
-	if a.teamsHosting() && a.trafficFits() {
-		// The teams page keeps its own answer (teamspagehost.go).
-		a.tp.traffic = on
-	} else if a.trafficFits() {
-		a.traffic.hidden = !on
-	} else {
-		a.traffic.over = on
-	}
-	a.dropHover()
 	a.touch()
 }
 
@@ -186,32 +44,21 @@ func (a *app) trafficGo(key string) tea.Cmd {
 	return nil
 }
 
-// trafficKeyPress takes the rail's keys on the conversation: `esc` while the
-// card is over the body, [trafficKey] to show or hide the Traffic, and
-// [teamManagerKey] to go to the team's manager. Every overlay and page that
-// owns the keyboard is read before it and keeps these keys.
+// trafficKeyPress takes two keys on the conversation: [trafficKey] shows or
+// hides the side column (sidecol.go's [app.sideToggle]), and [teamManagerKey]
+// goes to the team's manager. Every overlay and page that owns the keyboard is
+// read before it and keeps these keys.
 func (a *app) trafficKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	key := msg.String()
-	if key != "esc" && key != trafficKey && key != teamManagerKey {
+	if key != trafficKey && key != teamManagerKey {
 		return nil, false
 	}
 	if a.asking() || a.at(pageSettings) || a.at(pageTasks) || a.at(pageHome) || a.pick.open ||
 		a.copy.on || a.welcome.open || a.menu.open || a.comp.open || a.effPick.open || a.wall.on {
 		return nil, false
 	}
-	switch key {
-	case "esc":
-		if !a.trafficOverShowing() {
-			return nil, false
-		}
-		a.trafficShow(false)
-		return nil, true
-	case trafficKey:
-		if !a.trafficOn() {
-			return nil, false
-		}
-		a.trafficShow(!a.trafficShowing())
-		return nil, true
+	if key == trafficKey {
+		return nil, a.sideToggle()
 	}
 	t, ok := a.teamOfFront()
 	if !ok || t.Manager == "" {
@@ -242,39 +89,6 @@ func (a *app) teamOfFront() (team, bool) {
 		}
 	}
 	return shown, showing
-}
-
-// trafficHoverWords is what the hint line says with the pointer on the rail,
-// "" anywhere else.
-func (a *app) trafficHoverWords() string {
-	d := a.traffic.drawn
-	switch a.hot.kind {
-	case hoverTraffic:
-		if rel := a.hot.index; rel >= 0 && rel < len(d.doors) && a.hot.entry >= 0 && a.hot.entry < len(d.doors[rel]) {
-			return d.doors[rel][a.hot.entry].hint
-		}
-	case hoverTrafficHide:
-		return "Hide the traffic" + hintSegment + trafficKey
-	case hoverTrafficTab:
-		if i := d.hideY; i >= 0 && i < len(d.hints) {
-			return d.hints[i]
-		}
-	case hoverTrafficClose:
-		if d.closeY >= 0 && d.closeY < len(d.hints) {
-			return d.hints[d.closeY]
-		}
-	case hoverTrafficGrip:
-		words := "Show the team's traffic" + hintSegment + trafficKey
-		if a.trafficOverShowing() {
-			words = "Close the traffic" + hintSegment + "esc"
-		} else if t, ok := a.teamFrontManaged(); ok {
-			if n := a.trafficUnseen(t); n > 0 {
-				words += hintSegment + itoa(n) + " new"
-			}
-		}
-		return words
-	}
-	return ""
 }
 
 // trafficHint is the composer's placeholder in a managed team: the person's

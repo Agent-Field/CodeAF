@@ -70,8 +70,9 @@ func TestRunRailNodeDoorsOpenItsFocusedCard(t *testing.T) {
 		t.Fatalf("the focused node card is not on the run page:\n%s", got)
 	}
 
+	// The newest row is first under its heading: the node, then its run.
 	a = adaptiveRailApp(t)
-	clickRailDoor(t, a, 1)
+	clickRailDoor(t, a, 0)
 	if !a.orchShowing("r1") || a.orchOf().card != "rfcs" {
 		t.Fatalf("click opened %+v, want run r1 focused on rfcs", a.orchOf())
 	}
@@ -79,7 +80,7 @@ func TestRunRailNodeDoorsOpenItsFocusedCard(t *testing.T) {
 
 func TestRunRailRootDoorOpensTheRunPage(t *testing.T) {
 	a := adaptiveRailApp(t)
-	clickRailDoor(t, a, 0)
+	clickRailDoor(t, a, 1)
 	if !a.orchShowing("r1") {
 		t.Fatalf("root click did not open run r1: %+v", a.orchOf())
 	}

@@ -71,13 +71,14 @@ func railFamily(a *app) {
 		unverifiedNotice("finished, but the key table still drops the last key")))
 	railKinship(a, 1, 2, 3, 5, 6)
 	railKinship(a, 3, 4)
-	// AND ONE FINISHED ROW WITH NO FAMILY AROUND IT. It is the second row that
-	// could fold — a landed flat row tucks its own block away
-	// ([app.railTucks]) — so it is the second row whose leading cell used to
-	// swallow the press.
+	// AND ONE FINISHED ROW WITH NO FAMILY AROUND IT, the other shape a row
+	// used to come in.
 	a.taskUpdate(update(9, "Collect the fixture sources", session.TaskDone, session.TaskNotice{
 		Elapsed: 8 * time.Second, Merge: mergeWordMerged,
 	}))
+	// EVERY GROUP OPEN, so every row these tests press is drawn: the folds are
+	// [TestAFoldIsRememberedForTheSession]'s.
+	railOpenAll(a)
 	a.paints = 0
 }
 
@@ -107,80 +108,25 @@ func railClick(t *testing.T, a *app, x, y int) {
 
 // ── DEFECT 2: THE STATE CELL IS NOT A CONTROL ───────────────────────────────
 
-// THE DEFECT ITSELF, ON BOTH ROWS THAT COULD FOLD. With no pointer registered on
-// the row — which is every frame after a room is opened, and every frame on a
-// terminal that is not reporting motion — the leading cell draws the node's
-// STATE, and pressing a state opens the work it is the state of.
-func TestTheStateCellOpensTheTaskWhenNoDisclosureIsDrawnOnIt(t *testing.T) {
+// THE STATE CELL OPENS THE WORK IT IS THE STATE OF, on every row. No row of
+// the list draws a disclosure any more (the folds are the group headings'),
+// so the leading cell of a running row and of a finished one is the row's
+// door like every other cell on it.
+func TestTheStateCellOpensTheTask(t *testing.T) {
 	a, _, _ := roomApp(t)
 	railFamily(a)
-	glyph := a.bodyWidth() + ansi.StringWidth(railSeam)
-
-	// Nothing on the column is drawn as a disclosure, which is the precondition
-	// the whole test rests on: the pointer is nowhere near it.
-	if drawn := strings.Join(railText(a, a.viewHeight()), "\n"); strings.Contains(drawn, glyphOpen) ||
-		strings.Contains(drawn, glyphShut) {
-		t.Fatalf("the column drew a disclosure with no pointer on it:\n%s", drawn)
+	glyph := a.bodyWidth() + ansi.StringWidth(railSeam) + 2
+	if drawn := strings.Join(railText(a, a.viewHeight()), "\n"); strings.Contains(drawn, "  "+glyphOpen) ||
+		strings.Contains(drawn, "  "+glyphShut) {
+		t.Fatalf("a task row drew a disclosure:\n%s", drawn)
 	}
-
-	// A FAMILY ROOT. Its leading cell is the spinner, so the press is a press on
-	// a running task and it opens that task.
-	rootY := railRowY(t, a, 1)
-	railClick(t, a, glyph, rootY)
-	if !a.roomOpen() || a.room.id != 1 {
-		t.Fatalf("the root's state cell did not open its room: open=%v id=%d",
-			a.roomOpen(), roomID(a))
-	}
-	if _, ok := railRowFor(a, a.viewHeight(), "Read the parser law"); !ok {
-		t.Fatalf("the press folded the family instead of opening it:\n%s",
-			strings.Join(railText(a, a.viewHeight()), "\n"))
-	}
-
-	// A FINISHED FLAT ROW. It has a block tucked under it, so it was the other
-	// row whose leading cell folded rather than opening ([app.railTucks]).
-	if e, ok := railEntryFor(a, 9); !ok || !a.railTucks(e) {
-		t.Fatalf("the fixture's finished row has nothing tucked under it, so it "+
-			"is not the row this test is about: found=%v", ok)
-	}
-	doneY := railRowY(t, a, 9)
-	railClick(t, a, glyph, doneY)
-	if !a.roomOpen() || a.room.id != 9 {
-		t.Fatalf("the finished row's state cell did not open its room: open=%v id=%d",
-			a.roomOpen(), roomID(a))
-	}
-}
-
-// AND THE FOLD IS STILL THERE, on the cell that is drawn as one. The affordance
-// did not move: it appeared under the pointer before this change and it appears
-// under the pointer now, and now it is the ONLY thing the press reads.
-func TestTheDisclosureUnderThePointerStillFoldsAndTheRestOfTheRowStillOpens(t *testing.T) {
-	a, _, _ := roomApp(t)
-	railFamily(a)
-	glyph := a.bodyWidth() + ansi.StringWidth(railSeam)
-	rootY := railRowY(t, a, 1)
-
-	a.setHover(glyph, rootY)
-	if !strings.Contains(mustRailRow(t, a, "Ship the streaming"), glyphOpen) {
-		t.Fatalf("the pointer on the root revealed no disclosure:\n%q",
-			mustRailRow(t, a, "Ship the streaming"))
-	}
-	railClick(t, a, glyph, rootY)
-	if a.roomOpen() {
-		t.Fatalf("the disclosure walked into the room behind it: id=%d", roomID(a))
-	}
-	if _, ok := railRowFor(a, a.viewHeight(), "Read the parser law"); ok {
-		t.Fatalf("the disclosure did not fold the family:\n%s",
-			strings.Join(railText(a, a.viewHeight()), "\n"))
-	}
-
-	// ONE CELL WIDE AND NO WIDER. The cell after it is the row's air, and the row
-	// is the node's door — a fold that ate the space beside it would be the same
-	// defect one column over.
-	a.setHover(glyph+1, rootY)
-	railClick(t, a, glyph+1, rootY)
-	if !a.roomOpen() || a.room.id != 1 {
-		t.Fatalf("the cell beside the disclosure did not open the room: open=%v id=%d",
-			a.roomOpen(), roomID(a))
+	for _, id := range []uint64{1, 9} {
+		a.closeRoom()
+		railClick(t, a, glyph, railRowY(t, a, id))
+		if !a.roomOpen() || a.room.id != id {
+			t.Fatalf("node %d's state cell did not open its room: open=%v id=%d",
+				id, a.roomOpen(), roomID(a))
+		}
 	}
 }
 
@@ -193,18 +139,17 @@ func TestTheRailsLeftEdgeOpensTheRowAtEveryWidthTheHandleCannotAct(t *testing.T)
 	for _, tc := range []struct {
 		width  int
 		handle bool
-		cols   int
 	}{
-		{100, false, railSlimCols},
-		{119, false, railSlimCols},
-		{120, true, railCols},
-		{160, true, railCols},
+		{100, false},
+		{119, false},
+		{120, true},
+		{160, true},
 	} {
 		a, _, _ := roomApp(t)
 		a.width = tc.width
 		railFamily(a)
-		if got := a.railWidth(); got != tc.cols {
-			t.Fatalf("at %d columns the rail is %d wide, want %d", tc.width, got, tc.cols)
+		if got := a.railWidth(); got != sideColsFor(tc.width) {
+			t.Fatalf("at %d columns the rail is %d wide, want %d", tc.width, got, sideColsFor(tc.width))
 		}
 		if got := a.railCanWiden(); got != tc.handle {
 			t.Fatalf("at %d columns the handle claims can-widen=%v, want %v",
@@ -315,17 +260,23 @@ func TestAPressBelowTheRosterIsNotTheRostersToSwallow(t *testing.T) {
 
 // ── THE COLUMN AS A MAP: SWITCHING, SCROLLING, AND THE SHAPES ───────────────
 
-// EVERY ROW IS A DOOR AND THE DOOR IS THE ROW UNDER THE POINTER. Root, child,
-// grandchild, a row waiting on a person, a finished row, and a flat row — pressed
-// on the state cell, on the title, and out in the row's trailing air.
+// EVERY ROW IS A DOOR AND THE DOOR IS THE ROW UNDER THE POINTER. Running,
+// queued and finished rows in the list, and the row waiting on a person in
+// the band over it, pressed on the state cell, on the title, and out in the
+// row's trailing air.
 func TestEveryVisibleRowOfTheColumnOpensTheTaskItDraws(t *testing.T) {
 	a, _, _ := roomApp(t)
 	railFamily(a)
 	seam := a.bodyWidth() + ansi.StringWidth(railSeam)
-	for _, id := range []uint64{1, 3, 4, 5, 6, 2, 9} {
+	for _, id := range []uint64{1, 3, 4, 5, 2, 9, 6} {
 		for _, at := range []int{0, 4, a.railRoom() - 1} {
 			a.closeRoom()
-			y := railRowY(t, a, id)
+			var y int
+			if id == 6 {
+				_, y = sideRowOn(t, a, "task/6")
+			} else {
+				y = railRowY(t, a, id)
+			}
 			railClick(t, a, seam+at, y)
 			if !a.roomOpen() || a.room.id != id {
 				t.Fatalf("column %d of node %d's row opened %d, want %d:\n%s",
@@ -350,7 +301,7 @@ func TestPressingAnotherRowWhileARoomIsOpenSwitchesToIt(t *testing.T) {
 	if !a.roomStandingOn(a.tasks[1]) {
 		t.Fatal("the roster does not mark the row the reader walked through")
 	}
-	for _, next := range []uint64{3, 9, 6, 1} {
+	for _, next := range []uint64{3, 9, 4, 1} {
 		// THE ROW IS FOUND WITH THE PAGE STILL OPEN, which is the case this is
 		// about: the room pins a header above the body, so the roster's rows are
 		// not where they were before anybody walked in (view.go's
@@ -456,9 +407,8 @@ func TestTheStowedColumnsEdgeBringsItBackAndOpensNothing(t *testing.T) {
 // ── THE ROW ITSELF ──────────────────────────────────────────────────────────
 
 // ONE GLYPH LEADS EVERY ROW OF THIS COLUMN AND IT IS THE STATE. The identity ◆
-// is furniture that says "this row is a task" (taskident.go) — which is nothing
-// this column has to tell apart, since it holds nothing but tasks — and the two
-// cells buy name on the narrowest surface here.
+// is furniture that says "this row is a task" (taskident.go), which is nothing
+// this column has to tell apart, since its list holds nothing but tasks.
 func TestTheColumnLeadsWithStateAndSpendsNoCellOnIdentity(t *testing.T) {
 	a, _, _ := taskApp(t)
 	railFamily(a)
@@ -469,49 +419,19 @@ func TestTheColumnLeadsWithStateAndSpendsNoCellOnIdentity(t *testing.T) {
 			t.Fatalf("row %d spends a cell on the identity mark:\n%q", i, row)
 		}
 	}
-	// A FLAT ROW AND A FAMILY ROOT NOW LEAD THE SAME WAY, and in the same number
-	// of cells: the seam, one state glyph, and the air after it. That is what
-	// lets the column be read downward as one column of states.
-	flat, root := mustRailRow(t, a, "Collect the fixture"), mustRailRow(t, a, "Ship the streaming")
-	want := ansi.StringWidth(railSeam) + 2
-	for _, probe := range []struct{ row, title string }{
-		{flat, "Collect the fixture"}, {root, "Ship the streaming"},
-	} {
-		if got := leadCells(t, probe.row, probe.title); got != want {
-			t.Fatalf("the row leads in %d cells, want %d:\n%q", got, want, probe.row)
+	// EVERY ROW LEADS THE SAME WAY, in the same number of cells: the seam,
+	// the indent under its heading, one state glyph, and the air after it.
+	// That is what lets the column be read downward as one column of states.
+	want := ansi.StringWidth(railSeam) + 4
+	for _, title := range []string{"Collect the fixture", "Ship the streaming", "Cut the goldens"} {
+		if got := leadCells(t, mustRailRow(t, a, title), title); got != want {
+			t.Fatalf("the row leads in %d cells, want %d:\n%q", got, want, mustRailRow(t, a, title))
 		}
-	}
-
-	// AND THE UNDER-BLOCK IS SQUARE UNDER THE TITLE IT BELONGS TO. It is indented
-	// [app.railUnderCols] — two cells for a flat row — which is exactly the lead
-	// now that the ◆ is gone. It was two cells to the left of the title while the
-	// marker was there.
-	a.taskUpdate(update(11, "Fix the loader nil-map", session.TaskRunning, session.TaskNotice{}))
-	a.tasks[11].tool, a.tasks[11].toolBegan = "bash go test ./...", a.now().Add(-30*time.Second)
-	rows = railText(a, a.viewHeight())
-	at := -1
-	for i, row := range rows {
-		if strings.Contains(row, "Fix the loader") {
-			at = i
-		}
-	}
-	if at < 0 || at+1 >= len(rows) {
-		t.Fatalf("the running flat row has no under-row:\n%s", strings.Join(rows, "\n"))
-	}
-	head, under := rows[at], rows[at+1]
-	if !strings.Contains(under, "go test") {
-		t.Fatalf("the row under the title is not the call it is in:\n%q", under)
-	}
-	body := strings.TrimPrefix(under, railSeam)
-	underLead := ansi.StringWidth(railSeam) + len(body) - len(strings.TrimLeft(body, " "))
-	if got := leadCells(t, head, "Fix the loader"); got != underLead {
-		t.Fatalf("the title starts at cell %d and its call at cell %d:\nhead  %q\nunder %q",
-			got, underLead, head, under)
 	}
 }
 
-// leadCells is how many cells a drawn row spends before its name — the seam and
-// whatever [app.railLead] put in front of the title.
+// leadCells is how many cells a drawn row spends before its name: the seam,
+// the indent and the state glyph in front of the title.
 func leadCells(t *testing.T, row, title string) int {
 	t.Helper()
 	at := strings.Index(row, title)
@@ -524,13 +444,13 @@ func leadCells(t *testing.T, row, title string) int {
 // ── THE WHOLE WAY THROUGH THE TERMINAL ──────────────────────────────────────
 
 // AND ONE PRESS AS A TERMINAL ACTUALLY SENDS IT: the SGR bytes, through Bubble
-// Tea's decoder and its program loop, onto the leading cell of a family root.
-// That cell is the one defect 2 was about, and nothing between the wire and
+// Tea's decoder and its program loop, onto the leading cell of a row. That
+// cell is the one defect 2 was about, and nothing between the wire and
 // [app.railPress] gets a chance to make it look right.
 func TestRawTerminalBytesOnARootsStateCellOpenThatTask(t *testing.T) {
 	a, _, _ := roomApp(t)
 	railFamily(a)
-	x, y := a.bodyWidth()+ansi.StringWidth(railSeam), railRowY(t, a, 1)
+	x, y := a.bodyWidth()+ansi.StringWidth(railSeam)+2, railRowY(t, a, 1)
 
 	input, keyboard := io.Pipe()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -568,17 +488,4 @@ func TestRawTerminalBytesOnARootsStateCellOpenThatTask(t *testing.T) {
 			t.Fatal("a press on the root's leading cell never opened task 1")
 		}
 	}
-}
-
-// ── small readers ───────────────────────────────────────────────────────────
-
-// railEntryFor is the roster's entry for one node, which is what the questions
-// about a row's shape ([app.railTucks]) are asked of.
-func railEntryFor(a *app, id uint64) (railEntry, bool) {
-	for _, e := range a.railEntries() {
-		if e.node != nil && e.node.id == id {
-			return e, true
-		}
-	}
-	return railEntry{}, false
 }

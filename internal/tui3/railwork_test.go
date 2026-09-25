@@ -68,6 +68,7 @@ func TestAWorkerIsDrawnOnceByTheFamilyThatOwnsIt(t *testing.T) {
 	// The same two hands, as the engine announced them: a row each, under 7.
 	a.taskUpdate(update(8, "Read the law", session.TaskQueued, session.TaskNotice{Parent: 7}))
 	a.taskUpdate(update(9, "Write the tests", session.TaskRunning, session.TaskNotice{Parent: 7}))
+	railOpenAll(a)
 
 	text := strings.Join(railText(a, a.viewHeight()), "\n")
 	for _, title := range []string{"Build the rail", "Read the law", "Write the tests"} {
