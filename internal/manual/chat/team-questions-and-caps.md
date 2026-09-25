@@ -43,8 +43,15 @@ when it has no manager above it. Your answer is handed to the manager marked `â—
 and wakes it.
 
 Packets are kept in the profile of the machine the conversations run on, in
-`teams/<id>/decisions.jsonl` for the team each was raised from. Past a megabyte the file starts
-a new one, keeping every packet still waiting.
+`teams/<id>/decisions.jsonl` for the team each was raised from.
+
+## Do answered team questions survive packet file rotation
+
+Past a megabyte the packet file starts a new one. It keeps every packet still waiting,
+today's cap decisions, and decided answers not yet handed to their raisers, newest first
+within half the rotation size. Older owed answers beyond that bound remain readable for one
+more rotation. Once a raiser has been handed an answer, codeaf records that and keeps it
+readable for one more rotation.
 
 ## A team's daily cap
 

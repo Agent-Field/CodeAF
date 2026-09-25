@@ -74,6 +74,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -193,6 +194,9 @@ type teamSeat struct {
 	// found by the delivery that handed it the brief and made good after it
 	// (team_nest.go's [Agent.claimSubTeams]).
 	claims []subTeamClaim
+	// told is the packet answers just handed over. Their durable marks are
+	// written after the seat lock is released and away from the turn's path.
+	told []string
 	// handleTried says this process has asked for its handle once
 	// (handlepick.go), so it is never asked for twice.
 	handleTried bool
@@ -453,7 +457,16 @@ func (a *Agent) teamBoundary() string {
 		roles = a.teamRolesLocked(profile)
 	}
 	role := teamRoleBlock(roles, a.team.file)
+	told := append([]string(nil), a.team.told...)
+	a.team.told = nil
 	a.team.mu.Unlock()
+	if len(told) > 0 {
+		guard.Go("team answers handed over", func() {
+			for _, id := range told {
+				_ = teams.Told(profile, id)
+			}
+		})
+	}
 	// A wrap-up the delivery just started is written down here, after the
 	// seat's lock, so a restart keeps the clock (team_wrapup.go).
 	a.teamWrapUpNote(profile)
@@ -614,7 +627,11 @@ func (a *Agent) firstTeamCursor(profile string, role teamRole) string {
 func (a *Agent) teamEntryLineLocked(profile string, role teamRole, entry teams.Entry) string {
 	switch {
 	case entry.Kind == teams.KindPacket:
-		return teamPacketLine(profile, role, entry)
+		line, told := teamPacketLine(profile, role, entry)
+		if told != "" {
+			a.team.told = append(a.team.told, told)
+		}
+		return line
 	case entry.Kind == teams.KindStart && entry.Team != "":
 		line := teamBriefLine(role, entry)
 		if line == "" {

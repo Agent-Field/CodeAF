@@ -1137,6 +1137,11 @@ packet whole, trail and escalated state included). The reader folds the rotated 
 current one; a carry replaces what the older file said of that id. A waiting packet is never
 lost; a decided one stays readable for one more rotation.
 
+(Changed 2026-09-25: a decided answer not yet handed to its raiser is carried
+across rotations, newest first within half the rotation size. Today's cap packets
+are carried too. Delivery appends a `told` line; after that the answer has the
+former one-rotation lifetime. Conflicts have their own Traffic directives.)
+
 **Over `--host`.** All of the above runs where the conversations run, the engine: questions,
 caps, the wrap-up clock and the verbs are the engine's session reading the engine's profile and
 ledger, so a window over `--host` needs nothing new. The clock travels with the team:

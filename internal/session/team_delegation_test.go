@@ -93,6 +93,45 @@ func TestTeamQuestionGoesUpAsAPacketAndTheAnswerComesBack(t *testing.T) {
 	}
 }
 
+func TestTeamAnswerDeliveredAfterPacketRotationsIsMarkedTold(t *testing.T) {
+	fixture := newTeamFixture(t, true)
+	web := teamAgent(t, fixture, fixture.web, nil, nil)
+	web.teamBoundary()
+	p, err := teams.Raise(fixture.profile, teams.Packet{Team: fixture.teamID, Kind: teams.PacketQuestion, RaisedBy: "web", Question: "JSON or form data?"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := teams.Decide(fixture.profile, p.ID, teams.FromManager, "JSON", "the other endpoints use it"); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 6; i++ {
+		other, err := teams.Raise(fixture.profile, teams.Packet{Team: fixture.teamID, Kind: teams.PacketConflict, RaisedBy: "parser",
+			Question: strings.Repeat("unrelated work ", 30000), Options: []teams.Option{{Label: "go", Consequence: "carry on"}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := teams.Decide(fixture.profile, other.ID, teams.FromManager, "1", "done"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := web.teamBoundary(); !strings.Contains(got, "◆ answered: JSON") {
+		t.Fatalf("a rotated packet did not hand over its answer: %q", got)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		got, err := teams.PacketByID(fixture.profile, p.ID)
+		if err == nil && got.Told {
+			raw, err := os.ReadFile(teams.DecisionsPath(fixture.profile, fixture.teamID))
+			if err != nil || !strings.Contains(string(raw), `"op":"told"`) || !strings.Contains(string(raw), `"id":"`+p.ID+`"`) {
+				t.Fatalf("the packet was marked told without its append-only line: %v, %q", err, raw)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("the delivery did not append a told line")
+}
+
 func last(log []teams.Entry) teams.Entry { return log[len(log)-1] }
 
 // PERMISSION PROMPTS AND QUESTIONS WITH questions_up OFF ARE THE PERSON'S.
