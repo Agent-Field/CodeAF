@@ -9,13 +9,12 @@ import (
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
-// A RENAME REACHES THE LABELS THAT SAY THE NAME. The rail caches the rows it
-// drew, and the composer's `to ◆ name manager` is read when the box is drawn.
+// A RENAME REACHES THE LABELS THAT SAY THE NAME. The side column caches the
+// rows it drew, and the composer's `to ◆ name manager` is read when the box is drawn.
 // Both follow the name the teams hold now, with no read of the disk.
 func TestARenamedTeamUpdatesTheRunLabelAndTheComposer(t *testing.T) {
 	a, harbor, orbit := teamsPlaceLabIDs(t)
-	parent, ok := a.teamByID(harbor)
-	if !ok {
+	if _, ok := a.teamByID(harbor); !ok {
 		t.Fatal("no harbor")
 	}
 	start := teamstore.Entry{
@@ -26,19 +25,31 @@ func TestARenamedTeamUpdatesTheRunLabelAndTheComposer(t *testing.T) {
 		a.traffic.rows = map[string][]teamstore.Entry{}
 	}
 	a.traffic.rows[harbor] = []teamstore.Entry{start}
+	// The start is chatter, so it is a line of the General thread, laid open.
+	a.sideToggleThread(sideThreadKey(harbor, sideGeneral))
 	draw := func() string {
-		rows, _, _, _ := a.trafficBody(parent, 8, 70)
+		t, _ := a.teamByID(harbor)
+		s := &sideSheet{a: a, t: t, width: 70}
+		s.threads(sideKindManager, "")
+		var rows []string
+		for _, l := range s.lines {
+			rows = append(rows, l.text)
+		}
 		return ansi.Strip(strings.Join(rows, "\n"))
 	}
 	if got := draw(); !strings.Contains(got, "to run orbit") {
 		t.Fatalf("the start does not name the team it made:\n%s", got)
 	}
+	a.side.traffic = sideTrafficCache{lines: []railLine{{text: "to run orbit"}}}
 	if err := a.teamRename(orbit, "backend"); err != nil {
 		t.Fatal(err)
 	}
+	if a.side.traffic.lines != nil {
+		t.Fatal("the rename left the column's cached rows, which still carry the old name")
+	}
 	got := draw()
 	if strings.Contains(got, "to run orbit") || !strings.Contains(got, "to run backend") {
-		t.Fatalf("after the rename the rail still says the old name:\n%s", got)
+		t.Fatalf("after the rename the column still says the old name:\n%s", got)
 	}
 
 	a.tp.sel = harbor
