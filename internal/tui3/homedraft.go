@@ -6,6 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/credits"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -226,9 +227,10 @@ func (a *app) targetProject() string {
 	return a.hostedPath(a.placeWord(tildePath(a.targetWhere(), a.tilde)))
 }
 
-// targetLegend keeps model, effort and approvals at the left, with the
-// project at the right. A long project gives up its right end first.
-// Its click span is measured from that same layout, so it follows the text.
+// targetLegend keeps model, effort and approvals at the left. The project
+// used to stand at its right and is on the keys row under the box now
+// (hometip.go); the three doors' click spans are measured from this layout,
+// so they follow the text.
 func (a *app) targetLegend(width int, pal palette) (string, bool) {
 	a.clearTargetSpans()
 	if width < 1 {
@@ -238,17 +240,16 @@ func (a *app) targetLegend(width int, pal palette) (string, bool) {
 		return a.draftNoteRule(width, pal, note)
 	}
 	left, model, rung, gate := a.draftSeamLeft(legendRoom(width, ""))
-	right, project := seamProjectRight(left, "", a.targetProject(), width)
-	painted := a.paintSeamProject(right, project, a.targetHover == hoverSeamProject)
-	line, at, ok := a.legendLinePainted(left, right, painted, width, a.draftSeamPaint(pal, model, rung, gate))
+	// THE PROJECT LEFT THE RULE FOR THE KEYS ROW on 2026-09-22 (hometip.go's
+	// [app.homeFootLine]), so the right of home's rule is bare and its door
+	// is recorded where the path is drawn now. A conversation's seam still
+	// names its workspace at the right (foot.go).
+	line, _, ok := a.legendLinePainted(left, "", "", width, a.draftSeamPaint(pal, model, rung, gate))
 	if !ok {
 		return "", false
 	}
 	a.targetModelSpan = shiftIntoBorder(model)
 	a.targetEffortSpan, a.targetApprovalSpan = shiftIntoBorder(rung), shiftIntoBorder(gate)
-	if project.pressable() {
-		a.targetFolderSpan = hudSpan{from: at + project.from, to: at + project.to}
-	}
 	return line, true
 }
 
@@ -338,7 +339,22 @@ func (a *app) moveTarget() bool {
 			break
 		}
 	}
-	a.target.where = next
+	return a.pinTargetProject(next)
+}
+
+// pinTargetProject is the shared selection for cycling and clicking a project.
+// A pending pasted-folder offer must yield to this explicit choice, while its
+// text stays in the draft just as it does after Option+P.
+func (a *app) pinTargetProject(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false
+	}
+	a.target.where = path
+	if a.home.projectPaste.path != "" {
+		a.home.projectPaste.path = ""
+		a.home.build()
+	}
 	a.touch()
 	return true
 }
@@ -350,6 +366,7 @@ func (a *app) moveTarget() bool {
 // It opens on the target's own model for [picker.start]'s stated reason: the
 // cursor sits on what you are on, so enter confirms rather than changes.
 func (a *app) openTargetPicker() {
+	a.noticeEvent(eventModelListOpened)
 	a.target.pick.startFor(a.modelsFor(chatModel), a.targetModel(), chatModel)
 	// AND THE PROVIDERS OPEN HERE TOO. The box under this list has always named
 	// `→ providers`, and for one wave the key did nothing at all, because the
@@ -451,6 +468,10 @@ func (a *app) pinTargetModel(id string) {
 		return
 	}
 	a.target.model = id
+	a.refreshCreditWarnings()
+	if a.homeCreditWarning != "" {
+		a.askCredits(credits.PaidSwitch)
+	}
 	// NO NOTE. This used to say `model · <name> · for the next conversation you
 	// start here` on the line under the box, and the line it was answering —
 	// "did that change the conversation behind home?" — is answered better by the

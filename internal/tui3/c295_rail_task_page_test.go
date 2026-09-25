@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"strings"
+	"sync"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -231,15 +232,22 @@ func TestANoteTypedOnARailTaskPageNeverRaisesTheStopCard(t *testing.T) {
 
 // heldRailPlan holds the page's read open until the test lets it go, which is
 // the gap a person types into on a hosted conversation.
+//
+// ONLY THE FIRST READ IS HELD. A later read — the page following its task, or
+// the receipt a note's send reads back — answers at once, rather than closing
+// the start signal a second time.
 type heldRailPlan struct {
 	*railPlanCounter
 	started chan struct{}
 	release chan struct{}
+	once    sync.Once
 }
 
 func (h *heldRailPlan) PlanTaskPage(id string) (session.PlanTaskPage, bool) {
-	close(h.started)
-	<-h.release
+	h.once.Do(func() {
+		close(h.started)
+		<-h.release
+	})
 	return h.railPlanCounter.PlanTaskPage(id)
 }
 

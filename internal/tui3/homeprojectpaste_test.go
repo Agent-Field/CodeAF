@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -16,7 +17,7 @@ func TestHomeFolderPasteOffersOneEnterToStartThere(t *testing.T) {
 	pasteText(t, a, dir)
 	for i := 0; i < 3; i++ {
 		a.home.build()
-		if a.home.pastedProject() != dir {
+		if a.home.startLabel() != homeStartWord+" in "+dir {
 			t.Fatal("the offer did not survive an idle rebuild")
 		}
 	}
@@ -32,13 +33,13 @@ func TestAnyOtherKeyDismissesTheHomeFolderPasteOffer(t *testing.T) {
 			a, dir := homeDropLab(t)
 			pasteText(t, a, dir)
 			drive(t, a, key(press))
-			if a.home.pastedProject() != "" {
+			if a.home.pastedProject() != "" || strings.HasPrefix(a.home.startLabel(), homeStartWord+" in ") {
 				t.Fatal("a non-Enter key kept the folder offer active")
 			}
 			// Returning to the same text cannot infer a new offer from it.
 			a.home.box.setText(dir)
 			a.home.build()
-			if a.home.pastedProject() != "" {
+			if strings.HasPrefix(a.home.startLabel(), homeStartWord+" in ") {
 				t.Fatal("the old path reactivated the offer")
 			}
 		})
@@ -70,7 +71,7 @@ func TestDismissedFolderPasteSendsTheEditedTextAtTheChosenProject(t *testing.T) 
 	drive(t, a, key(" "))
 	pasteText(t, a, "explain this project")
 	want := dir + " explain this project"
-	if got := a.home.pastedProject(); got != "" {
+	if got := a.home.startLabel(); !strings.HasPrefix(got, homeStartWord+": ") {
 		t.Fatalf("edited folder text was not an ordinary message: %q", got)
 	}
 	drive(t, a, key("enter"))
@@ -97,7 +98,7 @@ func TestHomeFolderPasteRearmsOnlyAfterClearingAndPasting(t *testing.T) {
 func TestTypingAFolderPathDoesNotOfferAProject(t *testing.T) {
 	a, dir := homeDropLab(t)
 	typeHome(a, dir)
-	if a.home.pastedProject() != "" {
+	if a.home.pastedProject() != "" || strings.HasPrefix(a.home.startLabel(), homeStartWord+" in ") {
 		t.Fatal("typing a path activated the paste-only offer")
 	}
 }

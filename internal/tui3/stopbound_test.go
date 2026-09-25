@@ -48,7 +48,7 @@ func boundedStopApp(t *testing.T) (*app, *abandoningAgent, func(time.Duration)) 
 	drive(t, a, submittedMsg{ch: make(chan session.Event)})
 	a.state = stateWorking
 	a.turnBegan = a.now()
-	drive(t, a, key("ctrl+c"))
+	drive(t, a, key("esc"))
 	return a, agent, func(d time.Duration) { now = now.Add(d) }
 }
 
@@ -88,7 +88,7 @@ func TestTheStoppingLineSaysWhenItWillDetach(t *testing.T) {
 // no way to perform.
 func TestAStopWithNoDoorBehindItAnnouncesNoBound(t *testing.T) {
 	a, _ := stoppingApp(t)
-	drive(t, a, key("ctrl+c"))
+	drive(t, a, key("esc"))
 
 	if a.stopBounded() {
 		t.Fatal("a surface with no abandon door claims a bound it cannot keep")

@@ -11,7 +11,7 @@ import (
 // Until 2026-09-17 the seam over the box carried the keys that work right now
 // on its right, and the row under the box carried the numbers:
 //
-//	─ porting the parser · glm-5.3-flash:high · ◇ asks ──── esc back · / commands ─
+//	─ porting the parser · glm-5.3-flash:high · ◇ asks ──── space space home · / commands ─
 //	 › your sentence
 //	 $0.27 · ⟲ saved $0.0038 · 58% cached   66.8k/1.3M · 5%             38 tok/s · ⠹ working · 12s
 //
@@ -22,7 +22,7 @@ import (
 //
 //	─ glm-5.3-flash (deepinfra):high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
 //	 › your sentence
-//	 alt+e effort · alt+a approvals · alt+k chats · / commands · esc back
+//	 alt+e effort · alt+a approvals · alt+k chats · / commands · space space home
 //
 //	─ glm-5.3-flash:auto · ◇ asks ───────────────── project: ~/codeaf ─
 //	 › type to search or start something new
@@ -222,22 +222,39 @@ func (a *app) seamTelemetryLabel(ledger, alive []hudPart) (string, string) {
 // with no seam the right edge's aliveness rides the same row's right, and the
 // keys give up their clauses before the state word gives up anything.
 //
-// THE DOCK IS LAID OUT LAST, in what the keys and the aliveness left
-// (walldock.go): it narrows to fewer cells, then goes, before either of them
-// loses a clause. While the pointer rests on it, the keys' own cells say what
-// is under the pointer instead, and the dock does not move, because it was
-// fitted against the keys and not against the words standing in for them.
+// AND THE PROJECT IS AT ITS RIGHT END, since 2026-09-22, exactly as it is on
+// home's keys row (hometip.go's [app.homeFootLine]): right-justified in what
+// the keys leave, cut on the right where they leave it too little, gone
+// where they leave it less than a word. It came down off the seam so the
+// two feet a person moves between most read the same way, and it is still
+// a door, onto the folder chooser ([app.seamProjectPress]), so its columns
+// are recorded here, as the row is laid out ([app.seamProjectSpan]).
+//
+// THE DOCK IS LAID OUT LAST, in what the keys and the right end left
+// (walldock.go): it narrows to fewer cells, then goes, before the keys lose a
+// clause or the project a cell. While the pointer rests on it, the keys' own
+// cells say what is under the pointer instead, and the dock does not move,
+// because it was fitted against the keys and not against the words standing
+// in for them.
 func (a *app) hintRow(width int) string {
 	a.homeDoor = hudSpan{}
+	a.seamProjectSpan = hudSpan{}
 	a.dockClear()
 	hint := a.footHint(width)
 	right, rightPlain := "", ""
 	if !a.seamShowing() {
 		right, rightPlain = a.seamAliveLabel(width)
 	}
+	warning := a.chatCreditWarning
+	if layoutTier(width) == tierPhone || ansi.StringWidth(warning)+ansi.StringWidth(rightPlain)+3 > width {
+		warning = ""
+	}
 	room := width - 1
 	if rightPlain != "" {
 		room -= ansi.StringWidth(rightPlain) + hudGap
+	}
+	if warning != "" {
+		room -= ansi.StringWidth(warning) + 1
 	}
 	for hint != "" && ansi.StringWidth(hint) > room {
 		hint = a.hintShorter(hint)
@@ -247,11 +264,58 @@ func (a *app) hintRow(width int) string {
 	} else {
 		hint = ""
 	}
+	keys := ansi.StringWidth(hint)
+	if keys > 0 {
+		keys++
+	}
+	// THE LOW-CREDIT LINE STANDS JUST LEFT OF WHATEVER HOLDS THE RIGHT EDGE
+	// (credits.go, #1439): the aliveness on a frame with no seam, the project on
+	// every other. It is drawn whole or not at all, so the project is fitted to
+	// what the keys AND the line leave, and gives way before the line does.
+	// The right end is settled first, as one run starting at column from, so
+	// the dock can be fitted into what is left between it and the keys.
+	warned := ""
+	if warning != "" {
+		warned = a.pal.warn(warning)
+	}
+	tail, from := "", width
+	switch {
+	case rightPlain != "":
+		tail, from = right, width-ansi.StringWidth(rightPlain)
+		if warned != "" {
+			tail = warned + strings.Repeat(" ", hudGap) + tail
+			from -= ansi.StringWidth(warning) + hudGap
+		}
+	default:
+		before := keys
+		if warned != "" {
+			before += 1 + ansi.StringWidth(warning)
+		}
+		// THE PROJECT, in what the keys leave, never inside a room, whose page
+		// carries the node's own identity (roomseam.go).
+		if project := a.seamProjectWord(); project != "" && !a.roomOpen() {
+			if text, span, ok := projectAtRight(project, before, width); ok {
+				a.seamProjectSpan = span
+				tail = a.paintSeamProject(text,
+					hudSpan{from: ansi.StringWidth(targetProjectLead), to: ansi.StringWidth(text)},
+					a.hot.kind == hoverSeamProject) + " "
+				from = width - 1 - ansi.StringWidth(text)
+				if warned != "" {
+					tail = warned + strings.Repeat(" ", hudGap) + tail
+					from -= ansi.StringWidth(warning) + hudGap
+				}
+				break
+			}
+		}
+		if warned != "" {
+			tail, from = warned+" ", width-1-ansi.StringWidth(warning)
+		}
+	}
 	// The dock finishes one cell short of the frame's edge, the keys' inset
-	// mirrored, or the aliveness's gap short of the aliveness.
+	// mirrored, or a gap short of whatever holds the right end.
 	end := width - 1
-	if rightPlain != "" {
-		end = width - ansi.StringWidth(rightPlain) - hudGap
+	if tail != "" {
+		end = from - hudGap
 	}
 	dock, dockW := a.dockRow(width, end, ansi.StringWidth(hint))
 	paint := func(s string) string { return paintHint(s, a.pal, a.pal.dim) }
@@ -260,9 +324,9 @@ func (a *app) hintRow(width int) string {
 	// keys, so they are painted as the keys are rather than louder than them.
 	if words := a.dockHoverWords(); words != "" {
 		hint = fit(words, max(0, end-1-dockW-hudGap))
-	} else if offset := strings.Index(hint, a.escapeDoorWord()); offset >= 0 {
-		from := 1 + ansi.StringWidth(hint[:offset])
-		a.homeDoor = hudSpan{from: from, to: from + ansi.StringWidth(a.escapeDoorWord())}
+	} else if offset := strings.Index(hint, homeDoorWord); offset >= 0 {
+		at := 1 + ansi.StringWidth(hint[:offset])
+		a.homeDoor = hudSpan{from: at, to: at + ansi.StringWidth(homeDoorWord)}
 	}
 	// THE ROW FILLS THE FRAME, as every foot row does: a row shorter than the
 	// frame would leave the cells behind it to whatever the last frame drew.
@@ -278,10 +342,10 @@ func (a *app) hintRow(width int) string {
 		line += strings.Repeat(" ", max(0, end-dockW-used)) + dock
 		used = end
 	}
-	if rightPlain == "" {
-		return line + strings.Repeat(" ", max(0, width-used))
+	if tail != "" {
+		return line + strings.Repeat(" ", max(1, from-used)) + tail
 	}
-	return line + strings.Repeat(" ", max(1, width-used-ansi.StringWidth(rightPlain))) + right
+	return line + strings.Repeat(" ", max(0, width-used))
 }
 
 // seamAliveLabel is the right edge alone — the rate and the state word — for

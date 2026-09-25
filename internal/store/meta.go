@@ -244,7 +244,7 @@ func (s *Store) RecordTrait(name string, measurement TraitMeasurement) (Fact, er
 		replaces = existing[0].Seq
 	}
 	return s.recordFact(FactWriterDistiller, RootID, scope, FactTrait, string(body), nil,
-		replaces, FactActive, "", false)
+		replaces, FactActive, "", "", false)
 }
 
 // Trait returns the current singleton measurement for name.

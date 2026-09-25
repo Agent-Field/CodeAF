@@ -364,8 +364,8 @@ func TestTheTreeReadingCountsThisProcess(t *testing.T) {
 //
 //   - a node is moved to TaskRunning in exactly one function, runFrontier;
 //   - runFrontier asks holdOnStartingLocked about each node before that move;
-//   - holdOnStartingLocked is the only caller of the governor's admits, and
-//     runFrontier the only caller of its observe.
+//   - holdOnStartingLocked asks for the node road, and the run engine's
+//     MayStart gate asks for the worker road. No other path asks the governor.
 //
 // A node BORN running is not a start and is named below with its reason.
 //
@@ -444,10 +444,19 @@ func TestEveryStartIsJudgedByTheGovernor(t *testing.T) {
 	if !asksHold {
 		t.Error("runFrontier no longer asks holdOnStartingLocked before it starts a node")
 	}
-	for method, want := range map[string]string{"admits": "holdOnStartingLocked", "observe": "runFrontier"} {
+	for method, allowed := range map[string]map[string]bool{
+		"admits":  {"holdOnStartingLocked": true, "MayStart": true},
+		"observe": {"runFrontier": true, "MayStart": true},
+	} {
 		got := callers[method]
-		if len(got) != 1 || !got[want] {
-			t.Errorf("the governor's %s is called from %v, want only %s", method, keys(got), want)
+		if len(got) != len(allowed) {
+			t.Errorf("the governor's %s is called from %v, want only %v", method, keys(got), keys(allowed))
+			continue
+		}
+		for caller := range got {
+			if !allowed[caller] {
+				t.Errorf("the governor's %s is called from %v, want only %v", method, keys(got), keys(allowed))
+			}
 		}
 	}
 }

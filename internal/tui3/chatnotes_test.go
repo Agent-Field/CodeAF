@@ -176,7 +176,7 @@ func TestASurfaceNoteNeverReadsAsTheModelsNextBullet(t *testing.T) {
 		entry{kind: entryAssistant, settled: true, text: "Try these:\n\n- one\n- two\n- three"},
 	)
 	a.note("3 standing orders here — /standing")
-	a.note("esc back · ctrl+c interrupts or quits")
+	a.note("esc interrupts · ctrl+c quits")
 	a.touch()
 
 	var drawn []string
@@ -190,7 +190,7 @@ func TestASurfaceNoteNeverReadsAsTheModelsNextBullet(t *testing.T) {
 			bullet = i
 		case strings.Contains(line, "3 standing orders here"):
 			first = i
-		case strings.Contains(line, "ctrl+c interrupts"):
+		case strings.Contains(line, "esc interrupts"):
 			second = i
 		}
 	}

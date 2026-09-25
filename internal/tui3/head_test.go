@@ -205,7 +205,11 @@ func TestWalkingBetweenAChatAndThePlacesMovesNothingAtTheFoot(t *testing.T) {
 			}
 			a.touch()
 			rows := strings.Split(plain(frame(a)), "\n")
-			if got := footOf(rows); got != want || strings.TrimSpace(rows[want.rule-1]) != "" {
+			// THE CLEARANCE OVER HOME'S RULE IS THE TIP ROW since 2026-09-22
+			// (hometip.go): the same row, so the foot stands where it stood, and
+			// it is blank everywhere else.
+			clear := strings.TrimSpace(rows[want.rule-1]) == "" || (to == pageHome && a.tipRow == want.rule-1)
+			if got := footOf(rows); got != want || !clear {
 				t.Fatalf("at %dx%d %s puts its foot at %+v, and every frame puts it at %+v under a blank:\n%s",
 					size.w, size.h, pageName(to), got, want, strings.Join(rows[len(rows)-placeFootRowsAt(size.h)-1:], "\n"))
 			}

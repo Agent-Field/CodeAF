@@ -45,7 +45,9 @@ you`, or `idle`), `<title> · you are here` on the square in front, and `The gri
 open tabs, and your teams · alt+v` on both `▦ All` doors: with no team yet it is the only
 door on the strip that leads to making one. The word `All` is the first thing dropped when
 the row is too narrow. The squares stay, then fewer of them, then the dock is not drawn. Amber is only
-the square that is waiting on you.
+the square that is waiting on you. The dock is laid out last on the keys row: the project
+holds the row's right end (dev's foot since 2026-09-22) with the low-credit line beside it,
+and the dock takes what the keys and they leave, ending a gap short of them.
 
 **A tile, in reading order.** Title, then state, then now, then history:
 

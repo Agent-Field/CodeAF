@@ -301,14 +301,25 @@ func SlackSearch(ctx context.Context, client *http.Client, query string, max int
 	return bound(matchLine(len(answer.Messages.Matches), query) + "\n\n" + builder.String()), nil
 }
 
+// SlackThreadLimit is how many messages one thread read returns, as the
+// string the query takes. ONE SOURCE OF TRUTH: the tool description a model
+// reads interpolates this same constant (internal/session's
+// tools_connect.go), because a number written down in two places drifts and
+// the copy a model reads is the one that goes stale in silence, since
+// nothing fails when it is wrong.
+//
+// It is a string rather than an int because the only thing that consumes it
+// is a url.Values entry and a description sentence, and both want the text.
+const SlackThreadLimit = "15"
+
 // SlackReadThread reads one thread in one bounded call. Slack limits an
-// outside-Marketplace application to one of these calls a minute and fifteen
-// messages, so THERE IS NO PAGING LOOP HERE.
+// outside-Marketplace application to one of these calls a minute and to
+// [SlackThreadLimit] messages, so THERE IS NO PAGING LOOP HERE.
 func SlackReadThread(ctx context.Context, client *http.Client, channel, ts string) (string, error) {
 	params := url.Values{
 		"channel":   {strings.TrimSpace(channel)},
 		"ts":        {strings.TrimSpace(ts)},
-		"limit":     {"15"},
+		"limit":     {SlackThreadLimit},
 		"inclusive": {"true"},
 	}
 	var answer struct {

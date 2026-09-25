@@ -179,3 +179,45 @@ func TestHeaderAirDoesNotShrinkReadingWhenTerminalGrows(t *testing.T) {
 	drive(t, a, key("esc"))
 	grows("in the conversation", true)
 }
+
+// The label and its padded mouse target stay in the same cells when Home
+// replaces the conversation strip, including terminals with plain hover marks.
+func TestHomeTabKeepsItsSpellingAndPositionAcrossViews(t *testing.T) {
+	for _, profile := range []tokens.Profile{tokens.NoColor, tokens.ANSI256, tokens.TrueColor} {
+		for _, width := range []int{24, 40, 80, 160} {
+			t.Run(itoa(int(profile))+"/"+itoa(width), func(t *testing.T) {
+				a := newStartLab(t).app()
+				a.resume = func(string) (Agent, error) { t.Fatal("home must not resume a conversation"); return nil, nil }
+				a.showPage(pageNone)
+				a.width, a.height = width, 40
+				a.pal = newPalette(profile, false)
+				home := headerHomeTarget(t, a)
+				chat := plain(a.tabsRow(width))
+				column := strings.Index(chat, "home")
+				if column != placeBarLead+len(tabPad) || strings.Contains(chat, "Home") {
+					t.Fatalf("conversation home label is misplaced or capitalized: %q", chat)
+				}
+				hot, ok := a.tabHoverAt(home.span.from, placeTabRow)
+				if !ok {
+					t.Fatal("home has no hover target")
+				}
+				a.hot = hot
+				hovered := plain(a.tabsRow(width))
+				at := strings.Index(hovered, "home")
+				if at < 0 || ansi.StringWidth(hovered[:at]) != column || strings.Contains(hovered, "Home") {
+					t.Fatalf("hover changed home's word or position: %q", hovered)
+				}
+				cmd, took := a.tabPress(home.span.from, placeTabRow)
+				if !took || !a.at(pageHome) {
+					t.Fatal("clicking home did not open Home")
+				}
+				drain(t, a, cmd)
+				bar := plain(a.placeTabBar(width, false, a.pal))
+				span := barWordSpan(t, a, pageHome)
+				if strings.Index(bar, "home") != column || span.from != home.span.from || span.to != home.span.to {
+					t.Fatalf("home moved between views: chat=%q dashboard=%q chat target=%+v dashboard target=%+v", chat, bar, home.span, span)
+				}
+			})
+		}
+	}
+}

@@ -43,7 +43,7 @@ func TestTheRestraintRowsAreNotSelfService(t *testing.T) {
 		// What every team inherits: a manager is a model.
 		KeyTeamsCapUSDDay, KeyTeamsSubSharePct, KeyTeamsDepthLimit, KeyTeamsQuestionsUp, KeyTeamsWake,
 		// Whether the work is checked, and how it is signed.
-		KeyTaskAudit, KeyAttribution,
+		KeyTaskAudit, KeyAttributionModel,
 		// The credentials.
 		KeyExaKey, KeyFirecrawlKey, KeyJinaKey, KeyGoogleOAuthClient, KeyGoogleOAuthSecret, KeySlackOAuthClient,
 	}

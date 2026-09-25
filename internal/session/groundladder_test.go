@@ -147,7 +147,7 @@ func TestAGroundedTaskLandsWithoutMergingItsInheritance(t *testing.T) {
 		t.Fatalf("prepareTaskTree: %v", err)
 	}
 	writeFile(t, filepath.Join(tree.dir, "done.txt"), "what the node made\n")
-	merge, detail, _, _ := tree.comeHome("land the work", []string{"done.txt"}, false)
+	merge, detail, _, _ := tree.comeHome("land the work", []string{"done.txt"}, gitSignature{})
 	if merge != mergeMerged {
 		t.Fatalf("merge = %q (%s), want it to come home", merge, detail)
 	}
@@ -319,7 +319,7 @@ func TestAUniverseGroundedRepositoryLandsOnItsTaskBranch(t *testing.T) {
 		t.Fatalf("rung = %q, want %q", tree.rung, GroundRungUniverse)
 	}
 	writeFile(t, filepath.Join(tree.dir, "done.txt"), "what the node made\n")
-	merge, detail, _, _ := tree.comeHome("land the work", []string{"done.txt"}, false)
+	merge, detail, _, _ := tree.comeHome("land the work", []string{"done.txt"}, gitSignature{})
 	if merge != mergeMerged {
 		t.Fatalf("merge = %q (%s), want it to come home", merge, detail)
 	}
@@ -361,7 +361,7 @@ func TestAKeptUniverseBranchIsInThePersonsOwnRepository(t *testing.T) {
 		t.Fatalf("prepareTaskTree: %v", err)
 	}
 	writeFile(t, filepath.Join(tree.dir, "half.txt"), "as far as it got\n")
-	merge, changed := keptWork(tree, "keep the work", []string{"half.txt"}, false)
+	merge, changed := keptWork(tree, "keep the work", []string{"half.txt"}, gitSignature{})
 	if merge != mergeAborted {
 		t.Fatalf("merge = %q, want the branch kept", merge)
 	}
@@ -481,7 +481,7 @@ func TestARealFurrowGroundsARepositoryTaskAndItComesHome(t *testing.T) {
 		t.Fatalf("the child's tree is not clean:\n%s", status)
 	}
 	writeFile(t, filepath.Join(tree.dir, "done.txt"), "what the node made\n")
-	if merge, detail, _, _ := tree.comeHome("the real thing", []string{"done.txt"}, false); merge != mergeMerged {
+	if merge, detail, _, _ := tree.comeHome("the real thing", []string{"done.txt"}, gitSignature{}); merge != mergeMerged {
 		t.Fatalf("merge = %q (%s), want it to come home", merge, detail)
 	}
 	if got := readFile(t, filepath.Join(repo, "done.txt")); !strings.Contains(got, "what the node made") {

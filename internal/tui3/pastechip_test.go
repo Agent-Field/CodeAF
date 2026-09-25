@@ -44,7 +44,7 @@ func TestSmallAndSlashPastesStayTextAndBackspaceDropsAChip(t *testing.T) {
 	if got := a.input.String(); got != "one\ntwo" {
 		t.Fatalf("small paste became %q", got)
 	}
-	a.input.setText("/ask ")
+	a.input.setText("/task ")
 	a.paste("one\ntwo\nthree")
 	if strings.Contains(a.input.String(), pasteTokenHead) {
 		t.Fatalf("slash paste became a chip: %q", a.input.String())

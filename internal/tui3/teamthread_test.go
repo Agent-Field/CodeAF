@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // railLines is the side column on the next frame, plain, one string a frame
@@ -236,7 +237,7 @@ func TestTrafficThreadAnAskIsTheBandAndAFailureIsInk(t *testing.T) {
 	}
 	x, y := sideRowDoor(t, a, "thread/"+q, sideActThread)
 	sideClick(t, a, x, y)
-	if rows := railLines(t, a); railRowOf(rows, "@"+price+" → "+teamManagerGlyph+"  ✗ the migration") < 0 {
+	if rows := railLines(t, a); railRowOf(rows, "@"+price+" → "+teamManagerGlyph+"  "+tokens.GlyphFailed+" the migration") < 0 {
 		t.Fatalf("the failure did not fold into the member's line:\n%s", strings.Join(rows, "\n"))
 	}
 }

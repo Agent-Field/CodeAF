@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── DRAWING THE TEAMS PAGE (teamspage.go says what it is) ──────────────────
@@ -782,7 +783,7 @@ func (a *app) teamsCard(d *teamsDraw, p teamstore.Packet, width, y int) []string
 			// THE RECOMMENDED OPTION IS MARKED ON ITS OWN ROW, and its reason
 			// is a line of its own under the options, where it can be read
 			// whole at any width.
-			rest += "  " + pal.muted(a.linearMark("✓", "*")+" recommended")
+			rest += "  " + pal.muted(a.linearMark(a.icon(tokens.GSettled), "*")+" recommended")
 		}
 		out = append(out, fit(" "+s+rest, width))
 	}

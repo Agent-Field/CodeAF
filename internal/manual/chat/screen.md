@@ -66,14 +66,17 @@ tab strip of your chats, a dim rule, the place's body, a rule carrying the place
 or note, and the hint line last. See the **Places** page.
 
 **Only home has a box under that rule.** Its seam starts with the model, a colon and
-its effort word and approvals, with the project at the far right:
-`z-ai/glm-5.3-flash:auto · ◇ asks ─── project: ~/codeaf`. Conversation seams use the same
-layout and retain the full model identifier, including the organization before `/`
-(for example, `deepseek/deepseek-v4.1-flash`). They name the current workspace after any telemetry on the right. Home's project is clickable to cycle the draft
-destination; the conversation's is a reading. Model names and project paths underline
-on mouse-over on both seams; the model stays bold and bright. Paths truncate on the right, and the
-project field disappears if the controls and telemetry leave too little room. The model stays
-bold and bright cyan on home and in conversations, and the effort has no badge.
+its effort word and approvals: `z-ai/glm-5.3-flash:auto · ◇ asks`. Conversation seams use
+the same layout and retain the full model identifier, including the organization before
+`/` (for example, `deepseek/deepseek-v4.1-flash`), with the numbers after it on the right.
+**The project is not on either seam since 2026-09-22**: `project: <path>` is at the right
+end of the **keys row under the box**, on home and in a conversation alike — home's names
+where the next conversation opens, a conversation's names its own workspace — and both are
+doors onto changing it: on home a click or `alt+p` walks the projects this machine knows
+and `/project` opens the folder chooser, in a conversation a click or `/folder` opens it. Model names on the seam and project paths on the keys row underline on
+mouse-over; the model stays bold and bright. Paths truncate on the right, and the project
+goes entirely where the keys leave less than a word of room. The model stays bold and
+bright cyan on home and in conversations, and the effort has no badge.
 The box says `› type to search or start something new`. Its bottom row carries
 `alt+p project · alt+e effort · alt+a approvals · alt+k chats · / commands`
 when those controls are available. `/model` or a press on the model opens the list;
@@ -204,7 +207,7 @@ the box, and the status line. Blank rows cannot activate the content beneath the
 
 **`home`, the first place on the top line, opens the home page**, keeping your
 conversation and unsent words. It is separate from the tabs and breadcrumbs, and it is on
-the top line of every page. Escape backs out to Home.
+the top line of every page. Space twice on an empty composer also opens it.
 
 The switcher floats on a separate background inside a rounded outline, with space
 above and below its contents when the window is tall enough. `>` marks the keyboard
@@ -449,7 +452,7 @@ circle — and it carries at most one:
 
 | Mark | Means |
 | --- | --- |
-| `?` | That conversation is **waiting on you** — an approval, a sign-in, a proposal with no clock on it, or work out of fuel |
+| `?` | That conversation is **waiting on you** — an approval, a sign-in, a proposal with no clock on it, a question the model asked and is waiting on, a program's offer or question, a finished task that is `your call`, or work out of fuel |
 | `◐` | A queued or running piece of work, a turn, or a background job is **running** in it |
 | nothing | At rest, or nothing is known about it |
 
@@ -457,6 +460,12 @@ circle — and it carries at most one:
 the same width in all three states, so a name never moves sideways when a turn starts. On a
 terminal with no box characters `◐` is drawn `*`; `?` is already plain text, so the three
 stay apart with color off.
+
+**A conversation wears the same mark in front and behind.** The tab you are on and the tabs
+beside it read one answer to "is this waiting on a person", so a `?` does not vanish the
+moment you bring that conversation forward to answer it; it goes when the question is
+answered. A `your call` that has already been accepted and is still settling is not a
+question, and wears no `?` on either side.
 
 **The `alt+k` switcher rows carry the same two marks from the same reading.** A tab and
 its row cannot disagree, including the row for the conversation you are standing on. A
@@ -702,16 +711,20 @@ answering and where** on the left, and **the numbers** — the bill, the meter, 
 word — on the right, like the legend on a fieldset:
 
 ```
-─ glm-5.3-flash (deepinfra):high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s   project: ~/src/parser ─
+─ glm-5.3-flash (deepinfra):high · ◇ asks ── $0.27 · 58% cached   66.8k/1.3M · 5%   ⠹ working · 12s ─
+ › your sentence
+ alt+e effort · alt+a approvals · alt+k chats · / commands              project: ~/src/parser
 ```
+
+The project is on the keys row under the box (since 2026-09-22), not on the rule.
 
 **The conversation's name is not on this line.** It was, from 2026-09-09 to 2026-09-17,
 and it came off because a title takes the room the numbers need: the name is on the tab
 strip at the top of the frame and on the breadcrumb bar, and nowhere else. Nothing stands
 in for it — an unnamed conversation draws the same line.
 
-Until 2026-09-17 the right end carried the keys that work now (`esc back · /
-commands`, `ctrl+c interrupt`); those are on the row under the box now — see *The keys row
+Until 2026-09-17 the right end carried the keys that work now (`space space home · /
+commands`, `esc interrupt`); those are on the row under the box now — see *The keys row
 under the box* below — and the numbers came up here from the last row of the frame, so
 that home and a conversation end in the same shape: a rule of facts, the box, a line of
 keys.
@@ -780,17 +793,21 @@ long title could never push the numbers off the frame, and the name moved off ag
 
 **The keys row under the box** — the last row of the frame — is the hint slot. Until
 2026-09-17 it was the right end of the rule above the box; the numbers took that end and
-the keys got a row of their own. It names the keys that work right now when a state has
+the keys got a row of their own. Since 2026-09-22 it carries `project: <path>` at its right
+end, and its LOWEST RUNG is the earned tip (see *hints and tips*): a conversation's tip
+lives on this row, under every state's own keys, and takes the slot from the rest state
+whenever nothing is happening. Home's tip is the row above the rule instead. It names the
+keys that work right now when a state has
 keys of its own — for example `y allow · n deny · a always` while a question is up,
-`ctrl+c interrupt` while a turn is running,
-`enter steers it in · ctrl+shift+enter stops and sends · ctrl+c interrupt` while a turn is
+`esc interrupt` while a turn is running,
+`enter steers it in · ctrl+shift+enter stops and sends · esc interrupt` while a turn is
 running and you have typed words on a terminal that can deliver the secondary key,
-`enter waits · ctrl+shift+enter stops and sends · ctrl+c interrupt` while an otherwise empty
+`enter waits · ctrl+shift+enter stops and sends · esc interrupt` while an otherwise empty
 box has a picture on its tray on that terminal,
-`enter steers it in · ctrl+shift+enter stops and sends · ctrl+g backgrounds · ctrl+c interrupt`
+`enter steers it in · ctrl+shift+enter stops and sends · ctrl+g backgrounds · esc interrupt`
 when that turn also has a foreground command that can be kept, or `↑↓ · enter · esc`
 while a list is open. A waiting message changes the final clause to
-`ctrl+c stops and drops`; with neither words nor a picture the send clauses are absent.
+`esc stops and drops`; with neither words nor a picture the send clauses are absent.
 
 **A question that cannot remember its answer loses the `a always` clause**, on this line and
 on the offer above it: a stuck turn is asked about with a scope codeaf cannot save, so the
@@ -810,7 +827,7 @@ at least the first fitting clause remains, and a running turn never loses the ro
 because every clause would not fit. The row is the keys' own: nothing on the frame competes
 with them for it.
 
-**The key itself is drawn apart from the word beside it.** In `ctrl+c interrupt`, `esc`
+**The key itself is drawn apart from the word beside it.** In `esc interrupt`, `esc`
 wears the soft cyan every highlighted fact wears and `interrupt` stays at the border's
 own dim — the thing you press reads at a glance and the explanation of it does not
 compete. It is the same in every hint the slot carries, in home's foot hint, in the verbs
@@ -820,21 +837,20 @@ below.
 **At rest it names the shared controls in home's order**, followed by the way home:
 
 ```
-alt+e effort · alt+a approvals · alt+k chats · / commands · esc home
+alt+e effort · alt+a approvals · alt+k chats · / commands · space space home
 ```
 
 On a Mac the modifier reads `opt`. Effort and approvals appear only when the session
 has those controls, and chats appears when there is another conversation to switch to.
 `tab` still returns to the last conversation but has no hint here. On narrow frames,
-clauses give way from the left until `/ commands · esc home` remains, then
+clauses give way from the left until `/ commands · space space home` remains, then
 `/ commands` alone if needed.
 
-The conversation footer says `esc home`; a task conversation says `esc main`. Clicking
-that hint takes the same route as Escape. Nested menus still close one layer first.
-The hint remains available with a draft. `/` opens the command list.
+Pressing the space bar twice on an empty box opens home; clicking `space space home`
+does the same. That clause disappears when you type. `/` opens the command list.
 A state with its own keys, or an earned tip, takes over this row while it applies.
 
-**Inside a task's room the slot is the room's**, and it never says `ctrl+c interrupt` there
+**Inside a task's room the slot is the room's**, and it never says `esc interrupt` there
 — in a room `esc` leaves the page rather than interrupting anything. It reads `x stop`
 while there is work here to stop, `↑↓ history` while a history walk is on, and nothing
 otherwise. The left end of that legend is the room too: `room · esc/←← main`, or
@@ -888,7 +904,7 @@ What steps up, in the lines you will see it in:
 | the legend's hint slot | the key, never the verb beside it |
 | `/help` | the key at the head of each row, never its explanation |
 | `/status` and `/cost` | the figure in the second column, never its label |
-| the opening `esc back · ctrl+c interrupts or quits · ? for help` | the three keys |
+| the opening `esc interrupts · ctrl+c quits · ? for help` | the three keys |
 
 Three rules hold it to one gesture, and they are worth knowing because they tell you what
 a mark means:
@@ -1242,7 +1258,7 @@ words:
 | `working` | your own turn is over but work it handed out is still running — a task node in this conversation, or a background job; no spinner and no clock, which belong to a turn that is not running | accent |
 | `starting task` | a task proposal has a countdown and will start automatically | accent |
 | `waiting · your call` | an approval, standing or saved-program question requires an answer, or a task proposal has no countdown | the question hue, bold |
-| `stopping · detaching in 7s` | you pressed `ctrl+c` and the turn has not finished letting go yet; the count is what is left of the 10-second bound before codeaf detaches | dim |
+| `stopping · detaching in 7s` | you pressed `esc` and the turn has not finished letting go yet; the count is what is left of the 10-second bound before codeaf detaches | dim |
 | `interrupted` | the last turn was stopped by hand and is over | the bad hue |
 | `COPY` or `COPY · 12 lines` | copy mode | accent |
 
@@ -1260,7 +1276,7 @@ against anything else. In the screen-reader tier the spinner is a still `*`.
 
 ## What the word stopping means in the status line, and why it is not interrupted yet
 
-Because it has not finished stopping. `ctrl+c` cancels the turn instantly, but the turn does
+Because it has not finished stopping. `esc` cancels the turn instantly, but the turn does
 not close instantly: a `bash` call whose command left something holding its output waits
 up to three seconds before the pipes are forced shut, and a `jobs` kill spends two seconds
 on a polite signal and two more on the one that is not polite. For those few seconds the
@@ -1272,8 +1288,11 @@ nothing new is drawn — a reply the model was still speaking and a call it was 
 through asking for both stop where they were rather than landing under the `interrupted`
 line. The word becomes `interrupted` the moment the turn is actually over.
 
-**The second stop is a clock, not a key.** The window is bounded at 10 seconds from
-the Ctrl+C you already pressed. Escape remains back navigation. The status line counts it down — `stopping · detaching in 7s` —
+**The second stop is a clock, not a key.** There is no key to press, and there does not
+need to be: `esc` again is the rewind's door (see the sessions and rewind page) and
+`ctrl+c` at rest is the door, so neither is free, and a stop you have to ask for twice is a
+stop that did not work the first time. So the window is bounded at 10 seconds from the
+key you already pressed. The status line counts it down — `stopping · detaching in 7s` —
 and at the bound codeaf detaches: the waits inside the tool are ended, whatever request
 was still in flight is aborted, the conversation reads `detached — the turn was let go of
 and nothing is waiting for it`, and the turn is written to the journal as abandoned with
@@ -1366,12 +1385,13 @@ Under 60 columns, eight things change shape:
    `enter`, or a **tap**, opens that row's card as a full-frame sheet whose top row
    reads `‹ back`; the card's answer chips become full-width answer bands, one per
    row, that a digit or a tap answers. The hint line under the box becomes one row of
-   at most three wide targets: `open` on the inbox, `‹ back · open ·
+   at most three wide targets: `open · new · ask here` on the inbox, `‹ back · open ·
    more` on a sheet. A tap **opens** — there is no second column to preview into, so
    there is no two-step — and mouse motion is ignored. Below width **24** the plain
-   hint line is drawn instead of the bar. The rule over the box still says where the next
-   conversation goes, with model and effort first, then approvals, and `project: <path>` at the right.
-   The path truncates on the right, and controls give way whole on narrow frames. No arrow
+   hint line is drawn instead of the bar. The rule over the box still says what the next
+   conversation answers on, with model and effort first, then approvals; where it goes is
+   `project: <path>` at the right end of the keys row under the box, cut on the right where
+   the keys leave it too little room. Controls give way whole on narrow frames. No arrow
    or `new conversation in` lead is drawn. The phone's action bar owns the keys.
 
 8. **The task strip becomes one door, and the roster becomes cards.** The strip stops
@@ -1558,8 +1578,10 @@ another. What is supported:
   two visible marks. Where the terminal has no raised plane (16 colours and below), the
   **backticks come back** rather than ordinary code reading as prose.
 - **Fenced and indented code blocks** — syntax-highlighted at 256 colours and above,
-  ordinary text below. Drawn at the full width, because a figure is looked at, not read
-  along. **A line too long for the frame wraps rather than being cut**, at every width:
+  ordinary text below, **only for a fence labelled with one of the forty or so languages
+  codeaf carries**; an unlabelled block and any other language draw as plain text (see
+  "Which languages a code block is coloured in" below). Drawn at the full width, because
+  a figure is looked at, not read along. **A line too long for the frame wraps rather than being cut**, at every width:
   there is no horizontal scroll anywhere on this screen, so a cut line was a line that
   could not be read, copied or trusted. See "Long lines inside a fence" below.
 - **Lists** — bullets and ordered. Wrapped items hang under their own first word, never
@@ -1574,6 +1596,26 @@ another. What is supported:
   the label and the destination are the same string, the address is drawn once.
   Autolinks get the same treatment.
 - **Tables** — see the table sections.
+
+## Which languages a code block is coloured in — and why my code block is plain text
+
+A code block in a reply is coloured only when its fence names a language codeaf
+carries, and only at 256 colours and above. It carries about forty: Go, Python, Rust,
+TypeScript, JavaScript, Java, Kotlin, Swift, C, C++, C#, Objective-C, Dart, Zig, Scala,
+Haskell, Elixir, Ruby, PHP, Perl, Lua, R, bash and shell, SQL, GraphQL, protobuf, HTML,
+CSS, XML, JSON, YAML, TOML, INI, HCL, Terraform, Nix, Dockerfile, Makefile, diff and
+markdown, under their usual names and aliases (`py`, `ts`, `yml`, `sh`).
+
+**Everything else draws as plain text**, still as a code block at the full width:
+
+- a fence naming a language outside that set — ` ```fortran `, ` ```vue `;
+- a fence with no label at all, ` ``` ` on its own;
+- an indented block, which has no label to read.
+
+codeaf does not guess a language from the code, because a wrong guess colours
+somebody's code as something it is not. Nothing is lost: the text, its wrapping and
+copying it are the same as for a coloured block. To get colour, ask for the block with
+its language on the fence.
 
 ## What markdown codeaf does not render
 
@@ -1757,7 +1799,7 @@ glyph your messages wear in the conversation. Under it sits one dim line:
 
 ```
 › do much more of a deep research please
-  waits for this answer · ctrl+c stops and drops · → steers it in · ↑ or click to edit
+  waits for this answer · esc stops and drops · → steers it in · ↑ or click to edit
 ```
 
 The dim line trims from the right on a narrow terminal: the last piece goes first, then
@@ -1768,7 +1810,8 @@ exactly one it is not counted at all.
 `→ steers it in` is there only while the message can go into the running answer: a turn
 still running, and a message of words alone. A waiting message that carries pictures, or
 one marked with `ctrl+enter`, cannot be sent in and the clause is absent for it. Pressing
-`esc` opens Home and leaves the block with this conversation. `ctrl+c` stops the answer
+`space` `space` opens Home and leaves the block with this conversation. `esc` or
+`ctrl+c` stops the answer
 and removes the waiting block at once; `→ steers it in` is absent while a stopped turn
 is winding down because that turn has no boundary left to take the words.
 
@@ -1788,7 +1831,7 @@ What happens to it:
   `a connection holds one conversation at a time`, switching ends the old conversation,
   so nothing can keep waiting on its answer. The waiting words return to the box and
   their pictures and pasted documents return to the tray after anything already there.
-- **`ctrl+c`** stops the answer and drops every parked message and queued follow-up. None
+- **`esc`** stops the answer and drops every parked message and queued follow-up. None
   starts a turn when the interrupted stream closes.
 - **`→` over an empty box**, or a **click on the words `→ steers it in`**, sends it
   **into** the running answer instead of leaving it to wait. A streaming generation
@@ -1805,7 +1848,7 @@ What happens to it:
   dropped and codeaf says so: `1 waiting message dropped` or `N waiting messages dropped`.
 
 While something is waiting, the keys row under the box ends with
-`ctrl+c stops and drops` instead of `ctrl+c interrupt`.
+`esc stops and drops` instead of `esc interrupt`.
 
 ## Long lines inside a fence — code cut off at the edge, the tail of a line missing, `↳`
 
@@ -3102,8 +3145,8 @@ the column: `ctrl+. earlier`.
 
 **Everything earlier lives one press away.** `ctrl+. earlier` opens the full-screen task
 page (`ctrl+.`, `/history`), which holds every task the project has ever run, across every
-session, with the filter, the cards and the mention. Home (`/home`, or Escape from the
-conversation) is the other place old work is listed. Running work belonging to *other*
+session, with the filter, the cards and the mention. Home (`/home`, or space twice on an
+empty box) is the other place old work is listed. Running work belonging to *other*
 windows is not on the column at all, and never was; `/history` carries that too.
 
 The footer has no counts: the header counts the work and each heading counts its group.
@@ -3572,7 +3615,7 @@ models produce a run of thought before the answer, on the same connection, bille
 way, and on a big conversation it can run for a minute before a word of answer appears.
 Nothing is wrong. The clock beside the word counts up, so a number that is moving is a
 program that is alive and painting; a clock that has **stopped** is the thing to worry
-about. `ctrl+c` interrupts at any point.
+about. `esc` interrupts at any point.
 
 `first word` is the other slow one, and it means something different: codeaf's request was
 accepted and the endpoint has written nothing at all — a queue, a cold model loading, or a
@@ -3644,7 +3687,7 @@ thinking. A known phase is shown separately because it has better information.
 
 An advancing clock confirms the view is repainting. A still indicator alone
 does not prove a freeze: reduced-motion views use static marks, and narrow rows
-can omit the clock. `ctrl+c` interrupts the turn.
+can omit the clock. `esc` interrupts the turn.
 
 The waiting clock stops when the stream speaks or tools run. A tool uses its own
 activity and elapsed time. The request after a three-minute `go test` starts a
@@ -4053,8 +4096,9 @@ of one of the sentences above is running an older codeaf.
 ## The ? on the terminal tab — which codeaf tab is waiting on me, and the title after quitting
 
 A `?` in front of a conversation's title — `? Token counter · codeaf` — means that
-conversation is waiting on you: a permission question, a sign-in, an offer, or a task
-proposal waiting for your answer. It is the same fact the `?` on its tab in the tab strip
+conversation is waiting on you: a permission question, a sign-in, an offer, a task
+proposal waiting for your answer, a question the model asked, or a finished task that is
+`your call`. It is the same fact the `?` on its tab in the tab strip
 says, and it goes the moment you answer. On home the same news is the count, `3 want
 you · codeaf`, over every conversation at once.
 

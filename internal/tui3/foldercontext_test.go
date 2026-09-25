@@ -928,10 +928,10 @@ func TestThePreviewDoorAndTheWayOutAreOnTheSheetAtEveryWidth(t *testing.T) {
 // Home has its own composer, so this is a real way to browse without replacing
 // the conversation's unsent draft with a slash command first.
 func TestContextBrowserFromHomeRevealsTheSheetAndPreservesTheChatDraft(t *testing.T) {
-	a, _, root := mixedLab(t)
+	a, _, _ := mixedLab(t)
 	a.input.setText("keep this unsent draft")
 	a.openHome()
-	settleFolder(t, a, a.homeSlash("/folder "+filepath.Join(root, "here")+"/"))
+	settleFolder(t, a, a.homeSlash("/project"))
 	if a.at(pageHome) || !a.folder.open {
 		t.Fatal("Home hides the context browser it just opened")
 	}

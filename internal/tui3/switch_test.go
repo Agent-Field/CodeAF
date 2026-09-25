@@ -190,7 +190,7 @@ func TestASwitchKeepsParkedMessagesStructuredBesideTheDraft(t *testing.T) {
 		t.Fatalf("the structured queue came back as %+v", a.parks)
 	}
 	drawn := plain(strings.Join(a.parkedRows(120), "\n"))
-	for _, want := range []string{"and check the tests", "shot.png", "then push", "wait for this answer", "ctrl+c stops and drops"} {
+	for _, want := range []string{"and check the tests", "shot.png", "then push", "wait for this answer", "esc stops and drops"} {
 		if !strings.Contains(drawn, want) {
 			t.Fatalf("the waiting block is missing %q:\n%s", want, drawn)
 		}

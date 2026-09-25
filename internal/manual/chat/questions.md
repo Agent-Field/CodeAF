@@ -1372,7 +1372,7 @@ under what it has read:
 
 It is dim and it takes no key. **A page you are only reading cannot answer** —
 amber and a key would be this page promising something it does not have. Go to
-the chat itself (`esc`, then the row on home) and the question is there with its
+the chat itself (`space` `space` for home, then its row there) and the question is there with its
 answers on it.
 
 Without that line, a page like this drew a running clock over work that had not

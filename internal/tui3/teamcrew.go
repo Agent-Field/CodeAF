@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── A TEAM'S MEMBERS: ACTIVE ONES ON THE HEADER, EVERYONE ON A CARD ─────────
@@ -141,7 +142,7 @@ func (a *app) teamsCrewMark(word string) string {
 	case "asking":
 		return "?"
 	case "failed":
-		return a.linearMark("✗", "x")
+		return a.linearMark(a.icon(tokens.GFailed), "x")
 	}
 	return ""
 }

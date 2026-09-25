@@ -21,15 +21,26 @@ name: PR gate
 # and a ruleset look at — is green only when both are; everything else runs on
 # the way into `staging`, and nightly against `dev` — see ci-full.yml.
 # docs/rules/ci.md says why the line is drawn in that place.
+#
+# EVERY LINE WORK LANDS ON IS GATED, NOT ONLY THE TRUNK. `santos/dev2` is a
+# line feature work merges into many times a day, and until 2026-09-21 no
+# workflow named it: this gate listed `dev` alone and ci-full.yml lists
+# `staging` and `main`, so a pull request based on `santos/dev2` was answered by
+# the licence check and nothing else. Whether that line was green was a question
+# only a person on a cluster could answer, and for a while the answer was no.
+# That is the same failure the note above records for #372, one level up: not a
+# filter nobody remembered, but a branch nobody listed.
 on:
   pull_request:
     branches:
       - dev
+      - santos/dev2
   # Also on the push, because a merge of two individually-green branches can
   # still be red, and the merge is exactly the moment nobody is watching.
   push:
     branches:
       - dev
+      - santos/dev2
   workflow_dispatch:
 
 permissions:
