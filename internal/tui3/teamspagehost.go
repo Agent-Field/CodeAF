@@ -115,7 +115,7 @@ func (a *app) teamsHostTop(width int) []string {
 		cur: a.tp.cur, hot: a.tp.hot, focus: a.tp.focus, sig: a.teamsTopSig(t),
 		minute: a.now().Unix() / 60, answering: a.tp.answering, answer: string(a.tp.answer.value),
 		expand: a.tp.expand, ascii: a.pal.ascii, linear: a.linear, undoing: a.teamsUndoing(),
-		moving: a.teamMoveSig(), dragging: a.tdrag.on,
+		moving: a.teamMoveSig(), dragging: a.tdrag.on, wrap: a.teamWrapWords(t, a.now()),
 	}
 	if c := &a.tp.top; c.ok && c.key == key {
 		return c.rows

@@ -95,6 +95,15 @@ The wrap-up has 15 minutes and $2 of team spend. When it runs out of either befo
 manager reports, codeaf brings you the report itself, marked `wrap-up incomplete`, with
 **Close now** and **Keep going**.
 
+## How long does my team have left to wrap up
+
+While a team is wrapping up, the teams page's header for it and the Traffic column beside its
+manager say how long it has: `wrapping up · 12m left`, then `wrapping up · under a minute
+left`, and `wrapping up · out of time` once the 15 minutes are gone and the report has not
+come yet. The words go when the report arrives. The time is counted from when the wrap-up
+began, kept with the team, so it reads the same after a restart. The team's chip on the tab
+strip does not show it.
+
 ## What if the wrap-up report could not be sent, the decisions file was busy
 
 A wrap-up that runs out of its 15 minutes or its $2 before the manager reports is

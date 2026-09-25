@@ -337,6 +337,9 @@ type teamsTopKey struct {
 	undoing       bool
 	moving        string
 	dragging      bool
+	// wrap is the selected team's wrap-up words, which move with the clock
+	// on a boundary of their own rather than the minute's.
+	wrap string
 }
 
 // teamsTopSig is a digest of the members' states this window can see change
