@@ -951,7 +951,17 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 	if text == "" {
 		return nil, errors.New("session: empty message")
 	}
-	return a.submitUser(ctx, userText(text))
+	// A @ team or chat in the words is a reference, and the model needs a
+	// bounded digest of it (mention.go). The journal keeps the words as typed.
+	said := text
+	if note := a.mentionNote(text); note != "" {
+		text = text + "\n\n" + note
+	}
+	user := userText(text)
+	if text != said {
+		user.said = said
+	}
+	return a.submitUser(ctx, user)
 }
 
 // submitUser is Submit's body with the MESSAGE left to the caller: the closed
@@ -1149,9 +1159,11 @@ type userMessage struct {
 	wake bool
 
 	// said is THE PERSON'S OWN WORDS, when what the model reads is not only
-	// them. Empty in every ordinary case, and set by exactly one door: a draft
-	// the person MARKED STANDING, whose message carries an instruction in front
-	// of the sentence (standing_mark.go).
+	// them. Empty in every ordinary case, and set by two doors: a draft the
+	// person MARKED STANDING, whose message carries an instruction in front of
+	// the sentence (standing_mark.go), and a message that names a team or a
+	// conversation, whose message carries that reference's digest after the
+	// sentence (mention.go).
 	//
 	// THE INSTRUCTION IS THE MODEL'S AND THE JOURNAL IS THE PERSON'S. A
 	// transcript that replayed the instruction would show somebody a paragraph
