@@ -623,6 +623,23 @@ type Options struct {
 	// the far machine. Every one of them keeps the road it had.
 	EngineAnswers func(workspace string) bool
 
+	// Elsewhere reads what the project's OTHER conversations have out right
+	// now — the presence files beside the transcript this window is drawing —
+	// for a window whose agent cannot answer that itself
+	// ([session.ElsewhereOf] is the shape).
+	//
+	// IT IS THE HALF OF THE TASKS PAGE THE ENGINE ROAD HAD LOST. The rows of
+	// work another conversation is running are minted from that reading
+	// ([app.refreshElsewhere]), and it was asked of the agent alone: the
+	// in-process agent reads its own disk, and the connection bare `codeaf`
+	// holds to its engine does not ([remote.Agent] has no such method). So on
+	// the ordinary launch no such row was ever drawn, and [Options.OpenTaskOwner]
+	// — the door behind exactly those rows — could never be reached.
+	//
+	// Nil is a window whose disk is not the engine's (--host) or whose agent
+	// answers for itself (the in-process door); both keep the road they had.
+	Elsewhere func(transcript string, now time.Time) session.Elsewhere
+
 	// OpenTaskOwner attaches a SECOND VIEW onto a conversation that is ALREADY
 	// RUNNING, for as long as one task page is on screen: a reader for that
 	// task's journal, and the close that gives the view back.
