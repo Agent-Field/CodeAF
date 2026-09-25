@@ -2728,7 +2728,9 @@ switch, and `tab` comes back.
 **`enter read it as it runs`** — the work belongs to a conversation the engine is running
 that this window can join. Pressing it opens **that task's own transcript**, live, updating
 as the work goes. The trail at the top reads `reading in <that conversation>` so nothing on
-the page can be mistaken for this conversation's own work. `esc` returns.
+the page can be mistaken for this conversation's own work. `esc` returns. A task handed to
+senior-dev has no transcript, so its page is senior-dev's actions under their steps instead,
+exactly as the conversation that started it shows them, with `ctrl+y` for its raw calls.
 
 This page is **read-only**. The keyboard for that task belongs to the window that owns it,
 so the message box says `Reading this task… (esc: main)` and sending anything answers

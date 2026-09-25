@@ -179,7 +179,18 @@ func (a *app) programRoomDone() bool {
 
 // programRoomRead re-reads the open program room's page off the loop. The
 // answer lands only on the room that asked.
+//
+// A PAGE READ THROUGH ANOTHER CONVERSATION READS THE OWNER'S STORE, through
+// its own view ([app.guestPageRead]). This window's store holds this
+// conversation's task of the same number, and reading it here would draw that
+// task's actions under the owner's name.
 func (a *app) programRoomRead() tea.Cmd {
+	if a.roomIsGuest() {
+		if a.room.program == nil {
+			return nil
+		}
+		return a.guestPageRead()
+	}
 	agent, ok := a.planReader()
 	room := a.room
 	if !ok || room == nil || room.program == nil || room.program.reading || room.id == 0 {
@@ -281,6 +292,21 @@ func (a *app) programRoomRows(width int) []row {
 				out = append(out, row{text: pal.dim(line), entry: -1})
 			}
 		}
+	}
+	// A PAGE READ THROUGH ANOTHER CONVERSATION says what is true of the reading
+	// under what it read, exactly as its journal page does (room.go's
+	// [app.roomGuestTail]): that the conversation under it was replaced, that
+	// it cannot ask the owner what the work is doing now, or that the owner is
+	// waiting on somebody.
+	var tail []row
+	if guest := a.roomGuest(); guest != nil && guest.lost {
+		tail = append(tail, row{text: pal.dim(fit(taskGuestGoneWord, inner)), entry: -1})
+	}
+	if tail = append(tail, a.roomGuestTail(inner)...); len(tail) > 0 {
+		if len(out) > 0 {
+			out = append(out, row{entry: -1})
+		}
+		out = append(out, tail...)
 	}
 	if a.room.done && !a.roomLandingAsking() {
 		if len(out) > 0 {
