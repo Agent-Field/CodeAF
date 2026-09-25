@@ -1704,6 +1704,20 @@ How the restore is built depends on your workspace:
 The task's own checkout is untouched by any of this, and the restore is removed as soon as
 the answer is in.
 
+## Which folder the checker reads — did the check look at my checkout or the task's copy
+
+**A task's checker checks the task's own copy, never your checkout.** When a part of the
+work is finished, the checker — the seat that reads that part against what it was asked
+for — stands in the same copy the worker wrote in, and its instructions say so:
+the work is in its working directory, and every check and probe runs there.
+
+Your checkout is not the work while the task runs. It does not hold the result until the
+task lands, and it may hold changes of yours, or of other work, that are not this task's —
+so a check read there could pass or fail the task on the wrong diff.
+
+The checker may still read other folders, as every worker may. It writes only in its copy,
+and a write aimed anywhere else is refused before it runs.
+
 ## The check says my tests fail but they were already failing · red before the task started · my task was refused over somebody else's bug · pre-existing failures
 
 A worker committing its own edits does not move this baseline. A restored task
