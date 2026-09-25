@@ -116,7 +116,10 @@ func TestTaskPageOmitsOwnRecordIDsAndRunCopyPath(t *testing.T) {
 		t.Fatal("task place did not open")
 	}
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-	page := taskSheetText(a)
+	if a.roomPlan() == nil {
+		t.Fatal("enter on the task's row did not open its room")
+	}
+	page := roomCallText(t, a)
 	// `files` IS ON THE NEVER LIST, AND IT USED TO BE WANTED. Step 1's row left
 	// out a part addressed to the run's record, so the head cannot be told from
 	// that part's print: one shell, one interleaved observation, and the head
@@ -130,11 +133,11 @@ func TestTaskPageOmitsOwnRecordIDsAndRunCopyPath(t *testing.T) {
 			t.Fatalf("page contains %q:\n%s", never, page)
 		}
 	}
-	shell := a.actionLead(session.ActionRun, true)
-	for _, want := range []string{shell + "ls", shell + "go test ./...", "ok"} {
-		if !strings.Contains(page, want) {
-			t.Fatalf("page lacks %q:\n%s", want, page)
-		}
+	if got, want := roomCommands(a), []string{"ls", "go test ./..."}; strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("the room's calls are %q, want %q", got, want)
+	}
+	if !strings.Contains(page, "ok") {
+		t.Fatalf("the room lacks step 3's output:\n%s", page)
 	}
 }
 
@@ -188,7 +191,7 @@ func TestTaskPageDrawsObservationHeadOnlyWhenOmittedPartsCannotWriteIt(t *testin
 				t.Fatal("task place did not open")
 			}
 			drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-			page := taskSheetText(a)
+			page := roomCallText(t, a)
 			if strings.Contains(page, test.head) != test.wantHead {
 				t.Fatalf("head presence = %v, want %v:\n%s", strings.Contains(page, test.head), test.wantHead, page)
 			}

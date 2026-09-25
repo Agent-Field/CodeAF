@@ -108,6 +108,10 @@ type row struct {
 	// Picture controls retain their index and original-file action through gutter layout.
 	pictureIndex int
 	pictureOpen  hudSpan
+	// plan is the store task a row in a run's task room stands for, on the rows
+	// the room draws under its transcript (planroom.go): a press on one opens
+	// that task's room.
+	plan string
 	// open is a [hitThread] row's message, by team and entry id.
 	open string
 }

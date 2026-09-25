@@ -28,8 +28,8 @@ func answerStopCard(t *testing.T, a *app) {
 func TestStopOnTheRunsOwnPageRaisesTheCardAndTheCardStopsTheRun(t *testing.T) {
 	a, counted := railTaskPageApp(t, true)
 	clickRail(t, a, 0)
-	if !a.railTaskPlanOn {
-		t.Fatal("the rail row did not open its page")
+	if a.roomPlan() == nil {
+		t.Fatal("the rail row did not open its room")
 	}
 	drive(t, a, key(stopRaiseKey))
 	if len(counted.cancelled) != 0 {
@@ -37,9 +37,6 @@ func TestStopOnTheRunsOwnPageRaisesTheCardAndTheCardStopsTheRun(t *testing.T) {
 	}
 	if !a.stopping() {
 		t.Fatal("stop on the run's own page raised no card")
-	}
-	if a.railTaskPlanOn || a.taskSheet.planOn {
-		t.Fatal("the page still takes the frame whole, so the card it raised is drawn nowhere")
 	}
 	if frame := strings.Join(frameOf(t, a), "\n"); !strings.Contains(frame, "Stop this task?") {
 		t.Fatalf("the card is up and the frame does not draw it:\n%s", frame)
@@ -64,42 +61,39 @@ func TestKeepGoingOnTheRunsCardStopsNothing(t *testing.T) {
 	}
 }
 
-// A PART'S PAGE KEEPS THE STOP IT HAD: the store takes a cancel on a part, so
-// nothing is asked twice for it.
-func TestStopOnAPartsPageIsStillTheStoresOwnCancel(t *testing.T) {
+// A PART'S ROOM STOPS IT THE WAY EVERY ROOM STOPS ITS TASK: the card, and
+// then the store's own cancel for the part.
+func TestStopOnAPartsRoomIsTheCardAndThenTheStoresOwnCancel(t *testing.T) {
 	a, counted := railTaskPageApp(t, true)
-	clickRail(t, a, 0)
-	drive(t, a, key("down"))
-	drive(t, a, key("enter"))
-	if a.taskSheet.plan.Row.ID != "3" {
-		t.Fatalf("the part's page did not open: on %q", a.taskSheet.plan.Row.ID)
-	}
 	counted.setStatus("3", "running")
-	a.taskSheet.plan.Row.Status = "running"
+	part := counted.planFake.pages["3"]
+	part.Row.Status = "running"
+	counted.planFake.pages["3"] = part
+	openPlanRoomNow(t, a, "3")
+	if plan := a.roomPlan(); plan == nil || plan.id != "3" {
+		t.Fatal("the part's room did not open")
+	}
 	drive(t, a, key(stopRaiseKey))
-	if a.stopping() || len(counted.cancelled) != 1 || counted.cancelled[0] != "3" {
-		t.Fatalf("stop on a part's page: card up %t, cancelled %v", a.stopping(), counted.cancelled)
+	if !a.stopping() || len(counted.cancelled) != 0 {
+		t.Fatalf("stop on a part's room: card up %t, cancelled %v", a.stopping(), counted.cancelled)
+	}
+	answerStopCard(t, a)
+	if len(counted.cancelled) != 1 || counted.cancelled[0] != "3" {
+		t.Fatalf("the card's stop reached %v, want the part", counted.cancelled)
 	}
 }
 
-// A RUN CANNOT BE HELD, SO ITS PAGE NEVER OFFERS TO. The store holds a part and
-// everything under it and refuses the run's own task, so `p pause` under a run
-// was an offer that could only be refused. The key is a letter there.
-func TestPauseIsNeitherOfferedNorTakenOnTheRunsOwnPage(t *testing.T) {
+// NOTHING IN A TASK'S ROOM HOLDS A TASK. The tasks place keeps its `p` on a
+// part's row; in the room the letter is a letter in the box.
+func TestPIsALetterInARunsTaskRoom(t *testing.T) {
 	a, counted := railTaskPageApp(t, true)
 	clickRail(t, a, 0)
-	if foot := a.taskPlanKeys(); strings.Contains(foot, tasksPlanPauseWord) || strings.Contains(foot, tasksPlanResumeWord) {
-		t.Fatalf("the run's own page offers a hold the store refuses: %q", foot)
-	}
-	if foot := a.taskPlanKeys(); !strings.Contains(foot, tasksPlanCancelWord) {
-		t.Fatalf("the run's own page does not offer its stop: %q", foot)
-	}
 	drive(t, a, key("p"))
 	if len(counted.paused)+len(counted.resumed) != 0 {
-		t.Fatalf("p on the run's own page asked the store to hold it: %v %v", counted.paused, counted.resumed)
+		t.Fatalf("p in the run's room asked the store to hold it: %v %v", counted.paused, counted.resumed)
 	}
-	if got := a.taskSheet.planNote.String(); got != "p" {
-		t.Fatalf("p on the run's own page is a letter in the note, and the box holds %q", got)
+	if got := string(a.input.value); got != "p" {
+		t.Fatalf("p in the run's room is a letter in the box, and the box holds %q", got)
 	}
 }
 
@@ -127,8 +121,8 @@ func TestTheDoorIsReadBeforeAPageThatIsOnItsWayAndBeforeThePage(t *testing.T) {
 
 	b, _ := railTaskPageApp(t, true)
 	clickRail(t, b, 0)
-	if !b.railTaskPlanOn {
-		t.Fatal("the rail row did not open its page")
+	if b.roomPlan() == nil {
+		t.Fatal("the rail row did not open its room")
 	}
 	if b.key(key("ctrl+c")) == nil {
 		t.Fatal("ctrl+c on an open page did nothing")
@@ -154,8 +148,8 @@ func TestAnAnswerForAFrontThePersonLeftEndsTheHold(t *testing.T) {
 	if a.railPlanPending.id != "" {
 		t.Fatal("the read is over and the hold still takes every key")
 	}
-	if a.railTaskPlanOn {
-		t.Fatal("an answer for a front the person left opened a page over where they are now")
+	if a.roomOpen() {
+		t.Fatal("an answer for a front the person left opened a room over where they are now")
 	}
 }
 
@@ -193,10 +187,10 @@ func TestStopTypedWhileTheRunsOwnPageOpensIsALetterInItsNote(t *testing.T) {
 	if a.stopping() || len(counted.cancelled) != 0 {
 		t.Fatalf("stop typed before the run's own page opened acted: card up %t, cancelled %v", a.stopping(), counted.cancelled)
 	}
-	if !a.railTaskPlanOn {
-		t.Fatal("the answer did not open the run's own page")
+	if a.roomPlan() == nil {
+		t.Fatal("the answer did not open the run's own room")
 	}
-	if got := a.taskSheet.planNote.String(); got != stopRaiseKey {
-		t.Fatalf("the page's box holds %q, want the letter typed while it opened", got)
+	if got := string(a.input.value); got != stopRaiseKey {
+		t.Fatalf("the room's box holds %q, want the letter typed while it opened", got)
 	}
 }

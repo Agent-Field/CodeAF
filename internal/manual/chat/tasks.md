@@ -328,8 +328,8 @@ start together.
 that begins sets aside a footprint — one core's share of memory, or more where this
 session's pieces were seen to need more — so a wide hand-out runs as many pieces as the
 memory above `task.min_free_mb` can hold and leaves the rest queued. The run's rail row
-reads `waiting · machine busy`; held parts on its plan page read
-`queued · machine busy`. Those begin by themselves as earlier pieces finish; there is
+reads `waiting · machine busy`; its held parts read `queued · machine busy` on their
+own rows. Those begin by themselves as earlier pieces finish; there is
 nothing to do about it and nothing to come back for. how-tasks-run has the arithmetic.
 
 What it will *not* do is watch them. Each landing writes one dim line in the

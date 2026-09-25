@@ -433,6 +433,8 @@ func TestClosingTheLineStillAsksWhatIsInIt(t *testing.T) {
 // end (#919).
 var doorsBesideTheLine = map[string]string{
 	"PlanRunSummary":    "reads the run's stored summary for a refresh nobody pressed for",
+	"PlanTaskPage":      "reads an open task room's page again on the room's own beat; nobody pressed for it, and a note's own read is asked on the ordered line",
+	"PlanTaskWork":      "reads the run's working copy for the work tab; it changes nothing, and no later gesture waits on it",
 	"PlanTasks":         "reads the run's rows for the side list after a message; nobody pressed for it, and a verb's own read is asked only once the verb has landed",
 	"RefreshRunSummary": "asks a model for the run's summary under a budget of seconds; nobody pressed for it and no gesture depends on it",
 	"NameTeam":          "asks a model for a suggested team name under a budget of seconds; it changes nothing on the engine, typing overrides it, and a message sent while it thinks must not wait behind it",
