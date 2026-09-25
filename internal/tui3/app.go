@@ -2359,6 +2359,16 @@ type app struct {
 	footRow      int
 	tipRow       int
 	tipCloseSpan hudSpan
+	// chatTipClose is the columns of the cross on a conversation's tip, at the
+	// right end of its keys row (footswap.go's [app.hintRow]). tipQuietFrom is
+	// when this window last stirred, and tipAlarm the one pending alarm of the
+	// conversation's quiet clock, or zero (notice.go's THE CONVERSATION'S TIP).
+	// chatTipDrawn is the id of the tip the keys row last drew, or "", which is
+	// what a showing is counted from ([app.chatTipCount]).
+	chatTipClose hudSpan
+	chatTipDrawn string
+	tipQuietFrom time.Time
+	tipAlarm     time.Time
 	// targetEffortSpan and targetApprovalSpan are the rung's and the gate's
 	// columns on that same line — the draft's twins of [app.seamEffortSpan] and
 	// [app.seamApprovalSpan] (boxseam.go), recorded on the same bargain.
@@ -3234,6 +3244,10 @@ func (a *app) Init() tea.Cmd {
 	// replaying the events that made them, so no arrival ever fires for them
 	// (imagepreview.go's [app.learnShownPictures], learned.go).
 	a.learnShownPictures()
+	// AND THE WINDOW HAS JUST OPENED, which is when somebody starts reading
+	// it: a conversation's tip waits out its quiet from here, as it does after
+	// an answer (notice.go's THE CONVERSATION'S TIP).
+	a.stirred()
 	// The repository is asked ONCE here and then only at turn ends. A branch is
 	// a fact that changes when a person changes it, and a person who checks out
 	// a branch mid-turn is between two turns by the time it matters.
@@ -3373,6 +3387,14 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if a.levelsWaiting() || a.waiting() || a.formingCardLive() {
 		cmd = tea.Batch(cmd, a.wake())
 	}
+	// AND THE CONVERSATION'S TIP WAITS OUT ITS QUIET HERE, on the one line every
+	// message passes: whatever the message did — a key restarting the wait, a
+	// turn ending, the alarm itself landing early — this is where the next
+	// alarm is set, and only ever one (notice.go's [app.chatTipAlarm]).
+	if alarm := a.chatTipAlarm(); alarm != nil {
+		cmd = tea.Batch(cmd, alarm)
+	}
+	a.chatTipCount()
 	// AND A CLOCK SOMEBODY STOPPED IS TOLD TO THE ENGINE HERE, from a command
 	// rather than from inside the key routine that took the key
 	// (questionhold.go's [app.takeQuestionHolds] says why it is this line).
@@ -3458,8 +3480,17 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// on the way out.
 		return a, a.quit()
 
+	case chatTipDueMsg:
+		// THE QUIET CLOCK'S ALARM. It carries nothing: the frame drawn after it
+		// asks the clock afresh, and a wait a key restarted meanwhile is set
+		// again for what is left of it ([app.chatTipAlarm], in [app.Update]).
+		a.tipAlarm = time.Time{}
+		a.touch()
+		return a, nil
+
 	case tea.KeyPressMsg:
 		a.sawAPerson()
+		a.stirred()
 		// AND THE HAND IS STAMPED HERE, because this is the only line every
 		// keypress passes through, and what the question block needs to know
 		// is whether somebody is at the keyboard at all:
@@ -3596,6 +3627,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.PasteMsg:
+		a.stirred()
 		// Bracketed paste, whole, in one message — the parser coalesced the keys
 		// between the brackets for us, so the newlines inside it are text and not
 		// a stack of enters. Inside an open bracket it JOINS what the bracket has
@@ -3722,6 +3754,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.MouseWheelMsg:
 		a.clearPlaceRowHover()
+		a.stirred()
 		a.placePointer.suspended = true
 		// THE CONTEXT CHOOSER OWNS THE WHEEL WHILE IT IS UP, and it owns it over
 		// the WHOLE screen: the conversation under a modal is not live, so a wheel
@@ -3928,6 +3961,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseClickMsg:
 		a.clearPlaceRowHover()
 		a.sawAPerson()
+		// THE QUIET CLOCK RESTARTS AFTER THE PRESS IS ANSWERED, not before. A
+		// press is resolved against the chrome laid out afresh ([app.chromeAt]),
+		// and a clock restarted first would have taken the tip row — and the
+		// cross being pressed — off that layout (notice.go's [app.chatTipPress]).
+		defer a.stirred()
 		// AND IT OWNS THE PRESS, on the same terms and for a sharper reason: a
 		// press that fell through a modal would switch a tab, open a tool call or
 		// answer a question behind a sheet somebody is looking at
@@ -4121,6 +4159,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// rather than in the box, and column-aware for the same reason: the
 			// row it rides is empty everywhere else, and empty space on this
 			// surface is not a gesture (jumpchip.go).
+			if a.chatTipPress(msg.Mouse().X, msg.Mouse().Y) {
+				return a, nil
+			}
 			if a.jumpPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
@@ -5894,6 +5935,9 @@ func (a *app) settle() tea.Cmd {
 	a.hopQuick = config.QuickSwitchAt(a.profileDir)
 	a.askWait = a.consentWait()
 	a.notices.enabled = config.HintsAt(a.profileDir)
+	// AND THE ANSWER HAS JUST ARRIVED, which is when somebody starts reading
+	// it: the conversation's tip waits its quiet out from here (notice.go).
+	a.stirred()
 	// A turn ending is the moment most hints become true — the answer was long,
 	// the window is half full, the money is real — so it is the event they are
 	// decided on, and it is the turn [noticeGap] is counted in (notice.go).
@@ -7569,6 +7613,9 @@ func (a *app) openConversation(file string) (Conversation, bool, error) {
 // draft and the trio. That is what `whole` says, and it is the caller's own fact
 // rather than something guessed from the fields.
 func (a *app) takeUp(conv Conversation, whole bool) {
+	// ANOTHER CONVERSATION IS ANOTHER ROW: a cross pressed over the one being
+	// left does not blank the one arriving (notice.go's [app.liftChatTipCross]).
+	a.liftChatTipCross()
 	if conv.Agent != nil {
 		a.agent = conv.Agent
 		// AND EVERY DOOR ASKED OF THE CONVERSATION BEING PUT DOWN IS NOW A DOOR
