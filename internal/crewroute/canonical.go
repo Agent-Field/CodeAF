@@ -1,6 +1,7 @@
 package crewroute
 
 import (
+	"strconv"
 	"strings"
 	"sync"
 
@@ -280,5 +281,31 @@ var domainTags = map[string]bool{
 	"bio": true, "biomed": true, "clinical": true, "health": true, "legal": true, "law": true,
 	"math": true, "maths": true, "chem": true, "chemistry": true, "roleplay": true, "rp": true,
 	"story": true, "storytelling": true, "novel": true, "creative": true, "translate": true,
-	"translation": true, "guard": true, "safety": true,
+	"translation": true, "guard": true, "safety": true, "sante": true, "medic": true,
+	"pharma": true, "doctor": true, "bank": true, "banking": true, "trading": true, "tax": true,
+	"legalbench": true, "romance": true, "companion": true, "erp": true,
 }
+
+// Tiny is whether a model's own id gives it fewer parameters than a crew seat
+// can use — `lfm-2.5-2.6b`, `gemma-3n-e4b` — read off the largest size tag in
+// its name (`30b-a3b` is thirty billion, three active). A name that gives no
+// size is not called tiny.
+func Tiny(id string) bool {
+	name := strings.ToLower(ShortModel(strings.TrimSuffix(id, ":free")))
+	largest := 0.0
+	for _, word := range strings.FieldsFunc(name, func(r rune) bool {
+		return r == '-' || r == '_' || r == ':' || r == '/'
+	}) {
+		word = strings.TrimPrefix(word, "e")
+		if !strings.HasSuffix(word, "b") {
+			continue
+		}
+		if n, err := strconv.ParseFloat(strings.TrimSuffix(word, "b"), 64); err == nil && n > largest {
+			largest = n
+		}
+	}
+	return largest > 0 && largest < tinyBelow
+}
+
+// tinyBelow is the fewest billions of parameters a crew seat is given to.
+const tinyBelow = 8.0

@@ -87,3 +87,21 @@ func TestDomainTunedModelsAreToldByTheirNames(t *testing.T) {
 		}
 	}
 }
+
+// A MODEL'S NAME SAYS WHEN IT IS TOO SMALL FOR A SEAT, and a name with no size
+// or a large one does not.
+func TestTinyModelsAreToldByTheirNames(t *testing.T) {
+	for _, id := range []string{"liquid/lfm-2.5-2.6b:free", "google/gemma-3n-e4b-it:free", "meta-llama/llama-3.2-3b-instruct"} {
+		if !Tiny(id) {
+			t.Errorf("%s reads as big enough", id)
+		}
+	}
+	for _, id := range []string{"nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", "z-ai/glm-5.3-flash", "qwen/qwen3-32b", "poolside/laguna-s-2.1:free"} {
+		if Tiny(id) {
+			t.Errorf("%s reads as tiny", id)
+		}
+	}
+	if !DomainTuned("inclusionai/ling-3.0-flash-sante:free") {
+		t.Error("a health-tuned model reads as general")
+	}
+}

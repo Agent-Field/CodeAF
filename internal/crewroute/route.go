@@ -38,6 +38,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -521,6 +522,14 @@ func firstOf(a, b *Decision) *Decision {
 // own model's routes.
 const ladderRivals = 2
 
+// ladderLook is how many times ladderRivals the ladder weighs before it puts
+// those at a similar cost first; similarCost is how much dearer than the
+// seat's pick "similar" allows.
+const (
+	ladderLook  = 3
+	similarCost = 3.0
+)
+
 // ladderFor is where a seat goes when its call fails to start, in order:
 //
 //  1. THE SAME MODEL ON ITS NEXT ROUTES, cheapest first. A route refusing says
@@ -555,7 +564,11 @@ func ladderFor(t *table, class Class, pick Pick, candidates []Candidate, lambda 
 		break
 	}
 	// The rivals, in ONE pass: the best few other lineages by the score
-	// [bestFor] ranks on, kept in order as they are found.
+	// [bestFor] ranks on, kept in order as they are found — and then those at
+	// a SIMILAR COST to the seat's pick ahead of dearer ones, so a seat that
+	// cannot start moves sideways before it moves up: a failed call is not a
+	// request for a stronger crew.
+	keep := ladderRivals * ladderLook
 	own := Lineage(pick.Model)
 	type rival struct {
 		pick  Pick
@@ -575,15 +588,22 @@ func ladderFor(t *table, class Class, pick Pick, candidates []Candidate, lambda 
 		for at > 0 && score > rivals[at-1].score+1e-12 {
 			at--
 		}
-		if at >= ladderRivals {
+		if at >= keep {
 			continue
 		}
 		rivals = append(rivals, rival{})
 		copy(rivals[at+1:], rivals[at:])
 		rivals[at] = rival{pick: next, score: score}
-		if len(rivals) > ladderRivals {
-			rivals = rivals[:ladderRivals]
+		if len(rivals) > keep {
+			rivals = rivals[:keep]
 		}
+	}
+	near := math.Max(pick.CostUSD, t.costFloor(class, pick.Seat)) * similarCost
+	sort.SliceStable(rivals, func(i, j int) bool {
+		return rivals[i].pick.CostUSD <= near && rivals[j].pick.CostUSD > near
+	})
+	if len(rivals) > ladderRivals {
+		rivals = rivals[:ladderRivals]
 	}
 	for _, r := range rivals {
 		ladder = append(ladder, r.pick)
@@ -1072,11 +1092,33 @@ func (d Decision) Line(pinMark string, actual float64) string {
 		// A SEAT THAT MOVED DURING THE TASK IS SAID FIRST, plainly: the crew
 		// running is not the crew picked, and why — before any figure a reader
 		// could take for the picked crew's success.
+		//
+		// EACH SEAT SAYS ITS NET MOVE, once: where it started, where it is
+		// now, the last reason, and how many it tried between — never the
+		// whole trail, which is the router log's to keep. A line that listed
+		// every rung of a long ladder wrapped past the card.
 		b.WriteString("running on fallback crew")
-		for _, r := range d.Retried {
-			b.WriteString(" · " + string(r.Seat) + " " + ShortModel(r.From) + " → " + ShortModel(r.To))
-			if r.Why != "" {
-				b.WriteString(" (" + r.Why + ")")
+		for _, seat := range Seats {
+			var first, last Retry
+			moves := 0
+			for _, r := range d.Retried {
+				if r.Seat != seat {
+					continue
+				}
+				if moves == 0 {
+					first = r
+				}
+				last, moves = r, moves+1
+			}
+			if moves == 0 {
+				continue
+			}
+			b.WriteString(" · " + string(seat) + " " + ShortModel(first.From) + " → " + ShortModel(last.To))
+			if last.Why != "" {
+				b.WriteString(" (" + last.Why + ")")
+			}
+			if moves > 1 {
+				b.WriteString(" (+" + strconv.Itoa(moves-1) + " tried)")
 			}
 		}
 		b.WriteString(" · ")

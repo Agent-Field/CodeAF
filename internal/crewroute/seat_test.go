@@ -360,3 +360,24 @@ func TestTheEstimateIsWithinHalfAgainOfTheTrialsCosts(t *testing.T) {
 		}
 	}
 }
+
+// A LONG LADDER IS ONE MOVE ON THE LINE: each seat says where it started,
+// where it is, the last reason and how many it tried between, and the line
+// stays within a card however many rungs were walked.
+func TestALongLadderIsSaidAsItsNetMove(t *testing.T) {
+	d := Decision{Class: Bugfix, EstUSD: 0.02, Crew: []Pick{
+		{Seat: Worker, Model: "z-ai/glm-5.3-flash"}, {Seat: Planner, Model: "z-ai/glm-5.3-flash"}, {Seat: Checker, Model: "moonshotai/kimi-k3"},
+	}}
+	for _, seat := range []Seat{Worker, Planner} {
+		for _, m := range []string{"poolside/laguna-s-2.1", "poolside/laguna-xs-2.1", "nvidia/nemotron-3-super-120b-a12b", "google/gemma-4-31b-it"} {
+			d = d.WithRung(seat, Pick{Model: m, Kind: Free}, "limit reached on openrouter")
+		}
+	}
+	line := d.Line("", Unspent)
+	if !strings.Contains(line, "worker glm-5.3-flash → gemma-4-31b-it (limit reached on openrouter) (+3 tried)") || strings.Contains(line, "laguna") {
+		t.Errorf("the ladder is not said as its net move: %q", line)
+	}
+	if n := len([]rune(line)); n > 240 {
+		t.Errorf("the line is %d characters after a long ladder: %q", n, line)
+	}
+}
