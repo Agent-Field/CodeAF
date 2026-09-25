@@ -15,6 +15,7 @@ package session
 import (
 	"context"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -152,5 +153,33 @@ func TestClosingTheConversationWritesNoStopOnTheRun(t *testing.T) {
 	}
 	if task := run.store.Task(run.root); task == nil || task.Status == plandb.StatusCancelled {
 		t.Fatal("the room closing wrote a stop on the run's own record")
+	}
+}
+
+// A NOTE ON A RUN'S ROW SAYS WHEN THE WORKER READS IT, in the task room's own
+// sentence. The row has no worker to splice a line into, so the words are a
+// note, and the receipt is when that note is read.
+func TestANoteOnARunRowSaysWhenTheWorkerReadsIt(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	const row uint64 = 7
+	path := filepath.Join(t.TempDir(), planStoreFilename)
+	store, err := plandb.Open(path, "run", strconv.FormatUint(row, 10), "the run", "person ask")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	_, cut := context.WithCancel(context.Background())
+	t.Cleanup(cut)
+	agent.beltMu.Lock()
+	agent.beltRun = &beltRun{store: store, root: store.RootID(), row: row, title: "the run", cut: cut}
+	agent.beltMu.Unlock()
+
+	receipt, err := agent.SteerTask(row, "keep the middleware order")
+	if err != nil {
+		t.Fatalf("a note on a run row: %v", err)
+	}
+	const want = "the worker reads a note at its next step"
+	if receipt.Landing != want {
+		t.Fatalf("a note on a run row answered %q, want %q", receipt.Landing, want)
 	}
 }
