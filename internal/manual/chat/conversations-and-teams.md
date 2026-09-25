@@ -219,15 +219,15 @@ change; it can still be pressed.
 ## The team switcher on the tab strip
 
 While a team is shown, the tab strip carries a chip naming it, `● harbor ▾`, right after
-`Home` and right before the tabs it narrows, with the manager's place after it:
+`home` and right before the tabs it narrows, with the manager's place after it:
 
 ```
-  Home   ● harbor ▾   ◆ Manager ×   Refactor the rail sco… ×   openrouter price scrape ×   +   ▦ All
+  home   ● harbor ▾   ◆ Manager ×   Refactor the rail sco… ×   openrouter price scrape ×   +   ▦ All
 ```
 
-`Home` is a fixed door and stands first; the chip is a filter over the tabs, so it sits with
-them. When the row runs short `Home` is the first to go, then the chip, and never the tab in
-front. With teams but none shown, the chip is a quiet `Teams ▾`; with no teams at all there
+`home` is a fixed door and stands first; the chip is a filter over the tabs, so it sits with
+them. When the row runs short `home` is the first to go, then the chip, and never the tab in
+front. With teams but none shown, the chip is a quiet `teams ▾`; with no teams at all there
 is no chip. A press on the
 chip opens the **team switcher** under it, on any page the strip is on, the conversations view
 included:

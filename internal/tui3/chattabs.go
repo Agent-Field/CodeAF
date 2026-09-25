@@ -594,7 +594,7 @@ func (a *app) tabsRow(width int) string {
 			chipW = ansi.StringWidth(chipWord) + 1
 		}
 	}
-	homeWidth := len(" Home ") + 2
+	homeWidth := len(" home ") + 2
 	home := a.homeDoorOpen() && room-homeWidth >= max(chipNeed, tabWordFloor+tabCloseCells+tabInsetCells)
 	if !home {
 		homeWidth = 0
@@ -612,7 +612,7 @@ func (a *app) tabsRow(width int) string {
 	}
 	a.chatTabHits = tabsAt(hits, headLabelAt+homeWidth+chipW)
 	if home {
-		a.chatTabHits = append([]tabHit{{span: hudSpan{from: headLabelAt, to: headLabelAt + len(" Home ")}, kind: tabHome}}, a.chatTabHits...)
+		a.chatTabHits = append([]tabHit{{span: hudSpan{from: headLabelAt, to: headLabelAt + len(" home ")}, kind: tabHome}}, a.chatTabHits...)
 	}
 	// The door is laid out with the tabs, so it follows the new-chat `+`
 	// wherever that lands, and is then kept apart from them.
@@ -627,7 +627,7 @@ func (a *app) tabsRow(width int) string {
 	a.chatTabHits = kept
 	line := strings.Repeat(" ", headLabelAt)
 	if home {
-		line += a.tabsPaint([]tabPiece{{word: " Home ", kind: tabHome}, {word: "  ", quiet: true}})
+		line += a.tabsPaint([]tabPiece{{word: " home ", kind: tabHome}, {word: "  ", quiet: true}})
 	}
 	if chipW > 0 {
 		line += a.tabTeamPaint(chipWord, headLabelAt+homeWidth) + " "
@@ -691,7 +691,7 @@ func (a *app) tabWallPaint(word string, hot bool) string {
 }
 
 // tabTeamWord is the team chip's words, ` ● harbor ▾ `, or with no team
-// narrowing the strip a quiet ` Teams ▾ ` while there are teams to switch to,
+// narrowing the strip a quiet ` teams ▾ ` while there are teams to switch to,
 // and "" when there are none (teammenu.go says why). The dot is the team's
 // colour where there is one, and its initial where there is not.
 func (a *app) tabTeamWord() string {
@@ -704,7 +704,7 @@ func (a *app) tabTeamWord() string {
 		if len(a.wall.teams) == 0 {
 			return ""
 		}
-		return " Teams " + caret + " "
+		return " teams " + caret + " "
 	}
 	name := sp.Name
 	if ansi.StringWidth(name) > teamNameCells {
@@ -1034,7 +1034,7 @@ func (a *app) tabsPaint(pieces []tabPiece) string {
 				if a.pal.profile < tokens.ANSI256 {
 					switch piece.kind {
 					case tabHome:
-						word = a.linearMark("·", ".") + "Home "
+						word = a.linearMark("·", ".") + "home "
 					case tabNew:
 						word = a.linearMark("·", ".") + "+ "
 					case tabScrollLeft, tabScrollRight:
