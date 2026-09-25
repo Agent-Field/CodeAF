@@ -529,10 +529,11 @@ func (a *Agent) beltDefinitions() []ai.ToolDefinition {
 // this lesson twice). Appending costs exactly one invalidation, at the back,
 // once per family, and that is the price this design accepted in advance.
 //
-// It is also why nothing here retires: the two connect tools stay on the belt
+// Connected account tools do not retire here: the two connect tools stay on the belt
 // for the life of the session, and a model that asks for a family it already
 // holds is answered in one cheap line at the END of the transcript, which is
-// free. Removing them would rewrite the block instead.
+// free. Team verbs are the exception: a demotion removes a capability that
+// cannot work, and that rare role change pays for the rewritten block.
 //
 // An empty answer means everything asked for was already there.
 func (a *Agent) armFamily(tools []bare.Tool) ([]string, error) {

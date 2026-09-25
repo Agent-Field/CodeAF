@@ -121,7 +121,7 @@ func TestATurnThePersonStoppedSaysNothingAboutIt(t *testing.T) {
 // at nothing, and there is exactly one that is allowed to.
 func TestEveryDoorNamesItselfAndOnlyThePersonsIsSilent(t *testing.T) {
 	doors := []StopDoor{
-		StopByPerson, StopByTakeover, StopByLeaving, StopByClosing,
+		StopByPerson, StopByManager, StopByTakeover, StopByLeaving, StopByClosing,
 		StopByAbandoned, StopByWorkStopped, StopByRetired, StopByEngineStopped,
 	}
 	seen := map[string]StopDoor{}

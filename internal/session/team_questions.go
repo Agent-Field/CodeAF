@@ -399,15 +399,19 @@ const teamPacketText = 3000
 //     team on a Close ([closingDecidedLine]).
 //   - A MEMBER is told when its own question was answered (`◆ answered: …`)
 //     or sent up.
-func teamPacketLine(profile string, role teamRole, entry teams.Entry) string {
+func teamPacketLine(profile string, role teamRole, entry teams.Entry) (string, string) {
 	p, ok := packetOf(profile, entry)
 	if !ok {
-		return ""
+		return "", ""
 	}
 	if closingDecided(role, entry, p) {
-		return closingDecidedLine(profile, p)
+		return closingDecidedLine(profile, p), p.ID
 	}
-	return packetLineFor(role, entry, p)
+	line := packetLineFor(role, entry, p)
+	if entry.State == teams.PacketDecided && line != "" && p.Kind != teams.PacketConflict {
+		return line, p.ID
+	}
+	return line, ""
 }
 
 // packetOf is the packet a packet line is about, as it stands.

@@ -37,8 +37,8 @@ import (
 // its members raised.
 //
 // THE FILE IS EVENTS, FOLDED BY ID. One JSON object per line, only ever
-// appended to: a `raise` carrying the whole packet, then `decide` or
-// `escalate` lines naming it by id. Reading folds them in file order into the
+// appended to: a `raise` carrying the whole packet, then `decide`,
+// `escalate`, or `told` lines naming it by id. Reading folds them in file order into the
 // packet as it stands now. Nothing is rewritten, so a reader never sees a
 // half-written packet and a writer never loses another's line.
 //
@@ -59,11 +59,11 @@ import (
 // THE FILE ROTATES LIKE TRAFFIC, and keeps every packet still waiting. Past
 // [decisionsRotateBytes] the file is renamed to decisions.1.jsonl (replacing
 // the one before) and the new file opens with one `carry` line per packet
-// still waiting, the packet whole as it stands (its trail, its escalated
-// state). A reader folds the rotated file and then the current one, and a
-// carry replaces what the rotated file said of that id, so a waiting packet
-// is never lost to a rotation and a decided one stays readable for one
-// rotation more, which is long enough for its raiser to be handed the answer.
+// still waiting, every packet for today's cap, and the newest decided answers
+// still owed to their raisers within half the rotation size. A reader folds
+// the rotated file and then the current one; a carry replaces the older
+// state. Oldest owed answers beyond that bound remain in the rotated file
+// for one more rotation.
 //
 // EVERY CHANGE IS ALSO A LINE OF TRAFFIC, a [KindPacket] entry in the log of
 // the team that raised it, of every team that was asked to decide it, and of
@@ -206,6 +206,8 @@ type Packet struct {
 	// Decision is the chosen option's id, or the person's own words when none
 	// fitted.
 	Decision string `json:"decision,omitempty"`
+	// Told records that the raiser was handed a decided answer.
+	Told bool `json:"told,omitempty"`
 	// Reason is the decider's reason, or the last escalation's.
 	Reason string `json:"reason,omitempty"`
 	// Trail is every escalation, oldest first.
@@ -238,7 +240,8 @@ var (
 	// packet on the event has been replaced with the one that was there, and
 	// nothing was written. It stays inside this package: [Raise] answers that
 	// packet and no error.
-	errCapAlready = errors.New("teams: that cap crossing was already raised")
+	errCapAlready  = errors.New("teams: that cap crossing was already raised")
+	errAlreadyTold = errors.New("teams: that answer was already handed over")
 )
 
 // decisionEvent is one line of a packet file.
@@ -257,7 +260,8 @@ const (
 	opRaise    = "raise"
 	opDecide   = "decide"
 	opEscalate = "escalate"
-	// opCarry is a waiting packet written again, whole, at the head of a
+	opTold     = "told"
+	// opCarry is a retained packet written again, whole, at the head of a
 	// rotated file. It replaces what an older line said of that id.
 	opCarry = "carry"
 )
@@ -404,6 +408,29 @@ func Decide(profileDir, id, by, decision, reason string) (Packet, error) {
 		rule(profileDir, f, out)
 	}
 	return out, nil
+}
+
+// Told records that a decided packet's answer reached its raiser. A duplicate
+// delivery changes nothing, and the append uses the packet file's own lock.
+func Told(profileDir, id string) error {
+	origin, err := packetOrigin(profileDir, id)
+	if err != nil {
+		return err
+	}
+	e := decisionEvent{Op: opTold, At: time.Now(), ID: id}
+	err = appendDecision(profileDir, origin, &e, func(p Packet) error {
+		if p.Told {
+			return errAlreadyTold
+		}
+		if p.State != PacketDecided {
+			return ErrNoPacket
+		}
+		return nil
+	})
+	if errors.Is(err, errAlreadyTold) {
+		return nil
+	}
+	return err
 }
 
 // Escalate sends packet id up: to an open team above the one it waits on, or
@@ -662,23 +689,38 @@ func appendDecision(profileDir, teamID string, e *decisionEvent, check func(Pack
 
 // rotateDecisions starts a new packet file at path, under its lock: the fold
 // as it stands is taken, the file is renamed over the rotated one, and the new
-// file is written (temporary file and rename) with a carry line for every
-// packet still waiting, so nothing waiting lives only in the rotated file.
+// file is written (temporary file and rename) with waiting packets, today's
+// cap packets, and bounded owed answers. Newer answers take the available
+// decided space first; older ones remain in the rotated file for one pass.
 func rotateDecisions(path string) error {
 	now, err := packetCache.read(path)
 	if err != nil {
 		return err
 	}
 	var carry bytes.Buffer
+	var owed []Packet
+	today := Today()
 	for _, p := range now.list() {
-		if !p.Waiting() {
-			continue
+		switch {
+		case p.Waiting(), p.Kind == PacketCap && p.Cap != nil && p.Cap.Day == today:
+			if err := writeDecisionCarry(&carry, p); err != nil {
+				return err
+			}
+		case p.State == PacketDecided && !p.Told && p.Kind != PacketCap && p.Kind != PacketConflict:
+			owed = append(owed, p)
 		}
-		p := p
-		line, err := json.Marshal(decisionEvent{Op: opCarry, At: p.At, Packet: &p})
+	}
+	sort.SliceStable(owed, func(i, j int) bool { return owed[i].At.After(owed[j].At) })
+	decidedBytes := int64(0)
+	for _, p := range owed {
+		line, err := decisionCarryLine(p)
 		if err != nil {
 			return err
 		}
+		if decidedBytes+int64(len(line)+1) >= decisionsRotateBytes/2 {
+			continue
+		}
+		decidedBytes += int64(len(line) + 1)
 		carry.Write(line)
 		carry.WriteByte('\n')
 	}
@@ -703,6 +745,20 @@ func rotateDecisions(path string) error {
 		return err
 	}
 	return os.Rename(name, path)
+}
+
+func decisionCarryLine(p Packet) ([]byte, error) {
+	return json.Marshal(decisionEvent{Op: opCarry, At: p.At, Packet: &p})
+}
+
+func writeDecisionCarry(dst *bytes.Buffer, p Packet) error {
+	line, err := decisionCarryLine(p)
+	if err != nil {
+		return err
+	}
+	dst.Write(line)
+	dst.WriteByte('\n')
+	return nil
 }
 
 // logPacket appends a [KindPacket] line to the Traffic of each distinct team
@@ -871,6 +927,11 @@ func (f *folded) apply(e decisionEvent) {
 	case opEscalate:
 		if p, ok := f.byID[e.ID]; ok && p.Waiting() {
 			f.byID[e.ID] = foldEscalate(p, e)
+		}
+	case opTold:
+		if p, ok := f.byID[e.ID]; ok && p.State == PacketDecided {
+			p.Told = true
+			f.byID[e.ID] = p
 		}
 	}
 }

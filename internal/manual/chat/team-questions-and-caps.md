@@ -43,8 +43,15 @@ when it has no manager above it. Your answer is handed to the manager marked `â—
 and wakes it.
 
 Packets are kept in the profile of the machine the conversations run on, in
-`teams/<id>/decisions.jsonl` for the team each was raised from. Past a megabyte the file starts
-a new one, keeping every packet still waiting.
+`teams/<id>/decisions.jsonl` for the team each was raised from.
+
+## Do answered team questions survive packet file rotation
+
+Past a megabyte the packet file starts a new one. It keeps every packet still waiting,
+today's cap decisions, and decided answers not yet handed to their raisers, newest first
+within half the rotation size. Older owed answers beyond that bound remain readable for one
+more rotation. Once a raiser has been handed an answer, codeaf records that and keeps it
+readable for one more rotation.
 
 ## A team's daily cap
 
@@ -65,6 +72,14 @@ When the pool reaches its cap:
 
 A manager can never raise a cap: money is yours. Every held wake is one line in the traffic,
 `held @web: harbor reached its $5 cap today`.
+
+## What if today's team spending cannot be read
+
+When a capped team's usage ledger or team list cannot be read, no new paid team work starts.
+The Traffic says `held @web: harbor has a $5 daily cap and today's spend could not be read
+(<error>), so nothing new starts until it can be read`. `team_start` gives the same reason
+after `No new member starts:`. No cap card is raised against an unreadable figure. The next
+check reads again, and an uncapped team does not read the ledger for this check.
 
 ## Two windows ask once when a team reaches its cap
 

@@ -17,6 +17,7 @@ type askAgent struct {
 	in       session.TeamProposalInput
 	deadline bool
 	left     time.Duration
+	calls    int
 }
 
 func (a *askAgent) NameTeam(ctx context.Context, titles []string) (string, error) {
@@ -37,10 +38,61 @@ func (a *askAgent) ProposeTeams(ctx context.Context, in session.TeamProposalInpu
 }
 
 func (a *askAgent) note(ctx context.Context) {
+	a.calls++
 	deadline, ok := ctx.Deadline()
 	a.deadline = ok
 	if ok {
 		a.left = time.Until(deadline)
+	}
+}
+
+func TestTeamAskBudgetBoundsEveryModelCall(t *testing.T) {
+	if teamAskCeiling <= 10*time.Second {
+		t.Fatalf("the engine ceiling %v cuts off the wall's Organize wait", teamAskCeiling)
+	}
+	for _, tc := range []struct {
+		name   string
+		budget time.Duration
+		want   time.Duration
+	}{
+		{"zero", 0, teamAskCeiling},
+		{"huge", time.Hour, teamAskCeiling},
+		{"small", 250 * time.Millisecond, 250 * time.Millisecond},
+	} {
+		for _, method := range []string{MethodTeamsName, MethodTeamsPropose} {
+			t.Run(tc.name+"/"+method, func(t *testing.T) {
+				far := &askAgent{fakeAgent: &fakeAgent{model: "m"}}
+				loop := askLoop(t, far)
+				var err error
+				if method == MethodTeamsName {
+					_, err = loop.Client.call(nil, method, TeamNameArgs{Budget: tc.budget})
+				} else {
+					_, err = loop.Client.call(nil, method, TeamProposeArgs{Budget: tc.budget})
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if far.calls != 1 || !far.deadline || far.left <= 0 || far.left > tc.want || far.left < tc.want-time.Second {
+					t.Fatalf("budget %v called %d times with deadline=%v, remaining=%v; want at most %v", tc.budget, far.calls, far.deadline, far.left, tc.want)
+				}
+			})
+		}
+	}
+}
+
+func TestExpiredTeamAskNeverCallsTheModel(t *testing.T) {
+	far := &askAgent{fakeAgent: &fakeAgent{model: "m"}}
+	loop := askLoop(t, far)
+	for _, method := range []string{MethodTeamsName, MethodTeamsPropose} {
+		var err error
+		if method == MethodTeamsName {
+			_, err = loop.Client.call(nil, method, TeamNameArgs{Budget: -time.Nanosecond})
+		} else {
+			_, err = loop.Client.call(nil, method, TeamProposeArgs{Budget: -time.Nanosecond})
+		}
+		if err == nil || err.Error() != context.DeadlineExceeded.Error() || far.calls != 0 {
+			t.Fatalf("expired %s called the model %d times and returned %v", method, far.calls, err)
+		}
 	}
 }
 

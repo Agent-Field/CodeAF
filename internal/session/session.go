@@ -2347,14 +2347,17 @@ type Agent struct {
 	systemOwn bool
 	// tools is the belt and definitions is its wire form, built once at
 	// construction — rebuilding them per step would re-marshal every schema on
-	// the hot path — and thereafter APPEND-ONLY, under armMu (connect.go).
+	// the hot path — and thereafter grown only at the tail under armMu
+	// (connect.go), with one exception: the team verbs leave when the role that
+	// gave them does (team.go's [Agent.retireTeamTools]).
 	//
 	// Both are COPY-ON-WRITE: arming allocates a new array and swaps the header,
 	// so a reader that took a snapshot under armMu may walk it without the lock
 	// and can never see a half-written slice. Nothing already in either is ever
-	// moved, rewritten or removed, because the definition block rides at the
-	// front of every request and a definition that shifts re-bills the whole
-	// prompt behind it (internal/exec's tools.go states the law).
+	// moved or rewritten, and nothing but a team verb is removed, because the
+	// definition block rides at the front of every request and a definition that
+	// shifts re-bills the whole prompt behind it (internal/exec's tools.go states
+	// the law).
 	tools       []bare.Tool
 	definitions []ai.ToolDefinition
 	// served is what the belt cannot say about the tools an ACCOUNT named
@@ -2397,6 +2400,9 @@ type Agent struct {
 	// dispatcher that found a name missing needs to know whether it was taken or
 	// never existed, and the two answers must not be able to disagree.
 	withdrawn *toolWithdrawal
+	// teamRetired names team verbs a role change took away, so a remembered
+	// call gets the role's reason instead of being called an unknown tool.
+	teamRetired map[string]string
 	// armMu guards those headers, those maps, the shelf and nothing else. It is not mu:
 	// arming happens inside a tool call, and a tool call must never take the
 	// lock Interrupt has to be able to take.
@@ -2739,6 +2745,10 @@ type Agent struct {
 	// the transcript, so without this bit a digest can only repeat the cut-off
 	// prose and falsely make the node look complete.
 	lastTurnTruncated bool
+	// teamTurnAt and teamTurnSerial identify the current turn for a manager's
+	// stop, so a late watch read cannot stop a later turn.
+	teamTurnAt     time.Time
+	teamTurnSerial uint64
 	// memoryText is the <memory> block message[0] currently carries: what the
 	// router asked for at the start of this turn, or the block a task node was
 	// opened with (memory.go). It is under mu because it is rendered into the

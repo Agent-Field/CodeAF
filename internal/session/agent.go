@@ -1707,6 +1707,8 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	a.notePersonTurn(user)
 	a.rebindClientLocked(a.model)
 	a.running = true
+	a.teamTurnAt = time.Now()
+	a.teamTurnSerial++
 	a.lastTurnTruncated = false
 	// AND ANOTHER WINDOW HEARS ABOUT IT NOW rather than at the next heartbeat
 	// (taskpresence.go). The nudge never blocks and never takes a lock, which is
