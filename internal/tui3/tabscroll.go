@@ -30,10 +30,10 @@ func (a *app) tabWindow(tabs []chatTab, widths []int, budget, active int) (int, 
 	for _, width := range widths {
 		used += width + 1
 	}
-	scroll := used > budget && budget >= tabReadableCells+tabInsetCells+tabCloseCells+2+2*tabArrowCells
+	scroll := used > budget && budget >= tabReadableCells+tabInsetCells+tabCloseCells+2+tabArrowsCells(1)
 	available := budget
 	if scroll {
-		available -= 2 * tabArrowCells
+		available -= tabArrowsCells(1)
 	} else {
 		v.browsing = false
 	}
@@ -57,13 +57,20 @@ func (a *app) tabWindow(tabs []chatTab, widths []int, budget, active int) (int, 
 	return from, to, scroll
 }
 
+// tabArrowsCells is what a scrolling strip spends on its two arrows: their
+// cells and the gap in front of the left one ([app.tabsFit]).
+func tabArrowsCells(sepW int) int { return 2*tabArrowCells + sepW }
+
 func (a *app) tabArrowPiece(right, enabled bool, at int) (tabPiece, *tabHit) {
-	if !enabled {
-		return tabPiece{word: "   ", quiet: true}, nil
-	}
 	word, kind := a.linearMark("‹", "<"), tabScrollLeft
 	if right {
 		word, kind = a.linearMark("›", ">"), tabScrollRight
+	}
+	// A SCROLLING STRIP DRAWS BOTH ARROWS, the one with nowhere to go dim and
+	// inert. Its cells are held either way so the window never shifts under a
+	// press, and three blank cells there read as a gap nobody meant.
+	if !enabled {
+		return tabPiece{word: " " + word + " ", quiet: true}, nil
 	}
 	return tabPiece{word: " " + word + " ", kind: kind}, &tabHit{span: hudSpan{from: at, to: at + tabArrowCells}, kind: kind}
 }

@@ -154,7 +154,7 @@ func (a *Agent) chooseTeamHandles(ctx context.Context, title, model string) {
 	if err != nil {
 		return
 	}
-	for _, role := range rolesFor(file.Teams, keys) {
+	for _, role := range rolesFor(file, keys, a.teamDefaults(profile)) {
 		if !role.derived {
 			continue
 		}

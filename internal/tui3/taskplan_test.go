@@ -220,8 +220,15 @@ func openWorkTabNow(t *testing.T, a *app) {
 // planLine is the LIST line a title is on — the half of the frame left of the
 // seam, because the record pane beside it previews the cursor row and would
 // answer with the title twice.
+//
+// THE HEAD IS SKIPPED: the strip of chats is on every page and carries the
+// run's tab, so a title can stand on it as well as on the pane's own row.
 func planLine(text, title string) (string, bool) {
-	for _, line := range strings.Split(text, "\n") {
+	lines := strings.Split(text, "\n")
+	if len(lines) > placeHeadRows {
+		lines = lines[placeHeadRows:]
+	}
+	for _, line := range lines {
 		if at := strings.LastIndex(line, railSeam); at >= 0 {
 			line = line[:at]
 		}

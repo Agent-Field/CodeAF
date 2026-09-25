@@ -238,6 +238,29 @@ func wallBarIn(pal palette, v wallView, width, inset, y int) (string, []wallHit)
 			return "", nil
 		}
 	}
+	// A HINT OUTRANKS THE BUTTONS IT WOULD BE CUT FOR. The status line is the
+	// one place a control says what it does and its key, and cut to fit
+	// between Back and the buttons it read `Resume the …` at 80 columns and
+	// lost the key at 110. So while it shows, the columns and then the acts
+	// step aside, never the one under the pointer and never Help, until the
+	// sentence is whole; they come back when the pointer leaves.
+	if hint != "" {
+		under := func(act wallAct) bool { return v.hover.kind == wallHitAction && v.hover.arg == int(act) }
+		need := ansi.StringWidth(hint) + 6
+		for 1+wallBarWidth(left, gap)+need+rightW()+max(inset-1, 0) > width {
+			switch {
+			case showCols && !under(wallActColsLess) && !under(wallActColsMore):
+				showCols = false
+			case showActs > 0 && !under(acts[showActs-1].act):
+				showActs--
+			default:
+				need = 0
+			}
+			if need == 0 {
+				break
+			}
+		}
+	}
 	s, lw, hits := wallLay(pal, left, v.hover, 1, y, gap)
 	row := " " + s
 	rw := rightW()
@@ -705,9 +728,11 @@ func wallTeamsSegments(pal palette, g wallGlyphs, v wallView, k wallKeys, y int,
 		}
 		segment(-1, "", "All", strconv.Itoa(v.total), v.team == "", true)
 		for i, t := range v.teams {
+			// The name is cut already, each part on its own (wall.go's
+			// [app.wallTeamLabel]): `harbor › api` is wider than one name.
 			name := t.name
-			if ansi.StringWidth(name) > wallChipCap {
-				name = ansi.Truncate(name, wallChipCap, g.more)
+			if ansi.StringWidth(name) > 2*wallChipCap {
+				name = ansi.Truncate(name, 2*wallChipCap, g.more)
 			}
 			if !segment(i, t.id, name, strconv.Itoa(t.count), t.id == v.team, true) {
 				whole = false
@@ -1236,7 +1261,11 @@ func wallNameCard(pal palette, g wallGlyphs, v wallView, width, height int) wall
 	x := (width - w) / 2
 	gridH := height - wallChromeRows
 	y := wallGridTop + max((gridH-wallNameCardRows)/2, 0)
-	return wallCardBuild(pal, "New team", []wallCardLine{l1, l2, l3, l4}, x, y, w, wallCardPadX, wallCardPadY)
+	title := "New team"
+	if v.nameIn != "" {
+		title += " in " + v.nameIn
+	}
+	return wallCardBuild(pal, title, []wallCardLine{l1, l2, l3, l4}, x, y, w, wallCardPadX, wallCardPadY)
 }
 
 // ── POPOVERS ────────────────────────────────────────────────────────────────

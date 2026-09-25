@@ -2029,6 +2029,10 @@ func (a *Agent) ResolveQuestion(answer Answer) error {
 	// record for the same law.
 	if said || (landingSaid && strings.TrimSpace(q.Head) != "") {
 		a.recordDecision(decisionRecordOf(q, answer))
+		// THE COMPLETION CHECK READS THIS, NOT THE TOOL RESULT. A digest clips
+		// results, and "nothing was set up" then reads as work still owed. The
+		// person's own answer is what closes that gap (checkpoint.go).
+		a.rememberPersonCardAnswer(q, answer)
 	}
 	if said {
 		a.rememberOverride(q, answer)

@@ -77,6 +77,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Schema is the document version every [Item] carries. Bump it when a field
@@ -140,14 +141,67 @@ const (
 	// WhenProbe fires when a probe's output, judged by the sentinel against
 	// the person's words, says yes. Anything the belt can do is a probe.
 	WhenProbe WhenKind = "probe"
-	// WhenHold never wakes. A rule — "always use tabs here", "never touch the
-	// public API" — has no moment, no rhythm and no probe: its whole work is
+	// WhenHold never wakes. A rule, "always use tabs here", "never touch the
+	// public API", has no moment, no rhythm and no probe: its whole work is
 	// done at birth, riding into the world of every conversation and task it
 	// reaches (docs/STANDING-ORDERS.md, the birth seam). The pass walks past
 	// it; it cannot fire, so it cannot spend, so it alone needs no rails and
 	// no action.
 	WhenHold WhenKind = "hold"
 )
+
+// CardKind is what a proposal card calls this item. It is derived from the
+// when, because that is the fact a person can check: a moment is a reminder,
+// a rhythm is a repeating check, a condition is a watch, and a hold is a rule.
+type CardKind string
+
+const (
+	// CardReminder is one moment. Doing it now is not a smaller version of it.
+	CardReminder CardKind = "reminder"
+	// CardCheck repeats on a cadence.
+	CardCheck CardKind = "check"
+	// CardWatch waits on a condition or an event.
+	CardWatch CardKind = "watch"
+	// CardRule is kept, and never wakes.
+	CardRule CardKind = "rule"
+)
+
+// CardKindOf reports which card this item is. A when this build does not know
+// is read as a watch: it is something to look for, and the card says so.
+func (it Item) CardKindOf() CardKind {
+	switch it.When.Kind {
+	case WhenAt:
+		return CardReminder
+	case WhenEvery:
+		return CardCheck
+	case WhenHold:
+		return CardRule
+	default:
+		return CardWatch
+	}
+}
+
+// shortWordsRunes is how much of a cadence a button may carry. Past it the
+// label eats the row and the other answers disappear.
+const shortWordsRunes = 32
+
+// ShortWords is the cadence a button can carry. A long sentence is cut at a
+// word, because a label that fills the row leaves no room for the other answers.
+func (w When) ShortWords() string {
+	words := strings.TrimSpace(w.Words)
+	if words == "" || utf8.RuneCountInString(words) <= shortWordsRunes {
+		return words
+	}
+	runes := []rune(words)
+	cut := shortWordsRunes
+	for cut > 0 && runes[cut-1] != ' ' {
+		cut--
+	}
+	if cut == 0 {
+		cut = shortWordsRunes
+	}
+	return strings.TrimSpace(string(runes[:cut])) + "..."
+}
 
 // When is what wakes an item. Exactly the fields its Kind names are read; the
 // rest are left empty and never consulted. Words are always kept: they are the

@@ -135,8 +135,11 @@ func TestWhereYouWereLeadsWithThisWindowsOwnConversation(t *testing.T) {
 	if quiet := lines[own+3]; !strings.Contains(quiet, "Quiet Chat a") {
 		t.Fatalf("the quiet rows do not follow in recency order:\n%s", frame)
 	}
-	// AND THE TWO ROWS THAT ARE ON OTHER PANELS ARE NOT HERE A SECOND TIME.
-	if strings.Count(frame, "Swarm Task Splitting") != 1 || strings.Count(frame, "Bounty Reward Companies") > 1 {
+	// AND THE TWO ROWS THAT ARE ON OTHER PANELS ARE NOT HERE A SECOND TIME. The
+	// head is not counted: the strip of chats over home carries the tabs this
+	// window has open, which is a different list from home's panels.
+	body := strings.Join(lines[placeHeadRows:], "\n")
+	if strings.Count(body, "Swarm Task Splitting") != 1 || strings.Count(body, "Bounty Reward Companies") > 1 {
 		t.Fatalf("a conversation is drawn on two panels:\n%s", frame)
 	}
 }

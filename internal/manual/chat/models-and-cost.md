@@ -2228,7 +2228,7 @@ covers the requests made before the restart.
 
 ## Is there a record of what I spent across all my conversations, by day or by model
 
-Yes, a file on disk, and **the spend place reads it**. Press `alt+4`, or `tab` to it from any
+Yes, a file on disk, and **the spend place reads it**. Press `alt+5`, or `tab` to it from any
 other place, and it draws that file: which days, which models, and what the money was for.
 
 Every cost line written into a conversation's transcript is also appended to one file for the
@@ -2284,7 +2284,7 @@ breakdown; `/spend` opens the ledger for the whole machine.
 
 ## The spend place — what days and models cost, and what the money was for
 
-`alt+4` opens it. It reads the machine-wide ledger above when you walk in and again on the
+`alt+5` opens it. It reads the machine-wide ledger above when you walk in and again on the
 same three-second beat every place runs on, and it draws three things:
 
 - **the window and its total** — `14 days came to $34.10 · 41.2M tokens` on the left of the
@@ -2846,7 +2846,7 @@ the same registry row, so what you set through one is what the others show:
 | --- | --- |
 | `/budget`, also `/limits` | opens the tab with the cursor on `per day` |
 | the money segment on the status line | press `$0.14` — it opens the tab. It brightens under the pointer to say it is a door |
-| the spend place (`alt+4`) | `enter` on its first line, the dim `today $3.42 of $500 · /budget sets the limits`, the same figure the top line of every place draws |
+| the spend place (`alt+5`) | `enter` on its first line, the dim `today $3.42 of $500 · /budget sets the limits`, the same figure the top line of every place draws |
 | the spend place, from a row | `→` opens the verb strip, where `b` is `the limits` |
 | a refused turn | the message names `/budget` |
 | the first-run setup | its `Models and spending` screen, whose **Daily limit** row writes this same row. It asks about the day's limit only — `per plan` and `per conversation` keep their defaults there and are changed here |
@@ -2910,7 +2910,7 @@ Spending tab and `/cost` are the two readings — `/cost` is this conversation, 
 the whole machine since midnight.
 
 The machine's day is drawn in **three** places and they are **one reading of one file**:
-`today` on the Spending tab, `today $3.42 of $500` on the spend place (`alt+4`), and the
+`today` on the Spending tab, `today $3.42 of $500` on the spend place (`alt+5`), and the
 green figure on the **top line of every place** — `$3.42 / $500.00`, beside the clock. All
 three sum the same rows of the machine ledger, so they cannot come apart, and the top line
 says the same thing whichever place you are standing on.
@@ -3472,7 +3472,7 @@ it adds up to, and where to see it.
 There is exactly one request codeaf makes that its own money figures do not count: the
 **one-token measurement** it sends while you are typing, to warm the connection and time
 the provider your next message is heading for. Your provider bills you for it. `/cost`,
-the status line, the spend place (`alt+4`) and the total at the end of `codeaf do` all
+the status line, the spend place (`alt+5`) and the total at the end of `codeaf do` all
 leave it out, and so do the call-log rows and `codeaf-census`.
 
 **Why it is missing.** Those figures are all counts of the **call log**, and the

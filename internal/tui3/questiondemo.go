@@ -295,7 +295,7 @@ func demoStandingCard() session.Question {
 		Ask:    session.AskChoice,
 		Form:   session.FormCard,
 		Asker:  session.Asker{Kind: session.AskerModel},
-		Head:   session.StandingAskLead + "the release notes every Monday at 9am",
+		Head:   session.StandingHeadCheck,
 		Reason: session.StandingAskReason,
 		Stakes: session.StakesReversible,
 		// THE WORDS ARE THE CARD'S OWN CONSTANTS and never a second spelling of

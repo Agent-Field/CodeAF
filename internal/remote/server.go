@@ -1187,6 +1187,13 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// Every engine of this build answers the teams doors from its own
 		// profile (teams.go), so the flag is about the build, not the agent.
 		Teams: true,
+		// And the delegation doors beside them (delegation.go), for the same
+		// reason: the build answers them, whatever agent is open.
+		Delegation: true,
+		// And the settings tab's write of those defaults, for the same reason.
+		TeamSettings: true,
+		// And the wrap-up's two doors, for the same reason.
+		WrapUp: true,
 		// The two model asks are the agent's, so they are asked of it.
 		TeamAsk: teamAskKnown(sess.agent),
 		// This revision checks it in the handler, for every engine behind it
@@ -3000,6 +3007,9 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	}
 	// And the teams doors, additive in the same way (wire_teams.go).
 	if payload, handled, err := s.teamsCall(call); handled {
+		return payload, err
+	}
+	if payload, handled, err := s.delegationCall(call); handled {
 		return payload, err
 	}
 	if payload, handled, err := teamAskCall(agent, call); handled {

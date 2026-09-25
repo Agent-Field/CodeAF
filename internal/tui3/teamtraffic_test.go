@@ -73,19 +73,21 @@ func trafficReadNow(t *testing.T, a *app) {
 	teamsFlush(t, a)
 }
 
-// THE RAIL IS THE CACHE, BESIDE THE MANAGER, AND IT HOLDS THE RIGHT. With the
-// manager in front on a wide frame, the right of the body is the team's
-// traffic under a `Traffic` header, the newest thread straight under it, each
-// headed `from → to  do|fyi  age` over its words; the person's own lines are
-// not drawn; the conversation is narrowed by exactly the rail; the composer
-// says the words go to the manager; and a handle pressed goes to its member.
-func TestTrafficRailBesideTheManager(t *testing.T) {
+// THE COLUMN IS THE CACHE, BESIDE THE MANAGER, AND IT OPENS ON THE TRAFFIC.
+// With the manager in front on a wide frame the right of the body is the side
+// column, its header `Tasks 0 · Traffic N` with the Traffic in front; the
+// directive is a row of work, the note that answers nothing is General's; the
+// person's own lines are not drawn; the conversation is narrowed by exactly
+// the column; the composer says the words go to the manager; and a handle
+// pressed goes to its member, where the same column, the same width, shows
+// that member's own chat.
+func TestTrafficColumnBesideTheManager(t *testing.T) {
 	a, harbor, _, _ := trafficApp(t)
 	a.width, a.height = 180, 40
 	price, priceKey := trafficHandle(t, a, harbor, "openrouter")
 	rail, _ := trafficHandle(t, a, harbor, "Refactor")
+	d, _ := teamstore.AppendTrafficID(a.profileDir, harbor, teamstore.Entry{Kind: teamstore.KindDirective, From: teamstore.FromManager, To: rail, Text: "take the scope model"})
 	trafficAppend(t, a, harbor,
-		teamstore.Entry{Kind: teamstore.KindDirective, From: teamstore.FromManager, To: rail, Text: "take the scope model"},
 		teamstore.Entry{Kind: teamstore.KindNote, From: price, To: rail, Text: "prices are in"},
 		teamstore.Entry{Kind: teamstore.KindYou, From: teamstore.FromYou, To: teamstore.ToManager, Text: "my own words"},
 	)
@@ -93,66 +95,67 @@ func TestTrafficRailBesideTheManager(t *testing.T) {
 	if got := len(a.traffic.rows[harbor]); got != 3 {
 		t.Fatalf("the cache holds %d entries", got)
 	}
-
+	if a.sideView() != sideTraffic {
+		t.Fatal("a manager's column does not open on the Traffic")
+	}
+	a.sideToggleThread(sideThreadKey(harbor, sideGeneral))
+	rows := railLines(t, a)
+	joined := strings.Join(rows, "\n")
+	cols := a.railWidth()
+	if cols != sideColsFor(a.width) || a.bodyWidth() != a.width-cols {
+		t.Fatalf("the column takes %d columns and leaves the body %d of %d", cols, a.bodyWidth(), a.width)
+	}
+	head := railRowOf(rows, sideTasksWord+" 0"+sideWordSep+sideTrafficWord)
+	general := railRowOf(rows, "General")
+	work := railRowOf(rows, "@"+rail+"  take the scope model")
+	note := railRowOf(rows, "@"+price+" → ")
+	if head < 0 || !strings.HasSuffix(rows[head], sideHideKey) || general != head+1 || note != general+1 || work <= note {
+		t.Fatalf("the column does not draw its header, General open with the note, and the work under it (%d, %d, %d, %d):\n%s", head, general, note, work, joined)
+	}
+	if strings.Contains(joined, "my own words") {
+		t.Fatalf("the person's own line is on the column:\n%s", joined)
+	}
 	frame, _, _ := a.frame()
-	rows := strings.Split(ansi.Strip(frame), "\n")
-	cols := a.trafficWidth()
-	if cols < trafficColsMin || a.bodyWidth() != a.width-a.railWidth()-cols {
-		t.Fatalf("the rail takes %d columns and leaves the body %d of %d", cols, a.bodyWidth(), a.width)
-	}
-	var head, directive, note = -1, -1, -1
-	for y, r := range rows {
-		right := plainCells(r, a.width-cols, a.width)
-		if strings.Contains(right, trafficWord) && strings.Contains(right, "hide "+trafficKey) {
-			head = y
-		}
-		if strings.Contains(right, teamManagerGlyph+" manager → @"+rail+"  do") {
-			directive = y
-		}
-		if strings.Contains(right, "@"+price+" → @"+rail+"  fyi") {
-			note = y
-		}
-		if strings.Contains(right, "my own words") {
-			t.Fatalf("the person's own line is on the rail: %q", right)
-		}
-	}
-	if head < 0 || directive < 0 || note != head+1 || directive <= note {
-		t.Fatalf("the rail does not draw its header and the newest thread straight under it (%d, %d, %d):\n%s", head, directive, note, strings.Join(rows, "\n"))
-	}
-	if !strings.Contains(plainCells(rows[note+1], a.width-cols, a.width), "prices are in") ||
-		!strings.Contains(plainCells(rows[directive+1], a.width-cols, a.width), "take the scope model") {
-		t.Fatalf("a message is not on its own line under its header:\n%s", strings.Join(rows, "\n"))
-	}
 	if !strings.Contains(ansi.Strip(frame), "to "+teamManagerGlyph+" manager") {
 		t.Fatalf("the composer does not say where the words go:\n%s", ansi.Strip(frame))
 	}
 
-	// Under the pointer the handle names its member, and the words say
-	// themselves whole.
-	at, ok := a.trafficHoverAt(a.width-cols+2, note)
-	if !ok || at.kind != hoverTraffic {
-		t.Fatalf("the handle does not answer the pointer: %+v", at)
+	// Under the pointer the handle names its member, and the row says itself
+	// whole.
+	x, y := sideDoorOf(t, a, sideActJump)
+	a.setHover(x, y)
+	if a.hot.kind != hoverSide || a.hot.index < 0 {
+		t.Fatalf("the handle does not answer the pointer: %+v", a.hot)
 	}
-	a.hot = at
-	if words := a.dockHoverWords(); !strings.Contains(words, "@"+price) || !strings.Contains(words, "click") {
+	if words := a.dockHoverWords(); !strings.Contains(words, "@") || !strings.Contains(words, "click") {
 		t.Fatalf("the hint line over the handle says %q", words)
 	}
-	a.hot, _ = a.trafficHoverAt(a.width-cols+4, note+1)
-	if words := a.dockHoverWords(); !strings.Contains(words, "prices are in") {
-		t.Fatalf("the hint line over the words says %q", words)
+	wx, wy := sideRowOn(t, a, "thread/"+d)
+	a.setHover(wx, wy)
+	if words := a.dockHoverWords(); !strings.Contains(words, "take the scope model") {
+		t.Fatalf("the hint line over the row says %q", words)
 	}
-	a.hot = hoverAt{}
+	a.dropHover()
 
 	// The note's handle goes to the member who wrote it.
-	if _, took := a.trafficPress(a.width-cols+2, note); !took {
-		t.Fatal("the rail did not take a press on its row")
-	}
+	px, py := sideRowDoor(t, a, railKeyOfReply(t, a, "prices are in"), sideActJump)
+	sideClick(t, a, px, py)
 	if a.frontTabKey() != priceKey {
-		t.Fatalf("the row went to %q, want %q", a.frontTabKey(), priceKey)
+		t.Fatalf("the handle went to %q, want %q", a.frontTabKey(), priceKey)
 	}
-	// And away from the manager the column is gone and the body has it back.
-	if a.trafficWidth() != 0 || a.bodyWidth() != a.width-a.railWidth() {
-		t.Fatalf("the rail stayed beside a member: %d", a.trafficWidth())
+	// AND IN THE MEMBER'S CHAT THE COLUMN HOLDS STILL: the same width, the
+	// tasks in front, and its Traffic that member's own messages.
+	if a.railWidth() != cols || a.bodyWidth() != a.width-cols {
+		t.Fatalf("the column moved beside a member: %d, was %d", a.railWidth(), cols)
+	}
+	if a.sideKind() != sideKindMember || a.sideView() != sideTasks {
+		t.Fatalf("a member's column is kind %d view %d", a.sideKind(), a.sideView())
+	}
+	a.sideSetView(sideTraffic)
+	rows = railLines(t, a)
+	joined = strings.Join(rows, "\n")
+	if railRowOf(rows, "@"+rail+"  prices are in") < 0 || strings.Contains(joined, "take the scope model") {
+		t.Fatalf("the member's Traffic is not its own messages only:\n%s", joined)
 	}
 	// A member of a managed team is told where its words go too.
 	if got := a.trafficHint(); got != "to @"+price {
@@ -160,117 +163,122 @@ func TestTrafficRailBesideTheManager(t *testing.T) {
 	}
 }
 
-// AT 110 COLUMNS THE RAIL STANDS. A 110-column laptop terminal is not narrow:
-// the Traffic takes the right column, and the task column is not on the frame
-// at all, not even as an edge.
-func TestTrafficRailStandsAt110(t *testing.T) {
-	a, harbor, _, _ := trafficApp(t)
+// railKeyOfReply is the key of the drawn row that says words.
+func railKeyOfReply(t *testing.T, a *app, words string) string {
+	t.Helper()
+	view, _ := a.railDrawnView(a.viewHeight())
+	for _, line := range view {
+		if line.side != nil && strings.Contains(ansi.Strip(line.text), words) {
+			return line.side.key
+		}
+	}
+	t.Fatalf("no row of the column says %q", words)
+	return ""
+}
+
+// AT 110 COLUMNS THE COLUMN STANDS. A 110-column laptop terminal is not
+// narrow: the one column takes the right, at the width every chat gives it,
+// and leaves the conversation its floor.
+func TestTrafficColumnStandsAt110(t *testing.T) {
+	a, _, _, _ := trafficApp(t)
 	a.width, a.height = 110, 30
 	a.welcome.open = false
 	trafficReadNow(t, a)
-	_ = harbor
-	if got := a.trafficWidth(); got < trafficColsMin {
-		t.Fatalf("at 110 the rail has %d columns", got)
+	if got := a.railWidth(); got != sideColsFor(110) || got < sideColsMin {
+		t.Fatalf("at 110 the column has %d columns", got)
 	}
-	if a.bodyWidth() < trafficBodyFloor {
+	if a.bodyWidth() < sideBodyFloor {
 		t.Fatalf("the conversation is left %d columns", a.bodyWidth())
 	}
-	if a.railWidth() != 0 || a.railShowing() || a.railStowed() {
-		t.Fatalf("the task column still stands beside the rail: %d", a.railWidth())
+	if !a.railShowing() || a.railStowed() {
+		t.Fatal("the column does not stand at 110")
+	}
+	rows := railLines(t, a)
+	if railRowOf(rows, sideTasksWord+" 0"+sideWordSep+sideTrafficWord) < 0 {
+		t.Fatalf("the header does not carry both words:\n%s", strings.Join(rows, "\n"))
 	}
 }
 
-// THE RAIL IS PUT AWAY BY A WORD AND BROUGHT BACK BY ITS EDGE OR ITS KEY. The
-// header's `hide` puts the column away and leaves the edge, the word Traffic
-// with a count of what came in since; the key brings it back; and asking the
-// task column back (ctrl+g's road) with no tasks leaves the Traffic where it is.
-func TestTrafficRailHidesAndShows(t *testing.T) {
+// THE COLUMN IS PUT AWAY BY ITS KEY AND BROUGHT BACK BY ITS EDGE OR ITS KEY.
+// The header's `alt+l` puts it away and leaves the edge with a count of what
+// came in since; the edge's hint says so; alt+l brings it back, and ctrl+g is
+// the same key under its older name.
+func TestTrafficColumnHidesAndShows(t *testing.T) {
 	a, harbor, _, _ := trafficApp(t)
 	a.width, a.height = 160, 40
 	price, _ := trafficHandle(t, a, harbor, "openrouter")
 	trafficReadNow(t, a)
-	_, _, _ = a.frame()
-	d := a.traffic.drawn
-	if d.mode != trafficColumn || !d.hide.pressable() {
-		t.Fatalf("the column has no hide word: %+v", d)
+	_ = railLines(t, a)
+	x, y := sideDoorOf(t, a, sideActHide)
+	sideClick(t, a, x, y)
+	if !a.railAway || a.railShowing() {
+		t.Fatal("the header's key did not put the column away")
 	}
-	if _, took := a.trafficPress(d.hide.from, a.bodyTop()+d.hideY); !took || !a.traffic.hidden {
-		t.Fatal("hide did not put the rail away")
-	}
-	if got := a.trafficWidth(); got != trafficGripCols {
-		t.Fatalf("a hidden rail costs %d columns", got)
+	if got := a.railWidth(); got != railGripCols {
+		t.Fatalf("a hidden column costs %d columns", got)
 	}
 	trafficAppend(t, a, harbor, teamstore.Entry{Kind: teamstore.KindNote, From: price, To: teamstore.ToManager, Text: "done"})
 	trafficReadNow(t, a)
 	frame, _, _ := a.frame()
 	var edge strings.Builder
 	for _, r := range strings.Split(ansi.Strip(frame), "\n") {
-		edge.WriteString(strings.TrimSpace(plainCells(r, a.width-trafficGripCols, a.width)))
+		edge.WriteString(strings.TrimSpace(plainCells(r, a.width-railGripCols, a.width)))
 	}
-	if !strings.Contains(edge.String(), trafficWord+"1") {
-		t.Fatalf("the edge does not say Traffic and its one new entry: %q", edge.String())
+	if !strings.Contains(edge.String(), "1") {
+		t.Fatalf("the edge does not count its one new entry: %q", edge.String())
 	}
-	a.hot = hoverAt{kind: hoverTrafficGrip}
-	if words := a.dockHoverWords(); !strings.Contains(words, "Show the team's traffic") || !strings.Contains(words, trafficKey) {
+	a.hot = hoverAt{kind: hoverRailGrip}
+	if words := a.dockHoverWords(); !strings.Contains(words, "Show this column") || !strings.Contains(words, trafficKey) || !strings.Contains(words, "1 new") {
 		t.Fatalf("the edge's hint says %q", words)
 	}
 	a.hot = hoverAt{}
-	if _, took := a.trafficKeyPress(tea.KeyPressMsg{Code: 'l', Mod: tea.ModAlt}); !took || a.traffic.hidden {
-		t.Fatalf("%s did not bring the rail back", trafficKey)
+	if _, took := a.trafficKeyPress(tea.KeyPressMsg{Code: 'l', Mod: tea.ModAlt}); !took || a.railAway {
+		t.Fatalf("%s did not bring the column back", trafficKey)
 	}
-	// ASKING FOR THE TASKS BACK, with no tasks of the manager's own, leaves the
-	// Traffic holding the column: there is nothing to swap to.
-	a.railStow(false)
-	if a.traffic.hidden || !a.trafficHoldsRail() {
-		t.Fatal("asking for the tasks back put the Traffic away")
+	drive(t, a, ctrlG())
+	if !a.railAway {
+		t.Fatal("ctrl+g is not the same key")
+	}
+	drive(t, a, ctrlG())
+	if a.railAway || a.railWidth() != sideColsFor(a.width) {
+		t.Fatal("ctrl+g did not bring the column back")
 	}
 }
 
-// ON A NARROW FRAME THE RAIL IS AN EDGE, and the edge lays a card over the
-// lower body: bordered, titled Traffic, `Close esc` in its foot, with the top
-// of the conversation still drawn above it. esc takes it away, and a row
-// pressed goes to its member.
-func TestTrafficRailNarrowIsACard(t *testing.T) {
+// ON A NARROW FRAME THERE IS NO COLUMN AND NO EDGE, and the key lays the
+// column over the frame: the same header, the same rows. esc takes it away,
+// and a handle pressed on it goes to its member and takes the overlay with it.
+func TestTrafficColumnNarrowIsAnOverlay(t *testing.T) {
 	a, harbor, _, _ := trafficApp(t)
 	a.width, a.height = 80, 30
 	price, priceKey := trafficHandle(t, a, harbor, "openrouter")
-	trafficAppend(t, a, harbor, teamstore.Entry{Kind: teamstore.KindNote, From: price, To: teamstore.ToManager, Text: "done with the scrape"})
+	q, _ := teamstore.AppendTrafficID(a.profileDir, harbor, teamstore.Entry{Kind: teamstore.KindDirective, From: teamstore.FromManager, To: price, Text: "scrape the prices"})
 	trafficReadNow(t, a)
-	if got := a.trafficWidth(); got != trafficGripCols {
-		t.Fatalf("a narrow frame gave the rail %d columns", got)
+	if a.railWidth() != 0 || a.railStowed() {
+		t.Fatalf("a narrow frame gave the column %d columns", a.railWidth())
 	}
 	frame, _, _ := a.frame()
-	if strings.Contains(ansi.Strip(frame), "done with the scrape") {
-		t.Fatal("the traffic is drawn before the edge was pressed")
+	if strings.Contains(ansi.Strip(frame), "scrape the prices") {
+		t.Fatal("the traffic is drawn before the key was pressed")
 	}
-	top := a.bodyTop()
-	if _, took := a.trafficPress(a.width-1, top+2); !took || !a.traffic.over {
-		t.Fatal("the edge did not lay the card over the body")
+	drive(t, a, key(trafficKey))
+	if !a.railFull() {
+		t.Fatal("alt+l did not lay the column over the frame")
 	}
 	frame, _, _ = a.frame()
-	rows := strings.Split(ansi.Strip(frame), "\n")
-	at, card := -1, -1
-	for y, r := range rows {
-		if strings.Contains(r, "@"+price+" → ") && y+1 < len(rows) && strings.Contains(rows[y+1], "done with the scrape") {
-			at = y
-		}
-		if strings.Contains(r, trafficWord) && card < 0 && y > top {
-			card = y
-		}
+	if !strings.Contains(ansi.Strip(frame), "scrape the prices") || !strings.Contains(ansi.Strip(frame), sideTrafficWord) {
+		t.Fatalf("the overlay does not draw the Traffic:\n%s", ansi.Strip(frame))
 	}
-	if at < 0 || card <= top || !strings.Contains(ansi.Strip(frame), "Close esc") {
-		t.Fatalf("no card with its close word over the lower body (row %d, card %d):\n%s", at, card, strings.Join(rows, "\n"))
+	drive(t, a, key("esc"))
+	if a.railFull() {
+		t.Fatal("esc did not take the overlay away")
 	}
-	if _, took := a.trafficKeyPress(tea.KeyPressMsg{Code: tea.KeyEscape}); !took || a.traffic.over {
-		t.Fatal("esc did not close the card")
-	}
-	a.trafficShow(true)
+	drive(t, a, key(trafficKey))
 	_, _, _ = a.frame()
-	if _, took := a.trafficPress(6, at); !took {
-		t.Fatal("a row of the card did not take the press")
-	}
-	if a.frontTabKey() != priceKey || a.traffic.over {
-		t.Fatalf("the row went to %q with the card still over: %v", a.frontTabKey(), a.traffic.over)
+	x, y := sideRowDoor(t, a, "thread/"+q, sideActJump)
+	sideClick(t, a, x, y)
+	if a.frontTabKey() != priceKey || a.railFull() {
+		t.Fatalf("the handle went to %q with the overlay still up: %v", a.frontTabKey(), a.railFull())
 	}
 }
 
@@ -384,11 +392,20 @@ func TestTrafficStopAndStartAreDoneOnceAndNeverReplayed(t *testing.T) {
 	if got, ok := disk[0].ByHandle("lexer"); !ok || got.Key != m.Key {
 		t.Fatalf("the new member did not reach the disk: %+v", disk[0].Members)
 	}
-	// The rail says what the stop and the start were for.
+	// The column says what the stop and the start were for, under General.
+	// The route takes the cells the brief used to have, so a cut word is on
+	// the hint line, whole.
 	a.width, a.height = 180, 40
-	frame := ansi.Strip(func() string { f, _, _ := a.frame(); return f }())
-	if !strings.Contains(frame, "stopped @"+price+" · stuck in") || !strings.Contains(frame, "started @lexer") || !strings.Contains(frame, "  rewrite the lexer") {
-		t.Fatalf("the rail drops the stop's reason or the start's brief:\n%s", frame)
+	a.sideToggleThread(sideThreadKey(harbor, sideGeneral))
+	rows := strings.Join(railLines(t, a), "\n")
+	if !strings.Contains(rows, teamManagerGlyph+" → @lexer") || !strings.Contains(rows, "started @lexer") || !strings.Contains(rows, "stopped @"+price) {
+		t.Fatalf("the column drops the stop or the start:\n%s", rows)
+	}
+	if hint := a.sideRowOf(railKeyOfReply(t, a, "started @lexer")).hint; !strings.Contains(hint, "rewrite") {
+		t.Fatalf("the start's brief is not on the hint: %q", hint)
+	}
+	if hint := a.sideRowOf(railKeyOfReply(t, a, "stopped @"+price)).hint; !strings.Contains(hint, "stuck") {
+		t.Fatalf("the stop's reason is not on the hint: %q", hint)
 	}
 
 	// A second window on the same log, holding the same conversations.
@@ -408,7 +425,7 @@ func TestTrafficStopAndStartAreDoneOnceAndNeverReplayed(t *testing.T) {
 		t.Fatalf("a window opening did what was asked before it: %d stops, %d starts", olderB.stops, nb)
 	}
 	if len(b.traffic.rows[harbor]) != 2 {
-		t.Fatalf("the history is not on the new window's rail: %+v", b.traffic.rows[harbor])
+		t.Fatalf("the history is not in the new window's cache: %+v", b.traffic.rows[harbor])
 	}
 }
 

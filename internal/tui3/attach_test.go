@@ -243,7 +243,7 @@ func TestAnImageMessageMarksItsPicturesInTheTranscript(t *testing.T) {
 	a.pathLinks = true
 	// Wide enough that the sentence, its two tokens and its two markers land on
 	// one row: this test is about what is drawn, not about where it wraps.
-	a.width = 100
+	a.width = 120
 	a.attach(filepath.Join(dir, "shot.png"))
 	a.attach(filepath.Join(dir, "chart.png"))
 	typeLine(t, a, "what is wrong here")

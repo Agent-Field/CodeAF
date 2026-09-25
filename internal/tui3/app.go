@@ -283,6 +283,10 @@ type entry struct {
 	// ([app.noteBlock] says why, and a subharness card is the only shape that
 	// asks for it). It is false on every other note, which is nearly all of them.
 	block bool
+	// sheet says this note is a column, so a wrapped row keeps the column its
+	// first line already uses ([wrapSheet]). /help is the one note that asks
+	// for it: a continuation that started at the margin read as another key.
+	sheet bool
 
 	// told says this note is ADDRESSED TO THE PERSON rather than narration
 	// about the machinery, so the work chip may not swallow it (workfold.go's
@@ -1392,6 +1396,18 @@ type app struct {
 	teamsDisk teamsDisk
 	// teamMenu is the strip chip's team switcher (teammenu.go).
 	teamMenu teamMenu
+	// tp is the teams page's own state: its selection, its reading of the
+	// store and the targets it drew (teamspage.go).
+	tp teamsPage
+	// tsheet is a team's card: its settings, its close and its delete
+	// (teamsheet.go).
+	tsheet teamSheet
+	// tmove is the `Move into…` picker, and tdrag a drag in the teams page's
+	// rail (teammove.go, teamdrag.go); tcrew is the teams page's members card
+	// (teamcrew.go).
+	tmove teamMove
+	tdrag teamDrag
+	tcrew teamCrew
 	// frontWaits is the engine's answer to whether the conversation in front is
 	// stopped on a person ([session.Agent.NeedsPerson]), asked once per message
 	// on the loop and read by every frame ([app.frontSignal]). It is the front
@@ -2038,39 +2054,32 @@ type app struct {
 	// stamp stands still for ever and this is the only thing that says a task
 	// somebody just started belongs on the page they are looking at.
 	railStamp uint64
-	// THE ROSTER'S OWN FACTS (task.go's rail). railOpen holds the FAMILIES a
-	// person has folded or opened AGAINST their default — nil is the design as
-	// shipped, and an absent key is a family nobody has touched, which is why this
-	// is a map keyed by node id and not a flag on the node. railTop is the
-	// window's offset into the SCROLLING PART of the roster's line list — the part
-	// under the pinned live head ([app.railLiveHead]), because work that is still
-	// going never leaves this column — resolved by the same [listTop] every other
-	// list on this surface scrolls with. railWhere is the focused row,
-	// named by id rather than by index because a fold takes rows out from under a
-	// cursor while nobody is looking, and railHold says the roster has been GIVEN
-	// the keyboard (alt+t) — without it there is no cursor, and every key still
-	// belongs to the draft.
+	// THE ROSTER'S OWN FACTS (task.go's rail). railTop is the window's offset
+	// into the roster's line list, resolved by the same [listTop] every other
+	// list on this surface scrolls with. railWhere is the focused row, named by
+	// identity rather than by index because a fold takes rows out from under a
+	// cursor while nobody is looking, and railHold says the roster has been
+	// GIVEN the keyboard (alt+t): without it there is no cursor, and every key
+	// still belongs to the draft.
 	//
-	// railWide is the third width tier, asked for with w and sticky until it is
-	// asked for again. railCramped is what earns the offer of it: the last layout
-	// cut a title with its own indent, and it is written where that is discovered
-	// ([app.railEntryRows]) and read by the footer, the way [app.railTop] is
-	// written by the window it resolves.
+	// railWide is the third width tier, asked for with alt+w and sticky until
+	// it is asked for again.
 	//
 	// railAway is the person's own standing answer to whether there is a column at
-	// all (ctrl+g, [app.railStow]). It outranks every width tier and the roster's
-	// own "one node raises it" rule alike — a column somebody put away stays away,
-	// through landings and new work and the next session, until they ask for it
-	// back — and it is the one piece of this block that survives the process,
-	// because it is the only one a person chose deliberately (config's
-	// ui.task_column).
-	railOpen    map[uint64]bool
-	railTop     int
-	railWhere   railSpot
-	railHold    bool
-	railWide    bool
-	railCramped bool
-	railAway    bool
+	// all (alt+l or ctrl+g, [app.railStow]). It outranks every width tier: a
+	// column somebody put away stays away, through landings and new work and the
+	// next session, until they ask for it back, and it is the one piece of this
+	// block that survives the process, because it is the only one a person chose
+	// deliberately (config's ui.task_column).
+	railTop   int
+	railWhere railSpot
+	railHold  bool
+	railWide  bool
+	railAway  bool
+	// side is the side column's own memory for the session: which of its two
+	// words is in front per kind of chat, what is folded, and where the
+	// Traffic's `new` line stands (sidecol.go).
+	side sideState
 	// away is the last reading of what the project's OTHER windows have out
 	// right now, and when it was taken (taskview.go's [app.refreshElsewhere]).
 	// It is a CACHE and not a subscription: the reading is a readdir and a
@@ -2233,15 +2242,19 @@ type app struct {
 	// so the flags are gone and the frame, the keyboard, the pointer and the tab
 	// bar all read this.
 	page page
-	// tabs and tabRow are WHERE THE TAB BAR WAS LAST PAINTED — one span per chip
-	// that survived the width ladder, and the row of the terminal the bar landed
-	// on (-1 when a short frame cut it off). They are written by the draw
-	// (pages.go's [placeFrameWithBar]) and read by the press, which is the same
-	// bargain every hit map on this surface strikes: a click resolves against
-	// what was actually drawn, never against what a second computation thinks
-	// was drawn.
+	// tabs and tabRow are WHERE THE NAV WAS LAST PAINTED: one span per place's
+	// button that survived the width ladder, and the row of the terminal the
+	// nav landed on (-1 on a frame with no head). They are written by the draw
+	// (head.go's [app.headRows], topnav.go's [app.navLine]) and read by the
+	// press, which is the same bargain every hit map on this surface strikes: a
+	// click resolves against what was actually drawn, never against what a
+	// second computation thinks was drawn.
 	tabs   []placeTabSpan
 	tabRow int
+	// navMemo is the nav's row as it was last laid out, and navMore is its
+	// fold, `more ▾`, and the menu of places behind it (topnav.go, navmore.go).
+	navMemo navMemo
+	navMore navMore
 	// boxRow and boxRows are WHERE A PLACE'S COMPOSER WAS LAST PAINTED — the row
 	// its first line landed on and how many lines it took — written by the same
 	// draw and read by the same press, on [app.chatTabs]'s bargain exactly. A click
@@ -2263,9 +2276,9 @@ type app struct {
 	// answers to one question.
 	bar barCursor
 	// tabHover is the place whose word the POINTER is resting on, and [pageNone]
-	// — the zero value — is "the pointer is not on the bar at all". It is what
-	// lifts one word's ink by one tier and changes nothing else on the frame
-	// (placemouse.go's [app.placeTabHover]).
+	// (the zero value) is "the pointer is not on the nav at all". It is what
+	// puts one word on the pointer's ground and changes nothing else on the
+	// frame (topnav.go's [app.navHover]).
 	tabHover page
 	// searchArm is how the search place's QUIET INTERVAL is armed, and nil — the
 	// real 150ms timer — everywhere but a test (place_search.go's
@@ -3460,6 +3473,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if write := a.teamsWrite(); write != nil {
 		cmd = tea.Batch(cmd, write)
 	}
+	// AND THE TEAMS PAGE SETTLES WHICH CONVERSATION ITS PANE HOSTS, after
+	// every message that could have moved the front (teamspagehost.go). One
+	// comparison on every other place.
+	if bring := a.teamsSync(); bring != nil {
+		cmd = tea.Batch(cmd, bring)
+	}
 	// AND THE TERMINAL'S TITLE IS ASKED AFTER EVERY MESSAGE, because this is
 	// the one place every change to where a person stands has already happened
 	// by — a place entered, a name arriving, a question coming up — and it is
@@ -3491,6 +3510,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// not survive has news, and a person who presses a key gets it rather than
 	// waiting for whatever repaints next.
 	a.takeLinkNotice()
+	// THE TEAMS PAGE TAKES WHAT IS ITS OWN AND HANDS THE REST TO THE MANAGER'S
+	// CONVERSATION it hosts (teamspagehost.go). One comparison on every other
+	// place.
+	if cmd, took := a.teamsRoute(msg); took {
+		return a, cmd
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		// A zero size is a terminal that could not say — a headless boot, a
@@ -3855,6 +3880,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.teamMenu.on {
 			a.closeTeamMenu()
 		}
+		if a.tsheet.on || a.tmove.on {
+			return a, nil
+		}
 		if a.wall.on {
 			a.wallWheel(msg.Mouse().X, msg.Mouse().Y, msg.Mouse().Button == tea.MouseWheelDown)
 			return a, nil
@@ -3893,11 +3921,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.questionDialogWheel(msg) {
 			return a, nil
 		}
-		// THE TAB BAR IS READ BEFORE EVERY PLACE'S OWN ROWS, exactly as it is for
-		// the press: it is the router's row, drawn on all seven places in the same
-		// cells, so a wheel answered by the place under it would scroll a list for
-		// a gesture made over a row that is not that list's. Over the bar the
-		// wheel walks the PLACES, one room a tick (placemouse.go's
+		// THE NAV IS READ BEFORE EVERY PLACE'S OWN ROWS, exactly as it is for
+		// the press: it is the router's row, drawn on every page in the same
+		// cells, so a wheel answered by the place under it would scroll a list
+		// for a gesture made over a row that is not that list's. Over the nav on
+		// a place the wheel walks the PLACES, one room a tick (placemouse.go's
 		// [app.placeTabWheel]).
 		if cmd, took := a.placeTabWheel(msg.Mouse().Y, placeWheelDelta(msg.Mouse().Button)); took {
 			return a, cmd
@@ -4078,6 +4106,25 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.teamMenu.on && msg.Mouse().Button == tea.MouseLeft {
 			return a, a.teamMenuPress(msg.Mouse().X, msg.Mouse().Y)
 		}
+		// AND THE NAV'S FOLD MENU, on the same terms (navmore.go).
+		if a.navMore.on && msg.Mouse().Button == tea.MouseLeft {
+			return a, a.navMorePress(msg.Mouse().X, msg.Mouse().Y)
+		}
+		// The move picker, over everything, and then a team's card own the
+		// press while they are up, on the same terms (teammove.go,
+		// teamsheet.go).
+		if a.tmove.on {
+			if msg.Mouse().Button == tea.MouseLeft {
+				return a, a.teamMovePress(msg.Mouse().X, msg.Mouse().Y)
+			}
+			return a, nil
+		}
+		if a.tsheet.on {
+			if msg.Mouse().Button == tea.MouseLeft {
+				return a, a.teamSheetPress(msg.Mouse().X, msg.Mouse().Y)
+			}
+			return a, nil
+		}
 		if a.wall.on && msg.Mouse().Button == tea.MouseLeft {
 			if cmd, took := a.wallPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
@@ -4114,13 +4161,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		if msg.Mouse().Button == tea.MouseLeft {
-			// THE TAB BAR IS READ BEFORE EVERY PLACE'S OWN ROWS, because it is
-			// the router's row and not any place's: it is drawn on every one of
-			// them, in the same cells, and a press answered by the place under it
-			// would be the one row of the frame that means something different
-			// depending on which room you happen to be standing in
-			// (placemouse.go's [app.placeTabPress]).
-			if cmd, took := a.placeTabPress(msg.Mouse().X, msg.Mouse().Y); took {
+			// THE NAV IS READ BEFORE EVERY PAGE'S OWN ROWS, because it is the
+			// router's and not any page's: row zero is the places on every
+			// page, and a press answered by the page under it would be the one
+			// row of the frame that means something different depending on
+			// where you happen to be standing (topnav.go's [app.navPress]).
+			// The strip is a chat's row. On a place it is not drawn, so the
+			// row under the nav is the page's.
+			if cmd, took := a.navPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
 			// AND HOME'S RULE IS READ BEFORE HOME'S OWN ROWS, on the tab bar's
@@ -4370,11 +4418,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// the body for the same reason: the two are drawn side by side, so
 			// which one was pressed is a question about x (room.go). A rail row
 			// is a door into that node's room.
-			// AND THE TRAFFIC RAIL BEFORE IT, at the frame's right edge while the
-			// manager is in front: a row goes to its member (teamtraffic.go).
-			if cmd, took := a.trafficPress(msg.Mouse().X, msg.Mouse().Y); took {
-				return a, cmd
-			}
 			if cmd, took := a.railPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
@@ -4494,6 +4537,18 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.teamMenuMotion(msg.Mouse().X, msg.Mouse().Y)
 			return a, nil
 		}
+		if a.navMore.on {
+			a.navMoreMotion(msg.Mouse().X, msg.Mouse().Y)
+			return a, nil
+		}
+		if a.tmove.on {
+			a.teamMoveMotion(msg.Mouse().X, msg.Mouse().Y)
+			return a, nil
+		}
+		if a.tsheet.on {
+			a.teamSheetMotion(msg.Mouse().X, msg.Mouse().Y)
+			return a, nil
+		}
 		if a.wall.on {
 			a.wallMotion(msg.Mouse().X, msg.Mouse().Y)
 			return a, nil
@@ -4540,12 +4595,20 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Mouse().Button == tea.MouseLeft && a.dragMotion(msg.Mouse().X, msg.Mouse().Y) {
 			return a, nil
 		}
-		// AND THE TAB BAR IS READ BEFORE EVERY PLACE'S OWN ROWS HERE TOO, for the
-		// press's own reason: the bar is the router's row and means the same thing
-		// on all seven places, so the word under the pointer lifts wherever a
-		// person is standing (placemouse.go's [app.placeTabHover]).
+		// AND THE HEAD IS READ BEFORE EVERY PAGE'S OWN ROWS HERE TOO, for the
+		// press's own reason: the nav and the strip are the router's rows and
+		// mean the same thing on every page, so the button under the pointer
+		// takes its ground wherever a person is standing (topnav.go's
+		// [app.headHover]).
 		a.hoverDraftSeam(msg.Mouse().X, msg.Mouse().Y)
-		if a.placeTabHover(msg.Mouse().X, msg.Mouse().Y) {
+		if a.headHover(msg.Mouse().X, msg.Mouse().Y) {
+			// AND THE HEAD TAKES THE POINTER OFF HOME'S PROJECT NAMES, which
+			// underline under the pointer alone (home.go's [app.homeHover]) and
+			// would otherwise stay lit after it left them for the nav.
+			if a.home.projectHover != -1 {
+				a.home.projectHover = -1
+				a.touch()
+			}
 			return a, nil
 		}
 		if a.at(pageSettings) {
@@ -7047,7 +7110,7 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 // a place where missing costs you the page.
 //
 // A TEAM REFERENCE IS THE SAME KIND OF DOOR (teamlink.go): a member opens, or
-// is resumed and opened, and a team's name opens the conversations view on it.
+// is resumed and opened, and a team's name opens the teams page on it.
 func (a *app) linkPress(x int, r row) (bool, tea.Cmd) {
 	if len(r.links) == 0 || a.welcome.open {
 		return false, nil
@@ -7258,6 +7321,9 @@ func (a *app) slash(line string) tea.Cmd {
 		// pasted into a shell. /status still prints it whole.
 		help := helpText(a.hostedPath(tildePath(a.file, a.tilde)), a.chords)
 		a.noteFacts(help, columnFacts(help, true)...)
+		if n := len(a.entries); n > 0 && a.entries[n-1].kind == entryNote {
+			a.entries[n-1].sheet = true
+		}
 		return nil
 
 	case "budget":
@@ -7465,6 +7531,10 @@ func (a *app) slash(line string) tea.Cmd {
 	case "wall":
 		// EVERY OPEN CONVERSATION AT ONCE, as a grid of live tiles (wall.go).
 		return a.openWall()
+
+	case "teams":
+		// THE TEAM-LEVEL VIEW, which is a place (place_teams.go).
+		return a.showPage(pageTeams)
 
 	case "spend":
 		// AND THE WHOLE MACHINE'S BILL, which is a place and not a note. This word

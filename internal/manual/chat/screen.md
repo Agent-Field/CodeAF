@@ -28,42 +28,42 @@ line above the message box* below, and *The thinking chip above the message box*
 keys page). The tray is drawn only when it has something on it: with nothing attached, the
 row is not there and the box sits straight under the gap.
 
-Beside the conversation, on the right, the column — the right-hand bar, sidebar, task
-panel, whatever you call it — takes 30 columns (24 on a narrower frame)
-from the session's first keystroke, before any tasks exist. An untouched empty
+Beside the conversation, on the right, the column (the right-hand bar, sidebar, task
+panel, whatever you call it) takes a quarter of the frame, 28 to 40 columns (30 at 120),
+from the session's first keystroke, before any tasks exist. It is the same column in every
+chat, and its header is `Tasks N`, or `Tasks N · Traffic N new` in a chat in a team. An untouched empty
 conversation opens without it: no column, no doors, no rule, no telemetry, just the
 centred greeting with the message box inside it (see *The empty screen* page); the
 column stands the moment you type, or at once if a standing order or a task is already
-here. It carries `tasks`, the
-roster of work, and `standing`, the orders standing over this conversation. A section's
-dim lowercase label appears only when that section has rows. Work fills the column
-rather than raising it, and the work it fills with is **this conversation's alone**.
-An empty column keeps only its typeable `+ /task` and `+ /standing` doors; where
-the project has a record from earlier sessions, one dim line at the foot of the column
-reads `ctrl+. earlier` and opens the task page. With no foreground command that can be
-kept, `ctrl+g` closes the column and opens it again, remembered between sessions, and the
-column's hide control above `+ /task` says so: `❯ ctrl+g hide`. While a command can be kept, that
-command takes the key and the column stays where it was. With the column closed the
-conversation is laid out at the full width of the terminal, running work still draws
-the strip along the top, and the keys row under the box reads `ctrl+g tasks` once the
-session has tasks to come back to and no running-turn line owns that row.
+here. Under the header, a needs-you band when anything needs you; then the roster of
+work grouped by state, and `standing`, the orders standing over this conversation. Work
+fills the column rather than raising it, and the work it fills with is **this
+conversation's alone**. An empty column keeps only its header and its typeable `+ /task`
+and `+ /standing` doors; where the project has a record from earlier sessions, one dim line
+at the foot of the column reads `ctrl+. earlier` and opens the task page. `alt+l` closes
+the column and opens it again, remembered between sessions, and the header names it at its
+right: `alt+l`. `ctrl+g` does the same while no foreground command can be kept. With the
+column closed the conversation is laid out at the full width of the terminal, running work
+still draws the strip along the top, and the keys row under the box reads `alt+l tasks`
+once the session has tasks to come back to and no running-turn line owns that row.
 
-**Seven places take the whole frame instead of sharing it**, at every width: home, tasks,
-standing, memory, spend, search and settings. Four are on the tab bar with the way back to the chats, `home  chats
-tasks  spend  settings`, and `tab` walks the four rooms; `alt+1` … `alt+8` (`opt+1` … `opt+8` on a Mac) jump
-straight to any of the seven from wherever you are standing — a place or a conversation —
+**Eight places take the whole frame instead of sharing it**, at every width: home, teams,
+sessions, standing, memory, spend, search and settings. Five are on the tab bar with the way back to the chats, `home  teams  chats
+sessions  spend  settings`, and `tab` walks the five rooms; `alt+1` … `alt+9` (`opt+1` … `opt+9` on a Mac) jump
+straight to any of the eight from wherever you are standing, a place or a conversation,
 and each
-has commands of its own (`/home`, `/history`, `/standing`,
+has commands of its own (`/home`, `/teams`, `/history`, `/standing`,
 `/memory`, `/settings`). The rewind timeline (`/rewind`) takes the frame the same way and is
-deliberately not one of the seven — it is something you do to this conversation rather than
+deliberately not one of the eight: it is something you do to this conversation rather than
 a room in the machine.
 
 While any of them is up nothing else is drawn — no conversation, no box, no status line —
 and `esc` gives the frame back. **Only one is ever up:** opening any one closes the rest.
 
-Every place is drawn in one frame, top to bottom: the machine's own top line, the tab bar
-naming the four (and the one you stand in, when it is off the bar), a dim rule, the place's body, a rule carrying the place's own count or note, and
-the hint line last. See the **Places** page.
+Every place is drawn in one frame, top to bottom: the top line (the `codeaf` wordmark, the
+six places with the one you stand in lit, and the machine's own signs on the far end), the
+tab strip of your chats, a dim rule, the place's body, a rule carrying the place's own count
+or note, and the hint line last. See the **Places** page.
 
 **Only home has a box under that rule.** Its seam starts with the model, a colon and
 its effort word and approvals: `z-ai/glm-5.3-flash:auto · ◇ asks`. Conversation seams use
@@ -99,26 +99,42 @@ while preserving the content's indentation.
 
 ## Conversation tabs — switching conversations by clicking, the tab strip over a chat, clicking a chat name
 
-**The header begins with `home` and the conversations this window has been in**, drawn as
-tabs in a row of their own, with a thin rule separating navigation from reading:
+**The header's second line, inside a chat, is the conversations this window has been in**,
+drawn as tabs in a row of their own under the top line, with a thin rule separating
+navigation from reading. The strip is that chat's row. Home, teams, sessions, spend,
+settings and every other place do not draw it:
 
 ```
-  home    openrouter price scrape    Refactor the rail sco…    [Shipping the parser] ×  +    +2
-  ────────────────────────────────────────────────────────────────────────────────────────
+ >● codeaf   home  teams  chats  sessions  spend  settings                 $1.20 / $20 · thu 10:31pm
+     openrouter price scrape       Refactor the rail scope...      Shipping the parser ×   +   ▦ All
+  ──────────────────────────────────────────────────────────────────────────────────────────────────
 ```
 
-While a team is shown its chip, `● harbor ▾`, comes right after `Home` and before the tabs it
+While a team is shown its chip, `● harbor ▾`, comes first on the strip, before the tabs it
 narrows, with the team's `◆ Manager` after it (see *The team switcher on the tab strip*).
+The strip is not on a place, so there is no unlit tab there and a press on that row is
+the page's.
 
-Each tab is a **padded target** separated by quiet space. The filled surface includes
-one blank cell before its status icon and after its close mark; the leading inset
-selects the tab and the trailing inset belongs to the close target. The gaps do nothing.
-Every tab has a filled background. The active tab reverses the surface contrast
-and has stronger text; brackets identify it on
-terminals without background color. **Every tab reacts to the pointer**,
-including the one you are already in, and the highlight it wears as the *chosen* tab stays
-put when the pointer leaves. Without color, hovering adds a dot beside the tab’s
-close mark; Home, `+`, and the scroll arrows gain a pointer dot.
+Each tab is a **padded target**, and **one blank cell separates any two pieces of the
+row**: the team chip and the first tab, two tabs, the last tab and `+`, `+` and `▦ All`.
+The row's first piece starts in the same column with a team chip or without one. A tab is
+the same width on both sides of its name: one blank cell, the status mark's cell and a
+space lead it, and a space, the `×` cell and one blank cell close it (` ◐ name × `). The
+status and `×` cells are kept even while they are empty, so a tab never changes width when
+work starts or the pointer arrives. The leading cells select the tab and the `×` and the
+cell after it close it. The gaps do nothing. Every tab has a filled background. The active
+tab reverses the surface contrast and has stronger text; brackets identify it on terminals
+without background color. **Every tab reacts to the pointer**, including the one you are
+already in, and the highlight it wears as the *chosen* tab stays put when the pointer
+leaves. Where colour cannot show a ground (16 colours or none), the tab under the pointer
+wears `·` in its first cell, as a top-line word does, and shows its `×`; `+` and the scroll
+arrows gain the same dot.
+
+**Every piece of the strip says what it does on the hint line** while the pointer rests
+on it: a tab says `Go to openrouter price scrape · running · click` (the same sentence its
+square in the dock says), its `×` says `Close this tab · the work keeps running · click`
+(`ctrl+w` on the tab you are in), `+` says `New chat · ctrl+t`, and `‹` `›` say
+`More tabs to the left · click` and `More tabs to the right · click`.
 
 **Clicking a tab goes to that conversation** — the same switch `alt+k` makes. Clicking the
 tab you are already in does nothing while you are in the conversation itself, and takes you
@@ -131,9 +147,11 @@ them, so the one you reached for a minute ago is still in the same place. At mos
 remembered; past that the one you have not been in for longest falls off, and the tab you
 are in never does. This is a presentation limit, not a limit on running work or history.
 
-**Many tabs scroll horizontally instead of shrinking their names.** On a roomy strip,
-`‹` and `›` appear at the edges when more tabs exist in that direction (`<` and `>` in
-ASCII). Click an arrow, or wheel vertically or horizontally over the header, to browse
+**Names shrink first, then the tabs scroll.** A long name is cut at a word where one is
+near (`Refactor the rail...`, not `Refactor the rail scop...`). While every tab still fits
+with at least 16 cells each, the names shrink so every tab stays on the row, as a browser's
+tabs do. Past that the strip scrolls: `‹` and `›` both appear at the edges, the one with
+nothing further in its direction dim and inert (`<` and `>` in ASCII). Click an arrow, or wheel vertically or horizontally over the header, to browse
 the names. This changes neither the conversation, its draft nor the transcript position.
 The selected tab may leave view while you browse; choosing a conversation or closing a
 tab brings the selection back. Narrow frames keep the selected tab without spending its
@@ -182,17 +200,14 @@ door that had to close the conversation to leave it.
 ## Why did my tabs disappear on a small terminal — how wide and tall the tab bar needs
 
 **The tab strip stands down below 12 columns or below 16 rows.** At 16 rows and taller,
-the conversation keeps the same four-row head as every place: the machine pulse, the tabs,
-a rule, and a blank. From 6 through 15 rows the whole head stands down, while the blank and
+the conversation keeps the same four-row head as every place: the top line with the places
+and the machine pulse, the tabs, a rule, and a blank. From 6 through 15 rows the whole head stands down, while the blank and
 rule above the message box remain. Below 6 rows those give way too, leaving the conversation,
 the box, and the status line. Blank rows cannot activate the content beneath them.
 
-**`home` at the left opens the home page**, keeping your conversation and unsent words.
-Its lowercase label and padded click target stay in the same columns on the dashboard
-and in conversations, including while hovered.
-It is separate from the tabs and breadcrumbs. Space twice on an empty composer still
-opens Home. Home disappears when the connection cannot open conversations, and on
-very narrow frames the current tab takes priority.
+**`home`, the first place on the top line, opens the home page**, keeping your
+conversation and unsent words. It is separate from the tabs and breadcrumbs, and it is on
+the top line of every page. Space twice on an empty composer also opens it.
 
 The switcher floats on a separate background inside a rounded outline, with space
 above and below its contents when the window is tall enough. `>` marks the keyboard
@@ -854,7 +869,8 @@ slot and the standing line wins whenever both would show. While the spelling-out
 out, the slot turns a small spinner in front of the same words. Neither ever moves the
 message box: this line is on the frame in every state.
 
-One line in that slot is not about the next keystroke: `ctrl+g tasks`, which appears
+One line in that slot is not about the next keystroke: `alt+l tasks` (`alt+l traffic` in a
+manager's chat), which appears
 when you have closed the task column, this session has run something, and no active
 running-turn hint has the slot. It is the whole of what the frame says about a roster
 that is not on screen, and it says nothing at all when nothing has been run.
@@ -1392,39 +1408,36 @@ On top of those eight: preview blocks under a pending call are capped at 4 rows 
 
 ## What the top line of home drops when it is narrow — the clock goes first
 
-Home's top line is the program's name on the left and the machine's vital signs on the
-right:
+The top line is the program's name and the places on the left, and the machine's vital
+signs on the right:
 
 ```
- codeaf          2 want you · 4 moving · $0.55 / $20.00 · thu 1:11pm
+ >● codeaf   home  teams  chats  sessions  spend  settings   2 want you · 4 moving · $0.55 / $20 · thu 1:11pm
 ```
 
-When there is not room for all of it, the segments give way **one at a time, in a fixed
-order**, exactly the way the status line's do:
+When there is not room for all of it, things give way **one at a time, in a fixed order**
+(the owner's order, 2026-09-24):
 
 ```
-clock → the allowance ($20.00) → the day's spend → moving → want you
+clock (and `on <machine>`) → moving → `2 want you` becomes `2 ?` → the allowance → the places fold into `more ▾` → the day's spend
 ```
 
-So the clock is the first thing off the line and `2 want you` is the last. The reason is
-one sentence: the terminal's own bar, the window and the wall clock all say what time it
-is, and nothing anywhere else says that two things have stopped and will not move until
-you look — a cell that could carry either carries the one you can only get here. Within
-that, `want you` outranks `moving` because a stopped thing needs you and a moving one does
-not, and the day's spend outranks the allowance because a figure is a fact and a fraction
-is that fact plus a bound.
+So the clock is the first thing off the line, `moving` goes next, and the places fold only
+after that, into a `more ▾` word that opens a menu of exactly the places it folded. The
+day's figure goes after the places. **The count of things waiting on you never goes**: its
+words shorten to `2 ?`, the same count in the same amber and the mark a waiting tab wears,
+and that is on the line at every width. `moving` goes first because a stopped thing needs
+you and a moving one does not.
 
-**The allowance goes by respelling, not by slicing.** `$0.55 / $20.00` becomes `$0.55` —
+**The allowance goes by respelling, not by slicing.** `$0.55 / $20` becomes `$0.55`,
 never `$0.55 /` and never a bound with nothing in front of it. And when the money segment
 goes entirely there is **no `$` left on the line at all**: a narrow top line never says
 `$0.00`, because that would be the line reporting a figure it had actually given up on.
 (The one `$0.00` on the whole surface is the live status line of a conversation, so its
 segments do not jump sideways as the first money arrives. It is a different line.)
 
-**The name never gives way.** A window too narrow even for `2 want you` beside it draws
-` codeaf` alone. This used to be all-or-nothing — everything, or the name by itself — so a
-sixty-column window spent twelve cells on `thu 12:01am` and then, one segment later, said
-nothing about the machine whatsoever.
+**The name and the place you are standing in never give way.** Nor does the air: two blank
+cells between two place words and one at each end of the line, at every width.
 
 ## Other width thresholds worth knowing
 
@@ -1434,10 +1447,10 @@ Beyond the four tiers, these are the exact points where parts of the screen give
 | --- | --- |
 | the status row's right edge may wrap to its own row | below width 100 |
 | the ledger drops its compaction forecast | below width 70 |
-| full task rail, 30 columns off the conversation | width 120 |
-| slim task rail, 24 columns | width 100 |
-| no rail column at all — `alt+t` overlays the roster instead | below width 100 |
-| no rail column at any width — you closed it with `ctrl+g` | your choice, remembered |
+| the side column, a quarter of the frame, 28 to 40 columns | width 100 |
+| `alt+w` widens the side column by 16 columns | width 120 |
+| no side column at all; `alt+t` or `alt+l` lays it over the body | below width 100 |
+| no side column at any width: you closed it with `alt+l` | your choice, remembered |
 | task strip | width 24 **and** height 6 |
 | a room's pinned header | width 12 and a non-zero breathing gap |
 | the empty screen's greeting (wordmark, model line, centred message box, try line, recent sessions) | not drawn below height 12 or width 40 |
@@ -2254,8 +2267,8 @@ long time `↓` starts from what that window holds and counts up from there.
 A room opened on a task that was already running shows `↑` from the newest
 request in its record and `↓` from the moment the task writes anything. The
 column leaves when the task finishes.
-The price and the token count on the task's row in the task column move at each
-step that spends, not only when the task changes state.
+The price and the token count on the hint line over the task's row in the task column
+move at each step that spends, not only when the task changes state.
 
 A run's read-only transcript inside an adaptive run's page draws no column: it
 is a record being read back, not work being watched.
@@ -2934,10 +2947,10 @@ back to plain ASCII (`!` `*` `o` `-` `+`) and the screen still reads.
 ## alt or option or opt — how the chords are spelled on a Mac, on Linux and on Windows, and why not the option symbol
 
 **It is one key and two spellings, and codeaf picks the spelling from the platform it is
-running on.** On macOS every chord is drawn with `opt+`, `opt+1`…`opt+8`, `opt+.`,
+running on.** On macOS every chord is drawn with `opt+`, `opt+1`…`opt+9`, `opt+.`,
 `opt+enter`, `opt+g`, `opt+q`, `opt+s`, `opt+w`, `opt+o` — because the key that Mac keycap
 calls **option** is the key you press. On Linux, on Windows, and everywhere else the same
-chords are drawn `alt+1`…`alt+8`, `alt+.`, `alt+enter` and so on. Every hint line, the key
+chords are drawn `alt+1`…`alt+9`, `alt+.`, `alt+enter` and so on. Every hint line, the key
 map, the composer layer's rows and the key sheet `/help` draws read that one spelling, so
 what is on your screen is what is on your keyboard.
 
@@ -2970,7 +2983,7 @@ appears under the list:
 
 It names the terminal you are actually in, it is said once, and the first real chord that
 arrives retires it for the rest of the session. The first-run setup says the same thing ahead
-of time, as a condition rather than a diagnosis: `the places answer opt+1…opt+8 · if opt types
+of time, as a condition rather than a diagnosis: `the places answer opt+1…opt+9 · if opt types
 a character instead, turn on "use option as meta" in …`.
 
 **`alt+b` and `alt+f` do not retire it, and that is deliberate.** iTerm2's Natural Text
@@ -3002,8 +3015,8 @@ are worth the one setting.
 
 **And on kitty, ghostty and WezTerm there is a way in that needs no setting at all.** Those
 terminals run the kitty keyboard protocol and report it, and where that report arrives codeaf
-binds `ctrl+1` … `ctrl+8` as a second spelling of the jump and `ctrl+.` as a second spelling of
-the map. The map's own line says `alt+1…8 or ctrl+1…8 go to a place` exactly when the alias is
+binds `ctrl+1` … `ctrl+9` as a second spelling of the jump and `ctrl+.` as a second spelling of
+the map. The map's own line says `alt+1…9 or ctrl+1…9 go to a place` exactly when the alias is
 live, so you never have to guess. `ctrl+<digit>` has no encoding in the older scheme, which is
 why it can only ever be the second spelling and never the first — a terminal that has said
 nothing is never promised it.
@@ -3087,38 +3100,51 @@ are one.
 
 ## What the task column looks like: quiet rows, its footer lines and its one door
 
-The right-hand task column is read at a glance, so it is drawn as one bright thing and a
-lot of quiet ones. (This is its `tasks` section. The same column's other section,
-`standing`, is described under *What is that column on the right*.)
+The right-hand column is read at a glance, so it is drawn as one bright thing and a lot of
+quiet ones. This is its Tasks view; *What is that column on the right* has the whole column,
+and the team manager page has its Traffic view.
 
+```
+Tasks 14 · Traffic 3 new              alt+l
+? Port the parser · your call · nobod…
+✕ parser bench incomplete
+──────────────────────────────────────
+Running 4
+  ⠙ rebase the parser onto dev      2m
+  ⠙ bench the lexer at p99
+Queued 3 ▸
+Done 6 ▸
++ /task
+```
+
+- **The header** is the column's two words in a chat in a team, one word elsewhere. The
+  word in front is bold ink and the other is dim, and each keeps its count; a count of `0`
+  is dim, and a count of new traffic, `3 new`, is in ink. The `alt+l` at the right is dim.
+- **The needs-you band** is the one place with colour of its own: what is waiting on you
+  leads with its `?` in the needs-you amber, and a failure nobody has opened leads with its
+  `✕` in ordinary ink. A thin dim rule closes it. With nothing waiting it is not drawn.
+- **Group headings** (`Running 4`, `Done 6 ▸`) are muted with a dim count; the `▸` of a
+  folded group and the `▾` of an open one are muted too. `Running` wears no mark, because
+  it does not fold.
 - A **running** task's name is in ink, the body colour. **Queued, waiting and finished**
-  names are muted — a step quieter — and the room you are standing in is the one name in
-  the accent and bold, with a colour band across its whole row.
-- The tree connectors (`├─ `, `└─ `, `│  `), the id at the end of a row (`#7`), every
-  detail line under a title, and every footer line are dim. The one loud exception is a
-  branch that did not merge: `conflicted · task/fix-nil` is in the bad hue.
+  names are muted, a step quieter, and the room you are standing in is the one name in the
+  accent and bold, with a colour band across its whole row. The time at the right of a row
+  is dim.
 - The state glyph at the head of a row takes its own identity ring hue and no role
   colour, so a glyph can never be misread as a state paint.
 
-**Rows that are running never scroll off**, however long the list gets: they are pinned to
-the top of the column and everything under them scrolls. The `tasks` label above them is
-pinned too, so the heading is still there when you have scrolled a long way down.
+**The header and the band never scroll**, however long the list gets: they are pinned to
+the top of the column and everything under them scrolls.
 
-**A task that has finished is one line.** While a task is running, waiting on you, or
-held, its row carries the detail lines under its title — what it is doing, what it is
-costing, what it waits on, where a job's log is going. Once it is over, the row is its
-glyph, its name and its `#7` and nothing else, so the column's height goes to what is
-still moving rather than to a day's history. Queued work is not finished and keeps its
-`waiting on Collect sources` line; a finished task that is still **your call** —
-`your call · conflicts with your branch`, `your call · nobody could check it` — keeps its
-line too, because it is something to act on rather than something that is over.
-Nothing is thrown away: see *Opening a finished row on the task column*.
+**Every task is one line**, running or finished. What a row used to carry underneath
+(what it is doing, what it is costing, what it waits on, the reason it is your call, the
+merge word, the branch) is on the hint line while the pointer is on the row, with the whole
+name first. So the column's height goes to rows rather than to a day's history. Nothing is
+thrown away: see *Opening a finished row on the task column*.
 
 **The roster is this conversation's work and nothing else.** No rows of the project's
-record are drawn under it. It used to carry a dulled footnote of up to six of them — a
-sample of two thousand, standing where this conversation's task rows go, with the
-cursor walking out of this conversation into another one without the column saying so.
-What stands in their place is **one dim door** at the foot of the column: `ctrl+. earlier`.
+record are drawn under it. What stands in their place is **one dim door** at the foot of
+the column: `ctrl+. earlier`.
 
 **Everything earlier lives one press away.** `ctrl+. earlier` opens the full-screen task
 page (`ctrl+.`, `/history`), which holds every task the project has ever run, across every
@@ -3126,70 +3152,66 @@ session, with the filter, the cards and the mention. Home (`/home`, or space twi
 empty box) is the other place old work is listed. Running work belonging to *other*
 windows is not on the column at all, and never was; `/history` carries that too.
 
-The footer is up to three dim lines of counts — `3 running · 1 needs you`, `148 waiting ·
-12 done` — then the standing count `◦ 2 standing orders` when anything stands over this
-project, and then up to two more dim lines, each of which is a button as well as a key:
+The footer has no counts: the header counts the work and each heading counts its group.
+It is the standing count `◦ 2 standing orders` when anything stands over this project, and
+then up to two dim lines, each of which is a button as well as a key:
 
 ```
 ctrl+. earlier
 alt+w widen · click seam
 ```
 
-**The first of them is one door with two spellings, never two doors.** It is drawn only
-when the full-screen task page (`/history`) has something this column cannot give, and the
-words on it say which: `ctrl+. earlier` when the project's record holds work this
-session never ran, and `ctrl+. view more` when the only thing held back is a family the
-column has folded. There is never more than one such line.
-`alt+w widen · click seam` appears only while a title is actually being cut by its own
-indent, **and only from 120 columns up** — that is the only width with a wider tier to
-offer, so on a 100-to-119 column frame there is no line and the column's two leftmost
-cells are part of the row rather than a handle. The `❯` hide control sits immediately above `+ /task`, after the visible task rows.
-Its `❯` is drawn in ink rather than dim
-because it is the control the pointer presses. With no foreground command to keep it
-reads `❯ ctrl+g hide`; while a command owns that chord it reads only `❯ hide`, because
-a hint may name only a key that works on that frame.
+**The first is drawn only when the full-screen task page has work this session never
+ran.** There is never more than one such line, and there is no `view more` line any more:
+a folded group is opened by its own heading. `alt+w widen · click seam` appears while the
+column holds the keyboard or the pointer is on it, **and only from 120 columns up**: that
+is the only width with a wider column to offer, so on a 100-to-119 column frame there is no
+line and the column's two leftmost cells are part of the row rather than a handle. The
+column's way out is the `alt+l` at the right of its header.
+
+**A plain or sixteen-colour terminal gets the linear marks**: `x` for `✕`, `-` for the
+band's rule, `>` and `v` for the folds, and `*` for a running glyph. The amber is the one
+colour the band leans on, and where there is none the `?` still says it.
 
 ## Opening a finished row on the task column: how to see the log path of a job that already finished, and where the merge word, price or branch went
 
-A finished task's row is one line, and the line it used to carry underneath is **folded,
-not deleted**. It is the same fold a family of tasks uses, on the same keys and the same
-cell:
+A finished task's row is one line, and the line it used to carry underneath is **on the hint
+line, not deleted**. Point at the row and the hint line under the message box says the
+whole of it: the whole name, then that task's own last word (`merged · $0.42` for work that
+came home clean, the branch it kept, the reason it is your call), then `click opens it`.
+There is no fold on a task row and no `▸` in its state cell; the cell is the task's state,
+and a press on it opens the task's room like the rest of the row.
 
-- **From the keyboard:** `alt+t` hands the column the keyboard, `↑` and `↓` walk to the
-  row, `→` opens it, `←` folds it away again. `esc` gives the keyboard back.
-- **With the pointer:** hover the row and its state glyph turns into `▸`; click that one
-  cell to open it, and `▾` in the same cell to close it. Clicking anywhere else on the
-  row opens that task's room, as it always did — and so does that same cell on any frame
-  where the triangle is **not** drawn in it, because then it is holding the row's state
-  and a state is not a control.
-- The fold is remembered per row, exactly as a family's fold is, and it lasts as long as
-  the conversation does.
+With the keyboard, `alt+t` hands the column the keyboard and `↑` `↓` walk to the row; the
+room behind `enter` has everything the row does and more.
 
-What comes back is that task's own last word: `merged · $0.42` for work that came home
-clean. A background job is not a finished task row: it lives in the `jobs` section, and
-its log path is on the job's page, not folded under a roster line. A row with nothing to
-say — a task that ended with no merge word and no price — offers no `▸` at all, because a
-mark that answered a press with silence would be a lie. The full record of any task is on
-the task page (`ctrl+.`, `/history`) whether the row is folded or not.
+Finished work sits under `Done`, which starts folded to its heading: press `Done 6 ▸`, or
+`enter` on it, to open it, and it stays open for the session.
+
+A background job is not a finished task row: it lives in the `jobs` section, and its log
+path is on the job's page. The full record of any task is on the task page (`ctrl+.`,
+`/history`).
 
 ## Scrolling the task column: the mouse wheel over the sidebar, and the keys that walk it
 
 **Turn the wheel with the pointer over the column and the column scrolls.** It moves the
 column's own window and leaves the conversation beside it exactly where it was; a wheel
 turned over the conversation still scrolls the conversation. Three rows a notch, the same
-as everywhere else on this screen. Work that is running is pinned to the top and does not
-scroll away, and the `tasks` label stays with it.
+as everywhere else on this screen. The header and the needs-you band are pinned to the top
+and do not scroll away.
 
-From the keyboard it is `alt+t` to take the column, then `↑` `↓` to walk it — the window
-follows the cursor — `→` `←` to open and fold, `enter` to walk into a task's room, `alt+w` to
-widen the column, and `esc` to give the keyboard back. The column's hint line says the
-same: `↑↓ move · →← tree · enter open · alt+w wide · esc`, and it gains `alt+e think harder`
-before the `esc` while the row under the cursor is work that has not finished — that chord
-moves the task's own thinking rung. And on a row that says **`your call`** the whole slot
-becomes that row's own answers and an `esc` — `a` says yes to what it is asking, `n` says
-no — and those letters answer that landing from the column without opening its room.
-While the column holds the keyboard the wheel walks that cursor instead of the window, so
-the two never fight.
+From the keyboard it is `alt+t` to take the column, then `↑` `↓` to walk it (the band, the
+group headings and the tasks; the window follows the cursor), `enter` to walk into a task's
+room or to open or fold a group, `←` `→` to switch between Tasks and Traffic in a chat in a
+team, `alt+w` to widen the column, and `esc` to give the keyboard back. The column's hint
+line says the same: `↑↓ move · enter open · x stop · alt+w wide · esc`, led by
+`←→ tasks/traffic · ` in a chat in a team, and it gains `alt+e think harder` before the `esc`
+while the row under the cursor is work that has not finished; that chord moves the task's
+own thinking rung. And on a row that says **`your call`**, in the band or in the list, the
+whole slot becomes that row's own answers and an `esc` (`a` says yes to what it is asking,
+`n` says no), and those letters answer that landing from the column without opening its
+room. While the column holds the keyboard the wheel walks that cursor instead of the window,
+so the two never fight.
 
 Widen is `alt+w` and not the bare letter `w`: the roster is read before the message box, so
 a bare `w` there ate the `w` out of every sentence somebody typed with the column still
@@ -3198,103 +3220,121 @@ no message box on the screen at all.
 
 There is **one scrollbar-less window and no second one**: the wheel, the arrow keys and a
 landing task all move the same offset. What the window cannot show is said at the foot of
-the column — the totals, and `ctrl+. earlier` onto the full task page.
+the column: `ctrl+. earlier` onto the full task page.
 
 ## What is that column on the right — tasks, standing, jobs and an empty rail
 
-The column beside the conversation carries the two things that govern a conversation, and
-a third for the background work that conversation started.
-A section with rows earns a dim lowercase label; an empty section keeps only its dim `+`
-door. (An untouched empty conversation has no column at all until the first keystroke,
-a task, or a standing order — *The empty screen* page says why.) Once it stands:
+The column beside the conversation is one column in every chat. It carries this
+conversation's work, the orders standing over it, and the background work it started, and
+in a chat in a team it carries the team's Traffic as its second view. (An untouched empty
+conversation has no column at all until the first keystroke, a task, or a standing order;
+*The empty screen* page says why.) Once it stands:
 
 ```
-tasks
-⠙ Fix the nil-map                                                       #7
-❯ ctrl+g hide
+Tasks 3 · Traffic 2 new                alt+l
+? Port the parser · your call · nobo…
+──────────────────────────────────────
+Running 1
+  ⠙ Fix the nil-map                  4m
+Done 1 ▸
 + /task
 
 standing
 ◦ keep the tests green
-◦ never touch the public API                                    everywhere
+◦ never touch the public API  everywhere
 + /standing
 
 ▸ jobs · 1 running · 4m12s
 
-1 running · 1 needs you
 ◦ 2 standing orders
 ctrl+. earlier
 ```
 
-- **`tasks`** is the roster — this conversation's work, one line per task, a click on a row
-  opening that task's room. Workers under a task are rows of that roster too — a task's
-  parts, an adaptive run's workers — hung under their parent with connectors, folded and
-  walked like any other row; there is no separate preview list beneath a row. When more
-  than one worker is running, the label itself says the count, such as `tasks · 4 working`;
-  at zero or one it remains simply `tasks`.
+- **The header** is `Tasks N`, and in a chat in a team `Tasks N · Traffic N new`. The word
+  in front is bold ink and the other dim; each is a button with a hover ground and a hint,
+  and the other word keeps its count, so what arrives on the Traffic while you read the
+  tasks still says `2 new`. Which word is in front is remembered for the session per kind
+  of chat: a manager's chat opens on the Traffic, every other chat on the Tasks. The `alt+l`
+  at the right closes the column.
+- **The needs-you band** is everything that needs you now, from both views: a task whose
+  next step is yours, a member's question to you, a decision put to you (each led by `?` in
+  amber), and a task that failed while you watched and that you have not opened (its `✕` in
+  ordinary ink). Three rows, then `+N more`; gone when empty; nothing in it is drawn again
+  below it. Each row opens its thing.
+- **The Tasks view** is the roster: this conversation's work under `Running`, `Queued`,
+  `Waiting` and `Done`, one line per task, newest first. Running is always open; the others
+  start folded to one heading line, and a press on the heading opens it for the rest of the
+  session. A click on a task row opens that task's room. Workers under a task (a task's
+  parts, an adaptive run's workers) are rows of their own in the same groups; there is no
+  tree and no preview list beneath a row.
+- **The Traffic view**, in a chat in a team, is what passes in the team, one line a row,
+  newest first, with a thin `new` line under what arrived since you last looked. The team
+  manager page has the whole of it.
 - **`standing`** is the standing orders reaching this conversation, one line each: a mark,
   what the order is called, and a dim tail naming its reach **only when that reach is not
-  the ordinary one** — `everywhere` for machine-wide, `just here` for this conversation
-  only, and nothing at all for an order governing this project. A row's mark becomes the
+  the ordinary one** (`everywhere` for machine-wide, `just here` for this conversation
+  only, and nothing at all for an order governing this project). A row's mark becomes the
   spinner while that order is being checked or fired right now. Clicking one opens
   `/standing` with the cursor already on it.
-- **`jobs`** is this conversation's background work — a server, a build, a watch, a render —
-  as a third section under the other two, collapsed by default to one line (`jobs · 2
-  running`, `jobs · 1 running · 4m12s` when exactly one is live, `jobs · 6 ran` when
-  nothing is). Enter or a click toggles it. Expanded, every running job draws, then
-  finished ones fill whatever room is left, newest first, with `▸ N earlier` counting the
-  rest. Zero jobs draws nothing at all — no label, no empty row, no `0 jobs`. A click on a
-  job opens its page, not a chat. The tasks page has the whole of it under *Background
-  jobs on the column*.
+- **`jobs`** is this conversation's background work (a server, a build, a watch, a render)
+  as a section under the other two, collapsed by default to one line (`jobs · 2 running`,
+  `jobs · 1 running · 4m12s` when exactly one is live, `jobs · 6 ran` when nothing is).
+  Enter or a click toggles it. Expanded, every running job draws, then finished ones fill
+  whatever room is left, newest first, with `▸ N earlier` counting the rest. Zero jobs draws
+  nothing at all. A click on a job opens its page, not a chat. The tasks page has the whole
+  of it under *Background jobs on the column*.
 - **The `standing` section keeps its rows however long the roster gets.** The sections
-  do not compete for the column: the roster is given what is left over after the label,
-  the doors, the standing rows and the jobs section have been reserved, and it is the
-  roster that scrolls. A session with forty tasks in it still shows the orders standing
-  over it, and the jobs that are running, without scrolling.
-- **At most three orders are drawn, and the label counts the rest** — `standing · 7 more`,
-  in the same shape as `tasks · 4 working`. Past a handful the rows stop being read one at
-  a time; `+ /standing` (or `/standing`) opens the page that lists them all. A section
-  showing every order it has says nothing extra: the label is simply `standing`.
+  do not compete for the column: the roster is given what is left over after the doors,
+  the standing rows and the jobs section have been reserved, and it is the roster that
+  scrolls. A session with forty tasks in it still shows the orders standing over it, and
+  the jobs that are running, without scrolling.
+- **At most three orders are drawn, and the label counts the rest**: `standing · 7 more`.
+  Past a handful the rows stop being read one at a time; `+ /standing` (or `/standing`)
+  opens the page that lists them all. A section showing every order it has says nothing
+  extra: the label is simply `standing`.
 - On a **short terminal** the standing rows give way one at a time so that the roster
   keeps at least six rows, and under that the whole standing section stands down rather
   than drawing a label over nothing. Live jobs are reserved before standing spends: a
   running job is not a thing this column hides to make room for furniture.
-- **An empty section has no label and no absence sentence.** When tasks and standing are
-  both empty, only `+ /task` and `+ /standing` remain as the discoverable doors. Jobs add
-  no `+` door — a job is started by a tool, not typed.
+- **An idle column draws nothing to mark an absence**: no `none` rows, no empty group
+  headings, no band. The header keeps its words with a dim `0`, and `+ /task` and
+  `+ /standing` remain as the discoverable doors. Jobs add no `+` door; a job is started by
+  a tool, not typed.
 - **The `+` rows type, they do not arm.** Pressing `+ /task` or `+ /standing` puts that
-  command and a space at the head of your message box and hands the keyboard back — plain
+  command and a space at the head of your message box and hands the keyboard back: plain
   text you can edit or delete, no mode, no form.
 
-Under the sections come the column's dim totals and its door lines. The separation between
-the sections is one blank line: this surface separates with whitespace and never with a
-rule. On a build with no ambient side the `standing` section is absent entirely.
+**It is one width everywhere**: a quarter of the frame, never under 28 columns or over 40,
+the same in every chat and in either view, so nothing drawn in it moves the conversation.
+The separation between the sections under the list is one blank line; the band's rule is
+the one rule in the column. On a build with no ambient side the `standing` section is
+absent entirely.
 
-## The right edge: the chevron that opens and closes the task column
+## The right edge: the chevron that brings the task column back, and the key that closes it
 
-**The right edge always carries one chevron, and clicking it goes both ways.**
+**The column closes from its header and comes back from its edge**, and the pointer can go
+round the whole cycle without touching the keyboard.
 
-- While the column **stands**, the line immediately above `+ /task` reads `❯ ctrl+g hide` when no
-  foreground command can be kept, and `❯ hide` while a command owns that key. The
-  `❯` is drawn in ordinary ink, not dim, because it is a control and not a reading;
-  the words beside it stay dim. Click the line and the column closes either way.
+- While the column **stands**, its header ends in the key itself, `alt+l` (`opt+l` on a
+  Mac), dim, at the right. It is a button: under the pointer it takes a ground and the hint
+  line says `Hide this column · alt+l`. Press it and the column closes.
 - While the column is **away**, what is left is **two columns down the right of the frame**
-  with a `❮` handle at the middle of them, also in ink. The whole strip is a door: click
-  anywhere on it and the column comes back.
+  with a `❮` handle at the middle of them, in ink. The whole strip is a door: click
+  anywhere on it and the column comes back. Under the pointer the handle brightens further
+  and the strip takes a background, which is how everything pressable on this screen says
+  so. On a terminal that cannot draw it the handle is `<`.
 
-So one control in two states — `❯` to close, `❮` to open — and the pointer can go round the
-whole cycle without touching the keyboard. With no foreground command to keep, `ctrl+g`
-does the same thing from the keyboard; while one can be kept, the key backgrounds it.
-Under the pointer the chevron brightens further and its line
-takes a background, which is how everything pressable on this screen says so. On a terminal
-that cannot draw them the two chevrons are `>` and `<`.
+`alt+l` does the same thing from the keyboard in both directions, and `ctrl+g` does too
+while no foreground command can be kept; while one can, `ctrl+g` backgrounds it.
 
 One cell above the closed edge's handle carries what the work is doing while there is
-anything to carry — `?` in the question colour for a task waiting on you, `◐` in the accent
-for something running, and nothing at all otherwise. Those keep their own colours; they are
-about the work, not about the door. The edge costs the conversation its two columns, so the
-text re-wraps around it and nothing is ever drawn underneath. Under 100 columns there is no
-edge, because at that width there is no column to bring back.
+anything to carry: `?` in the needs-you amber for a task or a team member waiting on you,
+`◐` in the accent for something running, and nothing at all otherwise. In a chat in a team,
+two cells below the handle count what arrived on the Traffic since you last had it in front
+of you. Those keep their own colours; they are about the work, not about the door. The edge
+costs the conversation its two columns, so the text re-wraps around it and nothing is ever
+drawn underneath. Under 100 columns there is no edge, because at that width there is no
+column to bring back; `alt+t` or `alt+l` lays the column over the body.
 
 ## Light terminals, and why there is no theme setting
 
@@ -3805,7 +3845,7 @@ nothing for it to open — `nothing made yet.` from `/files`, or
 `no subharnesses here yet — a subharness is a saved program for work that comes round
 again.` from `/subharness`. None of them is ever sent to the model.
 
-The **seven places** are not among them: `/standing`, `/history` and `/memory` open their
+The **eight places** are not among them: `/standing`, `/history` and `/memory` open their
 page whatever is in it and let the page say so, rather than writing a line here (the Places
 page states the law).
 

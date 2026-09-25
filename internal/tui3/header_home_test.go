@@ -10,16 +10,18 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func headerHomeTarget(t *testing.T, a *app) tabHit {
+// headerHome is where the nav drew `home` on the last frame: the head's first
+// row, on every page (topnav.go).
+func headerHome(t *testing.T, a *app) placeTabSpan {
 	t.Helper()
-	_ = a.tabsRow(a.width)
-	for _, hit := range a.chatTabHits {
-		if hit.kind == tabHome {
-			return hit
+	frame(a)
+	for _, span := range a.tabs {
+		if span.id == pageHome {
+			return span
 		}
 	}
-	t.Fatal("Home is missing from navigation")
-	return tabHit{}
+	t.Fatal("home is missing from the nav")
+	return placeTabSpan{}
 }
 
 func TestHeaderHomePreservesBothConversationAndNewChatDrafts(t *testing.T) {
@@ -30,11 +32,11 @@ func TestHeaderHomePreservesBothConversationAndNewChatDrafts(t *testing.T) {
 	a.input.setText("existing chat draft")
 	openStart(t, a)
 	a.input.setText("new chat draft")
-	home := headerHomeTarget(t, a)
-	if home.span.from != placeBarLead {
-		t.Fatal("Home is not first in navigation")
+	home := headerHome(t, a)
+	if home.from != ansi.StringWidth(" "+plain(a.pal.wordmark(a.width)))+navLead {
+		t.Fatalf("home is not the nav's first word: %+v", home)
 	}
-	cmd, took := a.tabPress(home.span.from, placeTabRow)
+	cmd, took := a.navPress(home.from, navRow)
 	if !took || !a.at(pageHome) {
 		t.Fatal("Home click did not open the home page")
 	}
@@ -52,31 +54,31 @@ func TestHeaderHomePreservesBothConversationAndNewChatDrafts(t *testing.T) {
 	}
 }
 
-// THE ROWS AROUND THE STRIP ARE THE HEAD'S AND ANSWER NOTHING. The pulse above
-// it is a reading, and the rule and the blank under it are the seam; a press on
-// any of the three stays where it landed rather than opening a tab.
+// THE ROWS UNDER THE STRIP ARE THE HEAD'S AND ANSWER NOTHING, and neither does
+// the air on the nav's row. The rule and the blank are the seam, and the cells
+// between the wordmark and `home` are furniture; a press on any of them stays
+// where it landed. `home` itself answers the pointer over its pads too, and a
+// plain terminal shows that with the linear mark.
 func TestTheHeadAroundTheStripIsInertAndHomeHasPlainHover(t *testing.T) {
 	a, _, _ := tabApp(t)
 	a.resume = func(string) (Agent, error) { return nil, nil }
 	a.pal = newPalette(tokens.NoColor, false)
-	home := headerHomeTarget(t, a)
+	home := headerHome(t, a)
 	before := a.file
-	for _, y := range []int{0, placeTabRow + 1, placeHeadRows - 1} {
-		if _, ok := a.tabAt(home.span.from, y); ok {
-			t.Fatalf("row %d of the head advertises a button", y)
+	for _, at := range []struct{ x, y int }{{home.from - 1, navRow}, {home.from, tabStripRow + 1}, {home.from, placeHeadRows - 1}} {
+		if _, ok := a.tabAt(at.x, at.y); ok {
+			t.Fatalf("cell %d,%d of the head advertises a button", at.x, at.y)
 		}
-		drive(t, a, tea.MouseClickMsg{X: home.span.from, Y: y, Button: tea.MouseLeft})
+		drive(t, a, tea.MouseClickMsg{X: at.x, Y: at.y, Button: tea.MouseLeft})
 		if a.file != before || a.at(pageHome) {
-			t.Fatalf("a press on row %d of the head navigated", y)
+			t.Fatalf("a press on cell %d,%d of the head navigated", at.x, at.y)
 		}
 	}
-	for x := home.span.from; x < home.span.to; x++ {
-		hot, ok := a.tabHoverAt(x, placeTabRow)
-		if !ok {
+	for x := home.from; x < home.to; x++ {
+		if !a.navHover(x, navRow) || a.tabHover != pageHome {
 			t.Fatal("Home padding is not part of the target")
 		}
-		a.hot = hot
-		if !strings.Contains(plain(a.tabsRow(a.width)), "·home ") {
+		if !strings.Contains(plain(a.navLine(a.width, a.pal)), "·home ") {
 			t.Fatal("Home has no plain-terminal hover feedback")
 		}
 	}
@@ -108,9 +110,9 @@ func TestTheStripKeepsItsActiveTabAndTheHeadItsShapeAtEverySize(t *testing.T) {
 			if active != 1 {
 				t.Fatalf("lost active tab at %dx%d: %q", width, height, plain(line))
 			}
-			if a.tabsHeight(width) != placeTabRow+1 || a.headHeight() != placeHeadRows {
+			if a.tabsHeight(width) != tabStripRow+1 || a.headHeight() != chatHeadRows {
 				t.Fatalf("at %dx%d the head is %d rows with the strip on row %d; it is %d, strip on %d",
-					width, height, a.headHeight(), a.tabsHeight(width)-1, placeHeadRows, placeTabRow)
+					width, height, a.headHeight(), a.tabsHeight(width)-1, chatHeadRows, tabStripRow)
 			}
 		}
 	}
@@ -134,7 +136,7 @@ func TestPlainHeaderHoverChangesEveryActionWithoutMovingItsTarget(t *testing.T) 
 	rest := a.tabsRow(a.width)
 	hits := append([]tabHit(nil), a.chatTabHits...)
 	for _, hit := range hits {
-		hot, ok := a.tabHoverAt(hit.span.from, placeTabRow)
+		hot, ok := a.tabHoverAt(hit.span.from, tabStripRow)
 		if !ok {
 			continue
 		}
@@ -143,7 +145,7 @@ func TestPlainHeaderHoverChangesEveryActionWithoutMovingItsTarget(t *testing.T) 
 		if hovered == rest {
 			t.Fatalf("target %v has no plain hover", hit.kind)
 		}
-		after, ok := a.tabAt(hit.span.from, placeTabRow)
+		after, ok := a.tabAt(hit.span.from, tabStripRow)
 		if !ok || after.span != hit.span || after.kind != hit.kind {
 			t.Fatal("hover moved its target")
 		}
@@ -163,8 +165,8 @@ func TestHeaderAirDoesNotShrinkReadingWhenTerminalGrows(t *testing.T) {
 		for height := airyFloor; height <= 45; height++ {
 			a.height = height
 			a.touch()
-			if pinned && a.headHeight() != placeHeadRows {
-				t.Fatalf("%s at %d rows the head is %d rows, not the places' %d", where, height, a.headHeight(), placeHeadRows)
+			if pinned && a.headHeight() != chatHeadRows {
+				t.Fatalf("%s at %d rows the head is %d rows, not the chat's %d", where, height, a.headHeight(), chatHeadRows)
 			}
 			available := height - a.headHeight()
 			if previous > available {
@@ -178,42 +180,32 @@ func TestHeaderAirDoesNotShrinkReadingWhenTerminalGrows(t *testing.T) {
 	grows("in the conversation", true)
 }
 
-// The label and its padded mouse target stay in the same cells when Home
-// replaces the conversation strip, including terminals with plain hover marks.
+// HOME KEEPS ITS WORD AND ITS CELLS BETWEEN A CONVERSATION AND THE DASHBOARD.
+// Dev's #1424 asked it of the strip's home chip; here home is the nav's first
+// word on every page (topnav.go), so the same promise is asked of the nav:
+// lowercase, and its target in the same columns on both, on every profile.
 func TestHomeTabKeepsItsSpellingAndPositionAcrossViews(t *testing.T) {
 	for _, profile := range []tokens.Profile{tokens.NoColor, tokens.ANSI256, tokens.TrueColor} {
-		for _, width := range []int{24, 40, 80, 160} {
+		for _, width := range []int{80, 120, 160} {
 			t.Run(itoa(int(profile))+"/"+itoa(width), func(t *testing.T) {
 				a := newStartLab(t).app()
 				a.resume = func(string) (Agent, error) { t.Fatal("home must not resume a conversation"); return nil, nil }
 				a.showPage(pageNone)
 				a.width, a.height = width, 40
 				a.pal = newPalette(profile, false)
-				home := headerHomeTarget(t, a)
-				chat := plain(a.tabsRow(width))
-				column := strings.Index(chat, "home")
-				if column != placeBarLead+len(tabPad) || strings.Contains(chat, "Home") {
-					t.Fatalf("conversation home label is misplaced or capitalized: %q", chat)
+				chat := headerHome(t, a)
+				nav := plain(a.navLine(width, a.pal))
+				if !strings.Contains(nav, " home ") || strings.Contains(nav, "Home") {
+					t.Fatalf("the nav's home is misspelled: %q", nav)
 				}
-				hot, ok := a.tabHoverAt(home.span.from, placeTabRow)
-				if !ok {
-					t.Fatal("home has no hover target")
-				}
-				a.hot = hot
-				hovered := plain(a.tabsRow(width))
-				at := strings.Index(hovered, "home")
-				if at < 0 || ansi.StringWidth(hovered[:at]) != column || strings.Contains(hovered, "Home") {
-					t.Fatalf("hover changed home's word or position: %q", hovered)
-				}
-				cmd, took := a.tabPress(home.span.from, placeTabRow)
+				cmd, took := a.navPress(chat.from, navRow)
 				if !took || !a.at(pageHome) {
 					t.Fatal("clicking home did not open Home")
 				}
 				drain(t, a, cmd)
-				bar := plain(a.placeTabBar(width, false, a.pal))
-				span := barWordSpan(t, a, pageHome)
-				if strings.Index(bar, "home") != column || span.from != home.span.from || span.to != home.span.to {
-					t.Fatalf("home moved between views: chat=%q dashboard=%q chat target=%+v dashboard target=%+v", chat, bar, home.span, span)
+				dash := headerHome(t, a)
+				if dash.from != chat.from || dash.to != chat.to {
+					t.Fatalf("home moved between views: chat target=%+v dashboard target=%+v", chat, dash)
 				}
 			})
 		}

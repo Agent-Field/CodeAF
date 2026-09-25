@@ -86,17 +86,41 @@ type teamRole struct {
 	handle string
 	// manager says this conversation is the team's manager.
 	manager bool
-	// managed says the team has a manager at all. A member's `team_post` is
+	// managed says the team has a manager at all, its own or, for a sub-team
+	// with none, the nearest one above it (boss). A member's `team_post` is
 	// offered only in a team that has one, because the manager is the one the
 	// room is run by (docs/design/conversations-and-teams/DESIGN.md, section 5).
 	managed bool
+	// boss is the managed team whose manager this membership answers to: the
+	// team itself when it has a manager, and otherwise the nearest open
+	// ancestor with one (team_nest.go's [bossOf]). A member of an unmanaged
+	// sub-team asks that manager its questions and posts to it; it is not
+	// that manager's to direct, because it is not a member of its team.
+	boss     string
+	bossName string
+	// root says the team is the root, `All teams` (teams' root.go): its
+	// manager is the global manager, and its other members are the top-level
+	// teams' managers.
+	root bool
 	// key is the conversation key this conversation is stored under in the
 	// team, the one spelling of [Agent.teamKeysLocked] the file holds. An event
 	// this conversation writes names it ([teams.Entry.Member]).
 	key string
 	// wakes says the team's traffic starts this conversation's turn when it is
-	// idle ([teams.Team.Wakes], team_wakewatch.go).
+	// idle: the team's effective `wake` ([teams.Effective], inherited from
+	// its parents and the profile's `teams.wake`; team_wakewatch.go).
 	wakes bool
+	// questionsUp is the effective `questions_up` of the team this
+	// conversation reports to, which is what decides where its clarifying
+	// questions go (team_questions.go).
+	questionsUp bool
+	// shared says this conversation is a member (not the manager) of this
+	// managed team but reports to a manager elsewhere (teams.File.Home): this
+	// team's manager is a LINK, who may read it and send it notes, and whose
+	// directives and stops do not reach it as its manager's. reportsTo names
+	// the team it reports to, for the sentence that says so.
+	shared    bool
+	reportsTo string
 	// derived says handle is the word list's guess, which the title model
 	// chooses again once (handlepick.go).
 	derived bool
@@ -134,9 +158,14 @@ type teamSeat struct {
 	// exists ([Agent.teamKeysLocked]).
 	keys     []string
 	resolved bool
-	// teamsAt is the teams file as it was when roles was read from it.
-	teamsAt fileStamp
-	roles   []teamRole
+	// teamsAt is the teams file as it was when roles was read from it, and
+	// configAt the profile's config.json, whose `teams.` rows the roles'
+	// inherited settings fall back to ([teams.DefaultsAt]); defaults is what
+	// was read from it.
+	teamsAt  fileStamp
+	configAt fileStamp
+	defaults teams.Defaults
+	roles    []teamRole
 	// cursors is the id of the last Traffic entry read, per team, and
 	// trafficAt is each log as it was when this conversation last caught up on
 	// it. cursorsRead says cursors has been loaded from the session folder.
@@ -155,6 +184,15 @@ type teamSeat struct {
 	// (team_wakewatch.go).
 	watch  teamWatch
 	person personTurns
+	// spends is each cap pool's spend as last read, against its stamp
+	// (team_cap.go), and wraps each managed team's wrap-up in progress
+	// (team_wrapup.go).
+	spends map[string]spendMemo
+	wraps  map[string]*wrapUp
+	// claims are the sub-teams this conversation's start named it to manage,
+	// found by the delivery that handed it the brief and made good after it
+	// (team_nest.go's [Agent.claimSubTeams]).
+	claims []subTeamClaim
 	// handleTried says this process has asked for its handle once
 	// (handlepick.go), so it is never asked for twice.
 	handleTried bool
@@ -270,7 +308,8 @@ func (a *Agent) teamRolesLocked(profile string) []teamRole {
 		return nil
 	}
 	now := stampOf(teams.Path(profile))
-	if now == a.team.teamsAt {
+	settings := a.teamDefaultsMovedLocked(profile)
+	if now == a.team.teamsAt && !settings {
 		return a.team.roles
 	}
 	if !now.present {
@@ -286,30 +325,85 @@ func (a *Agent) teamRolesLocked(profile string) []teamRole {
 		return a.team.roles
 	}
 	a.team.teamsAt = now
-	a.team.roles = rolesFor(file.Teams, keys)
+	a.team.roles = rolesFor(file, keys, a.team.defaults)
 	a.team.file = file
 	a.team.events.member.Store(eventfulRoles(a.team.roles))
 	return a.team.roles
 }
 
-// rolesFor is the teams whose members include one of keys, in file order.
-func rolesFor(list []teams.Team, keys []string) []teamRole {
+// teamDefaultsMovedLocked reads the profile's `teams.` rows again when its
+// config.json has moved since the last read, and reports whether it did. A
+// config that has not moved costs one stat. The caller holds a.team.mu.
+func (a *Agent) teamDefaultsMovedLocked(profile string) bool {
+	now := stampOf(config.BudgetConfigPath(profile))
+	if now == a.team.configAt {
+		return false
+	}
+	a.team.configAt = now
+	a.team.defaults = teams.DefaultsAt(profile)
+	return true
+}
+
+// teamDefaults is the profile's `teams.` rows, read again only when they moved.
+func (a *Agent) teamDefaults(profile string) teams.Defaults {
+	a.team.mu.Lock()
+	defer a.team.mu.Unlock()
+	a.teamDefaultsMovedLocked(profile)
+	return a.team.defaults
+}
+
+// rolesFor is the open teams whose members include one of keys, in file
+// order, each with its settings resolved against d.
+//
+// A CLOSED TEAM IS NO PART AT ALL (teams' lifecycle.go): it spends nothing,
+// so a conversation whose only teams closed has no verb, no role and no
+// delivery, and takes no team turn.
+func rolesFor(file *teams.File, keys []string, d teams.Defaults) []teamRole {
+	if file == nil {
+		return nil
+	}
+	home, hasHome := teams.Report{}, false
+	for _, key := range keys {
+		if report, ok := file.Home(key); ok {
+			home, hasHome = report, true
+			break
+		}
+	}
 	var roles []teamRole
-	for _, team := range list {
+	for _, team := range file.Teams {
+		if team.Closed() {
+			continue
+		}
 		member, ok := memberOf(team, keys)
 		if !ok {
 			continue
 		}
-		roles = append(roles, teamRole{
-			id:      team.ID,
-			name:    team.Name,
-			handle:  member.Handle,
-			manager: team.Manager != "" && team.Manager == member.Key,
-			managed: team.Manager != "",
-			key:     member.Key,
-			wakes:   team.Wakes(),
-			derived: member.HandleDerived(),
-		})
+		effective := file.Effective(team.ID, d)
+		boss, bossName := bossOf(file, team, member.Key)
+		role := teamRole{
+			id:          team.ID,
+			name:        team.Name,
+			handle:      member.Handle,
+			manager:     team.Manager != "" && team.Manager == member.Key,
+			managed:     boss != "",
+			boss:        boss,
+			bossName:    bossName,
+			root:        team.Root,
+			key:         member.Key,
+			wakes:       effective.Wake,
+			questionsUp: effective.QuestionsUp,
+			derived:     member.HandleDerived(),
+		}
+		if hasHome {
+			role.questionsUp = file.Effective(home.Team, d).QuestionsUp
+		}
+		if role.managed && !role.manager && hasHome && home.Team != boss {
+			role.shared = true
+			if at, ok := file.Team(home.Team); ok {
+				role.reportsTo = at.Name
+			}
+		}
+		roles = append(roles, role)
 	}
 	return roles
 }
@@ -347,8 +441,22 @@ func (a *Agent) teamBoundary() string {
 	a.team.mu.Lock()
 	roles := a.teamRolesLocked(profile)
 	news := a.teamNewsLocked(profile, roles)
+	claims := a.team.claims
+	a.team.claims = nil
+	if len(claims) > 0 {
+		// A START THAT NAMED A TEAM FOR THIS CONVERSATION TO RUN is made good
+		// before the role is composed, so the request that carries the brief
+		// also says this conversation is that team's manager.
+		a.team.mu.Unlock()
+		a.claimSubTeams(profile, claims)
+		a.team.mu.Lock()
+		roles = a.teamRolesLocked(profile)
+	}
 	role := teamRoleBlock(roles, a.team.file)
 	a.team.mu.Unlock()
+	// A wrap-up the delivery just started is written down here, after the
+	// seat's lock, so a restart keeps the clock (team_wrapup.go).
+	a.teamWrapUpNote(profile)
 	a.setTeamRole(role)
 	a.armTeamTools(roles)
 	// A handle that is still the word list's guess is chosen once, beside the
@@ -367,9 +475,14 @@ func (a *Agent) armTeamTools(roles []teamRole) {
 	}
 	if manager {
 		arriving = append(arriving, a.managerTools()...)
+		arriving = append(arriving, a.packetTools()...)
+		arriving = append(arriving, a.wrapUpTools()...)
 	}
 	if member {
 		arriving = append(arriving, a.memberTools()...)
+	}
+	if manager || member {
+		arriving = append(arriving, a.raiseTools()...)
 	}
 	if len(arriving) == 0 {
 		return
@@ -414,7 +527,7 @@ func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
 		var lines []string
 		for _, entry := range entries {
 			cursor = entry.ID
-			if line := teamLine(role, entry); line != "" {
+			if line := a.teamEntryLineLocked(profile, role, entry); line != "" {
 				lines = append(lines, line)
 				// WHAT THE MANAGER LAST SAID TO IT IS WHAT IT ANSWERS, until the
 				// manager says something else: its next reply to the manager, and
@@ -493,6 +606,29 @@ func (a *Agent) firstTeamCursor(profile string, role teamRole) string {
 	return cursor
 }
 
+// teamEntryLineLocked is one entry as this conversation is told it: a packet
+// line by its packet ([teamPacketLine]), the person's wrap-up request to a
+// manager as the instruction it is (and the wrap-up's clock started,
+// team_wrapup.go), and everything else by [teamLine]. The caller holds
+// a.team.mu.
+func (a *Agent) teamEntryLineLocked(profile string, role teamRole, entry teams.Entry) string {
+	switch {
+	case entry.Kind == teams.KindPacket:
+		return teamPacketLine(profile, role, entry)
+	case entry.Kind == teams.KindStart && entry.Team != "":
+		line := teamBriefLine(role, entry)
+		if line == "" {
+			return ""
+		}
+		a.team.claims = append(a.team.claims, subTeamClaim{team: entry.Team, parent: role.id, key: role.key})
+		return subTeamBriefLine(a.team.file, entry, line)
+	case role.manager && teams.IsWrapUp(entry):
+		a.teamWrapUpBeginLocked(role, entry.At)
+		return wrapUpLine(role, entry)
+	}
+	return teamLine(role, entry)
+}
+
 // teamLine is one entry as this conversation is told it, or "" for an entry
 // that is not addressed to it.
 //
@@ -503,6 +639,14 @@ func (a *Agent) firstTeamCursor(profile string, role teamRole) string {
 // (which the interface performs) or an event (which the digest carries). The
 // one event everyone is told is codeaf's, that a handle changed.
 func teamLine(role teamRole, entry teams.Entry) string {
+	// A CONFLICT'S RULING reaches the party it names whoever wrote it and
+	// whatever this conversation is in the team (team_nest.go).
+	if teams.IsRuling(entry) {
+		if rulingFor(role, entry) {
+			return rulingLine(entry)
+		}
+		return ""
+	}
 	if entry.Kind == teams.KindStart {
 		return teamBriefLine(role, entry)
 	}
@@ -544,6 +688,13 @@ func teamLine(role teamRole, entry teams.Entry) string {
 		word := "◆ from manager"
 		if entry.Kind == teams.KindDirective {
 			word = "◆ directive from manager"
+		}
+		// A LINK'S WORD IS AN FYI. A member shared into this team reports to
+		// another manager, and this team's manager may send it notes and
+		// nothing more (the verb refuses the rest); a directive that reached
+		// it anyway, from an older build, is information.
+		if role.shared {
+			word = fmt.Sprintf("◆ fyi from the manager of %q (you report to %q, whose word directs you)", role.name, role.reportsTo)
 		}
 		return word + teamAimed(entry.To, false) + number + ": " + text
 	}
@@ -787,8 +938,11 @@ func (a *Agent) teamDigest(profile string) string {
 		if !ok {
 			continue
 		}
+		team = managedView(file, team)
 		log, _ := teams.ReadTraffic(profile, role.id, "", teamStateLook)
-		parts = append(parts, teams.Digest(team, memberStates(team, keys, now, log, &a.team.journals), recentOf(log), teamDigestBudget))
+		states := memberStates(team, keys, now, log, &a.team.journals)
+		markShared(file, team, states)
+		parts = append(parts, teams.Digest(team, states, recentOf(log), teamDigestBudget))
 	}
 	return strings.TrimSpace(strings.Join(parts, "\n\n"))
 }
@@ -1091,10 +1245,14 @@ const teamRoleWithdrawn = "You are no longer the manager or a member of any team
 
 // teamManagerLaws is how a manager works, stated once in the role. The verbs'
 // own descriptions carry how each is called.
-const teamManagerLaws = "Three laws:\n" +
+const teamManagerLaws = "Seven laws:\n" +
 	"1. Hand real work to members with team_send, or team_start for a new member, rather than doing it yourself, and keep track with team_status and team_read. Asked what is happening, answer from the team.\n" +
 	"2. The person outranks you: what they say in a member's own conversation stands over your directive, and a conflict goes to them.\n" +
-	"3. You cannot answer a member's permission prompt; tell the person it is waiting."
+	"3. You cannot answer a member's permission prompt; tell the person it is waiting.\n" +
+	"4. You direct only the members who report to you, one level down: a team under yours is its manager's to run, so you direct that manager, never its members. A member team_status marks `reports to` another team is shared: read it and send it notes, never a directive or a stop.\n" +
+	"5. Members' questions come to you as decision packets: answer with team_decide, or send one up with team_escalate when it is not yours to decide. Your own questions go up the same way.\n" +
+	"6. A team's daily cap is the person's: you cannot raise it, and at the cap nothing new starts until they answer.\n" +
+	"7. A conflict between conversations is declared with team_raise and goes to the lowest manager above every party; when it waits on you, your team_decide reaches every party as a directive."
 
 // teamRosterMax is how many members the role names before it sends the model
 // to team_status for the rest, and teamRosterWord how much of each member's
@@ -1129,10 +1287,57 @@ func teamManagerRole(role teamRole, file *teams.File) string {
 	fmt.Fprintf(&b, "You are the manager of the team %q. The person talks to you and you run the team for them: you decide who does what, hand the work out, and tell the person where it stands.\n", role.name)
 	b.WriteString(teamRoster(role, file))
 	b.WriteString("\n")
+	if scope := teamManagerScope(role, file); scope != "" {
+		b.WriteString(scope)
+		b.WriteString("\n")
+	}
 	b.WriteString(teamManagerDelivery(role))
 	b.WriteString("\n")
 	b.WriteString(teamManagerLaws)
 	return b.String()
+}
+
+// teamManagerScope is where the manager's team sits in the tree, "" for a
+// team alone at the top with nothing under it: whom it reports to (a
+// sub-team's manager reports one level up; a top-level team's to the global
+// manager when there is one), what runs under it, and, for the global manager,
+// what its members are.
+func teamManagerScope(role teamRole, file *teams.File) string {
+	if file == nil {
+		return ""
+	}
+	var parts []string
+	if role.root {
+		parts = append(parts, fmt.Sprintf("You are the global manager: %q holds every team, and your members are the managers of the top-level teams, never their members. "+
+			"Direct those managers and they pass it on. Their questions and conflicts between teams come to you before the person. team_start with kind team starts a new top-level team.", role.name))
+	} else if home, ok := file.Home(role.key); ok && home.Team != role.id {
+		boss := "its manager"
+		if t, ok := file.Team(home.Team); ok {
+			if m, ok := t.Member(t.Manager); ok && m.Handle != "" {
+				boss = "its manager, @" + m.Handle
+			}
+			what := "a team under"
+			if t.Root {
+				what = "a top-level team, under the global manager of"
+			}
+			parts = append(parts, fmt.Sprintf("Your team is %s %q: you report to %s. Post to it with team_post; your questions go to it before the person.", what, t.Name, boss))
+		}
+	}
+	var under []string
+	for _, child := range file.Children(role.id) {
+		if child.Closed() || role.root {
+			continue
+		}
+		who := "no manager yet"
+		if m, ok := child.Member(child.Manager); ok && m.Handle != "" {
+			who = "run by @" + m.Handle
+		}
+		under = append(under, fmt.Sprintf("%q (%s)", child.Name, who))
+	}
+	if len(under) > 0 {
+		parts = append(parts, "Teams under yours: "+strings.Join(under, ", ")+". Direct their managers, never their members.")
+	}
+	return strings.Join(parts, " ")
 }
 
 // teamManagerDelivery is what happens to what the manager sends and what comes
@@ -1156,6 +1361,7 @@ func teamRoster(role teamRole, file *teams.File) string {
 	if !ok {
 		return "team_status lists its members."
 	}
+	team = managedView(file, team)
 	var named []string
 	for _, member := range team.Members {
 		if member.Key == role.key {
@@ -1186,9 +1392,29 @@ func teamMemberRole(role teamRole) string {
 	if role.handle != "" {
 		you = "@" + role.handle
 	}
-	return fmt.Sprintf("You are %s in the team %q, which has a manager. "+
+	if role.root {
+		return fmt.Sprintf("You are %s in %q because you manage a top-level team: you report to its manager, the global manager. Its directives reach you marked \"◆ from manager\", "+
+			"your questions go to it before the person, and you report to it with team_post to the manager.", you, role.name)
+	}
+	if role.boss != "" && role.boss != role.id && !role.shared {
+		said := fmt.Sprintf("You are %s in the team %q, which has no manager of its own, so you answer to the manager of %q: team_post to the manager reaches it, and to the room or a teammate stays in %q.",
+			you, role.name, role.bossName, role.name)
+		if role.questionsUp {
+			said += " Your clarifying questions (ask) go to that manager first, and its answer comes back marked \"◆ answered\"; permission prompts still go to the person."
+		}
+		return said
+	}
+	if role.shared {
+		return fmt.Sprintf("You are %s in the team %q too, but you report to the manager of %q: that manager's word directs you, and this team's manager may only send you notes (fyi). "+
+			"Post to this team with team_post.", you, role.name, role.reportsTo)
+	}
+	said := fmt.Sprintf("You are %s in the team %q, which has a manager. "+
 		"Lines from the manager arrive marked \"◆ from manager\" and from teammates \"from @handle\"; none of them is the person, whose own words outrank the manager's. "+
-		"Report progress, findings and blockers with team_post, to the manager, a teammate or the room.", you, role.name)
+		"Report progress, findings and blockers with team_post, to the manager, a teammate or the room. A conflict you cannot settle with another member or team goes up with team_raise.", you, role.name)
+	if role.questionsUp {
+		said += " Your clarifying questions (ask) go to your manager first, and its answer comes back marked \"◆ answered\"; permission prompts still go to the person."
+	}
+	return said
 }
 
 // setTeamRole leaves the role where the next landing of the session's notes
