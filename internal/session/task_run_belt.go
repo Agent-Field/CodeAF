@@ -119,6 +119,14 @@ type RunSpec struct {
 	// environment rung and the profile's checker row, and never the plan
 	// seat's model.
 	CheckModel string
+	// OneModel is the conversation's model when the conversation runs under
+	// `--one-model` ([Config.OneModel]), and empty otherwise. EVERY SEAT OF THE
+	// RUN RIDES IT: work, plan, check and the probe no door names. The flag
+	// withholds the roles ladder and the crew router, so without this the
+	// engine's crew factory found three empty seats and filled them from the
+	// profile's crew rows — a run under a flag that promises one model billed
+	// the crew's.
+	OneModel string
 	// CompleterFor answers the provider a worker is seated on. The door hands
 	// the conversation's own — a run worker's calls go out the way the
 	// conversation's do — and a nil one lets the engine build each worker's
@@ -603,6 +611,19 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		planSeat = d.Seat(crewroute.Planner).Send
 		checkSeat = d.Seat(crewroute.Checker).Send
 	}
+	// AND UNDER `--one-model` THERE IS ONE SEAT, the conversation's own model,
+	// read live as every errand's floor is read ([Agent.callRoleChecked]), so a
+	// /model typed before the run moves it. The flag withholds the ladder and
+	// the router, which left all three seats above empty, and an empty seat is
+	// one the engine fills from the profile's crew rows: the run billed models
+	// the person had just said to leave alone. It is carried as its own field
+	// too, because the probe seat and the check seat's environment rung are the
+	// engine's to read and only a named "every seat" stands them down.
+	oneModel := ""
+	if a.config.OneModel {
+		oneModel = a.Model()
+		workSeat, planSeat, checkSeat = oneModel, oneModel, oneModel
+	}
 
 	wallLeft, _ := a.config.Budget.Left()
 	if a.config.Budget.Wall > 0 && !a.startedAt.IsZero() {
@@ -630,6 +651,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		WorkModel:    workSeat,
 		PlanModel:    planSeat,
 		CheckModel:   checkSeat,
+		OneModel:     oneModel,
 		CompleterFor: func(string) Completer { return a.crewRunCompleter(run) },
 	}
 }

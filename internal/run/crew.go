@@ -21,6 +21,13 @@ package run
 // comes from the profile's tiers, and an empty seat falls exactly where an empty
 // tier always fell.
 //
+// UNDER `--one-model` THE PROFILE DOES NOT ANSWER. A conversation started with
+// the flag names its own model as every seat ([Seats.One]), and the factory
+// seats every role on it without reading a crew row or the check seat's
+// environment rung: the flag promises every text call rides the model the
+// person is talking to, and a crew row answering for an empty seat is how a
+// run under it once billed two models nobody named.
+//
 // THE READ IS AT LAUNCH, NEVER CACHED. The factory asks the profile again for
 // every task it seats — for the check and probe rows, and for any seat the door
 // left empty — so a crew change between two launches (a /crew run in the
@@ -80,6 +87,14 @@ type Seats struct {
 	Work  string
 	Plan  string
 	Check string
+	// One is the conversation's model under `--one-model`, and when it is set
+	// it is EVERY seat: the three above, the probe no door names, and any role
+	// this build has not learned. Nothing here asks the profile or the check
+	// seat's environment rung while it is set, because the flag promises that
+	// every text call rides the model the person is talking to — and an empty
+	// seat falling to the crew row is exactly how a run under it billed models
+	// nobody named.
+	One string
 }
 
 // CrewFactory is the run's WorkerFactory: it seats each task in the model its
@@ -109,6 +124,12 @@ type Seats struct {
 // profile is old.
 func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats, completerFor func(model string) session.Completer) WorkerFactory {
 	return func(task plandb.Task) Worker {
+		// UNDER `--one-model` THERE IS NO TIER TO READ. The door named one model
+		// for every seat ([Seats.One]), so the role does not matter and neither
+		// the profile nor the environment is asked.
+		if seats.One != "" {
+			return NewBashWorker(store, workspace, seats.One, completerFor(seats.One))
+		}
 		// A task the store cannot name — which the supervisor never hands over —
 		// reads as the work seat, the same fallback SeatFor gives an unknown
 		// role, so RoleOf's error needs no reader here.

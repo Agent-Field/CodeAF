@@ -112,10 +112,8 @@ func (s RunTreeSnapshot) Changed() []string {
 				}
 			}
 		} else if out, err := git(s.root, "diff", "--name-only", "-z", s.head, head); err == nil {
-			for _, name := range strings.Split(out, "\x00") {
-				if name = strings.TrimSpace(name); name != "" {
-					add(filepath.Join(s.root, filepath.FromSlash(name)))
-				}
+			for _, name := range gitNULPaths(out) {
+				add(filepath.Join(s.root, filepath.FromSlash(name)))
 			}
 		}
 	}
@@ -195,20 +193,10 @@ func runTreeStatus(root string) []string {
 		return nil
 	}
 	var paths []string
-	fields := strings.Split(out, "\x00")
-	for i := 0; i < len(fields); i++ {
-		entry := fields[i]
-		if len(entry) < 4 {
-			continue
-		}
-		code, name := entry[:2], entry[3:]
-		paths = append(paths, filepath.Join(root, filepath.FromSlash(name)))
-		if code[0] == 'R' || code[0] == 'C' {
-			// The next field is the name it came from.
-			if i+1 < len(fields) && fields[i+1] != "" {
-				paths = append(paths, filepath.Join(root, filepath.FromSlash(fields[i+1])))
-			}
-			i++
+	for _, entry := range porcelainEntries(out) {
+		paths = append(paths, filepath.Join(root, filepath.FromSlash(entry.Path)))
+		if entry.From != "" {
+			paths = append(paths, filepath.Join(root, filepath.FromSlash(entry.From)))
 		}
 	}
 	return paths

@@ -157,13 +157,16 @@ func TestLeftBehindReadsThePorcelainColumnsWhole(t *testing.T) {
 	// The tree git status reads here is the ordinary shape the landing reads:
 	// one modified-not-staged line with the leading-space padding and one
 	// untracked line beside it.
-	status := gitOut(t, repo, "status", "--porcelain", "--untracked-files=all", "--", ".")
-	if !strings.Contains(status, " M a/b.go") || !strings.Contains(status, "?? c.go") {
+	status := gitOut(t, repo, "status", "--porcelain", "-z", "--untracked-files=all", "--", ".")
+	if !strings.Contains(status, " M a/b.go\x00") || !strings.Contains(status, "?? c.go\x00") {
 		t.Fatalf("the fixture reads:\n%s, want a modified and an untracked path", status)
 	}
-	left := porcelainPaths(status)
+	var left []string
+	for _, entry := range porcelainEntries(status) {
+		left = append(left, entry.Path)
+	}
 	if !containsString(left, "a/b.go") || !containsString(left, "c.go") {
-		t.Fatalf("porcelainPaths = %v, want a/b.go whole and c.go", left)
+		t.Fatalf("porcelainEntries paths = %v, want a/b.go whole and c.go", left)
 	}
 }
 

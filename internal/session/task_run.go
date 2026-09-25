@@ -8902,11 +8902,11 @@ const (
 // while the merge is still in progress. An empty answer is a merge that failed
 // before it touched the index.
 func conflictedPaths(root string) []string {
-	out, err := git(root, "diff", "--name-only", "--diff-filter=U")
+	out, err := git(root, "diff", "--name-only", "-z", "--diff-filter=U")
 	if err != nil {
 		return nil
 	}
-	return nonEmptyLines(out)
+	return gitNULPaths(out)
 }
 
 // abandonMerge takes the person's checkout back out of a merge, and it exists
@@ -8946,7 +8946,7 @@ func leftBehind(dir string) []string {
 			return paths
 		}
 	}
-	args := []string{"status", "--porcelain", "--untracked-files=all", "--", "."}
+	args := []string{"status", "--porcelain", "-z", "--untracked-files=all", "--", "."}
 	for _, dropping := range taskDroppingNames() {
 		args = append(args, ":(exclude)"+dropping)
 	}
@@ -8954,7 +8954,11 @@ func leftBehind(dir string) []string {
 	if err != nil {
 		return nil
 	}
-	return porcelainPaths(out)
+	var paths []string
+	for _, entry := range porcelainEntries(out) {
+		paths = append(paths, entry.Path)
+	}
+	return paths
 }
 
 const leftBehindRecord = "left-behind.json"
@@ -9166,15 +9170,13 @@ func unheldLedgerPaths(dir string, wrote []string) []string {
 	if len(paths) == 0 {
 		return nil
 	}
-	out, err := git(dir, append([]string{"status", "--porcelain", "--untracked-files=all", "--"}, paths...)...)
+	out, err := git(dir, append([]string{"status", "--porcelain", "-z", "--untracked-files=all", "--"}, paths...)...)
 	if err != nil {
 		return nil
 	}
 	var unheld []string
-	for _, line := range nonEmptyLines(out) {
-		if len(line) > 3 {
-			unheld = append(unheld, strings.TrimSpace(line[3:]))
-		}
+	for _, entry := range porcelainEntries(out) {
+		unheld = append(unheld, entry.Path)
 	}
 	return unheld
 }
@@ -9186,11 +9188,11 @@ func unheldLedgerPaths(dir string, wrote []string) []string {
 // otherwise the same one a node that only read gives — and its caller merges and
 // then removes the only other copy of the work on the strength of it.
 func stagedPaths(dir string) ([]string, string) {
-	out, err := git(dir, "diff", "--cached", "--name-only")
+	out, err := git(dir, "diff", "--cached", "--name-only", "-z")
 	if err != nil {
 		return nil, firstLine(out)
 	}
-	return nonEmptyLines(out), ""
+	return gitNULPaths(out), ""
 }
 
 // stagedDiffStat is the node's change AS A SHAPE: one line per file with how
@@ -9329,8 +9331,8 @@ func stageableWork(dir string, wrote []string) []string {
 }
 
 // beltTreeWork reads every change git sees in the working copy that the
-// ledger did not name — modified, added and untracked alike, one path per
-// line — and takes out the paths the harness itself writes, which are
+// ledger did not name — modified, added and untracked alike — and takes out
+// the paths the harness itself writes, which are
 // machinery and never the work. A belt worker's landing stages this whole
 // answer ([stageTaskWork]), so what a person gets on the branch is what the
 // shell did, and nothing else.
@@ -9341,12 +9343,13 @@ func stageableWork(dir string, wrote []string) []string {
 // folder or an ancestor of it — never a path inside the working copy git
 // could name.
 func beltTreeWork(dir string) []string {
-	out, err := git(dir, "status", "--porcelain", "--untracked-files=all", "--", ".")
+	out, err := git(dir, "status", "--porcelain", "-z", "--untracked-files=all", "--", ".")
 	if err != nil {
 		return nil
 	}
 	var paths []string
-	for _, path := range porcelainPaths(out) {
+	for _, entry := range porcelainEntries(out) {
+		path := entry.Path
 		// WHAT IS MACHINERY IS ANSWERED IN ONE PLACE ([harnessWrote]), by where
 		// the harness itself writes, and never by a name project files share: a
 		// `.lock` suffix here once kept every lockfile a run changed off the
@@ -9354,31 +9357,14 @@ func beltTreeWork(dir string) []string {
 		if harnessWrote(path) {
 			continue
 		}
-		paths = append(paths, literalPathspec+path)
-	}
-	return paths
-}
-
-// porcelainPaths reads the paths out of one `git status --porcelain` answer,
-// taken from the fixed columns rather than trimmed off the front: a porcelain
-// line is two status letters, a space, then the path, and a line that was
-// trimmed first has lost the status columns' own padding — the staged ' M
-// a/b.go' reads as 'M a/b.go', and the slice past the third column then cuts
-// the first character of the path. A rename carries both names and the one
-// that exists now is the second.
-func porcelainPaths(out string) []string {
-	var paths []string
-	for _, line := range strings.Split(out, "\n") {
-		if strings.TrimSpace(line) == "" || len(line) < 4 {
+		// AN UNTRACKED BUILD CACHE IS NOT THE WORK EITHER, and it is a
+		// separate, narrower question ([buildCache]): exact cache names, and
+		// only for a file git has never been told about. A tracked cache that
+		// changed, or one the worker staged itself, is not `??` and lands.
+		if entry.Code == "??" && buildCache(path) {
 			continue
 		}
-		path := strings.TrimSpace(line[3:])
-		if _, renamed, found := strings.Cut(path, " -> "); found {
-			path = renamed
-		}
-		if path = strings.Trim(path, `"`); path != "" {
-			paths = append(paths, path)
-		}
+		paths = append(paths, literalPathspec+path)
 	}
 	return paths
 }

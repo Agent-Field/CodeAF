@@ -50,6 +50,9 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 			Work:  spec.WorkModel,
 			Plan:  spec.PlanModel,
 			Check: chatCheckSeat(spec.CheckModel),
+			// AND UNDER `--one-model` ONE MODEL IS EVERY SEAT, the probe and the
+			// check's environment rung included ([Seats.One]).
+			One: spec.OneModel,
 		}, spec.CompleterFor),
 		OnSpend: spec.OnSpend,
 		Gate:    spec.Admission,

@@ -275,7 +275,7 @@ func (a *Agent) sayToRunRow(id uint64, text string, origin messageOrigin) (Steer
 		if err != nil {
 			return SteerReceipt{}, true, err
 		}
-		return SteerReceipt{Landing: steerRunNoteWord}, true, nil
+		return SteerReceipt{Landing: RunNotePickupWord}, true, nil
 	}
 	g := a.graph()
 	if g == nil {

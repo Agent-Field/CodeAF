@@ -565,45 +565,52 @@ func (a *app) roomWorkRows(width int) []row {
 // ([app.questionDiffLines]): the mark from the vocabulary and the hue from the
 // ramp, with each file's header in ink so the eye finds where one file ends.
 //
+// THE FILE'S NAME IS READ OFF THE RAW SECTION, BEFORE ANYTHING IS MADE
+// DRAWABLE, and by the session's one reader of it ([session.PatchSectionPath]).
+// A name can hold ` b/`, a quote, an accent or a newline, and git writes some of
+// those quoted; reading the header here a second way is what once drew a
+// person's `x b/plandb.db` as `plandb.db` while the session's filter judged the
+// same header, so both sides now ask the one reader.
+//
+// A SECTION'S HEADER AND ITS HUNKS ARE TOLD APART BY POSITION, never by what a
+// line starts with. Everything before the first `@@` is git's own account of
+// the file (the index line, the modes, the `---`/`+++` names) and is left out
+// but for a binary file's one sentence; everything after it is the file's
+// bytes, where a removed line that read `-- note` arrives as `--- note` and is
+// work to draw, not a header to skip.
+//
 // EVERY LINE IS SOMEBODY ELSE'S BYTES, whatever a worker wrote into a file, and
 // goes through [drawableLine] as a call's output does: a carriage return from a
 // file with Windows line ends or an escape inside one would repaint rows this
 // surface owns.
 func (a *app) planWorkLines(patch string, width int) []string {
-	lines := strings.Split(strings.TrimRight(patch, "\n"), "\n")
-	out := make([]string, 0, len(lines))
-	for _, line := range lines {
-		line = drawableLine(line)
-		switch {
-		case strings.HasPrefix(line, "diff --git "):
-			if len(out) > 0 {
-				out = append(out, "")
+	var out []string
+	for _, section := range session.PatchSections(patch) {
+		path := drawableLine(session.PatchSectionPath(section))
+		inHunk := false
+		for _, raw := range strings.Split(strings.TrimRight(section, "\n"), "\n") {
+			line := drawableLine(raw)
+			switch {
+			case !inHunk && strings.HasPrefix(raw, "diff --git "):
+				if len(out) > 0 {
+					out = append(out, "")
+				}
+				out = append(out, a.pal.ink(fit(path, width)))
+			case strings.HasPrefix(line, "@@"):
+				inHunk = true
+				out = append(out, a.pal.dim(fit(line, width)))
+			case !inHunk && strings.HasPrefix(line, "Binary files"):
+				out = append(out, a.pal.dim(fit(line, width)))
+			case !inHunk:
+				continue
+			case strings.HasPrefix(line, "+"):
+				out = append(out, a.pal.add(fit(a.icon(tokens.GDiffAdd)+strings.TrimPrefix(line, "+"), width)))
+			case strings.HasPrefix(line, "-"):
+				out = append(out, a.pal.del(fit(a.icon(tokens.GDiffDel)+strings.TrimPrefix(line, "-"), width)))
+			default:
+				out = append(out, a.pal.dim(fit(line, width)))
 			}
-			out = append(out, a.pal.ink(fit(planPatchHeadPath(line), width)))
-		case strings.HasPrefix(line, "+++"), strings.HasPrefix(line, "---"),
-			strings.HasPrefix(line, "index "), strings.HasPrefix(line, "new file"),
-			strings.HasPrefix(line, "deleted file"), strings.HasPrefix(line, "similarity"),
-			strings.HasPrefix(line, "rename "), strings.HasPrefix(line, "old mode"),
-			strings.HasPrefix(line, "new mode"):
-			continue
-		case strings.HasPrefix(line, "@@"):
-			out = append(out, a.pal.dim(fit(line, width)))
-		case strings.HasPrefix(line, "+"):
-			out = append(out, a.pal.add(fit(a.icon(tokens.GDiffAdd)+strings.TrimPrefix(line, "+"), width)))
-		case strings.HasPrefix(line, "-"):
-			out = append(out, a.pal.del(fit(a.icon(tokens.GDiffDel)+strings.TrimPrefix(line, "-"), width)))
-		default:
-			out = append(out, a.pal.dim(fit(line, width)))
 		}
 	}
 	return out
-}
-
-// planPatchHeadPath is the file a patch section is about, off its header.
-func planPatchHeadPath(line string) string {
-	head := strings.TrimPrefix(line, "diff --git ")
-	if at := strings.LastIndex(head, " b/"); at >= 0 {
-		return head[at+3:]
-	}
-	return head
 }

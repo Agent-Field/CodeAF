@@ -4,6 +4,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -50,6 +52,44 @@ func TestReadPlanWorkIsTheCopysOwnChangesWithoutTheHarnessFiles(t *testing.T) {
 	}
 	if len(work.Added) != 1 || work.Added[0] != "notes.txt" {
 		t.Fatalf("added files = %q, want the work's own file and not the harness's", work.Added)
+	}
+}
+
+// Contract 1a and 1b: the live copy must keep unusual project filenames and
+// exclude only the harness's files, even when a project path ends in plandb.db.
+func TestReadPlanWorkKeepsRealNamesInLiveCopy(t *testing.T) {
+	repo := newTestRepo(t)
+	for _, name := range []string{"x b/plandb.db", "sub/plandb.db"} {
+		writeFile(t, filepath.Join(repo, name), "one\n")
+		mustGit(t, repo, "add", name)
+	}
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "seed names")
+	base := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
+	for _, name := range []string{"x b/plandb.db", "sub/plandb.db"} {
+		writeFile(t, filepath.Join(repo, name), "two\n")
+	}
+	added := []string{" lead.txt", "odd name é'q.txt", "has\"quote.txt", "new\nline.txt"}
+	for _, name := range added {
+		writeFile(t, filepath.Join(repo, name), "new\n")
+	}
+	writeFile(t, filepath.Join(repo, "plandb.db"), "private\n")
+	writeFile(t, filepath.Join(repo, ".codeaf", "x"), "private\n")
+	work := readPlanWork(&TaskCopyRecord{Dir: repo, HomeSha: base})
+	if !work.Read || work.Cut {
+		t.Fatalf("work read = %v, cut = %v", work.Read, work.Cut)
+	}
+	for _, name := range []string{"x b/plandb.db", "sub/plandb.db"} {
+		if !strings.Contains(work.Patch, "diff --git a/"+name+" b/"+name) {
+			t.Errorf("patch omits %q:\n%s", name, work.Patch)
+		}
+	}
+	if strings.Contains(work.Patch, "diff --git a/plandb.db b/plandb.db") || strings.Contains(work.Patch, "diff --git a/.codeaf/") {
+		t.Errorf("patch includes harness files:\n%s", work.Patch)
+	}
+	sort.Strings(added)
+	sort.Strings(work.Added)
+	if !reflect.DeepEqual(work.Added, added) {
+		t.Errorf("added = %q, want %q", work.Added, added)
 	}
 }
 
@@ -113,5 +153,40 @@ func TestReadPlanWorkReadsAGivenBackCopyOffItsBranch(t *testing.T) {
 	}
 	if !strings.Contains(work.Patch, "+the run's work") {
 		t.Fatalf("the branch's work is not in the patch:\n%s", work.Patch)
+	}
+}
+
+// Contract 1a and 1b: a given-back copy reads project paths from its branch
+// with the same header spelling and harness exclusions as a live copy.
+func TestReadPlanWorkKeepsRealNamesOnGivenBackBranch(t *testing.T) {
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, "x b", "plandb.db"), "one\n")
+	mustGit(t, repo, "add", "x b/plandb.db")
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "seed")
+	base := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
+	mustGit(t, repo, "checkout", "-b", "task/given-back")
+	writeFile(t, filepath.Join(repo, "x b", "plandb.db"), "two\n")
+	writeFile(t, filepath.Join(repo, "odd name é'q.txt"), "accent\n")
+	writeFile(t, filepath.Join(repo, "plandb.db"), "private\n")
+	mustGit(t, repo, "add", "x b/plandb.db", "odd name é'q.txt", "plandb.db")
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "work")
+	mustGit(t, repo, "checkout", "--detach", base)
+	work := readPlanWork(&TaskCopyRecord{Dir: t.TempDir(), Root: repo, Branch: "task/given-back", HomeSha: base})
+	if !work.Read {
+		t.Fatal("given-back branch was not read")
+	}
+	for _, name := range []string{"x b/plandb.db", "odd name é'q.txt"} {
+		found := false
+		for _, section := range PatchSections(work.Patch) {
+			if PatchSectionPath(section) == name {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("given-back patch omits %q:\n%s", name, work.Patch)
+		}
+	}
+	if strings.Contains(work.Patch, "diff --git a/plandb.db b/plandb.db") {
+		t.Errorf("given-back patch includes harness store:\n%s", work.Patch)
 	}
 }

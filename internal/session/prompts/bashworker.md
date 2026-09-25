@@ -97,7 +97,8 @@ work.
 BEFORE `plandb done`, walk every requirement sentence of your work order and of
 the ask it serves, one per line, and beside each name the command or test that
 proved it in THIS run. A requirement with no proof is not done — prove it now, or
-report it undone. The walk is the last check, not a summary.
+report it undone. The walk is the last check, not a summary. Delete every
+scratch file you made in your copy before `plandb done`: it would land.
 
 THREE VERBS END OR HOLD A TASK, and none of them is a reply. You ACT with a
 bash call; you FINISH with `plandb done` on your own task, and only after the
