@@ -500,8 +500,16 @@ func (a *app) sideBand() []sideBandItem {
 	t, kind, handle := a.sideTeam()
 	if kind != sideKindPlain {
 		for _, e := range a.sideAsks(t, kind, handle) {
-			who := a.trafficAddr(e.From)
-			words := who + " asks: " + strings.TrimPrefix(strings.Join(strings.Fields(e.Text), " "), "asks: ")
+			// THE BAND READS `from → to` TOO: the member that asked, the
+			// manager's mark, then the question. In this member's own chat
+			// the member is `you`. The whole row stays amber, because it is
+			// the one thing that needs the person.
+			from := a.trafficAddr(e.From)
+			if kind == sideKindMember && e.From == handle {
+				from = "you"
+			}
+			q := strings.TrimSpace(strings.TrimPrefix(strings.Join(strings.Fields(e.Text), " "), "asks:"))
+			words := from + " " + a.linearMark("→", "->") + " " + a.teamManagerMark() + "  " + q
 			act := sideAct{kind: sideActJump, entry: e.ID}
 			hint := words
 			if m, ok := t.ByHandle(e.From); ok && m.Key != a.frontTabKey() {
@@ -616,21 +624,24 @@ func (a *app) sideBandRows(width int) []railLine {
 			lead = a.pal.ink(mark)
 		}
 		room := width - ansi.StringWidth(mark) - 1
-		age := ""
-		// A NARROW COLUMN SAYS THE AGE ON THE HINT LINE, as the Traffic's
-		// rows do ([sideAgeFrom]): what is asked is worth the cells more.
-		switch {
-		case item.age != "" && width >= sideAgeFrom && room-ansi.StringWidth(item.age)-1 >= 12:
-			age = item.age
-			room -= ansi.StringWidth(age) + 1
-		case item.age != "":
+		// THE AGE IS ON THE HINT LINE AT EVERY WIDTH, as the Traffic's rows
+		// do: the arrow and the names need the cells the clock used to take.
+		if item.age != "" {
 			row.hint = sideHintWith(row.hint, item.age)
 		}
-		words, w := fitClauses(item.words, room, a.linearMark("…", "~"))
-		line := lead + " " + paint(words) + strings.Repeat(" ", max(room-w, 0))
-		if age != "" {
-			line += " " + a.pal.dim(age)
+		// A TRAFFIC ASK KEEPS `from → to` AND CUTS THE QUESTION AT A WORD. A task
+		// row has no arrow, and still cuts at a clause.
+		words := item.words
+		tail := a.linearMark("…", "~")
+		if at := strings.Index(item.words, "  "); at > 0 && (strings.Contains(item.words[:at], "→") || strings.Contains(item.words[:at], "->")) {
+			prefix := item.words[:at+2]
+			words = prefix + fitAtWord(item.words[at+2:], max(room-ansi.StringWidth(prefix), 0), tail)
+			words = strings.TrimRight(words, " ")
+		} else {
+			words, _ = fitClauses(item.words, room, tail)
 		}
+		w := ansi.StringWidth(words)
+		line := lead + " " + paint(words) + strings.Repeat(" ", max(room-w, 0))
 		out = append(out, railLine{text: line, entry: -1, side: row})
 	}
 	if more > 0 || (a.side.bandAll && len(items) > sideBandCap+1) {

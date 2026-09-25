@@ -92,8 +92,8 @@ func TestAMembersTrafficIsItsOwnMessages(t *testing.T) {
 	if all < 0 || said != all+1 || told != said+1 {
 		t.Fatalf("the member's messages are not newest first, one line each (%d %d %d):\n%s", all, said, told, joined)
 	}
-	if !strings.Contains(rows[said], "→ "+teamManagerGlyph) || !strings.Contains(rows[told], teamManagerGlyph) {
-		t.Fatalf("a row does not say which way it went:\n%s", joined)
+	if !strings.Contains(rows[said], "you → "+teamManagerGlyph) || !strings.Contains(rows[told], teamManagerGlyph+" → you") {
+		t.Fatalf("a row does not say who it is from and who it is for:\n%s", joined)
 	}
 	if strings.Contains(joined, "not for price") {
 		t.Fatalf("a message between others is in the member's Traffic:\n%s", joined)
@@ -168,35 +168,68 @@ func TestTheTrafficsHoverGroundIsItsClickTarget(t *testing.T) {
 	a.dropHover()
 }
 
-// A NARROW COLUMN SPENDS ITS CELLS ON WHAT THE WORK IS. At 110 columns the
-// column is under [sideAgeFrom], so a work row draws no age and one cell of air
-// after whom it is with, and keeps a dozen letters of what it asked where it
-// kept six; the age is on the row's hint line, before the click. A wide
-// column still draws the age at the right.
-func TestANarrowColumnGivesTheWorkRowsTheirWords(t *testing.T) {
+// rowKeepsTheArrow reports that a Traffic row still says who it is from and
+// who it is for, cuts its words at a word, and carries no age. full is the
+// words the row was cut from.
+func rowKeepsTheArrow(row, full string) bool {
+	row = strings.TrimRight(row, " ")
+	if !strings.Contains(row, "→") || strings.HasSuffix(row, "now") {
+		return false
+	}
+	// A cut through a word of full leaves a prefix of that word and the
+	// ellipsis, with the rest of the word missing.
+	for _, w := range strings.Fields(full) {
+		if len(w) < 4 {
+			continue
+		}
+		for n := 2; n < len(w); n++ {
+			frag := w[:n] + "…"
+			if strings.Contains(row, frag) && !strings.Contains(row, w) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// EVERY WIDTH DRAWS `from → to` AND CUTS ONLY THE WORDS. At a column of 28,
+// 32 and 40 the arrow and the names stay, the words stop at a word, and the
+// age is on the hint line. The same is true of a member's own rows.
+func TestTrafficRowsKeepTheArrowAtEveryWidth(t *testing.T) {
 	a, harbor, _, _ := trafficApp(t)
-	price, _ := trafficHandle(t, a, harbor, "openrouter")
+	price, priceKey := trafficHandle(t, a, harbor, "openrouter")
 	rail, _ := trafficHandle(t, a, harbor, "Refactor")
-	a.width, a.height = 110, 40
 	q := threadScenario(t, a, harbor, price, rail)
-	a.touch()
-	rows := railLines(t, a)
-	at := railRowOf(rows, "@"+price+" +2 Please prov")
-	if a.railRoom() >= sideAgeFrom || at < 0 {
-		t.Fatalf("at 110 (column %d) the work row does not keep its words:\n%s", a.railRoom(), strings.Join(rows, "\n"))
+	full := "Please provide a brief status update on your part"
+	for _, width := range []int{112, 128, 160} {
+		a.width, a.height = width, 40
+		a.touch()
+		if got := a.railWidth(); got != sideColsFor(width) || (got != 28 && got != 32 && got != 40) {
+			t.Fatalf("width %d lends column %d, want 28, 32 or 40", width, got)
+		}
+		rows := railLines(t, a)
+		at := railRowOf(rows, "@"+price+" +2")
+		if at < 0 || !strings.Contains(rows[at], teamManagerGlyph+" → ") || !rowKeepsTheArrow(rows[at], full) {
+			t.Fatalf("at column %d the work row lost its arrow or cut a word:\n%s", a.railWidth(), strings.Join(rows, "\n"))
+		}
+		hint := a.sideRowOf("thread/" + q).hint
+		if !strings.Contains(hint, hintSegment+"now"+hintSegment+"click") {
+			t.Fatalf("at column %d the age is not on the hint: %q", a.railWidth(), hint)
+		}
 	}
-	if strings.HasSuffix(strings.TrimRight(rows[at], " "), "now") {
-		t.Fatalf("a narrow column still spends cells on the age: %q", rows[at])
-	}
-	hint := a.sideRowOf("thread/" + q).hint
-	if !strings.Contains(hint, hintSegment+"now"+hintSegment+"click") {
-		t.Fatalf("the age is not on the hint line before the click: %q", hint)
-	}
-	a.width = 180
-	a.touch()
-	rows = railLines(t, a)
-	if at := railRowOf(rows, "@"+price+" +2  Pleas"); at < 0 || !strings.HasSuffix(strings.TrimRight(rows[at], " "), "now") {
-		t.Fatalf("a wide column lost the age:\n%s", strings.Join(rows, "\n"))
+	spend(t, a, a.trafficGo(priceKey))
+	a.sideSetView(sideTraffic)
+	for _, width := range []int{112, 128, 160} {
+		a.width, a.height = width, 40
+		a.touch()
+		rows := railLines(t, a)
+		told := railRowOf(rows, teamManagerGlyph+" → you")
+		if told < 0 || !rowKeepsTheArrow(rows[told], full) {
+			t.Fatalf("at column %d a member row is not `from → you`:\n%s", a.railWidth(), strings.Join(rows, "\n"))
+		}
+		if hint := a.sideRowOf(railKeyOfReply(t, a, teamManagerGlyph+" → you")).hint; !strings.Contains(hint, "now") {
+			t.Fatalf("at column %d the member row's hint has no age: %q", a.railWidth(), hint)
+		}
 	}
 }
 

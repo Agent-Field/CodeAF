@@ -108,7 +108,7 @@ func TestTrafficColumnBesideTheManager(t *testing.T) {
 	head := railRowOf(rows, sideTasksWord+" 0"+sideWordSep+sideTrafficWord)
 	general := railRowOf(rows, "General")
 	work := railRowOf(rows, "@"+rail+"  take the scope model")
-	note := railRowOf(rows, "@"+price+": prices are in")
+	note := railRowOf(rows, "@"+price+" → ")
 	if head < 0 || !strings.HasSuffix(rows[head], sideHideKey) || general != head+1 || note != general+1 || work <= note {
 		t.Fatalf("the column does not draw its header, General open with the note, and the work under it (%d, %d, %d, %d):\n%s", head, general, note, work, joined)
 	}
@@ -393,11 +393,19 @@ func TestTrafficStopAndStartAreDoneOnceAndNeverReplayed(t *testing.T) {
 		t.Fatalf("the new member did not reach the disk: %+v", disk[0].Members)
 	}
 	// The column says what the stop and the start were for, under General.
+	// The route takes the cells the brief used to have, so a cut word is on
+	// the hint line, whole.
 	a.width, a.height = 180, 40
 	a.sideToggleThread(sideThreadKey(harbor, sideGeneral))
 	rows := strings.Join(railLines(t, a), "\n")
-	if !strings.Contains(rows, "stopped @"+price+" · stuck") || !strings.Contains(rows, "started @lexer · rewrite") {
-		t.Fatalf("the column drops the stop's reason or the start's brief:\n%s", rows)
+	if !strings.Contains(rows, teamManagerGlyph+" → @lexer") || !strings.Contains(rows, "started @lexer") || !strings.Contains(rows, "stopped @"+price) {
+		t.Fatalf("the column drops the stop or the start:\n%s", rows)
+	}
+	if hint := a.sideRowOf(railKeyOfReply(t, a, "started @lexer")).hint; !strings.Contains(hint, "rewrite") {
+		t.Fatalf("the start's brief is not on the hint: %q", hint)
+	}
+	if hint := a.sideRowOf(railKeyOfReply(t, a, "stopped @"+price)).hint; !strings.Contains(hint, "stuck") {
+		t.Fatalf("the stop's reason is not on the hint: %q", hint)
 	}
 
 	// A second window on the same log, holding the same conversations.

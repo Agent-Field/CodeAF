@@ -79,38 +79,39 @@ in front it opens on the tasks. Each kind of chat remembers the word you last ch
 rest of the session. With the column holding the keyboard (`alt+t`), `←` and `→` switch the
 words. Nothing here moves the conversation: both words are drawn in the same columns.
 
-Under the header is what needs you, from both words: a member's question to you (`? @web
-asks: may I run the migration?`), a decision put to you, and your tasks that are waiting on
+Under the header is what needs you, from both words: a member's question to you (`? @model → ◆
+keep the old schema?`), a decision put to you, and your tasks that are waiting on
 you, in the needs-you amber; a task that failed and that you have not opened yet is its `✕` in
 ordinary ink. Three rows at most, then `+2 more`; a line closes the band, and when nothing
 needs you there is no band at all. Pressing a question opens the member at the question; a
 decision opens the teams page. What is in the band is not drawn again under it.
 
 In the manager's chat the Traffic is the team's **work**, one line each, the newest at the
-top:
+top. Every row reads who it is from and who it is for, then the words:
 
 ```
 Tasks 14 · Traffic 8                 alt+l
-? @model asks: may I run the migr…     now
+? @model → ◆  keep the old schema?
 ✕ parser bench incomplete
 ──────────────────────────────────────────
-General                     2 msgs ▸   now
-@scrape +2  Please provide…  running ▾ now
-  ↳ 09:58 @scrape: ✓ Status update: pri…
-  ↳ 09:58 @model: working…
-  ↳ 09:58 @review: ✓ Status update: two…
+◆ → @scrape +2  Please provide a st…   ▸
+◆ → @model      Refactor the rail…     ▾
+  ↳ @model → ◆  ✓ done, 3 files changed
+  ↳ @model → ◆  working…
+General                     2 msgs     ▸
 ```
 
-- A row is a thread (below): whom the manager's message went to (`+2` for the ones that do
-  not fit) and what it said, the state its answers leave it in (`running`, `asking`, `done`,
-  `failed`), how many messages it holds, and its age. When the column is narrow the count
-  and then the state give way to the words; the hint line always says them. In a column under
-  32 cells wide (a 110-column window) the ages and the reply times are not drawn, so a row keeps
-  more of what the work is (`@scrape +2 Please provi… ▸`); pointing at the row says the age on
-  the hint line, and the band's questions do the same.
-- `▸` lays the thread's replies open under it, one `↳` line per member with the time: `✓` on
-  an answer from a member that finished its turn, `✗` for one that failed, `working…` for a
-  member the message woke that has not answered, `asking:` for one waiting on you. `▾` (or
+- A row is a thread (below): `◆ → @scrape +2` is the manager to the first member, and `+2`
+  for the ones that do not fit, then what it said. The state its answers leave it in
+  (`running`, `asking`, `done`, `failed`) and how many messages it holds sit at the right
+  when they fit, and the hint line always says them. The age is not on the row at any width.
+  Pointing at the row says the age on the hint line, and the band's questions do the same.
+  In a narrow column the arrow and the names stay, and only the words are cut, at a word,
+  with `…`.
+- `▸` lays the thread's replies open under it, one `↳` line per member, each `from → to`
+  the same way (`↳ @model → ◆  ✓ done, 3 files changed`): `✓` on an answer from a member
+  that finished its turn, `✗` for one that failed, `working…` for a member the message woke
+  that has not answered. The reply's time is on the hint line, not on the row. `▾` (or
   `enter` on the row, with the column holding the keyboard) folds them.
 - Everything that answers nothing and is answered by nothing (notes, starts, stops, handle
   changes, anything written before threads) is the one **General** thread, laid open the
@@ -129,9 +130,10 @@ Point anywhere else on a row to read it whole in the hint line; press it to brin
 in the manager's conversation into view. Nothing in the column moves your focus but a handle or a question in the band.
 
 In a member's chat the Traffic is the messages to or from that member (and to the whole team),
-one line each, newest first: `◆  Please provide a brief status…` from the manager, `→ ◆  Status
-update: prices are in` from the member, `→ @model  the cache keys are in…` to another member.
-Press one to go to it in the member's conversation.
+one line each, newest first, and that member is `you`: `◆ → you  parser numbers?` from the
+manager, `you → ◆  ✓ p50 41ms, p99 180ms` back, `you → @gravity  rebase done` to another
+member. Press one to go to it in the member's conversation. General, laid open, uses the same
+`from → to` on each of its lines.
 
 `alt+l` puts the column away and brings it back, and this window remembers the answer (`ctrl+g`
 is the same key under its older name). Put away, the column is an edge down the right with a
@@ -159,6 +161,16 @@ was started. It reads the brief when it next runs.`, and the brief arrives on th
 the same way. When the manager stops a member,
 this window stops it the way your own Stop would. Both happen only in a window that has those
 conversations open.
+
+## Who a Traffic row is from and who it is to
+
+Every Traffic row reads `from → to`, then the words. The manager is `◆`. Several recipients
+are the first handle and `+2` for the rest. In a member's chat that member is `you`, so a
+question to it reads `◆ → you` and its answer reads `you → ◆`. A reply under a thread is the
+same shape after `↳` (`↳ @model → ◆  working…`). The band's question is the same shape in
+amber (`? @model → ◆  keep the old schema?`). The age and the reply's time are on the hint
+line at every width, never on the row. A narrow column keeps the arrow and the names and cuts
+only the words, at a word, with `…`. Press a handle to open that member at the message.
 
 ## What members say without being asked
 

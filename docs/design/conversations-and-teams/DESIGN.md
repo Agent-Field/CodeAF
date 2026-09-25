@@ -369,19 +369,21 @@ them.
   `waits:`, merge word, cost, branch, the reason for a your-call) is the hint line's. The
   family forest, its per-row disclosure and `view more` are gone; the margin under the list
   (`+ /task`, standing, jobs, `ctrl+. earlier`) and a run's plan rows stay.
-- **Traffic in a manager's chat is work**: one row per thread (`teams.Threads`), whom it went
-  to and what it said, the state its answers leave it in and its message count (the count and
-  then the state give way to the words when the column is narrow; the hint says them). A column
-  under 32 cells (the 27 of a 110 frame) draws no ages or reply times and one cell of air after
-  the handle, where a work row kept six letters of its title (`@scrape +2  Please … ▸ now`); the
-  hint line says the age before its click, and the band says it the same way. A band row is cut
-  at a clause, never leaving ` · …`. `▸`
-  laying the replies open as `↳ 09:58 @review: ✓ two findings…` (events folded into the
-  member's line), and every unthreaded line under one `General` thread. A thin `new` line
+- **Traffic in a manager's chat is work**: one row per thread (`teams.Threads`), and every row
+  reads `from → to  words`. The manager is `◆`, several recipients are `@scrape +2`, and the
+  words follow (`◆ → @scrape +2  Please provide a st… ▸`). The state its answers leave it in
+  and its message count give way to the words when the column is narrow; the hint says them.
+  The age is never on the row, at any width: the hint line says it before its click, and the
+  band says it the same way, so the arrow and the names keep their cells. A narrow column cuts
+  only the words, at a word, with `…`. A band row is `? @model → ◆  keep the old schema?`,
+  amber, and a task row in the band is still cut at a clause, never leaving ` · …`. `▸`
+  lays the replies open as `↳ @model → ◆  ✓ done, 3 files changed` (events folded into the
+  member's line, the clock on the hint), and every unthreaded line under one `General` thread,
+  its open lines in the same `from → to`. A thin `new` line
   marks what arrived since the Traffic was last in front and holds still while it is read. A
   handle opens its member at the message; the rest of a row brings the message into view in
   the chat in front. **In a member's chat** it is the messages to or from that member, or to
-  everyone, one line each.
+  everyone, one line each, and that member is `you` (`◆ → you`, `you → ◆`, `you → @gravity`).
 - **Geometry.** The column is a quarter of the frame, 28 to 40 columns (30 at 120), from 100
   columns up while the conversation keeps 56; `alt+w` adds 16 from 120 up. It is the same in
   both views and every kind of chat, so switching, folding, the band and new rows never move
