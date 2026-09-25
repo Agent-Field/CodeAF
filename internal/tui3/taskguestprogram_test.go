@@ -18,6 +18,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -223,6 +224,38 @@ func TestAProgramsGuestPageSettlesOnTheOwnersWord(t *testing.T) {
 	body := roomText(a)
 	if !strings.Contains(body, refusalOwnerLead+"docs pass") || strings.Contains(body, refusalMainDoor) {
 		t.Fatalf("the landed program's guest page does not name the owner's door:\n%s", body)
+	}
+	a.closeRoom()
+}
+
+// A WINDOW ON THE ENGINE ROAD DRAWS THE OTHER CONVERSATIONS' WORK AND OPENS IT.
+// Bare `codeaf` holds a connection to its engine, and a connection has no
+// reading of the disk ([elsewhereAgent] is the agent's own), so the rows of work
+// another conversation was running were never drawn there — and the door behind
+// them, [app.openOwnerRoom], could not be reached from any real window. The
+// launch now hands the surface the reading ([Options.Elsewhere]), asked with the
+// transcript this window is drawing, and the row opens its reading page.
+func TestAnEngineWindowReadsTheOtherConversationsOffTheDiskAndOpensThem(t *testing.T) {
+	a, door := guestLab(t)
+	door.pages = map[string]session.PlanTaskPage{"7": programPage(programRow(), programTurns())}
+	// NOTHING READ YET, and the agent under this window answers no reading.
+	a.away = elsewhereCache{}
+	if _, answers := a.agent.(elsewhereAgent); answers {
+		t.Fatal("the fixture's agent reads the disk itself, so this test would prove nothing")
+	}
+	var asked []string
+	a.elsewhereOf = func(file string, now time.Time) session.Elsewhere {
+		asked = append(asked, file)
+		return session.NewElsewhere(now, map[string]string{"the-other-window": "docs pass"},
+			window("the-other-window", session.PresenceTask{
+				ID: "7", Title: "Port the parser", State: string(session.TaskRunning)}))
+	}
+	enterAwayPumped(t, a)
+	if len(asked) == 0 || asked[0] != a.file {
+		t.Fatalf("the reading was asked for %q, want this window's own transcript %q", asked, a.file)
+	}
+	if !a.roomIsGuest() || a.programOf() == nil {
+		t.Fatalf("the other conversation's program task did not open its reading page:\n%s", roomText(a))
 	}
 	a.closeRoom()
 }

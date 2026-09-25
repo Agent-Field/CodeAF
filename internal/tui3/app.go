@@ -873,6 +873,10 @@ type app struct {
 	// states the whole contract, taskowner.go is the only caller). Nil is a
 	// window with no engine road, which answers with the card instead.
 	openTaskOwner func(TaskOwnerAsk) (TaskOwnerView, error)
+	// elsewhereOf reads the other conversations' presence off this machine's
+	// disk for a window whose agent cannot (tui3.go's [Options.Elsewhere];
+	// taskview.go's [app.refreshElsewhere] is the only caller).
+	elsewhereOf func(transcript string, now time.Time) session.Elsewhere
 	// taskOwnerGen numbers the attaches this window has asked for and taskOwnerAt
 	// is the one still in flight. An answer carrying an older number is a view
 	// nobody wants any more: it is CLOSED on arrival rather than drawn, which is
@@ -2776,6 +2780,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		open:                opts.Open,
 		engineAnswers:       opts.EngineAnswers,
 		openTaskOwner:       opts.OpenTaskOwner,
+		elsewhereOf:         opts.Elsewhere,
 		anchorWorkspace:     opts.AnchorWorkspace,
 		errand:              opts.Errand,
 		standingRoot:        opts.StandingRoot,

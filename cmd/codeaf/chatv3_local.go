@@ -322,6 +322,13 @@ func openChatV3Local(launch localLaunch) error {
 	// road and not a use of this client's connection, and this is the door that
 	// knows the road (chatv3_taskowner.go says what makes it safe).
 	options.OpenTaskOwner = localTaskOwnerDoor(welcome.Workspace)
+	// AND IT CAN SEE THEM AT ALL. The rows that door sits behind are minted from
+	// the other conversations' presence files, which the agent this surface
+	// holds — a connection — cannot read; the engine is on this machine, so the
+	// files are on this disk beside the transcript the surface was handed, and
+	// the reading is taken straight off it. Without this the door above was
+	// never reached from a real window.
+	options.Elsewhere = session.ElsewhereOf
 	// AND HOME CAN TELL AN ENGINE FROM A WINDOW. It is bound on THIS road and no
 	// other, which is the absence law rather than an oversight: --host has its
 	// holder on this laptop and its journal on the far machine, and the in-process

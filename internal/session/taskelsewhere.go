@@ -163,6 +163,33 @@ func (a *Agent) ElsewhereExcept(others ...string) Elsewhere {
 	return ReadElsewhere(bucket, time.Now(), append([]string{a.config.Place.ID()}, others...)...)
 }
 
+// ElsewhereOf is [Agent.Elsewhere] asked by a surface that holds a
+// conversation's TRANSCRIPT and not its agent: the reading of the bucket that
+// conversation's folder is in, with that conversation left out.
+//
+// IT EXISTS BECAUSE THE ORDINARY WINDOW HOLDS NO AGENT. Bare `codeaf` is a
+// surface talking to this workspace's engine over a socket, and what it holds is
+// a connection ([remote.Agent]), which has no reading of the disk to offer. The
+// engine is on THIS machine, though, and the presence files are on this
+// machine's disk beside the transcript the surface was handed — so the answer is
+// the same arithmetic [Agent.ElsewhereExcept] does on its [Place], done on the
+// path: the transcript's folder is the session, and its parent is the bucket.
+//
+// A transcript with no folder of its own has no bucket to look in and no id to
+// leave out, and answers the empty reading, as a memory-only agent does.
+func ElsewhereOf(transcript string, now time.Time) Elsewhere {
+	transcript = strings.TrimSpace(transcript)
+	if transcript == "" {
+		return Elsewhere{Read: now}
+	}
+	dir := filepath.Dir(transcript)
+	bucket := filepath.Dir(dir)
+	if dir == "." || bucket == "" || bucket == "." || bucket == dir {
+		return Elsewhere{Read: now}
+	}
+	return ReadElsewhere(bucket, now, filepath.Base(dir))
+}
+
 // Any reports whether another window is open on this project at all. It is the
 // cheapest form of the question and the one a surface asks before it decides
 // whether a section exists.

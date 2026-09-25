@@ -398,6 +398,18 @@ func (a *app) refreshElsewhere() {
 	a.away = elsewhereCache{at: a.now(), read: true}
 	agent, ok := a.agent.(elsewhereAgent)
 	if !ok {
+		// A WINDOW WHOSE AGENT IS A CONNECTION READS THE DISK THROUGH THE LAUNCH.
+		// That is every ordinary window: bare `codeaf` talks to this workspace's
+		// engine over a socket, and a connection has no reading to give — so
+		// without this the other conversations' work was never drawn, and the
+		// door behind those rows ([app.openOwnerRoom]) could not be reached at
+		// all. The launch knows the disk is the engine's and says so by binding
+		// the reader (tui3.go's [Options.Elsewhere]); it is asked about the
+		// conversation on screen, which it leaves out, exactly as the agent's
+		// own reading does.
+		if a.elsewhereOf != nil {
+			a.away.held = a.elsewhereOf(a.file, a.now())
+		}
 		return
 	}
 	// THE WHOLE READING, MINUS THIS CONVERSATION. The engine leaves the session
