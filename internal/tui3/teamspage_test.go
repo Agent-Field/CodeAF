@@ -426,6 +426,38 @@ func TestTeamsClosedFoldReopensWithItsParent(t *testing.T) {
 	}
 }
 
+// Contract 6.1: A linked local team with a history door draws its closing report in the closed pane.
+func TestLinkedLocalClosedTeamDrawsItsReport(t *testing.T) {
+	a, harbor, _ := teamsPlaceLabIDs(t)
+	p := teamstore.Packet{ID: "closing-report", Team: teamstore.Person, Origin: harbor,
+		Kind: teamstore.PacketClosing, Report: &teamstore.ClosingReport{
+			Done: "the parser", Left: "the docs", Files: []string{"parser.go"}, SpendUSD: 1.5,
+		}}
+	if err := a.teamEdit(func(f *teamstore.File) error { return f.Close(harbor, a.now(), p.ID) }); err != nil {
+		t.Fatal(err)
+	}
+	door := localTeams(a.profileDir, &a.teamsDisk.watch)
+	door.History = func(team string) ([]teamstore.Packet, error) {
+		if team == harbor {
+			return []teamstore.Packet{p}, nil
+		}
+		return nil, nil
+	}
+	a.teamsDisk.door = door
+	drive(t, a, runCmd(a.teamsRead(true))...)
+	drive(t, a, runCmd(a.teamsDo(teamsTargetOf(t, a, teamsActClosedFold, "")))...)
+	drive(t, a, runCmd(a.teamsSelect(harbor))...)
+	text := teamsFrameText(a)
+	for _, want := range []string{"closing report", "done", "the parser", "left", "the docs", "files", "parser.go", "spent", "$1.50"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the local closed pane lost %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "not readable over this connection") {
+		t.Fatalf("the local pane claimed its report could not be read:\n%s", text)
+	}
+}
+
 // ── members ─────────────────────────────────────────────────────────────────
 
 // A MEMBER THIS WINDOW DOES NOT HOLD IS RESUMED BEHIND, in its own tab, and

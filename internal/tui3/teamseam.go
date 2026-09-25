@@ -101,6 +101,7 @@ type TeamsSeam struct {
 	// Two more doors, OPTIONAL: a seam without them is a seam, and the page says
 	// what it cannot show rather than reading this machine's files. Over --host
 	// no wire answers them yet, so cmd/codeaf's hostTeams leaves them nil.
+	// The linked-local road sets History because its engine profile is here.
 
 	// History is team's packets, decided ones included, oldest first: the
 	// closed view reads its closing report from it (teamstore.Packets).

@@ -48,6 +48,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I close a team", "teams-page"},
 		{"the pane said the manager was open in another window", "teams-page"},
 		{"how do I reopen a closed team", "teams-page"},
+		{"why does my closed team say its report is not readable", "teams-page"},
 		{"where do I change one team's settings", "teams-page"},
 		{"what does the ? 2 mark on a team mean", "teams-page"},
 		// Nesting on the teams page (teams-page.md).
