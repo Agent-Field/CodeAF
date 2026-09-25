@@ -128,13 +128,19 @@ func (a *Agent) planRunCopy(root string) *TaskCopyRecord {
 // readPlanWork asks git what the copy holds against the commit it was cut
 // from. A copy that is gone from disk is read off its branch instead, which is
 // where a stopped or landed run's work still is.
+//
+// A COPY THAT WAS GIVEN BACK IS STILL A FOLDER ON DISK. An ended run leaves its
+// copy behind as a plain folder with the note that it was released, and git no
+// longer answers for it, so only a folder git still answers for is read as the
+// live copy. Every other copy, gone or given back, is read off its branch.
 func readPlanWork(copied *TaskCopyRecord) PlanTaskWork {
 	work := PlanTaskWork{Dir: strings.TrimSpace(copied.Dir)}
 	base := strings.TrimSpace(copied.HomeSha)
+	live := false
 	if info, err := os.Stat(work.Dir); err == nil && info.IsDir() {
-		if _, ok := runTreeRoot(work.Dir); !ok {
-			return work
-		}
+		_, live = runTreeRoot(work.Dir)
+	}
+	if live {
 		if base == "" {
 			base = "HEAD"
 		}

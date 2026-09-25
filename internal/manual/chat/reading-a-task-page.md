@@ -193,8 +193,9 @@ changed.
   `the files this task changes are listed here when it lands`.
 - On a run's task, `work` is the run's working copy read against the commit it was cut
   from: the difference, and the files added, with the files codeaf keeps there left out.
-  The whole run shares that one copy, and the tab says so at its top. A copy that is gone
-  from disk is read off its branch instead.
+  The whole run shares that one copy, and the tab says so at its top. Once the run has
+  ended its copy is given back, and the tab reads the work off the run's branch instead.
+  With that branch gone too, it says `the run's working copy is not here any more`.
 
 `tab` over an empty box moves from one tab to the other, and a click on a tab's name opens
 it. With words in the box, `tab` is the box's own key.
