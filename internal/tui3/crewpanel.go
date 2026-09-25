@@ -186,6 +186,9 @@ type crewPanel struct {
 	suggest   map[crewroute.Seat]string
 	rule      crewroute.Allowed
 	capUSD    float64
+	// dayUSD is the daily limit on everything codeaf spends (/budget), read
+	// beside the crew's own cap so the panel can say both apply; zero is none.
+	dayUSD    float64
 	taskUSD   float64
 	free      bool
 	providers []config.CrewProvider
@@ -326,6 +329,7 @@ func (p *crewPanel) read(dir string) {
 	p.pins = config.CrewPinsAt(dir)
 	p.rule = config.CrewAllowedAt(dir)
 	p.capUSD = config.CrewCapAt(dir)
+	p.dayUSD, _ = config.DailyBudgetUSDAt(dir)
 	p.taskUSD = config.CrewTaskCapAt(dir)
 	p.free = config.CrewFreeRoutesAt(dir)
 	p.providers = config.CrewProvidersAt(dir)
@@ -1602,6 +1606,12 @@ func (a *app) crewMainRows(width, hover int) ([]string, []int) {
 		capValue += "  " + a.pal.add(a.crewMark(tokens.GSettled))
 	}
 	add(a.crewRowLine(a.crewLabel("cap", p.cursor == crewCap)+capValue, p.cursor == crewCap, hover == len(rows), false, width), crewCap)
+	if day := a.crewDayLimitLine(); day != "" {
+		// WRAPPED, NEVER CLIPPED: a narrow frame keeps the whole sentence.
+		for _, line := range wrap(day, max(1, width-12)) {
+			add(a.pal.dim("            "+line), -1)
+		}
+	}
 	if day := a.crewTodayWord(); day != "" {
 		add("", -1)
 		add(a.pal.dim(fit("  "+day, width)), -1)
@@ -1755,13 +1765,29 @@ func (a *app) crewCapValue() string {
 	}
 	if p.edit != nil && p.edit.stop == crewCap {
 		if p.edit.price == 1 {
-			return a.pal.dim("per task ") + hole(p.edit.box.String()) + a.pal.dim(" · daily ") + daily +
+			return a.pal.dim("per task ") + hole(p.edit.box.String()) + a.pal.dim(" · "+crewDailyCapWord+" ") + daily +
 				a.pal.dim(" · empty is "+config.CrewTaskMoney(config.CrewTaskCapDefault)+" · tab daily")
 		}
-		return a.pal.dim("per task ") + task + a.pal.dim(" · daily ") + hole(p.edit.box.String()) +
+		return a.pal.dim("per task ") + task + a.pal.dim(" · "+crewDailyCapWord+" ") + hole(p.edit.box.String()) +
 			a.pal.dim(" · empty is none · tab per task")
 	}
-	return a.pal.dim("per task ") + task + a.pal.dim(" · daily ") + daily
+	return a.pal.dim("per task ") + task + a.pal.dim(" · "+crewDailyCapWord+" ") + daily
+}
+
+// crewDailyCapWord is the crew's own daily cap as every crew surface names it.
+// TWO DAILY LIMITS ARE NAMED APART: the first-run screen's `Daily limit` is the
+// day's limit on everything codeaf spends (/budget), and a cap row that said
+// only `daily none` beside it read as "nothing limits the day".
+const crewDailyCapWord = "crew daily cap"
+
+// crewDayLimitLine is the line under the cap row that says the daily limit on
+// everything codeaf spends still applies, with its figure — nothing when there
+// is no daily limit (the emptiness law).
+func (a *app) crewDayLimitLine() string {
+	if a.crewUI.dayUSD <= 0 {
+		return ""
+	}
+	return "the daily limit, " + config.CrewTaskMoney(a.crewUI.dayUSD) + ", still covers everything codeaf spends · /budget"
 }
 
 // crewChipRoom is the cells a providers row keeps free past its chips, for

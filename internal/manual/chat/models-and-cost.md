@@ -525,7 +525,9 @@ can change and one line about the day.
 │                                                                     │
 │  models    ‹ all › (96)                                             │
 │  providers ✓ openrouter  ✓ z-ai sub  ✓ ollama local  ○ my-vllm  +   │
-│  cap       per task $5 · daily none                                 │
+│  cap       per task $5 · crew daily cap none                        │
+│            the daily limit, $500, still covers everything codeaf    │
+│            spends · /budget                                         │
 │                                                                     │
 │  today $1.84 · 14 tasks                                             │
 ╰─ enter change · esc close · ? keys ─────────────────────────────────╯
@@ -543,8 +545,11 @@ can change and one line about the day.
   its plain name, a subscription says `sub`, a model on this machine says `local` when there
   is room, and a custom endpoint is the name you gave it. The `+` at the end opens
   `/connect`. On a narrow window the chips fold to `3 of 4 on`.
-- **cap** — `per task $5 · daily none`: the most one task may spend, and the most crews
-  may spend in a day, `none` for no daily cap.
+- **cap** — `per task $5 · crew daily cap none`: the most one task may spend, and the most
+  crews may spend in a day, `none` for no crew daily cap. Under it, the daily limit on
+  everything codeaf spends (the first-run screen's **Daily limit**, `/budget`) is named with
+  its figure — `the daily limit, $500, still covers everything codeaf spends · /budget` —
+  because the crew's cap being `none` does not mean nothing limits the day.
 - **today** — what crews spent today and how many tasks ran. Spend that is nothing is not
   drawn (`today 1 task`, never `$0.000`), and a day with nothing in it has no line.
 
@@ -704,7 +709,7 @@ codeaf spends, and still applies.
 
 No task may cost more than its limit: **$5** unless you set another. `/crew cap task 10`
 sets it to $10; on the panel it is the first figure on the **cap** row
-(`per task $5 · daily none`) — `enter` on the row, `tab` to the per-task box, type, `enter`.
+(`per task $5 · crew daily cap none`) — `enter` on the row, `tab` to the per-task box, type, `enter`.
 A task always has a limit: `none` and `0` are refused, and an emptied box is $5 again.
 
 Every priced call of one task — each seat's, on every model, and the helpers made for it —

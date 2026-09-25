@@ -131,14 +131,16 @@ The first control is **Daily limit**, and it opens on the amount that is actuall
 force — `$500` on a profile that has never chosen one, or your own figure if you have.
 Its one line reads:
 
-> When codeaf's spending today reaches this amount, new work waits until midnight or you
-> raise it.
+> When everything codeaf spends today reaches this amount, new work waits until midnight or
+> you raise it.
 
 Type a number to change it — the `$` is drawn for you rather than typed — or type
 **`none`** for no limit, which is a first-class answer and makes the row read `no limit`.
 `?` on the row adds the part that matters when the bill arrives: *it counts spending
 codeaf records here. Calls already running can carry it a little past. Your provider
-account has its own controls.* It is a backstop against a runaway, not a promise about
+account has its own controls. Task crews also have a daily cap of their own, set in /crew.*
+The two are different limits: this one covers everything codeaf spends, and `/crew`'s
+**crew daily cap** covers only what task crews spend. It is a backstop against a runaway, not a promise about
 your whole bill. Something that is not a dollar amount is refused in the settings row's
 own words — `that's not a dollar amount — a number, or none for no limit` — and the
 screen stays.

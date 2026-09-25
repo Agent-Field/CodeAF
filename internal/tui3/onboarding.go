@@ -103,7 +103,7 @@ const controlLabelWidth = 19
 // row where it can. Everything else this screen could say about a control is
 // behind `?` on that control.
 const (
-	controlLimitWord = "When " + product + "'s spending today reaches this amount, " +
+	controlLimitWord = "When everything " + product + " spends today reaches this amount, " +
 		"new work waits until midnight or you raise it."
 	controlModelWord = "The model you talk to in this conversation."
 )
@@ -117,7 +117,8 @@ const (
 // the product making a promise it cannot keep with somebody else's money.
 const (
 	controlLimitDetail = "It counts spending " + product + " records here. Calls already " +
-		"running can carry it a little past. Your provider account has its own controls."
+		"running can carry it a little past. Your provider account has its own controls. " +
+		"Task crews also have a daily cap of their own, set in /crew."
 	controlModelDetail = "It also handles this conversation's tool use. Changing it here is " +
 		"the same choice /model makes, and it is kept for the next launch." +
 		" Tasks get their own crew, picked per task · /crew shows it."

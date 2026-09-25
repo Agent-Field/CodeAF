@@ -2027,7 +2027,7 @@ func (s *sheet) crewDoorItem(terms []fuzzy.Term) sheetItem {
 	}
 	value += " · per task " + config.CrewTaskMoney(config.CrewTaskCapAt(s.profileDir))
 	if capUSD := config.CrewCapAt(s.profileDir); capUSD > 0 {
-		value += " · daily " + crewroute.Money(capUSD)
+		value += " · " + crewDailyCapWord + " " + crewroute.Money(capUSD)
 	}
 	return sheetItem{
 		crewDoor: true, crewValue: value, hitAt: hitAt, hitLen: hitLen,

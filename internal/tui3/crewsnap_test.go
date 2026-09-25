@@ -45,7 +45,8 @@ func TestCrewSnapshotPanel(t *testing.T) {
 │                                                                                                  │
 │  models    ‹ all › (4)                                                                           │
 │  providers {tick} openrouter  +                                                                       │
-│  cap       per task $5 · daily none                                                              │
+│  cap       per task $5 · crew daily cap none                                                     │
+│            the daily limit, $500, still covers everything codeaf spends · /budget                │
 ╰─ enter change · esc close · ? keys ──────────────────────────────────────────────────────────────╯`)
 }
 
@@ -92,7 +93,8 @@ func TestCrewSnapshotPriceBeingTyped(t *testing.T) {
 │                                                                                                  │
 │› models    ‹ price ›  ≤ $[ 0.5 ] in / $[ 5 ] out (2)  {tick}                                          │
 │  providers {tick} openrouter  +                                                                       │
-│  cap       per task $5 · daily none                                                              │
+│  cap       per task $5 · crew daily cap none                                                     │
+│            the daily limit, $500, still covers everything codeaf spends · /budget                │
 ╰─ enter change · esc close · ? keys ──────────────────────────────────────────────────────────────╯`)
 }
 
@@ -127,7 +129,9 @@ func TestCrewSnapshotNarrow(t *testing.T) {
 │                                                      │
 │  models    ‹ all › (4)                               │
 │  providers {tick} openrouter  +                           │
-│  cap       per task $5 · daily none                  │
+│  cap       per task $5 · crew daily cap none         │
+│            the daily limit, $500, still covers       │
+│            everything codeaf spends · /budget        │
 ╰─ enter change · esc close · ? keys ──────────────────╯`)
 }
 
@@ -143,7 +147,8 @@ func TestCrewSnapshotNoProviders(t *testing.T) {
 │                                                                                                  │
 │  models    ‹ all › (0)                                                                           │
 │  providers +                                                                                     │
-│  cap       per task $5 · daily none                                                              │
+│  cap       per task $5 · crew daily cap none                                                     │
+│            the daily limit, $500, still covers everything codeaf spends · /budget                │
 │  no providers connected — /connect adds one                                                      │
 ╰─ enter change · esc close · ? keys ──────────────────────────────────────────────────────────────╯`)
 }
@@ -160,7 +165,8 @@ func TestCrewSnapshotUndoOffer(t *testing.T) {
 │                                                                                                  │
 │› models    ‹ open › (3)  {tick}                                                                       │
 │  providers {tick} openrouter  +                                                                       │
-│  cap       per task $5 · daily none                                                              │
+│  cap       per task $5 · crew daily cap none                                                     │
+│            the daily limit, $500, still covers everything codeaf spends · /budget                │
 ╰─ enter change · esc close · ? keys ───────────────────────────────────────────────────── z undo ─╯`)
 }
 
@@ -178,7 +184,8 @@ func TestCrewSnapshotProvidersRow(t *testing.T) {
 │                                                                                                  │
 │  models    ‹ all › (4)                                                                           │
 │› providers {tick} openrouter  {tick} z-ai sub  {off} ollama local  {tick} my-vllm  +                                │
-│  cap       per task $5 · daily none                                                              │
+│  cap       per task $5 · crew daily cap none                                                     │
+│            the daily limit, $500, still covers everything codeaf spends · /budget                │
 ╰─ enter change · space toggle · esc close · ? keys ───────────────────────────────────────────────╯`)
 }
 

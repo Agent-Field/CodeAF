@@ -164,15 +164,15 @@ func (a *app) crewCap(rest string) int {
 		return a.crewTaskCap(strings.TrimSpace(figure))
 	}
 	if rest == "" {
-		a.note("daily cap · " + a.crewCapWords())
+		a.note(crewDailyCapWord + " · " + a.crewCapWords())
 		return -1
 	}
 	if err := config.SetCrewCap(a.profileDir, rest); err != nil {
-		a.note("could not set the daily cap · " + err.Error())
+		a.note("could not set the " + crewDailyCapWord + " · " + err.Error())
 		return -1
 	}
 	a.crewApplied()
-	a.note("daily cap · " + a.crewCapWords())
+	a.note(crewDailyCapWord + " · " + a.crewCapWords())
 	return crewCap
 }
 
