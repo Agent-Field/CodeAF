@@ -17,15 +17,8 @@ codeaf sends anonymous usage counts to AgentField.
   Turn off:                 CODEAF_TELEMETRY=off
 ```
 
-The installer prints a three-line form of the same notice, to stderr, after the
-`installed codeaf …` receipt and before the `export PATH` line. The full notice
-above still arrives at the first session:
-
-```
-codeaf shares anonymous performance data with AgentField
-codeaf does NOT share your prompts, code, files, or any private information
-see what is shared: codeaf telemetry info · turn off: CODEAF_TELEMETRY=off
-```
+The installer prints nothing about telemetry; the notice above arrives with the
+first session, before anything is sent.
 
 ## What is sent
 
