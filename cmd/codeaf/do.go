@@ -3871,13 +3871,20 @@ type runSpend struct {
 }
 
 // doSpendGuard is the guard a `do` run's calls are held to. preauthorized
-// (-yes-spend) lifts the daily spending limit from it and nothing else: the
-// per-task limit holds either way, with or without a routed crew.
+// (-yes-spend) lifts the day's spending limit and the crew's daily cap from it
+// and nothing else: the per-task limit holds either way, with or without a
+// routed crew.
 func doSpendGuard(profileDir string, crew *crewroute.Decision, preauthorized bool) *session.SpendGuard {
 	if crew == nil {
 		return session.TaskSpendGuard(profileDir)
 	}
-	return session.CrewSpendGuard(profileDir, *crew, !preauthorized)
+	guard := session.CrewSpendGuard(profileDir, *crew, !preauthorized)
+	if preauthorized {
+		// THE CREW'S DAILY CAP TOO: the door let the run start past it on this
+		// flag (doErrand's refusal names it), so its first call must not stop there.
+		guard.Cap, guard.CapAction = 0, ""
+	}
+	return guard
 }
 
 // runSpendBound is THE SPENDING CONTRACT `--yes-spend` promises

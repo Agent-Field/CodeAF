@@ -58,3 +58,28 @@ func TestYesSpendKeepsThePerTaskLimit(t *testing.T) {
 		t.Fatalf("%d calls were made under a $5 limit at $2 a call, want 2", seat.calls)
 	}
 }
+
+// -YES-SPEND IS THE WAY PAST THE CREW'S DAILY CAP ON `codeaf do`. The door lets
+// a run start under it — the refusal names the flag — so the guard the run's
+// calls are held to must not refuse the first call at that same cap; without
+// the flag it does.
+func TestYesSpendPassesTheCrewDailyCap(t *testing.T) {
+	dir := t.TempDir()
+	if err := config.SetCrewCap(dir, "0.01"); err != nil {
+		t.Fatal(err)
+	}
+	for _, yes := range []bool{true, false} {
+		guard := doSpendGuard(dir, &crewroute.Decision{}, yes)
+		guard.Price = func(string) (float64, float64, float64, bool) { return 1e-6, 1e-5, 0, true }
+		guard.Day = session.NewSpendDay(1) // today already spent past the $0.01 cap
+		seat := &costlyCompleter{usd: 0.001}
+		_, err := guard.Wrap("vendor/worker", seat).CompleteWithMessages(t.Context(), []ai.Message{{Role: "user"}})
+		var stopped session.ErrSpendStopped
+		switch {
+		case yes && err != nil:
+			t.Errorf("under -yes-spend the first call was refused: %v", err)
+		case !yes && !errors.As(err, &stopped):
+			t.Errorf("without -yes-spend a call past the cap ended on %v", err)
+		}
+	}
+}
