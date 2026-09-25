@@ -257,7 +257,13 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 			if es[i].cut {
 				stopped = true
 			}
-			if es[i].kind == entryTask || es[i].kind == entryConnect || es[i].kind == entryStanding {
+			// A program's ending is news the person must see before the chat's
+			// wake reply. It lands through the standing task lane inside that
+			// reply's turn, so it is a boundary like an ask even though the
+			// program has already ended. Ordinary task cards keep their old
+			// placement and folding rules.
+			if es[i].kind == entryTask || es[i].kind == entryConnect || es[i].kind == entryStanding ||
+				(es[i].kind == entryDone && es[i].done != nil && es[i].done.program != "") {
 				asks = append(asks, i)
 			}
 			if es[i].kind == entryNote && (es[i].told || strings.HasPrefix(es[i].text, "cancel")) {

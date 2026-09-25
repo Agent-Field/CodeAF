@@ -51,7 +51,9 @@ work, goes to codeaf's own worker, never to senior-dev.
 
 A senior-dev run is a task of the conversation that started it. Its row is on the side
 list wearing `[senior-dev]` after its title, with the step it is in and what it has spent
-so far under it, and a card in the conversation lands when it ends. Click the row or the
+so far under it, and a card in the conversation lands when it ends. Its `ended` card
+stands outside the chat's `worked` fold as soon as the run lands, including while its
+task page is open; the chat's own work in the wake reply still folds. Click the row or the
 card, or follow a task link to it, and its task opens **inside the conversation's own
 tab**: the tab strip stays on top, with the conversation's tab selected and the `home` tab beside
 it. senior-dev gets no tab of its own.
