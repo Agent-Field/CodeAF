@@ -15,9 +15,11 @@ import (
 // small map of every conversation this window has open:
 //
 //	› say what you want done
-//	  alt+k chats · / commands                                   ▦ ▪▪▣▪
+//	  alt+k chats · / commands                              chats ▦ ▪▪▣▪
 //
-// `▦` is the wall, and a press on it opens the wall. Each cell after it is one
+// `chats` is the quiet word in front of the cells, and `▦` beside it is the
+// wall. A press on either opens the wall. The word is there because a row of
+// squares alone did not say what it was. Each cell after them is one
 // conversation, in the strip's own order ([app.tabList]), painted by what it
 // is doing: the live hue while it works, the warning hue while it waits on a
 // person, dim at rest. The one in front is `▣` in ink. A press on a cell goes
@@ -37,9 +39,9 @@ import (
 // AND IT TAKES ONLY WHAT THE KEYS LEFT. The keys are how a person drives this
 // frame from the keyboard, and the aliveness on a frame with no seam is the
 // one fact a frame may never lose (footswap.go), so both are laid out first
-// and the dock is fitted into what remains: fewer cells and a `+N` count
-// first, and then no dock at all. The telemetry is on the seam, a row the dock
-// never draws on, so no number is ever given up for it.
+// and the dock is fitted into what remains: the word `chats` first, then
+// fewer cells and a `+N` count, and then no dock at all. The telemetry is on
+// the seam, a row the dock never draws on, so no number is ever given up for it.
 
 // dockCap is how many conversations the dock spells before it counts the rest.
 const dockCap = 12
@@ -48,11 +50,19 @@ const dockCap = 12
 // dropped whole: one cell and a count is not a map of anything.
 const dockFloor = 2
 
-// dockWallWord is what the hint slot says while the pointer rests on `▦`.
-// It names teams because the view it opens is where a first team is made:
-// with no team yet, `▦ All` is the only door on the strip that leads to one,
-// and `Conversations` alone gave a person no reason to look there.
+// dockLabel is the quiet word in front of the cells. It is ASCII, so its
+// length is its width, and a press on it is the wall's own door.
+const dockLabel = "chats"
+
+// dockWallWord is what the hint slot says while the pointer rests on the
+// strip's own door to the wall (`▦ All`). The dock's word and glyph say
+// [dockChatsWord] instead: they are the same door, and the sentence under
+// the box is the one a person reads while aiming at a square.
 const dockWallWord = "Every open conversation, and your teams" + hintSegment + wallOpenKey
+
+// dockChatsWord is what the hint slot says while the pointer rests on `chats`
+// or on the dock's `▦`.
+const dockChatsWord = dockWallWord
 
 // dockCell is one conversation's cell as it was drawn: its column and its tab.
 type dockCell struct {
@@ -62,8 +72,10 @@ type dockCell struct {
 
 // dockMap is where the dock landed on the last frame, written by the draw and
 // read by the pointer (render.go's [hudSpan] bargain): a press resolves against
-// what was painted, never against a second computation of it.
+// what was painted, never against a second computation of it. label is the
+// word in front, empty on a row that dropped it.
 type dockMap struct {
+	label hudSpan
 	wall  hudSpan
 	cells []dockCell
 }
@@ -71,6 +83,7 @@ type dockMap struct {
 // dockClear forgets where the dock was drawn, on every frame before the keys
 // row is laid out, so a row that draws no dock answers for none.
 func (a *app) dockClear() {
+	a.dock.label = hudSpan{}
 	a.dock.wall = hudSpan{}
 	a.dock.cells = a.dock.cells[:0]
 }
@@ -103,13 +116,18 @@ func (a *app) dockTabs() []chatTab {
 }
 
 // dockLayout is which cells a dock of at most room cells draws: the first
-// tab shown, how many, and how many it could not spell. The one in front is
-// always inside the window, and the order is never changed. ok is false when
-// no dock fits, or when there is nothing to map.
-func dockLayout(tabs []chatTab, room int) (from, count, hidden int, ok bool) {
+// tab shown, how many, how many it could not spell, and whether the word
+// `chats` fits in front. The one in front is always inside the window, and
+// the order is never changed. ok is false when no dock fits, or when there
+// is nothing to map.
+//
+// THE WORD DROPS FIRST. A dock that still names every cell it can is worth
+// more than a word in front of a shorter one, so the word is tried only
+// beside the widest window of cells that fits, and given up before any cell.
+func dockLayout(tabs []chatTab, room int) (from, count, hidden int, label, ok bool) {
 	n := len(tabs)
 	if n < 2 {
-		return 0, 0, 0, false
+		return 0, 0, 0, false, false
 	}
 	front := 0
 	for i, tab := range tabs {
@@ -117,27 +135,41 @@ func dockLayout(tabs []chatTab, room int) (from, count, hidden int, ok bool) {
 			front = i
 		}
 	}
-	for count = min(n, dockCap); count >= dockFloor; count-- {
-		hidden = n - count
-		if dockWidth(count, hidden) > room {
-			continue
-		}
-		from = 0
+	place := func(count, hidden int) (int, int) {
+		from := 0
 		if front >= count {
 			from = front - count + 1
 		}
-		return from, count, hidden, true
+		return from, hidden
 	}
-	return 0, 0, 0, false
+	widest := min(n, dockCap)
+	hidden = n - widest
+	if dockWidth(widest, hidden, true) <= room {
+		from, hidden = place(widest, hidden)
+		return from, widest, hidden, true, true
+	}
+	for count = widest; count >= dockFloor; count-- {
+		hidden = n - count
+		if dockWidth(count, hidden, false) > room {
+			continue
+		}
+		from, hidden = place(count, hidden)
+		return from, count, hidden, false, true
+	}
+	return 0, 0, 0, false, false
 }
 
-// dockWidth is the cells a dock of count cells and hidden more takes.
-func dockWidth(count, hidden int) int {
+// dockWidth is the cells a dock of count cells and hidden more takes. label
+// is the word `chats` and the space that keeps it off the wall's glyph.
+func dockWidth(count, hidden int, label bool) int {
 	// Each cell is a full square and a space: `■ ■ ▣`, big enough to aim
 	// at, one cell of air so neighbours do not run into a bar.
 	w := 2 + 2*count - 1
 	if hidden > 0 {
 		w += 2 + len(strconv.Itoa(hidden))
+	}
+	if label {
+		w += len(dockLabel) + 1
 	}
 	return w
 }
@@ -170,12 +202,27 @@ func (a *app) dockWallGlyph() string {
 	return "▦"
 }
 
-// dockPaint draws the dock with its first cell at column at, and records where
-// every piece of it landed. The wall's mark wears the active team's colour,
-// so the dock also says which team this window is in.
-func (a *app) dockPaint(tabs []chatTab, from, count, hidden, at int) string {
-	a.dock.wall = hudSpan{from: at, to: at + 1}
+// dockPaint draws the dock with its first piece at column at, and records
+// where every piece of it landed. The wall's mark wears the active team's
+// colour, so the dock also says which team this window is in. The word in
+// front stays dim: it names the row, and the squares carry the state.
+func (a *app) dockPaint(tabs []chatTab, from, count, hidden int, label bool, at int) string {
 	var b strings.Builder
+	cursor := at
+	if label {
+		a.dock.label = hudSpan{from: cursor, to: cursor + len(dockLabel)}
+		word := dockLabel
+		if a.hot.kind == hoverDockLabel {
+			b.WriteString(a.pal.cursor(a.pal.ink(word), 0))
+		} else {
+			b.WriteString(a.pal.dim(word))
+		}
+		b.WriteString(" ")
+		cursor += len(dockLabel) + 1
+	} else {
+		a.dock.label = hudSpan{}
+	}
+	a.dock.wall = hudSpan{from: cursor, to: cursor + 1}
 	wall := a.dockWallGlyph()
 	switch {
 	case a.hot.kind == hoverDockWall:
@@ -192,7 +239,7 @@ func (a *app) dockPaint(tabs []chatTab, from, count, hidden, at int) string {
 	b.WriteString(" ")
 	cells := a.dock.cells[:0]
 	for i, tab := range tabs[from : from+count] {
-		col := at + 2 + 2*i
+		col := cursor + 2 + 2*i
 		if i > 0 {
 			b.WriteString(" ")
 		}
@@ -214,10 +261,31 @@ func (a *app) dockPaint(tabs []chatTab, from, count, hidden, at int) string {
 	return b.String()
 }
 
+// dockCellHint is the hint line for one cell. The one in front says where
+// you already are. Every other cell says where a press goes, what that
+// conversation is doing, and that a click does it.
+func dockCellHint(tab chatTab) string {
+	name := tab.full
+	if name == "" {
+		name = tab.word
+	}
+	if tab.here {
+		return name + hintSegment + "you are here"
+	}
+	state := "idle"
+	switch tab.signal {
+	case tabWorking:
+		state = "running"
+	case tabNeedsPerson:
+		state = "waiting on you"
+	}
+	return "Go to " + name + hintSegment + state + hintSegment + "click"
+}
+
 // dockHoverWords is what the hint slot says while the pointer rests on the
-// dock, and "" when it rests anywhere else: the wall's name and key over `▦`,
-// and a conversation's name and what it is doing over its cell. The strip's
-// own door to the wall (chattabs.go) is explained here too, in the same words.
+// dock, and "" when it rests anywhere else: `Every open conversation, and your teams · alt+v` over
+// the word and over `▦`, and [dockCellHint] over a cell. The strip's own door
+// to the wall (chattabs.go) is explained here too, in its own sentence.
 func (a *app) dockHoverWords() string {
 	// THE TEAM'S OWN DOORS EXPLAIN THEMSELVES HERE TOO: the manager's place on
 	// the strip, the team chip, and every row and word of the Traffic
@@ -230,30 +298,16 @@ func (a *app) dockHoverWords() string {
 		if a.wall.door.pressable() && a.hot.index == a.wall.door.from {
 			return dockWallWord
 		}
-	case hoverDockWall:
-		if a.dock.wall.pressable() {
-			return dockWallWord
+	case hoverDockLabel, hoverDockWall:
+		if (a.hot.kind == hoverDockLabel && a.dock.label.pressable()) || (a.hot.kind == hoverDockWall && a.dock.wall.pressable()) {
+			return dockChatsWord
 		}
 	case hoverDockCell:
 		for _, cell := range a.dock.cells {
 			if cell.tab.key != a.hot.key {
 				continue
 			}
-			name := cell.tab.full
-			if name == "" {
-				name = cell.tab.word
-			}
-			switch cell.tab.signal {
-			case tabWorking:
-				name += hintSegment + "running"
-			case tabNeedsPerson:
-				name += hintSegment + "needs you"
-			}
-			if cell.tab.here {
-				return name + hintSegment + "here"
-			}
-			// What a press does, as every other hint says it.
-			return name + hintSegment + "click opens it"
+			return dockCellHint(cell.tab)
 		}
 	}
 	// THE MANAGER'S TASKS' HEADER IS THE WAY BACK TO THE TRAFFIC (teamrail.go).
@@ -266,6 +320,9 @@ func (a *app) dockHoverWords() string {
 
 // dockAt is the dock's piece under column x on the keys row, as a hover.
 func (a *app) dockAt(x int) (hoverAt, bool) {
+	if a.dock.label.holds(x) {
+		return hoverAt{kind: hoverDockLabel}, true
+	}
 	if a.dock.wall.holds(x) {
 		return hoverAt{kind: hoverDockWall}, true
 	}
@@ -278,8 +335,8 @@ func (a *app) dockAt(x int) (hoverAt, bool) {
 }
 
 // dockPress is a press on the keys row, and it takes only the dock's own
-// cells: `▦` opens the wall, a cell goes to its conversation, and the one in
-// front is already where the press would go.
+// cells: `chats` and `▦` open the wall, a cell goes to its conversation, and
+// the one in front is already where the press would go.
 func (a *app) dockPress(x, y int) (tea.Cmd, bool) {
 	if a.wall.on || a.copy.on || a.rew.on {
 		return nil, false
@@ -293,7 +350,7 @@ func (a *app) dockPress(x, y int) (tea.Cmd, bool) {
 	if width, _ := a.size(); layoutTier(width) == tierPhone {
 		return nil, false
 	}
-	if a.dock.wall.holds(x) {
+	if a.dock.label.holds(x) || a.dock.wall.holds(x) {
 		return a.openWall(), true
 	}
 	for _, cell := range a.dock.cells {
@@ -321,10 +378,10 @@ func (a *app) dockRow(width, end, used int) (string, int) {
 		free -= used + hudGap
 	}
 	tabs := a.dockTabs()
-	from, count, hidden, ok := dockLayout(tabs, free)
+	from, count, hidden, label, ok := dockLayout(tabs, free)
 	if !ok {
 		return "", 0
 	}
-	w := dockWidth(count, hidden)
-	return a.dockPaint(tabs, from, count, hidden, end-w), w
+	w := dockWidth(count, hidden, label)
+	return a.dockPaint(tabs, from, count, hidden, label, end-w), w
 }

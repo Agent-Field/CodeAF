@@ -33,7 +33,7 @@ func TestDockIsAbsentWithOneConversation(t *testing.T) {
 	emptyMachine(a)
 	a.width, a.height = 120, 30
 	row := dockKeysRow(a, 120)
-	if strings.Contains(row, "▦") || a.dock.wall.pressable() || len(a.dock.cells) != 0 {
+	if strings.Contains(row, "▦") || a.dock.wall.pressable() || a.dock.label.pressable() || len(a.dock.cells) != 0 {
 		t.Fatalf("a dock with one conversation: %q %+v", row, a.dock)
 	}
 }
@@ -107,6 +107,15 @@ func TestDockDrawsEveryConversationInStripOrder(t *testing.T) {
 	if got := ansi.Cut(row, a.dock.wall.from, a.dock.wall.to); got != "▦" {
 		t.Fatalf("the wall's mark is not where it was recorded: %q", got)
 	}
+	if !a.dock.label.pressable() || ansi.Cut(row, a.dock.label.from, a.dock.label.to) != dockLabel {
+		t.Fatalf("the word is not where it was recorded: %q %+v", row, a.dock.label)
+	}
+	if !strings.Contains(painted, a.pal.dim(dockLabel)) {
+		t.Fatalf("the word is not dim: %q", painted)
+	}
+	if a.dock.label.to != a.dock.wall.from-1 {
+		t.Fatalf("the word does not stand in front of the glyph: label %+v wall %+v", a.dock.label, a.dock.wall)
+	}
 	// The ASCII floor spells the state in the character.
 	a.linear = true
 	row = dockKeysRow(a, 120)
@@ -142,8 +151,8 @@ func TestDockHoverNamesAndPressGoes(t *testing.T) {
 	before := append([]dockCell(nil), a.dock.cells...)
 	lines := screenLines(a)
 	row := lines[y]
-	if !strings.HasPrefix(row, " "+target.tab.full) {
-		t.Fatalf("the hovered cell does not name %q: %q", target.tab.full, row)
+	if !strings.HasPrefix(row, " "+dockCellHint(target.tab)) {
+		t.Fatalf("the hovered cell does not say %q: %q", dockCellHint(target.tab), row)
 	}
 	for i, cell := range a.dock.cells {
 		if cell.span != before[i].span {
@@ -151,8 +160,26 @@ func TestDockHoverNamesAndPressGoes(t *testing.T) {
 		}
 	}
 	a.setHover(a.dock.wall.from, y)
-	if row := screenLines(a)[y]; !strings.HasPrefix(row, " "+dockWallWord) {
+	if row := screenLines(a)[y]; !strings.HasPrefix(row, " "+dockChatsWord) {
 		t.Fatalf("the hovered wall mark: %q", row)
+	}
+	a.setHover(a.dock.label.from, y)
+	if a.hot.kind != hoverDockLabel {
+		t.Fatalf("the hover on the word is %+v", a.hot)
+	}
+	if row := screenLines(a)[y]; !strings.HasPrefix(row, " "+dockChatsWord) {
+		t.Fatalf("the hovered word: %q", row)
+	}
+	for _, cell := range a.dock.cells {
+		if !cell.tab.here {
+			continue
+		}
+		a.setHover(cell.span.from, y)
+		want := cell.tab.full + hintSegment + "you are here"
+		if row := screenLines(a)[y]; !strings.HasPrefix(row, " "+want) {
+			t.Fatalf("the square in front says %q, want %q", row, want)
+		}
+		break
 	}
 
 	if _, took := a.dockPress(target.span.from, y); !took {
@@ -163,13 +190,24 @@ func TestDockHoverNamesAndPressGoes(t *testing.T) {
 	}
 	_ = frame(a)
 	y = dockRowY(t, a)
+	if _, took := a.dockPress(a.dock.label.from+2, y); !took || !a.wall.on {
+		t.Fatal("the word did not open the wall")
+	}
+	a.closeWall()
+	_ = frame(a)
+	y = dockRowY(t, a)
 	if _, took := a.dockPress(a.dock.wall.from, y); !took || !a.wall.on {
 		t.Fatal("the wall's mark did not open the wall")
 	}
 	// A press on the blank between the keys and the dock is nothing.
 	a.closeWall()
 	_ = frame(a)
-	if _, took := a.dockPress(a.dock.wall.from-2, dockRowY(t, a)); took {
+	y = dockRowY(t, a)
+	start := a.dock.wall.from
+	if a.dock.label.pressable() {
+		start = a.dock.label.from
+	}
+	if _, took := a.dockPress(start-2, y); took {
 		t.Fatal("the blank before the dock took a press")
 	}
 }
@@ -201,15 +239,58 @@ func TestDockKeysRowFitsEveryWidth(t *testing.T) {
 func TestDockLayoutCapsAndKeepsTheFront(t *testing.T) {
 	tabs := make([]chatTab, 20)
 	tabs[17].here = true
-	from, count, hidden, ok := dockLayout(tabs, 80)
-	if !ok || count != dockCap || hidden != 20-dockCap || from > 17 || from+count <= 17 {
-		t.Fatalf("from %d count %d hidden %d ok %v", from, count, hidden, ok)
+	from, count, hidden, label, ok := dockLayout(tabs, 80)
+	if !ok || !label || count != dockCap || hidden != 20-dockCap || from > 17 || from+count <= 17 {
+		t.Fatalf("from %d count %d hidden %d label %v ok %v", from, count, hidden, label, ok)
 	}
-	if _, _, _, ok := dockLayout(tabs, 3); ok {
+	if _, _, _, _, ok := dockLayout(tabs, 3); ok {
 		t.Fatal("a dock was fitted into three cells")
 	}
-	if _, _, _, ok := dockLayout(tabs[:1], 80); ok {
+	if _, _, _, _, ok := dockLayout(tabs[:1], 80); ok {
 		t.Fatal("one conversation made a dock")
+	}
+}
+
+// THE WORD GOES BEFORE ANY CELL DOES. A room that holds the squares and not
+// the word draws the squares. A room that holds both draws the word. A room
+// that cannot hold two squares draws nothing.
+func TestDockLabelDropsBeforeACell(t *testing.T) {
+	tabs := make([]chatTab, 3)
+	tabs[1].here = true
+	cells := dockWidth(3, 0, false)
+	from, count, hidden, label, ok := dockLayout(tabs, cells)
+	if !ok || label || count != 3 || from != 0 || hidden != 0 {
+		t.Fatalf("the word stayed or a cell went: from %d count %d hidden %d label %v ok %v", from, count, hidden, label, ok)
+	}
+	from, count, hidden, label, ok = dockLayout(tabs, dockWidth(3, 0, true))
+	if !ok || !label || count != 3 || hidden != 0 {
+		t.Fatalf("the wide row dropped the word: from %d count %d hidden %d label %v ok %v", from, count, hidden, label, ok)
+	}
+	if _, _, _, _, ok := dockLayout(tabs, cells-1); ok {
+		t.Fatal("a dock was drawn below two cells of room")
+	}
+}
+
+// EACH KIND OF CELL SAYS WHAT A PRESS DOES, in the words the hint line uses.
+func TestDockHoverHintPerCellKind(t *testing.T) {
+	idle := chatTab{full: "Shipping the parser", signal: tabIdle}
+	if got := dockCellHint(idle); got != "Go to Shipping the parser"+hintSegment+"idle"+hintSegment+"click" {
+		t.Fatalf("idle: %q", got)
+	}
+	running := chatTab{word: "price scrape", signal: tabWorking}
+	if got := dockCellHint(running); got != "Go to price scrape"+hintSegment+"running"+hintSegment+"click" {
+		t.Fatalf("running: %q", got)
+	}
+	waiting := chatTab{full: "Refactor the rail", signal: tabNeedsPerson}
+	if got := dockCellHint(waiting); got != "Go to Refactor the rail"+hintSegment+"waiting on you"+hintSegment+"click" {
+		t.Fatalf("waiting: %q", got)
+	}
+	here := chatTab{full: "Shipping the parser", here: true, signal: tabWorking}
+	if got := dockCellHint(here); got != "Shipping the parser"+hintSegment+"you are here" {
+		t.Fatalf("here: %q", got)
+	}
+	if dockChatsWord != dockWallWord {
+		t.Fatalf("the word and the glyph say %q", dockChatsWord)
 	}
 }
 
@@ -245,6 +326,12 @@ func TestDockHoverWearsTheWallsHoverGround(t *testing.T) {
 	ground := a.pal.cursor(a.pal.ink(a.dockGlyph(cell.tab)), 0)
 	if !strings.Contains(lines[y], ground) {
 		t.Fatalf("the hovered cell is not on the cursor ground: %q", lines[y])
+	}
+	a.setHover(a.dock.label.from, y)
+	lines = strings.Split(frame(a), "\n")
+	word := a.pal.cursor(a.pal.ink(dockLabel), 0)
+	if !strings.Contains(lines[y], word) {
+		t.Fatalf("the hovered word is not on the cursor ground: %q", lines[y])
 	}
 	if wall := wallButtonPaint(a.pal, wallButton{label: "x"}, true); !strings.Contains(wall, a.pal.cursor(" ", 0)[:strings.Index(a.pal.cursor(" ", 0), " ")]) {
 		t.Fatalf("the wall's hover is not the cursor ground: %q", wall)
