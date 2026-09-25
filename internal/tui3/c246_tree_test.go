@@ -37,7 +37,7 @@ func TestPlanTreeNestsByParentOnlyAcrossACousinWait(t *testing.T) {
 	}
 }
 
-func TestPlanFamiliesStartExpandedAndEnterOpensThePage(t *testing.T) {
+func TestPlanFamiliesStartExpandedAndEnterOpensTheRoom(t *testing.T) {
 	t.Run("finished family", func(t *testing.T) {
 		root := session.PlanTaskRow{ID: "t-root", Title: "Finished family", Status: "done"}
 		child := session.PlanTaskRow{ID: "t-child", Title: "landed child", Parent: root.ID, Status: "done"}
@@ -52,8 +52,8 @@ func TestPlanFamiliesStartExpandedAndEnterOpensThePage(t *testing.T) {
 			t.Fatalf("the finished family did not show its child by default:\n%s", text)
 		}
 		drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-		if !a.taskSheet.planOn || a.taskSheet.plan.Row.ID != root.ID {
-			t.Fatalf("enter on the folded family did not open its page: on=%v row=%q", a.taskSheet.planOn, a.taskSheet.plan.Row.ID)
+		if plan := a.roomPlan(); plan == nil || plan.id != root.ID || a.at(pageTasks) {
+			t.Fatalf("enter on the family did not open its task room: room=%v tasks=%v", a.roomOpen(), a.at(pageTasks))
 		}
 	})
 	t.Run("live family", func(t *testing.T) {
@@ -69,7 +69,7 @@ func TestPlanFamiliesStartExpandedAndEnterOpensThePage(t *testing.T) {
 	})
 }
 
-func TestPlanPageUnderItDrawsWholeSubtreeLiveLinesAndReverseWaitCounts(t *testing.T) {
+func TestPlanRoomUnderItDrawsWholeSubtreeWithLiveLines(t *testing.T) {
 	root := session.PlanTaskRow{ID: "t-root", Title: "Root", Status: "running"}
 	handler := session.PlanTaskRow{ID: "t-handler", Title: "Handler", Parent: root.ID, Status: "running"}
 	handler.Live.Step, handler.Live.Command = 2, "go test ./internal/auth/..."
@@ -78,27 +78,23 @@ func TestPlanPageUnderItDrawsWholeSubtreeLiveLinesAndReverseWaitCounts(t *testin
 	kids := []session.PlanTaskRow{handler, fixtures, tests}
 	pages := map[string]session.PlanTaskPage{root.ID: {Row: root, Children: kids}}
 	a, _ := planAppWith(t, append([]session.PlanTaskRow{root}, kids...), pages)
-	if !openTaskPlaceWithRows(a) {
-		t.Fatal("the place refused to open over a plan")
-	}
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-	text := taskSheetText(a)
+	a.height = 40
+	openPlanRoomNow(t, a, root.ID)
+	text := planRoomText(t, a)
 	// THE PARTS ARE THE RAIL'S ROWS: the part in flight names its call the way a
 	// node row names one, and a part's row carries no count of the work queued
 	// behind it, because a node row never did.
 	for _, want := range []string{"under it", "Handler", "Fixtures", "Tests", "bash go test ./internal/auth/..."} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("the subtree page is missing %q:\n%s", want, text)
+			t.Fatalf("the run's room is missing %q:\n%s", want, text)
 		}
 	}
-	lines := strings.Split(text, "\n")
 	var handlerLead, fixtureLead int
-	for _, line := range lines {
-		plain := ansi.Strip(line)
-		if at := strings.Index(plain, "Handler"); at >= 0 {
+	for _, line := range strings.Split(text, "\n") {
+		if at := strings.Index(line, "Handler"); at >= 0 {
 			handlerLead = at
 		}
-		if at := strings.Index(plain, "Fixtures"); at >= 0 {
+		if at := strings.Index(line, "Fixtures"); at >= 0 {
 			fixtureLead = at
 		}
 	}
@@ -107,7 +103,10 @@ func TestPlanPageUnderItDrawsWholeSubtreeLiveLinesAndReverseWaitCounts(t *testin
 	}
 }
 
-func TestEnterOnSubtreeRowOpensItAndEscapeReturnsToCallingPage(t *testing.T) {
+// A PART'S ROOM HANGS UNDER THE RUN'S ON ITS TRAIL, and the crumb is a door
+// onto the run's own room. `esc` leaves for the conversation, as it does from
+// every room.
+func TestAPartsRoomNamesItsParentOnTheTrailAndTheCrumbOpensIt(t *testing.T) {
 	root := session.PlanTaskRow{ID: "t-root", Title: "Root page", Status: "running"}
 	child := session.PlanTaskRow{ID: "t-child", Title: "Child page", Parent: root.ID, Status: "pending"}
 	pages := map[string]session.PlanTaskPage{
@@ -115,74 +114,51 @@ func TestEnterOnSubtreeRowOpensItAndEscapeReturnsToCallingPage(t *testing.T) {
 		child.ID: {Row: child},
 	}
 	a, _ := planAppWith(t, []session.PlanTaskRow{root, child}, pages)
-	if !openTaskPlaceWithRows(a) {
-		t.Fatal("the place refused to open over a plan")
+	openPlanRoomNow(t, a, child.ID)
+	if plan := a.roomPlan(); plan == nil || plan.id != child.ID {
+		t.Fatal("the part's room did not open")
 	}
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyDown})
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-	if !a.taskSheet.planOn || a.taskSheet.plan.Row.ID != child.ID {
-		t.Fatalf("enter on the subtree row stayed on %q", a.taskSheet.plan.Row.ID)
+	if trail := roomTrailText(t, a); !strings.Contains(trail, "Root page"+roomCrumbSep+"Child page") {
+		t.Fatalf("the part's room has no parent crumb:\n%s", trail)
 	}
-	if text := taskSheetText(a); !strings.Contains(text, "Root page"+roomCrumbSep+"Child page") {
-		t.Fatalf("the child page has no parent breadcrumb:\n%s", text)
+	var parent roomCrumb
+	for _, crumb := range a.roomCrumbs() {
+		if crumb.word == "Root page" {
+			parent = crumb
+		}
+	}
+	if !parent.door() {
+		t.Fatalf("the parent crumb is not a door: %+v", parent)
+	}
+	spend(t, a, a.openRailRoom(parent.node))
+	if plan := a.roomPlan(); plan == nil || plan.id != root.ID {
+		t.Fatal("the parent crumb did not open the run's own room")
 	}
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEscape})
-	if !a.taskSheet.planOn || a.taskSheet.plan.Row.ID != root.ID {
-		t.Fatalf("esc did not return to the calling page: on=%v row=%q", a.taskSheet.planOn, a.taskSheet.plan.Row.ID)
+	if a.roomOpen() {
+		t.Fatal("esc did not leave the room for the conversation")
 	}
 }
 
-func TestPlanPageWaitsOwnFirstThenTasksWaitingOnItAndOmitsEmptySection(t *testing.T) {
+func TestPlanRoomWaitsOwnFirstThenTasksWaitingOnItAndOmitsEmptySection(t *testing.T) {
 	handler := session.PlanTaskRow{ID: "t-handler", Title: "write the handler", Status: "running", Steps: 12}
 	tests := session.PlanTaskRow{ID: "t-tests", Title: "write the tests", Status: "pending", Waits: []string{handler.ID}}
 	fixtures := session.PlanTaskRow{ID: "t-fixtures", Title: "write the fixtures", Status: "pending", Waits: []string{tests.ID}}
 	page := session.PlanTaskPage{Row: tests, WaitRows: []session.PlanTaskRow{handler, fixtures}}
 	a, _ := planAppWith(t, []session.PlanTaskRow{handler, tests, fixtures}, map[string]session.PlanTaskPage{tests.ID: page})
-	if !openTaskPlaceWithRows(a) {
-		t.Fatal("the place refused to open over a plan")
-	}
-	drive(t, a, a.taskSheetPlan(tests.ID)())
-	text := taskSheetText(a)
-	own := padTo("write the tests · waits: write the handler", 51) + tierGlyph(a.pal, planStatus(handler)) + " 12 steps"
-	behind := padTo("write the fixtures · waits: write the tests", 51) + tierGlyph(a.pal, planStatus(fixtures)) + " queued"
-	if !strings.Contains(text, "waits") || strings.Index(text, own) < 0 || strings.Index(text, behind) < 0 || strings.Index(text, own) > strings.Index(text, behind) {
+	a.height = 40
+	openPlanRoomNow(t, a, tests.ID)
+	text := planRoomText(t, a)
+	own := strings.Index(text, "write the tests · waits: write the handler")
+	behind := strings.Index(text, "write the fixtures · waits: write the tests")
+	if !strings.Contains(text, "waits") || own < 0 || behind < 0 || own > behind || !strings.Contains(text, "12 steps") {
 		t.Fatalf("waits is not own-first in each row's sentence shape:\n%s", text)
 	}
 
 	leaf := session.PlanTaskRow{ID: "t-leaf", Title: "leaf", Status: "done"}
-	a, _ = planAppWith(t, []session.PlanTaskRow{leaf}, map[string]session.PlanTaskPage{leaf.ID: {Row: leaf}})
-	if !openTaskPlaceWithRows(a) {
-		t.Fatal("the place refused to open over a plan")
-	}
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-	if text := taskSheetText(a); strings.Contains(text, "\n waits\n") {
-		t.Fatalf("an empty waits section was drawn:\n%s", text)
-	}
-}
-
-func TestPlanPageHeaderCountsRunningAndQueuedOverSubtreeDroppingZeros(t *testing.T) {
-	root := session.PlanTaskRow{ID: "t-root", Title: "root", Status: "done"}
-	kids := []session.PlanTaskRow{
-		{ID: "t-running", Title: "running child", Parent: root.ID, Status: "running"},
-		{ID: "t-queued", Title: "queued child", Parent: root.ID, Status: "pending"},
-		{ID: "t-done", Title: "done child", Parent: root.ID, Status: "done"},
-	}
-	a, _ := planAppWith(t, append([]session.PlanTaskRow{root}, kids...), map[string]session.PlanTaskPage{root.ID: {Row: root, Children: kids}})
-	if !openTaskPlaceWithRows(a) {
-		t.Fatal("the place refused to open over a plan")
-	}
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-	if text := taskSheetText(a); !strings.Contains(text, "1 running · 1 queued") {
-		t.Fatalf("header does not count the subtree:\n%s", text)
-	}
-
-	a, _ = planAppWith(t, []session.PlanTaskRow{root}, map[string]session.PlanTaskPage{root.ID: {Row: root}})
-	if !openTaskPlaceWithRows(a) {
-		t.Fatal("the place refused to open over a plan")
-	}
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEnter})
-	if text := taskSheetText(a); strings.Contains(text, "0 running") || strings.Contains(text, "0 queued") {
-		t.Fatalf("zero header figures were drawn:\n%s", text)
+	a, _ = planAppWith(t, []session.PlanTaskRow{leaf}, map[string]session.PlanTaskPage{leaf.ID: {Row: leaf, Description: "the leaf's brief"}})
+	openPlanRoomNow(t, a, leaf.ID)
+	if text := planRoomText(t, a); strings.Contains(text, "waits") || strings.Contains(text, "under it") {
+		t.Fatalf("an empty section was drawn:\n%s", text)
 	}
 }

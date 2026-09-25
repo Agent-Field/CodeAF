@@ -146,6 +146,7 @@ var commands = []command{
 	// own row which question it is answering, so nobody who typed either word
 	// lands nowhere.
 	{name: "search", desc: "everything said on this machine · " + placeChord(pageSearch)},
+	{name: "wall", desc: "every open conversation, live, and your teams · alt+v or ▦ below the box"},
 	{name: "spend", desc: "what this machine has cost, by the day · " + placeChord(pageSpend)},
 	// It sits AFTER /compact and before /help because those two are the pair a
 	// person reads together when a conversation has gone wrong: compacting is
@@ -528,7 +529,7 @@ func (c command) aliasNote() string {
 // AND IT IS WHERE A ROW'S CHORD IS SPELLED FOR THIS KEYBOARD. Two of these
 // descriptions carry a place's own chord ([placeChord]), baked in at init where
 // no terminal has been detected yet — so on a Mac the list said `/spend … alt+3`
-// while the map two keystrokes away said `opt+1…opt+7`. The substitution has to
+// while the map two keystrokes away said `opt+1…opt+8`. The substitution has to
 // happen HERE rather than at either paint, because `⌘` is one cell where `cmd+`
 // is four and [menu.fit] counts the lines this string will take before
 // [menu.rows] draws it: measuring one spelling and drawing the other is a list
@@ -1013,7 +1014,7 @@ func helpText(file string, chords chordSpelling) string {
 		// know how to open, which is a help sheet behind the thing it explains.
 		//
 		// The three rows are spelled through [chordSpelling.say] like the
-		// `alt+enter` row above them, so a Mac reads `opt+1…opt+7` and a Linux box
+		// `alt+enter` row above them, so a Mac reads `opt+1…opt+8` and a Linux box
 		// reads what is authored here — one substitution, one door (chords.go).
 		helpKeyRow(chords.say(chordJumpWords), "go to a place · in the tab bar's own order: "+placeWordList()),
 		helpKeyRow(chords.say(placeMapKey), "on a place: what else is here · every key that place has, drawn"),
@@ -1078,6 +1079,11 @@ func helpText(file string, chords chordSpelling) string {
 		// answer to the question that test asks). The card is named by what it is
 		// instead.
 		helpKeyRow(closeTabChord, "close this tab · select the last open chat · keep your draft"),
+		// THE TEAM'S TWO CHORDS (teamrail.go). They do something only in a team
+		// with a manager, and the rows say so rather than leaving a person to
+		// find out by pressing them anywhere else.
+		helpKeyRow(chords.say(trafficKey), "with a team's manager in front: show or hide its Traffic"),
+		helpKeyRow(chords.say(teamManagerKey), "in a team with a manager: go to the manager"),
 		helpKeyRow(reopenTabChord, "reopen the last closed tab · when the terminal sends this distinct chord"),
 		helpKeyRow(chords.say(railHoldChord), "the task roster · ↑↓ move · →← fold · enter opens · esc back"),
 		"ctrl+.         every task this project has run · /history · type to filter",

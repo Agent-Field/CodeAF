@@ -2108,7 +2108,7 @@ func testTaskOnTheDefaultBelt(t *testing.T) {
 
 // taskOnTheRunEngine is the body the two subtests above share: launch with the
 // key and whatever belt words the caller names, put one `/task` on the run
-// engine, and read the run off the tasks place, the plan page and the thread.
+// engine, and read the run off the tasks place, the task's room and the thread.
 func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 	home := newHome(t, nil)
 	ws := newWorkspace(t, "runws", false)
@@ -2139,15 +2139,12 @@ func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 	running := planRowWaitsToWear(t, r, 40*time.Second, runRowWord, say(t, "planRunningWord"))
 	t.Logf("the run on the tasks place, while a worker holds its task:\n%s", running)
 
-	// ── the page mid-run: the live step at the live edge ────────────────────
+	// ── the room mid-run ────────────────────────────────────────────────────
 	//
-	// ENTER OPENS THE PLAN PAGE, and while a worker holds the task the page
-	// follows its live edge: the step being run right now is drawn ONE STEP EARLY,
-	// with the running glyph beside the command and the call's own clock under it
-	// (docs/design/worker-harness/SURFACE.md §4, Cell 3; taskplan.go's
-	// taskPlanBody). It is read here, before the root lands, because the live step
-	// is gone the moment its command ends — the page after the landing is the
-	// settled page the section below reads.
+	// ENTER OPENS THE TASK'S ROOM, the one page every task opens, and while a
+	// worker holds the task the room follows it on its own beat (internal/tui3's
+	// planroom.go). It is read here, before the root lands; the room after the
+	// landing is the settled room the section below reads.
 	//
 	// AND THE CURSOR IS MOVED ONTO THE ROW FIRST ([tasksPlaceRunRow]). Enter on
 	// the conversation row is the door into the conversation and always was, so
@@ -2156,29 +2153,27 @@ func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 	// conversation too.
 	tasksPlaceRunRow(t, r)
 	r.keys("Enter")
-	// THE PAGE COMING UP IS THE ASSERTION AND THE LIVE STEP IS AN OBSERVATION,
-	// and the two are separated here because only one of them is a fact about
-	// the surface. That the press over the row opens the STORE'S page rather
-	// than a room is true every time, and the page's own note box says it is
-	// the page. Which command a worker happens to be part-way through when the
-	// key lands is a moment: this brief is four steps and about half a minute,
-	// so a page opened a second after the last one ends is an honest page of a
-	// task that has finished — [rig.glimpse]'s own bargain, which never fails
-	// on a thing that is only on screen while work runs. Asserting it made a
-	// red out of a fast run and said nothing about any defect.
-	page := r.waitFor(40*time.Second, say(t, "planNoteBoxWord"))
-	t.Logf("the page the press over the run's row opened:\n%s", page)
-	if live, sawLive := r.glimpse(15*time.Second, say(t, "planLiveGlyph")); sawLive {
-		if !strings.Contains(live, say(t, "planLiveClockWord")) {
-			t.Errorf("the plan page's live line has no clock under it (%q):\n%s",
-				say(t, "planLiveClockWord"), live)
-		}
-		t.Logf("the plan page mid-run, carrying the live step:\n%s", live)
+	// THE ROOM COMING UP IS THE ASSERTION: its two tabs are there whatever state
+	// the task is in. The note box's own words are there only while the task can
+	// still take a note, and which command a worker happens to be part-way
+	// through when the key lands is a moment, so both are only logged.
+	page := r.waitFor(40*time.Second, say(t, "roomTabsWords"))
+	t.Logf("the room the press over the run's row opened:\n%s", page)
+	if box, saw := r.glimpse(2*time.Second, say(t, "planNoteBoxWord")); saw {
+		t.Logf("the room's box takes a note while the task runs:\n%s", box)
 	} else {
-		t.Logf("the run finished before a live step could be caught on the page, which is this " +
+		t.Logf("the task had ended before its room opened, so its box names another door")
+	}
+	if live, sawLive := r.glimpse(15*time.Second, say(t, "planLiveGlyph")); sawLive {
+		t.Logf("the room mid-run, carrying the live step:\n%s", live)
+	} else {
+		t.Logf("the run finished before a live step could be caught in the room, which is this " +
 			"brief on a fast worker and not a defect")
 	}
+	// `esc` LEAVES THE ROOM FOR THE CONVERSATION, the way every room does, so
+	// the place is opened again to watch the row land.
 	r.keys("Escape")
+	openTasksPlace(t, r)
 
 	done := planRowWaitsToWear(t, r, runPatience, runRowWord, say(t, "planDoneWord"))
 	t.Logf("the run on the tasks place once its root landed:\n%s", done)
@@ -2199,20 +2194,16 @@ func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 		t.Errorf("the landing does not name the branch the run's work is on (%q):\n%s", branch, landed)
 	}
 
-	// ── the page one row opens ──────────────────────────────────────────────
+	// ── the room one row opens ──────────────────────────────────────────────
 	//
-	// ENTER OVER THE ROW OPENS THE STORE'S OWN PAGE — the description the worker
-	// was given, the notes left on the task, and the trajectory: one line per
-	// command the worker ran, and the run's own finish among them. `esc` backs out
-	// one layer to the list, the card's own bargain.
+	// ENTER OVER THE ROW OPENS THE TASK'S ROOM, read through the store: the
+	// description the worker was given, the notes left on the task, and the
+	// trajectory as the room's own call rows. `esc` leaves for the conversation.
 	openTasksPlace(t, r)
 	tasksPlaceRunRow(t, r)
 	r.keys("Enter")
-	// THE PAGE IS READ BY TWO OF ITS OWN WORDS, and neither is the model's. The
-	// note box stands on this page and on nothing else, and the head's figures
-	// are the store's count of the steps its worker took and what they cost —
-	// so the pair says the press opened THE STORE'S PAGE and not the room a
-	// record row opens, which is the whole of what this scenario came to prove.
+	// THE ROOM IS READ BY ITS OWN WORDS, and not by the model's: the
+	// room's two tabs, which every task's room draws on either engine.
 	//
 	// WHICH COMMANDS ARE ON IT IS THE WORKER'S BUSINESS. The finish is the
 	// worker's own `plandb done` when the worker writes one, and the RUN's when
@@ -2221,8 +2212,8 @@ func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 	// page carried `echo`, `cat` and the run's own ending note. So the finish
 	// command is observed and logged, never waited out: asserting it made a red
 	// out of a model's choice and said nothing about the surface.
-	stored := r.waitFor(40*time.Second, say(t, "planNoteBoxWord"), say(t, "planStepsSpend"))
-	t.Logf("the page the run's row opens, with the store's own figures on it:\n%s", stored)
+	stored := r.waitFor(40*time.Second, say(t, "roomTabsWords"))
+	t.Logf("the room the run's row opens:\n%s", stored)
 	if finish, saw := r.glimpse(5*time.Second, say(t, "planFinishCommand")); saw {
 		t.Logf("and this worker wrote its own finish into the trajectory:\n%s", finish)
 	} else {
@@ -2230,8 +2221,9 @@ func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 			say(t, "planFinishCommand"))
 	}
 	r.keys("Escape")
-	back := r.waitFor(30*time.Second, say(t, "planDoneWord"))
-	t.Logf("esc backed out of the page to the list:\n%s", back)
+	openTasksPlace(t, r)
+	back := planRowWaitsToWear(t, r, 30*time.Second, runRowWord, say(t, "planDoneWord"))
+	t.Logf("the list, after esc left the room:\n%s", back)
 	r.quit()
 }
 

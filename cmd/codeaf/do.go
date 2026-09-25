@@ -3568,7 +3568,8 @@ func parseSlots(raw string) (*int, error) {
 // dispatches is the belt's.
 //
 // IT KEEPS THE OLDER ROAD'S CONTRACT WITH THE DIRECTORY: the run edits it in
-// place and commits nothing. A landing here once staged the directory's whole
+// place and makes no commit of its own, but signs worker commits at the end.
+// A landing here once staged the directory's whole
 // `git status` and committed it on the checked-out branch — the person's own
 // uncommitted edits and untracked files with it — which no `--dir` help line
 // ever promised. The files the envelope names are the ones this run changed.
@@ -3631,7 +3632,7 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 	} else {
 		return headlessOutcome{}, fmt.Errorf("inspect directory %s: %w", workspace, statErr)
 	}
-	// THE RUN WORKS IN PLACE AND COMMITS NOTHING, which is what `--dir` has
+	// THE RUN WORKS IN PLACE AND MAKES NO COMMIT OF ITS OWN, which is what `--dir` has
 	// always promised: "the directory to work in, edited in place". The copy is
 	// read before the run starts so that, afterwards, the files this run names
 	// are the ones IT changed — the person's own uncommitted edits and untracked
@@ -3749,9 +3750,12 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 			errand.BlockedOn, errand.machineHeld = held+" · nothing started before --timeout", true
 		}
 	}
+	if _, err := runengine.SignWork(before); err != nil {
+		fmt.Fprintf(request.stderr, "codeaf: could not sign the run's commits: %v\n", err)
+	}
 	// WHAT THE RUN CHANGED IS WHERE IT STANDS: in the directory it was handed,
-	// uncommitted, on whatever branch was checked out there. The envelope's
-	// files are those paths and no others, on every ending — a run stopped short
+	// committed by its workers or still uncommitted, on the checked-out branch.
+	// The envelope's files are those paths and no others, on every ending — a run stopped short
 	// still left its edits on disk, and a caller has to be able to find them.
 	errand.Artifacts = landedPaths(workspace, before.Changed())
 	return errand, nil

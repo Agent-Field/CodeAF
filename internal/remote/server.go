@@ -1184,6 +1184,11 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// open — for [Welcome.Folders]'s stated reason: the surface's own type
 		// assertion cannot see across the wire.
 		Folders: keepsFolders(sess.agent),
+		// Every engine of this build answers the teams doors from its own
+		// profile (teams.go), so the flag is about the build, not the agent.
+		Teams: true,
+		// The two model asks are the agent's, so they are asked of it.
+		TeamAsk: teamAskKnown(sess.agent),
 		// This revision checks it in the handler, for every engine behind it
 		// ([Session.agentOf]), so the answer is about the wire and not the agent.
 		SteerOwner: true,
@@ -2767,6 +2772,20 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		page, found := door.PlanTaskPage(args.ID)
 		return json.Marshal(PlanTaskPageResult{Page: page, OK: found})
 
+	case MethodPlanTaskWork:
+		args, err := arg[PlanTaskArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			PlanTaskWork(string) (session.PlanTaskWork, bool)
+		})
+		if !ok {
+			return json.Marshal(PlanTaskWorkResult{})
+		}
+		work, found := door.PlanTaskWork(args.ID)
+		return json.Marshal(PlanTaskWorkResult{Work: work, OK: found})
+
 	case MethodPlanNote:
 		args, err := arg[PlanTextArgs](call)
 		if err != nil {
@@ -3009,6 +3028,13 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// said rather than waiting on a call nobody is going to answer
 	// (wire_places.go states the law).
 	if payload, handled, err := s.placesCall(call); handled {
+		return payload, err
+	}
+	// And the teams doors, additive in the same way (wire_teams.go).
+	if payload, handled, err := s.teamsCall(call); handled {
+		return payload, err
+	}
+	if payload, handled, err := teamAskCall(agent, call); handled {
 		return payload, err
 	}
 	return nil, fmt.Errorf("engine: no such method %q", call.Method)

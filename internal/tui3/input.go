@@ -352,15 +352,18 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		a.railPlanPending.keys = append(a.railPlanPending.keys, msg)
 		return nil
 	}
-	if a.railTaskPlanOn && !door {
-		cmd := a.taskPlanKey(msg)
-		if !a.taskSheet.planOn {
-			a.railTaskPlanOn = false
-		}
-		return cmd
+	// A key ends an opened tile's zoom, so what it types is drawn whole.
+	a.wallZoomDone()
+	// The team switcher is a menu, and a menu has the keyboard while it is up
+	// (teammenu.go).
+	if a.teamMenu.on && !door {
+		return a.teamMenuKey(msg)
 	}
-	if a.workTabOn {
-		return a.workTabKey(msg)
+	if a.wall.on && !door {
+		return a.wallKey(msg)
+	}
+	if !door && wallOpenPressed(msg) {
+		return a.openWall()
 	}
 	if cmd, taken := a.pasteChipKey(msg); taken {
 		return cmd
@@ -462,7 +465,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// five (pages.go). Each of the seven takes the whole frame, so there is
 	// nothing under it a key could mean anything to — and the six classes of the
 	// grammar are read before the place's own keys, on every place, which is what
-	// makes `tab`, `alt+1…7` and `→` mean one thing wherever a person is standing
+	// makes `tab`, `alt+1…8` and `→` mean one thing wherever a person is standing
 	// ([app.placeKeyPress]).
 	//
 	// IT USED TO BE FIVE ARMS AT THREE DIFFERENT RUNGS. The settings panel and
@@ -769,7 +772,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
-	// AND alt+1…7 IS READ HERE, ON THE CONVERSATION'S ROAD. It is the one class
+	// AND alt+1…8 IS READ HERE, ON THE CONVERSATION'S ROAD. It is the one class
 	// of the place grammar that belongs to no place — it is how a person GETS to
 	// a room — and every claim above has already had its say, so a modal overlay
 	// that wants the chord still gets it first and nothing below has taken a
@@ -1316,7 +1319,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// ago, through the line below.
 	if a.homeGesture(msg) {
 		a.input.reset()
-		return tea.Batch(a.edited(), a.openHome())
+		return tea.Batch(a.edited(), a.homeByTwoSpaces())
 	}
 	if text := msg.Key().Text; text != "" {
 		// The ordinary case: a key that carries text types it.

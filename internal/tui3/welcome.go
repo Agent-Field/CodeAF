@@ -1053,7 +1053,7 @@ func (a *app) welcomeUnit(width int) ([]string, []welcomeMark, int, int) {
 		// nobody had spoken in yet went onto the screen in the clear.
 		block, x, row := a.secretDraftBlock(unit)
 		if block == nil {
-			block, x, row = draftBlockWithTags(&a.input, pal, unit, box, "", a.roomLead(unit), a.input.demotedTags, a.draftInk())
+			block, x, row = draftBlockWithTags(&a.input, pal, unit, box, a.trafficHint(), a.roomLead(unit), a.input.demotedTags, a.draftInk())
 		}
 		caretX, caretRow = lead+x, len(rows)+row
 		for _, line := range block {

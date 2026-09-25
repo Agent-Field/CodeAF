@@ -736,6 +736,12 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 		// which is not an optimization but the seam's stated law, because that
 		// segment is asked on the frame. Save travels synchronously: it is a
 		// keystroke, it is rare, and somebody is waiting for its answer.
+		// THE TEAMS, AS THE ENGINE MACHINE KEEPS THEM. The far session's team
+		// tools write the teams file and each team's Traffic into the engine's
+		// profile, so the window reads and writes those, over the wire
+		// ([hostTeams]); an engine without the doors hands no seam and the
+		// surface turns teams off rather than keeping them on this laptop.
+		Teams: hostTeamsSeam(far, welcome),
 		Standing: tui3.StandingSeam{
 			Items: stands.list,
 			Save:  stands.save,

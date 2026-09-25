@@ -5,7 +5,7 @@ package main
 // so the promises the door's help makes are this road's to keep:
 //
 //   - `--dir` is "the directory to work in, edited in place". The run edits it
-//     and commits nothing, and the files it names are the ones it changed —
+//     and makes no commit of its own; the files it names are the ones it changed —
 //     never the person's own uncommitted edits or untracked files.
 //   - `--yes-spend` is "spend past today's limit and past the plan-price
 //     question, without stopping to ask". Without it an unattended run is
@@ -138,6 +138,115 @@ func TestDoOnTheRunEngineNeverCommitsThePersonsOwnWork(t *testing.T) {
 	}
 	if strings.Contains(outcome.Deliverable, "landed on") {
 		t.Fatalf("the answer claims a landing the run never made:\n%s", outcome.Deliverable)
+	}
+}
+
+// Contract 6: the real do door signs a worker's in-place git commit, names its
+// file in the envelope, and obeys a repository ban without changing exit 0.
+func TestDoOnTheRunEngineSignsWorkerCommitsUnlessContributingForbids(t *testing.T) {
+	for _, banned := range []bool{false, true} {
+		name := "signed"
+		if banned {
+			name = "CONTRIBUTING ban"
+		}
+		t.Run(name, func(t *testing.T) {
+			beltRunEnv(t)
+			t.Setenv("CODEAF_PLANDB_BIN", beltPlandbDoor(t))
+			workspace := beltRepoWorkspace(t)
+			if banned {
+				if err := os.WriteFile(filepath.Join(workspace, "CONTRIBUTING.md"), []byte("Do not add AI co-author trailers to commits.\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				beltGit(t, workspace, "add", "CONTRIBUTING.md")
+				beltGit(t, workspace, "-c", "user.name=Person", "-c", "user.email=person@example.test", "commit", "-m", "set policy")
+			}
+			base := doGitIn(t, workspace, "rev-parse", "HEAD")
+			seat := &beltSeat{
+				script: []func(context.Context, []ai.Message) (*ai.Response, error){
+					func(context.Context, []ai.Message) (*ai.Response, error) {
+						return beltToolReply("printf 'hello from worker\\n' > hello.txt && git add hello.txt && git -c user.name=Worker -c user.email=worker@example.test commit -m 'add hello'"), nil
+					},
+					func(context.Context, []ai.Message) (*ai.Response, error) {
+						return beltToolReply(beltFinish("added hello.txt")), nil
+					},
+				},
+				ever: func(_ context.Context, msgs []ai.Message) (*ai.Response, error) {
+					if doc := beltDocument(msgs); strings.Contains(doc, "## Who checks this work") {
+						id := briefTaskID(doc)
+						return beltToolReply("plandb done " + id + " --agent " + id + " --result 'holds: the acceptance is met'"), nil
+					}
+					return beltTextReply("added hello.txt"), nil
+				},
+			}
+			var stdout, stderr strings.Builder
+			err := doErrand(doRequest{
+				task: "add hello.txt", workspace: workspace, asJSON: true,
+				timeout: 60 * time.Second, slots: bound(1), stdout: &stdout, stderr: &stderr,
+				newBeltCompleter: func(string) session.Completer { return seat },
+			})
+			if err != nil {
+				t.Fatalf("do returned %v, want exit 0\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+			}
+			if got := doGitIn(t, workspace, "rev-parse", "HEAD~1"); got != base {
+				t.Fatalf("person's earlier commit moved: %s -> %s", base, got)
+			}
+			message := doGitIn(t, workspace, "log", "-1", "--format=%B")
+			if banned {
+				if message != "add hello" {
+					t.Fatalf("CONTRIBUTING did not preserve worker message: %q", message)
+				}
+			} else if strings.Count(message, "Assisted-by: CodeAF") != 1 || strings.Count(message, "Co-Authored-By: CodeAF") != 1 || strings.Contains(message, "CodeAF (") {
+				t.Fatalf("worker message was not signed once with bare lines: %q", message)
+			}
+			outcome := decodeErrand(t, stdout.String())
+			if len(outcome.Artifacts) != 1 || outcome.Artifacts[0] != filepath.Join(workspace, "hello.txt") {
+				t.Fatalf("envelope files = %v", outcome.Artifacts)
+			}
+		})
+	}
+}
+
+// Contract 6: an in-place run begun on an unborn branch signs its worker's
+// first commit and still reports the file through the do envelope.
+func TestDoOnTheRunEngineSignsFirstCommitOnUnbornBranch(t *testing.T) {
+	beltRunEnv(t)
+	t.Setenv("CODEAF_PLANDB_BIN", beltPlandbDoor(t))
+	workspace := t.TempDir()
+	beltGit(t, workspace, "init")
+	beltGit(t, workspace, "checkout", "-b", "work")
+	seat := &beltSeat{
+		script: []func(context.Context, []ai.Message) (*ai.Response, error){
+			func(context.Context, []ai.Message) (*ai.Response, error) {
+				return beltToolReply("printf 'hello from worker\\n' > hello.txt && git add hello.txt && git -c user.name=Worker -c user.email=worker@example.test commit -m 'add hello'"), nil
+			},
+			func(context.Context, []ai.Message) (*ai.Response, error) {
+				return beltToolReply(beltFinish("added hello.txt")), nil
+			},
+		},
+		ever: func(_ context.Context, msgs []ai.Message) (*ai.Response, error) {
+			if doc := beltDocument(msgs); strings.Contains(doc, "## Who checks this work") {
+				id := briefTaskID(doc)
+				return beltToolReply("plandb done " + id + " --agent " + id + " --result 'holds: the acceptance is met'"), nil
+			}
+			return beltTextReply("added hello.txt"), nil
+		},
+	}
+	var stdout, stderr strings.Builder
+	err := doErrand(doRequest{
+		task: "add hello.txt", workspace: workspace, asJSON: true,
+		timeout: 60 * time.Second, slots: bound(1), stdout: &stdout, stderr: &stderr,
+		newBeltCompleter: func(string) session.Completer { return seat },
+	})
+	if err != nil {
+		t.Fatalf("do returned %v; stdout: %s; stderr: %s", err, stdout.String(), stderr.String())
+	}
+	message := doGitIn(t, workspace, "log", "-1", "--format=%B")
+	if strings.Count(message, "Assisted-by: CodeAF") != 1 || strings.Count(message, "Co-Authored-By: CodeAF") != 1 {
+		t.Fatalf("first commit not signed once: %q", message)
+	}
+	outcome := decodeErrand(t, stdout.String())
+	if len(outcome.Artifacts) != 1 || outcome.Artifacts[0] != filepath.Join(workspace, "hello.txt") {
+		t.Fatalf("envelope files = %v", outcome.Artifacts)
 	}
 }
 

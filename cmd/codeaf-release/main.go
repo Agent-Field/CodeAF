@@ -46,6 +46,22 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 0
 	case "prune":
 		err = runPrune(args[1:], stdin, stdout)
+	case "promotion-plan":
+		err = runPromotionPlan(args[1:], stdout)
+	case "promotion-message":
+		err = runPromotionMessage(args[1:], stdout)
+	case "promotion-recheck":
+		err = runPromotionRecheck(args[1:], stdout)
+	case "promotion-release":
+		err = runPromotionRelease(args[1:], stdout)
+	case "promotion-published":
+		err = runPromotionPublished(args[1:], stdout)
+	case "promotion-jobs":
+		err = runPromotionJobs(args[1:], stdout)
+	case "promotion-push-error":
+		err = runPromotionPushError(args[1:], stdout)
+	case "promotion-decision":
+		err = runPromotionDecision(args[1:], stdout)
 	default:
 		usage(stderr)
 		return 2
@@ -74,6 +90,8 @@ func usage(w io.Writer) {
       Print stable, rc, dev, staging, or other.
   prune --channel dev|staging
       Read <tag><tab><RFC3339 createdAt> lines and print expired tags.
+  promotion-plan|promotion-decision|promotion-recheck|promotion-release|promotion-published|promotion-jobs|promotion-push-error|promotion-message
+      Plan, check, and report the staging promotion. See docs/rules/promotion.md.
 `)
 }
 

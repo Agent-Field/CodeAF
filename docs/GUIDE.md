@@ -102,6 +102,7 @@ Recognizing a channel does not mean a matching release exists.
 ```bash
 curl -fsSL https://agentfield.ai/get/codeaf/dev | bash
 curl -fsSL https://agentfield.ai/get/devaf | bash
+curl -fsSL https://agentfield.ai/get/stageaf | bash
 curl -fsSL https://agentfield.ai/get/codeaf/staging | bash
 curl -fsSL https://agentfield.ai/get/codeaf/rc | bash
 curl -fsSL https://agentfield.ai/get/codeaf | VERSION=<tag> bash
@@ -128,7 +129,9 @@ when the folder is not yet on `PATH`, the bare `export PATH=…` line to paste i
 current shell, bold green on a terminal, last, with a blank line above and below.
 `--verbose` also reports the channel, the tag and the install path on stderr. The
 `/get/devaf` line selects the dev channel and names the file `devaf`, installing it
-beside codeaf. Release builds cover darwin, linux, and windows on amd64 and arm64.
+beside codeaf. The `/get/stageaf` line selects staging and names the file
+`stageaf`, also beside codeaf. Release builds cover darwin, linux, and windows
+on amd64 and arm64.
 
 </details>
 
