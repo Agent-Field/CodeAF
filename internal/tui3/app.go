@@ -2315,7 +2315,10 @@ type app struct {
 	// right end of its keys row (footswap.go's [app.hintRow]). tipQuietFrom is
 	// when this window last stirred, and tipAlarm the one pending alarm of the
 	// conversation's quiet clock, or zero (notice.go's THE CONVERSATION'S TIP).
+	// chatTipDrawn is the id of the tip the keys row last drew, or "", which is
+	// what a showing is counted from ([app.chatTipCount]).
 	chatTipClose hudSpan
+	chatTipDrawn string
 	tipQuietFrom time.Time
 	tipAlarm     time.Time
 	// targetEffortSpan and targetApprovalSpan are the rung's and the gate's
@@ -3193,6 +3196,10 @@ func (a *app) Init() tea.Cmd {
 	// replaying the events that made them, so no arrival ever fires for them
 	// (imagepreview.go's [app.learnShownPictures], learned.go).
 	a.learnShownPictures()
+	// AND THE WINDOW HAS JUST OPENED, which is when somebody starts reading
+	// it: a conversation's tip waits out its quiet from here, as it does after
+	// an answer (notice.go's THE CONVERSATION'S TIP).
+	a.stirred()
 	// The repository is asked ONCE here and then only at turn ends. A branch is
 	// a fact that changes when a person changes it, and a person who checks out
 	// a branch mid-turn is between two turns by the time it matters.
@@ -3332,6 +3339,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if alarm := a.chatTipAlarm(); alarm != nil {
 		cmd = tea.Batch(cmd, alarm)
 	}
+	a.chatTipCount()
 	// AND A CLOCK SOMEBODY STOPPED IS TOLD TO THE ENGINE HERE, from a command
 	// rather than from inside the key routine that took the key
 	// (questionhold.go's [app.takeQuestionHolds] says why it is this line).

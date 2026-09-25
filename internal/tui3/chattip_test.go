@@ -269,6 +269,84 @@ func TestTheWayHomeTipIsSaidAwayFromHomeOnly(t *testing.T) {
 	}
 }
 
+// GOING HOME BY TWO SPACES TURNS HOME'S RING like any other road there (the
+// review of #1487). The gesture's event used to be said before home opened, so
+// home's row was decided over the conversation, where `/project`'s home-only
+// tip reads as unarmed; it came back fresh on every trip and jumped the ring.
+func TestGoingHomeByTwoSpacesStillTurnsHomesTips(t *testing.T) {
+	trips := func(bySpaces bool) []string {
+		a, _ := chatTipLab(t)
+		a.turn = 1
+		var seen []string
+		for i := 0; i < 4; i++ {
+			if bySpaces {
+				drive(t, a, key(" "), key(" "))
+			} else {
+				runCmd(a.showPage(pageHome))
+			}
+			if !a.at(pageHome) {
+				t.Fatalf("trip %d did not reach home", i+1)
+			}
+			seen = append(seen, a.notices.current[slotHome])
+			a.leavePlace()
+		}
+		if bySpaces && !a.notices.retired("home-by-two-spaces") {
+			t.Fatal("two spaces did not retire the way-home tip")
+		}
+		return seen
+	}
+	bySpaces, byTab := trips(true), trips(false)
+	if strings.Join(bySpaces, " ") != strings.Join(byTab, " ") {
+		t.Fatalf("home's row by two spaces went %q, by the tab %q", bySpaces, byTab)
+	}
+	distinct := map[string]bool{}
+	for _, id := range bySpaces {
+		distinct[id] = true
+	}
+	if len(distinct) < len(bySpaces) {
+		t.Fatalf("home's row did not move on across trips by two spaces: %q", bySpaces)
+	}
+}
+
+// A TIP NOBODY SAW IS NOT A SHOWING (the review of #1487). The slot takes a
+// tip the moment it is true, but the keys row draws it only after the quiet
+// clock; a person who never pauses must not spend its showings unseen.
+func TestAConversationsTipIsCountedWhenDrawnNotWhenTaken(t *testing.T) {
+	a, advance := chatTipLab(t)
+	const id = "files-after-first-deliverable"
+	drive(t, a, key("x"), key("backspace"))
+	makeDeliverable(t, a)
+	frame(a)
+	drive(t, a, chatTipDueMsg{})
+	if a.notices.current[slotHint] != id {
+		t.Fatalf("the slot holds %q, want %q", a.notices.current[slotHint], id)
+	}
+	if got := a.notices.ledger.shown(id); got != 0 {
+		t.Fatalf("a tip the keys row never drew counted %d showings", got)
+	}
+	advance(chatTipQuiet)
+	frame(a)
+	drive(t, a, chatTipDueMsg{})
+	if got := a.notices.ledger.shown(id); got != 1 {
+		t.Fatalf("the tip the keys row drew counted %d showings, want 1", got)
+	}
+}
+
+// THE WAIT HOLDS AT LAUNCH TOO (the review of #1487): a window that has just
+// opened is one somebody has just started reading.
+func TestTheConversationsTipWaitsFromLaunch(t *testing.T) {
+	a, advance := chatTipLab(t)
+	makeDeliverable(t, a)
+	a.Init()
+	if got := a.chatTip(); got != "" {
+		t.Fatalf("the tip drew the moment the window opened: %q", got)
+	}
+	advance(chatTipQuiet)
+	if got := a.chatTip(); got != deliverTip {
+		t.Fatalf("the tip is not up fifteen seconds after launch: %q", got)
+	}
+}
+
 // Silencing hints silences the conversation's row along with home's.
 func TestDisableHintsSilencesTheConversationRow(t *testing.T) {
 	a, _ := chatTipLab(t)

@@ -238,7 +238,7 @@ func (a *app) seamTelemetryLabel(ledger, alive []hudPart) (string, string) {
 func (a *app) hintRow(width int) string {
 	a.homeDoor = hudSpan{}
 	a.seamProjectSpan = hudSpan{}
-	a.chatTipClose = hudSpan{}
+	a.chatTipClose, a.chatTipDrawn = hudSpan{}, ""
 	hint := a.footHint(width)
 	right, rightPlain := "", ""
 	if !a.seamShowing() {
@@ -301,6 +301,7 @@ func (a *app) hintRow(width int) string {
 			drawn = strings.TrimLeft(drawn, " ")
 			w := ansi.StringWidth(drawn)
 			a.chatTipClose = hudSpan{from: width - 1 - (cross.to - cross.from), to: width - 1}
+			a.chatTipDrawn = a.notices.current[slotHint]
 			if warned != "" {
 				pad := width - 1 - used - ansi.StringWidth(warning) - hudGap - w
 				return line + strings.Repeat(" ", max(1, pad)) + warned + strings.Repeat(" ", hudGap) + drawn + " "

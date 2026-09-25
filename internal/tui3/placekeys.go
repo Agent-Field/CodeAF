@@ -446,8 +446,7 @@ func (a *app) placeHomeGesture(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 		if a.placeSpaceArmed {
 			a.placeSpaceArmed = false
-			a.noticeEvent(eventHomeGesture)
-			return a.openHome(), true
+			return a.homeByTwoSpaces(), true
 		}
 		a.placeSpaceArmed = true
 		return nil, true
@@ -456,8 +455,17 @@ func (a *app) placeHomeGesture(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	box.reset()
+	return a.homeByTwoSpaces(), true
+}
+
+// homeByTwoSpaces opens home and THEN says the gesture happened, from a
+// conversation's box or a place's. Said first, the event decided home's row
+// while the conversation was in front, where home's own tips read as unarmed,
+// so the first of them came back fresh and jumped the ring on every trip.
+func (a *app) homeByTwoSpaces() tea.Cmd {
+	cmd := a.openHome()
 	a.noticeEvent(eventHomeGesture)
-	return a.openHome(), true
+	return cmd
 }
 
 // placeSend is `alt+enter` over a composer with something in it: THE COMPOSER

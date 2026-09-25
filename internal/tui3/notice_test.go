@@ -133,13 +133,20 @@ func TestAHintAgesOutAcrossOrdinaryLaunches(t *testing.T) {
 	// The task tip is the one a first exchange arms highest (notice.go's
 	// table); `/ shows every command` stood here until both feet said it.
 	const hint = "task-in-chat"
-	// A SHOWING ON THE CONVERSATION'S ROW IS THE SLOT TAKING THE TIP, counted
-	// once per session however many events re-decide it — so each launch is one
-	// turn ending, and the ledger on disk has one more showing after it.
+	// A SHOWING ON THE CONVERSATION'S ROW IS THE KEYS ROW DRAWING THE TIP,
+	// counted once per session however many events re-decide it — so each
+	// launch is one turn ending and one frame, and the ledger on disk has one
+	// more showing after it.
+	drawn := func(a *app) {
+		frame(a)
+		drive(t, a, chatTipDueMsg{})
+	}
 	launch := func() *app {
 		a := noticeApp(t, "")
+		a.width = 160
 		a.turn = 1
 		a.noticeEvent(eventTurnEnded)
+		drawn(a)
 		return a
 	}
 	for session := 1; session <= noticeShownDefault; session++ {
@@ -149,6 +156,7 @@ func TestAHintAgesOutAcrossOrdinaryLaunches(t *testing.T) {
 		}
 		// A second event in the same session counts nothing more.
 		a.noticeEvent(eventTurnEnded)
+		drawn(a)
 		if got := loadNoticeLedger(noticeLedgerPath("")).shown(hint); got != session {
 			t.Fatalf("after launch %d the ledger on disk counts %d showings", session, got)
 		}
@@ -988,15 +996,21 @@ func TestTheConversationsSlotChangesHandsSlowly(t *testing.T) {
 	}
 }
 
-// A TIP IS COUNTED ONCE PER SESSION ON THE CONVERSATION'S ROW, however many
-// events re-decide the slot, and its last allowed showing retires it for the
-// sessions after while leaving it up for this one.
+// A TIP IS COUNTED ONCE PER SESSION ON THE CONVERSATION'S ROW, when the row
+// draws it and never when the slot merely takes it, however many times it is
+// drawn; and its last allowed showing retires it for the sessions after while
+// leaving it up for this one.
 func TestTheConversationsRowCountsOnceASession(t *testing.T) {
 	b := freshBoard()
 	limit := fixedLimit(2)
 	b.take(slotHint, "tip", false, time.Time{}, limit, 1)
+	if got := b.ledger.shown("tip"); got != 0 {
+		t.Fatalf("the slot taking a tip nobody has seen counted %d showings", got)
+	}
+	b.seenOnce("tip", 2)
 	b.take(slotHint, "", false, time.Time{}, limit, 2)
 	b.take(slotHint, "tip", false, time.Time{}, limit, 3)
+	b.seenOnce("tip", 2)
 	if got := b.ledger.shown("tip"); got != 1 {
 		t.Fatalf("one session counted %d showings", got)
 	}
@@ -1008,6 +1022,7 @@ func TestTheConversationsRowCountsOnceASession(t *testing.T) {
 	next := newNoticeBoard("", "", true)
 	next.ledger = b.ledger
 	next.take(slotHint, "tip", false, time.Time{}, limit, 1)
+	next.seenOnce("tip", 2)
 	if !next.retired("tip") {
 		t.Fatal("the last allowed showing did not retire the notice")
 	}

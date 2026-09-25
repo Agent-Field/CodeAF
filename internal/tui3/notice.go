@@ -899,16 +899,12 @@ func (b *noticeBoard) take(slot noticeSlot, id string, live bool, now time.Time,
 	wrote = b.settle(slot, now, limitOf)
 	b.current[slot] = id
 	if slot == slotHint {
-		// THE CONVERSATION'S ROW COUNTS ON ARRIVAL, ONCE PER SESSION. Its tip
-		// comes and goes with the quiet clock ([app.chatTip]), so there is no
-		// one departure to measure — and an hour in the slot is one showing,
-		// not one per event.
+		// THE CONVERSATION'S ROW IS NOT COUNTED HERE. Its tip waits out the
+		// quiet clock before it is drawn, so a tip taken by the slot may never
+		// be seen at all; it is counted when the keys row draws it
+		// ([app.chatTipCount]).
 		b.lastHintTurn = turn
-		if id == "" || b.shown[id] {
-			return true, wrote
-		}
-		b.shown[id] = true
-		return true, b.count(id, limitOf(id)) || wrote
+		return true, wrote
 	}
 	if id == "" || !live {
 		return true, wrote
@@ -930,6 +926,17 @@ func (b *noticeBoard) visible(slot noticeSlot, now time.Time) {
 	if b.current[slot] != "" && b.since[slot].IsZero() {
 		b.since[slot] = now
 	}
+}
+
+// seenOnce counts id as shown on the conversation's row, ONCE PER SESSION
+// however many times the tip comes and goes with the quiet clock, and reports
+// whether the ledger changed.
+func (b *noticeBoard) seenOnce(id string, limit int) bool {
+	if id == "" || b.shown[id] {
+		return false
+	}
+	b.shown[id] = true
+	return b.count(id, limit)
 }
 
 // settle ends the standing of the tip in a slot, counting a showing when it
@@ -1306,6 +1313,20 @@ func (a *app) chatTipPress(x, y int) bool {
 	}
 	a.noticeDismiss(slotHint)
 	return true
+}
+
+// chatTipCount counts the tip the keys row last drew ([app.chatTipDrawn]) as
+// shown, once per session ([noticeBoard.seenOnce]). It is asked after every
+// message (app.go's [app.Update]) rather than from the draw, because a draw
+// writes nothing to disk.
+func (a *app) chatTipCount() {
+	b := &a.notices
+	if b.seen == nil || a.chatTipDrawn == "" {
+		return
+	}
+	if b.seenOnce(a.chatTipDrawn, a.noticeLimit(a.chatTipDrawn)) {
+		b.save()
+	}
 }
 
 // liftChatTipCross is the conversation going out of sight — a place or home

@@ -25,8 +25,9 @@ When the tip goes, `project:` is back in its place. When the row is too narrow f
 whole sentence it is cut short with `…`, and where there is no room for a word of it the
 project stays.
 
-**It waits for 15 seconds of quiet.** Any key, click, scroll or paste hides it and starts
-the 15 seconds again, and so does an answer finishing — the tip never appears under an
+**It waits for 15 seconds of quiet**, counted from when codeaf opened at the earliest.
+Any key, click, scroll or paste hides it and starts the 15 seconds again, and so does an
+answer finishing — the tip never appears under an
 answer you have just started reading or between two things you are typing. A running turn,
 a list, a panel, a room, or a box with so much as one letter in it also keep it down. It
 shows whether the task column is open or put away with `ctrl+g`.
@@ -85,7 +86,8 @@ because they behave differently.
 
 - **In a conversation, a showing is one session.** However many times the tip comes and
   goes on the keys row while you work, that is one showing, counted the first time the row
-  takes it. Six sessions of never acting on it and it is done.
+  actually draws it — after its 15-second wait — so a tip you never paused long enough to
+  see is not counted. Six sessions of never acting on it and it is done.
 - **On home, a showing is a tip that stood twenty seconds or more on a row you could see.**
   Passing through home for a second or two is not a showing, however many times you do it,
   and a row deciding while home is not in front is not one either. Until 2026-09-22 every
@@ -241,7 +243,7 @@ tab, on by default.) The change lands at the end of the next turn in a conversat
 already open, and from the start in one opened after — restarting codeaf is the sure way. On silences the tips — over a conversation's
 box and over home's alike — and the what's-new lines together; it does not touch the keys
 row's own words for a live state — `esc interrupt` and the rest are not hints and cannot
-be turned off. From the terminal, `codeaf config` shows the same row under the same name.
+be turned off.
 
 Turning the row back off shows whatever is due. Tips you had already retired stay retired.
 
