@@ -239,7 +239,9 @@ while it is open, so none of them contend for one keystroke on one screen.
 ## ? — the key that opens the key sheet
 
 `?` **over an empty box** opens `/help`: every command and every chord, written into the
-transcript where you can scroll it.
+transcript where you can scroll it. A row that is wider than the window wraps under the
+column its sentence already starts in, so the next line does not sit at the left edge as
+if it were another key.
 
 **On a place** — home, tasks, standing, memory, spend, search, settings — `?` draws **the
 map** instead, which is what `alt+.` draws: that place's own keys, in the cells the foot
@@ -251,6 +253,14 @@ every overlay, filter box, picker, panel and question on this surface takes the 
 before this binding is read, so a `?` typed into one of those reaches it and nothing else.
 
 `/?` is an alias of `/help` as well, for fingers that arrived from elsewhere.
+
+## Why a wrapped /help line stays under its key
+
+`/help` is a column. The key sits on the left and the sentence starts in a fixed
+column. When the window is too narrow for the sentence, the next line starts in
+that same column. It does not start at the left edge, which would look like a
+second key. The same is true of a line that was already indented under the
+column above it.
 
 ## Stop it and tell it something different at the same time — interrupt and say something new in one key
 
