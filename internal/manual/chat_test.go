@@ -41,6 +41,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can the manager answer a member's permission prompt", "team-manager"},
 		{"how does a member post to the room", "team-manager"},
 		{"does a directive wake an idle member", "team-manager"},
+		{"what happens when auto-wake is off and the manager starts a member", "team-manager"},
 		{"can I use my own deepseek key", "services"},
 		{"how do I connect glm", "services"},
 		{"how do I add an api key for another provider", "services"},
