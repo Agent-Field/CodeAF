@@ -94,9 +94,11 @@ exactly once, or what it fetched is not a shell script, it answers 502.
 Building from source needs nothing published: clone the repository, run `make build`,
 then run `bin/codeaf` from the checkout.
 
-The installer writes `~/.codeaf/bin/codeaf` and prints three things: one line
-naming the installed file's `version`, the three-line telemetry notice, and last,
-when the folder is not yet on `PATH`, the bare `export PATH=…` line to paste.
+The installer writes `~/.codeaf/bin/codeaf` and prints two things: one line
+naming the installed file's `version` (`installed codeaf <tag> built …`), and last,
+when the folder is not yet on `PATH`, the bare `export PATH=…` line to paste. It
+prints nothing about telemetry; codeaf itself shows that notice before any count
+is sent.
 `/update` in the chat or `codeaf update` in a terminal replaces it in place;
 running the install line again works too.
 
@@ -113,6 +115,9 @@ That proxy serves the installer from the `dev` branch and rewrites exactly two
 default lines: the channel becomes dev and the installed name becomes devaf. It
 writes `~/.codeaf/bin/devaf` and leaves `~/.codeaf/bin/codeaf` untouched. On
 Windows the file is `devaf.exe`. `devaf version` still starts with `codeaf`.
+The installer's receipt names the command to type first:
+`installed devaf · codeaf dev-<date>-<commit> built …`. Any `--name` install
+reads the same way, with its own word first.
 
 The general spelling is `--name WORD` or `CODEAF_INSTALL_NAME=WORD`; the name
 may contain ASCII letters, digits, `.`, `_`, and `-`, and must begin with a
