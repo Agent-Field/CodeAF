@@ -332,10 +332,10 @@ conversations`**, which suggests teams from the conversations you have open, and
 ## Over --host
 
 Over `--host` the page shows the teams of the machine the conversations run on: their
-decisions, their spend and their managers. The **Teams** tab of `/settings` there shows this
-computer's rows and says `on <machine> the teams inherit that machine's Settings`; it does not
-edit them, because no team you are looking at reads them. A closed team's report is not read
-over the connection yet, and the page says so where the report would be.
+decisions, their spend and their managers. The **Teams** tab of `/settings` edits that
+machine's defaults, and each value says `from Settings`. An older engine keeps the tab
+read only and says `changing them is not available over this connection`. A closed team's
+report is not read over the connection yet, and the page says so where the report would be.
 
 ## Why the page looks the way it does
 

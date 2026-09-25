@@ -107,6 +107,30 @@ func TestTheDelegationDoorsCrossFromTheEnginesProfile(t *testing.T) {
 	}
 }
 
+// A TEAMS SETTINGS WRITE LANDS IN THE ENGINE'S PROFILE, and a key that is not
+// one of the five defaults is refused. The value a team inherits still says
+// it came from Settings.
+func TestATeamDefaultWrittenOverTheWireLandsInTheEngineProfile(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	loop, dir := teamsLoop(t)
+	if !loop.Client.Welcome().TeamSettings {
+		t.Fatal("an engine of this build does not say it can change team defaults")
+	}
+	d, err := loop.Client.TeamsApplyDefault("teams.questions_up", "off")
+	if err != nil || d.QuestionsUp {
+		t.Fatalf("apply: %+v, %v", d, err)
+	}
+	if teamstore.DefaultsAt(dir).QuestionsUp {
+		t.Fatal("the engine profile still has questions going up")
+	}
+	if words := (&teamstore.File{}).Effective("missing", d).QuestionsUpFrom.Words(); words != "from Settings" {
+		t.Fatalf("provenance %q", words)
+	}
+	if _, err := loop.Client.TeamsApplyDefault("daily_budget", "1"); err == nil {
+		t.Fatal("a row that is not a team default was written")
+	}
+}
+
 // THE WRAP-UP'S DOORS CROSS: the request lands in the engine's Traffic as
 // exactly the marker the manager's session reads, and accepting a decided
 // closing report closes the team on the engine, once.

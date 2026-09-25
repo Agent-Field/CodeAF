@@ -923,10 +923,12 @@ it), and `Close team…`. Closable with `esc`.
 
 ### 8.7 Open questions
 
-- Over `--host` the settings tab writes this laptop's config.json, while the engine reads its
-  own `teams.` defaults (`Teams.Defaults`). Until settings cross the wire, the `Teams` tab over
-  `--host` should show the engine's values read-only with `on <host>`; the other tabs have the
-  same gap today.
+- Over `--host` the `Teams` tab reads and writes the engine's `teams.` defaults
+  (`Teams.Defaults`, `Teams.ApplyDefault`), the same registry write the local tab makes.
+  A value is drawn with `from Settings` (`Origin.Words`). An engine without
+  `Welcome.TeamSettings` keeps the tab read only and says
+  `changing them is not available over this connection`. The other settings tabs still
+  write this laptop's config.json.
 - Spend over `--host` is the engine machine's ledger only. A conversation whose model calls
   were made on another machine (a laptop-run member of a far team) is not counted; no such
   arrangement exists today.
@@ -1129,9 +1131,10 @@ or `busy for <team>` (`MemberState.ReportsTo`).
   not read over the connection, and close and reopen write no Traffic lines there. The page
   says so where the report would be. Organize's quiet-close proposal is offered locally only,
   because quietness is read from the Traffic log.
-- **The `Teams` settings tab is read only over `--host`** and says the teams inherit the other
-  machine's Settings (8.7's first question, answered on the edit side; the engine's own values
-  are not read across yet).
+- **The `Teams` settings tab edits the engine's defaults over `--host`** when the engine says
+  `TeamSettings` (8.7's first question). The write is the registry's own `Apply` on that
+  machine. An older engine keeps the tab read only, with
+  `changing them is not available over this connection`.
 - **Wake is on the card** (`team messages wake`, with its provenance), which 8.4's four rows
   predate; the settings tab's row order is questions, wake, cap, depth, share.
 - **The interface writes no cap raise.** The person's `Raise to $10` is a Decide; the session
@@ -1162,8 +1165,8 @@ or `busy for <team>` (`MemberState.ReportsTo`).
   `TopManagers()` (8.10), never their members.
 
 **Known gaps.** A switcher row `Closed · N` has no hover hint. The wall popover's delete code
-is unreached and kept until the wall is next reworked. Over `--host` the Settings tab cannot
-show the engine's `teams.` rows.
+is unreached and kept until the wall is next reworked. Over `--host` the Settings tab shows
+and edits the engine's `teams.` rows when the engine has the door.
 
 ### 8.10 Nesting, as the session built it
 

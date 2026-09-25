@@ -162,6 +162,25 @@ func teamRows(dir string) []Setting {
 	}
 }
 
+// ApplyTeamDefault writes one `teams.` row in profileDir the way the settings
+// tab writes it: the registry row's own Apply, so the bands, the empty cap and
+// the refusal words are the row's and not a second copy. A key that is not one
+// of the five defaults is refused and nothing is written. The settings tab
+// over --host asks the engine to call this on the engine's profile, which is
+// the file the far session's teams actually inherit.
+func ApplyTeamDefault(profileDir, key, raw string) error {
+	switch key {
+	case KeyTeamsQuestionsUp, KeyTeamsWake, KeyTeamsCapUSDDay, KeyTeamsDepthLimit, KeyTeamsSubSharePct:
+	default:
+		return fmt.Errorf("%s is not a team default", key)
+	}
+	row, ok := NewSettings(SettingsOptions{ProfileDir: profileDir}).Row(key)
+	if !ok || row.Category != CategoryTeams {
+		return fmt.Errorf("%s is not a team default", key)
+	}
+	return row.Apply(raw)
+}
+
 // writeTeamsBand persists a whole number inside [low, high], refusing in the
 // row's own words anything outside it.
 func writeTeamsBand(profileDir, key, raw string, low, high int) error {

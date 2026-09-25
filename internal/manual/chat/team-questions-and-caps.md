@@ -23,8 +23,10 @@ with it off, a member's questions come to you as they always did.
 The **Teams** tab of `/settings` holds the defaults every team inherits: `questions go to the
 manager`, `team messages wake`, `daily cap per team`, `team depth` and `sub-team share`. Its
 dim line says `a team can override any of these on its card · saved to your profile`. Over
-`--host` the tab shows this computer's rows, read only, and says the teams inherit the other
-machine's Settings instead.
+`--host` the same five rows are the other machine's, and a change is saved there. Each value
+says `from Settings`, the same words a team's card uses when it inherits them. An older
+engine that cannot take the change keeps the tab read only and says
+`changing them is not available over this connection`.
 
 ## What a decision packet is
 
