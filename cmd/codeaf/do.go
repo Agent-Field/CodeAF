@@ -3625,12 +3625,11 @@ func runErrand(request doRequest, seats config.Seats) (headlessOutcome, error) {
 	}
 	// EVERY SEAT CALL IS PRICED BEFORE IT IS MADE (internal/session's
 	// spendguard.go): the day's cap — the daily spending limit too unless
-	// -yes-spend lifted it — and the checker's own ceiling on this run.
-	if seats.Crew != nil {
-		guard := session.CrewSpendGuard(config.ProfileDir(), *seats.Crew, !spendPreauthorized(request.yesSpend, env.Value))
-		unguarded := completerFor
-		completerFor = func(model string) session.Completer { return guard.Wrap(model, unguarded(model)) }
-	}
+	// -yes-spend lifted it — the per-task limit, and the checker's own
+	// ceiling on this run.
+	guard := doSpendGuard(config.ProfileDir(), seats.Crew, spendPreauthorized(request.yesSpend, env.Value))
+	unguarded := completerFor
+	completerFor = func(model string) session.Completer { return guard.Wrap(model, unguarded(model)) }
 	// THE REVIEW ROUND IS ON for every `do` run: a leaf that lands done is
 	// checked against its acceptance, and a check that does not hold becomes a
 	// fix task under the leaf's parent the run waits on.
@@ -3717,6 +3716,16 @@ type runSpend struct {
 	stop    stopReason
 	words   string
 	refused bool
+}
+
+// doSpendGuard is the guard a `do` run's calls are held to. preauthorized
+// (-yes-spend) lifts the daily spending limit from it and nothing else: the
+// per-task limit holds either way, with or without a routed crew.
+func doSpendGuard(profileDir string, crew *crewroute.Decision, preauthorized bool) *session.SpendGuard {
+	if crew == nil {
+		return session.TaskSpendGuard(profileDir)
+	}
+	return session.CrewSpendGuard(profileDir, *crew, !preauthorized)
 }
 
 // runSpendBound is THE SPENDING CONTRACT `--yes-spend` promises

@@ -7,6 +7,9 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 )
 
 // spendingCompleter answers every call at a fixed cost, as the provider's own
@@ -59,5 +62,85 @@ func TestTheCheckerStopsAtItsCeilingAndTheDayAtItsCap(t *testing.T) {
 	_, err := seat.CompleteWithMessages(t.Context(), messages, ai.WithMaxTokens(2000))
 	if !errors.As(err, &stopped) || stopped.Action != "cap reached" || worker.calls != 0 {
 		t.Errorf("a call that would cross the cap: %v after %d calls", err, worker.calls)
+	}
+}
+
+// A TASK STOPS AT ITS LIMIT: seats on two models and a helper share one
+// tally. The call that would take the task past the limit is not made, and
+// the task ends on the limit's sentence.
+func TestATaskStopsAtItsLimitAcrossEveryModel(t *testing.T) {
+	messages := []ai.Message{textMessage("user", "the brief")}
+	worker := &spendingCompleter{usd: 1.5}
+	checker := &spendingCompleter{usd: 1.5}
+	guard := &SpendGuard{Price: kimiPrice, Day: NewSpendDay(0), TaskCap: 5, TaskAction: config.CrewTaskCapAction(5)}
+	seats := []Completer{guard.Wrap("z-ai/glm-5.3", worker), guard.Wrap("moonshotai/kimi-k3", checker)}
+	var stopped ErrSpendStopped
+	made := 0
+	for i := 0; i < 10; i++ {
+		_, err := seats[i%2].CompleteWithMessages(t.Context(), messages, ai.WithMaxTokens(2000))
+		if err != nil {
+			if !errors.As(err, &stopped) {
+				t.Fatalf("call %d: %v", i, err)
+			}
+			break
+		}
+		made++
+	}
+	if stopped.Action != "this task reached its $5 limit · raise it in /crew" {
+		t.Fatalf("the task ended on %q", stopped.Action)
+	}
+	if made != 3 || worker.calls+checker.calls != 3 {
+		t.Fatalf("%d calls were made (%d worker, %d checker), want 3", made, worker.calls, checker.calls)
+	}
+	if spent := guard.Task.Total(); spent > 5 {
+		t.Fatalf("the task spent $%.2f past its $5 limit", spent)
+	}
+
+	// A helper made for the same task is held to the same tally.
+	helper := &SpendGuard{Price: kimiPrice, Day: guard.Day, TaskCap: guard.TaskCap, TaskAction: guard.TaskAction, Task: guard.tally()}
+	aux := &spendingCompleter{usd: 1.5}
+	if _, err := helper.Wrap("z-ai/glm-5.3", aux).CompleteWithMessages(t.Context(), messages); !errors.As(err, &stopped) || aux.calls != 0 {
+		t.Fatalf("a helper past the task's limit: %v after %d calls", err, aux.calls)
+	}
+
+	// The checker's own ceiling still binds inside the task's limit.
+	ceilinged := &SpendGuard{Price: kimiPrice, Day: NewSpendDay(0), TaskCap: 5, TaskAction: config.CrewTaskCapAction(5),
+		Ceilings: map[string]float64{"moonshotai/kimi-k3": 0.5}, CeilingAction: "the check stopped at its spend ceiling of $%.2f"}
+	check := &spendingCompleter{usd: 0.4}
+	seat := ceilinged.Wrap("moonshotai/kimi-k3", check)
+	var err error
+	for i := 0; i < 5 && err == nil; i++ {
+		_, err = seat.CompleteWithMessages(t.Context(), messages, ai.WithMaxTokens(2000))
+	}
+	if !errors.As(err, &stopped) || !strings.HasPrefix(stopped.Action, "the check stopped at its spend ceiling") {
+		t.Fatalf("the ceiling inside the task's limit: %v", err)
+	}
+}
+
+// THE PER-TASK LIMIT IS ON EVERY CREW GUARD, whether or not the daily limit
+// is (withDaily false is how --yes-spend builds it), and on a helper's guard
+// for a task, which shares the task's tally.
+func TestTheTaskLimitIsOnEveryGuard(t *testing.T) {
+	dir := t.TempDir()
+	for _, withDaily := range []bool{true, false} {
+		guard := CrewSpendGuard(dir, crewroute.Decision{}, withDaily)
+		if guard.TaskCap != 5 || guard.TaskAction != "this task reached its $5 limit · raise it in /crew" {
+			t.Fatalf("withDaily=%v: task cap %v, %q", withDaily, guard.TaskCap, guard.TaskAction)
+		}
+	}
+	if err := config.SetCrewTaskCap(dir, "2.5"); err != nil {
+		t.Fatal(err)
+	}
+	if guard := TaskSpendGuard(dir); guard.TaskCap != 2.5 || guard.TaskAction != "this task reached its $2.50 limit · raise it in /crew" {
+		t.Fatalf("a set limit reads %v, %q", guard.TaskCap, guard.TaskAction)
+	}
+	crew := &taskCrew{guard: crewSpendGuard(dir, crewroute.Decision{}, false)}
+	a := &Agent{config: Config{ProfileDir: dir, RouteCrew: func(config.CrewAsk) (crewroute.Decision, error) { return crewroute.Decision{}, nil }}}
+	helper := a.helperGuard(crew)
+	if helper.TaskCap != 2.5 || helper.Task != crew.guard.Task {
+		t.Fatalf("a helper for the task is held to %v on its own tally", helper.TaskCap)
+	}
+	if loose := a.helperGuard(nil); loose.TaskCap != 0 {
+		t.Fatalf("a helper for no task is held to a task limit of %v", loose.TaskCap)
 	}
 }

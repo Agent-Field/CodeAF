@@ -86,6 +86,9 @@ type CrewRecord struct {
 	// Top is, per seat, the best few candidates the decision weighed, with
 	// their route, quality, cost and score: why the crew is the crew.
 	Top map[string][]CrewScore `json:"top,omitempty"`
+	// Learned is seat → the move this install's own outcomes made to the
+	// seat's model's quality when the crew was picked ([CrewLog.Quality]).
+	Learned map[string]float64 `json:"learned,omitempty"`
 }
 
 // CrewScore is one weighed candidate on a decision row, kept short.
@@ -198,6 +201,60 @@ type CrewLog struct {
 	// actual over estimate, shrunk toward one while there are few, and kept
 	// within a factor of three. A class with no settled paid task has none.
 	CostFactor map[string]float64
+	// Quality is this install's learned move to a model's quality in a seat,
+	// keyed [QualityKey] with the id the seat ran: every settled task moves
+	// each of its seats' models a small step toward +learnBound when its
+	// result was kept, toward −learnBound when it was redone stronger, and
+	// half as far down when it was not kept. The move never leaves
+	// ±learnBound quality points.
+	Quality map[string]float64
+}
+
+// The per-install quality update: how far one task moves a model's learned
+// quality toward the bound, and the bound itself, in quality points.
+const (
+	learnRate  = 0.1
+	learnBound = 1.0
+)
+
+// QualityKey is the key [CrewLog.Quality] is kept under: the class, the seat
+// and the id the seat ran.
+func QualityKey(class, seat, model string) string {
+	return class + "\x00" + seat + "\x00" + strings.ToLower(strings.TrimSpace(model))
+}
+
+// outcomeSignal is how a settled task reads for the models that sat it: +1
+// kept, −1 redone stronger, −½ not kept, 0 for anything else.
+func outcomeSignal(outcome string) float64 {
+	switch outcome {
+	case CrewAccepted:
+		return 1
+	case CrewRedone:
+		return -1
+	case CrewNotKept:
+		return -0.5
+	}
+	return 0
+}
+
+// learnedQuality reads [CrewLog.Quality] off the settled tasks, oldest first.
+func learnedQuality(order []string, tasks map[string]*CrewTask) map[string]float64 {
+	out := map[string]float64{}
+	for _, call := range order {
+		task := tasks[call]
+		signal := outcomeSignal(task.Outcome)
+		if !task.Settled || signal == 0 {
+			continue
+		}
+		for seat, model := range task.Record.Seats {
+			if strings.TrimSpace(model) == "" {
+				continue
+			}
+			key := QualityKey(task.Record.TaskClass, seat, model)
+			out[key] += learnRate * (signal*learnBound - out[key])
+		}
+	}
+	return out
 }
 
 // The cost factor's three numbers: how many recent tasks it reads, how many
@@ -313,6 +370,7 @@ func ReadCrewLog(dir string, now time.Time) CrewLog {
 	}
 	sort.SliceStable(order, func(i, j int) bool { return tasks[order[i]].At.Before(tasks[order[j]].At) })
 	out.CostFactor = costFactors(order, tasks)
+	out.Quality = learnedQuality(order, tasks)
 	year, month, day := now.Local().Date()
 	accepted := map[string]int{}
 	for _, call := range order {

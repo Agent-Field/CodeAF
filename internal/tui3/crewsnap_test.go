@@ -40,12 +40,12 @@ func TestCrewSnapshotPanel(t *testing.T) {
 	crewSnap(t, a, "panel", `
 ╭─ crew ───────────────────────────────────────────────────────────────────────────────────── esc ─╮
 │› worker    auto · likely glm-5.3-flash                                                           │
-│  planner   auto · likely glm-5.3-flash                                                           │
+│  planner   auto · likely kimi-k3                                                                 │
 │  checker   {pin} kimi-k3                                                                             │
 │                                                                                                  │
 │  models    ‹ all › (4)                                                                           │
 │  providers {tick} openrouter  +                                                                       │
-│  cap       none                                                                                  │
+│  cap       per task $5 · daily none                                                              │
 ╰─ enter change · esc close · ? keys ──────────────────────────────────────────────────────────────╯`)
 }
 
@@ -88,11 +88,11 @@ func TestCrewSnapshotPriceBeingTyped(t *testing.T) {
 ╭─ crew ───────────────────────────────────────────────────────────────────────────────────── esc ─╮
 │  worker    auto · likely glm-5.3-flash                                                           │
 │  planner   auto · likely glm-5.3-flash                                                           │
-│  checker   auto · likely deepseek-v4-flash                                                       │
+│  checker   auto · likely glm-5.3-flash                                                           │
 │                                                                                                  │
 │› models    ‹ price ›  ≤ $[ 0.5 ] in / $[ 5 ] out (2)  {tick}                                          │
 │  providers {tick} openrouter  +                                                                       │
-│  cap       none                                                                                  │
+│  cap       per task $5 · daily none                                                              │
 │  no strong checker among the models you allow · open-ended work will be checked weakly           │
 ╰─ enter change · esc close · ? keys ──────────────────────────────────────────────────────────────╯`)
 }
@@ -128,7 +128,7 @@ func TestCrewSnapshotNarrow(t *testing.T) {
 │                                                      │
 │  models    ‹ all › (4)                               │
 │  providers {tick} openrouter  +                           │
-│  cap       none                                      │
+│  cap       per task $5 · daily none                  │
 ╰─ enter change · esc close · ? keys ──────────────────╯`)
 }
 
@@ -144,7 +144,7 @@ func TestCrewSnapshotNoProviders(t *testing.T) {
 │                                                                                                  │
 │  models    ‹ all › (0)                                                                           │
 │  providers +                                                                                     │
-│  cap       none                                                                                  │
+│  cap       per task $5 · daily none                                                              │
 │  no providers connected — /connect adds one                                                      │
 ╰─ enter change · esc close · ? keys ──────────────────────────────────────────────────────────────╯`)
 }
@@ -156,12 +156,12 @@ func TestCrewSnapshotUndoOffer(t *testing.T) {
 	crewSnap(t, a, "undo offer", `
 ╭─ crew ───────────────────────────────────────────────────────────────────────────────────── esc ─╮
 │  worker    auto · likely glm-5.3-flash                                                           │
-│  planner   auto · likely glm-5.3-flash                                                           │
-│  checker   auto · likely deepseek-v4-flash                                                       │
+│  planner   auto · likely kimi-k3                                                                 │
+│  checker   auto · likely kimi-k3                                                                 │
 │                                                                                                  │
 │› models    ‹ open › (3)  {tick}                                                                       │
 │  providers {tick} openrouter  +                                                                       │
-│  cap       none                                                                                  │
+│  cap       per task $5 · daily none                                                              │
 ╰─ enter change · esc close · ? keys ───────────────────────────────────────────────────── z undo ─╯`)
 }
 
@@ -174,12 +174,12 @@ func TestCrewSnapshotProvidersRow(t *testing.T) {
 	crewSnap(t, a, "providers row", `
 ╭─ crew ───────────────────────────────────────────────────────────────────────────────────── esc ─╮
 │  worker    auto · likely glm-5.3-flash                                                           │
-│  planner   auto · likely glm-5.3-flash                                                           │
-│  checker   auto · likely deepseek-v4-flash                                                       │
+│  planner   auto · likely kimi-k3                                                                 │
+│  checker   auto · likely glm-5.3-flash                                                           │
 │                                                                                                  │
 │  models    ‹ all › (4)                                                                           │
 │› providers {tick} openrouter  {tick} z-ai sub  {off} ollama local  {tick} my-vllm  +                                │
-│  cap       none                                                                                  │
+│  cap       per task $5 · daily none                                                              │
 ╰─ enter change · space toggle · esc close · ? keys ───────────────────────────────────────────────╯`)
 }
 

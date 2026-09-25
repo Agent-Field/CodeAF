@@ -16,7 +16,7 @@ import (
 // `zai-org/GLM-5.3-Flash`, OpenRouter's free pool `z-ai/glm-5.3-flash:free`,
 // and a local Ollama pull `glm-5.3-flash:q4_k_m`. The router must read those
 // as one model with five routes — or, for the local pull, as a distinct
-// VARIANT of the one model — or it measures a model once and prices it five
+// VARIANT of the one model — or it scores a model once and prices it five
 // times as five strangers.
 //
 // [Canonical] is that reading. It is PURE AND FAST — string operations, no
@@ -41,8 +41,8 @@ import (
 //
 // AN UNKNOWN SPELLING STAYS ITS OWN MODEL. Nothing here merges two ids because
 // they look alike: every rule is a fact about how a provider spells an id, and
-// a model no rule recognises is read on its own catalog figures, the way an
-// unmeasured model always is.
+// a model no rule recognises is read on its own catalog figures, the way
+// every model is.
 
 // Canon is a model's canonical identity: the id evidence is kept under, and
 // the quantisation variant when the id names a squeezed local copy of it.
@@ -60,12 +60,11 @@ func (c Canon) String() string {
 	return c.ID + "@" + c.Variant
 }
 
-// quantDiscount is how much of a model's measured quality a quantised local
-// copy is credited with. Quantisation costs something on agentic work — tool
-// calls are where a squeezed model slips first — and nothing measured how much
-// for these models, so the credit is a conservative share rather than a
-// figure: a local copy sits a seat when it is free AND nearly as good, never
-// because its evidence was borrowed whole.
+// quantDiscount is how much of a model's quality a quantised local copy is
+// credited with. Quantisation costs something on agentic work — tool calls
+// are where a squeezed model slips first — so the credit is a conservative
+// share: a local copy sits a seat when it is free AND nearly as good, never
+// because its model's score was borrowed whole.
 const quantDiscount = 0.85
 
 // routeSuffixes are the `:word` endings that name a way of serving a model

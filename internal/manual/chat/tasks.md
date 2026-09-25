@@ -2256,11 +2256,9 @@ proposal card and the model's own proposals run under the conversation's own lim
 you set it — and under the day's limit above it. An adaptive run they start opens on the
 $100.00 default.
 
-**A task has no dollar limit of its own**, which the Spending tab says on its `per task`
-row in those words: `no limit of its own · it spends against the day and this conversation`.
-Its own bounds are steps and time. The composer layer's third line is the one place a
-figure is put on a single piece of work, and there is no per-task money row to edit
-anywhere in settings.
+**Every task also has a money limit of its own: $5 unless you set another**, shown on the
+Spending tab's `per task` row and set with `/crew cap task <$>`. A call that would spend
+past it is not made, whichever way the task was started, and the task stops there.
 
 Changing the engine's default changes the figure the composer layer opens on; the two are
 meant to be one number and are stated in both places on purpose.

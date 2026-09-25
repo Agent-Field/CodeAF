@@ -187,6 +187,7 @@ type crewPanel struct {
 	suggest   map[crewroute.Seat]string
 	rule      crewroute.Allowed
 	capUSD    float64
+	taskUSD   float64
 	free      bool
 	providers []config.CrewProvider
 	offers    []config.CrewOffer
@@ -248,7 +249,8 @@ type crewPanel struct {
 // crewHole is one hole typed into on the main rows.
 type crewHole struct {
 	// stop is the row the hole is on; price is which ceiling — 0 in, 1 out —
-	// when the stop is the models row.
+	// when the stop is the models row, and which limit — 0 daily, 1 per task —
+	// when it is the cap row.
 	stop  int
 	price int
 	box   editor
@@ -325,6 +327,7 @@ func (p *crewPanel) read(dir string) {
 	p.pins = config.CrewPinsAt(dir)
 	p.rule = config.CrewAllowedAt(dir)
 	p.capUSD = config.CrewCapAt(dir)
+	p.taskUSD = config.CrewTaskCapAt(dir)
 	p.free = config.CrewFreeRoutesAt(dir)
 	p.providers = config.CrewProvidersAt(dir)
 	p.chip = min(p.chip, len(p.providers))
@@ -885,11 +888,21 @@ func (a *app) crewHoleKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.crewKeepPriceHole()
 			a.crewEditPrice(1 - hole.price)
 		}
+		if hole.stop == crewCap {
+			a.crewEditCap(1 - hole.price)
+		}
 		return nil
 	case "enter":
 		if hole.stop == crewCap {
 			p.edit = nil
 			raw := strings.TrimSpace(hole.box.String())
+			if hole.price == 1 {
+				// AN EMPTIED PER-TASK HOLE IS THE DEFAULT: a task always has a limit.
+				if raw == "" {
+					raw = strconv.FormatFloat(config.CrewTaskCapDefault, 'f', -1, 64)
+				}
+				return a.crewWrite(crewCap, func(dir string) error { return config.SetCrewTaskCap(dir, raw) })
+			}
 			if raw == "" {
 				raw = "none"
 			}
@@ -917,6 +930,18 @@ func (a *app) crewHoleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 	return nil
+}
+
+// crewEditCap opens one of the cap row's two holes: 0 the daily cap, 1 the
+// per-task limit, holding the figure in force.
+func (a *app) crewEditCap(which int) {
+	p := &a.crewUI
+	p.edit = &crewHole{stop: crewCap, price: which}
+	if which == 1 {
+		p.edit.box.setText(crewDollarsWord(p.taskUSD))
+		return
+	}
+	p.edit.box.setText(crewDollarsWord(p.capUSD))
 }
 
 // crewKeepPriceHole reads the price hole being typed into back into the
@@ -1718,16 +1743,26 @@ func (a *app) crewHole(which int, value float64) string {
 	return a.pal.dim("[ ") + a.pal.ink(text) + a.pal.dim(" ]")
 }
 
-// crewCapValue is the cap row: none, the figure, or the hole being typed.
+// crewCapValue is the cap row: the per-task limit and the daily cap (none,
+// or the figure), either one the hole being typed. Tab in a hole moves to the
+// other.
 func (a *app) crewCapValue() string {
 	p := &a.crewUI
+	hole := func(text string) string { return a.pal.bold(a.pal.ink("$[ " + text + " ]")) }
+	task := a.pal.ink(config.CrewTaskMoney(p.taskUSD))
+	daily := a.pal.ink("none")
+	if p.capUSD > 0 {
+		daily = a.pal.ink(crewroute.Money(p.capUSD))
+	}
 	if p.edit != nil && p.edit.stop == crewCap {
-		return a.pal.bold(a.pal.ink("$[ "+p.edit.box.String()+" ]")) + a.pal.dim(" a day · empty is none")
+		if p.edit.price == 1 {
+			return a.pal.dim("per task ") + hole(p.edit.box.String()) + a.pal.dim(" · daily ") + daily +
+				a.pal.dim(" · empty is "+config.CrewTaskMoney(config.CrewTaskCapDefault)+" · tab daily")
+		}
+		return a.pal.dim("per task ") + task + a.pal.dim(" · daily ") + hole(p.edit.box.String()) +
+			a.pal.dim(" · empty is none · tab per task")
 	}
-	if p.capUSD <= 0 {
-		return a.pal.ink("none")
-	}
-	return a.pal.ink(crewroute.Money(p.capUSD)) + a.pal.dim(" a day")
+	return a.pal.dim("per task ") + task + a.pal.dim(" · daily ") + daily
 }
 
 // crewChipRoom is the cells a providers row keeps free past its chips, for
@@ -2217,7 +2252,8 @@ var crewKeyLines = [][2]string{
 	{"enter", "change the row · pick · tick"},
 	{"←→", "walk the models row · the providers · a model's routes"},
 	{"space", "turn the provider under the cursor off or on"},
-	{"0-9", "type the cap, or a price ceiling"},
+	{"0-9", "type the daily cap, or a price ceiling"},
+	{"tab", "the cap row's other limit · the other price ceiling"},
 	{"type", "filter a list"},
 	{"z", "undo the last change, for a few seconds"},
 	{"esc", "back one level · close"},

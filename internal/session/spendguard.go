@@ -127,9 +127,70 @@ type SpendGuard struct {
 	// ends on.
 	Ceilings      map[string]float64
 	CeilingAction string
+	// TaskCap is the most the task may spend in dollars, across every model
+	// this guard prices, and TaskAction the sentence a call it stops ends on.
+	// Zero is no per-task limit.
+	TaskCap    float64
+	TaskAction string
+	// Task is the tally TaskCap is read against. Guards that share one hold
+	// the seats and the helpers of one task to one limit; nil is a tally of
+	// the guard's own, made on its first call.
+	Task *SpendTask
 
 	mu    sync.Mutex
 	spent map[string]float64
+}
+
+// SpendTask is what one task has spent and holds in flight, across every
+// guarded call made for it.
+type SpendTask struct {
+	mu    sync.Mutex
+	spent float64
+	held  float64
+}
+
+// Total is what the task has spent.
+func (t *SpendTask) Total() float64 {
+	if t == nil {
+		return 0
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.spent
+}
+
+// hold holds est against capUSD (none when zero) and answers whether it fit.
+func (t *SpendTask) hold(est, capUSD float64) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if capUSD > 0 && t.spent+t.held+est > capUSD {
+		return false
+	}
+	t.held += est
+	return true
+}
+
+// settle releases a hold and books what the call cost.
+func (t *SpendTask) settle(held, usd float64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.held -= held
+	if t.held < 0 {
+		t.held = 0
+	}
+	if usd > 0 {
+		t.spent += usd
+	}
+}
+
+// tally is the guard's task tally, made on first use.
+func (g *SpendGuard) tally() *SpendTask {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.Task == nil {
+		g.Task = &SpendTask{}
+	}
+	return g.Task
 }
 
 // ErrSpendStopped is a call the guard did not make. Its text is the one
@@ -157,11 +218,20 @@ func (g *SpendGuard) Wrap(model string, next Completer) Completer {
 // before is whether a call to model with these messages may be made, and
 // what it holds on the day until [SpendGuard.after] settles it.
 func (g *SpendGuard) before(model string, messages []ai.Message, options []ai.Option) (float64, error) {
-	if g == nil || g.Price == nil {
+	if g == nil {
 		return 0, nil
 	}
-	prompt, completion, cacheRead, ok := g.Price(model)
+	var prompt, completion, cacheRead float64
+	ok := false
+	if g.Price != nil {
+		prompt, completion, cacheRead, ok = g.Price(model)
+	}
 	if !ok {
+		// A call nobody prices is not estimated, but a task already at its
+		// limit makes no more calls of any kind.
+		if g.TaskCap > 0 && g.tally().Total() >= g.TaskCap {
+			return 0, ErrSpendStopped{Action: g.TaskAction}
+		}
 		return 0, nil
 	}
 	g.mu.Lock()
@@ -174,9 +244,17 @@ func (g *SpendGuard) before(model string, messages []ai.Message, options []ai.Op
 	if ceiling := g.Ceilings[model]; ceiling > 0 && seatSpent+est > ceiling {
 		return 0, ErrSpendStopped{Action: fmt.Sprintf(g.CeilingAction, ceiling)}
 	}
+	task := g.tally()
+	if !task.hold(est, g.TaskCap) {
+		return 0, ErrSpendStopped{Action: g.TaskAction}
+	}
 	held, fits := g.Day.hold(model, est, g.Cap)
 	if !fits {
+		task.settle(est, 0)
 		return 0, ErrSpendStopped{Action: g.CapAction}
+	}
+	if g.Day == nil {
+		held = est
 	}
 	return held, nil
 }
@@ -205,8 +283,10 @@ func (g *SpendGuard) after(model string, response *ai.Response, held float64) {
 	if g == nil {
 		return
 	}
+	task := g.tally()
 	if response == nil || response.Usage == nil {
 		g.Day.settle(model, held, 0)
+		task.settle(held, 0)
 		return
 	}
 	usd := 0.0
@@ -220,6 +300,7 @@ func (g *SpendGuard) after(model string, response *ai.Response, held float64) {
 		}
 	}
 	g.Day.settle(model, held, usd)
+	task.settle(held, usd)
 	if usd <= 0 {
 		return
 	}

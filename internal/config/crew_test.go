@@ -26,14 +26,14 @@ func crewProfile(t *testing.T) string {
 	previous := CrewCatalog
 	t.Cleanup(func() { CrewCatalog = previous })
 	rows := []catalog.Model{
-		{ID: "z-ai/glm-5.3-flash", OpenWeights: true, PromptPrice: 1.5e-7, CompletionPrice: 5e-7, CacheReadPrice: 5e-8,
-			IntelligenceIndex: 41.8, CodingIndex: 71.5, AgenticIndex: 50.9, ContextLength: 1310720, Parameters: []string{"tools"}},
-		{ID: "moonshotai/kimi-k3", OpenWeights: true, PromptPrice: 3e-6, CompletionPrice: 1.5e-5, CacheReadPrice: 3e-7,
-			IntelligenceIndex: 43.6, CodingIndex: 76.2, AgenticIndex: 50, ContextLength: 1048576, Parameters: []string{"tools"}},
-		{ID: "deepseek/deepseek-v4-flash", OpenWeights: true, PromptPrice: 8.246e-8, CompletionPrice: 1.6492e-7, CacheReadPrice: 1.6492e-8,
-			IntelligenceIndex: 24.2, CodingIndex: 56.2, AgenticIndex: 22.2, ContextLength: 1048576, Parameters: []string{"tools"}},
-		{ID: "anthropic/claude-opus-5", PromptPrice: 5e-6, CompletionPrice: 2.5e-5, CacheReadPrice: 5e-7,
-			IntelligenceIndex: 50.8, CodingIndex: 78, AgenticIndex: 56.5, ContextLength: 1000000, Parameters: []string{"tools"}},
+		{ID: "z-ai/glm-5.3-flash", CanonicalSlug: "z-ai/glm-5.3-flash-20260826", OpenWeights: true, PromptPrice: 1.5e-7, CompletionPrice: 5e-7, CacheReadPrice: 5e-8,
+			IntelligenceIndex: 41.8, CodingIndex: 71.5, AgenticIndex: 50.9, ArenaElo: 1348, ContextLength: 1310720, Parameters: []string{"tools"}},
+		{ID: "moonshotai/kimi-k3", CanonicalSlug: "moonshotai/kimi-k3-20260715", OpenWeights: true, PromptPrice: 3e-6, CompletionPrice: 1.5e-5, CacheReadPrice: 3e-7,
+			IntelligenceIndex: 43.6, CodingIndex: 76.2, AgenticIndex: 50, ArenaElo: 1421, ContextLength: 1048576, Parameters: []string{"tools"}},
+		{ID: "deepseek/deepseek-v4-flash", CanonicalSlug: "deepseek/deepseek-v4-flash-20260423", OpenWeights: true, PromptPrice: 8.246e-8, CompletionPrice: 1.6492e-7, CacheReadPrice: 1.6492e-8,
+			IntelligenceIndex: 24.2, CodingIndex: 56.2, AgenticIndex: 22.2, ArenaElo: 1216, ContextLength: 1048576, Parameters: []string{"tools"}},
+		{ID: "anthropic/claude-opus-5", CanonicalSlug: "anthropic/claude-opus-5-20260723", PromptPrice: 5e-6, CompletionPrice: 2.5e-5, CacheReadPrice: 5e-7,
+			IntelligenceIndex: 50.8, CodingIndex: 78, AgenticIndex: 56.5, ArenaElo: 1372, ContextLength: 1000000, Parameters: []string{"tools"}},
 		{ID: "vendor/no-tools", PromptPrice: 1e-9, CompletionPrice: 1e-9, Parameters: []string{"temperature"}},
 		{ID: "vendor/unpriced", PriceUnknown: true, Parameters: []string{"tools"}},
 	}
@@ -52,9 +52,11 @@ func TestAnUntouchedProfileRoutesEverySeat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, seat := range []Seat{seats.Work, seats.Plan, seats.Check} {
-		if seat.Source != SeatRouted || seat.Model != "z-ai/glm-5.3-flash" {
-			t.Errorf("%s: %+v, want routed to glm-5.3-flash on a fix", seat.Role, seat)
+	// A fix: the worker the catalog reads as able for its price, and the
+	// cheapest credible model in the seats a fix does not pay ability for.
+	for seat, want := range map[Seat]string{seats.Work: "z-ai/glm-5.3-flash", seats.Plan: "deepseek/deepseek-v4-flash", seats.Check: "deepseek/deepseek-v4-flash"} {
+		if seat.Source != SeatRouted || seat.Model != want {
+			t.Errorf("%s: %+v, want routed to %s on a fix", seat.Role, seat, want)
 		}
 	}
 	if seats.Crew == nil || seats.Crew.Class != crewroute.Bugfix {
@@ -212,14 +214,14 @@ func TestALearnedOffsetStartsARedoneClassHigher(t *testing.T) {
 	previous := CrewHistory
 	t.Cleanup(func() { CrewHistory = previous })
 	CrewHistory = func(string) CrewDay {
-		return CrewDay{Offsets: map[string]int{OffsetKey("repo", crewroute.Bugfix): 2}}
+		return CrewDay{Offsets: map[string]int{OffsetKey("repo", crewroute.Bugfix): 1}}
 	}
 	d, err := RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: fixTask}, Repo: "repo"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if d.Seat(crewroute.Worker).Model != "moonshotai/kimi-k3" {
-		t.Errorf("a fix class redone twice here starts on %s", d.Seat(crewroute.Worker).Model)
+		t.Errorf("a fix class redone here starts on %s, want the next rung up", d.Seat(crewroute.Worker).Model)
 	}
 	d, _ = RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: fixTask}, Repo: "elsewhere"})
 	if d.Seat(crewroute.Worker).Model != "z-ai/glm-5.3-flash" {
@@ -538,5 +540,34 @@ func TestCrewProvidersKeepOneThatRoutes(t *testing.T) {
 	}
 	if err := SetCrewProviderOn(dir, "openrouter", false); err != nil {
 		t.Fatalf("every seat pinned to the custom endpoint, and still refused: %v", err)
+	}
+}
+
+// THE PER-TASK LIMIT IS $5 UNTIL SET, a set figure reads back, and a task
+// cannot be left without one.
+func TestCrewTaskCapDefaultsAndRoundTrips(t *testing.T) {
+	dir := crewProfile(t)
+	if got := CrewTaskCapAt(dir); got != 5 {
+		t.Fatalf("an untouched profile's per-task limit reads %v", got)
+	}
+	if err := SetCrewTaskCap(dir, "$12.5"); err != nil {
+		t.Fatal(err)
+	}
+	if got := CrewTaskCapAt(dir); got != 12.5 {
+		t.Fatalf("the per-task limit reads %v after 12.5", got)
+	}
+	for _, raw := range []string{"none", "0", "-3", "lots"} {
+		if err := SetCrewTaskCap(dir, raw); err == nil {
+			t.Errorf("%q was taken as a per-task limit", raw)
+		}
+	}
+	if got := CrewTaskCapAt(dir); got != 12.5 {
+		t.Fatalf("a refused figure moved the limit to %v", got)
+	}
+	if capUSD, action := CrewTaskSpendCap(dir); capUSD != 12.5 || action != "this task reached its $12.50 limit · raise it in /crew" {
+		t.Fatalf("the limit's line reads %v, %q", capUSD, action)
+	}
+	if got := CrewTaskCapAction(CrewTaskCapDefault); got != "this task reached its $5 limit · raise it in /crew" {
+		t.Fatalf("the default limit's line reads %q", got)
 	}
 }

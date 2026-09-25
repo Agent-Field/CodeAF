@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 )
@@ -38,6 +39,28 @@ func CrewSpendCap(profileDir string, withDaily bool) (float64, string) {
 		}
 	}
 	return capUSD, action
+}
+
+// CrewTaskSpendCap is the per-task limit every priced call of one task is
+// held to ([CrewTaskCapAt]) and the sentence a call it stops ends on. It is
+// not lifted by --yes-spend: that flag answers the day's questions, not this.
+func CrewTaskSpendCap(profileDir string) (float64, string) {
+	capUSD := CrewTaskCapAt(profileDir)
+	return capUSD, CrewTaskCapAction(capUSD)
+}
+
+// CrewTaskCapAction is the sentence a call the per-task limit stops ends on.
+func CrewTaskCapAction(capUSD float64) string {
+	return "this task reached its " + CrewTaskMoney(capUSD) + " limit · raise it in /crew"
+}
+
+// CrewTaskMoney is a per-task limit in words: whole dollars without cents
+// ($5), anything else to the cent ($2.50).
+func CrewTaskMoney(usd float64) string {
+	if usd == math.Trunc(usd) {
+		return fmt.Sprintf("$%.0f", usd)
+	}
+	return fmt.Sprintf("$%.2f", usd)
 }
 
 // CrewSeatCeilings is each seat's own spend ceiling on one task, keyed by the

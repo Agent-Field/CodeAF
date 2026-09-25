@@ -378,6 +378,7 @@ var nonSettingProfileFields = []string{
 	// read beside the day's spend.
 	KeyCrewAllowed,
 	KeyCrewCap,
+	KeyCrewTaskCap,
 	// And the free-routes switch beside them, which the crew's providers list
 	// turns on and off.
 	KeyCrewFreeRoutes,

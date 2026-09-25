@@ -57,7 +57,7 @@ const (
 	OpenEnded Class = "openended"
 	// Other is work that changes nothing in particular — a question, an
 	// investigation, a review. It is read on the average of the other two
-	// classes, because the table has no rows of its own for it.
+	// classes' links, because the weights carry none of its own.
 	Other Class = "other"
 )
 

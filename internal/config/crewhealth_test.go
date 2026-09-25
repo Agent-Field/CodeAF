@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"math"
 	"os"
 	"strings"
 	"testing"
@@ -478,7 +479,7 @@ func TestTheNextRungIsAtASimilarCost(t *testing.T) {
 }
 
 // A CREW'S CALLS ARE HELD TO THE LOWER OF ITS OWN CAP AND THE DAY'S LIMIT,
-// and an open-ended kimi checker to three times its heavy-tail estimate.
+// and an open-ended kimi checker to three times its estimate.
 func TestTheSpendLinesASeatCallIsHeldTo(t *testing.T) {
 	dir := crewProfile(t)
 	if err := writeProfileValues(dir, map[string]any{KeyCrewCap: 1.0, KeyDailyBudget: 0.25}); err != nil {
@@ -495,12 +496,16 @@ func TestTheSpendLinesASeatCallIsHeldTo(t *testing.T) {
 	if err := SetCrewPin(dir, crewroute.Checker, "moonshotai/kimi-k3"); err != nil {
 		t.Fatal(err)
 	}
+	// The planner on another model, so the checker's model is its own.
+	if err := SetCrewPin(dir, crewroute.Planner, "z-ai/glm-5.3-flash"); err != nil {
+		t.Fatal(err)
+	}
 	d, err := RouteCrew(dir, CrewAsk{Task: crewroute.Task{Text: openTask}})
 	if err != nil && !errors.Is(err, ErrCrewAtCap) {
 		t.Fatal(err)
 	}
 	ceilings := CrewSeatCeilings(d)
-	if got := ceilings[d.Seat(crewroute.Checker).Send]; got < 0.2 || got > 0.4 {
+	if est, got := d.Seat(crewroute.Checker).EstUSD, ceilings[d.Seat(crewroute.Checker).Send]; est <= 0 || math.Abs(got-3*est) > 1e-9 {
 		t.Errorf("the open-ended kimi checker's ceiling is $%.3f (estimate $%.3f)", got, d.Seat(crewroute.Checker).EstUSD)
 	}
 	// One model in every seat: the spend the guard keeps is the model's, so

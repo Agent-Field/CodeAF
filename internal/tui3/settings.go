@@ -1945,13 +1945,14 @@ func (s *sheet) crewDoorItem(terms []fuzzy.Term) sheetItem {
 		}
 		value += " · " + strconv.Itoa(on) + " of " + strconv.Itoa(len(providers)) + " providers"
 	}
+	value += " · per task " + config.CrewTaskMoney(config.CrewTaskCapAt(s.profileDir))
 	if capUSD := config.CrewCapAt(s.profileDir); capUSD > 0 {
-		value += " · cap " + crewroute.Money(capUSD)
+		value += " · daily " + crewroute.Money(capUSD)
 	}
 	return sheetItem{
 		crewDoor: true, crewValue: value, hitAt: hitAt, hitLen: hitLen,
 		meta: settingMeta{tab: tabProviders, label: "seats",
-			about: "the worker, planner and checker, the models they may be picked from, the providers they may route through, and the daily cap · enter opens /crew"},
+			about: "the worker, planner and checker, the models they may be picked from, the providers they may route through, and the per-task and daily caps · enter opens /crew"},
 	}
 }
 

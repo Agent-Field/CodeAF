@@ -5,14 +5,15 @@ import (
 	"testing"
 )
 
-// THE OWNER'S TASK: an unmeasured model whose only route is a free pool, with
-// published figures as good as anything measured, took the worker seat of an
-// open-ended task and died in its first second. It must never beat the
-// measured models on a price of zero.
-func TestAFreeUnmeasuredModelNeverTakesASeatOnPrice(t *testing.T) {
-	stranger := catalogRow("thinkingmachines/inkling-small", true, 0, 0, 60, 80, 70)
+// A FREE POOL OF A MODEL NOBODY PRICES never wins a seat on its price: it is
+// weighed above the cheapest priced model, so with figures no better than a
+// priced model's it does not take that model's seat.
+func TestAFreeUnpricedModelNeverTakesASeatOnPrice(t *testing.T) {
+	stranger := candidateOf(glmFlash)
+	stranger.Model.ID = "thinkingmachines/inkling-small"
+	stranger.Model.PromptPrice, stranger.Model.CompletionPrice, stranger.Model.CacheReadPrice = 0, 0, 0
 	stranger.Routes = []Route{{Provider: "openrouter", Send: "thinkingmachines/inkling-small:free", Kind: Free}}
-	candidates := append(evidenceCandidates(), stranger)
+	candidates := append(catalogCandidates(), stranger)
 	for _, class := range Classes {
 		d, err := Decide(Request{Class: class, Candidates: candidates})
 		if err != nil {
@@ -23,21 +24,6 @@ func TestAFreeUnmeasuredModelNeverTakesASeatOnPrice(t *testing.T) {
 				t.Fatalf("%s %s went to the free stranger: %+v", class, pick.Seat, pick)
 			}
 		}
-	}
-}
-
-// NO PRICE MAKES AN UNMEASURED MODEL WIN ON COST ALONE: its cost is weighed at
-// no less than the cheapest measured model's, and its quality under the
-// measured middle, so a stranger cheaper than everything measured still loses
-// the open-ended worker seat to the model watched doing it.
-func TestAnUnmeasuredModelIsWeighedAtTheCostFloor(t *testing.T) {
-	cheap := catalogRow("somelab/cheap-coder", true, 0.01, 0.02, 60, 80, 70)
-	d, err := Decide(Request{Class: OpenEnded, Candidates: append(evidenceCandidates(), cheap)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := d.Seat(Worker).Model; got != "z-ai/glm-5.3-flash" {
-		t.Fatalf("open-ended worker = %s, want the measured flash", got)
 	}
 }
 
@@ -59,7 +45,7 @@ func TestTheCapabilityFiltersKeepUnfitModelsOut(t *testing.T) {
 // default service. With the free pool trusted, it is the route; the seat's
 // fallback is the SAME model on its next route, never another model.
 func TestAModelOnThreeRoutesTakesTheRightOneAndFallsThroughFreeToPaid(t *testing.T) {
-	m, _ := Snapshot("z-ai/glm-5.3-flash")
+	m := glmFlash
 	routes := func(freeFail float64) []Route {
 		return []Route{
 			{Provider: "openrouter", Send: "z-ai/glm-5.3-flash:free", Kind: Free, FailRate: freeFail},
@@ -108,7 +94,7 @@ func TestAFreeRoutesExpectedCostIsItsRefusals(t *testing.T) {
 // else can sit them — and never off a pin.
 func TestAnAvoidedModelSitsNoUnpinnedSeat(t *testing.T) {
 	avoid := map[string]bool{Lineage("z-ai/glm-5.3-flash"): true}
-	d, err := Decide(Request{Class: Bugfix, Candidates: evidenceCandidates(), Avoid: avoid})
+	d, err := Decide(Request{Class: Bugfix, Candidates: catalogCandidates(), Avoid: avoid})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,13 +103,13 @@ func TestAnAvoidedModelSitsNoUnpinnedSeat(t *testing.T) {
 			t.Fatalf("%s went to the avoided model", pick.Seat)
 		}
 	}
-	pinned, err := Decide(Request{Class: Bugfix, Candidates: evidenceCandidates(), Avoid: avoid,
+	pinned, err := Decide(Request{Class: Bugfix, Candidates: catalogCandidates(), Avoid: avoid,
 		Pins: map[Seat]Pin{Worker: {Model: "z-ai/glm-5.3-flash", Send: "z-ai/glm-5.3-flash", Kind: Metered}}})
 	if err != nil || pinned.Seat(Worker).Model != "z-ai/glm-5.3-flash" {
 		t.Fatalf("a pin was overruled: %+v %v", pinned.Seat(Worker), err)
 	}
 	// Avoiding the only model there is still makes a crew.
-	only := evidenceCandidates()[:1]
+	only := catalogCandidates()[:1]
 	if _, err := Decide(Request{Class: Bugfix, Candidates: only, Avoid: avoid}); err != nil {
 		t.Fatalf("avoiding the only model left no crew: %v", err)
 	}
@@ -153,36 +139,15 @@ func TestTheLineSaysClassPlannerAndARetry(t *testing.T) {
 	}
 }
 
-// A MODEL THAT PUBLISHES ONE FLATTERING INDEX AND NOTHING ELSE is not read as
-// though it published three: the owner's free stranger had only a coding
-// figure, and must not sit an agent-loop seat on it.
-func TestAMissingIndexCountsAgainstTheModel(t *testing.T) {
-	onlyCoding := catalogRow("thinkingmachines/inkling-small", true, 0.01, 0.02, 0, 52.9, 0)
-	full := catalogRow("somelab/full", true, 0.01, 0.02, 52.9, 52.9, 52.9)
-	if indexScore(Worker, onlyCoding.Model) >= indexScore(Worker, full.Model) {
-		t.Fatal("a model with two missing indexes read as well as one that published them")
-	}
-	for _, seat := range []Seat{Worker, Checker} {
-		if _, ok := eligible(prior(), Bugfix, seat, onlyCoding); ok {
-			t.Errorf("an unmeasured model with no agentic index sat the %s seat", seat)
-		}
-	}
-}
-
-// THE OWNER'S CATALOG: glm-5.3-flash at $0.15/M in, the free stranger with
-// no price and one index, no seat pinned. Every class keeps the stranger out,
-// with free routes on or off.
+// THE OWNER'S CATALOG: a free stranger with no price and one published index
+// beside the priced models. Every class keeps it out.
 func TestTheOwnersCatalogNeverSeatsTheFreeStranger(t *testing.T) {
-	glm, _ := Snapshot("z-ai/glm-5.3-flash")
-	if glm.PromptPrice != 1.5e-7 {
-		t.Fatalf("the snapshot prices glm at %v, want the owner's $0.15/M", glm.PromptPrice)
-	}
 	stranger := Candidate{
 		Model:  Model{ID: "thinkingmachines/inkling-small", Coding: 52.9, Context: 262_144, Tools: true},
 		Routes: []Route{{Provider: "router", Send: "thinkingmachines/inkling-small:free", Kind: Free}},
 	}
 	for _, class := range Classes {
-		d, err := Decide(Request{Class: class, Candidates: append(evidenceCandidates(), stranger)})
+		d, err := Decide(Request{Class: class, Candidates: append(catalogCandidates(), stranger)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -197,51 +162,44 @@ func TestTheOwnersCatalogNeverSeatsTheFreeStranger(t *testing.T) {
 // REDO CLIMBS ONE RUNG AT A TIME: monotone, one seat, the next model on the
 // seat's front — never the top of the catalog in one step.
 func TestRedoClimbsTheLadderOneRungAtATime(t *testing.T) {
-	cands := evidenceCandidates()
-	dear := catalogRow("somelab/very-dear", false, 30, 150, 60, 80, 70)
+	cands := frontierCandidates()
+	dear := catalogRow("somelab/very-dear", false, 30, 150, 60, 85, 70)
+	dear.Model.Released = released(2026, 9, 1)
 	cands = append(cands, dear)
-	ran := Decision{Class: OpenEnded, Crew: []Pick{
-		{Seat: Worker, Model: "z-ai/glm-5.3-flash", Quality: 2.0},
-		{Seat: Planner, Model: "z-ai/glm-5.3-flash", Quality: 0.6},
-		{Seat: Checker, Model: "z-ai/glm-5.3-flash", Quality: 1.0},
-	}}
-	first, err := Decide(Request{Class: OpenEnded, Candidates: cands, Stronger: &ran})
+	ran, err := Decide(Request{Class: OpenEnded, Candidates: cands, Effort: EffortCheap})
 	if err != nil {
 		t.Fatal(err)
 	}
-	changed := 0
-	for _, seat := range Seats {
-		if first.Seat(seat).Quality < ran.Seat(seat).Quality-1e-9 {
-			t.Fatalf("%s got weaker", seat)
+	ran.Rungs, ran.Note = nil, ""
+	prev := ran
+	for step := 0; step < 3; step++ {
+		next, err := Decide(Request{Class: OpenEnded, Candidates: cands, Stronger: &prev})
+		if err != nil {
+			t.Fatal(err)
 		}
-		if Lineage(first.Seat(seat).Model) != Lineage(ran.Seat(seat).Model) {
-			changed++
+		changed := 0
+		for _, seat := range Seats {
+			if next.Seat(seat).Quality < prev.Seat(seat).Quality-1e-9 {
+				t.Fatalf("step %d: %s got weaker", step, seat)
+			}
+			if Lineage(next.Seat(seat).Model) != Lineage(prev.Seat(seat).Model) {
+				changed++
+			}
+			if next.Seat(seat).Model == dear.Model.ID && step == 0 {
+				t.Fatalf("the first redo jumped to the dearest model in the catalog on %s", seat)
+			}
 		}
-	}
-	if changed != 1 || first.Seat(Checker).Model != "deepseek/deepseek-v4-flash" {
-		t.Fatalf("one redo moved %d seats, checker %s; want one rung: the checker to v4-flash", changed, first.Seat(Checker).Model)
-	}
-	if len(first.Rungs) != 1 || !strings.Contains(first.Line("", -1), "checker glm-5.3-flash → deepseek-v4-flash") {
-		t.Fatalf("the rung is not on the line: %q", first.Line("", -1))
-	}
-	second, err := Decide(Request{Class: OpenEnded, Candidates: cands, Stronger: &first})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if second.Seat(Checker).Model != "moonshotai/kimi-k3" {
-		t.Fatalf("the second redo put %s on the checker, want the next rung, kimi", second.Seat(Checker).Model)
-	}
-	for _, pick := range second.Crew {
-		if pick.Model == dear.Model.ID {
-			t.Fatalf("a redo jumped to the dearest model in the catalog on %s", pick.Seat)
+		if changed != 1 || len(next.Rungs) != 1 || !strings.Contains(next.Line("", -1), "→") {
+			t.Fatalf("step %d moved %d seats: %q", step, changed, next.Line("", -1))
 		}
+		prev = next
 	}
 }
 
 // A REDO OF A TASK THAT NEVER STARTED is asked again on the next-best models at
 // the same price of a point — not escalated, because nothing ran.
 func TestARedoOfATaskThatNeverStartedTakesTheNextBestAtTheSameCost(t *testing.T) {
-	cands := evidenceCandidates()
+	cands := catalogCandidates()
 	ran, _ := Decide(Request{Class: Bugfix, Candidates: cands})
 	again, err := Decide(Request{Class: Bugfix, Candidates: cands, Again: &ran})
 	if err != nil {
@@ -259,14 +217,14 @@ func TestARedoOfATaskThatNeverStartedTakesTheNextBestAtTheSameCost(t *testing.T)
 
 // AN EFFORT WORD SAYS WHAT IT CHANGED, OR THAT IT CHANGED NOTHING.
 func TestAnEffortWordSaysWhatItChanged(t *testing.T) {
-	cands := evidenceCandidates()
+	cands := catalogCandidates()
 	best, _ := Decide(Request{Class: Bugfix, Candidates: cands, Effort: EffortBest})
 	if len(best.Rungs) == 0 || best.Note != "" {
 		t.Fatalf("--best on a fix changed the crew and said %v / %q", best.Rungs, best.Note)
 	}
-	only := cands[1:2] // kimi alone: nothing stronger to be had
+	only := []Candidate{candidateOf(kimiK3)} // nothing stronger to be had
 	top, _ := Decide(Request{Class: Bugfix, Candidates: only, Effort: EffortBest})
-	if top.Note != "best · already the strongest measured crew" || !strings.Contains(top.Line("", -1), top.Note) {
+	if top.Note != "best · already the strongest crew allowed" || !strings.Contains(top.Line("", -1), top.Note) {
 		t.Fatalf("--best with nothing stronger said %q", top.Line("", -1))
 	}
 }
@@ -274,7 +232,9 @@ func TestAnEffortWordSaysWhatItChanged(t *testing.T) {
 // A LEARNED OFFSET IS RUNGS: each step is one rung from the knee's crew, and the
 // crew never skips to the top.
 func TestALearnedOffsetIsRungsNotAJump(t *testing.T) {
-	cands := append(evidenceCandidates(), catalogRow("somelab/very-dear", false, 30, 150, 60, 80, 70))
+	dear := catalogRow("somelab/very-dear", false, 30, 150, 60, 85, 70)
+	dear.Model.Released = released(2026, 9, 1)
+	cands := append(frontierCandidates(), dear)
 	base, _ := Decide(Request{Class: Bugfix, Candidates: cands})
 	one, _ := Decide(Request{Class: Bugfix, Candidates: cands, Steps: 1})
 	moved := 0
@@ -344,15 +304,13 @@ func TestALongLadderIsSaidAsItsNetMove(t *testing.T) {
 	}
 }
 
-// A MODEL THAT PUBLISHES NOTHING IS NOT RANKED ON ITS PRICE: an unmeasured
-// row with no index the seat weighs — a planner rung once went to one — is
-// neither a pick nor a rung, however cheap; a seat's last-rung rescue may
-// still take it. And an unmeasured model that DOES publish reads below the
-// measured ones at the same cost, so at equal price the watched model wins.
+// A MODEL THAT PUBLISHES NOTHING BUT A PRICE IS NOT RANKED ON IT: a row with
+// no index, no date and a near-zero price is neither a pick nor a rung, and a
+// seat's last-rung rescue may still take it.
 func TestAModelWithNoEvidenceIsNotPickedOnPrice(t *testing.T) {
-	bare := Candidate{Model: Model{ID: "upstage/solar-mini4", PromptPrice: 1e-9, CompletionPrice: 1e-9, Context: 1_000_000, Tools: true},
+	bare := Candidate{Model: Model{ID: "upstage/solar-mini4", PromptPrice: 1e-9, CompletionPrice: 1e-9, Tools: true},
 		Routes: []Route{{Provider: "openrouter", Send: "upstage/solar-mini4", Kind: Metered}}}
-	cands := append(evidenceCandidates(), bare)
+	cands := append(catalogCandidates(), bare)
 	for _, effort := range []Effort{"", EffortCheap} {
 		d, err := Decide(Request{Class: Bugfix, Candidates: cands, Effort: effort})
 		if err != nil {
@@ -372,15 +330,5 @@ func TestAModelWithNoEvidenceIsNotPickedOnPrice(t *testing.T) {
 	rescue, err := Decide(Request{Class: Bugfix, Candidates: []Candidate{bare}, Rescue: true})
 	if err != nil || rescue.Seat(Planner).Model != bare.Model.ID {
 		t.Errorf("the rescue would not take it: %v %+v", err, rescue.Crew)
-	}
-	flash, _ := Snapshot("z-ai/glm-5.3-flash")
-	luna := catalogRow("openai/gpt-5.6-luna", false, flash.PromptPrice*1e6, flash.CompletionPrice*1e6, 37.3, 71.4, 42.1)
-	luna.Model.CacheReadPrice = flash.CacheReadPrice
-	d, err := Decide(Request{Class: Bugfix, Candidates: append(evidenceCandidates(), luna)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := d.Seat(Worker).Model; got != "z-ai/glm-5.3-flash" {
-		t.Errorf("at the measured worker's own price the worker is %s", got)
 	}
 }

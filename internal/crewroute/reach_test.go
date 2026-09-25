@@ -50,7 +50,7 @@ func TestAComplexFixGetsAStrongerWorker(t *testing.T) {
 	if got := Classify(simpleTask); got.Class != Bugfix || got.Complex != "" {
 		t.Fatalf("a one-line typo: %s, reach %q, want a simple bugfix", got.Class, got.Complex)
 	}
-	cands := append(evidenceCandidates(), catalogRow("z-ai/glm-5.3", true, 0.6, 2.2, 60, 55, 55))
+	cands := append(catalogCandidates(), candidateOf(glm53))
 	simple, err := Decide(Request{Task: simpleTask, Candidates: cands})
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +92,7 @@ func TestAGivenBugfixClassStillReadsReach(t *testing.T) {
 		t.Fatal(err)
 	}
 	task := Task{Text: string(report)}
-	cands := evidenceCandidates()
+	cands := catalogCandidates()
 	plain, err := Decide(Request{Class: Bugfix, Task: Task{Text: "fix: typo in the loop bound of paginate() skips the last page"}, Candidates: cands})
 	if err != nil {
 		t.Fatal(err)

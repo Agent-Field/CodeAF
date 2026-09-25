@@ -3,46 +3,51 @@ package crewroute
 import (
 	_ "embed"
 	"encoding/json"
+	"math"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // WHAT A SEAT IS WORTH, BEFORE THIS INSTALL HAS RUN ANYTHING.
 //
 // The router needs, for every class of work, every seat and every model it
 // might sit there, two numbers: how much that model in that seat adds to the
-// work's quality, and what it costs. This file is where both come from, in the
-// order they are trusted:
+// work's quality, and what it costs. Both are read off the model's own
+// catalog row through fitted weights (prior.json, embedded). No model has a
+// row of its own there: every model, whoever makes it, is scored the same way.
 //
-//  1. THE EVIDENCE TABLE (prior.json, embedded). Measured crews per class of
-//     work (docs/design/model-pool/pareto-crewing.pdf). A crew's quality is
-//     read here as the SUM of what its three seats add, split so the table's
-//     crews add back up exactly; the cells are prior.json's own.
+//  1. ABILITY FROM METADATA. A model's ability is a latent number predicted
+//     from the fields its catalog row carries: log prompt and completion
+//     prices, log context length, release date, open weights, the published
+//     intelligence, coding and agentic indexes, and the design-arena Elo. The
+//     weights are a joint Gaussian over the ability and those fields
+//     ([weights.Mean], [weights.Cov]); a row is scored by conditioning on the
+//     fields it HAS. A missing field is not guessed at a fixed value: it is
+//     integrated out, and the ability's variance is wider for it. A model's
+//     product family ([familyOf]) then moves the mean by the family's fitted
+//     offset and narrows the variance.
 //
-//     The split between the worker and the planner of one crew is a choice
-//     the table does not make, and it is made in the worker's favour because
-//     the worker carries the work. The checker's share on a fix is the SAME
-//     for every model, because the rule is that a narrow fix does not pay for
-//     a stronger checker.
+//  2. ABILITY TO A SEAT. The ability is mapped to an expected solve rate u in
+//     (0, 1) ([weights.Ability]), and each (class, seat) reads u through its
+//     own linear link: quality = level + slope·(u − u_ref), on the 0–10 crew
+//     scale ([seatLink]). The slope is what the seat pays for ability in that
+//     class of work; its standard deviation is how sure the fit is of it.
 //
-//  2. THE CATALOG'S OWN FIGURES, for a model nobody measured. Its published
-//     intelligence, coding and agentic indexes, weighed the way each seat uses
-//     a model, place it above or below the middle of what was measured for
-//     that seat — and NEVER AS HIGH AS THE MEASURED MIDDLE, because a model
-//     nobody has watched do the work is not believed to do it as well as one
-//     somebody has. One that reads far under the worst measured model does
-//     not sit the seat at all ([table.credible]), and when it is weighed its
-//     cost is never taken as less than the cheapest measured model's
-//     ([table.costFloor]): a price of zero is not evidence of anything. A
-//     published index is a weaker signal than a measured row, which is why
-//     the indexes only move an unmeasured model half as far as the measured
-//     spread, and why a measured row always wins a tie.
+//  3. THIS INSTALL'S OUTCOMES. What a person kept or redid, per class, seat
+//     and model, moves the quality by a bounded amount ([Request.Learned]).
+//
+// A model the weights cannot say enough about — its variance barely below the
+// prior's, because its row carries almost nothing ([weights.EvidenceMaxRatio])
+// — sits no seat unless a person pins it. Nor does a model whose ability's
+// upper bound falls under the weakest ability the weights credit with doing
+// the work ([weights.UFloor]).
 //
 // The cost of a seat is the seat's token shape — how much it reads fresh, how
 // much it reads back from a warm cache, how much it writes on an ordinary task
-// — priced at the route's published per-token prices. The three shapes are
-// fitted so the table's crews cost what prior.json's costs say.
+// — priced at the route's published per-token prices and scaled per class and
+// seat ([weights.CostScale]).
 
 //go:embed prior.json
 var priorJSON []byte
@@ -54,262 +59,529 @@ type shape struct {
 	Completion float64 `json:"completion"`
 }
 
-// priorModel is a catalog row as the table snapshotted it, so a measured model
-// can be priced and scored on a machine whose catalog has not arrived yet.
-type priorModel struct {
-	ID           string  `json:"id"`
-	Open         bool    `json:"open"`
-	Prompt       float64 `json:"prompt"`
-	Completion   float64 `json:"completion"`
-	CacheRead    float64 `json:"cache_read"`
-	Intelligence float64 `json:"intelligence"`
-	Coding       float64 `json:"coding"`
-	Agentic      float64 `json:"agentic"`
-	Context      int     `json:"context"`
+// seatLink is one (class, seat)'s link from ability to quality.
+type seatLink struct {
+	Level   float64 `json:"level"`
+	Slope   float64 `json:"slope"`
+	SlopeSD float64 `json:"slope_sd"`
 }
 
-// cell is one measured (class, seat, model) contribution.
-type cell struct {
-	Class   Class   `json:"class"`
-	Seat    Seat    `json:"seat"`
-	Model   string  `json:"model"`
-	Quality float64 `json:"quality"`
-	N       int     `json:"n"`
+// classLink is one class's links, around the ability u_ref they are centred on.
+type classLink struct {
+	URef  float64           `json:"u_ref"`
+	Seats map[Seat]seatLink `json:"seats"`
 }
 
-// costCell is one measured seat cost: dollars per task.
-type costCell struct {
-	Class Class   `json:"class"`
-	Seat  Seat    `json:"seat"`
-	Model string  `json:"model"`
-	USD   float64 `json:"usd"`
-	N     int     `json:"n"`
+// weights is prior.json read.
+type weights struct {
+	Knee float64 `json:"knee_per_usd"`
+	// Features names the metadata columns after the ability, in the order of
+	// Loc, Scale, Mean and Cov (whose index 0 is the ability).
+	Features []string    `json:"features"`
+	Loc      []float64   `json:"loc"`
+	Scale    []float64   `json:"scale"`
+	Mean     []float64   `json:"mean"`
+	Cov      [][]float64 `json:"cov"`
+	// VarScale calibrates the conditional variance.
+	VarScale float64 `json:"var_scale"`
+	// FamilyRho is the share of residual variance a family explains, and
+	// Families each family's offset (in residual standard deviations) and the
+	// variance left in that offset.
+	FamilyRho float64               `json:"family_rho"`
+	Families  map[string][2]float64 `json:"families"`
+	// Ability maps the latent ability to an expected solve rate:
+	// u = σ(A·θ + B).
+	Ability struct {
+		A float64 `json:"a"`
+		B float64 `json:"b"`
+	} `json:"ability"`
+	// UFloor is the least solve rate a model's upper bound must reach to sit
+	// a seat.
+	UFloor float64 `json:"u_floor"`
+	// EvidenceMaxRatio is the most the ability's variance may keep of the
+	// prior's for a model to be scored at all.
+	EvidenceMaxRatio float64                    `json:"evidence_max_ratio"`
+	Link             map[Class]classLink        `json:"link"`
+	Shapes           map[Seat]shape             `json:"shapes"`
+	CostScale        map[Class]map[Seat]float64 `json:"cost_scale"`
+	index            map[string]int             // feature name → column
+	cols             [len(featureNames)]int     // featureNames' columns, zero for one the weights lack
+	priorVar         float64                    // the ability's own variance, standardised
 }
 
-// table is prior.json read.
+// table is one decision's view of the weights: the weights, the abilities
+// already read this decision, this install's learned moves, and the cost floor
+// of each seat over the candidates in front of it.
 type table struct {
-	Measured string           `json:"measured"`
-	Source   string           `json:"source"`
-	Knee     float64          `json:"knee_per_usd"`
-	Shapes   map[Seat]shape   `json:"shapes"`
-	Models   []priorModel     `json:"models"`
-	Cells    []cell           `json:"cells"`
-	measured map[cellKey]cell // lineage-folded, the Other class derived
-	spread   map[seatKey]spread
-	floors   map[seatKey]float64
-	byID     map[string]priorModel
-	// Costs are what a seat measurably cost per task, by class and model;
-	// costs is them lineage-folded with Other derived, and costScale each
-	// class and seat's measured-to-shape ratio, for a model nobody measured.
-	Costs     []costCell `json:"costs"`
-	costs     map[cellKey]float64
-	costScale map[seatKey]float64
+	*weights
+	learned map[string]float64
+	floors  map[Seat]float64
+	// priced is [table.pricedLadder], built from candidates on first use.
+	priced     map[Seat][]pricePoint
+	candidates []Candidate
+	cache      map[string]ability
 	// rescue is a table asked for a seat's last rungs ([Request.Rescue]).
 	rescue bool
 }
 
-type cellKey struct {
-	class Class
-	seat  Seat
-	model string
-}
-
-type seatKey struct {
-	class Class
-	seat  Seat
-}
-
-// spread is what was measured for one class and seat: the middle, the best,
-// and the half-width an unmeasured model may move across.
-type spread struct {
-	median float64
-	best   float64
-	worst  float64
-	half   float64
-}
-
-// The catalog-prior constants, spelled once. An index score of indexRef reads
-// as the measured middle, indexScale points moves a model the whole measured
-// half-width, and an unmeasured model moves only unseenShrink of that.
-// minHalf keeps a seat whose measured models all scored the same (the checker
-// on a fix) from treating every unmeasured model as their equal: the worst
-// indexes still cost something.
-const (
-	indexRef     = 55.0
-	indexScale   = 10.0
-	unseenShrink = 0.5
-	minHalf      = 0.5
-	// unseenMargin is how far under the measured middle an unmeasured model's
-	// ceiling sits, as a share of the seat's half-width. An unmeasured model is
-	// believed at most a little WORSE than the middle of what was watched doing
-	// the work: on a seat where one model was measured, the middle is that
-	// model, and a stranger that tied it would win on price alone — which is
-	// how a free variant nobody measured took a worker seat and died in its
-	// first second.
-	unseenMargin = 0.25
-	// unseenFloor is how far under the worst measured model an unmeasured one
-	// may read and still sit the seat, as a share of the half-width. Below it
-	// the published figures say the model is weaker than anything measured,
-	// and a seat is not a place to find out.
-	unseenFloor = 1.0
-)
-
 var (
-	loaded     *table
-	loadOnce   sync.Once
-	seatWeight = map[Seat][3]float64{
-		// intelligence, coding, agentic — how each seat uses a model. The worker
-		// holds a long agentic loop, the planner thinks once and writes a plan,
-		// the checker reads work against its acceptance and needs all three.
-		Worker:  {0.2, 0.3, 0.5},
-		Planner: {0.6, 0.0, 0.4},
-		Checker: {1.0 / 3, 1.0 / 3, 1.0 / 3},
-	}
+	loaded   *weights
+	loadOnce sync.Once
 )
 
-// prior is the table, read once. A table that does not parse is a build that
+// load reads the weights once. Weights that do not parse are a build that
 // must not ship, so it panics at first use the way a malformed embedded asset
-// does everywhere else in this tree — and a test reads it on every run.
-func prior() *table {
+// does everywhere else in this tree, and a test reads it on every run.
+func load() *weights {
 	loadOnce.Do(func() {
-		var t table
-		if err := json.Unmarshal(priorJSON, &t); err != nil {
+		var w weights
+		if err := json.Unmarshal(priorJSON, &w); err != nil {
 			panic("crewroute: prior.json: " + err.Error())
 		}
-		t.index()
-		loaded = &t
+		n := len(w.Features) + 1
+		if len(w.Loc) != n || len(w.Scale) != n || len(w.Mean) != n || len(w.Cov) != n {
+			panic("crewroute: prior.json: the ability model's dimensions disagree")
+		}
+		w.index = map[string]int{}
+		for i, f := range w.Features {
+			w.index[f] = i + 1
+		}
+		for i, f := range featureNames {
+			w.cols[i] = w.index[f]
+		}
+		w.priorVar = w.Cov[0][0]
+		if w.VarScale <= 0 {
+			w.VarScale = 1
+		}
+		loaded = &w
 	})
 	return loaded
 }
 
-// index folds the measured cells by lineage, derives the Other class as the
-// average of the two measured classes, and reads each seat's spread.
-func (t *table) index() {
-	t.byID = make(map[string]priorModel, len(t.Models))
-	for _, m := range t.Models {
-		t.byID[Lineage(m.ID)] = m
+// prior is a fresh decision's table: nothing learned, no candidates seen.
+func prior() *table {
+	w := load()
+	return &table{weights: w, cache: map[string]ability{}}
+}
+
+// forDecision is the table one decision reads: this install's learned moves
+// and each seat's cost floor over the candidates.
+func forDecision(candidates []Candidate, learned map[string]float64) *table {
+	t := prior()
+	t.cache = make(map[string]ability, len(candidates))
+	t.learned = learned
+	t.floors = t.floorsOf(candidates)
+	return t
+}
+
+// ability is what the weights say about one model: the solve rate u, its
+// variance, the latent ability's variance, and whether the row carried
+// enough to be scored at all — with the model's lineage and whether it is a
+// quantised copy, read once.
+type ability struct {
+	U, VarU  float64
+	VarTheta float64
+	Known    bool
+	lineage  string
+	quant    bool
+}
+
+// abilityOf reads one model's ability, once per decision.
+func (t *table) abilityOf(m Model) ability {
+	if a, ok := t.cache[m.ID]; ok {
+		return a
 	}
-	t.measured = make(map[cellKey]cell, len(t.Cells)*2)
-	for _, c := range t.Cells {
-		c.Model = Lineage(c.Model)
-		t.measured[cellKey{c.Class, c.Seat, c.Model}] = c
+	a := remembered(t.weights, m)
+	if t.cache != nil {
+		t.cache[m.ID] = a
 	}
-	t.spread = map[seatKey]spread{}
-	t.spreads(Bugfix, OpenEnded)
-	// OTHER IS THE AVERAGE OF THE TWO MEASURED CLASSES, per seat and model,
-	// because nothing measured work that changes nothing in particular. A
-	// model measured in one class only is averaged against the OTHER class's
-	// measured middle rather than read as its one number: kimi measured as a
-	// fix's worker is not thereby measured as everybody's worker.
-	for _, c := range t.Cells {
-		key := cellKey{Other, c.Seat, Lineage(c.Model)}
-		if _, done := t.measured[key]; done {
-			continue
+	return a
+}
+
+// The abilities of the rows seen lately, keyed by the whole row: a row that
+// changes — a new price, an index published — is a new key and is read
+// again. The memo is dropped whole when it grows past memoRows.
+var (
+	memoMu sync.Mutex
+	memo   = map[Model]ability{}
+)
+
+const memoRows = 8192
+
+// remembered is [weights.abilityOf] through the memo.
+func remembered(w *weights, m Model) ability {
+	memoMu.Lock()
+	a, ok := memo[m]
+	memoMu.Unlock()
+	if ok {
+		return a
+	}
+	a = w.abilityOf(m)
+	memoMu.Lock()
+	if len(memo) >= memoRows {
+		memo = map[Model]ability{}
+	}
+	memo[m] = a
+	memoMu.Unlock()
+	return a
+}
+
+// featureNames are the metadata fields the router can read off a model, in
+// the order [weights.features] reads them.
+var featureNames = [...]string{"lp_in", "lp_out", "lctx", "date", "open", "aa_int", "aa_cod", "aa_ag", "elo"}
+
+// features is a model's metadata in the weights' columns, NaN where the row
+// does not carry the field.
+func (w *weights) features(m Model) []float64 {
+	x := make([]float64, len(w.Features))
+	for i := range x {
+		x[i] = math.NaN()
+	}
+	open := 0.0
+	if m.Open {
+		open = 1
+	}
+	values := [len(featureNames)]float64{
+		math.Log10(m.PromptPrice * 1e6), math.Log10(m.CompletionPrice * 1e6), math.Log2(float64(m.Context)),
+		yearsSince2024(m.Released), open, m.Intelligence, m.Coding, m.Agentic, m.ArenaElo,
+	}
+	has := [len(featureNames)]bool{
+		m.PromptPrice > 0, m.CompletionPrice > 0, m.Context > 0, !m.Released.IsZero(), true,
+		m.Intelligence > 0, m.Coding > 0, m.Agentic > 0, m.ArenaElo > 0,
+	}
+	for i, col := range w.cols {
+		if col > 0 && has[i] {
+			x[col-1] = values[i]
 		}
-		var sum float64
-		var n int
-		for _, class := range []Class{Bugfix, OpenEnded} {
-			if held, ok := t.measured[cellKey{class, c.Seat, key.model}]; ok {
-				sum += held.Quality
-				n += held.N
-			} else {
-				sum += t.spread[seatKey{class, c.Seat}].median
+	}
+	return x
+}
+
+// yearsSince2024 is a release date as the weights read it.
+func yearsSince2024(at time.Time) float64 {
+	return at.Sub(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)).Hours() / 24 / 365.25
+}
+
+// abilityOf conditions the joint Gaussian on the fields a row carries, then
+// adds the family's offset and maps the ability to a solve rate.
+func (w *weights) abilityOf(m Model) ability {
+	x := w.features(m)
+	var obs [maxFeatures]int
+	var z, so0 [maxFeatures]float64
+	var soo [maxFeatures][maxFeatures]float64
+	k := 0
+	for i, v := range x {
+		if !math.IsNaN(v) && k < maxFeatures {
+			col := i + 1
+			obs[k] = col
+			z[k] = (v-w.Loc[col])/w.Scale[col] - w.Mean[col]
+			k++
+		}
+	}
+	for i := 0; i < k; i++ {
+		for j := 0; j < k; j++ {
+			soo[i][j] = w.Cov[obs[i]][obs[j]]
+		}
+		so0[i] = w.Cov[obs[i]][0]
+	}
+	mean, variance := w.Mean[0], w.priorVar
+	// K = S_0o S_oo⁻¹: solve S_oo k = S_o0.
+	if gain, ok := solveSPD(&soo, &so0, k); ok {
+		for i := 0; i < k; i++ {
+			mean += gain[i] * z[i]
+			variance -= gain[i] * so0[i]
+		}
+	}
+	variance = math.Max(variance, 1e-6)
+	known := variance/w.priorVar <= w.EvidenceMaxRatio+1e-9
+	canon := CanonicalOf(m.ID)
+	theta := mean*w.Scale[0] + w.Loc[0]
+	v := variance * w.Scale[0] * w.Scale[0]
+	if off, ok := w.Families[familyKey(canon.ID)]; ok {
+		theta += math.Sqrt(v) * off[0]
+		v *= 1 - w.FamilyRho + off[1]
+	}
+	v *= w.VarScale
+	a, b := w.Ability.A, w.Ability.B
+	u := sigmoid((a*theta + b) / math.Sqrt(1+math.Pi*a*a*v/8))
+	d := a * u * (1 - u)
+	return ability{U: u, VarU: d * d * v, VarTheta: v, Known: known, lineage: canon.String(), quant: canon.Variant != ""}
+}
+
+// maxFeatures bounds the metadata columns the ability is read from.
+const maxFeatures = 16
+
+// solveSPD solves A x = b for the leading n×n block of a small symmetric
+// positive-definite A by Cholesky, false when it is not.
+func solveSPD(a *[maxFeatures][maxFeatures]float64, b *[maxFeatures]float64, n int) ([maxFeatures]float64, bool) {
+	var l [maxFeatures][maxFeatures]float64
+	var y, x [maxFeatures]float64
+	if n == 0 {
+		return x, false
+	}
+	for i := 0; i < n; i++ {
+		for j := 0; j <= i; j++ {
+			sum := a[i][j]
+			for k := 0; k < j; k++ {
+				sum -= l[i][k] * l[j][k]
 			}
-		}
-		t.measured[key] = cell{Class: Other, Seat: c.Seat, Model: key.model, Quality: sum / 2, N: n}
-	}
-	t.spreads(Other)
-	t.floors = t.floorsOf()
-	t.indexCosts()
-}
-
-// indexCosts folds the measured seat costs by lineage, derives Other as the
-// mean of the classes that measured a seat, and reads each class and seat's
-// scale: the median of measured cost over the flat shape's estimate.
-func (t *table) indexCosts() {
-	t.costs = map[cellKey]float64{}
-	sums, counts := map[cellKey]float64{}, map[cellKey]int{}
-	for _, c := range t.Costs {
-		key := cellKey{c.Class, c.Seat, Lineage(c.Model)}
-		t.costs[key] = c.USD
-		other := cellKey{Other, c.Seat, key.model}
-		sums[other] += c.USD
-		counts[other]++
-	}
-	for key, sum := range sums {
-		t.costs[key] = sum / float64(counts[key])
-	}
-	ratios := map[seatKey][]float64{}
-	for key, usd := range t.costs {
-		m, ok := t.byID[key.model]
-		if !ok {
-			continue
-		}
-		model := Model{ID: m.ID, PromptPrice: m.Prompt, CompletionPrice: m.Completion, CacheReadPrice: m.CacheRead}
-		if flat := t.seatCost(key.seat, model); flat > 0 {
-			ratios[seatKey{key.class, key.seat}] = append(ratios[seatKey{key.class, key.seat}], usd/flat)
-		}
-	}
-	t.costScale = map[seatKey]float64{}
-	for key, rs := range ratios {
-		sort.Float64s(rs)
-		t.costScale[key] = rs[len(rs)/2]
-	}
-}
-
-// estCost is what a seat is expected to cost per task, for the estimate a
-// task's line shows: the cost prior.json holds for this model in this seat and
-// class where the table has it — a model's own verbosity included — and the
-// flat token shape scaled by the class and seat's cost ratio otherwise.
-//
-// IT IS THE ESTIMATE, NOT THE WEIGHT. Routing weighs [table.seatCost], the
-// figure the knee was set against; this is what a person is told to expect.
-func (t *table) estCost(class Class, seat Seat, m Model) float64 {
-	if usd, ok := t.costs[cellKey{class, seat, Lineage(m.ID)}]; ok {
-		return usd
-	}
-	scale := t.costScale[seatKey{class, seat}]
-	if scale <= 0 {
-		scale = 1
-	}
-	return t.seatCost(seat, m) * scale
-}
-
-// spreads reads the measured spread of every seat for the classes given.
-func (t *table) spreads(classes ...Class) {
-	for _, class := range classes {
-		for _, seat := range Seats {
-			var qs []float64
-			for key, c := range t.measured {
-				if key.class == class && key.seat == seat {
-					qs = append(qs, c.Quality)
+			if i == j {
+				if sum <= 0 {
+					return x, false
 				}
+				l[i][i] = math.Sqrt(sum)
+			} else {
+				l[i][j] = sum / l[j][j]
 			}
-			if len(qs) == 0 {
+		}
+	}
+	for i := 0; i < n; i++ {
+		sum := b[i]
+		for k := 0; k < i; k++ {
+			sum -= l[i][k] * y[k]
+		}
+		y[i] = sum / l[i][i]
+	}
+	for i := n - 1; i >= 0; i-- {
+		sum := y[i]
+		for k := i + 1; k < n; k++ {
+			sum -= l[k][i] * x[k]
+		}
+		x[i] = sum / l[i][i]
+	}
+	return x, true
+}
+
+func sigmoid(x float64) float64 { return 1 / (1 + math.Exp(-x)) }
+
+// familyOf is a model's product family: its vendor and its name with the
+// version numbers taken out — `z-ai/glm-5.3-flash` is `z-ai/glm-flash`, and a
+// token such as `v4`, `k3` or `30b` that is mostly a number is dropped whole.
+// A new version of a family starts from what the family's earlier versions
+// were fitted to.
+func familyOf(id string) string { return familyKey(CanonicalOf(id).ID) }
+
+// familyKey is [familyOf] on an id already read by [CanonicalOf].
+func familyKey(canon string) string {
+	vendor, name := "", canon
+	if at := strings.LastIndex(canon, "/"); at >= 0 {
+		vendor, name = canon[:at+1], canon[at+1:]
+	}
+	var keep []string
+	for _, tok := range strings.FieldsFunc(name, func(r rune) bool { return r == '-' || r == '.' }) {
+		stripped := strings.Map(func(r rune) rune {
+			if r >= '0' && r <= '9' {
+				return -1
+			}
+			return r
+		}, tok)
+		if stripped != tok && len(stripped) <= 2 {
+			continue
+		}
+		if stripped != "" {
+			keep = append(keep, stripped)
+		}
+	}
+	return vendor + strings.Join(keep, "-")
+}
+
+// linkOf is a class's link, the average of the others for a class the weights
+// do not carry.
+func (t *table) linkOf(class Class) classLink {
+	if l, ok := t.Link[class]; ok {
+		return l
+	}
+	return t.Link[Other]
+}
+
+// quality is what one model adds in one seat for one class of work — the
+// link's mean at the model's ability, plus what this install learned — and
+// its standard deviation.
+func (t *table) quality(class Class, seat Seat, m Model) (q, sd float64) {
+	return t.qualityOf(class, seat, t.abilityOf(m))
+}
+
+// qualityOf is [table.quality] on an ability already read.
+func (t *table) qualityOf(class Class, seat Seat, a ability) (q, sd float64) {
+	link := t.linkOf(class)
+	s := link.Seats[seat]
+	du := a.U - link.URef
+	q = s.Level + s.Slope*du
+	sd = math.Sqrt(s.Slope*s.Slope*a.VarU + du*du*s.SlopeSD*s.SlopeSD)
+	if a.quant {
+		// A QUANTISED LOCAL COPY is credited with a share of its model's
+		// quality: the weights read the model's row, and the copy is squeezed.
+		q *= quantDiscount
+	}
+	if len(t.learned) > 0 {
+		q += t.learned[learnKey(class, seat, a.lineage)]
+	}
+	return math.Max(0, math.Min(10, q)), sd
+}
+
+// credible is whether a model may sit a seat: its row says enough to score
+// it, and the upper bound of its ability reaches the weakest ability the
+// weights credit with doing the work.
+func (t *table) credible(m Model) bool { return t.credibleAt(t.abilityOf(m)) }
+
+// credibleAt is [table.credible] on an ability already read.
+func (t *table) credibleAt(a ability) bool {
+	return a.Known && a.U+2*math.Sqrt(a.VarU) >= t.UFloor
+}
+
+// pricePoint is one ability on a seat's price ladder and the least a
+// credible priced model at least that able costs there.
+type pricePoint struct {
+	U, Cost float64
+}
+
+// floorsOf is each seat's cost floor over the candidates: the cheapest flat
+// cost of a credible model with a published price. It keeps the candidates
+// for the price ladder [table.priceFor] builds when an unpriced model asks.
+func (t *table) floorsOf(candidates []Candidate) map[Seat]float64 {
+	floors := map[Seat]float64{}
+	t.candidates = candidates
+	for _, c := range candidates {
+		if c.Model.PromptPrice <= 0 && c.Model.CompletionPrice <= 0 {
+			continue
+		}
+		if !t.credibleAt(t.abilityOf(c.Model)) {
+			continue
+		}
+		for _, seat := range Seats {
+			if !seatable(seat, c) {
 				continue
 			}
-			sort.Float64s(qs)
-			median := qs[len(qs)/2]
-			if len(qs)%2 == 0 {
-				median = (qs[len(qs)/2-1] + qs[len(qs)/2]) / 2
+			cost := t.seatCost(seat, c.Model)
+			if cost <= 0 {
+				continue
 			}
-			half := (qs[len(qs)-1] - qs[0]) / 2
-			if half < minHalf {
-				half = minHalf
+			if held, ok := floors[seat]; !ok || cost < held {
+				floors[seat] = cost
 			}
-			t.spread[seatKey{class, seat}] = spread{median: median, best: qs[len(qs)-1], worst: qs[0], half: half}
 		}
 	}
+	return floors
 }
 
-// Lineage is the id a model is measured under: its canonical identity across
-// every provider's spelling ([CanonicalOf]) — lowercase, a provider's
+// pricedLadder is, per seat, the credible priced candidates by ability, best
+// first, each with the least cost of any at least that able.
+func (t *table) pricedLadder() map[Seat][]pricePoint {
+	if t.priced != nil {
+		return t.priced
+	}
+	t.priced = map[Seat][]pricePoint{}
+	for _, c := range t.candidates {
+		if c.Model.PromptPrice <= 0 && c.Model.CompletionPrice <= 0 {
+			continue
+		}
+		a := t.abilityOf(c.Model)
+		if !t.credibleAt(a) {
+			continue
+		}
+		for _, seat := range Seats {
+			if cost := t.seatCost(seat, c.Model); cost > 0 && seatable(seat, c) {
+				t.priced[seat] = append(t.priced[seat], pricePoint{U: a.U, Cost: cost})
+			}
+		}
+	}
+	for seat, points := range t.priced {
+		sort.Slice(points, func(i, j int) bool { return points[i].U > points[j].U })
+		for i := 1; i < len(points); i++ {
+			points[i].Cost = math.Min(points[i].Cost, points[i-1].Cost)
+		}
+		t.priced[seat] = points
+	}
+	return t.priced
+}
+
+// costFloor is the least flat cost of a credible priced model in a seat.
+func (t *table) costFloor(seat Seat) float64 { return t.floors[seat] }
+
+// priceFor is what a model that publishes no price is weighed at in a seat:
+// A PRICE OF ZERO IS NOT EVIDENCE OF VALUE, so it is the least any credible
+// priced model at least as able costs there — or, when none is as able, the
+// dearest of them.
+func (t *table) priceFor(seat Seat, u float64) float64 {
+	points := t.pricedLadder()[seat]
+	if len(points) == 0 {
+		return 0
+	}
+	// points run best first; the last one at least as able holds the least
+	// cost among all at least as able.
+	at := sort.Search(len(points), func(i int) bool { return points[i].U < u })
+	if at == 0 {
+		dearest := 0.0
+		for _, p := range points {
+			dearest = math.Max(dearest, p.Cost)
+		}
+		return dearest
+	}
+	return points[at-1].Cost
+}
+
+// seatCost is what one model is expected to cost in one seat on an ordinary
+// task at the prices it publishes, scaled for the seat. A route that bills
+// nothing per token (a subscription, a local model) is priced by the caller,
+// not here. Classes share the flat shape; [table.classCost] scales it.
+func (t *table) seatCost(seat Seat, m Model) float64 {
+	s := t.Shapes[seat]
+	cached := m.CacheReadPrice
+	if cached <= 0 {
+		// A provider that publishes no cache-read price is paid the prompt
+		// price on what it reads back — the dearer reading, never a free one.
+		cached = m.PromptPrice
+	}
+	return s.Prompt*m.PromptPrice + s.Cached*cached + s.Completion*m.CompletionPrice
+}
+
+// classCost is a seat's expected dollars for one task of a class: the flat
+// shape's cost times the class and seat's fitted scale.
+func (t *table) classCost(class Class, seat Seat, m Model) float64 {
+	return t.seatCost(seat, m) * t.costScale(class, seat)
+}
+
+// costScale is a class and seat's fitted ratio of dollars to the flat shape,
+// one when the weights carry none.
+func (t *table) costScale(class Class, seat Seat) float64 {
+	if byseat, ok := t.CostScale[class]; ok {
+		if s := byseat[seat]; s > 0 {
+			return s
+		}
+	}
+	if s := t.CostScale[Other][seat]; s > 0 {
+		return s
+	}
+	return 1
+}
+
+// LearnKey is the key a learned quality move is kept under: the class, the
+// seat and the model's lineage.
+func LearnKey(class Class, seat Seat, model string) string {
+	return learnKey(class, seat, Lineage(model))
+}
+
+// learnKey is [LearnKey] on a lineage already read.
+func learnKey(class Class, seat Seat, lineage string) string {
+	return string(class) + "\x00" + string(seat) + "\x00" + lineage
+}
+
+// learnedOf is the learned move for one model in one seat, zero for none.
+func (t *table) learnedOf(class Class, seat Seat, a ability) float64 {
+	if len(t.learned) == 0 {
+		return 0
+	}
+	return t.learned[learnKey(class, seat, a.lineage)]
+}
+
+// Lineage is the id a model's quality is kept under: its canonical identity
+// across every provider's spelling ([CanonicalOf]) — lowercase, a provider's
 // namespace and a route suffix (`:free`, `:nitro`) taken off, a thinking
 // level, a floating alias's `~` and `-latest`, and a dated snapshot suffix
-// taken off. `deepseek/deepseek-v4-flash-0731` is the same lineage as the
-// `deepseek/deepseek-v4-flash` the table measured, and so is its free pool:
-// a route is not a model. A quantised local copy keeps its variant after `@`,
-// so it is never mistaken for the model it was squeezed from.
+// taken off. `deepseek/deepseek-v4-flash-0731` is the same lineage as
+// `deepseek/deepseek-v4-flash`, and so is its free pool: a route is not a
+// model. A quantised local copy keeps its variant after `@`, so it is never
+// mistaken for the model it was squeezed from.
 func Lineage(id string) string { return CanonicalOf(id).String() }
 
 // lineageTail is [Lineage]'s own rules on an id already read by
@@ -334,186 +606,11 @@ func allDigits(word string) bool {
 	return word != ""
 }
 
-// quality is what one model adds in one seat for one class of work, and
-// whether that number was measured.
-func (t *table) quality(class Class, seat Seat, m Model) (float64, bool) {
-	canon := CanonicalOf(m.ID)
-	if c, ok := t.measured[cellKey{class, seat, canon.String()}]; ok {
-		return c.Quality, true
-	}
-	if canon.Variant != "" {
-		// A QUANTISED COPY INHERITS ITS MODEL'S EVIDENCE AT A DISCOUNT, and
-		// reads as unmeasured: the number is borrowed, not watched.
-		if c, ok := t.measured[cellKey{class, seat, canon.ID}]; ok {
-			return c.Quality * quantDiscount, false
-		}
-	}
-	sp, ok := t.spread[seatKey{class, seat}]
-	if !ok {
-		return 0, false
-	}
-	move := (indexScore(seat, m) - indexRef) / indexScale
-	if move > 1 {
-		move = 1
-	}
-	if move < -1 {
-		move = -1
-	}
-	q := sp.median + move*sp.half*unseenShrink
-	if ceiling := sp.median - unseenMargin*sp.half; q > ceiling {
-		q = ceiling
-	}
-	return q, false
-}
-
-// credible is whether an unmeasured model's reading is high enough to sit a
-// seat at all: no lower than a half-width under the worst model measured
-// there. A measured model is always credible — its number is evidence.
-func (t *table) credible(class Class, seat Seat, q float64, measured bool) bool {
-	if measured {
-		return true
-	}
-	sp, ok := t.spread[seatKey{class, seat}]
-	if !ok {
-		return false
-	}
-	return q >= sp.worst-unseenFloor*sp.half-1e-9
-}
-
-// costFloor is the least an UNMEASURED model is taken to cost in a seat when
-// the router weighs it: the cheapest metered cost of a model MEASURED in that
-// seat for that class of work.
-//
-// A PRICE OF ZERO IS NOT EVIDENCE OF VALUE. A free pool, or a model on a route
-// this table cannot price, reads as costing nothing, and quality minus λ·0
-// beats every measured model that costs a cent. The floor says the stranger is
-// at best as cheap as the cheapest model that was actually watched doing this
-// work — and a measured model on a subscription or a local route still costs
-// what its route costs, because there the zero IS the evidence.
-func (t *table) costFloor(class Class, seat Seat) float64 {
-	return t.floors[seatKey{class, seat}]
-}
-
-// floorsOf reads every class and seat's cost floor once, when the table is
-// indexed: a decision asks for them once per candidate per seat.
-func (t *table) floorsOf() map[seatKey]float64 {
-	floors := map[seatKey]float64{}
-	for key := range t.measured {
-		pm, ok := t.byID[key.model]
-		if !ok {
-			continue
-		}
-		m := Model{PromptPrice: pm.Prompt, CompletionPrice: pm.Completion, CacheReadPrice: pm.CacheRead}
-		sk := seatKey{key.class, key.seat}
-		if c, held := floors[sk]; !held || t.seatCost(key.seat, m) < c {
-			floors[sk] = t.seatCost(key.seat, m)
-		}
-	}
-	return floors
-}
-
-// IsMeasured is whether the evidence table measured this model's lineage in
-// any seat — the models the router trusts before this install has run any.
-func IsMeasured(id string) bool {
-	_, ok := prior().byID[Lineage(id)]
-	return ok
-}
-
-// indexScore reads a model's published indexes the way one seat uses a model.
-//
-// AN INDEX A ROW DOES NOT PUBLISH COUNTS AGAINST IT. Each missing index is read
-// as a full scale below the middle ([indexRef] − [indexScale]) at its seat's
-// weight — never renormalised away. Renormalising let a model that published
-// one flattering index and nothing else read as though it had published three:
-// a free model with only a coding figure outranked models whose agentic figure
-// was known and middling, and took a worker seat it could not hold.
-func indexScore(seat Seat, m Model) float64 {
-	weights := seatWeight[seat]
-	values := [3]float64{m.Intelligence, m.Coding, m.Agentic}
-	var sum, weight float64
-	for i, v := range values {
-		if weights[i] == 0 {
-			continue
-		}
-		if v <= 0 {
-			v = indexRef - indexScale
-		}
-		sum += v * weights[i]
-		weight += weights[i]
-	}
-	if weight == 0 {
-		return indexRef - indexScale
-	}
-	return sum / weight
-}
-
-// agenticKnown is whether an unmeasured model may be believed in a seat that
-// runs an agent loop — the worker and the checker — at all: it must publish
-// the agentic index those seats weigh most. The planner writes a plan once and
-// is read on what it publishes.
-func agenticKnown(seat Seat, m Model) bool {
-	return seat == Planner || m.Agentic > 0
-}
-
-// evidenceKnown is whether an unmeasured model publishes ANY index the seat
-// weighs. A model that publishes none is read at the catalog floor for every
-// index, which is still credible — and then wins a seat on price alone the
-// moment λ leans cheap: a planner rung went to a model with no index at all
-// because it was the cheapest thing with a context window. Nothing measured
-// it and nothing published about it, so there is nothing to rank it by, and
-// it is not a first pick nor a rung; only a seat's last-rung rescue takes it.
-func evidenceKnown(seat Seat, m Model) bool {
-	weights := seatWeight[seat]
-	for i, v := range [3]float64{m.Intelligence, m.Coding, m.Agentic} {
-		if weights[i] > 0 && v > 0 {
-			return true
-		}
-	}
-	return false
-}
-
-// seatCost is what one model costs in one seat on an ordinary task, at the
-// prices it publishes. A route that bills nothing per token (a subscription,
-// a local model) is priced by the caller, not here.
-func (t *table) seatCost(seat Seat, m Model) float64 {
-	s := t.Shapes[seat]
-	cached := m.CacheReadPrice
-	if cached <= 0 {
-		// A provider that publishes no cache-read price is paid the prompt
-		// price on what it reads back — the dearer reading, never a free one.
-		cached = m.PromptPrice
-	}
-	return s.Prompt*m.PromptPrice + s.Cached*cached + s.Completion*m.CompletionPrice
-}
-
-// Snapshot is a measured model as the table priced and described it, for a
-// caller whose catalog has not arrived: the router's measured rows are then
-// still candidates rather than nothing. ok is false for a model the table
-// does not carry.
-func Snapshot(id string) (Model, bool) {
-	pm, ok := prior().byID[Lineage(id)]
-	if !ok {
-		return Model{}, false
-	}
-	return Model{
-		ID: pm.ID, Open: pm.Open, PromptPrice: pm.Prompt, CompletionPrice: pm.Completion,
-		CacheReadPrice: pm.CacheRead, Intelligence: pm.Intelligence, Coding: pm.Coding,
-		Agentic: pm.Agentic, Context: pm.Context, Tools: true,
-	}, true
-}
-
-// Measured lists the ids of the models the table measured, sorted, for a
-// caller that wants to offer them when nothing else is known.
-func Measured() []string {
-	t := prior()
-	ids := make([]string, 0, len(t.Models))
-	for _, m := range t.Models {
-		ids = append(ids, m.ID)
-	}
-	sort.Strings(ids)
-	return ids
-}
+// Scorable is whether the weights can score a model at all from what its row
+// carries — enough metadata for a finite-variance ability — for a caller that
+// offers models and wants to say which the router may pick unpinned.
+func Scorable(m Model) bool { return load().abilityOf(m).Known }
 
 // Knee is the default price of a quality point, in points per dollar — see
-// [Route] for how the knee is read.
-func Knee() float64 { return prior().Knee }
+// [Route] for why this is the knee of the quality-cost front.
+func Knee() float64 { return load().Knee }

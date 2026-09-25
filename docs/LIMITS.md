@@ -71,8 +71,8 @@ watching, so it is the one pocket that always has a bottom.
 `CODEAF_NODE_BUDGET` (60 nodes) and `--budget` on `codeaf run` / `codeaf exec`
 (150 000 **tokens**) are counts. A task's own bounds are steps and time —
 `taskDeadline` 60m renewable four times, `taskMaxSteps` 200, `taskNoProgress` 6
-— and a task carries **no dollar cap of its own**: its money bound is whatever
-rail the conversation that started it carries. `costHintUSD` (10¢) is the point
+— and a task's dollar cap is the per-task limit set in `/crew` (`models.crew.task_cap`,
+$5 by default), inside whatever rail the conversation that started it carries. `costHintUSD` (10¢) is the point
 at which a first-run tip arms, not a ceiling.
 
 ## Where each number is set, in the order it wins

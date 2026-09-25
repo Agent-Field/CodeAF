@@ -1,13 +1,14 @@
 package crewroute
 
 import (
+	"math"
 	"strings"
 	"testing"
 )
 
 // ONE MODEL, EVERY SPELLING: OpenRouter, Fireworks, a Hugging Face mirror,
 // Together, a free pool, a dated snapshot and a local quantised pull of the
-// same weights all read as the model the evidence was measured under — the
+// same weights all read as one model — the
 // quantised pull as a distinct variant of it.
 func TestCanonicalReadsEveryProvidersSpellingOfOneModel(t *testing.T) {
 	cases := []struct {
@@ -53,23 +54,19 @@ func TestCanonicalNeverMergesOnALikeness(t *testing.T) {
 	}
 }
 
-// A QUANTISED COPY IS NOT ITS MODEL, but borrows its evidence at a discount
-// and reads as unmeasured.
-func TestAQuantisedCopyInheritsEvidenceAtADiscount(t *testing.T) {
+// A QUANTISED COPY IS NOT ITS MODEL, and is credited a share of its model's
+// quality.
+func TestAQuantisedCopyIsCreditedAShareOfItsModel(t *testing.T) {
 	tab := prior()
-	base, _ := Snapshot("z-ai/glm-5.3-flash")
-	local := base
+	local := glmFlash
 	local.ID = "glm-5.3-flash:q4_k_m"
-	if Lineage(local.ID) == Lineage(base.ID) {
+	if Lineage(local.ID) == Lineage(glmFlash.ID) || !strings.Contains(Lineage(local.ID), "@q4_k_m") {
 		t.Fatalf("the quantised copy shares the model's identity: %q", Lineage(local.ID))
 	}
-	full, measured := tab.quality(Bugfix, Worker, base)
-	got, localMeasured := tab.quality(Bugfix, Worker, local)
-	if !measured || localMeasured {
-		t.Fatalf("measured flags: model %v, copy %v", measured, localMeasured)
-	}
-	if want := full * quantDiscount; got != want || !strings.Contains(Lineage(local.ID), "@q4_k_m") {
-		t.Fatalf("the copy reads %v (lineage %q), want %v", got, Lineage(local.ID), want)
+	full, _ := tab.quality(OpenEnded, Worker, glmFlash)
+	got, _ := tab.quality(OpenEnded, Worker, local)
+	if want := full * quantDiscount; full <= 0 || math.Abs(got-want) > 1e-9 {
+		t.Fatalf("the copy reads %v, want %v", got, want)
 	}
 }
 

@@ -8,162 +8,226 @@ import (
 	"time"
 )
 
-// The evidence table's own model set, priced as prior.json snapshots it, each
-// reachable on OpenRouter only.
-func evidenceCandidates() []Candidate {
-	var out []Candidate
-	for _, id := range []string{"z-ai/glm-5.3-flash", "moonshotai/kimi-k3", "deepseek/deepseek-v4-flash"} {
-		m, _ := Snapshot(id)
-		out = append(out, Candidate{Model: m, Routes: []Route{{Provider: "openrouter", Send: id, Kind: Metered}}})
-	}
-	return out
-}
-
-// catalogRow is an unmeasured model with published figures.
-func catalogRow(id string, open bool, in, out float64, intel, coding, agentic float64) Candidate {
-	return Candidate{
-		Model: Model{ID: id, Open: open, PromptPrice: in / 1e6, CompletionPrice: out / 1e6, CacheReadPrice: in / 1e7,
-			Intelligence: intel, Coding: coding, Agentic: agentic, Context: 1_000_000, Tools: true},
-		Routes: []Route{{Provider: "openrouter", Send: id, Kind: Metered}},
-	}
-}
-
-func TestThePriorTableParsesAndIsSmall(t *testing.T) {
+func TestThePriorWeightsParseAndAreSmall(t *testing.T) {
 	if len(priorJSON) > 2<<20 {
-		t.Fatalf("prior.json is %d bytes; the embedded table must stay under 2 MB", len(priorJSON))
+		t.Fatalf("prior.json is %d bytes; the embedded weights must stay under 2 MB", len(priorJSON))
 	}
-	tab := prior()
-	if tab.Knee <= 0 || len(tab.Shapes) != 3 || len(tab.Cells) == 0 {
-		t.Fatalf("prior table incomplete: knee %v, %d shapes, %d cells", tab.Knee, len(tab.Shapes), len(tab.Cells))
+	w := load()
+	if w.Knee <= 0 || len(w.Shapes) != 3 || len(w.Features) == 0 {
+		t.Fatalf("weights incomplete: knee %v, %d shapes, %d features", w.Knee, len(w.Shapes), len(w.Features))
 	}
-}
-
-// THE TABLE'S CREWS ADD BACK UP TO THEIR ROWS, and cost about what prior.json
-// says. If a split or a shape moves, this is where it says so.
-func TestTheTableReproducesTheEvidence(t *testing.T) {
-	tab := prior()
-	flash, _ := Snapshot("z-ai/glm-5.3-flash")
-	kimi, _ := Snapshot("moonshotai/kimi-k3")
-	v4, _ := Snapshot("deepseek/deepseek-v4-flash")
-	crew := func(class Class, w, p, c Model) (q, usd float64) {
-		for seat, m := range map[Seat]Model{Worker: w, Planner: p, Checker: c} {
-			v, _ := tab.quality(class, seat, m)
-			q += v
-			usd += tab.seatCost(seat, m)
-		}
-		return q, usd
-	}
-	cases := []struct {
-		name       string
-		class      Class
-		w, p, c    Model
-		quality    float64
-		usd, slack float64
-	}{
-		{"fix, all flash", Bugfix, flash, flash, flash, 6.57, 0.023, 0.006},
-		{"fix, all kimi", Bugfix, kimi, kimi, kimi, 6.86, 0.351, 0.06},
-		{"open-ended, all flash", OpenEnded, flash, flash, flash, 3.60, 0.023, 0.006},
-		{"open-ended, kimi checker", OpenEnded, flash, flash, kimi, 7.60, 0.117, 0.01},
-		{"open-ended, v4-flash checker", OpenEnded, flash, flash, v4, 5.70, 0.02, 0.01},
-	}
-	for _, tc := range cases {
-		q, usd := crew(tc.class, tc.w, tc.p, tc.c)
-		if math.Abs(q-tc.quality) > 1e-6 {
-			t.Errorf("%s: quality %.3f, want %.2f", tc.name, q, tc.quality)
-		}
-		if math.Abs(usd-tc.usd) > tc.slack {
-			t.Errorf("%s: cost $%.4f, want about $%.3f", tc.name, usd, tc.usd)
+	for _, class := range Classes {
+		for _, seat := range Seats {
+			if _, ok := w.Link[class].Seats[seat]; !ok {
+				t.Errorf("no link for %s/%s", class, seat)
+			}
 		}
 	}
 }
 
-// THE ROUTED POLICY, read off prices rather than branches: a fix goes to the
-// cheapest crew, open-ended work to the cheapest crew with the strong checker.
+// THE WEIGHTS CARRY NO MODEL OF THEIR OWN: every model, the ones a person
+// knows best included, is scored from its catalog row.
+func TestTheWeightsCarryNoModelRows(t *testing.T) {
+	for _, m := range []Model{glmFlash, kimiK3, v4Flash} {
+		if strings.Contains(string(priorJSON), m.ID) || strings.Contains(string(priorJSON), ShortModel(m.ID)) {
+			t.Errorf("prior.json names %s", m.ID)
+		}
+	}
+}
+
+// THE ROUTED POLICY, read off the weights and the prices rather than branches:
+// a fix goes to the cheapest credible support seats, open-ended work to a
+// stronger checker.
 func TestTheKneeRoutesFixesCheapAndOpenEndedToAStrongChecker(t *testing.T) {
-	cands := evidenceCandidates()
-	cases := []struct {
-		class   Class
-		checker string
-	}{
-		{Bugfix, "z-ai/glm-5.3-flash"},
-		{OpenEnded, "moonshotai/kimi-k3"},
-	}
-	for _, tc := range cases {
-		d, err := Decide(Request{Class: tc.class, Candidates: cands})
+	tab := prior()
+	for _, cands := range [][]Candidate{catalogCandidates(), frontierCandidates()} {
+		fix, err := Decide(Request{Class: Bugfix, Candidates: cands})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := d.Seat(Worker).Model; got != "z-ai/glm-5.3-flash" {
-			t.Errorf("%s: worker %s, want glm-5.3-flash", tc.class, got)
+		open, err := Decide(Request{Class: OpenEnded, Candidates: cands})
+		if err != nil {
+			t.Fatal(err)
 		}
-		if got := d.Seat(Planner).Model; got != "z-ai/glm-5.3-flash" {
-			t.Errorf("%s: planner %s, want glm-5.3-flash", tc.class, got)
+		cheapest := math.Inf(1)
+		for _, c := range cands {
+			if cost := tab.classCost(Bugfix, Checker, c.Model); cost < cheapest {
+				cheapest = cost
+			}
 		}
-		if got := d.Seat(Checker).Model; got != tc.checker {
-			t.Errorf("%s: checker %s, want %s", tc.class, got, tc.checker)
+		if got := fix.Seat(Checker); math.Abs(got.CostUSD-cheapest) > 1e-12 {
+			t.Errorf("fix checker %s at $%.4f, want the cheapest at $%.4f", got.Model, got.CostUSD, cheapest)
+		}
+		byID := map[string]Model{}
+		for _, c := range cands {
+			byID[c.Model.ID] = c.Model
+		}
+		fixU := tab.abilityOf(byID[fix.Seat(Checker).Model]).U
+		openU := tab.abilityOf(byID[open.Seat(Checker).Model]).U
+		if openU <= fixU {
+			t.Errorf("open-ended checker %s (u %.3f) is no stronger than the fix's %s (u %.3f)",
+				open.Seat(Checker).Model, openU, fix.Seat(Checker).Model, fixU)
+		}
+		if fix.EstUSD >= open.EstUSD {
+			t.Errorf("a fix estimates $%.3f, open-ended work $%.3f: the fix should be the cheaper crew", fix.EstUSD, open.EstUSD)
 		}
 	}
 }
 
-func TestEffortMovesOnlyWhereTheEvidenceSaysItPays(t *testing.T) {
-	cands := evidenceCandidates()
-	best, _ := Decide(Request{Class: Bugfix, Candidates: cands, Effort: EffortBest})
-	if best.Seat(Worker).Model != "moonshotai/kimi-k3" || best.Seat(Planner).Model != "moonshotai/kimi-k3" {
-		t.Errorf("--best on a fix: %+v, want kimi worker and planner", best.Crew)
+// WITH ONLY CATALOG METADATA, a model whose published indexes are stronger
+// wins the seat from one at the same price, context and release date.
+func TestAStrongerIndexedSimilarPricedModelWinsASeat(t *testing.T) {
+	weak := catalogRow("acme/coder-a", true, 0.3, 1.2, 35, 60, 35)
+	strong := catalogRow("zeta/coder-b", true, 0.3, 1.2, 48, 76, 55)
+	for _, c := range []*Candidate{&weak, &strong} {
+		c.Model.Released = released(2026, 8, 1)
 	}
-	// A fix does not pay for a stronger checker, so even --best keeps the cheaper one.
-	if best.Seat(Checker).Model != "z-ai/glm-5.3-flash" {
-		t.Errorf("--best on a fix put %s in the checker seat; a fix keeps the cheapest checker", best.Seat(Checker).Model)
-	}
-	cheap, _ := Decide(Request{Class: OpenEnded, Candidates: cands, Effort: EffortCheap})
-	if cheap.Seat(Checker).Model != "deepseek/deepseek-v4-flash" {
-		t.Errorf("--cheap on open-ended work: checker %s, want the near-free v4-flash checker", cheap.Seat(Checker).Model)
+	for _, class := range []Class{OpenEnded, Other} {
+		d, err := Decide(Request{Class: class, Candidates: []Candidate{weak, strong}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, seat := range []Seat{Worker, Checker} {
+			if got := d.Seat(seat).Model; got != strong.Model.ID {
+				t.Errorf("%s %s went to %s, want the stronger-indexed model", class, seat, got)
+			}
+		}
 	}
 }
 
-// A MODEL NOBODY MEASURED IS NEVER BELIEVED BETTER THAN ONE SOMEBODY DID, so
-// a dear frontier row does not take a seat off the measured best even at
-// --best, and at the knee its price keeps it out.
-func TestAnUnmeasuredFrontierModelDoesNotOutrankTheEvidence(t *testing.T) {
-	cands := append(evidenceCandidates(),
-		catalogRow("anthropic/claude-opus-5", false, 5, 25, 50.8, 78, 56.5),
-		catalogRow("anthropic/claude-fable-5.1", false, 10, 50, 53.4, 81.6, 57.9))
-	for _, effort := range []Effort{EffortKnee, EffortBest} {
-		for _, class := range []Class{Bugfix, OpenEnded} {
+// A MODEL WITH NO USABLE METADATA is not scored, so it is neither a pick nor a
+// rung — however cheap — and it still sits a seat a person pins it to.
+func TestAModelWithNoUsableMetadataIsNotPickedUnlessPinned(t *testing.T) {
+	bare := Candidate{Model: Model{ID: "somelab/mystery", Context: 1_000_000, Tools: true},
+		Routes: []Route{{Provider: "openrouter", Send: "somelab/mystery", Kind: Metered}}}
+	if Scorable(bare.Model) {
+		t.Fatal("a row with nothing but a context window was scored")
+	}
+	cands := append(catalogCandidates(), bare)
+	for _, class := range Classes {
+		for _, effort := range []Effort{EffortCheap, EffortKnee, EffortBest} {
 			d, err := Decide(Request{Class: class, Candidates: cands, Effort: effort})
 			if err != nil {
 				t.Fatal(err)
 			}
 			for _, pick := range d.Crew {
-				if strings.HasPrefix(pick.Model, "anthropic/") {
-					t.Errorf("%s/%q: %s seat went to unmeasured %s", class, effort, pick.Seat, pick.Model)
+				if pick.Model == bare.Model.ID {
+					t.Errorf("%s/%q: the %s went to a model with no usable metadata", class, effort, pick.Seat)
+				}
+				for _, rung := range d.Ladder[pick.Seat] {
+					if rung.Model == bare.Model.ID {
+						t.Errorf("%s/%q: the %s's ladder holds it", class, effort, pick.Seat)
+					}
 				}
 			}
 		}
 	}
+	d, err := Decide(Request{Class: Bugfix, Candidates: cands, Pins: map[Seat]Pin{
+		Worker: {Model: bare.Model.ID, Send: bare.Model.ID, Kind: Metered},
+	}})
+	if err != nil || d.Seat(Worker).Model != bare.Model.ID || !d.Seat(Worker).Pinned {
+		t.Fatalf("the pin was not honoured: %+v %v", d.Seat(Worker), err)
+	}
 }
 
-// WITH ONLY UNMEASURED MODELS the catalog prior still ranks them, and the
-// router still answers rather than refusing.
-func TestUnmeasuredModelsAreRankedByTheirPublishedFigures(t *testing.T) {
-	cands := []Candidate{
-		catalogRow("acme/weak", true, 0.05, 0.1, 10, 20, 10),
-		catalogRow("acme/strong", true, 0.3, 1.2, 50, 80, 60),
+// A MISSING INDEX WIDENS THE READING: a row that publishes one index is read
+// with more doubt than one that publishes all three.
+func TestAMissingIndexWidensTheVariance(t *testing.T) {
+	one := catalogRow("acme/one-index", true, 0.3, 1.2, 0, 70, 0).Model
+	all := catalogRow("acme/all-indexes", true, 0.3, 1.2, 45, 70, 50).Model
+	w := load()
+	if a, b := w.abilityOf(one), w.abilityOf(all); a.VarTheta <= b.VarTheta {
+		t.Errorf("one index read with variance %.4g, three with %.4g", a.VarTheta, b.VarTheta)
 	}
-	d, err := Decide(Request{Class: OpenEnded, Candidates: cands, Effort: EffortBest})
+}
+
+// A ROW THAT GAINS INDEXES IS READ AGAIN: nothing about a model is remembered
+// between decisions, so the next catalog refresh re-scores it.
+func TestARowThatGainsIndexesIsRescored(t *testing.T) {
+	bare := glmFlash
+	bare.Intelligence, bare.Coding, bare.Agentic, bare.ArenaElo = 0, 0, 0, 0
+	before, _ := Decide(Request{Class: OpenEnded, Candidates: []Candidate{candidateOf(bare), candidateOf(v4Flash)}})
+	after, _ := Decide(Request{Class: OpenEnded, Candidates: []Candidate{candidateOf(glmFlash), candidateOf(v4Flash)}})
+	if before.Seat(Worker).Quality == after.Seat(Worker).Quality && before.Seat(Worker).SD == after.Seat(Worker).SD {
+		t.Error("the row's new indexes changed nothing")
+	}
+	if after.Seat(Worker).SD >= before.Seat(Worker).SD {
+		t.Errorf("published indexes did not narrow the reading: sd %.3f then %.3f", before.Seat(Worker).SD, after.Seat(Worker).SD)
+	}
+}
+
+// THIS INSTALL'S OUTCOMES MOVE A SCORE WITHOUT FREEZING IT: the learned move
+// adds to the model's reading, and the reading still follows its catalog row.
+func TestInstallEvidenceMovesAScoreWithoutFreezingIt(t *testing.T) {
+	key := LearnKey(OpenEnded, Checker, glmFlash.ID)
+	plain, _ := Decide(Request{Class: OpenEnded, Candidates: []Candidate{candidateOf(glmFlash)}})
+	learned, _ := Decide(Request{Class: OpenEnded, Candidates: []Candidate{candidateOf(glmFlash)}, Learned: map[string]float64{key: 0.5}})
+	if got := learned.Seat(Checker).Quality - plain.Seat(Checker).Quality; math.Abs(got-0.5) > 1e-9 || learned.Seat(Checker).Learned != 0.5 {
+		t.Fatalf("a learned +0.5 moved the checker by %.3f (recorded %.3f)", got, learned.Seat(Checker).Learned)
+	}
+	cheaper := glmFlash
+	cheaper.Agentic = 30
+	moved, _ := Decide(Request{Class: OpenEnded, Candidates: []Candidate{candidateOf(cheaper)}, Learned: map[string]float64{key: 0.5}})
+	if moved.Seat(Checker).Quality == learned.Seat(Checker).Quality {
+		t.Error("with a learned move in place, a changed catalog row no longer moves the score")
+	}
+}
+
+// A redo lowers what a model is worth to this install and an accepted task
+// raises it: the learned move changes who sits the seat.
+func TestALearnedMoveCanChangeThePick(t *testing.T) {
+	cands := catalogCandidates()
+	base, _ := Decide(Request{Class: OpenEnded, Candidates: cands})
+	was := base.Seat(Checker).Model
+	down, _ := Decide(Request{Class: OpenEnded, Candidates: cands, Learned: map[string]float64{LearnKey(OpenEnded, Checker, was): -3}})
+	if down.Seat(Checker).Model == was {
+		t.Errorf("a checker this install marked down by 3 points still sits the seat")
+	}
+}
+
+// FRONTIER MODELS ARE CANDIDATES: --best may pick them, and no crew is
+// chosen whose estimate is over the task limit.
+func TestBestNeverPicksACrewOverTheTaskLimit(t *testing.T) {
+	cands := frontierCandidates()
+	best, err := Decide(Request{Class: OpenEnded, Candidates: cands, Effort: EffortBest, TaskCap: 5})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d.Seat(Checker).Model != "acme/strong" {
-		t.Errorf("--best checker %s, want acme/strong", d.Seat(Checker).Model)
+	frontier := false
+	for _, pick := range best.Crew {
+		if strings.HasPrefix(pick.Model, "anthropic/") || strings.HasPrefix(pick.Model, "openai/") {
+			frontier = true
+		}
 	}
-	if d.Seat(Checker).Measured {
-		t.Error("an unmeasured model's pick claims to be measured")
+	if !frontier {
+		t.Errorf("--best on open-ended work picked no frontier model: %s", best.Line("", -1))
+	}
+	for _, limit := range []float64{5, 1, 0.2} {
+		for _, class := range Classes {
+			for _, effort := range []Effort{EffortKnee, EffortBest} {
+				for _, factor := range []float64{0, 1, 2.5} {
+					d, err := Decide(Request{Class: class, Candidates: cands, Effort: effort, TaskCap: limit, CostFactor: factor})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if est := crewEst(prior(), class, d.Crew, factor); est > limit+1e-9 {
+						t.Errorf("%s/%q at $%v (factor %v): crew estimated $%.3f: %s", class, effort, limit, factor, est, d.Line("", -1))
+					}
+				}
+			}
+		}
+	}
+	tight, _ := Decide(Request{Class: OpenEnded, Candidates: cands, Effort: EffortBest, TaskCap: 0.2})
+	if !strings.Contains(tight.Note, "task limit") {
+		t.Errorf("a crew held under the limit does not say so: %q", tight.Note)
+	}
+	if est := tight.EstUSD; est > 0.2+1e-9 {
+		t.Errorf("held crew estimates $%.3f", est)
 	}
 }
 
 func TestAPinnedSeatAlwaysRunsItsPin(t *testing.T) {
-	cands := evidenceCandidates()
+	cands := catalogCandidates()
 	d, err := Decide(Request{Class: Bugfix, Candidates: cands, Pins: map[Seat]Pin{
 		Checker: {Model: "moonshotai/kimi-k3", Send: "moonshotai/kimi-k3", Kind: Metered},
 	}})
@@ -174,7 +238,7 @@ func TestAPinnedSeatAlwaysRunsItsPin(t *testing.T) {
 	if !checker.Pinned || checker.Model != "moonshotai/kimi-k3" {
 		t.Errorf("checker %+v, want the kimi pin", checker)
 	}
-	if d.Seat(Worker).Pinned || d.Seat(Worker).Model != "z-ai/glm-5.3-flash" {
+	if d.Seat(Worker).Pinned {
 		t.Errorf("an unpinned worker was not routed: %+v", d.Seat(Worker))
 	}
 	// A pin the candidates do not carry still sits its seat on its own send.
@@ -190,8 +254,7 @@ func TestAPinnedSeatAlwaysRunsItsPin(t *testing.T) {
 }
 
 func TestTheCheapestRouteWinsAndAPlanCostsNothing(t *testing.T) {
-	flash, _ := Snapshot("z-ai/glm-5.3-flash")
-	cands := []Candidate{{Model: flash, Routes: []Route{
+	cands := []Candidate{{Model: glmFlash, Routes: []Route{
 		{Provider: "openrouter", Send: "openrouter/z-ai/glm-5.3-flash", Kind: Metered},
 		{Provider: "z-ai", Send: "z-ai/glm-5.3-flash", Kind: Plan},
 	}}}
@@ -225,7 +288,7 @@ func TestNoCandidateIsAnErrorNamingTheSeat(t *testing.T) {
 }
 
 func TestRedoStrongerEscalatesOnlyUnpinnedSeats(t *testing.T) {
-	cands := evidenceCandidates()
+	cands := catalogCandidates()
 	first, _ := Decide(Request{Class: Bugfix, Candidates: cands})
 	again, err := Decide(Request{Class: Bugfix, Candidates: cands, Stronger: &first})
 	if err != nil {
@@ -235,8 +298,9 @@ func TestRedoStrongerEscalatesOnlyUnpinnedSeats(t *testing.T) {
 		t.Fatalf("redo stronger: %.2f is not above %.2f", again.Quality, first.Quality)
 	}
 	pins := map[Seat]Pin{Worker: {Model: "z-ai/glm-5.3-flash"}}
-	first, _ = Decide(Request{Class: Bugfix, Candidates: cands, Pins: pins})
-	again, err = Decide(Request{Class: Bugfix, Candidates: cands, Pins: pins, Stronger: &first})
+	first, _ = Decide(Request{Class: OpenEnded, Candidates: cands, Pins: pins, Effort: EffortCheap})
+	first.Rungs, first.Note = nil, ""
+	again, err = Decide(Request{Class: OpenEnded, Candidates: cands, Pins: pins, Stronger: &first})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +320,7 @@ func TestRedoStrongerEscalatesOnlyUnpinnedSeats(t *testing.T) {
 	// And the strongest crew there is has nowhere to go.
 	best, _ := Decide(Request{Class: OpenEnded, Candidates: cands, Effort: EffortBest})
 	best.Crew = []Pick{
-		{Seat: Worker, Quality: 99}, {Seat: Planner, Quality: 99}, {Seat: Checker, Quality: 99},
+		{Seat: Worker, Model: "acme/top", Quality: 99}, {Seat: Planner, Model: "acme/top", Quality: 99}, {Seat: Checker, Model: "acme/top", Quality: 99},
 	}
 	if _, err := Decide(Request{Class: OpenEnded, Candidates: cands, Stronger: &best}); !errors.Is(err, ErrStrongest) {
 		t.Errorf("redo of the strongest crew: %v, want ErrStrongest", err)
@@ -264,10 +328,11 @@ func TestRedoStrongerEscalatesOnlyUnpinnedSeats(t *testing.T) {
 }
 
 func TestLearnedStepsStartAFixHigher(t *testing.T) {
-	cands := evidenceCandidates()
+	cands := catalogCandidates()
+	base, _ := Decide(Request{Class: Bugfix, Candidates: cands})
 	d, _ := Decide(Request{Class: Bugfix, Candidates: cands, Steps: 2})
-	if d.Seat(Worker).Model != "moonshotai/kimi-k3" {
-		t.Errorf("two learned steps on a fix: worker %s, want kimi", d.Seat(Worker).Model)
+	if d.Quality <= base.Quality {
+		t.Errorf("two learned steps on a fix: quality %.2f, not above the knee's %.2f", d.Quality, base.Quality)
 	}
 }
 
@@ -290,35 +355,35 @@ func TestPaceGrowsAsTheCapNears(t *testing.T) {
 			t.Errorf("Pace(%v, %v) = %v, %v; want %v, %v", tc.spent, tc.cap, got, at, tc.want, tc.atCap)
 		}
 	}
-	// Near the cap an open-ended task drops the dear checker.
-	cands := evidenceCandidates()
+	// Near the cap an open-ended task takes a cheaper checker.
+	cands := catalogCandidates()
+	plain, _ := Decide(Request{Class: OpenEnded, Candidates: cands})
 	mult, _ := Pace(9.9, 10)
 	d, _ := Decide(Request{Class: OpenEnded, Candidates: cands, Pace: mult})
-	if d.Seat(Checker).Model == "moonshotai/kimi-k3" {
-		t.Errorf("at 99%% of the cap the checker is still kimi (λ %.0f)", d.Lambda)
+	if d.Seat(Checker).CostUSD >= plain.Seat(Checker).CostUSD {
+		t.Errorf("at 99%% of the cap the checker is still %s (λ %.0f)", d.Seat(Checker).Model, d.Lambda)
 	}
 }
 
 func TestGapsNameAMissingStrongChecker(t *testing.T) {
-	if gaps := Gaps(evidenceCandidates()); len(gaps) != 0 {
-		t.Errorf("the table's model set has a strong checker, got gaps %+v", gaps)
+	if gaps := Gaps(catalogCandidates()); len(gaps) != 0 {
+		t.Errorf("a set with a strong checker has gaps %+v", gaps)
 	}
-	flashOnly := evidenceCandidates()[:1]
-	gaps := Gaps(flashOnly)
+	gaps := Gaps([]Candidate{candidateOf(v4Flash)})
 	if len(gaps) != 1 || gaps[0].Seat != Checker || gaps[0].Class != OpenEnded {
-		t.Errorf("flash alone: gaps %+v, want the open-ended checker", gaps)
+		t.Errorf("v4-flash alone: gaps %+v, want the open-ended checker", gaps)
 	}
 }
 
 func TestTheDecisionLine(t *testing.T) {
-	cands := evidenceCandidates()
+	cands := catalogCandidates()
 	d, _ := Decide(Request{Class: OpenEnded, Candidates: cands, Pins: map[Seat]Pin{Checker: {Model: "moonshotai/kimi-k3"}}})
 	got := d.Line("📌", 0.108)
-	want := "open-ended · worker glm-5.3-flash (openrouter) · checker 📌 kimi-k3 · $0.108 (est $0.121)"
-	if got != want {
-		t.Errorf("line\n got %q\nwant %q", got, want)
+	want := "open-ended · worker " + ShortModel(d.Seat(Worker).Model) + " (openrouter)"
+	if !strings.HasPrefix(got, want) || !strings.Contains(got, " · checker 📌 kimi-k3 · $0.108 (est "+Money(d.EstUSD)+")") {
+		t.Errorf("line %q", got)
 	}
-	if got := d.Line("📌", -1); !strings.HasSuffix(got, " · est $0.121") {
+	if got := d.Line("📌", -1); !strings.HasSuffix(got, " · est "+Money(d.EstUSD)) {
 		t.Errorf("line before the run ends: %q", got)
 	}
 }
@@ -326,16 +391,21 @@ func TestTheDecisionLine(t *testing.T) {
 // THE ROUTER'S OWN BUDGET: under two milliseconds a decision, against a
 // catalog the size of the real one, classification included.
 func TestADecisionTakesUnderTwoMilliseconds(t *testing.T) {
-	cands := evidenceCandidates()
+	cands := frontierCandidates()
 	for i := 0; i < 600; i++ {
-		cands = append(cands, catalogRow("acme/m"+string(rune('a'+i%26))+strings.Repeat("x", i%7), i%2 == 0,
-			0.1+float64(i%30)/10, 0.5+float64(i%40)/5, 20+float64(i%35), 40+float64(i%45), 20+float64(i%40)))
+		row := catalogRow("acme/m"+string(rune('a'+i%26))+strings.Repeat("x", i%7)+string(rune('a'+i/26)), i%2 == 0,
+			0.1+float64(i%30)/10, 0.5+float64(i%40)/5, 20+float64(i%35), 40+float64(i%45), 20+float64(i%40))
+		if i%3 == 0 {
+			row.Model.Intelligence, row.Model.Agentic = 0, 0
+		}
+		row.Model.Released = released(2025, time.Month(1+i%12), 1+i%28)
+		cands = append(cands, row)
 	}
 	task := Task{Text: "fix: crash when the config has no trailing newline\n\nTraceback (most recent call last):\n  ...\nValueError: bad"}
 	start := time.Now()
 	const runs = 200
 	for i := 0; i < runs; i++ {
-		if _, err := Decide(Request{Task: task, Candidates: cands}); err != nil {
+		if _, err := Decide(Request{Task: task, Candidates: cands, TaskCap: 5}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -345,16 +415,34 @@ func TestADecisionTakesUnderTwoMilliseconds(t *testing.T) {
 }
 
 func TestRouteIsDeterministicWhateverTheOrder(t *testing.T) {
-	cands := append(evidenceCandidates(), catalogRow("acme/twin-a", true, 0.15, 0.5, 41.8, 71.5, 50.9), catalogRow("acme/twin-b", true, 0.15, 0.5, 41.8, 71.5, 50.9))
-	a, _ := Decide(Request{Class: Other, Candidates: cands})
-	reversed := make([]Candidate, len(cands))
-	for i := range cands {
-		reversed[len(cands)-1-i] = cands[i]
+	cands := append(frontierCandidates(), catalogRow("acme/twin-a", true, 0.15, 0.5, 41.8, 71.5, 50.9), catalogRow("acme/twin-b", true, 0.15, 0.5, 41.8, 71.5, 50.9))
+	for _, class := range Classes {
+		a, _ := Decide(Request{Class: class, Candidates: cands})
+		reversed := make([]Candidate, len(cands))
+		for i := range cands {
+			reversed[len(cands)-1-i] = cands[i]
+		}
+		b, _ := Decide(Request{Class: class, Candidates: reversed})
+		for _, seat := range Seats {
+			if a.Seat(seat).Model != b.Seat(seat).Model {
+				t.Errorf("%s %s: %s one way, %s the other", class, seat, a.Seat(seat).Model, b.Seat(seat).Model)
+			}
+		}
 	}
-	b, _ := Decide(Request{Class: Other, Candidates: reversed})
-	for _, seat := range Seats {
-		if a.Seat(seat).Model != b.Seat(seat).Model {
-			t.Errorf("%s: %s one way, %s the other", seat, a.Seat(seat).Model, b.Seat(seat).Model)
+}
+
+// THE PORT READS THE WEIGHTS AS THEY WERE FITTED: the family key drops
+// version numbers and mostly-numeric tokens.
+func TestAFamilyIsTheNameWithoutItsVersion(t *testing.T) {
+	for id, want := range map[string]string{
+		"z-ai/glm-5.3-flash":         "z-ai/glm-flash",
+		"moonshotai/kimi-k3":         "moonshotai/kimi",
+		"deepseek/deepseek-v4-flash": "deepseek/deepseek-flash",
+		"anthropic/claude-opus-5":    "anthropic/claude-opus",
+		"qwen/qwen3-coder-30b-a3b":   "qwen/qwen-coder",
+	} {
+		if got := familyOf(id); got != want {
+			t.Errorf("familyOf(%q) = %q, want %q", id, got, want)
 		}
 	}
 }

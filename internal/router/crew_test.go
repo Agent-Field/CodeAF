@@ -106,3 +106,40 @@ func TestTheCostFactorLearnsFromSettledTasks(t *testing.T) {
 		t.Error("a class with no tasks learned a factor")
 	}
 }
+
+// AN INSTALL'S OWN OUTCOMES MOVE A MODEL'S QUALITY, WITHIN BOUNDS: kept
+// results raise it, redos lower it, and no run of either takes it past the
+// bound.
+func TestInstallOutcomesMoveQualityWithinBounds(t *testing.T) {
+	dir := t.TempDir()
+	record := CrewRecord{TaskClass: "openended", Seats: map[string]string{"worker": "z-ai/glm-5.3-flash", "checker": "moonshotai/kimi-k3"}}
+	key := QualityKey("openended", "checker", "moonshotai/kimi-k3")
+	for i := 0; i < 3; i++ {
+		call := CrewCallID("")
+		LogCrewDecision(dir, call, record, nil)
+		LogCrewOutcome(dir, call, record, CrewAccepted, 0.1)
+	}
+	up := ReadCrewLog(dir, time.Now()).Quality[key]
+	if up <= 0 || up >= learnBound {
+		t.Fatalf("three kept results moved the checker by %v", up)
+	}
+	call := CrewCallID("")
+	LogCrewDecision(dir, call, record, nil)
+	LogCrewOutcome(dir, call, record, CrewRedone, 0.1)
+	down := ReadCrewLog(dir, time.Now()).Quality[key]
+	if down >= up {
+		t.Fatalf("a redo left the checker at %v from %v", down, up)
+	}
+	for i := 0; i < 200; i++ {
+		call := CrewCallID("")
+		LogCrewDecision(dir, call, record, nil)
+		LogCrewOutcome(dir, call, record, CrewRedone, 0.1)
+	}
+	floor := ReadCrewLog(dir, time.Now()).Quality[key]
+	if floor < -learnBound-1e-9 || floor > -0.9*learnBound {
+		t.Fatalf("two hundred redos left the checker at %v, want near but not past %v", floor, -learnBound)
+	}
+	if got := ReadCrewLog(dir, time.Now()).Quality[QualityKey("bugfix", "checker", "moonshotai/kimi-k3")]; got != 0 {
+		t.Fatalf("an open-ended outcome moved the model on fixes by %v", got)
+	}
+}

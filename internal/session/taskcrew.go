@@ -333,7 +333,8 @@ func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []
 		// not name (a probe, a small errand). It is an auxiliary call, and it
 		// goes through the route-health guard like every other one — never
 		// to a route this task's crew was routed around.
-		return c.agent.completeWithModel(ctx, purposeInherited, messages, key, options...)
+		// It is a call of this task, so it counts against the task's limit.
+		return c.agent.completeWithModel(withCrewTask(ctx, crew), purposeInherited, messages, key, options...)
 	}
 	retried := false
 	for {
@@ -514,13 +515,16 @@ func (e errRouteResting) Error() string {
 }
 
 // crewSpendGuard is a crew's spend guard: its prices, the day as the usage
-// ledger has it, the day's cap (the daily spending limit too when withDaily)
-// and the checker's ceiling. Nil for a profile nothing is read from.
+// ledger has it, the day's cap (the daily spending limit too when withDaily),
+// the per-task limit — which withDaily does not touch — and the checker's
+// ceiling.
 func crewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *SpendGuard {
 	capUSD, action := config.CrewSpendCap(profileDir, withDaily)
+	taskCap, taskAction := config.CrewTaskSpendCap(profileDir)
 	guard := &SpendGuard{
 		Price: config.CrewCallPrice, Cap: capUSD, CapAction: action,
 		Ceilings: config.CrewSeatCeilings(d), CeilingAction: config.CrewCheckCeilingAction,
+		TaskCap: taskCap, TaskAction: taskAction, Task: &SpendTask{},
 	}
 	if capUSD > 0 {
 		guard.Day = NewSpendDay(spentTodayOnLedger())
@@ -538,17 +542,22 @@ func (a *Agent) crewDay() *SpendDay {
 }
 
 // helperGuard is the guard an auxiliary call in a conversation with crews is
-// held to: the crew's day cap, on the same day its seats are priced against.
-// Nil where there is no crew — a conversation under --one-model.
-func (a *Agent) helperGuard() *SpendGuard {
+// held to: the crew's day cap, on the same day its seats are priced against,
+// and — for a call made for a task — that task's limit, on the same tally its
+// seats are priced against. Nil where there is no crew — a conversation under
+// --one-model.
+func (a *Agent) helperGuard(crew *taskCrew) *SpendGuard {
 	if a.config.RouteCrew == nil {
 		return nil
 	}
-	capUSD, action := config.CrewSpendCap(a.config.ProfileDir, false)
-	if capUSD <= 0 {
-		return &SpendGuard{Price: config.CrewCallPrice, Day: a.crewDay()}
+	guard := &SpendGuard{Price: config.CrewCallPrice, Day: a.crewDay()}
+	if capUSD, action := config.CrewSpendCap(a.config.ProfileDir, false); capUSD > 0 {
+		guard.Cap, guard.CapAction = capUSD, action
 	}
-	return &SpendGuard{Price: config.CrewCallPrice, Day: a.crewDay(), Cap: capUSD, CapAction: action}
+	if crew != nil && crew.guard != nil {
+		guard.TaskCap, guard.TaskAction, guard.Task = crew.guard.TaskCap, crew.guard.TaskAction, crew.guard.tally()
+	}
+	return guard
 }
 
 // crewTaskKey marks a helper call made for one task — its run's closing
@@ -628,6 +637,13 @@ func (c *taskCrew) taskSpent(seats float64) float64 {
 // CrewSpendGuard is [crewSpendGuard] for a headless run's seats.
 func CrewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *SpendGuard {
 	return crewSpendGuard(profileDir, d, withDaily)
+}
+
+// TaskSpendGuard is the guard a headless run with no routed crew is held to:
+// the per-task limit alone.
+func TaskSpendGuard(profileDir string) *SpendGuard {
+	taskCap, taskAction := config.CrewTaskSpendCap(profileDir)
+	return &SpendGuard{Price: config.CrewCallPrice, TaskCap: taskCap, TaskAction: taskAction, Task: &SpendTask{}}
 }
 
 // spentTodayOnLedger is today's spend as the usage ledger has it; nothing

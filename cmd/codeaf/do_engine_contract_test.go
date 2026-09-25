@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -209,6 +210,11 @@ func TestDoOnTheRunEngineYesSpendRunsPastThePlanPrice(t *testing.T) {
 	t.Setenv("CODEAF_PLANDB_BIN", beltPlandbDoor(t))
 	t.Setenv("CODEAF_PLAN_CONSENT", "0.5")
 	t.Setenv("CODEAF_DAILY_BUDGET", "0.5")
+	// The per-task limit is not what this run is about, and --yes-spend does
+	// not lift it: it is raised past what the scripted calls are priced at.
+	if err := config.SetCrewTaskCap(config.ProfileDir(), "1000"); err != nil {
+		t.Fatal(err)
+	}
 	workspace := beltRepoWorkspace(t)
 
 	var stdout, stderr strings.Builder

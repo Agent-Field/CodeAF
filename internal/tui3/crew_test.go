@@ -38,9 +38,9 @@ func TestCrewIsThePanel(t *testing.T) {
 
 // A PIN IS WRITTEN, SHOWN WITH THE VOCABULARY'S PIN GLYPH, AND UNDONE.
 func TestCrewPinAndUnpin(t *testing.T) {
-	a, dir := sheetApp(t)
-	// A pin that names a provider needs that provider connected.
-	t.Setenv(config.APIKeyEnv, "sk-or-v1-test")
+	// A pin that names a provider needs that provider connected and a catalog
+	// that lists the model.
+	a, dir := crewLab(t)
 	a.slash("/crew pin checker moonshotai/kimi-k3@openrouter")
 	pin, ok := config.CrewPinAt(dir, crewroute.Checker)
 	if !ok || pin.Model != "moonshotai/kimi-k3" || pin.Provider != "openrouter" {
@@ -91,6 +91,29 @@ func TestCrewCap(t *testing.T) {
 	}
 	if note := lastNote(t, a); !strings.Contains(note, "$5.00") || !strings.Contains(note, "spent today") {
 		t.Fatalf("the cap confirmation said %q", note)
+	}
+}
+
+// THE PER-TASK LIMIT IS `/crew cap task <$>`, said back in whole dollars, and
+// `none` is refused: a task always has a limit.
+func TestCrewCapTask(t *testing.T) {
+	a, dir := sheetApp(t)
+	a.slash("/crew cap task 3")
+	if got := config.CrewTaskCapAt(dir); got != 3 {
+		t.Fatalf("the per-task limit reads %v", got)
+	}
+	if note := lastNote(t, a); !strings.Contains(note, "per-task limit · $3") {
+		t.Fatalf("the confirmation said %q", note)
+	}
+	if got := config.CrewCapAt(dir); got != 0 {
+		t.Fatalf("/crew cap task moved the daily cap to %v", got)
+	}
+	a.slash("/crew cap task none")
+	if got := config.CrewTaskCapAt(dir); got != 3 {
+		t.Fatalf("none moved the per-task limit to %v", got)
+	}
+	if note := lastNote(t, a); !strings.Contains(note, "could not set the per-task limit") {
+		t.Fatalf("the refusal said %q", note)
 	}
 }
 

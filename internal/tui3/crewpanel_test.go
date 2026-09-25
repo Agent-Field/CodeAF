@@ -35,14 +35,14 @@ func crewLab(t *testing.T) (*app, string) {
 	previous := config.CrewCatalog
 	t.Cleanup(func() { config.CrewCatalog = previous })
 	rows := []modelcatalog.Model{
-		{ID: "z-ai/glm-5.3-flash", OpenWeights: true, PromptPrice: 1.5e-7, CompletionPrice: 5e-7,
-			IntelligenceIndex: 41.8, CodingIndex: 71.5, AgenticIndex: 50.9, ContextLength: 1310720, Parameters: []string{"tools"}},
-		{ID: "moonshotai/kimi-k3", OpenWeights: true, PromptPrice: 3e-6, CompletionPrice: 1.5e-5,
-			IntelligenceIndex: 43.6, CodingIndex: 76.2, AgenticIndex: 50, ContextLength: 1048576, Parameters: []string{"tools"}},
-		{ID: "deepseek/deepseek-v4-flash", OpenWeights: true, PromptPrice: 8.246e-8, CompletionPrice: 1.6492e-7,
-			IntelligenceIndex: 24.2, CodingIndex: 56.2, AgenticIndex: 22.2, ContextLength: 1048576, Parameters: []string{"tools"}},
-		{ID: "anthropic/claude-opus-5", PromptPrice: 5e-6, CompletionPrice: 2.5e-5,
-			IntelligenceIndex: 50.8, CodingIndex: 78, AgenticIndex: 56.5, ContextLength: 1000000, Parameters: []string{"tools"}},
+		{ID: "z-ai/glm-5.3-flash", CanonicalSlug: "z-ai/glm-5.3-flash-20260826", OpenWeights: true, PromptPrice: 1.5e-7, CompletionPrice: 5e-7, CacheReadPrice: 5e-8,
+			IntelligenceIndex: 41.8, CodingIndex: 71.5, AgenticIndex: 50.9, ArenaElo: 1348, ContextLength: 1310720, Parameters: []string{"tools"}},
+		{ID: "moonshotai/kimi-k3", CanonicalSlug: "moonshotai/kimi-k3-20260715", OpenWeights: true, PromptPrice: 3e-6, CompletionPrice: 1.5e-5, CacheReadPrice: 3e-7,
+			IntelligenceIndex: 43.6, CodingIndex: 76.2, AgenticIndex: 50, ArenaElo: 1421, ContextLength: 1048576, Parameters: []string{"tools"}},
+		{ID: "deepseek/deepseek-v4-flash", CanonicalSlug: "deepseek/deepseek-v4-flash-20260423", OpenWeights: true, PromptPrice: 8.246e-8, CompletionPrice: 1.6492e-7, CacheReadPrice: 1.6492e-8,
+			IntelligenceIndex: 24.2, CodingIndex: 56.2, AgenticIndex: 22.2, ArenaElo: 1216, ContextLength: 1048576, Parameters: []string{"tools"}},
+		{ID: "anthropic/claude-opus-5", CanonicalSlug: "anthropic/claude-opus-5-20260723", PromptPrice: 5e-6, CompletionPrice: 2.5e-5, CacheReadPrice: 5e-7,
+			IntelligenceIndex: 50.8, CodingIndex: 78, AgenticIndex: 56.5, ArenaElo: 1372, ContextLength: 1000000, Parameters: []string{"tools"}},
 	}
 	config.CrewCatalog = func() []modelcatalog.Model { return rows }
 	now := time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
@@ -207,7 +207,7 @@ func TestCrewJourneyCap(t *testing.T) {
 		t.Fatalf("setting the cap took %d steps", j.count)
 	}
 	t.Logf("set cap: %d steps", j.count)
-	if row := crewLineWith(t, crewScreen(a), "cap"); !strings.Contains(row, "$5.00 a day") {
+	if row := crewLineWith(t, crewScreen(a), "cap"); !strings.Contains(row, "per task $5 · daily $5.00") {
 		t.Fatalf("the cap row reads %q", row)
 	}
 
@@ -227,6 +227,38 @@ func TestCrewJourneyCap(t *testing.T) {
 	}
 	if row := crewLineWith(t, crewScreen(a), "cap"); !strings.Contains(row, "none") {
 		t.Fatalf("the cap row reads %q", row)
+	}
+}
+
+// SET THE PER-TASK LIMIT on the same row: enter, tab to the per-task hole,
+// type, enter. An emptied per-task hole is the default, never no limit.
+func TestCrewJourneyTaskCap(t *testing.T) {
+	a, dir := crewLab(t)
+	j := &crewJourney{t: t, a: a}
+	j.open()
+	j.keys("down", "down", "down", "down", "down")
+	if row := crewLineWith(t, crewScreen(a), "cap"); !strings.Contains(row, "per task $5 · daily none") {
+		t.Fatalf("the cap row reads %q", row)
+	}
+	j.keys("enter", "tab")
+	if row := crewLineWith(t, crewScreen(a), "cap"); !strings.Contains(row, "per task $[ 5 ]") {
+		t.Fatalf("tab did not open the per-task hole: %q", row)
+	}
+	j.keys("backspace")
+	j.typed("12")
+	j.keys("enter")
+	if got := config.CrewTaskCapAt(dir); got != 12 {
+		t.Fatalf("the per-task limit reads %v", got)
+	}
+	if got := config.CrewCapAt(dir); got != 0 {
+		t.Fatalf("setting the per-task limit moved the daily cap to %v", got)
+	}
+	if row := crewLineWith(t, crewScreen(a), "cap"); !strings.Contains(row, "per task $12 · daily none") {
+		t.Fatalf("the cap row reads %q", row)
+	}
+	j.keys("enter", "tab", "backspace", "backspace", "enter")
+	if got := config.CrewTaskCapAt(dir); got != 5 {
+		t.Fatalf("an emptied per-task hole left the limit at %v", got)
 	}
 }
 

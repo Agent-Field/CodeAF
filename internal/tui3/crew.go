@@ -35,11 +35,11 @@ import (
 //
 //	/crew pin <seat> <model[@provider]>   /crew unpin <seat|all>
 //	/crew models <all|open|≤in/out|list|+model|-model>
-//	/crew cap <dollars|off>
+//	/crew cap <dollars|off>   /crew cap task <dollars>
 
 // crewUsage is the one line every refused /crew form answers with.
 const crewUsage = "/crew · /crew pin <worker|planner|checker> <model[@provider]> · /crew unpin <seat|all> · " +
-	"/crew models <all|open|≤in/out|ids…|+id|-id> · /crew cap <dollars|off>"
+	"/crew models <all|open|≤in/out|ids…|+id|-id> · /crew cap <dollars|off> · /crew cap task <dollars>"
 
 // runCrew is /crew: the panel, or one of its four shortcuts. It answers the
 // tick that takes the panel's undo offer down after a shortcut opened it.
@@ -159,6 +159,9 @@ func (a *app) crewAllowedModels(rest string) int {
 // crews cost more of the day's quality as the day's spend climbs — and at it a
 // task does not start until the person raises it or asks for `--cheap`.
 func (a *app) crewCap(rest string) int {
+	if word, figure, _ := strings.Cut(rest, " "); strings.EqualFold(word, "task") {
+		return a.crewTaskCap(strings.TrimSpace(figure))
+	}
 	if rest == "" {
 		a.note("daily cap · " + a.crewCapWords())
 		return -1
@@ -169,6 +172,22 @@ func (a *app) crewCap(rest string) int {
 	}
 	a.crewApplied()
 	a.note("daily cap · " + a.crewCapWords())
+	return crewCap
+}
+
+// crewTaskCap is `/crew cap task <dollars>`: the most one task may spend.
+// A call that would take a task past it is not made.
+func (a *app) crewTaskCap(rest string) int {
+	if rest == "" {
+		a.note("per-task limit · " + config.CrewTaskMoney(config.CrewTaskCapAt(a.profileDir)))
+		return -1
+	}
+	if err := config.SetCrewTaskCap(a.profileDir, rest); err != nil {
+		a.note("could not set the per-task limit · " + err.Error())
+		return -1
+	}
+	a.crewApplied()
+	a.note("per-task limit · " + config.CrewTaskMoney(config.CrewTaskCapAt(a.profileDir)))
 	return crewCap
 }
 

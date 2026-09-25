@@ -182,7 +182,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/memories` | — | — | prints every memory into the conversation |
 | `/remember` | — | `<text>` | keeps one thing across conversations |
 | `/forget` | — | `<query>` | forgets the best matching memory |
-| `/crew` | — | — | opens the crew panel: the three seats, the allowed models, the providers and the daily cap, changed in place |
+| `/crew` | — | — | opens the crew panel: the three seats, the allowed models, the providers, the per-task limit and the daily cap, changed in place |
 | `/crew` | — | `pin <seat> <model[@provider]>` | pins the worker, planner or checker to a model; `/model` stays |
 | `/crew` | — | `unpin <seat\|all>` | puts a seat back on auto |
 | `/crew` | — | `models <rule>` | which models a seat may be picked from — `all`, `open`, `≤in/out`, ids |
@@ -794,8 +794,8 @@ the same row the Spending tab writes through.
 
 The row names it takes are **`day`** (`daily`, `today`), **`conversation`** (`chat`,
 `session`), **`plan`** (`plans`, `ask`) and **`practice`** — the four rows that can be
-edited. There is deliberately **no `/budget task`**: a task has no dollar limit of its
-own, so a command that accepted one would be writing a number nothing reads.
+edited. There is **no `/budget task`**: the per-task limit is set in `/crew`, with
+`/crew cap task <$>`.
 
 A write says back what it landed, in the tab's own words for that row — `per day · $50`,
 or `per day · no limit`. A figure it cannot read is refused in the row's own words with
@@ -1464,7 +1464,7 @@ The shortcuts write the same rows and then open the panel with a tick on the row
 changed:
 
 ```
-/crew · /crew pin <worker|planner|checker> <model[@provider]> · /crew unpin <seat|all> · /crew models <all|open|≤in/out|ids…|+id|-id> · /crew cap <dollars|off>
+/crew · /crew pin <worker|planner|checker> <model[@provider]> · /crew unpin <seat|all> · /crew models <all|open|≤in/out|ids…|+id|-id> · /crew cap <dollars|off> · /crew cap task <dollars>
 ```
 
 - **`/crew pin <seat> <model[@provider]>`** pins one seat, for every task until you unpin
@@ -1478,6 +1478,8 @@ changed:
   and `+id` or `-id` changes the rule in force by one word. Bare `/crew models` says the rule.
 - **`/crew cap <dollars|off>`** caps what crews may spend in a day. Bare `/crew cap` says the
   cap and today's spend.
+- **`/crew cap task <dollars>`** sets the most one task may spend — $5 unless set. A call
+  that would take a task past it is not made, and `-yes-spend` does not lift it.
 
 A form that is none of these changes nothing and prints the line of shortcuts:
 `/crew cheap · not a crew form · …`. How hard to try **one** task is not a panel setting at
@@ -1777,15 +1779,15 @@ order:
    32,000 tokens (see *Models, context, and what it costs*).
 6. **reflex** — `near-free · reads every turn — memory, titles, safety`
 7. **small work** — `cheap · the small calls — names, digests, the safety gate`
-8. **seats** — `the worker, planner and checker, the models they may be picked from, the providers they may route through, and the daily cap · enter opens /crew`
+8. **seats** — `the worker, planner and checker, the models they may be picked from, the providers they may route through, and the per-task and daily caps · enter opens /crew`
 9. **pinned roles**, and hanging off it the **roles** list — one row per auxiliary call
     codeaf makes for itself, grouped under its row. Those rows come from the running binary
     rather than the settings registry.
 
 **worker**, **checker** and **planner** are the crew's three seats, and on the tab they are
-one row, **seats** (`auto · 1 pinned · models open · 3 of 4 providers · cap $5.00`).
+one row, **seats** (`auto · 1 pinned · models open · 3 of 4 providers · per task $5 · daily $5.00`).
 `enter` on it opens the `/crew` panel, where the seats, the allowed models, the providers
-and the daily cap are changed; `esc` there comes back to the row.
+and the per-task and daily caps are changed; `esc` there comes back to the row.
 
 **A pin for a role this build no longer has is ignored, and the row stops showing it.** Roles
 come and go with the calls that use them — `compaction` was one, and a compaction has not asked

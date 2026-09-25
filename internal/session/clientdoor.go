@@ -570,18 +570,20 @@ func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose,
 	// AN AUXILIARY CALL NEVER ASKS A ROUTE HEALTH SAYS WILL NOT ANSWER
 	// (taskcrew.go's [Agent.healthyModel]).
 	model = a.healthyModel(ctx, purpose, model)
-	// A HELPER'S CALL IS PRICED LIKE A SEAT'S: against the crew's day cap
-	// before it is made, and on the day after. A crew seat's own call is its
+	// A HELPER'S CALL IS PRICED LIKE A SEAT'S: against the crew's day cap —
+	// and, made for a task, that task's limit — before it is made, and on the
+	// day after. A crew seat's own call is its
 	// task's guard's (taskcrew.go), and the person's turn is theirs.
 	var helper *SpendGuard
 	var held float64
 	if purpose != purposeTurn && !isCrewSeatCall(ctx) {
-		if stopped := crewTaskOf(ctx).stoppedAction(); stopped != "" {
+		task := crewTaskOf(ctx)
+		if stopped := task.stoppedAction(); stopped != "" {
 			// A TASK THAT STOPPED ON ITS ACTION buys no more helpers: every
 			// route it could reach already said no.
 			return nil, model, crewStopped{action: stopped}
 		}
-		helper = a.helperGuard()
+		helper = a.helperGuard(task)
 		var err error
 		if held, err = helper.before(model, messages, options); err != nil {
 			return nil, model, err

@@ -38,6 +38,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // AutoEscalate is whether a crew is ever made stronger without somebody
@@ -73,7 +74,12 @@ type Model struct {
 	Intelligence    float64
 	Coding          float64
 	Agentic         float64
-	Context         int
+	// ArenaElo is the best design-arena Elo the row publishes, zero for none.
+	ArenaElo float64
+	Context  int
+	// Released is when the model was released, the zero time when the row
+	// does not say.
+	Released time.Time
 	// Tools is whether the model takes tool calls. A crew seat is an agent
 	// loop, so a model that cannot call a tool cannot sit one.
 	Tools bool
@@ -106,6 +112,10 @@ const freeFailPrior = 0.3
 // freeLimitPenalty is what a free route is charged for its limits even when it
 // answers — the waits and retries of a rate-limited pool — in dollars a task.
 const freeLimitPenalty = 0.001
+
+// freeLimitShare is the same charge as a share of the paid route the seat
+// falls to, whichever is more: waits and retries cost more on a dearer seat.
+const freeLimitShare = 0.1
 
 // Route is one way to reach a model: the provider, the id to send so the call
 // goes that way, and how it bills.
@@ -142,7 +152,7 @@ type Effort string
 const (
 	// EffortKnee is the default: the knee of the quality-cost front.
 	EffortKnee Effort = ""
-	// EffortBest buys the most quality the table believes in, whatever it
+	// EffortBest buys the most quality the weights believe in, whatever it
 	// costs (λ → 0, ties to the cheaper).
 	EffortBest Effort = "best"
 	// EffortCheap buys quality only where it is nearly free.
@@ -166,10 +176,11 @@ func ParseEffort(word string) (Effort, bool) {
 // The price of quality, spelled once.
 //
 // THE KNEE is [Knee] quality points per dollar (prior.json). It sits where the
-// table's quality-cost front bends: a step up that buys fewer than [Knee]
-// points per dollar is not taken, and one that buys more is. On the table's
-// rows that buys a strong checker on open-ended work and nothing on a fix, and
-// it does so because of the prices, not because of a branch.
+// quality-cost front bends: a step up that buys fewer than [Knee] points per
+// dollar is not taken, and one that buys more is. Because the open-ended
+// checker's link pays for ability and a fix's support seats' do not, that
+// buys a strong checker on open-ended work and nothing on a fix, and it does
+// so because of the weights and the prices, not because of a branch.
 //
 // cheapFactor makes cheap ten times as stingy: quality must come at under
 // half a cent a point. stepFactor is one escalation step: a quarter of the
@@ -214,6 +225,15 @@ type Request struct {
 	// ([Lineage]). An unpinned seat is not given one while anything else can
 	// sit it; a pin is never overruled.
 	Avoid map[string]bool
+	// Learned is this install's move to a model's quality in a seat, by
+	// [LearnKey]: what its tasks kept or redid there ([router.CrewLog]).
+	Learned map[string]float64
+	// TaskCap is the most one task may be estimated to cost; zero is none. A
+	// crew estimated over it is not chosen, whatever the effort word.
+	TaskCap float64
+	// CostFactor is this install's learned ratio of what its tasks of the
+	// class cost to their estimates; zero is none learned.
+	CostFactor float64
 	// Rescue is a seat's LAST RUNG being picked — the free pools when nothing
 	// paid can be reached — rather than a crew being chosen: any model that
 	// can sit the seat (tools, context, a route) is taken, best first, though
@@ -231,12 +251,13 @@ type Pick struct {
 	Send     string
 	Kind     RouteKind
 	Pinned   bool
-	// Measured is whether Quality came from the evidence table rather than
-	// the catalog's figures.
-	Measured bool
 	Quality  float64
-	CostUSD  float64
-	// EstUSD is what this seat is expected to cost the task ([table.estCost]):
+	// SD is the standard deviation of Quality under the weights.
+	SD float64 `json:",omitempty"`
+	// Learned is the part of Quality this install's own outcomes moved.
+	Learned float64 `json:",omitempty"`
+	CostUSD float64
+	// EstUSD is what this seat is expected to cost the task ([table.classCost]):
 	// nothing on a plan, a local model or a free pool.
 	EstUSD float64 `json:",omitempty"`
 }
@@ -351,12 +372,8 @@ var ErrStrongest = errors.New("this is already the strongest crew the models you
 
 // Decide picks the crew for one task.
 func Decide(r Request) (Decision, error) {
-	t := prior()
-	if r.Rescue {
-		lenient := *t
-		lenient.rescue = true
-		t = &lenient
-	}
+	t := forDecision(r.Candidates, r.Learned)
+	t.rescue = r.Rescue
 	reading := readingOf(r)
 	d := Decision{Class: reading.Class, Why: reading.Why, Sure: reading.Sure, Effort: r.Effort, Steps: r.Steps, Considered: len(r.Candidates)}
 	pins := r.Pins
@@ -413,6 +430,19 @@ func Decide(r Request) (Decision, error) {
 			return Decision{}, err
 		}
 	}
+	// NO CREW OVER THE TASK LIMIT: a crew whose estimate, at this install's
+	// cost factor, is over the limit is not chosen — not under --best, not on
+	// a redo. The price of a point is raised until the crew fits; pins are
+	// kept as they are.
+	if r.TaskCap > 0 && crewEst(t, d.Class, crew, r.CostFactor) > r.TaskCap+1e-12 {
+		var fits bool
+		crew, d.Lambda, fits = underCap(t, d.Class, candidates, pins, d.Lambda, r.TaskCap, r.CostFactor)
+		if fits {
+			d.Note = "held under the " + Money(r.TaskCap) + " task limit"
+		} else {
+			d.Note = "every crew is estimated over the " + Money(r.TaskCap) + " task limit · the cheapest runs"
+		}
+	}
 	d.Crew = crew
 	// AN EFFORT WORD SAYS WHAT IT CHANGED, or that it changed nothing: the crew
 	// the knee would have picked is the one to compare with.
@@ -422,9 +452,9 @@ func Decide(r Request) (Decision, error) {
 		plain.Effort, plain.Steps = "", 0
 		if kneeCrew, err := pickCrew(t, d.Class, candidates, pins, baseLambda(t, plain)); err == nil {
 			knee = &Decision{Crew: kneeCrew}
-			if sameCrew(kneeCrew, crew) {
+			if sameCrew(kneeCrew, crew) && d.Note == "" {
 				if r.Effort == EffortBest {
-					d.Note = "best · already the strongest measured crew"
+					d.Note = "best · already the strongest crew allowed"
 				} else {
 					d.Note = "cheap · already the cheapest crew"
 				}
@@ -461,37 +491,60 @@ func Decide(r Request) (Decision, error) {
 		d.EstUSD += estOf(pick)
 		d.Quality += pick.Quality
 	}
+	// THE ESTIMATE LEARNS FROM THIS INSTALL: what its tasks of the class
+	// actually cost against their estimates moves the next one's.
+	if r.CostFactor > 0 {
+		d.CostFactor = r.CostFactor
+		d.EstUSD *= r.CostFactor
+	}
 	return d, nil
 }
 
 // pickEst is one pick's expected cost for the estimate: nothing where the
-// route bills nothing, the measured seat cost otherwise.
+// route bills nothing, the seat's expected cost for the class otherwise.
 func pickEst(t *table, class Class, pick Pick) float64 {
 	switch pick.Kind {
 	case Plan, Local, Free:
 		return 0
 	}
-	if m, ok := Snapshot(pick.Model); ok && pick.CostUSD > 0 {
-		// The candidate's own prices, where they differ from the snapshot's,
-		// move a measured seat's cost with them.
-		if flat := t.seatCost(pick.Seat, m); flat > 0 {
-			return t.estCost(class, pick.Seat, m) * pick.CostUSD / flat
-		}
-	}
-	return t.estCost(class, pick.Seat, Model{ID: pick.Model}) + unmeasuredEst(t, class, pick)
-}
-
-// unmeasuredEst is an unmeasured pick's flat cost scaled by its class and
-// seat, read back from the cost it was weighed at.
-func unmeasuredEst(t *table, class Class, pick Pick) float64 {
-	if _, ok := t.costs[cellKey{class, pick.Seat, Lineage(pick.Model)}]; ok {
+	if math.IsInf(pick.CostUSD, 0) {
 		return 0
 	}
-	scale := t.costScale[seatKey{class, pick.Seat}]
-	if scale <= 0 {
-		scale = 1
+	return pick.CostUSD
+}
+
+// crewEst is a crew's estimate against a task limit: each seat's expected
+// cost, times this install's cost factor when it is above one — the reading
+// that errs dear.
+func crewEst(t *table, class Class, crew []Pick, factor float64) float64 {
+	var sum float64
+	for _, pick := range crew {
+		sum += pickEst(t, class, pick)
 	}
-	return pick.CostUSD * scale
+	if factor > 1 {
+		sum *= factor
+	}
+	return sum
+}
+
+// underCap is the crew picked at the least price of a point, from λ up, whose
+// estimate fits the task limit, and whether one fits. With none, it is the
+// cheapest crew the doubling reached.
+func underCap(t *table, class Class, candidates []Candidate, pins map[Seat]Pin, lambda, limit, factor float64) ([]Pick, float64, bool) {
+	at := math.Max(lambda, t.Knee/64)
+	var last []Pick
+	for i := 0; i < 40; i++ {
+		at *= 2
+		crew, err := pickCrew(t, class, candidates, pins, at)
+		if err != nil {
+			break
+		}
+		last = crew
+		if crewEst(t, class, crew, factor) <= limit+1e-12 {
+			return crew, at, true
+		}
+	}
+	return last, at, false
 }
 
 // estOf is a pick's expected cost: its estimate, or — for a pick made where
@@ -551,8 +604,9 @@ const (
 //     what the pick did rather than whatever is left.
 func ladderFor(t *table, class Class, pick Pick, candidates []Candidate, lambda float64) []Pick {
 	var ladder []Pick
+	own := Lineage(pick.Model)
 	for _, c := range candidates {
-		if Lineage(c.Model.ID) != Lineage(pick.Model) {
+		if t.abilityOf(c.Model).lineage != own {
 			continue
 		}
 		rest := append([]Route(nil), c.Routes...)
@@ -581,14 +635,13 @@ func ladderFor(t *table, class Class, pick Pick, candidates []Candidate, lambda 
 	// cannot start moves sideways before it moves up: a failed call is not a
 	// request for a stronger crew.
 	keep := ladderRivals * ladderLook
-	own := Lineage(pick.Model)
 	type rival struct {
 		pick  Pick
 		score float64
 	}
 	var rivals []rival
 	for _, c := range candidates {
-		if Lineage(c.Model.ID) == own {
+		if t.abilityOf(c.Model).lineage == own {
 			continue
 		}
 		next, ok := eligible(t, class, pick.Seat, c)
@@ -610,7 +663,7 @@ func ladderFor(t *table, class Class, pick Pick, candidates []Candidate, lambda 
 			rivals = rivals[:keep]
 		}
 	}
-	near := math.Max(pick.CostUSD, t.costFloor(class, pick.Seat)) * similarCost
+	near := math.Max(pick.CostUSD, t.costFloor(pick.Seat)*t.costScale(class, pick.Seat)) * similarCost
 	sort.SliceStable(rivals, func(i, j int) bool {
 		return rivals[i].pick.CostUSD <= near && rivals[j].pick.CostUSD > near
 	})
@@ -706,10 +759,6 @@ func bestFor(t *table, class Class, seat Seat, candidates []Candidate, lambda, f
 		case !found, score > bestScore+1e-12:
 		case score < bestScore-1e-12:
 			continue
-		case pick.Measured && !best.Measured:
-			// A MEASURED MODEL WINS A TIE: evidence over a guess.
-		case !pick.Measured && best.Measured:
-			continue
 		case pick.CostUSD < best.CostUSD-1e-12:
 		case pick.CostUSD > best.CostUSD+1e-12:
 			continue
@@ -737,8 +786,8 @@ type Scored struct {
 // Explain is each seat's best n candidates at the λ a decision was made at,
 // best first — what a router log row carries so a crew can be explained from
 // the log alone.
-func Explain(class Class, lambda float64, candidates []Candidate, n int) map[Seat][]Scored {
-	t := prior()
+func Explain(class Class, lambda float64, candidates []Candidate, learned map[string]float64, n int) map[Seat][]Scored {
+	t := forDecision(candidates, learned)
 	out := map[Seat][]Scored{}
 	for _, seat := range Seats {
 		var ranked []Scored
@@ -790,53 +839,55 @@ func IsFree(id string) bool {
 }
 
 // eligible is one candidate in one seat, and whether it may sit it: seatable,
-// and — for a model the table did not measure — publishing the agentic index
-// an agent-loop seat needs ([agenticKnown]) and read high enough to be
-// believed ([table.credible]).
+// and credible under the weights ([table.credible]) — its row says enough to
+// score it, and its ability may reach what the seat needs.
 func eligible(t *table, class Class, seat Seat, c Candidate) (Pick, bool) {
 	if !seatable(seat, c) {
 		return Pick{}, false
 	}
-	pick := pickOf(t, class, seat, c)
+	a := t.abilityOf(c.Model)
+	pick := pickAt(t, class, seat, c, a)
 	if t.rescue {
 		return pick, true
 	}
-	if !pick.Measured && CanonicalOf(c.Model.ID).Variant == "" &&
-		(!agenticKnown(seat, c.Model) || !evidenceKnown(seat, c.Model)) {
-		return Pick{}, false
-	}
-	return pick, t.credible(class, seat, pick.Quality, pick.Measured)
+	return pick, t.credibleAt(a)
 }
 
-// weighedCost is the cost a pick is weighed at: its own, or — for a model the
-// table did not measure — no less than the cheapest measured model's
-// in the seat and class ([table.costFloor]). The pick still reports what it
-// costs.
+// weighedCost is the cost a pick is weighed at: its expected cost on its
+// route, an unpriced model's already floored ([pickOf]).
 func weighedCost(t *table, class Class, seat Seat, pick Pick) float64 {
-	if pick.Measured {
-		return pick.CostUSD
-	}
-	if canon := CanonicalOf(pick.Model); canon.Variant != "" && IsMeasured(canon.ID) {
-		// A quantised copy of a measured model borrowed its evidence at a
-		// discount ([quantDiscount]); its local zero is real.
-		return pick.CostUSD
-	}
-	return math.Max(pick.CostUSD, t.costFloor(class, seat))
+	return pick.CostUSD
 }
 
 // pickOf is one candidate in one seat on its cheapest route. Routes of equal
 // cost keep the caller's order, which puts the provider the person connected
 // for that vendor ahead of a router.
 func pickOf(t *table, class Class, seat Seat, c Candidate) Pick {
-	q, measured := t.quality(class, seat, c.Model)
-	metered := t.seatCost(seat, c.Model)
-	fallback := metered
-	if fallback <= 0 {
-		fallback = t.costFloor(class, seat)
+	return pickAt(t, class, seat, c, t.abilityOf(c.Model))
+}
+
+// pickAt is [pickOf] on the candidate's ability already read.
+func pickAt(t *table, class Class, seat Seat, c Candidate, a ability) Pick {
+	q, sd := t.qualityOf(class, seat, a)
+	metered := t.classCost(class, seat, c.Model)
+	unpriced := c.Model.PromptPrice <= 0 && c.Model.CompletionPrice <= 0
+	floor := 0.0
+	if unpriced {
+		// An unpriced model is weighed at what a priced model as able costs,
+		// never at zero.
+		floor = t.priceFor(seat, a.U) * t.costScale(class, seat)
+		metered = floor
 	}
-	pick := Pick{Seat: seat, Model: c.Model.ID, Quality: q, Measured: measured, CostUSD: math.Inf(1)}
+	fallback := metered
+	pick := Pick{Seat: seat, Model: c.Model.ID, Quality: q, SD: sd, Learned: t.learnedOf(class, seat, a),
+		CostUSD: math.Inf(1)}
 	for _, route := range c.Routes {
 		cost := routeCost(route, metered, fallback)
+		if unpriced && route.Kind == Free {
+			// A free pool of a model nobody prices is weighed above the
+			// cheapest priced model: its zero is not a price.
+			cost = math.Max(cost, floor+freeLimitPenalty)
+		}
 		if cost < pick.CostUSD-1e-12 {
 			pick.Provider, pick.Send, pick.Kind, pick.CostUSD = route.Provider, route.Send, route.Kind, cost
 		}
@@ -850,9 +901,9 @@ func pickOf(t *table, class Class, seat Seat, c Candidate) Pick {
 // paid route the seat then falls to (fallback). A free pool's chance starts
 // pessimistic and it pays a charge for its limits.
 //
-// A FREE ROUTE IS NEVER PRICED AT ZERO. Zero is what made a free pool nobody
-// measured win a worker seat and die in its first second; its expected cost
-// is what a person actually pays for choosing it.
+// A FREE ROUTE IS NEVER PRICED AT ZERO. Zero is what made a free pool win a
+// worker seat and die in its first second; its expected cost is what a
+// person actually pays for choosing it.
 func routeCost(route Route, metered, fallback float64) float64 {
 	switch route.Kind {
 	case Plan, Local:
@@ -862,7 +913,7 @@ func routeCost(route Route, metered, fallback float64) float64 {
 		if rate <= 0 {
 			rate = freeFailPrior
 		}
-		return rate*fallback + freeLimitPenalty
+		return rate*fallback + math.Max(freeLimitPenalty, freeLimitShare*fallback)
 	}
 	// A ROUTE THAT REFUSES SOME FIRST CALLS costs what it bills plus what its
 	// refusals send elsewhere, at this install's learned rate.
@@ -871,9 +922,9 @@ func routeCost(route Route, metered, fallback float64) float64 {
 
 // pinned is a pinned seat's pick: the pin, always, on the route the pin names
 // when it names one. A pinned model the candidates do not carry — outside the
-// catalog, or on a provider this table cannot price — still sits the seat on
-// the send the caller resolved; its quality is read from the table when it
-// can be and its cost is what the table knows, or nothing.
+// catalog, or on a provider the router cannot price — still sits the seat on
+// the send the caller resolved; its quality is the weights' reading of what
+// its row carries, and its cost what its route publishes, or nothing.
 func pinned(t *table, class Class, seat Seat, pin Pin, candidates []Candidate) Pick {
 	pick := Pick{Seat: seat, Model: pin.Model, Provider: pin.Provider, Send: pin.Send, Kind: pin.Kind, Pinned: true}
 	for _, c := range candidates {
@@ -885,8 +936,8 @@ func pinned(t *table, class Class, seat Seat, pin Pin, candidates []Candidate) P
 			for _, route := range c.Routes {
 				if strings.EqualFold(route.Provider, pin.Provider) {
 					found.Provider, found.Send, found.Kind = route.Provider, route.Send, route.Kind
-					metered := t.seatCost(seat, c.Model)
-					found.CostUSD = routeCost(route, metered, math.Max(metered, t.costFloor(class, seat)))
+					metered := t.classCost(class, seat, c.Model)
+					found.CostUSD = routeCost(route, metered, math.Max(metered, t.costFloor(seat)*t.costScale(class, seat)))
 				}
 			}
 		}
@@ -905,12 +956,9 @@ func pinned(t *table, class Class, seat Seat, pin Pin, candidates []Candidate) P
 		found.Pinned = true
 		return found
 	}
-	if m, ok := Snapshot(pin.Model); ok {
-		pick.Quality, pick.Measured = t.quality(class, seat, m)
-		if pick.Kind != Plan && pick.Kind != Local {
-			pick.CostUSD = t.seatCost(seat, m)
-		}
-	}
+	// A pin the candidates do not carry is read on its id alone: the weights'
+	// prior for a model they know nothing of, at no known cost.
+	pick.Quality, pick.SD = t.quality(class, seat, Model{ID: pin.Model})
 	if pick.Send == "" {
 		pick.Send = pin.Model
 	}
@@ -1025,35 +1073,43 @@ func seatIndex(crew []Pick, seat Seat) int {
 // weighed cost, and of those the one with the least quality — ties to the
 // cheaper.
 func nextRung(t *table, class Class, seat Seat, candidates []Candidate, from Pick) (Pick, bool) {
+	own := Lineage(from.Model)
 	var above []Pick
 	for _, c := range candidates {
 		pick, ok := eligible(t, class, seat, c)
-		if !ok || pick.Quality <= from.Quality+1e-9 || Lineage(pick.Model) == Lineage(from.Model) {
+		if !ok || pick.Quality <= from.Quality+1e-9 || t.abilityOf(c.Model).lineage == own {
 			continue
 		}
 		above = append(above, pick)
 	}
+	// The front, best first: a pick is on it when nothing at least as good
+	// costs no more (and one of the two strictly). Sweeping by quality from
+	// the top, a pick is dominated exactly when an earlier one is no dearer.
+	sort.SliceStable(above, func(i, j int) bool {
+		if math.Abs(above[i].Quality-above[j].Quality) > 1e-9 {
+			return above[i].Quality > above[j].Quality
+		}
+		return weighedCost(t, class, seat, above[i]) < weighedCost(t, class, seat, above[j])
+	})
 	var best Pick
 	found := false
-	for i, p := range above {
-		dominated := false
-		for j, q := range above {
-			if i == j {
-				continue
-			}
-			pc, qc := weighedCost(t, class, seat, p), weighedCost(t, class, seat, q)
-			if q.Quality >= p.Quality-1e-9 && qc <= pc+1e-12 && (q.Quality > p.Quality+1e-9 || qc < pc-1e-12) {
-				dominated = true
-				break
-			}
+	cheapest := math.Inf(1)
+	for i := 0; i < len(above); {
+		// One quality level at a time: within it only the cheapest can be on
+		// the front, and it is dominated by anything above it no dearer.
+		j := i
+		for j < len(above) && math.Abs(above[j].Quality-above[i].Quality) <= 1e-9 {
+			j++
 		}
-		if dominated {
-			continue
-		}
-		if !found || p.Quality < best.Quality-1e-9 ||
-			(math.Abs(p.Quality-best.Quality) <= 1e-9 && weighedCost(t, class, seat, p) < weighedCost(t, class, seat, best)) {
+		p := above[i]
+		pc := weighedCost(t, class, seat, p)
+		if pc < cheapest-1e-12 {
 			best, found = p, true
 		}
+		for k := i; k < j; k++ {
+			cheapest = math.Min(cheapest, weighedCost(t, class, seat, above[k]))
+		}
+		i = j
 	}
 	return best, found
 }
@@ -1103,27 +1159,20 @@ type Gap struct {
 	Line  string
 }
 
-// strongCheckerFloor is the open-ended checker quality below which the
-// allowed models have no strong checker: between the table's cheap checkers
-// and its strong one.
-const strongCheckerFloor = 4.0
-
 // Gaps names what the allowed models cannot cover. Today that is one thing,
 // the seat the routing rule depends on: open-ended work with no strong checker
-// among the models allowed.
+// among the models allowed — none credible whose ability reaches the middle
+// the open-ended link is centred on.
 func Gaps(candidates []Candidate) []Gap {
-	t := prior()
-	best := math.Inf(-1)
+	t := forDecision(candidates, nil)
+	strong := t.linkOf(OpenEnded).URef
 	for _, c := range candidates {
-		if !seatable(Checker, c) {
+		if !seatable(Checker, c) || !t.credible(c.Model) {
 			continue
 		}
-		if q, _ := t.quality(OpenEnded, Checker, c.Model); q > best {
-			best = q
+		if t.abilityOf(c.Model).U >= strong {
+			return nil
 		}
-	}
-	if best >= strongCheckerFloor {
-		return nil
 	}
 	return []Gap{{Class: OpenEnded, Seat: Checker, Line: "no strong checker among the models you allow · open-ended work will be checked weakly"}}
 }

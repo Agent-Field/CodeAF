@@ -472,7 +472,13 @@ The crew is three seats: the **worker** that does the work, the **planner** that
 structures it, and the **checker** that reads the result. **By default all three are auto.**
 codeaf picks each seat for each task: it reads what kind of work the task is — a
 **bugfix**, **open-ended** work, or **other** — and picks the model for each seat from what
-it has measured on that kind of work, weighed against what the model costs. A task it
+its catalog row says about it, weighed against what the model costs. Every model the catalog
+lists is a candidate, frontier models included. Its published indexes, arena rating, price,
+context, release date, open weights and the family it belongs to are read through fitted
+weights into a score for that seat on that kind of work, with how sure the score is; a row
+missing some of those is still scored, less surely, and is scored again when the catalog
+next lists them. How this install's own tasks ended — accepted, kept, redone, failed — moves
+a model's score in a seat a little each time, within a bound, and never freezes it. A task it
 cannot read with confidence counts as open-ended, because that is where a weak crew costs
 the most.
 
@@ -602,7 +608,7 @@ The shortcuts do the same writes from the box and then open the panel with the t
 row they changed:
 
 ```
-/crew · /crew pin <worker|planner|checker> <model[@provider]> · /crew unpin <seat|all> · /crew models <all|open|≤in/out|ids…|+id|-id> · /crew cap <dollars|off>
+/crew · /crew pin <worker|planner|checker> <model[@provider]> · /crew unpin <seat|all> · /crew models <all|open|≤in/out|ids…|+id|-id> · /crew cap <dollars|off> · /crew cap task <dollars>
 ```
 
 ### Pinning a seat
@@ -620,7 +626,7 @@ the rule would have to break is not a pin. And a pinned model none of your conne
 reach is not quietly swapped: the task does not start, and says why.
 
 In `/settings` → Providers the three seats are one row, **seats**, which says how many are
-pinned, the allowed rule, how many providers are on and the cap; `enter` on it opens the crew panel, and `esc` there
+pinned, the allowed rule, how many providers are on, the per-task limit and the daily cap; `enter` on it opens the crew panel, and `esc` there
 brings you back to the row.
 
 ### Which models are allowed
@@ -672,6 +678,23 @@ unchecked rather than on a bill ten times its estimate.
 This cap is the crew's own. The day's limit under `/settings` → Spending counts everything
 codeaf spends, and still applies.
 
+### The per-task limit
+
+No task may cost more than its limit: **$5** unless you set another. `/crew cap task 10`
+sets it to $10; on the panel it is the first figure on the **cap** row
+(`per task $5 · daily none`) — `enter` on the row, `tab` to the per-task box, type, `enter`.
+A task always has a limit: `none` and `0` are refused, and an emptied box is $5 again.
+
+Every priced call of one task — each seat's, on every model, and the helpers made for it —
+counts against one figure: what the task has spent, plus every call of it still on its
+way, plus what this call is expected to cost. A call that would pass the limit is not made,
+and the task stops on `this task reached its $5 limit · raise it in /crew`, with what it had
+done so far. The checker's own ceiling still applies inside it.
+
+`-yes-spend` does not lift it. `codeaf do` holds every run to the same limit, with or
+without a routed crew; the flag answers the day's questions and the plan-price question,
+not this one.
+
 ### How hard to try one task — --best and --cheap
 
 The panel says what persists. **How hard to try one task is said in the ask, and sticks to
@@ -701,11 +724,12 @@ and when it lands, the same line with what it actually cost beside the estimate:
 task 12 crew · open-ended · worker glm-5.3-flash (openrouter) · planner kimi-k3 · checker ⌖ kimi-k3 · $0.108 (est $0.121) · not right? /redo stronger
 ```
 
-The estimate is what crews like this one cost: each seat's cost per task in the
-router's table for that kind of work, where the table has that model in that seat — so
-a model that writes a lot costs what it wrote — and the seat's token profile scaled to
-the table otherwise; then moved by what this install's own paid tasks of the kind cost
-against their estimates. A seat on a plan, a local model or a free pool adds nothing to it.
+The estimate is what crews like this one cost: each seat's token profile for that kind of
+work at the model's catalog prices, then moved by what this install's own paid tasks of the
+kind cost against their estimates. A seat on a plan, a local model or a free pool adds
+nothing to it. No crew estimated over the per-task limit is picked, `--best` included: the
+pick is the best crew under it, and the line says `held under the $5.00 task limit` when that
+changed it.
 
 A pin sends exactly the id you wrote when the catalog lists it. An id the catalog lists
 only as a variant — a dated snapshot — is sent as that variant, and the line says which:
@@ -716,7 +740,7 @@ because it is where the money goes; the planner is named when it is another mode
 worker; a seat you pinned wears the pin mark `⌖`. A task that failed leads its line with
 `failed — /redo stronger runs it again on a stronger crew`, and one that spent nothing
 names no money. `/task --best` that changes
-nothing says `best · already the strongest measured crew`, and one that does names the rung
+nothing says `best · already the strongest crew allowed`, and one that does names the rung
 (`worker glm-5.3-flash → kimi-k3`).
 
 **A seat whose model cannot start moves, inside the task.** When a seat's first call is
@@ -738,9 +762,9 @@ is not waited on — the seat moves on at once, and with nothing left the task s
 its action within seconds. A pool that answered at its limit is not asked again in that
 task by any seat, and no helper call reaches a route that refused — it is refused before
 it is sent. A model the catalog lists at no price that is not a free pool (a stealth or
-preview model) is never picked unless you pin it, and neither is a model that
-publishes no benchmark figure the seat is read by: with nothing measured and nothing
-published there is nothing to rank it on but its price. The line says each seat's net move and
+preview model) is never picked unless you pin it, and neither is a model whose catalog row
+carries too little to score it: with no index, rating, release date or lineage to read there
+is nothing to rank it on but its price. The line says each seat's net move and
 its first cause — `worker glm-5.3-flash → gemma-4-31b-it (credit unavailable on
 openrouter; +3 tried)` — and the router's log keeps every rung. A seat that cannot start moves to a model at a similar cost before a
 dearer one. A task that ran on an account out of credit and failed ends on the credit action,
@@ -2748,7 +2772,7 @@ They live on **one tab**: `/settings` → **Spending**, which `/budget` opens di
 | **per day** | `$500` | new work waits for midnight or for you to raise it here |
 | **per conversation** | `no limit` | this conversation stops starting new turns; the turn in flight always finishes |
 | **per plan** | `asks first above $100` | a planned job estimated above it quotes its step count and its price and waits for your go-ahead — it asks, it does not stop |
-| **per task** | `no limit of its own` | nothing of its own; a task spends against the day and this conversation |
+| **per task** | `$5 a task` | that task's next priced call is not made; set in `/crew` |
 | **per standing run** | `$5 a firing` | that one firing stops there; each order may name its own |
 | **practice** | `$50 of the day` | codeaf's practice on itself stops until tomorrow, and your own work is untouched |
 
@@ -2889,30 +2913,24 @@ The row was called `ask before spending` when it lived on the Workspace tab, and
 setting key behind it is still `plan_consent_usd` — the panel's search matches the key as
 well as the label, so typing either finds it.
 
-## What may a task spend — a task has no dollar limit of its own
+## What may a task spend — $5 a task unless you set another
 
-**A task carries no dollar cap of its own.** The Spending tab says so on the `per task`
-row, in those words: `no limit of its own`, with the dim receipt `it spends against the
-day and this conversation`.
+**A task carries a dollar limit of its own: $5 unless you set another.** The Spending tab
+shows it on the `per task` row — `$5 a task`, with the dim receipt `set in /crew · it also
+spends against the day and this conversation`. It is set on the `/crew` panel's **cap** row
+or with `/crew cap task 10`; see [The per-task limit](#the-per-task-limit).
 
-That is not a missing feature — it is what the rail actually is. A task's own bounds are
-**steps and time**, not money: a deadline it may renew, a step count, and a limit on how
-long it may go without progress. The money it spends is counted against the day's limit
-and against the limit on the conversation that started it, which are the two rows above it
-on the same tab.
+Every priced call of one task counts against it, and a call that would pass it is not
+made. A task's other bounds are **steps and time**: a deadline it may renew, a step count,
+and a limit on how long it may go without progress. Its money is also counted against the day's limit and
+against the limit on the conversation that started it, the two rows above it on the same
+tab.
 
-**What you get instead of a per-task limit is seeing it happen.** The `$` on the status
-line counts what the tasks are spending while they are spending it, and `/cost` splits that
-figure into `conversation` and `tasks`. A task is bounded by the wallet and watched on the
-row — it is never stopped on its own dollar count.
+The `$` on the status line counts what the tasks are spending while they spend it, and
+`/cost` splits that figure into `conversation` and `tasks`.
 
-So **there is no per-task money row to edit**, and `/budget task 20` is not a shape this
-command takes. Where you *can* put a figure on one piece of work is the **composer layer**:
-`alt+enter` before you send a task, and its third line reads `it may spend up to $100.00
-before it asks`. Type a number there and that errand gets that ceiling — it stops before
-its next turn once it reaches it, and any adaptive run it starts is held to a tank no
-bigger. A task started any other way — `/task <brief>`, a proposal card, codeaf's own
-hands — runs under the day's limit and this conversation's.
+`/budget task 20` is not a shape this command takes; the per-task figure lives in `/crew`.
+The **composer layer** can put a further figure on one errand; see the tasks page.
 
 `per standing run` beside it is the same kind of reading for a different reason: it reads
 `$5 a firing · each order may name its own`, because that rail is written **per standing

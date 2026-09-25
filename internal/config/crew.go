@@ -56,6 +56,9 @@ const (
 	// KeyCrewCap is the daily cap on what crews spend, in dollars; absent or
 	// zero is no cap.
 	KeyCrewCap = "models.crew.cap"
+	// KeyCrewTaskCap is the most one task may spend, in dollars; absent or
+	// zero is [CrewTaskCapDefault].
+	KeyCrewTaskCap = "models.crew.task_cap"
 	// KeyCrewFreeRoutes is whether the crew may use providers' free pools
 	// (a `:free` route of a model). PROFILE-ONLY and OFF unless somebody
 	// turned it on: a free pool may log or train on what it is sent, which is
@@ -337,6 +340,32 @@ func SetCrewCap(profileDir, raw string) error {
 	return writeDollars(profileDir, KeyCrewCap, raw)
 }
 
+// CrewTaskCapDefault is the per-task limit when none is set.
+const CrewTaskCapDefault = 5.0
+
+// CrewTaskCapAt is the most one task may spend, in dollars: the stored figure
+// when it is above zero, [CrewTaskCapDefault] otherwise. There is always one.
+func CrewTaskCapAt(profileDir string) float64 {
+	value, ok := persistedFloat(profileDir, KeyCrewTaskCap)
+	if !ok || value <= 0 {
+		return CrewTaskCapDefault
+	}
+	return value
+}
+
+// SetCrewTaskCap writes the per-task limit: a dollar amount above zero. A
+// task always has a limit, so `none` and zero are refused.
+func SetCrewTaskCap(profileDir, raw string) error {
+	value, err := parseDollars(raw)
+	if err != nil {
+		return err
+	}
+	if value <= 0 {
+		return errors.New("a task always has a limit — a dollar amount above zero")
+	}
+	return writeProfileValue(profileDir, KeyCrewTaskCap, value)
+}
+
 // CrewFreeRoutesAt is whether the crew may route to providers' free pools.
 // Absent is off.
 //
@@ -477,8 +506,8 @@ func crewSeatable(candidates []crewroute.Candidate) bool {
 // catalog sets it ONCE AT START-UP, from its non-blocking read, and never a
 // fetch — a task is routed on whatever the catalog already holds. Nil, and a
 // func answering no rows, are ordinary states rather than errors: the router
-// then chooses among the models its own evidence table priced
-// ([crewroute.Snapshot]), which is a crew and not a refusal.
+// then has no candidates, and a task's crew comes from its rescue ladder —
+// the last crew that worked here, the model the person is talking to.
 var CrewCatalog func() []catalog.Model
 
 // crewCatalogRows is [CrewCatalog] read with its ordinary absences folded.
@@ -495,27 +524,44 @@ func crewModelOf(row catalog.Model) crewroute.Model {
 		ID: row.ID, Open: row.OpenWeights,
 		PromptPrice: row.PromptPrice, CompletionPrice: row.CompletionPrice, CacheReadPrice: row.CacheReadPrice,
 		Intelligence: row.IntelligenceIndex, Coding: row.CodingIndex, Agentic: row.AgenticIndex,
+		ArenaElo: row.ArenaElo, Released: crewReleased(row),
 		Context: row.ContextLength, Tools: crewTakesTools(row) && crewSpeaksText(row),
 	}
 }
 
-// crewIndexesFrom is m with every index it lacks read from other, a row of the
-// same model, and then from the evidence table's snapshot of it.
-func crewIndexesFrom(m, other crewroute.Model) crewroute.Model {
-	fill := func(from crewroute.Model) {
-		if m.Intelligence <= 0 {
-			m.Intelligence = from.Intelligence
-		}
-		if m.Coding <= 0 {
-			m.Coding = from.Coding
-		}
-		if m.Agentic <= 0 {
-			m.Agentic = from.Agentic
+// crewReleased is when a catalog row's model was released: the row's own
+// listing time, or the date a canonical slug ends on (`…-20260826`), or the
+// zero time when the row says neither.
+func crewReleased(row catalog.Model) time.Time {
+	if row.Created > 0 {
+		return time.Unix(row.Created, 0).UTC()
+	}
+	slug := strings.TrimSpace(row.CanonicalSlug)
+	if at := strings.LastIndex(slug, "-"); at >= 0 && len(slug)-at-1 == 8 {
+		if day, err := time.Parse("20060102", slug[at+1:]); err == nil && day.Year() >= 2020 {
+			return day
 		}
 	}
-	fill(other)
-	if snap, ok := crewroute.Snapshot(m.ID); ok {
-		fill(snap)
+	return time.Time{}
+}
+
+// crewIndexesFrom is m with every published figure it lacks — an index, the
+// arena Elo, the release date — read from other, a row of the same model.
+func crewIndexesFrom(m, other crewroute.Model) crewroute.Model {
+	if m.Intelligence <= 0 {
+		m.Intelligence = other.Intelligence
+	}
+	if m.Coding <= 0 {
+		m.Coding = other.Coding
+	}
+	if m.Agentic <= 0 {
+		m.Agentic = other.Agentic
+	}
+	if m.ArenaElo <= 0 {
+		m.ArenaElo = other.ArenaElo
+	}
+	if m.Released.IsZero() {
+		m.Released = other.Released
 	}
 	return m
 }
@@ -524,13 +570,9 @@ func crewIndexesFrom(m, other crewroute.Model) crewroute.Model {
 //
 // A ROW THAT LISTS NO PARAMETERS HAS SAID NOTHING, and a crew seat is an agent
 // loop: a model whose tool support is unknown is not sent to find out in the
-// middle of somebody's task. Only a model the evidence table measured — which
-// was watched calling tools — is let through on silence.
+// middle of somebody's task.
 func crewTakesTools(row catalog.Model) bool {
-	if len(row.Parameters) > 0 {
-		return listHolds(row.Parameters, "tools")
-	}
-	return crewroute.IsMeasured(row.ID)
+	return len(row.Parameters) > 0 && listHolds(row.Parameters, "tools")
 }
 
 // crewSpeaksText is whether a catalog row reads text and writes text. A crew
@@ -545,7 +587,7 @@ func crewSpeaksText(row catalog.Model) bool {
 }
 
 // crewCatalogModel is one model as the router would read it, from the
-// catalog or the evidence table, false when neither knows it.
+// catalog, false when the catalog does not know it.
 //
 // THE EXACT ID WINS. A pin names what the person wrote, and a catalog that
 // lists that id serves that id — never a dated snapshot that happens to share
@@ -565,7 +607,7 @@ func crewCatalogModel(id string) (crewroute.Model, bool) {
 			return crewModelOf(row), true
 		}
 	}
-	return crewroute.Snapshot(id)
+	return crewroute.Model{}, false
 }
 
 // stripCrewRoute takes a connection's prefix off an id a person wrote with
@@ -796,11 +838,6 @@ func crewCandidatesWith(rule crewroute.Allowed, providers []CrewProvider, facts 
 				}
 			}
 		}
-	} else {
-		for _, id := range crewroute.Measured() {
-			m, _ := crewroute.Snapshot(id)
-			models = append(models, m)
-		}
 	}
 	var out []crewroute.Candidate
 	for _, m := range models {
@@ -956,7 +993,7 @@ type CrewState struct {
 
 // crewStateKeys are the rows a [CrewState] carries.
 func crewStateKeys() []string {
-	keys := []string{KeyCrewAllowed, KeyCrewCap, KeyCrewProvidersOff, KeyCrewFreeRoutes}
+	keys := []string{KeyCrewAllowed, KeyCrewCap, KeyCrewTaskCap, KeyCrewProvidersOff, KeyCrewFreeRoutes}
 	for _, seat := range crewroute.Seats {
 		keys = append(keys, tierKeyFor(CrewSeatTier(seat)))
 	}
@@ -1032,7 +1069,31 @@ var ErrCrewAtCap = errors.New("today's crew spend has reached the daily cap")
 // state of a fresh install, not an error.
 var CrewHistory = func(profileDir string) CrewDay {
 	log := router.ReadCrewLog(ProfilePath(profileDir, ""), time.Now())
-	return CrewDay{SpentUSD: log.SpentUSD, Offsets: log.Offsets, CostFactor: log.CostFactor}
+	return CrewDay{SpentUSD: log.SpentUSD, Offsets: log.Offsets, CostFactor: log.CostFactor, Learned: crewLearned(log.Quality)}
+}
+
+// crewLearned is the log's learned quality moves keyed the way the router
+// reads them ([crewroute.LearnKey]): the ids a seat ran folded to their
+// lineage, the moves of one lineage averaged.
+func crewLearned(quality map[string]float64) map[string]float64 {
+	if len(quality) == 0 {
+		return nil
+	}
+	sums, counts := map[string]float64{}, map[string]int{}
+	for key, move := range quality {
+		parts := strings.SplitN(key, "\x00", 3)
+		if len(parts) != 3 {
+			continue
+		}
+		k := crewroute.LearnKey(crewroute.Class(parts[0]), crewroute.Seat(parts[1]), parts[2])
+		sums[k] += move
+		counts[k]++
+	}
+	out := make(map[string]float64, len(sums))
+	for k, sum := range sums {
+		out[k] = sum / float64(counts[k])
+	}
+	return out
 }
 
 // CrewRecordOf is one decision as the router's log keeps it.
@@ -1046,6 +1107,12 @@ func CrewRecordOf(d crewroute.Decision, repo, title string) router.CrewRecord {
 		record.EstBase = d.EstUSD / d.CostFactor
 	}
 	for _, pick := range d.Crew {
+		if pick.Learned != 0 {
+			if record.Learned == nil {
+				record.Learned = map[string]float64{}
+			}
+			record.Learned[string(pick.Seat)] = pick.Learned
+		}
 		record.Seats[string(pick.Seat)] = pick.Send
 		if pick.Provider != "" {
 			record.Providers[string(pick.Seat)] = pick.Provider
@@ -1100,8 +1167,12 @@ func crewSeatableOnly(candidates []crewroute.Candidate) []crewroute.Candidate {
 // candidates it was routed among, for the log row.
 func crewTop(profileDir string, d crewroute.Decision) map[string][]router.CrewScore {
 	candidates, _ := crewCandidatesNoticed(profileDir, crewHealthAt(profileDir).probing())
+	var learned map[string]float64
+	if CrewHistory != nil {
+		learned = CrewHistory(profileDir).Learned
+	}
 	out := map[string][]router.CrewScore{}
-	for seat, ranked := range crewroute.Explain(d.Class, d.Lambda, candidates, crewTopN) {
+	for seat, ranked := range crewroute.Explain(d.Class, d.Lambda, candidates, learned, crewTopN) {
 		for _, s := range ranked {
 			route := s.Provider
 			if s.Kind != "" {
@@ -1130,6 +1201,9 @@ type CrewDay struct {
 	// CostFactor is the learned estimate factor per class
 	// ([router.CrewLog.CostFactor]).
 	CostFactor map[string]float64
+	// Learned is this install's learned quality moves, keyed
+	// [crewroute.LearnKey] ([router.CrewLog.Quality]).
+	Learned map[string]float64
 }
 
 // OffsetKey is the key [CrewDay.Offsets] is read under.
@@ -1184,6 +1258,9 @@ func RouteCrew(profileDir string, ask CrewAsk) (crewroute.Decision, error) {
 		Stronger:   ask.Stronger,
 		Again:      ask.Again,
 		Avoid:      health.demoted,
+		Learned:    day.Learned,
+		CostFactor: day.CostFactor[string(reading.Class)],
+		TaskCap:    CrewTaskCapAt(profileDir),
 	}
 	d, err := crewroute.Decide(req)
 	if err != nil && !errors.Is(err, crewroute.ErrStrongest) {
@@ -1200,12 +1277,6 @@ func RouteCrew(profileDir string, ask CrewAsk) (crewroute.Decision, error) {
 	}
 	d.Why, d.Sure = reading.Why, reading.Sure
 	d.Redo = ask.Stronger != nil || ask.Again != nil
-	// THE ESTIMATE LEARNS FROM THIS INSTALL: what its tasks of the class
-	// actually cost against their estimates moves the next one's.
-	if f := day.CostFactor[string(d.Class)]; f > 0 {
-		d.CostFactor = f
-		d.EstUSD *= f
-	}
 	if atCap {
 		return d, ErrCrewAtCap
 	}

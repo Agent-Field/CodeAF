@@ -12,6 +12,7 @@ invalidates:
   - "The onboarding controls screen asked for a crew. It asks for the daily limit and the chat model; the crew asks nothing up front."
   - "The settings rows for the working, careful and planning tiers are one `seats` row that opens the `/crew` panel. The `crew`, `model family` and `picked from` rows are gone."
   - "`codeaf do`'s `model_source`/`plan_model_source` read `crew <preset>` or `default`. They read `--model`, the variable, `pinned` or `routed`, and `-json` also carries `class`, `crew`, `est_usd`, `check_model` and `check_model_source`."
+  - "A task carried no dollar limit of its own, and the Spending tab's `per task` row read `no limit of its own`. A task is held to the per-task limit set in `/crew` ($5 by default), and the row reads that figure."
   - "Remote protocol version 17 is replaced by 18: `Task.Start` carries the one-task effort word and `Task.RedoStronger` runs a task again on a stronger crew. An older engine refuses at the handshake rather than starting the task on the crew the person asked it not to use."
 ---
 A task's crew — the worker that does the work, the planner that structures it
@@ -23,6 +24,18 @@ is highest, λ at the knee of the curve. `--best` and `--cheap` (on `/task`, on
 the conversation's hand-off as `effort`, and on `codeaf do`) move λ for one task
 only. The design behind the defaults is in
 `docs/design/model-pool/pareto-crewing.pdf`.
+
+**Every model in the catalog is scored from its catalog row.** Published
+indexes, arena rating, prices, context, release date (the catalog's `created`
+field, now read), open weights and model family go through fitted weights
+shipped in `internal/crewroute/prior.json` into a quality per seat and class
+with its variance; a row missing fields is scored with a wider variance and is
+scored again when a refresh fills them. A model whose row is too thin for a
+finite score is not picked unless pinned. No per-model table ships, and
+estimates come from catalog prices times each seat's token profile times the
+install's own cost factor. Each task's outcome — accepted, kept, redone,
+failed — moves that model's score in that seat by a small bounded step,
+recorded on the decision row.
 
 **What persists is what the panel says.** `/crew` opens an interactive panel:
 the three seats (`auto · usually <model>` or a pin), the allowed-models rule
@@ -36,6 +49,13 @@ few seconds. `/crew pin <seat> <model[@provider]>`, `/crew unpin <seat|all>`,
 open the panel on the changed row. In `/settings` → Providers the three seat
 rows are one `seats` row that opens the panel. A pin outside the allowed models is refused. At the cap a chat task
 does not start and `codeaf do` refuses unless given `-yes-spend`.
+
+**No task may cost more than its limit**, $5 unless set on the panel's cap row
+(`per task $5 · daily none`, `tab` between the two) or with `/crew cap task <dollars>`.
+Every priced call of the task — each seat and the helpers made for it — is held
+to one tally before it is made; the call that would pass the limit is not made
+and the task stops on `this task reached its $5 limit · raise it in /crew`.
+`-yes-spend` does not lift it, and `codeaf do` holds every run to it.
 
 **Redo is how a crew learns.** `/redo stronger` runs the last task again with
 every unpinned seat one step stronger, and the router's log records that this
