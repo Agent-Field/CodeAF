@@ -999,6 +999,10 @@ type sheet struct {
 	// farTeams is that machine's five defaults, once the seam has answered.
 	// Nil until then, and nil on a local launch.
 	farTeams *teamstore.Defaults
+	// hostNote is the settings sentence already written into the transcript
+	// for this visit. The same words are not written again when the tab
+	// moves between two tabs that share a disk.
+	hostNote string
 
 	registry *config.Settings
 	// profileDir is retained only for live explanations derived from several
@@ -1314,16 +1318,6 @@ func (a *app) openSettings() { a.showPage(pageSettings) }
 // raiseSettings builds the panel. It is [placeSettings]'s `open` and nothing
 // else calls it, which is what makes the router the one road in.
 func (a *app) raiseSettings() {
-	// THE PANEL OPENS AND SAYS WHOSE ROWS THESE ARE. Over --host it edits this
-	// machine's profile, and only some of these rows are about this machine: the
-	// mouse, the timestamps, the draft and the history are the surface's own and
-	// apply; the tool gate, the spend rail and the auxiliary models are the
-	// SESSION's, and the session reads them from the profile on the other machine.
-	// Closing the panel would take the working half away; opening it silently
-	// would let somebody turn a gate off and watch it stay on (host.go).
-	if a.hosted() {
-		a.note(settingsRemoteWord)
-	}
 	// The day's own figure, read once for the whole of this visit (see
 	// [app.spentTodayUSD]).
 	a.readDayCost()
@@ -1363,7 +1357,30 @@ func (a *app) raiseSettings() {
 	}
 	a.sheet.rows = a.sheet.registry.Rows()
 	a.sheet.build()
+	// WHOSE ROWS, SAID FOR THE TAB ON SHOW. Over --host the note is
+	// [settingsHostNote]: this machine on every tab but Teams, and the far
+	// machine on Teams when the seam can write it. It is said after the sheet
+	// exists, because the sentence is a reading of that sheet. Closing the
+	// panel would take the working rows away; opening it silently would let
+	// somebody turn a gate off and watch it stay on (host.go).
+	a.saySettingsHost()
 	a.touch()
+}
+
+// saySettingsHost writes the hosted settings sentence when it is not the one
+// already in the transcript. A local launch says nothing. Moving between two
+// tabs that share a disk says nothing again.
+func (a *app) saySettingsHost() {
+	if !a.hosted() {
+		return
+	}
+	onTeams := a.sheet.tab >= 0 && a.sheet.tab < len(settingTabs) && settingTabs[a.sheet.tab] == tabTeams
+	word := settingsHostNote(onTeams, a.host, a.sheet.teamDefaultsWrite, a.sheet.farTeams != nil)
+	if word == a.sheet.hostNote {
+		return
+	}
+	a.sheet.hostNote = word
+	a.note(word)
 }
 
 // closeSettings is the DOOR out of the panel, and it goes through the router.
@@ -2146,10 +2163,12 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// only in the message one (editundo.go).
 	if editorUndo(&s.query, msg.String()) {
 		s.build()
+		a.saySettingsHost()
 		return nil, true
 	}
 	if editorWordKill(&s.query, msg.String()) {
 		s.build()
+		a.saySettingsHost()
 		return nil, true
 	}
 
@@ -2164,6 +2183,7 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		if s.searching() {
 			s.query.reset()
 			s.build()
+			a.saySettingsHost()
 			return nil, true
 		}
 		if a.connEsc() {
@@ -2249,6 +2269,7 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			s.build()
 		}
 	}
+	a.saySettingsHost()
 	return nil, true
 }
 
@@ -2742,6 +2763,7 @@ func (a *app) readHostTeamDefaults() tea.Cmd {
 			}
 			a.sheet.farTeams = &d
 			a.sheet.build()
+			a.saySettingsHost()
 			a.touch()
 			return nil
 		}
@@ -2906,6 +2928,7 @@ func (a *app) sheetPress(x, y int) tea.Cmd {
 			a.sheet.cursor, a.sheet.top, a.sheet.msg = 0, 0, ""
 			a.sheet.conn.armed, a.sheet.conn.entry = false, nil
 			a.sheet.build()
+			a.saySettingsHost()
 			a.touch()
 		}
 	case sheetHitRow:

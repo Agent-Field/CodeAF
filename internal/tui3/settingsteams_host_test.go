@@ -89,6 +89,44 @@ func TestTeamsSettingsOverAnOlderEngineStayReadOnly(t *testing.T) {
 	}
 }
 
+// THE NOTE FOLLOWS THE TAB. A local tab says the rows are this machine's. The
+// Teams tab, over a seam that can write, says they are saved on the far
+// machine and does not repeat the local claim.
+func TestSettingsNoteFollowsTheTabOverAHostSeam(t *testing.T) {
+	a := placeApp(t)
+	far := t.TempDir()
+	a.host = "spark"
+	a.teamsDisk.door = localTeams(far, &a.teamsDisk.watch)
+	drive(t, a, key(placeChord(pageSettings)))
+	local := lastNote(t, a)
+	if local != settingsLocalWord {
+		t.Fatalf("local tab note = %q", local)
+	}
+	if strings.Contains(local, "spark") {
+		t.Fatalf("the local tab named the far machine: %q", local)
+	}
+	for settingTabs[a.sheet.tab] != tabTeams {
+		drive(t, a, key("right"))
+	}
+	if !a.sheet.teamDefaultsWrite {
+		t.Fatal("the seam did not make the Teams tab writable")
+	}
+	got := lastNote(t, a)
+	if got != "these rows are saved on spark." {
+		t.Fatalf("Teams tab note = %q", got)
+	}
+	if strings.Contains(got, "this machine") {
+		t.Fatalf("the Teams tab still claims this machine: %q", got)
+	}
+	drive(t, a, key("left"))
+	if settingTabs[a.sheet.tab] == tabTeams {
+		t.Fatal("left did not leave the Teams tab")
+	}
+	if again := lastNote(t, a); again != settingsLocalWord {
+		t.Fatalf("back on a local tab the note is %q", again)
+	}
+}
+
 func openTeamsTab(t *testing.T, a *app) {
 	t.Helper()
 	for i, title := range settingTabs {
