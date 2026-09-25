@@ -88,6 +88,15 @@ The wrap-up has 15 minutes and $2 of team spend. When it runs out of either befo
 manager reports, codeaf brings you the report itself, marked `wrap-up incomplete`, with
 **Close now** and **Keep going**.
 
+## What if the wrap-up report could not be sent, the decisions file was busy
+
+A wrap-up that runs out of its 15 minutes or its $2 before the manager reports is
+sent by codeaf itself, marked `wrap-up incomplete`, with **Close now** and **Keep
+going**. If that write cannot take the decisions file because another writer still
+holds it, the countdown stays due. The next look tries again. It does not wait for
+a restart, and it does not send the report twice. A report that did go out clears
+the countdown in memory and on disk, once.
+
 ## What happens to a wrap-up when codeaf restarts, does a wrap-up keep going if I quit codeaf
 
 The countdown is kept with the team, in `teams.json`: the moment the wrap-up began, and the

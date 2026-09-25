@@ -1092,7 +1092,11 @@ the bound minus how long since the start, and a wrap-up already past its bound r
 incomplete report on that start, once. Past either with no report, codeaf raises the
 `closing` packet itself with `Report.Incomplete`, question `close harbor? (wrap-up incomplete)`,
 options `close-now` / `keep-going`, recommended `keep-going`. A complete report has `close` /
-`keep-going`, recommended `close`. At most one closing packet waits per team.
+`keep-going`, recommended `close`. At most one closing packet waits per team. The in-memory
+clock is taken out before `Raise` so a second look during the write cannot raise another
+report. A `Raise` that fails (the decisions lock is busy, `ErrBusy` after its wait) puts
+that same clock back; the next ordinary due check tries again, and there is no retry loop
+inside the failed check. A raise that lands clears the clock in memory and on disk, once.
 
 **Accepting closes.** `teams.AcceptClosing(profile, packet)` closes `packet.Origin` with the
 packet as its report and appends a `KindClose` line, only for a decided closing packet whose
@@ -1178,8 +1182,10 @@ or `busy for <team>` (`MemberState.ReportsTo`).
   One open per manager is out at a time: choosing the team again while it is out takes that
   open up instead of asking the door twice, an answer for the manager the page is asking about
   is the page's whichever attempt carried it, and a refusal about a conversation the window now
-  holds is no refusal. Only `Retry` asks again while an open is out. Over a connection that holds
-  one conversation at a time the swap is asked on the ordered door line, never from Update.
+  holds is no refusal, and the swap uses that same check: a lock on a transcript this window
+  already holds brings that manager forward and says nothing. Only `Retry` asks again while an
+  open is out. Over a connection that holds one conversation at a time the swap is asked on the
+  ordered door line, never from Update.
 - **How the page loads.** The rail, the header and the pane's frame are drawn from memory on the
   opening frame (the teams file is the one read made on the loop, and it does not block), and
   every reading fills in place: the spend is the header's last piece, members start as members
