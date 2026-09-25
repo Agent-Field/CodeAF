@@ -288,16 +288,8 @@ func (a *app) frameBody() (string, int, int) {
 	// nothing to type into (home at rest). Set here so every path below starts
 	// from the same answer and only the ones that hide it say so.
 	a.caret = true
-	if a.railTaskPlanOn {
-		lines, caretX, caretY := a.taskPlanFrame(width, height)
-		return strings.Join(lines, "\n"), caretX, caretY
-	}
 	if a.wall.on {
 		return strings.Join(a.wallFrame(width, height), "\n"), 0, 0
-	}
-	if a.workTabOn {
-		lines := a.workTabFrame(width, height)
-		return strings.Join(lines, "\n"), 2, max(len(lines)-1, 0)
 	}
 	// AND THERE IS NO TAB BAR UNTIL A FRAME DRAWS ONE. Every place goes through
 	// [placeFrame], which records the row it put the bar on; the frames that do

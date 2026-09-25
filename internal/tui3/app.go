@@ -1852,6 +1852,9 @@ type app struct {
 	roomStop hudSpan
 	// roomBackSpan is the padded Back action in the breadcrumb row.
 	roomBackSpan hudSpan
+	// roomTabSpans is where the room's two tab names were drawn on the trail
+	// row, in tab order, and none on a frame too narrow for them (roomtabs.go).
+	roomTabSpans []hudSpan
 	// crumbs is where the breadcrumbs were drawn on the frame's first row, in
 	// columns, and what each of them opens (roomcrumbs.go). It is written by the
 	// draw — [app.roomHead] — and read by the press and the
@@ -1872,8 +1875,6 @@ type app struct {
 	// chatTabBar is the strip as it was last laid out, kept from frame to frame
 	// (chattabs.go's [tabBar] states the whole of why).
 	chatTabBar      tabBar
-	workTabOn       bool
-	railTaskPlanOn  bool
 	railPlanPending railPlanPending
 	workTabSettled  string
 	tabView         tabViewport
@@ -4354,6 +4355,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.roomBackPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
+			if cmd, took := a.roomTabPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
 			// THE TASK STRIP IS READ BEFORE THE RAIL, because the strip spans the
 			// WHOLE window and the rail claims every press in its own columns
 			// whether or not one landed on a row (room.go) — asked the other way
@@ -4757,6 +4761,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case farRoomTickMsg:
 		return a, a.farRoomPoll(msg.gen)
 
+	case planRoomTickMsg:
+		// A RUN'S TASK'S PAGE, one beat later (planroom.go).
+		return a, a.planRoomPoll(msg.gen)
+
 	case jobLogMsg:
 		// A BACKGROUND JOB'S LOG, ONE READING LATER (roomjoblog.go). The reader
 		// itself decides whether another beat is owed, because the row it watches
@@ -5154,11 +5162,6 @@ func (a *app) paint() tea.Cmd {
 	if a.room != nil {
 		a.room.dirty = true
 	}
-	// AND THE PLAN PAGE'S OWN READING IS TAKEN ON THE SAME CLOCK, for the same
-	// reason: a page left open on a running task follows its newest step
-	// ([app.taskPlanFollow]), and a page on a settled task is not read at all —
-	// the clock stops with the task, one row down.
-	kick = tea.Batch(kick, a.taskPlanFollow())
 	// A TOOL THAT HAS JUST ENDED IS ASKED ABOUT ON THIS FRAME, not at the next
 	// tenth ([app.usageOwed]) — the ask alone, because nothing else on this
 	// beat has moved with it. ONLY WHILE THE WORK IS STILL RUNNING: the ask is
@@ -5346,11 +5349,11 @@ func (a *app) paint() tea.Cmd {
 		// row, an opened tile growing into the frame, and a working tile's
 		// spinner, each a function of this clock's time (wall.go).
 		a.wallAnimating() ||
-		// AND A PLAN PAGE ON A RUNNING TASK IS THE SEVENTEENTH, and it is the
-		// fourth that can be the whole of what is happening: the page follows a
-		// live edge the store writes from another process, and no turn of ours
-		// runs while it moves (taskplan.go's [app.taskPlanFollow]).
-		a.taskPlanRunning()
+		// AND A RUN'S TASK'S ROOM ON WORK THAT IS STILL GOING IS THE SEVENTEENTH,
+		// and it is the fourth that can be the whole of what is happening: the
+		// room follows a live edge the store writes from another process, and no
+		// turn of ours runs while it moves (planroom.go's [app.planRoomPoll]).
+		a.planRoomRunning()
 	// THE WAIT ON THE MODEL is the only term that can hold this clock while
 	// the screen shows nothing but the spinner and the ellipsis, and a spinner
 	// glyph only changes every spinnerStep-th paint (styles.go). A wait whose
@@ -6924,6 +6927,12 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		// top of it — and that header row is pressable in its own right
 		// ([app.roomBackPress]), which is the pointer's share of the same exit.
 		return
+	}
+	// A ROW UNDER A RUN'S TASK STANDS FOR ANOTHER TASK OF THE RUN, and a press
+	// on it opens that task's room, the way its row on the side list does
+	// (planroom.go's [app.planRoomPartRows]).
+	if r.plan != "" && a.roomPlan() != nil {
+		return a.openRailPlan(r.plan, nil)
 	}
 	// A TASK LINK IS THE ONE TARGET INSIDE A ROW, so it is resolved before the
 	// row's own answer: the prose it sits in has no gesture of its own, and a

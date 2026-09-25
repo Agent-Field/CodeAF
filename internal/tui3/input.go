@@ -352,13 +352,6 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		a.railPlanPending.keys = append(a.railPlanPending.keys, msg)
 		return nil
 	}
-	if a.railTaskPlanOn && !door {
-		cmd := a.taskPlanKey(msg)
-		if !a.taskSheet.planOn {
-			a.railTaskPlanOn = false
-		}
-		return cmd
-	}
 	// A key ends an opened tile's zoom, so what it types is drawn whole.
 	a.wallZoomDone()
 	// The team switcher is a menu, and a menu has the keyboard while it is up
@@ -371,9 +364,6 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	if !door && wallOpenPressed(msg) {
 		return a.openWall()
-	}
-	if a.workTabOn {
-		return a.workTabKey(msg)
 	}
 	if cmd, taken := a.pasteChipKey(msg); taken {
 		return cmd

@@ -1268,7 +1268,6 @@ func (a *app) tabGo(tab chatTab) (cmd tea.Cmd) {
 	if tab.work {
 		return a.openWorkTab()
 	}
-	a.workTabOn = false
 	a.tabReveal()
 	if tab.start {
 		return a.openChatStart()
