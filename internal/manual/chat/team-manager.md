@@ -18,7 +18,8 @@ like `@security` for `santosh dev2 branch code complexity & security review`, `@
 for `CodeAF repo issue tags & milestones` or `@gravity` for `quantum gravity research updates`.
 The moment a member has a title it gets a quick guess from the title's words, so it can be
 addressed at once; then, when the conversation's title is made, the same cheap model that
-names conversations chooses the word, once, for a few tokens. If another member of the team
+names conversations chooses the word, once, for a few tokens. A timeout or a dropped
+connection is asked once more, a moment later; a refusal is not, and the guess stands. If another member of the team
 already has that word, the member takes the model's second choice, or the word with one word
 of its title in front, like `@api-security`. A handle a person or the manager gave, like the
 one `team_start` names a new member by, is never replaced, and a handle the model chose is not

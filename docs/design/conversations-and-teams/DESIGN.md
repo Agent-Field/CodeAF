@@ -208,8 +208,9 @@ tags & milestones" and "quantum gravity research updates / session monitor". So:
   a title, so it is addressable at once;
 - the title model chooses the word when the conversation's title is made
   (`internal/session`'s `handlepick.go`): one call on the title role, a few tokens, asking
-  for the subject and two alternates; over `--host` it runs on the engine, which owns the
-  model and the store;
+  for the subject and two alternates. A timeout or a network failure is asked once more
+  after a short wait; a refusal is not, and the word-list guess stands. Still one question
+  per title. Over `--host` it runs on the engine, which owns the model and the store;
 - `teams.File.ChooseHandle` writes it under the store's lock: the first free word, else the
   first with a title word in front (`@api-security`), numbered only when nothing else fits;
 - `Member.HandleBy` records who chose (`words`, `model`, `typed`); a handle a person or the

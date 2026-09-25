@@ -2,13 +2,16 @@ package session
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -230,5 +233,119 @@ func TestCleanHandleChoices(t *testing.T) {
 		if got := strings.Join(cleanHandleChoices(raw), " "); got != want {
 			t.Errorf("cleanHandleChoices(%q) = %q, want %q", raw, got, want)
 		}
+	}
+}
+
+// flakyHandle is a title model that fails its first handle asks, then answers.
+type flakyHandle struct {
+	mu    sync.Mutex
+	left  int
+	err   error
+	words string
+	asks  int
+}
+
+func (f *flakyHandle) CompleteWithMessages(ctx context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+	last := ""
+	if len(messages) > 0 {
+		last = messageContentText(messages[len(messages)-1])
+	}
+	if !strings.Contains(last, handleAsk) {
+		return textResponse("ok"), nil
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.asks++
+	if f.left > 0 {
+		f.left--
+		return nil, f.err
+	}
+	return textResponse(f.words), nil
+}
+
+func (f *flakyHandle) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.asks
+}
+
+// A TRANSIENT FAILURE IS ASKED ONCE MORE. The first call times out, the second
+// answers, and a later turn does not ask again: still one question per title.
+func noHandleWait(t *testing.T) {
+	t.Helper()
+	prev := handleBackoff
+	handleBackoff = func(ctx context.Context, _ time.Duration) error { return ctx.Err() }
+	t.Cleanup(func() { handleBackoff = prev })
+}
+
+func TestAHandleAskRetriesOnceAfterATimeout(t *testing.T) {
+	noHandleWait(t)
+	f := newHandleFixture(t)
+	model := &flakyHandle{left: 1, err: context.DeadlineExceeded, words: "security"}
+	agent, _ := newTestAgent(t, model, func(config *Config) {
+		config.ProfileDir = f.profile
+		config.SessionFile = f.paths["review"]
+		config.Place = Place{Dir: filepath.Dir(f.paths["review"])}
+	})
+	agent.mu.Lock()
+	agent.title = handleTitles["review"]
+	agent.mu.Unlock()
+	submitAndWait(t, agent, "carry on")
+	agent.titleJobs.Wait()
+	if m := f.member(t, "review"); m.Handle != "security" || m.HandleBy != teams.HandleByModel {
+		t.Fatalf("a timeout then an answer left %+v", m)
+	}
+	if got := model.count(); got != 2 {
+		t.Fatalf("the model was asked %d times, want one retry", got)
+	}
+	submitAndWait(t, agent, "and again")
+	agent.titleJobs.Wait()
+	if got := model.count(); got != 2 {
+		t.Fatalf("a second turn asked again: %d asks", got)
+	}
+}
+
+// A REFUSAL IS NOT ASKED AGAIN. The guess stands.
+func TestAHandleAskRetriesOnceAfterANetworkFailure(t *testing.T) {
+	noHandleWait(t)
+	f := newHandleFixture(t)
+	model := &flakyHandle{left: 1, err: errors.New("read: connection reset by peer"), words: "gravity"}
+	agent, _ := newTestAgent(t, model, func(config *Config) {
+		config.ProfileDir = f.profile
+		config.SessionFile = f.paths["session"]
+		config.Place = Place{Dir: filepath.Dir(f.paths["session"])}
+	})
+	agent.mu.Lock()
+	agent.title = handleTitles["session"]
+	agent.mu.Unlock()
+	submitAndWait(t, agent, "carry on")
+	agent.titleJobs.Wait()
+	if m := f.member(t, "session"); m.Handle != "gravity" {
+		t.Fatalf("a dropped connection then an answer left %+v", m)
+	}
+	if got := model.count(); got != 2 {
+		t.Fatalf("the model was asked %d times, want one retry", got)
+	}
+}
+
+func TestAHandleAskDoesNotRetryARefusal(t *testing.T) {
+	noHandleWait(t)
+	f := newHandleFixture(t)
+	model := &flakyHandle{left: 2, err: &provider.APIError{Status: 400, Message: "invalid request body"}, words: "security"}
+	agent, _ := newTestAgent(t, model, func(config *Config) {
+		config.ProfileDir = f.profile
+		config.SessionFile = f.paths["review"]
+		config.Place = Place{Dir: filepath.Dir(f.paths["review"])}
+	})
+	agent.mu.Lock()
+	agent.title = handleTitles["review"]
+	agent.mu.Unlock()
+	submitAndWait(t, agent, "carry on")
+	agent.titleJobs.Wait()
+	if m := f.member(t, "review"); m.Handle != "review" {
+		t.Fatalf("a refusal replaced the guess: %+v", m)
+	}
+	if got := model.count(); got != 1 {
+		t.Fatalf("a refusal was asked %d times, want 1", got)
 	}
 }
