@@ -59,17 +59,27 @@ func (a *app) teamsHostRail() int {
 
 // teamsSync settles the page after every message: the selection, the manager
 // the pane hosts, and the rail's width. It reads memory only, and costs one
-// comparison on every other place.
-func (a *app) teamsSync() {
+// comparison on every other place. When the selected team's manager is not in
+// front and nothing has tried to bring it, it starts that attempt and hands
+// back its command (teamsopen.go), so no road to this state leaves the pane
+// saying `opening` with nothing behind the word.
+func (a *app) teamsSync() tea.Cmd {
 	if !a.at(pageTeams) {
 		a.tp.host = ""
-		return
+		return nil
 	}
 	a.teamsSettle()
 	host := ""
-	if t, ok := a.teamsSelected(); ok && !t.Closed() && t.Manager != "" && !a.teamsOff() && t.Manager == a.frontTabKey() {
-		host = t.Manager
-		a.tp.opening = ""
+	var bring tea.Cmd
+	if t, ok := a.teamsSelected(); ok && !t.Closed() && t.Manager != "" && !a.teamsOff() {
+		if t.Manager == a.frontTabKey() {
+			host = t.Manager
+			if a.tp.open.key != t.Manager || !a.tp.open.done {
+				a.tp.open = teamsOpen{key: t.Manager, gen: a.tp.open.gen, done: true}
+			}
+		} else if !a.tp.forwarding {
+			bring = a.teamsKeepManager(t)
+		}
 	}
 	if host != a.tp.host {
 		a.tp.host = host
@@ -80,6 +90,7 @@ func (a *app) teamsSync() {
 		a.tp.focus = true
 	}
 	a.tp.railW = teamsRailCols(a.width)
+	return bring
 }
 
 // ── THE FRAME ───────────────────────────────────────────────────────────────
@@ -347,12 +358,23 @@ func (a *app) teamsRouteMouse(msg tea.Msg, m tea.Mouse) (tea.Cmd, bool) {
 // teamsForward hands one message to the hosted conversation as if no place were
 // standing, and puts the page back after it unless the message itself went
 // somewhere else (a place, a page, another conversation's own screen).
+//
+// A MESSAGE THAT PUT ANOTHER CONVERSATION IN FRONT TAKES THE PERSON TO IT. A
+// press on a Traffic row goes to that member through the chat surface's own
+// door ([app.trafficPress], [app.trafficGo]), and the member is what the person
+// asked to see: the page steps down for it exactly as a press on a member row
+// does ([app.teamsMemberGo]), rather than standing over a conversation it does
+// not host with the manager's pane saying `opening`.
 func (a *app) teamsForward(msg tea.Msg) tea.Cmd {
+	front := a.frontTabKey()
 	a.tp.forwarding, a.page = true, pageNone
 	_, cmd := a.route(msg)
 	a.tp.forwarding = false
 	if !a.pageShowing() {
 		a.page = pageTeams
+		if a.frontTabKey() != front {
+			a.leavePlace()
+		}
 	} else if !a.at(pageTeams) {
 		// The message walked to another place; this one closes as it would
 		// have under the router.

@@ -79,6 +79,10 @@ func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 		return a.teamsPrompt(t.arg, t.opt)
 	case teamsActUndo:
 		return a.teamsUndoClose()
+	case teamsActRetryManager:
+		return a.teamsRetryManager()
+	case teamsActOpenInChats:
+		return a.teamsOpenInChats()
 	}
 	return nil
 }
@@ -95,20 +99,6 @@ func (a *app) teamsSelect(id string) tea.Cmd {
 	}
 	a.touch()
 	return tea.Batch(a.teamsBringManager(), a.teamsRead(false))
-}
-
-// teamsBringManager brings the selected team's manager in front when it is not
-// there yet. It is the one move of the front this page makes, and only ever
-// for the team the person chose: the conversation that was in front stays
-// open behind, one `tab` away.
-func (a *app) teamsBringManager() tea.Cmd {
-	t, ok := a.teamsSelected()
-	if !ok || t.Closed() || t.Manager == "" || a.teamsOff() || t.Manager == a.frontTabKey() {
-		a.tp.opening = ""
-		return nil
-	}
-	a.tp.opening = t.Manager
-	return a.trafficGo(t.Manager)
 }
 
 // teamsMemberGo is a press on a member: one this window holds is opened, and
@@ -189,10 +179,12 @@ func (a *app) teamsResumeBehind(m teamMember) tea.Cmd {
 
 // teamsManagerStart is `+ Manager` on team id: a new conversation in the
 // team's folder, made its manager, and in front for the person's first words
-// to it, which is where the pane draws it.
+// to it, which is where the pane draws it. A team whose manager's transcript is
+// gone ([app.teamsManagerMissing]) is offered it too, and the new conversation
+// replaces the manager the team named.
 func (a *app) teamsManagerStart(id string) tea.Cmd {
 	t, ok := a.teamByID(id)
-	if !ok || t.Manager != "" || t.Closed() {
+	if !ok || (t.Manager != "" && !a.teamsManagerMissing(t)) || t.Closed() {
 		return nil
 	}
 	if a.teamsOff() {

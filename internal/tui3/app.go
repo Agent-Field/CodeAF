@@ -3327,7 +3327,9 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// AND THE TEAMS PAGE SETTLES WHICH CONVERSATION ITS PANE HOSTS, after
 	// every message that could have moved the front (teamspagehost.go). One
 	// comparison on every other place.
-	a.teamsSync()
+	if bring := a.teamsSync(); bring != nil {
+		cmd = tea.Batch(cmd, bring)
+	}
 	// AND THE TERMINAL'S TITLE IS ASKED AFTER EVERY MESSAGE, because this is
 	// the one place every change to where a person stands has already happened
 	// by — a place entered, a name arriving, a question coming up — and it is
