@@ -355,8 +355,8 @@ var settingUI = map[string]settingMeta{
 	// offers a blank line is asking a person to be the catalog.
 	config.KeyTaskModel: {
 		tab: tabTasks, label: "task model", widget: widgetSelect,
-		about: "the model a task runs on when you have not asked for another. " +
-			"Blank runs it on the model you are talking to.",
+		about: "the model a task's worker runs on when you have not asked for another. " +
+			"Blank leaves it to the crew: your /crew pin, or the model picked for each task.",
 	},
 	// THE CREW'S THREE SEATS ARE REGISTRY ROWS AND ARE NOT DRAWN AS THREE ROWS.
 	// Each is empty for AUTO — codeaf routes that seat per task — and a model id
@@ -2027,7 +2027,7 @@ func (s *sheet) crewDoorItem(terms []fuzzy.Term) sheetItem {
 	}
 	value += " · per task " + config.CrewTaskMoney(config.CrewTaskCapAt(s.profileDir))
 	if capUSD := config.CrewCapAt(s.profileDir); capUSD > 0 {
-		value += " · daily " + crewroute.Money(capUSD)
+		value += " · " + crewDailyCapWord + " " + crewroute.Money(capUSD)
 	}
 	return sheetItem{
 		crewDoor: true, crewValue: value, hitAt: hitAt, hitLen: hitLen,

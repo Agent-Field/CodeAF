@@ -159,12 +159,12 @@ travels whole and the level is applied per call by the role ladder, exactly as
 it is in the chat; the slug sent to the provider is the model alone.
 
 **Every run says which rung answered**, on stderr, before anything else, and
-under it the crew line — the class, the worker and its route, the checker (📌
-on a pinned seat) and the estimate:
+under it the crew line — the class, the worker and its route, the checker
+(`(pinned)` after a pinned model) and the estimate:
 
 ```
 models: worker z-ai/glm-5.3-flash (routed) · planner z-ai/glm-5.3-flash (routed) · checker moonshotai/kimi-k3 (pinned)
-crew: bugfix · worker glm-5.3-flash (openrouter) · checker 📌 kimi-k3 · est $0.023
+crew: bugfix · worker glm-5.3-flash (openrouter) · checker kimi-k3 (pinned) · est $0.023
 ```
 
 When the run ends the `crew:` line is said again with the actual beside the

@@ -505,17 +505,22 @@ func TestTheSpendLinesASeatCallIsHeldTo(t *testing.T) {
 		t.Fatal(err)
 	}
 	ceilings := CrewSeatCeilings(d)
-	if est, got := d.Seat(crewroute.Checker).EstUSD, ceilings[d.Seat(crewroute.Checker).Send]; est <= 0 || math.Abs(got-3*est) > 1e-9 {
+	if est, got := d.Seat(crewroute.Checker).EstUSD, ceilings[crewroute.Checker]; est <= 0 || math.Abs(got-3*est) > 1e-9 {
 		t.Errorf("the open-ended kimi checker's ceiling is $%.3f (estimate $%.3f)", got, d.Seat(crewroute.Checker).EstUSD)
 	}
-	// One model in every seat: the spend the guard keeps is the model's, so
-	// the checker's line would stop the worker, and there is none.
+	// ONE MODEL IN EVERY SEAT STILL HAS A CHECKER CEILING: it is the seat's,
+	// not the model's, so a fresh profile's one-model narrow fix keeps it.
 	one := crewroute.Decision{Crew: []crewroute.Pick{
 		{Seat: crewroute.Worker, Model: "vendor/cheap", Send: "vendor/cheap"},
+		{Seat: crewroute.Planner, Model: "vendor/cheap", Send: "vendor/cheap"},
 		{Seat: crewroute.Checker, Model: "vendor/cheap", Send: "vendor/cheap", EstUSD: 0.01},
 	}}
-	if got := CrewSeatCeilings(one); got != nil {
-		t.Errorf("a checker sharing the worker's model has a ceiling: %v", got)
+	if got := CrewSeatCeilings(one)[crewroute.Checker]; got != 0.05 {
+		t.Errorf("a shared model's checker ceiling is %v, want $0.05", got)
+	}
+	one.Crew[2].EstUSD = 0.04
+	if got := CrewSeatCeilings(one)[crewroute.Checker]; math.Abs(got-0.12) > 1e-9 {
+		t.Errorf("a shared model's checker ceiling is %v, want $0.12", got)
 	}
 }
 

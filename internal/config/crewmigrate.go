@@ -79,9 +79,9 @@ func legacyCrewClearing(profileDir string) map[string]any {
 	return values
 }
 
-// MigrateCrew writes a retired crew's reading down, once, and answers the one
-// line that says so — empty for a profile with nothing to migrate, which is
-// every profile after the first run of this build.
+// MigrateCrew writes a retired crew's reading down, once, and splits any old
+// model@provider tier row into a model row and a route row. The split alone
+// answers no line because it changes no route the person chose.
 //
 // THE LINE IS SAID ONCE BECAUSE THE MIGRATION IS DONE ONCE: after it, the
 // retired rows are gone and nothing is left to say it about. It names what
@@ -89,11 +89,29 @@ func legacyCrewClearing(profileDir string) map[string]any {
 // the half that did not.
 func MigrateCrew(profileDir string) (string, error) {
 	values := legacyCrewClearing(profileDir)
+	retired := len(values) > 0
+	// A PRIOR BUILD WROTE THE ROUTE INTO THE MODEL ROW. Split it without a
+	// notice because the person's pin and the route it takes have not changed.
+	for _, seat := range crewroute.Seats {
+		row := tierKeyFor(CrewSeatTier(seat))
+		raw, held := persistedString(profileDir, row)
+		if !held {
+			continue
+		}
+		pin, auto, err := ParseCrewPin(raw)
+		if err == nil && !auto && pin.Provider != "" {
+			values[row] = pin.Model
+			values[crewRouteKey(seat)] = pin.String()
+		}
+	}
 	if len(values) == 0 {
 		return "", nil
 	}
 	if err := writeProfileValues(profileDir, values); err != nil {
 		return "", err
+	}
+	if !retired {
+		return "", nil
 	}
 	// The seats in the order the manual and the panel list them.
 	var kept []string

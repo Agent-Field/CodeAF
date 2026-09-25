@@ -4292,7 +4292,8 @@ pinned either way. Asked in words — "do this one properly, cost no object" —
 that grooms the work sets the hand-off's `effort` field to `best` or `cheap`, and it means
 the same; it leaves the field out unless you said how hard to try.
 
-**The task says its crew in one line, rewritten in place.** When it starts, it gives the
+**The task says its crew in one line, rewritten in place while it runs and moved to the end
+of the conversation when it lands.** When it starts, it gives the
 class it was read as, the models on the seats and what it is expected to cost:
 
 ```

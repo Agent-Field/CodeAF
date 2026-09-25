@@ -195,12 +195,8 @@ func (s Seats) Report() string {
 	if s.Crew == nil {
 		return s.Line()
 	}
-	return s.Line() + "\ncrew: " + s.Crew.Line(PinMark, -1)
+	return s.Line() + "\ncrew: " + s.Crew.Line("", -1)
 }
-
-// PinMark is the mark a pinned seat wears on a headless line. The chat
-// surface draws its own, from its icon vocabulary.
-const PinMark = "📌"
 
 // SeatFlags are the three seat flags a door took.
 type SeatFlags struct {

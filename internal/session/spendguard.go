@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 )
 
 // A SEAT'S NEXT CALL IS PRICED BEFORE IT IS MADE.
@@ -30,7 +31,8 @@ import (
 // after, so the next estimate starts from the truth.
 
 // SpendPrice is a model's price per token: prompt, completion and cache read.
-// ok is false for a model nobody prices, whose calls the guard does not stop.
+// ok is false for a model whose price nobody knows; a line already reached
+// still stops it. A known price of nothing is never stopped.
 type SpendPrice func(model string) (prompt, completion, cacheRead float64, ok bool)
 
 // SpendDay is today's spend as this process knows it: what the ledger said
@@ -114,7 +116,7 @@ func (d *SpendDay) lastCost(model string) float64 {
 
 // SpendGuard holds a task's seat calls to the day's cap and to each seat's
 // own ceiling. The zero parts are off: no Day or no Cap is no day cap, and a
-// model with no Ceilings entry has no ceiling of its own.
+// seat with no SeatCeilings entry has no ceiling of its own.
 type SpendGuard struct {
 	Price SpendPrice
 	Day   *SpendDay
@@ -122,10 +124,10 @@ type SpendGuard struct {
 	// stops ends on.
 	Cap       float64
 	CapAction string
-	// Ceilings are a model's own spend ceiling on this task, and
+	// SeatCeilings are a seat's own spend ceiling on this task, and
 	// CeilingAction the sentence (with the ceiling's dollars) a call it stops
 	// ends on.
-	Ceilings      map[string]float64
+	SeatCeilings  map[crewroute.Seat]float64
 	CeilingAction string
 	// TaskCap is the most the task may spend in dollars, across every model
 	// this guard prices, and TaskAction the sentence a call it stops ends on.
@@ -137,8 +139,9 @@ type SpendGuard struct {
 	// the guard's own, made on its first call.
 	Task *SpendTask
 
-	mu    sync.Mutex
-	spent map[string]float64
+	mu         sync.Mutex
+	modelSpent map[string]float64
+	seatSpent  map[crewroute.Seat]*SpendTask
 }
 
 // SpendTask is what one task has spent and holds in flight, across every
@@ -193,6 +196,19 @@ func (g *SpendGuard) tally() *SpendTask {
 	return g.Task
 }
 
+// seatTally holds one seat's spend and in-flight estimates across model changes.
+func (g *SpendGuard) seatTally(seat crewroute.Seat) *SpendTask {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.seatSpent == nil {
+		g.seatSpent = make(map[crewroute.Seat]*SpendTask)
+	}
+	if g.seatSpent[seat] == nil {
+		g.seatSpent[seat] = &SpendTask{}
+	}
+	return g.seatSpent[seat]
+}
+
 // ErrSpendStopped is a call the guard did not make. Its text is the one
 // sentence that says which line it met.
 type ErrSpendStopped struct{ Action string }
@@ -217,7 +233,7 @@ func (g *SpendGuard) Wrap(model string, next Completer) Completer {
 
 // before is whether a call to model with these messages may be made, and
 // what it holds on the day until [SpendGuard.after] settles it.
-func (g *SpendGuard) before(model string, messages []ai.Message, options []ai.Option) (float64, error) {
+func (g *SpendGuard) before(ctx context.Context, model string, messages []ai.Message, options []ai.Option) (float64, error) {
 	if g == nil {
 		return 0, nil
 	}
@@ -227,30 +243,55 @@ func (g *SpendGuard) before(model string, messages []ai.Message, options []ai.Op
 		prompt, completion, cacheRead, ok = g.Price(model)
 	}
 	if !ok {
-		// A call nobody prices is not estimated, but a task already at its
-		// limit makes no more calls of any kind.
+		// A CALL WHOSE PRICE NOBODY KNOWS HAS NO ESTIMATE, BUT A LINE ALREADY
+		// REACHED STOPS IT: a day at its cap, a task at its limit and a checker
+		// at its ceiling make no more such calls, on the same sentence a priced
+		// call ends on. Below every line it goes as it always has, and what it
+		// cost is counted after when the provider says.
+		if g.Cap > 0 && g.Day.Total() >= g.Cap {
+			return 0, ErrSpendStopped{Action: g.CapAction}
+		}
 		if g.TaskCap > 0 && g.tally().Total() >= g.TaskCap {
 			return 0, ErrSpendStopped{Action: g.TaskAction}
 		}
+		if seat := crewSeatOf(ctx); g.SeatCeilings[seat] > 0 && g.seatTally(seat).Total() >= g.SeatCeilings[seat] {
+			ceiling := g.SeatCeilings[seat]
+			return 0, ErrSpendStopped{Action: fmt.Sprintf(g.CeilingAction, ceiling)}
+		}
+		return 0, nil
+	}
+	if prompt <= 0 && completion <= 0 {
+		// A CALL THAT COSTS NOTHING IS NEVER STOPPED BY A DOLLAR LINE. A free
+		// pool, a local model and a subscription plan are priced at nothing,
+		// and a price of nothing is a price: no cap, limit or ceiling can be
+		// crossed by it, so none of them holds it.
 		return 0, nil
 	}
 	g.mu.Lock()
-	seatSpent := g.spent[model]
+	modelSpent := g.modelSpent[model]
 	g.mu.Unlock()
-	est := g.estimate(messages, options, prompt, completion, cacheRead, seatSpent > 0)
+	est := g.estimate(messages, options, prompt, completion, cacheRead, modelSpent > 0)
 	if last := g.Day.lastCost(model); last > est {
 		est = last
 	}
-	if ceiling := g.Ceilings[model]; ceiling > 0 && seatSpent+est > ceiling {
+	seat := crewSeatOf(ctx)
+	ceiling := g.SeatCeilings[seat]
+	if ceiling > 0 && !g.seatTally(seat).hold(est, ceiling) {
 		return 0, ErrSpendStopped{Action: fmt.Sprintf(g.CeilingAction, ceiling)}
 	}
 	task := g.tally()
 	if !task.hold(est, g.TaskCap) {
+		if ceiling > 0 {
+			g.seatTally(seat).settle(est, 0)
+		}
 		return 0, ErrSpendStopped{Action: g.TaskAction}
 	}
 	held, fits := g.Day.hold(model, est, g.Cap)
 	if !fits {
 		task.settle(est, 0)
+		if ceiling > 0 {
+			g.seatTally(seat).settle(est, 0)
+		}
 		return 0, ErrSpendStopped{Action: g.CapAction}
 	}
 	if g.Day == nil {
@@ -279,7 +320,7 @@ func (g *SpendGuard) estimate(messages []ai.Message, options []ai.Option, prompt
 }
 
 // after releases what before held and records what a call to model cost.
-func (g *SpendGuard) after(model string, response *ai.Response, held float64) {
+func (g *SpendGuard) after(ctx context.Context, model string, response *ai.Response, held float64) {
 	if g == nil {
 		return
 	}
@@ -287,6 +328,9 @@ func (g *SpendGuard) after(model string, response *ai.Response, held float64) {
 	if response == nil || response.Usage == nil {
 		g.Day.settle(model, held, 0)
 		task.settle(held, 0)
+		if seat := crewSeatOf(ctx); g.SeatCeilings[seat] > 0 {
+			g.seatTally(seat).settle(held, 0)
+		}
 		return
 	}
 	usd := 0.0
@@ -301,14 +345,17 @@ func (g *SpendGuard) after(model string, response *ai.Response, held float64) {
 	}
 	g.Day.settle(model, held, usd)
 	task.settle(held, usd)
+	if seat := crewSeatOf(ctx); g.SeatCeilings[seat] > 0 {
+		g.seatTally(seat).settle(held, usd)
+	}
 	if usd <= 0 {
 		return
 	}
 	g.mu.Lock()
-	if g.spent == nil {
-		g.spent = map[string]float64{}
+	if g.modelSpent == nil {
+		g.modelSpent = map[string]float64{}
 	}
-	g.spent[model] += usd
+	g.modelSpent[model] += usd
 	g.mu.Unlock()
 }
 
@@ -328,12 +375,12 @@ func (c guardedCompleter) CompleteWithMessages(ctx context.Context, messages []a
 	if request.Model != "" {
 		model = request.Model
 	}
-	held, err := c.guard.before(model, messages, options)
+	held, err := c.guard.before(ctx, model, messages, options)
 	if err != nil {
 		return nil, err
 	}
 	response, err := c.next.CompleteWithMessages(ctx, messages, options...)
-	c.guard.after(model, response, held)
+	c.guard.after(ctx, model, response, held)
 	return response, err
 }
 

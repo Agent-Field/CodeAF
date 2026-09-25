@@ -150,7 +150,7 @@ func TestAnErrandWithNoFlagsRunsARoutedCrewAndSaysSo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the errand did not settle cleanly: %v\nstderr:\n%s", err, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "crew: ") || !strings.Contains(stderr.String(), config.PinMark+" strong") {
+	if !strings.Contains(stderr.String(), "crew: ") || !strings.Contains(stderr.String(), "checker strong (pinned)") || strings.Contains(stderr.String(), "📌") {
 		t.Fatalf("the run never said its crew with the pinned checker marked:\n%s", stderr.String())
 	}
 
@@ -165,6 +165,14 @@ func TestAnErrandWithNoFlagsRunsARoutedCrewAndSaysSo(t *testing.T) {
 	}
 	if fields["check_model"] != "vendor/strong" || fields["check_model_source"] != "pinned" {
 		t.Fatalf("--json named the checker %v (%v), want the pin", fields["check_model"], fields["check_model_source"])
+	}
+	crew, ok := fields["crew"].(map[string]any)
+	if !ok {
+		t.Fatalf("--json crew is %T", fields["crew"])
+	}
+	checker, ok := crew["checker"].(map[string]any)
+	if !ok || checker["pinned"] != true {
+		t.Fatalf("--json checker pin is %v", crew["checker"])
 	}
 	if fields["model_source"] != "routed" {
 		t.Fatalf("--json named the worker's rung %v, want routed", fields["model_source"])

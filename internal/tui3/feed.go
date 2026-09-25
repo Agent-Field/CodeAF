@@ -1346,6 +1346,28 @@ func (f *feed) renote(old, text string, facts []string) bool {
 	return false
 }
 
+// moveNote takes the newest note saying old out of its place and says text as
+// a new note at the end of the thread: a line that is one fact still settling
+// while it runs, but whose last word is news when it arrives (a task's crew
+// line on landing, crew.go). A note that is not the newest entry is left as an
+// empty, stale block rather than cut out, the way [feed.dropLive] leaves one,
+// because a later entry may hold its index.
+func (f *feed) moveNote(old, text string, facts []string) {
+	for i := len(f.entries) - 1; i >= 0; i-- {
+		e := &f.entries[i]
+		if e.kind != entryNote || e.text != old {
+			continue
+		}
+		if i == len(f.entries)-1 {
+			f.entries = f.entries[:i]
+		} else {
+			f.entries[i] = entry{kind: entryAssistant, turn: e.turn, stale: true}
+		}
+		break
+	}
+	f.noteWritten(text, false, facts)
+}
+
 // ── AN ATTEMPT THAT NEVER HAPPENED ──────────────────────────────────────────
 
 // retry is a cut request being asked again (internal/provider's streamguard.go).

@@ -399,12 +399,12 @@ rung answered it — and under it the class the task was read as and the estimat
 
 ```
 models: worker z-ai/glm-5.3-flash (routed) · planner z-ai/glm-5.3-flash (routed) · checker moonshotai/kimi-k3 (pinned)
-crew: bugfix · worker glm-5.3-flash (openrouter) · checker 📌 kimi-k3 · est $0.023
+crew: bugfix · worker glm-5.3-flash (openrouter) · checker kimi-k3 (pinned) · est $0.023
 ```
 
-A seat you pinned wears `📌`, so `checker 📌 kimi-k3` is a checker pinned with `/crew pin`.
+A seat you pinned reads `checker kimi-k3 (pinned)` on the headless crew line.
 When the run ends, the `crew:` line is said again with what it actually cost beside the
-estimate: `crew: bugfix · worker glm-5.3-flash (openrouter) · checker 📌 kimi-k3 · $0.021 (est $0.023)`.
+estimate: `crew: bugfix · worker glm-5.3-flash (openrouter) · checker kimi-k3 (pinned) · $0.021 (est $0.023)`.
 
 **Every model flag is a one-task pin.** `--model`, `--plan-model` and `--check-model` pin the
 worker, planner and checker for this run and no other, and `CODEAF_MODEL`,
@@ -442,7 +442,7 @@ are a person at a terminal running one thing, so they **warn and go on**:
 `note: today's crew spend has reached the daily cap · this run goes ahead; `codeaf do` would have stopped`.
 
 With `--json`, `codeaf do` carries the crew too: `class` (the kind of work the task was read
-as), `crew` (each seat's `model`, `provider`, `kind`, `pinned` and `est_usd`), `est_usd` for
+as), `crew` (each seat's `model`, `provider`, `kind`, `pinned` and `est_usd`; `crew.<seat>.pinned` is true for a pin), `est_usd` for
 the whole crew beside `spend_usd`, `effort` when `--best` or `--cheap` was given, and
 `check_model` with `check_model_source` beside the worker's `model_source` and the planner's
 `plan_model_source`.

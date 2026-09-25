@@ -2325,12 +2325,12 @@ func (s *Settings) build() []Setting {
 		// are made.
 		Setting{
 			Key: KeyTaskModel, Category: CategoryTasks, Kind: SettingText,
-			Label: "task model", EmptyLabel: "follows the conversation",
-			Hint: "the model a task runs on when you have not asked for another one — " +
-				"`anthropic/claude-opus-5`. Leave it blank and a task rides the crew's " +
-				"worker row, and the model you are talking to when that row is blank too. " +
-				"You can still say which model a particular piece of work should go to, and " +
-				"the proposal names the one it will start on.",
+			Label: "task model", EmptyLabel: "the crew's worker",
+			Hint: "the model a task's worker runs on when you have not asked for another one — " +
+				"`anthropic/claude-opus-5`. Leave it blank and the worker is the crew's: " +
+				"your /crew pin, or the model the crew picks for that task. You can still " +
+				"say which model a particular piece of work should go to, and the proposal " +
+				"names the one it will start on.",
 			read:  func() string { return TaskModelAt(dir) },
 			write: func(raw string) error { return writeText(dir, KeyTaskModel, raw) },
 		},
