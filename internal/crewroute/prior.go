@@ -79,6 +79,15 @@ type cell struct {
 	N       int     `json:"n"`
 }
 
+// costCell is one measured seat cost: dollars per task.
+type costCell struct {
+	Class Class   `json:"class"`
+	Seat  Seat    `json:"seat"`
+	Model string  `json:"model"`
+	USD   float64 `json:"usd"`
+	N     int     `json:"n"`
+}
+
 // table is prior.json read.
 type table struct {
 	Measured string           `json:"measured"`
@@ -91,6 +100,12 @@ type table struct {
 	spread   map[seatKey]spread
 	floors   map[seatKey]float64
 	byID     map[string]priorModel
+	// Costs are what a seat measurably cost per task, by class and model;
+	// costs is them lineage-folded with Other derived, and costScale each
+	// class and seat's measured-to-shape ratio, for a model nobody measured.
+	Costs     []costCell `json:"costs"`
+	costs     map[cellKey]float64
+	costScale map[seatKey]float64
 	// rescue is a table asked for a seat's last rungs ([Request.Rescue]).
 	rescue bool
 }
@@ -207,6 +222,59 @@ func (t *table) index() {
 	}
 	t.spreads(Other)
 	t.floors = t.floorsOf()
+	t.indexCosts()
+}
+
+// indexCosts folds the measured seat costs by lineage, derives Other as the
+// mean of the classes that measured a seat, and reads each class and seat's
+// scale: the median of measured cost over the flat shape's estimate.
+func (t *table) indexCosts() {
+	t.costs = map[cellKey]float64{}
+	sums, counts := map[cellKey]float64{}, map[cellKey]int{}
+	for _, c := range t.Costs {
+		key := cellKey{c.Class, c.Seat, Lineage(c.Model)}
+		t.costs[key] = c.USD
+		other := cellKey{Other, c.Seat, key.model}
+		sums[other] += c.USD
+		counts[other]++
+	}
+	for key, sum := range sums {
+		t.costs[key] = sum / float64(counts[key])
+	}
+	ratios := map[seatKey][]float64{}
+	for key, usd := range t.costs {
+		m, ok := t.byID[key.model]
+		if !ok {
+			continue
+		}
+		model := Model{ID: m.ID, PromptPrice: m.Prompt, CompletionPrice: m.Completion, CacheReadPrice: m.CacheRead}
+		if flat := t.seatCost(key.seat, model); flat > 0 {
+			ratios[seatKey{key.class, key.seat}] = append(ratios[seatKey{key.class, key.seat}], usd/flat)
+		}
+	}
+	t.costScale = map[seatKey]float64{}
+	for key, rs := range ratios {
+		sort.Float64s(rs)
+		t.costScale[key] = rs[len(rs)/2]
+	}
+}
+
+// estCost is what a seat is expected to cost per task, for the estimate a
+// task's line shows: the measured cost of this model in this seat and class
+// where the trial measured it — a model's own verbosity included — and the
+// flat token shape scaled by the class and seat's measured ratio otherwise.
+//
+// IT IS THE ESTIMATE, NOT THE WEIGHT. Routing weighs [table.seatCost], the
+// figure the knee was set against; this is what a person is told to expect.
+func (t *table) estCost(class Class, seat Seat, m Model) float64 {
+	if usd, ok := t.costs[cellKey{class, seat, Lineage(m.ID)}]; ok {
+		return usd
+	}
+	scale := t.costScale[seatKey{class, seat}]
+	if scale <= 0 {
+		scale = 1
+	}
+	return t.seatCost(seat, m) * scale
 }
 
 // spreads reads the measured spread of every seat for the classes given.

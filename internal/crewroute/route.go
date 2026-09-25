@@ -234,6 +234,9 @@ type Pick struct {
 	Measured bool
 	Quality  float64
 	CostUSD  float64
+	// EstUSD is what this seat is expected to cost the task ([table.estCost]):
+	// nothing on a plan, a local model or a free pool.
+	EstUSD float64 `json:",omitempty"`
 }
 
 // Decision is one task's crew.
@@ -276,6 +279,10 @@ type Decision struct {
 	// before. Its own acceptance is the redo's, not a later task's: it must
 	// not take back the step the redo just taught.
 	Redo bool `json:",omitempty"`
+	// CostFactor is what this install's own tasks of the class have cost
+	// against their estimates ([router.CrewLog.CostFactor]); EstUSD carries
+	// it. Zero is none learned yet.
+	CostFactor float64 `json:",omitempty"`
 }
 
 // Unspent is the actual cost a line is drawn with when there is none worth
@@ -305,8 +312,11 @@ func (d Decision) WithRung(seat Seat, next Pick, why string) Decision {
 		if out.Crew[i].Seat == seat {
 			out.Crew[i] = next
 		}
-		out.EstUSD += out.Crew[i].CostUSD
+		out.EstUSD += estOf(out.Crew[i])
 		out.Quality += out.Crew[i].Quality
+	}
+	if out.CostFactor > 0 {
+		out.EstUSD *= out.CostFactor
 	}
 	return out
 }
@@ -431,11 +441,56 @@ func Decide(r Request) (Decision, error) {
 			d.Ladder[pick.Seat] = ladder
 		}
 	}
-	for _, pick := range crew {
-		d.EstUSD += pick.CostUSD
+	for i := range d.Crew {
+		d.Crew[i].EstUSD = pickEst(t, d.Class, d.Crew[i])
+	}
+	for _, pick := range d.Crew {
+		d.EstUSD += estOf(pick)
 		d.Quality += pick.Quality
 	}
 	return d, nil
+}
+
+// pickEst is one pick's expected cost for the estimate: nothing where the
+// route bills nothing, the measured seat cost otherwise.
+func pickEst(t *table, class Class, pick Pick) float64 {
+	switch pick.Kind {
+	case Plan, Local, Free:
+		return 0
+	}
+	if m, ok := Snapshot(pick.Model); ok && pick.CostUSD > 0 {
+		// The candidate's own prices, where they differ from the snapshot's,
+		// move a measured seat's cost with them.
+		if flat := t.seatCost(pick.Seat, m); flat > 0 {
+			return t.estCost(class, pick.Seat, m) * pick.CostUSD / flat
+		}
+	}
+	return t.estCost(class, pick.Seat, Model{ID: pick.Model}) + unmeasuredEst(t, class, pick)
+}
+
+// unmeasuredEst is an unmeasured pick's flat cost scaled by its class and
+// seat, read back from the cost it was weighed at.
+func unmeasuredEst(t *table, class Class, pick Pick) float64 {
+	if _, ok := t.costs[cellKey{class, pick.Seat, Lineage(pick.Model)}]; ok {
+		return 0
+	}
+	scale := t.costScale[seatKey{class, pick.Seat}]
+	if scale <= 0 {
+		scale = 1
+	}
+	return pick.CostUSD * scale
+}
+
+// estOf is a pick's expected cost: its estimate, or — for a pick made where
+// no estimate was read, a rescue — what it was weighed at.
+func estOf(pick Pick) float64 {
+	switch {
+	case pick.EstUSD > 0:
+		return pick.EstUSD
+	case pick.Kind == Plan || pick.Kind == Local || pick.Kind == Free:
+		return 0
+	}
+	return pick.CostUSD
 }
 
 // baseLambda is the price of a quality point this request starts at: the
@@ -635,6 +690,47 @@ func bestFor(t *table, class Class, seat Seat, candidates []Candidate, lambda, f
 	return best, found
 }
 
+// Scored is one candidate as a seat weighed it: the model, the route it
+// would ride, its quality and cost as the router read them, and the score
+// (quality − λ·cost) it was ranked by.
+type Scored struct {
+	Model    string    `json:"m"`
+	Provider string    `json:"p,omitempty"`
+	Kind     RouteKind `json:"k,omitempty"`
+	Quality  float64   `json:"q"`
+	CostUSD  float64   `json:"c"`
+	Score    float64   `json:"s"`
+}
+
+// Explain is each seat's best n candidates at the λ a decision was made at,
+// best first — what a router log row carries so a crew can be explained from
+// the log alone.
+func Explain(class Class, lambda float64, candidates []Candidate, n int) map[Seat][]Scored {
+	t := prior()
+	out := map[Seat][]Scored{}
+	for _, seat := range Seats {
+		var ranked []Scored
+		for _, c := range candidates {
+			pick, ok := eligible(t, class, seat, c)
+			if !ok {
+				continue
+			}
+			cost := weighedCost(t, class, seat, pick)
+			ranked = append(ranked, Scored{Model: pick.Model, Provider: pick.Provider, Kind: pick.Kind,
+				Quality: round3(pick.Quality), CostUSD: round3(cost), Score: round3(pick.Quality - lambda*cost)})
+		}
+		sort.SliceStable(ranked, func(i, j int) bool { return ranked[i].Score > ranked[j].Score })
+		if len(ranked) > n {
+			ranked = ranked[:n]
+		}
+		out[seat] = ranked
+	}
+	return out
+}
+
+// round3 keeps a logged figure to three places.
+func round3(x float64) float64 { return math.Round(x*1000) / 1000 }
+
 // seatable is whether a candidate can sit a seat at all: it takes tool calls,
 // it has a route, and its context holds the seat's work. A free pool is a
 // ROUTE of its model, not a model ([Free]): whether the model may sit the seat
@@ -764,9 +860,15 @@ func pinned(t *table, class Class, seat Seat, pin Pin, candidates []Candidate) P
 		if math.IsInf(found.CostUSD, 1) {
 			found.CostUSD = 0
 		}
-		if pin.Send != "" && found.Send == "" {
-			found.Send, found.Kind = pin.Send, pin.Kind
+		if pin.Send != "" && (found.Send == "" || strings.EqualFold(found.Provider, pin.Provider)) {
+			// THE PIN'S OWN SEND ON ITS OWN ROUTE: the id the person wrote (or
+			// the variant it resolved to), never the candidate's first row.
+			found.Send = pin.Send
+			if found.Kind == "" || pin.Kind == Free {
+				found.Kind = pin.Kind
+			}
 		}
+		found.Model = pin.Model
 		found.Pinned = true
 		return found
 	}
@@ -1030,6 +1132,13 @@ func (d Decision) Line(pinMark string, actual float64) string {
 // vendor, with the pin mark in front when the seat was pinned.
 func seatModel(pick Pick, pinMark string) string {
 	name := ShortModel(pick.Model)
+	if sent := ShortModel(pick.Send); pick.Pinned && sent != "" && sent != name {
+		// A PIN SENT AS ANOTHER ID SAYS WHICH: `deepseek-v4-flash → -0731`.
+		if strings.HasPrefix(sent, name) {
+			sent = sent[len(name):]
+		}
+		name += " → " + sent
+	}
 	switch {
 	case pick.Pinned && strings.TrimSpace(pinMark) != "":
 		return pinMark + " " + name
