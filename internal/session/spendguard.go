@@ -31,7 +31,7 @@ import (
 // after, so the next estimate starts from the truth.
 
 // SpendPrice is a model's price per token: prompt, completion and cache read.
-// ok is false for a model nobody prices, whose calls the guard does not stop.
+// ok is false for a model nobody prices; a cap already reached still stops it.
 type SpendPrice func(model string) (prompt, completion, cacheRead float64, ok bool)
 
 // SpendDay is today's spend as this process knows it: what the ledger said
@@ -242,9 +242,15 @@ func (g *SpendGuard) before(ctx context.Context, model string, messages []ai.Mes
 		prompt, completion, cacheRead, ok = g.Price(model)
 	}
 	if !ok {
-		// A call nobody prices is not estimated, but a task already at its
-		// limit, or a checker already at its ceiling, makes no more calls of
-		// any kind.
+		// A CALL NOBODY PRICES HAS NO ESTIMATE, BUT A LINE ALREADY REACHED
+		// STOPS IT: a day at its cap, a task at its limit and a checker at its
+		// ceiling make no more calls of any kind — a model with no catalog
+		// price, a free pool and a local model included — on the same sentence
+		// a priced call ends on. Below every line it goes as it always has, and
+		// what it cost is counted after when the provider says.
+		if g.Cap > 0 && g.Day.Total() >= g.Cap {
+			return 0, ErrSpendStopped{Action: g.CapAction}
+		}
 		if g.TaskCap > 0 && g.tally().Total() >= g.TaskCap {
 			return 0, ErrSpendStopped{Action: g.TaskAction}
 		}

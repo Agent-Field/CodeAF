@@ -192,3 +192,43 @@ func TestSeatCompleterKeepsTheModelFallbackChain(t *testing.T) {
 		t.Fatalf("the seat wrapper dropped the fallback chain: %T", marked)
 	}
 }
+
+// AT THE DAILY CAP A CALL NOBODY PRICES IS NOT SENT EITHER, on the same
+// sentence a priced one ends on; below the cap it goes as it always did, and
+// with no cap nothing stops it.
+func TestUnpricedCallAtDailyCapIsNotSent(t *testing.T) {
+	for _, tc := range []struct {
+		day, cap float64
+		sent     bool
+	}{
+		{0.5, 0.5, false}, {0.6, 0.5, false}, {0.4, 0.5, true}, {0.5, 0, true},
+	} {
+		guard := &SpendGuard{Price: func(string) (float64, float64, float64, bool) { return 0, 0, 0, false },
+			Day: NewSpendDay(tc.day), Cap: tc.cap, CapAction: "daily cap"}
+		calls := &spendingCompleter{usd: 0.01}
+		_, err := guard.Wrap("local/unpriced", calls).CompleteWithMessages(t.Context(), nil)
+		var stopped ErrSpendStopped
+		if tc.sent && (err != nil || calls.calls != 1) || !tc.sent && (!errors.As(err, &stopped) || stopped.Action != "daily cap" || calls.calls != 0) {
+			t.Errorf("day=%v cap=%v: %v after %d calls", tc.day, tc.cap, err, calls.calls)
+		}
+	}
+}
+
+// A HELPER IS HELD THE SAME WAY: the guard a conversation's auxiliary calls
+// go through refuses an unpriced call once the day is at the crew's cap.
+func TestHelperGuardRefusesUnpricedCallAtDailyCap(t *testing.T) {
+	dir := t.TempDir()
+	if err := config.SetCrewCap(dir, "0.5"); err != nil {
+		t.Fatal(err)
+	}
+	a := &Agent{config: Config{ProfileDir: dir, RouteCrew: func(config.CrewAsk) (crewroute.Decision, error) { return crewroute.Decision{}, nil }}}
+	a.crewDayOnce.Do(func() { a.crewDayHeld = NewSpendDay(0.5) })
+	guard := a.helperGuard(nil)
+	guard.Price = func(string) (float64, float64, float64, bool) { return 0, 0, 0, false }
+	calls := &spendingCompleter{usd: 0.01}
+	_, err := guard.Wrap("local/unpriced", calls).CompleteWithMessages(t.Context(), nil)
+	var stopped ErrSpendStopped
+	if !errors.As(err, &stopped) || stopped.Action != guard.CapAction || calls.calls != 0 {
+		t.Fatalf("helper at cap: %v after %d calls", err, calls.calls)
+	}
+}
