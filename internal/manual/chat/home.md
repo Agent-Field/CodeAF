@@ -8,7 +8,7 @@ answering one question you would ask walking up to a colleague's desk:
 
 ```
  codeaf                                                      $0.14 / $20 · thu 9:49am
-  home   tasks   spend   settings
+  home   chats   tasks   spend   settings
  ───────────────────────────────────────────────────────────────────────────────────────
 
  Understanding Hash Tables                  2m    projects
@@ -45,7 +45,8 @@ in the right-hand rail instead — heading and one dim line each — so the left
 is only ever the things that are actually going on.
 
 `esc` puts you back in exactly the chat you came from, untouched — nothing was closed and
-nothing was sent while you were looking. The resting foot reads
+nothing was sent while you were looking; `alt+2` (`chats` on the bar) does the same. The
+resting foot reads
 `alt+p project · alt+e effort · alt+a approvals · alt+k chats · / commands`.
 The project, approvals and chats hints appear only where those controls can act.
 The controls stay the same as the cursor walks between rows. `→` opens the selected
@@ -57,7 +58,7 @@ whole map over the cells you are already reading.
 There is no argument form. The screen is how you name what you want; a command that took a
 project name would be asking you to type out the very thing home exists to show you.
 
-Home is the **first of the four places on the tab bar** — `home  tasks  spend  settings`.
+Home is the **first word on the tab bar**: `home  chats  tasks  spend  settings`.
 It still does nothing on its own: no notifications and no alerts. You open it, you see where
 things stand, and you either act on something or leave.
 
@@ -509,7 +510,7 @@ own tab stack — so going back is `enter`. A window that has held only one conv
 holding, the row `esc` drops back into.
 
 **`↑` off the top row of home stays on it.** The tab bar — the row of four words — is
-reached by clicking a word, by `tab`, or by a place's own chord (`alt+2` and the rest); on
+reached by clicking a word, by `tab`, or by a place's own chord (`alt+3` and the rest); on
 every other place `↑` off the top row still walks up onto it. On the bar `←`
 and `→` walk along the words without opening anything, `enter` or `↓` goes into the one under the
 cursor, and `esc` puts the cursor back on the row it came from. Walking up onto the bar does
@@ -628,13 +629,14 @@ cent — one reading of one file, wherever you are standing.
 
 ## Where did standing, memory and search go — the four places on the tab bar
 
-**They are still places; they are just off the bar.** The tab bar under the top line is four
-words — `home  tasks  spend  settings` — and `tab`, `alt+1` … `alt+4` walk them. Standing,
+**They are still places; they are just off the bar.** The tab bar under the top line is five
+words, `home  chats  tasks  spend  settings`. `tab` walks the four rooms among them and
+`alt+1` … `alt+5` go to each; `chats` (`alt+2`) is the way back to your conversation. Standing,
 memory and search open exactly as they did:
 
-- **`/standing`** (or `/orders`), `alt+5`, or `enter` on a `standing` row;
-- **`/memory`** (or `/memories`), `alt+6`, or `enter` on memory's line in `since you left`;
-- **`/search`**, `alt+7`, or the typed door on home's box.
+- **`/standing`** (or `/orders`), `alt+6`, or `enter` on a `standing` row;
+- **`/memory`** (or `/memories`), `alt+7`, or `enter` on memory's line in `since you left`;
+- **`/search`**, `alt+8`, or the typed door on home's box.
 
 While you stand in one of the three, its word is drawn after the four so you can see where
 you are; `tab` from there goes to home. `alt+.` draws the map of all seven with their
@@ -1443,9 +1445,9 @@ home and every two minutes at rest, and each tip goes away for good the first ti
 what it names. It sits at the right, led by a bulb and closed by a small cross: clicking it
 means ENOUGH FOR NOW, and the row stays blank until you leave home and come back, when a
 different tip is there. The tip you put away keeps its whole allowance and comes round
-again. **A conversation says its tips differently**: there the tip is the lowest rung of
-the keys row at the very foot, with no bulb, no cross and no clock — it is simply there
-whenever nothing else is happening. Both rows draw from the same one list. The whole list,
+again. **A conversation says its tips differently**: its tip stands at the right end of
+the keys row, over the project, with the bulb and the cross, and it appears only after
+15 seconds in which you have not pressed, clicked, scrolled or pasted anything. Both rows draw from the same one list. The whole list,
 what makes each one appear and disappear, and the **disable hints** row on the Workspace
 tab that turns them off, are on the *hints and tips* page.
 
@@ -1505,6 +1507,11 @@ and not decoration. It also goes while a turn is running, where the same row has
 more urgent to say (`esc interrupt`); the gesture still works then, it is just not being
 advertised. (Until 2026-09-17 these words were the right end of the rule above the box.)
 
+**It stays when a tip is showing.** A conversation's tip covers the project at the keys
+row's right end, never the keys. Until 2026-09-24 a tip took the whole row and the
+door went with it. One of the tips is about the door itself:
+`space space takes you back to home`.
+
 **You can click it.** A press on the words `space space home` opens home; a press on the
 rule beside them is a press on a rule.
 
@@ -1512,6 +1519,9 @@ It appears on a fresh machine too, from the first minute, and over `--host` as w
 machine with one conversation or with none still has a home to go to. The rule that keeps
 home from *greeting* a first run is a different rule — not being greeted by home and not
 being able to reach it are two different things.
+
+From home, `alt+2` (`chats` on the bar) goes straight back to the conversation you were
+in, and `alt+k` chooses one.
 
 ## space space does nothing — why the gesture did not open home
 
@@ -1715,7 +1725,7 @@ opens the conversation; on a `standing` row it opens the standing place.
 
 The `◦` mark itself belongs to the standing place and to a conversation's own lines —
 `◦ leave for the train · in 4m`. `∙` is a paused item there, and `◆` means the thing went off
-after the last time you spoke in the conversation behind it. The standing place (`alt+5`,
+after the last time you spoke in the conversation behind it. The standing place (`alt+6`,
 `/standing`) is every promise this machine has made, with how much rope each has.
 
 **Retired items are nowhere on home.** Something that fired once and finished, or that you
@@ -1935,7 +1945,7 @@ phone*).
 
 **The machine's own card is gone too.** `↑` off the top of the column stays on the top row,
 and each thing that card said has a place: `keeping an eye on` is the standing place
-(`alt+5`), `today` is the `spend` panel and the pulse line, `agents` is the pulse's
+(`alt+6`), `today` is the `spend` panel and the pulse line, `agents` is the pulse's
 `4 moving`, and `thinking` is the `thinking` row of `/settings`.
 
 ## The card beside a search — the preview on the right while you type
@@ -2216,7 +2226,7 @@ words that set one up. On a short terminal `standing` is the first panel to give
 **The `spend` panel, pinned in the rail under `projects`**, is the day and the fortnight in three dim lines.
 **Nothing under its heading is selectable or clickable**: the arrows step over its lines, the
 pointer does not light them, and a press on one does nothing. The heading is the door — `enter`
-cannot reach it, but a click on the word `spend` opens the spend place, as does `/spend` or `alt+3`:
+cannot reach it, but a click on the word `spend` opens the spend place, as does `/spend` or `alt+4`:
 
 ```
  spend

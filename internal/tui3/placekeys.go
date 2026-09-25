@@ -20,7 +20,7 @@ import (
 //	↑↓ enter esc tab      move, open, back out, next place      never text
 //	any printable         goes to the composer, always          never a verb
 //	alt+enter             send what you typed off as a task     one chord
-//	alt+1…7               jump straight to a place              drawn on the map
+//	alt+1…8               jump straight to a place              drawn on the map
 //	alt+<letter>          change how THIS place is shown        drawn on the map
 //	shift+←→↑↓            move this place's time window         no letters spent
 //	→ then a letter       act on the row — letters are verbs only here
@@ -345,7 +345,8 @@ func placeDigitAt(prefix, key string) (page, bool) {
 		return 0, false
 	}
 	at := int(key[len(prefix)] - '1')
-	all := pages()
+	// The digits are the BAR's order, the chats included (place_chats.go).
+	all := placeOrder
 	if at < 0 || at >= len(all) {
 		return 0, false
 	}
@@ -446,7 +447,7 @@ func (a *app) placeHomeGesture(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 		if a.placeSpaceArmed {
 			a.placeSpaceArmed = false
-			return a.openHome(), true
+			return a.homeByTwoSpaces(), true
 		}
 		a.placeSpaceArmed = true
 		return nil, true
@@ -455,7 +456,17 @@ func (a *app) placeHomeGesture(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	box.reset()
-	return a.openHome(), true
+	return a.homeByTwoSpaces(), true
+}
+
+// homeByTwoSpaces opens home and THEN says the gesture happened, from a
+// conversation's box or a place's. Said first, the event decided home's row
+// while the conversation was in front, where home's own tips read as unarmed,
+// so the first of them came back fresh and jumped the ring on every trip.
+func (a *app) homeByTwoSpaces() tea.Cmd {
+	cmd := a.openHome()
+	a.noticeEvent(eventHomeGesture)
+	return cmd
 }
 
 // placeSend is `alt+enter` over a composer with something in it: THE COMPOSER

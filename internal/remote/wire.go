@@ -1161,6 +1161,29 @@ type Welcome struct {
 	// would open a picker whose every row ends in an error.
 	Folders bool `json:"folders,omitempty"`
 
+	// Teams says this engine ANSWERS THE TEAMS DOORS ([MethodTeamsRead],
+	// [MethodTeamsUpdate], [MethodTeamsTraffic]) from its own profile, which
+	// is where its team tools keep the teams and their Traffic.
+	//
+	// IT IS CARRIED FOR [Welcome.Folders]' REASON: the window decides at the
+	// door whether it has teams over this connection, before anything is
+	// drawn. ABSENCE IS false, and false turns teams off over the connection
+	// with the sentence the window has always said; it never sends the window
+	// back to the laptop's own teams file, which the far session cannot see.
+	Teams bool `json:"teams,omitempty"`
+
+	// TeamAsk says this engine ANSWERS THE WALL'S TWO MODEL ASKS
+	// ([MethodTeamsName], [MethodTeamsPropose]): its agent names a group of
+	// conversations and proposes teams on its own naming role.
+	//
+	// IT IS CARRIED FOR [Welcome.Folders]' REASON: a *remote.Agent always has
+	// NameTeam and ProposeTeams on it, so the wall's type assertion answers yes
+	// for every connection and says nothing about the far machine. ABSENCE IS
+	// false, and false is refused at this end before anything is written, which
+	// the wall reads as it reads any failed ask: the word it already holds, and
+	// Organize's folder pass alone.
+	TeamAsk bool `json:"teamAsk,omitempty"`
+
 	// News says this engine SENDS THE STATUS LINE'S NEWS — the "phase" and
 	// "lane" frames the live rate and the `via <machine>` rider are drawn from
 	// (news.go) — for the conversation this surface arrived in.

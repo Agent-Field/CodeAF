@@ -1,0 +1,258 @@
+name: Promote to staging
+
+# THE CUTOFF IS A COMMIT TIME, NOT THE RUN TIME. Scheduled runs here can start
+# hours late: the nightly 09:00 UTC check started between 12:59Z and 15:46Z in
+# the week this workflow was written. The cron only needs to run after Friday
+# 17:00 Toronto time; the first-parent dev commit at that instant is the target.
+# The reusable Full check must pass before the staging pointer can move.
+# PROMOTION_TOKEN makes the forward-only push and starts Release; without it,
+# the check still runs and the workflow reports why staging stayed put.
+# SLACK_RELEASE_WEBHOOK sends the same messages as the run summary. Without it,
+# the summary still records them and the missing webhook only warns.
+on:
+  schedule:
+    - cron: "30 22 * * 5"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Empty = current dev tip; cutoff = Friday cutoff; or a dev commit"
+        type: string
+        default: ""
+      dry_run:
+        description: "Run the check and messages without pushing"
+        type: boolean
+        default: false
+      signal:
+        description: "Also send the production signal"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  CUTOFF_ZONE: America/Toronto
+  CUTOFF_WEEKDAY: Friday
+  CUTOFF_CLOCK: "17:00"
+
+concurrency:
+  # Schedule and dispatch may overlap: the pre-push ancestry recheck and a
+  # forward-only push keep either run safe without evicting the other.
+  group: promote-staging-${{ github.event_name }}
+  cancel-in-progress: false
+
+jobs:
+  # The plan captures the old staging and main pointers before this run moves
+  # anything, so the production signal can describe last week's staging.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      plan: ${{ steps.choose.outputs.plan }}
+      candidate: ${{ steps.choose.outputs.candidate }}
+      outcome: ${{ steps.choose.outputs.outcome }}
+      staging: ${{ steps.choose.outputs.staging }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Choose the dev commit and preserve the old pointers
+        id: choose
+        env:
+          TARGET: ${{ inputs.target }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin +refs/heads/dev:refs/remotes/origin/dev +refs/heads/staging:refs/remotes/origin/staging +refs/heads/main:refs/remotes/origin/main
+          go run ./cmd/codeaf-release promotion-plan --now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --zone "$CUTOFF_ZONE" --weekday "$CUTOFF_WEEKDAY" --clock "$CUTOFF_CLOCK" --event "$GITHUB_EVENT_NAME" --target "$TARGET" --run-url "$RUN_URL" --github-output "$GITHUB_OUTPUT"
+
+  # A failed plan cannot use the Go tool or its missing outputs, so this small
+  # independent job still tells the owner why no staging pointer moved.
+  plan-failed:
+    needs: [plan]
+    if: always() && needs.plan.result == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      # Every job starts in an empty workspace, so the poster script exists here
+      # only if this job checks the repository out itself.
+      - uses: actions/checkout@v4
+      - name: Report a plan that could not choose a commit
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          SLACK_RELEASE_WEBHOOK: ${{ secrets.SLACK_RELEASE_WEBHOOK }}
+        run: |
+          set -euo pipefail
+          marker=""
+          if [ "${DRY_RUN:-false}" = true ]; then marker="[dry run] "; fi
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          text="${marker}*staging did not move* — the promotion could not choose a dev commit; see the run."
+          text+=$'\n'"<${run_url}|Promote to staging run>"
+          jq -n --arg text "$text" '{text: $text}' > message.json
+          scripts/slack-post.sh message.json
+
+  # This job reads the pre-push plan even if the Full check or push later fails.
+  # always() keeps a skipped promotion check from suppressing the signal.
+  signal:
+    needs: [plan]
+    if: always() && needs.plan.result == 'success' && (github.event_name == 'schedule' || inputs.signal)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Send the signal for the staging commit read before this run
+        env:
+          PLAN_JSON: ${{ needs.plan.outputs.plan }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          GH_TOKEN: ${{ github.token }}
+          SLACK_RELEASE_WEBHOOK: ${{ secrets.SLACK_RELEASE_WEBHOOK }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$PLAN_JSON" > plan.json
+          git fetch --no-tags origin +refs/heads/staging:refs/remotes/origin/staging +refs/heads/main:refs/remotes/origin/main
+          gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/releases?per_page=100" > releases.json || printf '[]\n' > releases.json
+          go run ./cmd/codeaf-release promotion-published --releases releases.json --sha "$(jq -r .staging plan.json)" > published.json
+          published_at="$(jq -r '.published_at // ""' published.json)"
+          go run ./cmd/codeaf-release promotion-message --plan plan.json --phase signal --published-at "$published_at" --dry-run="${DRY_RUN:-false}" > message.json
+          scripts/slack-post.sh message.json
+
+  # A callable Full check runs only for a real promotion candidate. Its page
+  # job requests issues:write even when skipped, so the caller grants it here.
+  full_check:
+    needs: [plan]
+    if: needs.plan.outputs.outcome == 'promote'
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/ci-full.yml
+    with:
+      ref: ${{ needs.plan.outputs.candidate }}
+
+  # always() defeats GitHub's skipped-ancestor propagation: current and refused
+  # plans still report even though the Full check job is skipped.
+  finish:
+    needs: [plan, full_check]
+    if: always() && needs.plan.result == 'success' && (needs.full_check.result == 'success' || needs.full_check.result == 'failure' || needs.full_check.result == 'cancelled' || needs.full_check.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # The stored GITHUB_TOKEN header would override the promotion token
+          # in the push URL, so checkout must not persist its credentials.
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Report the check, move staging, and wait for its build
+        env:
+          PLAN_JSON: ${{ needs.plan.outputs.plan }}
+          CANDIDATE: ${{ needs.plan.outputs.candidate }}
+          CHECK_RESULT: ${{ needs.full_check.result }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          PROMOTION_TOKEN: ${{ secrets.PROMOTION_TOKEN }}
+          SLACK_RELEASE_WEBHOOK: ${{ secrets.SLACK_RELEASE_WEBHOOK }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          push_done=false
+          report_unexpected_error() {
+            rc=$?
+            trap - ERR
+            set +e
+            marker=""
+            if [ "${DRY_RUN:-false}" = true ]; then marker="[dry run] "; fi
+            if [ "$push_done" = true ]; then
+              text="${marker}*staging moved* to \`${CANDIDATE:0:10}\` but the promotion could not report its build; see the run."
+            else
+              text="${marker}*staging did not move* — the promotion step failed before pushing; see the run."
+            fi
+            run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            text+=$'\n'"<${run_url}|Promote to staging run>"
+            jq -n --arg text "$text" '{text: $text}' > fallback.json && scripts/slack-post.sh fallback.json
+            exit "$rc"
+          }
+          trap 'report_unexpected_error' ERR
+          printf '%s\n' "$PLAN_JSON" > plan.json
+          go run ./cmd/codeaf-release promotion-decision --plan plan.json --check-result "$CHECK_RESULT" --dry-run="${DRY_RUN:-false}" --token-set="$([ -n "$PROMOTION_TOKEN" ] && echo true || echo false)" > decision.json
+          if [ "$(jq -r .action decision.json)" = report ]; then
+            phase="$(jq -r .phase decision.json)"
+            jobs=""
+            if [ "$phase" = check ] && [ "$CHECK_RESULT" != success ]; then
+              gh run view "$GITHUB_RUN_ID" --json jobs > jobs.json || printf '{"jobs":[]}\n' > jobs.json
+              jobs="$(go run ./cmd/codeaf-release promotion-jobs --file jobs.json)"
+            fi
+            go run ./cmd/codeaf-release promotion-message --plan plan.json --phase "$phase" --check-result "$CHECK_RESULT" --jobs "$jobs" --dry-run="${DRY_RUN:-false}" > message.json
+            scripts/slack-post.sh message.json
+            if [ "$(jq -r .status decision.json)" = success ]; then exit 0; fi
+            trap - ERR
+            exit 1
+          fi
+          if ! git fetch --no-tags origin +refs/heads/dev:refs/remotes/origin/dev +refs/heads/staging:refs/remotes/origin/staging 2> fetch.log; then
+            go run ./cmd/codeaf-release promotion-message --plan plan.json --phase push --push-error "$(go run ./cmd/codeaf-release promotion-push-error --file fetch.log)" > message.json
+            scripts/slack-post.sh message.json
+            trap - ERR
+            exit 1
+          fi
+          if ! state="$(go run ./cmd/codeaf-release promotion-recheck --candidate "$CANDIDATE" 2> recheck.log)"; then
+            go run ./cmd/codeaf-release promotion-message --plan plan.json --phase push --push-error "$(go run ./cmd/codeaf-release promotion-push-error --file recheck.log)" > message.json
+            scripts/slack-post.sh message.json
+            trap - ERR
+            exit 1
+          fi
+          if [ "$state" != promote ]; then
+            go run ./cmd/codeaf-release promotion-message --plan plan.json --phase push --push-error "$state" > message.json
+            scripts/slack-post.sh message.json
+            if [ "$state" = current ]; then exit 0; fi
+            trap - ERR
+            exit 1
+          fi
+          # GITHUB_TOKEN pushes do not start release.yml, so a staging build would not publish.
+          # GitHub also refuses a GITHUB_TOKEN push when a promoted commit changes .github/workflows/.
+          pushed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          if ! git push "https://x-access-token:${PROMOTION_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$CANDIDATE:refs/heads/staging" 2> push.log; then
+            go run ./cmd/codeaf-release promotion-message --plan plan.json --phase push --push-error "$(go run ./cmd/codeaf-release promotion-push-error --file push.log)" > message.json
+            scripts/slack-post.sh message.json
+            trap - ERR
+            exit 1
+          fi
+          push_done=true
+          # A pushed staging commit is not ready until the release workflow publishes its build.
+          state=absent
+          for attempt in $(seq 1 60); do
+            gh run list --workflow release.yml --event push --branch staging --commit "$CANDIDATE" --limit 100 --json databaseId,headSha,status,conclusion,url,createdAt,attempt > runs.json || printf '[]\n' > runs.json
+            go run ./cmd/codeaf-release promotion-release --runs runs.json --sha "$CANDIDATE" --pushed-at "$pushed_at" > release-state.json
+            state="$(jq -r .status release-state.json)"
+            if [ "$state" != absent ]; then break; fi
+            sleep 10
+          done
+          if [ "$state" = pending ]; then
+            for attempt in $(seq 1 180); do
+              gh run list --workflow release.yml --event push --branch staging --commit "$CANDIDATE" --limit 100 --json databaseId,headSha,status,conclusion,url,createdAt,attempt > runs.json || printf '[]\n' > runs.json
+              go run ./cmd/codeaf-release promotion-release --runs runs.json --sha "$CANDIDATE" --pushed-at "$pushed_at" > release-state.json
+              state="$(jq -r .status release-state.json)"
+              if [ "$state" != pending ]; then break; fi
+              sleep 10
+            done
+          fi
+          release_url="$(jq -r '.url // ""' release-state.json)"
+          tag=""
+          if [ "$state" = success ]; then
+            gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/releases?per_page=100" > releases.json || printf '[]\n' > releases.json
+            go run ./cmd/codeaf-release promotion-published --releases releases.json --sha "$CANDIDATE" > published.json
+            tag="$(jq -r '.tag_name // ""' published.json)"
+          fi
+          go run ./cmd/codeaf-release promotion-message --plan plan.json --phase release --release-status "$state" --release-url "$release_url" --release-tag "$tag" > message.json
+          scripts/slack-post.sh message.json
+          if [ "$state" = success ] && [ -n "$tag" ]; then exit 0; fi
+          trap - ERR
+          exit 1

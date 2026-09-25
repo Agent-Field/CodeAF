@@ -482,6 +482,20 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	}
 	defer elsewhere.end()
 
+	// AND, FOR A MANAGER, THE TEAM IT MANAGES (team.go), on the same terms and
+	// the same door as the block above: members' journals and the team's
+	// Traffic are disk, read beside the work, and a digest that lands after the
+	// first request rides the next step. A conversation with no profile and a
+	// task node start no reading at all.
+	var team *sidecar[struct{}]
+	if a.config.teamProfile() != "" {
+		team = readBeside(ctx, func(read context.Context) struct{} {
+			a.refreshTeamDigest(read)
+			return struct{}{}
+		}, nil)
+	}
+	defer team.end()
+
 	// partial accumulates what the model has streamed for the CURRENT step.
 	// It is the transcript's answer for an interrupted step, where no response
 	// ever comes back.
@@ -3710,6 +3724,9 @@ var glossField = map[string]string{
 	// The settings read is the row it went to look at, and a call with no key
 	// at all is the whole sheet, which reads honestly as its bare name.
 	"settings": "key",
+	// A manager's look at one member, and the member a stop is aimed at.
+	"team_read": "handle",
+	"team_stop": "handle",
 }
 
 // glossFields is [glossField] for the calls where ONE argument is not enough to
@@ -3731,6 +3748,10 @@ var glossFields = map[string][]string{
 	// and the whole of what they are agreeing to is which row and what it
 	// becomes.
 	"change_setting": {"key", "value"},
+	// A line into a team is who it goes to and what it says. A start is not
+	// here: it reads as its own sentence ([teamStartGloss]).
+	"team_send": {"to", "text"},
+	"team_post": {"to", "text"},
 }
 
 // gloss renders one call as a person-readable line: the tool name and the one
@@ -3786,6 +3807,11 @@ func control(r rune) bool { return r < ' ' || r == 0x7f }
 
 func glossOf(call ai.ToolCall) string {
 	name := call.Function.Name
+	if name == teamStartToolName {
+		if said := teamStartGloss(call.Function.Arguments); said != "" {
+			return said
+		}
+	}
 	fields, known := glossFields[name]
 	if !known {
 		field, single := glossField[name]

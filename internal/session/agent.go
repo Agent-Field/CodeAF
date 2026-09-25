@@ -435,6 +435,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// the frontier, but no ending or notice may run before the caller can hold
 	// the agent and a surface can subscribe to its standing lane.
 	agent.armWallClock()
+	// AND A CONVERSATION A TEAM'S MANAGER STARTED TAKES ITS FIRST TURN ON ITS
+	// OWN, once the interface has made it a member (team_wake.go).
+	agent.watchTeamStart()
 	return agent, nil
 }
 
@@ -949,6 +952,12 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 	if text == "" {
 		return nil, errors.New("session: empty message")
 	}
+	// A @ team or chat in the words is a reference, and the model needs a
+	// bounded digest of it (mention.go). The journal keeps the words as typed.
+	said := text
+	if note := a.mentionNote(text); note != "" {
+		text = text + "\n\n" + note
+	}
 	// A PERSON'S TURN OPENS ON WHAT IS RUNNING, while anything is (plandigest.go
 	// states why it is pushed rather than asked for). The digest is read here,
 	// on the person's own door, and nowhere else: a wake note, a job's ending
@@ -956,9 +965,15 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 	// the block is the empty string whenever no run is live, which is every turn
 	// of most conversations.
 	if digest := a.planDigest(); digest != "" {
-		return a.submitUser(ctx, planDigested(digest, text))
+		user := planDigested(digest, text)
+		user.said = said
+		return a.submitUser(ctx, user)
 	}
-	return a.submitUser(ctx, userText(text))
+	user := userText(text)
+	if text != said {
+		user.said = said
+	}
+	return a.submitUser(ctx, user)
 }
 
 // submitUser is Submit's body with the MESSAGE left to the caller: the closed
@@ -1163,9 +1178,11 @@ type userMessage struct {
 	wake bool
 
 	// said is THE PERSON'S OWN WORDS, when what the model reads is not only
-	// them. Empty in every ordinary case, and set by exactly one door: a draft
-	// the person MARKED STANDING, whose message carries an instruction in front
-	// of the sentence (standing_mark.go).
+	// them. Empty in every ordinary case, and set by two doors: a draft the
+	// person MARKED STANDING, whose message carries an instruction in front of
+	// the sentence (standing_mark.go), and a message that names a team or a
+	// conversation, whose message carries that reference's digest after the
+	// sentence (mention.go).
 	//
 	// THE INSTRUCTION IS THE MODEL'S AND THE JOURNAL IS THE PERSON'S. A
 	// transcript that replayed the instruction would show somebody a paragraph
@@ -1686,6 +1703,8 @@ func (u userMessage) journaled() ai.Message {
 // it is about is already on the steering queue, and the loop's first drain
 // writes it (see [Agent.wakeLocked]).
 func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *eventStream, extra ...*eventStream) <-chan Event {
+	// The person speaking is what resets a team's loop breaker (team_wakewatch.go).
+	a.notePersonTurn(user)
 	a.rebindClientLocked(a.model)
 	a.running = true
 	a.lastTurnTruncated = false
@@ -1921,6 +1940,11 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// return above because a turn that was abandoned has had every one
 			// of these acts done for it already.
 			a.retireTurnQuestions()
+			// AND A TEAM MEMBER'S MANAGER IS TOLD HOW IT ENDED, after the
+			// questions above came down, so the wait the turn ended inside is
+			// closed before the ending is said (teamevent.go). The context is
+			// the turn's own, still uncancelled unless somebody stopped it.
+			a.teamTurnEnded(turnCtx, hub)
 		}()
 		// A faulted turn must end its streams with a reason rather than take
 		// the process down: the person is holding a live channel.
@@ -2738,8 +2762,18 @@ func (a *Agent) landVolatileLocked() {
 	// (memory.go), so leaving it in front of the whole conversation re-priced the
 	// entire transcript on any turn the router reached differently — the same bug
 	// the card had, on a faster beat. See [memoryNoteOpening].
+	// THE TEAM ROLE LANDS FIRST, because it is the one note that says what this
+	// conversation is rather than what is around it, and it was composed from a
+	// read made before this request ([Agent.teamBoundary]) rather than beside
+	// the work, so it is never a step late (team.go's [teamRoleNoteOpening]).
+	a.landTeamRoleLocked()
 	a.landNoteLocked(memoryNoteOpening, strings.TrimSpace(a.memoryText))
 	a.landNoteLocked(volatileNoteOpening, a.volatileBlockLocked())
+	// AND A MANAGER'S TEAM, in a note of its own for the reason the memory block
+	// has one: a team moves whenever a member does, and riding the card's note
+	// would re-send the card each time (team.go's [teamNoteOpening]). A
+	// conversation that manages nothing has an empty block and lands nothing.
+	a.landNoteLocked(teamNoteOpening, a.teamBlockLocked())
 }
 
 // landNoteLocked appends one of the session's own notes when what it says has
@@ -2803,7 +2837,9 @@ func (a *Agent) lastNoteLocked(opening string) string {
 func isVolatileNote(text string) bool {
 	return strings.HasPrefix(text, volatileNoteOpening) ||
 		strings.HasPrefix(text, memoryNoteOpening) ||
-		strings.HasPrefix(text, bashBeltFrameOpening)
+		strings.HasPrefix(text, bashBeltFrameOpening) ||
+		strings.HasPrefix(text, teamNoteOpening) ||
+		strings.HasPrefix(text, teamRoleNoteOpening)
 }
 
 // mayBashBelt is [Config.mayBashBelt] asked of a live agent, so that the
@@ -3039,6 +3075,17 @@ func (a *Agent) drainSteering(hub *eventHub) int {
 	// the first thing it reads, and an agent that is not on the experiment
 	// composes nothing and lands nothing.
 	frame := a.bashBeltFrame(hub)
+	// AND WHAT THIS CONVERSATION'S TEAMS SAID TO IT, read on the same side of
+	// the lock for the same reason: it is a stat of the teams file and of each
+	// Traffic log, and a read only when one of them moved (team.go's
+	// [Agent.teamBoundary]). What comes back is one marked note on the steering
+	// queue, so the drain below puts it in front of this very request: at the
+	// turn's opening and at every step after it, which is what makes a line the
+	// manager sends mid-turn land mid-turn. A conversation in no team pays one
+	// stat, and one with no profile or a task node pays nothing.
+	if news := a.teamBoundary(); news != "" {
+		a.enqueueNote(userText(news))
+	}
 	a.mu.Lock()
 	opening := !a.running || len(a.messages) == a.turnFloor
 	// AND THE VOLATILE NOTE LANDS HERE, ahead of the steering, for the reason the
@@ -4548,6 +4595,14 @@ type DisplayEntry struct {
 	// Nil on every other entry, and on every session with no file to have kept a
 	// mark.
 	Steer *SteerMark
+
+	// Team is what a TEAM DELIVERY handed this conversation, line by line, on
+	// an "aside" that is one (teamshape.go): the manager's brief that started
+	// it (Kind [teams.KindStart]), a manager's note or directive, a teammate's
+	// post. It is what lets a surface draw the brief as a quoted card headed by
+	// who sent it rather than as the aside's first line. Nil on every other
+	// entry; the aside's Text still holds the whole delivery as the model read it.
+	Team []TeamLine
 }
 
 // SteerMark is what the record keeps about one steer that LANDED: when the
@@ -4667,6 +4722,10 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 			role = "aside"
 			replyTags = append(replyTags, journal.taskReplyTags(msg)...)
 		}
+		var team []TeamLine
+		if role == "aside" {
+			team = teamNewsLines(messageContentText(msg))
+		}
 		var tags []TaskReplyTag
 		if role == "assistant" && len(replyTags) > 0 {
 			tags = append([]TaskReplyTag(nil), replyTags...)
@@ -4682,6 +4741,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 			// message itself is an ordinary user message, because that is what the
 			// model has to read it as (steer.go).
 			Steer: journal.steerMark(msg),
+			Team:  team,
 		})
 		for callIndex := range msg.ToolCalls {
 			call := &msg.ToolCalls[callIndex]

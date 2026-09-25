@@ -437,6 +437,8 @@ var doorsBesideTheLine = map[string]string{
 	"PlanTaskWork":      "reads the run's working copy for the work tab; it changes nothing, and no later gesture waits on it",
 	"PlanTasks":         "reads the run's rows for the side list after a message; nobody pressed for it, and a verb's own read is asked only once the verb has landed",
 	"RefreshRunSummary": "asks a model for the run's summary under a budget of seconds; nobody pressed for it and no gesture depends on it",
+	"NameTeam":          "asks a model for a suggested team name under a budget of seconds; it changes nothing on the engine, typing overrides it, and a message sent while it thinks must not wait behind it",
+	"ProposeTeams":      "asks a model for Organize's proposals under a budget of seconds; it changes nothing on the engine (Apply writes through the teams store), and nothing after it depends on the engine having seen it",
 }
 
 func TestOnlyReadsNobodyPressedForAreAskedBesideTheLine(t *testing.T) {

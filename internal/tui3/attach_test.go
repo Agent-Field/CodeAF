@@ -101,7 +101,7 @@ func TestTheCompletionTagsThePicturesItWouldAttach(t *testing.T) {
 	drive(t, a, key("@"), key("s"), key("h"))
 	drive(t, a, filesLoadedMsg{paths: []string{"shot.png", "notes.md"}})
 
-	rows := a.comp.rows(a.width, completeRows, a.pal, -1)
+	rows := a.comp.rows(a.width, completeRows, a.pal, -1, "")
 	found := ""
 	for _, r := range rows {
 		if strings.Contains(plain(r), "shot.png") {

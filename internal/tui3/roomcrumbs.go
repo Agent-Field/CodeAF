@@ -416,7 +416,8 @@ func (a *app) roomTrail() string {
 // headLabelAt is the column a pinned label starts on. It is two cells for both
 // room labels: [app.legendLine] opens the room's header with the border's own
 // `─ `, keeping the crumb over the transcript's words. The navigation strip
-// uses [tabLead] instead so its Home target aligns with the places bar.
+// starts here too, and the places bar with it ([placeBarLead]), so the home
+// target sits in the same cells on the dashboard and in a conversation.
 //
 // It is stated once because the crumb spans are measured from the label's start
 // and pressed in the terminal's own columns, and a bar that recorded one and read
