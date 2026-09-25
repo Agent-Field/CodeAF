@@ -29,7 +29,11 @@ resumes them in the background, so they arrive as tiles and tabs while the conve
 front and your focus stay where they are. When every member is open the button is not there. Under it is the **Teams** row, which ends in `✦ Organize` while every conversation is
 shown, and at the bottom a toolbar with `Filter /`,
 `New team s`, `Columns − +` and `Help ?`. While the pointer rests on any control, the middle
-of the toolbar says in one dim line what it does and which key does the same.
+of the toolbar says in one dim line what it does and which key does the same; on a narrow
+window `Columns` and the other buttons step aside for that line so it is always whole, and
+come back when the pointer leaves. Pointing at `▦ All` says `Every open conversation, and your
+teams · alt+v`; pointing at a cell of the `▦` row under the box names that conversation and
+says `click opens it`.
 
 ## Reading a tile: title, what it is doing, and the newest lines
 
