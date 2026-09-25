@@ -20,7 +20,7 @@ func TestTheStripReadsHomeThenTheTeamThenItsTabs(t *testing.T) {
 		t.Fatal("the fixture has no Home door")
 	}
 	row := ansi.Strip(a.tabsRow(a.width))
-	home, chip, manager := strings.Index(row, "Home"), strings.Index(row, "harbor ▾"), strings.Index(row, teamManagerGlyph+" Manager")
+	home, chip, manager := strings.Index(row, pageHome.word()), strings.Index(row, "harbor ▾"), strings.Index(row, teamManagerGlyph+" Manager")
 	if home < 0 || chip < 0 || manager < 0 || !(home < chip && chip < manager) {
 		t.Fatalf("the strip reads %q", row)
 	}
@@ -35,7 +35,7 @@ func TestTheStripReadsHomeThenTheTeamThenItsTabs(t *testing.T) {
 			}
 		}
 	}
-	if homeHit.span.from != headLabelAt || a.wall.chip.from != headLabelAt+len(" Home ")+2 {
+	if homeHit.span.from != headLabelAt || a.wall.chip.from != headLabelAt+len(" home ")+2 {
 		t.Fatalf("Home's hit %+v and the chip's %+v are not where they are drawn", homeHit.span, a.wall.chip)
 	}
 	if got := plainCells(row, a.wall.chip.from, a.wall.chip.to); !strings.Contains(got, "harbor") {
@@ -46,7 +46,7 @@ func TestTheStripReadsHomeThenTheTeamThenItsTabs(t *testing.T) {
 	for w := 159; w >= roomHeadFloor; w-- {
 		a.chatTabBar = tabBar{}
 		row := ansi.Strip(a.tabsRow(w))
-		hasHome, hasChip := strings.Contains(row, "Home"), strings.Contains(row, "harbor")
+		hasHome, hasChip := strings.Contains(row, pageHome.word()), strings.Contains(row, "harbor")
 		if hasHome && !hasChip {
 			t.Fatalf("at %d the chip went before Home: %q", w, row)
 		}
