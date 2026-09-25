@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── A THREAD IN THE CONVERSATION ────────────────────────────────────────────
@@ -268,9 +269,9 @@ func (a *app) threadReplyRows(teamID string, th teamstore.Thread, self string, r
 		mark := ""
 		switch r.state {
 		case teamstore.StateFinished:
-			mark = a.linearMark("✓", "ok") + " "
+			mark = a.linearMark(a.icon(tokens.GSettled), "ok") + " "
 		case teamstore.StateFailed:
-			mark = a.linearMark("✗", "x") + " "
+			mark = a.linearMark(a.icon(tokens.GFailed), "x") + " "
 		}
 		var text, open string
 		paint := pal.muted

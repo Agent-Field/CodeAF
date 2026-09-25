@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── THE DOCK: EVERY OPEN CONVERSATION, UNDER THE BOX ────────────────────────
@@ -185,7 +187,9 @@ func (a *app) dockGlyph(tab chatTab) string {
 	case tab.here:
 		return "▣"
 	case !ascii:
-		return "■"
+		// The table's filled square, drawn as a shape: the cell's state is
+		// its colour, never the mark.
+		return tokens.GlyphStopped
 	case tab.signal == tabNeedsPerson:
 		return "!"
 	case tab.signal == tabWorking:
