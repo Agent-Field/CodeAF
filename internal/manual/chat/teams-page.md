@@ -133,6 +133,12 @@ because the teams rail already has the left; `alt+l` or its grip unfolds it.
 A press on a Traffic row goes to that member's conversation, off the page, exactly as it does
 in the conversation's own screen.
 
+## Renaming a team updates the message box
+
+The box reads the team's name when it draws. After a rename it says
+`to ◆ <the new name> manager` on the next frame, and a Traffic line
+`to run <name>` does the same. Neither keeps the name from when the page opened.
+
 While the manager's conversation is on its way in, the pane says `opening ◆ harbor's
 manager…`. It never waits silently: if the conversation cannot be opened, or has not answered
 within four seconds, the pane says why, `couldn't open ◆ harbor's manager: <reason>`, and

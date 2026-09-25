@@ -206,7 +206,9 @@ and removing it returns it to an ordinary chat with its history. What makes it s
   a `+ Manager` placeholder, and nothing costs anything;
 - its layout is split: the person's conversation with the manager on the left, a **Traffic**
   rail on the right. Whatever the person types goes to the manager, always, and the composer
-  says so (`to ◆ manager`, on the box's rule once there is text). Traffic is drawn as
+  says so (`to ◆ manager`, on the box's rule once there is text; on the teams page
+  `to ◆ harbor manager`). Both read the team's name when they are drawn, so a rename
+  does not leave the old name in the box. Traffic is drawn as
   threads (below, **Traffic is threaded**). With the manager in front the
   right-hand column is the Traffic (ruled 2026-09-24): the task column is not drawn and not
   reserved whatever the saved `ctrl+g` answer says. When the manager has live tasks the
@@ -1346,7 +1348,9 @@ row and its hint and press say why.
 under its team. The wall's Teams row stays flat and names a nested team `harbor › api`, each
 part cut on its own so the team's own name is never the part lost.
 
-**Traffic (8.10's asks).** A start carrying `Team` reads `◆ started @api to run backend`. A
+**Traffic (8.10's asks).** A start carrying `Team` reads `◆ started @api to run backend`,
+and the name is read from the teams held in memory when the rail is drawn, so a rename
+does not leave `to run` on the old name. A
 ruling (`teams.IsRuling`) reads `◆ ruling → @web` (or `you ruling`) with the decision's words
 and the packet named in the hint, never as the team's own manager's `do`.
 

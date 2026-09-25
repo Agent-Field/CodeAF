@@ -29,6 +29,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		page     string
 	}{
 		{"what can you do", "what-i-can-do"},
+		{"why does a wrapped help line stay under its key", "keys"},
 		// The conversations view and its teams (conversations-and-teams.md).
 		{"how do I see all my conversations at once", "conversations-and-teams"},
 		{"what is the chats dock under the message box", "conversations-and-teams"},
@@ -38,6 +39,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where are my teams saved", "conversations-and-teams"},
 		// The teams page (teams-page.md).
 		{"how do I see all my teams and what waits on me", "teams-page"},
+		{"does renaming a team update the message box", "teams-page"},
 		{"how do I close a team", "teams-page"},
 		{"how do I reopen a closed team", "teams-page"},
 		{"where do I change one team's settings", "teams-page"},

@@ -93,7 +93,8 @@ Traffic                                  hide alt+l
 - `◆ manager stopped @web · going in circles`, `◆ manager started @lexer` with the brief under
   it, and `codeaf  @review is now @security` are lines of their own, as is anything written
   before threads.
-- A start that made a sub-team reads `◆ manager started @api to run backend`.
+- A start that made a sub-team reads `◆ manager started @api to run backend`. The name is
+  the team's name now, so a rename replaces `backend` on the next frame.
 - `◆ manager ruling → @web` (or `you ruling → @web` when you decided it) heads the decision on
   a conflict, written into every party's team, with the ruling on its own line under it: it is
   a ruling, not that team's manager's own order, and pointing at its words names the conflict
