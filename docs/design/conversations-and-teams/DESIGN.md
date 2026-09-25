@@ -1156,8 +1156,10 @@ or `busy for <team>` (`MemberState.ReportsTo`).
   One open per manager is out at a time: choosing the team again while it is out takes that
   open up instead of asking the door twice, an answer for the manager the page is asking about
   is the page's whichever attempt carried it, and a refusal about a conversation the window now
-  holds is no refusal. Only `Retry` asks again while an open is out. Over a connection that holds
-  one conversation at a time the swap is asked on the ordered door line, never from Update.
+  holds is no refusal, and the swap uses that same check: a lock on a transcript this window
+  already holds brings that manager forward and says nothing. Only `Retry` asks again while an
+  open is out. Over a connection that holds one conversation at a time the swap is asked on the
+  ordered door line, never from Update.
 - **How the page loads.** The rail, the header and the pane's frame are drawn from memory on the
   opening frame (the teams file is the one read made on the loop, and it does not block), and
   every reading fills in place: the spend is the header's last piece, members start as members

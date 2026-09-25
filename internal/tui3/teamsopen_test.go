@@ -351,3 +351,38 @@ func TestTeamsManagerSwapOverASharedConnectionIsAskedOffTheLoop(t *testing.T) {
 		t.Fatalf("the swapped manager is not in the pane (front %q):\n%s", l.a.frontTabKey(), teamsFrameText(l.a))
 	}
 }
+
+// A SWAP THAT MEETS THIS WINDOW'S OWN LOCK, WHILE THE MANAGER IS HELD BEHIND,
+// IS NO REFUSAL. The local open forgives that case. The swap used to say the
+// conversation was open in another window about one this window already holds.
+// (A manager already in front is a different road: the page settles to done
+// and the refusal does not stay on the pane.)
+func TestTeamsSwappedLockWhileThisWindowHoldsItIsNoRefusal(t *testing.T) {
+	l := newTeamsOpenLab(t, true)
+	l.a.shared = true
+	if l.a.behind == nil {
+		l.a.behind = map[string]*kept{}
+	}
+	l.a.tp.sel = l.orbit
+	l.a.behind[l.key] = &kept{conv: Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: l.file}}
+	if !l.a.holding(l.file) || l.a.frontTabKey() == l.key {
+		t.Fatal("the manager is not held behind")
+	}
+	l.a.tp.openSeq++
+	gen := l.a.tp.openSeq
+	l.a.tp.open = teamsOpen{key: l.key, gen: gen, at: l.a.now(), out: true}
+	if selected, ok := l.a.teamsSelected(); !ok || selected.Manager != l.key || !l.a.at(pageTeams) {
+		t.Fatalf("the page does not want this manager (ok %v, manager %q, key %q, on page %v)", ok, selected.Manager, l.key, l.a.at(pageTeams))
+	}
+	cmd := l.a.teamsSwapped(gen, l.key, Conversation{SessionFile: l.file}, session.ErrSessionLocked)
+	drive(t, l.a, tea.WindowSizeMsg{Width: l.a.width, Height: l.a.height})
+	if cmd != nil {
+		drive(t, l.a, runCmd(cmd)...)
+	}
+	if l.a.tp.open.why != "" || strings.Contains(teamsFrameText(l.a), sessionBusyWord) {
+		t.Fatalf("a lock on a conversation this window holds was said (why %q):\n%s", l.a.tp.open.why, teamsFrameText(l.a))
+	}
+	if l.a.frontTabKey() != l.key || !l.a.teamsHosting() {
+		t.Fatalf("the held manager was not brought forward (front %q):\n%s", l.a.frontTabKey(), teamsFrameText(l.a))
+	}
+}

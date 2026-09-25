@@ -230,9 +230,7 @@ func (a *app) teamsOpened(gen int, key, file string, conv Conversation, err erro
 	current := mine && a.tp.open.gen == gen
 	if err != nil || conv.Agent == nil {
 		switch {
-		case mine && a.holding(file):
-			// Another answer for this manager landed it while this one was
-			// out, and this one met its lock: the manager is here.
+		case a.teamsOpenHeld(key, file):
 			return a.teamsLanded(key, file)
 		case current:
 			why := "the conversation did not open"
@@ -278,17 +276,30 @@ func (a *app) teamsLanded(key, file string) tea.Cmd {
 	return cmd
 }
 
+// teamsOpenHeld reports whether a refusal for key is about a conversation this
+// window already holds. Another answer landed it while this one was out, and
+// this one met its lock. A refusal about a conversation in hand is no refusal,
+// on the local open and on the swap alike.
+func (a *app) teamsOpenHeld(key, file string) bool {
+	return a.tp.open.key == key && a.holding(file)
+}
+
 // teamsSwapped folds a swap over a connection that holds one conversation at a
 // time. The engine has already moved when it answers, so a conversation that
 // opened is taken in front whatever the page wants now ([app.takeBeside]): the
-// window must show the conversation its one handle names. A refusal is said
-// when it is the page's current attempt.
+// window must show the conversation its one handle names. A refusal about a
+// conversation this window already holds is no refusal ([app.teamsOpenHeld]),
+// the same rule as the local open. Any other refusal is said when it is the
+// page's current attempt.
 func (a *app) teamsSwapped(gen int, key string, conv Conversation, err error) tea.Cmd {
 	if out, ok := a.tp.opens[key]; ok && out.gen == gen {
 		delete(a.tp.opens, key)
 	}
 	current := a.tp.open.key == key && a.tp.open.gen == gen
 	if err != nil || conv.Agent == nil {
+		if a.teamsOpenHeld(key, conv.SessionFile) {
+			return a.teamsLanded(key, conv.SessionFile)
+		}
 		if current {
 			why := "the conversation did not open"
 			switch {
