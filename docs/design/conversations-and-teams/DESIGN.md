@@ -985,7 +985,11 @@ Settings cap) is checked: at or over the ceiling, the start is held and the Traf
 person's own typing is never held. The first holder raises ONE `cap` packet to `you` for the
 pool and ceiling (`harbor reached its $5 cap today`; `raise` = `Raise to $10`, twice the
 ceiling; `stop` = `Stop for today`; recommended `stop`), carrying `Packet.Cap` =
-`CapFacts{Team, Day, CapUSD, SpentUSD, RaiseTo}`. A decided `raise` lifts the ceiling to
+`CapFacts{Team, Day, CapUSD, SpentUSD, RaiseTo}`. The raise is idempotent across processes:
+under the decisions file lock, the crossing is the pool team id, the local day and the ceiling
+(`CapUSD`). A second raiser, another window or a headless wake, finds that packet and writes
+nothing. A later day, or the same day after a `raise` when the new ceiling is crossed, is a
+different crossing and a new packet. A decided `raise` lifts the ceiling to
 `RaiseTo` for that local day; meeting it raises one more packet at the new ceiling; `stop` or
 the person's own words hold until the day turns or the cap is changed. Spend is read through
 `TeamSpend` only when `TeamSpendStamp` moved (per pool, per session), never per model request.
@@ -1035,8 +1039,7 @@ Text}`) appends exactly `teams.WrapUpRequest(Text)` to the engine's log, and
 `TeamsAcceptClosing(id)`. The interface wires them into its seam (d2); an engine without the
 flag gets `Close now` only, said as such.
 
-**Known gaps.** Two processes meeting a cap in the same instant can each
-raise a cap packet (one process raises one). A conversation in an unmanaged sub-team whose home
+**Known gaps.** A conversation in an unmanaged sub-team whose home
 manager is a level up gets no member verbs and no questions-up (its membership has no manager). (Closed by 8.9: such a member answers to that manager for
 questions and `team_post`.)
 A person's decision on a packet whose raiser nobody holds is delivered when that conversation

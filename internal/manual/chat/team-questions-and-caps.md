@@ -64,6 +64,14 @@ When the pool reaches its cap:
 A manager can never raise a cap: money is yours. Every held wake is one line in the traffic,
 `held @web: harbor reached its $5 cap today`.
 
+## Two windows ask once when a team reaches its cap
+
+You are asked once for that team, that day, and that ceiling. A second codeaf window, or a
+wake while the terminal is closed, finds the card already raised and adds nothing, so you do
+not get two copies of `harbor reached its $5 cap today`. The next day asks again. The same
+day asks again only after you choose **Raise to $10** and the team then crosses that new
+ceiling.
+
 ## Wrapping up and closing a team
 
 `Close…` on the teams page, `Close team…` on a team's card, or `D` on the conversations view

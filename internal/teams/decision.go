@@ -43,7 +43,12 @@ import (
 // half-written packet and a writer never loses another's line.
 //
 // EVERY WRITE IS UNDER THE FILE'S LOCK and re-reads the fold under it, so two
-// deciders cannot both decide one packet: the second is [ErrDecided].
+// deciders cannot both decide one packet: the second is [ErrDecided]. A cap
+// raise is the same shape: under that lock the writer looks for a packet
+// already raised for the same pool, local day and ceiling, and a second
+// raiser, including one in another process, writes nothing and is handed the
+// packet that is already there. A later day, or the same day at a higher
+// ceiling, is a different crossing and a new packet.
 //
 // READS ARE STAT-FIRST AND INCREMENTAL, for traffic.go's reason: the teams
 // page asks about open packets on its clock. A file whose stamp has not moved
@@ -229,6 +234,11 @@ var (
 	ErrNoPacket   = errors.New("teams: no such packet")
 	ErrNotDecider = errors.New("teams: only the manager it waits on, or you, can decide or escalate it")
 	ErrSideways   = errors.New("teams: a packet goes up the tree or to you, never sideways or down")
+	// errCapAlready is a cap raise whose crossing is already in the file. The
+	// packet on the event has been replaced with the one that was there, and
+	// nothing was written. It stays inside this package: [Raise] answers that
+	// packet and no error.
+	errCapAlready = errors.New("teams: that cap crossing was already raised")
 )
 
 // decisionEvent is one line of a packet file.
@@ -276,6 +286,13 @@ func DecisionsPath(profileDir, teamID string) string {
 // ("1", "2", ...). The kind, the question, the raiser, and a label and a
 // consequence on every option are required; a question may have no options
 // (the answer is words), every other kind must have one.
+//
+// A CAP PACKET IS RAISED ONCE PER CROSSING. The crossing is the pool, the
+// local day and the ceiling ([capCrossing]). The check and the append happen
+// under the decisions file's lock, so two processes that meet the same
+// crossing write one line: the second is handed the packet already there, and
+// no second line of Traffic is written. Any other kind is a new packet every
+// time it is raised.
 func Raise(profileDir string, p Packet) (Packet, error) {
 	if !packetKinds[p.Kind] {
 		return Packet{}, fmt.Errorf("teams: %q is not a packet kind", p.Kind)
@@ -326,7 +343,11 @@ func Raise(profileDir string, p Packet) (Packet, error) {
 	now := time.Now()
 	p.ID, p.State, p.Raised, p.At = "p"+NewID(), PacketOpen, now, now
 	p.DecidedBy, p.Decision, p.Reason, p.Trail = "", "", "", nil
-	if err := appendDecision(profileDir, p.Origin, &decisionEvent{Op: opRaise, At: now, Packet: &p}, nil); err != nil {
+	err = appendDecision(profileDir, p.Origin, &decisionEvent{Op: opRaise, At: now, Packet: &p}, nil)
+	if errors.Is(err, errCapAlready) {
+		return p, nil
+	}
+	if err != nil {
 		return Packet{}, err
 	}
 	logPacket(profileDir, f, p, involved(p, p.Origin, p.Team),
@@ -548,6 +569,37 @@ func packetOrigin(profileDir, id string) (string, error) {
 	return "", ErrNoPacket
 }
 
+// capCrossing is the identity of one cap ask: the pool, the local day, and the
+// ceiling that was crossed. What had been spent, and the figure a raise would
+// lift the ceiling to, are facts of that ask and not part of its identity, so
+// two processes that meet the same ceiling write one packet. An empty key is
+// a packet this rule does not apply to.
+func capCrossing(p *Packet) (string, bool) {
+	if p == nil || p.Kind != PacketCap || p.Cap == nil || p.Cap.Team == "" || p.Cap.Day == "" {
+		return "", false
+	}
+	return p.Cap.Team + "\x00" + p.Cap.Day + "\x00" + strconv.FormatFloat(p.Cap.CapUSD, 'f', -1, 64), true
+}
+
+// capAlready is the packet already raised for p's crossing, read from path
+// under the decisions file's lock. The caller holds that lock.
+func capAlready(path string, p *Packet) (Packet, bool) {
+	key, ok := capCrossing(p)
+	if !ok {
+		return Packet{}, false
+	}
+	folded, err := packetCache.read(path)
+	if err != nil {
+		return Packet{}, false
+	}
+	for _, have := range folded.list() {
+		if got, ok := capCrossing(&have); ok && got == key {
+			return have, true
+		}
+	}
+	return Packet{}, false
+}
+
 // appendDecision appends e to team teamID's packet file under its lock. check,
 // when given, is handed the packet e names as it stands under the lock, may
 // fill in e, and an error from it writes nothing.
@@ -557,6 +609,15 @@ func appendDecision(profileDir, teamID string, e *decisionEvent, check func(Pack
 	}
 	path := DecisionsPath(profileDir, teamID)
 	return lockedAt(strings.TrimSuffix(path, ".jsonl")+".lock", lockWait, func() error {
+		// A CAP CROSSING IS ONE LINE. The fold is read under this lock, after
+		// any other raiser has either written or not, so the second process
+		// sees the first's packet and leaves the file alone.
+		if e.Op == opRaise && e.Packet != nil {
+			if existing, ok := capAlready(path, e.Packet); ok {
+				*e.Packet = existing
+				return errCapAlready
+			}
+		}
 		if check != nil {
 			packets, err := packetCache.read(path)
 			if err != nil {
