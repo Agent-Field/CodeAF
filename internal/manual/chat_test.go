@@ -2498,6 +2498,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does this rule apply to all my projects", "standing-orders"},
 		{"not in this project", "standing-orders"},
 		{"why does it say 3 standing orders here", "standing-orders"},
+		{"when does a standing order go off on home", "home"},
 		// The wave that gave a rule with no trigger a shape of its own. These are
 		// the words somebody uses for one before they have heard the word
 		// "standing" at all — a style rule, a convention, a preference — plus the
@@ -3040,6 +3041,20 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 			t.Errorf("%q should reach %s; it reached %v", ask.question, ask.page, pages)
 		}
 	}
+}
+
+// #1469: home lists waiting standing orders without their due time. A person
+// asking when one goes off there must reach the correction and the standing
+// place door, not the old promise of a time at the row's right edge.
+func TestHomeStandingOrderQuestionPointsToTheDueTimeDoor(t *testing.T) {
+	const asked = "when does a standing order go off on home"
+	const says = "Home does not show when a waiting order will next go off"
+	for _, section := range Chat().Search(asked, DefaultResults) {
+		if section.Page == "home" && strings.Contains(section.Body, says) {
+			return
+		}
+	}
+	t.Fatalf("%q does not reach the home section that directs the reader to the due time", asked)
 }
 
 // The ordinary task's Spending row stays as written, but each general page
