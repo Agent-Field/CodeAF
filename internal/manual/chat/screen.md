@@ -1247,7 +1247,9 @@ above a cent (`$1.63`), to four decimals under one (`$0.0052`), and as `<$0.0001
 hundredth of a cent — because `$0.0000` is four zeros on a screen that has taught you a
 zero means nothing happened, and a turn that spent six millionths of a dollar spent
 something. The limits on the Spending tab are written by the same rule, with whole dollars
-where the figure a person typed was whole (`$500`).
+where the figure a person typed was whole (`$500`), and so are the receipts beside them —
+`<$0.0001 today`, `this one <$0.0001` — and the spend a headless run and `codeaf doctor`
+print.
 
 ## The state word: idle, working, stopping, waiting
 
