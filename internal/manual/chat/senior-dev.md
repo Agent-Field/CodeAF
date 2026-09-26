@@ -49,9 +49,10 @@ work, goes to codeaf's own worker, never to senior-dev.
 
 ## Watching senior-dev work — open its task, what it is doing step by step, how long it has run, stop it
 
-A senior-dev run is a task of the conversation that started it. Its row is on the side
-list wearing `[senior-dev]` after its title, with the step it is in and what it has spent
-so far under it, and a card in the conversation lands when it ends. Its `ended` card
+A senior-dev run is a task of the conversation that started it. Its compact side-list
+row wears `[senior-dev]` after its title (`[sd]` when narrow) and shows its time while
+the page is closed. Hover over the row for its current step and spend; both are also in
+the task page header. A card in the conversation lands when it ends. That card
 stands outside the chat's `worked` fold as soon as the run lands, including while its
 task page is open; the chat's own work in the wake reply still folds. Click the row or the
 card, or follow a task link to it, and its task opens **inside the conversation's own
@@ -232,8 +233,9 @@ left it; your branch main does not move`. Its ending names your own branch, and 
 adds nothing never deletes what an earlier one committed. Switch the folder to another
 branch first and the next run cuts its own.
 
-**The card stays quiet.** senior-dev's landed card says the run `ended` (never a red
-cross) and `senior-dev's ending went to the chat`; the chat's own reply is where you read
+**The card stays quiet.** senior-dev's landed card says `done` when the run finished,
+`stopped` when you stopped it, and `ended` when it ended without finishing (never a red
+cross), and `senior-dev's ending went to the chat`; the chat's own reply is where you read
 what came of the work. `ctrl+o` on the card still shows senior-dev's own words.
 
 **It has no step cap.** Every run has finite dollar and wall-clock ceilings: by default,
