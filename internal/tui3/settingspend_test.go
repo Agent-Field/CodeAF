@@ -481,6 +481,7 @@ func TestAPositiveCostIsNeverDrawnAsZeros(t *testing.T) {
 		}{
 			{"a cost", dollars(usd)},
 			{"a limit", railFigure(usd)},
+			{"a receipt", config.SpentFigure(usd)},
 		} {
 			if strings.Contains(c.got, "0.0000") && !strings.HasPrefix(c.got, "<") {
 				t.Fatalf("%s of %g is drawn %q — a positive amount rendered as its own opposite", c.what, usd, c.got)
@@ -488,6 +489,32 @@ func TestAPositiveCostIsNeverDrawnAsZeros(t *testing.T) {
 			if c.got != "<$0.0001" {
 				t.Fatalf("%s of %g is drawn %q, want %q", c.what, usd, c.got, "<$0.0001")
 			}
+		}
+	}
+}
+
+// ONE TINY DAY IS SAID ONE WAY ON THE TAB. The `today` row wrote a spend under
+// the floor as `<$0.0001` while the receipt beside the daily limit wrote the
+// same day as `$0.0000 today`, and the conversation's receipt said `this one
+// $0.0000`, on one screen. Every figure on the tab is now the same spelling.
+func TestTheSpendingTabSaysOneTinyDayOneWay(t *testing.T) {
+	a, _ := spendingSheet(t)
+	a.dayCost, a.dayCosted, a.cost = 0.00003, true, 0.00002
+	today := a.todayReading()
+	if today == nil || !strings.HasPrefix(today.value.full, "<$0.0001") {
+		t.Fatalf("the today row does not open with the floor: %+v", today)
+	}
+	day := mustSpendRow(t, a, config.KeyDailyBudget).Receipt()
+	this := mustSpendRow(t, a, config.KeySpendRail).Receipt()
+	if day != "<$0.0001 today" {
+		t.Fatalf("the daily limit's receipt = %q, want %q", day, "<$0.0001 today")
+	}
+	if this != "this one <$0.0001" {
+		t.Fatalf("the conversation's receipt = %q, want %q", this, "this one <$0.0001")
+	}
+	for _, said := range []string{today.value.full, day, this} {
+		if strings.Contains(said, "$0.0000") {
+			t.Fatalf("a spent amount is drawn as four zeros: %q", said)
 		}
 	}
 }

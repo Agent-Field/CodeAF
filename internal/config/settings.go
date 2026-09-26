@@ -2729,9 +2729,30 @@ func SpentFigure(usd float64) string {
 		return ""
 	}
 	if usd < 0.01 {
-		return fmt.Sprintf("$%.4f", usd)
+		return SubCent(usd)
 	}
 	return fmt.Sprintf("$%.2f", usd)
+}
+
+// MoneyFloor is the smallest amount any surface writes as a figure: a hundredth
+// of a cent, four places after the point. It is the number [SubCent] compares
+// against AND the number it prints, so it is spelled once.
+const MoneyFloor = 0.0001
+
+// SubCent is how a positive amount SMALLER THAN A CENT is written, everywhere.
+//
+// ONE RULE, BECAUSE TWO DREW ONE FIGURE TWO WAYS. The chat's own money word
+// gained a floor so a real spend too small for four places reads `<$0.0001`,
+// while [SpentFigure] kept a bare four places and wrote the same spend as
+// `$0.0000`. The Spending tab then said `today <$0.0001` on one row and
+// `$0.0000 today` on the next, about the same day: four zeros for money that
+// was spent, which is the emptiness law's failure turned inside out. Every
+// sub-cent figure is written here now, and the floor never rounds to a lie.
+func SubCent(usd float64) string {
+	if usd < MoneyFloor/2 {
+		return "<" + fmt.Sprintf("$%.4f", MoneyFloor)
+	}
+	return fmt.Sprintf("$%.4f", usd)
 }
 
 // spentTodayReceipt is the day's spend beside the day's ceiling (13). Nil seam

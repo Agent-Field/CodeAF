@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -190,12 +189,6 @@ func railFigure(usd float64) string {
 	return groupedDollars(usd)
 }
 
-// moneyFloor is the smallest amount this surface writes as a figure: a
-// hundredth of a cent, which is four places after the point. It is here rather
-// than spelled into a format string twice because it is the number [subCent]
-// compares against AND the number it prints.
-const moneyFloor = 0.0001
-
 // subCent is how an amount SMALLER THAN A CENT is written, and it is the one
 // rule both [railFigure] and [dollars] read.
 //
@@ -213,12 +206,11 @@ const moneyFloor = 0.0001
 // the status line needs from a segment whose stillness is the point. More
 // decimals were the other answer and they are worse: `$0.000006` is a figure
 // nobody acts on, and the number of cells it costs depends on how small it is.
-func subCent(usd float64) string {
-	if usd < moneyFloor/2 {
-		return "<" + fmt.Sprintf("$%.4f", moneyFloor)
-	}
-	return fmt.Sprintf("$%.4f", usd)
-}
+//
+// THE RULE ITSELF LIVES IN internal/config ([config.SubCent]), because the
+// receipts beside each limit are written there and drew `$0.0000` while this
+// surface drew `<$0.0001` for the same day.
+func subCent(usd float64) string { return config.SubCent(usd) }
 
 // taskReading is the per-task limit a crew task runs under: the figure set in
 // /crew, which stops the task's next call once the task has spent it. The task
