@@ -2309,12 +2309,20 @@ func (h *homeView) focusedLine() (homeLine, bool) {
 	return h.lines[h.cursor], true
 }
 
-// previewLine is the single selected row, shared by the card and its actions.
-// Mouse navigation moves this cursor too; a stale hover never chooses a verb.
-func (h *homeView) previewLine() (homeLine, bool) { return h.focusedLine() }
+// previewLine is the row the card and its actions answer. A typed search keeps
+// the keyboard cursor while the pointer temporarily previews another match.
+func (h *homeView) previewLine() (homeLine, bool) {
+	if h.searching() && h.hover >= 0 && h.hover < len(h.lines) && h.lines[h.hover].stop() {
+		return h.lines[h.hover], true
+	}
+	return h.focusedLine()
+}
 
-// previewAt is the selected line number for readers that need its position.
+// previewAt is the previewed line number for readers that need its position.
 func (h *homeView) previewAt() int {
+	if h.searching() && h.hover >= 0 && h.hover < len(h.lines) && h.lines[h.hover].stop() {
+		return h.hover
+	}
 	if _, ok := h.focusedLine(); !ok {
 		return homeNoLine
 	}
@@ -4324,7 +4332,12 @@ func (a *app) homeHover(x, y int) tea.Cmd {
 		}
 		if at >= 0 && at < len(a.home.lines) && a.home.lines[at].stop() {
 			a.home.hover = at
-			a.selectPlaceRow(&a.home.cursor, at)
+			// A SEARCH'S POINTER IS A TEMPORARY PREVIEW. Leaving the match
+			// gives the card back to the keyboard cursor, so motion must not
+			// move that cursor while the drop-up is open.
+			if !a.home.searching() {
+				a.selectPlaceRow(&a.home.cursor, at)
+			}
 		}
 	}
 	if a.home.hover != was {

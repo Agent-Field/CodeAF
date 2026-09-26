@@ -1954,7 +1954,8 @@ a `made <file>` line in `since you left`, and where you left off is the line und
 selects it; the next arrow key takes over and removes the mouse highlight. A stationary
 pointer cannot override that choice. `→` and its options always act on the latest
 selection. Leaving the list keeps that selection, and there is no separate right-hand
-preview at rest.
+preview at rest. A typed search is different: its pointer previews a match without moving
+the keyboard cursor, and leaving the match restores the cursor's card.
 
 **The one card left is beside a search.** On a frame 136 columns or wider, while you are
 typing, the match under the cursor has a card to the right of the list (*The card beside a
@@ -1970,7 +1971,9 @@ and each thing that card said has a place: `keeping an eye on` is the standing p
 
 **While something is typed, on a frame 136 columns or wider, a card stands to the right of
 the matches**, about the match under the cursor — or the one under your pointer while it is
-on one. It is read top to bottom as bands with blank lines between them, and each band is
+on one. Moving the pointer off the matches gives the card back to the cursor's match.
+Even a match whose row says `folder gone` has a card; its unavailable folder actions say
+so there. The card is read top to bottom as bands with blank lines between them, and each band is
 drawn only when it has something to say:
 
 1. the conversation's **name**, the brightest text on the screen;
