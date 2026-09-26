@@ -2078,6 +2078,21 @@ func (c *Client) completeWithMessagesStreaming(
 			}
 		}
 	}
+	if !decoder.done && finishReason == "" {
+		cut := &StreamCut{Reason: CutTruncated}
+		c.stampCut(ctx, cut, served, began, stall.tokens())
+		cut.Rerouted = c.noteCutProvider(ctx, c.modelFor(request), served)
+		c.noteLaneOutcome(c.modelFor(request), served, cut.Reason.word(), false)
+		c.releaseEndpoint(ctx, c.modelFor(request))
+		c.record(recordFacts{
+			ctx: ctx, request: request, knobs: knobs, stream: true,
+			began: logBegan, status: httpResponse.StatusCode, served: served, err: cut,
+			response: response, reasoningTokens: reasoningTokens,
+			ttft: firstTokenAfter(began, firstToken),
+		})
+		c.settle(ctx, c.modelFor(request), response, cut.Reason.word(), content.Len())
+		return nil, false, cut
+	}
 	response.Choices = []ai.Choice{{Index: 0, FinishReason: finishReason, Message: ai.Message{
 		Role:      "assistant",
 		Content:   []ai.ContentPart{{Type: "text", Text: content.String()}},
