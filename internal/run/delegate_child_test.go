@@ -50,6 +50,12 @@ func childProgram() delegate.Delegate {
 }
 
 func childBody(ctx context.Context, host delegate.Host, args []string) error {
+	if os.Getenv("FAKE_READ_IGNORED") == "1" {
+		if _, err := os.ReadFile(os.Getenv("SENIOR_DEV_IGNORED_AT_START")); err != nil {
+			host.Terminal(delegate.Ending{Status: delegate.StatusCrashed, Message: "read start-time ignore list: " + err.Error()})
+			return nil
+		}
+	}
 	if path := os.Getenv("FAKE_API_FILE"); path != "" {
 		api := host.Models()
 		_ = os.WriteFile(path, []byte(api.BaseURL+"\n"+api.Token+"\n"), 0o600)

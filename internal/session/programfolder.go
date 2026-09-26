@@ -246,6 +246,13 @@ func PrepareProgramFolder(order ProgramFolderOrder) (*ProgramFolder, error) {
 		folder.NotesWereThere = err == nil
 	}
 	if !repo {
+		// A PLAIN FOLDER HAS NO GIT IGNORE RULES, but both launch roads hand
+		// the child this path. An empty, readable list keeps the child's
+		// unreadable-list safety rule intact without aborting a plain run.
+		if err := folder.writeIgnoredAtStart(nil); err != nil {
+			folder.release()
+			return nil, err
+		}
 		if outer != "" && !holdsHomeFolder(outer) {
 			folder.IgnoredOuter = outer
 			folder.Outer = ""
@@ -259,15 +266,9 @@ func PrepareProgramFolder(order ProgramFolderOrder) (*ProgramFolder, error) {
 		return nil, fmt.Errorf("read paths ignored at the start in %s: %s", dir, firstLine(ignored))
 	}
 	folder.IgnoredAtStart = strings.Split(strings.TrimSuffix(ignored, "\x00"), "\x00")
-	if path := folder.IgnoredFile(); path != "" {
-		if err := os.MkdirAll(folder.Keep, 0o700); err != nil {
-			folder.release()
-			return nil, err
-		}
-		if err := os.WriteFile(path, []byte(ignored), 0o600); err != nil {
-			folder.release()
-			return nil, err
-		}
+	if err := folder.writeIgnoredAtStart([]byte(ignored)); err != nil {
+		folder.release()
+		return nil, err
 	}
 	carried, err := folder.carryOn()
 	if !carried && err == nil {
@@ -285,6 +286,19 @@ func PrepareProgramFolder(order ProgramFolderOrder) (*ProgramFolder, error) {
 		return nil, err
 	}
 	return folder, nil
+}
+
+// writeIgnoredAtStart makes the child's frozen safety list before either road
+// can launch it. The empty file in a plain folder means no git rules existed.
+func (f *ProgramFolder) writeIgnoredAtStart(body []byte) error {
+	path := f.IgnoredFile()
+	if path == "" {
+		return nil
+	}
+	if err := os.MkdirAll(f.Keep, 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(path, body, 0o600)
 }
 
 // carryOn takes up the branch an earlier finished run of the same program left

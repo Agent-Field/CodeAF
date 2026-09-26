@@ -38,6 +38,9 @@ func TestProgramFolderNeverCommitsPathsIgnoredAtStartOrRunCaches(t *testing.T) {
 	writeFile(t, filepath.Join(repo, ".pytest_cache", "state"), "cache")
 	writeFile(t, filepath.Join(repo, "made.txt"), "work\n")
 	folder.Finish("done")
+	if frozen, err := os.ReadFile(folder.IgnoredFile()); err != nil || string(frozen) != string(ignoredRecord) {
+		t.Fatalf("the repository's frozen ignore list changed during the run: %q, %v", frozen, err)
+	}
 	paths := gitOut(t, repo, "ls-tree", "-r", "--name-only", "HEAD")
 	for _, want := range []string{".gitignore", "made.txt"} {
 		if !strings.Contains(paths, want) {
@@ -68,6 +71,9 @@ func TestProgramFolderInsideIgnoredDirectoryStaysPlain(t *testing.T) {
 		t.Fatal(err)
 	}
 	folder := prepareIn(t, testPrograms("fake")[0], inside, "Build here")
+	if ignored, err := os.ReadFile(folder.IgnoredFile()); err != nil || len(ignored) != 0 {
+		t.Fatalf("the ignored subfolder needs a readable empty safety list: %q, %v", ignored, err)
+	}
 	writeFile(t, filepath.Join(inside, "result.txt"), "made\n")
 	end := folder.Finish("done")
 	if !folder.Plain() || folder.Dir != inside || strings.TrimSpace(gitOut(t, repo, "rev-parse", "main")) != before || currentBranch(repo) != "main" {
