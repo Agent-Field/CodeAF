@@ -232,15 +232,33 @@ var tuiWords = map[string]tuiWord{
 
 	"barHomeWord": {
 		screen: "home",
-		why:    "the first of the four words on the tab bar",
+		why:    "the first of the six places on the wordmark row",
 	},
-	"barTasksWord": {
+	"barTeamsWord": {
+		screen: "teams",
+		why:    "the second place on the wordmark row",
+	},
+	"barChatsWord": {
+		screen: "chats",
+		why:    "the third place on the wordmark row",
+	},
+	"barSessionsWord": {
 		screen: "sessions",
-		why:    "the second word on the bar, and the place the sessions heading opens",
+		why:    "the fourth place on the wordmark row, and the place the sessions heading opens",
 	},
 	"barSettingsWord": {
 		screen: "settings",
-		why:    "the last of the four — standing, memory and search are off the bar and reached by command",
+		why:    "the last of the six — standing, memory and search are off the bar and reached by command",
+	},
+	"chatFootEffortWord": {
+		screen: "alt+e effort · alt+a approvals",
+		source: "alt+e",
+		why: "the live conversation's control row, even after a reply has ended and the composer is empty; " +
+			"an ordinary resumed conversation has no setup, starter or pending question needle to greet the rig",
+	},
+	"chatWorkingFootWord": {
+		screen: "esc interrupt",
+		why:    "the conversation's working foot while a reminder's turn is ending, before the home gesture returns",
 	},
 	"pulseWantWord": {
 		screen: " want you",

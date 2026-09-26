@@ -44,7 +44,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -369,10 +368,10 @@ func testHomeShape(t *testing.T) {
 	if strings.Contains(screen, say(t, "homeRunningWhisper")) {
 		t.Errorf("populated sessions still show the empty-panel hint:\n%s", screen)
 	}
-	// THE BAR IS FOUR WORDS. Standing, memory and search are places reached by
-	// command and by alt+5…7, and a bar that still named them is the seven-word
-	// bar this wave retired.
-	want := []string{say(t, "barHomeWord"), say(t, "barTasksWord"), say(t, "homePanelSpend"), say(t, "barSettingsWord")}
+	// THE BAR IS SIX WORDS on the wordmark row. Standing, memory and search are
+	// reached by command and by alt+7…9; teams and chats stand before sessions.
+	want := []string{say(t, "barHomeWord"), say(t, "barTeamsWord"), say(t, "barChatsWord"),
+		say(t, "barSessionsWord"), say(t, "homePanelSpend"), say(t, "barSettingsWord")}
 	if got := barWords(screen, want[0], want[len(want)-1]); strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Errorf("the tab bar reads %q, want %q:\n%s", got, want, screen)
 	}
@@ -793,7 +792,9 @@ func testFiringReachesThePerson(t *testing.T) {
 	// while it looked there for a conversation-only firing row (#1344).
 	r.keys("Up")
 	r.keys("Enter")
-	r.waitFor(20*time.Second, say(t, "homeDoorWord"))
+	// The conversation's foot says `esc interrupt` while the reminder's turn
+	// is still ending; its home gesture returns when that work is quiet.
+	r.waitForAny(20*time.Second, say(t, "homeDoorWord"), say(t, "chatWorkingFootWord"))
 
 	// /status, while something stands: the derived `keeping watch` line, and the
 	// `◦ 1 standing order` line at the foot of the task column. That count was a
@@ -1093,12 +1094,14 @@ func testAnswerFromHome(t *testing.T) {
 	// from there. So B opens its own project, and A's conversation is a row on
 	// B's list like any other.
 	b := start(t, "afe2e_b", home, newWorkspace(t, "consentws-b", false), tuiPlain, 40)
-	// A's QUESTION ARRIVES ON B's `needs you` WITH ITS ANSWERS ON ITS OWN ROW.
-	// The top question that has answers draws them, and a digit answers it from
-	// ANYWHERE on home with no cursor move (DESIGN §1 law 7) — so there is nothing
-	// to walk to, and the chips are the oracle for both facts at once: the row has
-	// arrived, and this screen can answer it.
-	row := b.waitFor(40*time.Second, say(t, "answersAllowOnce"))
+	// A's QUESTION ARRIVES ON ITS EXISTING CONVERSATION ROW. Home shows the
+	// question and answers in that row's description while it is selected. A
+	// digit still answers the top question from anywhere on home.
+	b.waitFor(40*time.Second, say(t, "questionOtherWindowWord"))
+	if !walkTo(b, say(t, "answersAllowOnce"), "Up") {
+		t.Fatalf("could not select the question on its session row:\n%s", b.capture())
+	}
+	row := b.capture()
 	t.Logf("window B's home offers the answers to the question A is stopped on:\n%s", row)
 	if !strings.Contains(row, "1 ") {
 		t.Errorf("home's answers are missing the first chip's key:\n%s", row)
@@ -1118,21 +1121,10 @@ func testAnswerFromHome(t *testing.T) {
 		t.Errorf("home's row wrote its own grammar around the gate's sentence:\n%s", firstMatch(row, say(t, "consentRowLine")))
 	}
 
-	// AND THE ROW STANDS UNDER `needs you`, the panel every question on the
-	// machine lands in — window A's conversation, stopped on a consent card, is
-	// exactly such a row.
-	//
-	// IT IS READ AS THE PANEL'S OWN BLOCK AND NOT AS A DISTANCE INTO THE SCREEN.
-	// The heading used to carry its live count (`needs you · 2`), and this
-	// assertion leaned on that punctuation to tell the heading from the front of
-	// the gate's own `needs your ok …`; #1046 struck the count and left the
-	// suite matching a string home stopped drawing. [panelBlock] is the honest
-	// question: the sentence has to stand in the rows of that panel's own
-	// columns, above the first blank row under it — so a question filed on some
-	// other panel, or in the column beside it, still fails.
-	if needs := panelBlock(row, say(t, "homeNeedsHeading")); !strings.Contains(needs, say(t, "consentRowLine")) {
-		t.Errorf("the asking row is not under %q — that panel holds:\n%s\nthe whole screen was:\n%s",
-			say(t, "homeNeedsHeading"), needs, row)
+	// THE QUESTION BELONGS TO THE SESSIONS ROW, not a duplicate attention row.
+	if !strings.Contains(row, say(t, "homePanelRunning")) ||
+		strings.Count(row, say(t, "consentRowLine")) != 1 {
+		t.Errorf("the selected session does not carry exactly one question:\n%s", row)
 	}
 
 	// AND THE PULSE INSIDE A CHAT COUNTS IT. On home the top line is the budget
@@ -1143,7 +1135,10 @@ func testAnswerFromHome(t *testing.T) {
 	inChat := b.waitFor(30*time.Second, say(t, "homeDoorWord"), say(t, "pulseWantWord"))
 	t.Logf("window B's own conversation counts the question on its top line:\n%s", firstMatch(inChat, say(t, "pulseWantWord")))
 	openHome(t, b)
-	b.waitFor(20*time.Second, say(t, "answersAllowOnce"))
+	if !walkTo(b, say(t, "answersAllowOnce"), "Up") {
+		t.Fatalf("could not select the question after reopening home:\n%s", b.capture())
+	}
+	b.keys("Down")
 
 	b.lit("1")
 	time.Sleep(1500 * time.Millisecond)
@@ -1347,15 +1342,21 @@ func testGrouped(t *testing.T) {
 	t.Logf("home with three seeded projects:\n%s", screen)
 
 	projects := panelBlock(screen, say(t, "homePanelProjects"))
-	for _, name := range []string{"groupws", "alpha", "beta", "gamma"} {
+	// Paths give up their right end to the chat count in a narrow rail, so the
+	// full folder names are not visible. The three seeded paths remain distinct
+	// through /al, /be and /ga, and every row still says it owns one chat.
+	lines := strings.Split(strings.TrimSpace(projects), "\n")
+	if len(lines) != 5 || strings.Count(projects, "1 chat") != 4 {
+		t.Errorf("the `projects` panel does not hold four one-chat folders:\n%s", projects)
+	}
+	for _, name := range []string{"/al", "/be", "/ga"} {
 		if !strings.Contains(projects, name) {
-			t.Errorf("the `projects` panel has no row for %q:\n%s", name, projects)
+			t.Errorf("the `projects` panel has no visible row for %q:\n%s", name, projects)
 		}
 	}
-	// THIS WINDOW'S FOLDER IS THE FIRST ROW, which is why the panel is never
-	// empty.
-	if first := strings.SplitN(strings.TrimSpace(projects), "\n", 3); len(first) < 2 || !strings.Contains(first[1], "groupws") {
-		t.Errorf("this window's folder is not the first row of `projects`:\n%s", projects)
+	// This window's git folder is first, ahead of the three seeded paths.
+	if len(lines) > 1 && (!strings.Contains(lines[1], "TestTUIE2Ethe_proj") || !strings.Contains(lines[1], "main")) {
+		t.Errorf("this window's folder is not first on `projects`:\n%s", projects)
 	}
 
 	// AND alt+g IS UNBOUND ON HOME: there is no list left to group. It arrives
@@ -1415,7 +1416,9 @@ func panelBlock(screen, heading string) string {
 			if at < 0 {
 				continue
 			}
-			in, left, right = true, at, len(runes)
+			// capture-pane trims trailing spaces from the heading row, so its
+			// length is not the width of the panel rows underneath it.
+			in, left, right = true, at, len(screen)
 			if next := nextColumn(runes, at+len([]rune(heading))); next > 0 {
 				right = next
 			}
@@ -1474,23 +1477,24 @@ func nextColumn(runes []rune, from int) int {
 	return -1
 }
 
-// barWords is the tab bar's words: the first row holding both its first and its
-// last word, with any count a tab wears (`tasks 1`) left out.
+// barWords reads the places between home and settings on the wordmark row.
+// The wordmark stands before home and the machine's pulse stands after settings.
 func barWords(screen, first, last string) []string {
 	for _, line := range strings.Split(screen, "\n") {
 		fields := strings.Fields(line)
-		if len(fields) == 0 || fields[0] != first {
-			continue
-		}
-		var words []string
-		for _, field := range fields {
-			if _, err := strconv.Atoi(field); err == nil {
+		for i, field := range fields {
+			if strings.Trim(field, "[]") != first {
 				continue
 			}
-			words = append(words, field)
-		}
-		if words[len(words)-1] == last {
-			return words
+			for j := i + 1; j < len(fields); j++ {
+				if strings.Trim(fields[j], "[]") == last {
+					words := append([]string(nil), fields[i:j+1]...)
+					for k := range words {
+						words[k] = strings.Trim(words[k], "[]")
+					}
+					return words
+				}
+			}
 		}
 	}
 	return nil
@@ -1652,16 +1656,14 @@ func testOneSpendFigure(t *testing.T) {
 
 	// ── the /spend place ──────────────────────────────────────────────────
 	//
-	// `alt+3` and not `/spend`: the place's doors are the chord, `tab`, and the
+	// `alt+5` and not `/spend`: the place's doors are the chord, `tab`, and the
 	// word typed at home — `/spend` is an alias of `/cost`, which is this
 	// conversation's own note rather than the machine's page. The chord arrives
 	// as esc-then-3, which is what internal/tui3's placeDigit reads.
 	//
-	// THE DIGIT IS THE PLACE'S RANK IN internal/tui3's placeOrder, and the bar of
-	// four (`home tasks spend settings`) made spend the third. It was `alt+5` on
-	// the seven-word bar, and on the four-word one `alt+5` opens standing — which
-	// this subtest then read as a spend place with no figure on it.
-	r.lit("\x1b3")
+	// THE DIGIT IS THE PLACE'S RANK IN internal/tui3's placeOrder. Teams and
+	// chats now stand between home and sessions, making spend the fifth place.
+	r.lit("\x1b5")
 	place := r.waitFor(25*time.Second, say(t, "spendRailsHint"))
 	t.Logf("the spend place after the interrupted turn:\n%s", place)
 	fromPlace := moneyOn(t, place, say(t, "spendRailsHint"))
@@ -1925,14 +1927,20 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	time.Sleep(700 * time.Millisecond)
 	r.keys("Enter")
 	// THE DOOR THIS SUBTEST IS ABOUT. No window is holding the node any more, so
-	// the foot offers the record rather than the room.
+	// the foot offers the record rather than the room. The sessions place now
+	// starts on this window's new conversation, above the earlier task's family;
+	// walk onto the task row before reading its door.
 	//
 	// THE FOOT IS THE WHOLE SYNCHRONISATION AND THE GROUP HEADING WAS NEVER PART
 	// OF IT. This wait used to sit behind `finished today`, which is the roster's
 	// heading for work that ENDED today — and a node the checker could not judge
 	// ends under `your call` instead, so the heading was a claim about how the
 	// model's work landed standing in front of a test about paging a record.
-	roster := r.waitFor(30*time.Second, say(t, "tasksEnterInsideWord"))
+	r.waitFor(30*time.Second, say(t, "tasksUntitledWord"))
+	if !walkTo(r, say(t, "tasksEnterInsideWord"), "Down") {
+		t.Fatalf("could not select the finished task's record row:\n%s", r.capture())
+	}
+	roster := r.capture()
 	t.Logf("the roster is offering the record of work nothing is holding:\n%s", roster)
 
 	// AND THE CONVERSATION THIS WINDOW IS IN IS ITSELF THE TITLELESS ROW (#915).
@@ -1943,17 +1951,10 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	// same word home's own column spells for a chat nothing has named, so the
 	// wait holds both the name and the one spelling of it.
 	//
-	// IT IS ONE ROW DOWN AND NOT ON THE FIRST FRAME. A conversation that has
-	// delegated no work stands under `earlier`, the last of the page's five
-	// sections, and this window is fourteen rows tall on purpose — the list has
-	// room for one heading and one row, which `finished today` and the task fill.
-	// So the row is walked to with the arrow this page offers, and the cursor is
-	// put back on the task, because everything below reads the task's own foot.
-	r.keys("Down")
+	// The new conversation is still a visible, titleless row while the earlier
+	// task is selected; reading it does not disturb the task's own door.
 	untitledAt := r.waitFor(30*time.Second, say(t, "tasksUntitledWord"))
 	t.Logf("the conversation this window stands in is on the page by its word:\n%s", untitledAt)
-	r.keys("Up")
-	r.waitFor(20*time.Second, say(t, "tasksEnterInsideWord"))
 
 	// AND THE RECORD IS ALREADY BESIDE THE LIST. This terminal is [tuiPlain] wide,
 	// which is over the pane's floor, so the row under the cursor has its record
@@ -1967,7 +1968,14 @@ func testTaskRoomKeepsSpace(t *testing.T) {
 	// types itself into that place's filter and opens nothing — this is the first
 	// half of the gesture, done by hand, and it is what leaves the door loaded.
 	r.keys("Space")
-	armed := r.waitFor(15*time.Second, say(t, "tasksEnterInsideWord"))
+	// The space is a filter edit, and on the sessions place an edit puts the
+	// cursor back on the top row, so the task's row is walked to again. Any key
+	// but a second space disarms the gesture, and the enter below always did, so
+	// the walk proves no less than the enter alone did.
+	if !walkTo(r, say(t, "tasksEnterInsideWord"), "Down") {
+		t.Fatalf("could not select the finished task's record row after the space:\n%s", r.capture())
+	}
+	armed := r.capture()
 	if strings.Contains(armed, say(t, "placeRestWord")) {
 		t.Fatalf("one space opened home from the roster:\n%s", armed)
 	}
@@ -2229,24 +2237,21 @@ func taskOnTheRunEngine(t *testing.T, rigName string, beltWords ...string) {
 
 // openTasksPlace opens the place onto everything this machine has run, through
 // its one command: `/history` (commands.go — deliberately not `/tasks`, which the
-// three work-starting rows would narrow to), and `→` to open the conversation's
-// own fold, which the place draws SHUT (tasksReading.opens).
+// three work-starting rows would narrow to), and opens the conversation's fold
+// when it is shut.
 func openTasksPlace(t *testing.T, r *rig) {
 	t.Helper()
 	r.lit("/history")
 	time.Sleep(700 * time.Millisecond)
 	r.keys("Enter")
 	time.Sleep(700 * time.Millisecond)
-	// THE FOLD IS OPENED UNDER THE CURSOR, AND THE PRESS IS WAITED OUT. The place
-	// groups its rows by conversation and opens every group shut, so the run's row
-	// is not drawn until its conversation is unfolded — and a `→` that reached the
-	// program before the place was up is a key nothing answered, which left the
-	// page holding no row for the work at all. The foot says which way the fold
-	// is, so both halves of the gesture are read off the screen rather than slept
-	// through: measured on two runs of one binary, one opened and one did not.
-	r.waitFor(30*time.Second, say(t, "tasksFoldShutWord"))
-	r.keys("Right")
-	r.waitFor(30*time.Second, say(t, "tasksFoldOpenWord"))
+	// A group can already be open on a return visit. The foot says whether the
+	// run's row is drawn or still needs the right arrow.
+	state, _ := r.waitForAny(30*time.Second, say(t, "tasksFoldShutWord"), say(t, "tasksFoldOpenWord"))
+	if state == say(t, "tasksFoldShutWord") {
+		r.keys("Right")
+		r.waitFor(30*time.Second, say(t, "tasksFoldOpenWord"))
+	}
 }
 
 // planRowWaitsToWear polls until the run's OWN ROW on the tasks place wears this
@@ -2363,12 +2368,11 @@ func planRowWearing(t *testing.T, screen, words, state string) string {
 	return row
 }
 
-// runBranch is the branch the run's working copy stands on, which is the branch
-// its landing commits onto and names. A workspace with no repository of its own
-// answers "", and the branch assertion is skipped rather than failed for it.
+// runBranch is the branch the run kept. The conversation's checkout remains on
+// main, while the task's branch is what the landing names.
 func runBranch(t *testing.T, ws string) string {
 	t.Helper()
-	out, err := exec.Command("git", "-C", ws, "rev-parse", "--abbrev-ref", "HEAD").Output()
+	out, err := exec.Command("git", "-C", ws, "branch", "--list", "--format=%(refname:short)", "task/*").Output()
 	if err != nil {
 		return ""
 	}
