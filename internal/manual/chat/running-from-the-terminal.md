@@ -253,10 +253,13 @@ through the same code path the tool on the belt runs, so the two cannot drift:
 fetch on a keyed provider, and every `image` call the model and are billed like any
 other call.
 
-## What codeaf --help prints — the five groups, and where the environment table went
+## What codeaf --help prints — the six groups, and where the environment table went
 
-`codeaf help`, `--help` and `-h` all print the same thing: every command under those five
-headings, in that order, then five worked examples.
+`codeaf help`, `--help` and `-h` all print the same thing: every command under six
+headings, in this order — **Talk to it**, **Hand it work**, **Hand it a whole task**,
+**Look at what happened**, **Housekeeping** and **Plan work by hand** — then five worked
+examples. **Hand it a whole task** lists the programs this build carries, such as
+`codeaf senior-dev`; a build that carries none prints the other five.
 
 **The environment table is not on that page**: it is `codeaf help env`, because it is a
 reference somebody consults and it used to be more than half of what `--help` printed.
