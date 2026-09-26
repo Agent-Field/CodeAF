@@ -4295,6 +4295,11 @@ func (a *app) railEntryRow(e railEntry, width int) string {
 // took, once it has landed, in the fewest cells: `40s`, `2m`, `1h`. "" for
 // work that has not started, and for a landed node nobody timed.
 func (a *app) railAge(node *taskNode) string {
+	// A ROOM HIDES ITS SIDE CLOCK because the row would otherwise report the
+	// age frozen when the person opened it beside the room's live time.
+	if !node.froze.IsZero() {
+		return ""
+	}
 	var d time.Duration
 	switch node.state {
 	case session.TaskRunning:
