@@ -4,11 +4,33 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"testing"
 )
+
+func TestTheReadmeHomeImageNamesTheCurrentPanels(t *testing.T) {
+	readme, err := os.ReadFile("../../README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	image := regexp.MustCompile(`<img[^>]+home\.webp[^>]+>`).FindString(string(readme))
+	if image == "" {
+		t.Fatal("README has no Home image description")
+	}
+	for _, panel := range []string{"needs you", "unread", "tasks", "since you left", "standing", "projects", "spend"} {
+		if !strings.Contains(image, panel) {
+			t.Errorf("Home image description does not name the %q panel", panel)
+		}
+	}
+	for _, retired := range []string{"where you were", "running", "scheduled"} {
+		if strings.Contains(image, retired) {
+			t.Errorf("Home image description still names retired panel %q", retired)
+		}
+	}
+}
 
 // RETRIEVAL IS THE FEATURE, NOT THE PAGES.
 //

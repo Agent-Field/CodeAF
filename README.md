@@ -91,7 +91,7 @@ Each keeps its own approval rules, models and spend limit.
 `home` answers what needs you, what is unread, what is running and what it
 cost, for all of them at once. A digit answers a question from its row.
 
-<img src="assets/readme/screens/home.webp" alt="Home in two columns: needs you, unread, where you were, running and scheduled on the left; projects, spend and since you left on the right" width="100%">
+<img src="assets/readme/screens/home.webp" alt="Home in two columns: needs you, unread, tasks, since you left and standing on the left; projects and spend on the right" width="100%">
 
 ## Talk, and it becomes tasks
 
