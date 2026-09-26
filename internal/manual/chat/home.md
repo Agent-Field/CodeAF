@@ -1727,7 +1727,7 @@ The cursor stays on the row it was on rather than on the line number — the ord
 changes when work starts or finishes, and a cursor that stayed put would move you onto
 something else between two glances.
 
-## What is the ◦ row on home — the little circle, and where the things keeping an eye on your project are
+## What is the ◦ row on home — the little circle, and when does a standing order go off?
 
 **A standing thing — a reminder, a watch, a rule, an overnight job — is on home's panels
 three ways:**
@@ -1737,8 +1737,9 @@ three ways:**
 - **while it is firing**, it is a row of `standing` like any other order — it is not a
   task and has no row on `sessions`. It is still the item — `ctrl+e` pauses it, `ctrl+x` stops
   it, and `alt+e` raises how hard it thinks;
-- **while it is simply waiting for its time**, it is a row of `standing`, soonest first, with
-  when it goes off at the right — `in 20h`, `mon 8:30`.
+- **while it is simply waiting for its time**, it is a row of `standing`, soonest first.
+  Home does not show when a waiting order will next go off. Press `enter` on the row, or
+  open the standing place with `alt+7` or `/standing`, to read when it is due.
 
 `enter` on a question row opens the conversation that asked for it; on a `sessions` row it
 opens the conversation; on a `standing` row it opens the standing place.
