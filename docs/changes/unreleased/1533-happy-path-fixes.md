@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: telemetry --help exits 0, the manual names --help's six groups, and a wall tile says when it last moved on first read
+title: telemetry --help exits 0, the manual names six --help groups, a wall tile shows its first age
 pr: 1533
 surface: [chat, docs]
 invalidates:
