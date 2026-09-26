@@ -1647,7 +1647,7 @@ The chips are the ones the question has:
 
 - It is **waiting for permission to run something**: `1 allow once  2 always  3 deny`.
 - It is **asking whether to start a task**: `1 yes  2 no`.
-- It is **asking whether to keep something going**. The chips are that card's own
+- It is **asking whether to set something up**. The chips are that card's own
   words: a repeating check is `1 Set it up · <cadence>`, `3 Only now, don't repeat`,
   `0 Don't set it up`. A one-off reminder has no once, and its no is `Don't remind me`.
   A watch's no is `Don't watch`. A rule's no is `Don't keep it`. **`0` is how you say
