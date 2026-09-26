@@ -44,6 +44,10 @@ func TestTheTranscriptKeepsThePersonsWordsWholeWhenSkillsRide(t *testing.T) {
 	if !strings.Contains(sent, "Skills suited to this message:") {
 		t.Fatalf("the model's copy lost the block:\n%s", sent)
 	}
+	// The transcript is written through a batching writer (chatlog.go), so the
+	// events closing does not mean the store has the words yet — close settles
+	// the queue into the store first, the way chatlog_test reads its thread back.
+	agent.chatlog.close()
 	messages, err := brain.Messages(agent.threadID(), 0, 0)
 	if err != nil {
 		t.Fatalf("read the transcript back: %v", err)
