@@ -104,16 +104,16 @@ func TestAStandingCardTypedAnswerStillTravelsAsWords(t *testing.T) {
 func TestEnterOnATextQuestionWithNoPickStillDoesNothing(t *testing.T) {
 	lab := newQuestionLab(t)
 	lab.raise(session.Question{
-		ID:    7,
-		Kind:  session.QuestionConnect,
-		Ask:   session.AskClarification,
-		Form:  session.FormCard,
-		Head:  "connect your Notion account?",
+		ID:      7,
+		Kind:    session.QuestionConnect,
+		Ask:     session.AskClarification,
+		Form:    session.FormCard,
+		Head:    "connect your Notion account?",
 		Options: []session.AnswerOption{{Key: "2", Label: "not now", Safe: true}},
-		Stakes: session.StakesReversible,
-		Scope:  []session.AnswerScope{session.ScopeOnce},
-		Input:  session.InputShape{Kind: session.InputText, Prompt: "paste your Notion key"},
-		Asked:  time.Date(2026, time.September, 25, 14, 0, 0, 0, time.UTC),
+		Stakes:  session.StakesReversible,
+		Scope:   []session.AnswerScope{session.ScopeOnce},
+		Input:   session.InputShape{Kind: session.InputText, Prompt: "paste your Notion key"},
+		Asked:   time.Date(2026, time.September, 25, 14, 0, 0, 0, time.UTC),
 	})
 	lab.tick(2 * time.Second)
 
