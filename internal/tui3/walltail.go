@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -60,6 +61,9 @@ type wallReadMsg struct {
 	// books is what the conversation's books said on the same trip
 	// ([Agent.Usage]), which takes the same lock the transcript does.
 	books float64
+	// modified is the transcript file's last write, read beside its contents
+	// off the loop so the first idle tile has a real activity time.
+	modified time.Time
 }
 
 // wallTickMsg is the wall's clock.
@@ -351,7 +355,12 @@ func (a *app) wallReadCmd(keys ...string) tea.Cmd {
 		key := key
 		cmds = append(cmds, func() tea.Msg {
 			at := time.Now()
-			return wallReadMsg{key: key, entries: agent.Transcript(), at: at, live: live, books: agent.Usage().CostUSD}
+			entries := agent.Transcript()
+			var modified time.Time
+			if info, err := os.Stat(key); err == nil {
+				modified = info.ModTime()
+			}
+			return wallReadMsg{key: key, entries: entries, at: at, live: live, books: agent.Usage().CostUSD, modified: modified}
 		})
 	}
 	switch len(cmds) {
@@ -390,6 +399,11 @@ func (a *app) wallTakeRead(msg wallReadMsg) {
 	}
 	tail.books = max(tail.books, msg.books)
 	tail.take(msg.entries, msg.at, msg.live)
+	if !tail.freshAt.IsZero() {
+		tail.moved = tail.freshAt
+	} else if tail.moved.IsZero() {
+		tail.moved = msg.modified
+	}
 }
 
 // wallStir is a held conversation's stir, as the wall hears it: a read of that
@@ -504,8 +518,8 @@ func (a *app) wallTiles(now time.Time) []wallTile {
 			tile.lines = tail.lines
 			tile.fresh = tail.fresh
 			tile.freshAt = tail.freshAt
-			if !tail.freshAt.IsZero() {
-				tile.age = wallAge(now.Sub(tail.freshAt))
+			if !tail.moved.IsZero() {
+				tile.age = wallAge(now.Sub(tail.moved))
 			}
 			if live {
 				tile.spark = tail.sparkline(now)
