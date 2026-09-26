@@ -134,14 +134,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is my service called z-ai-direct", "services"},
 		{"do I need an openrouter key if I connected z.ai", "services"},
 		{"why did my model change after I connected z.ai", "services"},
-		{"what model does codeaf use after I connect a service", "services"},
+		{"what model does codeaf use after I connect a provider", "services"},
 		{"I only have a zhipu key can I use codeaf", "services"},
 		{"what happens when my plan runs out", "services"},
 		{"will it spend pay as you go automatically", "services"},
 		{"why are only four glm models listed", "services"},
 		{"is codeaf supported by zhipu", "services"},
-		{"how do I reconnect a model service", "services"},
-		{"I exported the model service key after the engine started", "services"},
+		{"how do I reconnect a model provider", "services"},
+		{"I exported the model provider key after the engine started", "services"},
 		{"why does /connect say connections are unavailable", "accounts"},
 		{"connect says unavailable on my own machine", "accounts"},
 		{"credentials.json is damaged but where are my models", "accounts"},
@@ -518,7 +518,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// own sentence and in the words somebody reaches for after reading it.
 		{"all providers have been ignored", "lanes"},
 		{"I switched off some providers in my openrouter account", "lanes"},
-		{"does codeaf know which providers my account has turned off", "lanes"},
+		{"does codeaf know which hosts my account has turned off", "lanes"},
 		{"why did every provider get ignored", "lanes"},
 		{"why does it say refused instead of slow", "models-and-cost"},
 		{"why does it say paid model training violation", "models-and-cost"},
@@ -2730,14 +2730,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// codeaf has timed anything of theirs.
 		{"does codeaf do pick the fastest endpoint too", "lanes"},
 		{"does a headless run choose between lanes", "lanes"},
-		{"why did it pick that provider on my very first message", "lanes"},
+		{"why did it pick that host on my very first message", "lanes"},
 		{"why did my first message go to the most expensive provider", "lanes"},
 		// Naming the machine yourself — asked as the worry underneath it, which
 		// is whether a pin is honoured — and reading the line that says which
 		// machine actually answered.
 		{"will it send my work to a different lane than the one I pinned", "lanes"},
 		{"does codeaf do use the lane I pinned", "lanes"},
-		{"is my pinned provider used when I run from a terminal", "lanes"},
+		{"is my pinned host used when I run from a terminal", "lanes"},
 		// And the one thing that ends a pin without the person: the router
 		// saying that machine cannot serve that model at all (issue #456). It
 		// is asked as somebody reads it on the screen and wants to know what it
@@ -2758,8 +2758,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// The picker's lanes, asked by somebody who pressed the arrows and saw
 		// nothing move, and by somebody reading `@cloudflare` on the name
 		// (docs/design/lanes-picker/DESIGN.md).
-		{"how do I change the provider for a model", "lanes"},
-		{"which provider am I pinned to", "lanes"},
+		{"how do I change the host for a model", "lanes"},
+		{"which host am I pinned to", "lanes"},
 		{"left and right arrows in the model picker do nothing", "lanes"},
 		{"what does the @ after the model name mean", "lanes"},
 		{"the model picker says no machine has been measured for this model yet", "lanes"},
@@ -3029,11 +3029,11 @@ func TestTheServicesPageNamesCustomListingDiscoveryAndDisconnectConfirmation(t *
 	for _, sentence := range []string{
 		"enter again to disconnect",
 		"the disconnected sentence first and then says",
-		"A direct-service row and status line draw no `via` at all and open no provider\nsheet",
-		"That name is the connection everywhere",
-		"a **Custom OpenAI-compatible API** service must provide the compatible chat path",
+		"A direct-provider row and status line draw no `via` at all and open no host\nsheet",
+		"That name is the provider everywhere",
+		"a **Custom OpenAI-compatible API** provider must provide the compatible chat path",
 		"tries `GET <base>/models` first",
-		"When that address is absent, codeaf connects the service without inventing rows",
+		"When that address is absent, codeaf connects the provider without inventing rows",
 		"z-ai-direct is connected · coding plan · 4 models",
 		"z-ai-direct is connected · pay-as-you-go · 10 models",
 		"when the plan is paused",

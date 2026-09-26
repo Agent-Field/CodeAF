@@ -37,7 +37,7 @@ func v3CreditReader(proc *v3Process) func(context.Context) (credits.Reading, err
 	return func(ctx context.Context) (credits.Reading, error) {
 		key, sources := proc.currentAccount()
 		if strings.TrimSpace(key) == "" {
-			return credits.Reading{}, errors.New("no default-service key")
+			return credits.Reading{}, errors.New("no default provider key")
 		}
 		base := sources.Default().Address
 		if base == "" {
@@ -52,7 +52,7 @@ func v3LocalCreditReader(settings config.Config) func(context.Context) (credits.
 	return func(ctx context.Context) (credits.Reading, error) {
 		key := config.APIKeyAt(settings.ProfileDir)
 		if key == "" {
-			return credits.Reading{}, errors.New("no default-service key")
+			return credits.Reading{}, errors.New("no default provider key")
 		}
 		base := settings.Sources.Default().Address
 		if base == "" {

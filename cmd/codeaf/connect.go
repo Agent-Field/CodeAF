@@ -55,7 +55,7 @@ func runConnect(args []string) error {
 		return listConnections(config.ProfileDir())
 	}
 	if flags.NArg() != 1 {
-		return wrongCall("codeaf connect takes one service name")
+		return wrongCall("codeaf connect takes one provider name")
 	}
 	service := strings.ToLower(strings.TrimSpace(flags.Arg(0)))
 	switch service {
@@ -175,7 +175,7 @@ func listConnections(profileDir string) error {
 		}
 	}
 	if !any {
-		fmt.Fprintln(usageOut, "no model service is connected")
+		fmt.Fprintln(usageOut, "no provider is connected")
 	}
 	return nil
 }
@@ -183,7 +183,7 @@ func listConnections(profileDir string) error {
 func connectKeyService(ctx context.Context, profileDir, name, region string) error {
 	source, row, found := connectionSource(profileDir, name)
 	if !found || source.ID == "codex" || source.ID == modelsource.DefaultID {
-		fmt.Fprintln(usageOut, name+" is not a model service this profile knows")
+		fmt.Fprintln(usageOut, name+" is not a provider this profile knows")
 		return exitStatus(1)
 	}
 	if len(source.Regions) > 0 && region == "" {
@@ -270,7 +270,7 @@ func runDisconnect(args []string) error {
 		return err
 	}
 	if flags.NArg() != 1 {
-		return wrongCall("codeaf disconnect needs one service name")
+		return wrongCall("codeaf disconnect needs one provider name")
 	}
 	profileDir := config.ProfileDir()
 	name := strings.ToLower(strings.TrimSpace(flags.Arg(0)))

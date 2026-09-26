@@ -34,7 +34,7 @@ space between them**: the part that is yours, then the key.
 
 > `yourcompany sk-live-1234`
 
-The question says which part it wants first, in the words that service uses for
+The question says which part it wants first, in the words that account uses for
 it — a domain, a site name, a workspace.
 
 An account connected with a key shows as connected and **nothing else**. It does
@@ -98,7 +98,7 @@ Three ways in, and they are the same connection:
   Pick one and either a browser page opens for you to sign in, or a line opens
   for you to paste the key into.
 - **From the settings page.** `⚙` settings under **Connections** is the same
-  list at rest, and it connects too: enter on a service opens the sign-in, or
+  list at rest, and it connects too: enter on an account opens the sign-in, or
   opens the key box **on the row itself**. It is the same box, and the page
   stays where it was — the account you just connected gains its tick and opens
   on what it may do, under your cursor.
@@ -182,7 +182,7 @@ Both lists — `/connect` and the settings page — show each account, whether i
 connected, and the address it is connected as, and both are where you disconnect
 one. What you have connected is at the top, flat; everything else is under **the
 word it is filed by** — billing, support, crm, calls & meetings — because a few
-hundred services is a list you search rather than one you read. Typing narrows
+hundred accounts is a list you search rather than one you read. Typing narrows
 it, and it narrows on the category as well as on the name: `billing` finds
 Stripe, Chargebee and Recurly, none of which contain the word.
 
@@ -203,7 +203,7 @@ under its name is **what it may do, without opening it** — the same three word
 the rows inside carry, so four accounts can be audited by reading rather than by
 expanding. Under them, what you could connect: one row each, the word saying
 what pressing enter will ask you for (`key` or `sign in`), and the sentence
-about what a service is for shown **only under the row your cursor is on**. Two
+about what an account is for shown **only under the row your cursor is on**. Two
 hundred sentences at once is not a catalog, it is a wall.
 
 Disconnecting takes effect immediately: codeaf forgets the account on this
@@ -212,14 +212,14 @@ the first one was.
 
 ## What a key account can do
 
-One tool, and it is the account itself: codeaf makes the calls that service's
+One tool, and it is the account itself: codeaf makes the calls that account's
 own documentation describes. Reading is free to try. **Anything that changes
 something — creating, updating, deleting — stops and asks you first**, with the
-service, what it is about to do and where, in the question. That is the same
+account, what it is about to do and where, in the question. That is the same
 rule that stands over sending a message, for the same reason: it happens in your
 name, in a system other people can see, and there is no undo.
 
-What codeaf does not have is a hand-written tool per service. There are hundreds
+What codeaf does not have is a hand-written tool per account. There are hundreds
 of them and no two agree on what a contact is, so it reads their documentation
 the way you would rather than pretending to know in advance. Expect it to say
 what it is about to call.
@@ -237,7 +237,7 @@ conversation. None of that list is written into codeaf, so an account that
 gains a tool next month is an account codeaf picks that tool up from, with
 nothing to change here.
 
-| Service | Address | What it brings |
+| Account | Address | What it brings |
 | --- | --- | --- |
 | Airtable | `https://mcp.airtable.com/mcp` | your bases, tables and records |
 | Atlassian | `https://mcp.atlassian.com/v1/mcp/authv2` | Jira issues and Confluence pages |

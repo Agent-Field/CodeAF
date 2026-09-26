@@ -67,7 +67,7 @@ func TestThePhaseClockAsksTheQuestionAndReportsAWaitNothingCanEnd(t *testing.T) 
 	}, {
 		what: "a wait with nowhere better to go",
 		news: PhaseNews{Phase: session.PhaseAllSlow, Since: now.Add(-12 * time.Second)},
-		want: "all providers slow · still waiting · 12s",
+		want: "all hosts slow · still waiting · 12s",
 	}} {
 		news := c.news
 		news.Model, news.Role, news.At = phaseModel, lane.RoleTalk, now

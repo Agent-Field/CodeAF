@@ -1,15 +1,15 @@
 # Connected accounts
 
 codeaf can act on accounts you already hold — your mail, your calendar, your Notion
-pages, a billing service you have a key for. This page covers what connecting one
+pages, a billing account you have a key for. This page covers what connecting one
 gives codeaf, how to connect, what you can turn on and off per account, and where
 the keys are kept. A connected account gives codeaf tools it may use in your name; a
-connected model service is a place models come from and is covered by the
-[services page](services.md).
+connected model provider is a place models come from and is covered by the
+[providers page](accounts.md).
 
 ## What a connected account is
 
-A connected account is a service codeaf holds a credential for. Connecting one does
+A connected account is an account codeaf holds a credential for. Connecting one does
 two things: it stores the credential in your profile directory, and it puts that
 account's tools on codeaf's toolbelt so the model can call them.
 
@@ -21,8 +21,8 @@ What arrives depends on the account:
   `slack_list_channels`, `slack_send`.
 - **A key account** brings exactly one tool, `<id>_request` — `stripe_request`, for
   example — taking `method` (get, post, put, patch, delete; default get), `path`,
-  `query` and `body`. The path is always relative to the service's own address. An
-  absolute address is refused with `the path is relative to the service's own
+  `query` and `body`. The path is always relative to the account's own address. An
+  absolute address is refused with `the path is relative to the account's own
   address, not a whole address of its own`, because an absolute one would send your
   key to a host nobody vouched for.
 - **A tool server** brings whatever tools it serves.
@@ -34,9 +34,9 @@ response bodies are read up to 8 MiB.
 An account with no tools in this build answers `<Name> is connected, and this build
 has no tools for it. Do the work without it and say so plainly.`
 
-## How many services can be connected
+## How many accounts can be connected
 
-**129 services register in this build: 99 are connected with a pasted key, and 30 are
+**129 accounts register in this build: 99 are connected with a pasted key, and 30 are
 connected in a browser.**
 
 The 30 browser ones are **Google** (Gmail and Calendar), **Slack**, and the 28 tool servers
@@ -44,18 +44,18 @@ The 30 browser ones are **Google** (Gmail and Calendar), **Slack**, and the 28 t
 Datadog, GitLab, Grafana, Heroku, Hugging Face, Klaviyo, LaunchDarkly, Linear,
 Miro, Neon, Netlify, Notion, PayPal, PostHog, Postman, Railway, Sanity, Sentry,
 Supabase** and **Todoist**.
-The 99 key services come from the bundled connectors catalog and are filed under
+The 99 key accounts come from the bundled connectors catalog and are filed under
 eleven categories: `crm`, `support`, `billing`, `marketing`, `sales & outreach`,
 `calls & meetings`, `analytics`, `hr & recruiting`, `developer`, `productivity`,
-`communication`. A service with none of these is shown under `other`.
+`communication`. An account with none of these is shown under `other`.
 
 Every menu is ordered by name, case-insensitive — never registration order.
 
 Google and Slack both ship with the application their browser sign-in needs, so both
 are listed on a fresh install. The `google_oauth_client` and `slack_oauth_client`
 settings replace those shipped applications for somebody who wants their own. A
-browser service with no application configured is not listed at all: no greyed row,
-no explanation. Key services and tool servers need nothing configured and are always
+browser account with no application configured is not listed at all: no greyed row,
+no explanation. Key accounts and tool servers need nothing configured and are always
 listed.
 
 ## The two ways to sign in: Google and Slack in a browser, or a pasted key
@@ -67,7 +67,7 @@ connected, when, and that it was you — it does not carry the key, and neither
 does anything the model is sent, anything another window is told, or anything
 written to a log.
 
-Browser accounts open the service's sign-in page; key accounts collect a key in the
+Browser accounts open the account's sign-in page; key accounts collect a key in the
 message box without starting a browser trip. Neither route writes a credential into
 the conversation.
 
@@ -115,7 +115,7 @@ read; searching, listing channels and posting are not under that limit.
 ## Tool-server and Datadog browser questions
 
 **The 28 tool servers listed below need nothing registered first.** codeaf introduces
-itself to the service at connect time and is issued an identity on the spot, then
+itself to the account at connect time and is issued an identity on the spot, then
 makes the same browser trip.
 
 Some accounts ask one thing before they open. **Datadog asks which Datadog site your
@@ -127,12 +127,12 @@ and renewals return to the same site.
 ## Signing in with a pasted key
 
 Nothing opens and nothing renews; the key is as good as the day it was made. Most
-services want one key and nothing else. A few whose address contains your own
-workspace want the workspace, one space, then the key — the service's own line says
+accounts want one key and nothing else. A few whose address contains your own
+workspace want the workspace, one space, then the key — the account's own line says
 so. Where the catalog names a cheap health check, the key is proved before anything
 is stored, and a refusal fails with the far end's own words and writes nothing.
 
-Trying a browser sign-in on a key service errors with
+Trying a browser sign-in on a key account errors with
 `<Name> is connected with a key, not in a browser`.
 
 ## Naming an environment variable instead of pasting a key
@@ -164,9 +164,9 @@ Connected accounts come first, flat and with no heading; everything else is grou
 under one dim lowercase category word, alphabetical, with `other` last. A tick marks
 an account you hold, a dim dot marks one you do not. The right-hand tail carries one
 fact: the account address when held, otherwise `key` or `sign in` on a long list, or
-the service's blurb on a short one.
+the account's blurb on a short one.
 
-Past 10 available services the box under the list becomes a filter and the list
+Past 10 available accounts the box under the list becomes a filter and the list
 narrows as you type; the placeholder reads `filter · ↑↓ · enter connect · esc close`.
 Under ten there is no filter box. The filter matches name and category, so typing
 `billing` reaches Stripe, Chargebee and Recurly. Accounts you already hold stay
@@ -196,10 +196,10 @@ so the command instead gives the longer `--host` sentence and leaves the panel o
 
 Until 2026-09-11, a plain launch wrongly inherited that remote absence from the
 engine road and said `connections are unavailable here`. It now keeps this machine's
-store, connected rows, model-service group and browser door.
+store, connected rows, model-provider group and browser door.
 
 If `credentials.json` is damaged, accounts are absent but the `models` group still
-draws; model-service settings live separately in the profile's `config.json`.
+draws; model-provider settings live separately in the profile's `config.json`.
 
 ## What each account may be used for: yes, ask first, off
 
@@ -229,7 +229,7 @@ change mid-conversation takes effect on the next call.
 default.
 
 **Where it is stored:** `connections.json` in your profile directory, as
-`{service: {capability: "yes"|"ask"|"off"}}`. Only what you actually said is written —
+`{account: {capability: "yes"|"ask"|"off"}}`. Only what you actually said is written —
 setting a control back to its default forgets the row rather than writing the default
 down, and forgetting the last answer deletes the file. A damaged or absent file reads
 as all defaults, never as an error.
@@ -237,7 +237,7 @@ as all defaults, never as an error.
 ## What "off" does — the tool is not there at all
 
 Off is not a refusal at the gate. It is absence. The tool is left **off the belt
-entirely**, the account's line in the `services` listing stops advertising it, and the
+entirely**, the account's line in the `accounts` listing stops advertising it, and the
 conversation never learns the capability exists. The reason is plain: a refused call
 costs a turn, teaches the model to try again in different words, and puts a question in
 front of somebody who already answered it.
@@ -262,20 +262,20 @@ safeguard in the gate catches that, checked first. The model then reads:
 the work without it and say so plainly; calling again, or calling it another way, will
 not change their answer.`
 
-## The services and use_service tools — does it ask permission to run services
+## The accounts and use_service tools — does it ask permission to run accounts
 
 Two tools are always on the belt when an accounts layer exists.
 
-- **`services`** — lists what can be connected and what is connected already, with the
+- **`accounts`** — lists what can be connected and what is connected already, with the
   address each is held as. Connected ones are written out in full; the rest are a block
   of ids only. It takes an optional `filter` argument.
 - **`use_service`** — picks up one account's tools. An optional `tools` argument names a
   subset.
 
-On the shipped default, neither `services` nor `use_service` raises a tool-approval
-question. `services` only lists accounts. `use_service` owns the connect card below,
+On the shipped default, neither `accounts` nor `use_service` raises a tool-approval
+question. `accounts` only lists accounts. `use_service` owns the connect card below,
 which is the one question about connecting; every tool it brings is still judged when
-it is called. An explicit `services:prompt` or `use_service:prompt` rule still asks,
+it is called. An explicit `accounts:prompt` or `use_service:prompt` rule still asks,
 and the `deny` default still refuses.
 
 **The account's tools are in your tool list from your very next request, which is still
@@ -316,7 +316,7 @@ writes an account credential.
 
 ## Answering a use_service connect question with a key
 
-**A key service asks for the key in that same message box.** There is no yes step —
+**A key account asks for the key in that same message box.** There is no yes step —
 a bare yes to one of these is read as a decline anyway — so the question arrives with
 what to type written under it and the box below it collecting the answer:
 
@@ -334,7 +334,7 @@ whole paste arrived. `enter` sends it. `2` is the way out. `esc` is later, and w
 typed stays in the box. An empty box and `enter` answers nothing at all — it used to be
 a decline, and now the way out is the answer that says so.
 
-Where a service names its own instruction — Chargebee's `Give the site name and then
+Where a account names its own instruction — Chargebee's `Give the site name and then
 the key, one space between them.` — that sentence is what the card says over the box,
 in place of the generic paste hint.
 
@@ -364,7 +364,7 @@ decided. An empty box and `enter` answers nothing either — `enter` sends what 
 box, and there is nothing in it.
 
 **And silence leaves the account unconnected after 5 minutes.** The model is told that
-you did not answer, never that you refused. See *The services and use_service tools*
+you did not answer, never that you refused. See *The accounts and use_service tools*
 above for the exact distinction.
 
 ## Connecting while the conversation is idle
@@ -382,7 +382,7 @@ can be used for in this conversation.`
 
 ## MCP: accounts that bring their own tools
 
-Some services run a server whose whole job is to hand a program a list of tools and
+Some accounts run a server whose whole job is to hand a program a list of tools and
 run one when asked. codeaf fetches that list per account at the moment the account is
 picked up. You connect "Notion" — no protocol, server or grant is ever named in front
 of you. A tool server appears in `/connect` as a browser connection like any other, is
@@ -416,7 +416,7 @@ Twenty-eight ship, each at the address on the vendor's own page:
 | PayPal | `https://mcp.paypal.com/http` | your payments, invoices and payouts |
 | PostHog | `https://mcp.posthog.com/mcp` | your events, insights and feature flags |
 | Postman | `https://mcp.postman.com/minimal` | your collections, specs and environments |
-| Railway | `https://mcp.railway.com/` | your projects, services and deployments |
+| Railway | `https://mcp.railway.com/` | your projects, accounts and deployments |
 | Sanity | `https://mcp.sanity.io` | your content, datasets and schemas |
 | Sentry | `https://mcp.sentry.dev/mcp` | your issues, events and releases |
 | Supabase | `https://mcp.supabase.com/mcp` | your projects, tables and queries |
@@ -427,30 +427,30 @@ Airtable's adds: "An enterprise admin may have to allow it first."
 Postman's adds: "Postman's EU workspaces cannot be reached this way." — Postman's EU
 address signs in with a key and nothing else, so it is deliberately not shipped.
 
-**All 28 work with zero registration.** codeaf introduces itself to the service at
+**All 28 work with zero registration.** codeaf introduces itself to the account at
 connect time and is issued an identity on the spot, kept in `toolservers.json`. Keys
-minted for one service cannot be spent at another.
+minted for one account cannot be spent at another.
 
 **GitHub is deliberately not shipped** — its sign-in does not let a program introduce
 itself, and its maintainers say that will not change, so it can return only with an
 application registered by hand in a later wave. Slack now signs in through a browser
 with the application codeaf ships; the Slack paragraph above describes that trip. Any
-service whose sign-in refuses an introduction cannot be connected this way at all, and
+account whose sign-in refuses an introduction cannot be connected this way at all, and
 codeaf says so in one sentence the moment you ask.
 
-An identity is reused only when the service address, the issuer, the resource and the
+An identity is reused only when the account address, the issuer, the resource and the
 loopback port all still match. The registration file survives a disconnect, so
 reconnecting is one browser trip and not a second registration.
 
 ## How MCP tool names are built, and how many can be armed
 
-A served tool is named **`<account id>_<the service's own name, folded>`**. Notion's
+A served tool is named **`<account id>_<the account's own name, folded>`**. Notion's
 `Create Page` becomes `notion_create_page`, and two accounts both serving `search`
 become `notion_search` and `linear_search`. Folding is lower case, letters, digits and
 single underscores; everything else reads as a word break, so `Create Page`,
 `create-page` and `create.page` all fold to `create_page`. The fold loses information
-on purpose, so the service's own spelling is kept beside the belt name and the call is
-always made with the service's spelling. Names are cut at **64 characters**.
+on purpose, so the account's own spelling is kept beside the belt name and the call is
+always made with the account's spelling. Names are cut at **64 characters**.
 
 Two names that fold to one are one name here: the first stands, the second is left off
 and named in the reply. A tool whose argument schema cannot be read is left off and
@@ -461,11 +461,11 @@ arrives. Over it, **nothing does** — the reply names them all and tells the mo
 call `use_service` again with `tools` naming the few the work needs. Silent trimming
 was rejected outright: the model would plan around a list it was never told was cut.
 
-The list a service gives is fetched once per run and remembered for the life of the
-process, so a tool newly added at the service needs codeaf restarted.
+The list a account gives is fetched once per run and remembered for the life of the
+process, so a tool newly added at the account needs codeaf restarted.
 
 Each call opens a connection, does its one thing and closes it. The outer backstop is
-2 minutes. A tool that refuses comes back as an error carrying the service's own
+2 minutes. A tool that refuses comes back as an error carrying the account's own
 sentence. Images, sounds and resources come back named — `[an image]`, `[a sound]` —
 rather than as bytes.
 
@@ -479,8 +479,8 @@ allow. That covers:
   verb: a `GET`, or no arguments at all, is a read; every other method acts. **An
   argument payload that cannot be read counts as one that acts**, because the safe
   reading of "I do not know" is the one that asks;
-- any tool an MCP server serves that the service did not mark read-only. Absent means
-  false, and false is the stricter reading: a service that says nothing has not
+- any tool an MCP server serves that the account did not mark read-only. Absent means
+  false, and false is the stricter reading: a account that says nothing has not
   promised its tool only looks.
 
 **No blanket setting turns this off.** Setting the approval default to `allow`, or
@@ -517,10 +517,10 @@ again, and you decide what to do next.
 
 ## Where your keys are kept on disk
 
-Account keys and model-service keys are different stores. An account adds tools codeaf
-may use in your name and keeps its credential in `credentials.json`; a model service is a
+Account keys and model-provider keys are different stores. An account adds tools codeaf
+may use in your name and keeps its credential in `credentials.json`; a model account is a
 place models come from and keeps its key in the profile `config.json`. The
-[services page](services.md) covers those model keys.
+[accounts page](accounts.md) covers those model keys.
 
 Everything the accounts layer writes lives in your profile directory —
 `$CODEAF_PROFILE_DIR` when set, otherwise codeaf's state root `$CODEAF_HOME` or
@@ -568,7 +568,7 @@ literally:
 connecting an account is not available over --host yet — the sign-in opens a browser here and the account belongs to the machine over there. accounts already connected on that machine keep working.
 ```
 
-When the model raises the connect question over `--host`, a browser service says
+When the model raises the connect question over `--host`, a browser account says
 `connecting an account is not available over --host yet` as its reason and offers only
 `2 not now`. The `1 connect` answer is not drawn at all, rather than drawn as an
 affordance that answers as a failure.

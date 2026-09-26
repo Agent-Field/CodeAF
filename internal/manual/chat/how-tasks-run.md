@@ -2622,13 +2622,13 @@ its own and does not spend any of those three (see *Models, context, and what it
 **Routing around a full pool.** Some *too many requests* answers name which upstream
 provider's pool is full — one machine room out of the several that can serve the same
 model. When that happens, codeaf remembers the name and asks the router to route new
-calls around that provider for the next five minutes (or for the comeback time it named,
+calls around that host for the next five minutes (or for the comeback time it named,
 if shorter), so fresh work lands on machines with room instead of queueing behind the
 full one. The call that drew the answer still waits its own wait — only calls sent after
-it steer around. A model served by a single provider has nowhere else to go, and simply
+it steer around. A model served by a single host has nowhere else to go, and simply
 waits as described above.
 
-**Why things can stay slow afterwards.** codeaf watches how many calls the provider will
+**Why things can stay slow afterwards.** codeaf watches how many calls the host will
 take at once and pulls that number in half when it is told *too many requests* — once per
 burst, not once per answer. It gives it back on the clock: after **20 seconds** with no
 further pacing, one call's worth returns every **5 seconds** until it is back where it

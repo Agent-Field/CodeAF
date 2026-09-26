@@ -450,7 +450,7 @@ const otherWord = "other"
 // existed — so the merge order between this branch and the one that fills the
 // field cannot break anything.
 func groupConnections(rows []connect.Status) []connGroup {
-	models := connGroup{head: "models", models: true}
+	models := connGroup{head: "providers", models: true}
 	held := connGroup{held: true}
 	byCategory := map[string][]connect.Status{}
 	categorized := false
@@ -1115,7 +1115,13 @@ func (a *app) connEntryKey(msg tea.KeyPressMsg) tea.Cmd {
 			s.rebuildEntryAt(back)
 			return nil
 		}
-		if _, model := modelConnectionSource(id); model {
+		if raw, model := modelConnectionSource(id); model {
+			// A CLOSED CHOICE IS A MENU ANSWER, NOT A CONNECTION ANSWER: the
+			// four-action menu's verbs are dispatched here and never reach the
+			// typed-answer flow ([app.modelEntryAnswer]).
+			if entry.choosing() && isServiceMenuChoices(entry) {
+				return a.modelServiceMenuChoice(raw, answer)
+			}
 			return a.modelEntryAnswer(entry)
 		}
 		// The row says it is being checked from here until the answer lands on

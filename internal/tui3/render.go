@@ -3857,6 +3857,8 @@ func (a *app) hintWord() string {
 		// that a person cannot see any other way: the pointer being somewhere else
 		// looks exactly like the pointer being broken until a line says otherwise.
 		return "drag to select · any key ends it"
+	case a.addPanel.open:
+		return "↑↓ move · enter connect · esc"
 	case a.pick.open:
 		// AND THE CREW IS NAMED BESIDE THE KEYS, because this list is where a
 		// person lands when a crew change did not change anything they can see.

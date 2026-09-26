@@ -529,11 +529,11 @@ Look at what happened — read-only, no key, nothing spent
       print the build this binary was cut from (--version and -v say the same)
 Housekeeping — changes state on disk or on the network
   codeaf connect
-      list the model services this profile knows and which are connected
-  codeaf connect <service> [--no-browser] [--region intl|cn]
+      list the providers this profile knows and which are connected
+  codeaf connect <provider> [--no-browser] [--region intl|cn]
       connect one: openrouter and codex sign in in your browser; the others
       take a key on stdin, or ask for one without echo
-  codeaf disconnect <service>
+  codeaf disconnect <provider>
       forget a service and the key or sign-in behind it
   codeaf update [--check] [--stable|--rc|--dev|--staging] [--version tag]
       check or install a release; this build's own channel is the default

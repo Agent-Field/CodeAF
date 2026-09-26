@@ -602,7 +602,7 @@ func phaseFields(news PhaseNews, now time.Time) []rowField {
 		// visible half of the controller's report, and the alternative — which is
 		// what this surface did before — is a person watching a line that says
 		// nothing while a real wait runs.
-		return []rowField{rowSay("all providers slow"), rowSay("still waiting"), rowSay(countUpWord(since))}
+		return []rowField{rowSay("all hosts slow"), rowSay("still waiting"), rowSay(countUpWord(since))}
 	case provider.PhaseBelowPace:
 		// THE ANSWER IS ARRIVING AND IT IS TOO SLOW TO READ, and there is no
 		// faster machine to move it to. It is a different sentence from the one
