@@ -1,5 +1,12 @@
 # Work that runs on its own — tasks, and finding out what one actually did
 
+## The engine is slow to answer when starting a task
+
+If the task start takes longer than the connection's wait, the chat says
+`the engine has not confirmed the start — the task may already be running`. This is an
+uncertain receipt, not a refusal. The task can appear in the task rail when the
+engine reports it. Check the running work before starting the same brief again.
+
 ## What a task is
 
 A task is one self-contained piece of work handed off to run on its own while the

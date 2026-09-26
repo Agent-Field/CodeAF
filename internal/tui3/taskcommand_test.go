@@ -28,6 +28,25 @@ type taskCommandFake struct {
 	err  error
 }
 
+func TestTaskStartLateAnswerDoesNotSayTheTaskFailedToStart(t *testing.T) {
+	note := taskStartFailureNote(session.ErrSendUnanswered)
+	if note != taskStartLateNote {
+		t.Fatalf("late start note = %q, want %q", note, taskStartLateNote)
+	}
+	if strings.Contains(note, "could not start") {
+		t.Fatalf("late start was reported as a start failure: %q", note)
+	}
+	f := &taskCommandFake{Agent: &fakeAgent{model: "m"}, err: session.ErrSendUnanswered}
+	a := newTestApp(f)
+	_, _ = a.Update(a.runTaskCommand("accepted work")())
+	if got := lastNote(t, a); got != taskStartLateNote {
+		t.Fatalf("task command displayed %q, want %q", got, taskStartLateNote)
+	}
+	if got := taskStartFailureNote(errors.New("the planner did not answer in time")); got != "could not start the task · the planner did not answer in time" {
+		t.Fatalf("a definite refusal was changed to uncertainty: %q", got)
+	}
+}
+
 func (f *taskCommandFake) StartTask(_ context.Context, brief string, solo bool) (uint64, string, string, error) {
 	f.singleCalls++
 	f.brief, f.solo = brief, solo
