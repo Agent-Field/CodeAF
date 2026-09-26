@@ -367,6 +367,34 @@ func TestDelegateWorkerPassesTheRunBranchAndIgnoreRecordToItsChild(t *testing.T)
 	}
 }
 
+// The chat readies a plain folder before the worker starts a real child. The
+// child must be able to read the safety list it was handed before model work.
+func TestDelegateWorkerChildReadsPlainFoldersStartTimeIgnoreList(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("FAKE_READ_IGNORED", "1")
+	store := runOpenStore(t)
+	workspace := t.TempDir()
+	program, setup, calling, _ := realChild(t, 0, "1")
+	program.Lands = delegate.LandsTree
+	folder, err := session.PrepareProgramFolder(session.ProgramFolderOrder{
+		Program: program, Dir: workspace, Brief: "Make the feature", Holder: "the chat's run",
+		Keep: filepath.Join(t.TempDir(), "run"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer folder.Finish("done")
+	setup.PlainFolder = true
+	setup.IgnoredFile = folder.IgnoredFile()
+	report, err := run.NewDelegateWorker(store, workspace, program, setup, 1, 0).Run(runContext(t), *store.Task(store.RootID()))
+	if err != nil || report.Steps != 1 || len(calling.seen()) != 1 {
+		t.Fatalf("plain-folder child = %+v, %v, calls %q; want one answered call", report, err, calling.seen())
+	}
+	if _, err := os.Stat(filepath.Join(workspace, ".git")); !os.IsNotExist(err) {
+		t.Fatalf("the plain folder acquired a repository: %v", err)
+	}
+}
+
 // A program that ended without finishing says why, and the run carries its
 // words whole to whoever drew the row: its status word, its sentence and its
 // account, not only the run's one word for every unfinished ending.
