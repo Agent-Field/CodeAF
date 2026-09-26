@@ -44,6 +44,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
 	"github.com/Agent-Field/codeaf/internal/home"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/provider/modelapi"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -122,6 +123,7 @@ func carriedSignals() (context.Context, context.CancelFunc) {
 type carriedRoad struct {
 	completerFor func(model string) modelapi.Completer
 	serves       func(model string) bool
+	resolveModel func(word string) (string, error)
 	modelPrice   func(model string) (input, output float64, known bool)
 	seat         string
 	defaultSeat  func() (string, error)
@@ -150,7 +152,14 @@ func profileRoad() (carriedRoad, error) {
 	return carriedRoad{
 		completerFor: adapters.forModel,
 		serves:       func(model string) bool { return session.ServesModel(sources, model) },
-		modelPrice:   settings.Models.PriceNow,
+		resolveModel: func(word string) (string, error) {
+			// A shell has no model picker already warming in the background.
+			// Wait for the same catalog the chat's task matcher reads before
+			// deciding what a person's short model word means.
+			settings.Models.Warmed(context.Background())
+			return session.ResolveProgramShellModels(word, v3TaskModels(settings.Models)(), sources)
+		},
+		modelPrice: settings.Models.PriceNow,
 		defaultSeat: func() (string, error) {
 			// A shell run needs the profile's work seat only when nobody pinned
 			// a model for this invocation. A fresh profile can still use --high.
@@ -226,7 +235,28 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 	}
 	road, err := carriedModels()
 	if err != nil {
+		if word := strings.TrimSpace(inv.ExplicitFlags["high"]); word != "" && errors.Is(err, config.ErrNoAPIKey) {
+			return session.ProgramShellModelRefusal(word)
+		}
 		return err
+	}
+	if word := strings.TrimSpace(inv.ExplicitFlags["high"]); word != "" && road.resolveModel != nil {
+		resolved, err := road.resolveModel(word)
+		if err != nil {
+			return err
+		}
+		if inv.Program.Name == "senior-dev" {
+			// Its pool is addressed through the loopback API's OpenRouter
+			// dialect, just as the chat road's crewFlags spells every seat.
+			models := strings.Split(resolved, ",")
+			for i, model := range models {
+				if !strings.HasPrefix(model, modelsource.DefaultID+"/") {
+					models[i] = modelsource.DefaultID + "/" + model
+				}
+			}
+			resolved = strings.Join(models, ",")
+		}
+		inv.Line = carriedResolvedHigh(inv.Line, resolved)
 	}
 	if strings.TrimSpace(inv.ExplicitFlags["high"]) == "" && road.defaultSeat != nil {
 		road.seat, err = road.defaultSeat()
@@ -483,6 +513,28 @@ func carriedChildLine(inv *delegate.Invocation) []string {
 	}
 	head = append(head, "--json")
 	return append(head, line...)
+}
+
+// carriedResolvedHigh replaces only the model flag's value on the person's
+// line. Every other program flag and every word of the brief stays as typed.
+func carriedResolvedHigh(line []string, model string) []string {
+	resolved := append([]string(nil), line...)
+	for i, word := range resolved {
+		if word == "--" {
+			break
+		}
+		switch {
+		case word == "--high" || word == "-high":
+			if i+1 < len(resolved) {
+				resolved[i+1] = model
+			}
+		case strings.HasPrefix(word, "--high="):
+			resolved[i] = "--high=" + model
+		case strings.HasPrefix(word, "-high="):
+			resolved[i] = "-high=" + model
+		}
+	}
+	return resolved
 }
 
 // carriedExit is an ending on the exit ladder: the work stands, a limit you

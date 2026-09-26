@@ -633,7 +633,12 @@ glm-5.1 and minimax-m2.7. A run with no usable crew model uses it. A shell run
 without `--high` asks the profile for a worker recommendation; if no connected
 model can fill that seat, it says to widen or pin `/crew` models. An explicit
 `--high <model>` runs on a fresh profile with a provider key and no crew rows;
-that model is used without resolving a profile seat.
+that model is used without resolving a profile seat. It accepts a bare OpenRouter id
+(`z-ai/glm-5.3-flash`), a service-prefixed id (`openrouter/z-ai/glm-5.3-flash`), or
+a short model word from the same list `/crew` uses (`glm-5.3-flash`). Each word is
+resolved before senior-dev starts. A word that is ambiguous, unknown, or cannot be
+served by a connected service is refused with `cannot use model "<model>" here;
+choose one this service serves with /crew or add its service with codeaf connect`.
 
 **At a shell you choose**: `--high` replaces the list, `--low` sets the summaries' models,
 and `--variant` sets the reasoning effort every call asks for.
@@ -689,7 +694,10 @@ senior-dev's own flags on `run`:
   checkpoints kept outside the folder. A folder with no git history is worked that way
   without it; codeaf passes it itself under a repository at your home folder;
 - `--high`, `--low` — comma-separated models it routes among; `--low` (its history
-  summaries) falls back to `--high`;
+  summaries) falls back to `--high`. On a shell run, each `--high` entry accepts a
+  bare OpenRouter id, service-prefixed id, or short `/crew` model word;
+- `--asked` — the `--high` models were chosen by name, so one senior-dev cannot
+  size ends the run before its first call rather than being skipped;
 - `--frontier` — accepted, and changes nothing: no call senior-dev makes uses that tier;
 - `--crew` — the models came from a conversation's crew: one its catalog cannot size is
   left out instead of failing the run. codeaf passes it with the crew's models.

@@ -171,6 +171,14 @@ func TestSeniorDevWorksAPlainFolderAsTheChatsRunWorker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	folder, err := session.PrepareProgramFolder(session.ProgramFolderOrder{
+		Program: program, Dir: workspace, Brief: "Add the feature.",
+		Holder: "the chat's run", Keep: filepath.Join(t.TempDir(), "run"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer folder.Finish("done")
 	model := &seniorDevModel{}
 	worker := runengine.NewDelegateWorker(store, workspace, program, runengine.DelegateSetup{
 		Exe:          self,
@@ -178,6 +186,7 @@ func TestSeniorDevWorksAPlainFolderAsTheChatsRunWorker(t *testing.T) {
 		CompleterFor: func(string) session.Completer { return model },
 		Ledger:       filepath.Join(t.TempDir(), "usage.jsonl"),
 		PlainFolder:  true,
+		IgnoredFile:  folder.IgnoredFile(),
 	}, 1.0, 0)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)

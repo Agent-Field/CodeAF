@@ -36,6 +36,7 @@ package session
 // caller had before this file existed.
 
 import (
+	"fmt"
 	"slices"
 	"sort"
 	"strings"
@@ -449,14 +450,62 @@ func (a *Agent) resolveProgramModels(word string) taskModelChoice {
 // resolveProgramWord is one word of [Agent.resolveProgramModels]: a model, a
 // shortlist of the ones a service serves, or the refusal.
 func (a *Agent) resolveProgramWord(word string) taskModelChoice {
-	sources := a.programSources()
+	return resolveProgramWordWithSources(word, a.programSources(), a.resolveTaskModel)
+}
+
+// ResolveProgramShellModels gives a shell program the same model-word matcher
+// and service check as a chat proposal. A shell has no card for a shortlist,
+// so it asks for a more precise word before starting the child.
+func ResolveProgramShellModels(words string, available []string, sources modelsource.Set) (string, error) {
+	var resolved []string
+	for _, part := range strings.Split(words, ",") {
+		word := strings.TrimSpace(part)
+		if word == "" {
+			continue
+		}
+		choice := resolveProgramWordWithSources(word, sources, func(word string) taskModelChoice {
+			if len(available) == 0 {
+				return taskModelChoice{model: word}
+			}
+			matches := matchTaskModel(word, available)
+			if len(matches) == 1 {
+				return taskModelChoice{model: matches[0]}
+			}
+			if len(matches) > 1 {
+				return taskModelChoice{options: matches}
+			}
+			return taskModelChoice{problem: "unknown model"}
+		})
+		if choice.problem != "" || len(choice.options) > 0 || choice.model == "" {
+			return "", ProgramShellModelRefusal(word)
+		}
+		if !slices.Contains(resolved, choice.model) {
+			resolved = append(resolved, choice.model)
+		}
+	}
+	if len(resolved) == 0 {
+		return "", fmt.Errorf("--high names no model; choose one with /crew or add its service with codeaf connect")
+	}
+	return strings.Join(resolved, ","), nil
+}
+
+// ProgramShellModelRefusal is the shell's one sentence for a model it cannot
+// hand to a child, including a model named before any service key is present.
+func ProgramShellModelRefusal(word string) error {
+	return fmt.Errorf("cannot use model %q here; choose one this service serves with /crew or add its service with codeaf connect", word)
+}
+
+// resolveProgramWordWithSources is the common decision for a chat proposal
+// and a shell flag: a connected service prefix wins, then the task's model
+// matcher resolves the person's word, and the selected service must answer.
+func resolveProgramWordWithSources(word string, sources modelsource.Set, resolveTask func(string) taskModelChoice) taskModelChoice {
 	if segment, bare := modelsource.Split(word, sources.Written()); segment != "" && bare != "" {
 		if !ServesModel(sources, word) {
 			return taskModelChoice{problem: programUnservedProblem(word)}
 		}
 		return taskModelChoice{model: word}
 	}
-	choice := a.resolveTaskModel(word)
+	choice := resolveTask(word)
 	serves := func(model string) bool { return sources.Empty() || ServesModel(sources, model) }
 	switch {
 	case choice.problem != "":

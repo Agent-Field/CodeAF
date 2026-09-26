@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -19,6 +20,41 @@ import (
 // The real shell parser must let a model named by --high start on a fresh
 // profile with only a provider key. The local server sees actual chat calls.
 func TestSeniorDevExplicitShellModelRunsOnFreshProfile(t *testing.T) {
+	testSeniorDevExplicitShellModel(t, shellModelCase{word: "openrouter/fixture/vendor-model"})
+}
+
+// The shell's real host and child must finish work in a folder without git.
+func TestSeniorDevShellWorksInAPlainFolder(t *testing.T) {
+	testSeniorDevExplicitShellModel(t, shellModelCase{word: "openrouter/fixture/vendor-model", plain: true})
+}
+
+func TestSeniorDevShellResolvesBareAndCrewModelWords(t *testing.T) {
+	for _, tc := range []shellModelCase{
+		{word: "fixture/vendor-model"},
+		{word: "vendor-model"},
+		{word: "fixture/vendor-model", asked: true},
+	} {
+		name := tc.word
+		if tc.asked {
+			name += "-asked"
+		}
+		t.Run(name, func(t *testing.T) { testSeniorDevExplicitShellModel(t, tc) })
+	}
+}
+
+func TestSeniorDevShellRefusesAServiceThatCannotServeItsModel(t *testing.T) {
+	testSeniorDevExplicitShellModel(t, shellModelCase{word: "openrouter/fixture/vendor-model", noKey: true, refused: true})
+}
+
+type shellModelCase struct {
+	word    string
+	plain   bool
+	asked   bool
+	refused bool
+	noKey   bool
+}
+
+func testSeniorDevExplicitShellModel(t *testing.T, tc shellModelCase) {
 	if testing.Short() {
 		t.Skip("drives the real senior-dev child")
 	}
@@ -27,8 +63,20 @@ func TestSeniorDevExplicitShellModelRunsOnFreshProfile(t *testing.T) {
 		t.Skip("senior-dev is unavailable in this build")
 	}
 	workspace := seniorDevWorkspace(t)
+	previousCatalog := sharedCatalog
+	sharedCatalog = newSharedCatalog()
+	t.Cleanup(func() { sharedCatalog = previousCatalog })
+	if tc.plain {
+		if err := os.RemoveAll(workspace + "/.git"); err != nil {
+			t.Fatal(err)
+		}
+	}
 	t.Setenv("CODEAF_HOME", t.TempDir())
-	t.Setenv("OPENROUTER_API_KEY", "sk-or-v1-fixture")
+	if tc.noKey {
+		t.Setenv("OPENROUTER_API_KEY", "")
+	} else {
+		t.Setenv("OPENROUTER_API_KEY", "sk-or-v1-fixture")
+	}
 	t.Setenv(carriedChildEnv, "real")
 	t.Setenv("DO_NOT_TRACK", "1")
 	t.Setenv("CODEAF_NO_UPDATE_CHECK", "1")
@@ -78,12 +126,32 @@ func TestSeniorDevExplicitShellModelRunsOnFreshProfile(t *testing.T) {
 	output := &lockedBuffer{}
 	carriedStdout = output
 	t.Cleanup(func() { carriedStdout = previous })
-	err := runCarried(program, []string{"run", "--high", "openrouter/fixture/vendor-model", "--dir", workspace, "--", "Add", "the", "feature."})
+	line := []string{"run", "--high", tc.word}
+	if tc.asked {
+		line = append(line, "--asked")
+	}
+	line = append(line, "--dir", workspace, "--", "Add", "the", "feature.")
+	err := runCarried(program, line)
+	if tc.refused {
+		if err == nil || calls.Load() != 0 || !strings.Contains(err.Error(), tc.word) ||
+			!strings.Contains(err.Error(), "/crew") || !strings.Contains(err.Error(), "codeaf connect") || output.String() != "" {
+			t.Fatalf("unserved model error = %v after %d calls, want model and doors before child", err, calls.Load())
+		}
+		if records, _ := filepath.Glob(filepath.Join(carriedRecordRoot("senior-dev"), "*")); len(records) != 0 {
+			t.Fatalf("the refused shell model started a child record: %q", records)
+		}
+		return
+	}
 	if code := exitCodeOf(err); code != 0 || calls.Load() == 0 {
 		t.Fatalf("fresh explicit shell run exited %d after %d chat calls: %s", code, calls.Load(), output.String())
 	}
 	if content, err := os.ReadFile(workspace + "/feature.txt"); err != nil || string(content) != "implemented by stub\n" {
 		t.Fatalf("the shell did not make the feature: %q, %v", content, err)
+	}
+	if tc.plain {
+		if _, err := os.Stat(workspace + "/.git"); !os.IsNotExist(err) {
+			t.Fatalf("the plain folder acquired a repository: %v", err)
+		}
 	}
 }
 
