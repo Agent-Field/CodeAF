@@ -170,3 +170,28 @@ func TestARowWhoseRoomIsOpenDrawsNoStoppedClock(t *testing.T) {
 		t.Fatalf("the row read %q once its room closed, want the whole age 1m 21s", got)
 	}
 }
+
+// THE SIDE ROW HIDES A RUN'S CLOCK WHILE ITS ROOM IS OPEN. The room keeps the
+// node's clock frozen for its own detail rows, so the compact side row must not
+// print that frozen age beside the room's live header.
+func TestAProgramSideRowHidesItsClockWhileTheRoomIsOpen(t *testing.T) {
+	a, _ := programRoomApp(t, 180, 36)
+	started := programRunBegan
+	now := started.Add(20 * time.Minute)
+	a.clock = func() time.Time { return now }
+	row := func() string {
+		return plain(a.railEntryRow(railEntry{node: a.tasks[7], group: railRunning}, 70))
+	}
+	if got := row(); !strings.Contains(got, "20m") {
+		t.Fatalf("the running program's side row reads %q, want its live age", got)
+	}
+	openProgramRoomNow(t, a)
+	now = started.Add(21 * time.Minute)
+	if got := row(); strings.Contains(got, "20m") || strings.Contains(got, "21m") {
+		t.Fatalf("the open program's side row reads %q, want no frozen clock", got)
+	}
+	a.closeRoom()
+	if got := row(); !strings.Contains(got, "21m") {
+		t.Fatalf("the program's side row reads %q after leaving, want its live age", got)
+	}
+}
