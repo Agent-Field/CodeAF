@@ -557,7 +557,7 @@ func taskEndingIsFault(ending TaskEnding) bool {
 	switch ending {
 	case TaskEndingStopped, TaskEndingWire, TaskEndingUpstream, TaskEndingCircling,
 		TaskEndingBlocked, TaskEndingSteps, TaskEndingNotes, TaskEndingRefused, TaskEndingStale,
-		TaskEndingInterrupted, TaskEndingTimeLimit, TaskEndingCostLimit:
+		TaskEndingInterrupted, TaskEndingTimeLimit, TaskEndingCostLimit, TaskEndingProgram:
 		return false
 	}
 	return true
@@ -703,7 +703,7 @@ func runRowCannotContinue(n TaskNotice) string {
 	if n.Parent != 0 {
 		return ""
 	}
-	return runCannotContinue(n.Copy)
+	return runCannotContinue(n.Copy, n.Program)
 }
 
 // StatusFacts is one record row as the reading takes it. `held` is the caller's
@@ -791,8 +791,11 @@ const (
 	// taskReasonGaps and taskReasonFault are the two the ending alone cannot
 	// answer: what the check found, and what broke. Both read the landing's own
 	// report, which is the only place either sentence exists.
-	taskReasonGaps  = "the check found gaps: "
-	taskReasonFault = "a fault"
+	// taskReasonProgram is [TaskEndingProgram]'s reason when the program left
+	// no sentence, which the worker never lets happen.
+	taskReasonProgram = "the program it was handed to did not finish it"
+	taskReasonGaps    = "the check found gaps: "
+	taskReasonFault   = "a fault"
 )
 
 // The six questions a your-call row can be asking, and the two answers each one
@@ -869,32 +872,50 @@ const (
 // TaskReasonOf is the incomplete reason sentence for one ending, in the person's
 // own words, and it is the ONE place that table is written down.
 //
-// The report is read for the two endings whose reason is not knowable from the
-// word alone: a check that named gaps, whose finding is the first line of its own
-// report, and a fault, whose first line is the only account of what broke. A
+// The report is read for the three endings whose reason is not knowable from
+// the word alone: a check that named gaps, whose finding is the first line of its
+// own report, a program's own ending, whose sentence is that first line, and a
+// fault, whose first line is the only account of what broke. A
 // stop is not here at all — `stopped` is its own word, not a kind of incomplete.
 func TaskReasonOf(ending TaskEnding, report string) string {
+	if reason, fixed := taskReasonOfEnding(ending); fixed {
+		return reason
+	}
+	return taskReasonOfReport(ending, report)
+}
+
+// taskReasonOfEnding is every ending whose reason is one fixed sentence, which
+// the ending alone answers.
+func taskReasonOfEnding(ending TaskEnding) (string, bool) {
 	switch ending {
 	case TaskEndingStopped:
-		return ""
+		return "", true
 	case TaskEndingInterrupted:
-		return taskReasonInterrupted
+		return taskReasonInterrupted, true
 	case TaskEndingWire:
-		return taskReasonWire
+		return taskReasonWire, true
 	case TaskEndingUpstream:
-		return taskReasonUpstream
+		return taskReasonUpstream, true
 	case TaskEndingCircling:
-		return taskReasonCircling
+		return taskReasonCircling, true
 	case TaskEndingBlocked:
-		return taskReasonBlocked
+		return taskReasonBlocked, true
 	case TaskEndingSteps:
-		return taskReasonSteps
+		return taskReasonSteps, true
 	case TaskEndingNotes:
-		return taskReasonNotes
+		return taskReasonNotes, true
 	case TaskEndingStale:
-		return taskReasonStale
+		return taskReasonStale, true
 	case TaskEndingTimeLimit, TaskEndingCostLimit:
-		return taskLimitReason(ending)
+		return taskLimitReason(ending), true
+	}
+	return "", false
+}
+
+// taskReasonOfReport is every ending whose reason is read out of the landing's
+// own report, which is the only place the sentence exists.
+func taskReasonOfReport(ending TaskEnding, report string) string {
+	switch ending {
 	case TaskEndingRefused:
 		// THE CHECK'S OWN FINDING OUTRANKS THE WORD FOR IT. "Refused" is the
 		// engine's name for both a check that named gaps and a worker that would
@@ -904,6 +925,13 @@ func TaskReasonOf(ending TaskEnding, report string) string {
 			return taskReasonGaps + gaps
 		}
 		return taskReasonRefused
+	case TaskEndingProgram:
+		// THE PROGRAM'S OWN SENTENCE IS THE REASON, first line of the report
+		// (task_run_belt.go's [runEndingWords]), and never under "a fault".
+		if line := taskFirstLine(report); line != "" {
+			return line
+		}
+		return taskReasonProgram
 	}
 	// An error, or a node that named no ending at all. The gaps are read first
 	// because a landing carrying them was looked at, whatever else went wrong

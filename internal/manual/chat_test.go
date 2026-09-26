@@ -1023,6 +1023,79 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I stop a run writing outside one folder", "adaptive-runs"},
 		{"it broke a rule I set", "adaptive-runs"},
 		{"what is a harness", "saved-shapes-of-work"},
+		{"what is a delegate", "delegates"},
+		{"can you hand this whole task to another coding agent", "delegates"},
+		{"what does the command for a delegate do", "delegates"},
+		{"delegate this to another coding agent", "delegates"},
+		{"why can't the delegate ask me anything", "delegates"},
+		{"why is there no command for my delegate", "delegates"},
+		{"where does a delegate's work go, does it squash the commits", "delegates"},
+		// senior-dev, the program codeaf carries, asked the ways somebody meets
+		// it: what the command does, whether it will stop to ask, where its
+		// commits went, what it cost, its flags, and why a Windows build has none.
+		{"what does /senior-dev do", "senior-dev"},
+		{"will senior-dev stop and ask me questions while it works", "senior-dev"},
+		{"where did senior-dev's commits go", "senior-dev"},
+		{"how much does a senior-dev run cost", "senior-dev"},
+		{"does a senior-dev run have its own dollar limit", "senior-dev"},
+		{"what flags does codeaf senior-dev take", "senior-dev"},
+		{"why is there no /senior-dev on windows", "senior-dev"},
+		{"run senior-dev on a benchmark task from a repository I have not cloned", "senior-dev"},
+		{"can senior-dev work in a folder that is not a git repository", "senior-dev"},
+		{"senior-dev says workspace is not a git repository", "senior-dev"},
+		{"senior-dev finished but its work is not in my folder", "senior-dev"},
+		{"how do I merge senior-dev's branch", "senior-dev"},
+		{"which models does senior-dev use", "senior-dev"},
+		{"make senior-dev use my crew models", "senior-dev"},
+		{"how long did the senior-dev run take", "senior-dev"},
+		{"can a senior-dev task wait for another task to finish first", "senior-dev"},
+		{"retry a senior-dev task that failed", "senior-dev"},
+		{"senior-dev's page still says running after codeaf crashed", "senior-dev"},
+		{"codeaf closed while senior-dev was running where is its work", "senior-dev"},
+		{"my ssh connection dropped during codeaf senior-dev", "senior-dev"},
+		{"can my other window see the senior-dev run", "senior-dev"},
+		{"watch a senior-dev run from another window", "senior-dev"},
+		// Its page is the actions it took, each under the step of its process,
+		// asked the ways somebody watching it would ask.
+		{"what is senior-dev doing", "senior-dev"},
+		{"what do the steps on senior-dev's page mean", "senior-dev"},
+		{"how do I see senior-dev's raw calls to its model", "senior-dev"},
+		// And its badge, asked by somebody who has just seen a bracketed word on a
+		// task and does not know what it is, and by somebody looking for one.
+		{"how do I tell a senior-dev task from a normal task", "senior-dev"},
+		{"what does [senior-dev] mean on a task", "senior-dev"},
+		{"what is the [sd] next to a task on the side list", "senior-dev"},
+		{"which of my tasks are senior-dev's", "senior-dev"},
+		{"does every delegate get its own badge", "delegates"},
+		// And whether codeaf reaches for it on its own, asked the ways somebody
+		// who has just watched it do the work itself, or wants it to, puts it.
+		{"will codeaf use senior-dev by itself", "senior-dev"},
+		{"when does codeaf hand work to senior-dev", "senior-dev"},
+		{"how do I make codeaf use senior-dev", "senior-dev"},
+		{"I asked for senior-dev and it did the work itself", "senior-dev"},
+		{"how do I stop it using senior-dev for this", "senior-dev"},
+		{"will codeaf hand work to a program without being asked", "delegates"},
+		{"is naming a delegate enough to make codeaf use it", "delegates"},
+		{"I typed a correction and it forgot I named the delegate", "delegates"},
+		{"does a correction undo naming a program", "delegates"},
+		{"why did it revert the delegate's commit itself instead of using the delegate", "delegates"},
+		{"which folder does a delegate work in", "delegates"},
+		// A program works in the folder itself, on a branch of its own in a
+		// repository (internal/session's programfolder.go), asked the ways
+		// somebody meets it: where the work went, whether their branch moved,
+		// how to get back, and the refusals that stop a run before it starts.
+		{"where does senior-dev put its work", "senior-dev"},
+		{"does senior-dev change my branch", "senior-dev"},
+		{"how do I go back to my own branch after senior-dev", "senior-dev"},
+		{"senior-dev says my branch moved during the run", "senior-dev"},
+		{"senior-dev refused: changes that are not committed", "senior-dev"},
+		{"senior-dev says my folder is busy", "senior-dev"},
+		{"why can't I run senior-dev in a folder inside the one another run is working in", "senior-dev"},
+		{"can I run senior-dev in a folder that is not a git repo", "senior-dev"},
+		{"where do senior-dev's notes go", "senior-dev"},
+		{"why can't codeaf edit files while senior-dev is working", "senior-dev"},
+		{"my task was refused because senior-dev is working in the folder", "senior-dev"},
+		{"the delegate was refused because of uncommitted changes", "delegates"},
 		{"the harness I just had built is not in /subharness", "subharnesses"},
 		{"how do I run a harness I had designed", "subharnesses"},
 		// The card codeaf raises by itself, asked the three ways somebody meets
@@ -2915,6 +2988,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// watching something the plan does not name is the shape the note was
 		// written for, and these are the words of a person holding it.
 		{"my task is waiting on a build outside the plan", "worker-harness"},
+		// A program's task page (internal/tui3's taskconversation.go), asked
+		// the way somebody meets it: a page that is not the list of steps every
+		// other task opens on, and the exchange they are watching on it.
+		{"what is the program saying to the model on its task page", "worker-harness"},
+		{"what does the delegate's task page show", "worker-harness"},
+		{"can I leave a note for the delegate", "worker-harness"},
+		{"what are the words down the side of a program's task page", "worker-harness"},
+		{"what does ctrl+y do on a program's page", "keys"},
 		// Notes as a channel rather than a log (internal/run's note channel and
 		// the chat's own `tasks` listing): whether the note was read, when, and
 		// where anyone else can see it. The first four are the question a person
@@ -2957,6 +3038,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 				pages = append(pages, section.Page)
 			}
 			t.Errorf("%q should reach %s; it reached %v", ask.question, ask.page, pages)
+		}
+	}
+}
+
+// The ordinary task's Spending row stays as written, but each general page
+// must point to the separate ceiling before it can answer for senior-dev.
+func TestGeneralTaskCostPagesNameSeniorDevCeiling(t *testing.T) {
+	pages := flatChatPages(t)
+	for _, name := range []string{"tasks", "models-and-cost", "commands"} {
+		page := pages[name]
+		if !strings.Contains(page, "ordinary `/task`") || !strings.Contains(page, "senior-dev") || !strings.Contains(page, "ceiling") {
+			t.Errorf("%s does not distinguish the ordinary task row from senior-dev's ceiling", name)
 		}
 	}
 }

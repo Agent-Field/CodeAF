@@ -78,6 +78,15 @@ type taskCard struct {
 	// OWED, and until it lands the way to ask for another is to say so in the
 	// words `c change` takes.
 	model string
+	// program is the program this work is going to — senior-dev — and "" for a
+	// task this conversation's own worker will do (session's
+	// TaskNotice.Program). The head wears its badge beside the name
+	// ([app.taskHead]), because who the work is being handed to is the one thing
+	// about it a person approving it cannot find out afterwards and do anything
+	// about.
+	program string
+	// ceiling is the finite allowance on a program proposal, before approval.
+	ceiling string
 	// elsewhere is the one dim line saying which of this brief's files another
 	// window's work is already in, as the engine wrote it (session's
 	// TaskNotice.Elsewhere), and "" when there was nothing to say.
@@ -230,9 +239,10 @@ type taskNode struct {
 	// (taskending.go).
 	ending session.TaskEnding
 	// started and ended are the record's own instants, carried by the engine on
-	// every node update when it has them. began is the older live fallback,
-	// derived once from the update's own Elapsed so the clock is the frame's and
-	// not the event's. met is when this surface first heard of the node at all,
+	// every node update when it has them. began is what the live clock counts
+	// from, anchored once ([app.noticeBegan]) — from the update's own Elapsed,
+	// or from the record's start for a row that reports no age — so the clock
+	// is the frame's and not the event's. met is when this surface first heard of the node at all,
 	// which is the honest spawn time for a node that never reached running IN THIS
 	// WINDOW — see [taskNode.restored] for the case where it is not.
 	started, ended time.Time
@@ -329,6 +339,15 @@ type taskNode struct {
 	// that is true before it starts and after it lands, and it is what keeps a
 	// card from promising a branch to a node that could never have one.
 	kind session.TaskKind
+	// program is the program this node's work was handed to — senior-dev — as
+	// the engine names it (session's TaskNotice.Program), and "" for an ordinary
+	// task. It is what the node's badge is drawn from (programbadge.go), and it
+	// is kept on [taskNode.kind]'s rule: written once, from the proposal's card or
+	// the first notice that names it, and never cleared, because which program has
+	// the work is settled before the work starts and nothing afterwards moves it.
+	// Read it through [app.nodeProgram], which also answers for a node an older
+	// engine never named.
+	program string
 	// doing is the phase this node is in, in its own kind's plain words —
 	// "designing", "awaiting your look" — and empty for an ordinary task, which
 	// has no phases (session's TaskNotice.Doing).
@@ -514,6 +533,60 @@ func (n *taskNode) spawnedAt() time.Time {
 		return time.Time{}
 	}
 	return n.met
+}
+
+// ranFor is how long this node's work took once it has landed: the age the
+// landing reported when it reported one, the record's own two stamps when it
+// did not, and zero — which every surface draws as nothing — when neither is
+// known.
+//
+// THE REPORTED AGE OUTRANKS THE STAMPS, AND BOTH OUTRANK THIS WINDOW'S CLOCK.
+// The engine moves a settled node's end to the moment it is settled again — a
+// person's accept, a second look, a merge round — and keeps the age its work
+// took, so the stamps of a task that worked five minutes and was accepted an
+// hour later span an hour and five. A run's row reports the span of its own
+// stamps as its age (session's publishRunRow), so it reads the same figure
+// either way; the stamps are for a row that reports no age at all, which a
+// run's rows once did, when a window met twenty minutes into a senior-dev run
+// read a twenty-nine-minute run as nine off its own moments.
+//
+// IT IS WHOLE SECONDS, ROUNDED, because the three surfaces that draw a landed
+// node's span spell it through two formatters — the landed card's
+// [taskSpanWord], which rounds, and the room's and the page's [countUpWord],
+// which cuts — and a span handed to both unrounded read `22m52s` on the card
+// and `22m 51s` on the page for one run.
+func (n *taskNode) ranFor() time.Duration {
+	if n.elapsed > 0 {
+		return n.elapsed.Round(time.Second)
+	}
+	if !n.started.IsZero() && n.ended.After(n.started) {
+		return n.ended.Sub(n.started).Round(time.Second)
+	}
+	return 0
+}
+
+// noticeBegan is the instant a node's running clock counts from, anchored
+// from the first running update this window receives about it.
+//
+// THE REPORTED AGE IS THE ANCHOR WHEN THE UPDATE CARRIES ONE, because it needs
+// no agreement between two clocks: an engine on another machine stamps a
+// node's start on its own clock, and one running ninety seconds behind this
+// window's made a node ten seconds into its work read `1m 40s`.
+//
+// THE RECORD'S START IS THE ANCHOR WHEN THE UPDATE REPORTS NO AGE. A run's rows
+// report none while the run works (session's task_run_belt.go publishes
+// StartedAt and a zero Elapsed), and a run's row is replayed to a window that
+// attaches mid-run as it was first published — so an anchor taken from the age
+// alone started the rail's clock at the moment this window opened, and a
+// window reopened while senior-dev worked read the run as however long the
+// window had been open. A start stamped later than this window's own clock is
+// another machine's clock running ahead, and the clock counts from now.
+func (a *app) noticeBegan(notice session.TaskNotice) time.Time {
+	now := a.now()
+	if notice.Elapsed <= 0 && !notice.StartedAt.IsZero() && !notice.StartedAt.After(now) {
+		return notice.StartedAt
+	}
+	return now.Add(-notice.Elapsed)
 }
 
 // spent is what this node has cost, in dollars, from whichever of its two lanes
@@ -817,6 +890,10 @@ func waitTask(ch <-chan session.Event, gen int) tea.Cmd {
 func (a *app) taskEvent(ev session.Event) tea.Cmd {
 	var pilot, mentions tea.Cmd
 	switch ev.Kind {
+	case session.EventNotice:
+		// A program's limit ending reaches this standing lane even when the
+		// same limit refuses the model turn that would otherwise announce it.
+		a.note(ev.Text)
 	case session.EventTaskProposal:
 		a.proposeTask(ev)
 	case session.EventTaskUpdate:
@@ -1225,6 +1302,8 @@ func (a *app) proposeTask(ev session.Event) {
 		ident:      identFor(notice.ID),
 		dependsOn:  notice.DependsOn,
 		model:      strings.TrimSpace(notice.Model),
+		program:    strings.TrimSpace(notice.Program),
+		ceiling:    strings.TrimSpace(notice.Ceiling),
 		elsewhere:  strings.TrimSpace(notice.Elsewhere),
 		deadline:   notice.Deadline,
 		born:       a.now(),
@@ -1341,7 +1420,7 @@ func (a *app) taskQuestion(notice *session.TaskNotice) session.Question {
 		Ask:      session.AskPermission,
 		Form:     session.FormCard,
 		Asker:    session.Asker{Kind: session.AskerModel},
-		Head:     session.TaskProposalLead + strings.TrimSpace(notice.Title),
+		Head:     session.TaskProposalHead(*notice),
 		Reason:   strings.TrimSpace(notice.Summary),
 		Subject:  session.SubjectRef{Kind: session.SubjectNode, ID: notice.ID, Name: strings.TrimSpace(notice.Title)},
 		Options:  session.AnswerOptions(session.QuestionTask),
@@ -1883,10 +1962,17 @@ func (a *app) taskCardRows(card *taskCard, width int, sel bool) []string {
 	if card.where != "" {
 		out = append(out, stem+a.pal.dim(fit("where: "+card.where, room)))
 	}
-	if point := a.taskBranchPoint(); point != "" {
+	if point := a.taskBranchPoint(); point != "" && card.program == "" {
 		// The branch point is the last of the facts about the work, and it is the
 		// one thing on the card a person cannot find out afterwards without
 		// reading a merge.
+		//
+		// A PROGRAM'S CARD HAS NONE. A program works in the folder itself, on a
+		// branch of its own cut from the commit the checkout is on, and a checkout
+		// with work not committed is refused before any card goes up
+		// (internal/session's programfolder.go): `unsaved edits included` was the
+		// copy's sentence, and on a program's card it was false twice over. Its
+		// `where:` line above already says the folder and its branch.
 		out = append(out, stem+a.pal.dim(fit(point, room)))
 	}
 	if meta := a.taskMetaWord(card, room); meta != "" {
@@ -1968,14 +2054,21 @@ func (a *app) taskHead(card *taskCard, width int, sel bool) string {
 	// rail in four seconds and on the card that lands in eleven minutes.
 	head := corner + " " + a.icon(tokens.GNeedsHuman) + " "
 	mark := a.taskMarkSel(card.ident, sel) + " "
-	title := fit(card.name, width-ansi.StringWidth(head)-3)
+	// AND WORK GOING TO A PROGRAM WEARS THAT PROGRAM'S BADGE BESIDE ITS NAME, the
+	// same badge its row will wear on the side list in four seconds
+	// (programbadge.go), so the card a person approves says who the work is being
+	// handed to. It is paid for out of the title's cells, never the frame's.
+	room := width - ansi.StringWidth(head) - 3
+	badge := programSpelling(programBadge(card.program), card.name, room, railTitleFloor)
+	title := fit(card.name, room-programCells(badge))
 	line := paint(head) + mark
 	if card.settled() {
 		line += a.pal.muted(title)
 	} else {
 		line += a.pal.askBold(title)
 	}
-	if fill := width - ansi.StringWidth(head) - ansi.StringWidth(title) - 3; fill > 0 {
+	line += a.pal.programAfter(badge)
+	if fill := width - ansi.StringWidth(head) - ansi.StringWidth(title) - programCells(badge) - 3; fill > 0 {
 		line += paint(" " + strings.Repeat(rule, fill))
 	}
 	return line
@@ -2099,6 +2192,9 @@ func (a *app) taskBranchPoint() string {
 // then never read. A narrow frame cuts the hint and keeps the model.
 func (a *app) taskMetaWord(card *taskCard, width int) string {
 	var parts []string
+	if card.ceiling != "" {
+		parts = append(parts, card.ceiling)
+	}
 	if card.model != "" {
 		parts = append(parts, taskModelTag+card.model)
 	}
@@ -4171,6 +4267,11 @@ func (a *app) railEntryRow(e railEntry, width int) string {
 	const indent = "  "
 	glyph := a.railTreeGlyph(node)
 	room := width - len(indent) - 2
+	// A program's badge stays on its row when the side column is compact.
+	// The time gives up cells first, then the badge shortens, while the title
+	// keeps enough room to name the work.
+	wears := programSpelling(programBadge(a.nodeProgram(node)), node.title, room, railTitleFloor)
+	room -= programCells(wears)
 	// THE TIME GIVES WAY TO THE NAME: it is drawn only where the name keeps
 	// railTitleFloor cells beside it, and never where it would cut a name that
 	// fits whole without it.
@@ -4183,7 +4284,7 @@ func (a *app) railEntryRow(e railEntry, width int) string {
 		age = ""
 	}
 	title, w := fitWidth(node.title, room)
-	line := indent + glyph + " " + a.railTitle(node, title)
+	line := indent + glyph + " " + a.railTitle(node, title) + a.pal.programAfter(wears)
 	if age != "" {
 		line += strings.Repeat(" ", max(room-w, 0)+1) + a.pal.dim(age)
 	}
@@ -4352,7 +4453,14 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 		// specific true thing there is about it, and the rows below would each
 		// say something less: a call it is inside of, a hold that is not holding
 		// it, or a clock. It takes the row for [app.railDoing]'s reason.
+		//
+		// AND A PROGRAM'S RUN SAYS THE STAGE ITS PROGRAM IS IN, next after a
+		// named phase and for the same reason: it is what the node is doing, in
+		// the only vocabulary the program has ([app.railStage]).
 		rows := a.railDoing(node, width)
+		if len(rows) == 0 {
+			rows = a.railStage(node, width)
+		}
 		if len(rows) == 0 {
 			rows = a.railPhase(node, width)
 		}
@@ -4594,7 +4702,7 @@ func planUnderRows(item tasksItem, width int, pal palette) []string {
 		return nil
 	}
 	rows := make([]string, 0, railUnderRows)
-	if line := planLiveRow(item.plan.Live.Command, item.plan.LiveParts, width, pal); line != "" {
+	if line := planLiveLine(*item.plan, width, pal); line != "" {
 		rows = append(rows, line)
 	}
 	if figures := planFigures(item.plan); figures != "" {
@@ -4604,6 +4712,28 @@ func planUnderRows(item tasksItem, width int, pal palette) []string {
 		rows = rows[:railUnderRows]
 	}
 	return rows
+}
+
+// planLiveLine is a plan row's live line, whichever kind of worker it has. A
+// PROGRAM'S LIVE STEP IS ITS STAGE AND NOT A COMMAND: the worker publishes the
+// program's phase on the same live row a bash worker publishes its command on
+// (internal/run's delegateSink.Stage), and drawn behind the shell's `$` it read
+// as a command somebody typed — `$ senior-dev: implement · running`. So a
+// program's row draws the running mark and the stage its row carries
+// ([session.PlanTaskRow.Stage]), and every other row draws its command; a
+// program's row with no stage to name draws what it always drew, so the line
+// the layout counted is always a line with something on it.
+func planLiveLine(row session.PlanTaskRow, width int, pal palette) string {
+	if strings.TrimSpace(row.Program) != "" {
+		if stage := strings.TrimSpace(row.Stage); stage != "" {
+			lead := pal.glyph(tokens.GStepRunning) + " "
+			if room := width - ansi.StringWidth(lead); room > 0 {
+				return lead + pal.dim(fit(stage, room))
+			}
+			return ""
+		}
+	}
+	return planLiveRow(row.Live.Command, row.LiveParts, width, pal)
 }
 
 // planLiveRow is the live step's own line: the running step's glyph, the shell
@@ -4645,6 +4775,65 @@ func (a *app) railDoing(node *taskNode, width int) []string {
 		return nil
 	}
 	return []string{a.pal.dim(fit(node.doing, width))}
+}
+
+// railProgramRow is the run's own plan row for a node whose run was handed to
+// a program, read out of the rows the surface already holds
+// ([app.heldPlanRows]) — never out of the store, because this is asked on every
+// frame the column is drawn. A run's row and its store's root are one piece of
+// work under one number (the store is rooted at the task's own id), so the row
+// is found by that number, and only a row that names a program answers.
+func (a *app) railProgramRow(node *taskNode) (session.PlanTaskRow, bool) {
+	if node == nil || node.id == 0 {
+		return session.PlanTaskRow{}, false
+	}
+	rows, ok := a.heldPlanRows()
+	if !ok {
+		return session.PlanTaskRow{}, false
+	}
+	id := itoa(int(node.id))
+	for _, row := range rows {
+		if strings.TrimPrefix(strings.TrimSpace(row.ID), "t-") == id && strings.TrimSpace(row.Program) != "" {
+			return row, true
+		}
+	}
+	return session.PlanTaskRow{}, false
+}
+
+// railStage is the row a program's run wears while it runs: the stage its
+// program says it is in, alone, the way a named phase is drawn ([app.railDoing]).
+//
+//	implement                  senior-dev writing the change
+//	verification               and checking it
+//
+// A program's run used to wear only its clock here, because nothing the run
+// publishes on its row says what the program is doing: the stage lives on the
+// store's live step, which the side list reads on its own beat. It is nil
+// between stages and for every other node.
+func (a *app) railStage(node *taskNode, width int) []string {
+	row, ok := a.railProgramRow(node)
+	if !ok {
+		return nil
+	}
+	stage := fit(strings.TrimSpace(row.Stage), width)
+	if stage == "" {
+		return nil
+	}
+	return []string{a.pal.dim(stage)}
+}
+
+// railSpent is what a node has cost so far, for the telemetry under it. It is
+// [taskNode.spent] for every node, and for a program's run the larger of that
+// and what the run's own spend rows carry: the run publishes no price on its row
+// until it lands, while the model API banks a row per call as it goes. THE TWO
+// ARE THE SAME MONEY AND ARE NEVER ADDED — the larger is the more recent reading
+// of one bill, the rule [taskNode.spent] already keeps for its own two lanes.
+func (a *app) railSpent(node *taskNode) float64 {
+	spent := node.spent()
+	if row, ok := a.railProgramRow(node); ok && row.USD > spent {
+		spent = row.USD
+	}
+	return spent
 }
 
 // railMending is the row a node wears while it is closing a named gap in work it
@@ -4730,8 +4919,11 @@ func (a *app) railTelemetry(node *taskNode, width int) string {
 	segs := make([]string, 0, 5)
 	// A NODE NOBODY DATED HAS NO CLOCK. A store task whose store never said when
 	// it started is lent a node with no start ([planRailNode]), and the age of
-	// the zero instant is a number of hours that is nobody's.
-	if !node.began.IsZero() {
+	// the zero instant is a number of hours that is nobody's. And a node whose
+	// room is open draws none either ([app.taskNow]): the room's own header
+	// carries the live figure, and a number stopped at the moment of the click
+	// read `2s` beside a senior-dev page reading `1m 21s`.
+	if !node.began.IsZero() && node.froze.IsZero() {
 		if clock := countUpWord(a.taskNow(node).Sub(node.began)); clock != "" {
 			segs = append(segs, clock)
 		}
@@ -4743,7 +4935,7 @@ func (a *app) railTelemetry(node *taskNode, width int) string {
 		// difference between keeping the price and dropping it.
 		segs = append(segs, tokenWord(node.tokens))
 	}
-	if spent := node.spent(); spent > 0 {
+	if spent := a.railSpent(node); spent > 0 {
 		segs = append(segs, dollars(spent))
 	}
 	if model := railModelWord(node); model != "" {
@@ -4771,7 +4963,7 @@ func (a *app) railTelemetry(node *taskNode, width int) string {
 // that says how that is going. Both are empty under [taskToolFloor]: a call
 // that has just started is a call nobody is waiting on yet.
 func (a *app) taskClock(node *taskNode) (string, func(string) string) {
-	if node.toolBegan.IsZero() {
+	if node.toolBegan.IsZero() || !node.froze.IsZero() {
 		return "", nil
 	}
 	age := a.taskNow(node).Sub(node.toolBegan)
@@ -4796,6 +4988,13 @@ func (a *app) taskClock(node *taskNode) (string, func(string) string) {
 // is the opposite of what a person reading needs. It thaws when they leave, at
 // the value it would have had all along, because nothing here stops the clock
 // so much as stops reporting it.
+//
+// AND A ROW DRAWN AGAINST A FROZEN CLOCK DRAWS NO CLOCK AT ALL. Stopping the
+// report is not the same as reporting the stopped value: an age that stays at
+// the second of the click is a wrong measurement sitting beside the room's
+// right one, and a run's time is a figure the person reads to the second
+// ([app.railTelemetry], [app.taskClock] and [app.railPhase] each leave theirs
+// out while this is set).
 func (a *app) taskNow(node *taskNode) time.Time {
 	if !node.froze.IsZero() {
 		return node.froze
@@ -4997,6 +5196,12 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		// [session.TaskNotice.Decider] — so a guard that only ever looked at the
 		// state would throw away the event that puts the chips back on the card
 		// somebody is waiting in front of (taskdone.go's [app.handedBackCard]).
+		//
+		// AND A PROGRAM THE NODE HAS NOT BEEN TOLD OF IS NEWS, on the brief's
+		// terms: an empty one says nothing, and one the node already carries is the
+		// second copy. A row first drawn from an older record that named none and
+		// then published again, in the same state, by the run that knows its
+		// program must not lose the badge to this guard.
 		node := a.tasks[notice.ID]
 		if node == nil || (notice.CostUSD <= node.cost &&
 			taskLiveLines(notice) == node.liveLines() && !taskRenames(notice, node) &&
@@ -5004,7 +5209,8 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 			!taskPauses(notice, node) && !taskReasks(notice, node) &&
 			notice.Decider == node.decider && notice.NextModel == node.nextModel && notice.Thinking == node.thinking &&
 			(notice.Brief == "" || notice.Brief == node.brief) &&
-			(notice.Acceptance == "" || notice.Acceptance == node.acceptance)) {
+			(notice.Acceptance == "" || notice.Acceptance == node.acceptance) &&
+			(notice.Program == "" || notice.Program == node.program)) {
 			return nil
 		}
 	}
@@ -5043,6 +5249,9 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 			node.label = card.title
 			node.assignment = firstNonEmpty(card.summary, card.brief)
 			node.brief, node.acceptance, node.where = card.brief, card.acceptance, card.where
+			// And which program it went to, so the row wears the badge the card
+			// wore even when the notice that made it said nothing about it.
+			node.program = card.program
 		}
 		a.tasks[notice.ID] = node
 		a.taskOrder = append(a.taskOrder, notice.ID)
@@ -5212,6 +5421,13 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	if notice.Kind != "" {
 		node.kind = notice.Kind
 	}
+	// AND SO IS THE PROGRAM THE WORK WAS HANDED TO, on the kind's own rule: it is
+	// on every row a program's run publishes, so a row drawn for the first time
+	// after a conversation switch wears its badge from that first frame, and an
+	// update quiet about it has not taken the work off the program.
+	if program := strings.TrimSpace(notice.Program); program != "" {
+		node.program = program
+	}
 	// AND SO IS THE WORKING CONTEXT, on the same rule and for the same reason: a
 	// node that named one is in it for the rest of its life, and an update quiet
 	// about it has not taken the person out of it. A better name replaces the one
@@ -5228,10 +5444,11 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	if !notice.EndedAt.IsZero() {
 		node.ended = notice.EndedAt
 	}
-	// The clock is anchored ONCE, from the age the update reported, so the row
+	// The clock is anchored ONCE, from the age the update reported or, for a row
+	// that reports none, the record's start ([app.noticeBegan]), so the row
 	// counts on the frame tick instead of standing still between events.
 	if notice.State == session.TaskRunning && node.began.IsZero() {
-		node.began = a.now().Add(-notice.Elapsed)
+		node.began = a.noticeBegan(*notice)
 	}
 	// A node that started is a proposal that was approved, whatever answered it:
 	// the card stops asking here for the case where the engine's clock, and not

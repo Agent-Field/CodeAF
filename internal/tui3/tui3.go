@@ -388,6 +388,21 @@ type TaskOwnerView struct {
 	// Nil is a door that cannot offer it. The page then says exactly what it said
 	// before, which is what a capability that cannot work is owed.
 	Questions func() (<-chan session.Event, func())
+	// TaskPage reads ONE TASK'S STORED PAGE in the owner's own store — the page
+	// a program's task is drawn from, since a program writes no worker journal
+	// for [TaskOwnerView.Room] to read ([session.PlanTaskPage.Program]). It is
+	// the same read this window's own program room makes of its own store
+	// ([session.Agent.PlanTaskPage]), made on this view's connection so the id
+	// is answered in the owner's numbering and never in this window's.
+	//
+	// IT KEEPS THE ENGINE'S REFUSAL, where the agent's own read folds every
+	// failure into "not found": a page this window is reading learns that the
+	// conversation under it was replaced from exactly this error
+	// ([remote.ErrJoinedGone]), and a program's page reads nothing else.
+	//
+	// Nil is a door that cannot offer it, and every page opened through that
+	// door is the journal reading it always was.
+	TaskPage func(id string) (session.PlanTaskPage, bool, error)
 	// Close gives back THIS VIEW'S connection and nothing else. The conversation
 	// goes on running, the window that owns it keeps its keyboard, and the
 	// engine is untouched.
@@ -620,6 +635,23 @@ type Options struct {
 	// --host, where the holder is a window on this laptop and the journal is on
 	// the far machine. Every one of them keeps the road it had.
 	EngineAnswers func(workspace string) bool
+
+	// Elsewhere reads what the project's OTHER conversations have out right
+	// now — the presence files beside the transcript this window is drawing —
+	// for a window whose agent cannot answer that itself
+	// ([session.ElsewhereOf] is the shape).
+	//
+	// IT IS THE HALF OF THE TASKS PAGE THE ENGINE ROAD HAD LOST. The rows of
+	// work another conversation is running are minted from that reading
+	// ([app.refreshElsewhere]), and it was asked of the agent alone: the
+	// in-process agent reads its own disk, and the connection bare `codeaf`
+	// holds to its engine does not ([remote.Agent] has no such method). So on
+	// the ordinary launch no such row was ever drawn, and [Options.OpenTaskOwner]
+	// — the door behind exactly those rows — could never be reached.
+	//
+	// Nil is a window whose disk is not the engine's (--host) or whose agent
+	// answers for itself (the in-process door); both keep the road they had.
+	Elsewhere func(transcript string, now time.Time) session.Elsewhere
 
 	// OpenTaskOwner attaches a SECOND VIEW onto a conversation that is ALREADY
 	// RUNNING, for as long as one task page is on screen: a reader for that

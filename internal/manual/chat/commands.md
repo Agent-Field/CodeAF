@@ -178,6 +178,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/harness` | `/harnesses` | — | lists the saved shapes of work and what they did |
 | `/subharness` | `/sub` | — | lists the programs you can run; type to filter, enter opens that one's card |
 | `/subharness` | `/sub` | `<name>` | opens that subharness's intake card straight away |
+| `/<program>` | — | `<brief>` | one row per program this build carries: starts a task that program does on its own |
 | `/skill` | `/skills` | — | opens the skill shelf under the message box; enter toggles a skill, and its chip stays attached across messages |
 | `/memory` | — | — | opens the memory panel |
 | `/memory` | `/memories` | `<query>` | prints matching memories into the conversation |
@@ -831,8 +832,9 @@ the same row the Spending tab writes through.
 
 The row names it takes are **`day`** (`daily`, `today`), **`conversation`** (`chat`,
 `session`), **`plan`** (`plans`, `ask`) and **`practice`** — the four rows that can be
-edited. There is **no `/budget task`**: the per-task limit is set in `/crew`, with
-`/crew cap task <$>`.
+edited. There is **no `/budget task`**: the per-task limit for an ordinary `/task` is set in `/crew`, with
+`/crew cap task <$>`. senior-dev has a separate ceiling for each run; see its page
+for the shell flags and conversation limits that can lower it.
 
 A write says back what it landed, in the tab's own words for that row — `per day · $50`,
 or `per day · no limit`. A figure it cannot read is refused in the row's own words with
@@ -1267,6 +1269,17 @@ The first is what you get with no registry wired — a headless frame, and every
 launch on this machine and `--no-host` both wire this machine's registry and open the
 panel. The second is drawn as the panel's only row, and it is also what a registry that
 cannot be read at all shows, rather than an error.
+
+## /<program> — a program codeaf carries, handed a whole task
+
+Every program your build carries is a command of its own: `/<name> <brief>` hands the brief
+to that program and starts a task at once, exactly as `/task <brief>` does with codeaf's own
+worker. The rows come from the build itself, so there is nothing to install and a build that
+carries no program has no such row. With no brief it says its usage:
+`usage: /<name> <brief> · hands the whole task to that program`.
+
+Over `--host` the rows are the far machine's build's, and a row you run starts the work there.
+The *Programs codeaf carries* page says what one is, what it cannot do, and where its work goes.
 
 ## /subharness — the command's two forms, bare and with a name after it
 

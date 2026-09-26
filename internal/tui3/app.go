@@ -911,6 +911,10 @@ type app struct {
 	// states the whole contract, taskowner.go is the only caller). Nil is a
 	// window with no engine road, which answers with the card instead.
 	openTaskOwner func(TaskOwnerAsk) (TaskOwnerView, error)
+	// elsewhereOf reads the other conversations' presence off this machine's
+	// disk for a window whose agent cannot (tui3.go's [Options.Elsewhere];
+	// taskview.go's [app.refreshElsewhere] is the only caller).
+	elsewhereOf func(transcript string, now time.Time) session.Elsewhere
 	// taskOwnerGen numbers the attaches this window has asked for and taskOwnerAt
 	// is the one still in flight. An answer carrying an older number is a view
 	// nobody wants any more: it is CLOSED on arrival rather than drawn, which is
@@ -1055,6 +1059,10 @@ type app struct {
 	// answer belong to the replay that asked for it.
 	historyLoading bool
 	historyGen     int
+	// roomPageAsked is the task whose stored page the door opening its room has
+	// just asked for and not found, so the room does not ask again
+	// ([app.roomProgramCheck]). Zero is every other opening.
+	roomPageAsked uint64
 	// unfolded holds the turns whose tool cluster is showing every call.
 	unfolded map[int]bool
 	// workOpen is the ephemeral expansion state of live and completed work.
@@ -1144,6 +1152,8 @@ type app struct {
 	// (moneydoor.go's [app.moneyNearRail]).
 	spendRail float64
 	railRead  bool
+	// The settings panel takes this command with its key or mouse response.
+	spendRailBindCmd tea.Cmd
 	// ctxWindow is the model's context in tokens as this surface last set it,
 	// and ctxTokens what the conversation currently weighs. The pair is the
 	// meter in the status line. The window is TRACKED rather than asked for
@@ -2881,6 +2891,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		open:                opts.Open,
 		engineAnswers:       opts.EngineAnswers,
 		openTaskOwner:       opts.OpenTaskOwner,
+		elsewhereOf:         opts.Elsewhere,
 		anchorWorkspace:     opts.AnchorWorkspace,
 		errand:              opts.Errand,
 		standingRoot:        opts.StandingRoot,
@@ -3401,6 +3412,11 @@ func (a *app) Init() tea.Cmd {
 			standing = append(standing, a.wake())
 		}
 	}
+	// THE PROGRAM ROWS ARE ASKED FOR AT THE LAUNCH, off the loop, so the picker
+	// and /help list them from the first answer rather than the first keystroke
+	// (delegate.go). The list is the engine's, so a switch asks again
+	// ([app.attachConversation]).
+	standing = append(standing, a.installDelegates())
 	return tea.Batch(standing...)
 }
 
@@ -4448,6 +4464,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.roomTabPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
+			if a.programBriefPress(msg.Mouse().X, msg.Mouse().Y) {
+				return a, nil
+			}
 			// THE TASK STRIP IS READ BEFORE THE RAIL, because the strip spans the
 			// WHOLE window and the rail claims every press in its own columns
 			// whether or not one landed on a row (room.go) — asked the other way
@@ -5276,6 +5295,10 @@ func (a *app) paint() tea.Cmd {
 	if a.room != nil {
 		a.room.dirty = true
 	}
+	// A PROGRAM'S ROOM READS ITS STORED PAGE ON THE SAME CLOCK: a room left open
+	// on work that can still move follows its newest action, and a room on a
+	// settled run is not read at all ([app.programRoomFollow]).
+	kick = tea.Batch(kick, a.programRoomFollow())
 	// A TOOL THAT HAS JUST ENDED IS ASKED ABOUT ON THIS FRAME, not at the next
 	// tenth ([app.usageOwed]) — the ask alone, because nothing else on this
 	// beat has moved with it. ONLY WHILE THE WORK IS STILL RUNNING: the ask is
@@ -5467,7 +5490,12 @@ func (a *app) paint() tea.Cmd {
 		// and it is the fourth that can be the whole of what is happening: the
 		// room follows a live edge the store writes from another process, and no
 		// turn of ours runs while it moves (planroom.go's [app.planRoomPoll]).
-		a.planRoomRunning()
+		a.planRoomRunning() ||
+		// AND A PROGRAM'S ROOM ON WORK THAT CAN STILL MOVE IS THE NINETEENTH, for
+		// the run's room's reason exactly: senior-dev writes its conversation from
+		// another process, and the room's age ticks on this clock
+		// (programroom.go's [app.programRoomFollow]).
+		a.programRoomFollows()
 	// THE WAIT ON THE MODEL is the only term that can hold this clock while
 	// the screen shows nothing but the spinner and the ellipsis, and a spinner
 	// glyph only changes every spinnerStep-th paint (styles.go). A wait whose
@@ -7109,6 +7137,8 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		a.togglePictureAt(r.entry, r.pictureIndex)
 	case hitBrief:
 		a.toggleBriefFoldAt(r.entry)
+	case hitAction:
+		a.toggleProgramAction(int64(r.turn))
 	case hitTask:
 		// A CLICK ON A SPAWN CARD IS THE DOOR INTO THE NODE. It used to open the
 		// brief, which is the card's own text one fold down — and the question a
@@ -7852,6 +7882,12 @@ func (a *app) slash(line string) tea.Cmd {
 		// are really on this disk, it was a drop and it becomes chips.
 		if a.droppedLine(line) {
 			return a.edited()
+		}
+		// A PROGRAM CODEAF CARRIES IS A COMMAND OF ITS OWN (delegate.go). It is
+		// asked for last, after the literal table, so nothing a program is
+		// called can shadow a word this surface already answers to.
+		if isDelegateCommand(name) {
+			return a.runDelegateCommand(name, rest)
 		}
 		a.note(unknownCommandWord(name))
 		return nil

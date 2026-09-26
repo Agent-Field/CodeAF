@@ -372,7 +372,9 @@ func (a *Agent) taskSearchText(query string, limit int, scope string) string {
 	if limit <= 0 && a.config.taskID != 0 {
 		limit = taskFanLimit
 	}
-	out := taskRowsTextLimit(a.taskRows(), query, limit)
+	// THIS CONVERSATION'S OWN RUNS ARE LEFT TO THEIR STORE'S LISTING, which the
+	// tool puts above this one ([Agent.withoutOwnRunRows]).
+	out := taskRowsTextLimit(a.withoutOwnRunRows(a.taskRows()), query, limit)
 	if !a.tellsElsewhere() {
 		return a.taskConversationHint(out)
 	}
@@ -755,9 +757,10 @@ func (a *Agent) oneTask(ctx context.Context, token string, parsed tasksArguments
 	if parsed.Stop && (parsed.Continue || parsed.Forward || strings.TrimSpace(parsed.Resolve) != "") {
 		return "stop ends the task, so it cannot be combined with continue, resolve or forward; send one action at a time.", true, nil
 	}
-	// A LIVE RUN HAS NO PROJECT-INDEX ROW YET. Its rows are kept beside the
-	// graph's nodes and are written to the finished-work index only when the run
-	// ends, so a stop must resolve that live owner before asking the index. Every
+	// A LIVE RUN IS STOPPED THROUGH ITS OWNER, NEVER THROUGH THE INDEX. Its rows
+	// are kept beside the graph's nodes, not among them, and the index row this
+	// conversation's own run writes is left out of this reader
+	// ([Agent.withoutOwnRunRows]), so a stop resolves the live run first. Every
 	// other operation keeps its existing reader: run details come from the plan
 	// store and ordinary tasks come from the graph and project index below.
 	if parsed.Stop {
@@ -765,7 +768,7 @@ func (a *Agent) oneTask(ctx context.Context, token string, parsed tasksArguments
 			return a.stopOneTask(entry, id, true, parsed.Say)
 		}
 	}
-	rows := a.taskRows()
+	rows := a.withoutOwnRunRows(a.taskRows())
 	entry, found := a.taskByToken(rows, token)
 	if !found {
 		// CONTINUE ON A MISS IS NOT "NO TASK". The person named a number and
@@ -1359,6 +1362,15 @@ func taskChildRowText(entry TaskIndexEntry, withURI bool) string {
 // Every clause that has nothing to say is DROPPED rather than written empty. A
 // row reading "· 0 files · · $0.00" is three facts this build does not have,
 // stated as though it did.
+//
+// A PROGRAM'S WORK SAYS WHICH PROGRAM HAS IT, as the last fact on its first
+// line (`7 · rewrite-the-auth · working · running for 3m · via senior-dev`), in
+// the word `propose_task` hands work to one with. The person's side list wears
+// the program's badge on the same row, and a model that could not tell a
+// program's work from its own worker's would answer "what is running?" wrongly
+// about exactly the work the person can see is different. It trails the figures
+// rather than parting the name from its state, which is the pair a reader of
+// this line reads first.
 func taskRowText(entry TaskIndexEntry) string {
 	parts := []string{entry.ID, entry.Name, taskEntryWord(entry)}
 	if word := taskWhenWord(entry); word != "" {
@@ -1370,8 +1382,11 @@ func taskRowText(entry TaskIndexEntry) string {
 	if entry.DurationMS > 0 {
 		parts = append(parts, taskSpanWord(entry.Duration()))
 	}
-	if entry.Cost > 0 {
-		parts = append(parts, "$"+strconv.FormatFloat(entry.Cost, 'f', 2, 64))
+	if cost := taskDollarWord(entry.Cost); cost != "" {
+		parts = append(parts, cost)
+	}
+	if via := taskViaWord(entry.Program); via != "" {
+		parts = append(parts, via)
 	}
 	out := strings.Join(parts, " · ") + "\n  " + entry.Title
 	if entry.Outcome != "" {
@@ -1389,6 +1404,26 @@ func taskRowText(entry TaskIndexEntry) string {
 		out += "\n  " + strings.Join(where, " · ")
 	}
 	return out + "\n"
+}
+
+// taskViaWord is the clause a program's work carries in this tool's text —
+// `via senior-dev` — and "" for every task no program was handed, which says
+// nothing rather than `via` and a blank. It is one word for the index's rows and
+// the run's store rows alike, so the two listings name a program the same way.
+func taskViaWord(program string) string {
+	if program = strings.TrimSpace(program); program == "" {
+		return ""
+	}
+	return "via " + program
+}
+
+// taskDollarWord is a task's spend as the tasks tool spells it on every row,
+// `$0.31`, and "" for none, which says nothing rather than `$0.00`.
+func taskDollarWord(usd float64) string {
+	if usd <= 0 {
+		return ""
+	}
+	return "$" + strconv.FormatFloat(usd, 'f', 2, 64)
 }
 
 // taskWhereClauses is the trailing line a row may carry: where the work IS, the
@@ -1510,12 +1545,19 @@ func TaskAgeWord(d time.Duration) string {
 // Told no task existed, the conversation set out to verify the work by running
 // the suite itself. The rows are read where the surface reads them
 // ([Agent.PlanTasks]), so the tool and the rail cannot disagree about what ran.
+//
+// AND IT WAS BLIND AGAIN TO EVERY senior-dev RUN (2026-09-24, the real
+// binary): the reader was gated on the bash-belt switch, which a program's run
+// never sets, so `tasks {"id":3}` answered `No task "3" in this project` over a
+// run the rail was drawing, and the model went looking through unrelated older
+// rows. It reads the plan the pages read ([TaskGraph.planForPages]), which is
+// this conversation's store whatever the switch says and never makes one.
 func (a *Agent) runPlanTasks() []PlanTaskRow {
 	g := a.graph()
 	if g == nil {
 		return nil
 	}
-	plan := g.planIfArmed()
+	plan := g.planForPages()
 	if plan == nil || plan.chat == "" {
 		return nil
 	}
@@ -1547,9 +1589,16 @@ func planTaskLabels(rows []PlanTaskRow) map[string]string {
 }
 
 // planTasksText is the run's tasks as a listing: the name a person sees, the
-// title, the state, the first line of what came back, and the newest note
-// anybody left on it. Empty when there is no run or nothing in it matches, so
-// the caller's own listing stands alone.
+// title, the state, how long it ran, what it cost, the first line of what came
+// back, and the newest note anybody left on it. Empty when there is no run or
+// nothing in it matches, so the caller's own listing stands alone.
+//
+// A PROGRAM'S RUN SAYS HOW LONG IT TOOK AND WHAT IT COST, off the run's one pair
+// ([planRowSpanWord], task_run_clock.go) and its spend rows ([taskDollarWord]):
+// the tool said neither, and a model asked how long senior-dev took or what it
+// cost could only guess. AND IT SAYS WHICH PROGRAM HAS IT, after the clock, in
+// [taskViaWord]'s one spelling — the same place on the line [taskRowText] puts
+// it.
 //
 // THE NOTE IS ON THE ROW BECAUSE NOBODY WAS READING IT. A note is the channel a
 // worker uses to say that another task's premise is wrong, and a person uses to
@@ -1563,6 +1612,7 @@ func planTaskLabels(rows []PlanTaskRow) map[string]string {
 func (a *Agent) planTasksText(rows []PlanTaskRow, query string) string {
 	query = strings.ToLower(strings.TrimSpace(query))
 	labels := planTaskLabels(rows)
+	now := a.taskClockNow()
 	var b strings.Builder
 	for _, row := range rows {
 		page, _ := a.PlanTaskPage(row.ID)
@@ -1577,6 +1627,15 @@ func (a *Agent) planTasksText(rows []PlanTaskRow, query string) string {
 		fmt.Fprintf(&b, "%s · %s", labels[row.ID], cutChars(row.Title, runAskLineChars))
 		if word != "" {
 			fmt.Fprintf(&b, " · %s", word)
+		}
+		if span := planRowSpanWord(row, now); span != "" {
+			fmt.Fprintf(&b, " · %s", span)
+		}
+		if cost := taskDollarWord(row.USD); cost != "" {
+			fmt.Fprintf(&b, " · %s", cost)
+		}
+		if via := taskViaWord(row.Program); via != "" {
+			fmt.Fprintf(&b, " · %s", via)
 		}
 		if line := summaryFirstLine(page.Result, runAskLineChars); line != "" {
 			fmt.Fprintf(&b, " · %s", line)
@@ -1733,11 +1792,20 @@ func (a *Agent) planTaskText(rows []PlanTaskRow, token string) (string, bool) {
 		return "", false
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s · %s", labels[id], cutChars(page.Row.Title, runAskLineChars))
+	head := labels[id] + " · " + cutChars(page.Row.Title, runAskLineChars)
 	if word := page.Row.StateWord(); word != "" {
-		fmt.Fprintf(&b, " · %s", word)
+		head += " · " + word
 	}
-	fmt.Fprintf(&b, "\n\nbrief:\n%s\n", cutChars(page.Description, runAskBodyChars))
+	if span := planRowSpanWord(page.Row, a.taskClockNow()); span != "" {
+		head += " · " + span
+	}
+	if cost := taskDollarWord(page.Row.USD); cost != "" {
+		head += " · " + cost
+	}
+	if via := taskViaWord(page.Row.Program); via != "" {
+		head += " · " + via
+	}
+	fmt.Fprintf(&b, "%s\n\nbrief:\n%s\n", head, cutChars(page.Description, runAskBodyChars))
 	if page.Result != "" {
 		fmt.Fprintf(&b, "\nresult:\n%s\n", cutChars(page.Result, runAskBodyChars))
 	}

@@ -37,9 +37,11 @@ const (
 var roomTabWords = []string{roomTabTranscriptWord, roomTabWorkWord}
 
 // roomHasTabs reports whether the page on screen is a task's page. A run's
-// graph is a page of its own kind and draws no tabs.
+// graph is a page of its own kind and draws no tabs, and so is a program's
+// room (programroom.go): its page is the program's actions and calls, turned
+// by its own key, and its work is on the branch its ending names.
 func (a *app) roomHasTabs() bool {
-	return a.room != nil && a.room.orch == nil
+	return a.room != nil && a.room.orch == nil && a.room.program == nil
 }
 
 // roomTabTo opens one tab and asks for what it draws.

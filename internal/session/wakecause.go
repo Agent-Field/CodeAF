@@ -71,6 +71,7 @@ const (
 // places a message reaches the transcript — the turn's opening and the steering
 // drain — so a landing that arrives mid-turn is owed by the turn it lands in.
 func (a *Agent) rememberOwedLocked(user userMessage) {
+	a.rememberProgramOutcomeLocked(user)
 	if question := strings.TrimSpace(user.landingQuestion); question != "" {
 		a.oweLocked(owedAsk{text: question, from: owedByPerson})
 		if outcome := strings.TrimSpace(user.landingOutcome); outcome != "" {
@@ -80,6 +81,9 @@ func (a *Agent) rememberOwedLocked(user userMessage) {
 	// THE PERSON'S OWN MESSAGE, on the same test [Agent.rememberAskLocked] makes:
 	// a note the session authored and a wake are the session talking to itself.
 	if !user.authored && !user.wake {
+		if !user.resumed {
+			a.clearProgramHoldLocked()
+		}
 		a.oweLocked(owedAsk{text: user.text(), from: owedByPerson})
 	}
 	// AND WHAT EACH RESULT WAS OWED, which is the effective target where the
@@ -147,7 +151,7 @@ func (a *Agent) oweLocked(ask owedAsk) {
 // forgetOwedLocked clears the previous turn's owed asks and the results they
 // arrived with. Called once, where a turn opens.
 func (a *Agent) forgetOwedLocked() {
-	a.owedAsks, a.landingOutcomes, a.turnResults, a.personCardAnswers = nil, nil, nil, nil
+	a.owedAsks, a.landingOutcomes, a.turnResults, a.programOutcomeNow, a.personCardAnswers = nil, nil, nil, nil, nil
 }
 
 // turnAsk is the ask this turn's endings are read against.

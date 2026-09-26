@@ -2339,6 +2339,28 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, err
 		}
 		return json.Marshal(TaskStarted{ID: id, Title: title, Note: note})
+	case MethodDelegateList:
+		door, ok := agent.(interface{ Delegates() session.DelegateReport })
+		if !ok {
+			return json.Marshal(session.DelegateReport{})
+		}
+		return json.Marshal(door.Delegates())
+	case MethodDelegateStart:
+		door, ok := agent.(interface {
+			StartDelegate(context.Context, string, string) (uint64, string, string, error)
+		})
+		if !ok {
+			return nil, errors.New("engine: this session has no delegate door")
+		}
+		args, err := arg[DelegateStartArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		id, title, note, err := door.StartDelegate(context.Background(), args.Name, args.Brief)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(TaskStarted{ID: id, Title: title, Note: note})
 	case MethodTaskRedoStronger:
 		door, ok := agent.(interface {
 			RedoStronger(context.Context, uint64) (uint64, string, error)
@@ -2569,6 +2591,17 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// other one's status line is drawing right now.
 		s.session.announce()
 		return nil, nil
+
+	case MethodSetSpendRail:
+		usd, err := arg[float64](call)
+		if err != nil {
+			return nil, err
+		}
+		binder, ok := agent.(interface{ SetSpendRail(float64) error })
+		if !ok {
+			return nil, errors.New("conversation limit cannot be changed here")
+		}
+		return nil, binder.SetSpendRail(usd)
 
 	case MethodSetContext:
 		tokens, err := arg[int](call)

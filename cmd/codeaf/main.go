@@ -29,6 +29,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
@@ -408,6 +409,12 @@ func run() error {
 	case "-h", "--help", "help":
 		return usage(os.Args[2:])
 	default:
+		// A PROGRAM THIS BUILD CARRIES IS A VERB OF ITS OWN: `codeaf senior-dev
+		// <brief>` (carried.go). It is asked last, after every verb above, so
+		// no program's name can shadow one of codeaf's own words.
+		if program, ok := builtin.Find(os.Args[1]); ok {
+			return runCarried(program, os.Args[2:])
+		}
 		return unknownCommand(os.Args[1])
 	}
 }
@@ -720,7 +727,10 @@ func usage(args []string) error {
 		fmt.Fprintln(usageOut, environmentText)
 		return nil
 	}
-	fmt.Fprintln(usageOut, usageText)
+	// The table with the programs this build carries in it (carried.go): a
+	// verb nobody can find on the page that lists the verbs is a verb nobody
+	// types.
+	fmt.Fprintln(usageOut, frontPage())
 	return nil
 }
 

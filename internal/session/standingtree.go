@@ -698,6 +698,11 @@ func (a *Agent) Land(folder string) (FolderLanding, error) {
 	if len(tree.Wrote) == 0 {
 		return FolderLanding{}, fmt.Errorf("nothing has been changed in %s", filepath.Base(tree.Folder))
 	}
+	// A FOLDER A PROGRAM'S RUN HOLDS TAKES NO LANDING (programhold.go): the copy
+	// and its record stay exactly as they are, for a `/land` once that run ends.
+	if refusal := programHoldRefusal(tree.Folder); refusal != "" {
+		return FolderLanding{}, errors.New(refusal)
+	}
 	landing := FolderLanding{Folder: tree.Folder, Name: filepath.Base(tree.Folder), Files: append([]string{}, tree.Wrote...)}
 	// THE TASK TREE IS BUILT HERE AND HELD NOWHERE, because it is the argument
 	// the landing takes rather than a second record of the copy: this file's

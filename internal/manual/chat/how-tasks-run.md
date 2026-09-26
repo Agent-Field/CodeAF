@@ -388,7 +388,8 @@ clear by hand.
 
 **Two tasks cannot both run in place in one directory.** Whichever started first has it;
 the second is refused its writes and told which task to wait for. When the first lands, the
-second gets the directory.
+second gets the directory. A program's run (senior-dev) holds its folder the same way, and
+a task is refused that folder before it starts: senior-dev's page has the words.
 
 ## A task that has written a file holds that file — I cannot edit a file while a task runs, chat edit blocked, single writer
 
@@ -456,7 +457,7 @@ line of its report — `files: site/index.html, site/app.css` — and only names
 exist in its checkout are believed. A task that says nothing about them has left them
 behind, and that is the difference between a deliverable and a dropping.
 
-## Why my task's branch was kept — I committed, amended, rebased or reset my branch while it ran, it did not merge, my checkout is on main or dev, tasks do not merge into a protected branch automatically, how do I take the work, why did the work not land in my checkout, why didn't my task merge, which branches does codeaf refuse to write
+## codeaf committed to dev — why my task's branch was kept, has codeaf committed to dev or main, I committed, amended, rebased or reset my branch while it ran, it did not merge, my checkout is on main or dev, tasks do not merge into a protected branch automatically, how do I take the work, why did the work not land in my checkout, why didn't my task merge, which branches does codeaf refuse to write
 
 A tag with the same name as a branch does not change which branch is protected
 or which commit the landing compares. Git signature-display settings also do
@@ -3179,6 +3180,9 @@ and counted as the section above on work that is your call says. Ids can only po
 and only ids `propose_task` itself returned count: a job or adaptive-run number is a
 different kind of work, and naming one — or a task that already failed — refuses the
 proposal on the spot instead of queueing work that could never start.
+A task handed to a program such as senior-dev cannot wait at all, because it starts the
+moment it is approved: its `depends_on` may name only work that has already landed. A
+program's run that ended done may be named by any task; one still going may not.
 
 **`model`** — which model this task runs on. Set only when you asked for a particular model
 or class of model for this work. Left out, the task runs on `task.model` if set, otherwise

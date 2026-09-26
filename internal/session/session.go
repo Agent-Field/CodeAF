@@ -30,6 +30,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
@@ -1640,6 +1641,14 @@ type Config struct {
 	// the "absent, not broken" law arriving at a door that was never wired.
 	Subharnesses *exec.Registry
 
+	// Delegates is the programs this build carries that a task can be handed to
+	// whole — senior-dev first (delegate_door.go, internal/delegate). The
+	// surface hands in the build's list (internal/delegate/builtin) rather than
+	// this package importing it, so a test of this package never carries a
+	// program's whole engine. EMPTY IS NONE: the door lists nothing, `via`
+	// refuses every name, and the prompt says nothing about them.
+	Delegates []delegate.Delegate
+
 	// SubharnessMemory is where a running subharness keeps what it has learned
 	// about its OWN domain — its file in its own bundle, never this
 	// conversation's memory (subharness_env.go's [SubharnessMemory] says why the
@@ -2258,7 +2267,12 @@ type Agent struct {
 	discussionPending []string
 
 	config Config
-	client Completer
+	// An open conversation's changed rail is separate from its launch config:
+	// proposal cards read it while holding mu, while runs also read it outside
+	// that lock. Atomic publication keeps both roads on the same figure.
+	liveSpendRail    atomic.Uint64
+	liveSpendRailSet atomic.Bool
+	client           Completer
 	// managedClient distinguishes the provider adapter built by New from a test
 	// completer handed to newAgent. clientAccount is the resolved account the
 	// adapter holds, so a service-set change can replace it before another call.
@@ -2671,6 +2685,17 @@ type Agent struct {
 	// landingOutcomes are owed landing reports returned in this turn. They are
 	// completion evidence, not another part of the person's ask.
 	landingOutcomes []string
+	// programOutcomeNow is the program run's ending the turn now running was
+	// woken with, nil for every other turn: a hand-off it makes is a re-attempt
+	// of that run ([Agent.programRetryRefusal]). Cleared with owedAsks.
+	programOutcomeNow *programOutcome
+	// programHold is the last program ending since the person's own words. It
+	// survives wake turns and reloads from the conversation's sidecar record.
+	programHold    *programOutcome
+	programHoldErr string
+	// programAttempts is each started program run's place in its line of runs,
+	// by row ([Agent.keepProgramAttempt]).
+	programAttempts map[uint64]programAttempt
 	// personCardAnswers are the compact lines for cards a person answered
 	// during THIS turn (checkpoint.go's [personCardAnswerLine]). Cleared when
 	// the next turn opens, with the owed asks, because a later turn is not
@@ -2721,6 +2746,19 @@ type Agent struct {
 	// person is not currently saying under their live authority
 	// (task_forward.go).
 	personHeard uint64
+	// programBounced is where a proposal was last turned back because the
+	// person's message named a program and the proposal did not
+	// (delegate_asked.go): that message, and the step of the turn whose
+	// proposals were turned back. It is what makes the bounce once per message:
+	// a proposal for the same message from a later step, after the model has
+	// read the bounce, passes as it is.
+	programBounced bounceMark
+	// programsHeard is what the person's messages of the turn they last spoke
+	// in said about the programs this build carries: the newest one named,
+	// the message that named it, and every one asked for (delegate_asked.go). It is
+	// written where their words are recorded ([Agent.rememberAskLocked]), so a
+	// steer that names nothing does not unsay what the turn opened by asking.
+	programsHeard programsHeard
 	// callOutcomes is whether a finished call came back a failure, by call occurrence
 	// (admission_compile.go). It is recorded at the batch's own fan-out because
 	// the flag the tool returned does not survive into the transcript, and it is
@@ -3289,6 +3327,10 @@ type Agent struct {
 	// held.
 	beltMu  sync.Mutex
 	beltRun *beltRun
+	// runSummaryBusy holds the roots whose card reading is being bought right
+	// now ([Agent.RefreshRunSummary]), so a second surface that asks in the same
+	// moment keeps the last reading rather than paying for a second one.
+	runSummaryBusy sync.Map
 	// beltStartMu is the start lock: it is held from a hand-off's look for a
 	// live run until the run it opens is registered on beltRun, so a batch of
 	// hand-offs committed at one moment is one run and never several racing to

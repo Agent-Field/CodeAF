@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"errors"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -93,6 +94,11 @@ func (a *app) budget(rest string) tea.Cmd {
 		a.note("that limit is not on this machine")
 		return nil
 	}
+	if key == config.KeySpendRail && !a.railRead {
+		// Keep the active status reading on the old value until the engine
+		// acknowledges the newly written profile value.
+		a.readSpendRail()
+	}
 	if err := row.Apply(amount); err != nil {
 		// THE REFUSAL IS THE ROW'S OWN WORDS and never a second sentence about
 		// the same rule (internal/config's writers refuse in plain language),
@@ -102,10 +108,50 @@ func (a *app) budget(rest string) tea.Cmd {
 		return nil
 	}
 	a.refreshSettings()
+	if key == config.KeySpendRail {
+		return a.bindSpendRail(func(err error) {
+			if err != nil {
+				a.note("saved for the next conversation · this one still has its previous limit")
+				return
+			}
+			a.note(budgetWord(a.registry(), key))
+		})
+	}
 	// AND IT SAYS WHAT IT LANDED, in the words the tab uses for that row, because
 	// a command that writes silently is a command a person runs twice.
 	a.note(budgetWord(a.registry(), key))
 	return nil
+}
+
+// bindSpendRail asks the open engine after the profile write and folds its
+// answer before claiming that this conversation has the new ceiling.
+func (a *app) bindSpendRail(receipt func(error)) tea.Cmd {
+	usd := config.SpendRailUSDAt(a.profileDir)
+	binder, ok := a.agent.(interface{ SetSpendRail(float64) error })
+	if !ok {
+		err := errors.New("this conversation cannot bind a changed limit")
+		receipt(err)
+		return nil
+	}
+	return a.offLoop(func() func(bool) tea.Cmd {
+		err := binder.SetSpendRail(usd)
+		return func(here bool) tea.Cmd {
+			if !here {
+				return nil
+			}
+			if err == nil {
+				a.readSpendRail()
+			}
+			receipt(err)
+			return nil
+		}
+	})
+}
+
+func (a *app) takeSpendRailBindCmd() tea.Cmd {
+	cmd := a.spendRailBindCmd
+	a.spendRailBindCmd = nil
+	return cmd
 }
 
 // budgetWord is one row as a receipt: its label on the Spending tab, and what it

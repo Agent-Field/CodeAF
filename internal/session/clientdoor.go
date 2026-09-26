@@ -75,6 +75,33 @@ func modelServiceCanAnswer(service modelsource.Connected) bool {
 	return strings.TrimSpace(service.Key) != "" || service.Source.KeyOptional
 }
 
+// ServesModel answers whether one of these services can take a call on model:
+// the service the model's id resolves to ([modelsource.Set.For], which reads a
+// service prefix such as `openrouter/` off the id) holds a key, or is one that
+// needs none. It is the pool's own test ([modelServiceCanAnswer]) opened to the
+// run's model API (internal/provider/modelapi), which decides the same question
+// for a program's call and may not answer it a second way: a program that
+// names a model this machine cannot reach is answered on the run's work seat
+// instead, and the pool and the API must agree about what cannot be reached.
+func ServesModel(sources modelsource.Set, model string) bool {
+	model = strings.TrimSpace(model)
+	if model == "" || sources.Empty() {
+		return false
+	}
+	service, _ := sources.For(model)
+	return service.Source.ID != "" && modelServiceCanAnswer(service)
+}
+
+// servesModel is [ServesModel] over this conversation's own services, read live
+// under the lock the surface moves them under ([Agent.SetSources],
+// [Agent.SetAPIKey]), so a key pasted after the run began counts for its next
+// call.
+func (a *Agent) servesModel(model string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return ServesModel(a.config.Sources.OrDefault(a.config.APIKey, a.config.BaseURL), model)
+}
+
 // setSeat moves the one live fallback beside the source snapshot. A model
 // chosen after launch must carry the next turn; construction-time config is a
 // receipt of how the conversation opened, not an answer about where it sits.

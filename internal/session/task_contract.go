@@ -308,6 +308,13 @@ const (
 	// Its reason names the dollar limit ([taskReasonCostLimit]), and the two
 	// endings exist apart so a person who set both is told which one fired.
 	TaskEndingCostLimit TaskEnding = "cost-limit"
+	// TaskEndingProgram says the program a task was handed to
+	// (delegate_door.go) ended it without finishing, and said why: its own
+	// check did not pass what it made, or it stopped on its own ceiling. The
+	// program's sentence is the reason ([TaskReasonOf]), and it is not a fault:
+	// nothing broke, a program judged its own work and said so, and what it
+	// made is on its branch. A program that crashed is [TaskEndingError].
+	TaskEndingProgram TaskEnding = "program"
 	// TaskEndingError is everything else: a working copy that could not be
 	// made, a worker that would not start, an error nobody classified.
 	TaskEndingError TaskEnding = "error"
@@ -459,6 +466,28 @@ type TaskNotice struct {
 	// worktree. It is on the proposal AND on every update, because it is the one
 	// fact about a node that is true before it starts and after it lands.
 	Kind TaskKind
+	// Program is the program codeaf carries that this work is handed to —
+	// senior-dev — by the one name that program answers to (the Name of its
+	// [delegate.Delegate], the word its command row says), and "" for every task
+	// a worker of this conversation's own does, which is almost all of them.
+	//
+	// IT IS ON THE PROPOSAL AND ON EVERY ROW A PROGRAM'S RUN PUBLISHES, and that
+	// is the whole of why it is here. A surface used to learn a program's name
+	// only from the run's plan rows, which it reads on a beat of its own and
+	// drops on a conversation switch — so the card a person answered could not
+	// say which program the work was going to, and a program's row on the side
+	// list looked exactly like an ordinary task's for its first seconds and again
+	// after every switch. Carried here, the badge a program's work wears
+	// (internal/tui3's programbadge.go) is there from the first frame.
+	//
+	// IT IS A FACT FOR THE ROW'S WHOLE LIFE, like Kind above it: settled before the
+	// work starts and moved by nothing that happens to the work afterwards, so a
+	// publisher that forgets it has not changed it ([Agent.publishRunRow] carries
+	// it forward).
+	Program string
+	// Ceiling is the finite allowance a proposed program run will start with,
+	// spelled for the approval card. Ordinary tasks leave it empty.
+	Ceiling string
 
 	// ── proposal fields (EventTaskProposal) ─────────────────────────────
 

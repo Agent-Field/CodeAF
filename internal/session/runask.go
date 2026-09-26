@@ -81,10 +81,14 @@ func (a *Agent) AskRun(ctx context.Context, rootID, question string, earlier []R
 func (a *Agent) runAskCalls(ctx context.Context, rootID string, messages []ai.Message) (RunAskAnswer, error) {
 	tool := ai.ToolDefinition{Type: "function", Function: ai.ToolFunction{Name: "read_task", Description: "Read one task from this run", Parameters: map[string]interface{}{"type": "object", "properties": map[string]interface{}{"id": map[string]interface{}{"type": "string"}}, "required": []string{"id"}, "additionalProperties": false}}}
 	for round := 0; round < 3; round++ {
-		response, _, err := a.callRole(ctx, roles.RoleWorker, a.Model(), messages, ai.WithTools([]ai.ToolDefinition{tool}))
+		response, called, err := a.callRole(ctx, roles.RoleWorker, a.Model(), messages, ai.WithTools([]ai.ToolDefinition{tool}))
 		if err != nil {
 			return RunAskAnswer{}, err
 		}
+		// EVERY ROUND IS PAID FOR, the read_task round as much as the answer, and
+		// is banked detached because a person asked a page, not a turn
+		// (runsummary.go says the same of the card's lines).
+		a.addDetachedUsageAs(response, called, 1, string(roles.RoleWorker))
 		if len(response.Choices) == 0 {
 			return RunAskAnswer{}, errors.New("run ask returned no answer")
 		}

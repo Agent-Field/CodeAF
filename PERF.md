@@ -135,6 +135,34 @@ all four, each with its own furrow artifact staged:
 The budget is 54,600,000, two percent above darwin/amd64, the same headroom
 every figure in this section was given, now over a smaller binary.
 
+It was reset a fifth time on 2026-09-23, when senior-dev moved inside the binary
+(`internal/seniordev`, the built-in programs wave). Like furrow's, this one is a
+decision and not a drift: the owner's direction is that the programs codeaf hands
+a whole task to are built into every codeaf build and exist nowhere else, so the
+limit rises by what the engine weighs. Measured before (`5cf6a821e`) and after
+(`45e505550`) it landed, with the flags `make build` uses, on Go 1.27.0:
+
+| platform | before | after | what senior-dev cost |
+| --- | --- | --- | --- |
+| darwin/arm64, furrow staged | 54,018,770 | 56,493,874 | 2,475,104 |
+| darwin/amd64 | 58,504,000 | 61,279,360 | 2,775,360 |
+| linux/arm64 | 52,560,032 | 54,984,864 | 2,424,832 |
+| linux/amd64 | 57,421,984 | 60,133,536 | 2,711,552 |
+
+Only darwin/arm64 had its furrow artifact on disk, so the other three rows are
+weighed without theirs: each difference is exact, and each absolute figure is
+short by that platform's artifact, about three megabytes. The budget rises by
+the largest difference, to 57,400,000 — this change's bill and nothing else.
+
+AND THE TABLE SHOWS A BILL THAT WAS ALREADY OWED, which this reset does not
+fold in. Before senior-dev, darwin/amd64 and linux/amd64 already weighed more
+than 54,600,000 without their furrow artifacts, and linux/arm64 was within about
+two megabytes of it before its own was added: the growth since the fourth reset
+crossed the cap everywhere but the laptop the budget is usually checked on. The
+CI size job reports it and does not block (`ci-full.yml`'s `size`), for the
+reason that job gives — which architecture the budget is measured on has to be
+agreed first — and that agreement, not a larger number here, is the fix.
+
 ## Adaptive run shutdown grace
 
 `Agent.Close` cancels adaptive runs and their name calls, then gives all accepted
@@ -1322,6 +1350,21 @@ costs another **27**. The first spelling of the full cap was 53,100, measured at
 53,025 on the laptop that wrote it, and it failed CI at 53,132. `widestBelt`
 weighs both varying sentences at their widest wherever it runs, so the cap no
 longer depends on who runs it.
+
+**The senior-dev prefix is measured against one declared program shape
+(2026-09-25).** The full cap is **57,124** bytes and the lean cap is **49,590**.
+Both tests include senior-dev's guide even on Windows, where the program cannot
+run, and the guide is shared with the Unix program instead of copied into the
+test. The cap-setting commit already measured eight bytes over both caps on this
+Linux machine; no byte changed when `HOME`, `USER`, `TMPDIR`, the launch directory
+or `TZ` changed. Eight bytes were removed from two equivalent phrases in the
+guide, so both caps remain at their measured values without raising a waiver.
+
+**The #1494 and #1436 merge remeasured the combined belt (2026-09-25).**
+The full page is 22,291 bytes and its 24 tools encode to 34,927 bytes, so the
+fixed cap is **57,218** bytes, exactly 94 above the previous measurement.
+The lean cap remains **49,590** bytes. The dated fixed waiver in
+`prefixWaivers` pays only that measured increase.
 
 ## Following through on a completion claim
 

@@ -326,6 +326,13 @@ func needsCall(project session.Project, row session.SessionRow, entry session.Ta
 	if title == "" {
 		title = strings.TrimSpace(entry.Title)
 	}
+	// A PROGRAM'S WORK SAYS WHOSE IT IS, with its badge after its name
+	// (programbadge.go), which the cell pays for out of the title
+	// ([homeCellWears]) — a name with no words gets none.
+	program := ""
+	if title != "" {
+		program = strings.TrimSpace(entry.Program)
+	}
 	asked := needsCallAt(entry)
 	// A LANDING WEARS NO MARK (law 8). The amber `?` means a thing has stopped
 	// and will not move until somebody answers it; a landing has already
@@ -334,7 +341,7 @@ func needsCall(project session.Project, row session.SessionRow, entry session.Ta
 	// THE THREAD IT BELONGS TO HEADS THE DESCRIPTION (owner, 2026-09-17),
 	// spelled as `threads` spells the same conversation ([homeName]); under
 	// that title line come the files and what the work came to.
-	cell := &homeCell{panel: panelNeeds, mark: cellMarkNeeds, title: title, right: sinceAt(asked, now),
+	cell := &homeCell{panel: panelNeeds, mark: cellMarkNeeds, title: title, program: program, right: sinceAt(asked, now),
 		key: needsCallKey + entry.ID, thread: homeName(row),
 		grows: true, sub: rowClauses(needsCallFiles(entry), needsCallSub(entry, status)), answers: needsCallAnswers(status)}
 	line := homeLine{kind: homeSession, row: row, project: project.Name,

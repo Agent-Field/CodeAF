@@ -196,19 +196,22 @@ func (a *app) runTaskCommand(arg string) tea.Cmd {
 // naming a pause that no longer exists would be the surface describing
 // machinery rather than work.
 func (a *app) startTaskDoor(door taskCommandAgent, brief string, solo bool) tea.Cmd {
-	ctx := a.ctx
+	return a.startTaskDoorVia(brief, func(ctx context.Context) (uint64, string, string, error) {
+		return door.StartTask(ctx, brief, solo)
+	})
+}
+
+// taskDoorNotes says who else is in these files before either task door opens,
+// and answers which conversation is speaking before the asynchronous answer
+// lands. A program works in the folder itself, so only the ordinary task door
+// adds the separate note about edits travelling into its copy.
+func (a *app) taskDoorNotes(brief string) string {
 	// WHICH CONVERSATION IS SAYING THIS, read HERE rather than when the answer
 	// lands: the door is opened on a goroutine and the window may have moved on
 	// by the time it answers ([app.adoptTypedBrief] is where that matters).
 	conv := a.taskBriefConv()
 	a.noteBeforeTaskStart(brief)
-	return func() tea.Msg {
-		id, title, note, err := door.StartTask(ctx, brief, solo)
-		return taskStartedMsg{
-			kind: "single", id: strconv.FormatUint(id, 10), title: title,
-			err: err, note: note, brief: brief, conv: conv,
-		}
-	}
+	return conv
 }
 
 // noteBeforeTaskStart says the two lines a person is owed in the last moment
@@ -231,7 +234,13 @@ func (a *app) noteBeforeTaskStart(brief string) {
 			a.note(line)
 		}
 	}
-	// AND WHAT THIS PERSON'S OWN CHECKOUT IS ABOUT TO SEND. The task works in a
+}
+
+// taskCopyDoorNotes adds the ordinary task's copy note after the shared
+// preflight. A program's door does not call this: it has no copy to describe.
+func (a *app) taskCopyDoorNotes(brief string) string {
+	conv := a.taskDoorNotes(brief)
+	// WHAT THIS PERSON'S OWN CHECKOUT IS ABOUT TO SEND. The task works in a
 	// copy of the folder AS IT STANDS (internal/session's groundladder.go), so
 	// half-finished edits go with the work — which is what almost everybody
 	// wants and is worth one line for the person who was in the middle of
@@ -243,6 +252,19 @@ func (a *app) noteBeforeTaskStart(brief string) {
 	// silent on a clean tree (internal/session's taskpreflight.go).
 	if line := session.UnsavedEditsNote(a.workspace); line != "" {
 		a.note(line)
+	}
+	return conv
+}
+
+func (a *app) startTaskDoorVia(brief string, start func(context.Context) (uint64, string, string, error)) tea.Cmd {
+	ctx := a.ctx
+	conv := a.taskCopyDoorNotes(brief)
+	return func() tea.Msg {
+		id, title, note, err := start(ctx)
+		return taskStartedMsg{
+			kind: "single", id: strconv.FormatUint(id, 10), title: title,
+			err: err, note: note, brief: brief, conv: conv,
+		}
 	}
 }
 

@@ -172,12 +172,21 @@ func homeWorkNodeRows(node homeWorkNode, row session.SessionRow, width int, now 
 
 // homeWorkName is a task's first line: what it is CALLED, and how long ago it
 // landed, hard against the right edge.
+//
+// A PROGRAM'S WORK WEARS ITS BADGE AFTER THE NAME (programbadge.go), fitted
+// with the name before the row lays the two sides out, so the age can move to
+// a line of its own and the badge is still never what gets cut. An ordinary
+// task's name is handed over exactly as it always was.
 func homeWorkName(entry session.TaskIndexEntry, width int, now time.Time, pal palette) []string {
 	label := strings.TrimSpace(entry.Label)
 	if label == "" {
 		label = strings.TrimSpace(entry.Title)
 	}
-	return bandSides(width, homeWorkIndent, 8, label, sinceAt(entry.EndedAt, now), pal.muted, pal.dim)
+	ink := pal.muted
+	if strings.TrimSpace(entry.Program) != "" && label != "" {
+		label, ink = pal.programLabel(label, entry.Program, width, pal.muted)
+	}
+	return bandSides(width, homeWorkIndent, 8, label, sinceAt(entry.EndedAt, now), ink, pal.dim)
 }
 
 // homeWorkUnder is a task's outcome rows, and nil when there is nothing true to

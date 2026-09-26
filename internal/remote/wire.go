@@ -344,13 +344,23 @@ import (
 // ReplaceQuestion. It also carries whether a caller has no approval resolver.
 // Older peers must refuse before a question or an unwatched tool can run under
 // semantics the other side does not understand.
+//
+// VERSION 19 CARRIES THE DELEGATE DOOR — [MethodDelegateList] and
+// [MethodDelegateStart] (wire_task.go). The number moves for [MethodTaskStart]'s
+// reason: `Delegate.Start` COMMISSIONS WORK on the far machine and spends its
+// money, so a version-18 engine answering "no such method" would leave a person
+// told their work was under way while nothing had started. The list rides the
+// same number because a surface generates its command rows from it before its
+// first frame, and a row for a program the engine cannot start is a command
+// that lies.
+//
 // VERSION 18 IS THE CREW PICKED PER TASK. [TaskStartArgs] carries the one-task
 // effort word (`/task --best`, `/task --cheap`), and [MethodTaskRedoStronger]
 // runs the last task again on a stronger crew. The number moves because both
 // fail as silence on an older engine: a version-17 engine reads `effort` as a
 // field it does not know and starts the task on the crew it would have had,
 // and the person is never told their word did nothing. NEVER TO SILENCE.
-const Version = 18
+const Version = 19
 
 // AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods
 // rode version 5's: neither half can be surprised by them. "phase" and "lane"
@@ -466,6 +476,7 @@ const (
 	MethodClose           = "Close"                  // nothing → nothing
 	MethodModel           = "Model"                  // nothing → string
 	MethodSetModel        = "SetModel"               // string → nothing
+	MethodSetSpendRail    = "SetSpendRail"           // dollars → nothing
 	MethodSetContext      = "SetContextWindow"       // legacy version-5 hint; current remote surfaces do not send it
 	MethodReasoningFor    = "ReasoningFor"           // string → string
 	MethodSetReasoningFor = "SetReasoningFor"        // ReasoningArgs → nothing

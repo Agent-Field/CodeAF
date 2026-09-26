@@ -319,3 +319,41 @@ func awaitIndexRow(t *testing.T, path string, id uint64, want func(TaskIndexEntr
 		time.Sleep(5 * time.Millisecond)
 	}
 }
+
+// A CLOSED NODE'S DOLLARS REACH THE CONVERSATION'S meta.json AS THEY REACH ITS
+// BOOKS. Home reads a conversation's bill as the larger of the books stamped
+// there and its rows in the project's index, which is exact only while the
+// stamp already holds every node the index names. A stamp that waited for the
+// next turn's seal left a card reading the work alone, with the talking that
+// commissioned it missing until the person spoke again.
+func TestAClosedNodesDollarsAreStampedOnTheConversation(t *testing.T) {
+	dir := t.TempDir()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Place = Place{Dir: dir}
+		config.SessionFile = Place{Dir: dir}.Transcript()
+	})
+	child := spentChild(t, 0.75)
+
+	graph := agent.graph()
+	graph.mu.Lock()
+	graph.run = func(node *TaskNode) {
+		agent.foldTaskUsage(node, child)
+		node.finish("the greeting is written", []string{"greet.go"}, "", mergeInPlace)
+		node.graph.complete(node, TaskDone)
+	}
+	graph.mu.Unlock()
+	id := graph.reserve()
+	graph.admit(id, taskSpec{
+		title: "Add the greeting", brief: "write greet.go", acceptance: "the file is there",
+		model: "vendor/worker",
+	})
+	waitDoneNode(t, graph.node(id))
+
+	meta, err := LoadMeta(dir)
+	if err != nil {
+		t.Fatalf("LoadMeta: %v", err)
+	}
+	if meta.SpentUSD != 0.75 {
+		t.Fatalf("meta.json says the conversation spent %v once its node closed, want the node's $0.75", meta.SpentUSD)
+	}
+}

@@ -649,7 +649,9 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	// armed are parked on the previous one's channels and discard themselves by
 	// generation (watching.go's [followingMsg]).
 	cmds := []tea.Cmd{a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(), a.watchRuns(), a.watchQuestions(), a.loadTasks(),
-		a.askHeld(), a.watchDriving(), a.watchFollowing()}
+		a.askHeld(), a.watchDriving(), a.watchFollowing(),
+		// The program rows are the engine's, so they follow the conversation (delegate.go).
+		a.installDelegates()}
 
 	if side != nil {
 		cmds = append(cmds, a.restoreAside(side))

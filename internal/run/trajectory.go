@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
@@ -101,6 +102,16 @@ type Step struct {
 	Steps  int    `json:"steps,omitempty"`
 	Result string `json:"result,omitempty"`
 	Reason string `json:"reason,omitempty"`
+
+	// StartedAt and EndedAt are a PROGRAM's own clock on the ending line of the
+	// task it was handed: the instant codeaf started its process and the
+	// instant that process was gone — the pair the program record carries
+	// (delegate.ProgramRecord). They are zero on every other line, on an ending
+	// written by a road that never started a process, and on every line a
+	// worker of this conversation's own wrote. Step lines never carry them, so
+	// the session's mirror of the step line (PlanStep) has no use for them.
+	StartedAt time.Time `json:"started_at,omitzero"`
+	EndedAt   time.Time `json:"ended_at,omitzero"`
 
 	// ExitsRecorded is stamped true by a build that records each command's
 	// exit, on the OPENING line it writes before any step and on the ending

@@ -1068,6 +1068,17 @@ var OperatorEnvPins = []string{
 	// would be promising an override that does nothing, which is worse than
 	// saying nothing at all.
 	"CODEAF_PROFILE_DIR",
+	// The model API codeaf serves one program's run, and the token for it
+	// (internal/delegate's ChildEnv). codeaf sets them on the child it starts
+	// and nobody else does; they are an address and a credential, so plumbing,
+	// and the footer names them and never shows a value.
+	"CODEAF_MODEL_API",
+	"CODEAF_MODEL_TOKEN",
+	// The mark codeaf sets on a program's process so that, if the program's
+	// engine is killed outright, the processes its commands left behind can
+	// still be found and ended (internal/processgroup). codeaf sets it and reads
+	// it back, and a person has nothing to say to it, so it is plumbing too.
+	"CODEAF_DELEGATE_RUN",
 	// The release check's one-launch opt-out and its two mirror addresses
 	// (internal/update). They are plumbing rather than settings rows: the first
 	// is a shell's decision not to make a launch request, while the other two
@@ -2340,7 +2351,7 @@ func (s *Settings) build() []Setting {
 			Hint: "what one conversation may spend before it stops starting new turns. " +
 				"When it is reached the next turn is refused and your message is still " +
 				"yours to send again once you raise it; the turn in flight always " +
-				"finishes. Say none for no limit. A change lands on the next session.",
+				"finishes. Say none for no limit. A change binds this conversation before the row confirms it.",
 			read:    func() string { return moneyValue(SpendRailUSDAt(dir)) },
 			write:   func(raw string) error { return writeDollars(dir, KeySpendRail, raw) },
 			receipt: s.spentThisSessionReceipt,

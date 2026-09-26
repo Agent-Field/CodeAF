@@ -2271,14 +2271,17 @@ to the cent.
 zero or unknown files, spend and tokens are omitted, and a line with no true fact at all is
 not drawn. The resting panels do not carry it — `spend` is the whole machine's day.
 
-**It counts the talking and the work the talking started, in one figure.** The turns —
-your messages, the answers, and the small calls beside them — are added up by the session
-itself and written to the session folder at the end of every turn, so home can read them
-without opening the transcript. Every task and every unattended run this conversation
-commissioned is added from the project's task index. `spent $1.25` is those two halves
-together.
+**It counts the talking and the work the talking started, in one figure, and each dollar
+once.** The session keeps one set of books: your messages, the answers, the small calls
+beside them, and every task and senior-dev run this conversation started, folded in as each
+one finishes. It writes that total to the session folder at the end of every turn and again
+when a task or run finishes, so home can read it without opening the transcript. The
+project's task index also carries each task's and run's own bill. `spent $1.25` is the larger
+of those two figures, never their sum: the books already hold every finished task and run, so
+adding the index on top would count them twice. While work is still running the index can be
+ahead, and then its figure is the one shown.
 
-`tokens` is input plus output as one sum, over the same two halves. `touched 12 files` is how
+`tokens` is input plus output as one sum, read the same way. `touched 12 files` is how
 many files this conversation's work wrote, summed over its tasks.
 
 `/cost` and `/status` inside the conversation still answer for the live session. A whole
@@ -2425,9 +2428,13 @@ keeps its status bullet, with the most recently active running conversation anim
 A task awaiting your decision has its own question indicator; its parent conversation
 does not repeat that indicator unless it has a separate question.
 
-## Does a run create another conversation in Sessions or the chats menu
+## Does a run create another conversation in Sessions or the chats menu — a run's tab, senior-dev's task has no tab
 
-A run’s tab is a view inside its parent conversation. Home’s Sessions list and the chats menu keep one row for that conversation, using its conversation title. The run’s own tab remains available beside it.
+No. Home’s Sessions list and the chats menu keep one row for the conversation, using its conversation title.
+
+A run the task-belt switch (`CODEAF_TASK_BELT=bash`) drives also has a tab of its own on the strip beside its conversation’s, named after the task the run is working on, for as long as the run works. It is a view inside that conversation: while it is open it is the one tab drawn selected, and a press on the conversation’s tab, a press on the `home` tab, or `esc` leaves it.
+
+A task handed to a program such as senior-dev has no tab. It opens inside the conversation’s own tab, as any task does, and `esc`, the conversation’s tab and the `home` tab leave it.
 
 ## Why does a closed conversation say another window
 

@@ -1,6 +1,8 @@
 package run_test
 
 import (
+	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,11 +21,23 @@ func TestSupervisorLaunchesEveryReadyLeafAtOnceWithNoSlotBound(t *testing.T) {
 	ctx := runContext(t)
 	seat := newFakeSeat()
 	var leaves []plandb.TaskSpec
+	var started atomic.Int32
+	allStarted := make(chan struct{})
 	for _, id := range []string{"l1", "l2", "l3", "l4", "l5", "l6"} {
 		leaves = append(leaves, plandb.TaskSpec{ID: id, Title: id})
-		// Each leaf holds its seat long enough that six launched together are
-		// six on the seat together; a serial run would show a peak of one.
-		seat.actions[id] = holdSeat(150 * time.Millisecond)
+		// Every leaf holds its seat until all six have entered. The barrier
+		// measures admission without depending on how long store writes take.
+		seat.actions[id] = func(ctx context.Context, task plandb.Task) (run.Report, error) {
+			if started.Add(1) == int32(len(leaves)) {
+				close(allStarted)
+			}
+			select {
+			case <-allStarted:
+				return run.Report{Result: "did " + task.ID, Steps: 2, USD: 0.30}, nil
+			case <-ctx.Done():
+				return run.Report{}, ctx.Err()
+			}
+		}
 	}
 	seat.actions["root"] = splitRoot(t, store, leaves...)
 	supervisor := run.NewSupervisor(store, t.TempDir(), 0, run.Limits{}, seat.workerFor)
