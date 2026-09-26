@@ -7,7 +7,7 @@ the on-disk and one-turn tables there came from other means, and `METHOD-REVIEW.
 records what is and is not documented about them.
 
 ```bash
-WORKDIR=$PWD docs/benchmarks/measure-cli.sh codeaf /tmp/bench-home/codeaf ./bin/codeaf chat
+WORKDIR=$PWD docs/benchmarks/performance/measure-cli.sh codeaf /tmp/bench-home/codeaf ./bin/codeaf chat
 ```
 
 Run it once per CLI, on the same machine, in the same working directory, within the same
