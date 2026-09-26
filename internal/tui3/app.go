@@ -5139,7 +5139,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		if msg.err != nil {
-			a.note("could not start the task · " + msg.err.Error())
+			a.note(taskStartFailureNote(msg.err))
 		} else {
 			// WHAT LANDED, AND WHAT IT IS CALLED (payload.go). The id is how a
 			// person names this node to any other command on the surface and the

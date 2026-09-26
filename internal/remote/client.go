@@ -1548,7 +1548,7 @@ func (a *Agent) Cancel(id string) (string, error) {
 // brief is written beside the work (internal/session's task_shape.go), so there
 // is nothing on the far side worth a longer wait.
 func (a *Agent) StartTask(ctx context.Context, brief string, solo bool) (uint64, string, string, error) {
-	payload, err := a.c.call(ctx, MethodTaskStart, TaskStartArgs{Brief: brief, Solo: solo})
+	payload, err := a.callTaskStart(ctx, MethodTaskStart, TaskStartArgs{Brief: brief, Solo: solo})
 	if err != nil {
 		return 0, "", "", err
 	}
@@ -1579,7 +1579,7 @@ func (a *Agent) Delegates() session.DelegateReport {
 // and returns the same receipt StartTask does. It is an ordinary call with the
 // ordinary deadline: the engine admits the run at once.
 func (a *Agent) StartDelegate(ctx context.Context, name, brief string) (uint64, string, string, error) {
-	payload, err := a.c.call(ctx, MethodDelegateStart, DelegateStartArgs{Name: name, Brief: brief})
+	payload, err := a.callTaskStart(ctx, MethodDelegateStart, DelegateStartArgs{Name: name, Brief: brief})
 	if err != nil {
 		return 0, "", "", err
 	}
@@ -1594,7 +1594,7 @@ func (a *Agent) StartDelegate(ctx context.Context, name, brief string) (uint64, 
 // (`/task --best`, `/task --cheap`); the engine's router reads it for this task
 // and nothing after it.
 func (a *Agent) StartTaskEffort(ctx context.Context, brief string, solo bool, effort string) (uint64, string, string, error) {
-	payload, err := a.c.call(ctx, MethodTaskStart, TaskStartArgs{Brief: brief, Solo: solo, Effort: effort})
+	payload, err := a.callTaskStart(ctx, MethodTaskStart, TaskStartArgs{Brief: brief, Solo: solo, Effort: effort})
 	if err != nil {
 		return 0, "", "", err
 	}
@@ -1603,6 +1603,15 @@ func (a *Agent) StartTaskEffort(ctx context.Context, brief string, solo bool, ef
 		return 0, "", "", err
 	}
 	return started.ID, started.Title, started.Note, nil
+}
+
+// A start whose answer never arrived may already have created work on the engine.
+func (a *Agent) callTaskStart(ctx context.Context, method string, args any) (json.RawMessage, error) {
+	payload, answered, err := a.c.callAnswered(ctx, method, args, callDeadline)
+	if err != nil && !answered {
+		return nil, unanswered{said: err}
+	}
+	return payload, err
 }
 
 // RedoStronger runs a task again on the engine machine with a stronger crew

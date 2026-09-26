@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -91,6 +92,18 @@ type taskStartedMsg struct {
 	// somewhere else by then; the words belong to the conversation they were said
 	// in and to no other ([app.adoptTypedBrief] enforces it).
 	conv string
+}
+
+const taskStartLateNote = "the engine has not confirmed the start — the task may already be running"
+
+func taskStartFailureNote(err error) string {
+	if errors.Is(err, session.ErrSendUnanswered) {
+		return taskStartLateNote
+	}
+	if err == nil {
+		return "could not start the task"
+	}
+	return "could not start the task · " + err.Error()
 }
 
 func (a *app) runTaskCommand(arg string) tea.Cmd {
