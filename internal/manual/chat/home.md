@@ -1637,11 +1637,13 @@ see the next section.
 
 ## Answer a question from home — approve a command in another window
 
-**You can answer it here, without opening the window it is in.** The top `needs you` row
-that has answers draws them on its second line, out at the right, while the row is being
-read — under the pointer or the cursor — and **pressing the digit answers it, from anywhere
-on home**, whether or not the chips are on the screen at that moment. No row says `enter`;
-`enter` on any of them opens the conversation to answer it there.
+**You can answer it here, without opening the window it is in.** The topmost row wearing
+the amber `?` whose question has answers shows the question and its answers in its
+description while it is selected — under the pointer or the cursor — and **pressing the
+digit answers it, from anywhere on home**, whether or not the chips are on the screen at
+that moment. There is no `needs you` heading; the question stays on the conversation's or
+task's own row. No row says `enter`; `enter` on any of them opens the conversation to
+answer it there.
 
 The chips are the ones the question has:
 
