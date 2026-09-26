@@ -71,7 +71,15 @@ import (
 // was five copies of the same two lines — a place added later that forgot them
 // would be a room `tab` could not leave.
 func (a *app) placeKeyPress(msg tea.KeyPressMsg) tea.Cmd {
-	a.keyboardPlaceSelection()
+	// A SEARCH CARD'S KEYS ACT ON THE ROW IT SHOWS. The usual keyboard handoff
+	// clears hover before the place handles a key; doing that for a card verb
+	// would make the key act on the cursor's different row. Keep the pointer
+	// through this one dispatch, then retire it so the next key owns the cursor.
+	if a.at(pageHome) && a.home.searching() && a.home.hover >= 0 && homeSearchCardKey(msg.String()) {
+		defer a.keyboardPlaceSelection()
+	} else {
+		a.keyboardPlaceSelection()
+	}
 	pl := a.showing()
 	if pl == nil {
 		return nil
@@ -108,6 +116,15 @@ func (a *app) placeKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 	return pl.key(a, msg)
+}
+
+// homeSearchCardKey names keys whose subject is the visible search card.
+func homeSearchCardKey(key string) bool {
+	switch key {
+	case "right", "ctrl+t", "ctrl+o", "ctrl+y", "ctrl+e", "ctrl+x", effortKey:
+		return true
+	}
+	return false
 }
 
 // placeKey is the router's claim on one keypress. It reports whether it took it;
