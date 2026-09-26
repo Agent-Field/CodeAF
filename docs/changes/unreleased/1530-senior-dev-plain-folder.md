@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: senior-dev works in plain folders and resolves shell model names
-pr: PENDING
+pr: 1530
 surface: [chat]
 invalidates:
   - "On dd0fcc654, senior-dev crashed before its first model call in a plain folder because the child was given a missing start-time ignore list. Shell and chat runs now receive a readable empty list there, work in place, and commit nothing."
