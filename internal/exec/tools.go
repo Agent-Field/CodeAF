@@ -23,6 +23,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/rtk"
 	"github.com/Agent-Field/codeaf/internal/store"
@@ -1913,9 +1914,19 @@ func replaceEnv(environment []string, key, value string) []string {
 	return append(replaced, prefix+value)
 }
 
+// AllowProviderKeysInShell is the opt-in that keeps a provider credential in a
+// model's shell. It is read from codeaf's own environment through env.Get, so
+// it carries the same one-release AFORGE_ fallback every owned variable does,
+// and it is never read from a model's command, so only whoever started codeaf
+// can grant it — a task that genuinely needs the running key (a script that
+// calls the provider's API itself, say) gets it by exporting this before
+// codeaf starts, not by asking the model to.
+const AllowProviderKeysInShell = "CODEAF_ALLOW_PROVIDER_KEYS_IN_SHELL"
+
 // JobShellEnv is the environment every shell a model's command runs in must
-// receive: with TMUX and TMUX_PANE removed, and TMUX_TMPDIR pointed at a socket
-// directory codeaf owns.
+// receive: with TMUX and TMUX_PANE removed, TMUX_TMPDIR pointed at a socket
+// directory codeaf owns, and every provider credential codeaf itself knows
+// about removed unless [AllowProviderKeysInShell] says otherwise.
 //
 // A bash call the model runs inherits this process's environment, TMUX and
 // TMUX_PANE included, so a bare `tmux` it runs targets the very server hosting
@@ -1931,16 +1942,50 @@ func replaceEnv(environment []string, key, value string) []string {
 // `tmux` reaches, and nothing outside it. A test that needs its own tmux still
 // works: it gets that private TMUX_TMPDIR rather than a stripped-to-broken env.
 //
+// A PROVIDER KEY EXPORTED FOR CODEAF IS NOT A KEY HANDED TO THE MODEL. A
+// person who exported OPENROUTER_API_KEY so codeaf could talk to a provider
+// did not thereby mean every shell command the model runs should be able to
+// read it back and print it (issue #1484). A key that lives only in the
+// profile file never reaches os.Environ() in the first place — config.APIKeyAt
+// reads it without exporting it — so stripping the environment is the whole
+// fix; there is nothing there to leave behind.
+//
 // A NIL SLICE IS THE PARENT'S ENVIRONMENT. runShell and the background-job
 // registry leave cmd.Env unset on the benchmarked bare path, which inherits
-// everything; the caller must now hand a real, TMUX-stripped environment, so a
-// nil here is read as os.Environ() and stripped the same way.
+// everything; the caller must now hand a real, stripped environment, so a nil
+// here is read as os.Environ() and stripped the same way.
 func JobShellEnv(environment []string) []string {
 	if environment == nil {
 		environment = os.Environ()
 	}
 	environment = withoutEnv(environment, "TMUX", "TMUX_PANE")
-	return replaceEnv(environment, "TMUX_TMPDIR", jobTmuxDir())
+	environment = replaceEnv(environment, "TMUX_TMPDIR", jobTmuxDir())
+	if env.Get(AllowProviderKeysInShell) == "" {
+		environment = withoutEnv(environment, providerKeyEnvNames()...)
+	}
+	return environment
+}
+
+// providerKeyEnvNames is every environment variable a provider credential can
+// live in: the two [config.APIKeyAt] reads directly, one per vendored service
+// (modelsource.Vendored's KeyEnv), and one per custom variable a person named
+// for a connected service in this profile (config.PersistedSource.KeyEnv,
+// config.sourceKeyFromRow's third rung) — a service added later, or a person's
+// own MY_ZAI_KEY, is covered without anyone remembering this list. It is read
+// fresh rather than cached for the same reason.
+func providerKeyEnvNames() []string {
+	names := []string{config.APIKeyEnv, "OPENAI_API_KEY"}
+	for _, source := range modelsource.Vendored() {
+		if source.KeyEnv != "" {
+			names = append(names, source.KeyEnv)
+		}
+	}
+	for _, row := range config.PersistedSources(config.ProfileDir()) {
+		if row.KeyEnv != "" {
+			names = append(names, row.KeyEnv)
+		}
+	}
+	return names
 }
 
 // withoutEnv drops the named variables from an environment slice. It is
