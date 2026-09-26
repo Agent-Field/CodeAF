@@ -2071,6 +2071,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how many files should one quick task cover", "tasks"},
 		{"a quick task stopped saying out of rounds", "tasks"},
 		{"why did it start three quick tasks at once", "tasks"},
+		{"where is the tasks at once setting", "tasks"},
 		{"why did it stop instead of waiting for the quick tasks", "tasks"},
 		// And the other end of the same day: the task finished, and the reply
 		// that was delivering its work became a second task with none of the
