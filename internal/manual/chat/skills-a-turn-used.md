@@ -17,6 +17,11 @@ Those names come from the turn's skill list, not by taking apart the words in th
 line. The row is a record of what that turn carried with it. It is not a warning,
 a question or work waiting for you, so it has no attention mark, count or action.
 
+The message in the transcript is your words and nothing else. What a turn
+carries for the model — the skill bodies it reads with your sentence — rides the
+copy the model reads, and no surface prints it: the row above is the one thing
+you are shown.
+
 ## Did it use my skill?
 
 If your skill's name is in that line, the turn carried it. The line belongs to that
