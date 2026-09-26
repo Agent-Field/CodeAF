@@ -429,7 +429,8 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	if hit, _ := r.waitForAny(45*time.Second, say(t, "placeRestWord"),
 		say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "setupSkipWord"), setupMovesWord,
 		say(t, "landingKeysWord"), say(t, "welcomeStarterKeysWord"),
-		say(t, "answersAllowOnce"), say(t, "homeAnswerHint"), say(t, "homeNeedsHeading")); hit == "" {
+		say(t, "answersAllowOnce"), say(t, "homeAnswerHint"), say(t, "homeNeedsHeading"),
+		say(t, "chatFootEffortWord")); hit == "" {
 		t.Fatal("the terminal never reached an interactive surface")
 	}
 	return r
@@ -965,7 +966,11 @@ func standingRecords(t *testing.T, home string) []standingRecord {
 func standingRecordAbout(t *testing.T, home, word string) (standingRecord, bool) {
 	t.Helper()
 	for _, record := range standingRecords(t, home) {
-		if strings.Contains(strings.ToLower(record.Words), strings.ToLower(word)) {
+		// The model can shorten the request in Words while keeping its subject
+		// in the title or the sentence the reminder will say.
+		if strings.Contains(strings.ToLower(record.Words), strings.ToLower(word)) ||
+			strings.Contains(strings.ToLower(record.Brief.Title), strings.ToLower(word)) ||
+			strings.Contains(strings.ToLower(record.Does.Say), strings.ToLower(word)) {
 			return record, true
 		}
 	}
