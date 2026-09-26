@@ -619,9 +619,20 @@ func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 			return len(room.picked) > 0 || (q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) != "")
 		}
 		if q.question.Input.Kind == session.InputText {
-			// A question answered in words has nothing for enter to take
-			// while the box is empty ([app.questionEnter]).
-			return q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) != ""
+			// A question answered in words has nothing for enter to take while
+			// the box is empty AND nothing stands under the pointer — the same
+			// give-up [app.questionEnter] makes ([#1506]): a correction or a
+			// standing card still carries answers the arrows walk, so a
+			// pointer on one is enter taking it.
+			if q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) != "" {
+				return true
+			}
+			// A PICK LIVES ON A CHOICE. A connect question keeps one answer, the
+			// way out, and its enter means the words — the offer row says so.
+			if q.question.Ask != session.AskChoice && q.question.Ask != session.AskJudgement {
+				return false
+			}
+			return q.pick >= 0 && q.pick < len(q.question.Options)
 		}
 		if len(q.question.Options) > 0 {
 			return true
