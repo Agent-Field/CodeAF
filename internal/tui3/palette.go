@@ -1192,6 +1192,53 @@ func overlayNoteRoom(label string, width int) int {
 	return room - floor - rowGutter
 }
 
+// overlayRowRoom is the cells a one-line row gives its label, and the note as
+// the row draws it beside that label ([overlayRowCore] is the row).
+//
+// THE NOTE IS CUT TO THE ROW BEFORE THE ROW IS BUDGETED AROUND IT. The label
+// absorbs whatever the note leaves and the gap clamps at one cell, so a note
+// longer than the terminal used to be appended WHOLE to an empty label — the
+// row ran past the edge by however long the note was, and no amount of
+// squeezing the label could pull it back. What it may take is everything but
+// the lead and the gutter. Settings' `tool exceptions` is the row that found
+// it: a value naming ten tools is 141 cells against a 60-cell terminal, which
+// is LAW 1 (a place takes exactly the frame) broken by a value a person chose.
+func overlayRowRoom(label, note string, width int) (int, string) {
+	room := width - 2
+	if note != "" {
+		// AND THE LABEL KEEPS A FLOOR UNDER IT. The label used to absorb
+		// whatever the note left, which on a long note left it NOTHING: the row
+		// drew a full-width value with no name in front of it, and a person
+		// reading down the column could not tell which setting they were
+		// looking at. So the note may take the row's second half and no more —
+		// or all of it but the label's own width, when the label is the shorter
+		// of the two — and the label gives way only inside what is left.
+		//
+		// EVERY LIST THAT RANKS ITS FACTS HANDS US A NOTE THAT ALREADY FITS
+		// (rowfit.go drops whole facts rather than cutting one in half), so this
+		// is the floor under the lists that pass a note they did not budget.
+		note = fit(note, overlayNoteRoom(label, width))
+	}
+	if note != "" {
+		room -= ansi.StringWidth(note) + rowGutter
+	}
+	return room, note
+}
+
+// overlayLabelRoom is the cells a row's label is given in whichever shape the
+// row is drawn: the line under the lead where the note takes a line of its own
+// at [tierPhone] ([overlayLinesCore]), and what the note leaves it otherwise
+// ([overlayRowRoom]). A list that pays for part of its label out of the rest —
+// a program's badge out of a task's title (taskmention.go's [taskRowLabel]) —
+// fits the label to this first, so the row's own cut never reaches that part.
+func overlayLabelRoom(label, note string, width int) int {
+	if overlayItemLines(width, note) > 1 {
+		return width - 2
+	}
+	room, _ := overlayRowRoom(label, note, width)
+	return room
+}
+
 // overlayMeasure is HOW WIDE A LABEL/TAIL PAIR IS LAID OUT, however wide the
 // frame is. It is a reading measure the way [teachMeasure] is one for prose, and
 // it is wider because a row carries structure a paragraph does not.
@@ -1361,33 +1408,7 @@ func overlayRowHitTinted(label, note string, hit []int, tint noteInk, oncursor b
 // for the ones that are. hit is the search's emphasis, nil for none.
 func overlayRowCore(label, note string, hit []int, tint noteInk, oncursor bool, marked rowMark, hovered bool, width int, pal palette) string {
 	lead := overlayLead(oncursor, hovered, pal)
-	// THE NOTE IS CUT TO THE ROW BEFORE THE ROW IS BUDGETED AROUND IT. The label
-	// absorbs whatever the note leaves and the gap below clamps at one cell, so a
-	// note longer than the terminal used to be appended WHOLE to an empty label —
-	// the row ran past the edge by however long the note was, and no amount of
-	// squeezing the label could pull it back. What it may take is everything but
-	// the lead and the gutter. Settings' `tool exceptions` is the row
-	// that found it: a value naming ten tools is 141 cells against a 60-cell
-	// terminal, which is LAW 1 (a place takes exactly the frame) broken by a
-	// value a person chose.
-	room := width - 2
-	if note != "" {
-		// AND THE LABEL KEEPS A FLOOR UNDER IT. The label used to absorb
-		// whatever the note left, which on a long note left it NOTHING: the row
-		// drew a full-width value with no name in front of it, and a person
-		// reading down the column could not tell which setting they were
-		// looking at. So the note may take the row's second half and no more —
-		// or all of it but the label's own width, when the label is the shorter
-		// of the two — and the label gives way only inside what is left.
-		//
-		// EVERY LIST THAT RANKS ITS FACTS HANDS US A NOTE THAT ALREADY FITS
-		// (rowfit.go drops whole facts rather than cutting one in half), so this
-		// is the floor under the lists that pass a note they did not budget.
-		note = fit(note, overlayNoteRoom(label, width))
-	}
-	if note != "" {
-		room -= ansi.StringWidth(note) + rowGutter
-	}
+	room, note := overlayRowRoom(label, note, width)
 	label = fit(label, room)
 
 	// lifted is whether this row wears a ground at all, which is the one thing

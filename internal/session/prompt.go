@@ -123,6 +123,12 @@ var quickPrompt string
 //go:embed prompts/landing-answer.md
 var landingAnswerPrompt string
 
+// programOutcomePrompt is the role page for the turn a program's ending wakes
+// (program_outcome.go): the playbook for each way a program's run can end.
+//
+//go:embed prompts/program-outcome.md
+var programOutcomePrompt string
+
 // shapePrompt is what the BRIEF-SHAPER is told (task_shape.go): how to reason
 // its way from the words a person typed after /task to the brief a worker with
 // nobody to ask is actually given.

@@ -138,7 +138,15 @@ func TestH9HostMissingCommandNamesTheCurrentInstallation(t *testing.T) {
 }
 
 func TestSSHSpawnCarriesTheLowLatencyPolicy(t *testing.T) {
-	t.Setenv("CODEAF_HOME", filepath.Join(os.TempDir(), "acp"))
+	// A SHORT HOME, because the control socket must fit enginehost.SocketLimit:
+	// under macOS's own $TMPDIR the path came to 104 bytes, one over, and the
+	// multiplexing options were rightly left out.
+	short, err := os.MkdirTemp("/tmp", "acp")
+	if err != nil {
+		t.Skipf("no short folder for the control socket: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(short) })
+	t.Setenv("CODEAF_HOME", short)
 	t.Setenv("CODEAF_PROFILE_DIR", t.TempDir())
 	args := strings.Join(sshTransportArgs("devbox", "codeaf engine"), " ")
 	for _, want := range []string{

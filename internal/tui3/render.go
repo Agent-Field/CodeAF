@@ -67,6 +67,10 @@ const (
 	// row nothing in the conversation produced — the line is drawn between two
 	// blocks, and it exists only while the mode is up.
 	hitRewind
+	// hitAction is one action on a program's room (programroom.go): a press
+	// opens its whole step under its line, and a press on it again — or on the
+	// step it opened — shuts it. The action's key rides in [row.turn].
+	hitAction
 	// hitThread is a line of a thread card (teamthreadcard.go): the words of a
 	// manager's message or of a member's answer, which a press lays out in
 	// full and a second press folds again. The row's open field says whose.

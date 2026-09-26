@@ -1042,6 +1042,11 @@ func (a *Agent) rememberAskLocked(user userMessage) {
 		// the transcript, where their words and the session's own notes are
 		// both user-role.
 		a.rememberPersonTurnLocked(user.message, text)
+		// AND WHICH PROGRAM THEY NAMED, read from every message of the turn
+		// rather than the newest, so a steer does not unsay it
+		// (delegate_asked.go). It is read after the line above has numbered the
+		// message, because the bounce is counted against that number.
+		a.hearProgramsLocked(text)
 		// AND THE SESSION'S GOAL OWNER IS TOLD THE SAME THING, in the same
 		// place, on the same test (principal.go). It is one writer rather than
 		// two for the reason stated directly below: a second recorder of the

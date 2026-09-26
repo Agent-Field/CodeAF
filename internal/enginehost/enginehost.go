@@ -65,13 +65,19 @@ const (
 
 // SocketLimit is the most bytes a unix socket path may weigh.
 //
-// It is 104 rather than Linux's own 108 because THE SMALLEST LIMIT IS THE ONE
-// THAT TRAVELS: macOS stops at 104, the same codeaf home can be shared over a
-// network mount, and a host that worked on one machine and refused on another
-// for a reason nobody could see would be worse than one honest refusal
-// everywhere. Exceeding it is not a fault — CODEAF_HOME can be anywhere — so it
-// is answered as "no host today" and the caller falls back to the pipe.
-const SocketLimit = 104
+// It is macOS's rather than Linux's because THE SMALLEST LIMIT IS THE ONE THAT
+// TRAVELS: the same codeaf home can be shared over a network mount, and a host
+// that worked on one machine and refused on another for a reason nobody could
+// see would be worse than one honest refusal everywhere. Exceeding it is not a
+// fault — CODEAF_HOME can be anywhere — so it is answered as "no host today"
+// and the caller falls back to the pipe.
+//
+// IT IS 103, NOT 104. macOS's sun_path is 104 bytes and the NUL that ends the
+// name takes one of them. At 104 this answered "fits" for a path bind() then
+// refused with "invalid argument": a state root in $TMPDIR whose socket path
+// came to exactly 104 bytes started no host, took no fallback, and codeaf did
+// not open at all.
+const SocketLimit = 103
 
 // ErrSocketPathTooLong is a state root deeper than a unix socket may be named
 // in, and it is the one failure on this road that is settled BEFORE anything

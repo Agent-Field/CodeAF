@@ -162,6 +162,20 @@ type Supervisor struct {
 	steps      int
 	rootResult string
 	rootFailed bool
+	// rootProgram is how the program a delegated run's root was handed to
+	// ended, when it ended without finishing ([ProgramEndedError]); nil for
+	// every other run.
+	rootProgram *ProgramEndedError
+	// rootVerdict is the program's own word for the work it finished
+	// ([Report.Verdict]); empty for every other run.
+	rootVerdict string
+	// rootFailure is the root worker's error when it failed, which the run's
+	// ending writes onto the root ([plandb.Store.FailRoot]).
+	rootFailure string
+	// rootCut says the root worker came home with a context's ending as its
+	// error: the run was cut, and its own task did not fail. The store is not
+	// ended for it ([Supervisor.pass] says why).
+	rootCut bool
 	// limitHit is which limit a person set ended this run, and empty while none
 	// has. It is set the moment the run decides a limit was reached (the
 	// elapsed signal in Run, the spend counters in countLiveSpend and
@@ -274,6 +288,7 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 	s.steps = 0
 	s.rootResult = ""
 	s.rootFailed = false
+	s.rootCut = false
 	s.limitHit = ""
 	s.cut = make(map[string]bool)
 	s.dispatchedRoot = false
@@ -287,6 +302,13 @@ func (s *Supervisor) Run(ctx context.Context) Outcome {
 	s.staleAfter = s.limits.StaleAfter
 	if s.staleAfter <= 0 {
 		s.staleAfter = defaultStaleAfter
+	}
+	// A RUN HANDED NOTHING OF ITS DOLLAR LIMIT STARTS NO WORKER. The limit was
+	// spent before the run began ([Limits.costReached]), so the first pass
+	// launches nothing and answers the limit: no worker is seated to make the
+	// one paid call that would have told the loop so.
+	if s.limits.costReached(s.spent) {
+		s.limitHit = LimitCost
 	}
 	// TAKE-OVER BEFORE THE FIRST PASS: a claim a dead process left behind is
 	// released here, so the ready set the first pass reads can offer it again
@@ -415,6 +437,24 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 	}
 
 	if s.inFlight == 0 && (s.rootFailed || s.limitHit != "") {
+		if s.rootFailed && s.limitHit == "" && !s.rootCut && ctx.Err() == nil {
+			// THE RUN'S OWN TASK FAILED, SO THE RUN IS OVER, and the store says
+			// so: left open it read as running for ever, and a door that
+			// adopts open stores would take it up as live work
+			// ([plandb.Store.FailRoot]). A run a limit ended keeps its open
+			// work, which is what lets it be taken up again under a wider bound.
+			//
+			// AND A RUN THE CALLER CUT IS NOT A RUN THAT FAILED. When the
+			// caller's context ends, the root worker comes home with the
+			// context's own error, and that return and the context's end are
+			// both ready at the loop's select at once; Go picks either. Picked
+			// first, the return reached this line and wrote `context canceled`
+			// over the root as though the work had failed, on a run the caller's
+			// wall below deliberately leaves open for a later pass. Whichever
+			// the select picks, a cut root now ends the same way: incomplete,
+			// with the store as the run left it.
+			_ = s.store.FailRoot(s.rootFailure)
+		}
 		// Nothing of ours is running and the run cannot complete itself: the
 		// root's own worker failed, or the run has reached a limit a person set,
 		// in dollars or in time.
@@ -705,7 +745,8 @@ func (s *Supervisor) countLiveSpend() {
 // after the time limit already ended the run does not rename that ending, and
 // the workers are already ended by it.
 func (s *Supervisor) reachCostLimit() {
-	if s.limits.CostUSD <= 0 || s.spent < s.limits.CostUSD || s.limitHit != "" {
+	// A LIMIT WITH NOTHING LEFT IS REACHED WITH NOTHING SPENT ([Limits.costReached]).
+	if !s.limits.costReached(s.spent) || s.limitHit != "" {
 		return
 	}
 	s.limitHit = LimitCost
@@ -837,9 +878,27 @@ func (s *Supervisor) absorb(ret workerReturn) {
 				s.addReviewCheck(ret.task, root.Result)
 			} else {
 				s.rootFailed = true
+				s.rootFailure = ret.err.Error()
+				s.rootCut = errors.Is(ret.err, context.Canceled) || errors.Is(ret.err, context.DeadlineExceeded)
+				// A PROGRAM THAT ENDED WITHOUT FINISHING SAID WHY, and its words
+				// are the run's to carry, never to drop: the session draws the
+				// row out of them ([Summary.Program]).
+				var ended *ProgramEndedError
+				if errors.As(ret.err, &ended) {
+					s.rootProgram = ended
+					if ended.Limit != "" && s.limitHit == "" {
+						s.limitHit = ended.Limit
+						// A refusal at the estimated ceiling ends peer work too,
+						// even when metered spend has not reached the figure.
+						for _, cancel := range s.cancels {
+							cancel()
+						}
+					}
+				}
 			}
 		} else {
 			s.rootResult = ret.report.Result
+			s.rootVerdict = ret.report.Verdict
 			// THE CHILDLESS ROOT IS A LEAF, and it is checked like any other. If
 			// its worker already wrote the ending, the store preserves that result
 			// and moves the root back to waiting on the check; CompleteRoot writes
@@ -1721,6 +1780,14 @@ type Summary struct {
 	// run that did not end on one. The outcome word is the same sentence for
 	// both limits; this is what tells them apart.
 	Limit Limit
+	// Program is how a delegated run's program ended when it ended without
+	// finishing: its status word and its own account ([ProgramEndedError]).
+	// Nil for a run that finished, and for every run no program worked.
+	Program *ProgramEndedError
+	// Verdict is a delegated run's program's own word for the work it
+	// finished ([Report.Verdict]): senior-dev's `pass` or `pass-unverified`.
+	// Empty for every other run.
+	Verdict string
 	// Cut is every task the run's own ending cut mid-flight, by store id: its
 	// wall, its spend ceiling, or a person's stop ended the context their
 	// workers ran under. A task that failed on its own before the ending is
@@ -1830,6 +1897,8 @@ func Start(ctx context.Context, spec Spec) (Outcome, Summary) {
 		Outcome: outcome,
 		Result:  result,
 		Limit:   supervisor.limitHit,
+		Program: supervisor.rootProgram,
+		Verdict: supervisor.rootVerdict,
 		Cut:     supervisor.cutIDs(),
 		Nodes:   supervisor.nodes,
 		Steps:   supervisor.steps,

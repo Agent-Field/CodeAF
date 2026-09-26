@@ -30,6 +30,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 
 	configpkg "github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/subharness"
@@ -86,6 +87,12 @@ func buildShippedConversation(t *testing.T, config *Config) {
 	config.standingItems = &fakeStanding{}
 	config.Subharnesses = registryWith(t, &fakeGeneralist{}, &fakeRunner{manifest: theProgram()})
 	config.HarnessCards = true
+	// AND THE PROGRAMS THE BUILD CARRIES, as the chat door hands them over
+	// (cmd/codeaf's chatv3.go: `Delegates: v3Delegates()`). Their paragraph —
+	// each program's own guide, and codeaf's rule about the folder one is handed
+	// — rides every request of the shipping conversation, so a shape that left
+	// them off would weigh, and lint, a page nobody is sent.
+	config.Delegates = builtin.All()
 }
 
 // beltShapes is every shape, and each is built the way its own door builds it —

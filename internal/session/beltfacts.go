@@ -221,6 +221,16 @@ func signedModel(node *TaskNode) string {
 	return node.model()
 }
 
+// namedModel is the model this signature's line names, and "" when it names
+// none — the spelling a record that outlives the agent keeps it in
+// ([ProgramFolder.SignModel]).
+func (s gitSignature) namedModel() string {
+	if !s.named {
+		return ""
+	}
+	return s.model
+}
+
 // sign is a commit message as the harness leaves it: one blank line, then the
 // two trailer lines. The files where the harness writes its OWN commits import
 // os/exec as `exec`, which is why they reach internal/exec's one spelling of
@@ -319,6 +329,10 @@ type beltFact struct {
 	// because that is the only verb such a belt carries. Empty falls back to
 	// [beltFact.present].
 	oneRoad string
+	// fill, when set, is applied to the chosen text before it is placed: it is
+	// how a fact writes a fact of THIS launch into itself — the delegates this
+	// machine has (delegate_door.go) — where every other fact is a constant.
+	fill func(Config, string) string
 }
 
 // beltFacts is the whole of it, in the order the section reads.
@@ -586,7 +600,7 @@ var handoffFacts = []beltFact{{
 		"stand, so a sweep across many files, research across many sources or the same\n" +
 		"change over many items is work you open and carry yourself, in the order that\n" +
 		"finishes it.",
-}, {
+}, delegateFact, {
 	tools:   []string{"build_harness", loadCapabilityToolName},
 	holds:   Config.mayDesignHarness,
 	present: "AND A SHAPE OF WORK THAT WILL RECUR is neither of them: `build_harness` designs it once and saves it.",
@@ -757,6 +771,9 @@ func renderBeltFacts(config Config, facts []beltFact, join string) string {
 			if fact.shelved != "" && config.shelvesFact(fact) {
 				text = fact.shelved
 			}
+		}
+		if text != "" && fact.fill != nil {
+			text = fact.fill(config, text)
 		}
 		if text != "" {
 			// THE ASSISTED-BY LINE IS FILLED HERE because this is the one point

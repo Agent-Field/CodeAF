@@ -314,7 +314,7 @@ the one you opened it for. With nothing pinned the rung and the gate are what a 
 would run at: the `thinking` and `ask before running` rows in `/settings`, or `--yolo` if
 this process was started with it.
 
-**The `here ~/codeaf` chip is gone**, and so are the rules that the other places used to
+**The `here ~/codeaf` chip that sat next to the box is gone**, and so are the rules that the other places used to
 draw over their boxes. The arrow and `new conversation in` lead are gone from home too;
 the model starts the seam, and the project sits at the far right of the keys row under the box. A place with something to say about its page — `nothing matches`
 on tasks when a filter emptied it, a receipt on memory, the "this session is on another

@@ -423,9 +423,17 @@ func (a *app) stripLabel(node *taskNode, width int) (string, int) {
 // page under the row — the band on the room a person is standing in — because
 // this is a tab bar, and a tab bar that did not say which tab you are on would
 // be a row of identical doors.
+//
+// A PROGRAM'S WORK WEARS ITS BADGE AFTER THE NAME, in the short spelling — `[sd]`
+// — because this row stands in for the side list under a hundred columns and a
+// chip is a name cut to [stripTitleCap] cells, where the whole program's name
+// would outweigh the work's (programbadge.go). An ordinary task's chip is
+// unchanged to the cell.
 func (a *app) stripChip(node *taskNode, glyph, title string) (string, int) {
-	cols := ansi.StringWidth(glyph) + 1 + ansi.StringWidth(title) + stripPadCols
-	chip := stripPad + glyph + " " + a.stripTitle(node, title) + stripPad
+	badge := programBadge(a.nodeProgram(node))
+	wears := firstNonEmpty(badge.short, badge.full)
+	cols := ansi.StringWidth(glyph) + 1 + ansi.StringWidth(title) + programCells(wears) + stripPadCols
+	chip := stripPad + glyph + " " + a.stripTitle(node, title) + a.pal.programAfter(wears) + stripPad
 	// WHICH ROW IS THE PAGE YOU ARE ON IS ASKED IN ONE PLACE (room.go's
 	// [app.roomStandingOn]), because the roster marks the same fact with the same
 	// band and a tab bar that disagreed with the column beside it would be two

@@ -41,6 +41,15 @@ Nothing here is thrown away — what is folded is one keypress from open.
 `started 14:02` only when the record carries the instant the work began. Reopening the
 conversation does not replace that instant with the time you sat down.
 
+**How long it ran is the record's too.** The settled page's header and the completion card
+show how long the work took, rounded to the second — one figure, spelled `29m 8s` in the
+header and `29m08s` on the card. It is the time the work itself took, as the record gives
+it: the time you took to answer a task that landed needing your look is not added, so a task
+that worked five minutes and that you accepted an hour later still reads `5m`. A record
+that gives no such figure but carries both instants shows the landing less the start. While
+the work runs, the side list counts from the record's start, even in a window opened after
+it began.
+
 An older record may carry a duration but no start or landing instant. When that duration is
 at least one second, the settled task page shows it in the header — for example `12m` —
 while the completion card omits the entire `started 14:02` segment. A shorter or absent

@@ -707,7 +707,7 @@ codeaf spends, and still applies.
 
 ### The per-task limit
 
-No task may cost more than its limit: **$5** unless you set another. `/crew cap task 10`
+No ordinary task may cost more than its limit: **$5** unless you set another. `/crew cap task 10`
 sets it to $10; on the panel it is the first figure on the **cap** row
 (`per task $5 · crew daily cap none`) — `enter` on the row, `tab` to the per-task box, type, `enter`.
 A task always has a limit: `none` and `0` are refused, and an emptied box is $5 again.
@@ -1579,8 +1579,13 @@ one late line to the machine's usage ledger. That line is marked `reconciled`, m
 figures came from the receipt rather than the cut stream. A losing rescue arm is recorded as
 hedged waste from its own receipt too; it is real provider money, but it is not added twice.
 
+codeaf asks for the receipt at once, then again about 1, 5, 20 and 40 seconds after the call
+ended. The receipt for a call cut in the middle usually takes the router about twenty seconds
+to price. A call senior-dev made that arrived whole but with no usage block is asked about
+the same way.
+
 When no generation id arrived, the base has no receipt route, or the receipt still cannot be
-had after the short retry schedule, codeaf writes an `unbilled` marker with no invented
+had after that schedule, codeaf writes an `unbilled` marker with no invented
 price or token count. The marker survives a restart. `/cost` counts missing prices for this
 conversation and its tasks; `/spend` counts the markers in its selected time window. Both
 say, for example, `2 calls the provider charged for and could not be priced`. At zero they
@@ -2181,7 +2186,7 @@ which is the whole machine's ledger rather than this conversation's — it was a
 |---|---|
 | `spend` | the money, printed only when it is above zero — this conversation **and every task it started** |
 | `conversation` | what the conversation's own calls cost |
-| `tasks` | what the work it started has cost, running or finished — tasks and the nodes of an adaptive run |
+| `tasks` | what the work it started has cost, running or finished — tasks, the nodes of an adaptive run, and a task handed to a program such as senior-dev |
 | `tokens` | `48.1k in · 3.2k out`, or one half alone, or the combined figure |
 | `cache` | `31.2k read · saved $0.0180` — the money half only when a price pair was published |
 | `model calls` | **requests to the provider**, deliberately not "turns" |
@@ -2212,6 +2217,12 @@ is the same figure `/cost` leads with.
 **Adaptive runs are in it too.** A node of an adaptive run is work this conversation
 started: its money is on the row while it is still working, under `tasks` when you ask
 `/cost` for the halves.
+
+**So is a program's run.** Every model call senior-dev (or another program codeaf carries)
+makes for a task this conversation handed it names this conversation and that task on the
+ledger, and it is on the row as it is spent, under `tasks` in `/cost`, and under the task
+on the spend place. Its tokens and its calls reach this conversation's `tokens` and
+`model calls` lines as well.
 
 It used to be the conversation's own half alone. A task's money only reaches the
 conversation's books when the task **closes**, so a family working for two hours left the
@@ -2260,8 +2271,9 @@ than the number of times you have spoken.
 
 It counts every request that is written down, not only the ones in your turns: naming the
 session, a judge deciding where something should be routed, looking at a picture, every
-request a task's own agent made on its own lane, and every request a harness run made
-while it walked its program. That is deliberate, because the `spend` line above it is the
+request a task's own agent made on its own lane, every request a harness run made
+while it walked its program, and every request a program such as senior-dev made for a
+task this conversation handed it. That is deliberate, because the `spend` line above it is the
 sum over exactly those requests — a smaller count beside it would be a bill divided by the
 wrong number.
 
@@ -2877,7 +2889,7 @@ They live on **one tab**: `/settings` → **Spending**, which `/budget` opens di
 | **per day** | `$500` | new work waits for midnight or for you to raise it here |
 | **per conversation** | `no limit` | this conversation stops starting new turns; the turn in flight always finishes |
 | **per plan** | `asks first above $100` | a planned job estimated above it quotes its step count and its price and waits for your go-ahead — it asks, it does not stop |
-| **per task** | `$5 a task` | that task's next priced call is not made; set in `/crew` |
+| **per task** | `$5 a task` | an ordinary task's next priced call is not made; set in `/crew`. senior-dev has its own run ceiling |
 | **per standing run** | `$5 a firing` | that one firing stops there; each order may name its own |
 | **practice** | `$50 of the day` | codeaf's practice on itself stops until tomorrow, and your own work is untouched |
 
@@ -3020,12 +3032,12 @@ well as the label, so typing either finds it.
 
 ## What may a task spend — $5 a task unless you set another
 
-**A task carries a dollar limit of its own: $5 unless you set another.** The Spending tab
+**An ordinary `/task` carries a dollar limit of its own: $5 unless you set another.** The Spending tab
 shows it on the `per task` row — `$5 a task`, with the dim receipt `set in /crew · it also
 spends against the day and this conversation`. It is set on the `/crew` panel's **cap** row
 or with `/crew cap task 10`; see [The per-task limit](#the-per-task-limit).
 
-Every priced call of one task counts against it, and a call that would pass it is not
+Every priced call of an ordinary task counts against it, and a call that would pass it is not
 made. A task's other bounds are **steps and time**: a deadline it may renew, a step count,
 and a limit on how long it may go without progress. Its money is also counted against the day's limit and
 against the limit on the conversation that started it, the two rows above it on the same
@@ -3033,6 +3045,9 @@ tab.
 
 The `$` on the status line counts what the tasks are spending while they spend it, and
 `/cost` splits that figure into `conversation` and `tasks`.
+
+senior-dev's run ceiling is separate from this per-task figure. Its own page names
+the defaults and flags; its run still spends against the conversation and day.
 
 `/budget task 20` is not a shape this command takes; the per-task figure lives in `/crew`.
 The **composer layer** can put a further figure on one errand; see the tasks page.

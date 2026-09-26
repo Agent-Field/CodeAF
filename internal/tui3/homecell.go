@@ -569,11 +569,16 @@ func (a *app) homeCellLead(cell *homeCell, at int, pal palette) string {
 // right-hand word, the age or the door word, is the last thing to go: only where
 // the title would keep fewer than [homeCellTitleFloor] cells beside it, and a
 // held word not even then.
+//
+// A PROGRAM'S BADGE IS MEASURED AS PART OF THE TITLE AND PAID FOR OUT OF IT
+// ([homeCellWears]), so the note, the tag and the age give way to it exactly as
+// they give way to the title, and a cut takes the title's tail and never the
+// badge. A row with no program is measured and cut as it always was.
 func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 	if width < 1 {
 		return ""
 	}
-	title, note, tag, right := cell.title, cell.note, cell.tag, cell.right
+	title, note, tag, right := cell.measured(), cell.note, cell.tag, cell.right
 	pad := cell.pad
 	if cell.path {
 		title, pad = homeCellPathTitle(cell, width)
@@ -588,13 +593,19 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 		width < homeCellTitleFloor+homeCellWidth("", 0, "", "", right) {
 		right = ""
 	}
-	if over := homeCellWidth(title, pad, note, tag, right) - width; over > 0 {
-		keep := max(1, ansi.StringWidth(title)-over)
-		if cell.panel == panelRecent || cell.panel == panelSessions {
-			title = fitConversationTitle(title, keep)
-		} else {
-			title = fit(title, keep)
-		}
+	room := ansi.StringWidth(title)
+	over := homeCellWidth(title, pad, note, tag, right) - width
+	if over > 0 {
+		room = max(1, room-over)
+	}
+	wears, after := "", ""
+	switch badge := programBadge(cell.program); {
+	case badge.known():
+		title, wears, after = homeCellWears(cell.title, badge, cell.after, room)
+	case over > 0 && (cell.panel == panelRecent || cell.panel == panelSessions):
+		title = fitConversationTitle(title, room)
+	case over > 0:
+		title = fit(title, room)
 	}
 	titleInk, factInk := pal.ink, pal.dim
 	if cell.bold || lit {
@@ -611,6 +622,14 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 		line = pal.underline(line)
 	}
 	used := ansi.StringWidth(title)
+	if wears != "" {
+		line += pal.programAfter(wears)
+		used += programCells(wears)
+	}
+	if after != "" {
+		line += titleInk(after)
+		used += ansi.StringWidth(after)
+	}
 	if note != "" {
 		gap := max(0, pad-used) + len(homeCellGap)
 		line += strings.Repeat(" ", gap) + factInk(note)
@@ -637,6 +656,37 @@ func homeCellPathTitle(cell *homeCell, width int) (string, int) {
 	return fit(cell.title, room), min(cell.pad, room)
 }
 
+// measured is a row's title as the cell measures it: the title, its program's
+// badge in the long spelling, and the words that follow the badge — which is
+// the title alone on every row no program had.
+func (c *homeCell) measured() string {
+	full := programBadge(c.program).full
+	if full == "" {
+		return c.title + c.after
+	}
+	return c.title + " " + full + c.after
+}
+
+// homeCellWears fits a program's row into room cells: the title, the badge
+// spelling it keeps, and the words after the badge, each as drawn.
+//
+// THE WORDS AFTER THE BADGE GIVE WAY FIRST, cut while more of them than their
+// separator and a letter survives, because they say what the work came to and
+// the badge says whose it was. THEN THE BADGE IS PAID FOR OUT OF THE TITLE
+// ([programSpelling]): the long spelling while the title keeps
+// [homeCellTitleFloor] cells beside it, the short one after that, none below
+// it — the rule every other list of the work keeps ([palette.programTitled]).
+func homeCellWears(title string, badge rowField, after string, room int) (string, string, string) {
+	if after != "" {
+		left := room - ansi.StringWidth(title) - programCells(badge.full)
+		if left >= min(ansi.StringWidth(after), ansi.StringWidth(rowSep)+2) {
+			return title, badge.full, fit(after, left)
+		}
+	}
+	spelling := programSpelling(badge, title, room, homeCellTitleFloor)
+	return fit(title, room-programCells(spelling)), spelling, ""
+}
+
 // homeCellDoor is the row UNDER THE CURSOR growing its held word into the door
 // it offers — `another window · enter brings it here` — where the whole title
 // still fits beside the whole clause, and never while a question this window
@@ -648,7 +698,7 @@ func (a *app) homeCellDoor(cell *homeCell, at, width int) *homeCell {
 	}
 	grown := *cell
 	grown.right = cell.door
-	if homeCellWidth(grown.title, grown.pad, "", grown.tag, grown.right) > width {
+	if homeCellWidth(grown.measured(), grown.pad, "", grown.tag, grown.right) > width {
 		return cell
 	}
 	return &grown

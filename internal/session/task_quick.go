@@ -575,6 +575,11 @@ func (a *Agent) newQuickSpec(ask quickAsk) (taskSpec, string) {
 	if refusal != "" {
 		return taskSpec{}, refusal
 	}
+	// A QUICK TASK WORKS WHERE ITS CALLER WORKS, so a folder a program's run
+	// holds is refused it before it starts (programhold.go).
+	if refusal := programHoldRefusal(a.config.Workspace); refusal != "" {
+		return taskSpec{}, refusal
+	}
 	dependsOn := append([]uint64(nil), ask.dependsOn...)
 	// A DEPENDENCY THAT CAN NEVER RESOLVE IS REFUSED AT THE DOOR, on
 	// [Agent.refuseProposedTask]'s terms and through the same reader: an id no

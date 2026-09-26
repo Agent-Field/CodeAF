@@ -236,6 +236,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		}
 		restored := replayed.messages
 		agent.file = file
+		agent.restoreProgramHold()
 		// AND WHAT AN EARLIER PROCESS OF THIS SESSION MADE. It is the one thing
 		// in the journal that cannot be re-derived from the transcript — whether
 		// a file was there before the session touched it is a measurement, taken
@@ -376,6 +377,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// recovery is load, reconcile with the disk, continue the frontier
 	// (task_store.go). A fresh session has no checkpoint and this is a stat.
 	agent.recoverTasks()
+	// AND A PROGRAM'S RUN THE LAST PROCESS LEFT OPEN IS ENDED, where it was last
+	// seen, so its page stops reading `running` (task_run_belt.go).
+	agent.endInterruptedProgramRun()
 	// AND THE PROJECT'S RECORD IS RECONCILED BESIDE IT. The checkpoint above is
 	// one conversation's graph; the project index is every window's record of
 	// what this directory ever ran, and it holds rows that say "running" — a run
@@ -1276,6 +1280,14 @@ type userMessage struct {
 	// seat and dedicated role page; ordinary settle wakes leave both empty.
 	settleModel  string
 	settlePrompt string
+	// settleWindow widens the turn's window past the settle turn's own
+	// ([Agent.settleWindow]) — a program's ending may be checked by running the
+	// project's tests ([programOutcomeWindow]); zero leaves it as it is.
+	settleWindow time.Duration
+	// programOutcome is a program run's ending, on the note its landing wakes
+	// the conversation with ([Agent.programLandingNote]); nil on every other
+	// message.
+	programOutcome *programOutcome
 
 	// landingQuestion and landingOutcome preserve the two roles inside an owed
 	// landing document: what was asked and the evidence the run returned.
@@ -2205,7 +2217,9 @@ type sessionCompleter struct {
 }
 
 func (f sessionCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
-	ctx = provider.WithCacheKey(ctx, f.cacheKey)
+	if !bringsOwnLineage(ctx) {
+		ctx = provider.WithCacheKey(ctx, f.cacheKey)
+	}
 	if f.patient {
 		ctx = provider.WithPatientRateLimits(ctx)
 	}
@@ -2216,6 +2230,34 @@ func (f sessionCompleter) CompleteWithMessages(ctx context.Context, messages []a
 		ctx = provider.WithoutBabbleGuard(ctx)
 	}
 	return f.inner.CompleteWithMessages(ctx, messages, options...)
+}
+
+// ownLineageKey marks a call that brings its own prompt-cache lineage
+// ([WithOwnCacheLineage]).
+type ownLineageKey struct{}
+
+// WithOwnCacheLineage marks a call whose context already carries the cache key
+// its request must travel under, so the conversation's wrapper keeps that key
+// rather than stamping its own.
+//
+// IT EXISTS FOR ONE CALLER AND IT IS OPT-IN. A program codeaf carries talks to
+// its model through the run's model API (internal/provider/modelapi), which
+// hands each call to this conversation's completer — and the program keeps
+// conversations of its own, each with its own `prompt_cache_key`. Stamped with
+// the conversation's key, every one of them would ask for the conversation's
+// warm instance: two different prefixes on one lineage, each cold-starting the
+// other, which is [unwrapCompleter]'s reason for giving a task node a lineage
+// of its own. A call that is not marked keeps exactly the stamp it always had.
+func WithOwnCacheLineage(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ownLineageKey{}, true)
+}
+
+// bringsOwnLineage reports a call marked by [WithOwnCacheLineage] that really
+// does carry a key: a marked call with none is stamped like any other, so the
+// mark can never send a request out unkeyed.
+func bringsOwnLineage(ctx context.Context) bool {
+	own, _ := ctx.Value(ownLineageKey{}).(bool)
+	return own && provider.CacheKeyFrom(ctx) != ""
 }
 
 // ProbeLanes passes the keystroke's pre-warm through, and does nothing at all
@@ -2920,7 +2962,7 @@ func (a *Agent) bashBeltFrame(hub *eventHub) string {
 	rail := 0.0
 	if home := graph.home; home != nil {
 		home.mu.Lock()
-		rail = home.config.SpendRailUSD
+		rail = home.spendRailUSD()
 		home.mu.Unlock()
 	}
 	runSpend := graph.planRunSpend()
@@ -3747,6 +3789,7 @@ type settleWake struct {
 	ceiling int
 	model   string
 	prompt  string
+	window  time.Duration
 }
 
 type settleWakeKey struct{}
@@ -3782,6 +3825,9 @@ func (a *Agent) settleWakeLocked() (settleWake, bool) {
 		}
 		if note.settlePrompt != "" {
 			wake.model, wake.prompt = note.settleModel, note.settlePrompt
+		}
+		if note.settleWindow > wake.window {
+			wake.window = note.settleWindow
 		}
 	}
 	return wake, wake.ceiling != 0

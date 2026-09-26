@@ -392,6 +392,15 @@ func (a *app) tabList() []chatTab {
 		}
 	}
 	if work, ok := a.workTab(); ok {
+		// ONE TAB IS DRAWN SELECTED. While the run's own room is up the work tab
+		// is the selected one, and the conversation's tab is the door back to the
+		// conversation ([app.tabPress] closes the room); both used to draw
+		// selected at once.
+		if work.here {
+			for i := range tabs {
+				tabs[i].here = false
+			}
+		}
 		tabs = append(tabs, work)
 	}
 	return tabsCapped(tabs, a.prev)
@@ -551,6 +560,11 @@ func (a *app) roomFactsRow() int {
 	width, _ := a.size()
 	if a.roomHeadHeight(width) < a.roomHeadCount() {
 		return -1
+	}
+	// A PROGRAM'S ROOM HAS ONE HEAD ROW WITH FACTS ON IT, its title row, and
+	// the brief's rows under it are the dropdown's (programroom.go).
+	if a.programHeadsRoom() {
+		return a.roomHeadRow()
 	}
 	return a.roomHeadRow() + a.roomHeadCount() - 1
 }
@@ -1354,6 +1368,17 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 func (a *app) tabGo(tab chatTab) (cmd tea.Cmd) {
 	if tab.work {
 		return a.openWorkTab()
+	}
+	// THE CONVERSATION'S OWN TAB, PRESSED WHILE THE RUN'S TAB IS THE SELECTED
+	// ONE, IS THE WAY BACK TO IT: the run's room stands down and the
+	// conversation is what is drawn, exactly as `esc` would leave it. The press
+	// used to reach a switch to the conversation already in front, which did
+	// nothing.
+	if tab.key != "" && !tab.start && tab.key == a.frontTabKey() && a.room != nil {
+		a.tabReveal()
+		a.closeRoom()
+		a.touch()
+		return nil
 	}
 	a.tabReveal()
 	if tab.start {

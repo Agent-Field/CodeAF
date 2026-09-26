@@ -27,17 +27,23 @@ says `It joined the work already underway and shares its copy.` A proposed task 
 ANOTHER folder is refused while that run is underway, with both folders named and
 `tasks that run together share one copy of one folder. Propose it again when that work
 has ended`. A task handed off after the run has ended starts a run of its own, in a new
-copy cut from your folder as the first run left it. A task handed off in the few seconds
-while a run is finishing (its work landing, its summary being written) waits until that
-run is over and then starts its own: it never joins a run on its way out.
+copy cut from your folder as the first run left it. So does one handed off after a run
+that nothing is driving any more (a limit you set ended it, or codeaf closed under it):
+the old run's store is kept beside the new one as its record — an ordinary run's ended as
+`interrupted`, and a program's run nothing had ended first ended where it was last seen,
+in its own words — and new work never runs inside it. A task handed off in the few
+seconds while a run is finishing (its work landing, its summary being written) waits
+until that run is over and then starts its own: it never joins a run on its way out.
 
 ## When does a task run's work come home, including commits its workers made
 
 When a `/task` run on the worker harness ends, its copy's uncommitted work is committed and
 merged into the folder it was cut from, the copy is given back, and the run's page
 carries `its work is in <folder> on <branch>`. The conversation is woken with the same
-note a landed task sends: the outcome word, the result the root reported, and where the
-work went (`landed on <branch>: N files`, or the sentence saying why it did not). Work
+note a landed task sends: the outcome word, how long the run took (`ran 4m 12s`, from the
+hand-off to the moment its work ended, and left out under a second), the result the root
+reported, and where the work went (`landed on <branch>: N files`, or the sentence saying
+why it did not). Work
 that will not go in is never forced: the branch is kept in your repository and the note
 names it, for example `its branch <branch> was kept`, when your checkout moved on after
 the copy was cut. A run whose workers committed everything still names its
@@ -52,7 +58,9 @@ landing card says `merged` when the work is in your folder and `branch kept` onl
 branch that is waiting. A hand-off that joined the run ends with it: its row settles
 `done` or `incomplete` when the run's does. The
 row the run was published under settles `done` when the run finished whole and
-`incomplete` on any other ending.
+`incomplete` on any other ending. Each of these rows is in the project's task list (the
+`@` list, other conversations' `tasks` tool, other windows) from the moment it starts, and
+is closed there with its time when it settles.
 
 **With the switch unset, this is the road `/task` takes.** Set
 `CODEAF_TASK_BELT=node` to use the older session tree road instead. See *How
@@ -134,7 +142,7 @@ The only difference is where it reads from: a run's task is read from the run's 
 A page the engine will not answer for — a task this conversation did not spawn, or
 one whose store has gone — is not opened; the list stays where it was.
 
-## Open a run's task from the side list — click its row, or one of its parts
+## Open a run's task from the side list — click its row, or one of its parts, and leave it with esc
 
 With the switch on, a run is drawn in the conversation's side list as its own row,
 `#N`, with its parts and their checks hanging under it. **Every one of those rows
@@ -148,7 +156,9 @@ row each, the finished ones included. Every one of those rows is a
 door: click the run's row, or select it and press `enter`, and its room opens over the
 conversation; click a part's row or a check's row and THAT task's room opens. It is the
 room the tasks place opens and the run's tab opens: what the task was asked, its steps,
-its notes, and the box that leaves a note. `esc` goes back to the conversation exactly as
+its notes, and the box that leaves a note. A task handed to a program such as senior-dev
+opens its own program room instead (see *A program's task page is a conversation, not
+steps*). `esc` goes back to the conversation exactly as
 you left it, with whatever you had typed still in the box.
 
 The room can take a moment to arrive. From the press on, what you type belongs to the
@@ -162,9 +172,10 @@ every three seconds, so a new step shows within that, and it stops reading when 
 has settled. A room on a task that has ended is read once, to open it. A step whose
 command is many lines long is drawn as its first line and `…`; what ran is unchanged.
 
-A row the store has no page for opens what it always opened, its room. That is every
-task when the switch is off. A task of an earlier run keeps its page after a later run
-has started.
+A row the store has no page for opens what it always opened, its room: with the switch
+off that is every task, except one handed to a program, which opens the program's room
+with the switch on or off. A task of an earlier run keeps its page after a later run has
+started.
 
 ## Can I still read a task from an earlier run?
 
@@ -282,6 +293,85 @@ The step being run right now is the newest call in the transcript, drawn running
 room's head says the task is working, how long it has run and what it has cost, as every
 task room's head does. When the command ends the store clears the live step and the next
 read draws it as an ordinary call, with what came back behind it.
+
+## A program's task page is the actions it took, not steps — a delegate's page: open it, leave it, no tab of its own, no note box, what the box says
+
+A task handed to a program codeaf carries (`/<name> <brief>`, such as `/senior-dev`)
+opens **inside the conversation's own tab**, as any task does: from its row on the side
+list, its card in the conversation, a task link, the task strip or the home panel. The
+tab strip stays on top with the conversation's tab the one selected and the `home` tab beside
+it, and the program gets no tab of its own.
+
+```
+  the run ▸ rewrite the auth middleware                              esc/← main
+─ implement · $1.24 of $5.00 · 3 calls · 14m 3s ─────────────────── Stop ─
+  BRIEF      rewrite the auth middleware to use the new session store
+  SETUP      set up its workspace                                     git
+  SPEC       wrote your brief down as its spec
+  EXPLORE    read internal/auth/middleware.go
+             ran go test ./internal/auth/...                fails · exit 1
+  IMPLEMENT  edited internal/auth/middleware.go
+             ◐ thinking · 12s
+```
+
+`esc`, a press on the conversation's tab and a press on the `home` tab leave it; none of them
+stops the run. `ctrl+o` opens and folds a long brief. `ctrl+y` turns the page to the
+program's raw calls and back. `x` over an empty box, `/stop`, or `Stop` at the end of the
+line over the page asks `Stop this task?` and ends the whole run.
+
+**The box sends nothing.** A program reads no message. The box says `<program> reads no
+messages — say it to main` (`senior-dev reads no messages — say it to main`), and `enter`
+over a sentence says the same line on the page and leaves your words in the box. Once the
+run has ended its foot and its box say `this task has finished — say it to main`.
+
+In the tasks place, `enter` on the program's row opens the same page as a page of that
+place, with no box at all.
+
+## Reading a program's actions — the step words down the side, how each came out, the call in flight, how long it has run
+
+The page shows what the program did, as the program itself says it: every stage, step and
+ending it reported, kept as codeaf received them, each read in the program's own words.
+The word down the left is the step of the program's own process the action served
+(senior-dev's page has its own section on its steps). It is printed on the first action
+of each run of actions in one step and left blank for the rest, so a word comes back when
+the program comes back to that step. How an action came out is at the right edge, dim:
+`passes`, `fails · exit 2`, `4 files`. Under about 28 cells of room the step's word
+stands on its own line and its actions hang under it.
+
+The page opens on the brief, under `BRIEF`. What only the program's model calls know is
+put in where it happened, each one plain line: `compacted its memory` when the program
+rewrote its history as a summary, `switched to <model>` when another model started
+answering its work (with the program's reason after it when it gave one), `codeaf
+refused a call · <why>` and `a call to its model failed · <why>`. A model is named nowhere
+else. While a call is out the last line is `◐ thinking` and its seconds. A long run shows
+its newest actions under a line such as `…142 earlier actions`. A run from before codeaf
+kept a program's actions is drawn from its model calls, each tool asked for as one action
+with no step word, and a long one shows its newest under `…142 earlier calls`.
+
+The line over the page stays put while you scroll: the step the program is in (before it
+names one, its stage in the word it gives a person; the task's own word, such as
+`running` or `done`, when there is neither), what the run has spent (`of` its ceiling when
+the page knows it), how many model calls it has made, and how long it has been going. A
+figure with nothing behind it is left out, and a narrow window drops the time first. The
+time counts from the moment codeaf handed the work over and stops when the program's own
+process ends. The page reads the store again every three seconds while the run works, and
+once more after its work has landed, so the note on where the work went is on the page.
+
+## A program's raw calls — ctrl+y, the dialogue with its model, what it sent and what the model answered
+
+`ctrl+y` on a program's page — in its room or in the tasks place — turns it to the raw
+calls the program made, and `ctrl+y` again turns it back to the actions; the key row says
+which: `ctrl+y calls` or `ctrl+y actions`. A page opens on the actions.
+
+The calls are the conversation between the program and the model that answered it, for
+seeing exactly what it was sent. Each call is the program's side — a tool's result as
+`<tool>: <first line>`, its own words, or `summarized its history so far` — and the
+model's, named by its short name: the first line of its answer, and one dim row per tool
+it asked for behind that tool's mark. A call codeaf refused is one line from `codeaf`,
+`refused · <why>`; a failed one is `the call failed · <why>`. The call in flight is the
+last line, `◐`, the model and its seconds. Only the first line of each message is drawn,
+and a long run shows its newest calls under a line such as `…142 earlier calls`; the
+task's own record keeps more of every call.
 
 ## Why is a step missing, the step numbers skip, the cd at the front of a command is gone
 
@@ -469,7 +559,7 @@ answer for those rows too, in words that say what happened:
 Neither ever answers that the row does not exist. A number no run of this
 conversation holds still goes on to the ordinary task reader.
 
-## Does a note actually reach the worker, when does it read it, does it have to ask for it
+## I left a note and the task ignored it — does a note reach the worker, when does it read it, does it have to ask?
 
 Yes, and it does not have to ask. The run looks for unread notes each time the
 worker finishes a step, and hands them over at once, through the same door your
@@ -527,7 +617,9 @@ what you actually asked for would list every row of the run and never learn it.
 
 Press `x` over an empty box while the run's row is the one task row on the side list,
 or open the run's task room and press `x` there over an empty box. Both raise the same
-card, `Stop this task?`, with `stop it` and `keep going`. A digit moves the choice, `enter` takes it, and `esc` is
+card, `Stop this task?`, with `stop it` and `keep going`. On a task handed to a program,
+`x` over an empty box, `/stop`, or `Stop` at the end of the line over its conversation
+raises the same card. A digit moves the choice, `enter` takes it, and `esc` is
 `keep going`. Nothing ends on one keystroke. Telling the chat "stop task 1" ends a run
 the same way and asks nothing, because your sentence is the decision.
 

@@ -84,6 +84,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
@@ -179,6 +180,17 @@ var taskDescription = "Hand self-contained work to a task outside this conversat
 // carries it whole, and [composeBrief] bounds the person's verbatim ask and
 // nothing else — so a findings-rich handoff reaches the worker entire, and this
 // sentence is the only thing standing between the model and writing one.
+//
+// AND `via` SAYS WHEN IT IS SET, NOT ONLY WHAT IT IS. It opened on "Optional",
+// and a model already writing a proposal for an issue in a mature project read
+// that as the field to leave out. The hand-off page says codeaf prefers a
+// program for the work its guide claims and uses one the person asks for
+// (delegate_door.go's [delegateFact]); this is that same preference at the
+// moment the field is being filled, in as few bytes as say it. The page stays
+// the rule's home: on the lean belt this schema is fetched on demand, and the
+// page is all that is read before the model decides to propose at all.
+const taskViaSchemaJSON = `"via":{"type":"string","description":"A program your instructions list, to do the whole task alone in ground (or this conversation's folder): set it for work one is for, and when the person names one"},`
+
 var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"title":{"type":"string","description":"One line naming the work as a person would say it"},` +
 	`"summary":{"type":"string","description":"Two or three lines the person reads to decide whether to redirect it"},` +
@@ -189,13 +201,19 @@ var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"acceptance":{"type":"string","description":"Done when: the observable condition somebody else could check without taking the task's word for it"},` +
 	expectsSchemaJSON + `,` +
 	checksSchemaJSON + `,` +
-	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids that must finish first, only ones propose_task returned. Its brief is given their reports; an unknown or failed id refuses the proposal"},` +
-	`"wide":{"type":"boolean","description":"Optional. True when the work is wider than one pair of hands; a wrong true costs nothing"},` +
-	`"model":{"type":"string","description":"Optional, only where the person asked for one: a catalog id or part of one, never a class word. A word fitting several is shown to the person to settle"},` +
+	`"depends_on":{"type":"array","items":{"type":"integer"},"description":"Ids that must finish first, only ones propose_task returned in this session. Its brief is given their reports; an unknown or failed id refuses the proposal"},` +
+	`"wide":{"type":"boolean","description":"Optional. True when the work is wider than one pair of hands. Say true whenever you judged it broad; a wrong true costs nothing"},` +
+	`"model":{"type":"string","description":"Optional, only where the person asked for one: a catalog id or part of one, never a class word, so resolve \"fast\" to a concrete model. A word fitting several is shown to the person to settle"},` +
 	`"effort":{"type":"string","enum":["best","cheap"],"description":"Only when the person asked"},` +
+	taskViaSchemaJSON +
 	`"max_steps":{"type":"integer","description":"Optional. Finished tool calls per progress checkpoint (default ` + strconv.Itoa(taskMaxSteps) + `); work still advancing is given more."},` +
 	`"no_progress":{"type":"integer","description":"Optional. Tool calls in a row that may add nothing before it is stopped as stuck (default ` + strconv.Itoa(taskNoProgress) + `). Raise it for work that must read a great deal first"}` +
 	`},"required":["title","summary","brief","deliverable","acceptance"],"additionalProperties":false}`
+
+// A build with no program has no usable via argument. Keep the full schema's
+// bytes unchanged where the launch registry carries one, and omit this field
+// on the same Config.mayDelegate predicate that controls the prompt.
+var taskSchemaWithoutViaJSON = strings.Replace(taskSchemaJSON, taskViaSchemaJSON, "", 1)
 
 // taskArguments is the wire form.
 type taskArguments struct {
@@ -217,6 +235,7 @@ type taskArguments struct {
 	DependsOn []uint64 `json:"depends_on"`
 	Wide      bool     `json:"wide"`
 	Model     string   `json:"model"`
+	Via       string   `json:"via"`
 	// Effort is the person's one-task word for how hard to try — best or
 	// cheap — which moves this task's crew and nothing after it (taskcrew.go).
 	Effort     string `json:"effort"`
@@ -343,6 +362,10 @@ type taskSpec struct {
 	modelWord    string
 	model        string
 	modelOptions []string
+	// via is the delegate this work is proposed for, empty for the conversation's
+	// own worker (delegate_door.go). It is resolved at staging, so a name this
+	// machine has no delegate for is a refusal before any card goes up.
+	via string
 	// crewEffort is the one-task crew word the proposal carried — best, cheap,
 	// or empty for the router's own knee (taskcrew.go). It is not `effort`
 	// below, which is how hard the model thinks, not which models the crew is.
@@ -536,7 +559,11 @@ func (a *Agent) taskTools() []bare.Tool {
 	if !a.mayProposeTask() {
 		return nil
 	}
-	return []bare.Tool{bare.StagedTool("propose_task", taskDescription, json.RawMessage(taskSchemaJSON), a.stageTask)}
+	schema := taskSchemaWithoutViaJSON
+	if a.config.mayDelegate() {
+		schema = taskSchemaJSON
+	}
+	return []bare.Tool{bare.StagedTool("propose_task", taskDescription, json.RawMessage(schema), a.stageTask)}
 }
 
 // mayProposeTask says whether propose_task belongs on this agent's belt: always
@@ -641,12 +668,27 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 		}
 		return bare.Settled(problem, true)
 	}
-	// THE DOOR REFUSALS, before a card or a slot. A trivial ask and a
-	// depends_on that can never resolve are both "do not start this"; they
-	// live in one helper so this road does not grow another ending
-	// (complexity_test.go's ratchet on this function).
-	if refusal := a.refuseProposedTask(spec); refusal != "" {
-		return bare.Settled(refusal, true)
+	// THE DOOR REFUSALS, before a card or a slot. A proposal that left out the
+	// program the person named, a trivial ask and a depends_on that can never
+	// resolve are all "do not start this"; they live in one helper so this
+	// road does not grow another ending (complexity_test.go's ratchet on this
+	// function).
+	if refusal := a.refuseProposedTask(spec); refusal != nil {
+		return refusal
+	}
+	// A PROGRAM'S RUN THAT ENDED DONE IS A DEPENDENCY MET, and the graph knows
+	// no node by its id (program_depends.go).
+	spec.dependsOn = a.withoutEndedProgramRuns(spec.dependsOn)
+	// A DELEGATE IS RESOLVED BEFORE THE CARD, so a name this machine has no
+	// delegate for is answered with the names it has and nobody is asked to
+	// approve work that could not start (delegate_door.go).
+	if spec.via != "" {
+		if _, err := a.delegateFor(spec.via); err != nil {
+			return bare.Settled(err.Error(), true)
+		}
+		if !a.mayHandToProgram() {
+			return bare.Settled(spec.via+" can only be given work from the conversation, and only where the run road is linked", true)
+		}
 	}
 	// WHICH HANDS THE WORK LEAVES ON, settled before anybody is asked anything
 	// (taskmodel.go). A word that names no model this install has is a refusal
@@ -654,6 +696,9 @@ func (a *Agent) stageTask(ctx context.Context, args json.RawMessage) bare.Staged
 	// several is not refused at all: the shortlist rides on the proposal, and the
 	// person settles it in the same breath as the work.
 	choice := a.resolveTaskModel(spec.modelWord)
+	if spec.via != "" {
+		choice = a.resolveProgramModels(spec.modelWord)
+	}
 	if choice.problem != "" {
 		return bare.Settled(choice.problem, true)
 	}
@@ -829,46 +874,90 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	// quietly became old-tree nodes. The receipt now says the task did not start
 	// and why ([runDidNotStart]), and reads as a failure. Only a run road that
 	// is not there at all (no engine linked, no place for a store) leaves this
-	// door for the older one.
-	if bashBeltAsked() && chatRunEngine != nil && !a.config.InTask {
-		a.mu.Lock()
-		question := questionAtTaskHandoff(a.owedAsks)
-		a.mu.Unlock()
-		description := composeBrief(briefWhole, spec.request, spec.brief, spec.deliverable, spec.acceptance, "", spec.admission, spec.origin, taskCopy{})
-		// THE RUN OUTLIVES THE TURN THAT LAUNCHED IT, AND NOT THE CONVERSATION.
-		// This context is the turn's, and the turn cancels it on its way out
-		// (agent.go, `defer cancel(nil)`); a run driven under it would be stopped
-		// the moment the model finished its sentence. The values ride along, the
-		// cancellation does not.
-		//
-		// What ends it instead is the conversation: the person's stop
-		// (stoprun.go) or the room closing ([Agent.cutBeltRun]). Dropping the
-		// turn's cancellation here without either of those is what left a run's
-		// life belonging to the PROCESS, and a run whose room had closed went on
-		// spending with nobody able to read it or stop it.
-		//
-		// WHETHER IT JOINED is the start door's answer and not a look taken
-		// before it: in a batch committed at one moment none of the hand-offs
-		// could see a live run beforehand, and the one that opened the run is
-		// decided under the start lock ([Agent.startOrJoinTaskRun]).
-		joined, err := a.startOrJoinTaskRun(withCrewWish(context.WithoutCancel(ctx), crewWish{effort: spec.crewEffort, worker: namedModel(spec)}), p.id, spec.title, description, spec.dependsOn, p.stand, question)
-		if refusal := (standsElsewhereError{}); errors.As(err, &refusal) {
-			return refusal.Error(), true, nil
-		}
-		if err == nil {
-			receipt := taskReceipt(p.id, spec, TaskRunning, p.stand, elsewhere)
-			if joined {
-				receipt = withReport(receipt, "It joined the work already underway and shares its copy.")
-			}
-			return receipt, false, nil
-		}
-		if !errors.Is(err, errRunRoadUnavailable) {
-			return withElsewhere(runDidNotStartToModel(p.id, err), elsewhere), true, nil
-		}
+	// door for the older one ([Agent.commitProposalToRun]).
+	ctx = withCrewWish(ctx, crewWish{effort: spec.crewEffort, worker: namedModel(spec)})
+	if answer, refused, handled := a.commitProposalToRun(ctx, p, spec, elsewhere); handled {
+		return answer, refused, nil
 	}
 	state := graph.admit(p.id, spec)
 	admitted = true
 	return taskReceipt(p.id, spec, state, p.stand, elsewhere), false, nil
+}
+
+// commitProposalToRun is the run road of an approved proposal: an approved
+// hand-off under the bash belt, and every hand-off that names a delegate, is a
+// RUN and never a session-tree node. It keeps the id the card showed, carries
+// its acceptance in the brief and its depends_on as the store's own
+// dependencies, and takes the person's ask with it when this turn owes one
+// (CHAT-ROLE.md, "A landing speaks only when an answer is owed"). It answers
+// handled=false when this proposal is not the run road's — the shipped engine
+// admits it then — and handled=true with the model's answer otherwise.
+//
+// A task about ANOTHER FOLDER than the work already underway is refused here
+// ([standsElsewhereError]). Any other failure ON the run road is said, as a
+// task that did not start ([runDidNotStart]); only a run road that is not there
+// at all ([errRunRoadUnavailable]) leaves an ordinary hand-off to the shipped
+// engine. A DELEGATE HAS NO OTHER ROAD: the shipped engine would seat a worker
+// of its own on the brief, which is not what was asked for, so its failure is
+// answered as a refusal.
+func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec taskSpec, elsewhere string) (string, bool, bool) {
+	if !(bashBeltAsked() || spec.via != "") || chatRunEngine == nil || a.config.InTask {
+		return "", false, false
+	}
+	a.mu.Lock()
+	question := questionAtTaskHandoff(a.owedAsks)
+	a.mu.Unlock()
+	var via *delegate.Delegate
+	if spec.via != "" {
+		m, err := a.delegateFor(spec.via)
+		if err != nil {
+			return err.Error(), true, true
+		}
+		via = &m
+	}
+	description := composeBrief(briefWhole, spec.request, spec.brief, spec.deliverable, spec.acceptance, "", spec.admission, spec.origin, taskCopy{})
+	// THE RUN OUTLIVES THE TURN THAT LAUNCHED IT, AND NOT THE CONVERSATION.
+	// This context is the turn's, and the turn cancels it on its way out
+	// (agent.go, `defer cancel(nil)`); a run driven under it would be stopped
+	// the moment the model finished its sentence. The values ride along, the
+	// cancellation does not. What ends it instead is the conversation: the
+	// person's stop (stoprun.go) or the room closing ([Agent.cutBeltRun]).
+	//
+	// WHETHER IT JOINED is the start door's answer and not a look taken
+	// before it: in a batch committed at one moment none of the hand-offs
+	// could see a live run beforehand, and the one that opened the run is
+	// decided under the start lock ([Agent.startOrJoinTaskRunVia]).
+	stand := p.stand
+	if via != nil {
+		stand = delegateStand(stand.dir)
+	}
+	asked := programAsked(spec)
+	var prior *programOutcome
+	if via != nil {
+		prior = a.keepProgramAttempt(p.id, a.programAttemptOf())
+	}
+	joined, err := a.startOrJoinTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, description, spec.dependsOn, stand, question, via, asked...)
+	a.rollbackFailedProgramStart(via, p.id, prior, err)
+	if refusal := (standsElsewhereError{}); errors.As(err, &refusal) {
+		return refusal.Error(), true, true
+	}
+	if err == nil {
+		receipt := taskReceipt(p.id, spec, TaskRunning, p.stand, elsewhere)
+		switch {
+		case via != nil:
+			receipt = delegateStartedReceipt(p.id, spec.title, strings.Join(asked, ", "), delegateReceipt(canonicalPath(stand.dir), *via, a.runRowCopy(p.id)), elsewhere)
+		case joined:
+			receipt = withReport(receipt, "It joined the work already underway and shares its copy.")
+		}
+		return receipt, false, true
+	}
+	if via != nil {
+		return via.Name + " could not start: " + err.Error(), true, true
+	}
+	if !errors.Is(err, errRunRoadUnavailable) {
+		return withElsewhere(runDidNotStart(p.id, err), elsewhere), true, true
+	}
+	return "", false, false
 }
 
 // namedModel is the model a hand-off named for its work, and nothing when it
@@ -1006,6 +1095,7 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 		// proposed before it existed.
 		wide:       parsed.Wide,
 		modelWord:  strings.TrimSpace(parsed.Model),
+		via:        strings.TrimSpace(parsed.Via),
 		maxSteps:   parsed.MaxSteps,
 		noProgress: parsed.NoProgress,
 	}
@@ -1181,6 +1271,9 @@ func (a *Agent) openTask(ctx context.Context, id uint64, spec taskSpec, elsewher
 		deadline = a.taskClockNow().Add(countdown)
 	}
 	question := newTaskQuestion(id, spec, elsewhere, deadline, a.config)
+	if spec.via == "senior-dev" {
+		question.notice.Ceiling = a.seniorDevCeilings(a.usage.CostUSD).Summary()
+	}
 	if a.taskAnswers == nil {
 		a.taskAnswers = make(map[uint64]*taskQuestion, 1)
 	}
@@ -1405,7 +1498,7 @@ func newTaskQuestion(id uint64, spec taskSpec, elsewhere string, deadline time.T
 			Summary:    spec.summary,
 			Brief:      spec.brief,
 			Acceptance: spec.acceptance,
-			Where:      taskWhereNotice(config.Place, config.Workspace, id, spec.where, spec.mode),
+			Where:      taskCardWhere(config, id, spec),
 			Ground:     spec.ground,
 			Mode:       spec.mode,
 			DependsOn:  spec.dependsOn,
@@ -1417,6 +1510,10 @@ func newTaskQuestion(id uint64, spec taskSpec, elsewhere string, deadline time.T
 			Model:        firstTaskModel(spec.modelOptions, spec.model),
 			ModelOptions: append([]string(nil), spec.modelOptions...),
 			Elsewhere:    elsewhere,
+			// AND WHICH PROGRAM THE WORK IS GOING TO, so the card names it before
+			// anybody is asked to say yes ([TaskNotice.Program]). The name was
+			// resolved at staging, so it is always one this build carries.
+			Program: spec.via,
 		},
 	}
 }
@@ -1491,6 +1588,20 @@ func (a *Agent) taskClockTimer(after time.Duration) (<-chan time.Time, func()) {
 	}
 	timer := time.NewTimer(after)
 	return timer.C, func() { timer.Stop() }
+}
+
+// taskCardWhere is the card's `where`. A PROGRAM'S CARD NAMES ITS PROJECT: the
+// folder it will work in itself, and that it gets a branch of its own there
+// when the folder is a repository ([programPlace]). A card that showed a path
+// under codeaf's state asked a person to approve work going somewhere they had
+// never heard of.
+func taskCardWhere(config Config, id uint64, spec taskSpec) string {
+	for _, program := range config.Delegates {
+		if program.Name == spec.via && strings.TrimSpace(spec.ground) != "" {
+			return programPlace(program, spec.ground)
+		}
+	}
+	return taskWhereNotice(config.Place, config.Workspace, id, spec.where, spec.mode)
 }
 
 func taskWhereNotice(place Place, workspace string, id uint64, where string, mode TaskMode) string {

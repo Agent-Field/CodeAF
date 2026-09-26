@@ -1,0 +1,19 @@
+{"type":"stage","stage":"bootstrap","status":"ready","data":{"workspace":"/tmp/copy"},"ts":1725000000000,"trace_id":"ses_1","step":1,"occurrence":1,"title":"Bootstrap: Ready","elapsed_ms":3}
+{"type":"stage","stage":"run-contract","status":"ready","data":{"base_sha":"abc","high_models":["openrouter/deepseek/deepseek-v4-flash-0731"],"entry_agent":"coder","control_plane":{"enabled":false,"url":"http://localhost:8080"}},"ts":1725000000010}
+{"id":"evt_1","type":"session.created","properties":{"sessionID":"ses_1","info":{"id":"ses_1","title":"rewrite the auth middleware"}}}
+{"type":"stage","stage":"intake","status":"captured","data":{"spec_path":".senior-dev/spec.md","spec_bytes":42},"ts":1725000000020}
+{"type":"stage","stage":"agent-runtime","status":"configured","data":{"agent":"coder","session_id":"ses_1","model_id":"deepseek-v4-flash-0731"},"ts":1725000000030}
+{"type":"stage","stage":"implement","status":"running","data":{"attempt":0},"ts":1725000000040}
+{"id":"evt_2","type":"message.updated","properties":{"sessionID":"ses_1","info":{"role":"assistant","id":"msg_1","cost":0.0101,"tokens":{"input":100,"output":20}}}}
+{"type":"spend","cost_usd":0.0101,"ts":1725000000100}
+{"id":"evt_3","type":"message.part.updated","properties":{"sessionID":"ses_1","part":{"type":"tool","tool":"bash","state":{"status":"completed","input":{"command":"go test ./..."},"output":"ok  \tpkg\t0.3s"}},"time":1725000000110}}
+{"type":"step","command":"bash: go test ./...","observation":"ok  \tpkg\t0.3s","ts":1725000000110}
+{"type":"step","command":"edit: internal/auth/middleware.go","observation":"","ts":1725000000120}
+{"type":"spend","cost_usd":0.0213,"ts":1725000000200}
+{"type":"spend","cost_usd":0.0213,"ts":1725000000201}
+{"type":"stage","stage":"submit","status":"frozen","data":{"reason":"tests pass","checklist_satisfied":true,"patch_bytes":812,"patch_files":2,"tree_sha":"t1","commit_sha":"c1"},"ts":1725000000300}
+{"type":"stage","stage":"implement","status":"submitted","data":{"attempt":0,"reason":"tests pass","checklist_satisfied":true},"ts":1725000000301}
+{"type":"stage","stage":"verification","status":"pass","data":{"commands":[{"cmd":"go test ./...","exit":0}],"vacuous":false},"ts":1725000000400}
+{"type":"stage","stage":"patch-summary","status":"completed","data":{"base_sha":"abc","files":2,"additions":30,"deletions":4,"patch_bytes":812},"ts":1725000000410}
+{"type":"stage","stage":"agent-summary","status":"completed","data":{"agents":{"coder":{"calls":3,"cost_usd":0.0213}}},"ts":1725000000420}
+{"type":"terminal","status":"pass","message":"submitted and verified: tests pass","session_id":"ses_1","data":{"cost_usd":0.0213,"status":"pass","reason":"submitted and verified","submitted":true,"nudges":0,"submission_reason":"tests pass","submission_evidence":"go test ./... is green","checklist_satisfied":true,"patch_bytes":812,"patch_files":2,"frozen_tree":"t1","frozen_commit":"c1","verification_failing":0,"verification_commands":1},"ts":1725000000500}

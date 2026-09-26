@@ -195,21 +195,24 @@ func quotedFacts(t *testing.T) []quotedFact {
 		value: taskDollars, others: otherTaskDollars,
 		quotes: []quotedIn{
 			{"models-and-cost", "**cap** — `per task %s · crew daily cap none`"},
-			{"models-and-cost", "No task may cost more than its limit: **%s** unless you set another"},
+			// THE $5 IS THE CREW'S, and a senior-dev run is not a crew task: it keeps
+			// its own ceiling (delegate.DefaultSeniorDevCostUSD and the conversation's
+			// limit), so the pages say "ordinary" where this figure applies.
+			{"models-and-cost", "No ordinary task may cost more than its limit: **%s** unless you set another"},
 			{"models-and-cost", "(`per task %s · crew daily cap none`)"},
 			{"models-and-cost", "an emptied box is %s again"},
 			{"models-and-cost", "this task reached its %s limit · raise it in /crew"},
 			{"models-and-cost", "held under the %s.00 task limit"},
 			{"models-and-cost", "| **per task** | `%s a task`"},
 			{"models-and-cost", "## What may a task spend — %s a task unless you set another"},
-			{"models-and-cost", "**A task carries a dollar limit of its own: %s unless you set another.**"},
+			{"models-and-cost", "**An ordinary `/task` carries a dollar limit of its own: %s unless you set another.**"},
 			{"models-and-cost", "`per task` row — `%s a task`"},
 			{"commands", "the most one task may spend — %s unless set"},
 			{"commands", "the most one task may spend — %s unless set."},
 			{"commands", "per task %s · crew daily cap $5.00"},
 			{"running-from-the-terminal", "**Every run is held to the per-task limit**, %s unless"},
 			{"running-from-the-terminal", "this task reached its %s limit · raise it in /crew"},
-			{"tasks", "**Every task also has a money limit of its own: %s unless you set another**"},
+			{"tasks", "**An ordinary `/task`, or any task codeaf's own worker does, also has a money limit of its own: %s unless you set another**"},
 		},
 	}, {
 		fact: "the checker's ceiling multiplier", owner: "config.CrewCheckCeilingTimes",

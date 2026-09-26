@@ -308,8 +308,12 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// and the deadline it puts on the context both tells every request how long is
 	// left and cuts the turn itself ([Agent.settleBoundTripped] reads the ceiling
 	// at the loop's boundary). Every other turn is left exactly as it was.
-	if _, settle := settleWakeFrom(ctx); settle {
-		windowed, closeWindow := openCallWindow(ctx, a.settleWindow(), callWindow{})
+	if wake, settle := settleWakeFrom(ctx); settle {
+		window := a.settleWindow()
+		if wake.window > window {
+			window = wake.window
+		}
+		windowed, closeWindow := openCallWindow(ctx, window, callWindow{})
 		defer closeWindow()
 		ctx = windowed
 	}
@@ -5386,6 +5390,18 @@ func (a *Agent) addFoldedUsage(response *ai.Response, model string, calls int) {
 // caller spent.
 func (a *Agent) addFoldedUsageAs(response *ai.Response, model string, calls int, role string) {
 	a.addUsageAs(response, model, calls, role, false, false)
+}
+
+// addDetachedFoldedUsage is [Agent.addFoldedUsage] for work that runs BESIDE
+// the conversation's turns rather than inside one: a run the conversation
+// handed a task to (task_run_money.go's beltFold). It writes no ledger row,
+// because the run's own worker wrote one per call, and it moves no turn's
+// share ([Agent.addDetachedUsageAs]'s reason): a run's call priced while the
+// person's next chat turn is running is not that turn's spending, and a turn
+// abandoned then would otherwise be journaled with the run's dollars as its
+// own.
+func (a *Agent) addDetachedFoldedUsage(response *ai.Response, model string, calls int) {
+	a.addUsageAs(response, model, calls, "", false, false, detachedFromTurn)
 }
 
 // The roles an auxiliary line can name. A line is journaled with the role that

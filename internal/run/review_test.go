@@ -645,6 +645,10 @@ func TestSupervisorStillEndsIncompleteWhenRootErrorsWithoutStoredDone(t *testing
 	if root.Status == plandb.StatusDone || root.Result != "" {
 		t.Fatalf("root = %s with result %q, want no stored done or result", root.Status, root.Result)
 	}
+	// AND THE RUN IS OVER IN THE STORE: a failed run left open read as running.
+	if root.Status != plandb.StatusFailed || root.Error != "root worker failed" {
+		t.Fatalf("root = %s (%q), want failed with its worker's error", root.Status, root.Error)
+	}
 }
 
 func TestSupervisorAcceptsARootsReadingDoesNotHoldConclusion(t *testing.T) {

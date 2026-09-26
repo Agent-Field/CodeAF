@@ -32,7 +32,9 @@ package tui3
 //     closed, and both conversations go on running.
 //   - ATTACH — a conversation the ENGINE is running that this window can join
 //     as a second view ([Options.OpenTaskOwner]). The page is that task's own
-//     transcript, live, with `esc` back to where the person was.
+//     transcript, live, with `esc` back to where the person was — or, for a
+//     task handed to a program, which writes no transcript, the program's
+//     actions off the owner's store ([app.guestPageRead]).
 //
 // AND WHERE THERE IS NO REACH AT ALL — no capability, an engine that refused, a
 // conversation on no list this machine keeps — the card says the one short thing
@@ -52,6 +54,7 @@ package tui3
 
 import (
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -309,6 +312,14 @@ type taskGuest struct {
 	asking     []session.Question
 	questions  <-chan session.Event
 	stopAsking func()
+
+	// page reads the task's stored page in the OWNER'S store
+	// ([TaskOwnerView.TaskPage]), and pageReading says a read is out. It is
+	// how a page onto a program's task finds out that it is one, and then the
+	// only thing that page reads: a program writes no worker journal, and what
+	// it did is its conversation with codeaf on that page ([app.guestPageRead]).
+	page        func(id string) (session.PlanTaskPage, bool, error)
+	pageReading bool
 }
 
 // waiting is the question this page says the owner is stopped on: the oldest,
@@ -453,6 +464,12 @@ func (a *app) tookGuestNotice(msg taskGuestNoticeMsg) tea.Cmd {
 		if title := strings.TrimSpace(notice.Title); title != "" {
 			guest.node.title = title
 		}
+		// THE PROGRAM THE OWNER NAMES IS THE PAGE'S BADGE, and a notice naming
+		// none — from an engine older than the field — takes nothing away, the
+		// rule the rail keeps for this window's own nodes.
+		if program := strings.TrimSpace(notice.Program); program != "" {
+			guest.node.program = program
+		}
 		if notice.Elapsed > 0 {
 			guest.node.elapsed = notice.Elapsed
 		}
@@ -471,6 +488,13 @@ func (a *app) tookGuestNotice(msg taskGuestNoticeMsg) tea.Cmd {
 		// again. [app.farRoomRead] stops reading on a page it believes is over, so
 		// nothing else would ever ask that conversation for another line.
 		return tea.Batch(next, farRoomTick(room.gen))
+	}
+	if !was && room.done && room.program != nil {
+		// AND A PROGRAM'S PAGE READS THE OWNER'S STORE ONCE MORE WHEN THE OWNER
+		// SAYS THE WORK LANDED, for the reason this window's own program room
+		// does ([app.programRoomFollow]): the page the last beat read is the page
+		// from before the landing, and nothing reads it after a room is over.
+		return tea.Batch(next, a.guestPageRead())
 	}
 	return next
 }
@@ -845,6 +869,7 @@ func (a *app) tookTaskOwner(msg taskOwnerMsg) tea.Cmd {
 		// way to say what this piece of work was cut out of.
 		trail: a.taskGuestTrail(ask.item),
 		room:  msg.view.Room,
+		page:  msg.view.TaskPage,
 		close: msg.view.Close,
 	}
 	if ask.trail != nil {
@@ -901,7 +926,91 @@ func (a *app) tookTaskOwner(msg taskOwnerMsg) tea.Cmd {
 	if guest.questions != nil {
 		a.roomPump = tea.Batch(a.roomPump, waitGuestQuestions(guest.questions, room.gen))
 	}
+	// AND THE OWNER'S STORE IS ASKED, ONCE, WHETHER THIS IS A PROGRAM'S TASK —
+	// the question this window's own rooms put to its own store
+	// ([app.roomProgramCheck]), put to the owner's. The row cannot answer it:
+	// another window's presence names no program, and the owner's notice that
+	// does is a badge, not a page.
+	a.roomPump = tea.Batch(a.roomPump, a.guestPageRead())
 	return a.takeRoomPump()
+}
+
+// guestPageRead reads the owner's stored page for the task a guest page is on,
+// through the view, and folds it in: the first answer naming a program turns
+// the page into that program's room (programroom.go), and every answer after
+// it is that room's next page.
+//
+// IT READS THROUGH THE VIEW AND NEVER THROUGH [app.planReader]. That is THIS
+// window's store, where the same number is this conversation's own task — the
+// crossover [app.roomIsGuest] exists to prevent, one layer down. And it is
+// asked BESIDE this window's line of doors rather than in it: the line keeps
+// this window's gestures in order on this window's engine, and a read on
+// another conversation's connection is neither a gesture nor on that engine.
+//
+// THE PAGE IS NOT A NEW ROOM. The room was built by [app.tookTaskOwner] with
+// the guest on it, and it keeps the guest — its trail, its lanes, its
+// connection, its read-only doors — and gains the program's body. Nothing here
+// freezes a node of this window's rail or points the box at a task of it.
+//
+// A REFUSAL NAMING THE REPLACED CONVERSATION IS THE PAGE'S FINAL ANSWER, as it
+// is on a journal read ([app.tookGuestRecord]): the page keeps what it read,
+// says why it stopped, and gives the owner's lanes back. Any other failure
+// changes nothing — an engine too old to let a reading window read a page
+// answers with a refusal of its own, and the page is the journal reading it
+// always was.
+func (a *app) guestPageRead() tea.Cmd {
+	room := a.room
+	if room == nil || room.guest == nil || room.id == 0 {
+		return nil
+	}
+	guest := room.guest
+	read := guest.page
+	if read == nil || guest.lost || guest.pageReading {
+		return nil
+	}
+	id, gen, asked := strconv.FormatUint(room.id, 10), room.gen, a.now()
+	guest.pageReading = true
+	if p := room.program; p != nil {
+		p.readAt = asked
+	}
+	return a.besideLine(func() func(bool) tea.Cmd {
+		page, found, err := read(id)
+		return func(here bool) tea.Cmd {
+			guest.pageReading = false
+			if !here || a.room != room || room.gen != gen || room.guest != guest || guest.lost {
+				return nil
+			}
+			if err != nil {
+				if strings.Contains(err.Error(), taskGuestGoneMark) {
+					guest.lost = true
+					guest.dropWatch()
+					room.dirty = true
+					a.roomTouched()
+					a.touch()
+				}
+				return nil
+			}
+			if !found {
+				return nil
+			}
+			if room.program == nil {
+				if page.Program == nil && strings.TrimSpace(page.Row.Program) == "" {
+					return nil
+				}
+				// THE JOURNAL IS GIVEN UP WITH THE WORD THAT PROMISED IT. A program
+				// has none, so `loading` would never be answered, and the beat that
+				// reads it stops at its next turn ([app.readRoomRecord]).
+				room.program = &programRoom{page: page, readAt: asked}
+				room.loading, room.readFailed = false, false
+			} else {
+				room.program.page = page
+			}
+			room.dirty = true
+			a.roomTouched()
+			a.touch()
+			return nil
+		}
+	})
 }
 
 // taskGuestTrail is the work above one row of the record, inside ITS OWN
@@ -963,6 +1072,10 @@ func (a *app) taskGuestTrail(item tasksItem) []string {
 // THE MODEL IS EMPTY BECAUSE NOBODY HERE KNOWS IT. The presence file the row was
 // minted from carries a title and a state, not a model, and the emptiness law
 // says an unknown draws as nothing rather than as this conversation's own.
+//
+// THE PROGRAM IS THE ROW'S OWN, and the only place the page's badge may come
+// from until the owner says otherwise ([app.tookGuestNotice]): this window's
+// plan rows are another conversation's numbering ([app.nodeProgram]).
 func taskGuestNode(item tasksItem) *taskNode {
 	id := taskSheetEntryID(item.entry.ID)
 	title := strings.TrimSpace(item.entry.Title)
@@ -974,6 +1087,7 @@ func taskGuestNode(item tasksItem) *taskNode {
 		ident:    identFor(id),
 		title:    title,
 		label:    strings.TrimSpace(item.entry.Label),
+		program:  strings.TrimSpace(item.entry.Program),
 		state:    session.TaskState(strings.TrimSpace(item.entry.Status)),
 		ended:    item.entry.EndedAt,
 		met:      item.entry.EndedAt,

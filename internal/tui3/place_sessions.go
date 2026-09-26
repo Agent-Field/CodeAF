@@ -580,6 +580,9 @@ func (a *app) taskSheetOwnRows() []session.TaskIndexEntry {
 			SessionID: self,
 			StartedAt: node.started,
 			EndedAt:   taskNodeEnded(node),
+			// The program the node's work was handed to, so the row drawn off it
+			// wears the badge the node's own row does (programbadge.go).
+			Program: a.nodeProgram(node),
 		})
 	}
 	return rows

@@ -43,7 +43,10 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/delegate"
+	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/programguide"
 )
 
 // fixedPrefixBudget bounds the system prompt plus the marshalled tool block of
@@ -493,9 +496,66 @@ const fixedPrefixTarget = 48_000
 // by default and paid those bytes all along. The arm now weighs the page people
 // were already reading, 48,814, and the raise carries this name so it can be
 // questioned.
+//
+// 2026-09-23, the programs codeaf carries, and the owner's call by name. The
+// hand-off page's programs paragraph (delegate_door.go) is each carried
+// program's own guide, printed under its name, and codeaf's rule about the
+// folder a program that edits files must be handed; `propose_task`'s `via`
+// field points at `ground`. The paragraph was already on the shipped page
+// and was never weighed: the shipping shape carried no programs, and
+// [widestPage] weighed the frame without its fill. Both are fixed in the same
+// change, and the true cost shows on both arms: fixed is 56,271, over its
+// 55,442 by 829, and lean is 47,719, over its 47,055 by 664. Both waivers rise
+// by exactly that and sit on the measurement. Paying it back out of other
+// prompt text was offered and declined: the paragraph is how the conversation
+// learns what senior-dev is for and which folder to hand it, and cutting
+// other lanes' wording to make room was the riskier edit days before a ship.
+//
+// 2026-09-24, codeaf reaches for a program by itself, and the owner's call by
+// name: "raise the cap only as much as necessary — the prompts will be refined
+// later". The programs paragraph now says work a program is for goes to it
+// whole, rather than to the conversation or its own worker whatever its
+// critical path, and that work the person asks one for by name goes to it;
+// senior-dev's guide claims the complex, many-sided coding work it was going
+// unused on (an issue in a mature codebase whose cause spans files) and says
+// its brief carries the issue in full; and `via` says when it is set. That
+// grew fixed by 202 bytes (page 153, `propose_task` 49) to 56,447, and lean
+// by 153 to 47,859. Both arms already had room, 26 and 13 bytes of it, so
+// fixed rises by 176 and lean by 140, and both sit exactly on the
+// measurement again.
+//
+// 2026-09-24, a program works in the folder itself. The folder rule stopped
+// describing a copy nothing merges and says the folder and its branch instead
+// ([delegateFolderRule]), 38 bytes shorter on both arms, and both waivers come
+// down by exactly that: fixed measures 56,409 and lean 47,821.
+//
+// 2026-09-24, dev merged under senior-dev (#1488). Both ledgers above stand, and
+// the waivers are measured again on the merged page: fixed is 57,124 and lean
+// 49,590, which is dev's 56,146 and 48,814 plus what the senior-dev entries
+// above added (978 and 776 bytes on this page). Both sit on the measurement.
+//
+// 2026-09-25, fixes A–E and the missing eight bytes. On this Linux machine the
+// cap-setting commit itself, untouched 9abc11099, and this tree all weighed
+// 57,132 and 49,598 before the guide edit: 22,299 + 34,833 on the full arm,
+// 21,799 + 27,799 on the lean arm. The earlier 57,124 and 49,590 record was
+// eight bytes short; changing HOME, USER, TMPDIR, TZ and the launch directory
+// changed neither page nor tool block. Fix B's conditional `propose_task` `via`
+// schema omits that field only on a door with no program. Fix D's longer
+// `program-outcome.md` is read on a wake turn, not in the fixed page; its
+// ceilings are rendered on a card and start line. Fixes A, C and E1 added no
+// fixed-prefix bytes. The Unix program guide's two equivalent shorter phrases
+// pay the eight bytes back, and a declared fixture now weighs that same guide
+// and tool shape even on Windows, whose runnable registry is empty. The measured
+// caps and both waivers therefore stay at 57,124 and 49,590, with no increase.
+//
+// 2026-09-25, #1494 and #1436 merged into #1488. Their team delegation and
+// per-task crew forms leave the page at 22,291 bytes and grow the full tool
+// block to 34,927 over 24 tools. The measured fixed prefix is 57,218 bytes:
+// 94 above its preceding cap. The fixed waiver rises by exactly 94 for this
+// combined belt; the lean arm remains within its 49,590-byte cap.
 const (
-	fixedPrefixWaiver = 8_146
-	leanPrefixWaiver  = 17_314
+	fixedPrefixWaiver = 9_218
+	leanPrefixWaiver  = 18_090
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane
@@ -616,6 +676,13 @@ const leanPrefixTarget = 31_500
 // is the shape a person on such a model actually gets.
 const leanWindow = 16_000
 
+// prefixPrograms is the declared widest program fixture. It uses the program's
+// own guide but does not read the platform's carried registry: Windows carries
+// none, while this budget must still weigh the Unix shipping maximum.
+func prefixPrograms() []delegate.Delegate {
+	return []delegate.Delegate{{Name: "senior-dev", Guide: programguide.SeniorDev, Lands: delegate.LandsTree}}
+}
+
 // widestPage is the page at its heaviest: prompts/system.md with every one of
 // its tool-naming facts in the PRESENT case (beltfacts.go).
 //
@@ -643,11 +710,76 @@ func widestPage() string {
 			if len(fact.shelved) > len(widest) {
 				widest = fact.shelved
 			}
+			// AND A FILLED FACT IS WEIGHED FILLED. The programs paragraph is a
+			// frame whose body is each carried program's own guide
+			// (delegate_door.go), and weighing the frame alone once let a
+			// paragraph of a few hundred bytes ride every request unseen. It is
+			// filled with the declared widest program fixture, whose guide is
+			// the same source the Unix chat door carries.
+			if fact.fill != nil {
+				widest = fact.fill(Config{Delegates: prefixPrograms()}, widest)
+			}
 			lines = append(lines, widest)
 		}
 		page = strings.Replace(page, section.token, strings.Join(lines, section.join), 1)
 	}
 	return page
+}
+
+// The prefix budget weighs the same maximum on a build that carries no
+// programs. Its program paragraph is a declared measurement fixture, not a
+// reading of whichever registry this test process happens to have.
+func TestPrefixBudgetDoesNotDependOnTheCarriedProgramRegistry(t *testing.T) {
+	want := widestPage()
+	weighedAt := time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)
+	wantLeanPage := pageAsWeighed(leanShapedAgent(t).config, weighedAt)
+	wantFixed, err := json.Marshal(widestBelt(t, fixedShapedAgent(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLean, err := json.Marshal(widestBelt(t, leanShapedAgent(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	restore := builtin.Override(nil)
+	defer restore()
+	if got := widestPage(); got != want {
+		t.Fatalf("the fixed page changed when this build carried no program: %d bytes became %d", len(want), len(got))
+	}
+	if got := pageAsWeighed(leanShapedAgent(t).config, weighedAt); got != wantLeanPage {
+		t.Errorf("the lean page changed when this build carried no program: %d bytes became %d", wantLeanPage, got)
+	}
+	for _, arm := range []struct {
+		name string
+		want []byte
+		new  func(*testing.T) *Agent
+	}{{"full", wantFixed, fixedShapedAgent}, {"lean", wantLean, leanShapedAgent}} {
+		got, err := json.Marshal(widestBelt(t, arm.new(t)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != string(arm.want) {
+			t.Errorf("the %s tool block changed when this build carried no program: %d bytes became %d", arm.name, len(arm.want), len(got))
+		}
+	}
+}
+
+// The stand-in stays tied to the real Unix program. A new carried program or a
+// changed guide must change the declared widest fixture in the same edit.
+func TestPrefixProgramFixtureMatchesTheCarriedProgram(t *testing.T) {
+	carried := builtin.All()
+	if len(carried) == 0 {
+		return // Windows has no runnable program, but weighs the Unix maximum.
+	}
+	standIn := prefixPrograms()
+	if len(carried) != len(standIn) {
+		t.Fatalf("the prefix fixture has %d programs, this build carries %d", len(standIn), len(carried))
+	}
+	for i, program := range carried {
+		if program.Name != standIn[i].Name || program.Guide != standIn[i].Guide || program.Lands != standIn[i].Lands {
+			t.Fatalf("prefix fixture %d does not match carried program %s", i, program.Name)
+		}
+	}
 }
 
 // atAFixedPlace is a config whose WORKING DIRECTORY is a constant.
@@ -765,12 +897,26 @@ func widestLoadCapability(config Config) string {
 	return loadCapabilityDescription(func(group string) []string { return members[group] }, order)
 }
 
+// fixedShapedAgent is the shipping conversation with the declared widest
+// program fixture, so the belt measurement and the page weigh one shape on
+// Linux, macOS and Windows alike.
+func fixedShapedAgent(t *testing.T) *Agent {
+	t.Helper()
+	shape := beltShapeNamed(t, shippedBeltShape)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.System = ""
+		shape.build(t, config)
+		config.Delegates = prefixPrograms()
+	})
+	return agent
+}
+
 // TestTheFixedPrefixStaysUnderItsBudget weighs what every request carries before
 // anybody has said anything.
 func TestTheFixedPrefixStaysUnderItsBudget(t *testing.T) {
 	reportPrefix(t, prefixArm{
 		what:        "the fixed prefix",
-		definitions: widestBelt(t, shippedShapeAgent(t)),
+		definitions: widestBelt(t, fixedShapedAgent(t)),
 		page:        len(widestPage()),
 		budget:      fixedPrefixBudget,
 		target:      fixedPrefixTarget,
@@ -877,6 +1023,7 @@ func leanShapedAgent(t *testing.T) *Agent {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.System = ""
 		shape.build(t, config)
+		config.Delegates = prefixPrograms()
 		config.ContextWindow = leanWindow
 	})
 	return agent

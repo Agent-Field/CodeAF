@@ -29,7 +29,11 @@ package session
 // commit is how the commit is lost. The matcher is a closed set and nothing
 // else.
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
+)
 
 // spawnFloorRefusal is what propose_task reads back when the person's words
 // are a trivial ask. It names the fix the model can act on: do the command
@@ -37,23 +41,62 @@ import "strings"
 const spawnFloorRefusal = "this ask is one command — do it here. A commit, an undo, a one-file edit or a single read stays in the conversation; handing it to a task is how the work gets dropped."
 
 // refuseProposedTask is every check that can turn a propose_task call around
-// BEFORE a card is raised or a slot is taken: the spawn floor, then a
-// depends_on that can never resolve. Both used to live as endings of
-// [Agent.proposeTask]; they are here so that road does not grow (the
-// complexity ratchet holds it at 16).
-func (a *Agent) refuseProposedTask(spec taskSpec) string {
-	if !a.config.InTask && trivialAsk(a.taskRequest()) {
-		return spawnFloorRefusal
+// BEFORE a card is raised or a slot is taken: the spawn floor where no program
+// could lift it, a proposal that left out the program the person named, the
+// floor again for a proposal that still leaves it out, then a depends_on that
+// can never resolve. They used to live as endings of [Agent.proposeTask]; they
+// are here so that road does not grow (the complexity ratchet holds it at 16).
+//
+// THE PROGRAM THE PERSON ASKED FOR LIFTS THE FLOOR. "fix this file with
+// senior-dev" is a one-file fix on the floor's reading and an ask for a
+// program on the person's: the proposal without `via` is turned back to name
+// it, and the one that names it is not refused for being small
+// (delegate_asked.go). A proposal naming a program the person did not ask
+// for meets the floor as any proposal does.
+//
+// AND THE FLOOR COMES FIRST WHERE NOTHING COULD LIFT IT, so nothing there is
+// pushed toward a program the floor would then refuse. A commit, an undo or a
+// revert is never lifted: a program works on a branch of its own and never
+// moves the person's, so "revert senior-dev's commit" handed to senior-dev is
+// a billed run that cannot do the revert, which is F26 again. And a name said
+// in passing ("fix senior-dev's typo in this file") asks nothing of the
+// program, so only the words that ask for it lift anything
+// ([Config.programsAskedIn]).
+//
+// IT ANSWERS A STAGED CALL, nil for none, because the bounce is not a settled
+// refusal: it marks the message it was made for, and a call withdrawn before
+// it went ahead takes that mark back ([askBounce.Withdraw]).
+func (a *Agent) refuseProposedTask(spec taskSpec) bare.Staged {
+	verb := ""
+	if !a.config.InTask {
+		verb = trivialVerb(a.taskRequest())
 	}
-	if missing, failed := a.graph().doomedDependencies(spec.dependsOn); len(missing)+len(failed) > 0 {
-		if bashBeltAsked() {
-			missing = a.missingRunDependencies(missing)
-		}
-		if len(missing)+len(failed) > 0 {
-			return dependencyRefusal(missing, failed)
-		}
+	if verb != "" && !a.programMayLiftFloor(verb, spec.via) {
+		return bare.Settled(spawnFloorRefusal, true)
 	}
-	return ""
+	if bounce := a.programAskBounce(spec); bounce != nil {
+		return bounce
+	}
+	if verb != "" && spec.via == "" {
+		return bare.Settled(spawnFloorRefusal, true)
+	}
+	if refusal := a.proposalDependencyRefusal(spec); refusal != "" {
+		return bare.Settled(refusal, true)
+	}
+	if refusal := a.programRetryRefusal(spec.via); refusal != "" {
+		return bare.Settled(refusal, true)
+	}
+	return nil
+}
+
+// yourBranchVerbs are the trivial asks that are work on the person's own
+// branch: a commit, an undo, a revert. Naming a program never lifts the floor
+// for them ([Agent.programMayLiftFloor]), because a program works on a branch
+// of its own and never moves the person's, so it could not do them at all.
+var yourBranchVerbs = map[string]bool{
+	"commit": true,
+	"undo":   true,
+	"revert": true,
 }
 
 // spawnFloorWide is the words that mean the ask has MORE THAN ONE piece of
@@ -76,9 +119,17 @@ var spawnFloorWide = map[string]bool{
 // staged five files is still a commit, and converting it is how F26 lost
 // the commit. Breadth of what the turn has touched does not lift the floor.
 func trivialAsk(asked string) bool {
+	return trivialVerb(asked) != ""
+}
+
+// trivialVerb is the verb that puts the person's words on the floor, with any
+// "git" in front of it dropped, or "" when they are not a trivial ask. It is
+// [trivialAsk]'s one reading, and the verb is kept because what can lift the
+// floor depends on it ([yourBranchVerbs]).
+func trivialVerb(asked string) string {
 	words := dropAskLeadIn(normalizedWords(asked))
 	if len(words) == 0 {
-		return false
+		return ""
 	}
 	// An explicit ask for a task lifts the floor. "as a task", "make this a
 	// task", "spin it off", "hand it to a task" is the person OVER RULING the
@@ -86,24 +137,29 @@ func trivialAsk(asked string) bool {
 	// the one-file bug" ran inline and "continue task N" had no task to
 	// continue (R1).
 	if wantsTask(normalizedWords(asked)) {
-		return false
+		return ""
 	}
 	if hasWideSignal(words) {
-		return false
+		return ""
 	}
 	head, rest := words[0], words[1:]
 	if head == "git" && len(rest) > 0 {
 		head, rest = rest[0], rest[1:]
 	}
-	switch head {
-	case "commit", "undo", "revert":
-		return true
-	case "read":
-		return isSingleRead(rest)
-	case "fix", "edit", "change", "patch":
-		return isOneFileOrLineEdit(words)
+	if yourBranchVerbs[head] {
+		return head
 	}
-	return false
+	switch head {
+	case "read":
+		if isSingleRead(rest) {
+			return head
+		}
+	case "fix", "edit", "change", "patch":
+		if isOneFileOrLineEdit(words) {
+			return head
+		}
+	}
+	return ""
 }
 
 // dropAskLeadIn strips the politeness a person puts in front of a command

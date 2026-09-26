@@ -1108,7 +1108,12 @@ func (c *Client) completionInOnePiece(
 			began: logBegan, status: status, served: served, err: cut,
 			responseBody: payload,
 		})
-		c.bill(ctx, c.modelFor(request), &response)
+		// THROUGH THE ANSWERED DOOR, not the bare one: the provider charged for
+		// this 200 whether or not its text was language, and on work that asked
+		// for it an answer with no usage block is priced by its receipt
+		// ([Client.billAnswered]). The bare door banks nothing without usage, so
+		// that charge reached no book at all.
+		c.billAnswered(ctx, c.modelFor(request), &response, len(responseText(&response)))
 		return nil, false, cut
 	}
 	reasonWord, servedWell := answerOutcome(&response)
@@ -1131,7 +1136,7 @@ func (c *Client) completionInOnePiece(
 	})
 	// The money, banked at the same instant the log row is written and for the
 	// same reason: this is where the fact is known. See billing.go.
-	c.bill(ctx, c.modelFor(request), &response)
+	c.billAnswered(ctx, c.modelFor(request), &response, len(responseText(&response)))
 	return &response, len(relearned) > 0, nil
 }
 
@@ -2172,7 +2177,8 @@ func (c *Client) completeWithMessagesStreaming(
 			response: response, reasoningTokens: reasoningTokens,
 			ttft: firstTokenAfter(began, firstToken),
 		})
-		c.bill(ctx, c.modelFor(request), response)
+		// Through the answered door, for the reason the whole-body twin gives.
+		c.billAnswered(ctx, c.modelFor(request), response, content.Len())
 		return nil, false, cut
 	}
 	// A RESCUE IS NOT THE TURN UNTIL IT READS AS LANGUAGE. The hedge used
@@ -2186,7 +2192,9 @@ func (c *Client) completeWithMessagesStreaming(
 			response: response, reasoningTokens: reasoningTokens,
 			ttft: firstTokenAfter(began, firstToken),
 		})
-		c.bill(ctx, c.modelFor(request), response)
+		// A rescue that is not language was still paid for, so it goes through
+		// the answered door too.
+		c.billAnswered(ctx, c.modelFor(request), response, content.Len())
 		return nil, false, cut
 	}
 	// PAST EVERY GUARD, SO THIS LANE SERVED — the recovery half of the quality
@@ -2216,7 +2224,7 @@ func (c *Client) completeWithMessagesStreaming(
 	// Both paths or neither, exactly as the learning above: a streamed answer
 	// is billed by the provider the same way a whole-body one is, and a ledger
 	// blind to one of the two transports is a ledger nobody can reconcile.
-	c.bill(ctx, c.modelFor(request), response)
+	c.billAnswered(ctx, c.modelFor(request), response, content.Len())
 	finished = true
 	observer(StreamEvent{Kind: StreamFinished, Session: session})
 	return response, relearned, nil

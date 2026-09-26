@@ -6,7 +6,15 @@ import "time"
 // machine. The surface sends intent; sizing, shaping, admission and spending
 // remain with the session agent that owns the conversation.
 const (
-	MethodTaskStart = "Task.Start"
+	// MethodDelegateList and MethodDelegateStart are the program door
+	// (internal/session's delegate_door.go): the programs the ENGINE machine's
+	// build carries, and handing a brief to one. They belong to the engine side
+	// for the reason the task door does — the program runs on that machine and
+	// the run spends that machine's money — so a hosted surface lists the far
+	// build's programs and its `/<name> <brief>` starts work there.
+	MethodDelegateList  = "Delegate.List"
+	MethodDelegateStart = "Delegate.Start"
+	MethodTaskStart     = "Task.Start"
 	// MethodTaskRedoStronger runs the newest task again with every seat nobody
 	// pinned one step stronger ([session.Agent.RedoStronger]).
 	MethodTaskRedoStronger = "Task.RedoStronger"
@@ -167,6 +175,13 @@ type TaskStartArgs struct {
 // TaskRedoArgs names the task to run again stronger; 0 is the newest one.
 type TaskRedoArgs struct {
 	ID uint64 `json:"id,omitempty"`
+}
+
+// DelegateStartArgs carries the program's name and the person's brief, both
+// as typed: the name is resolved against the engine machine's build there.
+type DelegateStartArgs struct {
+	Name  string `json:"name"`
+	Brief string `json:"brief"`
 }
 
 // PlannerStartArgs also carries the sizing hint used by the adaptive form.

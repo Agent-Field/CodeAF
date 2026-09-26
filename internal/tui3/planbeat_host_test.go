@@ -324,6 +324,19 @@ func TestHostedPlanPartsCrossTheWireAndFilterThePage(t *testing.T) {
 		t.Fatalf("hosted page step = %#v, want the head withheld for a row that leaves out a record part", page.Steps[0])
 	}
 
+	// THE PAGE CARRIES ITS LIVE STEP, and the room draws it as a call in flight
+	// beside the recorded one, the two under one running line. The screen is
+	// read on the recorded step alone, so the live step is settled first.
+	store, err = plandb.Open(path, "", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ClearLive("root"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
 	openHostedPage(t, a)
 	screen := planRoomText(t, a)
 	for _, never := range []string{workspace, "plandb task overview", "recorded-output"} {

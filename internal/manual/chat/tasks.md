@@ -544,7 +544,9 @@ block in the conversation shows:
 - one dim sentence under it — the first sentence of the summary, capped at 90 cells, and
   left out entirely when it would only repeat the name;
 - the facts about the work: which other window is already in these files, `where:` it will
-  run, and `from your folder as it stands — unsaved edits included`;
+  run, and `from your folder as it stands — unsaved edits included` (not on a program's
+  card: senior-dev works in the folder itself, and its `where:` names the folder and says
+  `on a branch of its own` in a repository);
 - a dim meta line reading `model <full id> · ctrl+e for the brief`. The model id leads
   because it is the one fact nothing else on screen will say again; on a narrow frame the
   hint is dropped and the model kept.
@@ -1202,7 +1204,11 @@ gets dropped. The floor is the words you typed, not how much the reply has alrea
 **What still becomes a task.** Several independent pieces in one message, a sweep across
 many files, a rewrite you would sit and watch: those can still be handed over, proposed, or
 started with `/task`. Typing `/task commit everything` still starts a task, because you
-asked for one.
+asked for one. Asking for a program codeaf carries lifts the floor the same way: for "fix
+this one line with senior-dev", a proposal that hands it to senior-dev is not refused,
+because you asked for senior-dev (the programs page). A name in passing ("fix
+senior-dev's typo in this file") lifts nothing, and nothing lifts it for a commit, an undo
+or a revert: "revert senior-dev's commit" is done here.
 
 ## An answer that stops before your question is finished is carried on — my reply stopped halfway, it said it would do the rest and then stopped, codeaf kept going without me
 
@@ -2288,9 +2294,11 @@ proposal card and the model's own proposals run under the conversation's own lim
 you set it — and under the day's limit above it. An adaptive run they start opens on the
 $100.00 default.
 
-**Every task also has a money limit of its own: $5 unless you set another**, shown on the
+**An ordinary `/task`, or any task codeaf's own worker does, also has a money limit of its own: $5 unless you set another**, shown on the
 Spending tab's `per task` row and set with `/crew cap task <$>`. A call that would spend
-past it is not made, whichever way the task was started, and the task stops there.
+past it is not made, whichever way the ordinary task was started, and the task stops there.
+**senior-dev has its own dollar and time ceilings for each run**, separate from that
+`per task` row; see the senior-dev page for its defaults and how to change them.
 
 Changing the engine's default changes the figure the composer layer opens on; the two are
 meant to be one number and are stated in both places on purpose.
@@ -2744,7 +2752,9 @@ switch, and `tab` comes back.
 **`enter read it as it runs`** — the work belongs to a conversation the engine is running
 that this window can join. Pressing it opens **that task's own transcript**, live, updating
 as the work goes. The trail at the top reads `reading in <that conversation>` so nothing on
-the page can be mistaken for this conversation's own work. `esc` returns.
+the page can be mistaken for this conversation's own work. `esc` returns. A task handed to
+senior-dev has no transcript, so its page is senior-dev's actions under their steps instead,
+exactly as the conversation that started it shows them, with `ctrl+y` for its raw calls.
 
 This page is **read-only**. The keyboard for that task belongs to the window that owns it,
 so the message box says `Reading this task… (esc: main)` and sending anything answers
@@ -4318,7 +4328,7 @@ that is already the strongest allowed says so and starts nothing —
 `this crew is already the strongest allowed · pin a stronger model with /crew pin, or widen /crew models`.
 A task still running is not redone; stop it first.
 
-**At the daily cap a task does not start.** `/crew cap` sets what crews may spend in a day;
+**At the crew's daily cap an ordinary task does not start.** `/crew cap` sets what crews may spend in a day;
 a task asked for once today's spend has reached it is refused with the cap, the spend and
 the ways on — `--cheap` and `--best` are refused the same, because a dollar cap is a cap:
 
@@ -5243,8 +5253,10 @@ number its card and the rail show, `#2`; a part the run made for itself is read 
 place under that task, `#2.1`, `#2.2`, in an order that does not move. A listing shows each
 one's name, title, state and the first line of what came back; reading one task shows what
 it was asked, what came back in full, what the run's checks found, and its last steps. A
-store's own id is never shown. A finished task is asked about this way and is never redone
-or rechecked by hand.
+task handed to senior-dev also says how long it has taken — `#3 · <title> · done · ran 22m 51s`,
+or `running for 3m` while it goes — and it is read this way whatever the task belt is set
+to. A store's own id is never shown. A finished task is asked about this way and is never
+redone or rechecked by hand.
 
 Tasks from earlier sittings and from other windows are still listed after the run's, and a
 number the run does not hold is answered the way it always was.
@@ -5486,7 +5498,8 @@ A task page opened from another conversation keeps a separate draft, identified 
 conversation and task. Its words do not replace your conversation draft or a local task
 with the same number. The page is a reading view: sending, steering, and stopping belong
 to the conversation that owns the work. If its status connection closes, the footer says
-`reading` and the page keeps the last known state with an explanation.
+`current status unavailable — showing the last known state` and the page keeps its last
+known state.
 
 A reading view continues checking its owner after the task finishes. If that
 conversation opens something else, the page explains that it is showing its last
@@ -5621,7 +5634,10 @@ and breadcrumbs remain available.
 ## will the chat do it itself or start a task?
 
 One read, one edit or one command the chat does itself. Anything with parts goes
-out as tasks. There is **one way** the chat puts work out, a task:
+out as tasks. Complex coding work a program codeaf carries is for, such as fixing an
+issue in a mature codebase, goes to that program (senior-dev), and so does work you
+name a program for; the programs page says when. There is **one way** the chat puts work
+out, a task:
 
 - **hand off:** the chat proposes a task; approving the card, or letting its
   countdown run out, starts it as a run in the conversation's plan.
@@ -5657,3 +5673,11 @@ the run has moved and somebody is looking, rather than every time you look, and
 once when the run lands. The **now** sentence also appears under the run's dot
 row in the rail, dim and two lines at most. Without a model key the lines are
 absent; the task facts remain available on their own.
+
+Each refresh is one model call, and it is counted like any other: it is in the
+conversation's spend on the status line, in `/cost` and in the spending ledger,
+even when its answer could not be used. Two looks at the same moment buy one
+refresh, not two. A run with no rows yet buys none, and neither does a task
+handed to a program such as senior-dev: its page is the actions it took, each
+under the step of its process, and its row already says the step it is in, so it has
+no four lines.

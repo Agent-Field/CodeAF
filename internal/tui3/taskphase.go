@@ -136,16 +136,17 @@ func taskPhaseLine(node *taskNode) string {
 // deliberate rather than an oversight. This row is drawn against [app.taskNow],
 // which FREEZES while somebody is standing in the node's room — a number
 // climbing in the corner of the screen is pressure applied to a person who has
-// already gone to look — and the room's own row ([app.roomCallRow]) counts on
-// [app.now], because inside the room the seconds this request has been out are
-// exactly what they went there to see.
+// already gone to look — so while it is frozen the row says the phase and leaves
+// the request's figures out rather than draw them stopped; the room's own row
+// ([app.roomCallRow]) counts on [app.now], because inside the room the seconds
+// this request has been out are exactly what they went there to see.
 func (a *app) railPhase(node *taskNode, width int) []string {
 	word := taskPhaseLine(node)
 	line := fit(word, width)
 	if line == "" {
 		return nil
 	}
-	if call := node.phaseCall; call != nil {
+	if call := node.phaseCall; call != nil && node.froze.IsZero() {
 		fields := append([]rowField{rowSay(word)}, a.callFields(call, a.taskNow(node))...)
 		if said := rowLed(fields, width); said != "" {
 			line = said

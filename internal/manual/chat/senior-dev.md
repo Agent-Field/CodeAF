@@ -1,0 +1,819 @@
+# senior-dev
+
+## What /senior-dev does — hand one large change to senior-dev, an autonomous coding agent
+
+`/senior-dev <brief>` hands the whole brief to **senior-dev**, an autonomous coding agent
+codeaf carries. At a shell the same program is `codeaf senior-dev <brief>`. It is built
+into codeaf and runs only through it: there is nothing to install and no senior-dev of
+its own to start.
+
+It works alone in your folder itself, on a branch of its own when the folder is a git
+repository, and your own branch never moves. It writes your brief down word for word, reads
+the repository, keeps a checklist of what the brief asks for, pins a command that shows
+the work passes, and edits until it believes the change is done. Then it **submits**:
+the tree is frozen at that moment, so nothing it does afterwards can change what it hands
+back. It then runs the project's own build and tests on the frozen tree, and if anything
+moved after it submitted, the tree is put back to what it submitted.
+
+It is for complex, multi-part coding work: fixing an issue in a mature codebase whose
+cause spans files, a feature with its tests, a rewrite across a package, a migration.
+codeaf hands work like that to it by itself, and uses it whenever you name it (the next
+section). Its brief has to settle everything, because nobody will be asked anything.
+
+## Will codeaf use senior-dev by itself — when does codeaf hand work to senior-dev, how do I make codeaf use senior-dev, stop it using senior-dev
+
+**Yes, for the work it is for.** The chat's model is told to hand complex, multi-part
+coding work to senior-dev, whole, rather than doing it in the conversation or giving it
+to codeaf's own worker: fixing an issue in a mature codebase whose cause spans files, a
+feature with its tests, a rewrite across a package, a migration. It proposes the task
+with `via` naming senior-dev, and the card goes up like any proposal's, with its
+countdown. A change you would make in a few steps it still makes itself.
+
+**Naming it is enough.** Say senior-dev in your message, in any spelling: "fix issue 412
+with senior-dev", "/senior-dev should take this", "senior dev". The model is told to use
+it, and if it proposes the work without senior-dev anyway, codeaf turns that proposal
+back once, with any others in the same reply, and tells it you named senior-dev. That
+holds even for a one-file fix you ask senior-dev for, which otherwise stays in the
+conversation, and through a correction you type while it works that does not name
+senior-dev again. A commit, an undo or a revert stays in the conversation even when it
+names senior-dev ("revert senior-dev's commit"): senior-dev works on a branch of its own
+and never moves yours.
+
+**Saying not to is kept too.** "don't use senior-dev for this" names it, so the first
+proposal is turned back the same way; the model reads that and proposes it again as it
+was, and that proposal passes.
+
+**Typing `/senior-dev <brief>`** starts it at once, with your brief word for word and no
+card. Work codeaf moves to a task on its own, because a reply ran long or looked like
+work, goes to codeaf's own worker, never to senior-dev.
+
+## Watching senior-dev work — open its task, what it is doing step by step, how long it has run, stop it
+
+A senior-dev run is a task of the conversation that started it. Its row is on the side
+list wearing `[senior-dev]` after its title, with the step it is in and what it has spent
+so far under it, and a card in the conversation lands when it ends. Its `ended` card
+stands outside the chat's `worked` fold as soon as the run lands, including while its
+task page is open; the chat's own work in the wake reply still folds. Click the row or the
+card, or follow a task link to it, and its task opens **inside the conversation's own
+tab**: the tab strip stays on top, with the conversation's tab selected and the `home` tab beside
+it. senior-dev gets no tab of its own.
+
+The task shows **what senior-dev is doing**, action by action, each under the step of its
+process it served — the workspace it set up, what it read and ran and changed, its
+hand-in, the build and tests it ran itself, and how it finished — with the call to its
+model in flight as the last line, `◐ thinking` and its seconds. The next section says what
+each step means. **Click an action to see the whole step** — the command or file it was
+called with and what came back — and click it again to fold it. **Every change to your
+files wears git's `+N,-M`** at the right of its line — the lines it added in green and the
+lines it removed in red — so you can see how much each step moved the work; senior-dev's
+own spec, pinned check and checklist wear none.
+
+The one line over it is the task's title with its `[senior-dev]` badge, a `▸ brief`
+dropdown, and the step, the spend of the run's ceiling, the number of model calls and how
+long the run has been going — the same time the side list and the landed card show,
+counted from the moment codeaf handed the work over. **The brief is behind the dropdown**:
+click `▸ brief`, or press `ctrl+o`, and the whole brief senior-dev was handed is drawn in
+grey under the title; the same again hides it. While the
+task is open, its row on the side list leaves its clock out rather than show a time that
+stopped when you clicked; the true time is back on the row the moment you leave.
+
+**The raw calls are one key away.** `ctrl+y` turns the page to senior-dev's calls to its
+model — what it sent, what the model answered, and which model it was — and `ctrl+y`
+turns it back; the key row says `ctrl+y calls` or `ctrl+y actions`.
+
+`esc`, a press on the conversation's tab, or a press on the `home` tab leaves it, and the run goes
+on. `x` over an empty box, `/stop`, or `Stop` on that line asks `Stop this task?` first.
+Nothing typed there reaches senior-dev: the box says `senior-dev reads no messages — say
+it to main`, and `enter` says the same line and keeps your words in the box.
+
+## What is senior-dev doing — the steps on senior-dev's page, what spec, explore, pin, checklist, implement, submit, verify mean
+
+The word down the left of senior-dev's page, and on its row while it runs, is the step of
+its own process an action served. senior-dev has no planner, reviewer or helper agent:
+one model works through the middle steps in the order it chooses, so a step's word comes
+back whenever it returns to that step.
+
+- `setup` — it set up the folder it works in: `git`, or `no git history` for a plain
+  folder, whose checkpoints it keeps outside it.
+- `spec` — it wrote your brief down word for word as its spec, and read it back.
+- `explore` — it read, searched and ran commands before changing any file.
+- `pin` — it wrote down the one command that shows the work passes.
+- `checklist` — it listed what the brief asks for, and ticked it off.
+- `implement` — it changed files, and everything it read or ran after its first change.
+- `submit` — it handed in its work: `handed in its work · 4 files · 5 of 5 ticked`, or
+  `its hand-in was refused` and why. The work is frozen at that moment.
+- `verify` — with no model, it ran the project's own build and tests itself, one line per
+  command with `passes` or `fails · exit N`, then what they came to. It also checks the
+  tree this way when its model stops without handing in.
+- `finish` — what it did to the tree it leaves, the size of its change, and its ending.
+
+Lines with no word of their own are senior-dev steering its model in the step already
+under way, drawn quieter: `told its model what it found, and to finish and hand in (nudge
+1)`, `time is short: gave its model one last turn to finish`, a dropped call retried, a
+tool call written as text corrected — and `compacted its memory` and `switched to <model>`
+with its reason.
+
+## How do I tell a senior-dev task from a normal task — the [senior-dev] badge, [sd], what the brackets on a task mean
+
+A task handed to senior-dev wears its name as a badge wherever a task is named:
+`[senior-dev]`, bold in the accent colour, after the task's title. A normal task — one
+`/task` starts, or one the chat hands to codeaf's own worker — wears no badge.
+
+- **The side list** wears it after the title. When the list is too narrow for
+  everything, the task's number (`#7`) goes first; then the badge shortens to its
+  initials, `[sd]` — the narrower list a frame under 120 columns draws reads
+  `⠋ rewrite the… [sd] #7` — and the title is cut last. Widened with `w`, the list has
+  room for the whole badge and the number.
+- **The card you answer** asks `wants to start a [senior-dev] task: <title>`, and the
+  card's top line wears the badge beside the task's name.
+- **The task's own page** wears it beside the title — a page onto another
+  conversation's task too, with that task's own badge and never the one a task of the
+  same number in this conversation wears.
+- **The task strip**, the row of chips that stands in for the side list under 100
+  columns, wears `[sd]`.
+- **The `@` list, the tasks place and home** — its list of work, a landing under
+  `needs you` and a line under `since you left` — wear `[senior-dev]`, or `[sd]` where
+  the row is short of room. The title is cut before the badge, and a `since you left`
+  line cuts what the work came to first: `rewrite the auth middleware [senior-dev] · it…`.
+- **The chat's `tasks` tool** says `via senior-dev` on the row, so the chat can tell too.
+
+The brackets are always drawn, so a terminal with no colour, the row of the task you
+have open, and a screen reader all still show the badge. It is not a button: a press
+anywhere on the row opens the task.
+
+## How do I ask senior-dev for a change — writing the brief, what to put in it
+
+The brief is everything senior-dev knows about what you want. It is saved as
+`.senior-dev/spec.md` in the folder it works in exactly as you wrote it, and it is read
+back from there whenever senior-dev summarises its own history, so the words you chose
+are never paraphrased away.
+
+Write it the way you would hand work to someone who cannot reach you:
+
+- the files, packages or commands involved, by name;
+- what done means, and how to check it (the test to run, the output to see);
+- the constraints: what must not change, and the wrong answer to avoid.
+
+In the chat, `/senior-dev` followed by the brief starts it as a task. At a shell, flags go
+before the brief, and `--` ends them: `codeaf senior-dev run --variant high -- rename the
+config loader`. Everything from the first word that is not a flag onwards is the brief,
+so a flag written after the brief becomes part of it.
+
+## Running senior-dev on a repository you have not cloned — a benchmark task, another project
+
+senior-dev works in the folder it is handed and nowhere else, so it has to be handed the
+repository the work belongs in.
+
+In the chat, ask for the work and name the repository, and the commit if the work names
+one. The model clones it first, into a new folder, at that commit, and hands senior-dev
+that folder. A benchmark task works this way: senior-dev works in the project's own
+repository and not in the benchmark's, so the benchmark's files, its reference solution
+among them, are not in its folder.
+
+At a shell, clone the repository yourself, then run `codeaf senior-dev` inside it or pass
+the folder with `--dir`.
+
+A brief that names the folder it works in is fine: senior-dev reads it as written. A
+brief that tells senior-dev to make a checkout of its own somewhere else does not work:
+its file tools refuse to write outside its folder, and what a shell command changes out
+there is not part of the task.
+
+## What senior-dev cannot do — it cannot ask you anything, wait on another task, be retried or carried on, no step cap, no Windows
+
+**It cannot ask you anything.** Nobody is at its keyboard, so the `question` tool is
+absent from the model's tools. Put everything it would stop and ask into the brief.
+
+**It cannot wait on another task.** A task handed to senior-dev starts the moment it is
+approved, so a proposal whose `depends_on` names work that has not finished is refused
+before its card: `depends_on names task 3, which has not finished, and senior-dev starts
+the moment it is approved — it cannot wait. Propose it again once task 3 has landed, or
+with depends_on left out if nothing must finish first.` The chat is told when that task
+lands and can propose it again then. The other way round, a task may name a senior-dev
+run that ended done in its `depends_on` (the run's work is on its branch, in its folder),
+but not one still going: `depends_on names task 5, a program's run that has not ended,
+and a task cannot wait on one.`
+
+**A run is never resumed, but codeaf may send the work back.** A run that ended is not
+started again: `senior-dev's run is never carried on: its work is left where it ended, and
+a new hand-off starts a new run`. Its card offers no retry, and the `@` list offers no
+steer on a running one, because it reads no messages. What codeaf does instead is the next
+section.
+
+## What codeaf does when senior-dev ends — its ending, checked, sent back, retry, at most twice, ask before spending more
+
+**senior-dev's ending goes to the chat, not to you.** The moment a run ends, the
+conversation wakes on its own with how it came out — passed its own check of the project,
+nothing finished checking it, handed in work that does not pass, stopped on a limit, or
+broke — and acts on it:
+
+- **passed**: the chat looks at what changed against what was asked, then tells you where
+  the work is and offers to merge its branch;
+- **nothing checked it**: the chat runs the project's checks on its branch itself, then
+  acts on what they show;
+- **does not pass, or did not finish**: the chat fixes a small gap on its branch itself, or
+  hands the work back to senior-dev with a brief sharpened by what failed;
+- **stopped on a dollar or time limit**: the chat never sends it back on its own, because
+  another run spends more of your money: it says what is done and what is left, and asks;
+- **broke**: the chat hands it back once if the cause looks passing (a network or model
+  service failure), and otherwise tells you what broke.
+
+**codeaf sends senior-dev back at most twice on its own** for one piece of work. A third
+hand-off it tries, or one after a limit, is refused
+(`senior-dev has been sent back to this work 2 times already, the most codeaf does on its
+own: tell the person where the work stands and let them decide`), and you decide. A
+hand-off you ask for yourself is yours, and starts the count again. This count holds
+through wake turns and a reopened conversation until you send a message. Each hand-off still
+shows its card, with the same countdown as any other, so you can stop one.
+
+**Every run on the same work stays on one branch.** A run handed a folder that the last
+senior-dev run left on its branch carries on on that branch rather than cutting another:
+`it works alone in <folder> itself, carrying on on its branch <branch>, where the last run
+left it; your branch main does not move`. Its ending names your own branch, and a run that
+adds nothing never deletes what an earlier one committed. Switch the folder to another
+branch first and the next run cuts its own.
+
+**The card stays quiet.** senior-dev's landed card says the run `ended` (never a red
+cross) and `senior-dev's ending went to the chat`; the chat's own reply is where you read
+what came of the work. `ctrl+o` on the card still shows senior-dev's own words.
+
+**It has no step cap.** Every run has finite dollar and wall-clock ceilings: by default,
+**up to $10.00 and 3h**. `/budget conversation` can lower the dollar ceiling to
+what remains. At a shell, `--max-cost` and `--max-hours` set either ceiling explicitly.
+The proposal card, typed command's start note and shell run's first line say which ceiling
+applies. These ceilings are enforced outside senior-dev whatever it does.
+`/budget conversation 1.5` in an open chat binds $1.50 to that conversation before
+its receipt appears, so the next approval card and run use $1.50 or what remains.
+
+**It reaches a model only through codeaf.** Its engine receives a short-lived token for
+codeaf's loopback model API, but its model-written shell commands inherit neither that
+token nor provider-key environment variables codeaf recognizes. Those commands can
+still read files their process can read, including a profile stored on disk. A
+`senior-dev.json` in your folder that sets
+`apiKey`, `baseURL` or `providerRouting` is
+refused by name, because codeaf decides which model service serves each call.
+
+**It writes only inside its folder.** Its file tools (`write`, `edit`, `apply_patch`)
+refuse any path outside the folder it was handed, including one reached through a link,
+and say so to its model; it can still read files elsewhere. Its shell is not fenced the
+same way, and nothing a shell command changes outside the folder is part of the task.
+
+**It keeps its record in git if git is there**, on its own branch. Where there is no git
+history it keeps its checkpoints outside the folder instead and commits nothing — it
+reads that itself, and never ends for want of git (see the section on folders that are
+not a git repository).
+
+**On Windows it is absent**: there is no `/senior-dev` and no `codeaf senior-dev`. Its
+engine needs a Unix shell, process groups and file locks, so Windows builds leave it out
+rather than carry something that fails every time.
+
+## Can senior-dev use the internet — webfetch, websearch, models.dev, network off
+
+Yes. Its `webfetch` tool can fetch URLs by default. Web search through Exa and Parallel
+is opt-in: set `SENIOR_DEV_ENABLE_EXA=1` or `SENIOR_DEV_ENABLE_PARALLEL=1` before
+starting codeaf. `SENIOR_DEV_NET=off` withholds `webfetch` and `websearch` for that run.
+Senior-dev also requests model sizes and capabilities from models.dev when its cached
+catalog is absent or stale. If that site cannot be reached, the run uses conservative
+model limits and still calls models through codeaf's loopback API.
+
+## What happens to background commands after senior-dev ends — stop and detached processes
+
+On Linux, senior-dev's engine ends every process its shell started when the run ends,
+you stop it, or it reaches a ceiling, including detached processes that clear their
+environment; the engine follows its own process tree. If the engine itself
+is killed with SIGKILL, codeaf makes a best-effort sweep for children that kept its
+private launch marker. On macOS, a process that detaches itself may outlive the run.
+On Windows, senior-dev is unavailable.
+If Linux cannot enable the engine's subreaper, the run refuses before starting
+work: `senior-dev cannot contain its shell processes on this machine: <error>`.
+
+## How does senior-dev run Python tests — pytest, unittest, missing pytest
+
+senior-dev chooses a project's test command in this order: CI, `AGENTS.md`, a
+declared script such as a Makefile `test` target, `README.md` or
+`CONTRIBUTING.md`, then an ecosystem default. For a Python project with test
+files, the default is `python3 -m pytest` when pytest is installed or declared.
+Otherwise it runs unittest discovery in each top-level `test/` or `tests/`
+folder holding `test*.py`; without either folder it runs plain
+`python3 -m unittest discover`. A folder with `__init__.py` uses `-t .` to
+resolve project imports. Older Python cannot use `-t .` on a folder without
+`__init__.py`, so that folder uses `-s <folder>` alone. A test command that
+reports it ran no tests leaves the submission unchecked, even if it exits zero;
+the ending says `no tests were found by <command>`.
+
+## Can I run senior-dev in a folder that is not a git repo — a plain folder, no git, --in-place, operation not permitted, .Trash
+
+Yes. **senior-dev uses git only if it is there.** A folder with no git history — a plain
+folder, a repository with no first commit yet, a broken `.git`, a machine with no git — is
+worked in as it is: senior-dev reads that itself when it starts, keeps its checkpoints
+outside the folder and makes no commits. A folder inside a git repository whose root is
+your home folder (a dotfiles repository) is worked in the same way, because codeaf starts
+senior-dev with `--in-place` there: no branch is ever cut in your dotfiles.
+
+When it ends its changes are already in the folder. The task's page says `its work is in
+<folder>, which has no git history, so nothing was committed` (or, under a repository at
+your home folder, `its work is in <folder>; the git repository around it is at <repo>,
+which holds your home folder, so codeaf cut no branch there and committed nothing`).
+
+It works in your folder itself. Edits saved while it runs can join its work;
+after submission, edits the restore would replace are set aside as described
+under "Can I keep editing while senior-dev works?" below.
+
+**A folder or file in it that senior-dev may not read is skipped**, not a reason to stop:
+it is in none of its checkpoints, and nothing of it is changed or removed. senior-dev
+needs no Full Disk Access; a folder macOS keeps to itself (`operation not permitted`) is
+skipped like any other. It is never started on your home folder or a folder above it
+(see the programs page): to check what it changed, it reads every file in the folder,
+and your home folder is not one project.
+
+senior-dev used to stop at once there with `workspace is not a git repository:
+<folder>; run with --in-place to work in a plain folder`, which the chat could not act on.
+It no longer does, whatever flags it is started with.
+
+## Can senior-dev work in a gitignored folder inside a repo?
+
+Yes. A folder git ignores inside a larger repository is worked in place like a
+plain folder. codeaf does not widen it to the enclosing repository, cut or
+delete a branch there, or commit any of its files. What senior-dev writes
+stays in the folder. The ending says `its work is in <folder>; git ignores
+this folder inside <repo>, so codeaf cut no branch and nothing was committed`.
+The start receipt says `git ignores this folder inside <repo>, so codeaf cuts no
+branch there and commits nothing`.
+
+## Why can't codeaf edit files while senior-dev is working — the folder is senior-dev's while it runs, a write or a task refused, bash, your own editor
+
+senior-dev works in your folder itself, so **the folder is senior-dev's until the run
+ends**: once it has submitted, anything changed there is put back to what it submitted
+and a file added there is removed after a copy is kept outside the folder. So
+nothing else of codeaf's writes there meanwhile, from any conversation, window or shell:
+
+- the chat's `write` and `edit`, `edit_video`, `workspace_restore`, `workspace_merge`,
+  and a picture, music, video or speech saved there, including unnamed default
+  outputs for `edit_video` and generation, are refused: `<file> is in <folder>, where
+  senior-dev, task 4
+  (Fix the parser), is working, so nothing was written; wait for that run to end, or stop
+  it, then write there`. Reading stays open.
+- a task on that folder, inside it or around it — proposed, typed with `/task`, a quick
+  task, or one whose turn to start comes — is refused before it starts: `<folder> is
+  busy: senior-dev, task 4 (Fix the parser), is working in it, and nothing else of
+  codeaf's works there until that run has ended; wait for it, or stop it, then ask again`.
+- a task already running when it started lands beside it: `its branch <branch> was kept:
+  senior-dev, task 4 (…), is working in it — bring it in when that run has ended`. A
+  `/land` of the chat's changes there is refused the same way, and waits.
+
+**`bash` is not fenced**: codeaf cannot know what a command writes. **Neither is your
+own editor**: what you save there while it runs joins its work, or is put back.
+
+## Can I keep editing while senior-dev works?
+
+Yes. In a git repository, edits saved before senior-dev submits can join its task
+branch's commits; the ending commit includes non-ignored files left in the folder.
+In a plain folder they stay in place, with no commit. If a submitted change or an
+earlier checkpoint has to be restored, codeaf first copies every changed tracked
+file and new file not ignored when the run started that restore would replace into a rescue folder under
+codeaf's state root, outside your project. The submitted candidate is then put
+back. The ending says exactly: `Files that changed in the folder before senior-dev
+restored its checkpoint were set aside in <path>`. The shell ending, the task's
+end record and the chat's landing all carry that path. The path holds the bytes as they
+were before the restore. A tracked file deleted after submission is named in
+`deleted-files.txt` there, and the ending names that manifest. A later restore in
+the same run has its own subfolder. With nothing to rescue, no folder is created
+or named. If the copy cannot be made, nothing is restored and your folder is left
+as it was; the run then does not say its build and tests passed, and the ending
+adds `The folder changed after senior-dev's last check and could not be put back
+(<why>), so it also holds later changes that nothing checked`.
+If codeaf cannot compare the folder with the submitted candidate at all, it
+also leaves the folder untouched and ends unchecked: `The folder could not be
+checked against what was verified (<why>), so it may hold later changes that
+nothing checked`.
+Files git ignored when the run started are not committed even if senior-dev
+changes `.gitignore`. Python `__pycache__/`, `.pytest_cache/` and `*.pyc` files
+made by its checks are not committed either. Those files stay in your folder.
+
+## What does a rescue copy, where is it kept, and how large can it be?
+
+Before restoring a submitted candidate or checkpoint, senior-dev copies files
+changed after submission that the restore would replace, including files newly
+ignored by a rule added during the run. It records later deletions in
+`deleted-files.txt`; links are kept as links, and files ignored when the run
+started are left in place. The copy is under the state root at
+`v3/carried/senior-dev/rescued/run-…` (normally
+`~/.codeaf/v3/carried/senior-dev/rescued/run-…`), outside the project. If the
+state root itself is inside the project, the rescue instead uses the machine's
+temporary `codeaf-rescued/` folder so the restore cannot erase its own copy.
+The rescue folder is private to your account (mode `0700`); copied regular files
+and the deletion manifest use `0600`. Each copied file is limited to **25 MiB**
+and one rescue to **250 MiB** total. If a file or the total exceeds the limit,
+senior-dev refuses the restore before changing the folder; the ending says it
+could not be put back and that the folder holds later changes nothing checked.
+
+## Its notes — .senior-dev, its checklist, its session database, moved out when it ends
+
+senior-dev keeps its own records in `.senior-dev/` in the folder it works in: the brief,
+its checklist, the command it pinned, its session database and its whole conversation
+with its model. **They are moved out of your folder when the run ends or you stop it**,
+into the task's record folder beside `delegate-conversation.jsonl` (a shell run's record
+folder at a shell), and the page adds `its notes (.senior-dev/) are kept in <path>`. So
+they never end up on a branch, and the next run in that folder never reads the last
+one's checklist as its own. A `.senior-dev/` already in the folder when the run began is
+left where it is, and never ends up on a branch either.
+
+## Where does senior-dev put its work — its own branch, checked out in your folder, not merged, not squashed
+
+In a git repository, codeaf cuts a branch of its own for the run (`task/<title>-<id>`)
+in your folder and checks it out there, and senior-dev works on it. senior-dev commits
+each file it writes, except initially ignored files and test caches (`wip(write):
+<path>`, `wip(edit): <path>`), on that branch, which is
+how it keeps a record to restore from; they stay there, and nothing squashes them.
+If HEAD leaves that branch, the per-write commit is skipped and the write stays
+uncommitted in the checkout.
+
+When the run ends — finished or not, stopped, or crashed — and HEAD is still on that
+branch, codeaf commits eligible work it left uncommitted, excluding paths ignored at
+the start and known test caches, in one commit whose subject is the task's title and
+whose body is senior-dev's own ending (unless codeaf itself closed first: then nothing
+is committed), and **leaves the branch checked out**, so the work is in your folder
+when you look. Nothing is merged into your own branch. The task's page
+and the conversation both say ``its work is on the branch <branch> in <folder>, N files,
+and that branch is checked out there; your branch <yours> is as it was: `git -C '<folder>'
+switch <yours>` goes back to it, and `git -C '<folder>' merge <branch>` from there brings
+the work in``. Merge it when you are ready, or ask the chat to.
+
+The finishing commit's model credit names only models recorded as answering a call in
+that run, including a model that answered in place of the one asked for. If no model
+answered, there is no `Assisted-by` trailer. The attribution setting still decides
+whether answered model names are shown.
+If senior-dev runs `git commit` itself, the commit uses codeaf's run identity rather
+than your Git identity. The `Assisted-by` credit is added only to a finishing
+commit codeaf makes when there is something left to stage. When the branch is
+already clean, codeaf makes no commit for credit. It never amends, rebases or
+rewrites a commit, including one senior-dev or its model made earlier in the
+run, one you pushed, or one you signed.
+
+The ending keeps two witnesses apart: what senior-dev's model said it did
+(`senior-dev's model said: …`) and what senior-dev saw when it ran the project's build
+and tests (`senior-dev observed: …`). Read the second for "did it work".
+
+**A run you stop keeps its work the same way**: the stop says `its work so far stays on
+its branch <branch>, checked out in <folder>` at once, and the page then says where it is
+in the words above. A merge senior-dev's shell left half done is never committed: the
+page says what it left `could not be committed (<folder> is in the middle of a merge)`.
+
+**A run that changed nothing leaves nothing**: your own branch is checked out again, its
+empty branch is deleted, and the page says `it changed nothing, so <folder> is back on
+your branch <yours> and its branch <branch> was deleted`.
+
+## Does senior-dev change my branch — your branch never moves, going back
+
+No. Your branch (or, when your checkout was on no branch, the commit it was on) is
+written down before senior-dev starts, and codeaf never writes to it, resets it or
+merges into it. After the run your folder is on senior-dev's branch; `git -C '<folder>'
+switch <yours>` goes back, and the page names the exact command. From no branch it
+names `git -C '<folder>' switch --detach <commit>`. codeaf's own switches run with your
+repository's hooks turned off: both go between two names for one commit, so a hook has
+nothing to do there.
+
+## What if HEAD moves to main or detaches, or my branch moves, while senior-dev is working?
+
+senior-dev's shell can still run `git checkout`, and a brief that says "work on a new
+branch" makes that likely. **So a brief need not ask for a branch: the work already has
+one.** If HEAD is not on its branch when the run ends, codeaf makes no finishing
+commit and does not switch branches. Work left uncommitted stays in that checkout.
+The page says where HEAD is and what its task branch already
+holds: `senior-dev left <folder> on the branch <other> instead of its own branch
+<branch>, so codeaf made no finishing commit and did not switch branches; the
+checkout has N files uncommitted; <branch> holds N files; your
+branch <yours> was not given a commit by codeaf` (or `on no branch, at <commit>`).
+For a clean checkout it says `no uncommitted files were left in that checkout`.
+
+**codeaf reads your branch again before it says it is as it was.** If something moved it
+during the run, the page says `your branch <yours> moved during the run, from <commit>
+to <commit>, and codeaf did not move it: look at it before you push or merge it`, and a
+run that changed nothing is not switched back onto it: `it changed nothing, but your
+branch <yours> moved during the run, from <commit> to <commit>, so codeaf did not switch
+back to it: its empty branch <branch> is still checked out in <folder>`. A branch deleted
+meanwhile reads `your branch <yours> is gone: it was at <commit> when the run began, and
+codeaf did not make it again`.
+
+## senior-dev refused: changes that are not committed — a dirty checkout, uncommitted changes, a merge in progress
+
+senior-dev works in your checkout itself, so it starts only on a clean one. **A repository
+with changes that are not committed — modified, staged or untracked files — is refused
+before anything starts**, nothing is switched and nothing is spent: `<folder> has changes
+that are not committed (a.go, b.go, c.go and 2 more); commit or stash them, then ask
+again`. senior-dev's own `.senior-dev/` does not count. A checkout in the middle of a
+merge, a rebase, a cherry-pick or a revert is refused the same way: `<folder> is in the
+middle of a merge; finish it or abort it, then ask again`.
+
+Typing `/senior-dev <brief>` in that checkout shows the refusal without `/task`'s note
+about unsaved edits travelling into a copy: senior-dev makes no copy.
+
+In the chat the model is told this before you are shown a card, and can commit or stash
+the changes itself if you ask it to; at a shell the run prints `error:` and the sentence,
+and leaves.
+
+## senior-dev refused: the folder is busy — one run per folder, a folder inside it, another window, a shell run
+
+One folder takes one senior-dev run at a time, from any conversation, any window or a
+shell. A second is refused, naming the one working there: `<folder> is busy: senior-dev,
+task 4 (Fix the parser), is working in it, and one folder takes one program run at a
+time; ask again when that run has ended` (or `senior-dev, a run started at a shell`).
+
+**So are the folders inside it, and a folder around it.** A run on a folder of projects
+puts back whatever changed anywhere under it once it has submitted, so a run in one of
+those projects is refused too, naming the folder held: `<folder> is busy: senior-dev,
+task 4 (…), is working in <held folder>, which holds it, and one folder takes one program
+run at a time; ask again when that run has ended` (`which is inside it` the other way
+round). Two runs in two folders side by side both go.
+
+The hold goes with the codeaf holding it, however it ends, so a crash never leaves a
+folder refused.
+
+## What a senior-dev run costs — model calls, the dollar ceiling, which models
+
+Every model call senior-dev makes goes through codeaf, which serves each run its own
+model API. So every call is priced like one of codeaf's own, shows in the conversation's
+total, its tokens and its call count, under `tasks` in `/cost`, and under the task on the
+spend place. What the whole run came to is on its row, its landed card once opened
+and the chat's `tasks` tool (`#3 · … · done · ran 22m 51s · $2.30 · via senior-dev`).
+Before forwarding a call, codeaf reserves the larger estimate from the requested model
+and its possible fallback seat when both have known prices, using the request's input size
+and output cap (4,096 output tokens when none is named); if either price is unknown, it
+uses the unpriced bound. It refuses a call whose estimate would cross the run's dollar
+ceiling. In-flight calls can
+finish above their estimates, so the final spend can exceed the ceiling by a call's cost.
+The refusal says `the run's dollar ceiling of $5.00 is reached ($5.04 spent), so codeaf made no call`;
+the shown spend is the money already charged, not the reserved estimate. A refused call ends senior-dev's turn; it runs the project's build and tests on
+the tree it has, and ends there, and the task says
+`senior-dev reached the run's dollar ceiling of $5.00: …` with senior-dev's own words
+after it. A run handed off after the conversation's dollar limit is already spent starts
+nothing and makes no call: its row ends at once with `a dollar limit you set stopped it`.
+An estimated call may be refused while the metered spend is still below the ceiling;
+that ending is still a dollar limit, its line gives the metered spend, and codeaf
+refuses an automatic re-hand-off until you ask for one.
+When a dollar or time limit ends the run, the conversation also gets a line naming the
+limit, what the run spent and the branch or folder holding its work, even if that limit
+prevents the chat from making a wake call.
+
+The time ceiling is kept by senior-dev as well as by codeaf. It holds back the last part
+of its time to land: two fifteenths of the run, at least 45 seconds, at most 12 minutes,
+and never more than a quarter of it. When that window opens it gets one last turn to
+submit.
+
+**When none of your model services can serve the model it asks for**, codeaf answers the
+call on the run's own work model — the one a task's own worker would use — and the raw
+calls on the task page (`ctrl+y`) name the model that answered. When nothing here can serve
+that model either, the conversation's own model may answer instead, and the page names
+whichever model did. A dated build or a variant of the model it asked for, such as
+`deepseek/deepseek-v4-pro-0731` or `qwen/qwen3.6-plus:free`, is that model and is not named
+again; a sibling such as `openai/gpt-5.5-mini` answering for `openai/gpt-5.5` is a different
+model and is named. Which models it asks for is the next section.
+
+## senior-dev on a service that reports no prices — a local proxy, a Codex sign-in, unknown dollar cost
+
+Some model services answer without saying what a call cost: most of the services you
+connect in `/connect` besides the default router, such as a local proxy or runner, a
+vendor's own API, or a plan you signed in to such as Codex. codeaf never guesses a price,
+so each call
+senior-dev makes through one is counted with its tokens and no dollars. The task page,
+the rail and the spend place show no money for those calls, never `$0.00`, and a missing
+price does not mean the service charged nothing.
+
+**A missing price cannot become a dollar charge in the ledger.** To bound concurrency,
+codeaf reserves half the run's dollar ceiling for a call with no known model price and
+admits at most one such call in flight once the recorded spend reaches half the ceiling.
+This limits simultaneous calls but cannot say what an unpriced service actually charged.
+The run's wall-clock ceiling still ends it; use `--max-hours` at the shell
+if you need a shorter or longer run.
+
+## Why a stopped senior-dev run takes a moment to end — the price of the call it was in the middle of
+
+When you stop a run, or codeaf ends it at its dollar ceiling, senior-dev is usually in
+the middle of a model call. That call is still paid for, and the router prices a call cut
+off like that by a receipt codeaf fetches afterwards, usually about twenty seconds later.
+**The run is not over until that receipt is in**, for at most 70 seconds, so the task's
+spend, the run's total and the conversation's `/cost` all include that call. A shell run
+waits the same way before it prints its last line.
+
+A receipt that never comes is kept as a call nobody could price, never as a free one
+(the section `Was I charged for a reply that got cut off` says where those are counted).
+A senior-dev call answered whole whose answer carried no usage block at all is asked
+about the same way, including one codeaf then set aside because it was not usable text:
+priced by its receipt, or kept as a call nobody could price. codeaf never guesses a figure
+for either.
+
+## Which models does senior-dev use — your crew, a model you ask for, its own list, --high
+
+**Ask for a model and it works with that one.** Say which in the chat — "use senior-dev
+with kimi-k2.6", or several: "with kimi-k2.6 and deepseek-v4-pro" — and senior-dev works
+with exactly those, routing among them call by call when there are several; the card and
+the task's first line name them. A name that fits more than one model is put to you to
+settle. A model none of your connected services can serve is refused before the card, by
+name, rather than swapped for another. When a catalog was loaded, a model it cannot size cannot be used: the
+run ends before its first call with `senior-dev cannot work with <model>: …`, and nothing
+is spent. If models.dev is unavailable and there is no cache, conservative limits let
+the run start. The models are fixed when the run starts; changing the crew later does not move
+a run already working. `/senior-dev` typed with a brief uses your crew.
+
+**Otherwise, from the chat it uses your crew.** codeaf hands senior-dev the worker
+(hands) model for its work and the low model for its history summaries. A pinned
+worker is kept; with no worker pin, codeaf reads one profile worker recommendation
+at the start of the run, independent of this task's brief. The per-task worker,
+planner and checker routing and `/crew`'s per-task limit apply to codeaf's own
+tasks, not senior-dev's run. Change the crew and the next run follows. The
+mastermind (brain) model is not used: every call senior-dev makes is either its
+work or a history summary.
+A crew model senior-dev's model catalog cannot size is left out, and its log says so;
+if that leaves no working model, it uses its own list instead.
+
+## Which models does a senior-dev shell run use — --high, fresh profile, no crew
+
+**Its own list** is six open models it routes among call by call, avoiding one for a
+while after it fails: deepseek-v4-flash, deepseek-v4-pro, qwen3.6-plus, kimi-k2.6,
+glm-5.1 and minimax-m2.7. A run with no usable crew model uses it. A shell run
+without `--high` asks the profile for a worker recommendation; if no connected
+model can fill that seat, it says to widen or pin `/crew` models. An explicit
+`--high <model>` runs on a fresh profile with a provider key and no crew rows;
+that model is used without resolving a profile seat.
+
+**At a shell you choose**: `--high` replaces the list, `--low` sets the summaries' models,
+and `--variant` sets the reasoning effort every call asks for.
+
+## What a shell run prints at the end — how long senior-dev ran, what it cost, waiting for the last price, a closed terminal
+
+At a shell, `codeaf senior-dev` first says where it works (`senior-dev · working in
+<folder>, on its own branch <branch>` in a repository), then prints each stage, step and
+model call as it happens, then how the run ended, then where its work is (the sentence a
+task's page says), then `the run's record is in` and the run's record folder, and last one
+line with what it came to:
+
+```
+  277 model calls · $2.30 · 22m 51s
+```
+
+That is the calls, the dollars, and how long senior-dev's own process ran. A figure nobody
+measured is left off, never written as a zero.
+
+When ctrl-c or `--max-cost` stops the run in the middle of a model call, that call is still
+paid for, and its price arrives by a receipt about twenty seconds later. The run waits for
+it before those last lines, and says so on stderr:
+`waiting up to 1m 10s for the price of 1 call that was cut short`. **A second ctrl-c leaves
+at once** instead of waiting; its folder is already finished by then, and only a price
+still owed is missing from the run's line and from this machine's spending ledger.
+
+**A closed terminal or a dropped ssh connection stops the run the way ctrl-c does**:
+senior-dev is stopped and its folder finished. If the codeaf running it is killed
+outright, senior-dev sees within a second that it is gone and stops; its folder is then
+settled by the next run started there, without a commit (see `If codeaf quits while
+senior-dev works`).
+
+Every call is written to this machine's spending ledger, filed as one piece of work named
+after the run's record folder (such as `20260924-150405.000000`). That folder also keeps
+`delegate-program.json`, with the instant senior-dev's process started and the instant it
+ended.
+
+## senior-dev's flags — run, --variant, --in-place, --high, --max-cost
+
+`codeaf senior-dev <brief>` is `codeaf senior-dev run -- <brief>`. codeaf gives every
+program it carries four flags:
+
+- `--dir DIR` — the folder to work in (the current one by default; inside a git
+  repository, the repository's root);
+- `--max-cost USD` and `--max-hours H` — replace the default ceilings for a shell run;
+- `--json` — the program's records on stdout instead of readable lines.
+
+senior-dev's own flags on `run`:
+
+- `--variant NAME` — reasoning effort sent with every call: `low`, `medium`, `high`,
+  `xhigh`; unset leaves the model's own default;
+- `--in-place` — work without git even inside a repository: no commits, and its
+  checkpoints kept outside the folder. A folder with no git history is worked that way
+  without it; codeaf passes it itself under a repository at your home folder;
+- `--high`, `--low` — comma-separated models it routes among; `--low` (its history
+  summaries) falls back to `--high`;
+- `--frontier` — accepted, and changes nothing: no call senior-dev makes uses that tier;
+- `--crew` — the models came from a conversation's crew: one its catalog cannot size is
+  left out instead of failing the run. codeaf passes it with the crew's models.
+
+`codeaf senior-dev help` describes it and its one command, `run`;
+`codeaf senior-dev run --help` prints all of them, codeaf's four included.
+
+## How long did senior-dev take — a run's time, the clock on its page, wall time
+
+A senior-dev run is timed from the moment you handed it off — when its row first reads
+`running`, after its folder is ready and its branch cut — to the moment senior-dev's own
+process ended. Readying the folder before it, and committing what it left after it, are
+not counted. A run whose senior-dev never started is timed to the moment the run ended.
+
+Everything that shows the run's time shows that one span: the line under its page's title
+(counting up from the hand-off while it runs, and stopped at senior-dev's exit once it has
+ended, even before its last changes are committed), its row and card once it has ended, the note the
+conversation is handed when it lands (`done · ran 22m 51s · …`), and the chat's `tasks`
+tool (`#3 · <title> · done · ran 22m 51s · via senior-dev`, or `running for 3m` while it
+goes) — so you can ask the chat how long it took. Each spells it the way the page does — `42s`, `22m 51s`,
+`1h 7m` — except the landed card, which spells it `22m51s`.
+
+The instants senior-dev's process started and ended are also kept in `delegate-program.json`
+in the task's record folder, beside `delegate-stderr.log`.
+
+**After a reopen.** A conversation closed and opened again still shows each run's time, how
+it ended in senior-dev's own words (a `senior-dev did not finish: …` stays that sentence and
+is not turned into a fault), which limit stopped it when one did, `stopped` when you stopped
+it, and the branch its work is on.
+
+**A run nothing is running any more.** If codeaf closed or crashed while senior-dev was
+working, nothing is driving that run: its page reads `incomplete` rather than `running`,
+its time stops at the last thing it did, and it offers no stop.
+
+## Does another conversation or window see my senior-dev run — the @ list, other windows, the project's task list, watching it from another window
+
+Yes. A senior-dev run takes a row in the project's task list the moment it starts, saying
+running, and a second row closes it when it ends, with its time, how it ended, the branch
+its work was kept on and what it cost. So the `@` list, another conversation's `tasks`
+tool, the conversation list's task counts and every other codeaf window on the project
+see it, and a window that has the run's conversation open says it is being worked on. The
+conversation that started the run lists it once, by the number its rail shows.
+
+**Another window can watch it, read-only.** On that window's tasks place the run's row
+stands under `running` with `another window` beside it, and `enter read it as it runs`
+opens the page the conversation that started it shows: senior-dev's actions under their
+steps, the line over them with the step, the spend, the calls and the time, and `ctrl+y`
+for its raw calls. The trail reads `reading in <that conversation>` and the box says
+`Reading this task… (esc: main)`; `enter` over words answers `this window is reading this
+task — go to the conversation that owns it to steer or stop it`. It offers no stop: only
+the conversation that started the run can stop it. This works where the engine is local,
+as every page read from another window does.
+
+If codeaf went away while the run was working, its row is closed the next time that
+conversation is opened, with the time the run had when it was last seen: it reads `codeaf
+closed while senior-dev was running`, or the run's own ending when it had one. A run
+senior-dev had finished but that codeaf closed under before the run was over reads
+`incomplete — codeaf closed while this was still running`.
+
+## Why did senior-dev stop — how a run ends, its log, crashed or stopped
+
+A run ends in one of these ways, and the task's ending says which:
+
+- `finished: …` — it submitted, and the words after say what the project's build and
+  tests did on the frozen tree;
+- `senior-dev did not finish: …` — it ended without submitting, or what it submitted fails
+  the project's own build or tests. It is not drawn as a fault, what it made is still on its
+  branch, and the chat acts on it (see what codeaf does when senior-dev ends);
+- `senior-dev reached the run's dollar ceiling of $5.00: …` — codeaf refused a model call
+  at the dollar ceiling; the words after are senior-dev's own ending;
+- `senior-dev stopped on its own ceiling: …` — it stopped itself at the time ceiling;
+- `senior-dev crashed: …` — the program itself broke, or could not start (no brief, a
+  refused `senior-dev.json`);
+- `stopped by the run: …` — you, or the run it belonged to, stopped it; what follows is
+  what senior-dev said on its way out, usually `stopped before it finished`;
+- `codeaf closed while senior-dev was running` — the codeaf holding its conversation
+  stopped or crashed while it worked (see the next section);
+- `senior-dev had ended; codeaf closed before it could say where its work is` —
+  senior-dev had already exited, and codeaf stopped before it had finished its folder
+  (see the next section).
+
+When it ends without submitting, it still checks the tree it leaves. If the project's
+tests cannot even start there, the tree is put back to the last state whose build and
+tests could run, or to where it began.
+
+## If codeaf quits while senior-dev works — closed, crashed, engine stopped, restarted mid-run, where is its work
+
+senior-dev ends with the engine holding its conversation. Leaving a hosted conversation's
+window only detaches: senior-dev keeps working. When that engine is stopped or crashes,
+the conversation is closed, or a `--no-host` codeaf quits, the run is over: its page and
+side-list row read `incomplete` with `codeaf closed while senior-dev was running`, no
+stage, nothing waiting on you, and no fault; or `senior-dev had ended; codeaf closed
+before it could say where its work is` if it had exited. A run senior-dev had finished
+reads done, with its result.
+
+**Its folder is settled by the next codeaf that finds the run, and nothing is
+committed**: the one that opens that conversation, hands work off in it, or starts a run
+in that folder, a shell run included. codeaf cannot tell senior-dev's last edits from yours
+made there since, so it commits neither and switches nothing. Its branch stays checked
+out when that is where HEAD was left, its notes are moved out, and the page adds `its work so far is on its
+branch <branch> in <folder>, which is checked out there, as it left it, with N files not
+committed; commit or stash them there before you go back to your branch <yours>`. A run
+started in that folder then is refused over those changes, and adds `they may be an
+earlier senior-dev run's, which codeaf could not finish: its branch <branch> is checked
+out there`. If HEAD moved to another branch or detached before the worker went away,
+codeaf leaves that checkout alone too. The ending names where HEAD is, the uncommitted
+files left there, and any commits already on the task branch.
+
+**The run ends where it was last seen working**: senior-dev's exit, or else the end of its
+last model call, its last charge, or its store's last change, whichever is latest. So its
+time and spend do not count the hours codeaf was closed. An orderly close writes the ending
+before senior-dev is stopped; after a crash the next codeaf that opens that conversation,
+or hands work off in it, writes it.
+
+**Nothing carries it on.** The next `/senior-dev` starts a run of its own, with its own
+task and page; the old page stays as the record of what it did.
+
+## senior-dev's log — delegate-stderr.log, agent-summary, a shell run's record folder
+
+Everything senior-dev said while it worked (each stage and what it knew at the time)
+is kept in `delegate-stderr.log` in the task's record folder, and every stage, step and
+ending it reported — what its page draws — in `delegate-actions.jsonl` beside it. Its `agent-summary` there
+adds up each of its agents' calls, time and cost; the cost is the price codeaf's model
+API told it for each call, not a catalog estimate, and a call nobody priced adds nothing. A run started at a shell has
+no task, so its record — that log, its conversation with codeaf, its actions, its stages
+and when it started and ended — is kept in a folder of its own under
+`~/.codeaf/v3/carried/senior-dev/`, one per run.

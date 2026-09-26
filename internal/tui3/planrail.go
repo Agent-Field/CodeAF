@@ -103,6 +103,9 @@ func planRailNode(row session.PlanTaskRow) *taskNode {
 		started:  row.Started,
 		ended:    row.Ended,
 		cost:     row.USD,
+		// AND WHICH PROGRAM HAS THE WORK, so the row wears its badge
+		// (programbadge.go) like the node row it stands in for.
+		program: strings.TrimSpace(row.Program),
 	}
 	node.title = taskTitleOf(node.label, "", node.id)
 	if row.Live.Step > 0 {

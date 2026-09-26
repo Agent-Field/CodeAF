@@ -46,6 +46,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -171,6 +172,14 @@ func (a *app) tasksLoaded(rows []session.TaskIndexEntry, known ...bool) tea.Cmd 
 // the far world. It does not invent live controls: these nodes remain records,
 // and the room behind one is read-only because the remote agent deliberately
 // implements none of the local room-action interfaces.
+//
+// A LIVE ROW IS A STALE ROW ONCE THE STREAM HAS LANDED ITS NODE. The far world
+// is the one this window last fetched, and a run's row reaches its index as
+// `running` at the hand-off: the roster read a landing's own notice asks for
+// adopted that row, put the landed run back to running with no age and its
+// spend from before the landing, and its clock climbed with no end. So a live
+// row never touches a node that has settled, and its age — the node's age at
+// the instant the row was built — is never taken for how long the work ran.
 func (a *app) adoptFarTaskRows(rows []session.TaskIndexEntry) {
 	if a.tasks == nil {
 		a.tasks = map[uint64]*taskNode{}
@@ -181,6 +190,9 @@ func (a *app) adoptFarTaskRows(rows []session.TaskIndexEntry) {
 			continue
 		}
 		node := a.tasks[id]
+		if node != nil && row.Live() && farNodeSettled(node) {
+			continue
+		}
 		if node == nil {
 			node = &taskNode{id: id, ident: identFor(id), met: row.EndedAt}
 			a.tasks[id] = node
@@ -190,7 +202,11 @@ func (a *app) adoptFarTaskRows(rows []session.TaskIndexEntry) {
 		node.label = firstNonEmpty(strings.TrimSpace(row.Title), strings.TrimSpace(row.Label))
 		node.title = taskTitleOf(node.label, "", id)
 		node.state = session.TaskState(row.Status)
-		node.elapsed = time.Duration(row.DurationMS) * time.Millisecond
+		if row.Live() {
+			a.anchorFarLiveNode(node, row)
+		} else {
+			node.elapsed = time.Duration(row.DurationMS) * time.Millisecond
+		}
 		node.cost, node.tokens, node.model = row.Cost, row.Tokens, strings.TrimSpace(row.Model)
 		node.report, node.changed = strings.TrimSpace(row.Outcome), append([]string(nil), row.Files...)
 		node.transcript = strings.TrimSpace(row.TranscriptURI)
@@ -201,6 +217,31 @@ func (a *app) adoptFarTaskRows(rows []session.TaskIndexEntry) {
 		// (session's [session.GroundWord]).
 		node.rung, node.mode = row.Rung, row.Mode
 	}
+}
+
+// farNodeSettled is whether a node this window holds has landed, whichever
+// road told it so. A node with no state yet is not settled: nothing has said
+// anything about its work.
+func farNodeSettled(node *taskNode) bool {
+	return node.state != "" && node.state != session.TaskRunning && node.state != session.TaskQueued
+}
+
+// anchorFarLiveNode gives a node adopted from a live far row the instant its
+// clock counts from, when the stream has not already given it one: the row's
+// own start, which does not go stale the way the age it carries does
+// ([session.TaskIndexEntry.Duration]). A start later than this window's clock
+// is another machine's clock running ahead, and the node counts from now.
+// Without an anchor the side list counted from the zero instant.
+func (a *app) anchorFarLiveNode(node *taskNode, row session.TaskIndexEntry) {
+	if !node.began.IsZero() || row.StartedAt.IsZero() {
+		return
+	}
+	now := a.now()
+	if row.StartedAt.After(now) {
+		node.began = now
+		return
+	}
+	node.began = row.StartedAt
 }
 
 // refreshTasks says the snapshot is stale and reads it again if anybody is
@@ -374,14 +415,39 @@ const (
 //
 //	› ✓ ⧉ Fix the nil-map crash                                    3h
 //	  ◐ ⧉ Sweep the deprecated call sites                          4m
-func taskRowLabel(entry session.TaskIndexEntry, pal palette) string {
+//	  ◐ ⧉ Rewrite the auth middleware [senior-dev]                 9m
+//
+// A PROGRAM'S WORK SAYS WHOSE IT IS, with the badge its row wears on the side
+// list (programbadge.go) after the words. It is the brackets alone here and not
+// the badge's ink, for this list's own reason: the overlay paints a row by what
+// it IS — under the cursor, hovered, dim — and a word carrying colour of its own
+// would fight that paint, so the badge says itself in the row's ink like every
+// other word on it.
+//
+// AND IT IS PAID FOR OUT OF THE WORDS. The row cuts a label from its right to
+// keep the note at its edge, so the label is fitted here first, to the room the
+// row will give it beside note in width cells ([overlayLabelRoom]): the badge
+// keeps its long spelling while the words keep [railTitleFloor] cells, its short
+// one after that, and the words are cut into what is left. An ordinary task's
+// row is handed over exactly as it always was.
+func taskRowLabel(entry session.TaskIndexEntry, note string, width int, pal palette) string {
 	// Label is the title already cut to a row's width (session.taskLabel), and
 	// the uncut title stands in for a row written before that field existed.
 	words := entry.Label
 	if words == "" {
 		words = entry.Title
 	}
-	return taskStatusGlyph(entry, pal) + " " + mentionMark(pal.ascii) + " " + words
+	lead := taskStatusGlyph(entry, pal) + " " + mentionMark(pal.ascii) + " "
+	badge := programBadge(entry.Program)
+	if !badge.known() || strings.TrimSpace(words) == "" {
+		return lead + words
+	}
+	room := overlayLabelRoom(lead+words+" "+badge.full, note, width) - ansi.StringWidth(lead)
+	spelling := programSpelling(badge, words, room, railTitleFloor)
+	if spelling == "" {
+		return lead + words
+	}
+	return lead + fit(words, room-programCells(spelling)) + " " + spelling
 }
 
 func mentionMark(ascii bool) string {
@@ -550,6 +616,13 @@ func mentionTokens(text string) []string {
 // offer nobody can take, because there is nothing left running to send words to.
 func taskPointerBlock(entry session.TaskIndexEntry) string {
 	head := "[Task reference: " + entry.Title + " — id " + entry.ID + " · " + entry.Status
+	// A PROGRAM'S WORK SAYS WHICH PROGRAM HAD IT, in the word the model hands
+	// work to one with (`propose_task`'s `via`), because the model reading this
+	// block is deciding what to say about work the person can see was not its
+	// own worker's.
+	if program := strings.TrimSpace(entry.Program); program != "" {
+		head += " · via " + program
+	}
 	if when := mentionWhenWord(entry); when != "" {
 		head += " · " + when
 	}
@@ -576,7 +649,12 @@ func taskPointerBlock(entry session.TaskIndexEntry) string {
 	if entry.TranscriptURI != "" {
 		where = append(where, "Transcript: "+entry.TranscriptURI)
 	}
-	if entry.Live() {
+	if program := strings.TrimSpace(entry.Program); program != "" && entry.Live() {
+		// A PROGRAM'S RUNNING WORK OFFERS NO STEER, because the program reads no
+		// messages ([programRoomNoMessages]) and a `say` would be refused. The
+		// one door it has is the stop.
+		where = append(where, program+programRoomNoMessages+`; stop it with tasks id `+entry.ID+` stop`)
+	} else if entry.Live() {
 		// TWO DOORS ON ONE RUNNING NODE, and the block is read by the model, so
 		// it names the model's first: `tasks id N say "…"` reaches the node's
 		// loop exactly as the person's own line does (session.SteerTask). The

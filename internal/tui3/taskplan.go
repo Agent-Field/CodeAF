@@ -329,6 +329,10 @@ func planItem(row session.PlanTaskRow, chat string, kin planKin) tasksItem {
 			Cost:      row.USD,
 			StartedAt: row.Started,
 			EndedAt:   row.Ended,
+			// The program the store's root was handed to, so every row drawn off
+			// this item — the rail's, the tasks place's — wears the badge the
+			// node's own row does (programbadge.go).
+			Program: row.Program,
 		},
 		runs: planRunning(row.Status),
 		live: &status,
@@ -800,7 +804,13 @@ func (a *app) taskPlanStopTaken(id string) tea.Cmd {
 				return nil
 			}
 			if err != nil {
-				a.note(err.Error())
+				// A stop that could not be given is said where the person is: on
+				// the program's room when that is what they stopped it from.
+				if a.programOf() != nil {
+					a.roomNote(err.Error())
+				} else {
+					a.note(err.Error())
+				}
 			} else {
 				a.railStamp++
 			}

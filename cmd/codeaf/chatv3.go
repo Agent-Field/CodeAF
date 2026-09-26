@@ -1074,6 +1074,9 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		SubharnessMemory:    subharnesses.Memory,
 		SubharnessLastRun:   subharnesses.LastRun,
 		SubharnessRecordRun: subharnesses.Record,
+		// AND THE PROGRAMS THIS BUILD CARRIES that a task can be handed to
+		// whole (chatv3_delegate.go). Empty is none, on the terms above.
+		Delegates: v3Delegates(),
 		// The hand that paints, and the model it asks (internal/session's
 		// tools_image.go). The pair is CONDITIONAL on the other side — a nil
 		// client leaves generate_image off the belt entirely — so this is
