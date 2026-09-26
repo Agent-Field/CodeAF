@@ -4248,10 +4248,10 @@ top-level tasks do.
 same time.
 
 The setting `task.parallel` exists for anyone who wants a number anyway — settings panel
-(`ctrl+,` or `/settings`), category "spending". Blank means no limit. A cap is a queue and
-never a refusal: work past the cap waits and starts when a slot frees, and while it waits
-its roster row says `waiting · slot` on its hint line, and it sits under `Queued`, which
-starts folded to its heading.
+(`ctrl+,` or `/settings`), category **Tasks**, row `tasks at once`. Blank means no limit. A
+cap is a queue and never a refusal: work past the cap waits and starts when a slot frees,
+and while it waits its roster row says `waiting · slot` on its hint line, and it sits under
+`Queued`, which starts folded to its heading.
 
 What actually runs out is the machine, not a count of tasks. Two real ceilings hold new
 starts instead:
