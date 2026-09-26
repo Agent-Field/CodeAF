@@ -208,7 +208,7 @@ func (a *app) wallFrame(width, height int) []string {
 		tiles[i].rows = a.wallMiniRows(tail, wallInnerW(tileW))
 		if tail != nil {
 			tiles[i].doing = wallDoing(tail.recent, tiles[i].signal)
-			tiles[i].moved = tail.freshAt
+			tiles[i].moved = tail.moved
 		} else {
 			tiles[i].doing = wallDoing(nil, tiles[i].signal)
 		}

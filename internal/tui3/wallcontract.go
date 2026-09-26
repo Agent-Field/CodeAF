@@ -448,6 +448,9 @@ type wallTail struct {
 	seen        time.Time
 	fresh       int
 	freshAt     time.Time
+	// moved is the conversation's own last activity, including its file time
+	// when the first reading has no new lines to measure.
+	moved time.Time
 	// spark is a ring of per-second activity, newest at sparkAt.
 	spark   [wallSparkLen]uint8
 	sparkAt time.Time
