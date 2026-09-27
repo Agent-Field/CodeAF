@@ -119,6 +119,12 @@ func housekeepingFold(es []entry, f workfold) bool {
 			if e.told {
 				return false
 			}
+		case entryAssistant:
+			// Response assembly and no-change delivery can leave an empty
+			// placeholder. It must not mint a second visible work chip.
+			if strings.TrimSpace(e.text) != "" {
+				return false
+			}
 		case entryCompact, entryTeam, entryDivider:
 		case entryDone:
 			if e.done == nil || !e.done.dismissed {
@@ -321,7 +327,7 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 			from := lo
 			for _, at := range asks {
 				end := at
-				if answer >= from && answer < at {
+				if !stopped && answer >= from && answer < at {
 					end = answer
 				}
 				if stopped || askSegmentSettled(es, from, end) {

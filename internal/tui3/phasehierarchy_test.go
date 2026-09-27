@@ -190,7 +190,7 @@ func TestPhaseNarrationOwnershipDoesNotInventWorkOrCrossProtectedRows(t *testing
 	for _, protected := range []entry{
 		{kind: entryUser, text: "A correction", turn: 1},
 		{kind: entrySteer, turn: 1, steer: &steerElbow{words: "A correction", consumed: true}},
-		{kind: entryTool, tool: "bash", status: toolFailed, turn: 1},
+		{kind: entryTool, tool: "bash", status: toolConsent, turn: 1},
 		{kind: entryTask, turn: 1},
 	} {
 		es := append([]entry(nil), prose...)

@@ -379,6 +379,7 @@ func (a *app) clearConversation() {
 	a.harnPanel = harnessPanel{}
 	a.crewUI = crewPanel{}
 	a.harnessStep = ""
+	a.harnessName = ""
 	// And the picked harness with them: a chip is a choice about the NEXT
 	// message of this conversation (harnesspick.go).
 	a.harnPick, a.harnChip = harnessPick{}, ""

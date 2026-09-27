@@ -188,8 +188,8 @@ func TestATurnThatDerivesAFoldWasNeverAtRisk(t *testing.T) {
 		{kind: entryNote, text: "⟲ 13.3k cached · saved $0.0009", turn: 1},
 	}
 	folds := deriveWorkfolds(es, 0)
-	if len(folds) != 1 {
-		t.Fatalf("an ordinary turn derived %d folds, want 1", len(folds))
+	if len(folds) != 2 {
+		t.Fatalf("want work and cache receipt spans, got %d", len(folds))
 	}
 	if workEntry(es, folds, 2) {
 		t.Fatal("the fold did not protect the answer it names")

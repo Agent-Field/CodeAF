@@ -100,22 +100,22 @@ func TestRoomCompactLiveKeyDoesNotOpenPhaseWithSameTurn(t *testing.T) {
 	page = roomText(a)
 	roomCompactWantOnce(t, page, "Repairing cancellation")
 	roomCompactWantOnce(t, page, "Close pending receivers")
-	if !strings.Contains(page, "go test ./internal/queue") || strings.Contains(page, "pending.go") {
-		t.Fatalf("live opening lost its call or opened historical call:\n%s", page)
+	if !strings.Contains(page, "go test ./internal/queue") || strings.Contains(page, "pending.go") || !strings.Contains(page, "Inspecting the queue") {
+		t.Fatalf("live opening lost the current call or older caption disclosure:\n%s", page)
+	}
+	a.setCapOpen(a.room.deck(), 1, true)
+	if !strings.Contains(roomText(a), "pending.go") {
+		t.Fatal("opening the retained historical caption lost its call")
 	}
 	drive(t, a, key("ctrl+e"))
 	if a.room.workOpen[0] || a.room.workOpen[1] {
 		t.Fatalf("Ctrl+E did not close only live work: %v", a.room.workOpen)
 	}
-	roomCompactClick(t, a, hitWorkFold, 1)
-	if !a.room.workOpen[1] || a.room.workOpen[0] {
-		t.Fatalf("phase click changed live work: %v", a.room.workOpen)
+	roomCompactClick(t, a, hitWorkFold, 0)
+	if !a.room.workOpen[0] || a.room.workOpen[1] {
+		t.Fatalf("reopening the shared work changed unrelated keys: %v", a.room.workOpen)
 	}
 	roomCompactWantOnce(t, roomText(a), "Inspecting the queue")
-	drive(t, a, key("ctrl+e"))
-	if !a.room.workOpen[0] || !a.room.workOpen[1] {
-		t.Fatalf("Ctrl+E did not prefer live frontier: %v", a.room.workOpen)
-	}
 	if !reflect.DeepEqual(a.workOpen, map[int]bool{9: true}) || !reflect.DeepEqual(a.unfolded, map[int]bool{9: true}) {
 		t.Fatal("room disclosure changed the parent conversation")
 	}
