@@ -1,0 +1,57 @@
+{
+  "pr": 1610,
+  "recording": "Unmodified original asciinema recording. GIF and MP4 are 3x playback with idle intervals capped at 3 seconds; no invented frames.",
+  "preview_duration_seconds": 145.3,
+  "screenshot_source": "1608-final-checks.cast",
+  "files": {
+    "1608-artifact-tests.json": {
+      "bytes": 2624,
+      "sha256": "6ab785fe8f05e37f30497e003a4e33cf5588b790065e872b52076f8aab28b02a"
+    },
+    "1608-execution.json": {
+      "bytes": 640,
+      "sha256": "8b322a86d6b7e0ef1243d4a175ca01a010b37072e785850f3a949bc9cf51d488"
+    },
+    "1608-final-checks.cast": {
+      "bytes": 9858,
+      "sha256": "1f35091e07012d44d5dcf55f4d0798e6b6541edb39385d85cf081d225212dcf9"
+    },
+    "1608-usage.json": {
+      "bytes": 43310,
+      "sha256": "1d093b919ebc5ec4b591f8c9f3ea3bf04c3ecf2f166a00b1ea22f8e897688e4e"
+    },
+    "1608.cast": {
+      "bytes": 582299,
+      "sha256": "47f1eb7af3d8380eef493ce8111b8a8342b17fbaf797bfeff3cd701f3975cd43"
+    },
+    "artifacts/README.md": {
+      "bytes": 1138,
+      "sha256": "02fc37cf89731f6ee3b2e98dbf2b27b157a2a554d5bd85be1b950c909a54eb5e"
+    },
+    "artifacts/pantry.csv": {
+      "bytes": 35,
+      "sha256": "39a54ef50c183d5f138b295100af401b54d081a843732c7f99ac12ce652faecb"
+    },
+    "artifacts/pantry.py": {
+      "bytes": 4586,
+      "sha256": "558377079f7d34964818c867da406d71979e06e84929c48bf300e148a6eff950"
+    },
+    "artifacts/test_pantry.py": {
+      "bytes": 7340,
+      "sha256": "59153f3c056366c5ffa5259ffb0dc7142a12cb88884d48808c4e61d3abc65773"
+    },
+    "screenshot.png": {
+      "bytes": 77872,
+      "sha256": "982e886b9d9491f415310c58c96707fcdb24f84122dafaae487a89b4b67a69db"
+    },
+    "workflow.gif": {
+      "bytes": 3754399,
+      "sha256": "4de7f87ef9438ed61d1518dce212db41ef26a7a1c3e55a1f6e02bc36c9a59e73"
+    },
+    "workflow.mp4": {
+      "bytes": 1830474,
+      "sha256": "2831cd57fc0a36049f7d064fbc52f2fc776040080c439ee7feeb5a5361d0cee3"
+    }
+  },
+  "issue": 1608
+}

@@ -1,0 +1,19 @@
+{
+  "hostname": "spark",
+  "fleet_session": "critical-extended-1608-v2",
+  "tmux_socket": "fleet-sh",
+  "revision": "ffe8a20646a551afeed39c915951e8f70ed670e6",
+  "binary_sha256": "24bb8aa3d3e4ae52b50785be8fa7b47c948563d7dd6abaf28f370912196c3be2",
+  "started_utc": "2026-09-27T16:28:28.567403+00:00",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "cwd": "/tmp/caf-extended-1608/project",
+  "pr": 1610,
+  "issue": 1608,
+  "model_pool": "read",
+  "one_model": true,
+  "receipt_count": 105,
+  "recording_closed": true,
+  "artifact_checks": "1608-artifact-tests.json",
+  "local_checks_fleet_session": "critical-1608-checks",
+  "judge_files": []
+}
