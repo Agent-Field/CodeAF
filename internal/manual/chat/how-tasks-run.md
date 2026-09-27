@@ -1400,7 +1400,7 @@ and inside a task the work then *waits* for that command instead of asking what 
 Nothing is asked over the wait, no step is counted, and no `[stuck]` note can be earned,
 because a task that is waiting makes no calls at all. What wakes it is the command's own
 ending, and that ending arrives whole: the exit line, the command's last lines, and the path
-to the full log, all in the one turn. This is why a task does not `sleep` and `tail` its own
+to the log, all in the one turn. This is why a task does not `sleep` and `tail` its own
 build or test run — the waiting is done for it, and those nine `sleep N && tail` steps above
 are what the counter catches when something is polled that nobody is waiting on. A command
 started with `background: true` is the other case: a server or a sweep the task deliberately

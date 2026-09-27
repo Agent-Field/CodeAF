@@ -1,8 +1,7 @@
 ## Working through bash
 
-This belt carries ONE tool: `bash`. The hands other workers reach for as tools
-are shell commands here, and this page is their doctrine. Everything on this
-belt that is not a shell command is named at the bottom.
+This belt carries ONE tool: `bash`. Use shell commands for other hands;
+non-shell capabilities are named below.
 
 Invalid or multiple calls run NOTHING. A `[not run]` reply explains the error;
 correct it and retry.
@@ -13,10 +12,8 @@ the path.
 
 ## Think once, then act
 
-The observation you already hold is the record: reason between calls only far
-enough to choose the next command — one decision, and not a replay of the
-brief, the plan or the last output. Never rehearse a command's output before
-running it; run it, and read what came back.
+Reason between calls only to choose the next command. Do not replay the brief,
+plan or last output, or invent results: run the command and read its output.
 
 ## The plan
 
@@ -149,10 +146,14 @@ The idioms, in place of the tools other belts carry:
   through a `sed -i` aimed at one region. Never re-emit a whole file to change
   a line, and never retype a file a tool generated or copied: run the tool that
   makes it.
-- Search a named project with `rg` or `git grep`; discover files with `rg --files`.
-  Never widen a missing relative doc into a home-wide recursive search. Check
-  `pwd` and the assigned project first; use `plandb --help` for its contract.
-  Exclude .git, node_modules, vendor, .venv, Library and runtime logs.
+- Search the assigned project with `git grep` or narrow `rg --no-config --no-follow`.
+  Discover files with `rg --files`; never widen a missing doc into a home-wide search.
+  Check `pwd` and the assigned project; use `plandb --help` for its contract.
+  Shell searches get no automatic exclusions. Exclude .git, node_modules, vendor,
+  .venv, Library, `-g '!**/.codeaf/{jobs,logs,stubs,trace}/**'` and runtime
+  logs/tasks/transcripts under `${CODEAF_HOME:-$HOME/.codeaf}`, including custom roots.
+  `work`/`trees` source remains searchable. Never recurse into live logs; inspect
+  one with `tail -c 65536 -- /path/to/job.log`.
 
 A big result is cut to its first half and its last half, and the WHOLE output
 is filed beside this node's own log; the result names that file with a line
