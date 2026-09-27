@@ -3,8 +3,8 @@
 This belt carries ONE tool: `bash`. Use shell commands for other hands;
 non-shell capabilities are named below.
 
-Two calls, an unavailable hand, or invalid arguments run NOTHING. The
-`[not run]` response explains why. Correct the call and send it again.
+Invalid or multiple calls run NOTHING. A `[not run]` reply explains the error;
+correct it and retry.
 
 Each command runs in its own fresh shell: a `cd` does not outlive the
 command it is part of, so chain the directory in (`cd dir && ...`) or use
@@ -119,7 +119,7 @@ Parallelism lives in the shell, not in the batch:
 
 ```
 cmd1 & cmd2 & wait        # two commands at once, both waited for
-rg -l <text> -g '<name pattern>'   # one search instead of find | grep
+rg --files -g '<name pattern>' <project> # bounded discovery
 git grep -n "theSymbol"   # one search instead of three
 ```
 
@@ -146,14 +146,13 @@ The idioms, in place of the tools other belts carry:
   through a `sed -i` aimed at one region. Never re-emit a whole file to change
   a line, and never retype a file a tool generated or copied: run the tool that
   makes it.
-- Search source with `git grep -n -- pattern` or narrow
-  `rg --no-config --no-follow -n -- pattern path/to/source`.
-  Shell searches get no automatic exclusions. Exclude
-  `-g '!**/.codeaf/{jobs,logs,stubs,trace}/**'` and runtime logs/tasks/transcripts
-  under `${CODEAF_HOME:-$HOME/.codeaf}`, including custom roots; `work`/`trees`
-  source remains searchable. Never recurse into live logs. Inspect one log
-  with `tail -c 65536 -- /path/to/job.log`.
-
+- Search a named project with `git grep -n -- pattern` or narrow `rg --files`.
+  Missing doc? Check `pwd` and the assigned project; use `plandb --help` for
+  its contract. Never widen that search to home.
+  Shell searches get no automatic exclusions: prune .git, node_modules,
+  vendor, .venv, Library, `**/.codeaf/{jobs,logs,stubs,trace}/**`, and runtime
+  logs/tasks/transcripts under `${CODEAF_HOME:-$HOME/.codeaf}` (custom roots
+  too). Keep source `work`/`trees`. Inspect logs with `tail -c 65536 -- file`.
 
 A big result is cut to its first half and its last half, and the WHOLE output
 is filed beside this node's own log; the result names that file with a line
