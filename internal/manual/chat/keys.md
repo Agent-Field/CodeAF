@@ -1686,8 +1686,9 @@ the clock is about to take — and `enter` with words in the box sends them as a
 correction, which starts the corrected work. `ctrl+e` over an empty box opens the
 brief in the conversation. Bare letters are ordinary answer text: typing `no` is a
 correction and does NOT decline, because the answers are on the row with their
-keys. Any key the question reads also stops the countdown, and deleting the draft
-does not restart it.
+keys. Any key past the initial quarter-second settle guard also stops the countdown,
+and deleting the draft does not restart it. A key dropped by the guard changes
+nothing, including the countdown, and is never applied later.
 
 **A slow provider's offer**, raised on the status line when a provider you pinned has gone
 quiet: the row reads `coreweave is slow · switch to auto? (y)` and `y`, **over an empty
