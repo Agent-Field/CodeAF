@@ -426,6 +426,25 @@ func TestAFolderWithNoSkillMDIsRefusedInOneLine(t *testing.T) {
 	}
 }
 
+// AN EMPTY CATALOG MUST NOT CLOSE BEFORE A PATH CHOICE. The folder row is a
+// choice offered by the picker itself, even when the shelf has no skills.
+func TestEmptySkillCatalogStaysOpenForAFolderChoice(t *testing.T) {
+	a, _, _, home := skillApp(t)
+	empty := filepath.Join(home, "not-a-skill")
+	if err := os.MkdirAll(empty, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	typeInto(t, a, "/skill "+empty)
+	if !a.skillPick.open {
+		t.Fatal("the empty catalog closed before the folder choice")
+	}
+	drive(t, a, key("enter"))
+	if said := strings.Join(plainRows(a), "\n"); !strings.Contains(said, "no SKILL.md in") {
+		t.Fatalf("the folder refusal was lost:\n%s", said)
+	}
+}
+
 // ── the chip ────────────────────────────────────────────────────────────────
 
 // THE CHIP CARRIES THE NAME FOR ONE SKILL AND A COUNT FOR MORE, and one
@@ -518,6 +537,19 @@ func TestBareSkillOpensThePickerOnTheWholeShelf(t *testing.T) {
 	screen := strings.Join(plainOverlay(a), "\n")
 	if !strings.Contains(screen, "alpha-flake") {
 		t.Fatalf("the picker did not open on the shelf:\n%s", screen)
+	}
+}
+
+func TestBareSkillOnAnEmptyShelfDoesNotLeaveAPathInTheBox(t *testing.T) {
+	a, _, _, _ := skillApp(t)
+
+	cmd := a.slash("/skill")
+	spend(t, a, cmd)
+	if a.skillPick.open {
+		t.Fatal("empty /skill opened a picker with no choices")
+	}
+	if got := a.input.String(); got != "" {
+		t.Fatalf("empty /skill left %q in the box", got)
 	}
 }
 
