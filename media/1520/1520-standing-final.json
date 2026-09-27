@@ -1,0 +1,129 @@
+[
+  {
+    "schema": 1,
+    "id": "2f5d295392992fce",
+    "words": "Purchases and inventory edits always require my permission.",
+    "workspace": "/tmp/caf-extended-1520/project",
+    "origin": {
+      "sessionId": "ce5029d02a06df57",
+      "transcript": "/tmp/caf-extended-1520/state/v3/projects/-tmp-caf-extended-1520-project/ce5029d02a06df57/transcript.jsonl",
+      "turnIds": [
+        "9"
+      ]
+    },
+    "when": {
+      "kind": "hold",
+      "at": "0001-01-01T00:00:00Z",
+      "probe": {}
+    },
+    "does": {
+      "kind": ""
+    },
+    "rails": {
+      "perRunUsd": 0,
+      "maxPerDay": 0,
+      "expires": "0001-01-01T00:00:00Z"
+    },
+    "altitude": "project",
+    "brief": {
+      "title": "Purchases need permission"
+    },
+    "status": "active",
+    "created": "2026-09-27T12:26:53.033267826-04:00",
+    "updated": "2026-09-27T12:26:53.033267826-04:00",
+    "lastChecked": "0001-01-01T00:00:00Z",
+    "nextDue": "0001-01-01T00:00:00Z",
+    "runs": 0,
+    "lastFired": "0001-01-01T00:00:00Z",
+    "spentUsd": 0
+  },
+  {
+    "schema": 1,
+    "id": "426aa55ba8f2ea8e",
+    "words": "Remind me every Monday at 9am to review the pantry.",
+    "workspace": "/tmp/caf-extended-1520/project",
+    "origin": {
+      "sessionId": "ce5029d02a06df57",
+      "transcript": "/tmp/caf-extended-1520/state/v3/projects/-tmp-caf-extended-1520-project/ce5029d02a06df57/transcript.jsonl",
+      "turnIds": [
+        "7"
+      ]
+    },
+    "when": {
+      "kind": "every",
+      "words": "every Monday at 9am",
+      "at": "0001-01-01T00:00:00Z",
+      "every": "0 9 * * 1",
+      "probe": {}
+    },
+    "does": {
+      "kind": "say",
+      "say": "Weekly pantry review: check pantry.csv quantities, note anything below 3 packages, and buy up to 5 each by hand."
+    },
+    "rails": {
+      "perRunUsd": 5,
+      "maxPerDay": 10,
+      "expires": "0001-01-01T00:00:00Z"
+    },
+    "altitude": "project",
+    "brief": {
+      "title": "Weekly pantry review"
+    },
+    "status": "retired",
+    "created": "2026-09-27T12:25:48.21696905-04:00",
+    "updated": "2026-09-27T12:27:11.074629024-04:00",
+    "retiredWhy": "stopped by you",
+    "lastChecked": "0001-01-01T00:00:00Z",
+    "nextDue": "2026-09-28T09:00:00-04:00",
+    "runs": 0,
+    "lastFired": "0001-01-01T00:00:00Z",
+    "spentUsd": 0
+  },
+  {
+    "schema": 1,
+    "id": "95c36792fb40eaa4",
+    "words": "Remind me once in two minutes to check whether the quantities are current; do not make that reminder repeat.",
+    "workspace": "/tmp/caf-extended-1520/project",
+    "origin": {
+      "sessionId": "ce5029d02a06df57",
+      "transcript": "/tmp/caf-extended-1520/state/v3/projects/-tmp-caf-extended-1520-project/ce5029d02a06df57/transcript.jsonl",
+      "turnIds": [
+        "5"
+      ]
+    },
+    "when": {
+      "kind": "at",
+      "words": "in 2 minutes \u2014 12:25",
+      "at": "2026-09-27T12:25:32.10538525-04:00",
+      "probe": {}
+    },
+    "does": {
+      "kind": "say",
+      "say": "Time to check that the pantry quantities in pantry.csv are current."
+    },
+    "rails": {
+      "perRunUsd": 5,
+      "maxPerDay": 10,
+      "expires": "0001-01-01T00:00:00Z"
+    },
+    "altitude": "project",
+    "brief": {
+      "title": "Check pantry quantities"
+    },
+    "status": "retired",
+    "created": "2026-09-27T12:24:06.208822427-04:00",
+    "updated": "2026-09-27T12:26:29.69101666-04:00",
+    "retiredWhy": "fired",
+    "lastChecked": "2026-09-27T12:26:29.6877568-04:00",
+    "lastCheckLine": "it was the time you asked for",
+    "nextDue": "2026-09-27T12:25:32.10538525-04:00",
+    "previous": [
+      "it was the time you asked for \u2192 said"
+    ],
+    "runs": 1,
+    "lastFired": "2026-09-27T12:26:29.6877568-04:00",
+    "lastOutcome": "said",
+    "spentUsd": 0,
+    "cleanRuns": 1
+  }
+]

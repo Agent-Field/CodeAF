@@ -1,0 +1,56 @@
+{
+  "pr": 1520,
+  "recording": "Unmodified original asciinema recording. GIF and MP4 are 3x playback with idle intervals capped at 3 seconds; no invented frames.",
+  "preview_duration_seconds": 83.1,
+  "screenshot_source": "1520-final-commitments.cast",
+  "files": {
+    "1520-usage.json": {
+      "bytes": 11709,
+      "sha256": "21011608645775c13044e6b5b007fbdf340cccc6ad2db715206af061903d5704"
+    },
+    "oneoff-card.png": {
+      "bytes": 72993,
+      "sha256": "4dfb2919491f7b6da5dbf2848f6d55354270ddc2de938493ed249c199b68d215"
+    },
+    "1520-execution.json": {
+      "bytes": 386,
+      "sha256": "4eb05240300d84070627127adaf717dce94a36cf0adbc9b6c398b492b145ecd8"
+    },
+    "1520.cast": {
+      "bytes": 145210,
+      "sha256": "1dbf973fb78e619e3c7850ae428e541108fb78cde4e4d95fa500d424a3df8310"
+    },
+    "1520-oneoff-card.cast": {
+      "bytes": 11142,
+      "sha256": "b4f8082840be3a03b80c41839d4e33f0a33bebcd85ffadeae9a48cb0d3e06ddd"
+    },
+    "weekly-card.png": {
+      "bytes": 74782,
+      "sha256": "8fbf1fdbbd9443dd769e5058cad7136f78055b9350ca9689d8ba22e4d1d5a40c"
+    },
+    "workflow.gif": {
+      "bytes": 2598024,
+      "sha256": "a03dbd9a20dd7368234cf2dfc48c74c8421e55d44e706becc9f2da620ca5f866"
+    },
+    "workflow.mp4": {
+      "bytes": 1279100,
+      "sha256": "c207fd3ac3d1958c7e48e635ebca2370cc83cb5d6523b7a3c00fc4b6e498900b"
+    },
+    "1520-weekly-card.cast": {
+      "bytes": 11094,
+      "sha256": "901a5e2d358fb64509c986225e70accd95bebad8c536a44af68496647b08f030"
+    },
+    "1520-standing-final.json": {
+      "bytes": 3766,
+      "sha256": "c744dd769b31d105f97f69f3c7237bc09763d56593a33d933dcab93775da1a64"
+    },
+    "1520-final-commitments.cast": {
+      "bytes": 8283,
+      "sha256": "e7eb2ef7bfa734d2c24a725bee9b4053d7de1cb963add7565885d51a3427eb32"
+    },
+    "screenshot.png": {
+      "bytes": 87931,
+      "sha256": "3fead5fae2eaa2bb45adaa7e290fc75265fca510030207c5e450013745a433f9"
+    }
+  }
+}
