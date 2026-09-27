@@ -264,6 +264,10 @@ func (f *feed) ingest(ev session.Event) {
 func (f *feed) ingestStream(ev session.Event, lump bool) {
 	switch ev.Kind {
 	case session.EventTextDelta:
+		if ev.Addressed {
+			f.syncUpdateTurn()
+			f.updateDelivery.marked = true
+		}
 		f.sayStream(ev.Text, lump)
 
 	case session.EventAssistantDone:
@@ -321,7 +325,7 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 			// calls that never began. Close that same boundary on every deck
 			// before the next response can inherit its marker or partial tool.
 			f.flushUpdatePrefix()
-			f.confirmResponse()
+			f.finishResponse(true)
 			f.updateDelivery = userUpdateStream{}
 			f.closeLive()
 			f.dropRetryingFormingTools()
@@ -1617,7 +1621,10 @@ func (f *feed) dropRetryingFormingTools() {
 // A provider may end with private reasoning after its last visible words. Walk
 // only this response's tail so confirmation still reaches those words without
 // promoting a tool preamble or another exchange's answer.
-func (f *feed) confirmResponse() {
+func (f *feed) confirmResponse() { f.finishResponse(false) }
+
+// Interruption preserves the audience and words without certifying completion.
+func (f *feed) finishResponse(interrupted bool) {
 	confirmation := &responseConfirmation{}
 	// A person's queued line or a surface notice can sit below the active
 	// assembler while its answer keeps growing. That pointer owns the response;
@@ -1633,13 +1640,13 @@ func (f *feed) confirmResponse() {
 	// A streamed call closes the assembler before it becomes durable. Restore
 	// the explicit update's response anchor so a queued human line cannot hide
 	// its confirmation at ToolBegin.
-	if !anchored && f.updateDelivery.marked {
+	if !anchored && (f.updateDelivery.marked || interrupted) {
 		for i := end; i >= 0 && f.entries[i].turn == f.turn; i-- {
 			e := &f.entries[i]
 			if e.kind == entryTool && e.status != toolForming && e.status != toolQueued {
 				break
 			}
-			if e.kind == entryAssistant && e.addressed && e.provisional {
+			if e.kind == entryAssistant && (e.addressed || interrupted) && e.provisional {
 				end, anchored = i, true
 				if e.confirmed != nil && !e.confirmed.done {
 					confirmation = e.confirmed
@@ -1651,7 +1658,7 @@ func (f *feed) confirmResponse() {
 	var fragments []int
 	for i := end; i >= 0; i-- {
 		e := &f.entries[i]
-		if e.turn != f.turn || groupBreaks(e) || (e.kind == entryTool && !(f.updateDelivery.marked && (e.status == toolForming || e.status == toolQueued))) || e.kind == entryCompact {
+		if e.turn != f.turn || groupBreaks(e) || (e.kind == entryTool && !((f.updateDelivery.marked || interrupted) && (e.status == toolForming || e.status == toolQueued))) || e.kind == entryCompact {
 			break
 		}
 		if e.kind != entryAssistant {
@@ -1668,10 +1675,10 @@ func (f *feed) confirmResponse() {
 		fragments = append(fragments, i)
 	}
 	if len(fragments) > 0 {
-		confirmation.done = true
+		confirmation.done = !interrupted
 		for _, i := range fragments {
 			e := &f.entries[i]
-			e.provisional, e.confirmed = false, confirmation
+			e.provisional, e.confirmed, e.cut = false, confirmation, interrupted
 			if f.live == i {
 				f.closeLive()
 			} else {
@@ -1684,9 +1691,11 @@ func (f *feed) confirmResponse() {
 		// empty earlier fragments in place so every existing index stays valid.
 		var text strings.Builder
 		var tags []session.TaskReplyTag
+		addressed := false
 		for at := len(fragments) - 1; at >= 0; at-- {
 			e := &f.entries[fragments[at]]
 			text.WriteString(e.text)
+			addressed = addressed || e.addressed
 			tags = append(tags, e.replyTags...)
 			e.text, e.replyTags, e.stale = "", nil, true
 		}
@@ -1699,7 +1708,7 @@ func (f *feed) confirmResponse() {
 			last = len(f.entries) - 1
 		}
 		e := &f.entries[last]
-		e.text, e.replyTags, e.demoted = text.String(), tags, false
+		e.text, e.replyTags, e.demoted, e.addressed = text.String(), tags, false, addressed
 		// A RESPONSE THAT IS ONLY [session.NoChangeReply] WITHDREW ITSELF AS THE
 		// ANSWER. It is the model telling the completion check its note was wrong,
 		// never words for the person, so the confirmed block is emptied in place

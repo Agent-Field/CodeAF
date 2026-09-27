@@ -144,8 +144,8 @@ func TestExplicitUpdateStreamsAsAddressedButNotCompletedAcrossLenses(t *testing.
 	if confirmedAnswer(&a.entries[at]) || !a.entries[at].cut {
 		t.Fatal("interrupted partial update claimed completion")
 	}
-	if !workEntry(a.entries, nil, at) {
-		t.Fatal("audience bypass promoted an interrupted partial update")
+	if workEntry(a.entries, nil, at) {
+		t.Fatal("interruption hid an explicitly addressed partial update")
 	}
 }
 

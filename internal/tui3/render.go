@@ -1422,6 +1422,10 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 // those bytes are final enough to format, so the head being calm and the tail
 // being lit is the same fact the promotion itself states, said in ink.
 func (a *app) assistantRows(at int, e *entry, width int) []string {
+	if interruptedUpdate(e) {
+		rows := a.settledMarkdown(at, e, width)
+		return append(rows, a.pal.dim(fit("· interrupted", width)))
+	}
 	// ── AND PROSE THAT TURNED OUT NOT TO BE THE ANSWER ──────────────────────
 	//
 	// A block that more work opened under is narration, and it is drawn as what

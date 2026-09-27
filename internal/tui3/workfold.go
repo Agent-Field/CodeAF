@@ -230,6 +230,9 @@ func (p *phaseRun) close(es []entry, answer int) (workfold, bool) {
 
 // phaseKeeps preserves actionable boundaries and calls still in flight.
 func phaseKeeps(e *entry) bool {
+	if interruptedUpdate(e) {
+		return true
+	}
 	switch e.kind {
 	case entryTask, entryStanding, entryConnect, entrySeam, entryHarness, entryDone:
 		return true
@@ -280,7 +283,7 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 			// landing as a boundary so unrelated housekeeping on either side
 			// still folds, even when an async command acknowledgement arrived
 			// after the response without a new user message.
-			if es[i].kind == entryTask || es[i].kind == entryConnect || es[i].kind == entryStanding || es[i].kind == entryDone {
+			if interruptedUpdate(&es[i]) || es[i].kind == entryTask || es[i].kind == entryConnect || es[i].kind == entryStanding || es[i].kind == entryDone {
 				asks = append(asks, i)
 			}
 			if es[i].kind == entryTool && ((es[i].status != toolOK && es[i].status != toolFailed && !es[i].cut) || es[i].decision != "") {
@@ -542,6 +545,11 @@ func workIndent(width int) string {
 	return strings.Repeat(" ", spacingConversationLead)
 }
 
+// Interrupted updates retain their explicit audience without completing a reply.
+func interruptedUpdate(e *entry) bool {
+	return e.kind == entryAssistant && e.addressed && e.cut && strings.TrimSpace(e.text) != ""
+}
+
 // A tool-free response boundary is an explicit message to the person, even
 // when the session continues working afterwards. No prose keywords are guessed.
 func confirmedAnswer(e *entry) bool {
@@ -570,9 +578,9 @@ func workEntry(es []entry, folds map[int]workfold, i int) bool {
 	if e.kind != entryAssistant {
 		return false
 	}
-	// Explicitly addressed updates are visible while streaming. This does
-	// not confirm the response; interrupted partial updates still recede.
-	if e.addressed && !e.cut {
+	// Audience survives interruption: these words were meant for the person.
+	// A cut update stays visible without claiming the response completed.
+	if e.addressed {
 		return false
 	}
 	// Streaming content can still be a preamble to an upcoming tool. The
