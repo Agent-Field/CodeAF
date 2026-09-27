@@ -75,7 +75,7 @@ func v3Standing(profileDir string) *session.Standing {
 		// The person's own daily budget is what the card quotes beside the
 		// per-run cap. A profile that cannot be read quotes nothing rather than
 		// a figure nobody set, which is the emptiness law applied to money.
-		DailyRailUSD: v3StandingDailyRail(profileDir),
+		DailyRail: func() float64 { return v3StandingDailyRail(profileDir) },
 	}
 }
 

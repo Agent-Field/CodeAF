@@ -608,7 +608,7 @@ func (it Item) Reaches(workspace, sessionID string) bool {
 	case AltitudeMachine:
 		return true
 	case AltitudeProject:
-		return workspace != "" && filepath.Clean(it.Workspace) == filepath.Clean(workspace)
+		return sameWorkspace(it.Workspace, workspace)
 	case AltitudeConversation:
 		return sessionID != "" && it.Origin.SessionID == sessionID
 	}
@@ -625,7 +625,7 @@ func (it Item) AppliesTo(workspace, sessionID string) bool {
 // ExceptedFrom answers whether the person excepted this item from the place.
 func (it Item) ExceptedFrom(workspace, sessionID string) bool {
 	for _, ex := range it.Exceptions {
-		if ex.Workspace != "" && ex.Workspace == workspace {
+		if sameWorkspace(ex.Workspace, workspace) {
 			return true
 		}
 		if ex.SessionID != "" && ex.SessionID == sessionID {
@@ -1078,4 +1078,10 @@ type Watch interface {
 	Install(ctx context.Context) error
 	Uninstall(ctx context.Context) error
 	Status() (WatchStatus, error)
+}
+
+// sameWorkspace gives reach and exceptions the same lexical path identity.
+// An absent path never names the current directory.
+func sameWorkspace(a, b string) bool {
+	return a != "" && b != "" && filepath.Clean(a) == filepath.Clean(b)
 }

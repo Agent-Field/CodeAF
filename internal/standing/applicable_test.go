@@ -163,3 +163,17 @@ func TestAShelfLeadsWithWhatMovedLastAndNotWithWhatWasMadeLast(t *testing.T) {
 		t.Fatalf("the shelf reads %q, wanted %q — the one touched last leads", words(got), want)
 	}
 }
+
+func TestNormalizedProjectReachHonorsNormalizedExceptions(t *testing.T) {
+	item := Item{Workspace: "/repo/./project", Altitude: AltitudeProject}
+	if !item.AppliesTo("/repo/project/", "") {
+		t.Fatal("equivalent workspace excluded")
+	}
+	item.Exceptions = []Exception{{Workspace: "/repo/project/"}}
+	if item.AppliesTo("/repo/./project", "") {
+		t.Fatal("equivalent exception bypassed")
+	}
+	if (Item{Altitude: AltitudeProject}).Reaches(".", "") {
+		t.Fatal("empty workspace became current directory")
+	}
+}

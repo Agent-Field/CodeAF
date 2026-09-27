@@ -857,8 +857,14 @@ func (a *Agent) standingCostWords(item standing.Item, parsed standArguments) str
 	if parsed.Rails.PerRunUSD != nil || parsed.Rails.MaxPerDay != nil {
 		return strings.TrimSpace(parsed.CostWords)
 	}
-	if a.config.Standing != nil && a.config.Standing.DailyRailUSD > 0 {
-		return "shares the day's $" + strconv.FormatFloat(a.config.Standing.DailyRailUSD, 'f', 2, 64) + " allowance"
+	if runtime := a.config.Standing; runtime != nil {
+		rail := runtime.DailyRailUSD
+		if runtime.DailyRail != nil {
+			rail = runtime.DailyRail()
+		}
+		if rail > 0 {
+			return "shares the day's $" + strconv.FormatFloat(rail, 'f', 2, 64) + " allowance"
+		}
 	}
 	return "shares the day's allowance"
 }
