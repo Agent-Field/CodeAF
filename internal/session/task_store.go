@@ -1743,19 +1743,6 @@ func (a *Agent) recoverTasks() {
 
 	graph := a.graph()
 	recovery := graph.rehydrate(document, a.config.Workspace, a.settlePolicy())
-	// A belt run's plan is a second persisted state beside this checkpoint. If
-	// the process died before its driver settled, archive that live store now;
-	// otherwise PlanTasks would keep reading its root as working forever even
-	// though the restored run row already says nothing is driving it.
-	if graph.holdsInterruptedBeltRun() {
-		if path := graph.planPath(); path != "" {
-			if info, err := os.Stat(path); err == nil && !info.IsDir() {
-				if err := setAsideRunStore(path); err != nil {
-					graph.planNote("the interrupted run could not be reconciled: " + err.Error())
-				}
-			}
-		}
-	}
 	// The consume-once receipt reaches the disk BEFORE anything else happens: a
 	// second crash between here and the first turn must not hand the same
 	// interrupt to a second recovery.
@@ -1794,22 +1781,6 @@ func (a *Agent) recoverTasks() {
 			graph.nameNode(graph.node(record.ID))
 		}
 	}
-}
-
-// holdsInterruptedBeltRun distinguishes the bash-belt rows from adaptive
-// rows. Both are restored as interrupted, but only the belt has a plan store
-// whose live root must be archived on startup.
-func (g *TaskGraph) holdsInterruptedBeltRun() bool {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	for _, rows := range g.runs {
-		for _, row := range rows {
-			if row.State == TaskInterrupted && row.Run == "" && row.PlanTask != "" {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // reconcile files ONE record and answers it as the graph is to hold it: a node
