@@ -1395,11 +1395,12 @@ in the message box every printable key belongs to that box, and the only key sti
 question's is `esc`. This is why `run tests first` can be typed into an empty box without
 losing its first letter.
 
-**Any key you press stops the countdown**, whether or not it answers anything, and tells
-the engine so. Deleting your draft does not restart it.
+**Any key past the initial quarter-second settle guard stops the countdown**, whether
+or not it answers anything, and tells the engine so. Deleting your draft does not restart it.
 
 **A key pressed in the first quarter-second is dropped**, so a proposal landing under a
-moving hand is not answered by a keystroke aimed at your sentence.
+moving hand is not answered by a keystroke aimed at your sentence. The dropped key leaves
+the card and countdown unchanged and is never applied later.
 
 You can also click an answer: each answer's row is pressable along its whole width.
 
@@ -1447,7 +1448,8 @@ family — the permissions page lists them.
 Set that window to 0 and there is no clock at all: the answers row ends in `waiting`, and
 the question sits there until you answer it, however long that takes.
 
-Pressing any key the question reads also stops a running clock. The tail stops counting
+Pressing any key past the initial quarter-second settle guard also stops a running clock.
+A key dropped by that guard leaves the countdown running. The tail stops counting
 immediately and the task cannot start while you finish your answer. Deleting everything you
 typed does not restart it.
 
@@ -1494,8 +1496,9 @@ into `decisions.jsonl` with:
 ## The task started before I could say no
 
 A proposal starts on silence only while its countdown is still moving. The default window
-is 15 seconds. Pressing any key the question reads stops that clock immediately, and
-deleting what you typed does not restart it. Press `2` to decline.
+is 15 seconds. After the initial quarter-second settle guard, any key the question reads
+stops that clock immediately, and deleting what you typed does not restart it. Keys inside
+the guard are dropped without stopping the clock. Press `2` after that guard to decline.
 
 If nothing was pressed before the clock reached zero, the work was already admitted and a
 later answer cannot pull it back. Use `task.autoapprove_seconds` in the Safety settings to
@@ -1801,14 +1804,16 @@ After the name the card carries the span, the file count, and how the branch cam
 `merged`, `in your own folder`, `conflicted · <branch>`, or `branch kept · <branch>` —
 each its own fact, so a task you ended reads `stopped · branch kept · <branch>`.
 
-`branch kept · <branch>` on a **done** task means the work finished but your checkout was
-on a protected branch, was on a different branch than when the work was cut, moved
-to a different commit by your own work after the cut, or was detached. The branch
-named there holds the finished work; the how-tasks-run page explains the exact reason.
+`branch kept · <branch> · <reason>` on a **done** task means the work finished but your
+checkout was on a protected branch, was on a different branch than when the work was
+cut, moved to a different commit by your own work after the cut, or was detached. For
+example, it can say `branch kept · task/port · your checkout is on main, which tasks do
+not merge into automatically`. The branch named there holds the finished work; the
+how-tasks-run page explains the exact reason.
 Inspect that branch and keep the delivery workflow you requested. A task finishing
-does not by itself request a merge or a checkout change. A retained run is the
-exception: `/land` lists its waiting folder and merges that named run branch when
-you ask.
+does not by itself request a merge or a checkout change. If you want codeaf to bring
+the retained work into the checkout, `/land` lists the waiting folder and merges the
+named branch, whether it came from one task or a retained run.
 
 Click anywhere on the card, or press `ctrl+o` with it selected, to expand it. `enter` on the
 selected card opens the task's room instead. What the expansion holds, and in what order, is
@@ -4269,7 +4274,9 @@ starts instead:
 
 Both gate starts only. Nothing already running is ever touched; pressure drains
 as running work finishes. The older node road re-asks every 5 seconds; the
-default run road re-asks each supervisor pass, every 300 milliseconds. `codeaf do`
+default run road re-asks each supervisor pass, every 300 milliseconds. Changing either
+setting in `/settings` is noticed without restarting the engine, and a held row is
+re-evaluated under the new ceiling. `codeaf do`
 uses the same profile limits and, having no rail, says a hold on stderr, once:
 `waiting · machine busy` and the limit that held it (see *codeaf do is waiting and
 nothing happens* on the terminal page).
@@ -4343,6 +4350,11 @@ today's crew spend ($5.01) has reached the daily cap of $5.00 · raise it or tur
 ```
 
 The day turns over at midnight on this machine's clock, and the spend starts again from nothing.
+
+The machine-wide daily limit in `/settings` → **Spending** and `/budget` is a separate
+rail over every chat turn and task. If it is already spent, a task opened from chat waits
+on the same card shape: `1 Raise to $X` continues with that amount for today, and `2 Stop
+for today` refuses it with `today's spending limit of $X is spent, so nothing was started`.
 
 ## Naming a model for one task
 
@@ -4547,6 +4559,10 @@ press to dismiss a question. `left`/`right` move, `enter` takes, `esc` is `keep 
 **`x` never bypasses it: the card is always asked**, because `x` is one bare keystroke over
 a list and the work behind it may be an hour old.
 
+From the main box, `/stop` offers the only queued or machine-held task when it is the
+sole active task, even when its queued group is folded. With more than one active task,
+open the task or focus its row before stopping it.
+
 With a pointer, the `Stop` at the right end of a room's facts row — the second row of its
 header, under the breadcrumbs — raises the same card.
 Strip chips do not carry a stop button.
@@ -4631,9 +4647,9 @@ Whenever a task stops for any reason it wears its own word — `stopped` when yo
 `incomplete · <the reason>` otherwise — with `branch kept` and the branch name beside it.
 Nothing is thrown away: on every ending except a clean merge the branch is kept and named,
 and what the task made is committed onto that branch before it lands — so the files it
-produced are listed under `changed:` and `git merge task/…` brings them over. For a
-retained run, `/land` is the explicit merge door; an ordinary branch-kept task still
-waits for you, because only work that was checked reaches your branch.
+produced are listed under `changed:` and `git merge task/…` brings them over. A kept
+branch from either a single task or a retained run appears in the `/land` waiting list;
+`/land now` is the explicit merge door when you want that work in your checkout.
 
 ## Continue task N — keep going on a failed or finished task, No task 1 in this project
 

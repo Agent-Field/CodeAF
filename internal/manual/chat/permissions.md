@@ -331,10 +331,11 @@ countdown is off) and the work stays blocked until you answer. The transcript
 row is not annotated `denied · no answer`; that wording was a previous build
 answering no for you.
 
-Any key the question reads, and any press on its answers, stops the clock
+Any key past the initial quarter-second settle guard, and any press on its answers, stops the clock
 **permanently**. There is no way to start it again; the tail then reads
 ` · paused` and the question waits for you. Setting the countdown to `0` turns
-the clock off from the start, and every question waits forever.
+the clock off from the start, and every question waits forever. Keys dropped by
+the settle guard leave the clock running and are never applied later.
 
 The clock **only runs while that terminal window has the keyboard**. Switch to
 another window and it stops where it is; come back and it starts again from the

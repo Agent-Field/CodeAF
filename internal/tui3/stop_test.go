@@ -509,6 +509,17 @@ func TestAStoppedTaskWearsTheStopMarkAndTheStopWord(t *testing.T) {
 	}
 }
 
+func TestStopFromMainBoxOffersOneHeldQueuedTask(t *testing.T) {
+	a, _ := stopApp(t)
+	a.closeRoom()
+	a.railTake(false)
+	a.tasks[7].state = session.TaskQueued
+	a.tasks[7].waiting = "machine busy"
+	if target := a.stopHere(); target.empty() {
+		t.Fatal("main-box stop offered no target for the only held queued task")
+	}
+}
+
 // press is one left-button click at a column and a row.
 func press(x, y int) tea.MouseClickMsg {
 	return tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft}

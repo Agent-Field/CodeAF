@@ -664,7 +664,7 @@ Everything below is `internal/teams` unless named otherwise.
 | teams.json field | Go | Meaning | Band |
 |---|---|---|---|
 | `questions_up` | `*bool` | members' questions go to the home manager first | |
-| `cap_usd_day` | `*float64` | dollars per local day for the team and everything under it; `0` is an explicit no cap | `>= 0` |
+| `cap_usd_day` | `*float64` | an explicit dollars-per-day cap for the team and everything under it; `0` is an explicit no cap | `>= 0` |
 | `depth_limit` | `*int` | levels of teams, the top counting as one | 1 to 10 |
 | `sub_share` | `*float64` | fraction of this team's cap a new sub-team is made with | (0, 1] |
 | `wake` | `*bool` | team traffic wakes idle conversations (section 5); the old `"wake": false` reads as off | |
@@ -684,13 +684,16 @@ Everything below is `internal/teams` unless named otherwise.
 - `(*File).Depth(id) int` (the root is 0, top level 1), `(*File).CanNest(parent, Defaults) bool`
   (parent open and one more level inside its effective limit), `(*File).SubTeamCap(parent,
   Defaults) float64` (parent's effective cap times its share, to the cent; 0 when the parent
-  has none). The session writes that figure on the new sub-team with `SetSettings`, so a later
+  has none). With no derived cap, the new sub-team follows the ordinary effective-cap walk.
+  The session writes a positive figure on the new sub-team with `SetSettings`, so a later
   change of the share moves no team that exists.
 
-**A cap is a pool.** A team's spend counts every team under it, so an inherited cap is the
-ancestor's one pool, shared, never a second allowance of the same size. `Effective.CapFrom.Team`
-names the pool's owner; when the cap comes from Settings, the owner is the top of the chain
-(the root when there is one). The spend drawn beside a cap is always the owner's.
+**A cap is a pool.** An explicit cap on a team counts that team and every team under it, so an
+inherited cap is the ancestor's one pool, shared, never a second allowance of the same size.
+The profile's default cap is different: it gives each ordinary team its own pool, while the
+`All teams` root has no cap unless it is explicitly set. `Effective.CapFrom.Team` names the
+pool's owner; when the cap comes from Settings, the owner is the team itself for an ordinary
+team. The spend drawn beside a cap is always the owner's.
 
 **Config keys** (`internal/config/teamdefaults.go`, flat dotted keys, category `teams`, one
 settings tab `Teams`, each a row with a named reader `TeamDefaultsAt` and a ledger line):
@@ -867,8 +870,8 @@ forbids every new store door in a frame (`framedisk_law_test.go`).
 - **One level.** `team_send`, `team_stop` and `team_start` reach only the manager's own team's
   members (a sub-team's manager is one). Links may send fyi notes (`KindNote`) and nothing else.
 - **Caps.** Before each model request of a member, the session compares
-  `TeamSpend(owner, Today())` with the pool owner's effective cap (`Effective.CapFrom.Team`, or
-  the top of the chain). Reached: it raises one `cap` packet to `Person` for that team and day
+  `TeamSpend(owner, Today())` with the pool owner's effective cap (`Effective.CapFrom.Team`).
+  Reached: it raises one `cap` packet to `Person` for that team and day
   (not one per request; look for an open one first) with options `raise` (`Raise to $10`,
   twice the cap) and `stop` (`Stop for today`) and a recommendation, and holds new member turns
   in that pool until it is decided. Managers never raise a cap: money is the person's.
@@ -1018,13 +1021,15 @@ its tab stays open. Other shared conversations keep the prior rule.)
 - **The settings group is its own tab, `Teams`.** The settings tabs are one-to-one with their
   categories for the four newer tabs; a group inside Tasks would be a row filed under one
   category and drawn under another.
-- **A cap is a pool, and the header says whose.** `$1.20 of $5 today · from harbor` beside a
+- **A cap is a pool, and the header says whose.** `$1.20 of $5 today · harbor's cap` beside a
   sub-team would read as a second $5; the header shows the pool owner's spend and says
   `harbor's cap`. The settings card still says `from harbor`, which is true of the value.
 - **Cap packets always go to the person.** A manager that could raise its own cap would make
   the cap advice. Managers may stop their own team early; they may not spend more.
-- **The global manager is a real root team**, not a special case beside the tree, so every
-  rule above holds for it unchanged; the root is not a level and cannot close.
+- **The global manager is a real root team**, not a special case beside the tree, so its
+  membership, authority and spend walk are ordinary; the root is not a level and cannot close.
+  Its profile-default cap is the deliberate exception: `All teams` has no cap until the person
+  explicitly sets one on it.
 - **Team defaults are rails**, refused to model self-service like the spending and consent
   rows. A team's own overrides are written only by the interface for the person; the team
   tools must not write them (d1).
@@ -1095,8 +1100,8 @@ without waking. `Decide` on a question now logs `answered @web: <label>` (the ra
 after the decider's mark).
 
 **Caps.** At every point the team would START something (a member or manager wake, a new
-member's brief, `team_start`), the pool (owner = `CapFrom.Team`, or the top of the chain for a
-Settings cap) is checked: at or over the ceiling, the start is held and the Traffic says `held
+member's brief, `team_start`), the pool (owner = `CapFrom.Team`) is checked: at or over the
+ceiling, the start is held and the Traffic says `held
 @web: harbor reached its $5 cap today …` once per reason; a running turn is never cut; the
 person's own typing is never held. The first holder raises ONE `cap` packet to `you` for the
 pool and ceiling (`harbor reached its $5 cap today`; `raise` = `Raise to $10`, twice the

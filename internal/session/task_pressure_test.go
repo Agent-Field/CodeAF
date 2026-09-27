@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // ── the reservation: a fan wider than the machine ──────────────────────────
@@ -198,6 +200,51 @@ func TestAFanWiderThanTheMachineStartsWhatItCanCarryAndHoldsTheRest(t *testing.T
 	graph.runFrontier()
 	if widened, _ := partition(graph, parts); len(widened) != carried+1 {
 		t.Fatalf("a reading with one more footprint of room left %d running, want %d", len(widened), carried+1)
+	}
+}
+
+func TestMachineAdmissionRefreshesBothCeilingsWithoutRestart(t *testing.T) {
+	profile := t.TempDir()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) {
+		cfg.ProfileDir = profile
+		cfg.TaskMaxLoad = 1.5
+		cfg.TaskMinFreeMB = 0
+	})
+	reading := loaded()
+	reading.availableMB = 1 << 20
+	setReading := func(governor *admissionGovernor) {
+		governor.read = func() (machineReading, bool) { return reading, true }
+		governor.now = func() time.Time { return time.Unix(1, 0) }
+		governor.observe(0)
+	}
+
+	graph := agent.graph()
+	setReading(graph.governor)
+	if graph.governor.admits(0) {
+		t.Fatal("the loaded graph admitted work before its setting changed")
+	}
+	run := newRunAdmission(1.5, 0, profile, NewTaskLanes()).(*runAdmission)
+	setReading(run.governor)
+	if run.MayStart() {
+		t.Fatal("the loaded run admission admitted work before its setting changed")
+	}
+
+	settings := config.NewSettings(config.SettingsOptions{ProfileDir: profile})
+	if row, ok := settings.Row(config.KeyTaskMaxLoad); !ok {
+		t.Fatal("task.max_load is not a settings row")
+	} else if err := row.Apply("0"); err != nil {
+		t.Fatalf("turn off task.max_load: %v", err)
+	}
+	if row, ok := settings.Row(config.KeyTaskMinFreeMB); !ok {
+		t.Fatal("task.min_free_mb is not a settings row")
+	} else if err := row.Apply("0"); err != nil {
+		t.Fatalf("turn off task.min_free_mb: %v", err)
+	}
+	if !graph.governor.admits(0) {
+		t.Fatal("the graph stayed held after both ceilings were turned off")
+	}
+	if !run.MayStart() {
+		t.Fatal("the run stayed held after both ceilings were turned off")
 	}
 }
 

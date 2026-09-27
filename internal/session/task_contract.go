@@ -661,6 +661,10 @@ type TaskNotice struct {
 	// on its branch), "conflicted" (branch kept), "inplace" (a non-git
 	// workspace ran in the person's tree), or "" while running.
 	Merge string
+	// KeptReason is why automatic landing left a kept branch alone. It is empty
+	// for conflicts and for every branch that came home, and lets surfaces name
+	// the policy boundary without parsing person-facing prose.
+	KeptReason string
 	// Doing is the PHASE a running node of a named kind is in, in that kind's
 	// own plain words — "designing", "awaiting your look" for a subharness
 	// being written (harness_task.go) — and "" for an ordinary task, which has
