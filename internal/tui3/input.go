@@ -848,6 +848,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 
 	switch msg.String() {
 	case "esc":
+		if a.cancelBrowserSignIns() {
+			return nil
+		}
 		// esc during a recall is the recall's: it puts the person's own draft
 		// back. A modal-ish state that could not be left by the dismiss key
 		// would be a trap, and the turn is still interruptible the moment the
