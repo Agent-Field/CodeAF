@@ -696,3 +696,21 @@ func TestAnAnswerLeftWhileTheWindowWasShutIsAppliedAsItOpens(t *testing.T) {
 		t.Fatalf("the doorstep was left behind: %v", err)
 	}
 }
+
+func TestScheduledTaskApprovalNamesWorkNotReminder(t *testing.T) {
+	item := standing.Item{When: standing.When{Kind: standing.WhenAt, Words: "tomorrow at 8"}, Does: standing.Action{Kind: standing.ActionTask, Brief: "write report"}}
+	if got := StandingHead(item); got != "wants to schedule work once" {
+		t.Fatal(got)
+	}
+	options := StandingOptions(item)
+	if len(options) != 2 || !strings.HasPrefix(options[0].Label, "Run it then") || options[0].Consequence != "Runs the work then. Nothing repeats." || options[1].Label != "Don't schedule it" {
+		t.Fatalf("options: %+v", options)
+	}
+	if StandingOnceIsAnAnswer(item) {
+		t.Fatal("future scheduled work unexpectedly offers now")
+	}
+	item.Does = standing.Action{Kind: standing.ActionSay, Say: "time for report"}
+	if StandingHead(item) != StandingHeadReminder || !strings.HasPrefix(StandingOptions(item)[0].Label, "Remind me") {
+		t.Fatal("say-only reminder changed")
+	}
+}

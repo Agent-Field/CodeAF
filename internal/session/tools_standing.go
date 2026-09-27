@@ -494,11 +494,10 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 	}
 	switch {
 	case answer.Once:
-		// Nothing is created and nothing is scheduled. The person wanted the
-		// action, not the arrangement. The result says the next step in so
-		// many words, because "nothing was set up" sent a model off to read
-		// this program's source looking for a reminder that was never missing.
-		return "Do it now as an ordinary step and report what happened. The person chose not to repeat it. Do not set it up again unless they ask. Do not investigate codeaf.", false, nil
+		if !StandingOnceIsAnAnswer(item) {
+			return "this card does not offer doing it once now; nothing was set up or run", true, nil
+		}
+		return standingOnceHandoff(item), false, nil
 	case !answer.Approved:
 		if correction := strings.TrimSpace(answer.Change); correction != "" {
 			// AND THE CORRECTION MAY BE ABOUT ANY OF IT. The card's one change
@@ -531,6 +530,28 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 	}
 	line += "\n" + standingRatifiedLine
 	return line, false, nil
+}
+
+// standingOnceHandoff records an approval, not execution. Keep the entire
+// approved action on the tool boundary: the continuation must not reconstruct
+// its brief, workspace, acceptance or watch probe from the scheduling request.
+// Work stays in the ordinary turn under its existing tool permissions.
+func standingOnceHandoff(item standing.Item) string {
+	payload := struct {
+		Decision      string        `json:"decision"`
+		Execution     string        `json:"execution"`
+		StandingSaved bool          `json:"standing_saved"`
+		Instruction   string        `json:"next_step"`
+		Approved      standing.Item `json:"approved_action"`
+	}{
+		Decision:    "run_once_now",
+		Execution:   "pending",
+		Instruction: "The person approved this action once now. This is not a decline. Execute approved_action in its workspace using the ordinary tools, respecting its grant, rails and the current permissions. For a watch, check its probe or condition once before the action. Ignore the future schedule: do not save or re-propose it. Report actual results or a concrete blocker; approval alone does not mean the work ran.",
+		Approved:    item,
+	}
+	// standing.Item contains only validated JSON data from this tool's input.
+	raw, _ := json.Marshal(payload)
+	return string(raw)
 }
 
 // standingRatifiedLine is what a model is told the instant something stands,
