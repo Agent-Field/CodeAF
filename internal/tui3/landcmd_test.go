@@ -89,7 +89,7 @@ func TestTheWaitingRowRidesTheFrameAboveTheBox(t *testing.T) {
 func TestLandShowsWhatWouldMoveAndOnlyLandNowMovesIt(t *testing.T) {
 	a, agent := landingApp(session.StandingChange{Folder: "/code/agentfield", Name: "agentfield", Files: 2})
 
-	a.slash("/land")
+	drive(t, a, a.slash("/land")())
 	said := plain(lastNote(t, a))
 	for _, want := range []string{"changes for agentfield", "2 files", "shared.txt", "/land now"} {
 		if !strings.Contains(said, want) {
@@ -134,7 +134,7 @@ func TestLandWithTwoFoldersWaitingAsksWhichOne(t *testing.T) {
 		t.Fatal("/land picked a folder for the person")
 	}
 
-	a.slash("/land notes")
+	drive(t, a, a.slash("/land notes")())
 	if got := plain(lastNote(t, a)); !strings.Contains(got, "changes for notes") || !strings.Contains(got, "/land notes now") {
 		t.Fatalf("/land notes said %q", got)
 	}

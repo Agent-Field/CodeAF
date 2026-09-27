@@ -559,6 +559,18 @@ and notes · say which one · /land agentfield`. Then `/land agentfield now`.
 **A folder lands whole.** There is no way to land some of the files and keep the rest
 today — you either put the folder's changes in or leave them waiting.
 
+## /land after a task kept its branch in this folder
+
+A task's retained branch is waiting even when it belongs to the folder the
+conversation is standing in. `/land` shows the folder and changed files;
+`/land now` explicitly merges that branch into your current checkout, including
+`main`. Automatic task landing still leaves protected branches alone.
+
+This works through the local session host used by ordinary chat, and the waiting
+branch remains available after reopening the conversation. A dirty checkout or a
+merge conflict can still prevent the merge; the retained branch stays available.
+The `--host` landing restriction is unchanged.
+
 ## Work in a folder directly, without keeping the changes aside
 
 Say so in your own words — "work in ~/code/notes directly", "edit it in place", "just

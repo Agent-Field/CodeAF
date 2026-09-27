@@ -143,7 +143,7 @@ func classify(method string) callClass {
 		MethodAttachedSkills, MethodSkillShelf,
 		MethodSessionsRecent, MethodHeldQuestions,
 		MethodStandingItems, MethodStandingWatch,
-		MethodPlacesWorld, MethodPlacesTask, MethodPlacesLedger, MethodPlacesSearch,
+		MethodPlacesWorld, MethodPlacesTask, MethodPlacesLedger, MethodPlacesSearch, MethodLandingPreview,
 		MethodMemorySnapshot, MethodMemoryChanged, MethodMemoryList, MethodMemoryProvenance,
 		MethodTaskRoom, MethodTaskPending, MethodTaskEffort,
 		MethodListDir, MethodStatPaths, MethodFetchFile,
