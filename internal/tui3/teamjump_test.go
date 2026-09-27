@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -206,5 +207,45 @@ func TestTrafficPressOpensTheConversationTheMessageBelongsTo(t *testing.T) {
 	sideClick(t, a, x, y)
 	if a.frontTabKey() != manager {
 		t.Fatalf("a press on the manager's message in the member's chat opened %q", a.frontTabKey())
+	}
+}
+
+// A row press must reveal the actual message, not merely remember its hidden index.
+func TestTrafficJumpRevealsACompletedToolInsideClosedWork(t *testing.T) {
+	for _, tool := range []string{"team_send", "team_post"} {
+		t.Run(tool, func(t *testing.T) {
+			a, _, _, _ := trafficApp(t)
+			a.width, a.height = 160, 30
+			a.workMode = config.WorkFold
+			a.entries = foldFixture()
+			id := "000000000123"
+			output := "Sent to @review (#123)."
+			if tool == "team_post" {
+				output = "Posted to the manager as #123, answering #122."
+			}
+			a.entries[3] = entry{kind: entryTool, tool: tool, text: tool, turn: 1, status: toolOK, settled: true,
+				detail: toolDetail{Args: `{"to":"review","text":"findings"}`, Output: output}}
+			a.touch()
+			initiallyVisible := false
+			for _, r := range a.visible(a.bodyWidth()) {
+				initiallyVisible = initiallyVisible || r.entry == 3
+			}
+			// On this base a send is already a visible thread card; a post is
+			// ordinary completed work. Exercise both paths honestly.
+			if initiallyVisible != (tool == "team_send") {
+				t.Fatalf("unexpected initial visibility for %s: %v", tool, initiallyVisible)
+			}
+			spend(t, a, a.trafficJump("", id))
+			if a.traffic.landing.entry != 3 {
+				t.Fatalf("target = %d, want 3", a.traffic.landing.entry)
+			}
+			found := false
+			for _, r := range a.visible(a.bodyWidth()) {
+				found = found || r.entry == 3
+			}
+			if !found {
+				t.Fatal("jump found the target but left its enclosing disclosure closed")
+			}
+		})
 	}
 }
