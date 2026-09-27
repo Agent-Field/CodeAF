@@ -2,6 +2,8 @@ package remote
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +20,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
+
+var fallbackClientID atomic.Uint64
 
 // ── THE SURFACE HALF ────────────────────────────────────────────────────────
 //
@@ -266,6 +270,9 @@ func newClient(host string, hello Hello) *Client {
 	if strings.TrimSpace(hello.Surface) == "" {
 		hello.Surface = MachineName()
 	}
+	if strings.TrimSpace(hello.ClientID) == "" {
+		hello.ClientID = newClientID()
+	}
 	hello.Encodings = []string{frameEncodingGzip}
 	return &Client{
 		host:    strings.TrimSpace(host),
@@ -279,6 +286,20 @@ func newClient(host string, hello Hello) *Client {
 		driverWake: make(chan struct{}),
 		following:  make(chan Following, followingRoom),
 	}
+}
+
+// newClientID gives one surface a stable identity to carry through every
+// redial. It is not an authorization token; it only lets the engine tell a
+// returning window from another window using the same machine label.
+func newClientID() string {
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err == nil {
+		return hex.EncodeToString(raw)
+	}
+	// A failed system random source must not make the connection unusable. The
+	// clock and process-local sequence still distinguish the clients this
+	// process creates, which is enough for the in-memory room's live identity.
+	return fmt.Sprintf("%x-%x", time.Now().UnixNano(), fallbackClientID.Add(1))
 }
 
 // attach says hello on one pipe and reads the welcome back. It is the handshake
