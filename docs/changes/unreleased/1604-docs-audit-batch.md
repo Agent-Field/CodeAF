@@ -17,7 +17,6 @@ invalidates:
   - "A sub-team started by `team_start` did not inherit the starting manager's approval posture, and the start card showed the rule word `default`. The posture is carried to the child, and a fallback rule shows the cost clause."
   - "`team_start`'s description said the person is always asked first, so a manager under an allowing posture reported an approval nobody gave. It now says approval follows the posture."
   - "Every check in a fan-out run drew from one checker-seat tally, so later checks stopped at a ceiling other checks had spent, and the run still said done. Each check has its own ceiling, and a run with unfinished checks does not end done."
-  - "A per-part check naming a path that does not exist and that the part does not produce (`issue_.go`) was stored and run. Division refuses it with the check and path named."
   - "A run branch kept on a protected or moved checkout was invisible to `/land`, and `.orig` backups could reach a task branch. `/land` lists and lands kept run branches, and `.orig` files are droppings."
   - "A Home conversation could be opened on another project's live engine. A conversation whose engine answers for a different workspace is refused visibly before anything is sent."
   - "The wall showed other windows' conversations as open here, and a tile opened from Teams landed back on Teams. It shows only this window's conversations, and a tile lands on its conversation."
