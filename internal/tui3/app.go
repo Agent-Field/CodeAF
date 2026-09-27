@@ -7514,8 +7514,7 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "workspace":
 		if rest == "" {
-			a.note("usage: /workspace <path>")
-			return nil
+			return a.openFolderPick("")
 		}
 		if a.anchorWorkspace == nil {
 			a.note("this conversation already has a workspace")
