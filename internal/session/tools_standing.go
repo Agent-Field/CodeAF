@@ -105,7 +105,7 @@ const standingPastGrace = 30 * time.Second
 const standingWatchOffer = "watch-offer.json"
 
 // standingWatchAnswer is that marker's whole content. It is journaled BEFORE
-// [standing.Watch.Install] is called, so a person whose launchd would not take
+// [standing.Watch.Ensure] is called, so a person whose launchd would not take
 // the file is somebody this build knows it has already spoken to — rather than
 // somebody it tells again tomorrow.
 //
@@ -1243,8 +1243,8 @@ func (a *Agent) emitStandingNews(update string, item standing.Item, text string)
 
 // ── background checks, on by default, said once ─────────────────────────────
 
-// standingBackgroundOn installs this machine's timer the first time anything
-// ever stands, and says the one dim line about it.
+// standingBackgroundOn ensures background checks the first time anything stands,
+// without taking another profile's timer, and says the result in one dim line.
 //
 // NOBODY IS ASKED, AND IT HAPPENS ONCE, EVER. There used to be a question here
 // — keep checking when no window is open? — and it had one sensible answer:
@@ -1272,7 +1272,7 @@ func (a *Agent) standingBackgroundOn(store standingStore, item standing.Item) {
 		return
 	}
 	standingRememberWatch(store.Root(), true)
-	if err := a.config.Standing.Watch.Install(context.Background()); err != nil {
+	if err := a.config.Standing.Watch.Ensure(context.Background()); err != nil {
 		// SAID HONESTLY AND NOT SWALLOWED. The person is about to walk away from
 		// a machine they think is watching something for them.
 		a.emitStandingUpdate(standingBackgroundUpdate, item,

@@ -460,8 +460,7 @@ func v3StandingSeam(seam *session.Standing) tui3.StandingSeam {
 // named as an interface so a test can hand it a definition pointing at a dead
 // path without going anywhere near this machine's launchd.
 type backgroundTimer interface {
-	Drift() (standing.WatchDrift, error)
-	Install(ctx context.Context) error
+	Repair(ctx context.Context) (standing.WatchDrift, error)
 }
 
 // repairBackgroundChecks puts a drifted timer back, and says one line about it
@@ -489,11 +488,11 @@ func repairBackgroundChecks(watch backgroundTimer, wanted bool) string {
 	if watch == nil || !wanted {
 		return ""
 	}
-	drift, err := watch.Drift()
-	if err != nil || !drift.Present || !drift.Stale {
+	drift, err := watch.Repair(context.Background())
+	if !drift.Present {
 		return ""
 	}
-	if err := watch.Install(context.Background()); err != nil {
+	if err != nil {
 		return "could not put the background check back: " + err.Error()
 	}
 	if drift.Gone && drift.Executable != "" {
