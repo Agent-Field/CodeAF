@@ -1,0 +1,54 @@
+[
+  {
+    "argv": [
+      "python3",
+      "-m",
+      "unittest",
+      "-v"
+    ],
+    "exit": 0,
+    "stdout": "",
+    "stderr": "test_malformed_quantity_row_exits_nonzero (test_pantry.TestBadInput.test_malformed_quantity_row_exits_nonzero) ... ok\ntest_missing_file_exits_nonzero_with_stderr_message (test_pantry.TestBadInput.test_missing_file_exits_nonzero_with_stderr_message) ... ok\ntest_wrong_column_count_row_exits_nonzero (test_pantry.TestBadInput.test_wrong_column_count_row_exits_nonzero) ... ok\ntest_buy_is_threshold_minus_quantity (test_pantry.TestBuyAmount.test_buy_is_threshold_minus_quantity) ... ok\ntest_alphabetical_ordering (test_pantry.TestFixtureBehaviour.test_alphabetical_ordering) ... ok\ntest_custom_threshold_changes_the_set_and_buy (test_pantry.TestFixtureBehaviour.test_custom_threshold_changes_the_set_and_buy) ... ok\ntest_default_threshold_excludes_equal_and_above (test_pantry.TestFixtureBehaviour.test_default_threshold_excludes_equal_and_above) ... ok\ntest_quantity_equal_to_threshold_is_excluded (test_pantry.TestFixtureBehaviour.test_quantity_equal_to_threshold_is_excluded) ... ok\ntest_fractional_quantity_below_threshold (test_pantry.TestFractionalQuantities.test_fractional_quantity_below_threshold) ... ok\ntest_fractional_threshold (test_pantry.TestFractionalQuantities.test_fractional_threshold) ... ok\ntest_whole_valued_decimal_prints_without_point (test_pantry.TestFractionalQuantities.test_whole_valued_decimal_prints_without_point) ... ok\ntest_blank_item_name_rejected (test_pantry.TestHardenedInputs.test_blank_item_name_rejected) ... ok\ntest_fractional_threshold_survives (test_pantry.TestHardenedInputs.test_fractional_threshold_survives) ... ok\ntest_infinity_quantity_rejected (test_pantry.TestHardenedInputs.test_infinity_quantity_rejected) ... ok\ntest_infinity_threshold_rejected (test_pantry.TestHardenedInputs.test_infinity_threshold_rejected) ... ok\ntest_nan_quantity_rejected (test_pantry.TestHardenedInputs.test_nan_quantity_rejected) ... ok\ntest_nan_threshold_rejected (test_pantry.TestHardenedInputs.test_nan_threshold_rejected) ... ok\ntest_negative_infinity_quantity_rejected (test_pantry.TestHardenedInputs.test_negative_infinity_quantity_rejected) ... ok\ntest_negative_quantity_rejected (test_pantry.TestHardenedInputs.test_negative_quantity_rejected) ... ok\ntest_negative_threshold_rejected (test_pantry.TestHardenedInputs.test_negative_threshold_rejected) ... ok\ntest_valid_fractional_survives (test_pantry.TestHardenedInputs.test_valid_fractional_survives) ... ok\ntest_whitespace_item_name_rejected (test_pantry.TestHardenedInputs.test_whitespace_item_name_rejected) ... ok\ntest_zero_threshold_allowed (test_pantry.TestHardenedInputs.test_zero_threshold_allowed) ... ok\ntest_exact_json_shape_and_order (test_pantry.TestJsonOutput.test_exact_json_shape_and_order) ... ok\ntest_json_fractional_is_float (test_pantry.TestJsonOutput.test_json_fractional_is_float) ... ok\ntest_json_round_trip_types_and_values (test_pantry.TestJsonOutput.test_json_round_trip_types_and_values) ... ok\ntest_json (test_pantry.TestSubprocessOnRealFixture.test_json) ... ok\ntest_plain (test_pantry.TestSubprocessOnRealFixture.test_plain) ... ok\n\n----------------------------------------------------------------------\nRan 28 tests in 0.202s\n\nOK\n"
+  },
+  {
+    "argv": [
+      "python3",
+      "pantry.py",
+      "pantry.csv",
+      "--json"
+    ],
+    "exit": 0,
+    "stdout": "[{\"item\": \"beans\", \"quantity\": 0, \"buy\": 3}, {\"item\": \"rice\", \"quantity\": 2, \"buy\": 1}]\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "python3",
+      "pantry.py",
+      "pantry.csv",
+      "--threshold",
+      "-1"
+    ],
+    "exit": 1,
+    "stdout": "",
+    "stderr": "pantry: --threshold must be a finite non-negative number, got -1.0\n"
+  },
+  {
+    "scenario": "nan",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "pantry: /tmp/tmp19nuyhr8.csv:2: item 'rice' has non-numeric quantity 'nan'\n"
+  },
+  {
+    "scenario": "blank",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "pantry: /tmp/tmp70d0ilwn.csv:2: item name is blank\n"
+  },
+  {
+    "scenario": "fractional",
+    "exit": 0,
+    "stdout": "[{\"item\": \"milk\", \"quantity\": 1.5, \"buy\": 1.5}]\n",
+    "stderr": ""
+  }
+]

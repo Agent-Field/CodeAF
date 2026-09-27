@@ -1,0 +1,61 @@
+{
+  "pr": 1616,
+  "recording": "Unmodified original asciinema recording. GIF and MP4 are 3x playback with idle intervals capped at 3 seconds; no invented frames.",
+  "preview_duration_seconds": 58.0,
+  "screenshot_source": "1499-final-result.cast",
+  "files": {
+    "1499-usage.json": {
+      "bytes": 24131,
+      "sha256": "040d3dea3ca313e035313f847cd9ab05bfe301a9f2db77e981cdb1bfe180e282"
+    },
+    "1499-final-result.cast": {
+      "bytes": 9642,
+      "sha256": "2050aad8bc01e70a63b121aa1303bda7b407ea43222cacab2c6079e9e78a430e"
+    },
+    "1499.cast": {
+      "bytes": 252317,
+      "sha256": "61f5aa749be564ab2d12b097363dd0aab8c283e4fb67c8808b188aa26476ced4"
+    },
+    "workflow.gif": {
+      "bytes": 1592472,
+      "sha256": "2c392e374291d944507ad570e7626712d152bc5b5778145b885e68177726a4b0"
+    },
+    "workflow.mp4": {
+      "bytes": 695287,
+      "sha256": "b2c3e60ab8be4771aa041486756e7633f2e79c2b081a495962b2b2b3850c2faf"
+    },
+    "1499-artifact-tests.json": {
+      "bytes": 4251,
+      "sha256": "5ebb1ac6474ecd4330ad341e8315fb35a2ce3498df27b9ae515e55ec2cf0baa5"
+    },
+    "1499-post-close.json": {
+      "bytes": 26419,
+      "sha256": "5311e6b8a9c55613d3e72b996b8562fa327a524964e808909ad88ac4fad76d84"
+    },
+    "screenshot.png": {
+      "bytes": 98947,
+      "sha256": "0b33cec7bfd247602da0d5a656fabe87d12ab8af4a4b053833d03fb153587fc1"
+    },
+    "1499-execution.json": {
+      "bytes": 555,
+      "sha256": "41c3025919da10b07d1003f4bcb20345032c8cc4bc078f15204a86d9ab81ad7e"
+    },
+    "artifacts/README.md": {
+      "bytes": 1739,
+      "sha256": "061c9311a26ac9a831e9ed170494b22ba9a58c4ea74d497b71d723a06702d4f5"
+    },
+    "artifacts/test_pantry.py": {
+      "bytes": 10099,
+      "sha256": "7bf94650893af35c738a69ee8a5b66cd2c04e0690f0930530ca365ca6d51a7b9"
+    },
+    "artifacts/pantry.csv": {
+      "bytes": 35,
+      "sha256": "39a54ef50c183d5f138b295100af401b54d081a843732c7f99ac12ce652faecb"
+    },
+    "artifacts/pantry.py": {
+      "bytes": 5461,
+      "sha256": "5c22da597658801ce762ce5665792dae9f5af4b9b8c882f77617651755c6fbf1"
+    }
+  },
+  "issue": 1499
+}
