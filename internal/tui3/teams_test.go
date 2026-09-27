@@ -415,7 +415,7 @@ func TestTeamNewConversationJoinsTheShownTeam(t *testing.T) {
 	n := 0
 	a.start = func(workspace string) (Conversation, error) {
 		n++
-		return Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: fmt.Sprintf("/tmp/lab/new-%d.jsonl", n), Workspace: "/tmp/lab"}, nil
+		return Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: fmt.Sprintf("%s/new-%d.jsonl", workspace, n), Workspace: workspace}, nil
 	}
 	before := a.frontTabKey()
 	tabs := a.tabList()

@@ -168,6 +168,80 @@ func TestHomePlainSentenceStillStarts(t *testing.T) {
 	}
 }
 
+// HOME DOES NOT DISPATCH INTO A CONVERSATION THAT MISSED ITS TARGET. Both a
+// plain sentence and a task command use the same opening door, so a hosted
+// engine that answers for another project must be refused before either can
+// reach that agent.
+func TestHomeTargetBindingIsCheckedBeforePlainOrTaskDispatch(t *testing.T) {
+	for _, line := range []string{"hello there", "/task write h0.txt containing h0"} {
+		t.Run(strings.TrimPrefix(strings.ReplaceAll(line, " ", "-"), "/"), func(t *testing.T) {
+			lab := newHomeLab(t)
+			mine := lab.workspace("alpha")
+			theirs := lab.workspace("beta")
+			row := lab.session("-tmp-alpha", "aaaa000000000001", "porting the resume picker", mine, time.Now())
+			a := lab.app(row)
+			runCmd(a.openHome())
+			a.target.where = theirs
+			old := a.agent
+			nextAgent := &fakeAgent{model: "m"}
+			next := &taskCommandFake{Agent: nextAgent}
+			a.start = func(workspace string) (Conversation, error) {
+				return Conversation{Agent: next, SessionFile: workspace + "/next/transcript.jsonl", Workspace: mine}, nil
+			}
+
+			if strings.HasPrefix(line, "/") {
+				runCmd(a.homeSlash(line))
+			} else {
+				runCmd(a.homeStart(line))
+			}
+			if !strings.Contains(a.home.msg, "could not open the conversation") {
+				t.Fatalf("target mismatch was not visible: %q; sent=%q task calls=%d", a.home.msg, nextAgent.sent, next.singleCalls)
+			}
+			if a.agent != old || len(nextAgent.sent) != 0 || next.singleCalls != 0 {
+				t.Fatalf("dispatch reached the wrong conversation: agent changed=%v sent=%q task calls=%d", a.agent != old, nextAgent.sent, next.singleCalls)
+			}
+		})
+	}
+}
+
+// HOME'S PLAIN AND TASK DOORS ASK FOR THE SAME PROJECT. The command road may
+// start a task asynchronously, but it must first open the same target
+// conversation as the ordinary message road.
+func TestHomeTaskAndPlainMessageUseTheSameTarget(t *testing.T) {
+	for _, line := range []string{"hello there", "/task write h0.txt containing h0"} {
+		t.Run(strings.TrimPrefix(strings.ReplaceAll(line, " ", "-"), "/"), func(t *testing.T) {
+			lab := newHomeLab(t)
+			mine := lab.workspace("alpha")
+			target := lab.workspace("beta")
+			row := lab.session("-tmp-alpha", "aaaa000000000001", "current", mine, time.Now())
+			a := lab.app(row)
+			runCmd(a.openHome())
+			a.target.where = target
+			var asked string
+			nextAgent := &fakeAgent{model: "m"}
+			next := &taskCommandFake{Agent: nextAgent}
+			a.start = func(workspace string) (Conversation, error) {
+				asked = workspace
+				return Conversation{Agent: next, SessionFile: workspace + "/next.jsonl", Workspace: workspace}, nil
+			}
+			if strings.HasPrefix(line, "/") {
+				runCmd(a.homeSlash(line))
+			} else {
+				runCmd(a.homeStart(line))
+			}
+			if asked != target {
+				t.Fatalf("Home asked for %q, want target %q", asked, target)
+			}
+			if strings.HasPrefix(line, "/") && next.singleCalls != 1 {
+				t.Fatalf("task was not handed to the target conversation: %d calls", next.singleCalls)
+			}
+			if !strings.HasPrefix(line, "/") && len(nextAgent.sent) != 1 {
+				t.Fatalf("plain message was not handed to the target conversation: %q", nextAgent.sent)
+			}
+		})
+	}
+}
+
 func TestHomeSkillPathOpensAConversationWithThePathStillInThePicker(t *testing.T) {
 	lab := newHomeLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "reading the skill shelf", "/tmp/alpha", time.Now())
