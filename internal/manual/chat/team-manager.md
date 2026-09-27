@@ -201,6 +201,8 @@ and does not open another window. The focus stays where it was. The hint says
 `Open ◆'s message · 2m ago · click`, or `Open your message · now · click` for your own line.
 `▸` and `▾` still only fold the thread. A handle still opens that member.
 
+A deliberate message jump opens the activity and tool-call groups that contain the target before scrolling to it. Other history stays collapsed.
+
 ## What members say without being asked
 
 A member of a team that has a manager tells the manager, through the traffic, three things it
