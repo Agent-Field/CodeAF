@@ -1964,7 +1964,9 @@ and its heading wears no mark, because it does not fold. The other three start f
 one line, `Done 6 ▸`; press the heading, or `enter` on it, to open the group (`Done 6 ▾`)
 and again to fold it. What you open stays open for the rest of the session, through new
 work, new landings and switching chats. A group with nothing in it is not drawn at all;
-there are no empty headings and no `none` rows.
+there are no empty headings and no `none` rows. When only queued tasks remain and the
+conversation is idle, the main box footer says `queued`. It says `working` when a task
+or background command is running.
 
 **Every task is one line**: its state glyph two cells in, its name cut with `…` where the
 column is too narrow, and how long it has been at it (or how long it took) in the muted ink
@@ -4266,7 +4268,9 @@ starts instead:
 
 Both gate starts only. Nothing already running is ever touched; pressure drains
 as running work finishes. The older node road re-asks every 5 seconds; the
-default run road re-asks each supervisor pass, every 300 milliseconds. `codeaf do`
+default run road re-asks each supervisor pass, every 300 milliseconds. Changing either
+setting in `/settings` is noticed without restarting the engine, and a held row is
+re-evaluated under the new ceiling. `codeaf do`
 uses the same profile limits and, having no rail, says a hold on stderr, once:
 `waiting · machine busy` and the limit that held it (see *codeaf do is waiting and
 nothing happens* on the terminal page).
@@ -4316,6 +4320,9 @@ to ask again:
 ```
 task 4 crew · bugfix · worker glm-5.3-flash (openrouter) · checker kimi-k3 · $0.021 (est $0.023) · not right? /redo stronger
 ```
+
+When you explicitly stop a task, its line says `stopped` and does not offer
+`/redo stronger`; a stop is not a crew failure and teaches the router nothing.
 
 A seat you pinned wears the pin mark `⌖` in front of its model.
 
@@ -4540,6 +4547,10 @@ The cursor opens on `keep going` — the destructive answer is never under the k
 press to dismiss a question. `left`/`right` move, `enter` takes, `esc` is `keep going`.
 **`x` never bypasses it: the card is always asked**, because `x` is one bare keystroke over
 a list and the work behind it may be an hour old.
+
+From the main box, `/stop` offers the only queued or machine-held task when it is the
+sole active task, even when its queued group is folded. With more than one active task,
+open the task or focus its row before stopping it.
 
 With a pointer, the `Stop` at the right end of a room's facts row — the second row of its
 header, under the breadcrumbs — raises the same card.
@@ -5681,3 +5692,21 @@ refresh, not two. A run with no rows yet buys none, and neither does a task
 handed to a program such as senior-dev: its page is the actions it took, each
 under the step of its process, and its row already says the step it is in, so it has
 no four lines.
+
+
+## A task waiting on a busy machine after restarting the engine
+
+An ordinary task backed by its plan resumes when its conversation opens again.
+A task waiting for machine capacity keeps its accepted brief and exact folder,
+and waits at the same admission gate. It takes no folder lock or branch while
+waiting. A task that had already started uses its recorded working copy and plan;
+completed plan steps are retained rather than starting a new task.
+
+`/stop` in the main box offers the single open task, including one queued because
+its machine is busy. With multiple tasks, open the intended task first. The task
+room's stop reaches the same operation. A stopped task stays stopped after restart.
+
+An older record that lacks its working folder reads `interrupted` and asks you to
+request the task again with its folder. It is never counted as completed and its
+folder is never guessed. Programs that had already started keep their existing
+interrupted-program behavior; this restart rule concerns ordinary planned tasks.

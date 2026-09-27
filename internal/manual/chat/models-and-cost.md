@@ -776,6 +776,10 @@ names no money. `/task --best` that changes
 nothing says `best · already the strongest crew allowed`, and one that does names the rung
 (`worker glm-5.3-flash → kimi-k3`).
 
+An explicit stop is different from a failure: its crew line starts with `stopped` and
+does not offer `/redo stronger`, because stopping teaches the router nothing about the
+crew.
+
 **A seat whose model cannot start moves, inside the task.** When a seat's first call is
 refused, the seat goes down its ladder: the same model on its next route, then the next
 model for the seat at a similar cost, then the model the last good crew here used, then the
