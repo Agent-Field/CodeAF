@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: docs-audit bug batch — headless brief and flags, read-only reading helpers, held tasks, standing orders in workers, teams, fan-out checks, media, remote focus
+title: A batch of fixes from the docs audit — headless, tasks, standing, teams, runs, media, remote
 pr: 1604
 surface: [chat, engine, remote, docs]
 invalidates:
@@ -26,3 +26,6 @@ invalidates:
   - "Speech spend had no role in usage.jsonl and media calls wrote no call-log rows. Speech records under its own role, and media requests write a call-log pair with the provider's cost."
   - "After a `--host` redial the window became a watcher of its own dead pipe, and ssh stderr painted over the frame. The same window takes its keyboard back by client id, and a redial's stderr goes to the diagnostic tail."
   - "`/drafts` drew nothing while it held the keyboard, `/skill` on an empty shelf left `/skill ` in the box, and esc could not cancel a pending browser sign-in. All three are fixed."
+---
+
+One entry for the whole batch. The issues it closes, the ones it only narrows, and the ones left for a ruling are listed in the pull request.
