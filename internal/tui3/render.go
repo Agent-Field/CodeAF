@@ -382,6 +382,12 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	// tense earlier. The lens chooses live compactness independently of its
 	// settled fold policy, and each page owns its disclosure key.
 	lives := deriveLiveWork(d)
+	// The compact work window already owns the activity indication. Keep
+	// the anchored logo for the initial waiting state, not as a second
+	// animated row stranded above a reply after work resumes.
+	if len(lives) > 0 {
+		showActivity = false
+	}
 	for i := 0; i < len(es); i++ {
 		e := &es[i]
 		if f, ok := folds[i]; ok {

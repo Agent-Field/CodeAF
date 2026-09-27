@@ -112,7 +112,7 @@ func cleanChatCapture(t *testing.T, r *rig, stage string) {
 		t.Fatal(err)
 	}
 	header, _ := json.Marshal(map[string]any{"version": 2, "width": 140, "height": 42, "title": stage})
-	output, _ := json.Marshal([]any{0.0, "o", "\x1b[2J\x1b[H" + strings.ReplaceAll(strings.TrimRight(string(frame), "\n"), "\n", "\r\n")})
+	output, _ := json.Marshal([]any{0.0, "o", "\x1b[?25l\x1b[2J\x1b[H" + strings.ReplaceAll(strings.TrimRight(string(frame), "\n"), "\n", "\r\n")})
 	hold, _ := json.Marshal([]any{2.0, "o", ""})
 	data := append(append(append(header, '\n'), output...), '\n')
 	data = append(append(data, hold...), '\n')

@@ -333,6 +333,14 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 						out[f.start] = f
 					}
 				}
+				// Receipts between an answer and a later user-directed notice
+				// belong to the same disclosure, not to the visible answer.
+				if end < at && end >= from && settledBackgroundTail(es[end+1:at]) {
+					f := workfold{key: es[lo].turn, turn: es[lo].turn, start: -1, answer: at}
+					if countWork(es, end+1, at, &f); f.start >= 0 {
+						out[f.start] = f
+					}
+				}
 				from = at + 1
 			}
 			end := answer
