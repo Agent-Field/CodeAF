@@ -1,0 +1,16 @@
+test_examples (test_durations.HumanizeTests.test_examples) ... ok
+test_float_rounds_down (test_durations.HumanizeTests.test_float_rounds_down) ... ok
+test_negative_raises (test_durations.HumanizeTests.test_negative_raises) ... ok
+test_omits_zero_components (test_durations.HumanizeTests.test_omits_zero_components) ... ok
+test_round_trip (test_durations.HumanizeTests.test_round_trip) ... ok
+test_zero (test_durations.HumanizeTests.test_zero) ... ok
+test_basic_examples (test_durations.ParseTests.test_basic_examples) ... ok
+test_malformed (test_durations.ParseTests.test_malformed) ... ok
+test_reordering_sums (test_durations.ParseTests.test_reordering_sums) ... ok
+test_returns_plain_int (test_durations.ParseTests.test_returns_plain_int) ... ok
+test_whitespace (test_durations.ParseTests.test_whitespace) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 0.001s
+
+OK

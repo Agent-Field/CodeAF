@@ -1,0 +1,56 @@
+make --no-print-directory test-quick
+go build ./...
+go vet ./...
+# Generators execute on the build host, even when codeaf targets another OS.
+env -u GOOS -u GOARCH go generate ./internal/manual
+go test -tags=codeaf_packed_manual ./internal/manual
+ok  	github.com/Agent-Field/codeaf/internal/manual	3.990s
+docs/changes/unreleased: 88 entries, all well formed.
+go test ./internal/manual/
+ok  	github.com/Agent-Field/codeaf/internal/manual	6.818s
+go test -run 'Manual' ./internal/tui3/ ./internal/session/
+ok  	github.com/Agent-Field/codeaf/internal/tui3	0.733s
+ok  	github.com/Agent-Field/codeaf/internal/session	1.149s
+./scripts/laws.sh
+laws: 136 files in 30 packages
+ok  	github.com/Agent-Field/codeaf/cmd/codeaf	30.421s
+ok  	github.com/Agent-Field/codeaf/cmd/codeaf-release	6.069s
+ok  	github.com/Agent-Field/codeaf/cmd/codeaf-replay	3.836s
+ok  	github.com/Agent-Field/codeaf/internal/config	14.419s
+ok  	github.com/Agent-Field/codeaf/internal/crewroute	0.298s
+ok  	github.com/Agent-Field/codeaf/internal/e2e	1.071s
+ok  	github.com/Agent-Field/codeaf/internal/env	7.349s
+ok  	github.com/Agent-Field/codeaf/internal/exec	4.122s
+ok  	github.com/Agent-Field/codeaf/internal/exec/bare	0.959s
+ok  	github.com/Agent-Field/codeaf/internal/furrow	0.254s
+ok  	github.com/Agent-Field/codeaf/internal/guard	2.343s
+ok  	github.com/Agent-Field/codeaf/internal/head	0.074s
+ok  	github.com/Agent-Field/codeaf/internal/iconlaw	0.370s
+ok  	github.com/Agent-Field/codeaf/internal/lane	0.460s
+ok  	github.com/Agent-Field/codeaf/internal/manual	5.917s
+ok  	github.com/Agent-Field/codeaf/internal/modelsource	1.651s
+ok  	github.com/Agent-Field/codeaf/internal/namelaw	7.731s
+ok  	github.com/Agent-Field/codeaf/internal/plan	0.227s
+ok  	github.com/Agent-Field/codeaf/internal/provider	6.578s
+ok  	github.com/Agent-Field/codeaf/internal/provider/pool	0.131s
+ok  	github.com/Agent-Field/codeaf/internal/registry	0.055s
+ok  	github.com/Agent-Field/codeaf/internal/relay	0.031s
+ok  	github.com/Agent-Field/codeaf/internal/remote	1.886s
+ok  	github.com/Agent-Field/codeaf/internal/seniordev/app	0.178s
+ok  	github.com/Agent-Field/codeaf/internal/session	25.111s
+ok  	github.com/Agent-Field/codeaf/internal/taxonomy	4.998s
+ok  	github.com/Agent-Field/codeaf/internal/thread	2.911s
+ok  	github.com/Agent-Field/codeaf/internal/tui2/tokens	0.038s
+ok  	github.com/Agent-Field/codeaf/internal/tui3	15.374s
+ok  	github.com/Agent-Field/codeaf/internal/workspace	0.049s
+make --no-print-directory test-touched
+touched: ./internal/tui3
+ok  github.com/Agent-Field/codeaf/internal/tui3  shard 1/8  35s
+ok  github.com/Agent-Field/codeaf/internal/tui3  shard 2/8  16s
+ok  github.com/Agent-Field/codeaf/internal/tui3  shard 3/8  15s
+ok  github.com/Agent-Field/codeaf/internal/tui3  shard 4/8  22s
+ok  github.com/Agent-Field/codeaf/internal/tui3  shard 5/8  16s
+ok  github.com/Agent-Field/codeaf/internal/tui3  shard 6/8  18s
+ok  github.com/Agent-Field/codeaf/internal/tui3  shard 7/8  13s
+ok  github.com/Agent-Field/codeaf/internal/tui3  shard 8/8  29s
+ok  github.com/Agent-Field/codeaf/internal/tui3  8 shards  35s

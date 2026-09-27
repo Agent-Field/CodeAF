@@ -1,0 +1,58 @@
+{
+  "pr": 1604,
+  "recording": "Unmodified original asciinema recording. GIF and MP4 are 3x playback with idle intervals capped at 3 seconds; no invented frames.",
+  "preview_duration_seconds": 41.9,
+  "screenshot_source": "1569-room-note-later.cast",
+  "files": {
+    "1569-usage.json": {
+      "bytes": 11358,
+      "sha256": "fbfd1db5136c6a8fb1b41e0cc0ff52cafa6f8a2ce089258f79c6b823c5cc0124"
+    },
+    "1569-room-note-later.cast": {
+      "bytes": 8857,
+      "sha256": "78a08106b0f5f39dd8874646721c60d5b7f596cfcf90a629f13d5b0f92d8edc3"
+    },
+    "1569-execution.json": {
+      "bytes": 386,
+      "sha256": "2323b0ce7d0b480b2182096329997a850d2435328726cc07389b9d4c04a74331"
+    },
+    "workflow.gif": {
+      "bytes": 1193788,
+      "sha256": "5f12339797e079068654f23d3d7786366929aca7d60a1a2184ea8eee290f9bec"
+    },
+    "workflow.mp4": {
+      "bytes": 519548,
+      "sha256": "ceffd663b7f3c462866fa1f240bf43c8f5bf1f70bf6f0d50e3ec9bdac90f53f1"
+    },
+    "1569-coverage.md": {
+      "bytes": 1792,
+      "sha256": "99d8d4d5946ce4ff800bcbdad988c581d8c0ef2d578905479358ebf75c0fb32f"
+    },
+    "1569-proof.json": {
+      "bytes": 498,
+      "sha256": "564f1ac204db11998efde28a0850e251706229286e5cb36f4adf39e1143c35b6"
+    },
+    "1569-artifact-tests.log": {
+      "bytes": 914,
+      "sha256": "0e7769a46521c3f6792b3607789388360cce8c2d0aa75c2bb60faaa057a3b269"
+    },
+    "1569.cast": {
+      "bytes": 165912,
+      "sha256": "d1f6525caf0994dba8e220d3e6f9cb058bcd346d6081c60d9c0a0e38c1f1f6c2"
+    },
+    "screenshot.png": {
+      "bytes": 49261,
+      "sha256": "0503511899cfdc5372eccdf3a335fbf9da840459a2059a12237eb1487a55641e"
+    },
+    "artifacts/test_durations.py": {
+      "bytes": 2672,
+      "sha256": "7abdf9ac27bfff73dd6ae7bd6c109be86bbf30e6720d4bf9aec8def2d6086097"
+    },
+    "artifacts/durations.py": {
+      "bytes": 1475,
+      "sha256": "f7788b7756c9a6dd9bc3eb8f335909a0cc8399ab5f8d1102c9cc57e9b6d2eb7e"
+    }
+  },
+  "issue": 1569,
+  "acceptance": "partial diagnostic; not full acceptance"
+}

@@ -1,0 +1,91 @@
+{
+  "pr": 1628,
+  "recording": "Unmodified original asciinema recording. GIF and MP4 are 3x playback with idle intervals capped at 3 seconds; no invented frames.",
+  "preview_duration_seconds": 46.7,
+  "screenshot_source": "1556-reselected-note-submitted.cast",
+  "files": {
+    "1556-reselected-note-submitted.cast": {
+      "bytes": 8797,
+      "sha256": "b199e3417ae1631409ccde63ccc0135b7345cdff6c9763f9b2773aeaa53b29f9"
+    },
+    "1556.cast": {
+      "bytes": 179694,
+      "sha256": "db7015c70d9695b3c3fd8e588bb6cbb0b38c21a874ac9a3f04c267e5d124f8d4"
+    },
+    "1556-artifact-tests.log": {
+      "bytes": 1668,
+      "sha256": "41b265917a43bf6b380a748ff2de1001d9dd8440f3cbed437744d4f860aa03ad"
+    },
+    "1556-final-focused.log": {
+      "bytes": 56,
+      "sha256": "a85338e67c184e244a2c59dcd826e2c77e157286e30016f3b61c3aab88ab2553"
+    },
+    "1556-proof.json": {
+      "bytes": 1813,
+      "sha256": "c1c4f01d7e6d67b8552cd0f6acfe3a6a40905566458f5f7bbba233da48a34262"
+    },
+    "1556-execution.json": {
+      "bytes": 386,
+      "sha256": "b30327f0f24dfceaacf010a1573d0ff8e1cec58b60aa4e159983d0bcfe1c5c63"
+    },
+    "workflow.gif": {
+      "bytes": 671342,
+      "sha256": "c7a511bd7e29dedd8d421153f2f130bcc6c1bbcb59c7b30e76e7b218739c704d"
+    },
+    "workflow.mp4": {
+      "bytes": 320281,
+      "sha256": "4dddb87566b2b27c10cf56df51ead9f9ad0919e6e4b93defdbc84e2615f22691"
+    },
+    "final_result.png": {
+      "bytes": 36846,
+      "sha256": "420bbca539c1efd2aa56ac5d3b87d73c65ada8e5b5f7ad7762b6117d81d7c298"
+    },
+    "1556-coverage.md": {
+      "bytes": 1610,
+      "sha256": "893932d988128f7c5e244eb9580d3339891814e3f3516a09d1fb6e2c43502393"
+    },
+    "1556-before-test.log": {
+      "bytes": 551,
+      "sha256": "c78b233aeb76af00b82709bca2622b64537538c53eb292534c747c93f6b11d5d"
+    },
+    "1556-main-result.cast": {
+      "bytes": 7568,
+      "sha256": "6b137751f63ee0566f7842a07cc6e8680323465117f290daea866c9347326a0a"
+    },
+    "1556-usage.json": {
+      "bytes": 9200,
+      "sha256": "a5258cd2f453053d04616c7d06872e14c16833714038629c6c93a5c41153ae74"
+    },
+    "1556-ready.log": {
+      "bytes": 3074,
+      "sha256": "d8eab15d36d1bfa5d1735d2e07f36e8245210c312bc53fed7e6ef7b7d4e3bd86"
+    },
+    "screenshot.png": {
+      "bytes": 58427,
+      "sha256": "96827d97780db942f9039809e5f5715d6884b67e3a3a311b769011d902cc0ea8"
+    },
+    "artifacts/shopping_list.py": {
+      "bytes": 3474,
+      "sha256": "d23d9fdfcc7c2958ef652e683460da122dfdf322d4bc416dde6b58c8b4c913c6"
+    },
+    "artifacts/README.md": {
+      "bytes": 952,
+      "sha256": "99eafd854eebfa522409f2bbe6d18841a1bb90db0cd5caface89bb592d2e762c"
+    },
+    "artifacts/pantry.csv": {
+      "bytes": 35,
+      "sha256": "39a54ef50c183d5f138b295100af401b54d081a843732c7f99ac12ce652faecb"
+    },
+    "artifacts/test_shopping_list.py": {
+      "bytes": 5406,
+      "sha256": "4ad08165bf6fde30407ed5f0839d9a9a9741d8cd37a0e1221a2cc54ad2ef0b0c"
+    },
+    "artifacts/SHOPPING.md": {
+      "bytes": 92,
+      "sha256": "f38645f7dcbc28b4aea964e09d6cd168900f2c15d081a7cdaea11a04e490a511"
+    }
+  },
+  "issue": 1556,
+  "final_checkout": "595aee0e6",
+  "final_checkout_delta": "changelog filename and PR number only"
+}

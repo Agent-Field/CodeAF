@@ -1,0 +1,16 @@
+{
+  "runtime": "e556a5b21dadb6fbaf8808bfb625b69da459ecab",
+  "acceptance": "partial diagnostic, not full acceptance",
+  "source_workspace_status": " M durations.py\n?? __pycache__/\n?? test_durations.py\n",
+  "artifact_tests": {
+    "count": 11,
+    "result": "pass",
+    "log": "1569-artifact-tests.log"
+  },
+  "keyboard_failure_snapshot": "1569-room-note-later.cast",
+  "required_grounding_dependencies": [
+    "780f22cb9",
+    "23d1ab588"
+  ],
+  "later_original_note_delivery_verified": false
+}

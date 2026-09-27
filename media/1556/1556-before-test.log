@@ -1,0 +1,9 @@
+--- FAIL: TestOpeningTaskFromKeyboardRosterLetsEnterSendItsNote (0.07s)
+    --- FAIL: TestOpeningTaskFromKeyboardRosterLetsEnterSendItsNote/80 (0.01s)
+        roomfocus_test.go:23: Enter did not send the task note: []; draft "Cover invalid units too"
+    --- FAIL: TestOpeningTaskFromKeyboardRosterLetsEnterSendItsNote/140 (0.06s)
+        roomfocus_test.go:23: Enter did not send the task note: []; draft "Cover invalid units too"
+FAIL
+tui3: 1 goroutines still parked at the end of the run
+FAIL	github.com/Agent-Field/codeaf/internal/tui3	0.119s
+FAIL
