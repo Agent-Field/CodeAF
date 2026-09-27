@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -21,6 +22,7 @@ func TestStandingBranchIsolationLeavesHostUntouched(t *testing.T) {
 
 	item := nightly(repo)
 	item.Grant = "open a pull request, never merge one"
+	item.Does.Isolate = true
 
 	completer := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
@@ -49,7 +51,7 @@ func TestStandingBranchIsolationLeavesHostUntouched(t *testing.T) {
 		t.Fatalf("host branch HEAD moved! before=%s after=%s", hostHeadBefore, hostHeadAfter)
 	}
 
-	branchesOut := gitOut(t, repo, "branch", "--list", "standing/*")
+	branchesOut := gitOut(t, repo, "for-each-ref", "--format=%(refname:short)", "refs/heads/standing/")
 	branchNames := strings.Fields(branchesOut)
 	if len(branchNames) == 0 {
 		t.Fatalf("expected dedicated standing branch in repo, got none: %q", branchesOut)
@@ -71,48 +73,56 @@ func TestStandingBranchIsolationLeavesHostUntouched(t *testing.T) {
 	}
 }
 
-func TestStandingFalselyClaimingBranchIsolationCaught(t *testing.T) {
+// A worker's unfinished files remain in the recorded worktree after Close.
+func TestStandingIsolationRetainsUncommittedWork(t *testing.T) {
 	repo := newTestRepo(t)
-	hostBranch := currentBranch(repo)
-	if hostBranch == "" {
-		hostBranch = "work"
-	}
-	hostHeadBefore := branchCommit(repo, hostBranch)
-
 	item := nightly(repo)
-	item.Grant = "" // ambient execution in workspace
-
+	item.Does.Isolate = true
+	var workspace string
 	completer := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolResponse("c1", "bash", `{"command":"git -c user.name=t -c user.email=t@t commit --allow-empty -m \"commit to host\""}`), nil
+			return toolResponse("c1", "bash", `{"command":"printf unfinished > retained.txt"}`), nil
 		},
 		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
-			text := "committed on branch vet-fix, not merged"
-			provider.Emit(ctx, provider.StreamDelta, text)
-			return textResponse(text), nil
+			return textResponse("No pull request was needed."), nil
 		},
 	}}
-
 	root := t.TempDir()
-	runDir := filepath.Join(root, "run-2")
-	outcome, err := standingChildRunner(t, root, completer).Run(context.Background(), item, runDir, "")
+	runner := standingChildRunner(t, root, completer)
+	original := runner.child
+	runner.child = func(cfg Config) (*Agent, error) { workspace = cfg.Workspace; return original(cfg) }
+	runDir := filepath.Join(root, "run-kept")
+	outcome, err := runner.Run(context.Background(), item, runDir, "")
 	if err != nil {
-		t.Fatalf("unexpected Run error: %v", err)
+		t.Fatal(err)
 	}
+	if workspace == repo {
+		t.Fatal("ran in host checkout")
+	}
+	data, err := os.ReadFile(filepath.Join(workspace, "retained.txt"))
+	if err != nil || string(data) != "unfinished" {
+		t.Fatalf("work lost: %q, %v", data, err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "retained.txt")); !os.IsNotExist(err) {
+		t.Fatal("host checkout was changed")
+	}
+	if outcome.Kind == standing.OutcomeFailed {
+		t.Fatalf("reply prose changed outcome: %+v", outcome)
+	}
+	trees := loadStandingTrees(runDir)
+	if len(trees) != 1 || trees[0].Dir != workspace {
+		t.Fatalf("missing recovery record: %+v", trees)
+	}
+}
 
-	hostHeadAfter := branchCommit(repo, hostBranch)
-	if hostHeadAfter == hostHeadBefore {
-		t.Fatalf("expected host HEAD to move in this test")
-	}
-
-	if outcome.Kind == "landed" {
-		t.Fatalf("expected outcome NOT to say 'landed' on a lie, got %q", outcome.Kind)
-	}
-	if outcome.Kind != standing.OutcomeFailed {
-		t.Fatalf("expected outcome %q, got %q", standing.OutcomeFailed, outcome.Kind)
-	}
-	if !strings.Contains(outcome.Text, "branch isolation breach") {
-		t.Fatalf("expected outcome.Text to report branch isolation breach, got %q", outcome.Text)
+func TestStandingIsolationRefusesNonRepositoryBeforeCallingModel(t *testing.T) {
+	item := nightly(t.TempDir())
+	item.Does.Isolate = true
+	root := t.TempDir()
+	runner := standingChildRunner(t, root, &scriptedCompleter{})
+	runner.child = func(Config) (*Agent, error) { t.Fatal("opened worker for impossible isolation"); return nil, nil }
+	if _, err := runner.Run(context.Background(), item, filepath.Join(root, "run"), ""); err == nil {
+		t.Fatal("accepted impossible isolation")
 	}
 }
 

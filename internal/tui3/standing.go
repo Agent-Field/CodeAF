@@ -852,6 +852,11 @@ func (a *app) standBands(card *standingCard, width int) []string {
 	// (docs/STANDING-ORDERS.md: the card always names it before anything
 	// stands). It is drawn in the person's own words and never the field's
 	// ([standLevelWord]).
+	if card.item.Does.Isolate {
+		for _, line := range wrap("work · separate Git worktree · changes kept for review", width) {
+			out = append(out, a.pal.dim(line))
+		}
+	}
 	for _, line := range wrap(standWhereTag+standLevelWord(card.item.Level()), width) {
 		out = append(out, a.pal.dim(line))
 	}

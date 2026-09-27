@@ -1151,3 +1151,13 @@ func TestANarrowStandingLabelDropsTheCadenceFirst(t *testing.T) {
 		t.Fatalf("the no was rewritten: %q", got)
 	}
 }
+
+func TestStandingCardShowsApprovedWorktreeIsolation(t *testing.T) {
+	a, _, tick := standApp(t)
+	item := standItem()
+	item.Does.Isolate = true
+	standAsk(t, a, tick, session.StandingNotice{Item: item})
+	if got := standText(a); !strings.Contains(got, "separate Git worktree") {
+		t.Fatalf("isolation missing from card: %s", got)
+	}
+}

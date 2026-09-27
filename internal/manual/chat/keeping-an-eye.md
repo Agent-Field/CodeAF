@@ -959,3 +959,19 @@ piece of the ask still to do.
   one: nothing that runs on its own may arm something else that runs on its own.
 - **Nothing is armed by a matcher.** Nothing runs because a phrase looked like a
   rule; every single one of these was a card you said yes to.
+
+## Keep scheduled coding work on a separate branch
+
+For a scheduled task that should open a pull request without merging, set
+`does.isolate` to `true` on the `stand` proposal. Its approval card says
+`work · separate Git worktree · changes kept for review`. Permission words
+alone do not select isolation. Existing orders keep their current behavior;
+replace an order and approve its isolation option to change that behavior.
+
+An isolated firing requires a Git repository with at least one commit. It
+starts from the current committed checkout in a new worktree and branch.
+Uncommitted changes in the original checkout are not copied. The firing keeps
+its worktree, including unfinished edits, and reports its branch and folder.
+You can inspect and commit those files or open a pull request yourself.
+It does not merge or delete the copy automatically. This is workspace isolation,
+not a sandbox: commands with explicit paths can still access other folders.
