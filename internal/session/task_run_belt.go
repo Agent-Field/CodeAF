@@ -562,7 +562,7 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 	// ADMISSION IS CHECKED BEFORE A FOLDER OR COPY IS TOUCHED. A held run seeds
 	// only its plan store so stopping it cannot leave a repository claim behind;
 	// the admitted road below keeps the original synchronous refusal order.
-	admission := NewRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.graph().lanes)
+	admission := newRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.config.ProfileDir, a.graph().lanes)
 	held := admission != nil && !admission.MayStart()
 	if held {
 		return a.startHeldBeltRun(ctx, engine, g, path, storeID, id, title, brief, stand, question, via, asked, admission)
@@ -681,7 +681,8 @@ func (a *Agent) startHeldBeltRun(ctx context.Context, engine RunEngine, g *TaskG
 	run := &beltRun{
 		plan: plan, store: store, root: store.RootID(), row: id, title: title, brief: brief,
 		stand: stand, ground: canonicalPath(stand.dir), pending: true, admission: admission,
-		cut: cut, born: born, over: make(chan struct{}),
+		machineHeld: map[string]bool{planStoreID(storeID): true},
+		cut:         cut, born: born, over: make(chan struct{}),
 		delegate: via, asked: asked, crew: crew,
 	}
 	a.installBeltRun(g, run)
@@ -967,7 +968,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 	}
 	admission := run.admission
 	if admission == nil {
-		admission = NewRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.graph().lanes)
+		admission = newRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.config.ProfileDir, a.graph().lanes)
 	}
 	return RunSpec{
 		Store:     run.store,

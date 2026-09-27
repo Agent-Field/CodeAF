@@ -191,6 +191,11 @@ type admissionGovernor struct {
 	read func() (machineReading, bool)
 	// now is the clock the TTL is measured against, seamed with read.
 	now func() time.Time
+	// settings reads the two live ceilings and the one generation that says
+	// whether the profile has changed. Graph and run admission use the same
+	// refresh seam so a held task does not need an engine restart.
+	settings           func() (float64, int)
+	settingsGeneration uint64
 
 	sample machineReading
 	known  bool
@@ -276,7 +281,11 @@ type runAdmission struct {
 // NewRunAdmission builds the machine gate for either run door. Zeroing both
 // ceilings gives the engine a nil gate, the governor's existing off rule.
 func NewRunAdmission(maxLoad float64, minFreeMB int, lanes *TaskLanes) RunAdmission {
-	governor := newAdmissionGovernor(maxLoad, minFreeMB)
+	return newRunAdmission(maxLoad, minFreeMB, "", lanes)
+}
+
+func newRunAdmission(maxLoad float64, minFreeMB int, profileDir string, lanes *TaskLanes) RunAdmission {
+	governor := newAdmissionGovernorForProfile(maxLoad, minFreeMB, profileDir)
 	if governor == nil {
 		return nil
 	}
@@ -356,6 +365,46 @@ func newAdmissionGovernor(maxLoad float64, minFreeMB int) *admissionGovernor {
 	}
 }
 
+// newAdmissionGovernorForProfile uses the startup values until the profile's
+// persisted settings generation changes. A profile-backed governor is kept even
+// when both startup values are off because a later settings write may turn a
+// ceiling on while this session is holding work.
+func newAdmissionGovernorForProfile(maxLoad float64, minFreeMB int, profileDir string) *admissionGovernor {
+	governor := newAdmissionGovernor(maxLoad, minFreeMB)
+	if strings.TrimSpace(profileDir) == "" {
+		return governor
+	}
+	if governor == nil {
+		governor = &admissionGovernor{read: hostReading, now: time.Now}
+	}
+	governor.settings = func() (float64, int) {
+		return config.TaskMaxLoadAt(profileDir), config.TaskMinFreeMBAt(profileDir)
+	}
+	governor.settingsGeneration = config.SettingsGeneration()
+	return governor
+}
+
+func (g *admissionGovernor) refreshSettings() {
+	if g == nil || g.settings == nil {
+		return
+	}
+	// The generation is an in-memory counter, so the common case reads no file:
+	// the profile is read only after a settings write has moved it.
+	generation := config.SettingsGeneration()
+	g.mu.Lock()
+	unchanged := generation == g.settingsGeneration
+	g.mu.Unlock()
+	if unchanged {
+		return
+	}
+	maxLoad, minFreeMB := g.settings()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.maxLoad, g.minFreeMB = maxLoad, minFreeMB
+	g.settingsGeneration = generation
+	g.heldBy = ""
+}
+
 // observe asks the host, at most once per taskPressureTTL, and learns from
 // the answer.
 //
@@ -378,6 +427,7 @@ func (g *admissionGovernor) observe(running int) {
 	if g == nil {
 		return
 	}
+	g.refreshSettings()
 	now := time.Now
 	g.mu.Lock()
 	if g.now != nil {
@@ -436,6 +486,7 @@ func (g *admissionGovernor) admits(running int) bool {
 	if g == nil {
 		return true
 	}
+	g.refreshSettings()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if !g.known {
