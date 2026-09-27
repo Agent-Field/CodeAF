@@ -37,6 +37,15 @@ type jobRetentionBudget struct {
 
 func defaultJobRetentionBudget() jobRetentionBudget { return jobRetentionBudget{128 << 20, 64} }
 
+// Only caller-selected roots are resolved. Never resolve an entire jobs path:
+// a link planted inside the owned log subtree must still fail closed.
+func jobRetentionAnchor(directory string) string {
+	if resolved, err := filepath.EvalSymlinks(directory); err == nil {
+		return resolved
+	}
+	return directory
+}
+
 // Traverse directory handles, rejecting symlinks, including the jobs directory.
 // Resolve only the platform's trusted temporary-directory alias first (macOS
 // exposes /var as /private/var); user-created links below it remain refused.

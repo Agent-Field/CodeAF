@@ -43,6 +43,31 @@ func runtimeSearchCall(t *testing.T, tool Tool, path, glob string) string {
 	return text
 }
 
+func TestRecursiveSearchExcludesForegroundSpillsBothEngines(t *testing.T) {
+	for _, engine := range []string{"walk", "rg"} {
+		t.Run(engine, func(t *testing.T) {
+			root := t.TempDir()
+			t.Setenv("TMPDIR", filepath.Join(root, "tmp"))
+			t.Setenv(home.EnvVar, filepath.Join(root, "state"))
+			for _, file := range []string{"source.go", "tmp/pi-bash-legacy.log", "state/logs/bash/spill-current.log", "source/pi-bash-not-runtime.log"} {
+				runtimeSearchWrite(t, filepath.Join(root, file), "needle\n")
+			}
+			tool := runtimeSearchTool(t, engine, root)
+			text := runtimeSearchCall(t, tool, root, "**/*")
+			if strings.Contains(text, "pi-bash-legacy.log:") || strings.Contains(text, "spill-current.log:") {
+				t.Fatalf("foreground runtime leaked: %s", text)
+			}
+			if !strings.Contains(text, "source.go:") || !strings.Contains(text, "pi-bash-not-runtime.log:") {
+				t.Fatalf("source excluded: %s", text)
+			}
+			explicit := runtimeSearchCall(t, tool, filepath.Join(root, "tmp/pi-bash-legacy.log"), "")
+			if !strings.Contains(explicit, "needle") {
+				t.Fatal("explicit bounded log inspection refused")
+			}
+		})
+	}
+}
+
 func TestRuntimeSearchExclusionsBothEngines(t *testing.T) {
 	for _, engine := range []string{"walk", "rg"} {
 		t.Run(engine, func(t *testing.T) {

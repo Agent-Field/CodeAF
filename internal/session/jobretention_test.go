@@ -297,6 +297,61 @@ func TestJobRetentionUnsafePathsPreserved(t *testing.T) {
 		})
 	}
 }
+
+func TestJobRetentionSelectedFolderAlias(t *testing.T) {
+	for _, withPlace := range []bool{false, true} {
+		t.Run(fmt.Sprint(withPlace), func(t *testing.T) {
+			real := t.TempDir()
+			alias := filepath.Join(t.TempDir(), "chosen-folder")
+			if err := os.Symlink(real, alias); err != nil {
+				t.Skip(err)
+			}
+			place := Place{}
+			if withPlace {
+				place.Dir = alias
+			}
+			registry := newJobRegistry(alias, place, nil)
+			job, err := registry.newJob("selected alias", jobKindBash)
+			if err != nil {
+				t.Fatalf("user-selected folder alias cannot start a job: %v", err)
+			}
+			job.sink.close()
+			if err := jobRetentionSweep(filepath.Dir(job.logPath), defaultJobRetentionBudget()); err != nil {
+				t.Fatal(err)
+			}
+			if withPlace {
+				old := time.Now().Add(-8 * 24 * time.Hour)
+				if err := os.Chtimes(job.logPath, old, old); err != nil {
+					t.Fatal(err)
+				}
+				sweepLogs(context.Background(), alias, time.Now(), func(note string) { t.Error(note) })
+				if _, err := os.Stat(job.logPath); !os.IsNotExist(err) {
+					t.Fatalf("aliased session startup did not expire completed log: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestJobRetentionSelectedAliasRejectsLinkedLogSubtree(t *testing.T) {
+	real, other := t.TempDir(), t.TempDir()
+	alias := filepath.Join(t.TempDir(), "chosen-folder")
+	if err := os.Symlink(real, alias); err != nil {
+		t.Skip(err)
+	}
+	if err := os.Symlink(other, filepath.Join(real, placeLogs)); err != nil {
+		t.Skip(err)
+	}
+	registry := newJobRegistry(alias, Place{Dir: alias}, nil)
+	if job, err := registry.newJob("must refuse", jobKindBash); err == nil {
+		job.sink.close()
+		t.Fatal("linked log subtree was treated as a selected root")
+	}
+	entries, err := os.ReadDir(other)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("linked target changed: entries=%v err=%v", entries, err)
+	}
+}
 func TestJobRetentionOldFixedTempSymlinkCannotClobber(t *testing.T) {
 	directory := retentionFixture(t)
 	target := filepath.Join(t.TempDir(), "sentinel")
