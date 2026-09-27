@@ -86,7 +86,7 @@ func TestTheHeadAroundTheStripIsInertAndHomeHasPlainHover(t *testing.T) {
 
 // THE STRIP KEEPS ITS ACTIVE TAB AND THE HEAD KEEPS ITS SHAPE AT EVERY SIZE. The
 // head used to grow a row of air over the strip at thirty-two rows and another
-// under it at thirty-six; it is the places' four rows now wherever the strip is
+// under it at thirty-six; it is the places' five rows now wherever the strip is
 // drawn at all, and nothing below the strip's own floors.
 func TestTheStripKeepsItsActiveTabAndTheHeadItsShapeAtEverySize(t *testing.T) {
 	lab := newStartLab(t)
