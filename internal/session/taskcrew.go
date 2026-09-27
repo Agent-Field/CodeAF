@@ -561,7 +561,7 @@ func crewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *Sp
 		TaskCap: taskCap, TaskAction: taskAction, Task: &SpendTask{},
 	}
 	if capUSD > 0 {
-		guard.Day = NewSpendDay(spentTodayOnLedger())
+		guard.Day = newLedgerSpendDay(spentTodayOnLedger, time.Now)
 	}
 	return guard
 }
@@ -571,7 +571,7 @@ func crewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *Sp
 // call after — seats and helpers alike — so a helper's call counts against
 // the cap a seat's next call is priced under, and the other way round.
 func (a *Agent) crewDay() *SpendDay {
-	a.crewDayOnce.Do(func() { a.crewDayHeld = NewSpendDay(spentTodayOnLedger()) })
+	a.crewDayOnce.Do(func() { a.crewDayHeld = newLedgerSpendDay(spentTodayOnLedger, time.Now) })
 	return a.crewDayHeld
 }
 
