@@ -520,6 +520,9 @@ type jobRegistry struct {
 
 	mu   sync.Mutex
 	jobs []*job
+	// Claims keep ids unique even when a legacy registry changes workspace.
+	claimMu sync.Mutex
+	seq     int
 	// watches is the number of watch slots CLAIMED, not the number of watch
 	// jobs in the slice. Counting the slice would leave a window between the
 	// limit check and the append in which two concurrent starts both pass, and
@@ -570,13 +573,13 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 	// was taken away. Every caller of this already answers an error by carrying
 	// on without a log, which is the honest shape for work that is ending.
 	r.mu.Lock()
-	closed, epoch, workspace := r.closed, r.epoch, r.workspace
+	closed, epoch, workspace, place := r.closed, r.epoch, r.workspace, r.place
 	r.mu.Unlock()
 	if closed {
 		return nil, errSessionClosed
 	}
 
-	directory := droppingsDir(r.place, workspace, droppingJobs)
+	directory := droppingsDir(place, workspace, droppingJobs)
 	root, err := openJobRetentionDir(directory, true)
 	if err != nil {
 		return nil, fmt.Errorf("could not create the jobs directory: %w", err)
@@ -607,7 +610,13 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 // claimJobLog reserves the persistent id, creates the spool, and holds its
 // writer lease before publishing the marker, under one directory lock.
 func (r *jobRegistry) claimJobLog(directory string) (int, string, *os.File, error) {
-	return jobRetentionClaim(directory)
+	r.claimMu.Lock()
+	defer r.claimMu.Unlock()
+	id, path, file, err := jobRetentionClaimAbove(directory, int64(r.seq))
+	if err == nil {
+		r.seq = id
+	}
+	return id, path, file, err
 }
 
 // join is the ONE door into the registry's slice, and the place the closed

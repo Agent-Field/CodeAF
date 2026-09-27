@@ -504,3 +504,51 @@ func TestStartupSweepPreservesJobIDHistoryAndLegacyLogs(t *testing.T) {
 		t.Fatalf("startup lost seeded history: %d", next)
 	}
 }
+
+func TestJobRetentionWorkspaceMoveDoesNotReuseRegistryIDs(t *testing.T) {
+	registry := newJobRegistry(t.TempDir(), Place{}, nil)
+	first, _, file, err := registry.claimJobLog(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	next, _, other, err := registry.claimJobLog(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	if next <= first {
+		t.Fatalf("workspace move reused id %d after %d", next, first)
+	}
+}
+
+func TestJobRetentionWorkspaceSnapshotStaysConsistent(t *testing.T) {
+	first, second := t.TempDir(), t.TempDir()
+	registry := newJobRegistry(first, Place{Dir: first, Workspace: first}, nil)
+	var changes sync.WaitGroup
+	changes.Add(1)
+	go func() {
+		defer changes.Done()
+		for i := 0; i < 200; i++ {
+			workspace := first
+			if i%2 == 0 {
+				workspace = second
+			}
+			registry.mu.Lock()
+			registry.workspace = workspace
+			registry.place = Place{Dir: workspace, Workspace: workspace}
+			registry.mu.Unlock()
+		}
+	}()
+	defer changes.Wait()
+	for i := 0; i < 10; i++ {
+		job, err := registry.newJob("workspace fixture", jobKindTask)
+		if err != nil {
+			t.Fatal(err)
+		}
+		job.sink.close()
+		if filepath.Dir(job.logPath) != filepath.Join(job.dir, placeLogs, droppingJobs) {
+			t.Fatalf("mixed workspace and place: %s / %s", job.dir, job.logPath)
+		}
+	}
+}
