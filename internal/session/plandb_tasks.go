@@ -447,34 +447,13 @@ func (a *Agent) markPlanInterrupted(row *PlanTaskRow) {
 		return
 	}
 	g.mu.Lock()
-	notices := g.runRowsLocked()
-	g.mu.Unlock()
-	for _, notice := range notices {
+	defer g.mu.Unlock()
+	for _, notice := range g.runRowsLocked() {
 		if notice.PlanTask == row.ID && notice.State == TaskInterrupted {
-			row.Interrupted = !a.liveBeltOwnsRow(notice.ID)
+			row.Interrupted = true
 			return
 		}
 	}
-}
-
-// liveBeltOwnsRow distinguishes an adopted completion obligation from an
-// orphan checkpoint. Stopped children are never adopted into run.joined.
-func (a *Agent) liveBeltOwnsRow(id uint64) bool {
-	a.beltMu.Lock()
-	defer a.beltMu.Unlock()
-	run := a.beltRun
-	if run == nil || run.closing || run.stopped {
-		return false
-	}
-	if run.row == id {
-		return true
-	}
-	for _, joined := range run.joined {
-		if joined == id {
-			return true
-		}
-	}
-	return false
 }
 
 // openPlanReadHandles opens every ended run oldest-first and then the live run.
