@@ -1752,8 +1752,9 @@ type Spec struct {
 	// there; the brief is Start's to put down — on a root opened without a
 	// description it becomes the root task's description, which is the
 	// assignment the root worker reads.
-	Title string
-	Brief string
+	Title    string
+	Brief    string
+	Standing string
 	// Slots bounds how many workers run at once, and 0 is no bound; Limits
 	// bound the run's cost and its per-task steps. Both pass through to the
 	// supervisor as given.

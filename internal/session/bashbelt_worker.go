@@ -167,15 +167,23 @@ func workerJournalName() string {
 // interrupted-predecessor sentence, which is a fact about a different worker
 // and not about this one. The resume flag still rides the trajectory's steps.
 func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, wake string) string {
+	return BeltWorkerBriefWithStanding(store, task, root, resume, wake, "")
+}
+
+// BeltWorkerBriefWithStanding is [BeltWorkerBrief] with the standing section
+// already resolved by the session that owns the run. The renderer remains at
+// the common brief seam, so plan-born and direct workers use one section and
+// one closing instruction.
+func BeltWorkerBriefWithStanding(store *plandb.Store, task *plandb.Task, root, resume bool, wake, standingSection string) string {
 	role := planIsTask
 	if root {
 		role = planIsRoot
 	}
-	doc := composeBriefScoped(briefScopeFor(task.ID, true), briefPiece, "",
+	doc := composeBriefScopedWithStanding(briefScopeFor(task.ID, true), briefPiece, "",
 		planBrief(task, task.ID, role),
 		strings.Join(task.Deliverables, "\n"),
 		task.Acceptance,
-		"", AdmissionContext{}, taskOrigin{}, taskCopy{})
+		"", AdmissionContext{}, taskOrigin{}, taskCopy{}, standingSection)
 	// THE ASK, FOR EVERY LEAF AND ONLY A LEAF. The section is absent on the
 	// root's own document (its work order is the ask) and absent when the store
 	// holds no root row to read it from, which is the emptiness law and not a
