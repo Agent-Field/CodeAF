@@ -1,0 +1,554 @@
+{
+  "head": "41cf9cd0f",
+  "binary_version": "codeaf 41cf9cd0f built 2026-09-27 12:27 \u00b7 go1.26.5 linux/arm64",
+  "binary_sha256": "69f6a4ef4ab01de971879571222379b900457b29c2a3c0f1631a3682094abedc",
+  "completed_calls": 58,
+  "model": "deepseek/deepseek-v4.1-flash",
+  "calls": [
+    {
+      "ts": "2026-09-27T12:28:47.369-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 408,
+      "cost": 0.0044298
+    },
+    {
+      "ts": "2026-09-27T12:28:47.584-04:00",
+      "tag": "title",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 624,
+      "cost": 0.0002064
+    },
+    {
+      "ts": "2026-09-27T12:28:47.839-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 467,
+      "cost": 0.000333852
+    },
+    {
+      "ts": "2026-09-27T12:28:48.609-04:00",
+      "tag": "router",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1650,
+      "cost": 0.0008421
+    },
+    {
+      "ts": "2026-09-27T12:28:50.403-04:00",
+      "tag": "routerconfirm",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1793,
+      "cost": 0.000764676
+    },
+    {
+      "ts": "2026-09-27T12:28:51.489-04:00",
+      "tag": "task",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 3337,
+      "cost": 0.00140274
+    },
+    {
+      "ts": "2026-09-27T12:28:56.503-04:00",
+      "tag": "task",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 5009,
+      "cost": 0.0009126
+    },
+    {
+      "ts": "2026-09-27T12:28:59.221-04:00",
+      "tag": "task",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 2710,
+      "cost": 0.000884376
+    },
+    {
+      "ts": "2026-09-27T12:28:59.663-04:00",
+      "tag": "task",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 387,
+      "cost": 0.000164352
+    },
+    {
+      "ts": "2026-09-27T12:29:01.351-04:00",
+      "tag": "task",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1664,
+      "cost": 0.00046212
+    },
+    {
+      "ts": "2026-09-27T12:29:02.518-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1149,
+      "cost": 0.000783888
+    },
+    {
+      "ts": "2026-09-27T12:29:03.113-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 593,
+      "cost": 0.000478596
+    },
+    {
+      "ts": "2026-09-27T12:29:05.139-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 2015,
+      "cost": 0.003507468
+    },
+    {
+      "ts": "2026-09-27T12:29:05.493-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 346,
+      "cost": 0.00031392
+    },
+    {
+      "ts": "2026-09-27T12:29:06.520-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 968,
+      "cost": 0.000694356
+    },
+    {
+      "ts": "2026-09-27T12:29:07.840-04:00",
+      "tag": "markreader",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1317,
+      "cost": 0.0011487
+    },
+    {
+      "ts": "2026-09-27T12:29:09.223-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1335,
+      "cost": 0.0009474
+    },
+    {
+      "ts": "2026-09-27T12:29:15.077-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1100,
+      "cost": 0.001283868
+    },
+    {
+      "ts": "2026-09-27T12:29:15.324-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1342,
+      "cost": 0.0006369
+    },
+    {
+      "ts": "2026-09-27T12:29:15.765-04:00",
+      "tag": "router",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1789,
+      "cost": 0.000679908
+    },
+    {
+      "ts": "2026-09-27T12:29:15.830-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 750,
+      "cost": 0.000557796
+    },
+    {
+      "ts": "2026-09-27T12:29:16.115-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 280,
+      "cost": 0.0002397
+    },
+    {
+      "ts": "2026-09-27T12:29:16.484-04:00",
+      "tag": "routerconfirm",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 719,
+      "cost": 0.000293076
+    },
+    {
+      "ts": "2026-09-27T12:29:17.006-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 622,
+      "cost": 0.000521868
+    },
+    {
+      "ts": "2026-09-27T12:29:20.274-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 3260,
+      "cost": 0.00201024
+    },
+    {
+      "ts": "2026-09-27T12:29:21.392-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1116,
+      "cost": 0.0008352
+    },
+    {
+      "ts": "2026-09-27T12:29:59.616-04:00",
+      "tag": "router",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 596,
+      "cost": 0.000151308
+    },
+    {
+      "ts": "2026-09-27T12:29:59.919-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 901,
+      "cost": 0.000464772
+    },
+    {
+      "ts": "2026-09-27T12:30:00.115-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1097,
+      "cost": 0.000311436
+    },
+    {
+      "ts": "2026-09-27T12:30:00.535-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 419,
+      "cost": 0.000248412
+    },
+    {
+      "ts": "2026-09-27T12:30:02.264-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1703,
+      "cost": 0.00057708
+    },
+    {
+      "ts": "2026-09-27T12:30:06.285-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 4014,
+      "cost": 0.00113034
+    },
+    {
+      "ts": "2026-09-27T12:30:07.096-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 808,
+      "cost": 0.000237804
+    },
+    {
+      "ts": "2026-09-27T12:30:23.792-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 585,
+      "cost": 0.001717668
+    },
+    {
+      "ts": "2026-09-27T12:30:24.553-04:00",
+      "tag": "caption",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 259
+    },
+    {
+      "ts": "2026-09-27T12:30:25.002-04:00",
+      "tag": "router",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1801,
+      "cost": 0.000513108
+    },
+    {
+      "ts": "2026-09-27T12:30:26.436-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1881,
+      "cost": 0.00083142
+    },
+    {
+      "ts": "2026-09-27T12:30:26.846-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 402,
+      "cost": 0.00027996
+    },
+    {
+      "ts": "2026-09-27T12:30:28.346-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1150,
+      "cost": 0.000564828
+    },
+    {
+      "ts": "2026-09-27T12:30:28.360-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 5156
+    },
+    {
+      "ts": "2026-09-27T12:30:28.360-04:00",
+      "tag": "routerconfirm",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 3357
+    },
+    {
+      "ts": "2026-09-27T12:30:29.986-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1626,
+      "cost": 0.00058464
+    },
+    {
+      "ts": "2026-09-27T12:30:33.614-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 3625,
+      "cost": 0.001199004
+    },
+    {
+      "ts": "2026-09-27T12:31:52.488-04:00",
+      "tag": "router",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 776,
+      "cost": 0.000202608
+    },
+    {
+      "ts": "2026-09-27T12:31:53.612-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1897,
+      "cost": 0.0007044
+    },
+    {
+      "ts": "2026-09-27T12:31:54.860-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1054,
+      "cost": 0.000520308
+    },
+    {
+      "ts": "2026-09-27T12:31:56.097-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1142,
+      "cost": 0.000398712
+    },
+    {
+      "ts": "2026-09-27T12:31:56.102-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 4388
+    },
+    {
+      "ts": "2026-09-27T12:31:58.884-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 2782,
+      "cost": 0.00091404
+    },
+    {
+      "ts": "2026-09-27T12:31:59.751-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 863,
+      "cost": 0.000334404
+    },
+    {
+      "ts": "2026-09-27T12:33:33.530-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1776,
+      "cost": 0.000502836
+    },
+    {
+      "ts": "2026-09-27T12:33:34.148-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 2397,
+      "cost": 0.000941748
+    },
+    {
+      "ts": "2026-09-27T12:33:35.161-04:00",
+      "tag": "caption",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 472
+    },
+    {
+      "ts": "2026-09-27T12:33:35.161-04:00",
+      "tag": "router",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 3408,
+      "cost": 0.000869508
+    },
+    {
+      "ts": "2026-09-27T12:33:35.761-04:00",
+      "tag": "routerconfirm",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 599,
+      "cost": 0.000139476
+    },
+    {
+      "ts": "2026-09-27T12:33:36.452-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1278,
+      "cost": 0.00080352
+    },
+    {
+      "ts": "2026-09-27T12:33:44.736-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 8274,
+      "cost": 0.00319704
+    },
+    {
+      "ts": "2026-09-27T12:33:49.231-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 4492,
+      "cost": 0.002255604
+    }
+  ],
+  "foreground_spills": [
+    {
+      "file": "spill-ea4e183dc58a2f6848d857ec0bce519c.log",
+      "bytes": 8388608
+    },
+    {
+      "file": "spill-b77559f4db41cbe5d24d4fe2ab7a1374.log",
+      "bytes": 131211
+    },
+    {
+      "file": "spill-687d68476c2c62b422221e3be9e04241.log",
+      "bytes": 8388608
+    }
+  ],
+  "verified_report": [
+    {
+      "currency": "EUR",
+      "count": 2,
+      "total": "5.30"
+    },
+    {
+      "currency": "USD",
+      "count": 2,
+      "total": "19.75"
+    }
+  ],
+  "turns": 6,
+  "all_statuses_200": true
+}

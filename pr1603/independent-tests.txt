@@ -1,0 +1,6 @@
+test_orders_csv_paid_only (test_summarize.OrderReportTest.test_orders_csv_paid_only) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 0.132s
+
+OK
