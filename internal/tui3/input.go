@@ -1095,6 +1095,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return a.edited()
 	case "delete":
+		if len(a.input.value) == 0 && !a.roomOpen() && a.dismissDone(a.sel) {
+			return nil
+		}
 		if a.dropDraftPick() {
 			return a.edited()
 		}

@@ -407,29 +407,14 @@ func TestTheWindowNeverCoversWordsFailuresOrNotices(t *testing.T) {
 	page := livePage(a)
 	for _, want := range []string{
 		"check the parser instead", // their correction
-		"context is 84% full",      // this surface's own voice
 		"Running the suite",        // the failed step's own heading, kept whole
 	} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("the window swallowed %q:\n%s", want, page)
 		}
 	}
-	// AND THE FAILURE IS DRAWN WHERE IT HAPPENED, AS MACHINERY. The step that
-	// failed keeps the outline row it has always had — its own door and its own
-	// count — rather than becoming a faded line in a window that says nothing
-	// went wrong. Whether a PAST step shows its calls unasked is
-	// [app.captionCallsOpen]'s answer and this block does not change it.
-	failed := false
-	for _, r := range rows(a) {
-		if r.hit == hitCaption && strings.Contains(plain(r.text), "Running the suite") {
-			failed = true
-		}
-		if r.hit == hitWorkFold && strings.Contains(plain(r.text), "Running the suite") {
-			t.Fatalf("a failed step was compacted into the window: %q", plain(r.text))
-		}
-	}
-	if !failed {
-		t.Fatalf("the failed step lost its outline row:\n%s", page)
+	if strings.Contains(page, "prefix mismatch") || strings.Contains(page, "context is 84% full") || !strings.Contains(page, a.icon(tokens.GFailed)) {
+		t.Fatalf("operational details escaped the compact window:\n%s", page)
 	}
 	// The step still running is compact all the same.
 	if !strings.Contains(page, "Checking what changed") || strings.Contains(page, "git status --porcelain") {
@@ -459,8 +444,12 @@ func TestAFailureAtTheFrontierIsDrawnWithItsRow(t *testing.T) {
 	a.touch()
 
 	page := livePage(a)
-	if !strings.Contains(page, "go test") {
-		t.Fatalf("the failed call is not on the page:\n%s", page)
+	if !strings.Contains(page, a.icon(tokens.GFailed)) || strings.Contains(page, "prefix mismatch") {
+		t.Fatalf("failure should be a compact status until opened:\n%s", page)
+	}
+	a.toggleLatestWorkfold()
+	if expanded := livePage(a); !strings.Contains(expanded, "go test") {
+		t.Fatalf("failure details are not reachable:\n%s", expanded)
 	}
 	if !strings.Contains(page, "Reading the loader first") {
 		t.Fatalf("the step before the failure was swallowed:\n%s", page)
@@ -522,28 +511,30 @@ func TestTheLinearTierDrawsTheWindowStill(t *testing.T) {
 	}
 }
 
-// ── ONE SURFACE ONLY ────────────────────────────────────────────────────────
-
-// A node transcript is an explicitly detailed view. Its lens does not opt
-// into compact live work; task rooms are covered by roomcompact_test.go.
+// Nested node transcripts use the same compact view and retain every detail.
 func TestTheNodeTranscriptKeepsItsMachinery(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.width, a.height = 80, 40
-	for _, l := range []lens{transcriptLens} {
-		d := deck{entries: liveStepsFixture(), unfolded: map[int]bool{},
-			workOpen: map[int]bool{}, capOpen: map[int]bool{}, lens: l, runningTurn: 1}
-		d.captions = deriveCaptions(d.entries, d.runningTurn)
-		if got := deriveLiveWork(d); len(got) != 0 {
-			t.Fatalf("a page that is not the conversation derived a window: %#v", got)
+	d := deck{entries: liveStepsFixture(), unfolded: map[int]bool{},
+		workOpen: map[int]bool{}, capOpen: map[int]bool{}, lens: transcriptLens, runningTurn: 1}
+	d.captions = deriveCaptions(d.entries, d.runningTurn)
+	if got := deriveLiveWork(d); len(got) == 0 {
+		t.Fatal("node transcript has no compact work window")
+	}
+	text := func() string {
+		rows, _ := a.deckRows(d, 60)
+		var b strings.Builder
+		for _, r := range rows {
+			b.WriteString(plain(r.text) + "\n")
 		}
-		drawn, _ := a.deckRows(d, 60)
-		var page strings.Builder
-		for _, r := range drawn {
-			page.WriteString(plain(r.text) + "\n")
-		}
-		if !strings.Contains(page.String(), "git status --porcelain") {
-			t.Fatalf("the page lost its live machinery:\n%s", page.String())
-		}
+		return b.String()
+	}
+	if page := text(); strings.Contains(page, "git status --porcelain") {
+		t.Fatalf("raw call escaped compact view:\n%s", page)
+	}
+	d.unfolded[1] = true
+	if page := text(); !strings.Contains(page, "git status --porcelain") {
+		t.Fatalf("expanded transcript lost work:\n%s", page)
 	}
 }
 

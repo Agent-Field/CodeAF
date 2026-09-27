@@ -130,9 +130,11 @@ type orchRun struct {
 	// transcript is the node journal descended into from its card. It is another
 	// level of this page, not another room: esc returns to the card and the room's
 	// own scroll remains private from the main conversation.
-	transcript string
-	journal    []entry
-	journalSet bool
+	transcript                                string
+	journal                                   []entry
+	journalSet                                bool
+	journalWork, journalCaps, journalUnfolded map[int]bool
+	journalLive                               bool
 
 	// following says the last poll found the open transcript's node still
 	// running, which is what buys it ONE more read after the node stops — see
@@ -487,7 +489,12 @@ func (a *app) orchRead() {
 			if live || run.following {
 				a.orchReadTranscript()
 			}
-			run.following = live
+			if run.journalLive && !live {
+				clear(run.journalWork)
+				clear(run.journalCaps)
+				clear(run.journalUnfolded)
+			}
+			run.following, run.journalLive = live, live
 		}
 	}
 	// THE FIRST READ MARKS NOTHING. "New" means "this arrived while you were
@@ -1032,6 +1039,11 @@ func (a *app) orchOpenTranscript(node string) {
 		return
 	}
 	run.transcript, run.journalSet, run.following = node, false, true
+	run.journalWork, run.journalCaps, run.journalUnfolded = nil, nil, nil
+	run.journalLive = false
+	if n, ok := orchNodeOf(run.snap, node); ok {
+		run.journalLive = n.State == orchestrate.Running
+	}
 	a.orchReadTranscript()
 	a.room.stick, a.room.offset = true, 0
 	a.roomTouched()
@@ -1052,17 +1064,48 @@ func (a *app) orchReadTranscript() {
 	if run.journalSet && reflect.DeepEqual(run.journal, next) {
 		return
 	}
+	previous := run.journal
+	previousFolds := a.deckFolds(a.orchTranscriptDeck())
+	if !run.journalSet {
+		previous, previousFolds = nil, nil
+	}
 	// A LIVE NODE'S JOURNAL IS RE-READ WHOLE as it grows, and the fresh parse
 	// knows nothing about what the reader opened. The expansion state is
 	// carried across by index — the journal is append-only, so an index still
 	// names the call it named — because a person reading a diff they opened
 	// must not have it snap shut every time the node says another line.
 	for i := range next {
-		if i < len(run.journal) {
-			next[i].open, next[i].full = run.journal[i].open, run.journal[i].full
+		if i < len(previous) {
+			next[i].open, next[i].full = previous[i].open, previous[i].full
 		}
 	}
 	run.journal, run.journalSet = next, true
+	// A new response can wrap a previously visible call in its first phase
+	// disclosure. Carry the reader's explicit expansion into that new wrapper;
+	// an existing closed disclosure stays closed. The actual node landing
+	// clears these maps in orchRead, so completion still restores compactness.
+	captions := deriveCaptions(next, 0)
+	for _, fold := range a.deckFolds(a.orchTranscriptDeck()) {
+		if old, exists := previousFolds[fold.start]; exists {
+			if run.journalWork[old.key] {
+				run.journalWork[fold.key] = true
+			}
+			continue
+		}
+		for i := fold.start; i < fold.answer && i < len(previous); i++ {
+			if i >= 0 && (previous[i].kind == entryTool || previous[i].kind == entryThinking) &&
+				(previous[i].open || previous[i].full) {
+				run.journalWork[fold.key] = true
+				for _, c := range captions {
+					if i >= c.start && i < c.end {
+						if _, chosen := run.journalCaps[c.start]; !chosen {
+							run.journalCaps[c.start] = true
+						}
+					}
+				}
+			}
+		}
+	}
 	if a.room != nil {
 		a.room.dirty, a.room.stick = true, true
 	}
@@ -1094,15 +1137,24 @@ func (a *app) orchTranscriptRows(page *orchPage, width int) {
 // expansion doors both read — ONE deck, so a click that opens a call and the
 // next paint that draws it are looking at the same entries.
 //
-// IT TAKES [transcriptLens], WHICH IS THE ONE POSTURE THAT FOLDS NOTHING, and
-// lens.go carries the argument in full: somebody descended from a graph into a
-// node's transcript to read what that node did, and this deck mints its fold
-// state fresh on every read — so a chip here would both answer the gesture
-// with the line they already had and have no door that worked.
+// Disclosure belongs to the selected node and survives each journal refresh.
 func (a *app) orchTranscriptDeck() deck {
 	run := a.orchOf()
-	return deck{entries: run.journal, unfolded: map[int]bool{}, workOpen: map[int]bool{},
-		capOpen: map[int]bool{}, lens: transcriptLens}
+	if run.journalWork == nil {
+		run.journalWork = make(map[int]bool)
+	}
+	if run.journalCaps == nil {
+		run.journalCaps = make(map[int]bool)
+	}
+	if run.journalUnfolded == nil {
+		run.journalUnfolded = make(map[int]bool)
+	}
+	running := 0
+	if node, ok := orchNodeOf(run.snap, run.transcript); ok && node.State == orchestrate.Running && len(run.journal) > 0 {
+		running = run.journal[len(run.journal)-1].turn
+	}
+	return deck{entries: run.journal, unfolded: run.journalUnfolded, workOpen: run.journalWork,
+		capOpen: run.journalCaps, lens: transcriptLens, runningTurn: running}
 }
 
 // orchCardOpen puts one node's card up, with the cursor at the top of its links.

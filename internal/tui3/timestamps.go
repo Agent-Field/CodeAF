@@ -267,7 +267,7 @@ type stampWalk struct {
 // each block asks once.
 func (a *app) stampBlock(d deck, out []row, walk *stampWalk, i, width int, gap func()) ([]row, bool) {
 	drew := false
-	if line := a.stampRow(walk.turn, width); line != "" {
+	if line := a.stampRow(walk.turn, width); line != "" && (a.workFoldOpen(d, walk.turn) || d.unfolded[walk.turn]) {
 		gap()
 		out = append(out, row{text: line, entry: -1})
 		drew = true

@@ -3509,6 +3509,7 @@ func TestALandedNodeWritesOneCardWhateverLaneCarriedIt(t *testing.T) {
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(9, "Collect sources", session.TaskFailed, session.TaskNotice{
 		Elapsed: 4 * time.Second, Report: "the tests did not build\nsee the log",
 	})})
+	a.openDone(a.doneEntryFor(9))
 	for _, want := range []string{
 		// `failed` is deleted as a landing's word: the head reads `incomplete` and
 		// the row under it says why, in the engine's own sentence for a fault
@@ -3520,6 +3521,7 @@ func TestALandedNodeWritesOneCardWhateverLaneCarriedIt(t *testing.T) {
 			t.Fatalf("the failure card does not carry %q:\n%s", want, taskText(a))
 		}
 	}
+	a.openDone(a.doneEntryFor(9))
 	if strings.Contains(taskText(a), "see the log") {
 		t.Fatalf("the collapsed card leaked the rest of the report:\n%s", taskText(a))
 	}
@@ -3534,9 +3536,10 @@ func TestALandedNodeWritesOneCardWhateverLaneCarriedIt(t *testing.T) {
 		Elapsed: 90 * time.Second, Report: "stopped: 40 steps and no finish",
 		Merge: mergeWordAborted, Branch: "task/mix",
 	})})
+	a.openDone(a.doneEntryFor(11))
 	for _, want := range []string{
-		"Mix audio · " + taskIncompleteState + " · " + taskSpanWord(90*time.Second) +
-			" · " + taskBranchKept + " · task/mix",
+		"Mix audio · " + taskIncompleteState + " · " + taskSpanWord(90*time.Second),
+		"branch · task/mix",
 		"stopped: 40 steps and no finish",
 	} {
 		if !strings.Contains(taskText(a), want) {

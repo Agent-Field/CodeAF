@@ -390,6 +390,10 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			// chip per phase, and a row that carried the turn would make every
 			// chip on it one control.
 			open := a.workFoldOpen(d, f.key)
+			if !open && housekeepingFold(es, f) {
+				i = f.answer - 1
+				continue
+			}
 			// The chip stands where the turn's work stood, so it takes the same
 			// blank the work's first block would have taken — which after the
 			// person's message is the change-of-speaker gap wasUser buys.
@@ -407,33 +411,34 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				wasCluster, wasBlock, wasUser, wasNote = false, false, false, false
 				continue
 			}
-			// OPEN IS THE OUTLINE: every finished step as a caption line. A click
-			// (or enter) on a caption opens only that step's calls — so the page
-			// stays a stack of what happened, not a dump of every tool again.
-			drewCaption := false
+			// Captions own only their own spans. Walk every other entry too:
+			// reasoning, team replies and receipts must remain reachable when
+			// the reader opens the disclosure.
+			captions := make(map[int]caption)
 			for _, c := range d.captions {
-				toolsFrom, toolsTo := captionTools(c, es)
-				if toolsFrom < f.start || toolsFrom >= f.answer {
+				if c.start >= f.start && c.end <= f.answer {
+					captions[c.start] = c
+				}
+			}
+			for at := f.start; at < f.answer; at++ {
+				if c, ok := captions[at]; ok {
+					capOpen := a.captionCallsOpen(d, c)
+					out = append(out, a.captionRows(c, false, capOpen, width, d)...)
+					if capOpen {
+						out = append(out, a.captionSpanBody(d, c, width)...)
+						from, to := captionTools(c, es)
+						for call := from; call < to; call++ {
+							out = append(out, a.toolRows(d, call, call == to-1, width)...)
+						}
+					}
+					at = c.end - 1
 					continue
 				}
-				drewCaption = true
-				capOpen := a.captionCallsOpen(d, c)
-				out = append(out, a.captionRows(c, false, capOpen, width, d)...)
-				if capOpen {
-					out = append(out, a.captionBody(d, c, width)...)
-					for at := toolsFrom; at < toolsTo; at++ {
-						out = append(out, a.toolRows(d, at, at == toolsTo-1, width)...)
-					}
-				}
+				out = append(out, a.disclosedEntryRows(d, at, width)...)
 			}
-			if drewCaption {
-				i = f.answer - 1
-				wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
-				continue
-			}
-			// A fold with no captions keeps the old expansion so history is never
-			// behind an empty outline.
-			wasUser = false
+			i = f.answer - 1
+			wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
+			continue
 		}
 		if e.turn != walk.turn {
 			// The turn before this one is over: its receipt, and then the mark
@@ -460,8 +465,12 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		// working. The frontier keeps everything it has, and a non-frontier run
 		// that DOES hold steps still draws its block: those steps are work with
 		// nothing else on the page to say it.
-		if w, ok := lives[i]; ok && (w.last || len(w.steps) > 0) {
+		if w, ok := lives[i]; ok {
 			if !a.workFoldOpen(d, w.key) {
+				if !w.last {
+					i = w.end - 1
+					continue
+				}
 				// The block owns its activity door before the first caption,
 				// and spends the ordinary gap only when it actually draws.
 				rows := a.liveStepBlock(w, width, d)
@@ -492,9 +501,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			step := 0
 			for at := w.start; at < w.end; at++ {
 				if step >= len(w.steps) || at != w.steps[step].start {
-					for _, text := range a.entryRows(d, at, width) {
-						out = append(out, row{text: text, entry: at})
-					}
+					out = append(out, a.disclosedEntryRows(d, at, width)...)
 					continue
 				}
 				c := w.steps[step]
@@ -507,7 +514,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 				if !capOpen {
 					continue
 				}
-				out = append(out, a.captionBody(d, c, width)...)
+				out = append(out, a.captionSpanBody(d, c, width)...)
 				toolsFrom, toolsTo := captionTools(c, es)
 				// AND AN OPEN STEP KEEPS THE CALL WINDOW IT ALREADY HAD. This is
 				// the same batch the cluster below draws with the same budget
@@ -577,9 +584,11 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			for end < len(es) && es[end].kind == entryDone {
 				end++
 			}
-			gap()
-			out = a.doneCluster(d, out, i, end, width)
-			wasCluster, wasBlock, wasUser, wasNote = false, true, false, false
+			if cards := a.doneCluster(d, nil, i, end, width); len(cards) > 0 {
+				gap()
+				out = append(out, cards...)
+				wasCluster, wasBlock, wasUser, wasNote = false, true, false, false
+			}
 			i = end - 1
 			continue
 		}
@@ -859,6 +868,52 @@ func (a *app) captionBody(d deck, c caption, width int) []row {
 	var out []row
 	for _, line := range a.workingProse(text, width) {
 		out = append(out, row{text: line, entry: c.head, hit: hitNone, turn: e.turn})
+	}
+	return out
+}
+
+// captionSpanBody restores entries skipped together with a folded caption.
+// The ordinary unfurled walk renders these itself; compact and workfold walks
+// skip the entire span and must include intervening reasoning and deliveries.
+func (a *app) captionSpanBody(d deck, c caption, width int) []row {
+	out := a.captionBody(d, c, width)
+	from, _ := captionTools(c, d.entries)
+	for at := c.start; at < from; at++ {
+		if at == c.head {
+			continue
+		}
+		out = append(out, a.disclosedEntryRows(d, at, width)...)
+	}
+	return out
+}
+
+// disclosedEntryRows preserves each retained entry's interaction when the
+// surrounding work is opened, including landed-card doors and assistant links.
+func (a *app) disclosedEntryRows(d deck, at, width int) []row {
+	e := &d.entries[at]
+	if e.kind == entryDone {
+		return a.doneCluster(d, nil, at, at+1, width)
+	}
+	if e.kind == entryTool {
+		return a.toolRows(d, at, true, width)
+	}
+	var out []row
+	links := 0
+	for n, text := range a.entryRows(d, at, width) {
+		r := row{text: text, entry: at}
+		if e.kind == entryAssistant {
+			hot := -1
+			if h := a.hoveringLink(at); h >= 0 {
+				hot = h - links
+			}
+			r.text, r.links = a.linkTasks(text, hot)
+			for j := range r.links {
+				r.links[j].ord = links + j
+			}
+			links += len(r.links)
+			r.foot = e.feet[n]
+		}
+		out = append(out, r)
 	}
 	return out
 }

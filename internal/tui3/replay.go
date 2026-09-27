@@ -697,11 +697,15 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			})
 
 		case "assistant":
+			var confirmation *responseConfirmation
+			if e.Answer {
+				confirmation = &responseConfirmation{done: true}
+			}
 			if text == "" {
 				continue // a step that only called tools; its calls follow
 			}
 			blocks = append(blocks, entry{
-				kind: entryAssistant, text: text, turn: turn, settled: true,
+				kind: entryAssistant, text: text, turn: turn, settled: true, confirmed: confirmation,
 				replyTags: append([]session.TaskReplyTag(nil), e.ReplyTags...),
 			})
 

@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/orchestrate"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
@@ -4155,6 +4156,13 @@ func (a *app) roomUnfoldAtTop(total, height int) bool {
 	if room == nil || room.done {
 		return false
 	}
+	// The nested node can be finished while its containing run is still live.
+	// Scrolling that transcript must not reopen completed work automatically.
+	if run := a.orchOf(); run != nil && run.transcript != "" {
+		if node, ok := orchNodeOf(run.snap, run.transcript); !ok || node.State != orchestrate.Running {
+			return false
+		}
+	}
 	rows := a.roomRows(a.bodyWidth())
 	end := min(height, total)
 	var open func()
@@ -4204,7 +4212,7 @@ func (a *app) roomFoldDoor(r row) func() {
 	case hitWorkFold:
 		// A CHIP ALREADY SHOWING ITS WORK IS NOT A DOOR — whether the reader
 		// opened it or `ui.work = open` did (render.go's [app.deckRows]).
-		if a.room == nil || a.workFoldOpen(a.room.deck(), r.turn) {
+		if a.room == nil || a.workFoldOpen(a.bodyDeck(), r.turn) {
 			return nil
 		}
 		return func() { a.openWorkfold(r.turn) }

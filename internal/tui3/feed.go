@@ -42,7 +42,8 @@ import (
 // the entry EXISTS is this file's, for every surface at once, and
 // salience_test.go walks every event kind through both to hold it.
 type feed struct {
-	entries []entry
+	entries        []entry
+	updateDelivery userUpdateStream
 	// live is the assistant entry currently being streamed into, or -1.
 	live int
 	// think is the reasoning block currently streaming, or -1 (thinking.go).
@@ -265,7 +266,9 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 		f.sayStream(ev.Text, lump)
 
 	case session.EventAssistantDone:
+		f.flushUpdatePrefix()
 		f.confirmResponse()
+		f.updateDelivery = userUpdateStream{}
 
 	case session.EventReasoning:
 		f.reasonStream(ev.Text, lump)
@@ -307,17 +310,21 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 		f.toldNote(ev.Text)
 
 	case session.EventRetrying:
+		f.updateDelivery = userUpdateStream{}
 		f.retry(ev)
 
 	case session.EventToolForming:
+		f.confirmUserUpdate()
 		// THE CALL IS ARRIVING. Nothing has been asked for yet — this is the
 		// model writing the instruction, drawn while it writes it.
 		f.formTool(ev)
 
 	case session.EventToolAnnounced:
+		f.confirmUserUpdate()
 		f.announceTool(ev)
 
 	case session.EventToolBegin:
+		f.confirmUserUpdate()
 		f.beginTool(ev)
 
 	case session.EventToolFinished:
@@ -1038,6 +1045,10 @@ func (f *feed) say(text string) { f.sayStream(text, false) }
 // walk. The bare form is text handed over WHOLE, with no wire behind it that
 // could have lumped it, so it paces nothing.
 func (f *feed) sayStream(text string, lump bool) {
+	f.sayVisibleStream(f.updateText(text), lump)
+}
+
+func (f *feed) sayVisibleStream(text string, lump bool) {
 	if text == "" {
 		return
 	}

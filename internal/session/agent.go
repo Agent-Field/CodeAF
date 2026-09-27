@@ -4529,9 +4529,12 @@ type DisplayEntry struct {
 	// mark, so a line from a file written before the mark existed still arrives as
 	// "user", which is exactly what it always was.
 	Role string
-	Text string
-	Tool string // set when the entry is one call in a batch
-	Hint string // the call's gloss, as the tool cluster rendered it
+	// Answer marks a completed tool-free response or an explicit human update. This
+	// boundary survives replay so a later response cannot demote its message.
+	Answer bool
+	Text   string
+	Tool   string // set when the entry is one call in a batch
+	Hint   string // the call's gloss, as the tool cluster rendered it
 
 	// CallID is the provider's own identity for a tool entry's call, exactly as
 	// the record holds it, and "" for every entry that is not a call.
@@ -4783,9 +4786,15 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 			tags = append([]TaskReplyTag(nil), replyTags...)
 			replyTags = nil
 		}
+		displayText := messageContentText(msg)
+		update := false
+		if role == "assistant" {
+			displayText, update = UserFacingUpdate(displayText)
+		}
 		entries = append(entries, DisplayEntry{
 			Role:      role,
-			Text:      messageContentText(msg),
+			Answer:    role == "assistant" && (len(msg.ToolCalls) == 0 || update),
+			Text:      displayText,
 			ImageRefs: journal.imageRefs(msg),
 			ReplyTags: tags,
 			// The journal is the only thing that remembers a user line was typed
