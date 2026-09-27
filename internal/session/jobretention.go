@@ -244,6 +244,12 @@ func (d *jobRetentionDirectory) persist(high int64) error {
 // Counter, O_EXCL creation, writer lease and ownership marker publication are
 // one transaction under the directory lock. Persist before pruning anything.
 func jobRetentionClaim(directory string) (int, string, *os.File, error) {
+	return jobRetentionClaimAbove(directory, 0)
+}
+
+// A registry may move its legacy jobs directory when the workspace changes;
+// its already-issued ids remain reserved even in a fresh destination.
+func jobRetentionClaimAbove(directory string, floor int64) (int, string, *os.File, error) {
 	d, err := lockJobRetention(directory)
 	if err != nil {
 		return 0, "", nil, err
@@ -252,6 +258,9 @@ func jobRetentionClaim(directory string) (int, string, *os.File, error) {
 	high, err := d.counter()
 	if err != nil {
 		return 0, "", nil, err
+	}
+	if high < floor {
+		high = floor
 	}
 	if high >= int64(math.MaxInt) {
 		return 0, "", nil, errRetentionUnsafe
