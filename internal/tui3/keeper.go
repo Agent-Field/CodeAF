@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"errors"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1068,6 +1069,15 @@ func (a *app) startBeside(workspace string) (tea.Cmd, string) {
 	if err != nil {
 		return nil, err.Error()
 	}
+	// ONLY AN ABSOLUTE ASK CAN BE HELD TO THE ANSWER: a far machine's ask may be
+	// home-relative, and the engine answers with the path it resolved it to.
+	if got := strings.TrimSpace(conv.Workspace); got != "" && filepath.IsAbs(workspace) && !sameFolder(got, workspace) {
+		return nil, "could not open the conversation in " + workspace + " · the engine answered for " + got
+	}
+	// A legacy start door may omit the workspace even though the requested
+	// project is known. Carrying the target into the bundle keeps the surface's
+	// draft, transcript and engine selection bound to the same project.
+	conv.Workspace = workspace
 	cmd := a.takeBeside(conv)
 	// A conversation started while a team is shown is one of that team
 	// (teams.go's [app.teamJoinFront]).

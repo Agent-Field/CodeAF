@@ -58,6 +58,13 @@ whole map over the cells you are already reading.
 There is no argument form. The screen is how you name what you want; a command that took a
 project name would be asking you to type out the very thing home exists to show you.
 
+## Starting a conversation from Home — the project is checked before anything is sent
+
+The project named by Home's `project:` line belongs to the new conversation, whether you send
+a plain message or `/task <brief>`. Home checks the engine's answer before it sends the words.
+If the engine answers for another project, Home stays up and says `could not open the conversation
+in <project> · the engine answered for <other project>`; nothing is sent to that other project.
+
 Home is the **first place on the top line**, right after the `codeaf` wordmark:
 `home  teams  chats  sessions  spend  settings`.
 The **teams page**, right after it, is where your teams and their managers live.
