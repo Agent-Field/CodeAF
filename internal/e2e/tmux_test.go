@@ -121,7 +121,16 @@ func newHome(t *testing.T, overrides map[string]any) string {
 	}
 	// The model this suite is about, and the gate posture every scenario but
 	// the consent one wants.
-	rows["model.talk"] = "deepseek/deepseek-v4-flash"
+	for _, key := range []string{config.KeyChatModel, config.KeyTaskModel,
+		config.KeyTierWorkerModel, config.KeyTierLowModel, config.KeyTierHighModel,
+		config.KeyTierReflexModel, config.KeyTierMastermindModel, config.KeyModelFallbacks} {
+		rows[key] = e2eModel
+	}
+	var pins []string
+	for _, role := range textRoles {
+		pins = append(pins, string(role)+":"+e2eModel)
+	}
+	rows[config.KeyModelRoles] = strings.Join(pins, ",")
 	// AND THE MARKS ARE PINNED TO THE PLAIN TIER, for the same reason
 	// [newWorld] pins them: tokens.DetectGlyphSet turns the nerd-font tier ON
 	// for any terminal it cannot veto, and tmux under TERM=xterm-256color is
@@ -226,6 +235,17 @@ func start(t *testing.T, name, home, ws string, cols, rows int, args ...string) 
 	// itself through [startWithEnv], and the one that tests the default says no
 	// word at all ([testTaskOnTheDefaultBelt]).
 	r := startWithEnv(t, []string{config.APIKeyEnv + "=" + liveKey(t), "CODEAF_TASK_BELT=node"},
+		name, home, ws, cols, rows, args...)
+	r.skipSetup(t)
+	return r
+}
+
+// startDefault uses the same public launch as a person, with no belt override.
+// Historical node-specific scenarios keep start; default-road acceptance uses
+// this door so a private test setting cannot hide the shipped worker harness.
+func startDefault(t *testing.T, name, home, ws string, cols, rows int, args ...string) *rig {
+	t.Helper()
+	r := startWithEnv(t, []string{config.APIKeyEnv + "=" + liveKey(t)},
 		name, home, ws, cols, rows, args...)
 	r.skipSetup(t)
 	return r
