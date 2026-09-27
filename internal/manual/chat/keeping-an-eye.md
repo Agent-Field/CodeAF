@@ -939,10 +939,13 @@ piece of the ask still to do.
   `the card was left unanswered — nothing was set up`. This is the opposite of a
   task proposal, where silence starts the work: a task is bounded work somebody
   is watching, and a standing item spends money at times nobody chose.
-- **A "do it once" answer sets nothing up.** It answers
-  `Do it now as an ordinary step and report what happened. The person chose not to repeat it. Do not set it up again unless they ask. Do not investigate codeaf.`
-  and codeaf does the thing in front of you instead. A **one-off reminder's card
-  does not offer that answer** — see "Why is there no once on my reminder card".
+- **A "do it once" answer approves immediate work, not a schedule.** The settled
+  card says `approved once, not scheduled`. That is an approval receipt, not
+  proof that the work has finished. The approved action, workspace, watch probe,
+  acceptance and spending limits are handed back to the current conversation;
+  it uses its ordinary tools and permissions and reports the actual result or
+  a blocker. No standing item is saved. A **one-off reminder's card does not
+  offer that answer** — see "Why is there no once on my reminder card".
 - **It will not set a reminder for a moment that has already passed.** The stamp
   is refused with the current time in it, and codeaf is asked to work it out
   again from that.
@@ -967,3 +970,12 @@ budget. Changing the budget affects the next proposal, including in an already
 open conversation. A card already being read keeps its proposal-time quote.
 An explicit per-run limit keeps the words you supplied. Task firings in the
 activity history are labelled `task:`; a spoken reminder is labelled `said:`.
+
+## Why does a one-time job say run it then instead of remind me?
+
+A one-time card that will perform work says `wants to schedule work once`.
+Its approval is `Run it then · <time>` with `Runs the work then. Nothing repeats.`
+The decline is `Don't schedule it`: nothing is scheduled or run. It has no
+`Only now, don't repeat` option, because this card approves the stated future
+time. A say-only reminder still says `wants to remind you` and `Remind me`.
+Both kinds show the action they will take before you approve.
