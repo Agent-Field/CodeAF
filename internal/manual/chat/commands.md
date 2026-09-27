@@ -279,6 +279,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 |---|---|---|---|
 | `/cache` | — | — | how big the shared build cache is, and where |
 | `/cache` | — | `clean` | asks first, then deletes the cache to free disk — confirm with `/cache clean now` |
+| `/cache` | — | `clean now` | deletes the shared build cache now |
 | `/debug` | — | — | keeps the full record of **this conversation** from here on, and says which folder it goes to |
 | `/update` | `/upgrade` | — | installs the newest stable release and restarts this conversation on it |
 | `/update` | `/upgrade` | `<stable\|rc\|dev\|staging\|tag>` | installs that channel's newest release or one exact tag, then restarts this conversation on it |
@@ -438,6 +439,9 @@ A failure comes back as:
 ```
 compact failed: <error>
 ```
+
+If the conversation is still short, the note says `nothing to compact yet` rather
+than exposing the engine's internal error wording.
 
 `/compact` has no argument form and no alias.
 
@@ -778,8 +782,8 @@ Over `--host` the `place` and `file` values are written in full as `machine:/pat
 ## Is the asking on — what `/status` says under `approvals`, and where the YOLO badge went
 
 `/status` carries the tool gate's posture on a line of its own, labelled `approvals`, in
-the engine's posture words: `ask` (it asks you), `guardian` (a small model answers the
-plainly safe ones first), `allow` (it runs things without asking) or `deny` (it refuses).
+the person's words: `asks` (it asks you), `guardian` (a small model answers the plainly
+safe ones first), `YOLO` (it runs things without asking) or `refuses` (it refuses).
 It is **this conversation's** posture — the one the `◇` cell on the legend shows — whichever
 setting decided it. `/status --json` carries the same fact under the `approvals` key, and
 the phone's status sheet has the same row.

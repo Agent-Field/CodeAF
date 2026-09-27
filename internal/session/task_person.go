@@ -179,7 +179,19 @@ func taskPersonTitle(brief string) string {
 	if len(words) > 8 {
 		words = words[:8]
 	}
+	for len(words) > 1 && taskTitleGlue[strings.ToLower(words[len(words)-1])] {
+		words = words[:len(words)-1]
+	}
 	return clip(strings.Join(words, " "), titleLimit)
+}
+
+// taskTitleGlue keeps the mechanical fallback from ending on a word that
+// promises a missing complement. The complete brief remains beside the title;
+// this only makes the short name stop at the nearest readable phrase boundary.
+var taskTitleGlue = map[string]bool{
+	"a": true, "an": true, "and": true, "by": true, "for": true,
+	"from": true, "in": true, "of": true, "on": true, "or": true,
+	"the": true, "to": true, "with": true,
 }
 
 // judgeDecomposable asks one bounded auxiliary question. Every failure is a no:
