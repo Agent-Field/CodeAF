@@ -2670,3 +2670,25 @@ explicit byte/count budgets with small payloads, avoiding mutable global limits.
 
 The startup TTL sweeper delegates `logs/jobs/` to this retention instead of
 expiring the stable allocation metadata or ownership markers by age.
+## Runtime-safe file search
+
+The structured `grep` tool excludes known codeaf runtime output for both engines,
+including custom state homes and searches starting inside those directories.
+The policy preserves source under `work/`, `trees/`, and ordinary user `logs/`
+directories. Ripgrep receives exclusions after user globs and runs without user
+config or symlink traversal. Shell commands do not inherit these protections.
+
+Recursive search skips files above **8 MiB**. The walking engine and explicit
+single-file inspection read a snapshot bounded by `min(size-at-open, 8 MiB)`;
+one **64 KiB** line buffer drains and skips oversized lines, with an incomplete
+result notice. Stored matches are clipped to the existing 500-byte display cap,
+with at most **1000 matches** and **20 context lines per side**. Context rendering
+streams the same bounded snapshot reader and stops accumulating output once the
+result byte budget has been reached. Directory traversal and total files searched
+remain governed by the caller's context, rather than a machine-wide byte cap.
+
+Ripgrep JSON records are limited to **1 MiB**; scanner errors and match limits
+kill and reap the child so `Wait` cannot hang behind a full stdout pipe. Stderr
+capture retains at most **4 KiB** while continuing to drain. Regression fixtures
+cover both engines, direct runtime roots, aliases, broad globs, subprocess
+termination, source worktrees, and growth during a snapshot read.

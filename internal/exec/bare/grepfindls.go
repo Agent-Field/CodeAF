@@ -18,9 +18,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"syscall"
-
-	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
 // grepMaxLineLength mirrors pi's truncate.js:GREP_MAX_LINE_LENGTH.
@@ -58,7 +55,7 @@ var ripgrepPath = sync.OnceValues(func() (string, bool) {
 // two sentences that differ are the two facts that differ, and they are stated
 // rather than left for the model to discover by being surprised.
 func grepFallbackDescription(caps Caps) string {
-	return fmt.Sprintf("Search file contents for a pattern. Returns matching lines with file paths and line numbers. Walks the tree itself (ripgrep is not on this machine), so it does NOT read .gitignore — it skips .git, node_modules, vendor and files that look binary. Output is truncated to 100 matches or %s (whichever is hit first). Long lines are truncated to 500 chars.", sizeWord(caps.MaxBytes))
+	return fmt.Sprintf("Search file contents for a pattern. Returns matching lines with file paths and line numbers. Walks the tree itself (ripgrep is not on this machine), so it does NOT read .gitignore — it skips .git, node_modules, vendor and files that look binary. Output is truncated to 100 matches or %s (whichever is hit first). Long lines are truncated to 500 chars.", sizeWord(caps.MaxBytes)) + grepSafetyDescription()
 }
 
 // grepToolDescription is the description this machine's `grep` actually carries.
@@ -109,6 +106,11 @@ type grepMatch struct {
 }
 
 func newGrepTool(cwd string, caps Caps) Tool {
+	path, present := ripgrepPath()
+	return newGrepToolUsing(cwd, caps, path, present)
+}
+
+func newGrepToolUsing(cwd string, caps Caps, rgPath string, haveRipgrep bool) Tool {
 	caps = caps.resolve()
 	return Tool{
 		Name:        "grep",
@@ -128,13 +130,11 @@ func newGrepTool(cwd string, caps Caps) Tool {
 				return "Invalid arguments: " + err.Error(), true, nil
 			}
 
-			rgPath, haveRipgrep := ripgrepPath()
-
 			searchDir := "."
 			if p.Path != nil {
 				searchDir = *p.Path
 			}
-			searchPath := resolveToCwd(searchDir, cwd)
+			searchPath := grepCanonical(resolveToCwd(searchDir, cwd))
 
 			// Check if path exists and is a directory.
 			info, err := os.Stat(searchPath)
@@ -142,14 +142,21 @@ func newGrepTool(cwd string, caps Caps) Tool {
 				return fmt.Sprintf("Path not found: %s", searchPath), true, nil
 			}
 			isDirectory := info.IsDir()
+			if !isDirectory && !info.Mode().IsRegular() {
+				return "Search requires a regular file or directory", true, nil
+			}
+			policy := newGrepRuntimePolicy()
+			if isDirectory && policy.excludes(searchPath) {
+				return "Runtime output is excluded from recursive search. Inspect a specific file for a bounded snapshot.", false, nil
+			}
 
 			contextValue := 0
 			if p.Context != nil && *p.Context > 0 {
-				contextValue = *p.Context
+				contextValue = min(*p.Context, grepContextCeiling)
 			}
 			effectiveLimit := 100
 			if p.Limit != nil && *p.Limit >= 1 {
-				effectiveLimit = *p.Limit
+				effectiveLimit = min(*p.Limit, grepMatchCeiling)
 			}
 
 			var (
@@ -158,12 +165,12 @@ func newGrepTool(cwd string, caps Caps) Tool {
 				matchLimitReached bool
 				linesTruncated    bool
 			)
-			if !haveRipgrep {
+			if !haveRipgrep || !isDirectory {
 				// THE FALLBACK ANSWERS IN THE SAME SHAPE, which is the whole
 				// point of it: the same matches, formatted by the same code
 				// below, so nothing downstream — the model, the person's screen,
 				// the fix-recall lane — can tell which engine ran.
-				found, limitHit, walkErr := grepByWalking(ctx, p.Pattern, searchPath, globOr(p.Glob), boolOr(p.IgnoreCase), boolOr(p.Literal), effectiveLimit)
+				found, limitHit, bounded, walkErr := grepByWalkingBounded(ctx, p.Pattern, searchPath, globOr(p.Glob), boolOr(p.IgnoreCase), boolOr(p.Literal), effectiveLimit)
 				if walkErr != nil {
 					return walkErr.Error(), true, nil
 				}
@@ -171,11 +178,15 @@ func newGrepTool(cwd string, caps Caps) Tool {
 					return "Operation aborted", true, nil
 				}
 				matches, matchCount, matchLimitReached = found, len(found), limitHit
-				return grepRender(caps, matches, matchCount, matchLimitReached, linesTruncated, contextValue, searchPath, isDirectory, effectiveLimit)
+				text, failed, renderErr := grepRender(caps, matches, matchCount, matchLimitReached, linesTruncated, contextValue, searchPath, isDirectory, effectiveLimit)
+				if bounded {
+					text += fmt.Sprintf("\n[Search incomplete: files over %d MiB or lines over %d KiB were bounded/skipped; a specific file reads its initial snapshot only.]", grepFileBytes>>20, grepLineBytes>>10)
+				}
+				return text, failed, renderErr
 			}
 
 			// Build rg args.
-			rgArgs := []string{"--json", "--line-number", "--color=never", "--hidden"}
+			rgArgs := []string{"--no-config", "--no-follow", "--json", "--line-number", "--color=never", "--hidden", fmt.Sprintf("--max-filesize=%d", grepFileBytes)}
 			if p.IgnoreCase != nil && *p.IgnoreCase {
 				rgArgs = append(rgArgs, "--ignore-case")
 			}
@@ -185,35 +196,22 @@ func newGrepTool(cwd string, caps Caps) Tool {
 			if p.Glob != nil && *p.Glob != "" {
 				rgArgs = append(rgArgs, "--glob", *p.Glob)
 			}
-			rgArgs = append(rgArgs, "--", p.Pattern, searchPath)
+			for _, glob := range policy.rgGlobs(searchPath) {
+				rgArgs = append(rgArgs, "--glob", glob)
+			}
+			rgArgs = append(rgArgs, "--", p.Pattern, ".")
 
 			cmd := exec.CommandContext(ctx, rgPath, rgArgs...)
-			cmd.Stderr = nil
+			cmd.Dir = searchPath
+			var stderr grepErrorBuffer
+			cmd.Stderr = &stderr
 			stdout, err := cmd.StdoutPipe()
 			if err != nil {
 				return fmt.Sprintf("Failed to run ripgrep: %s", err.Error()), true, nil
 			}
-			stderrPipe, _ := cmd.StderrPipe()
 
 			if err := cmd.Start(); err != nil {
 				return fmt.Sprintf("Failed to run ripgrep: %s", err.Error()), true, nil
-			}
-
-			// Collect stderr.
-			var stderrStr strings.Builder
-			if stderrPipe != nil {
-				guard.Go("exec/bare grep stderr", func() {
-					buf := make([]byte, 4096)
-					for {
-						n, err := stderrPipe.Read(buf)
-						if n > 0 {
-							stderrStr.Write(buf[:n])
-						}
-						if err != nil {
-							break
-						}
-					}
-				})
 			}
 
 			// Parse rg --json output: collect match events.
@@ -253,23 +251,41 @@ func newGrepTool(cwd string, caps Caps) Tool {
 					}
 				}
 				if filePath != "" && lineNumber > 0 {
+					if !filepath.IsAbs(filePath) {
+						filePath = filepath.Join(searchPath, filePath)
+					}
+					lineText, truncated := truncateLine(lineText)
+					linesTruncated = linesTruncated || truncated
 					matches = append(matches, grepMatch{filePath, lineNumber, lineText})
 				}
 				if matchCount >= effectiveLimit {
 					matchLimitReached = true
 					// Kill the child process to stop it.
-					_ = cmd.Process.Signal(syscall.SIGTERM)
+					_ = cmd.Process.Kill()
 					break
 				}
 			}
 
-			cmd.Wait()
-
+			scanErr := scanner.Err()
+			if scanErr != nil {
+				_ = cmd.Process.Kill()
+			}
+			waitErr := cmd.Wait()
 			if ctx.Err() != nil {
 				return "Operation aborted", true, nil
 			}
 
-			return grepRender(caps, matches, matchCount, matchLimitReached, linesTruncated, contextValue, searchPath, isDirectory, effectiveLimit)
+			if scanErr != nil {
+				return "Search stopped: a ripgrep response exceeded its bounded reader. Inspect a specific file instead: " + scanErr.Error(), true, nil
+			}
+			if waitErr != nil && !matchLimitReached {
+				var exit *exec.ExitError
+				if !errors.As(waitErr, &exit) || exit.ExitCode() != 1 {
+					return "Search failed: " + strings.TrimSpace(string(stderr.data)), true, nil
+				}
+			}
+			text, failed, renderErr := grepRender(caps, matches, matchCount, matchLimitReached, linesTruncated, contextValue, searchPath, isDirectory, effectiveLimit)
+			return text, failed, renderErr
 		},
 	}
 }
@@ -284,7 +300,12 @@ func grepRender(caps Caps, matches []grepMatch, matchCount int, matchLimitReache
 	}
 
 	var outputLines []string
+	renderedBytes := 0
 	for _, m := range matches {
+		if renderedBytes > caps.resolve().MaxBytes {
+			break
+		}
+		before := len(outputLines)
 		if contextValue == 0 && m.lineText != "" {
 			relativePath := grepFormatPath(m.filePath, searchPath, isDirectory)
 			sanitized := m.lineText
@@ -301,6 +322,9 @@ func grepRender(caps Caps, matches []grepMatch, matchCount int, matchLimitReache
 			block := grepFormatBlock(m.filePath, m.lineNumber, contextValue, searchPath, isDirectory)
 			outputLines = append(outputLines, block...)
 		}
+		for _, line := range outputLines[before:] {
+			renderedBytes += len(line) + 1
+		}
 	}
 
 	rawOutput := strings.Join(outputLines, "\n")
@@ -309,7 +333,11 @@ func grepRender(caps Caps, matches []grepMatch, matchCount int, matchLimitReache
 
 	var notices []string
 	if matchLimitReached {
-		notices = append(notices, fmt.Sprintf("%d matches limit reached. Use limit=%d for more, or refine pattern", effectiveLimit, effectiveLimit*2))
+		if effectiveLimit >= grepMatchCeiling {
+			notices = append(notices, fmt.Sprintf("%d matches limit reached. Refine the pattern or search a narrower path", effectiveLimit))
+		} else {
+			notices = append(notices, fmt.Sprintf("%d matches limit reached. Use limit=%d for more, or refine pattern", effectiveLimit, min(effectiveLimit*2, grepMatchCeiling)))
+		}
 	}
 	if truncation.truncated {
 		notices = append(notices, fmt.Sprintf("%s limit reached", formatSize(caps.MaxBytes)))
@@ -350,6 +378,10 @@ var grepSkippedDirs = map[string]bool{
 // dialect ripgrep uses for the patterns models actually write, and it is
 // guaranteed present because it is compiled in.
 func grepByWalking(ctx context.Context, pattern, searchPath, glob string, ignoreCase, literal bool, limit int) ([]grepMatch, bool, error) {
+	found, hit, _, err := grepByWalkingBounded(ctx, pattern, searchPath, glob, ignoreCase, literal, limit)
+	return found, hit, err
+}
+func grepByWalkingBounded(ctx context.Context, pattern, searchPath, glob string, ignoreCase, literal bool, limit int) ([]grepMatch, bool, bool, error) {
 	expression := pattern
 	if literal {
 		expression = regexp.QuoteMeta(pattern)
@@ -359,54 +391,58 @@ func grepByWalking(ctx context.Context, pattern, searchPath, glob string, ignore
 	}
 	compiled, err := regexp.Compile(expression)
 	if err != nil {
-		return nil, false, fmt.Errorf("Invalid pattern: %s", err.Error())
+		return nil, false, false, fmt.Errorf("Invalid pattern: %s", err)
 	}
-
-	var (
-		matches    []grepMatch
-		limitHit   bool
-		stopWalk   = errors.New("enough")
-		globMatch  = grepGlobMatcher(glob)
-		searchInfo os.FileInfo
-	)
-	if searchInfo, err = os.Stat(searchPath); err != nil {
-		return nil, false, fmt.Errorf("Path not found: %s", searchPath)
+	searchPath = grepCanonical(searchPath)
+	searchInfo, err := os.Stat(searchPath)
+	if err != nil {
+		return nil, false, false, fmt.Errorf("Path not found: %s", searchPath)
 	}
-
+	policy := newGrepRuntimePolicy()
+	if searchInfo.IsDir() && policy.excludes(searchPath) {
+		return nil, false, false, nil
+	}
+	limit = min(max(1, limit), grepMatchCeiling)
+	var matches []grepMatch
+	hit, bounded := false, false
+	stop := errors.New("enough matches")
+	globMatch := grepGlobMatcher(glob)
 	scan := func(path string) error {
-		data, readErr := os.ReadFile(path)
-		if readErr != nil || looksBinary(data) {
-			return nil
-		}
-		for index, line := range strings.Split(string(data), "\n") {
-			if !compiled.MatchString(line) {
-				continue
+		clipped, scanErr := scanGrepFile(ctx, path, func(number int, line string) error {
+			if !compiled.MatchString(strings.TrimSuffix(line, "\n")) {
+				return nil
 			}
-			matches = append(matches, grepMatch{filePath: path, lineNumber: index + 1, lineText: line})
+			text, _ := truncateLine(strings.TrimSuffix(line, "\n"))
+			matches = append(matches, grepMatch{path, number, text})
 			if len(matches) >= limit {
-				limitHit = true
-				return stopWalk
+				hit = true
+				return stop
 			}
-		}
-		return nil
+			return nil
+		})
+		bounded = bounded || clipped
+		return scanErr
 	}
-
 	if !searchInfo.IsDir() {
-		if err := scan(searchPath); err != nil && err != stopWalk {
-			return nil, false, err
+		err = scan(searchPath)
+		if err == stop {
+			err = nil
 		}
-		return matches, limitHit, nil
+		return matches, hit, bounded, err
 	}
-
 	err = filepath.WalkDir(searchPath, func(path string, entry os.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if walkErr != nil {
-			// An unreadable directory is skipped rather than fatal: a search
-			// that dies on one permission-denied folder answers nothing about
-			// the thousand folders it could have read.
+			bounded = true
 			return nil
 		}
-		if ctx.Err() != nil {
-			return ctx.Err()
+		if policy.excludes(path) {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		if entry.IsDir() {
 			if path != searchPath && grepSkippedDirs[entry.Name()] {
@@ -420,15 +456,24 @@ func grepByWalking(ctx context.Context, pattern, searchPath, glob string, ignore
 		if globMatch != nil && !globMatch(path, searchPath) {
 			return nil
 		}
-		return scan(path)
-	})
-	if err != nil && err != stopWalk {
-		if ctx.Err() != nil {
-			return nil, false, nil
+		info, err := entry.Info()
+		if err != nil || info.Size() > grepFileBytes {
+			bounded = true
+			return nil
 		}
-		return nil, false, err
+		err = scan(path)
+		if err == stop || ctx.Err() != nil {
+			return err
+		}
+		if err != nil {
+			bounded = true
+		}
+		return nil
+	})
+	if err == stop {
+		err = nil
 	}
-	return matches, limitHit, nil
+	return matches, hit, bounded, err
 }
 
 // grepGlobMatcher turns the tool's `glob` argument into a per-file test, or nil
@@ -513,39 +558,29 @@ func grepFormatPath(filePath, searchPath string, isDirectory bool) string {
 // line, mirroring pi's formatBlock.
 func grepFormatBlock(filePath string, lineNumber, contextValue int, searchPath string, isDirectory bool) []string {
 	relativePath := grepFormatPath(filePath, searchPath, isDirectory)
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return []string{fmt.Sprintf("%s:%d: (unable to read file)", relativePath, lineNumber)}
-	}
-	lines := strings.Split(strings.ReplaceAll(strings.ReplaceAll(string(data), "\r\n", "\n"), "\r", "\n"), "\n")
-	if len(lines) == 0 {
-		return []string{fmt.Sprintf("%s:%d: (unable to read file)", relativePath, lineNumber)}
-	}
+	contextValue = min(max(contextValue, 0), grepContextCeiling)
+	start, end := max(1, lineNumber-contextValue), lineNumber+contextValue
 	var block []string
-	start := lineNumber
-	end := lineNumber
-	if contextValue > 0 {
-		start = lineNumber - contextValue
-		if start < 1 {
-			start = 1
+	stop := errors.New("context complete")
+	_, err := scanGrepFile(context.Background(), filePath, func(current int, line string) error {
+		if current > end {
+			return stop
 		}
-		end = lineNumber + contextValue
-		if end > len(lines) {
-			end = len(lines)
+		if current >= start {
+			text, _ := truncateLine(strings.TrimRight(strings.ReplaceAll(line, "\r", ""), "\n"))
+			if current == lineNumber {
+				block = append(block, fmt.Sprintf("%s:%d: %s", relativePath, current, text))
+			} else {
+				block = append(block, fmt.Sprintf("%s-%d- %s", relativePath, current, text))
+			}
 		}
-	}
-	for current := start; current <= end; current++ {
-		lineText := ""
-		if current-1 < len(lines) {
-			lineText = strings.ReplaceAll(lines[current-1], "\r", "")
+		if current >= end {
+			return stop
 		}
-		isMatchLine := current == lineNumber
-		truncatedText, _ := truncateLine(lineText)
-		if isMatchLine {
-			block = append(block, fmt.Sprintf("%s:%d: %s", relativePath, current, truncatedText))
-		} else {
-			block = append(block, fmt.Sprintf("%s-%d- %s", relativePath, current, truncatedText))
-		}
+		return nil
+	})
+	if err != nil && err != stop {
+		return []string{fmt.Sprintf("%s:%d: (unable to read bounded context)", relativePath, lineNumber)}
 	}
 	return block
 }

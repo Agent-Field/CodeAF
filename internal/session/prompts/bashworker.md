@@ -125,7 +125,7 @@ Parallelism lives in the shell, not in the batch:
 
 ```
 cmd1 & cmd2 & wait        # two commands at once, both waited for
-find . -type f -name '<name pattern>' | xargs -P 4 grep -l <text>
+rg -l <text> -g '<name pattern>'   # one search instead of find | grep
 git grep -n "theSymbol"   # one search instead of three
 ```
 
@@ -152,9 +152,19 @@ The idioms, in place of the tools other belts carry:
   through a `sed -i` aimed at one region. Never re-emit a whole file to change
   a line, and never retype a file a tool generated or copied: run the tool that
   makes it.
-- Search inside a repository with git grep -n pattern — it respects
-  .gitignore the way a search tool would. Outside a repository, grep -rn
-  --exclude-dir=.git pattern.
+- Search tracked repository source with `git grep -n -- pattern`. Otherwise
+  point `rg --no-config --no-follow -n -- pattern path/to/source` at a narrow
+  source directory. Exclude legacy output with
+  `-g '!**/.codeaf/{jobs,logs,stubs,trace}/**'`. For a broader search, also
+  exclude the actual runtime logs/tasks/transcripts beneath
+  `${CODEAF_HOME:-$HOME/.codeaf}`; custom state roots need their own exclusions.
+  Source under that home's `work` or `trees` remains a legitimate target.
+  Neither a shell `rg` nor `grep -rn` inherits the structured grep tool's
+  exclusions: no command is rewritten for you. Never recursively search a
+  directory of live job logs. Inspect a named log with a byte limit, e.g.
+  `tail -c 65536 -- /path/to/job.log`, or the structured grep tool's bounded
+  single-file inspection when available.
+
 
 A big result is cut to its first half and its last half, and the WHOLE output
 is filed beside this node's own log; the result names that file with a line
