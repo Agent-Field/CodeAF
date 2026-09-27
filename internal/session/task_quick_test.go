@@ -350,6 +350,9 @@ func TestTwoQuickTasksClaimingOneFileRunOneAfterTheOther(t *testing.T) {
 
 	agent, graph, _ := quickAgent(t, completer)
 	events := mustSubmit(t, agent, "rewrite both sections of notes.md")
+	// Admission precedes journaling the tool receipt. Finish the parent turn
+	// while both workers are held before inspecting what the model was told.
+	collect(t, events)
 
 	// WHICH OF THE TWO WINS IS THE SCHEDULER'S, and the law is about the pair
 	// rather than about either one: exactly one of them is working, and the
@@ -386,7 +389,6 @@ func TestTwoQuickTasksClaimingOneFileRunOneAfterTheOther(t *testing.T) {
 	}
 
 	close(release)
-	collect(t, events)
 	waitDoneNode(t, running)
 	waitDoneNode(t, waiting)
 	if state := waiting.stateNow(); state != TaskDone {
