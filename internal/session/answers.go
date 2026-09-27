@@ -417,16 +417,20 @@ func StandingOnceIsAnAnswer(item standing.Item) bool {
 // The heads a standing card opens with. The person's own sentence is the next
 // line, not this one: this line says what KIND of thing is being asked.
 const (
-	StandingHeadReminder = "wants to remind you"
-	StandingHeadCheck    = "wants to set up a repeating check"
-	StandingHeadWatch    = "wants to watch for something"
-	StandingHeadRule     = "wants to keep a rule"
+	StandingHeadReminder      = "wants to remind you"
+	StandingHeadScheduledWork = "wants to schedule work once"
+	StandingHeadCheck         = "wants to set up a repeating check"
+	StandingHeadWatch         = "wants to watch for something"
+	StandingHeadRule          = "wants to keep a rule"
 )
 
 // StandingHead is the card's first line for this item.
 func StandingHead(item standing.Item) string {
 	switch item.CardKindOf() {
 	case standing.CardReminder:
+		if item.Does.Kind == standing.ActionTask {
+			return StandingHeadScheduledWork
+		}
 		return StandingHeadReminder
 	case standing.CardCheck:
 		return StandingHeadCheck
@@ -492,6 +496,16 @@ func StandingOptions(item standing.Item) []AnswerOption {
 	cadence := item.When.ShortWords()
 	switch item.CardKindOf() {
 	case standing.CardReminder:
+		if item.Does.Kind == standing.ActionTask {
+			yes := "Run it then"
+			if cadence != "" {
+				yes += standingCadenceMark + cadence
+			}
+			return []AnswerOption{
+				{Key: "1", Label: yes, Consequence: "Runs the work then. Nothing repeats."},
+				{Key: StandingNoKey, Label: "Don't schedule it", Consequence: "Nothing is scheduled or run.", Safe: true},
+			}
+		}
 		yes := "Remind me"
 		if cadence != "" {
 			yes = "Remind me " + cadence

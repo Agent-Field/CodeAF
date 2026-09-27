@@ -571,38 +571,63 @@ func TestStandingSurfacesAStoreThatWouldNotWrite(t *testing.T) {
 	}
 }
 
-// "DO IT ONCE" CREATES NOTHING and tells the model to do the thing here.
+// The once decision carries the actual approved action, not a completion claim.
 func TestStandingOnceCreatesNothing(t *testing.T) {
 	store := newFakeStanding(t)
 	completer := &scriptedCompleter{steps: []step{
-		standCall("s1", aReminder()),
-		finalText("doing it now"),
+		standCall("s1", `{"op":"propose","words":"weekly pantry report","when":{"kind":"every","every":"168h"},"does":{"kind":"task","brief":"write shopping.md from pantry.csv","acceptance":"report lists quantities"},"rails":{"per_run_usd":0.3}}`),
+		finalText("continuing the approved work"),
 	}}
 	agent := standingAgent(t, completer, store, nil)
-
-	events, err := agent.Submit(context.Background(), "remind me at 6")
+	events, err := agent.Submit(context.Background(), "prepare my weekly pantry report")
 	if err != nil {
-		t.Fatalf("Submit: %v", err)
+		t.Fatal(err)
 	}
+	var shown standing.Item
 	collected := drainAnsweringStanding(t, events, func(event Event) {
+		shown = event.Standing.Item
 		agent.ResolveStanding(event.Standing.ID, StandingAnswer{Once: true})
 	})
 	if len(store.created) != 0 {
-		t.Fatalf("a once answer created %d items", len(store.created))
+		t.Fatalf("once saved %d items", len(store.created))
 	}
-	output := toolOutput(t, collected, "stand")
-	for _, want := range []string{
-		"Do it now as an ordinary step and report what happened.",
-		"The person chose not to repeat it.",
-		"Do not set it up again unless they ask.",
-		"Do not investigate codeaf.",
-	} {
-		if !strings.Contains(output, want) {
-			t.Errorf("tool result missing %q\n%s", want, output)
-		}
+	output := strings.Split(toolOutput(t, collected, "stand"), "\nnow:")[0]
+	var result struct {
+		Decision  string        `json:"decision"`
+		Execution string        `json:"execution"`
+		Saved     bool          `json:"standing_saved"`
+		Approved  standing.Item `json:"approved_action"`
 	}
-	if strings.Contains(output, "\u2014") || strings.Contains(output, "\u2013") {
-		t.Errorf("tool result still has a dash: %q", output)
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("handoff: %v: %s", err, output)
+	}
+	if result.Decision != "run_once_now" || result.Execution != "pending" || result.Saved {
+		t.Fatalf("decision: %+v", result)
+	}
+	want, _ := json.Marshal(shown)
+	got, _ := json.Marshal(result.Approved)
+	if string(got) != string(want) {
+		t.Fatalf("approved action changed: got %s want %s", got, want)
+	}
+	if result.Approved.Does.Brief != "write shopping.md from pantry.csv" || result.Approved.Rails.PerRunUSD != 0.3 {
+		t.Fatalf("missing action or limits: %+v", result.Approved)
+	}
+}
+
+func TestStandingRejectsOnceForReminder(t *testing.T) {
+	store := newFakeStanding(t)
+	completer := &scriptedCompleter{steps: []step{standCall("s1", aReminder()), finalText("not scheduled")}}
+	agent := standingAgent(t, completer, store, nil)
+	events, err := agent.Submit(context.Background(), "remind me later")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collected := drainAnsweringStanding(t, events, func(event Event) { agent.ResolveStanding(event.Standing.ID, StandingAnswer{Once: true}) })
+	if len(store.created) != 0 {
+		t.Fatal("forged once created an item")
+	}
+	if out := toolOutput(t, collected, "stand"); !strings.Contains(out, "does not offer doing it once") {
+		t.Fatal(out)
 	}
 }
 
