@@ -293,6 +293,8 @@ program, ask
 their own question about work in flight, and act on every conversation this window holds
 at once. Closing a tab never quits codeaf, and quitting is not what any of the card's
 three answers does.
+The session cancels its routing-cache refresh and waits for that refresh's remaining
+local writes before shutdown completes.
 
 On the switcher card, `ctrl+w` closes a selected background tab while keeping
 its work running, and that row drops behind the fold. For the current conversation it uses the same close card when

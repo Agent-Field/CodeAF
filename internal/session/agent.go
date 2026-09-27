@@ -499,7 +499,12 @@ func (a *Agent) startLaneBeat() {
 	// second spelling of that number here is a number that would drift, so that
 	// one session fetched on a clock the cache disagreed with.
 	a.laneBeating = true
-	go lanes.Beat(ctx, lanes.Default().Sheet(), models, 0)
+	a.laneDone = make(chan struct{})
+	sheet := lanes.Default().Sheet()
+	guard.Go("session/lane-beat", func() {
+		defer close(a.laneDone)
+		lanes.Beat(ctx, sheet, models, 0)
+	})
 }
 
 // laneBeatModels is the models this session actually sends to, deduplicated and
@@ -544,13 +549,15 @@ func laneBeatModels(config Config) []string {
 	return models
 }
 
-// stopLaneBeat ends the beat. It is Close's, and it never waits: a fetch in
-// flight is a prior the next session will read off the wire again, and a quit
-// that waited on somebody else's half-hour aggregate would be a quit that hangs
-// on a slow router.
+// stopLaneBeat cancels the fetch and joins this session's beat. Cancellation
+// ends network work, but a cache or ledger write already in progress must finish
+// before Close lets a caller remove or switch the state directory.
 func (a *Agent) stopLaneBeat() {
 	if a.laneStop != nil {
 		a.laneStop()
+	}
+	if a.laneDone != nil {
+		<-a.laneDone
 	}
 }
 
@@ -2426,10 +2433,9 @@ func (a *Agent) Close() error {
 	// inbox rather than onto a queue that will never be drained again
 	// (standing_run.go).
 	forgetLiveSession(a)
-	// AND THE LANE SHEET STOPS BEATING FOR A SESSION THAT HAS LEFT. It is cut
-	// here, beside the line above and before anything that can take time,
-	// because it is the one background lane that owes nothing to the quit: a
-	// beat holds no write anybody is waiting for.
+	// AND THE LANE SHEET STOPS BEATING FOR A SESSION THAT HAS LEFT. Cancel
+	// its fetch and join any cache write before the state directory can be
+	// handed back to the caller.
 	a.stopLaneBeat()
 	// AND THE BELT RUN, on the adaptive runs' own terms above: it holds a context
 	// of its own precisely because the turn that proposed it ended, so this is
