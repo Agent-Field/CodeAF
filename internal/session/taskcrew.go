@@ -391,7 +391,10 @@ func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []
 		}
 		// A SEAT NEVER WAITS OUT A LIMIT: a 429 goes back at once, and the
 		// seat moves to its next route or model ([provider.WithoutPatientRateLimits]).
-		response, err := c.agent.completeWithModel(provider.WithoutPatientRateLimits(asCrewSeatCall(ctx)), purposeInherited, messages, current, options...)
+		callCtx := provider.WithDiscardedUsage(ctx, func(_ string, _ string, response *ai.Response) {
+			crew.guard.after(ctx, current, response, 0)
+		})
+		response, err := c.agent.completeWithModel(provider.WithoutPatientRateLimits(asCrewSeatCall(callCtx)), purposeInherited, messages, current, options...)
 		crew.guard.after(ctx, current, response, held)
 		if err == nil {
 			c.agent.crewAnswered(c.run, current)

@@ -973,6 +973,9 @@ func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message
 	// The reading is done inside the call so that the row it writes can SAY what
 	// the answer taught; the decision to do it twice is made here.
 	if relearned {
+		// Bank the superseded answer before another request can fail or be cut.
+		// Its usage must not be folded into the final answer's context size.
+		noteDiscardedUsage(ctx, response)
 		again, _, againErr := c.completeWithMessagesStreaming(ctx, observer, messages, options...)
 		return again, againErr
 	}

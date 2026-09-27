@@ -3923,6 +3923,13 @@ before the answer began, which is the one failure a larger ceiling actually fixe
 attempts get their own lines, so a call that was rate limited four times before it landed
 is five lines rather than one slow one.
 
+If an empty-at-the-ceiling response triggers the adapter's one retry, both paid
+attempts count toward session spend and the applicable task, day and seat budgets.
+The first charge remains counted even if the retry fails or is cancelled. The final
+answer keeps its own context size; the earlier attempt does not make that context
+look larger. A billing owner that already records every provider response still
+records each one only once.
+
 ## Why did a provider error keep the same endpoint?
 
 A provider can accept a request and later end its reply with
