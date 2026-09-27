@@ -46,7 +46,11 @@ type redoAgent interface {
 // told the first crew under-served this kind of work here, so the next task
 // like it starts a step higher until enough accepted work decays it back.
 func (a *app) runRedo(arg string) tea.Cmd {
-	if strings.ToLower(strings.TrimSpace(arg)) != "stronger" {
+	arg = strings.ToLower(strings.TrimSpace(arg))
+	if arg == "" {
+		arg = "stronger"
+	}
+	if arg != "stronger" {
 		a.note("usage: /redo stronger")
 		return nil
 	}
