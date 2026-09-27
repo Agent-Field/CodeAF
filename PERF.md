@@ -1241,8 +1241,10 @@ trimming, so a single multi-megabyte Write grew a temporary to match.
 
 The spool is now a window of at most **jobSpoolChunks (2) chunks of
 jobSpoolChunkBytes (4MB)** — `<id>.log` live and `<id>.log.1` kept — rotated by
-rename and never rewritten per write; the chunk that falls out of the window
-is deleted and counted. One huge Write spools in chunk-sized pieces and hands
+copying a full chunk once at its boundary, then truncating and seeking the
+same live inode. The previous backup is removed before copying, keeping even
+transient usage within two chunks. No job ID or writer lock is released during
+rotation. One huge Write spools in chunk-sized pieces and hands
 only its newest **64KB** (`jobRingBytes`) to the ring. The retained output
 stays addressable by the read tool exactly as before, so no limit grows for
 the reader.

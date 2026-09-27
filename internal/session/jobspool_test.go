@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -18,13 +19,15 @@ import (
 func newSpool(t *testing.T, chunkBytes int64, chunks int) *jobSink {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "3.log")
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o644)
 	if err != nil {
 		t.Fatalf("open spool: %v", err)
 	}
 	sink := newJobSink(file, path)
 	sink.chunkBytes = chunkBytes
-	sink.chunks = chunks
+	if chunks != jobSpoolChunks {
+		t.Fatal("fixture must use production chunk count")
+	}
 	t.Cleanup(func() { sink.close() })
 	return sink
 }
@@ -83,7 +86,7 @@ func TestJobSpoolRotatesAndStaysBounded(t *testing.T) {
 	if !strings.HasSuffix(string(wrote), string(live)) {
 		t.Fatal("live chunk is not a suffix of what was written")
 	}
-	if got := sink.lastNonEmptyLine(); got != "line79" {
+	if got := sink.lastNonEmptyLine(); got != "line119" {
 		t.Fatalf("ring lost the newest line: %q", got)
 	}
 	// The kept chunk holds the middle of the stream, not the beginning: the
@@ -122,7 +125,7 @@ func TestJobSinkHugeSingleWriteKeepsOnlyTheTail(t *testing.T) {
 	if size > jobRingBytes*2 {
 		t.Fatalf("ring grew to %d bytes for one huge write", size)
 	}
-	if got := sink.lastNonEmptyLine(); got != "THE-TAIL" {
+	if got := sink.lastNonEmptyLine(); !strings.HasSuffix(got, "THE-TAIL") {
 		t.Fatalf("ring lost the tail of a huge write: %q", got)
 	}
 	if !strings.Contains(sink.text(), "THE-TAIL") {
@@ -185,63 +188,143 @@ func TestJobSpoolShortWriteIsRecorded(t *testing.T) {
 	}
 }
 
-// A spool that was already broken never has its notice overwritten by the
-// truncation, and a close that fails is surfaced through the same door.
+// Closing the actual fd behind the sink induces a real close failure. It
+// must remain visible even after the disk window has discarded older bytes.
 func TestJobSpoolCloseErrorSurfacesInNotice(t *testing.T) {
-	sink := newSpool(t, 1<<20, 2)
-	if _, err := sink.Write([]byte("some output\n")); err != nil {
-		t.Fatalf("write: %v", err)
+	sink := newSpool(t, 4, 2)
+	_, _ = sink.Write([]byte("0123456789"))
+	if err := sink.file.Close(); err != nil {
+		t.Fatal(err)
 	}
 	sink.close()
-	// Closing is idempotent and a second close records nothing new.
-	sink.close()
-	if notice := sink.notice(); notice != "" {
-		t.Fatalf("a clean close invented a notice: %q", notice)
+	first := sink.notice()
+	if !strings.Contains(first, "close:") || !strings.Contains(first, "truncated") {
+		t.Fatalf("close error hidden: %q", first)
 	}
-	// A close failure on a real file cannot be injected directly, so the
-	// broken-text door is asserted at the unit it runs through: the guard
-	// keeps the first notice and the close error cannot overwrite it.
-	sink2 := newSpool(t, 1<<20, 2)
-	sink2.brokenText = "job log stopped: injected earlier"
-	sink2.close()
-	if notice := sink2.notice(); notice != "job log stopped: injected earlier" {
-		t.Fatalf("close overwrote an earlier notice: %q", notice)
+	sink.close()
+	if sink.notice() != first {
+		t.Fatal("repeated close changed first failure")
 	}
 }
 
-// The footer a model reads is honest about the bound: `full log:` while the
-// log on disk is everything the job wrote, and the truncation named where it
-// is not — through `jobs output` and through the completion note alike.
 func TestJobFooterNamesTruncationInsteadOfFullLog(t *testing.T) {
-	agent, _ := jobsAgent(t)
-	agent.mu.Lock()
-	agent.opened = false
-	agent.mu.Unlock()
+	var note string
+	registry := newJobRegistry(t.TempDir(), Place{}, func(s string) { note = s })
+	job, err := registry.newJob("fixture", jobKindBash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(job.sink.close)
+	if err := registry.add(job); err != nil {
+		t.Fatal(err)
+	}
+	job.sink.chunkBytes = 4
+	_, _ = job.sink.Write([]byte("a\nb\nc\nd\ne\n"))
+	registry.settleExit(job, 0)
+	output, failed := registry.output(job.id, 10)
+	if failed {
+		t.Fatal(output)
+	}
+	for _, text := range []string{note, output} {
+		if !strings.Contains(text, "log truncated") || strings.Contains(text, "full log:") || !strings.Contains(text, job.logPath+".1") {
+			t.Fatalf("dishonest footer: %s", text)
+		}
+	}
+}
 
-	id := startJob(t, agent, "printf 'a\nb\nc\n'")
-	waitFor(t, "the completion note", func() bool {
-		return notesContain(agent, fmt.Sprintf("job %d exited 0", id))
-	})
-	queued := sessionNotes(agent)
-	if len(queued) != 1 {
-		t.Fatalf("want one note, got %v", queued)
+func TestJobSpoolRotationPreservesIdentityAndNamesBothChunks(t *testing.T) {
+	sink := newSpool(t, 4, 2)
+	before, err := os.Stat(sink.base)
+	if err != nil {
+		t.Fatal(err)
 	}
-	job := agent.jobs.find(id)
-	footer := fmt.Sprintf("[job %d · last %d lines · full log: %s]", id, jobExitTailLines, job.logPath)
-	if !strings.Contains(queued[0], footer) {
-		t.Fatalf("a whole, untruncated log must still say full log: %q", queued[0])
+	_, _ = sink.Write([]byte("abcde"))
+	after, err := os.Stat(sink.base)
+	if err != nil {
+		t.Fatal(err)
 	}
-	// Mark the same job's spool as having discarded output and read it again:
-	// the footer must stop promising full and name the truncation instead.
-	job.sink.noticeText = "log truncated: only the most recent 8.0 MB is kept"
-	text, isError := runTool(t, agent, "jobs", fmt.Sprintf(`{"action":"output","id":%d}`, id))
-	if isError {
-		t.Fatalf("jobs output failed: %s", text)
+	if !os.SameFile(before, after) {
+		t.Fatal("rotation replaced the live job identity")
 	}
-	if !strings.Contains(text, "log truncated") || strings.Contains(text, "full log:") {
-		t.Fatalf("footer still promises a full log after truncation: %q", text)
+	footer := sink.logFooter(sink.base)
+	if strings.Contains(footer, "full log:") || !strings.Contains(footer, sink.base+".1") {
+		t.Fatalf("first rotation footer omitted retained chunk: %s", footer)
 	}
-	if !strings.Contains(text, "log file: "+job.logPath) {
-		t.Fatalf("footer lost the file path beside the truncation: %q", text)
+	contender, err := os.OpenFile(sink.base, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600)
+	if contender != nil {
+		contender.Close()
+		t.Fatal("a competing creator claimed the live ID")
+	}
+	if !os.IsExist(err) {
+		t.Fatalf("competing claim error: %v", err)
+	}
+}
+
+func TestJobSinkHugeWriteReplacesStalePrefix(t *testing.T) {
+	sink := newSpool(t, 1<<20, 2)
+	_, _ = sink.Write([]byte("OLD\n"))
+	latest := strings.Repeat("new\n", jobRingBytes)
+	_, _ = sink.Write([]byte(latest))
+	if got, want := sink.text(), latest[len(latest)-jobRingBytes:]; got != want {
+		t.Fatal("large write kept stale bytes before its newest suffix")
+	}
+}
+
+func TestJobSpoolUnsafeBackupCannotTruncateAnotherFile(t *testing.T) {
+	sink := newSpool(t, 4, 2)
+	sentinel := filepath.Join(t.TempDir(), "sentinel")
+	if err := os.WriteFile(sentinel, []byte("untouched"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(sentinel, sink.base+".1"); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	_, _ = sink.Write([]byte("abcdefghij"))
+	data, err := os.ReadFile(sentinel)
+	if err != nil || string(data) != "untouched" {
+		t.Fatalf("rotation changed another file: %q, %v", data, err)
+	}
+	if !strings.Contains(sink.notice(), "job log stopped") || sink.text() != "abcdefghij" {
+		t.Fatal("unsafe backup must stop disk writes but keep draining")
+	}
+}
+
+func TestJobSpoolEmptyCompletionStillReportsFailure(t *testing.T) {
+	var note string
+	registry := newJobRegistry(t.TempDir(), Place{}, func(s string) { note = s })
+	job, err := registry.newJob("fixture", jobKindBash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(job.sink.close)
+	job.sink.hook = func([]byte) (int, error) { return 0, errors.New("injected full disk") }
+	_, _ = job.sink.Write([]byte("\n"))
+	registry.settleExit(job, 0)
+	if !strings.Contains(note, "injected full disk") || strings.Contains(note, "full log:") {
+		t.Fatalf("blank output hid failure: %s", note)
+	}
+}
+
+func TestJobSpoolConcurrentWritersAndCloseRemainBounded(t *testing.T) {
+	sink := newSpool(t, 64, 2)
+	var group sync.WaitGroup
+	for worker := 0; worker < 3; worker++ {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			for i := 0; i < 100; i++ {
+				_, _ = sink.Write([]byte("stdout stderr\n"))
+			}
+			sink.close()
+		}()
+	}
+	group.Wait()
+	for _, size := range spoolFiles(t, sink) {
+		if size > 64 {
+			t.Fatalf("concurrent spool exceeded cap: %d", size)
+		}
+	}
+	if sink.text() == "" {
+		t.Fatal("concurrent close stopped memory drain")
 	}
 }

@@ -16,8 +16,8 @@ package session
 //     one before it, anything earlier discarded with a notice — so the recent
 //     log is addressable by the read tool — paged, offset, grepped, the same
 //     way any other file is — without a job that prints for a week filling the
-//     disk. A chunk is never rewritten: it fills, one rename keeps it, a fresh
-//     one opens. Only the last 64KB is kept in memory, and only that tail is
+//     disk. At a chunk boundary the live bytes are copied once to the backup
+//     before the same live inode is truncated; its identity never disappears. Only the last 64KB is kept in memory, and only that tail is
 //     ever handed back through a tool result. A watcher that has printed 400MB
 //     must not be able to put 400MB in front of the model, and a watcher that
 //     printed the one line that matters must not lose it because nobody was
@@ -53,6 +53,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -628,7 +629,7 @@ func (r *jobRegistry) claimJobLog(directory string) (int, string, *os.File, erro
 		r.mu.Unlock()
 
 		logPath := filepath.Join(directory, fmt.Sprintf("%d.log", id))
-		logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o644)
 		if err == nil {
 			return id, logPath, logFile, nil
 		}
@@ -1024,17 +1025,13 @@ func (r *jobRegistry) settleExit(watched *job, code int) {
 		// means something, and a note that withheld it would be an invitation to
 		// make one more call for what the note was already about.
 		if watched.kind == jobKindBash {
-			if tail := watched.sink.tail(jobExitTailLines); strings.TrimSpace(tail) != "" {
-				// AND THE FOOTER STAYS HONEST ABOUT THE BOUND: a log that has
-				// begun discarding is not a full one, and "full log" on a note
-				// whose beginning is gone would send the model reading a file
-				// that does not hold what it names.
-				ending := "full log: "
-				if notice := watched.sink.notice(); notice != "" {
-					ending = notice + " · log file: "
+			tail := watched.sink.tail(jobExitTailLines)
+			if strings.TrimSpace(tail) != "" || watched.sink.notice() != "" {
+				if strings.TrimSpace(tail) != "" {
+					note += "\n\n" + tail
 				}
-				note += "\n\n" + tail + "\n\n[job " + strconv.Itoa(watched.id) + " · last " +
-					strconv.Itoa(jobExitTailLines) + " lines · " + ending + watched.logPath + "]"
+				note += "\n\n[job " + strconv.Itoa(watched.id) + " · last " +
+					strconv.Itoa(jobExitTailLines) + " lines · " + watched.sink.logFooter(watched.logPath) + "]"
 			}
 		}
 		r.notify(note)
@@ -1253,47 +1250,29 @@ func (r *jobRegistry) output(id, lines int) (string, bool) {
 	if strings.TrimSpace(tail) == "" {
 		tail = "(no output)"
 	}
-	// The footer is only honest while the rest IS there: a spool that has
-	// discarded anything names the truncation and the file instead of
-	// promising full.
-	ending := "full log: " + target.logPath
-	if notice := target.sink.notice(); notice != "" {
-		ending = notice + " · log file: " + target.logPath
-	}
+	ending := target.sink.logFooter(target.logPath)
 	return fmt.Sprintf("%s\n\n[job %d · %s · showing last %d lines · %s]",
 		tail, id, statusText(info), lines, ending), false
 }
 
 // ── the output sink: ring in memory, everything on disk ─────────────────────
 
-// jobSink is one job's output: a rolling in-memory tail and a bounded disk
-// spool.
-//
-// It is an io.Writer set as both Stdout and Stderr, so Go's exec package feeds
-// it from two goroutines — the mutex is load-bearing, not decoration. Spool
-// writes append whole pieces to the live chunk and never rewrite megabytes
-// per line: a chunk fills, one rename keeps it, a fresh one opens, and the
-// chunk beyond the window is discarded.
+// jobSink drains stdout and stderr into a bounded tail and two disk chunks.
+// The live inode is never replaced, preserving both the job ID reservation and
+// the writer lease held by retention. Disk failures stop spooling, not draining.
 type jobSink struct {
-	mu     sync.Mutex
-	ring   []byte
-	file   *os.File
-	closed bool
-	// base is the live chunk's path (the newest chunk is always base+".1").
-	// chunkBytes and chunks are the window; the tests set them tiny and inject
-	// hook instead of generating data anywhere near the real limits.
-	base       string
-	chunkBytes int64
-	chunks     int
-	hook       spoolHook
-	// spoolBytes is what the live chunk holds. spoolBroken says a spool write
-	// failed and retries stop; brokenText and noticeText are the two sentences
-	// [jobSink.notice] can carry — a failed spool and a discarded chunk —
-	// each set once and then left alone.
+	mu          sync.Mutex
+	ring        []byte
+	file        *os.File
+	closed      bool
+	base        string
+	chunkBytes  int64
 	spoolBytes  int64
 	spoolBroken bool
 	brokenText  string
 	noticeText  string
+	backupInfo  os.FileInfo
+	hook        spoolHook
 }
 
 // spoolHook is the seam the tests inject spool failures through. It replaces
@@ -1307,7 +1286,6 @@ func newJobSink(file *os.File, base string) *jobSink {
 		file:       file,
 		base:       base,
 		chunkBytes: jobSpoolChunkBytes,
-		chunks:     jobSpoolChunks,
 	}
 }
 
@@ -1332,7 +1310,7 @@ func (s *jobSink) Write(data []byte) (int, error) {
 		for start < len(data) && !utf8RuneStart(data[start]) {
 			start++
 		}
-		s.ring = append(s.ring, data[start:]...)
+		s.ring = append(s.ring[:0], data[start:]...)
 	} else {
 		s.ring = append(s.ring, data...)
 	}
@@ -1345,9 +1323,8 @@ func (s *jobSink) Write(data []byte) (int, error) {
 }
 
 // spoolLocked appends data to the bounded spool, rotating the live chunk when
-// it fills. A chunk is never rewritten and one call never copies its data:
-// the pieces are slices of it, at most one rotation per call, and a Write of
-// any size costs renames, not memory.
+// it fills. Input is sliced without copying; each full chunk is copied once
+// during rotation with a fixed buffer, regardless of the size of a Write.
 func (s *jobSink) spoolLocked(data []byte) {
 	if s.spoolBroken || s.base == "" {
 		return
@@ -1386,73 +1363,115 @@ func (s *jobSink) spoolWriteLocked(piece []byte) (int, error) {
 	return s.file.Write(piece)
 }
 
-// rotateLocked keeps the live chunk and opens a fresh one, discarding the
-// chunk beyond the window: the chain shifts up one place and the oldest
-// numbered chunk is clobbered by the shift, which is the discard the notice
-// records. Renames, not copies. Its false is the spool being over — a rename
-// or an open that failed stops the spool, never the job.
+// rotateLocked preserves the live inode and copies at most one chunk. The
+// previous backup is removed before the copy, so even during rotation there
+// are at most two chunks. A backup is only removed if this sink created it.
 func (s *jobSink) rotateLocked() bool {
-	discarded := false
-	if s.chunks > 1 {
-		if _, err := os.Stat(s.base + "." + strconv.Itoa(s.chunks-1)); err == nil {
-			discarded = true
-		}
-	}
-	_ = s.file.Close()
-	for index := s.chunks - 2; index >= 1; index-- {
-		_ = os.Rename(s.base+"."+strconv.Itoa(index), s.base+"."+strconv.Itoa(index+1))
-	}
-	if err := os.Rename(s.base, s.base+".1"); err != nil {
-		s.breakSpoolLocked(err)
-		return false
-	}
-	file, err := os.OpenFile(s.base, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	root, err := os.OpenRoot(filepath.Dir(s.base))
 	if err != nil {
-		s.file = nil
 		s.breakSpoolLocked(err)
 		return false
 	}
-	s.file = file
-	s.spoolBytes = 0
-	if discarded && s.noticeText == "" {
-		s.noticeText = "log truncated: only the most recent " + spoolSizeText(s.chunkBytes*int64(s.chunks)) + " is kept"
+	defer root.Close()
+	name := filepath.Base(s.base)
+	info, err := root.Lstat(name)
+	owned, ownErr := s.file.Stat()
+	if err != nil || ownErr != nil || !info.Mode().IsRegular() || !os.SameFile(info, owned) {
+		s.breakSpoolLocked(fmt.Errorf("live log identity changed"))
+		return false
 	}
+	backup := name + ".1"
+	if s.backupInfo != nil {
+		info, err := root.Lstat(backup)
+		if err != nil || !info.Mode().IsRegular() || !os.SameFile(info, s.backupInfo) {
+			s.breakSpoolLocked(fmt.Errorf("retained log identity changed"))
+			return false
+		}
+		if err := root.Remove(backup); err != nil {
+			s.breakSpoolLocked(err)
+			return false
+		}
+		s.backupInfo = nil
+		s.noticeText = "log truncated: only the most recent " + spoolSizeText(s.chunkBytes*jobSpoolChunks) + " is kept"
+	}
+	file, err := root.OpenFile(backup, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err != nil {
+		s.breakSpoolLocked(err)
+		return false
+	}
+	s.backupInfo, err = file.Stat()
+	if err != nil {
+		_ = file.Close()
+		s.breakSpoolLocked(err)
+		return false
+	}
+	n, copyErr := io.CopyBuffer(file, io.NewSectionReader(s.file, 0, s.spoolBytes), make([]byte, 32<<10))
+	closeErr := file.Close()
+	if copyErr == nil && n != s.spoolBytes {
+		copyErr = io.ErrShortWrite
+	}
+	if err := errors.Join(copyErr, closeErr); err != nil {
+		s.breakSpoolLocked(err)
+		return false
+	}
+	if err := s.file.Truncate(0); err != nil {
+		s.breakSpoolLocked(err)
+		return false
+	}
+	if _, err := s.file.Seek(0, io.SeekStart); err != nil {
+		s.breakSpoolLocked(err)
+		return false
+	}
+	s.spoolBytes = 0
 	return true
 }
 
-// breakSpoolLocked records a spool failure once: retries stop, the file is
-// left closed, the ring keeps draining, and the next footer names the failure
-// instead of a log.
+// breakSpoolLocked leaves the fd and its writer lease held until close. A
+// failed spool must not look like an abandoned log while its job is running.
 func (s *jobSink) breakSpoolLocked(err error) {
 	if s.spoolBroken {
 		return
 	}
 	s.spoolBroken = true
-	if s.file != nil {
-		_ = s.file.Close()
-		s.file = nil
-	}
-	what := "failed"
-	if err != nil {
-		what = err.Error()
-	}
-	s.brokenText = "job log stopped: " + what
+	s.brokenText = "job log stopped: " + err.Error()
 }
 
-// notice is the one sentence about what the spool no longer holds, or ""
-// while the log on disk is everything the job wrote. A surface quoting it
-// names the file instead of calling the log full, which is what keeps the
-// footer's promise honest.
+func (s *jobSink) noticeLocked() string {
+	parts := []string{}
+	if s.brokenText != "" {
+		parts = append(parts, s.brokenText)
+	}
+	if s.noticeText != "" {
+		parts = append(parts, s.noticeText)
+	} else if s.backupInfo != nil {
+		parts = append(parts, "log rotated")
+	}
+	return strings.Join(parts, "; ")
+}
+
+// notice records lost history and logging failures without stopping the job.
 func (s *jobSink) notice() string {
 	if s == nil {
 		return ""
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.spoolBroken {
-		return s.brokenText
+	return s.noticeLocked()
+}
+
+// logFooter names both chunks from the first rotation, even before any bytes
+// are discarded. Calling only the live chunk the full log would be false.
+func (s *jobSink) logFooter(path string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	notice := s.noticeLocked()
+	if notice == "" {
+		return "full log: " + path
 	}
-	return s.noticeText
+	if s.backupInfo != nil {
+		return notice + " · log files: " + path + ".1, " + path
+	}
+	return notice + " · log file: " + path
 }
 
 // spoolSizeText keeps the notice's figures readable: megabytes at the
@@ -1487,9 +1506,12 @@ func (s *jobSink) trimLocked() {
 func (s *jobSink) close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.file != nil && !s.closed {
-		if err := s.file.Close(); err != nil && s.brokenText == "" && s.noticeText == "" {
-			s.brokenText = "job log did not close cleanly: " + err.Error()
+	if s.closed {
+		return
+	}
+	if s.file != nil {
+		if err := s.file.Close(); err != nil {
+			s.breakSpoolLocked(fmt.Errorf("close: %w", err))
 		}
 	}
 	s.closed = true
