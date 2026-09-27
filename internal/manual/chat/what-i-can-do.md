@@ -391,7 +391,8 @@ of promising a full log.
 
 Finished logs do not pile up forever either. Each session's logs/jobs
 directory keeps managed finished logs within **128 MiB and 64 jobs**
-(a job's log and its one rotation count together), evicting the oldest job IDs first;
+(a job's log and its one rotation count together), evicting the oldest job IDs first. Startup also expires inactive managed logs
+whose base and rotated chunk have both been untouched for **7 days**;
 active jobs are never touched, and files codeaf did not create there — older
 unmarked logs included — are left alone. If a log you were pointed at has
 since been evicted, the jobs footer says so instead of naming the file, and

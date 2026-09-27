@@ -492,9 +492,11 @@ func TestStartupSweepPreservesJobIDHistoryAndLegacyLogs(t *testing.T) {
 	if len(notes) != 0 {
 		t.Fatalf("startup maintenance failed: %v", notes)
 	}
-	for _, name := range []string{path, legacy, filepath.Join(directory, jobRetentionLockName), filepath.Join(directory, jobRetentionCounterName), jobRetentionMarkerPath(directory, int64(id))} {
+	for _, name := range []string{legacy, filepath.Join(directory, jobRetentionLockName), filepath.Join(directory, jobRetentionCounterName)} {
 		retentionExists(t, name, true)
 	}
+	retentionExists(t, path, false)
+	retentionExists(t, jobRetentionMarkerPath(directory, int64(id)), false)
 	next, _, file, err := jobRetentionClaim(directory)
 	if err != nil {
 		t.Fatal(err)
@@ -550,5 +552,41 @@ func TestJobRetentionWorkspaceSnapshotStaysConsistent(t *testing.T) {
 		if filepath.Dir(job.logPath) != filepath.Join(job.dir, placeLogs, droppingJobs) {
 			t.Fatalf("mixed workspace and place: %s / %s", job.dir, job.logPath)
 		}
+	}
+}
+
+func TestJobRetentionAgeExpiryPreservesFreshChunksAndActiveLogs(t *testing.T) {
+	directory := retentionFixture(t)
+	now := time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
+	old, fresh := now.Add(-2*sweepTTL), now.Add(-time.Hour)
+	for id := int64(1); id <= 4; id++ {
+		writeManagedLog(t, directory, id, 5, 5)
+		for _, suffix := range []string{".log", ".log.1"} {
+			path := filepath.Join(directory, fmt.Sprintf("%d%s", id, suffix))
+			if err := os.Chtimes(path, old, old); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	// The first id is fresh only through its backup; later ids still expire.
+	if err := os.Chtimes(filepath.Join(directory, "1.log.1"), fresh, fresh); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(filepath.Join(directory, "2.log"), fresh, fresh); err != nil {
+		t.Fatal(err)
+	}
+	active, err := os.OpenFile(filepath.Join(directory, "3.log"), os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer active.Close()
+	if err := filelock.Lock(active, true, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := jobRetentionSweepBefore(directory, jobRetentionBudget{1 << 20, 2}, now.Add(-sweepTTL)); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []int{1, 2, 3, 4} {
+		retentionExists(t, filepath.Join(directory, fmt.Sprintf("%d.log", id)), id != 4)
 	}
 }
