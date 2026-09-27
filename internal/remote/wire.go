@@ -875,6 +875,10 @@ type Hello struct {
 	// text one machine sends for another machine's screen.
 	Surface string `json:"surface,omitempty"`
 
+	// ClientID is this window's stable identity across its redials. Surface is
+	// only a machine label, so it cannot distinguish two windows on one machine.
+	ClientID string `json:"clientID,omitempty"`
+
 	// Back says this surface has been in this conversation before and is coming
 	// back from a link that dropped, rather than arriving for the first time.
 	//
