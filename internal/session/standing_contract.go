@@ -122,4 +122,8 @@ type Standing struct {
 	// person named no per-item money. Zero means the allowance is unlimited, so
 	// the card names the shared allowance without inventing a figure.
 	DailyRailUSD float64
+	// DailyRail reads the current allowance when a proposal is made. The
+	// surface quotes that snapshot without reading configuration on each frame.
+	// Nil retains DailyRailUSD for embedders with a fixed allowance.
+	DailyRail func() float64
 }
