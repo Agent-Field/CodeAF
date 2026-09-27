@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -513,5 +514,60 @@ func TestAReplayedBriefIsTheManagersCard(t *testing.T) {
 	rows := ansi.Strip(strings.Join(a.teamCardRows(e, 60), "\n"))
 	if !strings.Contains(rows, teamManagerGlyph+" manager → @lexer") || !strings.Contains(rows, "│ rewrite the lexer") || strings.Contains(rows, "›") {
 		t.Fatalf("the brief draws as:\n%s", rows)
+	}
+}
+
+type postureTestAgent struct {
+	fakeAgent
+	posture string
+}
+
+func (p *postureTestAgent) SetApprovalPosture(posture string) error {
+	p.posture = posture
+	return nil
+}
+
+func TestTrafficStartInheritsApprovalPosture(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	var fresh *postureTestAgent
+	tmpDir := t.TempDir()
+	sessionFile := filepath.Join(tmpDir, "session.jsonl")
+	a.start = func(workspace string) (Conversation, error) {
+		fresh = &postureTestAgent{fakeAgent: fakeAgent{model: "m"}}
+		return Conversation{Agent: fresh, SessionFile: sessionFile, Workspace: workspace}, nil
+	}
+	trafficAppend(t, a, harbor, teamstore.Entry{Kind: teamstore.KindStart, From: teamstore.FromManager, To: "submgr", Text: "lead the sub team", Approval: session.PostureAllow})
+	trafficReadNow(t, a)
+	trafficReadNow(t, a)
+
+	if fresh == nil || fresh.posture != session.PostureAllow {
+		t.Fatalf("started agent did not inherit posture: got %+v", fresh)
+	}
+	meta, err := session.LoadMeta(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadMeta failed: %v", err)
+	}
+	if meta.Approval != session.PostureAllow {
+		t.Fatalf("meta.json approval = %q, want %q", meta.Approval, session.PostureAllow)
+	}
+}
+
+func TestUntitledManagerGetsFallbackHandle(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	tab := chatTab{key: "mgr-key-untitled", word: ""}
+	if err := a.teamMakeManager(harbor, tab); err != nil {
+		t.Fatalf("teamMakeManager failed: %v", err)
+	}
+	teamsFlush(t, a)
+	team := mustTeam(t, a, harbor)
+	m, ok := team.Member("mgr-key-untitled")
+	if !ok {
+		t.Fatalf("manager not in team: %+v", team.Members)
+	}
+	if m.Handle == "" {
+		t.Fatalf("manager has empty handle: %+v", m)
+	}
+	if err := teamstore.ValidHandle(m.Handle); err != nil {
+		t.Fatalf("fallback handle %q is invalid: %v", m.Handle, err)
 	}
 }

@@ -1,11 +1,13 @@
 package tui3
 
 import (
+	"path/filepath"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -465,10 +467,23 @@ func (a *app) trafficStart(t team, e teamstore.Entry) tea.Cmd {
 		a.trafficStartRefused(handle, newUnavailableWord)
 		return nil
 	}
+	posture := strings.TrimSpace(e.Approval)
+	if posture == "" {
+		if t.Manager == a.frontTabKey() {
+			posture = a.approvalPostureWord()
+		} else if held := a.behind[t.Manager]; held != nil && held.conv.Agent != nil {
+			if dial, ok := held.conv.Agent.(approvalDialer); ok {
+				posture = dial.ResolvedApprovalPosture()
+			}
+		}
+		if posture == "" {
+			posture = a.approvalPostureWord()
+		}
+	}
 	start, where, id := a.start, a.teamWhere(t), t.ID
 	return a.besideLine(func() func(bool) tea.Cmd {
 		conv, err := start(where)
-		return func(bool) tea.Cmd { return a.trafficStarted(id, handle, conv, err) }
+		return func(bool) tea.Cmd { return a.trafficStarted(id, handle, conv, posture, err) }
 	})
 }
 
@@ -479,7 +494,7 @@ func (a *app) trafficStartRefused(handle, why string) {
 
 // trafficStarted is the start's conversation back from the engine: held
 // behind, joined to the team under its handle, and said beside the manager.
-func (a *app) trafficStarted(id, handle string, conv Conversation, err error) tea.Cmd {
+func (a *app) trafficStarted(id, handle string, conv Conversation, posture string, err error) tea.Cmd {
 	if err != nil || conv.Agent == nil {
 		why := "the conversation did not open"
 		if err != nil {
@@ -487,6 +502,22 @@ func (a *app) trafficStarted(id, handle string, conv Conversation, err error) te
 		}
 		a.trafficStartRefused(handle, why)
 		return nil
+	}
+	if posture != "" && conv.Agent != nil {
+		if dial, ok := conv.Agent.(approvalDialer); ok {
+			_ = dial.SetApprovalPosture(posture)
+		} else if setter, ok := conv.Agent.(interface{ SetApprovalPosture(string) error }); ok {
+			_ = setter.SetApprovalPosture(posture)
+		}
+	}
+	if posture != "" && conv.SessionFile != "" {
+		dir := filepath.Dir(conv.SessionFile)
+		meta, _ := session.LoadMeta(dir)
+		if meta.ID == "" {
+			meta.ID = filepath.Base(dir)
+		}
+		meta.Approval = posture
+		_ = session.SaveMeta(dir, meta)
 	}
 	t, ok := a.teamByID(id)
 	if !ok {
@@ -504,8 +535,14 @@ func (a *app) trafficStarted(id, handle string, conv Conversation, err error) te
 			if err := f.AddMember(t.ID, m); err != nil {
 				return err
 			}
-			if got, _ := f.Teams[teamIndex(f.Teams, t.ID)].Member(m.Key); got.Handle != handle && teamstore.ValidHandle(handle) == nil {
+			curTeam := f.Teams[teamIndex(f.Teams, t.ID)]
+			if got, _ := curTeam.Member(m.Key); got.Handle != handle && teamstore.ValidHandle(handle) == nil {
 				_ = f.SetHandle(t.ID, m.Key, handle)
+			} else if got, _ := curTeam.Member(m.Key); got.Handle == "" {
+				fb := teamstore.FallbackHandle(curTeam, m.Key)
+				if teamstore.ValidHandle(fb) == nil {
+					_ = f.SetHandle(t.ID, m.Key, fb)
+				}
 			}
 			return nil
 		}); err != nil {

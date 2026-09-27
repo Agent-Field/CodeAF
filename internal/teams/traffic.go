@@ -109,6 +109,9 @@ type Entry struct {
 	// brief, makes itself that team's manager. It is empty on every other
 	// start and every other kind.
 	Team string `json:"team,omitempty"`
+	// Approval is, on a [KindStart], the approval posture the started
+	// conversation inherits from the manager unless overridden.
+	Approval string `json:"approval,omitempty"`
 }
 
 // trafficRotateBytes is the size past which the log starts a new file.

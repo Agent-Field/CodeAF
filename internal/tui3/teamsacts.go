@@ -259,7 +259,18 @@ func (a *app) teamsRootManagerStart() tea.Cmd {
 					return err
 				}
 			}
-			return f.SetManager(id, tab.key)
+			if err := f.SetManager(id, tab.key); err != nil {
+				return err
+			}
+			if t, ok := f.Team(id); ok {
+				if got, _ := t.Member(tab.key); got.Handle == "" {
+					fb := teamstore.FallbackHandle(t, tab.key)
+					if teamstore.ValidHandle(fb) == nil {
+						_ = f.SetHandle(id, tab.key, fb)
+					}
+				}
+			}
+			return nil
 		})
 		if err != nil {
 			a.note("the manager is set for this window, but " + err.Error())
