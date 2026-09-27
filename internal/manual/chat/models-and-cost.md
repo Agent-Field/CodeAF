@@ -2823,8 +2823,8 @@ What the model is handed instead of a summary is the **state card** — what `tr
 after each one. So what the conversation is about is never paraphrased, because it was never
 written as prose in the first place.
 
-A pass can decline: `session: nothing to compact` (everything already fits in the tail), or
-`session: a compaction pass is already running`.
+A pass can decline when everything already fits in the tail, which `/compact` answers in plain
+words: `nothing to compact yet`. It can also decline with `session: a compaction pass is already running`.
 
 ## What happens when the conversation gets too long — when compaction happens by itself
 
