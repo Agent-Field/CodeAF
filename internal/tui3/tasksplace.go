@@ -315,7 +315,7 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by 
 		// the name is another row's title (taskplan.go's [planWaits]).
 		kin := planKinOf(mine.plan)
 		for _, task := range mine.plan {
-			if planRowShown(names, task.Title) {
+			if planRowShown(names, task) {
 				continue
 			}
 			item := planItem(task, mine.row.ID, kin)

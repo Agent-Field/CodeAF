@@ -519,7 +519,7 @@ func (a *app) openMemory() tea.Cmd {
 // (styles.go's THE EMPTINESS LAW covers the figures; this covers the reason).
 func (a *app) memorySnapshot() (store.MemoryShelves, string) {
 	if !a.memoryReady() {
-		if a.hosted() {
+		if a.hosted() && a.memory == nil {
 			return store.MemoryShelves{}, memoryRemoteWord
 		}
 		return store.MemoryShelves{}, memoryOffNote

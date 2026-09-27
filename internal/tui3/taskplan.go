@@ -589,11 +589,17 @@ func planTitleFor(title string) string { return strings.ToLower(strings.TrimSpac
 // task of the store that row is ([session.TaskNotice.PlanTask]) — so those rows
 // are taken out by identity before this runs ([planStoreDraws]), and the title
 // guess is left to the road that has nothing better.
-func planRowShown(names map[string]bool, title string) bool {
+func planRowShown(names map[string]bool, row session.PlanTaskRow) bool {
 	if len(names) == 0 {
 		return false
 	}
-	return names[planTitleFor(title)]
+	// A CHECK ROW IS ITS OWN PIECE OF WORK, even when the checker repeats the
+	// worker's title. Title matching is only the fallback for plan-born worker
+	// nodes; letting it hide a check removes the proof row from the roster.
+	if strings.TrimSpace(row.Seat) == "check" {
+		return false
+	}
+	return names[planTitleFor(row.Title)]
 }
 
 // planNamesOf is the set of titles THIS conversation's own node rows wear, which

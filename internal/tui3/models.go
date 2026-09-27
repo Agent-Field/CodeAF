@@ -557,7 +557,15 @@ func speaksAloud(model Model) bool { return makesModality(model, "speech", speec
 // catalog files speech under music; the marks below are narrow enough that a
 // silent TTS row cannot reach it, and a row that PUBLISHED "music" is taken at
 // its word the way every other row on this surface is.
-func composesMusic(model Model) bool { return makesModality(model, "music", musicMarks) }
+func composesMusic(model Model) bool {
+	if len(model.Output) > 0 {
+		if hasModality(model.Output, "music") {
+			return true
+		}
+		return hasModality(model.Output, "audio") && markedID(model.ID, musicMarks)
+	}
+	return markedID(model.ID, musicMarks)
+}
 
 // filmsVideo is the "filming" slot's question.
 func filmsVideo(model Model) bool { return makesModality(model, "video", videoMarks) }
