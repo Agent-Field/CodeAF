@@ -63,6 +63,12 @@ const readSweepWait = 4 * time.Minute
 // held node is a reason to run the batch inline now, not to freeze the chat.
 const readSweepStartWait = 30 * time.Second
 
+// sweepNeedsConversation is the hand-off's return road when the person's
+// request needs an action belt. It is a fixed protocol marker, not an English
+// intent matcher: the reader has no task, team, writing, commit, merge, or
+// model-selection tools, so it must give those requests back to the chat.
+const sweepNeedsConversation = "[READ_HANDOFF_NEEDS_CONVERSATION]"
+
 // readSweep is one turn's ledger of read-only calls. It lives beside the
 // turn's warmBatch: same lifetime, same owner, reset by the same events that
 // break a reading run — any call that is not one of the four readers.
@@ -140,6 +146,8 @@ func (s *readSweep) due(calls []ai.ToolCall) bool {
 // as the first reader's result. Everything else in the batch — the wc that
 // sized the reading, the write the model already knew it wanted — runs the
 // ordinary way beside the hand-off, since it was emitted blind to the reads.
+// The quick task is read-only; its action refusal returns control through the
+// ordinary fallback path.
 // A nil return is every failure road at once — the caller then runs the whole
 // batch inline exactly as if the hook had not fired, and the sweep is disabled
 // so the failure is not re-tried round after round.
@@ -154,8 +162,9 @@ func (a *Agent) handoffReadSweep(ctx context.Context, ep *episode, hub *eventHub
 		}
 	}
 	id, _, refusal := a.admitQuick(quickAsk{
-		line:  sweepBrief(user, sweep.glosses, readers),
-		title: sweepTitle(user),
+		line:     sweepBrief(user, sweep.glosses, readers),
+		title:    sweepTitle(user),
+		readOnly: true,
 	})
 	if refusal.said != "" {
 		return nil
@@ -189,10 +198,12 @@ func (a *Agent) handoffReadSweep(ctx context.Context, ep *episode, hub *eventHub
 		restResults = a.runToolsWarm(ctx, ep, rest, hub, warm)
 	}
 	answer, ok := a.awaitQuickAnswer(ctx, id)
-	if !ok || strings.TrimSpace(answer) == "" {
+	if !ok || strings.TrimSpace(answer) == "" || strings.TrimSpace(answer) == sweepNeedsConversation {
 		// FALLBACK: The quick task failed, timed out, or returned an empty answer.
 		// Clean up the task node so it does not linger in the graph consuming resources.
-		a.cancelTask(id, "read handoff failed; running inline")
+		if !a.graph().retireUnstarted(id) {
+			a.cancelTask(id, "read handoff failed; running inline")
+		}
 
 		// Any non-reader calls in the batch already ran in restResults and must NOT
 		// be run a second time. Run the readers inline and stitch the results back together.
@@ -315,7 +326,7 @@ func sweepBrief(user userMessage, glosses []string, calls []ai.ToolCall) string 
 	for _, call := range calls {
 		b.WriteString("- " + gloss(call) + "\n")
 	}
-	b.WriteString("\nReturn ONLY the distilled answer to the person's question — the answer itself, not a narration of what you read. Do not write or edit any file.")
+	b.WriteString("\nReturn ONLY the distilled answer to the person's question — the answer itself, not a narration of what you read. Do not write or edit any file. If the person asked for work, a team action, writing, a commit, a merge, or a named model, return exactly " + sweepNeedsConversation + " so the conversation can handle it.")
 	return b.String()
 }
 
