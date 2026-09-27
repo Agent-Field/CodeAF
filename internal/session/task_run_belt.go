@@ -690,6 +690,7 @@ func (a *Agent) startHeldBeltRun(ctx context.Context, engine RunEngine, g *TaskG
 		ID: id, Title: title, State: TaskQueued, Program: programName(via),
 		PlanTask: planStoreID(storeID), Crew: run.crewDecision(),
 		Model: run.crewWorker(), Waiting: waitingMachineBusy,
+		PendingRun: &PendingRunRecord{Brief: brief, Ground: stand.dir, Mode: stand.mode, Asked: asked},
 	})
 	go a.driveBeltRun(runCtx, engine, run, RunSpec{})
 	return false, nil
@@ -1541,6 +1542,9 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 			if kept.ID != notice.ID {
 				continue
 			}
+			if notice.State == TaskQueued && notice.PendingRun == nil {
+				notice.PendingRun = kept.PendingRun
+			}
 			if notice.Copy == nil && kept.Copy != nil {
 				notice.Copy = kept.Copy
 			}
@@ -2114,6 +2118,7 @@ func (a *Agent) settleJoinedRows(g *TaskGraph, run *beltRun, ended time.Time, ru
 			}
 		}
 		if task := run.store.Task(strconv.FormatUint(id, 10)); task != nil {
+			notice.Stopped = planStopReason(task.Error)
 			if task.Status == plandb.StatusDone {
 				notice.State = TaskDone
 			}
