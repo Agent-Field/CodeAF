@@ -100,6 +100,29 @@ func TestWhatStandsHereIsThisChatThenThisProjectThenTheMachine(t *testing.T) {
 	}
 }
 
+func TestProjectStandingOrdersMatchANormalizedWorkspace(t *testing.T) {
+	agent, store := ordersAgent(t)
+	workspace, sessionID := agent.standingPlace()
+	item := anOrder(t, store, "run the tests before you finish", workspace+string(filepath.Separator), standing.AltitudeProject, sessionID)
+
+	got, err := store.Applicable(workspace, sessionID)
+	if err != nil {
+		t.Fatalf("Applicable: %v", err)
+	}
+	for _, found := range got {
+		if found.ID == item.ID {
+			stand, _ := agent.StandingHere()
+			for _, here := range stand {
+				if here.ID == item.ID {
+					return
+				}
+			}
+			t.Fatalf("Applicable found %q but StandingHere did not", item.ID)
+		}
+	}
+	t.Fatalf("project order %q did not reach normalized workspace %q", item.ID, workspace)
+}
+
 // A paused order must not vanish from the page on the pause keypress, or the
 // resume half of that one key becomes unreachable. The resolver itself still
 // answers active only — the seams that spend money never see a paused item.

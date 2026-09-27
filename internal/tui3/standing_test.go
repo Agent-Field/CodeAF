@@ -751,6 +751,21 @@ func TestAFiringOffTheStandingLaneIsDrawnInTheConversation(t *testing.T) {
 	}
 }
 
+func TestATaskFiringIsDrawnAsATask(t *testing.T) {
+	a, agent, cmd := firingApp(t)
+	item := standItem()
+	item.Does.Kind = standing.ActionTask
+	agent.updates <- session.Event{Kind: session.EventStandingUpdate, Standing: &session.StandingNotice{
+		Item: item, Update: "task", Text: "the checks passed",
+	}}
+	drive(t, a, runCmd(cmd)...)
+
+	want := standWaitGlyph + " every Monday at 9, post the · task: the checks passed"
+	if body := standText(a); !strings.Contains(body, want) {
+		t.Fatalf("the task firing was drawn with the wrong activity word; want %q:\n%s", want, body)
+	}
+}
+
 // firingReplyAgent carries both lanes involved in a live firing: the standing
 // event that draws the news and the turn the session wakes to answer it.
 type firingReplyAgent struct {
