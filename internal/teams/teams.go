@@ -74,7 +74,8 @@ type Team struct {
 	Root bool
 	// Settings are the team's own delegation overrides (teamsettings.go),
 	// each unset field inheriting from the parent chain and then the
-	// profile's `teams.` defaults. They are stored flat on the team.
+	// profile's `teams.` defaults, with the cap's per-team default rule applied
+	// by [File.Effective]. They are stored flat on the team.
 	Settings Settings
 	// Wrap is a wrap-up in progress (wrap.go): when it started and how long
 	// it was given. Nil is none, which is also what a file from before the

@@ -12,12 +12,14 @@ import (
 // one, on the teams page's `All teams` row. That manager could have been a
 // special case beside the tree (a field on the file, a pseudo-team every walk
 // would have to know about); it is instead the manager of an ordinary team
-// marked Root that every other top-level team is moved under. So every rule
-// already written holds without a special case: two parties in different trees
-// meet at the root ([File.LCA]) and its manager decides instead of the person;
-// a top-level team's manager reports to it ([File.Home]); an override on the
-// root is what `· from All teams` means ([File.Effective]); and its spend is
-// the whole machine's teams ([TeamSpend]).
+// marked Root that every other top-level team is moved under. The tree rules
+// therefore stay ordinary: two parties in different trees meet at the root
+// ([File.LCA]) and its manager decides instead of the person; a top-level
+// team's manager reports to it ([File.Home]); an override on the root is what
+// `· from All teams` means ([File.Effective]); and its spend is the whole
+// machine's teams ([TeamSpend]). The cap resolver deliberately gives the root
+// no profile-default cap, because `All teams` is the global group rather than
+// one ordinary team's default pool.
 //
 // THE ROOT IS NOT A LEVEL. [File.Depth] does not count it, so a depth limit
 // of three still means three levels of the person's own teams.

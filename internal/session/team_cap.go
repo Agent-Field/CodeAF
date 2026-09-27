@@ -4,9 +4,10 @@ package session
 //
 // A team may have a daily cap (teams' teamsettings.go, `cap_usd_day`, which
 // inherits), and a cap is a POOL: its owner's spend counts every team under
-// it, so an inherited cap is the ancestor's one pool and never a second
-// allowance ([teams.Effective]'s CapFrom). This file is what enforces it, on
-// the session's side, and what it enforces is deliberately small:
+// it. A profile default is each ordinary team's own pool; the global manager
+// group has no default cap, and an explicit ancestor cap remains that
+// ancestor's pool ([teams.Effective]'s CapFrom). This file is what enforces
+// it, on the session's side, and what it enforces is deliberately small:
 //
 //   - AT OR OVER THE CAP, WHAT THE TEAM WOULD START IS HELD. A wake (a
 //     directive to a member, replies to a manager, an answer to a question), a
@@ -85,8 +86,8 @@ func (a *Agent) teamPoolSpend(profile, owner, day string) (float64, error) {
 }
 
 // capPool is the pool team id draws on: its owner and the cap, 0 for none.
-// The owner is the team whose override the cap is, or, for the profile's
-// default, the top of the chain (the root when there is one).
+// Effective resolves both the ceiling and its owner so every caller uses the
+// same pool rule.
 func capPool(file *teams.File, id string, d teams.Defaults) (teams.Team, float64) {
 	if file == nil {
 		return teams.Team{}, 0
@@ -96,14 +97,6 @@ func capPool(file *teams.File, id string, d teams.Defaults) (teams.Team, float64
 		return teams.Team{}, 0
 	}
 	owner := e.CapFrom.Team
-	if e.CapFrom.Kind == teams.OriginSettings {
-		owner = id
-		for _, up := range file.Ancestors(id) {
-			if !up.Closed() {
-				owner = up.ID
-			}
-		}
-	}
 	team, ok := file.Team(owner)
 	if !ok {
 		return teams.Team{}, 0
