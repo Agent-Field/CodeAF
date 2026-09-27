@@ -36,6 +36,8 @@ func finishingSeat(usd float64) *beltSeat {
 		if usd > 0 {
 			cost := usd
 			reply.Usage.Cost = &cost
+			reply.Usage.PromptTokens = 100
+			reply.Usage.CompletionTokens = 20
 		}
 		return reply
 	}
@@ -335,6 +337,11 @@ func TestDoOnTheRunEngineYesSpendRunsPastThePlanPrice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a run with --yes-spend left with %v, want 0\nstdout:\n%s\nstderr:\n%s",
 			err, stdout.String(), stderr.String())
+	}
+	fields := doEnvelopeFields(t, stdout.String())
+	tokens, ok := fields["tokens"].(map[string]any)
+	if !ok || tokens["in"] == float64(0) || tokens["out"] == float64(0) {
+		t.Fatalf("non-zero spend carried empty token counts: %v", fields["tokens"])
 	}
 }
 

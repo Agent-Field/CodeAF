@@ -1022,6 +1022,7 @@ func (sess *Session) attach(s *server, hello Hello) error {
 	// says which questions THIS surface is owed and the number is how a card
 	// names the surfaces that have already drawn it (held.go).
 	s.name = machineLabel(hello.Surface)
+	s.clientID = strings.TrimSpace(hello.ClientID)
 	// THE ARRIVAL IS AN ACT. A window that has just been welcomed is
 	// watching, and a pipe that tears on the way in — or a getter that
 	// no longer crosses the wire — must not read as nobody having been
@@ -1051,7 +1052,13 @@ func (sess *Session) attach(s *server, hello Hello) error {
 		// is against that field and one spelling saves a clean on every call.
 		s.joined = sess.engine.SessionFile
 	}
-	if !s.watching && (!hello.Back || sess.driver == nil) {
+	// A REDIAL MAY ARRIVE BEFORE ITS OLD PIPE HAS DETACHED. Only the same
+	// window may replace that stale driver, because Attached counts every live
+	// surface and cannot distinguish the returning window from another one.
+	// Replacing the driver pointer makes the old pipe a non-driver immediately;
+	// its later detach therefore cannot take the keyboard away again.
+	sameReturningWindow := hello.Back && s.clientID != "" && sess.driver != nil && sess.driver.clientID == s.clientID
+	if !s.watching && (!hello.Back || sess.driver == nil || sameReturningWindow) {
 		sess.takeLocked(s)
 	}
 	welcome.Driver = sess.driverForLocked(s)
@@ -1149,6 +1156,11 @@ func steerRepeatKnown(agent any) bool {
 	return ok && door.SteerRepeatKnown()
 }
 
+func memoryCommandsKnown(agent any) bool {
+	door, ok := agent.(MemoryCommands)
+	return ok && door.Remembers()
+}
+
 func (sess *Session) welcomeLocked(s *server) Welcome {
 	// A HOSTED START MUST READ THE ENGINE'S FILE, not the surface's. Carrying
 	// this reading in the welcome is what makes an old persistent engine say
@@ -1184,6 +1196,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// open — for [Welcome.Folders]'s stated reason: the surface's own type
 		// assertion cannot see across the wire.
 		Folders: keepsFolders(sess.agent),
+		Memory:  memoryCommandsKnown(sess.agent),
 		// Every engine of this build answers the teams doors from its own
 		// profile (teams.go), so the flag is about the build, not the agent.
 		Teams: true,
@@ -1597,8 +1610,9 @@ type server struct {
 	// name is the machine this surface is running on, as its hello said and
 	// [machineLabel] made it safe to draw. arrived is its place in the order the
 	// room filled up, which is how "the newest" is decided (driver.go).
-	name    string
-	arrived uint64
+	name     string
+	clientID string
+	arrived  uint64
 	// watching is [Hello.Watch]: this surface reads and never drives. It is kept
 	// on the connection because the decision is made in three places — arrival,
 	// the hand-on when a driver leaves, and the guard in front of every door that

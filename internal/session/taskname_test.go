@@ -440,6 +440,13 @@ func TestAPersonsTaskIsNamedTheMomentItExists(t *testing.T) {
 	}
 }
 
+func TestTaskPersonTitleStopsAtAPhraseBoundary(t *testing.T) {
+	brief := "write a pytest test file for each of cart.py, pricing.py and orders.py"
+	if got := taskPersonTitle(brief); got == "" || strings.HasSuffix(got, " of") {
+		t.Fatalf("task fallback ends mid-phrase: %q", got)
+	}
+}
+
 // answeringCompleter answers a request from the request itself, which is the
 // only thing a provider shared by several agents at once can safely be scripted
 // on. A list indexed by call number is a script for one caller, and this

@@ -820,9 +820,9 @@ an hour ago, `alt+4`, `alt+7` and `alt+8` all open:
 On a narrow window the line wraps onto a second or third dim line under the first; it is
 never cut, and never ends in `…`. The moment the first thing arrives the line goes and the list begins under
 the same heading; nothing above it moves.
-- **spend**, **search** and **memory** over `--host` each say one dim line where their rows
-  would be — see *The places over --host* below for the exact words and why three of the
-  eight still say them.
+- **spend** and **search** over `--host` each say one dim line where their rows would be
+  when their older engine has no matching door. Memory follows the connected engine's
+  store and setting; see *The places over --host* below.
 
 There is no "coming soon", no greyed-out list and no empty table with headings over it. A
 page that draws the furniture of a feature it does not have looks like a bug rather than like
@@ -889,10 +889,10 @@ their readings have not crossed:
 | **memory** | the far machine's memories; fixing and forgetting a line write there too |
 
 **No place silently substitutes this laptop's rows for the far machine's.** Settings names
-the split as it opens. Spend, search and memory draw no local rows at all over `--host` and
-say why. A screen full of the wrong machine's work is a confident lie, and one honest
-sentence is better than eight rows and a total in dollars that belong to somebody else's
-afternoon.
+the split as it opens. Spend and search draw no local rows over `--host` when their remote
+door is unavailable; memory reads and writes the far store when its door is present. A
+screen full of the wrong machine's work is a confident lie, and one honest sentence is
+better than eight rows and a total in dollars that belong to somebody else's afternoon.
 
 **The top line says whose machine it is: `on spark` at the end of the tab bar.** Over a
 connection the far end of the top line, where the places are, reads `on <machine>`, just

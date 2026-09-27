@@ -31,6 +31,12 @@ type teamFixture struct {
 	manager, web, parser string
 }
 
+func TestTeamStartDescriptionMatchesTheConversationPosture(t *testing.T) {
+	if !strings.Contains(teamStartDescription, "when this conversation's approval posture asks") || strings.Contains(teamStartDescription, "The person is asked first. ") {
+		t.Fatalf("team_start description says %q", teamStartDescription)
+	}
+}
+
 // convKeyOf is the interface's key for a transcript (tui3's convKey): the path
 // cleaned, with its symlinks resolved once the file exists.
 func convKeyOf(t *testing.T, path string) string {

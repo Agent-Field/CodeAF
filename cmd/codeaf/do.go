@@ -3719,6 +3719,8 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 		Nodes:     summary.Nodes,
 		Seconds:   summary.Seconds,
 		Spend:     summary.USD,
+		tokensIn:  summary.TokensIn,
+		tokensOut: summary.TokensOut,
 	}
 	switch summary.Outcome {
 	case runengine.OutcomeDone:

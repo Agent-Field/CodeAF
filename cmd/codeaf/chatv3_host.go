@@ -200,7 +200,7 @@ func (l *engineLink) spawn() (io.ReadWriteCloser, error) {
 	// is how a passphrase prompt and a host-key question reach the person — and
 	// the tail is kept so that a handshake failure can name the likely cause.
 	tail := &tailWriter{}
-	process.Stderr = io.MultiWriter(os.Stderr, tail)
+	process.Stderr = l.stderrWriter(tail, os.Stderr)
 	if err := process.Start(); err != nil {
 		if strings.Contains(err.Error(), "executable file not found") {
 			return nil, fmt.Errorf("this machine has no ssh on its path, and --host is ssh")
@@ -209,6 +209,19 @@ func (l *engineLink) spawn() (io.ReadWriteCloser, error) {
 	}
 	l.hold(process, tail)
 	return pipePair{r: stdout, w: stdin}, nil
+}
+
+// stderrWriter keeps the launch-time prompts visible but keeps redial output
+// inside the session's diagnostic tail. A reconnect happens while Bubble Tea
+// owns the terminal's alternate screen, so writing ssh's transient errors to
+// os.Stderr would paint over the frame instead of becoming a status detail.
+func (l *engineLink) stderrWriter(tail *tailWriter, terminal io.Writer) io.Writer {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.process == nil {
+		return io.MultiWriter(terminal, tail)
+	}
+	return tail
 }
 
 // sshTransportArgs keeps the carrier's latency policy in one place. -T remains
@@ -250,13 +263,20 @@ func sshControlPath() string {
 		return ""
 	}
 	path := filepath.Join(dir, "ctl-%C")
-	// OpenSSH expands %C to a 40-character SHA-1 digest before bind(2), so the
-	// expanded path is the one that must fit the shared macOS/Linux ceiling.
-	expanded := strings.Replace(path, "%C", strings.Repeat("0", 40), 1)
-	if !enginehost.SocketPathFits(expanded) {
+	if !sshControlPathFits(path) {
 		return ""
 	}
 	return path
+}
+
+// sshControlPathFits accounts for OpenSSH's temporary control-master name as
+// well as the final hashed path, so a path accepted here cannot fail at bind.
+func sshControlPathFits(path string) bool {
+	// OpenSSH expands %C to a 40-character SHA-1 digest and briefly appends a
+	// 17-character suffix before bind(2), so both forms must fit the shared
+	// macOS/Linux ceiling.
+	expanded := strings.Replace(path, "%C", strings.Repeat("0", 40), 1)
+	return enginehost.SocketPathFits(expanded) && enginehost.SocketPathFits(expanded+strings.Repeat("0", 17))
 }
 
 // hold takes the new child and lets go of the old one. THE PREVIOUS SSH IS
@@ -647,7 +667,7 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 	world.prime()
 	ledger := newHostLedger(far)
 	ledger.prime()
-	memory := newHostMemory(far)
+	memory := newHostMemory(far, welcome.Memory)
 	memory.prime()
 
 	// The counting gate is here and not on the roads: a session this window
@@ -1557,11 +1577,12 @@ type hostMemory struct {
 	mu             sync.Mutex
 	shelves        store.MemoryShelves
 	learned, letGo int
+	enabled        bool
 	known          bool
 }
 
-func newHostMemory(far hostFar) *hostMemory {
-	h := &hostMemory{client: far.client}
+func newHostMemory(far hostFar, enabled bool) *hostMemory {
+	h := &hostMemory{client: far.client, enabled: enabled, known: true}
 	far.arm(&h.duty, "reading what is remembered")
 	return h
 }
@@ -1617,4 +1638,14 @@ func (h *hostMemory) RestoreMemory(id string) error {
 }
 func (h *hostMemory) MemoryProvenance(id string) (string, string, time.Time, error) {
 	return h.client.MemoryProvenance(id)
+}
+func (h *hostMemory) Remembers() bool { return h.enabled }
+func (h *hostMemory) Remember(text string) (string, error) {
+	return h.client.Remember(text)
+}
+func (h *hostMemory) Forget(query string) (string, error) {
+	return h.client.ForgetQuery(query)
+}
+func (h *hostMemory) Memories(query string) ([]session.MemoryLine, error) {
+	return h.client.Memories(query)
 }

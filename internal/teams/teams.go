@@ -23,7 +23,8 @@ type Member struct {
 	Where string `json:"where"`
 	Word  string `json:"word"`
 	// Handle is the member's short name inside this team (handle.go). It is
-	// empty only while the member has no title to derive one from.
+	// empty only while an ordinary member has no title to derive one from; a
+	// manager gets a fallback when it is registered.
 	Handle string `json:"handle,omitempty"`
 	// Home marks the one membership, among all of this conversation's, that
 	// names the manager it reports to (home.go): the nearest manager up this
@@ -432,7 +433,21 @@ func (f *File) SetManager(id, key string) error {
 	if err := f.AddMember(id, Member{Key: key}); err != nil {
 		return err
 	}
-	f.Teams[Index(f.Teams, id)].Manager = key
+	t := &f.Teams[Index(f.Teams, id)]
+	if member, ok := t.Member(key); ok && member.Handle == "" {
+		at := t.Made
+		if at.IsZero() {
+			at = time.Now()
+		}
+		for i := range t.Members {
+			if t.Members[i].Key == key {
+				t.Members[i].Handle = uniqueHandle(*t, key, managerFallbackHandle(at))
+				t.Members[i].HandleBy = HandleByWords
+				break
+			}
+		}
+	}
+	t.Manager = key
 	return nil
 }
 

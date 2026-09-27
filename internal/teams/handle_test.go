@@ -3,6 +3,7 @@ package teams
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDeriveHandle(t *testing.T) {
@@ -232,5 +233,29 @@ func TestChooseHandleClashesAndTypedHandles(t *testing.T) {
 	}
 	if after, _ := f.Teams[0].Member("d"); after != before {
 		t.Errorf("an unusable answer changed the member: %+v", after)
+	}
+}
+
+func TestAnUntitledManagerGetsAHandleWhenRegistered(t *testing.T) {
+	made := time.Unix(1720000000, 123000000)
+	f := &File{Teams: []Team{{ID: "team", Made: made}}}
+	if err := f.SetManager("team", "manager-key"); err != nil {
+		t.Fatal(err)
+	}
+	member, _ := f.Teams[0].Member("manager-key")
+	if member.Handle == "" || ValidHandle(member.Handle) != nil || member.HandleBy != HandleByWords {
+		t.Fatalf("untitled manager registration made %+v", member)
+	}
+	if !strings.HasPrefix(member.Handle, "manager-") {
+		t.Fatalf("fallback handle %q does not name its role", member.Handle)
+	}
+
+	other := &File{Teams: []Team{{ID: "team", Made: made}}}
+	if err := other.SetManager("team", "manager-key"); err != nil {
+		t.Fatal(err)
+	}
+	second, _ := other.Teams[0].Member("manager-key")
+	if second.Handle != member.Handle {
+		t.Fatalf("same creation time made different fallback handles: %q and %q", member.Handle, second.Handle)
 	}
 }

@@ -141,7 +141,12 @@ type SpendGuard struct {
 
 	mu         sync.Mutex
 	modelSpent map[string]float64
-	seatSpent  map[crewroute.Seat]*SpendTask
+	seatSpent  map[spendTallyKey]*SpendTask
+}
+
+type spendTallyKey struct {
+	seat  crewroute.Seat
+	scope string
 }
 
 // SpendTask is what one task has spent and holds in flight, across every
@@ -196,17 +201,24 @@ func (g *SpendGuard) tally() *SpendTask {
 	return g.Task
 }
 
-// seatTally holds one seat's spend and in-flight estimates across model changes.
+// seatTally preserves the direct guard test and auxiliary-call API: no scope
+// means the guard's historical one-tally-per-seat behavior.
 func (g *SpendGuard) seatTally(seat crewroute.Seat) *SpendTask {
+	return g.seatTallyFor(context.Background(), seat)
+}
+
+// seatTallyFor holds one seat's spend within the marked task scope.
+func (g *SpendGuard) seatTallyFor(ctx context.Context, seat crewroute.Seat) *SpendTask {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.seatSpent == nil {
-		g.seatSpent = make(map[crewroute.Seat]*SpendTask)
+		g.seatSpent = make(map[spendTallyKey]*SpendTask)
 	}
-	if g.seatSpent[seat] == nil {
-		g.seatSpent[seat] = &SpendTask{}
+	key := spendTallyKey{seat: seat, scope: spendScopeOf(ctx)}
+	if g.seatSpent[key] == nil {
+		g.seatSpent[key] = &SpendTask{}
 	}
-	return g.seatSpent[seat]
+	return g.seatSpent[key]
 }
 
 // ErrSpendStopped is a call the guard did not make. Its text is the one
@@ -254,7 +266,7 @@ func (g *SpendGuard) before(ctx context.Context, model string, messages []ai.Mes
 		if g.TaskCap > 0 && g.tally().Total() >= g.TaskCap {
 			return 0, ErrSpendStopped{Action: g.TaskAction}
 		}
-		if seat := crewSeatOf(ctx); g.SeatCeilings[seat] > 0 && g.seatTally(seat).Total() >= g.SeatCeilings[seat] {
+		if seat := crewSeatOf(ctx); g.SeatCeilings[seat] > 0 && g.seatTallyFor(ctx, seat).Total() >= g.SeatCeilings[seat] {
 			ceiling := g.SeatCeilings[seat]
 			return 0, ErrSpendStopped{Action: fmt.Sprintf(g.CeilingAction, ceiling)}
 		}
@@ -276,13 +288,13 @@ func (g *SpendGuard) before(ctx context.Context, model string, messages []ai.Mes
 	}
 	seat := crewSeatOf(ctx)
 	ceiling := g.SeatCeilings[seat]
-	if ceiling > 0 && !g.seatTally(seat).hold(est, ceiling) {
+	if ceiling > 0 && !g.seatTallyFor(ctx, seat).hold(est, ceiling) {
 		return 0, ErrSpendStopped{Action: fmt.Sprintf(g.CeilingAction, ceiling)}
 	}
 	task := g.tally()
 	if !task.hold(est, g.TaskCap) {
 		if ceiling > 0 {
-			g.seatTally(seat).settle(est, 0)
+			g.seatTallyFor(ctx, seat).settle(est, 0)
 		}
 		return 0, ErrSpendStopped{Action: g.TaskAction}
 	}
@@ -290,7 +302,7 @@ func (g *SpendGuard) before(ctx context.Context, model string, messages []ai.Mes
 	if !fits {
 		task.settle(est, 0)
 		if ceiling > 0 {
-			g.seatTally(seat).settle(est, 0)
+			g.seatTallyFor(ctx, seat).settle(est, 0)
 		}
 		return 0, ErrSpendStopped{Action: g.CapAction}
 	}
@@ -329,7 +341,7 @@ func (g *SpendGuard) after(ctx context.Context, model string, response *ai.Respo
 		g.Day.settle(model, held, 0)
 		task.settle(held, 0)
 		if seat := crewSeatOf(ctx); g.SeatCeilings[seat] > 0 {
-			g.seatTally(seat).settle(held, 0)
+			g.seatTallyFor(ctx, seat).settle(held, 0)
 		}
 		return
 	}
@@ -346,7 +358,7 @@ func (g *SpendGuard) after(ctx context.Context, model string, response *ai.Respo
 	g.Day.settle(model, held, usd)
 	task.settle(held, usd)
 	if seat := crewSeatOf(ctx); g.SeatCeilings[seat] > 0 {
-		g.seatTally(seat).settle(held, usd)
+		g.seatTallyFor(ctx, seat).settle(held, usd)
 	}
 	if usd <= 0 {
 		return

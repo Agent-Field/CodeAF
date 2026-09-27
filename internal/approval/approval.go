@@ -229,13 +229,28 @@ func (p Policy) CheckBash(command string) Decision {
 // base is the answer before any bash-specific reasoning: the tool's own rule
 // if it has one, otherwise the default, otherwise ask — with the floor under a
 // blanket allow that [actsInThePersonsName] describes.
+// RuleDefault and RuleUnset are the rule words of a decision no rule of the
+// policy made: the policy's own default, or no default at all. They name
+// machinery, not a reason a person chose, so a surface that has its own
+// sentence for the call says that instead ([IsDefaultRule]).
+const (
+	RuleDefault = "default"
+	RuleUnset   = "default (unset)"
+)
+
+// IsDefaultRule reports whether a decision's rule is the fallback rather than
+// a rule somebody wrote.
+func IsDefaultRule(rule string) bool {
+	return rule == RuleDefault || rule == RuleUnset
+}
+
 func (p Policy) base(tool string, args json.RawMessage) Decision {
 	if action, ok := p.Tools[tool]; ok && action.valid() {
 		return Decision{Action: action, Rule: fmt.Sprintf("tool %q", tool)}
 	}
-	decision := Decision{Action: ActionPrompt, Rule: "default (unset)"}
+	decision := Decision{Action: ActionPrompt, Rule: RuleUnset}
 	if p.Default.valid() {
-		decision = Decision{Action: p.Default, Rule: "default"}
+		decision = Decision{Action: p.Default, Rule: RuleDefault}
 	}
 	if decision.Action == ActionAllow && ActsInThePersonsName(tool, args) {
 		return Decision{Action: ActionPrompt, Rule: fmt.Sprintf("%s acts in your name outside this machine", tool)}
