@@ -184,7 +184,8 @@ type feedHooks struct {
 	// and is safe for that reason.
 	closed func(e *entry, ev session.Event)
 	// retrying fires when a cut request is about to be asked again, after the
-	// dead attempt's rows have gone and before the reason is written down. The
+	// dead attempt's rows have gone and before the reason is written down. A
+	// consumed steer also cuts that request and invokes the same cleanup. The
 	// chat throws away the half-arrived proposal card there (task.go), which is
 	// a block only the chat has; a node draws no card and installs nothing.
 	//
@@ -312,6 +313,22 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 	case session.EventRetrying:
 		f.updateDelivery = userUpdateStream{}
 		f.retry(ev)
+
+	case session.EventSteerConsumed:
+		if ev.Steer != nil {
+			// Consumption begins a new provider response even when the turn
+			// continues. The session retains interrupted prose, but discards
+			// calls that never began. Close that same boundary on every deck
+			// before the next response can inherit its marker or partial tool.
+			f.flushUpdatePrefix()
+			f.confirmResponse()
+			f.updateDelivery = userUpdateStream{}
+			f.closeLive()
+			f.dropRetryingFormingTools()
+			if f.hooks.retrying != nil {
+				f.hooks.retrying()
+			}
+		}
 
 	case session.EventToolForming:
 		// The provider may still discard this attempt. Explicit updates stay
