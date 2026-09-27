@@ -10,14 +10,20 @@ package session
 //
 // Three choices here are worth the words:
 //
-//   - RING + DISK, not one or the other. Everything the job writes goes to a
-//     file, so the whole log is addressable by the read tool — paged, offset,
-//     grepped, the same way any other file is. Only the last 64KB is kept in
-//     memory, and only that tail is ever handed back through a tool result. A
-//     watcher that has printed 400MB must not be able to put 400MB in front of
-//     the model, and a watcher that printed the one line that matters must not
-//     lose it because nobody was polling. Disk answers the second, the ring
-//     answers the first.
+//   - RING + BOUNDED DISK, not one or the other. What a job writes goes to a
+//     disk spool bounded to its most recent jobSpoolChunks chunks of
+//     jobSpoolChunkBytes each — <id>.log for the live chunk, <id>.log.1 for the
+//     one before it, anything earlier discarded with a notice — so the recent
+//     log is addressable by the read tool — paged, offset, grepped, the same
+//     way any other file is — without a job that prints for a week filling the
+//     disk. A chunk is never rewritten: it fills, one rename keeps it, a fresh
+//     one opens. Only the last 64KB is kept in memory, and only that tail is
+//     ever handed back through a tool result. A watcher that has printed 400MB
+//     must not be able to put 400MB in front of the model, and a watcher that
+//     printed the one line that matters must not lose it because nobody was
+//     polling — the disk answers that for as long as the line is recent, and
+//     the notice every footer carries is what keeps the promise honest once it
+//     is not (issue #1599).
 //
 //     WHERE that file is, is landing.go's answer and not this file's: a log is
 //     a dropping, so once a session has a folder it lands in the folder rather
@@ -28,8 +34,9 @@ package session
 //
 //   - THE OWED LANE, not a tool and not an event. When a bash job ends, its
 //     ending joins the session's boundary batch (agent.go), drained at the next
-//     step. The ending carries its output tail and names the whole log; anything
-//     older remains here behind `jobs output` and on disk. A completion is news,
+//     step. The ending carries its output tail and names the log; anything recent
+//     remains here behind `jobs output` and on disk, and the footer names the
+//     truncation when the beginning has been discarded. A completion is news,
 //     not an answer to a question, and the alternative — the model polling
 //     `jobs` on a hunch — costs a round trip per hunch and still misses the exit
 //     it did not think to check for.
@@ -64,6 +71,13 @@ const (
 	// build log — enough that `jobs output` after a failure shows the failure,
 	// and small enough that a hundred jobs cost megabytes, not gigabytes.
 	jobRingBytes = 64 << 10
+
+	// jobSpoolChunkBytes caps one chunk of the disk spool and jobSpoolChunks is
+	// how many of them a job keeps — the live chunk plus one older — so a
+	// hundred jobs cannot fill the disk either: 8MB each, and what falls out
+	// of the window is discarded, with [jobSink.notice] saying so.
+	jobSpoolChunkBytes = 4 << 20
+	jobSpoolChunks     = 2
 
 	// jobTermGrace is how long a SIGTERM has to work before SIGKILL follows.
 	// Two seconds is a server's shutdown hook, not a wait.
@@ -582,7 +596,7 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 		// One sink for both streams, as bare's bash does: stdout and stderr
 		// interleave in arrival order, which is the order a person reading the
 		// log expects them in.
-		sink: &jobSink{file: logFile},
+		sink: newJobSink(logFile, logPath),
 		done: make(chan struct{}),
 	}, nil
 }
@@ -1011,8 +1025,16 @@ func (r *jobRegistry) settleExit(watched *job, code int) {
 		// make one more call for what the note was already about.
 		if watched.kind == jobKindBash {
 			if tail := watched.sink.tail(jobExitTailLines); strings.TrimSpace(tail) != "" {
+				// AND THE FOOTER STAYS HONEST ABOUT THE BOUND: a log that has
+				// begun discarding is not a full one, and "full log" on a note
+				// whose beginning is gone would send the model reading a file
+				// that does not hold what it names.
+				ending := "full log: "
+				if notice := watched.sink.notice(); notice != "" {
+					ending = notice + " · log file: "
+				}
 				note += "\n\n" + tail + "\n\n[job " + strconv.Itoa(watched.id) + " · last " +
-					strconv.Itoa(jobExitTailLines) + " lines · full log: " + watched.logPath + "]"
+					strconv.Itoa(jobExitTailLines) + " lines · " + ending + watched.logPath + "]"
 			}
 		}
 		r.notify(note)
@@ -1216,9 +1238,11 @@ func (r *jobRegistry) list() string {
 	return rendered.String()
 }
 
-// output renders one job's recent lines with a footer naming the full log. The
+// output renders one job's recent lines with a footer naming the log. The
 // footer is the point of the whole design: it tells the model where the rest
-// is, so the answer to "I need more" is a read call and not a bigger tail.
+// is, so the answer to "I need more" is a read call and not a bigger tail —
+// and while the spool has discarded anything, the footer says that instead of
+// calling what remains full.
 func (r *jobRegistry) output(id, lines int) (string, bool) {
 	target := r.find(id)
 	if target == nil {
@@ -1229,40 +1253,219 @@ func (r *jobRegistry) output(id, lines int) (string, bool) {
 	if strings.TrimSpace(tail) == "" {
 		tail = "(no output)"
 	}
-	return fmt.Sprintf("%s\n\n[job %d · %s · showing last %d lines · full log: %s]",
-		tail, id, statusText(info), lines, target.logPath), false
+	// The footer is only honest while the rest IS there: a spool that has
+	// discarded anything names the truncation and the file instead of
+	// promising full.
+	ending := "full log: " + target.logPath
+	if notice := target.sink.notice(); notice != "" {
+		ending = notice + " · log file: " + target.logPath
+	}
+	return fmt.Sprintf("%s\n\n[job %d · %s · showing last %d lines · %s]",
+		tail, id, statusText(info), lines, ending), false
 }
 
 // ── the output sink: ring in memory, everything on disk ─────────────────────
 
-// jobSink is one job's output: a rolling in-memory tail and the full spool.
+// jobSink is one job's output: a rolling in-memory tail and a bounded disk
+// spool.
 //
 // It is an io.Writer set as both Stdout and Stderr, so Go's exec package feeds
-// it from two goroutines — the mutex is load-bearing, not decoration.
+// it from two goroutines — the mutex is load-bearing, not decoration. Spool
+// writes append whole pieces to the live chunk and never rewrite megabytes
+// per line: a chunk fills, one rename keeps it, a fresh one opens, and the
+// chunk beyond the window is discarded.
 type jobSink struct {
 	mu     sync.Mutex
 	ring   []byte
 	file   *os.File
 	closed bool
+	// base is the live chunk's path (the newest chunk is always base+".1").
+	// chunkBytes and chunks are the window; the tests set them tiny and inject
+	// hook instead of generating data anywhere near the real limits.
+	base       string
+	chunkBytes int64
+	chunks     int
+	hook       spoolHook
+	// spoolBytes is what the live chunk holds. spoolBroken says a spool write
+	// failed and retries stop; brokenText and noticeText are the two sentences
+	// [jobSink.notice] can carry — a failed spool and a discarded chunk —
+	// each set once and then left alone.
+	spoolBytes  int64
+	spoolBroken bool
+	brokenText  string
+	noticeText  string
+}
+
+// spoolHook is the seam the tests inject spool failures through. It replaces
+// the append into the live chunk, so a test can fail one chosen write or
+// return a short count deterministically. Production leaves it nil.
+type spoolHook func(data []byte) (int, error)
+
+// newJobSink opens a sink over one spool file at the production limits.
+func newJobSink(file *os.File, base string) *jobSink {
+	return &jobSink{
+		file:       file,
+		base:       base,
+		chunkBytes: jobSpoolChunkBytes,
+		chunks:     jobSpoolChunks,
+	}
 }
 
 // Write always reports success. A write error here is a full disk or a removed
 // workspace, and the honest response to that is to keep the job running with
 // the in-memory tail intact: returning the error would make Go's copier close
-// the pipe, and the job would die of a logging problem.
+// the pipe, and the job would die of a logging problem. The failure is
+// recorded once — [jobSink.notice] carries it — spool retries stop, and the
+// drain and the ring go on.
 func (s *jobSink) Write(data []byte) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.file != nil && !s.closed {
-		_, _ = s.file.Write(data)
+		s.spoolLocked(data)
 	}
-	s.ring = append(s.ring, data...)
+	// A single Write may be megabytes, and no temporary grows to match it:
+	// only its newest jobRingBytes reaches the ring.
+	if len(data) > jobRingBytes {
+		start := len(data) - jobRingBytes
+		// Do not cut a rune in half: a tail starting mid-character renders as
+		// a replacement glyph in the model's context for no reason.
+		for start < len(data) && !utf8RuneStart(data[start]) {
+			start++
+		}
+		s.ring = append(s.ring, data[start:]...)
+	} else {
+		s.ring = append(s.ring, data...)
+	}
 	// Trimming at twice the cap rather than at the cap makes this amortized:
 	// trimming on every write would copy the whole ring per line of output.
 	if len(s.ring) > jobRingBytes*2 {
 		s.trimLocked()
 	}
 	return len(data), nil
+}
+
+// spoolLocked appends data to the bounded spool, rotating the live chunk when
+// it fills. A chunk is never rewritten and one call never copies its data:
+// the pieces are slices of it, at most one rotation per call, and a Write of
+// any size costs renames, not memory.
+func (s *jobSink) spoolLocked(data []byte) {
+	if s.spoolBroken || s.base == "" {
+		return
+	}
+	for len(data) > 0 {
+		if s.spoolBytes >= s.chunkBytes {
+			if !s.rotateLocked() {
+				return
+			}
+		}
+		room := s.chunkBytes - s.spoolBytes
+		if int64(len(data)) < room {
+			room = int64(len(data))
+		}
+		piece := data[:room]
+		written, err := s.spoolWriteLocked(piece)
+		if err != nil {
+			s.breakSpoolLocked(err)
+			return
+		}
+		if written < len(piece) {
+			s.breakSpoolLocked(fmt.Errorf("short write: %d of %d bytes", written, len(piece)))
+			return
+		}
+		s.spoolBytes += int64(written)
+		data = data[room:]
+	}
+}
+
+// spoolWriteLocked is the one door the bytes leave through. hook is nil in
+// production and set by tests to fail a chosen write deterministically.
+func (s *jobSink) spoolWriteLocked(piece []byte) (int, error) {
+	if s.hook != nil {
+		return s.hook(piece)
+	}
+	return s.file.Write(piece)
+}
+
+// rotateLocked keeps the live chunk and opens a fresh one, discarding the
+// chunk beyond the window: the chain shifts up one place and the oldest
+// numbered chunk is clobbered by the shift, which is the discard the notice
+// records. Renames, not copies. Its false is the spool being over — a rename
+// or an open that failed stops the spool, never the job.
+func (s *jobSink) rotateLocked() bool {
+	discarded := false
+	if s.chunks > 1 {
+		if _, err := os.Stat(s.base + "." + strconv.Itoa(s.chunks-1)); err == nil {
+			discarded = true
+		}
+	}
+	_ = s.file.Close()
+	for index := s.chunks - 2; index >= 1; index-- {
+		_ = os.Rename(s.base+"."+strconv.Itoa(index), s.base+"."+strconv.Itoa(index+1))
+	}
+	if err := os.Rename(s.base, s.base+".1"); err != nil {
+		s.breakSpoolLocked(err)
+		return false
+	}
+	file, err := os.OpenFile(s.base, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	if err != nil {
+		s.file = nil
+		s.breakSpoolLocked(err)
+		return false
+	}
+	s.file = file
+	s.spoolBytes = 0
+	if discarded && s.noticeText == "" {
+		s.noticeText = "log truncated: only the most recent " + spoolSizeText(s.chunkBytes*int64(s.chunks)) + " is kept"
+	}
+	return true
+}
+
+// breakSpoolLocked records a spool failure once: retries stop, the file is
+// left closed, the ring keeps draining, and the next footer names the failure
+// instead of a log.
+func (s *jobSink) breakSpoolLocked(err error) {
+	if s.spoolBroken {
+		return
+	}
+	s.spoolBroken = true
+	if s.file != nil {
+		_ = s.file.Close()
+		s.file = nil
+	}
+	what := "failed"
+	if err != nil {
+		what = err.Error()
+	}
+	s.brokenText = "job log stopped: " + what
+}
+
+// notice is the one sentence about what the spool no longer holds, or ""
+// while the log on disk is everything the job wrote. A surface quoting it
+// names the file instead of calling the log full, which is what keeps the
+// footer's promise honest.
+func (s *jobSink) notice() string {
+	if s == nil {
+		return ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.spoolBroken {
+		return s.brokenText
+	}
+	return s.noticeText
+}
+
+// spoolSizeText keeps the notice's figures readable: megabytes at the
+// production limits, bytes at the ones the tests set.
+func spoolSizeText(n int64) string {
+	switch {
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%d KB", n>>10)
+	default:
+		return fmt.Sprintf("%d bytes", n)
+	}
 }
 
 func (s *jobSink) trimLocked() {
@@ -1278,11 +1481,16 @@ func (s *jobSink) trimLocked() {
 	s.ring = append([]byte(nil), s.ring[start:]...)
 }
 
+// close settles the spool. A close that fails is surfaced the same way a
+// failed write is — through [jobSink.notice] — and never turned into an error
+// the job's ending would have to carry.
 func (s *jobSink) close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.file != nil && !s.closed {
-		_ = s.file.Close()
+		if err := s.file.Close(); err != nil && s.brokenText == "" && s.noticeText == "" {
+			s.brokenText = "job log did not close cleanly: " + err.Error()
+		}
 	}
 	s.closed = true
 }

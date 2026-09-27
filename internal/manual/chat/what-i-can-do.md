@@ -237,7 +237,7 @@ your keyboard stays yours while the command runs. **Inside a task it does not.**
 A task has nobody to hand the keyboard back to, so a foreground command it
 started and is still waiting for is one the work simply waits for: nothing is
 asked of it, no step is counted, and the command's own ending — the exit line,
-its last lines and the path to the full log — is the next thing the task reads.
+its last lines and the path to the log — is the next thing the task reads.
 A command the task started with `background: true` is the other case and holds
 nothing up: a server or a sweep it deliberately left running is not something it
 is waiting on.
@@ -288,7 +288,7 @@ turn with work out always carries it. A turn that made twenty tool calls with
 one job out used to pay for the same sentence twenty times.
 
 **When a job ends**, its exit code, last non-empty output line, output tail and
-path to the full log arrive in the conversation on their own:
+the log's path arrive in the conversation on their own:
 
 ```
 while you worked:
@@ -307,9 +307,11 @@ ended, the note starts a new one, exactly as a finished task does. Several
 session notes waiting at that boundary are one `while you worked:` message, not
 several synthetic user messages between tool calls.
 
-The note carries the last 50 lines. The whole log stays on disk and the note
-names its path, so an older line is one `jobs output` call away and the ending
-itself never is.
+The note carries the last 50 lines. The job's most recent output stays on disk —
+a bounded spool of a few megabytes, older output discarded as it rolls — and the
+note names its path, so a recent older line is one `jobs output` call away and
+the ending itself never is. When output has been discarded, the note says so
+instead of calling what remains full.
 
 So you should never see codeaf running `sleep 30 && tail …` to wait for
 something. That loop was real — it cost one benchmark worker two thirds of its
@@ -376,12 +378,15 @@ job 3 started; log at ~/.codeaf/v3/projects/-you-work/<session>/logs/jobs/3.log
 ```
 
 A background job never times out and is not tied to the turn that started it.
-Everything it writes goes to that log file; the last **64KB** is also held in
+Its most recent output goes to that log file — a bounded spool, about **8MB** in
+chunks, the oldest discarded as it rolls — and the last **64KB** is also held in
 memory for quick reads. When the job exits, codeaf is told at the next step in
 one boundary batch. Its headline, e.g.
 `job 3 exited 1: make: *** [build] Error 1`, quotes the last non-empty log line,
 clipped to 120 characters. Under it the note carries the last 50 lines and the
-path to the full log; use `jobs output` for anything older than that tail.
+log's path; use `jobs output` for anything older than that tail. When the
+spool has discarded output, the note names the truncation and the file instead
+of promising a full log.
 
 The `jobs` tool looks at all of this. Its `action` is `list`, `output` or `kill`.
 
@@ -391,7 +396,8 @@ The `jobs` tool looks at all of this. Its `action` is `list`, `output` or `kill`
   kept as a job — by the background-after clock, its timeout, or `ctrl+g` — has
   exactly this row, with no mark saying where it came from: it is a job like any
 - `output` — the last lines from the in-memory tail, **50 by default and 200 at
-  most**, with a footer naming the full log:
+  most**, with a footer naming the log: `full log:` while everything the job
+  wrote is still on disk, and the truncation named where it is not —
   `[job 1 · running · showing last 50 lines · full log: <path>]`.
 - `kill` — SIGTERM to the process group, SIGKILL after a **2-second** grace.
   Answers `job 1 killed`.
