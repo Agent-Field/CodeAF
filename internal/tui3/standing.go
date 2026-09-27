@@ -454,7 +454,7 @@ func standUpdateRow(pal palette, card *standingCard, width int) string {
 			glyph = standWaitASCII
 		}
 	}
-	line := glyph + " " + card.name + " · " + standUpdateWord(card.update, card.text)
+	line := glyph + " " + card.name + " · " + standActivityUpdateWord(card)
 	return pal.dim(fit(line, width))
 }
 
@@ -823,7 +823,7 @@ func (a *app) standBands(card *standingCard, width int) []string {
 	}
 	cost := ""
 	if card.item.Spends() {
-		cost = card.cost
+		cost = a.standCardCostWords(card)
 		if checked := standChecked(card.item.When.Kind); checked != "" {
 			if cost == "" {
 				cost = checked
