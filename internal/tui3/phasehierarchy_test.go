@@ -92,6 +92,17 @@ func TestARoomPhaseEndpointKeepsItsAnswerAcrossReceiptsAndPersonBoundaries(t *te
 			if r.hit == hitCaption || strings.Contains(plain(r.text), "## Verified") {
 				t.Fatalf("answer lost its markdown rendering: %q", r.text)
 			}
+			if boundary == entryNote {
+				// Operational receipts no longer occupy the default conversation.
+				// Opening its work restores the retained receipt.
+				for _, r := range drawn {
+					if strings.Contains(plain(r.text), next.text) {
+						t.Fatal("ordinary receipt escaped closed work")
+					}
+				}
+				a.setWorkOpen(a.room.deck(), 1, true)
+				drawn, _ = a.deckRows(a.room.deck(), 90)
+			}
 			if boundary != entryDivider {
 				phaseHierarchyRow(t, drawn, "Review the integration coverage next")
 			}
