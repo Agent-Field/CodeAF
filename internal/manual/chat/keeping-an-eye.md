@@ -705,7 +705,9 @@ Approving the first standing item follows the same ownership rule. It installs a
 missing timer or repairs this home's stale timer, but never takes another home's
 or live build's timer. If another home owns it, the item is saved and CodeAF says
 that the background check could not be installed and the existing timer was left
-unchanged. This home is not being checked in the background; use the background
+unchanged. The confirmation also says the item was saved but needs a codeaf window
+open for this home while no background timer checks it. A non-waking permission
+rule does not need a timer. This home is not being checked in the background; use the background
 checks row in `/settings` only when you deliberately want to move the shared timer.
 Ownership checks and changes are serialized across processes, including that
 explicit settings action.
