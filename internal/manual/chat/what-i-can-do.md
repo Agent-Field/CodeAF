@@ -378,14 +378,15 @@ job 3 started; log at ~/.codeaf/v3/projects/-you-work/<session>/logs/jobs/3.log
 ```
 
 A background job never times out and is not tied to the turn that started it.
-Its most recent output goes to that log file — a bounded spool, about **8MB** in
+Its most recent output goes to that log file — a bounded spool, at most **8MiB** in
 chunks, the oldest discarded as it rolls — and the last **64KB** is also held in
 memory for quick reads. When the job exits, codeaf is told at the next step in
 one boundary batch. Its headline, e.g.
 `job 3 exited 1: make: *** [build] Error 1`, quotes the last non-empty log line,
 clipped to 120 characters. Under it the note carries the last 50 lines and the
 log's path; use `jobs output` for anything older than that tail. When the
-spool has discarded output, the note names the truncation and the file instead
+spool has rotated, the note names both retained files; after older output is
+discarded, it also names the truncation instead
 of promising a full log.
 
 The `jobs` tool looks at all of this. Its `action` is `list`, `output` or `kill`.
