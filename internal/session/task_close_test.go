@@ -266,8 +266,12 @@ func TestNoJobJoinsBehindTheShutdownWalk(t *testing.T) {
 	if err != nil && !os.IsNotExist(err) {
 		t.Fatalf("read the jobs directory: %v", err)
 	}
-	if len(entries) != 0 {
-		t.Fatalf("the jobs folder outlived the quit with %d file(s) in it", len(entries))
+	// The permanent allocation lock and counter survive: deleting them would
+	// allow a reopened registry to reuse a previously issued job id.
+	for _, entry := range entries {
+		if entry.Name() != jobRetentionLockName && entry.Name() != jobRetentionCounterName {
+			t.Fatalf("the refused job left %s behind", entry.Name())
+		}
 	}
 }
 
