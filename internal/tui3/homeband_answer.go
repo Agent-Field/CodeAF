@@ -438,7 +438,7 @@ func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd
 			}
 			switch {
 			case action.Standing.Once:
-				return a.answerStanding(action.Standing, standOnceDone, standOnceWord), true
+				return a.answerStanding(action.Standing, standOnceApproved, standOnceWord), true
 			case action.Standing.Approved:
 				return a.answerStanding(action.Standing, standSetWord, standYesWord), true
 			default:
