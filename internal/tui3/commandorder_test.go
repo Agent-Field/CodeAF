@@ -31,7 +31,11 @@ func TestAFinishedCommandWordChoosesItsBareForm(t *testing.T) {
 		if !ok {
 			t.Fatalf("%q matched nothing", word)
 		}
-		if got.args != "" {
+		want := word
+		if word == "orders" {
+			want = "standing"
+		}
+		if got.name != want || got.args != "" {
 			t.Fatalf("enter on the finished word %q would take /%s %q — want the bare form", word, got.name, got.args)
 		}
 	}

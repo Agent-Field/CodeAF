@@ -1189,7 +1189,7 @@ func (a *app) tookFolderStore(msg folderStoreMsg) tea.Cmd {
 	hidden, gen, cols := a.folder.hidden, a.folder.gen, a.folder.cols
 	marks, pane := a.folder.marks, a.folder.pane
 	paneTop, paneLeft := a.folder.paneTop, a.folder.paneLeft
-	forTarget := a.folder.forTarget
+	forTarget, forWorkspace := a.folder.forTarget, a.folder.forWorkspace
 	a.folder.start(a.folderCandidates(), a.tilde)
 	a.folder.filter, a.folder.facts = filter, facts
 	a.folder.kids, a.folder.asking, a.folder.hidden = kids, asking, hidden
@@ -1201,8 +1201,8 @@ func (a *app) tookFolderStore(msg folderStoreMsg) tea.Cmd {
 	// of a launch into `add context` a second after it opened, so the folder
 	// chosen on it went to the conversation BEHIND home. Its sheet holds nothing
 	// either, for the reason that function gives.
-	a.folder.forTarget = forTarget
-	if !forTarget {
+	a.folder.forTarget, a.folder.forWorkspace = forTarget, forWorkspace
+	if !forTarget && !forWorkspace {
 		a.markFolderHeld()
 	}
 	// The COLUMNS are kept whole and not re-seated: which level they are on and
