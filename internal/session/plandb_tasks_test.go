@@ -582,3 +582,25 @@ func TestRecoveredInterruptedRunMakesItsPlanRowInterrupted(t *testing.T) {
 		t.Fatalf("recovered plan row = %+v, want interrupted", *row)
 	}
 }
+
+func TestRecoveredJoinedPlanRowFollowsItsLiveOwner(t *testing.T) {
+	path := filepath.Join(t.TempDir(), planStoreFilename)
+	seedPlanStore(t, path, "chat-a", plandb.TaskSpec{ID: "joined", Title: "Joined"})
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	armPlanStore(t, agent, path, "chat-a")
+	agent.graph().keepRunRows(72, []TaskNotice{{ID: 72, Parent: 71, State: TaskInterrupted, PlanTask: planStoreID("joined")}})
+	agent.beltMu.Lock()
+	agent.beltRun = &beltRun{row: 71, joined: []uint64{72}}
+	agent.beltMu.Unlock()
+	row := planRowFor(agent.PlanTasks(), planStoreID("joined"))
+	if row == nil || row.Interrupted {
+		t.Fatalf("adopted joined row reads interrupted: %+v", row)
+	}
+	agent.beltMu.Lock()
+	agent.beltRun = nil
+	agent.beltMu.Unlock()
+	row = planRowFor(agent.PlanTasks(), planStoreID("joined"))
+	if row == nil || !row.Interrupted {
+		t.Fatalf("orphan joined row lost its interruption: %+v", row)
+	}
+}
