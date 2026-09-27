@@ -1,0 +1,77 @@
+{
+  "pr": 1622,
+  "recording": "Unmodified original asciinema recording. GIF and MP4 are 3x playback with idle intervals capped at 3 seconds; no invented frames.",
+  "preview_duration_seconds": 62.7,
+  "screenshot_source": "1618verified-honest_receipt.cast",
+  "files": {
+    "1618verified-proof.json": {
+      "bytes": 2769,
+      "sha256": "a0c0a0cf969a5f1b0d9752e1593fe1f511ed37162c2d930798efc3fca5f01977"
+    },
+    "1618verified-final_checks.cast": {
+      "bytes": 8868,
+      "sha256": "a818be7b557b357f0efced7068f79fee196265aa3f9dda236ff3c20308be6da3"
+    },
+    "1618verified-artifact-tests.log": {
+      "bytes": 734,
+      "sha256": "e24c655a30cae9e55def2f8fe7c57cfe954dea6a1d5253f7bfe18aab0d428235"
+    },
+    "1618verified-coverage.md": {
+      "bytes": 2418,
+      "sha256": "9faddb9f60b30e56f5f4289f5f15f560bc12b934c3b85974aac81a53b606626f"
+    },
+    "final_checks.png": {
+      "bytes": 73070,
+      "sha256": "b24a7642ff5c6ce19d0d98b9c27ed32f5b8dab51c56c4bbb3064368bb7d44a6c"
+    },
+    "workflow.gif": {
+      "bytes": 1821066,
+      "sha256": "3a7ec2dbf8251ee3f2375e503c68d637123750a1aed0ebf2bc6e9b8d14fbb8dd"
+    },
+    "workflow.mp4": {
+      "bytes": 864388,
+      "sha256": "9cc0a8fc104df574d4adde64ec60e285b9e2473e70eda903b3445d205fc3b6fd"
+    },
+    "1618verified-usage.json": {
+      "bytes": 8032,
+      "sha256": "b20175a9ba99e4b5990edac552714b2ecce0a4cf66d5567f009a9a5101caa69a"
+    },
+    "1618verified-execution.json": {
+      "bytes": 759,
+      "sha256": "6036b2b66ebccbcd70a5a21cf1722dca13e3b4bac7b6b9b39bdee9fa364a9b62"
+    },
+    "1618verified.cast": {
+      "bytes": 147327,
+      "sha256": "903072b0bb5d4e189d3603ec336e5ba5d1fe5dc01c9a7a540c58d494bf5d97f1"
+    },
+    "1618verified-honest_receipt.cast": {
+      "bytes": 8544,
+      "sha256": "295b1b79667606dbfd651991c9428e4766916f47ffef3134b558979e5fc230c9"
+    },
+    "screenshot.png": {
+      "bytes": 78310,
+      "sha256": "5f7ec2172a607394aefa509f222072665067b0a5a8be27cec5910101478a424c"
+    },
+    "artifacts/README.md": {
+      "bytes": 1788,
+      "sha256": "c5840ff090fb1d23dc182c869b467a77519eab32727e4cd27ea1d96bcbaed892"
+    },
+    "artifacts/test_pantry.py": {
+      "bytes": 6300,
+      "sha256": "408dad8b0201078fe11b90314922c90337e1265b765ff234cb4e5ba503388499"
+    },
+    "artifacts/pantry.csv": {
+      "bytes": 35,
+      "sha256": "39a54ef50c183d5f138b295100af401b54d081a843732c7f99ac12ce652faecb"
+    },
+    "artifacts/SHOPPING.md": {
+      "bytes": 840,
+      "sha256": "e84e9e8e9523f947ef99e75a0dbdfc52dde0d3da9478e53b6fed48e12bc571c1"
+    },
+    "artifacts/pantry.py": {
+      "bytes": 3667,
+      "sha256": "38227574a0e869ec4749eb78748b7377220bbc211254397cd6070d66cc5931fa"
+    }
+  },
+  "issue": 1618
+}

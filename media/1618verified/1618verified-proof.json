@@ -1,0 +1,60 @@
+{
+  "shared_files_before": {
+    "codeaf-tick.service": "a5169ea4848819a2b301efed9087545de184c8ec15f765be4e385aa158da3733",
+    "codeaf-tick.timer": "e84e7fd6cbba1bd733fc9ba352f442ac2e8d49c2f223c3e855964f9f6abc4410"
+  },
+  "shared_files_after": {
+    "codeaf-tick.service": "a5169ea4848819a2b301efed9087545de184c8ec15f765be4e385aa158da3733",
+    "codeaf-tick.timer": "e84e7fd6cbba1bd733fc9ba352f442ac2e8d49c2f223c3e855964f9f6abc4410"
+  },
+  "shared_files_unchanged": true,
+  "inventory_sha256": "39a54ef50c183d5f138b295100af401b54d081a843732c7f99ac12ce652faecb",
+  "inventory_unchanged": true,
+  "standing_items": [
+    {
+      "schema": 1,
+      "id": "2ce9e130148497e7",
+      "words": "refresh that shopping report every Monday at 9am",
+      "workspace": "/tmp/caf-extended-1618verified/project",
+      "origin": {
+        "sessionId": "905dbebd8b4bc19d",
+        "transcript": "/tmp/caf-extended-1618verified/state/v3/projects/-tmp-caf-extended-1618verified-project/905dbebd8b4bc19d/transcript.jsonl",
+        "turnIds": [
+          "6"
+        ]
+      },
+      "when": {
+        "kind": "every",
+        "words": "Mondays at 9am",
+        "at": "0001-01-01T00:00:00Z",
+        "every": "0 9 * * 1",
+        "probe": {}
+      },
+      "does": {
+        "kind": "task",
+        "brief": "Regenerate the pantry shopping report in this project. Run the existing read-only CLI:\n\n    python3 pantry.py pantry.csv --shopping\n\n(from the project directory; the CSV is pantry.csv). Then overwrite SHOPPING.md with a fresh report built from that command's actual output, keeping the same shape as the existing file: title, the command that produced it with today's date, a Buy table (Item | On hand | Buy), the total, a note that the CLI is read-only and purchases are manual, and the threshold tip. Do NOT edit pantry.csv or buy anything. If the command returns no rows, write the report saying nothing is below threshold.",
+        "acceptance": "SHOPPING.md exists in the project and its Buy table matches the current `python3 pantry.py pantry.csv --shopping` output; pantry.csv is unchanged."
+      },
+      "rails": {
+        "perRunUsd": 5,
+        "maxPerDay": 10,
+        "expires": "0001-01-01T00:00:00Z"
+      },
+      "altitude": "project",
+      "brief": {
+        "title": "weekly shopping report"
+      },
+      "status": "retired",
+      "created": "2026-09-27T13:25:24.090564469-04:00",
+      "updated": "2026-09-27T13:26:11.838418509-04:00",
+      "retiredWhy": "stopped by you",
+      "lastChecked": "0001-01-01T00:00:00Z",
+      "nextDue": "2026-09-28T09:00:00-04:00",
+      "runs": 0,
+      "lastFired": "0001-01-01T00:00:00Z",
+      "spentUsd": 0
+    }
+  ],
+  "independent_artifact_test_exit": 0,
+  "shopping_output": "beans: buy 3\nrice: buy 1\n"
+}

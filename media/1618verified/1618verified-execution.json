@@ -1,0 +1,14 @@
+{
+  "hostname": "spark",
+  "fleet_session": "critical-extended-1618verified-v3",
+  "tmux_socket": "fleet-sh",
+  "revision": "dddee8c4ef8f91be704ab158647d707bb00b646a",
+  "checkout_revision": "7eafed30975b89026f3f699687bb587859d6099b",
+  "embedded_version": "codeaf dddee8c4e built 2026-09-27 13:19 \u00b7 go1.26.5 linux/arm64",
+  "binary_sha256": "55ad4795cbb8be78fb4478adf3729a1be3e45c1f2d196d5638808003a46cf55f",
+  "started_utc": "2026-09-27T17:23:15.310782+00:00",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "cwd": "/tmp/caf-extended-1618verified/project",
+  "model_pool": "off; workaround for separately fixed #1608 (PR #1610)",
+  "final_head_note": "Final checkout7eafed309 differs from tested runtime dddee8c4e only in two test fixture corrections."
+}
