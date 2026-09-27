@@ -927,6 +927,12 @@ A task with **no declared check** is checked by reading its result and by the
 acceptance alone. Commands mentioned only in the task's prose are not declarations,
 so put every command the check must run on the task with `--check`.
 
+When a check names a numbered file with its number missing, such as
+`issue_.go` beside `issue_01.go`, `plandb add` and `plandb task set-checks`
+send the command back: nothing is added or changed in the plan. Write each
+part's check with that part's own file, such as `gofmt -l issue_01.go`, and run
+the command again.
+
 ## Who checks a task's work?
 
 Every leaf that lands **done** is checked, at both doors — `/task` and `codeaf
@@ -953,11 +959,24 @@ finishes with one line, in one of two shapes:
   the acceptance is not met.
 
 **A `does not hold:` finding is work, not a remark.** The checked task keeps its
-done ending and the sentence is left as its note, and the run adds a `fix:` task
-under that task's parent — carrying the acceptance, the finding and the result —
-which must land before the run is over. The fix is checked in turn, but only
-once: a finding on a `fix:` task is a note and no second fix task, so a run
-cannot loop.
+done ending and the sentence is left as its note. Ordinarily the run adds a
+`fix:` task under that task's parent — carrying the acceptance, the finding and
+the result — which must land before the run is over. The fix is checked in
+turn, but only once: a finding on a `fix:` task is a note and no second fix
+task, so a run cannot loop. A check naming a file nothing in the run makes is
+the narrow exception described below.
+
+## Why no fix task started — a check that names a file nothing makes
+
+If a check says a missing file caused its finding, no `fix:` task starts when
+no task names that file in its title or work order and either the filename is a
+numbered placeholder such as `issue_.go` beside `issue_01.go`, or two or more
+tasks declare a check on the same missing file. The checked task keeps the
+finding and gets this note:
+`No fix was started: the check names issue_.go, a file nothing in this run makes.`
+A check on a file only that task's check names
+(its own output), or on a package such as `go test ./internal/rank`, still gets
+its `fix:` task.
 
 ## How to turn it off
 
