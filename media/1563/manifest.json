@@ -1,0 +1,40 @@
+{
+  "pr": 1563,
+  "recording": "Unmodified original asciinema recording. GIF and MP4 are 3x playback with idle intervals capped at 3 seconds; no invented frames.",
+  "preview_duration_seconds": 61.454545,
+  "screenshot_source": "1563-daily-use.cast",
+  "files": {
+    "1563-usage.json": {
+      "bytes": 14605,
+      "sha256": "e38b67fb6252dd5d14932e39bb786bc8a634d7caab6a6785937ce084b0c7d27b"
+    },
+    "1563.cast": {
+      "bytes": 278035,
+      "sha256": "704b57d9797eadaa22f52f758c0980c1f618d73a2f82b53fe58f48cbfb8ba620"
+    },
+    "workflow.gif": {
+      "bytes": 2335913,
+      "sha256": "70d026a22c256d9be055a40069eac0500a06a037f1e06ad7d951cea5b6f640b4"
+    },
+    "workflow.mp4": {
+      "bytes": 1028451,
+      "sha256": "6f6818c2711cc8451eab95894974a1a8febbed586ff461f653bdba6239e0e7b6"
+    },
+    "1563-daily-use.cast": {
+      "bytes": 9275,
+      "sha256": "90b5984550f1ddd32a0f34d734efcfd162159f92beae864291097fbb651950e9"
+    },
+    "1563-execution.json": {
+      "bytes": 386,
+      "sha256": "5cada00ffc8bdbce00937bedceb08cd16f9d25f87a7dfd14fea81d3057e7302e"
+    },
+    "1563-artifact-tests.log": {
+      "bytes": 2646,
+      "sha256": "f73eb80679d126926aaaa39d80bfb8e1b5492968da3d075b74d4010d81c52ef6"
+    },
+    "screenshot.png": {
+      "bytes": 64773,
+      "sha256": "e34d978ea4f6f7156bd0b44191f391a00fb3cda9fb080dabb5f0aaa4740f1238"
+    }
+  }
+}

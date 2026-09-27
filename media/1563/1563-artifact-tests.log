@@ -1,0 +1,28 @@
+test_distinct_items_stay_separate (test_pantry.CombineStockTests.test_distinct_items_stay_separate) ... ok
+test_keeps_first_spelling_for_display (test_pantry.CombineStockTests.test_keeps_first_spelling_for_display) ... ok
+test_merges_same_name_case_insensitively (test_pantry.CombineStockTests.test_merges_same_name_case_insensitively) ... ok
+test_bad_header_reports_line_one (test_pantry.LoadStockTests.test_bad_header_reports_line_one) ... ok
+test_blank_line_is_malformed (test_pantry.LoadStockTests.test_blank_line_is_malformed) ... ok
+test_empty_file_reports_line_one (test_pantry.LoadStockTests.test_empty_file_reports_line_one) ... ok
+test_every_malformed_row_is_reported (test_pantry.LoadStockTests.test_every_malformed_row_is_reported) ... ok
+test_header_is_case_insensitive_and_trimmed (test_pantry.LoadStockTests.test_header_is_case_insensitive_and_trimmed) ... ok
+test_negative_quantity_is_malformed (test_pantry.LoadStockTests.test_negative_quantity_is_malformed) ... ok
+test_non_integer_quantity_reports_line_number (test_pantry.LoadStockTests.test_non_integer_quantity_reports_line_number) ... ok
+test_reads_valid_rows (test_pantry.LoadStockTests.test_reads_valid_rows) ... ok
+test_wrong_field_count_reports_line_number (test_pantry.LoadStockTests.test_wrong_field_count_reports_line_number) ... ok
+test_combined_item_is_shown_once_with_the_summed_quantity (test_pantry.MainTests.test_combined_item_is_shown_once_with_the_summed_quantity) ... ok
+test_custom_threshold_flag (test_pantry.MainTests.test_custom_threshold_flag) ... ok
+test_default_threshold_is_three (test_pantry.MainTests.test_default_threshold_is_three) ... ok
+test_duplicate_rows_are_combined_before_the_threshold (test_pantry.MainTests.test_duplicate_rows_are_combined_before_the_threshold) ... ok
+test_malformed_input_prints_no_list_and_fails (test_pantry.MainTests.test_malformed_input_prints_no_list_and_fails) ... ok
+test_missing_file_fails_without_traceback (test_pantry.MainTests.test_missing_file_fails_without_traceback) ... ok
+test_nothing_below_threshold_prints_no_stdout (test_pantry.MainTests.test_nothing_below_threshold_prints_no_stdout) ... ok
+test_prints_below_threshold_sorted (test_pantry.MainTests.test_prints_below_threshold_sorted) ... ok
+test_custom_threshold (test_pantry.SelectBelowTests.test_custom_threshold) ... ok
+test_output_is_sorted_by_item (test_pantry.SelectBelowTests.test_output_is_sorted_by_item) ... ok
+test_strictly_below_is_excluded_at_boundary (test_pantry.SelectBelowTests.test_strictly_below_is_excluded_at_boundary) ... ok
+
+----------------------------------------------------------------------
+Ran 23 tests in 0.020s
+
+OK
