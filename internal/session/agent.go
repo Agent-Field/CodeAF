@@ -2363,6 +2363,8 @@ func (a *Agent) Close() error {
 		return nil
 	}
 	a.closed = true
+	budgetWait := a.dailyBudget
+	a.dailyBudget = nil
 	// Nothing armed by a steer outlives the session that armed it
 	// (steer_grace.go), and nor does a clock armed on a question (asklane.go).
 	a.stopSteerGraceLocked()
@@ -2425,6 +2427,9 @@ func (a *Agent) Close() error {
 	// joins from inside its own goroutine.
 	a.cancelOrchestrationsLocked()
 	a.mu.Unlock()
+	if budgetWait != nil {
+		budgetWait.finish(errAgentClosed)
+	}
 	// AND THE PROCESS STOPS SAYING IT HOLDS THIS CONVERSATION, before anything
 	// below can take time: a firing that lands during the quit writes to the
 	// inbox rather than onto a queue that will never be drained again
