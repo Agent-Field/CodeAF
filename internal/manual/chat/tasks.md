@@ -4271,7 +4271,9 @@ starts instead:
 
 Both gate starts only. Nothing already running is ever touched; pressure drains
 as running work finishes. The older node road re-asks every 5 seconds; the
-default run road re-asks each supervisor pass, every 300 milliseconds. `codeaf do`
+default run road re-asks each supervisor pass, every 300 milliseconds. Changing either
+setting in `/settings` is noticed without restarting the engine, and a held row is
+re-evaluated under the new ceiling. `codeaf do`
 uses the same profile limits and, having no rail, says a hold on stderr, once:
 `waiting · machine busy` and the limit that held it (see *codeaf do is waiting and
 nothing happens* on the terminal page).
@@ -4548,6 +4550,10 @@ The cursor opens on `keep going` — the destructive answer is never under the k
 press to dismiss a question. `left`/`right` move, `enter` takes, `esc` is `keep going`.
 **`x` never bypasses it: the card is always asked**, because `x` is one bare keystroke over
 a list and the work behind it may be an hour old.
+
+From the main box, `/stop` offers the only queued or machine-held task when it is the
+sole active task, even when its queued group is folded. With more than one active task,
+open the task or focus its row before stopping it.
 
 With a pointer, the `Stop` at the right end of a room's facts row — the second row of its
 header, under the breadcrumbs — raises the same card.
