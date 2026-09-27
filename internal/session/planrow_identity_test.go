@@ -32,6 +32,7 @@ func TestARunsRowNamesTheStoreTaskThePlanReadAnswersUnder(t *testing.T) {
 		t.Fatalf("start run: %v", err)
 	}
 	<-double.entered
+	defer endBeltRun(t, agent, double)
 
 	// THE ROW SAYS WHICH TASK IT IS. Without this the place is back to matching
 	// the pair on the title they share.
@@ -55,12 +56,10 @@ func TestARunsRowNamesTheStoreTaskThePlanReadAnswersUnder(t *testing.T) {
 	var titles []string
 	for _, task := range rows {
 		if task.ID == row.PlanTask {
-			close(double.release)
 			return
 		}
 		titles = append(titles, task.ID+" "+task.Title)
 	}
-	close(double.release)
 	t.Fatalf("the run's row names store task %q and the plan read answers under %v: the place cannot "+
 		"join the pair by an id only one of them uses", row.PlanTask, titles)
 }
