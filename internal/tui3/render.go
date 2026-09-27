@@ -684,7 +684,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			// link's columns are a fact about the row it landed on, and the row it
 			// lands on is decided by a wrap this pass must not have an opinion
 			// about.
-			if e.kind == entryAssistant {
+			if e.kind == entryAssistant || (e.kind == entryNote && len(e.replyTags) > 0) {
 				// AND THE ONE THE POINTER IS ON IS INKED BY THE SAME PASS. It cannot be
 				// done afterwards: the row that comes back is styled text, and a hue
 				// spliced into it by column would have to redo the escape bookkeeping
@@ -916,7 +916,7 @@ func (a *app) disclosedEntryRows(d deck, at, width int) []row {
 	links := 0
 	for n, text := range a.entryRows(d, at, width) {
 		r := row{text: text, entry: at}
-		if e.kind == entryAssistant {
+		if e.kind == entryAssistant || (e.kind == entryNote && len(e.replyTags) > 0) {
 			hot := -1
 			if h := a.hoveringLink(at); h >= 0 {
 				hot = h - links
@@ -1319,6 +1319,9 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		return a.teamCardRows(*e, width)
 
 	case entryNote:
+		if len(e.replyTags) > 0 {
+			return a.linkPaths(a.taskReplyTagRows(e.replyTags, width))
+		}
 		// A LINE MAY BE QUIET; THE FACT IT CARRIES MAY NOT BE (payload.go). The
 		// lane keeps its dim prose and its dim lead — a note is still the surface
 		// talking about itself — while the words the person typed the command to
@@ -1419,7 +1422,6 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 // those bytes are final enough to format, so the head being calm and the tail
 // being lit is the same fact the promotion itself states, said in ink.
 func (a *app) assistantRows(at int, e *entry, width int) []string {
-	tags := a.taskReplyTagRows(e.replyTags, width)
 	// ── AND PROSE THAT TURNED OUT NOT TO BE THE ANSWER ──────────────────────
 	//
 	// A block that more work opened under is narration, and it is drawn as what
@@ -1445,10 +1447,10 @@ func (a *app) assistantRows(at int, e *entry, width int) []string {
 		if e.capHead && e.capCut > 0 && e.capCut <= len(text) {
 			text = text[e.capCut:]
 		}
-		return append(tags, a.workingProse(text, width)...)
+		return a.workingProse(text, width)
 	}
 	if e.settled {
-		return append(tags, a.settledMarkdown(at, e, width)...)
+		return a.settledMarkdown(at, e, width)
 	}
 	e.feet = nil
 	var out []string
@@ -1459,7 +1461,7 @@ func (a *app) assistantRows(at int, e *entry, width int) []string {
 	} else {
 		out = append(out, a.liveTail(drawn, width)...)
 	}
-	return append(tags, trimBlanks(out)...)
+	return trimBlanks(out)
 }
 
 // promotedRows is the head of a streaming reply — the bytes the throttle has
@@ -1515,7 +1517,7 @@ func (a *app) liveTail(text string, width int) []string {
 	return rows
 }
 
-// taskReplyTagRows puts the cause immediately above the answer it prompted.
+// taskReplyTagRows draws source details only inside disclosed operational work.
 // The request is copied as-is from the task record and omitted when empty.
 func (a *app) taskReplyTagRows(tags []session.TaskReplyTag, width int) []string {
 	var out []string
