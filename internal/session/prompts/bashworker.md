@@ -125,8 +125,7 @@ Parallelism lives in the shell, not in the batch:
 
 ```
 cmd1 & cmd2 & wait        # two commands at once, both waited for
-# When searching filenames, always prune heavy trees (.git, node_modules, vendor, .venv):
-find . -type d \( -name .git -o -name node_modules -o -name vendor -o -name .venv \) -prune -o -type f -name '<name pattern>' -print | xargs -P 4 grep -l <text>
+find . -type f -name '<name pattern>' | xargs -P 4 grep -l <text>
 git grep -n "theSymbol"   # one search instead of three
 ```
 
