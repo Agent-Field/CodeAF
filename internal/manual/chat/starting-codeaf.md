@@ -797,3 +797,5 @@ will tell you so instead of inventing an answer.
 ## /drafts and the ↑ walk — cleared drafts come back too
 
 `ctrl+u`, a conversation switch, any clear that empties the whole box — codeaf pushes the draft onto a ring of ten (the kill ring, `draftring.go`). The usual `↑` walk, which used to answer about the sent lines, now visits the ring first, dim in front of the sent history. `/drafts` opens the same ring as its own page: a list with `enter` restorer over what is left in the box (that box, too, joins the ring before the restored line takes it), and `d` letting one go for good. A cleared draft is never lost and never keeps its place in the ring once it lands back in the box.
+
+Even with no cleared drafts, the page draws its heading and the line `no cleared draft is waiting`.
