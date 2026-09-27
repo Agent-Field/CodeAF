@@ -1,0 +1,100 @@
+[
+  {
+    "id": "3f537e00",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "phase": "start",
+    "tag": "turn",
+    "ts": "2026-09-27T11:12:52.035-04:00"
+  },
+  {
+    "id": "1cf379ff",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "phase": "start",
+    "tag": "title",
+    "ts": "2026-09-27T11:12:52.035-04:00"
+  },
+  {
+    "id": "a85b4258",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "phase": "start",
+    "tag": "router",
+    "ts": "2026-09-27T11:12:52.035-04:00"
+  },
+  {
+    "id": "a85b4258",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200,
+    "tag": "router",
+    "ts": "2026-09-27T11:12:53.040-04:00"
+  },
+  {
+    "id": "3f537e00",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200,
+    "tag": "turn",
+    "ts": "2026-09-27T11:12:53.042-04:00"
+  },
+  {
+    "id": "a03aeed7",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "phase": "start",
+    "tag": "turn",
+    "ts": "2026-09-27T11:12:53.073-04:00"
+  },
+  {
+    "id": "a03aeed7",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200,
+    "tag": "turn",
+    "ts": "2026-09-27T11:12:53.426-04:00"
+  },
+  {
+    "id": "08f03587",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "phase": "start",
+    "tag": "caption",
+    "ts": "2026-09-27T11:12:53.932-04:00"
+  },
+  {
+    "id": "08f03587",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200,
+    "tag": "caption",
+    "ts": "2026-09-27T11:12:54.948-04:00"
+  },
+  {
+    "id": "1cf379ff",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200,
+    "tag": "title",
+    "ts": "2026-09-27T11:12:55.453-04:00"
+  },
+  {
+    "id": "428b3fb8",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "phase": "start",
+    "tag": "turn",
+    "ts": "2026-09-27T11:12:56.516-04:00"
+  },
+  {
+    "id": "428b3fb8",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200,
+    "tag": "turn",
+    "ts": "2026-09-27T11:12:56.811-04:00"
+  },
+  {
+    "id": "82d00943",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "phase": "start",
+    "tag": "reflex",
+    "ts": "2026-09-27T11:12:56.813-04:00"
+  },
+  {
+    "id": "82d00943",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200,
+    "tag": "reflex",
+    "ts": "2026-09-27T11:12:57.667-04:00"
+  }
+]

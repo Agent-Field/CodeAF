@@ -1,0 +1,42 @@
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                                      sun 11:12am
+     checking review status with team reviewers ×   +   ▦ All
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+  › Check the review status with the team.
+
+    ▸ worked · 1 tool call · ctrl+e
+
+  Review ready
+
+  All checks passed. The change is ready for your review.
+
+  › Answer with only the words Still / ready / for / review. joined by spaces. No tools or delegation.
+
+    ▸ worked 0.7s · ctrl+e
+
+  Still ready for review
+
+
+                                                                                                                                           ❮
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+─ deepseek/deepseek-v4.1-flash (together):auto · ◇ YOLO ───────────────────  $0.0032 · ⟲ saved $0.0002 · 41% cached   15.1k/1M · 1%   idle ─
+ ›
+
+
+ alt+e effort · alt+a approvals · / commands · space space home           project: /tmp/TestCleanManagerReplay3112663442/002/manager-replay

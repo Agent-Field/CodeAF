@@ -1,0 +1,184 @@
+[
+  {
+    "id": "5e857b56",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "phase": "start",
+    "tag": "title",
+    "ts": "2026-09-27T11:12:11.765-04:00"
+  },
+  {
+    "id": "19eda597",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "phase": "start",
+    "tag": "router",
+    "ts": "2026-09-27T11:12:11.766-04:00"
+  },
+  {
+    "id": "0c4da361",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "phase": "start",
+    "tag": "turn",
+    "ts": "2026-09-27T11:12:11.766-04:00"
+  },
+  {
+    "id": "19eda597",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200,
+    "tag": "router",
+    "ts": "2026-09-27T11:12:12.453-04:00"
+  },
+  {
+    "id": "0c4da361",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200,
+    "tag": "turn",
+    "ts": "2026-09-27T11:12:12.654-04:00"
+  },
+  {
+    "id": "ad13a298",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "phase": "start",
+    "tag": "caption",
+    "ts": "2026-09-27T11:12:13.162-04:00"
+  },
+  {
+    "id": "ad13a298",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200,
+    "tag": "caption",
+    "ts": "2026-09-27T11:12:13.597-04:00"
+  },
+  {
+    "id": "5e857b56",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200,
+    "tag": "title",
+    "ts": "2026-09-27T11:12:14.453-04:00"
+  },
+  {
+    "id": "92d56a62",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "phase": "start",
+    "tag": "turn",
+    "ts": "2026-09-27T11:12:15.715-04:00"
+  },
+  {
+    "id": "92d56a62",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200,
+    "tag": "turn",
+    "ts": "2026-09-27T11:12:15.933-04:00"
+  },
+  {
+    "id": "3e2d1b7d",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "phase": "start",
+    "tag": "reflex",
+    "ts": "2026-09-27T11:12:15.936-04:00"
+  },
+  {
+    "id": "3e2d1b7d",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200,
+    "tag": "reflex",
+    "ts": "2026-09-27T11:12:16.481-04:00"
+  },
+  {
+    "id": "686f4756",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "phase": "start",
+    "tag": "taskname",
+    "ts": "2026-09-27T11:12:17.425-04:00"
+  },
+  {
+    "id": "686f4756",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200,
+    "tag": "taskname",
+    "ts": "2026-09-27T11:12:18.682-04:00"
+  },
+  {
+    "id": "a75af0c3",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "phase": "start",
+    "tag": "shaper",
+    "ts": "2026-09-27T11:12:21.006-04:00"
+  },
+  {
+    "id": "d0b002f5",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "phase": "start",
+    "tag": "task",
+    "ts": "2026-09-27T11:12:21.008-04:00"
+  },
+  {
+    "id": "d0b002f5",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200,
+    "tag": "task",
+    "ts": "2026-09-27T11:12:21.462-04:00"
+  },
+  {
+    "id": "8cab93a4",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "phase": "start",
+    "tag": "task",
+    "ts": "2026-09-27T11:12:21.482-04:00"
+  },
+  {
+    "id": "8cab93a4",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200,
+    "tag": "task",
+    "ts": "2026-09-27T11:12:22.204-04:00"
+  },
+  {
+    "id": "732485dc",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "phase": "start",
+    "tag": "task",
+    "ts": "2026-09-27T11:12:22.212-04:00"
+  },
+  {
+    "id": "732485dc",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200,
+    "tag": "task",
+    "ts": "2026-09-27T11:12:22.476-04:00"
+  },
+  {
+    "id": "33dca5ec",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "phase": "start",
+    "tag": "task",
+    "ts": "2026-09-27T11:12:22.499-04:00"
+  },
+  {
+    "id": "a75af0c3",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200,
+    "tag": "shaper",
+    "ts": "2026-09-27T11:12:22.700-04:00"
+  },
+  {
+    "id": "33dca5ec",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200,
+    "tag": "task",
+    "ts": "2026-09-27T11:12:22.962-04:00"
+  },
+  {
+    "id": "e379da3c",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "phase": "start",
+    "tag": "turn",
+    "ts": "2026-09-27T11:12:23.570-04:00"
+  },
+  {
+    "id": "e379da3c",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200,
+    "tag": "turn",
+    "ts": "2026-09-27T11:12:24.612-04:00"
+  }
+]

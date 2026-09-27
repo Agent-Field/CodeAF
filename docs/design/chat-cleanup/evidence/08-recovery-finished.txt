@@ -1,0 +1,42 @@
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                 1 moving · $0.0032 · sun 11:12am
+     intentional bash failure recovery test ×   +   ▦ All
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+  › Test error recovery with two separate bash calls: first run printf 'CLEAN_%s\n' FAILURE_TRACE_7319; exit 7. This failure is
+    intentional. Then recover with a second bash call: sleep 3; printf 'recovered\n'. Finally answer only with Recovery / check / passed.
+    joined by spaces. Do not echo stdout, delegate, or write files.
+
+    ▸ worked 4.8s · thought 0.1s · 2 steps · 2 tool calls · ✕ 1 failed · ctrl+e
+
+  Recovery / check / passed
+
+
+
+
+
+
+
+
+                                                                                                                                           ❮
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+─ deepseek/deepseek-v4.1-flash (together):auto · ◇ YOLO ───────────────────  $0.0043 · ⟲ saved $0.0012 · 78% cached   15.2k/1M · 1%   idle ─
+ ›
+
+
+ alt+e effort · alt+a approvals · / commands · space space home   project: /tmp/TestCleanChatFailureRecovery1487267512/002/failure-recovery

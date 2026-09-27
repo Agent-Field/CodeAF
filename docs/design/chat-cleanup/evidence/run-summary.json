@@ -1,0 +1,20 @@
+{
+  "source_commit": "d19673f85",
+  "date": "2026-09-27",
+  "terminal": {
+    "columns": 140,
+    "rows": 42
+  },
+  "model": "deepseek/deepseek-v4.1-flash",
+  "completed_request_records": {
+    "chat": 13,
+    "manager": 5,
+    "recovery": 7,
+    "steering": 9
+  },
+  "total_completed_request_records": 34,
+  "tests_passed": 4,
+  "duration_seconds": 96.531,
+  "capture_method": "real tmux capture-pane ANSI framebuffer, rendered by agg",
+  "manager_scenario": "historical journal fixture plus live model follow-up"
+}

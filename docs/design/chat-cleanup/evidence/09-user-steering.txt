@@ -1,0 +1,42 @@
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                                      sun 11:13am
+   ◐ Run bash sleep 8; printf 'first check finished\n'. Then run bash sleep 3; printf 'second check finished\n'. Between... ×   +   ▦ All
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+  › Run bash sleep 8; printf 'first check finished\n'. Then run bash sleep 3; printf 'second check finished\n'. Between the two calls
+    emit this exact user-facing update using the update protocol: [update] First check is complete. At the end say checks finished. Do
+    not delegate or write files.
+
+  └ Also mention that no files were changed in your final answer.
+
+    > •        Linting common sense
+
+
+
+
+
+
+
+
+                                                                                                                                           ❮
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+─ deepseek/deepseek-v4.1-flash:auto · ◇ YOLO ─────────────────────────────────────────────────────────    $0.00   5.7k/1M · 1%   ⠸ working ─
+ ›
+
+
+ esc interrupt                                                                   project: /tmp/TestCleanChatSteering3496973854/002/steering
