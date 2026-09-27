@@ -17,6 +17,7 @@ func grepRuntimePatterns() []string {
 		"logs", "jobs", "stubs", "trace", "runs/*/tasks", "runs/*/logs", "runs/*/trace",
 		"runs/*/transcript.jsonl", "v3/runs/*/*/*.jsonl", "v3/runs/*/*/logs",
 		"v3/runs/*/*/tasks", "v3/tasks/*/*.jsonl", "v3/usage.jsonl", "v3/fixes.json",
+		"v3/history.jsonl", "v3/projects/*/tasks.jsonl",
 	}
 	for _, place := range []string{"v3/projects/*/*", "v3/standing/*/runs/*", "v3/standing/exchanges/*"} {
 		for _, output := range []string{"logs", "tasks", "transcript.jsonl", "state.json", "tasks.json"} {

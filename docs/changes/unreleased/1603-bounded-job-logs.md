@@ -19,7 +19,9 @@ before creating logs, so a symlinked login home does not prevent jobs starting.
 The bounds apply per job and per jobs directory, not across the machine.
 
 Structured search preserves source worktrees, including those inside custom
-state homes. Recursive searches skip files above 8 MiB. Explicit inspection reads
+state homes. Input-history journals and project task indexes are excluded too,
+so the current question and generated task title cannot re-enter source results.
+Recursive searches skip files above 8 MiB. Explicit inspection reads
 at most the first 8 MiB present at open; oversized 64 KiB lines are skipped with
 an incomplete-result notice. Requests allow at most 1000 matches and 20 context
 lines per side. Oversized ripgrep records terminate and reap the child with an
