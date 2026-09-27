@@ -308,6 +308,13 @@ type beltRun struct {
 	root  string
 	row   uint64
 	title string
+	brief string
+	stand taskStand
+	// pending is true until the run's machine admission has passed. A pending
+	// run has a plan store but no folder or working copy, so stopping it cannot
+	// leave a repository lock or branch behind.
+	pending   bool
+	admission RunAdmission
 	// workspace is the run's own copy, the directory every worker types in, and
 	// ground is the folder that copy was cut from and comes home to. tree is the
 	// copy as the ground ladder made it, kept so the run's landing is the ladder's
@@ -548,6 +555,22 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 		return true, nil
 	}
 
+	// ADMISSION IS CHECKED BEFORE A FOLDER OR COPY IS TOUCHED. A held run seeds
+	// only its plan store so stopping it cannot leave a repository claim behind;
+	// the admitted road below keeps the original synchronous refusal order.
+	admission := NewRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.graph().lanes)
+	held := admission != nil && !admission.MayStart()
+	if held {
+		return a.startHeldBeltRun(ctx, engine, g, path, storeID, id, title, brief, stand, question, via, asked, admission)
+	}
+
+	return a.startAdmittedBeltRun(ctx, engine, g, path, storeID, id, title, brief, stand, question, via, asked, admission)
+}
+
+// startAdmittedBeltRun is the original synchronous road after admission: route
+// the crew, ready the folder, seed the store, prepare the copy, then publish
+// the running row and hand the run to its engine.
+func (a *Agent) startAdmittedBeltRun(ctx context.Context, engine RunEngine, g *TaskGraph, path, storeID string, id uint64, title, brief string, stand taskStand, question string, via *delegate.Delegate, asked []string, admission RunAdmission) (bool, error) {
 	crew, folder, err := a.prepareBeltRunStart(ctx, id, title, brief, filepath.Dir(path), stand, via)
 	if err != nil {
 		return false, err
@@ -587,8 +610,8 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 	born := a.taskClockNow()
 	run := &beltRun{
 		plan: plan, store: store, root: store.RootID(), row: id, title: title,
-		workspace: tree.dir, ground: ground, tree: tree, cut: cut,
-		born: born, over: make(chan struct{}),
+		workspace: tree.dir, ground: ground, tree: tree, admission: admission,
+		cut: cut, born: born, over: make(chan struct{}),
 		delegate: via, folder: folder, asked: asked, crew: crew,
 	}
 	a.installBeltRun(g, run)
@@ -613,7 +636,6 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 		Crew:     run.crewDecision(),
 		Model:    run.crewWorker(),
 	})
-
 	spec := a.beltRunSpec(run, brief)
 	if programName(via) == "senior-dev" {
 		run.costCeiling, run.timeCeiling = spec.CostUSD, spec.Elapsed.Hours()
@@ -621,6 +643,53 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 		run.conversationTimeLimit = a.seniorDevConversationTimeLimit()
 	}
 	go a.driveBeltRun(runCtx, engine, run, spec)
+	return false, nil
+}
+
+// startHeldBeltRun seeds the only state a machine-held run may own: its plan
+// store and queued row. Crew routing remains synchronous, while folder and
+// copy preparation stay behind the driver's later admission.
+func (a *Agent) startHeldBeltRun(ctx context.Context, engine RunEngine, g *TaskGraph, path, storeID string, id uint64, title, brief string, stand taskStand, question string, via *delegate.Delegate, asked []string, admission RunAdmission) (bool, error) {
+	var crew *taskCrew
+	var err error
+	if via == nil {
+		crew, err = a.routeTaskCrew(ctx, id, title, brief)
+		if err != nil {
+			return false, err
+		}
+	}
+	plan, store, err := a.openBeltRunStore(g, path, storeID, title, brief, false)
+	if err != nil {
+		return false, err
+	}
+	if question = strings.TrimSpace(question); question != "" {
+		if _, err := store.Revise(store.RootID(), plandb.TaskPatch{Question: &question}); err != nil {
+			discardUnstartedRunStore(store)
+			return false, err
+		}
+	}
+	// THE RUN'S CONTEXT IS ONE A PERSON'S STOP CAN CUT. It outlives the turn that
+	// started it, which is the caller's business (task.go hands this door a
+	// context no turn's ending cancels); what it must not outlive is the person
+	// saying stop, and until this cancel was kept nothing could say it (stoprun.go).
+	runCtx, cut := context.WithCancel(ctx)
+	born := a.taskClockNow()
+	run := &beltRun{
+		plan: plan, store: store, root: store.RootID(), row: id, title: title, brief: brief,
+		stand: stand, ground: canonicalPath(stand.dir), pending: true, admission: admission,
+		cut: cut, born: born, over: make(chan struct{}),
+		delegate: via, asked: asked, crew: crew,
+	}
+	a.installBeltRun(g, run)
+	// A HELD RUN IS QUEUED, not working: there is no worker and deliberately no
+	// copy yet. Its plan id is present from the first publish, which gives stop
+	// and recovery one persisted identity to reconcile.
+	a.publishRunRow(g, TaskNotice{
+		ID: id, Title: title, State: TaskQueued, Program: programName(via),
+		PlanTask: planStoreID(storeID), Crew: run.crewDecision(),
+		Model: run.crewWorker(), Waiting: waitingMachineBusy,
+	})
+	go a.driveBeltRun(runCtx, engine, run, RunSpec{})
 	return false, nil
 }
 
@@ -892,6 +961,10 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		ceilings := a.seniorDevCeilings(a.Usage().CostUSD)
 		cost, wallLeft = ceilings.CostUSD, ceilings.Elapsed()
 	}
+	admission := run.admission
+	if admission == nil {
+		admission = NewRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.graph().lanes)
+	}
 	return RunSpec{
 		Store:     run.store,
 		Workspace: run.workspace,
@@ -906,7 +979,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		StepsPerTask: taskMaxSteps,
 		// The graph already owns the fallback account when the door handed
 		// none. Run and node workers must charge that same conversation.
-		Admission:    NewRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.graph().lanes),
+		Admission:    admission,
 		OnHold:       func(ids []string) { a.setBeltRunMachineHold(run, ids) },
 		ProfileDir:   a.config.ProfileDir,
 		WorkModel:    workSeat,
@@ -1294,10 +1367,16 @@ func (a *Agent) setBeltRunMachineHold(run *beltRun, ids []string) {
 		if len(held) != 0 {
 			waiting = waitingMachineBusy
 		}
-		a.publishRunRow(g, TaskNotice{
-			ID: run.row, Title: run.title, State: TaskRunning,
-			StartedAt: run.born, PlanTask: planStoreID(run.root), Waiting: waiting,
-		})
+		a.beltMu.Lock()
+		pending := run.pending
+		started := run.born
+		a.beltMu.Unlock()
+		state := TaskRunning
+		if pending {
+			state, started = TaskQueued, time.Time{}
+		}
+		a.publishRunRow(g, TaskNotice{ID: run.row, Title: run.title, State: state,
+			StartedAt: started, PlanTask: planStoreID(run.root), Waiting: waiting})
 	}
 }
 
@@ -1557,12 +1636,131 @@ func (a *Agent) cutBeltRun() {
 	}
 }
 
+// waitForBeltAdmission keeps a newly seeded run queued until the machine gate
+// admits its first worker. It is deliberately the run's existing goroutine:
+// stopping the row cuts this wait directly, without a polling goroutine that
+// could outlive the run.
+func (a *Agent) waitForBeltAdmission(ctx context.Context, run *beltRun) bool {
+	for {
+		if run.admission == nil || run.admission.MayStart() {
+			return true
+		}
+		a.setBeltRunMachineHold(run, []string{run.root})
+		timer := time.NewTimer(taskPressurePoll)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return false
+		case <-timer.C:
+		}
+	}
+}
+
+// preparePendingBeltRun is the only road from a held run to a repository. The
+// admission check has passed before this function calls either folder or copy
+// preparation, which is the lock-ownership seam for held tasks.
+func (a *Agent) preparePendingBeltRun(ctx context.Context, run *beltRun) error {
+	folder, err := a.readyRunFolder(run.row, run.title, filepath.Dir(run.store.Path()), run.stand, run.delegate)
+	if err != nil {
+		return err
+	}
+	tree, ground := taskTree{}, canonicalPath(run.stand.dir)
+	if folder != nil {
+		ground = canonicalPath(folder.Dir)
+		tree = folder.tree()
+	} else {
+		tree, err = beltRunPrepare(ctx, a.config.Place, a.config.Workspace, a.journalID(), run.row, run.title, run.stand)
+		if err != nil {
+			return err
+		}
+	}
+	tree.bashBelt = true
+	a.beltMu.Lock()
+	stopped := run.stopped
+	run.folder, run.tree, run.ground = folder, tree, ground
+	run.workspace, run.pending = tree.dir, false
+	a.beltMu.Unlock()
+	if stopped || ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if g := a.graph(); g != nil {
+		a.publishRunRow(g, TaskNotice{
+			ID: run.row, Title: run.title, State: TaskRunning, StartedAt: run.born,
+			Copy: runCopyOf(tree), Program: programName(run.delegate),
+			PlanTask: planStoreID(run.root), Crew: run.crewDecision(), Model: run.crewWorker(),
+		})
+	}
+	return nil
+}
+
+// settlePendingBeltRun closes the two ways a held run can leave before its
+// engine starts. A person stop uses the same stopped landing as an admitted
+// run; a folder refusal keeps that refusal's words on both the store and row.
+func (a *Agent) settlePendingBeltRun(run *beltRun, err error) {
+	a.beltMu.Lock()
+	stopped, why := run.stopped, run.stopReason
+	run.ending = true
+	a.beltMu.Unlock()
+	defer a.releaseBeltRun(run)
+	if stopped {
+		a.settleStoppedBeltRun(run, why, nil)
+		a.settleTaskCrew(run.row, router.CrewStopped, 0)
+		return
+	}
+	if err == nil {
+		return
+	}
+	reason := strings.TrimSpace(err.Error())
+	_ = run.store.FailRoot(reason)
+	if g := a.graph(); g != nil {
+		a.publishRunRow(g, TaskNotice{
+			ID: run.row, Title: run.title, State: TaskFailed,
+			Report: reason, EndedAt: a.taskClockNow(),
+		})
+	}
+	a.settleTaskCrew(run.row, router.CrewNotKept, 0)
+}
+
+// startPendingBeltRun admits a held run and prepares the repository only after
+// admission. It returns false after settling a stop, close, or preparation
+// refusal, so the driver has one short road for every pending exit.
+func (a *Agent) startPendingBeltRun(ctx context.Context, run *beltRun) (RunSpec, bool) {
+	if !a.waitForBeltAdmission(ctx, run) {
+		a.settlePendingBeltRun(run, nil)
+		return RunSpec{}, false
+	}
+	// The successful admission supersedes the last held reading before the
+	// copy is prepared; otherwise the plan reader would keep drawing the old
+	// `machine busy` reason on a now-running root.
+	a.setBeltRunMachineHold(run, nil)
+	if err := a.preparePendingBeltRun(ctx, run); err != nil {
+		a.settlePendingBeltRun(run, err)
+		return RunSpec{}, false
+	}
+	spec := a.beltRunSpec(run, run.brief)
+	if programName(run.delegate) == "senior-dev" {
+		run.costCeiling, run.timeCeiling = spec.CostUSD, spec.Elapsed.Hours()
+		run.conversationCostLimit = a.railCap(0) > 0 && runCostLeft(a.railCap(0), a.Usage().CostUSD) <= delegate.DefaultSeniorDevCostUSD
+		run.conversationTimeLimit = a.seniorDevConversationTimeLimit()
+	}
+	return spec, true
+}
+
 // driveBeltRun runs one run to its outcome and writes the ending back where the
 // conversation reads it: the store's root carries the outcome and the landing,
 // the person's conversation is told with the same note a landed task sends, and
 // the row the run was published under settles. The store is closed and the run
 // cleared once the work is home, so the next `/task` seeds a fresh plan.
 func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun, spec RunSpec) {
+	if run.pending {
+		var ok bool
+		spec, ok = a.startPendingBeltRun(ctx, run)
+		if !ok {
+			return
+		}
+	}
 	// THE RUN'S MONEY REACHES THE CONVERSATION'S BOOKS THROUGH ONE FOLD
 	// (task_run_money.go): each call whole as a program's model API meters it,
 	// and whatever the run's running total holds beyond those — a bash
@@ -1602,7 +1800,7 @@ func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun
 		// A RUN A PERSON STOPPED IS NOT LANDED. Its work is kept where the stop's
 		// own sentence said it would be, and the ending is the stop's (stoprun.go).
 		a.settleStoppedBeltRun(run, why, summary.Cut)
-		a.settleTaskCrew(run.row, router.CrewNotKept, summary.USD)
+		a.settleTaskCrew(run.row, router.CrewStopped, summary.USD)
 		return
 	}
 	if closing && run.delegate == nil && summary.Outcome != beltRunOutcomeDone {
