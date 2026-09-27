@@ -583,6 +583,10 @@ func (s *Store) Done(id, agent, result string, artifacts, evidence []string) (*T
 		if err := refuseParked(task); err != nil {
 			return err
 		}
+		placeholder := task.Status == StatusDone && strings.TrimSpace(task.Result) == "" && task.ClaimedBy == ""
+		if !placeholder && terminal(task.Status) {
+			return fmt.Errorf("task %q is already terminal (%s)", id, task.Status)
+		}
 		text := strings.TrimSpace(result)
 		// A REVIEW CONCLUSION CARRIES ITS BASIS WITH IT, written by the same
 		// gate that judged it: a holds conclusion is refused unless every
@@ -609,11 +613,7 @@ func (s *Store) Done(id, agent, result string, artifacts, evidence []string) (*T
 		// landing is what the placeholder was waiting for, and the caller that
 		// fills it adopts the task as its own. Any task with words in it — a
 		// worker's own done, a real ending — keeps its words and its owner.
-		placeholder := task.Status == StatusDone && strings.TrimSpace(task.Result) == "" && task.ClaimedBy == ""
 		if !placeholder {
-			if terminal(task.Status) {
-				return fmt.Errorf("task %q is already terminal (%s)", id, task.Status)
-			}
 			// THE ROOT IS NEVER CLAIMED, so its worker cannot answer the ownership
 			// check every other task's worker does. The root's own worker is named
 			// instead, above, and the finish law still holds: the root cannot close
