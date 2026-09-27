@@ -389,30 +389,48 @@ func (a *Agent) askConnect(ctx context.Context, service connectStatus) (connectA
 		name:     strings.TrimSpace(service.Name),
 		secret:   service.keyed(),
 	}
-	if a.connectAsks == nil {
-		a.connectAsks = make(map[string]connectAsk, 1)
-	}
-	a.connectAsks[id] = ask
-	// The turn's hub, read under the same lock that registers the wait: a tool
-	// runs inside a turn, and the turn's fan-out is where its question is seen.
+	// The turn's hub, read under the same lock that mints the id: a tool runs
+	// inside a turn, and the turn's fan-out is where its question is seen.
 	hub := a.hub
 	watched := a.config.AskConsent && hub != nil
 	a.mu.Unlock()
 
 	if !watched {
-		a.forgetConnect(id)
+		// Nothing is registered. A lane with nobody watching is not a question,
+		// and a map entry that exists only to be deleted is a moment where a
+		// reader could see the wait with no sentence.
 		return connectAnswer{}, errNobodyWatching
 	}
 
-	// THE OFFER IS RAISED THROUGH THE ONE DOOR AND BANKED AT THE DESK, with the
-	// lane's own event as its announcement (taskpresence.go's
-	// [Agent.presenceAskingWhole], which is [Agent.raiseQuestion] plus the row
-	// that says what the question is). Before that this lane
-	// spoke only to the window holding the turn: the question existed on the
-	// questions lane solely as something [Agent.OpenQuestions] derived at
-	// subscription time, so a second window learned of it by replay and was
-	// never told it had been answered or withdrawn.
-	letGo := a.presenceAskingWhole(a.connectQuestion(id, ask), func() {
+	// THE SENTENCE LANDS BEFORE THE LANE IS VISIBLE. waitingOnPerson reads the
+	// lane under a.mu and the sentence under the desk's own lock, one after the
+	// other. Putting the ask on connectAsks and only then banking the row let a
+	// reader report that a person is needed with an empty reason: the lane was
+	// already true and the desk did not have the line yet. The row is banked
+	// while a.mu is still held, and the map is filled before that lock is
+	// released, so the unlock is the first moment either half can be seen.
+	//
+	// THE OFFER IS STILL RAISED THROUGH THE ONE DOOR, with the lane's own event
+	// as its announcement (question.go's [Agent.raiseQuestion]). The desk row
+	// is [Agent.presenceAskingQuestion], the same half [Agent.presenceAskingWhole]
+	// banks, taken first so it can share this lock. Before that this lane spoke
+	// only to the window holding the turn: the question existed on the questions
+	// lane solely as something [Agent.OpenQuestions] derived at subscription
+	// time, so a second window learned of it by replay and was never told it
+	// had been answered or withdrawn.
+	q := a.connectQuestion(id, ask)
+	a.mu.Lock()
+	if a.closed {
+		a.mu.Unlock()
+		return connectAnswer{}, errAgentClosed
+	}
+	forgetDesk := a.presenceAskingQuestion(q)
+	if a.connectAsks == nil {
+		a.connectAsks = make(map[string]connectAsk, 1)
+	}
+	a.connectAsks[id] = ask
+	a.mu.Unlock()
+	letGo := a.raiseQuestion(q, func() {
 		hub.send(Event{
 			Kind:        EventConnectAsk,
 			ConnectID:   id,
@@ -421,7 +439,10 @@ func (a *Agent) askConnect(ctx context.Context, service connectStatus) (connectA
 			NeedsKey:    ask.needsKey,
 		})
 	})
-	defer letGo()
+	defer func() {
+		forgetDesk()
+		letGo()
+	}()
 
 	timer := time.NewTimer(connectAskTimeout)
 	defer timer.Stop()

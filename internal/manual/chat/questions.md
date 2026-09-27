@@ -1290,7 +1290,9 @@ and `2 not now`. A service connected by a KEY has no `1`: a bare yes to one of
 those connects nothing, so the question asks for the key in the message box under
 it, masked to a bullet a character with the count beside it, and `enter` sends it.
 The one answer it keeps is `2 not now`, because a question the turn is waiting on
-with no visible no is a question nobody can end.
+with no visible no is a question nobody can end. The waiting mark and the
+sentence arrive as one fact: the moment a sign-in needs you, the line is already
+`connect your <Name> account?`, on this page, on home and on the tab.
 
 **So does the harness lane's pair.** An offer to run a saved program is one line —
 `run harness "research"?` with `1 run it` and `2 not now`. A finished harness
