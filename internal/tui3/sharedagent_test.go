@@ -309,6 +309,24 @@ func TestSharedChatRoundTripRestoresEachDraftAndCaret(t *testing.T) {
 	}
 }
 
+// A SHARED ENGINE'S WALL SHOWS ONLY ITS CURRENT CONVERSATION. Swapping the
+// single remote handle ends the old conversation; keeping its navigation name
+// must not make that ended conversation look open in this window.
+func TestSharedEngineWallDoesNotKeepTheSwappedConversationOpen(t *testing.T) {
+	a, _, _ := sharedSurface(t)
+	a.width, a.height = 160, 40
+	_ = a.tabsRow(a.width)
+	cmd, refusal := a.openBeside("/srv/app", "/srv/app/b.jsonl")
+	if refusal != "" {
+		t.Fatal(refusal)
+	}
+	drain(t, a, cmd)
+	tiles := a.wallTiles(a.now())
+	if len(tiles) != 1 || tiles[0].tab.key != "/srv/app/b.jsonl" {
+		t.Fatalf("shared wall has %d tiles: %+v", len(tiles), tiles)
+	}
+}
+
 // C5: a shared handle cannot keep the old turn alive, so its waiting messages
 // return to the composer. The fallback keeps every attachment too, with the
 // draft's tray first and each waiting message following in queue order.
