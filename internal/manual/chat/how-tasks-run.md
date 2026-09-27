@@ -2557,7 +2557,9 @@ Either one set to 0 turns that check off. With both at 0 there is no machine gat
 Readings are cached for **1 second**. A held node on the older task road is
 re-asked every **5 seconds**; the run engine checks again on each supervisor
 pass, every **300 milliseconds**, so a quiet machine starts held work without
-another request. `codeaf do` uses the same governor from its profile.
+another request. Changing `task.max_load` or `task.min_free_mb` in `/settings` is
+picked up on the next admission poll, including when the chat and engine are separate
+processes, so held work is re-evaluated without restarting the engine. `codeaf do` uses the same governor from its profile.
 
 **How many start at once when a lot of work is handed out together.** A task that has just
 started is invisible to the memory reading — its own memory arrives with its first build,
@@ -2666,6 +2668,12 @@ When a session comes back:
   it again instead (*What a quick task cannot do*);
 - then the queue is turned again: a queued task whose prerequisites are still done starts
   now.
+
+A held plan task that never started comes back `interrupted`, not `working` or `done`.
+Its store row may still say `running`, but the recovered run row records that nothing
+was driving it; the room and rail use `interrupted` and keep the task's recorded steps.
+Rows recovered as `failed` read `incomplete`. Both belong under `Incomplete` on the
+rail, never under `Done`.
 
 You see one line about it, as context for your first turn rather than as a reason to start
 one:
