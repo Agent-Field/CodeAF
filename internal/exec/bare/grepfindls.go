@@ -301,6 +301,7 @@ func grepRender(caps Caps, matches []grepMatch, matchCount int, matchLimitReache
 
 	var outputLines []string
 	renderedBytes := 0
+	contextIncomplete := false
 	for _, m := range matches {
 		if renderedBytes > caps.resolve().MaxBytes {
 			break
@@ -319,7 +320,8 @@ func grepRender(caps Caps, matches []grepMatch, matchCount int, matchLimitReache
 			outputLines = append(outputLines, fmt.Sprintf("%s:%d: %s", relativePath, m.lineNumber, truncatedText))
 		} else {
 			// Context mode: read the file and format a block.
-			block := grepFormatBlock(m.filePath, m.lineNumber, contextValue, searchPath, isDirectory)
+			block, incomplete := grepFormatBlock(m, contextValue, searchPath, isDirectory)
+			contextIncomplete = contextIncomplete || incomplete
 			outputLines = append(outputLines, block...)
 		}
 		for _, line := range outputLines[before:] {
@@ -332,6 +334,9 @@ func grepRender(caps Caps, matches []grepMatch, matchCount int, matchLimitReache
 	output := truncation.content
 
 	var notices []string
+	if contextIncomplete {
+		notices = append(notices, "Context incomplete: bounded or unavailable lines were skipped; original matches are preserved")
+	}
 	if matchLimitReached {
 		if effectiveLimit >= grepMatchCeiling {
 			notices = append(notices, fmt.Sprintf("%d matches limit reached. Refine the pattern or search a narrower path", effectiveLimit))
@@ -556,22 +561,26 @@ func grepFormatPath(filePath, searchPath string, isDirectory bool) string {
 
 // grepFormatBlock reads a file and formats a context block around a match
 // line, mirroring pi's formatBlock.
-func grepFormatBlock(filePath string, lineNumber, contextValue int, searchPath string, isDirectory bool) []string {
-	relativePath := grepFormatPath(filePath, searchPath, isDirectory)
+func grepFormatBlock(m grepMatch, contextValue int, searchPath string, isDirectory bool) ([]string, bool) {
+	relativePath := grepFormatPath(m.filePath, searchPath, isDirectory)
 	contextValue = min(max(contextValue, 0), grepContextCeiling)
-	start, end := max(1, lineNumber-contextValue), lineNumber+contextValue
-	var block []string
+	start, end := max(1, m.lineNumber-contextValue), m.lineNumber+contextValue
+	var before, after []string
+	seenMatch := false
 	stop := errors.New("context complete")
-	_, err := scanGrepFile(context.Background(), filePath, func(current int, line string) error {
+	limited, err := scanGrepFile(context.Background(), m.filePath, func(current int, line string) error {
 		if current > end {
 			return stop
 		}
-		if current >= start {
+		if current == m.lineNumber {
+			seenMatch = true
+		} else if current >= start {
 			text, _ := truncateLine(strings.TrimRight(strings.ReplaceAll(line, "\r", ""), "\n"))
-			if current == lineNumber {
-				block = append(block, fmt.Sprintf("%s:%d: %s", relativePath, current, text))
+			formatted := fmt.Sprintf("%s-%d- %s", relativePath, current, text)
+			if current < m.lineNumber {
+				before = append(before, formatted)
 			} else {
-				block = append(block, fmt.Sprintf("%s-%d- %s", relativePath, current, text))
+				after = append(after, formatted)
 			}
 		}
 		if current >= end {
@@ -579,10 +588,12 @@ func grepFormatBlock(filePath string, lineNumber, contextValue int, searchPath s
 		}
 		return nil
 	})
-	if err != nil && err != stop {
-		return []string{fmt.Sprintf("%s:%d: (unable to read bounded context)", relativePath, lineNumber)}
-	}
-	return block
+	// Context is a second, bounded read. Preserve the engine's original match
+	// even if that line is too long for this reader or the file has changed.
+	text, _ := truncateLine(strings.TrimRight(strings.ReplaceAll(m.lineText, "\r", ""), "\n"))
+	block := append(before, fmt.Sprintf("%s:%d: %s", relativePath, m.lineNumber, text))
+	block = append(block, after...)
+	return block, limited || !seenMatch || (err != nil && err != stop)
 }
 
 // truncateHeadNoLineLimit applies truncateHead with effectively no line limit

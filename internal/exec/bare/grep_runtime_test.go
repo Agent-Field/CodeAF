@@ -289,3 +289,33 @@ func TestRecursiveSearchSkipsOversizedFiles(t *testing.T) {
 		})
 	}
 }
+
+func TestGrepOversizedLineWithContextBothEngines(t *testing.T) {
+	for _, engine := range []string{"walk", "rg"} {
+		t.Run(engine, func(t *testing.T) {
+			root := t.TempDir()
+			t.Setenv(home.EnvVar, filepath.Join(root, "state"))
+			runtimeSearchWrite(t, filepath.Join(root, "long.txt"), "before\nneedle-long"+strings.Repeat("x", 80<<10)+"\nneedle-short\nafter\n")
+			tool := runtimeSearchTool(t, engine, root)
+			args, _ := json.Marshal(map[string]any{"pattern": "needle", "path": root, "context": 1})
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			text, bad, err := tool.Execute(ctx, args)
+			if err != nil || bad || !strings.Contains(text, "long.txt:3: needle-short") || !strings.Contains(text, "long.txt-4- after") || !strings.Contains(text, "Context incomplete") {
+				t.Fatalf("bounded context lost its match or notice: %q %v %v", text, bad, err)
+			}
+			if engine == "rg" && (!strings.Contains(text, "long.txt:2: needle-long") || !strings.Contains(text, "long.txt-1- before")) {
+				t.Fatalf("native long-line match disappeared during context rendering: %q", text)
+			}
+		})
+	}
+}
+
+func TestGrepContextPreservesMatchAfterFileDisappears(t *testing.T) {
+	root := t.TempDir()
+	match := grepMatch{filePath: filepath.Join(root, "gone.txt"), lineNumber: 2, lineText: "needle"}
+	text, bad, err := grepRender(DefaultCaps(), []grepMatch{match}, 1, false, false, 1, root, true, 100)
+	if err != nil || bad || !strings.Contains(text, "gone.txt:2: needle") || !strings.Contains(text, "Context incomplete") {
+		t.Fatalf("unavailable context erased original match: %q %v %v", text, bad, err)
+	}
+}
