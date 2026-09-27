@@ -41,11 +41,11 @@ func TestANoChangeReplyLeavesThePriorAnswerAsTheFoldsAnswer(t *testing.T) {
 		t.Fatalf("the last words left standing are not the table: %+v", f.entries)
 	}
 	folds := deriveWorkfolds(f.entries, 0)
-	if len(folds) != 1 {
-		t.Fatalf("the carried-on turn derived %d folds, want 1", len(folds))
+	if len(folds) != 2 {
+		t.Fatalf("want work and housekeeping spans, got %d", len(folds))
 	}
 	for _, fold := range folds {
-		if fold.answer != answer {
+		if !housekeepingFold(f.entries, fold) && fold.answer != answer {
 			t.Fatalf("the fold answers with block %d, want the table at %d", fold.answer, answer)
 		}
 	}

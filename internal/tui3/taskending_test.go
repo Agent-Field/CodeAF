@@ -53,10 +53,14 @@ func TestAHaltedNodeSaysWhyAndIsNotCalledStopped(t *testing.T) {
 		// reason and a source-control fact in one phrase; the head carries the word
 		// and the branch and the row under it carries why
 		// (docs/design/task-states/DESIGN.md).
+		if compact := taskText(a); !strings.Contains(compact, " · "+taskBranchKept+" · task/parser") {
+			t.Fatalf("compact receipt lost its kept branch: %s", compact)
+		}
+		a.toggleDoneAt(a.doneEntryFor(7))
 		text := taskText(a)
 		for _, want := range []string{
 			" · " + taskIncompleteState + " · ",
-			" · " + taskBranchKept + " · task/parser",
+			"branch · task/parser",
 			tc.word,
 		} {
 			if !strings.Contains(text, want) {
@@ -188,9 +192,13 @@ func TestAWorkerThatWouldNotWriteItsNotesSaysSoOnTheRailAndInTheRoom(t *testing.
 	// THE CARD SAYS THE SAME THING ON TWO ROWS, which is its own law: the word and
 	// the branch on the head, the reason under it, and nothing fused
 	// (docs/design/task-states/DESIGN.md).
+	if compact := taskText(a); !strings.Contains(compact, taskBranchKept) {
+		t.Fatalf("compact receipt lost its kept branch: %s", compact)
+	}
+	a.toggleDoneAt(a.doneEntryFor(7))
 	card := taskText(a)
 	for _, want := range []string{
-		" · " + taskIncompleteState + " · ", "would not write its notes down", taskBranchKept,
+		" · " + taskIncompleteState + " · ", "would not write its notes down", "branch · task/parser",
 	} {
 		if !strings.Contains(card, want) {
 			t.Fatalf("the card is missing %q:\n%s", want, card)

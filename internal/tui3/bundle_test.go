@@ -1478,6 +1478,8 @@ func TestTheCompactionRowRunsAndThenSettlesInPlace(t *testing.T) {
 	base := time.Now()
 	a.clock = func() time.Time { return base }
 	typeLine(t, a, "keep going")
+	a.setWorkOpen(a.conversation(), a.turn, true)
+	a.touch()
 
 	// THE ROW IS ALIVE: the hint, the braille spinner, and — six seconds in — the
 	// clock, which climbs on the frame the spinner already turns on.
@@ -4467,6 +4469,7 @@ func TestTheRoomsLiveLaneAppendsAndCoalesces(t *testing.T) {
 	lane <- session.Event{Kind: session.EventToolEnd, Tool: "read", Args: `{"path":"etc/load.go"}`}
 	clickRail(t, a, 0)
 
+	revealTestWork(a)
 	page := roomText(a)
 	if !strings.Contains(page, "Looking at the loader") {
 		t.Fatalf("the deltas did not coalesce into one block:\n%s", page)

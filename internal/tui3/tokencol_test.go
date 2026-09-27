@@ -753,7 +753,7 @@ func TestTheLinearTierDrawsNoReceipt(t *testing.T) {
 // showed.
 func TestASplitTurnCarriesTheColumnOnItsFrontierAlone(t *testing.T) {
 	a := tokenColApp(t)
-	a.entries[3].status = toolFailed
+	a.entries = append(a.entries[:4:4], append([]entry{{kind: entrySteer, turn: 1, steer: &steerElbow{words: "Check the caller first", consumed: true}}}, a.entries[4:]...)...)
 	a.touch()
 	d := a.conversation()
 	stampHierarchy(d.entries, a.deckFolds(d))

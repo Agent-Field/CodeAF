@@ -54,6 +54,9 @@ func toolApp(t *testing.T, profile tokens.Profile, batches ...[]session.Event) *
 // disclosure remains unchanged.
 func revealTestWork(a *app) {
 	d := a.bodyDeck()
+	if key, ok := a.liveWorkOf(d); ok {
+		a.setWorkOpen(d, key, true)
+	}
 	folds := a.deckFolds(d)
 	for _, fold := range folds {
 		a.setWorkOpen(d, fold.key, true)
@@ -277,6 +280,7 @@ func TestTheDiffExpansionIsCappedAndTheCapLifts(t *testing.T) {
 			call = i
 		}
 	}
+	revealTestWork(a)
 	a.openTool(call)
 
 	body := strings.Join(plainRows(a), "\n")
@@ -534,6 +538,8 @@ func TestARunningCallSpinsAndSaysNothingElse(t *testing.T) {
 // way round, and never a dimmed target.
 func TestTheTargetIsInkAndTheNameIsMuted(t *testing.T) {
 	a := toolApp(t, tokens.TrueColor, call("read", `{"path":"internal/session/loop.go"}`, "one\ntwo"))
+
+	revealTestWork(a)
 
 	var line string
 	for _, r := range rows(a) {

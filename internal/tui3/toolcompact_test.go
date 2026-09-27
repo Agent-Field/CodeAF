@@ -44,6 +44,7 @@ func toolAppAt(t *testing.T, width int, batches ...[]session.Event) *app {
 // toolRowAt is the first tool row on a frame, plain.
 func toolRowAt(t *testing.T, a *app) string {
 	t.Helper()
+	revealTestWork(a)
 	for _, r := range plainRows(a) {
 		r = strings.TrimLeft(r, " ")
 		if strings.HasPrefix(r, railMid) || strings.HasPrefix(r, railLast) ||

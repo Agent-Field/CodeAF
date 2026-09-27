@@ -743,6 +743,9 @@ func TestCleanChatInterimReplyKeepsOneActivityWindowWhileWaiting(t *testing.T) {
 				}
 			}
 			page := livePage(a)
+			if harness != "" && !strings.Contains(page, harness) {
+				t.Fatalf("compact work lost named harness progress:\n%s", page)
+			}
 			// One user line, one delivered reply, and the existing three work lines.
 			if nonblank != 5 || activity != 1 || !strings.Contains(page, reply.text) {
 				t.Fatalf("addressed=%t harness=%q: %d nonblank rows, %d animated rows:\n%s", addressed, harness, nonblank, activity, page)

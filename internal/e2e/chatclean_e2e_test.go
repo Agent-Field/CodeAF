@@ -206,12 +206,15 @@ func TestCleanChatFailureRecovery(t *testing.T) {
 			cleanChatCapture(t, r, "07-failure-recovery-active")
 			captured = true
 		}
-		if strings.Contains(screen, keyedWord("2", "tool calls")) && strings.Contains(screen, "idle") {
+		if cleanChatHasAnswer(screen, "Recovery check passed") && strings.Contains(screen, "idle") {
 			break
 		}
 		time.Sleep(pollEvery)
 	}
-	screen := r.waitFor(2*time.Second, keyedWord("2", "tool calls"), "idle")
+	screen := r.capture()
+	if !cleanChatHasAnswer(screen, "Recovery check passed") || !strings.Contains(screen, "idle") {
+		t.Fatalf("recovery did not finish with a visible answer:\n%s", screen)
+	}
 	if strings.Contains(screen, "CLEAN_FAILURE_TRACE_7319") {
 		t.Fatalf("failed-call detail leaked after recovery:\n%s", screen)
 	}
@@ -222,18 +225,39 @@ func TestCleanChatFailureRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	failed := false
+	failed, recovered := false, false
+	failedID, recoveryID := "", ""
 	for _, p := range journals {
 		raw, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(string(raw), "CLEAN_FAILURE_TRACE_7319") {
-			failed = true
+		for _, line := range strings.Split(string(raw), "\n") {
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			var row struct {
+				Type       string `json:"type"`
+				Role       string `json:"role"`
+				Content    string `json:"content"`
+				ToolCallID string `json:"toolCallId"`
+			}
+			if err := json.Unmarshal([]byte(line), &row); err != nil {
+				t.Fatal(err)
+			}
+			if row.Type != "message" || row.Role != "tool" {
+				continue
+			}
+			if strings.Contains(row.Content, "CLEAN_FAILURE_TRACE_7319") && strings.Contains(row.Content, "Command exited with code 7") {
+				failed, failedID = true, row.ToolCallID
+			}
+			if strings.TrimSpace(row.Content) == "recovered" {
+				recovered, recoveryID = true, row.ToolCallID
+			}
 		}
 	}
-	if !failed {
-		t.Fatal("live model never produced the required failed-call output")
+	if !failed || !recovered || failedID == "" || recoveryID == "" || failedID == recoveryID {
+		t.Fatalf("expected distinct failed and recovered tool results: failed=%v recovered=%v distinct=%v", failed, recovered, failedID != recoveryID)
 	}
 	r.quit()
 	cleanChatAuditModels(t, home, model, "recovery")

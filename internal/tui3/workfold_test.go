@@ -152,14 +152,14 @@ func TestOneTurnCountsItsToolCallsInOneWord(t *testing.T) {
 	a.timestamps = timestampsFooters
 	a.touch()
 
-	// The frame carries both readings of the same number: the fold chip over the
-	// turn, and the receipt under it.
+	// The compact frame carries the count once; the expanded receipt uses the
+	// same wording without duplicating telemetry in the closed view.
 	frame := strings.Join(plainRows(a), "\n")
 	if strings.Contains(frame, "2 tools") {
 		t.Fatalf("the turn still counts its calls two ways:\n%s", frame)
 	}
-	if want, got := "2 tool calls", strings.Count(frame, "2 tool calls"); got != 2 {
-		t.Fatalf("the chip and the receipt say %q %d times, want twice — one word for one number:\n%s",
+	if want, got := "2 tool calls", strings.Count(frame, "2 tool calls"); got != 1 {
+		t.Fatalf("the compact view says %q %d times, want once:\n%s",
 			want, got, frame)
 	}
 	if receipt := plain(a.stampRow(1, 80)); !strings.Contains(receipt, "2 tool calls") {

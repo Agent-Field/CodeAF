@@ -1803,6 +1803,7 @@ type app struct {
 	// is replaced in place: the run's report carries the whole trail, and a step
 	// left in the transcript would be that trail written twice.
 	harnessStep string
+	harnessName string
 	// designLane is the standing subscription to what the harness DESIGNER is
 	// doing (harness.go's design lane) and designGen the generation it belongs
 	// to. It is a lane of its own rather than the turn's stream because a design

@@ -371,6 +371,18 @@ func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
 	if room < 1 {
 		room = 1
 	}
+	// Subharness progress is the newest step of this same activity window.
+	// Keep its name and result visible without spending a fourth footer row.
+	harnessAt := -1
+	if w.last && d.lens.clock && a.state == stateWorking && a.harnessStep != "" {
+		text := a.harnessStep
+		if a.harnessName != "" {
+			text = "harness · " + a.harnessName + " · " + text
+		}
+		harnessAt = len(w.steps)
+		w.steps = append(append([]caption(nil), w.steps...), caption{text: text})
+		w.pending = false
+	}
 	// Hidden reasoning needs a visible door even before the first caption.
 	// It uses the same width budget, including on the smallest terminal.
 	if len(w.steps) == 0 {
@@ -418,7 +430,11 @@ func (a *app) liveStepBlock(w liveWork, width int, d deck) []row {
 	used := 0
 
 	for at := len(w.steps) - 1; at >= 0; at-- {
-		lines := wrap(captionText(w.steps[at]), room)
+		text := captionText(w.steps[at])
+		if at == harnessAt {
+			text = w.steps[at].text
+		}
+		lines := wrap(text, room)
 		if len(lines) == 0 {
 			continue
 		}

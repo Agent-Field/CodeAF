@@ -562,6 +562,8 @@ func screenRowOf(t *testing.T, a *app, want func(row) bool) int {
 // because a click on it does not.
 func TestHoverAnswersOnInteractiveRowsAndNowhereElse(t *testing.T) {
 	a := toolApp(t, tokens.ANSI256, call("read", `{"path":"a.go"}`, "one\ntwo"))
+	revealTestWork(a)
+
 	background := "\x1b[48;5;" + itoa(int(hueCursor.idx)) + "m"
 
 	toolY := screenRowOf(t, a, func(r row) bool { return r.hit == hitTool })
