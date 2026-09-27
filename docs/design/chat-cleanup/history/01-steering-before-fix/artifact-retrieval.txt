@@ -1,1 +1,0 @@
-Harness retrieved the task-produced REVIEW.md by symlink from the kept task branch into the main working directory for the follow-up handoff. This is a harness action, not a model tool call. Original path: /tmp/codeaf-sustained-1607/private-home/v3/projects/-tmp-codeaf-sustained-1607-expense-project/47c0330b3e1ab4b6/trees/1/REVIEW.md

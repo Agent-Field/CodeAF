@@ -8,5 +8,5 @@ invalidates:
 ---
 
 Every page's head pays one extra row for the air row; the welcome screen's
-budget and the tui3 tests were adjusted with it. Visual proof lives at
-`docs/design/spark-header-spacing.png` (live Spark tmux capture).
+budget and the tui3 tests were adjusted with it. Review evidence belongs in
+[the combined pull request](https://github.com/Agent-Field/CodeAF/pull/1627).

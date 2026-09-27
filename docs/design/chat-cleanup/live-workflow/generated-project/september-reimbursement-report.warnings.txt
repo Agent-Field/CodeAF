@@ -1,3 +1,0 @@
-september-reimbursements.csv:6: skipping invalid amount 'NaN'
-september-reimbursements.csv:7: skipping invalid amount 'Infinity'
-september-reimbursements.csv:8: skipping invalid amount 'typo'
