@@ -167,6 +167,42 @@ func (a *Agent) cancelTask(id uint64, why string) (string, error) {
 // slot back by hand ([TaskGraph.handBackSlotLocked]).
 func (g *TaskGraph) stop(id uint64) (string, error) { return g.stopFor(id, "") }
 
+// retireUnstarted removes a hand-off that never acquired a worker. It is not a
+// stop: the read sweep is an internal optimization, so a queued helper that
+// falls back to the conversation must leave no person-visible history behind.
+// The graph lock makes removal race-free with the frontier; a claimed node is
+// left alone because its runner already owns the transition to settlement.
+func (g *TaskGraph) retireUnstarted(id uint64) bool {
+	if g == nil {
+		return false
+	}
+	g.mu.Lock()
+	node := g.nodes[id]
+	if node == nil || node.state != TaskQueued || node.claimed {
+		g.mu.Unlock()
+		return false
+	}
+	delete(g.nodes, id)
+	for index, ordered := range g.order {
+		if ordered != id {
+			continue
+		}
+		copy(g.order[index:], g.order[index+1:])
+		g.order = g.order[:len(g.order)-1]
+		break
+	}
+	g.releaseChildLocked(node.parent)
+	cut := node.cancel
+	close(node.done)
+	g.mu.Unlock()
+	if cut != nil {
+		cut()
+	}
+	g.checkpoint()
+	g.planPulse()
+	return true
+}
+
 // stopFor is [TaskGraph.stop] with the reason whoever pulled it gave, and it is
 // where that reason is written down: onto the node, so the landing this stop
 // causes carries it, and into the line, so the hand that pulled it reads back

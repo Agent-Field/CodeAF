@@ -576,17 +576,18 @@ type taskRecord struct {
 	Assignment *assignmentRecord `json:"assignment,omitempty"`
 }
 
-// quickRecord is a quick node's body on disk: the four fields of
+// quickRecord is a quick node's body on disk: the five fields of
 // [quickTaskSpec] that are facts about the work. `waits` is not among them — it
 // is a receipt for the moment of admission, and the edge it produced is already
 // on [taskRecord.DependsOn].
 //
 // Done is parallel to Items, one tick per item, exactly as it is in memory.
 type quickRecord struct {
-	Line  string   `json:"line"`
-	Items []string `json:"items,omitempty"`
-	Done  []bool   `json:"done,omitempty"`
-	Files []string `json:"files,omitempty"`
+	Line     string   `json:"line"`
+	Items    []string `json:"items,omitempty"`
+	Done     []bool   `json:"done,omitempty"`
+	Files    []string `json:"files,omitempty"`
+	ReadOnly bool     `json:"read_only,omitempty"`
 }
 
 // quickRecordLocked copies a quick body out, with the graph held — the lock the
@@ -597,10 +598,11 @@ func quickRecordLocked(spec *quickTaskSpec) *quickRecord {
 		return nil
 	}
 	return &quickRecord{
-		Line:  spec.line,
-		Items: append([]string(nil), spec.items...),
-		Done:  append([]bool(nil), spec.done...),
-		Files: append([]string(nil), spec.files...),
+		Line:     spec.line,
+		Items:    append([]string(nil), spec.items...),
+		Done:     append([]bool(nil), spec.done...),
+		Files:    append([]string(nil), spec.files...),
+		ReadOnly: spec.readOnly,
 	}
 }
 
@@ -617,6 +619,7 @@ func (r *quickRecord) body() *quickTaskSpec {
 	for index := range spec.done {
 		spec.done[index] = index < len(r.Done) && r.Done[index]
 	}
+	spec.readOnly = r.ReadOnly
 	return spec
 }
 
