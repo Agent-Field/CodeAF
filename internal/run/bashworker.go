@@ -121,6 +121,10 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 		inTok      int
 		outTok     int
 	)
+	defer func() {
+		rep.TokensIn = inTok
+		rep.TokensOut = outTok
+	}()
 	if len(past) > 0 {
 		stepNumber = past[len(past)-1].Step
 	}

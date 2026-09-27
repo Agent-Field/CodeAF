@@ -132,9 +132,11 @@ type Supervisor struct {
 	// and drain is its only reader: every road out of Run waits on it before
 	// answering, so the store, the working copy and the process are the
 	// caller's alone the moment the run is over.
-	workers  sync.WaitGroup
-	inFlight int
-	spent    float64
+	workers   sync.WaitGroup
+	inFlight  int
+	spent     float64
+	tokensIn  int
+	tokensOut int
 	// onSpend receives the reconciled cumulative run spend whenever it rises.
 	// It observes the same account Summary.USD reads, so live readings and the
 	// final receipt can be folded by a caller without counting a dollar twice.
@@ -765,6 +767,8 @@ func (s *Supervisor) settleSpend(ret workerReturn) {
 	if counted := s.counted[ret.task.ID]; ret.report.USD > counted {
 		s.spent += ret.report.USD - counted
 	}
+	s.tokensIn += ret.report.TokensIn
+	s.tokensOut += ret.report.TokensOut
 	s.forgetLive(ret.task.ID)
 	// A RETURN THAT REACHES THE LIMIT ENDS ITS PEERS, the same as a live reading
 	// that reaches it ([reachCostLimit] says why this is one place and not two).
@@ -1769,8 +1773,8 @@ type Spec struct {
 // Summary is what a run came to, in the figures a headless caller prints
 // beside its exit code: the outcome word off the same ladder the envelope
 // speaks, the root's result where a deliverable goes, the run's size — every
-// worker launched, every step its workers reported — what they cost, and the
-// wall the run took.
+// worker launched, every step its workers reported — what they cost and used,
+// and the wall the run took.
 type Summary struct {
 	Outcome Outcome
 	// Result is the root's own result: what the run's last worker reported
@@ -1794,11 +1798,13 @@ type Summary struct {
 	// not here. This is the fact a surface draws those rows with, so a row the
 	// person's bound took down is never read as a fault; it is carried typed
 	// and never parsed out of a stored error sentence.
-	Cut     []string
-	Nodes   int
-	Steps   int
-	USD     float64
-	Seconds float64
+	Cut       []string
+	Nodes     int
+	Steps     int
+	USD       float64
+	TokensIn  int
+	TokensOut int
+	Seconds   float64
 }
 
 // endRootOn writes the run's own ending on its root task when the run ended on
@@ -1894,15 +1900,17 @@ func Start(ctx context.Context, spec Spec) (Outcome, Summary) {
 		result = root.Result
 	}
 	return outcome, Summary{
-		Outcome: outcome,
-		Result:  result,
-		Limit:   supervisor.limitHit,
-		Program: supervisor.rootProgram,
-		Verdict: supervisor.rootVerdict,
-		Cut:     supervisor.cutIDs(),
-		Nodes:   supervisor.nodes,
-		Steps:   supervisor.steps,
-		USD:     supervisor.spent,
-		Seconds: time.Since(started).Seconds(),
+		Outcome:   outcome,
+		Result:    result,
+		Limit:     supervisor.limitHit,
+		Program:   supervisor.rootProgram,
+		Verdict:   supervisor.rootVerdict,
+		Cut:       supervisor.cutIDs(),
+		Nodes:     supervisor.nodes,
+		Steps:     supervisor.steps,
+		USD:       supervisor.spent,
+		TokensIn:  supervisor.tokensIn,
+		TokensOut: supervisor.tokensOut,
+		Seconds:   time.Since(started).Seconds(),
 	}
 }

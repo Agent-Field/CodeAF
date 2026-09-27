@@ -49,6 +49,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -309,6 +310,8 @@ type delegateMeter struct {
 	// ledger row; onCharge folds each call into that conversation's books.
 	conversation string
 	onCharge     func(session.RunCharge)
+	tokensIn     atomic.Int64
+	tokensOut    atomic.Int64
 }
 
 // bank books one charge in all four places.
@@ -329,6 +332,8 @@ type delegateMeter struct {
 // the conversation's receipt and the spending page could not place — 94.9% of
 // one day's spend on 2026-09-23 was senior-dev calls filed under nobody.
 func (m *delegateMeter) bank(charge modelapi.Charge) {
+	m.tokensIn.Add(int64(charge.TokensIn))
+	m.tokensOut.Add(int64(charge.TokensOut))
 	if m.onCharge != nil {
 		m.onCharge(session.RunCharge{
 			Model: charge.Model, TokensIn: charge.TokensIn, TokensOut: charge.TokensOut,
@@ -516,7 +521,7 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	// about a present that is over.
 	_ = w.store.ClearLive(task.ID)
 
-	report := Report{Steps: sink.steps, USD: api.Spent()}
+	report := Report{Steps: sink.steps, USD: api.Spent(), TokensIn: int(meter.tokensIn.Load()), TokensOut: int(meter.tokensOut.Load())}
 	if sink.lastErr != nil {
 		end(sink.steps, "the record failed: "+sink.lastErr.Error(), "")
 		return report, sink.lastErr
