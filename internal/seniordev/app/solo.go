@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/seniordev/baked"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/msgmodel"
 	"github.com/Agent-Field/codeaf/internal/seniordev/project"
@@ -406,9 +407,16 @@ func transientTurnError(err error) (turnRetryInfo, bool) {
 			return turnRetryInfo{}, false
 		}
 		providerCode := providerErrorType(failure.responseBody)
-		info := turnRetryInfo{StatusCode: failure.statusCode, ProviderCode: providerCode}
-		if failure.statusCode != nil {
-			switch status := *failure.statusCode; {
+		statusCode := failure.statusCode
+		if statusCode == nil {
+			if status, ok := provider.StatusOf(failure); ok {
+				parsed := uint64(status)
+				statusCode = &parsed
+			}
+		}
+		info := turnRetryInfo{StatusCode: statusCode, ProviderCode: providerCode}
+		if statusCode != nil {
+			switch status := *statusCode; {
 			case status == 408:
 				info.Class = "request-timeout"
 			case status == 409:
