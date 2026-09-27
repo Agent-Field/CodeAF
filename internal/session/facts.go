@@ -91,6 +91,9 @@ type Facts struct {
 	//
 	// Nil is a conversation about nowhere else, which is nearly all of them.
 	Places []PlaceRef `json:"places,omitempty"`
+	// Unlanded is drawn beside the composer, so local-host windows need it in
+	// the pushed facts rather than a round trip on every repaint.
+	Unlanded []StandingChange `json:"unlanded,omitempty"`
 	// Skills is the names a person has put in front of this conversation by
 	// hand, in attachment order ([Agent.AttachedSkills]).
 	//
@@ -158,6 +161,9 @@ func FactsOf(source FactSource) Facts {
 	// they have no answer to.
 	if door, ok := source.(PlaceSource); ok {
 		facts.Places = door.Places()
+	}
+	if door, ok := source.(interface{ UnlandedChanges() []StandingChange }); ok {
+		facts.Unlanded = door.UnlandedChanges()
 	}
 	if door, ok := source.(interface{ NeedsPerson() bool }); ok {
 		facts.NeedsPerson = door.NeedsPerson()
