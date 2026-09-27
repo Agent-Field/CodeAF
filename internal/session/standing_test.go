@@ -2023,4 +2023,19 @@ func TestFirstStandingApprovalPreservesAnotherProfilesTimer(t *testing.T) {
 	if len(store.created) != 1 {
 		t.Fatal("timer refusal must not discard the approved standing item")
 	}
+	if output := toolOutput(t, events, "stand"); !strings.Contains(output, "Background checks are not installed") || !strings.Contains(output, "item was saved") {
+		t.Fatalf("model receipt hid background unavailability: %q", output)
+	}
+	// The first-setup marker suppresses repeated UI notices, not truthful receipts.
+	events = standRatify(t, store, watch, t.TempDir())
+	if output := toolOutput(t, events, "stand"); !strings.Contains(output, "Background checks are not installed") {
+		t.Fatalf("later receipt claimed background execution: %q", output)
+	}
+}
+
+func TestNonWakingRuleDoesNotRequireBackgroundTimer(t *testing.T) {
+	agent := &Agent{config: Config{Standing: &Standing{Watch: &fakeWatch{}}}}
+	if note := agent.standingBackgroundLimitation(standing.Item{When: standing.When{Kind: standing.WhenHold}}); note != "" {
+		t.Fatalf("permission rule was said to need a timer: %q", note)
+	}
 }

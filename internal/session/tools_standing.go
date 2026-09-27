@@ -520,17 +520,33 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 	}
 	created = a.standingFileTheExchange(store, created)
 	a.emitStandingUpdate("stood", created, "")
-	// AND THE FIRST THING THAT EVER STANDS TURNS THE BACKGROUND CHECKS ON. It
-	// is said to the person and not to the model: the line goes on the screen
-	// as its own dim row, and the model's whole reply is still the one sentence
-	// about what now stands ([standingRatifiedLine]).
+	// Implicit setup reports to the surface once. The tool result also carries
+	// current availability: saving an item is not a promise that this home
+	// owns the shared timer, even after the first-setup notice was already sent.
 	a.standingBackgroundOn(store, created)
 	line := fmt.Sprintf("set up %s: %s", created.ID, created.Words)
 	if when := strings.TrimSpace(notice.WhenWords); when != "" {
 		line += "\nit wakes: " + when
 	}
 	line += "\n" + standingRatifiedLine
+	line += a.standingBackgroundLimitation(created)
 	return line, false, nil
+}
+
+// Waking items need a truthful timer status in every approval receipt, not just
+// the first-setup UI notice. A saved permission rule never needs a timer.
+func (a *Agent) standingBackgroundLimitation(item standing.Item) string {
+	if item.When.Kind == standing.WhenHold || a.config.Standing == nil || a.config.Standing.Watch == nil {
+		return ""
+	}
+	status, err := a.config.Standing.Watch.Status()
+	if err != nil {
+		return "\nBackground check status could not be confirmed. Say that the item was saved but do not promise it runs after the window closes."
+	}
+	if !status.Installed {
+		return "\nBackground checks are not installed for this home. Say that the item was saved, but scheduled work needs a codeaf window open for this home; do not promise it runs with the window closed. Do not take another profile's timer or suggest the item failed to save."
+	}
+	return ""
 }
 
 // standingRatifiedLine is what a model is told the instant something stands,
