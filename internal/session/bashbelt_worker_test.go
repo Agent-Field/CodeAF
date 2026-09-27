@@ -116,6 +116,17 @@ func TestBeltWorkerBriefCarriesTheRunsAskToALeaf(t *testing.T) {
 	}
 }
 
+func TestBeltWorkerBriefCarriesStandingOrders(t *testing.T) {
+	store := askStore(t, "finish the release checklist")
+	standing := "Standing orders\n\n- Run the tests before you report done.\n\nIf you cannot honour one of these, say so in your report."
+	doc := BeltWorkerBriefWithStanding(store, store.Task("leaf"), false, false, "", standing)
+	for _, want := range []string{"Standing orders", "Run the tests before you report done.", "If you cannot honour one of these, say so in your report."} {
+		if !strings.Contains(doc, want) {
+			t.Fatalf("the plan-born worker brief is missing %q:\n%s", want, doc)
+		}
+	}
+}
+
 // TestBeltWorkerBriefLeavesTheRootsOwnDocumentAlone is the emptiness law: the
 // root's work order IS the ask, so its document gains no section and prints
 // its own words exactly once — under THE WORK it was composed into.

@@ -85,6 +85,9 @@ the Codex CLI does; OpenAI's terms for a ChatGPT plan apply to what runs on it. 
 service reads the model list belonging to that account, and a new connection moves this
 conversation to `codex/gpt-5.5`. Every model from it is qualified as `codex/<slug>`.
 
+While the browser sign-in is waiting, `esc` cancels it and closes the waiting listener;
+the conversation stays on its previous model and `enter` on Codex tries again.
+
 A Codex model's context window is the one that account's model list gives it — `272k` on
 every model it lists today — so the status line reads `…/272k` on `codex/gpt-5.5` and
 compaction fires from that figure. When the list cannot be reached at sign-in, the four
@@ -770,6 +773,10 @@ worker; a seat you pinned wears the pin mark `⌖`. A task that failed leads its
 names no money. `/task --best` that changes
 nothing says `best · already the strongest crew allowed`, and one that does names the rung
 (`worker glm-5.3-flash → kimi-k3`).
+
+An explicit stop is different from a failure: its crew line starts with `stopped` and
+does not offer `/redo stronger`, because stopping teaches the router nothing about the
+crew.
 
 **A seat whose model cannot start moves, inside the task.** When a seat's first call is
 refused, the seat goes down its ladder: the same model on its next route, then the next
@@ -2816,8 +2823,8 @@ What the model is handed instead of a summary is the **state card** — what `tr
 after each one. So what the conversation is about is never paraphrased, because it was never
 written as prose in the first place.
 
-A pass can decline: `session: nothing to compact` (everything already fits in the tail), or
-`session: a compaction pass is already running`.
+A pass can decline when everything already fits in the tail, which `/compact` answers in plain
+words: `nothing to compact yet`. It can also decline with `session: a compaction pass is already running`.
 
 ## What happens when the conversation gets too long — when compaction happens by itself
 

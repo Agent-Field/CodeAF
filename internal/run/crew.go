@@ -123,12 +123,18 @@ type Seats struct {
 // reads empty, so a fallback means somebody emptied a row rather than that the
 // profile is old.
 func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats, completerFor func(model string) session.Completer) WorkerFactory {
+	return CrewFactoryWithStanding(store, workspace, profileDir, seats, completerFor, "")
+}
+
+// CrewFactoryWithStanding carries the session's one standing section into each
+// worker the run seats, including workers launched after plan expansion.
+func CrewFactoryWithStanding(store *plandb.Store, workspace, profileDir string, seats Seats, completerFor func(model string) session.Completer, standingSection string) WorkerFactory {
 	return func(task plandb.Task) Worker {
 		// UNDER `--one-model` THERE IS NO TIER TO READ. The door named one model
 		// for every seat ([Seats.One]), so the role does not matter and neither
 		// the profile nor the environment is asked.
 		if seats.One != "" {
-			return NewBashWorker(store, workspace, seats.One, completerFor(seats.One))
+			return NewBashWorkerWithStanding(store, workspace, seats.One, completerFor(seats.One), standingSection)
 		}
 		// A task the store cannot name — which the supervisor never hands over —
 		// reads as the work seat, the same fallback SeatFor gives an unknown
@@ -144,7 +150,11 @@ func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats,
 		// ceiling by seat, and a crew whose seats share one model would give it
 		// nothing else to tell a check's call from a worker's.
 		seat, _ := config.CrewTierSeat(tier)
-		return NewBashWorker(store, workspace, model, session.SeatCompleter(seat, completerFor(model)))
+		completer := session.SeatCompleter(seat, completerFor(model))
+		if role == plandb.RoleCheck {
+			completer = session.SpendScope(task.ID, completer)
+		}
+		return NewBashWorkerWithStanding(store, workspace, model, completer, standingSection)
 	}
 }
 

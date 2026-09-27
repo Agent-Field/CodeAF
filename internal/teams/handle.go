@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // A handle is how a member is named inside its team, in the Traffic log and to
@@ -25,8 +26,8 @@ import (
 // and a handle the model chose is not chosen again, so a line in the log keeps
 // meaning the member it meant.
 //
-// A member that joins before its conversation has a title has no handle yet; it
-// takes one the first time it is saved with a title.
+// A member that joins before its conversation has a title has no handle yet;
+// ordinary members take one the first time they are saved with a title.
 
 // Who chose a member's handle ([Member.HandleBy]).
 const (
@@ -221,6 +222,18 @@ func uniqueHandle(t Team, key, base string) string {
 			return h
 		}
 	}
+}
+
+// managerFallbackHandle gives an untitled manager an address as soon as the
+// team records it. The timestamp keeps the fallback useful before a title
+// exists, while the team-level collision check keeps it valid when starts land
+// in the same millisecond.
+func managerFallbackHandle(at time.Time) string {
+	stamp := strconv.FormatInt(at.UnixNano()/int64(time.Millisecond), 36)
+	if len(stamp) > 4 {
+		stamp = stamp[len(stamp)-4:]
+	}
+	return "manager-" + stamp
 }
 
 // assignHandles clears every handle in t that is invalid or repeats one an

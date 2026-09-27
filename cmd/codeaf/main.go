@@ -1099,11 +1099,15 @@ func emit(graph *plan.Graph, output string, asJSON bool) error {
 // lines, the environment included — for the sake of one missing quoted string,
 // and the one line that mattered scrolled off the top of the terminal.
 func readText(name string, args []string) (string, error) {
-	if len(args) == 1 && args[0] == "-" {
-		return readPipedText(name)
-	}
 	if len(args) > 0 {
-		return strings.TrimSpace(strings.Join(args, " ")), nil
+		text := strings.TrimSpace(strings.Join(args, " "))
+		if text == "" {
+			return "", noGoalGiven(name)
+		}
+		if len(args) == 1 && args[0] == "-" {
+			return readPipedText(name)
+		}
+		return text, nil
 	}
 	if stdinIsTerminal(os.Stdin) {
 		return "", noGoalGiven(name)

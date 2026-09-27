@@ -3285,6 +3285,14 @@ func auditBelt(dir string, door auditDoor, droppings Place) []bare.Tool {
 	return belt
 }
 
+// quickReadOnlyBelt is the existing audit belt applied to a read hand-off. It
+// deliberately reuses the audit allowlist and bash guard: a reader must have
+// the same hard refusal boundary as an auditor, not a prose instruction that
+// can be ignored by the model.
+func quickReadOnlyBelt(dir string, droppings Place) []bare.Tool {
+	return auditBelt(dir, plainDoor(auditReadCommands), droppings)
+}
+
 // boundedResult caps what one tool call may hand back.
 //
 // A cut result is filed through [writeStub], the same content-addressed,

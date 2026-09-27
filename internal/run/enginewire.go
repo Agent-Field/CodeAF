@@ -40,14 +40,14 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 	// AND THE CHECK SEAT CLIMBS THE SAME LADDER `codeaf do` CLIMBS, minus
 	// the flag no chat has ([chatCheckSeat]), so CODEAF_CHECK_MODEL reaches
 	// a `/task` run the way the manual says it reaches a headless one.
-	factory := CrewFactory(spec.Store, spec.Workspace, spec.ProfileDir, Seats{
+	factory := CrewFactoryWithStanding(spec.Store, spec.Workspace, spec.ProfileDir, Seats{
 		Work:  spec.WorkModel,
 		Plan:  spec.PlanModel,
 		Check: chatCheckSeat(spec.CheckModel),
 		// AND UNDER `--one-model` ONE MODEL IS EVERY SEAT, the probe and the
 		// check's environment rung included ([Seats.One]).
 		One: spec.OneModel,
-	}, spec.CompleterFor)
+	}, spec.CompleterFor, spec.Standing)
 	if spec.Delegate != nil {
 		// A DELEGATED RUN SEATS THE PROGRAM ON ITS ROOT and has no review
 		// round: a check seat is a bash-belt worker, which the belt switch may
@@ -80,6 +80,7 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 		Workspace: spec.Workspace,
 		Title:     spec.Title,
 		Brief:     spec.Brief,
+		Standing:  spec.Standing,
 		Slots:     spec.Slots,
 		Limits:    limits,
 		Factory:   factory,
@@ -90,6 +91,7 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 	return session.RunSummary{
 		Outcome: string(outcome),
 		Result:  summary.Result,
+		Failure: summary.Failure,
 		// WHICH LIMIT FIRED IS A FACT AND NOT A WORD IN THE OUTCOME SENTENCE:
 		// the run's own typed answer crosses the seam here, mapped one for one,
 		// so the session draws the ending out of the fact and never parses the

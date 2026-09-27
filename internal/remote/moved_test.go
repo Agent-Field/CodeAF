@@ -156,6 +156,56 @@ func TestARedialMovesNobody(t *testing.T) {
 	}
 }
 
+// A REDIAL CAN BE WELCOMED BEFORE THE OLD PIPE LEAVES THE ROOM. The returning
+// window may reclaim the keyboard only when the driver still recorded in the
+// room is that same window, not merely because one other surface is attached.
+func TestARedialReclaimsTheKeyboardBeforeTheOldPipeLeaves(t *testing.T) {
+	agent := &fakeAgent{}
+	sess := heldSession(agent)
+
+	first := dialSession(t, sess)
+	first.hello(Hello{Version: Version, Surface: "laptop", ClientID: "window-x"})
+
+	back := dialSession(t, sess)
+	welcome := decode[Welcome](t, back.hello(Hello{
+		Version:  Version,
+		Surface:  "laptop",
+		ClientID: "window-x",
+		Back:     true,
+	}).Payload)
+	if !welcome.Driver.Yours {
+		t.Fatalf("the returning window did not reclaim the keyboard: %+v", welcome.Driver)
+	}
+}
+
+// A REDIAL DOES NOT RECLAIM A KEYBOARD THAT MOVED TO ANOTHER WINDOW. The old
+// connection's identity is not the live driver's identity, so the returning
+// window remains a watcher even while the stale pipe is still attached.
+func TestARedialKeepsADifferentLiveDriverInControl(t *testing.T) {
+	agent := &fakeAgent{}
+	sess := heldSession(agent)
+
+	first := dialSession(t, sess)
+	first.hello(Hello{Version: Version, Surface: "laptop", ClientID: "window-x"})
+
+	driver := dialSession(t, sess)
+	driver.hello(Hello{Version: Version, Surface: "desktop", ClientID: "window-y"})
+
+	back := dialSession(t, sess)
+	welcome := decode[Welcome](t, back.hello(Hello{
+		Version:  Version,
+		Surface:  "laptop",
+		ClientID: "window-x",
+		Back:     true,
+	}).Payload)
+	if welcome.Driver.Yours {
+		t.Fatalf("the returning window took a different live driver's keyboard: %+v", welcome.Driver)
+	}
+	if welcome.Driver.Machine != "desktop" {
+		t.Fatalf("the returning window was told the keyboard is on %q, want desktop", welcome.Driver.Machine)
+	}
+}
+
 // AND THE FRAME REACHES A SURFACE AS THE ONE EVENT IT ACTS ON, on the standing
 // task lane it is already reading (tasklane.go's [Client.movedFrame]).
 func TestTheMoveArrivesOnTheStandingTaskLane(t *testing.T) {

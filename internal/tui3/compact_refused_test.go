@@ -64,6 +64,15 @@ func TestAPassThatCompactedNothingLeavesTheConversationReachable(t *testing.T) {
 	}
 }
 
+func TestAnEmptyCompactPassUsesPlainWords(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.Update(compactedMsg{err: session.ErrNothingToCompact})
+	got := plain(lastNote(t, a))
+	if got != "nothing to compact yet" {
+		t.Fatalf("empty compaction note = %q, want a plain explanation", got)
+	}
+}
+
 // AND A PASS THAT HAPPENED STILL HANDS THE BOOKKEEPING OVER, which is what
 // keeps the test above from passing on a build that simply stopped rebasing.
 func TestAPassThatHappenedStillCarriesThePlaceIntoTheRegion(t *testing.T) {

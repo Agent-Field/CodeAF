@@ -203,6 +203,10 @@ func composeBrief(role briefRole, request, work, deliverable, acceptance, expect
 // message under a rule that labels it as background rather than as the thing
 // that wins.
 func composeBriefScoped(scope briefScope, role briefRole, request, work, deliverable, acceptance, expects string, heard AdmissionContext, origin taskOrigin, own taskCopy) string {
+	return composeBriefScopedWithStanding(scope, role, request, work, deliverable, acceptance, expects, heard, origin, own, "")
+}
+
+func composeBriefScopedWithStanding(scope briefScope, role briefRole, request, work, deliverable, acceptance, expects string, heard AdmissionContext, origin taskOrigin, own taskCopy, standingSection string) string {
 	request = briefAskText(request)
 	work = briefWorkText(request, work)
 	// THE COPY IS STATED ONLY WHERE THE GROUND WAS NAMED, and it is decided
@@ -303,6 +307,12 @@ func composeBriefScoped(scope briefScope, role briefRole, request, work, deliver
 	order = append(order, record...)
 	for _, part := range order {
 		section(part.heading, part.rule, part.body)
+	}
+	if standingSection = strings.TrimSpace(standingSection); standingSection != "" {
+		if out.Len() > 0 {
+			out.WriteString("\n\n")
+		}
+		out.WriteString(standingSection)
 	}
 	return out.String()
 }

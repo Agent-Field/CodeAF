@@ -140,3 +140,13 @@ func TestABriefMayArriveOnStandardInput(t *testing.T) {
 		t.Fatalf("brief = %q, want the piped text", text)
 	}
 }
+
+func TestReadTextRejectsAnAllBlankArgumentList(t *testing.T) {
+	want := noGoalGiven("do").Error()
+	for _, args := range [][]string{{""}, {"   "}, {"", "\t"}} {
+		text, err := readText("do", args)
+		if text != "" || err == nil || err.Error() != want {
+			t.Errorf("readText(%q) = %q, %v; want noGoalGiven", args, text, err)
+		}
+	}
+}

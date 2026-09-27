@@ -837,6 +837,23 @@ func (a *app) abandonConnects() {
 	}
 }
 
+// cancelBrowserSignIns releases browser flows that this idle surface owns.
+// Session-owned browser waits are stopped by interrupt; these flows have no
+// turn to interrupt, so escape must use the same cancellation door directly.
+func (a *app) cancelBrowserSignIns() bool {
+	took := false
+	for service := range a.connFlows {
+		a.abandonConnect(service)
+		took = true
+	}
+	if a.codexFlow != nil {
+		a.codexFlow.Cancel()
+		a.codexFlow = nil
+		took = true
+	}
+	return took
+}
+
 // adoptConnectResult settles the block the browser — or the key — left open, and
 // tells the session what it now has.
 //

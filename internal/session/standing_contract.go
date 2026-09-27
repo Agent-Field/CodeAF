@@ -62,7 +62,7 @@ type StandingNotice struct {
 	// a clock (tools_standing.go). The field stays because the event's shape
 	// does.
 	Deadline time.Time
-	// Update is set on EventStandingUpdate: "stood", "fired", "paused",
+	// Update is set on EventStandingUpdate: "stood", "said", "task", "paused",
 	// "resumed", "stopped", "needs-you", "failed". Empty on a proposal.
 	Update string
 	// Text is the one line an update carries: what it said, what it landed,

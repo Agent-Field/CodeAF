@@ -139,6 +139,13 @@ func (s *server) placesCall(call Frame) (json.RawMessage, bool, error) {
 		}
 		payload, err := memoryCall(engine.Memory, call)
 		return payload, true, err
+	case MethodMemoryRemember, MethodMemoryForgetQuery, MethodMemoryMemories:
+		commands, ok := sess.current().(MemoryCommands)
+		if !ok || !commands.Remembers() {
+			return nil, true, errors.New(engineOffWord + memoryOffWord)
+		}
+		payload, err := memoryCommandCall(commands, call)
+		return payload, true, err
 	}
 	return nil, false, nil
 }
@@ -308,4 +315,33 @@ func memoryCall(mem EngineMemory, call Frame) (json.RawMessage, error) {
 		return json.Marshal(MemoryOrigin{Session: where, Title: title, At: at})
 	}
 	return nil, errors.New(engineOffWord + "no such memory door")
+}
+
+func memoryCommandCall(commands MemoryCommands, call Frame) (json.RawMessage, error) {
+	text, err := arg[string](call)
+	if err != nil {
+		return nil, err
+	}
+	switch call.Method {
+	case MethodMemoryRemember:
+		title, err := commands.Remember(text)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(title)
+	case MethodMemoryForgetQuery:
+		title, err := commands.Forget(text)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(title)
+	case MethodMemoryMemories:
+		lines, err := commands.Memories(text)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(lines)
+	default:
+		return nil, errors.New(engineOffWord + "no such memory command")
+	}
 }

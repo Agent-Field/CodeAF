@@ -18,6 +18,8 @@ var helloFields = map[string]bool{
 	"Headless": true, "Version": true, "Workspace": true, "Session": true, "Model": true,
 	"Level": true, "Launch": true, "Encodings": true, "Resume": true,
 	"Surface": true, "Back": true, "Join": true, "New": true, "Watch": true,
+	// ClientID is a random per-window id for redial focus (#1553), not a credential.
+	"ClientID": true,
 }
 
 // TestNoServiceKeyOrAddressCrossesTheWire refuses model-service credential

@@ -293,6 +293,25 @@ func TestTeamsHostsTheManagersRealConversation(t *testing.T) {
 	}
 }
 
+func TestStartingAManagerReturnsKeyboardToItsComposer(t *testing.T) {
+	a, harbor, _ := teamsPlaceLabIDs(t)
+	a.tp.focus = true
+	cmd := a.teamsManagerStart(harbor)
+	if cmd != nil {
+		drive(t, a, runCmd(cmd)...)
+	}
+	if a.tp.focus {
+		t.Fatal("manager creation left keyboard focus on the teams page")
+	}
+}
+
+func TestTeamsActionKeysAreListedOnTheHelpSheet(t *testing.T) {
+	sheet := helpText("", chordSpelling{meta: chordAltWord})
+	if !strings.Contains(sheet, "s c w n o M m p r d u") {
+		t.Fatalf("the teams action keys are missing from help:\n%s", sheet)
+	}
+}
+
 // ── the team's card ─────────────────────────────────────────────────────────
 
 // THE CARD SAYS WHERE EVERY VALUE COMES FROM: an inherited one dim with
@@ -533,6 +552,48 @@ func TestTeamSurfacesSpellSubCentCapTheSameWay(t *testing.T) {
 	a.sheet.farTeams = &teamstore.Defaults{CapUSDDay: cap}
 	if settings, ok := a.sheet.farTeamValue(config.KeyTeamsCapUSDDay); !ok || settings != "$0.001" {
 		t.Fatalf("Settings Teams row: %q, %v", settings, ok)
+	}
+}
+
+func TestTeamsHeaderUsesTodaysRaisedCap(t *testing.T) {
+	a, harbor, _ := teamsPlaceLabIDs(t)
+	capUSD := 5.0
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		return f.SetSettings(harbor, func(s *teamstore.Settings) { s.CapUSDDay = &capUSD })
+	}); err != nil {
+		t.Fatal(err)
+	}
+	a.tp.defaultsOK = true
+	a.tp.spend = map[string]teamstore.Spend{harbor: {USD: 5.2}}
+	a.tp.packets = []teamstore.Packet{{Kind: teamstore.PacketCap, State: teamstore.PacketDecided, Decision: teamstore.OptionRaiseCap,
+		Cap: &teamstore.CapFacts{Team: harbor, Day: teamstore.Today(), CapUSD: capUSD, RaiseTo: 10}}}
+	team, ok := a.teamByID(harbor)
+	if !ok {
+		t.Fatal("no team")
+	}
+	if words := a.teamsSpendWords(team); !strings.Contains(words, "$5.20 of $10 today") {
+		t.Fatalf("header still uses the recurring ceiling: %q", words)
+	}
+}
+
+func TestTeamsHeaderUsesPluralPossessiveForRootPool(t *testing.T) {
+	a, harbor, _ := teamsPlaceLabIDs(t)
+	rootID := ""
+	capUSD := 5.0
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		rootID = f.MakeRoot(a.now())
+		return f.SetSettings(rootID, func(s *teamstore.Settings) { s.CapUSDDay = &capUSD })
+	}); err != nil {
+		t.Fatal(err)
+	}
+	a.tp.defaultsOK = true
+	a.tp.spend = map[string]teamstore.Spend{rootID: {USD: 1}}
+	team, ok := a.teamByID(harbor)
+	if !ok {
+		t.Fatal("no team")
+	}
+	if words := a.teamsSpendWords(team); !strings.Contains(words, "All teams' cap") || strings.Contains(words, "All teams's cap") {
+		t.Fatalf("root pool possessive is %q", words)
 	}
 }
 

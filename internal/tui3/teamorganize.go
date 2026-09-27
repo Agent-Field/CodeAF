@@ -455,7 +455,7 @@ func (a *app) wallOrganizeOpen() tea.Cmd {
 		return func(bool) tea.Cmd {
 			a.wallOrganizeQuietTake(gen, quiet)
 			a.wallOrganized(gen, res, err)
-			return nil
+			return a.wake()
 		}
 	})
 }

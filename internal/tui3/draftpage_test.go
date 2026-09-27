@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -34,5 +35,20 @@ func TestDraftRestorePushesTheLiveBox(t *testing.T) {
 	}
 	if list := a.drafts.list(); len(list) != 1 || string(list[0].text) != "current" {
 		t.Fatalf("the box that was live should have joined the ring: %v", list)
+	}
+}
+
+func TestEmptyDraftPageDrawsItsOwnEmptyState(t *testing.T) {
+	a := &app{draftPage: draftPanel{}, width: 100, height: 24}
+	a.openDrafts()
+
+	if got := a.overlayHeight(); got == 0 {
+		t.Fatal("an empty /drafts page has no overlay height")
+	}
+	screen := strings.Join(plainOverlay(a), "\n")
+	for _, want := range []string{draftHeading, draftEmptyWord} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("empty /drafts page is missing %q:\n%s", want, screen)
+		}
 	}
 }
