@@ -62,15 +62,17 @@ func (a *Agent) railBlockLocked() error {
 	if err := a.launchBudgetBlockLocked(); err != nil {
 		return err
 	}
-	if daily, err := config.DailyBudgetUSDAt(a.config.ProfileDir); err == nil && daily > 0 {
-		spentToday := spentTodayOnLedger()
-		if a.crewDayHeld != nil {
-			spentToday = a.crewDayHeld.Total()
-		}
-		if spentToday >= daily {
-			return spendRailReached{said: fmt.Sprintf(
-				"daily limit reached · %s spent of %s · /budget changes it",
-				railMoney(spentToday), railMoney(daily))}
+	if !a.config.InTask && !a.config.Errand {
+		if daily, err := config.DailyBudgetUSDAt(a.config.ProfileDir); err == nil && daily > 0 {
+			spentToday := spentTodayOnLedger()
+			if a.crewDayHeld != nil {
+				spentToday = a.crewDayHeld.Total()
+			}
+			if spentToday >= daily {
+				return spendRailReached{said: fmt.Sprintf(
+					"daily limit reached · %s spent of %s · /budget changes it",
+					railMoney(spentToday), railMoney(daily))}
+			}
 		}
 	}
 	rail := a.spendRailUSD()
