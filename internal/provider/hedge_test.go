@@ -1073,18 +1073,20 @@ func (c *countingChooser) times() int {
 // and this test holds all three facts at the same time: asked once, on the
 // wire, and in force at the watch.
 func TestOneCallMakesOneChoiceAndBothHalvesUseIt(t *testing.T) {
-	// A IS HELD BY A SIGNAL AND NOT BY A DURATION, for the reason spelled out
-	// over TestALaneThatStallsMidAnswerIsHedgedAndTheAnswerArrivesWhole: the
-	// last assertion here names B as the winner, and a primary told to resume
-	// after a couple of hundred milliseconds can honestly beat the rescue home
-	// on a loaded machine. The channel closes only at teardown.
+	// A NAMES ITSELF WITH ONE THOUGHT, THEN HOLDS BEFORE ANY VISIBLE WORD.
+	// Holding it only after thirty words
+	// lets a delayed first token trigger a hedge before those words arrive;
+	// the resumed primary then earns commitment, cancels B, and reaches the
+	// artificial stall. This test is about one shared choice, not commitment.
 	resume := make(chan struct{})
+	primaryNamed := make(chan struct{})
+	var named sync.Once
 	rig := newLaneRig(t, "choice/once",
 		lanestub.Lane{Name: "A", Profile: lanestub.Profile{
 			TTFT: 2 * time.Millisecond, Rate: 1000, Tokens: 60,
-			StallAfter: 30, StallUntil: resume,
+			Reasoning: 1, StallAfter: 1, StallUntil: resume,
 		}},
-		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24}},
+		lanestub.Lane{Name: "B", Profile: lanestub.Profile{TTFT: 5 * time.Millisecond, Rate: 2000, Tokens: 24, FirstTokenUntil: primaryNamed}},
 	)
 	t.Cleanup(func() { close(resume) })
 	rig.believes("A", 2, 250)
@@ -1097,9 +1099,15 @@ func TestOneCallMakesOneChoiceAndBothHalvesUseIt(t *testing.T) {
 
 	// NOTHING IS PUT ON THE CONTEXT HERE. Every other test in this file hands
 	// the transport a choice by hand; this one is about the transport making it.
+	told := listen(t)
 	report := &HedgeReport{}
-	if _, err := rig.client.CompleteWithMessages(WithHedgeReport(talking(), report), userMessages("hello")); err != nil {
-		t.Fatal(err)
+	ctx := WithCallProgress(talking(), func(progress CallProgress) {
+		if progress.Reasoning > 0 {
+			named.Do(func() { close(primaryNamed) })
+		}
+	})
+	if _, err := rig.client.CompleteWithMessages(WithHedgeReport(ctx, report), userMessages("hello")); err != nil {
+		t.Fatalf("%v; asks=%+v phases=%+v hedged=%v action=%s reason=%s arms=%d", err, rig.server.Asks(), told.all(), report.Hedged(), report.Action(), report.Reason(), report.Arms())
 	}
 	if got := chooser.times(); got != 1 {
 		t.Fatalf("the chooser was asked %d times for one call; a sampled decision asked twice is two decisions", got)
