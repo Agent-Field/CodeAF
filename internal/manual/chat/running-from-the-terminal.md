@@ -989,6 +989,9 @@ If the default service answers with an authentication refusal (`401` or `403`), 
 without retrying it as a provider failure. The ending names the safe source of the key it used:
 `your key was not accepted for this model — the shell's OPENROUTER_API_KEY`,
 `the shell's OPENAI_API_KEY`, or `the key saved in your profile`. It never prints the key itself.
+`codeaf do` prints that sentence on stderr; `codeaf do --json` carries it in `error`,
+with `stop:"incomplete"` and exit 2. A directly connected service uses its own key,
+so its refusal does not name the default service's key source.
 
 **These change state without model spending**: `connect`, `disconnect`, `cache clean`,
 `rebuild`, `notebook retract|restore`, `services stop` and `devices revoke`. A browser

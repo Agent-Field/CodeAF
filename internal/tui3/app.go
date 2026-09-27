@@ -5126,12 +5126,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
-	case landNoteMsg:
-		// A landing's whole answer is one line, the clean one and the one that
-		// could not go in alike (landcmd.go).
-		a.note(msg.line)
-		return a, nil
-
 	case cacheNoteMsg:
 		// A cache errand's whole answer is one line, success and refusal alike
 		// (cachecmd.go).
