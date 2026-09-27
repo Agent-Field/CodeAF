@@ -41,41 +41,55 @@ func (a *Agent) recoverBeltRun() {
 		return
 	}
 	if terminalStoreStatus(root.Status) {
-		if planTaskInterrupted(root) {
-			return
-		}
-		if planStopReason(root.Error) {
-			kept.State, kept.Stopped, kept.Report = TaskFailed, true, root.Error
-			kept.EndedAt = root.CompletedAt
-			kept.PendingRun = nil
-			a.publishRunRow(g, kept)
-		} else if root.Status == plandb.StatusFailed || root.Status == plandb.StatusCancelled {
-			kept.State, kept.Report, kept.PendingRun = TaskFailed, root.Error, nil
-			kept.EndedAt = root.CompletedAt
-			a.publishRunRow(g, kept)
-		} else {
-			// The plan finished, but no durable landing receipt says its copy
-			// reached the person's branch. Keep that distinction visible.
-			kept.Report = "the plan finished before the restart; inspect the saved working copy before landing its changes"
-			kept.PendingRun = nil
-			a.publishRunRow(g, kept)
-		}
+		a.reconcileSettledRun(g, kept, root)
 		return
 	}
 	if kept.PendingRun == nil {
-		if kept.Program != "" {
-			return
-		}
-		if kept.Copy == nil {
-			a.interruptUnrecoverableRun(g, kept, "the saved task has no working folder; ask for the task again with its folder")
-			return
-		}
-		if _, err := a.ContinueRun(context.Background(), id); err != nil {
-			log.Printf("session: could not resume task %d: %v", id, err)
-			a.interruptUnrecoverableRun(g, kept, err.Error())
-		}
+		a.resumeAdmittedRun(g, kept)
 		return
 	}
+	a.resumePendingRun(g, kept)
+}
+
+// reconcileSettledRun publishes the durable ending without executing work again.
+// A completed plan alone is not a receipt that its changes were landed.
+func (a *Agent) reconcileSettledRun(g *TaskGraph, kept TaskNotice, root *plandb.Task) {
+	if planTaskInterrupted(root) {
+		return
+	}
+	kept.PendingRun = nil
+	switch {
+	case planStopReason(root.Error):
+		kept.State, kept.Stopped, kept.Report = TaskFailed, true, root.Error
+		kept.EndedAt = root.CompletedAt
+	case root.Status == plandb.StatusFailed || root.Status == plandb.StatusCancelled:
+		kept.State, kept.Report = TaskFailed, root.Error
+		kept.EndedAt = root.CompletedAt
+	default:
+		kept.Report = "the plan finished before the restart; inspect the saved working copy before landing its changes"
+	}
+	a.publishRunRow(g, kept)
+}
+
+// resumeAdmittedRun adopts an ordinary task's existing copy. Programs have
+// their own restart ending and must not be replayed as ordinary workers.
+func (a *Agent) resumeAdmittedRun(g *TaskGraph, kept TaskNotice) {
+	if kept.Program != "" {
+		return
+	}
+	if kept.Copy == nil {
+		a.interruptUnrecoverableRun(g, kept, "the saved task has no working folder; ask for the task again with its folder")
+		return
+	}
+	if _, err := a.ContinueRun(context.Background(), kept.ID); err != nil {
+		log.Printf("session: could not resume task %d: %v", kept.ID, err)
+		a.interruptUnrecoverableRun(g, kept, err.Error())
+	}
+}
+
+// resumePendingRun reinstalls admission before any folder is taken or worker
+// launched. The start lock ensures repeated recovery installs only one driver.
+func (a *Agent) resumePendingRun(g *TaskGraph, kept TaskNotice) {
 	a.lockBeltStart()
 	defer a.beltStartMu.Unlock()
 	a.beltMu.Lock()
@@ -85,33 +99,15 @@ func (a *Agent) recoverBeltRun() {
 		return
 	}
 	pending := kept.PendingRun
-	if !filepath.IsAbs(pending.Ground) || strings.TrimSpace(pending.Brief) == "" {
-		a.interruptUnrecoverableRun(g, kept, "the saved task is missing its exact folder or brief; ask for it again")
+	if reason := invalidPendingRun(pending); reason != "" {
+		a.interruptUnrecoverableRun(g, kept, reason)
 		return
 	}
-	info, err := os.Stat(pending.Ground)
-	if err != nil || !info.IsDir() {
-		a.interruptUnrecoverableRun(g, kept, "the saved working folder is unavailable; restore it and request the task again")
+	via := a.pendingRunProgram(kept.Program)
+	if kept.Program != "" && via == nil {
 		return
 	}
-	switch pending.Mode {
-	case TaskModeWorktree, TaskModeReference, TaskModeMirror, TaskModeInPlace, TaskModeFolder:
-	default:
-		a.interruptUnrecoverableRun(g, kept, "the saved task has no valid folder mode; ask for it again with its folder")
-		return
-	}
-	var via *delegate.Delegate
-	if kept.Program != "" {
-		for i := range a.config.Delegates {
-			if a.config.Delegates[i].Name == kept.Program {
-				via = &a.config.Delegates[i]
-				break
-			}
-		}
-		if via == nil {
-			return
-		}
-	}
+	id := kept.ID
 	plan, reopened, err := a.openBeltRunStore(g, g.planPath(), strconv.FormatUint(id, 10), kept.Title, pending.Brief, true)
 	if err != nil {
 		return
@@ -128,6 +124,37 @@ func (a *Agent) recoverBeltRun() {
 	kept.State, kept.Waiting = TaskQueued, waitingMachineBusy
 	a.publishRunRow(g, kept)
 	go a.driveBeltRun(ctx, chatRunEngine, run, RunSpec{})
+}
+
+// invalidPendingRun refuses incomplete or obsolete records instead of guessing
+// a working folder from the process's current directory.
+func invalidPendingRun(pending *PendingRunRecord) string {
+	if !filepath.IsAbs(pending.Ground) || strings.TrimSpace(pending.Brief) == "" {
+		return "the saved task is missing its exact folder or brief; ask for it again"
+	}
+	info, err := os.Stat(pending.Ground)
+	if err != nil || !info.IsDir() {
+		return "the saved working folder is unavailable; restore it and request the task again"
+	}
+	switch pending.Mode {
+	case TaskModeWorktree, TaskModeReference, TaskModeMirror, TaskModeInPlace, TaskModeFolder:
+		return ""
+	default:
+		return "the saved task has no valid folder mode; ask for it again with its folder"
+	}
+}
+
+// pendingRunProgram resolves the same program the queued request named.
+func (a *Agent) pendingRunProgram(name string) *delegate.Delegate {
+	if name == "" {
+		return nil
+	}
+	for i := range a.config.Delegates {
+		if a.config.Delegates[i].Name == name {
+			return &a.config.Delegates[i]
+		}
+	}
+	return nil
 }
 
 // interruptUnrecoverableRun makes an older or incomplete record visibly inactive.
