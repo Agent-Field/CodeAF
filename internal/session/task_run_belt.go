@@ -1541,6 +1541,27 @@ func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
 // halfway through would send the place back to guessing by title exactly when
 // the work ended, which is the moment a person goes looking for its page.
 func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
+	notice = carryRunRow(g, notice)
+	notice.Program = keptRunProgram(g, notice)
+	if notice.Elapsed == 0 {
+		notice.Elapsed = runSpan(notice.StartedAt, notice.EndedAt)
+	}
+	// A SETTLED RUN'S OWN ROW SAYS WHAT IT CAME TO, the figure its index row
+	// carries ([Agent.beltRunSpent]), so the landed card and every page drawn
+	// from the row show the price. No book is summed from rows: the conversation's
+	// total comes from the calls themselves (task_run_money.go), so this is a
+	// label and never a second charge.
+	if notice.State.settled() && notice.CostUSD == 0 {
+		notice.CostUSD = a.beltRunSpent(notice.ID)
+	}
+	a.emitTaskUpdate(notice)
+	g.keepRunRows(notice.ID, []TaskNotice{notice})
+	a.indexRunRow(notice)
+}
+
+// carryRunRow preserves the durable identity fields across partial updates.
+// Pending admission survives queued updates only; a started run sheds it.
+func carryRunRow(g *TaskGraph, notice TaskNotice) TaskNotice {
 	if notice.Copy == nil || notice.PlanTask == "" || notice.Crew == nil {
 		for _, kept := range g.runRows(notice.ID) {
 			if kept.ID != notice.ID {
@@ -1561,21 +1582,7 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 			break
 		}
 	}
-	notice.Program = keptRunProgram(g, notice)
-	if notice.Elapsed == 0 {
-		notice.Elapsed = runSpan(notice.StartedAt, notice.EndedAt)
-	}
-	// A SETTLED RUN'S OWN ROW SAYS WHAT IT CAME TO, the figure its index row
-	// carries ([Agent.beltRunSpent]), so the landed card and every page drawn
-	// from the row show the price. No book is summed from rows: the conversation's
-	// total comes from the calls themselves (task_run_money.go), so this is a
-	// label and never a second charge.
-	if notice.State.settled() && notice.CostUSD == 0 {
-		notice.CostUSD = a.beltRunSpent(notice.ID)
-	}
-	a.emitTaskUpdate(notice)
-	g.keepRunRows(notice.ID, []TaskNotice{notice})
-	a.indexRunRow(notice)
+	return notice
 }
 
 // keptRunProgram is the program a run row names: its own when it names one,
