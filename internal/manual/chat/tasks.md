@@ -4348,6 +4348,11 @@ today's crew spend ($5.01) has reached the daily cap of $5.00 · raise it or tur
 
 The day turns over at midnight on this machine's clock, and the spend starts again from nothing.
 
+The machine-wide daily limit in `/settings` → **Spending** and `/budget` is a separate
+rail over every chat turn and task. If it is already spent, a task opened from chat waits
+on the same card shape: `1 Raise to $X` continues with that amount for today, and `2 Stop
+for today` refuses it with `today's spending limit of $X is spent, so nothing was started`.
+
 ## Naming a model for one task
 
 You ask in words — "let opus do this one", "run that on gpt-5". There is no key, command or
