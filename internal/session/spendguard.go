@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 // A SEAT'S NEXT CALL IS PRICED BEFORE IT IS MADE.
@@ -379,7 +380,10 @@ func (c guardedCompleter) CompleteWithMessages(ctx context.Context, messages []a
 	if err != nil {
 		return nil, err
 	}
-	response, err := c.next.CompleteWithMessages(ctx, messages, options...)
+	callCtx := provider.WithDiscardedUsage(ctx, func(_ string, _ string, response *ai.Response) {
+		c.guard.after(ctx, model, response, 0)
+	})
+	response, err := c.next.CompleteWithMessages(callCtx, messages, options...)
 	c.guard.after(ctx, model, response, held)
 	return response, err
 }

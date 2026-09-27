@@ -117,7 +117,7 @@ func (a *Agent) ProposeTeams(ctx context.Context, in TeamProposalInput) (TeamPro
 	if closed {
 		return TeamProposal{}, errors.New("the conversation is closed")
 	}
-	response, named, err := a.callRoleChecked(ctx, roles.RoleTitle, model,
+	response, named, err := a.callRoleChecked(withDetachedUsage(ctx), roles.RoleTitle, model,
 		[]ai.Message{textMessage("system", teamProposeSystem), textMessage("user", ask)},
 		func(response *ai.Response, named string) bool {
 			if _, ok := parseTeamProposal(response.Text(), in, refs); ok {
