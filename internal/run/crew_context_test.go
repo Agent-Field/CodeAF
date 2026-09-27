@@ -103,7 +103,7 @@ func TestCrewFactoryGivesEachCheckerItsOwnSpendCeiling(t *testing.T) {
 		CeilingAction: "checker ceiling $%.2f",
 	}
 	probes := []*crewCallProbe{}
-	factory := CrewFactory(store, dir, profile, Seats{}, func(model string) session.Completer {
+	factory := CrewFactory(store, dir, profile, Seats{}, "", func(model string) session.Completer {
 		probe := &crewCallProbe{cost: 0.01}
 		probes = append(probes, probe)
 		return guard.Wrap(model, probe)

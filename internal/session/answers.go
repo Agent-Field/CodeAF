@@ -133,6 +133,8 @@ const (
 	QuestionFuel QuestionKind = "fuel"
 	// QuestionAsk is the model's own question, raised through the ask tool.
 	QuestionAsk QuestionKind = "ask"
+	// QuestionDailyBudget is the machine-wide spending limit holding a chat turn.
+	QuestionDailyBudget QuestionKind = "daily-budget"
 )
 
 // AnswerOption is one answer a question will take: the key that gives it and

@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -143,6 +144,28 @@ func TestTheTaskLimitIsOnEveryGuard(t *testing.T) {
 	}
 	if loose := a.helperGuard(nil); loose.TaskCap != 0 {
 		t.Fatalf("a helper for no task is held to a task limit of %v", loose.TaskCap)
+	}
+}
+
+func TestTheCrewGuardFoldsInTheDailyLimit(t *testing.T) {
+	profile := t.TempDir()
+	ledger := filepath.Join(t.TempDir(), "usage.jsonl")
+	if err := config.WriteDailyBudgetUSD(profile, 1); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	recordUsage(t, ledger, UsageLine{At: now, Day: localDay(now), Calls: 1, USD: 1.01})
+
+	guard := crewSpendGuard(profile, crewroute.Decision{}, true)
+	guard.Day = newLedgerSpendDay(func() float64 { return 1.01 }, time.Now)
+	if guard.Cap != 1 || guard.CapAction != "today's spending limit of $1.00 is reached · raise it with /budget" {
+		t.Fatalf("crew daily guard = cap $%v, action %q", guard.Cap, guard.CapAction)
+	}
+	worker := &spendingCompleter{usd: 0.01}
+	_, err := guard.Wrap("test/model", worker).CompleteWithMessages(t.Context(), []ai.Message{textMessage("user", "work")})
+	var stopped ErrSpendStopped
+	if !errors.As(err, &stopped) || stopped.Action != guard.CapAction || worker.calls != 0 {
+		t.Fatalf("daily cap result = %v after %d calls, want refusal before the provider", err, worker.calls)
 	}
 }
 

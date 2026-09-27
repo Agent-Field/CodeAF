@@ -3927,42 +3927,29 @@ func runSpendBound(request doRequest, profileDir string, now time.Time) (runSpen
 	if err != nil {
 		return runSpend{}, err
 	}
-	daily, err := config.DailyBudgetUSDAt(profileDir)
-	if err != nil {
-		return runSpend{}, err
-	}
 	bound := runSpend{}
 	if consent > 0 {
 		bound = runSpend{usd: consent, stop: stopPrice, words: fmt.Sprintf(
 			"the run reached $%.2f, the price above which codeaf asks before it spends more; "+
 				"rerun with --yes-spend to let it go past that", consent)}
 	}
-	if daily > 0 {
-		left := daily - spentToday(now)
-		if left <= 0 {
-			return runSpend{refused: true, stop: stopBudget, words: fmt.Sprintf(
-				"today's spending limit of $%.2f is spent, so nothing was started; "+
-					"rerun with --yes-spend to spend past it", daily)}, nil
+	daily, err := session.DailySpendAt(profileDir, now)
+	if err != nil {
+		return runSpend{}, err
+	}
+	if daily.Limit > 0 {
+		left := daily.Limit - daily.Spent
+		if daily.Reached || left <= 0 {
+			return runSpend{refused: true, stop: stopBudget, words: session.DailySpendAction(daily.Limit) +
+				"; rerun with --yes-spend to spend past it"}, nil
 		}
 		if bound.usd == 0 || left < bound.usd {
 			bound = runSpend{usd: left, stop: stopBudget, words: fmt.Sprintf(
 				"the run reached what was left of today's spending limit of $%.2f; "+
-					"rerun with --yes-spend to spend past it", daily)}
+					"rerun with --yes-spend to spend past it", daily.Limit)}
 		}
 	}
 	return bound, nil
-}
-
-// spentToday is what today has cost on this machine, read off the usage ledger
-// every conversation and every run worker writes ([session.SpendToday]). A
-// ledger that cannot be read is a day that has spent nothing as far as this
-// door can tell; the plan-price rung still bounds the run.
-func spentToday(now time.Time) float64 {
-	lines, err := session.ReadUsage(session.UsageLedgerPath(), now.Add(-48*time.Hour))
-	if err != nil {
-		return 0
-	}
-	return session.SpendToday(lines, now)
 }
 
 // crewCompleters turns the run road's provider seam into the per-model
