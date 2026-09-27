@@ -765,13 +765,16 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 // AND A SENTENCE COUNTS AS SOMETHING. A nightly job that changed no file and
 // reported "the three flaky tests passed this time" delivered that report to
 // the person ([standingRunner.deliver]), and a run whose words somebody read is
-// not a run that came to nothing however little it touched.
+// not a run that came to nothing however little it touched. It is said, while a
+// run that saved a file is landed.
 func standingCameTo(saved bool, report, needs string) string {
 	switch {
 	case needs != "":
 		return "needs-you"
-	case saved || strings.TrimSpace(report) != "":
+	case saved:
 		return "landed"
+	case strings.TrimSpace(report) != "":
+		return "said"
 	}
 	return standing.OutcomeNothing
 }

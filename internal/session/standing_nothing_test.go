@@ -62,7 +62,7 @@ func nightly(workspace string) standing.Item {
 }
 
 // A CHILD THAT SAVED NOTHING AND SAID NOTHING CAME TO NOTHING, and the same
-// child with one sentence to its name landed. The run folder's own marker is
+// child with one sentence to its name said. The run folder's own marker is
 // written by the pass from this word ([standing.CameTo]), so it is the outcome
 // and not the folder that has to be right here.
 func TestAFiringThatLeftNothingBehindComesToNothing(t *testing.T) {
@@ -97,8 +97,8 @@ func TestAFiringThatLeftNothingBehindComesToNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if outcome.Kind != "landed" {
-		t.Fatalf("a run with a report to give came to %q, wanted landed", outcome.Kind)
+	if outcome.Kind != "said" {
+		t.Fatalf("a run with a report to give came to %q, wanted said", outcome.Kind)
 	}
 	if !strings.Contains(outcome.Text, "flaky tests passed") {
 		t.Fatalf("the run lost its own report: %q", outcome.Text)
@@ -179,7 +179,7 @@ func TestWhatCountsAsARunThatCameToNothing(t *testing.T) {
 		{false, "", "", standing.OutcomeNothing},
 		{false, "   \n ", "", standing.OutcomeNothing},
 		{true, "", "", "landed"},
-		{false, "the suite is green", "", "landed"},
+		{false, "the suite is green", "", "said"},
 		{true, "the suite is green", "", "landed"},
 		// A run stopped on something only a person can allow is neither: it is
 		// work waiting for them, and it is waiting whatever else it did.
