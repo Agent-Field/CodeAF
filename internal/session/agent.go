@@ -1024,6 +1024,10 @@ func (a *Agent) submitUser(ctx context.Context, user userMessage) (<-chan Event,
 	// turn must do NO work, so the person's text is not journaled either — the
 	// message is theirs to send again once the rail moves (rail.go).
 	if err := a.railBlockLocked(); err != nil {
+		var daily dailyBudgetReached
+		if errors.As(err, &daily) {
+			return a.holdDailyBudgetLocked(ctx, user, daily.spend), nil
+		}
 		a.mu.Unlock()
 		return refusedStream(err), nil
 	}
