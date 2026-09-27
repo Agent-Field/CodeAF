@@ -252,3 +252,60 @@ func TestACallThatCostsNothingPassesEveryDollarLine(t *testing.T) {
 		t.Fatalf("a call that costs nothing past every line: %v after %d calls", err, calls.calls)
 	}
 }
+
+func TestTaskCrewDelegationEnforcesDailyBudget(t *testing.T) {
+	dir := t.TempDir()
+	if err := config.WriteDailyBudgetUSD(dir, 1.00); err != nil {
+		t.Fatal(err)
+	}
+	a := &Agent{
+		config: Config{
+			ProfileDir: dir,
+			RouteCrew: func(config.CrewAsk) (crewroute.Decision, error) {
+				return crewroute.Decision{
+					Crew: []crewroute.Pick{
+						{Seat: crewroute.Worker, Send: "test/worker"},
+					},
+				}, nil
+			},
+		},
+	}
+	crew, err := a.routeTaskCrew(t.Context(), 1, "task", "brief")
+	if err != nil {
+		t.Fatalf("routeTaskCrew: %v", err)
+	}
+	if crew.guard == nil {
+		t.Fatal("expected crew.guard to be non-nil")
+	}
+	if crew.guard.Cap != 1.00 {
+		t.Fatalf("crew.guard.Cap = %v, want 1.00", crew.guard.Cap)
+	}
+	if !strings.Contains(crew.guard.CapAction, "today's spending limit") {
+		t.Fatalf("crew.guard.CapAction = %q, want it to mention daily spending limit", crew.guard.CapAction)
+	}
+}
+
+func TestHelperGuardEnforcesDailyBudget(t *testing.T) {
+	dir := t.TempDir()
+	if err := config.WriteDailyBudgetUSD(dir, 0.75); err != nil {
+		t.Fatal(err)
+	}
+	a := &Agent{
+		config: Config{
+			ProfileDir: dir,
+			RouteCrew: func(config.CrewAsk) (crewroute.Decision, error) {
+				return crewroute.Decision{}, nil
+			},
+		},
+	}
+	helper := a.helperGuard(nil)
+	if helper == nil {
+		t.Fatal("expected helper to be non-nil")
+	}
+	if helper.Cap != 0.75 {
+		t.Fatalf("helper.Cap = %v, want 0.75", helper.Cap)
+	}
+	if !strings.Contains(helper.CapAction, "today's spending limit") {
+		t.Fatalf("helper.CapAction = %q, want it to mention daily spending limit", helper.CapAction)
+	}
+}
