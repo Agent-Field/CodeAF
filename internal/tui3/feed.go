@@ -1066,6 +1066,7 @@ func (f *feed) sayVisibleStream(text string, lump bool) {
 		f.mdAt = f.now()
 	}
 	e := &f.entries[f.live]
+	e.addressed = e.addressed || f.updateDelivery.marked
 	e.text += text
 	// AND THE LIVE EDGE OPENS OR EXTENDS HERE, on the bytes that were just
 	// appended and nowhere else (reveal.go). It is in the reducer rather than in

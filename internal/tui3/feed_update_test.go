@@ -116,3 +116,35 @@ func TestUpdateMarkerDoesNotLeakAcrossRetryOrTurn(t *testing.T) {
 		}
 	}
 }
+
+func TestExplicitUpdateStreamsAsAddressedButNotCompletedAcrossLenses(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.turn = 1
+	a.ingest(session.Event{Kind: session.EventTextDelta, Text: "[update] A result is arriving"})
+	at := a.live
+	if at < 0 || !a.entries[at].addressed || confirmedAnswer(&a.entries[at]) {
+		t.Fatal("audience was confused with completion")
+	}
+	for _, l := range []lens{participantLens, overseerLens, transcriptLens} {
+		d := deck{entries: a.entries, lens: l, runningTurn: 1}
+		folds := a.deckFolds(d)
+		if workEntry(d.entries, folds, at) {
+			t.Fatal("marked live update treated as operational narration")
+		}
+		rows, _ := a.deckRows(d, 100)
+		text := ""
+		for _, r := range rows {
+			text += plain(r.text) + "\n"
+		}
+		if !strings.Contains(text, "A result is arriving") || strings.Contains(text, "[update]") {
+			t.Fatalf("live update hidden/leaking protocol: %s", text)
+		}
+	}
+	a.cutTurn(1)
+	if confirmedAnswer(&a.entries[at]) || !a.entries[at].cut {
+		t.Fatal("interrupted partial update claimed completion")
+	}
+	if !workEntry(a.entries, nil, at) {
+		t.Fatal("audience bypass promoted an interrupted partial update")
+	}
+}

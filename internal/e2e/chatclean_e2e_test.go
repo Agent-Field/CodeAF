@@ -314,7 +314,10 @@ func TestCleanChatSteering(t *testing.T) {
 	r.keys("Enter")
 	r.waitFor(10*time.Second, steer)
 	cleanChatCapture(t, r, "09-user-steering")
-	cleanChatWaitAnswer(t, r, "First check is complete", 2*time.Minute)
+	interim := cleanChatWaitAnswer(t, r, "First check is complete", 2*time.Minute)
+	if !strings.Contains(interim, "working") {
+		t.Fatalf("interim update was not visible while work continued:\n%s", interim)
+	}
 	cleanChatCapture(t, r, "09-assistant-update")
 	var screen string
 	finished := false
