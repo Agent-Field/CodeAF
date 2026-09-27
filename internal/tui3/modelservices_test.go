@@ -155,6 +155,22 @@ func TestC12C18ConnectCodexBrowserRowUsesTheRealPanelAndMovesToTheListedModel(t 
 	}
 }
 
+func TestEscapeCancelsAPendingCodexBrowserSignIn(t *testing.T) {
+	a := modelServiceTestApp(t, t.TempDir(), "~deepseek/deepseek-v4-flash-latest",
+		modelsource.NewSet(testDefaultService("sk-default-1234567890")), nil)
+	flow := &panelCodexFlow{url: "https://auth.example/authorize?state=cancel"}
+	a.codexFlow = flow
+
+	drive(t, a, key("esc"))
+
+	if !flow.cancelled {
+		t.Fatal("esc did not cancel the pending browser sign-in")
+	}
+	if a.codexFlow != nil {
+		t.Fatal("esc left the cancelled browser flow installed")
+	}
+}
+
 func modelServiceTestApp(t *testing.T, dir string, model string, sources modelsource.Set, models []Model) *app {
 	return modelServiceTestAppWithAgent(t, dir, model, sources, models, &fakeAgent{model: model})
 }
