@@ -1,0 +1,82 @@
+{
+  "held-tasks.json": [
+    {
+      "id": 1,
+      "state": "queued",
+      "pending": true,
+      "copy_exists": false
+    }
+  ],
+  "cancelled-tasks.json": [
+    {
+      "id": 1,
+      "state": "failed",
+      "stopped": true,
+      "endedAt": "2026-09-27T13:03:38.335212095-04:00",
+      "merge": "aborted",
+      "pending": false,
+      "copy_exists": false
+    }
+  ],
+  "before-restart-tasks.json": [
+    {
+      "id": 1,
+      "state": "failed",
+      "stopped": true,
+      "endedAt": "2026-09-27T13:03:38.335212095-04:00",
+      "merge": "aborted",
+      "pending": false,
+      "copy_exists": false
+    },
+    {
+      "id": 2,
+      "state": "queued",
+      "pending": true,
+      "copy_exists": false
+    }
+  ],
+  "after-restart-tasks.json": [
+    {
+      "id": 1,
+      "state": "failed",
+      "stopped": true,
+      "endedAt": "2026-09-27T13:03:38.335212095-04:00",
+      "merge": "aborted",
+      "pending": false,
+      "copy_exists": false
+    },
+    {
+      "id": 2,
+      "state": "queued",
+      "pending": true,
+      "copy_exists": false
+    }
+  ],
+  "final-tasks.json": [
+    {
+      "id": 1,
+      "state": "failed",
+      "stopped": true,
+      "endedAt": "2026-09-27T13:03:38.335212095-04:00",
+      "merge": "aborted",
+      "pending": false,
+      "copy_exists": false
+    },
+    {
+      "id": 2,
+      "state": "done",
+      "startedAt": "2026-09-27T13:05:24.062291673-04:00",
+      "endedAt": "2026-09-27T13:07:14.586800114-04:00",
+      "merge": "kept",
+      "branch": "task/prepare-purchase-order-csv-with-1cf3d1",
+      "pending": false,
+      "copy_exists": true
+    }
+  ],
+  "release": {
+    "at": 1790528758.4150128,
+    "external_setting": "task.min_free_mb",
+    "value": 0,
+    "restart_to_release": false
+  }
+}

@@ -1,0 +1,849 @@
+{
+  "models": {
+    "deepseek/deepseek-v4.1-flash": 84
+  },
+  "starts": 42,
+  "ends": 42,
+  "receipts": [
+    {
+      "ts": "2026-09-27T13:06:05.296-04:00",
+      "id": "f08227d0",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:06.037-04:00",
+      "id": "f08227d0",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:06.119-04:00",
+      "id": "f7f1e0b3",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:06.872-04:00",
+      "id": "f7f1e0b3",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:06.957-04:00",
+      "id": "d01ca2f4",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:07.293-04:00",
+      "id": "d01ca2f4",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:07.398-04:00",
+      "id": "e91fb7fd",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:19.419-04:00",
+      "id": "e91fb7fd",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:19.559-04:00",
+      "id": "c56d834b",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:20.377-04:00",
+      "id": "c56d834b",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:20.559-04:00",
+      "id": "b2cb8203",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:28.371-04:00",
+      "id": "b2cb8203",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:28.391-04:00",
+      "id": "fe71aedd",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:31.336-04:00",
+      "id": "fe71aedd",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:31.462-04:00",
+      "id": "79da6b06",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:32.741-04:00",
+      "id": "79da6b06",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:32.901-04:00",
+      "id": "d442dd20",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:33.898-04:00",
+      "id": "d442dd20",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:34.159-04:00",
+      "id": "49b5d96f",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:35.642-04:00",
+      "id": "49b5d96f",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:35.693-04:00",
+      "id": "b0ff88c8",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:36.994-04:00",
+      "id": "b0ff88c8",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": "decode stream: context canceled",
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:53.595-04:00",
+      "id": "7a5201e2",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:54.093-04:00",
+      "id": "7a5201e2",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:54.146-04:00",
+      "id": "07d462e3",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:54.747-04:00",
+      "id": "07d462e3",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:54.790-04:00",
+      "id": "41c43391",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:56.028-04:00",
+      "id": "41c43391",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:56.067-04:00",
+      "id": "c02492ce",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:57.395-04:00",
+      "id": "c02492ce",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:57.898-04:00",
+      "id": "c35f7c2f",
+      "phase": "start",
+      "tag": "caption",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:58.276-04:00",
+      "id": "c35f7c2f",
+      "phase": null,
+      "tag": "caption",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:06:58.676-04:00",
+      "id": "7008a478",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:00.370-04:00",
+      "id": "7008a478",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:00.867-04:00",
+      "id": "bcdcc1c5",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:04.450-04:00",
+      "id": "bcdcc1c5",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:04.571-04:00",
+      "id": "bd114c7a",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:06.781-04:00",
+      "id": "bd114c7a",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:06.938-04:00",
+      "id": "d40baa78",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:10.589-04:00",
+      "id": "d40baa78",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:10.752-04:00",
+      "id": "29fcfd5d",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:11.194-04:00",
+      "id": "29fcfd5d",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:11.276-04:00",
+      "id": "6a9065c0",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:11.859-04:00",
+      "id": "6a9065c0",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:11.860-04:00",
+      "id": "132310c4",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:12.412-04:00",
+      "id": "132310c4",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:12.475-04:00",
+      "id": "25a32428",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:14.943-04:00",
+      "id": "25a32428",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:14.978-04:00",
+      "id": "09af5068",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:16.412-04:00",
+      "id": "09af5068",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:16.917-04:00",
+      "id": "ba0f79ed",
+      "phase": "start",
+      "tag": "caption",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:17.789-04:00",
+      "id": "ba0f79ed",
+      "phase": null,
+      "tag": "caption",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": "decode stream: context canceled",
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:17.795-04:00",
+      "id": "9cda17df",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:19.945-04:00",
+      "id": "9cda17df",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:19.949-04:00",
+      "id": "2fdabb3e",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:20.944-04:00",
+      "id": "2fdabb3e",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:21.348-04:00",
+      "id": "26611e5c",
+      "phase": "start",
+      "tag": "worker",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:22.948-04:00",
+      "id": "26611e5c",
+      "phase": null,
+      "tag": "worker",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:22.949-04:00",
+      "id": "8b32fada",
+      "phase": "start",
+      "tag": "worker",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:27.337-04:00",
+      "id": "8b32fada",
+      "phase": null,
+      "tag": "worker",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": "decode stream: context deadline exceeded",
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:50.300-04:00",
+      "id": "12f34631",
+      "phase": "start",
+      "tag": "router",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:50.301-04:00",
+      "id": "2510eedf",
+      "phase": "start",
+      "tag": "title",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:50.305-04:00",
+      "id": "019bed2e",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:50.882-04:00",
+      "id": "019bed2e",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:50.911-04:00",
+      "id": "19769bae",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:51.010-04:00",
+      "id": "2510eedf",
+      "phase": null,
+      "tag": "title",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:51.146-04:00",
+      "id": "12f34631",
+      "phase": null,
+      "tag": "router",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:51.349-04:00",
+      "id": "19769bae",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:51.852-04:00",
+      "id": "0494f445",
+      "phase": "start",
+      "tag": "task",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:52.611-04:00",
+      "id": "0494f445",
+      "phase": null,
+      "tag": "task",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:52.654-04:00",
+      "id": "8d19d901",
+      "phase": "start",
+      "tag": "task",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:54.984-04:00",
+      "id": "8d19d901",
+      "phase": null,
+      "tag": "task",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:55.047-04:00",
+      "id": "1dc26e90",
+      "phase": "start",
+      "tag": "task",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:56.082-04:00",
+      "id": "1dc26e90",
+      "phase": null,
+      "tag": "task",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:56.103-04:00",
+      "id": "c28a9d57",
+      "phase": "start",
+      "tag": "task",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:56.886-04:00",
+      "id": "c28a9d57",
+      "phase": null,
+      "tag": "task",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:57.288-04:00",
+      "id": "5707766a",
+      "phase": "start",
+      "tag": "task",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:58.400-04:00",
+      "id": "5707766a",
+      "phase": null,
+      "tag": "task",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:58.456-04:00",
+      "id": "b04ff080",
+      "phase": "start",
+      "tag": "task",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:59.440-04:00",
+      "id": "b04ff080",
+      "phase": null,
+      "tag": "task",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:07:59.478-04:00",
+      "id": "061f4551",
+      "phase": "start",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:08:00.871-04:00",
+      "id": "061f4551",
+      "phase": null,
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:08:00.876-04:00",
+      "id": "90bd1e7e",
+      "phase": "start",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": null,
+      "error": null,
+      "duration_ms": null
+    },
+    {
+      "ts": "2026-09-27T13:08:03.884-04:00",
+      "id": "90bd1e7e",
+      "phase": null,
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "status": 200,
+      "error": null,
+      "duration_ms": null
+    }
+  ]
+}

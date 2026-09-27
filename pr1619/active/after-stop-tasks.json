@@ -1,0 +1,27 @@
+{
+  "type": "tasks",
+  "version": 1,
+  "seq": 1,
+  "nodes": null,
+  "runs": [
+    {
+      "id": 1,
+      "title": "Add --export PATH to maintenance.py for the due-list",
+      "state": "running",
+      "startedAt": "2026-09-27T13:06:04.631819603-04:00",
+      "copy": {
+        "dir": "/tmp/caf-focused-active/state/v3/projects/-tmp-caf-focused-active-project/ecfda66598e136be/trees/1",
+        "branch": "task/add-export-path-to-maintenance-p-3bb93d",
+        "root": "/tmp/caf-focused-active/project",
+        "ground": "/tmp/caf-focused-active/project",
+        "mode": "worktree",
+        "home": "acceptance/active",
+        "homeSha": "a756955f683b6ce628041f9da66da10f9b4b7857",
+        "checkBase": "a756955f683b6ce628041f9da66da10f9b4b7857",
+        "rung": "universe",
+        "seal": "b038c014453b85b5a70abc7e6accfcd1959aa4d38ddc61131e862816e5b0af50"
+      },
+      "planTask": "t-1"
+    }
+  ]
+}

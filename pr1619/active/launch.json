@@ -1,0 +1,26 @@
+{
+  "argv": [
+    "env",
+    "-u",
+    "CODEAF_TASK_BELT",
+    "-u",
+    "CODEAF_PROFILE_DIR",
+    "CODEAF_HOME=/tmp/caf-focused-active/state",
+    "PLANDB_DB=/tmp/caf-focused-active/project/.plan/plan.db",
+    "TERM=xterm-256color",
+    "/home/santosh/src/codeaf-pr1604-focused/bin/codeaf",
+    "chat",
+    "--model",
+    "deepseek/deepseek-v4.1-flash",
+    "--one-model",
+    "--yolo",
+    "--max-cost",
+    "2"
+  ],
+  "head": "25893534bfa9d9077e50b3d23c563f072b9a156c",
+  "sha256": "f2446383a7a768420a12a7dc5b9ad5f0d1e16b8d50f94486c1521ceaf9e730f3",
+  "started": 1790528728.3039522,
+  "roles": [
+    "model.talk"
+  ]
+}

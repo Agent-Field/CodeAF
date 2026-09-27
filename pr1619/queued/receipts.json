@@ -1,0 +1,517 @@
+{
+  "head": "25893534bfa9d9077e50b3d23c563f072b9a156c",
+  "binary_version": "codeaf 25893534b built 2026-09-27 13:01 \u00b7 go1.26.5 linux/arm64",
+  "binary_sha256": "f2446383a7a768420a12a7dc5b9ad5f0d1e16b8d50f94486c1521ceaf9e730f3",
+  "models": [
+    "deepseek/deepseek-v4.1-flash"
+  ],
+  "completed_calls": 53,
+  "usage_rows": 52,
+  "all_statuses_200": true,
+  "purchase_order": [
+    {
+      "item": "Bolts",
+      "available": "12",
+      "needed": "3"
+    },
+    {
+      "item": "Nuts",
+      "available": "7",
+      "needed": "8"
+    }
+  ],
+  "preserved_files": {
+    "inventory.csv": true,
+    "report.json": true,
+    "supplier.csv": true,
+    "inventory.py": true,
+    "test_inventory.py": true
+  },
+  "second_conversation_commit": "897091d1a5ecf1c7c0984f8d5d82f9575066d2e4",
+  "second_conversation_note_preserved": true,
+  "cancelled_task": 1,
+  "recovered_task": 2,
+  "task_state": "done",
+  "task_ending": null,
+  "tests": 24,
+  "scope": "Focused restart/cancel/admission; excludes broad auth, spend, team and standing changes. Does not claim all issue1554 cases resolved.",
+  "calls": [
+    {
+      "ts": "2026-09-27T13:03:37.925-04:00",
+      "tag": "router",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 601,
+      "cost": 0.0003564
+    },
+    {
+      "ts": "2026-09-27T13:03:38.021-04:00",
+      "tag": "title",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 698,
+      "cost": 0.0001827
+    },
+    {
+      "ts": "2026-09-27T13:03:38.313-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 987,
+      "cost": 0.0046683
+    },
+    {
+      "ts": "2026-09-27T13:03:38.850-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 519,
+      "cost": 0.000257088
+    },
+    {
+      "ts": "2026-09-27T13:03:40.492-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1640,
+      "cost": 0.0008391
+    },
+    {
+      "ts": "2026-09-27T13:04:04.371-04:00",
+      "tag": "router",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 528,
+      "cost": 0.0003495
+    },
+    {
+      "ts": "2026-09-27T13:04:04.496-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 654,
+      "cost": 0.0045642
+    },
+    {
+      "ts": "2026-09-27T13:04:05.131-04:00",
+      "tag": "title",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1290,
+      "cost": 0.0005118
+    },
+    {
+      "ts": "2026-09-27T13:04:05.227-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 392,
+      "cost": 0.00030882
+    },
+    {
+      "ts": "2026-09-27T13:04:05.262-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1419,
+      "cost": 0.000567
+    },
+    {
+      "ts": "2026-09-27T13:04:05.807-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 576,
+      "cost": 0.000589056
+    },
+    {
+      "ts": "2026-09-27T13:04:06.220-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 411,
+      "cost": 0.0002673
+    },
+    {
+      "ts": "2026-09-27T13:04:06.651-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 388,
+      "cost": 0.000265668
+    },
+    {
+      "ts": "2026-09-27T13:04:10.920-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 4241,
+      "cost": 0.0021804
+    },
+    {
+      "ts": "2026-09-27T13:04:12.208-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1285,
+      "cost": 0.0005763
+    },
+    {
+      "ts": "2026-09-27T13:06:06.563-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 583,
+      "cost": 0.002265
+    },
+    {
+      "ts": "2026-09-27T13:06:07.376-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 745,
+      "cost": 0.000356208
+    },
+    {
+      "ts": "2026-09-27T13:06:07.856-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 440,
+      "cost": 0.00054618
+    },
+    {
+      "ts": "2026-09-27T13:06:10.792-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 2873,
+      "cost": 0.00125406
+    },
+    {
+      "ts": "2026-09-27T13:06:24.453-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 13635,
+      "cost": 0.003728952
+    },
+    {
+      "ts": "2026-09-27T13:06:30.151-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 5565,
+      "cost": 0.001432836
+    },
+    {
+      "ts": "2026-09-27T13:06:44.602-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 14370,
+      "cost": 0.003740916
+    },
+    {
+      "ts": "2026-09-27T13:06:50.162-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 5452,
+      "cost": 0.001655616
+    },
+    {
+      "ts": "2026-09-27T13:06:52.575-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 2269,
+      "cost": 0.000847764
+    },
+    {
+      "ts": "2026-09-27T13:06:54.601-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1691,
+      "cost": 0.000666072
+    },
+    {
+      "ts": "2026-09-27T13:06:56.898-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 2283,
+      "cost": 0.000744876
+    },
+    {
+      "ts": "2026-09-27T13:06:58.911-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1715,
+      "cost": 0.000654516
+    },
+    {
+      "ts": "2026-09-27T13:07:02.336-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 3289,
+      "cost": 0.001297788
+    },
+    {
+      "ts": "2026-09-27T13:07:04.703-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1642,
+      "cost": 0.001328808
+    },
+    {
+      "ts": "2026-09-27T13:07:05.756-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 981,
+      "cost": 0.000565848
+    },
+    {
+      "ts": "2026-09-27T13:07:06.669-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 834,
+      "cost": 0.000529392
+    },
+    {
+      "ts": "2026-09-27T13:07:10.180-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 3470,
+      "cost": 0.001901568
+    },
+    {
+      "ts": "2026-09-27T13:07:11.371-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1032,
+      "cost": 0.00034074
+    },
+    {
+      "ts": "2026-09-27T13:07:12.699-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1182,
+      "cost": 0.000486276
+    },
+    {
+      "ts": "2026-09-27T13:07:14.435-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1705,
+      "cost": 0.00073038
+    },
+    {
+      "ts": "2026-09-27T13:07:17.010-04:00",
+      "tag": "worker",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1216,
+      "cost": 0.0005994
+    },
+    {
+      "ts": "2026-09-27T13:07:20.873-04:00",
+      "tag": "worker",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 3862,
+      "cost": 0.00097404
+    },
+    {
+      "ts": "2026-09-27T13:08:01.640-04:00",
+      "tag": "router",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 661,
+      "cost": 0.000143508
+    },
+    {
+      "ts": "2026-09-27T13:08:01.892-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 904,
+      "cost": 0.0003036
+    },
+    {
+      "ts": "2026-09-27T13:08:02.396-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1415,
+      "cost": 0.003448356
+    },
+    {
+      "ts": "2026-09-27T13:08:03.862-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1346,
+      "cost": 0.000619764
+    },
+    {
+      "ts": "2026-09-27T13:08:05.977-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 2081,
+      "cost": 0.000616872
+    },
+    {
+      "ts": "2026-09-27T13:08:09.257-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 3277,
+      "cost": 0.00080724
+    },
+    {
+      "ts": "2026-09-27T13:08:11.338-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 2078,
+      "cost": 0.0006303
+    },
+    {
+      "ts": "2026-09-27T13:08:28.297-04:00",
+      "tag": "router",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 3682,
+      "cost": 0.001052208
+    },
+    {
+      "ts": "2026-09-27T13:08:29.367-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 4747,
+      "cost": 0.001290336
+    },
+    {
+      "ts": "2026-09-27T13:08:30.025-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 5407,
+      "cost": 0.002020764
+    },
+    {
+      "ts": "2026-09-27T13:08:30.157-04:00",
+      "tag": "routerconfirm",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1859,
+      "cost": 0.000563376
+    },
+    {
+      "ts": "2026-09-27T13:08:31.314-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1176,
+      "cost": 0.00106848
+    },
+    {
+      "ts": "2026-09-27T13:08:32.162-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 794,
+      "cost": 0.000473268
+    },
+    {
+      "ts": "2026-09-27T13:08:33.765-04:00",
+      "tag": "turn",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1253,
+      "cost": 0.000614172
+    },
+    {
+      "ts": "2026-09-27T13:08:36.886-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 3117,
+      "cost": 0.00155154
+    },
+    {
+      "ts": "2026-09-27T13:08:38.265-04:00",
+      "tag": "reflex",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "status": 200,
+      "ms": 1374,
+      "cost": 0.000618504
+    }
+  ]
+}
