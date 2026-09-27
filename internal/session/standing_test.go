@@ -267,6 +267,47 @@ func TestStandingPersonNamedRailsSurviveAndTheCardQuotesThem(t *testing.T) {
 	}
 }
 
+func TestStandingCardReadsTheLiveDailyBudget(t *testing.T) {
+	store := newFakeStanding(t)
+	profile := t.TempDir()
+	if err := config.WriteDailyBudgetUSD(profile, 8); err != nil {
+		t.Fatalf("write budget: %v", err)
+	}
+	completer := &scriptedCompleter{steps: []step{standCall("s1", aReminder()), finalText("set up")}}
+	agent := standingAgent(t, completer, store, func(c *Config) {
+		c.ProfileDir = profile
+		c.Standing.DailyRailUSD = 50
+	})
+	events, err := agent.Submit(context.Background(), "remind me at 6 to leave")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := drainAnsweringStanding(t, events, func(event Event) {
+		agent.ResolveStanding(event.Standing.ID, StandingAnswer{Approved: true})
+	})
+	card, found := firstOfKind(collected, EventStandingProposal)
+	if !found || card.Standing.CostWords != "shares the day's $8.00 allowance" {
+		t.Fatalf("card cost = %q, want the live $8.00 allowance", card.Standing.CostWords)
+	}
+}
+
+func TestATaskFiringUsesTheTaskActivityWord(t *testing.T) {
+	workspace := t.TempDir()
+	room := standingLiveAgent(t, workspace, nil)
+	lane := room.TaskUpdates()
+	runner := &standingRunner{root: t.TempDir()}
+	item := standing.Item{
+		ID: "task-item", Words: "run the checks", Workspace: workspace,
+		Origin: standing.Origin{SessionID: room.id, Transcript: room.config.SessionFile},
+		Does:   standing.Action{Kind: standing.ActionTask, Brief: "run the checks"},
+	}
+	runner.deliver(item, "landed", "the checks passed", "")
+	event := standingNextUpdate(t, lane)
+	if event.Standing.Update != "task" {
+		t.Fatalf("task firing activity word = %q, want task", event.Standing.Update)
+	}
+}
+
 // A RULE STANDS UP WITH NOTHING BUT ITS SENTENCE AND ITS REACH.
 //
 // The three fields every other kind carries are all about waking — a cadence to

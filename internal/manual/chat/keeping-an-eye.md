@@ -94,6 +94,9 @@ The row leads with your own sentence cut to its first six words, so
 `◦ remind me in 1 minute to · said: 💧 Time to drink water!`. The whole sentence
 is in the transcript, and on the item's own row on home.
 
+When the firing runs a task rather than saying a sentence, its row uses `task:`
+for the result, such as `◦ run the checks · task: the checks passed`.
+
 There is no phone, no email and no desktop notification — see the last section of
 this page.
 

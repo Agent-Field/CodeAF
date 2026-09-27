@@ -608,7 +608,8 @@ func (it Item) Reaches(workspace, sessionID string) bool {
 	case AltitudeMachine:
 		return true
 	case AltitudeProject:
-		return workspace != "" && it.Workspace == workspace
+		return strings.TrimSpace(it.Workspace) != "" && strings.TrimSpace(workspace) != "" &&
+			filepath.Clean(it.Workspace) == filepath.Clean(workspace)
 	case AltitudeConversation:
 		return sessionID != "" && it.Origin.SessionID == sessionID
 	}
@@ -880,7 +881,9 @@ type Note struct {
 	Words  string    `json:"words"`
 	// Kind is "said", "landed", "needs-you", or "failed".
 	Kind string `json:"kind"`
-	Text string `json:"text"`
+	// Action preserves whether a delivered firing said something or ran a task.
+	Action string `json:"action,omitempty"`
+	Text   string `json:"text"`
 	// Run is the run folder a person can open for the whole story.
 	Run string `json:"run,omitempty"`
 }

@@ -472,6 +472,16 @@ func standUpdateWord(update, text string) string {
 			return "ran"
 		}
 		return "said: " + text
+	case "said":
+		if text == "" {
+			return "ran"
+		}
+		return "said: " + text
+	case "task":
+		if text == "" {
+			return "ran"
+		}
+		return "task: " + text
 	case "needs-you":
 		// ONE WORD FOR ONE READING, AND IT IS THE SURFACE'S ONE WORD. `needs your
 		// look` was this file's own name for the fact every task row now calls

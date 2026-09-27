@@ -446,7 +446,7 @@ func (r *standingRunner) deliver(item standing.Item, kind, text, run string) {
 		// before the steering line goes on the queue, is what makes the order on
 		// screen the order it happened in: the firing, then whatever is said
 		// about it.
-		agent.emitStandingNews(standingUpdateWord(kind), item, text)
+		agent.emitStandingNews(standingFiringWord(kind, item.Does.Kind), item, text)
 		agent.enqueueSteering(standingSteeringLine(item, text))
 		return
 	}
@@ -455,6 +455,7 @@ func (r *standingRunner) deliver(item standing.Item, kind, text, run string) {
 		ItemID: item.ID,
 		Words:  item.Words,
 		Kind:   kind,
+		Action: string(item.Does.Kind),
 		Text:   text,
 		Run:    run,
 	}
@@ -490,6 +491,23 @@ func standingUpdateWord(kind string) string {
 		return "failed"
 	}
 	return "fired"
+}
+
+// standingFiringWord preserves the action a successful firing performed for
+// the activity row; needs-you and failed remain outcome words because they say
+// why the work stopped rather than what it delivered.
+func standingFiringWord(kind string, action standing.ActionKind) string {
+	if word := standingUpdateWord(kind); word != "fired" {
+		return word
+	}
+	switch action {
+	case standing.ActionTask:
+		return "task"
+	case standing.ActionSay:
+		return "said"
+	default:
+		return "fired"
+	}
 }
 
 // standingSteeringLine is the shape a firing takes in a live conversation: the
@@ -1341,7 +1359,7 @@ func (a *Agent) queueStandingNews(notes []standing.Note) {
 			// retired hours ago, so the row is built from the words and the id
 			// the note kept rather than from a store lookup that can fail.
 			Item:   standing.Item{ID: note.ItemID, Words: note.Words},
-			Update: standingUpdateWord(note.Kind),
+			Update: standingFiringWord(note.Kind, standing.ActionKind(note.Action)),
 			Text:   strings.TrimSpace(note.Text),
 		}})
 	}
