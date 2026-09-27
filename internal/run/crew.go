@@ -150,7 +150,11 @@ func CrewFactoryWithStanding(store *plandb.Store, workspace, profileDir string, 
 		// ceiling by seat, and a crew whose seats share one model would give it
 		// nothing else to tell a check's call from a worker's.
 		seat, _ := config.CrewTierSeat(tier)
-		return NewBashWorkerWithStanding(store, workspace, model, session.SeatCompleter(seat, completerFor(model)), standingSection)
+		completer := session.SeatCompleter(seat, completerFor(model))
+		if role == plandb.RoleCheck {
+			completer = session.SpendScope(task.ID, completer)
+		}
+		return NewBashWorkerWithStanding(store, workspace, model, completer, standingSection)
 	}
 }
 

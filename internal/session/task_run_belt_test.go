@@ -765,6 +765,22 @@ func TestLandingDigestIsUnchangedWithoutAStoredSummary(t *testing.T) {
 	}
 }
 
+func TestLandingDigestNamesUnfinishedChecks(t *testing.T) {
+	store, err := plandb.Open(filepath.Join(t.TempDir(), planStoreFilename), "run", planRootID, "The run", "person ask")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	got := beltRunOutcomeNote(store, planRootID, RunSummary{
+		Outcome: "incomplete",
+		Failure: "unfinished checks: check: leaf",
+	}, RunLanding{}, 0)
+	want := "incomplete · unfinished checks: check: leaf"
+	if got != want {
+		t.Fatalf("landing digest = %q, want %q", got, want)
+	}
+}
+
 // landingRunDouble ends synchronously so the test can observe the exact order:
 // the summary refresh must have stored its sentence before the outcome note is
 // composed.
