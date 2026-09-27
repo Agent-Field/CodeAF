@@ -228,6 +228,15 @@ func sweepLogs(ctx context.Context, dir string, now time.Time, note func(string)
 		if err != nil {
 			return err
 		}
+		if entry.IsDir() && path == filepath.Join(logs, droppingJobs) {
+			// Job ownership and durable id history must not expire by age.
+			// This existing-directory startup pass uses the same leased
+			// retention as claim/close and preserves unmarked legacy writers.
+			if err := jobRetentionSweep(path, defaultJobRetentionBudget()); err != nil {
+				note(fmt.Sprintf("sweep: job retention deferred for %s: %v", path, err))
+			}
+			return fs.SkipDir
+		}
 		if entry.IsDir() || !entry.Type().IsRegular() {
 			return nil
 		}

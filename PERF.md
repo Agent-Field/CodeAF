@@ -2641,3 +2641,29 @@ Rendering selects a phrase by elapsed ten-second interval and samples the existi
 decoding ripple with 240 ms letter steps and a 1.8-second pause per pass. The 28-column caption and
 nine-column mark have fixed widths. This uses the existing clock and one
 foreground span; it adds no timer, I/O, model call or per-frame randomness.
+
+## Completed job log retention
+
+`internal/session/jobretention.go` limits eligible completed managed spools in
+one jobs directory to **128 MiB and 64 job groups**, counting the base and
+rotation together. Active spools have separate per-job limits; unmarked legacy
+logs and unsafe files remain outside the budget because older writers may not
+hold leases. This is not a machine-wide bound.
+
+Maintenance runs at log creation, sink close, and the existing startup sweep,
+never per output write. It
+lists one jobs directory, sorts candidates by allocated ID, and takes
+nonblocking independent file leases; a deletion holds its lease through unlink.
+Directory locks serialize allocation and maintenance across processes. Counter
+and ownership metadata reads are capped at 256 bytes. ID allocation persists a
+high-water value before cleanup and keeps the writer lease before publishing
+the marker, preventing both reused IDs and newborn-log eviction. The stable
+lock file remembers initialization if a counter later disappears.
+
+A claim with damaged metadata fails explicitly. Cleanup failures remain
+retryable and are surfaced in the sink notice. Existing journals, worktrees,
+legacy logs, and unrelated directories are not retention candidates. Tests use
+explicit byte/count budgets with small payloads, avoiding mutable global limits.
+
+The startup TTL sweeper delegates `logs/jobs/` to this retention instead of
+expiring the stable allocation metadata or ownership markers by age.
