@@ -443,6 +443,16 @@ parts it has, and however long it takes — belongs to a task instead, which giv
 to watch and a report you can read. If a multi-part piece of work was started as a
 background command, say so: it can be handed to a task instead.
 
+## Why can a job not create its log?
+
+Job-log setup refuses symlinked storage paths, including a symlinked codeaf home
+or legacy workspace, because cleanup cannot establish ownership safely. Use the
+resolved directory path. A damaged or missing established job-ID counter is also
+refused with `job log retention: unsafe or damaged state; refusing allocation or
+cleanup`. The counter and `.retention.lock` preserve job IDs across cleanup and
+restarts; deleting them is not a supported reset. Existing unmarked logs are
+preserved because an older process may still be writing them.
+
 ## Can you keep an eye on something and tell me when it changes?
 
 Yes. The `watch` tool runs a command on a timer and speaks **only when there is
