@@ -1176,3 +1176,11 @@ Two things that account does not cover:
 - **`codeaf manual --help` prints its usage, then the list of pages.** The list is what
   that command can be asked for, so it is still there; it used to be *all* that was there,
   which made one verb in the binary answer `--help` differently from the other twenty-two.
+
+## Why does an empty task brief say no goal was given?
+
+`codeaf do`, `codeaf exec`, and `codeaf plan new` require a nonblank brief.
+An empty quoted argument, whitespace-only arguments, or empty piped input are
+rejected before planning or model work starts. Supply the goal as command
+arguments or pipe it through standard input; a single `-` explicitly selects
+standard input. A missing goal is not a request for the model to invent work.
