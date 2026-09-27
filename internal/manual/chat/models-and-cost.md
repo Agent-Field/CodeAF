@@ -4028,3 +4028,13 @@ case it is there for is an endpoint that reports a window its loaded model does
 not really have, which is where `lean` is you telling codeaf the truth. `full`
 is the other direction: a small window you would rather spend on the whole tool
 list than on the conversation.
+
+## Does the daily budget apply to chat and team tasks?
+
+The daily budget blocks a new chat call when today's recorded spending reaches
+the limit. Task crews and their helpers use it when checking the next call's
+estimated cost. Other conversations' completed usage receipts are read on each
+check, and completed spending resets at the local date boundary. Calls already
+in flight may finish; this is not an atomic reservation across processes.
+Use `/budget` to change the limit. Per-conversation and per-task limits still
+apply separately.

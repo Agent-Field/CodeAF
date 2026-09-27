@@ -66,7 +66,7 @@ func (a *Agent) railBlockLocked() error {
 		if daily, err := config.DailyBudgetUSDAt(a.config.ProfileDir); err == nil && daily > 0 {
 			spentToday := spentTodayOnLedger()
 			if a.crewDayHeld != nil {
-				spentToday = a.crewDayHeld.Total()
+				spentToday = max(spentToday, a.crewDayHeld.Total())
 			}
 			if spentToday >= daily {
 				return spendRailReached{said: fmt.Sprintf(
