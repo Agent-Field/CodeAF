@@ -272,8 +272,10 @@ func TestAChildLandingAfterItsParentSettledReachesTheConversation(t *testing.T) 
 	kid.finish("the law is in section four", nil, "", "")
 	nest.graph.complete(kid, TaskDone)
 
+	// Delivery may wake the conversation and drain its queue before this
+	// observer runs. The transcript and pending queues record the same news.
 	waitFor(t, "the orphaned news to reach the person's conversation", func() bool {
-		return steeringContains(nest.session, "the law is in section four")
+		return notesContain(nest.session, "the law is in section four")
 	})
 	if report := nest.parent.notice().Report; strings.Contains(report, "the law is in section four") {
 		t.Fatalf("a settled parent's report was rewritten after it was told:\n%s", report)
