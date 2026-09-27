@@ -1,0 +1,57 @@
+[
+  {
+    "command": [
+      "python3",
+      "-m",
+      "unittest",
+      "-v"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": "test_bad_due_date_fails (test_maintenance.CliTests.test_bad_due_date_fails) ... ok\ntest_empty_result_message (test_maintenance.CliTests.test_empty_result_message) ... ok\ntest_json_output (test_maintenance.CliTests.test_json_output) ... ok\ntest_missing_csv_fails (test_maintenance.CliTests.test_missing_csv_fails) ... ok\ntest_prints_matching_chore (test_maintenance.CliTests.test_prints_matching_chore) ... ok\ntest_done_flag_updates_csv_and_reports (test_maintenance.DoneCliTests.test_done_flag_updates_csv_and_reports) ... ok\ntest_done_json_mode (test_maintenance.DoneCliTests.test_done_json_mode) ... ok\ntest_done_missing_title_exits_2_without_writing (test_maintenance.DoneCliTests.test_done_missing_title_exits_2_without_writing) ... ok\ntest_done_then_due_view_excludes_the_chore (test_maintenance.DoneCliTests.test_done_then_due_view_excludes_the_chore) ... ok\ntest_due_and_done_together_are_rejected (test_maintenance.DoneCliTests.test_due_and_done_together_are_rejected) ... ok\ntest_neither_mode_is_rejected (test_maintenance.DoneCliTests.test_neither_mode_is_rejected) ... ok\ntest_excludes_done (test_maintenance.FilteringTests.test_excludes_done) ... ok\ntest_excludes_future (test_maintenance.FilteringTests.test_excludes_future) ... ok\ntest_includes_in_progress (test_maintenance.FilteringTests.test_includes_in_progress) ... ok\ntest_includes_on_cutoff (test_maintenance.FilteringTests.test_includes_on_cutoff) ... ok\ntest_sorted_soonest_first (test_maintenance.FilteringTests.test_sorted_soonest_first) ... ok\ntest_bad_date_errors (test_maintenance.LoadTests.test_bad_date_errors) ... ok\ntest_loads_rows (test_maintenance.LoadTests.test_loads_rows) ... ok\ntest_missing_column_errors (test_maintenance.LoadTests.test_missing_column_errors) ... ok\ntest_ambiguous_title_leaves_csv_byte_for_byte (test_maintenance.MarkDoneTests.test_ambiguous_title_leaves_csv_byte_for_byte) ... ok\ntest_extra_columns_are_preserved (test_maintenance.MarkDoneTests.test_extra_columns_are_preserved) ... ok\ntest_marks_only_the_exact_matching_row (test_maintenance.MarkDoneTests.test_marks_only_the_exact_matching_row) ... ok\ntest_missing_title_leaves_csv_byte_for_byte (test_maintenance.MarkDoneTests.test_missing_title_leaves_csv_byte_for_byte) ... ok\ntest_surrounding_whitespace_is_trimmed (test_maintenance.MarkDoneTests.test_surrounding_whitespace_is_trimmed) ... ok\ntest_title_match_is_case_sensitive (test_maintenance.MarkDoneTests.test_title_match_is_case_sensitive) ... ok\n\n----------------------------------------------------------------------\nRan 25 tests in 0.068s\n\nOK\n"
+  },
+  {
+    "command": [
+      "python3",
+      "maintenance.py",
+      "--due",
+      "2026-10-01"
+    ],
+    "exit_code": 0,
+    "stdout": "2 unfinished chore(s) due by 2026-10-01:\n  2026-09-20  Replace smoke alarm batteries  [open]\n  2026-09-25  Repaint front step             [in-progress]\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "python3",
+      "maintenance.py",
+      "--due",
+      "2026-10-01",
+      "--json"
+    ],
+    "exit_code": 0,
+    "stdout": "{\n  \"due_by\": \"2026-10-01\",\n  \"count\": 2,\n  \"chores\": [\n    {\n      \"title\": \"Replace smoke alarm batteries\",\n      \"due\": \"2026-09-20\",\n      \"status\": \"open\"\n    },\n    {\n      \"title\": \"Repaint front step\",\n      \"due\": \"2026-09-25\",\n      \"status\": \"in-progress\"\n    }\n  ]\n}\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "git",
+      "status",
+      "--short"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "git",
+      "log",
+      "-3",
+      "--oneline"
+    ],
+    "exit_code": 0,
+    "stdout": "270d890 Mark Clean dryer vent done\n7a0245a Add maintenance CLI: --due/--done/--json with tests and README\nf7786ed maintenance fixture\n",
+    "stderr": ""
+  }
+]
