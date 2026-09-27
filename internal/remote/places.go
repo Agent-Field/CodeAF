@@ -42,6 +42,8 @@ func (s *server) placesCall(call Frame) (json.RawMessage, bool, error) {
 	sess.mu.Unlock()
 
 	switch call.Method {
+	case MethodLandingPreview, MethodLand:
+		return s.landingCall(call)
 	case MethodPlacesArchive:
 		args, err := arg[ArchiveArgs](call)
 		if err != nil {

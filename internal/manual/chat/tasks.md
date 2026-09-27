@@ -1844,8 +1844,10 @@ not merge into automatically`. The branch named there holds the finished work; t
 how-tasks-run page explains the exact reason.
 Inspect that branch and keep the delivery workflow you requested. A task finishing
 does not by itself request a merge or a checkout change. If you want codeaf to bring
-the retained work into the checkout, `/land` lists the waiting folder and merges the
-named branch, whether it came from one task or a retained run.
+the retained work into the checkout, `/land` lists the waiting folder and `/land now`
+merges the named branch, whether it came from one task or a retained run. This also
+works in an ordinary local-host conversation, before and after reopening it, including
+when the task's repository is the folder the conversation is standing in.
 
 Click anywhere on the card, or press `ctrl+o` with it selected, to expand it. `enter` on the
 selected card opens the task's room instead. What the expansion holds, and in what order, is

@@ -1588,8 +1588,10 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 	if notice.State.settled() && notice.CostUSD == 0 {
 		notice.CostUSD = a.beltRunSpent(notice.ID)
 	}
-	a.emitTaskUpdate(notice)
+	// A host publishes the frame's facts when this update arrives, so the
+	// retained branch must already be readable from the graph at that moment.
 	g.keepRunRows(notice.ID, []TaskNotice{notice})
+	a.emitTaskUpdate(notice)
 	a.indexRunRow(notice)
 }
 
