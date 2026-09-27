@@ -61,7 +61,7 @@ func (a *Agent) railBlockLocked() error {
 	if err := a.launchBudgetBlockLocked(); err != nil {
 		return err
 	}
-	if daily, err := DailySpendAt(a.config.ProfileDir, time.Now(), a.config.usageLedger); err == nil && daily.Reached {
+	if daily, err := DailySpendAt(a.config.ProfileDir, time.Now(), a.config.usageLedger); err == nil && daily.Reached && !a.config.DailySpendPreauthorized {
 		return dailyBudgetReached{spend: daily}
 	}
 	rail := a.spendRailUSD()
