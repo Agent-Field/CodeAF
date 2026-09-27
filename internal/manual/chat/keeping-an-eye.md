@@ -985,7 +985,8 @@ Both kinds show the action they will take before you approve.
 For a scheduled task that should open a pull request without merging, set
 `does.isolate` to `true` on the `stand` proposal. Its approval card says
 `work · separate Git worktree · changes kept for review`. Permission words
-alone do not select isolation. Existing orders keep their current behavior;
+alone do not select isolation. An isolated task has no “Only now” option: an
+ordinary conversation turn cannot provide the scheduled runner’s worktree. Existing orders keep their current behavior;
 replace an order and approve its isolation option to change that behavior.
 
 An isolated firing requires a Git repository with at least one commit. It
