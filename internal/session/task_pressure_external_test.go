@@ -69,3 +69,36 @@ func TestMachineAdmissionNoticesSettingsFromAnotherProcess(t *testing.T) {
 		})
 	}
 }
+
+func TestNewAdmissionReadsSettingsChangedBeforeItsCreation(t *testing.T) {
+	for _, profileKind := range []string{"named", "default"} {
+		t.Run(profileKind, func(t *testing.T) {
+			profile := t.TempDir()
+			if profileKind == "default" {
+				t.Setenv("CODEAF_HOME", profile)
+				t.Setenv("CODEAF_PROFILE_DIR", "")
+				profile = ""
+			}
+			path := config.BudgetConfigPath(profile)
+			if err := os.WriteFile(path, []byte(`{"task.min_free_mb":1099511627776}`), 0600); err != nil {
+				t.Fatal(err)
+			}
+			gate := newRunAdmission(0, 0, profile, NewTaskLanes()).(*runAdmission)
+			if gate.MayStart() || gate.HeldBy() != config.KeyTaskMinFreeMB {
+				t.Fatal("new gate ignored memory setting written after session startup")
+			}
+			if gate.governor.maxLoad != 0 {
+				t.Fatal("missing persisted load key replaced explicit startup zero")
+			}
+			if err := os.WriteFile(path, []byte(`{"task.max_load":0.001}`), 0600); err != nil {
+				t.Fatal(err)
+			}
+			governor := newAdmissionGovernorForProfile(0, 0, profile)
+			governor.read = func() (machineReading, bool) { return loaded(), true }
+			governor.observe(0)
+			if governor.admits(0) || governor.heldBy != config.KeyTaskMaxLoad || governor.minFreeMB != 0 {
+				t.Fatal("new graph gate lost persisted load or explicit startup memory zero")
+			}
+		})
+	}
+}

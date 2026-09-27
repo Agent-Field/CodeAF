@@ -370,8 +370,8 @@ func newAdmissionGovernor(maxLoad float64, minFreeMB int) *admissionGovernor {
 	}
 }
 
-// newAdmissionGovernorForProfile uses the startup values until the profile's
-// settings file or local write generation changes. A profile-backed governor is kept even
+// newAdmissionGovernorForProfile overlays current persisted settings on startup
+// values, then follows later writes. A profile-backed governor is kept even
 // when both startup values are off because a later settings write may turn a
 // ceiling on while this session is holding work.
 func newAdmissionGovernorForProfile(maxLoad float64, minFreeMB int, profileDir string) *admissionGovernor {
@@ -381,10 +381,11 @@ func newAdmissionGovernorForProfile(maxLoad float64, minFreeMB int, profileDir s
 		governor = &admissionGovernor{read: hostReading, now: time.Now}
 	}
 	governor.settings = func() (float64, int) {
-		return config.TaskMaxLoadAt(profileDir), config.TaskMinFreeMBAt(profileDir)
+		return config.TaskAdmissionLimitsAt(profileDir, maxLoad, minFreeMB)
 	}
 	governor.settingsPath = config.BudgetConfigPath(profileDir)
 	governor.settingsFile, _ = os.Stat(governor.settingsPath)
+	governor.maxLoad, governor.minFreeMB = governor.settings()
 	governor.settingsGeneration = config.SettingsGeneration()
 	return governor
 }
