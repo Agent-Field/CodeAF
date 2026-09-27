@@ -452,7 +452,7 @@ func TestTheErrandHintNamesOnlyTheAnswersTheCardDrew(t *testing.T) {
 		// A one-off reminder. "Do it once, now" says the wrong thing at the
 		// wrong moment for a line that was meant for six o'clock, so the card
 		// draws two numbered chips and the hint may name two digits.
-		{"a one-off reminder", standReminder(), "1 Remind me in 1 minute — 07:35 · 0 Don't remind me · o Change…", 2},
+		{"a one-off reminder", standReminder(), "1 Remind me in 1 minute · 07:35 · 0 Don't remind me · o Change…", 2},
 		// A repeating check is a thing a person may reasonably want done once, now.
 		// The third answer is drawn, so the third digit is named.
 		{"a repeating check", standItem(), "1 Set it up · Mondays at 9am · 3 Only now, don't repeat · 0 Don't set it up · o Change…", 3},

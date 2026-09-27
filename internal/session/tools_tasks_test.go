@@ -572,7 +572,9 @@ func TestHandingAYourCallToTheModelAndItsResolveAreOneRoad(t *testing.T) {
 	// what leaves a your-call landing in the PERSON'S hands: with nobody watching
 	// the model holds every one of them by policy ([Agent.settlePolicy]) and the
 	// card this test is about is never drawn.
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+	// Keep the woken turn open until the test resolves the decision; a finished
+	// turn correctly hands unresolved work back to the person.
+	agent, _ := newTestAgent(t, &holdingCompleter{}, func(config *Config) {
 		config.Place, config.AskConsent = Place{Dir: mine}, true
 	})
 	graph := stubbedGraph(agent, func(node *TaskNode) {
