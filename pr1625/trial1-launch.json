@@ -1,0 +1,24 @@
+{
+  "head": "961c98c0d50860ab517f33a4e148628abd290965",
+  "version": "codeaf 961c98c0d built 2026-09-27 13:28 \u00b7 go1.26.5 linux/arm64",
+  "sha256": "ab9673e19e541925cf152ca7aafe69c940db7ea4ec51aa9a64c9c63d6ecb9e85",
+  "argv": [
+    "env",
+    "-u",
+    "CODEAF_TASK_BELT",
+    "-u",
+    "CODEAF_PROFILE_DIR",
+    "CODEAF_HOME=/tmp/caf-retry-usage-1/state",
+    "PLANDB_DB=/tmp/caf-retry-usage-1/project/.plan/plan.db",
+    "TERM=xterm-256color",
+    "/home/santosh/src/codeaf-retry-usage-live/bin/codeaf",
+    "chat",
+    "--model",
+    "deepseek/deepseek-v4.1-flash",
+    "--one-model",
+    "--yolo",
+    "--max-cost",
+    "1"
+  ],
+  "at": 1790530238.9677365
+}

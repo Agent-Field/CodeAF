@@ -1,0 +1,251 @@
+{
+  "issue": 1624,
+  "fix_pr": 1625,
+  "composition": "25893534b + 1f4f3c51f = 961c98c0d",
+  "final_pr_docs_only": "6105c01e8",
+  "natural_tmux_trials": 2,
+  "fault_injection": false,
+  "all_roles_model": "deepseek/deepseek-v4.1-flash",
+  "trials": [
+    {
+      "trial": "1",
+      "audit": {
+        "transport_calls": 14,
+        "ledger_rows": 14,
+        "transport_cost": "0.009988692",
+        "ledger_cost": "0.011427792",
+        "known_transport_minus_ledger": "-0.001439100",
+        "transport_missing_cost": [
+          {
+            "ts": "2026-09-27T13:31:21.000-04:00",
+            "id": "90201754",
+            "tag": "worker",
+            "model": "deepseek/deepseek-v4.1-flash",
+            "served": "Together",
+            "max_tokens": 2368,
+            "messages": 2,
+            "stream": true,
+            "attempt": 1,
+            "status": 200,
+            "ms": 4280,
+            "ttft_ms": 174,
+            "hazard_ceiling_ms": 30000,
+            "conn_reused": true,
+            "error": "decode stream: context deadline exceeded"
+          }
+        ],
+        "reconciled_ledger_rows": [
+          {
+            "at": "2026-09-27T13:31:41.795932633-04:00",
+            "day": "2026-09-27",
+            "model": "deepseek/deepseek-v4.1-flash",
+            "calls": 1,
+            "in": 721,
+            "out": 1019,
+            "usd": "0.0014391",
+            "reconciled": true,
+            "session": "1b92b3468bf6a42c",
+            "workspace": "/tmp/caf-retry-usage-1/project"
+          }
+        ],
+        "all_models_exact": true,
+        "empty_at_ceiling": [
+          {
+            "ts": "2026-09-27T13:31:16.719-04:00",
+            "id": "7df8f775",
+            "tag": "worker",
+            "model": "deepseek/deepseek-v4.1-flash",
+            "served": "Together",
+            "max_tokens": 2368,
+            "messages": 2,
+            "stream": true,
+            "attempt": 1,
+            "status": 200,
+            "ms": 1713,
+            "finish": "length",
+            "ttft_ms": 192,
+            "hazard_ceiling_ms": 30000,
+            "conn_reused": true,
+            "prompt_tokens": 715,
+            "completion_tokens": 320,
+            "reasoning_tokens": 320,
+            "cost": "0.0005985",
+            "learned": [
+              "reasoning_disable_ignored"
+            ],
+            "empty_at_ceiling": true
+          }
+        ]
+      },
+      "retained_discarded_attempts": [
+        {
+          "transport_id": "7df8f775",
+          "cost": "0.0005985",
+          "ledger_at": "2026-09-27T13:31:16.719657672-04:00",
+          "ledger_role": "worker",
+          "retained_once": true
+        }
+      ],
+      "csv": [
+        {
+          "item": "Bolts",
+          "available": "12",
+          "needed": "3"
+        },
+        {
+          "item": "Nuts",
+          "available": "7",
+          "needed": "8"
+        }
+      ],
+      "independent_tests": 24,
+      "launch": {
+        "head": "961c98c0d50860ab517f33a4e148628abd290965",
+        "version": "codeaf 961c98c0d built 2026-09-27 13:28 \u00b7 go1.26.5 linux/arm64",
+        "sha256": "ab9673e19e541925cf152ca7aafe69c940db7ea4ec51aa9a64c9c63d6ecb9e85",
+        "argv": [
+          "env",
+          "-u",
+          "CODEAF_TASK_BELT",
+          "-u",
+          "CODEAF_PROFILE_DIR",
+          "CODEAF_HOME=/tmp/caf-retry-usage-1/state",
+          "PLANDB_DB=/tmp/caf-retry-usage-1/project/.plan/plan.db",
+          "TERM=xterm-256color",
+          "/home/santosh/src/codeaf-retry-usage-live/bin/codeaf",
+          "chat",
+          "--model",
+          "deepseek/deepseek-v4.1-flash",
+          "--one-model",
+          "--yolo",
+          "--max-cost",
+          "1"
+        ],
+        "at": 1790530238.9677365
+      }
+    },
+    {
+      "trial": "2",
+      "audit": {
+        "transport_calls": 14,
+        "ledger_rows": 14,
+        "transport_cost": "0.009559980",
+        "ledger_cost": "0.010908780",
+        "known_transport_minus_ledger": "-0.001348800",
+        "transport_missing_cost": [
+          {
+            "ts": "2026-09-27T13:33:36.727-04:00",
+            "id": "7cfef4b5",
+            "tag": "worker",
+            "model": "deepseek/deepseek-v4.1-flash",
+            "served": "Together",
+            "max_tokens": 2368,
+            "messages": 2,
+            "stream": true,
+            "attempt": 1,
+            "status": 200,
+            "ms": 4280,
+            "ttft_ms": 212,
+            "hazard_ceiling_ms": 30000,
+            "conn_reused": true,
+            "error": "decode stream: context deadline exceeded"
+          }
+        ],
+        "reconciled_ledger_rows": [
+          {
+            "at": "2026-09-27T13:33:57.406573992-04:00",
+            "day": "2026-09-27",
+            "model": "deepseek/deepseek-v4.1-flash",
+            "calls": 1,
+            "in": 712,
+            "out": 946,
+            "usd": "0.0013488",
+            "reconciled": true,
+            "session": "bea7478490ee3ba7",
+            "workspace": "/tmp/caf-retry-usage-2/project"
+          }
+        ],
+        "all_models_exact": true,
+        "empty_at_ceiling": [
+          {
+            "ts": "2026-09-27T13:33:32.446-04:00",
+            "id": "7afd87ab",
+            "tag": "worker",
+            "model": "deepseek/deepseek-v4.1-flash",
+            "served": "Together",
+            "max_tokens": 2368,
+            "messages": 2,
+            "stream": true,
+            "attempt": 1,
+            "status": 200,
+            "ms": 1716,
+            "finish": "length",
+            "ttft_ms": 174,
+            "hazard_ceiling_ms": 30000,
+            "conn_reused": true,
+            "prompt_tokens": 710,
+            "completion_tokens": 320,
+            "reasoning_tokens": 320,
+            "cached_tokens": 512,
+            "cost": "0.000446472",
+            "learned": [
+              "reasoning_disable_ignored"
+            ],
+            "empty_at_ceiling": true
+          }
+        ]
+      },
+      "retained_discarded_attempts": [
+        {
+          "transport_id": "7afd87ab",
+          "cost": "0.000446472",
+          "ledger_at": "2026-09-27T13:33:32.446615749-04:00",
+          "ledger_role": "worker",
+          "retained_once": true
+        }
+      ],
+      "csv": [
+        {
+          "item": "Bolts",
+          "available": "12",
+          "needed": "3"
+        },
+        {
+          "item": "Nuts",
+          "available": "7",
+          "needed": "8"
+        }
+      ],
+      "independent_tests": 24,
+      "launch": {
+        "head": "961c98c0d50860ab517f33a4e148628abd290965",
+        "version": "codeaf 961c98c0d built 2026-09-27 13:28 \u00b7 go1.26.5 linux/arm64",
+        "sha256": "ab9673e19e541925cf152ca7aafe69c940db7ea4ec51aa9a64c9c63d6ecb9e85",
+        "argv": [
+          "env",
+          "-u",
+          "CODEAF_TASK_BELT",
+          "-u",
+          "CODEAF_PROFILE_DIR",
+          "CODEAF_HOME=/tmp/caf-retry-usage-2/state",
+          "PLANDB_DB=/tmp/caf-retry-usage-2/project/.plan/plan.db",
+          "TERM=xterm-256color",
+          "/home/santosh/src/codeaf-retry-usage-live/bin/codeaf",
+          "chat",
+          "--model",
+          "deepseek/deepseek-v4.1-flash",
+          "--one-model",
+          "--yolo",
+          "--max-cost",
+          "1"
+        ],
+        "at": 1790530370.0994766
+      }
+    }
+  ],
+  "limitations": [
+    "Trial1 retry stream deadline omitted transport usage; existing reconciliation later banked0.0014391. Raw transport full-cost parity is not claimed for that trial.",
+    "Trial2 also produced a natural ceiling retry after the initial snapshot. Its retry stream deadline omitted transport cost; existing reconciliation later banked0.0013488. Neither trial claims raw transport full-cost parity.",
+    "Guard internals are verified by deterministic tests, not measured through these UI runs."
+  ]
+}

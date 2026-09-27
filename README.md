@@ -8,5 +8,6 @@ Real hosted tmux chats on Spark, OpenRouter `deepseek/deepseek-v4.1-flash` for e
 - [PR1604: inventory supplier export with held cancellation and actual engine restart](pr1604/CAPTIONS.md)
 
 - [PR1619: focused exact-head queued and active restart acceptance](pr1619/README.md)
+- [PR1625: retained paid retries, settled receipts and completed terminal captures](pr1625/CAPTIONS.md)
 
 Media comes from actual terminal recordings, not reconstructed UI. Archives contain only generated example source and outputs. Private profiles, credentials, runtime logs and diagnostic takes are excluded.

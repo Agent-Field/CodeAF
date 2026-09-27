@@ -1,0 +1,35 @@
+{
+  "transport_calls": 53,
+  "ledger_rows": 52,
+  "transport_cost": "0.058953156",
+  "ledger_cost": "0.058353756",
+  "difference": "0.000599400",
+  "all_models_exact": true,
+  "empty_at_ceiling": [
+    {
+      "ts": "2026-09-27T13:07:17.010-04:00",
+      "id": "fee89ec6",
+      "tag": "worker",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "served": "Together",
+      "max_tokens": 2368,
+      "messages": 2,
+      "stream": true,
+      "attempt": 1,
+      "status": 200,
+      "ms": 1216,
+      "finish": "length",
+      "ttft_ms": 202,
+      "hazard_ceiling_ms": 30000,
+      "conn_reused": true,
+      "prompt_tokens": 718,
+      "completion_tokens": 320,
+      "reasoning_tokens": 320,
+      "cost": "0.0005994",
+      "learned": [
+        "reasoning_disable_ignored"
+      ],
+      "empty_at_ceiling": true
+    }
+  ]
+}
