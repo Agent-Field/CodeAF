@@ -66,6 +66,7 @@ func TestCleanChat(t *testing.T) {
 	}
 	cleanChatCapture(t, r, "01-expanded")
 	r.keys("C-e")
+	cleanChatCapture(t, r, "01-closed")
 	r.lit("/task solo write a file called hello.txt containing the word hello; no other changes")
 	r.keys("Enter")
 	screen = r.waitFor(6*time.Minute, say(t, "taskDoneGlyph"), say(t, "taskDoneWord"))
@@ -75,6 +76,12 @@ func TestCleanChat(t *testing.T) {
 	}
 	if strings.Contains(screen, "nothing checked this work") {
 		t.Fatalf("the collapsed notification leaked its audit detail:\n%s", screen)
+	}
+	for _, line := range strings.Split(screen, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.Contains(line, "single task 1 started") || (strings.HasPrefix(line, "·") && strings.Contains(line, "cached")) {
+			t.Fatalf("closed conversation leaked operational receipt at task landing:\n%s", screen)
+		}
 	}
 	cleanChatCapture(t, r, "02-notification")
 	r.lit("/dismiss")
@@ -199,12 +206,12 @@ func TestCleanChatFailureRecovery(t *testing.T) {
 			cleanChatCapture(t, r, "07-failure-recovery-active")
 			captured = true
 		}
-		if strings.Contains(screen, "2 tool calls") && strings.Contains(screen, "idle") {
+		if strings.Contains(screen, keyedWord("2", "tool calls")) && strings.Contains(screen, "idle") {
 			break
 		}
 		time.Sleep(pollEvery)
 	}
-	screen := r.waitFor(2*time.Second, "2 tool calls", "idle")
+	screen := r.waitFor(2*time.Second, keyedWord("2", "tool calls"), "idle")
 	if strings.Contains(screen, "CLEAN_FAILURE_TRACE_7319") {
 		t.Fatalf("failed-call detail leaked after recovery:\n%s", screen)
 	}
@@ -325,7 +332,7 @@ func TestCleanChatSteering(t *testing.T) {
 		screen = r.capture()
 		if strings.Contains(screen, "idle") {
 			for _, line := range strings.Split(screen, "\n") {
-				if strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "checks finished") {
+				if strings.Contains(strings.ToLower(line), "checks finished") && !strings.Contains(strings.ToLower(line), "say checks finished") {
 					finished = true
 					break
 				}

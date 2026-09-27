@@ -3906,7 +3906,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pictureOpenedMsg:
 		if msg.err != nil {
-			a.note(filesOpenFailedWord + drawableLine(msg.path))
+			a.toldNote(filesOpenFailedWord + drawableLine(msg.path))
 		}
 		return a, nil
 
@@ -5108,7 +5108,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case compactedMsg:
 		if msg.err != nil {
-			a.note("compact failed: " + msg.err.Error())
+			a.toldNote("compact failed: " + msg.err.Error())
 		} else {
 			a.noticeEvent(eventCompacted)
 		}
@@ -5117,13 +5117,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case landNoteMsg:
 		// A landing's whole answer is one line, the clean one and the one that
 		// could not go in alike (landcmd.go).
-		a.note(msg.line)
+		a.toldNote(msg.line)
 		return a, nil
 
 	case cacheNoteMsg:
 		// A cache errand's whole answer is one line, success and refusal alike
 		// (cachecmd.go).
-		a.note(msg.line)
+		a.toldNote(msg.line)
 		return a, nil
 
 	case spelledMsg:
@@ -8203,18 +8203,18 @@ func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
 	// conversation they were in is still running.
 	switch {
 	case replacing && a.file != "":
-		a.note("new session · " + a.hostedPath(a.file))
+		a.toldNote("new session · " + a.hostedPath(a.file))
 	case replacing:
-		a.note("new session")
+		a.toldNote("new session")
 	default:
-		a.note("new conversation · " + a.place)
+		a.toldNote("new conversation · " + a.place)
 	}
 	if conv.Notice != "" {
 		// The door had something to say about HOW this conversation came to be
 		// open — "session open elsewhere — started a new one" is the sentence
 		// that exists — and the entry line is where the first conversation's own
 		// notice lands too ([Options.Notice]).
-		a.note(conv.Notice)
+		a.toldNote(conv.Notice)
 	}
 	if key := a.convKey(a.file); key != "" {
 		a.rememberOpen(key)
