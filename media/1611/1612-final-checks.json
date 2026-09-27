@@ -1,0 +1,51 @@
+{
+  "pr": 1612,
+  "final_revision": "9417fd756b978f5806181c0f9a27b1bc5c93ac8a",
+  "recorded_runtime": "f855f2e6510c155b282cba388db2f92d2121dda3",
+  "production_runtime_unchanged": true,
+  "ci": {
+    "status": "success",
+    "run": 36336590188,
+    "revision": "9417fd756b978f5806181c0f9a27b1bc5c93ac8a"
+  },
+  "spark": {
+    "host": "spark",
+    "local_light": "passed at recorded runtime",
+    "local_tui3": "all eight shards passed; no subsequent TUI changes",
+    "close_fixture": "25 repetitions passed,18.589s",
+    "young_bash_fixture": "50 repetitions passed,2.064s",
+    "final_full_session": {
+      "status": "passed",
+      "exec_session_id": 97891,
+      "heavy_lock_pid": 1216208,
+      "started_utc": "2026-09-27T17:20:42Z",
+      "SHARDS": 2,
+      "GOMAXPROCS": 4,
+      "GOFLAGS": "-p=2",
+      "GOCACHE": "/home/santosh/.cache/go-build",
+      "GOMODCACHE": "/home/santosh/go/pkg/mod",
+      "log": "1611-session-final-controlled.log",
+      "exit_code": 0,
+      "duration_seconds": 274,
+      "shard_seconds": [
+        224,
+        273
+      ]
+    }
+  },
+  "issues": [
+    1611,
+    1623
+  ],
+  "readiness": "Technical verification complete; draft held for coordinating shared-timer cleanup checkpoint",
+  "media": {
+    "own": "1611-published-media.json",
+    "isolation_supplement": "1560guard-published-media-1612.json"
+  },
+  "prior_failures": {
+    "initial_session": "three nested Go tasks exceeded30s with fresh cache; cache-pinned focused rerun passed allthree in7.305s",
+    "second_session": "closed program test awaited simulatedengine rather thanactualowner/store;fixedfixtures",
+    "third_session": "young bash test could miss500ms transientwindow;fixedexplicitbarrier andage seam",
+    "baseline_cold_single": "passed25.783s near30slimit; not independently reproduced timeout in isolation"
+  }
+}

@@ -4,61 +4,69 @@
   "preview_duration_seconds": 34.1,
   "screenshot_source": "1611-final_check.cast",
   "files": {
-    "1611-SHOPPING.md": {
-      "bytes": 263,
-      "sha256": "86b92422ac8939170fc422ca33977c6ca89db2418156ce58c076fd9d79b3c261"
-    },
-    "1611-coverage.md": {
-      "bytes": 3347,
-      "sha256": "bcdd34c7981159c71b899c2b6eb5b5872113060221de62b927616ccdc7beff89"
-    },
-    "1611-execution.json": {
-      "bytes": 386,
-      "sha256": "72e47f10aac8eaf54d5a65ac0ddef36888f4cded862ab6f6c64618a919733782"
-    },
-    "1611-final_check.cast": {
-      "bytes": 9791,
-      "sha256": "7ac03230e4b91842764c7e2f5a54fbb65e860ea1514104c9df4759c5c5e659df"
+    "1611-once_task_card.cast": {
+      "bytes": 11152,
+      "sha256": "ee914fc75167b5f389d7e5b3a75580e824a52ca88261f38f88153b9fa18a7707"
     },
     "1611-independent-run.txt": {
       "bytes": 2301,
       "sha256": "6aa16f3974a7a7e1883e472b531e69b38cb311d5285d891308ee75919d0f80aa"
     },
-    "1611-once_task_card.cast": {
-      "bytes": 11152,
-      "sha256": "ee914fc75167b5f389d7e5b3a75580e824a52ca88261f38f88153b9fa18a7707"
+    "once-task-card.png": {
+      "bytes": 77909,
+      "sha256": "6e3cf57e6787c333264808e38e0e01ef4f7e305f97c566387e477132aa0ba88d"
     },
-    "1611-post-approval-transcript.json": {
-      "bytes": 42279,
-      "sha256": "24dd9c38d70b70fc5b4251e54992136a7f336a11474283a3da9e65a26e8808c0"
+    "1611-execution.json": {
+      "bytes": 386,
+      "sha256": "72e47f10aac8eaf54d5a65ac0ddef36888f4cded862ab6f6c64618a919733782"
     },
     "1611-usage.json": {
       "bytes": 10658,
       "sha256": "584f3849128b3393da1ffdff3f74ff1a75303fa05a5c8171ce8f30080b58109d"
     },
-    "1611-verification.json": {
-      "bytes": 444,
-      "sha256": "d16f13d4abec189cda13f79829a52c2841cb3d3d41db1f7dfae391b744ababf3"
+    "1611-post-approval-transcript.json": {
+      "bytes": 42279,
+      "sha256": "24dd9c38d70b70fc5b4251e54992136a7f336a11474283a3da9e65a26e8808c0"
     },
-    "1611.cast": {
-      "bytes": 136634,
-      "sha256": "21e0949cb245f98700f5b54caee2f639e2c66e534da801fdaf7ec58027b5784a"
-    },
-    "once-task-card.png": {
-      "bytes": 77909,
-      "sha256": "6e3cf57e6787c333264808e38e0e01ef4f7e305f97c566387e477132aa0ba88d"
-    },
-    "screenshot.png": {
-      "bytes": 87736,
-      "sha256": "163a0e2f7dea671a9ac568eac2aa0d0206c3ea21ffac760a7f72c3142088bd0d"
+    "1611-final_check.cast": {
+      "bytes": 9791,
+      "sha256": "7ac03230e4b91842764c7e2f5a54fbb65e860ea1514104c9df4759c5c5e659df"
     },
     "workflow.gif": {
       "bytes": 1691668,
       "sha256": "2c122728b1355e491eb3426f911f18802fb19b503cf43c28d4646075973a1226"
     },
+    "1611-coverage.md": {
+      "bytes": 3347,
+      "sha256": "bcdd34c7981159c71b899c2b6eb5b5872113060221de62b927616ccdc7beff89"
+    },
     "workflow.mp4": {
       "bytes": 788351,
       "sha256": "0e3dd0514b390a9e88a9d71fca7d3bb1297c5713b0e36f3aeabf7b83421bf201"
+    },
+    "1611.cast": {
+      "bytes": 136634,
+      "sha256": "21e0949cb245f98700f5b54caee2f639e2c66e534da801fdaf7ec58027b5784a"
+    },
+    "1611-SHOPPING.md": {
+      "bytes": 263,
+      "sha256": "86b92422ac8939170fc422ca33977c6ca89db2418156ce58c076fd9d79b3c261"
+    },
+    "1611-verification.json": {
+      "bytes": 444,
+      "sha256": "d16f13d4abec189cda13f79829a52c2841cb3d3d41db1f7dfae391b744ababf3"
+    },
+    "1612-final-checks.json": {
+      "bytes": 1833,
+      "sha256": "788d2b2a3d60f540266891136d03b8fb0a5c4081af7ce51771e0f6a7c7caff74"
+    },
+    "1611-session-final-controlled.log": {
+      "bytes": 203,
+      "sha256": "8aa60a166cb20580e3a8d3accaa418494119da7008af73d79abf7bfb418f5038"
+    },
+    "screenshot.png": {
+      "bytes": 87736,
+      "sha256": "163a0e2f7dea671a9ac568eac2aa0d0206c3ea21ffac760a7f72c3142088bd0d"
     }
   },
   "issue": 1611
