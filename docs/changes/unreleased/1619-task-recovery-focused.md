@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Held tasks stop cleanly and recover their exact working folder
-pr: 1604
+pr: 1619
 surface: [engine, chat]
 invalidates:
   - "A machine-held task could hold a folder and could not be stopped from the main box."
