@@ -597,6 +597,35 @@ func TestTeamsHeaderUsesPluralPossessiveForRootPool(t *testing.T) {
 	}
 }
 
+func TestTeamsHeaderUsesPerTeamDefaultAndLeavesAllTeamsUncapped(t *testing.T) {
+	a, harbor, _ := teamsPlaceLabIDs(t)
+	rootID := ""
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		rootID = f.MakeRoot(a.now())
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	a.tp.defaults = teamstore.Defaults{CapUSDDay: 5}
+	a.tp.defaultsOK = true
+	a.tp.spend = map[string]teamstore.Spend{harbor: {USD: 1}, rootID: {USD: 1}}
+
+	team, ok := a.teamByID(harbor)
+	if !ok {
+		t.Fatal("no team")
+	}
+	if words := a.teamsSpendWords(team); words != "$1 of $5 today" {
+		t.Fatalf("team default cap header: %q", words)
+	}
+	root, ok := a.teamByID(rootID)
+	if !ok {
+		t.Fatal("no root")
+	}
+	if words := a.teamsSpendWords(root); words != "$1 today" {
+		t.Fatalf("root default cap header: %q", words)
+	}
+}
+
 // ── members ─────────────────────────────────────────────────────────────────
 
 // A MEMBER THIS WINDOW DOES NOT HOLD IS RESUMED BEHIND, in its own tab, and

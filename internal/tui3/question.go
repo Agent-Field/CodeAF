@@ -73,7 +73,8 @@ import (
 //   - THE SETTLE GUARD. A key that arrived before the question had been on
 //     screen for [questionSettle] is DROPPED, never applied. A question that
 //     lands under a hand already moving is a question answered by a keystroke
-//     aimed at the sentence somebody was typing.
+//     aimed at the sentence somebody was typing, so a dropped key changes
+//     nothing, the clock included.
 //   - THE BOX IS NEVER MOVED UNDER A HAND. A question raised while the box
 //     holds words waits behind the chip until the words go or the hands stop
 //     for [questionQuiet] ([app.questionQuieted]).
@@ -1166,9 +1167,9 @@ func (a *app) shiftQuestionMarks(by int) {
 // without saying what a person can do about it.
 //
 // BOTH HALVES ARE THE THING SOMEBODY WATCHING A COUNTDOWN WANTS TO KNOW. Any key
-// stops it — literally any, because [app.holdQuestionClocks] runs on every key
-// the block reads — and a pick the clock takes is provisional: the receipt it
-// leaves offers `c change`, and the model is told in so many words that the
+// past the settle guard stops it, because [app.holdQuestionClocks] runs on every
+// key the block then reads, and a pick the clock takes is provisional: its
+// receipt offers `c change`, and the model is told in so many words that the
 // answer may still change (session's `askProvisionalNote`). A countdown nobody
 // can stop and nobody can walk back is the shape this program must never have
 // (F41), so the row says it is neither.
@@ -2112,9 +2113,9 @@ func (a *app) tickQuestion() {
 	}
 }
 
-// holdQuestionClocks stops every reading clock, and it is called from EVERY key
-// the block reads — the answers included, which cost nothing because they
-// resolve the question in the same breath.
+// holdQuestionClocks stops every reading clock for keys that pass the settle
+// guard — the answers included, which cost nothing because they resolve the
+// question in the same breath. A dropped key changes nothing, clocks included.
 //
 // THERE IS NO WAY BACK. "Held" here means a person is at the keyboard, and that
 // fact does not expire: a clock that resumed after a few idle seconds would be a
@@ -3066,19 +3067,17 @@ func (a *app) questionKeyTaken(head questionShown, msg tea.KeyPressMsg) (tea.Cmd
 		// releases whatever the question was holding the honest way.
 		return nil, false
 	}
-	// EVERY KEY STOPS THE READING CLOCK, whether or not it answers anything and
-	// whether or not the question is old enough to take it. That is the whole of
-	// the hold: the clock exists so an unattended session cannot park work on a
-	// question forever, and the moment there is evidence of somebody at the
-	// keyboard the reason for it is gone.
-	a.holdQuestionClocks()
 	// THE SETTLE GUARD, AND IT DROPS RATHER THAN DEFERS. A key that arrived
 	// before the question had been on screen long enough was aimed at whatever
-	// was there before it, and applying it late is applying it to the wrong
-	// question rather than to none.
+	// was there before it and changes nothing, the clock included. Applying it
+	// late would still answer the wrong question rather than none.
 	if !a.questionSettled(head) {
 		return nil, true
 	}
+	// EVERY KEY THE QUESTION TAKES STOPS THE READING CLOCK, whether or not it
+	// answers anything. Only a key past the guard is evidence of somebody at
+	// this question; stopping for a dropped key would falsely show it was taken.
+	a.holdQuestionClocks()
 	if cmd, taken := a.questionBeatKey(head, key); taken {
 		return cmd, true
 	}
@@ -4407,8 +4406,8 @@ func (a *app) questionDrawnHere(q session.Question) bool {
 		// shape of a landing that has since been re-settled offered a person the
 		// wrong answers to the right question (#767, tasksettle.go).
 		return true
-	case session.QuestionSubharnessAsk, session.QuestionFuel, session.QuestionConflict:
-		// The three lanes the audit found with a resolver and NOTHING ANYWHERE
+	case session.QuestionSubharnessAsk, session.QuestionFuel, session.QuestionConflict, session.QuestionDailyBudget:
+		// The lanes the audit found with a resolver and NOTHING ANYWHERE
 		// that drew them: work stopped on a question no surface in this product
 		// could put to a person. They are drawn here first because there is no
 		// older block to retire — this block is the only one they have ever had.

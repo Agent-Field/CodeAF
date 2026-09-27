@@ -440,6 +440,26 @@ func (a *app) stopVisible() (int, *taskNode) {
 	return count, sole
 }
 
+// stopQueued finds a sole queued task even when its group is folded. A machine
+// hold is active work from the person's point of view, so hiding that row must
+// not make the main-box stop command say there is nothing to stop.
+func (a *app) stopQueued() (int, *taskNode) {
+	var sole *taskNode
+	count := 0
+	for _, id := range a.taskOrder {
+		node := a.tasks[id]
+		if node == nil || node.state != session.TaskQueued || a.stopTaskTarget(node).empty() {
+			continue
+		}
+		count++
+		if count > 1 {
+			return count, nil
+		}
+		sole = node
+	}
+	return count, sole
+}
+
 // stopHere is the work `x` and the header's ✕ are aimed at, or the empty target
 // when there is nothing here to stop.
 //
@@ -502,10 +522,18 @@ func (a *app) stopHere() stopTarget {
 			}
 			target = stopTarget{plan: row.ID, noun: stopTaskNoun, detail: stopTaskDetail}
 		}
-		return target
+		if !target.empty() {
+			return target
+		}
 	}
 	if count == 1 {
 		return a.stopTaskTarget(sole)
+	}
+	if count == 0 {
+		count, sole = a.stopQueued()
+		if count == 1 {
+			return a.stopTaskTarget(sole)
+		}
 	}
 	return stopTarget{}
 }

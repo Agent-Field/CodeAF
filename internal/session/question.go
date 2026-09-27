@@ -1877,6 +1877,8 @@ func questionGoneReason(q Question) string {
 		return "the work settled"
 	case QuestionFuel:
 		return "the run is no longer at its gate"
+	case QuestionDailyBudget:
+		return "the spending limit is no longer holding the turn"
 	}
 	// The model's own question and everything else: the turn that raised it
 	// has ended — interrupted, or finished around it — which is the one way a
@@ -2273,6 +2275,8 @@ func (a *Agent) applyToLane(answer Answer) error {
 	case QuestionFuel:
 		_, err := a.ResolveOrchestrate(answer.Ref, fuelAnswer(key, words))
 		return err
+	case QuestionDailyBudget:
+		return a.resolveDailyBudget(answer)
 	}
 	return errAnswerUnknownLane
 }
@@ -2427,6 +2431,10 @@ func (a *Agent) OpenQuestions() []Question {
 
 	a.mu.Lock()
 	modelAsks := a.asked.openLocked()
+	var dailyBudget Question
+	if a.dailyBudget != nil {
+		dailyBudget = a.dailyBudget.question
+	}
 	consent := make([]uint64, 0, len(a.consent))
 	for id := range a.consent {
 		consent = append(consent, id)
@@ -2469,6 +2477,9 @@ func (a *Agent) OpenQuestions() []Question {
 		runs[id] = live
 	}
 	a.mu.Unlock()
+	if dailyBudget.Kind != "" {
+		open = append(open, dailyBudget)
+	}
 	for _, id := range modelAsks {
 		if q, ok := a.questionSaid(QuestionAsk, strconv.FormatUint(id, 10)); ok {
 			open = append(open, q)

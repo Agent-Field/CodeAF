@@ -555,11 +555,11 @@ func (a *app) questionSetKey(set []questionShown, head questionShown, msg tea.Ke
 		return nil, false
 	}
 	if a.questionGrouped(set) || a.questionSetReviewing(set) {
-		a.holdQuestionClocks()
 		if !a.questionSettled(head) {
 			// THE SETTLE GUARD, for the set's own rows exactly as for a tab's.
 			return nil, true
 		}
+		a.holdQuestionClocks()
 		var cmd tea.Cmd
 		var took bool
 		if a.questionGrouped(set) {
@@ -573,10 +573,10 @@ func (a *app) questionSetKey(set []questionShown, head questionShown, msg tea.Ke
 		return cmd, took
 	}
 	if a.questionSetOwnsKey(head, key) {
-		a.holdQuestionClocks()
 		if !a.questionSettled(head) {
 			return nil, true
 		}
+		a.holdQuestionClocks()
 		switch key {
 		case "left":
 			a.moveQuestionTab(set, -1)

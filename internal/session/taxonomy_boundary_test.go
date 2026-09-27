@@ -443,3 +443,15 @@ func TestADeadlineIsTransportHoweverItArrives(t *testing.T) {
 		t.Fatal("a context overflow was read as the connection")
 	}
 }
+
+func TestTextOnlyAuthenticationStatusesAreNotRetried(t *testing.T) {
+	for _, status := range []int{401, 403} {
+		t.Run(fmt.Sprintf("status-%d", status), func(t *testing.T) {
+			evidence := wireEvidence(fmt.Errorf("API error (%d): provider unavailable", status), 1)
+			verdict := taxonomy.Classify(evidence, taxonomy.Limits{})
+			if verdict.Retries() || verdict.Reason != taxonomy.ReasonUnauthorized {
+				t.Fatalf("text-only auth verdict = %#v; want terminal unauthorized", verdict)
+			}
+		})
+	}
+}
