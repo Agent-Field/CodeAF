@@ -961,6 +961,22 @@ func standingRecords(t *testing.T, home string) []standingRecord {
 	return out
 }
 
+// standingRecordOtherThan is the one record whose id is not id, when exactly one
+// is; two or more is not an answer, so it reports none.
+func standingRecordOtherThan(t *testing.T, home, id string) (standingRecord, bool) {
+	t.Helper()
+	var others []standingRecord
+	for _, record := range standingRecords(t, home) {
+		if record.ID != id {
+			others = append(others, record)
+		}
+	}
+	if len(others) != 1 {
+		return standingRecord{}, false
+	}
+	return others[0], true
+}
+
 // standingRecordAbout is the item whose words hold a given word, which is how a
 // test names the one it asked for without knowing what the model called it.
 func standingRecordAbout(t *testing.T, home, word string) (standingRecord, bool) {
