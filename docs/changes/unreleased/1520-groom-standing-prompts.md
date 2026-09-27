@@ -1,5 +1,5 @@
 ---
-kind: docs
+kind: changed
 title: clarify when accepting a standing card repeats work
 pr: 1520
 surface: [docs]
