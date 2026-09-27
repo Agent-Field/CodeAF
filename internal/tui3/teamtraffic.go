@@ -1,13 +1,12 @@
 package tui3
 
 import (
-	"path/filepath"
+	"fmt"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -469,21 +468,36 @@ func (a *app) trafficStart(t team, e teamstore.Entry) tea.Cmd {
 	}
 	posture := strings.TrimSpace(e.Approval)
 	if posture == "" {
+		// Old traffic has no captured posture. Only the initiating manager
+		// can supply it; an unrelated foreground conversation cannot.
+		var manager Agent
 		if t.Manager == a.frontTabKey() {
-			posture = a.approvalPostureWord()
-		} else if held := a.behind[t.Manager]; held != nil && held.conv.Agent != nil {
-			if dial, ok := held.conv.Agent.(approvalDialer); ok {
-				posture = dial.ResolvedApprovalPosture()
-			}
+			manager = a.agent
+		} else if held := a.behind[t.Manager]; held != nil {
+			manager = held.conv.Agent
 		}
-		if posture == "" {
-			posture = a.approvalPostureWord()
+		if dial, ok := manager.(interface{ ResolvedApprovalPosture() string }); ok {
+			posture = dial.ResolvedApprovalPosture()
 		}
 	}
 	start, where, id := a.start, a.teamWhere(t), t.ID
 	return a.besideLine(func() func(bool) tea.Cmd {
 		conv, err := start(where)
-		return func(bool) tea.Cmd { return a.trafficStarted(id, handle, conv, posture, err) }
+		// The session owns both the gate and its persisted posture. Apply it
+		// off the UI loop, before membership can wake the first turn.
+		if err == nil && conv.Agent != nil && posture != "" {
+			setter, ok := conv.Agent.(interface{ SetApprovalPosture(string) error })
+			if !ok {
+				err = fmt.Errorf("the new conversation cannot inherit approvals")
+			} else {
+				err = setter.SetApprovalPosture(posture)
+			}
+			if err != nil {
+				_ = conv.Agent.Close()
+				err = fmt.Errorf("inherit approvals: %w", err)
+			}
+		}
+		return func(bool) tea.Cmd { return a.trafficStarted(id, handle, conv, err) }
 	})
 }
 
@@ -494,7 +508,7 @@ func (a *app) trafficStartRefused(handle, why string) {
 
 // trafficStarted is the start's conversation back from the engine: held
 // behind, joined to the team under its handle, and said beside the manager.
-func (a *app) trafficStarted(id, handle string, conv Conversation, posture string, err error) tea.Cmd {
+func (a *app) trafficStarted(id, handle string, conv Conversation, err error) tea.Cmd {
 	if err != nil || conv.Agent == nil {
 		why := "the conversation did not open"
 		if err != nil {
@@ -502,22 +516,6 @@ func (a *app) trafficStarted(id, handle string, conv Conversation, posture strin
 		}
 		a.trafficStartRefused(handle, why)
 		return nil
-	}
-	if posture != "" && conv.Agent != nil {
-		if dial, ok := conv.Agent.(approvalDialer); ok {
-			_ = dial.SetApprovalPosture(posture)
-		} else if setter, ok := conv.Agent.(interface{ SetApprovalPosture(string) error }); ok {
-			_ = setter.SetApprovalPosture(posture)
-		}
-	}
-	if posture != "" && conv.SessionFile != "" {
-		dir := filepath.Dir(conv.SessionFile)
-		meta, _ := session.LoadMeta(dir)
-		if meta.ID == "" {
-			meta.ID = filepath.Base(dir)
-		}
-		meta.Approval = posture
-		_ = session.SaveMeta(dir, meta)
 	}
 	t, ok := a.teamByID(id)
 	if !ok {
@@ -538,11 +536,7 @@ func (a *app) trafficStarted(id, handle string, conv Conversation, posture strin
 			curTeam := f.Teams[teamIndex(f.Teams, t.ID)]
 			if got, _ := curTeam.Member(m.Key); got.Handle != handle && teamstore.ValidHandle(handle) == nil {
 				_ = f.SetHandle(t.ID, m.Key, handle)
-			} else if got, _ := curTeam.Member(m.Key); got.Handle == "" {
-				fb := teamstore.FallbackHandle(curTeam, m.Key)
-				if teamstore.ValidHandle(fb) == nil {
-					_ = f.SetHandle(t.ID, m.Key, fb)
-				}
+
 			}
 			return nil
 		}); err != nil {

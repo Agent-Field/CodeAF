@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -520,11 +521,12 @@ func TestAReplayedBriefIsTheManagersCard(t *testing.T) {
 type postureTestAgent struct {
 	fakeAgent
 	posture string
+	setErr  error
 }
 
 func (p *postureTestAgent) SetApprovalPosture(posture string) error {
 	p.posture = posture
-	return nil
+	return p.setErr
 }
 
 func TestTrafficStartInheritsApprovalPosture(t *testing.T) {
@@ -543,13 +545,7 @@ func TestTrafficStartInheritsApprovalPosture(t *testing.T) {
 	if fresh == nil || fresh.posture != session.PostureAllow {
 		t.Fatalf("started agent did not inherit posture: got %+v", fresh)
 	}
-	meta, err := session.LoadMeta(tmpDir)
-	if err != nil {
-		t.Fatalf("LoadMeta failed: %v", err)
-	}
-	if meta.Approval != session.PostureAllow {
-		t.Fatalf("meta.json approval = %q, want %q", meta.Approval, session.PostureAllow)
-	}
+
 }
 
 func TestUntitledManagerGetsFallbackHandle(t *testing.T) {
@@ -569,5 +565,24 @@ func TestUntitledManagerGetsFallbackHandle(t *testing.T) {
 	}
 	if err := teamstore.ValidHandle(m.Handle); err != nil {
 		t.Fatalf("fallback handle %q is invalid: %v", m.Handle, err)
+	}
+}
+
+// A child must not join the team and wake under a gate it failed to inherit.
+func TestTrafficStartRefusesFailedApprovalInheritance(t *testing.T) {
+	a, harbor, _, _ := trafficApp(t)
+	fresh := &postureTestAgent{setErr: errors.New("cannot rebuild rules")}
+	file := filepath.Join(t.TempDir(), "session.jsonl")
+	a.start = func(workspace string) (Conversation, error) {
+		return Conversation{Agent: fresh, SessionFile: file, Workspace: workspace}, nil
+	}
+	trafficAppend(t, a, harbor, teamstore.Entry{Kind: teamstore.KindStart, From: teamstore.FromManager, To: "worker", Text: "start", Approval: session.PostureDeny})
+	trafficReadNow(t, a)
+	trafficReadNow(t, a)
+	if fresh.closes != 1 {
+		t.Fatalf("failed child closed %d times", fresh.closes)
+	}
+	if _, ok := mustTeam(t, a, harbor).ByHandle("worker"); ok {
+		t.Fatal("failed child joined team")
 	}
 }
