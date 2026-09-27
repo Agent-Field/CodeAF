@@ -261,3 +261,44 @@ func TestCleanChatSettledToolOnlyTailAcrossAllSurfaces(t *testing.T) {
 		}
 	}
 }
+
+func TestCleanChatCacheReceiptBeforeCommandAckStaysDisclosed(t *testing.T) {
+	for _, confirmed := range []bool{false, true} {
+		a := newTestApp(&fakeAgent{model: "m"})
+		es := foldFixture()
+		if confirmed {
+			es[5].confirmed = &responseConfirmation{done: true}
+		}
+		es = append(es, entry{kind: entryNote, turn: 1, text: "PRIVATE CACHE RECEIPT"}, entry{kind: entryNote, turn: 1, text: "task started", told: true}, entry{kind: entryDone, turn: 1, done: &taskDone{id: 7, title: "done task", ident: identFor(7)}}, entry{kind: entryThinking, turn: 2, text: "PRIVATE THINKING"})
+		d := deck{entries: es, lens: participantLens, runningTurn: 2, workOpen: map[int]bool{}}
+		rendered, _ := a.deckRows(d, 100)
+		var lines []string
+		for _, r := range rendered {
+			lines = append(lines, plain(r.text))
+		}
+		got := strings.Join(lines, "\n")
+		if strings.Contains(got, "PRIVATE CACHE") || !strings.Contains(got, "task started") {
+			t.Fatalf("receipt leaked or command ack lost: %s", got)
+		}
+		d.workOpen[1] = true
+		rendered, _ = a.deckRows(d, 100)
+		found := false
+		for _, r := range rendered {
+			found = found || strings.Contains(plain(r.text), "PRIVATE CACHE RECEIPT")
+		}
+		if !found {
+			t.Fatal("cache receipt lost from disclosure")
+		}
+	}
+}
+
+func TestCleanChatResumedActivityDoesNotLeaveAnchoredLogo(t *testing.T) {
+	a := workLogoApp(t)
+	a.entries = append(a.entries, entry{kind: entryTool, tool: "bash", status: toolOK, turn: 1}, entry{kind: entryAssistant, text: "Interim result", turn: 1, settled: true, confirmed: &responseConfirmation{done: true}}, entry{kind: entryTool, tool: "bash", status: toolRunning, turn: 1})
+	rendered, _ := a.deckRows(a.conversation(), 100)
+	for _, r := range rendered {
+		if r.activity && r.hit != hitWorkFold {
+			t.Fatalf("separate anchored animation leaked beside compact activity: %q", plain(r.text))
+		}
+	}
+}
