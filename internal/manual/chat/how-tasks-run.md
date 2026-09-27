@@ -3332,3 +3332,23 @@ object beside its matching tool result, within the existing context budget. A la
 input is explicitly marked omitted, rather than shown as a partial object. Earlier
 failures remain part of the evidence. The model continuing the work is told to check a
 reader's objection against the actual work before changing an already-correct result.
+
+## Worker starts in home instead of the project — missing relative documents
+
+When a top-level task has no stronger folder instruction and the conversation's
+working directory is outside a repository, codeaf uses its configured project
+repository. A child keeps its parent's directory, including an ordinary folder;
+a project fallback must not move it elsewhere. Explicit placement still wins.
+
+Bash workers search the assigned project with `rg` or `git grep`. A missing
+relative document calls for checking the working directory and project first,
+not a recursive search of the whole home directory. `plandb --help` explains
+the available plan commands without looking for repository design documents.
+
+## plandb done says already terminal — cancelled tasks and ownership
+
+A task cancelled by its supervisor stays cancelled. A late `plandb done` reports
+`task "<id>" is already terminal (cancelled)` instead of `is not claimed`.
+The refusal does not reopen the task or change its result. Active tasks still
+require their owner; an automatically completed composite's empty placeholder
+can still receive its final report.

@@ -365,7 +365,7 @@ func (a *Agent) groundLadder(spec taskSpec, workspace string) taskStand {
 	if root, ok := repositoryRoot(workspace); ok {
 		return taskStand{dir: root, rung: taskGroundStandingIn}
 	}
-	if projectWorkspace := strings.TrimSpace(a.config.Place.Workspace); projectWorkspace != "" && projectWorkspace != workspace {
+	if projectWorkspace := strings.TrimSpace(a.config.Place.Workspace); spec.parent == 0 && projectWorkspace != "" && projectWorkspace != workspace {
 		if root, ok := repositoryRoot(projectWorkspace); ok {
 			return taskStand{dir: root, rung: taskGroundStandingIn}
 		}
