@@ -412,7 +412,7 @@ active jobs are never touched, and files codeaf did not create there — older
 unmarked logs included — are left alone. If a log you were pointed at has
 since been evicted, the jobs footer says so instead of naming the file, and
 the last 64KB in memory is still readable. Cleanup runs when a job starts or
-finishes and during the startup sweep of existing jobs directories; active jobs, legacy logs, and files whose ownership cannot be verified
+finishes and during the startup sweep of existing jobs directories; active jobs, legacy logs, and files without safe ownership records
 are outside this completed-log budget. A cleanup failure is reported and may
 leave the directory over budget. Damaged allocation metadata refuses new logs
 rather than reusing previous job IDs.
