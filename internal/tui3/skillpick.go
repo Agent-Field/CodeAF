@@ -81,6 +81,7 @@ const (
 	// off has a shelf of its own, so the one case left is a conversation whose
 	// door built none, or a far engine too old to be asked.
 	skillNoShelfWarning = "this conversation has no skill shelf, so this cannot be attached"
+	skillEmptyWord      = "no skills are available here"
 )
 
 // skillHomeDir is where discovery looks beside the workspace: the same login
@@ -132,6 +133,9 @@ func (r skillPickRow) note() string {
 // skillPick is the picker's whole state. The zero value is closed.
 type skillPick struct {
 	open bool
+	// closeWhenEmpty is set only for a bare command, whose empty answer should
+	// clear the command line; a typed picker may still receive a folder path.
+	closeWhenEmpty bool
 	// rows are the shelf as it was when the list opened, attached first. It
 	// is resolved on the keystroke and not held from boot, for the harness
 	// picker's reason: another window may have installed a skill a minute ago.
@@ -267,6 +271,9 @@ func (p *skillPick) height(width int) int {
 	if !p.open {
 		return 0
 	}
+	if p.count() == 0 {
+		return 1
+	}
 	return overlayWindow(width, p.top, p.count(), harnessPickRows, p.note)
 }
 
@@ -276,6 +283,12 @@ func (p *skillPick) draw(width, n int, pal palette, hover int) []string {
 	}
 	p.follow(overlayItems(n, width))
 	fill := newOverlayFill(width, n, pal, hover)
+	if p.count() == 0 {
+		fill.plain(pal.dim(fit("  "+skillEmptyWord, width)))
+		lines, owner := fill.done()
+		p.owner = owner
+		return lines
+	}
 	for at := p.top; at < p.count() && fill.room(); at++ {
 		if !fill.add(at, p.label(at, pal), p.note(at), at == p.cursor, false) {
 			break
@@ -340,6 +353,9 @@ func (a *app) syncSkillPick() (bool, tea.Cmd) {
 	}
 	if !a.skillPick.open {
 		a.skillPick.start(a.skillPickList(), query)
+		a.skillPick.closeWhenEmpty = a.skillEmptyClose
+		a.skillEmptyClose = false
+		a.skillDiskRead = false
 		return true, tea.Batch(a.readSkillShelf(), a.readSkillDisk())
 	}
 	if query != a.skillPick.query {
@@ -404,6 +420,7 @@ func (a *app) readSkillDisk() tea.Cmd {
 				return nil
 			}
 			a.skillDiskSeen = found
+			a.skillDiskRead = true
 			if a.skillPick.open {
 				a.restartSkillPick()
 				a.touch()
@@ -417,10 +434,30 @@ func (a *app) readSkillDisk() tea.Cmd {
 // query and, where it still points at a row, the cursor.
 func (a *app) restartSkillPick() {
 	cursor, query := a.skillPick.cursor, a.skillPick.query
+	closeWhenEmpty := a.skillPick.closeWhenEmpty
 	a.skillPick.start(a.skillPickList(), query)
+	a.skillPick.closeWhenEmpty = closeWhenEmpty
+	if a.skillPick.closeWhenEmpty && len(a.skillPick.rows) == 0 && query == "" && a.skillPickReadsDone() {
+		a.skillPick.close()
+		a.input.reset()
+		a.note(skillEmptyWord)
+		a.touch()
+		return
+	}
 	if cursor < a.skillPick.count() {
 		a.skillPick.cursor = cursor
 	}
+}
+
+// skillPickReadsDone says the asynchronous catalog reads have answered, so an
+// empty result is real rather than the brief state before a shelf or disk row
+// arrives. Closing only at this seam keeps an empty picker from trapping the
+// next command while preserving the picker’s useful early paint.
+func (a *app) skillPickReadsDone() bool {
+	if _, ok := a.agent.(skillShelf); ok && a.skillShelfSeen == nil {
+		return false
+	}
+	return a.skillDiskRead
 }
 
 // skillPickList resolves the shelf into rows: the attached ones first, in
