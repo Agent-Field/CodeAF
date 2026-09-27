@@ -349,7 +349,7 @@ func (a *Agent) taskNameWithin(ctx context.Context, subject string, window time.
 	// both were this harness deciding how somebody else's model answers a
 	// question; the clips above are what keep this call small, and the prompt is
 	// what keeps the answer to three words.
-	response, named, callErr := a.callRoleChecked(ctx, roles.RoleTaskName, floor,
+	response, named, callErr := a.callRoleChecked(withDetachedUsage(ctx), roles.RoleTaskName, floor,
 		[]ai.Message{
 			textMessage("system", taskNameSystem),
 			textMessage("user", subject+"\n\n"+taskNamePrompt),
