@@ -40,6 +40,11 @@ func (a *Agent) recoverBeltRun() {
 	if !found || kept.State != TaskInterrupted {
 		return
 	}
+	if admittedProgramRecord(g.planPath(), kept) {
+		// Delegated runs settle through their recorded program receipt below
+		// startup recovery, including old checkpoints without Program filled in.
+		return
+	}
 	if terminalStoreStatus(root.Status) {
 		a.reconcileSettledRun(g, kept, root)
 		return
@@ -51,6 +56,19 @@ func (a *Agent) recoverBeltRun() {
 	a.resumePendingRun(g, kept)
 }
 
+// admittedProgramRecord reads the durable worker kind before choosing a
+// recovery owner. A queued program has not launched and still needs admission.
+func admittedProgramRecord(path string, kept TaskNotice) bool {
+	if kept.PendingRun != nil {
+		return false
+	}
+	if kept.Program != "" {
+		return true
+	}
+	_, found := delegate.ReadProgram(plandb.TaskDir(filepath.Dir(path), strconv.FormatUint(kept.ID, 10)))
+	return found
+}
+
 // reconcileSettledRun publishes the durable ending without executing work again.
 // A completed plan alone is not a receipt that its changes were landed.
 func (a *Agent) reconcileSettledRun(g *TaskGraph, kept TaskNotice, root *plandb.Task) {
@@ -59,10 +77,11 @@ func (a *Agent) reconcileSettledRun(g *TaskGraph, kept TaskNotice, root *plandb.
 	}
 	kept.PendingRun = nil
 	switch {
-	case planStopReason(root.Error):
+	case root.Status == plandb.StatusCancelled || planStopReason(root.Error):
 		kept.State, kept.Stopped, kept.Report = TaskFailed, true, root.Error
+		kept.Ending = TaskEndingStopped
 		kept.EndedAt = root.CompletedAt
-	case root.Status == plandb.StatusFailed || root.Status == plandb.StatusCancelled:
+	case root.Status == plandb.StatusFailed:
 		kept.State, kept.Report = TaskFailed, root.Error
 		kept.EndedAt = root.CompletedAt
 	default:
@@ -166,6 +185,8 @@ func (a *Agent) interruptUnrecoverableRun(g *TaskGraph, kept TaskNotice, reason 
 		return
 	}
 	defer store.Close()
+	kept.EndedAt = interruptedRunEnd(store, TaskIndexEntry{ID: strconv.FormatUint(kept.ID, 10), StartedAt: kept.StartedAt})
+	kept.Elapsed = 0
 	if err := store.FailRoot(taskWordInterrupted); err != nil {
 		return
 	}
