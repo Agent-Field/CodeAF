@@ -85,6 +85,9 @@ the Codex CLI does; OpenAI's terms for a ChatGPT plan apply to what runs on it. 
 service reads the model list belonging to that account, and a new connection moves this
 conversation to `codex/gpt-5.5`. Every model from it is qualified as `codex/<slug>`.
 
+While the browser sign-in is waiting, `esc` cancels it and closes the waiting listener;
+the conversation stays on its previous model and `enter` on Codex tries again.
+
 A Codex model's context window is the one that account's model list gives it — `272k` on
 every model it lists today — so the status line reads `…/272k` on `codex/gpt-5.5` and
 compaction fires from that figure. When the list cannot be reached at sign-in, the four
