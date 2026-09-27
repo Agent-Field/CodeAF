@@ -2930,7 +2930,9 @@ func (a *Agent) failureServiceWord(model string) string {
 // for a model the default service serves: a model on a connected service
 // talks with that service's own key, which this ladder does not describe.
 func (a *Agent) failureKeySource(model string) string {
-	if a.failureServiceWord(model) != "" {
+	sources := a.config.Sources.OrDefault(a.config.APIKey, a.config.BaseURL)
+	service, _ := sources.For(model)
+	if service.Source.ID != sources.Default().Source.ID {
 		return ""
 	}
 	return config.APIKeySourceAt(a.config.ProfileDir)

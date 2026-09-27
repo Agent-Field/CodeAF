@@ -2272,8 +2272,8 @@ type Agent struct {
 	// that lock. Atomic publication keeps both roads on the same figure.
 	liveSpendRail    atomic.Uint64
 	liveSpendRailSet atomic.Bool
-	// dailyBudget holds the one chat turn waiting for the person to raise or
-	// stop today's spending limit. Its stream is adopted by the resumed turn.
+	// dailyBudget holds the turn or task admission waiting for the person to
+	// raise or stop today's spending limit. No task exists until it is released.
 	dailyBudget    *dailyBudgetWait
 	dailyBudgetSeq uint64
 	client         Completer
