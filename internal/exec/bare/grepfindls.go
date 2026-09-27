@@ -55,7 +55,7 @@ var ripgrepPath = sync.OnceValues(func() (string, bool) {
 // two sentences that differ are the two facts that differ, and they are stated
 // rather than left for the model to discover by being surprised.
 func grepFallbackDescription(caps Caps) string {
-	return fmt.Sprintf("Search file contents for a pattern. Returns matching lines with file paths and line numbers. Walks the tree itself (ripgrep is not on this machine), so it does NOT read .gitignore — it skips .git, node_modules, vendor and files that look binary. Output is truncated to 100 matches or %s (whichever is hit first). Long lines are truncated to 500 chars.", sizeWord(caps.MaxBytes)) + grepSafetyDescription()
+	return fmt.Sprintf("Search contents; returns path:line:match. No rg: ignores .gitignore, skips .git/node_modules/vendor and binary files. Default cap: 100 matches or %s; lines clipped to 500 chars.", sizeWord(caps.MaxBytes)) + grepSafetyDescription()
 }
 
 // grepToolDescription is the description this machine's `grep` actually carries.

@@ -181,7 +181,7 @@ const editDescription = "Edit a single file using exact text replacement. Every 
 const writeDescription = "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories."
 
 func grepDescription(caps Caps) string {
-	return fmt.Sprintf("Search file contents for a pattern. Returns matching lines with file paths and line numbers. Respects .gitignore. Output is truncated to 100 matches or %s (whichever is hit first). Long lines are truncated to 500 chars.", sizeWord(caps.MaxBytes)) + grepSafetyDescription()
+	return fmt.Sprintf("Search contents; returns path:line:match. Respects .gitignore. Default cap: 100 matches or %s; lines clipped to 500 chars.", sizeWord(caps.MaxBytes)) + grepSafetyDescription()
 }
 
 func findDescription(caps Caps) string {
