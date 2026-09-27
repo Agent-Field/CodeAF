@@ -1,0 +1,29 @@
+{
+  "receipts": 30,
+  "models": {
+    "deepseek/deepseek-v4.1-flash": 30
+  },
+  "roles": {
+    "low": 7,
+    "talk": 13,
+    "worker": 2,
+    "reflex": 7,
+    "omitted": 1
+  },
+  "usd": 0.038865216,
+  "host": "spark",
+  "code_revision": "f855f2e65",
+  "tests": "19 passed",
+  "standing_items": 0,
+  "post_approval_tool_calls": [
+    "bash",
+    "write",
+    "bash",
+    "bash",
+    "edit",
+    "stand",
+    "bash",
+    "stand",
+    "bash"
+  ]
+}
