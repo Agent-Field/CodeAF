@@ -837,6 +837,13 @@ func (a *Agent) heldTaskIDs() map[string]bool {
 	for _, id := range graph.order {
 		held[strconv.FormatUint(id, 10)] = true
 	}
+	for _, rows := range graph.runs {
+		for _, row := range rows {
+			if row.State == TaskRunning || row.State == TaskQueued {
+				held[strconv.FormatUint(row.ID, 10)] = true
+			}
+		}
+	}
 	return held
 }
 

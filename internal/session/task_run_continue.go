@@ -12,10 +12,9 @@ package session
 // resume machinery here and no second scheduler: carrying on is the ordinary
 // pass, run by a process that was not there for the last one.
 //
-// IT HAS NO CALLER YET, ON PURPOSE. Continuing seats workers and spends money,
-// and a door that spends money reachable before anything means to reach it is
-// not a smaller version of the feature — it is a worse thing than no door. The
-// card that calls it is the next change.
+// Startup uses this same door to reconnect an already accepted ordinary task.
+// It never creates a fresh working copy or adopts a different plan, and a
+// settled or explicitly stopped run is never carried on.
 
 import (
 	"context"
@@ -106,6 +105,7 @@ func (a *Agent) ContinueRun(ctx context.Context, row uint64) (string, error) {
 		plan: plan, store: store, root: store.RootID(), row: row, title: kept.Title,
 		workspace: tree.dir, ground: tree.ground, tree: tree, cut: cut,
 		born: a.taskClockNow(), over: make(chan struct{}),
+		joined: recoveredJoinedRows(g, row),
 	}
 	a.installBeltRun(g, run)
 	// THE ROW GOES BACK TO RUNNING AND KEEPS THE COPY IT NAMED. Publishing

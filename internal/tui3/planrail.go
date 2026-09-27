@@ -58,6 +58,9 @@ func planNodeState(row session.PlanTaskRow) session.TaskState {
 	if row.Interrupted {
 		return session.TaskInterrupted
 	}
+	if row.Hold != "" && (row.Status == "ready" || row.Status == "running") {
+		return session.TaskQueued
+	}
 	switch strings.TrimSpace(row.Status) {
 	case "pending":
 		return session.TaskQueued
