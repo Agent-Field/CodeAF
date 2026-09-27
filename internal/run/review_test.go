@@ -213,6 +213,37 @@ func TestSupervisorLeavesADoesNotHoldFindingAsANoteOnTheLeaf(t *testing.T) {
 	}
 }
 
+func TestSupervisorDoesNotFinishWhenACheckDoesNotFinish(t *testing.T) {
+	store := runOpenStore(t)
+	ctx := runContext(t)
+	seat := newFakeSeat()
+	seat.actions["root"] = splitRoot(t, store, leafDone("l1"))
+	factory := func(task plandb.Task) run.Worker {
+		if task.Role == plandb.RoleCheck {
+			return funcWorker(func(context.Context, plandb.Task) (run.Report, error) {
+				return run.Report{}, fmt.Errorf("checker lost its provider")
+			})
+		}
+		return seat.workerFor(task)
+	}
+	outcome, summary := run.Start(ctx, run.Spec{Store: store, Workspace: t.TempDir(), Slots: 2,
+		Limits: run.Limits{ReviewRound: true}, Factory: factory})
+	if outcome != run.OutcomeIncomplete {
+		t.Fatalf("outcome = %q, want incomplete", outcome)
+	}
+	if !strings.Contains(summary.Failure, "unfinished checks: check: leaf") {
+		t.Fatalf("failure = %q, want the unfinished check named", summary.Failure)
+	}
+	check := tasksWithRole(store, plandb.RoleCheck)
+	if len(check) != 1 || check[0].Status != plandb.StatusFailed {
+		t.Fatalf("checks = %+v, want one failed check", check)
+	}
+	root := store.Task(store.RootID())
+	if root.Status != plandb.StatusFailed || !strings.Contains(root.Error, "unfinished checks: check: leaf") {
+		t.Fatalf("root = %+v, want failed with the unfinished check named", root)
+	}
+}
+
 // TestSupervisorRootWaitsOnAnOpenCheckTask proves the waiting the round relies
 // on: the store's own CanFinish refuses the root while a check stands open,
 // naming the check, which is the shape completeTree reads to hold the root's

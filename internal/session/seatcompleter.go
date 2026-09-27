@@ -23,11 +23,18 @@ import (
 // makes, fallbacks included.
 type crewSeatContextKey struct{}
 
+type spendScopeContextKey struct{}
+
 // crewSeatOf is the seat a call was made for, empty for a call no crew seat
 // made (an auxiliary call, a probe), which no seat's ceiling holds.
 func crewSeatOf(ctx context.Context) crewroute.Seat {
 	seat, _ := ctx.Value(crewSeatContextKey{}).(crewroute.Seat)
 	return seat
+}
+
+func spendScopeOf(ctx context.Context) string {
+	scope, _ := ctx.Value(spendScopeContextKey{}).(string)
+	return scope
 }
 
 // SeatCompleter is next with every call marked as the seat's, so a guard
@@ -39,6 +46,17 @@ func SeatCompleter(seat crewroute.Seat, next Completer) Completer {
 	marked := seatCompleter{seat: seat, next: next}
 	if chain, ok := next.(modelChain); ok {
 		return seatChain{seatCompleter: marked, chain: chain}
+	}
+	return marked
+}
+
+// SpendScope marks a completer with the concrete task whose seat spend it
+// owns. The checker ceiling is per checker task, while the run's task cap stays
+// shared by the guard that wraps all of its workers.
+func SpendScope(scope string, next Completer) Completer {
+	marked := spendScopeCompleter{scope: scope, next: next}
+	if chain, ok := next.(modelChain); ok {
+		return spendScopeChain{spendScopeCompleter: marked, chain: chain}
 	}
 	return marked
 }
@@ -60,3 +78,19 @@ type seatChain struct {
 }
 
 func (c seatChain) FallbackModels(model string) []string { return c.chain.FallbackModels(model) }
+
+type spendScopeCompleter struct {
+	scope string
+	next  Completer
+}
+
+func (c spendScopeCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	return c.next.CompleteWithMessages(context.WithValue(ctx, spendScopeContextKey{}, c.scope), messages, options...)
+}
+
+type spendScopeChain struct {
+	spendScopeCompleter
+	chain modelChain
+}
+
+func (c spendScopeChain) FallbackModels(model string) []string { return c.chain.FallbackModels(model) }

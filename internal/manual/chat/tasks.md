@@ -1698,6 +1698,7 @@ the card, the rail, the roster and in the chat:
 | its brief no longer described the world | `incomplete · its brief went stale` |
 | it would not take a step it was asked to | `incomplete · would not take a step it was asked to` |
 | a check looked and named what is missing | `incomplete · the check found gaps: <the gaps>` |
+| a fan-out check did not finish | `incomplete · unfinished checks: <the check names>` |
 | something broke | `incomplete · a fault: <the first line of the error>` |
 
 **`incomplete` is not `stopped`.** `stopped` is *you* ending the work and means nothing else
@@ -1805,7 +1806,9 @@ on a protected branch, was on a different branch than when the work was cut, mov
 to a different commit by your own work after the cut, or was detached. The branch
 named there holds the finished work; the how-tasks-run page explains the exact reason.
 Inspect that branch and keep the delivery workflow you requested. A task finishing
-does not by itself request a merge or a checkout change.
+does not by itself request a merge or a checkout change. A retained run is the
+exception: `/land` lists its waiting folder and merges that named run branch when
+you ask.
 
 Click anywhere on the card, or press `ctrl+o` with it selected, to expand it. `enter` on the
 selected card opens the task's room instead. What the expansion holds, and in what order, is
@@ -4089,6 +4092,8 @@ done-condition, and ask again — it is not a finding that the work cannot be sp
 checks that name different things — a package each, a file each — are two checks and are
 admitted; nothing here reads which program is being run or how long it takes.
 
+A part check is stored exactly as the planner wrote it. If it names a path that is not in the workspace and is not that part's own target, the division is refused with the check and missing path named; rewrite the check for the part and ask again. codeaf does not guess or expand filename stems such as `issue_.go`.
+
 **And you are only told once.** If the same task asks again with the same shared check still in
 every part — which is what a worker does when it cannot rewrite three done-conditions — the
 division is **taken** rather than refused a second time, with that check **removed from every
@@ -4628,8 +4633,9 @@ Whenever a task stops for any reason it wears its own word — `stopped` when yo
 `incomplete · <the reason>` otherwise — with `branch kept` and the branch name beside it.
 Nothing is thrown away: on every ending except a clean merge the branch is kept and named,
 and what the task made is committed onto that branch before it lands — so the files it
-produced are listed under `changed:` and `git merge task/…` brings them over. The merge is
-never done for you, because only work that was checked reaches your branch.
+produced are listed under `changed:` and `git merge task/…` brings them over. For a
+retained run, `/land` is the explicit merge door; an ordinary branch-kept task still
+waits for you, because only work that was checked reaches your branch.
 
 ## Continue task N — keep going on a failed or finished task, No task 1 in this project
 

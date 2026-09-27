@@ -1130,8 +1130,29 @@ func (s *Supervisor) completeTree() {
 		return
 	}
 	if s.treeTerminal() {
+		if unfinished := unfinishedCheckNames(s.store.Tasks()); len(unfinished) > 0 {
+			s.rootFailed = true
+			s.rootFailure = "unfinished checks: " + strings.Join(unfinished, ", ")
+			return
+		}
 		_ = s.store.CompleteRoot(s.rootResult)
 	}
+}
+
+func unfinishedCheckNames(tasks []*plandb.Task) []string {
+	var names []string
+	for _, task := range tasks {
+		if task.Role != plandb.RoleCheck || task.Status == plandb.StatusDone {
+			continue
+		}
+		name := strings.TrimSpace(task.Title)
+		if name == "" {
+			name = task.ID
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // rootAwaitingWake answers whether the root still owes a wake: a landing of its
@@ -1781,6 +1802,9 @@ type Summary struct {
 	// Result is the root's own result: what the run's last worker reported
 	// when the tree finished whole, and empty whenever it did not.
 	Result string
+	// Failure is the run's own account when it did not finish, including a
+	// checker that ended without completing its proof.
+	Failure string
 	// Limit is which bound a person set ended the run, and empty on every
 	// run that did not end on one. The outcome word is the same sentence for
 	// both limits; this is what tells them apart.
@@ -1903,6 +1927,7 @@ func Start(ctx context.Context, spec Spec) (Outcome, Summary) {
 	return outcome, Summary{
 		Outcome:   outcome,
 		Result:    result,
+		Failure:   supervisor.rootFailure,
 		Limit:     supervisor.limitHit,
 		Program:   supervisor.rootProgram,
 		Verdict:   supervisor.rootVerdict,
