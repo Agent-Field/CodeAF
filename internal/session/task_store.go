@@ -320,10 +320,11 @@ type taskRecord struct {
 	// back to the report exactly as it did then.
 	Result *taskResultRecord `json:"result,omitempty"`
 
-	Changed  []string `json:"changed,omitempty"`
-	Branch   string   `json:"branch,omitempty"`
-	Worktree string   `json:"worktree,omitempty"`
-	Merge    string   `json:"merge,omitempty"`
+	Changed    []string `json:"changed,omitempty"`
+	Branch     string   `json:"branch,omitempty"`
+	Worktree   string   `json:"worktree,omitempty"`
+	Merge      string   `json:"merge,omitempty"`
+	KeptReason string   `json:"keptReason,omitempty"`
 
 	// Wrote is what a node's own hands have written SO FAR, kept while it runs
 	// rather than only when it lands ([TaskNode.noteWrote]).
@@ -785,11 +786,12 @@ type runRecord struct {
 	// ended by a limit its person set lost which limit it was, and a row whose
 	// work was kept on a branch came back naming no branch at all. Each is
 	// omitted when empty, so an older file decodes exactly as it always did.
-	Ending  TaskEnding `json:"ending,omitempty"`
-	Branch  string     `json:"branch,omitempty"`
-	Merge   string     `json:"merge,omitempty"`
-	Result  string     `json:"result,omitempty"`
-	Changed []string   `json:"changed,omitempty"`
+	Ending     TaskEnding `json:"ending,omitempty"`
+	Branch     string     `json:"branch,omitempty"`
+	Merge      string     `json:"merge,omitempty"`
+	KeptReason string     `json:"keptReason,omitempty"`
+	Result     string     `json:"result,omitempty"`
+	Changed    []string   `json:"changed,omitempty"`
 }
 
 // taskDocument is the file: a type tag, a version, the id counter, the nodes in
@@ -1119,6 +1121,7 @@ func runRowRecord(notice TaskNotice) runRecord {
 		Ending:     notice.Ending,
 		Branch:     notice.Branch,
 		Merge:      notice.Merge,
+		KeptReason: notice.KeptReason,
 		Result:     notice.Result,
 		Changed:    append([]string(nil), notice.Changed...),
 		PlanTask:   notice.PlanTask,
@@ -1166,6 +1169,7 @@ func runRowNotice(record runRecord) TaskNotice {
 		Ending:     record.Ending,
 		Branch:     record.Branch,
 		Merge:      record.Merge,
+		KeptReason: record.KeptReason,
 		Result:     record.Result,
 		Changed:    append([]string(nil), record.Changed...),
 		PlanTask:   record.PlanTask,
@@ -1284,6 +1288,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Branch:         n.branch,
 		Worktree:       n.worktree,
 		Merge:          n.merge,
+		KeptReason:     n.keptReason,
 		Journal:        n.journal,
 		Beat:           beat,
 		Model:          n.spec.model,
@@ -2186,6 +2191,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		branch:         record.Branch,
 		worktree:       record.Worktree,
 		merge:          record.Merge,
+		keptReason:     record.KeptReason,
 		journal:        record.Journal,
 		elapsed:        time.Duration(record.ElapsedMS) * time.Millisecond,
 		started:        record.StartedAt,

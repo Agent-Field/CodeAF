@@ -287,8 +287,8 @@ type taskNode struct {
 	// claim that a node thought for free: a surface draws nothing at all for it,
 	// the way it draws nothing for an unpublished price (session's
 	// task_contract.go on CostUSD).
-	tokens                int
-	report, branch, merge string
+	tokens                            int
+	report, branch, merge, keptReason string
 	// produced is WHAT THE WORK MADE, kept apart from the report above because
 	// internal/session keeps the two apart and for its reason (task_result.go):
 	// the report is the CARD — a landing's own sentences, which a late verdict,
@@ -738,6 +738,20 @@ const taskStoppedWord = "stopped"
 // the reason for it (docs/design/task-states/DESIGN.md). They were this file's
 // own vocabulary, and the roster, the record and home each had a different one.
 const taskBranchKept = "branch kept"
+
+// taskBranchKeptLine is the one screen line for a retained branch. The branch
+// handle stays before the policy explanation so a narrow rail can preserve the
+// actionable part while the full card still names why it was left alone.
+func taskBranchKeptLine(branch, reason string) string {
+	line := taskBranchKept
+	if branch = strings.TrimSpace(branch); branch != "" {
+		line += " · " + branch
+	}
+	if reason = strings.TrimSpace(reason); reason != "" {
+		line += " · " + reason
+	}
+	return line
+}
 
 // taskFinishingWord is what a node says while it is closing a gap in work it has
 // otherwise finished (session's TaskNotice.Mending, carried on [taskNode.mending]).
@@ -4572,7 +4586,7 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 		case mergeWordKept:
 			// FINISHED AND WAITING ON ITS BRANCH. The state stays done because the
 			// work is complete; the row names the one action left to the person.
-			text = taskBranchKept + " · " + node.branch
+			text = taskBranchKeptLine(node.branch, node.keptReason)
 		case mergeWordConflicted:
 			// THE ONE LOUD ROW ON THE RAIL. A branch that did not merge is work
 			// that is finished and not delivered, and its branch is the only
@@ -5370,6 +5384,12 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	}
 	if notice.Merge != "" {
 		node.merge = notice.Merge
+		if notice.Merge != mergeWordKept {
+			node.keptReason = ""
+		}
+	}
+	if notice.KeptReason != "" {
+		node.keptReason = notice.KeptReason
 	}
 	if where := strings.TrimSpace(notice.Where); where != "" {
 		node.where = where
