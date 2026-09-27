@@ -468,7 +468,7 @@ func (a *app) trafficStart(t team, e teamstore.Entry) tea.Cmd {
 	start, where, id := a.start, a.teamWhere(t), t.ID
 	return a.besideLine(func() func(bool) tea.Cmd {
 		conv, err := start(where)
-		return func(bool) tea.Cmd { return a.trafficStarted(id, handle, conv, err) }
+		return func(bool) tea.Cmd { return a.trafficStarted(id, handle, e.Approval, conv, err) }
 	})
 }
 
@@ -479,7 +479,7 @@ func (a *app) trafficStartRefused(handle, why string) {
 
 // trafficStarted is the start's conversation back from the engine: held
 // behind, joined to the team under its handle, and said beside the manager.
-func (a *app) trafficStarted(id, handle string, conv Conversation, err error) tea.Cmd {
+func (a *app) trafficStarted(id, handle, approvalPosture string, conv Conversation, err error) tea.Cmd {
 	if err != nil || conv.Agent == nil {
 		why := "the conversation did not open"
 		if err != nil {
@@ -487,6 +487,18 @@ func (a *app) trafficStarted(id, handle string, conv Conversation, err error) te
 		}
 		a.trafficStartRefused(handle, why)
 		return nil
+	}
+	if approvalPosture != "" {
+		if setter, ok := conv.Agent.(interface{ SetApprovalPosture(string) error }); ok {
+			if err := setter.SetApprovalPosture(approvalPosture); err != nil {
+				a.trafficStartRefused(handle, "could not carry over its approval posture: "+err.Error())
+				_ = conv.Agent.Close()
+				return nil
+			}
+			if settler, ok := conv.Agent.(interface{ SettleWrites() }); ok {
+				settler.SettleWrites()
+			}
+		}
 	}
 	t, ok := a.teamByID(id)
 	if !ok {

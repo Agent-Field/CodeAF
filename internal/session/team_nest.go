@@ -241,7 +241,7 @@ func (a *Agent) teamStartSubTeam(team teams.Team, role teamRole, handle, brief, 
 	// here, where the membership was written. A refusal returned above and
 	// wrote nothing.
 	_ = teams.WriteMoveNotices(profile, movedIn)
-	start := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Team: childID}
+	start := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Team: childID, Approval: a.ApprovalPosture()}
 	if err := teams.AppendTraffic(profile, team.ID, start); err != nil {
 		return "The team " + strconv.Quote(name) + " was made, but its manager's start could not be written to the traffic: " + err.Error(), true
 	}
