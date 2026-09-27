@@ -146,6 +146,69 @@ func TestReadSweepDisabledStaysDisabled(t *testing.T) {
 	}
 }
 
+func TestReadHandoffRetiresUnstartedTask(t *testing.T) {
+	graph := &TaskGraph{
+		nodes:  map[uint64]*TaskNode{},
+		order:  []uint64{7},
+		claims: map[uint64]int{3: 1},
+	}
+	node := &TaskNode{
+		graph:  graph,
+		id:     7,
+		parent: 3,
+		state:  TaskQueued,
+		done:   make(chan struct{}),
+	}
+	graph.nodes[node.id] = node
+	if !graph.retireUnstarted(node.id) {
+		t.Fatal("an unstarted hand-off was not retired")
+	}
+	if graph.node(node.id) != nil {
+		t.Fatal("the retired hand-off remains in the graph")
+	}
+	if len(graph.order) != 0 {
+		t.Fatalf("retired hand-off remains in order: %v", graph.order)
+	}
+	if graph.claims[3] != 0 {
+		t.Fatalf("parent claim was not released: %v", graph.claims)
+	}
+	if node.stopped {
+		t.Fatal("retiring a helper marked it stopped")
+	}
+}
+
+func TestRetireUnstartedLeavesStartedTask(t *testing.T) {
+	for _, testCase := range []struct {
+		name    string
+		state   TaskState
+		claimed bool
+	}{
+		{name: "claimed", state: TaskQueued, claimed: true},
+		{name: "running", state: TaskRunning},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			graph := &TaskGraph{
+				nodes: map[uint64]*TaskNode{},
+				order: []uint64{8},
+			}
+			node := &TaskNode{
+				graph:   graph,
+				id:      8,
+				state:   testCase.state,
+				claimed: testCase.claimed,
+				done:    make(chan struct{}),
+			}
+			graph.nodes[node.id] = node
+			if graph.retireUnstarted(node.id) {
+				t.Fatal("a started hand-off was retired")
+			}
+			if graph.node(node.id) != node {
+				t.Fatal("a started hand-off left the graph")
+			}
+		})
+	}
+}
+
 // keys is the test's window into the ledger.
 func (s *readSweep) keys() []string {
 	keys := make([]string, 0, len(s.targets))

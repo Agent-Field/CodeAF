@@ -54,9 +54,9 @@ const (
 	quickItemsToolName = "items"
 )
 
-// quickTaskSpec is what a quick node is, and it is deliberately four fields:
-// what to do, the list it works through, what it said it would write, and how
-// far down the list it has got.
+// quickTaskSpec is what a quick node is: what to do, the list it works through,
+// what it said it would write, how far down the list it has got, and whether
+// its worker is a reader rather than a writer.
 //
 // IT IS MUTATED WHILE THE NODE RUNS, which no other spec in this package is,
 // and that is the one thing to know about reading it. `items` and `done` grow
@@ -78,6 +78,9 @@ type quickTaskSpec struct {
 	// done is parallel to items: done[i] says item i+1 has been ticked. It is
 	// written only by the `items` tool and read only under the graph's lock.
 	done []bool
+	// readOnly is THE SAFETY BOUND OF A READ HAND-OFF. It is persisted with the
+	// quick body so a resumed helper cannot silently regain the ordinary belt.
+	readOnly bool
 	// waits is WHY THIS NODE WAS QUEUED BEHIND ANOTHER, kept from admission so
 	// the receipt the model reads can name the task and the path rather than
 	// making it work the collision out for itself. It is a record of that one
@@ -389,6 +392,9 @@ type quickAsk struct {
 	// grow a quick node — the tool and the ceiling's carry-on — ask for it the
 	// same way and neither can build a promotion the other could not.
 	inherit bool
+	// readOnly is set only by the read hand-off. The ordinary quick-task tool
+	// never receives this capability from its wire arguments.
+	readOnly bool
 }
 
 // askOf is the wire form read as an ask. It is a function rather than a
@@ -640,6 +646,7 @@ func (a *Agent) newQuickSpec(ask quickAsk) (taskSpec, string) {
 	} else {
 		quick = newQuickTaskSpec(line, kept, scope)
 	}
+	quick.readOnly = ask.readOnly
 	quick.waits = a.graph().quickClaimsOn(a.config.Workspace, scope)
 	for _, claim := range quick.waits {
 		dependsOn = append(dependsOn, claim.id)
