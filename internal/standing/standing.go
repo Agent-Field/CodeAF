@@ -608,7 +608,7 @@ func (it Item) Reaches(workspace, sessionID string) bool {
 	case AltitudeMachine:
 		return true
 	case AltitudeProject:
-		return workspace != "" && it.Workspace == workspace
+		return workspace != "" && filepath.Clean(it.Workspace) == filepath.Clean(workspace)
 	case AltitudeConversation:
 		return sessionID != "" && it.Origin.SessionID == sessionID
 	}

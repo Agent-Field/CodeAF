@@ -2,11 +2,13 @@ package tui3
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -252,4 +254,24 @@ func (a *app) submitStandingShown(text, shown string) tea.Cmd {
 // The mark is a property of the message, not of which conversation is drawn.
 func standingStart(agent Agent, ctx context.Context, text string) func() (<-chan session.Event, error) {
 	return func() (<-chan session.Event, error) { return agent.SubmitStanding(ctx, text) }
+}
+
+// standCardCostWords resolves the cost words for a standing card, reading the
+// live daily rail budget from the profile rather than any stale default or cached
+// figure when quoting the day's allowance.
+func (a *app) standCardCostWords(card *standingCard) string {
+	if card == nil || !card.item.Spends() {
+		return ""
+	}
+	cost := card.cost
+	// If cost quotes the day's allowance (or shares the day's ...), resolve against live rail:
+	if strings.Contains(cost, "shares the day's") || strings.HasPrefix(cost, "shares the day") {
+		if rail, err := config.DailyBudgetUSDAt(a.profileDir); err == nil {
+			if rail > 0 {
+				return "shares the day's $" + strconv.FormatFloat(rail, 'f', 2, 64) + " allowance"
+			}
+			return "shares the day's allowance"
+		}
+	}
+	return cost
 }
