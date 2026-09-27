@@ -3515,6 +3515,10 @@ func (a *app) roomStateWord(node *taskNode) string {
 		// on the rail's row under the node; the header has one line and spends it
 		// on the state.
 		return a.taskStatus(node).Word
+	case session.TaskInterrupted:
+		// Recovery is an ending of its own, read from the same store-backed
+		// status as the rail rather than the successful-merge fallback.
+		return a.taskStatus(node).Word
 	case session.TaskUnverified:
 		// NOT THE MERGE SENTENCE, for the reason the rail states in the same words
 		// (task.go's [app.railUnder]): a node whose landing is somebody's call

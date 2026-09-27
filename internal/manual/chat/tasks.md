@@ -1972,7 +1972,9 @@ and its heading wears no mark, because it does not fold. The other three start f
 one line, `Done 6 ▸`; press the heading, or `enter` on it, to open the group (`Done 6 ▾`)
 and again to fold it. What you open stays open for the rest of the session, through new
 work, new landings and switching chats. A group with nothing in it is not drawn at all;
-there are no empty headings and no `none` rows.
+there are no empty headings and no `none` rows. When only queued tasks remain and the
+conversation is idle, the main box footer says `queued`. It says `working` when a task
+or background command is running.
 
 **Every task is one line**: its state glyph two cells in, its name cut with `…` where the
 column is too narrow, and how long it has been at it (or how long it took) in the muted ink
