@@ -213,3 +213,26 @@ func TestBashWorkerPageSaysToDeleteScratchBeforeDone(t *testing.T) {
 		}
 	}
 }
+
+func TestBeltWorkerBriefStatesAssignedDirectoryWithoutRewritingReferences(t *testing.T) {
+	ask := "In /source/project, edit result.txt; consult /reference/design.md."
+	store := askStore(t, ask)
+	for _, id := range []string{planRootID, "leaf"} {
+		for _, role := range []string{plandb.RoleWork, plandb.RoleCheck} {
+			task := store.Task(id)
+			task.Role = role
+			doc := BeltWorkerBrief(store, task, id == planRootID, false, "", "/assigned/copy")
+			for _, want := range []string{"ASSIGNED WORKING DIRECTORY\n\n/assigned/copy", ask, "Unrelated read-only reference paths remain as written"} {
+				if !strings.Contains(doc, want) {
+					t.Fatalf("%s/%s brief lost %q: %s", id, role, want, doc)
+				}
+			}
+			if strings.Index(doc, "ASSIGNED WORKING DIRECTORY") > strings.Index(doc, ask) {
+				t.Fatal("assignment appears after the quoted source path")
+			}
+			if !strings.HasPrefix(doc, planStoreID(id)+" is your task") {
+				t.Fatal("assignment displaced task ownership")
+			}
+		}
+	}
+}
