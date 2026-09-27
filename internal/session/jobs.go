@@ -56,6 +56,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -518,7 +519,6 @@ type jobRegistry struct {
 	paid func()
 
 	mu   sync.Mutex
-	seq  int
 	jobs []*job
 	// watches is the number of watch slots CLAIMED, not the number of watch
 	// jobs in the slice. Counting the slice would leave a window between the
@@ -599,7 +599,7 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 	}
 	started.sink = newJobSink(logFile, logPath)
 	// Retention maintenance (issue #1601) runs when the sink closes — the
-	// second of its two events — and only then, never per Write.
+	// maintenance also runs at claim and startup, never per Write.
 	started.sink.finishRetention = func() { jobRetentionFinish(started.sink) }
 	return started, nil
 }
@@ -859,11 +859,18 @@ func (r *jobRegistry) finish(done *job, code int, note string) {
 	if requested := r.settled(done, code); requested {
 		return
 	}
-	if note == "" || r.notify == nil {
+	if r.notify == nil {
 		return
 	}
-	// A goroutine's ending is one sentence its caller wrote, so that sentence is
-	// already the whole ending this file composed for it.
+	if done.sink.notice() != "" {
+		if note == "" {
+			note = fmt.Sprintf("job %d finished", done.id)
+		}
+		note += "\n\n[job " + strconv.Itoa(done.id) + " · " + done.sink.logFooter(done.logPath) + "]"
+	}
+	if note == "" {
+		return
+	}
 	r.notify(note)
 }
 

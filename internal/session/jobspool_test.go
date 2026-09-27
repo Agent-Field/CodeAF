@@ -328,3 +328,19 @@ func TestJobSpoolConcurrentWritersAndCloseRemainBounded(t *testing.T) {
 		t.Fatal("concurrent close stopped memory drain")
 	}
 }
+
+func TestJobSpoolGoroutineCompletionReportsLoggingFailure(t *testing.T) {
+	var note string
+	registry := newJobRegistry(t.TempDir(), Place{}, func(s string) { note = s })
+	job, err := registry.newJob("fixture", jobKindTask)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(job.sink.close)
+	job.sink.hook = func([]byte) (int, error) { return 0, errors.New("injected task log failure") }
+	_, _ = job.sink.Write([]byte("\n"))
+	registry.finish(job, 0, "task finished")
+	if !strings.Contains(note, "injected task log failure") || strings.Contains(note, "full log:") {
+		t.Fatalf("task completion hid logging failure: %s", note)
+	}
+}
