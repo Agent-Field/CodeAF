@@ -101,6 +101,7 @@ func planRailNode(row session.PlanTaskRow) *taskNode {
 		planRow:  &held,
 		handle:   planRailHandle(row.ID),
 		state:    planNodeState(row),
+		waiting:  strings.TrimSpace(row.Hold),
 		stopped:  row.Stopped,
 		began:    row.Started,
 		started:  row.Started,

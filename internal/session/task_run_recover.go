@@ -117,8 +117,9 @@ func (a *Agent) resumePendingRun(g *TaskGraph, kept TaskNotice) {
 		title: kept.Title, brief: pending.Brief, ground: canonicalPath(pending.Ground),
 		stand: taskStand{dir: pending.Ground, mode: pending.Mode}, pending: true,
 		delegate: via, asked: pending.Asked, cut: cut, born: a.taskClockNow(), over: make(chan struct{}),
-		joined:    recoveredJoinedRows(g, id),
-		admission: NewRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, g.lanes),
+		joined:      recoveredJoinedRows(g, id),
+		admission:   newRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.config.ProfileDir, g.lanes),
+		machineHeld: map[string]bool{planStoreID(reopened.RootID()): true},
 	}
 	a.installBeltRun(g, run)
 	kept.State, kept.Waiting = TaskQueued, waitingMachineBusy

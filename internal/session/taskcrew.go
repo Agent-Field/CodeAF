@@ -208,7 +208,7 @@ func (a *Agent) routeTaskCrew(ctx context.Context, row uint64, title, brief stri
 	for _, pick := range decision.Crew {
 		crew.original[pick.Seat] = pick.Send
 	}
-	crew.guard = crewSpendGuard(a.config.ProfileDir, decision, false)
+	crew.guard = crewSpendGuard(a.config.ProfileDir, decision, true, a.config.usageLedger)
 	crew.guard.Day = a.crewDay()
 	crew.day, crew.dayAtStart = a.crewDay(), a.crewDay().Total()
 	a.crews.put(row, crew)
@@ -552,8 +552,8 @@ func (e errRouteResting) Error() string {
 // ledger has it, the day's cap (the daily spending limit too when withDaily),
 // the per-task limit — which withDaily does not touch — and the checker's
 // ceiling.
-func crewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *SpendGuard {
-	capUSD, action := config.CrewSpendCap(profileDir, withDaily)
+func crewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool, ledgerPath ...string) *SpendGuard {
+	capUSD, action := crewSpendCap(profileDir, withDaily, ledgerPath...)
 	taskCap, taskAction := config.CrewTaskSpendCap(profileDir)
 	guard := &SpendGuard{
 		Price: config.CrewCallPriceAt(profileDir), Cap: capUSD, CapAction: action,
@@ -561,7 +561,11 @@ func crewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *Sp
 		TaskCap: taskCap, TaskAction: taskAction, Task: &SpendTask{},
 	}
 	if capUSD > 0 {
-		guard.Day = NewSpendDay(spentTodayOnLedger())
+		spent := 0.0
+		if daily, err := DailySpendAt(profileDir, time.Now(), ledgerPath...); err == nil {
+			spent = daily.Spent
+		}
+		guard.Day = NewSpendDay(spent)
 	}
 	return guard
 }
@@ -571,7 +575,13 @@ func crewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *Sp
 // call after — seats and helpers alike — so a helper's call counts against
 // the cap a seat's next call is priced under, and the other way round.
 func (a *Agent) crewDay() *SpendDay {
-	a.crewDayOnce.Do(func() { a.crewDayHeld = NewSpendDay(spentTodayOnLedger()) })
+	a.crewDayOnce.Do(func() {
+		spent := 0.0
+		if daily, err := DailySpendAt(a.config.ProfileDir, time.Now(), a.config.usageLedger); err == nil {
+			spent = daily.Spent
+		}
+		a.crewDayHeld = NewSpendDay(spent)
+	})
 	return a.crewDayHeld
 }
 
@@ -585,7 +595,7 @@ func (a *Agent) helperGuard(crew *taskCrew) *SpendGuard {
 		return nil
 	}
 	guard := &SpendGuard{Price: config.CrewCallPriceAt(a.config.ProfileDir), Day: a.crewDay()}
-	if capUSD, action := config.CrewSpendCap(a.config.ProfileDir, false); capUSD > 0 {
+	if capUSD, action := crewSpendCap(a.config.ProfileDir, true, a.config.usageLedger); capUSD > 0 {
 		guard.Cap, guard.CapAction = capUSD, action
 	}
 	if crew != nil && crew.guard != nil {
@@ -680,15 +690,18 @@ func TaskSpendGuard(profileDir string) *SpendGuard {
 	return &SpendGuard{Price: config.CrewCallPriceAt(profileDir), TaskCap: taskCap, TaskAction: taskAction, Task: &SpendTask{}}
 }
 
-// spentTodayOnLedger is today's spend as the usage ledger has it; nothing
-// when the ledger cannot be read.
-func spentTodayOnLedger() float64 {
-	now := time.Now()
-	lines, err := ReadUsage(UsageLedgerPath(), now.Add(-48*time.Hour))
-	if err != nil {
-		return 0
+// crewSpendCap combines the recurring crew cap with the shared machine-wide
+// daily limit. A raise changes only the latter for today's local day.
+func crewSpendCap(profileDir string, withDaily bool, ledgerPath ...string) (float64, string) {
+	capUSD, action := config.CrewSpendCap(profileDir, false)
+	if !withDaily {
+		return capUSD, action
 	}
-	return SpendToday(lines, now)
+	daily, err := DailySpendAt(profileDir, time.Now(), ledgerPath...)
+	if err != nil || daily.Limit <= 0 || (capUSD > 0 && capUSD <= daily.Limit) {
+		return capUSD, action
+	}
+	return daily.Limit, fmt.Sprintf("today's spending limit of $%.2f is reached · raise it with /budget", daily.Limit)
 }
 
 // stopCrew records a guard's stop on the crew — the line leads with it — and

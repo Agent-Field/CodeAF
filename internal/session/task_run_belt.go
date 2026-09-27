@@ -257,6 +257,8 @@ type RunLanding struct {
 	Branch  string
 	Changed []string
 	Refused string
+	// KeptReason is why automatic landing left Branch on its own ref.
+	KeptReason string
 	// Home is how the work came home, in the landing road's own outcome words
 	// ([mergeMerged] and its kin), set by this door once the run's copy has been
 	// brought back to its ground ([Agent.landBeltRun]). Empty is an engine's own
@@ -564,7 +566,7 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 	// ADMISSION IS CHECKED BEFORE A FOLDER OR COPY IS TOUCHED. A held run seeds
 	// only its plan store so stopping it cannot leave a repository claim behind;
 	// the admitted road below keeps the original synchronous refusal order.
-	admission := NewRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.graph().lanes)
+	admission := newRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.config.ProfileDir, a.graph().lanes)
 	held := admission != nil && !admission.MayStart()
 	if held {
 		return a.startHeldBeltRun(ctx, engine, g, path, storeID, id, title, brief, stand, question, via, asked, admission)
@@ -683,7 +685,8 @@ func (a *Agent) startHeldBeltRun(ctx context.Context, engine RunEngine, g *TaskG
 	run := &beltRun{
 		plan: plan, store: store, root: store.RootID(), row: id, title: title, brief: brief,
 		stand: stand, ground: canonicalPath(stand.dir), pending: true, admission: admission,
-		cut: cut, born: born, over: make(chan struct{}),
+		machineHeld: map[string]bool{planStoreID(storeID): true},
+		cut:         cut, born: born, over: make(chan struct{}),
 		delegate: via, asked: asked, crew: crew,
 	}
 	a.installBeltRun(g, run)
@@ -970,7 +973,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 	}
 	admission := run.admission
 	if admission == nil {
-		admission = NewRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.graph().lanes)
+		admission = newRunAdmission(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.config.ProfileDir, a.graph().lanes)
 	}
 	return RunSpec{
 		Store:     run.store,
@@ -1541,7 +1544,7 @@ func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
 // halfway through would send the place back to guessing by title exactly when
 // the work ended, which is the moment a person goes looking for its page.
 func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
-	notice = carryRunRow(g, notice)
+	notice = carryKeptRunFacts(g, notice)
 	notice.Program = keptRunProgram(g, notice)
 	if notice.Elapsed == 0 {
 		notice.Elapsed = runSpan(notice.StartedAt, notice.EndedAt)
@@ -1557,32 +1560,6 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 	a.emitTaskUpdate(notice)
 	g.keepRunRows(notice.ID, []TaskNotice{notice})
 	a.indexRunRow(notice)
-}
-
-// carryRunRow preserves the durable identity fields across partial updates.
-// Pending admission survives queued updates only; a started run sheds it.
-func carryRunRow(g *TaskGraph, notice TaskNotice) TaskNotice {
-	if notice.Copy == nil || notice.PlanTask == "" || notice.Crew == nil {
-		for _, kept := range g.runRows(notice.ID) {
-			if kept.ID != notice.ID {
-				continue
-			}
-			if notice.State == TaskQueued && notice.PendingRun == nil {
-				notice.PendingRun = kept.PendingRun
-			}
-			if notice.Copy == nil && kept.Copy != nil {
-				notice.Copy = kept.Copy
-			}
-			if notice.PlanTask == "" && kept.PlanTask != "" {
-				notice.PlanTask = kept.PlanTask
-			}
-			if notice.Crew == nil && kept.Crew != nil {
-				notice.Crew = kept.Crew
-			}
-			break
-		}
-	}
-	return notice
 }
 
 // keptRunProgram is the program a run row names: its own when it names one,
@@ -1986,6 +1963,9 @@ func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
 		if said == "" {
 			said = "its work is kept on " + landing.Branch + " and did not go into " + run.ground
 		}
+		if merge == mergeKept {
+			landing.KeptReason = run.tree.keptLandingReason()
+		}
 		landing.Refused, landing.Home = said, merge
 		return landing
 	}
@@ -2198,7 +2178,8 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 		// the outcome sentence.
 		Ending: beltRunEnding(summary),
 		Report: report, Result: summary.Result,
-		Changed: landing.Changed,
+		Changed:    landing.Changed,
+		KeptReason: landing.KeptReason,
 		// THE CREW THAT DID IT AND WHAT IT COST, beside the estimate it was
 		// picked under, for the card's crew line.
 		Crew: run.crewDecision(), Model: run.crewWorker(), CostUSD: run.crew.taskSpent(summary.USD),
@@ -2383,4 +2364,33 @@ func (run *beltRun) crewWorker() string {
 		return d.Seat(crewroute.Worker).Model
 	}
 	return ""
+}
+
+// carryKeptRunFacts fills the facts a later publish of the same run may leave
+// out — its copy, plan identity, crew and kept reason — from the row already
+// kept for it, so no publish can drop what an earlier one said.
+func carryKeptRunFacts(g *TaskGraph, notice TaskNotice) TaskNotice {
+	for _, kept := range g.runRows(notice.ID) {
+		if kept.ID != notice.ID {
+			continue
+		}
+		// Pending admission survives queued updates only; starting sheds it.
+		if notice.State == TaskQueued && notice.PendingRun == nil {
+			notice.PendingRun = kept.PendingRun
+		}
+		if notice.Copy == nil {
+			notice.Copy = kept.Copy
+		}
+		if notice.PlanTask == "" {
+			notice.PlanTask = kept.PlanTask
+		}
+		if notice.Crew == nil {
+			notice.Crew = kept.Crew
+		}
+		if notice.KeptReason == "" {
+			notice.KeptReason = kept.KeptReason
+		}
+		break
+	}
+	return notice
 }

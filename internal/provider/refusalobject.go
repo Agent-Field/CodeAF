@@ -510,6 +510,8 @@ func Evidence(err error) taxonomy.Evidence {
 	}
 	refusal, ok := RefusalFrom(err)
 	if !ok {
+		evidence.Status, _ = StatusOf(err)
+		evidence.Unserved = accountUnserved(evidence.Status)
 		// A FAILURE THAT CARRIES NO REFUSAL STILL HAS ONE SHAPE WORTH READING.
 		// Not every overflow arrives as an [APIError] — an SDK that wraps its own
 		// body read hands back a sentence — and "the request did not fit" is the

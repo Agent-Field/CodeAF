@@ -15,9 +15,11 @@ func TestHeldRunReopensOnTheSameAdmissionWithoutPreparingFiles(t *testing.T) {
 	engine := newBeltRunDouble("done")
 	registerBeltRunEngine(t, engine)
 	place, repo := t.TempDir(), newTestRepo(t)
+	profile := t.TempDir()
 	open := func() *Agent {
 		a, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
 			c.Workspace, c.Place, c.SessionFile = repo, Place{Dir: place}, filepath.Join(place, placeTranscript)
+			c.ProfileDir = profile
 			c.AskConsent, c.TaskMaxLoad, c.TaskMinFreeMB = false, 0, 1<<40
 		})
 		return a
@@ -44,6 +46,10 @@ func TestHeldRunReopensOnTheSameAdmissionWithoutPreparingFiles(t *testing.T) {
 	second.beltMu.Unlock()
 	if resumed == nil || resumed.row != id || resumed.brief != "held original brief" || resumed.ground != repo {
 		t.Fatalf("reopened run = %+v", resumed)
+	}
+	gate, ok := resumed.admission.(*runAdmission)
+	if !ok || gate.governor.settings == nil {
+		t.Fatal("recovered admission lost its live profile settings")
 	}
 	if resumed.workspace != "" || resumed.tree.branch != "" {
 		t.Fatal("held recovery prepared a copy")

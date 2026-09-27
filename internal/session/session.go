@@ -2272,7 +2272,11 @@ type Agent struct {
 	// that lock. Atomic publication keeps both roads on the same figure.
 	liveSpendRail    atomic.Uint64
 	liveSpendRailSet atomic.Bool
-	client           Completer
+	// dailyBudget holds the one chat turn waiting for the person to raise or
+	// stop today's spending limit. Its stream is adopted by the resumed turn.
+	dailyBudget    *dailyBudgetWait
+	dailyBudgetSeq uint64
+	client         Completer
 	// managedClient distinguishes the provider adapter built by New from a test
 	// completer handed to newAgent. clientAccount is the resolved account the
 	// adapter holds, so a service-set change can replace it before another call.
