@@ -611,16 +611,17 @@ func engineMergeWords(t *testing.T) []string {
 // becomes a person-facing label.
 func TestC13AKeptLandingSaysBranchKeptEverywhere(t *testing.T) {
 	a, _, _ := taskApp(t)
+	reason := "your checkout is on main, which tasks do not merge into automatically"
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Protect the checkout", session.TaskDone,
-		session.TaskNotice{Merge: mergeWordKept, Branch: "task/protect"})})
+		session.TaskNotice{Merge: mergeWordKept, Branch: "task/protect", KeptReason: reason})})
 	node := a.tasks[7]
-	want := taskBranchKept + " · task/protect"
+	want := taskBranchKept + " · task/protect · " + reason
 
-	if got := plain(strings.Join(a.railUnder(node, 60), "\n")); got != want {
-		t.Fatalf("the rail says %q, want %q", got, want)
+	if got := plain(strings.Join(a.railUnder(node, 60), "\n")); !strings.Contains(got, taskBranchKept+" · task/protect") || !strings.Contains(strings.Join(strings.Fields(got), " "), reason) {
+		t.Fatalf("the rail says %q, want the branch and reason", got)
 	}
 	card := &taskDone{
-		merge: mergeWordKept, branch: "task/protect",
+		merge: mergeWordKept, branch: "task/protect", keptReason: reason,
 		status: doneStatus(session.TaskFacts{
 			State: session.TaskDone, Merge: mergeWordKept, Branch: "task/protect"}),
 	}

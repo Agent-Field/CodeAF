@@ -1836,14 +1836,16 @@ After the name the card carries the span, the file count, and how the branch cam
 `merged`, `in your own folder`, `conflicted · <branch>`, or `branch kept · <branch>` —
 each its own fact, so a task you ended reads `stopped · branch kept · <branch>`.
 
-`branch kept · <branch>` on a **done** task means the work finished but your checkout was
-on a protected branch, was on a different branch than when the work was cut, moved
-to a different commit by your own work after the cut, or was detached. The branch
-named there holds the finished work; the how-tasks-run page explains the exact reason.
+`branch kept · <branch> · <reason>` on a **done** task means the work finished but your
+checkout was on a protected branch, was on a different branch than when the work was
+cut, moved to a different commit by your own work after the cut, or was detached. For
+example, it can say `branch kept · task/port · your checkout is on main, which tasks do
+not merge into automatically`. The branch named there holds the finished work; the
+how-tasks-run page explains the exact reason.
 Inspect that branch and keep the delivery workflow you requested. A task finishing
-does not by itself request a merge or a checkout change. A retained run is the
-exception: `/land` lists its waiting folder and merges that named run branch when
-you ask.
+does not by itself request a merge or a checkout change. If you want codeaf to bring
+the retained work into the checkout, `/land` lists the waiting folder and merges the
+named branch, whether it came from one task or a retained run.
 
 Click anywhere on the card, or press `ctrl+o` with it selected, to expand it. `enter` on the
 selected card opens the task's room instead. What the expansion holds, and in what order, is
@@ -4684,9 +4686,9 @@ Whenever a task stops for any reason it wears its own word — `stopped` when yo
 `incomplete · <the reason>` otherwise — with `branch kept` and the branch name beside it.
 Nothing is thrown away: on every ending except a clean merge the branch is kept and named,
 and what the task made is committed onto that branch before it lands — so the files it
-produced are listed under `changed:` and `git merge task/…` brings them over. For a
-retained run, `/land` is the explicit merge door; an ordinary branch-kept task still
-waits for you, because only work that was checked reaches your branch.
+produced are listed under `changed:` and `git merge task/…` brings them over. A kept
+branch from either a single task or a retained run appears in the `/land` waiting list;
+`/land now` is the explicit merge door when you want that work in your checkout.
 
 ## Continue task N — keep going on a failed or finished task, No task 1 in this project
 
