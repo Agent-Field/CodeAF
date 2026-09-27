@@ -283,11 +283,14 @@ type runAdmission struct {
 // NewRunAdmission builds the machine gate for either run door. Zeroing both
 // ceilings gives the engine a nil gate, the governor's existing off rule.
 func NewRunAdmission(maxLoad float64, minFreeMB int, lanes *TaskLanes) RunAdmission {
-	return newRunAdmission(maxLoad, minFreeMB, "", lanes)
+	return runAdmissionWithGovernor(newAdmissionGovernor(maxLoad, minFreeMB), lanes)
 }
 
 func newRunAdmission(maxLoad float64, minFreeMB int, profileDir string, lanes *TaskLanes) RunAdmission {
-	governor := newAdmissionGovernorForProfile(maxLoad, minFreeMB, profileDir)
+	return runAdmissionWithGovernor(newAdmissionGovernorForProfile(maxLoad, minFreeMB, profileDir), lanes)
+}
+
+func runAdmissionWithGovernor(governor *admissionGovernor, lanes *TaskLanes) RunAdmission {
 	if governor == nil {
 		return nil
 	}
@@ -373,9 +376,7 @@ func newAdmissionGovernor(maxLoad float64, minFreeMB int) *admissionGovernor {
 // ceiling on while this session is holding work.
 func newAdmissionGovernorForProfile(maxLoad float64, minFreeMB int, profileDir string) *admissionGovernor {
 	governor := newAdmissionGovernor(maxLoad, minFreeMB)
-	if strings.TrimSpace(profileDir) == "" {
-		return governor
-	}
+	// An empty profile selects the ordinary CODEAF_HOME profile too.
 	if governor == nil {
 		governor = &admissionGovernor{read: hostReading, now: time.Now}
 	}

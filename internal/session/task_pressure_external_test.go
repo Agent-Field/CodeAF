@@ -2,6 +2,7 @@ package session
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -9,9 +10,14 @@ import (
 )
 
 func TestMachineAdmissionNoticesSettingsFromAnotherProcess(t *testing.T) {
-	for _, road := range []string{"graph", "run"} {
+	for _, road := range []string{"graph", "run", "default-graph", "default-run"} {
 		t.Run(road, func(t *testing.T) {
 			profile := t.TempDir()
+			if strings.HasPrefix(road, "default-") {
+				t.Setenv("CODEAF_HOME", profile)
+				t.Setenv("CODEAF_PROFILE_DIR", "")
+				profile = ""
+			}
 			path := config.BudgetConfigPath(profile)
 			write := func(body string, tick int64) {
 				t.Helper()
@@ -30,7 +36,7 @@ func TestMachineAdmissionNoticesSettingsFromAnotherProcess(t *testing.T) {
 			write(`{"task.max_load":1.5,"task.min_free_mb":0}`, 1)
 			var governor *admissionGovernor
 			var poll func() bool
-			if road == "graph" {
+			if strings.HasSuffix(road, "graph") {
 				agent, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) {
 					cfg.ProfileDir, cfg.TaskMaxLoad, cfg.TaskMinFreeMB = profile, 1.5, 0
 				})
