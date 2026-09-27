@@ -1,0 +1,64 @@
+{
+  "pr": 1560,
+  "recording": "Unmodified original asciinema recording. GIF and MP4 are 3x playback with idle intervals capped at 3 seconds; no invented frames.",
+  "preview_duration_seconds": 157.3,
+  "screenshot_source": "1560guard-final-result.cast",
+  "files": {
+    "1560guard-usage.json": {
+      "bytes": 34538,
+      "sha256": "99e63cd9869a626bad005c16afbcb712b6b571bf129db72d3162e0409cf8be05"
+    },
+    "1560guard-weekly-card.cast": {
+      "bytes": 11290,
+      "sha256": "b325036c4e252f626ed6f1663d209e659df53de780a05291dd5266881ab8495a"
+    },
+    "1560guard-artifact-verification.json": {
+      "bytes": 769,
+      "sha256": "e3d3ede8740d7874e0ca79a72fd4b7fb20f3114a5c6b142496d7fe32cee389b8"
+    },
+    "1560guard-execution.json": {
+      "bytes": 396,
+      "sha256": "358034da57949fbfddda8b2668760ff2e3ad4e3e9dce01f7ee8a759c59c102ac"
+    },
+    "1560guard-coverage.md": {
+      "bytes": 1949,
+      "sha256": "c20b546879d6069e834b35f0c3352e1839dea661a08a8e294016efb653e349e6"
+    },
+    "weekly-card.png": {
+      "bytes": 73686,
+      "sha256": "cc3fd356fb114e2b156833329a39f4f2378988f1d4e5423457daf99c3840f779"
+    },
+    "1560guard-artifact-tests.log": {
+      "bytes": 643,
+      "sha256": "75052cfd13f60c68563d2641e2a8d77e38ade0563d266aa6c3bf1550902f16ad"
+    },
+    "workflow.gif": {
+      "bytes": 5207470,
+      "sha256": "94020dc531e93f4bea45a624e38eaeac53b25c9e4b1db0d4e2de2ab7bbecfd32"
+    },
+    "workflow.mp4": {
+      "bytes": 2073713,
+      "sha256": "b3b77f9f3d71bc5cc276b844e8af2d2de8243d8d3abd9f6e50a0564aec6ae2da"
+    },
+    "1560guard-standing-final.json": {
+      "bytes": 5410,
+      "sha256": "49b4dec371030e0e95ea713dec9cb1e629129ecbf6593e0ec612cc8fc3c24d17"
+    },
+    "1560guard-final-result.cast": {
+      "bytes": 9364,
+      "sha256": "a586e0f28871dc01b97cc17b4e9f05cd922ef8c74e52547caa4847e16313ca8d"
+    },
+    "screenshot.png": {
+      "bytes": 82547,
+      "sha256": "be42c91dc715168fc56741d1fea8b480f81a48be4fe82a622521fad7f4413477"
+    },
+    "1560guard.cast": {
+      "bytes": 587548,
+      "sha256": "4eefb0f04893ecf21a0e885eac8fcc6e17226574435b75386449ac1a6f5a85ac"
+    }
+  },
+  "supplements": [
+    1560,
+    1612
+  ]
+}

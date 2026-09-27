@@ -1,0 +1,12 @@
+{
+  "revision": "7f7f05a6199fef1855f1a805e76ffee189acc9d5",
+  "retained_tree": "/tmp/caf-extended-1560guard/state/v3/standing/493171c11766a26c/runs/0001/trees/standing-pantry-preview-recheck-ef7669",
+  "branch": "standing/standing-pantry-preview-recheck-ef7669",
+  "tree_status": "M shopping-list.md",
+  "host_head": "343452d8a82209ca0207c13fa363e2e0666b9367",
+  "host_status": "",
+  "report": "# Draft shopping list \u2014 not an order\n\n- rice (qty 2)\n- beans (qty 0)\n- tea (qty 5)\n",
+  "tests_exit": 0,
+  "receipt_model": "deepseek/deepseek-v4.1-flash",
+  "note": "First scheduled attempt used operator-supplied wrong CLI syntax; full original preserves failure and manual recovery. Second scheduled attempt independently succeeded with corrected -o argument."
+}

@@ -1,0 +1,104 @@
+[
+  {
+    "schema": 1,
+    "id": "78f1ebb18de50182",
+    "words": "schedule one isolated preview in 1 minute: run python3 shopping_list.py pantry.csv shopping-list.md --threshold 6 in a separate Git worktree, leave the changed report uncommitted, do not merge, and show the retained branch and report afterwards",
+    "workspace": "/tmp/caf-extended-1560guard/project",
+    "origin": {
+      "sessionId": "f8fab6c872dd0d9b",
+      "transcript": "/tmp/caf-extended-1560guard/state/v3/projects/-tmp-caf-extended-1560guard-project/f8fab6c872dd0d9b/transcript.jsonl",
+      "turnIds": [
+        "9"
+      ]
+    },
+    "when": {
+      "kind": "at",
+      "words": "in 1 minute (one-off)",
+      "at": "2026-09-27T12:53:38.792604445-04:00",
+      "probe": {}
+    },
+    "does": {
+      "isolate": true,
+      "kind": "task",
+      "brief": "In the isolated worktree you are given, run exactly: python3 shopping_list.py pantry.csv shopping-list.md --threshold 6. It rewrites the tracked shopping-list.md. LEAVE shopping-list.md UNCOMMITTED: do not git add, do not commit. Do not merge, do not push, do not touch main, do not remove the worktree. If the command exits non-zero and writes no file, report that verbatim instead of guessing. Afterwards report the retained branch name, the worktree path, the contents of shopping-list.md, and git status / git diff.",
+      "acceptance": "The kept worktree's shopping-list.md is the threshold-6 report and is uncommitted (git status shows it modified); main unchanged; nothing pushed; the worktree and its branch still present, and both reported back."
+    },
+    "rails": {
+      "perRunUsd": 5,
+      "maxPerDay": 10,
+      "expires": "0001-01-01T00:00:00Z"
+    },
+    "altitude": "project",
+    "brief": {
+      "title": "pantry preview"
+    },
+    "grant": "run the preview in a separate worktree, leave the report uncommitted, and report the retained branch and report back, but never merge or push",
+    "status": "retired",
+    "created": "2026-09-27T12:53:01.143875178-04:00",
+    "updated": "2026-09-27T12:58:03.310332585-04:00",
+    "retiredWhy": "fired",
+    "lastChecked": "2026-09-27T12:58:00.143007024-04:00",
+    "lastCheckLine": "it was the time you asked for",
+    "nextDue": "2026-09-27T12:53:38.792604445-04:00",
+    "previous": [
+      "it was the time you asked for \u2192 landed"
+    ],
+    "runs": 1,
+    "lastFired": "2026-09-27T12:58:00.143007024-04:00",
+    "lastOutcome": "landed",
+    "lastRun": "/tmp/caf-extended-1560guard/state/v3/standing/78f1ebb18de50182/runs/0001",
+    "spentUsd": 0.007570428,
+    "cleanRuns": 1
+  },
+  {
+    "schema": 1,
+    "id": "493171c11766a26c",
+    "words": "schedule one more isolated preview in 1 minute with the corrected command python3 shopping_list.py pantry.csv -o shopping-list.md --threshold 6, leave its report uncommitted in the scheduler-created retained worktree, do not create a substitute worktree manually, do not merge, and show the retained branch and report afterwards",
+    "workspace": "/tmp/caf-extended-1560guard/project",
+    "origin": {
+      "sessionId": "f8fab6c872dd0d9b",
+      "transcript": "/tmp/caf-extended-1560guard/state/v3/projects/-tmp-caf-extended-1560guard-project/f8fab6c872dd0d9b/transcript.jsonl",
+      "turnIds": [
+        "18"
+      ]
+    },
+    "when": {
+      "kind": "at",
+      "words": "in 1 minute (one-off)",
+      "at": "2026-09-27T12:59:57.85220441-04:00",
+      "probe": {}
+    },
+    "does": {
+      "isolate": true,
+      "kind": "task",
+      "brief": "In the isolated worktree the scheduler gives you \u2014 create none yourself \u2014 run exactly: python3 shopping_list.py pantry.csv -o shopping-list.md --threshold 6. It rewrites the tracked shopping-list.md. LEAVE shopping-list.md UNCOMMITTED: do not git add, do not commit. Do not merge, do not push, do not touch main, do not remove the worktree. REPORT THE COMMAND OUTPUT VERBATIM. If it exits non-zero and writes no file, report that exactly instead of guessing. Afterwards report the retained branch name, the worktree path, the contents of shopping-list.md, and git status / git diff.",
+      "acceptance": "The scheduler-created retained worktree's shopping-list.md is the threshold-6 report and is uncommitted (git status shows it modified); no manually-created worktree was used; main unchanged; nothing pushed; the worktree and its branch still present and reported back."
+    },
+    "rails": {
+      "perRunUsd": 5,
+      "maxPerDay": 10,
+      "expires": "0001-01-01T00:00:00Z"
+    },
+    "altitude": "project",
+    "brief": {
+      "title": "pantry preview recheck"
+    },
+    "grant": "run the preview in the scheduler's own worktree, leave the report uncommitted, and report the retained branch and report back, but never merge or push",
+    "status": "retired",
+    "created": "2026-09-27T12:59:26.114694643-04:00",
+    "updated": "2026-09-27T13:03:05.738160771-04:00",
+    "retiredWhy": "fired",
+    "lastChecked": "2026-09-27T13:03:00.143616681-04:00",
+    "lastCheckLine": "it was the time you asked for",
+    "nextDue": "2026-09-27T12:59:57.85220441-04:00",
+    "previous": [
+      "it was the time you asked for \u2192 landed"
+    ],
+    "runs": 1,
+    "lastFired": "2026-09-27T13:03:00.143616681-04:00",
+    "lastOutcome": "landed",
+    "lastRun": "/tmp/caf-extended-1560guard/state/v3/standing/493171c11766a26c/runs/0001",
+    "spentUsd": 0.009448188,
+    "cleanRuns": 1
+  }
+]

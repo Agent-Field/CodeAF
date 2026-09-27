@@ -1,0 +1,9 @@
+# Final-head isolation guard acceptance
+
+Spark source `7f7f05a6199fef1855f1a805e76ffee189acc9d5`, clean binary revision. Full local make pr-ready passed; GitHub run36334512416 passed. Focused regressions hide Once for isolated check/watch schedules and reject a forged Once answer while retaining ordinary choices.
+
+Real final-head workflow: the isolated weekly card offered only schedule or decline; declining installed nothing. A one-off scheduled pantry preview then exercised the actual scheduler and retained worktree. The first command supplied by the acceptance operator incorrectly used a positional report path. The recording preserves that failure and the model's manual recovery. A corrected scheduled proposal used `python3 shopping_list.py pantry.csv -o shopping-list.md --threshold 6`; the normal five-minute ticker ran it successfully in the scheduler-created retained tree. The report adds tea, remains uncommitted, and the original main stays clean at343452d8a82209ca0207c13fa363e2e0666b9367. Four artifact tests pass independently. Both one-off schedules are retired.
+
+85 receipts, every recorded role exactly OpenRouter deepseek/deepseek-v4.1-flash. Optional Model Pool remains off, disclosed; PR1610 separately verifies the pool-enabled one-model fix. Background checks were explicitly off for this isolated profile so acceptance did not replace the shared timer.
+
+Limitations retained: model helpers initially over-investigated; the operator interrupted and steered back to the card. Private helper transcripts are not published; they included a local configuration read. The original main terminal recording is audited for actual credentials before publication. The one-off task wording on this branch still says Remind me; separately tested PR1612 fixes it. Workspace isolation does not sandbox explicit paths. Ordinary Once is intentionally unavailable for isolated tasks; watch/probe Once execution is not claimed verified.
