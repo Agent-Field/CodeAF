@@ -201,9 +201,9 @@ type job struct {
 	// explicitStop marks a task stop requested through `jobs kill`. Shutdown
 	// deliberately does not call it: process exit pauses task work for resume.
 	explicitStop func()
-	// done is closed once the job is final — the process reaped, or the watch
-	// loop returned — and the status fields are settled. It is how a killer
-	// waits without polling.
+	// done is closed once the job is final and its retention maintenance has
+	// finished. It is how a killer and shutdown wait without polling or
+	// leaving a late writer in the jobs directory.
 	done chan struct{}
 
 	mu sync.Mutex
@@ -407,8 +407,9 @@ func (j *job) settledKilled() bool {
 }
 
 // settle makes a job final: the log is closed, the status fields stop moving,
-// and done is released. It reports whether the death was REQUESTED, which is
-// the one thing the caller needs to decide whether to say anything about it.
+// retention maintenance finishes, and done is released. It reports whether
+// the death was REQUESTED, which is the one thing the caller needs to decide
+// whether to say anything about it.
 //
 // It is called exactly once per job, by the single goroutine that owns the
 // job's middle — the reaper for a process, the timer loop for a watch — which
@@ -416,7 +417,7 @@ func (j *job) settledKilled() bool {
 func (j *job) settle(code int) bool {
 	// The log file closes before the status is final, so a reader that sees a
 	// finished job sees a complete file.
-	j.sink.close()
+	finish := j.sink.closeFile()
 
 	j.mu.Lock()
 	requested := j.killRequested
@@ -428,6 +429,12 @@ func (j *job) settle(code int) bool {
 		j.exitCode = code
 	}
 	j.mu.Unlock()
+
+	// A finished status must not wait for a directory sweep, but done still
+	// joins that sweep before shutdown or a killer can leave this job behind.
+	if finish != nil {
+		finish()
+	}
 
 	// Signalled before any note: a killer waiting on done must not wait behind
 	// a steering append it does not care about.
@@ -1518,14 +1525,22 @@ func (s *jobSink) trimLocked() {
 	s.ring = append([]byte(nil), s.ring[start:]...)
 }
 
-// close settles the spool. A close that fails is surfaced the same way a
-// failed write is — through [jobSink.notice] — and never turned into an error
-// the job's ending would have to carry.
+// close settles the spool and finishes retention for callers that have no job
+// status to publish, including a job refused at the registry's join boundary.
 func (s *jobSink) close() {
+	if finish := s.closeFile(); finish != nil {
+		finish()
+	}
+}
+
+// closeFile closes the spool before a job's status becomes final. A close
+// failure reaches [jobSink.notice] like a failed write, while its returned
+// maintenance callback can run after the status changes and before done closes.
+func (s *jobSink) closeFile() func() {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
-		return
+		return nil
 	}
 	if s.file != nil {
 		if err := s.file.Close(); err != nil {
@@ -1538,9 +1553,7 @@ func (s *jobSink) close() {
 	s.mu.Unlock()
 	// Maintenance takes the directory lock only after releasing the writer
 	// lease and sink mutex, so it cannot deadlock with another job's claim.
-	if finish != nil {
-		finish()
-	}
+	return finish
 }
 
 // tail returns the last n lines of the ring.
