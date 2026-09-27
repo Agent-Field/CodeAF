@@ -13,7 +13,9 @@ The spool retains the same active file and lease through rotation, so recursive
 readers cannot chase an ever-growing old inode. Write, rotation and close errors
 remain visible without failing the child process. Retention uses durable ID
 allocation, ownership markers and independent file leases. Unsafe linked files
-or storage ancestors are refused; legacy output remains outside the budget.
+or descendants of the selected storage root are refused; legacy output remains
+outside the budget. Selected workspace and session folder aliases are resolved
+before creating logs, so a symlinked login home does not prevent jobs starting.
 The bounds apply per job and per jobs directory, not across the machine.
 
 Structured search preserves source worktrees, including those inside custom

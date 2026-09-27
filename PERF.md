@@ -2678,6 +2678,25 @@ The policy preserves source under `work/`, `trees/`, and ordinary user `logs/`
 directories. Ripgrep receives exclusions after user globs and runs without user
 config or symlink traversal. Shell commands do not inherit these protections.
 
+### Foreground bash snapshots
+
+Foreground bash retains at most **8 MiB** of initial output per spill under the
+state home's `logs/bash/`, separately from its bounded latest-result tail.
+Completed snapshots share **128 MiB / 64 files** and expire after **seven days**;
+retention runs at creation and close. Active writers hold independent leases
+and are outside the completed-file budget. A directory lock serializes cleanup
+and publication. Unknown and unsafe linked files, and old `pi-bash-*.log`
+temporary files, remain outside retention. These are per-directory bounds.
+
+Write and close failures stop spooling, not draining. Incomplete output never
+claims to be full. Promotion closes the foreground snapshot and sends later
+bytes only to the job sink. Structured recursive search excludes new snapshot
+directories and legacy pi-bash files in the current temporary directory.
+
+`internal/exec/bare/bash_spill_test.go` covers the byte bound, initial-prefix
+preservation, real foreground shell output, disk failures, promotion, retention
+budgets, expiry, cross-process active leases, and linked-path refusal.
+
 Recursive search skips files above **8 MiB**. The walking engine and explicit
 single-file inspection read a snapshot bounded by `min(size-at-open, 8 MiB)`;
 one **64 KiB** line buffer drains and skips oversized lines, with an incomplete
