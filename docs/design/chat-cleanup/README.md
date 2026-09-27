@@ -22,8 +22,8 @@ updates and Markdown rendering.
 
 ## Verified run
 
-On 2026-09-27, `make build` from source `d19673f85` passed, followed by all four
-real-tmux scenarios in **96.531 seconds**. The final run recorded **34 completed
+On 2026-09-27, `make build` from source `0b970f4bc` passed, followed by all four
+real-tmux scenarios in **95.919 seconds**. The final run recorded **34 completed
 request records**, all on `deepseek/deepseek-v4.1-flash`: chat/task 13, manager 5,
 recovery 7, steering/resume 9. The audit also checks every start record.
 

@@ -1,15 +1,15 @@
- >● codeaf   home  teams  chats  sessions  spend  settings                                                                      sun 11:12am
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                                      sun 11:54am
    ◐ Test error recovery with two separate bash calls: first run printf 'CLEAN_%s\n' FAILURE_TRACE_7319; exit 7. This... ×   +   ▦ All
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
+
+    · esc interrupts · ctrl+c quits · ? for help
 
   › Test error recovery with two separate bash calls: first run printf 'CLEAN_%s\n' FAILURE_TRACE_7319; exit 7. This failure is
     intentional. Then recover with a second bash call: sleep 3; printf 'recovered\n'. Finally answer only with Recovery / check / passed.
     joined by spaces. Do not echo stdout, delegate, or write files.
 
-    ✕ printf 'CLEAN_%s\n' FAILURE_TRACE_7319; exit                                                                  +9.4k ↑ 14.8k  ↓ 111
-
-
+    ✕ printf 'CLEAN_%s\n' FAILURE_TRACE_7319; exit                                                                     +81 ↑ 5,667  ↓ 56
 
 
 
@@ -35,8 +35,8 @@
 
 
 
-─ deepseek/deepseek-v4.1-flash (together):auto · ◇ YOLO ─────  $0.0029 · ⟲ 40% cached   14.8k/1M · 1%   connecting · 0.2s · ⠏ working · 1s ─
+─ deepseek/deepseek-v4.1-flash (together):auto · ◇ YOLO ──────────────────    $0.00 · ⟲ 95% cached   5.7k/1M · 1%   connecting · ⠴ working ─
  ›
 
 
- esc interrupt                                                    project: /tmp/TestCleanChatFailureRecovery1487267512/002/failure-recovery
+ esc interrupt                                                     project: /tmp/TestCleanChatFailureRecovery699826278/002/failure-recovery

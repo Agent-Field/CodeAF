@@ -1,4 +1,4 @@
- >● codeaf   home  teams  chats  sessions  spend  settings                                                                      sun 11:12am
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                                      sun 11:54am
      Check the review status with the team. ×   +   ▦ All
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -11,8 +11,8 @@
 
   All checks passed. The change is ready for your review.
 
-
-
+    · resumed · Check the review status with the team
+    · esc interrupts · ctrl+c quits · ? for help
 
 
 
@@ -35,8 +35,8 @@
 
 
 
-─ deepseek/deepseek-v4.1-flash:auto · ◇ YOLO ──────────────────────────────────────────────────────────────    $0.00   5.8k/1M · 1%   idle ─
+─ deepseek/deepseek-v4.1-flash:auto · ◇ YOLO ──────────────────────────────────────────────────────────────    $0.00   5.7k/1M · 1%   idle ─
  ›
 
 
- alt+e effort · alt+a approvals · / commands · space space home           project: /tmp/TestCleanManagerReplay3112663442/002/manager-replay
+ alt+e effort · alt+a approvals · / commands · space space home            project: /tmp/TestCleanManagerReplay454034178/002/manager-replay

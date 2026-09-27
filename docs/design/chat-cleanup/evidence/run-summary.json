@@ -1,5 +1,5 @@
 {
-  "source_commit": "d19673f85",
+  "source_commit": "0b970f4bc",
   "date": "2026-09-27",
   "terminal": {
     "columns": 140,
@@ -14,7 +14,7 @@
   },
   "total_completed_request_records": 34,
   "tests_passed": 4,
-  "duration_seconds": 96.531,
+  "duration_seconds": 95.919,
   "capture_method": "real tmux capture-pane ANSI framebuffer, rendered by agg",
   "manager_scenario": "historical journal fixture plus live model follow-up"
 }
