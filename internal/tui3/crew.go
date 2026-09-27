@@ -332,7 +332,7 @@ func (a *app) sayTaskCrew(notice session.TaskNotice) {
 	}
 	switch {
 	case said.text == "":
-		a.noteFacts(text, facts...)
+		a.feed.noteWritten(text, false, facts)
 	case said.landed:
 		// THE LANDING IS SAID WHERE THE TASK LANDS. A task runs for minutes
 		// while the conversation goes on, and its start line is far up the
@@ -340,7 +340,7 @@ func (a *app) sayTaskCrew(notice session.TaskNotice) {
 		// were drawn where nobody was looking. The one line moves to the end.
 		a.feed.moveNote(said.text, text, facts)
 	case !a.feed.renote(said.text, text, facts):
-		a.noteFacts(text, facts...)
+		a.feed.noteWritten(text, false, facts)
 	}
 	said.text, said.facts = text, facts
 	a.crewSaid[notice.ID] = said
@@ -361,7 +361,7 @@ func (a *app) crewAfterStarted(id string, started string, startedFacts []string)
 	if !ok || said.text == "" || !a.feed.renote(said.text, started, startedFacts) {
 		return false
 	}
-	a.noteFacts(said.text, said.facts...)
+	a.feed.noteWritten(said.text, false, said.facts)
 	return true
 }
 

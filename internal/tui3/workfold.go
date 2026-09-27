@@ -539,7 +539,7 @@ func workIndent(width int) string {
 // A tool-free response boundary is an explicit message to the person, even
 // when the session continues working afterwards. No prose keywords are guessed.
 func confirmedAnswer(e *entry) bool {
-	return e.kind == entryAssistant && e.confirmed != nil && e.confirmed.done && !e.cut
+	return e.kind == entryAssistant && strings.TrimSpace(e.text) != "" && e.confirmed != nil && e.confirmed.done && !e.cut
 }
 
 // workIndentCols is what the indent law costs, in columns. It is asked at

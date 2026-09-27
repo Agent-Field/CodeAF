@@ -142,8 +142,8 @@ func TestRoomCompactCtrlOUsesRealTurnAndCtrlEResetsOverride(t *testing.T) {
 func TestRoomCompactScrollOpensPastThenLiveWithoutTogglingPast(t *testing.T) {
 	a := roomCompactApp(t)
 	a.roomScroll(-1)
-	if !a.room.workOpen[1] || a.room.workOpen[0] {
-		t.Fatalf("first upward scroll missed oldest phase: %v", a.room.workOpen)
+	if a.room.workOpen[1] || !a.room.workOpen[0] {
+		t.Fatalf("first upward scroll missed unified live work: %v", a.room.workOpen)
 	}
 	// Once the reader reaches a frontier with no older fold above it, the
 	// same actual upward-scroll gesture must open the live disclosure.
@@ -178,11 +178,11 @@ func TestRoomCompactCaptionMovesFromFrontierToSettledPhaseOnce(t *testing.T) {
 			drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{Kind: session.EventTextDelta, Text: "Cancellation now resolves every waiting request."}})
 			drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{Kind: session.EventToolBegin, CallID: "race", Tool: "bash", Hint: "bash go test -race", Args: `{"command":"go test -race ./internal/queue"}`}})
 			page := roomText(a)
-			if strings.Contains(page, "Repairing cancellation") {
-				t.Fatalf("settled phase's caption remained in frontier:\n%s", page)
+			if strings.Count(page, "Repairing cancellation") > 1 {
+				t.Fatalf("finished caption duplicated in frontier:\n%s", page)
 			}
 			roomCompactWantOnce(t, page, "Cancellation now resolves every waiting request")
-			a.room.workOpen[2] = true
+			a.room.workOpen[0] = true
 			a.room.dirty = true
 			page = roomText(a)
 			roomCompactWantOnce(t, page, "Repairing cancellation")
@@ -202,9 +202,18 @@ func TestRoomCompactProtectsFailureCorrectionAndFinalAnswer(t *testing.T) {
 	a := roomCompactApp(t)
 	drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{Kind: session.EventToolFailed, CallID: "verify", Tool: "bash", Hint: "cancellation test failed", Err: errors.New("pending request was stranded")}})
 	page := roomText(a)
-	if !strings.Contains(page, "cancellation test failed") && !strings.Contains(page, "pending request was stranded") {
-		t.Fatalf("compact work hid real tool failure:\n%s", page)
+	if strings.Contains(page, "pending request was stranded") {
+		t.Fatalf("compact work exposed raw failure output:\n%s", page)
 	}
+	openRoomCompactWork(t, a)
+	a.room.unfolded[1] = true
+	a.room.dirty = true
+	if page = roomText(a); !strings.Contains(page, "cancellation test failed") {
+		t.Fatalf("explicit disclosure lost failure details:\n%s", page)
+	}
+	a.room.unfolded[1] = false
+	a.room.workOpen[0] = false
+
 	a.room.entries = append(a.room.entries,
 		entry{kind: entryUser, turn: 1, text: "Keep the public API unchanged.", settled: true},
 		entry{kind: entryAssistant, turn: 1, text: "Which cancellation guarantee should callers receive?", settled: true},

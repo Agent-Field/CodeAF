@@ -47,3 +47,25 @@ func TestAsyncUserCommandResponsesStayVisibleInCleanConversation(t *testing.T) {
 		})
 	}
 }
+
+func TestNoteAudienceComesFromProducerAcrossConversationStates(t *testing.T) {
+	for _, working := range []bool{false, true} {
+		a := newTestApp(&fakeAgent{model: "m"})
+		a.workMode = config.WorkFold
+		a.turn = 1
+		if working {
+			a.state = stateWorking
+		}
+		a.feed.note("internal housekeeping")
+		a.note("the requested action was refused")
+		got := strings.Join(plainRows(a), "\n")
+		if !strings.Contains(got, "the requested action was refused") || strings.Contains(got, "internal housekeeping") {
+			t.Fatalf("working=%v: audience lost: %s", working, got)
+		}
+		a.setWorkOpen(a.conversation(), 1, true)
+		a.touch()
+		if got := strings.Join(plainRows(a), "\n"); !strings.Contains(got, "internal housekeeping") {
+			t.Fatalf("working=%v: operational record lost on disclosure: %s", working, got)
+		}
+	}
+}

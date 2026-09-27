@@ -103,6 +103,8 @@ func TestTheRunsTaskRoomDrawsARefusedActionAsOneLineAndACorrectionAsNone(t *test
 	}}
 	a, _ := planAppWith(t, []session.PlanTaskRow{row}, map[string]session.PlanTaskPage{row.ID: page})
 	openPlanRoomNow(t, a, row.ID)
+	// Inspect retained internal activity under its work disclosure.
+	drive(t, a, key("ctrl+e"))
 	text := planRoomText(t, a)
 	if !strings.Contains(text, taskPlanRefusedWord+railSep+"rm -rf /") {
 		t.Fatalf("the refused action is not one line:\n%s", text)

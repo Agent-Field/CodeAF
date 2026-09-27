@@ -211,6 +211,23 @@ func liveWorkRuns(d deck) map[int]liveWork {
 	if frontier >= 0 {
 		w := out[frontier]
 		w.last = true
+		// Kept conversation does not end the running turn. Keep the waiting
+		// indicator in this window across replies and steering, until another
+		// step arrives. An outstanding decision instead suspends that indicator.
+		w.pending = true
+		for _, e := range es[w.end:] {
+			if e.turn != d.runningTurn || e.kind == entryAssistant && !confirmedAnswer(&e) && !e.addressed || e.kind == entryTool && (e.status == toolConsent || e.decision != "") ||
+				e.kind == entryDone && e.done != nil && e.done.status.Tier == session.TaskTierYourCall {
+				w.pending = false
+				break
+			}
+		}
+		for _, c := range w.steps {
+			if c.ended.IsZero() {
+				w.pending = false
+				break
+			}
+		}
 		out[frontier] = w
 	}
 	return out

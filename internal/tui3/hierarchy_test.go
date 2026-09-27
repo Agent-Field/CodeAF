@@ -283,8 +283,8 @@ func TestATurnEndingOnAToolCallPromotesNothing(t *testing.T) {
 	if r := rowWithText(t, a, "Reading the parser"); !strings.HasPrefix(plain(r.text), "  ") {
 		t.Fatalf("a turn with no answer promoted its narration: %q", plain(r.text))
 	}
-	if len(deriveWorkfolds(a.entries, 0)) != 0 {
-		t.Fatal("a turn with no answer derived a chip to hide its work behind")
+	if len(deriveWorkfolds(a.entries, 0)) != 1 {
+		t.Fatal("settled tool-only work must retain a disclosure without inventing an answer")
 	}
 }
 

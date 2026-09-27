@@ -319,6 +319,10 @@ func (a *app) handedBackCard(fresh *taskDone) bool {
 		return false
 	}
 	card.status = fresh.status
+	// A fresh decision must be visible even when its task state did not move.
+	if card.status.Tier == session.TaskTierYourCall {
+		card.dismissed = false
+	}
 	a.settleTouched(card)
 	return true
 }

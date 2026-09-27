@@ -190,3 +190,60 @@ func TestUpdateProbeDoesNotCrossIntoTextlessNewTurn(t *testing.T) {
 		}
 	}
 }
+
+func TestExplicitUpdateBeforeFormingToolIsDiscardedOnRetry(t *testing.T) {
+	testUndurableUpdateRetry(t, false)
+}
+
+func TestExplicitUpdateBeforeAnnouncedToolIsDiscardedOnRetry(t *testing.T) {
+	testUndurableUpdateRetry(t, true)
+}
+
+func testUndurableUpdateRetry(t *testing.T, announced bool) {
+	t.Helper()
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.turn = 1
+	a.ingest(session.Event{Kind: session.EventTextDelta, Text: "[update] Temporary finding"})
+	a.said(entry{kind: entryUser, text: "Also check callers", turn: 1})
+	a.ingest(session.Event{Kind: session.EventToolForming, CallID: "attempt", Tool: "read", ArgsText: "partial"})
+	if announced {
+		a.ingest(session.Event{Kind: session.EventToolAnnounced, CallID: "attempt", Tool: "read"})
+	}
+	for _, e := range a.entries {
+		if e.kind == entryAssistant && e.text == "Temporary finding" {
+			if !e.addressed || confirmedAnswer(&e) {
+				t.Fatal("forming call confirmed an undurable update or removed its audience")
+			}
+		}
+	}
+	a.ingest(session.Event{Kind: session.EventRetrying, Hint: "retrying"})
+	a.ingest(session.Event{Kind: session.EventTextDelta, Text: "Replacement answer"})
+	a.ingest(session.Event{Kind: session.EventAssistantDone})
+	for _, e := range a.entries {
+		if strings.Contains(e.text, "Temporary finding") || strings.Contains(e.text, "[update]") {
+			t.Fatalf("discarded attempt survived retry: %#v", e)
+		}
+	}
+	if text := strings.Join(plainRows(a), "\n"); !strings.Contains(text, "Replacement answer") {
+		t.Fatalf("retry lost valid replacement: %s", text)
+	}
+}
+
+func TestExplicitUpdateConfirmedWhenAnnouncedCallBegins(t *testing.T) {
+	f := newFeed(feedHooks{})
+	f.turn = 1
+	f.ingest(session.Event{Kind: session.EventTextDelta, Text: "[update] Durable finding"})
+	f.said(entry{kind: entryUser, text: "Also check the caller", turn: 1})
+	f.ingest(session.Event{Kind: session.EventToolForming, CallID: "call", Tool: "read"})
+	f.ingest(session.Event{Kind: session.EventToolAnnounced, CallID: "call", Tool: "read"})
+	f.ingest(session.Event{Kind: session.EventToolBegin, CallID: "call", Tool: "read"})
+	found := false
+	for _, e := range f.entries {
+		if e.kind == entryAssistant && e.text == "Durable finding" {
+			found = confirmedAnswer(&e)
+		}
+	}
+	if !found {
+		t.Fatal("durable tool response lost confirmed user update")
+	}
+}

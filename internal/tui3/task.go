@@ -5672,6 +5672,9 @@ func taskReasks(notice *session.TaskNotice, node *taskNode) bool {
 	if notice == nil || node == nil {
 		return false
 	}
+	if notice.ResultHeld && !node.producedHeld {
+		return true
+	}
 	if notice.Merge != "" && notice.Merge != node.merge {
 		return true
 	}

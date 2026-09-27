@@ -87,6 +87,8 @@ func TestThreadCardAnswerExpandsOnPress(t *testing.T) {
 	trafficAppend(t, a, harbor, teamstore.Entry{Kind: teamstore.KindNote, From: price, To: teamstore.ToManager, Text: long, Answers: q})
 	trafficReadNow(t, a)
 	sendRow(a, `{"to":"`+price+`","text":"status?","kind":"directive"}`, "Sent a directive to @"+price+" ("+teamstore.ThreadNumber(q)+").")
+	drive(t, a, key("ctrl+e"))
+	openFirstCaption(t, a)
 	if strings.Contains(bodyText(a), "END") {
 		t.Fatal("the answer is drawn whole before a press")
 	}
@@ -171,6 +173,7 @@ func TestThreadCardMemberMirror(t *testing.T) {
 	note := "Team traffic in \"harbor\" for you (@" + price + "). These are the team's messages, not the person's words:\n◆ directive from manager " + teamstore.ThreadNumber(q) + ": status please\n(rule)"
 	a.entries = append(a.entries, entry{kind: entryTeam, text: note, settled: true,
 		team: []session.TeamLine{{Team: "harbor", From: teamstore.FromManager, Kind: teamstore.KindDirective, Text: "status please", Thread: q}}})
+	drive(t, a, key("ctrl+e"))
 	text := bodyText(a)
 	card := strings.Index(text, "│ status please")
 	mine := strings.Index(text, "└ @"+price+"  prices are cached")

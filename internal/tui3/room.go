@@ -1489,7 +1489,7 @@ func (a *app) roomNote(text string) {
 			a.touch()
 			return
 		}
-		a.room.note(text)
+		a.room.toldNote(text)
 	}
 }
 

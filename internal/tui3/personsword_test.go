@@ -85,7 +85,8 @@ func TestThePersonsWordTakesTheDeadAttemptOffThePage(t *testing.T) {
 		}},
 	)
 	before := strings.Join(plainRows(a), "\n")
-	if !strings.Contains(before, "thought for") || !strings.Contains(before, "bash") {
+	// Reasoning is folded by default; the active call is the visible attempt.
+	if !strings.Contains(before, "bash") {
 		t.Fatalf("the fixture never drew the rows it is about:\n%s", before)
 	}
 	drive(t, a, streamEventMsg{gen: a.gen, ev: personCut()})
