@@ -575,7 +575,7 @@ func TestStandingSurfacesAStoreThatWouldNotWrite(t *testing.T) {
 func TestStandingOnceCreatesNothing(t *testing.T) {
 	store := newFakeStanding(t)
 	completer := &scriptedCompleter{steps: []step{
-		standCall("s1", aReminder()),
+		standCall("s1", `{"op":"propose","words":"weekly report","when":{"kind":"every","every":"168h"},"does":{"kind":"task","brief":"write report"},"rails":{"per_run_usd":0.3}}`),
 		finalText("doing it now"),
 	}}
 	agent := standingAgent(t, completer, store, nil)
@@ -2000,5 +2000,35 @@ func standingNextUpdate(t *testing.T, lane <-chan Event) Event {
 		case <-deadline:
 			t.Fatal("nothing was drawn: no EventStandingUpdate reached the standing lane")
 		}
+	}
+}
+
+func TestIsolatedStandingCannotUseOrdinaryOnceTurn(t *testing.T) {
+	for _, kind := range []standing.WhenKind{standing.WhenEvery, standing.WhenProbe, standing.WhenFile, standing.WhenIdle} {
+		item := standing.Item{When: standing.When{Kind: kind}, Does: standing.Action{Kind: standing.ActionTask, Isolate: true}}
+		if StandingOnceIsAnAnswer(item) {
+			t.Fatalf("%s offered an ordinary turn for isolated work", kind)
+		}
+		options := StandingOptions(item)
+		if len(options) != 2 || options[0].Key != "1" || options[1].Key != StandingNoKey {
+			t.Fatalf("%s options: %#v", kind, options)
+		}
+	}
+	store := newFakeStanding(t)
+	completer := &scriptedCompleter{steps: []step{
+		standCall("s1", `{"op":"propose","words":"weekly isolated report","when":{"kind":"every","every":"168h"},"does":{"kind":"task","brief":"write report","isolate":true},"rails":{"per_run_usd":0.3}}`),
+		finalText("not run"),
+	}}
+	agent := standingAgent(t, completer, store, nil)
+	events, err := agent.Submit(context.Background(), "schedule isolated report")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collected := drainAnsweringStanding(t, events, func(event Event) { agent.ResolveStanding(event.Standing.ID, StandingAnswer{Once: true}) })
+	if len(store.created) != 0 {
+		t.Fatal("forged once created standing work")
+	}
+	if output := toolOutput(t, collected, "stand"); !strings.Contains(output, "nothing was set up or run") {
+		t.Fatalf("forged once returned %q", output)
 	}
 }

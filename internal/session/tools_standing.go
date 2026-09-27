@@ -496,6 +496,9 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 	}
 	switch {
 	case answer.Once:
+		if !StandingOnceIsAnAnswer(item) {
+			return "this card does not offer doing it once now; nothing was set up or run", true, nil
+		}
 		// Nothing is created and nothing is scheduled. The person wanted the
 		// action, not the arrangement. The result says the next step in so
 		// many words, because "nothing was set up" sent a model off to read
