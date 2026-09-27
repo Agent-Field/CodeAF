@@ -57,11 +57,13 @@ func TestJobLogSearchCannotFeedItsOwnSpool(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
 			var first string
 			for iteration := 0; iteration < 40; iteration++ {
+				// Bound each search, not the sum of forty process launches on
+				// a shared build host; this checks amplification, not throughput.
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				answer, failed, err := grep.Execute(ctx, args)
+				cancel()
 				if failed || err != nil {
 					t.Fatalf("grep: %s, %v", answer, err)
 				}
@@ -129,5 +131,52 @@ func TestJobSpoolSustainedProcessExitsWithinDiskBound(t *testing.T) {
 	answer, failed := registry.output(job.id, 10)
 	if failed || !strings.Contains(answer, "LAST-OUTPUT") || !strings.Contains(answer, "truncat") {
 		t.Fatalf("job output lost its latest bytes or truncation notice: %s", answer)
+	}
+}
+
+// Arbitrary shell commands do not inherit structured grep's exclusions. Even
+// when a recursive grep reaches its own output file, rotation must stop disk
+// growth and let the reader reach EOF rather than replacing its live inode.
+func TestJobShellSearchOfOwnLogStaysBounded(t *testing.T) {
+	root := t.TempDir()
+	registry := newJobRegistry(root, Place{}, nil)
+	t.Cleanup(func() { registry.shutdown(25 * time.Millisecond) })
+	job, err := registry.start("while [ ! -e search-start ]; do sleep 0.01; done; grep -r -a shell_feedback_1599 .; printf 'SHELL-SEARCH-DONE\\n'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	job.sink.mu.Lock()
+	job.sink.chunkBytes = 4096
+	job.sink.mu.Unlock()
+	// Seed an existing live chunk before releasing the child, so an empty
+	// spool cannot make this pass without exercising a self-read.
+	if _, err := job.sink.Write([]byte(strings.Repeat("shell_feedback_1599\n", 300))); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "search-start"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-job.done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("shell recursive search chased its own log without settling")
+	}
+	if info := job.info(); info.code != 0 {
+		t.Fatalf("shell search failed: %+v", info)
+	}
+	for _, path := range []string{job.logPath, job.logPath + ".1"} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Size() > 4096 {
+			t.Fatalf("shell feedback escaped disk bound: %d", info.Size())
+		}
+	}
+	if !strings.Contains(job.sink.text(), "SHELL-SEARCH-DONE") {
+		t.Fatal("shell completion missing")
+	}
+	if !strings.Contains(job.sink.text(), ".codeaf/jobs/") {
+		t.Fatal("shell did not read its own runtime output")
 	}
 }

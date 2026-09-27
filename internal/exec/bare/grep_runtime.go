@@ -1,6 +1,7 @@
 package bare
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -42,9 +43,11 @@ func grepWithin(parent, child string) (string, bool) {
 	return filepath.ToSlash(relative), err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
-type grepRuntimePolicy struct{ state string }
+type grepRuntimePolicy struct{ state, temporary string }
 
-func newGrepRuntimePolicy() grepRuntimePolicy { return grepRuntimePolicy{grepCanonical(home.Dir())} }
+func newGrepRuntimePolicy() grepRuntimePolicy {
+	return grepRuntimePolicy{state: grepCanonical(home.Dir()), temporary: grepCanonical(os.TempDir())}
+}
 func grepPatternPrefix(pattern, path string) bool {
 	expected, actual := strings.Split(pattern, "/"), strings.Split(path, "/")
 	if len(actual) < len(expected) {
@@ -58,6 +61,11 @@ func grepPatternPrefix(pattern, path string) bool {
 	return true
 }
 func (p grepRuntimePolicy) excludes(path string) bool {
+	if filepath.Dir(path) == p.temporary {
+		if matched, _ := filepath.Match("pi-bash-*.log", filepath.Base(path)); matched {
+			return true
+		}
+	}
 	if relative, inside := grepWithin(p.state, path); inside {
 		for _, pattern := range grepStateOutputs {
 			if grepPatternPrefix(pattern, relative) {
@@ -88,6 +96,13 @@ func grepEscapeGlob(text string) string {
 func (p grepRuntimePolicy) rgGlobs(root string) []string {
 	var globs []string
 	add := func(pattern string) { globs = append(globs, "!"+pattern, "!"+pattern+"/**") }
+	if relative, inside := grepWithin(root, p.temporary); inside {
+		prefix := ""
+		if relative != "." {
+			prefix = grepEscapeGlob(relative) + "/"
+		}
+		add("/" + prefix + "pi-bash-*.log")
+	}
 	for _, output := range grepLegacyOutputs {
 		add("**/.codeaf/" + output)
 		if filepath.Base(root) == ".codeaf" {

@@ -219,6 +219,7 @@ func sessionIsOpen(dir string) bool {
 // logs/, removes files past the TTL, and leaves every directory standing. A
 // directory removed here would be one a live job's next line could not recreate.
 func sweepLogs(ctx context.Context, dir string, now time.Time, note func(string)) {
+	dir = jobRetentionAnchor(dir)
 	logs := filepath.Join(dir, placeLogs)
 	cutoff := now.Add(-sweepTTL)
 	err := filepath.WalkDir(logs, func(path string, entry fs.DirEntry, err error) error {
