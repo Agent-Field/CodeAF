@@ -310,6 +310,14 @@ var settingReaders = map[string]string{
 	// and lanes.go). The chooser reads the pin too, through the same reader.
 	LaneSettingKey(LaneSlotTalk): "LaneAt",
 	KeyLaneGuard:                 "LaneGuardAt",
+	// The five team defaults are read together by internal/teams' DefaultsAt,
+	// which hands them to the resolver that walks a team's parent chain; they
+	// are one snapshot for [KeySSHControlPersist]'s reason.
+	KeyTeamsQuestionsUp: "TeamDefaultsAt",
+	KeyTeamsCapUSDDay:   "TeamDefaultsAt",
+	KeyTeamsDepthLimit:  "TeamDefaultsAt",
+	KeyTeamsSubSharePct: "TeamDefaultsAt",
+	KeyTeamsWake:        "TeamDefaultsAt",
 }
 
 // Every persisted row names a reader, and every named reader is really there.

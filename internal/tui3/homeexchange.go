@@ -693,7 +693,7 @@ func (a *app) answerExchangeCard(ex *homeExchange, notice *session.StandingNotic
 func (a *app) changeExchangeCard(ex *homeExchange, notice *session.StandingNotice, words string) tea.Cmd {
 	ex.box.reset()
 	ex.changing = false
-	ex.settle(standChangedWord, standChangeWord)
+	ex.settle(standChangedWord, session.StandingChangeWord(ex.view.item))
 	ex.rows = append(ex.rows, exchangeRow{kind: exchangeSaid, text: words})
 	ex.said = a.now()
 	// THE CORRECTION IS A TURN LIKE ANY OTHER from the pane's point of view: the
@@ -2195,7 +2195,7 @@ func exchangeHint(ex *homeExchange) string {
 			// `change when or where`, which the card itself says on the row it
 			// settles into; here it is the one word every question spells it with.
 			if verb, ok := questionVerbFor(questionCommentKey); ok {
-				parts = append(parts, verb.key+" "+verb.word)
+				parts = append(parts, verb.key+" "+questionVerbWord(*ex.ask, verb))
 			}
 		}
 	}

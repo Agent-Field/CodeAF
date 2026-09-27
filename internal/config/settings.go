@@ -77,6 +77,10 @@ const (
 	// CategoryTasks is how work you can walk away from is run — how it starts,
 	// how it is checked, how much of it happens at once, and on whose hands.
 	CategoryTasks = "tasks"
+	// CategoryTeams is what every team inherits when it says nothing of its
+	// own: who answers a member's question, what a team may spend in a day,
+	// and how deep teams may nest (teamdefaults.go).
+	CategoryTeams = "teams"
 	// CategoryPractice is what codeaf does with its own time, and what it
 	// remembers of yours.
 	CategoryPractice = "memory & practice"
@@ -99,7 +103,7 @@ const (
 // safety and tasks follow it in the order the design's own hierarchy names.
 var SettingCategories = []string{
 	CategoryModels, CategorySpending, CategorySafety, CategoryTasks,
-	CategoryPractice, CategoryInterface,
+	CategoryTeams, CategoryPractice, CategoryInterface,
 }
 
 // Persisted keys are also the json field names in the profile's config.json.
@@ -2583,11 +2587,8 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyHints, Category: CategoryInterface, Kind: SettingBool,
 			Label: "disable hints",
-			Hint: "on silences the one-line tips — the keys row's in a conversation and the " +
-				"row above the rule on home — and the what's-new line a new build may say " +
-				"with them. Off, the default, shows each tip until the key or command it " +
-				"names has been used once. A change lands at the end of the next turn.",
-			read: func() string { return formatBool(!HintsAt(dir)) },
+			Hint:  "disable💡 tips everywhere (requires restart)",
+			read:  func() string { return formatBool(!HintsAt(dir)) },
 			write: func(raw string) error {
 				disabled, err := parseBool(raw)
 				if err != nil {
@@ -2647,6 +2648,7 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeChoice(dir, KeySSHIPQoS, raw, SSHIPQoSChoices) },
 		},
 	)
+	rows = append(rows, teamRows(dir)...)
 	return rows
 }
 

@@ -146,7 +146,9 @@ func (a *Agent) oweLocked(ask owedAsk) {
 
 // forgetOwedLocked clears the previous turn's owed asks and the results they
 // arrived with. Called once, where a turn opens.
-func (a *Agent) forgetOwedLocked() { a.owedAsks, a.landingOutcomes, a.turnResults = nil, nil, nil }
+func (a *Agent) forgetOwedLocked() {
+	a.owedAsks, a.landingOutcomes, a.turnResults, a.personCardAnswers = nil, nil, nil, nil
+}
 
 // turnAsk is the ask this turn's endings are read against.
 //

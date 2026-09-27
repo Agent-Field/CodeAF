@@ -7,6 +7,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/router"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
@@ -83,8 +84,11 @@ func TestCrewRefusesAPinOutsideTheAllowedModels(t *testing.T) {
 }
 
 // THE CAP IS WRITTEN AND SAID with today's spend beside it; `off` clears it.
+// The day has spent something here: a day that spent nothing says no spend
+// at all (TestCrewMoneyDrawsNoZero).
 func TestCrewCap(t *testing.T) {
 	a, dir := sheetApp(t)
+	config.LogCrewOutcome(dir, "crew-cap-test", crewroute.Decision{Class: crewroute.Bugfix}, "", "a task", router.CrewAccepted, 0.02)
 	a.slash("/crew cap 5")
 	if got := config.CrewCapAt(dir); got != 5 {
 		t.Fatalf("the cap reads %v", got)
@@ -271,5 +275,29 @@ func TestANewConversationsTaskSaysItsCrew(t *testing.T) {
 	a.sayTaskCrew(session.TaskNotice{ID: 1, State: session.TaskRunning, Crew: crew})
 	if len(a.entries) == before || !strings.Contains(lastNote(t, a), "task 1 crew · bugfix") {
 		t.Fatalf("the new conversation's task 1 said no crew line")
+	}
+}
+
+// THE CREW'S MONEY OBEYS THE EMPTINESS LAW: a day with nothing spent draws no
+// `$0.000` — not on the /crew cap note, not on the panel's today line — and
+// the sentence stays whole without it. Money that was spent is still said.
+func TestCrewMoneyDrawsNoZero(t *testing.T) {
+	a, dir := sheetApp(t)
+	if got := a.crewCapWords(); got != "none" {
+		t.Errorf("no cap and nothing spent reads %q, want %q", got, "none")
+	}
+	if err := config.SetCrewCap(dir, "0.3"); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.crewCapWords(); got != "$0.300" {
+		t.Errorf("a cap and nothing spent reads %q, want %q", got, "$0.300")
+	}
+	a.crewUI.log = router.CrewLog{Tasks: 1}
+	if got := a.crewTodayWord(); got != "today 1 task" {
+		t.Errorf("a task that spent nothing reads %q, want %q", got, "today 1 task")
+	}
+	a.crewUI.log = router.CrewLog{Tasks: 2, SpentUSD: 0.006}
+	if got := a.crewTodayWord(); got != "today $0.006 · 2 tasks" {
+		t.Errorf("a day that spent reads %q", got)
 	}
 }

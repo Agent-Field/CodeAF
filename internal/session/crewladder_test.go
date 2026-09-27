@@ -544,3 +544,37 @@ func TestACrewStopEndsTheTurnWithoutABackoff(t *testing.T) {
 		t.Errorf("the crew was asked %d times, want once", asked)
 	}
 }
+
+// AT THE DAILY CAP A TASK DOES NOT START, WHATEVER WORD IT CARRIES — a dollar
+// cap is a cap — and the refusal names only the ways on that work: raising or
+// turning off /crew cap, or the day turning over at midnight. It never offers
+// --cheap, which the cap refuses just the same.
+func TestTheCapRefusalOffersOnlyTheWaysOnThatWork(t *testing.T) {
+	stub := newCrewStub(t, http.StatusOK, map[string]int{})
+	agent, dir := crewStubAgent(t, stub)
+	if err := config.SetCrewCap(dir, "1"); err != nil {
+		t.Fatal(err)
+	}
+	previous := config.CrewHistory
+	config.CrewHistory = func(string) config.CrewDay { return config.CrewDay{SpentUSD: 2} }
+	t.Cleanup(func() { config.CrewHistory = previous })
+	for _, effort := range []crewroute.Effort{"", crewroute.EffortCheap} {
+		ctx := withCrewWish(t.Context(), crewWish{effort: effort})
+		_, err := agent.routeTaskCrew(ctx, 1, "fix: the parser crashes on empty input", "Traceback")
+		if err == nil {
+			t.Fatalf("effort %q started a task at the cap", effort)
+		}
+		words := err.Error()
+		if strings.Contains(words, "--cheap") {
+			t.Errorf("the refusal offers --cheap, which the cap refuses too: %q", words)
+		}
+		for _, way := range []string{"/crew cap", "midnight"} {
+			if !strings.Contains(words, way) {
+				t.Errorf("the refusal does not name %q: %q", way, words)
+			}
+		}
+	}
+	if got := len(stub.models()); got != 0 {
+		t.Errorf("a refused task asked the provider %d times", got)
+	}
+}

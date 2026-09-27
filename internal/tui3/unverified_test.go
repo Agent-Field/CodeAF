@@ -82,7 +82,9 @@ func TestAnUnverifiedLandingIsNeitherDoneNorFailed(t *testing.T) {
 		t.Fatalf("an unverified node filed under %q, want %q",
 			railGroupWords[group], railGroupWords[railAttention])
 	}
-	rail := plain(strings.Join(a.railRows(12), "\n"))
+	// The row, and the hint line over it, where the reason the row has no room
+	// for is said.
+	rail := plain(strings.Join(a.railRows(12), "\n")) + "\n" + railHint(a, 7)
 	for _, want := range []string{
 		// The column leads with the STATE and nothing else — the card's identity
 		// cell is not spent here (task.go's [app.railLead]).

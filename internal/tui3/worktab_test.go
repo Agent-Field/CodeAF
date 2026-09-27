@@ -42,14 +42,22 @@ func TestWorkTabAppearsAfterConversationOnlyForALiveRun(t *testing.T) {
 	}
 }
 
-func TestWorkTabDrawsTheTasksPlacesOwnRows(t *testing.T) {
+// THE RUN'S TAB OPENS THE RUN'S TASK ROOM, the one page every task opens, with
+// the run's parts under it.
+func TestWorkTabOpensTheRunsTaskRoom(t *testing.T) {
 	a, _ := workTabFixture(t)
 	openWorkTabNow(t, a)
-	text := plain(strings.Join(a.workTabFrame(a.width, a.height), "\n"))
-	for _, want := range []string{"Root", "Fix the flake", "$ go test ./internal/tui3", "queued · waits: Root"} {
+	if plan := a.roomPlan(); plan == nil || plan.id != "t-root" {
+		t.Fatalf("the run's tab did not open the run's room: room %v", a.roomOpen())
+	}
+	text := planRoomText(t, a)
+	for _, want := range []string{"Root", "Fix the flake"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("work tab missing %q:\n%s", want, text)
+			t.Fatalf("the run's room is missing %q:\n%s", want, text)
 		}
+	}
+	if tabs := a.tabList(); len(tabs) != 2 || !tabs[1].here {
+		t.Fatalf("the run's tab is not the one here while its room is open: %+v", tabs)
 	}
 }
 
@@ -63,27 +71,30 @@ func TestWorkTabNoteUsesPlanNoteAndShowsThePageReceipt(t *testing.T) {
 	if len(fake.noted) != 1 || fake.noted[0] != (planCall{id: "t-root", text: "keep the middleware order"}) {
 		t.Fatalf("work tab note calls = %+v", fake.noted)
 	}
-	if text := plain(strings.Join(a.workTabFrame(a.width, a.height), "\n")); !strings.Contains(text, "you") || !strings.Contains(text, "keep the middleware order") {
-		t.Fatalf("work tab lacks note receipt:\n%s", text)
+	if text := planRoomText(t, a); !strings.Contains(text, "keep the middleware order") {
+		t.Fatalf("the run's room lacks the note:\n%s", text)
 	}
 }
 
-// THE WORK TAB NAMES NO AUTHOR BY A STORE ID. A note another author left was
-// drawn under the store's own id for it (`2ytmh2 · …`), which the page itself
-// has never done: an author is `you` or nothing (#1240).
-func TestWorkTabDrawsNoAuthorAsAStoreID(t *testing.T) {
-	a, _ := workTabFixture(t)
-	openWorkTabNow(t, a)
-	a.taskSheet.plan.Notes = []session.PlanTaskNote{
+// THE ROOM NAMES NO AUTHOR BY A STORE ID. A note another author left was drawn
+// under the store's own id for it (`2ytmh2 · …`): an author is the person or
+// nothing (#1240).
+func TestTheRunsRoomDrawsNoAuthorAsAStoreID(t *testing.T) {
+	a, fake := workTabFixture(t)
+	page := fake.pages["t-root"]
+	page.Notes = []session.PlanTaskNote{
 		{Author: "2ytmh2", Body: "the worker's own note"},
 		{Person: true, Body: "keep the middleware order"},
 	}
-	text := plain(strings.Join(a.workTabFrame(a.width, a.height), "\n"))
+	fake.pages["t-root"] = page
+	a.height = 40
+	openWorkTabNow(t, a)
+	text := planRoomText(t, a)
 	if strings.Contains(text, "2ytmh2") {
-		t.Fatalf("the work tab drew a store id as a note's author:\n%s", text)
+		t.Fatalf("the room drew a store id as a note's author:\n%s", text)
 	}
-	if !strings.Contains(text, "the worker's own note") || !strings.Contains(text, "you"+railSep+"keep the middleware order") {
-		t.Fatalf("the work tab lost a note or its person's word:\n%s", text)
+	if !strings.Contains(text, "the worker's own note") || !strings.Contains(text, "keep the middleware order") {
+		t.Fatalf("the room lost a note:\n%s", text)
 	}
 }
 
@@ -91,8 +102,8 @@ func TestWorkTabEscReturnsToConversationAndLandingCardRemains(t *testing.T) {
 	a, fake := workTabFixture(t)
 	openWorkTabNow(t, a)
 	drive(t, a, tea.KeyPressMsg{Code: tea.KeyEscape})
-	if a.workTabOn {
-		t.Fatal("esc left the work tab open")
+	if a.roomOpen() {
+		t.Fatal("esc left the run's room open")
 	}
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Root", session.TaskDone, session.TaskNotice{Report: "the importer landed"})})
 	fake.plan[0].Status, fake.plan[1].Status = "done", "done"

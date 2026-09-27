@@ -1068,7 +1068,11 @@ func (a *app) startBeside(workspace string) (tea.Cmd, string) {
 	if err != nil {
 		return nil, err.Error()
 	}
-	return a.takeBeside(conv), ""
+	cmd := a.takeBeside(conv)
+	// A conversation started while a team is shown is one of that team
+	// (teams.go's [app.teamJoinFront]).
+	a.teamJoinFront()
+	return cmd, ""
 }
 
 // takeBeside is the two lines both doors above end in: the conversation on

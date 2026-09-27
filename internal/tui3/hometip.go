@@ -21,9 +21,10 @@ import (
 // above where the rule used to say the project (the owner's placing,
 // 2026-09-22). It is led by a bulb and closed by a cross a pointer can press:
 // the cross puts the tip away until the row next changes hands
-// ([app.noticeDismiss]). The same row, laid out by the same function, stands
-// over a conversation's box (view.go's [app.chrome]) once the person has been
-// quiet there for a minute (notice.go's THE CONVERSATION'S CLOCK).
+// ([app.noticeDismiss]). The same bulb, tip and cross, laid out by the same
+// function, stand over a conversation's project at the right end of its keys
+// row (footswap.go's [app.hintRow]) once the person has been quiet there for
+// [chatTipQuiet] (notice.go's THE CONVERSATION'S TIP).
 //
 // THE PROJECT IS ON THE KEYS ROW NOW, right-justified, and it is the keys that
 // keep their room: the path gives up its right end, one ellipsis, where the

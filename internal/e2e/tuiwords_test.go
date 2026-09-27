@@ -308,8 +308,9 @@ var tuiWords = map[string]tuiWord{
 		why:    "the pane saying the exchange is filed under what it made",
 	},
 	"exchangeAnswerHint": {
-		screen: "1 yes, set it up · 0 no · o other",
-		source: "yes, set it up",
+		screen: "Don't remind me",
+		source: "Don't remind me",
+		pkg:    "internal/session",
 		why: "the answers a ONE-OFF REMINDER's card offers, spelled in full under the box at every width. " +
 			"There are two rows and the key that asks for the box: a reminder has no `3 just once` to give, " +
 			"and since #189 the line is built from the answers the question carries rather than typed out, so " +
@@ -329,9 +330,10 @@ var tuiWords = map[string]tuiWord{
 		screen: "enter or tab answer this ",
 		why:    "the hint while the cursor stands on an errand row that is asking something",
 	},
-	"standYesWord": {
-		screen: "yes, set it up",
-		why:    "the first chip on a standing card, and half of the settled card's `yes, set it up · set up`",
+	"standRemindYes": {
+		screen: "Remind me",
+		pkg:    "internal/session",
+		why:    "the yes on a one-off reminder, which is what the errand in this suite asks for",
 	},
 	"standSetWord": {
 		screen: "set up",
@@ -386,7 +388,7 @@ var tuiWords = map[string]tuiWord{
 	// THE PHASE CLOCK COMPOSES BOTH OF ITS SENTENCES AT THE DRAW, out of halves
 	// two packages own (internal/tui3's phase.go, and the clock that feeds it in
 	// internal/provider). So each half is its own row and the suite asserts the
-	// join, which is the shape `standYesWord` and `standSetWord` already have.
+	// join, which is the shape `standRemindYes` and `standSetWord` already have.
 	// What varies is not a needle: the machine that went quiet is whatever this
 	// run pinned, and the provider a rescue would go to is whatever the frontier
 	// named. What stands still is the clause around them.
@@ -645,38 +647,37 @@ var tuiWords = map[string]tuiWord{
 		source: "plandb done",
 		pkg:    "internal/session",
 		why: "the command a bash-belt worker finishes its store task with, recorded in the task's own " +
-			"trajectory and drawn as a step line on the plan page (taskplan.go's taskPlanBody reads " +
+			"trajectory and drawn as a call row in the task's room (planroom.go reads " +
 			"PlanTaskPage.Steps). THE PAGE DOES NOT SPELL IT — the worker runs it — so the gate looks where " +
 			"it is written: internal/session's plandb_plan.go, the sentence that teaches the finish. " +
 			"IT IS OBSERVED AND NEVER WAITED OUT, because whether it is on a page is the WORKER'S " +
 			"choice: the run writes the ending itself for a task whose worker stopped calling tools " +
 			"without writing one (internal/run's worker.go), which a small brief on a fast model " +
-			"regularly is. What the suite asserts about that page instead is that it is the store's " +
-			"page at all — planNoteBoxWord and planStepsSpend, two words no room draws",
+			"regularly is. What the suite asserts about that room instead is that it is the task's " +
+			"room at all: roomTabsWords",
 	},
 	"planNoteBoxWord": {
 		screen: "a note for this task",
-		why: "the plan page's own note box (taskplan.go's taskPlanNoteWord), and the one word on it " +
-			"that is there whatever state the task is in. It is what says the press over a run's row " +
-			"opened THE STORE'S PAGE rather than a room — the assertion that defect #1359 was about — " +
-			"where the live step beside it is a moment and is only ever observed",
+		why: "the note box a run's task takes its notes in (taskplan.go's taskPlanNoteWord, drawn as " +
+			"the task room's steer box by room.go) while the task can still take a note. A task that has " +
+			"ended names another door in its box, so the suite only observes this word; what it asserts " +
+			"about the room is roomTabsWords",
+	},
+	"roomTabsWords": {
+		screen: "transcript · work",
+		source: "transcript",
+		why: "the two tabs every task's room draws on its trail, on either engine (roomtabs.go): the " +
+			"transcript and the work the task changed. A run's task opens the same room as any other " +
+			"task, so the tabs are what say the press opened the room and not a page of its own",
 	},
 	"planLiveGlyph": {
 		screen: tokens.GlyphStepRunning,
 		pkg:    tokensPkg,
-		why: "the mark the plan page leads the step it is running RIGHT NOW with, where the recorded " +
-			"steps lead with their number (taskplan.go's taskPlanBody, drawn through palette.glyph so the " +
-			"tier picks the rune rather than a literal in the surface). It is tokens.GStepRunning — one " +
+		why: "the mark the task's room leads the step it is running RIGHT NOW with (planroom.go draws " +
+			"the store's live step as a call in flight, through palette.glyph so the tier picks the rune " +
+			"rather than a literal in the surface). It is tokens.GStepRunning — one " +
 			"shape for one state, the same rune `working` wears — so the gate looks where the rune is " +
 			"spelled, and this suite sees the plain tier its throwaway profile pins",
-	},
-	"planLiveClockWord": {
-		screen: "running ",
-		source: "running ",
-		why: "the call's own clock, said under the live step on the plan page: the same ten-second " +
-			"count the rail keeps (taskplan.go's taskPlanBody reads PlanTaskPage.Live and taskToolFloor " +
-			"gates it, the 10-second clock the rail already keeps). It is the page's word, so the gate " +
-			"looks for it in the surface",
 	},
 
 	// ── the run's plan row, on the live edge (c185, SURFACE.md §2A/§3) ────────

@@ -23,7 +23,8 @@ and `update-check.staging.json`; stable and rc use `update-check.json` for 24
 hours. A cached newer release is still shown. The curl line reinstalls this file
 from the channel the build follows — dev and staging follow themselves, and a
 stable, rc or source build follows stable. So `devaf` gets `curl -fsSL
-https://agentfield.ai/get/devaf | bash`, a dev build named `codeaf` gets
+https://agentfield.ai/get/devaf | bash`, `stageaf` gets `curl -fsSL
+https://agentfield.ai/get/stageaf | bash`, a dev build named `codeaf` gets
 `/get/codeaf/dev`, a release candidate gets the plain `/get/codeaf`, the same
 stable release its launch line just named, and a file under any other name gets
 `| CODEAF_INSTALL_NAME=<name> bash` on the end of its channel's line.
@@ -75,7 +76,8 @@ A push to `dev` publishes a `dev-*` build, a push to `staging` publishes a
 `staging-*` build, and a push to `main` publishes an rc. Each is marked as a
 prerelease. Stable is published only when a person dispatches `Release` on `main`.
 `--stable` is the default and reads GitHub's `releases/latest`, which excludes
-prereleases. To take another channel, put it on the path —
+prereleases. The `/get/devaf` and `/get/stageaf` lines install the dev and staging
+channels beside codeaf under those file names. To take another channel, put it on the path —
 `https://agentfield.ai/get/codeaf/dev`, `/staging` or `/rc` — or pass `--dev`,
 `--staging` or `--rc` after `bash -s --`. A channel with nothing published stops with
 `no <channel> build has been published yet`. To pin one complete tag, replace the
@@ -118,6 +120,26 @@ letter or digit. codeaf and devaf share `~/.codeaf`, including keys and
 conversations, and one engine per workspace; opening a workspace with the other
 build retires an idle host or joins a busy compatible one. A devaf launch checks
 the dev channel hourly, and bare `/update` keeps following dev.
+
+## What is stageaf — staging build beside codeaf — try the next release early — install staging — how often does staging update
+
+`stageaf` is the file name for a codeaf staging-channel build, not another product.
+Install it beside codeaf with:
+
+```sh
+curl -fsSL https://agentfield.ai/get/stageaf | bash
+```
+
+That proxy serves the installer from the `staging` branch and rewrites only the
+channel and name lines. It installs `~/.codeaf/bin/stageaf` (`stageaf.exe` on
+Windows) beside an untouched codeaf. `stageaf version` still starts with `codeaf`.
+It shares `~/.codeaf` with codeaf and devaf, including keys and conversations.
+A stageaf launch checks the staging channel hourly; bare `/update` follows staging.
+
+The promotion runs once a week and moves staging to the newest dev commit at
+the Friday 17:00 Toronto-time cutoff when the full check passes. When the check
+fails or there is nothing new, staging stays where it was. A person still
+decides when main moves.
 
 ## Why codeaf do may download rtk — compressed shell output and how to turn it off
 
@@ -402,10 +424,12 @@ stay what `/crew` last set.
 `/crew cap` set, it starts nothing and says so:
 
 ```
-today's crew spend has reached the daily cap of $5.00 · raise it with `/crew cap`, run with --cheap, or pass -yes-spend
+today's crew spend has reached the daily cap of $5.00 · raise it or turn it off with `/crew cap`, pass -yes-spend, or wait until midnight
 ```
 
-`-yes-spend` is the one way past it — past the daily cap, never past the per-task limit.
+`-yes-spend` is the one way past it for this run — past the daily cap, never past the
+per-task limit. `--cheap` is refused at the cap like any other run. The day turns over at
+midnight on this machine's clock.
 **Every run is held to the per-task limit**, $5 unless `/crew cap task` set another: a call
 that would take the run past it is not made, and the run stops on
 `this task reached its $5 limit · raise it in /crew`. The other headless doors — `exec`, `run`, `plan run` —

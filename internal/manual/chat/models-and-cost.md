@@ -545,8 +545,8 @@ can change and one line about the day.
   `/connect`. On a narrow window the chips fold to `3 of 4 on`.
 - **cap** — `per task $5 · daily none`: the most one task may spend, and the most crews
   may spend in a day, `none` for no daily cap.
-- **today** — what crews spent today and how many tasks ran. A day with nothing in it has
-  no line.
+- **today** — what crews spent today and how many tasks ran. Spend that is nothing is not
+  drawn (`today 1 task`, never `$0.000`), and a day with nothing in it has no line.
 
 **The allowed models are the models rule less every model no provider that is on serves.**
 Turning a provider off takes its routes away, never a model: a model another provider still
@@ -674,10 +674,12 @@ leave a kind of work without a strong enough checker, the panel says so on a `ga
 away. The crew **paces toward it**: once half the day's cap is spent, a dearer crew costs
 more of the day's quality to justify, so the picks lean cheaper as the cap gets close.
 
-**At the cap a task does not start.** In a conversation the task is refused with the cap,
-what was spent, and the two ways on — raise it with `/crew cap`, or ask for that task with
-`--cheap`. `codeaf do` refuses the same way unless you pass `-yes-spend`; `codeaf exec`,
-`codeaf run` and `codeaf plan` say one line about it and go ahead.
+**At the cap a task does not start**, whatever it asks for — `--cheap` and `--best` are
+refused the same, because a dollar cap is a cap. In a conversation the task is refused with
+the cap, what was spent, and the ways on: raise it or turn it off with `/crew cap`, or wait
+until midnight on this machine's clock, when the day's spend starts again from nothing.
+`codeaf do` refuses the same way unless you pass `-yes-spend`; `codeaf exec`, `codeaf run`
+and `codeaf plan` say one line about it and go ahead.
 
 **Nor does a call that would cross it.** Every call a task makes — its seats', and the
 helpers around them, such as the run's closing summary — is priced before it is made:
@@ -1068,9 +1070,10 @@ and pinning from the list rewrites the row without disturbing the other pins in 
 
 **A third door: just ask.** "Use `deepseek/deepseek-v4-pro` for planning and for designing
 harnesses" is a sentence codeaf acts on — it looks the row up with `settings` and writes it
-with `change_setting`, into the same `models.roles` row, after asking you. The model rows
-of the Providers tab — reflex, small work, and the crew's worker, checker and planner pins —
-are writable that way too; only the role **slots** further down the Providers tab are not,
+with `change_setting`, into the same `models.roles` row, after asking you. The reflex and
+small work rows of the Providers tab, and the crew's worker, checker and planner pins behind
+its one **seats** row, are writable that way too — a pin outside your allowed models is
+refused there as it is on `/crew`; only the role **slots** further down the Providers tab are not,
 because those are bindings the running session holds rather than values in your profile.
 
 So the ladder for any role, most specific first: **its pin**, then **its row's model**,
@@ -2243,7 +2246,7 @@ covers the requests made before the restart.
 
 ## Is there a record of what I spent across all my conversations, by day or by model
 
-Yes — a file on disk, and **the spend place reads it**. Press `alt+3`, or `tab` to it from any
+Yes, a file on disk, and **the spend place reads it**. Press `alt+5`, or `tab` to it from any
 other place, and it draws that file: which days, which models, and what the money was for.
 
 Every cost line written into a conversation's transcript is also appended to one file for the
@@ -2299,7 +2302,7 @@ breakdown; `/spend` opens the ledger for the whole machine.
 
 ## The spend place — what days and models cost, and what the money was for
 
-`alt+3` opens it. It reads the machine-wide ledger above when you walk in and again on the
+`alt+5` opens it. It reads the machine-wide ledger above when you walk in and again on the
 same three-second beat every place runs on, and it draws three things:
 
 - **the window and its total** — `14 days came to $34.10 · 41.2M tokens` on the left of the
@@ -2861,7 +2864,7 @@ the same registry row, so what you set through one is what the others show:
 | --- | --- |
 | `/budget`, also `/limits` | opens the tab with the cursor on `per day` |
 | the money segment on the status line | press `$0.14` — it opens the tab. It brightens under the pointer to say it is a door |
-| the spend place (`alt+3`) | `enter` on its first line, the dim `today $3.42 of $500 · /budget sets the limits` — the same figure the top line of every place draws |
+| the spend place (`alt+5`) | `enter` on its first line, the dim `today $3.42 of $500 · /budget sets the limits`, the same figure the top line of every place draws |
 | the spend place, from a row | `→` opens the verb strip, where `b` is `the limits` |
 | a refused turn | the message names `/budget` |
 | the first-run setup | its `Models and spending` screen, whose **Daily limit** row writes this same row. It asks about the day's limit only — `per plan` and `per conversation` keep their defaults there and are changed here |
@@ -2925,7 +2928,7 @@ Spending tab and `/cost` are the two readings — `/cost` is this conversation, 
 the whole machine since midnight.
 
 The machine's day is drawn in **three** places and they are **one reading of one file**:
-`today` on the Spending tab, `today $3.42 of $500` on the spend place (`alt+3`), and the
+`today` on the Spending tab, `today $3.42 of $500` on the spend place (`alt+5`), and the
 green figure on the **top line of every place** — `$3.42 / $500.00`, beside the clock. All
 three sum the same rows of the machine ledger, so they cannot come apart, and the top line
 says the same thing whichever place you are standing on.
@@ -3481,7 +3484,7 @@ it adds up to, and where to see it.
 There is exactly one request codeaf makes that its own money figures do not count: the
 **one-token measurement** it sends while you are typing, to warm the connection and time
 the provider your next message is heading for. Your provider bills you for it. `/cost`,
-the status line, the spend place (`alt+3`) and the total at the end of `codeaf do` all
+the status line, the spend place (`alt+5`) and the total at the end of `codeaf do` all
 leave it out, and so do the call-log rows and `codeaf-census`.
 
 **Why it is missing.** Those figures are all counts of the **call log**, and the

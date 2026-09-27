@@ -22,7 +22,7 @@ func TestRailMainReturnsDirectlyFromDeepTask(t *testing.T) {
 			a.openRailRoom(a.tasks[19])
 			a.railTop = 100
 			rows := a.railRows(a.viewHeight())
-			if len(rows) < 2 || !strings.Contains(plain(rows[0]), railStowHint) || !strings.Contains(plain(rows[1]), railMainWord) {
+			if len(rows) < 2 || !strings.Contains(plain(rows[0]), sideTasksWord) || !strings.Contains(plain(rows[1]), railMainWord) {
 				t.Fatalf("return door is not pinned: %v", rows)
 			}
 			x, y := a.bodyWidth()+ansi.StringWidth(railSeam)+6, a.bodyTop()+1

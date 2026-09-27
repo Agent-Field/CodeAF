@@ -199,8 +199,10 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/history` | — | — | opens the full-screen sessions place — every task this machine has run, filterable (also ctrl+.) |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/status` | `/info`, `/context` | `--json` | prints the same facts as one JSON object, keys in the same order |
-| `/search` | — | — | opens the search place — everything said on this machine (also `alt+7`) |
-| `/spend` | — | — | opens the spend place — what this machine has cost, by the day (also `alt+3`) |
+| `/search` | none | none | opens the search place, everything said on this machine (also `alt+9`) |
+| `/spend` | none | none | opens the spend place, what this machine has cost, by the day (also `alt+5`) |
+| `/wall` | | | every open conversation at once, as a grid of live tiles, and the teams you group them into (also `alt+v`, or `▦` under the box) |
+| `/teams` | | | the teams page: your teams as a tree, what waits on you, and the selected team's manager conversation (also `alt+2`, or `teams` on the tab bar) |
 | `/cost` | `/usage`, `/tokens` | — | prints what this conversation has spent, and on what |
 | `/budget` | `/limits` | — | what codeaf may spend · every limit on one tab |
 | `/budget` | `/limits` | `<amount>` | sets the day's limit · `none` removes it |
@@ -233,16 +235,16 @@ Under the table `/help` prints the keys that have no slash command, including
 `alt+enter`, and `d` inside `/permissions`. The keys page covers those in full. The
 `ctrl+c` line reads `ctrl+c         quits everything · mid-turn it interrupts instead, like esc`.
 
-**It also names the way into the seven places**, which it did not for a long while — three
+**It also names the way into the eight places**, which it did not for a long while: three
 rows, directly under the `tab` row:
 
 ```
-alt+1…7        go to a place · in the tab bar's own order: home tasks standing memory spend search settings
+alt+1…9        go to a place · in the tab bar's own order: home teams chats sessions spend settings standing memory search
 alt+.          on a place: what else is here · every key that place has, drawn
                on a place, tab is the next place · esc back
 ```
 
-On a Mac those read `opt+1…7` and `opt+.`; the substitution happens once, at the moment of
+On a Mac those read `opt+1…9` and `opt+.`; the substitution happens once, at the moment of
 drawing, and the words are the same.
 
 **One gesture, one spelling.** Wherever the sheet names the escape key it writes `esc
@@ -763,13 +765,13 @@ and the note's leading `· `; strip those before feeding it to a parser.
 ## /search and /spend — the typed doors onto those two places
 
 `/search` opens the **search place** — everything that has been said on this machine,
-found by the words you remember of it. It is the same place `alt+7` opens and the same
+found by the words you remember of it. It is the same place `alt+9` opens and the same
 place `tab` walks to. It takes no argument: the place *is* a box, and typing in it
 searches. With the **memory** row off nothing said is indexed, and the place says so and
 searches nothing — find the conversation from home's box instead (see the *places* page).
 
 `/spend` opens the **spend place** — what this machine has cost, by the day, by the model
-and by what it was for. It is the same place `alt+3` opens.
+and by what it was for. It is the same place `alt+5` opens.
 
 **`/spend` used to be an alias of `/cost` and is not any more.** The two answer different
 questions: `/cost` is *this conversation's* bill, printed into the conversation, and the
@@ -1116,7 +1118,7 @@ box, opens it on a one-conversation machine and on an empty one alike, and over 
 it opens the far machine's.
 
 There is no argument form. There are three other ways in: **`alt+1`**, home being the first
-of the four places on the tab bar; **`space` twice** on an empty box; and **`tab`** from any
+of the six words on the tab bar; **`space` twice** on an empty box; and **`tab`** from any
 other place.
 
 **It is seven panels**, in one column under 110 cells, two from 110 and three from 170,
@@ -1451,7 +1453,7 @@ is built from this session's own work, and carries only a short dulled note of t
 **It is not `/tasks`, and there is no `/tasks` command.** `/task <brief>` and its `solo` form
 mean *give codeaf work*; this page starts none, so it does not share their word. Typing
 `/history` is the only slash form — but the PLACE this opens is called `tasks` on the tab
-bar, and **`alt+2`** and `tab` reach it without a command at all. The word is a place, not a
+bar, and **`alt+4`** and `tab` reach it without a command at all. The word is a place, not a
 command.
 
 Two sections. `running` is the tree of everything still going, drawn whole, with each task's
@@ -1642,13 +1644,31 @@ So a value set here follows you between projects, and a value a project sets for
 has to be edited by hand in that file. When a project answers the same row, a write
 through `change_setting` says so rather than reporting a change that is not in force.
 
-Over `--host`, opening the panel first notes:
+Over `--host`, opening the panel on any tab but Teams first notes:
 
 ```
-these rows are this machine's — the ones that govern the conversation are read from the profile on the other one
+these rows belong to this machine; the Teams tab is saved on the other one.
 ```
 
-and then opens anyway.
+On the Teams tab the note is `these rows are saved on <machine>.` An older engine, where
+that tab cannot be saved over the connection, notes:
+
+```
+these rows belong to this machine; this conversation reads its profile on the other one.
+```
+
+The panel opens anyway.
+
+## Can I edit team defaults over --host
+
+The **Teams** tab is the one section that edits the other machine. Over `--host` its five
+rows (`questions go to the manager`, `team messages wake`, `daily cap per team`,
+`team depth`, `sub-team share`) are that machine's defaults, and a change is saved there.
+Each value says `from Settings`, the same words a team's card uses when it inherits the
+row. The foot line says `a team can override any of these on its card · saved on <machine>`.
+
+An older engine keeps the tab read only and says
+`changing them is not available over this connection`. The other tabs stay this computer's.
 
 Refusals inside the panel, exactly as written:
 
@@ -1847,9 +1867,10 @@ that has come apart is cut and asked again, on by default (see *Models, context,
 it costs*) — and one row per capability slot added automatically from the settings
 registry: drawing, speaking, composing, filming, voice.
 
-The reflex, small work, worker and checker rows are **select** rows and open the model
-picker. The **planner** row is a **text** box instead, because its value may carry a
-thinking level (`moonshotai/kimi-k3:high`) and a picker hands back a bare id.
+The reflex and small work rows are **select** rows and open the model picker. The crew's
+worker, checker and planner have no rows of their own here: the one **seats** row opens the
+`/crew` panel, and a seat is pinned there or with `/crew pin` — a pin may carry a thinking
+level, `/crew pin planner moonshotai/kimi-k3:high`, and the seat is then asked at that level.
 
 The connected model services have their own section on the tab, each with its billing
 door, the safe spelling of its key, its region and its order. The section ends with an
@@ -1908,14 +1929,16 @@ one call codeaf makes outside a turn — `title`, `guardian`, `auditor`,
 one of them you ask for yourself with `ctrl+r` (see the keys page) — drawn as
 `<role>    <model>`, with `pinned` after it when that role has a model of its own.
 
-The rows are **grouped under their row**, in the same order the five model rows are drawn
-above them: `roles · reflex`, `roles · small work`, `roles · worker`, `roles · checker`,
-`roles · planner`. The row is the heading, so it is not repeated on every role — which
+The rows are **grouped under the model they follow**: `roles · reflex` and
+`roles · small work` under the two rows of those names above, then `roles · worker`,
+`roles · checker` and `roles · planner` under the crew's three seats, which the tab draws as
+its one **seats** row. The group is the heading, so it is not repeated on every role — which
 leaves the widest part of the row for the model id it is there to show.
 
 Stop on a row and the line under the list says **what that role is** and where its answer
-came from: `the plan that steers an adaptive run · follows planner above. enter pins it
-to a model of its own.`
+came from: `the plan that steers an adaptive run · follows the planner seat (/crew). enter
+pins it to a model of its own.` A role under reflex or small work says `follows reflex
+above` or `follows small work above` instead.
 
 - **enter** opens the model picker and pins the role to what you choose.
 - **del** on a pinned row clears the pin. The legend says `del unpin` while you are on one,

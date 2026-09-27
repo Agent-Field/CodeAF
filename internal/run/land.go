@@ -18,11 +18,23 @@ type Landing struct {
 	Refused string
 }
 
+// THE LANDING IS SIGNED WITH THE BARE `Assisted-by` LINE. The run's store
+// records no model on its root, so neither the landing nor its worker commits
+// may name a guessed one.
+const landingModel = ""
+
+// SignWork signs an in-place run's worker commits using the landing's model
+// choice. The run door itself makes no commit in the person's folder.
+func SignWork(before session.RunTreeSnapshot) (int, error) {
+	return before.SignRunCommits(landingModel)
+}
+
 // Land commits a run's working copy onto its branch and writes the answer as a
 // note on the root task, so the run's own page carries where its work went.
 //
 // THE WORK IS THE COPY'S OWN ([session.LandRunTree]), because a run's workers
-// edit through bash and leave no ledger: the tree's own status is the record.
+// edit through bash and leave no ledger: the tree's status and commits since
+// the run's base are the record.
 // The commit message is the root task's title — the run's own name for the
 // thing the person asked for.
 //
@@ -30,7 +42,7 @@ type Landing struct {
 // of a run that only read, and it is written on the root the same way a landing
 // is. An error is the run having no working copy to land in at all, and then
 // there is no note to write, because there is nothing about this run to say.
-func Land(ctx context.Context, store *plandb.Store, workspace, rootID string) (Landing, error) {
+func Land(ctx context.Context, store *plandb.Store, workspace, base, rootID string) (Landing, error) {
 	if err := ctx.Err(); err != nil {
 		return Landing{}, err
 	}
@@ -38,10 +50,7 @@ func Land(ctx context.Context, store *plandb.Store, workspace, rootID string) (L
 	if root == nil {
 		return Landing{}, fmt.Errorf("land a run: no task %s in the store", rootID)
 	}
-	// THE LANDING IS SIGNED WITH THE BARE `Assisted-by` LINE. A run's store
-	// records no model on its root, and a line naming a guessed one would be a
-	// provenance claim nobody made.
-	branch, changed, refusal, err := session.LandRunTree(workspace, root.Title, "")
+	branch, changed, refusal, err := session.LandRunTree(workspace, base, root.Title, landingModel)
 	if err != nil {
 		return Landing{}, err
 	}

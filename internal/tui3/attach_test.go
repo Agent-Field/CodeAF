@@ -101,7 +101,7 @@ func TestTheCompletionTagsThePicturesItWouldAttach(t *testing.T) {
 	drive(t, a, key("@"), key("s"), key("h"))
 	drive(t, a, filesLoadedMsg{paths: []string{"shot.png", "notes.md"}})
 
-	rows := a.comp.rows(a.width, completeRows, a.pal, -1)
+	rows := a.comp.rows(a.width, completeRows, a.pal, -1, "")
 	found := ""
 	for _, r := range rows {
 		if strings.Contains(plain(r), "shot.png") {
@@ -243,7 +243,7 @@ func TestAnImageMessageMarksItsPicturesInTheTranscript(t *testing.T) {
 	a.pathLinks = true
 	// Wide enough that the sentence, its two tokens and its two markers land on
 	// one row: this test is about what is drawn, not about where it wraps.
-	a.width = 100
+	a.width = 120
 	a.attach(filepath.Join(dir, "shot.png"))
 	a.attach(filepath.Join(dir, "chart.png"))
 	typeLine(t, a, "what is wrong here")

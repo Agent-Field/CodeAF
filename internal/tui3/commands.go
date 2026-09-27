@@ -146,6 +146,11 @@ var commands = []command{
 	// own row which question it is answering, so nobody who typed either word
 	// lands nowhere.
 	{name: "search", desc: "everything said on this machine · " + placeChord(pageSearch)},
+	{name: "wall", desc: "every open conversation, live, and your teams · alt+v or ▦ below the box"},
+	// THE TEAMS PAGE, beside the wall it opens onto: the wall is the open
+	// conversations big, and this is the team-level view, every member open or
+	// not, the manager's conversation and what waits on you (place_teams.go).
+	{name: "teams", desc: "your teams, their managers and what waits on you · " + placeChord(pageTeams)},
 	{name: "spend", desc: "what this machine has cost, by the day · " + placeChord(pageSpend)},
 	// It sits AFTER /compact and before /help because those two are the pair a
 	// person reads together when a conversation has gone wrong: compacting is
@@ -528,7 +533,7 @@ func (c command) aliasNote() string {
 // AND IT IS WHERE A ROW'S CHORD IS SPELLED FOR THIS KEYBOARD. Two of these
 // descriptions carry a place's own chord ([placeChord]), baked in at init where
 // no terminal has been detected yet — so on a Mac the list said `/spend … alt+3`
-// while the map two keystrokes away said `opt+1…opt+7`. The substitution has to
+// while the map two keystrokes away said `opt+1…opt+8`. The substitution has to
 // happen HERE rather than at either paint, because `⌘` is one cell where `cmd+`
 // is four and [menu.fit] counts the lines this string will take before
 // [menu.rows] draws it: measuring one spelling and drawing the other is a list
@@ -1013,7 +1018,7 @@ func helpText(file string, chords chordSpelling) string {
 		// know how to open, which is a help sheet behind the thing it explains.
 		//
 		// The three rows are spelled through [chordSpelling.say] like the
-		// `alt+enter` row above them, so a Mac reads `opt+1…opt+7` and a Linux box
+		// `alt+enter` row above them, so a Mac reads `opt+1…opt+8` and a Linux box
 		// reads what is authored here — one substitution, one door (chords.go).
 		helpKeyRow(chords.say(chordJumpWords), "go to a place · in the tab bar's own order: "+placeWordList()),
 		helpKeyRow(chords.say(placeMapKey), "on a place: what else is here · every key that place has, drawn"),
@@ -1078,8 +1083,13 @@ func helpText(file string, chords chordSpelling) string {
 		// answer to the question that test asks). The card is named by what it is
 		// instead.
 		helpKeyRow(closeTabChord, "close this tab · select the last open chat · keep your draft"),
+		// THE TEAM'S TWO CHORDS (teamrail.go). They do something only in a team
+		// with a manager, and the rows say so rather than leaving a person to
+		// find out by pressing them anywhere else.
+		helpKeyRow(chords.say(trafficKey), "with a team's manager in front: show or hide its Traffic"),
+		helpKeyRow(chords.say(teamManagerKey), "in a team with a manager: go to the manager"),
 		helpKeyRow(reopenTabChord, "reopen the last closed tab · when the terminal sends this distinct chord"),
-		helpKeyRow(chords.say(railHoldChord), "the task roster · ↑↓ move · →← fold · enter opens · esc back"),
+		helpKeyRow(chords.say(railHoldChord), "the task roster · ↑↓ move · ←→ tasks/traffic · enter opens · esc back"),
 		"ctrl+.         every task this project has run · /history · type to filter",
 		"ctrl+g         close the roster's column, or bring it back · remembered",
 		"ctrl+l         back to the latest · the chip above the box says so too",
@@ -1111,6 +1121,11 @@ func helpText(file string, chords chordSpelling) string {
 		"ctrl+,         open settings",
 		"d              in /permissions: drop the line under the cursor · press it twice",
 		"p s n          in /standing: pause one · stop it · keep it out of here",
+		// THE TEAMS PAGE'S LETTERS, each the button of the same word on the
+		// selected team, and the chord that puts the keyboard on those buttons
+		// while the manager's conversation has the box (teamspagehost.go).
+		"s c w n o      in /teams: settings · close · open on the wall · new team · organize",
+		helpKeyRow(chords.say("alt+↑↓"), "in /teams: onto the page's buttons while the manager has the box · esc back"),
 		"ctrl+r ctrl+y  in /files: reveal the folder it is in · copy it somewhere",
 	)
 	if file != "" {

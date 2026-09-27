@@ -332,3 +332,36 @@ func TestAModelWithNoEvidenceIsNotPickedOnPrice(t *testing.T) {
 		t.Errorf("the rescue would not take it: %v %+v", err, rescue.Crew)
 	}
 }
+
+// A ZERO OR UNKNOWN AMOUNT IS NOT DRAWN (the emptiness law): a run that made
+// no call names no `$0.000` actual, a crew nothing could price names no
+// `est $0.000`, and the segment goes with its separator rather than leaving
+// one hanging. A real actual and a real estimate are both still said.
+func TestTheLineDrawsNoZeroMoney(t *testing.T) {
+	d := Decision{Class: Bugfix, EstUSD: 0.013, Crew: []Pick{
+		{Seat: Worker, Model: "z-ai/glm-5.3-flash"}, {Seat: Planner, Model: "z-ai/glm-5.3-flash"}, {Seat: Checker, Model: "z-ai/glm-5.3-flash"},
+	}}
+	unpriced := d
+	unpriced.EstUSD = 0
+	for _, c := range []struct {
+		line string
+		want string
+	}{
+		{d.Line("", 0), "· est $0.013"},
+		{d.Line("", -1), "· est $0.013"},
+		{d.Line("", 0.004), "· $0.004 (est $0.013)"},
+		{unpriced.Line("", -1), ""},
+		{unpriced.Line("", 0), ""},
+		{unpriced.Line("", 0.004), "· $0.004"},
+	} {
+		if strings.Contains(c.line, "$0.000") || strings.HasSuffix(c.line, "·") || strings.HasSuffix(c.line, "· ") || strings.Contains(c.line, "(est )") {
+			t.Errorf("the line draws a zero or a dangling segment: %q", c.line)
+		}
+		if c.want != "" && !strings.HasSuffix(c.line, c.want) {
+			t.Errorf("the line %q does not end on %q", c.line, c.want)
+		}
+		if c.want == "" && strings.Contains(c.line, "$") {
+			t.Errorf("a line with nothing known names money: %q", c.line)
+		}
+	}
+}

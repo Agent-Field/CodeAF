@@ -77,8 +77,8 @@ func TestARunningCommandIsSentToTheBackgroundWithOneKey(t *testing.T) {
 	if got := a.hintWord(); got != wantHint {
 		t.Fatalf("the full running-turn hint is %q, want %q", got, wantHint)
 	}
-	if door := plain(a.railDoorLine()); strings.Contains(door, "ctrl+g") || !strings.HasSuffix(door, "hide") {
-		t.Fatalf("the column footer names a key the command owns: %q", door)
+	if head, _ := a.sideHeadRow(a.railRoom()); strings.Contains(plain(head), "ctrl+g") || !strings.HasSuffix(strings.TrimSpace(plain(head)), sideHideKey) {
+		t.Fatalf("the column header names a key the command owns: %q", plain(head))
 	}
 
 	drive(t, a, key("ctrl+g"))

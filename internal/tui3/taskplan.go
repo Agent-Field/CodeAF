@@ -22,7 +22,6 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
@@ -660,128 +659,20 @@ func planStoreDraws(rows []tasksMineRow, plan []session.PlanTaskRow) []tasksMine
 
 // ── THE PAGE ONE PLAN ROW OPENS ─────────────────────────────────────────────
 
-// taskSheetPlan opens the page over one plan row: the description the worker was
-// given, every note left on the task with its author and moment, and the
-// trajectory its worker recorded.
-//
-// IT IS THE SHEET'S OWN MACHINERY AND NOT A FOURTH SURFACE. Enter over a record
-// row opens the card through [app.taskSheetInside]; this is the same latch,
-// [tasksPlace.detailOn], the same full frame and the same `esc` that backs out
-// one layer to the list — so a person who has learned the card has learned this
-// page, and the foot of either names the same way out. The one thing that is not
-// reused is the CONTENT, because a plan task has no record row to read: the page
-// is built from the store's own read ([session.Agent.PlanTaskPage]).
-//
-// A PAGE THE ENGINE WILL NOT ANSWER FOR IS NOT OPENED. A task this chat did not
-// spawn, or one whose store has gone, leaves the list where it was rather than
-// raising a page of blanks.
-func (a *app) taskSheetPlan(id string) tea.Cmd { return a.taskSheetPlanAsk(id, nil, nil, nil) }
-
-// taskSheetPlanFrom is [app.taskSheetPlan] for a step INTO one of a page's
-// parts: `from` is the page stepped out of, and it goes on the way back when
-// the part's page has opened and not before.
-func (a *app) taskSheetPlanFrom(id string, from *session.PlanTaskPage) tea.Cmd {
-	return a.taskSheetPlanAsk(id, from, nil, nil)
-}
-
-// taskSheetPlanAsk is the ONE door onto a stored page, for every gesture that
-// opens one: enter in the list, a step into a part, a press on a rail row. The
-// read leaves the loop ([app.offLoop]) and what happens next is decided when it
-// comes back: `opened` runs once the page is up, and `missing` is the gesture's
-// own answer for a task the store has no page for, so a rail row whose run's
-// store is gone still opens what it always opened.
-func (a *app) taskSheetPlanAsk(id string, from *session.PlanTaskPage, opened func() tea.Cmd, missing func() tea.Cmd) tea.Cmd {
-	agent, ok := a.planReader()
-	if !ok {
-		if missing != nil {
-			return missing()
-		}
-		return nil
-	}
-	return a.offLoop(func() func(bool) tea.Cmd {
-		page, found := agent.PlanTaskPage(id)
-		return func(here bool) tea.Cmd {
-			if !here {
-				// EVERY ENDING OF THE READ ENDS THE HOLD IT WAS MADE FOR. The keys
-				// are held for as long as this read is out and no longer, and the
-				// read has its own bound: over the wire a call gives up at its
-				// deadline and answers no page (internal/remote's callDeadline),
-				// which is the `missing` road below. An answer for a front the
-				// person has left opens nothing, and used to leave the hold taking
-				// every key until `esc`.
-				if opened != nil && a.railPlanPending.id == id {
-					a.railPlanPending = railPlanPending{}
-				}
-				return nil
-			}
-			if opened != nil && a.railPlanPending.id != id {
-				return nil
-			}
-			if !found {
-				if missing != nil {
-					return missing()
-				}
-				return nil
-			}
-			// THE PAGE STEPPED OUT OF GOES ON THE WAY BACK ONLY WHEN THE NEW ONE
-			// OPENED, and only if the person is still on it: a part with no page
-			// leaves `esc` exactly one step from the list, as it was.
-			if from != nil {
-				if !a.taskSheet.planOn || a.taskSheet.plan.Row.ID != from.Row.ID {
-					return nil
-				}
-				a.taskSheet.planBack = append(a.taskSheet.planBack, *from)
-			}
-			a.taskSheet.plan, a.taskSheet.planOn, a.taskSheet.detailOn = page, true, true
-			a.taskSheet.planPageAt = a.now()
-			a.taskSheet.planBriefFull = false
-			a.taskSheet.planAt = -1
-			a.taskSheet.detailTop = 0
-			// A PAGE OPENS AT THE LIVE EDGE. The newest step is the reason the page
-			// follows at all, so it opens stuck to the bottom and a scroll is what
-			// releases it ([app.taskPlanTopFor], [app.taskPlanScroll]).
-			a.taskSheet.planStick = true
-			a.taskSheet.planNote.reset()
-			// The card's recovery band belongs to the row the CARD was opened from, and
-			// this page is not that row ([app.taskSheetInside] clears it at the one other
-			// door for the same reason).
-			a.taskSheet.awayOwner = tasksAwayOwner{}
-			var cmd tea.Cmd
-			if opened != nil {
-				cmd = opened()
-			}
-			a.touch()
-			return cmd
-		}
-	})
-}
-
-// closeTaskPlan backs out one layer to the list, which is the card's own `esc`.
-func (a *app) closeTaskPlan() {
-	a.taskSheet.plan, a.taskSheet.planOn, a.taskSheet.detailOn = session.PlanTaskPage{}, false, false
-	a.taskSheet.planBriefFull = false
-	a.taskSheet.detailTop, a.taskSheet.planStick = 0, false
-	// A half-typed note does not survive the page it was typed on, which is the
-	// box's own law everywhere here ([app.placeHomeGesture] resets the box it
-	// empties for the same reason).
-	a.taskSheet.planNote.reset()
-	a.touch()
-}
-
 // ── the steering verbs ──────────────────────────────────────────────────────
 
 // The words the plan keys say, each quoted in the manual exactly as it is
 // spelled here.
 const (
-	// taskPlanNoteWord is what the page's composer says with nothing typed in
-	// it: the one thing a person can type on a plan task's page, and the reason
-	// the box is there at all.
+	// taskPlanNoteWord is what the room's box says with nothing typed in it on
+	// a run's task: what the words become, which is a note on the task
+	// (planroom.go's [app.planRoomSteer]).
 	taskPlanNoteWord = "a note for this task"
-	// taskPlanPickupWord is the page's one sentence about WHEN a note is read. A
-	// worker is a separate loop, so a note waits in the store until the worker
-	// asks for its next step — the manual's own account of a note (worker-harness.md,
-	// "Steering a task"), said on the page because the page is where the note is
-	// typed.
+	// taskPlanPickupWord is WHEN a note is read. A worker is a separate loop, so
+	// a note waits in the store until the worker asks for its next step — the
+	// manual's own account of a note (worker-harness.md, "Steering a task"),
+	// said under the note in the task's room once the store has it
+	// (planroom.go's [app.planRoomSteer]).
 	taskPlanPickupWord = "the worker reads a note at its next step"
 	// taskPlanRefusedWord leads the line a refused action draws in a step's
 	// place. It is the permissions page's own word for a call that was refused,
@@ -870,17 +761,15 @@ func planOwnTask(row session.PlanTaskRow) bool {
 	return strings.TrimSpace(row.ID) != "" && strings.TrimSpace(row.Parent) == ""
 }
 
-// taskPlanStop is `x` on a plan row or its page. A part is ended by the store's
-// own cancel, at once, as it always was. THE RUN'S OWN TASK IS THE WHOLE RUN,
-// and ending that is the act the stop card exists to confirm: the card is
-// raised, aimed at the run through the plan's own door, and nothing is ended by
-// one keystroke.
+// taskPlanStop is `x` on a plan row in the tasks place. A part is ended by the
+// store's own cancel, at once, as it always was. THE RUN'S OWN TASK IS THE
+// WHOLE RUN, and ending that is the act the stop card exists to confirm: the
+// card is raised, aimed at the run through the plan's own door, and nothing is
+// ended by one keystroke.
 //
-// THE PAGE STEPS ASIDE FOR THE CARD, the way a background job's page does
-// (stop.go's [app.raiseStop] says why): it takes the frame whole and the block
-// draws every question above the message box, so a card raised over it would be
-// a question nobody could see, answered by the next key they pressed. The run's
-// row is still on the side list and opens the page again.
+// THE PLACE STEPS ASIDE FOR THE CARD (stop.go's [app.raiseStop] says why): it
+// takes the frame whole and the block draws every question above the message
+// box, so a card raised over it would be a question nobody could see.
 func (a *app) taskPlanStop(row session.PlanTaskRow) tea.Cmd {
 	if !planOwnTask(row) {
 		return a.taskPlanCancel(row.ID)
@@ -888,8 +777,6 @@ func (a *app) taskPlanStop(row session.PlanTaskRow) tea.Cmd {
 	if _, ok := a.planReader(); !ok {
 		return nil
 	}
-	a.closeTaskPlan()
-	a.railTaskPlanOn = false
 	a.closeTaskSheet()
 	a.raiseStop(stopTarget{plan: row.ID, noun: stopTaskNoun, detail: stopTaskDetail})
 	return nil
@@ -939,72 +826,6 @@ func (a *app) taskPlanToggle(id string) tea.Cmd {
 			err = agent.PlanPause(id)
 		}
 		return a.taskPlanVerbFold(err)
-	})
-}
-
-// taskPlanNoteSend writes what is typed in the page's composer as a person-note
-// on the plan task — the store's own note verb, in the person's voice, which the
-// task's worker is handed between its own steps ([session.Agent.PlanNote], and
-// internal/run's note channel carries it). IT IS NOT A CHAT
-// TURN: the words go to the store and never to the model, so nothing here starts
-// one.
-//
-// ONE NOTE IS ONE SEND. The box keeps the words until the store answers, so a
-// second `enter` pressed before then sent them again; while a note is on its way
-// ([taskSheet.planSending]) `enter` sends nothing.
-//
-// AND THE ANSWER LANDS ON THE PAGE IT WAS SENT FROM OR NOWHERE. A person can
-// move to another task's page while the store is answering, and the receipt used
-// to put the sent-from page over whichever page was open and empty that page's
-// box (#1240). So the answer is folded only while the same task's page is still
-// the one up, and the box is emptied only if it still holds exactly what was
-// sent, so words typed after the send are not taken with it.
-func (a *app) taskPlanNoteSend() tea.Cmd {
-	raw := a.taskSheet.planNote.String()
-	text := strings.TrimSpace(raw)
-	if text == "" || a.taskSheet.planSending {
-		return nil
-	}
-	agent, ok := a.planReader()
-	if !ok {
-		return nil
-	}
-	id := a.taskSheet.plan.Row.ID
-	a.taskSheet.planSending = true
-	return a.offLoop(func() func(bool) tea.Cmd {
-		err := agent.PlanNote(id, text)
-		page, found := agent.PlanTaskPage(id)
-		return func(here bool) tea.Cmd {
-			a.taskSheet.planSending = false
-			if !here {
-				return nil
-			}
-			onPage := a.taskSheet.planOn && a.taskSheet.plan.Row.ID == id
-			if err != nil {
-				if onPage {
-					a.pageMsg = err.Error()
-				}
-				a.touch()
-				return nil
-			}
-			a.pageMsg = ""
-			a.railStamp++
-			if !onPage {
-				a.touch()
-				return nil
-			}
-			if a.taskSheet.planNote.String() == raw {
-				a.taskSheet.planNote.reset()
-			}
-			// Read the page again so the note a person just left is on the screen, which
-			// is the receipt the store cannot draw itself.
-			if found {
-				a.taskSheet.plan = page
-				a.taskSheet.planPageAt = a.now()
-			}
-			a.touch()
-			return nil
-		}
 	})
 }
 
@@ -1077,614 +898,6 @@ func planEnded(row session.PlanTaskRow) bool {
 		return true
 	}
 	return false
-}
-
-// taskPlanKey is the page's keyboard: `esc` and the chord out, the four reading
-// keys the card also spends (the page is read down, so the wheel and the arrows
-// move an offset rather than a cursor), the two verbs a plan row has — `x` and
-// `p`, taken over an EMPTY composer — and the note itself, where every printable
-// key goes into the box and `enter` sends it ([app.taskPlanNoteSend]) rather
-// than a chat turn.
-func (a *app) taskPlanKey(msg tea.KeyPressMsg) tea.Cmd {
-	key := msg.String()
-	// The caret's own chords first, the route every box on this surface takes
-	// (place_tasks.go's filter, the conversation's composer).
-	if editorMotion(&a.taskSheet.planNote, key) ||
-		editorUndo(&a.taskSheet.planNote, key) ||
-		editorWordKill(&a.taskSheet.planNote, key) {
-		a.touch()
-		return nil
-	}
-	// A letter is a letter the moment there is a note to type, so the row's own
-	// keys are read over an empty box and never over a sentence (the list's own
-	// law, [app.taskSheetPlanKey]).
-	//
-	// AND ON A PAGE WHOSE TASK HAS ENDED THEY ARE LETTERS TOO, because the key
-	// line names neither there ([app.tasksPlanKeyWords]). `x` on a finished run
-	// asked "Stop this task?" and the stop it sent changed nothing, and on a
-	// finished part it drew the store's own refusal; a key the line does not
-	// offer is the letter it is (#1240).
-	if a.taskSheet.planNote.empty() && !planEnded(a.taskSheet.plan.Row) {
-		switch key {
-		case stopRaiseKey:
-			return a.taskPlanStop(a.taskSheet.plan.Row)
-		case "p":
-			// NOTHING HOLDS A WHOLE RUN, so on the run's own page this key is the
-			// letter it is and starts a note ([planOwnTask]).
-			if !planOwnTask(a.taskSheet.plan.Row) {
-				return a.taskPlanToggle(a.taskSheet.plan.Row.ID)
-			}
-		}
-	}
-	switch key {
-	case "esc", "left":
-		if n := len(a.taskSheet.planBack); n > 0 {
-			a.taskSheet.plan = a.taskSheet.planBack[n-1]
-			a.taskSheet.planBack = a.taskSheet.planBack[:n-1]
-			a.taskSheet.planAt = -1
-			a.touch()
-		} else {
-			a.closeTaskPlan()
-		}
-		return nil
-	case taskSheetKey:
-		a.closeTaskSheet()
-		return nil
-	case "up", "ctrl+p":
-		if a.taskSheet.planAt >= 0 {
-			a.taskSheet.planAt--
-		} else {
-			a.taskPlanScroll(-1)
-		}
-		return nil
-	case "down", "ctrl+n":
-		if a.taskSheet.planAt+1 < len(a.taskSheet.plan.Children) {
-			a.taskSheet.planAt++
-		} else {
-			a.taskPlanScroll(1)
-		}
-		return nil
-	case "pgup":
-		a.taskPlanScroll(-taskSheetRows)
-		return nil
-	case "pgdown":
-		a.taskPlanScroll(taskSheetRows)
-		return nil
-	case "ctrl+o":
-		// THE FOLD IS COUNTED AT THE WIDTH THE PAGE DRAWS AT ([app.taskPlanBodyWidth]),
-		// never at the conversation's body width: the page takes the whole frame,
-		// and a brief counted narrower than it is drawn could toggle a fold the
-		// page never showed (#1289).
-		if len(planBriefRows(a.taskSheet.plan.Description, a.taskPlanBodyWidth())) > briefFoldLines {
-			a.taskSheet.planBriefFull = !a.taskSheet.planBriefFull
-			a.taskSheet.detailTop = 0
-			a.taskSheet.planStick = false
-			a.touch()
-		}
-		return nil
-	case "enter":
-		if a.taskSheet.planNote.empty() && a.taskSheet.planAt >= 0 && a.taskSheet.planAt < len(a.taskSheet.plan.Children) {
-			old := a.taskSheet.plan
-			id := old.Children[a.taskSheet.planAt].ID
-			return a.taskSheetPlanFrom(id, &old)
-		}
-		return a.taskPlanNoteSend()
-	case "backspace":
-		a.taskSheet.planNote.deleteBackward()
-	case "ctrl+u":
-		a.taskSheet.planNote.killToStart()
-	case "ctrl+k":
-		a.taskSheet.planNote.killToEnd()
-	case "ctrl+w":
-		a.taskSheet.planNote.deleteWord()
-	default:
-		// EVERY OTHER PRINTABLE KEY IS THE NOTE. A space types a space here — the
-		// card pages with it, but a page with a box types spaces.
-		if text := msg.Key().Text; text != "" {
-			a.taskSheet.planNote.insert(text)
-		}
-	}
-	a.touch()
-	return nil
-}
-
-// taskPlanHead is what the page spends above its body: the trail, the facts
-// rule and the air under it — three rows, the task room's own head
-// ([app.taskPlanTrail], [app.taskPlanFacts]).
-const taskPlanHead = 3
-
-// taskPlanFoot is what the page spends under its body: the closing rule, the
-// note composer, the one sentence saying when a note is read, and the key line,
-// in that order — the card's own foot grew three rows for the box the page types
-// into and the sentence that says what happens to what is typed in it.
-const taskPlanFoot = 4
-
-// taskPlanWindow is the page's body, the rows it is drawn in and the rows its
-// foot spends, resolved from the frame once: the draw and the scroll both read
-// the bottom off this, so the two cannot disagree about where the bottom is.
-func (a *app) taskPlanWindow(width, height int) ([]string, int, int) {
-	if height < 1 {
-		height = 1
-	}
-	foot := taskPlanFoot
-	if height-taskPlanHead-foot < 1 {
-		foot = 0
-	}
-	room := height - taskPlanHead - foot
-	if room < 1 {
-		room = 1
-	}
-	return a.taskPlanBody(planBodyWidth(width)), room, foot
-}
-
-// planNoteWho is the one word a note's author is drawn as, on the page and on
-// the work tab alike: `you` for a note a person left, and nothing for every
-// other author, because the store holds those as ids (the run's number, a
-// worker's handle) and no internal name goes on a person's screen.
-func planNoteWho(note session.PlanTaskNote) string {
-	if note.Person {
-		return "you"
-	}
-	return ""
-}
-
-// planBodyWidth is the page's body width inside a frame `width` cells wide: one
-// cell of margin on each side, the indent the frame draws every body row with.
-func planBodyWidth(width int) int { return width - 2 }
-
-// taskPlanBodyWidth is the width the page's body is drawn at in this window,
-// which is what a key that measures the body must measure at ([app.taskPlanWindow]
-// is handed the whole frame, as [app.taskPlanScroll] reads it).
-func (a *app) taskPlanBodyWidth() int {
-	width, _ := a.size()
-	return planBodyWidth(width)
-}
-
-// taskPlanTopFor resolves the page's scroll position, sticking to the live edge
-// exactly as the room follows its own ([app.roomOffsetFor]) and the conversation
-// follows its ([app.offsetFor]): while the page is stuck, or while the offset
-// says it is past the bottom, the newest step is what is on screen. It is a
-// resolver and not [clampTop] alone because a PINNED page must FOLLOW — a clamp
-// holds the number it was given and lets the newest line fall off the bottom.
-func (a *app) taskPlanTopFor(count, room int) int {
-	bottom := count - room
-	if bottom < 0 {
-		bottom = 0
-	}
-	if a.taskSheet.planStick || a.taskSheet.detailTop > bottom {
-		return bottom
-	}
-	return clampTop(a.taskSheet.detailTop, count, room)
-}
-
-// taskPlanScroll moves the page's own offset, which is the only thing that
-// moves: there is no cursor to walk in a page that is read rather than listed.
-//
-// IT RE-DECIDES WHETHER THE PAGE IS FOLLOWING, the room's own bargain
-// ([app.roomScroll]): a step up off the bottom releases the pin, and a step back
-// onto the bottom takes it again, so a person who returns to the live edge
-// resumes following without pressing anything.
-func (a *app) taskPlanScroll(delta int) {
-	width, height := a.size()
-	body, room, _ := a.taskPlanWindow(width, height)
-	bottom := len(body) - room
-	if bottom < 0 {
-		bottom = 0
-	}
-	at := a.taskPlanTopFor(len(body), room) + delta
-	switch {
-	case at >= bottom:
-		a.taskSheet.detailTop, a.taskSheet.planStick = bottom, true
-	case at <= 0:
-		a.taskSheet.detailTop, a.taskSheet.planStick = 0, false
-	default:
-		a.taskSheet.detailTop, a.taskSheet.planStick = at, false
-	}
-	a.touch()
-}
-
-// taskPlanFrame is the whole screen while the page is up: a head, the body, and
-// the foot. It is drawn in the card's slot and in the card's own shape — one
-// frame, one rule, one foot — so the two pages of this place read as one. The
-// one thing the card has not got and this page has is the note composer: the box
-// a person types into, in the foot, under the rule.
-func (a *app) taskPlanFrame(width, height int) ([]string, int, int) {
-	pal := a.pal
-	if height < 1 {
-		height = 1
-	}
-	lines := make([]string, 0, height)
-	add := func(text string) { lines = append(lines, text) }
-
-	// THE HEAD IS THE TASK ROOM'S HEAD: the trail with the way back at its end,
-	// and under it the facts rule that leads with the state's own mark. A run's
-	// task and a task of the old road are one kind of thing, and a person who
-	// opened one of each used to meet two different pages.
-	add(a.taskPlanTrail(width))
-	add(a.taskPlanFacts(width))
-	add("")
-	// THE FOOT IS THE LAST FOUR ROWS, and a frame too short for the body under
-	// it gives the body up rather than the way out — the page's own trim, and the
-	// one [app.taskPlanWindow] resolves so the draw and the scroll agree ([app.taskPlanScroll]).
-	body, room, foot := a.taskPlanWindow(width, height)
-	// THE PAGE RESOLVES ITS OFFSET, it does not hold it: a stuck page reads the
-	// bottom where the body now is, so a step appended between frames is on
-	// screen at the next draw ([app.taskPlanTopFor]).
-	top := a.taskPlanTopFor(len(body), room)
-	drawn := room
-	if len(body) < drawn {
-		drawn = len(body)
-	}
-	for i := 0; i < drawn; i++ {
-		add(" " + fit(body[top+i], width-1))
-	}
-	for len(lines) < height-foot {
-		add("")
-	}
-	caretX, caretY := 0, 0
-	if foot > 0 {
-		// A refusal the store answered rides on the closing rule, which is the
-		// pane's one line for a place that is not home ([app.pageMsg]); this page
-		// draws its own frame and so draws it here.
-		legend := []string{}
-		if a.pageMsg != "" {
-			legend = append(legend, " "+pal.dim(a.pageMsg))
-		}
-		add(placeNoteRule(legend, width, pal))
-		if a.taskSheet.planNote.empty() {
-			add(" " + pal.dim(fit(prompt+taskPlanNoteWord, width-1)))
-		} else {
-			add(" " + fit(prompt+a.taskSheet.planNote.String(), width-1))
-		}
-		caretX, caretY = ansi.StringWidth(prompt)+1, len(lines)-1
-		// AND WHEN THE WORKER READS IT, under the box that writes it: the worker
-		// is a separate loop, so a note waits in the store until it asks for its
-		// next step — the one thing a person needs to know about the box they are
-		// typing into (taskPlanPickupWord).
-		//
-		// A TASK THAT HAS ENDED TAKES NO NEXT STEP, so the sentence is absent
-		// there rather than false. Its row stays, empty, because the foot's
-		// height is fixed and the caret is placed against it.
-		if planEnded(a.taskSheet.plan.Row) {
-			add("")
-		} else {
-			add(" " + pal.dim(fit(taskPlanPickupWord, width-1)))
-		}
-		add(" " + paintHint(hintFit(a.taskPlanKeys(), width-2), pal, pal.dim))
-	}
-	if len(lines) > height {
-		lines = lines[:height]
-		if caretY >= height {
-			caretX, caretY = 0, 0
-		}
-	}
-	return lines, caretX, caretY
-}
-
-// taskPlanKeys is the page's key line: the reading keys the card also spends,
-// the send, and the two verbs a plan task has, over the way back. It is fitted
-// by [hintFit], so `esc back` is kept last and the clause a narrow frame drops
-// first is the scroll.
-func (a *app) taskPlanKeys() string {
-	parts := []string{"↑↓ scroll", "enter send"}
-	parts = append(parts, a.tasksPlanKeyWords(a.taskSheet.plan.Row)...)
-	parts = append(parts, taskCardBackWord)
-	return strings.Join(parts, railSep)
-}
-
-// taskPlanBody is what a person reads: the work order, the notes, and the steps.
-//
-// EVERY SECTION WITH NOTHING BEHIND IT IS ABSENT, along with the air that would
-// have separated it — the emptiness law, applied to a page. A task that has left
-// no note and run no step draws its description and stops.
-func (a *app) taskPlanBody(width int) []string {
-	if width < 1 {
-		width = 1
-	}
-	page, pal := a.taskSheet.plan, a.pal
-	var out []string
-	add := func(text string) { out = append(out, text) }
-	addWrapped := func(text string, ink func(string) string) {
-		for _, para := range strings.Split(text, "\n") {
-			if strings.TrimSpace(para) == "" {
-				continue
-			}
-			for _, line := range wrap(strings.TrimSpace(para), width) {
-				add(ink(line))
-			}
-		}
-	}
-	section := func(word string) {
-		if len(out) > 0 {
-			add("")
-		}
-		add(pal.dim(word))
-	}
-
-	// THE WAY BACK AND THE FIGURES ARE THE HEAD'S NOW. The task a step into a
-	// part came from is on the trail ([app.taskPlanTrail]), and the state, the
-	// clock, the steps and the money are on the facts rule ([app.taskPlanFacts]),
-	// where the task room has always said them.
-	if waits := page.WaitRows; len(waits) > 0 {
-		section("waits")
-		own := map[string]bool{}
-		for _, id := range page.Row.Waits {
-			own[id] = true
-		}
-		for _, row := range waits {
-			var sentence string
-			if own[row.ID] {
-				sentence = strings.TrimSpace(page.Row.Title) + railSep + "waits: " + strings.TrimSpace(row.Title)
-			} else {
-				sentence = strings.TrimSpace(row.Title) + railSep + "waits: " + strings.TrimSpace(page.Row.Title)
-			}
-			add(pal.ink(padTo(sentence, 51)) + pal.dim(planWaitFigure(pal, row)))
-		}
-	}
-	if desc := strings.TrimSpace(page.Description); desc != "" {
-		section("brief")
-		// THE BRIEF IS DRAWN THROUGH THE READER THE TRANSCRIPT ALREADY USES
-		// ([requestDisplayFor]). A plan task's description can be the generated
-		// work order a run hands its workers, and a page that drew it raw opened
-		// on the machinery addressed to the model — the shouted scaffold heading,
-		// the rule under it, and only then the person's ask. The reader reshapes
-		// that document into plain headings with this task's own work first, the
-		// same service the conversation's own transcript gives the same text;
-		// a brief that is not the generated document passes through unchanged, so
-		// a person's own typed brief draws exactly as it always did. THE STORED
-		// TEXT IS NEVER TOUCHED: only what is drawn changes.
-		lines := planBriefRows(desc, width)
-		if !a.taskSheet.planBriefFull && len(lines) > briefFoldLines {
-			for _, line := range lines[:briefFoldLines] {
-				add(pal.ink(line))
-			}
-			add(pal.dim(bandFoldWord(len(lines)-briefFoldLines, briefFoldWhat, true) + railSep + briefFoldKey))
-		} else {
-			for _, line := range lines {
-				add(pal.ink(line))
-			}
-		}
-	}
-	if len(page.Checks) > 0 {
-		section("checks")
-		for _, check := range page.Checks {
-			if check = strings.TrimSpace(check); check != "" {
-				addWrapped(check, pal.ink)
-			}
-		}
-	}
-	if len(page.Notes) > 0 {
-		section("notes")
-		for _, note := range page.Notes {
-			// AN AUTHOR IS DRAWN ONLY AS A WORD A PERSON WOULD RECOGNISE. `you` is
-			// one. Every other author the store holds is an id of its own, the
-			// run's number or a worker's handle, and this page has no word for the
-			// kind of task that left the note; a page headed `1 · now` or
-			// `2ytmh2 · now` names nobody. The moment is kept and the id is never
-			// drawn, which is the owner's ruling on this surface: no internal name
-			// on a person's screen ([planNoteWho]).
-			who := planNoteWho(note)
-			when := sinceAt(note.At, a.now())
-			switch {
-			case who != "" && when != "":
-				add(pal.dim(who + railSep + when))
-			case who != "":
-				add(pal.dim(who))
-			case when != "":
-				add(pal.dim(when))
-			}
-			addWrapped(note.Body, pal.ink)
-		}
-	}
-	if len(page.Steps) > 0 || !page.Live.Empty() {
-		section("steps")
-		// THE STEPS ARE DRAWN AS THE TASK ROOM DRAWS A TASK'S WORK: one row per
-		// command, led by the still mark of its family — the shell's, through the
-		// vocabulary's one door ([app.actionLead]) — with what came back dim under
-		// it in the same gutter. The mark never moves and never says how a step
-		// went; the facts rule above says whether the task is running.
-		lead := a.actionLead(session.ActionRun, true)
-		under := a.actionLead(session.ActionRun, false)
-		for _, step := range page.Steps {
-			// A CALL THE ENGINE SAYS DID NOT RUN IS ONE OF TWO THINGS, and the
-			// engine says which. A correction about the FORM of the worker's reply
-			// was addressed to the worker and nothing was attempted: it stays in
-			// the record and in the head's count, and has no row. AN ACTION THE
-			// WORKER ATTEMPTED AND A DOOR REFUSED is something a person steering
-			// the run wants to see, so it draws as one dim line in the step's
-			// place: the word the permissions page already uses for a refused call
-			// and what was tried, with no shell mark, because nothing ran. Both
-			// facts are fields set where the event is known; this surface never
-			// reads the answer's sentence, which was written for the worker, and a
-			// record without the fields draws as before.
-			if step.NotRun {
-				if tried := planDisplayCommand(step.Command, step.Parts); step.Refused && tried != "" {
-					add(pal.dim(under + taskPlanRefusedWord + railSep + tried))
-				}
-				continue
-			}
-			// A STEP WITH NOTHING OF THE WORK IN IT HAS NO ROW.
-			command := planDisplayCommand(step.Command, step.Parts)
-			if command == "" {
-				continue
-			}
-			add(pal.muted(lead) + pal.ink(command))
-			// THE HEAD IS THE ROW'S OWN OR IT IS NOT DRAWN. The engine says when
-			// the row left out a part that could have written it
-			// ([session.PlanStep.ObservationHeadWithheld]); this surface reads
-			// that fact and never the words that came back.
-			if !step.ObservationHeadWithheld {
-				if head := planObservationHead(step.Observation); head != "" {
-					add(pal.dim(under + head))
-				}
-			}
-		}
-		// THE LIVE STEP IS DRAWN ONE STEP EARLY: the command whose end line has
-		// not reached the trajectory yet, as the newest row, with the call's own
-		// clock — the same ten-second clock the rail counts ([taskToolFloor]) —
-		// dim under it. The moment its command ends the store clears the live row
-		// and the next re-read draws it as an ordinary step (internal/plandb's
-		// live.go states the law, and a live step's zero value draws nothing).
-		if live := page.Live; !live.Empty() {
-			if command := planDisplayCommand(live.Command, page.Row.LiveParts); command != "" {
-				add(pal.muted(lead) + pal.ink(command))
-				if !live.Since.IsZero() {
-					if age := a.now().Sub(live.Since); age >= taskToolFloor {
-						add(pal.dim(under + "running " + countUpWord(age)))
-					}
-				}
-			}
-		}
-	}
-	// A TASK WITH CHILDREN SHOWS THEM UNDER ITS STEPS, AND EACH ONE IS DRAWN AS
-	// THE RAIL DRAWS A TASK: through the node renderer, with the running spinner,
-	// its `#id`, the old tree's connectors and — while it runs — its call and
-	// its clock and money line under it ([app.planRailLines]). One kind of row for
-	// one kind of thing, on the column and on the page alike. The note composer
-	// and its receipt below are untouched by the tree.
-	if kids := page.Children; len(kids) > 0 {
-		section("under it")
-		for _, line := range a.planRailLines(planTwigsOf(kids), nil, false, min(width, planPageKinWidth)) {
-			add(line.text)
-		}
-	}
-	return out
-}
-
-// planPageKinWidth is the most a task's page spends on one row of its parts. A
-// part's row is the rail's row, whose handle stands at the row's far end; on a
-// page the width of the terminal that handle would sit a screen away from the
-// title it belongs to, so the rows are drawn at a width a column could have.
-const planPageKinWidth = 64
-
-func planBriefLines(text string, width int) []string {
-	var lines []string
-	for _, para := range strings.Split(text, "\n") {
-		if para = strings.TrimSpace(para); para != "" {
-			lines = append(lines, wrap(para, width)...)
-		}
-	}
-	return lines
-}
-
-// planBriefRows is the brief section's own read of a stored description: the
-// work order drawn through the reader the conversation's transcript already
-// uses ([requestDisplayFor]) before the page wraps it. Every surface that
-// holds this text gives a person the same reading of it — plain headings, the
-// task's own work first, no machinery addressed to a worker — and the door
-// counts the lines this function draws, so the fold and the count it names can
-// never disagree. A description that is not the generated document is wrapped
-// as it was always wrapped.
-func planBriefRows(desc string, width int) []string {
-	return planBriefLines(requestDisplayFor(strings.TrimSpace(desc)), width)
-}
-
-// taskPlanFollow re-reads the page while it stands on a task that is still
-// running, so the newest step walks in at the live edge as the worker takes it.
-//
-// IT IS THE PAINT CLOCK'S OWN READ, bounded by two facts: the page must be
-// opposite a running task (a settled page is a still page, and the clock that
-// carries this stops with it), and the page must be up. It re-reads the whole
-// page — the same store read [app.taskSheetPlan] made once on the way in —
-// because that is what the room does with its rows on the same clock
-// ([app.room.dirty]), and a page that followed only its steps would miss a note
-// or a state change that arrived beside them. Whether the newest line is ON
-// SCREEN is the resolver's question and not this one's ([app.taskPlanTopFor]):
-// a stuck page reads the bottom, a person who scrolled up stays where they
-// were.
-//
-// AND IT IS TAKEN ON A BEAT, NOT ON EVERY TICK. The paint clock offers this read
-// many times a second, and holding back only while one was out meant a fast
-// engine was asked again the moment it answered: 509 reads over the wire in
-// ninety seconds on a real screen, for one open page. A worker lands a step
-// every few seconds at best, so the page learns of it the way the rail learns
-// of the run, once every [elsewhereEvery] and only while the task can still
-// move ([app.taskPlanFollows], place_tasks.go's [tasksPlace.planDue]). The beat
-// is counted from the last time the page was read for any reason, so a page
-// just opened, or just re-read for a note, is not read again at once.
-//
-// IT STAYS IN THE ORDERED LINE although nobody pressed for it ([app.besideLine]
-// says who may leave). Its FOLD replaces the page, and a note a person sends
-// re-reads the page too: outside the line, a follow asked before the note and
-// answered after it would put back a page without the note on it.
-func (a *app) taskPlanFollow() tea.Cmd {
-	if !a.taskPlanFollows() || a.taskSheet.planFollowing {
-		return nil
-	}
-	if a.now().Sub(a.taskSheet.planPageAt) < elsewhereEvery {
-		return nil
-	}
-	agent, ok := a.planReader()
-	if !ok {
-		return nil
-	}
-	id := a.taskSheet.plan.Row.ID
-	a.taskSheet.planFollowing = true
-	a.taskSheet.planPageAt = a.now()
-	return a.offLoop(func() func(bool) tea.Cmd {
-		page, found := agent.PlanTaskPage(id)
-		return func(here bool) tea.Cmd {
-			a.taskSheet.planFollowing = false
-			// THE ANSWER IS FOR THE PAGE THAT ASKED. A person who opened another
-			// task, or closed the page, while this read was out is not handed the
-			// page they left.
-			if here && found && a.taskSheet.planOn && a.taskSheet.plan.Row.ID == id {
-				a.taskSheet.plan = page
-			}
-			return nil
-		}
-	})
-}
-
-// taskPlanRunning reports whether the page is open on a task that is still
-// running — the one condition under which the paint clock has to keep turning
-// for the page's own sake, because the page follows a live edge
-// ([app.taskPlanFollow]). It reads the row's own state WORD, so a task that has
-// ended, or one a person has held, takes the page off the clock: a held task is
-// dispatching nothing and a settled one never will again.
-// taskPlanFollows reports whether the open page is on a task that can still
-// move: queued or running, by the ONE state word its row already wears. A page
-// on a task that has ended, or one a person is holding, is a still page and is
-// never read again; the read that opened it was the last.
-func (a *app) taskPlanFollows() bool {
-	if !a.taskSheet.detailOn || !a.taskSheet.planOn {
-		return false
-	}
-	switch planStateWord(a.taskSheet.plan.Row) {
-	case "queued", "running":
-		return true
-	}
-	return false
-}
-
-func (a *app) taskPlanRunning() bool {
-	if !a.taskSheet.detailOn || !a.taskSheet.planOn {
-		return false
-	}
-	return planStateWord(a.taskSheet.plan.Row) == "running"
-}
-
-// planObservationHead is the head of one step's observation: the first line that
-// says anything, which is as much of what came back as a step line can carry.
-// The whole of it is on disk behind the row's trajectory ([PlanTaskRow.TrajectoryPath]).
-func planObservationHead(observation string) string {
-	for _, line := range strings.Split(observation, "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			return line
-		}
-	}
-	return ""
-}
-
-// planWaitFigure is the related row's state cell and useful figure on a waits
-// sentence. Active work carries its recorded step count; a row without one
-// carries its state word, so the relationship never drops the row's state.
-func planWaitFigure(pal palette, row session.PlanTaskRow) string {
-	figure := planStepWords(row.Steps)
-	if figure == "" {
-		figure = planStateWord(row)
-	}
-	return strings.TrimSpace(tierGlyph(pal, planStatus(row)) + " " + figure)
 }
 
 // planDisplayCommand is the one display rule for a task step on the page, rail,
@@ -1764,42 +977,23 @@ func planFirstLine(command string) string {
 	return first
 }
 
-// planWithoutOwnFolder drops a leading change into the task's own folder, which
-// the page's head names once, and leaves every other directory change as typed.
-func planWithoutOwnFolder(command, folder string) string {
-	if command == "" || folder == "" {
-		return command
-	}
-	quotedSingle := "'" + strings.ReplaceAll(folder, "'", "'\\''") + "'"
-	quotedDouble := `"` + strings.ReplaceAll(strings.ReplaceAll(folder, `\`, `\\`), `"`, `\"`) + `"`
-	for _, path := range []string{folder, quotedSingle, quotedDouble} {
-		prefix := "cd " + path + " && "
-		if strings.HasPrefix(command, prefix) {
-			if rest := strings.TrimSpace(strings.TrimPrefix(command, prefix)); rest != "" {
-				return rest
-			}
-		}
-	}
-	return command
-}
-
-// railPlanPending is the gap between a press on a run's row in the side list
-// and that task's page being drawn.
+// railPlanPending is the gap between a press on a run's task and that task's
+// room being drawn.
 //
-// THE KEYS TYPED IN THE GAP ARE THE PAGE'S. The page is read off the update
-// loop ([app.taskSheetPlanAsk]), and on a hosted conversation the answer took
-// 2.4 seconds on a real screen. Until it folds back the conversation is still
-// what is drawn, and its box used to take whatever was typed: a note meant for
-// a task was sent to the model as a message. A person types at what they
+// THE KEYS TYPED IN THE GAP ARE THE ROOM'S. The page is read off the update
+// loop ([app.openRailPlan]), and on a hosted conversation the answer took 2.4
+// seconds on a real screen. Until it folds back the conversation is still what
+// is drawn, and its box used to take whatever was typed: a note meant for a
+// task was sent to the model as a message. A person types at what they
 // pressed, so from the press on, every key is held here, in order, and typed
-// into the page's note box the moment the page is up ([app.finishRailPlan]) —
-// into the box and nowhere else ([app.railPlanReplay]).
+// into the room's box the moment the room is up — into the box and nowhere
+// else ([app.railPlanReplay]).
 //
 // THREE WAYS OUT, and none of them reaches the conversation: the answer opens
-// the page and types the keys into its box; the answer says there is no page, the row's
-// room opens as it always did and the keys are dropped, because a room's box
-// is a different receiver again; `esc` withdraws the press. A second press
-// replaces the first and starts with no keys.
+// the room and types the keys into its box; the answer says there is no page,
+// the row's room opens as it always did and the keys are dropped; `esc`
+// withdraws the press. A second press replaces the first and starts with no
+// keys.
 type railPlanPending struct {
 	id   string
 	keys []tea.KeyPressMsg
@@ -1807,22 +1001,8 @@ type railPlanPending struct {
 
 func (a *app) beginRailPlan(id string) { a.railPlanPending = railPlanPending{id: id} }
 
-func (a *app) finishRailPlan(id string) tea.Cmd {
-	if a.railPlanPending.id != id {
-		return nil
-	}
-	keys := a.railPlanPending.keys
-	a.railPlanPending = railPlanPending{}
-	a.railTaskPlanOn = true
-	for _, key := range keys {
-		a.railPlanReplay(key)
-	}
-	a.touch()
-	return nil
-}
-
-// railPlanReplay puts one key typed in the gap into the page's NOTE BOX, and
-// does nothing else with it.
+// railPlanReplay puts one key typed in the gap into the room's BOX, and does
+// nothing else with it.
 //
 // THE GAP'S KEYS ARE THE NOTE AND NEVER THE PAGE'S VERBS. They were replayed
 // through the page's whole keyboard, so a sentence that began with the stop key
@@ -1833,7 +1013,7 @@ func (a *app) finishRailPlan(id string) tea.Cmd {
 // other key is dropped, `enter` included: a note typed blind waits in the box,
 // unsent, until the person has read the page it is about to go to.
 func (a *app) railPlanReplay(key tea.KeyPressMsg) {
-	note := &a.taskSheet.planNote
+	note := &a.input
 	switch key.String() {
 	case "backspace":
 		note.deleteBackward()

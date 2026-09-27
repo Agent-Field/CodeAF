@@ -135,6 +135,23 @@ func TestV10DevReleaseNotesNameTheDevafInstaller(t *testing.T) {
 	}
 }
 
+// C23: Only staging notes name the installer that keeps the staging build beside codeaf.
+func TestC23StagingReleaseNotesNameTheStageafInstaller(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow := string(raw)
+	const line = "curl -fsSL https://agentfield.ai/get/stageaf | bash"
+	if strings.Count(workflow, line) != 1 {
+		t.Fatalf("stageaf install line count = %d, want 1", strings.Count(workflow, line))
+	}
+	block := regexp.MustCompile(`(?ms)if \[ "\$CHANNEL" = "staging" \]; then\n(.*?)\n\s+fi`).FindStringSubmatch(workflow)
+	if block == nil || !strings.Contains(block[1], "installs this staging channel as `stageaf` beside codeaf") || !strings.Contains(block[1], line) {
+		t.Fatalf("staging notes block does not name the stageaf road:\n%v", block)
+	}
+}
+
 // releaseSurfacePrologue is the shell of the "Test release surface" step up to
 // its go test line, with the go test replaced by a line that prints the
 // arguments it would have been given.

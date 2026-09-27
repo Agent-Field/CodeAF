@@ -24,10 +24,10 @@ func assertDrawnPlanWord(t *testing.T, text, title, want string) {
 func TestAStoppedRootPageDrawsStopped(t *testing.T) {
 	row := session.PlanTaskRow{ID: "t-root", Title: "the run", Status: "cancelled", Stopped: true}
 	a, _ := planAppWith(t, []session.PlanTaskRow{row}, map[string]session.PlanTaskPage{"t-root": {Row: row}})
-	openPlanPage(t, a)
-	text := taskSheetText(a)
+	openPlanRoomNow(t, a, "t-root")
+	text := planRoomText(t, a)
 	if !strings.Contains(text, "stopped") || strings.Contains(text, "incomplete") {
-		t.Fatalf("the stopped root page draws the wrong state word:\n%s", text)
+		t.Fatalf("the stopped root's room draws the wrong state word:\n%s", text)
 	}
 }
 
@@ -65,7 +65,7 @@ func TestAStoppedRootCrossesTheHostedWireAndDrawsStopped(t *testing.T) {
 		t.Fatal(err)
 	}
 	openHostedPage(t, a)
-	text := taskSheetText(a)
+	text := planRoomText(t, a)
 	if !strings.Contains(text, "stopped") || strings.Contains(text, "incomplete") {
 		t.Fatalf("the hosted stopped-root page draws the wrong state word:\n%s", text)
 	}

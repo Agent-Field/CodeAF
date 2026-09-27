@@ -105,6 +105,28 @@ func TestTheTrailerBlockIsTwoExactLinesWithOrWithoutTheModel(t *testing.T) {
 	}
 }
 
+// Contract 2: a worker's complete message stays byte-exact, and a partial
+// message gains just the missing line instead of another trailer block.
+func TestSignCommitMessageOncePreservesAndCompletesWorkerTrailers(t *testing.T) {
+	full := "worker\n\n" + AttributionTrailers("") + "\n"
+	if got := SignCommitMessageOnce(full, ""); got != full {
+		t.Fatalf("complete message moved: %q", got)
+	}
+	workerFull := "worker\n\n assisted-by: codeaf (worker-model) \n co-authored-by: codeaf <267109073+agentfield-bot@users.noreply.github.com> \n"
+	if got := SignCommitMessageOnce(workerFull, "different-model"); got != workerFull {
+		t.Fatalf("case-folded worker lines moved: %q", got)
+	}
+	for _, row := range []struct{ message, want string }{
+		{"worker\n", SignCommitMessage("worker\n", "")},
+		{"worker\n\n" + AttributionAssistedBy + "\n", "worker\n\n" + AttributionTrailers("")},
+		{"worker\n\n" + AttributionTrailer + "\n", "worker\n\n" + AttributionTrailer + "\n" + AttributionAssistedBy},
+	} {
+		if got := SignCommitMessageOnce(row.message, ""); got != row.want {
+			t.Errorf("SignCommitMessageOnce(%q) = %q, want %q", row.message, got, row.want)
+		}
+	}
+}
+
 // THE SETTINGS ROW'S HINT IS THE TWO LINES THIS PACKAGE WRITES. internal/config
 // cannot import this package, so it spells them; this holds its spelling to the
 // one that reaches a commit.

@@ -66,7 +66,7 @@ func (e *relayEngine) Start(_ context.Context, spec RunSpec) RunSummary {
 	return summary
 }
 
-func (e *relayEngine) Land(context.Context, *plandb.Store, string, string) (RunLanding, error) {
+func (e *relayEngine) Land(context.Context, *plandb.Store, string, string, string) (RunLanding, error) {
 	e.landOnce.Do(func() { close(e.landEntered) })
 	<-e.landRelease
 	return RunLanding{}, nil

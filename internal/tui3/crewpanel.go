@@ -2021,9 +2021,14 @@ func (a *app) crewTodayWord() string {
 	if log.Tasks == 0 && log.SpentUSD <= 0 {
 		return ""
 	}
-	day := "today " + crewroute.Money(log.SpentUSD)
+	// The spend is said only when there was some (the emptiness law), and the
+	// task count then follows `today` without a separator.
+	day, sep := "today", " "
+	if log.SpentUSD > 0 {
+		day, sep = "today "+crewroute.Money(log.SpentUSD), " · "
+	}
 	if log.Tasks > 0 {
-		day += " · " + strconv.Itoa(log.Tasks) + " task"
+		day += sep + strconv.Itoa(log.Tasks) + " task"
 		if log.Tasks != 1 {
 			day += "s"
 		}

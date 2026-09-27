@@ -2010,6 +2010,25 @@ func (a *Agent) PlanTaskPage(id string) (session.PlanTaskPage, bool) {
 	return result.Page, result.OK
 }
 
+// PlanTaskWork reads the run's working copy over the wire. An engine that
+// has no such door answers "no such method", which is [PlanTaskWork.NoDoor]:
+// the work tab draws its absence sentence, the same one it draws for an
+// agent that was never given the door.
+func (a *Agent) PlanTaskWork(id string) (session.PlanTaskWork, bool) {
+	payload, err := a.c.call(nil, MethodPlanTaskWork, PlanTaskArgs{ID: id})
+	if err != nil {
+		if strings.Contains(err.Error(), "no such method") {
+			return session.PlanTaskWork{NoDoor: true}, false
+		}
+		return session.PlanTaskWork{}, false
+	}
+	var result PlanTaskWorkResult
+	if json.Unmarshal(payload, &result) != nil {
+		return session.PlanTaskWork{}, false
+	}
+	return result.Work, result.OK
+}
+
 func (a *Agent) PlanNote(id, text string) error {
 	_, err := a.c.call(nil, MethodPlanNote, PlanTextArgs{ID: id, Text: text})
 	return err

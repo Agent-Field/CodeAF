@@ -2665,6 +2665,11 @@ type Agent struct {
 	// landingOutcomes are owed landing reports returned in this turn. They are
 	// completion evidence, not another part of the person's ask.
 	landingOutcomes []string
+	// personCardAnswers are the compact lines for cards a person answered
+	// during THIS turn (checkpoint.go's [personCardAnswerLine]). Cleared when
+	// the next turn opens, with the owed asks, because a later turn is not
+	// still bound by a card this one already settled.
+	personCardAnswers []string
 	// turnResults are the tasks whose RESULTS ARRIVED IN THIS TURN, by id, in
 	// arrival order and cleared with owedAsks when a turn opens.
 	//
@@ -2798,7 +2803,20 @@ type Agent struct {
 	// block would name a landing on one turn and forget it on the next —
 	// see [deltaRemember].
 	elsewhereTold []deltaLanding
-	usage         Usage
+	// teamDigestText is the team note's block (team.go): the digest of every
+	// team this conversation manages, "" for one that manages none. It sits
+	// under mu and rides its own note at the tail, like elsewhereText, so an
+	// unchanged team lands no second note.
+	teamDigestText string
+	// teamRoleText is what this conversation is in its teams (team.go's
+	// [teamRoleBlock]), set at every step boundary before the request and
+	// landed in a note of its own ahead of the others.
+	teamRoleText string
+	// team is this conversation's account of its teams: its key, its roles and
+	// its Traffic cursors (team.go). It has its own lock and is never read
+	// under mu.
+	team  teamSeat
+	usage Usage
 	// principal is WHO THIS SESSION IS WORKING FOR (principal.go), and it is
 	// never nil: a session built with no posture at all gets a [Person], which
 	// answers every question the way this package answered it before the

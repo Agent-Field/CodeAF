@@ -192,13 +192,17 @@ func (a *app) crewTaskCap(rest string) int {
 	return crewCap
 }
 
-// crewCapWords is the cap and today's spend, or `none` for no cap.
+// crewCapWords is the cap, or `none` for no cap, and today's spend when there
+// was any — a day with nothing spent draws no $0.000 (the emptiness law).
 func (a *app) crewCapWords() string {
-	spent := config.CrewLogAt(a.profileDir).SpentUSD
+	words := "none"
 	if capUSD := config.CrewCapAt(a.profileDir); capUSD > 0 {
-		return crewroute.Money(capUSD) + " · " + crewroute.Money(spent) + " spent today"
+		words = crewroute.Money(capUSD)
 	}
-	return "none · " + crewroute.Money(spent) + " spent today"
+	if spent := config.CrewLogAt(a.profileDir).SpentUSD; spent > 0 {
+		words += " · " + crewroute.Money(spent) + " spent today"
+	}
+	return words
 }
 
 // crewApplied is the tail every crew write shares: an open panel re-reads and
@@ -315,7 +319,9 @@ func (a *app) sayTaskCrew(notice session.TaskNotice) {
 		said.landed = true
 	case session.TaskDone, session.TaskUnverified:
 		text = lead + a.crewLine(notice.Crew, notice.CostUSD) + " · not right? /redo stronger"
-		facts = []string{crewroute.Money(notice.CostUSD)}
+		if notice.CostUSD > 0 {
+			facts = []string{crewroute.Money(notice.CostUSD)}
+		}
 		said.landed = true
 	default:
 		return

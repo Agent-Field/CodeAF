@@ -1436,7 +1436,7 @@ func (a *app) setupControlsKeys(width int) string {
 		// THE WAY OUT IS SECOND AND NOT LAST. At forty columns a legend has room
 		// for about two clauses, and of everything a chooser could teach, "this
 		// key leaves without choosing" is the one a person cannot guess.
-		parts = []string{"enter takes it", "esc cancels", "↑↓ choose"}
+		parts = []string{"enter takes it", "esc cancel", "↑↓ choose"}
 		if s.modelOpen {
 			parts = append(parts, "type to narrow")
 		}

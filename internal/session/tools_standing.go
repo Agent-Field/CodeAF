@@ -495,8 +495,10 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 	switch {
 	case answer.Once:
 		// Nothing is created and nothing is scheduled. The person wanted the
-		// action, not the arrangement, so the model does it here.
-		return "do it once, now, as an ordinary turn — nothing stands. Nothing was set up.", false, nil
+		// action, not the arrangement. The result says the next step in so
+		// many words, because "nothing was set up" sent a model off to read
+		// this program's source looking for a reminder that was never missing.
+		return "Do it now as an ordinary step and report what happened. The person chose not to repeat it. Do not set it up again unless they ask. Do not investigate codeaf.", false, nil
 	case !answer.Approved:
 		if correction := strings.TrimSpace(answer.Change); correction != "" {
 			// AND THE CORRECTION MAY BE ABOUT ANY OF IT. The card's one change
@@ -1518,7 +1520,7 @@ func (a *Agent) standingAsk(id uint64, notice StandingNotice) Question {
 		Ask:     AskChoice,
 		Form:    FormCard,
 		Asker:   Asker{Kind: AskerModel},
-		Head:    StandingAskLead + strings.TrimSpace(notice.Item.Words),
+		Head:    StandingHead(notice.Item),
 		Reason:  StandingAskReason,
 		Subject: SubjectRef{Kind: SubjectOrder, ID: id, Name: strings.TrimSpace(notice.Item.Words)},
 		Options: StandingOptions(notice.Item),
@@ -1533,18 +1535,14 @@ func (a *Agent) standingAsk(id uint64, notice StandingNotice) Question {
 		// at all.
 		Blocking: Blocking{Turn: true},
 		Scope:    []AnswerScope{ScopeOnce, ScopeAlways},
+		// THE CORRECTION IS A SENTENCE, not a key that resolves. The button's
+		// own hint is what the box is for.
+		Input: InputShape{Kind: InputText, Prompt: StandingChangeHint(notice.Item)},
 	}
 }
 
-// StandingAskLead opens the sentence a standing card asks with, and the
-// PERSON'S OWN WORDS close it ([standing.Item.Words]) — the anchor every
-// surface leads this item with. It is a constant so the card, the presence file
-// and the question object cannot become three accounts of one item.
-//
-// IT IS EXPORTED BECAUSE THE SURFACE BUILDS THE SAME QUESTION, for
-// [TaskProposalLead]'s reason exactly: a window has the notice before the
-// questions lane reaches it and raises the question from that, so two builders
-// that drifted would put two questions on screen about one proposal.
+// StandingAskLead is the old opening, kept so a reader of an older line can
+// find what a card used to say. New cards open with [StandingHead].
 const StandingAskLead = "wants to keep an eye on: "
 
 // StandingAskReason is why the card is up, in the one sentence that is true of

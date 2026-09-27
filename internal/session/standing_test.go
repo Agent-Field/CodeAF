@@ -590,8 +590,19 @@ func TestStandingOnceCreatesNothing(t *testing.T) {
 	if len(store.created) != 0 {
 		t.Fatalf("a once answer created %d items", len(store.created))
 	}
-	if output := toolOutput(t, collected, "stand"); !strings.Contains(output, "do it once, now, as an ordinary turn") {
-		t.Fatalf("tool result = %q", output)
+	output := toolOutput(t, collected, "stand")
+	for _, want := range []string{
+		"Do it now as an ordinary step and report what happened.",
+		"The person chose not to repeat it.",
+		"Do not set it up again unless they ask.",
+		"Do not investigate codeaf.",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("tool result missing %q\n%s", want, output)
+		}
+	}
+	if strings.Contains(output, "\u2014") || strings.Contains(output, "\u2013") {
+		t.Errorf("tool result still has a dash: %q", output)
 	}
 }
 
@@ -1751,15 +1762,14 @@ func TestAOneOffReminderOffersNoOnce(t *testing.T) {
 	}
 }
 
-// AND EVERYWHERE ELSE IT KEEPS IT: a watch, a rule, a routine and overnight
-// work are all things a person may reasonably want done once, now.
-func TestEverythingButAOneOffReminderKeepsOnce(t *testing.T) {
+// A WATCH AND A CADENCE KEEP ONCE. A reminder has nothing to do now that is
+// different from reminding, and a rule never runs, so neither offers it.
+func TestAWatchAndACadenceKeepOnce(t *testing.T) {
 	for _, item := range []standing.Item{
 		{When: standing.When{Kind: standing.WhenProbe}, Does: standing.Action{Kind: standing.ActionSay}},
 		{When: standing.When{Kind: standing.WhenEvery}, Does: standing.Action{Kind: standing.ActionTask}},
 		{When: standing.When{Kind: standing.WhenFile}, Does: standing.Action{Kind: standing.ActionTask}},
 		{When: standing.When{Kind: standing.WhenIdle}, Does: standing.Action{Kind: standing.ActionTask}},
-		{When: standing.When{Kind: standing.WhenAt}, Does: standing.Action{Kind: standing.ActionTask}},
 	} {
 		if !StandingOnceIsAnAnswer(item) {
 			t.Fatalf("%s/%s lost its `once` answer", item.When.Kind, item.Does.Kind)

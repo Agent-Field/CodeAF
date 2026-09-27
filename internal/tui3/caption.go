@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
 // caption is the title of one discrete step of a turn's work.
@@ -271,6 +272,13 @@ func composeCaption(es []entry, from, to int) string {
 		if dominant == "reading" || dominant == "editing" {
 			noun = captionPlural(n, "file")
 		}
+		// A manager's run of team calls, said as the team work it is.
+		if dominant == "sending" {
+			noun = captionPlural(n, "message")
+		}
+		if dominant == "managing" {
+			return "managing the team"
+		}
 		if dominant == "running" {
 			// Never "running N calls" — that is the count twice.
 			return "running " + strconv.Itoa(n) + " " + captionPlural(n, "command")
@@ -303,6 +311,9 @@ func toolCaptionGloss(e entry) string {
 	case "gh", "github":
 		return "asking github"
 	}
+	if gloss := teamCaptionGloss(e); gloss != "" {
+		return gloss
+	}
 	// Fall back to the session's own hint with the tool name stripped, so
 	// "bash gh issue list…" becomes something about the work, not the verb.
 	_, gloss := toolWords(e.tool, e.text)
@@ -314,6 +325,61 @@ func toolCaptionGloss(e entry) string {
 		return bashCaption(gloss)
 	}
 	return captionWords(gloss)
+}
+
+// teamCaptionGloss is a team tool's step said as the work it is. A manager's
+// turn is mostly these calls, and with no gloss its fold read `▾ team_send 1
+// call … 1 call`: the tool's own name where the work should be, and the count
+// said twice. "" for any other tool.
+func teamCaptionGloss(e entry) string {
+	args := argsOf(e.detail.Args)
+	at := func(key string) string {
+		var out []string
+		for _, h := range strings.Fields(argString(args, key)) {
+			h = strings.TrimPrefix(h, "@")
+			if h == teamstore.ToEveryone || h == teamstore.ToRoom || h == teamstore.ToManager {
+				out = append(out, h)
+				continue
+			}
+			out = append(out, "@"+h)
+		}
+		return strings.Join(out, " ")
+	}
+	switch e.tool {
+	case "team_send":
+		if to := at("to"); to != "" {
+			return "messaging " + to
+		}
+		return "messaging the team"
+	case "team_post":
+		if to := at("to"); to != "" {
+			return "posting to " + to
+		}
+		return "posting to the team"
+	case "team_start":
+		if h := at("handle"); h != "" {
+			return "starting " + h
+		}
+	case "team_stop":
+		if h := at("handle"); h != "" {
+			return "stopping " + h
+		}
+	case "team_read":
+		if h := at("handle"); h != "" {
+			return "reading " + h
+		}
+	case "team_status":
+		return "checking the team"
+	case "team_raise":
+		return "raising a decision"
+	case "team_decide":
+		return "deciding"
+	case "team_escalate":
+		return "passing a decision up"
+	case "team_close_report":
+		return "writing the closing report"
+	}
+	return ""
 }
 
 func bashCaption(command string) string {
@@ -410,6 +476,10 @@ func captionVerb(tool string) string {
 		return "looking up"
 	case "ls":
 		return "listing"
+	case "team_send", "team_post":
+		return "sending"
+	case "team_start", "team_stop", "team_read", "team_status", "team_raise", "team_decide", "team_escalate", "team_close_report":
+		return "managing"
 	default:
 		return firstNonEmpty(tool, "working")
 	}
@@ -427,14 +497,24 @@ var captionPastVerbs = map[string]string{
 	"asking":    "asked",
 	"building":  "built",
 	"checking":  "checked",
+	"deciding":  "decided",
 	"editing":   "edited",
 	"fetching":  "fetched",
 	"listing":   "listed",
 	"looking":   "looked",
+	"managing":  "managed",
+	"messaging": "messaged",
+	"passing":   "passed",
+	"posting":   "posted",
+	"raising":   "raised",
 	"reading":   "read",
 	"running":   "ran",
 	"searching": "searched",
+	"sending":   "sent",
+	"starting":  "started",
+	"stopping":  "stopped",
 	"working":   "worked",
+	"writing":   "wrote",
 }
 
 // captionPast is the one door onto that table: a floor caption composed in the

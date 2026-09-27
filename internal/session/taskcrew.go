@@ -162,10 +162,12 @@ func (b *crewBook) latest() (uint64, *taskCrew) {
 // routeTaskCrew asks the router for one task's crew. It answers nil and no
 // error when this session has no router — the ladder's seats then stand.
 //
-// AT THE DAILY CAP THE TASK DOES NOT START, and the refusal says the cap, what
-// was spent and the two ways on: raise it, or say `--cheap`. A conversation
-// has nobody to answer a yes/no at the moment a hand-off is committed, and a
-// cap that spends anyway is not a cap.
+// AT THE DAILY CAP THE TASK DOES NOT START, whatever word it carries — `--cheap`
+// included, because a dollar cap is a cap — and the refusal says the cap, what
+// was spent and the ways on that work: raise or turn off /crew cap, or wait for
+// the day to turn over at midnight. A conversation has nobody to answer a
+// yes/no at the moment a hand-off is committed, and a cap that spends anyway is
+// not a cap.
 func (a *Agent) routeTaskCrew(ctx context.Context, row uint64, title, brief string) (*taskCrew, error) {
 	route := a.config.RouteCrew
 	if route == nil {
@@ -180,7 +182,7 @@ func (a *Agent) routeTaskCrew(ctx context.Context, row uint64, title, brief stri
 	})
 	if errors.Is(err, config.ErrCrewAtCap) {
 		spent, capUSD := config.CrewHistory(a.config.ProfileDir).SpentUSD, config.CrewCapAt(a.config.ProfileDir)
-		return nil, fmt.Errorf("today's crew spend (%s) has reached the daily cap of %s · raise it with /crew cap, or ask for this task with --cheap",
+		return nil, fmt.Errorf("today's crew spend (%s) has reached the daily cap of %s · raise it or turn it off with /crew cap, or wait until midnight",
 			crewroute.Money(spent), crewroute.Money(capUSD))
 	}
 	if err != nil {

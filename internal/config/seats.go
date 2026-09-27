@@ -296,7 +296,8 @@ func TierSeatAt(profileDir, tier string) Seat {
 		return Seat{Role: role, Model: standingCrewSeat(profileDir, seat), Source: SeatRouted}
 	}
 	role := SeatRole(tierWords(tier))
-	if written, held := persistedString(profileDir, tierKeyFor(tier)); held {
+	// A retired `auto` reads the default until the migration takes it away.
+	if written, held := persistedString(profileDir, tierKeyFor(tier)); held && !strings.EqualFold(strings.TrimSpace(written), CrewAuto) {
 		return Seat{Role: role, Model: strings.TrimSpace(written), Source: SeatPinned}
 	}
 	return Seat{Role: role, Model: freeTierModelAt(profileDir, tier), Source: SeatDefault}
