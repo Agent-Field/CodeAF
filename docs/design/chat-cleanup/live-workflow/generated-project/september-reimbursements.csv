@@ -1,0 +1,8 @@
+date,category,amount
+2026-09-10,travel,120.00
+2026-09-11,food,18.40
+2026-09-12,food,-3.40
+2026-09-13,books,25.00
+2026-09-14,food,NaN
+2026-09-15,travel,Infinity
+2026-09-16,food,typo

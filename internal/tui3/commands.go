@@ -130,6 +130,8 @@ var commands = []command{
 	// looking, /compact is one of them, and a row inserted above it would push
 	// the daily command behind a scroll (deliverables_test.go pins exactly
 	// that). So it lands as close to its pair as the law allows (home.go).
+	{name: "dismiss", desc: "hide settled task notifications here"},
+	{name: "dismiss", args: "undo", desc: "restore dismissed task notifications"},
 	{name: "home", desc: "every project and conversation on this machine"},
 	// AND THE TWO PLACES THAT HAD NO TYPED DOOR, directly under the one that
 	// does. /home, /memory, /standing, /history and /settings each open a place

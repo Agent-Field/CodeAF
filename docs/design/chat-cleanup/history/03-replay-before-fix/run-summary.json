@@ -1,0 +1,10 @@
+{
+  "source_commit": "fd6256012d37795f49c97fda421d957b0f4b2b38",
+  "host": "spark",
+  "duration_seconds": 237.69389626802877,
+  "model": "deepseek/deepseek-v4.1-flash",
+  "completed_requests": 52,
+  "tmux_session": "pr1607-continued-669746",
+  "capture": "continuous real tmux framebuffer sampled at 4Hz with wall-clock timing; adaptive real goal and followups, no replay or fabricated frames",
+  "binary_sha256": "a60aa221a7177d424261307f9f557eb591975f6a2cab74f518641c3b5a6fd0fd"
+}

@@ -1637,7 +1637,7 @@ func (a *Agent) keepPartial(partial *partialBuffer, hub *eventHub) {
 	if a.stoppedSoup(text, hub) {
 		return
 	}
-	a.record(textMessage("assistant", text))
+	a.recordPresentedAssistant(textMessage("assistant", text), provider.MessageReasoning{}, interruptedPresentation(text))
 }
 
 // stoppedSoup is the keep path's one question, and its one word to the person
@@ -1706,6 +1706,7 @@ func cutDroppedCallNote(err error) string {
 // continuation metadata actually received are kept.
 func (a *Agent) keepSteeredPartial(partial *partialBuffer, reasoning *reasoningBuffer, droppedCall bool, hub *eventHub, dropped string) {
 	text := partial.take()
+	visible := text
 	// The same law as keepPartial: a steer that cut a stream mid-soup keeps
 	// none of it, and the person is told.
 	if a.stoppedSoup(text, hub) {
@@ -1723,7 +1724,8 @@ func (a *Agent) keepSteeredPartial(partial *partialBuffer, reasoning *reasoningB
 		// the bytes actually received can appear on the next request.
 		return
 	}
-	a.recordAssistant(textMessage("assistant", text), reasoning.snapshot())
+	mark := interruptedPresentation(visible)
+	a.recordPresentedAssistant(textMessage("assistant", text), reasoning.snapshot(), mark)
 }
 
 // sealTurn stamps the turn's wall duration, folds it into the session total,
@@ -4928,7 +4930,7 @@ func (a *Agent) compact(_ context.Context, hub *eventHub) (bool, error) {
 	// the transcript it drew can carry that position straight over into the
 	// region, because the two lists are the same list (internal/tui3's replay.go).
 	// The system message needs no removing — shapeEntries drops it.
-	earlier := shapeEntries(a.messages, a.file)
+	earlier := shapeEntries(a.messages, a.file, a.presentation)
 
 	pass := compactionPass{stored: a.chatlog != nil}
 	pass.stubbed = a.stubOldOutputsLocked()

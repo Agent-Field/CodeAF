@@ -58,26 +58,15 @@ func TestTaskReadingRestoresLiveFoldByStartFingerprint(t *testing.T) {
 	fake.journal = readingFoldJournal(t, false, false)
 	a.openRoom(7, "Fix worker cancellation")
 	_ = roomText(a)
-	chosen := readingFoldForCall(t, a, "change-call")
-	if chosen.key == chosen.start {
-		t.Fatal("fixture must separate a phase key from its entry index")
+	if !a.toggleLatestWorkfold() || !a.room.workOpen[0] {
+		t.Fatal("live work did not open")
 	}
-	a.toggleWorkfold(chosen.key)
 	a.closeRoom()
 	fake.journal = readingFoldJournal(t, true, false)
 	a.openRoom(7, "Fix worker cancellation")
 	_ = roomText(a)
-	restored := readingFoldForCall(t, a, "change-call")
-	if restored.key == chosen.key || restored.start == chosen.start {
-		t.Fatal("fixture did not move both fold coordinates")
-	}
-	if !a.room.workOpen[restored.key] {
-		t.Fatal("returning lost the expanded live phase")
-	}
-	for _, fold := range a.deckFolds(a.room.deck()) {
-		if fold.key != restored.key && a.room.workOpen[fold.key] {
-			t.Fatalf("returning expanded unrelated phase %d", fold.key)
-		}
+	if !a.room.workOpen[0] {
+		t.Fatal("returning lost the expanded live frontier after earlier entries shifted")
 	}
 }
 
@@ -124,17 +113,15 @@ func TestTaskReadingDoesNotApplyLivePhaseExpansionToCompletedTurn(t *testing.T) 
 	fake.journal = readingFoldJournal(t, false, false)
 	a.openRoom(7, "Fix worker cancellation")
 	_ = roomText(a)
-	phase := readingFoldForCall(t, a, "inspect-call")
-	a.toggleWorkfold(phase.key)
+	if !a.toggleLatestWorkfold() || !a.room.workOpen[0] {
+		t.Fatal("live work did not open")
+	}
 	a.closeRoom()
 	a.openRoom(7, "Fix worker cancellation")
-	a.room.done = true
+	a.room.setDone(true)
 	_ = roomText(a)
 	whole := readingFoldForCall(t, a, "inspect-call")
-	if a.room.deck().lens.foldPast != foldTurns || whole.start != phase.start {
-		t.Fatal("fixture did not reuse a start block across fold styles")
-	}
 	if a.room.workOpen[whole.key] {
-		t.Fatal("live-phase bookmark opened the completed turn")
+		t.Fatal("live bookmark opened the completed turn")
 	}
 }

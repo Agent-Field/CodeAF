@@ -1,0 +1,17 @@
+{
+  "raw_update_marker_frames": 0,
+  "raw_legacy_interruption_marker_frames": 0,
+  "expanded_reading_task_brief_frames": 0,
+  "terminal_sizes": [
+    "140x42",
+    "90x32",
+    "140x42"
+  ],
+  "resize_rendering": "fixed 140x42 recording canvas; actual tmux window resized, narrower content occupies its real dimensions",
+  "disclosure": "Ctrl+E explicitly opened work; actual pointer click opened a test command; Ctrl+E closed work again",
+  "human_update_before_steering": "16-human-update-before-steering.txt",
+  "preserved_steering_in_narrow_view": "19-narrow-active-steering.txt",
+  "final_handoff": "36-final-tested-import-policy.txt",
+  "task_notifications": "/dismiss used after completion; final handoff retained",
+  "source": "18a6ec5f21386c1a2e1d5c6165b55a4804086c2d"
+}

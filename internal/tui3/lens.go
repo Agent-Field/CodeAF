@@ -6,9 +6,8 @@ package tui3
 // conversation — thinking alongside the model, owed every word of the dialogue
 // at full fidelity, with finished work folded away behind a chip.
 // [overseerLens] is a person CHECKING ON work another agent is doing — owed the
-// trajectory at a glance, with the machinery one gesture down. A third surface
-// picks one of these or argues, in writing, for a third; [transcriptLens] is
-// the one that argued, and its comment is the argument.
+// trajectory at a glance, with the machinery one gesture down. Nested node
+// transcripts share the task page posture and retain their own disclosure state.
 //
 // It exists because the two pages had drifted apart one knob at a time. The
 // deck carried a `clock` bool, a `showsWork` bool and a `toolTail` int, each
@@ -59,8 +58,7 @@ const (
 	foldPhases
 	// foldNone folds nothing at all. It is not a default — [foldTurns] is the
 	// zero value on purpose, because the conversation is the surface every
-	// other one is derived from — and the one page that takes it argues for it
-	// at [transcriptLens].
+	// other one is derived from. No conversation surface selects this policy.
 	foldNone
 )
 
@@ -69,8 +67,23 @@ const (
 // from being unreadable — the table also states, by omission, that [foldNone]
 // derives nothing rather than deriving an empty answer twice.
 var folders = map[foldStyle]func(d deck) map[int]workfold{
-	foldTurns:  func(d deck) map[int]workfold { return deriveWorkfolds(d.entries, d.runningTurn) },
-	foldPhases: func(d deck) map[int]workfold { return derivePhaseFolds(d.entries) },
+	foldTurns: func(d deck) map[int]workfold { return deriveWorkfolds(d.entries, d.runningTurn) },
+	foldPhases: func(d deck) map[int]workfold {
+		if d.runningTurn == 0 {
+			return deriveWorkfolds(d.entries, 0)
+		}
+		folds := derivePhaseFolds(d.entries)
+		// The current turn has one shared live window on every surface.
+		// Historical phase chips must not become extra activity rows.
+		if d.runningTurn != 0 {
+			for at, f := range folds {
+				if f.turn == d.runningTurn {
+					delete(folds, at)
+				}
+			}
+		}
+		return folds
+	},
 }
 
 // lens is the WHOLE of what one page does differently from another.
@@ -133,35 +146,7 @@ var overseerLens = lens{
 	toolTail:    (*app).roomToolTail,
 }
 
-// transcriptLens is THE THIRD SURFACE, AND HERE IS THE ARGUMENT.
-//
-// A run's page is a graph, and clicking a node in it opens that node's
-// transcript inside the graph (roomorch.go). The gesture that gets a person
-// there is already "show me what this one did" — they descended two pages to
-// ask it — and the page answers by drawing the tail of the journal under the
-// graph. Folding settled phases back up would answer a request to see the
-// machinery with a chip saying machinery happened, which is the shape ruling 1
-// reversed for the ROOM and would be reintroducing it one page down.
-//
-// AND THE LADDER WOULD DEAD-END, which is the half that settles it. That page
-// mints its fold state fresh on every read — the map is a literal in
-// [app.orchTranscriptDeck], not a field anything keeps — so a chip drawn there
-// could be pressed and would never open. A fold whose door does nothing is
-// worse than no fold, and DISCOVERABILITY BEFORE PURITY says a disclosure
-// ships with its working door or does not ship.
-//
-// THE SECOND HALF IS A LIMITATION AND NOT A PRINCIPLE, and the difference
-// matters for whoever reads this next. Only the first paragraph is an argument
-// about what a person came to that page for; the dead end is an accident of how
-// that deck is built. So if [app.orchTranscriptDeck] ever KEEPS its fold map —
-// on the run, the way a room keeps its own — this lens should collapse back into
-// [overseerLens] and be deleted, not go on standing as a third posture because
-// it happens to exist. A page that folds nothing has to re-earn that every time
-// somebody asks.
-//
-// It keeps the room's tool tail: the same reason, said about the same rows.
-var transcriptLens = lens{
-	receipts: receiptsHeader,
-	foldPast: foldNone,
-	toolTail: (*app).roomToolTail,
-}
+// Nested node transcripts use the same disclosure policy as task rooms.
+// Their maps live on the run's transcript, so every disclosure has a working
+// click and keyboard door and stays open across journal refreshes.
+var transcriptLens = overseerLens

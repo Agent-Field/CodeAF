@@ -63,6 +63,8 @@ func TestARunNoteOffTheStandingLaneLandsInTheConversation(t *testing.T) {
 	if a.orchLive != "7" {
 		t.Fatalf("the surface knows about run %q, want 7", a.orchLive)
 	}
+	a.setWorkOpen(a.conversation(), a.turn, true)
+	a.touch()
 	body := plain(frame(a))
 	if !strings.Contains(body, "audit the pricing code") {
 		t.Fatalf("the note never reached the transcript:\n%s", body)
@@ -102,6 +104,8 @@ func TestTheRunLaneRearmsItself(t *testing.T) {
 	agent.lane <- session.Event{Kind: session.EventOrchestrateNote, ID: 7, Text: "the second thing it said"}
 	drive(t, a, runCmd(a.watchRuns())...)
 
+	a.setWorkOpen(a.conversation(), a.turn, true)
+	a.touch()
 	body := plain(frame(a))
 	for _, said := range []string{"one node to start", "the second thing it said"} {
 		if !strings.Contains(body, said) {

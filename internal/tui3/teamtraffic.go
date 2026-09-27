@@ -544,7 +544,7 @@ func (a *app) trafficStarted(id, handle string, conv Conversation, err error) te
 		}
 	}
 	if t.Manager != "" && t.Manager == a.frontTabKey() {
-		a.note(a.teamManagerMark() + " started @" + handle + " · its tab is on the strip")
+		a.feed.note(a.teamManagerMark() + " started @" + handle + " · its tab is on the strip")
 	}
 	a.touch()
 	return cmd

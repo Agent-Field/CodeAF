@@ -176,7 +176,7 @@ func (a *Agent) rewindReadyLocked() error {
 func (a *Agent) cutLocked(index int) []DisplayEntry {
 	a.alignReasoningLocked()
 	dropped := a.messages[index:]
-	removed := displayEntries(dropped)
+	removed := shapeEntries(dropped, a.file, a.presentation)
 	if a.file != nil {
 		a.file.appendRewind(len(dropped))
 	}

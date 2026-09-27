@@ -1,0 +1,7 @@
+{
+  "start_seconds_in_original": 74.792,
+  "end_seconds_in_original": 254.792,
+  "duration_seconds": 180,
+  "speed": 1,
+  "edits": "contiguous interval only; actual preceding framebuffer initializes first frame; no deleted time or stretched timing"
+}

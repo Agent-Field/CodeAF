@@ -2165,3 +2165,11 @@ you closed*, including what a terminal that cannot send the key does instead.
 
 `alt+k` is the other way back: it lists every conversation on this machine, closed
 tabs included, and opening a row brings the tab and its draft back too.
+
+## Dismiss task notifications
+
+`/dismiss` hides settled task notifications in the current conversation window.
+`/dismiss undo` restores them. With an empty message box, select a task
+notification and press `delete` to dismiss just that notification. Pending
+`your call` decisions stay visible. Dismissal does not stop work, accept a
+result, delete a task, or remove its output from Sessions.

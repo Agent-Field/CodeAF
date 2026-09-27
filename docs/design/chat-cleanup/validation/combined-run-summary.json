@@ -1,0 +1,11 @@
+{
+  "source_commit": "18a6ec5f21386c1a2e1d5c6165b55a4804086c2d",
+  "host": "spark",
+  "started_at": "2026-09-27T17:23:22.013763+00:00",
+  "live_exit": 0,
+  "e2e_exit": 0,
+  "gate_exit": 2,
+  "completed_at": "2026-09-27T17:30:40.353595+00:00",
+  "final_source_commit": "18a6ec5f21386c1a2e1d5c6165b55a4804086c2d",
+  "final_tree_clean": true
+}

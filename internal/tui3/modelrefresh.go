@@ -182,7 +182,7 @@ func (a *app) modelsFetched(msg modelsFetchedMsg) {
 		err = errNoModelList
 	}
 	if err != nil {
-		a.note(ModelsFetchFailed + " · " + strings.Join(strings.Fields(err.Error()), " "))
+		a.toldNote(ModelsFetchFailed + " · " + strings.Join(strings.Fields(err.Error()), " "))
 		return
 	}
 	// AND A FETCH THAT LANDED REWROTE THE CACHE ON DISK (cmd/codeaf's v3 door),
@@ -200,7 +200,7 @@ func (a *app) modelsFetched(msg modelsFetchedMsg) {
 		a.pick.restock(list)
 	}
 	note, named := modelsNote(list, msg.shown)
-	a.noteFacts(note, named...)
+	a.toldNote(note, named...)
 }
 
 // modelsNote is the landed fetch in one line — `models · 612 · 9 new · a, b,

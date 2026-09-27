@@ -1,0 +1,17 @@
+Host: spark
+Revision: 18a6ec5f21386c1a2e1d5c6165b55a4804086c2d
+Fixture isolation: removed inherited provider overrides: OPENROUTER_API_KEY, OPENAI_API_KEY
+GOCACHE pinned before temporary-home tests; GOMAXPROCS=4 GOFLAGS=-p=2
+make --no-print-directory test-quick
+go build ./...
+go vet ./...
+# Generators execute on the build host, even when codeaf targets another OS.
+env -u GOOS -u GOARCH go generate ./internal/manual
+go test -tags=codeaf_packed_manual ./internal/manual
+--- FAIL: TestTheChatManualAnswersTheQuestionsPeopleAsk (2.23s)
+    chat_test.go:3040: "nothing became the answer after I pressed esc" should reach screen; it reached [models-and-cost questions saved-shapes-of-work tasks]
+FAIL
+FAIL	github.com/Agent-Field/codeaf/internal/manual	4.865s
+FAIL
+make[1]: *** [Makefile:300: test-packed-manual] Error 1
+make: *** [Makefile:273: pr-ready] Error 2

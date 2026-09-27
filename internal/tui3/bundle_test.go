@@ -402,7 +402,7 @@ func copyApp(t *testing.T) *app {
 	t.Helper()
 	a := newTestApp(&fakeAgent{model: "m"})
 	for _, line := range []string{"alpha", "bravo", "charlie", "delta", "echo"} {
-		a.entries = append(a.entries, entry{kind: entryNote, text: line})
+		a.entries = append(a.entries, entry{kind: entryNote, text: line, told: true})
 	}
 	a.touch()
 	drive(t, a, ctrlKey('b'))
@@ -1478,6 +1478,8 @@ func TestTheCompactionRowRunsAndThenSettlesInPlace(t *testing.T) {
 	base := time.Now()
 	a.clock = func() time.Time { return base }
 	typeLine(t, a, "keep going")
+	a.setWorkOpen(a.conversation(), a.turn, true)
+	a.touch()
 
 	// THE ROW IS ALIVE: the hint, the braille spinner, and — six seconds in — the
 	// clock, which climbs on the frame the spinner already turns on.
@@ -1535,6 +1537,8 @@ func TestACompactedEventWithNothingRunningIsBornSettled(t *testing.T) {
 	}}}
 	a := newTestApp(agent)
 	runTurn(t, a, agent, "carry on")
+	a.setWorkOpen(a.conversation(), a.turn, true)
+	a.touch()
 
 	row := findRow(t, a, "compacted from ~84k tokens")
 	if !strings.Contains(row, "⚭") || !strings.Contains(row, "──") {
@@ -3509,6 +3513,7 @@ func TestALandedNodeWritesOneCardWhateverLaneCarriedIt(t *testing.T) {
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(9, "Collect sources", session.TaskFailed, session.TaskNotice{
 		Elapsed: 4 * time.Second, Report: "the tests did not build\nsee the log",
 	})})
+	a.openDone(a.doneEntryFor(9))
 	for _, want := range []string{
 		// `failed` is deleted as a landing's word: the head reads `incomplete` and
 		// the row under it says why, in the engine's own sentence for a fault
@@ -3520,6 +3525,7 @@ func TestALandedNodeWritesOneCardWhateverLaneCarriedIt(t *testing.T) {
 			t.Fatalf("the failure card does not carry %q:\n%s", want, taskText(a))
 		}
 	}
+	a.openDone(a.doneEntryFor(9))
 	if strings.Contains(taskText(a), "see the log") {
 		t.Fatalf("the collapsed card leaked the rest of the report:\n%s", taskText(a))
 	}
@@ -3534,9 +3540,10 @@ func TestALandedNodeWritesOneCardWhateverLaneCarriedIt(t *testing.T) {
 		Elapsed: 90 * time.Second, Report: "stopped: 40 steps and no finish",
 		Merge: mergeWordAborted, Branch: "task/mix",
 	})})
+	a.openDone(a.doneEntryFor(11))
 	for _, want := range []string{
-		"Mix audio · " + taskIncompleteState + " · " + taskSpanWord(90*time.Second) +
-			" · " + taskBranchKept + " · task/mix",
+		"Mix audio · " + taskIncompleteState + " · " + taskSpanWord(90*time.Second),
+		"branch · task/mix",
 		"stopped: 40 steps and no finish",
 	} {
 		if !strings.Contains(taskText(a), want) {
@@ -4462,6 +4469,7 @@ func TestTheRoomsLiveLaneAppendsAndCoalesces(t *testing.T) {
 	lane <- session.Event{Kind: session.EventToolEnd, Tool: "read", Args: `{"path":"etc/load.go"}`}
 	clickRail(t, a, 0)
 
+	revealTestWork(a)
 	page := roomText(a)
 	if !strings.Contains(page, "Looking at the loader") {
 		t.Fatalf("the deltas did not coalesce into one block:\n%s", page)

@@ -530,6 +530,10 @@ type entry struct {
 	// Provisional prose has arrived, but the response has not yet confirmed
 	// whether it ends in an answer or a tool call. It stays in the work view.
 	provisional bool
+	// addressed is an explicit assistant update, visible while its body streams.
+	// Completion remains a separate response confirmation, so stopping a partial
+	// update cannot present it as a finished reply.
+	addressed bool
 	// The same identity can be attached while the reply is still pending. Its
 	// done flag confirms ownership before any private tail receives a work fold.
 	confirmed *responseConfirmation
@@ -1799,6 +1803,7 @@ type app struct {
 	// is replaced in place: the run's report carries the whole trail, and a step
 	// left in the transcript would be that trail written twice.
 	harnessStep string
+	harnessName string
 	// designLane is the standing subscription to what the harness DESIGNER is
 	// doing (harness.go's design lane) and designGen the generation it belongs
 	// to. It is a lane of its own rather than the turn's stream because a design
@@ -3902,7 +3907,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pictureOpenedMsg:
 		if msg.err != nil {
-			a.note(filesOpenFailedWord + drawableLine(msg.path))
+			a.toldNote(filesOpenFailedWord + drawableLine(msg.path))
 		}
 		return a, nil
 
@@ -5104,7 +5109,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case compactedMsg:
 		if msg.err != nil {
-			a.note("compact failed: " + msg.err.Error())
+			a.toldNote("compact failed: " + msg.err.Error())
 		} else {
 			a.noticeEvent(eventCompacted)
 		}
@@ -5113,13 +5118,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case landNoteMsg:
 		// A landing's whole answer is one line, the clean one and the one that
 		// could not go in alike (landcmd.go).
-		a.note(msg.line)
+		a.toldNote(msg.line)
 		return a, nil
 
 	case cacheNoteMsg:
 		// A cache errand's whole answer is one line, success and refusal alike
 		// (cachecmd.go).
-		a.note(msg.line)
+		a.toldNote(msg.line)
 		return a, nil
 
 	case spelledMsg:
@@ -5147,7 +5152,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// while the mode word and `started` stay in the note's own dim.
 			started := msg.kind + " task " + msg.id + " started · " + msg.title
 			if !a.crewAfterStarted(msg.id, started, []string{msg.id, msg.title}) {
-				a.noteFacts(started, msg.id, msg.title)
+				a.feed.noteWritten(started, false, []string{msg.id, msg.title})
 			}
 			// AND WHERE THE WORK STANDS, when the engine had something to say
 			// about it: the ground ladder's redirect, said when the work goes
@@ -5155,7 +5160,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// under the started one, in the same slot [app.noteFacts] already
 			// carries facts in; empty is every ordinary start and says nothing.
 			if msg.note != "" {
-				a.note(msg.note)
+				a.feed.note(msg.note)
 			}
 			a.noticeEvent(eventTaskStarted)
 		}
@@ -6526,10 +6531,8 @@ func (a *app) take(u session.Usage) {
 	}
 }
 
-// note is the conversation's own [feed.note] WITH ONE MORE PLACE TO SAY IT, and
-// it shadows the embedded method deliberately: `a.note(…)` is what four hundred
-// call sites already spell, and a second verb for "say this where the person is
-// standing" would be four hundred chances to pick the wrong one.
+// note answers a UI action or reports something requiring the person's attention.
+// Engine bookkeeping uses feed.note so its audience is explicit at the producer.
 func (a *app) note(text string) { a.noteWritten(text, false, nil) }
 
 // noteWritten is the one body behind all three of the app's note doors, and the
@@ -6555,6 +6558,10 @@ func (a *app) note(text string) { a.noteWritten(text, false, nil) }
 // for. The flag is raised around the ONE dispatch home makes on its own behalf.
 func (a *app) noteWritten(text string, block bool, facts []string) {
 	a.feed.noteWritten(text, block, facts)
+	if n := len(a.entries); n > 0 && a.entries[n-1].kind == entryNote {
+		a.entries[n-1].told = true
+		a.entries[n-1].stale = true
+	}
 	if a.echoHome && a.at(pageHome) {
 		a.home.say(firstLine(text), "")
 	}
@@ -6899,11 +6906,11 @@ func waitEvent(ch <-chan session.Event, gen int) tea.Cmd {
 // IT IS internal/session's OWN [foldsInto] SAID ON THIS SIDE OF THE CHANNEL. The
 // hub folds a slow subscriber's backlog by that rule; [waitEvent] folds a fast
 // stream's arrivals by this one, and both rest on the same law: EventTextDelta
-// and EventReasoning are each emitted as a kind and a text and nothing more, at
-// every one of the places that emit them. A kind that grows a second field comes
-// off BOTH lists in the same change, or each fold quietly drops it.
+// and EventReasoning preserve their kind and source audience while joining
+// text. Both folding layers keep audience boundaries, so a queued human update
+// cannot inherit an internal event's presentation.
 func foldsInto(prev, next session.Event) bool {
-	if prev.Kind != next.Kind {
+	if prev.Kind != next.Kind || prev.Addressed != next.Addressed {
 		return false
 	}
 	return prev.Kind == session.EventTextDelta || prev.Kind == session.EventReasoning
@@ -6934,6 +6941,9 @@ func (a *app) unfold(turn int) {
 // folded the transcript's newest turn while a node's page was up would be
 // folding a cluster nobody can see.
 func (a *app) bodyTurn() int {
+	if run := a.orchOf(); run != nil && run.transcript != "" && len(run.journal) > 0 {
+		return run.journal[len(run.journal)-1].turn
+	}
 	if a.room != nil {
 		return a.room.turn
 	}
@@ -7388,6 +7398,10 @@ func (a *app) slash(line string) tea.Cmd {
 			return cmd
 		}
 		return a.quit()
+
+	case "dismiss":
+		a.dismissNotifications(rest)
+		return nil
 
 	case "help":
 		// THE KEY SHEET CARRIES ITS PAYLOAD ON THE LEFT (payload.go): the chord is
@@ -8155,18 +8169,18 @@ func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
 	// conversation they were in is still running.
 	switch {
 	case replacing && a.file != "":
-		a.note("new session · " + a.hostedPath(a.file))
+		a.toldNote("new session · " + a.hostedPath(a.file))
 	case replacing:
-		a.note("new session")
+		a.toldNote("new session")
 	default:
-		a.note("new conversation · " + a.place)
+		a.toldNote("new conversation · " + a.place)
 	}
 	if conv.Notice != "" {
 		// The door had something to say about HOW this conversation came to be
 		// open — "session open elsewhere — started a new one" is the sentence
 		// that exists — and the entry line is where the first conversation's own
 		// notice lands too ([Options.Notice]).
-		a.note(conv.Notice)
+		a.toldNote(conv.Notice)
 	}
 	if key := a.convKey(a.file); key != "" {
 		a.rememberOpen(key)
@@ -8351,6 +8365,8 @@ func (a *app) interruptTurn() {
 		return
 	}
 	a.agent.Interrupt()
+	a.flushUpdatePrefix()
+	a.finishResponse(true)
 	a.state = stateInterrupted
 	// AND THE STOP IS BOUNDED FROM THIS INSTANT. See the block below
 	// [app.windingDown]: the letting-go is the engine's and it takes as long as
@@ -9330,7 +9346,7 @@ func (a *app) cacheNote(u session.Usage) {
 			line += " · saved " + savedWord(saved)
 		}
 	}
-	a.note(line)
+	a.feed.note(line)
 }
 
 // repriceCache is what the session's cache reads have been worth, worked out

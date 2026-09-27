@@ -697,11 +697,19 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			})
 
 		case "assistant":
+			var confirmation *responseConfirmation
+			if e.Answer {
+				confirmation = &responseConfirmation{done: true}
+			}
 			if text == "" {
 				continue // a step that only called tools; its calls follow
 			}
+			if len(e.ReplyTags) > 0 {
+				blocks = append(blocks, taskReplySourceEntry(e.ReplyTags, turn))
+			}
 			blocks = append(blocks, entry{
-				kind: entryAssistant, text: text, turn: turn, settled: true,
+				kind: entryAssistant, text: text, turn: turn, settled: true, confirmed: confirmation,
+				addressed: e.Addressed, cut: e.Interrupted,
 				replyTags: append([]session.TaskReplyTag(nil), e.ReplyTags...),
 			})
 
@@ -798,7 +806,7 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			// A note from a file written before the mark arrives as "user" and
 			// draws exactly as it always did.
 			blocks = append(blocks, entry{
-				kind: entryNote, text: firstLine(text), turn: turn,
+				kind: entryNote, text: text, turn: turn, cut: e.Interrupted,
 			})
 		}
 	}

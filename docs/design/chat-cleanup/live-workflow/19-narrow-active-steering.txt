@@ -1,0 +1,32 @@
+ >● codeaf   home  teams  chats  sessions  spend  settings               1 moving · $0.34
+   ◐ september reimbursement report handoff process ×   +   ▦ All
+──────────────────────────────────────────────────────────────────────────────────────────
+
+  Same query without --strict still prints food,42.50 / TOTAL,42.50, exit 2; a clean file
+  under --strict prints the report and exits 0. Suite is 35/35 green;
+  september-reimbursements.csv checksum still matches Git.
+
+  Safe import command for the handoff (now written into HANDOFF.md as the automation
+  path):
+
+    ▏ cd /tmp/codeaf-sustained-1607/final/reimbursement-project
+    ▏ python3 report.py mixed-month-sample.csv --month 2026-10 --category FOOD --csv
+  ↳ ▏ --strict
+
+  Import rule: read the CSV from stdout only on exit 0; a non-zero exit means "do not
+  import". Right now this command correctly refuses (exit 2) because line 12 food,inf is
+  unresolved — so 42.50 cannot be trusted yet. Add its real amount and rerun.
+
+  └ One important workflow detail while you work: I rerun this into an existing CSV used
+    by finance. A failed strict run must leave that existing file intact. Add a small safe
+    export command or script that writes a temporary file and replaces the target only on
+    success, and prove this with an existing output file. Keep the existing non-strict CLI
+    behavior unchanged.
+
+    ▸ Working thinking · 3s · together 84 t/s · ctrl+e                  ↑ 72.7k  ↓ 14.2k
+
+─ deepseek/deepseek-v4.1-flash · ◇ YOLO ─────    $0.34   72.7k/1M · 7%   ⠹ working · 40s ─
+ ›
+
+
+ esc interrupt            project: /tmp/codeaf-sustained-1607/final/reimbursement-project

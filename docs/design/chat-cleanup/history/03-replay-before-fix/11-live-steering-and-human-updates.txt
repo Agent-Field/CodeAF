@@ -1,0 +1,42 @@
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                   1 moving · $0.16 · sun 12:53pm
+   ◐ september reimbursement report handoff process ×   +   ▦ All
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+  The distinction, not hidden: 160.00 covers the four valid rows only. The three invalid
+  rows (lines 6–8: NaN/Infinity/typo, all rejected with a warning on stderr) are still
+  unresolved, so 160.00 is provisional — not the complete reimbursement. Fix lines 6–8
+  with real amounts (or get finance to confirm they stay excluded) and rerun before
+  treating the total as final.
+
+    · resumed · september reimbursement report handoff process
+    · esc interrupts · ctrl+c quits · ? for help
+
+  ✓ 3 tasks done · 2m05s · ctrl+o expand · /dismiss
+
+  › Before I reuse this for October, I realized a bank export can contain an entire quarter. Our CLI currently sums every date. Add a --
+    month YYYY-MM option so I can safely produce a report for one month from a mixed-month export. Keep text, JSON and CSV working, exact
+    cents, and the current invalid-row warnings. Use a separate mixed-month fixture to prove September stays correct and October excludes
+    September; leave the original reimbursement source untouched. Update the handoff with the actual command and verify the results.
+                                                                                                                                           ❮
+  checking how the tests call the internals before changing their shape
+
+  adding month filtering to report.py
+
+  writing a mixed-month fixture and exercising the new flag
+
+  adding tests for month filtering and the CLI flag
+
+  └ One important correction while you work: a malformed date must not silently disappear because the month filter skips it. Report the
+    source line on stderr and use the same partial-report exit code 2, while continuing valid rows. Please test an impossible date as well
+    as a malformed --month argument.
+
+  switching bad dates to skip-plus-warn (exit 2) instead of a hard error
+    ✎ edited 1 file in /tmp/codeaf-sustained-1607/final/reimbursement-project
+    ✎ edited 1 file in /tmp/codeaf-sustained-1607/final/reimbursement-project                                           ↑ 59.9k  ↓ 14.1k
+
+─ deepseek/deepseek-v4.1-flash (together):auto · ◇ YOLO ─────────────    $0.17 · ⟲ 86% cached   59.9k/1M · 6%   66 tok/s · ⠇ working · 52s ─
+ ›
+
+
+ esc interrupt                                                              project: /tmp/codeaf-sustained-1607/final/reimbursement-project

@@ -164,7 +164,7 @@ func TestARunningRoomFoldsThePastAndOffersCompactFrontier(t *testing.T) {
 
 // THE BRIEF, A FAILED CALL AND A CORRECTION ARE NEVER FOLDED. Each is one of the
 // five acts and each has its own reason, so each is asked separately.
-func TestTheBriefAFailureAndAnElbowNeverFold(t *testing.T) {
+func TestTheBriefAndElbowStayOutsideCompactFailures(t *testing.T) {
 	base := time.Unix(100, 0)
 	work := func(extra ...entry) []entry {
 		out := []entry{
@@ -180,9 +180,9 @@ func TestTheBriefAFailureAndAnElbowNeverFold(t *testing.T) {
 		folds   int
 	}{
 		{"plain work folds", work(), 1},
-		{"a failed call does not", work(entry{kind: entryTool, tool: "bash", turn: 1, status: toolFailed}), 0},
-		{"an ask does not", work(entry{kind: entryTask, text: "may I?", turn: 1}), 0},
-		{"a call still in flight does not", work(entry{kind: entryTool, tool: "bash", turn: 1, status: toolRunning}), 0},
+		{"a failed call folds", work(entry{kind: entryTool, tool: "bash", turn: 1, status: toolFailed}), 1},
+		{"work before an ask folds", work(entry{kind: entryTask, text: "may I?", turn: 1}), 1},
+		{"work before a live call folds", work(entry{kind: entryTool, tool: "bash", turn: 1, status: toolRunning}), 1},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -205,8 +205,8 @@ func TestTheBriefAFailureAndAnElbowNeverFold(t *testing.T) {
 		{kind: entrySteer, text: "portrait, not landscape", turn: 1, steer: &steerElbow{}},
 		{kind: entryAssistant, text: "Both rendered.", turn: 1, settled: true},
 	}
-	if folds := derivePhaseFolds(steered); len(folds) != 0 {
-		t.Fatalf("a chip covered a correction: %v", folds)
+	if folds := derivePhaseFolds(steered); len(folds) != 1 || folds[1].answer != 2 {
+		t.Fatalf("work must fold only up to the correction: %v", folds)
 	}
 }
 
@@ -286,8 +286,8 @@ func TestACorrectionTypedIntoARunningTaskBreaksThePhaseFold(t *testing.T) {
 	if !strings.Contains(page, "Redrawn in portrait.") {
 		t.Fatalf("the paragraph the correction bought is not standing:\n%s", page)
 	}
-	if strings.Contains(page, "generate_image") {
-		t.Fatalf("the work after the correction did not fold into its chip:\n%s", page)
+	if !strings.Contains(page, "generate_image") {
+		t.Fatalf("the work after the correction lost its compact activity:\n%s", page)
 	}
 }
 
