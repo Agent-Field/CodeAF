@@ -30,7 +30,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -224,13 +223,13 @@ func machineDayStart(now time.Time) time.Time {
 // against — the person's own daily budget row, which is the rail a firing is
 // held to as well (cmd/codeaf's v3StandingDailyRail).
 //
-// IT IS ONE SETTING READ IN ONE PLACE, and the pulse is the one line that draws
-// it — as the denominator under what has been spent, and only where a machine
-// has an allowance at all (pulse.go's [app.pulseSegments]).
+// It includes today's raises through the same reading that admits work. The
+// pulse draws it as the denominator under what has been spent, and only where
+// a machine has an allowance at all (pulse.go's [app.pulseSegments]).
 func (a *app) machineAllowance() float64 {
-	rail, err := config.DailyBudgetUSDAt(a.profileDir)
-	if err != nil || rail <= 0 {
+	daily, err := session.DailySpendAt(a.profileDir, a.now())
+	if err != nil || daily.Limit <= 0 {
 		return 0
 	}
-	return rail
+	return daily.Limit
 }

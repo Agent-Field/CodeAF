@@ -3114,7 +3114,9 @@ colour.
 **A chat turn and a `/task` both stop before a provider call when today's daily limit
 is already spent.** The card offers `Raise to $X` and `Stop for today`, just like a
 bounded team. Raising persists the larger limit for today's local day and resumes the
-held turn or task; stopping says `today's spending limit of $X is spent, so nothing was
+held turn or task. `/task` and approved `propose_task` work are not started or
+listed as working while this card waits. The top bar shows the raised limit.
+Stopping says `today's spending limit of $X is spent, so nothing was
 started`. The per-conversation limit and a task's own cap remain separate rails.
 
 `codeaf do` has no such call: when today's spending limit is already spent it starts
