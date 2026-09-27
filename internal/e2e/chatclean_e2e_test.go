@@ -381,10 +381,36 @@ func TestCleanChatSteering(t *testing.T) {
 
 func cleanChatHasAnswer(screen, want string) bool {
 	for _, line := range strings.Split(screen, "\n") {
+		// The closed task rail paints its handle in the rightmost gutter. A
+		// coincident answer row still contains only the answer in the chat column.
+		if strings.HasSuffix(line, "❮") {
+			before := strings.TrimSuffix(line, "❮")
+			if strings.HasSuffix(before, "    ") {
+				line = before
+			}
+		}
 		line = strings.Trim(strings.ReplaceAll(strings.TrimSpace(line), " / ", " "), ". ")
 		if line == want {
 			return true
 		}
 	}
 	return false
+}
+
+func TestCleanChatAnswerIgnoresOnlyTheRailGutter(t *testing.T) {
+	for _, tc := range []struct {
+		line string
+		want bool
+	}{
+		{"  Still ready for review", true},
+		{"  Still ready for review.                    ❮", true},
+		{"  Still ready for review❮", false},
+		{"  Still ready for review but not yet", false},
+		{"  › Still ready for review", false},
+		{"  › Answer with only the words Still / ready / for / review.", false},
+	} {
+		if got := cleanChatHasAnswer(tc.line, "Still ready for review"); got != tc.want {
+			t.Errorf("answer match for %q = %v, want %v", tc.line, got, tc.want)
+		}
+	}
 }
