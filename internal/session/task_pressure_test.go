@@ -240,6 +240,7 @@ func TestMachineAdmissionRefreshesBothCeilingsWithoutRestart(t *testing.T) {
 	} else if err := row.Apply("0"); err != nil {
 		t.Fatalf("turn off task.min_free_mb: %v", err)
 	}
+	graph.runFrontier()
 	if !graph.governor.admits(0) {
 		t.Fatal("the graph stayed held after both ceilings were turned off")
 	}

@@ -264,3 +264,33 @@ func TestTheTopLineSpellsTheLimitTheWayEverySurfaceSpellsIt(t *testing.T) {
 		}
 	}
 }
+
+func TestTopBarUsesRaisedDailyLimit(t *testing.T) {
+	t.Setenv("CODEAF_DAILY_BUDGET", "0.01")
+	lab := newHomeLab(t)
+	now := moneyFixtureNoon()
+	here := lab.workspace("alpha")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "here", here, now)
+	a := lab.app(mine)
+	a.clock = func() time.Time { return now }
+	raw, err := json.Marshal(session.UsageLine{At: now, Session: "aaaa000000000001", Model: "m", Calls: 1, USD: 0.011})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(lab.root, session.UsageLedgerName), append(raw, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.readMachineMoney(now)
+	if a.machine.ceiling != 0.01 {
+		t.Fatalf("base limit = %v", a.machine.ceiling)
+	}
+	if err := session.RaiseDailySpend(a.profileDir, now, 0.02, "test"); err != nil {
+		t.Fatal(err)
+	}
+	a.readMachineMoney(now)
+	got := plain(a.pulseParts(now, a.pal, pulseWhole).money)
+	want := "$0.01" + pulseAllowanceGap + "$0.02"
+	if got != want {
+		t.Fatalf("top bar money = %q, want %q", got, want)
+	}
+}

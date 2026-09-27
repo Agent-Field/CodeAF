@@ -829,6 +829,9 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 		}
 		return withElsewhere("the person declined this task", elsewhere), false, nil
 	}
+	if err := a.awaitTaskDailyBudget(ctx); err != nil {
+		return err.Error(), true, nil
+	}
 	if redirect := strings.TrimSpace(answer.Redirect); redirect != "" {
 		// APPENDED, never merged into the brief's prose. The person's words
 		// arrive last and in their own voice, so the node reads them as the

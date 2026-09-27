@@ -847,3 +847,48 @@ func TestDoOnTheRunEngineSeatsAnUnpinnedCheckOnTheCrewsChecker(t *testing.T) {
 
 // bound is a named slot count for a request, the way the flag would name one.
 func bound(n int) *int { return &n }
+
+func TestDoAuthenticationFailureReachesHumanAndJSON(t *testing.T) {
+	for _, asJSON := range []bool{false, true} {
+		name := "human"
+		if asJSON {
+			name = "json"
+		}
+		t.Run(name, func(t *testing.T) {
+			beltRunEnv(t)
+			seat := &beltSeat{ever: func(context.Context, []ai.Message) (*ai.Response, error) {
+				return nil, errors.New("API error (401): Missing Authentication header")
+			}}
+			var stdout, stderr strings.Builder
+			err := doErrand(doRequest{
+				task: "write out.txt", workspace: t.TempDir(), asJSON: asJSON,
+				timeout: 10 * time.Second, slots: bound(1), stdout: &stdout, stderr: &stderr,
+				newBeltCompleter: func(string) session.Completer { return seat },
+			})
+			if code := exitCodeOf(err); code != 2 {
+				t.Fatalf("auth refusal exited %d; want 2: %v", code, err)
+			}
+			want := "your key was not accepted for this model — the shell's OPENROUTER_API_KEY"
+			if asJSON {
+				var envelope struct {
+					Error string `json:"error"`
+					Stop  string `json:"stop"`
+				}
+				if err := json.Unmarshal([]byte(stdout.String()), &envelope); err != nil {
+					t.Fatal(err)
+				}
+				if envelope.Error != want || envelope.Stop != "incomplete" {
+					t.Errorf("receipt error=%q stop=%q; want %q and incomplete", envelope.Error, envelope.Stop, want)
+				}
+			} else if !strings.Contains(stderr.String(), want) {
+				t.Errorf("human stderr lacks auth ending %q: %q", want, stderr.String())
+			}
+			if seat.seen != 1 {
+				t.Errorf("auth refusal made %d calls; want 1", seat.seen)
+			}
+			if strings.Contains(stdout.String()+stderr.String(), "test-key") {
+				t.Error("the key reached the output")
+			}
+		})
+	}
+}

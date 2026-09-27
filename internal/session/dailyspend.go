@@ -39,6 +39,8 @@ type dailyBudgetWait struct {
 	ctx      context.Context
 	stream   *eventStream
 	release  func()
+	// Task admission waits on its existing caller rather than opening a turn.
+	taskResult chan error
 }
 
 type dailyBudgetReached struct{ spend DailySpend }
@@ -155,28 +157,102 @@ func dailyBudgetQuestion(id uint64, spend DailySpend) Question {
 	}
 }
 
-// holdDailyBudgetLocked raises the same question card used by other bounded
-// work and keeps the original Submit stream until the person decides.
+// holdDailyBudgetLocked keeps the original Submit stream until the person
+// decides, so raising the limit resumes the same turn.
 func (a *Agent) holdDailyBudgetLocked(ctx context.Context, user userMessage, spend DailySpend) <-chan Event {
+	stream := newEventStream()
+	wait := &dailyBudgetWait{user: user, ctx: ctx, stream: stream}
+	if err := a.openDailyBudgetLocked(spend, wait); err != nil {
+		refuseOn(stream, err)
+	}
+	return stream.out
+}
+
+// openDailyBudgetLocked publishes one budget question for either a turn or a
+// task admission. It always releases mu; publication itself needs that lock.
+func (a *Agent) openDailyBudgetLocked(spend DailySpend, wait *dailyBudgetWait) error {
+	if a.closed {
+		a.mu.Unlock()
+		return errAgentClosed
+	}
 	if a.dailyBudget != nil {
 		a.mu.Unlock()
-		return refusedStream(errors.New("today's spending limit is waiting for your answer"))
+		return errors.New("today's spending limit is waiting for your answer")
 	}
 	a.dailyBudgetSeq++
 	q := dailyBudgetQuestion(a.dailyBudgetSeq, spend)
 	q.Asked = time.Now()
-	stream := newEventStream()
-	a.dailyBudget = &dailyBudgetWait{question: q, limit: spend.Limit, raiseTo: teams.RaiseTo(spend.Limit), user: user, ctx: ctx, stream: stream}
+	wait.question, wait.limit, wait.raiseTo = q, spend.Limit, teams.RaiseTo(spend.Limit)
+	a.dailyBudget = wait
 	a.mu.Unlock()
 	release := a.presenceAskingWhole(q, nil)
 	a.mu.Lock()
-	if a.dailyBudget != nil && a.dailyBudget.question.ID == q.ID {
-		a.dailyBudget.release = release
+	if a.dailyBudget == wait {
+		wait.release = release
+		a.mu.Unlock()
 	} else {
+		a.mu.Unlock()
 		release()
 	}
-	a.mu.Unlock()
-	return stream.out
+	return nil
+}
+
+// awaitTaskDailyBudget gates both typed tasks and approved proposals before
+// either engine admits work. A raise is checked again because another window
+// may have spent beyond even that limit while the question was standing.
+func (a *Agent) awaitTaskDailyBudget(ctx context.Context) error {
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		a.mu.Lock()
+		closed := a.closed
+		a.mu.Unlock()
+		if closed {
+			return errAgentClosed
+		}
+		daily, err := DailySpendAt(a.config.ProfileDir, time.Now(), a.config.usageLedger)
+		if err != nil {
+			return err
+		}
+		if !daily.Reached {
+			return nil
+		}
+		wait := &dailyBudgetWait{taskResult: make(chan error, 1)}
+		a.mu.Lock()
+		if err := a.openDailyBudgetLocked(daily, wait); err != nil {
+			return err
+		}
+		select {
+		case err := <-wait.taskResult:
+			if err != nil {
+				return err
+			}
+		case <-ctx.Done():
+			a.mu.Lock()
+			if a.dailyBudget == wait {
+				a.dailyBudget = nil
+				a.mu.Unlock()
+				wait.finish(ctx.Err())
+			} else {
+				a.mu.Unlock()
+			}
+			return ctx.Err()
+		}
+	}
+}
+
+// finish releases the card before its caller can report a refusal or a start.
+// The owner detaches the wait under mu first, so exactly one ending reaches it.
+func (w *dailyBudgetWait) finish(err error) {
+	if w.release != nil {
+		w.release()
+	}
+	if w.taskResult != nil {
+		w.taskResult <- err
+	} else if err != nil {
+		refuseOn(w.stream, err)
+	}
 }
 
 func (a *Agent) resolveDailyBudget(answer Answer) error {
@@ -189,13 +265,8 @@ func (a *Agent) resolveDailyBudget(answer Answer) error {
 	}
 	if key == "2" {
 		a.dailyBudget = nil
-		release := wait.release
-		stream := wait.stream
 		a.mu.Unlock()
-		if release != nil {
-			release()
-		}
-		refuseOn(stream, errors.New(DailySpendAction(wait.limit)))
+		wait.finish(errors.New(DailySpendAction(wait.limit)))
 		return nil
 	}
 	if key != "1" {
@@ -213,11 +284,10 @@ func (a *Agent) resolveDailyBudget(answer Answer) error {
 		return errAnswerGone
 	}
 	a.dailyBudget = nil
-	a.startTurnLocked(wait.ctx, wait.user, wait.stream)
-	release := wait.release
-	a.mu.Unlock()
-	if release != nil {
-		release()
+	if wait.taskResult == nil {
+		a.startTurnLocked(wait.ctx, wait.user, wait.stream)
 	}
+	a.mu.Unlock()
+	wait.finish(nil)
 	return nil
 }

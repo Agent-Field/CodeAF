@@ -191,11 +191,13 @@ type admissionGovernor struct {
 	read func() (machineReading, bool)
 	// now is the clock the TTL is measured against, seamed with read.
 	now func() time.Time
-	// settings reads the two live ceilings and the one generation that says
-	// whether the profile has changed. Graph and run admission use the same
-	// refresh seam so a held task does not need an engine restart.
+	// Graph and run admission share one refresh before each poll. The file
+	// stamp notices writes from the chat process; the generation also catches
+	// local writes on filesystems whose timestamps cannot distinguish them.
 	settings           func() (float64, int)
 	settingsGeneration uint64
+	settingsPath       string
+	settingsFile       os.FileInfo
 
 	sample machineReading
 	known  bool
@@ -366,7 +368,7 @@ func newAdmissionGovernor(maxLoad float64, minFreeMB int) *admissionGovernor {
 }
 
 // newAdmissionGovernorForProfile uses the startup values until the profile's
-// persisted settings generation changes. A profile-backed governor is kept even
+// settings file or local write generation changes. A profile-backed governor is kept even
 // when both startup values are off because a later settings write may turn a
 // ceiling on while this session is holding work.
 func newAdmissionGovernorForProfile(maxLoad float64, minFreeMB int, profileDir string) *admissionGovernor {
@@ -380,6 +382,8 @@ func newAdmissionGovernorForProfile(maxLoad float64, minFreeMB int, profileDir s
 	governor.settings = func() (float64, int) {
 		return config.TaskMaxLoadAt(profileDir), config.TaskMinFreeMBAt(profileDir)
 	}
+	governor.settingsPath = config.BudgetConfigPath(profileDir)
+	governor.settingsFile, _ = os.Stat(governor.settingsPath)
 	governor.settingsGeneration = config.SettingsGeneration()
 	return governor
 }
@@ -388,11 +392,12 @@ func (g *admissionGovernor) refreshSettings() {
 	if g == nil || g.settings == nil {
 		return
 	}
-	// The generation is an in-memory counter, so the common case reads no file:
-	// the profile is read only after a settings write has moved it.
+	// A poll spends one stat on an unchanged profile, never a read or parse.
+	// This happens before the graph lock; admits only reads the held ceilings.
+	file, _ := os.Stat(g.settingsPath)
 	generation := config.SettingsGeneration()
 	g.mu.Lock()
-	unchanged := generation == g.settingsGeneration
+	unchanged := generation == g.settingsGeneration && sameSettingsFile(file, g.settingsFile)
 	g.mu.Unlock()
 	if unchanged {
 		return
@@ -401,8 +406,17 @@ func (g *admissionGovernor) refreshSettings() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.maxLoad, g.minFreeMB = maxLoad, minFreeMB
-	g.settingsGeneration = generation
+	g.settingsGeneration, g.settingsFile = generation, file
 	g.heldBy = ""
+}
+
+// sameSettingsFile treats creation and removal as changes too, because a fresh
+// profile may acquire its first settings while a task is already held.
+func sameSettingsFile(a, b os.FileInfo) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return a.Size() == b.Size() && a.ModTime().Equal(b.ModTime())
 }
 
 // observe asks the host, at most once per taskPressureTTL, and learns from
@@ -486,7 +500,6 @@ func (g *admissionGovernor) admits(running int) bool {
 	if g == nil {
 		return true
 	}
-	g.refreshSettings()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if !g.known {
