@@ -316,8 +316,8 @@ func (f *File) subtreeKeys(id string) []string {
 
 // poolAbove is the team owning the capped pool a team directly under parent
 // counts toward, and that pool's cap: "" and 0 for a team at the top or under
-// no cap. An inherited cap is its owner's one pool; the profile's default cap
-// is measured over the whole chain, so its pool is the top of it.
+// no cap. Effective has already resolved whether a profile default belongs to
+// parent or whether an explicit ancestor owns the pool.
 func (f *File) poolAbove(parent string, d Defaults) (string, float64) {
 	if parent == "" {
 		return "", 0
@@ -326,19 +326,7 @@ func (f *File) poolAbove(parent string, d Defaults) (string, float64) {
 	if e.CapUSDDay <= 0 {
 		return "", 0
 	}
-	switch e.CapFrom.Kind {
-	case OriginTeam, OriginAncestor:
-		return e.CapFrom.Team, e.CapUSDDay
-	case OriginSettings:
-		top := parent
-		for _, a := range f.Ancestors(parent) {
-			if !a.Closed() {
-				top = a.ID
-			}
-		}
-		return top, e.CapUSDDay
-	}
-	return "", 0
+	return e.CapFrom.Team, e.CapUSDDay
 }
 
 // MoveNotice is one Traffic line a committed move writes: Team is whose log,
