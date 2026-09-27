@@ -344,6 +344,9 @@ func contextGlyphs(pal palette) contextGlyph {
 // manual the same question.
 func (a *app) contextHeadRule(inner int, glyph contextGlyph) string {
 	title := contextTitleWord
+	if a.folder.forWorkspace {
+		title = "choose workspace"
+	}
 	if a.folder.forTarget {
 		// THE SHEET HOME OPENED IS NOT ADDING CONTEXT TO ANYTHING. It is choosing
 		// where the next conversation opens (folderpick.go's [folderPick.forTarget]),
