@@ -243,6 +243,24 @@ func TestAnUncodedMidStreamErrorIsABadGatewayAndNotASuccess(t *testing.T) {
 	}
 }
 
+func TestTextOnlyAuthenticationStreamRefusalKeepsItsStatus(t *testing.T) {
+	for _, row := range []struct {
+		message string
+		status  int
+	}{
+		{"API error (401): Missing Authentication header", http.StatusUnauthorized},
+		{"API error (403): access denied", http.StatusForbidden},
+	} {
+		t.Run(row.message[:3], func(t *testing.T) {
+			raw := json.RawMessage(`{"message":"` + row.message + `"}`)
+			refusal, ok := RefusalFrom(streamRefusal(raw))
+			if !ok || refusal.Status != row.status {
+				t.Fatalf("text-only refusal = %#v, want status %d", refusal, row.status)
+			}
+		})
+	}
+}
+
 // ledgerClient is a router-shaped client with a velocity ledger of its own and
 // a handler that reads the request body itself — which is why it is not
 // [routedClient]: that one drains the body into its capture before the handler

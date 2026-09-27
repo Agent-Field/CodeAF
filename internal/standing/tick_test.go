@@ -863,6 +863,7 @@ func TestTickWritesWhatEachRunCameTo(t *testing.T) {
 		kind   string
 		reaped bool
 	}{
+		{"said", false},
 		{"landed", false},
 		{"needs-you", false},
 		{OutcomeNothing, true},

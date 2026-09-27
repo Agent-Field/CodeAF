@@ -307,49 +307,85 @@ func (a *Agent) UnlandedChanges() []StandingChange {
 		})
 		seen[tree.Folder] = true
 	}
-	for _, row := range a.keptRunRows() {
-		if row.Copy == nil || seen[row.Copy.Root] {
+	for _, kept := range a.keptBranches() {
+		if seen[kept.root] {
 			continue
 		}
 		out = append(out, StandingChange{
-			Folder: row.Copy.Root,
-			Name:   filepath.Base(row.Copy.Root),
-			Files:  len(row.Changed),
+			Folder: kept.root,
+			Name:   filepath.Base(kept.root),
+			Files:  len(kept.files),
 		})
-		seen[row.Copy.Root] = true
+		seen[kept.root] = true
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
 
-func (a *Agent) keptRunRows() []TaskNotice {
+type keptBranch struct {
+	root   string
+	branch string
+	files  []string
+	node   *TaskNode
+	runID  uint64
+}
+
+// keptBranches is the one source for branches that automatic landing left on
+// disk. It reads ordinary task nodes and adaptive run rows together so the
+// standing chip, its preview, and /land cannot disagree about what is waiting.
+func (a *Agent) keptBranches() []keptBranch {
 	g := a.tasker()
 	if g == nil {
 		return nil
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	var out []TaskNotice
-	for _, row := range g.runRowsLocked() {
-		if !row.State.settled() || row.Copy == nil || strings.TrimSpace(row.Copy.Root) == "" || row.Branch == "" || len(row.Changed) == 0 {
+	var out []keptBranch
+	for _, id := range g.order {
+		node := g.nodes[id]
+		if node == nil || !keptBranchOutcome(node.merge) || strings.TrimSpace(node.branch) == "" || !node.state.settled() {
 			continue
 		}
-		switch row.Merge {
-		case mergeKept, mergeConflicted, mergeAborted:
-			out = append(out, row)
+		// A task's Ground is the repository root recorded when its branch was
+		// cut, so this read stays in memory while the composer redraws it.
+		root := strings.TrimSpace(node.Ground)
+		if root == "" {
+			root = a.config.Workspace
 		}
+		root = canonicalPath(root)
+		if root == "" {
+			continue
+		}
+		out = append(out, keptBranch{root: root, branch: node.branch,
+			files: append([]string(nil), node.changed...), node: node})
+	}
+	for _, row := range g.runRowsLocked() {
+		if !row.State.settled() || row.Copy == nil || strings.TrimSpace(row.Copy.Root) == "" || row.Branch == "" || !keptBranchOutcome(row.Merge) {
+			continue
+		}
+		out = append(out, keptBranch{root: canonicalPath(row.Copy.Root), branch: row.Branch,
+			files: append([]string(nil), row.Changed...), runID: row.ID})
 	}
 	return out
 }
 
-func (a *Agent) keptRunFor(folder string) (TaskNotice, bool) {
+func keptBranchOutcome(merge string) bool {
+	switch merge {
+	case mergeKept, mergeConflicted, mergeAborted:
+		return true
+	default:
+		return false
+	}
+}
+
+func (a *Agent) keptBranchFor(folder string) (keptBranch, bool) {
 	folder = canonicalPath(strings.TrimSpace(folder))
-	for _, row := range a.keptRunRows() {
-		if canonicalPath(row.Copy.Root) == folder {
-			return row, true
+	for _, kept := range a.keptBranches() {
+		if canonicalPath(kept.root) == folder {
+			return kept, true
 		}
 	}
-	return TaskNotice{}, false
+	return keptBranch{}, false
 }
 
 // standingTreeFor is the copy this conversation holds of one folder, and
@@ -682,13 +718,18 @@ func (a *Agent) noteStandingWrite(tree StandingTree, aimed string) {
 // waiting — without doing any of it. It is what the card shows before the
 // person says yes.
 func (a *Agent) LandingFor(folder string) (FolderLanding, bool) {
-	tree, ok := a.standingTreeFor(a.standingName(folder))
-	if !ok || len(tree.Wrote) == 0 {
+	name := a.standingName(folder)
+	tree, ok := a.standingTreeFor(name)
+	if ok && len(tree.Wrote) > 0 {
+		files := make([]string, len(tree.Wrote))
+		copy(files, tree.Wrote)
+		return FolderLanding{Folder: tree.Folder, Name: filepath.Base(tree.Folder), Files: files}, true
+	}
+	kept, ok := a.keptBranchFor(name)
+	if !ok {
 		return FolderLanding{}, false
 	}
-	files := make([]string, len(tree.Wrote))
-	copy(files, tree.Wrote)
-	return FolderLanding{Folder: tree.Folder, Name: filepath.Base(tree.Folder), Files: files}, true
+	return FolderLanding{Folder: kept.root, Name: filepath.Base(kept.root), Files: append([]string(nil), kept.files...)}, true
 }
 
 // standingName reads whatever a surface was given — a full path, or the
@@ -709,6 +750,11 @@ func (a *Agent) standingName(name string) string {
 	for _, tree := range a.StandingTrees() {
 		if tree.Folder == folder || filepath.Base(tree.Folder) == name {
 			return tree.Folder
+		}
+	}
+	for _, kept := range a.keptBranches() {
+		if kept.root == folder || filepath.Base(kept.root) == name {
+			return kept.root
 		}
 	}
 	return folder
@@ -734,8 +780,8 @@ func (a *Agent) Land(folder string) (FolderLanding, error) {
 	if name == "" {
 		return FolderLanding{}, errors.New("nothing is waiting to go into a folder")
 	}
-	if row, ok := a.keptRunFor(name); ok {
-		return a.landKeptRun(row)
+	if kept, ok := a.keptBranchFor(name); ok {
+		return a.landKeptBranch(kept)
 	}
 	tree, ok := a.standingTreeFor(name)
 	if !ok {
@@ -792,13 +838,13 @@ func (a *Agent) Land(folder string) (FolderLanding, error) {
 	return landing, nil
 }
 
-// landKeptRun is the explicit /land road for a run branch that automatic
-// landing deliberately left alone. The person has named this action, so the
-// protected-branch guard no longer applies; git still refuses dirty or
-// conflicting ground and the retained row remains the recovery path then.
-func (a *Agent) landKeptRun(row TaskNotice) (FolderLanding, error) {
-	root, branch := canonicalPath(row.Copy.Root), strings.TrimSpace(row.Branch)
-	landing := FolderLanding{Folder: root, Name: filepath.Base(root), Files: append([]string(nil), row.Changed...)}
+// landKeptBranch is the explicit /land road for any branch automatic landing
+// deliberately left alone. The person has named this action, so the protected
+// branch guard no longer applies; git still refuses dirty or conflicting ground
+// and the retained source remains the recovery path then.
+func (a *Agent) landKeptBranch(kept keptBranch) (FolderLanding, error) {
+	root, branch := canonicalPath(kept.root), strings.TrimSpace(kept.branch)
+	landing := FolderLanding{Folder: root, Name: filepath.Base(root), Files: append([]string(nil), kept.files...)}
 	unlock := lockGitRoot(a.placeHere(), root)
 	defer unlock()
 	if _, err := git(root, "merge", "--no-edit", branch); err != nil {
@@ -809,8 +855,15 @@ func (a *Agent) landKeptRun(row TaskNotice) (FolderLanding, error) {
 	}
 	landing.Merged = mergeMerged
 	_, _ = git(root, "branch", "-d", branch)
-	if graph := a.tasker(); graph != nil {
-		graph.keepRunRows(row.ID, nil)
+	if kept.node != nil {
+		kept.node.graph.mu.Lock()
+		kept.node.merge = mergeMerged
+		kept.node.keptReason = ""
+		kept.node.graph.mu.Unlock()
+		kept.node.graph.checkpoint()
+		a.emitTaskUpdate(kept.node.notice())
+	} else if graph := a.tasker(); graph != nil {
+		graph.keepRunRows(kept.runID, nil)
 	}
 	return landing, nil
 }

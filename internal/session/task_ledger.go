@@ -75,6 +75,9 @@ func landHome(node *TaskNode, tree taskTree, changed []string, sign gitSignature
 	// is decided where the refusal happened, not read back out of the sentence
 	// afterwards (task_land_unsaved.go's [landingRefusal]).
 	merge, detail, clashing, why := tree.comeHome(node.title(), ledger, sign.ranOn(signedModel(node)))
+	if merge == mergeKept {
+		node.setKeptReason(tree.keptLandingReason())
+	}
 	// AND THE NAMES ARE KEPT ON THE NODE, at the one moment they exist. git's index
 	// held them while the refused merge stood and was made to give them back before
 	// the merge was abandoned (groundcarry.go's [taskTree.refuseMerge]); a row drawn

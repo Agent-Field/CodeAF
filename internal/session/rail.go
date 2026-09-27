@@ -29,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"time"
 )
 
 // SetSpendRail binds a setting written in an open chat before the next turn
@@ -59,6 +60,9 @@ var ErrSpendRail = errors.New("session: the spend rail was reached")
 func (a *Agent) railBlockLocked() error {
 	if err := a.launchBudgetBlockLocked(); err != nil {
 		return err
+	}
+	if daily, err := DailySpendAt(a.config.ProfileDir, time.Now(), a.config.usageLedger); err == nil && daily.Reached {
+		return dailyBudgetReached{spend: daily}
 	}
 	rail := a.spendRailUSD()
 	if rail <= 0 {

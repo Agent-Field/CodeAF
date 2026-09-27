@@ -1818,7 +1818,7 @@ These are the sentences and what each one means.
 | what you read | what happened | what codeaf does |
 | --- | --- | --- |
 | `that model is not being served any more` | the router has no machines behind that model id at all | moves to your next fallback model at once, with no tries wasted |
-| `your key was not accepted for this model` | a key that is missing, not permitted for this model, or out of balance | stops and tells you — no machine, shape or model changes this |
+| `your key was not accepted for this model` | a key that is missing, not permitted for this model, or out of balance | stops and tells you which safe key source answered — never the key itself, and never a retry |
 | `this conversation got too long for the model` | the transcript is past the model's window | shortens the conversation once and asks the same question again |
 | `this conversation is too long for the model even after shortening it` | it still did not fit | stops; start a new conversation, or `/model` to one with a bigger window |
 | `the request could not be sent as it was` | the router read the request itself and refused it | the request was already retried with its optional parts taken off; nothing else will help |
@@ -1857,12 +1857,13 @@ different machine serving the same model. Before this, three attempts in a row c
 three deliveries of the same request to the same endpoint — a measured run lost an evening
 to exactly that.
 
-**And a refusal that names no endpoint is not retried at all.** If the router refused on
-its own account, it read the request codeaf built and said no to it — every endpoint alive
-would say the same thing, so asking again at 2s, 4s and 8s only spends the time to be told
-three times. The turn ends immediately with the refusal instead. That is the whole rule:
-**named an endpoint → try another one; named nobody → stop**. It is not a list of status
-codes, so it works the same on a `400`, a `403` or anything else a router invents.
+**And an authentication refusal is not retried at all.** A `401` or `403` means the key or
+its permission was refused, so it stops and names whether the key came from the shell's
+`OPENROUTER_API_KEY`, the shell's `OPENAI_API_KEY`, or the key saved in your profile.
+It is never treated as a provider `5xx`. A refusal that names no endpoint is also not retried:
+if the router refused on its own account, it read the request codeaf built and said no to it —
+every endpoint alive would say the same thing about the same bytes. The turn ends immediately.
+Other routed refusals are not decided by status alone.
 
 **Where to read it afterwards.** Every failed request now writes a line into the session
 file — the model, the endpoint, the status, the endpoint's name, its own words, which
@@ -2996,8 +2997,11 @@ one it was:
   row to `none` and it never asks.
 - **`per conversation` — it stops.** `conversation limit reached · $2.05 spent of $2 ·
   /budget changes it`. The section on that below has the whole of it.
-- **`per day` — the day's work waits.** When the day's calls reach the daily limit, new
-  work waits for midnight or for you to raise it. `/budget 800` raises it where you stand.
+- **`per day` — the day's work asks before it starts.** When today's calls reach the daily
+  limit, a new chat turn or `/task` opens the same two-choice card used for a bounded team:
+  `1 Raise to $X` or `2 Stop for today`. Raise it to continue with that larger limit for
+  today's local day; stop refuses the work with `today's spending limit of $X is spent, so
+  nothing was started`. Headless `codeaf do` keeps its `--yes-spend` escape hatch.
 - **A task's own cap.** A task started from the composer layer (`alt+enter`) carries the
   figure on that layer's third line — `it may spend up to $100.00 before it asks` — and
   stops before its next turn when it reaches it. That figure is set where the task is
@@ -3099,21 +3103,13 @@ conversation has spent four fifths of its own limit — the figure leaves the di
 nothing else changes. With no `per conversation` limit set there is no fraction and no
 colour.
 
-## I started a task after my dollar limit was spent — why did it still pay for a call
+## I started a task after my daily limit was spent — why did it wait
 
-**A task started after this conversation's dollar limit is already spent still gets
-one paid call before it ends.** `/task` is not a turn, so the refusal that stops the
-next turn — `conversation limit reached · … · /budget changes it` — is not asked in
-front of it. The run is handed the smallest figure above nothing rather than zero,
-because zero would mean no limit at all. Its first worker makes one model call, that
-call puts the run over the figure, and the run ends there: its row says
-`a dollar limit you set stopped it`. The call is small, but it is real money, and it
-shows in `/cost`.
-
-The dollar limit here is the smaller of `per conversation` and `--max-cost`, measured
-against what this conversation has already spent. To let the task do its work, raise
-`per conversation` first — `/budget conversation 20`, or `/budget conversation none`
-to remove it — or relaunch with a larger `--max-cost`, then start the task again.
+**A chat turn and a `/task` both stop before a provider call when today's daily limit
+is already spent.** The card offers `Raise to $X` and `Stop for today`, just like a
+bounded team. Raising persists the larger limit for today's local day and resumes the
+held turn or task; stopping says `today's spending limit of $X is spent, so nothing was
+started`. The per-conversation limit and a task's own cap remain separate rails.
 
 `codeaf do` has no such call: when today's spending limit is already spent it starts
 nothing and says, for a $5 limit,

@@ -81,8 +81,10 @@ stay up until somebody answers them.
 **A task proposal and a reversible recommendation may carry a clock.** The answers
 row says which answer is about to be taken and when — `start it in 9s` — and when
 the time runs out the work STARTS. It is your chance to correct it, not a gate the
-work waits on. Any key you press stops that clock, and a proposal you hold loses
-its deadline and then waits like everything else, with `waiting` on the end of the
+work waits on. Any key that passes the initial quarter-second settle guard stops
+that clock; a key dropped by the guard changes nothing, including the clock.
+A proposal you hold loses its deadline and then waits like everything else,
+with `waiting` on the end of the
 row instead of a countdown.
 
 **A clock says what it is going to do, in that shape's own words.** Where there
@@ -352,8 +354,9 @@ that carries a clock without being asked to is an assumptions card, and nothing
 is decided at the end of that one: the asker stops waiting for you to strike a
 line and goes on with what it said it was assuming.
 
-**Any key on the question stops the clock, for good.** The question says so
-itself while the clock runs, on a dim line under it: `any key stops the clock ·
+**Any key past the initial quarter-second settle guard stops the clock, for good.**
+A key dropped by that guard leaves the countdown running and is never applied later.
+While the clock runs, a dim line under the question reads: `any key stops the clock ·
 you can still change the answer afterwards`. Press one and the tail changes to
 `paused`, that line goes, the work goes on waiting for you, and nothing decides
 it but you. There is no way back to a running clock — a countdown that started
@@ -614,7 +617,9 @@ answer keys still work. These navigation keys need no separate hint.
 
 `o other` and `? clarify` work without first moving through the list. The brief
 settle guard still protects a newly appeared question from a keystroke already
-in flight. A draft already being typed keeps its keys.
+in flight: keys in its first quarter-second are dropped without changing the
+question or stopping its clock. They are never applied later. A draft already
+being typed keeps its keys.
 
 Full question pages and sets of questions keep their own navigation controls.
 
