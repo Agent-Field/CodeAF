@@ -148,3 +148,45 @@ func TestExplicitUpdateStreamsAsAddressedButNotCompletedAcrossLenses(t *testing.
 		t.Fatal("audience bypass promoted an interrupted partial update")
 	}
 }
+
+func TestUpdateProbeDoesNotCrossIntoTextlessNewTurn(t *testing.T) {
+	for _, boundary := range []struct {
+		name  string
+		event session.Event
+	}{
+		{"tool forming", session.Event{Kind: session.EventToolForming, Tool: "read"}},
+		{"tool announced", session.Event{Kind: session.EventToolAnnounced, Tool: "read"}},
+		{"tool begin", session.Event{Kind: session.EventToolBegin, Tool: "read"}},
+		{"empty response", session.Event{Kind: session.EventAssistantDone}},
+	} {
+		for _, prefix := range []string{"[up", "[update] "} {
+			t.Run(boundary.name+"/"+prefix, func(t *testing.T) {
+				f := newFeed(feedHooks{})
+				f.turn = 1
+				f.ingest(session.Event{Kind: session.EventTextDelta, Text: prefix})
+				f.closeLive()
+				f.turn = 2
+				f.ingest(boundary.event)
+				for _, e := range f.entries {
+					if e.turn == 2 && e.kind == entryAssistant {
+						t.Fatalf("new turn inherited old response probe: %#v", e)
+					}
+				}
+				f.ingest(session.Event{Kind: session.EventTextDelta, Text: "ordinary next turn"})
+				f.ingest(session.Event{Kind: session.EventToolBegin, Tool: "read"})
+				found := false
+				for _, e := range f.entries {
+					if e.turn == 2 && e.kind == entryAssistant {
+						found = true
+						if e.text != "ordinary next turn" || e.addressed || confirmedAnswer(&e) {
+							t.Fatalf("ordinary response inherited explicit audience: %#v", e)
+						}
+					}
+				}
+				if !found {
+					t.Fatal("next turn lost legitimate text")
+				}
+			})
+		}
+	}
+}

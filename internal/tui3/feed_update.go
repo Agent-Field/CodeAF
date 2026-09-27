@@ -13,11 +13,17 @@ type userUpdateStream struct {
 	resolved, marked, trimSpace bool
 }
 
-func (f *feed) updateText(text string) string {
-	p := &f.updateDelivery
-	if p.turn != f.turn {
-		*p = userUpdateStream{turn: f.turn}
+// A new turn can begin with a tool or an empty response, before any text arrives.
+// Discard the previous response's probe at every entry that can consume it.
+func (f *feed) syncUpdateTurn() {
+	if f.updateDelivery.turn != f.turn {
+		f.updateDelivery = userUpdateStream{turn: f.turn}
 	}
+}
+
+func (f *feed) updateText(text string) string {
+	f.syncUpdateTurn()
+	p := &f.updateDelivery
 	if !p.resolved {
 		p.pending += text
 		prefix := strings.TrimLeft(p.pending, " \t\r\n")
@@ -43,6 +49,7 @@ func (f *feed) updateText(text string) string {
 
 // An incomplete marker that ends as ordinary text must not lose characters.
 func (f *feed) flushUpdatePrefix() {
+	f.syncUpdateTurn()
 	if text := f.updateDelivery.pending; text != "" {
 		f.updateDelivery.pending = ""
 		f.sayVisibleStream(text, false)
