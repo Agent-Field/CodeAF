@@ -775,6 +775,17 @@ func TestTheGroundLadderClimbsInOrder(t *testing.T) {
 		}
 	})
 
+	t.Run("workspace outside repo falls back to place workspace", func(t *testing.T) {
+		agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+			config.Workspace = plain
+			config.Place = Place{Dir: t.TempDir(), Workspace: repo}
+		})
+		stand := agent.resolveTaskGround(taskSpec{deliverable: "an answer", acceptance: "it is written"})
+		if stand.dir != canonicalPath(repo) || stand.rung != taskGroundStandingIn {
+			t.Fatalf("stand = %+v, want dir=%s rung=%s", stand, repo, taskGroundStandingIn)
+		}
+	})
+
 	t.Run("a repository the work only reads is not branched", func(t *testing.T) {
 		agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) { config.Workspace = plain })
 		stand := agent.resolveTaskGround(taskSpec{
