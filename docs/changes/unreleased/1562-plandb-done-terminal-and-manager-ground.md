@@ -20,3 +20,8 @@ parent's folder. Bash guidance uses bounded project discovery and directs
 workers to `plandb --help` instead of hunting for missing design documents.
 Cancelled review tasks report their terminal state before validating review
 results, and rejected completion leaves the stored task unchanged.
+
+The shared bash-worker brief now names the actual assigned working directory
+before the work order, for workers and checkers alike. A request can quote the
+source checkout without inviting the worker to leave its isolated copy; the
+request and unrelated read-only reference paths remain unchanged.

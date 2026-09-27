@@ -3340,6 +3340,10 @@ working directory is outside a repository, codeaf uses its configured project
 repository. A child keeps its parent's directory, including an ordinary folder;
 a project fallback must not move it elsewhere. Explicit placement still wins.
 
+Every bash worker and checker receives its assigned working directory before the
+work order. Original checkout paths in the request stay quoted, but project edits
+and checks belong in the assigned directory; unrelated reference paths stay literal.
+
 Bash workers search the assigned project with `rg` or `git grep`. A missing
 relative document calls for checking the working directory and project first,
 not a recursive search of the whole home directory. `plandb --help` explains
