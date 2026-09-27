@@ -333,12 +333,16 @@ func TestBashWorkerRecordsItsStepsAndReportsThem(t *testing.T) {
 			return toolReply(finishCommand("root", "the greeting is in place")), nil
 		},
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+	workspace := t.TempDir()
+	worker := run.NewBashWorker(store, workspace, "test/model", seat)
 
 	report, err := worker.Run(run.WithStepsPerTask(runContext(t), 9), *store.Task(store.RootID()))
 
 	if err != nil {
 		t.Fatalf("the worker's run failed: %v", err)
+	}
+	if brief := seat.opening(t); !strings.Contains(brief, "ASSIGNED WORKING DIRECTORY\n\n"+workspace) {
+		t.Fatalf("worker did not receive its actual execution directory: %s", brief)
 	}
 	if report.Steps != 2 {
 		t.Fatalf("report steps = %d, want the command and the finish the script ran", report.Steps)

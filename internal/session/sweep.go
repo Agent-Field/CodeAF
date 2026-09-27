@@ -219,6 +219,7 @@ func sessionIsOpen(dir string) bool {
 // logs/, removes files past the TTL, and leaves every directory standing. A
 // directory removed here would be one a live job's next line could not recreate.
 func sweepLogs(ctx context.Context, dir string, now time.Time, note func(string)) {
+	dir = jobRetentionAnchor(dir)
 	logs := filepath.Join(dir, placeLogs)
 	cutoff := now.Add(-sweepTTL)
 	err := filepath.WalkDir(logs, func(path string, entry fs.DirEntry, err error) error {
@@ -227,6 +228,15 @@ func sweepLogs(ctx context.Context, dir string, now time.Time, note func(string)
 		}
 		if err != nil {
 			return err
+		}
+		if entry.IsDir() && path == filepath.Join(logs, droppingJobs) {
+			// Job ownership and durable id history must not expire by age.
+			// This existing-directory startup pass uses the same leased
+			// retention as claim/close and preserves unmarked legacy writers.
+			if err := jobRetentionSweepBefore(path, defaultJobRetentionBudget(), cutoff); err != nil {
+				note(fmt.Sprintf("sweep: job retention deferred for %s: %v", path, err))
+			}
+			return fs.SkipDir
 		}
 		if entry.IsDir() || !entry.Type().IsRegular() {
 			return nil

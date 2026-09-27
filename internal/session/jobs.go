@@ -10,14 +10,20 @@ package session
 //
 // Three choices here are worth the words:
 //
-//   - RING + DISK, not one or the other. Everything the job writes goes to a
-//     file, so the whole log is addressable by the read tool — paged, offset,
-//     grepped, the same way any other file is. Only the last 64KB is kept in
-//     memory, and only that tail is ever handed back through a tool result. A
-//     watcher that has printed 400MB must not be able to put 400MB in front of
-//     the model, and a watcher that printed the one line that matters must not
-//     lose it because nobody was polling. Disk answers the second, the ring
-//     answers the first.
+//   - RING + BOUNDED DISK, not one or the other. What a job writes goes to a
+//     disk spool bounded to its most recent jobSpoolChunks chunks of
+//     jobSpoolChunkBytes each — <id>.log for the live chunk, <id>.log.1 for the
+//     one before it, anything earlier discarded with a notice — so the recent
+//     log is addressable by the read tool — paged, offset, grepped, the same
+//     way any other file is — without a job that prints for a week filling the
+//     disk. At a chunk boundary the live bytes are copied once to the backup
+//     before the same live inode is truncated; its identity never disappears. Only the last 64KB is kept in memory, and only that tail is
+//     ever handed back through a tool result. A watcher that has printed 400MB
+//     must not be able to put 400MB in front of the model, and a watcher that
+//     printed the one line that matters must not lose it because nobody was
+//     polling — the disk answers that for as long as the line is recent, and
+//     the notice every footer carries is what keeps the promise honest once it
+//     is not (issue #1599).
 //
 //     WHERE that file is, is landing.go's answer and not this file's: a log is
 //     a dropping, so once a session has a folder it lands in the folder rather
@@ -28,8 +34,9 @@ package session
 //
 //   - THE OWED LANE, not a tool and not an event. When a bash job ends, its
 //     ending joins the session's boundary batch (agent.go), drained at the next
-//     step. The ending carries its output tail and names the whole log; anything
-//     older remains here behind `jobs output` and on disk. A completion is news,
+//     step. The ending carries its output tail and names the log; anything recent
+//     remains here behind `jobs output` and on disk, and the footer names the
+//     truncation when the beginning has been discarded. A completion is news,
 //     not an answer to a question, and the alternative — the model polling
 //     `jobs` on a hunch — costs a round trip per hunch and still misses the exit
 //     it did not think to check for.
@@ -46,6 +53,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -64,6 +72,13 @@ const (
 	// build log — enough that `jobs output` after a failure shows the failure,
 	// and small enough that a hundred jobs cost megabytes, not gigabytes.
 	jobRingBytes = 64 << 10
+
+	// jobSpoolChunkBytes caps one chunk of the disk spool and jobSpoolChunks is
+	// how many of them a job keeps — the live chunk plus one older — so a
+	// hundred jobs cannot fill the disk either: 8MB each, and what falls out
+	// of the window is discarded, with [jobSink.notice] saying so.
+	jobSpoolChunkBytes = 4 << 20
+	jobSpoolChunks     = 2
 
 	// jobTermGrace is how long a SIGTERM has to work before SIGKILL follows.
 	// Two seconds is a server's shutdown hook, not a wait.
@@ -504,8 +519,10 @@ type jobRegistry struct {
 	paid func()
 
 	mu   sync.Mutex
-	seq  int
 	jobs []*job
+	// Claims keep ids unique even when a legacy registry changes workspace.
+	claimMu sync.Mutex
+	seq     int
 	// watches is the number of watch slots CLAIMED, not the number of watch
 	// jobs in the slice. Counting the slice would leave a window between the
 	// limit check and the append in which two concurrent starts both pass, and
@@ -556,22 +573,33 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 	// was taken away. Every caller of this already answers an error by carrying
 	// on without a log, which is the honest shape for work that is ending.
 	r.mu.Lock()
-	closed, epoch, workspace := r.closed, r.epoch, r.workspace
+	closed, epoch, workspace, place := r.closed, r.epoch, r.workspace, r.place
 	r.mu.Unlock()
 	if closed {
 		return nil, errSessionClosed
 	}
 
-	directory := droppingsDir(r.place, workspace, droppingJobs)
-	if err := os.MkdirAll(directory, 0o755); err != nil {
+	// The selected workspace/session may itself be a legitimate directory
+	// alias (including a symlinked login home). Resolve that trusted anchor,
+	// then let retention reject links in the owned logs/jobs descendants.
+	logPlace, logWorkspace := place, workspace
+	if place.Dir != "" {
+		logPlace.Dir = jobRetentionAnchor(place.Dir)
+	} else {
+		logWorkspace = jobRetentionAnchor(workspace)
+	}
+	directory := droppingsDir(logPlace, logWorkspace, droppingJobs)
+	root, err := openJobRetentionDir(directory, true)
+	if err != nil {
 		return nil, fmt.Errorf("could not create the jobs directory: %w", err)
 	}
+	root.Close()
 
 	id, logPath, logFile, err := r.claimJobLog(directory)
 	if err != nil {
 		return nil, err
 	}
-	return &job{
+	started := &job{
 		epoch:   epoch,
 		id:      id,
 		command: command,
@@ -579,50 +607,25 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 		dir:     workspace,
 		started: time.Now(),
 		logPath: logPath,
-		// One sink for both streams, as bare's bash does: stdout and stderr
-		// interleave in arrival order, which is the order a person reading the
-		// log expects them in.
-		sink: &jobSink{file: logFile},
-		done: make(chan struct{}),
-	}, nil
+		done:    make(chan struct{}),
+	}
+	started.sink = newJobSink(logFile, logPath)
+	// Retention maintenance (issue #1601) runs when the sink closes — the
+	// maintenance also runs at claim and startup, never per Write.
+	started.sink.finishRetention = func() { jobRetentionFinish(started.sink) }
+	return started, nil
 }
 
-// claimJobLog takes the next id whose log file this session can CREATE, and
-// returns it with the file already open.
-//
-// The name is claimed, not merely chosen. The counter behind it is this
-// process's own and starts at one in every window, so `1.log` is a name two
-// codeafs in one directory both pick within a minute of each other — and the
-// open that used to be here truncated whatever was already at the name. Nothing
-// visible went wrong: the older session's writer kept its own file offset, so
-// its log became a hole where its first pages had been followed by two runs
-// interleaved by byte position, and `jobs output` showed the person a mixture
-// neither process had any idea it was in.
-//
-// So the create is O_EXCL and a taken name simply means take the next one. This
-// is tools_image.go's collision loop, for its reason — a check that only ASKED
-// whether the file existed would hand two racing openers the same answer — with
-// the second race that two processes are also racing. The visible consequence is
-// that a second window's job ids start above one rather than at it, which is the
-// honest thing for them to do: the ids are what `jobs output` is addressed by,
-// so two jobs may not share one.
+// claimJobLog reserves the persistent id, creates the spool, and holds its
+// writer lease before publishing the marker, under one directory lock.
 func (r *jobRegistry) claimJobLog(directory string) (int, string, *os.File, error) {
-	for attempt := 0; attempt < 1000; attempt++ {
-		r.mu.Lock()
-		r.seq++
-		id := r.seq
-		r.mu.Unlock()
-
-		logPath := filepath.Join(directory, fmt.Sprintf("%d.log", id))
-		logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
-		if err == nil {
-			return id, logPath, logFile, nil
-		}
-		if !os.IsExist(err) {
-			return 0, "", nil, fmt.Errorf("could not open the job log: %w", err)
-		}
+	r.claimMu.Lock()
+	defer r.claimMu.Unlock()
+	id, path, file, err := jobRetentionClaimAbove(directory, int64(r.seq))
+	if err == nil {
+		r.seq = id
 	}
-	return 0, "", nil, fmt.Errorf("could not open the job log: %s is full of them", directory)
+	return id, path, file, err
 }
 
 // join is the ONE door into the registry's slice, and the place the closed
@@ -647,7 +650,7 @@ func (r *jobRegistry) join(started *job) error {
 		r.mu.Unlock()
 		started.sink.close()
 		if started.logPath != "" {
-			_ = os.Remove(started.logPath)
+			_ = jobRetentionDiscard(started.logPath)
 		}
 		return errSessionClosed
 	}
@@ -874,11 +877,18 @@ func (r *jobRegistry) finish(done *job, code int, note string) {
 	if requested := r.settled(done, code); requested {
 		return
 	}
-	if note == "" || r.notify == nil {
+	if r.notify == nil {
 		return
 	}
-	// A goroutine's ending is one sentence its caller wrote, so that sentence is
-	// already the whole ending this file composed for it.
+	if done.sink.notice() != "" {
+		if note == "" {
+			note = fmt.Sprintf("job %d finished", done.id)
+		}
+		note += "\n\n[job " + strconv.Itoa(done.id) + " · " + done.sink.logFooter(done.logPath) + "]"
+	}
+	if note == "" {
+		return
+	}
 	r.notify(note)
 }
 
@@ -1010,9 +1020,13 @@ func (r *jobRegistry) settleExit(watched *job, code int) {
 		// means something, and a note that withheld it would be an invitation to
 		// make one more call for what the note was already about.
 		if watched.kind == jobKindBash {
-			if tail := watched.sink.tail(jobExitTailLines); strings.TrimSpace(tail) != "" {
-				note += "\n\n" + tail + "\n\n[job " + strconv.Itoa(watched.id) + " · last " +
-					strconv.Itoa(jobExitTailLines) + " lines · full log: " + watched.logPath + "]"
+			tail := watched.sink.tail(jobExitTailLines)
+			if strings.TrimSpace(tail) != "" || watched.sink.notice() != "" || watched.sink.retentionLost() {
+				if strings.TrimSpace(tail) != "" {
+					note += "\n\n" + tail
+				}
+				note += "\n\n[job " + strconv.Itoa(watched.id) + " · last " +
+					strconv.Itoa(jobExitTailLines) + " lines · " + watched.sink.logFooter(watched.logPath) + "]"
 			}
 		}
 		r.notify(note)
@@ -1216,9 +1230,11 @@ func (r *jobRegistry) list() string {
 	return rendered.String()
 }
 
-// output renders one job's recent lines with a footer naming the full log. The
+// output renders one job's recent lines with a footer naming the log. The
 // footer is the point of the whole design: it tells the model where the rest
-// is, so the answer to "I need more" is a read call and not a bigger tail.
+// is, so the answer to "I need more" is a read call and not a bigger tail —
+// and while the spool has discarded anything, the footer says that instead of
+// calling what remains full.
 func (r *jobRegistry) output(id, lines int) (string, bool) {
 	target := r.find(id)
 	if target == nil {
@@ -1229,40 +1245,264 @@ func (r *jobRegistry) output(id, lines int) (string, bool) {
 	if strings.TrimSpace(tail) == "" {
 		tail = "(no output)"
 	}
-	return fmt.Sprintf("%s\n\n[job %d · %s · showing last %d lines · full log: %s]",
-		tail, id, statusText(info), lines, target.logPath), false
+	ending := target.sink.logFooter(target.logPath)
+	return fmt.Sprintf("%s\n\n[job %d · %s · showing last %d lines · %s]",
+		tail, id, statusText(info), lines, ending), false
 }
 
 // ── the output sink: ring in memory, everything on disk ─────────────────────
 
-// jobSink is one job's output: a rolling in-memory tail and the full spool.
-//
-// It is an io.Writer set as both Stdout and Stderr, so Go's exec package feeds
-// it from two goroutines — the mutex is load-bearing, not decoration.
+// jobSink drains stdout and stderr into a bounded tail and two disk chunks.
+// The live inode is never replaced, preserving both the job ID reservation and
+// the writer lease held by retention. Disk failures stop spooling, not draining.
 type jobSink struct {
-	mu     sync.Mutex
-	ring   []byte
-	file   *os.File
-	closed bool
+	mu              sync.Mutex
+	ring            []byte
+	file            *os.File
+	closed          bool
+	base            string
+	chunkBytes      int64
+	spoolBytes      int64
+	spoolBroken     bool
+	brokenText      string
+	noticeText      string
+	backupInfo      os.FileInfo
+	hook            spoolHook
+	finishRetention func()
+	retentionText   string
+}
+
+// spoolHook is the seam the tests inject spool failures through. It replaces
+// the append into the live chunk, so a test can fail one chosen write or
+// return a short count deterministically. Production leaves it nil.
+type spoolHook func(data []byte) (int, error)
+
+// newJobSink opens a sink over one spool file at the production limits.
+func newJobSink(file *os.File, base string) *jobSink {
+	return &jobSink{
+		file:       file,
+		base:       base,
+		chunkBytes: jobSpoolChunkBytes,
+	}
 }
 
 // Write always reports success. A write error here is a full disk or a removed
 // workspace, and the honest response to that is to keep the job running with
 // the in-memory tail intact: returning the error would make Go's copier close
-// the pipe, and the job would die of a logging problem.
+// the pipe, and the job would die of a logging problem. The failure is
+// recorded once — [jobSink.notice] carries it — spool retries stop, and the
+// drain and the ring go on.
 func (s *jobSink) Write(data []byte) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.file != nil && !s.closed {
-		_, _ = s.file.Write(data)
+		s.spoolLocked(data)
 	}
-	s.ring = append(s.ring, data...)
+	// A single Write may be megabytes, and no temporary grows to match it:
+	// only its newest jobRingBytes reaches the ring.
+	if len(data) > jobRingBytes {
+		start := len(data) - jobRingBytes
+		// Do not cut a rune in half: a tail starting mid-character renders as
+		// a replacement glyph in the model's context for no reason.
+		for start < len(data) && !utf8RuneStart(data[start]) {
+			start++
+		}
+		s.ring = append(s.ring[:0], data[start:]...)
+	} else {
+		s.ring = append(s.ring, data...)
+	}
 	// Trimming at twice the cap rather than at the cap makes this amortized:
 	// trimming on every write would copy the whole ring per line of output.
 	if len(s.ring) > jobRingBytes*2 {
 		s.trimLocked()
 	}
 	return len(data), nil
+}
+
+// spoolLocked appends data to the bounded spool, rotating the live chunk when
+// it fills. Input is sliced without copying; each full chunk is copied once
+// during rotation with a fixed buffer, regardless of the size of a Write.
+func (s *jobSink) spoolLocked(data []byte) {
+	if s.spoolBroken || s.base == "" {
+		return
+	}
+	for len(data) > 0 {
+		if s.spoolBytes >= s.chunkBytes {
+			if !s.rotateLocked() {
+				return
+			}
+		}
+		room := s.chunkBytes - s.spoolBytes
+		if int64(len(data)) < room {
+			room = int64(len(data))
+		}
+		piece := data[:room]
+		written, err := s.spoolWriteLocked(piece)
+		if err != nil {
+			s.breakSpoolLocked(err)
+			return
+		}
+		if written < len(piece) {
+			s.breakSpoolLocked(fmt.Errorf("short write: %d of %d bytes", written, len(piece)))
+			return
+		}
+		s.spoolBytes += int64(written)
+		data = data[room:]
+	}
+}
+
+// spoolWriteLocked is the one door the bytes leave through. hook is nil in
+// production and set by tests to fail a chosen write deterministically.
+func (s *jobSink) spoolWriteLocked(piece []byte) (int, error) {
+	if s.hook != nil {
+		return s.hook(piece)
+	}
+	return s.file.Write(piece)
+}
+
+// rotateLocked preserves the live inode and copies at most one chunk. The
+// previous backup is removed before the copy, so even during rotation there
+// are at most two chunks. A backup is only removed if this sink created it.
+func (s *jobSink) rotateLocked() bool {
+	root, err := os.OpenRoot(filepath.Dir(s.base))
+	if err != nil {
+		s.breakSpoolLocked(err)
+		return false
+	}
+	defer root.Close()
+	name := filepath.Base(s.base)
+	info, err := root.Lstat(name)
+	owned, ownErr := s.file.Stat()
+	if err != nil || ownErr != nil || !info.Mode().IsRegular() || !os.SameFile(info, owned) {
+		s.breakSpoolLocked(fmt.Errorf("live log identity changed"))
+		return false
+	}
+	backup := name + ".1"
+	if s.backupInfo != nil {
+		info, err := root.Lstat(backup)
+		if err != nil || !info.Mode().IsRegular() || !os.SameFile(info, s.backupInfo) {
+			s.breakSpoolLocked(fmt.Errorf("retained log identity changed"))
+			return false
+		}
+		if err := root.Remove(backup); err != nil {
+			s.breakSpoolLocked(err)
+			return false
+		}
+		s.backupInfo = nil
+		s.noticeText = "log truncated: only the most recent " + spoolSizeText(s.chunkBytes*jobSpoolChunks) + " is kept"
+	}
+	file, err := root.OpenFile(backup, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err != nil {
+		s.breakSpoolLocked(err)
+		return false
+	}
+	s.backupInfo, err = file.Stat()
+	if err != nil {
+		_ = file.Close()
+		s.breakSpoolLocked(err)
+		return false
+	}
+	n, copyErr := io.CopyBuffer(file, io.NewSectionReader(s.file, 0, s.spoolBytes), make([]byte, 32<<10))
+	closeErr := file.Close()
+	if copyErr == nil && n != s.spoolBytes {
+		copyErr = io.ErrShortWrite
+	}
+	if err := errors.Join(copyErr, closeErr); err != nil {
+		s.breakSpoolLocked(err)
+		return false
+	}
+	if err := s.file.Truncate(0); err != nil {
+		s.breakSpoolLocked(err)
+		return false
+	}
+	if _, err := s.file.Seek(0, io.SeekStart); err != nil {
+		s.breakSpoolLocked(err)
+		return false
+	}
+	s.spoolBytes = 0
+	return true
+}
+
+// breakSpoolLocked leaves the fd and its writer lease held until close. A
+// failed spool must not look like an abandoned log while its job is running.
+func (s *jobSink) breakSpoolLocked(err error) {
+	if s.spoolBroken {
+		return
+	}
+	s.spoolBroken = true
+	s.brokenText = "job log stopped: " + err.Error()
+}
+
+func (s *jobSink) noticeLocked() string {
+	parts := []string{}
+	if s.retentionText != "" {
+		parts = append(parts, s.retentionText)
+	}
+	if s.brokenText != "" {
+		parts = append(parts, s.brokenText)
+	}
+	if s.noticeText != "" {
+		parts = append(parts, s.noticeText)
+	} else if s.backupInfo != nil {
+		parts = append(parts, "log rotated")
+	}
+	return strings.Join(parts, "; ")
+}
+
+// notice records lost history and logging failures without stopping the job.
+func (s *jobSink) notice() string {
+	if s == nil {
+		return ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.noticeLocked()
+}
+
+// logFooter names both chunks from the first rotation, even before any bytes
+// are discarded. Calling only the live chunk the full log would be false.
+func (s *jobSink) logFooter(path string) string {
+	if s.retentionLost() {
+		ending := "log evicted by the retention budget · the lines above are the in-memory tail"
+		if notice := s.notice(); notice != "" {
+			ending = notice + " · " + ending
+		}
+		return ending
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	notice := s.noticeLocked()
+	if notice == "" {
+		return "full log: " + path
+	}
+	if s.backupInfo != nil {
+		return notice + " · log files: " + path + ".1, " + path
+	}
+	return notice + " · log file: " + path
+}
+
+// A previous successful read does not prove a later retained log still exists.
+func (s *jobSink) retentionLost() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.base == "" || !s.closed {
+		return false
+	}
+	_, err := os.Lstat(s.base)
+	return os.IsNotExist(err)
+}
+
+// spoolSizeText keeps the notice's figures readable: megabytes at the
+// production limits, bytes at the ones the tests set.
+func spoolSizeText(n int64) string {
+	switch {
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%d KB", n>>10)
+	default:
+		return fmt.Sprintf("%d bytes", n)
+	}
 }
 
 func (s *jobSink) trimLocked() {
@@ -1278,13 +1518,29 @@ func (s *jobSink) trimLocked() {
 	s.ring = append([]byte(nil), s.ring[start:]...)
 }
 
+// close settles the spool. A close that fails is surfaced the same way a
+// failed write is — through [jobSink.notice] — and never turned into an error
+// the job's ending would have to carry.
 func (s *jobSink) close() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.file != nil && !s.closed {
-		_ = s.file.Close()
+	if s.closed {
+		s.mu.Unlock()
+		return
+	}
+	if s.file != nil {
+		if err := s.file.Close(); err != nil {
+			s.breakSpoolLocked(fmt.Errorf("close: %w", err))
+		}
 	}
 	s.closed = true
+	finish := s.finishRetention
+	s.finishRetention = nil
+	s.mu.Unlock()
+	// Maintenance takes the directory lock only after releasing the writer
+	// lease and sink mutex, so it cannot deadlock with another job's claim.
+	if finish != nil {
+		finish()
+	}
 }
 
 // tail returns the last n lines of the ring.

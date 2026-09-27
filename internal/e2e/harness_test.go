@@ -43,7 +43,16 @@ import (
 // alias marker and is dropped everywhere in this build (internal/catalog's
 // normalizeID, internal/provider's normalizeModel), so the plain slug is the
 // same model and is what the settings row takes.
-const e2eModel = "deepseek/deepseek-v4-flash"
+var e2eModel = liveVerificationModel()
+
+// One explicit override reaches the conversation, worker, auxiliary-role and
+// fallback pins together. A lane must still verify its recorded model receipts.
+func liveVerificationModel() string {
+	if model := strings.TrimSpace(os.Getenv("CODEAF_E2E_MODEL")); model != "" {
+		return model
+	}
+	return "deepseek/deepseek-v4-flash"
+}
 
 // personConfig is the credentials this lane borrows: the profile in the
 // person's OWN codeaf home, read before the throwaway one is put in front of
