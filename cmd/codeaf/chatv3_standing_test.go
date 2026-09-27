@@ -32,7 +32,8 @@ func TestStandingLivesUnderTheStateRoot(t *testing.T) {
 func TestStandingSeamOpensTheStoreAtThatPath(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "state")
 	t.Setenv("CODEAF_HOME", root)
-	seam := v3Standing(t.TempDir())
+	profile := t.TempDir()
+	seam := v3Standing(profile)
 	if seam == nil || seam.Store == nil {
 		t.Fatal("the door built no standing seam")
 	}
@@ -41,8 +42,16 @@ func TestStandingSeamOpensTheStoreAtThatPath(t *testing.T) {
 	}
 	// The daily rail is the person's own daily budget row and never a second
 	// number invented for this.
-	if seam.DailyRailUSD != v3StandingDailyRail(t.TempDir()) {
-		t.Fatalf("the seam quotes %v as the daily rail", seam.DailyRailUSD)
+	if seam.DailyRail == nil {
+		t.Fatal("the seam must read the current daily rail")
+	}
+	for _, budget := range []string{"5", "7"} {
+		if err := os.WriteFile(filepath.Join(profile, "config.json"), []byte(`{"daily_budget_usd":`+budget+`}`), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := seam.DailyRail(), v3StandingDailyRail(profile); got != want || got == 0 {
+			t.Fatalf("daily rail = %v, want %v", got, want)
+		}
 	}
 }
 
