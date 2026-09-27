@@ -208,6 +208,8 @@ func TestTheEngineDoorKeepsTheAmbientSideOnOverAConnection(t *testing.T) {
 	t.Setenv("CODEAF_HOME", filepath.Join(home, "state"))
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
 	t.Chdir(home)
+	// Close the engine owner, including catalog and pool writers, before this home is removed.
+	freshEngineProcess(t)
 
 	engine, err := bootEngine(remote.Hello{Version: remote.Version}, "", "")
 	if err != nil {

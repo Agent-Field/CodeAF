@@ -1151,3 +1151,26 @@ func TestANarrowStandingLabelDropsTheCadenceFirst(t *testing.T) {
 		t.Fatalf("the no was rewritten: %q", got)
 	}
 }
+
+func TestStandingOnceReceiptDoesNotClaimExecution(t *testing.T) {
+	a, agent, tick := standApp(t)
+	standAsk(t, a, tick, session.StandingNotice{WhenWords: "Mondays at 9am"})
+	drive(t, a, key2("3"))
+	if len(agent.answered) != 1 || !agent.answered[0].answer.Once {
+		t.Fatalf("answer: %+v", agent.answered)
+	}
+	text := standText(a)
+	if !strings.Contains(text, "approved once, not scheduled") || strings.Contains(text, "done now") {
+		t.Fatal(text)
+	}
+}
+
+func TestStandingCardShowsApprovedWorktreeIsolation(t *testing.T) {
+	a, _, tick := standApp(t)
+	item := standItem()
+	item.Does.Isolate = true
+	standAsk(t, a, tick, session.StandingNotice{Item: item})
+	if got := standText(a); !strings.Contains(got, "separate Git worktree") {
+		t.Fatalf("isolation missing from card: %s", got)
+	}
+}

@@ -542,20 +542,36 @@ func standingSessionDir(item standing.Item) string {
 // hands — the parts it handed out and the fold it makes of their reports. All of
 // it bounded by the item's own rails.
 //
-// IT IS A SESSION AND NOT A WORKTREE. A firing runs in the project the person
-// pointed it at, under the rules they have already banked, exactly as
-// docs/AMBIENT.md says an unattended run does. What bounds it is not a governor
-// somewhere else but the two numbers on the card: how many calls it may make,
-// and how much it may spend before the turn is cut. A division does not put the
-// money outside that: a part folds its bill into this session's own books
-// ([Agent.foldTaskUsage]), so the per-run figure this reads is the whole family's
-// and the pass writes down what the family cost ([standingWideWork] for why
-// division reaches here at all).
+// A TASK'S APPROVED ISOLATION SETTING SELECTS ITS WORKSPACE. An isolated
+// firing retains its worktree, including unfinished edits, with the run's
+// existing working-copy record. Neither grant nor reply prose is a policy.
 func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, evidence string) (standing.Outcome, error) {
 	cfg, err := standingRunConfig(r.parent, item, runDir)
 	if err != nil {
 		return standing.Outcome{}, err
 	}
+
+	var tree taskTree
+	if item.Does.Isolate {
+		root, ok := repositoryRoot(item.Workspace)
+		if !ok || !hasCommit(root) {
+			return standing.Outcome{}, errors.New("a separate Git worktree needs a repository with a commit")
+		}
+		name := "standing-" + slugify(item.Title()) + "-" + shortID()
+		dir := canonicalPath(filepath.Join(cfg.Place.Trees(), name))
+		tree, err = cutWorktreeAt(cfg.Place, root, dir, "standing/"+name, 0o700)
+		if err != nil {
+			return standing.Outcome{}, fmt.Errorf("cut standing worktree: %w", err)
+		}
+		cfg.Workspace = tree.dir
+		cfg.Place.Workspace = tree.dir
+		if err := rememberStandingIsolation(cfg, item.Workspace, tree); err != nil {
+			return standing.Outcome{}, fmt.Errorf("record standing worktree %s on %s: %w", tree.dir, tree.branch, err)
+		}
+		// Keep the copy even on cancellation, provider failure, or an unfinished
+		// edit. A successful turn is not evidence that every file was committed.
+	}
+
 	brief := standingEvidence(item.Does.Brief, evidence)
 	if acceptance := strings.TrimSpace(item.Does.Acceptance); acceptance != "" {
 		brief += "\n\nDONE WHEN: " + acceptance
@@ -701,6 +717,31 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		Text: clip(reply, standingOutcomeClip),
 		USD:  agent.Usage().CostUSD,
 	}
+	if item.Does.Isolate {
+		// Record Git facts rather than trying to classify the model's prose.
+		// Another session may advance the host branch while we run; that is
+		// not evidence that this worker changed it.
+		status, statusErr := git(tree.dir, "status", "--porcelain")
+		head, headErr := git(tree.dir, "rev-parse", "HEAD")
+		branch := currentBranch(tree.dir)
+		if statusErr != nil || headErr != nil || branch != tree.branch {
+			outcome.Kind = standing.OutcomeFailed
+			outcome.NeedsPerson = "the worktree's branch could not be confirmed; inspect the saved work"
+			outcome.Text = outcome.NeedsPerson
+		} else if strings.TrimSpace(status) != "" || strings.TrimSpace(head) != tree.checkBase {
+			outcome.Kind = standingCameTo(true, reply, needs)
+		}
+		// The location remains visible even when a wordless firing left only
+		// shell-written files, which producedAFile cannot recognize.
+		outcome.Text = strings.TrimSpace(outcome.Text + "\nWork kept on " + tree.branch + " in " + tree.dir)
+		if outcome.Kind == standing.OutcomeNothing {
+			// The retained location is a report, not evidence of changed work.
+			// It must remain discoverable rather than enter the no-output sweep.
+			outcome.Kind = "said"
+			outcome.Text = "No changes. " + outcome.Text
+		}
+	}
+
 	if needs != "" {
 		// NOTHING PRETENDS THIS LANDED. A run that stopped on something only a
 		// person can allow is not a failure and is not a success; it is work
