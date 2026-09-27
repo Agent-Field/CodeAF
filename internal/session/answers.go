@@ -406,6 +406,10 @@ const StandingNoKey = "0"
 // doing it now says the thing at the wrong time. A rule never runs, so "once"
 // has nothing to do.
 func StandingOnceIsAnAnswer(item standing.Item) bool {
+	// Ordinary turns cannot provide the scheduled executor's retained worktree.
+	if item.Does.Isolate {
+		return false
+	}
 	switch item.CardKindOf() {
 	case standing.CardCheck, standing.CardWatch:
 		return true
@@ -493,6 +497,18 @@ func StandingPlainLabel(label string) string {
 // The no is last and marked safe, so a row that has to drop an answer drops
 // one in front of it.
 func StandingOptions(item standing.Item) []AnswerOption {
+	options := standingOptions(item)
+	if !StandingOnceIsAnAnswer(item) {
+		for i, option := range options {
+			if option.Key == StandingOnceKey {
+				return append(options[:i], options[i+1:]...)
+			}
+		}
+	}
+	return options
+}
+
+func standingOptions(item standing.Item) []AnswerOption {
 	cadence := item.When.ShortWords()
 	switch item.CardKindOf() {
 	case standing.CardReminder:
