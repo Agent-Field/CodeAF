@@ -5,4 +5,6 @@ Real hosted tmux chats on Spark, OpenRouter `deepseek/deepseek-v4.1-flash` for e
 - [PR1562: home-to-project maintenance helper, corrections, task and real use](pr1562/README.md)
 - [PR1603: useful sales report, refund correction, bounded export and handoff](pr1603/CAPTIONS.md)
 
+- [PR1604: inventory supplier export with held cancellation and actual engine restart](pr1604/CAPTIONS.md)
+
 Media comes from actual terminal recordings, not reconstructed UI. Archives contain only generated example source and outputs. Private profiles, credentials, runtime logs and diagnostic takes are excluded.
