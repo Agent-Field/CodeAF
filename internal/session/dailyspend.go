@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -31,6 +32,20 @@ type dailyBudgetRaise struct {
 	Origin string  `json:"origin,omitempty"`
 }
 
+type dailySpendAuthorizationKey struct{}
+
+// WithDailySpendPreauthorized carries explicit permission past today's limit
+// through a run and its child/checker contexts. It changes no stored setting.
+func WithDailySpendPreauthorized(ctx context.Context) context.Context {
+	return context.WithValue(ctx, dailySpendAuthorizationKey{}, true)
+}
+
+// DailySpendPreauthorized reads only the authorization carried by this run.
+func DailySpendPreauthorized(ctx context.Context) bool {
+	allowed, _ := ctx.Value(dailySpendAuthorizationKey{}).(bool)
+	return allowed
+}
+
 type dailyBudgetWait struct {
 	question Question
 	limit    float64
@@ -41,6 +56,7 @@ type dailyBudgetWait struct {
 	release  func()
 	// Task admission waits on its existing caller rather than opening a turn.
 	taskResult chan error
+	done       chan struct{}
 }
 
 type dailyBudgetReached struct{ spend DailySpend }
@@ -161,10 +177,26 @@ func dailyBudgetQuestion(id uint64, spend DailySpend) Question {
 // decides, so raising the limit resumes the same turn.
 func (a *Agent) holdDailyBudgetLocked(ctx context.Context, user userMessage, spend DailySpend) <-chan Event {
 	stream := newEventStream()
-	wait := &dailyBudgetWait{user: user, ctx: ctx, stream: stream}
+	wait := &dailyBudgetWait{user: user, ctx: ctx, stream: stream, done: make(chan struct{})}
 	if err := a.openDailyBudgetLocked(spend, wait); err != nil {
 		refuseOn(stream, err)
+		return stream.out
 	}
+	guard.Go("daily-budget-wait", func() {
+		select {
+		case <-wait.done:
+		case <-ctx.Done():
+			a.mu.Lock()
+			owned := a.dailyBudget == wait
+			if owned {
+				a.dailyBudget = nil
+			}
+			a.mu.Unlock()
+			if owned {
+				wait.finish(ctx.Err())
+			}
+		}
+	})
 	return stream.out
 }
 
@@ -245,6 +277,9 @@ func (a *Agent) awaitTaskDailyBudget(ctx context.Context) error {
 // finish releases the card before its caller can report a refusal or a start.
 // The owner detaches the wait under mu first, so exactly one ending reaches it.
 func (w *dailyBudgetWait) finish(err error) {
+	if w.done != nil {
+		close(w.done)
+	}
 	if w.release != nil {
 		w.release()
 	}
