@@ -223,6 +223,19 @@ func uniqueHandle(t Team, key, base string) string {
 	}
 }
 
+// FallbackHandle returns a deterministic, valid handle for a member of t
+// (such as an untitled manager) that is unique within t.
+func FallbackHandle(t Team, key string) string {
+	base := ""
+	if !t.Root && t.Name != "" {
+		base = DeriveHandle(t.Name)
+	}
+	if base == "" || ValidHandle(base) != nil {
+		base = "lead"
+	}
+	return uniqueHandle(t, key, base)
+}
+
 // assignHandles clears every handle in t that is invalid or repeats one an
 // earlier member has, then gives each member with a title and no handle one,
 // in member order. It reports whether it changed anything.
@@ -247,6 +260,9 @@ func assignHandles(t *Team) bool {
 			continue
 		}
 		base := DeriveHandle(m.Word)
+		if base == "" && t.Manager != "" && t.Manager == m.Key {
+			base = FallbackHandle(*t, m.Key)
+		}
 		if base == "" {
 			continue
 		}

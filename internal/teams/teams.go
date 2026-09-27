@@ -432,7 +432,9 @@ func (f *File) SetManager(id, key string) error {
 	if err := f.AddMember(id, Member{Key: key}); err != nil {
 		return err
 	}
-	f.Teams[Index(f.Teams, id)].Manager = key
+	idx := Index(f.Teams, id)
+	f.Teams[idx].Manager = key
+	assignHandles(&f.Teams[idx])
 	return nil
 }
 

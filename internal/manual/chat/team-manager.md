@@ -389,3 +389,11 @@ while it was closed.
 
 The traffic itself is kept in the profile of the machine the conversations run on, in
 `teams/<id>/traffic.jsonl`, one line per message, only ever added to.
+
+## Which approval rules do new members inherit?
+
+A member started by the manager inherits the manager's approval posture before
+it joins and receives work. The conversation saves its own setting for resume.
+If the new conversation cannot apply the posture, the start is refused and the
+manager sees the reason. An untitled manager receives an available handle from
+the team store, so it can be addressed immediately.

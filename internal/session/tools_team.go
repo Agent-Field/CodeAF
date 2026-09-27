@@ -668,7 +668,7 @@ func (a *Agent) teamStartTool(ctx context.Context, args json.RawMessage) (string
 	if _, taken := team.ByHandle(handle); taken {
 		return fmt.Sprintf("@%s is already a member of %q. Pick another handle, or team_send it the work.", handle, team.Name), true, nil
 	}
-	entry := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief}
+	entry := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Approval: a.ResolvedApprovalPosture()}
 	if err := teams.AppendTraffic(a.config.teamProfile(), team.ID, entry); err != nil {
 		return "The start could not be written to the team's traffic: " + err.Error(), true, nil
 	}
