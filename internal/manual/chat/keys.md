@@ -3391,11 +3391,10 @@ elapsed time, the thinking block's time when there was one, and the real call co
 There is a blank row between the chip and the answer under it. Detailed time,
 token and spend receipts appear only when you open the work.
 
-**A turn you stopped with `esc` says so instead**, and it collapses whole:
-`▸ stopped by you at 40s · 4 tool calls · ctrl+e`, with nothing left standing under it.
-A stopped turn never reached an answer, so there is no answer to leave out of the chip —
-that is the point of the wording. codeaf's own lines about the stop (`· stopped`, and
-what it dropped from the queue) stay outside the chip where you can read them.
+**A turn you stopped with `esc` says so instead**. Its unfinished work collapses
+into a stopped-work chip. Completed replies and explicitly addressed updates stay
+outside it; a human update interrupted mid-stream is labeled `interrupted`.
+The retained audience and interruption state survive reopening the conversation.
 
 Click the chip or press `ctrl+e` over an empty message box to open or close it. There is
 no transcript cursor, so the key first chooses the running conversation’s compact
