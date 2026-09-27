@@ -25,6 +25,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // audioDirectory is where a spoken file lands when the model does not say and
@@ -107,7 +108,7 @@ func (a *Agent) speakTool(client MediaGenerator, defaultModel string) bare.Tool 
 			}
 			// Paid for before it is saved, on the session's pocket and no
 			// turn's — tools_image.go states the reason.
-			a.addAuxiliaryUsage(&ai.Response{Usage: response.Usage}, model, 1)
+			a.addAuxiliaryUsageAs(&ai.Response{Usage: response.Usage}, model, 1, string(roles.RoleSpeech))
 
 			path, err := a.mediaDestination(parsed.Path, text, speechExtension,
 				AudioDir(a.config.Place, a.config.Workspace))

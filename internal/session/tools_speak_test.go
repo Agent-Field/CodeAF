@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -186,6 +187,30 @@ func TestSpeakUsageFoldsIntoTheSessionTotal(t *testing.T) {
 	}
 	if usage.Turns != 0 {
 		t.Fatalf("session Turns = %d; speaking is not a step of the conversation", usage.Turns)
+	}
+}
+
+func TestSpeakUsageLedgerNamesTheSpeechCall(t *testing.T) {
+	cost := 0.02
+	ledger := filepath.Join(t.TempDir(), UsageLedgerName)
+	media := &scriptedMedia{
+		audio:      []byte("ID3 audio"),
+		speechCost: &ai.Usage{PromptTokens: 9, Cost: &cost},
+	}
+	agent, _ := newMediaAgent(t, media, func(config *Config) {
+		config.usageLedger = ledger
+	})
+
+	if _, isError := runTool(t, agent, "speak", `{"text":"hello"}`); isError {
+		t.Fatal("speak failed")
+	}
+	FlushUsage()
+	rows, err := ReadUsage(ledger, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Role != "speech" || rows[0].Model != "talk/model" || rows[0].USD != cost {
+		t.Fatalf("speech ledger rows = %+v, want one named paid speech call", rows)
 	}
 }
 

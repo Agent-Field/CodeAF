@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"image"
 	"image/color"
+	"image/jpeg"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -284,6 +285,40 @@ func TestGenerateImageHonoursACustomPath(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(workspace, "art", "plain.png")); err != nil {
 		t.Fatalf("a path without an extension did not gain one: %v", err)
 	}
+}
+
+func TestGenerateImageNamesTheFileByItsBytes(t *testing.T) {
+	picture := jpegOfSize(t, 8, 8)
+	painter := &scriptedMedia{
+		base64:    base64.StdEncoding.EncodeToString(picture),
+		mediaType: "image/png",
+	}
+	agent, workspace := newPainterAgent(t, painter, "paint/model")
+
+	result, isError := runTool(t, agent, "generate_image", `{"prompt":"a plane","path":"art/plane.png"}`)
+	if isError {
+		t.Fatalf("generate_image failed: %s", result)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, "art", "plane.jpg")); err != nil {
+		t.Fatalf("sniffed JPEG was not saved with .jpg: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, "art", "plane.png")); !os.IsNotExist(err) {
+		t.Fatalf("misleading .png path exists: %v", err)
+	}
+	if !strings.Contains(result, "art/plane.jpg") {
+		t.Fatalf("result %q does not name the sniffed path", result)
+	}
+}
+
+func jpegOfSize(t *testing.T, width, height int) []byte {
+	t.Helper()
+	canvas := image.NewRGBA(image.Rect(0, 0, width, height))
+	canvas.Set(0, 0, color.RGBA{R: 40, G: 120, B: 200, A: 255})
+	var encoded bytes.Buffer
+	if err := jpeg.Encode(&encoded, canvas, nil); err != nil {
+		t.Fatalf("encode jpeg: %v", err)
+	}
+	return encoded.Bytes()
 }
 
 // A failure is the model's to act on, never the turn's to die of.

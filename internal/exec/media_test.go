@@ -1,11 +1,15 @@
 package exec
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"io"
 	"net/http"
 	"os"
@@ -153,6 +157,29 @@ func TestGenerateImageWritesReadableNamesReferencesAndUsage(t *testing.T) {
 	}
 	if got := space.Artifacts("7"); len(got) != 1 || got[0] != want {
 		t.Fatalf("artifacts = %v", got)
+	}
+}
+
+func TestGenerateImageUsesTheSniffedExtensionWhenTheProviderLies(t *testing.T) {
+	var picture bytes.Buffer
+	canvas := image.NewRGBA(image.Rect(0, 0, 8, 8))
+	canvas.Set(0, 0, color.RGBA{R: 40, G: 120, B: 200, A: 255})
+	if err := jpeg.Encode(&picture, canvas, nil); err != nil {
+		t.Fatal(err)
+	}
+	fake := &fakeMediaProvider{imageResponse: &provider.ImageResponse{
+		Data: []provider.GeneratedImage{{
+			Base64:    base64.StdEncoding.EncodeToString(picture.Bytes()),
+			MediaType: "image/png",
+		}},
+	}}
+	tools, space := mediaToolbox(t, fake, fakeModalities{})
+	result := tools.Execute(context.Background(), "generate_image", `{"prompt":"a plane"}`)
+	if result.IsError {
+		t.Fatal(result.Content)
+	}
+	if _, ok := space.Locate(filepath.Join("media", "a-plane-1.jpg")); !ok {
+		t.Fatalf("sniffed JPEG was not saved as .jpg: %q", result.Content)
 	}
 }
 
