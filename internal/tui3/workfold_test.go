@@ -55,7 +55,7 @@ func TestWorkIndentReclassifiesAndDropsAtPhoneFloor(t *testing.T) {
 func TestWorkfoldNeverHidesTextOnlyFailureOrNoAnswer(t *testing.T) {
 	cases := [][]entry{
 		{{kind: entryUser, text: "hi", turn: 1}, {kind: entryAssistant, text: "hello", turn: 1, settled: true}},
-		{{kind: entryUser, text: "do", turn: 1}, {kind: entryTool, tool: "bash", turn: 1}, {kind: entryNote, text: "error: boom", turn: 1}},
+		{{kind: entryUser, text: "do", turn: 1}, {kind: entryTool, tool: "bash", turn: 1}, {kind: entryNote, text: "error: boom", turn: 1, told: true}},
 		{{kind: entryUser, text: "do", turn: 1}, {kind: entryTool, tool: "bash", turn: 1}},
 	}
 	for _, entries := range cases {
@@ -118,9 +118,9 @@ func TestWorkfoldSettlementAnchorsBottomAndScrolledReader(t *testing.T) {
 			return -1
 		}
 		beforeAt, afterAt := rowOf(before), rowOf(after)
-		// Settlement adds the receipt below the answer. Relative to the live
-		// edge excluding that new receipt, collapse itself has not moved it.
-		if beforeAt < 0 || len(before)-1-beforeAt != len(after)-2-afterAt {
+		// Closed work keeps the receipt inside disclosure, so settlement
+		// preserves the answer at the same bottom-relative row.
+		if beforeAt < 0 || len(before)-1-beforeAt != len(after)-1-afterAt {
 			t.Fatalf("the answer left the bottom anchor: before=%v after=%v", before, after)
 		}
 	})
@@ -194,8 +194,10 @@ func TestWorkfoldNeverHidesNewsAboutAPersonsOwnRow(t *testing.T) {
 		{kind: entryTool, tool: "read", turn: 1, status: toolOK, began: base.Add(6 * time.Second), ended: base.Add(8 * time.Second)},
 		{kind: entryAssistant, text: "ok", turn: 1, settled: true},
 	}
-	if got := deriveWorkfolds(entries, 0); len(got) != 0 {
-		t.Fatalf("the chip swallowed a sentence addressed to the person: %#v", got)
+	for _, f := range deriveWorkfolds(entries, 0) {
+		if f.start <= 1 && f.answer > 1 {
+			t.Fatalf("the chip swallowed a sentence addressed to the person: %#v", f)
+		}
 	}
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.entries, a.workMode = entries, config.WorkFold

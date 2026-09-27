@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"strings"
 	"testing"
 
@@ -108,12 +109,7 @@ func TestARoomPhaseCaptionDoesNotHideAFailedNextStep(t *testing.T) {
 	if !a.room.entries[2].demoted || a.room.entries[4].demoted {
 		t.Fatal("the failed step did not separate progress from its final explanation")
 	}
-	for _, f := range a.deckFolds(a.room.deck()) {
-		if f.start <= 3 && f.answer > 3 {
-			t.Fatalf("a fold hid the failed step: %#v", f)
-		}
-	}
-	phaseHierarchyRow(t, drawn, "integration assertion failed")
+	phaseHierarchyRow(t, drawn, a.icon(tokens.GFailed)+" 1 failed")
 	phaseHierarchyRow(t, drawn, "The migration still fails its compatibility check")
 }
 

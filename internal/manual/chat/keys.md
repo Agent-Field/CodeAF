@@ -616,7 +616,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `alt+l` (`opt+l`) | Close the column on the right, or bring it back, in every chat: the same column holds the Tasks and, in a chat in a team, the Traffic. The key is named at the right of the column's header. Under 100 columns it lays the column over the body, and a second press takes it off. Remembered for the next session |
 | `alt+m` | In a team that has a manager: go to the manager. Over `--host` against an older codeaf on the far machine it says managers are not available there |
 | `ctrl+g` | A foreground command that can be kept takes the key first. Otherwise it does what `alt+l` does: close the column, or bring it back; the column stands even with no tasks in it. Remembered for the next session |
-| `ctrl+e` | Empty box: open or close the running conversation’s compact steps first; otherwise the newest `▸ worked` chip onto its outline of captions — the latest completed turn's out here, the newest settled phase's inside a task's page — or the most recent thinking block when there is no chip. A caption is a short status line per step; its tool rows are one expand further. Otherwise: go to end of line |
+| `ctrl+e` | Empty box: open or close the running conversation’s compact steps first; otherwise the newest `▸ worked` chip onto its outline of captions — the latest completed turn's out here, the newest completed work inside a task's page — or the most recent thinking block when there is no chip. A caption is a short status line per step; its tool rows are one expand further. Otherwise: go to end of line |
 | `pgup` / `pgdown` | Scroll one page — the height of the view minus one, never less than one row |
 | `tab` | Open or commit path completion, over a command's path argument only — and over an **empty** box with no completion showing, go back to the last conversation. Does nothing when this terminal holds only one |
 
@@ -635,7 +635,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `super+right` / `meta+right` | End of the line — one of the two spellings `cmd+→` can arrive as |
 | `home` / `ctrl+a` | Start of the current line |
 | `end` | End of the current line, always |
-| `ctrl+e` | End of the line — unless the box is empty, where it opens or closes the running conversation’s compact steps, or the newest `▸ worked` chip onto its caption outline (the latest completed turn's out here, the newest settled phase's inside a task's page), falling through to the most recent thinking block when there is no chip |
+| `ctrl+e` | End of the line — unless the box is empty, where it opens or closes the running conversation’s compact steps, or the newest `▸ worked` chip onto its caption outline (the latest completed turn's out here, the newest completed work inside a task's page), falling through to the most recent thinking block when there is no chip |
 | `shift+←` / `shift+→` | Select a character at a time, the way shift does in any text field. Does nothing over an empty box |
 | `shift+↑` / `shift+↓` | Select a line at a time |
 | `shift+home` / `shift+end` | Select to the start or end of the line |
@@ -3374,8 +3374,8 @@ two-column gutter is work done on your behalf: thinking, tool calls and their de
 results, and assistant text that was followed by another call. Below 60 columns the
 gutter disappears and the dim treatment carries the same distinction.
 
-Indented reply text is also **greyer** than the answer, and carries no markdown — no
-bold, no headings, no code colouring. See "Why is part of the reply grey, and where is
+Indented reply text is also **greyer** than the answer. Opened narration renders
+markdown structure in quiet ink, so headings, lists and code remain readable. See "Why is part of the reply grey, and where is
 the actual answer" on the screen page.
 
 ## How do I see what codeaf did — see codeaf's work and tool calls behind the answer
@@ -3388,7 +3388,8 @@ When a successful turn has work and a trailing answer, the finished work collaps
 one indented chip between your message and the answer, such as
 `▸ worked 47s · thought 6s · 6 tool calls · ctrl+e`. Its figures are the whole turn's
 elapsed time, the thinking block's time when there was one, and the real call count.
-There is a blank row between the chip and the answer under it.
+There is a blank row between the chip and the answer under it. Detailed time,
+token and spend receipts appear only when you open the work.
 
 **A turn you stopped with `esc` says so instead**, and it collapses whole:
 `▸ stopped by you at 40s · 4 tool calls · ctrl+e`, with nothing left standing under it.
@@ -3402,25 +3403,21 @@ steps, then the latest completed turn’s work. The running view shows up to thr
 wrapped rows of recent captions, with the newest live step shimmering. Opening
 shows the existing outline: click a caption to inspect its calls, or click the
 whole-work door to return to the compact steps. Completion collapses work opened
-during the turn. The newest caption may exceed three rows on a narrow frame so
-its words remain intact.
-Questions, approval prompts, failure lines, text-only turns, and work with no trailing
-answer are never hidden — nor is a second message you sent into a running turn, which
+during the turn. A caption longer than three rows ends with an ellipsis in the
+compact view; open the work to read its full text.
+Confirmed replies stay visible even when later work follows them. Team exchanges
+and compaction details stay inside the work disclosure; opening it preserves
+reasoning, notes and receipts alongside the step captions.
+Questions, approval prompts and text-only answers are never hidden — nor is a second message you sent into a running turn, which
 ends the chip above it and starts a new one. Fold state belongs to this window; resumed
 sessions derive fresh closed chips from their saved entries.
 
-**A task's page has chips too, cut differently.** The conversation folds by turn — one
-chip per question you asked. A task's page is one long turn, so it folds by **phase**
-instead: the work that came before each paragraph the task wrote goes behind its own
-chip, and every paragraph stays standing. The work it is doing right now never folds.
-`ctrl+e` opens the newest chip there, a click opens any of them, and scrolling up when
-the page is already at its top opens the one nearest the top. `ui.work = open` opens them
-all, exactly as it does out here. Where a task's page has no chip yet, `ctrl+e` falls
-through to the thinking block as before.
-
-**A node's transcript inside an adaptive run's page never folds.** You got there by
-asking to see what that one node did, and the page draws the tail of its journal under
-the graph — so there is nothing there to fold away.
+**The same rule applies inside tasks and nested task transcripts.** Current work
+uses one compact activity window of at most three rows. Earlier steps in that
+turn stay behind its disclosure, including across a correction or an interim
+reply. When work finishes, settled operations collapse into work chips around
+your messages and confirmed replies. `ctrl+e` or a click opens the details;
+`ui.work = open` opens them by default. No journal detail is deleted.
 
 ## How do I keep everything expanded?
 

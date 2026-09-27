@@ -85,11 +85,11 @@ func TestDemotedNarrationDropsItsMarkdown(t *testing.T) {
 	a.touch()
 
 	body := strings.Join(plainRows(a), "\n")
-	if !strings.Contains(body, "## Plan") {
-		t.Fatalf("the heading's own characters were rendered away:\n%s", body)
+	if strings.Contains(body, "## Plan") || !strings.Contains(body, "Plan") {
+		t.Fatalf("the heading was not rendered as readable text:\n%s", body)
 	}
-	if strings.Contains(rowWithText(t, a, "## Plan").text, sgrOf(a.pal.bold)) {
-		t.Fatalf("a demoted heading was drawn bold: %q", rowWithText(t, a, "## Plan").text)
+	if strings.Contains(rowWithText(t, a, "Plan").text, sgrOf(a.pal.bold)) {
+		t.Fatalf("a demoted heading was drawn bold: %q", rowWithText(t, a, "Plan").text)
 	}
 }
 

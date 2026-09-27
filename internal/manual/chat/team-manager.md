@@ -389,3 +389,12 @@ while it was closed.
 
 The traffic itself is kept in the profile of the machine the conversations run on, in
 `teams/<id>/traffic.jsonl`, one line per message, only ever added to.
+
+## Quiet updates from the team
+
+Team exchanges are work details: they stay in the compact activity view while
+work runs and fold behind the work line afterwards. Open the work line and its
+step to read the complete exchange, or open Traffic. The manager is instructed
+to tell you meaningful new results, blockers, decisions, and requested updates,
+without repeating an unchanged status. Its exact `[no change]` response is kept
+in the model record but does not add another answer to your conversation.

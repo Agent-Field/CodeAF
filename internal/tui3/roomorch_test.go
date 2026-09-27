@@ -920,6 +920,32 @@ func TestANodeTranscriptsToolCallsOpenOnAClick(t *testing.T) {
 	a.orchOpenTranscript("write")
 	a.touch()
 
+	// Open the default folded work and its step before inspecting one call.
+	for step := 0; step < 2; step++ {
+		visible := a.roomRows(a.bodyWidth())
+		toolVisible := false
+		for _, r := range visible {
+			if r.hit == hitTool {
+				toolVisible = true
+				break
+			}
+		}
+		if toolVisible {
+			break
+		}
+		for i, r := range visible {
+			if r.hit != hitWorkFold && r.hit != hitCaption {
+				continue
+			}
+			if r.hit == hitWorkFold && a.workFoldOpen(a.bodyDeck(), r.turn) {
+				continue
+			}
+			y := roomRowY(a, i)
+			drive(t, a, tea.MouseClickMsg{X: 4, Y: y, Button: tea.MouseLeft}, tea.MouseReleaseMsg{X: 4, Y: y, Button: tea.MouseLeft})
+			break
+		}
+	}
+
 	rows := a.roomRows(a.bodyWidth())
 	at := -1
 	for i, r := range rows {

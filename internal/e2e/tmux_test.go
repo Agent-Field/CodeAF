@@ -601,7 +601,7 @@ func (r *rig) kill() {
 		return
 	}
 	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); {
-		if syscall.Kill(pid, 0) != nil {
+		if terminalProcessExited(pid) {
 			return
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -610,12 +610,26 @@ func (r *rig) kill() {
 	// wait. This PID belongs to the test's own pane, never to another rig.
 	_ = syscall.Kill(pid, syscall.SIGKILL)
 	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
-		if syscall.Kill(pid, 0) != nil {
+		if terminalProcessExited(pid) {
 			return
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	r.t.Errorf("the test terminal process %d did not exit before cleanup", pid)
+}
+
+// On Linux an exited child can remain a zombie until tmux reaps it. Such a
+// process cannot write into the fixture, but kill(pid, 0) still succeeds.
+func terminalProcessExited(pid int) bool {
+	if syscall.Kill(pid, 0) != nil {
+		return true
+	}
+	status, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return false
+	} // Other hosts keep the portable signal check.
+	end := strings.LastIndexByte(string(status), ')')
+	return end >= 0 && len(status) > end+2 && status[end+2] == 'Z'
 }
 
 // dump is the transcript this suite owes anybody reading a failure: the screen,

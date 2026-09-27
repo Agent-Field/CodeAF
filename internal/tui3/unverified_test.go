@@ -173,6 +173,9 @@ func TestARollupCountsADecidedNodeOnceByItsNewestCard(t *testing.T) {
 	if strings.Contains(text, glyphAsk) {
 		t.Fatalf("the rollup still asks a question that was answered:\n%s", text)
 	}
+	// Settled batches keep their task list behind the expansion.
+	a.openDone(a.doneEntryFor(1))
+	text = taskText(a)
 	if n := strings.Count(text, "Port the parser"); n != 1 {
 		t.Fatalf("the decided node is drawn %d times in its batch, want once:\n%s", n, text)
 	}

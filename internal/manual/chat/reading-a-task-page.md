@@ -87,82 +87,37 @@ card exists for spent on the punctuation around the answer.
 calls go", "why can I not see what the task did", and "what are these little grey lines".**
 Nothing is lost. Settled work is folded, and one gesture opens it.
 
-Between each paragraph the task wrote is the thinking and the calls that led to it, and
-that stretch collapses to one dim chip:
+Finished operational work collapses to a dim chip such as:
 
 ```
 ▸ worked 2m · thought 10s · 14 tool calls · ctrl+e
 ```
 
-The figures are counted from the rows the chip covers — how long that stretch took, the
-thinking time when there was any, the number of captioned steps, and the real call count.
-The chip is still counted fact, not a summary.
+Its figures count the work retained inside. Click the chip or press `ctrl+e` with
+an empty message box to open the outline. Click a step to inspect its calls.
+The same controls close it again. Scrolling a finished page leaves its work folded.
+`ui.work = open` opens details by default.
 
-**Three ways open the outline**, and any of them works on a page that has already finished:
+While the task runs, one compact activity window shows at most three rows for the
+current turn. Completed steps in that turn stay behind the same disclosure;
+they do not accumulate extra phase chips. A failed call shows a failure mark,
+with the complete error behind the step's disclosure. Ordinary team exchanges,
+compaction notes and task receipts share that compact work area.
 
-- **`ctrl+e`** over an empty message box opens the newest chip. Press it again to close it.
-- **click** the chip.
-- **scroll up** when the page is already at its top — one wheel tick, `pgup`, or `↑`. It
-  opens the chip nearest the top and keeps your place: the rows you were reading stay on
-  the same screen lines and the work appears above them. Nothing jumps. The same gesture
-  opens a folded run of tool calls, so scrolling up keeps reaching further back rather
-  than stopping dead.
+Your instructions, corrections, questions requiring your decision and confirmed
+replies remain visible. A completed tool-free response stays formatted as a reply
+even if more work starts later. Stopping that later work preserves the completed
+reply. Opened narration renders markdown in quieter ink, without raw markers.
 
-An opened chip stays open, and the chip line stays with it so you can close it again.
-Under it is one caption per step: the short line the model said before that batch, the
-plain floor made from the calls when it said nothing, or — after a long silence — a line
-from the dwell narrator. Click a caption, select it and press `enter`, or use `ctrl+o` on
-the live caption to open the tool rows under that one step. The outline is the account;
-the rows are one expand further.
+These rules are shared by ordinary chat, the manager, task pages and nested task
+transcripts. The retained history is available through disclosure on each page.
 
-**A caption can be wrong.** It is a heading about what the step is trying to settle, not
-proof of what ran or what came back. The tool rows beneath it are the truth. Open the
-caption whenever its words and the work appear to disagree.
+## What is that line over the tool calls — step captions
 
-## What is that line — caption, why did it collapse, and how do I see what it did
-
-The short status line over a batch is its **caption** — one sentence of about
-5 to 10 words naming what the step is doing and where. A collapsed stack of
-those lines is the **outline**. On a narrow window a caption wraps; it is never
-cut mid-sentence with an ellipsis. A caption ends only where its sentence ends,
-so a filename, version number or path keeps its whole self: `reading livesteps.go`
-is not shortened to `reading livesteps`, and a caption never begins in the middle
-of a word. It says what each step is trying to settle rather than repeating commands
-the rows already name. A live caption may shimmer while its rows are folded; opening
-it stops the shimmer and shows the running calls.
-
-Use **`ctrl+e` on an empty box** to open the newest `▸ worked` chip onto the outline.
-Then click the caption, select it and press `enter`, or press **`ctrl+o` on the live
-caption** to see what it did. Press the same gesture again to fold those rows. A caption
-keeps the present-tense words it was born with after the work ends, so an old outline may
-say `checking the parser` rather than rewriting history to `checked the parser`.
-
-**Keep everything open**: set `ui.work` to `open` and no chip on any page starts folded —
-in a task's page exactly as in the conversation.
-
-### What stays on the page whatever happens
-
-**Every paragraph the task wrote stays standing**, above the chip that covers the work
-before it, and so does the report at the end. So the page reads as the story of the work
-with its steps folded, rather than as a scroll you have to read to find out what
-happened.
-
-**What the task is doing right now keeps its caption standing.** Its tool rows may fold
-under that live line; `ctrl+o` or a click opens them. A long live run that has no caption
-yet still uses the older overflow fallback described below, so silence never removes the
-door to its calls.
-
-**These never fold either**, wherever they are on the page: your instruction, every
-correction you typed into the running work, every call that failed, and every question the
-task asked you. They are the record of what you asked for and what you decided, and a
-fold may never hide your own words.
-
-### Why the conversation's chips are cut differently
-
-Out in the conversation the page folds **by turn** — one chip per question you asked,
-hiding the work between the question and its answer. A task's page folds **by phase**
-instead, because a task is one long question and folding it by turn would put the whole
-page behind one chip.
+The line over the tool calls is the step caption: a short description of what the
+model is doing. While work runs, the latest captions share a scrolling window of
+at most three rows. Earlier captions remain in the work disclosure. Open the work
+with `ctrl+e`, then click a caption to see its calls and their output.
 
 ## See earlier tool calls in one long run with no caption yet — the `↳` fallback, scroll up or `ctrl+o`
 

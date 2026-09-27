@@ -1,6 +1,9 @@
 package tui3
 
-import "strings"
+import (
+	"github.com/charmbracelet/x/ansi"
+	"strings"
+)
 
 // ── THE ANSWER HIERARCHY ────────────────────────────────────────────────────
 //
@@ -57,20 +60,9 @@ import "strings"
 //     loudness ([hueNarr]): quieter than the answer in lightness, and never a
 //     different KIND of thing in hue.
 //
-//   - A DEMOTED BLOCK IS PLAIN, WITH NO MARKDOWN AT ALL. This is the honest
-//     simplification, and MARKDOWN OWNS WEIGHT (render.go's user-entry comment)
-//     is what forces it. Weight is the one channel a block cannot borrow without
-//     lying: a bold lead-in or a `##` heading inside demoted narration would
-//     render HEAVIER than the settled answer below it, and the hierarchy would be
-//     inverted by the very block it was drawn on. Nor can the weight simply be
-//     stripped — prose hands back rows with its own foregrounds already spliced
-//     in, and a second colour wrapped around them tears open at the first inner
-//     SGR 39 (render.go's [app.assistantRows] says why the promoted head is never
-//     repainted). So the demoted block takes the ONE rendering that carries no
-//     weight and no colour of its own: wrapped plain text, one tier, exactly the
-//     shape the live tail already uses with a different lightness in it. Nothing
-//     is lost that a person wanted — narration is two sentences and a verb — and
-//     what the reader gets instead is a block that cannot shout.
+//   - DISCLOSED NARRATION USES MARKDOWN STRUCTURE IN MUTED INK. Render the
+//     headings, lists and fences first, then strip terminal styling before
+//     applying the narration tier. Raw markdown markers never become the UI.
 //
 // ── AND THE BREATH ABOVE THE ANSWER ─────────────────────────────────────────
 //
@@ -151,7 +143,7 @@ func stampCaptions(es []entry, captions []caption) {
 // in — which is the overhang [workIndentCols] exists to let a block subtract, and
 // the reason [app.toolLine] subtracts it too.
 func (a *app) workingProse(text string, width int) []string {
-	rows := wrap(text, width-workIndentCols(width))
+	rows := a.renderMarkdown(text, max(1, width-workIndentCols(width)))
 	for i, line := range rows {
 		// A ROW WITH NOTHING ON IT IS LEFT ALONE, for [app.liveTail]'s reason:
 		// [trimBlanks] decides what to drop by asking whether a row is blank, and a
@@ -159,7 +151,7 @@ func (a *app) workingProse(text string, width int) []string {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		rows[i] = a.pal.narr(line)
+		rows[i] = a.pal.narr(ansi.Strip(line))
 	}
 	return trimBlanks(rows)
 }
@@ -233,7 +225,15 @@ func answerBreath(es []entry, i int) bool {
 // the turn still claiming to be an answer.
 func (a *app) cutTurn(turn int) {
 	changed := false
+	// A completed response already said its words to the person. Only the
+	// activity resumed after its boundary is being interrupted now.
+	from := 0
 	for i := range a.entries {
+		if a.entries[i].turn == turn && confirmedAnswer(&a.entries[i]) {
+			from = i + 1
+		}
+	}
+	for i := from; i < len(a.entries); i++ {
 		e := &a.entries[i]
 		// AND A CORRECTION IS NOT MARKED EITHER, for the person's own message's
 		// reason said again: it is a thing they said in full, and only the work

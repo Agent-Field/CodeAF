@@ -6934,6 +6934,9 @@ func (a *app) unfold(turn int) {
 // folded the transcript's newest turn while a node's page was up would be
 // folding a cluster nobody can see.
 func (a *app) bodyTurn() int {
+	if run := a.orchOf(); run != nil && run.transcript != "" && len(run.journal) > 0 {
+		return run.journal[len(run.journal)-1].turn
+	}
 	if a.room != nil {
 		return a.room.turn
 	}
@@ -7363,6 +7366,17 @@ func selectedCaption(sel int) (int, bool) {
 // that is typed in full and entered arrives here too, so an alias typed out and
 // an alias chosen from the list run the same road.
 func (a *app) slash(line string) tea.Cmd {
+	// A command's direct response is addressed to the person who asked for it.
+	// Mark that origin here so compact work never hides /help or /cost output.
+	before := len(a.entries)
+	defer func() {
+		for i := before; i < len(a.entries); i++ {
+			if a.entries[i].kind == entryNote {
+				a.entries[i].told = true
+				a.entries[i].stale = true
+			}
+		}
+	}()
 	name, rest, _ := strings.Cut(strings.TrimPrefix(line, "/"), " ")
 	rest = strings.TrimSpace(rest)
 	// The unknown-command hint below says back what was typed and not what it
@@ -7388,6 +7402,10 @@ func (a *app) slash(line string) tea.Cmd {
 			return cmd
 		}
 		return a.quit()
+
+	case "dismiss":
+		a.dismissNotifications(rest)
+		return nil
 
 	case "help":
 		// THE KEY SHEET CARRIES ITS PAYLOAD ON THE LEFT (payload.go): the chord is

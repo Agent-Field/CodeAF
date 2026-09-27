@@ -1765,26 +1765,20 @@ look like a reply that opened in bold, which is a different thing.
 
 ## Why is part of the reply grey, and where is the actual answer
 
-Because that part was never the answer. It was codeaf saying what it was about to do.
+Prose that accompanies tool calls describes work. In the compact view it supplies
+step descriptions; inside the opened outline it uses the work gutter and quieter ink.
+A response with no tool calls confirms a reply to you. That reply stays visible,
+with full markdown formatting, even if the model resumes work afterwards.
 
-A turn is usually prose, then tool calls, then more prose. **Any paragraph that had more
-work start under it in the same turn is narration** — "let me check the config first" —
-and the moment the next tool call opens, that paragraph becomes work. In the compact
-conversation it supplies a step description; inside the opened outline it uses the same
-two-column gutter as the tool rows and drops one shade below the body text.
+Your messages and confirmed replies stand outside the work disclosure. Team
+exchanges, reasoning and compaction details stay inside it. A failed call shows a compact `×` status; its details open only when you ask. An
+approval question remains visible so you can act on it. Open the work with
+`ctrl+e` to inspect the retained details, then open a step to see its calls.
 
-**The answer is the last thing the turn says, and it is the only flush-left, full-ink
-block in it.** So: scan down the left edge. Text that starts at the margin was said to
-you. Text that starts two columns in was done for you. There is one blank row above the
-answer whenever the turn did any work, so it stands away from the machinery.
-
-Grey narration carries **no markdown** — no bold, no headings, no code colouring. That is
-deliberate: a bold heading inside working notes would be heavier than the answer under it,
-and the loudest thing on screen would be the part you did not ask for.
-
-Nothing here reads what the model wrote. It is decided entirely by the shape of the turn —
-what came after what — so it is the same on a conversation you resume as it was live, and
-the same on a task's own page.
+Disclosed narration renders markdown structure in quiet ink: headings, lists and
+code remain readable without exposing raw markdown markers. Classification uses
+response and tool boundaries, not guessed keywords in the model's prose. The same
+rule applies in ordinary chat, the manager and task pages.
 
 One thing that is **not** work, and so never greys the paragraph above it: a line codeaf
 writes about the turn itself. What the turn changed, what it cost, a notice that a request

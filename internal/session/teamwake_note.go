@@ -24,6 +24,10 @@ const (
 	teamWakeEarlierLead = "Your manager's directive started this turn;"
 )
 
+// A wake can require internal coordination without another status paragraph.
+// The exact token is already understood by live and replay renderers.
+const teamWakeDeliveryRule = "Keep team coordination in the team tools. Tell the person only a meaningful new result, blocker, decision, or requested update; do not repeat a status you already told them. If there is nothing new to tell the person after handling this traffic, reply with exactly " + NoChangeReply + " and nothing else."
+
 // TeamWakeNote reports whether text is a note the session wrote to wake a
 // turn on team traffic.
 func TeamWakeNote(text string) bool {
