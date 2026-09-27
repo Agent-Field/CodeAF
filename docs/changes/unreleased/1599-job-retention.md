@@ -11,7 +11,9 @@ invalidates:
 
 Maintenance runs when a job claims its log, after its sink closes, and for
 existing jobs directories during the startup sweep. It does not crawl the machine or run on every write.
-Completed groups with the oldest allocated IDs are removed first. The cleaner
+Startup expires managed inactive groups whose two chunks are older than seven
+days, preserving the prior payload TTL without expiring allocation metadata.
+Then completed groups with the oldest allocated IDs are removed first. The cleaner
 holds an independent file lease through removal; the writer must keep the same
 main-log descriptor through rotation and spool failures until sink close.
 

@@ -2648,7 +2648,10 @@ foreground span; it adds no timer, I/O, model call or per-frame randomness.
 one jobs directory to **128 MiB and 64 job groups**, counting the base and
 rotation together. Active spools have separate per-job limits; unmarked legacy
 logs and unsafe files remain outside the budget because older writers may not
-hold leases. This is not a machine-wide bound.
+hold leases. This is not a machine-wide bound. Startup retains the existing
+seven-day (`sweepTTL`) expiry for eligible inactive groups only: both chunks
+must be older than the cutoff. Expired groups are removed before applying the
+byte/count budget to fresh groups; metadata and active/legacy logs do not expire.
 
 Maintenance runs at log creation, sink close, and the existing startup sweep,
 never per output write. It

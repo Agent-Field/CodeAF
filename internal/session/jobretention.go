@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
 )
@@ -311,6 +312,7 @@ type retainedJob struct {
 	base     string
 	bytes    int64
 	identity os.FileInfo
+	newest   time.Time
 }
 
 // Acquire an independent lease; the caller holds it throughout deletion.
@@ -357,7 +359,26 @@ func (d *jobRetentionDirectory) inspect(base string) (*os.File, int64, error) {
 	}
 	return file, size, nil
 }
-func (d *jobRetentionDirectory) sweep(budget jobRetentionBudget) error {
+
+// latestPayloadTime keeps a fresh rotated chunk alive even if the base is old.
+func (d *jobRetentionDirectory) latestPayloadTime(base string, info os.FileInfo) (time.Time, error) {
+	newest := info.ModTime()
+	backup, err := d.root.Lstat(base + ".1")
+	if err == nil {
+		if backup.ModTime().After(newest) {
+			newest = backup.ModTime()
+		}
+	} else if !os.IsNotExist(err) {
+		return time.Time{}, err
+	}
+	return newest, nil
+}
+
+func (d *jobRetentionDirectory) sweep(budget jobRetentionBudget, expiredBefore ...time.Time) error {
+	var cutoff time.Time
+	if len(expiredBefore) > 0 {
+		cutoff = expiredBefore[0]
+	}
 	if budget.bytes < 0 || budget.groups < 0 {
 		return errRetentionUnsafe
 	}
@@ -395,6 +416,10 @@ func (d *jobRetentionDirectory) sweep(budget jobRetentionBudget) error {
 			continue
 		} // live, legacy, unsafe: preserve without deletion
 		info, err := file.Stat()
+		var newest time.Time
+		if err == nil {
+			newest, err = d.latestPayloadTime(entry.Name(), info)
+		}
 		file.Close()
 		if err != nil {
 			return err
@@ -403,13 +428,24 @@ func (d *jobRetentionDirectory) sweep(budget jobRetentionBudget) error {
 			return errRetentionUnsafe
 		}
 		total += size
-		groups = append(groups, retainedJob{id, entry.Name(), size, info})
+		groups = append(groups, retainedJob{id: id, base: entry.Name(), bytes: size, identity: info, newest: newest})
 	}
-	sort.Slice(groups, func(i, j int) bool { return groups[i].id < groups[j].id })
+	// Expired payloads go first, so they do not displace fresh groups merely
+	// because a long-running fresh job has an older allocated id.
+	sort.Slice(groups, func(i, j int) bool {
+		oldI := !cutoff.IsZero() && groups[i].newest.Before(cutoff)
+		oldJ := !cutoff.IsZero() && groups[j].newest.Before(cutoff)
+		if oldI != oldJ {
+			return oldI
+		}
+		return groups[i].id < groups[j].id
+	})
 	count := len(groups)
 	for _, group := range groups {
-		if total <= budget.bytes && count <= budget.groups {
-			break
+		overBudget := total > budget.bytes || count > budget.groups
+		expired := !cutoff.IsZero() && group.newest.Before(cutoff)
+		if !overBudget && !expired {
+			continue
 		}
 		file, _, e := d.inspect(group.base)
 		if e != nil {
@@ -418,6 +454,15 @@ func (d *jobRetentionDirectory) sweep(budget jobRetentionBudget) error {
 		info, e := file.Stat()
 		if e == nil && !os.SameFile(group.identity, info) {
 			e = errRetentionUnsafe
+		}
+		if e == nil && !overBudget {
+			newest, ageErr := d.latestPayloadTime(group.base, info)
+			if ageErr != nil {
+				e = ageErr
+			} else if !newest.Before(cutoff) {
+				file.Close()
+				continue
+			}
 		}
 		if e == nil {
 			e = d.remove(group.base)
@@ -452,6 +497,12 @@ func (d *jobRetentionDirectory) remove(base string) error {
 	return nil
 }
 func jobRetentionSweep(directory string, budget jobRetentionBudget) error {
+	return jobRetentionSweepBefore(directory, budget, time.Time{})
+}
+
+// Startup retains the existing age policy for proven inactive managed logs,
+// without applying age to permanent identity metadata or uncertain legacy logs.
+func jobRetentionSweepBefore(directory string, budget jobRetentionBudget, cutoff time.Time) error {
 	d, err := lockJobRetention(directory)
 	if err != nil {
 		return err
@@ -464,7 +515,7 @@ func jobRetentionSweep(directory string, budget jobRetentionBudget) error {
 	if err = d.persist(high); err != nil {
 		return err
 	}
-	return d.sweep(budget)
+	return d.sweep(budget, cutoff)
 }
 func jobRetentionFinish(sink *jobSink) {
 	if sink == nil || sink.base == "" {
