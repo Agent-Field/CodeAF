@@ -703,7 +703,7 @@ program — and a launch speaks only for its own pair.
 
 Approving the first standing item follows the same ownership rule. It installs a
 missing timer or repairs this home's stale timer, but never takes another home's
-or live build's timer. If another home owns it, the item is saved and CodeAF says
+or live build's timer. If another home owns it, the item is saved and codeaf says
 that the background check could not be installed and the existing timer was left
 unchanged. The confirmation also says the item was saved but needs a codeaf window
 open for this home while no background timer checks it. A non-waking permission

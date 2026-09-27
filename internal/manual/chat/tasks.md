@@ -1433,6 +1433,11 @@ Holding the proposal removes the countdown; the footer then says `waiting · you
 other windows report `waiting on you` too. An automatic proposal does not hide a separate
 question that really needs an answer.
 
+**A key pressed the instant the card appears is not taken as an answer.** For its first
+quarter-second the card drops keys, because they were aimed at whatever was there before.
+The dropped key still holds the clock and moves the pointer to `2 no`, so an `enter` straight
+after it declines; it never starts the task. After that, `1` starts and `2` declines at once.
+
 The default window is 15 seconds. **Where is the setting for how long a proposal waits?** It
 is `task.autoapprove_seconds`, and it lives on the **`Safety`** tab of the settings panel —
 open that with `ctrl+,` or `/settings` — where it is the row labelled `task countdown`. It
