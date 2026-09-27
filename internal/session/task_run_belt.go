@@ -1540,24 +1540,7 @@ func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
 // the work ended, which is the moment a person goes looking for its page.
 func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 	if notice.Copy == nil || notice.PlanTask == "" || notice.Crew == nil {
-		for _, kept := range g.runRows(notice.ID) {
-			if kept.ID != notice.ID {
-				continue
-			}
-			if notice.Copy == nil && kept.Copy != nil {
-				notice.Copy = kept.Copy
-			}
-			if notice.PlanTask == "" && kept.PlanTask != "" {
-				notice.PlanTask = kept.PlanTask
-			}
-			if notice.Crew == nil && kept.Crew != nil {
-				notice.Crew = kept.Crew
-			}
-			if notice.KeptReason == "" {
-				notice.KeptReason = kept.KeptReason
-			}
-			break
-		}
+		notice = carryKeptRunFacts(g, notice)
 	}
 	notice.Program = keptRunProgram(g, notice)
 	if notice.Elapsed == 0 {
@@ -2377,4 +2360,29 @@ func (run *beltRun) crewWorker() string {
 		return d.Seat(crewroute.Worker).Model
 	}
 	return ""
+}
+
+// carryKeptRunFacts fills the facts a later publish of the same run may leave
+// out — its copy, plan identity, crew and kept reason — from the row already
+// kept for it, so no publish can drop what an earlier one said.
+func carryKeptRunFacts(g *TaskGraph, notice TaskNotice) TaskNotice {
+	for _, kept := range g.runRows(notice.ID) {
+		if kept.ID != notice.ID {
+			continue
+		}
+		if notice.Copy == nil {
+			notice.Copy = kept.Copy
+		}
+		if notice.PlanTask == "" {
+			notice.PlanTask = kept.PlanTask
+		}
+		if notice.Crew == nil {
+			notice.Crew = kept.Crew
+		}
+		if notice.KeptReason == "" {
+			notice.KeptReason = kept.KeptReason
+		}
+		break
+	}
+	return notice
 }
