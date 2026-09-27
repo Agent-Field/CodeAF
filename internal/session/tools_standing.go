@@ -251,6 +251,7 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"brief":{"type":"string","description":"THE WORK, self-contained as propose_task's brief is: nobody will be there to ask. {{evidence}} is replaced by what the probe found."},` +
 	`"acceptance":{"type":"string","description":"How anybody checks the work is done."},` +
 	`"model":{"type":"string","description":"Model for the work, only when the person named one."},` +
+	`"isolate":{"type":"boolean","description":"Run a task in a separate Git worktree and preserve changes for review. Set true when they request branch-only work or a pull request without merging. The approval card shows this choice; permission prose alone does not enable it."},` +
 	`"max_steps":{"type":"integer","description":"Tool calls one firing's work may take (default ` + strconv.Itoa(standingRunSteps) + `)."}` +
 	`},"additionalProperties":false},` +
 	`"rails":{"type":"object","description":"Optional quiet backstops. Name money only when the person did; otherwise the card quotes the machine-wide daily allowance. A hold takes none — it never wakes, so it never spends. Only expires means anything on one.","properties":{` +
@@ -294,6 +295,7 @@ type standArguments struct {
 		Hint       string `json:"hint"`
 	} `json:"when"`
 	Does struct {
+		Isolate    bool   `json:"isolate"`
 		Kind       string `json:"kind"`
 		Say        string `json:"say"`
 		Brief      string `json:"brief"`
@@ -714,6 +716,7 @@ func standingWhen(parsed standArguments, now time.Time) (standing.When, string) 
 // an action to be the content of; every other kind must say what it does.
 func standingDoes(parsed standArguments, wakes standing.WhenKind) (standing.Action, string) {
 	does := standing.Action{
+		Isolate:    parsed.Does.Isolate,
 		Kind:       standing.ActionKind(strings.ToLower(strings.TrimSpace(parsed.Does.Kind))),
 		Say:        strings.TrimSpace(parsed.Does.Say),
 		Brief:      strings.TrimSpace(parsed.Does.Brief),
@@ -726,7 +729,7 @@ func standingDoes(parsed standArguments, wakes standing.WhenKind) (standing.Acti
 		// that asked for a rule AND a line to say meant one of the two, and
 		// standing something up with an action nothing will ever run would leave
 		// the person holding a card whose promise cannot be kept.
-		if does.Kind != "" {
+		if does.Kind != "" || does.Isolate {
 			return standing.Action{}, "Invalid arguments: a hold does nothing — it holds. Leave does out, or give it a when that wakes."
 		}
 		return standing.Action{}, ""
