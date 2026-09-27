@@ -143,6 +143,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// with the header's id, which survives every resume.
 		id: NewSessionID(),
 	}
+	agent.presentation = &presentationIndex{}
 	agent.cacheKey = sessionCacheKey(agent.id)
 	// WHAT IS ALREADY KNOWN ABOUT THIS MODEL'S REAL WINDOW, before the first
 	// check. The memo survives processes (internal/provider's ServedWindow), so
@@ -236,6 +237,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		}
 		restored := replayed.messages
 		agent.file = file
+		agent.presentation = file.presentation
 		agent.restoreProgramHold()
 		// AND WHAT AN EARLIER PROCESS OF THIS SESSION MADE. It is the one thing
 		// in the journal that cannot be re-derived from the transcript — whether
@@ -1117,7 +1119,7 @@ func (a *Agent) AttachReplay() (entries []DisplayEntry, events <-chan Event, sto
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.closed || !a.running || a.hub == nil {
-		return shapeEntries(a.messages, a.file), nil, func() {}
+		return shapeEntries(a.messages, a.file, a.presentation), nil, func() {}
 	}
 	// The hub cannot already be closed here: the turn's goroutine clears
 	// running under a.mu before it closes the hub, and we hold a.mu. The
@@ -1125,7 +1127,7 @@ func (a *Agent) AttachReplay() (entries []DisplayEntry, events <-chan Event, sto
 	// the caller where the full record answers them.
 	stream, live := a.hub.attach(a.stillAskedLocked())
 	if !live {
-		return shapeEntries(a.messages, a.file), nil, func() {}
+		return shapeEntries(a.messages, a.file, a.presentation), nil, func() {}
 	}
 	floor := a.turnFloor
 	if floor > len(a.messages) {
@@ -1141,7 +1143,7 @@ func (a *Agent) AttachReplay() (entries []DisplayEntry, events <-chan Event, sto
 		}
 	}
 	hub := a.hub
-	return shapeEntries(kept, a.file), stream.out, func() { hub.drop(stream) }
+	return shapeEntries(kept, a.file, a.presentation), stream.out, func() { hub.drop(stream) }
 }
 
 // userMessage is a person's message on its way into the transcript: the message
@@ -2553,6 +2555,9 @@ func (a *Agent) Close() error {
 // order is the transcript order by construction; it is one buffered append to
 // an already-open file, not a place a turn waits.
 func (a *Agent) recordLocked(message ai.Message) {
+	if message.Role == "assistant" {
+		message.Content = append([]ai.ContentPart(nil), message.Content...)
+	}
 	a.alignReasoningLocked()
 	a.messages = append(a.messages, message)
 	a.messageReasoning = append(a.messageReasoning, provider.MessageReasoning{})
@@ -4314,13 +4319,12 @@ func (h *eventHub) foldedLocked() {
 // a backlog — which is true for exactly the two kinds that are a STREAM OF TEXT
 // and carry nothing else.
 //
-// EventTextDelta and EventReasoning are each emitted as `Event{Kind: …, Text: …}`
-// and nothing more, at every one of the six places that emit them (loop.go,
-// image.go, harness.go, task_room.go). THAT IS THE LAW THIS DEPENDS ON: a kind
-// that ever grows a second field must come off this list in the same change, or
-// the fold will quietly drop it for whoever attaches next.
+// The stream's audience is part of its meaning, so adjacent deltas fold only
+// when that declaration agrees. A newly added stream field must likewise join
+// this comparison, or be excluded from folding, to survive a late attach.
+
 func foldsInto(prev, next Event) bool {
-	if prev.Kind != next.Kind {
+	if prev.Kind != next.Kind || prev.Addressed != next.Addressed {
 		return false
 	}
 	return prev.Kind == EventTextDelta || prev.Kind == EventReasoning
@@ -4532,9 +4536,13 @@ type DisplayEntry struct {
 	// Answer marks a completed tool-free response or an explicit human update. This
 	// boundary survives replay so a later response cannot demote its message.
 	Answer bool
-	Text   string
-	Tool   string // set when the entry is one call in a batch
-	Hint   string // the call's gloss, as the tool cluster rendered it
+	// Addressed identifies an explicit update to the person, independently of
+	// completion. Interrupted updates remain readable without claiming success.
+	Addressed   bool
+	Interrupted bool
+	Text        string
+	Tool        string // set when the entry is one call in a batch
+	Hint        string // the call's gloss, as the tool cluster rendered it
 
 	// CallID is the provider's own identity for a tool entry's call, exactly as
 	// the record holds it, and "" for every entry that is not a call.
@@ -4680,7 +4688,7 @@ type SteerMark struct {
 func (a *Agent) Transcript() []DisplayEntry {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return shapeEntries(a.messages, a.file)
+	return shapeEntries(a.messages, a.file, a.presentation)
 }
 
 // EarlierHistory is the conversation a compaction pass edited away, and where
@@ -4752,7 +4760,14 @@ func displayEntries(messages []ai.Message) []DisplayEntry {
 // that made it, and its result is a SEPARATE message further down, keyed by the
 // call's id. One pass to index, one pass to shape, so a batch of ten calls costs
 // one walk rather than ten.
-func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
+func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*presentationIndex) []DisplayEntry {
+	var presentation *presentationIndex
+	if journal != nil {
+		presentation = journal.presentation
+	}
+	if len(indexes) > 0 {
+		presentation = indexes[0]
+	}
 	results := toolResults(messages)
 	// Sized by [entryRows], which is the rule this loop appends by, so a
 	// transcript full of tool batches is not grown a power of two at a time.
@@ -4777,6 +4792,18 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 			role = "aside"
 			replyTags = append(replyTags, journal.taskReplyTags(msg)...)
 		}
+		displayText := messageContentText(msg)
+		interrupted, explicitlyHuman := false, false
+		if mark := presentation.of(msg); role == "assistant" && mark != nil {
+			interrupted = mark.Interrupted
+			explicitlyHuman = mark.Audience == "human"
+			if mark.Audience == "operational" {
+				role = "aside"
+			}
+			if mark.Audience == "human" && mark.Text != nil {
+				displayText = *mark.Text
+			}
+		}
 		var team []TeamLine
 		if role == "aside" {
 			team = teamNewsLines(messageContentText(msg))
@@ -4786,17 +4813,18 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 			tags = append([]TaskReplyTag(nil), replyTags...)
 			replyTags = nil
 		}
-		displayText := messageContentText(msg)
 		update := false
 		if role == "assistant" {
 			displayText, update = UserFacingUpdate(displayText)
 		}
 		entries = append(entries, DisplayEntry{
-			Role:      role,
-			Answer:    role == "assistant" && (len(msg.ToolCalls) == 0 || update),
-			Text:      displayText,
-			ImageRefs: journal.imageRefs(msg),
-			ReplyTags: tags,
+			Role:        role,
+			Answer:      role == "assistant" && !interrupted && (len(msg.ToolCalls) == 0 || update),
+			Addressed:   role == "assistant" && (update || interrupted && explicitlyHuman),
+			Interrupted: interrupted,
+			Text:        displayText,
+			ImageRefs:   journal.imageRefs(msg),
+			ReplyTags:   tags,
 			// The journal is the only thing that remembers a user line was typed
 			// INTO the turn above it rather than opening one of its own: the
 			// message itself is an ordinary user message, because that is what the

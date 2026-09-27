@@ -105,11 +105,15 @@ type sessionHeader struct {
 }
 
 type sessionEntry struct {
-	Type       string        `json:"type"`
-	Role       string        `json:"role,omitempty"`
-	Content    string        `json:"content,omitempty"`
-	ToolCalls  []ai.ToolCall `json:"toolCalls,omitempty"`
-	ToolCallID string        `json:"toolCallId,omitempty"`
+	// Presentation is the source-authored audience of this occurrence, never a
+	// rule inferred from its words. Older entries omit it and use conservative
+	// compatibility handling only for complete reserved bookkeeping records.
+	Presentation *messagePresentation `json:"presentation,omitempty"`
+	Type         string               `json:"type"`
+	Role         string               `json:"role,omitempty"`
+	Content      string               `json:"content,omitempty"`
+	ToolCalls    []ai.ToolCall        `json:"toolCalls,omitempty"`
+	ToolCallID   string               `json:"toolCallId,omitempty"`
 	// Reasoning fields are the assistant continuation exactly as it arrived.
 	// They stay beside the message rather than inside Content so a resumed tool
 	// loop preserves both the wire contract and what the person actually saw.
@@ -1160,8 +1164,9 @@ type sessionFile struct {
 	// distinguishes it from a line somebody typed — the mark is on the journal's
 	// line, so the journal is what a surface asks (see [sessionEntry.Note] and
 	// [shapeEntries]).
-	notes     map[string]bool
-	replyTags map[string][]TaskReplyTag
+	presentation *presentationIndex
+	notes        map[string]bool
+	replyTags    map[string][]TaskReplyTag
 	// delivered is the set of durable delivery ids this file has recorded, from
 	// the replay at open and from every note appended since. It answers one
 	// question — has this conversation already been told this landing — for a
@@ -1692,6 +1697,10 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 	journal.id = replayed.id
 	journal.images = replayed.images
 	journal.notes = replayed.notes
+	journal.presentation = replayed.presentation
+	if journal.presentation == nil {
+		journal.presentation = &presentationIndex{}
+	}
 	journal.replyTags = replayed.replyTags
 	journal.delivered = replayed.delivered
 	journal.noteDeliveries = replayed.noteDeliveries
@@ -1849,6 +1858,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 	// And the note index with it, for the same reason and in the same pass: the
 	// mark is on the LINE, and once the line has been rebuilt into a message
 	// there is nothing left to read it off (see [sessionFile.notes]).
+	presentation := &presentationIndex{}
 	notes := make(map[string]bool)
 	// And the caption index, for the notes' reason exactly: a `caption` line is
 	// news about a batch that is not carried by any message, so this pass is the
@@ -1932,6 +1942,11 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			asked = entry.Role == "user" && !entry.Note && entry.Steer == nil
 			stopped = ""
 			message := replayedMessage(entry, rebuild)
+			mark := entry.Presentation
+			if mark == nil {
+				mark = legacyPresentation(entry)
+			}
+			presentation.remember(message, mark)
 			rememberParts(images, message, entry.Parts)
 			if entry.Note {
 				rememberNote(notes, message)
@@ -2205,6 +2220,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		id:             id,
 		images:         images,
 		notes:          notes,
+		presentation:   presentation,
 		replyTags:      replyTags,
 		delivered:      delivered,
 		noteDeliveries: noteDeliveries,
@@ -2390,7 +2406,8 @@ type replayedSession struct {
 	images map[string]string
 	// notes is which of those messages the session wrote itself, keyed by
 	// [noteKey] — the index [sessionFile.notes] is opened holding.
-	notes map[string]bool
+	notes        map[string]bool
+	presentation *presentationIndex
 	// replyTags is the typed identity stored on task completion notes.
 	replyTags map[string][]TaskReplyTag
 	// delivered is the set of durable delivery ids this file already recorded,
@@ -2753,7 +2770,12 @@ func (s *sessionFile) appendWithReasoning(message ai.Message, note bool, refs []
 			deliveries = append(deliveries, string(id))
 		}
 	}
+	presentation := s.presentation.of(message)
+	if presentation == nil && message.Role == "assistant" {
+		presentation = &messagePresentation{Audience: "human"}
+	}
 	wrote := s.writeLine(sessionEntry{
+		Presentation:     presentation,
 		Type:             "message",
 		Role:             message.Role,
 		Content:          text,

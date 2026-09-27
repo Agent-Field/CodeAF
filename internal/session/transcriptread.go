@@ -223,13 +223,14 @@ func transcriptFrom(replayed replayedSession, err error) Record {
 		return Record{Unreadable: unreadRefusal(err)}
 	}
 	journal := &sessionFile{
-		images:    replayed.images,
-		notes:     replayed.notes,
-		replyTags: replayed.replyTags,
-		delivered: replayed.delivered,
-		steers:    replayed.steers,
-		captions:  replayed.captions,
-		tooks:     replayed.tooks,
+		presentation: replayed.presentation,
+		images:       replayed.images,
+		notes:        replayed.notes,
+		replyTags:    replayed.replyTags,
+		delivered:    replayed.delivered,
+		steers:       replayed.steers,
+		captions:     replayed.captions,
+		tooks:        replayed.tooks,
 	}
 	overlap := replayed.overlap
 	if overlap > len(replayed.messages) {
