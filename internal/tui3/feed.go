@@ -1304,10 +1304,11 @@ func (f *feed) reserveResponseContinuation() {
 func (f *feed) note(text string) { f.noteWritten(text, false, nil) }
 
 // toldNote is a note ADDRESSED TO THE PERSON: same dim line, same door, and the
-// work chip may not swallow it ([entry.told]). Its one caller today is the news
-// that a row they wrote has stopped being sent (session's EventRowNews).
-func (f *feed) toldNote(text string) {
-	f.noteWritten(text, false, nil)
+// work chip may not swallow it ([entry.told]). Explicit user-directed notices
+// and asynchronous command responses use this door; optional facts retain the
+// same emphasis as noteFacts.
+func (f *feed) toldNote(text string, facts ...string) {
+	f.noteWritten(text, false, facts)
 	if n := len(f.entries); n > 0 && f.entries[n-1].kind == entryNote {
 		f.entries[n-1].told = true
 	}
