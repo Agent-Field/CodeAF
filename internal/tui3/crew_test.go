@@ -182,6 +182,19 @@ func TestARoutedTaskSaysItsCrewTwice(t *testing.T) {
 	}
 }
 
+func TestAStoppedTaskCrewLineDoesNotOfferRedo(t *testing.T) {
+	a, _ := sheetApp(t)
+	crew := &crewroute.Decision{Class: crewroute.Bugfix, Crew: []crewroute.Pick{
+		{Seat: crewroute.Worker, Model: "z-ai/glm-5.3-flash", Provider: "openrouter"},
+	}}
+	a.sayTaskCrew(session.TaskNotice{ID: 8, State: session.TaskRunning, Crew: crew})
+	a.sayTaskCrew(session.TaskNotice{ID: 8, State: session.TaskFailed, Stopped: true, Crew: crew})
+	line := lastNote(t, a)
+	if !strings.Contains(line, "task 8 crew · stopped") || strings.Contains(line, "/redo stronger") {
+		t.Fatalf("stopped crew line = %q", line)
+	}
+}
+
 // crewEffortAgent is a task door that records the effort word it was handed.
 type crewEffortAgent struct {
 	*fakeAgent

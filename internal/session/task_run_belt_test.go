@@ -396,7 +396,7 @@ func TestBeltRunCarriesMachineGateAndShowsItsHold(t *testing.T) {
 		cfg.SessionFile = filepath.Join(dir, placeTranscript)
 		cfg.AskConsent = false
 		cfg.TaskMaxLoad = 0
-		cfg.TaskMinFreeMB = 1 << 40
+		cfg.TaskMinFreeMB = 0
 		cfg.TaskLanes = lanes
 	})
 	id, _, _, err := agent.StartTask(context.Background(), "fix the issue", false)
@@ -411,9 +411,6 @@ func TestBeltRunCarriesMachineGateAndShowsItsHold(t *testing.T) {
 	double.mu.Lock()
 	spec := double.spec
 	double.mu.Unlock()
-	if spec.Admission == nil || spec.Admission.MayStart() {
-		t.Fatal("conversation's memory floor did not hold the run gate")
-	}
 	rootID := strconv.FormatUint(id, 10)
 	spec.OnHold([]string{rootID})
 	rows := agent.graph().runRows(id)
@@ -444,6 +441,61 @@ func TestBeltRunCarriesMachineGateAndShowsItsHold(t *testing.T) {
 	endBeltRun(t, agent, double)
 }
 
+func TestHeldBeltRunStopsWithoutPreparingRepository(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	double := newBeltRunDouble("done")
+	registerBeltRunEngine(t, double)
+	dir := t.TempDir()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) {
+		cfg.Workspace = newTestRepo(t)
+		cfg.Place = Place{Dir: dir}
+		cfg.SessionFile = filepath.Join(dir, placeTranscript)
+		cfg.AskConsent = false
+		cfg.TaskMaxLoad = 0
+		cfg.TaskMinFreeMB = 1 << 40
+	})
+	id, _, _, err := agent.StartTask(context.Background(), "held work", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beltRunWaitFor(t, "the held belt row", func() bool {
+		rows := agent.graph().runRows(id)
+		return len(rows) == 1 && rows[0].State == TaskQueued && rows[0].Waiting == waitingMachineBusy
+	})
+	agent.beltMu.Lock()
+	run := agent.beltRun
+	pending, workspace, branch := run != nil, "", ""
+	if run != nil {
+		workspace, branch = run.workspace, run.tree.branch
+	}
+	agent.beltMu.Unlock()
+	if !pending || workspace != "" || branch != "" {
+		t.Fatalf("held run prepared repository state: live=%v workspace=%q branch=%q", pending, workspace, branch)
+	}
+	line, err := agent.Cancel(CancelTask + ":" + strconv.FormatUint(id, 10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(line, "stopping") {
+		t.Fatalf("stop line = %q, want stopping", line)
+	}
+	beltRunWaitFor(t, "the stopped held run", func() bool { return agent.beltRun == nil })
+	rows := agent.graph().runRows(id)
+	if len(rows) != 1 || rows[0].State != TaskFailed || !rows[0].Stopped {
+		t.Fatalf("stopped held row = %+v", rows)
+	}
+	if !strings.HasPrefix(rows[0].Report, taskStoppedWord) {
+		t.Fatalf("stopped held row report = %q, want one stop settlement", rows[0].Report)
+	}
+	plan := planRowFor(agent.PlanTasks(), planStoreID(strconv.FormatUint(id, 10)))
+	if plan == nil || plan.Status != string(plandb.StatusCancelled) {
+		t.Fatalf("stopped held plan = %+v, want one stopped landing", plan)
+	}
+	if double.didRun() {
+		t.Fatal("a held run reached the engine")
+	}
+}
+
 func TestBeltRunSharesGraphLanesWhenConfigHasNone(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	double := newBeltRunDouble("done")
@@ -454,7 +506,7 @@ func TestBeltRunSharesGraphLanesWhenConfigHasNone(t *testing.T) {
 		cfg.Place = Place{Dir: dir}
 		cfg.SessionFile = filepath.Join(dir, placeTranscript)
 		cfg.AskConsent = false
-		cfg.TaskMaxLoad = 1
+		cfg.TaskMaxLoad = 1e9
 		cfg.TaskMinFreeMB = 0
 		cfg.TaskLanes = nil
 	})

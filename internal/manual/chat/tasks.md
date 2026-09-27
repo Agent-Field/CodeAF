@@ -4317,6 +4317,9 @@ to ask again:
 task 4 crew · bugfix · worker glm-5.3-flash (openrouter) · checker kimi-k3 · $0.021 (est $0.023) · not right? /redo stronger
 ```
 
+When you explicitly stop a task, its line says `stopped` and does not offer
+`/redo stronger`; a stop is not a crew failure and teaches the router nothing.
+
 A seat you pinned wears the pin mark `⌖` in front of its model.
 
 **`/redo stronger`** runs the last task this conversation started again, one rung stronger:
