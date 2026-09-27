@@ -132,7 +132,7 @@ Any single line longer than 500 characters is cut and marked `... [truncated]`.
 
 **It works whether or not the machine has ripgrep.** With ripgrep it shells out
 to it and respects `.gitignore`. Without ripgrep it walks the tree itself, with
-the same arguments, the same caps and the same output — it just does not read
+the same arguments and output format — it does not read
 `.gitignore`, and skips `.git`, `node_modules`, `vendor` and files that look
 binary instead. The tool description says which of the two you have. It never
 answers `ripgrep (rg) is not available and could not be downloaded` any more:
@@ -151,6 +151,21 @@ directory. Default **500 entries**, and at the cap:
 
 All three are capped at the same size as `read` — the model's own cap, 50KB by
 default — and all three are pure reads, so none of them asks your permission.
+
+## Searching runtime logs and growing files
+
+Recursive `grep` skips codeaf runtime logs and saved transcripts, including
+custom `CODEAF_HOME`, even when the requested directory is inside that state
+home. Source under `work/` and `trees/`, and ordinary source directories named
+`logs`, remain searchable. A `glob` cannot re-include runtime output; recursive
+search does not follow symlink directories. A named log file can still be
+inspected: it reads at most the first **8 MiB present when opened**, so a growing
+log cannot keep the search running indefinitely. Recursive search skips files
+larger than **8 MiB**. The walking reader skips lines over **64 KiB**, reports
+incomplete results, and uses the same streaming reader for context. Requests are
+capped at **1000 matches** and **20 context lines per side**. If a ripgrep JSON
+response exceeds **1 MiB**, the tool stops it and asks for single-file inspection.
+Shell `rg` and `grep` commands do not inherit the structured tool's exclusions.
 
 ## Can you run tests for me or start a dev server?
 
