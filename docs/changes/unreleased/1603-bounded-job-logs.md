@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: bound background logs and keep recursive searches out of runtime output
-pr: 1599
+pr: 1603
 surface: [chat, engine]
 invalidates:
   - "Background jobs wrote unbounded logs and promised full output. Each job now retains two 4 MiB chunks, reports discarded output and disk failures, and continues draining the child process."
