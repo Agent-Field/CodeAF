@@ -1151,3 +1151,16 @@ func TestANarrowStandingLabelDropsTheCadenceFirst(t *testing.T) {
 		t.Fatalf("the no was rewritten: %q", got)
 	}
 }
+
+func TestStandingOnceReceiptDoesNotClaimExecution(t *testing.T) {
+	a, agent, tick := standApp(t)
+	standAsk(t, a, tick, session.StandingNotice{WhenWords: "Mondays at 9am"})
+	drive(t, a, key2("3"))
+	if len(agent.answered) != 1 || !agent.answered[0].answer.Once {
+		t.Fatalf("answer: %+v", agent.answered)
+	}
+	text := standText(a)
+	if !strings.Contains(text, "approved once, not scheduled") || strings.Contains(text, "done now") {
+		t.Fatal(text)
+	}
+}
