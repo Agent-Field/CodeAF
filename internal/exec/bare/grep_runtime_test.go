@@ -86,6 +86,8 @@ func TestRuntimeSearchExclusionsBothEngines(t *testing.T) {
 				"state[custom]/v3/standing/exchanges/chat/work/source-exchange.go",
 			}
 			runtime := []string{
+				"state[custom]/v3/history.jsonl",
+				"state[custom]/v3/projects/p/tasks.jsonl",
 				".codeaf/jobs/runtime-legacy.log", ".codeaf/stubs/runtime-legacy.txt",
 				"state[custom]/logs/runtime-daemon.log",
 				"state[custom]/v3/projects/p/s/logs/jobs/runtime-job.log",

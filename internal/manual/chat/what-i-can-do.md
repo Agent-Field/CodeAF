@@ -472,6 +472,15 @@ cleanup`. The counter and `.retention.lock` preserve job IDs across cleanup and
 restarts; deleting them is not a supported reset. Existing unmarked logs are
 preserved because an older process may still be writing them.
 
+## Prompt history during recursive search
+
+Structured recursive `grep` excludes the input-history journal
+`v3/history.jsonl` and project task indexes `v3/projects/*/tasks.jsonl` under
+the state home. These contain the questions and generated task titles from the
+current work; searching them as source would echo the query back into itself.
+Explicitly naming one file still gives a bounded snapshot when inspecting
+history is the intended work. Source worktrees remain searchable.
+
 ## Foreground bash output and large temporary logs
 
 Foreground `bash` keeps the latest output in memory. When output exceeds the
