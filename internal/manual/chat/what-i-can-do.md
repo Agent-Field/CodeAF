@@ -132,7 +132,7 @@ Any single line longer than 500 characters is cut and marked `... [truncated]`.
 
 **It works whether or not the machine has ripgrep.** With ripgrep it shells out
 to it and respects `.gitignore`. Without ripgrep it walks the tree itself, with
-the same arguments, the same caps and the same output — it just does not read
+the same arguments and output format — it does not read
 `.gitignore`, and skips `.git`, `node_modules`, `vendor` and files that look
 binary instead. The tool description says which of the two you have. It never
 answers `ripgrep (rg) is not available and could not be downloaded` any more:
@@ -151,6 +151,21 @@ directory. Default **500 entries**, and at the cap:
 
 All three are capped at the same size as `read` — the model's own cap, 50KB by
 default — and all three are pure reads, so none of them asks your permission.
+
+## Searching runtime logs and growing files
+
+Recursive `grep` skips codeaf runtime logs and saved transcripts, including
+custom `CODEAF_HOME`, even when the requested directory is inside that state
+home. Source under `work/` and `trees/`, and ordinary source directories named
+`logs`, remain searchable. A `glob` cannot re-include runtime output; recursive
+search does not follow symlink directories. A named log file can still be
+inspected: it reads at most the first **8 MiB present when opened**, so a growing
+log cannot keep the search running indefinitely. Recursive search skips files
+larger than **8 MiB**. The walking reader skips lines over **64 KiB**, reports
+incomplete results, and uses the same streaming reader for context. Requests are
+capped at **1000 matches** and **20 context lines per side**. If a ripgrep JSON
+response exceeds **1 MiB**, the tool stops it and asks for single-file inspection.
+Shell `rg` and `grep` commands do not inherit the structured tool's exclusions.
 
 ## Can you run tests for me or start a dev server?
 
@@ -237,7 +252,7 @@ your keyboard stays yours while the command runs. **Inside a task it does not.**
 A task has nobody to hand the keyboard back to, so a foreground command it
 started and is still waiting for is one the work simply waits for: nothing is
 asked of it, no step is counted, and the command's own ending — the exit line,
-its last lines and the path to the full log — is the next thing the task reads.
+its last lines and the path to the log — is the next thing the task reads.
 A command the task started with `background: true` is the other case and holds
 nothing up: a server or a sweep it deliberately left running is not something it
 is waiting on.
@@ -288,7 +303,7 @@ turn with work out always carries it. A turn that made twenty tool calls with
 one job out used to pay for the same sentence twenty times.
 
 **When a job ends**, its exit code, last non-empty output line, output tail and
-path to the full log arrive in the conversation on their own:
+the log's path arrive in the conversation on their own:
 
 ```
 while you worked:
@@ -307,9 +322,11 @@ ended, the note starts a new one, exactly as a finished task does. Several
 session notes waiting at that boundary are one `while you worked:` message, not
 several synthetic user messages between tool calls.
 
-The note carries the last 50 lines. The whole log stays on disk and the note
-names its path, so an older line is one `jobs output` call away and the ending
-itself never is.
+The note carries the last 50 lines. The job's most recent output stays on disk —
+a bounded spool of a few megabytes, older output discarded as it rolls — and the
+note names its path, so a recent older line is one `jobs output` call away and
+the ending itself never is. When output has been discarded, the note says so
+instead of calling what remains full.
 
 So you should never see codeaf running `sleep 30 && tail …` to wait for
 something. That loop was real — it cost one benchmark worker two thirds of its
@@ -376,12 +393,16 @@ job 3 started; log at ~/.codeaf/v3/projects/-you-work/<session>/logs/jobs/3.log
 ```
 
 A background job never times out and is not tied to the turn that started it.
-Everything it writes goes to that log file; the last **64KB** is also held in
+Its most recent output goes to that log file — a bounded spool, at most **8MiB** in
+chunks, the oldest discarded as it rolls — and the last **64KB** is also held in
 memory for quick reads. When the job exits, codeaf is told at the next step in
 one boundary batch. Its headline, e.g.
 `job 3 exited 1: make: *** [build] Error 1`, quotes the last non-empty log line,
 clipped to 120 characters. Under it the note carries the last 50 lines and the
-path to the full log; use `jobs output` for anything older than that tail.
+log's path; use `jobs output` for anything older than that tail. When the
+spool has rotated, the note names both retained files; after older output is
+discarded, it also names the truncation instead
+of promising a full log.
 
 The `jobs` tool looks at all of this. Its `action` is `list`, `output` or `kill`.
 
@@ -391,7 +412,8 @@ The `jobs` tool looks at all of this. Its `action` is `list`, `output` or `kill`
   kept as a job — by the background-after clock, its timeout, or `ctrl+g` — has
   exactly this row, with no mark saying where it came from: it is a job like any
 - `output` — the last lines from the in-memory tail, **50 by default and 200 at
-  most**, with a footer naming the full log:
+  most**, with a footer naming the log: `full log:` while everything the job
+  wrote is still on disk, and the truncation named where it is not —
   `[job 1 · running · showing last 50 lines · full log: <path>]`.
 - `kill` — SIGTERM to the process group, SIGKILL after a **2-second** grace.
   Answers `job 1 killed`.
@@ -423,6 +445,32 @@ outcome belongs here, and gathering, deciding, writing or checking something —
 parts it has, and however long it takes — belongs to a task instead, which gives you a room
 to watch and a report you can read. If a multi-part piece of work was started as a
 background command, say so: it can be handed to a task instead.
+
+## How much disk space do finished job logs keep?
+
+Finished logs do not pile up forever either. Each session's logs/jobs
+directory keeps managed finished logs within **128 MiB and 64 jobs**
+(a job's log and its one rotation count together), evicting the oldest job IDs first. Startup also expires inactive managed logs
+whose base and rotated chunk have both been untouched for **7 days**;
+active jobs are never touched, and files codeaf did not create there — older
+unmarked logs included — are left alone. If a log you were pointed at has
+since been evicted, the jobs footer says so instead of naming the file, and
+the last 64KB in memory is still readable. Cleanup runs when a job starts or
+finishes and during the startup sweep of existing jobs directories; active jobs, legacy logs, and files without safe ownership records
+are outside this completed-log budget. A cleanup failure is reported and may
+leave the directory over budget. Damaged allocation metadata refuses new logs
+rather than reusing previous job IDs.
+
+
+## Why can a job not create its log?
+
+Job-log setup refuses symlinked storage paths, including a symlinked codeaf home
+or legacy workspace, because cleanup cannot establish ownership safely. Use the
+resolved directory path. A damaged or missing established job-ID counter is also
+refused with `job log retention: unsafe or damaged state; refusing allocation or
+cleanup`. The counter and `.retention.lock` preserve job IDs across cleanup and
+restarts; deleting them is not a supported reset. Existing unmarked logs are
+preserved because an older process may still be writing them.
 
 ## Can you keep an eye on something and tell me when it changes?
 
