@@ -421,9 +421,10 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 func (a *Agent) markPlanMachineHold(row *PlanTaskRow, path string, root bool) {
 	a.beltMu.Lock()
 	run := a.beltRun
-	held := run != nil && run.machineHeld[row.ID] && run.store != nil && filepath.Clean(run.store.Path()) == filepath.Clean(path)
+	pending := run != nil && run.pending
+	held := run != nil && (pending || run.machineHeld[row.ID]) && run.store != nil && filepath.Clean(run.store.Path()) == filepath.Clean(path)
 	a.beltMu.Unlock()
-	if held && (row.Status == string(plandb.StatusReady) || root && row.Status == string(plandb.StatusRunning)) {
+	if held && (row.Status == string(plandb.StatusReady) || (root || pending) && row.Status == string(plandb.StatusRunning)) {
 		row.Hold = waitingMachineBusy
 	}
 }
