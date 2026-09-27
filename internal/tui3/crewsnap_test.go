@@ -66,7 +66,8 @@ func TestCrewSnapshotWeakPinnedChecker(t *testing.T) {
 │                                                                                                  │
 │  models    ‹ all › (4)                                                                           │
 │  providers {tick} openrouter  +                                                                       │
-│  cap       per task $5 · daily none                                                              │
+│  cap       per task $5 · crew daily cap none                                                     │
+│            the daily limit, $500, still covers everything codeaf spends · /budget                │
 │  checker pinned to deepseek-v4-flash · open-ended work will be checked weakly                    │
 ╰─ enter change · esc close · ? keys ──────────────────────────────────────────────────────────────╯`)
 }
