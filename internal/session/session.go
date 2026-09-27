@@ -2174,6 +2174,10 @@ type Config struct {
 	// already in flight is never cut in half by it.
 	SpendRailUSD float64
 
+	// DailySpendPreauthorized carries a run door's explicit daily-limit exemption.
+	// It does not lift task, conversation, time, or approval limits.
+	DailySpendPreauthorized bool
+
 	// Unattended retains the legacy opt-in to automatic goal continuation.
 	// Together with Budget it selects a Steward only when Interactive is false.
 	// Tool approval policy is configured separately by the launch door.

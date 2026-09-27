@@ -111,9 +111,10 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 		}
 	}
 	agent, err := session.NewBeltWorker(session.Config{
-		Workspace:        w.workspace,
-		Model:            w.model,
-		WaitForBeltSteps: true,
+		Workspace:               w.workspace,
+		Model:                   w.model,
+		WaitForBeltSteps:        true,
+		DailySpendPreauthorized: session.DailySpendPreauthorized(ctx),
 	}, w.completer, &task, w.store.Path(), w.store.RootID())
 	if err != nil {
 		return Report{}, err
