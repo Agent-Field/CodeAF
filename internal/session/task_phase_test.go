@@ -1,7 +1,6 @@
 package session
 
 import (
-	"context"
 	"strings"
 	"testing"
 	"time"
@@ -330,7 +329,7 @@ func TestTheHandoverSaysItIsBriefingAWorkerWhileItWritesTheBrief(t *testing.T) {
 	ran := make(ranNodes, 2)
 	stubbedGraph(agent, func(node *TaskNode) { ran <- node })
 
-	events, err := agent.Submit(context.Background(), "work through the four things I listed and report back")
+	events, err := agent.Submit(watchedContext(agent), "work through the four things I listed and report back")
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
 	}
