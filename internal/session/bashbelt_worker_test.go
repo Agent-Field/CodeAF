@@ -109,7 +109,7 @@ func askStore(t *testing.T, rootDescription string) *plandb.Store {
 func TestBeltWorkerBriefCarriesTheRunsAskToALeaf(t *testing.T) {
 	ask := "Scoped containers can be initialized independently; the parent container's singletons are not reinitialized."
 	store := askStore(t, ask)
-	doc := BeltWorkerBrief(store, store.Task("leaf"), false, false, "")
+	doc := BeltWorkerBrief(store, store.Task("leaf"), false, false, "", "")
 	want := askSectionHeading + "\n" + askSectionRule + "\n\n" + ask
 	if !strings.Contains(doc, want) {
 		t.Fatalf("a leaf's document does not carry the run's ask verbatim under %q:\n%s", askSectionHeading, doc)
@@ -122,7 +122,7 @@ func TestBeltWorkerBriefCarriesTheRunsAskToALeaf(t *testing.T) {
 func TestBeltWorkerBriefLeavesTheRootsOwnDocumentAlone(t *testing.T) {
 	ask := "add a rate limiter to the upload route"
 	store := askStore(t, ask)
-	doc := BeltWorkerBrief(store, store.Task(planRootID), true, false, "")
+	doc := BeltWorkerBrief(store, store.Task(planRootID), true, false, "", "")
 	if strings.Contains(doc, askSectionHeading) {
 		t.Fatalf("the root's document grew the ask section:\n%s", doc)
 	}
@@ -136,7 +136,7 @@ func TestBeltWorkerBriefLeavesTheRootsOwnDocumentAlone(t *testing.T) {
 // see that it was.
 func TestBeltWorkerBriefBoundsTheAskWithAMarkedCut(t *testing.T) {
 	store := askStore(t, strings.Repeat("z", askSectionLimit+4096))
-	doc := BeltWorkerBrief(store, store.Task("leaf"), false, false, "")
+	doc := BeltWorkerBrief(store, store.Task("leaf"), false, false, "", "")
 	if !strings.Contains(doc, askSectionHeading) {
 		t.Fatalf("the leaf's document dropped the ask section entirely:\n%s", doc)
 	}
@@ -153,11 +153,11 @@ func TestBeltWorkerBriefBoundsTheAskWithAMarkedCut(t *testing.T) {
 // the section is absent rather than empty, never a heading over nothing.
 func TestBeltWorkerBriefRendersNoAskSectionWithoutARoot(t *testing.T) {
 	leaf := &plandb.Task{TaskSpec: plandb.TaskSpec{ID: "leaf", Description: "the leaf's own work order"}}
-	if doc := BeltWorkerBrief(nil, leaf, false, false, ""); strings.Contains(doc, askSectionHeading) {
+	if doc := BeltWorkerBrief(nil, leaf, false, false, "", ""); strings.Contains(doc, askSectionHeading) {
 		t.Fatalf("a nil store grew an ask section:\n%s", doc)
 	}
 	store := askStore(t, "")
-	if doc := BeltWorkerBrief(store, store.Task("leaf"), false, false, ""); strings.Contains(doc, askSectionHeading) {
+	if doc := BeltWorkerBrief(store, store.Task("leaf"), false, false, "", ""); strings.Contains(doc, askSectionHeading) {
 		t.Fatalf("a root with no description grew an ask section:\n%s", doc)
 	}
 }
@@ -203,6 +203,40 @@ func TestBashWorkerPageSaysToDeleteScratchBeforeDone(t *testing.T) {
 	}
 }
 
+// TestBeltWorkerBriefClosesOnStandingOrders is the #1549 regression: a
+// plan-born worker's document, composed from the store's task rows, carries the
+// person's standing orders LAST — the same road a task node's brief takes
+// ([TaskGraph.briefLocked]) — so a worker seated from a plan works under the
+// house rules too. The section is already rendered ([StandingWorld]); the
+// brief appends it whole.
+func TestBeltWorkerBriefClosesOnStandingOrders(t *testing.T) {
+	store := askStore(t, "the run's ask")
+	orders := "Standing orders:\n\n" + standingWorldHolding + "\n\n- for this repo, never branch off a feature branch"
+	doc := BeltWorkerBrief(store, store.Task("leaf"), false, false, "", orders)
+	if !strings.HasSuffix(strings.TrimSpace(doc), "- for this repo, never branch off a feature branch") {
+		t.Fatalf("a plan-born worker's brief does not close on the standing orders:\n%s", doc)
+	}
+	if !strings.Contains(doc, standingWorldHeading+":") {
+		t.Fatalf("a plan-born worker's brief does not carry the standing orders section:\n%s", doc)
+	}
+}
+
+// TestBeltWorkerBriefRendersNoStandingSectionWithoutOrders is the emptiness
+// law on the new section: no orders is no section, never a heading over
+// nothing — and a brief for a place with nothing standing reads as it always
+// read, byte for byte.
+func TestBeltWorkerBriefRendersNoStandingSectionWithoutOrders(t *testing.T) {
+	store := askStore(t, "the run's ask")
+	without := BeltWorkerBrief(store, store.Task("leaf"), false, false, "", "")
+	with := BeltWorkerBrief(store, store.Task("leaf"), false, false, "", "  \n")
+	if with != without {
+		t.Fatalf("whitespace-only orders grew the brief:\n--- without ---\n%s\n--- with ---\n%s", without, with)
+	}
+	if strings.Contains(with, standingWorldHeading) {
+		t.Fatalf("empty orders rendered a standing section:\n%s", with)
+	}
+}
+
 func TestBeltWorkerBriefStatesAssignedDirectoryWithoutRewritingReferences(t *testing.T) {
 	ask := "In /source/project, edit result.txt; consult /reference/design.md."
 	store := askStore(t, ask)
@@ -210,7 +244,11 @@ func TestBeltWorkerBriefStatesAssignedDirectoryWithoutRewritingReferences(t *tes
 		for _, role := range []string{plandb.RoleWork, plandb.RoleCheck} {
 			task := store.Task(id)
 			task.Role = role
-			doc := BeltWorkerBrief(store, task, id == planRootID, false, "", "/assigned/copy")
+			orders := "Standing orders:\n\n- preserve the audit log"
+			doc := BeltWorkerBrief(store, task, id == planRootID, false, "", orders, "/assigned/copy")
+			if !strings.HasSuffix(doc, orders) {
+				t.Fatal("assigned directory displaced standing orders")
+			}
 			for _, want := range []string{"ASSIGNED WORKING DIRECTORY\n\n/assigned/copy", ask, "Unrelated read-only reference paths remain as written"} {
 				if !strings.Contains(doc, want) {
 					t.Fatalf("%s/%s brief lost %q: %s", id, role, want, doc)
