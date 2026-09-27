@@ -29,6 +29,22 @@ func TestHeldRunReopensOnTheSameAdmissionWithoutPreparingFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	joined, _, _, err := first.StartTask(context.Background(), "joined held brief", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertHeldJoined := func(a *Agent) {
+		t.Helper()
+		row, found := runRowOf(a.graph(), joined)
+		if !found || row.State != TaskQueued || row.Waiting != waitingMachineBusy {
+			t.Fatalf("held joined lifecycle = %+v", row)
+		}
+		planRow := planRowFor(a.PlanTasks(), planStoreID(strconv.FormatUint(joined, 10)))
+		if planRow == nil || planRow.Interrupted || planRow.Hold != waitingMachineBusy {
+			t.Fatalf("held joined plan display = %+v", planRow)
+		}
+	}
+	assertHeldJoined(first)
 	first.beltMu.Lock()
 	old := first.beltRun
 	first.beltMu.Unlock()
@@ -47,6 +63,7 @@ func TestHeldRunReopensOnTheSameAdmissionWithoutPreparingFiles(t *testing.T) {
 	if resumed == nil || resumed.row != id || resumed.brief != "held original brief" || resumed.ground != repo {
 		t.Fatalf("reopened run = %+v", resumed)
 	}
+	assertHeldJoined(second)
 	gate, ok := resumed.admission.(*runAdmission)
 	if !ok || gate.governor.settings == nil {
 		t.Fatal("recovered admission lost its live profile settings")
@@ -256,5 +273,53 @@ func TestRecoveringAPendingProgramDoesNotEndItsNewDriver(t *testing.T) {
 	case <-run.over:
 	case <-time.After(5 * time.Second):
 		t.Fatal("pending program did not stop")
+	}
+}
+
+func TestJoinedRunAdmissionPublishesOnlyLiveObligations(t *testing.T) {
+	path := filepath.Join(t.TempDir(), planStoreFilename)
+	seedPlanStore(t, path, "chat-a", plandb.TaskSpec{ID: "72", Title: "Joined"}, plandb.TaskSpec{ID: "73", Title: "Stopped"})
+	a, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	armPlanStore(t, a, path, "chat-a")
+	store, err := plandb.Open(path, "", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	g := a.graph()
+	g.keepRunRows(72, []TaskNotice{{ID: 72, Parent: 71, State: TaskInterrupted, PlanTask: planStoreID("72")}})
+	g.keepRunRows(73, []TaskNotice{{ID: 73, Parent: 71, State: TaskFailed, Stopped: true, PlanTask: planStoreID("73")}})
+	run := &beltRun{row: 71, pending: true, store: store, joined: []uint64{72, 73}}
+	a.publishJoinedRunRows(g, run)
+	row, _ := runRowOf(g, 72)
+	if row.State != TaskQueued || row.Waiting != waitingMachineBusy {
+		t.Fatalf("pending joined row = %+v", row)
+	}
+	run.pending = false
+	a.publishJoinedRunRows(g, run)
+	row, _ = runRowOf(g, 72)
+	if row.State != TaskRunning || row.Waiting != "" {
+		t.Fatalf("admitted joined row = %+v", row)
+	}
+	if _, err := store.Claim("72", "worker"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Done("72", "worker", "recorded child result", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	row.State = TaskInterrupted // crash before publishing the child's result
+	g.keepRunRows(72, []TaskNotice{row})
+	a.publishJoinedRunRows(g, run)
+	row, _ = runRowOf(g, 72)
+	if row.State != TaskDone || row.Result != "recorded child result" || row.EndedAt.IsZero() {
+		t.Fatalf("recorded child completion lost at restart: %+v", row)
+	}
+	planRow := planRowFor(a.PlanTasks(), planStoreID("72"))
+	if planRow == nil || planRow.Interrupted || planRow.Status != string(plandb.StatusDone) {
+		t.Fatalf("recorded child completion displayed as interrupted: %+v", planRow)
+	}
+	stopped, _ := runRowOf(g, 73)
+	if !stopped.Stopped || stopped.State != TaskFailed {
+		t.Fatalf("admission revived stopped child = %+v", stopped)
 	}
 }

@@ -547,7 +547,7 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 	}
 	if live != nil {
 		a.publishRunRow(g, TaskNotice{
-			ID: id, Title: title, State: TaskRunning, Parent: live.row, StartedAt: a.taskClockNow(),
+			ID: id, Title: title, State: TaskQueued, Parent: live.row, StartedAt: a.taskClockNow(),
 			// AND THE ROW SAYS WHICH STORE TASK IT IS, from its first breath, for
 			// the reason the copy is written down in the same breath below: the
 			// store is the authority for this work's state and for the page
@@ -560,6 +560,7 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 			// under. The bare stored id is answered under by nothing.
 			PlanTask: planStoreID(storeID),
 		})
+		a.publishJoinedRunRows(g, live)
 		return true, nil
 	}
 
@@ -1507,6 +1508,7 @@ func (a *Agent) installBeltRun(g *TaskGraph, run *beltRun) {
 	a.beltMu.Lock()
 	a.beltRun = run
 	a.beltMu.Unlock()
+	a.publishJoinedRunRows(g, run)
 }
 
 // publishRunRow hands one run row to whoever is watching and keeps it for a
@@ -1685,6 +1687,7 @@ func (a *Agent) preparePendingBeltRun(ctx context.Context, run *beltRun) error {
 			Copy: runCopyOf(tree), Program: programName(run.delegate),
 			PlanTask: planStoreID(run.root), Crew: run.crewDecision(), Model: run.crewWorker(),
 		})
+		a.publishJoinedRunRows(g, run)
 	}
 	return nil
 }
@@ -2076,6 +2079,50 @@ func (a *Agent) settleBeltRun(run *beltRun, summary RunSummary, landing RunLandi
 	}
 	a.publishRunRow(g, notice)
 	a.settleJoinedRows(g, run, notice.EndedAt, beltRunLimitEnding(summary.Limit), summary.Cut)
+}
+
+// publishJoinedRunRows brings adopted obligations into the same lifecycle as
+// their owner. A checkpoint's interrupted word is historical once that exact
+// plan is owned again; pending admission still means no worker has started.
+func (a *Agent) publishJoinedRunRows(g *TaskGraph, run *beltRun) {
+	a.beltMu.Lock()
+	joined := append([]uint64(nil), run.joined...)
+	pending := run.pending
+	a.beltMu.Unlock()
+	for _, id := range joined {
+		notice, found := runRowOf(g, id)
+		if !found || notice.Stopped || (notice.State.settled() && notice.State != TaskInterrupted) {
+			continue
+		}
+		task := run.store.Task(strconv.FormatUint(id, 10))
+		if task == nil {
+			continue
+		}
+		notice.State, notice.Waiting = TaskRunning, ""
+		if terminalStoreStatus(task.Status) {
+			notice = settledJoinedNotice(notice, task)
+		} else if pending {
+			notice.State, notice.Waiting = TaskQueued, waitingMachineBusy
+		}
+		a.publishRunRow(g, notice)
+	}
+}
+
+// settledJoinedNotice restores the task's recorded result independently of
+// the root's landing receipt; a completed child does not claim a merged copy.
+func settledJoinedNotice(notice TaskNotice, task *plandb.Task) TaskNotice {
+	notice.State = TaskFailed
+	if task.Status == plandb.StatusDone {
+		notice.State = TaskDone
+	}
+	notice.Stopped = planStopReason(task.Error)
+	notice.EndedAt = task.CompletedAt
+	notice.Result = strings.TrimSpace(task.Result)
+	notice.Report = notice.Result
+	if notice.Report == "" {
+		notice.Report = strings.TrimSpace(task.Error)
+	}
+	return notice
 }
 
 // settleJoinedRows ends the row of every hand-off that joined the run. A JOINED
