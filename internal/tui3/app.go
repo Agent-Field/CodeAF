@@ -530,6 +530,10 @@ type entry struct {
 	// Provisional prose has arrived, but the response has not yet confirmed
 	// whether it ends in an answer or a tool call. It stays in the work view.
 	provisional bool
+	// addressed is an explicit assistant update, visible while its body streams.
+	// Completion remains a separate response confirmation, so stopping a partial
+	// update cannot present it as a finished reply.
+	addressed bool
 	// The same identity can be attached while the reply is still pending. Its
 	// done flag confirms ownership before any private tail receives a work fold.
 	confirmed *responseConfirmation

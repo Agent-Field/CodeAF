@@ -559,6 +559,11 @@ func workEntry(es []entry, folds map[int]workfold, i int) bool {
 	if e.kind != entryAssistant {
 		return false
 	}
+	// Explicitly addressed updates are visible while streaming. This does
+	// not confirm the response; interrupted partial updates still recede.
+	if e.addressed && !e.cut {
+		return false
+	}
 	// Streaming content can still be a preamble to an upcoming tool. The
 	// response boundary confirms it before the answer receives full emphasis.
 	if e.provisional && !e.settled {
