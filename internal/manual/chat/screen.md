@@ -1791,25 +1791,22 @@ a flush half.
 Below 60 columns the gutter is dropped and the shading alone carries the difference. With
 no colour at all, the gutter alone does.
 
-## I pressed esc and the reply stayed grey — why nothing became the answer
+## What remains visible when I stop a reply
 
-That is the screen telling you the truth: **an interrupted turn never reached an answer.**
+Press `esc` while a turn is running to stop its unfinished work. Completed replies
+and updates already addressed to you remain readable. An explicitly addressed
+update interrupted while streaming also stays visible, with an `interrupted`
+label; it does not claim to be a completed answer.
 
-Press `esc` while a turn is running and whatever had been written stays on screen,
-because the session keeps it — but it stays at the working shade, in the working column, for good. The missing
-flush-left paragraph *is* the statement that you did not get an answer, so nothing has to
-be added to say it. Asking something else afterwards does not promote it later.
+Unfinished operational narration and tool details collapse into the stopped-work
+chip. Click it or press `ctrl+e` to inspect the retained details. Your messages,
+steering and actionable decisions remain outside the disclosure.
 
-The turn also collapses to a chip that says who stopped it —
-`▸ stopped by you at 40s · 4 tool calls · ctrl+e` — with nothing left standing under it.
-`ctrl+e` over an empty message box, or a click on the chip, opens it again. codeaf's own
-lines about the stop, `· stopped` and anything it dropped from the queue, stay outside
-the chip.
-
-One limit worth knowing: the session file keeps the words a stopped turn managed to say
-and keeps no mark saying it was stopped. So if you close codeaf and **resume** that
-conversation later, that turn is rebuilt from its shape alone and its last paragraph reads
-as an answer again.
+Newly recorded conversations preserve the audience and interruption state when
+you reopen them. Engine-generated handover and interruption notes stay inside
+operational disclosure. For older journals without this metadata, only complete
+reserved interruption records can be recognized safely; ambiguous mixed prose is
+preserved rather than removing words that might have been intended for you.
 
 ## My message appeared in the middle of the reply — a message never lands mid-stream
 
@@ -4241,16 +4238,18 @@ press `ctrl+e` to inspect the complete words while they arrive.
 When the response finishes with an answer and no tool calls, the full reply opens
 as formatted text. Questions open at that same boundary, before later completion
 checks finish. This means full answers no longer appear at full size token by
-token in the compact view. A response that calls a tool stays a step. If work
-continues later, earlier prose returns to the work hierarchy.
+token in the compact view. Ordinary narration that calls a tool stays a step. A confirmed reply remains
+visible when later work starts. An explicit human update streams as formatted
+text immediately, with its protocol marker hidden, even before more tool calls.
 
 The same behavior applies inside task rooms. Saved answers remain readable when
 you return, and completion still collapses the intermediate work. Explicitly
 expanded work and `ui.work = open` keep the detailed reading view available.
 
 A message queued beneath a streaming reply, or a notice displayed there, stays
-below the complete answer when its response is confirmed. Stopping the turn keeps
-its partial response dim even if a confirmation was already in flight.
+below the complete answer when its response is confirmed. Stopping preserves
+explicit human updates with an interrupted label and folds unfinished operational
+narration, even if a confirmation was already in flight.
 
 If private work falls below a queued message, its finished work stays behind a
 separate closed `worked` chip. Expanding that chip still reveals its details.
