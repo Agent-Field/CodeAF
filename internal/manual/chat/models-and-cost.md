@@ -1818,7 +1818,7 @@ These are the sentences and what each one means.
 | what you read | what happened | what codeaf does |
 | --- | --- | --- |
 | `that model is not being served any more` | the router has no machines behind that model id at all | moves to your next fallback model at once, with no tries wasted |
-| `your key was not accepted for this model` | a key that is missing, not permitted for this model, or out of balance | stops and tells you which safe key source answered — never the key itself, and never a retry |
+| `your key was not accepted for this model` | a key that is missing, not permitted for this model, or out of balance | stops without retrying; for the default service, names the key source, never the key itself |
 | `this conversation got too long for the model` | the transcript is past the model's window | shortens the conversation once and asks the same question again |
 | `this conversation is too long for the model even after shortening it` | it still did not fit | stops; start a new conversation, or `/model` to one with a bigger window |
 | `the request could not be sent as it was` | the router read the request itself and refused it | the request was already retried with its optional parts taken off; nothing else will help |
@@ -1858,7 +1858,8 @@ three deliveries of the same request to the same endpoint — a measured run los
 to exactly that.
 
 **And an authentication refusal is not retried at all.** A `401` or `403` means the key or
-its permission was refused, so it stops and names whether the key came from the shell's
+its permission was refused, so it stops. For a model served by the default service,
+it names whether the key came from the shell's
 `OPENROUTER_API_KEY`, the shell's `OPENAI_API_KEY`, or the key saved in your profile.
 It is never treated as a provider `5xx`. A refusal that names no endpoint is also not retried:
 if the router refused on its own account, it read the request codeaf built and said no to it —
