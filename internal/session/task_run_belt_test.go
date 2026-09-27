@@ -165,11 +165,15 @@ func registerBeltRunEngine(t *testing.T, engine RunEngine) {
 func endBeltRun(t *testing.T, agent *Agent, double *beltRunDouble) {
 	t.Helper()
 	agent.beltMu.Lock()
-	over := agent.beltRun.over
+	run := agent.beltRun
 	agent.beltMu.Unlock()
 	close(double.release)
+	if run == nil {
+		return
+	}
+	// The owner's completion channel covers the final record and store close.
 	select {
-	case <-over:
+	case <-run.over:
 	case <-time.After(10 * time.Second):
 		t.Fatal("run did not finish settling after its engine returned")
 	}
