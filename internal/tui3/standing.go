@@ -823,7 +823,7 @@ func (a *app) standBands(card *standingCard, width int) []string {
 	}
 	cost := ""
 	if card.item.Spends() {
-		cost = a.standCardCostWords(card)
+		cost = card.cost
 		if checked := standChecked(card.item.When.Kind); checked != "" {
 			if cost == "" {
 				cost = checked
