@@ -1256,12 +1256,12 @@ func (a *Agent) graph() *TaskGraph {
 		graph.home = a
 		graph.run = graph.runOwned
 		graph.report = a.reportTaskNode
-		// The two ceilings, resolved once for the life of the session. They are
-		// read off the config rather than off the settings file for the reason
-		// every other task row is: a scheduler that re-read a person's profile
-		// mid-run would be a run whose rules changed under it.
+		// The two ceilings start from config and refresh from the profile's one
+		// settings generation. A held task must be able to start when its person
+		// changes the limit, without requiring an engine restart; run admission
+		// uses the same governor refresh seam.
 		graph.limit = a.config.TaskParallel
-		graph.governor = newAdmissionGovernor(a.config.TaskMaxLoad, a.config.TaskMinFreeMB)
+		graph.governor = newAdmissionGovernorForProfile(a.config.TaskMaxLoad, a.config.TaskMinFreeMB, a.config.ProfileDir)
 		// AND THE MACHINE'S OWN ACCOUNT, if this process opened more than one
 		// conversation onto the same machine (task_pressure.go, #907).
 		if a.config.TaskLanes != nil {

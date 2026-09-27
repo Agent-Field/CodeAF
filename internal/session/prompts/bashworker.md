@@ -146,14 +146,13 @@ The idioms, in place of the tools other belts carry:
   through a `sed -i` aimed at one region. Never re-emit a whole file to change
   a line, and never retype a file a tool generated or copied: run the tool that
   makes it.
-- Search the assigned project with `git grep` or narrow `rg --no-config --no-follow`.
-  Discover files with `rg --files`; never widen a missing doc into a home-wide search.
-  Check `pwd` and the assigned project; use `plandb --help` for its contract.
-  Shell searches get no automatic exclusions. Exclude .git, node_modules, vendor,
-  .venv, Library, `-g '!**/.codeaf/{jobs,logs,stubs,trace}/**'` and runtime
-  logs/tasks/transcripts under `${CODEAF_HOME:-$HOME/.codeaf}`, including custom roots.
-  `work`/`trees` source remains searchable. Never recurse into live logs; inspect
-  one with `tail -c 65536 -- /path/to/job.log`.
+- Search a named project with `git grep -n -- pattern` or narrow `rg --files`.
+  Missing doc? Check `pwd` and the assigned project; use `plandb --help` for
+  its contract. Never widen that search to home.
+  Shell searches get no automatic exclusions: prune .git, node_modules,
+  vendor, .venv, Library, `**/.codeaf/{jobs,logs,stubs,trace}/**`, and runtime
+  logs/tasks/transcripts under `${CODEAF_HOME:-$HOME/.codeaf}` (custom roots
+  too). Keep source `work`/`trees`. Inspect logs with `tail -c 65536 -- file`.
 
 A big result is cut to its first half and its last half, and the WHOLE output
 is filed beside this node's own log; the result names that file with a line

@@ -142,6 +142,9 @@ func (row PlanTaskRow) StateWord() string {
 	if row.Stopped {
 		return taskWordStopped
 	}
+	if row.Interrupted {
+		return taskWordInterrupted
+	}
 	if row.Hold != "" && (row.Status == string(plandb.StatusReady) || row.Status == string(plandb.StatusRunning)) {
 		return taskWordQueued
 	}
@@ -302,6 +305,7 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 			row := planTaskRow(store, dir, task, spend, live)
 			planCarriedRow(&row, carried[task.ID])
 			clocks.apply(&row, dir, task, root)
+			a.markPlanInterrupted(&row)
 			a.markPlanMachineHold(&row, store.Path(), task.ID == root)
 			row.Folder = a.planTaskRunCopy(task.ID)
 			row.LiveParts = planStepDisplayFacts(PlanStep{Command: row.Live.Command}, copies.or(row.Folder), planShimFilename).Parts
@@ -354,6 +358,7 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 		row := planTaskRow(store, dir, child, spend, live)
 		planCarriedRow(&row, carried[child.ID])
 		clocks.apply(&row, dir, child, store.RootID())
+		a.markPlanInterrupted(&row)
 		a.markPlanMachineHold(&row, store.Path(), child.ID == store.RootID())
 		row.Folder = a.planTaskRunCopy(child.ID)
 		row.LiveParts = planStepDisplayFacts(PlanStep{Command: row.Live.Command}, copies.or(row.Folder), planShimFilename).Parts
@@ -421,10 +426,33 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 func (a *Agent) markPlanMachineHold(row *PlanTaskRow, path string, root bool) {
 	a.beltMu.Lock()
 	run := a.beltRun
-	held := run != nil && run.machineHeld[row.ID] && run.store != nil && filepath.Clean(run.store.Path()) == filepath.Clean(path)
+	pending := run != nil && run.pending
+	held := run != nil && (pending || run.machineHeld[row.ID]) && run.store != nil && filepath.Clean(run.store.Path()) == filepath.Clean(path)
 	a.beltMu.Unlock()
-	if held && (row.Status == string(plandb.StatusReady) || root && row.Status == string(plandb.StatusRunning)) {
+	if held && (row.Status == string(plandb.StatusReady) || (root || pending) && row.Status == string(plandb.StatusRunning)) {
 		row.Hold = waitingMachineBusy
+	}
+}
+
+// markPlanInterrupted reconciles the plan store's still-open row with the
+// recovered run row. The store is owned by the run and cannot know that the
+// process which drove it died, while the task checkpoint records that fact as
+// TaskInterrupted; the page must combine those two durable readings.
+func (a *Agent) markPlanInterrupted(row *PlanTaskRow) {
+	if row == nil || row.Interrupted {
+		return
+	}
+	g := a.tasker()
+	if g == nil {
+		return
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, notice := range g.runRowsLocked() {
+		if notice.PlanTask == row.ID && notice.State == TaskInterrupted {
+			row.Interrupted = true
+			return
+		}
 	}
 }
 

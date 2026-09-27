@@ -721,3 +721,18 @@ func TestPlanRailAndTreeOmitTheNamedFolderFromLiveCommands(t *testing.T) {
 		t.Fatalf("rail/tree command display did not omit only the named folder:\n%s", text)
 	}
 }
+
+func TestAHeldPlanRailRowKeepsItsReasonAndQueuedRoomState(t *testing.T) {
+	row := session.PlanTaskRow{ID: "t-root", Title: "the held run", Status: "running", Hold: "machine busy"}
+	a, _ := planAppWith(t, []session.PlanTaskRow{row}, map[string]session.PlanTaskPage{row.ID: {Row: row}})
+	node := planRailNode(row)
+	if node.state != session.TaskQueued {
+		t.Fatalf("held plan rail state = %q, want queued", node.state)
+	}
+	if node.waiting != "machine busy" {
+		t.Fatalf("held plan rail reason = %q, want machine busy", node.waiting)
+	}
+	if got := a.roomStateWord(node); got != "queued · machine busy" {
+		t.Fatalf("held plan room state = %q, want queued · machine busy", got)
+	}
+}
