@@ -579,7 +579,16 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 		return nil, errSessionClosed
 	}
 
-	directory := droppingsDir(place, workspace, droppingJobs)
+	// The selected workspace/session may itself be a legitimate directory
+	// alias (including a symlinked login home). Resolve that trusted anchor,
+	// then let retention reject links in the owned logs/jobs descendants.
+	logPlace, logWorkspace := place, workspace
+	if place.Dir != "" {
+		logPlace.Dir = jobRetentionAnchor(place.Dir)
+	} else {
+		logWorkspace = jobRetentionAnchor(workspace)
+	}
+	directory := droppingsDir(logPlace, logWorkspace, droppingJobs)
 	root, err := openJobRetentionDir(directory, true)
 	if err != nil {
 		return nil, fmt.Errorf("could not create the jobs directory: %w", err)

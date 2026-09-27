@@ -464,13 +464,35 @@ rather than reusing previous job IDs.
 
 ## Why can a job not create its log?
 
-Job-log setup refuses symlinked storage paths, including a symlinked codeaf home
-or legacy workspace, because cleanup cannot establish ownership safely. Use the
-resolved directory path. A damaged or missing established job-ID counter is also
+Selected workspace and session folders may be symlink aliases; job-log setup
+resolves the selected root. Links inside its logs/jobs storage are refused
+because cleanup cannot establish ownership safely. A damaged or missing established job-ID counter is also
 refused with `job log retention: unsafe or damaged state; refusing allocation or
 cleanup`. The counter and `.retention.lock` preserve job IDs across cleanup and
 restarts; deleting them is not a supported reset. Existing unmarked logs are
 preserved because an older process may still be writing them.
+
+## Foreground bash output and large temporary logs
+
+Foreground `bash` keeps the latest output in memory. When output exceeds the
+tool's result limit, a snapshot under the state home's `logs/bash/` retains at
+most the first **8 MiB**, including the initial output. The result still shows
+the latest tail. A bounded or failed snapshot is labelled incomplete; `Full
+output` is used only when the entire output was retained. Logging failures do
+not stop draining the command.
+
+Completed snapshots share a **128 MiB / 64-file** budget in that directory and
+expire after **seven days**, checked when snapshots start and finish. Active
+writers are protected by file leases and are outside the completed-file
+budget. Promotion to a background job closes the foreground snapshot and sends
+subsequent output to the job's bounded log. Limits are per directory, not a
+machine-wide budget.
+
+Structured recursive search excludes these snapshots and legacy
+`pi-bash-*.log` files directly under the current temporary directory. A named
+file can still be inspected through the bounded file reader. Legacy temporary
+logs are preserved; they are not deleted or included in the new retention
+budget. Arbitrary shell searches still require explicit runtime exclusions.
 
 ## Can you keep an eye on something and tell me when it changes?
 
