@@ -13,8 +13,17 @@ import (
 	"github.com/Agent-Field/codeaf/internal/router"
 )
 
+// creditsProfile keeps a developer's provider credentials from overriding the
+// profile key whose balance a test is exercising.
+func creditsProfile(t *testing.T) string {
+	t.Helper()
+	t.Setenv(APIKeyEnv, "")
+	t.Setenv("OPENAI_API_KEY", "")
+	return t.TempDir()
+}
+
 func TestCreditsRecordChangesImplicitDefaultsWithoutSavingModels(t *testing.T) {
-	dir := t.TempDir()
+	dir := creditsProfile(t)
 	if err := WriteAPIKey(dir, "secret-key"); err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +88,7 @@ func TestCannotPayKeepsTheWholeVendorSentence(t *testing.T) {
 }
 
 func TestFreeHelpersAreAReadingAndExplicitRowsWin(t *testing.T) {
-	dir := t.TempDir()
+	dir := creditsProfile(t)
 	if err := WriteAPIKey(dir, "key"); err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +127,7 @@ func TestLowBalanceDoesNotReplaceWrittenOrClearedRows(t *testing.T) {
 		{"cleared small-work row", KeyTierLowModel, "", ModelTierLow, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
+			dir := creditsProfile(t)
 			if err := WriteAPIKey(dir, "key"); err != nil {
 				t.Fatal(err)
 			}
@@ -136,7 +145,7 @@ func TestLowBalanceDoesNotReplaceWrittenOrClearedRows(t *testing.T) {
 }
 
 func TestLowCreditsBelongOnlyToTheCurrentKey(t *testing.T) {
-	dir := t.TempDir()
+	dir := creditsProfile(t)
 	if err := WriteAPIKey(dir, "key-A"); err != nil {
 		t.Fatal(err)
 	}
@@ -211,5 +220,35 @@ func TestALowBalanceRoutesTheCrewToFreePools(t *testing.T) {
 	}
 	if crewroute.IsFree(d.Seat(crewroute.Worker).Send) || strings.Contains(d.Note, "free routes") {
 		t.Errorf("a healthy balance still routed free: %s · %q", d.Seat(crewroute.Worker).Send, d.Note)
+	}
+}
+
+// An environment key outranks the saved key, so only its own balance may
+// change defaults. A stale profile-key reading must never affect that account.
+func TestLowCreditsFollowTheEffectiveEnvironmentKey(t *testing.T) {
+	for _, variable := range []string{APIKeyEnv, "OPENAI_API_KEY"} {
+		t.Run(variable, func(t *testing.T) {
+			dir := creditsProfile(t)
+			if err := WriteAPIKey(dir, "profile-key"); err != nil {
+				t.Fatal(err)
+			}
+			if err := WriteCreditsReading(dir, "profile-key", credits.Reading{Known: true, Low: true}); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv(variable, "environment-key")
+			if CreditsLowAt(dir) || ChatDefaultAt(dir) != DefaultModel {
+				t.Fatal("the profile key's reading changed the environment key's defaults")
+			}
+			if err := WriteCreditsReading(dir, "environment-key", credits.Reading{Known: true, Low: true}); err != nil {
+				t.Fatal(err)
+			}
+			if !CreditsLowAt(dir) || ChatDefaultAt(dir) != FreeChatModel {
+				t.Fatal("the environment key's low reading did not select free defaults")
+			}
+			t.Setenv(variable, "replacement-key")
+			if CreditsLowAt(dir) || ChatDefaultAt(dir) != DefaultModel {
+				t.Fatal("the previous environment key's reading changed the replacement's defaults")
+			}
+		})
 	}
 }

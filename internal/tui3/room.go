@@ -628,6 +628,9 @@ const roomTail = 120
 // — and three copies of the same eight fields is three chances for the fourth
 // one to be built wrong.
 func (a *app) newRoom(id uint64, title string) *taskRoom {
+	// Opening a task hands its page the keyboard as well as the composer.
+	// Otherwise the roster keeps Enter while typed notes reach the room.
+	a.railTake(false)
 	// Replacing a view must release its subscription just as Escape does.
 	// Leaving the old lane open does not keep useful work running; it leaks a reader.
 	a.closeRoom()
@@ -1207,7 +1210,13 @@ func (a *app) openRoomFor(id uint64, title string) {
 // pressed: the read may come back after the rail has been redrawn, and an
 // absent page still opens exactly what this gesture chose.
 func (a *app) openRailRoom(node *taskNode) tea.Cmd {
-	if node == nil || a.roomStandingOn(node) {
+	if node == nil {
+		return nil
+	}
+	if a.roomStandingOn(node) {
+		// Selecting the open room returns to its existing draft without
+		// replacing the page or its subscription.
+		a.railTake(false)
 		return nil
 	}
 	id, title, run, part := node.id, node.title, node.run, node.node
