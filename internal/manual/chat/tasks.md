@@ -4092,8 +4092,6 @@ done-condition, and ask again — it is not a finding that the work cannot be sp
 checks that name different things — a package each, a file each — are two checks and are
 admitted; nothing here reads which program is being run or how long it takes.
 
-A part check is stored exactly as the planner wrote it. If it names a path that is not in the workspace and is not that part's own target, the division is refused with the check and missing path named; rewrite the check for the part and ask again. codeaf does not guess or expand filename stems such as `issue_.go`.
-
 **And you are only told once.** If the same task asks again with the same shared check still in
 every part — which is what a worker does when it cannot rewrite three done-conditions — the
 division is **taken** rather than refused a second time, with that check **removed from every
