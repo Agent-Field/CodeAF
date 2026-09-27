@@ -576,7 +576,7 @@ func (e errRouteResting) Error() string {
 // the per-task limit — which withDaily does not touch — and the checker's
 // ceiling.
 func crewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *SpendGuard {
-	capUSD, action := config.CrewSpendCap(profileDir, withDaily)
+	capUSD, action := crewSpendCap(profileDir, withDaily)
 	taskCap, taskAction := config.CrewTaskSpendCap(profileDir)
 	guard := &SpendGuard{
 		Price: config.CrewCallPriceAt(profileDir), Cap: capUSD, CapAction: action,
@@ -608,7 +608,7 @@ func (a *Agent) helperGuard(crew *taskCrew) *SpendGuard {
 		return nil
 	}
 	guard := &SpendGuard{Price: config.CrewCallPriceAt(a.config.ProfileDir), Day: a.crewDay()}
-	if capUSD, action := config.CrewSpendCap(a.config.ProfileDir, true); capUSD > 0 {
+	if capUSD, action := crewSpendCap(a.config.ProfileDir, true); capUSD > 0 {
 		guard.Cap, guard.CapAction = capUSD, action
 	}
 	if crew != nil && crew.guard != nil {
@@ -702,6 +702,20 @@ func CrewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *Sp
 func TaskSpendGuard(profileDir string) *SpendGuard {
 	taskCap, taskAction := config.CrewTaskSpendCap(profileDir)
 	return &SpendGuard{Price: config.CrewCallPriceAt(profileDir), TaskCap: taskCap, TaskAction: taskAction, Task: &SpendTask{}}
+}
+
+// crewSpendCap combines the recurring crew cap with the shared machine-wide
+// daily limit. A raise changes only the latter for today's local day.
+func crewSpendCap(profileDir string, withDaily bool) (float64, string) {
+	capUSD, action := config.CrewSpendCap(profileDir, false)
+	if !withDaily {
+		return capUSD, action
+	}
+	limit, err := dailyBudgetLimitAt(profileDir, time.Now())
+	if err != nil || limit <= 0 || (capUSD > 0 && capUSD <= limit) {
+		return capUSD, action
+	}
+	return limit, fmt.Sprintf("today's spending limit of $%.2f is reached · raise it with /budget", limit)
 }
 
 // spentTodayOnLedger is today's spend as the usage ledger has it; nothing

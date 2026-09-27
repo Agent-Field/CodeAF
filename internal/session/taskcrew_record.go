@@ -82,8 +82,10 @@ func (c *taskCrew) record() *TaskCrewRecord {
 		g.mu.Lock()
 		r.Guard = &crewGuardRecord{Cap: g.Cap, TaskCap: g.TaskCap, CapAction: g.CapAction, TaskAction: g.TaskAction, CeilingAction: g.CeilingAction,
 			SeatCeilings: maps.Clone(g.SeatCeilings), ModelSpent: maps.Clone(g.modelSpent), TaskSpent: g.Task.Total(), SeatSpent: map[crewroute.Seat]float64{}, Day: time.Now().Format("2006-01-02")}
-		for seat, tally := range g.seatSpent {
-			r.Guard.SeatSpent[seat] = tally.Total()
+		// A CHECK'S CEILING IS KEPT PER CHECK TASK, but the saved policy holds
+		// one figure per seat: the largest any one task of the seat has spent.
+		for key, tally := range g.seatSpent {
+			r.Guard.SeatSpent[key.seat] = max(r.Guard.SeatSpent[key.seat], tally.Total())
 		}
 		if g.Day != nil {
 			g.Day.mu.Lock()
@@ -149,9 +151,9 @@ func (a *Agent) restoreTaskCrew(row uint64, r *TaskCrewRecord) (*taskCrew, error
 	restoreCrewDay(day, s)
 	c.day = day
 	c.guard = &SpendGuard{Price: config.CrewCallPriceAt(a.config.ProfileDir), Day: day, Cap: s.Cap, TaskCap: s.TaskCap, CapAction: s.CapAction, TaskAction: s.TaskAction,
-		CeilingAction: s.CeilingAction, SeatCeilings: s.SeatCeilings, modelSpent: s.ModelSpent, Task: &SpendTask{spent: s.TaskSpent}, seatSpent: map[crewroute.Seat]*SpendTask{}}
+		CeilingAction: s.CeilingAction, SeatCeilings: s.SeatCeilings, modelSpent: s.ModelSpent, Task: &SpendTask{spent: s.TaskSpent}, seatSpent: map[spendTallyKey]*SpendTask{}}
 	for seat, spent := range s.SeatSpent {
-		c.guard.seatSpent[seat] = &SpendTask{spent: spent}
+		c.guard.seatSpent[spendTallyKey{seat: seat}] = &SpendTask{spent: spent}
 	}
 	a.bindCrewCheckpoint(row, c)
 	a.crews.put(row, c)

@@ -3003,8 +3003,11 @@ one it was:
   row to `none` and it never asks.
 - **`per conversation` — it stops.** `conversation limit reached · $2.05 spent of $2 ·
   /budget changes it`. The section on that below has the whole of it.
-- **`per day` — the day's work waits.** When the day's calls reach the daily limit, new
-  work waits for midnight or for you to raise it. `/budget 800` raises it where you stand.
+- **`per day` — the day's work asks before it starts.** When today's calls reach the daily
+  limit, a new chat turn or `/task` opens the same two-choice card used for a bounded team:
+  `1 Raise to $X` or `2 Stop for today`. Raise it to continue with that larger limit for
+  today's local day; stop refuses the work with `today's spending limit of $X is spent, so
+  nothing was started`. Headless `codeaf do` keeps its `--yes-spend` escape hatch.
 - **A task's own cap.** A task started from the composer layer (`alt+enter`) carries the
   figure on that layer's third line — `it may spend up to $100.00 before it asks` — and
   stops before its next turn when it reaches it. That figure is set where the task is
@@ -3106,21 +3109,13 @@ conversation has spent four fifths of its own limit — the figure leaves the di
 nothing else changes. With no `per conversation` limit set there is no fraction and no
 colour.
 
-## I started a task after my dollar limit was spent — why did it still pay for a call
+## I started a task after my daily limit was spent — why did it wait
 
-**A task started after this conversation's dollar limit is already spent still gets
-one paid call before it ends.** `/task` is not a turn, so the refusal that stops the
-next turn — `conversation limit reached · … · /budget changes it` — is not asked in
-front of it. The run is handed the smallest figure above nothing rather than zero,
-because zero would mean no limit at all. Its first worker makes one model call, that
-call puts the run over the figure, and the run ends there: its row says
-`a dollar limit you set stopped it`. The call is small, but it is real money, and it
-shows in `/cost`.
-
-The dollar limit here is the smaller of `per conversation` and `--max-cost`, measured
-against what this conversation has already spent. To let the task do its work, raise
-`per conversation` first — `/budget conversation 20`, or `/budget conversation none`
-to remove it — or relaunch with a larger `--max-cost`, then start the task again.
+**A chat turn and a `/task` both stop before a provider call when today's daily limit
+is already spent.** The card offers `Raise to $X` and `Stop for today`, just like a
+bounded team. Raising persists the larger limit for today's local day and resumes the
+held turn or task; stopping says `today's spending limit of $X is spent, so nothing was
+started`. The per-conversation limit and a task's own cap remain separate rails.
 
 `codeaf do` has no such call: when today's spending limit is already spent it starts
 nothing and says, for a $5 limit,

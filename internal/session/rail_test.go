@@ -3,8 +3,10 @@ package session
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/config"
@@ -47,6 +49,64 @@ func TestSpendRailRefusesTheTurnAndDoesNoWork(t *testing.T) {
 	}
 	if got := transcriptRoles(agent); len(got) != 1 || got[0] != "system" {
 		t.Fatalf("transcript = %v, want a refused turn to record nothing", got)
+	}
+}
+
+func TestDailySpendRailShowsCardAndStopsOrRaises(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		key  string
+		want string
+	}{
+		{name: "stop", key: "2", want: "today's spending limit of $1.00 is spent, so nothing was started"},
+		{name: "raise", key: "1", want: "turn finished"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			profile := t.TempDir()
+			ledger := filepath.Join(t.TempDir(), "usage.jsonl")
+			if err := config.WriteDailyBudgetUSD(profile, 1); err != nil {
+				t.Fatal(err)
+			}
+			now := time.Now()
+			recordUsage(t, ledger, UsageLine{At: now, Day: localDay(now), Calls: 1, USD: 1.01})
+			completer := &scriptedCompleter{steps: []step{
+				func(context.Context, []ai.Message) (*ai.Response, error) {
+					return textResponse("continued"), nil
+				},
+			}}
+			agent, _ := newTestAgent(t, completer, func(c *Config) {
+				c.ProfileDir = profile
+				c.usageLedger = ledger
+			})
+
+			stream := mustSubmit(t, agent, "start work")
+			question := waitForOneQuestion(t, agent)
+			if question.Kind != QuestionDailyBudget || len(question.Options) != 2 || question.Options[0].Key != "1" || question.Options[0].Label != "Raise to $2" || question.Options[1].Key != "2" || question.Options[1].Label != "Stop for today" {
+				t.Fatalf("daily question = %+v, want raise and stop choices", question)
+			}
+			if got := completer.requests(); got != 0 {
+				t.Fatalf("provider calls before the answer = %d, want 0", got)
+			}
+			if err := agent.ResolveQuestion(Answer{Kind: question.Kind, ID: question.ID, Key: tc.key}); err != nil {
+				t.Fatalf("ResolveQuestion: %v", err)
+			}
+			events := collect(t, stream)
+			if tc.key == "2" {
+				if len(events) != 1 || events[0].Kind != EventError || events[0].Err == nil || events[0].Err.Error() != tc.want {
+					t.Fatalf("stop events = %v, want the daily refusal", events)
+				}
+				if got := completer.requests(); got != 0 {
+					t.Fatalf("provider calls after stop = %d, want 0", got)
+				}
+				return
+			}
+			if len(events) == 0 || events[len(events)-1].Kind != EventTurnDone || completer.requests() != 1 {
+				t.Fatalf("raise events = %v, calls = %d, want a completed turn and one call", kinds(events), completer.requests())
+			}
+			if daily, err := DailySpendAt(profile, now, ledger); err != nil || daily.Limit != 2 {
+				t.Fatalf("raised daily limit = %+v, err=%v, want $2.00 today", daily, err)
+			}
+		})
 	}
 }
 
