@@ -208,7 +208,7 @@ func (a *Agent) routeTaskCrew(ctx context.Context, row uint64, title, brief stri
 	for _, pick := range decision.Crew {
 		crew.original[pick.Seat] = pick.Send
 	}
-	crew.guard = crewSpendGuard(a.config.ProfileDir, decision, false)
+	crew.guard = crewSpendGuard(a.config.ProfileDir, decision, true)
 	crew.guard.Day = a.crewDay()
 	crew.day, crew.dayAtStart = a.crewDay(), a.crewDay().Total()
 	a.crews.put(row, crew)
@@ -585,7 +585,7 @@ func (a *Agent) helperGuard(crew *taskCrew) *SpendGuard {
 		return nil
 	}
 	guard := &SpendGuard{Price: config.CrewCallPriceAt(a.config.ProfileDir), Day: a.crewDay()}
-	if capUSD, action := config.CrewSpendCap(a.config.ProfileDir, false); capUSD > 0 {
+	if capUSD, action := config.CrewSpendCap(a.config.ProfileDir, true); capUSD > 0 {
 		guard.Cap, guard.CapAction = capUSD, action
 	}
 	if crew != nil && crew.guard != nil {
