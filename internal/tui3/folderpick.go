@@ -1738,6 +1738,9 @@ func (f *folderPick) folderHintAt(room int) string {
 
 // controlLegend keeps cancel and the narrow preview door ahead of optional hints.
 func (f *folderPick) controlLegend(room int) string {
+	if f.forWorkspace && f.pane != folderPaneWide {
+		return rowTail([]rowField{rowSay("esc cancel"), rowSay("enter set workspace"), rowSay("←→ walk"), rowSay("ctrl+u search")}, room)
+	}
 	if !f.browsing {
 		return rowTail([]rowField{rowSay("esc cancel"), rowSay("→ open"), rowSay("enter add")}, room)
 	}
