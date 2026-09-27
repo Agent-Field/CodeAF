@@ -323,3 +323,21 @@ func TestJoinedRunAdmissionPublishesOnlyLiveObligations(t *testing.T) {
 		t.Fatalf("admission revived stopped child = %+v", stopped)
 	}
 }
+
+func TestOrdinaryRunRecoveryPreservesTheTypedStop(t *testing.T) {
+	for _, status := range []plandb.Status{plandb.StatusCancelled, plandb.StatusFailed} {
+		t.Run(string(status), func(t *testing.T) {
+			a, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+			reason := "enough for today"
+			if status == plandb.StatusFailed {
+				reason = "stopped: enough for today"
+			}
+			ended := time.Now().Add(-time.Minute)
+			a.reconcileSettledRun(a.graph(), TaskNotice{ID: 1, State: TaskInterrupted}, &plandb.Task{Status: status, Error: reason, CompletedAt: ended})
+			row, _ := runRowOf(a.graph(), 1)
+			if row.State != TaskFailed || !row.Stopped || row.Ending != TaskEndingStopped || row.Report != reason || !row.EndedAt.Equal(ended) {
+				t.Fatalf("recovered stop lost its typed ending: %+v", row)
+			}
+		})
+	}
+}
