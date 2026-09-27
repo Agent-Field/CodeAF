@@ -1791,7 +1791,7 @@ a flush half.
 Below 60 columns the gutter is dropped and the shading alone carries the difference. With
 no colour at all, the gutter alone does.
 
-## What remains visible when I stop a reply
+## I pressed esc and the reply stayed grey — why nothing became the answer
 
 Press `esc` while a turn is running to stop its unfinished work. Completed replies
 and updates already addressed to you remain readable. An explicitly addressed
