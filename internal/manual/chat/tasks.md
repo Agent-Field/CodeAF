@@ -5688,3 +5688,21 @@ refresh, not two. A run with no rows yet buys none, and neither does a task
 handed to a program such as senior-dev: its page is the actions it took, each
 under the step of its process, and its row already says the step it is in, so it has
 no four lines.
+
+
+## A task waiting on a busy machine after restarting the engine
+
+An ordinary task backed by its plan resumes when its conversation opens again.
+A task waiting for machine capacity keeps its accepted brief and exact folder,
+and waits at the same admission gate. It takes no folder lock or branch while
+waiting. A task that had already started uses its recorded working copy and plan;
+completed plan steps are retained rather than starting a new task.
+
+`/stop` in the main box offers the single open task, including one queued because
+its machine is busy. With multiple tasks, open the intended task first. The task
+room's stop reaches the same operation. A stopped task stays stopped after restart.
+
+An older record that lacks its working folder reads `interrupted` and asks you to
+request the task again with its folder. It is never counted as completed and its
+folder is never guessed. Programs that had already started keep their existing
+interrupted-program behavior; this restart rule concerns ordinary planned tasks.
