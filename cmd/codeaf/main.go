@@ -476,7 +476,7 @@ const (
 // source of truth, two places it is read.
 var handWorkFooter = `  the three differ by how much thinking happens first: do plans and may split
   the job, exec does not plan, run follows a plan somebody saved. None takes
-  --yolo, and What do and run can still refuse is a plan whose price crosses
+  --yolo. do and run may still refuse a plan whose price crosses
   your limit — --yes-spend answers that in advance. All three end the same
   way, and why is in --json's stop field:
   ` + foldedExitLadder(2, helpWidth) + `
@@ -490,14 +490,18 @@ Talk to it — a surface you sit in front of
   codeaf chat [--model slug] [--reasoning level] [--session path] [--yolo]
               [--host host[:path]] [--at name[:path]] [--once "text"]
               [--no-compact] [--one-model] [--no-host] [--debug]
+              [--max-cost dollars] [--max-hours hours]
       --no-host runs the conversation in this process rather than on this
       workspace's session host; --debug keeps the whole record of the run
+      --max-cost and --max-hours bound unattended work and require --yolo
   codeaf resume
       pick an earlier conversation by name and open it — /resume inside the chat
 
 Hand it work — nobody is watching, the answer is on stdout
   codeaf do   "<task>" [--db path] [--keep] [--dir dir] [--timeout 15m]
               [--json] [--yes-spend] [--model slug] [--plan-model slug]
+              [--check-model slug] [--slots N] [--best|--cheap]
+              [--pin seat=model[@provider]]
               [--context-fill 60] [--completion-reserve 65536] [--debug]
       do one task and exit — the same living agent the chat runs, unwatched
   codeaf exec ["<prompt>"] [--dir dir] [--system text] [--max-turns N]
