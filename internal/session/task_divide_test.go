@@ -2008,21 +2008,6 @@ func divideArgsFor(evidence string, parts ...dividePart) json.RawMessage {
 	return raw
 }
 
-func TestDeclaredPartChecksRefuseMissingUnclaimedPaths(t *testing.T) {
-	nest := newDivideNest(t, wideBrief, 0)
-	answer := nest.divide(t, divideArgsFor(wideEvidence,
-		dividePart{Title: "issue_01.go", Summary: "s", Brief: "fix issue_01.go", Acceptance: "issue_01.go is fixed", Checks: []string{"gofmt -l issue_.go"}},
-		dividePart{Title: "issue_02.go", Summary: "s", Brief: "fix issue_02.go", Acceptance: "issue_02.go is fixed", Checks: []string{"gofmt -l issue_.go"}}))
-	if !strings.HasPrefix(answer, "not split:") || !strings.Contains(answer, "gofmt -l issue_.go") ||
-		!strings.Contains(answer, "does not exist in the workspace") ||
-		!strings.Contains(answer, "not that part's target") {
-		t.Fatalf("division answer = %q, want a refusal naming the invalid check and path", answer)
-	}
-	if kids := nest.graph.children(nest.parent.id); len(kids) != 0 {
-		t.Fatalf("admitted parts = %d, want none after check refusal", len(kids))
-	}
-}
-
 // THE MEASURED DATA-LOSS CASE. The ledger is the contract of what ships and it
 // is staged once, so two parts writing one file is one version silently over the
 // other — with no conflict for anybody to notice. It is refused where it is still

@@ -32,9 +32,6 @@ package session
 // sentence that was always about the finished tree: the DONE-CONDITION.
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -122,73 +119,11 @@ func scopeCollisions(parts []dividePart, tree string) []string {
 // WHAT DIFFERS BETWEEN THE TWO IS THE ENDING AND NOTHING ELSE, because what
 // differs is what has already been spent by the time the refusal is written.
 func (a *Agent) scopeRefusal(parts []dividePart, ending string) string {
-	// A CHECK THAT NAMES A PATH NOBODY HAS PROVES NO SLICE AT ALL, so it is
-	// refused on the same two roads as an overlapping scope (#1573).
-	if said := partCheckRefusal(parts, a.config.Workspace, ending); said != "" {
-		return said
-	}
 	shared := scopeCollisions(parts, a.config.Workspace)
 	if len(shared) == 0 {
 		return ""
 	}
 	return divisionScopesOverlap(shared, ending)
-}
-
-// missingPartCheck is the admission seam for a declared check that names a
-// path. The planner writes checks verbatim, so a path that is neither present
-// in the workspace nor one of the part's own done-condition targets is a
-// planner error, not a filename template the harness may invent.
-func missingPartCheck(parts []dividePart, workspace string) string {
-	for index, part := range parts {
-		targets := make(map[string]bool)
-		for _, token := range pathTokens(part.Acceptance) {
-			targets[partCheckPathKey(workspace, token)] = true
-		}
-		for _, check := range part.Checks {
-			for _, token := range pathTokens(check) {
-				if strings.Contains(token, "...") {
-					continue
-				}
-				if targets[partCheckPathKey(workspace, token)] || partCheckExists(workspace, token) {
-					continue
-				}
-				return fmtPartCheckRefusal(index+1, check, token)
-			}
-		}
-	}
-	return ""
-}
-
-func partCheckRefusal(parts []dividePart, workspace, ending string) string {
-	if missing := missingPartCheck(parts, workspace); missing != "" {
-		return "not split: " + missing + "; " + ending
-	}
-	return ""
-}
-
-func partCheckPathKey(workspace, token string) string {
-	if strings.TrimSpace(workspace) == "" && !filepath.IsAbs(token) {
-		return filepath.ToSlash(filepath.Clean(token))
-	}
-	return canonicalPath(resolvePath(workspace, token))
-}
-
-func partCheckExists(workspace, token string) bool {
-	workspace = canonicalPath(strings.TrimSpace(workspace))
-	if workspace == "" {
-		return false
-	}
-	path := resolvePath(workspace, token)
-	relative, ok := insideWorkspace(workspace, path)
-	if !ok {
-		return false
-	}
-	_, err := os.Stat(filepath.Join(workspace, filepath.FromSlash(relative)))
-	return err == nil
-}
-
-func fmtPartCheckRefusal(part int, check, path string) string {
-	return fmt.Sprintf("part %d check %q names %q, which does not exist in the workspace and is not that part's target; rewrite the check with a real path", part, check, path)
 }
 
 // The two endings a scope refusal can have, and they are two because THE
