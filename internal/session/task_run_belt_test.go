@@ -1572,3 +1572,44 @@ func TestStartTaskBashBeltPassesTheDollarLimitLeftToTheRun(t *testing.T) {
 	}
 	endBeltRun(t, agent, double)
 }
+
+func TestStartTaskRunUsesProjectGroundOutsideRepository(t *testing.T) {
+	for _, named := range []bool{false, true} {
+		t.Run(strconv.FormatBool(named), func(t *testing.T) {
+			t.Setenv("CODEAF_TASK_BELT", "bash")
+			double := newBeltRunDouble("read the project")
+			registerBeltRunEngine(t, double)
+			repo, dir := newTestRepo(t), t.TempDir()
+			agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+				config.Workspace = t.TempDir()
+				config.Place = Place{Dir: dir, Workspace: repo}
+				if named {
+					config.Place.Workspace = ""
+				}
+				config.SessionFile = filepath.Join(dir, placeTranscript)
+				config.AskConsent = false
+			})
+			brief := "Read README.md and write result.txt"
+			if named {
+				brief += " in repository " + repo
+			}
+			if _, _, _, err := agent.StartTask(context.Background(), brief, false); err != nil {
+				t.Fatal(err)
+			}
+			defer endBeltRun(t, agent, double)
+			beltRunWaitFor(t, "the project run to start", double.didRun)
+			double.mu.Lock()
+			workspace := double.spec.Workspace
+			double.mu.Unlock()
+			if data, err := os.ReadFile(filepath.Join(workspace, "shared.txt")); err != nil || len(data) == 0 {
+				t.Fatalf("worker cannot read project document: %q %v (workspace=%s)", data, err, workspace)
+			}
+			agent.beltMu.Lock()
+			ground := agent.beltRun.ground
+			agent.beltMu.Unlock()
+			if ground != canonicalPath(repo) || workspace == ground {
+				t.Fatalf("ground=%s workspace=%s want isolated copy of %s", ground, workspace, repo)
+			}
+		})
+	}
+}

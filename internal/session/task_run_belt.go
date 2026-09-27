@@ -393,7 +393,11 @@ func (a *Agent) startTaskRun(ctx context.Context, brief string, solo bool, quest
 
 	id := g.reserve()
 	title := taskPersonTitle(brief)
-	stand := taskStand{dir: a.config.Workspace, mode: TaskModeWorktree}
+	// The default run door uses the same placement evidence as a proposal or
+	// legacy task. Starting from home must not discard the named project.
+	stand := a.taskGroundOrStandingIn(taskSpec{
+		title: title, request: brief, brief: brief, acceptance: taskPersonAcceptance,
+	})
 	if err := a.startKnownTaskRun(ctx, id, title, brief, nil, stand, question); err != nil {
 		if errors.Is(err, errRunRoadUnavailable) {
 			return a.startTaskLegacy(ctx, brief, solo)
