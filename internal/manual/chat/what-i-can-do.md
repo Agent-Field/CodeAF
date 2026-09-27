@@ -389,6 +389,18 @@ spool has rotated, the note names both retained files; after older output is
 discarded, it also names the truncation instead
 of promising a full log.
 
+Finished logs do not pile up forever either. Each session's logs/jobs
+directory keeps managed finished logs within **128 MiB and 64 jobs**
+(a job's log and its one rotation count together), evicting the oldest job IDs first;
+active jobs are never touched, and files codeaf did not create there — older
+unmarked logs included — are left alone. If a log you were pointed at has
+since been evicted, the jobs footer says so instead of naming the file, and
+the last 64KB in memory is still readable. Cleanup runs when a job starts or
+finishes and during the startup sweep of existing jobs directories; active jobs, legacy logs, and files whose ownership cannot be verified
+are outside this completed-log budget. A cleanup failure is reported and may
+leave the directory over budget. Damaged allocation metadata refuses new logs
+rather than reusing previous job IDs.
+
 The `jobs` tool looks at all of this. Its `action` is `list`, `output` or `kill`.
 
 - `list` — one row per job: `job 1 · exited(0) · 12.4s · go build ./...`.
