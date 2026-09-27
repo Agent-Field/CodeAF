@@ -4,6 +4,7 @@ title: A batch of fixes from the docs audit — headless, tasks, standing, teams
 pr: 1604
 surface: [chat, engine, remote, docs]
 invalidates:
+  - "The restart manual incorrectly put interrupted and failed tasks under a separate Incomplete rail group. Inactive rows remain in the Done fold with truthful interrupted/incomplete labels; failed rows sort first. Valid saved pending requests return to Queued, and admitted ordinary tasks reconnect to their recorded copy."
   - "A turn waiting on the daily-budget card could outlive cancellation, and `codeaf do --yes-spend` workers could wait on that card despite the run being authorized. Cancelled waits now close their streams, and child workers and checkers inherit only the run-scoped daily-limit permission; task, time and approval limits remain in force."
   - "`codeaf do \"\"` (or an all-blank brief) ran a paid job on a goal the planner invented. It is refused with the same usage as `codeaf do` with no argument, before anything is spent."
   - "Flags after the brief (`codeaf senior-dev \"<brief>\" --max-cost 0.5`) were folded into the brief and the default ceiling applied. They are parsed wherever they sit for every delegate program, an unknown flag is refused, and `--` still ends flags."
