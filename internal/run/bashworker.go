@@ -56,6 +56,7 @@ type BashWorker struct {
 	workspace string
 	model     string
 	completer session.Completer
+	standing  string
 }
 
 // NewBashWorker builds the seat the run's factory hands each claimed task to.
@@ -65,7 +66,14 @@ type BashWorker struct {
 // completer is the seat's provider: a test scripts it, a run hands the door's
 // own.
 func NewBashWorker(store *plandb.Store, workspace, model string, completer session.Completer) *BashWorker {
-	return &BashWorker{store: store, workspace: workspace, model: model, completer: completer}
+	return NewBashWorkerWithStanding(store, workspace, model, completer, "")
+}
+
+// NewBashWorkerWithStanding builds a worker with the standing section its run
+// resolved for the project, while preserving the existing no-section helper
+// for callers that do not own a session.
+func NewBashWorkerWithStanding(store *plandb.Store, workspace, model string, completer session.Completer, standingSection string) *BashWorker {
+	return &BashWorker{store: store, workspace: workspace, model: model, completer: completer, standing: standingSection}
 }
 
 // Run hosts one agent's turn loop for the task until the agent ends its turn
@@ -137,7 +145,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 	// THE BRIEF IS SAID ONCE, on the first round. Every round after it goes out
 	// on the harness's own note, because a round only begins again when the last
 	// one ended on words with no action.
-	brief := session.BeltWorkerBrief(w.store, &task, task.ID == w.store.RootID(), len(past) > 0, WakeClause(runCtx))
+	brief := session.BeltWorkerBriefWithStanding(w.store, &task, task.ID == w.store.RootID(), len(past) > 0, WakeClause(runCtx), w.standing)
 	// noAction counts replies in a row that carried no tool call. A reply that
 	// did call a tool resets the run to one — its own trailing words are the
 	// first of the new run — and the fourth in a row fails the task.
