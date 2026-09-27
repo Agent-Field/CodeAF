@@ -1,0 +1,104 @@
+[
+  {
+    "schema": 1,
+    "id": "93868b274417bd1c",
+    "words": "run another one-off preview in one minute with threshold 6, again in a new isolated worktree. Leave the changed shopping-list.md uncommitted for me to review. Do not touch main, merge, push, or remove either worktree. This is still a trial, not a recurring schedule.",
+    "workspace": "/tmp/caf-extended-1560/project",
+    "origin": {
+      "sessionId": "710e231c5a72945c",
+      "transcript": "/tmp/caf-extended-1560/state/v3/projects/-tmp-caf-extended-1560-project/710e231c5a72945c/transcript.jsonl",
+      "turnIds": [
+        "20"
+      ]
+    },
+    "when": {
+      "kind": "at",
+      "words": "in one minute, once",
+      "at": "2026-09-27T12:31:20.916961465-04:00",
+      "probe": {}
+    },
+    "does": {
+      "isolate": true,
+      "kind": "task",
+      "brief": "One-off preview: generate a threshold-6 draft in this worktree (its own copy of the repo, a NEW isolated branch separate from the threshold-5 one).\n\nDo:\n- cd into the worktree root containing shopping_list.py and pantry.csv.\n- Run: python3 shopping_list.py -t 6  (this rewrites shopping-list.md).\n\nConstraints:\n- Do NOT commit. Leave the changed shopping-list.md uncommitted in the worktree so the person can review the diff.\n- NEVER merge, NEVER push, NEVER touch main, and do NOT remove, clean up or check out any worktree (including the threshold-5 one).\n- pantry.csv columns are item,quantity; threshold 6 means a listed item has quantity strictly below 6.\n\nReport: the branch name, the worktree path, and the full final shopping-list.md content plus `git status`/`git diff` showing it uncommitted.",
+      "acceptance": "shopping-list.md in the new isolated worktree holds the threshold-6 draft (rice 2, beans 0, tea 5), it is left uncommitted (git status shows it modified, not committed), main is unchanged, nothing pushed, and both worktrees still exist."
+    },
+    "rails": {
+      "perRunUsd": 5,
+      "maxPerDay": 10,
+      "expires": "0001-01-01T00:00:00Z"
+    },
+    "altitude": "project",
+    "brief": {
+      "title": "threshold-6 preview"
+    },
+    "grant": "generate the preview on an isolated branch and leave it uncommitted for review, but never merge, push, or remove any worktree",
+    "status": "retired",
+    "created": "2026-09-27T12:31:36.550224614-04:00",
+    "updated": "2026-09-27T12:35:09.276459628-04:00",
+    "retiredWhy": "fired",
+    "lastChecked": "2026-09-27T12:35:02.531758798-04:00",
+    "lastCheckLine": "it was the time you asked for",
+    "nextDue": "2026-09-27T12:31:20.916961465-04:00",
+    "previous": [
+      "it was the time you asked for \u2192 landed"
+    ],
+    "runs": 1,
+    "lastFired": "2026-09-27T12:35:02.531758798-04:00",
+    "lastOutcome": "landed",
+    "lastRun": "/tmp/caf-extended-1560/state/v3/standing/93868b274417bd1c/runs/0001",
+    "spentUsd": 0.008343372,
+    "cleanRuns": 1
+  },
+  {
+    "schema": 1,
+    "id": "5c3ea7856f14af6e",
+    "words": "propose one scheduled run in two minutes, in a separate worktree, to generate a draft with threshold 5 and preserve changes for my review. Do not merge or push.",
+    "workspace": "/tmp/caf-extended-1560/project",
+    "origin": {
+      "sessionId": "710e231c5a72945c",
+      "transcript": "/tmp/caf-extended-1560/state/v3/projects/-tmp-caf-extended-1560-project/710e231c5a72945c/transcript.jsonl",
+      "turnIds": [
+        "14"
+      ]
+    },
+    "when": {
+      "kind": "at",
+      "words": "in two minutes, once",
+      "at": "2026-09-27T12:26:25.10246875-04:00",
+      "probe": {}
+    },
+    "does": {
+      "isolate": true,
+      "kind": "task",
+      "brief": "Generate a draft shopping list with threshold 5 in this worktree (its own copy of the repo, isolated branch).\n\nDo:\n- cd into the worktree root that contains shopping_list.py and pantry.csv.\n- Run: python3 shopping_list.py -t 5  (this writes shopping-list.md).\n- Commit shopping-list.md on this isolated branch.\n\nConstraints:\n- NEVER merge, NEVER push, and NEVER commit to main.\n- Leave the branch and worktree in place for the person to review; do not clean them up.\n- pantry.csv columns are item,quantity; threshold 5 means a listed item has quantity strictly below 5.\n\nReport: the branch name, the commit, and the full final shopping-list.md content.",
+      "acceptance": "shopping-list.md on the isolated branch contains the threshold-5 draft (quantities strictly below 5: rice 2 and beans 0; tea 5 excluded), main is unchanged, and nothing was pushed."
+    },
+    "rails": {
+      "perRunUsd": 5,
+      "maxPerDay": 10,
+      "expires": "0001-01-01T00:00:00Z"
+    },
+    "altitude": "project",
+    "brief": {
+      "title": "threshold-5 draft"
+    },
+    "grant": "generate the draft on an isolated branch and leave it for review, but never merge or push",
+    "status": "retired",
+    "created": "2026-09-27T12:25:48.518526698-04:00",
+    "updated": "2026-09-27T12:27:06.481585805-04:00",
+    "retiredWhy": "fired",
+    "lastChecked": "2026-09-27T12:26:28.568168976-04:00",
+    "lastCheckLine": "it was the time you asked for",
+    "nextDue": "2026-09-27T12:26:25.10246875-04:00",
+    "previous": [
+      "it was the time you asked for \u2192 landed"
+    ],
+    "runs": 1,
+    "lastFired": "2026-09-27T12:26:28.568168976-04:00",
+    "lastOutcome": "landed",
+    "lastRun": "/tmp/caf-extended-1560/state/v3/standing/5c3ea7856f14af6e/runs/0001",
+    "spentUsd": 0.018636396,
+    "cleanRuns": 1
+  }
+]

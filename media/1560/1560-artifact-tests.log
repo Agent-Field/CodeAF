@@ -1,0 +1,9 @@
+test_no_partial_report_replaces_existing_file (__main__.InvalidInputStopsTheReport.test_no_partial_report_replaces_existing_file) ... ok
+test_non_numeric_blank_and_missing_are_flagged (__main__.MalformedQuantities.test_non_numeric_blank_and_missing_are_flagged) ... ok
+test_exactly_at_threshold_is_excluded (__main__.ThresholdBoundary.test_exactly_at_threshold_is_excluded) ... ok
+test_just_below_and_well_below_are_included (__main__.ThresholdBoundary.test_just_below_and_well_below_are_included) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.006s
+
+OK

@@ -1,0 +1,10 @@
+{
+  "hostname": "spark",
+  "fleet_session": "critical-extended-1560-v2",
+  "tmux_socket": "fleet-sh",
+  "revision": "75b0f9a7265723b33b41208b38a8eb2831b37813",
+  "binary_sha256": "fbfacb213a5ece97d227f3afde33e86ab706d6e4c0a74e048c55b485774b4f2e",
+  "started_utc": "2026-09-27T16:21:28.677974+00:00",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "cwd": "/tmp/caf-extended-1560/project"
+}

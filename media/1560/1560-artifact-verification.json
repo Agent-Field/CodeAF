@@ -1,0 +1,11 @@
+{
+  "host": "spark",
+  "revision": "75b0f9a7265723b33b41208b38a8eb2831b37813",
+  "host_head": "343452d8a82209ca0207c13fa363e2e0666b9367",
+  "host_status": "clean",
+  "retained_tree": "/tmp/caf-extended-1560/state/v3/standing/93868b274417bd1c/runs/0001/trees/standing-threshold-6-preview-ec6b3a",
+  "retained_branch": "standing/standing-threshold-6-preview-ec6b3a",
+  "retained_status": " M shopping-list.md\n",
+  "report": "# Draft shopping list \u2014 not an order\n\n- rice (qty 2)\n- beans (qty 0)\n- tea (qty 5)\n",
+  "tests_exit": 0
+}
