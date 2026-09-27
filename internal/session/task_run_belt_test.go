@@ -164,11 +164,22 @@ func registerBeltRunEngine(t *testing.T, engine RunEngine) {
 // directory's removal, and lost it under load as "directory not empty".
 func endBeltRun(t *testing.T, agent *Agent, double *beltRunDouble) {
 	t.Helper()
+	agent.beltMu.Lock()
+	run := agent.beltRun
+	agent.beltMu.Unlock()
 	close(double.release)
-	beltRunWaitFor(t, "the run to end", func() bool {
-		agent.beltMu.Lock()
-		defer agent.beltMu.Unlock()
-		return agent.beltRun == nil
+	if run == nil {
+		return
+	}
+	// releaseBeltRun clears the agent's pointer before it closes the store.
+	// The run's completion channel covers that final write/close as well.
+	beltRunWaitFor(t, "the run and its store to close", func() bool {
+		select {
+		case <-run.over:
+			return true
+		default:
+			return false
+		}
 	})
 }
 

@@ -571,38 +571,63 @@ func TestStandingSurfacesAStoreThatWouldNotWrite(t *testing.T) {
 	}
 }
 
-// "DO IT ONCE" CREATES NOTHING and tells the model to do the thing here.
+// The once decision carries the actual approved action, not a completion claim.
 func TestStandingOnceCreatesNothing(t *testing.T) {
 	store := newFakeStanding(t)
 	completer := &scriptedCompleter{steps: []step{
-		standCall("s1", aReminder()),
-		finalText("doing it now"),
+		standCall("s1", `{"op":"propose","words":"weekly pantry report","when":{"kind":"every","every":"168h"},"does":{"kind":"task","brief":"write shopping.md from pantry.csv","acceptance":"report lists quantities"},"rails":{"per_run_usd":0.3}}`),
+		finalText("continuing the approved work"),
 	}}
 	agent := standingAgent(t, completer, store, nil)
-
-	events, err := agent.Submit(context.Background(), "remind me at 6")
+	events, err := agent.Submit(context.Background(), "prepare my weekly pantry report")
 	if err != nil {
-		t.Fatalf("Submit: %v", err)
+		t.Fatal(err)
 	}
+	var shown standing.Item
 	collected := drainAnsweringStanding(t, events, func(event Event) {
+		shown = event.Standing.Item
 		agent.ResolveStanding(event.Standing.ID, StandingAnswer{Once: true})
 	})
 	if len(store.created) != 0 {
-		t.Fatalf("a once answer created %d items", len(store.created))
+		t.Fatalf("once saved %d items", len(store.created))
 	}
-	output := toolOutput(t, collected, "stand")
-	for _, want := range []string{
-		"Do it now as an ordinary step and report what happened.",
-		"The person chose not to repeat it.",
-		"Do not set it up again unless they ask.",
-		"Do not investigate codeaf.",
-	} {
-		if !strings.Contains(output, want) {
-			t.Errorf("tool result missing %q\n%s", want, output)
-		}
+	output := strings.Split(toolOutput(t, collected, "stand"), "\nnow:")[0]
+	var result struct {
+		Decision  string        `json:"decision"`
+		Execution string        `json:"execution"`
+		Saved     bool          `json:"standing_saved"`
+		Approved  standing.Item `json:"approved_action"`
 	}
-	if strings.Contains(output, "\u2014") || strings.Contains(output, "\u2013") {
-		t.Errorf("tool result still has a dash: %q", output)
+	if err := json.Unmarshal([]byte(output), &result); err != nil {
+		t.Fatalf("handoff: %v: %s", err, output)
+	}
+	if result.Decision != "run_once_now" || result.Execution != "pending" || result.Saved {
+		t.Fatalf("decision: %+v", result)
+	}
+	want, _ := json.Marshal(shown)
+	got, _ := json.Marshal(result.Approved)
+	if string(got) != string(want) {
+		t.Fatalf("approved action changed: got %s want %s", got, want)
+	}
+	if result.Approved.Does.Brief != "write shopping.md from pantry.csv" || result.Approved.Rails.PerRunUSD != 0.3 {
+		t.Fatalf("missing action or limits: %+v", result.Approved)
+	}
+}
+
+func TestStandingRejectsOnceForReminder(t *testing.T) {
+	store := newFakeStanding(t)
+	completer := &scriptedCompleter{steps: []step{standCall("s1", aReminder()), finalText("not scheduled")}}
+	agent := standingAgent(t, completer, store, nil)
+	events, err := agent.Submit(context.Background(), "remind me later")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collected := drainAnsweringStanding(t, events, func(event Event) { agent.ResolveStanding(event.Standing.ID, StandingAnswer{Once: true}) })
+	if len(store.created) != 0 {
+		t.Fatal("forged once created an item")
+	}
+	if out := toolOutput(t, collected, "stand"); !strings.Contains(out, "does not offer doing it once") {
+		t.Fatal(out)
 	}
 }
 
@@ -724,10 +749,16 @@ func TestStandingListSpeaksThePersonsWords(t *testing.T) {
 // fakeWatch is this machine's scheduler, stood in for. Nothing in these tests
 // goes near launchd.
 type fakeWatch struct {
+	ensures    int
 	installs   int
 	uninstalls int
 	fail       error
 	installed  bool
+}
+
+func (w *fakeWatch) Ensure(ctx context.Context) error {
+	w.ensures++
+	return w.Install(ctx)
 }
 
 func (w *fakeWatch) Install(context.Context) error {
@@ -791,8 +822,8 @@ func TestTheFirstThingThatStandsTurnsBackgroundChecksOnAndSaysSo(t *testing.T) {
 	watch := &fakeWatch{}
 	events := standRatify(t, store, watch, t.TempDir())
 
-	if watch.installs != 1 {
-		t.Fatalf("the timer was installed %d times, want exactly 1", watch.installs)
+	if watch.installs != 1 || watch.ensures != 1 {
+		t.Fatalf("implicit ensures=%d, installs=%d; want one ensure", watch.ensures, watch.installs)
 	}
 	if line := backgroundLine(events); line != standingBackgroundLine {
 		t.Fatalf("the line said %q, want %q", line, standingBackgroundLine)
@@ -2000,5 +2031,89 @@ func standingNextUpdate(t *testing.T, lane <-chan Event) Event {
 		case <-deadline:
 			t.Fatal("nothing was drawn: no EventStandingUpdate reached the standing lane")
 		}
+	}
+}
+
+func TestStandingCostReadsCurrentRailWithoutReplacingExplicitLimits(t *testing.T) {
+	rail := 3.0
+	a := &Agent{config: Config{Standing: &Standing{DailyRail: func() float64 { return rail }}}}
+	item := nightly(t.TempDir())
+	if got := a.standingCostWords(item, standArguments{}); got != "shares the day's $3.00 allowance" {
+		t.Fatal(got)
+	}
+	rail = 7
+	if got := a.standingCostWords(item, standArguments{}); got != "shares the day's $7.00 allowance" {
+		t.Fatal(got)
+	}
+	parsed := standArguments{CostWords: "shares the day's allowance, at most one dollar each run"}
+	limit := 1.0
+	parsed.Rails.PerRunUSD = &limit
+	if got := a.standingCostWords(item, parsed); got != parsed.CostWords {
+		t.Fatal(got)
+	}
+	rail = 0
+	if got := a.standingCostWords(item, standArguments{}); got != "shares the day's allowance" {
+		t.Fatal(got)
+	}
+}
+
+func TestIsolatedStandingCannotUseOrdinaryOnceTurn(t *testing.T) {
+	for _, kind := range []standing.WhenKind{standing.WhenEvery, standing.WhenProbe, standing.WhenFile, standing.WhenIdle} {
+		item := standing.Item{When: standing.When{Kind: kind}, Does: standing.Action{Kind: standing.ActionTask, Isolate: true}}
+		if StandingOnceIsAnAnswer(item) {
+			t.Fatalf("%s offered an ordinary turn for isolated work", kind)
+		}
+		options := StandingOptions(item)
+		if len(options) != 2 || options[0].Key != "1" || options[1].Key != StandingNoKey {
+			t.Fatalf("%s options: %#v", kind, options)
+		}
+	}
+	store := newFakeStanding(t)
+	completer := &scriptedCompleter{steps: []step{
+		standCall("s1", `{"op":"propose","words":"weekly isolated report","when":{"kind":"every","every":"168h"},"does":{"kind":"task","brief":"write report","isolate":true},"rails":{"per_run_usd":0.3}}`),
+		finalText("not run"),
+	}}
+	agent := standingAgent(t, completer, store, nil)
+	events, err := agent.Submit(context.Background(), "schedule isolated report")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collected := drainAnsweringStanding(t, events, func(event Event) { agent.ResolveStanding(event.Standing.ID, StandingAnswer{Once: true}) })
+	if len(store.created) != 0 {
+		t.Fatal("forged once created standing work")
+	}
+	if output := toolOutput(t, collected, "stand"); !strings.Contains(output, "nothing was set up or run") {
+		t.Fatalf("forged once returned %q", output)
+	}
+}
+
+func TestFirstStandingApprovalPreservesAnotherProfilesTimer(t *testing.T) {
+	store := newFakeStanding(t)
+	watch := &fakeWatch{fail: standing.ErrWatchOwned}
+	events := standRatify(t, store, watch, t.TempDir())
+	if watch.ensures != 1 || watch.installed {
+		t.Fatalf("implicit ownership refusal: ensures=%d installed=%v", watch.ensures, watch.installed)
+	}
+	line := backgroundLine(events)
+	if !strings.HasPrefix(line, standingBackgroundFailed) || !strings.Contains(line, "existing timer was left unchanged") {
+		t.Fatalf("ownership refusal was not told honestly: %q", line)
+	}
+	if len(store.created) != 1 {
+		t.Fatal("timer refusal must not discard the approved standing item")
+	}
+	if output := toolOutput(t, events, "stand"); !strings.Contains(output, "Background checks are not installed") || !strings.Contains(output, "item was saved") {
+		t.Fatalf("model receipt hid background unavailability: %q", output)
+	}
+	// The first-setup marker suppresses repeated UI notices, not truthful receipts.
+	events = standRatify(t, store, watch, t.TempDir())
+	if output := toolOutput(t, events, "stand"); !strings.Contains(output, "Background checks are not installed") {
+		t.Fatalf("later receipt claimed background execution: %q", output)
+	}
+}
+
+func TestNonWakingRuleDoesNotRequireBackgroundTimer(t *testing.T) {
+	agent := &Agent{config: Config{Standing: &Standing{Watch: &fakeWatch{}}}}
+	if note := agent.standingBackgroundLimitation(standing.Item{When: standing.When{Kind: standing.WhenHold}}); note != "" {
+		t.Fatalf("permission rule was said to need a timer: %q", note)
 	}
 }

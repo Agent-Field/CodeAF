@@ -701,6 +701,17 @@ program — and a launch speaks only for its own pair.
   else's: it neither claims it nor rewrites it, and its `/status` says nothing is
   checking that home.
 
+Approving the first standing item follows the same ownership rule. It installs a
+missing timer or repairs this home's stale timer, but never takes another home's
+or live build's timer. If another home owns it, the item is saved and CodeAF says
+that the background check could not be installed and the existing timer was left
+unchanged. The confirmation also says the item was saved but needs a codeaf window
+open for this home while no background timer checks it. A non-waking permission
+rule does not need a timer. This home is not being checked in the background; use the background
+checks row in `/settings` only when you deliberately want to move the shared timer.
+Ownership checks and changes are serialized across processes, including that
+explicit settings action.
+
 ## Do reminders work over --host — yes, on the far machine
 
 Yes, and this is the one ambient thing a connection does not take away. Over
@@ -939,10 +950,13 @@ piece of the ask still to do.
   `the card was left unanswered — nothing was set up`. This is the opposite of a
   task proposal, where silence starts the work: a task is bounded work somebody
   is watching, and a standing item spends money at times nobody chose.
-- **A "do it once" answer sets nothing up.** It answers
-  `Do it now as an ordinary step and report what happened. The person chose not to repeat it. Do not set it up again unless they ask. Do not investigate codeaf.`
-  and codeaf does the thing in front of you instead. A **one-off reminder's card
-  does not offer that answer** — see "Why is there no once on my reminder card".
+- **A "do it once" answer approves immediate work, not a schedule.** The settled
+  card says `approved once, not scheduled`. That is an approval receipt, not
+  proof that the work has finished. The approved action, workspace, watch probe,
+  acceptance and spending limits are handed back to the current conversation;
+  it uses its ordinary tools and permissions and reports the actual result or
+  a blocker. No standing item is saved. A **one-off reminder's card does not
+  offer that answer** — see "Why is there no once on my reminder card".
 - **It will not set a reminder for a moment that has already passed.** The stamp
   is refused with the current time in it, and codeaf is asked to work it out
   again from that.
@@ -959,3 +973,40 @@ piece of the ask still to do.
   one: nothing that runs on its own may arm something else that runs on its own.
 - **Nothing is armed by a matcher.** Nothing runs because a phrase looked like a
   rule; every single one of these was a card you said yes to.
+
+## Which daily allowance does a new standing card quote?
+
+When you did not name a per-run limit, a new proposal quotes the current daily
+budget. Changing the budget affects the next proposal, including in an already
+open conversation. A card already being read keeps its proposal-time quote.
+An explicit per-run limit keeps the words you supplied. Task firings in the
+activity history are labelled `task:`; a spoken reminder is labelled `said:`.
+
+## Why does a one-time job say run it then instead of remind me?
+
+A one-time card that will perform work says `wants to schedule work once`.
+Its approval is `Run it then · <time>` with `Runs the work then. Nothing repeats.`
+The decline is `Don't schedule it`: nothing is scheduled or run. It has no
+`Only now, don't repeat` option, because this card approves the stated future
+time. A say-only reminder still says `wants to remind you` and `Remind me`.
+Both kinds show the action they will take before you approve.
+
+## Keep scheduled coding work on a separate branch
+
+For a scheduled task that should open a pull request without merging, set
+`does.isolate` to `true` on the `stand` proposal. Its approval card says
+`work · separate Git worktree · changes kept for review`. Permission words
+alone do not select isolation. An isolated task has no “Only now” option: an
+ordinary conversation turn cannot provide the scheduled runner’s worktree. Existing orders keep their current behavior;
+replace an order and approve its isolation option to change that behavior.
+
+An isolated firing requires a Git repository with at least one commit. It
+starts from the current committed checkout in a new worktree and branch.
+Uncommitted changes in the original checkout are not copied. The firing keeps
+its worktree, including unfinished edits, and reports its branch and folder.
+A firing that changes nothing reports that fact rather than a landing. The copy
+is recorded before its worker opens, so startup failure still leaves its branch
+and folder discoverable.
+You can inspect and commit those files or open a pull request yourself.
+It does not merge or delete the copy automatically. This is workspace isolation,
+not a sandbox: commands with explicit paths can still access other folders.

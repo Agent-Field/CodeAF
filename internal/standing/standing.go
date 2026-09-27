@@ -262,6 +262,9 @@ const (
 // Model, Effort and MaxSteps for ActionTask. Either kind may template the
 // probe's evidence into its text with {{evidence}}.
 type Action struct {
+	// Isolate runs a task in a separate Git worktree, as shown on its approval
+	// card. Permission prose never selects an execution directory.
+	Isolate    bool       `json:"isolate,omitempty"`
 	Kind       ActionKind `json:"kind"`
 	Say        string     `json:"say,omitempty"`
 	Brief      string     `json:"brief,omitempty"`
@@ -481,6 +484,9 @@ type Item struct {
 // admission law in one place: words, a workspace, a kind with its fields, an
 // action with its text, and rails that are not zero.
 func (it Item) Validate() error {
+	if it.Does.Isolate && (it.Does.Kind != ActionTask || it.When.Kind == WhenHold) {
+		return errors.New("only a waking task can use a separate Git worktree")
+	}
 	switch {
 	case it.Words == "":
 		return errors.New("an item needs the person's words")
@@ -608,7 +614,7 @@ func (it Item) Reaches(workspace, sessionID string) bool {
 	case AltitudeMachine:
 		return true
 	case AltitudeProject:
-		return workspace != "" && it.Workspace == workspace
+		return sameWorkspace(it.Workspace, workspace)
 	case AltitudeConversation:
 		return sessionID != "" && it.Origin.SessionID == sessionID
 	}
@@ -625,7 +631,7 @@ func (it Item) AppliesTo(workspace, sessionID string) bool {
 // ExceptedFrom answers whether the person excepted this item from the place.
 func (it Item) ExceptedFrom(workspace, sessionID string) bool {
 	for _, ex := range it.Exceptions {
-		if ex.Workspace != "" && ex.Workspace == workspace {
+		if sameWorkspace(ex.Workspace, workspace) {
 			return true
 		}
 		if ex.SessionID != "" && ex.SessionID == sessionID {
@@ -1075,7 +1081,14 @@ type WatchStatus struct {
 // `codeaf tick` every [Interval]. The core lane builds it on internal/watchdog's
 // shape with its own unit names, so it can coexist with v1's.
 type Watch interface {
+	Ensure(ctx context.Context) error
 	Install(ctx context.Context) error
 	Uninstall(ctx context.Context) error
 	Status() (WatchStatus, error)
+}
+
+// sameWorkspace gives reach and exceptions the same lexical path identity.
+// An absent path never names the current directory.
+func sameWorkspace(a, b string) bool {
+	return a != "" && b != "" && filepath.Clean(a) == filepath.Clean(b)
 }
