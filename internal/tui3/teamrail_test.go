@@ -19,12 +19,22 @@ func TestTrafficAgeStaysCompactPastAMonth(t *testing.T) {
 	}{
 		{"29d", 29 * day, "29d"},
 		{"30d", 30 * day, "30d"},
+		{"41d", 41 * day, "41d"},
+		{"before six weeks", 42*day - time.Nanosecond, "41d"},
+		{"six weeks", 42 * day, "6w"},
 		{"90d", 90 * day, "12w"},
+		{"364d", 364 * day, "52w"},
+		{"before one year", 365*day - time.Nanosecond, "52w"},
+		{"one year", 365 * day, "1y"},
 		{"400d", 400 * day, "1y"},
+		{"future timestamp", -time.Hour, "now"},
 	} {
 		if got := trafficAgeAt(now.Add(-c.span), now); got != c.want {
 			t.Errorf("%s reads %q, want %q", c.name, got, c.want)
 		}
+	}
+	if got := trafficAgeAt(time.Time{}, now); got != "" {
+		t.Errorf("missing timestamp reads %q, want no age", got)
 	}
 	// The shared ladder still prints a date at the month. This row does not
 	// borrow it.
