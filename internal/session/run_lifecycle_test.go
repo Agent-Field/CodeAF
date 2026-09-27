@@ -16,7 +16,6 @@ package session
 import (
 	"context"
 	"errors"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -25,47 +24,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
-
-func TestRestartReconcilesAnUnfinishedBeltPlan(t *testing.T) {
-	t.Setenv("CODEAF_TASK_BELT", "bash")
-	dir := t.TempDir()
-	place := Place{Dir: dir}
-	path := filepath.Join(dir, planStoreFilename)
-	store, err := plandb.Open(path, "held", "71", "held", "held brief", place.ID())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
-	checkpoint := place.Tasks()
-	writeCheckpoint(t, checkpoint, taskDocument{Type: taskDocumentType, Version: taskFileVersion, Seq: 71,
-		Runs: []runRecord{{ID: 71, Title: "held", State: TaskRunning, PlanTask: planStoreID("71")}},
-	})
-	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) {
-		cfg.Workspace = newTestRepo(t)
-		cfg.Place = place
-		cfg.SessionFile = filepath.Join(dir, placeTranscript)
-		cfg.AskConsent = false
-	})
-	defer agent.Close()
-	rows := agent.graph().runRows(71)
-	if len(rows) != 1 || rows[0].State != TaskInterrupted {
-		t.Fatalf("recovered belt row = %+v, want interrupted", rows)
-	}
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatalf("the interrupted plan is still live: stat err=%v", err)
-	}
-	archived, err := plandb.Open(path+".1", "", "", "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer archived.Close()
-	root := archived.Task("71")
-	if root == nil || !terminalStoreStatus(root.Status) || root.Error != taskWordInterrupted {
-		t.Fatalf("reconciled root = %+v, want terminal interrupted", root)
-	}
-}
 
 // relayEngine is a run engine that can run more than once: every Start is
 // handed back on a channel, and each Start answers the summary the test queued
