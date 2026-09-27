@@ -1868,11 +1868,19 @@ type app struct {
 	// (skillpick.go). It holds no attachment state of its own: the names live
 	// in the session, and the tray chip reads them there.
 	skillPick skillPick
+	// skillEmptyClose asks the picker to clear a bare command when its catalog
+	// answers empty; a typed picker must stay open so a path can become its next
+	// choice.
+	skillEmptyClose bool
 	// skillShelfSeen is the session's shelf as its last reading answered, nil
 	// until one has (skillpick.go's [app.readSkillShelf]). It outlives the
 	// list, so a list opened again draws the last answer while the next read
 	// is on its way.
 	skillShelfSeen *skillShelfReading
+	// skillDiskRead distinguishes an empty disk scan from the scan that has not
+	// answered yet; the picker must not close before the asynchronous catalog is
+	// known to be empty.
+	skillDiskRead bool
 	// skillDiskSeen is the last foreign folder scan. It outlives the picker
 	// so reopening can draw those rows while a fresh scan is in flight.
 	skillDiskSeen []skills.Skill
@@ -4412,6 +4420,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if a.connPanel.open {
 				return a, a.connectPanelPress(msg.Mouse().Y)
+			}
+			if a.draftPage.open {
+				return a, a.draftPagePress(msg.Mouse().Y)
 			}
 			// AND THE HARNESS PICKER TAKES A PRESS ON ITS OWN ROWS AND NOTHING
 			// ELSE, because it is not modal: it hangs under a draft somebody is
@@ -7721,6 +7732,7 @@ func (a *app) slash(line string) tea.Cmd {
 		// the command and its query into the box rather than opening the list
 		// from nowhere. A path typed on home must survive the new conversation
 		// that home opens before this command reaches the picker.
+		a.skillEmptyClose = rest == ""
 		a.input.reset()
 		a.input.insert("/skill " + rest)
 		cmd := a.edited()
