@@ -40,7 +40,7 @@ func TestBashWorkerAsksTheProviderAtTheWorkSeat(t *testing.T) {
 			return toolReply(finishCommand("root", "the work is done")), nil
 		},
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
 
 	if _, err := worker.Run(run.WithStepsPerTask(runContext(t), 9), *store.Task(store.RootID())); err != nil {
 		t.Fatalf("the worker's run failed: %v", err)
