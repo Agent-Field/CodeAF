@@ -670,7 +670,10 @@ type TaskReplyTag struct {
 type Event struct {
 	Discussion *QuestionDiscussion `json:",omitempty"`
 
-	Kind          EventKind
+	Kind EventKind
+	// Addressed is a producer's declaration that streamed text is for the person.
+	// It does not imply a completed response and survives interruption.
+	Addressed     bool `json:"Addressed,omitempty"`
 	Text          string
 	ShortTitle    string `json:"ShortTitle,omitempty"`
 	Tool          string
@@ -2372,8 +2375,9 @@ type Agent struct {
 	// definition block rides at the front of every request and a definition that
 	// shifts re-bills the whole prompt behind it (internal/exec's tools.go states
 	// the law).
-	tools       []bare.Tool
-	definitions []ai.ToolDefinition
+	presentation *presentationIndex
+	tools        []bare.Tool
+	definitions  []ai.ToolDefinition
 	// served is what the belt cannot say about the tools an ACCOUNT named
 	// rather than this build (served.go): whose account each one is, what the
 	// account calls it, and which capability governs it. Keyed by the name the
