@@ -1398,3 +1398,11 @@ older blocks â€” the connect offer, with its own answers row and its own keys â€
 gone. The one card in this program that still answers to keys of its own is the
 intake form `/subharness` opens for a saved program, which is a fullscreen page
 with fields to fill in rather than a question above the box.
+
+## Does accepting a standing card mean it repeats?
+
+The answer depends on the kind shown on the card. A one-off reminder says
+`Reminds you then. Nothing repeats.` A repeating check says
+`It repeats on that cadence until you stop it.` A rule says
+`The rule is kept until you stop it.` These are the engine's own answer
+consequences, shared by the home screen and the conversation.
