@@ -979,3 +979,19 @@ The decline is `Don't schedule it`: nothing is scheduled or run. It has no
 `Only now, don't repeat` option, because this card approves the stated future
 time. A say-only reminder still says `wants to remind you` and `Remind me`.
 Both kinds show the action they will take before you approve.
+
+## Keep scheduled coding work on a separate branch
+
+For a scheduled task that should open a pull request without merging, set
+`does.isolate` to `true` on the `stand` proposal. Its approval card says
+`work · separate Git worktree · changes kept for review`. Permission words
+alone do not select isolation. Existing orders keep their current behavior;
+replace an order and approve its isolation option to change that behavior.
+
+An isolated firing requires a Git repository with at least one commit. It
+starts from the current committed checkout in a new worktree and branch.
+Uncommitted changes in the original checkout are not copied. The firing keeps
+its worktree, including unfinished edits, and reports its branch and folder.
+You can inspect and commit those files or open a pull request yourself.
+It does not merge or delete the copy automatically. This is workspace isolation,
+not a sandbox: commands with explicit paths can still access other folders.
