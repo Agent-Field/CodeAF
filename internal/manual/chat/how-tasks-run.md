@@ -2669,11 +2669,18 @@ When a session comes back:
 - then the queue is turned again: a queued task whose prerequisites are still done starts
   now.
 
-A held plan task that never started comes back `interrupted`, not `working` or `done`.
-Its store row may still say `running`, but the recovered run row records that nothing
-was driving it; the room and rail use `interrupted` and keep the task's recorded steps.
-Rows recovered as `failed` read `incomplete`. Both belong under `Incomplete` on the
-rail, never under `Done`.
+An ordinary plan task held before admission comes back `queued` when its saved request
+still contains the exact brief, folder and folder mode. It waits for the same admission
+checks before taking a working copy. An already admitted ordinary task reconnects to its
+recorded working copy. If that recovery is unavailable, the task stays `interrupted`;
+it is not described as working or successfully done. Its recorded steps remain visible.
+
+Rows recovered as `failed` read `incomplete`. Inactive interrupted and failed rows without
+an outstanding decision belong in the rail's finished fold, headed `Done`; that heading
+does not mean their work succeeded. Their own room and row still say `interrupted` or
+`incomplete`. Failed rows are listed first in that fold, ahead of other finished work;
+interrupted rows retain their arrival order. Successfully resumed tasks appear under
+`Queued` or `Running` instead.
 
 You see one line about it, as context for your first turn rather than as a reason to start
 one:
