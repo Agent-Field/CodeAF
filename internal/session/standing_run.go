@@ -542,70 +542,31 @@ func standingSessionDir(item standing.Item) string {
 // hands — the parts it handed out and the fold it makes of their reports. All of
 // it bounded by the item's own rails.
 //
-// IT IS A SESSION AND NOT A WORKTREE FOR AMBIENT RUNS. A firing runs in the
-// project the person pointed it at, under the rules they have already banked,
-// exactly as docs/AMBIENT.md says an unattended run does. What bounds it is
-// not a governor somewhere else but the two numbers on the card: how many calls
-// it may make, and how much it may spend before the turn is cut. A division
-// does not put the money outside that: a part folds its bill into this session's
-// own books ([Agent.foldTaskUsage]), so the per-run figure this reads is the
-// whole family's and the pass writes down what the family cost ([standingWideWork]
-// for why division reaches here at all).
-//
-// THE EXCEPTION IS BRANCH-ISOLATED FIRINGS IN A GIT REPOSITORY. If an order's
-// grant restricts work to a branch (e.g. "open a pull request, never merge one",
-// or PR/branch only without merging), running in the host checkout risks
-// landing unmerged commits directly onto the person's active branch (issue #1550).
-// For those firings, the engine cuts a dedicated git worktree on an isolated
-// branch and verifies ref state before and after execution so that commits never
-// touch the host ref and reported isolation is proven by git state rather than
-// trusted from model prose.
+// A TASK'S APPROVED ISOLATION SETTING SELECTS ITS WORKSPACE. An isolated
+// firing retains its worktree, including unfinished edits, with the run's
+// existing working-copy record. Neither grant nor reply prose is a policy.
 func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, evidence string) (standing.Outcome, error) {
 	cfg, err := standingRunConfig(r.parent, item, runDir)
 	if err != nil {
 		return standing.Outcome{}, err
 	}
 
-	var (
-		tree             taskTree
-		isBranchIsolated bool
-		hostBranch       string
-		hostShaBefore    string
-		gitRoot          string
-	)
-	if root, ok := repositoryRoot(item.Workspace); ok && hasCommit(root) {
-		gitRoot = root
-		hostBranch = currentBranch(root)
-		if hostBranch != "" {
-			hostShaBefore = branchCommit(root, hostBranch)
-		} else {
-			out, _ := git(root, "rev-parse", "HEAD")
-			hostShaBefore = strings.TrimSpace(out)
+	var tree taskTree
+	if item.Does.Isolate {
+		root, ok := repositoryRoot(item.Workspace)
+		if !ok || !hasCommit(root) {
+			return standing.Outcome{}, errors.New("a separate Git worktree needs a repository with a commit")
 		}
-
-		if standingGrantRequiresBranch(item.Grant) {
-			title := item.Title()
-			if title == "" {
-				title = "standing"
-			}
-			branch := "standing/" + slugify(title) + "-" + shortID()
-			trees := cfg.Place.Trees()
-			dir := canonicalPath(filepath.Join(trees, "standing-"+slugify(title)+"-"+shortID()))
-			cut, err := cutWorktreeAt(cfg.Place, root, dir, branch, 0o700)
-			if err != nil {
-				return standing.Outcome{}, fmt.Errorf("cut standing worktree: %w", err)
-			}
-			tree = cut
-			isBranchIsolated = true
-			cfg.Workspace = tree.dir
-			defer func() {
-				release := lockGitRoot(cfg.Place, root)
-				defer release()
-				_, _ = git(root, "worktree", "remove", "--force", tree.dir)
-				_, _ = git(root, "worktree", "prune")
-				_ = os.RemoveAll(tree.dir)
-			}()
+		name := "standing-" + slugify(item.Title()) + "-" + shortID()
+		dir := canonicalPath(filepath.Join(cfg.Place.Trees(), name))
+		tree, err = cutWorktreeAt(cfg.Place, root, dir, "standing/"+name, 0o700)
+		if err != nil {
+			return standing.Outcome{}, fmt.Errorf("cut standing worktree: %w", err)
 		}
+		cfg.Workspace = tree.dir
+		cfg.Place.Workspace = tree.dir
+		// Keep the copy even on cancellation, provider failure, or an unfinished
+		// edit. A successful turn is not evidence that every file was committed.
 	}
 
 	brief := standingEvidence(item.Does.Brief, evidence)
@@ -622,17 +583,19 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		return standing.Outcome{}, err
 	}
 	defer func() { _ = agent.Close() }()
-	if isBranchIsolated {
+	if item.Does.Isolate {
 		agent.trees = append(agent.trees, StandingTree{
 			Folder:  item.Workspace,
 			Dir:     tree.dir,
 			Branch:  tree.branch,
-			Root:    gitRoot,
+			Root:    tree.root,
 			Home:    tree.home,
 			HomeSha: tree.homeSha,
 			Mode:    TaskModeWorktree,
 			Cut:     time.Now(),
 		})
+		agent.stampTrees()
+		agent.SettleWrites()
 	}
 	if graph != nil {
 		// The graph is finished now that there is a session to own it: its home
@@ -760,52 +723,33 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		graph.stopChildren(root.id)
 	}
 
-	var hasBranchCommits bool
-	if isBranchIsolated && gitRoot != "" {
-		branchSha := branchCommit(gitRoot, tree.branch)
-		hasBranchCommits = branchSha != "" && branchSha != tree.homeSha
-		if hasBranchCommits {
-			saved = true
-		}
-	}
-
 	outcome := standing.Outcome{
 		Kind: standingCameTo(saved, reply, needs),
 		Text: clip(reply, standingOutcomeClip),
 		USD:  agent.Usage().CostUSD,
 	}
-
-	// Verify git ref state and enforce branch isolation guarantees.
-	if gitRoot != "" {
-		var hostShaAfter string
-		if hostBranch != "" {
-			hostShaAfter = branchCommit(gitRoot, hostBranch)
-		} else {
-			out, _ := git(gitRoot, "rev-parse", "HEAD")
-			hostShaAfter = strings.TrimSpace(out)
-		}
-		hostMoved := strings.TrimSpace(hostShaBefore) != "" && strings.TrimSpace(hostShaAfter) != strings.TrimSpace(hostShaBefore)
-		claimedIsolation := replyClaimsBranchIsolation(reply)
-
-		if hostMoved && (isBranchIsolated || claimedIsolation) {
+	if item.Does.Isolate {
+		// Record Git facts rather than trying to classify the model's prose.
+		// Another session may advance the host branch while we run; that is
+		// not evidence that this worker changed it.
+		status, statusErr := git(tree.dir, "status", "--porcelain")
+		head, headErr := git(tree.dir, "rev-parse", "HEAD")
+		branch := currentBranch(tree.dir)
+		if statusErr != nil || headErr != nil || branch != tree.branch {
 			outcome.Kind = standing.OutcomeFailed
-			outcome.Text = fmt.Sprintf("branch isolation breach: host ref %s was modified directly while branch isolation was expected", hostBranch)
-			outcome.NeedsPerson = outcome.Text
-		} else if isBranchIsolated {
-			if hasBranchCommits {
-				if strings.TrimSpace(outcome.Text) == "" {
-					outcome.Text = fmt.Sprintf("committed on branch %s, not merged", tree.branch)
-				}
-				if outcome.Kind == standing.OutcomeNothing {
-					outcome.Kind = "landed"
-				}
-			} else if claimedIsolation {
-				outcome.Kind = standing.OutcomeFailed
-				outcome.Text = fmt.Sprintf("branch isolation verification failed: reply claimed branch commits, but no commits exist on branch %s", tree.branch)
-				outcome.NeedsPerson = outcome.Text
-			}
+			outcome.NeedsPerson = "the worktree's branch could not be confirmed; inspect the saved work"
+			outcome.Text = outcome.NeedsPerson
+		} else if strings.TrimSpace(status) != "" || strings.TrimSpace(head) != tree.checkBase {
+			outcome.Kind = standingCameTo(true, reply, needs)
+		}
+		// The location remains visible even when a wordless firing left only
+		// shell-written files, which producedAFile cannot recognize.
+		outcome.Text = strings.TrimSpace(outcome.Text + "\nWork kept on " + tree.branch + " in " + tree.dir)
+		if outcome.Kind == standing.OutcomeNothing {
+			outcome.Kind = "landed"
 		}
 	}
+
 	if needs != "" {
 		// NOTHING PRETENDS THIS LANDED. A run that stopped on something only a
 		// person can allow is not a failure and is not a success; it is work
@@ -1504,56 +1448,4 @@ func standingAwayNote(notes []standing.Note) string {
 		out.WriteString("\n" + strings.Join(parts, " · "))
 	}
 	return out.String()
-}
-
-// standingGrantRequiresBranch reports whether an item's grant restricts work
-// to a branch (such as opening a pull request or committing without merging).
-//
-// WHY STRUCTURED GRANT OVER PROSE SNIFFING. Item.Grant is the person's explicit
-// permission statement banked on the standing order ("open a pull request, never
-// merge one"). Sniffing the prompt or brief prose is fragile and subject to
-// prompt-engineering accidents; the grant is the explicit boundary.
-func standingGrantRequiresBranch(grant string) bool {
-	lower := strings.ToLower(strings.TrimSpace(grant))
-	if lower == "" {
-		return false
-	}
-	for _, term := range []string{
-		"pull request",
-		"pull-request",
-		"pr",
-		"never merge",
-		"not merge",
-		"without merging",
-		"branch",
-	} {
-		if strings.Contains(lower, term) {
-			return true
-		}
-	}
-	return false
-}
-
-// replyClaimsBranchIsolation reports whether a firing's response claims that
-// its changes were kept on a separate branch or not merged into the host branch.
-func replyClaimsBranchIsolation(reply string) bool {
-	lower := strings.ToLower(reply)
-	if strings.Contains(lower, "branch") {
-		if strings.Contains(lower, "isolate") ||
-			strings.Contains(lower, "not merge") ||
-			strings.Contains(lower, "without merging") ||
-			strings.Contains(lower, "never merge") ||
-			strings.Contains(lower, "committed on") ||
-			strings.Contains(lower, "committed to") ||
-			strings.Contains(lower, "commit on") ||
-			strings.Contains(lower, "created branch") ||
-			strings.Contains(lower, "separate branch") ||
-			strings.Contains(lower, "dedicated branch") {
-			return true
-		}
-	}
-	if strings.Contains(lower, "pull request") || strings.Contains(lower, "opened pr") || strings.Contains(lower, "created pr") {
-		return true
-	}
-	return false
 }

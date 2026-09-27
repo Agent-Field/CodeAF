@@ -262,6 +262,9 @@ const (
 // Model, Effort and MaxSteps for ActionTask. Either kind may template the
 // probe's evidence into its text with {{evidence}}.
 type Action struct {
+	// Isolate runs a task in a separate Git worktree, as shown on its approval
+	// card. Permission prose never selects an execution directory.
+	Isolate    bool       `json:"isolate,omitempty"`
 	Kind       ActionKind `json:"kind"`
 	Say        string     `json:"say,omitempty"`
 	Brief      string     `json:"brief,omitempty"`
@@ -481,6 +484,9 @@ type Item struct {
 // admission law in one place: words, a workspace, a kind with its fields, an
 // action with its text, and rails that are not zero.
 func (it Item) Validate() error {
+	if it.Does.Isolate && (it.Does.Kind != ActionTask || it.When.Kind == WhenHold) {
+		return errors.New("only a waking task can use a separate Git worktree")
+	}
 	switch {
 	case it.Words == "":
 		return errors.New("an item needs the person's words")
