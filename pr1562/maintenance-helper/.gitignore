@@ -1,9 +1,0 @@
-# Local PlanDB database — never commit
-.plandb.db
-.plandb.db-shm
-.plandb.db-wal
-.plandb.db-journal
-
-# Python bytecode
-__pycache__/
-*.pyc
