@@ -276,7 +276,7 @@ func (a *Agent) askForName(ctx context.Context, question, answer, model string) 
 	// answer at all costs one fall-through down the ladder rather than the
 	// session's name. No tools — the namer's only job is to produce the title pair.
 	callCtx, cancel := context.WithTimeout(ctx, titleAskWindow)
-	response, named, err := a.callRoleChecked(callCtx, roles.RoleTitle, model,
+	response, named, err := a.callRoleChecked(withDetachedUsage(callCtx), roles.RoleTitle, model,
 		[]ai.Message{
 			textMessage("system", titleSystem),
 			// THE INSTRUCTION IS LAST, after the exchange rather than above it.

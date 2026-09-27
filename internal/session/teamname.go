@@ -60,7 +60,7 @@ func (a *Agent) NameTeam(ctx context.Context, titles []string) (string, error) {
 		return "", errors.New("the conversation is closed")
 	}
 	ask := "Conversations:\n" + strings.Join(lines, "\n") + "\n\n" + teamNameAsk
-	response, named, err := a.callRoleChecked(ctx, roles.RoleTitle, model,
+	response, named, err := a.callRoleChecked(withDetachedUsage(ctx), roles.RoleTitle, model,
 		[]ai.Message{textMessage("system", titleSystem), textMessage("user", ask)},
 		func(response *ai.Response, named string) bool {
 			if cleanTeamName(response.Text()) != "" {

@@ -106,7 +106,7 @@ func (a *Agent) RefreshRunSummary(ctx context.Context, rootID string, lastLook t
 	if crewTaskOf(ctx) == nil {
 		ctx = withCrewTask(ctx, a.liveCrewFor(rootID))
 	}
-	response, called, err := a.callRole(ctx, roles.RoleWorker, a.model, []ai.Message{
+	response, called, err := a.callRole(withDetachedUsage(ctx), roles.RoleWorker, a.model, []ai.Message{
 		textMessage("system", runSummaryPrompt), textMessage("user", input),
 	}, ai.WithMaxTokens(320))
 	// THE READING IS PAID FOR WHETHER OR NOT IT CAN BE USED, so it is banked
