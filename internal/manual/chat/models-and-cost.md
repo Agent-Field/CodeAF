@@ -1239,6 +1239,10 @@ rather than handed to the model that just wrote the answer. Under this flag they
 model like everything else, because you have said your model is the crew. Without the flag and
 without a planner to seat, a move that needs them says `no second model is set`.
 
+**Model Pool judging waits for an ordinary launch.** Its judge must be independent
+of the crew, so `--one-model` runs neither the task-landing judge nor the startup sweep
+of pending judgments. It does not substitute your worker as its own independent judge.
+
 **It changes no setting and writes nothing.** Your pins and rows are untouched, `/crew`
 still says what it said, and the next session without the flag reads them exactly as before.
 It is a posture for one run, not an edit.
