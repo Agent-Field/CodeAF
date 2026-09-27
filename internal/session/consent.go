@@ -640,11 +640,14 @@ func ConsentHead(tool, args string) string {
 // consentRule is [Event.Rule] for a call: the policy's own words, and for a
 // start with none, what the person is agreeing to pay for ([teamStartCost]).
 func consentRule(call ai.ToolCall, decision approval.Decision) string {
+	if call.Function.Name == teamStartToolName {
+		if rule := strings.TrimSpace(decision.Rule); rule != "" && !approval.IsDefaultRule(rule) {
+			return rule
+		}
+		return teamStartCost
+	}
 	if rule := strings.TrimSpace(decision.Rule); rule != "" {
 		return rule
-	}
-	if call.Function.Name == teamStartToolName {
-		return teamStartCost
 	}
 	return ""
 }

@@ -22,7 +22,7 @@ package session
 // new conversation that spends money are two different acts, and a person must
 // be able to allow one and be asked about the other. So the reads, the messages
 // and the stop sit on the builtin floor (cmd/codeaf's v3BuiltinApprovals) and
-// `team_start` is left to the blanket mode, which asks.
+// `team_start` is left to the blanket mode, so it follows the current posture.
 //
 // THE CHANNEL IS THE TRAFFIC LOG AND NOTHING ELSE. Every write here is one
 // [teams.AppendTraffic]: a message is a note or a directive, a stop is a
@@ -104,7 +104,7 @@ const teamStopSchema = `{"type":"object","properties":{"handle":{"type":"string"
 	`"reason":{"type":"string","description":"One line, shown in the traffic."},` +
 	teamArgSchema + `},"required":["handle"],"additionalProperties":false}`
 
-const teamStartDescription = "Start a new member conversation in this team with a handle and a brief. The person is asked first. " +
+const teamStartDescription = "Start a new member conversation in this team with a handle and a brief. The person is asked first when this conversation's approval posture asks; otherwise it starts under the current approval posture. " +
 	"The new conversation opens in the team's folder and its first message is your brief, marked as from the manager. " +
 	"Write the brief as a complete assignment: the goal, what done looks like, and which files are its to touch. " +
 	"kind team starts a sub-team instead: a new team under yours (name) whose manager is the new conversation, with its share of your pool; members you name move into it. " +
@@ -198,6 +198,20 @@ func (a *Agent) teamTarget(want string, manager bool) (teams.Team, teamRole, str
 			}
 		}
 		if len(chosen) != 1 {
+			for _, role := range rolesFor(file, keys, defaults) {
+				if !role.manager || !strings.EqualFold(role.name, want) {
+					continue
+				}
+				above := make([]teamRole, 0, len(fits))
+				for _, candidate := range fits {
+					if candidate.id != role.id {
+						above = append(above, candidate)
+					}
+				}
+				if len(above) == 1 {
+					return teams.Team{}, teamRole{}, fmt.Sprintf("You manage %q; team_post is for the team above you, %q.", role.name, above[0].name)
+				}
+			}
 			return teams.Team{}, teamRole{}, fmt.Sprintf("There is no one team called %q here. Yours are: %s.", want, strings.Join(sortedTeamNames(fits), ", "))
 		}
 		fits = chosen
@@ -668,7 +682,7 @@ func (a *Agent) teamStartTool(ctx context.Context, args json.RawMessage) (string
 	if _, taken := team.ByHandle(handle); taken {
 		return fmt.Sprintf("@%s is already a member of %q. Pick another handle, or team_send it the work.", handle, team.Name), true, nil
 	}
-	entry := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief}
+	entry := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Approval: a.ApprovalPosture()}
 	if err := teams.AppendTraffic(a.config.teamProfile(), team.ID, entry); err != nil {
 		return "The start could not be written to the team's traffic: " + err.Error(), true, nil
 	}

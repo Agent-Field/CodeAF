@@ -258,6 +258,9 @@ func TestTheStartsCardSaysWhoIsStartedAndWhatItCosts(t *testing.T) {
 	if rule := consentRule(call, approval.Decision{Rule: "a rule said so"}); rule != "a rule said so" {
 		t.Errorf("a policy's own words were replaced: %q", rule)
 	}
+	if rule := consentRule(call, approval.Decision{Rule: "default"}); rule != teamStartCost {
+		t.Errorf("the internal default leaked into the card: %q", rule)
+	}
 	bash := ai.ToolCall{Function: ai.ToolCallFunction{Name: "bash", Arguments: `{"command":"ls"}`}}
 	if head := ConsentHead("bash", bash.Function.Arguments); head != "needs your ok to run bash" {
 		t.Errorf("an ordinary head changed: %q", head)

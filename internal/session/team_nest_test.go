@@ -9,6 +9,7 @@ package session
 // teams.json and real Traffic, through internal/teams.
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -110,6 +111,7 @@ func TestTeamStartOfKindTeamMakesASubTeamWhoseManagerReportsUp(t *testing.T) {
 		t.Fatal(err)
 	}
 	boss := n.agent(t, "boss")
+	boss.approvalPosture = PostureAsk
 	boss.teamBoundary()
 	said, failed := callTool(t, boss.teamStartTool, `{"handle":"api","brief":"Build the signup API.\nDone is a green handler test.","kind":"team","name":"backend","members":["parser"]}`)
 	if failed || !strings.Contains(said, `Made the team "backend" under "harbor"`) || !strings.Contains(said, "$5.00 a day") || !strings.Contains(said, "Moved in: @parser") {
@@ -130,7 +132,8 @@ func TestTeamStartOfKindTeamMakesASubTeamWhoseManagerReportsUp(t *testing.T) {
 	}
 	log, _ := teams.ReadTraffic(n.fixture.profile, harbor, "", 0)
 	start := last(log)
-	if start.Kind != teams.KindStart || start.To != "api" || start.Team != backend.ID {
+	rawStart, _ := json.Marshal(start)
+	if start.Kind != teams.KindStart || start.To != "api" || start.Team != backend.ID || !strings.Contains(string(rawStart), `"approval":"ask"`) {
 		t.Fatalf("harbor's start line: %+v", start)
 	}
 	here, _ := teams.ReadTraffic(n.fixture.profile, backend.ID, "", 0)
@@ -183,6 +186,43 @@ func TestTeamStartOfKindTeamMakesASubTeamWhoseManagerReportsUp(t *testing.T) {
 	boss.mu.Unlock()
 	if !strings.Contains(role, `Teams under yours: "backend" (run by @api). Direct their managers, never their members.`) {
 		t.Errorf("harbor's manager is not told what runs under it:\n%s", role)
+	}
+}
+
+func TestSubTeamManagerNamingItsOwnTeamGetsTheRule(t *testing.T) {
+	n := newTeamTree(t, "boss", "api")
+	harbor := n.team(t, "harbor", "", "boss", n.member(t, "boss", "boss"))
+	boss := n.agent(t, "boss")
+	boss.teamBoundary()
+	if said, failed := callTool(t, boss.teamStartTool, `{"handle":"api","brief":"Run the API.","kind":"team","name":"backend"}`); failed {
+		t.Fatalf("team_start failed: %q", said)
+	}
+	f := n.file(t)
+	var backend teams.Team
+	for _, team := range f.Teams {
+		if team.Name == "backend" {
+			backend = team
+			break
+		}
+	}
+	if backend.ID == "" {
+		t.Fatal("the child team was not made")
+	}
+	if err := teams.Update(n.fixture.profile, func(f *teams.File) error {
+		m := n.member(t, "api", "api")
+		m.Started = true
+		if err := f.AddMember(harbor, m); err != nil {
+			return err
+		}
+		return f.SetManager(backend.ID, m.Key)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	api := n.agent(t, "api")
+	api.teamBoundary()
+	said, failed := callTool(t, api.teamPostTool, `{"team":"backend","to":"manager","text":"status"}`)
+	if !failed || said != `You manage "backend"; team_post is for the team above you, "harbor".` {
+		t.Fatalf("the own-team refusal was %q (failed=%v)", said, failed)
 	}
 }
 
