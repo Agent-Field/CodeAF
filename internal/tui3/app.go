@@ -6906,11 +6906,11 @@ func waitEvent(ch <-chan session.Event, gen int) tea.Cmd {
 // IT IS internal/session's OWN [foldsInto] SAID ON THIS SIDE OF THE CHANNEL. The
 // hub folds a slow subscriber's backlog by that rule; [waitEvent] folds a fast
 // stream's arrivals by this one, and both rest on the same law: EventTextDelta
-// and EventReasoning are each emitted as a kind and a text and nothing more, at
-// every one of the places that emit them. A kind that grows a second field comes
-// off BOTH lists in the same change, or each fold quietly drops it.
+// and EventReasoning preserve their kind and source audience while joining
+// text. Both folding layers keep audience boundaries, so a queued human update
+// cannot inherit an internal event's presentation.
 func foldsInto(prev, next session.Event) bool {
-	if prev.Kind != next.Kind {
+	if prev.Kind != next.Kind || prev.Addressed != next.Addressed {
 		return false
 	}
 	return prev.Kind == session.EventTextDelta || prev.Kind == session.EventReasoning
@@ -8391,6 +8391,8 @@ func (a *app) interruptTurn() {
 		return
 	}
 	a.agent.Interrupt()
+	a.flushUpdatePrefix()
+	a.finishResponse(true)
 	a.state = stateInterrupted
 	// AND THE STOP IS BOUNDED FROM THIS INSTANT. See the block below
 	// [app.windingDown]: the letting-go is the engine's and it takes as long as
