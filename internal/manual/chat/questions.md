@@ -1270,13 +1270,13 @@ has all of the above: the digits, `esc` for later, the chip, the receipt, the
 settle guard, the narrow card and the phone sheet. `permissions` is its own page
 and states what each answer banks.
 
-**So does the standing card** — `wants to set this up:` with `1 yes, set it up`,
-`3 just once` where the item can be done once at all, and `0 no`. What is left in
-the conversation is the card itself: your own words, the `when ·`, `where ·` and
-`costs ·` bands, and the meter where the engine put a deadline on it. The answers
-are up above the box with everything else you are being waited on for, and each
-one says what it costs beside it. `o` starts an updated request — it turns
-the box into the correction lane, and `enter` sends your words back to be
+**So does the standing card.** The first line says the kind: `wants to remind you`,
+`wants to set up a repeating check`, `wants to watch for something`, or
+`wants to keep a rule`. Under that is what it does, then when and what one time
+costs, and the `where ·` band. The answers sit above the box. A repeating check's
+yes is `Set it up · <cadence>`, its once is `Only now, don't repeat` (this used
+to say `just once`), and its no is `Don't set it up`. A reminder and a rule have
+no once. `o` starts an updated request. `enter` sends your words back to be
 re-proposed.
 
 **`esc` on a standing card means *later* now, and it used to mean no.** It is
@@ -1398,3 +1398,11 @@ older blocks — the connect offer, with its own answers row and its own keys �
 gone. The one card in this program that still answers to keys of its own is the
 intake form `/subharness` opens for a saved program, which is a fullscreen page
 with fields to fill in rather than a question above the box.
+
+## Does accepting a standing card mean it repeats?
+
+The answer depends on the kind shown on the card. A one-off reminder says
+`Reminds you then. Nothing repeats.` A repeating check says
+`It repeats on that cadence until you stop it.` A rule says
+`The rule is kept until you stop it.` These are the engine's own answer
+consequences, shared by the home screen and the conversation.

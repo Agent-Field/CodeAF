@@ -1,11 +1,8 @@
 ---
-kind: changed
-title: groom the standing card ask and its yes clause
+kind: docs
+title: clarify when accepting a standing card repeats work
 pr: 1520
-surface: [chat, docs]
+surface: [docs]
 invalidates:
-  - "The standing card ask led with 'wants to keep an eye on:'. It now leads with 'wants to set this up:' across all kinds."
-  - "The standing card yes clause unconditionally stated 'it keeps happening until you stop it'. For one-off scheduled items, it now states 'it happens at the time, and then it retires'."
+  - "Accepting any standing card means a repeating job. Reminder, rule, and repeating-check cards already have different engine-owned answer consequences; the manual now explains that distinction directly."
 ---
-
-The standing card lead was inaccurate for rules and reminders that do not keep an eye on anything. The lead is now generic across all kinds, and the confirmation clause branches on one-off schedules rather than promising recurring execution.
