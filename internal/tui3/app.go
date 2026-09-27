@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -5115,7 +5116,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case compactedMsg:
 		if msg.err != nil {
-			a.note("compact failed: " + msg.err.Error())
+			if errors.Is(msg.err, session.ErrNothingToCompact) {
+				a.note("nothing to compact yet")
+			} else {
+				a.note("compact failed: " + msg.err.Error())
+			}
 		} else {
 			a.noticeEvent(eventCompacted)
 		}
