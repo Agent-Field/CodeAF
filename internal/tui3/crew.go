@@ -164,15 +164,15 @@ func (a *app) crewCap(rest string) int {
 		return a.crewTaskCap(strings.TrimSpace(figure))
 	}
 	if rest == "" {
-		a.note("daily cap · " + a.crewCapWords())
+		a.note(crewDailyCapWord + " · " + a.crewCapWords())
 		return -1
 	}
 	if err := config.SetCrewCap(a.profileDir, rest); err != nil {
-		a.note("could not set the daily cap · " + err.Error())
+		a.note("could not set the " + crewDailyCapWord + " · " + err.Error())
 		return -1
 	}
 	a.crewApplied()
-	a.note("daily cap · " + a.crewCapWords())
+	a.note(crewDailyCapWord + " · " + a.crewCapWords())
 	return crewCap
 }
 
@@ -276,9 +276,10 @@ func crewPinMark(linear bool) string {
 }
 
 // sayTaskCrew keeps a routed task's crew line in the thread: ONE line, said
-// when the task starts with the estimate, and REWRITTEN IN PLACE as the task
-// goes — a seat that failed to start and moved to its fallback, and at the end
-// what it cost beside the estimate and the one door to asking again harder.
+// when the task starts with the estimate, REWRITTEN IN PLACE while the task
+// goes — a seat that failed to start and moved to its fallback — and MOVED TO
+// THE END when it lands, with what it cost beside the estimate and the one
+// door to asking again harder.
 // Two lines for one crew read as two crews; the second said nothing the first
 // could not carry.
 func (a *app) sayTaskCrew(notice session.TaskNotice) {
@@ -329,7 +330,16 @@ func (a *app) sayTaskCrew(notice session.TaskNotice) {
 	if text == said.text {
 		return
 	}
-	if said.text == "" || !a.feed.renote(said.text, text, facts) {
+	switch {
+	case said.text == "":
+		a.noteFacts(text, facts...)
+	case said.landed:
+		// THE LANDING IS SAID WHERE THE TASK LANDS. A task runs for minutes
+		// while the conversation goes on, and its start line is far up the
+		// thread by then; rewritten there, the actual and `/redo stronger`
+		// were drawn where nobody was looking. The one line moves to the end.
+		a.feed.moveNote(said.text, text, facts)
+	case !a.feed.renote(said.text, text, facts):
 		a.noteFacts(text, facts...)
 	}
 	said.text, said.facts = text, facts

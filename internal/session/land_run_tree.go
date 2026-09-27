@@ -63,11 +63,7 @@ func LandRunTree(dir, base, title, model string) (branch string, changed []strin
 		if err != nil {
 			return "", nil, "", err
 		}
-		for _, name := range strings.Split(out, "\x00") {
-			if name != "" {
-				changed = append(changed, name)
-			}
-		}
+		changed = append(changed, gitNULPaths(out)...)
 		head := runTreeHead(dir)
 		if head == "" {
 			return "", nil, "", errors.New("read the run's branch head after landing")
@@ -114,10 +110,8 @@ func runTouchedPaths(dir, base, head string) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read run commit paths %s: %w", sha, err)
 		}
-		for _, path := range strings.Split(paths, "\x00") {
-			if path != "" {
-				seen[path] = true
-			}
+		for _, path := range gitNULPaths(paths) {
+			seen[path] = true
 		}
 	}
 	changed := make([]string, 0, len(seen))

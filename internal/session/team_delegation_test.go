@@ -9,9 +9,11 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -89,6 +91,45 @@ func TestTeamQuestionGoesUpAsAPacketAndTheAnswerComesBack(t *testing.T) {
 	if !teamPacketWakes(fixture.profile, role, last(log)) {
 		t.Error("the answer does not wake the member it answers")
 	}
+}
+
+func TestTeamAnswerDeliveredAfterPacketRotationsIsMarkedTold(t *testing.T) {
+	fixture := newTeamFixture(t, true)
+	web := teamAgent(t, fixture, fixture.web, nil, nil)
+	web.teamBoundary()
+	p, err := teams.Raise(fixture.profile, teams.Packet{Team: fixture.teamID, Kind: teams.PacketQuestion, RaisedBy: "web", Question: "JSON or form data?"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := teams.Decide(fixture.profile, p.ID, teams.FromManager, "JSON", "the other endpoints use it"); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 6; i++ {
+		other, err := teams.Raise(fixture.profile, teams.Packet{Team: fixture.teamID, Kind: teams.PacketConflict, RaisedBy: "parser",
+			Question: strings.Repeat("unrelated work ", 30000), Options: []teams.Option{{Label: "go", Consequence: "carry on"}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := teams.Decide(fixture.profile, other.ID, teams.FromManager, "1", "done"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := web.teamBoundary(); !strings.Contains(got, "◆ answered: JSON") {
+		t.Fatalf("a rotated packet did not hand over its answer: %q", got)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		got, err := teams.PacketByID(fixture.profile, p.ID)
+		if err == nil && got.Told {
+			raw, err := os.ReadFile(teams.DecisionsPath(fixture.profile, fixture.teamID))
+			if err != nil || !strings.Contains(string(raw), `"op":"told"`) || !strings.Contains(string(raw), `"id":"`+p.ID+`"`) {
+				t.Fatalf("the packet was marked told without its append-only line: %v, %q", err, raw)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("the delivery did not append a told line")
 }
 
 func last(log []teams.Entry) teams.Entry { return log[len(log)-1] }
@@ -317,6 +358,91 @@ func TestTeamNoCapReadsNoSpend(t *testing.T) {
 	web.teamBoundary()
 	if held := web.teamCapHold(fixture.profile, web.teamRoles()); held != "" || spend.reads != 0 {
 		t.Fatalf("no cap: held %q after %d reads", held, spend.reads)
+	}
+}
+
+func TestTeamUnreadableSpendHoldsCappedWorkWithoutAPacket(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	five := 5.0
+	if err := teams.Update(fixture.profile, func(f *teams.File) error {
+		return f.SetSettings(fixture.teamID, func(s *teams.Settings) { s.CapUSDDay = &five })
+	}); err != nil {
+		t.Fatal(err)
+	}
+	oldOf, oldStamp := teamSpendOf, teamSpendStamp
+	var reads atomic.Int64
+	var broken atomic.Bool
+	broken.Store(true)
+	teamSpendOf = func(_, _, _ string) (teams.Spend, error) {
+		reads.Add(1)
+		if broken.Load() {
+			return teams.Spend{}, errors.New("ledger unavailable")
+		}
+		return teams.Spend{}, nil
+	}
+	teamSpendStamp = func(_, _, _ string) string { return "same stamp" }
+	t.Cleanup(func() { teamSpendOf, teamSpendStamp = oldOf, oldStamp })
+	manager := teamAgent(t, fixture, fixture.manager, oneAnswer(1), nil)
+	manager.teamBoundary()
+	want := "harbor has a $5 daily cap and today's spend could not be read (ledger unavailable), so nothing new starts until it can be read"
+	if got := manager.teamCapHold(fixture.profile, manager.teamRoles()); got != want {
+		t.Fatalf("unreadable spend held for %q, want %q", got, want)
+	}
+	if said, failed := callTool(t, manager.teamStartTool, `{"handle":"docs","brief":"write"}`); !failed || said != "No new member starts: "+want+"." {
+		t.Fatalf("team_start answered %q (failed %v)", said, failed)
+	}
+	webCalls := oneAnswer(1)
+	teamAgent(t, fixture, fixture.web, webCalls, nil)
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindDirective, From: teams.FromManager, To: "web", Text: "Fix the header."})
+	waitEvent(t, fixture, "held @web: "+want)
+	if webCalls.requests() != 0 {
+		t.Fatal("an unreadable ledger still woke the member")
+	}
+	if packets, err := teams.Packets(fixture.profile, teams.Person); err != nil || len(packets) != 0 {
+		t.Fatalf("an unreadable ledger raised a packet: %+v, %v", packets, err)
+	}
+	broken.Store(false)
+	if got := manager.teamCapHold(fixture.profile, manager.teamRoles()); got != "" || reads.Load() < 3 {
+		t.Fatalf("the next read was not retried: hold %q, reads %d", got, reads.Load())
+	}
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindDirective, From: teams.FromManager, To: "web", Text: "Try the header again."})
+	waitRequests(t, webCalls, 1)
+}
+
+func TestTeamCapHoldsWhenTheUsageLedgerPathIsADirectory(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	fixture := newTeamFixture(t, true)
+	five := 5.0
+	if err := teams.Update(fixture.profile, func(f *teams.File) error {
+		return f.SetSettings(fixture.teamID, func(s *teams.Settings) { s.CapUSDDay = &five })
+	}); err != nil {
+		t.Fatal(err)
+	}
+	path := teams.UsageLedgerPath()
+	if err := os.MkdirAll(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	manager := teamAgent(t, fixture, fixture.manager, nil, nil)
+	manager.teamBoundary()
+	if got := manager.teamCapHold(fixture.profile, manager.teamRoles()); !strings.Contains(got, "today's spend could not be read") {
+		t.Fatalf("a directory in place of the ledger held for %q", got)
+	}
+}
+
+func TestTeamWithoutACapNeverReadsAnUnreadableLedger(t *testing.T) {
+	fixture := newTeamFixture(t, true)
+	old := teamSpendOf
+	reads := 0
+	teamSpendOf = func(_, _, _ string) (teams.Spend, error) {
+		reads++
+		return teams.Spend{}, errors.New("ledger unavailable")
+	}
+	t.Cleanup(func() { teamSpendOf = old })
+	web := teamAgent(t, fixture, fixture.web, nil, nil)
+	web.teamBoundary()
+	if held := web.teamCapHold(fixture.profile, web.teamRoles()); held != "" || reads != 0 {
+		t.Fatalf("uncapped team held for %q after %d ledger reads", held, reads)
 	}
 }
 

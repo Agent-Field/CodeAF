@@ -36,9 +36,12 @@ package session
 // caller had before this file existed.
 
 import (
+	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
@@ -395,4 +398,161 @@ func taskModelMovedNote(model, next string) string {
 // they cannot reconcile against anything.
 func taskModelMovedSentence(from, to string) string {
 	return from + " stopped answering, so this ran again on " + to
+}
+
+// resolveProgramModels is [Agent.resolveTaskModel] for a program, which works
+// with one model or several: a `model` naming more than one, separated by
+// commas, is resolved word by word, and each word must name exactly one model.
+// One word is resolved as any task's is, its shortlist and all.
+//
+// EVERY MODEL NAMED MUST BE ONE A CONNECTED SERVICE CAN SERVE. The list a word
+// is matched against is the whole catalog, and a model none of the person's
+// services can reach was handed to the program anyway and then answered, call
+// after call, on the crew's working seat by the run's model API — the person
+// asked for one model and was quietly given another. It is refused here, by
+// name, before a card is shown.
+//
+// A WORD SPELLED WITH A CONNECTED SERVICE'S PREFIX IS TAKEN AS WRITTEN. The
+// catalog a word is matched against lists no model of a service the person
+// connected themselves (a local proxy, a box of their own), so `mybox/qwen3`
+// matched nothing there while it is exactly how that service is asked; it is
+// the person naming a service and a model, and is kept when the service can
+// take a call.
+func (a *Agent) resolveProgramModels(word string) taskModelChoice {
+	var words []string
+	for _, part := range strings.Split(word, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			words = append(words, part)
+		}
+	}
+	switch len(words) {
+	case 0:
+		return a.resolveTaskModel(word)
+	case 1:
+		return a.resolveProgramWord(words[0])
+	}
+	var models []string
+	for _, part := range words {
+		choice := a.resolveProgramWord(part)
+		switch {
+		case choice.problem != "":
+			return choice
+		case len(choice.options) > 0:
+			return taskModelChoice{problem: taskModelVague(part, choice.options)}
+		}
+		if !slices.Contains(models, choice.model) {
+			models = append(models, choice.model)
+		}
+	}
+	return taskModelChoice{model: strings.Join(models, ",")}
+}
+
+// resolveProgramWord is one word of [Agent.resolveProgramModels]: a model, a
+// shortlist of the ones a service serves, or the refusal.
+func (a *Agent) resolveProgramWord(word string) taskModelChoice {
+	return resolveProgramWordWithSources(word, a.programSources(), a.resolveTaskModel)
+}
+
+// ResolveProgramShellModels gives a shell program the same model-word matcher
+// and service check as a chat proposal. A shell has no card for a shortlist,
+// so it asks for a more precise word before starting the child.
+func ResolveProgramShellModels(words string, available []string, sources modelsource.Set) (string, error) {
+	var resolved []string
+	for _, part := range strings.Split(words, ",") {
+		word := strings.TrimSpace(part)
+		if word == "" {
+			continue
+		}
+		choice := resolveProgramWordWithSources(word, sources, func(word string) taskModelChoice {
+			if len(available) == 0 {
+				return taskModelChoice{model: word}
+			}
+			matches := matchTaskModel(word, available)
+			if len(matches) == 1 {
+				return taskModelChoice{model: matches[0]}
+			}
+			if len(matches) > 1 {
+				return taskModelChoice{options: matches}
+			}
+			return taskModelChoice{problem: "unknown model"}
+		})
+		if choice.problem != "" || len(choice.options) > 0 || choice.model == "" {
+			return "", ProgramShellModelRefusal(word)
+		}
+		if !slices.Contains(resolved, choice.model) {
+			resolved = append(resolved, choice.model)
+		}
+	}
+	if len(resolved) == 0 {
+		return "", fmt.Errorf("--high names no model; choose one with /crew or add its service with codeaf connect")
+	}
+	return strings.Join(resolved, ","), nil
+}
+
+// ProgramShellModelRefusal is the shell's one sentence for a model it cannot
+// hand to a child, including a model named before any service key is present.
+func ProgramShellModelRefusal(word string) error {
+	return fmt.Errorf("cannot use model %q here; choose one this service serves with /crew or add its service with codeaf connect", word)
+}
+
+// resolveProgramWordWithSources is the common decision for a chat proposal
+// and a shell flag: a connected service prefix wins, then the task's model
+// matcher resolves the person's word, and the selected service must answer.
+func resolveProgramWordWithSources(word string, sources modelsource.Set, resolveTask func(string) taskModelChoice) taskModelChoice {
+	if segment, bare := modelsource.Split(word, sources.Written()); segment != "" && bare != "" {
+		if !ServesModel(sources, word) {
+			return taskModelChoice{problem: programUnservedProblem(word)}
+		}
+		return taskModelChoice{model: word}
+	}
+	choice := resolveTask(word)
+	serves := func(model string) bool { return sources.Empty() || ServesModel(sources, model) }
+	switch {
+	case choice.problem != "":
+		return choice
+	case len(choice.options) > 0:
+		choice.options = slices.DeleteFunc(choice.options, func(model string) bool { return !serves(model) })
+		switch len(choice.options) {
+		case 0:
+			return taskModelChoice{problem: programUnservedProblem(word)}
+		case 1:
+			return taskModelChoice{model: choice.options[0]}
+		}
+		return choice
+	case !serves(choice.model):
+		return taskModelChoice{problem: programUnservedProblem(choice.model)}
+	}
+	return choice
+}
+
+// programSources is this conversation's model services, read under the lock
+// the surface moves them under. A conversation with none cannot be asked what
+// they serve, and a model is not refused on that account.
+func (a *Agent) programSources() modelsource.Set {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.config.Sources.OrDefault(a.config.APIKey, a.config.BaseURL)
+}
+
+// programUnservedProblem is the refusal for a model no connected service serves.
+func programUnservedProblem(model string) string {
+	return "none of the model services connected here can serve " + model +
+		", so a program cannot be handed it; name a model one of them serves, spelled with its service's prefix when it is not the default service's"
+}
+
+// programAsked is the models a proposal asked its program to work with: what
+// its `model` resolved to when the proposal named one, and nothing when it
+// named none, so the run is handed the crew rather than the default a card
+// shows for a task.
+func programAsked(spec taskSpec) []string {
+	if strings.TrimSpace(spec.modelWord) == "" || strings.TrimSpace(spec.model) == "" {
+		return nil
+	}
+	var asked []string
+	for _, model := range strings.Split(spec.model, ",") {
+		if model = strings.TrimSpace(model); model != "" {
+			asked = append(asked, model)
+		}
+	}
+	return asked
 }

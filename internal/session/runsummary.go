@@ -66,6 +66,16 @@ func (a *Agent) RefreshRunSummary(ctx context.Context, rootID string, lastLook t
 	}
 	stored, had := readRunSummary(store, rootID)
 	family := runSummaryFamily(store, rootID)
+	// A RUN WITH NOTHING IN IT BUYS NO READING, and neither does a program's.
+	// The first refresh of a run could arrive before its store held the task,
+	// and a model was paid to summarise an empty ask and no rows. A program's
+	// run holds one task and a live stage, and its page is its conversation with
+	// codeaf, so four model-written lines about that one row would say again,
+	// for money, what the row already says (plandb_program.go).
+	if len(family) == 0 || a.planRootIsProgram(store, rootID) {
+		closeStore()
+		return stored.Summary, had
+	}
 	questions := a.runSummaryQuestions(family)
 	stamp := runSummaryStamp(family, questions)
 	if had && stored.Stamp == stamp {
@@ -83,14 +93,32 @@ func (a *Agent) RefreshRunSummary(ctx context.Context, rootID string, lastLook t
 		closeStore()
 		return stored.Summary, had
 	}
+	// ONE READING AT A TIME FOR ONE RUN. Two surfaces that ask in the same
+	// moment (a window's own refresh and a page it just opened) both found the
+	// reading stale and both paid for one; the second keeps the last reading.
+	if _, busy := a.runSummaryBusy.LoadOrStore(rootID, struct{}{}); busy {
+		closeStore()
+		return stored.Summary, had
+	}
+	defer a.runSummaryBusy.Delete(rootID)
 	input := runSummaryInput(family, questions, rootID, lastLook, a.summaryNow(), stored.Summary)
 	closeStore()
 	if crewTaskOf(ctx) == nil {
 		ctx = withCrewTask(ctx, a.liveCrewFor(rootID))
 	}
-	response, _, err := a.callRole(ctx, roles.RoleWorker, a.model, []ai.Message{
+	response, called, err := a.callRole(ctx, roles.RoleWorker, a.model, []ai.Message{
 		textMessage("system", runSummaryPrompt), textMessage("user", input),
 	}, ai.WithMaxTokens(320))
+	// THE READING IS PAID FOR WHETHER OR NOT IT CAN BE USED, so it is banked
+	// before it is read, the way every other errand's answer is (caption.go,
+	// title.go). It is DETACHED: a surface asked for it, not a turn, so it must
+	// not move whichever turn happens to be running ([Agent.addDetachedUsageAs]).
+	// Until this line the card's lines reached the journal and nothing else — a
+	// stub service that billed every call found three unbanked calls on every
+	// senior-dev run.
+	if err == nil && response != nil {
+		a.addDetachedUsageAs(response, called, 1, string(roles.RoleWorker))
+	}
 	if err != nil || response == nil || len(response.Choices) == 0 {
 		return stored.Summary, had
 	}

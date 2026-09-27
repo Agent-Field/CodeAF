@@ -436,6 +436,12 @@ func (a *app) chatFrameLines(width, height int) ([]string, int, int) {
 		}
 	}
 	chrome, chromeMarks, caretX, caretRow := a.chrome(width)
+	// The chrome just laid out is the frame's own, so what its greeting drew is
+	// what this frame shows: an owed usage notice among it is noted here, and the
+	// update loop tells the door ([app.settleTelemetryNotice]).
+	if a.welcome.noticeDrawn {
+		a.telemetryNoticeOnFrame = true
+	}
 	// The welcome box rides at the top of the frame rather than at the bottom
 	// with the chrome it is built with ([welcomeLift] states why). Splitting it
 	// off here keeps [app.frameOut]'s law intact: what is left is still the tail,

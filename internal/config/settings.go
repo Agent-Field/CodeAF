@@ -1068,6 +1068,17 @@ var OperatorEnvPins = []string{
 	// would be promising an override that does nothing, which is worse than
 	// saying nothing at all.
 	"CODEAF_PROFILE_DIR",
+	// The model API codeaf serves one program's run, and the token for it
+	// (internal/delegate's ChildEnv). codeaf sets them on the child it starts
+	// and nobody else does; they are an address and a credential, so plumbing,
+	// and the footer names them and never shows a value.
+	"CODEAF_MODEL_API",
+	"CODEAF_MODEL_TOKEN",
+	// The mark codeaf sets on a program's process so that, if the program's
+	// engine is killed outright, the processes its commands left behind can
+	// still be found and ended (internal/processgroup). codeaf sets it and reads
+	// it back, and a person has nothing to say to it, so it is plumbing too.
+	"CODEAF_DELEGATE_RUN",
 	// The release check's one-launch opt-out and its two mirror addresses
 	// (internal/update). They are plumbing rather than settings rows: the first
 	// is a shell's decision not to make a launch request, while the other two
@@ -2325,12 +2336,12 @@ func (s *Settings) build() []Setting {
 		// are made.
 		Setting{
 			Key: KeyTaskModel, Category: CategoryTasks, Kind: SettingText,
-			Label: "task model", EmptyLabel: "follows the conversation",
-			Hint: "the model a task runs on when you have not asked for another one — " +
-				"`anthropic/claude-opus-5`. Leave it blank and a task rides the crew's " +
-				"worker row, and the model you are talking to when that row is blank too. " +
-				"You can still say which model a particular piece of work should go to, and " +
-				"the proposal names the one it will start on.",
+			Label: "task model", EmptyLabel: "the crew's worker",
+			Hint: "the model a task's worker runs on when you have not asked for another one — " +
+				"`anthropic/claude-opus-5`. Leave it blank and the worker is the crew's: " +
+				"your /crew pin, or the model the crew picks for that task. You can still " +
+				"say which model a particular piece of work should go to, and the proposal " +
+				"names the one it will start on.",
 			read:  func() string { return TaskModelAt(dir) },
 			write: func(raw string) error { return writeText(dir, KeyTaskModel, raw) },
 		},
@@ -2340,7 +2351,7 @@ func (s *Settings) build() []Setting {
 			Hint: "what one conversation may spend before it stops starting new turns. " +
 				"When it is reached the next turn is refused and your message is still " +
 				"yours to send again once you raise it; the turn in flight always " +
-				"finishes. Say none for no limit. A change lands on the next session.",
+				"finishes. Say none for no limit. A change binds this conversation before the row confirms it.",
 			read:    func() string { return moneyValue(SpendRailUSDAt(dir)) },
 			write:   func(raw string) error { return writeDollars(dir, KeySpendRail, raw) },
 			receipt: s.spentThisSessionReceipt,
@@ -2718,9 +2729,30 @@ func SpentFigure(usd float64) string {
 		return ""
 	}
 	if usd < 0.01 {
-		return fmt.Sprintf("$%.4f", usd)
+		return SubCent(usd)
 	}
 	return fmt.Sprintf("$%.2f", usd)
+}
+
+// MoneyFloor is the smallest amount any surface writes as a figure: a hundredth
+// of a cent, four places after the point. It is the number [SubCent] compares
+// against AND the number it prints, so it is spelled once.
+const MoneyFloor = 0.0001
+
+// SubCent is how a positive amount SMALLER THAN A CENT is written, everywhere.
+//
+// ONE RULE, BECAUSE TWO DREW ONE FIGURE TWO WAYS. The chat's own money word
+// gained a floor so a real spend too small for four places reads `<$0.0001`,
+// while [SpentFigure] kept a bare four places and wrote the same spend as
+// `$0.0000`. The Spending tab then said `today <$0.0001` on one row and
+// `$0.0000 today` on the next, about the same day: four zeros for money that
+// was spent, which is the emptiness law's failure turned inside out. Every
+// sub-cent figure is written here now, and the floor never rounds to a lie.
+func SubCent(usd float64) string {
+	if usd < MoneyFloor/2 {
+		return "<" + fmt.Sprintf("$%.4f", MoneyFloor)
+	}
+	return fmt.Sprintf("$%.4f", usd)
 }
 
 // spentTodayReceipt is the day's spend beside the day's ceiling (13). Nil seam

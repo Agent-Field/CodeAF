@@ -34,13 +34,16 @@ func teamAskKnown(agent any) bool { _, ok := agent.(teamAskDoor); return ok }
 // suggestion.
 const teamAskOffWord = "this engine cannot suggest team names or teams"
 
-// teamAskWithin is the engine's bound on one ask: the wall's budget, or none
-// when the wall sent none.
+// teamAskCeiling bounds a peer's request while leaving the wall's five-second
+// name wait and ten-second Organize wait in control of their own calls.
+const teamAskCeiling = 30 * time.Second
+
+// teamAskWithin uses the shorter of the wall's budget and the engine's ceiling.
 func teamAskWithin(budget time.Duration) (context.Context, context.CancelFunc) {
-	if budget > 0 {
-		return context.WithTimeout(context.Background(), budget)
+	if budget == 0 || budget > teamAskCeiling {
+		budget = teamAskCeiling
 	}
-	return context.WithCancel(context.Background())
+	return context.WithTimeout(context.Background(), budget)
 }
 
 // teamAskCall answers the two asks from agent, and says whether the method was
@@ -61,6 +64,9 @@ func teamAskCall(agent WrappedAgent, call Frame) (json.RawMessage, bool, error) 
 		if err != nil {
 			return nil, true, err
 		}
+		if args.Budget < 0 {
+			return nil, true, context.DeadlineExceeded
+		}
 		ctx, cancel := teamAskWithin(args.Budget)
 		defer cancel()
 		name, err := door.NameTeam(ctx, args.Titles)
@@ -73,6 +79,9 @@ func teamAskCall(agent WrappedAgent, call Frame) (json.RawMessage, bool, error) 
 	args, err := arg[TeamProposeArgs](call)
 	if err != nil {
 		return nil, true, err
+	}
+	if args.Budget < 0 {
+		return nil, true, context.DeadlineExceeded
 	}
 	ctx, cancel := teamAskWithin(args.Budget)
 	defer cancel()

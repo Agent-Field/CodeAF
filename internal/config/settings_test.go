@@ -1534,3 +1534,17 @@ func TestHeadlessApprovalHonorsExplicitSettingsAndRejectsMalformedValues(t *test
 		}
 	}
 }
+
+// THE TASK MODEL ROW SAYS WHAT PICKS A TASK'S MODEL. Blank, a task's worker is
+// the crew's — a pin, or the model picked for that task — never the model the
+// conversation is on, so the row does not say it follows the conversation.
+func TestTheTaskModelRowSaysTheCrewPicksWhenBlank(t *testing.T) {
+	dir := t.TempDir()
+	row := mustRow(t, registry(t, dir), KeyTaskModel)
+	if got := row.Value(); got != "the crew's worker" {
+		t.Fatalf("a blank task model row reads %q", got)
+	}
+	if !strings.Contains(row.Hint, "/crew") || strings.Contains(row.Hint, "the model you are talking to when") {
+		t.Fatalf("the task model row's hint: %q", row.Hint)
+	}
+}

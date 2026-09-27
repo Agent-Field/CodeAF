@@ -63,6 +63,9 @@ type beltRunDouble struct {
 	// for a run that did not finish.
 	honoursStop bool
 	early       func(workspace string)
+	// leaveOpen makes the double end the way the real engine ends a run a
+	// limit or a program's own ending took down: its store's root left open.
+	leaveOpen bool
 }
 
 func newBeltRunDouble(result string) *beltRunDouble {
@@ -115,7 +118,7 @@ func (d *beltRunDouble) Start(ctx context.Context, spec RunSpec) RunSummary {
 	if d.work != nil {
 		d.work(spec.Workspace)
 	}
-	if spec.Store != nil {
+	if spec.Store != nil && !d.leaveOpen {
 		_ = spec.Store.CompleteRoot(d.summary.Result)
 	}
 	close(d.finished)
@@ -345,7 +348,7 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 	if !anyNoteCarries(beltRunNotes(t, dir, rootID), "landed on "+home.Branch) {
 		t.Fatalf("no note on the root carries the branch: %v", beltRunNotes(t, dir, rootID))
 	}
-	wantDigest := beltRunOutcomeNote(nil, "", double.summary, home)
+	wantDigest := beltRunOutcomeNote(nil, "", double.summary, home, 0)
 	if !strings.Contains(wantDigest, "done") || !strings.Contains(wantDigest, "the run fixed the nil map") ||
 		!strings.Contains(wantDigest, "landed on "+home.Branch) {
 		t.Fatalf("digest = %q, want outcome, root result, and work destination", wantDigest)
@@ -505,6 +508,58 @@ func TestStartTaskBashBeltPassesTheConversationWallLeftToTheRun(t *testing.T) {
 	endBeltRun(t, agent, double)
 }
 
+// UNDER `--one-model` EVERY SEAT OF A RUN RIDES THE CONVERSATION'S MODEL
+// (contract 3a, 3b and 3c). The flag withholds the roles ladder and the crew
+// router, and the spec used to hand the engine three empty seats, which the
+// engine's crew factory filled from the profile's crew rows and from
+// CODEAF_CHECK_MODEL: a run under the flag billed models nobody named. The
+// seats are read at the run's start, so a /model typed before it moves them,
+// and a conversation without the flag hands the engine what it always did.
+func TestUnderOneModelEveryRunSeatRidesTheConversationsModel(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_CHECK_MODEL", "vendor/env-check")
+	for _, test := range []struct {
+		name     string
+		oneModel bool
+		switchTo string
+		want     string
+	}{
+		{"the launch model", true, "", "test/model"},
+		{"the model switched to before the run", true, "vendor/switched", "vendor/switched"},
+		{"no flag leaves the seats to the engine", false, "", ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			double := newBeltRunDouble("done")
+			registerBeltRunEngine(t, double)
+			dir := t.TempDir()
+			agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+				config.Workspace = newTestRepo(t)
+				config.Place = Place{Dir: dir}
+				config.AskConsent = false
+				config.OneModel = test.oneModel
+			})
+			if test.switchTo != "" {
+				agent.SetModel(test.switchTo)
+			}
+			if _, _, _, err := agent.StartTask(context.Background(), "write the file", false); err != nil {
+				t.Fatalf("StartTask: %v", err)
+			}
+			<-double.entered
+			double.mu.Lock()
+			spec := double.spec
+			double.mu.Unlock()
+			for seat, got := range map[string]string{
+				"work": spec.WorkModel, "plan": spec.PlanModel, "check": spec.CheckModel, "every": spec.OneModel,
+			} {
+				if got != test.want {
+					t.Errorf("the %s seat the engine was handed is %q, want %q", seat, got, test.want)
+				}
+			}
+			endBeltRun(t, agent, double)
+		})
+	}
+}
+
 func TestDriveBeltRunLimitUsesTheOrdinaryLandingRoad(t *testing.T) {
 	agent, _, run, _ := landingSummaryFixture(t, &scriptedCompleter{})
 	landCalls := 0
@@ -636,7 +691,7 @@ func TestLandingDigestCarriesTheStoredNowSentence(t *testing.T) {
 
 	got := beltRunOutcomeNote(store, planRootID, RunSummary{Outcome: beltRunOutcomeDone}, RunLanding{
 		Branch: "task/landing-digest", Changed: []string{"internal/session/task_run_belt.go"},
-	})
+	}, 0)
 	want := "done · landed on task/landing-digest: 1 file · The focused landing tests pass."
 	if got != want {
 		t.Fatalf("landing digest = %q, want %q", got, want)
@@ -651,7 +706,7 @@ func TestLandingDigestIsUnchangedWithoutAStoredSummary(t *testing.T) {
 	defer store.Close()
 	got := beltRunOutcomeNote(store, planRootID, RunSummary{Outcome: beltRunOutcomeDone}, RunLanding{
 		Branch: "task/landing-digest", Changed: []string{"internal/session/task_run_belt.go"},
-	})
+	}, 0)
 	want := "done · landed on task/landing-digest: 1 file"
 	if got != want {
 		t.Fatalf("landing digest = %q, want byte-for-byte legacy digest %q", got, want)

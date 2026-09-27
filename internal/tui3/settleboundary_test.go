@@ -140,18 +140,19 @@ func TestAnEndOfTurnNoteIsNotWorkTheAnswerWaitedFor(t *testing.T) {
 }
 
 // THE SHAPE MEASURED AGAINST A REAL MODEL (#178): the turn carries a task
-// proposal, which blocks the fold (workfold.go's `blocked`), so the forward walk
-// is the only classifier — and the turn's own `⟲ … cached` line is then the
-// entry it finds after the answer. On this branch's parent that answer was drawn
-// plain and indented, headings, bold and table pipes and all.
+// proposal, and the turn's own `⟲ … cached` line is the entry after the answer.
+// On this branch's parent that answer was drawn plain and indented, headings,
+// bold and table pipes and all. The proposal used to block the whole turn's
+// fold; it now stands between two folds (workfold.go's asks), and the answer
+// must still be drawn as an answer either way.
 func TestATurnWhoseFoldIsBlockedKeepsItsAnswerRendered(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.width, a.height = 80, 40
 	a.entries = []entry{
 		{kind: entryUser, text: "propose a task, then answer in markdown", turn: 1},
 		{kind: entryThinking, text: "which task", turn: 1, settled: true},
-		// The card is what blocks the fold, and blocking it is correct — a
-		// decision may never disappear into a chip (workfold.go).
+		// The card stands: a decision may never disappear into a chip
+		// (workfold.go).
 		{kind: entryTask, text: "Summarise this chat", turn: 1},
 		{kind: entryTool, tool: "propose_task", text: "Summarise this chat", turn: 1, status: toolOK},
 		{kind: entryAssistant, text: boundaryAnswer, turn: 1, settled: true},
@@ -160,8 +161,10 @@ func TestATurnWhoseFoldIsBlockedKeepsItsAnswerRendered(t *testing.T) {
 	a.touch()
 	rows(a)
 
-	if len(a.deckFolds(a.conversation())) != 0 {
-		t.Fatal("the proposal did not block the fold, so this is no longer the measured shape")
+	for _, f := range a.deckFolds(a.conversation()) {
+		if f.start <= 2 && 2 < f.answer {
+			t.Fatalf("the proposal was folded away: %+v", f)
+		}
 	}
 	if a.entries[4].demoted {
 		t.Fatal("the answer of a turn that cannot fold was demoted by its own cost line")

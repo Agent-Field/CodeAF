@@ -45,7 +45,8 @@ func TestCrewSnapshotPanel(t *testing.T) {
 │                                                                                                  │
 │  models    ‹ all › (4)                                                                           │
 │  providers {tick} openrouter  +                                                                       │
-│  cap       per task $5 · daily none                                                              │
+│  cap       per task $5 · crew daily cap none                                                     │
+│            the daily limit, $500, still covers everything codeaf spends · /budget                │
 ╰─ enter change · esc close · ? keys ──────────────────────────────────────────────────────────────╯`)
 }
 
@@ -77,10 +78,10 @@ func TestCrewSnapshotSeatList(t *testing.T) {
 	crewSnap(t, a, "seat list", `
 ╭─ crew · worker ──────────────────────────────────────────────────────────────────────────── esc ─╮
 │›   auto — codeaf picks per task                                                                  │
-│  {star} z-ai/glm-5.3-flash  $0.15/$0.50 · openrouter · suggested                                      │
-│    anthropic/claude-opus-5  $5/$25 · openrouter                                                  │
-│    deepseek/deepseek-v4-flash  $0.08/$0.16 · openrouter                                          │
-│    moonshotai/kimi-k3  $3/$15 · openrouter                                                       │
+│  {star} z-ai/glm-5.3-flash  $0.15/$0.5 per M · openrouter · suggested                                 │
+│    anthropic/claude-opus-5  $5/$25 per M · openrouter                                            │
+│    deepseek/deepseek-v4-flash  $0.082/$0.16 per M · openrouter                                   │
+│    moonshotai/kimi-k3  $3/$15 per M · openrouter                                                 │
 ╰─ type to filter · enter pick · → routes · esc back ──────────────────────────────────────────────╯`)
 }
 
@@ -95,7 +96,7 @@ func TestCrewSnapshotRefusal(t *testing.T) {
 	drive(t, a, key("enter"))
 	crewSnap(t, a, "refusal", `
 ╭─ crew · worker ──────────────────────────────────────────────────────────────────────────── esc ─╮
-│›   anthropic/claude-opus-5  $5/$25 · openrouter · not allowed                                    │
+│›   anthropic/claude-opus-5  $5/$25 per M · openrouter · not allowed                              │
 │  {fail} claude-opus-5 is not in your allowed models (open) — enter to allow it                        │
 ╰─ type to filter · enter pick · → routes · esc back ──────────────────────────────────────────────╯`)
 }
@@ -113,7 +114,8 @@ func TestCrewSnapshotPriceBeingTyped(t *testing.T) {
 │                                                                                                  │
 │› models    ‹ price ›  ≤ $[ 0.5 ] in / $[ 5 ] out (2)  {tick}                                          │
 │  providers {tick} openrouter  +                                                                       │
-│  cap       per task $5 · daily none                                                              │
+│  cap       per task $5 · crew daily cap none                                                     │
+│            the daily limit, $500, still covers everything codeaf spends · /budget                │
 ╰─ enter change · esc close · ? keys ──────────────────────────────────────────────────────────────╯`)
 }
 
@@ -126,10 +128,10 @@ func TestCrewSnapshotChecklist(t *testing.T) {
 	drive(t, a, key("down"), key("down"), key("down"), key("right"), key("enter"))
 	crewSnap(t, a, "checklist", `
 ╭─ crew · allowed models · 2 of 4 ─────────────────────────────────────────────────────────── esc ─╮
-│› {tick} z-ai/glm-5.3-flash  $0.15/$0.50                                                               │
-│    moonshotai/kimi-k3  $3/$15                                                                    │
-│  {tick} deepseek/deepseek-v4-flash  $0.08/$0.16                                                       │
-│    anthropic/claude-opus-5  $5/$25                                                               │
+│› {tick} z-ai/glm-5.3-flash  $0.15/$0.5 per M                                                          │
+│    moonshotai/kimi-k3  $3/$15 per M                                                              │
+│  {tick} deepseek/deepseek-v4-flash  $0.082/$0.16 per M                                                │
+│    anthropic/claude-opus-5  $5/$25 per M                                                         │
 ╰─ type to filter · space or enter tick · esc back ────────────────────────────────────────────────╯`)
 }
 
@@ -148,7 +150,9 @@ func TestCrewSnapshotNarrow(t *testing.T) {
 │                                                      │
 │  models    ‹ all › (4)                               │
 │  providers {tick} openrouter  +                           │
-│  cap       per task $5 · daily none                  │
+│  cap       per task $5 · crew daily cap none         │
+│            the daily limit, $500, still covers       │
+│            everything codeaf spends · /budget        │
 ╰─ enter change · esc close · ? keys ──────────────────╯`)
 }
 
@@ -164,7 +168,8 @@ func TestCrewSnapshotNoProviders(t *testing.T) {
 │                                                                                                  │
 │  models    ‹ all › (0)                                                                           │
 │  providers +                                                                                     │
-│  cap       per task $5 · daily none                                                              │
+│  cap       per task $5 · crew daily cap none                                                     │
+│            the daily limit, $500, still covers everything codeaf spends · /budget                │
 │  no providers connected — /connect adds one                                                      │
 ╰─ enter change · esc close · ? keys ──────────────────────────────────────────────────────────────╯`)
 }
@@ -181,7 +186,8 @@ func TestCrewSnapshotUndoOffer(t *testing.T) {
 │                                                                                                  │
 │› models    ‹ open › (3)  {tick}                                                                       │
 │  providers {tick} openrouter  +                                                                       │
-│  cap       per task $5 · daily none                                                              │
+│  cap       per task $5 · crew daily cap none                                                     │
+│            the daily limit, $500, still covers everything codeaf spends · /budget                │
 ╰─ enter change · esc close · ? keys ───────────────────────────────────────────────────── z undo ─╯`)
 }
 
@@ -199,7 +205,8 @@ func TestCrewSnapshotProvidersRow(t *testing.T) {
 │                                                                                                  │
 │  models    ‹ all › (4)                                                                           │
 │› providers {tick} openrouter  {tick} z-ai sub  {off} ollama local  {tick} my-vllm  +                                │
-│  cap       per task $5 · daily none                                                              │
+│  cap       per task $5 · crew daily cap none                                                     │
+│            the daily limit, $500, still covers everything codeaf spends · /budget                │
 ╰─ enter change · space toggle · esc close · ? keys ───────────────────────────────────────────────╯`)
 }
 

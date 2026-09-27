@@ -464,6 +464,13 @@ func (a *app) stopHere() stopTarget {
 		if a.roomIsGuest() {
 			return stopTarget{}
 		}
+		// A PROGRAM'S ROOM STOPS THE RUN THROUGH THE STORE'S OWN DOOR, the target
+		// its stored page's `x` has always raised (programroom.go's
+		// [app.programStopTarget]): the run is not a node of the graph, so the
+		// node's cancel has nothing to end.
+		if a.room.program != nil {
+			return a.programStopTarget()
+		}
 		// A RUN'S TASK IS STOPPED THROUGH THE PLAN'S DOOR (planroom.go).
 		if a.room.plan != nil {
 			return a.planRoomStopTarget()

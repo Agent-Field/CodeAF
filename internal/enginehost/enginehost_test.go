@@ -675,6 +675,19 @@ func TestHostedAgentReadsSeededPlanTasksEndToEnd(t *testing.T) {
 	t.Fatalf("PlanTasks over host = %+v, want seeded real-store row", rows)
 }
 
+// A path of exactly 104 bytes does not fit: macOS's socket name holds 104
+// bytes and its terminating NUL is one of them, so bind refuses it with
+// "invalid argument". Answering "fits" there left codeaf with no host and no
+// fallback, and it did not open.
+func TestASocketPathFitsOnlyWithRoomForItsEnd(t *testing.T) {
+	if !SocketPathFits(strings.Repeat("a", 103)) {
+		t.Fatal("a 103-byte path was refused; it binds on every platform")
+	}
+	if SocketPathFits(strings.Repeat("a", 104)) {
+		t.Fatal("a 104-byte path was said to fit; macOS refuses to bind it")
+	}
+}
+
 // THE TASK PAGE'S MODEL IS THE LEDGER'S, and it has to cross the host: the
 // room head reads it off the page the engine served, and a page that arrives
 // without it draws the price and the tokens and never the model.

@@ -44,7 +44,7 @@ watching, so it is the one pocket that always has a bottom.
 
 **The crew's two limits live on `/crew`, not on this tab.** The **per task** row
 here reads the per-task limit and opens nothing new: it is set with
-`/crew cap task <dollars>` or on the panel's cap row (`per task $5 · daily none`).
+`/crew cap task <dollars>` or on the panel's cap row (`per task $5 · crew daily cap none`).
 It is the second rail where `0` is not "no limit" — a task always has a limit, so
 `0` and `none` are refused and an emptied box is $5 again. The crew's **daily
 cap** beside it is unset until somebody sets it with `/crew cap <dollars>`, and

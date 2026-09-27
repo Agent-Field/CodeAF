@@ -503,15 +503,22 @@ if [[ "$OS" != "windows" ]] && ! path_has_dir; then
 fi
 
 # The receipt is the installed binary naming itself: `codeaf version` is one
-# line by law, so "installed " in front of it reads as one sentence. A file
-# installed under another name (devaf) still says codeaf here, because the
-# name is the file's and the product's is the sentence's.
+# line by law, so "installed " in front of it reads as one sentence. A FILE
+# INSTALLED UNDER ANOTHER NAME IS NAMED FIRST, because the receipt is the one
+# line that tells a person what to type next: a devaf install that said
+# "installed codeaf …" sent them to a command this install never wrote, or to
+# an older codeaf that happened to be on their PATH. The version line after it
+# stays whole, so the build is still named and codeaf is still the product.
 if [[ "$RUN_BOOT_ADOPTION" == "1" ]]; then
   version_line=$("$INSTALL_DIR/$INSTALL_NAME${extension}" version)
 else
   version_line=$(CODEAF_HOME="$STATE_ROOT" "$INSTALL_DIR/$INSTALL_NAME${extension}" version)
 fi
-printf 'installed %s\n' "$version_line"
+if [[ "$INSTALL_NAME" == "codeaf" ]]; then
+  printf 'installed %s\n' "$version_line"
+else
+  printf 'installed %s · %s\n' "$INSTALL_NAME" "$version_line"
+fi
 
 # The install marker lives under the state root, and a custom install outside
 # it must not create the login's state folders: the marker is written when the

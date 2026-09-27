@@ -145,6 +145,11 @@ func (a *Agent) startTaskLegacy(ctx context.Context, brief string, solo bool) (u
 	// takes the rung below rather than stopping. The ladder reads the paths in
 	// the person's own sentence, which is the brief it is handed here.
 	stand := a.taskGroundOrStandingIn(spec)
+	// A FOLDER A PROGRAM'S RUN HOLDS IS REFUSED AT THE DOOR (programhold.go):
+	// this door has nobody to ask, so the rung below may still land on it.
+	if refusal := standHeldRefusal(stand, a.config.Workspace); refusal != "" {
+		return 0, "", "", errors.New(refusal)
+	}
 	spec.ground, spec.mode = stand.dir, stand.mode
 	graph.admit(id, spec)
 	return id, spec.title, stand.redirect, nil

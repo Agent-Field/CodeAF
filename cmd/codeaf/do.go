@@ -608,7 +608,7 @@ func doErrand(request doRequest) error {
 			settled = router.CrewAccepted
 		}
 		config.LogCrewOutcome(profileDir, call, *seats.Crew, repo, crewTitle(request.task), settled, outcome.Spend)
-		fmt.Fprintln(request.stderr, "crew: "+seats.Crew.Line(config.PinMark, outcome.Spend))
+		fmt.Fprintln(request.stderr, "crew: "+seats.Crew.Line("", outcome.Spend))
 	}
 	// THE RUN NAMES ITSELF ON EVERY PATH, including the one where nothing
 	// worked: the id is what joins this object to the rows the model-call log

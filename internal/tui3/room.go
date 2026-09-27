@@ -208,7 +208,9 @@ func (a *app) taskModelDoors() (taskModelDoor, bool) {
 // Ordinary settled tasks save continuation settings through the same picker.
 // Adaptive runs and guest pages remain outside this task model door.
 func (a *app) roomModelMovable() bool {
-	if a.room == nil || a.room.orch != nil || a.room.plan != nil {
+	// A PROGRAM'S RUN IS NOT A NODE OF THE GRAPH, so the task model door has
+	// nothing to move: the program chooses its own models (programroom.go).
+	if a.room == nil || a.room.orch != nil || a.room.program != nil || a.room.plan != nil {
 		return false
 	}
 	// AND A PAGE READ THROUGH SOMEBODY ELSE'S CONVERSATION MOVES NOTHING. The door
@@ -384,6 +386,11 @@ type taskRoom struct {
 	// for both to BE a room.
 	orch *orchRun
 
+	// program is set when this page is a PROGRAM'S TASK (programroom.go): the
+	// same room again, for the same reason as [taskRoom.orch], whose body is the
+	// program's conversation with codeaf read from the task's stored page
+	// instead of a worker's transcript.
+	program *programRoom
 	// plan is set when this page is A RUN'S TASK, read from the run's plan store
 	// rather than from a node's journal and lane (planroom.go). It is a field on
 	// this struct for [taskRoom.orch]'s reason: there is one page type, and
@@ -688,6 +695,16 @@ func (a *app) openRoom(id uint64, title string) {
 	if a.startingChat() {
 		a.parkChatStart()
 	}
+	// A TASK THE SURFACE ALREADY HOLDS AS A PROGRAM'S OPENS THE PROGRAM'S ROOM AT
+	// ONCE (programroom.go), from every door that opens a room by its id — the
+	// card, a task link, the task strip, the home panel, a held conversation
+	// brought forward, the new-chat page's way back, the → key, the landing's
+	// `tell`. An ordinary room on it would be a blank page for the one read
+	// [app.roomProgramCheck] takes to learn what the held row already says.
+	if a.programTask(id) {
+		a.openProgramRoom(id, title, a.heldProgramPage(id))
+		return
+	}
 	doors, ok := a.roomDoors()
 	if !ok {
 		// Local engine windows use this same door without a remote host label.
@@ -792,11 +809,53 @@ func (a *app) openRoom(id uint64, title string) {
 		// what is asked ([roomRowDone]).
 		room.done = roomRowDone(a.tasks[id])
 		room.resolveUnfinished()
-		a.roomPump = tea.Batch(prefetch, a.wake())
+		a.roomPump = tea.Batch(prefetch, a.wake(), a.roomProgramCheck(id))
 		return
 	}
 	room.lane, room.stop = lane, stop
-	a.roomPump = tea.Batch(waitRoom(lane, room.gen), prefetch, a.wake())
+	a.roomPump = tea.Batch(waitRoom(lane, room.gen), prefetch, a.wake(), a.roomProgramCheck(id))
+}
+
+// roomProgramCheck asks the store, off the loop, whether the task a room was
+// just opened on is a program's, and if it is, turns the room into the
+// program's room (programroom.go).
+//
+// EVERY DOOR ENDS HERE, SO THE QUESTION IS ASKED HERE. [app.openRoom] asks the
+// rows this conversation holds, which answers without a frame of room, but a
+// door that brings a conversation forward and reopens the room it was on (the
+// sessions place, a switch back to a held conversation) opens it before that
+// conversation's rows have been read, and an ordinary room on a program's task
+// is a blank page that says it will fill in: the program has no worker
+// transcript, and its conversation with codeaf is on the stored page. Nothing
+// is changed when the person has already left the room, when it is another
+// conversation's, or when it is already the program's.
+func (a *app) roomProgramCheck(id uint64) tea.Cmd {
+	// A DOOR THAT ALREADY ASKED THE STORE, and was told there is no page, is
+	// not asked again: the rail reads the store once, at the gesture.
+	if asked := a.roomPageAsked; asked != 0 {
+		a.roomPageAsked = 0
+		if asked == id {
+			return nil
+		}
+	}
+	agent, ok := a.planReader()
+	if !ok || id == 0 {
+		return nil
+	}
+	key := strconv.FormatUint(id, 10)
+	return a.offLoop(func() func(bool) tea.Cmd {
+		page, found := agent.PlanTaskPage(key)
+		return func(here bool) tea.Cmd {
+			if !here || !found || (page.Program == nil && strings.TrimSpace(page.Row.Program) == "") {
+				return nil
+			}
+			if a.room == nil || a.roomIsGuest() || a.room.id != id || a.room.program != nil {
+				return nil
+			}
+			a.openProgramRoom(id, a.room.title, page)
+			return a.takeRoomPump()
+		}
+	})
 }
 
 // openFarRoom opens a hosted node immediately and asks the engine for its
@@ -868,7 +927,11 @@ func (a *app) readRoomRecord() tea.Cmd {
 	}
 	if guest := a.room.guest; guest != nil {
 		read, id, gen := guest.room, a.room.id, a.room.gen
-		if read == nil || guest.lost {
+		// A PROGRAM'S TASK HAS NO JOURNAL TO READ. What it did is its page in the
+		// owner's store, which the program room reads on its own beat
+		// ([app.guestPageRead]); asking the owner for a journal as well would be
+		// four calls a second for nothing.
+		if read == nil || guest.lost || a.room.program != nil {
 			return nil
 		}
 		return func() tea.Msg {
@@ -1116,6 +1179,16 @@ func (a *app) roomStandingOn(node *taskNode) bool {
 // openRoomFor toggles compact task controls and transcript links within the same
 // conversation. Sidebar rows use openRailRoom so a repeated click stays inside.
 // A guest with the same task number belongs to a different conversation.
+//
+// A PROGRAM'S TASK OPENS THE PROGRAM'S ROOM (programroom.go). A task handed to
+// a program codeaf carries (senior-dev) has no worker transcript: the program
+// talks to codeaf through the run's model API, and what it said is on the
+// task's stored page. The card in the conversation, a transcript link, the
+// task strip, the home panel and the sessions place all come through here to
+// [app.openRoom], which opens a row the surface already holds as a program's
+// as the program's room at once, and turns a room on a row it does not hold
+// yet into the program's when the store's answer says so
+// ([app.roomProgramCheck]).
 func (a *app) openRoomFor(id uint64, title string) {
 	if a.room != nil && !a.roomIsGuest() && a.room.id == id {
 		a.closeRoom()
@@ -1138,6 +1211,13 @@ func (a *app) openRailRoom(node *taskNode) tea.Cmd {
 		return nil
 	}
 	id, title, run, part := node.id, node.title, node.run, node.node
+	// A PROGRAM'S TASK OPENS ITS ROOM AT ONCE, on the row the surface holds, and
+	// reads its page from there (programroom.go). No key is held for a page on
+	// its way, because the room is up from this press on.
+	if run == "" && a.programTask(id) {
+		a.openProgramRoom(id, title, a.heldProgramPage(id))
+		return a.takeRoomPump()
+	}
 	// THE STORE TASK IS THE ONE THE ROW NAMES, and a row that names none is asked
 	// for under its own number, which is the number a run's door gives the
 	// store task it seeds ([session.TaskNotice.PlanTask]).
@@ -1155,6 +1235,7 @@ func (a *app) openRailRoom(node *taskNode) tea.Cmd {
 		if run != "" && !hasPlan {
 			a.openOrchRoom(run, part)
 		} else {
+			a.roomPageAsked = id
 			a.openRoom(id, title)
 		}
 		return a.takeRoomPump()
@@ -1200,6 +1281,14 @@ func (a *app) openRailPlan(id string, missing func() tea.Cmd) tea.Cmd {
 					return missing()
 				}
 				return nil
+			}
+			// A PROGRAM'S TASK OPENS THE PROGRAM'S ROOM, whichever door it came
+			// through — the tasks place, a crumb, a row the surface did not yet
+			// hold as a program's: its page is the program's actions and calls,
+			// not a worker's steps, and it reads no note (programroom.go).
+			if program, ok := a.programRoomFor(page); ok {
+				a.openProgramRoom(program, page.Row.Title, page)
+				return a.takeRoomPump()
 			}
 			cmd := a.openPlanRoom(page)
 			for _, key := range keys {
@@ -1390,6 +1479,15 @@ func (a *app) roomNote(text string) {
 		return
 	}
 	if text = strings.TrimSpace(text); text != "" {
+		// A PROGRAM'S PAGE IS NOT A TRANSCRIPT (programroom.go), so a line the
+		// room says is kept on the page's own list and drawn under its
+		// conversation, where a note in the transcript would never be drawn.
+		if p := a.room.program; p != nil {
+			p.programSay(text)
+			a.room.dirty = true
+			a.touch()
+			return
+		}
 		a.room.note(text)
 	}
 }
@@ -1489,8 +1587,18 @@ func (a *app) steer() tea.Cmd {
 	if room.plan != nil {
 		return a.planRoomSteer(line)
 	}
+	// A PAGE READ THROUGH ANOTHER CONVERSATION SAYS IT IS READING, a program's
+	// page included: the program's refusal names this window's main as the door,
+	// and the words belong in the conversation that owns the work.
 	if a.roomIsGuest() {
 		a.roomNote(roomGuestReadingWord)
+		return nil
+	}
+	// A PROGRAM READS NO MESSAGE (programroom.go). Nothing is sent and nothing is
+	// taken out of the box: the page says so, names where the words can go, and
+	// leaves the sentence where the person can carry it there.
+	if room.program != nil {
+		a.roomNote(a.programRoomRefusal().line())
 		return nil
 	}
 	if room.done {
@@ -1973,6 +2081,9 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			return cmd, true
 		}
 	}
+	if cmd, taken := a.programRoomKey(msg); taken {
+		return cmd, true
+	}
 	switch msg.String() {
 	case "esc":
 		// ESC IN HERE IS THE DOOR AND IT IS NEVER A STOP — stop.go's standing law,
@@ -2010,7 +2121,9 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 
 	case "enter":
-		if !a.roomIsGuest() && a.room.plan == nil && strings.TrimSpace(a.input.String()) == "" {
+		// A PROGRAM'S RUN IS NOT A NODE THE RETRY DOOR CAN REOPEN, so enter over an
+		// empty box on its room offers nothing (programroom.go).
+		if !a.roomIsGuest() && a.room.program == nil && a.room.plan == nil && strings.TrimSpace(a.input.String()) == "" {
 			entry := a.roomRetryEntry()
 			if a.taskCanRetry(entry) {
 				return a.retryTask(entry), true
@@ -2098,7 +2211,7 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // would be the surface repeating itself in the one place a person reads for the
 // next keystroke.
 func (a *app) roomHint() string {
-	if a.room != nil && !a.roomIsGuest() && !a.guarding() && !a.asking() && !a.stopping() {
+	if a.room != nil && !a.roomIsGuest() && a.room.program == nil && !a.guarding() && !a.asking() && !a.stopping() {
 		entry := a.roomRetryEntry()
 		if hint := a.taskRetryHint(entry); hint != "" {
 			return hint
@@ -2116,7 +2229,7 @@ func (a *app) roomHint() string {
 	case a.recalling():
 		return roomRecallHint
 	case a.stopOffered():
-		if a.roomOrganized() {
+		if a.roomOrganized() && a.programOf() == nil {
 			return "/model · /stop · esc main"
 		}
 		// THE ROOM'S ANSWER TO "HOW DO I STOP THIS". It is the honest counterpart
@@ -2124,6 +2237,9 @@ func (a *app) roomHint() string {
 		// card and never through the dismiss key (stop.go), so this is the key a
 		// person reaching for esc actually wants. It is drawn only while there is
 		// something to stop, which is the emptiness law applied to a hint.
+		if p := a.programOf(); p != nil {
+			return roomStopHint + railSep + programCallsHint(p.calls)
+		}
 		return roomStopHint
 	case a.roomLandingAsking():
 		// THE ROOM'S ANSWER TO "IT SAYS LOOK IT OVER, NOW WHAT". The node has
@@ -2136,6 +2252,11 @@ func (a *app) roomHint() string {
 		// slot and the roster's cannot name three different letters for one
 		// question ([app.landingHintAt]).
 		return a.landingHintAt(a.room.id, a.width, "")
+	}
+	// A PROGRAM'S ROOM WITH NOTHING TO STOP still turns between its actions and
+	// its raw calls, and says the key that does it.
+	if p := a.programOf(); p != nil {
+		return programCallsHint(p.calls)
 	}
 	return ""
 }
@@ -2583,7 +2704,10 @@ func (a *app) roomHeadRows(width int) []string {
 		return []string{a.roomTrailRow(width)}
 	}
 	head := []string{a.roomTrailRow(width), a.roomFactsLine(width)}
-	if a.roomOrganized() {
+	switch {
+	case a.programHeadsRoom():
+		head = append([]string{a.roomTitleRow(width)}, a.programHeadBriefRows(width)...)
+	case a.roomOrganized():
 		head = []string{a.roomTrailRow(width), a.roomTitleRow(width)}
 	}
 	if rows > a.roomHeadCount() {
@@ -2604,6 +2728,10 @@ const roomHeadRowCount = 2
 
 // Compact frames already name the task in their navigation row.
 func (a *app) roomHeadCount() int {
+	if a.programHeadsRoom() {
+		width, _ := a.size()
+		return 1 + len(a.programHeadBriefRows(width))
+	}
 	if a.roomOrganized() {
 		return roomHeadRowCount
 	}
@@ -2702,7 +2830,7 @@ func (a *app) roomFactsLine(width int) string {
 	if mark != "" && a.hoveringRoomStop() {
 		shown = a.pal.ink(mark)
 	}
-	if node != nil && !a.orchOpen() {
+	if node != nil && !a.orchOpen() && a.programOf() == nil {
 		if line, ok := a.roomGroupedFacts(node, width, shown); ok {
 			if mark != "" {
 				cols := ansi.StringWidth(mark)
@@ -2752,6 +2880,11 @@ func (a *app) roomFactsWord(node *taskNode, width int) (string, int) {
 	room := max(width-roomHeadFurniture-12, 0)
 	if a.orchOpen() {
 		return a.orchHeadWord(room), 0
+	}
+	// A PROGRAM'S PAGE ANSWERS WITH THE LINE ITS STORED PAGE PINS: the stage, the
+	// spend of the ceiling, the calls and the age (programroom.go).
+	if a.programOf() != nil {
+		return a.programFactsWord(room)
 	}
 	if node == nil {
 		return "", 0
@@ -3195,6 +3328,41 @@ func (a *app) roomNodeModel() string {
 	return strings.TrimSpace(node.model)
 }
 
+// roomGuestTail is what a page read through another conversation says under
+// whatever it read, and nothing on every other page. Both of a guest page's
+// bodies end with it — the owner's journal, and a program's actions read out
+// of the owner's store (programroom.go) — because both lines are about the
+// READING, not about what was read.
+func (a *app) roomGuestTail(inner int) []row {
+	var out []row
+	// A READING PAGE WITH NO WAY TO ASK ITS OWNER SAYS SO, once, under whatever
+	// it did read. It is not a refusal and not an error — the transcript above it
+	// is real — it is the one thing the page cannot know, said rather than
+	// papered over with a state word that stopped being true (taskowner.go's
+	// [app.roomGuestStale]).
+	if a.roomGuestStale() {
+		out = append(out, row{text: a.pal.dim(fit(roomGuestStaleWord, inner)), entry: -1})
+	}
+	// AND A CONVERSATION THAT HAS STOPPED AND IS WAITING ON SOMEBODY SAYS SO,
+	// under what it has done so far. The roster cannot say it — a node sitting on
+	// a question is still `running` — so a page reading somebody else's work drew
+	// a clock over work that had not moved since somebody was asked something
+	// (taskowner.go's questions lane).
+	//
+	// IT IS DIM AND NOT AMBER, AND THAT IS THE HUE LAW RATHER THAN AN OVERSIGHT.
+	// Amber is waiting on YOU and nothing else (docs/design/questions/DESIGN.md);
+	// this question is waiting on the window that owns the work, this page has no
+	// key that would answer it, and a row here in the colour that means "press
+	// something" would be asking a person for a keystroke that does not exist.
+	if asked, waiting := a.roomGuest().waiting(); waiting {
+		if head := strings.TrimSpace(asked.Head); head != "" {
+			line := a.icon(tokens.GNeedsHuman) + " " + head + railSep + roomGuestAskedWord
+			out = append(out, row{text: a.pal.dim(fit(line, inner)), entry: -1})
+		}
+	}
+	return out
+}
+
 func (a *app) roomNode() *taskNode {
 	if a.room == nil {
 		return nil
@@ -3378,13 +3546,29 @@ const (
 	roomDoneWord   = "done"
 )
 
-// roomClock is the node's age: counting up while it runs, frozen at what the
-// update that ended it reported.
+// roomClock is the node's age: counting up while it runs, and once it has
+// landed the span the landed card draws ([taskNode.ranFor]) — the record's
+// own start and end, so the page and the card read one number for one run.
 func (a *app) roomClock(node *taskNode) string {
-	if node.state == session.TaskRunning && !node.began.IsZero() {
-		return countUpWord(a.now().Sub(node.began))
+	word, _ := a.nodeClock(node)
+	return word
+}
+
+// nodeClock is [app.roomClock] with whether this window holds any clock for
+// the node at all, which is what lets a page that has another source for the
+// figure ([app.taskPlanAge]'s store stamps) fall back to it only when the rail
+// has nothing to say.
+func (a *app) nodeClock(node *taskNode) (string, bool) {
+	if node == nil {
+		return "", false
 	}
-	return countUpWord(node.elapsed)
+	if node.state == session.TaskRunning && !node.began.IsZero() {
+		return countUpWord(a.now().Sub(node.began)), true
+	}
+	if span := node.ranFor(); span > 0 {
+		return countUpWord(span), true
+	}
+	return "", false
 }
 
 // roomSpend is what this node has cost, or "" when nobody has published a price
@@ -3537,6 +3721,13 @@ func (a *app) roomRows(width int) []row {
 		room.rows, room.width, room.height, room.dirty = out, width, height, false
 		return out
 	}
+	// AND A PROGRAM'S PAGE IS ITS CONVERSATION WITH CODEAF (programroom.go),
+	// branched here for the run's reason: only what fills the room differs.
+	if room.program != nil {
+		out := a.programRoomRows(width)
+		room.rows, room.width, room.height, room.dirty = out, width, height, false
+		return out
+	}
 	// THE READING GUTTER IS TAKEN OUT FIRST AND GIVEN BACK LAST, exactly as in
 	// the conversation (gutter.go, and render.go's [app.layout] states the law).
 	// A task's page is a transcript and is read as one; it stood flush against
@@ -3602,31 +3793,7 @@ func (a *app) roomRows(width int) []row {
 	if call, ok := a.roomCallRow(inner); ok {
 		out = append(out, call)
 	}
-	// AND A READING PAGE WITH NO WAY TO ASK ITS OWNER SAYS SO, once, under
-	// whatever it did read. It is not a refusal and not an error — the transcript
-	// above it is real — it is the one thing the page cannot know, said rather
-	// than papered over with a state word that stopped being true (taskowner.go's
-	// [app.roomGuestStale]).
-	if a.roomGuestStale() {
-		out = append(out, row{text: a.pal.dim(fit(roomGuestStaleWord, inner)), entry: -1})
-	}
-	// AND A CONVERSATION THAT HAS STOPPED AND IS WAITING ON SOMEBODY SAYS SO,
-	// under what it has done so far. The roster cannot say it — a node sitting on
-	// a question is still `running` — so a page reading somebody else's work drew
-	// a clock over work that had not moved since somebody was asked something
-	// (taskowner.go's questions lane).
-	//
-	// IT IS DIM AND NOT AMBER, AND THAT IS THE HUE LAW RATHER THAN AN OVERSIGHT.
-	// Amber is waiting on YOU and nothing else (docs/design/questions/DESIGN.md);
-	// this question is waiting on the window that owns the work, this page has no
-	// key that would answer it, and a row here in the colour that means "press
-	// something" would be asking a person for a keystroke that does not exist.
-	if asked, waiting := a.roomGuest().waiting(); waiting {
-		if head := strings.TrimSpace(asked.Head); head != "" {
-			line := a.icon(tokens.GNeedsHuman) + " " + head + railSep + roomGuestAskedWord
-			out = append(out, row{text: a.pal.dim(fit(line, inner)), entry: -1})
-		}
-	}
+	out = append(out, a.roomGuestTail(inner)...)
 	if room.done {
 		// THE FOOT. A room on a node that has landed says so once, at the bottom,
 		// where the next thing would have appeared — which is the place a person
@@ -4082,7 +4249,12 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 		// listening" is the question it exists to answer.
 		lane = orchSteerLane + roomSteerBack
 	}
-	if a.room.plan != nil {
+	if a.room.program != nil {
+		// A PROGRAM READS NO MESSAGE, so the box does not offer to steer it: it
+		// says the fact and the place the words can go, the same line enter over a
+		// sentence says (programroom.go).
+		lane = a.programRoomRefusal().fit(room)
+	} else if a.room.plan != nil {
 		// A RUN'S TASK TAKES THE WORDS AS A NOTE (planroom.go), and the box says
 		// so: the worker reads a note at its next step, not the instant it is sent.
 		lane = taskPlanNoteWord + roomSteerBack

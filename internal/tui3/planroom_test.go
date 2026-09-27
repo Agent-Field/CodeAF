@@ -204,6 +204,39 @@ func TestTheWorkTabOfARunsTaskDrawsTheRunsWorkingCopyDifference(t *testing.T) {
 	}
 }
 
+// THE WORK TAB NAMES EVERY FILE AS ITSELF (contract 1a and 1c). A header whose
+// name holds ` b/` once drew only the part after the last one, so a person's
+// `x b/plandb.db` read as codeaf's own `plandb.db`; a header git quoted drew its
+// octal escapes. And a removed line that read `-- note` arrives as `--- note`,
+// which is the file's bytes and not a header to skip.
+func TestTheWorkTabDrawsRealGitFilenames(t *testing.T) {
+	row := session.PlanTaskRow{ID: "t-6", Title: "fix the loader", Status: "running"}
+	fake := &planWorkFake{work: session.PlanTaskWork{Read: true, Patch: "diff --git a/x b/plandb.db b/x b/plandb.db\n--- a/x b/plandb.db\n+++ b/x b/plandb.db\n@@ -1,2 +1 @@\n-one\n--- dropped note\n+two\n" +
+		"diff --git \"a/odd name \\303\\251'q.txt\" \"b/odd name \\303\\251'q.txt\"\n--- /dev/null\n+++ \"b/odd name \\303\\251'q.txt\"\n@@ -0,0 +1 @@\n+new\n"}}
+	a, plan := planAppWith(t, []session.PlanTaskRow{row}, map[string]session.PlanTaskPage{row.ID: {Row: row, Description: "b"}})
+	fake.planFake = plan
+	a.agent = fake
+	openPlanRoomNow(t, a, row.ID)
+	drive(t, a, tea.KeyPressMsg{Code: tea.KeyTab})
+	view := planRoomText(t, a)
+	for _, name := range []string{"x b/plandb.db", "odd name é'q.txt", "-- dropped note"} {
+		if !strings.Contains(view, name) {
+			t.Errorf("work tab omits %q:\n%s", name, view)
+		}
+	}
+	if strings.Contains(view, `\303`) {
+		t.Errorf("work tab draws git's quoted spelling of a name:\n%s", view)
+	}
+	// The rows are padded and the side list sits beside them, so a row is read
+	// up to the list's rule and trimmed before it is compared.
+	for _, line := range strings.Split(view, "\n") {
+		text, _, _ := strings.Cut(line, "│")
+		if strings.TrimSpace(text) == "plandb.db" {
+			t.Errorf("work tab drew a row that is only plandb.db, the tail of a longer name:\n%s", view)
+		}
+	}
+}
+
 // `x` OVER AN EMPTY BOX STOPS A RUN'S TASK THROUGH THE PLAN'S DOOR, after the
 // card; on a task that has ended it is the letter it is.
 func TestStopInARunsTaskRoomGoesThroughThePlansDoor(t *testing.T) {

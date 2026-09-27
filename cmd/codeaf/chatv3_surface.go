@@ -84,6 +84,11 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 	wire, closeWire := v3Wire()
 	defer closeWire()
 	options.Output = wire
+	// THE USAGE NOTICE IS THE SURFACE'S TO SHOW when this chat still owes it
+	// (telemetry_lifecycle.go), because every door that draws a surface comes
+	// through here and a notice printed before the alt screen is a notice
+	// nobody reads until they quit.
+	telemetryNoticeForSurface(&options)
 	return withSurfaceLogger(options.ProfileDir, func() error {
 		return runSurfaceProgram(ctx, options)
 	})

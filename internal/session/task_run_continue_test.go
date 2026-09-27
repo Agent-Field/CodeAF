@@ -194,7 +194,7 @@ func TestARunWithNoCopyIsRefusedInTheSameSentenceTheRowShows(t *testing.T) {
 	// THE DOOR AND THE ROW SAY ONE SENTENCE, NOT TWO. A person reads the row's
 	// words before they answer and the door's words after; two spellings of the
 	// same fact is how a reading drifts from what actually happens.
-	why := runCannotContinue(nil)
+	why := runCannotContinue(nil, "")
 	if why == "" {
 		t.Fatal("the row shows no reason at all, so the offer would read as available")
 	}
@@ -306,4 +306,26 @@ func TestARunThatIsAlreadyGoingIsLeftAloneAndSaysSo(t *testing.T) {
 	if still != live {
 		t.Fatal("the live run was replaced by the one that was refused")
 	}
+}
+
+// A PROGRAM'S RUN IS NEVER CARRIED ON, and the door and its row say so in one
+// sentence rather than blaming a copy it never had.
+func TestAProgramsRunIsNeverCarriedOn(t *testing.T) {
+	agent, g, _, double := continueAgent(t)
+	agent.publishRunRow(g, TaskNotice{
+		ID: 7, Title: "port the parser", State: TaskInterrupted, Program: "senior-dev",
+		StartedAt: agent.taskClockNow(),
+	})
+	_, err := agent.ContinueRun(context.Background(), 7)
+	if err == nil {
+		t.Fatal("a program's run was carried on by codeaf's own workers")
+	}
+	if want := programNotCarriedOn("senior-dev"); err.Error() != want {
+		t.Fatalf("the door refuses with %q, want %q", err.Error(), want)
+	}
+	row, _ := runRowOf(g, 7)
+	if got := row.StatusFacts().CannotContinue; got != err.Error() {
+		t.Fatalf("the row says %q and the door %q", got, err.Error())
+	}
+	nothingStarted(t, agent, double)
 }

@@ -525,7 +525,9 @@ can change and one line about the day.
 │                                                                     │
 │  models    ‹ all › (96)                                             │
 │  providers ✓ openrouter  ✓ z-ai sub  ✓ ollama local  ○ my-vllm  +   │
-│  cap       per task $5 · daily none                                 │
+│  cap       per task $5 · crew daily cap none                        │
+│            the daily limit, $500, still covers everything codeaf    │
+│            spends · /budget                                         │
 │                                                                     │
 │  today $1.84 · 14 tasks                                             │
 ╰─ enter change · esc close · ? keys ─────────────────────────────────╯
@@ -543,8 +545,11 @@ can change and one line about the day.
   its plain name, a subscription says `sub`, a model on this machine says `local` when there
   is room, and a custom endpoint is the name you gave it. The `+` at the end opens
   `/connect`. On a narrow window the chips fold to `3 of 4 on`.
-- **cap** — `per task $5 · daily none`: the most one task may spend, and the most crews
-  may spend in a day, `none` for no daily cap.
+- **cap** — `per task $5 · crew daily cap none`: the most one task may spend, and the most
+  crews may spend in a day, `none` for no crew daily cap. Under it, the daily limit on
+  everything codeaf spends (the first-run screen's **Daily limit**, `/budget`) is named with
+  its figure — `the daily limit, $500, still covers everything codeaf spends · /budget` —
+  because the crew's cap being `none` does not mean nothing limits the day.
 - **today** — what crews spent today and how many tasks ran. Spend that is nothing is not
   drawn (`today 1 task`, never `$0.000`), and a day with nothing in it has no line.
 
@@ -580,7 +585,8 @@ which puts things back exactly as they were.
 
 - **enter on a seat** opens that seat's list: `auto — codeaf picks per task` first, then
   the router's suggestion marked with the star and `suggested`, then every model your
-  providers reach with its price in and out per million tokens and one provider. Type to
+  providers reach with its price in and out per million tokens, spelled the way `/model`
+  spells it (`$3/$15 per M`), and one provider. Type to
   filter; `enter` pins. **Unpinning is choosing `auto`** — the list opens on it, so it is
   `enter enter`. `→` on a model shows its routes (`any route · cheapest`, then each
   provider); `enter` on one pins the model to that provider, `←` folds them.
@@ -688,20 +694,27 @@ to cost, which is never less than what the same model charged for its last call 
 A call that would pass the cap is not made: the task stops on `today's crew spend has reached the daily cap
 of $5.00 · raise it with /crew cap`, with what it had done so far. A checker cut off this
 way ends on the same sentence.
+At the cap, a call whose price codeaf does not know — a model the catalog lists with no
+price — is not sent either, and ends on the same sentence. A call that costs nothing — a
+free pool, a local model, a subscription plan — is never stopped by the cap, the per-task
+limit or the checker's ceiling.
 
 **A checker has a ceiling of its own on each task**: three times its estimate, and never
 less than $0.05. A check that reaches it stops there, on `the check stopped at its spend
 ceiling of $0.26, three times its estimate, before it finished`, and the task ends
 unchecked rather than on a bill ten times its estimate.
+Only the checker's own calls count toward that ceiling, whatever model the worker or
+planner runs, including a crew whose three seats use one model. The ceiling follows
+the checker when it moves to another model.
 
 This cap is the crew's own. The day's limit under `/settings` → Spending counts everything
 codeaf spends, and still applies.
 
 ### The per-task limit
 
-No task may cost more than its limit: **$5** unless you set another. `/crew cap task 10`
+No ordinary task may cost more than its limit: **$5** unless you set another. `/crew cap task 10`
 sets it to $10; on the panel it is the first figure on the **cap** row
-(`per task $5 · daily none`) — `enter` on the row, `tab` to the per-task box, type, `enter`.
+(`per task $5 · crew daily cap none`) — `enter` on the row, `tab` to the per-task box, type, `enter`.
 A task always has a limit: `none` and `0` are refused, and an emptied box is $5 again.
 
 Every priced call of one task — each seat's, on every model, and the helpers made for it —
@@ -731,7 +744,8 @@ The next task is back on the ordinary pick.
 ### What a task says about its crew
 
 A routed task says its crew in ONE line, under the line that says it started, and the line
-is rewritten in place as the task goes. When it starts:
+is rewritten in place while the task goes. When the task lands the line moves to the end of
+the conversation, beside the landing, so the cost is where you are reading. When it starts:
 
 ```
 task 12 crew · open-ended · worker glm-5.3-flash (openrouter) · planner kimi-k3 · checker ⌖ kimi-k3 · est $0.121
@@ -929,6 +943,59 @@ says the same, and the hint line under the model picker says `crew auto` beside 
 so the picker you opened looking for the change tells you the crew is a separate thing.
 The one session with no `crew` line at all is a **remote** one opened with `--host`: that
 crew lives on the other machine.
+
+## How do I change the model the task worker uses — pin the worker, not /model
+
+A task's **worker** is the seat that does its work, and unless you choose it the crew picks
+it for each task from what kind of work it is. `/model` does not move it: `/model` changes
+the model you talk to, and nothing about a task.
+
+To choose the worker yourself:
+
+- **`/crew pin worker <model>`** — every task from now on, until `/crew unpin worker`.
+  `/crew pin worker <model>@<provider>` pins the route too. `/crew` shows the seat.
+- **the `task model` row** under `/settings` → Tasks — the worker for every task that
+  names no other model; blank, it reads `the crew's worker`.
+- **for one task** — name the model in the ask ("do this on deepseek"), or from a terminal
+  `codeaf do --pin worker=<model>` or `--model <model>`.
+
+A model named in the ask wins over the `task model` row, and the row wins over a `/crew`
+pin. The task's crew line says which worker it got.
+
+## Is my code sent anywhere that logs it — where my prompts and code go, free routes
+
+What you type, and the files and command output the chat or a task reads, go to the model
+provider serving each call: the model you talk to, and each task's worker, planner and
+checker on the providers you connected. Whether a provider keeps or trains on it is that
+provider's policy and your account's settings there. codeaf's own usage counts carry no
+content (`codeaf telemetry info` says what they carry).
+
+**Free routes may log prompts.** A provider's free pool of a model (an OpenRouter `…:free`
+id) may log or train on what it is sent. The crew uses free routes only when you turn
+them on — the `free routes` switch at the end of `/crew`'s providers list — with one
+exception: when every paid route a seat could use is out of reach, a seat moves onto a
+free pool rather than leave the task unable to run. "Out of reach" is one of: your
+OpenRouter balance is known to be low, a paid call on that provider was refused for
+payment, or the provider reports its credit at zero. A seat tries at most three free pools
+in one task; your allowed models (`/crew models`) still limit which ones; and the task's
+crew line then says `free routes in use (may log prompts)`. A paid call answering again
+puts the next task back on paid routes.
+
+## Which model are you using, and what does a task cost — the chat model and the crew
+
+The model you are talking to is on the status line at the bottom, and `/model` changes it.
+It answers you and runs this conversation's own tool calls.
+
+A task you hand off does not run on it. Each task gets a **crew** — a worker, a planner and
+a checker — picked for each task from what kind of work it is; `/crew` shows the seats and
+`/crew pin` fixes one.
+
+What a task costs is on its crew line. When it starts, the line gives the estimate —
+`task 2 crew · bugfix · worker glm-5.3-flash (openrouter) · checker glm-5.3-flash · est $0.013`
+— and when it lands the line moves to the end of the conversation with what it actually
+cost beside the estimate. Every task is held to the per-task limit, and all crews together
+to the crew daily cap when one is set (both on `/crew`'s cap row). `/cost` says what this
+conversation has spent, and `/spend` the whole machine.
 
 ## Which model does a task run on — why did my task run on glm-5.3-flash and not my chat model
 
@@ -1162,7 +1229,9 @@ other, timing a benchmark cell, or attributing a cost.
 
 It settles four things on your model: the crew's three seats and the two small rows, any role you pinned, the model
 that work leaving the conversation runs on, and the fallback chain codeaf would otherwise
-move to when a model cannot answer. Under this flag **nothing hops** — not on a refusal,
+move to when a model cannot answer. That includes every seat of a `/task` run — its worker,
+planner, checker and probe — whatever your crew rows say, and `CODEAF_CHECK_MODEL` stands
+down too. Under this flag **nothing hops** — not on a refusal,
 not on a reply that keeps stalling, not on rate limiting that will not clear — because a
 run whose cost is being attributed to one model cannot have finished a single reply on
 another. That includes the catalog's own guess: with no `fallback models` row written, an
@@ -1515,8 +1584,13 @@ one late line to the machine's usage ledger. That line is marked `reconciled`, m
 figures came from the receipt rather than the cut stream. A losing rescue arm is recorded as
 hedged waste from its own receipt too; it is real provider money, but it is not added twice.
 
+codeaf asks for the receipt at once, then again about 1, 5, 20 and 40 seconds after the call
+ended. The receipt for a call cut in the middle usually takes the router about twenty seconds
+to price. A call senior-dev made that arrived whole but with no usage block is asked about
+the same way.
+
 When no generation id arrived, the base has no receipt route, or the receipt still cannot be
-had after the short retry schedule, codeaf writes an `unbilled` marker with no invented
+had after that schedule, codeaf writes an `unbilled` marker with no invented
 price or token count. The marker survives a restart. `/cost` counts missing prices for this
 conversation and its tasks; `/spend` counts the markers in its selected time window. Both
 say, for example, `2 calls the provider charged for and could not be priced`. At zero they
@@ -2117,7 +2191,7 @@ which is the whole machine's ledger rather than this conversation's — it was a
 |---|---|
 | `spend` | the money, printed only when it is above zero — this conversation **and every task it started** |
 | `conversation` | what the conversation's own calls cost |
-| `tasks` | what the work it started has cost, running or finished — tasks and the nodes of an adaptive run |
+| `tasks` | what the work it started has cost, running or finished — tasks, the nodes of an adaptive run, and a task handed to a program such as senior-dev |
 | `tokens` | `48.1k in · 3.2k out`, or one half alone, or the combined figure |
 | `cache` | `31.2k read · saved $0.0180` — the money half only when a price pair was published |
 | `model calls` | **requests to the provider**, deliberately not "turns" |
@@ -2148,6 +2222,12 @@ is the same figure `/cost` leads with.
 **Adaptive runs are in it too.** A node of an adaptive run is work this conversation
 started: its money is on the row while it is still working, under `tasks` when you ask
 `/cost` for the halves.
+
+**So is a program's run.** Every model call senior-dev (or another program codeaf carries)
+makes for a task this conversation handed it names this conversation and that task on the
+ledger, and it is on the row as it is spent, under `tasks` in `/cost`, and under the task
+on the spend place. Its tokens and its calls reach this conversation's `tokens` and
+`model calls` lines as well.
 
 It used to be the conversation's own half alone. A task's money only reaches the
 conversation's books when the task **closes**, so a family working for two hours left the
@@ -2196,8 +2276,9 @@ than the number of times you have spoken.
 
 It counts every request that is written down, not only the ones in your turns: naming the
 session, a judge deciding where something should be routed, looking at a picture, every
-request a task's own agent made on its own lane, and every request a harness run made
-while it walked its program. That is deliberate, because the `spend` line above it is the
+request a task's own agent made on its own lane, every request a harness run made
+while it walked its program, and every request a program such as senior-dev made for a
+task this conversation handed it. That is deliberate, because the `spend` line above it is the
 sum over exactly those requests — a smaller count beside it would be a bill divided by the
 wrong number.
 
@@ -2813,7 +2894,7 @@ They live on **one tab**: `/settings` → **Spending**, which `/budget` opens di
 | **per day** | `$500` | new work waits for midnight or for you to raise it here |
 | **per conversation** | `no limit` | this conversation stops starting new turns; the turn in flight always finishes |
 | **per plan** | `asks first above $100` | a planned job estimated above it quotes its step count and its price and waits for your go-ahead — it asks, it does not stop |
-| **per task** | `$5 a task` | that task's next priced call is not made; set in `/crew` |
+| **per task** | `$5 a task` | an ordinary task's next priced call is not made; set in `/crew`. senior-dev has its own run ceiling |
 | **per standing run** | `$5 a firing` | that one firing stops there; each order may name its own |
 | **practice** | `$50 of the day` | codeaf's practice on itself stops until tomorrow, and your own work is untouched |
 
@@ -2956,12 +3037,12 @@ well as the label, so typing either finds it.
 
 ## What may a task spend — $5 a task unless you set another
 
-**A task carries a dollar limit of its own: $5 unless you set another.** The Spending tab
+**An ordinary `/task` carries a dollar limit of its own: $5 unless you set another.** The Spending tab
 shows it on the `per task` row — `$5 a task`, with the dim receipt `set in /crew · it also
 spends against the day and this conversation`. It is set on the `/crew` panel's **cap** row
 or with `/crew cap task 10`; see [The per-task limit](#the-per-task-limit).
 
-Every priced call of one task counts against it, and a call that would pass it is not
+Every priced call of an ordinary task counts against it, and a call that would pass it is not
 made. A task's other bounds are **steps and time**: a deadline it may renew, a step count,
 and a limit on how long it may go without progress. Its money is also counted against the day's limit and
 against the limit on the conversation that started it, the two rows above it on the same
@@ -2969,6 +3050,9 @@ tab.
 
 The `$` on the status line counts what the tasks are spending while they spend it, and
 `/cost` splits that figure into `conversation` and `tasks`.
+
+senior-dev's run ceiling is separate from this per-task figure. Its own page names
+the defaults and flags; its run still spends against the conversation and day.
 
 `/budget task 20` is not a shape this command takes; the per-task figure lives in `/crew`.
 The **composer layer** can put a further figure on one errand; see the tasks page.

@@ -388,7 +388,8 @@ clear by hand.
 
 **Two tasks cannot both run in place in one directory.** Whichever started first has it;
 the second is refused its writes and told which task to wait for. When the first lands, the
-second gets the directory.
+second gets the directory. A program's run (senior-dev) holds its folder the same way, and
+a task is refused that folder before it starts: senior-dev's page has the words.
 
 ## A task that has written a file holds that file — I cannot edit a file while a task runs, chat edit blocked, single writer
 
@@ -456,7 +457,7 @@ line of its report — `files: site/index.html, site/app.css` — and only names
 exist in its checkout are believed. A task that says nothing about them has left them
 behind, and that is the difference between a deliverable and a dropping.
 
-## Why my task's branch was kept — I committed, amended, rebased or reset my branch while it ran, it did not merge, my checkout is on main or dev, tasks do not merge into a protected branch automatically, how do I take the work, why did the work not land in my checkout, why didn't my task merge, which branches does codeaf refuse to write
+## codeaf committed to dev — why my task's branch was kept, has codeaf committed to dev or main, I committed, amended, rebased or reset my branch while it ran, it did not merge, my checkout is on main or dev, tasks do not merge into a protected branch automatically, how do I take the work, why did the work not land in my checkout, why didn't my task merge, which branches does codeaf refuse to write
 
 A tag with the same name as a branch does not change which branch is protected
 or which commit the landing compares. Git signature-display settings also do
@@ -1403,7 +1404,9 @@ to the full log, all in the one turn. This is why a task does not `sleep` and `t
 build or test run — the waiting is done for it, and those nine `sleep N && tail` steps above
 are what the counter catches when something is polled that nobody is waiting on. A command
 started with `background: true` is the other case: a server or a sweep the task deliberately
-left running holds nothing up, and the task is asked its next step straight away.
+left running holds nothing up, and the task is asked its next step straight away. Either kind
+of job is the task's own to read and to stop, with the `jobs` tool's `output` and `kill`,
+and a job still running when the task ends is stopped with it.
 
 **A task that repeats itself is told what the work has been doing.** Before it is stopped it
 gets a `[stuck]` note, and that note now carries one more fact than the repetition itself:
@@ -1701,6 +1704,20 @@ How the restore is built depends on your workspace:
 
 The task's own checkout is untouched by any of this, and the restore is removed as soon as
 the answer is in.
+
+## Which folder the checker reads — did the check look at my checkout or the task's copy
+
+**A task's checker checks the task's own copy, never your checkout.** When a part of the
+work is finished, the checker — the seat that reads that part against what it was asked
+for — stands in the same copy the worker wrote in, and its instructions say so:
+the work is in its working directory, and every check and probe runs there.
+
+Your checkout is not the work while the task runs. It does not hold the result until the
+task lands, and it may hold changes of yours, or of other work, that are not this task's —
+so a check read there could pass or fail the task on the wrong diff.
+
+The checker may still read other folders, as every worker may. It writes only in its copy,
+and a write aimed anywhere else is refused before it runs.
 
 ## The check says my tests fail but they were already failing · red before the task started · my task was refused over somebody else's bug · pre-existing failures
 
@@ -3163,6 +3180,9 @@ and counted as the section above on work that is your call says. Ids can only po
 and only ids `propose_task` itself returned count: a job or adaptive-run number is a
 different kind of work, and naming one — or a task that already failed — refuses the
 proposal on the spot instead of queueing work that could never start.
+A task handed to a program such as senior-dev cannot wait at all, because it starts the
+moment it is approved: its `depends_on` may name only work that has already landed. A
+program's run that ended done may be named by any task; one still going may not.
 
 **`model`** — which model this task runs on. Set only when you asked for a particular model
 or class of model for this work. Left out, the task runs on `task.model` if set, otherwise

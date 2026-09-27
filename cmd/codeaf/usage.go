@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
 )
 
 // This file is the ONE SEAM every subcommand's flags are built and parsed at.
@@ -474,7 +476,7 @@ func nearestCommand(typed string) string {
 	// not what anybody meant: `quux` is three edits from `run`, and answering
 	// with it would send somebody confidently to the wrong command.
 	best, distance := "", 3
-	for _, candidate := range knownCommands {
+	for _, candidate := range commandWords() {
 		if measured := editDistance(typed, candidate); measured < distance {
 			best, distance = candidate, measured
 		}
@@ -482,9 +484,28 @@ func nearestCommand(typed string) string {
 	return best
 }
 
+// commandWords is every word the dispatch answers to: codeaf's own
+// ([knownCommands]) and then the name of every program this build carries,
+// which is a verb of its own (carried.go) and a typo of which deserves the same
+// answer as a typo of `logs`.
+//
+// THE PROGRAMS ARE READ FROM THE BUILD'S LIST AT THE MOMENT OF ASKING, NOT
+// WRITTEN INTO THE LITERAL BELOW. The literal is codeaf's own vocabulary and is
+// read as source by internal/manual's terminal-verb gate; a program is on the
+// list only in a build that carries it — none on Windows — so its name belongs
+// to the list, and a literal naming it would be a verb this build may not have.
+func commandWords() []string {
+	words := append([]string(nil), knownCommands...)
+	for _, program := range builtin.All() {
+		words = append(words, program.Name)
+	}
+	return words
+}
+
 // knownCommands is every word the dispatch answers to, in the order the table
 // introduces them. `engine` and `tick` are deliberately absent for the same
-// reason they are absent from the usage text: nothing types them.
+// reason they are absent from the usage text: nothing types them. The programs
+// this build carries are joined to it where it is read ([commandWords]).
 var knownCommands = []string{
 	"chat", "resume", "serve", "devices", "do", "plan", "revise", "run", "exec",
 	"show", "models", "pool", "notebook", "collections", "competence", "services", "wake", "patch",

@@ -842,3 +842,19 @@ func (s *v3Seam) anchor(agent interface {
 	}
 	return resolved, nil
 }
+
+// liveSettings answers a launch's settings as they stand NOW: the launch's own
+// copy, with the account this process holds at the moment of asking laid over
+// it. A launch copies the process's settings when it opens, which on a first
+// launch is before setup has a key, and [v3Process.setAPIKey] reaches the
+// process and its agents but never a copy something else kept. Anything that
+// runs later on a launch's behalf and calls a model — the Model Pool's judge is
+// the one — asks through this, so it carries the key the person has given
+// rather than the one the boot did not have.
+func (p *v3Process) liveSettings(base config.Config) func() config.Config {
+	return func() config.Config {
+		live := base
+		live.APIKey, live.Sources = p.currentAccount()
+		return live
+	}
+}

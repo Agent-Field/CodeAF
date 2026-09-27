@@ -302,22 +302,24 @@ away; `←` `→` choose a colour. `esc` or `Done` puts the card away.
   **Close now** and **Cancel**. When the team has a manager, `Wrap up first` leads: the manager
   is asked to have everyone finish and commit and to bring you a closing report, which arrives
   as a card on this page with `Close` and `Keep going`; the team closes when you choose Close.
-  `Close now` stops every member's turn and closes their tabs at once. `Cancel` or `esc`
+  A working manager is named on the card even when it is also in a team above this one.
+  `Close now` stops every member's turn, including that manager's, and closes tabs belonging
+  only to the closing teams. A manager also in an open team above keeps its tab. `Cancel` or `esc`
   changes nothing.
 
-Closing a team closes the teams under it. A conversation that is also in another open team is
-never stopped by the close. The conversation you are looking at keeps its tab, so a close never
+Closing a team closes the teams under it. Other conversations that are also in another open team
+are not stopped by the close. The conversation you are looking at keeps its tab, so a close never
 moves you. A closed team spends nothing, is not on the conversations view or the strip, and
 waits under `▸ Closed · N`.
 
 Over `--host`, against an engine that does not offer the wrap-up, the card says
 `Wrap up first is not offered over this connection` and offers `Close now` and `Cancel`.
 
-## Closed teams: reopening and deleting
+## Closed teams: reopening, reports and deleting
 
-Open `▸ Closed · N` on the rail and choose a team. The pane shows when it was opened and
-closed, its closing report when it closed on one (what was done, what was left, where the files
-are, what it spent), and its members, each still a door to its conversation. Two buttons:
+Open `▸ Closed · N` on the rail and choose a team. On this machine, the pane shows when it was
+opened and closed, its `closing report` when it closed on one (`done`, `left`, `files`, and
+`spent`), and its members, each still a door to its conversation. Two buttons:
 
 - **`Reopen`** (`r`) opens the team again: its members' tabs come back and its manager is
   brought in front. A team whose parent is closed too offers **`Reopen harbor too`**, because a
@@ -339,13 +341,16 @@ The page says what a team is in one sentence and offers two buttons: **`✦ Orga
 conversations`**, which suggests teams from the conversations you have open, and
 **`+ New team`**. `o` and `n` press them.
 
-## Over --host
+## Over --host: why a closed team's report is not readable
 
 Over `--host` the page shows the teams of the machine the conversations run on: their
 decisions, their spend and their managers. The **Teams** tab of `/settings` edits that
 machine's defaults, and each value says `from Settings`. An older engine keeps the tab
 read only and says `changing them is not available over this connection`. A closed team's
-report is not read over the connection yet, and the page says so where the report would be.
+report is not read over the connection yet, and the page says
+`its closing report is kept where the team ran, and is not readable over this connection`
+where the report would be. A plain local launch reads the report from this machine's engine
+profile and shows it in the closed team's pane.
 
 ## Why the page looks the way it does
 

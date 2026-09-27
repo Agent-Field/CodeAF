@@ -49,13 +49,16 @@ type crewWish struct {
 	// again is a redo of a crew that never started: the next-best models at
 	// the same cost, because nothing ran to be too weak.
 	again *crewroute.Decision
+	// worker is a model the hand-off named for this task, which seats the
+	// worker as a one-task pin ([Agent.routeTaskCrew]).
+	worker string
 }
 
 type crewWishKey struct{}
 
 // withCrewWish hands a start door the crew wish; an empty wish is no value.
 func withCrewWish(ctx context.Context, wish crewWish) context.Context {
-	if wish.effort == "" && wish.stronger == nil && wish.again == nil {
+	if wish.effort == "" && wish.stronger == nil && wish.again == nil && wish.worker == "" {
 		return ctx
 	}
 	return context.WithValue(ctx, crewWishKey{}, wish)
@@ -175,11 +178,20 @@ func (a *Agent) routeTaskCrew(ctx context.Context, row uint64, title, brief stri
 	}
 	wish := crewWishOf(ctx)
 	repo := canonicalPath(a.config.Workspace)
-	decision, err := route(config.CrewAsk{
+	ask := config.CrewAsk{
 		Task:   crewroute.Task{Text: strings.TrimSpace(title + "\n\n" + brief)},
 		Effort: wish.effort, Stronger: wish.stronger, Again: wish.again, Repo: repo,
 		ChatModel: a.Model(),
-	})
+	}
+	// A MODEL NAMED FOR THE TASK SEATS ITS WORKER, as a one-task pin: the one
+	// the hand-off named, else the `task model` row. That is the ladder the
+	// proposal card, the receipt and the manual state ([Agent.defaultTaskModel]
+	// minus its last two rungs, which are the crew's own answer), and it used
+	// to stop at the card while the router seated whatever it picked.
+	if worker := a.namedTaskWorker(wish.worker); worker != "" {
+		ask.Sends = map[crewroute.Seat]string{crewroute.Worker: worker}
+	}
+	decision, err := route(ask)
 	if errors.Is(err, config.ErrCrewAtCap) {
 		spent, capUSD := config.CrewHistory(a.config.ProfileDir).SpentUSD, config.CrewCapAt(a.config.ProfileDir)
 		return nil, fmt.Errorf("today's crew spend (%s) has reached the daily cap of %s · raise it or turn it off with /crew cap, or wait until midnight",
@@ -202,6 +214,26 @@ func (a *Agent) routeTaskCrew(ctx context.Context, row uint64, title, brief stri
 	a.crews.put(row, crew)
 	config.LogCrewDecision(a.config.ProfileDir, crew.call, decision, repo, title)
 	return crew, nil
+}
+
+// namedTaskWorker is the model somebody named for a task's worker: named, when
+// the hand-off named one, else the `task model` row resolved the way a
+// proposal resolves it, else nothing — and nothing is a worker the router
+// picks.
+func (a *Agent) namedTaskWorker(named string) string {
+	if named = strings.TrimSpace(named); named != "" {
+		return named
+	}
+	a.mu.Lock()
+	configured := strings.TrimSpace(a.config.TaskModel)
+	a.mu.Unlock()
+	if configured == "" {
+		return ""
+	}
+	if candidates := matchTaskModel(configured, a.taskModelList()); len(candidates) == 1 {
+		return candidates[0]
+	}
+	return configured
 }
 
 // settleTaskCrew writes a task's crew outcome once: accepted when the work
@@ -351,7 +383,7 @@ func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []
 			}
 			continue
 		}
-		held, err := crew.guard.before(current, messages, options)
+		held, err := crew.guard.before(ctx, current, messages, options)
 		if err != nil {
 			// THE CALL THAT WOULD CROSS THE LINE IS NOT MADE, and the line
 			// says which line it met — never "/redo stronger".
@@ -360,7 +392,7 @@ func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []
 		// A SEAT NEVER WAITS OUT A LIMIT: a 429 goes back at once, and the
 		// seat moves to its next route or model ([provider.WithoutPatientRateLimits]).
 		response, err := c.agent.completeWithModel(provider.WithoutPatientRateLimits(asCrewSeatCall(ctx)), purposeInherited, messages, current, options...)
-		crew.guard.after(current, response, held)
+		crew.guard.after(ctx, current, response, held)
 		if err == nil {
 			c.agent.crewAnswered(c.run, current)
 			return response, nil
@@ -524,8 +556,8 @@ func crewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *Sp
 	capUSD, action := config.CrewSpendCap(profileDir, withDaily)
 	taskCap, taskAction := config.CrewTaskSpendCap(profileDir)
 	guard := &SpendGuard{
-		Price: config.CrewCallPrice, Cap: capUSD, CapAction: action,
-		Ceilings: config.CrewSeatCeilings(d), CeilingAction: config.CrewCheckCeilingAction,
+		Price: config.CrewCallPriceAt(profileDir), Cap: capUSD, CapAction: action,
+		SeatCeilings: config.CrewSeatCeilings(d), CeilingAction: config.CrewCheckCeilingAction,
 		TaskCap: taskCap, TaskAction: taskAction, Task: &SpendTask{},
 	}
 	if capUSD > 0 {
@@ -552,7 +584,7 @@ func (a *Agent) helperGuard(crew *taskCrew) *SpendGuard {
 	if a.config.RouteCrew == nil {
 		return nil
 	}
-	guard := &SpendGuard{Price: config.CrewCallPrice, Day: a.crewDay()}
+	guard := &SpendGuard{Price: config.CrewCallPriceAt(a.config.ProfileDir), Day: a.crewDay()}
 	if capUSD, action := config.CrewSpendCap(a.config.ProfileDir, false); capUSD > 0 {
 		guard.Cap, guard.CapAction = capUSD, action
 	}
@@ -645,7 +677,7 @@ func CrewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *Sp
 // the per-task limit alone.
 func TaskSpendGuard(profileDir string) *SpendGuard {
 	taskCap, taskAction := config.CrewTaskSpendCap(profileDir)
-	return &SpendGuard{Price: config.CrewCallPrice, TaskCap: taskCap, TaskAction: taskAction, Task: &SpendTask{}}
+	return &SpendGuard{Price: config.CrewCallPriceAt(profileDir), TaskCap: taskCap, TaskAction: taskAction, Task: &SpendTask{}}
 }
 
 // spentTodayOnLedger is today's spend as the usage ledger has it; nothing

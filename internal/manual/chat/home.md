@@ -1637,11 +1637,13 @@ see the next section.
 
 ## Answer a question from home — approve a command in another window
 
-**You can answer it here, without opening the window it is in.** The top `needs you` row
-that has answers draws them on its second line, out at the right, while the row is being
-read — under the pointer or the cursor — and **pressing the digit answers it, from anywhere
-on home**, whether or not the chips are on the screen at that moment. No row says `enter`;
-`enter` on any of them opens the conversation to answer it there.
+**You can answer it here, without opening the window it is in.** The topmost row wearing
+the amber `?` whose question has answers shows the question and its answers in its
+description while it is selected — under the pointer or the cursor — and **pressing the
+digit answers it, from anywhere on home**, whether or not the chips are on the screen at
+that moment. There is no `needs you` heading; the question stays on the conversation's or
+task's own row. No row says `enter`; `enter` on any of them opens the conversation to
+answer it there.
 
 The chips are the ones the question has:
 
@@ -1952,7 +1954,8 @@ a `made <file>` line in `since you left`, and where you left off is the line und
 selects it; the next arrow key takes over and removes the mouse highlight. A stationary
 pointer cannot override that choice. `→` and its options always act on the latest
 selection. Leaving the list keeps that selection, and there is no separate right-hand
-preview at rest.
+preview at rest. A typed search is different: its pointer previews a match without moving
+the keyboard cursor, and leaving the match restores the cursor's card.
 
 **The one card left is beside a search.** On a frame 136 columns or wider, while you are
 typing, the match under the cursor has a card to the right of the list (*The card beside a
@@ -1968,7 +1971,9 @@ and each thing that card said has a place: `keeping an eye on` is the standing p
 
 **While something is typed, on a frame 136 columns or wider, a card stands to the right of
 the matches**, about the match under the cursor — or the one under your pointer while it is
-on one. It is read top to bottom as bands with blank lines between them, and each band is
+on one. Moving the pointer off the matches gives the card back to the cursor's match.
+Even a match whose row says `folder gone` has a card; its unavailable folder actions say
+so there. The card is read top to bottom as bands with blank lines between them, and each band is
 drawn only when it has something to say:
 
 1. the conversation's **name**, the brightest text on the screen;
@@ -2271,14 +2276,17 @@ to the cent.
 zero or unknown files, spend and tokens are omitted, and a line with no true fact at all is
 not drawn. The resting panels do not carry it — `spend` is the whole machine's day.
 
-**It counts the talking and the work the talking started, in one figure.** The turns —
-your messages, the answers, and the small calls beside them — are added up by the session
-itself and written to the session folder at the end of every turn, so home can read them
-without opening the transcript. Every task and every unattended run this conversation
-commissioned is added from the project's task index. `spent $1.25` is those two halves
-together.
+**It counts the talking and the work the talking started, in one figure, and each dollar
+once.** The session keeps one set of books: your messages, the answers, the small calls
+beside them, and every task and senior-dev run this conversation started, folded in as each
+one finishes. It writes that total to the session folder at the end of every turn and again
+when a task or run finishes, so home can read it without opening the transcript. The
+project's task index also carries each task's and run's own bill. `spent $1.25` is the larger
+of those two figures, never their sum: the books already hold every finished task and run, so
+adding the index on top would count them twice. While work is still running the index can be
+ahead, and then its figure is the one shown.
 
-`tokens` is input plus output as one sum, over the same two halves. `touched 12 files` is how
+`tokens` is input plus output as one sum, read the same way. `touched 12 files` is how
 many files this conversation's work wrote, summed over its tasks.
 
 `/cost` and `/status` inside the conversation still answer for the live session. A whole
@@ -2425,9 +2433,13 @@ keeps its status bullet, with the most recently active running conversation anim
 A task awaiting your decision has its own question indicator; its parent conversation
 does not repeat that indicator unless it has a separate question.
 
-## Does a run create another conversation in Sessions or the chats menu
+## Does a run create another conversation in Sessions or the chats menu — a run's tab, senior-dev's task has no tab
 
-A run’s tab is a view inside its parent conversation. Home’s Sessions list and the chats menu keep one row for that conversation, using its conversation title. The run’s own tab remains available beside it.
+No. Home’s Sessions list and the chats menu keep one row for the conversation, using its conversation title.
+
+A run the task-belt switch (`CODEAF_TASK_BELT=bash`) drives also has a tab of its own on the strip beside its conversation’s, named after the task the run is working on, for as long as the run works. It is a view inside that conversation: while it is open it is the one tab drawn selected, and a press on the conversation’s tab, a press on the `home` tab, or `esc` leaves it.
+
+A task handed to a program such as senior-dev has no tab. It opens inside the conversation’s own tab, as any task does, and `esc`, the conversation’s tab and the `home` tab leave it.
 
 ## Why does a closed conversation say another window
 

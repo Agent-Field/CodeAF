@@ -33,6 +33,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/subharness"
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
 )
@@ -322,6 +323,13 @@ func openChatV3Local(launch localLaunch) error {
 	// road and not a use of this client's connection, and this is the door that
 	// knows the road (chatv3_taskowner.go says what makes it safe).
 	options.OpenTaskOwner = localTaskOwnerDoor(welcome.Workspace)
+	// AND IT CAN SEE THEM AT ALL. The rows that door sits behind are minted from
+	// the other conversations' presence files, which the agent this surface
+	// holds — a connection — cannot read; the engine is on this machine, so the
+	// files are on this disk beside the transcript the surface was handed, and
+	// the reading is taken straight off it. Without this the door above was
+	// never reached from a real window.
+	options.Elsewhere = session.ElsewhereOf
 	// AND HOME CAN TELL AN ENGINE FROM A WINDOW. It is bound on THIS road and no
 	// other, which is the absence law rather than an oversight: --host has its
 	// holder on this laptop and its journal on the far machine, and the in-process
@@ -361,6 +369,13 @@ func localDoors(options *tui3.Options, welcome remote.Welcome, settings config.C
 		profileDir = settings.ProfileDir
 	}
 	options.ProfileDir = profileDir
+	if options.Teams.Load != nil {
+		// The linked-local engine keeps its profile on this machine, so its closed
+		// teams' packets can be read here without borrowing the --host wire.
+		options.Teams.History = func(team string) ([]teamstore.Packet, error) {
+			return teamstore.Packets(profileDir, team)
+		}
+	}
 	options.EngineRoad = true
 	options.ReadCredits = v3LocalCreditReader(settings)
 	options.Connections = v3Connections(v3Connect(profileDir))

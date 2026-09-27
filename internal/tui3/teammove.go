@@ -100,6 +100,10 @@ type teamMoveUndo struct {
 	word  string
 	from  int
 	at    time.Time
+	// said ties the move's words to the write that carried it
+	// (teamwritesaid.go): Undo and the words wait for it, and a refusal
+	// replaces the words.
+	said teamWriteSaid
 }
 
 // teamMoveRow is one row of the picker: a parent (teamMoveTop for the top
@@ -635,7 +639,7 @@ func (a *app) teamMoveApply(ids []string, parent string, from int) tea.Cmd {
 		return nil
 	}
 	a.tmove.pend = teamMovePend{}
-	a.tmove.undo = teamMoveUndo{back: back, homes: homes, word: word, from: from, at: a.now()}
+	a.tmove.undo = teamMoveUndo{back: back, homes: homes, word: word, from: from, at: a.now(), said: a.teamWriteWatch(nil)}
 	a.tp.msg = ""
 	a.tp.top = teamsTopCache{}
 	if a.tp.cur.act == teamsActMoveYes || a.tp.cur.act == teamsActMoveNo {
@@ -690,7 +694,7 @@ func (a *app) teamMoveConfirm() tea.Cmd {
 // teamMoveUndoing reports whether Undo is offered for the last move.
 func (a *app) teamMoveUndoing() bool {
 	u := a.tmove.undo
-	return len(u.back) > 0 && a.now().Sub(u.at) < teamsUndoFor
+	return len(u.back) > 0 && u.said.said() && a.now().Sub(u.at) < teamsUndoFor
 }
 
 // teamMoveUndo puts the last move back: every moved team under its parent
@@ -778,7 +782,11 @@ func (a *app) teamsMoveRows(d *teamsDraw, width, y int) []string {
 		return out
 	}
 	if a.teamMoveUndoing() && a.tmove.undo.from == teamMoveFromPage {
-		word := " " + pal.dim(a.tmove.undo.word) + "  "
+		ink := pal.dim
+		if a.tmove.undo.said.why != "" {
+			ink = pal.warn
+		}
+		word := " " + ink(a.tmove.undo.word) + "  "
 		s, _ := d.button("Undo", teamsTarget{act: teamsActUndo, x0: ansi.StringWidth(word), y: y,
 			hint: "Put it back where it was" + hintSegment + "u"}, pal.ink)
 		return []string{word + s}
@@ -807,11 +815,8 @@ func (a *app) teamsCanNest(parent string) (bool, string) {
 }
 
 // teamsMoney is a cap as a sentence says it: `$3` for whole dollars, `$2.50`
-// otherwise. A cap is a round figure a person chose, and `$3.00/day` reads as
-// a bill.
-func teamsMoney(usd float64) string {
-	if usd >= 1 && usd == float64(int64(usd)) {
-		return "$" + itoa(int(usd))
-	}
-	return dollars(usd)
-}
+// otherwise, `$0.001` under a cent. A cap is a round figure a person chose, and
+// `$3.00/day` reads as a bill. It is teams' own spelling ([teamstore.Money]),
+// the one the session's cap packet and refusal use, so the screen and the
+// packet never disagree about the same figure.
+func teamsMoney(usd float64) string { return teamstore.Money(usd) }

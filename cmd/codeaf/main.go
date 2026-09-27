@@ -29,12 +29,14 @@ import (
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/plan"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/router"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/telemetry"
 	"github.com/Agent-Field/codeaf/internal/trace"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
@@ -42,7 +44,20 @@ import (
 
 func main() {
 	home.Adopt(log.Printf)
+	registerRunningCLI()
 	os.Exit(execute())
+}
+
+// registerRunningCLI tells the worker harness which binary a worker's `codeaf`
+// reaches: THIS one, under whatever file name it was installed. A worker's shell
+// is taught `codeaf patch`, and without this the word resolved on the machine's
+// PATH — nothing on a devaf install, an older codeaf on the fresh-install check
+// of 2026-09-25 (internal/session's [session.SetRunningCLI] says why it is
+// registered here rather than probed there).
+func registerRunningCLI() {
+	if self, err := os.Executable(); err == nil {
+		session.SetRunningCLI(self)
+	}
 }
 
 // surfaceMaxProcs is the GOMAXPROCS a surface runs under on a machine bigger
@@ -394,6 +409,12 @@ func run() error {
 	case "-h", "--help", "help":
 		return usage(os.Args[2:])
 	default:
+		// A PROGRAM THIS BUILD CARRIES IS A VERB OF ITS OWN: `codeaf senior-dev
+		// <brief>` (carried.go). It is asked last, after every verb above, so
+		// no program's name can shadow one of codeaf's own words.
+		if program, ok := builtin.Find(os.Args[1]); ok {
+			return runCarried(program, os.Args[2:])
+		}
 		return unknownCommand(os.Args[1])
 	}
 }
@@ -706,7 +727,10 @@ func usage(args []string) error {
 		fmt.Fprintln(usageOut, environmentText)
 		return nil
 	}
-	fmt.Fprintln(usageOut, usageText)
+	// The table with the programs this build carries in it (carried.go): a
+	// verb nobody can find on the page that lists the verbs is a verb nobody
+	// types.
+	fmt.Fprintln(usageOut, frontPage())
 	return nil
 }
 

@@ -1018,6 +1018,9 @@ type TaskGraph struct {
 	// other way round.
 	plan   *planState
 	planMu sync.Mutex
+	// pagePlan is the store as the task pages read it when the switch is off
+	// ([TaskGraph.planForPages]); it is never the plan any worker runs on.
+	pagePlan *planState
 	// order is admission order, and it is what makes the frontier
 	// DETERMINISTIC: with a cap in play, which of two ready nodes starts first
 	// must not be Go's map iteration.
@@ -7417,13 +7420,20 @@ func (a *Agent) foldTaskUsage(node *TaskNode, child *Agent) {
 	// THE FOLD DOOR, not the ordinary auxiliary one: the node journaled these
 	// same tokens into the machine's usage ledger as it spent them, and folding
 	// the total in again would count them twice ([Agent.addFoldedUsage]).
-	a.spendLedger(node).addFoldedUsage(&ai.Response{Usage: &ai.Usage{
+	ledger := a.spendLedger(node)
+	ledger.addFoldedUsage(&ai.Response{Usage: &ai.Usage{
 		PromptTokens:             used.Input,
 		CompletionTokens:         used.Output,
 		CacheReadInputTokens:     used.CacheRead,
 		CacheCreationInputTokens: used.CacheWrite,
 		Cost:                     &cost,
 	}}, child.Model(), used.Calls)
+	// The books on disk are told as the node's tally reaches them, for the
+	// reason [Agent.driveBeltRun] stamps a run's: home takes the larger of the
+	// stamped books and the index rows, and that is exact only while meta.json
+	// already holds every closed node the index names. A worker that folds a part
+	// has no place of its own, and its stamp writes nothing.
+	ledger.stampSpend()
 }
 
 // spendLedger is WHICH SET OF BOOKS this node's spend goes into: the agent that
@@ -8133,6 +8143,10 @@ type taskTree struct {
 	// about the run the ground law was written from.
 	rung GroundRung
 	seal string
+	// continues says a program's run carries on on the branch an earlier run
+	// of it left checked out ([ProgramFolder.Continues]); false for every
+	// other tree.
+	continues bool
 	// base is the machine commit the parent's world was sealed into, when a rung
 	// made one. It is the replay point the landing takes the inheritance back out
 	// at ([taskTree.replayOwnWork]) and it is empty for a parent that had nothing
@@ -8323,7 +8337,7 @@ func cutTaskWorktree(ctx context.Context, place Place, root, session string, id 
 		root:    root,
 		dir:     dir,
 		mode:    mode,
-		branch:  "task/" + slugify(title) + "-" + shortID(),
+		branch:  taskBranchName(title),
 		title:   title,
 		promise: TaskModeWorktree,
 		frozen:  frozen,
@@ -8715,20 +8729,14 @@ func (t taskTree) comeHome(title string, wrote []string, sign gitSignature) (str
 		return mergeConflicted, withReport(withReport(unreachedSentence(t.branch, t.dir, out), stranded),
 			leftBehindSentence(left, true)), nil, refusedByTheWork
 	}
-	// A TASK NEVER WRITES A PROTECTED, MOVED OR DETACHED CHECKOUT. The branch is
-	// already committed and present in the ground repository at this point, so
-	// keeping it gives the person a durable result and gives the working copy
-	// back without changing a byte of the checkout they are using.
-	if t.landsInThePersonsRepository() {
-		if kept := t.keptLandingSentence(); kept != "" {
-			t.releaseKeptLocked()
-			// refusedNothing: the landing was not refused, it was HONOURED. The
-			// work is committed on its branch and the person has been told which
-			// one — a refusal here would put a policy keep on the unsaved road
-			// (task_land_unsaved.go) and offer to try it again, which is the one
-			// thing that must not happen to a checkout codeaf will not write.
-			return mergeKept, withReport(withReport(kept, stranded), leftBehindSentence(left, true)), nil, refusedNothing
-		}
+	if kept := t.keptInsteadOfMerged(); kept != "" {
+		t.releaseKeptLocked()
+		// refusedNothing: the landing was not refused, it was HONOURED. The
+		// work is committed on its branch and the person has been told which
+		// one — a refusal here would put a policy keep on the unsaved road
+		// (task_land_unsaved.go) and offer to try it again, which is the one
+		// thing that must not happen to a checkout codeaf will not write.
+		return mergeKept, withReport(withReport(kept, stranded), leftBehindSentence(left, true)), nil, refusedNothing
 	}
 	// AND THE MERGE IS THE CARRY-OR-REFUSE ONE (groundcarry.go). The ground a
 	// task was carved from is the ground it merges into: work of the person's own
@@ -8772,6 +8780,27 @@ func (t taskTree) comeHome(title string, wrote []string, sign gitSignature) (str
 		leftBehindSentence(left, false)), nil, refusedNothing
 }
 
+// keptInsteadOfMerged is the sentence for a branch that lands by being kept
+// rather than merged, and "" for one that is merged. It is asked once the
+// branch is committed and present in the ground repository, so keeping it
+// gives the person a durable result and gives the working copy back without
+// changing a byte of the checkout they are using.
+func (t taskTree) keptInsteadOfMerged() string {
+	// NOR ONE A PROGRAM'S RUN IS WORKING IN (programhold.go). A merge there
+	// lands under the program — stashing its unfinished edits, or put back by
+	// its own restore once it has submitted — while this row says it landed;
+	// kept, the work waits on its own branch for the run to end.
+	if hold, busy := programHoldNear(canonicalPath(t.root), ""); busy {
+		return "its branch " + t.branch + " was kept: " + hold.holder + ", is working in " + hold.where(t.root) +
+			" — bring it in when that run has ended"
+	}
+	// A TASK NEVER WRITES A PROTECTED, MOVED OR DETACHED CHECKOUT.
+	if t.landsInThePersonsRepository() {
+		return t.keptLandingSentence()
+	}
+	return ""
+}
+
 // landMirror brings a mirrored folder home: the files the node wrote, laid over
 // the ground BY NAME, and the ones it wrote and then deleted taken away again.
 //
@@ -8790,6 +8819,14 @@ func (t taskTree) comeHome(title string, wrote []string, sign gitSignature) (str
 func (t taskTree) landMirror(wrote []string) (string, string, []string, landingRefusal) {
 	if strings.TrimSpace(t.ground) == "" || strings.TrimSpace(t.dir) == "" {
 		return mergeInPlace, "", nil, refusedNothing
+	}
+	// A FOLDER A PROGRAM'S RUN HOLDS IS NOT LAID INTO (programhold.go): the
+	// program would count the files as its own, or put them back once it has
+	// submitted. Nothing is laid and the copy stays whole, a refusal a second
+	// answer gets past once that run has ended.
+	if refusal := programHoldRefusal(t.ground); refusal != "" {
+		return mergeAborted, "its work was not laid into " + t.ground + " and is kept in " + t.dir + ": " + refusal,
+			nil, refusedByTheWork
 	}
 	// AND IT DOES NOT WRITE OVER A FILE THAT CHANGED UNDER IT
 	// (task_mirror_manners.go). The mark is [mergeConflicted] because that is what
@@ -8902,11 +8939,11 @@ const (
 // while the merge is still in progress. An empty answer is a merge that failed
 // before it touched the index.
 func conflictedPaths(root string) []string {
-	out, err := git(root, "diff", "--name-only", "--diff-filter=U")
+	out, err := git(root, "diff", "--name-only", "-z", "--diff-filter=U")
 	if err != nil {
 		return nil
 	}
-	return nonEmptyLines(out)
+	return gitNULPaths(out)
 }
 
 // abandonMerge takes the person's checkout back out of a merge, and it exists
@@ -8946,7 +8983,7 @@ func leftBehind(dir string) []string {
 			return paths
 		}
 	}
-	args := []string{"status", "--porcelain", "--untracked-files=all", "--", "."}
+	args := []string{"status", "--porcelain", "-z", "--untracked-files=all", "--", "."}
 	for _, dropping := range taskDroppingNames() {
 		args = append(args, ":(exclude)"+dropping)
 	}
@@ -8954,7 +8991,11 @@ func leftBehind(dir string) []string {
 	if err != nil {
 		return nil
 	}
-	return porcelainPaths(out)
+	var paths []string
+	for _, entry := range porcelainEntries(out) {
+		paths = append(paths, entry.Path)
+	}
+	return paths
 }
 
 const leftBehindRecord = "left-behind.json"
@@ -9166,15 +9207,13 @@ func unheldLedgerPaths(dir string, wrote []string) []string {
 	if len(paths) == 0 {
 		return nil
 	}
-	out, err := git(dir, append([]string{"status", "--porcelain", "--untracked-files=all", "--"}, paths...)...)
+	out, err := git(dir, append([]string{"status", "--porcelain", "-z", "--untracked-files=all", "--"}, paths...)...)
 	if err != nil {
 		return nil
 	}
 	var unheld []string
-	for _, line := range nonEmptyLines(out) {
-		if len(line) > 3 {
-			unheld = append(unheld, strings.TrimSpace(line[3:]))
-		}
+	for _, entry := range porcelainEntries(out) {
+		unheld = append(unheld, entry.Path)
 	}
 	return unheld
 }
@@ -9186,11 +9225,11 @@ func unheldLedgerPaths(dir string, wrote []string) []string {
 // otherwise the same one a node that only read gives — and its caller merges and
 // then removes the only other copy of the work on the strength of it.
 func stagedPaths(dir string) ([]string, string) {
-	out, err := git(dir, "diff", "--cached", "--name-only")
+	out, err := git(dir, "diff", "--cached", "--name-only", "-z")
 	if err != nil {
 		return nil, firstLine(out)
 	}
-	return nonEmptyLines(out), ""
+	return gitNULPaths(out), ""
 }
 
 // stagedDiffStat is the node's change AS A SHAPE: one line per file with how
@@ -9329,8 +9368,8 @@ func stageableWork(dir string, wrote []string) []string {
 }
 
 // beltTreeWork reads every change git sees in the working copy that the
-// ledger did not name — modified, added and untracked alike, one path per
-// line — and takes out the paths the harness itself writes, which are
+// ledger did not name — modified, added and untracked alike — and takes out
+// the paths the harness itself writes, which are
 // machinery and never the work. A belt worker's landing stages this whole
 // answer ([stageTaskWork]), so what a person gets on the branch is what the
 // shell did, and nothing else.
@@ -9341,12 +9380,13 @@ func stageableWork(dir string, wrote []string) []string {
 // folder or an ancestor of it — never a path inside the working copy git
 // could name.
 func beltTreeWork(dir string) []string {
-	out, err := git(dir, "status", "--porcelain", "--untracked-files=all", "--", ".")
+	out, err := git(dir, "status", "--porcelain", "-z", "--untracked-files=all", "--", ".")
 	if err != nil {
 		return nil
 	}
 	var paths []string
-	for _, path := range porcelainPaths(out) {
+	for _, entry := range porcelainEntries(out) {
+		path := entry.Path
 		// WHAT IS MACHINERY IS ANSWERED IN ONE PLACE ([harnessWrote]), by where
 		// the harness itself writes, and never by a name project files share: a
 		// `.lock` suffix here once kept every lockfile a run changed off the
@@ -9354,31 +9394,14 @@ func beltTreeWork(dir string) []string {
 		if harnessWrote(path) {
 			continue
 		}
-		paths = append(paths, literalPathspec+path)
-	}
-	return paths
-}
-
-// porcelainPaths reads the paths out of one `git status --porcelain` answer,
-// taken from the fixed columns rather than trimmed off the front: a porcelain
-// line is two status letters, a space, then the path, and a line that was
-// trimmed first has lost the status columns' own padding — the staged ' M
-// a/b.go' reads as 'M a/b.go', and the slice past the third column then cuts
-// the first character of the path. A rename carries both names and the one
-// that exists now is the second.
-func porcelainPaths(out string) []string {
-	var paths []string
-	for _, line := range strings.Split(out, "\n") {
-		if strings.TrimSpace(line) == "" || len(line) < 4 {
+		// AN UNTRACKED BUILD CACHE IS NOT THE WORK EITHER, and it is a
+		// separate, narrower question ([buildCache]): exact cache names, and
+		// only for a file git has never been told about. A tracked cache that
+		// changed, or one the worker staged itself, is not `??` and lands.
+		if entry.Code == "??" && buildCache(path) {
 			continue
 		}
-		path := strings.TrimSpace(line[3:])
-		if _, renamed, found := strings.Cut(path, " -> "); found {
-			path = renamed
-		}
-		if path = strings.Trim(path, `"`); path != "" {
-			paths = append(paths, path)
-		}
+		paths = append(paths, literalPathspec+path)
 	}
 	return paths
 }

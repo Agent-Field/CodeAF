@@ -18,6 +18,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/telemetry"
 	"github.com/Agent-Field/codeaf/internal/trace"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
 // telemetryConfiguredOff is the config's one answer to the ladder, read the
@@ -85,10 +86,25 @@ func telemetryBegin() telemetrySession {
 	// the sentence that asks permission to send, and a pipe that will never
 	// send has nobody to ask — and marking it shown would create the very
 	// directory this run promised not to write.
+	//
+	// A CHAT OWES IT TO THE SURFACE INSTEAD. A chat on a terminal is about to
+	// hand that terminal to a full-screen surface, and a notice printed here
+	// sat on the normal screen underneath it: read only after quitting, and
+	// marked seen from the moment it was printed, so the first exit sent the
+	// counts at the instant the notice first became visible. So a chat marks
+	// nothing here. It owes the notice, [runSurface] hands it to the surface,
+	// and the surface marks it once a frame has drawn it; a chat that never
+	// draws one (`--once`) prints it on the road it does take
+	// ([payTelemetryNoticeOnStderr]). Until the mark, [telemetry.Flush] sends
+	// nothing.
 	if telemetry.Enabled() && !telemetry.NoticeShown() && !telemetryHasJSON(args) &&
-		(mode == telemetry.ModeTask || stderrIsTerminal()) {
-		telemetry.PrintNotice()
-		telemetry.MarkNoticeShown()
+		(mode == telemetry.ModeTask || noticeTerminal()) {
+		if mode == telemetry.ModeChat {
+			telemetryNoticeOwed = true
+		} else {
+			telemetry.PrintNotice()
+			telemetry.MarkNoticeShown()
+		}
 	}
 	// Both opening events go through SpoolSync, not the fire-and-forget Spool:
 	// first_run must be on disk before session_started even exists, and a run's
@@ -238,6 +254,40 @@ func telemetryStopReason(code int) string {
 // of the ladder's own — but the notice's rule is narrower than that, because
 // `codeaf do 2>/dev/null` in a person's own script is not CI and still must
 // not spend the one line the person will never read.
+// noticeTerminal is [stderrIsTerminal] as the notice asks it, a seam so a test
+// can stand a terminal behind a process whose stderr is a pipe.
+var noticeTerminal = stderrIsTerminal
+
+// telemetryNoticeOwed says this chat's notice is owed to the surface rather
+// than printed: set at the start ([telemetryBegin]) and paid by the frame that
+// draws it ([runSurface]).
+var telemetryNoticeOwed bool
+
+// payTelemetryNoticeOnStderr prints an owed notice on a chat road that draws no
+// surface — `--once` writes its answer to the terminal as plain lines, so the
+// notice printed ahead of it is read ahead of it — and marks it seen.
+func payTelemetryNoticeOnStderr() {
+	if !telemetryNoticeOwed {
+		return
+	}
+	telemetryNoticeOwed = false
+	telemetry.PrintNotice()
+	telemetry.MarkNoticeShown()
+}
+
+// telemetryNoticeForSurface lays an owed notice on the surface's options: the
+// exact text, and the mark the surface calls after the frame that drew it.
+func telemetryNoticeForSurface(options *tui3.Options) {
+	if !telemetryNoticeOwed {
+		return
+	}
+	options.TelemetryNotice = telemetry.Notice
+	options.TelemetryNoticeShown = func() {
+		telemetryNoticeOwed = false
+		telemetry.MarkNoticeShown()
+	}
+}
+
 func stderrIsTerminal() bool {
 	return stdinIsTerminal(os.Stderr)
 }

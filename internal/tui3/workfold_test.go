@@ -214,3 +214,46 @@ func TestWorkfoldNeverHidesNewsAboutAPersonsOwnRow(t *testing.T) {
 		t.Fatalf("an ordinary note stopped the chip forming at all: %#v", got)
 	}
 }
+
+// AN APPROVAL CARD STANDS, AND THE WORK ABOVE IT STAYS FOLDED. A turn that ended
+// on `/senior-dev`'s proposal card used to derive no fold at all, so every
+// thought and call of the turn unfolded the moment the card arrived: a
+// screenful of machinery exactly when the person had one question to answer.
+// The work before the card folds behind a chip that stops at the card; the
+// card itself and the answer after it are drawn.
+func TestAnApprovalCardDoesNotUnfoldTheWorkAboveIt(t *testing.T) {
+	base := time.Unix(100, 0)
+	es := []entry{
+		{kind: entryUser, text: "solve it with senior-dev", turn: 1},
+		{kind: entryThinking, text: "reading the task", turn: 1, open: true, settled: true, began: base, ended: base.Add(4 * time.Second)},
+		{kind: entryAssistant, text: "I found the task; reading its contract.", turn: 1, settled: true},
+		{kind: entryTool, tool: "read", turn: 1, status: toolOK, began: base.Add(4 * time.Second), ended: base.Add(5 * time.Second)},
+		{kind: entryThinking, text: "writing the brief", turn: 1, open: true, settled: true, began: base.Add(5 * time.Second), ended: base.Add(9 * time.Second)},
+		{kind: entryTool, tool: "propose_task", turn: 1, status: toolOK},
+		{kind: entryTask, text: "Solve true-myth", turn: 1},
+		{kind: entryAssistant, text: "senior-dev will take it once you approve.", turn: 1, settled: true},
+	}
+	folds := deriveWorkfolds(es, 0)
+	covered := map[int]bool{}
+	for _, f := range folds {
+		for i := f.start; i < f.answer; i++ {
+			covered[i] = true
+		}
+	}
+	for _, i := range []int{1, 3, 4, 5} {
+		if !covered[i] {
+			t.Fatalf("row %d (kind %d) above the card is not folded: %+v", i, es[i].kind, folds)
+		}
+	}
+	if covered[6] {
+		t.Fatal("the approval card was folded away")
+	}
+	if covered[7] {
+		t.Fatal("the answer after the card was folded away")
+	}
+	// AND WHILE THE TURN IS STILL RUNNING nothing here folds it: the live
+	// policy owns a running turn (livesteps.go).
+	if got := deriveWorkfolds(es, 1); len(got) != 0 {
+		t.Fatalf("a running turn derived settled folds: %+v", got)
+	}
+}

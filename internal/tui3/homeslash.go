@@ -183,6 +183,11 @@ const (
 // always did — `there is no command called /x · / lists them`, on home's line.
 func homeFate(word, rest string) string {
 	rest = strings.TrimSpace(rest)
+	// A PROGRAM'S ROW IS `/task` WITH THE WORKER CHOSEN (delegate.go), and it
+	// needs what a /task with a brief needs: a conversation to start in.
+	if isDelegateCommand(strings.ToLower(strings.TrimPrefix(word, "/"))) {
+		return fateNeedsChat
+	}
 	switch canonicalCommand(strings.ToLower(strings.TrimPrefix(word, "/"))) {
 	case "model":
 		return fateTargetModel

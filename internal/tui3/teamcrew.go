@@ -236,6 +236,7 @@ func (a *app) teamsHeader(d *teamsDraw, t team, width, y int) string {
 		dropSpend = 900
 		dropChip  = 800 // minus the chip's place, so the last chip goes first
 		dropBoss  = 100
+		dropWrap  = 200
 	)
 	if !t.Closed() {
 		crew := a.teamsCrew(t)
@@ -293,6 +294,11 @@ func (a *app) teamsHeader(d *teamsDraw, t team, width, y int) string {
 	}
 	if spend != "" {
 		pieces = append(pieces, teamsHeadPiece{s: pal.dim(spend), w: ansi.StringWidth(spend), drop: dropSpend})
+	}
+	// A WRAP-UP'S TIME LEFT outlasts the spend and the members on a narrow
+	// line: it is the one fact here with a deadline behind it (teamwrapclock.go).
+	if wrap := a.teamWrapWords(t, a.now()); wrap != "" {
+		pieces = append(pieces, teamsHeadPiece{s: pal.warn(wrap), w: ansi.StringWidth(wrap), drop: dropWrap})
 	}
 	// WHAT FITS. The name and the buttons are the floor; the pieces are added
 	// back from the one a narrow line keeps longest.

@@ -221,3 +221,21 @@ func TestTheWrapUpDoorsCrossHostOnlyWhenTheEngineSaysSo(t *testing.T) {
 		t.Fatal("an engine without the wrap-up doors was handed them, or lost the others")
 	}
 }
+
+// Contract 6.2: The host wire never lends the laptop a closed team's packet files.
+func TestHostTeamsKeepsClosedHistoryOffTheWire(t *testing.T) {
+	loop, err := remote.Loopback(remote.Hello{Version: remote.Version}, remote.Options{Boot: func(remote.Hello) (*remote.Engine, error) {
+		return &remote.Engine{Agent: &quietAgent{}, ProfileDir: t.TempDir()}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = loop.Close() })
+	welcome := loop.Client.Welcome()
+	if !welcome.Teams || !welcome.Delegation || !welcome.WrapUp {
+		t.Fatalf("the engine welcome has no complete teams road: %+v", welcome)
+	}
+	if seam := hostTeamsSeam(hostFar{client: loop.Client}, welcome); seam.History != nil {
+		t.Fatal("the host seam offered to read closed history from this laptop")
+	}
+}

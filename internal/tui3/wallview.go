@@ -860,6 +860,20 @@ func wallMetaLine(pal palette, g wallGlyphs, v wallView, t wallTile, w int) stri
 	if ansi.StringWidth(s) > w {
 		s = ansi.Truncate(s, w, g.more)
 	}
+	// WHAT IT SPENT ENDS THE LINE, in the status line's own spelling, and
+	// GIVES WAY WHOLE to the state words when both do not fit with two cells
+	// between them: what the conversation is doing is the line's reason.
+	if t.spent > 0 {
+		money := dollars(t.spent)
+		sw, mw := ansi.StringWidth(s), ansi.StringWidth(money)
+		gap := 2
+		if sw == 0 {
+			gap = 0
+		}
+		if sw+gap+mw <= w {
+			s += strings.Repeat(" ", w-sw-mw) + pal.dim(money)
+		}
+	}
 	return s
 }
 

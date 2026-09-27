@@ -350,7 +350,9 @@ func (a *app) teamEdit(change func(f *teamstore.File) error) error {
 	// A Traffic read already out may carry the file from before this write;
 	// counting the edit keeps it from being put back (teamtraffic.go).
 	a.traffic.edits++
+	a.teamsDisk.seq++
 	a.teamsDisk.queue = append(a.teamsDisk.queue, change)
+	a.teamsDisk.queueSeq = append(a.teamsDisk.queueSeq, a.teamsDisk.seq)
 	return nil
 }
 

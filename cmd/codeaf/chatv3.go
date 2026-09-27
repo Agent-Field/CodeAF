@@ -347,6 +347,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	chosen, cfg := launch.Model, launch.Config
 
 	if text := strings.TrimSpace(*once); text != "" {
+		// A --once chat draws no surface, so an owed usage notice is printed
+		// here, ahead of the answer it would otherwise never be seen beside.
+		payTelemetryNoticeOnStderr()
 		// Nobody is watching a --once run, so nobody can answer a question. The
 		// policy's "prompt" therefore refuses the call with a result the model
 		// can act on (internal/session's consent.go), and a person who wants
@@ -938,7 +941,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// engine's own nothing. The ask is built once and a client is made from it
 	// per call, each billed to the judge's own seat.
 	taskLanded := poolJudgeHook(settings, settings.ProfileDir, workspace,
-		config.CrewCatalog, poolJudgeAsk(settings, settings.ProfileDir), time.Now, "task")
+		config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now, "task")
 	// The runs a live process would have judged but a process death left unjudged,
 	// and the headless doors that never had this hook: at start, on a goroutine
 	// nobody waits on, judge the resumed session's own final-state nodes and the
@@ -946,7 +949,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// process tracker cancels and joins it at close.
 	poolErrandGoCtx(settings.ProfileDir, "pool/judge-sweep", func(ctx context.Context) {
 		poolJudgeSweepRun(ctx, settings, settings.ProfileDir, found.Place.Tasks(),
-			config.CrewCatalog, poolJudgeAsk(settings, settings.ProfileDir), time.Now)
+			config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now)
 	})
 
 	cfg := session.Config{
@@ -1071,6 +1074,9 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		SubharnessMemory:    subharnesses.Memory,
 		SubharnessLastRun:   subharnesses.LastRun,
 		SubharnessRecordRun: subharnesses.Record,
+		// AND THE PROGRAMS THIS BUILD CARRIES that a task can be handed to
+		// whole (chatv3_delegate.go). Empty is none, on the terms above.
+		Delegates: v3Delegates(),
 		// The hand that paints, and the model it asks (internal/session's
 		// tools_image.go). The pair is CONDITIONAL on the other side — a nil
 		// client leaves generate_image off the belt entirely — so this is

@@ -97,7 +97,7 @@ and under it the crew line:
 
 ```
 models: worker z-ai/glm-5.3-flash (routed) · planner z-ai/glm-5.3-flash (routed) · checker moonshotai/kimi-k3 (pinned)
-crew: bugfix · worker glm-5.3-flash (openrouter) · checker 📌 kimi-k3 · est $0.023
+crew: bugfix · worker glm-5.3-flash (openrouter) · checker kimi-k3 (pinned) · est $0.023
 ```
 
 `codeaf do --json` carries the same facts as `model`, `plan_model`, `check_model`,

@@ -446,6 +446,55 @@ func TestAWatchingSurfaceIsRefusedEveryDoorThatChangesAnything(t *testing.T) {
 	}
 }
 
+// A READING SURFACE MAY READ ONE TASK'S STORED PAGE AND NONE OF ITS VERBS. A
+// program's task writes no worker journal, so the page another window opens
+// onto it reads the task's page in the owner's store instead
+// (internal/tui3's taskowner.go). The page's verbs — a note, a pause, a stop —
+// act on the owner's work and stay refused. And the read is bound to the
+// conversation the reader joined, as the journal is: once the owner opens
+// something else, it is told rather than handed the replacement's task.
+func TestAReadingSurfaceReadsAProgramsPageAndNoneOfItsVerbs(t *testing.T) {
+	first := &fakeAgent{model: "a/b", title: "the one being read"}
+	second := &fakeAgent{model: "a/b", title: "something else"}
+	engine := engineOn(first)
+	engine.Fresh = func() (WrappedAgent, string, error) { return second, "/sessions/two.jsonl", nil }
+	sess := NewSession(engine, true)
+
+	owner := dialSession(t, sess)
+	owner.hello(Hello{Version: Version, Surface: "macbook"})
+	reader := dialSession(t, sess)
+	reader.hello(Hello{
+		Version: Version, Surface: "reader",
+		Session: engine.SessionFile, Join: true, Watch: true,
+	})
+
+	if frame := reader.call(1, MethodPlanTaskPage, PlanTaskPageArgs{ID: "7"}); frame.Error != "" {
+		t.Fatalf("the reader was refused a program's page: %v", frame.Error)
+	}
+	for id, call := range []struct {
+		method  string
+		payload any
+	}{
+		{MethodPlanNote, PlanTextArgs{ID: "7", Text: "go faster"}},
+		{MethodPlanPause, PlanTaskArgs{ID: "7"}},
+		{MethodPlanCancel, PlanTaskArgs{ID: "7"}},
+	} {
+		frame := reader.call(uint64(id+10), call.method, call.payload)
+		if !strings.Contains(frame.Error, watchingWord) {
+			t.Fatalf("%s on a reading surface answered %q, want the reader's own refusal", call.method, frame.Error)
+		}
+	}
+	if len(first.planSteers) != 0 {
+		t.Fatalf("a reading surface acted on the owner's work: %v", first.planSteers)
+	}
+
+	owner.ok(20, MethodSessionNew, nil)
+	frame := reader.call(21, MethodPlanTaskPage, PlanTaskPageArgs{ID: "7"})
+	if !strings.Contains(frame.Error, "not open here any more") {
+		t.Fatalf("after the owner opened something else the reader's page read answered %q, want the sentence its page acts on", frame.Error)
+	}
+}
+
 // ── the client half ─────────────────────────────────────────────────────────
 
 // The real client against the real engine over an in-memory pipe: what a

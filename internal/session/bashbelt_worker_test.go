@@ -184,3 +184,21 @@ func TestBashWorkerPageRequiresChecksForDelegatedTasks(t *testing.T) {
 		t.Fatalf("the worker page permits a delegated task without Checks:\n%s", doc)
 	}
 }
+
+// THE WORKER CLEANS UP ITS OWN SCRATCH BEFORE IT REPORTS DONE (contract 5e). A
+// run's landing commits what the copy holds, and a worker that compared its fix
+// against the commit by copying calc.py to calc_work.py inside the copy put that
+// copy on the person's branch. The page names the deletion owed before
+// `plandb done`, in the few bytes the belt's prompt law leaves it.
+func TestBashWorkerPageSaysToDeleteScratchBeforeDone(t *testing.T) {
+	// The page is wrapped for reading, so a sentence is compared with its
+	// line breaks folded to the spaces they stand for.
+	doc := strings.Join(strings.Fields(bashWorkerPage()), " ")
+	for _, want := range []string{
+		"Delete every scratch file you made in your copy before `plandb done`: it would land.",
+	} {
+		if !strings.Contains(doc, want) {
+			t.Fatalf("the worker page does not say %q:\n%s", want, doc)
+		}
+	}
+}

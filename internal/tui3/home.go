@@ -2309,12 +2309,20 @@ func (h *homeView) focusedLine() (homeLine, bool) {
 	return h.lines[h.cursor], true
 }
 
-// previewLine is the single selected row, shared by the card and its actions.
-// Mouse navigation moves this cursor too; a stale hover never chooses a verb.
-func (h *homeView) previewLine() (homeLine, bool) { return h.focusedLine() }
+// previewLine is the row the card and its actions answer. A typed search keeps
+// the keyboard cursor while the pointer temporarily previews another match.
+func (h *homeView) previewLine() (homeLine, bool) {
+	if h.searching() && h.hover >= 0 && h.hover < len(h.lines) && h.lines[h.hover].stop() {
+		return h.lines[h.hover], true
+	}
+	return h.focusedLine()
+}
 
-// previewAt is the selected line number for readers that need its position.
+// previewAt is the previewed line number for readers that need its position.
 func (h *homeView) previewAt() int {
+	if h.searching() && h.hover >= 0 && h.hover < len(h.lines) && h.lines[h.hover].stop() {
+		return h.hover
+	}
 	if _, ok := h.focusedLine(); !ok {
 		return homeNoLine
 	}
@@ -4324,7 +4332,12 @@ func (a *app) homeHover(x, y int) tea.Cmd {
 		}
 		if at >= 0 && at < len(a.home.lines) && a.home.lines[at].stop() {
 			a.home.hover = at
-			a.selectPlaceRow(&a.home.cursor, at)
+			// A SEARCH'S POINTER IS A TEMPORARY PREVIEW. Leaving the match
+			// gives the card back to the keyboard cursor, so motion must not
+			// move that cursor while the drop-up is open.
+			if !a.home.searching() {
+				a.selectPlaceRow(&a.home.cursor, at)
+			}
 		}
 	}
 	if a.home.hover != was {
@@ -5406,14 +5419,11 @@ func homeBands(bands [][]string, room int) []string {
 // is three absences dressed as three facts — so each part appears only when
 // there is something to say, and a footer with nothing to say is not drawn.
 //
-// THE SUM IS THE TALKING PLUS THE WORK IT COMMISSIONED, and it is added up
-// here because it is written down in two places for two good reasons. The
-// conversation's own turns are stamped on its meta.json by the session that
-// held them ([session.SessionRow.Spend]); every task it started is a row of the
-// project's index with its own bill ([session.TaskRollup.Spend]). A person
-// looking at a card does not have that distinction in their head — they asked
-// what this conversation cost — so the card answers with one figure, and the
-// two halves stay separate everywhere they are recorded.
+// THE FIGURE IS THE TALKING AND THE WORK IT COMMISSIONED, read from the two
+// places it is written down ([conversationSpend] says how they are joined). A
+// person looking at a card asked what this conversation cost, so the card
+// answers with one figure, and the two records stay separate everywhere they
+// are kept.
 //
 // AND THE FILES ARE HERE TOO, because nothing else on the card carries them and
 // it is the most physical number the index holds: tokens are what the work
@@ -5423,10 +5433,10 @@ func homeFacts(row session.SessionRow, now time.Time) string {
 	if files := homeFilesTouched(row); files > 0 {
 		parts = append(parts, "touched "+itoa(files)+plural(" file", files))
 	}
-	if spend := row.Spend + row.Tasks.Spend; spend > 0 {
+	if spend := conversationSpend(row); spend > 0 {
 		parts = append(parts, "spent "+dollars(spend))
 	}
-	if tokens := row.Tokens + row.Tasks.Tokens; tokens > 0 {
+	if tokens := conversationTokens(row); tokens > 0 {
 		parts = append(parts, tokenWord(tokens)+" tokens")
 	}
 	// The later of "somebody spoke" and "work landed": both are this
@@ -5439,6 +5449,30 @@ func homeFacts(row session.SessionRow, now time.Time) string {
 		parts = append(parts, "last active "+age)
 	}
 	return strings.Join(parts, " · ")
+}
+
+// conversationSpend is what one conversation cost, from the two places it is
+// written down: the books the session stamps on its meta.json
+// ([session.SessionRow.Spend]) and the bills on its rows in the project's index
+// ([session.TaskRollup.Spend]).
+//
+// IT IS THE LARGER OF THE TWO AND NEVER THEIR SUM, for the reason the live
+// surface's [app.spendShown] is. The books already hold every run and every
+// closed task this conversation folded in, and the session stamps them the
+// moment the fold lands (internal/session's driveBeltRun and foldTaskUsage), so
+// adding the index's bills on top counted that work twice: a conversation whose
+// only spend was a $2.30 senior-dev run read `spent $4.60`. The index is ahead
+// only while work is still running and has not folded yet, and then its figure
+// is the truer one.
+func conversationSpend(row session.SessionRow) float64 {
+	return max(row.Spend, row.Tasks.Spend)
+}
+
+// conversationTokens is [conversationSpend]'s rule for tokens, for its reason:
+// a closed task's tokens are folded into the books with its dollars, and its
+// index row carries them again.
+func conversationTokens(row session.SessionRow) int {
+	return max(row.Tokens, row.Tasks.Tokens)
 }
 
 // homeHolding says whether a window has this conversation open right now and

@@ -207,7 +207,7 @@ func TestCrewJourneyCap(t *testing.T) {
 		t.Fatalf("setting the cap took %d steps", j.count)
 	}
 	t.Logf("set cap: %d steps", j.count)
-	if row := crewLineWith(t, crewScreen(a), "cap"); !strings.Contains(row, "per task $5 · daily $5.00") {
+	if row := crewLineWith(t, crewScreen(a), "cap"); !strings.Contains(row, "per task $5 · crew daily cap $5.00") {
 		t.Fatalf("the cap row reads %q", row)
 	}
 
@@ -237,7 +237,7 @@ func TestCrewJourneyTaskCap(t *testing.T) {
 	j := &crewJourney{t: t, a: a}
 	j.open()
 	j.keys("down", "down", "down", "down", "down")
-	if row := crewLineWith(t, crewScreen(a), "cap"); !strings.Contains(row, "per task $5 · daily none") {
+	if row := crewLineWith(t, crewScreen(a), "cap"); !strings.Contains(row, "per task $5 · crew daily cap none") {
 		t.Fatalf("the cap row reads %q", row)
 	}
 	j.keys("enter", "tab")
@@ -253,7 +253,7 @@ func TestCrewJourneyTaskCap(t *testing.T) {
 	if got := config.CrewCapAt(dir); got != 0 {
 		t.Fatalf("setting the per-task limit moved the daily cap to %v", got)
 	}
-	if row := crewLineWith(t, crewScreen(a), "cap"); !strings.Contains(row, "per task $12 · daily none") {
+	if row := crewLineWith(t, crewScreen(a), "cap"); !strings.Contains(row, "per task $12 · crew daily cap none") {
 		t.Fatalf("the cap row reads %q", row)
 	}
 	j.keys("enter", "tab", "backspace", "backspace", "enter")
@@ -320,7 +320,7 @@ func TestCrewSeatListShapeAndRoutes(t *testing.T) {
 	if !strings.Contains(lines[2], a.icon(tokens.GRecommended)) || !strings.Contains(lines[2], "suggested") {
 		t.Fatalf("the suggestion is not second and marked:\n%s", strings.Join(lines, "\n"))
 	}
-	if row := crewLineWith(t, strings.Join(lines, "\n"), "kimi-k3"); !strings.Contains(row, "$3/$15") || !strings.Contains(row, "openrouter") {
+	if row := crewLineWith(t, strings.Join(lines, "\n"), "kimi-k3"); !strings.Contains(row, "$3/$15 per M") || !strings.Contains(row, "openrouter") {
 		t.Fatalf("a row does not say its price and provider: %q", row)
 	}
 	j.typed("kimi")
@@ -644,5 +644,25 @@ func TestTheCrewPanelDrawsNoPrivateUseMarks(t *testing.T) {
 	}
 	if !strings.Contains(screen, tokens.Plain.Glyph(tokens.GPinned)) || !strings.Contains(screen, tokens.Plain.Glyph(tokens.GSettled)) {
 		t.Errorf("the panel does not draw the plain pin and tick:\n%s", screen)
+	}
+}
+
+// TWO DAILY LIMITS, NAMED APART. The first-run screen offers a `Daily limit`
+// on everything codeaf spends; the crew has a daily cap of its own. A panel
+// that said `daily none` beside a day limited at $500 read as "no limit on the
+// day", so the cap row says whose cap it is and the panel says the daily limit
+// still applies, with its figure.
+func TestCrewPanelNamesTheCrewCapApartFromTheDailyLimit(t *testing.T) {
+	a, dir := crewLab(t)
+	if err := config.WriteDailyBudgetUSD(dir, 500); err != nil {
+		t.Fatal(err)
+	}
+	(&crewJourney{t: t, a: a}).open()
+	screen := crewScreen(a)
+	if row := crewLineWith(t, screen, "cap"); !strings.Contains(row, "crew daily cap none") {
+		t.Fatalf("the cap row does not name the crew's cap: %q", row)
+	}
+	if !strings.Contains(screen, "the daily limit, $500, still covers everything codeaf spends") {
+		t.Fatalf("the panel does not name the day's limit:\n%s", screen)
 	}
 }

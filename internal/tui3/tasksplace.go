@@ -336,7 +336,11 @@ func readTasks(world session.World, mine tasksMine, win session.UsageWindow, by 
 			Status: task.Task.State, SessionID: task.SessionID, StartedAt: task.Task.StartedAt,
 		}
 		key := tasksKeyOf(entry)
-		entry.Parent = held[key].entry.Parent
+		// THE FAMILY AND THE PROGRAM COME OFF THE INDEX ROW OF THE SAME WORK, where
+		// there is one: presence carries neither, and a row that dropped the
+		// program would open a page with no badge over a program's work
+		// ([taskGuestNode]).
+		entry.Parent, entry.Program = held[key].entry.Parent, held[key].entry.Program
 		put(key, tasksItem{
 			entry: entry, row: tasksRowFor(world, mine, entry), runs: true, away: true, window: task.Session,
 			here: mine.here[strings.TrimSpace(task.SessionID)],
@@ -1925,7 +1929,7 @@ func tasksChatRow(line tasksLine, width int, now time.Time, folder, tilde string
 	}
 	bullet := conversationBullet(pal, chat.working, chat.unread, chat.question, pal.glyph(tokens.GWorking))
 	lead := tasksBareLead + pal.dim(tasksTreeLead(line, width, pal)) + bullet + " "
-	return tasksTableRow(lead, ansi.StringWidth(lead), name,
+	return tasksTableRow(lead, ansi.StringWidth(lead), name, "",
 		tasksChatStateField(chat), tasksKeyField(by.key, line.rank, now),
 		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit, project, tasksFoldMark(line, pal))
 }
@@ -1964,7 +1968,7 @@ func tasksRow(line tasksLine, width int, now time.Time, by tasksSort, pal palett
 	if item.plan != nil && item.plan.Total > 0 {
 		label += "  " + planProgress(*item.plan, width, pal)
 	}
-	return tasksTableRow(lead, cells, label,
+	return tasksTableRow(lead, cells, label, item.entry.Program,
 		state, second,
 		tasksKeyInk(by.key, lit, pal), width, by.key, pal, lit, "", tasksFoldMark(line, pal))
 }
@@ -1997,6 +2001,11 @@ func tasksCardHead(item tasksItem, width int, pal palette, lit bool) string {
 	label := tasksLabel(item.entry)
 	if item.plan != nil && item.plan.Total > 0 {
 		label += "  " + planProgress(*item.plan, width, pal)
+	}
+	// A PROGRAM'S WORK WEARS ITS BADGE AFTER THE NAME, as its wide row does
+	// ([tasksTableRow]); an ordinary row is fitted exactly as it always was.
+	if program := strings.TrimSpace(item.entry.Program); program != "" {
+		return lead + pal.programTitled(label, program, room, func(s string) string { return placeSubject(s, lit, pal) })
 	}
 	return lead + placeSubject(fit(label, room), lit, pal)
 }

@@ -116,14 +116,16 @@ const (
 )
 
 // TeamNameArgs is the titles a group is named from, and how long the wall
-// will wait. Zero Budget is a caller with no deadline.
+// will wait. Zero Budget uses the engine's ceiling; a negative Budget has
+// already expired and never starts a model call.
 type TeamNameArgs struct {
 	Titles []string      `json:"titles"`
 	Budget time.Duration `json:"budget,omitempty"`
 }
 
 // TeamProposeArgs is everything one Organize ask is about, and how long the
-// wall will wait.
+// wall will wait. Zero uses the engine's ceiling, and a negative Budget has
+// already expired and never starts a model call.
 type TeamProposeArgs struct {
 	In     session.TeamProposalInput `json:"in"`
 	Budget time.Duration             `json:"budget,omitempty"`

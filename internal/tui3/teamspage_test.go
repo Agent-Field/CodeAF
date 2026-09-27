@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -310,7 +311,7 @@ func TestTeamsCardShowsProvenanceAndResets(t *testing.T) {
 		t.Fatal("the card did not open")
 	}
 	text := teamsFrameText(a)
-	for _, want := range []string{"from Settings", "from harbor", "$5.00 a day"} {
+	for _, want := range []string{"from Settings", "from harbor", "$5 a day"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the card lost %q:\n%s", want, text)
 		}
@@ -356,6 +357,43 @@ func TestTeamsCloseWithNothingRunningIsOneClickAndUndo(t *testing.T) {
 	drive(t, a, runCmd(a.teamsDo(teamsTargetOf(t, a, teamsActUndo, "")))...)
 	if got, _ := a.teamByID(orbit); got.Closed() {
 		t.Fatal("Undo did not reopen orbit")
+	}
+}
+
+func TestTeamsCloseCountsAndStopsASubteamManagerSharedWithItsParent(t *testing.T) {
+	a, harbor, orbit := teamsPlaceLabIDs(t)
+	var shared chatTab
+	for _, tab := range a.tabList() {
+		if tab.key != a.frontTabKey() {
+			if parent, ok := a.teamByID(harbor); ok && parent.Holds(tab.key) {
+				shared = tab
+				break
+			}
+		}
+	}
+	if shared.key == "" {
+		t.Fatal("no shared member in the fixture")
+	}
+	if err := a.teamAdd(orbit, []chatTab{shared}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.teamMakeManager(orbit, shared); err != nil {
+		t.Fatal(err)
+	}
+	member := &fakeAgent{model: "m"}
+	watch := &behindWatch{}
+	watch.turning.Store(true)
+	a.behind[shared.key] = &kept{conv: Conversation{Agent: member, SessionFile: shared.file}, watch: watch}
+	drive(t, a, runCmd(a.teamsCloseAsk(orbit))...)
+	if !a.tsheet.on || a.tsheet.cursor != tsWrapUp {
+		t.Fatalf("the working sub-team manager was skipped: %+v", a.tsheet)
+	}
+	if text := teamsFrameText(a); !strings.Contains(text, a.teamManagerMark()+" manager") {
+		t.Fatalf("the card does not name the working manager:\n%s", text)
+	}
+	drive(t, a, runCmd(a.teamSheetDo(tsCloseNow))...)
+	if member.stops != 1 || a.tabShut[shared.key] {
+		t.Fatalf("Close now stopped %d turns and shut the parent's tab=%v", member.stops, a.tabShut[shared.key])
 	}
 }
 
@@ -423,6 +461,78 @@ func TestTeamsClosedFoldReopensWithItsParent(t *testing.T) {
 		if got, _ := a.teamByID(id); got.Closed() {
 			t.Fatalf("%s is still closed", got.Name)
 		}
+	}
+}
+
+// Contract 6.1: A linked local team with a history door draws its closing report in the closed pane.
+func TestLinkedLocalClosedTeamDrawsItsReport(t *testing.T) {
+	a, harbor, _ := teamsPlaceLabIDs(t)
+	p := teamstore.Packet{ID: "closing-report", Team: teamstore.Person, Origin: harbor,
+		Kind: teamstore.PacketClosing, Report: &teamstore.ClosingReport{
+			Done: "the parser", Left: "the docs", Files: []string{"parser.go"}, SpendUSD: 1.5,
+		}}
+	if err := a.teamEdit(func(f *teamstore.File) error { return f.Close(harbor, a.now(), p.ID) }); err != nil {
+		t.Fatal(err)
+	}
+	door := localTeams(a.profileDir, &a.teamsDisk.watch)
+	door.History = func(team string) ([]teamstore.Packet, error) {
+		if team == harbor {
+			return []teamstore.Packet{p}, nil
+		}
+		return nil, nil
+	}
+	a.teamsDisk.door = door
+	drive(t, a, runCmd(a.teamsRead(true))...)
+	drive(t, a, runCmd(a.teamsDo(teamsTargetOf(t, a, teamsActClosedFold, "")))...)
+	drive(t, a, runCmd(a.teamsSelect(harbor))...)
+	text := teamsFrameText(a)
+	for _, want := range []string{"closing report", "done", "the parser", "left", "the docs", "files", "parser.go", "spent", "$1.50"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the local closed pane lost %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "not readable over this connection") {
+		t.Fatalf("the local pane claimed its report could not be read:\n%s", text)
+	}
+}
+
+// Contract 4.3: The header, packet card, team card and Settings row agree on a sub-cent cap.
+func TestTeamSurfacesSpellSubCentCapTheSameWay(t *testing.T) {
+	a, harbor, _ := teamsPlaceLabIDs(t)
+	cap := 0.001
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		return f.SetSettings(harbor, func(s *teamstore.Settings) { s.CapUSDDay = &cap })
+	}); err != nil {
+		t.Fatal(err)
+	}
+	a.tp.defaultsOK = true
+	a.tp.spend = map[string]teamstore.Spend{harbor: {USD: cap}}
+	team, ok := a.teamByID(harbor)
+	if !ok {
+		t.Fatal("no team")
+	}
+	if words := a.teamsSpendWords(team); !strings.Contains(words, "$0.001 of $0.001 today") {
+		t.Fatalf("header cap: %q", words)
+	}
+	p := teamstore.Packet{ID: "cap", Team: teamstore.Person, Origin: harbor, Kind: teamstore.PacketCap,
+		Question: "harbor reached its $0.001 cap today", Cap: &teamstore.CapFacts{Team: harbor, CapUSD: cap, SpentUSD: cap},
+		Options: []teamstore.Option{{ID: teamstore.OptionRaiseCap, Label: "Raise to $0.002", Consequence: "continue"}}}
+	card := plain(strings.Join(a.teamsCard(&teamsDraw{a: a}, p, 80, 0), "\n"))
+	if !strings.Contains(card, "spent $0.001 of $0.001 today") {
+		t.Fatalf("cap packet card: %s", card)
+	}
+	var settingsCard string
+	for _, row := range a.teamSheetRows(team) {
+		if row.code == tsCap {
+			settingsCard = row.value
+		}
+	}
+	if settingsCard != "$0.001 a day" {
+		t.Fatalf("team settings card: %q", settingsCard)
+	}
+	a.sheet.farTeams = &teamstore.Defaults{CapUSDDay: cap}
+	if settings, ok := a.sheet.farTeamValue(config.KeyTeamsCapUSDDay); !ok || settings != "$0.001" {
+		t.Fatalf("Settings Teams row: %q, %v", settings, ok)
 	}
 }
 
@@ -629,7 +739,7 @@ func TestTeamsCapPacketSaysItsFiguresAndRaisingWritesNoSetting(t *testing.T) {
 	}
 	drive(t, a, runCmd(a.teamsRead(false))...)
 	text := teamsFrameText(a)
-	for _, want := range []string{"spent $5.20 of $5.00 today", "Raise to $10", "Stop for today"} {
+	for _, want := range []string{"spent $5.20 of $5 today", "Raise to $10", "Stop for today"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the cap card lost %q:\n%s", want, text)
 		}

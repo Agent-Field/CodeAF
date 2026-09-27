@@ -360,6 +360,11 @@ func LoadKeyless() (Config, error) { return load(false) }
 // though NewSettings(...).Rows() does not list them.
 var nonSettingProfileFields = []string{
 	KeySetupSeen,
+	// The talk lane's borrow row sits beside its lane row and is read by
+	// [LaneBorrowAt], but it is set from the lane page and not from a settings
+	// row of its own. Missing here, every profile the lane page had written
+	// was told at launch that a key codeaf reads was unread.
+	LaneBorrowKey(LaneSlotTalk),
 	KeySplitPct,
 	KeyStandingBackground,
 	KeyResponseAttempts,
@@ -383,6 +388,11 @@ var nonSettingProfileFields = []string{
 	// turns on and off.
 	KeyCrewFreeRoutes,
 	KeyCrewProvidersOff,
+	// Route pins are read beside the model-only tier rows and have no
+	// settings row of their own, so the unread-key notice must know them.
+	KeyCrewRouteWorker,
+	KeyCrewRoutePlanner,
+	KeyCrewRouteChecker,
 }
 
 // retiredProfileKeys are top-level config.json keys that a shipped version once
