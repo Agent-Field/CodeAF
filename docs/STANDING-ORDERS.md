@@ -70,7 +70,10 @@ opened — words as the epigraph, brief as the mechanism.
 
 **D3 — Grant.** One prose sentence on `Item`: what acting on this order may do
 without asking. Empty means say-only (every pre-existing item). Wave 1 stores
-and displays it; wave 3's judgment is bounded by it.
+and displays it; wave 3's judgment is bounded by it. Firings granted permission
+to work on a branch or open pull requests without merging execute inside a
+dedicated worktree on an isolated branch, verifying git ref state before and
+after execution so that host checkout branches are never modified directly.
 
 **D4 — Exceptions.** `[]Exception` on `Item`, each naming exactly one
 workspace OR one session. Made by the person only, from either direction (the
