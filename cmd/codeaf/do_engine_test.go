@@ -149,6 +149,23 @@ func beltRunEnv(t *testing.T) string {
 	return home
 }
 
+// beltModelPins preserves the fixture's resource settings while changing the
+// seats a test intends to exercise. Replacing the profile wholesale would
+// silently re-enable the real machine gate on a busy test host (#1525).
+func beltModelPins(t *testing.T, profileDir string, pins map[string]string) {
+	t.Helper()
+	settings := config.NewSettings(config.SettingsOptions{ProfileDir: profileDir})
+	for key, value := range pins {
+		row, ok := settings.Row(key)
+		if !ok {
+			t.Fatalf("missing setting %s", key)
+		}
+		if err := row.Apply(value); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // beltPlandbDoor is the real plandb CLI behind the resolver's override, built
 // once for the package. THE LOOP ENDS IN THE STORE: a worker's task is done
 // when `plandb done` marks it so and no other way, so a scripted worker that
@@ -376,16 +393,10 @@ func TestDoOnTheRunEngineSeatsEveryLaunchOnTheDoorsModels(t *testing.T) {
 	if err := os.MkdirAll(profileDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := json.Marshal(map[string]string{
+	beltModelPins(t, profileDir, map[string]string{
 		config.KeyTierWorkerModel:     "vendor/profile-worker",
 		config.KeyTierMastermindModel: "vendor/profile-thinking",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(config.BudgetConfigPath(profileDir), rows, 0o600); err != nil {
-		t.Fatal(err)
-	}
 
 	workspace := beltRepoWorkspace(t)
 	const (
@@ -433,7 +444,7 @@ func TestDoOnTheRunEngineSeatsEveryLaunchOnTheDoorsModels(t *testing.T) {
 	}
 
 	var stdout, stderr strings.Builder
-	err = doErrand(doRequest{
+	err := doErrand(doRequest{
 		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
 		timeout: 60 * time.Second, slots: bound(1), model: workModel, planModel: planModel, checkModel: planModel,
 		stdout: &stdout, stderr: &stderr, newBeltCompleter: newBelt,
@@ -668,18 +679,12 @@ func TestDoOnTheRunEngineSeatsACheckOnTheCheckModel(t *testing.T) {
 	if err := os.MkdirAll(profileDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := json.Marshal(map[string]string{
+	beltModelPins(t, profileDir, map[string]string{
 		config.KeyTierLowModel:        "vendor/profile-small",
 		config.KeyTierWorkerModel:     "vendor/profile-worker",
 		config.KeyTierHighModel:       "vendor/profile-careful",
 		config.KeyTierMastermindModel: "vendor/profile-thinking",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(config.BudgetConfigPath(profileDir), rows, 0o600); err != nil {
-		t.Fatal(err)
-	}
 
 	workspace := beltRepoWorkspace(t)
 	const (
@@ -722,7 +727,7 @@ func TestDoOnTheRunEngineSeatsACheckOnTheCheckModel(t *testing.T) {
 	}
 
 	var stdout, stderr strings.Builder
-	err = doErrand(doRequest{
+	err := doErrand(doRequest{
 		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
 		timeout: 60 * time.Second, slots: bound(1),
 		model: workModel, planModel: planModel, checkModel: checkModel,
@@ -767,17 +772,11 @@ func TestDoOnTheRunEngineSeatsAnUnpinnedCheckOnTheCrewsChecker(t *testing.T) {
 	if err := os.MkdirAll(profileDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := json.Marshal(map[string]string{
+	beltModelPins(t, profileDir, map[string]string{
 		config.KeyTierWorkerModel:     "vendor/profile-worker",
 		config.KeyTierHighModel:       "vendor/profile-careful",
 		config.KeyTierMastermindModel: "vendor/profile-thinking",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(config.BudgetConfigPath(profileDir), rows, 0o600); err != nil {
-		t.Fatal(err)
-	}
 
 	workspace := beltRepoWorkspace(t)
 	// The same one-seat shape as the two tests above.
@@ -813,7 +812,7 @@ func TestDoOnTheRunEngineSeatsAnUnpinnedCheckOnTheCrewsChecker(t *testing.T) {
 	}
 
 	var stdout, stderr strings.Builder
-	err = doErrand(doRequest{
+	err := doErrand(doRequest{
 		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
 		timeout: 60 * time.Second, slots: bound(1),
 		stdout: &stdout, stderr: &stderr, newBeltCompleter: newBelt,
