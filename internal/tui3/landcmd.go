@@ -57,12 +57,6 @@ const landRemoteWord = "putting changes into a folder is not available over --ho
 // which folder their edits have been going into all along.
 const landNothingWord = "nothing is waiting · what this conversation writes in the folder it is standing in is already there"
 
-// landNoteMsg is one finished landing's answer, written as the line to show.
-// The landing runs git — a commit, a merge, sometimes a copy of a whole folder
-// — so it goes off the loop and the answer arrives here, exactly as a cache
-// errand's does.
-type landNoteMsg struct{ line string }
-
 // waitingChanges is what has been written and not put in yet, or nothing. It is
 // the ONE reading — the row above the box, the command's own answer and its
 // refusals all ask this and never the session twice in two ways.
@@ -142,32 +136,43 @@ func (a *app) runLandCommand(rest string) tea.Cmd {
 		a.note("changes are waiting for " + strings.Join(names, " and ") + " · say which one · /land " + names[0])
 		return nil
 	}
-	if !now {
-		a.note(a.landPreview(waiting, folder))
-		return nil
-	}
-	return func() tea.Msg { return landNoteMsg{line: landed(door.Land(folder))} }
-}
-
-// landPreview is what /land says before anything moves: the folder, the count,
-// and the first few files by name.
-func (a *app) landPreview(waiting []session.StandingChange, folder string) string {
 	chosen := waiting[0]
 	for _, change := range waiting {
 		if folder != "" && (change.Name == folder || change.Folder == folder) {
 			chosen = change
 		}
 	}
-	files := ""
-	if door, ok := a.agent.(interface {
-		LandingFor(string) (session.FolderLanding, bool)
-	}); ok {
-		if landing, held := door.LandingFor(chosen.Folder); held {
-			files = " · " + namedFiles(landing.Files)
+	// Both gestures reach the owning session, so they share the ordered door
+	// line and cannot block repainting or report into a different conversation.
+	return a.offLoop(func() func(bool) tea.Cmd {
+		var line string
+		if now {
+			line = landed(door.Land(folder))
+		} else {
+			files := ""
+			if preview, ok := door.(interface {
+				LandingFor(string) (session.FolderLanding, bool)
+			}); ok {
+				if landing, held := preview.LandingFor(chosen.Folder); held {
+					files = " · " + namedFiles(landing.Files)
+				}
+			}
+			line = landPreview(chosen, files, len(waiting) > 1)
 		}
-	}
+		return func(here bool) tea.Cmd {
+			if here {
+				a.note(line)
+			}
+			return nil
+		}
+	})
+}
+
+// landPreview is what /land says before anything moves: the folder, the count,
+// and the first few files by name.
+func landPreview(chosen session.StandingChange, files string, several bool) string {
 	say := "now"
-	if len(waiting) > 1 {
+	if several {
 		say = chosen.Name + " now"
 	}
 	return "changes for " + chosen.Name + " · " + itoa(chosen.Files) + " " + plural("file", chosen.Files) +
