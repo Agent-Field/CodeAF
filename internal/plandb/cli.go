@@ -858,6 +858,13 @@ func cliPlaceholderChecks(st *Store, checks []string, title, description, ending
 				continue
 			}
 			stem, ext, _ := fileStem(filepath.Base(file))
+			// A TEMPLATE IS EVIDENCE, NOT A FILE. `issue_NN.go` in the brief is
+			// why issue_.go reads as a lost number, but it is not one of the
+			// numbered files the sentence counts, nor an example to copy. It is
+			// listed only when the plan names no real numbered file at all.
+			if numbered := numberedOnly(siblings, stem, ext); len(numbered) > 0 {
+				siblings = numbered
+			}
 			example := siblings[0]
 			for _, own := range []string{title, description} {
 				for _, named := range NamedFiles(own) {
@@ -876,6 +883,18 @@ func cliPlaceholderChecks(st *Store, checks []string, title, description, ending
 		}
 	}
 	return nil
+}
+
+// numberedOnly keeps the siblings whose number is digits, dropping a template
+// slot such as `issue_NN.go`.
+func numberedOnly(siblings []string, stem, ext string) []string {
+	var out []string
+	for _, sibling := range siblings {
+		if numberedSibling(sibling, stem, ext, false) {
+			out = append(out, sibling)
+		}
+	}
+	return out
 }
 
 // cliSiblingList keeps the refusal short even when a planner made a whole

@@ -132,3 +132,24 @@ func TestAddKeepsLegitimateChecksExactly(t *testing.T) {
 		})
 	}
 }
+
+// A template in the brief is why issue_.go reads as a lost number, but it is
+// not a numbered file: twenty files on disk are counted as twenty.
+func TestTheSendBackCountsOnlyRealNumberedFiles(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	for n := 1; n <= 20; n++ {
+		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("issue_%02d.go", n)), []byte("package main\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h := cliNewHarness(t)
+	h.cliInitFresh()
+	h.cliAdd("Plan the fan-out", "plan", "--description", "For each issue_NN.go, reverse its string helper.")
+	code := h.run("--db", h.db, "add", "Reverse issue_07.go", "--description", "reverse the helper in issue_07.go", "--check", "gofmt -l issue_.go")
+	cliWantError(t, h, code, "Nothing was added.")
+	got := h.errb.String()
+	if !strings.Contains(got, "(the numbered files are issue_01.go, issue_02.go and 18 more)") || !strings.Contains(got, `"gofmt -l issue_07.go"`) {
+		t.Fatalf("send-back %q, want the twenty real files counted and the part's own example", got)
+	}
+}
