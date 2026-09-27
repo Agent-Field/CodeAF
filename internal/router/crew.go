@@ -39,8 +39,11 @@ const (
 	// crew. It is the learning signal: the class was under-served here.
 	CrewRedone = "redo stronger"
 	// CrewNotKept is a task that ended without a result anybody kept — it
-	// failed, or was stopped. It teaches nothing about the crew's strength.
+	// failed. It teaches nothing about the crew's strength.
 	CrewNotKept = "not kept"
+	// CrewStopped is a person ending a task before it produced a result. It is
+	// recorded for the task's history but is not a failure signal for its crew.
+	CrewStopped = "stopped"
 )
 
 // CrewRecord is the crew half of a row.
@@ -233,6 +236,8 @@ func outcomeSignal(outcome string) float64 {
 		return -1
 	case CrewNotKept:
 		return -0.5
+	case CrewStopped:
+		return 0
 	}
 	return 0
 }

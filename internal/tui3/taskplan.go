@@ -302,6 +302,12 @@ func planRunning(store string) bool {
 // dependencies).
 func planItem(row session.PlanTaskRow, chat string, kin planKin) tasksItem {
 	status := planStatus(row)
+	entryStatus := planEntryStatus(row.Status)
+	running := planRunning(row.Status)
+	if row.Interrupted {
+		entryStatus = string(session.TaskInterrupted)
+		running = false
+	}
 	// A ROW HELD BEHIND NAMED WORK SAYS SO ON THE ROW, and the reason rides the
 	// READING rather than being composed at each draw (SURFACE.md §3's second
 	// correction). [session.TaskStatus.RowWord] is the one place this surface
@@ -317,7 +323,7 @@ func planItem(row session.PlanTaskRow, chat string, kin planKin) tasksItem {
 			ID:        row.ID,
 			Title:     row.Title,
 			Label:     row.Title,
-			Status:    planEntryStatus(row.Status),
+			Status:    entryStatus,
 			SessionID: chat,
 			// THE PARENT IS WHERE THE ROW IS DRAWN. The store's own parent puts a
 			// child under the task that requested it; a row held behind work that
@@ -334,7 +340,7 @@ func planItem(row session.PlanTaskRow, chat string, kin planKin) tasksItem {
 			// node's own row does (programbadge.go).
 			Program: row.Program,
 		},
-		runs: planRunning(row.Status),
+		runs: running,
 		live: &status,
 		plan: &row,
 	}

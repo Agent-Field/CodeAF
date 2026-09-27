@@ -301,6 +301,12 @@ func (a *app) sayTaskCrew(notice session.TaskNotice) {
 		text = lead + a.crewLine(notice.Crew, -1)
 		facts = []string{crewroute.ShortModel(notice.Crew.Seat(crewroute.Worker).Model)}
 	case session.TaskFailed:
+		if notice.Stopped {
+			text = lead + "stopped · " + a.crewLine(notice.Crew, crewroute.Unspent)
+			facts = []string{"stopped"}
+			said.landed = true
+			break
+		}
 		// A TASK THAT FAILED ASKS FOR THE NEXT STEP BY NAME: the stronger crew
 		// is the one thing on this line a person can do about it.
 		// AND THE FAILURE IS SAID FIRST, before any figure: a stopped seat's
