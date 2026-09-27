@@ -379,6 +379,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	agent.recoverTasks()
 	// AND A PROGRAM'S RUN THE LAST PROCESS LEFT OPEN IS ENDED, where it was last
 	// seen, so its page stops reading `running` (task_run_belt.go).
+	agent.recoverBeltRun()
 	agent.endInterruptedProgramRun()
 	// AND THE PROJECT'S RECORD IS RECONCILED BESIDE IT. The checkpoint above is
 	// one conversation's graph; the project index is every window's record of

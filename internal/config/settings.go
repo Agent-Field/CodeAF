@@ -4276,19 +4276,34 @@ func TaskParallelAt(profileDir string) int {
 // TaskMaxLoadAt resolves the per-core load average above which no new task is
 // started. 0 turns the check off.
 func TaskMaxLoadAt(profileDir string) float64 {
-	if value, ok := persistedFloat(profileDir, KeyTaskMaxLoad); ok && value >= 0 {
-		return value
-	}
-	return DefaultTaskMaxLoad
+	maxLoad, _ := TaskAdmissionLimitsAt(profileDir, DefaultTaskMaxLoad, DefaultTaskMinFreeMB)
+	return maxLoad
 }
 
 // TaskMinFreeMBAt resolves the available-memory floor under starting a task, in
 // mebibytes. 0 turns the check off.
 func TaskMinFreeMBAt(profileDir string) int {
-	if value, ok := persistedInt(profileDir, KeyTaskMinFreeMB); ok && value >= 0 {
-		return value
+	_, minFreeMB := TaskAdmissionLimitsAt(profileDir, DefaultTaskMaxLoad, DefaultTaskMinFreeMB)
+	return minFreeMB
+}
+
+// TaskAdmissionLimitsAt overlays current persisted ceilings on the caller's
+// startup values. Missing keys preserve those values, including explicit zero.
+// Both settings come from one read so a newly created gate sees one profile.
+func TaskAdmissionLimitsAt(profileDir string, maxLoad float64, minFreeMB int) (float64, int) {
+	values, err := readProfileConfig(profileDir)
+	if err != nil {
+		return maxLoad, minFreeMB
 	}
-	return DefaultTaskMinFreeMB
+	var load float64
+	if raw, found := values[KeyTaskMaxLoad]; found && json.Unmarshal(raw, &load) == nil && load >= 0 {
+		maxLoad = load
+	}
+	var memory int
+	if raw, found := values[KeyTaskMinFreeMB]; found && json.Unmarshal(raw, &memory) == nil && memory >= 0 {
+		minFreeMB = memory
+	}
+	return maxLoad, minFreeMB
 }
 
 // TaskModelAt resolves the model tasks run on, as the person wrote it. Empty
