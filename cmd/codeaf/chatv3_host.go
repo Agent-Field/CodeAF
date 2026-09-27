@@ -200,7 +200,7 @@ func (l *engineLink) spawn() (io.ReadWriteCloser, error) {
 	// is how a passphrase prompt and a host-key question reach the person — and
 	// the tail is kept so that a handshake failure can name the likely cause.
 	tail := &tailWriter{}
-	process.Stderr = io.MultiWriter(os.Stderr, tail)
+	process.Stderr = l.stderrWriter(tail, os.Stderr)
 	if err := process.Start(); err != nil {
 		if strings.Contains(err.Error(), "executable file not found") {
 			return nil, fmt.Errorf("this machine has no ssh on its path, and --host is ssh")
@@ -209,6 +209,19 @@ func (l *engineLink) spawn() (io.ReadWriteCloser, error) {
 	}
 	l.hold(process, tail)
 	return pipePair{r: stdout, w: stdin}, nil
+}
+
+// stderrWriter keeps the launch-time prompts visible but keeps redial output
+// inside the session's diagnostic tail. A reconnect happens while Bubble Tea
+// owns the terminal's alternate screen, so writing ssh's transient errors to
+// os.Stderr would paint over the frame instead of becoming a status detail.
+func (l *engineLink) stderrWriter(tail *tailWriter, terminal io.Writer) io.Writer {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.process == nil {
+		return io.MultiWriter(terminal, tail)
+	}
+	return tail
 }
 
 // sshTransportArgs keeps the carrier's latency policy in one place. -T remains
