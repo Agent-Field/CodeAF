@@ -1395,11 +1395,12 @@ in the message box every printable key belongs to that box, and the only key sti
 question's is `esc`. This is why `run tests first` can be typed into an empty box without
 losing its first letter.
 
-**Any key you press stops the countdown**, whether or not it answers anything, and tells
-the engine so. Deleting your draft does not restart it.
+**Any key past the initial quarter-second settle guard stops the countdown**, whether
+or not it answers anything, and tells the engine so. Deleting your draft does not restart it.
 
 **A key pressed in the first quarter-second is dropped**, so a proposal landing under a
-moving hand is not answered by a keystroke aimed at your sentence.
+moving hand is not answered by a keystroke aimed at your sentence. The dropped key leaves
+the card and countdown unchanged and is never applied later.
 
 You can also click an answer: each answer's row is pressable along its whole width.
 
@@ -1447,7 +1448,8 @@ family — the permissions page lists them.
 Set that window to 0 and there is no clock at all: the answers row ends in `waiting`, and
 the question sits there until you answer it, however long that takes.
 
-Pressing any key the question reads also stops a running clock. The tail stops counting
+Pressing any key past the initial quarter-second settle guard also stops a running clock.
+A key dropped by that guard leaves the countdown running. The tail stops counting
 immediately and the task cannot start while you finish your answer. Deleting everything you
 typed does not restart it.
 
@@ -1494,8 +1496,9 @@ into `decisions.jsonl` with:
 ## The task started before I could say no
 
 A proposal starts on silence only while its countdown is still moving. The default window
-is 15 seconds. Pressing any key the question reads stops that clock immediately, and
-deleting what you typed does not restart it. Press `2` to decline.
+is 15 seconds. After the initial quarter-second settle guard, any key the question reads
+stops that clock immediately, and deleting what you typed does not restart it. Keys inside
+the guard are dropped without stopping the clock. Press `2` after that guard to decline.
 
 If nothing was pressed before the clock reached zero, the work was already admitted and a
 later answer cannot pull it back. Use `task.autoapprove_seconds` in the Safety settings to
