@@ -959,3 +959,11 @@ piece of the ask still to do.
   one: nothing that runs on its own may arm something else that runs on its own.
 - **Nothing is armed by a matcher.** Nothing runs because a phrase looked like a
   rule; every single one of these was a card you said yes to.
+
+## Which daily allowance does a new standing card quote?
+
+When you did not name a per-run limit, a new proposal quotes the current daily
+budget. Changing the budget affects the next proposal, including in an already
+open conversation. A card already being read keeps its proposal-time quote.
+An explicit per-run limit keeps the words you supplied. Task firings in the
+activity history are labelled `task:`; a spoken reminder is labelled `said:`.

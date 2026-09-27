@@ -2002,3 +2002,26 @@ func standingNextUpdate(t *testing.T, lane <-chan Event) Event {
 		}
 	}
 }
+
+func TestStandingCostReadsCurrentRailWithoutReplacingExplicitLimits(t *testing.T) {
+	rail := 3.0
+	a := &Agent{config: Config{Standing: &Standing{DailyRail: func() float64 { return rail }}}}
+	item := nightly(t.TempDir())
+	if got := a.standingCostWords(item, standArguments{}); got != "shares the day's $3.00 allowance" {
+		t.Fatal(got)
+	}
+	rail = 7
+	if got := a.standingCostWords(item, standArguments{}); got != "shares the day's $7.00 allowance" {
+		t.Fatal(got)
+	}
+	parsed := standArguments{CostWords: "shares the day's allowance, at most one dollar each run"}
+	limit := 1.0
+	parsed.Rails.PerRunUSD = &limit
+	if got := a.standingCostWords(item, parsed); got != parsed.CostWords {
+		t.Fatal(got)
+	}
+	rail = 0
+	if got := a.standingCostWords(item, standArguments{}); got != "shares the day's allowance" {
+		t.Fatal(got)
+	}
+}
