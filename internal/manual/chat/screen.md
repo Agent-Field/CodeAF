@@ -945,14 +945,16 @@ If the answer is just the word `codeaf`, this conversation has no project — it
 started somewhere with nothing to borrow, and works in a directory of its own. `/status`
 prints where that actually is.
 
-## The task name above an answer that appeared on its own
+## The task sources behind an answer that appeared on its own
 
-A reply that begins because a task finished has a dim task line immediately above it in
-the transcript. The line uses the same identity mark and name as the task column and quotes
-your original request. Several finished tasks answered by one turn make several lines in
-arrival order. A reply to something you just typed has no task line, and a task with no
-recorded request shows its name without an empty quote. These lines return with the reply
-after `/resume`; the finished-task strip above the input is unchanged.
+A reply that begins because tasks finished keeps their source details inside the
+work disclosure. Press `ctrl+e` to inspect each task's identity, name, and full
+original request, in arrival order. Closing the disclosure keeps repeated
+requests out of the conversation while the assistant's answer stays visible.
+A reply to something you just typed has no task sources; a task with no recorded
+request shows its name without an empty quote. The same source details remain
+available after `/resume`, and the tasks themselves remain accessible in the task
+column.
 
 ## Provider missing or tok/s not showing — why via or the machine in brackets or the rate is not there, no rate after a follow-up
 

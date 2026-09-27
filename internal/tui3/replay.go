@@ -704,6 +704,9 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			if text == "" {
 				continue // a step that only called tools; its calls follow
 			}
+			if len(e.ReplyTags) > 0 {
+				blocks = append(blocks, taskReplySourceEntry(e.ReplyTags, turn))
+			}
 			blocks = append(blocks, entry{
 				kind: entryAssistant, text: text, turn: turn, settled: true, confirmed: confirmation,
 				replyTags: append([]session.TaskReplyTag(nil), e.ReplyTags...),

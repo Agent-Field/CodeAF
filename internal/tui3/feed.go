@@ -1200,14 +1200,26 @@ func (f *feed) reasonStream(text string, lump bool) {
 	f.follow()
 }
 
-// takeReplyTags labels the answer with the task reports it is written from
-// (render.go's reply-tag row: cause above consequence).
+// taskReplySourceEntry retains typed provenance as inspectable operational work.
+func taskReplySourceEntry(tags []session.TaskReplyTag, turn int) entry {
+	return entry{kind: entryNote, text: "task sources", turn: turn,
+		replyTags: append([]session.TaskReplyTag(nil), tags...)}
+}
+
+// takeReplyTags retains task provenance on the answer and files its visible
+// details with operational work, behind the shared disclosure.
 //
 // TAGS CAN ARRIVE BEFORE THE FIRST WORD THEY LABEL, which is why they are held
 // rather than dropped: the engine names the reports the turn is about to answer
 // from as it picks them up, and the block that carries them may not exist yet.
 // [feed.say] empties the held list onto the block it opens.
 func (f *feed) takeReplyTags(tags []session.TaskReplyTag) {
+	if len(tags) == 0 {
+		return
+	}
+	f.said(taskReplySourceEntry(tags, f.turn))
+	f.follow()
+	f.touch()
 	f.pendingReplyTags = append(f.pendingReplyTags, tags...)
 	if f.live < 0 || f.live >= len(f.entries) || f.entries[f.live].kind != entryAssistant {
 		return
