@@ -1345,6 +1345,11 @@ one behind your back. This is every fate, in the words the drop-up draws them in
 | **`a fresh conversation behind home`** | `/new` `/clear` `/clean` `/reset` | Replaces the conversation behind the screen and says `started a fresh conversation behind home`. It is not the same act as `enter`, which opens a conversation at the target. |
 | **`closes the conversation behind home`** | `/quit` `/exit` `/q` | Closes it and says `closed · <its name>`. When it was the last conversation this terminal was holding, codeaf leaves. |
 
+**A task typed on home uses the project shown before you press enter.** Clearing the
+command from the box does not retarget it to a newer conversation in another project.
+An ordinary message and `/task <brief>` open in that same displayed project, even when
+another project's engine is still running.
+
 **The fate is never the half that gets cut.** On a narrow window the command's own
 description gives way first, whole, and what `enter` will do stays on the row.
 
