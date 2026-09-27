@@ -3695,6 +3695,9 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 	defer stopSignals()
 	ctx, cancel := context.WithTimeout(signalled, request.timeout)
 	defer cancel()
+	if spendPreauthorized(request.yesSpend, env.Value) {
+		ctx = session.WithDailySpendPreauthorized(ctx)
+	}
 
 	// THE MACHINE'S HOLD IS SAID, because nothing else here would say it: the
 	// chat draws `waiting · machine busy` on the run's rail, and a headless run

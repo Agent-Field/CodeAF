@@ -274,8 +274,10 @@ func TestADivisionUnderAFiringIsWaitedForAndBilledToTheRun(t *testing.T) {
 	if outcome.Text != "both parts are home and folded together" {
 		t.Fatalf("the firing came to %q, want what it said after its parts landed", outcome.Text)
 	}
-	if outcome.Kind != "landed" {
-		t.Fatalf("a firing that divided and folded came to %q", outcome.Kind)
+	// These parts delivered reports, not saved files. Their folded sentence
+	// is said; only a firing that saved a file is landed.
+	if outcome.Kind != "said" {
+		t.Fatalf("a firing that only divided and folded reports came to %q, want said", outcome.Kind)
 	}
 
 	// THE MONEY IS IN THE RUN'S OWN FIGURE, which is what the pass writes into

@@ -221,3 +221,98 @@ func TestTheRefusalNamesTheLimitTheFigureAndTheDoor(t *testing.T) {
 		t.Fatalf("a sub-cent figure reads %q", got)
 	}
 }
+
+func TestDailyBudgetHeldTurnEndsOnCancellation(t *testing.T) {
+	for _, ending := range []string{"cancel", "answer", "raise", "close"} {
+		t.Run(ending, func(t *testing.T) {
+			profile, ledger := t.TempDir(), filepath.Join(t.TempDir(), "usage.jsonl")
+			if err := config.WriteDailyBudgetUSD(profile, 1); err != nil {
+				t.Fatal(err)
+			}
+			now := time.Now()
+			recordUsage(t, ledger, UsageLine{At: now, Day: localDay(now), Calls: 1, USD: 2})
+			agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.ProfileDir, c.usageLedger = profile, ledger })
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			stream, err := agent.Submit(ctx, "work")
+			if err != nil {
+				t.Fatal(err)
+			}
+			q := waitForOneQuestion(t, agent)
+			finished := make(chan struct{})
+			go func() {
+				defer close(finished)
+				switch ending {
+				case "answer":
+					_ = agent.ResolveQuestion(Answer{Kind: q.Kind, ID: q.ID, Key: "2"})
+				case "raise":
+					_ = agent.ResolveQuestion(Answer{Kind: q.Kind, ID: q.ID, Key: "1"})
+				case "close":
+					_ = agent.Close()
+				}
+			}()
+			cancel()
+			deadline := time.After(5 * time.Second)
+			for {
+				select {
+				case _, open := <-stream:
+					if !open {
+						<-finished
+						if len(agent.OpenQuestions()) != 0 {
+							t.Fatal("ended hold kept its question")
+						}
+						return
+					}
+				case <-deadline:
+					t.Fatal("cancelled budget hold kept its stream open")
+				}
+			}
+		})
+	}
+}
+
+func TestDailySpendAuthorizationLeavesOtherRailsInForce(t *testing.T) {
+	profile, ledger := t.TempDir(), filepath.Join(t.TempDir(), "usage.jsonl")
+	if err := config.WriteDailyBudgetUSD(profile, 1); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	recordUsage(t, ledger, UsageLine{At: now, Day: localDay(now), Calls: 1, USD: 2})
+	for _, tc := range []struct {
+		name        string
+		authorized  bool
+		rail        float64
+		wantBlocked bool
+	}{
+		{"ordinary", false, 0, true},
+		{"authorized", true, 0, false},
+		{"conversation limit", true, 1, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := t.Context()
+			if tc.authorized {
+				ctx = WithDailySpendPreauthorized(ctx)
+			}
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+				c.ProfileDir, c.usageLedger = profile, ledger
+				c.DailySpendPreauthorized = DailySpendPreauthorized(ctx)
+				c.SpendRailUSD = tc.rail
+			})
+			spend(agent, 2)
+			agent.mu.Lock()
+			err := agent.railBlockLocked()
+			agent.mu.Unlock()
+			if (err != nil) != tc.wantBlocked {
+				t.Fatalf("rail = %v, want blocked %v", err, tc.wantBlocked)
+			}
+			if tc.rail > 0 && !errors.Is(err, ErrSpendRail) {
+				t.Fatalf("authorization lifted conversation rail: %v", err)
+			}
+		})
+	}
+	if DailySpendPreauthorized(t.Context()) {
+		t.Fatal("authorization escaped its run context")
+	}
+}

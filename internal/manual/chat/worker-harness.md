@@ -901,7 +901,12 @@ otherwise**. Without `--yes-spend` it may spend up to the nearer of two figures:
   already spent starts nothing.
 
 `--yes-spend`, or `CODEAF_PREAUTHORIZE_SPEND=1`, lets the run spend past both
-without stopping. The older engine asked the plan-price question before it bought
+without stopping, including child workers and the review checker. This permission
+belongs to that run; it does not change the stored daily limit or lift task cost,
+time, or tool approval limits. Cancelling a turn waiting for a daily-budget answer
+closes that wait without buying a model call.
+
+The older engine asked the plan-price question before it bought
 anything; the run engine cannot price a run before its workers start, so the same
 figure is a ceiling instead.
 
