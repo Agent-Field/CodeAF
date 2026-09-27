@@ -1,0 +1,4 @@
+books: 25.00
+food: 15.00
+travel: 120.00
+grand total: 160.00

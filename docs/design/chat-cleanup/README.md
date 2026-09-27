@@ -1,47 +1,81 @@
-# Clean chat terminal evidence
+# Clean chat: live acceptance
 
-The acceptance suite launches `bin/codeaf` in real tmux terminals at 140 × 42.
-All live text requests use Spark's OpenRouter key with
-`deepseek/deepseek-v4.1-flash`. The fixture pins all text seats, uses
-`--one-model`, restricts the crew's allowed model, and disables the shared model
-pool. No key is stored in these artifacts. The `*-models.json` files retain only
-request timestamps, IDs, phases, role tags, model names, and HTTP statuses.
+The shared conversation renderer keeps human questions, steering, completed answers,
+and explicit intended-human updates visible. Internal activity uses the existing
+three-row scrolling animation and folds when finished. Errors remain compact;
+opening disclosure still reveals the full record. Settled task notifications can
+be dismissed and restored without deleting their results.
 
-## Scenarios
+## Sustained real workflow
 
-| Test | What it checks |
+![Three minutes of actual terminal interaction](live-workflow/excerpt-180s.gif)
+
+The recording uses application source `18a6ec5f21386c1a2e1d5c6165b55a4804086c2d`
+on Spark. The full continuous recording lasts **254.792 seconds**. The GIF is a
+contiguous **180-second excerpt (74.792–254.792) at normal speed**, with the full original cast
+preserved. The model completed **41 requests**, all using OpenRouter
+`deepseek/deepseek-v4.1-flash`; auxiliary roles and request starts were audited too.
+
+The live task extended a real reimbursement-report program with strict validation
+and an atomic export wrapper. Follow-up steering required failed exports to keep
+the existing CSV intact. A later consumer question exposed confusing shell advice;
+the user corrected it and the model tested a safe import condition locally.
+Independent verification executes the generated program and checks its actual files,
+exit codes and import marker, rather than trusting the assistant's summary.
+
+[Full recording, captions, model audit, generated files and independent results](live-workflow/README.md).
+
+During that workflow we resized the actual terminal from 140×42 to 90×32 and back,
+opened work and an individual command, closed them, and dismissed receipts. Human
+updates and steering survived these transitions. No raw update marker, reserved
+interruption marker or automatically expanded task-reading brief was observed.
+
+## Focused live terminal scenarios
+
+All four real tmux scenarios passed in **112.054 seconds** on the same application
+source. Every live role used `deepseek/deepseek-v4.1-flash`.
+
+| Scenario | Verified behavior |
 | --- | --- |
-| `TestCleanChat` | A live bash call folds; its command details remain accessible through work and step disclosures. A real task finishes, its notification is compact, `/dismiss` hides it, and `/dismiss undo` restores it. |
-| `TestCleanManagerReplay` | A deterministic historical manager journal contains a team send, a team delivery, an internal wake note, and a Markdown answer. The real TUI resumes it without exposing traffic or raw Markdown, then takes a live model follow-up. This is **replay plus live follow-up**, not a claim that a live teammate sent the fixture. |
-| `TestCleanChatFailureRecovery` | A live model makes an intentionally failing bash call and a separate recovery call. Polling checks that the failure output never auto-expands; the real journal confirms that the failure actually happened. |
-| `TestCleanChatSteering` | Real keyboard input is sent while the assistant is working. The user correction, an explicit `[update]` assistant progress message, and the final answer remain visible after two tool calls. The assistant marker is consumed by the renderer. Closing and reopening the real journal preserves all three messages. |
+| Chat and task completion | Tool work folds, details open on request, compact task receipt dismisses and restores. |
+| Manager replay and follow-up | Historical team traffic and wake instructions fold; the formatted answer and a new live response remain visible. Historical traffic is a fixture, not a claim of live teammate delivery. |
+| Failure and recovery | An actual failing tool call stays compact while recovery runs; its output remains inspectable. |
+| Steering and reopening | Real keyboard steering and an explicit assistant update remain readable during tools and after reopening the journal. |
 
-The narrow unit regressions additionally cover the three-row activity bound
-across conversation, task, and nested views, plus interrupted intermediate
-updates and Markdown rendering.
+[Run log](evidence/run.log) · [Run summary and model counts](evidence/run-summary.json)
 
-## Verified run
+![Human update remains visible while work continues](evidence/09-assistant-update.gif)
 
-On 2026-09-27, `make build` from source `0b970f4bc` passed, followed by all four
-real-tmux scenarios in **95.919 seconds**. The final run recorded **34 completed
-request records**, all on `deepseek/deepseek-v4.1-flash`: chat/task 13, manager 5,
-recovery 7, steering/resume 9. The audit also checks every start record.
+![Task receipt dismissed and restored: three captured screenshots](evidence/notification-sequence.gif)
 
-[Run output](evidence/run.log) · [Machine-readable summary](evidence/run-summary.json)
+The dismissal sequence captures a running conversation; additional model replies
+arrive between frames. The captures are unmodified, so this is not a perfectly
+static before/after comparison.
 
-## Captured screens
+## Transition coverage and verification
 
-1. [Clean conversation](evidence/01-chat.gif) and [expanded command details](evidence/01-expanded.gif).
-2. [Notification → dismissed → restored](evidence/notification-sequence.gif), a sequence of three screenshots.
-3. [Manager journal replay](evidence/05-manager-replay.gif) and [live follow-up](evidence/06-manager-live-followup.gif).
-4. [Failure during recovery](evidence/07-failure-recovery-active.gif) and [finished recovery](evidence/08-recovery-finished.gif).
-5. [User steering](evidence/09-user-steering.gif), [assistant update while working](evidence/09-assistant-update.gif), [final conversation](evidence/10-steering-finished.gif), and [reopened journal](evidence/11-steering-resumed.gif).
+[UX coverage matrix](UX-COVERAGE.md) records stop, consumed steering, retry,
+compaction, rewind, replay, narrow widths, all chat lenses, disclosures and pending
+decisions. Audience and interrupted status are stored as typed presentation
+metadata while provider history and underlying details remain intact.
 
-![Explicit assistant update remains visible while work continues](evidence/09-assistant-update.gif)
+Older ambiguous mixed prose remains intact: legacy journals lack the metadata
+needed to distinguish it safely from a human answer.
 
-![Task notification dismissed and restored — screenshot sequence](evidence/notification-sequence.gif)
+[Repository gate log](validation/pr-ready.log) records build, vet, formatting,
+manuals, repository laws and affected-package tests. The help-search heading was
+restored after the first combined run found a documentation regression; the
+recorded application code was unchanged by that documentation-only correction.
+A subsequent CI check exposed an older fixture that stopped at a steering boundary
+but still expected completed work; the fixture now covers stopped and completed
+responses separately. The first full gate also reproduced the already-fixed
+program-run cleanup race; the existing reviewed #1619/#1622 test-only fixes
+were reused as validation dependencies. No new production fix was introduced.
 
-## Reproduce
+[Earlier full recordings](history/README.md) preserve intermediate failures and
+the fixes they motivated. They are not substituted for final acceptance evidence.
+
+## Reproduce the focused live scenarios
 
 ```sh
 make build
@@ -53,7 +87,8 @@ python3 docs/design/chat-cleanup/render-evidence.py \
   /tmp/codeaf-chat-cleanup-evidence docs/design/chat-cleanup/evidence
 ```
 
-Every `.cast` contains the actual ANSI framebuffer read by `tmux capture-pane`.
-`agg` renders those bytes into GIF screenshots; the corresponding `.txt` is the
-plain terminal capture. `notification-sequence.gif` cycles three separate
-screenshots (before dismissal, dismissed, restored); it is not continuous video.
+Run through Fleet on Spark with the configured OpenRouter credential. No keys,
+private session directories or provider configuration belong in this evidence.
+All captured screens originate from real tmux framebuffers; GIF rendering only
+converts those captured bytes. The notification sequence is a labeled slideshow,
+not continuous video.

@@ -1,0 +1,729 @@
+[
+  {
+    "ts": "2026-09-27T12:52:55.388-04:00",
+    "id": "b533d911",
+    "phase": "start",
+    "tag": "router",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:52:55.390-04:00",
+    "id": "6250a7e5",
+    "phase": "start",
+    "tag": "reflex",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:52:55.399-04:00",
+    "id": "6161c3f4",
+    "phase": "start",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:52:56.314-04:00",
+    "id": "6161c3f4",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:52:56.338-04:00",
+    "id": "f74f8ae7",
+    "phase": "start",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:52:58.387-04:00",
+    "id": "b533d911",
+    "tag": "router",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:52:58.389-04:00",
+    "id": "dcbf37e1",
+    "phase": "start",
+    "tag": "routerconfirm",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:53:01.381-04:00",
+    "id": "dcbf37e1",
+    "tag": "routerconfirm",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:53:02.334-04:00",
+    "id": "6250a7e5",
+    "tag": "reflex",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:53:03.314-04:00",
+    "id": "f74f8ae7",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:53:03.332-04:00",
+    "id": "4c6a85d3",
+    "phase": "start",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:53:04.353-04:00",
+    "id": "4c6a85d3",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:53:04.408-04:00",
+    "id": "874195bd",
+    "phase": "start",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:53:12.498-04:00",
+    "id": "874195bd",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:53:12.512-04:00",
+    "id": "0c23e965",
+    "phase": "start",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:53:16.573-04:00",
+    "id": "0c23e965",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:53:16.588-04:00",
+    "id": "07c83956",
+    "phase": "start",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:53:18.222-04:00",
+    "id": "07c83956",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:53:18.726-04:00",
+    "id": "f023237d",
+    "phase": "start",
+    "tag": "caption",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:53:18.790-04:00",
+    "id": "f023237d",
+    "tag": "caption",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:53:18.794-04:00",
+    "id": "d264d224",
+    "phase": "start",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:53:25.597-04:00",
+    "id": "d264d224",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:53:25.607-04:00",
+    "id": "ed69dca0",
+    "phase": "start",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:53:42.408-04:00",
+    "id": "ed69dca0",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:53:42.428-04:00",
+    "id": "95f9985d",
+    "phase": "start",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:53:43.610-04:00",
+    "id": "95f9985d",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:53:43.616-04:00",
+    "id": "6e54ecd4",
+    "phase": "start",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:53:53.912-04:00",
+    "id": "6e54ecd4",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:53:53.924-04:00",
+    "id": "fdb1f1f9",
+    "phase": "start",
+    "tag": "markreader",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:54:04.085-04:00",
+    "id": "fdb1f1f9",
+    "tag": "markreader",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:54:04.093-04:00",
+    "id": "4fbbb40b",
+    "phase": "start",
+    "tag": "handoff-draft",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:54:08.333-04:00",
+    "id": "4fbbb40b",
+    "tag": "handoff-draft",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:54:08.334-04:00",
+    "id": "28377d9e",
+    "phase": "start",
+    "tag": "taskname",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:54:08.334-04:00",
+    "id": "5bc99f92",
+    "phase": "start",
+    "tag": "handoff",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:54:10.464-04:00",
+    "id": "28377d9e",
+    "tag": "taskname",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:54:16.857-04:00",
+    "id": "5bc99f92",
+    "tag": "handoff",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:54:16.962-04:00",
+    "id": "36ca8d3b",
+    "phase": "start",
+    "tag": "reflex",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:54:18.735-04:00",
+    "id": "36ca8d3b",
+    "tag": "reflex",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:54:20.084-04:00",
+    "id": "64df0b18",
+    "phase": "start",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:54:20.967-04:00",
+    "id": "64df0b18",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:54:20.992-04:00",
+    "id": "caee9ac2",
+    "phase": "start",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:54:22.123-04:00",
+    "id": "caee9ac2",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:54:22.149-04:00",
+    "id": "a8b42b91",
+    "phase": "start",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:54:22.906-04:00",
+    "id": "a8b42b91",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:54:23.473-04:00",
+    "id": "237614a4",
+    "phase": "start",
+    "tag": "caption",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:54:23.635-04:00",
+    "id": "237614a4",
+    "tag": "caption",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:54:24.016-04:00",
+    "id": "24e2f623",
+    "phase": "start",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:54:24.785-04:00",
+    "id": "24e2f623",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:54:24.833-04:00",
+    "id": "fd65363e",
+    "phase": "start",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:54:26.296-04:00",
+    "id": "fd65363e",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:54:26.800-04:00",
+    "id": "555dd79e",
+    "phase": "start",
+    "tag": "caption",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:54:26.909-04:00",
+    "id": "555dd79e",
+    "tag": "caption",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:54:26.915-04:00",
+    "id": "2dffe1c8",
+    "phase": "start",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:54:35.495-04:00",
+    "id": "2dffe1c8",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:54:35.536-04:00",
+    "id": "da17bf6f",
+    "phase": "start",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:54:35.925-04:00",
+    "id": "da17bf6f",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:54:35.949-04:00",
+    "id": "45a4e778",
+    "phase": "start",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:54:47.688-04:00",
+    "id": "45a4e778",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:54:47.699-04:00",
+    "id": "9be9c79b",
+    "phase": "start",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:54:57.400-04:00",
+    "id": "9be9c79b",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:54:57.410-04:00",
+    "id": "40556a70",
+    "phase": "start",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:54:58.498-04:00",
+    "id": "40556a70",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:54:58.512-04:00",
+    "id": "52209e70",
+    "phase": "start",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:54:59.822-04:00",
+    "id": "52209e70",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:55:00.325-04:00",
+    "id": "8d0892d2",
+    "phase": "start",
+    "tag": "caption",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:55:00.512-04:00",
+    "id": "8d0892d2",
+    "tag": "caption",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:55:01.350-04:00",
+    "id": "1a1a0b0b",
+    "phase": "start",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:55:04.742-04:00",
+    "id": "1a1a0b0b",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:55:04.761-04:00",
+    "id": "f9560391",
+    "phase": "start",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:55:07.122-04:00",
+    "id": "f9560391",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:55:07.136-04:00",
+    "id": "04fc45c8",
+    "phase": "start",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:55:07.680-04:00",
+    "id": "04fc45c8",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:55:08.742-04:00",
+    "id": "b250f2cb",
+    "phase": "start",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:55:11.579-04:00",
+    "id": "b250f2cb",
+    "tag": "task",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:55:13.308-04:00",
+    "id": "526cb14f",
+    "phase": "start",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:55:14.599-04:00",
+    "id": "526cb14f",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:55:15.118-04:00",
+    "id": "5118d564",
+    "phase": "start",
+    "tag": "caption",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:55:15.915-04:00",
+    "id": "5118d564",
+    "tag": "caption",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:55:16.716-04:00",
+    "id": "bba655b4",
+    "phase": "start",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:55:17.690-04:00",
+    "id": "bba655b4",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:55:17.703-04:00",
+    "id": "38cdde0e",
+    "phase": "start",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:55:21.991-04:00",
+    "id": "38cdde0e",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:55:22.006-04:00",
+    "id": "35808060",
+    "phase": "start",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:55:23.099-04:00",
+    "id": "35808060",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:55:23.604-04:00",
+    "id": "ef388d2d",
+    "phase": "start",
+    "tag": "caption",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:55:24.009-04:00",
+    "id": "ef388d2d",
+    "tag": "caption",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:55:24.034-04:00",
+    "id": "13ec37c7",
+    "phase": "start",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:55:26.300-04:00",
+    "id": "13ec37c7",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:55:26.311-04:00",
+    "id": "6907f089",
+    "phase": "start",
+    "tag": "markreader",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:55:33.664-04:00",
+    "id": "6907f089",
+    "tag": "markreader",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:55:33.674-04:00",
+    "id": "8acdb0e6",
+    "phase": "start",
+    "tag": "reflex",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:55:35.456-04:00",
+    "id": "8acdb0e6",
+    "tag": "reflex",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:55:35.466-04:00",
+    "id": "aa54fd16",
+    "phase": "start",
+    "tag": "reflex",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:55:36.608-04:00",
+    "id": "aa54fd16",
+    "tag": "reflex",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:55:56.580-04:00",
+    "id": "5cb92bf3",
+    "phase": "start",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:55:56.622-04:00",
+    "id": "28486b33",
+    "phase": "start",
+    "tag": "reflex",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:55:57.544-04:00",
+    "id": "5cb92bf3",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:55:57.601-04:00",
+    "id": "5a39fe3c",
+    "phase": "start",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:55:59.792-04:00",
+    "id": "5a39fe3c",
+    "tag": "turn",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:55:59.803-04:00",
+    "id": "df578cb6",
+    "phase": "start",
+    "tag": "reflex",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:55:59.805-04:00",
+    "id": "28486b33",
+    "tag": "reflex",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:56:05.325-04:00",
+    "id": "df578cb6",
+    "tag": "reflex",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  },
+  {
+    "ts": "2026-09-27T12:56:05.330-04:00",
+    "id": "64ae5f3e",
+    "phase": "start",
+    "tag": "reflex",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  {
+    "ts": "2026-09-27T12:56:06.786-04:00",
+    "id": "64ae5f3e",
+    "tag": "reflex",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "status": 200
+  }
+]

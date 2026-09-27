@@ -1,0 +1,39 @@
+{
+  "unittest": {
+    "exit": 0,
+    "output": "test_finite_amounts_parse_including_negative (test_report.BadAmountTests.test_finite_amounts_parse_including_negative) ... ok\ntest_invalid_amounts_are_skipped_and_named_by_line (test_report.BadAmountTests.test_invalid_amounts_are_skipped_and_named_by_line) ... ok\ntest_large_finite_amount_is_summed_not_crashed (test_report.BadAmountTests.test_large_finite_amount_is_summed_not_crashed) ... ok\ntest_nan_and_infinity_are_invalid (test_report.BadAmountTests.test_nan_and_infinity_are_invalid) ... ok\ntest_no_skips_reports_empty_skipped (test_report.BadAmountTests.test_no_skips_reports_empty_skipped) ... ok\ntest_scientific_large_amount_is_summed_not_crashed (test_report.BadAmountTests.test_scientific_large_amount_is_summed_not_crashed) ... ok\ntest_category_filter_cli (test_report.CliTests.test_category_filter_cli) ... ok\ntest_clean_file_exits_0 (test_report.CliTests.test_clean_file_exits_0) ... ok\ntest_csv_cli_options (test_report.CliTests.test_csv_cli_options) ... ok\ntest_json_and_csv_are_mutually_exclusive (test_report.CliTests.test_json_and_csv_are_mutually_exclusive) ... ok\ntest_json_cli_options (test_report.CliTests.test_json_cli_options) ... ok\ntest_large_amount_cli_exits_0 (test_report.CliTests.test_large_amount_cli_exits_0) ... ok\ntest_runs_on_csv_file (test_report.CliTests.test_runs_on_csv_file) ... ok\ntest_skipped_rows_warn_and_exit_2 (test_report.CliTests.test_skipped_rows_warn_and_exit_2) ... ok\ntest_category_filter_is_case_insensitive (test_report.ReportTests.test_category_filter_is_case_insensitive) ... ok\ntest_category_filter_with_no_match_is_empty (test_report.ReportTests.test_category_filter_with_no_match_is_empty) ... ok\ntest_category_totals_sorted_by_name (test_report.ReportTests.test_category_totals_sorted_by_name) ... ok\ntest_decimal_addition_is_exact (test_report.ReportTests.test_decimal_addition_is_exact) ... ok\ntest_json_output_honours_filter (test_report.ReportTests.test_json_output_honours_filter) ... ok\ntest_json_output_uses_decimal_strings (test_report.ReportTests.test_json_output_uses_decimal_strings) ... ok\ntest_missing_category_is_rejected (test_report.ReportTests.test_missing_category_is_rejected) ... ok\ntest_missing_column_is_rejected (test_report.ReportTests.test_missing_column_is_rejected) ... ok\ntest_negative_amount_is_a_refund (test_report.ReportTests.test_negative_amount_is_a_refund) ... ok\ntest_prints_sorted_lines_and_grand_total (test_report.ReportTests.test_prints_sorted_lines_and_grand_total) ... ok\n\n----------------------------------------------------------------------\nRan 24 tests in 0.904s\n\nOK\n"
+  },
+  "csv": {
+    "exit": 2,
+    "records": [
+      {
+        "category": "books",
+        "amount": "25.00"
+      },
+      {
+        "category": "food",
+        "amount": "15.00"
+      },
+      {
+        "category": "travel",
+        "amount": "120.00"
+      },
+      {
+        "category": "TOTAL",
+        "amount": "160.00"
+      }
+    ],
+    "warnings": "september-reimbursements.csv:6: skipping invalid amount 'NaN'\nseptember-reimbursements.csv:7: skipping invalid amount 'Infinity'\nseptember-reimbursements.csv:8: skipping invalid amount 'typo'\n",
+    "saved_artifact_matches": true,
+    "sum_matches_total": true
+  },
+  "source": {
+    "unchanged_from_git": true,
+    "sha256": "ca0bba1ae433190011de84a86deee7aee0eeebd9fb6e33f2efa1f15aa3dee01b"
+  },
+  "handoff": {
+    "four_valid_rows": true,
+    "provisional_total_disclosed": true,
+    "csv_rerun_documented": true
+  }
+}

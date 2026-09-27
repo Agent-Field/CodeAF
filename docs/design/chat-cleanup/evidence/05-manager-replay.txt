@@ -1,4 +1,4 @@
- >● codeaf   home  teams  chats  sessions  spend  settings                                                                      sun 11:54am
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                                       sun 1:29pm
      Check the review status with the team. ×   +   ▦ All
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -39,4 +39,4 @@
  ›
 
 
- alt+e effort · alt+a approvals · / commands · space space home            project: /tmp/TestCleanManagerReplay454034178/002/manager-replay
+ alt+e effort · alt+a approvals · / commands · space space home            project: /tmp/TestCleanManagerReplay471394247/002/manager-replay

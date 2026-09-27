@@ -1,5 +1,5 @@
- >● codeaf   home  teams  chats  sessions  spend  settings                                                 1 moving · $0.0035 · sun 11:54am
-     bash error recovery test sequence ×   +   ▦ All
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                  1 moving · $0.0049 · sun 1:29pm
+     test error recovery with two bash calls ×   +   ▦ All
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 
@@ -9,9 +9,9 @@
     intentional. Then recover with a second bash call: sleep 3; printf 'recovered\n'. Finally answer only with Recovery / check / passed.
     joined by spaces. Do not echo stdout, delegate, or write files.
 
-    ▸ worked 4.1s · thought 0.1s · 2 steps · 2 tool calls · ✕ 1 failed · ctrl+e
+    ▸ worked 4.6s · thought 0.2s · 2 steps · 2 tool calls · ✕ 1 failed · ctrl+e
 
-  Recovery check passed
+  Recovery / check / passed
 
 
 
@@ -35,8 +35,8 @@
 
 
 
-─ deepseek/deepseek-v4.1-flash (together):auto · ◇ YOLO ───────────────────  $0.0042 · ⟲ saved $0.0012 · 77% cached   15.1k/1M · 1%   idle ─
+─ deepseek/deepseek-v4.1-flash (together):auto · ◇ YOLO ───────────────────  $0.0059 · ⟲ saved $0.0010 · 65% cached   15.1k/1M · 1%   idle ─
  ›
 
 
- alt+e effort · alt+a approvals · / commands · space space home    project: /tmp/TestCleanChatFailureRecovery699826278/002/failure-recovery
+ alt+e effort · alt+a approvals · / commands · space space home   project: /tmp/TestCleanChatFailureRecovery1677304148/002/failure-recovery

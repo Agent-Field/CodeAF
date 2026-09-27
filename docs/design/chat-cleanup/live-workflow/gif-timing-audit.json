@@ -1,0 +1,29 @@
+{
+  "cast_start": 0,
+  "cast_end": 180.0,
+  "cast_span_seconds": 180,
+  "gif_frames": 221,
+  "gif_duration_seconds": 180.0,
+  "render_command": [
+    "/home/santosh/.local/bin/agg",
+    "--idle-time-limit",
+    "1000",
+    "--last-frame-duration",
+    "15.768",
+    "--speed",
+    "1",
+    "--font-size",
+    "14",
+    "--theme",
+    "dracula",
+    "/tmp/codeaf-sustained-1607/reviewed-live/evidence/excerpt-180s.cast",
+    "/tmp/codeaf-sustained-1607/reviewed-live/evidence/excerpt-180s-corrected.gif"
+  ],
+  "cast_sha256": "a14f92799e146c06ec5f426bef3061fe04ce5f4c67e2196cf27f9645fa0c9e74",
+  "final_frame_actual_pause_seconds": 15.768,
+  "per_frame_max_quantization_error_seconds": 0.010000000000000231,
+  "published_gif": "excerpt-180s.gif",
+  "gif_sha256": "9cf1d0cb81501bfa1124309280d60bd4b974b3b333bb685ab46863f67ade1047",
+  "fleet_job": "20260927-181803-001259-pr1607-gif-final-hold",
+  "explanation": "Idle cap exceeds complete recording; final hold equals original cast gap164.232\u2013180.000. All221 GIF frame delays match corresponding captured intervals within11ms; total180000ms. No invented frames or sped/stretched intervals."
+}

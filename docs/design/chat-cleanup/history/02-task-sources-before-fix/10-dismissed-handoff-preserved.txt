@@ -1,0 +1,42 @@
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                              $0.13 · sun 12:41pm
+     september reimbursement report handoff process ×   +   ▦ All
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+  Both contradictions are corrected, and everything is re-verified against the actual
+  files.
+
+  Fixes to HANDOFF.md: line 4 no longer calls the CLI unchanged — it now says the --csv
+  output was added this round; and the totals are now described as covering four valid
+  rows (source lines 2–5), not five.
+
+  Verification just run
+
+  · Original source checksum unchanged from Git: september-reimbursements.csv and git show
+    HEAD:september-reimbursements.csv both hash to ca0bba1a…a3dee01b — match.
+  · Saved september-reimbursement-summary.csv is byte-identical to a fresh --csv run.
+  · Re-imported it: header category,amount; parsed values books 25.00, food 15.00 (18.40 −
+    3.40 refund), travel 120.00, TOTAL 160.00 — all correct.
+
+  Final finance handoff                                                                                                                    ❮
+
+  · CSV:
+    /tmp/codeaf-sustained-1607/final/reimbursement-project/september-reimbursement-summary.csv
+  · Rerun:
+    ▏ cd /tmp/codeaf-sustained-1607/final/reimbursement-project
+    ▏ python3 report.py september-reimbursements.csv --csv > september-reimbursement-summary.csv
+    Exit 0 = all rows summed; exit 2 = rows were skipped.
+
+  The distinction, not hidden: 160.00 covers the four valid rows only. The three invalid
+  rows (lines 6–8: NaN/Infinity/typo, all rejected with a warning on stderr) are still
+  unresolved, so 160.00 is provisional — not the complete reimbursement. Fix lines 6–8
+  with real amounts (or get finance to confirm they stay excluded) and rerun before
+  treating the total as final.
+
+    · 1 file · HANDOFF.md +3 −2
+
+─ deepseek/deepseek-v4.1-flash (together):auto · ◇ YOLO ───────────────────    $0.13 · ⟲ saved $0.0444 · 86% cached   43.3k/1M · 4%   idle ─
+ ›
+
+
+ alt+l tasks                                                                project: /tmp/codeaf-sustained-1607/final/reimbursement-project

@@ -1,0 +1,42 @@
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                   1 moving · $0.03 · sun 12:19pm
+     python expense cli category totals tests ×   +   ▦ All
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  · Skips any row whose amount isn't a finite Decimal (covers abc, empty, NaN, Infinity,
+    -Infinity, and case variants) and prints a concise path:line: skipping invalid amount
+    'raw' warning on stderr; valid rows still sum.
+  · Exits with code 2 when any row was skipped, else 0 (1 stays for fatal
+    header/category/IO errors).
+  · Keeps text and --json output working; stderr warnings never pollute JSON stdout.
+  · Negative amounts sum as refunds.
+
+  All 19 unittests pass (Ran 19 tests ... OK), including line-numbered skip warnings,
+  NaN/Infinity rejection, exit code 2, refund, and the 0.10+0.20 exactness case.
+
+  Verified CLI behavior on a crafted file (12.50 food, -2.50 refund, plus bad rows):
+
+    ▏ $ python3 report.py /tmp/bad.csv
+    ▏ /tmp/bad.csv:4: skipping invalid amount 'abc'
+    ▏ /tmp/bad.csv:5: skipping invalid amount 'NaN'
+    ▏ /tmp/bad.csv:6: skipping invalid amount 'Infinity'                                                                                   ❮
+    ▏ food: 10.00
+    ▏ grand total: 10.00
+    ▏ exit=2
+    ▏
+    ▏ $ python3 report.py /tmp/bad.csv --json
+    ▏ { "categories": { "food": "10.00" }, "total": "10.00" }   # exit=2
+    ▏
+    ▏ $ python3 report.py expenses.csv --category FOOD            # clean: exit=0
+    ▏ food: 19.75
+    ▏ grand total: 19.75
+
+  The bundled sample's totals are unchanged and still verified: books 15.00, food 19.75,
+  travel 25.00, grand total 59.75 (exit 0).
+
+    · 2 files · report.py +152 −0 · test_report.py +241 −0
+
+─ deepseek/deepseek-v4.1-flash (together):auto · ◇ YOLO ───────────────────    $0.04 · ⟲ saved $0.0103 · 89% cached   31.4k/1M · 3%   idle ─
+ ›
+
+
+ alt+e effort · alt+a approvals · / commands · space space home                         project: /tmp/codeaf-sustained-1607/expense-project

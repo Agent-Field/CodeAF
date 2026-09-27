@@ -1,0 +1,42 @@
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                              $0.08 · sun 12:20pm
+     python expense cli category totals tests ×   +   ▦ All
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    ▏ grand total: 19.75
+
+  The bundled sample's totals are unchanged and still verified: books 15.00, food 19.75,
+  travel 25.00, grand total 59.75 (exit 0).
+
+    · 2 files · report.py +152 −0 · test_report.py +241 −0
+
+  ✓ ◆ report verification · done · 24s · 3 files · branch kept · task/independently-inspect-report-py-af948f · ctrl+o
+
+    ▸ worked 31s · thought 15s · 1 tool call · ctrl+e
+
+  Reproduced the crash; wrapping summarize's arithmetic in a data-sized decimal context.
+    ▸ worked 31s · thought 0.8s · 4 steps · 4 tool calls · ctrl+e
+
+  Fixed. summarize() now runs in a decimal.localcontext() whose precision is sized to the
+  largest amount in the file (_working_precision), so large-but-finite amounts sum exactly
+  instead of crashing quantize. Non-finite amounts are still skipped as before; the                                                        ❮
+  docstring is accurate again.
+
+  · python3 report.py /tmp/big.csv → grand total: 99999999999999999999999999999.00, exit 0
+    (was a traceback, exit 1).
+  · Added 3 regression tests: large 29-digit amount, scientific 1E+100, and the
+    large-amount CLI path.
+  · Suite: Ran 22 tests ... OK.
+  · Bundled sample unchanged and still verified, exit 0: books 15.00, food 19.75, travel
+    25.00, grand total 59.75.
+
+  The verifier's branch task/independently-inspect-report-py-af948f (holding only
+  REVIEW.md) is left untouched; nothing was merged.
+    ▸ worked 31s · thought 3.7s · 1 tool call · ctrl+e
+
+    · 2 files · report.py +19 −8 · test_report.py +32 −0
+
+─ deepseek/deepseek-v4.1-flash (together):auto · ◇ YOLO ───────────────────    $0.08 · ⟲ saved $0.0339 · 92% cached   41.1k/1M · 4%   idle ─
+ ›
+
+
+ alt+l tasks                                                                                        💡 space space takes you back to home ✕

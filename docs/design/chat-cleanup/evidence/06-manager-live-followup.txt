@@ -1,4 +1,4 @@
- >● codeaf   home  teams  chats  sessions  spend  settings                                                                      sun 11:54am
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                                       sun 1:29pm
    ◐ Check the review status with the team. ×   +   ▦ All
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -16,7 +16,7 @@
 
   › Answer with only the words Still / ready / for / review. joined by spaces. No tools or delegation.
 
-    ▸ Working checking · ctrl+e                                                                                        +25 ↑ 5,757  ↓ 37
+    ▸ Working checking · ctrl+e                                                                                     +9.4k ↑ 12.3k  ↓ 101
 
   Still ready for review                                                                                                                   ❮
 
@@ -35,8 +35,8 @@
 
 
 
-─ deepseek/deepseek-v4.1-flash (together):auto · ◇ YOLO ──────────────────────────────────────────────    $0.00   5.8k/1M · 1%   ⠼ working ─
+─ deepseek/deepseek-v4.1-flash (together):auto · ◇ YOLO ────────────────────────────────────────  $0.0034   12.3k/1M · 1%   ⠇ working · 1s ─
  ›
 
 
- esc interrupt                                                             project: /tmp/TestCleanManagerReplay454034178/002/manager-replay
+ esc interrupt                                                             project: /tmp/TestCleanManagerReplay471394247/002/manager-replay
