@@ -410,9 +410,8 @@ func TestSettlingTheFoldsLeavesAnAlreadyLandedReadersChipsAlone(t *testing.T) {
 	// And a room that has not landed is not re-cut either: nothing changed, so
 	// nothing may be dropped.
 	b := openRoomOn(t, landedJournal(t))
-	live := readingDeck(b)
-	for _, f := range b.deckFolds(live) {
-		b.setWorkOpen(live, f.key, true)
+	if !b.toggleLatestWorkfold() || !b.room.workOpen[0] {
+		t.Fatal("running room has no open live work for this assertion")
 	}
 	b.room.setDone(false)
 	open = false

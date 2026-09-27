@@ -150,3 +150,28 @@ func TestDismissedNotificationsLeaveNoBlankRowsOrEmptyWorkfold(t *testing.T) {
 		t.Fatalf("dismissal left clutter:\nwant %q\ngot %q", want, got)
 	}
 }
+
+func TestDismissedFailureReappearsWhenSameStateRequiresDecision(t *testing.T) {
+	a, _, _ := taskApp(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(1, "Check parser", session.TaskFailed, session.TaskNotice{Report: "check failed"})})
+	at := a.doneEntryFor(1)
+	if !a.dismissDone(at) {
+		t.Fatal("failed receipt could not be dismissed")
+	}
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(1, "Check parser", session.TaskFailed, session.TaskNotice{
+		Report: "check failed", Result: "parser implementation", ResultHeld: true,
+	})})
+	card := a.doneCardAt(at)
+	if card.dismissed || card.status.Tier != session.TaskTierYourCall {
+		t.Fatalf("same-state pending decision stayed dismissed: %+v", card)
+	}
+	if a.doneEntryFor(1) != at {
+		t.Fatal("same-state decision added a duplicate receipt")
+	}
+	if got := taskText(a); !strings.Contains(got, "Check parser") || !strings.Contains(got, card.status.Ask.Reason) {
+		t.Fatalf("pending decision not visible: %s", got)
+	}
+	if a.dismissDone(at) {
+		t.Fatal("pending decision became dismissible")
+	}
+}

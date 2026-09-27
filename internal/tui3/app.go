@@ -5151,7 +5151,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// while the mode word and `started` stay in the note's own dim.
 			started := msg.kind + " task " + msg.id + " started · " + msg.title
 			if !a.crewAfterStarted(msg.id, started, []string{msg.id, msg.title}) {
-				a.noteFacts(started, msg.id, msg.title)
+				a.feed.noteWritten(started, false, []string{msg.id, msg.title})
 			}
 			// AND WHERE THE WORK STANDS, when the engine had something to say
 			// about it: the ground ladder's redirect, said when the work goes
@@ -5159,7 +5159,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// under the started one, in the same slot [app.noteFacts] already
 			// carries facts in; empty is every ordinary start and says nothing.
 			if msg.note != "" {
-				a.note(msg.note)
+				a.feed.note(msg.note)
 			}
 			a.noticeEvent(eventTaskStarted)
 		}
@@ -6530,10 +6530,8 @@ func (a *app) take(u session.Usage) {
 	}
 }
 
-// note is the conversation's own [feed.note] WITH ONE MORE PLACE TO SAY IT, and
-// it shadows the embedded method deliberately: `a.note(…)` is what four hundred
-// call sites already spell, and a second verb for "say this where the person is
-// standing" would be four hundred chances to pick the wrong one.
+// note answers a UI action or reports something requiring the person's attention.
+// Engine bookkeeping uses feed.note so its audience is explicit at the producer.
 func (a *app) note(text string) { a.noteWritten(text, false, nil) }
 
 // noteWritten is the one body behind all three of the app's note doors, and the
@@ -6559,6 +6557,10 @@ func (a *app) note(text string) { a.noteWritten(text, false, nil) }
 // for. The flag is raised around the ONE dispatch home makes on its own behalf.
 func (a *app) noteWritten(text string, block bool, facts []string) {
 	a.feed.noteWritten(text, block, facts)
+	if n := len(a.entries); n > 0 && a.entries[n-1].kind == entryNote {
+		a.entries[n-1].told = true
+		a.entries[n-1].stale = true
+	}
 	if a.echoHome && a.at(pageHome) {
 		a.home.say(firstLine(text), "")
 	}
@@ -7370,17 +7372,6 @@ func selectedCaption(sel int) (int, bool) {
 // that is typed in full and entered arrives here too, so an alias typed out and
 // an alias chosen from the list run the same road.
 func (a *app) slash(line string) tea.Cmd {
-	// A command's direct response is addressed to the person who asked for it.
-	// Mark that origin here so compact work never hides /help or /cost output.
-	before := len(a.entries)
-	defer func() {
-		for i := before; i < len(a.entries); i++ {
-			if a.entries[i].kind == entryNote {
-				a.entries[i].told = true
-				a.entries[i].stale = true
-			}
-		}
-	}()
 	name, rest, _ := strings.Cut(strings.TrimPrefix(line, "/"), " ")
 	rest = strings.TrimSpace(rest)
 	// The unknown-command hint below says back what was typed and not what it
@@ -9378,7 +9369,7 @@ func (a *app) cacheNote(u session.Usage) {
 			line += " · saved " + savedWord(saved)
 		}
 	}
-	a.note(line)
+	a.feed.note(line)
 }
 
 // repriceCache is what the session's cache reads have been worth, worked out

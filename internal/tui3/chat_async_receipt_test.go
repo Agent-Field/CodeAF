@@ -16,7 +16,7 @@ func TestCleanChatAsyncTaskReceiptDoesNotUnfoldEarlierCacheNote(t *testing.T) {
 		a.entries[5].confirmed = &responseConfirmation{done: true}
 		a.turn = 1
 		a.workMode = config.WorkFold
-		a.note("PRIVATE CACHE RECEIPT")
+		a.feed.note("PRIVATE CACHE RECEIPT")
 		a.toggleLatestWorkfold()
 		a.setCapOpen(a.conversation(), 2, true)
 		a.toggleLatestWorkfold()

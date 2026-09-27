@@ -713,3 +713,78 @@ func TestRoomLiveActivityDoesNotBorrowTheParentPhase(t *testing.T) {
 		}
 	}
 }
+
+// Count the entire transcript, not just hitWorkFold rows: fallback animation
+// and subharness status used to add a fourth line outside the compact window.
+func TestCleanChatInterimReplyKeepsOneActivityWindowWhileWaiting(t *testing.T) {
+	for _, addressed := range []bool{false, true} {
+		for _, harness := range []string{"", "gathering subharness results"} {
+			a := liveStepsApp(t)
+			a.width = 140
+			a.entries[9].status = toolOK
+			a.entries[9].ended = liveStepsBase.Add(8 * time.Second)
+			reply := entry{kind: entryAssistant, turn: 1, text: "The first result is ready.", settled: true, confirmed: &responseConfirmation{done: true}}
+			if addressed {
+				reply.settled, reply.provisional, reply.addressed = false, true, true
+				reply.confirmed = nil
+			}
+			a.entries = append(a.entries, reply)
+			a.live = -1
+			a.harnessStep = harness
+			a.touch()
+			rendered := rows(a)
+			activity, nonblank := 0, 0
+			for _, r := range rendered {
+				if strings.TrimSpace(plain(r.text)) != "" {
+					nonblank++
+				}
+				if r.activity {
+					activity++
+				}
+			}
+			page := livePage(a)
+			// One user line, one delivered reply, and the existing three work lines.
+			if nonblank != 5 || activity != 1 || !strings.Contains(page, reply.text) {
+				t.Fatalf("addressed=%t harness=%q: %d nonblank rows, %d animated rows:\n%s", addressed, harness, nonblank, activity, page)
+			}
+		}
+	}
+}
+
+func TestCleanChatSubharnessFallbackRemainsWithoutCompactWork(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.state, a.turn = stateWorking, 1
+	a.harnessStep = "gathering subharness results"
+	a.entries = []entry{{kind: entryUser, text: "Check the result.", turn: 1}}
+	a.touch()
+	if !strings.Contains(livePage(a), a.harnessStep) {
+		t.Fatal("lost the standalone subharness activity")
+	}
+}
+
+func TestCleanChatKeptBoundaryDoesNotAddFourthActivityRow(t *testing.T) {
+	for _, boundary := range []entry{
+		{kind: entrySteer, turn: 1, steer: &steerElbow{id: 1, words: "Use the second option", consumed: true}},
+		{kind: entryTool, turn: 1, tool: "bash", status: toolConsent},
+	} {
+		a := liveStepsApp(t)
+		a.width = 140
+		a.entries[9].status, a.entries[9].ended = toolOK, liveStepsBase.Add(8*time.Second)
+		a.entries = append(a.entries, boundary)
+		a.live = -1
+		a.harnessStep = "waiting for subharness"
+		a.touch()
+		activity := 0
+		for _, r := range rows(a) {
+			if r.hit == hitWorkFold {
+				activity++
+			}
+			if r.entry == -1 && r.hit != hitWorkFold && strings.TrimSpace(plain(r.text)) != "" {
+				t.Fatalf("boundary %v added a standalone activity row: %q\n%s", boundary.kind, plain(r.text), livePage(a))
+			}
+		}
+		if activity > liveStepRows {
+			t.Fatalf("boundary %v: %d activity lines", boundary.kind, activity)
+		}
+	}
+}

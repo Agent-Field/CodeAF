@@ -314,13 +314,13 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 		f.retry(ev)
 
 	case session.EventToolForming:
-		f.confirmUserUpdate()
+		// The provider may still discard this attempt. Explicit updates stay
+		// addressed while streaming, but are confirmed only with a durable call.
 		// THE CALL IS ARRIVING. Nothing has been asked for yet — this is the
 		// model writing the instruction, drawn while it writes it.
 		f.formTool(ev)
 
 	case session.EventToolAnnounced:
-		f.confirmUserUpdate()
 		f.announceTool(ev)
 
 	case session.EventToolBegin:
@@ -1261,7 +1261,7 @@ func (f *feed) reserveResponseContinuation() {
 	}
 	for i := f.think - 1; i >= 0; i-- {
 		e := &f.entries[i]
-		if e.turn != f.turn || groupBreaks(e) || e.kind == entryTool || e.kind == entryCompact {
+		if e.turn != f.turn || groupBreaks(e) || (e.kind == entryTool && !(f.updateDelivery.marked && (e.status == toolForming || e.status == toolQueued))) || e.kind == entryCompact {
 			return
 		}
 		if e.kind != entryAssistant {
@@ -1401,9 +1401,23 @@ func (f *feed) retry(ev session.Event) {
 	if e := blockAt(f.entries, f.live); e != nil && e.kind == entryAssistant && e.provisional {
 		end, owner = f.live, e.confirmed
 	}
+	// Forming/announced calls may have closed an explicitly addressed
+	// assembler before a queued human line. It is still this retry's attempt.
+	if owner == nil {
+		for i := end; i >= 0 && f.entries[i].turn == f.turn; i-- {
+			e := &f.entries[i]
+			if e.kind == entryTool && e.status != toolForming && e.status != toolQueued {
+				break
+			}
+			if e.kind == entryAssistant && e.addressed && e.provisional {
+				end, owner = i, e.confirmed
+				break
+			}
+		}
+	}
 	for i := end; i >= 0 && f.entries[i].turn == f.turn; i-- {
 		e := &f.entries[i]
-		if (e.kind == entryTool && e.status != toolForming) || groupBreaks(e) || e.kind == entryCompact {
+		if (e.kind == entryTool && e.status != toolForming && e.status != toolQueued) || groupBreaks(e) || e.kind == entryCompact {
 			break
 		}
 		if e.kind == entryAssistant {
@@ -1546,7 +1560,8 @@ func (f *feed) dropLive() {
 }
 
 // dropRetryingFormingTools removes calls that were still being spelled when a
-// provider request was cut. The session discards those partial calls rather
+// provider request was cut, including calls announced before execution.
+// The session discards those partial calls rather
 // than recording them, so settling their rows as cancelled would leave a call
 // on screen that never existed in the transcript.
 //
@@ -1558,7 +1573,7 @@ func (f *feed) dropRetryingFormingTools() {
 		if e.turn != f.turn {
 			break
 		}
-		if e.kind != entryTool || e.status != toolForming {
+		if e.kind != entryTool || (e.status != toolForming && e.status != toolQueued) {
 			continue
 		}
 		if i == len(f.entries)-1 {
@@ -1586,10 +1601,28 @@ func (f *feed) confirmResponse() {
 			confirmation = e.confirmed
 		}
 	}
+	// A streamed call closes the assembler before it becomes durable. Restore
+	// the explicit update's response anchor so a queued human line cannot hide
+	// its confirmation at ToolBegin.
+	if !anchored && f.updateDelivery.marked {
+		for i := end; i >= 0 && f.entries[i].turn == f.turn; i-- {
+			e := &f.entries[i]
+			if e.kind == entryTool && e.status != toolForming && e.status != toolQueued {
+				break
+			}
+			if e.kind == entryAssistant && e.addressed && e.provisional {
+				end, anchored = i, true
+				if e.confirmed != nil && !e.confirmed.done {
+					confirmation = e.confirmed
+				}
+				break
+			}
+		}
+	}
 	var fragments []int
 	for i := end; i >= 0; i-- {
 		e := &f.entries[i]
-		if e.turn != f.turn || groupBreaks(e) || e.kind == entryTool || e.kind == entryCompact {
+		if e.turn != f.turn || groupBreaks(e) || (e.kind == entryTool && !(f.updateDelivery.marked && (e.status == toolForming || e.status == toolQueued))) || e.kind == entryCompact {
 			break
 		}
 		if e.kind != entryAssistant {

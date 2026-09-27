@@ -402,7 +402,7 @@ func copyApp(t *testing.T) *app {
 	t.Helper()
 	a := newTestApp(&fakeAgent{model: "m"})
 	for _, line := range []string{"alpha", "bravo", "charlie", "delta", "echo"} {
-		a.entries = append(a.entries, entry{kind: entryNote, text: line})
+		a.entries = append(a.entries, entry{kind: entryNote, text: line, told: true})
 	}
 	a.touch()
 	drive(t, a, ctrlKey('b'))
@@ -1535,6 +1535,8 @@ func TestACompactedEventWithNothingRunningIsBornSettled(t *testing.T) {
 	}}}
 	a := newTestApp(agent)
 	runTurn(t, a, agent, "carry on")
+	a.setWorkOpen(a.conversation(), a.turn, true)
+	a.touch()
 
 	row := findRow(t, a, "compacted from ~84k tokens")
 	if !strings.Contains(row, "⚭") || !strings.Contains(row, "──") {

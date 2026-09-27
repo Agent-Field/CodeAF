@@ -658,7 +658,7 @@ func (a *app) orchNoteEvent(ev session.Event) {
 		a.roomTouched()
 		return
 	}
-	a.note(orchNotePrefix + note)
+	a.feed.note(orchNotePrefix + note)
 }
 
 // orchNotePrefix names the lane a dim line in the transcript came off, the way

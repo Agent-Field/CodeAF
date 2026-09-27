@@ -292,11 +292,16 @@ func (a *app) layout(width int) []row {
 		out = append(out, forming...)
 		closed = true
 	}
-	line, ok := a.harnessStepRow(inner)
-	if !ok && !hasCompactActivity(out) {
-		line, ok = a.ellipsis()
-		if ok && !a.workFoldOpen(a.conversation(), a.turn) && !a.unfolded[a.turn] {
-			line = a.activityLine("  " + a.shimmer("Working"))
+	var line string
+	var ok bool
+	compactWindow := !a.workFoldOpen(a.conversation(), a.turn) && !a.unfolded[a.turn] && hasCompactWindow(out, liveWorkKey(a.conversation()))
+	if !hasCompactActivity(out) && !compactWindow {
+		line, ok = a.harnessStepRow(inner)
+		if !ok {
+			line, ok = a.ellipsis()
+			if ok && !a.workFoldOpen(a.conversation(), a.turn) && !a.unfolded[a.turn] {
+				line = a.activityLine("  " + a.shimmer("Working"))
+			}
 		}
 	}
 	if ok {
@@ -897,6 +902,10 @@ func (a *app) captionSpanBody(d deck, c caption, width int) []row {
 // surrounding work is opened, including landed-card doors and assistant links.
 func (a *app) disclosedEntryRows(d deck, at, width int) []row {
 	e := &d.entries[at]
+	// The caption owns its lifted narration, including the disclosed remainder.
+	if e.kind == entryAssistant && e.capHead {
+		return nil
+	}
 	if e.kind == entryDone {
 		return a.doneCluster(d, nil, at, at+1, width)
 	}
@@ -1797,9 +1806,19 @@ func (a *app) pulseHoldsThePhase(news PhaseNews) bool {
 	return a.ellipsisShowing() && phaseWords(news, a.now()) != ""
 }
 
-// hasCompactActivity asks the rows that actually drew, rather than re-deriving
-// their visibility from engine state. Expanding a block returns its activity
-// budget to the ordinary tool rows and footer on the very same frame.
+// A paused compact window still owns the activity budget. A consent boundary
+// must not acquire an extra fallback status line merely because it is not moving.
+func hasCompactWindow(rows []row, key int) bool {
+	for _, r := range rows {
+		if r.hit == hitWorkFold && r.turn == key {
+			return true
+		}
+	}
+	return false
+}
+
+// hasCompactActivity asks the rows that actually drew. Expanding a block returns
+// its activity budget to the ordinary tool rows and footer on the same frame.
 func hasCompactActivity(rows []row) bool {
 	for _, r := range rows {
 		if r.activity {
