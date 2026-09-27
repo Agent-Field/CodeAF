@@ -30,3 +30,8 @@ invalidates:
 ---
 
 One entry for the whole batch. The issues it closes, the ones it only narrows, and the ones left for a ruling are listed in the pull request.
+
+The new-direction completion fixture now observes its asynchronous readings before
+advancing the instant script. It still requires two accepted completion endings
+and no task admission; exhausting the script is no longer mistaken for a
+production completion failure. No runtime timing or completion policy changed.
