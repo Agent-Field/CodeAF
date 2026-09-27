@@ -3405,7 +3405,12 @@ shows the existing outline: click a caption to inspect its calls, or click the
 whole-work door to return to the compact steps. Completion collapses work opened
 during the turn. A caption longer than three rows ends with an ellipsis in the
 compact view; open the work to read its full text.
-Confirmed replies stay visible even when later work follows them. Team exchanges
+Confirmed replies stay visible even when later work follows them. An important
+interim result, blocker, decision or requested update also stays visible when
+codeaf explicitly addresses it to you with a leading `[update]` marker. The
+interface removes the marker and renders the message normally, including when
+that same response calls tools. Routine tool narration has no marker and folds
+with the work; you do not need to type any marker yourself. Team exchanges
 and compaction details stay inside the work disclosure; opening it preserves
 reasoning, notes and receipts alongside the step captions.
 Questions, approval prompts and text-only answers are never hidden — nor is a second message you sent into a running turn, which
