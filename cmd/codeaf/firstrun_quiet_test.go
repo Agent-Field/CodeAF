@@ -24,6 +24,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/pool/judge"
 	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // captureStandardLog points the standard logger at a buffer for one test and
@@ -114,6 +115,14 @@ func TestAJudgeWithNoKeyLeavesTheLandingForTheNextStart(t *testing.T) {
 // boot held.
 func TestTheChatsJudgeAsksWithTheKeyPastedAfterBoot(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
+	// The judge queues its usage asynchronously. Join this fixture's writer
+	// before its temporary home is removed, without closing other ledgers.
+	ledger := session.UsageLedgerPath()
+	t.Cleanup(func() {
+		if !session.StopUsageWriter(ledger) {
+			t.Error("the judge's usage writer did not stop before home cleanup")
+		}
+	})
 	t.Setenv("OPENROUTER_API_KEY", "")
 	t.Setenv("OPENAI_API_KEY", "")
 
