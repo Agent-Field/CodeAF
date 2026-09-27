@@ -107,6 +107,9 @@ type DelegateSetup struct {
 	Ledger string
 	// Keepalive overrides the model API's keepalive interval, for a test.
 	Keepalive time.Duration
+	// AuthKeySource is the safe source name to show when the model service
+	// rejects the conversation's key.
+	AuthKeySource string
 	// PlainFolder says the program works in its folder without git
 	// (session.RunSpec.PlainFolder), so the program's line carries its own
 	// flags for that (delegate.Delegate.PlainFolder).
@@ -462,9 +465,10 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 		Settling: func(int) { _ = w.store.ClearLive(task.ID) },
 		// NOBODY IS READING THE PROGRAM'S CALLS AS THEY ARRIVE: it is a task's
 		// worker, and the person is in their conversation or away from it.
-		Role:      lanes.RoleLeafUnattended,
-		Node:      w.program.Name,
-		Keepalive: w.setup.Keepalive,
+		Role:          lanes.RoleLeafUnattended,
+		Node:          w.program.Name,
+		Keepalive:     w.setup.Keepalive,
+		AuthKeySource: w.setup.AuthKeySource,
 	})
 	if err != nil {
 		reason := fmt.Sprintf("open %s's model API: %v", w.program.Name, err)

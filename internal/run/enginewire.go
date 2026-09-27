@@ -70,8 +70,9 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 			// AND ITS MONEY IS THE CONVERSATION'S, CALL BY CALL: every ledger row
 			// names the conversation and the task, and every call is folded
 			// into the conversation's books whole as it is metered.
-			Conversation: spec.Conversation,
-			OnCharge:     spec.OnCharge,
+			Conversation:  spec.Conversation,
+			OnCharge:      spec.OnCharge,
+			AuthKeySource: config.APIKeySourceAt(spec.ProfileDir),
 		}
 		factory = DelegateFactory(spec.Store, spec.Workspace, *spec.Delegate, setup, limits, factory)
 	}

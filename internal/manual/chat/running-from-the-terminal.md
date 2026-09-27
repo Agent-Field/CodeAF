@@ -985,6 +985,11 @@ Each directly connected service may instead name its own environment variable, w
 stored with that service. `codeaf doctor`'s first row still reports only which default-service key answered — `key set · OPENROUTER_API_KEY`, or
 `key set · /home/you/.codeaf/config.json`, or `key none ·` and the two lines above.
 
+If the default service answers with an authentication refusal (`401` or `403`), codeaf stops
+without retrying it as a provider failure. The ending names the safe source of the key it used:
+`your key was not accepted for this model — the shell's OPENROUTER_API_KEY`,
+`the shell's OPENAI_API_KEY`, or `the key saved in your profile`. It never prints the key itself.
+
 **These change state without model spending**: `connect`, `disconnect`, `cache clean`,
 `rebuild`, `notebook retract|restore`, `services stop` and `devices revoke`. A browser
 connection may make authentication and model-list network requests, but sends no prompt.
