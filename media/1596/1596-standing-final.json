@@ -1,0 +1,40 @@
+[
+  {
+    "schema": 1,
+    "id": "c9dab042842d1e4d",
+    "words": "always ask me before modifying pantry.csv, and never place purchases automatically",
+    "workspace": "/tmp/caf-extended-1596/project",
+    "origin": {
+      "sessionId": "bb6d071599b68130",
+      "transcript": "/tmp/caf-extended-1596/state/v3/projects/-tmp-caf-extended-1596-project/bb6d071599b68130/transcript.jsonl",
+      "turnIds": [
+        "10"
+      ]
+    },
+    "when": {
+      "kind": "hold",
+      "at": "0001-01-01T00:00:00Z",
+      "probe": {}
+    },
+    "does": {
+      "kind": ""
+    },
+    "rails": {
+      "perRunUsd": 0,
+      "maxPerDay": 0,
+      "expires": "0001-01-01T00:00:00Z"
+    },
+    "altitude": "project",
+    "brief": {
+      "title": "pantry edit guard"
+    },
+    "status": "active",
+    "created": "2026-09-27T12:24:06.363218583-04:00",
+    "updated": "2026-09-27T12:24:06.363218583-04:00",
+    "lastChecked": "0001-01-01T00:00:00Z",
+    "nextDue": "0001-01-01T00:00:00Z",
+    "runs": 0,
+    "lastFired": "0001-01-01T00:00:00Z",
+    "spentUsd": 0
+  }
+]

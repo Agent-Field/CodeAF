@@ -1,0 +1,44 @@
+Spark independent final acceptance 2026-09-27T16:27:51.730269+00:00
+
+$ python3 -m unittest -v test_pantry.py
+test_alphabetical_ordering (test_pantry.PantryCliTests.test_alphabetical_ordering) ... ok
+test_bad_header_is_error (test_pantry.PantryCliTests.test_bad_header_is_error) ... ok
+test_blank_item_is_error (test_pantry.PantryCliTests.test_blank_item_is_error) ... ok
+test_custom_threshold (test_pantry.PantryCliTests.test_custom_threshold) ... ok
+test_default_output_unchanged_without_flag (test_pantry.PantryCliTests.test_default_output_unchanged_without_flag) ... ok
+test_default_threshold_is_three (test_pantry.PantryCliTests.test_default_threshold_is_three) ... ok
+test_empty_result_exits_zero_and_empty_stdout (test_pantry.PantryCliTests.test_empty_result_exits_zero_and_empty_stdout) ... ok
+test_input_csv_unchanged (test_pantry.PantryCliTests.test_input_csv_unchanged) ... ok
+test_input_csv_unchanged_after_shopping (test_pantry.PantryCliTests.test_input_csv_unchanged_after_shopping) ... ok
+test_invalid_threshold_is_error (test_pantry.PantryCliTests.test_invalid_threshold_is_error) ... ok
+test_malformed_quantity_nonzero_and_no_stdout (test_pantry.PantryCliTests.test_malformed_quantity_nonzero_and_no_stdout) ... ok
+test_malformed_row_three_fields (test_pantry.PantryCliTests.test_malformed_row_three_fields) ... ok
+test_missing_file_is_error (test_pantry.PantryCliTests.test_missing_file_is_error) ... ok
+test_negative_quantity_rejected_default_mode (test_pantry.PantryCliTests.test_negative_quantity_rejected_default_mode) ... ok
+test_negative_quantity_rejected_shopping_mode (test_pantry.PantryCliTests.test_negative_quantity_rejected_shopping_mode) ... ok
+test_shopping_alphabetical (test_pantry.PantryCliTests.test_shopping_alphabetical) ... ok
+test_shopping_custom_threshold (test_pantry.PantryCliTests.test_shopping_custom_threshold) ... ok
+test_shopping_prints_buy_amounts (test_pantry.PantryCliTests.test_shopping_prints_buy_amounts) ... ok
+test_strict_below_boundary (test_pantry.PantryCliTests.test_strict_below_boundary) ... ok
+
+----------------------------------------------------------------------
+Ran 19 tests in 1.407s
+
+OK
+exit=0
+
+$ python3 pantry.py pantry.csv
+beans: 0
+rice: 2
+exit=0
+
+$ python3 pantry.py pantry.csv --shopping
+beans: buy 3
+rice: buy 1
+exit=0
+
+$ python3 pantry.py pantry.csv --shopping --threshold 5
+beans: buy 5
+rice: buy 3
+exit=0
+Inventory matches original Git commit byte-for-byte.

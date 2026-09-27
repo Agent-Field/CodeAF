@@ -1,0 +1,27 @@
+test_bad_header_column_order (test_pantry_check.HeaderAndCliTest.test_bad_header_column_order) ... ok
+test_bad_header_extra_column (test_pantry_check.HeaderAndCliTest.test_bad_header_extra_column) ... ok
+test_clean_file_exits_zero (test_pantry_check.HeaderAndCliTest.test_clean_file_exits_zero) ... ok
+test_empty_input (test_pantry_check.HeaderAndCliTest.test_empty_input) ... ok
+test_malformed_input_aborts_with_empty_stdout (test_pantry_check.HeaderAndCliTest.test_malformed_input_aborts_with_empty_stdout)
+Regression: one bad row must abort the whole run, no partial list. ... ok
+test_missing_file_exits_two (test_pantry_check.HeaderAndCliTest.test_missing_file_exits_two) ... pantry-check: cannot read definitely-not-here.csv: [Errno 2] No such file or directory: 'definitely-not-here.csv'
+ok
+test_a_rejected_row_never_appears_in_the_list (test_pantry_check.InvalidRowTest.test_a_rejected_row_never_appears_in_the_list) ... ok
+test_each_bad_row_is_rejected_with_a_reason_and_the_good_ones_survive (test_pantry_check.InvalidRowTest.test_each_bad_row_is_rejected_with_a_reason_and_the_good_ones_survive) ... ok
+test_rejections_carry_the_raw_line_and_line_number (test_pantry_check.InvalidRowTest.test_rejections_carry_the_raw_line_and_line_number) ... ok
+test_custom_threshold (test_pantry_check.ParseRowsTest.test_custom_threshold) ... ok
+test_empty_result_renders_a_message (test_pantry_check.ParseRowsTest.test_empty_result_renders_a_message) ... ok
+test_exactly_at_threshold_is_excluded (test_pantry_check.ParseRowsTest.test_exactly_at_threshold_is_excluded) ... ok
+test_file_order_is_preserved (test_pantry_check.ParseRowsTest.test_file_order_is_preserved) ... ok
+test_header_is_case_and_space_insensitive (test_pantry_check.ParseRowsTest.test_header_is_case_and_space_insensitive) ... ok
+test_surrounding_whitespace_is_stripped (test_pantry_check.ParseRowsTest.test_surrounding_whitespace_is_stripped) ... ok
+test_threshold_default_lists_only_below_three (test_pantry_check.ParseRowsTest.test_threshold_default_lists_only_below_three) ... ok
+test_zero_quantity_is_kept_and_flagged (test_pantry_check.ParseRowsTest.test_zero_quantity_is_kept_and_flagged) ... ok
+
+----------------------------------------------------------------------
+Ran 17 tests in 0.107s
+
+OK
+Shopping list (2 item(s) below 3):
+  rice: 2
+  beans: 0  # out of stock

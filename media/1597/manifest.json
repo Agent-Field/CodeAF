@@ -1,0 +1,76 @@
+{
+  "pr": 1597,
+  "recording": "Unmodified original asciinema recording. GIF and MP4 are 3x playback with idle intervals capped at 3 seconds; no invented frames.",
+  "preview_duration_seconds": 86.865672,
+  "screenshot_source": "1597-final_review.cast",
+  "files": {
+    "1597-coverage.md": {
+      "bytes": 3408,
+      "sha256": "771cdc1ce07b96dcd7a6c09fd14eec2c6e8aa3ea9c5459ba63b9643ac7624704"
+    },
+    "1597-execution.json": {
+      "bytes": 386,
+      "sha256": "21a81dcf3a2727e581c1d7e8c092d503619debb0d40a2f43cb423d90c051bc46"
+    },
+    "1597-final_review.cast": {
+      "bytes": 9797,
+      "sha256": "b5df7fa0fc63f85dd8340df9a2d7c3e87ead43a034fe3f534fa0b7ac10728045"
+    },
+    "1597-independent-run.txt": {
+      "bytes": 2434,
+      "sha256": "73ae1a36ec8145e96ba2899da86558f5d0da493c33039f9115bdd87eb664685a"
+    },
+    "1597-shopping_request.cast": {
+      "bytes": 8976,
+      "sha256": "046da704ddba3f4c0c9eb2ff861e6f9ea9d184066330961bb880c3b10d4d6964"
+    },
+    "1597-team-traffic.jsonl": {
+      "bytes": 36868,
+      "sha256": "4f3b3ddbcc3cd317abc3986d672ed629915a049945a0c4dca3986d4407f3bdf6"
+    },
+    "1597-usage.json": {
+      "bytes": 66262,
+      "sha256": "e560e85e0a99ec2cd5b266795711e4bf2f628de57575fbf40202b74bdd119a1a"
+    },
+    "1597-verification.json": {
+      "bytes": 1093,
+      "sha256": "8cbdba5366573749903c26f880ed68df1ae069edbce3f4c6f0572edebd22d279"
+    },
+    "1597.cast": {
+      "bytes": 363758,
+      "sha256": "47ec3aa4ee7a3aac7749c32c6eb2da894b5a29c24df20d272be73f090649daf3"
+    },
+    "artifacts/README.md": {
+      "bytes": 1788,
+      "sha256": "c5840ff090fb1d23dc182c869b467a77519eab32727e4cd27ea1d96bcbaed892"
+    },
+    "artifacts/pantry.csv": {
+      "bytes": 35,
+      "sha256": "39a54ef50c183d5f138b295100af401b54d081a843732c7f99ac12ce652faecb"
+    },
+    "artifacts/pantry.py": {
+      "bytes": 3667,
+      "sha256": "38227574a0e869ec4749eb78748b7377220bbc211254397cd6070d66cc5931fa"
+    },
+    "artifacts/test_pantry.py": {
+      "bytes": 6300,
+      "sha256": "408dad8b0201078fe11b90314922c90337e1265b765ff234cb4e5ba503388499"
+    },
+    "screenshot.png": {
+      "bytes": 86379,
+      "sha256": "71ee31dc0b18294093670efda2c72c8adf4cabd14309a7930311d253d2829593"
+    },
+    "shopping_request.png": {
+      "bytes": 86327,
+      "sha256": "a15e052109835e679a1c98fde3ac7b4c3e477e9d2c55d370fe89b7d09bb74e71"
+    },
+    "workflow.gif": {
+      "bytes": 5236228,
+      "sha256": "450b70dabe5c12ed81ab5c2a45c9badbef064c20212c925056fba2f2fccc516c"
+    },
+    "workflow.mp4": {
+      "bytes": 2389249,
+      "sha256": "7c24c0023a74dc1422b48a87ee3b6653745dccea54391c259f04aab2fc8f01ac"
+    }
+  }
+}

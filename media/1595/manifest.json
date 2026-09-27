@@ -1,0 +1,48 @@
+{
+  "pr": 1595,
+  "recording": "Unmodified original asciinema recording. GIF and MP4 are 3x playback with idle intervals capped at 3 seconds; no invented frames.",
+  "preview_duration_seconds": 53.373134,
+  "screenshot_source": "1595-final-tool.cast",
+  "files": {
+    "1595-artifact-tests.log": {
+      "bytes": 2340,
+      "sha256": "9ed34a076fb644b5c9de8e50e33fb3fb3506c1218f0972c481ae5787f411bac5"
+    },
+    "1595-budget-blocked.cast": {
+      "bytes": 9040,
+      "sha256": "844c4c953a48243ce4cc3e68f03a943f928fa5bc1f9f11b2074bd30eab888ac9"
+    },
+    "1595-execution.json": {
+      "bytes": 386,
+      "sha256": "8a8ad72938e3bf6bdcfe14aaa64a4b1216e5bfebb085d0e62d196fe46e7991db"
+    },
+    "1595-final-tool.cast": {
+      "bytes": 8831,
+      "sha256": "732e65e2447bd9b5f1296b99943922a0f45a24897b6da86fbcf5922812eba307"
+    },
+    "1595-usage.json": {
+      "bytes": 13153,
+      "sha256": "f8f81e2fe0514fecc58a39c34c25e786cec0637936e4832907d9cdff18b84373"
+    },
+    "1595.cast": {
+      "bytes": 183577,
+      "sha256": "831e0629c908346bbb570c14381f3391b2e69d0b18804b561a274d957842ffbe"
+    },
+    "budget-blocked.png": {
+      "bytes": 81006,
+      "sha256": "acee315c0dcb505c8dcf3311dad63ae59620b8237d13e115d4e8a2d8284b0df4"
+    },
+    "screenshot.png": {
+      "bytes": 73959,
+      "sha256": "def258833f96728545997c74fd4211c9f99b1dcd4ac09bc3659156e8f25f2e3e"
+    },
+    "workflow.gif": {
+      "bytes": 1819305,
+      "sha256": "683d59eddc04da370e8349fa7fec920ef812d884bd89d026543b5f46718de0e1"
+    },
+    "workflow.mp4": {
+      "bytes": 823701,
+      "sha256": "995bee514519689523eae55270618b7f1a77d4dd58a643aa044eb53770df9993"
+    }
+  }
+}

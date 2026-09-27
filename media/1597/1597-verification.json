@@ -1,0 +1,43 @@
+{
+  "receipts": 182,
+  "models": {
+    "deepseek/deepseek-v4.1-flash": 182
+  },
+  "roles": {
+    "low": 16,
+    "talk": 77,
+    "worker": 27,
+    "reflex": 37,
+    "mastermind": 21,
+    "omitted": 4
+  },
+  "cost_usd": 0.235423992,
+  "metadata": [
+    {
+      "session": "a35e64ccf7f4a708",
+      "title": "reviewer role and raw cli output",
+      "approval": "allow",
+      "model": "deepseek/deepseek-v4.1-flash"
+    },
+    {
+      "session": "3024f2b8e3c1d737",
+      "title": "building cli and tests as team builder",
+      "approval": "allow",
+      "model": "deepseek/deepseek-v4.1-flash"
+    },
+    {
+      "session": "724b9cb96ed3b10f",
+      "title": "pantry stock-report cli with builder reviewer",
+      "approval": null,
+      "model": "deepseek/deepseek-v4.1-flash"
+    },
+    {
+      "session": "fe5df3d4f4ce94ce",
+      "title": "stock-report cli implementer reviewer team plan",
+      "approval": null,
+      "model": "deepseek/deepseek-v4.1-flash"
+    }
+  ],
+  "finished_utc": "2026-09-27T16:28:45.627297+00:00",
+  "fixture_commit": "4011fcf402051c4730cbecfa14ccc298b1b4e20f"
+}
