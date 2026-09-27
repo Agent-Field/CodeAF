@@ -4,6 +4,7 @@ title: chat keeps messages readable and folds operational work across every conv
 pr: 1607
 surface: [chat, engine, docs]
 invalidates:
+  - "The Codex redaction fixture counted auxiliary captions as conversation requests and failed depending on tool latency. It now deliberately interleaves one caption while retaining exactly two conversation requests and all redaction assertions (#1614)."
   - "Task-sourced replies repeated full original requests above the answer, including duplicate quick-reading handoffs. Source metadata now stays behind the shared work disclosure in live and resumed conversations; full requests remain available when opened (#1613)."
   - "Steering during streamed tool arguments left a discarded call visible and leaked the next response’s [update] marker. Consuming a correction now closes the response boundary, preserves its human update, and removes calls that never ran (#1609)."
   - "Task completion cards and batches stayed expanded and could not be dismissed. They now start as one row; /dismiss hides settled notifications and /dismiss undo restores them without changing task records or pending decisions."
@@ -14,3 +15,4 @@ invalidates:
 ---
 
 Closes the presentation gaps tracked in #1564, #1565, #1605, #1609, and #1613.
+Also fixes the acceptance fixture tracked in #1614.
