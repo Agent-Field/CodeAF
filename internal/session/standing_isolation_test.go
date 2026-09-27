@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,61 @@ import (
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/standing"
 )
+
+func TestStandingIsolationWithoutChangesReportsOnlyItsRetainedCopy(t *testing.T) {
+	repo := newTestRepo(t)
+	item := nightly(repo)
+	item.Does.Isolate = true
+	root := t.TempDir()
+	runDir := filepath.Join(root, "unchanged")
+	runner := standingChildRunner(t, root, &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse(""), nil },
+	}})
+	outcome, err := runner.Run(context.Background(), item, runDir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.Kind != "said" || !strings.Contains(outcome.Text, "No changes.") {
+		t.Fatalf("unchanged firing claims work: %+v", outcome)
+	}
+	trees := loadStandingTrees(runDir)
+	if len(trees) != 1 || !strings.Contains(outcome.Text, trees[0].Branch) {
+		t.Fatalf("retained copy not discoverable: %+v, %+v", trees, outcome)
+	}
+	if got := gitOut(t, trees[0].Dir, "status", "--porcelain"); got != "" {
+		t.Fatalf("no-op changed its copy: %s", got)
+	}
+	if got := gitOut(t, trees[0].Dir, "rev-parse", "HEAD"); got != gitOut(t, repo, "rev-parse", "HEAD") {
+		t.Fatal("no-op moved its commit")
+	}
+}
+
+func TestStandingIsolationRecordsItsCopyBeforeWorkerInitialization(t *testing.T) {
+	repo := newTestRepo(t)
+	item := nightly(repo)
+	item.Does.Isolate = true
+	root := t.TempDir()
+	runDir := filepath.Join(root, "failed-start")
+	want := errors.New("worker initialization failed")
+	runner := standingChildRunner(t, root, &scriptedCompleter{})
+	runner.child = func(cfg Config) (*Agent, error) {
+		trees := loadStandingTrees(runDir)
+		if len(trees) != 1 || trees[0].Dir != cfg.Workspace {
+			t.Fatalf("worker opened before its copy was recorded: %+v", trees)
+		}
+		return nil, want
+	}
+	if _, err := runner.Run(context.Background(), item, runDir, ""); !errors.Is(err, want) {
+		t.Fatalf("initialization error changed: %v", err)
+	}
+	trees := loadStandingTrees(runDir)
+	if len(trees) != 1 || trees[0].Root != repo || trees[0].Home == "" || trees[0].HomeSha == "" {
+		t.Fatalf("lost recovery identity: %+v", trees)
+	}
+	if got := currentBranch(trees[0].Dir); got != trees[0].Branch {
+		t.Fatalf("recorded branch %q differs from retained %q", trees[0].Branch, got)
+	}
+}
 
 func TestStandingBranchIsolationLeavesHostUntouched(t *testing.T) {
 	repo := newTestRepo(t)

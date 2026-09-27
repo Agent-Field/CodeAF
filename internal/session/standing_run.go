@@ -565,6 +565,9 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		}
 		cfg.Workspace = tree.dir
 		cfg.Place.Workspace = tree.dir
+		if err := rememberStandingIsolation(cfg, item.Workspace, tree); err != nil {
+			return standing.Outcome{}, fmt.Errorf("record standing worktree %s on %s: %w", tree.dir, tree.branch, err)
+		}
 		// Keep the copy even on cancellation, provider failure, or an unfinished
 		// edit. A successful turn is not evidence that every file was committed.
 	}
@@ -583,20 +586,6 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		return standing.Outcome{}, err
 	}
 	defer func() { _ = agent.Close() }()
-	if item.Does.Isolate {
-		agent.trees = append(agent.trees, StandingTree{
-			Folder:  item.Workspace,
-			Dir:     tree.dir,
-			Branch:  tree.branch,
-			Root:    tree.root,
-			Home:    tree.home,
-			HomeSha: tree.homeSha,
-			Mode:    TaskModeWorktree,
-			Cut:     time.Now(),
-		})
-		agent.stampTrees()
-		agent.SettleWrites()
-	}
 	if graph != nil {
 		// The graph is finished now that there is a session to own it: its home
 		// is this firing, and the parts it may hand out are worked by the agent
@@ -746,7 +735,10 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		// shell-written files, which producedAFile cannot recognize.
 		outcome.Text = strings.TrimSpace(outcome.Text + "\nWork kept on " + tree.branch + " in " + tree.dir)
 		if outcome.Kind == standing.OutcomeNothing {
-			outcome.Kind = "landed"
+			// The retained location is a report, not evidence of changed work.
+			// It must remain discoverable rather than enter the no-output sweep.
+			outcome.Kind = "said"
+			outcome.Text = "No changes. " + outcome.Text
 		}
 	}
 
