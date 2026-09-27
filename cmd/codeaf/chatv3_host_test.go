@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -19,6 +21,30 @@ import (
 // added to tui3.Agent breaks the build here rather than at the first keystroke
 // of a remote session.
 var _ tui3.Agent = (*remote.Agent)(nil)
+
+func TestRedialSSHStderrStaysOutOfTheTerminal(t *testing.T) {
+	link := &engineLink{}
+	terminal := new(bytes.Buffer)
+	first := &tailWriter{}
+	if _, err := link.stderrWriter(first, terminal).Write([]byte("host-key prompt\n")); err != nil {
+		t.Fatal(err)
+	}
+	if terminal.String() != "host-key prompt\n" {
+		t.Fatalf("the first ssh prompt was not shown: %q", terminal.String())
+	}
+
+	link.process = &exec.Cmd{}
+	redial := &tailWriter{}
+	if _, err := link.stderrWriter(redial, terminal).Write([]byte("connection refused\n")); err != nil {
+		t.Fatal(err)
+	}
+	if terminal.String() != "host-key prompt\n" {
+		t.Fatalf("redial stderr painted the terminal: %q", terminal.String())
+	}
+	if got := redial.String(); got != "connection refused\n" {
+		t.Fatalf("redial stderr was not retained: %q", got)
+	}
+}
 
 func TestParseHostTarget(t *testing.T) {
 	cases := []struct {
