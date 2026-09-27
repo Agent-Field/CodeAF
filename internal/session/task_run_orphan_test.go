@@ -210,8 +210,9 @@ func TestClosingUnderAProgramsRunEndsItInItsStoreFirst(t *testing.T) {
 		t.Fatalf("the second run is on root %q with brief %q", spec.Store.RootID(), spec.Store.Task(spec.Store.RootID()).Description)
 	}
 	endBeltRun(t, again, second)
-	close(first.release)
-	<-first.finished
+	// The double returning is not the owner finishing: the driver still owes
+	// its final record and store close before the fixture can remove its files.
+	endBeltRun(t, agent, first)
 }
 
 // THE RESTORE ROAD: a conversation read back from disk whose run row comes
