@@ -257,6 +257,8 @@ type RunLanding struct {
 	Branch  string
 	Changed []string
 	Refused string
+	// KeptReason is why automatic landing left Branch on its own ref.
+	KeptReason string
 	// Home is how the work came home, in the landing road's own outcome words
 	// ([mergeMerged] and its kin), set by this door once the run's copy has been
 	// brought back to its ground ([Agent.landBeltRun]). Empty is an engine's own
@@ -1550,6 +1552,9 @@ func (a *Agent) publishRunRow(g *TaskGraph, notice TaskNotice) {
 			if notice.Crew == nil && kept.Crew != nil {
 				notice.Crew = kept.Crew
 			}
+			if notice.KeptReason == "" {
+				notice.KeptReason = kept.KeptReason
+			}
 			break
 		}
 	}
@@ -1971,6 +1976,9 @@ func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
 		if said == "" {
 			said = "its work is kept on " + landing.Branch + " and did not go into " + run.ground
 		}
+		if merge == mergeKept {
+			landing.KeptReason = run.tree.keptLandingReason()
+		}
 		landing.Refused, landing.Home = said, merge
 		return landing
 	}
@@ -2182,7 +2190,8 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 		// the outcome sentence.
 		Ending: beltRunEnding(summary),
 		Report: report, Result: summary.Result,
-		Changed: landing.Changed,
+		Changed:    landing.Changed,
+		KeptReason: landing.KeptReason,
 		// THE CREW THAT DID IT AND WHAT IT COST, beside the estimate it was
 		// picked under, for the card's crew line.
 		Crew: run.crewDecision(), Model: run.crewWorker(), CostUSD: run.crew.taskSpent(summary.USD),

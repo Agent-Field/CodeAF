@@ -107,7 +107,7 @@ func (a *app) resetRetriedTask(node *taskNode) {
 	}
 	node.retried = true
 	node.stopped, node.restored = false, false
-	node.ending, node.report, node.merge = "", "", ""
+	node.ending, node.report, node.merge, node.keptReason = "", "", "", ""
 	node.produced, node.producedWhole = "", ""
 	node.producedCut, node.producedHeld = false, false
 	node.began, node.ended = time.Time{}, time.Time{}
