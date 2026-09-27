@@ -2455,6 +2455,10 @@ ink once this conversation has spent four fifths of its own `per conversation` l
 
 ## Keys in the task roster and inside a room
 
+Opening a task's room gives the keyboard to that room. Type a note and press
+`enter` to send it to the task; you do not need to press `alt+t` again first.
+Use `alt+t` when you want to navigate the roster again.
+
 **While the task roster holds the keyboard** (`alt+t`, `opt+t`): `esc` gives the keyboard
 back · `up`/`down` move over the needs-you band, the group headings and the tasks ·
 `enter` opens a task's room, opens or folds a group on its heading, and opens a band row's
