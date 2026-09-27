@@ -1232,6 +1232,30 @@ only omit what the reader is already holding. On the inherited-brief road the
 address rides the prerequisite's HEADER, which the shared pot above does not
 clip. Pinned by `internal/session/task_result_e2e_test.go`.
 
+## A background job's disk spool is bounded
+
+`internal/session/jobs.go` used to spool everything a background job wrote to
+one `<id>.log` with no ceiling: a watcher printing for a week filled the disk
+at whatever rate it printed, and the in-memory ring appended one Write before
+trimming, so a single multi-megabyte Write grew a temporary to match.
+
+The spool is now a window of at most **jobSpoolChunks (2) chunks of
+jobSpoolChunkBytes (4MB)** — `<id>.log` live and `<id>.log.1` kept — rotated by
+rename and never rewritten per write; the chunk that falls out of the window
+is deleted and counted. One huge Write spools in chunk-sized pieces and hands
+only its newest **64KB** (`jobRingBytes`) to the ring. The retained output
+stays addressable by the read tool exactly as before, so no limit grows for
+the reader.
+
+The honesty is the point, and it is pinned: a spool that has discarded
+anything — or a spool write, short write or close that failed — sets the
+sink's notice, and every footer a model reads stops saying `full log:` and
+names the truncation or the failure beside the file instead
+(`TestJobFooterNamesTruncationInsteadOfFullLog`); rotation, the discard, the
+huge-Write tail and the injected failure are pinned by
+`internal/session/jobspool_test.go`. The bound is a fact about the code, not
+about the box: the window is fixed bytes per job, not a disk-filling rate.
+
 ## Specialist tool discovery
 
 Chat starts with core tools and one local `load_capability` registry operation
