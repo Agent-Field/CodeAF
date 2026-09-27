@@ -247,3 +247,86 @@ func TestExplicitUpdateConfirmedWhenAnnouncedCallBegins(t *testing.T) {
 		t.Fatal("durable tool response lost confirmed user update")
 	}
 }
+
+// Steering during argument generation retains the delivered update, not the
+// abandoned call. The next request starts its own audience marker probe even
+// though it shares the same turn and follows the person's correction.
+func TestConsumedSteerClosesInterruptedUpdateAndFormingCall(t *testing.T) {
+	for name, status := range map[string]session.EventKind{"forming": session.EventToolForming, "announced": session.EventToolAnnounced} {
+		t.Run(name, func(t *testing.T) {
+			a := newTestApp(&fakeAgent{model: "m"})
+			a.turn = 1
+			runBatch(&a.feed, "read", "executed")
+			a.ingest(session.Event{Kind: session.EventTextDelta, Text: "[update] First file is ready."})
+			a.ingest(session.Event{Kind: status, Tool: "write", CallID: "abandoned", Args: `{"path":"test.py","content":"PRIVATE_PARTIAL_TOOL"}`, ArgsText: `{"path":"test.py","content":"PRIVATE_PARTIAL_TOOL"}`})
+			a.steerAccepted(&session.SteerNote{ID: 1, Words: "Use Decimal"})
+			a.ingest(session.Event{Kind: session.EventSteerConsumed, Steer: &session.SteerNote{ID: 1}})
+			for _, text := range []string{"[up", "date] Already using Decimal."} {
+				a.ingest(session.Event{Kind: session.EventTextDelta, Text: text})
+			}
+			runBatch(&a.feed, "read", "next")
+			a.ingest(session.Event{Kind: session.EventTextDelta, Text: "All tests pass."})
+			a.ingest(session.Event{Kind: session.EventAssistantDone})
+			a.touch()
+			page := strings.Join(plainRows(a), "\n")
+			for _, want := range []string{"First file is ready.", "Use Decimal", "Already using Decimal.", "All tests pass."} {
+				if strings.Count(page, want) != 1 {
+					t.Fatalf("lost or duplicated %q:\n%s", want, page)
+				}
+			}
+			for _, hidden := range []string{"[update]", "PRIVATE_PARTIAL_TOOL"} {
+				if strings.Contains(page, hidden) {
+					t.Fatalf("leaked %q:\n%s", hidden, page)
+				}
+			}
+			if kept := toolRowFor(t, &a.feed, "executed"); kept.status != toolOK || kept.detail.Output != "ok" {
+				t.Fatal("consumption discarded an executed call or its result")
+			}
+			for _, e := range a.entries {
+				if e.kind == entryTool && e.callID == "abandoned" {
+					t.Fatal("discarded tool remains in the live transcript")
+				}
+			}
+		})
+	}
+}
+
+func TestConsumedSteerSeparatesRetainedTextFromNextResponse(t *testing.T) {
+	for _, partial := range []string{"[up", "I have read the first file."} {
+		t.Run(partial, func(t *testing.T) {
+			f := newFeed(feedHooks{})
+			f.turn = 1
+			f.ingest(session.Event{Kind: session.EventTextDelta, Text: partial})
+			f.ingest(session.Event{Kind: session.EventSteerConsumed, Steer: &session.SteerNote{ID: 1}})
+			f.ingest(session.Event{Kind: session.EventTextDelta, Text: "[update] Correction applied."})
+			f.ingest(session.Event{Kind: session.EventAssistantDone})
+			var said []string
+			for _, e := range f.entries {
+				if e.kind == entryAssistant && e.text != "" {
+					said = append(said, e.text)
+				}
+			}
+			if len(said) != 2 || said[0] != partial || said[1] != "Correction applied." {
+				t.Fatalf("interrupted and subsequent responses crossed their boundary: %q", said)
+			}
+		})
+	}
+}
+
+func TestConsumedSteerDiscardsPartialProposalCard(t *testing.T) {
+	a, agent := formingTurn(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: forming("abandoned", taskTool, taskTool+" Draft proposal", "{\"title\":\"Draft\"")})
+	if a.formingCard() == nil {
+		t.Fatal("forming proposal did not raise a card")
+	}
+	drive(t, a, streamEventMsg{gen: a.gen, ev: steerAcceptedEvent(1, "Keep the work here")})
+	drive(t, a, streamEventMsg{gen: a.gen, ev: steerConsumedEvent(1)})
+	if a.formingCard() != nil || a.formingCardLive() {
+		t.Fatal("consumed steer retained abandoned proposal")
+	}
+	if !strings.Contains(strings.Join(plainRows(a), "\n"), "Keep the work here") {
+		t.Fatal("discarding proposal lost the correction")
+	}
+	agent.finish()
+	drive(t, a, streamClosedMsg{gen: a.gen})
+}
