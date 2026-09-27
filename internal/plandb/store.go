@@ -611,6 +611,9 @@ func (s *Store) Done(id, agent, result string, artifacts, evidence []string) (*T
 		// worker's own done, a real ending — keeps its words and its owner.
 		placeholder := task.Status == StatusDone && strings.TrimSpace(task.Result) == "" && task.ClaimedBy == ""
 		if !placeholder {
+			if terminal(task.Status) {
+				return fmt.Errorf("task %q is already terminal (%s)", id, task.Status)
+			}
 			// THE ROOT IS NEVER CLAIMED, so its worker cannot answer the ownership
 			// check every other task's worker does. The root's own worker is named
 			// instead, above, and the finish law still holds: the root cannot close
