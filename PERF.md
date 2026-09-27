@@ -1232,6 +1232,32 @@ only omit what the reader is already holding. On the inherited-brief road the
 address rides the prerequisite's HEADER, which the shared pot above does not
 clip. Pinned by `internal/session/task_result_e2e_test.go`.
 
+## A background job's disk spool is bounded
+
+`internal/session/jobs.go` used to spool everything a background job wrote to
+one `<id>.log` with no ceiling: a watcher printing for a week filled the disk
+at whatever rate it printed, and the in-memory ring appended one Write before
+trimming, so a single multi-megabyte Write grew a temporary to match.
+
+The spool is now a window of at most **jobSpoolChunks (2) chunks of
+jobSpoolChunkBytes (4MB)** — `<id>.log` live and `<id>.log.1` kept — rotated by
+copying a full chunk once at its boundary, then truncating and seeking the
+same live inode. The previous backup is removed before copying, keeping even
+transient usage within two chunks. No job ID or writer lock is released during
+rotation. One huge Write spools in chunk-sized pieces and hands
+only its newest **64KB** (`jobRingBytes`) to the ring. The retained output
+stays addressable by the read tool exactly as before, so no limit grows for
+the reader.
+
+The honesty is the point, and it is pinned: a spool that has discarded
+anything — or a spool write, short write or close that failed — sets the
+sink's notice, and every footer a model reads stops saying `full log:` and
+names the truncation or the failure beside the file instead
+(`TestJobFooterNamesTruncationInsteadOfFullLog`); rotation, the discard, the
+huge-Write tail and the injected failure are pinned by
+`internal/session/jobspool_test.go`. The bound is a fact about the code, not
+about the box: the window is fixed bytes per job, not a disk-filling rate.
+
 ## Specialist tool discovery
 
 Chat starts with core tools and one local `load_capability` registry operation
@@ -2615,3 +2641,73 @@ Rendering selects a phrase by elapsed ten-second interval and samples the existi
 decoding ripple with 240 ms letter steps and a 1.8-second pause per pass. The 28-column caption and
 nine-column mark have fixed widths. This uses the existing clock and one
 foreground span; it adds no timer, I/O, model call or per-frame randomness.
+
+## Completed job log retention
+
+`internal/session/jobretention.go` limits eligible completed managed spools in
+one jobs directory to **128 MiB and 64 job groups**, counting the base and
+rotation together. Active spools have separate per-job limits; unmarked legacy
+logs and unsafe files remain outside the budget because older writers may not
+hold leases. This is not a machine-wide bound. Startup retains the existing
+seven-day (`sweepTTL`) expiry for eligible inactive groups only: both chunks
+must be older than the cutoff. Expired groups are removed before applying the
+byte/count budget to fresh groups; metadata and active/legacy logs do not expire.
+
+Maintenance runs at log creation, sink close, and the existing startup sweep,
+never per output write. It
+lists one jobs directory, sorts candidates by allocated ID, and takes
+nonblocking independent file leases; a deletion holds its lease through unlink.
+Directory locks serialize allocation and maintenance across processes. Counter
+and ownership metadata reads are capped at 256 bytes. ID allocation persists a
+high-water value before cleanup and keeps the writer lease before publishing
+the marker, preventing both reused IDs and newborn-log eviction. The stable
+lock file remembers initialization if a counter later disappears.
+
+A claim with damaged metadata fails explicitly. Cleanup failures remain
+retryable and are surfaced in the sink notice. Existing journals, worktrees,
+legacy logs, and unrelated directories are not retention candidates. Tests use
+explicit byte/count budgets with small payloads, avoiding mutable global limits.
+
+The startup TTL sweeper delegates `logs/jobs/` to this retention instead of
+expiring the stable allocation metadata or ownership markers by age.
+## Runtime-safe file search
+
+The structured `grep` tool excludes known codeaf runtime output for both engines,
+including custom state homes and searches starting inside those directories.
+The policy preserves source under `work/`, `trees/`, and ordinary user `logs/`
+directories. Ripgrep receives exclusions after user globs and runs without user
+config or symlink traversal. Shell commands do not inherit these protections.
+
+### Foreground bash snapshots
+
+Foreground bash retains at most **8 MiB** of initial output per spill under the
+state home's `logs/bash/`, separately from its bounded latest-result tail.
+Completed snapshots share **128 MiB / 64 files** and expire after **seven days**;
+retention runs at creation and close. Active writers hold independent leases
+and are outside the completed-file budget. A directory lock serializes cleanup
+and publication. Unknown and unsafe linked files, and old `pi-bash-*.log`
+temporary files, remain outside retention. These are per-directory bounds.
+
+Write and close failures stop spooling, not draining. Incomplete output never
+claims to be full. Promotion closes the foreground snapshot and sends later
+bytes only to the job sink. Structured recursive search excludes new snapshot
+directories and legacy pi-bash files in the current temporary directory.
+
+`internal/exec/bare/bash_spill_test.go` covers the byte bound, initial-prefix
+preservation, real foreground shell output, disk failures, promotion, retention
+budgets, expiry, cross-process active leases, and linked-path refusal.
+
+Recursive search skips files above **8 MiB**. The walking engine and explicit
+single-file inspection read a snapshot bounded by `min(size-at-open, 8 MiB)`;
+one **64 KiB** line buffer drains and skips oversized lines, with an incomplete
+result notice. Stored matches are clipped to the existing 500-byte display cap,
+with at most **1000 matches** and **20 context lines per side**. Context rendering
+streams the same bounded snapshot reader and stops accumulating output once the
+result byte budget has been reached. Directory traversal and total files searched
+remain governed by the caller's context, rather than a machine-wide byte cap.
+
+Ripgrep JSON records are limited to **1 MiB**; scanner errors and match limits
+kill and reap the child so `Wait` cannot hang behind a full stdout pipe. Stderr
+capture retains at most **4 KiB** while continuing to drain. Regression fixtures
+cover both engines, direct runtime roots, aliases, broad globs, subprocess
+termination, source worktrees, and growth during a snapshot read.
