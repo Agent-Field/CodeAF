@@ -993,6 +993,9 @@ An isolated firing requires a Git repository with at least one commit. It
 starts from the current committed checkout in a new worktree and branch.
 Uncommitted changes in the original checkout are not copied. The firing keeps
 its worktree, including unfinished edits, and reports its branch and folder.
+A firing that changes nothing reports that fact rather than a landing. The copy
+is recorded before its worker opens, so startup failure still leaves its branch
+and folder discoverable.
 You can inspect and commit those files or open a pull request yourself.
 It does not merge or delete the copy automatically. This is workspace isolation,
 not a sandbox: commands with explicit paths can still access other folders.
