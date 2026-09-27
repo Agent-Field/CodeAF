@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: chat keeps messages readable and folds operational work across every conversation view
-pr: 1605
+pr: 1607
 surface: [chat, engine, docs]
 invalidates:
   - "Task completion cards and batches stayed expanded and could not be dismissed. They now start as one row; /dismiss hides settled notifications and /dismiss undo restores them without changing task records or pending decisions."
