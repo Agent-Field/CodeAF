@@ -295,6 +295,7 @@ func (a *Agent) StandingTrees() []StandingTree {
 // chip appears exactly when there is something to land.
 func (a *Agent) UnlandedChanges() []StandingChange {
 	var out []StandingChange
+	seen := map[string]bool{}
 	for _, tree := range a.StandingTrees() {
 		if len(tree.Wrote) == 0 {
 			continue
@@ -304,9 +305,51 @@ func (a *Agent) UnlandedChanges() []StandingChange {
 			Name:   filepath.Base(tree.Folder),
 			Files:  len(tree.Wrote),
 		})
+		seen[tree.Folder] = true
+	}
+	for _, row := range a.keptRunRows() {
+		if row.Copy == nil || seen[row.Copy.Root] {
+			continue
+		}
+		out = append(out, StandingChange{
+			Folder: row.Copy.Root,
+			Name:   filepath.Base(row.Copy.Root),
+			Files:  len(row.Changed),
+		})
+		seen[row.Copy.Root] = true
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
+}
+
+func (a *Agent) keptRunRows() []TaskNotice {
+	g := a.tasker()
+	if g == nil {
+		return nil
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	var out []TaskNotice
+	for _, row := range g.runRowsLocked() {
+		if !row.State.settled() || row.Copy == nil || strings.TrimSpace(row.Copy.Root) == "" || row.Branch == "" || len(row.Changed) == 0 {
+			continue
+		}
+		switch row.Merge {
+		case mergeKept, mergeConflicted, mergeAborted:
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+func (a *Agent) keptRunFor(folder string) (TaskNotice, bool) {
+	folder = canonicalPath(strings.TrimSpace(folder))
+	for _, row := range a.keptRunRows() {
+		if canonicalPath(row.Copy.Root) == folder {
+			return row, true
+		}
+	}
+	return TaskNotice{}, false
 }
 
 // standingTreeFor is the copy this conversation holds of one folder, and
@@ -691,6 +734,9 @@ func (a *Agent) Land(folder string) (FolderLanding, error) {
 	if name == "" {
 		return FolderLanding{}, errors.New("nothing is waiting to go into a folder")
 	}
+	if row, ok := a.keptRunFor(name); ok {
+		return a.landKeptRun(row)
+	}
 	tree, ok := a.standingTreeFor(name)
 	if !ok {
 		return FolderLanding{}, fmt.Errorf("nothing is waiting for %s", filepath.Base(name))
@@ -743,6 +789,29 @@ func (a *Agent) Land(folder string) (FolderLanding, error) {
 		_ = os.Remove(filepath.Dir(tree.Dir))
 	}
 	a.dropStandingTree(tree.Folder)
+	return landing, nil
+}
+
+// landKeptRun is the explicit /land road for a run branch that automatic
+// landing deliberately left alone. The person has named this action, so the
+// protected-branch guard no longer applies; git still refuses dirty or
+// conflicting ground and the retained row remains the recovery path then.
+func (a *Agent) landKeptRun(row TaskNotice) (FolderLanding, error) {
+	root, branch := canonicalPath(row.Copy.Root), strings.TrimSpace(row.Branch)
+	landing := FolderLanding{Folder: root, Name: filepath.Base(root), Files: append([]string(nil), row.Changed...)}
+	unlock := lockGitRoot(a.placeHere(), root)
+	defer unlock()
+	if _, err := git(root, "merge", "--no-edit", branch); err != nil {
+		_, _ = git(root, "merge", "--abort")
+		landing.Merged = mergeConflicted
+		landing.Note = "its branch " + branch + " did not merge cleanly and was kept — inspect the retained branch before deciding what to do next"
+		return landing, nil
+	}
+	landing.Merged = mergeMerged
+	_, _ = git(root, "branch", "-d", branch)
+	if graph := a.tasker(); graph != nil {
+		graph.keepRunRows(row.ID, nil)
+	}
 	return landing, nil
 }
 

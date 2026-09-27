@@ -235,6 +235,8 @@ const (
 type RunSummary struct {
 	Outcome string
 	Result  string
+	// Failure is the run's own account when it did not finish.
+	Failure string
 	// Limit is empty on every run that did not end on a bound its person set.
 	Limit RunLimit
 	// Program is how a delegated run's program ended when it did not finish,
@@ -2314,6 +2316,9 @@ func beltRunEnding(summary RunSummary) TaskEnding {
 func runEndingWords(summary RunSummary) (string, string) {
 	if ended := summary.Program; ended != nil && summary.Outcome != beltRunOutcomeDone {
 		return strings.TrimSpace(ended.Reason), strings.TrimSpace(ended.Result)
+	}
+	if summary.Outcome != beltRunOutcomeDone && strings.TrimSpace(summary.Failure) != "" {
+		return summary.Outcome, strings.TrimSpace(summary.Failure)
 	}
 	return summary.Outcome, strings.TrimSpace(summary.Result)
 }

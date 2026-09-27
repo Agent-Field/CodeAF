@@ -104,6 +104,47 @@ func TestTheFirstWriteIntoAReferredFolderCutsOneCopyAndTheSecondReusesIt(t *test
 	}
 }
 
+// A KEPT RUN IS STILL A LANDING, not a private branch somebody must discover
+// with git. The standing list is the one road /land reads, so a run row left
+// by automatic landing has to enter that list and use the same explicit door.
+func TestLandFindsAndMergesAKeptRunBranch(t *testing.T) {
+	repo := newTestRepo(t)
+	agent, _, _ := standingLab(t, repo)
+	mustGit(t, repo, "checkout", "-b", "task/retained")
+	writeFile(t, filepath.Join(repo, "landed.txt"), "from the kept branch\n")
+	mustGit(t, repo, "add", "landed.txt")
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "retained")
+	mustGit(t, repo, "checkout", "work")
+
+	agent.graph().keepRunRows(71, []TaskNotice{{
+		ID:      71,
+		Title:   "retained run",
+		State:   TaskDone,
+		Changed: []string{"landed.txt"},
+		Branch:  "task/retained",
+		Merge:   mergeKept,
+		Copy:    &TaskCopyRecord{Root: repo, Branch: "task/retained"},
+	}})
+
+	waiting := agent.UnlandedChanges()
+	if len(waiting) != 1 || waiting[0].Folder != repo {
+		t.Fatalf("kept run is not waiting to land: %+v", waiting)
+	}
+	landing, err := agent.Land("")
+	if err != nil {
+		t.Fatalf("Land: %v", err)
+	}
+	if landing.Merged != mergeMerged {
+		t.Fatalf("kept run landing = %+v, want merged", landing)
+	}
+	if got := readFile(t, filepath.Join(repo, "landed.txt")); got != "from the kept branch\n" {
+		t.Fatalf("landed file = %q", got)
+	}
+	if got := gitOut(t, repo, "branch", "--list", "task/retained"); strings.TrimSpace(got) != "" {
+		t.Fatalf("kept branch survived landing: %q", got)
+	}
+}
+
 // AND THE MODEL SEES ITS OWN WORK. A write followed by a read of the same path
 // must answer what was written — the copy is that folder's truth for this
 // conversation — while a file the conversation never touched is still read
