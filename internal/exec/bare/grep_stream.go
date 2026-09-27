@@ -17,7 +17,7 @@ const (
 )
 
 func grepSafetyDescription() string {
-	return fmt.Sprintf(" Skips runtime output and files >%d MiB. Named files allow bounded log inspection.", grepFileBytes>>20)
+	return fmt.Sprintf(" Skips runtime output and files >%d MiB; named logs get bounded reads.", grepFileBytes>>20)
 }
 
 // Read only the size observed at open, capped independently of file growth.
