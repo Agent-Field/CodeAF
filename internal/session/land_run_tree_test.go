@@ -43,6 +43,27 @@ func TestLandRunTreeCommitsTheTreesOwnWorkOntoItsBranch(t *testing.T) {
 	}
 }
 
+func TestLandRunTreeDoesNotCarryOrigBackupsOntoTheTaskBranch(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, "split", "textkit.go.orig"), "editor backup\n")
+	writeFile(t, filepath.Join(repo, "split", "textkit.go"), "package split\n")
+
+	branch, changed, refusal, err := LandRunTree(repo, "", "split the text kit", "")
+	if err != nil || refusal != "" {
+		t.Fatalf("LandRunTree = branch %q changed %v refusal %q error %v", branch, changed, refusal, err)
+	}
+	if strings.Contains(strings.Join(changed, "\n"), ".orig") {
+		t.Fatalf("changed paths include an editor backup: %v", changed)
+	}
+	if got := gitOut(t, repo, "ls-tree", "-r", "--name-only", branch); strings.Contains(got, ".orig") {
+		t.Fatalf("task branch carries an editor backup:\n%s", got)
+	}
+	if !strings.Contains(gitOut(t, repo, "show", "--name-only", "--format=", "HEAD"), "split/textkit.go") {
+		t.Fatal("task branch omitted the real source file")
+	}
+}
+
 // A TREE WITH NOTHING TO LAND IS A REFUSAL, NOT A FAULT: the branch would
 // carry what it always carried, so the door names no branch and says nothing
 // happened.

@@ -7020,6 +7020,9 @@ func readTaskDropping(dir, name string) ([]byte, error) {
 
 func isTaskDropping(path string) bool {
 	clean := filepath.ToSlash(filepath.Clean(strings.TrimSpace(path)))
+	if strings.HasSuffix(clean, ".orig") {
+		return true
+	}
 	for _, name := range taskDroppingNames() {
 		if clean == name || strings.HasPrefix(clean, name+"/") {
 			return true
@@ -9413,6 +9416,9 @@ func beltTreeWork(dir string) []string {
 		// `.lock` suffix here once kept every lockfile a run changed off the
 		// branch, and a `bench-results` directory is a project's own folder.
 		if harnessWrote(path) {
+			continue
+		}
+		if isTaskDropping(path) {
 			continue
 		}
 		// AN UNTRACKED BUILD CACHE IS NOT THE WORK EITHER, and it is a
