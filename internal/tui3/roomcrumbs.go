@@ -215,6 +215,11 @@ func (a *app) roomAncestors() []*taskNode {
 	if node == nil || a.roomIsGuest() {
 		return nil
 	}
+	// A RUN'S TASK HANGS UNDER THE RUN'S TASKS, which are rows of its store and
+	// not nodes of this graph (planroom.go).
+	if a.roomPlan() != nil {
+		return a.planRoomAncestors()
+	}
 	seen := map[uint64]bool{node.id: true}
 	var up []*taskNode
 	for parent := node.ParentID(); parent != ""; {
@@ -409,9 +414,10 @@ func (a *app) roomTrail() string {
 // twice, and the emptiness law is exactly that.
 
 // headLabelAt is the column a pinned label starts on. It is two cells for both
-// bars and for one reason each: [app.legendLine] opens the room's header with the
-// border's own `─ `, and the conversation's bar is indented to the transcript's
-// own left margin so the crumb stands over the words it is about.
+// room labels: [app.legendLine] opens the room's header with the border's own
+// `─ `, keeping the crumb over the transcript's words. The navigation strip
+// starts here too, and the places bar with it ([placeBarLead]), so the home
+// target sits in the same cells on the dashboard and in a conversation.
 //
 // It is stated once because the crumb spans are measured from the label's start
 // and pressed in the terminal's own columns, and a bar that recorded one and read
@@ -440,9 +446,16 @@ func (a *app) paintCrumbs(label string, at int, paint func(string) string) strin
 		return paint(label)
 	}
 	hot, hovering := a.hotCrumb()
+	return a.paintCrumbHits(label, at, a.crumbs, hot, hovering)
+}
+
+// paintCrumbHits is [app.paintCrumbs] over a trail the caller laid out, so a
+// page that draws the room's trail shape without being a room — a store task's
+// page — paints its crumbs in the same inks.
+func (a *app) paintCrumbHits(label string, at int, hits []crumbHit, hot crumbHit, hovering bool) string {
 	width, cursor := ansi.StringWidth(label), 0
 	var out strings.Builder
-	for _, hit := range a.crumbs {
+	for _, hit := range hits {
 		from, to := hit.span.from-at, hit.span.to-at
 		if from < cursor || to > width {
 			continue

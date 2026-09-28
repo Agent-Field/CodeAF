@@ -23,7 +23,8 @@ and `update-check.staging.json`; stable and rc use `update-check.json` for 24
 hours. A cached newer release is still shown. The curl line reinstalls this file
 from the channel the build follows — dev and staging follow themselves, and a
 stable, rc or source build follows stable. So `devaf` gets `curl -fsSL
-https://agentfield.ai/get/devaf | bash`, a dev build named `codeaf` gets
+https://agentfield.ai/get/devaf | bash`, `stageaf` gets `curl -fsSL
+https://agentfield.ai/get/stageaf | bash`, a dev build named `codeaf` gets
 `/get/codeaf/dev`, a release candidate gets the plain `/get/codeaf`, the same
 stable release its launch line just named, and a file under any other name gets
 `| CODEAF_INSTALL_NAME=<name> bash` on the end of its channel's line.
@@ -75,7 +76,8 @@ A push to `dev` publishes a `dev-*` build, a push to `staging` publishes a
 `staging-*` build, and a push to `main` publishes an rc. Each is marked as a
 prerelease. Stable is published only when a person dispatches `Release` on `main`.
 `--stable` is the default and reads GitHub's `releases/latest`, which excludes
-prereleases. To take another channel, put it on the path —
+prereleases. The `/get/devaf` and `/get/stageaf` lines install the dev and staging
+channels beside codeaf under those file names. To take another channel, put it on the path —
 `https://agentfield.ai/get/codeaf/dev`, `/staging` or `/rc` — or pass `--dev`,
 `--staging` or `--rc` after `bash -s --`. A channel with nothing published stops with
 `no <channel> build has been published yet`. To pin one complete tag, replace the
@@ -92,9 +94,11 @@ exactly once, or what it fetched is not a shell script, it answers 502.
 Building from source needs nothing published: clone the repository, run `make build`,
 then run `bin/codeaf` from the checkout.
 
-The installer writes `~/.codeaf/bin/codeaf` and prints three things: one line
-naming the installed file's `version`, the three-line telemetry notice, and last,
-when the folder is not yet on `PATH`, the bare `export PATH=…` line to paste.
+The installer writes `~/.codeaf/bin/codeaf` and prints two things: one line
+naming the installed file's `version` (`installed codeaf <tag> built …`), and last,
+when the folder is not yet on `PATH`, the bare `export PATH=…` line to paste. It
+prints nothing about telemetry; codeaf itself shows that notice before any count
+is sent.
 `/update` in the chat or `codeaf update` in a terminal replaces it in place;
 running the install line again works too.
 
@@ -111,6 +115,9 @@ That proxy serves the installer from the `dev` branch and rewrites exactly two
 default lines: the channel becomes dev and the installed name becomes devaf. It
 writes `~/.codeaf/bin/devaf` and leaves `~/.codeaf/bin/codeaf` untouched. On
 Windows the file is `devaf.exe`. `devaf version` still starts with `codeaf`.
+The installer's receipt names the command to type first:
+`installed devaf · codeaf dev-<date>-<commit> built …`. Any `--name` install
+reads the same way, with its own word first.
 
 The general spelling is `--name WORD` or `CODEAF_INSTALL_NAME=WORD`; the name
 may contain ASCII letters, digits, `.`, `_`, and `-`, and must begin with a
@@ -118,6 +125,26 @@ letter or digit. codeaf and devaf share `~/.codeaf`, including keys and
 conversations, and one engine per workspace; opening a workspace with the other
 build retires an idle host or joins a busy compatible one. A devaf launch checks
 the dev channel hourly, and bare `/update` keeps following dev.
+
+## What is stageaf — staging build beside codeaf — try the next release early — install staging — how often does staging update
+
+`stageaf` is the file name for a codeaf staging-channel build, not another product.
+Install it beside codeaf with:
+
+```sh
+curl -fsSL https://agentfield.ai/get/stageaf | bash
+```
+
+That proxy serves the installer from the `staging` branch and rewrites only the
+channel and name lines. It installs `~/.codeaf/bin/stageaf` (`stageaf.exe` on
+Windows) beside an untouched codeaf. `stageaf version` still starts with `codeaf`.
+It shares `~/.codeaf` with codeaf and devaf, including keys and conversations.
+A stageaf launch checks the staging channel hourly; bare `/update` follows staging.
+
+The promotion runs once a week and moves staging to the newest dev commit at
+the Friday 17:00 Toronto-time cutoff when the full check passes. When the check
+fails or there is nothing new, staging stays where it was. A person still
+decides when main moves.
 
 ## Why codeaf do may download rtk — compressed shell output and how to turn it off
 
@@ -226,16 +253,23 @@ through the same code path the tool on the belt runs, so the two cannot drift:
 fetch on a keyed provider, and every `image` call the model and are billed like any
 other call.
 
-## What codeaf --help prints — the five groups, and where the environment table went
+## What codeaf --help prints — the six groups, and where the environment table went
 
-`codeaf help`, `--help` and `-h` all print the same thing: every command under those five
-headings, in that order, then five worked examples.
+`codeaf help`, `--help` and `-h` all print the same thing: every command under six
+headings, in this order — **Talk to it**, **Hand it work**, **Hand it a whole task**,
+**Look at what happened**, **Housekeeping** and **Plan work by hand** — then five worked
+examples. **Hand it a whole task** lists the programs this build carries, such as
+`codeaf senior-dev`; a build that carries none prints the other five.
 
 **The environment table is not on that page**: it is `codeaf help env`, because it is a
 reference somebody consults and it used to be more than half of what `--help` printed.
 
 Every verb also answers `<verb> --help` with its own line and its flags, and `codeaf plan
 --help` answers with all four of its subcommands.
+
+The top-level synopsis includes `do` worker limits and model choices (`--slots`,
+`--best`, `--cheap`, `--pin`, and `--check-model`). It also names chat
+`--max-cost` and `--max-hours`; those unattended-work limits require `--yolo`.
 
 ## What $? means after a headless one-shot — the codes it leaves with
 
@@ -256,6 +290,11 @@ could not be run at all", while `exec` returned 2, 3, 4, 5 and 6 and never retur
 you have a script written against the old numbers, `CODEAF_EXIT_CODES=legacy` puts `exec`'s
 back for one release — see below — and the rest is in
 `docs/design/polish/envelope-and-exits.md`, which sets old and new side by side.
+
+**A wall on the default run road leaves with 124.** When `--timeout` ends a `codeaf do`
+on the worker harness, `$?` is 124 — the number `timeout(1)` uses — rather than 3, and
+`stop` still says `deadline`. The run engine reports a wall and a failed part with the
+same word, so the number is where the two are told apart.
 
 **Exit 3 and exit 2 are different questions.** 3 says the work was going when something you
 set cut it off, so raising `--timeout`, `--token-budget` or `--max-turns` and running it
@@ -358,6 +397,63 @@ one pass there is `--token-budget` and `--timeout`.
 itself, the same bytes `--out` would write. `codeaf logs --json` is a third: one JSON object per line,
 byte-for-byte what is on disk.
 
+## Which models a headless run uses — the crew, --best, --cheap, --pin and the daily cap
+
+A headless run has the same crew a conversation's task has: a **worker**, a **planner** and
+a **checker**, and every seat nobody pinned is picked for this task from what kind of work
+it is. The run says its crew on stderr before anything is spent — every seat, and which
+rung answered it — and under it the class the task was read as and the estimate:
+
+```
+models: worker z-ai/glm-5.3-flash (routed) · planner z-ai/glm-5.3-flash (routed) · checker moonshotai/kimi-k3 (pinned)
+crew: bugfix · worker glm-5.3-flash (openrouter) · checker kimi-k3 (pinned) · est $0.023
+```
+
+A seat you pinned reads `checker kimi-k3 (pinned)` on the headless crew line.
+When the run ends, the `crew:` line is said again with what it actually cost beside the
+estimate: `crew: bugfix · worker glm-5.3-flash (openrouter) · checker kimi-k3 (pinned) · $0.021 (est $0.023)`.
+
+**Every model flag is a one-task pin.** `--model`, `--plan-model` and `--check-model` pin the
+worker, planner and checker for this run and no other, and `CODEAF_MODEL`,
+`CODEAF_PLAN_MODEL` and `CODEAF_CHECK_MODEL` do the same from the environment. Each seat
+climbs its own ladder — the flag, then its variable, then a `/crew pin` in the profile,
+then the crew picked for this task — and the rung that answered is named beside the seat
+(`--model`, `CODEAF_MODEL`, `pinned`, `routed`). **The checker never inherits the planner:**
+a `--plan-model` says who plans and nothing about who checks.
+
+`codeaf do` takes three more, all for this one task:
+
+- **`--best`** — the strongest crew your allowed models make.
+- **`--cheap`** — the cheapest crew your allowed models make.
+- **`--pin seat=model[@provider]`** — pin one seat, `worker=`, `planner=` or `checker=`; say
+  it once per seat. `--pin checker=moonshotai/kimi-k3@openrouter` sends the checker through
+  that connection. A seat that is not one of the three, or a pin with no model, is refused.
+
+Nothing a headless run is told is written to the profile: the pins and the allowed models
+stay what `/crew` last set.
+
+**At the daily cap, `codeaf do` refuses.** When today's crew spend has reached the cap
+`/crew cap` set, it starts nothing and says so:
+
+```
+today's crew spend has reached the daily cap of $5.00 · raise it or turn it off with `/crew cap`, pass -yes-spend, or wait until midnight
+```
+
+`-yes-spend` is the one way past it for this run — past the daily cap, never past the
+per-task limit. `--cheap` is refused at the cap like any other run. The day turns over at
+midnight on this machine's clock.
+**Every run is held to the per-task limit**, $5 unless `/crew cap task` set another: a call
+that would take the run past it is not made, and the run stops on
+`this task reached its $5 limit · raise it in /crew`. The other headless doors — `exec`, `run`, `plan run` —
+are a person at a terminal running one thing, so they **warn and go on**:
+`note: today's crew spend has reached the daily cap · this run goes ahead; `codeaf do` would have stopped`.
+
+With `--json`, `codeaf do` carries the crew too: `class` (the kind of work the task was read
+as), `crew` (each seat's `model`, `provider`, `kind`, `pinned` and `est_usd`; `crew.<seat>.pinned` is true for a pin), `est_usd` for
+the whole crew beside `spend_usd`, `effort` when `--best` or `--cheap` was given, and
+`check_model` with `check_model_source` beside the worker's `model_source` and the planner's
+`plan_model_source`.
+
 ## What checked my unattended or headless run — what judged the delivery, and why task.audit is not the answer
 
 A `codeaf do` errand's delivery is read at the end by the **delivery gate**. It takes a
@@ -412,8 +508,8 @@ answer includes the check's own sentence about what could not be read.
 
 Some fields belong to one command and stay. `codeaf do` carries `spend_work` and
 `spend_overhead` — what the work cost against what it cost to decide what the work should
-be — and `blocked_on`, `learned`, `plan_model`, `model_source`, `plan_model_source` and
-`subharness`. It also carries `judged_by` when the settled root records an answered gate
+be — and `blocked_on`, `learned`, `plan_model`, `model_source`, `plan_model_source`,
+`check_model`, `check_model_source`, `class`, `crew`, `est_usd`, `effort` and `subharness`. It also carries `judged_by` when the settled root records an answered gate
 attempt and `unjudged` when that gate could not be reached. Both keys can be absent when
 no root gate row is available; neither key replaces `ok` and `stop`. `codeaf run` carries `output`, which is
 the typed answer whole, and `report`.
@@ -697,13 +793,16 @@ the same answer as one object; `show` reads nothing off the network.
 **The scores start here.** In a conversation, after a task lands, a model
 outside the crew is asked to score each seat the work ran on — the worker that
 carried it, and the seat that checked it when there was one. The scores stay
-in your install's own sheet (`own.json`) and feed the very next crew pick;
+in your install's own sheet (`own.json`) and are read when the next crew is chosen;
 nothing else reads them. With `model_pool` set to `on` the same scores also
 wait in `outbox.jsonl` beside the sheet, to leave with the pool's other
 measurements; `read` keeps them local, and `off` asks no judge at all and
 writes nothing. The call itself is billed to the `judge` seat, so it shows up
 in the spend pages beside the crew seats rather than inside a task's own
-cost.
+cost. The judge asks with the key the install holds at that moment, so a task
+that lands just after you paste a key into first-run setup is scored with that key.
+A task that lands while there is no key at all is not judged. It is not marked
+judged either, so the next start scores it once a key exists.
 
 With `model_pool` on, the rows leave for the relay after each judged run and
 once more at start-up, under this install's own nonce and nothing else. The
@@ -795,6 +894,32 @@ a resident is running (pid 41207) — close it before rebuilding
 
 Conversations, settings and credentials were not worked out from the journal and are not
 touched.
+
+## codeaf do is waiting and nothing happens — machine busy on a headless run
+
+**A `codeaf do` the machine is holding says so on stderr, once.** The same two limits
+that hold a task in the chat hold its workers here: `task.max_load` (load per core)
+and `task.min_free_mb` (available memory). The chat draws `waiting · machine busy` on
+the run's rail; a headless run has no rail, so the first time a worker is held,
+stderr gets one line in the same words and the limit that held it:
+
+```
+waiting · machine busy · load per core at or above task.max_load 1.5
+waiting · machine busy · available memory under task.min_free_mb 1536 MiB
+```
+
+Those figures are the defaults; the line prints your own. It is not repeated while
+the machine stays busy. When a held worker starts, stderr says `starting · the machine has room again`,
+once, and the run goes on as usual.
+
+**If `--timeout` arrives first, nothing started.** The run leaves with 124 and `stop`
+says `deadline`, as every wall does; `--json` also carries `blocked_on`, the held line
+followed by ` · nothing started before --timeout`, so a script can tell a run the
+machine held from one that was slow. Nothing was spent.
+
+To let it start, wait for the machine to clear, raise `--timeout`, or set that row
+to `0` in `/settings`, which turns that half of the check off. On a machine with no
+`/proc` (macOS, Windows) the limits never hold, and this line never appears.
 
 ## What goes to stdout and what goes to stderr — piping a headless command
 
@@ -891,8 +1016,10 @@ usage counts go quiet and the Model Pool is capped at `read`, so it still picks 
 from the index and sends nothing. The pool's own switch, `model_pool` in `/settings` or
 `CODEAF_MODEL_POOL`, adds `off`, which asks no judge at all. It reads and
 sends nothing of its own — it is a command about the counts, not a session. The
-notice the first session prints names the bargain before the first byte leaves, and
-`CODEAF_TELEMETRY=off` or `DO_NOT_TRACK=1` turns the counts off entirely. See
+notice names the bargain before the first byte leaves. A chat shows it once, dim,
+on the first conversation's screen under the starting points, and nothing is sent
+until a frame has drawn it. A task command and `chat --once` print it to stderr
+instead. `CODEAF_TELEMETRY=off` or `DO_NOT_TRACK=1` turns the counts off entirely. See
 docs/TELEMETRY.md for the whole contract.
 
 ## Reading a plan by hand — codeaf plan new, show, revise and run

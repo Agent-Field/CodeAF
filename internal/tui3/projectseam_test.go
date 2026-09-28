@@ -35,25 +35,32 @@ func TestMessageBoxModelAndProjectUnderlineOnHover(t *testing.T) {
 				return frame(a)
 			}
 			draw()
-			model, project, row := a.seamModelSpan, a.seamProjectSpan, seamRowY(a)
-			if home {
-				model, project, row = a.targetModelSpan, a.targetFolderSpan, a.targetRow
-			}
-			if !model.pressable() || !project.pressable() {
-				t.Fatalf("missing spans: model %+v, project %+v", model, project)
+			// THE MODEL IS ON THE SEAM AND THE PROJECT ON THE KEYS ROW, on both
+			// boxes (hometip.go, footswap.go's [app.hintRow]).
+			type door struct {
+				span    hudSpan
+				row     int
+				painted string
 			}
 			pal := a.pal
+			var doors []door
 			if home {
 				pal = pal.onPlaces()
+				doors = []door{
+					{a.targetModelSpan, a.targetRow, pal.underline(pal.seamModel("m"))},
+					{a.targetFolderSpan, a.footRow, pal.underline(pal.dim("/tmp/hover-project"))},
+				}
+			} else {
+				doors = []door{
+					{a.seamModelSpan, seamRowY(a), pal.underline(pal.seamModel("m"))},
+					{a.seamProjectSpan, markedRowY(a, chromeStatus, 0), pal.underline(pal.dim("/tmp/hover-project"))},
+				}
 			}
-			for _, target := range []struct {
-				span    hudSpan
-				painted string
-			}{
-				{model, pal.underline(pal.seamModel("m"))},
-				{project, pal.underline(pal.dim("/tmp/hover-project"))},
-			} {
-				drive(t, a, tea.MouseMotionMsg{X: target.span.from, Y: row})
+			for _, target := range doors {
+				if !target.span.pressable() {
+					t.Fatalf("missing span: %+v", target.span)
+				}
+				drive(t, a, tea.MouseMotionMsg{X: target.span.from, Y: target.row})
 				if text := draw(); !strings.Contains(text, target.painted) {
 					t.Fatalf("the hovered seam field at %+v did not underline", target.span)
 				}

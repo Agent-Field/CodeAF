@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"math"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -186,5 +187,25 @@ func TestRunAskAnswerIsReadThroughAFenceAndANoteIsRecognised(t *testing.T) {
 	note, _ := decodeRunAsk(`{"note":"skip the fixtures"}`)
 	if !note.IsNote || note.Note != "skip the fixtures" || note.Text != "" {
 		t.Fatalf("a recognised steer = %#v, want a note and no answer", note)
+	}
+}
+
+// A QUESTION ASKED OF A RUN IS PAID FOR, SO IT IS IN THE BOOKS, every round of
+// it: the read_task round and the answer alike, which reached the journal and
+// nothing else until this test.
+func TestAQuestionAskedOfARunIsInTheConversationsBooks(t *testing.T) {
+	agent, _, _ := runAskFixture(t,
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			response := toolResponse("c1", "read_task", `{"id":"t-child"}`)
+			cost := 0.01
+			response.Usage = &ai.Usage{PromptTokens: 10, CompletionTokens: 5, Cost: &cost}
+			return response, nil
+		},
+		pricedText(`{"text":"It changed the lookup.","from":[{"id":"t-child","title":"Write handler","step_start":3,"step_end":14}]}`, 0.02))
+	if _, err := agent.AskRun(context.Background(), "t-root", "what changed?", nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := agent.Usage().CostUSD; math.Abs(got-0.03) > 1e-9 {
+		t.Fatalf("the conversation's books hold $%.4f, want both rounds' $0.03", got)
 	}
 }

@@ -256,6 +256,7 @@ func TestTheRosterOpensOverTheBodyOnANarrowFrame(t *testing.T) {
 	if a.railShowing() || a.railFull() {
 		t.Fatal("a narrow frame drew a roster nobody asked for")
 	}
+	railOpenAll(a)
 
 	drive(t, a, altT())
 	if !a.railFull() {
@@ -363,7 +364,7 @@ func TestARunsNodesReachTheForestThroughTheirNotices(t *testing.T) {
 		t.Fatalf("the run's own row hangs off %q, want a root", got)
 	}
 	kids, byKey := a.railKin()
-	if len(kids[stripKey(a.tasks[1])]) != 2 || railRootOf(a.tasks[3], byKey) != a.tasks[1] {
+	if len(kids[stripKey(a.tasks[1])]) != 2 || byKey[a.tasks[3].ParentID()] != a.tasks[1] {
 		t.Fatalf("the run's nodes did not reach the forest: %v", kids)
 	}
 	// AND KINSHIP IS KEPT. A later update that says nothing about the parent has
@@ -430,6 +431,8 @@ func TestAPartThatAskedHereLandsItsAnswerHereToo(t *testing.T) {
 	if card == nil || card.status.State != session.TaskDone {
 		t.Fatalf("the decided part left its latest card at %+v, want done", card)
 	}
+	card.open = true
+	a.touch()
 	if text := taskText(a); !strings.Contains(text, took) {
 		t.Fatalf("the conversation does not say the part was decided:\n%s", text)
 	}

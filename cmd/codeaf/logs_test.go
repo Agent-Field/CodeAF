@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/calllog"
+	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // TestMain switches the model-call log OFF for this package and gives the
@@ -30,6 +32,13 @@ import (
 // they stopped at a live provider instead (testenv_test.go carries the whole
 // case).
 func TestMain(m *testing.M) {
+	// A SHELL RUN'S CHILD COMES IN HERE: carried_test.go starts this very test
+	// binary as the program's process, marked in its environment, and the
+	// binary then runs the dispatch the way `codeaf <name>` would. Its
+	// environment is the parent's, already isolated below.
+	if code, child := runAsCarriedChild(); child {
+		os.Exit(code)
+	}
 	if _, pinned := os.LookupEnv(calllog.EnvVar); !pinned {
 		os.Setenv(calllog.EnvVar, calllog.OffValue)
 	}
@@ -46,6 +55,32 @@ func TestMain(m *testing.M) {
 		os.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/v1/rows")
 	}
 	restore := isolateTestEnvironment()
+	// AND THE CREW ROUTER READS ONE FIXED CATALOG. The process's catalog is
+	// seated once, by whichever test first builds it, from whatever server that
+	// test stood up — so every later door would route its unpinned seats against
+	// a stranger's rows, or none. Two priced, tool-serving rows make routing
+	// deterministic for the whole binary; seatCrewCatalog still overrides it for
+	// a test that means a catalog of its own.
+	config.CrewCatalog = func() []catalog.Model { return crewDoorCatalog() }
+	seatCrewRows = func(func() []catalog.Model) {}
+	// AND THE TELEMETRY OFF SWITCH IS CLEARED, because since the pool learned
+	// to hear it (config.ModelPoolResolved) a shell that exports it quiets the
+	// pool to `read`, and every pool test here that means the default would
+	// read a mode the shell chose. Clearing it sends nothing anywhere: a test
+	// binary never reports (internal/telemetry's underGoTest), and the pool's
+	// submit address is pinned above. A test that means the switch sets it.
+	os.Unsetenv("CODEAF_TELEMETRY")
+	os.Unsetenv("DO_NOT_TRACK")
+	// AND THIS BINARY'S SUITE IS THE OLDER BELT'S SUITE, for the reason
+	// internal/session's TestMain gives at length: these tests drive `codeaf do`
+	// and the task doors down the node road they were written against, and they
+	// said which road by saying nothing. The pin is unconditional and it is set
+	// AFTER the isolation above, which clears this variable when the binary was
+	// launched by a plan worker — a suite whose answer depends on what the
+	// person running it exported is the one thing a test may not be, and a pin
+	// that a later unset undoes is not a pin. A test that means the harness sets
+	// "bash" for itself and wins.
+	os.Setenv("CODEAF_TASK_BELT", "node")
 	code := m.Run()
 	restore()
 	os.Exit(code)

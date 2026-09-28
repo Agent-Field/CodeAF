@@ -352,15 +352,30 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		a.railPlanPending.keys = append(a.railPlanPending.keys, msg)
 		return nil
 	}
-	if a.railTaskPlanOn && !door {
-		cmd := a.taskPlanKey(msg)
-		if !a.taskSheet.planOn {
-			a.railTaskPlanOn = false
-		}
-		return cmd
+	// A key ends an opened tile's zoom, so what it types is drawn whole.
+	a.wallZoomDone()
+	// The team switcher is a menu, and a menu has the keyboard while it is up
+	// (teammenu.go).
+	if a.teamMenu.on && !door {
+		return a.teamMenuKey(msg)
 	}
-	if a.workTabOn {
-		return a.workTabKey(msg)
+	// And so does the nav's fold menu (navmore.go).
+	if a.navMore.on && !door {
+		return a.navMoreKey(msg)
+	}
+	// The move picker, over everything, and then a team's card have the
+	// keyboard while they are up (teammove.go, teamsheet.go).
+	if a.tmove.on && !door {
+		return a.teamMoveKey(msg)
+	}
+	if a.tsheet.on && !door {
+		return a.teamSheetKey(msg)
+	}
+	if a.wall.on && !door {
+		return a.wallKey(msg)
+	}
+	if !door && wallOpenPressed(msg) {
+		return a.openWall()
 	}
 	if cmd, taken := a.pasteChipKey(msg); taken {
 		return cmd
@@ -462,7 +477,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// five (pages.go). Each of the seven takes the whole frame, so there is
 	// nothing under it a key could mean anything to — and the six classes of the
 	// grammar are read before the place's own keys, on every place, which is what
-	// makes `tab`, `alt+1…7` and `→` mean one thing wherever a person is standing
+	// makes `tab`, `alt+1…9` and `→` mean one thing wherever a person is standing
 	// ([app.placeKeyPress]).
 	//
 	// IT USED TO BE FIVE ARMS AT THREE DIFFERENT RUNGS. The settings panel and
@@ -514,10 +529,6 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	if a.pick.open && msg.String() != "ctrl+c" {
 		return a.pickerKey(msg)
 	}
-	if a.crewPick.open && msg.String() != "ctrl+c" {
-		a.crewPickerKey(msg)
-		return nil
-	}
 	// AND THE THINKING CHOOSER IS MODAL ON THE CREW CHOOSER'S TERMS AND FOR ITS
 	// REASON (effortchip.go): it is five fixed words with no filter under them, so
 	// a plain letter falling through to the box would be a letter typed into a
@@ -564,6 +575,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.harnessPanelKey(msg)
 	}
 
+	// And the crew panel, on those panels' terms exactly (crewpanel.go): opened
+	// by a command, nothing typed under it — its filters and holes are its own —
+	// and esc stepping back one level at a time until it closes.
+	if a.crewUI.open && msg.String() != "ctrl+c" {
+		return a.crewKey(msg)
+	}
+
 	// And the permissions panel, which is those panels' twin (permissions.go):
 	// opened by a command, nothing typed under it, esc leaves exactly as it was.
 	// Modal also frees a bare d to mean "drop this line" — no draft is under it
@@ -584,14 +602,17 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// frees every printable key for the filter box and, on the card, for the
 	// value somebody is typing into a field.
 	//
-	// An agent-raised card can be deferred with Escape and resumed with
-	// /subharness; only an explicit answer resolves the offer.
+	// WITH ONE CARD THAT IS NOT OPENED BY A COMMAND: the intake chat itself
+	// raised. It comes through this same door because it is the same overlay,
+	// and the only thing that differs is what esc means on it — a NO, answered
+	// back to the turn that is waiting on it, rather than a way out of a page
+	// somebody opened to read ([app.answerSubharnessOffer]).
 	if a.subPage.open && msg.String() != "ctrl+c" {
 		return a.subPageKey(msg)
 	}
 
 	if msg.String() == "ctrl+c" {
-		// INTERRUPT FIRST. While a turn runs ctrl+c stops it —
+		// INTERRUPT FIRST. While a turn runs ctrl+c is the same key esc is —
 		// a person hitting it mid-turn is reaching for the model, not for the
 		// door, and every terminal habit in the world says that keystroke stops
 		// the RUNNING thing.
@@ -763,7 +784,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
-	// AND alt+1…7 IS READ HERE, ON THE CONVERSATION'S ROAD. It is the one class
+	// AND alt+1…9 IS READ HERE, ON THE CONVERSATION'S ROAD. It is the one class
 	// of the place grammar that belongs to no place — it is how a person GETS to
 	// a room — and every claim above has already had its say, so a modal overlay
 	// that wants the chord still gets it first and nothing below has taken a
@@ -819,7 +840,17 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			a.recallCancel()
 			return nil
 		}
-		return a.openHome()
+		// THE DOUBLE ESC IS THE REWIND'S DOOR, and it is read here rather than
+		// above the interrupt because the interrupt is not for sale (rewind.go):
+		// the first esc means exactly what it always meant and ARMS the mode on its
+		// way past, and only a second one inside the window is taken. A stray esc
+		// after the window has lapsed changes nothing.
+		cmd, taken := a.escRewind()
+		if taken {
+			return cmd
+		}
+		a.interrupt()
+		return cmd
 
 	case "enter":
 		if a.steerAvailable() {
@@ -1064,6 +1095,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return a.edited()
 	case "delete":
+		if len(a.input.value) == 0 && !a.roomOpen() && a.dismissDone(a.sel) {
+			return nil
+		}
 		if a.dropDraftPick() {
 			return a.edited()
 		}
@@ -1292,6 +1326,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.syncLists()
 	}
 
+	// TWO SPACES IN AN EMPTY BOX ARE THE DOOR HOME (home.go). It is read here,
+	// at the very bottom of the router, because it must lose to every other
+	// meaning a space could have on this surface — inside a paste bracket, in a
+	// filter box, in copy mode, in any overlay — and because the first of the
+	// two spaces has already typed itself perfectly ordinarily one keystroke
+	// ago, through the line below.
+	if a.homeGesture(msg) {
+		a.input.reset()
+		return tea.Batch(a.edited(), a.homeByTwoSpaces())
+	}
 	if text := msg.Key().Text; text != "" {
 		// The ordinary case: a key that carries text types it.
 		//
@@ -1479,8 +1523,6 @@ func (a *app) enterLine(marked bool) tea.Cmd {
 			return a.openStanding()
 		}
 		return a.standingSayShown(tagWords, tagShown)
-	case sendDoorAsk:
-		return a.runAskCommand(tagWords)
 	case sendDoorTask:
 		return a.runTaskCommand(tagWords)
 	}
@@ -1656,6 +1698,19 @@ func (a *app) inputBlockUnfloored(width int) ([]string, int, int) {
 		}
 		if a.connPanel.filtering {
 			return draftBlock(&a.connPanel.filter, a.pal, width, 1, connectFilterHint, "")
+		}
+	}
+	// AND THE CREW PANEL'S TWO LISTS TAKE IT ON THE SAME TERMS: the seat list's
+	// filter and the checklist's are this surface's one-line box, in the place
+	// /model's filter stands (crewpanel.go). A hole on one of its rows is typed
+	// on the row itself, and the caret then has no box to live in and is hidden,
+	// on the law the /connect panel's choice follows above.
+	if a.crewUI.open {
+		if box := a.crewBox(); box != nil {
+			return draftBlock(box, a.pal, width, 1, crewPickHint, "")
+		}
+		if a.crewUI.edit != nil {
+			a.caret = false
 		}
 	}
 	// AND WHERE THE DRAFT ITSELF WOULD BE, ONE DIM LINE WHEN ANOTHER WINDOW HAS

@@ -73,12 +73,12 @@ func TestARunningCommandIsSentToTheBackgroundWithOneKey(t *testing.T) {
 	drive(t, a, tea.KeyboardEnhancementsMsg{Flags: 1})
 	typeInto(t, a, "use the race-safe helper")
 	wantHint := "enter " + steerSendWord + " · " + bargeKey + " " + bargeSendWord +
-		" · ctrl+g backgrounds · ctrl+c interrupt"
+		" · ctrl+g backgrounds · esc interrupt"
 	if got := a.hintWord(); got != wantHint {
 		t.Fatalf("the full running-turn hint is %q, want %q", got, wantHint)
 	}
-	if door := plain(a.railDoorLine()); strings.Contains(door, "ctrl+g") || !strings.HasSuffix(door, "hide") {
-		t.Fatalf("the column footer names a key the command owns: %q", door)
+	if head, _ := a.sideHeadRow(a.railRoom()); strings.Contains(plain(head), "ctrl+g") || !strings.HasSuffix(strings.TrimSpace(plain(head)), sideHideKey) {
+		t.Fatalf("the column header names a key the command owns: %q", plain(head))
 	}
 
 	drive(t, a, key("ctrl+g"))

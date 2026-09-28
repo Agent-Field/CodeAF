@@ -171,6 +171,14 @@ func (a *app) toolTargetOf(e *entry) string {
 			return target
 		}
 	}
+	// A MANAGER'S MESSAGE IS SAID AS ITS THREAD CARD'S HEAD: who it went to
+	// and whether it was a directive, the words quoted under it
+	// (teamthreadcard.go).
+	if e.tool == "team_send" {
+		if target := a.teamSendTarget(e); target != "" {
+			return target
+		}
+	}
 	return toolTarget(e.tool, e.detail.Args, e.text)
 }
 

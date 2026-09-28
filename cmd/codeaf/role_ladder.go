@@ -25,7 +25,7 @@ import (
 // never quietly undoes what somebody chose in the palette.
 //
 // planOrigin is who named it, in the words a person would recognize —
-// `CODEAF_PLAN_MODEL`, `--plan-model`, `crew frugal` — and it is passed in
+// `CODEAF_PLAN_MODEL`, `--plan-model`, `routed`, `pinned` — and it is passed in
 // rather than guessed at here, because since #166 the answer may have come from
 // the profile's crew and a seed that named a variable nobody set would be a
 // false record in the journal.

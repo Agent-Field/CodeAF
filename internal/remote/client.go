@@ -1559,6 +1559,66 @@ func (a *Agent) StartTask(ctx context.Context, brief string, solo bool) (uint64,
 	return started.ID, started.Title, started.Note, nil
 }
 
+// Delegates is the programs the engine machine's build carries, as the surface
+// draws its rows from them (internal/session's delegate_door.go). A failed read
+// is the zero report — no rows — because a list is a reading and never worth a
+// refusal at the door.
+func (a *Agent) Delegates() session.DelegateReport {
+	payload, err := a.c.call(context.Background(), MethodDelegateList, nil)
+	if err != nil {
+		return session.DelegateReport{}
+	}
+	var report session.DelegateReport
+	if err := json.Unmarshal(payload, &report); err != nil {
+		return session.DelegateReport{}
+	}
+	return report
+}
+
+// StartDelegate hands the brief to the named program on the engine machine
+// and returns the same receipt StartTask does. It is an ordinary call with the
+// ordinary deadline: the engine admits the run at once.
+func (a *Agent) StartDelegate(ctx context.Context, name, brief string) (uint64, string, string, error) {
+	payload, err := a.c.call(ctx, MethodDelegateStart, DelegateStartArgs{Name: name, Brief: brief})
+	if err != nil {
+		return 0, "", "", err
+	}
+	var started TaskStarted
+	if err := json.Unmarshal(payload, &started); err != nil {
+		return 0, "", "", err
+	}
+	return started.ID, started.Title, started.Note, nil
+}
+
+// StartTaskEffort is [Agent.StartTask] with the one-task effort word said
+// (`/task --best`, `/task --cheap`); the engine's router reads it for this task
+// and nothing after it.
+func (a *Agent) StartTaskEffort(ctx context.Context, brief string, solo bool, effort string) (uint64, string, string, error) {
+	payload, err := a.c.call(ctx, MethodTaskStart, TaskStartArgs{Brief: brief, Solo: solo, Effort: effort})
+	if err != nil {
+		return 0, "", "", err
+	}
+	var started TaskStarted
+	if err := json.Unmarshal(payload, &started); err != nil {
+		return 0, "", "", err
+	}
+	return started.ID, started.Title, started.Note, nil
+}
+
+// RedoStronger runs a task again on the engine machine with a stronger crew
+// (`/redo stronger`); row 0 is the newest task the conversation started.
+func (a *Agent) RedoStronger(ctx context.Context, row uint64) (uint64, string, error) {
+	payload, err := a.c.call(ctx, MethodTaskRedoStronger, TaskRedoArgs{ID: row})
+	if err != nil {
+		return 0, "", err
+	}
+	var started TaskStarted
+	if err := json.Unmarshal(payload, &started); err != nil {
+		return 0, "", err
+	}
+	return started.ID, started.Title, nil
+}
+
 // StartPlannerRun opens the adaptive form on the engine machine.
 func (a *Agent) StartPlannerRun(ctx context.Context, brief, hint string) (string, string, error) {
 	payload, err := a.c.call(ctx, MethodPlannerStart, PlannerStartArgs{Brief: brief, Hint: hint})
@@ -1749,6 +1809,13 @@ func (a *Agent) Model() string { return a.c.facts.read().Model }
 func (a *Agent) SetModel(model string) {
 	a.c.facts.setModel(model)
 	_, _ = a.c.call(nil, MethodSetModel, model)
+}
+
+// SetSpendRail waits for the engine to bind the new conversation limit before
+// a setting receipt can claim that the open chat has it.
+func (a *Agent) SetSpendRail(usd float64) error {
+	_, err := a.c.call(nil, MethodSetSpendRail, usd)
+	return err
 }
 
 // SetContextWindow is deliberately a no-op here. The surface's catalog belongs
@@ -1970,15 +2037,49 @@ func (a *Agent) PlanTasks() []session.PlanTaskRow {
 
 // PlanTaskPage reads one complete task page from the engine.
 func (a *Agent) PlanTaskPage(id string) (session.PlanTaskPage, bool) {
-	payload, err := a.c.call(nil, MethodPlanTaskPage, PlanTaskPageArgs{ID: id})
+	page, found, err := a.ReadPlanTaskPage(id)
 	if err != nil {
 		return session.PlanTaskPage{}, false
 	}
-	var result PlanTaskPageResult
-	if json.Unmarshal(payload, &result) != nil {
-		return session.PlanTaskPage{}, false
+	return page, found
+}
+
+// ReadPlanTaskPage is [Agent.PlanTaskPage] with the engine's refusal kept.
+//
+// A READING WINDOW NEEDS THE REFUSAL. A page opened onto another
+// conversation's program task reads nothing but this, and the one way it
+// learns the conversation under it was replaced is the engine's own sentence
+// ([ErrJoinedGone]) — which the plan capability's (page, found) shape has
+// nowhere to put (internal/tui3's [tui3.TaskOwnerView.TaskPage]).
+func (a *Agent) ReadPlanTaskPage(id string) (session.PlanTaskPage, bool, error) {
+	payload, err := a.c.call(nil, MethodPlanTaskPage, PlanTaskPageArgs{ID: id})
+	if err != nil {
+		return session.PlanTaskPage{}, false, err
 	}
-	return result.Page, result.OK
+	var result PlanTaskPageResult
+	if err := json.Unmarshal(payload, &result); err != nil {
+		return session.PlanTaskPage{}, false, err
+	}
+	return result.Page, result.OK, nil
+}
+
+// PlanTaskWork reads the run's working copy over the wire. An engine that
+// has no such door answers "no such method", which is [PlanTaskWork.NoDoor]:
+// the work tab draws its absence sentence, the same one it draws for an
+// agent that was never given the door.
+func (a *Agent) PlanTaskWork(id string) (session.PlanTaskWork, bool) {
+	payload, err := a.c.call(nil, MethodPlanTaskWork, PlanTaskArgs{ID: id})
+	if err != nil {
+		if strings.Contains(err.Error(), "no such method") {
+			return session.PlanTaskWork{NoDoor: true}, false
+		}
+		return session.PlanTaskWork{}, false
+	}
+	var result PlanTaskWorkResult
+	if json.Unmarshal(payload, &result) != nil {
+		return session.PlanTaskWork{}, false
+	}
+	return result.Work, result.OK
 }
 
 func (a *Agent) PlanNote(id, text string) error {

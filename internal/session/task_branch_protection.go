@@ -5,11 +5,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 )
 
 const (
-	codeafGitName  = "codeaf"
-	codeafGitEmail = "agentfield-bot@users.noreply.github.com"
+	codeafGitName  = gitidentity.Name
+	codeafGitEmail = gitidentity.Email
 
 	// Legacy identities codeaf's task commits were once authored with. Both stay
 	// recognised by taskCommitIdentity so older work still lands as the task

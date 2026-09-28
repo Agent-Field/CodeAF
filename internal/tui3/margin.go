@@ -87,10 +87,10 @@ const (
 	// third task.
 	marginDoorMark = "+ "
 	// marginStandMoreWord is what the standing label calls the orders the column
-	// had no room for ([app.marginStandHead]). It is the footer's own word for the
-	// same fact one section down (`view more`, taskview.go's [taskSheetMoreHint]),
-	// because a column that said `hidden` in one place and `more` in another would
-	// be two vocabularies for "there is another page of this".
+	// had no room for ([app.marginStandHead]). It is the band's own word for
+	// the same fact (`+2 more`, sidecol.go), because a column that said `hidden`
+	// in one place and `more` in another would be two vocabularies for "there
+	// is another page of this".
 	marginStandMoreWord = "more"
 )
 

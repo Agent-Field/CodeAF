@@ -214,6 +214,21 @@ func (a *app) toolRows(d deck, i int, last bool, width int) []row {
 	if forming {
 		bodyHit = hitNone
 	}
+	// A MANAGER'S MESSAGE HANGS ITS THREAD instead of a preview: the words
+	// quoted, and each member's answer under them as it lands
+	// (teamthreadcard.go). Opened, it is an ordinary call again.
+	if !e.open {
+		if card, ok := a.teamSendCard(e, i, room); ok {
+			for _, r := range card {
+				hit := bodyHit
+				if r.open != "" && !forming {
+					hit = hitThread
+				}
+				out = append(out, row{text: a.pal.dim(stem) + r.text, entry: i, hit: hit, open: r.open})
+			}
+			return out
+		}
+	}
 	out = append(out, a.mediaRows(e, i, width-workIndentCols(width), a.pal.dim(stem))...)
 	body, more := a.toolBlock(e, room, layoutTier(width) == tierPhone)
 	for _, line := range body {

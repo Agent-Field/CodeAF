@@ -21,6 +21,8 @@ package session
 
 import (
 	"context"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -28,6 +30,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
@@ -96,7 +99,9 @@ const (
 	// and not a model call.
 	EventCompacting
 	// EventCompacted marks a compaction pass; Hint summarizes
-	// ("compacted from ~84k tokens, kept last ~20k").
+	// ("compacted from ~84k tokens, kept last ~20k"), and [Event.Unchanged]
+	// separates the pass that edited the transcript from the one that found
+	// nothing to do.
 	EventCompacted
 	// EventReasoning carries one streamed chunk of the model's REASONING in
 	// Text, for the models that put their working on the wire (OpenRouter's
@@ -665,7 +670,10 @@ type TaskReplyTag struct {
 type Event struct {
 	Discussion *QuestionDiscussion `json:",omitempty"`
 
-	Kind          EventKind
+	Kind EventKind
+	// Addressed is a producer's declaration that streamed text is for the person.
+	// It does not imply a completed response and survives interruption.
+	Addressed     bool `json:"Addressed,omitempty"`
 	Text          string
 	ShortTitle    string `json:"ShortTitle,omitempty"`
 	Tool          string
@@ -673,6 +681,23 @@ type Event struct {
 	Err           error
 	Usage         Usage
 	TaskReplyTags []TaskReplyTag
+	// Skills is the ordered list of skill names this turn carried, on the
+	// notice that announces them (skillturn.go). IT IS THE FIELD AND NOT THE
+	// SENTENCE a surface reads: [Event.Text] says the same thing in words for
+	// a reader who draws notices as prose, and a surface that took the names
+	// back out of that sentence would break the first time somebody improved
+	// the wording or a skill name held a comma, and would break silently,
+	// because a test written against the same sentence agrees with it.
+	//
+	// AN ABSENT LIST MEANS UNKNOWN AND NOT NONE. The tag is omitempty because
+	// an event with no skills has to serialise as it did before this field
+	// existed, which is what keeps a new session and an older peer talking
+	// (internal/remote's wire tests). The cost is that a turn that carried
+	// nothing and a peer too old to send the field put the same bytes on the
+	// wire, so a surface may draw a non-empty list and must say nothing at all
+	// otherwise — a sentence like "no skills used" is a claim this field
+	// cannot support.
+	Skills []string `json:"Skills,omitempty"`
 
 	// Category is the FAMILY OF WORK an EventCaption's sentence is about — one
 	// word from the closed list in actioncategory.go — and it is zero on every
@@ -690,6 +715,25 @@ type Event struct {
 	// struct whole), and a caption saved by an older build replays with an empty
 	// one and derives the same mark it always drew.
 	Category ActionCategory `json:"Category,omitempty"`
+
+	// Unchanged says an [EventCompacted] pass left the transcript exactly as it
+	// found it: nothing was old enough to stub and nothing was foldable, so the
+	// region above the conversation did not move and neither did the floor
+	// beneath it. It is false on every other kind and on every pass that really
+	// edited something.
+	//
+	// THE ZERO VALUE IS "A PASS HAPPENED", and that polarity is the whole reason
+	// this is a field rather than a reading of Hint. EventCompacted is sent on
+	// BOTH paths by promise, because a surface opens a row on EventCompacting
+	// and has to be able to settle it whatever the pass found. So one value
+	// carried two meanings and the failing one was silent: a surface handed its
+	// scrollback over to a replacement that had not happened, and declared the
+	// conversation finished with a good part of it undrawn and unreachable.
+	//
+	// It rides the wire behind a json tag of its own, so a peer built before it
+	// existed does not send it, reads false, and behaves exactly as it always
+	// did (internal/remote embeds this struct whole).
+	Unchanged bool `json:"Unchanged,omitempty"`
 
 	// Args is the tool call's arguments rendered for display: the JSON the
 	// model sent, compacted to one line and capped. It is set on
@@ -709,6 +753,12 @@ type Event struct {
 	// one is a floor rather than a figure: a capped write's line count is "at
 	// least this many", and internal/tui3 spells that with a trailing `+`.
 	Args string
+
+	// BeltStepHandled is present only for a run worker that opted into the
+	// step boundary handshake. Its owner closes it after recording this end
+	// event and applying the run's limits and notes. Cancellation releases a
+	// belt whose reader failed, and this local handshake never goes on wire.
+	BeltStepHandled chan<- struct{} `json:"-"`
 
 	// Output is the tool's result text on EventToolEnd and EventToolFailed,
 	// verbatim up to a cap and then marked "… (N more bytes)".
@@ -1123,6 +1173,12 @@ type TaskLanding struct {
 }
 
 type Config struct {
+	// WaitForBeltSteps is for the run worker that enforces its limits and
+	// delivers notes from tool-end events. Its sole event reader must close
+	// Event.BeltStepHandled after processing each such event. Other agents
+	// leave this off and their event streams remain asynchronous.
+	WaitForBeltSteps bool
+
 	Workspace string // tools root here; all relative paths resolve inside it
 	Model     string
 	APIKey    string
@@ -1212,6 +1268,21 @@ type Config struct {
 	// memory.enabled row is read. A door that turns memory off hands nothing
 	// here, which is what makes "no calls" structural.
 	Memory *store.Store
+	// Skills is the store the skill shelf is read from: the catalog section,
+	// the skills a message carries, and `use_skill`. NIL FALLS BACK TO
+	// Memory, so a door that names no shelf of its own reads the shelf in the
+	// store it remembers into, exactly as every door did before this field.
+	//
+	// IT IS A SEPARATE FIELD BECAUSE SKILLS ARE NOT MEMORY. A person who
+	// turned memory off asked for a conversation that carries nothing about
+	// them across conversations; they did not ask to lose the skills they
+	// installed for Claude Code or Codex, which live in folders on disk and
+	// say nothing about them. So a door with memory off hands no Memory — no
+	// block, no reflex call, no `remember` — and still hands a shelf here:
+	// one that holds only what the folders hold, built from those folders by
+	// the same import pass, and thrown away with the process (cmd/codeaf's
+	// v3SkillShelf). The folders stay the one source of truth either way.
+	Skills *store.Store
 
 	// ConversationHistory grants only indexed history reads. Workers inherit
 	// this interface without receiving memory extraction, writes, or journaling.
@@ -1322,27 +1393,23 @@ type Config struct {
 	TaskAudit bool
 	Guardian  bool
 
-	// Attribution is the person's `attribution` row (internal/config's
-	// KeyAttribution, env CODEAF_ATTRIBUTION), and it says whether codeaf signs
-	// the git work it does in their name: one trailer on a commit, one footer
-	// line on a pull request or an issue. It reaches both readers there are —
-	// the belt fact the model is told (beltfacts.go's [Config.signsGitWork]) and
-	// the mechanical commit a landing writes without asking anybody
-	// (task_run.go's [commitTaskWorkAs]).
+	// AttributionModelOff is the person's `attribution.model` row turned off
+	// (internal/config's KeyAttributionModel, env CODEAF_ATTRIBUTION_MODEL):
+	// the `Assisted-by` line in the commits codeaf signs is then the bare
+	// `Assisted-by: CodeAF`, with no model named. It reaches both readers there
+	// are — the belt fact the model is told (beltfacts.go's
+	// [Config.assistedByModel]) and the mechanical commit a landing writes
+	// without asking anybody ([Agent.signsGitWork]).
+	//
+	// IT NEVER TURNS SIGNING OFF. The `attribution` row that did is gone
+	// (2026-09-23): codeaf signs every commit, pull request and issue it writes.
 	//
 	// IT IS A RESOLVED BOOL AND NOT A PROFILE PATH, for the reason [TaskAudit]
-	// beside it is: a task node is handed no ProfileDir at all (see the field
-	// below, and the settings tools that come off the belt because of it), so a
-	// node that re-read the row itself would read the DEFAULT — which is on —
-	// and sign work for somebody who had turned signing off. The row is resolved
-	// once at the door and travels down with the work.
-	//
-	// FALSE IS THE ONLY VALUE A CALLER THAT SAID NOTHING MAY GET. The product
-	// default is on ([config.DefaultAttribution]) and the door resolves it, but a
-	// test, a harness leaf or a --once run that never mentioned attribution must
-	// not start putting a stranger's name in somebody's git history because a
-	// field was left blank.
-	Attribution bool
+	// beside it is: a task node is handed no ProfileDir at all, so the row is
+	// resolved once at the door and travels down with the work. It is spelled
+	// as the OFF so that its zero value is the product default, and a caller
+	// that said nothing names the model.
+	AttributionModelOff bool
 
 	// ReplyGuardOff turns off the watch on replies that stop being language
 	// (internal/provider's streamguard.go). The config row (reply.guard)
@@ -1405,6 +1472,13 @@ type Config struct {
 	// settings file, and every auxiliary call then rides the session's own
 	// model — roles.Resolve's floor, not a failure.
 	RolesSource func(key string) (string, bool)
+
+	// RouteCrew picks one task's crew — worker, planner and checker — for the
+	// task in the ask (internal/config's RouteCrew over this profile, wired by
+	// the surface). NIL IS NO ROUTER: the run's seats are then the role
+	// ladder's, as they were before crews were routed, and no crew row is
+	// logged. It is never a model this package chooses (taskcrew.go).
+	RouteCrew func(config.CrewAsk) (crewroute.Decision, error)
 
 	// SupportsImages reports whether a model can read image content parts. It
 	// gates [Agent.SubmitImage] and NIL IS FALSE — the opposite of every other
@@ -1569,6 +1643,14 @@ type Config struct {
 	// surface built against them draws nothing rather than an error — which is
 	// the "absent, not broken" law arriving at a door that was never wired.
 	Subharnesses *exec.Registry
+
+	// Delegates is the programs this build carries that a task can be handed to
+	// whole — senior-dev first (delegate_door.go, internal/delegate). The
+	// surface hands in the build's list (internal/delegate/builtin) rather than
+	// this package importing it, so a test of this package never carries a
+	// program's whole engine. EMPTY IS NONE: the door lists nothing, `via`
+	// refuses every name, and the prompt says nothing about them.
+	Delegates []delegate.Delegate
 
 	// SubharnessMemory is where a running subharness keeps what it has learned
 	// about its OWN domain — its file in its own bundle, never this
@@ -2170,6 +2252,10 @@ type Config struct {
 // events — every Submit streams, whether it started the turn or steered it.
 // The methods live in agent.go; the loop they drive lives in loop.go.
 type Agent struct {
+	// crewDayHeld is the day's spend crews and their helpers are held to
+	// ([Agent.crewDay]), read once.
+	crewDayOnce sync.Once
+	crewDayHeld *SpendDay
 	// Clarification streams and their deferred history share the agent lock.
 	// questionParent is installed before a child becomes reachable.
 	questionParent     func(Event)
@@ -2184,7 +2270,12 @@ type Agent struct {
 	discussionPending []string
 
 	config Config
-	client Completer
+	// An open conversation's changed rail is separate from its launch config:
+	// proposal cards read it while holding mu, while runs also read it outside
+	// that lock. Atomic publication keeps both roads on the same figure.
+	liveSpendRail    atomic.Uint64
+	liveSpendRailSet atomic.Bool
+	client           Completer
 	// managedClient distinguishes the provider adapter built by New from a test
 	// completer handed to newAgent. clientAccount is the resolved account the
 	// adapter holds, so a service-set change can replace it before another call.
@@ -2273,16 +2364,20 @@ type Agent struct {
 	systemOwn bool
 	// tools is the belt and definitions is its wire form, built once at
 	// construction — rebuilding them per step would re-marshal every schema on
-	// the hot path — and thereafter APPEND-ONLY, under armMu (connect.go).
+	// the hot path — and thereafter grown only at the tail under armMu
+	// (connect.go), with one exception: the team verbs leave when the role that
+	// gave them does (team.go's [Agent.retireTeamTools]).
 	//
 	// Both are COPY-ON-WRITE: arming allocates a new array and swaps the header,
 	// so a reader that took a snapshot under armMu may walk it without the lock
 	// and can never see a half-written slice. Nothing already in either is ever
-	// moved, rewritten or removed, because the definition block rides at the
-	// front of every request and a definition that shifts re-bills the whole
-	// prompt behind it (internal/exec's tools.go states the law).
-	tools       []bare.Tool
-	definitions []ai.ToolDefinition
+	// moved or rewritten, and nothing but a team verb is removed, because the
+	// definition block rides at the front of every request and a definition that
+	// shifts re-bills the whole prompt behind it (internal/exec's tools.go states
+	// the law).
+	presentation *presentationIndex
+	tools        []bare.Tool
+	definitions  []ai.ToolDefinition
 	// served is what the belt cannot say about the tools an ACCOUNT named
 	// rather than this build (served.go): whose account each one is, what the
 	// account calls it, and which capability governs it. Keyed by the name the
@@ -2323,6 +2418,9 @@ type Agent struct {
 	// dispatcher that found a name missing needs to know whether it was taken or
 	// never existed, and the two answers must not be able to disagree.
 	withdrawn *toolWithdrawal
+	// teamRetired names team verbs a role change took away, so a remembered
+	// call gets the role's reason instead of being called an unknown tool.
+	teamRetired map[string]string
 	// armMu guards those headers, those maps, the shelf and nothing else. It is not mu:
 	// arming happens inside a tool call, and a tool call must never take the
 	// lock Interrupt has to be able to take.
@@ -2394,16 +2492,11 @@ type Agent struct {
 	memoryStop context.CancelFunc
 	memoryJobs sync.WaitGroup
 
-	// laneStop ends this session's lane-sheet beat (agent.go's
-	// [Agent.startLaneBeat]), and is nil for every session that runs no beat —
-	// routing off, a base that is not a router, no model to fetch a sheet for.
-	//
-	// It is a CANCEL AND NOT A WAIT, which is where it parts company with
-	// memoryStop above. A memory pass owes the store a write and Close waits for
-	// it; a beat owes nothing to anybody — the sheet it was about to fetch is a
-	// prior the next session will fetch again — so a quit cuts it and does not
-	// look back.
+	// laneStop cancels the session's lane context, including probes. laneDone
+	// joins the optional sheet beat, whose cache writes must finish before Close
+	// returns. Both are established before the agent is published.
 	laneStop context.CancelFunc
+	laneDone chan struct{}
 	// laneCtx is the context the beat runs under and the one a probe rides. It
 	// is the SESSION'S life rather than a turn's, deliberately: a probe is
 	// bought while somebody is typing and outlives the keystroke that bought it,
@@ -2591,6 +2684,22 @@ type Agent struct {
 	// landingOutcomes are owed landing reports returned in this turn. They are
 	// completion evidence, not another part of the person's ask.
 	landingOutcomes []string
+	// programOutcomeNow is the program run's ending the turn now running was
+	// woken with, nil for every other turn: a hand-off it makes is a re-attempt
+	// of that run ([Agent.programRetryRefusal]). Cleared with owedAsks.
+	programOutcomeNow *programOutcome
+	// programHold is the last program ending since the person's own words. It
+	// survives wake turns and reloads from the conversation's sidecar record.
+	programHold    *programOutcome
+	programHoldErr string
+	// programAttempts is each started program run's place in its line of runs,
+	// by row ([Agent.keepProgramAttempt]).
+	programAttempts map[uint64]programAttempt
+	// personCardAnswers are the compact lines for cards a person answered
+	// during THIS turn (checkpoint.go's [personCardAnswerLine]). Cleared when
+	// the next turn opens, with the owed asks, because a later turn is not
+	// still bound by a card this one already settled.
+	personCardAnswers []string
 	// turnResults are the tasks whose RESULTS ARRIVED IN THIS TURN, by id, in
 	// arrival order and cleared with owedAsks when a turn opens.
 	//
@@ -2636,6 +2745,19 @@ type Agent struct {
 	// person is not currently saying under their live authority
 	// (task_forward.go).
 	personHeard uint64
+	// programBounced is where a proposal was last turned back because the
+	// person's message named a program and the proposal did not
+	// (delegate_asked.go): that message, and the step of the turn whose
+	// proposals were turned back. It is what makes the bounce once per message:
+	// a proposal for the same message from a later step, after the model has
+	// read the bounce, passes as it is.
+	programBounced bounceMark
+	// programsHeard is what the person's messages of the turn they last spoke
+	// in said about the programs this build carries: the newest one named,
+	// the message that named it, and every one asked for (delegate_asked.go). It is
+	// written where their words are recorded ([Agent.rememberAskLocked]), so a
+	// steer that names nothing does not unsay what the turn opened by asking.
+	programsHeard programsHeard
 	// callOutcomes is whether a finished call came back a failure, by call occurrence
 	// (admission_compile.go). It is recorded at the batch's own fan-out because
 	// the flag the tool returned does not survive into the transcript, and it is
@@ -2660,6 +2782,10 @@ type Agent struct {
 	// the transcript, so without this bit a digest can only repeat the cut-off
 	// prose and falsely make the node look complete.
 	lastTurnTruncated bool
+	// teamTurnAt and teamTurnSerial identify the current turn for a manager's
+	// stop, so a late watch read cannot stop a later turn.
+	teamTurnAt     time.Time
+	teamTurnSerial uint64
 	// memoryText is the <memory> block message[0] currently carries: what the
 	// router asked for at the start of this turn, or the block a task node was
 	// opened with (memory.go). It is under mu because it is rendered into the
@@ -2724,7 +2850,20 @@ type Agent struct {
 	// block would name a landing on one turn and forget it on the next —
 	// see [deltaRemember].
 	elsewhereTold []deltaLanding
-	usage         Usage
+	// teamDigestText is the team note's block (team.go): the digest of every
+	// team this conversation manages, "" for one that manages none. It sits
+	// under mu and rides its own note at the tail, like elsewhereText, so an
+	// unchanged team lands no second note.
+	teamDigestText string
+	// teamRoleText is what this conversation is in its teams (team.go's
+	// [teamRoleBlock]), set at every step boundary before the request and
+	// landed in a note of its own ahead of the others.
+	teamRoleText string
+	// team is this conversation's account of its teams: its key, its roles and
+	// its Traffic cursors (team.go). It has its own lock and is never read
+	// under mu.
+	team  teamSeat
+	usage Usage
 	// principal is WHO THIS SESSION IS WORKING FOR (principal.go), and it is
 	// never nil: a session built with no posture at all gets a [Person], which
 	// answers every question the way this package answered it before the
@@ -3187,6 +3326,19 @@ type Agent struct {
 	// held.
 	beltMu  sync.Mutex
 	beltRun *beltRun
+	// runSummaryBusy holds the roots whose card reading is being bought right
+	// now ([Agent.RefreshRunSummary]), so a second surface that asks in the same
+	// moment keeps the last reading rather than paying for a second one.
+	runSummaryBusy sync.Map
+	// beltStartMu is the start lock: it is held from a hand-off's look for a
+	// live run until the run it opens is registered on beltRun, so a batch of
+	// hand-offs committed at one moment is one run and never several racing to
+	// one store ([Agent.lockBeltStart]). It is never taken while beltMu is
+	// held; beltMu is taken inside it.
+	beltStartMu sync.Mutex
+	// crews is every task's crew this conversation routed, by row: what its
+	// log row settles with and what `/redo stronger` escalates (taskcrew.go).
+	crews crewBook
 	// taskAnswers is the proposals a person owes an answer to, keyed by the id
 	// the EventTaskProposal carried. It is consent's pending-id machinery for a
 	// question whose CLOCK can be held: the wait ends on an answer, on an active
@@ -3327,6 +3479,14 @@ type Agent struct {
 	// conversation's own posture decided it; nil leaves Config.Guardian to
 	// answer. It is set only by [Agent.SetApprovalPosture].
 	guardianOverride *bool
+
+	// attachedSkills is the ordered set of skill names a person has put in front
+	// of THIS conversation by hand, newest attachment last, guarded by mu
+	// (skillattach.go). It is names and not facts on purpose: the shelf is read
+	// at render time, so a skill attached before it was installed starts being
+	// carried the moment it exists, and a skill deleted from the shelf stops
+	// being carried without anybody having to tidy this list.
+	attachedSkills []string
 
 	// phase is the one stage this agent is holding open and the beat that keeps
 	// saying it while it lasts (phasenews.go). It has a lock of its own rather

@@ -191,7 +191,7 @@ func runGraph(name string, args []string) error {
 		return err
 	}
 	useAutoSeats(settings)
-	seats := config.ResolveSeats(settings.ProfileDir, *model, *planModel)
+	seats := doorSeats(settings, *model, *planModel, graph.Goal)
 	applySeats(&settings, seats)
 	// A graph may be loaded from disk and expanded again after an overrun, so
 	// run installs the measured ruler before any planning-capable work starts.
@@ -362,7 +362,7 @@ func runGraph(name string, args []string) error {
 	// this is economics, never a capability check, and a run must not depend on
 	// a metadata endpoint having answered.
 	linear := exec.NewLinear(client, space, web, *maxTurns, *maxTokens, deadline).
-		WithStore(history).WithMedia(mediaTools).WithAttribution(settings.Attribution).
+		WithStore(history).WithMedia(mediaTools).WithAssistedBy(config.AssistedByModelAt(settings.ProfileDir, settings.Model)).
 		WithContextLength(modelCatalog.ContextLength(settings.Model))
 	// The worker this build constructs, offered to the scheduler. The headless
 	// surface resolves a node's leaf through this registry while the resident

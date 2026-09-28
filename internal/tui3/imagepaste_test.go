@@ -475,16 +475,16 @@ func TestAPasteThatIsNotAllPicturesStaysText(t *testing.T) {
 	}
 }
 
-// A SLASH COMMAND'S ARGUMENT IS A PATH AND MUST STAY ONE: /image is the one line
-// on this surface whose whole job is to take one, and dropping a file on it is
-// somebody using it exactly as documented.
+// A SLASH COMMAND'S ARGUMENT IS A PATH AND MUST STAY ONE: /attach is the one
+// line on this surface whose whole job is to take one, and dropping a file on
+// it is somebody using it exactly as documented.
 func TestAPathDroppedOnASlashCommandStaysAPath(t *testing.T) {
 	a, _, dir := attachLab(t, map[string]int{"Screen Shot.png": 12})
 	path := filepath.Join(dir, "Screen Shot.png")
-	typeText(t, a, "/image ")
+	typeText(t, a, "/attach ")
 	pasteText(t, a, path)
 
-	if got := a.input.String(); got != "/image "+path {
+	if got := a.input.String(); got != "/attach "+path {
 		t.Fatalf("the draft is %q, want the path left alone", got)
 	}
 	if len(a.chips) != 0 {

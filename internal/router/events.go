@@ -84,6 +84,11 @@ type Event struct {
 	// what was tried.
 	Retries int `json:"retries,omitempty"`
 
+	// Crew is the crew half of a [CrewClass] row: the task's class, the seat
+	// each model sat, the route and the estimate (crew.go). Nil on every row
+	// about a single model call.
+	Crew *CrewRecord `json:"crew,omitempty"`
+
 	PromptTokens     int     `json:"prompt_tokens,omitempty"`
 	CompletionTokens int     `json:"completion_tokens,omitempty"`
 	CachedTokens     int     `json:"cached_tokens,omitempty"`

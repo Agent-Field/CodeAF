@@ -351,6 +351,7 @@ func (a *app) clearConversation() {
 	a.discussionFeeds = nil
 	a.questionReplacement = nil
 	a.entries = nil
+	a.recordRows = 0
 	abandonLive(a.entries, &a.live)
 	abandonLive(a.entries, &a.think)
 	a.sel = -1
@@ -376,10 +377,15 @@ func (a *app) clearConversation() {
 	// are drawings rather than questions.
 	a.dropHarnessAsks()
 	a.harnPanel = harnessPanel{}
+	a.crewUI = crewPanel{}
 	a.harnessStep = ""
+	a.harnessName = ""
 	// And the picked harness with them: a chip is a choice about the NEXT
 	// message of this conversation (harnesspick.go).
 	a.harnPick, a.harnChip = harnessPick{}, ""
+	// The skill picker goes with them; the names it attached belong to the
+	// session being put down, not to the one taking the box (skillpick.go).
+	a.skillPick = skillPick{}
 	a.abandonConnects()
 	a.turn = 0
 	// The scrollback's mark and the compacted region both belong to the
@@ -547,6 +553,7 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 		a.forgetLevels()
 		a.learnLevel(a.model)
 	}
+	a.refreshCreditWarnings()
 	a.hudStale = true
 	// THE SCREEN IS REBUILT FROM THE AGENT'S OWN RECORD. This is the one moment
 	// a person can tell that this is not several terminals, and it is paid on
@@ -643,7 +650,9 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	// armed are parked on the previous one's channels and discard themselves by
 	// generation (watching.go's [followingMsg]).
 	cmds := []tea.Cmd{a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(), a.watchRuns(), a.watchQuestions(), a.loadTasks(),
-		a.askHeld(), a.watchDriving(), a.watchFollowing()}
+		a.askHeld(), a.watchDriving(), a.watchFollowing(),
+		// The program rows are the engine's, so they follow the conversation (delegate.go).
+		a.installDelegates()}
 
 	if side != nil {
 		cmds = append(cmds, a.restoreAside(side))

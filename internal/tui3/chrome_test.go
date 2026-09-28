@@ -26,10 +26,10 @@ func sheetApp(t *testing.T) (*app, string) {
 	t.Helper()
 	dir := t.TempDir()
 	// The registry resolves the environment BEFORE the file (internal/config),
-	// and a developer with CODEAF_ATTRIBUTION exported would otherwise be
+	// and a developer with CODEAF_ATTRIBUTION_MODEL exported would otherwise be
 	// testing their shell. Empty reads as unset everywhere in that package.
 	for _, pin := range []string{
-		"CODEAF_ATTRIBUTION", "CODEAF_NERD_FONT", "CODEAF_CHAT_LINEAR",
+		"CODEAF_ATTRIBUTION_MODEL", "CODEAF_NERD_FONT", "CODEAF_CHAT_LINEAR",
 		"CODEAF_HISTORY", "CODEAF_DRAFT_PERSIST", "CODEAF_DOC_ENGINE",
 		"CODEAF_CONTEXT_FILL_PCT", "CODEAF_DAILY_BUDGET", "EXA_API_KEY", "FIRECRAWL_API_KEY", "JINA_API_KEY",
 		// The capability slots resolve their environment variable before the

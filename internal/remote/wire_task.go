@@ -6,15 +6,26 @@ import "time"
 // machine. The surface sends intent; sizing, shaping, admission and spending
 // remain with the session agent that owns the conversation.
 const (
+	// MethodDelegateList and MethodDelegateStart are the program door
+	// (internal/session's delegate_door.go): the programs the ENGINE machine's
+	// build carries, and handing a brief to one. They belong to the engine side
+	// for the reason the task door does — the program runs on that machine and
+	// the run spends that machine's money — so a hosted surface lists the far
+	// build's programs and its `/<name> <brief>` starts work there.
+	MethodDelegateList  = "Delegate.List"
+	MethodDelegateStart = "Delegate.Start"
 	MethodTaskStart     = "Task.Start"
-	MethodPlannerStart  = "Task.StartPlanner"
-	MethodTaskRoom      = "Task.Room"
-	MethodTaskSteer     = "Task.Steer"
-	MethodTaskStop      = "Task.Stop"
-	MethodTaskRetry     = "Task.Retry"
-	MethodTaskModel     = "Task.Model"
-	MethodTaskEffort    = "Task.Effort"
-	MethodTaskSetEffort = "Task.SetEffort"
+	// MethodTaskRedoStronger runs the newest task again with every seat nobody
+	// pinned one step stronger ([session.Agent.RedoStronger]).
+	MethodTaskRedoStronger = "Task.RedoStronger"
+	MethodPlannerStart     = "Task.StartPlanner"
+	MethodTaskRoom         = "Task.Room"
+	MethodTaskSteer        = "Task.Steer"
+	MethodTaskStop         = "Task.Stop"
+	MethodTaskRetry        = "Task.Retry"
+	MethodTaskModel        = "Task.Model"
+	MethodTaskEffort       = "Task.Effort"
+	MethodTaskSetEffort    = "Task.SetEffort"
 	// MethodTaskWatch is the surface saying it draws tasks, and it is the only
 	// one of these that asks for nothing back: what it buys is the engine
 	// pushing "task" frames from then on (tasklane.go). It is sent once per
@@ -152,9 +163,25 @@ type TaskStopped struct {
 // whether they said the work is one worker's ([session.Agent.StartTask]'s solo):
 // that is the one thing the surface knows and the engine cannot, because the
 // word and the standing answer are both read on the surface's side.
+//
+// Effort is the one-task effort word the person said (`best`, `cheap`), read on
+// the surface's side like solo, and empty on every ordinary start.
 type TaskStartArgs struct {
+	Brief  string `json:"brief"`
+	Solo   bool   `json:"solo,omitempty"`
+	Effort string `json:"effort,omitempty"`
+}
+
+// TaskRedoArgs names the task to run again stronger; 0 is the newest one.
+type TaskRedoArgs struct {
+	ID uint64 `json:"id,omitempty"`
+}
+
+// DelegateStartArgs carries the program's name and the person's brief, both
+// as typed: the name is resolved against the engine machine's build there.
+type DelegateStartArgs struct {
+	Name  string `json:"name"`
 	Brief string `json:"brief"`
-	Solo  bool   `json:"solo,omitempty"`
 }
 
 // PlannerStartArgs also carries the sizing hint used by the adaptive form.

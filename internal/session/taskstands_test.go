@@ -39,13 +39,48 @@ func heldTaskWorld(t *testing.T, agent *Agent, path, content string) (<-chan tas
 		writeFile(t, filepath.Join(tree.dir, path), content)
 		world <- tree
 		<-release
-		merge, changed := keptWork(tree, node.title(), []string{path}, false)
+		merge, changed := keptWork(tree, node.title(), []string{path}, gitSignature{})
 		node.finish("scripted run ended", changed, tree.branch, merge)
 		node.graph.complete(node, TaskFailed)
 	})
 	done := func() { once.Do(func() { close(release) }) }
 	t.Cleanup(done)
 	return world, done
+}
+
+// A manager outside its project must hand the actual repository files to its
+// worker, not just report the right ground on the proposal card.
+func TestManagerProjectFallbackOpensAWorktreeWithItsDocuments(t *testing.T) {
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, "DESIGN.md"), "project design\n")
+	gitOut(t, repo, "add", "DESIGN.md")
+	gitOut(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "add project design")
+	place := Place{Dir: t.TempDir(), Workspace: repo}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = t.TempDir()
+		config.Place = place
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+	})
+	world, release := heldTaskWorld(t, agent, "result.txt", "done\n")
+	arguments, _ := json.Marshal(taskArguments{
+		Title: "read project design", Summary: "use the project document",
+		Brief: "Read DESIGN.md and write result.txt", Deliverable: "result.txt",
+		Acceptance: "result.txt contains the result",
+	})
+	result, isError, err := agent.proposeTask(context.Background(), arguments)
+	if err != nil || isError {
+		t.Fatalf("proposeTask = %q, error=%v, isError=%v", result, err, isError)
+	}
+	tree := <-world
+	if tree.root != canonicalPath(repo) || !withinDir(place.Trees(), tree.dir) {
+		t.Fatalf("worker is not in the project's isolated tree: %+v", tree)
+	}
+	if content, err := os.ReadFile(filepath.Join(tree.dir, "DESIGN.md")); err != nil || string(content) != "project design\n" {
+		t.Fatalf("relative project document missing in worker: %q, %v", content, err)
+	}
+	release()
+	waitDoneNode(t, agent.graph().node(1))
 }
 
 // C1: a model asking for in-place repository work gets a task branch, the live
@@ -405,6 +440,65 @@ func TestATaskWhoseAcceptanceCarriesAProseSlashIsAdmitted(t *testing.T) {
 	waitDoneNode(t, graph.node(1))
 }
 
+// A PATH ON ANOTHER MACHINE IS NOT A FOLDER THIS TASK COULD STAND IN.
+//
+// Work handed to a host reached over ssh writes its deliverable as an absolute
+// path on that host, and such a path has no directory along it on this machine.
+// Read as a place it can never fall inside the ground, so the refusal fired on
+// every one of them and the proposer stopped handing the work out at all. The
+// contract below is that shape, and it is admitted; the same contract pointed at
+// a directory that really is here and really is outside the ground is still
+// refused, by that directory's name.
+func TestAPathOnAnotherMachineDoesNotRefuseTheTask(t *testing.T) {
+	repo := newTestRepo(t)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = repo
+	})
+
+	// THE PATH THAT FAILED. It begins /home, and on macOS /home is a symlink to a
+	// directory that is really there, so a reading that walks up the path finds a
+	// place and refuses the task. The directory the path itself names is not here.
+	//
+	// IT NAMES NOBODY'S REAL FOLDER. It spelled a real person's checkout once, and
+	// on the machine that holds that checkout the directory is there, so the test
+	// failed on the one box it was written about.
+	remote := "/home/remote-builder/src/codeaf-probe/bin/codeaf"
+	if _, ok := placeOnThisMachine(remote); ok {
+		t.Fatalf("%s resolves to a directory on this machine, so it cannot stand in for a remote path", remote)
+	}
+	arguments, _ := json.Marshal(taskArguments{
+		Title: "build it there", Summary: "s",
+		Brief:       "On the remote host, clone the branch into " + remote + " and build it.",
+		Deliverable: "the binary at " + remote,
+		Acceptance:  remote + " exists on the remote host and runs",
+	})
+	result, isError, err := agent.proposeTask(context.Background(), arguments)
+	if err != nil {
+		t.Fatalf("proposeTask errored the turn: %v", err)
+	}
+	if isError {
+		t.Fatalf("a deliverable naming a path on another machine was refused: %q", result)
+	}
+
+	elsewhere := filepath.Join(t.TempDir(), "somewhere-else")
+	if err := os.MkdirAll(elsewhere, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(elsewhere, "notes.md")
+	arguments, _ = json.Marshal(taskArguments{
+		Title: "write the notes", Summary: "s", Brief: "b",
+		Deliverable: "a file at " + out,
+		Acceptance:  "the file is there",
+	})
+	result, isError, err = agent.proposeTask(context.Background(), arguments)
+	if err != nil {
+		t.Fatalf("proposeTask errored the turn: %v", err)
+	}
+	if !isError || !strings.Contains(result, out) {
+		t.Fatalf("a real folder outside the ground was answered %q, want it refused by name", result)
+	}
+}
+
 // A path in the contract that is outside the ground and in no repository is
 // refused in one sentence. The work would have nowhere to put what it made, and
 // starting it to have a guard turn every write back is a worse answer than
@@ -637,7 +731,7 @@ func TestAFolderGroundIsMirroredAndLandsByName(t *testing.T) {
 	writeFile(t, filepath.Join(tree.dir, "notes.md"), "the written line\n")
 	writeFile(t, filepath.Join(tree.dir, "build.log"), "noise\n")
 
-	merge, detail, _, _ := tree.comeHome("write it up", []string{"notes.md"}, false)
+	merge, detail, _, _ := tree.comeHome("write it up", []string{"notes.md"}, gitSignature{})
 	if merge != mergeInPlace || detail != "" {
 		t.Fatalf("the mirror landed as %q: %s", merge, detail)
 	}
@@ -713,6 +807,28 @@ func TestTheGroundLadderClimbsInOrder(t *testing.T) {
 		}
 		if stand.mode != TaskModeFolder {
 			t.Fatalf("mode = %q, want %q", stand.mode, TaskModeFolder)
+		}
+	})
+
+	t.Run("workspace outside repo falls back to place workspace", func(t *testing.T) {
+		agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+			config.Workspace = plain
+			config.Place = Place{Dir: t.TempDir(), Workspace: repo}
+		})
+		stand := agent.resolveTaskGround(taskSpec{deliverable: "an answer", acceptance: "it is written"})
+		if stand.dir != canonicalPath(repo) || stand.rung != taskGroundStandingIn {
+			t.Fatalf("stand = %+v, want dir=%s rung=%s", stand, repo, taskGroundStandingIn)
+		}
+	})
+
+	t.Run("a folder child keeps its parent despite a project fallback", func(t *testing.T) {
+		agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+			config.Workspace = plain
+			config.Place = Place{Dir: t.TempDir(), Workspace: repo}
+		})
+		stand := agent.resolveTaskGround(taskSpec{parent: 3, depth: 2, deliverable: "an answer", acceptance: "it is written"})
+		if stand.dir != canonicalPath(plain) || stand.mode != TaskModeFolder {
+			t.Fatalf("folder child moved away from its parent: %+v", stand)
 		}
 	})
 

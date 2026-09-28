@@ -125,7 +125,7 @@ func (a *Agent) foldTurnOutputs(seenThrough int, consumedReads map[*ai.ToolCall]
 		return
 	}
 
-	earlier := shapeEntries(a.messages, a.file)
+	earlier := shapeEntries(a.messages, a.file, a.presentation)
 	place := a.resultPlaceLocked()
 	target := turnWorkingTarget(a.window()) * bytesPerToken
 	batches := turnFoldBatches(a.messages, a.turnFloor, limit, consumedReads)

@@ -589,3 +589,22 @@ func TestDeletedPlanTaskIsAbsentFromListingsAndPages(t *testing.T) {
 		t.Fatal("sibling task page lost")
 	}
 }
+
+func TestRecoveredInterruptedRunMakesItsPlanRowInterrupted(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, planStoreFilename)
+	seedPlanStore(t, path, "chat-a")
+
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	armPlanStore(t, agent, path, "chat-a")
+	agent.graph().keepRunRows(71, []TaskNotice{{
+		ID: 71, State: TaskInterrupted, PlanTask: planStoreID(planRootID), Title: "the held run",
+	}})
+	row := planRowFor(agent.PlanTasks(), planStoreID(planRootID))
+	if row == nil {
+		t.Fatal("the live plan root was not read")
+	}
+	if !row.Interrupted {
+		t.Fatalf("recovered plan row = %+v, want interrupted", *row)
+	}
+}

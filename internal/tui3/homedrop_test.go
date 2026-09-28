@@ -88,7 +88,7 @@ func TestDroppingAFileOnHomeLightsStartWithNothingTyped(t *testing.T) {
 		t.Fatalf("chips are %v, want %v", chipNames(a), want)
 	}
 	line, ok := a.home.focusedLine()
-	if ok {
+	if !ok || line.kind != homeAction {
 		t.Fatalf("the cursor rests on %v, want the action row", line.kind)
 	}
 	if !strings.Contains(homeText(a), "server.log") {

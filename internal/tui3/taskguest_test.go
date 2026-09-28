@@ -74,6 +74,13 @@ type guestDoor struct {
 	asking chan session.Event
 	// leftAsking counts that lane's way out being taken.
 	leftAsking int
+	// pages is the OWNER'S STORE, keyed by the id a page is read by, and nil
+	// until a test arms it — a door that cannot read the owner's task pages is a
+	// real door ([TaskOwnerView.TaskPage]). pageErr is what that read answers
+	// with instead, and pageAsked is every id it was asked for.
+	pages     map[string]session.PlanTaskPage
+	pageErr   error
+	pageAsked []string
 }
 
 // watching arms this door with the owner's task lane and hands the test the end
@@ -121,6 +128,16 @@ func (d *guestDoor) open(ask TaskOwnerAsk) (TaskOwnerView, error) {
 					d.notices = nil
 				}
 			}
+		}
+	}
+	if d.pages != nil {
+		view.TaskPage = func(id string) (session.PlanTaskPage, bool, error) {
+			d.pageAsked = append(d.pageAsked, id)
+			if d.pageErr != nil {
+				return session.PlanTaskPage{}, false, d.pageErr
+			}
+			page, found := d.pages[id]
+			return page, found, nil
 		}
 	}
 	if d.asking != nil {

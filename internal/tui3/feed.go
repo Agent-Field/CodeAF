@@ -42,7 +42,8 @@ import (
 // the entry EXISTS is this file's, for every surface at once, and
 // salience_test.go walks every event kind through both to hold it.
 type feed struct {
-	entries []entry
+	entries        []entry
+	updateDelivery userUpdateStream
 	// live is the assistant entry currently being streamed into, or -1.
 	live int
 	// think is the reasoning block currently streaming, or -1 (thinking.go).
@@ -183,7 +184,8 @@ type feedHooks struct {
 	// and is safe for that reason.
 	closed func(e *entry, ev session.Event)
 	// retrying fires when a cut request is about to be asked again, after the
-	// dead attempt's rows have gone and before the reason is written down. The
+	// dead attempt's rows have gone and before the reason is written down. A
+	// consumed steer also cuts that request and invokes the same cleanup. The
 	// chat throws away the half-arrived proposal card there (task.go), which is
 	// a block only the chat has; a node draws no card and installs nothing.
 	//
@@ -262,10 +264,16 @@ func (f *feed) ingest(ev session.Event) {
 func (f *feed) ingestStream(ev session.Event, lump bool) {
 	switch ev.Kind {
 	case session.EventTextDelta:
+		if ev.Addressed {
+			f.syncUpdateTurn()
+			f.updateDelivery.marked = true
+		}
 		f.sayStream(ev.Text, lump)
 
 	case session.EventAssistantDone:
+		f.flushUpdatePrefix()
 		f.confirmResponse()
+		f.updateDelivery = userUpdateStream{}
 
 	case session.EventReasoning:
 		f.reasonStream(ev.Text, lump)
@@ -286,11 +294,17 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 		f.note("guardian allowed · " + ev.Tool)
 
 	case session.EventNotice:
-		// The adapter had to reshape the request to get it accepted — which
-		// attempt it is on, and what it took off (internal/provider's
-		// endpoints.go). Same dim one-liner as the nudge, and for the same
-		// reason: it is already being handled, the person only needs to see it.
-		f.note(ev.Text)
+		// A notice is either the skills this turn carried or the adapter reshaping
+		// a request to get it accepted. Both are dim status, already handled and
+		// never asking for the person's attention.
+		if len(ev.Skills) > 0 {
+			f.note("skills · " + strings.Join(ev.Skills, ", "))
+			if n := len(f.entries); n > 0 && f.entries[n-1].kind == entryNote {
+				f.entries[n-1].carried = true
+			}
+		} else {
+			f.note(ev.Text)
+		}
 
 	case session.EventRowNews:
 		// A ROW THE PERSON WROTE IS NO LONGER BEING SENT — their pinned machine
@@ -301,9 +315,28 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 		f.toldNote(ev.Text)
 
 	case session.EventRetrying:
+		f.updateDelivery = userUpdateStream{}
 		f.retry(ev)
 
+	case session.EventSteerConsumed:
+		if ev.Steer != nil {
+			// Consumption begins a new provider response even when the turn
+			// continues. The session retains interrupted prose, but discards
+			// calls that never began. Close that same boundary on every deck
+			// before the next response can inherit its marker or partial tool.
+			f.flushUpdatePrefix()
+			f.finishResponse(true)
+			f.updateDelivery = userUpdateStream{}
+			f.closeLive()
+			f.dropRetryingFormingTools()
+			if f.hooks.retrying != nil {
+				f.hooks.retrying()
+			}
+		}
+
 	case session.EventToolForming:
+		// The provider may still discard this attempt. Explicit updates stay
+		// addressed while streaming, but are confirmed only with a durable call.
 		// THE CALL IS ARRIVING. Nothing has been asked for yet — this is the
 		// model writing the instruction, drawn while it writes it.
 		f.formTool(ev)
@@ -312,6 +345,7 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 		f.announceTool(ev)
 
 	case session.EventToolBegin:
+		f.confirmUserUpdate()
 		f.beginTool(ev)
 
 	case session.EventToolFinished:
@@ -1032,6 +1066,10 @@ func (f *feed) say(text string) { f.sayStream(text, false) }
 // walk. The bare form is text handed over WHOLE, with no wire behind it that
 // could have lumped it, so it paces nothing.
 func (f *feed) sayStream(text string, lump bool) {
+	f.sayVisibleStream(f.updateText(text), lump)
+}
+
+func (f *feed) sayVisibleStream(text string, lump bool) {
 	if text == "" {
 		return
 	}
@@ -1049,6 +1087,7 @@ func (f *feed) sayStream(text string, lump bool) {
 		f.mdAt = f.now()
 	}
 	e := &f.entries[f.live]
+	e.addressed = e.addressed || f.updateDelivery.marked
 	e.text += text
 	// AND THE LIVE EDGE OPENS OR EXTENDS HERE, on the bytes that were just
 	// appended and nowhere else (reveal.go). It is in the reducer rather than in
@@ -1165,14 +1204,26 @@ func (f *feed) reasonStream(text string, lump bool) {
 	f.follow()
 }
 
-// takeReplyTags labels the answer with the task reports it is written from
-// (render.go's reply-tag row: cause above consequence).
+// taskReplySourceEntry retains typed provenance as inspectable operational work.
+func taskReplySourceEntry(tags []session.TaskReplyTag, turn int) entry {
+	return entry{kind: entryNote, text: "task sources", turn: turn,
+		replyTags: append([]session.TaskReplyTag(nil), tags...)}
+}
+
+// takeReplyTags retains task provenance on the answer and files its visible
+// details with operational work, behind the shared disclosure.
 //
 // TAGS CAN ARRIVE BEFORE THE FIRST WORD THEY LABEL, which is why they are held
 // rather than dropped: the engine names the reports the turn is about to answer
 // from as it picks them up, and the block that carries them may not exist yet.
 // [feed.say] empties the held list onto the block it opens.
 func (f *feed) takeReplyTags(tags []session.TaskReplyTag) {
+	if len(tags) == 0 {
+		return
+	}
+	f.said(taskReplySourceEntry(tags, f.turn))
+	f.follow()
+	f.touch()
 	f.pendingReplyTags = append(f.pendingReplyTags, tags...)
 	if f.live < 0 || f.live >= len(f.entries) || f.entries[f.live].kind != entryAssistant {
 		return
@@ -1243,7 +1294,7 @@ func (f *feed) reserveResponseContinuation() {
 	}
 	for i := f.think - 1; i >= 0; i-- {
 		e := &f.entries[i]
-		if e.turn != f.turn || groupBreaks(e) || e.kind == entryTool || e.kind == entryCompact {
+		if e.turn != f.turn || groupBreaks(e) || (e.kind == entryTool && !(f.updateDelivery.marked && (e.status == toolForming || e.status == toolQueued))) || e.kind == entryCompact {
 			return
 		}
 		if e.kind != entryAssistant {
@@ -1286,10 +1337,11 @@ func (f *feed) reserveResponseContinuation() {
 func (f *feed) note(text string) { f.noteWritten(text, false, nil) }
 
 // toldNote is a note ADDRESSED TO THE PERSON: same dim line, same door, and the
-// work chip may not swallow it ([entry.told]). Its one caller today is the news
-// that a row they wrote has stopped being sent (session's EventRowNews).
-func (f *feed) toldNote(text string) {
-	f.noteWritten(text, false, nil)
+// work chip may not swallow it ([entry.told]). Explicit user-directed notices
+// and asynchronous command responses use this door; optional facts retain the
+// same emphasis as noteFacts.
+func (f *feed) toldNote(text string, facts ...string) {
+	f.noteWritten(text, false, facts)
 	if n := len(f.entries); n > 0 && f.entries[n-1].kind == entryNote {
 		f.entries[n-1].told = true
 	}
@@ -1323,6 +1375,45 @@ func (f *feed) noteWritten(text string, block bool, facts []string) {
 	f.touch()
 }
 
+// renote rewrites the newest note saying old to say text instead, IN PLACE —
+// the line keeps its place in the thread, which is what a line that is one
+// fact still being settled wants (a task's crew line, crew.go). It answers
+// false when no note says old, and the caller then says text as a new note.
+func (f *feed) renote(old, text string, facts []string) bool {
+	for i := len(f.entries) - 1; i >= 0; i-- {
+		e := &f.entries[i]
+		if e.kind != entryNote || e.text != old {
+			continue
+		}
+		e.text, e.facts, e.stale = text, facts, true
+		f.touch()
+		return true
+	}
+	return false
+}
+
+// moveNote takes the newest note saying old out of its place and says text as
+// a new note at the end of the thread: a line that is one fact still settling
+// while it runs, but whose last word is news when it arrives (a task's crew
+// line on landing, crew.go). A note that is not the newest entry is left as an
+// empty, stale block rather than cut out, the way [feed.dropLive] leaves one,
+// because a later entry may hold its index.
+func (f *feed) moveNote(old, text string, facts []string) {
+	for i := len(f.entries) - 1; i >= 0; i-- {
+		e := &f.entries[i]
+		if e.kind != entryNote || e.text != old {
+			continue
+		}
+		if i == len(f.entries)-1 {
+			f.entries = f.entries[:i]
+		} else {
+			f.entries[i] = entry{kind: entryAssistant, turn: e.turn, stale: true}
+		}
+		break
+	}
+	f.noteWritten(text, false, facts)
+}
+
 // ── AN ATTEMPT THAT NEVER HAPPENED ──────────────────────────────────────────
 
 // retry is a cut request being asked again (internal/provider's streamguard.go).
@@ -1343,9 +1434,23 @@ func (f *feed) retry(ev session.Event) {
 	if e := blockAt(f.entries, f.live); e != nil && e.kind == entryAssistant && e.provisional {
 		end, owner = f.live, e.confirmed
 	}
+	// Forming/announced calls may have closed an explicitly addressed
+	// assembler before a queued human line. It is still this retry's attempt.
+	if owner == nil {
+		for i := end; i >= 0 && f.entries[i].turn == f.turn; i-- {
+			e := &f.entries[i]
+			if e.kind == entryTool && e.status != toolForming && e.status != toolQueued {
+				break
+			}
+			if e.kind == entryAssistant && e.addressed && e.provisional {
+				end, owner = i, e.confirmed
+				break
+			}
+		}
+	}
 	for i := end; i >= 0 && f.entries[i].turn == f.turn; i-- {
 		e := &f.entries[i]
-		if (e.kind == entryTool && e.status != toolForming) || groupBreaks(e) || e.kind == entryCompact {
+		if (e.kind == entryTool && e.status != toolForming && e.status != toolQueued) || groupBreaks(e) || e.kind == entryCompact {
 			break
 		}
 		if e.kind == entryAssistant {
@@ -1488,7 +1593,8 @@ func (f *feed) dropLive() {
 }
 
 // dropRetryingFormingTools removes calls that were still being spelled when a
-// provider request was cut. The session discards those partial calls rather
+// provider request was cut, including calls announced before execution.
+// The session discards those partial calls rather
 // than recording them, so settling their rows as cancelled would leave a call
 // on screen that never existed in the transcript.
 //
@@ -1500,7 +1606,7 @@ func (f *feed) dropRetryingFormingTools() {
 		if e.turn != f.turn {
 			break
 		}
-		if e.kind != entryTool || e.status != toolForming {
+		if e.kind != entryTool || (e.status != toolForming && e.status != toolQueued) {
 			continue
 		}
 		if i == len(f.entries)-1 {
@@ -1515,7 +1621,10 @@ func (f *feed) dropRetryingFormingTools() {
 // A provider may end with private reasoning after its last visible words. Walk
 // only this response's tail so confirmation still reaches those words without
 // promoting a tool preamble or another exchange's answer.
-func (f *feed) confirmResponse() {
+func (f *feed) confirmResponse() { f.finishResponse(false) }
+
+// Interruption preserves the audience and words without certifying completion.
+func (f *feed) finishResponse(interrupted bool) {
 	confirmation := &responseConfirmation{}
 	// A person's queued line or a surface notice can sit below the active
 	// assembler while its answer keeps growing. That pointer owns the response;
@@ -1528,10 +1637,28 @@ func (f *feed) confirmResponse() {
 			confirmation = e.confirmed
 		}
 	}
+	// A streamed call closes the assembler before it becomes durable. Restore
+	// the explicit update's response anchor so a queued human line cannot hide
+	// its confirmation at ToolBegin.
+	if !anchored && (f.updateDelivery.marked || interrupted) {
+		for i := end; i >= 0 && f.entries[i].turn == f.turn; i-- {
+			e := &f.entries[i]
+			if e.kind == entryTool && e.status != toolForming && e.status != toolQueued {
+				break
+			}
+			if e.kind == entryAssistant && (e.addressed || interrupted) && e.provisional {
+				end, anchored = i, true
+				if e.confirmed != nil && !e.confirmed.done {
+					confirmation = e.confirmed
+				}
+				break
+			}
+		}
+	}
 	var fragments []int
 	for i := end; i >= 0; i-- {
 		e := &f.entries[i]
-		if e.turn != f.turn || groupBreaks(e) || e.kind == entryTool || e.kind == entryCompact {
+		if e.turn != f.turn || groupBreaks(e) || (e.kind == entryTool && !((f.updateDelivery.marked || interrupted) && (e.status == toolForming || e.status == toolQueued))) || e.kind == entryCompact {
 			break
 		}
 		if e.kind != entryAssistant {
@@ -1548,10 +1675,10 @@ func (f *feed) confirmResponse() {
 		fragments = append(fragments, i)
 	}
 	if len(fragments) > 0 {
-		confirmation.done = true
+		confirmation.done = !interrupted
 		for _, i := range fragments {
 			e := &f.entries[i]
-			e.provisional, e.confirmed = false, confirmation
+			e.provisional, e.confirmed, e.cut = false, confirmation, interrupted
 			if f.live == i {
 				f.closeLive()
 			} else {
@@ -1564,9 +1691,11 @@ func (f *feed) confirmResponse() {
 		// empty earlier fragments in place so every existing index stays valid.
 		var text strings.Builder
 		var tags []session.TaskReplyTag
+		addressed := false
 		for at := len(fragments) - 1; at >= 0; at-- {
 			e := &f.entries[fragments[at]]
 			text.WriteString(e.text)
+			addressed = addressed || e.addressed
 			tags = append(tags, e.replyTags...)
 			e.text, e.replyTags, e.stale = "", nil, true
 		}
@@ -1579,7 +1708,7 @@ func (f *feed) confirmResponse() {
 			last = len(f.entries) - 1
 		}
 		e := &f.entries[last]
-		e.text, e.replyTags, e.demoted = text.String(), tags, false
+		e.text, e.replyTags, e.demoted, e.addressed = text.String(), tags, false, addressed
 		// A RESPONSE THAT IS ONLY [session.NoChangeReply] WITHDREW ITSELF AS THE
 		// ANSWER. It is the model telling the completion check its note was wrong,
 		// never words for the person, so the confirmed block is emptied in place

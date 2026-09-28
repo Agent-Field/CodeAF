@@ -499,6 +499,7 @@ func (s *Scheduler) taskFor(graph *plan.Graph, node *plan.Node) Task {
 		Brief:      node.Brief,
 		Contract:   node.Contract,
 		Subharness: node.Subharness,
+		Skills:     node.Skills,
 		OutputHint: SuggestPath(node.ID, node.Title),
 	}
 	if strings.TrimSpace(task.Brief) == "" {

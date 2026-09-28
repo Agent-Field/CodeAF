@@ -900,7 +900,7 @@ func standingWideWork(cfg Config, item standing.Item, brief string) (Config, *Ta
 	// The checkpoint lands in the run folder, which is where everything else
 	// this firing leaves behind lands.
 	graph.limit = cfg.TaskParallel
-	graph.governor = newAdmissionGovernor(cfg.TaskMaxLoad, cfg.TaskMinFreeMB)
+	graph.governor = newAdmissionGovernorForProfile(cfg.TaskMaxLoad, cfg.TaskMinFreeMB, cfg.ProfileDir)
 	if cfg.TaskLanes != nil {
 		graph.lanes = cfg.TaskLanes
 	}

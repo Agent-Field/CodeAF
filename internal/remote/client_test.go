@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
@@ -963,6 +964,33 @@ func TestAStandingCallThatFailsSaysSoRatherThanAnsweringNothing(t *testing.T) {
 	}
 }
 
+// THE WORK TAB'S READ CROSSES THE SAME WAY THE PAGE DOES. An engine that
+// answers it hands back the copy's difference. An engine that has never heard
+// of the door answers "no such method", and that is the absence the tab draws,
+// not an empty difference.
+func TestPlanTaskWorkCrossesAndAnOldEngineHasNoDoor(t *testing.T) {
+	client, e := newEngine(t)
+	want := session.PlanTaskWork{
+		Dir: "/work/copy", Read: true, Added: []string{"notes.txt"},
+		Patch: "diff --git a/load.go b/load.go\n+new line\n",
+	}
+	e.answers[MethodPlanTaskWork] = PlanTaskWorkResult{Work: want, OK: true}
+	got, ok := client.Agent().PlanTaskWork("t-6")
+	if !ok || !reflect.DeepEqual(got, want) {
+		t.Fatalf("PlanTaskWork = (%#v, %v), want the copy", got, ok)
+	}
+	var args PlanTaskArgs
+	if err := json.Unmarshal(e.calls(MethodPlanTaskWork)[0].Payload, &args); err != nil || args.ID != "t-6" {
+		t.Fatalf("PlanTaskWork args = %+v, %v", args, err)
+	}
+
+	e.fails[MethodPlanTaskWork] = `engine: no such method "PlanTaskWork"`
+	got, ok = client.Agent().PlanTaskWork("t-6")
+	if ok || !got.NoDoor {
+		t.Fatalf("an engine without the door answered (%#v, %v), want no door", got, ok)
+	}
+}
+
 func TestPlanTasksAndPlanTaskPageCrossWhole(t *testing.T) {
 	client, e := newEngine(t)
 	started := time.Date(2026, 9, 18, 1, 2, 3, 4, time.UTC)
@@ -973,6 +1001,8 @@ func TestPlanTasksAndPlanTaskPageCrossWhole(t *testing.T) {
 		Depth: 2, Waits: []string{"t-a", "t-b"}, Steps: 7, USD: 1.25,
 		Started: started, Ended: ended, Note: "last note",
 		Live:           plandb.LiveStep{Step: 8, Command: "go test ./internal/remote", Since: started},
+		Program:        "senior-dev",
+		Stage:          "implement",
 		TrajectoryPath: "/tmp/trajectory.jsonl",
 	}
 	page := session.PlanTaskPage{
@@ -982,6 +1012,29 @@ func TestPlanTasksAndPlanTaskPageCrossWhole(t *testing.T) {
 		Live:     row.Live,
 		Children: []session.PlanTaskRow{row},
 		WaitRows: []session.PlanTaskRow{row},
+		// A PROGRAM'S CONVERSATION CROSSES WITH ITS PAGE, on the page's own call
+		// and in no call of its own: an answered turn with everything a turn can
+		// carry, a refused one, and the one still in flight — and so do its
+		// actions, each with everything an action can carry.
+		Program: &session.PlanProgram{
+			Name: "senior-dev", Stages: []string{"intake", "implement"},
+			Turns: []delegate.Turn{
+				{Seq: 1, Thread: "main", Started: started, Ended: ended, Model: "deepseek/deepseek-v4-flash", Served: "deepseek/deepseek-v4-flash-0731",
+					Sent:  []delegate.Said{{Role: "user", Text: "rewrite the wire"}, {Role: "tool", Tool: "read", Text: "package remote"}},
+					Reply: "I'll read the wire first.", Calls: []delegate.ToolUse{{Name: "read", Args: `{"filePath":"wire.go"}`}},
+					TokensIn: 1200, TokensOut: 40, Cached: 800, CostUSD: 0.012},
+				{Seq: 2, Thread: "main", Started: started, Model: "deepseek/deepseek-v4-flash", Refused: "the run's dollar ceiling is reached"},
+				{Seq: 3, Thread: "main", Started: ended, Model: "deepseek/deepseek-v4-flash", Restarted: true},
+			},
+			Earlier: 4, Calls: 6, CeilingUSD: 5,
+			Actions: []delegate.Shown{
+				{At: started, Step: "explore", Text: "ran go test ./internal/remote", Outcome: "fails · exit 1"},
+				{At: started.Add(time.Second), Text: "compacted its memory", Outcome: "kept its own record", Memory: true},
+				{At: ended, Text: "switched to deepseek-v4-flash", Model: "openrouter/deepseek/deepseek-v4-flash", Reason: "the last one was busy"},
+				{At: ended, Step: "implement", Text: "told its model to finish (nudge 1)", Steer: true},
+			},
+			EarlierActions: 12,
+		},
 	}
 	e.answers[MethodPlanTasks] = []session.PlanTaskRow{row}
 	e.answers[MethodPlanTaskPage] = PlanTaskPageResult{Page: page, OK: true}
@@ -999,6 +1052,21 @@ func TestPlanTasksAndPlanTaskPageCrossWhole(t *testing.T) {
 	var args PlanTaskPageArgs
 	if err := json.Unmarshal(e.calls(MethodPlanTaskPage)[0].Payload, &args); err != nil || args.ID != row.ID {
 		t.Fatalf("PlanTaskPage args = %+v, %v", args, err)
+	}
+}
+
+// A READING WINDOW'S PAGE READ KEEPS THE ENGINE'S REFUSAL. The plan
+// capability folds every failure into "not found"; a page onto another
+// conversation's program task reads nothing else, and the refusal is how it
+// learns that conversation was replaced.
+func TestReadPlanTaskPageKeepsTheEnginesRefusal(t *testing.T) {
+	client, e := newEngine(t)
+	e.fails[MethodPlanTaskPage] = "engine: that conversation is not open here any more"
+	if _, found, err := client.Agent().ReadPlanTaskPage("7"); found || err == nil || !strings.Contains(err.Error(), "not open here any more") {
+		t.Fatalf("ReadPlanTaskPage = (found %v, %v), want the engine's own refusal", found, err)
+	}
+	if _, found := client.Agent().PlanTaskPage("7"); found {
+		t.Fatal("PlanTaskPage found a page the engine refused")
 	}
 }
 

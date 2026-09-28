@@ -73,7 +73,7 @@ func TestManyTabsRemainReadableWhileArrowsBrowseWithoutSwitching(t *testing.T) {
 			break
 		}
 		right := tabScrollTarget(t, a, tabScrollRight)
-		cmd, took := a.tabPress(right.span.to-1, placeTabRow)
+		cmd, took := a.tabPress(right.span.to-1, tabStripRow)
 		if !took || cmd != nil {
 			t.Fatal("scroll arrow opened or started something")
 		}
@@ -104,7 +104,7 @@ func TestTabStripWheelBrowsesBothAxesWithoutTouchingTheTranscript(t *testing.T) 
 	for _, button := range []tea.MouseButton{tea.MouseWheelRight, tea.MouseWheelDown, tea.MouseWheelLeft, tea.MouseWheelUp} {
 		_ = a.tabsRow(a.width)
 		from := a.tabView.from
-		drive(t, a, tea.MouseWheelMsg{X: 20, Y: placeTabRow, Button: button})
+		drive(t, a, tea.MouseWheelMsg{X: 20, Y: tabStripRow, Button: button})
 		if a.tabView.from == from {
 			t.Fatalf("wheel %v did not browse tabs", button)
 		}
@@ -122,7 +122,10 @@ func TestTabViewportFitsUnicodePlainAndCompactFramesAfterBrowsing(t *testing.T) 
 		for _, ascii := range []bool{false, true} {
 			a := manyTabApp(t)
 			a.pal = newPalette(profile, ascii)
-			for _, width := range []int{160, 80, 40, 24, 12} {
+			// 36 is a compact strip: the strip had eight fewer cells while a
+			// `home` piece led it, and forty columns was compact then; the
+			// scroll floor itself ([tabReadableCells]) did not move.
+			for _, width := range []int{160, 80, 36, 24, 12} {
 				for _, height := range []int{40, 16} {
 					a.width, a.height = width, height
 					a.touch()
@@ -136,7 +139,7 @@ func TestTabViewportFitsUnicodePlainAndCompactFramesAfterBrowsing(t *testing.T) 
 							t.Fatalf("overlapping or offscreen target at %d: %+v", width, hit)
 						}
 						for x := hit.span.from; x < hit.span.to; x++ {
-							got, ok := a.tabAt(x, placeTabRow)
+							got, ok := a.tabAt(x, tabStripRow)
 							if !ok || got.kind != hit.kind || got.tab.key != hit.tab.key {
 								t.Fatalf("drawn target disagrees with hit at %d", x)
 							}
@@ -227,7 +230,7 @@ func TestNewChatFollowsTheLastVisibleTab(t *testing.T) {
 		}
 	}
 	for x := plus.span.from; x < plus.span.to; x++ {
-		got, ok := a.tabAt(x, placeTabRow)
+		got, ok := a.tabAt(x, tabStripRow)
 		if !ok || got.kind != plus.kind {
 			t.Fatalf("adjacent control has wrong hit ownership: %+v", got)
 		}

@@ -175,6 +175,11 @@ func (a *app) searchTick(msg searchTickMsg) tea.Cmd {
 		// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN. With no index
 		// behind it the place keeps saying what it is for rather than drawing an
 		// empty result list under somebody's words.
+		//
+		// It matched conversations by NAME here for one build on 2026-09-22,
+		// the way home's box does, and the owner took that back the next day:
+		// a place called `search` that searches something narrower than it says
+		// is worse than one that refuses.
 		a.search.waiting = false
 		return nil
 	}
@@ -261,7 +266,8 @@ func (a *app) searchKey(msg tea.KeyPressMsg) tea.Cmd {
 			a.touch()
 			return a.searchAsked()
 		}
-		return a.openHome()
+		a.leavePlace()
+		return nil
 	case "up", "ctrl+p":
 		a.moveSearch(-1)
 		a.touch()
@@ -554,20 +560,22 @@ func (placeSearch) key(a *app, msg tea.KeyPressMsg) tea.Cmd { return a.searchKey
 const (
 	// searchHitHint is the foot standing on a result: what enter opens, how to
 	// move between them, and that the box is still a search box.
-	searchHitHint = "enter opens it at that turn · ↑↓ pick · type to search · esc clears the words"
+	searchHitHint = "enter opens it at that turn · ↑↓ pick · type to search · esc clear the words"
 	// searchAskHint is the foot with nothing to stand on — the teaching page and
 	// a search that found nothing. NOTHING IS NAMED THAT IS NOT BOUND, so
 	// `enter` and `↑↓` are simply absent rather than promised over an empty
 	// body (place_standing.go's hint holds the same argument at more length).
-	searchAskHint = "type to search · esc clears the words"
+	searchAskHint = "type to search · esc clear the words"
 )
 
 // hint is WHAT THE ROW UNDER THE CURSOR CAN BE ASKED FOR (pages.go's
 // [place.hint]) — and on the teaching page and the no-hit line there is no row,
 // so the foot says only the two things that are true there.
+func (placeSearch) about() string { return "search every conversation" }
+
 func (placeSearch) hint(a *app) string {
 	if a.search.reading.foldAt(a.search.cursor) {
-		return foldEnterWord(a.search.unfolded) + " · ↑↓ pick · type to search · esc clears the words"
+		return foldEnterWord(a.search.unfolded) + " · ↑↓ pick · type to search · esc clear the words"
 	}
 	if _, ok := a.search.reading.at(a.search.cursor); ok {
 		return searchHitHint

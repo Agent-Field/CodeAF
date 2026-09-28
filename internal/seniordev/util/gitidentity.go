@@ -1,0 +1,33 @@
+//go:build !windows
+
+package util
+
+import "github.com/Agent-Field/codeaf/internal/gitidentity"
+
+// The identity senior-dev's own commits carry.
+//
+// senior-dev commits as it works: its exact starting tree, every file its
+// model writes, each coherent checkpoint and the candidate it submits. A
+// working copy on a machine that has never been told who is committing (a
+// fresh container, a hermetic HOME) refuses every one of those commits, and a
+// refused candidate commit is a submission the run cannot make. So each git
+// command that can commit carries an identity of its own, as `-c` overrides,
+// which GIT_AUTHOR_* and GIT_COMMITTER_* in the environment still win over.
+//
+// These commits stay on the branch codeaf cut for the run, under the one
+// commit codeaf makes of whatever the run left uncommitted when it ended,
+// which carries codeaf's identity rather than this one. The address is a local
+// one: it names the program that made a commit and no account anywhere.
+
+// The values live in internal/gitidentity, which codeaf's own side of a run
+// reads on every platform.
+const (
+	CommitterName  = gitidentity.EngineName
+	CommitterEmail = gitidentity.EngineEmail
+)
+
+// GitArgv is a git command line that carries senior-dev's commit identity.
+func GitArgv(args ...string) []string {
+	argv := []string{"git", "-c", "user.name=" + CommitterName, "-c", "user.email=" + CommitterEmail}
+	return append(argv, args...)
+}

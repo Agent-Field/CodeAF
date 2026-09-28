@@ -326,10 +326,9 @@ func TestHomeAnswersItsOwnWindowThroughItsOwnResolver(t *testing.T) {
 // SAYING NO FROM HOME, IN ONE KEYSTROKE.
 //
 // The standing card is the one question whose no lives on a key home cannot
-// spare: `esc` in the conversation is the outright no, and `esc` on home closes
-// home. So the engine's list carries `0 not set up` and this band draws it like
-// any other chip — a card met at home can now be answered all three ways
-// without walking to the window it is in.
+// spare: `esc` on home closes home. The engine's list carries the kind's own
+// no, and this band draws it like any other chip. A card met at home can be
+// answered all three ways without walking to the window it is in.
 func TestHomeCanSayNoToAStandingCard(t *testing.T) {
 	watch := standing.Item{
 		Words: "tell me when ci goes red",
@@ -338,7 +337,7 @@ func TestHomeCanSayNoToAStandingCard(t *testing.T) {
 	}
 	lab := newAnswerLab(t, standingQuestion(9, watch, "wants to keep an eye on: tell me when ci goes red"), time.Now())
 	text := homeText(lab.a)
-	for _, chip := range []string{"1 yes", "3 just once", "0 not set up"} {
+	for _, chip := range []string{"1 Watch for it", "3 Check once now", "0 Don't watch"} {
 		if !strings.Contains(text, chip) {
 			t.Fatalf("the card does not offer %q:\n%s", chip, text)
 		}
@@ -357,7 +356,7 @@ func TestHomeCanSayNoToAStandingCard(t *testing.T) {
 	if typed := lab.a.home.box.String(); typed != "" {
 		t.Fatalf("the decline also typed %q into the box", typed)
 	}
-	if !strings.Contains(homeText(lab.a), answerSentWord+"not set up") {
+	if !strings.Contains(homeText(lab.a), answerSentWord+"Don't watch") {
 		t.Fatalf("home did not say what it just answered:\n%s", homeText(lab.a))
 	}
 }
@@ -373,10 +372,10 @@ func TestHomeCanSayNoToAReminderThatOffersNoOnce(t *testing.T) {
 	}
 	lab := newAnswerLab(t, standingQuestion(9, reminder, "wants to keep an eye on: remind me at 6 to leave"), time.Now())
 	text := homeText(lab.a)
-	if strings.Contains(text, "3 just once") {
+	if strings.Contains(text, "Check once now") || strings.Contains(text, "Only now") {
 		t.Fatalf("a one-off reminder was offered `once` from home:\n%s", text)
 	}
-	if !strings.Contains(text, "0 not set up") {
+	if !strings.Contains(text, "0 Don't remind me") {
 		t.Fatalf("a one-off reminder was offered no way to say no:\n%s", text)
 	}
 	lab.a.homeKey(key(session.StandingNoKey))

@@ -137,6 +137,17 @@ func TestH7SkillCheckExportsBothDirectorySpellings(t *testing.T) {
 	}
 }
 
+func TestSkillCheckStripsSensitiveEnvVars(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-secret-test-value")
+	t.Setenv("SLACK_BOT_TOKEN", "xoxb-secret-test-value")
+	dir := writeSkillArtifact(t, "strip-secrets", "#!/bin/sh\nset -eu\n"+
+		"test -z \"${ANTHROPIC_API_KEY:-}\"\n"+
+		"test -z \"${SLACK_BOT_TOKEN:-}\"\n")
+	if err := runSkillCheck(context.Background(), dir); err != nil {
+		t.Fatalf("runSkillCheck leaked sensitive env vars: %v", err)
+	}
+}
+
 func TestRecurringSkillRedCheckSupersedesCandidates(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -218,4 +229,45 @@ func recordCandidateJob(t *testing.T, graph *store.Store, id, artifact string) s
 		t.Fatal(err)
 	}
 	return fact
+}
+
+// Digest is stable for identical directory contents and differs when a file
+// changes, even if the file name is the same.
+func TestContentDigestStability(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "run.sh"), []byte("#!/bin/sh\necho hello\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "check.sh"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	d1, err := contentDigest(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Same contents -> same digest.
+	d2, err := contentDigest(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d1 != d2 {
+		t.Fatalf("same contents produced different digests: %q vs %q", d1, d2)
+	}
+	// Changed file content -> different digest.
+	if err := os.WriteFile(filepath.Join(dir, "check.sh"), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	d3, err := contentDigest(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d1 == d3 {
+		t.Fatal("changed content should produce different digest")
+	}
+	if len(d1) != 64 {
+		t.Fatalf("sha256 hex digest should be 64 chars, got %d", len(d1))
+	}
+	if len(d3) != 64 {
+		t.Fatalf("sha256 hex digest should be 64 chars, got %d", len(d3))
+	}
 }

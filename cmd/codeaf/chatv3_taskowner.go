@@ -108,7 +108,14 @@ func openTaskOwnerView(workspace string, ask tui3.TaskOwnerAsk) (tui3.TaskOwnerV
 		// not — the page draws the question and the window that owns the work
 		// answers it (internal/remote's driver.go).
 		Questions: agent.WatchQuestions,
-		Close:     client.Close,
+		// AND ONE TASK'S STORED PAGE, which is the whole of what a program's task
+		// has to read: senior-dev writes no worker journal, and its actions are on
+		// its page in the owner's store. It is a read in the same sense —
+		// [remote.MethodPlanTaskPage] is on the watcher's allow-list and none of
+		// the page's verbs are — and it keeps the engine's refusal, which is how a
+		// program's page learns that the conversation under it was replaced.
+		TaskPage: agent.ReadPlanTaskPage,
+		Close:    client.Close,
 	}, nil
 }
 

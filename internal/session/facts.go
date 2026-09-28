@@ -91,6 +91,14 @@ type Facts struct {
 	//
 	// Nil is a conversation about nowhere else, which is nearly all of them.
 	Places []PlaceRef `json:"places,omitempty"`
+	// Skills is the names a person has put in front of this conversation by
+	// hand, in attachment order ([Agent.AttachedSkills]).
+	//
+	// IT RIDES THE PHOTOGRAPH FOR THE FOLDERS' REASON: the skill chip above the
+	// box is drawn on a frame, and the picker marks its rows from the same set
+	// after every toggle. It moves once per deliberate act and is a few short
+	// names. Nil is nothing attached, which is nearly every conversation.
+	Skills []string `json:"skills,omitempty"`
 }
 
 // LevelFor is the reasoning level held for one model id, and "" for a model
@@ -166,6 +174,13 @@ func FactsOf(source FactSource) Facts {
 	// AND THE GATE'S POSTURE, on the same terms.
 	if door, ok := source.(interface{ ResolvedApprovalPosture() string }); ok {
 		facts.Approval = door.ResolvedApprovalPosture()
+	}
+	// AND THE SKILLS PUT IN FRONT BY HAND, on the same terms. Absence is
+	// stored as absence: an empty attachment is nil, not an empty list.
+	if door, ok := source.(interface{ AttachedSkills() []string }); ok {
+		if held := door.AttachedSkills(); len(held) > 0 {
+			facts.Skills = held
+		}
 	}
 	return facts
 }

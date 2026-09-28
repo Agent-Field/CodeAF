@@ -54,7 +54,7 @@ const slackSearchDescription = "Search the person's Slack and get back matching 
 
 const slackSearchSchemaJSON = `{"type":"object","properties":{"query":{"type":"string","description":"What to look for in Slack"},"max":{"type":"integer","description":"How many messages to return (default: 10)"}},"required":["query"],"additionalProperties":false}`
 
-const slackReadThreadDescription = "Read one Slack thread in order, up to 15 messages. The channel id and ts are the final line of a slack_search result; ts is Slack's timestamp for the message the thread starts at."
+const slackReadThreadDescription = "Read one Slack thread in order, up to " + connect.SlackThreadLimit + " messages. The channel id and ts are the final line of a slack_search result; ts is Slack's timestamp for the message the thread starts at."
 
 const slackReadThreadSchemaJSON = `{"type":"object","properties":{"channel":{"type":"string","description":"The channel id, as slack_search returned it"},"ts":{"type":"string","description":"The Slack timestamp, as slack_search returned it"}},"required":["channel","ts"],"additionalProperties":false}`
 

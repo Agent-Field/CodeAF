@@ -2,17 +2,38 @@
 
 ## Taking a message back — rewind, how do I undo something I said
 
-Use `/rewind` (aliases `/undo`, `/back`) to open a searchable timeline of the whole
-conversation. Choose a point, press `enter` to place the pick, then `enter` again to
-cut everything from that point onward. Escape clears the filter or closes the timeline.
+Rewind cuts the conversation back to an earlier point and drops everything after it. Use it
+when you phrased something badly and want to say it again better.
 
-Repeated Escape is back navigation and never opens rewind. Rewind changes what the
-model has been told; it does not undo files, commands or git changes.
+**There are two tiers, and they answer two different questions.**
+
+| Way in | What you get |
+| --- | --- |
+| `esc`, then `esc` again within half a second | The **quick** inline mode: a cut line drawn through the transcript already on screen |
+| `/rewind` (aliases `/undo`, `/back`) | The **rewind timeline**: the whole conversation as a fullscreen list, with a search and a preview |
+| `tab`, from inside the inline mode | Lifts the inline mode into the timeline, carrying the cut you had already chosen |
+
+The first `esc` keeps its ordinary meaning — mid-turn it interrupts, at rest it does nothing
+— and also arms rewind. The arming window is **500ms**. While it is warm, the hint slot says
+exactly `esc again to rewind`. A stray `esc` after the window has lapsed changes nothing.
+The command row for `/rewind` reads `go back to an earlier point · esc esc takes back the last`.
+
+Both tiers use the same `⟲` glyph, the same "drops N turns" arithmetic, the same cut, and
+do the same things afterwards. Which one to reach for: `esc esc` for "not that, let me say
+it again", `/rewind` for "take us back to before we started down this road".
+
+Rewind edits what the model has been told. It does not undo work that was done. Read the
+section on what rewind does not undo before you rely on it.
 
 ## Seeing the whole conversation — the rewind timeline
 
 `/rewind` opens a fullscreen page listing the **whole** conversation, oldest first, with no
-scrolling needed to get at the old end of it. The timeline reaches the whole conversation without loading older transcript blocks first.
+scrolling needed to get at the old end of it. This is the one that can reach turns the
+inline mode cannot: the inline mode picks out of the transcript **drawn on screen**, and a
+conversation you came back to opens showing its last **40** blocks. Scrolling up pulls the
+older ones in 40 at a time until you reach the first message (see the screen page), so the
+inline mode reaches as far back as you have scrolled — and `/rewind` reaches the whole thing
+without your having to.
 
 What is on it:
 
@@ -64,9 +85,16 @@ not keep them, and codeaf will not invent them.
 
 ## Jumping to an old message from far back in the conversation
 
-Open `/rewind`, type a word from the message, and press `enter` twice on the desired
-point. The search reaches the entire conversation. If the cut is refused, the page stays
-open with the reason in the foot.
+Open `/rewind`, type a word you remember from the message, and press `enter` twice. That is
+the whole route. The search reaches the entire conversation, not just the part drawn on
+screen, which is why `esc esc` is the wrong tool for anything older than the last screenful.
+
+`tab` inside the inline mode does the same thing without retyping the command: it lifts you
+onto the timeline with the cut you had already chosen, and your half-written draft comes
+with you. The inline mode's own legend names the key.
+
+If the cut is refused, the page stays up with the engine's sentence in the foot, and the
+same `enter` retries it a moment later.
 
 ## What rewind does NOT undo — your files stay changed
 
@@ -132,9 +160,42 @@ the turn. The screen shows what was removed, so you can see this happen.
 
 ## Moving the cut line in the quick inline mode, and what the screen says
 
-The double-Escape entry to inline rewind has been removed. Use `/rewind` to search the
-whole conversation, preview a point and confirm the cut with two presses of `enter`.
-Escape backs out without cutting anything.
+This is the `esc` `esc` mode — the transcript on screen with a line drawn through it. The
+keys are:
+
+| Key | What it does |
+| --- | --- |
+| `↑` / `↓` | Walk whole turns |
+| `←` / `→` | Step through the points inside the current turn |
+| `enter` | Commit the cut |
+| `tab` | Lift into the rewind timeline, carrying this cut |
+| `esc` | Leave with nothing changed |
+
+The mode bar prints exactly
+`↑↓ turns · ←→ steps · enter rewind · tab the whole conversation · esc back`.
+
+The cut opens on the last thing you said — the newest turn point — or on the newest point of
+any kind when there is no turn point at all. `←`/`→` are bounded by the current turn, so a
+step walk cannot leave it. `↑`/`↓` never fall off either end.
+
+While the mode is up it takes **every** key. Nothing falls through to the draft box, because
+the mode bar is standing where that box was. `ctrl+c` is read above it and stays the way
+out — it does not leave rewind, it quits codeaf, with the mode still up.
+
+The mouse can do everything the keys can: click any transcript row to move the cut, click
+the cut line itself to commit. A click chooses the nearest point at or above the row you
+pointed at, so a click never drops less than the row you aimed at. A click above every point
+takes the oldest one. Nothing here is pointer-only.
+
+**What you see:** the bar that replaced the draft box reads `⟲ drops 2 turns` — the glyph,
+the word `drops`, and the count. A cut landing on a turn boundary is counted in turns; a cut
+inside the newest turn takes no whole turn and is counted in steps instead. On a
+screen-reader ("linear") palette the glyph is `<<`. On a frame too narrow for both, the key
+legend goes and the count stays.
+
+The cut line itself is a horizontal rule drawn above the chosen block, labelled
+`⟲ rewind here` (`<< rewind here` in linear). Everything from the line down is repainted
+dim — accents, diff colours and all — because "all of this goes" is the true statement.
 
 ## What happens when you press enter on a rewind
 
@@ -169,8 +230,12 @@ place to cut. `/rewind` will not raise an empty timeline.
 inline mode is already on, copy mode is on, a task room is open, the settings panel is open,
 or the task rail is full. The commands page lists them.
 
-**Repeated Escape never enters rewind.** It dismisses the current layer and eventually
-lands on Home, without stopping work or dropping drafts. Use `/rewind` explicitly.
+**`esc` `esc` does nothing.** `esc` will not arm rewind when something else on the surface
+holds the keyboard. That is: the settings sheet, the deck, the expand view, the model
+picker, the resume roster, the connections panel, the command menu, the completion list, the
+welcome box, copy mode, a recall walk, an open room, the rail hold, fullscreen rail, an
+approval question, an awaited task proposal, an active guard, any pending connect ask, and a
+pending harness offer. Close or answer that thing first.
 
 **The sentences a rewind can come back with:**
 
@@ -395,7 +460,7 @@ lands you on the ordinary prompt.
 So the greeting is what a **first run** sees — the launch where home has nothing to say,
 because the only conversation on the machine is the one already on screen. That is the one
 case where the wordmark and the centred message box greet you; home itself is still a
-`esc` away. On a profile with nothing configured yet, the once-only setup screen
+`space space` away. On a profile with nothing configured yet, the once-only setup screen
 comes first (the getting-started page), and the greeting arrives the moment it closes.
 
 ## The "resumed" line at the top — what it says, and where the file path went

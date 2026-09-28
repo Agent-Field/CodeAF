@@ -58,6 +58,13 @@ func (info Info) Identity() string {
 // Identity names the engine this process is. [Info.Identity] is the rule.
 func Identity() string { return current.Identity() }
 
+// BuiltAt is the moment `make build` stamped into this binary, and the zero
+// time for a build that carries no stamp (a bare `go build`, a test binary).
+// It is how two builds are put in ORDER, which [Identity] deliberately cannot
+// do: identity says whether two builds are the same source, never which came
+// first.
+func BuiltAt() time.Time { return current.BuiltAt }
+
 // Revision returns the stable source identity without the build-time details.
 func Revision() string {
 	return current.source()

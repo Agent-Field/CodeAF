@@ -22,7 +22,7 @@ A filter with no matches shows `no commands match` and keeps unrelated results h
 
 The list follows the caret as well as edits. The box remains editable while it is open.
 A command chosen inside a sentence completes its token rather than running on its own;
-send tags such as `/ask` and `/task` retain their submission behavior.
+The `/task` send tag retains its submission behavior.
 
 On home, command rows describe what they will do there, including commands that open a
 conversation first. See *What each command does on home*. In a conversation, pointer
@@ -39,7 +39,7 @@ The same token rules apply on home and in conversations:
   list; moving the caret back into the command word opens it again.
 - The entire token must contain command-name characters. A further slash, a dot or a
   backslash makes it a path rather than a command token, even with the caret midway
-  through it. `/tmp/project` and `/image.png` therefore leave the list closed.
+  through it. `/tmp/project` and `/shot.png` therefore leave the list closed.
 
 A partial path such as `/tmp` is still indistinguishable from an unknown command word:
 it shows `no commands match` until another slash or path punctuation makes the intent
@@ -156,42 +156,54 @@ Canonical word, the other words it answers to, its argument form, and what it do
 |---|---|---|---|
 | `/model` | — | — | opens the model picker |
 | `/model` | — | `<slug>` | switches the model to that slug |
-| `/image` | — | `<path>` | attaches a picture; tab completes the path |
 | `/settings` | `/set`, `/config` | — | opens the fullscreen settings panel (also ctrl+,) |
 | `/connect` | `/connections` | — | opens the connection panel; its `models` group holds model services, followed by connected accounts |
 | `/new` | `/clear`, `/clean`, `/reset` | — | closes this session and starts a fresh one |
 | `/resume` | `/sessions` | — | opens the earlier-conversations picker |
 | `/compact` | — | — | summarizes the conversation now |
 | `/home` | — | — | every project and conversation on this machine, fullscreen |
-| `/folder` | `/place`, `/dir` | — | locally opens the add context sheet; over `--host` says the folder chooser is unavailable |
+| `/folder` | `/place`, `/dir` | — | locally opens the add context sheet for THIS conversation; on home it opens a conversation first; over `--host` says the folder chooser is unavailable |
 | `/folder` | `/place`, `/dir` | `<path>` | locally opens it with that in the box; over `--host` gives the same refusal |
-| `/attach` | `/upload` | — | opens the add context sheet for files, including over `--host` |
+| `/project` | — | — | on home: the browser, opened where the next conversation would open; in a conversation it says it is home's |
+| `/project` | — | `<path>` | on home: sets the folder the next conversation opens in, with no browser |
+| `/attach` | `/upload` | — | opens the add context sheet for files, including over `--host`; enter on this row of the `/` list opens it at once |
 | `/attach` | `/upload` | `<path>` | a file goes on the tray; locally a folder is referred, while over `--host` it is refused |
 | `/land` | — | — | says what has been changed for a folder you chose and is waiting to go into it |
 | `/land` | — | `now` | …puts it in: a branch merged for a repository, files copied back for a plain folder |
 | `/land` | — | `<folder>` | …when more than one folder is waiting; `/land <folder> now` puts that one in |
-| `/rewind` | `/undo`, `/back` | — | opens the rewind timeline — the whole conversation as a list (Escape backs out without rewinding) |
+| `/rewind` | `/undo`, `/back` | — | opens the rewind timeline — the whole conversation as a list (esc esc is the quick inline version) |
 | `/permissions` | `/perms` | — | lists what runs without asking; `d` drops a line |
 | `/standing` | `/orders` | `<words>` | makes those words a standing order — a card to answer, never work done once |
 | `/standing` | `/orders` | — | what stands over this conversation; `p` pauses, `s` stops, `n` excepts this place |
 | `/harness` | `/harnesses` | — | lists the saved shapes of work and what they did |
 | `/subharness` | `/sub` | — | lists the programs you can run; type to filter, enter opens that one's card |
 | `/subharness` | `/sub` | `<name>` | opens that subharness's intake card straight away |
+| `/<program>` | — | `<brief>` | one row per program this build carries: starts a task that program does on its own |
+| `/skill` | `/skills` | — | opens the skill shelf under the message box; enter toggles a skill, and its chip stays attached across messages |
 | `/memory` | — | — | opens the memory panel |
 | `/memory` | `/memories` | `<query>` | prints matching memories into the conversation |
 | `/memories` | — | — | prints every memory into the conversation |
 | `/remember` | — | `<text>` | keeps one thing across conversations |
 | `/forget` | — | `<query>` | forgets the best matching memory |
-| `/crew` | — | — | opens the six-seat reading: the model you talk to, then the three crew presets |
-| `/crew` | — | `<preset>` | sets the crew to `frugal`, `balanced` or `max` |
+| `/crew` | — | — | opens the crew panel: the three seats, the allowed models, the providers, the per-task limit and the daily cap, changed in place |
+| `/crew` | — | `pin <seat> <model[@provider]>` | pins the worker, planner or checker to a model; `/model` stays |
+| `/crew` | — | `unpin <seat\|all>` | puts a seat back on auto |
+| `/crew` | — | `models <rule>` | which models a seat may be picked from — `all`, `open`, `≤in/out`, ids |
+| `/crew` | — | `cap <dollars\|off>` | the most tasks' crews may spend in a day |
+| `/crew` | — | `cap task <dollars>` | the most one task may spend — $5 unless set; `-yes-spend` does not lift it |
 | `/task` | — | — | opens the full-screen task page — the same page as `/history` and ctrl+. |
 | `/task` | — | `<brief>` | starts one worker at once; its brief is written and its width read beside it, and wide work splits |
 | `/task` | — | `solo <brief>` | starts one worker at once, with no reading of its width |
+| `/task` | — | `--best <brief>` | starts the task on the strongest crew the allowed models make, this task only |
+| `/task` | — | `--cheap <brief>` | starts the task on the cheapest crew that does the work, this task only |
+| `/redo` | — | `stronger` | runs the last task again on a stronger crew, and teaches the crew that kind of work needs more |
 | `/history` | — | — | opens the full-screen sessions place — every task this machine has run, filterable (also ctrl+.) |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/status` | `/info`, `/context` | `--json` | prints the same facts as one JSON object, keys in the same order |
-| `/search` | — | — | opens the search place — everything said on this machine (also `alt+7`) |
-| `/spend` | — | — | opens the spend place — what this machine has cost, by the day (also `alt+3`) |
+| `/search` | none | none | opens the search place, everything said on this machine (also `alt+9`) |
+| `/spend` | none | none | opens the spend place, what this machine has cost, by the day (also `alt+5`) |
+| `/wall` | | | every open conversation at once, as a grid of live tiles, and the teams you group them into (also `alt+v`, or `▦` under the box) |
+| `/teams` | | | the teams page: your teams as a tree, what waits on you, and the selected team's manager conversation (also `alt+2`, or `teams` on the tab bar) |
 | `/cost` | `/usage`, `/tokens` | — | prints what this conversation has spent, and on what |
 | `/budget` | `/limits` | — | what codeaf may spend · every limit on one tab |
 | `/budget` | `/limits` | `<amount>` | sets the day's limit · `none` removes it |
@@ -208,9 +220,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/files` | — | — | lists what has been made for you; opens, reveals or copies one — over `--host` it opens the browse page for that machine |
 | `/files` | — | `<path>` | over `--host`, brings that one file back and opens it here |
 | `/help` | `/?` | — | prints this list |
-| `/manual` | — | — | every page of codeaf's own manual, one per line |
-| `/manual` | — | `<page>` | prints that page as it is written |
-| `/manual` | — | `<question>` | prints the sections that answer it, labelled with page and heading |
+| `/manual` | — | — | asks the model what codeaf can do, answered from codeaf's own manual |
+| `/manual` | — | `<question>` | puts that question to the model, answered from codeaf's own manual, naming the page |
 | `/quit` | `/exit`, `/q` | — | leaves |
 
 ## /help, /?, /quit, /exit, /q — how do I close just this chat, does closing one conversation quit codeaf
@@ -225,21 +236,21 @@ Under the table `/help` prints the keys that have no slash command, including
 `alt+enter`, and `d` inside `/permissions`. The keys page covers those in full. The
 `ctrl+c` line reads `ctrl+c         quits everything · mid-turn it interrupts instead, like esc`.
 
-**It also names the way into the seven places**, which it did not for a long while — three
+**It also names the way into the eight places**, which it did not for a long while: three
 rows, directly under the `tab` row:
 
 ```
-alt+1…7        go to a place · in the tab bar's own order: home tasks standing memory spend search settings
+alt+1…9        go to a place · in the tab bar's own order: home teams chats sessions spend settings standing memory search
 alt+.          on a place: what else is here · every key that place has, drawn
                on a place, tab is the next place · esc back
 ```
 
-On a Mac those read `opt+1…7` and `opt+.`; the substitution happens once, at the moment of
+On a Mac those read `opt+1…9` and `opt+.`; the substitution happens once, at the moment of
 drawing, and the words are the same.
 
 **One gesture, one spelling.** Wherever the sheet names the escape key it writes `esc
 back` — the places row, the task roster on `alt+t`, the conversation switcher on `alt+k`,
-`esc` — and that is the same two words the cards, pickers, the rewind sheet and the
+`space space` — and that is the same two words the cards, pickers, the rewind sheet and the
 switcher's own strip already use. The sheet used to say `esc comes back`, `esc goes back`
 and `esc leaves` on four different rows, which read as four gestures on the one screen you
 open to find out how many there are. The longer `esc leaves it as it was` is a different
@@ -268,7 +279,7 @@ any filter box, picker or panel: those have the keyboard first, so the key never
 this binding.
 
 The key is named on the first row of `/help` itself, and on the line every session opens
-with — `esc back · ctrl+c interrupts or quits · ? for help`. `/?` is also an alias of
+with — `esc interrupts · ctrl+c quits · ? for help`. `/?` is also an alias of
 `/help`, and has been all along.
 
 `/quit` (or `/exit`, `/q`) **closes the conversation in front**, and it does it at once —
@@ -368,8 +379,11 @@ maintained a little at a time by the reader that runs after each turn.
 ## /rewind — go back to an earlier point in the conversation
 
 `/rewind` (or `/undo`, `/back`) opens the **rewind timeline**: a fullscreen list of the
-whole conversation, oldest first, that you pick a point out of. Escape is back navigation;
-it no longer opens rewind. The command row reads `go back to an earlier point`.
+whole conversation, oldest first, that you pick a point out of. It is the deliberate way
+in. The quick way is esc esc, which draws a cut line through the transcript on screen
+instead of opening anything — see the sessions and rewind page for both.
+
+The command row reads `go back to an earlier point · esc esc takes back the last`.
 
 On the timeline: ↑↓ move, typing searches, the first `enter` places the pick and the
 second `enter` on that same point does the rewind, `esc` clears the search and then
@@ -407,6 +421,36 @@ ctrl+b does. In copy mode ↑↓ move, `v` marks, `a` takes the block, `y` yanks
 
 If you type `/copy` and the screen does not change, one of those two is why.
 
+## /project — set the project on home, which folder will my next conversation open in, change the project
+
+`/project` is **home's** command, and it sets the folder the conversation you start next
+will open in — the `project: ~/src/parser` at the right end of the keys row under home's
+box. Bare, it opens the folder browser where that next conversation would open. With a
+path after it, it takes the path and opens nothing:
+
+```
+/project                 the browser
+/project ~/src/parser    pinned at once · the keys row says project: ~/src/parser
+```
+
+A path that is not a directory on this machine is refused by name — `no folder there ·
+~/src/parsr` — and nothing changes. Over `--host` it refuses: the folders this program can
+read are the laptop's and the conversation would be on the other machine.
+
+**In a conversation it does nothing but say where it lives**, exactly:
+
+```
+/project is home's · it sets the folder the next conversation opens in · /folder gives this conversation one
+```
+
+The two commands are one word apart and do different jobs, so the answer names both.
+
+**It was the home half of `/folder` until 2026-09-22.** `/folder` meant "give this
+conversation a folder" in a conversation and "pin the next conversation's folder" on home,
+which is two acts behind one word. The pin is `/project` now, and `/folder` means the one
+thing on every screen — on home it opens a conversation first and browses there. `alt+p`
+is the same pin without a browser, walking the projects this machine knows.
+
 ## /select — drag to select with your mouse
 
 You usually do not need this any more: **dragging over the conversation already
@@ -434,30 +478,29 @@ answers out loud, exactly:
 your terminal already has the pointer — drag to select.
 ```
 
-## /image — attach a picture
+## /image — attach a picture, and why there is no /image command any more
 
-`/image <path>` attaches a picture to your next message. Use it for a picture that is not
-under this directory, or one the `@` completion walk does not reach.
+There is no `/image` command. Until 2026-09-22 it was a second word for `/attach` that
+took only a picture and refused everything else; `/attach <path>` does the whole job now.
+A picture handed to it lands on the tray as `▣ #1 name.png` and **its `[image #1]` token
+is appended to your sentence when you press `enter`**, so you can refer to it by number the
+same way you would one you dragged in. Anything else lands as a file. Typing `/image` is
+answered the way every unknown word is: `there is no command called /image · / lists them`.
 
 Path rules: `~` is your home directory, a bare name is under the directory this
-conversation is about, and an absolute path is left alone. Over `--host` the path is
-anchored to **this** machine — the picture is on the laptop you are sitting at, and its
-bytes travel with the message.
+conversation is about, an absolute path is left alone, and **a path in quotes, or with
+its spaces backslashed** — the shape Finder and a terminal drop hand you — is read as the
+one path it is. Over `--host` the path is anchored to **this** machine — the picture is on
+the laptop you are sitting at, and its bytes travel with the message.
 
-A full attachment tray does not stop the command: `/image` adds a second picture rather
-than sending the first.
+A full attachment tray does not stop the command: a second picture is a second chip rather
+than a send. Dragging or pasting a file over a line that already starts with `/` leaves
+the path as text, so `/attach ` still takes the path you dropped on it.
 
-The picture lands on the tray as `▣ #1 name.png` and **its `[image #1]` token is appended
-to your sentence when you press `enter`**, so you can refer to it by number the same way
-you would one you dragged in. Dragging or pasting a file over a line that already starts
-with `/` leaves the path as text, so `/image ` still takes the path you dropped on it.
-
-Refusals, exactly as written:
+Refusals, exactly as written on the attaching-files page:
 
 ```
-/image takes a path · try /image shot.png
-<name> is not a picture · png, jpeg, webp and gif are
-no such picture: <what you typed>
+no such file: <what you typed>
 <name> is already attached
 ```
 
@@ -637,20 +680,18 @@ whole wall time — the right edge of the row shows the live `38 tok/s` instead)
 (`2 open · 1 waiting`) and `watching` (the standing count, which is drawn at the foot of the
 task column). `crew` is a fifth and has its own line above.
 
-The `crew` line sits directly under `model` and reads the preset word — or `custom` — and
-the three classes:
+The `crew` line sits directly under `model` and says the crew is auto, with any seat you
+pinned after it:
 
 ```
-crew     max · brain claude-opus-5 · hands glm-5.3 · checks claude-fable-5.1
+crew     auto · pinned checker moonshotai/kimi-k3
 ```
 
-The crew is **not on the status line**. It was one short segment there — `crew max`, or
-`crew custom` — at the head of the telemetry until 2026-09-09, and it came off: the row is
-a ledger of things you act on from it, and a preset is changed on a page. The `crew` line
-here and on the phone's status sheet is where it is read now, in full. Every ordinary
-launch has a crew — one is never unset, only `custom` — so the line is always there; the
-one session that shows none is a **remote** one opened with `--host`, where the crew
-belongs to the other machine.
+The crew is **not on the status line**: the row is a ledger of things you act on from it,
+and the crew is changed on its panel. The `crew` line here and on the phone's status sheet
+is where it is read. Every ordinary launch has a crew — auto is an answer, not an absence —
+so the line is always there; the one session that shows none is a **remote** one opened
+with `--host`, where the crew belongs to the other machine.
 
 `/status` differs from the on-screen status sheet in two deliberate ways:
 
@@ -725,12 +766,13 @@ and the note's leading `· `; strip those before feeding it to a parser.
 ## /search and /spend — the typed doors onto those two places
 
 `/search` opens the **search place** — everything that has been said on this machine,
-found by the words you remember of it. It is the same place `alt+7` opens and the same
+found by the words you remember of it. It is the same place `alt+9` opens and the same
 place `tab` walks to. It takes no argument: the place *is* a box, and typing in it
-searches.
+searches. With the **memory** row off nothing said is indexed, and the place says so and
+searches nothing — find the conversation from home's box instead (see the *places* page).
 
 `/spend` opens the **spend place** — what this machine has cost, by the day, by the model
-and by what it was for. It is the same place `alt+3` opens.
+and by what it was for. It is the same place `alt+5` opens.
 
 **`/spend` used to be an alias of `/cost` and is not any more.** The two answer different
 questions: `/cost` is *this conversation's* bill, printed into the conversation, and the
@@ -790,8 +832,9 @@ the same row the Spending tab writes through.
 
 The row names it takes are **`day`** (`daily`, `today`), **`conversation`** (`chat`,
 `session`), **`plan`** (`plans`, `ask`) and **`practice`** — the four rows that can be
-edited. There is deliberately **no `/budget task`**: a task has no dollar limit of its
-own, so a command that accepted one would be writing a number nothing reads.
+edited. There is **no `/budget task`**: the per-task limit for an ordinary `/task` is set in `/crew`, with
+`/crew cap task <$>`. senior-dev has a separate ceiling for each run; see its page
+for the shell flags and conversation limits that can lower it.
 
 A write says back what it landed, in the tab's own words for that row — `per day · $50`,
 or `per day · no limit`. A figure it cannot read is refused in the row's own words with
@@ -1068,31 +1111,34 @@ conversation in them**, which is the one thing `/resume` cannot show you: `/resu
 "which conversation, here", and this is "what is there at all".
 
 **It is also what a bare `codeaf` opens on.** The conversation the launch picked is loaded
-underneath; opening its row returns to it. Escape stays on Home. Home stays out of the way when you named a conversation
+underneath, and `esc` — or `enter` on the row the cursor starts on, which is that same
+conversation — drops into it. Home stays out of the way when you named a conversation
 (`--session`, `codeaf resume`), on a `--once` or `--host` run, and on a machine whose only
 conversation is the one already open. There is no welcome box when home greets you. Not
-greeting you is not the same as being out of reach: `/home`, or `esc` from a conversation, opens it on a one-conversation machine and on an empty one alike, and over `--host`
+greeting you is not the same as being out of reach: `/home`, or `space` twice on an empty
+box, opens it on a one-conversation machine and on an empty one alike, and over `--host`
 it opens the far machine's.
 
 There is no argument form. There are three other ways in: **`alt+1`**, home being the first
-of the four places on the tab bar; **`esc`** from a conversation; and **`tab`** from any
+of the six words on the tab bar; **`space` twice** on an empty box; and **`tab`** from any
 other place.
 
 **It is seven panels**, in one column under 110 cells, two from 110 and three from 170,
 always in one order: an unheaded list of open tabs followed by up to three dimmed
 closed conversations, `needs you` (every question waiting on you, a digit answers the
-top one from anywhere), `projects` (folders, read-only),
+top one from anywhere), `projects` (click a folder to select it for the next message),
 `tasks` (the last day's tasks, running or landed, newest first), `since you left` (what landed while you were
-away), `spend` (today and the fortnight) and `scheduled` (standing orders, soonest first).
+away), `spend` (today and the fortnight) and `standing` (standing orders, soonest first).
 Which column a panel stands in follows what it holds: the panels with rows fill the **field**
 at the left, and the **rail** at the right holds `projects` and `spend` at its top with the
 quiet panels under them. An empty panel keeps its heading and one dim line naming what
 arrives there.
 
-`↑`/`↓` walk a column, `←`/`→` cross columns, `enter` opens, `esc` dismisses a local layer and otherwise stays on Home. **Typing does two things at once**: what you type is a new
+`↑`/`↓` walk a column, `←`/`→` cross columns, `enter` opens, `esc` closes back into the
+conversation you came from. **Typing does two things at once**: what you type is a new
 conversation waiting to be sent AND a live search over every project on the machine — the
-panels give way to the matches, with none selected until you navigate into them.
-Type-and-enter starts a chat. `/ask <question>` asks in a home pane instead. **A line that starts with `/` is
+panels give way to the matches, with `start a new conversation: "…"` directly above the box
+holding the cursor, so type-and-enter still starts a chat. **A line that starts with `/` is
 the third thing typing can be**: a command, run rather than sent (see *Typing a slash to see
 the command list*). The box says `› type to search or start something new` and the foot
 names the available draft controls:
@@ -1103,8 +1149,9 @@ Search matches conversation names, project names, task titles and **what tasks c
 the one-sentence outcome — so `postgres` finds the chat whose work mentioned it, including
 the ones no panel is drawing.
 
-**`enter` opens any conversation on the screen, in any project**, and `enter` on a
-`projects` row starts a fresh one in that folder. The conversation you were in is left
+**`enter` opens any conversation on the screen, in any project**, and `ctrl+t` on a
+conversation's row starts a fresh one in that row's folder; clicking a `projects` row
+instead picks the folder your next message from home goes to. The conversation you were in is left
 **open** behind it — still streaming, still running its tasks — and the new one is built on
 its own workspace with that project's own permissions, crew and spend ceiling. Nothing is
 carried across, because a second project is a second conversation rather than this one
@@ -1118,8 +1165,8 @@ no conversation matches
 that folder is gone · <path>
 ```
 
-`no conversation matches` is a search that found nothing; Enter still starts a new
-conversation with your words. `/new is unavailable here` is what the typing-to-start box says where no
+`no conversation matches` is a search that found nothing — the `start a new conversation`
+row is still there. `/new is unavailable here` is what the typing-to-start box says where no
 fresh-session seam exists. The last is `enter` on a row whose folder has been deleted or
 moved since its last conversation: home stays up and nothing is opened. **How many
 conversations this terminal already holds is never a refusal.** Past twelve, a quiet
@@ -1222,6 +1269,17 @@ The first is what you get with no registry wired — a headless frame, and every
 launch on this machine and `--no-host` both wire this machine's registry and open the
 panel. The second is drawn as the panel's only row, and it is also what a registry that
 cannot be read at all shows, rather than an error.
+
+## /<program> — a program codeaf carries, handed a whole task
+
+Every program your build carries is a command of its own: `/<name> <brief>` hands the brief
+to that program and starts a task at once, exactly as `/task <brief>` does with codeaf's own
+worker. The rows come from the build itself, so there is nothing to install and a build that
+carries no program has no such row. With no brief it says its usage:
+`usage: /<name> <brief> · hands the whole task to that program`.
+
+Over `--host` the rows are the far machine's build's, and a row you run starts the work there.
+The *Programs codeaf carries* page says what one is, what it cannot do, and where its work goes.
 
 ## /subharness — the command's two forms, bare and with a name after it
 
@@ -1408,7 +1466,7 @@ is built from this session's own work, and carries only a short dulled note of t
 **It is not `/tasks`, and there is no `/tasks` command.** `/task <brief>` and its `solo` form
 mean *give codeaf work*; this page starts none, so it does not share their word. Typing
 `/history` is the only slash form — but the PLACE this opens is called `tasks` on the tab
-bar, and **`alt+2`** and `tab` reach it without a command at all. The word is a place, not a
+bar, and **`alt+4`** and `tab` reach it without a command at all. The word is a place, not a
 command.
 
 Two sections. `running` is the tree of everything still going, drawn whole, with each task's
@@ -1436,76 +1494,54 @@ On a project that has never run a task the page opens on its heading and one lin
 `work you send off with /task lands here, and its record stays`. The tasks pages describe the
 page in full.
 
-## /crew — the five models codeaf uses on its own behalf, read beside the one you talk to
+## /crew — the crew panel, and the three seats a task runs on
 
-codeaf runs **six model seats**. Seat one is the model you talk to, and `/model` is what
-moves it. The other five — reflex, small work, worker, careful work, mastermind — are the
-models codeaf uses on its own behalf, for the calls you did not type and for the work
-inside every task. `/crew` reads all six and sets the five in one word. **It never moves
-seat one.**
+The crew is the three seats a task runs on: the **worker** that does the work, the
+**planner** that structures it, and the **checker** that reads the result. By default all
+three are auto — codeaf picks each one for each task, from what kind of work the task is.
+**`/crew` never moves the model you talk to**; only `/model` does.
 
 ```
 /crew
 ```
 
-opens the six-seat reading, bottom-anchored like the model picker. From the top:
+opens the crew panel over the conversation — six rows you change in place (the worker,
+planner and checker seats, the allowed **models**, the **providers**, the daily **cap**)
+and a dim `today` line. `enter` changes the row under the cursor, `esc` closes, `?` lists
+every key. On the **providers** row `←`/`→` walk one chip per connected provider and `space`
+turns the one under the cursor off or on; the `+` at its end opens `/connect`. The
+models page has the panel drawn out and every key (*Crew panel keys*). A seat on auto says
+the model it usually runs; a pinned seat wears the pin mark `⌖`. Typed on home, `/crew`
+steps off home and `esc` brings you back.
+
+The shortcuts write the same rows and then open the panel with a tick on the row they
+changed:
 
 ```
-the five models codeaf uses on its own behalf — not the one you chat with
-  you talk to · deepseek-v4-flash
-  family ‹ open models · all models ›
-  frugal — glm-flash works and thinks, qwen-max checks
-    reflex       google/gemini-2.5-flash · small work   deepseek/deepseek-v4-flash-0731 · worker       z-ai/glm-5.3-flash · careful work qwen/qwen3.8-max-0902 · mastermind   z-ai/glm-5.3-flash
-› balanced — glm-flash works, fable checks, opus thinks
-    reflex       google/gemini-2.5-flash · small work   deepseek/deepseek-v4-flash-0731 · worker       z-ai/glm-5.3-flash · careful work anthropic/claude-fable-5.1 · mastermind   anthropic/claude-opus-5
-  max — glm-5.3 works, fable checks, opus thinks
-    reflex       google/gemini-2.5-flash · small work   deepseek/deepseek-v4-flash-0731 · worker       z-ai/glm-5.3 · careful work anthropic/claude-fable-5.1 · mastermind   anthropic/claude-opus-5
-each of the five can be pinned on its own in /settings → Providers
+/crew · /crew pin <worker|planner|checker> <model[@provider]> · /crew unpin <seat|all> · /crew models <all|open|≤in/out|ids…|+id|-id> · /crew cap <dollars|off> · /crew cap task <dollars>
 ```
 
-The first line says what the presets change and what they do not. The second is **seat
-one** — `you talk to · <model>`, spelled as the legend above the box spells it — with no marker and
-no highlight, because nothing in this chooser can move it. The third is the **family**: **←→** moves `family`, which says which pool the three presets below it draw from, open weights or the
-whole catalog. Then the three presets: the one
-in force wears a highlighted ground, `›` is where **enter** is aimed and it opens on yours,
-↑ / ctrl+p and ↓ / ctrl+n move, and **esc** closes without changing anything. The last
-line points at the settings row where one seat can be pinned by itself; the chooser does not
-pick seats one at a time.
+- **`/crew pin <seat> <model[@provider]>`** pins one seat, for every task until you unpin
+  it. `@provider` sends it through that connection. A pin outside the allowed models is
+  refused. The confirmation names the model you are still talking to:
+  `checker ⌖ moonshotai/kimi-k3 · every task until you unpin it · you are still talking to
+  deepseek-v4-flash — /model changes that`.
+- **`/crew unpin <seat>`** puts the seat back on auto; `/crew unpin all` puts all three back.
+- **`/crew models <rule>`** sets which models a seat nobody pinned may be picked from —
+  `all`, `open`, `≤1/5` for a price ceiling per million tokens in and out, or a list of ids —
+  and `+id` or `-id` changes the rule in force by one word. Bare `/crew models` says the rule.
+- **`/crew cap <dollars|off>`** caps what crews may spend in a day. Bare `/crew cap` says the
+  cap and today's spend.
+- **`/crew cap task <dollars>`** sets the most one task may spend — $5 unless set. A call
+  that would take a task past it is not made, and `-yes-spend` does not lift it.
 
-If you have pinned one of the five yourself, no preset wears the ground and the chooser says
-`yours is none of the three — picking one puts all five back` above the closing line.
+A form that is none of these changes nothing and prints the line of shortcuts:
+`/crew cheap · not a crew form · …`. How hard to try **one** task is not a panel setting at
+all — it is said with `/task --best` or `/task --cheap`, and `/redo stronger` asks again
+after the fact (see *Tasks*).
 
-A word that is not one of the three changes nothing and prints the three:
-`/crew cheap` answers `/crew cheap · not one of the three` and then the listing.
-
-What each of the five classes funds, and how to set one of them on its own, is on the models
-page.
-
-## /crew <preset> — the confirm line, and the model it leaves alone
-
-`/crew frugal`, `/crew balanced` or `/crew max` sets the five and confirms in one line:
-
-```
-crew → max · brain claude-opus-5 · hands glm-5.3 · checks claude-fable-5.1 · you are still talking to deepseek-v4-flash — /model changes that
-```
-
-**The model ids are drawn brighter than the words around them.** `crew →`, the preset
-word, `brain`/`hands`/`checks` and `you are still talking to` stay at the grey every note
-is written in; the three crew ids and the model you are talking to step up, because they
-are what the command was typed to find out. `/model` wears the command chip, because it is
-a command you can type. See "Why is one word in a line brighter than the rest" on the
-screen page.
-
-The last clause names, by id, the one seat the command did not touch: the model you are
-talking to, in the same spelling the legend above the box uses, so you can check it
-against the line over your own prompt. `/crew` never changes that model and never offers to; only
-`/model` does. When the session has no model yet the clause reads
-`the model you talk to is untouched — /model changes that`.
-
-**The change is live.** The next call codeaf makes on its own uses the new crew — no
-relaunch, and no waiting for the next session. To read the crew back afterwards: the live
-`/status` prints the `crew` line under `model`, the phone's status sheet has the same row,
-`/settings` → Providers has the crew row, and bare `/crew` opens on yours.
+**The change is live.** The next task uses it — no relaunch. The whole story, from how a
+seat is picked to how a profile from an earlier build is migrated, is on the models page.
 
 **That promise is local-session only.** Over `--host` the session resolves its crew from
 the other machine, and there is no crew write across the connection — so `/crew` refuses
@@ -1621,13 +1657,31 @@ So a value set here follows you between projects, and a value a project sets for
 has to be edited by hand in that file. When a project answers the same row, a write
 through `change_setting` says so rather than reporting a change that is not in force.
 
-Over `--host`, opening the panel first notes:
+Over `--host`, opening the panel on any tab but Teams first notes:
 
 ```
-these rows are this machine's — the ones that govern the conversation are read from the profile on the other one
+these rows belong to this machine; the Teams tab is saved on the other one.
 ```
 
-and then opens anyway.
+On the Teams tab the note is `these rows are saved on <machine>.` An older engine, where
+that tab cannot be saved over the connection, notes:
+
+```
+these rows belong to this machine; this conversation reads its profile on the other one.
+```
+
+The panel opens anyway.
+
+## Can I edit team defaults over --host
+
+The **Teams** tab is the one section that edits the other machine. Over `--host` its five
+rows (`questions go to the manager`, `team messages wake`, `daily cap per team`,
+`team depth`, `sub-team share`) are that machine's defaults, and a change is saved there.
+Each value says `from Settings`, the same words a team's card uses when it inherits the
+row. The foot line says `a team can override any of these on its card · saved on <machine>`.
+
+An older engine keeps the tab read only and says
+`changing them is not available over this connection`. The other tabs stay this computer's.
 
 Refusals inside the panel, exactly as written:
 
@@ -1642,6 +1696,24 @@ Refusals inside the panel, exactly as written:
   words. Nothing is swallowed.
 - A search that matches nothing says `nothing matches`. The `Connections` tab has its own
   sentences.
+
+## config.json keys are not read — why codeaf says a setting I wrote is ignored
+
+codeaf reads the top-level keys of your profile's `config.json` that a settings row or
+the model-service setup owns. A key nothing reads — a hand-written `models` object, a
+spelling from another tool — does nothing, and the defaults apply in its place. (A key
+codeaf itself retired is passed over quietly rather than named.) So the conversation says so once, as a note:
+
+```
+config.json keys are not read: models, tiers; anything set under them is ignored and defaults apply.
+```
+
+It names every unread key, sorted. It is said **once per profile for that set of keys**:
+the next launch with the same keys says nothing, and a set that changes — a key added
+or taken away — is said again. It is not a tip, so turning tips off in the Display
+tab's `hints` row does not hide it, and a conversation over `--host` says it about the
+profile on the machine running the work. Nothing is rewritten: to act on it, move the
+value to the key a settings row names (`settings` lists every one), or delete the key.
 
 ## The nine settings tabs
 
@@ -1672,7 +1744,7 @@ Every one of them lands on the next launch rather than on the conversation in fr
 you, so they are a fact about this machine and not about this session. Nothing you saved
 moved: the keys they are stored under are unchanged.
 
-The five models codeaf uses on your behalf are **not** here — they are on Providers, with
+The models codeaf uses on your behalf are **not** here — they are on Providers, with
 the row that says which model you are talking to. They used to be on this tab, one tab away
 from it, which made "which model does the planning" and "which model am I talking to" two
 errands on two screens. Neither is the conversation's own money limit here any more: it is
@@ -1690,7 +1762,7 @@ the conversation already open.
 
 **Workspace** — this machine and this project: what codeaf does with its own time here, and
 what it may reach on your behalf. Rows: "quiet before practice", "arrival brief after",
-"tenure after", "background checks", "attribution", "google sign-in id", "google sign-in
+"tenure after", "background checks", "model in commits", "google sign-in id", "google sign-in
 secret", "slack sign-in id", and the four ssh rows — "ssh reuse", "ssh heartbeat", "ssh
 missed heartbeats", "ssh traffic". **It holds no money row at all** — every one of those
 moved to Spending.
@@ -1752,8 +1824,7 @@ after" are written the way you would say them — `20m`, `4h`, `1h30m` — and `
 off.
 
 **Display** — how the surface draws itself and what it remembers of your typing. Rows:
-"input history", "keep drafts", "task column", "hints" — the one-line tips above the
-message box, and the what's-new lines with them (see *Hints and tips*) — "chat width",
+"input history", "keep drafts", "task column", "chat width",
 "mouse", "timestamps", "turn work". There is no "nerd font" or "linear mode" row: icons
 need no patched font anywhere on this surface, and the accessible single-column rendering
 is the `--linear` flag at launch rather than a persisted setting.
@@ -1777,16 +1848,17 @@ order:
 5. **prompt profile** — how much codeaf tells the model before you type: `auto`, `lean`,
    `full`. Another cycle row. `auto` reads the model's context window and goes lean under
    32,000 tokens (see *Models, context, and what it costs*).
-6. **crew** — the five below, chosen as one word: `frugal`, `balanced`, `max`. It is a cycle
-   row: enter or space walks it. Answer any of the five yourself and it reads `custom`.
-7. **reflex** — `near-free · reads every turn — memory, titles, safety`
-8. **small work** — `cheap · the small calls — names, digests, the safety gate`
-9. **worker** — `does the work · every task, its parts, every run node — most of the bill`
-10. **careful work** — `careful · checks what must not be wrong — audits, briefs, vision`
-11. **mastermind** — `thinks · plans runs and designs harnesses — add :low, :medium or :high`
-12. **pinned roles**, and hanging off it the **roles** list — one row per auxiliary call
-    codeaf makes for itself, grouped under its class. Those rows come from the running binary
+6. **reflex** — `near-free · reads every turn — memory, titles, safety`
+7. **small work** — `cheap · the small calls — names, digests, the safety gate`
+8. **seats** — `the worker, planner and checker, the models they may be picked from, the providers they may route through, and the per-task and daily caps · enter opens /crew`
+9. **pinned roles**, and hanging off it the **roles** list — one row per auxiliary call
+    codeaf makes for itself, grouped under its row. Those rows come from the running binary
     rather than the settings registry.
+
+**worker**, **checker** and **planner** are the crew's three seats, and on the tab they are
+one row, **seats** (`auto · 1 pinned · models open · 3 of 4 providers · per task $5 · crew daily cap $5.00`).
+`enter` on it opens the `/crew` panel, where the seats, the allowed models, the providers
+and the per-task and daily caps are changed; `esc` there comes back to the row.
 
 **A pin for a role this build no longer has is ignored, and the row stops showing it.** Roles
 come and go with the calls that use them — `compaction` was one, and a compaction has not asked
@@ -1808,9 +1880,10 @@ that has come apart is cut and asked again, on by default (see *Models, context,
 it costs*) — and one row per capability slot added automatically from the settings
 registry: drawing, speaking, composing, filming, voice.
 
-The first four of the five classes are **select** rows and open the model picker. The
-**mastermind** row is a **text** box instead, because its value may carry a thinking level
-(`moonshotai/kimi-k3:high`) and a picker hands back a bare id.
+The reflex and small work rows are **select** rows and open the model picker. The crew's
+worker, checker and planner have no rows of their own here: the one **seats** row opens the
+`/crew` panel, and a seat is pinned there or with `/crew pin` — a pin may carry a thinking
+level, `/crew pin planner moonshotai/kimi-k3:high`, and the seat is then asked at that level.
 
 The connected model services have their own section on the tab, each with its billing
 door, the safe spelling of its key, its region and its order. The section ends with an
@@ -1869,14 +1942,16 @@ one call codeaf makes outside a turn — `title`, `guardian`, `auditor`,
 one of them you ask for yourself with `ctrl+r` (see the keys page) — drawn as
 `<role>    <model>`, with `pinned` after it when that role has a model of its own.
 
-The rows are **grouped under their class**, in the same order the five class rows are drawn
-above them: `roles · reflex`, `roles · small work`, `roles · worker`, `roles · careful work`,
-`roles · mastermind`. The class is the heading, so it is not repeated on every row — which
+The rows are **grouped under the model they follow**: `roles · reflex` and
+`roles · small work` under the two rows of those names above, then `roles · worker`,
+`roles · checker` and `roles · planner` under the crew's three seats, which the tab draws as
+its one **seats** row. The group is the heading, so it is not repeated on every role — which
 leaves the widest part of the row for the model id it is there to show.
 
 Stop on a row and the line under the list says **what that role is** and where its answer
-came from: `the plan that steers an adaptive run · follows mastermind above. enter pins it
-to a model of its own.`
+came from: `the plan that steers an adaptive run · follows the planner seat (/crew). enter
+pins it to a model of its own.` A role under reflex or small work says `follows reflex
+above` or `follows small work above` instead.
 
 - **enter** opens the model picker and pins the role to what you choose.
 - **del** on a pinned row clears the pin. The legend says `del unpin` while you are on one,
@@ -1934,28 +2009,36 @@ list can do it, that ability is simply absent rather than present and failing.
 
 A change here lands on the **next** picture, sentence or film — not on the next launch.
 
-## /manual — how do I read the manual, is there a help page, show me the page about X
+## /manual — how do I read the manual, is there a help page, show me the page about a command, ask codeaf about itself
 
-`/manual` is codeaf's own manual, printed into the conversation. It is the same writing
-the chat reads to answer questions about itself, and it arrives **as it is written** —
-nothing is retold, summarized or shortened on the way to you.
+`/manual` puts a question about codeaf to the model **with the manual open**. The words
+after it go out as a turn of the conversation, told to answer out of codeaf's own manual —
+the same pages the chat reads whenever you ask what a key or a command does — and to say
+which page the answer came from, so you can go on and read that page yourself.
 
-Three forms, and which one you get is decided by what you type after the word:
-
-| Typed | What comes back |
+| Typed | What happens |
 |---|---|
-| `/manual` | every page, one per line: the name you type to open it, then what that page is about |
-| `/manual permissions` | that page, whole, exactly as written |
-| `/manual who can see my files` | the sections that answer it, each one labelled with the page and the heading it came from |
+| `/manual` | asks what codeaf can do, and which pages are worth reading first |
+| `/manual how do I change the effort level` | puts that question; the answer names the page it came from |
 
-A single word is read as a page **name**. More than one word is read as a **question**, and
-the question is answered out of every page at once, so you do not have to know which page
-a thing is written on before you can ask about it. The label over each answer — like
-`[permissions · What runs without asking]` — is the page you can open next with
-`/manual <name>`.
+Your line in the transcript is what you typed — `/manual how do I change the effort level`
+— and the answer lands under it the way every answer does. **It is a turn**: it goes to the
+model this conversation is on and costs what a turn costs. While an answer is already
+coming it steers that turn, exactly as a plain `enter` does.
 
-Nothing here costs anything. The pages are inside codeaf; reading them makes no model
-call, so `/manual` spends nothing and works with no key set up and with no connection.
+**On home it opens a conversation first.** Home is not a conversation, so `/manual` there
+is one of the commands that *opens a conversation here first* (see the home page): a
+conversation opens at the folder named at the right of the keys row and the model on the
+rule above the box, home closes,
+and the question is sent there. Until 2026-09-22 `/manual` on home printed its answer into
+the conversation *behind* home, where nothing could be seen of it — typing it looked like
+nothing happening.
+
+**To read a page as it is written, with no model call**, use the terminal: `codeaf manual`
+lists every page and `codeaf manual <page>` prints one whole (next section). Until
+2026-09-22 `/manual` did that in the conversation too — a bare `/manual` listed the pages,
+`/manual <page>` printed one and `/manual <question>` printed the sections that answered
+it, spending nothing — and that reading now lives at the terminal alone.
 
 ## codeaf manual — reading the manual from the terminal, without a key and without spending anything
 
@@ -2010,13 +2093,13 @@ The usage one command prints is **read out of the table** `codeaf --help` prints
 typed out a second time beside the flags, so the two can never disagree about what a
 command takes or what its codes mean.
 
-## What /manual refuses — a page name that does not exist, and a question with no answer
+## What codeaf manual refuses at the terminal — a page name that does not exist, and a question with no answer
 
-A **name** you type is an exact request, so it gets an exact answer or an exact refusal —
-never a near miss quietly shown as though you had asked for it. `/manual no-such-page`
-says there is no page by that name and prints the list of pages there are, and changes
-nothing. From the terminal `codeaf manual no-such-page` does the same and **exits
-non-zero**, so a script can tell a missing page from a page it just read.
+A **name** you type at the terminal is an exact request, so it gets an exact answer or an
+exact refusal — never a near miss quietly shown as though you had asked for it.
+`codeaf manual no-such-page` says there is no page by that name, prints the list of pages
+there are, changes nothing, and **exits non-zero**, so a script can tell a missing page
+from a page it just read.
 
 A **question** the manual has nothing on is a different thing, and it is an answer rather
 than a failure: you are told
@@ -2025,11 +2108,13 @@ than a failure: you are told
 the manual has nothing on that, which usually means codeaf does not do it
 ```
 
-followed by the list of pages. From the terminal that exits **0** — the manual saying "no,
-codeaf does not do that" is a fact about codeaf, not a broken command.
+followed by the list of pages, and the command exits **0** — the manual saying "no, codeaf
+does not do that" is a fact about codeaf, not a broken command.
 
-The manual describes **this** conversation surface. It has no pages about anything else,
-and it will not answer out of what the model remembers about other programs.
+In a conversation `/manual` refuses nothing: the words go to the model, and a question the
+manual has no page for is answered by the model saying so. The manual describes **this**
+conversation surface. It has no pages about anything else, and the model is told to answer
+questions about codeaf out of it rather than out of what it remembers about other programs.
 
 ## codeaf --help, and --help on any command — what does this command take, what are its flags, how do I see the usage
 
@@ -2081,15 +2166,10 @@ you closed*, including what a terminal that cannot send the key does instead.
 `alt+k` is the other way back: it lists every conversation on this machine, closed
 tabs included, and opening a row brings the tab and its draft back too.
 
-## /ask — ask from home without opening a regular conversation
+## Dismiss task notifications
 
-Type `/ask <question>` and press Enter to ask in a home pane. Choosing `/ask` from the
-command menu inserts `/ask ` and leaves the question for you to write, like `/task`.
-Bare `/ask` waits for your question. An inline `/ask` tag in a sentence works too, and
-is removed before sending. Multiple active submission tags keep the draft for correction.
-From a conversation, `/ask` opens Home and uses the same ask pane.
-
-Plain text on Home starts a new conversation by default. Only search results appear
-above the seam: one Up selects the best match, Enter opens a selected result, and Down
-past the last result returns to composing. The old ask/new action rows and their
-footer hints are absent.
+`/dismiss` hides settled task notifications in the current conversation window.
+`/dismiss undo` restores them. With an empty message box, select a task
+notification and press `delete` to dismiss just that notification. Pending
+`your call` decisions stay visible. Dismissal does not stop work, accept a
+result, delete a task, or remove its output from Sessions.

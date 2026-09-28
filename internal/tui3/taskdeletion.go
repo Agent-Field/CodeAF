@@ -71,7 +71,6 @@ func (a *app) reconcileDeletedTasks() {
 		delete(a.pilots, id)
 		delete(a.tasks, id)
 		delete(a.taskSeen, id)
-		delete(a.railOpen, id)
 		delete(a.typedTaskBriefs, id)
 		changed = true
 	}

@@ -32,10 +32,10 @@ import (
 //
 // internal/exec/bare IS UNTOUCHED. The hands stay bare's; the experiment is a
 // wire change — which tools the model can name — and the conversation belt and
-// every subharness leaf keep pi's tools byte for byte. Unset
-// CODEAF_TASK_BELT, and not one byte of a worker is where it was: [Agent.belt]
-// delegates only when the predicate holds, which is what lets both arms of the
-// experiment run from one binary.
+// every subharness leaf keep pi's tools byte for byte. Turn CODEAF_TASK_BELT
+// off, and not one byte of a worker is where it was on the older road:
+// [Agent.belt] delegates only when the predicate holds, which is what lets both
+// roads run from one binary.
 
 // bashBeltSourceCaps is the cap the branch bash hand is BUILT with. bare cuts
 // a bash result tail-only inside its own accumulator, from the caps the tool
@@ -244,14 +244,26 @@ func branchBashDescription(caps bare.Caps) string {
 	return fmt.Sprintf("Execute a bash command in the current working directory. Returns stdout and stderr. Output over %dKB is cut to its first half and its last half, and the whole output is filed as a file the result names. Optionally provide a timeout in seconds.", kb)
 }
 
-// bashBeltAsked reads THE EXPERIMENT'S SWITCH, and it is the ONE reader of
+// beltOffWords are the spellings of CODEAF_TASK_BELT that send a task back to
+// the node belt. They are the ONLY way off the bash belt, and the list is
+// deliberately short and closed: an unrecognised word leaves a person on the
+// belt they were promised rather than quietly moving them off it, because a
+// typo in an environment variable must not be able to change which engine runs
+// the work. The empty string is not on the list — an exported-but-empty
+// variable is the same as an unset one, which is the default, which is bash.
+var beltOffWords = map[string]bool{"node": true, "legacy": true, "off": true}
+
+// bashBeltAsked reads THE BELT SWITCH, and it is the ONE reader of
 // CODEAF_TASK_BELT in this package: the belt a task worker is built on
 // (newTaskAgentOn) and the landing that judges it (workTaskNode's gate) are
 // two halves of one fact, and two readers could disagree about which belt a
-// node is on. Unset — every machine not running the experiment — it is false,
-// and every byte of every worker is where it was.
+// node is on. Unset — every machine that has asked for nothing — it is TRUE:
+// the bash belt is the belt a task runs on. The variable was the way IN to an
+// experiment and is now the way OUT of the default, so the sense of every
+// reader below is unchanged while the answer they get when nobody has spoken
+// is the opposite of what it was.
 func bashBeltAsked() bool {
-	return strings.TrimSpace(env.Get("CODEAF_TASK_BELT")) == "bash"
+	return !beltOffWords[strings.ToLower(strings.TrimSpace(env.Get("CODEAF_TASK_BELT")))]
 }
 
 // BashBeltAsked is [bashBeltAsked] as a door outside this package reads it: a

@@ -115,6 +115,10 @@ type NodeBrief struct {
 	// every call answered. Empty is the ordinary case.
 	Fault      string `json:"fault,omitempty"`
 	Subharness string `json:"subharness,omitempty"`
+	// Skills is the ordered list of skill names attached to this node.
+	// Pinned skills (named by the person) come first, followed by retrieval
+	// candidates. Order is precedence: earlier-listed skills win conflicts.
+	Skills []string `json:"skills,omitempty"`
 }
 
 // RecordNodeBrief journals one node's rendered brief against the store id the

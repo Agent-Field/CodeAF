@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -167,7 +169,6 @@ func TestJudgeLandingLeftUnjudgedWhenCancelledMidJudge(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
-	restoreOwnCells(t)
 
 	profileDir := t.TempDir()
 	poolDir := config.ProfilePath(profileDir, "pool")
@@ -187,5 +188,53 @@ func TestJudgeLandingLeftUnjudgedWhenCancelledMidJudge(t *testing.T) {
 
 	if alreadyJudged(poolDir, landing.ID, landing.Attempt) {
 		t.Fatal("a landing cancelled mid-judge was marked judged; it will never be scored or rejudged")
+	}
+}
+
+// The launch policy covers both routes into optional independent judgments.
+func TestOneModelLaunchWithholdsPoolHookAndSweep(t *testing.T) {
+	for _, one := range []bool{true, false} {
+		t.Run(fmt.Sprint(one), func(t *testing.T) {
+			proc := v3TestProcess(t)
+			t.Setenv("CODEAF_MODEL_POOL", "read")
+			if err := writePendingLanding(proc.ProfileDir, "do", poolTestLanding()); err != nil {
+				t.Fatal(err)
+			}
+			pending := pendingPath(config.ProfilePath(proc.ProfileDir, "pool"))
+			before, err := os.ReadFile(pending)
+			if err != nil {
+				t.Fatal(err)
+			}
+			started := make(chan struct{}, 1)
+			old := poolJudgeSweepRun
+			poolJudgeSweepRun = func(context.Context, config.Config, string, string, func() []catalog.Model, func(string) judge.Ask, func() time.Time) {
+				started <- struct{}{}
+			}
+			t.Cleanup(func() { poolJudgeSweepRun = old })
+			launch, err := openV3Launch(proc, v3Options{Model: "test/model", Workspace: t.TempDir(), OneModel: one})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (launch.Config.TaskLanded == nil) != one {
+				t.Fatalf("one-model=%v: hook absent=%v", one, launch.Config.TaskLanded == nil)
+			}
+			proc.closeAll()
+			if one {
+				after, err := os.ReadFile(pending)
+				if err != nil || !bytes.Equal(before, after) {
+					t.Fatalf("single-model launch consumed or changed pending judgments: %v", err)
+				}
+			}
+			select {
+			case <-started:
+				if one {
+					t.Fatal("one-model launch started an independent judge sweep")
+				}
+			default:
+				if !one {
+					t.Fatal("ordinary launch lost its judge sweep")
+				}
+			}
+		})
 	}
 }

@@ -44,6 +44,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
@@ -183,12 +184,64 @@ func NewWatch(options WatchOptions) (*Timer, error) {
 	}, nil
 }
 
-// Install writes the exact definition and asks this user's operating system to
-// use it now. Installing over an existing one repairs drift and is safe.
+// ErrWatchOwned means implicit setup would take the login's shared timer away
+// from another profile or a live build. Only explicit settings may do that.
+var ErrWatchOwned = errors.New("background checks belong to another profile or running build; the existing timer was left unchanged")
+
+// Ensure provides background checks without taking another owner's timer.
+// It is the implicit first-approval path; Install is an explicit takeover.
+func (w *Timer) Ensure(ctx context.Context) error {
+	return w.underLock(ctx, func() error {
+		seen, err := w.read()
+		if err != nil {
+			return err
+		}
+		if seen.drift.Present {
+			if !seen.ours {
+				return ErrWatchOwned
+			}
+			if !seen.drift.Stale {
+				return nil // This profile is already checked, possibly by another build.
+			}
+			if w.otherLiveProgram(seen) {
+				return ErrWatchOwned
+			}
+		}
+		return w.install(ctx)
+	})
+}
+
+// Repair only restores an existing, repairable timer belonging to this profile.
+// The returned drift names the repair attempted (successful when err is nil), never an earlier reading
+// that could race an explicit off or another profile's install.
+func (w *Timer) Repair(ctx context.Context) (WatchDrift, error) {
+	var repaired WatchDrift
+	err := w.underLock(ctx, func() error {
+		seen, err := w.read()
+		if err != nil {
+			return err
+		}
+		if !seen.drift.Present || !seen.drift.Stale || !seen.ours || w.otherLiveProgram(seen) {
+			return nil
+		}
+		repaired = seen.drift
+		return w.install(ctx)
+	})
+	return repaired, err
+}
+
+func (w *Timer) otherLiveProgram(seen reading) bool {
+	return seen.drift.Executable != "" && seen.drift.Executable != w.executable && !seen.drift.Gone
+}
+
+// Install is the explicit settings action: write this profile/program pair,
+// including taking over an existing timer. Implicit callers must use Ensure
+// or Repair, which apply ownership under the same interprocess lock.
 func (w *Timer) Install(ctx context.Context) error {
-	if w == nil {
-		return errors.New("standing: no timer")
-	}
+	return w.underLock(ctx, func() error { return w.install(ctx) })
+}
+
+func (w *Timer) install(ctx context.Context) error {
 	switch w.platform {
 	case "darwin":
 		return w.installDarwin(ctx)
@@ -198,19 +251,61 @@ func (w *Timer) Install(ctx context.Context) error {
 	return fmt.Errorf("standing: keeping watch is not available on %s", w.platform)
 }
 
-// Uninstall stops the timer and removes its definition. A definition that is
-// not there is already uninstalled, and says so without touching the host.
+// Uninstall is the explicit settings action that stops and removes the timer.
 func (w *Timer) Uninstall(ctx context.Context) error {
+	return w.underLock(ctx, func() error {
+		switch w.platform {
+		case "darwin":
+			return w.uninstallDarwin(ctx)
+		case "linux":
+			return w.uninstallLinux(ctx)
+		}
+		return fmt.Errorf("standing: keeping watch is not available on %s", w.platform)
+	})
+}
+
+// One lock per OS timer, not per CODEAF_HOME: ownership checks and all writes
+// must serialize across profiles and builds. The lock file is never removed,
+// so a waiter cannot keep a lock on an unlinked inode while another replaces it.
+func (w *Timer) underLock(ctx context.Context, change func() error) error {
 	if w == nil {
 		return errors.New("standing: no timer")
 	}
-	switch w.platform {
-	case "darwin":
-		return w.uninstallDarwin(ctx)
-	case "linux":
-		return w.uninstallLinux(ctx)
+	if w.platform != "linux" && w.platform != "darwin" {
+		return fmt.Errorf("standing: keeping watch is not available on %s", w.platform)
 	}
-	return fmt.Errorf("standing: keeping watch is not available on %s", w.platform)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	path := w.primaryPath() + ".lock"
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	lock, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	retry := time.NewTicker(25 * time.Millisecond)
+	defer retry.Stop()
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err := filelock.Lock(lock, true, true)
+		if err == nil {
+			defer func() { _ = filelock.Unlock(lock) }()
+			return change()
+		}
+		if !filelock.IsBusy(err) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-retry.C:
+		}
+	}
 }
 
 // Status derives everything: installation from the definition's own bytes, the

@@ -184,6 +184,12 @@ var lawRegistry = []lawUnit{
 	{id: "tasks.look-inside", class: lawCore, key: "Look inside running or landed work with `tasks` and its id"},
 	{id: "tasks.continue-is-not-a-new-task", class: lawCore, key: "never a fresh `propose_task`"},
 	{id: "read.what-read-cannot-turn-into-text", class: lawCore, key: "What `read` cannot turn into text → `read_document`"},
+	// ── and the two triggers for a program codeaf carries (delegate_door.go's
+	// [delegateFact], the owner's call of 2026-09-24): the work a program's own
+	// guide claims goes to it, and so does work the person asks one for. What
+	// each program is for is its guide's; these say only that codeaf prefers it.
+	{id: "program.work-it-is-for", class: lawCore, key: "AND WORK A PROGRAM BUILT INTO CODEAF IS FOR GOES TO IT WHOLE"},
+	{id: "program.the-one-asked-for", class: lawCore, key: "so does work the person asks one for, by name or as `/name`."},
 	// ── the mark codeaf leaves on work it did in somebody's name. It is core
 	// rather than verb: `bash` is where it happens, but `bash` is pi's own
 	// description and this law is codeaf's, and it is stated in ONE place for

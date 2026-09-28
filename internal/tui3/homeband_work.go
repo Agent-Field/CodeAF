@@ -172,12 +172,21 @@ func homeWorkNodeRows(node homeWorkNode, row session.SessionRow, width int, now 
 
 // homeWorkName is a task's first line: what it is CALLED, and how long ago it
 // landed, hard against the right edge.
+//
+// A PROGRAM'S WORK WEARS ITS BADGE AFTER THE NAME (programbadge.go), fitted
+// with the name before the row lays the two sides out, so the age can move to
+// a line of its own and the badge is still never what gets cut. An ordinary
+// task's name is handed over exactly as it always was.
 func homeWorkName(entry session.TaskIndexEntry, width int, now time.Time, pal palette) []string {
 	label := strings.TrimSpace(entry.Label)
 	if label == "" {
 		label = strings.TrimSpace(entry.Title)
 	}
-	return bandSides(width, homeWorkIndent, 8, label, sinceAt(entry.EndedAt, now), pal.muted, pal.dim)
+	ink := pal.muted
+	if strings.TrimSpace(entry.Program) != "" && label != "" {
+		label, ink = pal.programLabel(label, entry.Program, width, pal.muted)
+	}
+	return bandSides(width, homeWorkIndent, 8, label, sinceAt(entry.EndedAt, now), ink, pal.dim)
 }
 
 // homeWorkUnder is a task's outcome rows, and nil when there is nothing true to
@@ -284,15 +293,22 @@ func homeWorkGlyph(status session.TaskStatus, pal palette) string {
 			return homeLiveASCII
 		}
 		return homeLiveGlyph
-	case session.TaskPresenceNeedsLook, session.TaskPresenceInterrupted:
-		// WORK NOTHING IS DRIVING WEARS THE ASKING MARK. It is the person's call
-		// in exactly the way the rows beside it are — it will not move until they
-		// answer — and it is where they answer it. The word beside the mark is
-		// what tells the two apart, and the word is the reading's own.
+	case session.TaskPresenceNeedsLook:
 		if pal.ascii {
 			return homeAskASCII
 		}
 		return homeAskGlyph
+	case session.TaskPresenceInterrupted:
+		// WORK NOTHING IS DRIVING DOES NOT WEAR THE ASKING MARK. It used to, on
+		// the reading that it was the person's call and this was where they
+		// answered it; but nothing a person can press carries a run on yet, so
+		// the mark asked a question no key could answer. It wears the mark of
+		// work that stopped short without a fault, and the word beside it —
+		// `interrupted`, the reading's own — says which.
+		if pal.ascii {
+			return homeStuckASCII
+		}
+		return homeStuckGlyph
 	case session.TaskPresenceIncomplete:
 		if status.Fault {
 			return pal.glyph(tokens.GFailed)

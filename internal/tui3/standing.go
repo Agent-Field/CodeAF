@@ -131,17 +131,20 @@ const (
 	// their first card said, in as many words, that they did not understand the
 	// options. So the words say what will HAPPEN: it gets set up, you change
 	// something about it, it happens once, or nothing does.
-	standYesWord    = "yes, set it up"
-	standChangeWord = "change when or where"
-	standOnceWord   = "just once"
+	// These are the repeating check's words with no cadence in hand. A real card
+	// reads [session.StandingOptions], which puts the cadence on the yes and
+	// says a different sentence for a reminder, a watch or a rule.
+	standYesWord    = "Set it up"
+	standChangeWord = "Change…"
+	standOnceWord   = "Only now, don't repeat"
 	// standNoWordChip is the way out, ON the card. It used to be `esc` and a `0`
-	// named in the hint slot under the message box and nowhere else — a decline
-	// a person had to already know about, which is the one trade
+	// named in the hint slot under the message box and nowhere else. A decline
+	// a person had to already know about is the one trade
 	// docs/DESIGN-LANGUAGE.md refuses by name: every chord keeps a visible,
 	// clickable door beside it. So the decline is a chip like the others, under
 	// [session.StandingNoKey], and it is the chip that is never dropped for want
 	// of room ([app.pickRow]).
-	standNoWordChip = "no"
+	standNoWordChip = "Don't set it up"
 
 	// The two band labels. They are lower-case nouns and not headings: this is
 	// a card in a conversation, and a card with a heading on every row is a form.
@@ -179,10 +182,10 @@ const (
 	// bands two rows above are for. Under a card that draws both, that sentence
 	// was the two-renderings defect one size smaller. What no band can say is how
 	// LONG each answer lasts, so that is what is left.
-	standYesCost    = "it keeps happening until you stop it"
-	standOnceCost   = "it happens now, and nothing is kept"
-	standNoCost     = "nothing happens, now or later"
-	standChangeCost = "say the time or the place you want instead"
+	standYesCost    = "It repeats on that cadence until you stop it."
+	standOnceCost   = "Runs the check one time now. Nothing repeats."
+	standNoCost     = "Nothing is set up, and nothing runs."
+	standChangeCost = "Say a different time or place. Nothing is set up yet."
 )
 
 // The glyphs a standing row wears, and their stand-ins on a terminal that
@@ -550,10 +553,11 @@ func (a *app) standingQuestion(card *standingCard, notice session.StandingNotice
 		// this" rather than "there are no answers".
 		options = session.StandingOptions(card.item)
 	}
-	dressed := make([]session.AnswerOption, 0, len(options))
-	for _, option := range options {
-		option.Label, option.Consequence = standAnswerWord(option.Key), standAnswerCost(option.Key)
-		dressed = append(dressed, option)
+	// THE WORDS ARE THE ENGINE'S. This surface draws them and does not respell
+	// them: another window, and the record of what was pressed, read the same
+	// list. A notice that arrived without them is filled from the item.
+	if options[0].Label == "" || options[0].Consequence == "" {
+		options = session.StandingOptions(card.item)
 	}
 	return session.Question{
 		ID:      card.id,
@@ -561,53 +565,30 @@ func (a *app) standingQuestion(card *standingCard, notice session.StandingNotice
 		Ask:     session.AskChoice,
 		Form:    session.FormCard,
 		Asker:   session.Asker{Kind: session.AskerModel},
-		Head:    session.StandingAskLead + strings.TrimSpace(card.item.Words),
+		Head:    session.StandingHead(card.item),
 		Reason:  session.StandingAskReason,
 		Subject: session.SubjectRef{Kind: session.SubjectOrder, ID: card.id, Name: strings.TrimSpace(card.item.Words)},
-		Options: dressed,
+		Options: options,
 		Stakes:  session.StakesReversible,
 		Scope:   []session.AnswerScope{session.ScopeOnce, session.ScopeAlways},
 		// THE CARD'S BOX IS ITS CORRECTION LANE and always was: "make it 2pm" is
 		// a real answer to this question, and the engine reads a standing answer
 		// that carries words alone as a correction to re-propose on
 		// (session's applyToLane).
-		Input:    session.InputShape{Kind: session.InputText, Prompt: standChangeCost},
+		Input:    session.InputShape{Kind: session.InputText, Prompt: session.StandingChangeHint(card.item)},
 		Deadline: notice.Deadline,
 		Asked:    a.now(),
 	}
 }
 
 // standAnswerWord is what one answer is CALLED on this card, by the key that
-// takes it.
-//
-// EVERY ONE OF THEM NAMES ITS OUTCOME IN WORDS A STRANGER READS COLD, which is
-// why the card says more than the kind's own list does ([session.AnswerOptions]
-// spells them `yes`, `just once`, `not set up` for home's chip row, where the
-// column is scarce). A person meeting their first card said, in as many words,
-// that they did not understand the options; these say what will HAPPEN.
-func standAnswerWord(key string) string {
-	switch key {
-	case standYesKey:
-		return standYesWord
-	case session.StandingOnceKey:
-		return standOnceWord
-	case session.StandingNoKey:
-		return standNoWordChip
-	}
-	return ""
-}
-
-// standAnswerCost is what one answer costs, by the key that takes it. A key the
-// list does not carry has no clause, which is the emptiness law rather than a
-// default.
-func standAnswerCost(key string) string {
-	switch key {
-	case standYesKey:
-		return standYesCost
-	case session.StandingOnceKey:
-		return standOnceCost
-	case session.StandingNoKey:
-		return standNoCost
+// takes it. The words are the kind's own ([session.StandingOptions]), so the
+// transcript, home and the recorded labels say the same thing.
+func standAnswerWord(item standing.Item, key string) string {
+	for _, option := range session.StandingOptions(item) {
+		if option.Key == key {
+			return option.Label
+		}
 	}
 	return ""
 }
@@ -647,9 +628,9 @@ func standVerdictOf(card *standingCard, answer session.Answer) (string, string) 
 		// A CORRECTION IS NOT A YES. The person said what is wrong with the
 		// arrangement and the model re-proposes on those words; nothing stands
 		// yet, and the row has to say so.
-		return standChangedWord, standChangeWord
+		return standChangedWord, session.StandingChangeWord(card.item)
 	}
-	word := standAnswerWord(key)
+	word := standAnswerWord(card.item, key)
 	switch key {
 	case session.StandingOnceKey:
 		return standOnceDone, word
@@ -826,35 +807,20 @@ func StandingCardRows(a *app, card *standingCard, width int, sel bool) []string 
 // are agreeing to.
 func (a *app) standBands(card *standingCard, width int) []string {
 	var out []string
+	// THE THIRD LINE IS THE WHEN AND THE COST, one sentence. The tags used to
+	// take a row each. What a person checks is the cadence and what one time
+	// costs, and they read them together.
+	var fact string
 	if card.when != "" && card.item.When.Kind != standing.WhenHold {
-		word := standWhenTag + card.when
+		fact = card.when
 		if card.guessed {
 			// THE GUESS IS SAID OUT LOUD, in the card's own sentence from
 			// docs/AMBIENT.md. A cadence the model invented and the card stated
 			// flatly is the one thing on this block a person cannot audit
 			// afterwards, because it looks exactly like something they said.
-			word += standGuessTag
-		}
-		for _, line := range wrap(word, width) {
-			out = append(out, a.pal.dim(line))
+			fact += standGuessTag
 		}
 	}
-	// AND HOW FAR IT REACHES, ALWAYS SAID, which is the one band here that is
-	// never dropped. The other two can be empty because a notice may carry no
-	// words for them; a reach cannot — [standing.Item.Level] resolves the zero
-	// value to a real answer — and an order whose reach was not on the card is
-	// an order somebody agreed to without knowing where it applies
-	// (docs/STANDING-ORDERS.md: the card always names it before anything
-	// stands). It is drawn in the person's own words and never the field's
-	// ([standLevelWord]).
-	for _, line := range wrap(standWhereTag+standLevelWord(card.item.Level()), width) {
-		out = append(out, a.pal.dim(line))
-	}
-	// AND A RULE HAS NO COST BAND AT ALL. A hold never wakes, so it never runs a
-	// probe, never buys a judgment and never launches work ([standing.Item.Spends]
-	// is where that is decided) — and the emptiness law reaches a whole band: an
-	// allowance quoted on a card for something that can never draw on it is a
-	// figure the person has to weigh and nothing will ever spend.
 	cost := ""
 	if card.item.Spends() {
 		cost = card.cost
@@ -867,9 +833,27 @@ func (a *app) standBands(card *standingCard, width int) []string {
 		}
 	}
 	if cost != "" {
-		for _, line := range wrap(standCostTag+cost, width) {
+		if fact != "" {
+			fact += " · " + cost
+		} else {
+			fact = cost
+		}
+	}
+	if fact != "" {
+		for _, line := range wrap(fact, width) {
 			out = append(out, a.pal.dim(line))
 		}
+	}
+	// AND HOW FAR IT REACHES, ALWAYS SAID, which is the one band here that is
+	// never dropped. The other two can be empty because a notice may carry no
+	// words for them. A reach cannot: [standing.Item.Level] resolves the zero
+	// value to a real answer, and an order whose reach was not on the card is
+	// an order somebody agreed to without knowing where it applies
+	// (docs/STANDING-ORDERS.md: the card always names it before anything
+	// stands). It is drawn in the person's own words and never the field's
+	// ([standLevelWord]).
+	for _, line := range wrap(standWhereTag+standLevelWord(card.item.Level()), width) {
+		out = append(out, a.pal.dim(line))
 	}
 	return out
 }
@@ -984,13 +968,14 @@ func (a *app) standingAnimating() bool {
 // conversation draws and the card home's errand pane draws (homeexchange.go) are
 // the same object read the same way.
 func (a *app) standingCardFor(notice session.StandingNotice) *standingCard {
-	words := strings.TrimSpace(notice.Item.Words)
-	name := standName(words)
+	// THE HEAD NAMES THE KIND. The second line is what it does, the brief's
+	// title or the person's own sentence when nobody wrote a title.
+	does := strings.TrimSpace(notice.Item.Title())
 	return &standingCard{
 		id:       notice.ID,
 		item:     notice.Item,
-		name:     name,
-		words:    standSub(name, words),
+		name:     session.StandingHead(notice.Item),
+		words:    does,
 		when:     strings.TrimSpace(notice.WhenWords),
 		cost:     strings.TrimSpace(notice.CostWords),
 		guessed:  notice.Guessed,

@@ -11,7 +11,9 @@ package run
 
 import (
 	"context"
+	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -22,29 +24,68 @@ import (
 type engine struct{}
 
 func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummary {
+	// THE REVIEW ROUND IS ON for every task the chat's door opens: a leaf
+	// that lands done is checked against its acceptance, and a check that
+	// does not hold becomes a fix task the run waits on.
+	limits := Limits{CostUSD: spec.CostUSD, Elapsed: spec.Elapsed, StepsPerTask: spec.StepsPerTask, ReviewRound: true}
+	// THE CREW IS THE PROFILE'S, read again at each launch, and the seat's
+	// provider is the door's own completer through the one seam a test
+	// scripts ([CrewFactory]).
+	//
+	// THE DOOR'S TWO SEATS RIDE WITH THE SPEC. The conversation resolved
+	// them itself (the enginewire spec's WorkModel and PlanModel), so the
+	// factory seats the work and plan roles on the door's answer rather than
+	// asking the profile again for a row the door already moved.
+	//
+	// AND THE CHECK SEAT CLIMBS THE SAME LADDER `codeaf do` CLIMBS, minus
+	// the flag no chat has ([chatCheckSeat]), so CODEAF_CHECK_MODEL reaches
+	// a `/task` run the way the manual says it reaches a headless one.
+	factory := CrewFactory(spec.Store, spec.Workspace, spec.ProfileDir, Seats{
+		Work:  spec.WorkModel,
+		Plan:  spec.PlanModel,
+		Check: chatCheckSeat(spec.CheckModel),
+		// AND UNDER `--one-model` ONE MODEL IS EVERY SEAT, the probe and the
+		// check's environment rung included ([Seats.One]).
+		One: spec.OneModel,
+	}, spec.Standing, spec.CompleterFor)
+	if spec.Delegate != nil {
+		// A DELEGATED RUN SEATS THE PROGRAM ON ITS ROOT and has no review
+		// round: a check seat is a bash-belt worker, which the belt switch may
+		// have left off, and the program's own verification is what its
+		// terminal record reports ([DelegateWorker]).
+		limits.ReviewRound = false
+		// AND ITS MODEL API RIDES THE CONVERSATION'S OWN ROAD: the completer the
+		// door handed the run, the services the conversation can reach, and the
+		// work seat a leaf of this run would sit on — which is where a call on
+		// a model nothing here can reach is answered instead.
+		setup := DelegateSetup{
+			CompleterFor: spec.CompleterFor,
+			Serves:       spec.Serves,
+			ModelPrice:   spec.ModelPrice,
+			Seat:         WorkSeat(spec.ProfileDir, spec.WorkModel),
+			PlainFolder:  spec.PlainFolder,
+			Branch:       spec.ProgramBranch,
+			IgnoredFile:  spec.ProgramIgnoredFile,
+			Crew:         spec.Crew,
+			// AND ITS MONEY IS THE CONVERSATION'S, CALL BY CALL: every ledger row
+			// names the conversation and the task, and every call is folded
+			// into the conversation's books whole as it is metered.
+			Conversation: spec.Conversation,
+			OnCharge:     spec.OnCharge,
+		}
+		factory = DelegateFactory(spec.Store, spec.Workspace, *spec.Delegate, setup, limits, factory)
+	}
 	outcome, summary := Start(ctx, Spec{
 		Store:     spec.Store,
 		Workspace: spec.Workspace,
 		Title:     spec.Title,
 		Brief:     spec.Brief,
 		Slots:     spec.Slots,
-		// THE REVIEW ROUND IS ON for every task the chat's door opens: a leaf
-		// that lands done is checked against its acceptance, and a check that
-		// does not hold becomes a fix task the run waits on.
-		Limits: Limits{CostUSD: spec.CostUSD, Elapsed: spec.Elapsed, StepsPerTask: spec.StepsPerTask, ReviewRound: true},
-		// THE CREW IS THE PROFILE'S, read again at each launch, and the seat's
-		// provider is the door's own completer through the one seam a test
-		// scripts ([CrewFactory]).
-		//
-		// THE DOOR'S TWO SEATS RIDE WITH THE SPEC. The conversation resolved
-		// them itself (the enginewire spec's WorkModel and PlanModel), so the
-		// factory seats the work and plan roles on the door's answer rather than
-		// asking the profile again for a row the door already moved.
-		Factory: CrewFactory(spec.Store, spec.Workspace, spec.ProfileDir, Seats{
-			Work: spec.WorkModel,
-			Plan: spec.PlanModel,
-		}, spec.CompleterFor),
-		OnSpend: spec.OnSpend,
+		Limits:    limits,
+		Factory:   factory,
+		OnSpend:   spec.OnSpend,
+		Gate:      spec.Admission,
+		OnHold:    spec.OnHold,
 	})
 	return session.RunSummary{
 		Outcome: string(outcome),
@@ -54,6 +95,13 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 		// so the session draws the ending out of the fact and never parses the
 		// sentence back apart.
 		Limit: runLimitOf(summary.Limit),
+		// AND A PROGRAM'S OWN ENDING CROSSES AS ITSELF, the same way: its
+		// status word and its sentence, so the row names what the program said
+		// and not the run's one word for every unfinished ending.
+		Program: programEndingOf(summary.Program),
+		// AND THE WORD A PROGRAM FINISHED ON, which is how the session tells
+		// work its program checked from work nothing checked.
+		ProgramVerdict: summary.Verdict,
 		// THE ROWS THE RUN'S OWN ENDING CUT CROSS AS THEMSELVES: the same
 		// one-for-one carrying as the limit fact, so the session draws a row
 		// the person's bound took down from the run's own record of it and
@@ -63,6 +111,21 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 		Steps: summary.Steps,
 		USD:   summary.USD,
 	}
+}
+
+// chatCheckSeat is the check seat a chat's run rides: the checker the router
+// picked for this task when the run was routed, and otherwise the check seat's
+// own environment rung, CODEAF_CHECK_MODEL — empty past both, which the crew
+// factory fills from the profile's checker row ([config.TierSeatAt]).
+//
+// THE CHECK SEAT NEVER INHERITS THE PLAN SEAT. It once did, when only the plan
+// seat was named, so a person who pinned a planner had their work graded by
+// it; a pin on the planner says something about planning and nothing else.
+func chatCheckSeat(routed string) string {
+	if routed = strings.TrimSpace(routed); routed != "" {
+		return routed
+	}
+	return config.CheckEnvModel()
 }
 
 // runLimitOf is the seam's one mapping of the limit fact: the run's words and
@@ -78,8 +141,17 @@ func runLimitOf(limit Limit) session.RunLimit {
 	return ""
 }
 
-func (engine) Land(ctx context.Context, store *plandb.Store, workspace, rootID string) (session.RunLanding, error) {
-	landing, err := Land(ctx, store, workspace, rootID)
+// programEndingOf is the program's ending in the session's words, nil where no
+// program ended the run unfinished.
+func programEndingOf(ended *ProgramEndedError) *session.ProgramEnding {
+	if ended == nil {
+		return nil
+	}
+	return &session.ProgramEnding{Status: ended.Status, Reason: ended.Reason, Result: ended.Result}
+}
+
+func (engine) Land(ctx context.Context, store *plandb.Store, workspace, base, rootID string) (session.RunLanding, error) {
+	landing, err := Land(ctx, store, workspace, base, rootID)
 	if err != nil {
 		return session.RunLanding{}, err
 	}

@@ -212,6 +212,7 @@ conversation with the same answers row.
 - **SCREEN-READER AND NARROW.** Every form has a linear shape; compare stacks under 80 cols; the reader tier never draws a dial (a number input instead) and never paces a reveal.
 - **HEADLESS.** `--once`, `codeaf engine`, a task lane: the policy applies and is printed (`asked: <head> → 1 (default · nobody to ask)`); a kind with no pick lands `your call` and pauses; nothing hangs.
 - **NO MACHINERY VOCABULARY.** Never "prompt", "modal", "dialog", "approval gate" on screen.
+- **THE SIGN-IN SENTENCE LANDS WITH THE WAIT.** A connect offer publishes the lane and the line `connect your <Name> account?` before either can be read. A reader that sees the session waiting on that offer already has the sentence. Home, the tab and the page are that one read.
 
 ## The model's door — `ask` (D5 = A)
 

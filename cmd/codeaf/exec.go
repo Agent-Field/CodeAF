@@ -117,7 +117,7 @@ func runExec(args []string) error {
 	// would be the parity it claims in name only. Only the work seat is printed,
 	// because only the work seat runs anything.
 	useAutoSeats(settings)
-	seats := config.ResolveSeats(settings.ProfileDir, *model, *planModel)
+	seats := doorSeats(settings, *model, *planModel, prompt)
 	applySeats(&settings, seats)
 	fmt.Fprintln(os.Stderr, seats.Work.Report())
 	modelCatalog := sharedCatalog(settings)
@@ -149,7 +149,7 @@ func runExec(args []string) error {
 	}
 
 	linear := exec.NewLinear(client, space, web, *maxTurns, *maxTokens, deadline).
-		WithAttribution(settings.Attribution).
+		WithAssistedBy(config.AssistedByModelAt(settings.ProfileDir, settings.Model)).
 		WithContextLength(modelCatalog.ContextLength(settings.Model))
 	// NO OUTCOME IS CARRIED AS NO OUTCOME, all the way to the ladder. This used
 	// to substitute an `exec.Outcome{Stop: exec.StopError}` here, which threw
