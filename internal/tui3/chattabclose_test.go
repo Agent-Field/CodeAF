@@ -180,7 +180,7 @@ func TestTheCloseTargetNeverFallsThroughIntoSelectingTheTab(t *testing.T) {
 		t.Fatalf("the close target overlaps the label: label=%+v close=%+v", label, span)
 	}
 	for x := span.from; x < span.to; x++ {
-		hit, ok := a.tabAt(x, placeTabRow)
+		hit, ok := a.tabAt(x, tabStripRow)
 		if !ok || hit.kind != tabClose {
 			t.Fatalf("column %d of the close target answers as %+v", x, hit)
 		}
@@ -199,10 +199,10 @@ func TestTheSeparatorsAreInertAndTheRowIsStillTheStrips(t *testing.T) {
 	before := a.file
 	label := tabSpanFor(t, a, "openrouter price scrape")
 	sep := label.from - 1 // the rule in front of the first tab
-	if _, ok := a.tabAt(sep, placeTabRow); ok {
+	if _, ok := a.tabAt(sep, tabStripRow); ok {
 		t.Fatalf("column %d is a separator and answers as a target", sep)
 	}
-	if _, took := a.tabPress(sep, placeTabRow); !took {
+	if _, took := a.tabPress(sep, tabStripRow); !took {
 		t.Fatal("a press on the strip's own furniture fell through the row")
 	}
 	if a.file != before || a.hop.open {
@@ -405,16 +405,16 @@ func headerBudgeted(t *testing.T, a *app, where string) {
 			t.Fatalf("%s at %dx%d the header draws %d rows and is charged %d",
 				where, size.w, size.h, drawn, a.headHeight())
 		}
-		if a.room == nil && drawn != 0 && drawn != placeHeadRows {
-			t.Fatalf("%s at %dx%d the head is %d rows, not the places' %d",
-				where, size.w, size.h, drawn, placeHeadRows)
+		if a.room == nil && drawn != 0 && drawn != chatHeadRows {
+			t.Fatalf("%s at %dx%d the head is %d rows, not the chat's %d",
+				where, size.w, size.h, drawn, chatHeadRows)
 		}
 		// AND THE ROWS CHARGED ARE THE ROWS DRAWN: the pulse on top, the rule
 		// where the geometry says the seam is.
-		if a.room == nil && drawn == placeHeadRows &&
-			(!strings.HasPrefix(plain(rows[0]), " "+plain(a.pal.wordmark(a.width))) || strings.Trim(plain(rows[placeTabRow+1]), "─") != "") {
+		if a.room == nil && drawn == chatHeadRows &&
+			(!strings.HasPrefix(plain(rows[0]), " "+plain(a.pal.wordmark(a.width))) || strings.Trim(plain(rows[tabStripRow+1]), "─") != "") {
 			t.Fatalf("%s at %dx%d the head is charged as the places' and drawn as something else:\n%q\n%q",
-				where, size.w, size.h, plain(rows[0]), plain(rows[placeTabRow+1]))
+				where, size.w, size.h, plain(rows[0]), plain(rows[tabStripRow+1]))
 		}
 		// A frame with no body region left answers -1 and has nothing to check
 		// (view.go's [app.bodyTop]); everywhere else the body starts exactly under
@@ -448,7 +448,7 @@ func TestEachHeaderRowAnswersForItselfAndForNoOther(t *testing.T) {
 		if _, ok := a.tabAt(headLabelAt+1, a.roomHeadRow()); ok {
 			t.Fatalf("at %d columns the tab row answers on the trail's row", width)
 		}
-		if _, ok := a.crumbAt(headLabelAt+1, placeTabRow); ok {
+		if _, ok := a.crumbAt(headLabelAt+1, tabStripRow); ok {
 			t.Fatalf("at %d columns the trail answers on the tab row", width)
 		}
 		if _, ok := a.crumbAt(headLabelAt+1, a.roomFactsRow()); ok {

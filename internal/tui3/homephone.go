@@ -81,7 +81,7 @@ import (
 )
 
 // The row kinds the inbox adds, declared HERE and given values far above the
-// iota block in home.go to keep its identity separate: that block is being edited
+// iota block in home.go for [homeAskHere]'s reason: that block is being edited
 // by other lanes in the same wave, and a constant appended to it would be a
 // conflict over a line that says nothing.
 const (
@@ -553,8 +553,10 @@ func (a *app) homePhoneFrame(width, height int) ([]string, []int, int, int) {
 // homePhoneHead is the one row at the top: what this is, and the way out.
 func (a *app) homePhoneHead(width int, pal palette) string {
 	head := " " + pal.bold(pal.ink("home"))
-	if gap := width - ansi.StringWidth(head) - 1; gap > 0 {
-		head += strings.Repeat(" ", gap)
+	escape := pal.dim("esc close")
+	if ansi.StringWidth(head)+ansi.StringWidth(escape)+2 <= width {
+		gap := width - ansi.StringWidth(head) - ansi.StringWidth(escape) - 1
+		head += strings.Repeat(" ", gap) + escape
 	}
 	return head
 }
@@ -686,6 +688,9 @@ func (a *app) homePhoneWords(line homeLine, pal palette) (string, string, noteIn
 			homeNoteInk(line.row, a.homeHeld(line.row) || a.homeRowGone(line.row))
 	case homeCommand:
 		return line.cmd.typed(), line.cmd.note(a.chords), nil
+	case homeCompletion:
+		path, note, _ := h.completionWords(line)
+		return path, note, nil
 	case homeItem:
 		return standGlyph(line.view.Item, line.view.Running, line.view.News, pal.ascii) +
 				" " + strings.TrimSpace(line.view.Item.Words),
@@ -712,6 +717,25 @@ func (a *app) homePhoneWords(line homeLine, pal palette) (string, string, noteIn
 	case homeProject:
 		return homeFoldMark(line.folded, pal) + " " + line.project,
 			h.projectNote(line.proj, h.world.Read, pal.ascii), h.projectInk(line.proj)
+	case homeAskHere:
+		label := homeAskHereWord
+		if text := strings.TrimSpace(h.box.String()); text != "" {
+			label += ": " + text
+		}
+		return homeAskHereGlyph + " " + label, "", nil
+	case homeAction:
+		label := homeStartWord
+		if text := strings.TrimSpace(h.box.String()); text != "" {
+			// A COMMAND IS SAID THE SAME WAY IN BOTH COLUMNS. Enter dispatches a
+			// "/" line here exactly as it does on a wide frame ([app.homeEnter] is
+			// the one router), so the clause comes from the one place it is
+			// spelled ([homeView.runLabel]) rather than being written again narrower.
+			if word := h.runLabel(text); word != "" {
+				return homeStartGlyph + " " + word, "", nil
+			}
+			label += ": " + text
+		}
+		return homeStartGlyph + " " + label, "", nil
 	}
 	return "", "", nil
 }
@@ -831,13 +855,21 @@ func phoneBar(width int, words []string, pal palette) (string, []hudSpan) {
 	return out.String(), spans
 }
 
-// homeInboxBar opens the selected result. Submission modes belong to the box.
+// homeInboxBar is the bar over the list: open what the cursor is on, start
+// something new, ask the box here.
 func (a *app) homeInboxBar() []homeBarTarget {
 	var targets []homeBarTarget
 	if a.home.box.empty() {
 		targets = append(targets, homeBarTarget{word: homeOptionsWord, do: func(a *app) tea.Cmd {
 			return a.homeKey(tea.KeyPressMsg{Code: tea.KeyRight})
 		}})
+	}
+	if !a.home.box.empty() {
+		return []homeBarTarget{
+			{word: "open", do: func(a *app) tea.Cmd { return a.homeEnter() }},
+			{word: "new", do: func(a *app) tea.Cmd { return a.homeStart(strings.TrimSpace(a.home.box.String())) }},
+			{word: homeAskHereWord, do: func(a *app) tea.Cmd { return a.askHere(strings.TrimSpace(a.home.box.String())) }},
+		}
 	}
 	return append(targets, []homeBarTarget{
 		{word: "open", do: func(a *app) tea.Cmd { return a.homeEnter() }},
@@ -908,7 +940,9 @@ func (a *app) homePhonePress(x, y int) tea.Cmd {
 		return nil
 	}
 	a.home.cursor = at
-	a.home.picked = true
+	if line.kind != homeAction {
+		a.home.picked = true
+	}
 	a.touch()
 	return a.homeEnter()
 }

@@ -115,6 +115,12 @@ func TestRegistryCoversEveryUserFacingEnvironmentPin(t *testing.T) {
 	for _, name := range OperatorEnvPins {
 		registered[name] = true
 	}
+	// A RETIRED ROW'S VARIABLE IS READ ONLY TO BE TOLD IT IS GONE
+	// ([retiredRowEnv]), which is the opposite of a pin: nothing it says is
+	// obeyed, so it has no row to be.
+	for _, name := range retiredRowEnv {
+		registered[name] = true
+	}
 
 	pattern := regexp.MustCompile(`CODEAF_[A-Z0-9_]+`)
 	root := repositoryRoot(t)
@@ -334,7 +340,7 @@ func TestLoadReadsPersistedSettings(t *testing.T) {
 	for key, raw := range map[string]string{
 		KeyPracticeBudget: "6", KeyPracticeIdle: "5m", KeyBriefAfter: "30m",
 		KeyDocumentEngine: "free",
-		KeyVisionModel:    "seer/vision", KeyAttribution: "off",
+		KeyVisionModel:    "seer/vision",
 	} {
 		row, _ := rows.Row(key)
 		if err := row.Apply(raw); err != nil {
@@ -346,7 +352,7 @@ func TestLoadReadsPersistedSettings(t *testing.T) {
 	t.Setenv("CODEAF_PROFILE_DIR", dir)
 	for _, name := range []string{
 		"CODEAF_PRACTICE_BUDGET", "CODEAF_PRACTICE_IDLE", "CODEAF_BRIEF_AFTER",
-		"CODEAF_DOC_ENGINE", "CODEAF_VISION_MODEL", "CODEAF_ATTRIBUTION",
+		"CODEAF_DOC_ENGINE", "CODEAF_VISION_MODEL",
 	} {
 		t.Setenv(name, "")
 	}
@@ -358,9 +364,6 @@ func TestLoadReadsPersistedSettings(t *testing.T) {
 		loaded.BriefAfter != 30*time.Minute || loaded.DocumentEngine != "free" ||
 		loaded.VisionModel != "seer/vision" {
 		t.Fatalf("persisted settings did not reach Load: %+v", loaded)
-	}
-	if loaded.Attribution {
-		t.Fatal("attribution switched off in the sheet did not reach Load")
 	}
 
 	// The environment still wins over everything written here.
@@ -423,50 +426,51 @@ func TestTenurePersistsAndReachesTheProcessEnvironment(t *testing.T) {
 	}
 }
 
-// Attribution is on until someone says otherwise, and the row is the only way
-// to say otherwise short of the shell — which still wins.
-func TestAttributionDefaultsOnPersistsAndHonorsItsEnvironmentPin(t *testing.T) {
+// THE MODEL'S NAME IN THE `Assisted-by` LINE is on until someone says
+// otherwise, off leaves the line bare, and the shell still wins. The signature
+// itself is not a row at all.
+func TestTheModelNameRowDefaultsOnAndTurnsOnlyTheNameOff(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("CODEAF_ATTRIBUTION", "")
+	t.Setenv("CODEAF_ATTRIBUTION_MODEL", "")
 	rows := registry(t, dir)
-	row, ok := rows.Row(KeyAttribution)
+	if _, ok := rows.Row("attribution"); ok {
+		t.Fatal("the attribution row is still registered, so signing can still be turned off")
+	}
+	row, ok := rows.Row(KeyAttributionModel)
 	if !ok {
-		t.Fatal("attribution is not registered")
+		t.Fatalf("%s is not registered", KeyAttributionModel)
 	}
-	if row.Category != CategoryInterface || row.Kind != SettingBool || row.Label != "attribution" {
-		t.Fatalf("attribution row = %+v", row)
+	if KeyAttributionModel != "attribution.model" || row.Env != "CODEAF_ATTRIBUTION_MODEL" ||
+		row.Category != CategoryInterface || row.Kind != SettingBool {
+		t.Fatalf("the model-name row = %+v", row)
 	}
-	if row.Value() != "on" || !AttributionAt(dir) {
-		t.Fatalf("attribution does not default on: %q", row.Value())
+	if want := "On, commits say `Assisted-by: CodeAF (<model>)`; off, `Assisted-by: CodeAF`."; row.Hint != want {
+		t.Fatalf("hint = %q, want %q", row.Hint, want)
+	}
+	const model = "deepseek/deepseek-v4-flash"
+	if row.Value() != "on" || AssistedByModelAt(dir, model) != model {
+		t.Fatalf("the model's name is not on by default: %q", row.Value())
 	}
 	if err := row.Apply("off"); err != nil {
 		t.Fatal(err)
 	}
-	if AttributionAt(dir) {
-		t.Fatal("off did not persist")
+	if got := AssistedByModelAt(dir, model); got != "" {
+		t.Fatalf("off still hands the line a model: %q", got)
 	}
-	reread, _ := registry(t, dir).Row(KeyAttribution)
-	if reread.Value() != "off" {
+	if reread, _ := registry(t, dir).Row(KeyAttributionModel); reread.Value() != "off" {
 		t.Fatalf("the reread row lost the persisted choice: %q", reread.Value())
 	}
 
-	t.Setenv("CODEAF_ATTRIBUTION", "on")
-	if !AttributionAt(dir) {
+	t.Setenv("CODEAF_ATTRIBUTION_MODEL", "on")
+	if AssistedByModelAt(dir, model) != model {
 		t.Fatal("the environment lost to the persisted file")
 	}
-	pinned, _ := registry(t, dir).Row(KeyAttribution)
-	name, isPinned := pinned.PinnedBy()
-	if !isPinned || name != "CODEAF_ATTRIBUTION" {
-		t.Fatalf("attribution did not report its pin: %q", name)
+	pinned, _ := registry(t, dir).Row(KeyAttributionModel)
+	if name, isPinned := pinned.PinnedBy(); !isPinned || name != "CODEAF_ATTRIBUTION_MODEL" {
+		t.Fatalf("the model-name row did not report its pin: %q", name)
 	}
-	if err := pinned.Apply("off"); err == nil || !strings.Contains(err.Error(), name) {
-		t.Fatalf("a pinned attribution accepted an edit: %v", err)
-	}
-
-	// A hand-typed pin that means nothing reads as the default rather than
-	// stopping a launch over a signature.
-	t.Setenv("CODEAF_ATTRIBUTION", "sure")
-	if !AttributionAt(dir) {
+	t.Setenv("CODEAF_ATTRIBUTION_MODEL", "sure")
+	if !AttributionModelAt(dir) {
 		t.Fatal("a malformed pin did not fall back to the default")
 	}
 }
@@ -769,14 +773,11 @@ func TestMaskCredentialHidesTheKeyAndItsLength(t *testing.T) {
 // The three throttle rows read their defaults, take a person's answer, and hand
 // it back to the accessor the session door calls — which is the whole of what a
 // settings row has to do.
-// EVERY TIER ROW SHIPS POINTED AT A MODEL, and the two answers a person can give
-// one are different from each other: never touching it is this build's own
-// choice, emptying it on purpose is "follow the conversation".
-//
-// The reflex row was the first written this way, for the reason its key states.
-// The other three joined it when the crew landed (crew.go), because a whole crew
-// following the conversation means the most expensive model in the build
-// answering the cheapest questions in it.
+// THE TWO ROWS THAT ARE NOT CREW SEATS SHIP POINTED AT A MODEL, and the two
+// answers a person can give one are different from each other: never touching
+// it is this build's own choice, emptying it on purpose is "follow the
+// conversation". The crew's three seats ship with NO model: unpinned, a seat is
+// routed, and a profile with no provider connected has nothing to route to.
 func TestEveryTierShipsWithAModelAndCanStillBeCleared(t *testing.T) {
 	dir := t.TempDir()
 	row := mustRow(t, registry(t, dir), KeyTierReflexModel)
@@ -787,15 +788,12 @@ func TestEveryTierShipsWithAModelAndCanStillBeCleared(t *testing.T) {
 	if got := row.Value(); got != DefaultReflexModel {
 		t.Fatalf("the reflex row reads %q in an untouched profile, want %q", got, DefaultReflexModel)
 	}
-	// And so do its three neighbours, each with the model this build chose for
-	// that class of work.
-	for _, c := range []struct{ tier, want string }{
-		{ModelTierLow, DefaultLowModel},
-		{ModelTierHigh, DefaultHighModel},
-		{ModelTierMastermind, DefaultMastermindModel},
-	} {
-		if got := TierModelAt(dir, c.tier); got != c.want {
-			t.Fatalf("the %s tier resolves %q in an untouched profile, want %q", c.tier, got, c.want)
+	if got := TierModelAt(dir, ModelTierLow); got != DefaultLowModel {
+		t.Fatalf("the low tier resolves %q in an untouched profile, want %q", got, DefaultLowModel)
+	}
+	for _, tier := range []string{ModelTierWorker, ModelTierHigh, ModelTierMastermind} {
+		if seat := TierSeatAt(dir, tier); seat.Source != SeatRouted {
+			t.Fatalf("the %s tier reads %+v in an untouched profile, want a routed seat", tier, seat)
 		}
 	}
 
@@ -1438,6 +1436,11 @@ func TestTheModelPoolRowDefaultsToOnAndFollowsItsStoredWordAndItsPin(t *testing.
 	dir := t.TempDir()
 	t.Setenv("CODEAF_MODEL_POOL", "")
 	t.Setenv("CI", "")
+	// The telemetry off switch quiets the pool to `read` (ModelPoolResolved),
+	// so a shell that exports it would make this untouched profile read as a
+	// touched one. The test is about the row, not the shell it runs in.
+	t.Setenv("CODEAF_TELEMETRY", "")
+	t.Setenv("DO_NOT_TRACK", "")
 	rows := registry(t, dir)
 	row, ok := rows.Row(KeyModelPool)
 	if !ok {
@@ -1529,5 +1532,19 @@ func TestHeadlessApprovalHonorsExplicitSettingsAndRejectsMalformedValues(t *test
 		if ToolApprovalModeAt(profile) != want {
 			t.Fatalf("interactive malformed fallback changed for %v", value)
 		}
+	}
+}
+
+// THE TASK MODEL ROW SAYS WHAT PICKS A TASK'S MODEL. Blank, a task's worker is
+// the crew's — a pin, or the model picked for that task — never the model the
+// conversation is on, so the row does not say it follows the conversation.
+func TestTheTaskModelRowSaysTheCrewPicksWhenBlank(t *testing.T) {
+	dir := t.TempDir()
+	row := mustRow(t, registry(t, dir), KeyTaskModel)
+	if got := row.Value(); got != "the crew's worker" {
+		t.Fatalf("a blank task model row reads %q", got)
+	}
+	if !strings.Contains(row.Hint, "/crew") || strings.Contains(row.Hint, "the model you are talking to when") {
+		t.Fatalf("the task model row's hint: %q", row.Hint)
 	}
 }

@@ -21,6 +21,13 @@ package run
 // comes from the profile's tiers, and an empty seat falls exactly where an empty
 // tier always fell.
 //
+// UNDER `--one-model` THE PROFILE DOES NOT ANSWER. A conversation started with
+// the flag names its own model as every seat ([Seats.One]), and the factory
+// seats every role on it without reading a crew row or the check seat's
+// environment rung: the flag promises every text call rides the model the
+// person is talking to, and a crew row answering for an empty seat is how a
+// run under it once billed two models nobody named.
+//
 // THE READ IS AT LAUNCH, NEVER CACHED. The factory asks the profile again for
 // every task it seats — for the check and probe rows, and for any seat the door
 // left empty — so a crew change between two launches (a /crew run in the
@@ -80,6 +87,14 @@ type Seats struct {
 	Work  string
 	Plan  string
 	Check string
+	// One is the conversation's model under `--one-model`, and when it is set
+	// it is EVERY seat: the three above, the probe no door names, and any role
+	// this build has not learned. Nothing here asks the profile or the check
+	// seat's environment rung while it is set, because the flag promises that
+	// every text call rides the model the person is talking to — and an empty
+	// seat falling to the crew row is exactly how a run under it billed models
+	// nobody named.
+	One string
 }
 
 // CrewFactory is the run's WorkerFactory: it seats each task in the model its
@@ -107,37 +122,65 @@ type Seats struct {
 // for a tier key the profile has never held and only a row CLEARED on purpose
 // reads empty, so a fallback means somebody emptied a row rather than that the
 // profile is old.
-func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats, completerFor func(model string) session.Completer) WorkerFactory {
+func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats, standing string, completerFor func(model string) session.Completer) WorkerFactory {
 	return func(task plandb.Task) Worker {
+		// UNDER `--one-model` THERE IS NO TIER TO READ. The door named one model
+		// for every seat ([Seats.One]), so the role does not matter and neither
+		// the profile nor the environment is asked.
+		if seats.One != "" {
+			return NewBashWorker(store, workspace, seats.One, standing, completerFor(seats.One))
+		}
 		// A task the store cannot name — which the supervisor never hands over —
 		// reads as the work seat, the same fallback SeatFor gives an unknown
 		// role, so RoleOf's error needs no reader here.
 		role, _ := store.RoleOf(task.ID)
 		tier := SeatFor(role)
-		// THE DOOR'S SEAT WINS WHERE IT NAMED ONE. A planner (the run's root or
-		// a task that has children) rides the plan seat. A check rides the careful
-		// work seat. A leaf and every task an unknown role falls to the work seat. The probe tier is named by nobody, so it
-		// keeps the profile's row below.
-		var model string
-		switch tier {
-		case config.ModelTierMastermind:
-			model = seats.Plan
-		case config.ModelTierWorker:
-			model = seats.Work
-		case config.ModelTierHigh:
-			model = seats.Check
-		}
+		model := seatModel(profileDir, tier, seats)
 		if model == "" {
-			model = config.TierSeatAt(profileDir, tier).Model
+			return seatlessWorker{tier: tier}
 		}
-		if model == "" {
-			model = config.TierSeatAt(profileDir, config.ModelTierWorker).Model
-			if model == "" {
-				return seatlessWorker{tier: tier}
-			}
-		}
-		return NewBashWorker(store, workspace, model, completerFor(model))
+		// EVERY CALL IS MARKED WITH THE SEAT THE TASK SITS, because this is the
+		// one place that knows it: the spend guard holds the checker to its own
+		// ceiling by seat, and a crew whose seats share one model would give it
+		// nothing else to tell a check's call from a worker's.
+		seat, _ := config.CrewTierSeat(tier)
+		return NewBashWorker(store, workspace, model, standing, session.SeatCompleter(seat, completerFor(model)))
 	}
+}
+
+// seatModel is the model a task riding tier is seated on, and the one answer
+// both the crew's workers and a delegated program's model API read.
+//
+// THE DOOR'S SEAT WINS WHERE IT NAMED ONE. A planner (the run's root or a task
+// that has children) rides the plan seat. A check rides the careful work seat.
+// A leaf and every task an unknown role falls to the work seat. The probe tier
+// is named by nobody, so it keeps the profile's row. A tier with no model
+// falls to the worker row, and empty is a seat no model can fill.
+func seatModel(profileDir, tier string, seats Seats) string {
+	var model string
+	switch tier {
+	case config.ModelTierMastermind:
+		model = seats.Plan
+	case config.ModelTierWorker:
+		model = seats.Work
+	case config.ModelTierHigh:
+		model = seats.Check
+	}
+	if model == "" {
+		model = config.TierSeatAt(profileDir, tier).Model
+	}
+	if model == "" {
+		model = config.TierSeatAt(profileDir, config.ModelTierWorker).Model
+	}
+	return model
+}
+
+// WorkSeat is the model this run's own work seat holds: the door's work seat
+// where it named one, the profile's worker row otherwise — exactly the seat a
+// leaf of the run is built on ([CrewFactory]). A delegated program's model API
+// answers on it whatever the program asks for that nothing here can reach.
+func WorkSeat(profileDir, work string) string {
+	return seatModel(profileDir, config.ModelTierWorker, Seats{Work: work})
 }
 
 // seatlessWorker is the seat a task gets when the crew holds no model for its

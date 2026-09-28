@@ -20,6 +20,7 @@ import (
 	"time"
 
 	configpkg "github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
@@ -75,14 +76,16 @@ func TestTheCatalogsWindowOutranksTheConfiguredOne(t *testing.T) {
 
 // THE CREW'S WORKER SEAT IS NOT A TRIGGER, AND A BIG WINDOW ON IT GETS THE WHOLE
 // PAGE. An earlier draft went lean whenever the conversation rode the crew's
-// `worker` model, which is `z-ai/glm-5.3-flash` through the balanced preset and
-// `z-ai/glm-5.3` at max — models served with a hundred and
-// twenty-eight thousand tokens of room. That would have dropped sections, shelved
-// `propose_task` and turned saved memories off for anybody who picked a preset and
-// then chose that same model in chat, with nothing on screen saying so. Open
-// weights are a licence, not a size.
+// `worker` model — open-weight models like `z-ai/glm-5.3-flash`, served with a
+// hundred and twenty-eight thousand tokens of room. That would have dropped
+// sections, shelved `propose_task` and turned saved memories off for anybody who
+// pinned such a worker and then chose that same model in chat, with nothing on
+// screen saying so. Open weights are a licence, not a size.
 func TestTheWorkerSeatWithALargeWindowGetsTheFullPageByteForByte(t *testing.T) {
 	profileDir := t.TempDir()
+	if err := configpkg.SetCrewPin(profileDir, crewroute.Worker, "z-ai/glm-5.3-flash"); err != nil {
+		t.Fatal(err)
+	}
 	seat := configpkg.TierModelAt(profileDir, configpkg.ModelTierWorker)
 	if strings.TrimSpace(seat) == "" {
 		t.Fatal("the crew has no worker model, so this test is asserting against nothing")
@@ -92,7 +95,10 @@ func TestTheWorkerSeatWithALargeWindowGetsTheFullPageByteForByte(t *testing.T) {
 	at := time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)
 	pageFor := func(model string) string {
 		t.Helper()
-		config := Config{Workspace: workspace, Model: model, ContextWindow: 128_000, ProfileDir: profileDir}
+		// The model's name in the `Assisted-by` line is the one byte run that
+		// follows the model on every page, and it is not the profile's to
+		// decide; with the name off, what is left is the page the profile chose.
+		config := Config{Workspace: workspace, Model: model, ContextWindow: 128_000, ProfileDir: profileDir, AttributionModelOff: true}
 		if got := config.promptProfile(); got.lean() {
 			t.Fatalf("a 128,000-token window on %q resolved to %s", model, got)
 		}

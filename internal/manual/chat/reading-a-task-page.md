@@ -18,9 +18,10 @@ finished tasks can recover their pages too.
 ## What is on this task page — everything a task's page shows, in order
 
 A task opened from the rail starts with its full title, then the opening three lines of
-its brief with a key to unfold the rest, then its declared checks, then the folder where
-it works. A part with nothing in it is absent. The folder is said once in this head and
-is not repeated on every step.
+its brief with a key to unfold the rest, then its declared checks. A part with nothing in
+it is absent. **The folder a run's task works in is not shown**: it is the run's own
+working copy, not a place you go, and each step's command is drawn without the change
+into it, so the rows read as the work itself.
 
 The brief stays in the head, folded to three lines with a key to unfold it. The work it
 did is folded into chips it counts. The paragraphs it wrote as it went, each standing above the chip that
@@ -39,6 +40,15 @@ Nothing here is thrown away — what is folded is one keypress from open.
 **The time on one task's own page comes from that task's record.** Its completion card says
 `started 14:02` only when the record carries the instant the work began. Reopening the
 conversation does not replace that instant with the time you sat down.
+
+**How long it ran is the record's too.** The settled page's header and the completion card
+show how long the work took, rounded to the second — one figure, spelled `29m 8s` in the
+header and `29m08s` on the card. It is the time the work itself took, as the record gives
+it: the time you took to answer a task that landed needing your look is not added, so a task
+that worked five minutes and that you accepted an hour later still reads `5m`. A record
+that gives no such figure but carries both instants shows the landing less the start. While
+the work runs, the side list counts from the record's start, even in a window opened after
+it began.
 
 An older record may carry a duration but no start or landing instant. When that duration is
 at least one second, the settled task page shows it in the header — for example `12m` —
@@ -77,82 +87,37 @@ card exists for spent on the punctuation around the answer.
 calls go", "why can I not see what the task did", and "what are these little grey lines".**
 Nothing is lost. Settled work is folded, and one gesture opens it.
 
-Between each paragraph the task wrote is the thinking and the calls that led to it, and
-that stretch collapses to one dim chip:
+Finished operational work collapses to a dim chip such as:
 
 ```
 ▸ worked 2m · thought 10s · 14 tool calls · ctrl+e
 ```
 
-The figures are counted from the rows the chip covers — how long that stretch took, the
-thinking time when there was any, the number of captioned steps, and the real call count.
-The chip is still counted fact, not a summary.
+Its figures count the work retained inside. Click the chip or press `ctrl+e` with
+an empty message box to open the outline. Click a step to inspect its calls.
+The same controls close it again. Scrolling a finished page leaves its work folded.
+`ui.work = open` opens details by default.
 
-**Three ways open the outline**, and any of them works on a page that has already finished:
+While the task runs, one compact activity window shows at most three rows for the
+current turn. Completed steps in that turn stay behind the same disclosure;
+they do not accumulate extra phase chips. A failed call shows a failure mark,
+with the complete error behind the step's disclosure. Ordinary team exchanges,
+compaction notes and task receipts share that compact work area.
 
-- **`ctrl+e`** over an empty message box opens the newest chip. Press it again to close it.
-- **click** the chip.
-- **scroll up** when the page is already at its top — one wheel tick, `pgup`, or `↑`. It
-  opens the chip nearest the top and keeps your place: the rows you were reading stay on
-  the same screen lines and the work appears above them. Nothing jumps. The same gesture
-  opens a folded run of tool calls, so scrolling up keeps reaching further back rather
-  than stopping dead.
+Your instructions, corrections, questions requiring your decision and confirmed
+replies remain visible. A completed tool-free response stays formatted as a reply
+even if more work starts later. Stopping that later work preserves the completed
+reply. Opened narration renders markdown in quieter ink, without raw markers.
 
-An opened chip stays open, and the chip line stays with it so you can close it again.
-Under it is one caption per step: the short line the model said before that batch, the
-plain floor made from the calls when it said nothing, or — after a long silence — a line
-from the dwell narrator. Click a caption, select it and press `enter`, or use `ctrl+o` on
-the live caption to open the tool rows under that one step. The outline is the account;
-the rows are one expand further.
+These rules are shared by ordinary chat, the manager, task pages and nested task
+transcripts. The retained history is available through disclosure on each page.
 
-**A caption can be wrong.** It is a heading about what the step is trying to settle, not
-proof of what ran or what came back. The tool rows beneath it are the truth. Open the
-caption whenever its words and the work appear to disagree.
+## What is that line over the tool calls — step captions
 
-## What is that line — caption, why did it collapse, and how do I see what it did
-
-The short status line over a batch is its **caption** — one sentence of about
-5 to 10 words naming what the step is doing and where. A collapsed stack of
-those lines is the **outline**. On a narrow window a caption wraps; it is never
-cut mid-sentence with an ellipsis. A caption ends only where its sentence ends,
-so a filename, version number or path keeps its whole self: `reading livesteps.go`
-is not shortened to `reading livesteps`, and a caption never begins in the middle
-of a word. It says what each step is trying to settle rather than repeating commands
-the rows already name. A live caption may shimmer while its rows are folded; opening
-it stops the shimmer and shows the running calls.
-
-Use **`ctrl+e` on an empty box** to open the newest `▸ worked` chip onto the outline.
-Then click the caption, select it and press `enter`, or press **`ctrl+o` on the live
-caption** to see what it did. Press the same gesture again to fold those rows. A caption
-keeps the present-tense words it was born with after the work ends, so an old outline may
-say `checking the parser` rather than rewriting history to `checked the parser`.
-
-**Keep everything open**: set `ui.work` to `open` and no chip on any page starts folded —
-in a task's page exactly as in the conversation.
-
-### What stays on the page whatever happens
-
-**Every paragraph the task wrote stays standing**, above the chip that covers the work
-before it, and so does the report at the end. So the page reads as the story of the work
-with its steps folded, rather than as a scroll you have to read to find out what
-happened.
-
-**What the task is doing right now keeps its caption standing.** Its tool rows may fold
-under that live line; `ctrl+o` or a click opens them. A long live run that has no caption
-yet still uses the older overflow fallback described below, so silence never removes the
-door to its calls.
-
-**These never fold either**, wherever they are on the page: your instruction, every
-correction you typed into the running work, every call that failed, and every question the
-task asked you. They are the record of what you asked for and what you decided, and a
-fold may never hide your own words.
-
-### Why the conversation's chips are cut differently
-
-Out in the conversation the page folds **by turn** — one chip per question you asked,
-hiding the work between the question and its answer. A task's page folds **by phase**
-instead, because a task is one long question and folding it by turn would put the whole
-page behind one chip.
+The line over the tool calls is the step caption: a short description of what the
+model is doing. While work runs, the latest captions share a scrolling window of
+at most three rows. Earlier captions remain in the work disclosure. Open the work
+with `ctrl+e`, then click a caption to see its calls and their output.
 
 ## See earlier tool calls in one long run with no caption yet — the `↳` fallback, scroll up or `ctrl+o`
 
@@ -179,6 +144,28 @@ resizing the terminal, growing the draft by a line, or the task roster changing 
 all re-fit it. Only the overflow folds. The conversation keeps exactly the last **3**
 calls in the no-caption fallback above a line reading `N earlier tool calls · ctrl+o`,
 and scrolling the conversation never opens a fold — `ctrl+o` or a click does.
+
+## See what a task changed: the `transcript` and `work` tabs, and the `tab` key
+
+Two tabs are named at the right of the top line, beside the way back: `transcript` and
+`work`. They are there for every task on either engine. `transcript` is everything this
+manual describes: the brief, the steps, the notes and the report. `work` shows the files
+changed.
+
+- On this window's own engine, `work` lists the files once the task has landed:
+  `files this task changed`, or `this task changed no files`. Before it lands it says
+  `the files this task changes are listed here when it lands`.
+- On a run's task, `work` is the run's working copy read against the commit it was cut
+  from: the difference, and the files added, with the files codeaf keeps there left out.
+  Every file is listed under its own name, including spaces, quotes and accents. Only
+  codeaf's own files are left out: `plandb.db` and the files beside it at the copy's
+  top, the `.codeaf` folder and the `bin/plandb` shim.
+  The whole run shares that one copy, and the tab says so at its top. Once the run has
+  ended its copy is given back, and the tab reads the work off the run's branch instead.
+  With that branch gone too, it says `the run's working copy is not here any more`.
+
+`tab` over an empty box moves from one tab to the other, and a click on a tab's name opens
+it. With words in the box, `tab` is the box's own key.
 
 ## What the line at the top of a task's page tells you
 
@@ -374,7 +361,7 @@ Three things that look like the same picture and are not:
   nothing more coming; scroll up to read what it did, and the foot names where the words in
   your box can still go, because the box is still there and the worker is not.
 - **A task that has not started** — one still queued behind the running ones — opens
-  with its title, brief, declared checks, and folder before any steps have been written. The
+  with its title, brief and declared checks before any steps have been written. The
   page then says `nothing on this page yet — it fills in as the task works`. The roster's row for it
   says `queued`; the page fills when it starts.
 - **A row that was never a task.** A background job — a server, a build, a watch, a video
@@ -398,12 +385,11 @@ the page says it in one dim line, above whatever else it already knows:
 - a read that came back with an error says `couldn't read this task's conversation ·
   retrying`, which is a different fact from either of the two above and keeps its beat
 
-**A run's task page follows its newest step the same way.** The page `enter` opens on a run's
-row — a row drawn in the tasks place — keeps up with the work: the newest step walks in at the
-bottom, and the page stays stuck to that live edge until you scroll up, which releases it.
-Scrolling back to the bottom resumes the follow, and a page on a task that has settled is a
-still page, never re-read. The step being run right now is drawn one step early, the running
-glyph beside its command.
+**A run's task follows its newest step the same way.** A task on the run engine opens this
+same room, read from the run's store, and keeps up with the work: the newest step walks in at
+the bottom, and the room stays stuck to that live edge until you scroll up, which releases it.
+Scrolling back to the bottom resumes the follow, and a room on a task that has settled is a
+still page, never re-read. The step being run right now is the newest call, drawn running.
 
 ## Why is a task I just started showing an empty page
 
@@ -412,7 +398,7 @@ opened the second it starts has journaled nothing yet — its first message is s
 written — so there is no transcript to replay for a few seconds.
 
 What the page draws in that gap is what it already holds: **the full title, the folded
-brief, the declared checks, and the folder**, followed by a note about what the task is doing now when there is one. Then it says why there are no steps yet.
+brief, and the declared checks**, followed by a note about what the task is doing now when there is one. Then it says why there are no steps yet.
 
 ```
 Widen the import pipe so the nightly run stops timing out.
@@ -422,7 +408,7 @@ nothing on this page yet — it fills in as the task works
 
 Three things worth knowing about that page:
 
-- **The head stays.** The title, brief, declared checks, and folder remain when the first
+- **The head stays.** The title, brief and declared checks remain when the first
   step arrives. Only the note about there being no steps leaves the page.
 - **Opening it starts nothing.** The page is a reader onto work that is already running;
   pressing the row again closes the page rather than starting anything, and no task is
@@ -577,11 +563,13 @@ until you answer it. A task that is still running is never refused: if nobody is
 to read you — it is being checked, or its worker has just closed — the line is held on the
 task's record instead, which the clause above says out loud.
 
-**A run task's page carries this box too**, and it says when the note is read rather than merely
-saved. Under the box the run page writes `the worker reads a note at its next step`: the note
-goes to the task's store and waits until the worker asks for its next step, which is when it
-reads what you wrote. A task that has ended, `done` or `incomplete`, takes no next step, so
-its page leaves that sentence out.
+**A run task's room carries this box too**, and it says when the note is read rather than merely
+saved. Once the store has the note the room writes `the worker reads a note at its next step`
+under it: the note waits in the store until the next step, which is when it is read. Once the
+work has ended, `done` or `incomplete`, there is no next step, so the room leaves that sentence
+out and takes no note: `enter` says `this task has finished` and where to say them instead, and
+leaves them in the box. A note the store refuses for another reason shows the store's own
+sentence on the line you typed.
 
 ## Task page says finished but the work is still running
 
@@ -733,10 +721,13 @@ that those files were not sent with the correction.
 ## How do I open a task under this one? — enter on its row, escape to come back
 
 The `under it` section is the whole subtree in store order, not only the direct
-children. Its indentation and connectors show the same parent tree as the rail,
-and a running row keeps its live `$ <command>` line beneath it.
+children, and every row in it is drawn exactly as the rail draws a task: the
+state mark (the spinner while it works), the name, its `#id` at the end, and the
+tree's own connectors (`├─`, `└─`). A part that is running says the command it is
+on, such as `bash go test ./...`, and under that how long it has run and what it
+has cost, each left out when the store has not got it.
 
-Select any row there and press `enter` to open that task's page. Press `esc` to
-return to the page you came from; the breadcrumb says `esc/← <parent title>` so
-you can see where it returns. This opens a page rather than changing the rail's
-fold.
+Click any row there to open that task's room. The trail at the top of the room reads
+`<conversation> ▸ <parent title> ▸ <this task>`, and a click on the parent's name in it
+opens the parent's room again. `esc` returns to the conversation. This opens a room
+rather than changing the rail's fold.

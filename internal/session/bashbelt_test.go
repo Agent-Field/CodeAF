@@ -242,7 +242,7 @@ func TestBashBeltWorkerThinksFromTheWorkSeat(t *testing.T) {
 		}
 	})
 	t.Run("on the shipped belt", func(t *testing.T) {
-		t.Setenv("CODEAF_TASK_BELT", "")
+		t.Setenv("CODEAF_TASK_BELT", "node")
 		if got := beltWorkerAgent(t, effort.None, effort.None).ResolvedEffort(); got != "" {
 			t.Fatalf("the shipped-belt worker resolves to %q, want absence", got)
 		}

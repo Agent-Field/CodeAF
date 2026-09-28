@@ -6,6 +6,7 @@
 | --- | --- | --- | --- |
 | pull request into `dev`, and every push to `dev` | `.github/workflows/ci.yml` | `light gate`: build, gofmt, vet, the packed corpora, the change entry, the manual law, the laws. `touched packages`: the full suite of every package the change touched. `check`: green only when both are | `light gate` a few minutes; `touched packages` as long as the slowest touched package; `check` when both are in |
 | pull request into `staging` or `main`, every push to either, and nightly at 09:00 UTC | `.github/workflows/ci-full.yml` | the whole suite, six-platform cross build, the two-machine remote test | tens of minutes |
+| Friday after the 17:00 Toronto cutoff, or a manual dispatch | `.github/workflows/promote-staging.yml` | plan the cutoff commit, call Full check on that commit, fast-forward staging if it passes, and report the release and production signal | Full check plus the release build |
 | every push to `dev`, `staging` or `main`; a manual stable or channel dispatch | `.github/workflows/release.yml` | resolve and guard the tag, test the release surface except on dev, build six binaries with furrow, publish | — |
 
 **The light gate is deliberately light.** Work reaches `dev` many times a day,
@@ -18,6 +19,8 @@ somebody broke something.
 not a flaw in the arrangement, it is the arrangement: `dev` is where things are
 allowed to be briefly wrong, `staging` is where they are not. The full suite is
 paid for once, on the way into `staging`, instead of on every pull request.
+`Full check` is also called by the weekly promotion with the chosen commit as
+its `ref`; that run is the check the promotion uses before moving staging.
 
 **But "light" never meant "runs a filter nobody remembers".** Until 2026-09-02
 the gate's one test step over the engine was `go test -run 'Manual'`, and the

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -259,11 +260,6 @@ type Config struct {
 	PracticeIdle   time.Duration
 	BriefAfter     time.Duration
 
-	// Attribution admits the standing attribution law into a worker's contract:
-	// the trailer on commits it authors, the footer on pull requests and issues
-	// it opens. Off is the law's absence, not an instruction to hide.
-	Attribution bool
-
 	// Swarm is the cooperative-decomposition mode, and it is ON by default
 	// ([DefaultSwarm]). On, a worker gains a verb for handing work back when
 	// its brief turns out to hold more than one worker's share: the resident's
@@ -364,12 +360,39 @@ func LoadKeyless() (Config, error) { return load(false) }
 // though NewSettings(...).Rows() does not list them.
 var nonSettingProfileFields = []string{
 	KeySetupSeen,
+	// The talk lane's borrow row sits beside its lane row and is read by
+	// [LaneBorrowAt], but it is set from the lane page and not from a settings
+	// row of its own. Missing here, every profile the lane page had written
+	// was told at launch that a key codeaf reads was unread.
+	LaneBorrowKey(LaneSlotTalk),
 	KeySplitPct,
 	KeyStandingBackground,
 	KeyResponseAttempts,
 	KeyResponseLiftAfter,
 	KeyResponseLiftCap,
 	keyModelSources,
+	// THE TALK LANE'S BORROW FLAG. It is no row of its own — it rides the
+	// `provider` row's words (`pinned: cloudflare, borrow when slow`) — but
+	// [WriteLaneRow] writes it on EVERY save of that row, `false` included, and
+	// [LaneBorrowAt] reads it. Left off this list, every launch after the row
+	// was saved told the person their profile carried an ignored key.
+	LaneBorrowKey(LaneSlotTalk),
+	// THE CREW'S STANDING ROWS. They are written by /crew's shortcuts and
+	// panel and read by the router (crew.go), and no settings-registry row owns
+	// them: the panel is where a rule, a cap and the providers turned off are
+	// read beside the day's spend.
+	KeyCrewAllowed,
+	KeyCrewCap,
+	KeyCrewTaskCap,
+	// And the free-routes switch beside them, which the crew's providers list
+	// turns on and off.
+	KeyCrewFreeRoutes,
+	KeyCrewProvidersOff,
+	// Route pins are read beside the model-only tier rows and have no
+	// settings row of their own, so the unread-key notice must know them.
+	KeyCrewRouteWorker,
+	KeyCrewRoutePlanner,
+	KeyCrewRouteChecker,
 }
 
 // retiredProfileKeys are top-level config.json keys that a shipped version once
@@ -388,7 +411,45 @@ var retiredProfileKeys = map[string]bool{
 	"memory.consolidation": true, // reader removed by 10dcdfdd4
 	"practice_demand_pct":  true, // reader removed by 84ba8503e
 	"propose_new_skills":   true, // reader removed by 84ba8503e
+	"attribution":          true, // reader removed on 2026-09-23: signing has no off
+	// The retired crew rows are read once more, by the migration that removes
+	// them and says so in its own line (crewmigrate.go's [MigrateCrew]); the
+	// unread check must not say it a second time in a worse sentence.
+	legacyKeyCrew:       true, // presets retired on 2026-09-24: seats are routed per task
+	legacyKeyCrewSource: true, // family row retired on 2026-09-24: `open` became the allowed rule
+	legacyKeyCrewPick:   true, // pick row retired on 2026-09-24
 }
+
+// retiredRowNotes are the retired keys a person set ON PURPOSE, each with the
+// plain sentence they are told instead of the silence the rest of
+// [retiredProfileKeys] gets.
+//
+// SILENCE IS RIGHT FOR A KEY NOBODY TYPED and wrong for one somebody did. A
+// profile holding `attribution: false` holds a person's decision not to sign,
+// and a build that stopped reading it without a word would be signing their
+// work behind their back — while one that kept obeying it would be a setting
+// the product says it no longer has. So such a key is reported unread, like a
+// key the loader never knew, and the surface prints this sentence in place of
+// the generic one ([RetiredRowNote]).
+//
+// The row's environment spelling counts as the row: `CODEAF_ATTRIBUTION` set in
+// a shell is the same decision made in a different place, and it is told the
+// same sentence ([retiredRowEnv]).
+var retiredRowNotes = map[string]string{
+	"attribution": "the attribution row and CODEAF_ATTRIBUTION are gone: codeaf always signs " +
+		"the commits, pull requests, issues and comments it writes. The one part you can turn off " +
+		"is the model's name in the Assisted-by line, with the " + KeyAttributionModel + " row.",
+}
+
+// retiredRowEnv is the environment spelling each told retired row had.
+var retiredRowEnv = map[string]string{
+	"attribution": "CODEAF_ATTRIBUTION",
+}
+
+// RetiredRowNote is the sentence a surface prints for a key the loader reported
+// unread because the row it belonged to is gone, and empty for every other
+// key: an unknown key still gets the surface's generic sentence.
+func RetiredRowNote(key string) string { return retiredRowNotes[key] }
 
 // consumedProfileKeys is every top-level config.json key a reader consumes at
 // head: every settings-registry row plus the non-setting loader and first run
@@ -412,15 +473,27 @@ func warnUnreadProfileKeys(profileDir string, values map[string]json.RawMessage)
 	consumed := consumedProfileKeys(profileDir)
 	var unread []string
 	for key := range values {
-		if consumed[key] || retiredProfileKeys[key] {
+		if consumed[key] || (retiredProfileKeys[key] && retiredRowNotes[key] == "") {
 			continue
 		}
 		unread = append(unread, key)
+	}
+	// A TOLD ROW SET IN THE SHELL IS THE SAME ROW. It is reported once, under
+	// the row's own key, whether the profile, the variable or both said it.
+	for key, name := range retiredRowEnv {
+		if strings.TrimSpace(env.Get(name)) != "" && !slices.Contains(unread, key) {
+			unread = append(unread, key)
+		}
 	}
 	sort.Strings(unread)
 	if len(unread) > 0 {
 		if _, warned := warnedProfileConfigs.LoadOrStore(path, struct{}{}); !warned {
 			log.Printf("codeaf: %s has unread top-level config key(s): %s", path, strings.Join(unread, ", "))
+			for _, key := range unread {
+				if note := RetiredRowNote(key); note != "" {
+					log.Printf("codeaf: %s", note)
+				}
+			}
 		}
 	}
 	return unread
@@ -439,7 +512,7 @@ func load(requireKey bool) (Config, error) {
 		APIKey:            apiKey,
 		BaseURL:           baseURL,
 		UnreadProfileKeys: unreadProfileKeys,
-		Model:             firstNonEmpty(env.Get(ModelEnv), DefaultModel),
+		Model:             firstNonEmpty(env.Get(ModelEnv), ChatDefaultAt(profileDir)),
 		PlanModel:         strings.TrimSpace(env.Get(PlanModelEnv)),
 		Timeout:           DefaultTimeout,
 		Reasoning:         DefaultReasoning,
@@ -508,7 +581,6 @@ func load(requireKey bool) (Config, error) {
 	// dedicated endpoint and there is no catalog ladder that reaches it, so an
 	// unset slot keeps the model this build knows works.
 	config.VoiceModel = firstNonEmpty(MediaSlotModelAt(config.ProfileDir, "voice"), DefaultVoiceModel)
-	config.Attribution = AttributionAt(config.ProfileDir)
 	// The context law's knobs, handed to the one package that spends them.
 	//
 	// THE RESERVE IS ROOM IN THE CONTEXT WINDOW AND NEVER A FIELD ON THE WIRE.

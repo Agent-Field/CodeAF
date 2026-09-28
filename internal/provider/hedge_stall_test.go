@@ -139,7 +139,7 @@ func TestAWireBelowItsPaceWithNothingToSpendSaysSoAndIsSpent(t *testing.T) {
 	}
 	rows := ended(read())
 	if len(rows) != 1 {
-		t.Fatalf("ended rows = %d, want the one call's row", len(rows))
+		t.Fatalf("ended rows = %d, want the one call's row: %+v; asks=%+v", len(rows), rows, rig.server.Asks())
 	}
 	if got := rows[0].Refused; got != planCannotPay {
 		t.Fatalf("refused = %q, want %q — the rail that really refused", got, planCannotPay)

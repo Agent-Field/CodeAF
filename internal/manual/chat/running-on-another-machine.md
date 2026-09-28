@@ -167,18 +167,16 @@ as another build. Three things can be true:
 
 - **It is this build.** Your window attaches to it exactly as before. This is the ordinary
   case, and it costs one question on a local socket.
-- **It is another build, holding nothing** — no window attached, no turn running, no
-  question waiting. It is asked to go, closes its conversations, flushes their transcripts,
-  and a fresh one starts from the binary that is on disk now. You see none of it.
-- **It is another build and something is still going in it.** Nobody's turn is ended for
-  you. The connection is refused instead, in these words:
+- **It is an older build** — built earlier, from any file, or too old to answer the
+  question at all. It is replaced, busy or not: it closes its conversations, flushes their
+  transcripts, and a fresh one starts from the binary that is on disk now. The window says
+  `replaced the older engine on spark (pid <n>, <build>, <binary>) — this build holds the
+  workspace now`.
+- **It is a newer build.** Your window joins it. If its wire is one this binary cannot
+  speak, the connection is refused, naming this binary as the older one and
+  `codeaf engine --status` as the way to see which is newer.
 
-```
-engine: spark is still running an older codeaf and something is still going in it — let that finish, or run codeaf engine --stop --workspace /home/you/project on spark
-```
-
-A copy too old to answer the question at all is refused the same way and left alone,
-because a process that cannot say whether it is busy is not one to guess about:
+Only if the older engine will not go is the connection refused, in these words:
 
 ```
 engine: spark is still holding this conversation on an older codeaf — run codeaf engine --stop --workspace /home/you/project on spark
@@ -217,7 +215,7 @@ The **near** machine — the one you are sitting at — owns the surface:
   so what you typed while working on `devbox:code/app` belongs to that place
 - the model picker's cached list
 - the terminal itself
-- **the paths for `/image`, `/attach` and `@` completion**, which are anchored here; a bare
+- **the paths for `/attach` and `@` completion**, which are anchored here; a bare
   `/attach` opens the chooser on this machine
 - **the browser, the viewer and the file door** — the small `127.0.0.1` listener this
   window opens so that a path in a reply, `/files` and `/files <path>` can show you a file
@@ -274,7 +272,7 @@ that conversation beside the one you are in — the engine gives it a connection
 and the chat you came from keeps running, the same door `codeaf resume` uses locally. The right end of the tab bar reads `on <machine>` so you can
 see whose afternoon you are looking at, and it is not there at all on a local session.
 
-Three of the seven places still read the machine this window is running on, and each says so
+Three of the eight places still read the machine this window is running on, and each says so
 in one line where its rows would be: **spend**, **search** and **memory**. The whole table,
 and why the look-stamp behind each tab's number is kept per machine, is on the Places page
 under *The places over --host*.
@@ -456,11 +454,14 @@ exact sentence each one says.
    travels on the wire like every other answer; nothing about it needs a browser or a
    port. This is the one entry on the list that is a capability, not a limit.
 
-5. **`/settings` opens anyway, and says one sentence as it opens.** Half these rows are
-   this surface's own — the mouse, the timestamps, the draft — and genuinely apply; the
-   other half govern the conversation, which reads them from the far machine's profile. It
-   says exactly:
-   `these rows are this machine's — the ones that govern the conversation are read from the profile on the other one`
+5. **`/settings` opens anyway, and says whose rows these are.** Every tab but Teams writes
+   this machine. The Teams tab is saved on the other machine when that machine can take the
+   change. Opening on any other tab says exactly:
+   `these rows belong to this machine; the Teams tab is saved on the other one.`
+   On the Teams tab it says only what is true there:
+   `these rows are saved on <machine>.`
+   An older engine, where the Teams tab cannot be saved over the connection, says exactly:
+   `these rows belong to this machine; this conversation reads its profile on the other one.`
 
 ## More of what does not work over --host
 
@@ -472,7 +473,7 @@ machine that runs the session, but this build has no wire door for them. They do
 or change this machine's copy. The cache, permissions, crew and harness commands name the
 connected machine and say `change it on that machine`; the memory commands say `memory
 shows what this machine has learned, and this session is on another`. In particular,
-`/cache clean now` deletes nothing here, `/crew <preset>` writes nothing here, and
+`/cache clean now` deletes nothing here, `/crew pin` writes nothing here, and
 `/subharness` does not claim the far registry is empty.
 
 ## Did cache clean delete the laptop cache or the remote machine's cache?
@@ -481,11 +482,12 @@ Neither. Over `--host`, `/cache`, `/cache clean`, and `/cache clean now` cannot 
 connected machine's build cache and refuse before touching this machine's cache. The
 answer names the connected machine and says to change it there.
 
-## Why didn't crew max change the crew on the remote machine?
+## Why didn't /crew pin change the crew on the remote machine?
 
-`/crew` has no far-profile door yet. Over `--host`, both the picker and `/crew <preset>`
-refuse before reading or writing this machine's profile, name the connected machine, and
-say to change the crew there.
+`/crew` has no far-profile door yet. Over `--host`, the panel and every shortcut —
+`pin`, `unpin`, `models`, `cap` — refuse before reading or writing this machine's profile,
+name the connected machine, and say to change the crew there:
+`devbox owns the crew · change it on that machine`.
 
 ## Why does remember over host not say whether memory is off?
 
@@ -553,7 +555,7 @@ The task roster lists this far conversation's work. Its rows come from the far
    `room unavailable — this session has no task rooms`; the far task id opens its live
    room, and steering and stopping cross to that task's engine.
 
-10. **`/image`, `/attach` and `@` are local, deliberately** — and this one is a capability as
+10. **`/attach` and `@` are local, deliberately** — and this one is a capability as
     much as a limit. The picture or file is on the machine you are sitting at and its bytes
     travel with the message, so a relative path and the completion walk are anchored here
     rather than on the remote workspace. What you attach really does arrive over there; see
@@ -576,7 +578,7 @@ The task roster lists this far conversation's work. Its rows come from the far
     keep it, or drop it — goes back the same way. Running a harness that already exists was
     never affected.
 
-13. **Three of the seven places still read this machine.** Spend adds up the ledger every
+13. **Three of the eight places still read this machine.** Spend adds up the ledger every
     model call on the machine this window runs on writes into, search reads the index of what
     was said here, and memory reads what sessions here learned — and there is no door on the
     wire for any of the three yet. Each place opens, keeps its head, its bar and its box, and
@@ -673,21 +675,51 @@ browser and no port, so that road stays open over `--host`.
 
 ## Settings over --host
 
-`/settings` opens over a connection and says one sentence as it opens:
+`/settings` opens over a connection. On any tab but Teams it says exactly:
 
 ```
-these rows are this machine's — the ones that govern the conversation are read from the profile on the other one
+these rows belong to this machine; the Teams tab is saved on the other one.
 ```
 
-Half the rows are this surface's own — the mouse, the timestamps, the draft — and those
-genuinely apply to what you are looking at. The other half govern the conversation, and
-the conversation reads them from the profile on the far machine. Change those over there.
+On the Teams tab it says only what is true there:
+
+```
+these rows are saved on <machine>.
+```
+
+An older engine, where that tab cannot be saved over the connection, says exactly:
+
+```
+these rows belong to this machine; this conversation reads its profile on the other one.
+```
+
+The rows on every tab but Teams are this machine's, and those changes apply to what you
+are looking at. The Teams tab is the other machine's when the connection can save it.
 
 **Asking codeaf to change a setting goes the other way.** `settings` and `change_setting`
-run inside the session, which is on the far machine, so they read and write **that**
-machine's profile — which is the profile the conversation actually obeys. So over a
+run inside the session, which is on the far machine, so they read and write that
+machine's profile, which is the profile the conversation actually obeys. So over a
 connection the two doors land in two different files: the panel edits this laptop, and
-asking edits the machine the work is on.
+asking edits the machine the work is on. The Teams tab is the exception on the panel.
+It saves on the other machine, the same place asking would write a team default.
+
+## Can I change the Teams settings on another machine, and where do team defaults go over a connection
+
+The **Teams** tab is the exception. Team defaults over a connection are what every team on
+the far machine inherits, so the tab shows that machine's values and a change is saved
+there, not on this computer. A value reads `from Settings`, the same words a team's own
+card uses when the team has not overridden it.
+
+You can change `questions go to the manager`, `team messages wake`, `daily cap per team`,
+`team depth` and `sub-team share`. The foot line says
+`a team can override any of these on its card · saved on <machine>`. The note on this tab
+says exactly `these rows are saved on <machine>.`
+
+An older engine, one that can show the teams but cannot take this change, keeps the tab
+read only. The note says exactly
+`these rows are on <machine>. changing them is not available over this connection.`
+The foot line says `changing them is not available over this connection`, and
+pressing enter on a row says the same sentence. Nothing is written on either machine.
 
 ## Approvals over --host
 
@@ -741,10 +773,10 @@ own stream, so a turn whose words match a registered harness still asks you, and
 
 ## Attaching a picture or file, a bare /attach chooser, and @ paths, over --host
 
-`/image`, `/attach` and `@` completion are **local on purpose**. The picture or file is on
+`/attach` and `@` completion are **local on purpose**. The picture or file is on
 the machine you are sitting at, and its bytes travel with the message.
 
-So a relative path you type after `/image` or `/attach`, and the `@` completion walk, are
+So a relative path you type after `/attach`, and the `@` completion walk, are
 anchored **here** — to the directory you launched from — and not to the remote workspace.
 A bare `/attach` opens the add context chooser here too, already browsing the machine you
 are sitting at. Files chosen there reach the tray and travel with the next message.

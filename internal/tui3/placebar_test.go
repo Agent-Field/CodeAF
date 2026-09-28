@@ -99,7 +99,7 @@ func TestTheBarIsARowOnEveryPlace(t *testing.T) {
 				if a.page != place.id {
 					t.Fatalf("at %d columns → on the bar opened %q", width, a.page.word())
 				}
-				if want := nextPage(place.id, false); a.bar.at != want {
+				if want := nextOn(barPages(place.id, false), place.id, false); a.bar.at != want {
 					t.Fatalf("at %d columns → landed the cursor on %q, want %q", width, a.bar.at.word(), want.word())
 				}
 				// AND `→` DOES NOT OPEN A ROW'S VERBS UP HERE. The strip is a
@@ -139,7 +139,12 @@ func TestTheBarIsARowOnEveryPlace(t *testing.T) {
 				// the room rather than merely coming back down.
 				barTop(t, a)
 				drive(t, a, key("right"), key("enter"))
-				if want := nextPage(place.id, false); a.page != want {
+				want := nextOn(barPages(place.id, false), place.id, false)
+				if want == pageChats {
+					// The way back to the chats opens no room: it leaves them.
+					want = pageNone
+				}
+				if a.page != want {
 					t.Fatalf("at %d columns enter on the bar landed on %q, want %q", width, a.page.word(), want.word())
 				}
 				if a.bar.on {
@@ -163,11 +168,11 @@ func TestTheBarCursorRepaintsTheWordAndMovesNothing(t *testing.T) {
 	a := placeApp(t)
 	before := a.frame
 	beforeFrame, _, _ := before()
-	beforeRow := strings.Split(beforeFrame, "\n")[placeTabRow]
+	beforeRow := strings.Split(beforeFrame, "\n")[navRow]
 
 	barTop(t, a)
 	afterFrame, _, _ := a.frame()
-	afterRow := strings.Split(afterFrame, "\n")[placeTabRow]
+	afterRow := strings.Split(afterFrame, "\n")[navRow]
 
 	if beforeRow == afterRow {
 		t.Fatalf("the bar is painted exactly as it was with the cursor on it: %q", plain(afterRow))
@@ -179,13 +184,13 @@ func TestTheBarCursorRepaintsTheWordAndMovesNothing(t *testing.T) {
 	// rather than merely somewhere in the program's own memory.
 	drive(t, a, key("right"))
 	walked, _, _ := a.frame()
-	if strings.Split(walked, "\n")[placeTabRow] == afterRow {
+	if strings.Split(walked, "\n")[navRow] == afterRow {
 		t.Fatal("→ along the bar changed nothing on the frame")
 	}
 }
 
 // AND THE WIDTH LADDER MAY NOT DROP THE WORD THE CURSOR IS ON. The bar gives up
-// words as the frame narrows (pages.go's [app.placeTabBar]), and a cursor on a
+// words as the frame narrows (topnav.go), and a cursor on a
 // word that was given up would be a cursor nobody can see — which is SCREEN 3a's
 // clause said about a row rather than about a key.
 func TestTheNarrowBarKeepsTheWordTheCursorIsOn(t *testing.T) {
@@ -209,7 +214,7 @@ func TestTheNarrowBarKeepsTheWordTheCursorIsOn(t *testing.T) {
 
 // ── the bar is not a mode ───────────────────────────────────────────────────
 
-// `tab`, `shift+tab` AND `alt+1…7` KEEP WORKING FROM THE BAR, and a printable
+// `tab`, `shift+tab` AND `alt+1…9` KEEP WORKING FROM THE BAR, and a printable
 // character goes to the composer with the cursor following it back down.
 //
 // A ROW THAT CAPTURED THE KEYBOARD WOULD BE A MODE, and the six classes have no
@@ -274,8 +279,9 @@ func TestTheBarCursorWrapsAtBothEnds(t *testing.T) {
 
 // ── the pointer on the bar ──────────────────────────────────────────────────
 
-// MOTION OVER A TAB WORD CHANGES THAT WORD'S INK AND NOTHING ELSE ON THE FRAME,
-// and motion off it puts the ink back.
+// MOTION OVER A TAB WORD CHANGES THAT WORD'S GROUND AND THE HINT LINE AND
+// NOTHING ELSE ON THE FRAME, and motion off it puts both back. The hint line
+// says what the word opens and its key (topnav.go's [app.headHint]).
 //
 // A TAB WORD IS A DOOR AND A DOOR SHOULD LOOK BACK. The bar answered a press and
 // said nothing at all while a pointer crossed it, so seven words that open seven
@@ -285,14 +291,18 @@ func TestHoveringATabWordLiftsItsInkAndNothingElse(t *testing.T) {
 	before, _, _ := a.frame()
 	span := barWordSpan(t, a, pageSettings)
 
-	drive(t, a, tea.MouseMotionMsg{X: span.from, Y: placeTabRow})
+	drive(t, a, tea.MouseMotionMsg{X: span.from, Y: navRow})
 	after, _, _ := a.frame()
 	beforeRows, afterRows := strings.Split(before, "\n"), strings.Split(after, "\n")
 	if len(beforeRows) != len(afterRows) {
 		t.Fatalf("the frame changed height under a pointer: %d rows became %d", len(beforeRows), len(afterRows))
 	}
+	hint := len(afterRows) - 1
+	if got := plain(afterRows[hint]); !strings.Contains(got, placeChord(pageSettings)+" settings") || !strings.Contains(got, placeFor(pageSettings).about()) {
+		t.Fatalf("the hint line does not say what the hovered word opens: %q", got)
+	}
 	for at := range beforeRows {
-		if at == placeTabRow {
+		if at == navRow || at == hint {
 			continue
 		}
 		if beforeRows[at] != afterRows[at] {
@@ -300,13 +310,13 @@ func TestHoveringATabWordLiftsItsInkAndNothingElse(t *testing.T) {
 				at, plain(beforeRows[at]), plain(afterRows[at]))
 		}
 	}
-	if beforeRows[placeTabRow] == afterRows[placeTabRow] {
-		t.Fatalf("the hovered word is painted exactly as it was: %q", plain(afterRows[placeTabRow]))
+	if beforeRows[navRow] == afterRows[navRow] {
+		t.Fatalf("the hovered word is painted exactly as it was: %q", plain(afterRows[navRow]))
 	}
 	// AND THE CELLS ARE THE SAME CELLS: the ink lifted, the bar did not move.
-	if plain(beforeRows[placeTabRow]) != plain(afterRows[placeTabRow]) {
+	if plain(beforeRows[navRow]) != plain(afterRows[navRow]) {
 		t.Fatalf("the hover moved a cell on the bar:\n%q\n%q",
-			plain(beforeRows[placeTabRow]), plain(afterRows[placeTabRow]))
+			plain(beforeRows[navRow]), plain(afterRows[navRow]))
 	}
 	// AND IT MOVED NOTHING A KEY WOULD HAVE MOVED.
 	if a.page != pageHome {
@@ -317,9 +327,13 @@ func TestHoveringATabWordLiftsItsInkAndNothingElse(t *testing.T) {
 	// door claiming to be under a pointer that is somewhere else.
 	drive(t, a, tea.MouseMotionMsg{X: span.from, Y: placeHeadRows + 1})
 	restored, _, _ := a.frame()
-	if strings.Split(restored, "\n")[placeTabRow] != beforeRows[placeTabRow] {
+	if strings.Split(restored, "\n")[navRow] != beforeRows[navRow] {
 		t.Fatalf("the pointer left the bar and the ink stayed lifted:\n%q",
-			plain(strings.Split(restored, "\n")[placeTabRow]))
+			plain(strings.Split(restored, "\n")[navRow]))
+	}
+	if strings.Split(restored, "\n")[hint] != beforeRows[hint] {
+		t.Fatalf("the pointer left the bar and the hint line kept its sentence:\n%q",
+			plain(strings.Split(restored, "\n")[hint]))
 	}
 }
 
@@ -332,10 +346,10 @@ func TestHoveringTheGapBetweenTabsLiftsNothing(t *testing.T) {
 	if !ok {
 		t.Skip("this bar has no gap between two chips")
 	}
-	drive(t, a, tea.MouseMotionMsg{X: gap, Y: placeTabRow})
+	drive(t, a, tea.MouseMotionMsg{X: gap, Y: navRow})
 	after, _, _ := a.frame()
-	if strings.Split(before, "\n")[placeTabRow] != strings.Split(after, "\n")[placeTabRow] {
-		t.Fatalf("a pointer in the gap lifted a word:\n%q", plain(strings.Split(after, "\n")[placeTabRow]))
+	if strings.Split(before, "\n")[navRow] != strings.Split(after, "\n")[navRow] {
+		t.Fatalf("a pointer in the gap lifted a word:\n%q", plain(strings.Split(after, "\n")[navRow]))
 	}
 }
 
@@ -352,7 +366,7 @@ func TestTheHoverAndTheBarCursorCompose(t *testing.T) {
 		t.Fatal("the cursor walked onto the word this test means to hover")
 	}
 	span := barWordSpan(t, a, pageSettings)
-	drive(t, a, tea.MouseMotionMsg{X: span.from, Y: placeTabRow})
+	drive(t, a, tea.MouseMotionMsg{X: span.from, Y: navRow})
 
 	if a.tabHover != pageSettings {
 		t.Fatalf("the pointer is recorded over %q", a.tabHover.word())
@@ -361,7 +375,7 @@ func TestTheHoverAndTheBarCursorCompose(t *testing.T) {
 		t.Fatalf("the hover moved the cursor: it is on %q (up=%v)", a.bar.at.word(), a.bar.on)
 	}
 	// Both marks are on the one row, and the row still says the same four words.
-	row := strings.Split(mustFrame(a), "\n")[placeTabRow]
+	row := strings.Split(mustFrame(a), "\n")[navRow]
 	for _, id := range barPages(a.page, false) {
 		if !strings.Contains(plain(row), id.word()) {
 			t.Fatalf("the bar lost %q while wearing two marks: %q", id.word(), plain(row))
@@ -375,20 +389,20 @@ func TestTheHoverAndTheBarCursorCompose(t *testing.T) {
 func TestTheWheelOverTheBarWalksThePlaces(t *testing.T) {
 	a := placeApp(t)
 	a.frame()
-	drive(t, a, tea.MouseWheelMsg{X: 4, Y: placeTabRow, Button: tea.MouseWheelDown})
+	drive(t, a, tea.MouseWheelMsg{X: 4, Y: navRow, Button: tea.MouseWheelDown})
 	if want := nextPage(pageHome, false); a.page != want {
 		t.Fatalf("a wheel notch over the bar landed on %q, want %q", a.page.word(), want.word())
 	}
 	a.frame()
-	drive(t, a, tea.MouseWheelMsg{X: 4, Y: placeTabRow, Button: tea.MouseWheelUp})
+	drive(t, a, tea.MouseWheelMsg{X: 4, Y: navRow, Button: tea.MouseWheelUp})
 	if a.page != pageHome {
 		t.Fatalf("the wheel back up landed on %q, want home again", a.page.word())
 	}
 	// AND ONE ROOM A TICK AND NOT THREE. Three would open two rooms nobody asked
 	// to see on the way to the third, and each opening throws away a filter.
 	a.frame()
-	drive(t, a, tea.MouseWheelMsg{X: 4, Y: placeTabRow, Button: tea.MouseWheelDown})
-	drive(t, a, tea.MouseWheelMsg{X: 4, Y: placeTabRow, Button: tea.MouseWheelDown})
+	drive(t, a, tea.MouseWheelMsg{X: 4, Y: navRow, Button: tea.MouseWheelDown})
+	drive(t, a, tea.MouseWheelMsg{X: 4, Y: navRow, Button: tea.MouseWheelDown})
 	if want := pages()[2]; a.page != want {
 		t.Fatalf("two notches walked to %q, want %q", a.page.word(), want.word())
 	}

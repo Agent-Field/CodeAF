@@ -580,11 +580,11 @@ func (a *app) copiedFile(msg copiedMsg) {
 	short := shortPath(msg.path, a.tilde, 0)
 	switch {
 	case msg.err == nil:
-		a.note(filesCopiedWord + short)
+		a.toldNote(filesCopiedWord + short)
 	case errors.Is(msg.err, fs.ErrExist):
-		a.note(short + filesThereWord)
+		a.toldNote(short + filesThereWord)
 	default:
-		a.note(filesCopyFailedWord + msg.err.Error())
+		a.toldNote(filesCopyFailedWord + msg.err.Error())
 	}
 }
 

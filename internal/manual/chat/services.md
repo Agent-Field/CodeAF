@@ -2,11 +2,12 @@
 
 ## Add a key — connect a service, add an api key for another provider, use a different model service
 
-Another model service is added here. Open `/connect` or `/connections`. The `models`
-group lists DeepSeek, Z.ai, Moonshot, MiniMax, Alibaba Qwen, Codex, Ollama and **Custom
-OpenAI-compatible API**, followed by any service already connected and an `add custom
-connection` row. Codex says `browser`; it signs in a ChatGPT plan instead of asking for
-an API key. Ollama needs no key. The other named vendors ask for theirs.
+An api key for another provider, or another model service, is added here. Open `/connect` or
+`/connections`. The `models` group lists DeepSeek, Z.ai, Moonshot, MiniMax, Alibaba Qwen, Codex,
+Ollama and **Custom OpenAI-compatible API**, followed by any service already connected and, once
+a custom connection is connected, an `add custom connection` row. Codex says `browser`; it signs
+in a ChatGPT plan instead of asking for an API key. Ollama needs no key. The other named vendors
+ask for theirs.
 Pick a row and answer its fields. A successful listed service says
 `deepseek-direct is connected · 6 models`; one without a list says only
 `deepseek-direct is connected`. A service with more than one billing door names the one it
@@ -25,12 +26,12 @@ does not open, and codeaf does not show
 `openrouter is not connected · enter on your message connects in a browser, or export OPENROUTER_API_KEY`.
 Ollama counts as connected without a key because its local service explicitly needs none.
 
-The crew follows the same road. Its small background calls — naming a session, titling a
-task, the reflex and the judges — normally use the configured crew models. If one of those
+The small background calls follow the same road — naming a session, titling a task, the
+reflex and the judges — which normally use the models on the reflex and small-work rows. If one of those
 models belongs to the default service and that service has no key, the call instead uses
 the conversation's model on the connected service. Tools, tasks and child agents launched
 from that turn inherit the same rule, so none of them makes an OpenRouter request. If the
-default service does have a key, the crew keeps using its configured models as usual.
+default service does have a key, those calls keep using their configured models as usual.
 
 ## What model do I get after connecting a service — why did my model change
 
@@ -127,6 +128,10 @@ service is connected and stored as before. For a multi-door service, codeaf trie
 remaining doors; if every one refuses for plan or payment reasons, it stores nothing and
 says, for example,
 `z-ai accepted the key but the account cannot pay — Insufficient balance or no resource package. Please recharge.`
+A payment refusal on OpenRouter also asks for its balance again, subject to the
+30-second quiet period after the last completed read. If OpenRouter
+says it can afford a smaller positive output cap, codeaf retries that request
+once with that cap. The final refusal keeps the vendor's whole sentence.
 A plain `429` with no recognised payment or plan code still means the service is busy and
 is waited out. Every saved key lives in the profile `config.json`, owner-readable only.
 
@@ -263,7 +268,7 @@ opens it for editing with the address and name pre-filled, and an empty key box 
 the saved key. A changed name is a rename: every model id already picked under the old
 name is re-spelled with the new one, the conversation's own pick first (a turn still
 answering is waited out), and with it the stored ones: reasoning levels, the
-crew's role models, role pins, the fallback chain and the capability slots. A rename changes a label and nothing
+worker, checker and planner pins, role pins, the fallback chain and the capability slots. A rename changes a label and nothing
 else; it does not move the conversation onto a different model. `ctrl+r` on the row
 reconnects with the saved details. The `add custom connection` row runs the same three
 questions for a new connection, so the tab never sends you to `/connect` to add one.

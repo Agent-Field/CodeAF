@@ -32,6 +32,10 @@ hand work off, see what is moving across every project, and step in only where
 your judgment is needed. A factory, on your own machine, and the more you hand it
 the more it does.
 
+**#1 on DeepSWE** of ten coding harnesses on the same model, ahead of Claude Code,
+Codex, OpenCode, Kilo and DeepSeek's own harness, at the lowest cost per solved
+issue ([benchmarks](#benchmarks)).
+
 Written in Go as one small binary, with nothing else to install or run. Apache
 2.0. By [AgentField AI](https://agentfield.ai?utm_source=github-readme&utm_campaign=codeaf-readme&utm_id=codeaf-readme-byline).
 
@@ -51,6 +55,9 @@ curl -fsSL https://agentfield.ai/get/codeaf | bash
 codeaf
 ```
 
+<details>
+<summary>Pin a version, or build from source</summary>
+
 The script puts the release binary for your platform in `~/.codeaf/bin`. To
 pin a version, give it a tag from the
 [releases page](https://github.com/Agent-Field/codeaf/releases), where the
@@ -62,6 +69,8 @@ curl -fsSL https://agentfield.ai/get/codeaf | VERSION=<tag> bash
 
 To build it yourself: `git clone`, `make build`, `bin/codeaf`
 ([guide](docs/GUIDE.md#install)).
+
+</details>
 
 On first start it connects OpenRouter in your browser, or takes a key. Codex signs in
 a ChatGPT plan from `/connect` or `codeaf connect codex`; DeepSeek, GLM, Kimi, MiniMax
@@ -133,38 +142,46 @@ A run is a task like any other, on `home`, with a room and a stop.
 
 - **Coming soon, native:** [PR-AF](https://github.com/Agent-Field/pr-af), the #1
   open-source code reviewer on Martian Code-Review-Bench.
-- **Coming soon, in the benchmark below:** the developer subharness against
-  general harnesses on the same open model.
+- **Native now:** `/senior-dev`, the developer subharness. First of ten
+  harnesses on DeepSWE, in the [benchmark below](#benchmarks).
 - **Your own:** "make me a harness for triaging flaky tests" designs one, saves
   it, and `/subharness` runs it.
 
 ## Benchmarks
 
-Coming soon. The run is held-out GitHub issues, several seeds each, through
-CodeAF's developer subharness and the general harnesses on the same open model:
-pass rate, cost per issue and time per issue, with every failure, timeout and
-unpriced call written up in [BENCHMARKS.md](BENCHMARKS.md). The chart and the
-table land here when the run completes, and `bench/` runs it on your own
-repository.
+<img src="assets/readme/benchmark-deepswe.webp" alt="First on DeepSWE: senior-dev, CodeAF's developer subharness, solved the most tasks (54.9%) at the lowest cost per solved task (1x). Every other harness solved less and paid more per solve: mini-swe-agent 1.9x, codex 2.1x, pi 2.4x, claude-code 3.4x, omp, kilo and opencode about 4.5x, muse-code 11.3x, deepseek-harness 26.6x." width="100%">
+
+`/senior-dev`, CodeAF's developer subharness, against nine other coding harnesses
+on the same model, DeepSeek V4 Flash: 113 real GitHub issues from DeepSWE, graded
+by the official verifiers. It solved the most issues and paid the least for each
+one it solved.
+
+Every number, the method and the limits: [docs/benchmarks/deepswe](docs/benchmarks/deepswe/).
 
 ## The right model for each call
 
-One session, many models. The model you talk to is one seat. Five more, the
-crew, take the calls you did not type:
+One session, many models. The model you talk to is one seat. Every task you hand
+off runs on a crew of three more, picked for that task from what kind of work it
+is — a bug fix, a complex fix, open-ended work, or something else:
 
-| seat | what it answers |
+| seat | what it does |
 | --- | --- |
-| reflex | memory, titles, the safety gate. Near free, reads every turn. |
-| small work | digests, task names, yes-or-no checks |
-| worker | every task you hand off. Most of the bill. |
-| careful work | checks on finished work, the brief a task is shaped into, vision |
-| mastermind | plans runs and designs subharnesses |
+| worker | does the work. Most of the bill. |
+| planner | plans runs and designs subharnesses |
+| checker | checks finished work before it lands |
 
-`/crew frugal`, `balanced` or `max` sets all five in one word. Any seat can be
-pinned.
+The crew is auto by default. Each seat is scored from its catalog metadata by
+learned weights, moved by how this install's own tasks ended, over every model your
+connected providers serve. The method is in the paper,
+[Pareto Crewing](docs/design/model-pool/pareto-crewing.pdf). `/crew` shows it: the seats, the allowed models, the
+providers, a per-task limit ($5 unless set) and an optional daily cap, and today's
+spend. `/crew pin checker <model>` pins one seat, `/crew models open` limits every
+seat to open-weight models, and `/task --best` or `/task --cheap` moves one task.
+Each task says its crew and what it cost against the estimate, and `/redo
+stronger` runs it again a step up. Two cheap rows, reflex and small work, take
+the small calls you did not type: memory, titles, digests, the safety gate.
 
-Every finished task is graded by the check it already had to pass. Work that
-keeps failing on the worker seat moves up to careful work on its own, and each
+Every finished task is graded by the check it already had to pass, and each
 request goes to the provider that has been fastest for that kind of call.
 `codeaf models` prints the ratings.
 
@@ -175,7 +192,7 @@ ChatGPT plan, Ollama and any OpenAI-compatible endpoint.
 
 ## Model Pool
 
-The picker can choose models from what other installs have found. It is on by
+Installs can pool what they have measured about models. It is on by
 default: what an install sends is computed, text-free numbers about the models
 it ran (role, model, a number, which model judged, door, size bucket, day) under
 a per-install nonce, never code,
@@ -183,7 +200,7 @@ prompts, paths or an identity, and `codeaf pool status` shows exactly what is
 waiting to go. Turn it off with `model_pool = off` on the settings sheet or
 `CODEAF_MODEL_POOL=off`; `read` uses the pool and sends nothing, and
 `CODEAF_TELEMETRY=off` caps it at `read` along with the usage counts. The relay
-publishes a signed index the crew picker reads under `picked from = learn`. The index is mirrored on the `model-pool` branch at
+publishes a signed index of what the installs measured. The index is mirrored on the `model-pool` branch at
 `pool/index.json`. The design is [Pareto Crewing](docs/design/model-pool/pareto-crewing.pdf);
 the relay's code is under `relay/`, with a [runbook](docs/design/model-pool/RUNBOOK.md)
 that includes running your own.

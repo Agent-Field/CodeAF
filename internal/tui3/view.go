@@ -267,6 +267,21 @@ func (a *app) View() tea.View {
 // is the one somebody reaches for — fails rather than quietly costing a frame.
 func (a *app) frame() (string, int, int) {
 	body, caretX, caretY := a.frameBody()
+	// A tile just opened from the wall frames the conversation's first few
+	// pictures as it grows into the frame (wall.go); a string compare when not.
+	body = a.wallZoomed(body)
+	// The strip's team switcher hangs over whatever page is drawn under it
+	// (teammenu.go); the frame as it was when it is down.
+	body = a.teamMenuOver(body)
+	// And the nav's fold menu hangs under `more ▾` on the same terms
+	// (navmore.go).
+	body = a.navMoreOver(body)
+	// The teams page's members card hangs over its pane (teamcrew.go), a
+	// team's card (teamsheet.go) over whatever is drawn under it, and the move
+	// picker (teammove.go) over both, since the card opens it.
+	body = a.teamCrewOver(body)
+	body = a.teamSheetOver(body)
+	body = a.teamMoveOver(body)
 	return norm.NFC.String(body), caretX, caretY
 }
 
@@ -274,6 +289,14 @@ func (a *app) frame() (string, int, int) {
 // one composition pass [app.frame] puts over the whole of it.
 func (a *app) frameBody() (string, int, int) {
 	a.inlineWaitShowing = false
+	// AND THERE IS NO NAV UNTIL A FRAME DRAWS ONE. Every frame with a head goes
+	// through [app.headRows], which records the row it put the nav on; the
+	// frames that do not (home's phone inbox and sheet, the task record card, a
+	// conversation under the strip's floors) draw something else in those cells
+	// entirely, and a press resolved against the last nav this window happened
+	// to paint would open a place for a click on a rule (topnav.go's
+	// [app.navPress]).
+	a.tabRow = -1
 	width, height := a.size()
 	if a.pasteEdit.open {
 		return a.pasteEditorFrame(width, height)
@@ -282,21 +305,9 @@ func (a *app) frameBody() (string, int, int) {
 	// nothing to type into (home at rest). Set here so every path below starts
 	// from the same answer and only the ones that hide it say so.
 	a.caret = true
-	if a.railTaskPlanOn {
-		lines, caretX, caretY := a.taskPlanFrame(width, height)
-		return strings.Join(lines, "\n"), caretX, caretY
+	if a.wall.on {
+		return strings.Join(a.wallFrame(width, height), "\n"), 0, 0
 	}
-	if a.workTabOn {
-		lines := a.workTabFrame(width, height)
-		return strings.Join(lines, "\n"), 2, max(len(lines)-1, 0)
-	}
-	// AND THERE IS NO TAB BAR UNTIL A FRAME DRAWS ONE. Every place goes through
-	// [placeFrame], which records the row it put the bar on; the frames that do
-	// not — home's phone inbox and sheet, the task record card — draw something
-	// else in those cells entirely, and a press resolved against the last bar
-	// this window happened to paint would open a place for a click on a rule
-	// (placemouse.go's [app.placeTabPress]).
-	a.tabRow = -1
 	// THE FIRST-RUN SETUP IS DECIDED BEFORE EVERY OTHER FULLSCREEN SURFACE,
 	// because it is the one that may be open before any of them exists and it
 	// goes away to reveal whichever of them was decided underneath (firstrun.go).
@@ -328,7 +339,7 @@ func (a *app) frameBody() (string, int, int) {
 	// with a refusal under a box that should never have been on the page.
 	//
 	// IT IS UNDER THE PLACES because a place is a room in the machine and this is
-	// one job in one conversation; alt+1…7 leaves it, and [app.standDownRest]
+	// one job in one conversation; alt+1…9 leaves it, and [app.standDownRest]
 	// closes it on the way out so it cannot reappear under a place somebody has
 	// since walked away from.
 	//
@@ -425,6 +436,12 @@ func (a *app) chatFrameLines(width, height int) ([]string, int, int) {
 		}
 	}
 	chrome, chromeMarks, caretX, caretRow := a.chrome(width)
+	// The chrome just laid out is the frame's own, so what its greeting drew is
+	// what this frame shows: an owed usage notice among it is noted here, and the
+	// update loop tells the door ([app.settleTelemetryNotice]).
+	if a.welcome.noticeDrawn {
+		a.telemetryNoticeOnFrame = true
+	}
 	// The welcome box rides at the top of the frame rather than at the bottom
 	// with the chrome it is built with ([welcomeLift] states why). Splitting it
 	// off here keeps [app.frameOut]'s law intact: what is left is still the tail,
@@ -442,7 +459,13 @@ func (a *app) chatFrameLines(width, height int) ([]string, int, int) {
 	// conversation that is and which others this window can go back to
 	// (chattabs.go). They are two rows because they are two questions — the one
 	// that used to carry both carried neither well.
-	tabs := a.tabsRow(width)
+	// THE STRIP IS LAID OUT ONLY WHILE A CONVERSATION IS IN FRONT. The teams
+	// page's hosted pane is drawn through here with the page set aside, and
+	// that pane wears the place's head, which has no strip (head.go).
+	tabs := ""
+	if a.stripInHead() {
+		tabs = a.tabsRow(width)
+	}
 	head := a.roomHeadRows(width)
 	// AND THE TASK STRIP IS THE ROW UNDER IT, for the same reason and at the same
 	// width: what is running is a fact about the SESSION, not about the
@@ -459,15 +482,17 @@ func (a *app) chatFrameLines(width, height int) ([]string, int, int) {
 	// the whole window rather than about the transcript (task.go).
 
 	rows := make([]string, 0, height)
-	if tabs != "" {
-		// THE HEAD IS THE PLACES' HEAD — the pulse, the strip, the rule and the
-		// blank — drawn by the one function both frames call (head.go), and a
-		// room lays its trail under the blank (chattabs.go's
-		// [app.headSealHeight]). The prefix is cut at exactly the count
-		// [app.headHeight] charges, so the rows the frame draws and the rows the
-		// scrolling subtracts are the same rows by construction.
-		head := a.headRows(width, tabs, a.pal)
-		rows = append(rows, head[:a.tabsHeight(width)+a.headSealHeight(width)]...)
+	if n := a.tabsHeight(width) + a.headSealHeight(width); n > 0 {
+		// THE HEAD IS DRAWN BY THE ONE FUNCTION BOTH FRAMES CALL (head.go):
+		// the nav, the strip while a conversation is in front, the rule and
+		// the blank. A room lays its trail under the blank. The prefix is cut
+		// at exactly the count [app.headHeight] charges, so the rows the frame
+		// draws and the rows the scrolling subtracts are the same rows.
+		drawn := a.headRows(width, tabs, a.pal)
+		if n > len(drawn) {
+			n = len(drawn)
+		}
+		rows = append(rows, drawn[:n]...)
 	}
 	if len(head) > 0 {
 		rows = append(rows, head...)
@@ -480,6 +505,12 @@ func (a *app) chatFrameLines(width, height int) ([]string, int, int) {
 		rows = append(rows, a.roomKinRows(width)...)
 	}
 	rows = append(rows, strip...)
+	// AND THE TEAMS PAGE'S OWN ROWS, while it hosts this conversation: the team's
+	// header, members and inbox, pinned under the strip and charged in
+	// [app.topHeight] on the same terms (teamspagehost.go).
+	if a.teamsHosting() {
+		rows = append(rows, a.teamsHostTop(width)...)
+	}
 	// THE ROSTER TAKES THE BODY WHOLE on a frame with no columns to lend it: the
 	// same rows, the same folds, the same footer, laid out at the full width
 	// instead of squeezed into thirty columns that are not there (task.go's
@@ -675,7 +706,8 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	chip := a.jumpChip(width)
 	jumped := false
 	// addGap spends one row of the ladder, and hands it to the chip if the chip
-	// has not been placed yet.
+	// has not been placed yet. THE TIP DOES NOT RIDE THIS ROW: it stands at the
+	// keys row's right end, over the project (footswap.go's [app.hintRow]).
 	addGap := func() {
 		if chip != "" && !jumped {
 			jumped = true
@@ -1020,6 +1052,11 @@ func (a *app) rule(width int) string {
 // nothing at all.
 func (a *app) size() (int, int) {
 	width, height := a.width, a.height
+	// THE TEAMS PAGE LENDS ITS MANAGER A RECTANGLE (teamspagehost.go): while the
+	// pane hosts the conversation, the conversation's width is the terminal's
+	// less the rail, so every layout and hit test it makes resolves against the
+	// cells it is really drawn in.
+	width -= a.teamsHostRail()
 	if width < 8 {
 		width = 8
 	}
@@ -1101,7 +1138,10 @@ func (a *app) bodyRows(width, height int) ([]row, int) {
 	if a.roomOpen() {
 		return a.roomWindow(width, height)
 	}
-	return a.window(width, height)
+	// A MESSAGE SOMEBODY WAS JUST TAKEN TO IS LIFTED for a moment
+	// (teamjump.go). The draw only: the pointer resolves through window.
+	rows, pad := a.window(width, height)
+	return a.trafficLandRows(rows, width), pad
 }
 
 // bodyTop is the screen row the conversation starts on, or -1 when the frame is
@@ -1225,7 +1265,9 @@ func (a *app) startPageBody() int {
 // is resolved through them — three questions that must never be able to disagree
 // about where the body starts. Neither of the two may ask [app.viewHeight] back,
 // which is why both answer from the terminal's size alone.
-func (a *app) topHeight() int { return a.headHeight() + a.stripHeight() }
+func (a *app) topHeight() int {
+	return a.headHeight() + a.stripHeight() + a.teamsHostTopHeight()
+}
 
 // headHeight is what the pinned focus header costs the body region: one row
 // while a room is open on a frame with the height to spare, the kin rows under
@@ -1235,11 +1277,9 @@ func (a *app) topHeight() int { return a.headHeight() + a.stripHeight() }
 // through, rather than at the frame — a header the frame drew and the scrolling
 // did not know about would put the room's last row under the input box.
 func (a *app) headHeight() int {
-	// THE PULSE AND THE TAB STRIP ARE THE FIRST OF THOSE ROWS AND ARE CHARGED
-	// FOR HERE, on the strip's own two floors (chattabs.go's [app.tabsHeight]):
-	// they are drawn over the conversation and over every page inside it,
-	// because which conversation this is stays true wherever you have walked to
-	// inside one.
+	// THE NAV, AND THE STRIP WHILE A CONVERSATION IS IN FRONT, ARE THE FIRST
+	// OF THOSE ROWS AND ARE CHARGED FOR HERE (chattabs.go's [app.tabsHeight]).
+	// On a place the strip is not drawn, so the page starts one row higher.
 	//
 	// AND THE SEAM UNDER THE STRIP — the rule and the blank that are the head's
 	// last two rows on every frame, a room's included — which is what closes the
@@ -1408,6 +1448,11 @@ func (a *app) resized(width, height int) tea.Cmd {
 		return nil
 	}
 	a.width, a.height = width, height
+	// A hover names a door the last layout drew. The new width may not draw
+	// it: `more ▾` leaves the row once the places fit, and a nav word may
+	// fold. The hint reads the hover, not the row, so leaving it would keep
+	// naming a door that is gone until the pointer moved.
+	a.dropResizeHover()
 	a.touch()
 	if a.rows == nil {
 		a.clampScroll()

@@ -150,7 +150,7 @@ func TestAPersonsTaskIsAdmittedOnTheirOwnWords(t *testing.T) {
 	// This law covers the legacy task tree. An ambient bash-belt setting takes
 	// StartTask through the plan-backed road, whose worker brief also carries
 	// the plan identity and lifecycle instructions.
-	t.Setenv("CODEAF_TASK_BELT", "")
+	t.Setenv("CODEAF_TASK_BELT", "node")
 	client := &scriptedCompleter{steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) {
 		return textResponse(shapedAnswer), nil
 	}}}

@@ -82,7 +82,9 @@ func TestAnUnverifiedLandingIsNeitherDoneNorFailed(t *testing.T) {
 		t.Fatalf("an unverified node filed under %q, want %q",
 			railGroupWords[group], railGroupWords[railAttention])
 	}
-	rail := plain(strings.Join(a.railRows(12), "\n"))
+	// The row, and the hint line over it, where the reason the row has no room
+	// for is said.
+	rail := plain(strings.Join(a.railRows(12), "\n")) + "\n" + railHint(a, 7)
 	for _, want := range []string{
 		// The column leads with the STATE and nothing else — the card's identity
 		// cell is not spent here (task.go's [app.railLead]).
@@ -171,6 +173,9 @@ func TestARollupCountsADecidedNodeOnceByItsNewestCard(t *testing.T) {
 	if strings.Contains(text, glyphAsk) {
 		t.Fatalf("the rollup still asks a question that was answered:\n%s", text)
 	}
+	// Settled batches keep their task list behind the expansion.
+	a.openDone(a.doneEntryFor(1))
+	text = taskText(a)
 	if n := strings.Count(text, "Port the parser"); n != 1 {
 		t.Fatalf("the decided node is drawn %d times in its batch, want once:\n%s", n, text)
 	}

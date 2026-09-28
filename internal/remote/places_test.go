@@ -43,6 +43,7 @@ func farWorld(now time.Time) session.World {
 					ID: "1", Name: "trimming", Label: "trimming the index",
 					Title: "trimming the index", Status: string(session.TaskDone),
 					Cost: 22.54, SessionID: "bbbb000000000002", EndedAt: now,
+					Program: "senior-dev",
 				}}},
 			}},
 		}},
@@ -129,6 +130,11 @@ func TestTheWorldCrossesTheWire(t *testing.T) {
 	tasks := rows[0].Tasks.Rows
 	if len(tasks) != 1 || tasks[0].Label != "trimming the index" || tasks[0].Cost != 22.54 {
 		t.Fatalf("the work did not cross: %+v", tasks)
+	}
+	// AND WHICH PROGRAM HAD IT, which is the badge the far machine's tasks place
+	// draws on the row.
+	if tasks[0].Program != "senior-dev" {
+		t.Fatalf("the work's program did not cross: %+v", tasks[0])
 	}
 }
 

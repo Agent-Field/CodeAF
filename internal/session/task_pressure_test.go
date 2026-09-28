@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // ── the reservation: a fan wider than the machine ──────────────────────────
@@ -201,6 +203,52 @@ func TestAFanWiderThanTheMachineStartsWhatItCanCarryAndHoldsTheRest(t *testing.T
 	}
 }
 
+func TestMachineAdmissionRefreshesBothCeilingsWithoutRestart(t *testing.T) {
+	profile := t.TempDir()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) {
+		cfg.ProfileDir = profile
+		cfg.TaskMaxLoad = 1.5
+		cfg.TaskMinFreeMB = 0
+	})
+	reading := loaded()
+	reading.availableMB = 1 << 20
+	setReading := func(governor *admissionGovernor) {
+		governor.read = func() (machineReading, bool) { return reading, true }
+		governor.now = func() time.Time { return time.Unix(1, 0) }
+		governor.observe(0)
+	}
+
+	graph := agent.graph()
+	setReading(graph.governor)
+	if graph.governor.admits(0) {
+		t.Fatal("the loaded graph admitted work before its setting changed")
+	}
+	run := newRunAdmission(1.5, 0, profile, NewTaskLanes()).(*runAdmission)
+	setReading(run.governor)
+	if run.MayStart() {
+		t.Fatal("the loaded run admission admitted work before its setting changed")
+	}
+
+	settings := config.NewSettings(config.SettingsOptions{ProfileDir: profile})
+	if row, ok := settings.Row(config.KeyTaskMaxLoad); !ok {
+		t.Fatal("task.max_load is not a settings row")
+	} else if err := row.Apply("0"); err != nil {
+		t.Fatalf("turn off task.max_load: %v", err)
+	}
+	if row, ok := settings.Row(config.KeyTaskMinFreeMB); !ok {
+		t.Fatal("task.min_free_mb is not a settings row")
+	} else if err := row.Apply("0"); err != nil {
+		t.Fatalf("turn off task.min_free_mb: %v", err)
+	}
+	graph.runFrontier()
+	if !graph.governor.admits(0) {
+		t.Fatal("the graph stayed held after both ceilings were turned off")
+	}
+	if !run.MayStart() {
+		t.Fatal("the run stayed held after both ceilings were turned off")
+	}
+}
+
 // ONE READING, JUDGED ONCE PER ADMISSION. The host is read at most once a
 // second, and a fan handed out inside that second is judged twenty times
 // against one reading — each time with the nodes already started counted. This
@@ -364,8 +412,8 @@ func TestTheTreeReadingCountsThisProcess(t *testing.T) {
 //
 //   - a node is moved to TaskRunning in exactly one function, runFrontier;
 //   - runFrontier asks holdOnStartingLocked about each node before that move;
-//   - holdOnStartingLocked is the only caller of the governor's admits, and
-//     runFrontier the only caller of its observe.
+//   - holdOnStartingLocked asks for the node road, and the run engine's
+//     MayStart gate asks for the worker road. No other path asks the governor.
 //
 // A node BORN running is not a start and is named below with its reason.
 //
@@ -444,10 +492,19 @@ func TestEveryStartIsJudgedByTheGovernor(t *testing.T) {
 	if !asksHold {
 		t.Error("runFrontier no longer asks holdOnStartingLocked before it starts a node")
 	}
-	for method, want := range map[string]string{"admits": "holdOnStartingLocked", "observe": "runFrontier"} {
+	for method, allowed := range map[string]map[string]bool{
+		"admits":  {"holdOnStartingLocked": true, "MayStart": true},
+		"observe": {"runFrontier": true, "MayStart": true},
+	} {
 		got := callers[method]
-		if len(got) != 1 || !got[want] {
-			t.Errorf("the governor's %s is called from %v, want only %s", method, keys(got), want)
+		if len(got) != len(allowed) {
+			t.Errorf("the governor's %s is called from %v, want only %v", method, keys(got), keys(allowed))
+			continue
+		}
+		for caller := range got {
+			if !allowed[caller] {
+				t.Errorf("the governor's %s is called from %v, want only %v", method, keys(got), keys(allowed))
+			}
 		}
 	}
 }

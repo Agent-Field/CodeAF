@@ -8,11 +8,12 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// endedRailText expands the finished report and reads its rows as one line, because the rail wraps a row's
-// sentence across its narrow column and a test reads the sentence, not the wrap.
+// endedRailText is what the column says about node 7, read as one line: its
+// row, and the hint line over it, which is where the finished report went when
+// every row became one line.
 func endedRailText(a *app) string {
-	a.railSetOpen(a.tasks[7], true)
-	rows := plain(strings.Join(a.railRows(12), "\n"))
+	railOpenAll(a)
+	rows := plain(strings.Join(a.railRows(12), "\n")) + " " + railHint(a, 7)
 	return strings.Join(strings.Fields(strings.ReplaceAll(rows, "│", " ")), " ")
 }
 
@@ -52,10 +53,14 @@ func TestAHaltedNodeSaysWhyAndIsNotCalledStopped(t *testing.T) {
 		// reason and a source-control fact in one phrase; the head carries the word
 		// and the branch and the row under it carries why
 		// (docs/design/task-states/DESIGN.md).
+		if compact := taskText(a); !strings.Contains(compact, " · "+taskBranchKept+" · task/parser") {
+			t.Fatalf("compact receipt lost its kept branch: %s", compact)
+		}
+		a.toggleDoneAt(a.doneEntryFor(7))
 		text := taskText(a)
 		for _, want := range []string{
 			" · " + taskIncompleteState + " · ",
-			" · " + taskBranchKept + " · task/parser",
+			"branch · task/parser",
 			tc.word,
 		} {
 			if !strings.Contains(text, want) {
@@ -187,9 +192,13 @@ func TestAWorkerThatWouldNotWriteItsNotesSaysSoOnTheRailAndInTheRoom(t *testing.
 	// THE CARD SAYS THE SAME THING ON TWO ROWS, which is its own law: the word and
 	// the branch on the head, the reason under it, and nothing fused
 	// (docs/design/task-states/DESIGN.md).
+	if compact := taskText(a); !strings.Contains(compact, taskBranchKept) {
+		t.Fatalf("compact receipt lost its kept branch: %s", compact)
+	}
+	a.toggleDoneAt(a.doneEntryFor(7))
 	card := taskText(a)
 	for _, want := range []string{
-		" · " + taskIncompleteState + " · ", "would not write its notes down", taskBranchKept,
+		" · " + taskIncompleteState + " · ", "would not write its notes down", "branch · task/parser",
 	} {
 		if !strings.Contains(card, want) {
 			t.Fatalf("the card is missing %q:\n%s", want, card)

@@ -394,8 +394,13 @@ func (a *app) stopSay(line string) {
 // the roster does not hold the keyboard there is no cursor and nothing is being
 // aimed at (taskstrip.go's [app.stripFocused] reads the same two fields).
 func (a *app) railFocusNode() *taskNode {
-	if !a.railHold || a.railWhere.id == 0 {
+	if !a.railHold {
 		return nil
+	}
+	if a.railWhere.id == 0 {
+		// A TASK'S ROW IN THE BAND IS THAT TASK, for every key the held column
+		// answers (sidecol.go).
+		return a.tasks[sideTaskOf(a.railWhere.key)]
 	}
 	return a.tasks[a.railWhere.id]
 }
@@ -410,9 +415,8 @@ func (a *app) railFocusNode() *taskNode {
 // at an unseen row is the guess this whole path exists to avoid: [app.railView]
 // is the one door onto the roster's geometry, the same door the pointer and the
 // frame are answered through, so this and they cannot disagree about what is
-// on screen. A FOLDED ROOT STANDS FOR WHAT IT HIDES, exactly as it does for the
-// pointer: one row covering a family is one target, and its `worst` node is the
-// work it is standing for ([app.railView] reads the same field for the pin).
+// on screen. A group folded to its heading hides its rows from this count as
+// it hides them from the eye.
 //
 // Counted here and not beside the caller so the one-row rule has one statement
 // rather than two copies a second caller could get wrong.
@@ -426,15 +430,29 @@ func (a *app) stopVisible() (int, *taskNode) {
 			continue
 		}
 		if a.stopTaskTarget(node).empty() {
-			// A folded root carries nothing stoppable of its own but may be standing
-			// for a subtree that does. The work it stands for is the worst node it
-			// hid, which is the same reading the pin and the row's own glyph take.
-			if !e.folded || a.stopTaskTarget(e.worst).empty() {
-				continue
-			}
-			node = e.worst
+			continue
 		}
 		if count++; count > 1 {
+			return count, nil
+		}
+		sole = node
+	}
+	return count, sole
+}
+
+// stopQueued finds a sole queued task even when its group is folded. A machine
+// hold is active work from the person's point of view, so hiding that row must
+// not make the main-box stop command say there is nothing to stop.
+func (a *app) stopQueued() (int, *taskNode) {
+	var sole *taskNode
+	count := 0
+	for _, id := range a.taskOrder {
+		node := a.tasks[id]
+		if node == nil || node.state != session.TaskQueued || a.stopTaskTarget(node).empty() {
+			continue
+		}
+		count++
+		if count > 1 {
 			return count, nil
 		}
 		sole = node
@@ -466,6 +484,17 @@ func (a *app) stopHere() stopTarget {
 		if a.roomIsGuest() {
 			return stopTarget{}
 		}
+		// A PROGRAM'S ROOM STOPS THE RUN THROUGH THE STORE'S OWN DOOR, the target
+		// its stored page's `x` has always raised (programroom.go's
+		// [app.programStopTarget]): the run is not a node of the graph, so the
+		// node's cancel has nothing to end.
+		if a.room.program != nil {
+			return a.programStopTarget()
+		}
+		// A RUN'S TASK IS STOPPED THROUGH THE PLAN'S DOOR (planroom.go).
+		if a.room.plan != nil {
+			return a.planRoomStopTarget()
+		}
 		return a.stopTaskTarget(a.tasks[a.room.id])
 	}
 	// A HELD ROSTER IS STILL THE FIRST ANSWER OFF IT, because its cursor is where
@@ -474,11 +503,37 @@ func (a *app) stopHere() stopTarget {
 	// header's third law — and two or more are the case the focus requirement was
 	// written for: nothing to aim at, so the key is the letter it is.
 	if node := a.railFocusNode(); node != nil {
-		return a.stopTaskTarget(node)
+		if target := a.stopTaskTarget(node); !target.empty() {
+			return target
+		}
 	}
 	count, sole := a.stopVisible()
+	// The live side column also draws the plan's root without a graph node.
+	// Use its durable identity only when there is one unambiguous target.
+	if count == 0 {
+		rows, _ := a.heldPlanRows()
+		var target stopTarget
+		for _, row := range rows {
+			if !planOwnTask(row) || planEnded(row) {
+				continue
+			}
+			if !target.empty() {
+				return stopTarget{}
+			}
+			target = stopTarget{plan: row.ID, noun: stopTaskNoun, detail: stopTaskDetail}
+		}
+		if !target.empty() {
+			return target
+		}
+	}
 	if count == 1 {
 		return a.stopTaskTarget(sole)
+	}
+	if count == 0 {
+		count, sole = a.stopQueued()
+		if count == 1 {
+			return a.stopTaskTarget(sole)
+		}
 	}
 	return stopTarget{}
 }
@@ -509,6 +564,26 @@ func stopRunTarget(id string, snap orchestrate.Snapshot, known bool) stopTarget 
 func (a *app) stopTaskTarget(node *taskNode) stopTarget {
 	if node == nil {
 		return stopTarget{}
+	}
+	// A replayed graph row can lag the plan after a reconnect. Its store row
+	// is authoritative for both identity and settlement, including joined tasks.
+	if rows, ok := a.heldPlanRows(); ok {
+		for _, row := range rows {
+			if row.ID == node.planTask || strings.TrimPrefix(row.ID, "t-") == itoa(int(node.id)) {
+				if planEnded(row) {
+					return stopTarget{}
+				}
+				return stopTarget{plan: row.ID, noun: stopTaskNoun, detail: stopTaskDetail}
+			}
+		}
+	}
+	// Plan rows carry store identities, not graph task numbers. The rail and
+	// room must reach the same cancellation door, including machine-held work.
+	if node.planRow != nil {
+		if planEnded(*node.planRow) {
+			return stopTarget{}
+		}
+		return stopTarget{plan: node.planRow.ID, noun: stopTaskNoun, detail: stopTaskDetail}
 	}
 	switch node.state {
 	case session.TaskQueued, session.TaskRunning:
@@ -587,19 +662,13 @@ func (a *app) stopKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// card raised over a screen the frame is not drawing would be a question
 	// nobody can see, answered by the next key they press.
 	//
-	// A RUN TASK'S PAGE IS ON IT WHEREVER IT WAS OPENED FROM. The page has a box
-	// of its own and reads this same key itself, over that box when it is empty
-	// ([app.taskPlanKey]). Opened from the side list it sits over a conversation
-	// whose own box is empty, so nothing below stood down, and a note holding
-	// this letter raised the card mid-word and lost the rest of the sentence.
-	//
-	// AND SO IS A PAGE THAT IS ON ITS WAY. A hosted conversation reads the page
+	// AND SO IS A RUN TASK'S ROOM THAT IS ON ITS WAY. A hosted conversation reads the page
 	// off the loop, and between the press and the answer the keys already belong
 	// to the page ([railPlanPending]); read here first, this letter would raise
 	// the card over a page that is not drawn yet and take the rest of the note.
 	switch {
 	case key == "ctrl+c", a.asking(), a.awaitingTask(), a.guarding(),
-		a.taskSheet.planOn, a.railPlanPending.id != "",
+		a.railPlanPending.id != "",
 		a.at(pageSettings), a.at(pageTasks), a.at(pageHome), a.deckShowing(), a.pick.open,
 		a.roster.open, a.copy.on, a.welcome.open, a.menu.open, a.comp.open,
 		a.rew.on, a.rewSheet.open:

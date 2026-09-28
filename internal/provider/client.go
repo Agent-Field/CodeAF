@@ -63,6 +63,13 @@ type Config struct {
 	Effort  Effort
 	Timeout time.Duration
 
+	// RouteGate, when set, is asked before every body this client sends, with
+	// the model the body names and the call's tag ([WithCallTag]); an error
+	// is the call's answer and nothing is sent. It is how a session keeps
+	// EVERY road — a helper, a child's loop, a road that carries a client of
+	// its own — off a route its route health says will not answer, at the one
+	// door every body passes, rather than caller by caller.
+	RouteGate func(ctx context.Context, model, tag string) error
 	// SupportsParameter answers "does this model accept this request field?"
 	// from data already in memory. It must not block or perform I/O; an unknown
 	// answer is reported by returning known=false, never by waiting.
@@ -375,6 +382,8 @@ const maxResponseBytes = 64 << 20
 type callKnobs struct {
 	cacheKey string
 	effort   effortRequest
+	// affordable caps the one resend after a payment refusal. Zero is no cap.
+	affordable int
 	// role is WHO this call is being made for ([lane.Role]), resolved from the
 	// context once here for [callKnobs.intent]'s reason: it is a fact about the
 	// CALLER, it cannot change between the top of the call and the encode, and
@@ -761,6 +770,19 @@ func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs ca
 	}
 	began := logNow()
 	response, err := c.send(ctx, request, knobs, body, stream)
+	if err == nil && response.StatusCode == http.StatusPaymentRequired && knobs.affordable == 0 {
+		peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
+		if readErr == nil {
+			if affordable := affordableTokens(peek); affordable > 0 {
+				c.record(recordFacts{ctx: ctx, request: request, knobs: knobs, stream: stream,
+					attempt: c.attemptsSoFar(knobs), began: began, status: response.StatusCode,
+					err: apiError(response.StatusCode, peek), responseBody: peek})
+				knobs.affordable = affordable
+				return c.resend(ctx, request, knobs, stream, response)
+			}
+		}
+		response.Body = rewound(peek, response.Body)
+	}
 	if err != nil || !endpointRefusalStatus(response.StatusCode) {
 		return response, err
 	}
@@ -951,6 +973,9 @@ func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message
 	// The reading is done inside the call so that the row it writes can SAY what
 	// the answer taught; the decision to do it twice is made here.
 	if relearned {
+		// Bank the superseded answer before another request can fail or be cut.
+		// Its usage must not be folded into the final answer's context size.
+		noteDiscardedUsage(ctx, response)
 		again, _, againErr := c.completeWithMessagesStreaming(ctx, observer, messages, options...)
 		return again, againErr
 	}
@@ -1086,7 +1111,12 @@ func (c *Client) completionInOnePiece(
 			began: logBegan, status: status, served: served, err: cut,
 			responseBody: payload,
 		})
-		c.bill(ctx, c.modelFor(request), &response)
+		// THROUGH THE ANSWERED DOOR, not the bare one: the provider charged for
+		// this 200 whether or not its text was language, and on work that asked
+		// for it an answer with no usage block is priced by its receipt
+		// ([Client.billAnswered]). The bare door banks nothing without usage, so
+		// that charge reached no book at all.
+		c.billAnswered(ctx, c.modelFor(request), &response, len(responseText(&response)))
 		return nil, false, cut
 	}
 	reasonWord, servedWell := answerOutcome(&response)
@@ -1109,7 +1139,7 @@ func (c *Client) completionInOnePiece(
 	})
 	// The money, banked at the same instant the log row is written and for the
 	// same reason: this is where the fact is known. See billing.go.
-	c.bill(ctx, c.modelFor(request), &response)
+	c.billAnswered(ctx, c.modelFor(request), &response, len(responseText(&response)))
 	return &response, len(relearned) > 0, nil
 }
 
@@ -1299,13 +1329,62 @@ func outputTokens(response *ai.Response, text string) int {
 // "eleven hundred tokens in eighteen minutes" is comparable with the call rows
 // beside it — and on a guarded stream it is the stream wall's own count
 // ([stallWatch.tokens]), so the row and the decision it records are one figure.
-func (c *Client) stampCut(cut *StreamCut, served string, began time.Time, tokens int) {
+func (c *Client) stampCut(ctx context.Context, cut *StreamCut, served string, began time.Time, tokens int) {
 	if cut == nil {
 		return
 	}
 	cut.Provider = strings.TrimSpace(served)
 	cut.Ran = c.clock().Sub(began)
 	cut.Tokens = tokens
+	// AND WHETHER THERE WAS ANYWHERE ELSE TO GO, which is this layer's fact and
+	// nobody else's. The layer that decides how many times to ask again cannot
+	// see it ([StreamCut.OneMachine], [Client.cutHadOneMachine]).
+	cut.OneMachine = c.cutHadOneMachine(ctx, cut.Provider)
+}
+
+// cutHadOneMachine says whether a cut request had NO POOL AT ALL behind it, so
+// that the next ask can only land on the same machine.
+//
+// A REQUEST THAT EXPRESSED NO PREFERENCE IS NOT THAT (#1343). This read
+// `served == "" && askedFor(ctx) == ""` until 2026-09-23, and [askedFor] is
+// empty whenever no lane choice was drawn — which is the shipped router under
+// its default `routing simple` with no pin, under `routing off`, under a talk
+// lane that names the router itself, and under `auto` while the gate holds the
+// model. Every one of those is a POOL: the router answers the next ask from
+// whichever of the model's machines it likes. So an ordinary pool user whose
+// stream died before naming its server was told they were on one machine, and
+// once no model was left to move to, that was the wait with no end.
+//
+// ONE MACHINE IS NOW POSITIVE EVIDENCE OF ONE, and there are exactly three:
+//
+//   - A PIN TO ONE LANE. A person named one machine by hand and nothing may
+//     route around it, so the next ask lands there whatever else is behind the
+//     model ([lanes.Choice.Pinned]).
+//   - A CONNECTED DIRECT SERVICE, which has one road ([Config.Direct]).
+//   - A BASE WITH NO ROUTER BEHIND IT — a person's own base url, a local
+//     server — that named no machine and was asked for none. A base is a router
+//     when it is the shipped one ([LaneSheetCertain]) or has handed back an
+//     endpoints page ([Client.baseServesLanes]); either is a pool whatever the
+//     routing row says, because the row steers the router and does not remove it.
+//
+// ANY DOUBT READS AS A POOL. The pool's answer is the short allowance a cut had
+// before #1343; the one machine's answer is a wait that may not end. The first
+// is wrong by a turn given up a little early, the second by a person waiting on
+// a pool that will never be declared down.
+func (c *Client) cutHadOneMachine(ctx context.Context, served string) bool {
+	if choice, made := laneChoiceFromContext(ctx); made && choice.Pinned && len(choice.Only) == 1 {
+		return true
+	}
+	if strings.TrimSpace(served) != "" {
+		return false
+	}
+	if c.config.Direct {
+		return true
+	}
+	if LaneSheetCertain(c.config.BaseURL) || c.baseServesLanes() {
+		return false
+	}
+	return strings.TrimSpace(askedFor(ctx)) == ""
 }
 
 // machineryCut reads a COMPLETE answer for the fourth failure plane — the
@@ -1326,7 +1405,7 @@ func (c *Client) machineryCut(ctx context.Context, request *ai.Request, response
 		return nil
 	}
 	cut := &StreamCut{Reason: CutMachinery}
-	c.stampCut(cut, served, began, tokens)
+	c.stampCut(ctx, cut, served, began, tokens)
 	cut.Rerouted = c.noteCutProvider(ctx, c.modelFor(request), served)
 	// AND THE BELIEF LEARNS THAT THIS LANE SERVED SOMETHING UNUSABLE, which is
 	// the claim the strike above cannot make: a strike expires in five minutes
@@ -1357,7 +1436,7 @@ func (c *Client) rescuedStreamCut(ctx context.Context, request *ai.Request, resp
 	if !ok {
 		cut = &StreamCut{Reason: CutBabble}
 	}
-	c.stampCut(cut, served, began, tokens)
+	c.stampCut(ctx, cut, served, began, tokens)
 	cut.Rerouted = c.noteCutProvider(ctx, c.modelFor(request), served)
 	c.noteLaneOutcome(c.modelFor(request), served, cut.Reason.word(), false)
 	c.releaseEndpoint(ctx, c.modelFor(request))
@@ -1676,7 +1755,7 @@ func (c *Client) completeWithMessagesStreaming(
 	// and none of it reaches the transcript.
 	soup := func() (*ai.Response, bool, error) {
 		cut := &StreamCut{Reason: CutBabble}
-		c.stampCut(cut, served, began, stall.tokens())
+		c.stampCut(ctx, cut, served, began, stall.tokens())
 		cut.Rerouted = c.noteCutProvider(ctx, c.modelFor(request), served)
 		// Soup is the plainest possible statement that this lane's answers
 		// cannot be used, so it is the plainest thing the quality belief can
@@ -1705,7 +1784,7 @@ func (c *Client) completeWithMessagesStreaming(
 				// that cannot say who was serving or how much answer had
 				// arrived is the row that made this whole bound guesswork the
 				// first time ([StreamCut.Provider]).
-				c.stampCut(cut, served, began, stall.tokens())
+				c.stampCut(ctx, cut, served, began, stall.tokens())
 				// Whether the ledger took the lane away travels ON the cut: the
 				// turn loop decides how many more times to ask this model from
 				// it, and it has no other way to know ([StreamCut.Rerouted]).
@@ -2101,7 +2180,8 @@ func (c *Client) completeWithMessagesStreaming(
 			response: response, reasoningTokens: reasoningTokens,
 			ttft: firstTokenAfter(began, firstToken),
 		})
-		c.bill(ctx, c.modelFor(request), response)
+		// Through the answered door, for the reason the whole-body twin gives.
+		c.billAnswered(ctx, c.modelFor(request), response, content.Len())
 		return nil, false, cut
 	}
 	// A RESCUE IS NOT THE TURN UNTIL IT READS AS LANGUAGE. The hedge used
@@ -2115,7 +2195,9 @@ func (c *Client) completeWithMessagesStreaming(
 			response: response, reasoningTokens: reasoningTokens,
 			ttft: firstTokenAfter(began, firstToken),
 		})
-		c.bill(ctx, c.modelFor(request), response)
+		// A rescue that is not language was still paid for, so it goes through
+		// the answered door too.
+		c.billAnswered(ctx, c.modelFor(request), response, content.Len())
 		return nil, false, cut
 	}
 	// PAST EVERY GUARD, SO THIS LANE SERVED — the recovery half of the quality
@@ -2145,7 +2227,7 @@ func (c *Client) completeWithMessagesStreaming(
 	// Both paths or neither, exactly as the learning above: a streamed answer
 	// is billed by the provider the same way a whole-body one is, and a ledger
 	// blind to one of the two transports is a ledger nobody can reconcile.
-	c.bill(ctx, c.modelFor(request), response)
+	c.billAnswered(ctx, c.modelFor(request), response, content.Len())
 	finished = true
 	observer(StreamEvent{Kind: StreamFinished, Session: session})
 	return response, relearned, nil

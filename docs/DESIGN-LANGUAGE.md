@@ -72,6 +72,15 @@ hover moves the card and never the mark.
 `dim` — THE ACCENT BUDGET below forbids lighting them, and a lit heading is the
 same defect arriving from the other side. The ground alone carries the fact.
 
+**A heading that is a door underlines under the pointer, and that is all the
+pointer does to a heading.** Home's headings open the place they name, and a
+person holding a mouse over one is asking whether it will; the answer is the
+underline — no ink, no ground, the one attribute a terminal has always used to
+say "this opens somewhere" — on the word alone, and only on a heading that
+opens somewhere. It is an affordance and not a step of the ladder: it marks
+nothing about where the cursor is, so the marked heading above still follows
+the keyboard only (added 2026-09-17).
+
 ### THE EMPHASIS LAW
 
 > **A row is emphasized by raising its ground and turning its leading text
@@ -377,10 +386,10 @@ opposite ends.
 This surface says a great deal on its own account — a note, a hint, a legend, an
 announcement — and every word of it was written in the reading tiers, because
 none of it is the conversation. That is right about the LINE and it was wrong
-about what the line is for. `crew → balanced · brain kimi-k3:low · hands
-deepseek-v4-flash · checks qwen3.8-27b` was one flat dim run from end to end:
-the words a person already knew, and the four model ids they typed the command
-to learn, at exactly the same weight. The sentence was legible and the ANSWER
+about what the line is for. `checker ⌖ moonshotai/kimi-k3 · every task until
+you unpin it · you are still talking to deepseek-v4-flash` was one flat dim run
+from end to end: the words a person already knew, and the two model ids they
+typed the command to learn, at exactly the same weight. The sentence was legible and the ANSWER
 inside it was not.
 
 So the prose of an informational line stays where it is, and **each load-bearing
@@ -432,8 +441,8 @@ mentioned would have spent the budget forty times a minute.
 a line is bright then nothing in it is, and a rule that lifted every noun would
 have bought back the flat line it started from. So the hint slot lifts the key
 and never the verb beside it; `/status` lifts the figure and never its label;
-the crew line lifts the three ids and leaves `crew →`, the preset word the
-person has just typed, and the three role words where they were — those are the
+the `/crew` panel lifts the model ids and leaves the seat words, `auto · now`
+and the words the person has just typed where they were — those are the
 question, and the ids are the answer.
 
 **A datum is named, never guessed.** `internal/tui3/payload.go` holds the whole
@@ -485,6 +494,19 @@ it (a law test walks the question renderers' paints).
 colour is a row that shouts, and a screen of shouting rows is a screen with no
 priority at all. The grounds in THE GROUND LADDER are the sole exception, and
 they are exactly as quiet as the table above says.
+
+### The current model on the message-box seam
+
+Adopted with #1071 (merged 2026-09-21): the current model is always **bold in the data hue** on
+home and conversation seams. It must be easy to find without hovering or first
+changing it. The provider beside it and the surrounding telemetry keep their
+existing weight; the emphasis is confined to the model name.
+The effort follows a colon without a space or badge: `model (provider):effort`. Its
+styling stays separate from the model. The conversation seam carries no git branch. Home starts
+with those controls and puts `project: <path>` at the far right. Project paths on
+home preserve their absolute root (or `~/` under the home directory) and truncate
+at the right end, never at the left.
+
 
 ## ONE MARK PER TOKEN
 

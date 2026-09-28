@@ -196,7 +196,7 @@ func TestChangeSettingRefusesEveryRowThatRestrainsIt(t *testing.T) {
 		{config.KeyTaskMaxLoad, "0"},
 		{config.KeyTaskMinFreeMB, "0"},
 		{config.KeyTaskAudit, "off"},
-		{config.KeyAttribution, "off"},
+		{config.KeyAttributionModel, "off"},
 		{config.KeyExaKey, "sk-invented"},
 		{config.KeyJinaKey, "jina-invented"},
 		{config.KeyGoogleOAuthClient, "invented.apps.googleusercontent.com"},

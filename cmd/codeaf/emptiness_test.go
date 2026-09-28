@@ -55,6 +55,8 @@ func TestTheFooterWritesASpendTheWayEverythingElseDoes(t *testing.T) {
 		want  string
 	}{
 		{spend: 0, want: ""},
+		// A real spend too small for four places is a floor, never four zeros.
+		{spend: 0.00002, want: "<$0.0001"},
 		{spend: 0.0005688764200000001, want: "$0.0006"},
 		{spend: 3.4, want: "$3.40"},
 	} {

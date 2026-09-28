@@ -85,11 +85,11 @@ func TestDemotedNarrationDropsItsMarkdown(t *testing.T) {
 	a.touch()
 
 	body := strings.Join(plainRows(a), "\n")
-	if !strings.Contains(body, "## Plan") {
-		t.Fatalf("the heading's own characters were rendered away:\n%s", body)
+	if strings.Contains(body, "## Plan") || !strings.Contains(body, "Plan") {
+		t.Fatalf("the heading was not rendered as readable text:\n%s", body)
 	}
-	if strings.Contains(rowWithText(t, a, "## Plan").text, sgrOf(a.pal.bold)) {
-		t.Fatalf("a demoted heading was drawn bold: %q", rowWithText(t, a, "## Plan").text)
+	if strings.Contains(rowWithText(t, a, "Plan").text, sgrOf(a.pal.bold)) {
+		t.Fatalf("a demoted heading was drawn bold: %q", rowWithText(t, a, "Plan").text)
 	}
 }
 
@@ -283,8 +283,8 @@ func TestATurnEndingOnAToolCallPromotesNothing(t *testing.T) {
 	if r := rowWithText(t, a, "Reading the parser"); !strings.HasPrefix(plain(r.text), "  ") {
 		t.Fatalf("a turn with no answer promoted its narration: %q", plain(r.text))
 	}
-	if len(deriveWorkfolds(a.entries, 0)) != 0 {
-		t.Fatal("a turn with no answer derived a chip to hide its work behind")
+	if len(deriveWorkfolds(a.entries, 0)) != 1 {
+		t.Fatal("settled tool-only work must retain a disclosure without inventing an answer")
 	}
 }
 

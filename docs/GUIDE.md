@@ -102,6 +102,7 @@ Recognizing a channel does not mean a matching release exists.
 ```bash
 curl -fsSL https://agentfield.ai/get/codeaf/dev | bash
 curl -fsSL https://agentfield.ai/get/devaf | bash
+curl -fsSL https://agentfield.ai/get/stageaf | bash
 curl -fsSL https://agentfield.ai/get/codeaf/staging | bash
 curl -fsSL https://agentfield.ai/get/codeaf/rc | bash
 curl -fsSL https://agentfield.ai/get/codeaf | VERSION=<tag> bash
@@ -122,13 +123,16 @@ curl -fsSL https://agentfield.ai/get/codeaf | VERSION=<tag> bash
 The script needs `curl` or `wget`, plus `sha256sum` or `shasum`. It downloads
 `checksums.txt` and refuses a sha256 mismatch. Unless `--no-modify-path` is set, it
 appends one `export PATH=… # codeaf installer` line to the applicable shell file. On a
-normal run it prints three things and nothing else: `installed codeaf v… built … ·
-go… os/arch` (the installed file naming itself), the three-line telemetry notice, and,
+normal run it prints two things and nothing else: `installed codeaf v… built … ·
+go… os/arch` (the installed file naming itself; an install under another name puts
+that name first, `installed devaf · codeaf dev-… built …`), and,
 when the folder is not yet on `PATH`, the bare `export PATH=…` line to paste into the
 current shell, bold green on a terminal, last, with a blank line above and below.
 `--verbose` also reports the channel, the tag and the install path on stderr. The
 `/get/devaf` line selects the dev channel and names the file `devaf`, installing it
-beside codeaf. Release builds cover darwin, linux, and windows on amd64 and arm64.
+beside codeaf. The `/get/stageaf` line selects staging and names the file
+`stageaf`, also beside codeaf. Release builds cover darwin, linux, and windows
+on amd64 and arm64.
 
 </details>
 
@@ -206,7 +210,7 @@ keeps the last ten cleared drafts; `enter` restores one and `d` lets one go.
 | `/budget` | `what codeaf may spend · every limit on one tab` |
 | `/compact` | `summarize the conversation now` |
 | `/rewind` | `go back to an earlier point · esc esc takes back the last` |
-| `/manual` | `codeaf's own manual · every page, one per line` |
+| `/manual` | `asks the model what codeaf can do, from its own manual` |
 | `/help` | `this list` |
 | `/quit` | `close this conversation` |
 | `/drafts` | `cleared-but-kept drafts · enter restores one, d lets one go` |
@@ -303,7 +307,7 @@ sign in once in your browser. openrouter makes the default service's key for thi
 Where it is not, the same page is headed `your openrouter key` and reads `codeaf talks
 to models on its default service through openrouter, on your key and your card. nothing
 is sent until you do.` Either way the foot takes a pasted key and `esc` skips setup.
-The second page is `Daily limit`, `Chat model` and `Work crew`.
+The second page is `Daily limit` and `Chat model`.
 
 </details>
 
@@ -320,7 +324,7 @@ object, while a pinned call asks for exactly that lane. `latency` and `price` re
 opt-in settings.
 
 The default daily rail is `$500`; setting that row to `0` removes it. First run asks for
-`Daily limit`, `Chat model`, and `Work crew`.
+`Daily limit` and `Chat model`; a task's crew is picked per task, and `/crew` shows it.
 
 State lives under `$CODEAF_HOME`, or `~/.codeaf` when it is unset or empty: settings and credentials
 in `config.json`, memory in `graph.db`, and project sessions under `v3/projects/`.
@@ -330,7 +334,8 @@ in `config.json`, memory in `graph.db`, and project sessions under `v3/projects/
 The Markdown under `internal/manual/chat/` is compiled into codeaf, and the conversation
 reads it with the `manual` tool to answer questions about its own behaviour. From a
 terminal `codeaf manual` lists every page and `codeaf manual "<question>"` returns the
-sections that answer it; inside the chat it is `/manual`. Build gates require every
+sections that answer it; inside the chat `/manual` puts the question to the model with
+the manual open, and the answer arrives as a turn. Build gates require every
 slash command and alias, every tool name, and more than a hundred questions in ordinary
 language to reach an answering page.
 

@@ -26,10 +26,15 @@ import (
 // shapes to pick; this page has none of those three, so these are the same test
 // read off the page that actually shipped — each is verified unique to
 // prompts/system.md by construction (measured against every other fragment).
+//
+// AND EACH MUST STILL BE ON THE CHAT'S PAGE, which the test now asserts. The
+// closing-offer sentinel was `Say the word and I'll` until #1209 reworded the
+// rule without it, and from then on it was a string no page carried: absent
+// from the belt's page by default, so it tested nothing at all.
 var chatOnlySentences = []string{
 	"a working colleague in a conversation", // the chat's first line
 	"Regex search",                          // the `grep` hand this belt does not carry
-	"Say the word and I'll",                 // the chat's closing-offer rule
+	"no closing offer",                      // the chat's closing-offer rule
 }
 
 func TestABeltWorkerReadsTheBeltsPagesAndNothingElse(t *testing.T) {
@@ -49,6 +54,9 @@ func TestABeltWorkerReadsTheBeltsPagesAndNothingElse(t *testing.T) {
 	// AND NOT ONE SENTENCE OF THE CHAT'S PAGE. Each is prompts/system.md's word
 	// for word, and prompts/system.md is not a page this belt reads.
 	for _, foreign := range chatOnlySentences {
+		if !strings.Contains(systemPrompt, foreign) {
+			t.Errorf("the sentinel %q is no longer on prompts/system.md, so its absence here proves nothing: pick one the chat's page still says", foreign)
+		}
 		if strings.Contains(page, foreign) {
 			t.Errorf("a belt worker's page carries %q, which only prompts/system.md has", foreign)
 		}

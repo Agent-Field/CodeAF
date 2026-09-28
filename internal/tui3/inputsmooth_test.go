@@ -33,9 +33,11 @@ import (
 // pointer can answer to and two entries it can dirty.
 func hoverApp(t *testing.T) *app {
 	t.Helper()
-	return toolApp(t, tokens.ANSI256,
+	a := toolApp(t, tokens.ANSI256,
 		call("read", `{"path":"a.go"}`, "one\ntwo"),
 		call("edit", `{"path":"b.go"}`, "three\nfour"))
+	revealTestWork(a)
+	return a
 }
 
 // settle drops every mark the surface is carrying, so what a test does NEXT is

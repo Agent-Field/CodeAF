@@ -123,6 +123,11 @@ type Model struct {
 	IntelligenceIndex float64 `json:"intelligence_index,omitempty"`
 	CodingIndex       float64 `json:"coding_index,omitempty"`
 	AgenticIndex      float64 `json:"agentic_index,omitempty"`
+	// Created is when the model was listed, in Unix seconds — the release date
+	// the crew router reads a model's age from. Zero means the row did not say
+	// or was cached before this field was kept; a reader then falls back to a
+	// date in the canonical slug, or to none.
+	Created int64 `json:"created,omitempty"`
 	// OpenWeights says the row's weights are published — OpenRouter's
 	// `hugging_face_id`, kept as the one-word answer to whether the weights are
 	// public. A row cached before this field existed reads false, which every
@@ -1157,6 +1162,7 @@ func fetch(ctx context.Context, options Options) ([]Model, error) {
 			CacheReadPrice:    cacheRead,
 			PriceUnknown:      !promptOK || !completionOK,
 			ArenaElo:          arenaElo(item.Benchmarks),
+			Created:           int64(item.Created),
 			IntelligenceIndex: analysisScore(item.Benchmarks, "intelligence_index"),
 			CodingIndex:       analysisScore(item.Benchmarks, "coding_index"),
 			AgenticIndex:      analysisScore(item.Benchmarks, "agentic_index"),
@@ -1177,7 +1183,7 @@ func fetch(ctx context.Context, options Options) ([]Model, error) {
 }
 
 // modelWire is one row of OpenRouter's /models listing, in the shape this
-// package reads it. Everything absent from it — description, created,
+// package reads it. Everything absent from it — description,
 // per_request_limits, top_provider, links — is either prose nobody renders or
 // provider bookkeeping, and a field added here is a field something on screen
 // has to be able to explain.
@@ -1194,7 +1200,9 @@ type modelWire struct {
 	} `json:"alias_target"`
 	Name          string `json:"name"`
 	ContextLength int    `json:"context_length"`
-	Architecture  struct {
+	// Created is when the row was listed, in Unix seconds.
+	Created      float64 `json:"created"`
+	Architecture struct {
 		// Modality is the coarse "text->text" string. It is read for nothing:
 		// input_modalities and output_modalities say the same thing as lists,
 		// and a list is what every question this package answers is asked in.

@@ -1,0 +1,320 @@
+package delegate
+
+// The command line every program answers: `codeaf <name> [command] [flags]
+// [--] <brief>`. codeaf owns the verb, the dispatch and the four flags every
+// program shares; the program owns its commands and their flags. The same
+// line is what a person types at a shell and what a chat's run starts its
+// child with ([ChildArgs]), so there is one parser for both.
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"math"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// ErrHelp is Parse's answer when the line asked for help and got it.
+var ErrHelp = flag.ErrHelp
+
+// Invocation is one `codeaf <name> …` line, parsed.
+type Invocation struct {
+	Program Delegate
+	Command Command
+	// Workspace is --dir, absolute; the current folder when it was not given.
+	Workspace string
+	// Ceilings are --max-cost and --max-hours.
+	Ceilings Ceilings
+	// JSON is --json: the records on stdout instead of readable lines. A child
+	// of a host always writes records, so for it the flag only says so aloud.
+	JSON bool
+	// Args is what the flags left: the brief's words.
+	Args []string
+	// Line is the arguments exactly as given after the name, so a host can hand
+	// its child the same line it was handed.
+	Line []string
+	// ExplicitFlags records values the caller actually wrote, so a host can
+	// distinguish a model pin from a program's default after parsing.
+	ExplicitFlags map[string]string
+	body          Body
+}
+
+// Brief is the brief's words, joined.
+func (inv *Invocation) Brief() string { return strings.TrimSpace(strings.Join(inv.Args, " ")) }
+
+// Parse reads the arguments after `codeaf <name>`. The first word picks a
+// command when it names one; otherwise the program's default command runs on
+// the whole line, so `codeaf senior-dev fix the flaky test` is its `run`. Help
+// (`-h`, `--help`, or `help` as the first word) is written to out and answered
+// as ErrHelp.
+func Parse(program Delegate, line []string, out io.Writer) (*Invocation, error) {
+	rest := line
+	if len(rest) > 0 {
+		switch rest[0] {
+		case "help", "-h", "-help", "--help":
+			// THE PROGRAM'S OWN PAGE FOR A BARE ASK. `codeaf <name> --help` is
+			// asked before any command is named, so it answers with what the
+			// program is and every command it has; a command's own flags are
+			// one `codeaf <name> <command> --help` away, as the page ends by
+			// saying.
+			Help(program, out)
+			return nil, ErrHelp
+		}
+	}
+	command, named := program.Command(program.Default)
+	if len(rest) > 0 {
+		if c, ok := program.Command(rest[0]); ok {
+			command, named, rest = c, true, rest[1:]
+		}
+	}
+	if !named || command.Bind == nil {
+		return nil, fmt.Errorf("%s has no command %q", program.Name, program.Default)
+	}
+	fs := flag.NewFlagSet(program.Name+" "+command.Name, flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	dir := fs.String("dir", "", "the folder to work in (default: the current folder)")
+	cost := fs.Float64("max-cost", 0, "a dollar ceiling; reserve estimated call cost")
+	hours := fs.Float64("max-hours", 0, "a ceiling in hours of wall-clock time")
+	asJSON := fs.Bool("json", false, "write the records on stdout instead of readable lines")
+	body := command.Bind(fs)
+	if body == nil {
+		return nil, fmt.Errorf("%s %s: %w", program.Name, command.Name, errNoBody)
+	}
+	if err := fs.Parse(rest); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			commandHelp(program, command, fs, out)
+			return nil, ErrHelp
+		}
+		return nil, fmt.Errorf("%s %s: %w", program.Name, command.Name, err)
+	}
+	explicitFlags := map[string]string{}
+	fs.Visit(func(value *flag.Flag) { explicitFlags[value.Name] = value.Value.String() })
+	if *cost < 0 || *hours < 0 || math.IsNaN(*cost) || math.IsNaN(*hours) || math.IsInf(*cost, 0) || math.IsInf(*hours, 0) {
+		return nil, fmt.Errorf("%s %s: a ceiling must be a finite, non-negative number", program.Name, command.Name)
+	}
+	workspace := *dir
+	if strings.TrimSpace(workspace) == "" {
+		workspace = "."
+	}
+	abs, err := filepath.Abs(workspace)
+	if err != nil {
+		return nil, fmt.Errorf("%s %s: --dir: %w", program.Name, command.Name, err)
+	}
+	ceilings := Ceilings{CostUSD: *cost, Hours: *hours}
+	if program.Name == "senior-dev" {
+		ceilings = ceilings.SeniorDevDefaults()
+	}
+	return &Invocation{
+		Program: program, Command: command,
+		Workspace:     abs,
+		Ceilings:      ceilings,
+		JSON:          *asJSON,
+		Args:          fs.Args(),
+		Line:          append([]string(nil), line...),
+		ExplicitFlags: explicitFlags,
+		body:          body,
+	}, nil
+}
+
+// ChildArgs is the line a host starts a program's process with, after
+// codeaf's own executable: the name, the default command, --json, the folder,
+// the ceilings that are set, and the brief after `--`, so no word of it can be
+// read as a flag. [Parse] reads it back to the same invocation.
+//
+// AN UNSET CEILING IS NOT ON THE LINE. A program handed `--max-cost 0` might
+// read it as a ceiling of nothing; one handed no flag reads no ceiling.
+//
+// The facts codeaf read about the run put the program's own flags on the line
+// after codeaf's: [Delegate.PlainFolder] for a folder with no git history, and
+// [Delegate.CrewFlags] for the conversation's crew.
+func ChildArgs(program Delegate, workspace, brief string, ceilings Ceilings, facts RunFacts) []string {
+	args := []string{program.Name, program.Default, "--json", "--dir", workspace}
+	if ceilings.CostUSD > 0 {
+		args = append(args, "--max-cost", strconv.FormatFloat(ceilings.CostUSD, 'f', -1, 64))
+	}
+	if ceilings.Hours > 0 {
+		args = append(args, "--max-hours", strconv.FormatFloat(ceilings.Hours, 'f', -1, 64))
+	}
+	if facts.Plain {
+		args = append(args, program.PlainFolder...)
+	}
+	if program.CrewFlags != nil && !facts.Crew.IsZero() {
+		args = append(args, program.CrewFlags(facts.Crew)...)
+	}
+	return append(args, "--", brief)
+}
+
+// RunFacts is what codeaf read about a run before it started the program, each
+// of which puts the program's own flags for it on the line ([ChildArgs]).
+type RunFacts struct {
+	// Plain says the folder has no git history.
+	Plain bool
+	// Crew is the conversation's crew; zero for a run no conversation started.
+	Crew Crew
+}
+
+// Help writes a program's help: what it is, its commands, and the flags every
+// command takes.
+//
+// EVERY LINE FITS EIGHTY CELLS, the width codeaf's own help pages are held to
+// (cmd/codeaf's helpwidth law); the build's list holds every carried program's
+// pages to it (internal/delegate/builtin).
+func Help(program Delegate, out io.Writer) {
+	fmt.Fprintf(out, "codeaf %s: %s\n\n", program.Name, program.Summary)
+	fmt.Fprintf(out, "usage:\n  codeaf %s [flags] <brief>          the same as %s\n", program.Name, program.Default)
+	for _, c := range program.Commands {
+		fmt.Fprintf(out, "  codeaf %s %s %s\n      %s\n", program.Name, c.Name, c.Usage, c.Summary)
+	}
+	fmt.Fprintf(out, "\nflags every command takes:\n")
+	fmt.Fprintf(out, "  --dir DIR        the folder to work in (default: the current folder)\n")
+	fmt.Fprintf(out, "  --max-cost USD   dollar ceiling; reserve estimated cost before each call\n")
+	fmt.Fprintf(out, "  --max-hours H    a ceiling in hours of wall-clock time\n")
+	fmt.Fprintf(out, "  --json           write the records on stdout instead of readable lines\n")
+	fmt.Fprintf(out, "\n`codeaf %s <command> --help` lists a command's own flags.\n", program.Name)
+}
+
+// commandHelp is one command's help, with its own flags.
+func commandHelp(program Delegate, command Command, fs *flag.FlagSet, out io.Writer) {
+	fmt.Fprintf(out, "codeaf %s %s %s\n    %s\n\nflags:\n", program.Name, command.Name, command.Usage, command.Summary)
+	fs.VisitAll(func(f *flag.Flag) {
+		fmt.Fprintf(out, "  --%-14s %s\n", f.Name, f.Usage)
+	})
+}
+
+// RunChild runs a parsed invocation as the child of a host: its records go to
+// stdout as JSON lines and its models come from the environment. It answers
+// the status of the ending it wrote, and the caller turns that into the exit
+// code.
+//
+// EXACTLY ONE TERMINAL, ON EVERY PATH. A body that returns without writing one
+// gets one written for it here — the context's end, the error it returned, or
+// the plain fact that it said nothing — because a host reads a missing
+// terminal as work that did not finish and says only that, and the reason the
+// body knew would be lost.
+//
+// AND IT ENDS WHEN ITS HOST DOES, however the host went ([watchHost]).
+func RunChild(ctx context.Context, inv *Invocation, stdout io.Writer) string {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	finished := make(chan struct{})
+	defer close(finished)
+	go watchHost(ctx, cancel, finished)
+	api, _ := ModelAPIFromEnv()
+	emitter := NewEmitter(stdout)
+	host := &childHost{inv: inv, emitter: emitter, api: api, ending: StatusFail}
+	var err error
+	if !api.Ready() {
+		err = errors.New("this run has no model API: codeaf starts " + inv.Program.Name + " with one, and a shell run hosts its own")
+	} else {
+		err = inv.body(ctx, host, inv.Args)
+	}
+	if !emitter.Ended() {
+		switch {
+		case ctx.Err() != nil:
+			host.Terminal(Ending{Status: StatusFail, Message: "stopped before it finished"})
+		case err != nil:
+			host.Terminal(Ending{Status: StatusCrashed, Message: firstLineOf(err.Error())})
+		default:
+			host.Terminal(Ending{Status: StatusFail, Message: "it ended without saying how"})
+		}
+	}
+	return host.ending
+}
+
+// hostPID reads the process a child's host is; a variable so a test can play
+// a host that goes away.
+var hostPID = os.Getppid
+
+// hostWatch is how often a child looks for its host.
+var hostWatch = time.Second
+
+// hostGrace is how long a child whose host has gone is given to end on its
+// own, and hostGoneExit what ends it after that; variables so a test can
+// play a program that ignores its stop without ending the test binary.
+var (
+	hostGrace    = DefaultGrace
+	hostGoneExit = func() { os.Exit(1) }
+)
+
+// watchHost ends a child's context when the process that started it is gone,
+// and returns when the context ends, or the child has finished, either way.
+//
+// A HOST KILLED OUTRIGHT SENDS NOTHING. A child runs in a process group of its
+// own ([Run]), so a closed terminal's hangup never reaches it, and a host that
+// was killed, or died of that hangup, never sends the SIGTERM a stop is: the
+// child worked on in the person's folder, released by nobody, while the next
+// run took the folder the dead host's lock had let go. The child learns it
+// here instead — the parent it was started by is no longer its parent — and
+// stops exactly as a stop would have stopped it, its terminal written on the
+// way out; a record written to the dead host's pipe after that ends it anyway.
+//
+// AND THE LADDER A HOST'S OWN STOP KEEPS IS KEPT ([Run]): the stop, the grace,
+// then the end. A program still at work when the grace has passed — a restore,
+// a last test run — is ended outright, because nobody is left to do it and the
+// folder it is working in is free for the next run. One that finished within
+// the grace (finished closed) is left to leave on its own.
+func watchHost(ctx context.Context, cancel context.CancelFunc, finished <-chan struct{}) {
+	host := hostPID()
+	tick := time.NewTicker(hostWatch)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+			if hostPID() == host {
+				continue
+			}
+			cancel()
+			grace := time.NewTimer(hostGrace)
+			defer grace.Stop()
+			select {
+			case <-finished:
+			case <-grace.C:
+				hostGoneExit()
+			}
+			return
+		}
+	}
+}
+
+// childHost is the Host of a program running as a child: records to stdout,
+// models from the environment.
+type childHost struct {
+	inv     *Invocation
+	emitter *Emitter
+	api     ModelAPI
+	ending  string
+}
+
+func (h *childHost) Workspace() string  { return h.inv.Workspace }
+func (h *childHost) Ceilings() Ceilings { return h.inv.Ceilings }
+func (h *childHost) Models() ModelAPI   { return h.api }
+func (h *childHost) Hello(stages []string) {
+	_ = h.emitter.Hello(h.inv.Program.Name, stages)
+}
+func (h *childHost) Stage(stage StageRecord) { _ = h.emitter.Stage(stage) }
+func (h *childHost) Step(step StepRecord)    { _ = h.emitter.Step(step) }
+func (h *childHost) Terminal(end Ending) {
+	if h.emitter.Ended() {
+		return
+	}
+	if !KnownStatus(end.Status) {
+		end.Status = StatusCrashed
+	}
+	h.ending = end.Status
+	_ = h.emitter.Terminal(end)
+}
+
+// firstLineOf is an error's first line, because an ending's message is one
+// sentence.
+func firstLineOf(s string) string {
+	line, _, _ := strings.Cut(strings.TrimSpace(s), "\n")
+	return line
+}

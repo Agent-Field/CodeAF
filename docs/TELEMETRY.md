@@ -6,7 +6,7 @@ about you or your work ever leaves this machine.
 
 ## The notice
 
-Before the first session's events are sent, codeaf prints this to stderr once:
+Before the first session's events are sent, codeaf shows this once:
 
 ```
 codeaf sends anonymous usage counts to AgentField.
@@ -17,15 +17,13 @@ codeaf sends anonymous usage counts to AgentField.
   Turn off:                 CODEAF_TELEMETRY=off
 ```
 
-The installer prints a three-line form of the same notice, to stderr, after the
-`installed codeaf …` receipt and before the `export PATH` line. The full notice
-above still arrives at the first session:
-
-```
-codeaf shares anonymous performance data with AgentField
-codeaf does NOT share your prompts, code, files, or any private information
-see what is shared: codeaf telemetry info · turn off: CODEAF_TELEMETRY=off
-```
+The installer prints nothing about telemetry; the notice above arrives with the
+first session, before anything is sent. A chat shows it on the first
+conversation's screen, dim, under the starting points, and it counts as shown
+only once a frame has drawn it: a window too short to hold all six lines, or the
+first-run setup standing in front, leaves it owed for the next launch. A task
+command (`do`, `run`, `plan run`) and `chat --once` draw no screen, so they print
+it to stderr before they start. Until it has been shown, nothing is sent.
 
 ## What is sent
 
@@ -110,7 +108,8 @@ The usage counts are not the only thing this binary sends to AgentField. With
 `model_pool` set to `on` — the default — a judge scores each crew seat after a
 task lands, and one row per seat leaves for
 `https://codeaf.agentfield.ai/pool/v1/rows`: the model slug that held the
-seat, the judge's slug, the seat (worker, high or mastermind), a 0-100 score,
+seat, the judge's slug, the seat (the worker, checker or planner, spelled on the wire as `worker`,
+`high` and `mastermind`), a 0-100 score,
 the door the run came in by (task, do, exec or run), the crew size and the UTC
 day, under a random per-install nonce in an `X-Codeaf-Install` header. No prompt, code, path or name rides in a row. **Every way of turning the
 counts off turns this stream off too** — `CODEAF_TELEMETRY=off`,

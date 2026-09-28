@@ -103,8 +103,8 @@ const spendTodayKey = config.KeyDailyBudget
 //
 // THE FIGURE IS HELD AND NOT READ. This is asked once per PAINT, and the rail
 // lives in a file — a status line that stat'd the profile sixty times a second
-// is the shape PERF.md's allocation law exists to catch. It is read on the way
-// in and again the moment the row is written ([app.readSpendRail]).
+// is the shape PERF.md's allocation law exists to catch. A changed rail is
+// read only after the open engine accepts it ([app.bindSpendRail]).
 func (a *app) moneyNearRail() bool {
 	if !a.railRead {
 		a.readSpendRail()
@@ -112,9 +112,8 @@ func (a *app) moneyNearRail() bool {
 	return a.spendRail > 0 && a.spendShown() >= a.spendRail*machineCeilingNear
 }
 
-// readSpendRail takes that reading. It is called once, lazily, and again from
-// the registry's own Applied seam when the row is written, so the ink follows an
-// edit without the paint ever touching the disk.
+// readSpendRail takes that reading once, lazily, and again after a live bind
+// succeeds, so the ink follows what the engine actually uses.
 func (a *app) readSpendRail() {
 	a.spendRail, a.railRead = config.SpendRailUSDAt(a.profileDir), true
 }

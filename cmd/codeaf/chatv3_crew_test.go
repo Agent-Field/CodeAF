@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
@@ -16,8 +18,9 @@ import (
 //
 // It used to be resolved once at boot, on the argument that two calls in one
 // conversation must not answer to different settings. /crew is what makes that
-// the wrong way round — somebody who types `/crew max` because the planner is not
-// thinking hard enough has said something about the run they are about to start.
+// the wrong way round — somebody who types `/crew pin planner …` because the
+// planner is not thinking hard enough has said something about the run they
+// are about to start.
 
 func TestAMidSessionCrewChangeIsHonoredByTheNextCall(t *testing.T) {
 	dir := t.TempDir()
@@ -26,28 +29,16 @@ func TestAMidSessionCrewChangeIsHonoredByTheNextCall(t *testing.T) {
 		t.Fatalf("v3RolesSource: %v", err)
 	}
 
-	// The shipped crew, resolved once. Everything after this is a change made
-	// under a source that is already in use.
-	before, err := roles.Resolve(roles.Source(source), roles.RolePlanner, "vendor/conversation")
-	if err != nil {
-		t.Fatal(err)
-	}
-	shipped, _ := roles.SplitEffort(config.DefaultMastermindModel)
-	if before != shipped {
-		t.Fatalf("the planner started on %q, want the shipped mastermind's %q", before, shipped)
-	}
-
-	if err := config.ApplyCrew(dir, config.CrewFrugal); err != nil {
-		t.Fatalf("setting the crew to frugal: %v", err)
+	// A pin written under a source that is already in use.
+	if err := config.SetCrewPin(dir, crewroute.Planner, "vendor/first-planner"); err != nil {
+		t.Fatalf("pinning the planner: %v", err)
 	}
 	after, err := roles.Resolve(roles.Source(source), roles.RolePlanner, "vendor/conversation")
 	if err != nil {
 		t.Fatal(err)
 	}
-	frugal, _ := config.CrewModels(config.CrewFrugal)
-	want, _ := roles.SplitEffort(frugal[config.ModelTierMastermind])
-	if after != want {
-		t.Fatalf("after /crew frugal the planner resolves to %q, want %q", after, want)
+	if after != "vendor/first-planner" {
+		t.Fatalf("after /crew pin the planner resolves to %q, want vendor/first-planner", after)
 	}
 
 	// A single class answered by hand is seen the same way, and so is a pin —
@@ -70,7 +61,7 @@ func TestAMidSessionCrewChangeIsHonoredByTheNextCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	if call.Model != "vendor/thinker" || call.Effort != "high" {
-		t.Fatalf("after a hand-set mastermind the planner resolves to %+v", call)
+		t.Fatalf("after a hand-set planner row the planner resolves to %+v", call)
 	}
 
 	pins, found := registry.Row(config.KeyModelRoles)
@@ -108,7 +99,7 @@ func TestABrokenRowLeavesTheLastGoodCrewInPlace(t *testing.T) {
 	// is then moved by an unrelated write, so the source does rebuild and does
 	// meet the broken row.
 	handEdit(t, dir, "models.roles", "planner")
-	if err := config.ApplyCrew(dir, config.CrewMax); err != nil {
+	if err := config.SetCrewPin(dir, crewroute.Planner, "vendor/max-planner"); err != nil {
 		t.Fatal(err)
 	}
 	if model, _ := roles.Resolve(roles.Source(source), roles.RolePlanner, "vendor/conversation"); model != "vendor/pinned" {
@@ -118,13 +109,11 @@ func TestABrokenRowLeavesTheLastGoodCrewInPlace(t *testing.T) {
 	// And once the row parses again, the new crew is picked up — a refusal is not
 	// a latch.
 	handEdit(t, dir, "models.roles", "")
-	if err := config.ApplyCrew(dir, config.CrewMax); err != nil {
+	if err := config.SetCrewPin(dir, crewroute.Planner, "vendor/max-planner"); err != nil {
 		t.Fatal(err)
 	}
-	want, _ := config.CrewModels(config.CrewMax)
-	if model, _ := roles.Resolve(roles.Source(source), roles.RolePlanner, "vendor/conversation"); model != want[config.ModelTierMastermind] {
-		t.Fatalf("after the row parsed again the planner resolves to %q, want the max crew's %q",
-			model, want[config.ModelTierMastermind])
+	if model, _ := roles.Resolve(roles.Source(source), roles.RolePlanner, "vendor/conversation"); model != "vendor/max-planner" {
+		t.Fatalf("after the row parsed again the planner resolves to %q, want the pinned vendor/max-planner", model)
 	}
 }
 
@@ -177,12 +166,55 @@ func TestTheCrewSourceIsSafeUnderConcurrentTurns(t *testing.T) {
 	wait.Add(1)
 	go func() {
 		defer wait.Done()
-		for _, preset := range []string{config.CrewFrugal, config.CrewMax, config.CrewBalanced} {
-			if err := config.ApplyCrew(dir, preset); err != nil {
+		for _, pin := range []string{"vendor/a", "vendor/b", "vendor/c"} {
+			if err := config.SetCrewPin(dir, crewroute.Worker, pin); err != nil {
 				t.Error(err)
 				return
 			}
 		}
 	}()
 	wait.Wait()
+}
+
+// C1 on the ordinary launch road (#1439): the surface reads the balance and
+// writes the record, and the ENGINE process seats the crew. A record written by
+// another process never moves this process's settings generation, so the crew
+// has to notice the record itself — or the engine keeps seating the paid table
+// its snapshot was built on, and the reflex call on a $0 account is refused.
+func TestACreditRecordWrittenByAnotherProcessReseatsTheLiveCrew(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(config.APIKeyEnv, "sk-or-v1-crewtest")
+	source, err := v3RolesSource(t.TempDir(), dir)
+	if err != nil {
+		t.Fatalf("v3RolesSource: %v", err)
+	}
+	reflex := roles.TierKey(roles.TierReflex)
+	paid, _ := source(reflex)
+	if paid != config.DefaultReflexModel {
+		t.Fatalf("a profile with no record seated reflex on %q, want the shipped %q", paid, config.DefaultReflexModel)
+	}
+	record, err := json.Marshal(map[string]any{
+		"low": true, "known": true, "key": config.CreditsKeyPrint("sk-or-v1-crewtest"), "read_at": "2026-09-24T21:44:22Z",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Written the way ANOTHER process writes it: straight to the file, with no
+	// call into this process's settings writer.
+	if err := os.WriteFile(filepath.Join(dir, "credits.json"), record, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	free, _ := source(reflex)
+	if free == paid || free != config.TierModelAt(dir, config.ModelTierReflex) || !strings.HasSuffix(free, ":free") {
+		t.Fatalf("after another process recorded a low balance the live crew seated reflex on %q", free)
+	}
+	record, _ = json.Marshal(map[string]any{
+		"low": false, "known": true, "key": config.CreditsKeyPrint("sk-or-v1-crewtest"), "read_at": "2026-09-24T21:50:00Z",
+	})
+	if err := os.WriteFile(filepath.Join(dir, "credits.json"), record, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if back, _ := source(reflex); back != paid {
+		t.Fatalf("after a top-up recorded elsewhere the live crew kept reflex on %q", back)
+	}
 }

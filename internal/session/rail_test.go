@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // spend puts a session's accumulated cost where the rail reads it, the way a
@@ -158,5 +159,33 @@ func TestTheRefusalNamesTheLimitTheFigureAndTheDoor(t *testing.T) {
 	// AND A SUB-CENT FIGURE IS A FIGURE. `$0.00 spent of $0.00` names nothing.
 	if got := railMoney(0.0006); got != "$0.0006" {
 		t.Fatalf("a sub-cent figure reads %q", got)
+	}
+}
+
+func TestSpendRailRefusesTurnWhenDailyBudgetExceeded(t *testing.T) {
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			t.Error("a refused turn reached the provider")
+			return textResponse("should not happen"), nil
+		},
+	}}
+	profileDir := t.TempDir()
+	if err := config.WriteDailyBudgetUSD(profileDir, 1.00); err != nil {
+		t.Fatalf("write daily budget: %v", err)
+	}
+	agent, _ := newTestAgent(t, completer, func(cfg *Config) {
+		cfg.ProfileDir = profileDir
+	})
+	agent.crewDayHeld = NewSpendDay(1.50)
+
+	events := collect(t, mustSubmit(t, agent, "keep going"))
+	if len(events) != 1 || events[0].Kind != EventError {
+		t.Fatalf("events = %v, want one EventError", kinds(events))
+	}
+	if !errors.Is(events[0].Err, ErrSpendRail) {
+		t.Fatalf("error = %v, want it to wrap ErrSpendRail", events[0].Err)
+	}
+	if !strings.Contains(events[0].Err.Error(), "daily limit reached") {
+		t.Fatalf("error = %v, want it to say daily limit reached", events[0].Err)
 	}
 }

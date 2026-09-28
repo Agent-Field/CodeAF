@@ -338,10 +338,11 @@ func TestTheFrameLinksProseNotesAndToolTargets(t *testing.T) {
 
 	a.entries = []entry{
 		{kind: entryAssistant, text: "I put the guard in `internal/tui3/pathlink.go`.", settled: true},
-		{kind: entryNote, text: "exported · " + target},
+		{kind: entryNote, text: "exported · " + target, told: true},
 		{kind: entryTool, tool: "read", text: "internal/tui3/pathlink.go",
 			detail: toolDetail{Args: `{"path":"internal/tui3/pathlink.go"}`}},
 	}
+	revealTestWork(a)
 	a.touch()
 	body := frame(a)
 	if got := strings.Count(body, "\x1b]8;;"+fileURI(target)); got < 3 {

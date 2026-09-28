@@ -1184,6 +1184,18 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// open — for [Welcome.Folders]'s stated reason: the surface's own type
 		// assertion cannot see across the wire.
 		Folders: keepsFolders(sess.agent),
+		// Every engine of this build answers the teams doors from its own
+		// profile (teams.go), so the flag is about the build, not the agent.
+		Teams: true,
+		// And the delegation doors beside them (delegation.go), for the same
+		// reason: the build answers them, whatever agent is open.
+		Delegation: true,
+		// And the settings tab's write of those defaults, for the same reason.
+		TeamSettings: true,
+		// And the wrap-up's two doors, for the same reason.
+		WrapUp: true,
+		// The two model asks are the agent's, so they are asked of it.
+		TeamAsk: teamAskKnown(sess.agent),
 		// This revision checks it in the handler, for every engine behind it
 		// ([Session.agentOf]), so the answer is about the wire and not the agent.
 		SteerOwner: true,
@@ -1204,6 +1216,10 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// way the newsroom files it ([Session.fileNews]): an engine that cannot
 		// name its conversation fans nothing out, and says so here.
 		News: newsKeyOf(sess.agent) != "",
+		// Whether this conversation can carry skills put in front of it by
+		// hand, asked of the agent it has open — for [Welcome.Skills]'s stated
+		// reason (skills.go).
+		Skills: skillsKnown(sess.agent),
 	}
 }
 
@@ -2302,11 +2318,65 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
+		// AN EFFORT WORD THIS ENGINE CANNOT HONOUR IS REFUSED, NEVER DROPPED:
+		// the person said how hard to try this task, and a start on the crew
+		// they would have had anyway is the silence version 18 exists to end.
+		if args.Effort != "" {
+			effortDoor, ok := agent.(interface {
+				StartTaskEffort(context.Context, string, bool, string) (uint64, string, string, error)
+			})
+			if !ok {
+				return nil, errors.New("engine: this session cannot choose a task's crew")
+			}
+			id, title, note, err := effortDoor.StartTaskEffort(context.Background(), args.Brief, args.Solo, args.Effort)
+			if err != nil {
+				return nil, err
+			}
+			return json.Marshal(TaskStarted{ID: id, Title: title, Note: note})
+		}
 		id, title, note, err := door.StartTask(context.Background(), args.Brief, args.Solo)
 		if err != nil {
 			return nil, err
 		}
 		return json.Marshal(TaskStarted{ID: id, Title: title, Note: note})
+	case MethodDelegateList:
+		door, ok := agent.(interface{ Delegates() session.DelegateReport })
+		if !ok {
+			return json.Marshal(session.DelegateReport{})
+		}
+		return json.Marshal(door.Delegates())
+	case MethodDelegateStart:
+		door, ok := agent.(interface {
+			StartDelegate(context.Context, string, string) (uint64, string, string, error)
+		})
+		if !ok {
+			return nil, errors.New("engine: this session has no delegate door")
+		}
+		args, err := arg[DelegateStartArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		id, title, note, err := door.StartDelegate(context.Background(), args.Name, args.Brief)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(TaskStarted{ID: id, Title: title, Note: note})
+	case MethodTaskRedoStronger:
+		door, ok := agent.(interface {
+			RedoStronger(context.Context, uint64) (uint64, string, error)
+		})
+		if !ok {
+			return nil, errors.New("engine: this session has no task door")
+		}
+		args, err := arg[TaskRedoArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		id, title, err := door.RedoStronger(context.Background(), args.ID)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(TaskStarted{ID: id, Title: title})
 	case MethodPlannerStart:
 		door, ok := agent.(interface {
 			StartPlannerRun(context.Context, string, string) (string, string, error)
@@ -2522,6 +2592,17 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		s.session.announce()
 		return nil, nil
 
+	case MethodSetSpendRail:
+		usd, err := arg[float64](call)
+		if err != nil {
+			return nil, err
+		}
+		binder, ok := agent.(interface{ SetSpendRail(float64) error })
+		if !ok {
+			return nil, errors.New("conversation limit cannot be changed here")
+		}
+		return nil, binder.SetSpendRail(usd)
+
 	case MethodSetContext:
 		tokens, err := arg[int](call)
 		if err != nil {
@@ -2545,6 +2626,15 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		agent.SetReasoningFor(args.Model, args.Level)
 		s.session.announce()
 		return nil, nil
+
+	case MethodAttachSkills, MethodDetachSkill, MethodAttachedSkills, MethodClearSkills, MethodSkillShelf:
+		payload, err := serveSkills(agent, call)
+		// A door that moved the attachment is a fact every window's chip is
+		// drawing, so every surface is told, not only the one that asked.
+		if err == nil && call.Method != MethodAttachedSkills && call.Method != MethodSkillShelf {
+			s.session.announce()
+		}
+		return payload, err
 
 	case MethodEffort, MethodResolvedEffort, MethodSetEffort:
 		door, ok := agent.(effortDoor)
@@ -2721,6 +2811,20 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		page, found := door.PlanTaskPage(args.ID)
 		return json.Marshal(PlanTaskPageResult{Page: page, OK: found})
+
+	case MethodPlanTaskWork:
+		args, err := arg[PlanTaskArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			PlanTaskWork(string) (session.PlanTaskWork, bool)
+		})
+		if !ok {
+			return json.Marshal(PlanTaskWorkResult{})
+		}
+		work, found := door.PlanTaskWork(args.ID)
+		return json.Marshal(PlanTaskWorkResult{Work: work, OK: found})
 
 	case MethodPlanNote:
 		args, err := arg[PlanTextArgs](call)
@@ -2964,6 +3068,16 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// said rather than waiting on a call nobody is going to answer
 	// (wire_places.go states the law).
 	if payload, handled, err := s.placesCall(call); handled {
+		return payload, err
+	}
+	// And the teams doors, additive in the same way (wire_teams.go).
+	if payload, handled, err := s.teamsCall(call); handled {
+		return payload, err
+	}
+	if payload, handled, err := s.delegationCall(call); handled {
+		return payload, err
+	}
+	if payload, handled, err := teamAskCall(agent, call); handled {
 		return payload, err
 	}
 	return nil, fmt.Errorf("engine: no such method %q", call.Method)

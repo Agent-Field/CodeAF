@@ -182,7 +182,7 @@ func (a *app) modelsFetched(msg modelsFetchedMsg) {
 		err = errNoModelList
 	}
 	if err != nil {
-		a.note(ModelsFetchFailed + " · " + strings.Join(strings.Fields(err.Error()), " "))
+		a.toldNote(ModelsFetchFailed + " · " + strings.Join(strings.Fields(err.Error()), " "))
 		return
 	}
 	// AND A FETCH THAT LANDED REWROTE THE CACHE ON DISK (cmd/codeaf's v3 door),
@@ -195,11 +195,12 @@ func (a *app) modelsFetched(msg modelsFetchedMsg) {
 	// dropping the memo there would throw away a good reading to punish a bad
 	// call, and the next frame would fall to the built-ins.
 	a.forgetModelList("", modelcatalog.DefaultBaseURL)
+	a.refreshCreditWarnings()
 	if a.pick.open && a.pick.refresh {
 		a.pick.restock(list)
 	}
 	note, named := modelsNote(list, msg.shown)
-	a.noteFacts(note, named...)
+	a.toldNote(note, named...)
 }
 
 // modelsNote is the landed fetch in one line — `models · 612 · 9 new · a, b,

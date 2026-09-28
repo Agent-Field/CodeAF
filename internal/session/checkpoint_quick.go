@@ -52,6 +52,7 @@ package session
 
 import (
 	"context"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"strings"
 	"time"
 )
@@ -299,7 +300,7 @@ func (a *Agent) handOverAsQuick(ctx context.Context, hub *eventHub, turn *Usage,
 	a.mu.Unlock()
 	// AND THE TRANSCRIPT IS NOT LEFT WITH A REQUEST NOBODY REPLIED TO. It is ONE
 	// line here where the other road records two, because one is what was said.
-	a.record(textMessage("assistant", said))
+	a.recordPresentedAssistant(textMessage("assistant", said), provider.MessageReasoning{}, &messagePresentation{Audience: "operational"})
 	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(*turn, started, model)})
 	a.maybeTitle(ctx, hub)
 	return checkpointHandover{moved: true, decision: checkpointCeilingMoved, taskID: id, carry: carryRungQuick}

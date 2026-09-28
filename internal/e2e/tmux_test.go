@@ -22,15 +22,20 @@
 // stood by accident" and gets an owned session in a private work directory
 // (cmd/codeaf's chatv3_layout.go), which is not the shape any of these
 // scenarios are about, so the workspace is always a repository.
+// Every run also gets scheduler stand-ins and a separate login folder. The
+// machine's own background timer is never this suite's timer.
 package e2e
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -48,6 +53,7 @@ type rig struct {
 	t    *testing.T
 	name string
 	home string
+	host hostGuard
 	ws   string
 	dead bool
 }
@@ -119,7 +125,16 @@ func newHome(t *testing.T, overrides map[string]any) string {
 	}
 	// The model this suite is about, and the gate posture every scenario but
 	// the consent one wants.
-	rows["model.talk"] = "deepseek/deepseek-v4-flash"
+	for _, key := range []string{config.KeyChatModel, config.KeyTaskModel,
+		config.KeyTierWorkerModel, config.KeyTierLowModel, config.KeyTierHighModel,
+		config.KeyTierReflexModel, config.KeyTierMastermindModel, config.KeyModelFallbacks} {
+		rows[key] = e2eModel
+	}
+	var pins []string
+	for _, role := range textRoles {
+		pins = append(pins, string(role)+":"+e2eModel)
+	}
+	rows[config.KeyModelRoles] = strings.Join(pins, ",")
 	// AND THE MARKS ARE PINNED TO THE PLAIN TIER, for the same reason
 	// [newWorld] pins them: tokens.DetectGlyphSet turns the nerd-font tier ON
 	// for any terminal it cannot veto, and tmux under TERM=xterm-256color is
@@ -212,6 +227,28 @@ func start(t *testing.T, name, home, ws string, cols, rows int, args ...string) 
 	// THE RIG IS HANDED THE KEY THE PRODUCT WOULD HAVE FOUND, whichever road it
 	// came down: a key that lives only in the profile reaches the child through
 	// the variable here, exactly as a key exported in the shell does.
+	//
+	// AND IT NAMES ITS BELT. Every scenario that starts here was written against
+	// the node road and reads that road's words, and it said so by saying
+	// nothing while unset meant node. The default is the worker harness now, and
+	// a scenario that relied on the absence of a word would have moved to the
+	// other road with every assertion still green — the fault that would have
+	// had both belt benchmarks comparing the harness to itself. `node` is the
+	// word because it reaches the older engine on this binary and is simply not
+	// `bash` on an older one. A scenario that wants the harness says `bash`
+	// itself through [startWithEnv], and the one that tests the default says no
+	// word at all ([testTaskOnTheDefaultBelt]).
+	r := startWithEnv(t, []string{config.APIKeyEnv + "=" + liveKey(t), "CODEAF_TASK_BELT=node"},
+		name, home, ws, cols, rows, args...)
+	r.skipSetup(t)
+	return r
+}
+
+// startDefault uses the same public launch as a person, with no belt override.
+// Historical node-specific scenarios keep start; default-road acceptance uses
+// this door so a private test setting cannot hide the shipped worker harness.
+func startDefault(t *testing.T, name, home, ws string, cols, rows int, args ...string) *rig {
+	t.Helper()
 	r := startWithEnv(t, []string{config.APIKeyEnv + "=" + liveKey(t)},
 		name, home, ws, cols, rows, args...)
 	r.skipSetup(t)
@@ -263,21 +300,30 @@ func (r *rig) skipSetup(t *testing.T) {
 // setupIsUp reports whether the first-run flow is on the frame right now.
 func (r *rig) setupIsUp() bool {
 	screen := r.capture()
-	return strings.Contains(screen, setupSkipKeysWord) || strings.Contains(screen, setupTitleWord)
+	return strings.Contains(screen, setupSkipKeysWord) || strings.Contains(screen, setupTitleWord) ||
+		strings.Contains(screen, setupMovesWord)
 }
 
 // setupPatience is how long [rig.skipSetup] waits for the flow to draw before
 // deciding this machine is not going to show one.
 const setupPatience = 8 * time.Second
 
-// The two sentences that say the first-run flow is up. They are the SUITE'S OWN
-// copies of internal/tui3's [setupSkipKeysWord] and the setup title, and they are
-// spelled here rather than reached through [say] because tuiwords_test.go's own
-// gate reads this file and every other one for the names it hands out — a door
-// used by [start] itself has to stand before any scenario asks for a word.
+// The sentences that say the first-run flow is up. They are the SUITE'S OWN
+// copies of internal/tui3's [setupSkipKeysWord], the setup title and the form's
+// legend, and they are spelled here rather than reached through [say] because
+// tuiwords_test.go's own gate reads this file and every other one for the names
+// it hands out — a door used by [start] itself has to stand before any scenario
+// asks for a word.
+//
+// THE LEGEND'S SECOND CLAUSE IS HERE FOR NARROW FRAMES. Below sixty columns the
+// form draws no title and its legend keeps only `enter goes on · tab moves`
+// (internal/tui3's onboarding.go, [app.setupControlsKeys]), so a rig started at
+// forty-four columns saw neither of the other two words, decided there was no
+// setup, and left its scenario typing into the daily-limit field.
 const (
 	setupSkipKeysWord = "esc skips setup"
 	setupTitleWord    = "setting up"
+	setupMovesWord    = "tab moves"
 )
 
 // keylessEnv is every variable a fresh-install run must not inherit: the two the
@@ -315,6 +361,10 @@ func startFresh(t *testing.T, name, home, ws string, cols, rows int, args ...str
 // front of the assignments, then the state root and the terminal.
 func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows int, args ...string) *rig {
 	t.Helper()
+	// THE PRODUCT WRITES THE TIMER DEFINITION UNDER HOME BEFORE IT ASKS
+	// SYSTEMCTL OR LAUNCHCTL TO LOAD IT. Both must belong to this rig, or
+	// #1631 replaces the developer's timer with a deleted checkout.
+	g := guardHost(t, home)
 	// EVERY RUN ON THIS HOST NAMES ITS OWN RIG. Several checkouts run this
 	// suite at once on one machine, and with a fixed session name each start()
 	// kills the other run's rig before opening its own — a whole suite then
@@ -322,8 +372,15 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	// The pid LEADS the name: tmux falls back to prefix matching on -t, so a
 	// sibling's `kill-session -t afe2e_a` would still reach `afe2e_a-<pid>`.
 	name = fmt.Sprintf("p%d-%s", os.Getpid(), name)
-	command := []string{"env"}
+	// THE RUNNER'S OWN BELT WORD DOES NOT REACH THE CHILD. `env` without -i
+	// hands the child everything this process has, so a developer with
+	// CODEAF_TASK_BELT exported in their shell would be choosing which road
+	// every scenario tests. The variable is dropped first; an assignment in env
+	// follows the -u and wins, so a scenario that names a word still gets it,
+	// and a scenario that names none really runs with the variable absent.
+	command := []string{"env", "-u", "CODEAF_TASK_BELT"}
 	command = append(command, env...)
+	command = append(command, g.tokens(env)...)
 	command = append(command,
 		"CODEAF_HOME="+home,
 		"TERM=xterm-256color",
@@ -344,7 +401,7 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	if out, err := launch.CombinedOutput(); err != nil {
 		t.Fatalf("tmux new-session: %v\n%s", err, out)
 	}
-	r := &rig{t: t, name: name, home: home, ws: ws}
+	r := &rig{t: t, name: name, home: home, host: g, ws: ws}
 	t.Cleanup(func() {
 		if t.Failed() {
 			r.dump()
@@ -394,16 +451,19 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	// forty-five seconds while looking at a perfectly live one. `needs you` is
 	// drawn on every desktop home, whatever it holds: an empty panel keeps its
 	// heading.
+	//
+	// AND THE SETUP FORM IS ONE AT EVERY WIDTH. Below sixty columns it draws
+	// neither its title nor `esc skips setup`, only the first two clauses of its
+	// legend, which is what [setupMovesWord] reads.
 	if hit, _ := r.waitForAny(45*time.Second, say(t, "placeRestWord"),
-		say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "setupSkipWord"),
+		say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "setupSkipWord"), setupMovesWord,
 		say(t, "landingKeysWord"), say(t, "welcomeStarterKeysWord"),
-		say(t, "answersAllowOnce"), say(t, "homeAnswerHint"), say(t, "homeNeedsHeading")); hit == "" {
+		say(t, "answersAllowOnce"), say(t, "homeAnswerHint"), say(t, "homeNeedsHeading"),
+		say(t, "chatFootEffortWord")); hit == "" {
 		t.Fatal("the terminal never reached an interactive surface")
 	}
 	return r
 }
-
-func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 func (r *rig) resize(cols, rows int) {
 	r.t.Helper()
@@ -559,7 +619,44 @@ func (r *rig) kill() {
 		return
 	}
 	r.dead = true
+	// Killing the tmux session sends a hangup but does not wait for codeaf.
+	// Its final writes must finish before testing removes the fixture home.
+	raw, _ := exec.Command("tmux", "display-message", "-p", "-t", r.name, "#{pane_pid}").Output()
+	pid, _ := strconv.Atoi(strings.TrimSpace(string(raw)))
 	_ = exec.Command("tmux", "kill-session", "-t", r.name).Run()
+	if pid <= 0 {
+		return
+	}
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); {
+		if terminalProcessExited(pid) {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	// A failed scenario may have left an intentional uninterruptible tool
+	// wait. This PID belongs to the test's own pane, never to another rig.
+	_ = syscall.Kill(pid, syscall.SIGKILL)
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
+		if terminalProcessExited(pid) {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	r.t.Errorf("the test terminal process %d did not exit before cleanup", pid)
+}
+
+// On Linux an exited child can remain a zombie until tmux reaps it. Such a
+// process cannot write into the fixture, but kill(pid, 0) still succeeds.
+func terminalProcessExited(pid int) bool {
+	if syscall.Kill(pid, 0) != nil {
+		return true
+	}
+	status, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return false
+	} // Other hosts keep the portable signal check.
+	end := strings.LastIndexByte(string(status), ')')
+	return end >= 0 && len(status) > end+2 && status[end+2] == 'Z'
 }
 
 // dump is the transcript this suite owes anybody reading a failure: the screen,
@@ -614,8 +711,7 @@ func clip(s string, n int) string {
 // the launchd agent and the systemd timer do.
 func tick(t *testing.T, home string) string {
 	t.Helper()
-	command := exec.Command(binary(t), "tick")
-	command.Env = append(os.Environ(), "CODEAF_HOME="+home)
+	command := guardedCommand(t, context.Background(), home, append(os.Environ(), "CODEAF_HOME="+home), binary(t), "tick")
 	out, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("codeaf tick: %v\n%s", err, out)
@@ -905,12 +1001,32 @@ func standingRecords(t *testing.T, home string) []standingRecord {
 	return out
 }
 
+// standingRecordOtherThan is the one record whose id is not id, when exactly one
+// is; two or more is not an answer, so it reports none.
+func standingRecordOtherThan(t *testing.T, home, id string) (standingRecord, bool) {
+	t.Helper()
+	var others []standingRecord
+	for _, record := range standingRecords(t, home) {
+		if record.ID != id {
+			others = append(others, record)
+		}
+	}
+	if len(others) != 1 {
+		return standingRecord{}, false
+	}
+	return others[0], true
+}
+
 // standingRecordAbout is the item whose words hold a given word, which is how a
 // test names the one it asked for without knowing what the model called it.
 func standingRecordAbout(t *testing.T, home, word string) (standingRecord, bool) {
 	t.Helper()
 	for _, record := range standingRecords(t, home) {
-		if strings.Contains(strings.ToLower(record.Words), strings.ToLower(word)) {
+		// The model can shorten the request in Words while keeping its subject
+		// in the title or the sentence the reminder will say.
+		if strings.Contains(strings.ToLower(record.Words), strings.ToLower(word)) ||
+			strings.Contains(strings.ToLower(record.Brief.Title), strings.ToLower(word)) ||
+			strings.Contains(strings.ToLower(record.Does.Say), strings.ToLower(word)) {
 			return record, true
 		}
 	}

@@ -388,7 +388,8 @@ clear by hand.
 
 **Two tasks cannot both run in place in one directory.** Whichever started first has it;
 the second is refused its writes and told which task to wait for. When the first lands, the
-second gets the directory.
+second gets the directory. A program's run (senior-dev) holds its folder the same way, and
+a task is refused that folder before it starts: senior-dev's page has the words.
 
 ## A task that has written a file holds that file — I cannot edit a file while a task runs, chat edit blocked, single writer
 
@@ -456,7 +457,7 @@ line of its report — `files: site/index.html, site/app.css` — and only names
 exist in its checkout are believed. A task that says nothing about them has left them
 behind, and that is the difference between a deliverable and a dropping.
 
-## Why my task's branch was kept — I committed, amended, rebased or reset my branch while it ran, it did not merge, my checkout is on main or dev, tasks do not merge into a protected branch automatically, how do I take the work, why did the work not land in my checkout, why didn't my task merge, which branches does codeaf refuse to write
+## codeaf committed to dev — why my task's branch was kept, has codeaf committed to dev or main, I committed, amended, rebased or reset my branch while it ran, it did not merge, my checkout is on main or dev, tasks do not merge into a protected branch automatically, how do I take the work, why did the work not land in my checkout, why didn't my task merge, which branches does codeaf refuse to write
 
 A tag with the same name as a branch does not change which branch is protected
 or which commit the landing compares. Git signature-display settings also do
@@ -629,11 +630,11 @@ where it stands.
 
 A task is the same agent you talk to, with the same tools, in a quieter place.
 
-**On the worker harness road its belt is not the conversation's.** With
-`CODEAF_TASK_BELT=bash` set, a worker carries one shell and the plan CLI rather than
-these tools, and the verbs for handing work out come off it; the *worker harness* page
-names what that belt carries. Everything below is the belt the older road composes,
-which is what a build without the switch gives every task.
+**On the worker harness road its belt is not the conversation's.** That road is the
+default: a worker carries one shell and the plan CLI rather than these tools, and the
+verbs for handing work out come off it; the *worker harness* page names what that belt
+carries. Everything below is the belt the older road composes, which is what a build
+reaches only when `CODEAF_TASK_BELT` is set to `node`, `legacy` or `off`.
 
 It inherits the conversation's provider client, context window, image support, roles
 source, search provider and fetcher, **connected accounts**, image-generation model and
@@ -1399,11 +1400,13 @@ and inside a task the work then *waits* for that command instead of asking what 
 Nothing is asked over the wait, no step is counted, and no `[stuck]` note can be earned,
 because a task that is waiting makes no calls at all. What wakes it is the command's own
 ending, and that ending arrives whole: the exit line, the command's last lines, and the path
-to the full log, all in the one turn. This is why a task does not `sleep` and `tail` its own
+to the log, all in the one turn. This is why a task does not `sleep` and `tail` its own
 build or test run — the waiting is done for it, and those nine `sleep N && tail` steps above
 are what the counter catches when something is polled that nobody is waiting on. A command
 started with `background: true` is the other case: a server or a sweep the task deliberately
-left running holds nothing up, and the task is asked its next step straight away.
+left running holds nothing up, and the task is asked its next step straight away. Either kind
+of job is the task's own to read and to stop, with the `jobs` tool's `output` and `kill`,
+and a job still running when the task ends is stopped with it.
 
 **A task that repeats itself is told what the work has been doing.** Before it is stopped it
 gets a `[stuck]` note, and that note now carries one more fact than the repetition itself:
@@ -1702,6 +1705,20 @@ How the restore is built depends on your workspace:
 The task's own checkout is untouched by any of this, and the restore is removed as soon as
 the answer is in.
 
+## Which folder the checker reads — did the check look at my checkout or the task's copy
+
+**A task's checker checks the task's own copy, never your checkout.** When a part of the
+work is finished, the checker — the seat that reads that part against what it was asked
+for — stands in the same copy the worker wrote in, and its instructions say so:
+the work is in its working directory, and every check and probe runs there.
+
+Your checkout is not the work while the task runs. It does not hold the result until the
+task lands, and it may hold changes of yours, or of other work, that are not this task's —
+so a check read there could pass or fail the task on the wrong diff.
+
+The checker may still read other folders, as every worker may. It writes only in its copy,
+and a write aimed anywhere else is refused before it runs.
+
 ## The check says my tests fail but they were already failing · red before the task started · my task was refused over somebody else's bug · pre-existing failures
 
 A worker committing its own edits does not move this baseline. A restored task
@@ -1791,12 +1808,12 @@ The worker is fresh; the working copy is not. The task stays *running* while a r
 way, and you see one plain line of what is being closed.
 
 **A correction round is attempted by a more capable model.** The first attempt runs on the
-task's own model; when a check finds gaps, the worker sent back to close them runs on your
-crew's **careful work** model — the `repair` role, in `/crew`. It is the one place codeaf
+task's own model; when a check finds gaps, the worker sent back to close them runs on the
+task's **checker** — the `repair` role, under the checker row. It is the one place codeaf
 spends more than you asked it to, and it is spent only after something has actually gone
 wrong, on a job the check has already narrowed to named gaps in a working copy that is
-already most of the way there. Two things turn it off by themselves: a crew whose careful
-model is the same as the model the work is on repairs on that model and costs nothing
+already most of the way there. Two things turn it off by themselves: a crew whose checker
+is the same as the model the work is on repairs on that model and costs nothing
 extra, and a task whose model **you named** — on the card or from inside its room — keeps
 your model for the correction round too.
 
@@ -1991,8 +2008,9 @@ away. Nothing went wrong with the work and nobody decided anything about it.
 **Nothing is lost.** Every step the work took is in its own store, on disk, exactly as it
 was at the moment the last process went away.
 
-It is the one landing word that does not mean the work is over. The row waits for you,
-wearing the asking mark. Its line reads:
+It is the one landing word that does not mean the work is over. The row asks nothing of
+you and raises no `needs you` mark, because nothing you can press carries it on yet.
+Its line reads:
 
 ```
 nothing is driving it; everything it did is kept
@@ -2004,9 +2022,11 @@ nothing here came up short. Reading either over work whose only misfortune was a
 window would be telling you something that did not happen.
 
 **Nothing picks it up again today.** There is no key, no command and no background pass
-that starts an interrupted run's work a second time. The word and the line above are the
-whole of what the row says about it, and the store keeps every step in the meantime.
-Starting work again spends money, so nothing will ever do it without being asked.
+that starts an interrupted run's work a second time, and a new task never does: the next
+`/task` sets the interrupted run aside, readable with the earlier runs, and starts a run of
+its own. The word and the line above are the whole of what the row says about it, and the
+store keeps every step in the meantime. Starting work again spends money, so nothing will
+ever do it without being asked.
 
 **A background job is different.** A job is a process codeaf forked, and a forked process
 cannot outlive the program that forked it — so a job that was running comes back `stopped`,
@@ -2176,7 +2196,7 @@ what was left of the work is **not work a worker can do**: an approving review o
 person may give, a credential or an account nobody here holds, a decision that is yours to
 make, or a step that is somebody else's system doing something by itself.
 
-It is found by the same `mastermind` model that reads a task's parts before it splits (the
+It is found by the same **planner** that reads a task's parts before it splits (the
 tasks page, *when a task turns out to be too wide for one worker*). That reading runs
 **beside the task's worker**, which has already started, and when it comes back saying
 nobody here can do this, the worker is stopped where it is — the one time a started worker
@@ -2520,6 +2540,11 @@ By default, **no limit**. `task.parallel` is 0 (blank) out of the box, and 0 mea
 A cap, if you set one, is a **queue and never a refusal**: a ready task past the cap sits
 and starts when a slot frees.
 
+The same row answers for every road work runs on: a task this conversation puts on the
+worker harness runs as many of its parts at once as `task.parallel` allows, and so does
+`codeaf do`. That command can also name a figure for one run with `--slots <n>`, where
+`0` is no limit, and a figure named there outranks the setting for that run only.
+
 The real ceiling is the machine. Before starting **each** task, codeaf asks whether one
 more may start:
 
@@ -2528,9 +2553,13 @@ more may start:
 | `task.max_load` | one-minute load average divided by core count, from `/proc/loadavg` | **1.5** per core | at or above it, no new task starts |
 | `task.min_free_mb` | `MemAvailable` (not free memory) from `/proc/meminfo`, in MiB | **1536** (1.5 GiB) | below it, no new task starts |
 
-Either one set to 0 turns that check off. Readings are cached for **1 second**. When a
-task is held back this way it is re-asked every **5 seconds** — a machine getting quieter
-is not an event, so it has to be looked at on a clock.
+Either one set to 0 turns that check off. With both at 0 there is no machine gate.
+Readings are cached for **1 second**. A held node on the older task road is
+re-asked every **5 seconds**; the run engine checks again on each supervisor
+pass, every **300 milliseconds**, so a quiet machine starts held work without
+another request. Changing `task.max_load` or `task.min_free_mb` in `/settings` is
+picked up on the next admission poll, including when the chat and engine are separate
+processes, so held work is re-evaluated without restarting the engine. `codeaf do` uses the same governor from its profile.
 
 **How many start at once when a lot of work is handed out together.** A task that has just
 started is invisible to the memory reading — its own memory arrives with its first build,
@@ -2639,6 +2668,12 @@ When a session comes back:
   it again instead (*What a quick task cannot do*);
 - then the queue is turned again: a queued task whose prerequisites are still done starts
   now.
+
+A held plan task that never started comes back `interrupted`, not `working` or `done`.
+Its store row may still say `running`, but the recovered run row records that nothing
+was driving it; the room and rail use `interrupted` and keep the task's recorded steps.
+Rows recovered as `failed` read `incomplete`. Both belong under `Incomplete` on the
+rail, never under `Done`.
 
 You see one line about it, as context for your first turn rather than as a reason to start
 one:
@@ -3153,6 +3188,9 @@ and counted as the section above on work that is your call says. Ids can only po
 and only ids `propose_task` itself returned count: a job or adaptive-run number is a
 different kind of work, and naming one — or a task that already failed — refuses the
 proposal on the spot instead of queueing work that could never start.
+A task handed to a program such as senior-dev cannot wait at all, because it starts the
+moment it is approved: its `depends_on` may name only work that has already landed. A
+program's run that ended done may be named by any task; one still going may not.
 
 **`model`** — which model this task runs on. Set only when you asked for a particular model
 or class of model for this work. Left out, the task runs on `task.model` if set, otherwise
@@ -3302,3 +3340,27 @@ object beside its matching tool result, within the existing context budget. A la
 input is explicitly marked omitted, rather than shown as a partial object. Earlier
 failures remain part of the evidence. The model continuing the work is told to check a
 reader's objection against the actual work before changing an already-correct result.
+
+## Worker starts in home instead of the project — missing relative documents
+
+When a top-level task has no stronger folder instruction and the conversation's
+working directory is outside a repository, codeaf uses its configured project
+repository. A child keeps its parent's directory, including an ordinary folder;
+a project fallback must not move it elsewhere. Explicit placement still wins.
+
+Every bash worker and checker receives its assigned working directory before the
+work order. Original checkout paths in the request stay quoted, but project edits
+and checks belong in the assigned directory; unrelated reference paths stay literal.
+
+Bash workers search the assigned project with `rg` or `git grep`. A missing
+relative document calls for checking the working directory and project first,
+not a recursive search of the whole home directory. `plandb --help` explains
+the available plan commands without looking for repository design documents.
+
+## plandb done says already terminal — cancelled tasks and ownership
+
+A task cancelled by its supervisor stays cancelled. A late `plandb done` reports
+`task "<id>" is already terminal (cancelled)` instead of `is not claimed`.
+The refusal does not reopen the task or change its result. Active tasks still
+require their owner; an automatically completed composite's empty placeholder
+can still receive its final report.

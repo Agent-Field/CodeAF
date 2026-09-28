@@ -42,7 +42,12 @@ type planState struct {
 	// chat is the conversation's tag: the session folder's own name, stamped on
 	// every row the seed makes so the plan can be read back as this chat's
 	// (PlanTasks). It is settled with the path at the seed and never moves.
-	chat    string
+	chat string
+	// root is the run a worker's plan belongs to, set only on a run worker's
+	// own plan ([NewBeltWorker]) from the run's open handle. It is what the
+	// worker's `plandb` checks the store at path against ([plandb.RunEnv]), so
+	// a later store at the same path cannot take the worker's writes.
+	root    string
 	shimmed bool
 	// archives holds read handles for ended stores. Ended stores are immutable,
 	// so each is opened at most once for the life of this conversation.
@@ -53,8 +58,9 @@ type planState struct {
 // path helper, the CLI's walk-up, and the store's own creation all spell it
 // the same way.
 const (
-	planStoreFilename = "plandb.db"
-	planShimFilename  = "plandb"
+	planStoreFilename  = "plandb.db"
+	planShimFilename   = "plandb"
+	codeafShimFilename = "codeaf"
 )
 
 // planRootID is the store's root task. The reference loop's supervisor seeds
@@ -103,6 +109,39 @@ func (g *TaskGraph) planIfArmed() *planState {
 	return g.plan
 }
 
+// planForPages is the plan the surface's task pages are read from: the armed
+// plan under the switch, and otherwise the store this conversation's session
+// folder already holds, read and never armed.
+//
+// A PROGRAM'S RUN WRITES ITS STORE WHATEVER THE SWITCH SAYS, and its page was
+// read only under it. `/senior-dev` and `propose_task`'s `via` take the run
+// road with the switch off (task.go's run-road gate), so the run's rows, its
+// conversation with codeaf and its stage were all on disk while every reader
+// here answered nil: the rail drew no stage, and every door into the task
+// opened a room that said it would fill in and never did. Arming the plan
+// instead would hand the switch's other roads — the worker's bash prefix, the
+// seed, the pulse — to every ordinary task of a conversation that once ran a
+// program, so the readers get a state of their own and nothing else moves.
+// No store is ever made here; a conversation that never ran one answers nil.
+func (g *TaskGraph) planForPages() *planState {
+	if plan := g.planIfArmed(); plan != nil {
+		return plan
+	}
+	path := g.planPath()
+	if path == "" {
+		return nil
+	}
+	if info, err := os.Stat(path); err != nil || info.IsDir() {
+		return nil
+	}
+	g.planMu.Lock()
+	defer g.planMu.Unlock()
+	if g.pagePlan == nil || g.pagePlan.path != path {
+		g.pagePlan = &planState{path: path, chat: g.planChat()}
+	}
+	return g.pagePlan
+}
+
 // planPath resolves where this run's store lives: the session folder, or —
 // for the legacy flat layout, whose Place is zero — the workspace's .codeaf
 // folder. The CLI finds the same file by walking up from the worker's own
@@ -122,22 +161,28 @@ func (g *TaskGraph) planPath() string {
 	return ""
 }
 
-// PlanStorePath is where a run's plan store lives under a working copy that has
-// no session folder of its own: <dir>/.codeaf/plandb.db. It is the same name and
-// the same folder [planPath] falls to for a session with no Place, so a run
-// dispatched by a headless door and a session that seeds one of its own find one
-// file — two spellings of the path would be two stores with half a run in each.
+// PlanStorePath is the flat-layout fallback for a session with no Place:
+// <dir>/.codeaf/plandb.db. A new headless run uses [OpenRunPlanAt] in a
+// private folder instead; this path remains for the session fallback.
 func PlanStorePath(dir string) string {
 	return filepath.Join(dir, ".codeaf", planStoreFilename)
 }
 
-// OpenRunPlan opens the plan store a headless door outside a session runs over:
-// the working copy's own .codeaf/plandb.db, seeded with the run's words when it
-// is not there, adopted when it holds a live run, and replaced by a fresh one
-// when the run it holds has finished — the same three roads [planSeed] takes,
-// because a finished plan is not a live one and a door that ran on a done root
-// would report the previous run's result as its own. The store is the caller's
-// to close.
+// OpenRunPlan opens the older flat-layout plan path, seeded with the run's words.
+// The headless do door now uses [OpenRunPlanAt] in its private folder. A store
+// already at that path is SET ASIDE beside it first ([setAsideRunStore]) — a
+// finished one as it ended, and one nothing is driving as interrupted — and a
+// fresh one is seeded, so a second errand in one project is a second run rather
+// than a reader of the first one's ending. The store is the caller's to close.
+//
+// A NEW ERRAND NEVER ADOPTS A RUN IT DID NOT START. This door used to adopt a
+// store whose root was still open, on the reading that an open root was a live
+// run to resume. Nothing resumes through this door: every call carries a new
+// request's words, and a store left open by a run that was interrupted — a
+// timeout, an interrupt, a process that died — was run again under its old
+// title and brief while the new request was dropped. Measured on this door: a
+// directory holding a left-open store answered `status=running title="rename
+// the logger"` for a request about something else entirely.
 func OpenRunPlan(dir, title, brief string) (*plandb.Store, error) {
 	path := PlanStorePath(dir)
 	if _, err := os.Stat(path); err != nil {
@@ -149,30 +194,17 @@ func OpenRunPlan(dir, title, brief string) (*plandb.Store, error) {
 		}
 		return plandb.Open(path, title, planRootID, title, brief)
 	}
-	// ADOPT: the store under this name is the run's, and its own root says
-	// whether there is still work in it. The title and the brief are the store's
-	// own on this road — a resumed run reads the words it was seeded with — which
-	// is why the adopt demands the root id and nothing else.
-	adopted, err := plandb.Open(path, "", planRootID, "", "")
-	if err != nil {
+	if err := setAsideRunStore(path); err != nil {
 		return nil, err
 	}
-	if root := adopted.Task(planRootID); root != nil && !terminalStoreStatus(root.Status) {
-		return adopted, nil
-	}
-	_ = adopted.Close()
-	// A FINISHED PLAN IS NOT A LIVE ONE. The finished store is archived beside
-	// the run with its own number and a fresh one is seeded, the way planSeed
-	// archives it, so a second errand in one project is a second run rather than
-	// a reader of the first one's ending.
-	for suffix := 1; ; suffix++ {
-		archived := fmt.Sprintf("%s.%d", path, suffix)
-		if _, err := os.Stat(archived); os.IsNotExist(err) {
-			if err := os.Rename(path, archived); err != nil {
-				return nil, err
-			}
-			break
-		}
+	return plandb.Open(path, title, planRootID, title, brief)
+}
+
+// OpenRunPlanAt seeds one run at an explicit store path. A headless run puts
+// this path in its private home, leaving the working copy for the work alone.
+func OpenRunPlanAt(path, title, brief string) (*plandb.Store, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, err
 	}
 	return plandb.Open(path, title, planRootID, title, brief)
 }
@@ -688,19 +720,34 @@ func (p *planState) armShim() error {
 	if err := os.MkdirAll(bin, 0o700); err != nil {
 		return err
 	}
-	shim := filepath.Join(bin, planShimFilename)
 	words := make([]string, 0, len(argv)+1)
 	for _, word := range argv {
 		words = append(words, quoteShWord(word))
 	}
-	script := "#!/bin/sh\nexec " + strings.Join(words, " ") + " \"$@\"\n"
-	if existing, err := os.ReadFile(shim); err != nil || string(existing) != script {
-		if err := os.WriteFile(shim, []byte(script), 0o755); err != nil {
-			return err
-		}
+	if err := writeShim(filepath.Join(bin, planShimFilename), "#!/bin/sh\nexec "+strings.Join(words, " ")+" \"$@\"\n"); err != nil {
+		return err
+	}
+	// AND `codeaf` BESIDE IT, for the same reason and on the same PATH entry. The
+	// worker is taught to edit with `codeaf patch` (prompts/bashworker.md), and a
+	// `codeaf` resolved on the machine's PATH is a coin toss: nothing at all on an
+	// install whose file is devaf or stageaf, and on the fresh-install check of
+	// 2026-09-25 an older codeaf that answered `there is no \`codeaf patch\``.
+	// The shim makes the one word the page teaches mean the codeaf that is
+	// running, whatever its file is called ([codeafShimScript]).
+	if err := writeShim(filepath.Join(bin, codeafShimFilename), codeafShimScript()); err != nil {
+		return err
 	}
 	p.shimmed = true
 	return nil
+}
+
+// writeShim writes one shim executable, and leaves a file already holding the
+// same script alone so a run's many workers do not rewrite it under each other.
+func writeShim(path, script string) error {
+	if existing, err := os.ReadFile(path); err == nil && string(existing) == script {
+		return nil
+	}
+	return os.WriteFile(path, []byte(script), 0o755)
 }
 
 // shimDir is the directory the armed shim lives in — beside the store, the
@@ -718,7 +765,8 @@ func (p *planState) shimDir() string {
 // planBashPrefix is the assignment that puts the shim's directory FIRST on the
 // PATH of ONE command and binds that same command to the run's store — the
 // prefix a bash-belt worker's command carries, and the whole of the mechanism.
-// THE LAW IT CARRIES: THE ONLY `plandb` A WORKER CAN REACH IS THE RUN'S OWN.
+// THE LAW IT CARRIES: THE ONLY `plandb` A WORKER CAN REACH IS THE RUN'S OWN, AND
+// THE ONLY `codeaf` IS THE ONE RUNNING.
 //
 // IT IS AN `export`, NOT A BARE COMMAND-PREFIX ASSIGNMENT, and that is the fix,
 // not decoration: `PATH=x:$PATH cmd` binds only the FIRST simple command of the
@@ -747,7 +795,51 @@ func (g *TaskGraph) planBashPrefix() string {
 	if bin == "" {
 		return ""
 	}
-	return "export PATH=" + quoteShWord(bin) + ":$PATH PLANDB_DB=" + quoteShWord(plan.path) + "; "
+	prefix := "export PATH=" + quoteShWord(bin) + ":$PATH PLANDB_DB=" + quoteShWord(plan.path)
+	// AND THE RUN IS BOUND, NOT ONLY THE PATH. A path says where the run's store
+	// was when the run opened it; a later request can set that store aside and
+	// seed another at the same path, and a worker bound by the path alone then
+	// wrote its children and its `done`s into a run that was not its own
+	// (measured on the owner's session: four children and ten `done`s). The
+	// root names which run this is, and the CLI refuses a store at the path
+	// whose root is another's ([plandb.RunEnv]).
+	if plan.root != "" {
+		prefix += " " + plandb.RunEnv + "=" + quoteShWord(plan.root)
+	}
+	return prefix + "; "
+}
+
+// runningCLI is the running codeaf binary, as the codeaf command registered it
+// at its own start ([SetRunningCLI]), and empty in every process that is not
+// the codeaf command: a bench driver that answers only `plandb`, a go test
+// binary. It is what a worker's `codeaf` shim execs.
+//
+// IT IS REGISTERED, NOT PROBED, because the one thing this shim must never do is
+// run a binary that is not codeaf with codeaf's words. The plan CLI's resolver
+// may probe (resolvePlanCLI), since `<bin> plandb status` is a read; there is no
+// such harmless read for every verb a worker might type, and a bench driver
+// handed `patch` would parse it as its own flags and start its grid. So the
+// codeaf command says what it is, and anything that has not said is refused.
+var runningCLI string
+
+// SetRunningCLI registers the path of the running codeaf binary — the one the
+// person started, under whatever file name it was installed (codeaf, devaf,
+// stageaf, a `--name` word). cmd/codeaf calls it once, at start.
+func SetRunningCLI(path string) { runningCLI = strings.TrimSpace(path) }
+
+// codeafShimRefusal is the one line a worker's `codeaf` says when this process
+// never registered a running codeaf. It refuses rather than falling through to
+// the machine's PATH, where a different codeaf answers with the wrong verbs.
+const codeafShimRefusal = "codeaf is not reachable from this shell in this run; edit with sed -i or a heredoc instead"
+
+// codeafShimScript is the `codeaf` shim's whole text: an exec of the running
+// codeaf, or the refusal and exit 127 — the shell's own "not found" status —
+// when there is none to exec.
+func codeafShimScript() string {
+	if runningCLI == "" {
+		return "#!/bin/sh\necho " + quoteShWord(codeafShimRefusal) + " >&2\nexit 127\n"
+	}
+	return "#!/bin/sh\nexec " + quoteShWord(runningCLI) + " \"$@\"\n"
 }
 
 // planCLIBinEnv is the resolver's one override: it names a binary that
@@ -770,7 +862,8 @@ const planCLIBinEnv = "CODEAF_PLANDB_BIN"
 // instead of answering.
 //
 // THE ORDER IS HOW WELL EACH CANDIDATE KNOWS ITSELF: the explicit override
-// first; the running binary, only when it passes the probe (a driver that
+// first; the running codeaf as it registered itself ([SetRunningCLI]),
+// unprobed; the running binary, only when it passes the probe (a driver that
 // routes the door passes — the bench's own binary is how the in-process arm
 // gets a CLI at all); the sibling `plandb` beside the executable, whose own
 // name is the whole contract — cmd/plandb builds it beside bin/codeaf — so
@@ -782,6 +875,15 @@ const planCLIBinEnv = "CODEAF_PLANDB_BIN"
 func resolvePlanCLI(storeDir string) []string {
 	if override := strings.TrimSpace(env.Get(planCLIBinEnv)); override != "" {
 		return []string{override, "plandb"}
+	}
+	// THE RUNNING CODEAF WINS UNPROBED TOO, because it said what it is
+	// ([SetRunningCLI]) and the probe was only ever standing in for that. The
+	// probe is a read beside a store the run is writing, and on 2026-09-25 it met
+	// `database is locked` there: the resolver fell through to the codeaf on the
+	// machine's PATH — an older version, answering this run's plan — and on a
+	// clean devaf install to nothing, which failed the task with the error below.
+	if runningCLI != "" {
+		return []string{runningCLI, "plandb"}
 	}
 	if self, err := os.Executable(); err == nil && !looksLikeTestBinary(self) {
 		if planCLIProbes(self, storeDir) {

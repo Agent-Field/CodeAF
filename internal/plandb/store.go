@@ -583,6 +583,10 @@ func (s *Store) Done(id, agent, result string, artifacts, evidence []string) (*T
 		if err := refuseParked(task); err != nil {
 			return err
 		}
+		placeholder := task.Status == StatusDone && strings.TrimSpace(task.Result) == "" && task.ClaimedBy == ""
+		if !placeholder && terminal(task.Status) {
+			return fmt.Errorf("task %q is already terminal (%s)", id, task.Status)
+		}
 		text := strings.TrimSpace(result)
 		// A REVIEW CONCLUSION CARRIES ITS BASIS WITH IT, written by the same
 		// gate that judged it: a holds conclusion is refused unless every
@@ -609,7 +613,6 @@ func (s *Store) Done(id, agent, result string, artifacts, evidence []string) (*T
 		// landing is what the placeholder was waiting for, and the caller that
 		// fills it adopts the task as its own. Any task with words in it — a
 		// worker's own done, a real ending — keeps its words and its owner.
-		placeholder := task.Status == StatusDone && strings.TrimSpace(task.Result) == "" && task.ClaimedBy == ""
 		if !placeholder {
 			// THE ROOT IS NEVER CLAIMED, so its worker cannot answer the ownership
 			// check every other task's worker does. The root's own worker is named
@@ -1212,6 +1215,16 @@ const (
 	NoteFromPerson = "person"
 )
 
+// NoteAgentChat is the agent name a note carries when the CONVERSATION left it
+// rather than a worker or the person. It is a worker-side note by the column
+// above and deliberately so — the person's voice is the one thing on a run that
+// may move what the work is judged by, and a model writing in it could grant
+// itself permissions nobody gave (internal/session's relayToTask states the
+// same law about the same hazard). The name is a constant here, in the package
+// both the writer and every reader import, so the one hand that is neither the
+// person nor a worker is spelled one way wherever it is drawn.
+const NoteAgentChat = "chat"
+
 // AddNote leaves a task-scoped message. The note is public to every worker on
 // the run — the CLI's notes listing prints all of them — and the author is
 // recorded so a reader can tell an owner's handoff from a bystander's
@@ -1520,12 +1533,42 @@ func (s *Store) CompleteRoot(result string) error {
 // a cascade that follows cancelled parents stops at a parent that ended earlier
 // and would leave the open work under it to be offered to the next worker.
 //
-// A RUN LEFT OPEN IS A RUN THE NEXT HAND-OFF ADOPTS, which is why a stop has to
-// be written here and cannot only be a context somebody cut: a store whose run
-// task is still open is picked up again by the next run over it, stopped work
-// included. Two presses are one stop, and a run that ended by itself is left as
-// it ended.
+// A RUN LEFT OPEN READS AS RUNNING, which is why a stop has to be written here
+// and cannot only be a context somebody cut: a store whose run task is still
+// open is drawn as work going, and a door that adopts open stores (the
+// headless errand's, the carry-on door) picks it up again, stopped work
+// included. Two presses are one stop, and a run that ended by itself is left
+// as it ended.
 func (s *Store) StopRoot(reason string) error {
+	return s.closeRoot(StatusCancelled, reason)
+}
+
+// EndRoot ends the run on an ending of its OWN that is not its tree's
+// completion: a limit its person set was reached, or the run's own worker
+// failed. Only the runtime calls it, the way only the runtime calls
+// [Store.StopRoot] and [Store.CompleteRoot]. The run's own task is FAILED with
+// the reason, every task still open is cancelled with the same reason, and
+// every task that had already ended keeps the ending it has.
+//
+// IT IS [Store.StopRoot]'s WRITE WITH ONE WORD CHANGED, AND THE WORD IS THE
+// POINT. A cancelled run's task is a person's stop and reads as one; a run that
+// hit a limit or whose own worker failed was stopped by nobody, and a store that
+// said cancelled over it would put a person's hand on an ending no person made.
+//
+// A RUN LEFT OPEN IS A RUN THE NEXT HAND-OFF ADOPTS, which is why these endings
+// have to be written at all: until this verb only a person's stop wrote an
+// ending on the run's own task, so a run that ended on its dollar limit stayed
+// `running` in its store and the next request in the same place read that
+// store's brief as its own. Two calls are one ending, and a run that has
+// already ended is left as it ended.
+func (s *Store) EndRoot(reason string) error {
+	return s.closeRoot(StatusFailed, reason)
+}
+
+// closeRoot is the one write [Store.StopRoot] and [Store.EndRoot] share: the
+// run's own task takes the ending named, every open task is cancelled under the
+// same reason, and nothing that had already ended is touched.
+func (s *Store) closeRoot(rootStatus Status, reason string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.transact(func(next *state, now time.Time) error {
@@ -1542,7 +1585,75 @@ func (s *Store) StopRoot(reason string) error {
 			task.Owner, task.SeenAt = "", time.Time{}
 			task.UpdatedAt, task.CompletedAt = now, now
 		}
+		root.Status = rootStatus
 		promote(next, now)
+		return nil
+	})
+}
+
+// FailRoot ends the run because the run's own task failed: its worker came
+// home with an error and nothing of the run is still working. Only the runtime
+// calls it, the way only the runtime calls [Store.CompleteRoot] and
+// [Store.StopRoot]. The run's task is failed with the reason, and every other
+// task still open is cancelled with it, in one transaction; a task that had
+// already ended keeps its ending. No result is written: a result is what a
+// finished run delivers, and a failed worker's account is not one.
+//
+// A FAILED RUN WAS LEFT OPEN, AND AN OPEN RUN READS AS RUNNING. Nothing wrote
+// the ending of a run whose own worker failed, so its store said `running` for
+// ever: the task's page drew `running` and offered `stop it` over a program
+// that had ended forty minutes earlier, and a door that adopts open stores
+// would have taken the dead run up as live work ([Store.StopRoot]). A run that
+// already ended is left as it ended.
+func (s *Store) FailRoot(reason string) error {
+	return s.FailRootAt(reason, time.Time{})
+}
+
+// FailRootAt is [Store.FailRoot] with the instant the run ended named rather
+// than read off the clock: the zero time is now, which is FailRoot itself.
+//
+// A RUN WHOSE PROCESS WENT AWAY ENDED WHEN IT WAS LAST SEEN, NOT WHEN SOMEBODY
+// NOTICED. A program's run that codeaf was closed under is ended by the next
+// process that finds its store open, which can be hours later; written at that
+// moment, the run's page counted every hour the machine sat idle as time the
+// program had worked. The caller names the run's last evidence of life instead
+// (its last model call, its last charge, the store's own last write), and the
+// ending is written there.
+//
+// The instant is held inside what can be true of the run: never before its own
+// task was made, because a run cannot end before it began, and never after
+// now, because an ending in the future would read as a run still going.
+func (s *Store) FailRootAt(reason string, at time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.transact(func(next *state, now time.Time) error {
+		root := next.Tasks[next.RootID]
+		if root == nil || terminal(root.Status) {
+			return errNoChange
+		}
+		ended := now
+		if !at.IsZero() && at.Before(now) {
+			ended = at.UTC()
+		}
+		if ended.Before(root.CreatedAt) {
+			ended = root.CreatedAt
+		}
+		reason = strings.TrimSpace(reason)
+		for _, task := range next.Tasks {
+			if terminal(task.Status) || task.ID == root.ID {
+				continue
+			}
+			task.Status, task.Error, task.ClaimedBy = StatusCancelled, reason, ""
+			task.Owner, task.SeenAt = "", time.Time{}
+			task.UpdatedAt, task.CompletedAt = ended, ended
+			if ended.Before(task.CreatedAt) {
+				task.UpdatedAt, task.CompletedAt = task.CreatedAt, task.CreatedAt
+			}
+		}
+		root.Status, root.Error, root.ClaimedBy = StatusFailed, reason, ""
+		root.Owner, root.SeenAt = "", time.Time{}
+		root.UpdatedAt, root.CompletedAt = ended, ended
+		promote(next, ended)
 		return nil
 	})
 }
@@ -2927,6 +3038,43 @@ func (s *Store) SpendBy(axis string, since time.Time) []SpendLine {
 		return lines[i].Key < lines[j].Key
 	})
 	return lines
+}
+
+// LastSpendAt answers when the ledger's latest charge was written, and the
+// zero time for a ledger with none or a store that is closed. It is one of the
+// three readings a run's last evidence of life is taken from, beside its last
+// model call and the store's own last write ([Store.FailRootAt] says why that
+// instant matters): a charge is written the moment a call was paid for, so it
+// is the latest moment the run was certainly still spending.
+//
+// THE LATEST IS FOUND IN GO, not with MAX() in the query, for the reason
+// SpendBy gives: `at` is RFC3339Nano text, whose fractional digits vary, so a
+// text comparison would misorder a whole second against its own fraction.
+func (s *Store) LastSpendAt() time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return time.Time{}
+	}
+	rows, err := s.rdb.Query(`SELECT at FROM spend`)
+	if err != nil {
+		return time.Time{}
+	}
+	defer rows.Close()
+	var latest time.Time
+	for rows.Next() {
+		var at string
+		if err := rows.Scan(&at); err != nil {
+			return time.Time{}
+		}
+		if moment, err := parseTime(at); err == nil && moment.After(latest) {
+			latest = moment
+		}
+	}
+	if rows.Err() != nil {
+		return time.Time{}
+	}
+	return latest
 }
 
 func cloneTask(task *Task) *Task {

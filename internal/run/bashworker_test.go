@@ -199,7 +199,7 @@ func TestBashWorkerPublishesTheLiveStepWhileItsCommandRuns(t *testing.T) {
 			return toolReply(finishCommand("root", "the wait is over")), nil
 		},
 	}}
-	worker := run.NewBashWorker(store, workspace, "test/model", seat)
+	worker := run.NewBashWorker(store, workspace, "test/model", "", seat)
 	ctx := run.WithStepsPerTask(runContext(t), 9)
 
 	done := make(chan error, 1)
@@ -245,7 +245,7 @@ func TestBashWorkerClearsTheLiveStepWhenTheCapStopsIt(t *testing.T) {
 	seat := &seat{ever: func(context.Context, []ai.Message) (*ai.Response, error) {
 		return toolReply(`{"command":"true"}`), nil
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
 
 	if _, err := worker.Run(run.WithStepsPerTask(runContext(t), 3), *store.Task(store.RootID())); err == nil {
 		t.Fatal("a worker that spent its step cap came home clean")
@@ -269,7 +269,7 @@ func TestBashWorkerClearsTheLiveStepWhenTheWallStopsIt(t *testing.T) {
 			return toolReply(`{"command":` + jsonString(command) + `}`), nil
 		},
 	}}
-	worker := run.NewBashWorker(store, workspace, "test/model", seat)
+	worker := run.NewBashWorker(store, workspace, "test/model", "", seat)
 
 	ctx, cancel := context.WithCancel(runContext(t))
 	done := make(chan error, 1)
@@ -333,12 +333,16 @@ func TestBashWorkerRecordsItsStepsAndReportsThem(t *testing.T) {
 			return toolReply(finishCommand("root", "the greeting is in place")), nil
 		},
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+	workspace := t.TempDir()
+	worker := run.NewBashWorker(store, workspace, "test/model", "", seat)
 
 	report, err := worker.Run(run.WithStepsPerTask(runContext(t), 9), *store.Task(store.RootID()))
 
 	if err != nil {
 		t.Fatalf("the worker's run failed: %v", err)
+	}
+	if brief := seat.opening(t); !strings.Contains(brief, "ASSIGNED WORKING DIRECTORY\n\n"+workspace) {
+		t.Fatalf("worker did not receive its actual execution directory: %s", brief)
 	}
 	if report.Steps != 2 {
 		t.Fatalf("report steps = %d, want the command and the finish the script ran", report.Steps)
@@ -385,7 +389,7 @@ func TestBashWorkerOpensOnARecordedPredecessorWithTheResumeSentence(t *testing.T
 			return toolReply(finishCommand("root", "resumed, inspected, and satisfied")), nil
 		},
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
 
 	if _, err := worker.Run(run.WithStepsPerTask(runContext(t), 9), *store.Task(store.RootID())); err != nil {
 		t.Fatalf("the worker's run failed: %v", err)
@@ -433,7 +437,7 @@ func TestBashWorkerInANonRepositoryWorkspaceRunsGitClone(t *testing.T) {
 			return toolReply(finishCommand("root", "the clone was the first step")), nil
 		},
 	}}
-	worker := run.NewBashWorker(store, workspace, "test/model", seat)
+	worker := run.NewBashWorker(store, workspace, "test/model", "", seat)
 
 	if _, err := worker.Run(run.WithStepsPerTask(runContext(t), 9), *store.Task(store.RootID())); err != nil {
 		t.Fatalf("the worker's run failed: %v", err)
@@ -498,7 +502,7 @@ func TestBashWorkerContinuesTaskNumbersButCapsAndReportsThisRun(t *testing.T) {
 	seat := &seat{ever: func(context.Context, []ai.Message) (*ai.Response, error) {
 		return toolReply(`{"command":"echo new"}`), nil
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
 
 	report, err := worker.Run(run.WithStepsPerTask(runContext(t), 2), *store.Task(id))
 	if err == nil || !strings.Contains(err.Error(), "stopped at its step cap after 2 steps") {
@@ -535,7 +539,7 @@ func TestBashWorkerEndsItsLoopAtTheStepCap(t *testing.T) {
 	seat := &seat{ever: func(context.Context, []ai.Message) (*ai.Response, error) {
 		return toolReply(`{"command":"true"}`), nil
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
 
 	report, err := worker.Run(run.WithStepsPerTask(runContext(t), 3), *store.Task(store.RootID()))
 
@@ -544,6 +548,15 @@ func TestBashWorkerEndsItsLoopAtTheStepCap(t *testing.T) {
 	}
 	if report.Steps != 3 {
 		t.Fatalf("report steps = %d, want the cap the loop stopped at", report.Steps)
+	}
+	// The bound is on work, not just on what the recorder admits afterwards.
+	// A fourth request has already spent past the cap even if its end event
+	// is discarded, so count the provider calls as well as the written steps.
+	seat.mu.Lock()
+	calls := seat.seen
+	seat.mu.Unlock()
+	if calls != 3 {
+		t.Fatalf("the provider received %d calls, want exactly the three allowed steps", calls)
 	}
 	lines := rawTrajectory(t, storeDir, store.RootID())
 	if len(lines) != 5 {
@@ -593,7 +606,7 @@ func TestBashWorkerReportsItsSpendWhileItIsStillWorking(t *testing.T) {
 		reply.Usage.Cost = &cost
 		return reply, nil
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
 	var mu sync.Mutex
 	var figures []float64
 	ctx := run.WithSpendBank(run.WithStepsPerTask(runContext(t), 3), func(usd float64) {
@@ -650,7 +663,7 @@ func TestBashWorkerEndsAWorkerThatRepeatsTheSameFailingCommand(t *testing.T) {
 		}
 		return textReply("still working on it"), nil
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
 
 	report, err := worker.Run(run.WithStepsPerTask(runContext(t), 60), *store.Task(store.RootID()))
 
@@ -720,7 +733,7 @@ func TestBashWorkerParksAStalledWorkerThatIsBlockedOnAnotherTask(t *testing.T) {
 		}
 		return textReply("the leaf is not done yet"), nil
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
 
 	report, err := worker.Run(run.WithStepsPerTask(runContext(t), 60), *store.Task(store.RootID()))
 
@@ -762,7 +775,7 @@ func TestBashWorkerKeepsAWorkerWhoseEveryLookAnswersDifferently(t *testing.T) {
 	seat := &seat{ever: func(context.Context, []ai.Message) (*ai.Response, error) {
 		return toolReply(`{"command":` + jsonString(command) + `}`), nil
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
 
 	const cap = 16
 	report, err := worker.Run(run.WithStepsPerTask(runContext(t), cap), *store.Task(store.RootID()))
@@ -819,7 +832,7 @@ func TestBashWorkerEndsABrokenWorkerWhileItsSiblingsMoveTheStore(t *testing.T) {
 	seat := &seat{ever: func(context.Context, []ai.Message) (*ai.Response, error) {
 		return toolReply(`{"command":` + jsonString(command) + `}`), nil
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
 
 	report, err := worker.Run(run.WithStepsPerTask(runContext(t), 60), *store.Task("mine"))
 
@@ -850,7 +863,7 @@ func TestBashWorkerKeepsAWorkerWhoseStoreMovedBetweenLooks(t *testing.T) {
 	seat := &seat{ever: func(context.Context, []ai.Message) (*ai.Response, error) {
 		return toolReply(`{"command":` + jsonString(command) + `}`), nil
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
 
 	const cap = 16
 	report, err := worker.Run(run.WithStepsPerTask(runContext(t), cap), *store.Task(store.RootID()))
@@ -912,7 +925,7 @@ func TestBashWorkerSpeaksOnceAndKeepsAWorkerThatChangesItsAction(t *testing.T) {
 		}
 		return textReply("looking again"), nil
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
 
 	report, err := worker.Run(run.WithStepsPerTask(runContext(t), 24), *store.Task(store.RootID()))
 
@@ -958,7 +971,7 @@ func TestBashWorkerEndsAWorkerThatIgnoresTheNote(t *testing.T) {
 		}
 		return textReply("still working on it"), nil
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
 
 	report, err := worker.Run(run.WithStepsPerTask(runContext(t), 60), *store.Task(store.RootID()))
 
@@ -1013,7 +1026,7 @@ func TestBashWorkerNoteDrawsNoStepOfItsOwn(t *testing.T) {
 		}
 		return textReply("still working on it"), nil
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
 
 	_, err := worker.Run(run.WithStepsPerTask(runContext(t), 60), *store.Task(store.RootID()))
 	if err == nil {

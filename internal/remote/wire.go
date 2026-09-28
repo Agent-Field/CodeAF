@@ -344,7 +344,23 @@ import (
 // ReplaceQuestion. It also carries whether a caller has no approval resolver.
 // Older peers must refuse before a question or an unwatched tool can run under
 // semantics the other side does not understand.
-const Version = 17
+//
+// VERSION 19 CARRIES THE DELEGATE DOOR — [MethodDelegateList] and
+// [MethodDelegateStart] (wire_task.go). The number moves for [MethodTaskStart]'s
+// reason: `Delegate.Start` COMMISSIONS WORK on the far machine and spends its
+// money, so a version-18 engine answering "no such method" would leave a person
+// told their work was under way while nothing had started. The list rides the
+// same number because a surface generates its command rows from it before its
+// first frame, and a row for a program the engine cannot start is a command
+// that lies.
+//
+// VERSION 18 IS THE CREW PICKED PER TASK. [TaskStartArgs] carries the one-task
+// effort word (`/task --best`, `/task --cheap`), and [MethodTaskRedoStronger]
+// runs the last task again on a stronger crew. The number moves because both
+// fail as silence on an older engine: a version-17 engine reads `effort` as a
+// field it does not know and starts the task on the crew it would have had,
+// and the person is never told their word did nothing. NEVER TO SILENCE.
+const Version = 19
 
 // AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods
 // rode version 5's: neither half can be surprised by them. "phase" and "lane"
@@ -460,6 +476,7 @@ const (
 	MethodClose           = "Close"                  // nothing → nothing
 	MethodModel           = "Model"                  // nothing → string
 	MethodSetModel        = "SetModel"               // string → nothing
+	MethodSetSpendRail    = "SetSpendRail"           // dollars → nothing
 	MethodSetContext      = "SetContextWindow"       // legacy version-5 hint; current remote surfaces do not send it
 	MethodReasoningFor    = "ReasoningFor"           // string → string
 	MethodSetReasoningFor = "SetReasoningFor"        // ReasoningArgs → nothing
@@ -540,9 +557,15 @@ const (
 	// that as the block being absent HERE — which is exactly what it drew before
 	// this door existed — and the emptiness law is kept. Nothing that was drawn
 	// goes dark, so nothing is refused at the door.
-	MethodPlanSpend         = "PlanSpend"         // PlanSpendArgs → []session.PlanSpendLine
-	MethodPlanTasks         = "PlanTasks"         // nothing → []session.PlanTaskRow
-	MethodPlanTaskPage      = "PlanTaskPage"      // PlanTaskPageArgs → PlanTaskPageResult
+	MethodPlanSpend    = "PlanSpend"    // PlanSpendArgs → []session.PlanSpendLine
+	MethodPlanTasks    = "PlanTasks"    // nothing → []session.PlanTaskRow
+	MethodPlanTaskPage = "PlanTaskPage" // PlanTaskPageArgs → PlanTaskPageResult
+	// MethodPlanTaskWork is the task room's work tab: the difference in the
+	// run's working copy. It rides this version rather than moving it, for
+	// [MethodPlanSpend]'s reason — an engine that does not know it answers
+	// "no such method", and the tab draws the absence sentence it already
+	// drew for an engine with no door.
+	MethodPlanTaskWork      = "PlanTaskWork"      // PlanTaskArgs → PlanTaskWorkResult
 	MethodPlanNote          = "PlanNote"          // PlanTextArgs → nothing
 	MethodPlanPause         = "PlanPause"         // PlanTaskArgs → nothing
 	MethodPlanResume        = "PlanResume"        // PlanTaskArgs → nothing
@@ -562,6 +585,18 @@ const (
 	MethodEffort         = "Effort"         // nothing → string (the stored rung, "" for none)
 	MethodResolvedEffort = "ResolvedEffort" // nothing → string (the rung the next turn asks for)
 	MethodSetEffort      = "SetEffort"      // string → bool (false when the word is not a rung)
+
+	// The skills a person puts in front of this conversation by hand, and the
+	// shelf they are chosen from (internal/session's skillattach.go, and
+	// skills.go here). The attachment is the SESSION'S — it is held beside the
+	// conversation and read on every message it sends — so a surface on the
+	// other end of a socket reaches it through these doors rather than holding
+	// a copy of its own.
+	MethodAttachSkills   = "AttachSkills"   // []string → []string (the set as it now stands)
+	MethodDetachSkill    = "DetachSkill"    // string → bool (whether it was on)
+	MethodAttachedSkills = "AttachedSkills" // nothing → []string
+	MethodClearSkills    = "ClearSkills"    // nothing → int (how many were on)
+	MethodSkillShelf     = "SkillShelf"     // SkillShelfArgs → []store.Fact
 
 	// The conversation's own posture on the tool gate (internal/session's
 	// approvalposture.go), the dial above one door over: the resolved posture
@@ -1143,6 +1178,58 @@ type Welcome struct {
 	// would open a picker whose every row ends in an error.
 	Folders bool `json:"folders,omitempty"`
 
+	// Teams says this engine ANSWERS THE TEAMS DOORS ([MethodTeamsRead],
+	// [MethodTeamsUpdate], [MethodTeamsTraffic]) from its own profile, which
+	// is where its team tools keep the teams and their Traffic.
+	//
+	// IT IS CARRIED FOR [Welcome.Folders]' REASON: the window decides at the
+	// door whether it has teams over this connection, before anything is
+	// drawn. ABSENCE IS false, and false turns teams off over the connection
+	// with the sentence the window has always said; it never sends the window
+	// back to the laptop's own teams file, which the far session cannot see.
+	Teams bool `json:"teams,omitempty"`
+
+	// Delegation says this engine ANSWERS THE DELEGATION DOORS
+	// ([MethodTeamsDefaults], [MethodTeamsPackets], [MethodTeamsRaise],
+	// [MethodTeamsDecide], [MethodTeamsEscalate], [MethodTeamsSpend],
+	// [MethodTeamsDelete]) from its own profile, beside the teams doors.
+	//
+	// IT IS CARRIED FOR [Welcome.Teams]' REASON, and it is a second flag
+	// because an engine can have the first without it: one built between the
+	// two answers the teams file and its Traffic and not the packets, the
+	// spend or a delete. ABSENCE IS false, and false leaves those seam doors
+	// nil, which the window reads as "not over this connection" and says so
+	// rather than reading this laptop's files.
+	Delegation bool `json:"delegation,omitempty"`
+
+	// TeamSettings says this engine ANSWERS [MethodTeamsApplyDefault]: the
+	// settings tab can change the five `teams.` defaults on this machine.
+	//
+	// IT IS A FLAG OF ITS OWN beside [Welcome.Delegation] for that flag's
+	// reason. An engine can read the defaults and still have no door that
+	// writes them. ABSENCE IS false, and false leaves the Teams tab read-only
+	// over the connection, said as such, rather than writing this laptop's file.
+	TeamSettings bool `json:"team_settings,omitempty"`
+
+	// WrapUp says this engine ANSWERS THE WRAP-UP'S TWO DOORS
+	// ([MethodTeamsWrapUp], [MethodTeamsAcceptClosing]). A third flag for
+	// [Welcome.Delegation]'s reason: an engine built between the two has the
+	// packets and not these. ABSENCE IS false, and false leaves the window
+	// with `Close now` only over that connection, said as such.
+	WrapUp bool `json:"wrap_up,omitempty"`
+
+	// TeamAsk says this engine ANSWERS THE WALL'S TWO MODEL ASKS
+	// ([MethodTeamsName], [MethodTeamsPropose]): its agent names a group of
+	// conversations and proposes teams on its own naming role.
+	//
+	// IT IS CARRIED FOR [Welcome.Folders]' REASON: a *remote.Agent always has
+	// NameTeam and ProposeTeams on it, so the wall's type assertion answers yes
+	// for every connection and says nothing about the far machine. ABSENCE IS
+	// false, and false is refused at this end before anything is written, which
+	// the wall reads as it reads any failed ask: the word it already holds, and
+	// Organize's folder pass alone.
+	TeamAsk bool `json:"teamAsk,omitempty"`
+
 	// News says this engine SENDS THE STATUS LINE'S NEWS — the "phase" and
 	// "lane" frames the live rate and the `via <machine>` rider are drawn from
 	// (news.go) — for the conversation this surface arrived in.
@@ -1161,6 +1248,26 @@ type Welcome struct {
 	// build between the news frames and this flag sends them without saying so,
 	// which is why a frame arriving counts as the same answer.
 	News bool `json:"news,omitempty"`
+
+	// Skills says this engine's conversation CAN CARRY SKILLS PUT IN FRONT OF
+	// IT BY HAND and can list the shelf they come from — that its agent
+	// answers [MethodAttachSkills], [MethodDetachSkill], [MethodAttachedSkills],
+	// [MethodClearSkills] and [MethodSkillShelf] rather than refusing them
+	// (skills.go).
+	//
+	// IT IS CARRIED FOR [Welcome.Folders]'S REASON: a surface at this end holds
+	// a *remote.Agent, which ALWAYS has the doors on it, so the assertion the
+	// picker makes says nothing about the far machine. ABSENCE IS false, and
+	// false keeps the picker's own sentence for a conversation that cannot
+	// carry attached skills rather than a list whose every choice goes nowhere.
+	Skills bool `json:"skills,omitempty"`
+}
+
+// SkillShelfArgs asks for one reading of the conversation's skill shelf, on
+// [store.Store.SkillFacts]'s own two arguments.
+type SkillShelfArgs struct {
+	Status string `json:"status,omitempty"`
+	Limit  int    `json:"limit,omitempty"`
 }
 
 // Driver is who holds the keyboard on one conversation, as told to ONE surface.
@@ -1773,6 +1880,12 @@ type PlanTaskPageArgs struct {
 // PlanTaskPageResult preserves both the page and whether the task belongs to the plan.
 type PlanTaskPageResult struct {
 	Page session.PlanTaskPage
+	OK   bool
+}
+
+// PlanTaskWorkResult preserves both the working copy and whether the task belongs to the plan.
+type PlanTaskWorkResult struct {
+	Work session.PlanTaskWork
 	OK   bool
 }
 

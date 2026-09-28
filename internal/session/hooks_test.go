@@ -106,14 +106,16 @@ func TestTheControlPlaneRegistersTheFourMechanismsInOrder(t *testing.T) {
 		// nothing until an agent is built with a scope (orchestrate.go), or some
 		// node is running in a tree this agent is writing in (treehold.go). The
 		// claim comes after the scope because the scope is about the writer and
-		// the claim is about everybody else.
+		// the claim is about everybody else. The program hold beside it is inert
+		// the same way until a program's run holds a folder this agent writes in
+		// (programhold.go).
 		//
 		// AND THE GROUND COMES BEFORE THE GIT GUARD, which is the one order in
 		// this list that a person would notice being wrong: the git guard's
 		// sentences are about a task's OWN copy, so a command aimed at another
 		// directory has to meet the path law first or be refused with a
 		// paragraph that is false about every path in it (taskoutside.go).
-		{"pre-action", planeNames(plane.preAction), []string{"approval", "changes", "write-scope", "tree-claim", "task-ground", "task-git"}},
+		{"pre-action", planeNames(plane.preAction), []string{"approval", "changes", "write-scope", "tree-claim", "program-hold", "task-ground", "task-git"}},
 		{"post-feedback", planeNames(plane.postFeedback), []string{"changes", "writes", "loop"}},
 	} {
 		if !sameNames(expected.got, expected.want) {

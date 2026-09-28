@@ -52,7 +52,7 @@ func TestReopenSharedRemoteTabKeepsRefusalForRetryFromHome(t *testing.T) {
 	}
 }
 
-func TestEscapeStaysHomeAndReopenRestoresTheLastClosedTab(t *testing.T) {
+func TestReopenSkipsTheLastClosedTabAfterEscapeAlreadyReturnedToIt(t *testing.T) {
 	a := reopenApp(t)
 	var closed []string
 	for i := 0; i < 3; i++ {
@@ -63,11 +63,11 @@ func TestEscapeStaysHomeAndReopenRestoresTheLastClosedTab(t *testing.T) {
 		t.Fatal("closing the final tab did not go Home")
 	}
 	drive(t, a, key("esc"))
-	if !a.at(pageHome) || a.file != closed[2] {
-		t.Fatal("Escape left Home or changed the underlying conversation")
+	if a.pageShowing() || a.file != closed[2] {
+		t.Fatal("Escape did not return to the same underlying conversation")
 	}
 	drive(t, a, reopenPress())
-	if a.at(pageHome) || a.file != closed[2] || a.tabShut[a.convKey(closed[2])] {
-		t.Fatal("reopen did not restore the last closed tab from Home")
+	if a.file != closed[1] || a.tabShut[a.convKey(closed[2])] {
+		t.Fatal("reopen spent a key on the already-visible tab instead of the prior closure")
 	}
 }

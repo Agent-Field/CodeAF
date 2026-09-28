@@ -50,6 +50,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/credits"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/leave"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
@@ -387,6 +388,21 @@ type TaskOwnerView struct {
 	// Nil is a door that cannot offer it. The page then says exactly what it said
 	// before, which is what a capability that cannot work is owed.
 	Questions func() (<-chan session.Event, func())
+	// TaskPage reads ONE TASK'S STORED PAGE in the owner's own store — the page
+	// a program's task is drawn from, since a program writes no worker journal
+	// for [TaskOwnerView.Room] to read ([session.PlanTaskPage.Program]). It is
+	// the same read this window's own program room makes of its own store
+	// ([session.Agent.PlanTaskPage]), made on this view's connection so the id
+	// is answered in the owner's numbering and never in this window's.
+	//
+	// IT KEEPS THE ENGINE'S REFUSAL, where the agent's own read folds every
+	// failure into "not found": a page this window is reading learns that the
+	// conversation under it was replaced from exactly this error
+	// ([remote.ErrJoinedGone]), and a program's page reads nothing else.
+	//
+	// Nil is a door that cannot offer it, and every page opened through that
+	// door is the journal reading it always was.
+	TaskPage func(id string) (session.PlanTaskPage, bool, error)
 	// Close gives back THIS VIEW'S connection and nothing else. The conversation
 	// goes on running, the window that owns it keeps its keyboard, and the
 	// engine is untouched.
@@ -432,6 +448,13 @@ type Options struct {
 	// a command rather than an opening read so the first frame never waits for
 	// the network. Nil leaves the capability absent.
 	UpdateCheck func(context.Context) (codeupdate.Available, bool)
+	// ReadCredits and PaymentRefusals are the local default-service balance
+	// doors. Nil leaves hosted and test surfaces without a balance reader.
+	ReadCredits     func(context.Context) (credits.Reading, error)
+	PaymentRefusals func(func()) func()
+	// ImplicitTalk says no flag, environment value, or saved talk row chose the
+	// current model, so a first-run low reading may swap its untouched default.
+	ImplicitTalk bool
 	// ResolveUpdate and InstallUpdate are the two off-frame halves of /update.
 	// Keeping selection separate lets the surface name the tag before the
 	// download begins. Nil leaves the command with an honest refusal.
@@ -444,6 +467,19 @@ type Options struct {
 	UpdateCurl    string
 	UpdateArgs    []string
 	Restart       *codeupdate.Plan
+
+	// TelemetryNotice is the anonymous usage counts' notice while this install
+	// still owes it to the person, and empty once it has been seen. The first
+	// conversation's screen draws it whole, beside the greeting, because the
+	// notice promises to be read BEFORE any count is sent, and a line printed on
+	// the normal screen just before this surface covered it was read only after
+	// quitting, by which time the exit had already sent (docs/TELEMETRY.md).
+	TelemetryNotice string
+	// TelemetryNoticeShown is the door's record that the notice was seen. It is
+	// called once, on the update loop, after a frame has drawn TelemetryNotice —
+	// never from the frame, which may not touch the disk — and never for a notice
+	// that no frame drew: a frame too short for it, or a setup standing in front.
+	TelemetryNoticeShown func()
 
 	// Memory is the durable memory store behind the memory place. Nil means the
 	// place is unavailable; the live door passes the same store it gave the
@@ -599,6 +635,23 @@ type Options struct {
 	// --host, where the holder is a window on this laptop and the journal is on
 	// the far machine. Every one of them keeps the road it had.
 	EngineAnswers func(workspace string) bool
+
+	// Elsewhere reads what the project's OTHER conversations have out right
+	// now — the presence files beside the transcript this window is drawing —
+	// for a window whose agent cannot answer that itself
+	// ([session.ElsewhereOf] is the shape).
+	//
+	// IT IS THE HALF OF THE TASKS PAGE THE ENGINE ROAD HAD LOST. The rows of
+	// work another conversation is running are minted from that reading
+	// ([app.refreshElsewhere]), and it was asked of the agent alone: the
+	// in-process agent reads its own disk, and the connection bare `codeaf`
+	// holds to its engine does not ([remote.Agent] has no such method). So on
+	// the ordinary launch no such row was ever drawn, and [Options.OpenTaskOwner]
+	// — the door behind exactly those rows — could never be reached.
+	//
+	// Nil is a window whose disk is not the engine's (--host) or whose agent
+	// answers for itself (the in-process door); both keep the road they had.
+	Elsewhere func(transcript string, now time.Time) session.Elsewhere
 
 	// OpenTaskOwner attaches a SECOND VIEW onto a conversation that is ALREADY
 	// RUNNING, for as long as one task page is on screen: a reader for that
@@ -1092,6 +1145,17 @@ type Options struct {
 	// watch. Nothing half-works and nothing claims to.
 	Standing StandingSeam
 
+	// Teams is where the teams file and the Traffic logs are: the profile of
+	// the machine the SESSION runs on, because the team tools a model calls
+	// keep them there ([TeamsSeam] says what each function owes).
+	//
+	// The zero value is this machine's own profile ([Options.ProfileDir]),
+	// which is every local launch. The --host door hands one that asks the
+	// engine; over --host with no seam (an engine without the teams doors) the
+	// window keeps no teams at all rather than keeping them here, where the far
+	// session would never read them (host.go).
+	Teams TeamsSeam
+
 	// Link is what the door can tell this surface about the connection the
 	// conversation is on the far end of: the sentence to draw while a dropped
 	// link is being redialled, the empty round trip to measure on a slow clock,
@@ -1305,6 +1369,11 @@ type StandingSeam struct {
 func Run(ctx context.Context, opts Options) error {
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if opts.ReadCredits != nil {
+		var closeReads func()
+		opts.ReadCredits, closeReads = ownedCreditReader(ctx, opts.ReadCredits)
+		defer closeReads()
 	}
 	// THE SIGNAL HANDLER IS OURS, and [tea.WithoutSignalHandler] is what takes
 	// Bubble Tea's out of the way — see [forwardSignals] for what was wrong with

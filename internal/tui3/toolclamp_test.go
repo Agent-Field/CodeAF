@@ -146,7 +146,8 @@ func TestNoToolRowCarriesSomebodyElsesControlBytes(t *testing.T) {
 }
 
 // THE GESTURE THAT OPENS ONE CALL IS THE GESTURE THAT CLOSES IT, and it is
-// reachable with no pointer at all: ↑ picks a call out of the transcript and
+// reachable with no pointer once its containing work is disclosed: ↑ picks a
+// call out of the transcript and
 // enter over an empty box opens what ↑ picked (input.go). What comes back is the
 // command WHOLE — that is the one thing the line clipped — and pressing enter
 // again returns the call to its single row.

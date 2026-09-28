@@ -275,24 +275,17 @@ const (
 	// the top of the list now ([tasksControlRow]), where the typing lands, and an
 	// echo under the list would be the frame saying one thing twice.
 	taskSheetFilterNone = "nothing matches"
-	// taskSheetMoreHint is the line at the bottom of the ROSTER'S COLUMN that
-	// reaches this page (task.go's [app.railFootRows]). It is shaped like the two
-	// lines under it — the key, then what it reaches — and it is drawn only when
-	// there is genuinely more here than the column is showing (task.go's
-	// [app.railFootRows] weighs it against [app.railFoldedAny] and
-	// [app.railHasRecord]).
-	taskSheetMoreHint = taskSheetKey + " view more"
-	// taskSheetPastHint is that SAME LINE when what is behind it is the project's
-	// own record, and it is the commoner of the two by a long way: any directory
-	// that has been worked in before has one.
+	// taskSheetPastHint is the line at the bottom of the ROSTER'S COLUMN that
+	// reaches this page (task.go's [app.railFootRows]), drawn when what is
+	// behind it is the project's own record: any directory that has been worked
+	// in before has one.
 	//
-	// IT IS ONE DOOR WEARING THE NAME OF WHAT IT OPENS, not a second door. The
-	// column has exactly one line onto this page and the words on it say which
-	// question the page will answer — "earlier" when there is history down there,
-	// "view more" when the only thing the column is holding back is a family it
-	// folded. A permanent "view more" over a month of finished work never told
-	// anybody the work existed, which is the whole reason the record was ever
-	// footnoted onto the column in the first place.
+	// IT WEARS THE NAME OF WHAT IT OPENS. It used to say `view more` as well,
+	// when the only thing the column held back was a family it folded; the
+	// column folds its own groups now and a press on the heading opens them, so
+	// "earlier" is the one thing this line can promise. A permanent "view more"
+	// over a month of finished work never told anybody the work existed, which is
+	// the whole reason the record was ever footnoted onto the column.
 	//
 	// It is [taskSheetPastHead]'s own word rather than a second one, because it is
 	// the section it lands you in.
@@ -398,6 +391,18 @@ func (a *app) refreshElsewhere() {
 	a.away = elsewhereCache{at: a.now(), read: true}
 	agent, ok := a.agent.(elsewhereAgent)
 	if !ok {
+		// A WINDOW WHOSE AGENT IS A CONNECTION READS THE DISK THROUGH THE LAUNCH.
+		// That is every ordinary window: bare `codeaf` talks to this workspace's
+		// engine over a socket, and a connection has no reading to give — so
+		// without this the other conversations' work was never drawn, and the
+		// door behind those rows ([app.openOwnerRoom]) could not be reached at
+		// all. The launch knows the disk is the engine's and says so by binding
+		// the reader (tui3.go's [Options.Elsewhere]); it is asked about the
+		// conversation on screen, which it leaves out, exactly as the agent's
+		// own reading does.
+		if a.elsewhereOf != nil {
+			a.away.held = a.elsewhereOf(a.file, a.now())
+		}
 		return
 	}
 	// THE WHOLE READING, MINUS THIS CONVERSATION. The engine leaves the session

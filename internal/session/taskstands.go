@@ -64,6 +64,8 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+
+	"github.com/Agent-Field/codeaf/internal/delegate"
 )
 
 // taskStand is what the ladder came to: the ground, how this task stands on it,
@@ -151,6 +153,25 @@ const taskGroundPathsRead = 400
 // answer to the one question this file exists to have one answer to.
 func (a *Agent) resolveTaskGround(spec taskSpec) taskStand {
 	workspace := canonicalPath(strings.TrimSpace(a.config.Workspace))
+	if program, err := a.delegateFor(spec.via); err == nil {
+		return programGround(spec, workspace, program)
+	}
+	stand := a.ordinaryTaskGround(spec, workspace)
+	// AND NOTHING ELSE OF CODEAF'S WORKS IN A FOLDER A PROGRAM'S RUN HOLDS
+	// (programhold.go), so the card is never shown for work that could only
+	// be cut from the program's unfinished branch or land under it.
+	if stand.ask == "" && stand.refusal == "" {
+		if refusal := standHeldRefusal(stand, workspace); refusal != "" {
+			return taskStand{refusal: refusal}
+		}
+	}
+	return stand
+}
+
+// ordinaryTaskGround is [Agent.resolveTaskGround] for work no program is handed:
+// the placement a model asked for, the ladder, the brief's last word, and the
+// mode.
+func (a *Agent) ordinaryTaskGround(spec taskSpec, workspace string) taskStand {
 	redirect := ""
 	// A MODEL'S PLACEMENT IS EVIDENCE, NOT AUTHORITY, INSIDE A REPOSITORY. A
 	// branch is the repository's isolation boundary even when `where` asked for
@@ -309,18 +330,7 @@ func (a *Agent) taskGroundOrStandingIn(spec taskSpec) taskStand {
 // answered for.
 func (a *Agent) groundLadder(spec taskSpec, workspace string) taskStand {
 	if said := strings.TrimSpace(spec.ground); said != "" {
-		dir, err := resolveTaskWhere(said, workspace)
-		if err != nil {
-			return taskStand{refusal: "this task names a folder it cannot work in: " + said}
-		}
-		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-			// A ground is a place that IS there. Unlike `where`, which is somebody
-			// saying where work should go and may name a folder to be made, this
-			// argument names the project the work is about — and a project nobody
-			// can find is a mistake worth saying out loud rather than creating.
-			return taskStand{refusal: "this task names a folder that is not there: " + dir}
-		}
-		return taskStand{dir: groundRoot(dir), rung: taskGroundSaid}
+		return saidGround(said, workspace)
 	}
 	// A PART STANDS WHERE ITS PARENT STANDS, and the rungs below are not climbed
 	// for it. A sub-task's branch is cut from its parent's worktree and merges
@@ -355,7 +365,83 @@ func (a *Agent) groundLadder(spec taskSpec, workspace string) taskStand {
 	if root, ok := repositoryRoot(workspace); ok {
 		return taskStand{dir: root, rung: taskGroundStandingIn}
 	}
+	if projectWorkspace := strings.TrimSpace(a.config.Place.Workspace); spec.parent == 0 && projectWorkspace != "" && projectWorkspace != workspace {
+		if root, ok := repositoryRoot(projectWorkspace); ok {
+			return taskStand{dir: root, rung: taskGroundStandingIn}
+		}
+	}
 	return taskStand{dir: workspace, rung: taskGroundNothing}
+}
+
+// saidGround is the rung a proposal's own `ground` answers at.
+func saidGround(said, workspace string) taskStand {
+	dir, err := resolveTaskWhere(said, workspace)
+	if err != nil {
+		return taskStand{refusal: "this task names a folder it cannot work in: " + said}
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		// A ground is a place that IS there. Unlike `where`, which is somebody
+		// saying where work should go and may name a folder to be made, this
+		// argument names the project the work is about — and a project nobody
+		// can find is a mistake worth saying out loud rather than creating.
+		return taskStand{refusal: "this task names a folder that is not there: " + dir}
+	}
+	return taskStand{dir: groundRoot(dir), rung: taskGroundSaid}
+}
+
+// programGround is where a program works: the `ground` its proposal names, or
+// this conversation's own folder when it names none. NOTHING ELSE IS READ.
+//
+// The ladder above weighs `where`, the brief and the paths this conversation
+// touched, because a task of codeaf's own may be placed by any of them. A
+// program is handed ONE folder for an hour, and it has to be the one the model
+// said. The ladder's `in place` rung answered with the conversation's folder
+// before `ground` was read, so a chat opened in the person's home folder that
+// made ~/Desktop/pong, named it as ground and said `in place` handed senior-dev
+// the whole home folder; senior-dev, finding no git history there, began to
+// snapshot all of it and died on the first folder macOS keeps to itself
+// (`open /Users/…/.Trash: operation not permitted`). So a program's placement
+// is its own (programfolder.go) and `where` is not read for it.
+//
+// THE FOLDER IS READ BEFORE THE CARD, as the run will read it: snapped to its
+// repository's root, a folder not there yet taken when it can be made, and
+// refused for what would refuse the run — the home folder, a checkout with
+// changes that are not committed or a merge half done, another program's run
+// already in it — so nobody is asked to approve work that cannot start.
+func programGround(spec taskSpec, workspace string, program delegate.Delegate) taskStand {
+	dir, rung := workspace, taskGroundHere
+	if said := strings.TrimSpace(spec.ground); said != "" {
+		resolved, err := resolveTaskWhere(said, workspace)
+		if err != nil {
+			return taskStand{refusal: "this task names a folder it cannot work in: " + said}
+		}
+		dir, rung = canonicalPath(resolved), taskGroundSaid
+	}
+	if refusal := programGroundRefusal(program, &dir); refusal != "" {
+		return taskStand{refusal: refusal}
+	}
+	placed := delegateStand(dir)
+	placed.rung = rung
+	return placed
+}
+
+// programGroundRefusal reads the folder a program's proposal names the way
+// [PrepareProgramFolder] will, and answers what would refuse it, "" when
+// nothing would. It moves dir to the folder the program would work in, and it
+// changes nothing on disk.
+func programGroundRefusal(program delegate.Delegate, dir *string) string {
+	folder, repo, _, refusal := programFolderAt(program, *dir, "say which folder the work is in, as ground")
+	if refusal != "" || !program.LandsTree() {
+		return refusal
+	}
+	*dir = folder
+	if hold, busy := programHoldNear(canonicalPath(folder), ""); busy {
+		return programFolderBusy(folder, hold)
+	}
+	if repo {
+		return programCheckoutInTheWay(folder, program.Notes)
+	}
+	return ""
 }
 
 // groundPlainlyNamedByBrief reports the one ground that holds every existing
@@ -888,6 +974,63 @@ func underSiblingTree(trees, token string) bool {
 	return ok
 }
 
+// standsOutside reports whether a written path is a place on this machine that
+// the ground does not hold. The second result is the whole of what the lint
+// acts on, and it is false for the two shapes that are not a place at all: a
+// relative name, which is a name inside the project, and an absolute path with
+// no directory along it here. That second shape is a file the work will create
+// or a path on a host this one cannot see, which is how work handed to another
+// machine is written down — and judged as a place it could never fall inside the
+// ground, so a lint that counted it refused every honest deliverable.
+func standsOutside(ground, token string) (string, bool) {
+	if !strings.HasPrefix(token, "~") && !filepath.IsAbs(token) {
+		return "", false
+	}
+	if groundHolds(ground, token) {
+		return "", false
+	}
+	place, ok := placeOnThisMachine(token)
+	return place, ok
+}
+
+// repositoryHolding is the committed repository a written path stands in, when
+// the path is a place on this machine and that place is in one.
+func repositoryHolding(token string) (string, bool) {
+	place, ok := placeOnThisMachine(token)
+	if !ok {
+		return "", false
+	}
+	return repositoryRoot(place)
+}
+
+// placeOnThisMachine is the directory a written path really names HERE, and it
+// is the one question every reading of "where does this task stand" has to be
+// able to answer before it treats a path as a place.
+//
+// A name is a place on this machine only when the directory it names is a
+// directory here. Not a directory somewhere along it: every absolute path has
+// the root of the filesystem beneath it, and on macOS the foreign prefix a path
+// from another host begins with is itself a directory — /home is a symlink to
+// /System/Volumes/Data/home — so walking up answers yes of a path that names
+// nothing anyone keeps on this machine. The directory, and only the directory,
+// is what the task would stand in, so it is the only thing asked about.
+//
+// A path whose directory is not here is a file the work will create or a path on
+// a host this one cannot see, which is how work handed to another machine is
+// written down. Read as a place it could never fall inside the ground, and a
+// lint that counted it refused every honest deliverable.
+func placeOnThisMachine(token string) (string, bool) {
+	dir := canonicalPath(groundDirOf(token, ""))
+	if dir == "" || dir == string(filepath.Separator) {
+		return "", false
+	}
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return "", false
+	}
+	return dir, true
+}
+
 // groundHolds reports whether one written path lands under the ground. An
 // absolute path is compared canonically; a relative one is a name inside the
 // project and counts when the file or the directory that would hold it is really
@@ -958,15 +1101,20 @@ func groundAnsweredByTheProposal(stand taskStand) bool {
 //     and the work re-grounds onto it. This is the shape the whole design came
 //     from: a brief that said `Repo: ~/…/agentfield · work in this repo
 //     directly` while the harness had cut a worktree somewhere else.
-//   - IT IS IN NO REPOSITORY, AND THE DELIVERABLE NAMES IT. Then the task is
-//     asking to leave its work somewhere it does not stand, and it is refused in
-//     one sentence rather than started and guarded to death.
+//   - IT IS IN NO REPOSITORY, AND THE DELIVERABLE NAMES IT, AND IT IS A PLACE ON
+//     THIS MACHINE. Then the task is asking to leave its work somewhere it does
+//     not stand, and it is refused in one sentence rather than started and
+//     guarded to death. A path is a place here only when a directory along it
+//     exists ([placeOnThisMachine]); a name whose whole chain is absent is a
+//     path on another host or one the contract merely quotes, and neither is a
+//     folder this task could stand in.
 //
 // A path only the BRIEF names, in no repository, is left alone: briefs quote
 // interpreters, log files and system directories constantly, and refusing work
 // over `/usr/bin/python3` would be a lint that people learn to write around.
 // What stops a write there is the guard, which is a different lane and a
-// different law.
+// different law, and it is the same lane that covers a deliverable path that
+// names nothing on this machine.
 //
 // A GROUND SOMEBODY SAID OUT LOUD IS NOT SECOND-GUESSED AT ALL — not moved, and
 // not refused either. A person who named a directory with `where`, or a model
@@ -987,21 +1135,13 @@ func groundLint(stand taskStand, spec taskSpec) (string, string) {
 	}
 	var outside []string
 	for _, token := range pathTokens(spec.brief + "\n" + spec.deliverable + "\n" + spec.acceptance) {
-		if !strings.HasPrefix(token, "~") && !filepath.IsAbs(token) {
-			continue
+		if _, outsideGround := standsOutside(stand.dir, token); outsideGround {
+			outside = append(outside, token)
 		}
-		if groundHolds(stand.dir, token) {
-			continue
-		}
-		outside = append(outside, token)
 	}
 	roots := map[string]bool{}
 	for _, token := range outside {
-		dir := groundDirOf(token, "")
-		if dir == "" {
-			continue
-		}
-		if root, ok := repositoryRoot(dir); ok {
+		if root, ok := repositoryHolding(token); ok {
 			roots[root] = true
 		}
 	}
@@ -1015,10 +1155,7 @@ func groundLint(stand taskStand, spec taskSpec) (string, string) {
 		return "", "this task names folders it does not stand in: " + strings.Join(sortedKeys(roots), ", ")
 	}
 	for _, token := range pathTokens(spec.deliverable + "\n" + spec.acceptance) {
-		if !strings.HasPrefix(token, "~") && !filepath.IsAbs(token) {
-			continue
-		}
-		if !groundHolds(stand.dir, token) {
+		if _, outsideGround := standsOutside(stand.dir, token); outsideGround {
 			return "", "this task names a folder it does not stand in: " + token
 		}
 	}

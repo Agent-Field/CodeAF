@@ -63,6 +63,9 @@ type beltRunDouble struct {
 	// for a run that did not finish.
 	honoursStop bool
 	early       func(workspace string)
+	// leaveOpen makes the double end the way the real engine ends a run a
+	// limit or a program's own ending took down: its store's root left open.
+	leaveOpen bool
 }
 
 func newBeltRunDouble(result string) *beltRunDouble {
@@ -115,19 +118,19 @@ func (d *beltRunDouble) Start(ctx context.Context, spec RunSpec) RunSummary {
 	if d.work != nil {
 		d.work(spec.Workspace)
 	}
-	if spec.Store != nil {
+	if spec.Store != nil && !d.leaveOpen {
 		_ = spec.Store.CompleteRoot(d.summary.Result)
 	}
 	close(d.finished)
 	return d.summary
 }
 
-func (d *beltRunDouble) Land(_ context.Context, _ *plandb.Store, workspace, _ string) (RunLanding, error) {
+func (d *beltRunDouble) Land(_ context.Context, _ *plandb.Store, workspace, base, _ string) (RunLanding, error) {
 	d.mu.Lock()
 	d.landCalls++
 	d.mu.Unlock()
 	if d.real {
-		branch, changed, refusal, err := LandRunTree(workspace, "the run", false)
+		branch, changed, refusal, err := LandRunTree(workspace, base, "the run", "")
 		return RunLanding{Branch: branch, Changed: changed, Refused: refusal}, err
 	}
 	return d.landing, nil
@@ -161,12 +164,19 @@ func registerBeltRunEngine(t *testing.T, engine RunEngine) {
 // directory's removal, and lost it under load as "directory not empty".
 func endBeltRun(t *testing.T, agent *Agent, double *beltRunDouble) {
 	t.Helper()
+	agent.beltMu.Lock()
+	run := agent.beltRun
+	agent.beltMu.Unlock()
 	close(double.release)
-	beltRunWaitFor(t, "the run to end", func() bool {
-		agent.beltMu.Lock()
-		defer agent.beltMu.Unlock()
-		return agent.beltRun == nil
-	})
+	if run == nil {
+		return
+	}
+	// The owner's completion channel covers the final record and store close.
+	select {
+	case <-run.over:
+	case <-time.After(10 * time.Second):
+		t.Fatal("run did not finish settling after its engine returned")
+	}
 }
 
 // beltRunStoreAt is a fresh handle on the run's store, adopted by path — the
@@ -345,7 +355,7 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 	if !anyNoteCarries(beltRunNotes(t, dir, rootID), "landed on "+home.Branch) {
 		t.Fatalf("no note on the root carries the branch: %v", beltRunNotes(t, dir, rootID))
 	}
-	wantDigest := beltRunOutcomeNote(nil, "", double.summary, home)
+	wantDigest := beltRunOutcomeNote(nil, "", double.summary, home, 0)
 	if !strings.Contains(wantDigest, "done") || !strings.Contains(wantDigest, "the run fixed the nil map") ||
 		!strings.Contains(wantDigest, "landed on "+home.Branch) {
 		t.Fatalf("digest = %q, want outcome, root result, and work destination", wantDigest)
@@ -378,6 +388,158 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 	}
 }
 
+func TestBeltRunCarriesMachineGateAndShowsItsHold(t *testing.T) {
+	if _, err := os.Stat("/proc/meminfo"); err != nil {
+		t.Skip("host has no proc memory reading")
+	}
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	double := newBeltRunDouble("done")
+	registerBeltRunEngine(t, double)
+	dir := t.TempDir()
+	lanes := NewTaskLanes()
+	agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{finalText("done")}}, func(cfg *Config) {
+		cfg.Workspace = newTestRepo(t)
+		cfg.Place = Place{Dir: dir}
+		cfg.SessionFile = filepath.Join(dir, placeTranscript)
+		cfg.AskConsent = false
+		cfg.TaskMaxLoad = 0
+		cfg.TaskMinFreeMB = 0
+		cfg.TaskLanes = lanes
+	})
+	id, _, _, err := agent.StartTask(context.Background(), "fix the issue", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-double.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not reach engine")
+	}
+	double.mu.Lock()
+	spec := double.spec
+	double.mu.Unlock()
+	rootID := strconv.FormatUint(id, 10)
+	spec.OnHold([]string{rootID})
+	rows := agent.graph().runRows(id)
+	if len(rows) == 0 || rows[0].Waiting != waitingMachineBusy {
+		t.Fatalf("run rail hold = %+v", rows)
+	}
+	root := planRowFor(agent.PlanTasks(), planStoreID(rootID))
+	if root == nil || root.Hold != waitingMachineBusy {
+		t.Fatalf("run plan hold = %+v", root)
+	}
+	if _, err := spec.Store.AddMany([]plandb.TaskSpec{{ID: "held-leaf", ParentID: rootID, Title: "held leaf"}}); err != nil {
+		t.Fatal(err)
+	}
+	spec.OnHold([]string{"held-leaf"})
+	planRows := agent.PlanTasks()
+	if root = planRowFor(planRows, planStoreID(rootID)); root == nil || root.Hold != "" {
+		t.Fatalf("running root inherited leaf hold: %+v", root)
+	}
+	leaf := planRowFor(planRows, planStoreID("held-leaf"))
+	if leaf == nil || leaf.Hold != waitingMachineBusy {
+		t.Fatalf("held leaf has no own hold: %+v", leaf)
+	}
+	spec.OnHold(nil)
+	rows = agent.graph().runRows(id)
+	if len(rows) == 0 || rows[0].Waiting != "" {
+		t.Fatalf("run rail did not clear hold: %+v", rows)
+	}
+	endBeltRun(t, agent, double)
+}
+
+func TestHeldBeltRunStopsWithoutPreparingRepository(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	double := newBeltRunDouble("done")
+	registerBeltRunEngine(t, double)
+	dir := t.TempDir()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) {
+		cfg.Workspace = newTestRepo(t)
+		cfg.Place = Place{Dir: dir}
+		cfg.SessionFile = filepath.Join(dir, placeTranscript)
+		cfg.AskConsent = false
+		cfg.TaskMaxLoad = 0
+		cfg.TaskMinFreeMB = 1 << 40
+	})
+	id, _, _, err := agent.StartTask(context.Background(), "held work", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beltRunWaitFor(t, "the held belt row", func() bool {
+		rows := agent.graph().runRows(id)
+		return len(rows) == 1 && rows[0].State == TaskQueued && rows[0].Waiting == waitingMachineBusy
+	})
+	agent.beltMu.Lock()
+	run := agent.beltRun
+	pending, workspace, branch := run != nil, "", ""
+	if run != nil {
+		workspace, branch = run.workspace, run.tree.branch
+	}
+	agent.beltMu.Unlock()
+	if !pending || workspace != "" || branch != "" {
+		t.Fatalf("held run prepared repository state: live=%v workspace=%q branch=%q", pending, workspace, branch)
+	}
+	line, err := agent.Cancel(CancelTask + ":" + strconv.FormatUint(id, 10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(line, "stopping") {
+		t.Fatalf("stop line = %q, want stopping", line)
+	}
+	beltRunWaitFor(t, "the stopped held run", func() bool { return agent.beltRun == nil })
+	rows := agent.graph().runRows(id)
+	if len(rows) != 1 || rows[0].State != TaskFailed || !rows[0].Stopped {
+		t.Fatalf("stopped held row = %+v", rows)
+	}
+	if !strings.HasPrefix(rows[0].Report, taskStoppedWord) {
+		t.Fatalf("stopped held row report = %q, want one stop settlement", rows[0].Report)
+	}
+	plan := planRowFor(agent.PlanTasks(), planStoreID(strconv.FormatUint(id, 10)))
+	if plan == nil || plan.Status != string(plandb.StatusCancelled) {
+		t.Fatalf("stopped held plan = %+v, want one stopped landing", plan)
+	}
+	if double.didRun() {
+		t.Fatal("a held run reached the engine")
+	}
+}
+
+func TestBeltRunSharesGraphLanesWhenConfigHasNone(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	double := newBeltRunDouble("done")
+	registerBeltRunEngine(t, double)
+	dir := t.TempDir()
+	agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{finalText("done")}}, func(cfg *Config) {
+		cfg.Workspace = newTestRepo(t)
+		cfg.Place = Place{Dir: dir}
+		cfg.SessionFile = filepath.Join(dir, placeTranscript)
+		cfg.AskConsent = false
+		cfg.TaskMaxLoad = 1e9
+		cfg.TaskMinFreeMB = 0
+		cfg.TaskLanes = nil
+	})
+	_, _, _, err := agent.StartTask(context.Background(), "fix the issue", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-double.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not reach engine")
+	}
+	double.mu.Lock()
+	spec := double.spec
+	double.mu.Unlock()
+	if spec.Admission == nil {
+		t.Fatal("run has no admission gate")
+	}
+	spec.Admission.Started()
+	if got := agent.graph().lanes.running(); got != 1 {
+		t.Fatalf("run took %d lanes in conversation graph, want one", got)
+	}
+	spec.Admission.Returned()
+	endBeltRun(t, agent, double)
+}
+
 func TestStartTaskBashBeltPassesTheConversationWallLeftToTheRun(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	double := newBeltRunDouble("done")
@@ -403,6 +565,58 @@ func TestStartTaskBashBeltPassesTheConversationWallLeftToTheRun(t *testing.T) {
 		t.Fatalf("run elapsed limit = %v, want the roughly 30 minutes left, not the original 2 hours", got)
 	}
 	endBeltRun(t, agent, double)
+}
+
+// UNDER `--one-model` EVERY SEAT OF A RUN RIDES THE CONVERSATION'S MODEL
+// (contract 3a, 3b and 3c). The flag withholds the roles ladder and the crew
+// router, and the spec used to hand the engine three empty seats, which the
+// engine's crew factory filled from the profile's crew rows and from
+// CODEAF_CHECK_MODEL: a run under the flag billed models nobody named. The
+// seats are read at the run's start, so a /model typed before it moves them,
+// and a conversation without the flag hands the engine what it always did.
+func TestUnderOneModelEveryRunSeatRidesTheConversationsModel(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_CHECK_MODEL", "vendor/env-check")
+	for _, test := range []struct {
+		name     string
+		oneModel bool
+		switchTo string
+		want     string
+	}{
+		{"the launch model", true, "", "test/model"},
+		{"the model switched to before the run", true, "vendor/switched", "vendor/switched"},
+		{"no flag leaves the seats to the engine", false, "", ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			double := newBeltRunDouble("done")
+			registerBeltRunEngine(t, double)
+			dir := t.TempDir()
+			agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+				config.Workspace = newTestRepo(t)
+				config.Place = Place{Dir: dir}
+				config.AskConsent = false
+				config.OneModel = test.oneModel
+			})
+			if test.switchTo != "" {
+				agent.SetModel(test.switchTo)
+			}
+			if _, _, _, err := agent.StartTask(context.Background(), "write the file", false); err != nil {
+				t.Fatalf("StartTask: %v", err)
+			}
+			<-double.entered
+			double.mu.Lock()
+			spec := double.spec
+			double.mu.Unlock()
+			for seat, got := range map[string]string{
+				"work": spec.WorkModel, "plan": spec.PlanModel, "check": spec.CheckModel, "every": spec.OneModel,
+			} {
+				if got != test.want {
+					t.Errorf("the %s seat the engine was handed is %q, want %q", seat, got, test.want)
+				}
+			}
+			endBeltRun(t, agent, double)
+		})
+	}
 }
 
 func TestDriveBeltRunLimitUsesTheOrdinaryLandingRoad(t *testing.T) {
@@ -536,7 +750,7 @@ func TestLandingDigestCarriesTheStoredNowSentence(t *testing.T) {
 
 	got := beltRunOutcomeNote(store, planRootID, RunSummary{Outcome: beltRunOutcomeDone}, RunLanding{
 		Branch: "task/landing-digest", Changed: []string{"internal/session/task_run_belt.go"},
-	})
+	}, 0)
 	want := "done · landed on task/landing-digest: 1 file · The focused landing tests pass."
 	if got != want {
 		t.Fatalf("landing digest = %q, want %q", got, want)
@@ -551,7 +765,7 @@ func TestLandingDigestIsUnchangedWithoutAStoredSummary(t *testing.T) {
 	defer store.Close()
 	got := beltRunOutcomeNote(store, planRootID, RunSummary{Outcome: beltRunOutcomeDone}, RunLanding{
 		Branch: "task/landing-digest", Changed: []string{"internal/session/task_run_belt.go"},
-	})
+	}, 0)
 	want := "done · landed on task/landing-digest: 1 file"
 	if got != want {
 		t.Fatalf("landing digest = %q, want byte-for-byte legacy digest %q", got, want)
@@ -568,7 +782,7 @@ type landingRunDouble struct {
 }
 
 func (d landingRunDouble) Start(context.Context, RunSpec) RunSummary { return d.summary }
-func (d landingRunDouble) Land(context.Context, *plandb.Store, string, string) (RunLanding, error) {
+func (d landingRunDouble) Land(context.Context, *plandb.Store, string, string, string) (RunLanding, error) {
 	if d.landCalls != nil {
 		*d.landCalls++
 	}
@@ -877,6 +1091,57 @@ func TestABeltRunsWorkComesHomeWhenItEnds(t *testing.T) {
 	rows := agent.graph().runRows(71)
 	if len(rows) == 0 || rows[0].Merge != mergeMerged || rows[0].Branch != currentBranch(conversation) {
 		t.Fatalf("the run's row says %+v, want merged on %s", rows, currentBranch(conversation))
+	}
+}
+
+// Contracts 1 and 7: the /task door brings two worker commits and a landing
+// commit into the person's ground, with each signed once and the base intact.
+func TestBeltRunSignsWorkerCommitsInGround(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	ground := beltRunCommittedRepo(t)
+	base := strings.TrimSpace(gitOut(t, ground, "rev-parse", "HEAD"))
+	dir := t.TempDir()
+	double := newBeltRunDouble("three files made")
+	double.real = true
+	double.work = func(workspace string) {
+		for _, name := range []string{"one.txt", "two.txt"} {
+			writeFile(t, filepath.Join(workspace, name), name+"\n")
+			mustGit(t, workspace, "add", name)
+			mustGit(t, workspace, "-c", "user.name=Worker", "-c", "user.email=worker@example.test", "commit", "-m", "add "+name)
+		}
+		writeFile(t, filepath.Join(workspace, "leftover.txt"), "leftover\n")
+	}
+	registerBeltRunEngine(t, double)
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+		config.Workspace = ground
+		config.Place = Place{Dir: dir}
+	})
+	if err := agent.startKnownTaskRun(context.Background(), 171, "make three files", "brief", nil, taskStand{dir: ground, mode: TaskModeWorktree}, ""); err != nil {
+		t.Fatal(err)
+	}
+	<-double.entered
+	endBeltRun(t, agent, double)
+	if got := strings.TrimSpace(gitOut(t, ground, "rev-parse", "HEAD~3")); got != base {
+		t.Fatalf("ground's earlier commit moved: %s -> %s", base, got)
+	}
+	for i, name := range []string{"leftover.txt", "two.txt", "one.txt"} {
+		if data, err := os.ReadFile(filepath.Join(ground, name)); err != nil || len(data) == 0 {
+			t.Fatalf("%s is not home: %q, %v", name, data, err)
+		}
+		rev := "HEAD" + strings.Repeat("~", i)
+		message := gitOut(t, ground, "log", "-1", "--format=%B", rev)
+		if strings.Count(message, "Assisted-by: CodeAF") != 1 || strings.Count(message, "Co-Authored-By: CodeAF") != 1 {
+			t.Fatalf("%s is not signed once: %q", rev, message)
+		}
+	}
+	store := beltRunStoreAt(t, dir)
+	defer store.Close()
+	var notes string
+	for _, note := range store.Notes(store.RootID(), 0) {
+		notes += note.Body + "\n"
+	}
+	if !strings.Contains(notes, "its work is in "+canonicalPath(ground)+" on ") || strings.Contains(notes, "nothing to land") {
+		t.Fatalf("ground landing note is wrong: %s", notes)
 	}
 }
 
@@ -1297,4 +1562,45 @@ func TestStartTaskBashBeltPassesTheDollarLimitLeftToTheRun(t *testing.T) {
 		t.Fatalf("run cost limit = %v, want the $4.50 left of the smaller $7 launch limit", got)
 	}
 	endBeltRun(t, agent, double)
+}
+
+func TestStartTaskRunUsesProjectGroundOutsideRepository(t *testing.T) {
+	for _, named := range []bool{false, true} {
+		t.Run(strconv.FormatBool(named), func(t *testing.T) {
+			t.Setenv("CODEAF_TASK_BELT", "bash")
+			double := newBeltRunDouble("read the project")
+			registerBeltRunEngine(t, double)
+			repo, dir := newTestRepo(t), t.TempDir()
+			agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+				config.Workspace = t.TempDir()
+				config.Place = Place{Dir: dir, Workspace: repo}
+				if named {
+					config.Place.Workspace = ""
+				}
+				config.SessionFile = filepath.Join(dir, placeTranscript)
+				config.AskConsent = false
+			})
+			brief := "Read README.md and write result.txt"
+			if named {
+				brief += " in repository " + repo
+			}
+			if _, _, _, err := agent.StartTask(context.Background(), brief, false); err != nil {
+				t.Fatal(err)
+			}
+			defer endBeltRun(t, agent, double)
+			beltRunWaitFor(t, "the project run to start", double.didRun)
+			double.mu.Lock()
+			workspace := double.spec.Workspace
+			double.mu.Unlock()
+			if data, err := os.ReadFile(filepath.Join(workspace, "shared.txt")); err != nil || len(data) == 0 {
+				t.Fatalf("worker cannot read project document: %q %v (workspace=%s)", data, err, workspace)
+			}
+			agent.beltMu.Lock()
+			ground := agent.beltRun.ground
+			agent.beltMu.Unlock()
+			if ground != canonicalPath(repo) || workspace == ground {
+				t.Fatalf("ground=%s workspace=%s want isolated copy of %s", ground, workspace, repo)
+			}
+		})
+	}
 }

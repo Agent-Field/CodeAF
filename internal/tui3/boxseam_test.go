@@ -239,29 +239,21 @@ func TestThePinsRideOntoTheConversationAndTheGateIsSpent(t *testing.T) {
 
 // ── 4. the ladder ───────────────────────────────────────────────────────────
 
-// A long project yields its tail before the controls, and the project door
-// follows its position at the right edge of the rendered line.
-func TestTheDraftRuleKeepsTheProjectAtTheRight(t *testing.T) {
+// The draft rule carries the model, the rung and the gate, and no longer the
+// project: that is the keys row's since 2026-09-22 (hometiplayout_test.go
+// proves the row and its door).
+func TestTheDraftRuleKeepsTheModelAndNotTheProject(t *testing.T) {
 	_, a := drafting(t)
 	a.showPage(pageHome)
 	a.model = "moonshotai/kimi-k3"
 	a.target.where = "/tmp/landing-test"
 	line, drew := a.targetLegend(120, a.pal)
 	text := ansi.Strip(line)
-	if !drew || !strings.HasPrefix(text, "─ moonshotai/kimi-k3:high · ") || !strings.HasSuffix(text, " project: /tmp/landing-test ─") {
-		t.Fatalf("the draft seam has the wrong order: %q", text)
+	if !drew || !strings.HasPrefix(text, "─ moonshotai/kimi-k3:high · ") || strings.Contains(text, targetProjectLead) {
+		t.Fatalf("the draft seam has the wrong shape: %q", text)
 	}
-	if a.targetModelSpan.from != 2 || a.targetFolderSpan.from <= a.targetApprovalSpan.to {
-		t.Fatalf("the seam's doors did not move with it: model %+v, project %+v", a.targetModelSpan, a.targetFolderSpan)
-	}
-	if got := ansi.Cut(text, a.targetFolderSpan.from, a.targetFolderSpan.to); got != "/tmp/landing-test" {
-		t.Fatalf("the project door covers %q", got)
-	}
-	a.target.where = "/tmp/" + strings.Repeat("long-project/", 12)
-	line, drew = a.targetLegend(80, a.pal)
-	text = ansi.Strip(line)
-	if !drew || ansi.StringWidth(text) != 80 || !strings.HasPrefix(text, "─ moonshotai/kimi-k3:high · ") || !strings.Contains(text, "project: /tmp/") || !strings.Contains(text, "… ─") {
-		t.Fatalf("the long project displaced controls or lost its root: %q", text)
+	if a.targetModelSpan.from != 2 {
+		t.Fatalf("the seam's model door did not move with it: %+v", a.targetModelSpan)
 	}
 	for width := 1; width <= 120; width++ {
 		line, _ := a.targetLegend(width, a.pal)
@@ -271,29 +263,24 @@ func TestTheDraftRuleKeepsTheProjectAtTheRight(t *testing.T) {
 	}
 }
 
-// A conversation names its own workspace in the same position as home's
-// draft destination. A pin for the next conversation must not relabel this one.
-func TestConversationProjectStaysAtTheRightOfTheSeam(t *testing.T) {
+// A conversation's seam no longer names its workspace: the project is at the
+// right end of the keys row under the box (chattip_test.go proves the row),
+// and a pin for the next conversation must not relabel this one anywhere.
+func TestConversationProjectHasLeftTheSeam(t *testing.T) {
 	_, a := gated(t)
 	a.tilde, a.workspace = "/home/person", "/home/person/projects/parser"
 	a.target.where = "/tmp/next-project"
-	text := ansi.Strip(a.legend(240))
-	want := " project: ~/projects/parser ─"
-	if !strings.HasSuffix(text, want) || strings.Contains(text, "next-project") {
-		t.Fatalf("conversation seam does not name its own project at the right: %q", text)
-	}
 	for width := 1; width <= 240; width++ {
 		line := ansi.Strip(a.legend(width))
 		if ansi.StringWidth(line) > width {
 			t.Fatalf("at %d cells the conversation seam overflowed: %q", width, line)
 		}
-		if strings.Contains(line, targetProjectLead) && !strings.Contains(line, targetProjectLead+"~/") {
-			t.Fatalf("at %d cells the project lost its root: %q", width, line)
+		if strings.Contains(line, targetProjectLead) {
+			t.Fatalf("at %d cells the seam still names the project: %q", width, line)
 		}
 	}
-	a.workspace = ""
-	if text := ansi.Strip(a.legend(240)); strings.Contains(text, targetProjectLead) {
-		t.Fatalf("unknown project left a label behind: %q", text)
+	if text := ansi.Strip(a.hintRow(240)); strings.Contains(text, "next-project") {
+		t.Fatalf("the keys row names the next conversation's folder: %q", text)
 	}
 }
 
@@ -340,7 +327,7 @@ func TestConversationControlsMatchHomeAndKeepTheHomeDoor(t *testing.T) {
 	a.chords.meta = chordMetaWord
 	a.notices.enabled = false
 	a.branch = "dev"
-	want := "opt+e effort · opt+a approvals · opt+k chats · / commands · esc home"
+	want := "opt+e effort · opt+a approvals · opt+k chats · / commands · space space home"
 	if got := a.footHint(200); got != want {
 		t.Fatalf("conversation controls = %q, want %q", got, want)
 	}
@@ -369,9 +356,7 @@ func TestConversationControlsMatchHomeAndKeepTheHomeDoor(t *testing.T) {
 		if got := ansi.Cut(line, a.homeDoor.from, a.homeDoor.to); got != homeDoorWord {
 			t.Fatalf("home hit target covers %q at %d columns: %q", got, width, line)
 		}
-		cmd, took := a.homeDoorPress(a.homeDoor.from, row)
-		drive(t, a, runCmd(cmd)...)
-		if !took || !a.at(pageHome) {
+		if _, took := a.homeDoorPress(a.homeDoor.from, row); !took || !a.at(pageHome) {
 			t.Fatalf("home hint did not open home at %d columns", width)
 		}
 		a.closeHome()

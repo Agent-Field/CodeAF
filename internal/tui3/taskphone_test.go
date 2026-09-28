@@ -214,7 +214,7 @@ func TestThePhoneRosterFootIsABackBarToTheConversation(t *testing.T) {
 
 	lines := taskSheetLines(a)
 	foot := lines[len(lines)-1]
-	if !strings.Contains(foot, homeDoorWord) {
+	if !strings.Contains(foot, mapCloseWords) {
 		t.Fatalf("the phone foot is not a back bar:\n%q", foot)
 	}
 	// And the key legend a keyboard reads is gone from it.
@@ -228,8 +228,8 @@ func TestThePhoneRosterFootIsABackBarToTheConversation(t *testing.T) {
 	}
 	drive(t, a, tea.MouseClickMsg{X: 2, Y: y, Button: tea.MouseLeft})
 	drive(t, a, tea.MouseReleaseMsg{X: 2, Y: y, Button: tea.MouseLeft})
-	if !a.at(pageHome) {
-		t.Fatal("tapping esc home did not return to Home")
+	if !a.at(pageNone) {
+		t.Fatal("tapping esc close did not return to the conversation")
 	}
 }
 
