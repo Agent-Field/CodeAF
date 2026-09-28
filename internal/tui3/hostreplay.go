@@ -50,7 +50,13 @@ func (a *app) finishHostedReplay() tea.Cmd {
 	var cmds []tea.Cmd
 	for _, msg := range pending {
 		if msg.gen == a.convGen {
-			cmds = append(cmds, a.admitFollowing(msg.turn))
+			if a.hostReplayLoading {
+				a.hostReplayPending = append(a.hostReplayPending, msg)
+			} else if msg.turn.Replay {
+				cmds = append(cmds, a.refreshHostedReplay())
+			} else {
+				cmds = append(cmds, a.admitFollowing(msg.turn))
+			}
 		}
 	}
 	return tea.Batch(cmds...)

@@ -160,6 +160,7 @@ type Client struct {
 	streams      map[uint64]*stream
 	observers    map[uint64]*stream
 	replayCursor session.ReplayCursor
+	replayOrder  uint64
 
 	// driver is who holds the keyboard, as the engine last told this surface.
 	// It is set from the welcome and moved by every "driver" frame, and it is
@@ -2299,7 +2300,9 @@ func (s *stream) push(seq uint64, payload json.RawMessage) {
 	}
 	ev := wired.Unwire()
 	s.mu.Lock()
-	s.replayCursor = ev.ReplayCursor
+	if ev.ReplayCursor.Owner != "" {
+		s.replayCursor = ev.ReplayCursor
+	}
 	ev.ReplayObserved = s.observed
 	s.mu.Unlock()
 	s.deliver(ev)

@@ -136,3 +136,29 @@ func TestReconnectRefreshReplacesSnapshotAndKeepsObserverTail(t *testing.T) {
 		t.Fatalf("reconnect replay not authoritative: %s", got)
 	}
 }
+
+func TestQueuedHostedFollowRechecksOwnershipAtActualAdmission(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	blocker := make(chan session.Event)
+	a.stream = blocker
+	covered := false
+	old := make(chan session.Event)
+	close(old)
+	drive(t, a, followingMsg{turn: Following{Said: "check invoices", Events: old, Covered: func() bool { return covered }}, gen: a.convGen})
+	if len(a.follows) != 1 {
+		t.Fatal("turn not queued behind current stream")
+	}
+	a.replayList([]session.DisplayEntry{{Role: "user", Text: "check invoices"}, {Role: "assistant", Text: "checked"}})
+	covered = true
+	a.stream = nil
+	drain(t, a, a.startFollow())
+	n := 0
+	for _, e := range a.entries {
+		if e.kind == entryUser {
+			n++
+		}
+	}
+	if n != 1 || len(a.follows) != 0 {
+		t.Fatalf("covered queued send admitted: users=%d pending=%d", n, len(a.follows))
+	}
+}

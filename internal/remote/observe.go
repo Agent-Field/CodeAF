@@ -170,7 +170,7 @@ func (a *Agent) observe(replay bool) ([]session.DisplayEntry, <-chan session.Eve
 		return nil, nil, func() {}
 	}
 	if replay {
-		c.rememberReplay(answer.Cursor)
+		c.rememberReplay(answer.Cursor, id)
 	}
 	if !answer.Running {
 		stop()
