@@ -51,3 +51,9 @@ func (c *Client) followStream(id uint64, said string) {
 	}
 	c.follows(Following{Said: said, Events: s.events(), Covered: covered})
 }
+
+func (c *Client) hasReplayBoundary() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.replayCursor.Owner != ""
+}

@@ -370,7 +370,9 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 	// EITHER, and it reaches the screen by the same road. It carries no sentence:
 	// the message that opened it is in the journal, which this surface reads on
 	// its way in ([Turn.Said] states which of the two moments needs one).
-	if welcome.Live != 0 {
+	if !first && c.hasReplayBoundary() {
+		c.follows(Following{Replay: true})
+	} else if welcome.Live != 0 {
 		c.followStream(welcome.Live, "")
 	}
 	// The welcome's word on the keyboard is a driver frame by another road, and
@@ -498,6 +500,7 @@ const followingRoom = 8
 // it with the code that draws every turn, and the only thing it lacks is the
 // [StreamRef] it would have got from opening it.
 type Following struct {
+	Replay  bool
 	Covered func() bool
 	// Said is the message that opened the turn, empty when the transcript
 	// already has it — see [Turn.Said].

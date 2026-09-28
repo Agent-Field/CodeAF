@@ -576,6 +576,7 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	// frame the person is switching away from anyway.
 	var joined tea.Cmd
 	if door, ok := agent.(attachReplayer); ok {
+		a.hostReplayLoading = true
 		joined = a.offLoop(func() func(bool) tea.Cmd {
 			entries, events, stop := door.AttachReplay()
 			return func(here bool) tea.Cmd {
@@ -602,7 +603,7 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 				// exactly as the replay above left it, including whether that
 				// replay handed this window a turn that is still running
 				// (takeover.go's [app.resumeStoppedTurn]).
-				back = append(back, a.resumeStoppedTurn())
+				back = append(back, a.finishHostedReplay(), a.resumeStoppedTurn())
 				a.touch()
 				return tea.Batch(back...)
 			}
