@@ -294,6 +294,10 @@ def combine(task_dir, grade_dir):
     judge_path = grade_dir / "judge.json"
     if judge_path.exists():
         judge = json.loads(judge_path.read_text())
+    # The verdicts live under "criteria" (the file also carries the model, the
+    # prompt version and the usage); read them from there, and the adaptive
+    # result from its own key.
+    judge_criteria = judge.get("criteria", {})
     phase_b = {}
     pb_path = grade_dir / "phaseB.json"
     if pb_path.exists():
