@@ -236,12 +236,14 @@ def phase_a(task_dir, repo, base, out_dir):
                         entry["note"] = f"overlay {onote}; tests exit {code}"
                         (evidence_dir / f"{cid}.log").write_text(outtext)
                 elif kind == "reverse-classical":
+                    reverted = True
                     for path in spec.get("revert_paths", []):
                         code, outtext = sh(f"git checkout HEAD -- '{path}' && git clean -fdq '{path}'", cwd=repo)
                         if code != 0:
                             entry = {"status": RIG, "note": f"revert of {path} failed: {outtext[-1000:]}"}
+                            reverted = False
                             break
-                    if entry["status"] != RIG:
+                    if reverted:
                         code, outtext = force_rebuild(repo)
                         if code != 0:
                             entry = {"status": RIG, "note": f"rebuild after revert failed: {outtext[-2000:]}"}
