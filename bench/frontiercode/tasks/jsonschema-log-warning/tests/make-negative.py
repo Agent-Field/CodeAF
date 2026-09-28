@@ -4,44 +4,33 @@
 This is the labelled example's failure shape: the helper is added with the
 right behaviour, every single-line call site is converted, the reference test
 is updated — but each of the two multi-line warnings is converted only down to
-its first statement, leaving the continuation statements writing bare stderr
+its first line, leaving the continuation statements writing bare stderr
 without the `warning: ` prefix. A maintainer would not merge that; both
 blockers must fail while every non-blocker passes.
 
-The script runs INSIDE the verifier image, in a checkout of the reference
-commit. It reads the base commit's own text of the two files for the
-statements it leaves behind, so the rig commits no upstream source bytes: only
-this transformation logic is ours. Every step asserts; a drifted or
-mis-generated control fails this script instead of grading 1.00 quietly.
+The script runs INSIDE the verifier image, in a checkout of the base commit
+with the reference patch applied. The leftover statements it keeps are read
+from the base commit's own text of the two files, so the rig commits no
+upstream source bytes: only this transformation logic is ours. Every step
+asserts; a drifted or mis-generated control fails this script instead of
+quietly grading 1.00.
 """
 
 import argparse
 import pathlib
+import re
 import subprocess
 import sys
 
-# Per blocker file: the message prefix that marks the multi-line warning's
-# first statement in the base tree, the shape the reference patch gave the
-# converted statement (payload lines, exactly as upstream wrapped them), and
-# how many bare stderr statements the base block carries after it — the ones a
-# first-line-only conversion leaves behind.
+# Per blocker file: the marker that finds the multi-line warning's first
+# statement in the base tree, how many bare stderr statements the base block
+# carries after it (the ones a first-line-only conversion leaves behind), and
+# the first message's line count in the reference patch's own shape — the
+# lines the control keeps, closed with the semicolon the chain's continuation
+# denied them.
 BLOCKERS = {
-    "src/resolver.h": {
-        "first_message": "No schema resources were imported from this file\n",
-        "prefix_marker": "warning: No schema resources",
-        "converted": ['          LOG_WARNING() << "No schema resources were imported from this file\\n";'],
-        "leftover_stderr": 2,
-    },
-    "src/command_bundle.cc": {
-        "first_message": "You are opting in to remove schema identifiers in the bundled schema.\n",
-        "prefix_marker": "warning: You are opting in",
-        "converted": [
-            "    sourcemeta::jsonschema::LOG_WARNING()",
-            '        << "You are opting in to remove schema identifiers in "',
-            '           "the bundled schema.\\n";',
-        ],
-        "leftover_stderr": 5,
-    },
+    "src/resolver.h": {"prefix_marker": "warning: No schema resources", "leftover_stderr": 2, "first_lines": 1},
+    "src/command_bundle.cc": {"prefix_marker": "warning: You are opting in", "leftover_stderr": 5, "first_lines": 3},
 }
 
 
@@ -52,33 +41,10 @@ def git(repo: pathlib.Path, *args: str) -> str:
     return out.stdout
 
 
-def literals_of(text: str) -> str:
-    """Concatenate the double-quoted string literals of one statement, with the
-    quotes dropped — the message the statement writes."""
-    import re
-
-    parts = re.findall(r'"((?:[^"\\]|\\.)*)"', text)
-    return "".join(parts)
-
-
-def convert_statement(base: list, start: int, spec: dict, path: str) -> tuple:
-    """Replace the base statement at `start` (which writes `warning: <message>`
-    to bare stderr) with the reference patch's LOG_WARNING shape, and answer
-    the index one past the statement's last line."""
-    index = start
-    while not base[index].rstrip().endswith(";"):
-        index += 1
-    statement = "\n".join(base[start : index + 1])
-
-    if "std::cerr" not in statement:
-        sys.exit(f"{path}: the warning statement does not write stderr: {statement!r}")
-    payload = literals_of(statement)
-    if not payload.startswith("warning: "):
-        sys.exit(f"{path}: statement does not carry the warning prefix: {payload!r}")
-    stripped = payload[len("warning: ") :]
-    if stripped != spec["first_message"]:
-        sys.exit(f"{path}: statement payload drifted from the pinned shape: {stripped!r}")
-    return spec["converted"], index + 1
+def literals(text: str) -> str:
+    """Concatenate the double-quoted literals of one statement — the message
+    the statement writes."""
+    return "".join(re.findall(r'"((?:[^"\\]|\\.)*)"', text))
 
 
 def main() -> int:
@@ -88,49 +54,66 @@ def main() -> int:
     args = parser.parse_args()
     repo = pathlib.Path("/solution/full")
 
-    # Work from the base commit, then take the reference patch's NON-blocker
-    # changes on top: the helper in logger.h, the include in command_bundle.cc,
-    # the single-line conversions and the reference test update. The two
-    # blocker files are then rewritten to the first-line-only shape below, so
-    # the control is "the reference patch minus the rest of each multi-line
-    # conversion" and nothing else.
+    # The tree starts at the base commit and takes the reference patch whole:
+    # the helper, the include, the single-line conversions and the reference
+    # test update all stand. The two blocker files are then rewritten below.
     git(repo, "checkout", "--quiet", "--detach", args.base)
     git(repo, "apply", "--whitespace=nowarn", "/solution/upstream-reference.patch")
 
     for path, spec in BLOCKERS.items():
         file = repo / path
+        ref = file.read_text().split("\n")
         base = git(repo, "show", f"{args.base}:{path}").split("\n")
-        first = next(i for i, line in enumerate(base) if spec["prefix_marker"] in line)
-        # The statement may open on the `std::cerr` line above the marker line.
-        start = first
-        while "std::cerr" not in base[start]:
-            start -= 1
-        converted, after = convert_statement(base, start, spec, path)
 
-        # Count the bare stderr statements the base block keeps after the
-        # converted one. A drifted upstream fails here rather than grading.
-        rest = [line for line in base[after:] if "std::cerr" in line]
-        rest = rest[: spec["leftover_stderr"]]
-        if len(rest) != spec["leftover_stderr"]:
-            sys.exit(f"{path}: expected {spec['leftover_stderr']} leftover stderr statements, found {len(rest)}")
-        last = None
-        for line in base[after:]:
-            if "std::cerr" in line:
-                last = line
-        # Splice: everything up to the converted statement, the converted
-        # statement, then the base block's remaining statements verbatim, then
-        # whatever followed the block in the base tree.
-        keep_from = after
-        if last is not None:
-            keep_from = base.index(last) + 1
-        negative = list(base[:start]) + list(converted) + list(base[after:keep_from]) + list(base[keep_from:])
+        # The reference tree's converted block: from its first LOG_WARNING
+        # line to the statement's closing semicolon.
+        ref_start = next(i for i, line in enumerate(ref) if "LOG_WARNING()" in line)
+        ref_end = ref_start
+        while not ref[ref_end].rstrip().endswith(";"):
+            ref_end += 1
+
+        # The first message's own lines: walk the chain until a literal closes
+        # the message line with a newline escape, then give that line the
+        # statement semicolon the chain took away. What the chain wrote after
+        # the first message is dropped — that is the point of the control.
+        kept = list(ref[ref_start : ref_start + spec["first_lines"]])
+        if not literals("\n".join(kept)).endswith("\\n"):
+            sys.exit(f"{path}: the kept lines do not close the first message")
+        kept[-1] = kept[-1].rstrip().removesuffix(";") + ";"
+        if "warning: " in "\n".join(kept):
+            sys.exit(f"{path}: the kept first message still spells the prefix")
+
+        # The base block: its first statement (carrying the prefix) and the
+        # bare stderr statements after it, which the control leaves behind.
+        base_start = next(i for i, line in enumerate(base) if spec["prefix_marker"] in line)
+        while "std::cerr" not in base[base_start]:
+            base_start -= 1
+        base_end = base_start
+        while not base[base_end].rstrip().endswith(";"):
+            base_end += 1
+        if "warning: " not in literals("\n".join(base[base_start : base_end + 1])):
+            sys.exit(f"{path}: the base statement does not carry the warning prefix")
+        leftovers = [line for line in base[base_end + 1 :] if "std::cerr" in line][
+            : spec["leftover_stderr"]
+        ]
+        if len(leftovers) != spec["leftover_stderr"]:
+            sys.exit(
+                f"{path}: expected {spec['leftover_stderr']} leftover stderr "
+                f"statements in the base block, found {len(leftovers)}"
+            )
+        last_leftover = leftovers[-1]
+        keep_from = base.index(last_leftover) + 1
+        leftover_lines = base[base_end + 1 : keep_from]
+
+        # Splice: the reference tree up to the block, the first message on its
+        # own, the base block's remaining statements verbatim, then the rest
+        # of the reference tree.
+        negative = list(ref[:ref_start]) + kept + leftover_lines + list(ref[ref_end + 1 :])
         file.write_text("\n".join(negative))
 
     bundle = (repo / "src/command_bundle.cc").read_text()
     if '#include "logger.h"' not in bundle:
         sys.exit("src/command_bundle.cc: the control lacks the logger include")
-    if "warning: " in (repo / "src/resolver.h").read_text().split("LOG_WARNING()")[0].split("std::cerr")[0]:
-        pass  # the base's other warning sites are untouched by design; blockers judged per file
 
     patch = git(repo, "diff", args.base, "HEAD", "--binary")
     if not patch.strip():
