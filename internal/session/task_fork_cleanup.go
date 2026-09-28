@@ -12,24 +12,8 @@ import (
 // Closed conversations retry landed copies; only litter reaping may remove
 // unfinished copies. Children go first so their grounds are still available.
 func retireCheckpointForks(ctx context.Context, dir string, landedOnly bool, note func(string)) bool {
-	document, ok := loadTaskCheckpoint((Place{Dir: dir}).Tasks())
+	nodes, ok := checkpointForks(dir, note)
 	if !ok {
-		if _, err := os.Stat((Place{Dir: dir}).Tasks()); !os.IsNotExist(err) {
-			note("sweep: cannot retire forks without a readable task checkpoint")
-			return false
-		}
-		return true
-	}
-	// Tasks standing in place can share a ground and are not fork dependencies.
-	var forks []taskRecord
-	for _, record := range document.Nodes {
-		if _, ok := universeInRecord(record); ok {
-			forks = append(forks, record)
-		}
-	}
-	nodes, err := forkRetirementOrder(forks)
-	if err != nil {
-		note("sweep: " + err.Error())
 		return false
 	}
 	asked := map[string]bool{}
@@ -64,6 +48,35 @@ func retireCheckpointForks(ctx context.Context, dir string, landedOnly bool, not
 		note(fmt.Sprintf("sweep: retired fork %s of %s", tree.universe, tree.ground))
 	}
 	return !contextDone(ctx)
+}
+
+// checkpointForks reads the session's checkpoint and answers its forks in the
+// order they may be retired, children first. A session that never wrote a
+// checkpoint has nothing to retire; one whose checkpoint cannot be read or
+// ordered answers false, because a sweep that cannot name a fork cannot prove
+// the removal safe.
+func checkpointForks(dir string, note func(string)) ([]taskRecord, bool) {
+	document, ok := loadTaskCheckpoint((Place{Dir: dir}).Tasks())
+	if !ok {
+		if _, err := os.Stat((Place{Dir: dir}).Tasks()); !os.IsNotExist(err) {
+			note("sweep: cannot retire forks without a readable task checkpoint")
+			return nil, false
+		}
+		return nil, true
+	}
+	// Tasks standing in place can share a ground and are not fork dependencies.
+	var forks []taskRecord
+	for _, record := range document.Nodes {
+		if _, ok := universeInRecord(record); ok {
+			forks = append(forks, record)
+		}
+	}
+	nodes, err := forkRetirementOrder(forks)
+	if err != nil {
+		note("sweep: " + err.Error())
+		return nil, false
+	}
+	return nodes, true
 }
 
 // forkHasLaterWork protects a retained copy that somebody may have used after
