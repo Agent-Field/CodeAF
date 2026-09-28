@@ -52,8 +52,9 @@ import (
 // will speak on. The channel exists from the moment the message is queued —
 // session hands it back immediately — so there is nothing to wait for later.
 type queued struct {
-	text string
-	ch   <-chan session.Event
+	covered func() bool
+	text    string
+	ch      <-chan session.Event
 	// woken says nobody typed this one: it is a turn THE SESSION STARTED ON ITS
 	// OWN (see the wake lane below). It rides the same queue because the queue
 	// is about streams waiting for the one being pumped, and that is exactly
@@ -125,6 +126,12 @@ func (a *app) queueFollow(msg followMsg) tea.Cmd {
 // when the last one ended, so there is nothing to ask for and nothing to wait on.
 func (a *app) startFollow() tea.Cmd {
 	if a.stream != nil || len(a.follows) == 0 {
+		return nil
+	}
+	for len(a.follows) > 0 && a.follows[0].covered != nil && a.follows[0].covered() {
+		a.follows = a.follows[1:]
+	}
+	if len(a.follows) == 0 {
 		return nil
 	}
 	next := a.follows[0]

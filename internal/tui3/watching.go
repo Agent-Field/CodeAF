@@ -275,12 +275,12 @@ func (a *app) followTurn(msg followingMsg) tea.Cmd {
 		return nil
 	}
 	next := a.watchFollowing()
-	if msg.turn.Replay {
-		return tea.Batch(a.refreshHostedReplay(), next)
-	}
 	if a.hostReplayLoading {
 		a.hostReplayPending = append(a.hostReplayPending, msg)
 		return next
+	}
+	if msg.turn.Replay {
+		return tea.Batch(a.refreshHostedReplay(), next)
 	}
 	return tea.Batch(a.admitFollowing(msg.turn), next)
 }
@@ -299,7 +299,7 @@ func (a *app) admitFollowing(turn Following) tea.Cmd {
 	}
 	a.dismissWelcome()
 	said := strings.TrimSpace(turn.Said)
-	a.follows = append(a.follows, queued{text: said, ch: turn.Events, woken: said == ""})
+	a.follows = append(a.follows, queued{text: said, ch: turn.Events, woken: said == "", covered: turn.Covered})
 	a.touch()
 	return a.startFollow()
 }

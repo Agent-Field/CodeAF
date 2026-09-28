@@ -64,7 +64,7 @@ func TestObserveOwnsCoveredFollowButNotTheNextTurn(t *testing.T) {
 	if agent.ReplayCovers(replaced) {
 		t.Fatal("restarted engine inherited old replay floor")
 	}
-	loop.Client.rememberReplay(session.ReplayCursor{Owner: "engine-one", Turn: 1})
+	loop.Client.rememberReplay(session.ReplayCursor{Owner: "engine-one", Turn: 1}, 0)
 	if !agent.ReplayCovers(old) {
 		t.Fatal("delayed older snapshot moved boundary backward")
 	}
@@ -116,5 +116,14 @@ func TestObserverReconnectRequestsFreshAtomicReplay(t *testing.T) {
 	ev := <-fresh
 	if ev.Text != "after reconnect" || client.Agent().ReplayCovers(ev) {
 		t.Fatalf("new observer tail lost: %+v", ev)
+	}
+}
+
+func TestAnOldObserveResponseCannotReplaceNewOwnership(t *testing.T) {
+	c := &Client{}
+	c.rememberReplay(session.ReplayCursor{Owner: "replacement", Turn: 2}, 20)
+	c.rememberReplay(session.ReplayCursor{Owner: "previous", Turn: 99}, 10)
+	if c.replayCursor.Owner != "replacement" {
+		t.Fatal("old response replaced current owner")
 	}
 }

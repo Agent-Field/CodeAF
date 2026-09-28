@@ -522,6 +522,8 @@ func (a *app) closeForSwitch() {
 // conv is the bundle — the agent and the seams minted around it — and side is
 // the sidecar a detach left, or nil for a conversation that was just opened.
 func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
+	a.hostReplayLoading = false
+	a.hostReplayPending = nil
 	was := a.agent
 	a.takeUp(conv, true)
 	// ANOTHER CONVERSATION'S QUESTIONS DO NOT COME ALONG ([app.forgetQuestions]);

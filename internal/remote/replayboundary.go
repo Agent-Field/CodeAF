@@ -5,11 +5,16 @@ import (
 	"sync"
 )
 
-func (c *Client) rememberReplay(cursor session.ReplayCursor) {
+func (c *Client) rememberReplay(cursor session.ReplayCursor, order uint64) {
 	if cursor.Owner == "" {
 		return
 	}
 	c.mu.Lock()
+	if order < c.replayOrder {
+		c.mu.Unlock()
+		return
+	}
+	c.replayOrder = order
 	if c.replayCursor.Owner != cursor.Owner || cursor.Turn > c.replayCursor.Turn {
 		c.replayCursor = cursor
 	}
