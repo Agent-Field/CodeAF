@@ -16,6 +16,26 @@ func (f *fakeAgent) SubmitBash(ctx context.Context, text string) (<-chan session
 	return f.Submit(ctx, text)
 }
 
+func TestUserBashToolLimitUsesItsRunnerTimeout(t *testing.T) {
+	a := newTestApp(&fakeAgent{})
+	a.bashBackgroundAfter = 30
+	for _, test := range []struct {
+		name, callID string
+		want         time.Duration
+	}{
+		{name: "person", callID: "user_bash_probe", want: 600 * time.Second},
+		{name: "model", callID: "model_probe", want: 30 * time.Second},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			row := &entry{kind: entryTool, tool: "bash", status: toolRunning,
+				callID: test.callID, detail: toolDetail{Args: `{"command":"sleep 35"}`}}
+			if got := a.toolLimit(row); got != test.want {
+				t.Fatalf("toolLimit = %s, want %s", got, test.want)
+			}
+		})
+	}
+}
+
 func TestUserBashComposerBypassesSetupAndKeepsShellSyntax(t *testing.T) {
 	a, _, _ := setupApp(t, nil)
 	a.setup.open = false

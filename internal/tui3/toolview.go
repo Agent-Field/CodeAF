@@ -1405,8 +1405,14 @@ func (a *app) toolLimit(e *entry) time.Duration {
 	// it, and the row must count down against the same figure. A surface that
 	// read the argument for itself drew a bound the engine had not armed, which
 	// is the one number on this row a person cannot check.
+	backgroundAfter := a.bashBackgroundAfter
+	// A command the person entered never joins the job registry, so its row
+	// must count against the runner's timeout rather than a handoff clock.
+	if session.IsUserBashCall(e.callID) {
+		backgroundAfter = 0
+	}
 	return time.Duration(session.BashBoundSeconds(
-		json.RawMessage(raw), a.bashBackgroundAfter,
+		json.RawMessage(raw), backgroundAfter,
 	) * float64(time.Second))
 }
 
