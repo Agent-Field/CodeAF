@@ -350,6 +350,12 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 	}
 
 	model := c.modelFor(&scrubbed)
+	// A request without definitions must not replay tool protocol messages to
+	// an endpoint that cannot accept them. The conversion precedes encoding so
+	// the budget counts the text that actually goes out.
+	if len(scrubbed.Tools) == 0 && (knobs.relaxed.has(relaxTools) || c.publishesNoTools(model) || c.toolless.learned(model)) {
+		scrubbed.Messages = readableToolHistory(scrubbed.Messages)
+	}
 
 	// The dialect is resolved once per encode rather than cached on the client,
 	// because the model can be pinned per request by the router and the learned
