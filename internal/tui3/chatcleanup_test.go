@@ -69,8 +69,13 @@ func TestCleanChatManagerTrafficFoldsWithoutDemotingAnswer(t *testing.T) {
 	a.workMode = config.WorkFold
 	a.touch()
 	text := strings.Join(plainRows(a), "\n")
-	if a.entries[2].demoted || strings.Contains(text, "## Ready") || strings.Contains(text, "private delivery") || strings.Contains(text, "internal compaction") {
+	if a.entries[2].demoted || strings.Contains(text, "## Ready") || strings.Contains(text, "private delivery") {
 		t.Fatalf("manager leaked work or raw answer markup:\n%s", text)
+	}
+	// A FINISHED COMPACTION IS NOT BOOKKEEPING TO FOLD. It is the one record
+	// that the model's copy of the conversation changed (workfold.go).
+	if !strings.Contains(text, "⚭ internal compaction") {
+		t.Fatalf("the compaction's record folded away with the team traffic:\n%s", text)
 	}
 	if !strings.Contains(text, "Review is ready.") {
 		t.Fatalf("missing answer:\n%s", text)

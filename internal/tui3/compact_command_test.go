@@ -4,7 +4,9 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -61,5 +63,26 @@ func TestACompactionMidTurnStaysVisibleWhenTheWorkFolds(t *testing.T) {
 	}
 	if strings.Contains(page, "go test ./...") || strings.Contains(page, "go build ./...") {
 		t.Fatalf("the work around the compaction did not fold:\n%s", page)
+	}
+}
+
+// AN END-OF-TURN COMPACTION STAYS TOO. The check after the answer is the
+// ordinary place a pass runs, and the fold that takes a turn's trailing
+// bookkeeping into its disclosure must leave the pass's line standing under
+// the answer, with the answer itself still in view.
+func TestAnEndOfTurnCompactionStaysVisibleUnderTheAnswer(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.entries = []entry{
+		{kind: entryUser, text: "q", turn: 1},
+		{kind: entryTool, tool: "read", status: toolOK, turn: 1, settled: true},
+		{kind: entryAssistant, text: "The answer.", turn: 1, settled: true},
+		{kind: entryCompact, text: "compacted · folded 3 messages", turn: 1, began: time.Unix(90, 0), ended: time.Unix(100, 0)},
+	}
+	a.workMode = config.WorkFold
+	a.touch()
+	text := strings.Join(plainRows(a), "\n")
+	answer, mark := strings.Index(text, "The answer."), strings.Index(text, "⚭ compacted · folded 3 messages")
+	if answer < 0 || mark < 0 || mark < answer {
+		t.Fatalf("want the answer and then the compaction line under it:\n%s", text)
 	}
 }

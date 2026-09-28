@@ -328,16 +328,12 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 				}
 			}
 		}
-		// ONLY A PASS BEFORE THE ANSWER SPLITS THE FOLD. A fold ends at the
-		// answer, so a pass that ran after it — the end-of-turn check, the
-		// ordinary case — is already standing; made an ask, it would put the
-		// answer inside the segment before it and fold the reply away. A turn
-		// with no answer has no reply to lose, so its pass stands too.
-		for _, at := range compactions {
-			if answer < 0 || at < answer {
-				asks = append(asks, at)
-			}
-		}
+		// A PASS STANDS WHEREVER IT RAN. Before the answer it splits the fold;
+		// after it — the end-of-turn check, the ordinary case — it would
+		// otherwise be taken into the turn's disclosure as bookkeeping
+		// ([housekeepingFold]), and a person reading back would find no sign
+		// that the model's copy of the conversation changed.
+		asks = append(asks, compactions...)
 		sort.Ints(asks)
 		// AN ASK STANDS, AND THE WORK BEFORE IT STILL FOLDS. A task proposal, a
 		// sign-in or a standing card is a thing the work could not decide alone,
