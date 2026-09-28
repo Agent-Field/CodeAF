@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/furrow"
 )
 
@@ -187,5 +189,75 @@ func TestNestedForkRetirementPreservesKeptChildGround(t *testing.T) {
 	}
 	if err := parent.dropUniverse(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// The scripted provider drives the public task door, actual worker tool calls,
+// verification and landing. Only the model is a fixture; Furrow is the binary.
+func TestRealFurrowWorkerCompletionRetiresTimeline(t *testing.T) {
+	binary, data := isolatedRetirementFurrow(t)
+	repo := newTestRepo(t)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	captured := make(chan string, 1)
+	completer := &routedCompleter{
+		parent: []step{
+			proposeTaskWithAcceptance("Write the note", "write retired.txt", "retired.txt contains completed work", repo, nil),
+			finalText("handed off"),
+		},
+		child: []step{
+			func(ctx context.Context, messages []ai.Message) (*ai.Response, error) {
+				workspace := furrow.Open(ctx, repo)
+				if workspace == nil {
+					return nil, fmt.Errorf("fixture parent is not attached")
+				}
+				forks, err := workspace.Forks(ctx)
+				if err != nil || len(forks) != 1 {
+					return nil, fmt.Errorf("worker forks = %v: %v", forks, err)
+				}
+				id, err := os.ReadFile(filepath.Join(forks[0].Path, ".furrow", "workspace-id"))
+				if err != nil {
+					return nil, err
+				}
+				captured <- strings.TrimSpace(string(id))
+				return writeCall("write-result", "retired.txt", "completed work\n")(ctx, messages)
+			},
+			finalText("Wrote retired.txt."),
+		},
+		audit: []step{verdict("VERIFIED — retired.txt contains completed work")},
+	}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+		config.TaskRepairRounds = 0
+	})
+	graph := agent.graph()
+	collect(t, mustSubmit(t, agent, "write the note"))
+	node := graph.node(1)
+	if node == nil {
+		t.Fatal("task was not admitted")
+	}
+	waitDoneNode(t, node)
+	if notice := node.notice(); notice.State != TaskDone {
+		t.Fatalf("worker state = %s: %s", notice.State, notice.Report)
+	}
+	if got := readFile(t, filepath.Join(repo, "retired.txt")); got != "completed work\n" {
+		t.Fatal(got)
+	}
+	var id string
+	select {
+	case id = <-captured:
+	default:
+		t.Fatal("worker never ran in a Furrow fork")
+	}
+	if _, err := os.Stat(filepath.Join(data, "store-v1", "workspaces", id)); !os.IsNotExist(err) {
+		t.Fatalf("worker timeline remains: %v", err)
+	}
+	if names := forkNames(t, repo); len(names) != 0 {
+		t.Fatalf("worker fork remains: %v", names)
+	}
+	if out := retirementFurrowRun(t, binary, repo, "timeline", "--limit", "1"); strings.TrimSpace(string(out)) == "[]" {
+		t.Fatal("parent history disappeared")
 	}
 }
