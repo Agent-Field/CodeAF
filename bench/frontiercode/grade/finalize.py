@@ -25,8 +25,12 @@ def main():
     cost = json.loads((run_dir / "cost.json").read_text()) if (run_dir / "cost.json").exists() else {}
     grade_path = run_dir / "grade.json"
     scan_path = run_dir / "scan.json"
+    judge_path = run_dir / "logs" / "grade" / "judge.json"
     grade = json.loads(grade_path.read_text()) if grade_path.exists() else {}
     scan = json.loads(scan_path.read_text()) if scan_path.exists() else {}
+    judge_usage = {}
+    if judge_path.exists():
+        judge_usage = json.loads(judge_path.read_text()).get("usage", {})
 
     grade_status = grade.get("status", "rig")
     score = grade.get("score")
