@@ -182,7 +182,9 @@ func (q *quirksStore) load(path string) {
 		q.contextLimits = make(map[string]ContextLimit)
 	}
 	for key, limit := range wire.ContextLimits {
-		if limit.Tokens > 0 {
+		// Older builds wrote no date. Such a limit has no evidence that the
+		// endpoint still has that window, so a restart lets it lapse.
+		if limit.Tokens > 0 && !limit.At.IsZero() && limit.At.After(time.Now().Add(-servingFactHold)) {
 			q.contextLimits[key] = limit
 		}
 	}
@@ -594,6 +596,7 @@ func (q *quirksStore) forget() {
 	q.noReasoningReplay = map[string]time.Time{}
 	q.answerCut = map[string]int{}
 	q.servedWindow = map[string]int{}
+	q.contextLimits = map[string]ContextLimit{}
 	q.path = ""
 	q.loaded = false
 }

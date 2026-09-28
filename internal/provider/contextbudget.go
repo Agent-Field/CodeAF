@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
@@ -34,11 +35,17 @@ func contextBudgetFrom(ctx context.Context) ContextBudget {
 // ContextLimit is an endpoint's stated total window, never a rejected prompt's
 // size. The key includes the account's base URL and the serving endpoint.
 type ContextLimit struct {
-	Base     string `json:"base"`
-	Model    string `json:"model"`
-	Provider string `json:"provider,omitempty"`
-	Tokens   int    `json:"tokens"`
+	Base     string    `json:"base"`
+	Model    string    `json:"model"`
+	Provider string    `json:"provider,omitempty"`
+	Tokens   int       `json:"tokens"`
+	At       time.Time `json:"at,omitempty"`
 }
+
+// A router's endpoint list changes during a long session. Half an hour is the
+// same hold used for a serving refusal in the lane sheet: long enough to avoid
+// relearning on each turn, short enough to let a changed endpoint recover.
+const servingFactHold = 30 * time.Minute
 
 func contextLimitKey(base, model, endpoint string) string {
 	return strings.TrimRight(strings.ToLower(base), "/") + "\n" + normalizeModel(model) + "\n" + strings.ToLower(strings.TrimSpace(endpoint))
@@ -59,6 +66,9 @@ func (c *Client) rememberContextLimit(model string, failure *APIError) {
 // it is news. The memo's lock is released by a defer, so a panic inside cannot
 // leave every later request waiting on it.
 func storeContextLimit(limit ContextLimit) bool {
+	if limit.At.IsZero() {
+		limit.At = time.Now()
+	}
 	key := contextLimitKey(limit.Base, limit.Model, limit.Provider)
 	quirks.mutex.Lock()
 	defer quirks.mutex.Unlock()
@@ -67,21 +77,18 @@ func storeContextLimit(limit ContextLimit) bool {
 	}
 	old, known := quirks.contextLimits[key]
 	quirks.contextLimits[key] = limit
-	return !known || old.Tokens != limit.Tokens
+	return !known || old.Tokens != limit.Tokens || !old.At.After(time.Now().Add(-servingFactHold))
 }
 
 // servingWindow takes the smallest known window among endpoints this request
 // can reach. A strict pin excludes other endpoints; an advisory order does not.
 // This is a read of the existing sheet and memo, with no network work.
 //
-// AN ENDPOINT THAT TAKES NO TOOLS IS NOT ONE A REQUEST CARRYING TOOLS CAN
-// REACH. Every request says `require_parameters`, which makes the tool list a
-// hard filter at the router, and without it the router still routes tools to
-// the endpoints that take them first. Counting the others shrank the window to
-// theirs: on 2026-09-28 deepseek-v3.2 had two 32k endpoints that take no tools
-// beside eleven of 131k and more, and a first message was refused as too long
-// for a window it could never have been sent to. A wrong guess here costs one
-// real refusal, whose stated limit the memo below then keeps.
+// A TOOL REQUEST USES ONLY TOOL ENDPOINTS FOR LOCAL SIZING. Ranked routing
+// sends `require_parameters`, but default Simple routing sends no provider
+// object and the router can still send tools to a tool-less endpoint. A relayed
+// overflow from that endpoint gets one resend before the caller compacts; its
+// smaller learned limit must not cap later tool requests.
 func (c *Client) servingWindow(model string, prefs *providerPrefs, claimed int, carriesTools bool) int {
 	window := claimed
 	take := func(tokens int) {
@@ -95,15 +102,17 @@ func (c *Client) servingWindow(model string, prefs *providerPrefs, claimed int, 
 		}
 		return !namesEndpoint(prefs.Ignore, endpoint) && (len(prefs.Only) == 0 || namesEndpoint(prefs.Only, endpoint))
 	}
+	toolSupport := map[string]bool{}
 	if !c.config.Direct && c.baseServesLanes() {
 		for _, row := range lanes.Default().Sheet().Rows(laneModel(model)) {
+			toolSupport[strings.ToLower(strings.TrimSpace(row.ID.Lane))] = row.Facts.Tools
 			if accepts(row.ID.Lane) && (!carriesTools || row.Facts.Tools) {
 				take(row.Facts.Context)
 			}
 		}
 	}
 	for _, limit := range storedContextLimits(c.config.BaseURL, model) {
-		if accepts(limit.Provider) {
+		if takesTools, known := toolSupport[strings.ToLower(strings.TrimSpace(limit.Provider))]; accepts(limit.Provider) && (!carriesTools || !known || takesTools) {
 			take(limit.Tokens)
 		}
 	}
@@ -118,7 +127,7 @@ func storedContextLimits(base, model string) []ContextLimit {
 	defer quirks.mutex.Unlock()
 	var limits []ContextLimit
 	for _, limit := range quirks.contextLimits {
-		if contextLimitKey(limit.Base, limit.Model, "") == want {
+		if contextLimitKey(limit.Base, limit.Model, "") == want && !limit.At.IsZero() && limit.At.After(time.Now().Add(-servingFactHold)) {
 			limits = append(limits, limit)
 		}
 	}

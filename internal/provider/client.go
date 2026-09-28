@@ -637,6 +637,31 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 		// recoverFromPacing). The layer that owns the turn owns the model.
 		return nil, err
 	}
+	// Simple routing has no hard parameter filter. The router can send a tool
+	// request to a tool-less endpoint with a smaller window than local sizing
+	// used. Re-send once before the conversation pays for a summary; a second
+	// overflow goes to its usual recovery owner without another loop. ONLY A
+	// ROUTER CAN ANSWER A RESEND FROM ANOTHER ENDPOINT: a direct base is the one
+	// endpoint, and resending it the same request would pay a refusal twice.
+	if response != nil && endpointRefusalStatus(response.StatusCode) && knobs.contextBudget.Window > 0 && !c.config.Direct && c.baseServesLanes() {
+		peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
+		if readErr == nil {
+			if failure, ok := RefusalFrom(apiError(response.StatusCode, peek)); ok && failure.Overflow && failure.FromUpstream() &&
+				failure.ContextLimit > 0 && failure.ContextLimit < c.servingWindow(c.modelFor(request), refusedWirePreferences(response), knobs.contextBudget.Window, len(request.Tools) > 0) {
+				response.Body.Close()
+				retried, retryErr := c.sendRepaired(ctx, request, knobs, stream)
+				c.rememberContextLimit(c.modelFor(request), failure)
+				if retryErr != nil {
+					return nil, retryErr
+				}
+				response = retried
+			} else {
+				response.Body = rewound(peek, response.Body)
+			}
+		} else {
+			response.Body = rewound(peek, response.Body)
+		}
+	}
 	if !endpointRefusalStatus(response.StatusCode) {
 		return response, nil
 	}
