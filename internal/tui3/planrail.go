@@ -230,6 +230,25 @@ func planTwigsOf(rows []session.PlanTaskRow) []*planTwig {
 	return out
 }
 
+// railLeadFloor is the least room a family row may leave for its title after
+// the lead: two cells, one glyph and the space that follows it. A row with less
+// than that has stopped being a row that names anything, and drawing only the
+// bare connector would hand the reader a `├ ` that says "here is a row" over an
+// empty name.
+const railLeadFloor = 2
+
+// railLevels is how many levels of family a column this wide may hang before a
+// deeper path stops eating the cells the name needs. Two cells to a level, so
+// the budget is the room a title keeps after a level draws itself; a path past
+// it hangs a level up ([app.railLead] takes the count from its callers).
+func railLevels(width int) int {
+	levels := (width - railTitleFloor) / 2
+	if levels < 1 {
+		levels = 1
+	}
+	return levels
+}
+
 // railLead is the lead cells a family row hangs by: two a level, drawn as the
 // tree the manual documents — `├ ` off the parent while a sibling follows the
 // row, `└ ` where the row closes its family, `│ ` down every level above it
@@ -283,16 +302,24 @@ func (a *app) railLead(last []bool, elbow bool) string {
 //
 // Every line a part draws carries its store id, which is what makes it a door
 // onto that task's page ([app.openRailPlan]).
-func (a *app) planRailLines(kids []*planTwig, last []bool, width int) []railLine {
+func (a *app) planRailLines(kids []*planTwig, last []bool, width, levels int) []railLine {
 	var out []railLine
 	for i, kid := range kids {
 		at := make([]bool, len(last), len(last)+1)
 		copy(at, last)
 		at = append(at, i == len(kids)-1)
-		lead := a.railLead(at, true)
-		text := a.railEntryRow(railEntry{node: planRailNode(kid.row)}, max(width-ansi.StringWidth(lead), 0))
+		hang := at
+		if len(hang) > levels {
+			hang = hang[len(hang)-levels:]
+		}
+		lead := a.railLead(hang, true)
+		room := max(width-ansi.StringWidth(lead), 0)
+		if room < railLeadFloor {
+			continue
+		}
+		text := a.railEntryRow(railEntry{node: planRailNode(kid.row)}, room)
 		out = append(out, railLine{text: lead + text, entry: -1, plan: kid.row.ID, head: true})
-		out = append(out, a.planRailLines(kid.kids, at, width)...)
+		out = append(out, a.planRailLines(kid.kids, hang, width, levels)...)
 	}
 	return out
 }
@@ -304,21 +331,27 @@ func (a *app) planRailLines(kids []*planTwig, last []bool, width int) []railLine
 // once did beside the row. The page's own task stands in its head, so its
 // parts hang a level in here, the same connectors the rail draws and the same
 // trunk running through the under-block ([app.railLead]).
-func (a *app) planPageLines(kids []*planTwig, last []bool, width int) []railLine {
+func (a *app) planPageLines(kids []*planTwig, last []bool, width, levels int) []railLine {
 	var out []railLine
 	for i, kid := range kids {
 		at := make([]bool, len(last), len(last)+1)
 		copy(at, last)
 		at = append(at, i == len(kids)-1)
-		lead := a.railLead(at, true)
+		hang := at
+		if len(hang) > levels {
+			hang = hang[len(hang)-levels:]
+		}
+		lead := a.railLead(hang, true)
 		room := max(width-ansi.StringWidth(lead), 0)
+		if room < railLeadFloor {
+			continue
+		}
 		node := planRailNode(kid.row)
 		out = append(out, railLine{text: lead + a.railEntryRow(railEntry{node: node}, room), entry: -1, plan: kid.row.ID, head: true})
-		hang := a.railLead(at, false)
 		for _, under := range a.railUnder(node, max(room-4, 0)) {
-			out = append(out, railLine{text: hang + "    " + under, entry: -1, plan: kid.row.ID})
+			out = append(out, railLine{text: a.railLead(hang, false) + "    " + under, entry: -1, plan: kid.row.ID})
 		}
-		out = append(out, a.planPageLines(kid.kids, at, width)...)
+		out = append(out, a.planPageLines(kid.kids, hang, width, levels)...)
 	}
 	return out
 }
@@ -328,5 +361,5 @@ func (a *app) planPageLines(kids []*planTwig, last []bool, width int) []railLine
 func (a *app) planRailRoot(twig *planTwig, width int) []railLine {
 	text := a.railEntryRow(railEntry{node: planRailNode(twig.row)}, width)
 	out := []railLine{{text: text, entry: -1, plan: twig.row.ID, head: true}}
-	return append(out, a.planRailLines(twig.kids, nil, width)...)
+	return append(out, a.planRailLines(twig.kids, nil, width, railLevels(width))...)
 }
