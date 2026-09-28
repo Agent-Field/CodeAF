@@ -22,9 +22,12 @@
 // stood by accident" and gets an owned session in a private work directory
 // (cmd/codeaf's chatv3_layout.go), which is not the shape any of these
 // scenarios are about, so the workspace is always a repository.
+// Every run also gets scheduler stand-ins and a separate login folder. The
+// machine's own background timer is never this suite's timer.
 package e2e
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -50,6 +53,7 @@ type rig struct {
 	t    *testing.T
 	name string
 	home string
+	host hostGuard
 	ws   string
 	dead bool
 }
@@ -337,6 +341,10 @@ func startFresh(t *testing.T, name, home, ws string, cols, rows int, args ...str
 // front of the assignments, then the state root and the terminal.
 func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows int, args ...string) *rig {
 	t.Helper()
+	// THE PRODUCT WRITES THE TIMER DEFINITION UNDER HOME BEFORE IT ASKS
+	// SYSTEMCTL OR LAUNCHCTL TO LOAD IT. Both must belong to this rig, or
+	// #1631 replaces the developer's timer with a deleted checkout.
+	g := guardHost(t, home)
 	// EVERY RUN ON THIS HOST NAMES ITS OWN RIG. Several checkouts run this
 	// suite at once on one machine, and with a fixed session name each start()
 	// kills the other run's rig before opening its own — a whole suite then
@@ -352,6 +360,7 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	// and a scenario that names none really runs with the variable absent.
 	command := []string{"env", "-u", "CODEAF_TASK_BELT"}
 	command = append(command, env...)
+	command = append(command, g.tokens(env)...)
 	command = append(command,
 		"CODEAF_HOME="+home,
 		"TERM=xterm-256color",
@@ -372,7 +381,7 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	if out, err := launch.CombinedOutput(); err != nil {
 		t.Fatalf("tmux new-session: %v\n%s", err, out)
 	}
-	r := &rig{t: t, name: name, home: home, ws: ws}
+	r := &rig{t: t, name: name, home: home, host: g, ws: ws}
 	t.Cleanup(func() {
 		if t.Failed() {
 			r.dump()
@@ -435,8 +444,6 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	}
 	return r
 }
-
-func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 func (r *rig) resize(cols, rows int) {
 	r.t.Helper()
@@ -670,8 +677,7 @@ func clip(s string, n int) string {
 // the launchd agent and the systemd timer do.
 func tick(t *testing.T, home string) string {
 	t.Helper()
-	command := exec.Command(binary(t), "tick")
-	command.Env = append(os.Environ(), "CODEAF_HOME="+home)
+	command := guardedCommand(t, context.Background(), home, append(os.Environ(), "CODEAF_HOME="+home), binary(t), "tick")
 	out, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("codeaf tick: %v\n%s", err, out)
