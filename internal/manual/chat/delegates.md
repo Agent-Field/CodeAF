@@ -24,10 +24,13 @@ task's, shows the actions the program took, each under the step of its own proce
 program asks for, the run's own work model answers, and the raw calls name the model that
 did.
 
+## Where a program's badge appears — and where it does not
+
 **Every program's tasks wear its name as a badge**: `[<name>]` after the task's title on
-the side list, the card, the task's page, the `@` list, the tasks place and home, and its
+the side list, the proposal card, the task's page, the `@` list, the tasks place and home, and its
 initials (`[sd]` for senior-dev) where a list is narrow. A task codeaf's own worker does
 wears none, and a program added to codeaf later gets its own badge from its name.
+The landed card's head shows the title and outcome without a program badge.
 
 This is different from a harness or a subharness, which are built out of codeaf's own
 parts. A program codeaf carries has an engine of its own.

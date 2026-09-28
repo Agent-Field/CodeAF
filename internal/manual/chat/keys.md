@@ -442,7 +442,10 @@ second `esc` inside half a second is the rewind's door and `ctrl+c` at rest is t
 out, so neither is free — and you do not need one. The `esc` you already pressed started the
 10-second window, and when it runs out codeaf stops waiting on its own.
 
-**What happens at 10 seconds.** codeaf detaches from the turn: the waits codeaf holds are
+## What happens if it will not stop — the ten-second limit
+
+After `esc` or `ctrl+c` cancels a running turn, codeaf waits at most 10 seconds.
+Then codeaf detaches from the turn: the waits codeaf holds are
 ended and whatever request was still open to the model is aborted. A wait that ignores
 being cancelled — a command whose output a grandchild is still holding, say — may run on
 behind the detached turn; what detaching guarantees is that NOTHING IS WAITING FOR IT any
