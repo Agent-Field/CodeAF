@@ -4811,6 +4811,29 @@ func NothingToCompactWhy(err error) (string, bool) {
 	return strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(text, ErrNothingToCompact.Error()), ":")), true
 }
 
+// SummarySkipped says a pass shortened the conversation while its summary did
+// not land. It travels as a result of /compact so the surface can report both
+// facts even when the pass ran without an event hub.
+type SummarySkipped struct{ Why string }
+
+func (e *SummarySkipped) Error() string { return "session: compacted: summary skipped: " + e.Why }
+
+// SummarySkippedWhy also reads remote errors that carry only their text.
+func SummarySkippedWhy(err error) (string, bool) {
+	if err == nil {
+		return "", false
+	}
+	var typed *SummarySkipped
+	if errors.As(err, &typed) {
+		return typed.Why, true
+	}
+	const prefix = "session: compacted: summary skipped: "
+	if strings.HasPrefix(err.Error(), prefix) {
+		return strings.TrimPrefix(err.Error(), prefix), true
+	}
+	return "", false
+}
+
 // ErrCompactionInFlight says another pass is already running. The second caller
 // gets an error for the same reason: it did nothing, and it should say so.
 var ErrCompactionInFlight = errors.New("session: a compaction pass is already running")
@@ -4881,6 +4904,11 @@ func (a *Agent) compact(ctx context.Context, hub *eventHub) (bool, error) {
 }
 
 func (a *Agent) compactWithPolicy(ctx context.Context, hub *eventHub, policy compactPolicy) (bool, error) {
+	changed, _, err := a.compactWithPolicyResult(ctx, hub, policy)
+	return changed, err
+}
+
+func (a *Agent) compactWithPolicyResult(ctx context.Context, hub *eventHub, policy compactPolicy) (bool, string, error) {
 	// A PASS SAYS ITSELF WHILE IT RUNS, and it says itself from OUTSIDE the
 	// lock. A phase post reaches a surface, and a surface answers one by asking
 	// for a frame — so a phase posted with this agent's mutex held is a surface
@@ -4897,7 +4925,7 @@ func (a *Agent) compactWithPolicy(ctx context.Context, hub *eventHub, policy com
 	a.mu.Lock()
 	if a.compacting {
 		a.mu.Unlock()
-		return false, ErrCompactionInFlight
+		return false, "", ErrCompactionInFlight
 	}
 	a.compacting = true
 	a.compactDone = make(chan struct{})
@@ -4971,7 +4999,7 @@ func (a *Agent) compactWithPolicy(ctx context.Context, hub *eventHub, policy com
 		// No eligible material was reduced. A manual pass and a routine pass
 		// protect different tails, so this is not a claim about total size.
 		a.mu.Unlock()
-		return false, &NothingToCompact{Why: why}
+		return false, "", &NothingToCompact{Why: why}
 	}
 
 	// Mechanical reduction is synchronous. Publish a paired seam only once
@@ -5022,7 +5050,7 @@ func (a *Agent) compactWithPolicy(ctx context.Context, hub *eventHub, policy com
 	if hub != nil {
 		hub.send(Event{Kind: EventCompacted, Hint: compactionHint(pass, tokensBefore, tokensAfter)})
 	}
-	return true, nil
+	return true, pass.summarySkipped, nil
 }
 
 // compactionHint is the one dim line the turn after a pass shows, and every

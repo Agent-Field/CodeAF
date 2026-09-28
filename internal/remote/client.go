@@ -1792,7 +1792,13 @@ func (a *Agent) StopWork() error {
 // terminal that stops drawing. It runs beside the ordered lane (callclass.go's
 // [classWork]), so nothing the person sends meanwhile queues behind it.
 func (a *Agent) Compact(ctx context.Context) error {
-	_, err := a.c.callWithin(ctx, MethodCompact, nil, session.CompactPatience)
+	result, err := a.c.callWithin(ctx, MethodCompact, nil, session.CompactPatience)
+	if err == nil && len(result) > 0 && string(result) != "null" {
+		var why string
+		if json.Unmarshal(result, &why) == nil && why != "" {
+			return &session.SummarySkipped{Why: why}
+		}
+	}
 	return err
 }
 

@@ -2191,7 +2191,10 @@ func (a *Agent) Compact(ctx context.Context) error {
 // (internal/tui3), and a person who types the old form gets the pass they asked
 // for rather than an error about a machine that used to exist.
 func (a *Agent) CompactWithFocus(ctx context.Context, _ string) error {
-	_, err := a.compactWithPolicy(ctx, nil, a.requestedCompactPolicy())
+	_, skipped, err := a.compactWithPolicyResult(ctx, nil, a.requestedCompactPolicy())
+	if err == nil && skipped != "" {
+		return &SummarySkipped{Why: skipped}
+	}
 	return err
 }
 
