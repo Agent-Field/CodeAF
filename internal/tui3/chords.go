@@ -448,5 +448,5 @@ func (c chordSpelling) chordSetupWords() string {
 		return ""
 	}
 	return "the places answer " + chordMetaWord + "1…" + chordMetaWord +
-		"9 · if " + chordMetaBare + " types a character instead, " + c.chordFixWords()
+		itoa(len(placeOrder)) + " · if " + chordMetaBare + " types a character instead, " + c.chordFixWords()
 }

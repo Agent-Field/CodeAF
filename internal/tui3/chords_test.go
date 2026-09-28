@@ -280,7 +280,7 @@ func TestTheOptionAsMetaNoteIsNeitherDrawnOffAMacNorInAConversation(t *testing.T
 func TestTheFirstRunLineNamesTheChordsAndTheSettingOnAMacOnly(t *testing.T) {
 	mac := detectChords("darwin", envOf(map[string]string{"TERM_PROGRAM": "Apple_Terminal"}))
 	words := mac.chordSetupWords()
-	for _, want := range []string{"opt+1…opt+9", "if opt types a character instead", "use option as meta", "Terminal: Profiles › Keyboard › Use Option as Meta key"} {
+	for _, want := range []string{"opt+1…opt+8", "if opt types a character instead", "use option as meta", "Terminal: Profiles › Keyboard › Use Option as Meta key"} {
 		if !strings.Contains(words, want) {
 			t.Fatalf("the first-run line lost %q:\n%s", want, words)
 		}
