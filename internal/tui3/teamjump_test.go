@@ -3,6 +3,7 @@ package tui3
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -111,6 +112,34 @@ func TestTrafficJumpToAnOlderMessage(t *testing.T) {
 	spend(t, a, a.trafficJump("", "000000000999"))
 	if !a.stick || a.dockHoverWords() != trafficOlderWords {
 		t.Fatalf("an older message left stick %v and the hint %q", a.stick, a.dockHoverWords())
+	}
+}
+
+// A hosted switch puts the member in front before its atomic transcript
+// arrives. The reply's receipt must still be allowed to land after replay.
+func TestTrafficReplyJumpWaitsForHostedReplay(t *testing.T) {
+	const id = "000000000002"
+	a, _, _, _ := trafficApp(t)
+	agent := replayTestAgent(nil)
+	agent.entries = []session.DisplayEntry{{Role: "tool", Tool: "team_post", Hint: "team_post", Output: "Posted to the manager in \"traffic\" as #2, answering #1"}}
+	a.agent = agent
+	replay := a.refreshHostedReplay()
+	_ = a.trafficJump("", id)
+	if a.traffic.jump.id != id || a.trafficJumpWords() != "" {
+		t.Fatalf("jump settled before replay: jump=%+v hint=%q", a.traffic.jump, a.trafficJumpWords())
+	}
+	drain(t, a, replay)
+	if a.traffic.landing.entry < 0 || a.traffic.landing.older || a.traffic.jump.id != "" {
+		t.Fatalf("reply did not land after replay: landing=%+v jump=%+v", a.traffic.landing, a.traffic.jump)
+	}
+
+	b, _, _, _ := trafficApp(t)
+	b.hostReplayLoading = true
+	_ = b.trafficJump("", id)
+	b.traffic.jump.until = b.now().Add(-time.Second)
+	b.trafficLand()
+	if b.trafficJumpWords() != trafficOlderWords {
+		t.Fatalf("expired jump has hint %q", b.trafficJumpWords())
 	}
 }
 

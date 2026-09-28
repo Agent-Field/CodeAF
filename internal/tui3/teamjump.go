@@ -47,6 +47,7 @@ const trafficOlderWords = "that message is older than this chat's history"
 type trafficJumpTo struct {
 	key, id string
 	until   time.Time
+	waking  bool
 }
 
 type trafficLanding struct {
@@ -57,6 +58,10 @@ type trafficLanding struct {
 
 // trafficLandedMsg is the lift expiring: one repaint.
 type trafficLandedMsg struct{}
+
+// trafficJumpDeadlineMsg gives a still-loading conversation one final chance
+// to land before the older-history hint is shown.
+type trafficJumpDeadlineMsg struct{}
 
 // trafficJump opens member key's conversation at Traffic entry id, or in
 // front at id when key is "" or already in front.
@@ -79,18 +84,29 @@ func (a *app) trafficLand() tea.Cmd {
 	if j.key == "" {
 		return nil
 	}
-	if a.now().After(j.until) {
+	if a.frontTabKey() != j.key {
+		if !a.now().Before(j.until) {
+			a.traffic.jump = trafficJumpTo{}
+		}
+		return nil
+	}
+	if j.id == "" {
 		a.traffic.jump = trafficJumpTo{}
 		return nil
 	}
-	if a.frontTabKey() != j.key {
+	at := -1
+	if a.now().Before(j.until) {
+		at = a.teamEntryAt(j.id)
+	}
+	if at < 0 && (a.hostReplayLoading || a.hostReplayWaiting) && a.now().Before(j.until) {
+		if !j.waking {
+			j.waking = true
+			a.traffic.jump = j
+			return tea.Tick(j.until.Sub(a.now())+time.Millisecond, func(time.Time) tea.Msg { return trafficJumpDeadlineMsg{} })
+		}
 		return nil
 	}
 	a.traffic.jump = trafficJumpTo{}
-	if j.id == "" {
-		return nil
-	}
-	at := a.teamEntryAt(j.id)
 	land := trafficLanding{entry: at, until: a.now().Add(trafficLandFor)}
 	if at < 0 {
 		a.offset, a.stick = 0, true

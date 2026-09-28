@@ -133,7 +133,8 @@ manager's chat. If that conversation is already in front, the row scrolls it in 
 not open another. The hint says `Open ◆'s message · 2m ago · click` (or `Open your message`
 when the row is yours, and `now` with no "ago" when it just arrived). The message is brought
 into view and lifted for a moment; nothing here takes the keyboard, and nothing opens a new
-window. A message from before the conversation's history opens it at the bottom, and the hint
+window. If a hosted conversation's history is still arriving, the jump waits up to ten seconds
+for its message. A message from before the conversation's history opens it at the bottom, and the hint
 line says `that message is older than this chat's history`.
 
 In a member's chat the Traffic is the messages to or from that member (and to the whole team),
