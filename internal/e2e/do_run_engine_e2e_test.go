@@ -123,11 +123,10 @@ func TestDoOnTheRunEngine(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), doRunEngineLead)
 	defer cancel()
-	command := exec.CommandContext(ctx, product, "do",
+	command := guardedCommand(t, ctx, root, doRunEngineEnv(root, key), product, "do",
 		"--json", "--yes-spend", "--timeout", "6m",
 		"--model", e2eModel, "--plan-model", e2eModel)
 	command.Dir = workspace
-	command.Env = doRunEngineEnv(root, key)
 	// The ask is the whole interface, and it goes in the way a person pipes
 	// one: on stdin, with no positional argument for the door to fold a flag
 	// into.

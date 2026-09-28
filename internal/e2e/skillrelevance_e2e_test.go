@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -160,11 +159,10 @@ func evalOnce(t *testing.T, bin, home, ws, key, text string) string {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
-	command := exec.CommandContext(ctx, bin, "chat", "--one-model", "--once", text)
-	command.Dir = ws
-	command.Env = append(os.Environ(),
+	command := guardedCommand(t, ctx, home, append(os.Environ(),
 		"CODEAF_HOME="+home, "HOME="+home, "CODEAF_TELEMETRY=off",
-		config.APIKeyEnv+"="+key)
+		config.APIKeyEnv+"="+key), bin, "chat", "--one-model", "--once", text)
+	command.Dir = ws
 	out, err := command.CombinedOutput()
 	if err != nil {
 		t.Logf("the run for %q ended with %v", text, err)

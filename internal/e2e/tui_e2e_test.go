@@ -44,12 +44,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // modelPatience is how long any one real turn is given. deepseek-v4-flash
@@ -763,12 +765,13 @@ func testFiringReachesThePerson(t *testing.T) {
 	if testing.Short() {
 		t.Skip("this one waits for the five-minute standing pass")
 	}
+	requireMachineTimerUntouched(t)
 	// THE TASK COLUMN IS PINNED OPEN, because the standing count below is drawn
 	// at its foot and nowhere else on the frame (internal/tui3's railFootRows).
 	// newHome copies the profile of whoever runs this, and a machine whose owner
 	// put the column away with ctrl+g — this one's does — hides the very line
 	// under test; secondwindow_e2e_test.go pins it for the same reason.
-	home := newHome(t, map[string]any{config.KeyTaskColumn: true})
+	home := newHome(t, map[string]any{config.KeyTaskColumn: true, config.KeyStandingBackground: config.BackgroundOn})
 	ws := newWorkspace(t, "firews", false)
 	r := start(t, "afe2e_fire", home, ws, tuiWide, 45)
 	started := time.Now()
@@ -782,6 +785,43 @@ func testFiringReachesThePerson(t *testing.T) {
 
 	openHome(t, r)
 	standReminder(t, r, "remind me in 1 minute to drink water")
+	// THE APPROVAL MUST LOAD ONLY THIS RIG'S TIMER. A definition under the
+	// developer's HOME would point every later five-minute pass at a checkout
+	// this suite will delete (#1631).
+	installDeadline := time.Now().Add(30 * time.Second)
+	var calls []string
+	installed := false
+	for {
+		calls = r.host.calls(t)
+		for _, call := range calls {
+			if runtime.GOOS == "linux" && call == "systemctl --user enable --now "+standing.LinuxTickTimer {
+				installed = true
+			}
+			if runtime.GOOS == "darwin" && strings.HasPrefix(call, "launchctl bootstrap ") && strings.HasSuffix(call, standing.DarwinTickLabel+".plist") {
+				installed = true
+			}
+		}
+		if installed || time.Now().After(installDeadline) {
+			break
+		}
+		time.Sleep(pollEvery)
+	}
+	t.Logf("rig scheduler calls: %v", calls)
+	if !installed {
+		t.Errorf("the rig never loaded its timer; scheduler calls: %v", calls)
+	}
+	if runtime.GOOS == "linux" {
+		definition := filepath.Join(r.host.login, ".config", "systemd", "user", strings.TrimSuffix(standing.LinuxTickTimer, ".timer")+".service")
+		raw, err := os.ReadFile(definition)
+		if err != nil || !strings.Contains(string(raw), "Environment=\"CODEAF_HOME="+r.home+"\"") {
+			t.Errorf("rig service definition %s must name CODEAF_HOME=%s: %v, content %q", definition, r.home, err, raw)
+		}
+	} else if runtime.GOOS == "darwin" {
+		definition := filepath.Join(r.host.login, "Library", "LaunchAgents", standing.DarwinTickLabel+".plist")
+		if _, err := os.Stat(definition); err != nil {
+			t.Errorf("rig plist %s: %v", definition, err)
+		}
+	}
 
 	// Back into the conversation and wait. The window runs the same pass the
 	// timer runs, every standing.Interval (five minutes), the first one an
