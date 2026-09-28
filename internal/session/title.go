@@ -498,23 +498,37 @@ func (a *Agent) setTitleIfUnnamed(title string, _ ...string) bool {
 // interrupted. The name should describe what the conversation is about, and
 // that is where it was stated.
 func (a *Agent) firstExchangeLocked() (string, string) {
-	question, answer := "", ""
+	question := ""
 	for _, message := range a.messages {
 		switch message.Role {
 		case "user":
-			if question == "" {
-				question = messageContentText(message)
+			// Do not borrow an answer from a later, unrelated user turn.
+			if question != "" {
+				return question, ""
 			}
+			question = strings.TrimSpace(messageContentText(message))
 		case "assistant":
-			if question != "" && answer == "" {
-				answer = messageContentText(message)
+			// Human shell turns journal as user/call/result. Their durable call
+			// mark, not a leading ! in ordinary model input, identifies them.
+			if humanShellReply(message) {
+				question = ""
+				continue
 			}
-		}
-		if question != "" && answer != "" {
-			break
+			if answer := strings.TrimSpace(messageContentText(message)); question != "" && answer != "" {
+				return question, answer
+			}
 		}
 	}
-	return strings.TrimSpace(question), strings.TrimSpace(answer)
+	return question, ""
+}
+
+func humanShellReply(message ai.Message) bool {
+	for _, call := range message.ToolCalls {
+		if IsUserBashCall(call.ID) {
+			return true
+		}
+	}
+	return false
 }
 
 func messageContentText(message ai.Message) string {

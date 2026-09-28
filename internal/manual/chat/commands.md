@@ -30,6 +30,14 @@ An empty `!`, attached files, or a busy conversation leaves your draft in place
 and explains what to change. Wait for the turn to finish or stop it first.
 Task pages accept task messages; run `!` commands from the parent conversation.
 
+## Conversation titles after shell commands
+
+A conversation containing only `!` commands keeps a literal command preview as
+its working name. Home and conversation lists preserve its casing and punctuation;
+long commands are clipped to fit. Shell turns do not ask a model for a title.
+Once you send an ordinary message, automatic naming uses that message, skipping
+recorded human shell turns. Its reply is included when already available.
+
 ## Typing a slash to see the command list
 
 Type `/` in the home or conversation message box to see every available command in
