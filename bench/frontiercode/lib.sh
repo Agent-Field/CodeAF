@@ -45,9 +45,13 @@ emu_args() { # echoes the docker env flags for the emulation guard
 
 log() { printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
 
-# coreutils' timeout is `gtimeout` on a Mac that installed it with brew.
+# coreutils' timeout is `gtimeout` on a Mac that installed it with brew, and
+# this host has neither: the shim that answers instead is a python wrapper
+# with the same exit code (124 on the wall), so callers and logs read the same.
 if ! command -v timeout >/dev/null 2>&1 && command -v gtimeout >/dev/null 2>&1; then
   timeout() { gtimeout "$@"; }
+elif ! command -v timeout >/dev/null 2>&1; then
+  timeout() { python3 "$RIG_DIR/grade/checks/timeout.py" "$@"; }
 fi
 
 # Section-aware scan of the task.toml schema, as bench/deepswe/lib.sh does.
