@@ -215,6 +215,9 @@ func (c *taskCrew) endCall() {
 // current ledger reading or carrying yesterday's spend into a fresh day.
 func restoreCrewDay(day *SpendDay, s *crewGuardRecord) {
 	if s.Day == time.Now().Format("2006-01-02") {
+		// Initialize the ledger-backed day's date before restoring lower bounds;
+		// otherwise its first read would reset the recovered spend and call prices.
+		day.Total()
 		day.mu.Lock()
 		if s.DaySpent > day.usd+day.since {
 			day.usd = s.DaySpent - day.since
