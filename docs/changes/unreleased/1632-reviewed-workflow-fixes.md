@@ -21,3 +21,9 @@ Held tasks now notice changed machine limits and retain their accepted request a
 engine restarts, reusing the focused recovery fix from #1619. A persistent engine
 restart also retires old reply streams, so a follow-up no longer disappears when
 its new stream number matches a completed reply from the previous engine.
+
+Held tasks follow changed admission limits and resume with their accepted folder,
+crew pins, fallback history, and spending limits after a restart. Records without
+complete recovery policy or with unresolved model calls remain interrupted. A
+reopened conversation replaces stale connection streams when its owner changes,
+so new replies and replay cursors belong to the current session.
