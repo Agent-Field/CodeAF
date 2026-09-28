@@ -301,6 +301,12 @@ func (a *app) sayTaskCrew(notice session.TaskNotice) {
 		text = lead + a.crewLine(notice.Crew, -1)
 		facts = []string{crewroute.ShortModel(notice.Crew.Seat(crewroute.Worker).Model)}
 	case session.TaskFailed:
+		if notice.Stopped {
+			text = lead + "stopped · " + a.crewLine(notice.Crew, crewroute.Unspent)
+			facts = []string{"stopped"}
+			said.landed = true
+			break
+		}
 		// A TASK THAT FAILED ASKS FOR THE NEXT STEP BY NAME: the stronger crew
 		// is the one thing on this line a person can do about it.
 		// AND THE FAILURE IS SAID FIRST, before any figure: a stopped seat's
@@ -332,7 +338,7 @@ func (a *app) sayTaskCrew(notice session.TaskNotice) {
 	}
 	switch {
 	case said.text == "":
-		a.noteFacts(text, facts...)
+		a.feed.noteWritten(text, false, facts)
 	case said.landed:
 		// THE LANDING IS SAID WHERE THE TASK LANDS. A task runs for minutes
 		// while the conversation goes on, and its start line is far up the
@@ -340,7 +346,7 @@ func (a *app) sayTaskCrew(notice session.TaskNotice) {
 		// were drawn where nobody was looking. The one line moves to the end.
 		a.feed.moveNote(said.text, text, facts)
 	case !a.feed.renote(said.text, text, facts):
-		a.noteFacts(text, facts...)
+		a.feed.noteWritten(text, false, facts)
 	}
 	said.text, said.facts = text, facts
 	a.crewSaid[notice.ID] = said
@@ -361,7 +367,7 @@ func (a *app) crewAfterStarted(id string, started string, startedFacts []string)
 	if !ok || said.text == "" || !a.feed.renote(said.text, started, startedFacts) {
 		return false
 	}
-	a.noteFacts(said.text, said.facts...)
+	a.feed.noteWritten(said.text, false, said.facts)
 	return true
 }
 

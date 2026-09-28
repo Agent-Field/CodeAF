@@ -710,8 +710,9 @@ were made. It is not a way to rescue the work.
 
 ## Anchor a conversation to a repository or folder — /workspace and the workspace tool
 
-When a conversation says `codeaf` because it opened with no project, type `/workspace
-<path>` to make the repository or folder at that path its project. The path may begin with
+When a conversation says `codeaf` because it opened with no project, type `/workspace`
+to choose a folder and confirm **set workspace**, or `/workspace <path>` to name it
+directly. Cancelling the picker changes nothing; files cannot be workspace anchors. The path may begin with
 `~`; a path inside a Git repository resolves to the repository root. The place line changes,
 the project's `AGENTS.md` and `CLAUDE.md` are loaded into the conversation instructions,
 and future tasks cut their working copies from that repository rather than from the

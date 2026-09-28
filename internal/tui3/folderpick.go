@@ -207,6 +207,8 @@ type folderPick struct {
 	// never offers to remove one ([app.openTargetContextPick] leaves the map
 	// empty for exactly that reason).
 	forTarget bool
+	// forWorkspace chooses the current conversation's one-shot project anchor.
+	forWorkspace bool
 
 	// hidden reveals the dot-directories and the names the `@` walk prunes.
 	// It is off by default and it is a person's own act — alt+h, or a name
@@ -1427,6 +1429,11 @@ func (g folderGeom) actionAt() int { return g.action }
 // matters most here (folderact.go's header).
 func (f *folderPick) actionWord(path string, dir bool) string {
 	switch {
+	case f.forWorkspace:
+		if dir {
+			return "set workspace · "
+		}
+		return "choose a folder · "
 	case dir && f.forTarget:
 		// THE SHEET OPENED FROM HOME IS ABOUT A CONVERSATION THAT DOES NOT EXIST
 		// YET, and `add this folder` would be a promise about the one behind home
@@ -1731,6 +1738,9 @@ func (f *folderPick) folderHintAt(room int) string {
 
 // controlLegend keeps cancel and the narrow preview door ahead of optional hints.
 func (f *folderPick) controlLegend(room int) string {
+	if f.forWorkspace && f.pane != folderPaneWide {
+		return rowTail([]rowField{rowSay("esc cancel"), rowSay("enter set workspace"), rowSay("←→ walk"), rowSay("ctrl+u search")}, room)
+	}
 	if !f.browsing {
 		return rowTail([]rowField{rowSay("esc cancel"), rowSay("→ open"), rowSay("enter add")}, room)
 	}

@@ -208,7 +208,7 @@ func (a *Agent) routeTaskCrew(ctx context.Context, row uint64, title, brief stri
 	for _, pick := range decision.Crew {
 		crew.original[pick.Seat] = pick.Send
 	}
-	crew.guard = crewSpendGuard(a.config.ProfileDir, decision, false)
+	crew.guard = crewSpendGuard(a.config.ProfileDir, decision, true)
 	crew.guard.Day = a.crewDay()
 	crew.day, crew.dayAtStart = a.crewDay(), a.crewDay().Total()
 	a.crews.put(row, crew)
@@ -391,7 +391,10 @@ func (c crewSeatCompleter) CompleteWithMessages(ctx context.Context, messages []
 		}
 		// A SEAT NEVER WAITS OUT A LIMIT: a 429 goes back at once, and the
 		// seat moves to its next route or model ([provider.WithoutPatientRateLimits]).
-		response, err := c.agent.completeWithModel(provider.WithoutPatientRateLimits(asCrewSeatCall(ctx)), purposeInherited, messages, current, options...)
+		callCtx := provider.WithDiscardedUsage(ctx, func(_ string, _ string, response *ai.Response) {
+			crew.guard.after(ctx, current, response, 0)
+		})
+		response, err := c.agent.completeWithModel(provider.WithoutPatientRateLimits(asCrewSeatCall(callCtx)), purposeInherited, messages, current, options...)
 		crew.guard.after(ctx, current, response, held)
 		if err == nil {
 			c.agent.crewAnswered(c.run, current)
@@ -561,7 +564,7 @@ func crewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *Sp
 		TaskCap: taskCap, TaskAction: taskAction, Task: &SpendTask{},
 	}
 	if capUSD > 0 {
-		guard.Day = NewSpendDay(spentTodayOnLedger())
+		guard.Day = newLedgerSpendDay(spentTodayOnLedger, time.Now)
 	}
 	return guard
 }
@@ -571,7 +574,7 @@ func crewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *Sp
 // call after — seats and helpers alike — so a helper's call counts against
 // the cap a seat's next call is priced under, and the other way round.
 func (a *Agent) crewDay() *SpendDay {
-	a.crewDayOnce.Do(func() { a.crewDayHeld = NewSpendDay(spentTodayOnLedger()) })
+	a.crewDayOnce.Do(func() { a.crewDayHeld = newLedgerSpendDay(spentTodayOnLedger, time.Now) })
 	return a.crewDayHeld
 }
 
@@ -585,7 +588,7 @@ func (a *Agent) helperGuard(crew *taskCrew) *SpendGuard {
 		return nil
 	}
 	guard := &SpendGuard{Price: config.CrewCallPriceAt(a.config.ProfileDir), Day: a.crewDay()}
-	if capUSD, action := config.CrewSpendCap(a.config.ProfileDir, false); capUSD > 0 {
+	if capUSD, action := config.CrewSpendCap(a.config.ProfileDir, true); capUSD > 0 {
 		guard.Cap, guard.CapAction = capUSD, action
 	}
 	if crew != nil && crew.guard != nil {

@@ -1075,6 +1075,7 @@ type WatchStatus struct {
 // `codeaf tick` every [Interval]. The core lane builds it on internal/watchdog's
 // shape with its own unit names, so it can coexist with v1's.
 type Watch interface {
+	Ensure(ctx context.Context) error
 	Install(ctx context.Context) error
 	Uninstall(ctx context.Context) error
 	Status() (WatchStatus, error)

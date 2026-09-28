@@ -96,12 +96,38 @@ func (a *app) trafficLand() tea.Cmd {
 		land.older = true
 		land.until = a.now().Add(3 * trafficLandFor)
 	} else {
+		a.revealTrafficEntry(at)
 		a.revealMiddle(at)
 	}
 	a.traffic.landing = land
 	a.touch()
 	wait := land.until.Sub(a.now()) + 50*time.Millisecond
 	return tea.Tick(wait, func(time.Time) tea.Msg { return trafficLandedMsg{} })
+}
+
+// A deliberate message jump opens its enclosing disclosures before scrolling.
+// Hidden history remains compact everywhere else in the conversation.
+func (a *app) revealTrafficEntry(at int) {
+	d := a.conversation()
+	folds := a.deckFolds(d)
+	if a.workOpen == nil {
+		a.workOpen = make(map[int]bool)
+	}
+	for _, f := range folds {
+		if at >= f.start && at < f.answer {
+			a.workOpen[f.key] = true
+		}
+	}
+	stampHierarchy(d.entries, folds)
+	if a.capOpen == nil {
+		a.capOpen = make(map[int]bool)
+	}
+	for _, c := range deriveCaptions(d.entries, d.runningTurn) {
+		if at >= c.start && at < c.end {
+			a.capOpen[c.start] = true
+		}
+	}
+	a.touch()
 }
 
 // teamEntryAt is the newest entry of the conversation that carries Traffic

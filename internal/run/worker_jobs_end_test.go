@@ -45,7 +45,7 @@ func TestBashWorkerStopsItsJobsWhenItsTaskEnds(t *testing.T) {
 			return textReply(""), nil
 		},
 	}}
-	worker := run.NewBashWorker(store, workspace, "test/model", seat)
+	worker := run.NewBashWorker(store, workspace, "test/model", "", seat)
 	_, _ = worker.Run(run.WithStepsPerTask(ctx, 9), *store.Task(store.RootID()))
 
 	data, err := os.ReadFile(marker)

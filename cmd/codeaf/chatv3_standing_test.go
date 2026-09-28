@@ -62,11 +62,15 @@ type driftedTimer struct {
 	fail     error
 }
 
-func (d *driftedTimer) Drift() (standing.WatchDrift, error) { return d.drift, d.err }
-
-func (d *driftedTimer) Install(context.Context) error {
+func (d *driftedTimer) Repair(context.Context) (standing.WatchDrift, error) {
+	if d.err != nil {
+		return standing.WatchDrift{}, d.err
+	}
+	if !d.drift.Present || !d.drift.Stale {
+		return standing.WatchDrift{}, nil
+	}
 	d.installs++
-	return d.fail
+	return d.drift, d.fail
 }
 
 // A TIMER POINTING AT A PROGRAM THAT MOVED RUNS NOTHING, and nothing on screen

@@ -1898,3 +1898,58 @@ func TestTheDecidingClauseAloneIsNotNews(t *testing.T) {
 		t.Fatalf("the done card does not say who is deciding:\n%q", row)
 	}
 }
+
+// TestADroppedKeyLeavesTheCountdownDeclineLive is #1547's regression: the task
+// proposal is the one question whose silence ANSWERS, so the key the settle
+// guard drops — a keystroke aimed at whatever was on screen a quarter-second
+// ago — still says somebody is at the keyboard, and `enter` afterwards must
+// take the answer that loses nothing, not the one the clock would have taken.
+func TestADroppedKeyLeavesTheCountdownDeclineLive(t *testing.T) {
+	lab := newQuestionLab(t)
+	ask := session.Question{
+		ID: 11, Kind: session.QuestionTask, Ask: session.AskPermission, Form: session.FormCard,
+		Asker: session.Asker{Kind: session.AskerModel},
+		Head:  session.TaskProposalLead + "Fix the nil-map crash",
+		Options: []session.AnswerOption{
+			{Key: "1", Label: "start it"},
+			{Key: "2", Label: "no", Safe: true},
+		},
+		Stakes:   session.StakesCostly,
+		Deadline: lab.at.Add(15 * time.Second),
+		Pick:     &session.Pick{Key: "1", Reason: session.TaskProposalPickReason, Confidence: session.ConfidenceFairly},
+		Policy:   session.Policy{Kind: session.PolicyRecommendThenAuto, After: 15 * time.Second},
+		Asked:    lab.at,
+	}
+	// THE ENGINE'S DOOR IS WHAT THE DROP ASKS TOO: the proposal's clock ANSWERS,
+	// so a key — even one the guard then throws away — stops it in the engine.
+	lab.raise(ask)
+	if open := lab.a.questionHeld(questionToken(ask)); open != nil {
+		open.held = func() {
+			script := lab.agent
+			script.held = append(script.held, questionHeldCall{kind: ask.Kind, token: questionToken(ask)})
+		}
+	}
+	// THE KEY LANDS INSIDE THE SETTLE WINDOW: the card has been drawn but not
+	// for the quarter-second the guard demands, so the key is dropped — and the
+	// drop still holds the engine's clock, because somebody IS at the keyboard.
+	if lab.press("2") != true {
+		t.Fatal("the settle guard did not take the early key")
+	}
+	if len(lab.answer) != 0 {
+		t.Fatalf("a key inside the settle window answered: %+v", lab.answer)
+	}
+	script := lab.agent
+	if len(script.held) != 1 || script.held[0].kind != session.QuestionTask {
+		t.Fatalf("the dropped key did not hold the engine's clock: %+v", script.held)
+	}
+	// AND THE POINTER IS NO LONGER ON THE AUTO ANSWER. Whatever `enter` takes
+	// next, it takes from the row it is drawn under — and the row that loses
+	// nothing is the decline.
+	lab.tick(questionSettle)
+	if !lab.press("enter") {
+		t.Fatal("enter was not taken after the settle window")
+	}
+	if len(lab.answer) != 1 || lab.answer[0].FirstKey() != "2" {
+		t.Fatalf("enter after a dropped key answered %+v, want the decline `2`", lab.answer)
+	}
+}

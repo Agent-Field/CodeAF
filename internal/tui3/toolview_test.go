@@ -49,9 +49,28 @@ func toolApp(t *testing.T, profile tokens.Profile, batches ...[]session.Event) *
 	return a
 }
 
-// toolLineOf is the first tool row on screen, plain.
+// revealTestWork opens the containing work disclosure before a fixture inspects
+// individual tool rows, including their step captions. Each call's own
+// disclosure remains unchanged.
+func revealTestWork(a *app) {
+	d := a.bodyDeck()
+	if key, ok := a.liveWorkOf(d); ok {
+		a.setWorkOpen(d, key, true)
+	}
+	folds := a.deckFolds(d)
+	for _, fold := range folds {
+		a.setWorkOpen(d, fold.key, true)
+	}
+	stampHierarchy(d.entries, folds)
+	for _, caption := range deriveCaptions(d.entries, d.runningTurn) {
+		a.setCapOpen(d, caption.start, true)
+	}
+}
+
+// toolLineOf is the first tool row inside disclosed work, plain.
 func toolLineOf(t *testing.T, a *app) string {
 	t.Helper()
+	revealTestWork(a)
 	for _, r := range plainRows(a) {
 		r = strings.TrimLeft(r, " ")
 		if strings.HasPrefix(r, railMid) || strings.HasPrefix(r, railLast) ||
@@ -63,24 +82,11 @@ func toolLineOf(t *testing.T, a *app) string {
 	return ""
 }
 
-// openFirst makes sure the first tool call is expanded and returns the
-// surface's rows. A FAILED call opens itself (app.go), so this asks for the
-// state rather than toggling it — a toggle would close the one row this helper
-// exists to read.
-//
-// AND IT OPENS THE WORK THE CALL IS INSIDE, because on a running turn that is
-// now part of what "show me this call" means: the conversation stands a running
-// turn's machinery behind three compact lines until somebody asks for it
-// (livesteps.go), so a call expanded inside a shut container would be a row this
-// helper opened and nobody could see. It is a no-op on every finished turn,
-// which is most of this suite.
+// openFirst opens the parent work disclosure and the first individual call.
+// Completed and failed calls both start collapsed until the reader asks.
 func openFirst(t *testing.T, a *app) []string {
 	t.Helper()
-	if d := a.bodyDeck(); a.state == stateWorking {
-		if key, ok := a.liveWorkOf(d); ok {
-			a.setWorkOpen(d, key, true)
-		}
-	}
+	revealTestWork(a)
 	for i := range a.entries {
 		if a.entries[i].kind == entryTool {
 			if !a.entries[i].open {
@@ -274,6 +280,7 @@ func TestTheDiffExpansionIsCappedAndTheCapLifts(t *testing.T) {
 			call = i
 		}
 	}
+	revealTestWork(a)
 	a.openTool(call)
 
 	body := strings.Join(plainRows(a), "\n")
@@ -532,6 +539,8 @@ func TestARunningCallSpinsAndSaysNothingElse(t *testing.T) {
 func TestTheTargetIsInkAndTheNameIsMuted(t *testing.T) {
 	a := toolApp(t, tokens.TrueColor, call("read", `{"path":"internal/session/loop.go"}`, "one\ntwo"))
 
+	revealTestWork(a)
+
 	var line string
 	for _, r := range rows(a) {
 		if r.hit == hitTool {
@@ -580,7 +589,7 @@ func TestTheRailTeesThenClosesAndTheExpansionContinuesIt(t *testing.T) {
 		call("read", `{"path":"c.go"}`, "three"),
 	)
 	overlapToolClocks(a)
-	openFirstCaption(t, a)
+	revealTestWork(a)
 	list := plainRows(a)
 	var marked []string
 	for _, r := range list {

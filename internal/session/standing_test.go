@@ -724,10 +724,16 @@ func TestStandingListSpeaksThePersonsWords(t *testing.T) {
 // fakeWatch is this machine's scheduler, stood in for. Nothing in these tests
 // goes near launchd.
 type fakeWatch struct {
+	ensures    int
 	installs   int
 	uninstalls int
 	fail       error
 	installed  bool
+}
+
+func (w *fakeWatch) Ensure(ctx context.Context) error {
+	w.ensures++
+	return w.Install(ctx)
 }
 
 func (w *fakeWatch) Install(context.Context) error {
@@ -791,8 +797,8 @@ func TestTheFirstThingThatStandsTurnsBackgroundChecksOnAndSaysSo(t *testing.T) {
 	watch := &fakeWatch{}
 	events := standRatify(t, store, watch, t.TempDir())
 
-	if watch.installs != 1 {
-		t.Fatalf("the timer was installed %d times, want exactly 1", watch.installs)
+	if watch.installs != 1 || watch.ensures != 1 {
+		t.Fatalf("implicit ensures=%d, installs=%d; want one ensure", watch.ensures, watch.installs)
 	}
 	if line := backgroundLine(events); line != standingBackgroundLine {
 		t.Fatalf("the line said %q, want %q", line, standingBackgroundLine)
@@ -2000,5 +2006,36 @@ func standingNextUpdate(t *testing.T, lane <-chan Event) Event {
 		case <-deadline:
 			t.Fatal("nothing was drawn: no EventStandingUpdate reached the standing lane")
 		}
+	}
+}
+
+func TestFirstStandingApprovalPreservesAnotherProfilesTimer(t *testing.T) {
+	store := newFakeStanding(t)
+	watch := &fakeWatch{fail: standing.ErrWatchOwned}
+	events := standRatify(t, store, watch, t.TempDir())
+	if watch.ensures != 1 || watch.installed {
+		t.Fatalf("implicit ownership refusal: ensures=%d installed=%v", watch.ensures, watch.installed)
+	}
+	line := backgroundLine(events)
+	if !strings.HasPrefix(line, standingBackgroundFailed) || !strings.Contains(line, "existing timer was left unchanged") {
+		t.Fatalf("ownership refusal was not told honestly: %q", line)
+	}
+	if len(store.created) != 1 {
+		t.Fatal("timer refusal must not discard the approved standing item")
+	}
+	if output := toolOutput(t, events, "stand"); !strings.Contains(output, "Background checks are not installed") || !strings.Contains(output, "item was saved") {
+		t.Fatalf("model receipt hid background unavailability: %q", output)
+	}
+	// The first-setup marker suppresses repeated UI notices, not truthful receipts.
+	events = standRatify(t, store, watch, t.TempDir())
+	if output := toolOutput(t, events, "stand"); !strings.Contains(output, "Background checks are not installed") {
+		t.Fatalf("later receipt claimed background execution: %q", output)
+	}
+}
+
+func TestNonWakingRuleDoesNotRequireBackgroundTimer(t *testing.T) {
+	agent := &Agent{config: Config{Standing: &Standing{Watch: &fakeWatch{}}}}
+	if note := agent.standingBackgroundLimitation(standing.Item{When: standing.When{Kind: standing.WhenHold}}); note != "" {
+		t.Fatalf("permission rule was said to need a timer: %q", note)
 	}
 }

@@ -1433,6 +1433,11 @@ Holding the proposal removes the countdown; the footer then says `waiting · you
 other windows report `waiting on you` too. An automatic proposal does not hide a separate
 question that really needs an answer.
 
+**A key pressed the instant the card appears is not taken as an answer.** For its first
+quarter-second the card drops keys, because they were aimed at whatever was there before.
+The dropped key still holds the clock and moves the pointer to `2 no`, so an `enter` straight
+after it declines; it never starts the task. After that, `1` starts and `2` declines at once.
+
 The default window is 15 seconds. **Where is the setting for how long a proposal waits?** It
 is `task.autoapprove_seconds`, and it lives on the **`Safety`** tab of the settings panel —
 open that with `ctrl+,` or `/settings` — where it is the row labelled `task countdown`. It
@@ -1744,25 +1749,21 @@ the roster or `jobs kill` is your decision and is drawn as `stopped`, with the b
 
 ## How work lands — what the card means by merged, branch kept, in your own folder, or conflicted
 
-Every landing writes a card into the conversation, with a blank row on each side, and moves
-the task's row on the roster.
+Every landing writes a compact, expandable notification into the conversation and moves
+the task's row on the roster. A settled notification takes one line:
 
 ```
-✓ ◆ Fix nil-map crash · done · 4m12s · 3 files
-  "the guard is in and the regression test passes" · started 14:02 · ctrl+o output
+✓ ◆ Fix nil-map crash · done · 4m12s · 3 files · ctrl+o
 ```
 
-The head is what happened. The muted line under it is what came of it, in the task's own
-first sentence, quoted because they are its words and not codeaf's.
+Click the notification or select it and press `ctrl+o` to read its output and details.
+Press `enter` on the selected notification to open the task's room. Pending `your call`
+decisions keep their reason visible, including inside a folded batch.
 
-**The quoted sentence is the first line of the report that says something**, not its
-literal first line. Work that ran a command, produced a diff or answered in JSON often
-opens its report with the code fence around that — the fence is how the answer is spelled,
-not a sentence — so a fence marker, three backticks or three tildes with or without a
-language word after it, is passed over the way a blank line is. The first line that is
-neither is what the card quotes, which for a report that is nothing but a fenced block is
-the first line inside it. A report with no line to quote draws no quotation marks at all,
-only the start stamp.
+With an empty message box, select a notification and press `delete` to dismiss it.
+Use `/dismiss` to hide settled task notifications from this conversation view, or
+`/dismiss undo` to show them again. Dismissal does not delete tasks, output or history,
+and cannot hide a pending `your call` decision. The task remains available in Sessions.
 
 **The conversation replies only when its task was started while answering your question.**
 That task carries the question until its family lands, then one short reply answers from the
@@ -1820,7 +1821,7 @@ git's: `a branch of your repository`, `its own copy of the folder`, or `your own
 the same labels the settled card uses, listed under *Does a task touch my working copy?* in
 *how tasks run*. A landing whose copy codeaf has no record of falls back to `branch`.
 
-More than two landings in a row become one rollup — `✓ 3 tasks done · 9m14s` with a compact
+Two or more landings in a row become one folded rollup — `✓ 3 tasks done · 9m14s` on one line. Click it or select it and press `ctrl+o` to show a compact
 row per task under it. Any failure in the batch swaps the header to `✕ N tasks landed`; any
 `your call` swaps it to `? N tasks landed`. A task you answered straight after it landed is
 counted once, by what became of it — the `?` goes with the answer. A delivery that did not land also keeps a
@@ -1964,7 +1965,9 @@ and its heading wears no mark, because it does not fold. The other three start f
 one line, `Done 6 ▸`; press the heading, or `enter` on it, to open the group (`Done 6 ▾`)
 and again to fold it. What you open stays open for the rest of the session, through new
 work, new landings and switching chats. A group with nothing in it is not drawn at all;
-there are no empty headings and no `none` rows.
+there are no empty headings and no `none` rows. When only queued tasks remain and the
+conversation is idle, the main box footer says `queued`. It says `working` when a task
+or background command is running.
 
 **Every task is one line**: its state glyph two cells in, its name cut with `…` where the
 column is too narrow, and how long it has been at it (or how long it took) in the muted ink
@@ -3582,14 +3585,15 @@ Scrolling a finished task, including at the top of its page, keeps those details
 collapsed. Open work shows `▾ worked`; closed work shows `▸ worked`. Click the chip
 or press `ctrl+e` again to collapse the whole outline, including open tool steps.
 Your later messages and corrections remain visible at their original boundaries.
-A stretch with no final reply keeps its available work visible, so an interrupted
-or tool-only record does not pretend to have an answer.
+Settled work without a final reply also has a disclosure; it never invents an
+answer. Failed work carries a `×` count. Open the chip to inspect error details.
 
-While a task is running, settled phases keep their individual chips. Current work
-uses the conversation’s compact step display: recent step headings, with a moving
+While a task is running, its current turn uses one shared compact activity window.
+Earlier steps stay behind that disclosure. It shows recent step headings, with a moving
 heading for the active call or `Working` between calls. Click it or press `ctrl+e`
-to open the details, and use the same control to close them. Questions, failures,
-your corrections, and the final reply remain visible outside this display.
+to open the details, and use the same control to close them. Questions,
+your corrections, and confirmed replies remain visible outside this display.
+Failed calls show `×` in compact activity, without opening error output.
 When the task finishes, live expansion choices reset so they do not accidentally
 expand the entire finished task. `ui.work = open` still opens details by default.
 
@@ -3615,10 +3619,11 @@ Within expanded work, the existing disclosure controls still apply:
 
 ## Why a task’s progress paragraph changes to a step caption
 
-A paragraph followed by more work in the same stretch becomes progress narration,
-even if it previously ended a settled phase. It uses the quieter work styling and
-can supply the next step’s caption. The trailing reply keeps answer styling; a
-message or correction from you preserves the reply before that boundary.
+Prose accompanying a tool call becomes progress narration and can supply that
+step’s caption. A completed response with no tool calls is a confirmed reply to
+you: it stays visible and formatted even when later work starts. This rule also
+applies in the manager, ordinary chat and nested task pages. Opened narration
+renders markdown in quieter ink rather than showing raw formatting markers.
 
 The caption is a short summary. Open it to read any narration left out of the
 heading alongside that step’s calls; shortening a heading does not discard text.
@@ -4266,7 +4271,9 @@ starts instead:
 
 Both gate starts only. Nothing already running is ever touched; pressure drains
 as running work finishes. The older node road re-asks every 5 seconds; the
-default run road re-asks each supervisor pass, every 300 milliseconds. `codeaf do`
+default run road re-asks each supervisor pass, every 300 milliseconds. Changing either
+setting in `/settings` is noticed without restarting the engine, and a held row is
+re-evaluated under the new ceiling. `codeaf do`
 uses the same profile limits and, having no rail, says a hold on stderr, once:
 `waiting · machine busy` and the limit that held it (see *codeaf do is waiting and
 nothing happens* on the terminal page).
@@ -4316,6 +4323,9 @@ to ask again:
 ```
 task 4 crew · bugfix · worker glm-5.3-flash (openrouter) · checker kimi-k3 · $0.021 (est $0.023) · not right? /redo stronger
 ```
+
+When you explicitly stop a task, its line says `stopped` and does not offer
+`/redo stronger`; a stop is not a crew failure and teaches the router nothing.
 
 A seat you pinned wears the pin mark `⌖` in front of its model.
 
@@ -4540,6 +4550,10 @@ The cursor opens on `keep going` — the destructive answer is never under the k
 press to dismiss a question. `left`/`right` move, `enter` takes, `esc` is `keep going`.
 **`x` never bypasses it: the card is always asked**, because `x` is one bare keystroke over
 a list and the work behind it may be an hour old.
+
+From the main box, `/stop` offers the only queued or machine-held task when it is the
+sole active task, even when its queued group is folded. With more than one active task,
+open the task or focus its row before stopping it.
 
 With a pointer, the `Stop` at the right end of a room's facts row — the second row of its
 header, under the breadcrumbs — raises the same card.
@@ -5681,3 +5695,21 @@ refresh, not two. A run with no rows yet buys none, and neither does a task
 handed to a program such as senior-dev: its page is the actions it took, each
 under the step of its process, and its row already says the step it is in, so it has
 no four lines.
+
+
+## A task waiting on a busy machine after restarting the engine
+
+An ordinary task backed by its plan resumes when its conversation opens again.
+A task waiting for machine capacity keeps its accepted brief and exact folder,
+and waits at the same admission gate. It takes no folder lock or branch while
+waiting. A task that had already started uses its recorded working copy and plan;
+completed plan steps are retained rather than starting a new task.
+
+`/stop` in the main box offers the single open task, including one queued because
+its machine is busy. With multiple tasks, open the intended task first. The task
+room's stop reaches the same operation. A stopped task stays stopped after restart.
+
+An older record that lacks its working folder reads `interrupted` and asks you to
+request the task again with its folder. It is never counted as completed and its
+folder is never guessed. Programs that had already started keep their existing
+interrupted-program behavior; this restart rule concerns ordinary planned tasks.

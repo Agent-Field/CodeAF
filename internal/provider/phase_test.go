@@ -111,11 +111,11 @@ func TestAHealthyAnswerTellsItsPhasesInOrderAndThenStops(t *testing.T) {
 	want := []Phase{PhaseConnecting, PhaseFirstWord, PhaseThinking, PhaseWriting, ""}
 	got := told.story()
 	if len(got) != len(want) {
-		t.Fatalf("story = %v, want %v", got, want)
+		t.Fatalf("story = %v, want %v; events=%+v", got, want, told.all())
 	}
 	for i := range want {
 		if got[i] != want[i] {
-			t.Fatalf("story = %v, want %v", got, want)
+			t.Fatalf("story = %v, want %v; events=%+v", got, want, told.all())
 		}
 	}
 	// THE LANE IS NAMED ON THE PHASES THAT KNOW IT, and never before the

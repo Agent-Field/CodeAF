@@ -329,6 +329,7 @@ func TestAReplayedCallSaysWhatItTook(t *testing.T) {
 			Took: 7 * time.Second,
 		},
 	)
+	revealTestWork(a)
 	got := map[string]time.Duration{}
 	for _, e := range a.entries {
 		if e.kind != entryTool {

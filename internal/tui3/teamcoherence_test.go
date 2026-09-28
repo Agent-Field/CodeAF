@@ -228,6 +228,7 @@ func TestTeamToolRowsAndCardsLinkTheirHandles(t *testing.T) {
 		entry{kind: entryTool, tool: "team_send", text: "team_send @gravity: send the numbers", settled: true},
 		entry{kind: entryTeam, text: "Team traffic in \"harbor\" for you (@gravity).\n◆ from manager to @gravity: send the numbers\n(rule)", settled: true},
 	)
+	showTeamDetails(a)
 	a.touch()
 	rows := a.visible(a.bodyWidth())
 	found := map[entryKind]bool{}

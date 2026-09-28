@@ -166,7 +166,7 @@ func workerJournalName() string {
 // of what they did — every child's title, status and result — in place of the
 // interrupted-predecessor sentence, which is a fact about a different worker
 // and not about this one. The resume flag still rides the trajectory's steps.
-func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, wake string) string {
+func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, wake, orders string, workspace ...string) string {
 	role := planIsTask
 	if root {
 		role = planIsRoot
@@ -176,6 +176,15 @@ func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, 
 		strings.Join(task.Deliverables, "\n"),
 		task.Acceptance,
 		"", AdmissionContext{}, taskOrigin{}, taskCopy{})
+	// The runtime's directory is authority, while the work order may still
+	// quote the source checkout. Preserve those words and explain their scope
+	// before the worker sees them, as the checker already does for its probes.
+	if len(workspace) > 0 && strings.TrimSpace(workspace[0]) != "" {
+		assignment := "ASSIGNED WORKING DIRECTORY\n\n" + workspace[0] +
+			"\n\nRun project edits and checks here, using relative project paths. A repository path in the request may name the original checkout; it does not change this assigned directory. Do not cd back to that checkout to do the work. Unrelated read-only reference paths remain as written."
+		identity, work, _ := strings.Cut(doc, "\n\n")
+		doc = identity + "\n\n" + assignment + "\n\n" + work
+	}
 	// THE ASK, FOR EVERY LEAF AND ONLY A LEAF. The section is absent on the
 	// root's own document (its work order is the ask) and absent when the store
 	// holds no root row to read it from, which is the emptiness law and not a
@@ -197,6 +206,22 @@ func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, 
 		doc = withReport(doc, wake)
 	case resume:
 		doc = withReport(doc, taskResumeClause)
+	}
+	// THE PERSON'S STANDING ORDERS, LAST — the same road a node's brief takes
+	// ([TaskGraph.briefLocked]): the job is above, and the conditions the job is
+	// done under close the document. The section is already rendered by the
+	// caller ([StandingWorld]); an empty one is no section, the emptiness law,
+	// and a brief for a place with no orders reads as it always read.
+	//
+	// WITHOUT THIS A PLAN-BORN WORKER RAN WITH NO HOUSE RULES (#1549): the
+	// composition above is built from the store's task rows, and nothing on
+	// that road asked the resolver — the standing section a task node gets in
+	// [TaskGraph.briefLocked] never reached the run's workers. It rides the
+	// brief and not the harness's note because it is a birth fact, not a
+	// mid-work sentence: the worker must read it on the opening message or it
+	// governed nothing.
+	if t := strings.TrimSpace(orders); t != "" {
+		doc += "\n\n" + t
 	}
 	return doc
 }

@@ -25,7 +25,7 @@ func (a *app) workTab() (chatTab, bool) {
 	}
 	live := false
 	for _, row := range rows {
-		if planRunning(row.Status) {
+		if !row.Interrupted && planRunning(row.Status) {
 			live = true
 			break
 		}
@@ -55,7 +55,7 @@ func beltRows(rows []session.PlanTaskRow) []session.PlanTaskRow {
 func (a *app) workTabStable() bool {
 	var sig strings.Builder
 	for _, row := range beltRows(a.taskSheet.mine.plan) {
-		if planRunning(row.Status) {
+		if !row.Interrupted && planRunning(row.Status) {
 			a.workTabSettled = ""
 			return false
 		}
@@ -89,7 +89,7 @@ func (a *app) openWorkTab() tea.Cmd {
 // landed opened on it while the other was the work in front of the person.
 func workTabRow(rows []session.PlanTaskRow) session.PlanTaskRow {
 	for _, row := range rows {
-		if planRunning(row.Status) {
+		if !row.Interrupted && planRunning(row.Status) {
 			return row
 		}
 	}

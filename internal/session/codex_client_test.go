@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -288,12 +289,29 @@ func TestCodexAccessTokenSplitAcrossTextDeltasNeverReachesAnyCompletedSink(t *te
 	// EventError, call log, and debug record each scrub the text they actually
 	// write after the provider has assembled it.
 	const access = "codex-split-sink-access-secret"
-	var backendCalls atomic.Int32
+	var backendCalls, captionCalls atomic.Int32
+	captionArrived := make(chan struct{})
+	var captionOnce sync.Once
 	backend := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Header.Get("Authorization") != "Bearer "+access {
 			t.Errorf("backend bearer = %q", request.Header.Get("Authorization"))
 		}
 		writer.Header().Set("Content-Type", "text/event-stream")
+		rawRequest, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Errorf("read backend request: %v", err)
+			return
+		}
+		// Auxiliary narration is a separate request, not a retry or the
+		// terminal follow-up. Keep the two-call security assertion about the
+		// conversation, even when its real tool takes long enough to narrate.
+		if bytes.Contains(rawRequest, []byte(captionSystem)) {
+			captionCalls.Add(1)
+			fmt.Fprintln(writer, `data: {"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":0}}}`)
+			fmt.Fprintln(writer)
+			captionOnce.Do(func() { close(captionArrived) })
+			return
+		}
 		if backendCalls.Add(1) > 1 {
 			failed, _ := json.Marshal(map[string]any{
 				"type": "response.failed",
@@ -357,6 +375,32 @@ func TestCodexAccessTokenSplitAcrossTextDeltasNeverReachesAnyCompletedSink(t *te
 	if !agent.setTitleIfUnnamed("split token sink test") {
 		t.Fatal("fresh session already had a title")
 	}
+	// Hold this tool until the real caption request reaches the fake backend.
+	// This makes the interleaving deterministic instead of relying on a busy
+	// runner to stretch manual lookup past the narration dwell.
+	wrappedManual := false
+	for i := range agent.tools {
+		if agent.tools[i].Name != "manual" {
+			continue
+		}
+		execute := agent.tools[i].Execute
+		agent.tools[i].Execute = func(ctx context.Context, args json.RawMessage) (string, bool, error) {
+			timer := time.NewTimer(5 * time.Second)
+			defer timer.Stop()
+			select {
+			case <-captionArrived:
+				return execute(ctx, args)
+			case <-ctx.Done():
+				return "", true, ctx.Err()
+			case <-timer.C:
+				return "", true, fmt.Errorf("caption request did not arrive")
+			}
+		}
+		wrappedManual = true
+	}
+	if !wrappedManual {
+		t.Fatal("manual tool is missing")
+	}
 	events, err := agent.Submit(ctx, "stream the hostile answer")
 	if err != nil {
 		t.Fatal(err)
@@ -370,6 +414,9 @@ func TestCodexAccessTokenSplitAcrossTextDeltasNeverReachesAnyCompletedSink(t *te
 	}
 	if streamed.String() != access {
 		t.Fatalf("fake backend did not split the access token across text deltas: %q", streamed.String())
+	}
+	if captionCalls.Load() != 1 {
+		t.Fatalf("caption calls = %d, want one interleaved auxiliary request", captionCalls.Load())
 	}
 	if backendCalls.Load() != 2 {
 		t.Fatalf("backend calls = %d, want the completed tool call and terminal follow-up", backendCalls.Load())

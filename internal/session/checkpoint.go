@@ -4625,7 +4625,7 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// landing opens on this line and finds the integration, the review and the
 	// pull request still owed, in the order they were drawn. Without it the
 	// reduction would be a harness quietly dropping half of what was asked for.
-	a.record(textMessage("assistant", line+"\n"+said+heldRestRecord(read.ownRemainder)))
+	a.recordPresentedAssistant(textMessage("assistant", line+"\n"+said+heldRestRecord(read.ownRemainder)), provider.MessageReasoning{}, &messagePresentation{Audience: "operational"})
 	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(*turn, started, model)})
 	// And the name, on the terms every other turn shape takes it (title.go).
 	a.maybeTitle(ctx, hub)

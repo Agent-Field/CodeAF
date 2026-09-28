@@ -100,14 +100,14 @@ func TestTaskRequestReplayLeavesLaterNotesCorrectionsAndMainAlone(t *testing.T) 
 	if len(blocks) != len(entries) || turns != 2 {
 		t.Fatalf("replay changed message/turn count: %d/%d", len(blocks), turns)
 	}
-	if blocks[2].kind != entryNote || blocks[2].text != "Task 9 finished." || blocks[2].brief || blocks[5].kind != entryNote || blocks[5].brief {
+	if blocks[2].kind != entryNote || blocks[2].text != entries[2].Text || blocks[2].brief || blocks[5].kind != entryNote || blocks[5].brief || blocks[5].text != entries[5].Text {
 		t.Fatalf("later engine notes acquired request semantics: %#v / %#v", blocks[2], blocks[5])
 	}
 	if blocks[3].brief || requestDisplayText(&blocks[3]) != entries[3].Text || blocks[4].kind != entrySteer || blocks[4].steer.words != entries[4].Text {
 		t.Fatal("the person's later message or correction changed")
 	}
 	main, _ := a.replayBlocks(entries, chatReplay(0))
-	if main[0].kind != entryNote || main[0].brief || main[0].text != taskRequestAsk {
+	if main[0].kind != entryNote || main[0].brief || main[0].text != entries[0].Text {
 		t.Fatalf("main replay adopted the room-only request treatment: %#v", main[0])
 	}
 	for _, text := range []string{"THE WORK is still unfinished", "A normal task update", "WHAT THE PERSON ASKED FOR, IN THEIR OWN WORDS\nUnrelated prose"} {

@@ -1400,7 +1400,7 @@ and inside a task the work then *waits* for that command instead of asking what 
 Nothing is asked over the wait, no step is counted, and no `[stuck]` note can be earned,
 because a task that is waiting makes no calls at all. What wakes it is the command's own
 ending, and that ending arrives whole: the exit line, the command's last lines, and the path
-to the full log, all in the one turn. This is why a task does not `sleep` and `tail` its own
+to the log, all in the one turn. This is why a task does not `sleep` and `tail` its own
 build or test run — the waiting is done for it, and those nine `sleep N && tail` steps above
 are what the counter catches when something is polled that nobody is waiting on. A command
 started with `background: true` is the other case: a server or a sweep the task deliberately
@@ -2557,7 +2557,9 @@ Either one set to 0 turns that check off. With both at 0 there is no machine gat
 Readings are cached for **1 second**. A held node on the older task road is
 re-asked every **5 seconds**; the run engine checks again on each supervisor
 pass, every **300 milliseconds**, so a quiet machine starts held work without
-another request. `codeaf do` uses the same governor from its profile.
+another request. Changing `task.max_load` or `task.min_free_mb` in `/settings` is
+picked up on the next admission poll, including when the chat and engine are separate
+processes, so held work is re-evaluated without restarting the engine. `codeaf do` uses the same governor from its profile.
 
 **How many start at once when a lot of work is handed out together.** A task that has just
 started is invisible to the memory reading — its own memory arrives with its first build,
@@ -2666,6 +2668,12 @@ When a session comes back:
   it again instead (*What a quick task cannot do*);
 - then the queue is turned again: a queued task whose prerequisites are still done starts
   now.
+
+A held plan task that never started comes back `interrupted`, not `working` or `done`.
+Its store row may still say `running`, but the recovered run row records that nothing
+was driving it; the room and rail use `interrupted` and keep the task's recorded steps.
+Rows recovered as `failed` read `incomplete`. Both belong under `Incomplete` on the
+rail, never under `Done`.
 
 You see one line about it, as context for your first turn rather than as a reason to start
 one:
@@ -3332,3 +3340,27 @@ object beside its matching tool result, within the existing context budget. A la
 input is explicitly marked omitted, rather than shown as a partial object. Earlier
 failures remain part of the evidence. The model continuing the work is told to check a
 reader's objection against the actual work before changing an already-correct result.
+
+## Worker starts in home instead of the project — missing relative documents
+
+When a top-level task has no stronger folder instruction and the conversation's
+working directory is outside a repository, codeaf uses its configured project
+repository. A child keeps its parent's directory, including an ordinary folder;
+a project fallback must not move it elsewhere. Explicit placement still wins.
+
+Every bash worker and checker receives its assigned working directory before the
+work order. Original checkout paths in the request stay quoted, but project edits
+and checks belong in the assigned directory; unrelated reference paths stay literal.
+
+Bash workers search the assigned project with `rg` or `git grep`. A missing
+relative document calls for checking the working directory and project first,
+not a recursive search of the whole home directory. `plandb --help` explains
+the available plan commands without looking for repository design documents.
+
+## plandb done says already terminal — cancelled tasks and ownership
+
+A task cancelled by its supervisor stays cancelled. A late `plandb done` reports
+`task "<id>" is already terminal (cancelled)` instead of `is not claimed`.
+The refusal does not reopen the task or change its result. Active tasks still
+require their owner; an automatically completed composite's empty placeholder
+can still receive its final report.

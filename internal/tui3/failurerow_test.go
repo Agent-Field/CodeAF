@@ -128,7 +128,16 @@ func TestARetriedTurnThatGivesUpSaysBothInTheConversation(t *testing.T) {
 	a.touch()
 	page := plain(strings.Join(plainRows(a), "\n"))
 
-	// The reason the requests were being asked again, where the person is reading.
+	if strings.Contains(page, "the request failed — asking again") {
+		t.Fatalf("retry bookkeeping escaped its disclosure: %s", page)
+	}
+	if !strings.Contains(page, "gave up after 4 tries · API error (429) rate limited") {
+		t.Fatalf("terminal failure was hidden: %s", page)
+	}
+	a.setWorkOpen(a.conversation(), a.turn, true)
+	a.touch()
+	page = plain(strings.Join(plainRows(a), "\n"))
+	// Retry history remains available after an explicit disclosure.
 	if !strings.Contains(page, "the request failed — asking again") {
 		t.Fatalf("three retries left no row in the conversation:\n%s", page)
 	}

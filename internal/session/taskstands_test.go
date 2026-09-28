@@ -48,6 +48,41 @@ func heldTaskWorld(t *testing.T, agent *Agent, path, content string) (<-chan tas
 	return world, done
 }
 
+// A manager outside its project must hand the actual repository files to its
+// worker, not just report the right ground on the proposal card.
+func TestManagerProjectFallbackOpensAWorktreeWithItsDocuments(t *testing.T) {
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, "DESIGN.md"), "project design\n")
+	gitOut(t, repo, "add", "DESIGN.md")
+	gitOut(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "add project design")
+	place := Place{Dir: t.TempDir(), Workspace: repo}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = t.TempDir()
+		config.Place = place
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+	})
+	world, release := heldTaskWorld(t, agent, "result.txt", "done\n")
+	arguments, _ := json.Marshal(taskArguments{
+		Title: "read project design", Summary: "use the project document",
+		Brief: "Read DESIGN.md and write result.txt", Deliverable: "result.txt",
+		Acceptance: "result.txt contains the result",
+	})
+	result, isError, err := agent.proposeTask(context.Background(), arguments)
+	if err != nil || isError {
+		t.Fatalf("proposeTask = %q, error=%v, isError=%v", result, err, isError)
+	}
+	tree := <-world
+	if tree.root != canonicalPath(repo) || !withinDir(place.Trees(), tree.dir) {
+		t.Fatalf("worker is not in the project's isolated tree: %+v", tree)
+	}
+	if content, err := os.ReadFile(filepath.Join(tree.dir, "DESIGN.md")); err != nil || string(content) != "project design\n" {
+		t.Fatalf("relative project document missing in worker: %q, %v", content, err)
+	}
+	release()
+	waitDoneNode(t, agent.graph().node(1))
+}
+
 // C1: a model asking for in-place repository work gets a task branch, the live
 // checkout stays untouched, and the proposal receipt says why it was redirected.
 func TestC1AProposalCannotPutRepositoryWorkInTheCheckout(t *testing.T) {
@@ -772,6 +807,28 @@ func TestTheGroundLadderClimbsInOrder(t *testing.T) {
 		}
 		if stand.mode != TaskModeFolder {
 			t.Fatalf("mode = %q, want %q", stand.mode, TaskModeFolder)
+		}
+	})
+
+	t.Run("workspace outside repo falls back to place workspace", func(t *testing.T) {
+		agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+			config.Workspace = plain
+			config.Place = Place{Dir: t.TempDir(), Workspace: repo}
+		})
+		stand := agent.resolveTaskGround(taskSpec{deliverable: "an answer", acceptance: "it is written"})
+		if stand.dir != canonicalPath(repo) || stand.rung != taskGroundStandingIn {
+			t.Fatalf("stand = %+v, want dir=%s rung=%s", stand, repo, taskGroundStandingIn)
+		}
+	})
+
+	t.Run("a folder child keeps its parent despite a project fallback", func(t *testing.T) {
+		agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+			config.Workspace = plain
+			config.Place = Place{Dir: t.TempDir(), Workspace: repo}
+		})
+		stand := agent.resolveTaskGround(taskSpec{parent: 3, depth: 2, deliverable: "an answer", acceptance: "it is written"})
+		if stand.dir != canonicalPath(plain) || stand.mode != TaskModeFolder {
+			t.Fatalf("folder child moved away from its parent: %+v", stand)
 		}
 	})
 

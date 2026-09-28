@@ -121,7 +121,16 @@ func newHome(t *testing.T, overrides map[string]any) string {
 	}
 	// The model this suite is about, and the gate posture every scenario but
 	// the consent one wants.
-	rows["model.talk"] = "deepseek/deepseek-v4-flash"
+	for _, key := range []string{config.KeyChatModel, config.KeyTaskModel,
+		config.KeyTierWorkerModel, config.KeyTierLowModel, config.KeyTierHighModel,
+		config.KeyTierReflexModel, config.KeyTierMastermindModel, config.KeyModelFallbacks} {
+		rows[key] = e2eModel
+	}
+	var pins []string
+	for _, role := range textRoles {
+		pins = append(pins, string(role)+":"+e2eModel)
+	}
+	rows[config.KeyModelRoles] = strings.Join(pins, ",")
 	// AND THE MARKS ARE PINNED TO THE PLAIN TIER, for the same reason
 	// [newWorld] pins them: tokens.DetectGlyphSet turns the nerd-font tier ON
 	// for any terminal it cannot veto, and tmux under TERM=xterm-256color is
@@ -226,6 +235,17 @@ func start(t *testing.T, name, home, ws string, cols, rows int, args ...string) 
 	// itself through [startWithEnv], and the one that tests the default says no
 	// word at all ([testTaskOnTheDefaultBelt]).
 	r := startWithEnv(t, []string{config.APIKeyEnv + "=" + liveKey(t), "CODEAF_TASK_BELT=node"},
+		name, home, ws, cols, rows, args...)
+	r.skipSetup(t)
+	return r
+}
+
+// startDefault uses the same public launch as a person, with no belt override.
+// Historical node-specific scenarios keep start; default-road acceptance uses
+// this door so a private test setting cannot hide the shipped worker harness.
+func startDefault(t *testing.T, name, home, ws string, cols, rows int, args ...string) *rig {
+	t.Helper()
+	r := startWithEnv(t, []string{config.APIKeyEnv + "=" + liveKey(t)},
 		name, home, ws, cols, rows, args...)
 	r.skipSetup(t)
 	return r
@@ -601,7 +621,7 @@ func (r *rig) kill() {
 		return
 	}
 	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); {
-		if syscall.Kill(pid, 0) != nil {
+		if terminalProcessExited(pid) {
 			return
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -610,12 +630,26 @@ func (r *rig) kill() {
 	// wait. This PID belongs to the test's own pane, never to another rig.
 	_ = syscall.Kill(pid, syscall.SIGKILL)
 	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
-		if syscall.Kill(pid, 0) != nil {
+		if terminalProcessExited(pid) {
 			return
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	r.t.Errorf("the test terminal process %d did not exit before cleanup", pid)
+}
+
+// On Linux an exited child can remain a zombie until tmux reaps it. Such a
+// process cannot write into the fixture, but kill(pid, 0) still succeeds.
+func terminalProcessExited(pid int) bool {
+	if syscall.Kill(pid, 0) != nil {
+		return true
+	}
+	status, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return false
+	} // Other hosts keep the portable signal check.
+	end := strings.LastIndexByte(string(status), ')')
+	return end >= 0 && len(status) > end+2 && status[end+2] == 'Z'
 }
 
 // dump is the transcript this suite owes anybody reading a failure: the screen,

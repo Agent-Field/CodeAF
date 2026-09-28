@@ -23,6 +23,16 @@ func hears(t *testing.T) func() []LaneNews {
 	t.Helper()
 	var mu sync.Mutex
 	var heard []LaneNews
+	// A SIGHTING LEFT OVER FROM AN EARLIER TEST IS NOT THIS TEST'S NEWS. The
+	// desk holds the last landed sighting for the surface that registers late
+	// ([laneNewsHeld]), and a whole-package run walks that held one into the
+	// first reader the next test registers — two posts for one answer, want one
+	// (full-package run, 2026-09-25). A test registers to hear ITS answer, so
+	// the held one is dropped on the way in; the replay test asserts the holding
+	// itself, on [OnLaneNews] directly.
+	laneNewsMu.Lock()
+	laneNewsHeld = nil
+	laneNewsMu.Unlock()
 	previous := OnLaneNews(func(news LaneNews) {
 		mu.Lock()
 		heard = append(heard, news)

@@ -22,8 +22,9 @@ import (
 // the tier was drawn for — is [phoneWidth], declared once for the package in
 // palettephone_test.go.
 
-// toolAppAt is [toolApp] on a frame of a stated width. The width is set BEFORE
-// the turn runs so every row is built at it, the way a real session's is.
+// toolAppAt is a tool-inspection fixture on a frame of a stated width.
+// The width is set before the turn; its containing work and step disclosures
+// are opened so these tests can inspect the individual tool rows.
 func toolAppAt(t *testing.T, width int, batches ...[]session.Event) *app {
 	t.Helper()
 	var events []session.Event
@@ -36,12 +37,14 @@ func toolAppAt(t *testing.T, width int, batches ...[]session.Event) *app {
 	a.width = width
 	a.pal = newPalette(tokens.ANSI256, false)
 	runTurn(t, a, agent, "go on then")
+	revealTestWork(a)
 	return a
 }
 
 // toolRowAt is the first tool row on a frame, plain.
 func toolRowAt(t *testing.T, a *app) string {
 	t.Helper()
+	revealTestWork(a)
 	for _, r := range plainRows(a) {
 		r = strings.TrimLeft(r, " ")
 		if strings.HasPrefix(r, railMid) || strings.HasPrefix(r, railLast) ||
