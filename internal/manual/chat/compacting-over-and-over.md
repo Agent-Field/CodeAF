@@ -187,7 +187,9 @@ A no-op says `nothing to compact — ` and why:
   left exactly as it was.
 
 When the free steps did shorten something but the summary did not land, the pass still
-reports what it folded. Its line includes `summary skipped: ` with one of those reasons;
+reports what it folded. Its line includes `summary skipped: ` and why the summary did not
+land — the model could not write it, declined, sent back nothing usable, was interrupted,
+or the conversation changed meanwhile;
 an automatic line may have size and journal details after that clause. `/compact` says
 `⚭ compacted · about X to Y tokens · summary skipped: <why>` when its size fell, or
 `⚭ compacted · summary skipped: <why>` when there was no size drop.

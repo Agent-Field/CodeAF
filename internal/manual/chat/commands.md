@@ -433,9 +433,11 @@ the automatic threshold. It first turns old tool results into pointers and folds
 assistant work, which costs nothing. If enough older conversation remains, the conversation's
 own model writes a **summary** in the same pass, replacing older messages.
 Your three most recent messages and
-everything after them stay word for word when no cut can reach the line. When a cut can
-reach it, codeaf chooses the one that keeps the most; only recovery from a refused request
-may keep two, your latest with the reply before it, or your latest alone if no cut reaches its line. The
+everything after them stay word for word unless a cut that keeps fewer is what reaches the
+line: codeaf chooses the cut that keeps the most and still gets under it — three, two, your
+latest with the reply before it, or your latest alone. When no cut can reach the line,
+`/compact` keeps all three, since summarizing more would not reach it either; only recovery
+from a refused request then keeps fewer. The
 latest message and the system prompt always stay word for word. The full record
 stays in the session journal, and the summary names that file.
 
