@@ -37,3 +37,19 @@ func TestRefusedSummaryDoesNotReplaceConversation(t *testing.T) {
 		})
 	}
 }
+
+func TestRoleWordsDoNotMakeSummaryRefusalLookSubstantive(t *testing.T) {
+	for _, answer := range []string{
+		"I'm sorry, but I cannot help this person with that request.",
+		"I'm sorry, but as an AI assistant I can't help with that.",
+	} {
+		model := &summarizer{answer: func(int, []ai.Message) (*ai.Response, error) { return textResponse(answer), nil }}
+		agent, _ := newTestAgent(t, model, func(c *Config) { c.ContextWindow = 65_536 })
+		personHeavy(agent, 8, 20_000)
+		hub := newEventHub()
+		_, _ = agent.compactWithPolicy(context.Background(), hub, agent.requestedCompactPolicy())
+		if summaryNotes(liveTranscript(agent)) != 0 || !holdsText(liveTranscript(agent), "question 1:") {
+			t.Fatalf("role word in refusal replaced conversation: %q", answer)
+		}
+	}
+}

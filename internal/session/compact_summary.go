@@ -566,7 +566,7 @@ func summaryRefusalWithoutSubstance(answer, region string) bool {
 	words := func(text string) []string {
 		return strings.FieldsFunc(strings.ToLower(text), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsNumber(r) && r != '_' })
 	}
-	generic := map[string]bool{"sorry": true, "cannot": true, "could": true, "would": true, "help": true, "request": true, "content": true, "policy": true, "provide": true, "assist": true, "information": true, "about": true, "that": true, "this": true, "with": true, "your": true, "their": true, "there": true, "because": true, "unable": true}
+	generic := map[string]bool{"sorry": true, "cannot": true, "could": true, "would": true, "help": true, "request": true, "content": true, "policy": true, "provide": true, "assist": true, "information": true, "about": true, "that": true, "this": true, "with": true, "your": true, "their": true, "there": true, "because": true, "unable": true, "person": true, "assistant": true, "called": true, "result": true, "tool": true, "attachment": true, "shown": true, "middle": true, "omitted": true, "context": true, "compacted": true, "folded": true}
 	regionWords := make(map[string]bool)
 	for _, word := range words(region) {
 		if len(word) >= 5 && !generic[word] {

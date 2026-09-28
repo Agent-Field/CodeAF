@@ -96,18 +96,38 @@ func TestCancelledTurnStopsWaitingForInFlightSummary(t *testing.T) {
 		t.Fatal(err)
 	}
 	done := make(chan struct{})
+	var kinds []EventKind
 	go func() {
-		for range events {
+		for event := range events {
+			kinds = append(kinds, event.Kind)
+			if event.Kind == EventError {
+				t.Errorf("cancelled wait ended as an error: %v", event.Err)
+			}
 		}
 		close(done)
 	}()
 	<-refused
+	agent.mu.Lock()
+	waiting := agent.compacting
+	agent.mu.Unlock()
+	if !waiting {
+		t.Error("the turn was not refused while the pass was in flight")
+	}
+	select {
+	case <-done:
+		close(release)
+		t.Fatalf("turn ended before cancellation instead of waiting for the pass: %v", kinds)
+	case <-time.After(100 * time.Millisecond):
+	}
 	cancel()
 	select {
 	case <-done:
 	case <-time.After(10 * time.Second):
 		close(release)
 		t.Fatal("cancelled turn stayed behind the summary")
+	}
+	if len(kinds) == 0 || kinds[len(kinds)-1] != EventTurnDone {
+		t.Errorf("cancelled turn events = %v, want a stopped turn", kinds)
 	}
 	close(release)
 	if err := <-compacted; err != nil {
