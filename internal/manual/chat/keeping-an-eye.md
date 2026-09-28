@@ -1010,3 +1010,8 @@ and folder discoverable.
 You can inspect and commit those files or open a pull request yourself.
 It does not merge or delete the copy automatically. This is workspace isolation,
 not a sandbox: commands with explicit paths can still access other folders.
+
+An isolated order is saved in a newer format than ordinary orders. codeaf,
+devaf and stageaf share one home, so a build from before isolation that reads
+it leaves it alone rather than running it in your checkout; only a build that
+knows isolation fires it. Ordinary orders stay readable by every build.

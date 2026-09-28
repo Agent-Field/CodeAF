@@ -80,10 +80,29 @@ import (
 	"unicode/utf8"
 )
 
-// Schema is the document version every [Item] carries. Bump it when a field
+// Schema is the newest document version this build reads. Bump it when a field
 // changes meaning; a reader that meets a newer schema than it knows skips the
-// document and says so in the pass.
-const Schema = 1
+// document and says so in the pass. [SchemaOf] says which version one item is
+// written at.
+const Schema = 2
+
+// SchemaOf is the version an item is written at: the oldest one whose readers
+// all keep its meaning.
+//
+// AN ITEM THAT ISOLATES ITS WORK IS VERSION 2, AND EVERY OTHER ITEM STAYS AT 1.
+// A build older than [Action.Isolate] decodes the document without that field
+// and would fire the task in the person's own checkout — the commit on their
+// branch the approval card promised would not happen. codeaf, devaf and stageaf
+// share one home, so an older build reading this store is an ordinary
+// afternoon, not a downgrade. Every older build skips a document newer than it
+// reads, so version 2 leaves an isolated order to the builds that can keep it,
+// while an ordinary order stays at 1 and an older build keeps firing it.
+func SchemaOf(it Item) int {
+	if it.Does.Isolate {
+		return 2
+	}
+	return 1
+}
 
 // Interval is how often a pass runs, whether a window runs it or the OS timer
 // does. It is the cadence the ratification card quotes for "checked every …".

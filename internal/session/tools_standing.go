@@ -617,8 +617,7 @@ func (a *Agent) standingItem(parsed standArguments, now time.Time) (standing.Ite
 	if words := strings.TrimSpace(parsed.WhenWords); words != "" && when.Kind != standing.WhenHold {
 		when.Words = words
 	}
-	return standing.Item{
-		Schema:    standing.Schema,
+	item := standing.Item{
 		Words:     words,
 		Workspace: a.standingWorkspace(),
 		Origin:    a.standingOrigin(),
@@ -633,7 +632,9 @@ func (a *Agent) standingItem(parsed standArguments, now time.Time) (standing.Ite
 		// as the person's own words.
 		Brief: standing.Brief{Title: strings.TrimSpace(parsed.Title)},
 		Grant: strings.TrimSpace(parsed.Grant),
-	}, ""
+	}
+	item.Schema = standing.SchemaOf(item)
+	return item, ""
 }
 
 // standingAltitude is the reach the card will name.
