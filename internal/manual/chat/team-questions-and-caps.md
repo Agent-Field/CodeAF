@@ -70,8 +70,10 @@ When the pool reaches its cap:
 - your own messages in a member's conversation are never held; the cap is on the work the team
   starts by itself.
 
-A manager can never raise a cap: money is yours. Every held wake is one line in the traffic,
-`held @web: harbor reached its $5 cap today`.
+A manager can never raise a cap: money is yours. Every held wake is one Traffic row.
+Its reason includes the spending and what is waiting, for example
+`held @web: harbor reached its $5 cap today (spent $5.02); the person has been asked whether to raise it, and nothing new starts until they answer`.
+After **Stop for today**, it ends `and the person chose to stop it for today` instead.
 
 ## Can a team cap be less than a cent
 

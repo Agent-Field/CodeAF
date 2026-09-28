@@ -2542,6 +2542,10 @@ type app struct {
 	// is said once and rewritten in place, so a row that updates twenty times
 	// is one line in the thread.
 	crewSaid map[uint64]crewLineSaid
+	// turnLandings holds only ids: the node and the crew line already hold the
+	// landing's facts. The turn boundary moves their conversation rows past its
+	// answer, where a closed work fold cannot hide them.
+	turnLandings []uint64
 	// notices is what this surface has told the person and may tell them next —
 	// the earned hints and the news line, over the profile's ledger (notice.go).
 	notices noticeBoard
@@ -6158,6 +6162,7 @@ func (a *app) settle() tea.Cmd {
 	// THE WHOLE TURN SETTLES, and not only the block the stream was last writing
 	// into ([app.settleTurn]).
 	a.settleTurn()
+	a.sayTurnLandings()
 	// A browser wait belongs to the turn that opened it. Once that turn is over,
 	// the loopback listener is gone as well, so its report must stop claiming the
 	// browser can still finish and must stop bypassing the render cache.

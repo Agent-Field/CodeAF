@@ -3352,53 +3352,93 @@ func (a *app) railDrawnView(height int) ([]railLine, int) {
 		}
 		return entries[line.entry].node
 	}
-	// A NODE ROW THAT CARRIES A RUN IS THAT RUN'S ROW. The door that takes the
-	// run road publishes a node row for the run's own task, naming it
-	// ([taskNode.planTask]) — and an older row is matched by the title it
-	// wears. That row is kept, and the run's parts hang under it, a level in:
-	// one piece of work, one row.
-	carrier := make(map[string]int)
-	for _, line := range view {
-		node := nodeOf(line)
-		if node == nil || !line.head {
+	// ONE NODE CARRIES ONE RUN. Identity takes the first pass, including a part
+	// id rooted in the run; only an older node with no id may take a run by
+	// title. Two attempts at the same request have two roots and two rows.
+	// The members, rather than the visible entries, include folded nodes, so
+	// their runs fold with them instead of floating above the headings.
+	var candidates []*taskNode
+	members := a.railMembers()
+	for _, group := range railListOrder {
+		for _, node := range members[group] {
+			if a.railListed(node, group) {
+				candidates = append(candidates, node)
+			}
+		}
+	}
+	carrier := make(map[string]*taskNode)
+	carried := make(map[*taskNode]bool)
+	// THE RUN'S OWN ROW WINS. A node naming the run's root is taken before a
+	// node naming one of its parts, whatever order the groups list them in, so
+	// a part published beside its run can never take the run from it.
+	for _, rootOnly := range []bool{true, false} {
+		for _, node := range candidates {
+			id := strings.TrimSpace(node.planTask)
+			if id == "" || carried[node] || (rootOnly && rootOf(id) != id) {
+				continue
+			}
+			if run := rootOf(id); blocks[run] != nil && carrier[run] == nil {
+				carrier[run], carried[node] = node, true
+			}
+		}
+	}
+	for _, node := range candidates {
+		if strings.TrimSpace(node.planTask) != "" || carried[node] {
 			continue
 		}
 		for _, run := range order {
-			if _, held := carrier[run]; held {
-				continue
+			if carrier[run] == nil && rootTitle[run] != "" && rootTitle[run] == planTitleFor(node.label) {
+				carrier[run], carried[node] = node, true
+				break
 			}
-			if strings.TrimSpace(node.planTask) == run ||
-				(rootTitle[run] != "" && rootTitle[run] == planTitleFor(node.label)) {
-				carrier[run] = line.entry
-			}
+		}
+	}
+	visible := make(map[*taskNode]int)
+	for _, line := range view {
+		node := nodeOf(line)
+		if node != nil && line.head {
+			visible[node] = line.entry
 		}
 	}
 	width := a.railRoom()
 	under := make(map[int][]railLine)
 	var ahead []railLine
+	drawnPlan := make(map[string]bool)
+	markPlan := func(lines []railLine) {
+		for _, line := range lines {
+			if line.plan != "" {
+				drawnPlan[strings.TrimSpace(line.plan)] = true
+			}
+		}
+	}
 	for _, run := range order {
 		block := blocks[run]
 		kids := append([]*planTwig(nil), block.loose...)
 		if block.self != nil {
 			kids = append(kids, block.self.kids...)
 		}
-		if at, ok := carrier[run]; ok {
-			under[at] = append(under[at], a.planRailLines(kids, 1, width)...)
+		if node := carrier[run]; node != nil {
+			if at, ok := visible[node]; ok {
+				lines := a.planRailLines(kids, 1, width)
+				under[at] = append(under[at], lines...)
+				markPlan(lines)
+				drawnPlan[run] = true
+			}
 			continue
 		}
 		if block.self != nil {
-			ahead = append(ahead, a.planRailRoot(block.self, width)...)
+			lines := a.planRailRoot(block.self, width)
+			ahead = append(ahead, lines...)
+			markPlan(lines)
 			continue
 		}
 		// A PART WHOSE RUN IS NOT ON THE COLUMN AT ALL stands as a row of its
 		// own, which is where a row with nothing above it goes.
 		for _, twig := range block.loose {
-			ahead = append(ahead, a.planRailRoot(twig, width)...)
+			lines := a.planRailRoot(twig, width)
+			ahead = append(ahead, lines...)
+			markPlan(lines)
 		}
-	}
-	carried := make(map[int]bool, len(carrier))
-	for _, at := range carrier {
-		carried[at] = true
 	}
 	next := make([]railLine, 0, len(view)+len(ahead))
 	placed := len(ahead) == 0
@@ -3408,12 +3448,16 @@ func (a *app) railDrawnView(height int) ([]railLine, int) {
 			placed = true
 		}
 		node := nodeOf(line)
-		if node != nil && !carried[line.entry] && drawn[planTitleFor(node.label)] {
-			// A node row wearing the title of a row the run draws is the same
-			// work, and the run's own row is the one that stays.
-			continue
+		if node != nil && !carried[node] {
+			id := strings.TrimSpace(node.planTask)
+			// ONLY THE SAME WORK MAY LOSE A ROW. A named store row must
+			// actually be drawn by its run; a different attempt with the
+			// same title remains a separate row in Done.
+			if (id != "" && drawnPlan[id]) || (id == "" && drawn[planTitleFor(node.label)]) {
+				continue
+			}
 		}
-		if node != nil && carried[line.entry] {
+		if node != nil && carried[node] {
 			// THE CARRIER KEEPS ITS ONE LINE, and the run's parts hang under
 			// it, a level in: a task on this column is one line (sidecol.go).
 			next = append(next, line)
@@ -5516,7 +5560,12 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		// nested-landing subtest, red from #776 until this). A part that never asked
 		// here still lands on the roster alone.
 		if node.parent == "" || node.state == session.TaskUnverified || a.doneEntryFor(node.id) >= 0 {
+			before := len(a.entries)
 			a.landedCard(node)
+			if len(a.entries) > before && a.stream != nil &&
+				(a.state == stateWorking || a.state == stateInterrupted) {
+				a.holdTurnLanding(node.id)
+			}
 		}
 	}
 	a.touch()

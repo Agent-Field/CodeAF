@@ -31,8 +31,10 @@ codeaf recognises it and puts a card in the conversation; you answer the card, a
 stands.
 
 - **In a conversation** — say it. The card appears in the transcript with your own
-  sentence on it. `1` sets it up, `2` changes when it wakes, `3` does the thing once
-  and leaves nothing behind, and `0` or `esc` says no.
+  sentence on it. `1` sets it up; where offered, `3` approves doing it once
+  without a schedule. A rule that only holds has no once answer. `0` declines,
+  `esc` leaves the answer for later, and `o Change…` (`o Change where…` on a rule)
+  opens a box for different words, time or place.
 - **From the home screen** — the `ask here` box takes the same sentence, and the card
   is drawn beside it with the same answers.
 
@@ -289,7 +291,9 @@ They go through the same deliberate door `ctrl+enter` opens, with the same guara
   standing order's card — when it wakes, what it does, how far it reaches — and it does not
   carry the sentence out as one-off work as well.
 - **Nothing stands until you answer the card.** What comes back is the ordinary
-  ratification card: `1` sets it up, `2` changes when it wakes, `0` or `esc` says no.
+  ratification card: `1` sets it up, `3` approves one unscheduled run where offered,
+  `0` declines, `esc` leaves it for later, and `o Change…` (`o Change where…`
+  on a rule) opens a box for a correction. A rule that only holds has no once answer.
 - **A sentence that cannot stand at all** — "what time is it?", a one-off command with no
   condition in it — gets one short line saying so, and nothing else happens.
 - **Typed while an answer is still arriving**, it waits above the box like any other

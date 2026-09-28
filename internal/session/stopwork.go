@@ -115,9 +115,7 @@ func (a *Agent) resumeWorkLocked() error {
 	a.workStopped = false
 	a.orchestrateContext, a.orchestrateStop = nil, nil
 	if a.jobs != nil {
-		a.jobs.mu.Lock()
-		a.jobs.closed = false
-		a.jobs.mu.Unlock()
+		a.jobs.reopen()
 	}
 	if a.tasks != nil {
 		a.tasks.mu.Lock()

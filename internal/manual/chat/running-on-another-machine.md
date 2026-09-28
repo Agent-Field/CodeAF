@@ -100,7 +100,7 @@ a real machine. For that, use a machine you actually ssh to.
 terminal kill the ssh child this session started:
 
 ```
-pkill -f "ssh -T localhost codeaf engine"
+pkill -f '[s]sh -T .* localhost codeaf engine'
 ```
 
 The status line grows its `connection` segment, the surface redials itself, and the answer
@@ -112,8 +112,9 @@ in a moment`, and pressing enter again once it is back sends it.
 
 The failed dial says what it found, rather than guessing:
 
-- codeaf missing over there:
-  `codeaf is not installed on <dest> — install it there, or put it on the PATH that a non-login ssh command sees`
+- codeaf missing over there: the message says the program is called codeaf now,
+  gives its former name and date, and asks you to install it under the current name:
+  `the program is called codeaf now (it was … before 2026-09-14) and must be installed on <dest> under that name — put it on the PATH that a non-login ssh command sees`
 - ssh could not get a session at all: `ssh could not open a session on <dest>`. ssh has
   already printed its own reason on the line above.
 - no ssh on this machine: `this machine has no ssh on its path, and --host is ssh`, or

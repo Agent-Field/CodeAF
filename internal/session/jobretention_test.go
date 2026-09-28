@@ -456,7 +456,7 @@ func TestJobRetentionLaterEvictionAndCloseOnce(t *testing.T) {
 	}
 	sink := newJobSink(file, path)
 	callbacks := 0
-	sink.finishRetention = func() { callbacks++; jobRetentionFinish(sink) }
+	sink.finishRetention = func() { callbacks++ }
 	sink.Write([]byte("kept in memory\n"))
 	sink.close()
 	if sink.retentionLost() {

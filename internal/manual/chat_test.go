@@ -3020,6 +3020,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"which engine process is holding my folder", "staying-on-that-machine"},
 		{"the other window will not let go of my conversation", "home"},
 		{"does max-hours close the window when the time runs out", "starting-codeaf"},
+		{"does the Model Pool choose my task models", "running-from-the-terminal"},
+		{"what does codeaf pool status show", "running-from-the-terminal"},
+		{"how many tasks can a bash run split into", "tasks"},
+		{"what does the task proposal card look like", "tasks"},
+		{"why did team_start not ask me first", "team-manager"},
+		{"why did setup show only one screen", "getting-started"},
+		{"where are my cleared drafts", "commands"},
+		{"what does /workspace path do", "commands"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
