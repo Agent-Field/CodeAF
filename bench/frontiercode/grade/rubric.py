@@ -271,7 +271,7 @@ def phase_a(task_dir, repo, base, out_dir):
     return 0
 
 
-def combine(task_dir, grade_dir, adapt_result=None):
+def combine(task_dir, grade_dir):
     """Host side: phase A + judge results (+ adaptive phase B, when it ran)
     become the run's grade. A `rig` criterion holds the run's grade at `rig` —
     the score is not computed and never silently dropped."""
