@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	tea "charm.land/bubbletea/v2"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"strings"
 	"testing"
@@ -131,9 +132,11 @@ func TestReconnectRefreshReplacesSnapshotAndKeepsObserverTail(t *testing.T) {
 	a := newTestApp(agent)
 	a.replayList([]session.DisplayEntry{{Role: "assistant", Text: "stale view"}})
 	drive(t, a, followingMsg{turn: Following{Replay: true}, gen: a.convGen})
-	got := plain(frame(a))
-	if strings.Contains(got, "stale view") || !strings.Contains(got, "completed while disconnected") || !strings.Contains(got, "remaining live answer") {
-		t.Fatalf("reconnect replay not authoritative: %s", got)
+	assertReplayText(t, a, "stale view", 0)
+	assertReplayText(t, a, "completed while disconnected", 1)
+	assertReplayText(t, a, "remaining live answer", 1)
+	if got := plain(frame(a)); !strings.Contains(got, "remaining live answer") {
+		t.Fatalf("live observer tail is not visible: %s", got)
 	}
 }
 
@@ -160,5 +163,118 @@ func TestQueuedHostedFollowRechecksOwnershipAtActualAdmission(t *testing.T) {
 	}
 	if n != 1 || len(a.follows) != 0 {
 		t.Fatalf("covered queued send admitted: users=%d pending=%d", n, len(a.follows))
+	}
+}
+
+func assertReplayText(t *testing.T, a *app, text string, want int) {
+	t.Helper()
+	n := 0
+	for _, e := range a.entries {
+		n += strings.Count(e.text, text)
+	}
+	if n != want {
+		t.Fatalf("%q appears %d times, want %d: %+v", text, n, want, a.entries)
+	}
+}
+
+func replayTestAgent(events <-chan session.Event) *atomicBoundaryAgent {
+	return &atomicBoundaryAgent{
+		replayBoundaryAgent: &replayBoundaryAgent{fakeAgent: &fakeAgent{model: "m"}, cursor: session.ReplayCursor{Owner: "engine", Turn: 1}},
+		events:              events,
+	}
+}
+
+func TestReconnectRefreshReplacesAlreadyVisibleCurrentPrefix(t *testing.T) {
+	events := make(chan session.Event, 3)
+	events <- session.Event{Kind: session.EventTextDelta, Text: "original prefix ", ReplayObserved: true}
+	events <- session.Event{Kind: session.EventTextDelta, Text: "new suffix", ReplayObserved: true}
+	events <- session.Event{Kind: session.EventTurnDone, ReplayObserved: true}
+	close(events)
+	a := newTestApp(replayTestAgent(events))
+	a.entries = append(a.entries, entry{kind: entryAssistant, text: "original prefix "})
+	drain(t, a, a.refreshHostedReplay())
+	assertReplayText(t, a, "original prefix", 1)
+	assertReplayText(t, a, "new suffix", 1)
+}
+
+func TestReconnectRefreshHoldsNewSubmitUntilIdleSnapshotIsFolded(t *testing.T) {
+	agent := replayTestAgent(nil)
+	a := newTestApp(agent)
+	snapshot := a.refreshHostedReplay()
+	// The server has replied idle, but its UI fold is deliberately delayed.
+	answer := snapshot()
+	fresh := make(chan session.Event, 2)
+	fresh <- session.Event{Kind: session.EventTextDelta, Text: "new accepted answer"}
+	fresh <- session.Event{Kind: session.EventTurnDone}
+	close(fresh)
+	calls := 0
+	cmd := a.submitting("new question", func() (<-chan session.Event, error) { calls++; return fresh, nil })
+	if cmd != nil || calls != 0 {
+		t.Fatal("submit crossed an unfurled snapshot")
+	}
+	_, cmd = a.Update(answer)
+	drain(t, a, cmd)
+	if calls != 1 {
+		t.Fatalf("submit called %d times", calls)
+	}
+	assertReplayText(t, a, "new question", 1)
+	assertReplayText(t, a, "new accepted answer", 1)
+}
+
+func TestReconnectRefreshWaitsForAlreadyIssuedSubmitResponse(t *testing.T) {
+	events := make(chan session.Event, 2)
+	events <- session.Event{Kind: session.EventTextDelta, Text: "accepted before snapshot", ReplayObserved: true}
+	events <- session.Event{Kind: session.EventTurnDone, ReplayObserved: true}
+	close(events)
+	agent := replayTestAgent(events)
+	agent.entries = []session.DisplayEntry{{Role: "user", Text: "earlier question"}}
+	a := newTestApp(agent)
+	canonical := make(chan session.Event)
+	close(canonical)
+	submit := a.submitting("earlier question", func() (<-chan session.Event, error) { return canonical, nil })
+	if cmd := a.refreshHostedReplay(); cmd != nil || !a.hostReplayWaiting {
+		t.Fatal("snapshot started ahead of an issued submit")
+	}
+	response := runSubmit(t, submit)
+	drain(t, a, a.adopt(response))
+	assertReplayText(t, a, "earlier question", 1)
+	assertReplayText(t, a, "accepted before snapshot", 1)
+}
+
+func TestReconnectRefreshKeepsQueuedLocalFollowUp(t *testing.T) {
+	a := newTestApp(replayTestAgent(nil))
+	fresh := make(chan session.Event, 2)
+	fresh <- session.Event{Kind: session.EventTextDelta, Text: "queued answer"}
+	fresh <- session.Event{Kind: session.EventTurnDone}
+	close(fresh)
+	a.follows = []queued{{text: "queued question", ch: fresh, covered: func() bool { return false }}}
+	drain(t, a, a.refreshHostedReplay())
+	assertReplayText(t, a, "queued question", 1)
+	assertReplayText(t, a, "queued answer", 1)
+}
+
+func TestReconnectRefreshHoldsFollowUpCallUntilSnapshotIsFolded(t *testing.T) {
+	agent := replayTestAgent(nil)
+	a := newTestApp(agent)
+	snapshot := a.refreshHostedReplay()
+	answer := snapshot()
+	if cmd := a.sendFollow("after reconnect", "after reconnect"); cmd != nil {
+		t.Fatal("follow-up escaped replay gate")
+	}
+	if len(a.hostDeferred) != 1 {
+		t.Fatal("follow-up not retained")
+	}
+	// Only examine admission here; the fake's channel is intentionally idle.
+	_, cmd := a.Update(answer)
+	msgs := runCmd(cmd)
+	var settled tea.Cmd
+	for _, msg := range msgs {
+		if follow, ok := msg.(followMsg); ok {
+			settled = a.queueFollow(follow)
+		}
+	}
+	_ = settled
+	if a.hostCalls != 0 || len(a.hostDeferred) != 0 {
+		t.Fatal("follow-up not settled after snapshot")
 	}
 }

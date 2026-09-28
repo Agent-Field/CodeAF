@@ -524,6 +524,9 @@ func (a *app) closeForSwitch() {
 func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	a.hostReplayLoading = false
 	a.hostReplayPending = nil
+	a.hostReplayWaiting = false
+	a.hostCalls = 0
+	a.hostDeferred = nil
 	was := a.agent
 	a.takeUp(conv, true)
 	// ANOTHER CONVERSATION'S QUESTIONS DO NOT COME ALONG ([app.forgetQuestions]);

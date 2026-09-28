@@ -36,8 +36,25 @@ func (a *Agent) ReplayCovers(ev session.Event) bool {
 // admission, not at announcement: a hidden tab may receive it after completion.
 func (c *Client) followStream(id uint64, said string) {
 	s := c.stream(id)
+	c.follows(Following{Said: said, Events: s.events(), Covered: c.streamCovered(s)})
+}
+
+// ReplayCoversStream also supplies ownership for locally queued follow-ups,
+// whose channel can wait on the surface while a reconnect refreshes history.
+func (a *Agent) ReplayCoversStream(ch <-chan session.Event) func() bool {
+	a.c.mu.Lock()
+	defer a.c.mu.Unlock()
+	for _, s := range a.c.streams {
+		if s.events() == ch {
+			return a.c.streamCovered(s)
+		}
+	}
+	return nil
+}
+
+func (c *Client) streamCovered(s *stream) func() bool {
 	var discard sync.Once
-	covered := func() bool {
+	return func() bool {
 		s.mu.Lock()
 		cursor := s.replayCursor
 		s.mu.Unlock()
@@ -54,7 +71,6 @@ func (c *Client) followStream(id uint64, said string) {
 		}
 		return owned
 	}
-	c.follows(Following{Said: said, Events: s.events(), Covered: covered})
 }
 
 func (c *Client) hasReplayBoundary() bool {
