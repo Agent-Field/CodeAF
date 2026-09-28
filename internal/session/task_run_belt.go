@@ -1597,21 +1597,7 @@ func carryRunRow(g *TaskGraph, notice TaskNotice) TaskNotice {
 			if kept.ID != notice.ID {
 				continue
 			}
-			if notice.State == TaskQueued && notice.PendingRun == nil {
-				notice.PendingRun = kept.PendingRun
-			}
-			if notice.Copy == nil && kept.Copy != nil {
-				notice.Copy = kept.Copy
-			}
-			if notice.PlanTask == "" && kept.PlanTask != "" {
-				notice.PlanTask = kept.PlanTask
-			}
-			if notice.CrewState == nil {
-				notice.CrewState = kept.CrewState
-			}
-			if notice.Crew == nil && kept.Crew != nil {
-				notice.Crew = kept.Crew
-			}
+			notice = carryRunIdentity(notice, kept)
 			break
 		}
 	}
@@ -2466,4 +2452,25 @@ func (a *Agent) initialCrewRecord(run *beltRun) *TaskCrewRecord {
 		return run.crew.record()
 	}
 	return a.unroutedCrewRecord()
+}
+
+// carryRunIdentity fills only absent identity fields from the matching row.
+// A queued update keeps pending admission; a started update sheds it.
+func carryRunIdentity(notice, kept TaskNotice) TaskNotice {
+	if notice.State == TaskQueued && notice.PendingRun == nil {
+		notice.PendingRun = kept.PendingRun
+	}
+	if notice.Copy == nil && kept.Copy != nil {
+		notice.Copy = kept.Copy
+	}
+	if notice.PlanTask == "" && kept.PlanTask != "" {
+		notice.PlanTask = kept.PlanTask
+	}
+	if notice.CrewState == nil {
+		notice.CrewState = kept.CrewState
+	}
+	if notice.Crew == nil && kept.Crew != nil {
+		notice.Crew = kept.Crew
+	}
+	return notice
 }
