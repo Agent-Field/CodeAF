@@ -202,6 +202,15 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 
 	case "tab":
+		if a.at(pageHome) && a.home.cmd.open {
+			// The visible command list owns completion before page navigation.
+			// An unmatched token stays editable instead of leaving Home.
+			if line, ok := a.home.focusedLine(); ok && line.kind == homeCommand {
+				a.touch()
+				return a.homeRunCommand(line), true
+			}
+			return nil, true
+		}
 		// THE NEXT PLACE A PERSON CAN ACTUALLY GET INTO. A place that refuses to
 		// open is walked past rather than walked into ([app.walkPage] tells the
 		// whole story of what pressing `tab` on a fresh machine used to do).

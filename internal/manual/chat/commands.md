@@ -15,18 +15,19 @@ For example, `/res` selects `/resume`, although `/new` also matches its `reset` 
 A filter with no matches shows `no commands match` and keeps unrelated results hidden.
 
 - ↑ / ctrl+p and ↓ / ctrl+n choose a row. PgUp / PgDown and the mouse wheel scroll.
-- Enter takes the selected row. A command that takes words, such as `/model <slug>`,
+- Enter or Tab takes the selected row. A command that takes words, such as `/model <slug>`,
   leaves `/model ` in the box ready for its argument. A bare command runs.
 - In a conversation, Esc dismisses the list and leaves the typed word; the list stays
   dismissed while you continue that token. On home, Esc clears the draft as usual.
 
 The list follows the caret as well as edits. The box remains editable while it is open.
-A command chosen inside a sentence completes its token rather than running on its own;
-The `/task` send tag retains its submission behavior.
+A command chosen inside a sentence completes its token rather than running on its own.
+Tab never submits that sentence or a finished `/task` or `/standing` tag; Enter retains
+its send behavior. With no matching command, Tab leaves the draft and screen unchanged.
 
 On home, command rows describe what they will do there, including commands that open a
 conversation first. See *What each command does on home*. In a conversation, pointer
-hover highlights a row but clicking does not execute it. Enter confirms the keyboard
+hover highlights a row but clicking does not execute it. Enter or Tab confirms the keyboard
 selection. Commands entered in a conversation are kept in its ↑-history.
 
 ## Why a file path does not pop up the command list

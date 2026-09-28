@@ -735,7 +735,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
-	// tab is the path completion's key: "/image " with tab after it offers this
+	// Tab chooses an open command row first. Otherwise, "/attach " offers this
 	// directory's files, and tab again takes the one under the cursor
 	// (files.go). It is read before the lists below because everything above it
 	// has already had its say.
@@ -754,6 +754,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// things — one of them irreversible — and a person would arrive in another
 	// conversation with a rail focus they cannot see.
 	if msg.String() == "tab" {
+		if a.menu.open {
+			// Tab completes the chosen token without submitting a sentence or
+			// a live send tag. Bare commands still run through the menu's door.
+			if a.startingChat() {
+				return a.startMenuEnter()
+			}
+			return a.runMenu()
+		}
 		if cmd := a.completePath(); cmd != nil {
 			return cmd
 		}

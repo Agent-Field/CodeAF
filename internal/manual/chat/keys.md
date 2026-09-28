@@ -618,7 +618,7 @@ key arrives as ordinary `enter` and the message steers instead.
 | `ctrl+g` | A foreground command that can be kept takes the key first. Otherwise it does what `alt+l` does: close the column, or bring it back; the column stands even with no tasks in it. Remembered for the next session |
 | `ctrl+e` | Empty box: open or close the running conversation’s compact steps first; otherwise the newest `▸ worked` chip onto its outline of captions — the latest completed turn's out here, the newest completed work inside a task's page — or the most recent thinking block when there is no chip. A caption is a short status line per step; its tool rows are one expand further. Otherwise: go to end of line |
 | `pgup` / `pgdown` | Scroll one page — the height of the view minus one, never less than one row |
-| `tab` | Open or commit path completion, over a command's path argument only — and over an **empty** box with no completion showing, go back to the last conversation. Does nothing when this terminal holds only one |
+| `tab` | Take the highlighted slash command on Home or in a conversation; otherwise open or commit path completion over a command's path argument — and over an **empty** box with no completion showing, go back to the last conversation. Does nothing when this terminal holds only one |
 
 ## Keys in the message box: moving the caret
 
@@ -1604,7 +1604,7 @@ follows what you type. Only these keys are taken from you:
 | `down` / `ctrl+n` | Move the list cursor down |
 | `esc` | Close the list. For the command list it also **seals that word** — the list does not reopen on the next letter of it. It does **not** interrupt a running turn |
 | `enter` | Command list: take the highlighted command. At the start of an otherwise empty box that **runs** it; anywhere else it replaces just that word with the command's name and runs nothing. If nothing matched, the line is sent as typed. `@` list: insert the highlighted team, conversation, task or file; if nothing is picked, the line is sent |
-| `tab` | Read **before** the list. It only opens or commits an *argument* completion, over `/attach ` or `/export `. With nothing to complete and an empty box it goes back to the last conversation |
+| `tab` | Command list on Home or in a conversation: take the highlighted command, as Enter does. Mid-sentence it only completes the word; a finished send tag is not submitted. No match leaves the draft alone. Otherwise opens or commits path completion over `/attach ` or `/export `; with an empty conversation box it goes back to the last conversation |
 | `enter`, with an argument completion open | Closes the list and runs the line **as typed**. Your path is never swapped for the top-ranked row |
 
 ## Keys in the model picker and the sessions roster
