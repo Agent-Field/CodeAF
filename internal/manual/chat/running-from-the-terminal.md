@@ -755,8 +755,10 @@ No competence evidence yet.
 
 ## The Model Pool — what this machine reads from it, with codeaf pool
 
-codeaf picks its models against the public Model Pool: a signed index of
-measured models that your runs improve. Nothing about your code ever leaves
+The public Model Pool is a signed index of measured models. It does not seat
+the task crew: codeaf routes that crew from its built-in prior and this install's
+task outcomes, and all that routing reads of the pool is the model-name aliases in
+the copy built into the binary. Your runs can improve the shared measurements. Nothing about your code ever leaves
 the machine — what is shared is a measurement of the run, not the work. One
 setting answers for all of it, `model_pool` in `/settings`, with three
 values: `on` reads and sends, `read` uses the pool and sends nothing, `off`
@@ -776,25 +778,31 @@ and the addresses in force with the word saying where each came from
 (`default`, `setting`, `env`, `ci`, or `telemetry` when the telemetry off switch capped
 sending), then what index is cached, how old
 it is and how many cells it holds, or `no index cached yet · built-in
-seed of <date>`. The binary carries a seed index of our own scored runs,
-read until a fresher signed one is cached. `--cells` lists the held
+seed of <date>`. The binary carries a seed index of scored runs, shown until a fresher
+signed one is cached. `--cells` lists the held
 index's cells, one per line — the role, the model, the dims the cell
 spells, the measurement and the installs behind it — and `--json
 --cells` carries them as an array. Your install also keeps
 the scores its judge gave in `own.json`
-under the pool directory — `show` and `status` say what that sheet holds — and
-the crew reads them beside the index. `status` adds how many rows are waiting to be sent
-and whether the mode allows sending and reading; `codeaf telemetry show` prints the
-rows themselves, as JSON. `codeaf pool status` also
-says whether the relay answered, and whether the mirror did, and what the
-last judge did — which model, which seats it scored, or why it failed. `--json` prints
-the same answer as one object; `show` reads nothing off the network.
+under the pool directory — `show` and `status` say what that sheet holds.
+Only `codeaf pool` reads that sheet; it does not pick the next crew.
+
+## What codeaf pool status shows — waiting rows, pending judge, last sweep
+
+`codeaf pool status` reports how many outbox rows wait to be sent and whether the mode
+allows sending and reading. Its `pending` line can also say `dropped N` and `identity set`;
+it counts waiting rows but does not list them. `codeaf telemetry show` prints the rows
+themselves as JSON. Status also says whether the relay and mirror answered, what the last
+judge did, how many runs are `pending judge:`, and what happened in the `last sweep:`.
+`--json` prints the same answer as one object; `show` reads nothing off the network.
+
+## What the own sheet stores — scores from this install
 
 **The scores start here.** In a conversation, after a task lands, a model
 outside the crew is asked to score each seat the work ran on — the worker that
 carried it, and the seat that checked it when there was one. The scores stay
-in your install's own sheet (`own.json`) and are read when the next crew is chosen;
-nothing else reads them. With `model_pool` set to `on` the same scores also
+in your install's own sheet (`own.json`). `codeaf pool` reads this sheet for its display;
+crew routing does not read it. With `model_pool` set to `on` the same scores also
 wait in `outbox.jsonl` beside the sheet, to leave with the pool's other
 measurements; `read` keeps them local, and `off` asks no judge at all and
 writes nothing. The call itself is billed to the `judge` seat, so it shows up
@@ -810,11 +818,13 @@ index is fetched once a day, checked against the key built into the binary —
 or the key in `models.pool.public_key` when one is set — and a changed
 document is read at the next start.
 
+## Verify the Model Pool signature — codeaf pool verify
+
 `verify` fetches a fresh index and checks its detached ed25519 signature,
-then prints the version whose signature checked out:
+then prints the version, generated date and metric names. For example:
 
 ```
-signature good: version 7, generated 2026-09-10, 3 metrics
+signature good: version 1790468332, generated 2026-09-27, metrics acceptable, role_quality
 ```
 
 It wants a public key: `--key <base64 ed25519 public key>`, repeatable, or
@@ -1012,8 +1022,8 @@ there, and `waiting`, the rows themselves, `[]` on the day you install; and `off
 `session_ended` also carries `total_tokens`, the one exact number on it: the input and
 output tokens the provider reported across the session, never which model or what it read.
 `CODEAF_TELEMETRY=off` — or `DO_NOT_TRACK=1`, or `codeaf telemetry off` — stops both: the
-usage counts go quiet and the Model Pool is capped at `read`, so it still picks models
-from the index and sends nothing. The pool's own switch, `model_pool` in `/settings` or
+usage counts go quiet and the Model Pool is capped at `read`, so it can still fetch the index
+and sends nothing. The pool's own switch, `model_pool` in `/settings` or
 `CODEAF_MODEL_POOL`, adds `off`, which asks no judge at all. It reads and
 sends nothing of its own — it is a command about the counts, not a session. The
 notice names the bargain before the first byte leaves. A chat shows it once, dim,

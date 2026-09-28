@@ -159,11 +159,19 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/settings` | `/set`, `/config` | — | opens the fullscreen settings panel (also ctrl+,) |
 | `/connect` | `/connections` | — | opens the connection panel; its `models` group holds model services, followed by connected accounts |
 | `/new` | `/clear`, `/clean`, `/reset` | — | closes this session and starts a fresh one |
+| `/drafts` | — | — | lists cleared drafts, newest first; enter restores one to the box and `d` lets one go; an empty ring says `no cleared draft is waiting` |
 | `/resume` | `/sessions` | — | opens the earlier-conversations picker |
 | `/compact` | — | — | summarizes the conversation now |
+
+## Home, project and file context commands — what does /workspace path do
+
+| Command | Aliases | Argument | Effect |
+|---|---|---|---|
 | `/home` | — | — | every project and conversation on this machine, fullscreen |
 | `/folder` | `/place`, `/dir` | — | locally opens the add context sheet for THIS conversation; on home it opens a conversation first; over `--host` says the folder chooser is unavailable |
 | `/folder` | `/place`, `/dir` | `<path>` | locally opens it with that in the box; over `--host` gives the same refusal |
+| `/workspace` | — | — | opens a local folder picker to anchor a conversation with no workspace; says `this conversation already has a workspace` once anchored, and the picker is unavailable over `--host` |
+| `/workspace` | — | `<path>` | anchors an unanchored conversation to that project; refuses a path it cannot use, or a conversation that already has a workspace |
 | `/project` | — | — | on home: the browser, opened where the next conversation would open; in a conversation it says it is home's |
 | `/project` | — | `<path>` | on home: sets the folder the next conversation opens in, with no browser |
 | `/attach` | `/upload` | — | opens the add context sheet for files, including over `--host`; enter on this row of the `/` list opens it at once |
@@ -171,20 +179,38 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/land` | — | — | says what has been changed for a folder you chose and is waiting to go into it |
 | `/land` | — | `now` | …puts it in: a branch merged for a repository, files copied back for a plain folder |
 | `/land` | — | `<folder>` | …when more than one folder is waiting; `/land <folder> now` puts that one in |
+
+## Rewind, approvals and standing commands
+
+| Command | Aliases | Argument | Effect |
+|---|---|---|---|
 | `/rewind` | `/undo`, `/back` | — | opens the rewind timeline — the whole conversation as a list (esc esc is the quick inline version) |
 | `/permissions` | `/perms` | — | lists what runs without asking; `d` drops a line |
+| `/autonomy` | — | — | prints this project's rules for questions while you are away; refuses when the conversation has no project to keep them in |
+| `/autonomy` | — | `<kind> <ask\|recommend [duration]\|decide>` | changes one project question rule; refuses an unknown kind or rule, a bad duration, and changes to confirmation or clarification that their limits forbid |
 | `/standing` | `/orders` | `<words>` | makes those words a standing order — a card to answer, never work done once |
 | `/standing` | `/orders` | — | what stands over this conversation; `p` pauses, `s` stops, `n` excepts this place |
+
+## Programs, skills and memory commands
+
+| Command | Aliases | Argument | Effect |
+|---|---|---|---|
 | `/harness` | `/harnesses` | — | lists the saved shapes of work and what they did |
 | `/subharness` | `/sub` | — | lists the programs you can run; type to filter, enter opens that one's card |
 | `/subharness` | `/sub` | `<name>` | opens that subharness's intake card straight away |
 | `/<program>` | — | `<brief>` | one row per program this build carries: starts a task that program does on its own |
+| `/senior-dev` | — | `<brief>` | when this build or far engine carries senior-dev, its named row hands the whole task to that program; with no brief, it shows the required `<brief>` usage |
 | `/skill` | `/skills` | — | opens the skill shelf under the message box; enter toggles a skill, and its chip stays attached across messages |
 | `/memory` | — | — | opens the memory panel |
 | `/memory` | `/memories` | `<query>` | prints matching memories into the conversation |
 | `/memories` | — | — | prints every memory into the conversation |
 | `/remember` | — | `<text>` | keeps one thing across conversations |
 | `/forget` | — | `<query>` | forgets the best matching memory |
+
+## Crew and task commands
+
+| Command | Aliases | Argument | Effect |
+|---|---|---|---|
 | `/crew` | — | — | opens the crew panel: the three seats, the allowed models, the providers, the per-task limit and the daily cap, changed in place |
 | `/crew` | — | `pin <seat> <model[@provider]>` | pins the worker, planner or checker to a model; `/model` stays |
 | `/crew` | — | `unpin <seat\|all>` | puts a seat back on auto |
@@ -196,8 +222,14 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/task` | — | `solo <brief>` | starts one worker at once, with no reading of its width |
 | `/task` | — | `--best <brief>` | starts the task on the strongest crew the allowed models make, this task only |
 | `/task` | — | `--cheap <brief>` | starts the task on the cheapest crew that does the work, this task only |
+| `/stop` | — | — | asks before stopping the open task or selected work; with no target says `open a running task to stop it` |
 | `/redo` | — | `stronger` | runs the last task again on a stronger crew, and teaches the crew that kind of work needs more |
 | `/history` | — | — | opens the full-screen sessions place — every task this machine has run, filterable (also ctrl+.) |
+
+## Status, search, teams and spending commands
+
+| Command | Aliases | Argument | Effect |
+|---|---|---|---|
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/status` | `/info`, `/context` | `--json` | prints the same facts as one JSON object, keys in the same order |
 | `/search` | none | none | opens the search place, everything said on this machine (also `alt+9`) |
@@ -205,9 +237,16 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/wall` | | | every open conversation at once, as a grid of live tiles, and the teams you group them into (also `alt+v`, or `▦` under the box) |
 | `/teams` | | | the teams page: your teams as a tree, what waits on you, and the selected team's manager conversation (also `alt+2`, or `teams` on the tab bar) |
 | `/cost` | `/usage`, `/tokens` | — | prints what this conversation has spent, and on what |
+| `/effort` | `/think`, `/thinking` | — | opens this conversation's thinking levels; says it is unavailable when the session has no dial |
+| `/effort` | `/think`, `/thinking` | `<rung>` | sets this conversation's thinking level; an unknown rung lists the accepted levels and changes nothing |
 | `/budget` | `/limits` | — | what codeaf may spend · every limit on one tab |
 | `/budget` | `/limits` | `<amount>` | sets the day's limit · `none` removes it |
 | `/budget` | `/limits` | `<row> <amount>` | sets one by name: `day`, `conversation`, `plan`, `practice` |
+
+## Cache, display and export commands
+
+| Command | Aliases | Argument | Effect |
+|---|---|---|---|
 | `/cache` | — | — | how big the shared build cache is, and where |
 | `/cache` | — | `clean` | asks first, then deletes the cache to free disk — confirm with `/cache clean now` |
 | `/debug` | — | — | keeps the full record of **this conversation** from here on, and says which folder it goes to |
@@ -219,6 +258,11 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/export` | `/save` | `<path>` | …and writes it there; tab completes the path |
 | `/files` | — | — | lists what has been made for you; opens, reveals or copies one — over `--host` it opens the browse page for that machine |
 | `/files` | — | `<path>` | over `--host`, brings that one file back and opens it here |
+
+## Help and leaving commands
+
+| Command | Aliases | Argument | Effect |
+|---|---|---|---|
 | `/help` | `/?` | — | prints this list |
 | `/manual` | — | — | asks the model what codeaf can do, answered from codeaf's own manual |
 | `/manual` | — | `<question>` | puts that question to the model, answered from codeaf's own manual, naming the page |

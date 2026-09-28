@@ -12,18 +12,28 @@ terminal* page, under *How do I install or update codeaf*.
 
 ## Getting started — first time setup, what happens the first time I run codeaf
 
-The first time `codeaf` opens on a profile with nothing in it, the chat does not open on
-an empty prompt and a provider error. It opens in the chat itself, on **two screens** —
-under a minute, nothing else on the frame:
+The first time `codeaf` opens a new local conversation on a profile with nothing in it,
+setup appears in the chat instead of an empty prompt and a provider error. When the
+default provider needs a key and no daily limit is configured, it has **two screens** — under a minute,
+nothing else on the frame:
 
 1. **connect openrouter** — the default service; `enter` signs in in your browser, and pasting an existing key also works
 2. **Models and spending** — one screen with two controls on it, **Daily limit** and
    **Chat model**, each already showing the value that is in force
 
+**With a key already found, there is no setup screen.** When a provider key is saved in
+the profile or set in the environment, such as `OPENROUTER_API_KEY`, a plain launch opens
+straight on home: no connection screen and no **Models and spending**. `/budget` sets a
+daily limit later. A `--no-host` launch on such a profile skips only the connection screen,
+and still opens **Models and spending** while no daily limit is set. A resumed conversation,
+or one on another machine, never opens first-run setup.
+
 The second screen's way out is **`Start a conversation`**. Every control on it opens on
 the value you already have, so pressing `enter` there agrees to exactly what is on the
 screen. Its heading is `Models and spending` and the line under it is
 `Keep these choices or change them.`
+
+## Skipping setup and reading its header
 
 `esc` on the first screen skips the setup: the flow is marked seen and it does not open
 again. `esc` on the controls screen goes **back** to the connection when there is one
@@ -39,8 +49,8 @@ Codex is deliberately not another first-run step. After setup, its browser sign-
 available from the Codex row in `/connect`, or from `codeaf connect codex` without
 opening the chat.
 
-The header reads `codeaf` on the left and `setup · 2 of 2` on the right; with only one
-screen to show there is no count at all. The foot names the keys that work on the row you
+The header reads `codeaf`, with `setting up · 1 of 2` under the wordmark on the first of two
+steps. With only one step it reads `setting up`, without a count. The foot names the keys that work on the row you
 are standing on — `tab` walks the rows, `?` opens a control's detail — and on a narrow
 window it is cut by whole clauses rather than mid-word.
 
