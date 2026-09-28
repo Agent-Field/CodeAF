@@ -140,7 +140,7 @@ docker run -d --name "fc-guard-$SEED" --network "fc-in-$SEED" \
   -e "GUARD_UPSTREAM_KEY=$KEY" \
   -v "$OUT:/audit" \
   --entrypoint python3 python:3.12-slim \
-  /audit/rig/guard-container.py --allow "$MODEL" \
+  /audit/rig/guard.py --allow "$MODEL" \
   --audit /audit/guard-audit.jsonl --usage /audit/guard-usage.jsonl \
   --sentinel "$SENTINEL" --scope "fc-$TASK-$SEED" > "$OUT/guard-start.log" 2>&1 || {
   log "$TASK: guard failed to start — see $OUT/guard-start.log"; meta "stage=guard-failed"; exit 1; }
