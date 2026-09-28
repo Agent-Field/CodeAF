@@ -115,8 +115,16 @@ func TestAPassTheFreeRungsCannotShrinkEndsWithASummary(t *testing.T) {
 	if strings.Contains(messageText(ask[1]), "question 10:") {
 		t.Fatal("a kept message was sent to be summarized")
 	}
-	if event := lastCompacted(t, hub); !strings.Contains(event.Hint, "summarized 18 messages") {
-		t.Fatalf("hint = %q", event.Hint)
+	// THE COUNT DEPENDS ON THE FOLD, AND THE FOLD ON THE JOURNAL'S PATH. The
+	// eight one-line answers fold only when the marker naming the journal is
+	// shorter than they are: a short temporary path (Linux's /tmp) folds them
+	// first and summarizes the rest, a long one (macOS's /var/folders) leaves
+	// them to the summary. Either way every older message is gone into one of
+	// the two, which is what the hint must say.
+	event := lastCompacted(t, hub)
+	folded, summarized := hintCount(event.Hint, "folded"), hintCount(event.Hint, "summarized")
+	if summarized == 0 || folded+summarized < 18 {
+		t.Fatalf("hint = %q; want a summary, with fold and summary covering the 18 older messages", event.Hint)
 	}
 }
 
@@ -505,4 +513,16 @@ func TestANoOpCompactSaysWhy(t *testing.T) {
 			}
 		})
 	}
+}
+
+// hintCount reads "<verb> N message(s)" out of a compaction hint, zero when
+// the clause is absent.
+func hintCount(hint, verb string) int {
+	var count int
+	for _, clause := range strings.Split(hint, " · ") {
+		if _, err := fmt.Sscanf(clause, verb+" %d message", &count); err == nil {
+			return count
+		}
+	}
+	return 0
 }
