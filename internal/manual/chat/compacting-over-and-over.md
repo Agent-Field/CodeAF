@@ -178,14 +178,17 @@ nothing could be folded and there was too little older conversation to be worth 
 (under about 1,000 tokens), or the summary failed. It does not mean the provider request
 fits: admission also counts schemas, replayed reasoning and reserved output.
 
-## Why the provider says maximum context length when the status shows 20 percent
+## Why the provider says maximum context length when the status shows 20 percent — a request refused as too long
 
 The status shows the model catalog's window. The serving endpoint may have less room, and
 its window must hold input **plus output**, including thinking. codeaf budgets the assembled
 request against known endpoint limits before sending and remembers explicit limits from
 errors by base URL, model and endpoint. Old rejected-prompt-size guesses are ignored.
 
-Overflow recovery can run twice per failed generation, only while the request changes.
+Recovery shortens by what is missing plus a little room — a thirty-second of the window —
+rather than a quarter of the conversation, and it will summarize even a small older part
+when that is what the request is short of. Overflow recovery can run twice per failed
+generation, only while the request changes.
 A successful response resets the allowance. A second overflow later in a long tool turn
 can therefore recover instead of ending the turn just because it compacted earlier.
 If protected material still cannot fit, codeaf explains that locally; it does not
@@ -205,9 +208,14 @@ oldest part of the conversation — your older messages and the assistant's work
 with one note that starts `[context compacted]`. It never touches:
 
 - the system prompt;
-- your **three most recent messages** and everything after them (fewer only when keeping
-  three cannot get under the line; the message being answered always stays);
+- your **three most recent messages** and everything after them. When that cannot get
+  under the line it keeps two, then your latest message **with the reply just before it**
+  (what "translate it" or "keep going" is about), then your latest alone — the message
+  being answered always stays;
 - the turn that is running.
+
+Messages codeaf writes into the conversation itself — the note after a reply was cut off
+at the output limit, a `[carry on]` — are not counted as yours.
 
 A later summary folds the earlier one in, so there is only ever one note. The original
 words stay in the session journal, which the note names, and on your screen when you

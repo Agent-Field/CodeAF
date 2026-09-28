@@ -64,6 +64,17 @@ const (
 	// it the note, its framing and the call's cost outweigh what it could free.
 	summaryMinRegionTokens = 1024
 
+	// summaryMinRecoveryTokens is the smallest region worth a call when a
+	// refused request is being recovered ([summaryWorthIt]).
+	summaryMinRecoveryTokens = 128
+
+	// summaryMinAnswerTokens is the shortest summary asked for.
+	summaryMinAnswerTokens = 128
+
+	// summaryNoteTokens is the note's own framing around a summary: the opening
+	// sentence and the journal pointer.
+	summaryNoteTokens = 96
+
 	// summaryPromptTokens is what one summary request carries besides the
 	// conversation it is summarizing: the instruction, the framing of the
 	// user message, and the provider's message overhead.
@@ -112,7 +123,12 @@ type summaryPlan struct {
 	previous string
 	model    string
 	window   int
-	answer   int
+	// answer is how long the summary is asked to be, and ceiling the most the
+	// request allows it to write: room for a model that overshoots the words
+	// it was asked for, which [Agent.spliceSummaryLocked] still refuses if the
+	// note ends up no smaller than what it replaces.
+	answer  int
+	ceiling int
 	// pointer says where the original lines can be read back.
 	pointer string
 }
@@ -152,11 +168,15 @@ func (a *Agent) beltTokens() int {
 	return EstimateTokens(len(encoded))
 }
 
-// planSummaryLocked chooses the region a summary replaces. It prefers keeping
-// [summaryKeepPersonMessages] of the person's messages whole, and keeps fewer
-// only when that cannot bring the conversation under target. It reports false
+// planSummaryLocked chooses the region a summary replaces, and reports false
 // when there is no region worth a call.
-func (a *Agent) planSummaryLocked(target int) (summaryPlan, bool) {
+//
+// The cuts are tried from the most kept to the least ([Agent.summaryEndsLocked])
+// and the first one that brings the conversation under the policy's line wins;
+// when none does, the most aggressive worthwhile cut is taken, because a pass
+// that reaches for the line and misses still buys more room than one that
+// stops short of it.
+func (a *Agent) planSummaryLocked(policy compactPolicy) (summaryPlan, bool) {
 	if !a.hasClientLocked() {
 		return summaryPlan{}, false
 	}
@@ -164,17 +184,20 @@ func (a *Agent) planSummaryLocked(target int) (summaryPlan, bool) {
 	if window <= 0 {
 		return summaryPlan{}, false
 	}
-	answer := summaryAnswerTokens(window)
+	most := summaryAnswerTokens(window)
 	// A window too small to hold one useful chunk and its answer cannot be
 	// summarized into; the provider's own guard reports that case.
-	if summaryChunkTokens(window, answer, 0) < summaryMinRegionTokens {
+	if summaryChunkTokens(window, most, 0) < summaryMinRegionTokens {
 		return summaryPlan{}, false
 	}
 	persons := a.personMessagesLocked()
+	if len(persons) == 0 {
+		return summaryPlan{}, false
+	}
 	total := a.transcriptTokensLocked()
-	var fallback, chosen []int
-	for keep := min(summaryKeepPersonMessages, len(persons)); keep >= 1; keep-- {
-		end := persons[len(persons)-keep]
+	type cut struct{ end, tokens, answer int }
+	var fallback, chosen *cut
+	for _, end := range a.summaryEndsLocked(persons) {
 		if !a.regionClosedLocked(end) {
 			continue
 		}
@@ -187,15 +210,12 @@ func (a *Agent) planSummaryLocked(target int) (summaryPlan, bool) {
 			}
 		}
 		tokens := EstimateTokens(bytes)
-		// WHAT IS WORTH A CALL IS WHAT THE LAST SUMMARY HAS NOT ALREADY READ.
-		// A region that is mostly an earlier note would be the model rewriting
-		// its own summary on every step, shorter and vaguer each time.
-		if EstimateTokens(fresh) < summaryMinRegionTokens {
+		if !summaryWorthIt(policy, tokens, EstimateTokens(fresh)) {
 			continue
 		}
-		candidate := []int{end, tokens}
+		candidate := &cut{end: end, tokens: tokens, answer: summaryTargetTokens(most, tokens)}
 		fallback = candidate
-		if total-tokens+answer <= target {
+		if total-tokens+candidate.answer+summaryNoteTokens <= policy.summarizeTo {
 			chosen = candidate
 			break
 		}
@@ -206,10 +226,13 @@ func (a *Agent) planSummaryLocked(target int) (summaryPlan, bool) {
 	if chosen == nil {
 		return summaryPlan{}, false
 	}
-	end := chosen[0]
+	end := chosen.end
 	region := make([]ai.Message, end-1)
 	copy(region, a.messages[1:end])
-	plan := summaryPlan{end: end, region: region, model: a.model, window: window, answer: answer}
+	plan := summaryPlan{
+		end: end, region: region, model: a.model, window: window,
+		answer: chosen.answer, ceiling: min(most, 2*chosen.answer),
+	}
 	if text := messageContentText(region[0]); region[0].Role == "user" && strings.HasPrefix(text, summaryNotePrefix) {
 		plan.previous = summaryNoteBody(text)
 	}
@@ -225,21 +248,109 @@ func (a *Agent) planSummaryLocked(target int) (summaryPlan, bool) {
 	return plan, true
 }
 
+// summaryWorthIt says whether a region is worth a model call.
+//
+// A REFUSED REQUEST NEEDS WHAT IT NEEDS. Recovery is bounded by its own
+// allowance and is asked for a specific reclaim, so any region the model can
+// say more briefly is worth it there — an earlier note included, rewritten
+// shorter — however little that frees: on 2026-09-28 a turn ended refused 78
+// tokens over the window while a 740-token region sat unsummarized under a
+// 1,024-token floor.
+//
+// EVERY OTHER PASS WANTS NEW MATERIAL. What is worth a call there is what the
+// last summary has not already read ([summaryMinRegionTokens] of it): a region
+// that is mostly an earlier note would be the model rewriting its own summary
+// on every step, shorter and vaguer each time.
+func summaryWorthIt(policy compactPolicy, tokens, fresh int) bool {
+	if policy.recovering {
+		return tokens >= summaryMinRecoveryTokens
+	}
+	return fresh >= summaryMinRegionTokens
+}
+
+// summaryTargetTokens is how long a summary of a region is asked to be: never
+// more than half the region it replaces, never more than the window's own cap,
+// and never so short that it cannot say anything.
+func summaryTargetTokens(most, region int) int {
+	return min(most, max(summaryMinAnswerTokens, region/2))
+}
+
+// summaryEndsLocked lists where a summary's region may end, from the cut that
+// keeps the most to the one that keeps the least:
+//
+//  1. the person's three most recent messages and everything after them;
+//  2. their two most recent;
+//  3. their most recent, AND THE REPLY THAT CAME BEFORE IT — the answer a
+//     person's "translate it" or "keep going" is about, which a summary cannot
+//     stand in for (on 2026-09-28 a model asked to translate a story that had
+//     been summarized away translated the summary instead);
+//  4. their most recent alone, which is never summarized.
+func (a *Agent) summaryEndsLocked(persons []int) []int {
+	var ends []int
+	for keep := min(summaryKeepPersonMessages, len(persons)); keep >= 2; keep-- {
+		ends = append(ends, persons[len(persons)-keep])
+	}
+	last := persons[len(persons)-1]
+	floor := 0
+	if len(persons) > 1 {
+		floor = persons[len(persons)-2]
+	}
+	for index := last - 1; index > floor; index-- {
+		message := a.messages[index]
+		if message.Role == "assistant" && len(message.ToolCalls) == 0 && strings.TrimSpace(messageContentText(message)) != "" {
+			ends = append(ends, index)
+			break
+		}
+	}
+	return append(ends, last)
+}
+
 // personMessagesLocked lists the indices of the messages the person wrote —
-// the user role, less the notes this package injects there.
+// the user role, less every message this package writes there.
 func (a *Agent) personMessagesLocked() []int {
 	var persons []int
 	for index := 1; index < len(a.messages); index++ {
 		if a.messages[index].Role != "user" {
 			continue
 		}
-		text := messageContentText(a.messages[index])
-		if isCompactionNote(text) || isVolatileNote(text) || a.file.isNote(a.messages[index]) {
+		if isCodeafNote(messageContentText(a.messages[index])) || a.file.isNote(a.messages[index]) {
 			continue
 		}
 		persons = append(persons, index)
 	}
 	return persons
+}
+
+// isCodeafNote reports whether a user-role message is one this package wrote
+// into the conversation rather than something the person typed, by the
+// opening each is built with.
+//
+// IT IS WIDER THAN [isCompactionNote] AND [isVolatileNote] because a summary
+// has to know which messages are the person's to keep: on 2026-09-28 the
+// truncation continuation — which has no tag and reads as plain words — was
+// kept as though it were the person's latest message, and the request it
+// continued was summarized away in its place.
+func isCodeafNote(text string) bool {
+	if isCompactionNote(text) || isVolatileNote(text) {
+		return true
+	}
+	for _, opening := range codeafNoteOpenings {
+		if strings.HasPrefix(text, opening) {
+			return true
+		}
+	}
+	return false
+}
+
+// codeafNoteOpenings are the openings of the notes a turn writes into the
+// conversation as the user role (checkpoint.go, inherit.go, looped.go and the
+// truncation continuation in loop.go).
+var codeafNoteOpenings = []string{
+	truncationContinuationNote,
+	"[carry on] ",
+	checkpointChoiceLead,
+	"[silent] You have made ",
+	"[stuck] You have sent the same ",
 }
 
 // regionClosedLocked says every tool call made in messages[1:end] is answered
@@ -264,7 +375,7 @@ func (a *Agent) writeSummary(ctx context.Context, plan summaryPlan) (string, err
 	summary := plan.previous
 	lines := summaryLines(plan.region)
 	for len(lines) > 0 {
-		budget := summaryChunkTokens(plan.window, plan.answer, EstimateTokens(len(summary))) * bytesPerToken
+		budget := summaryChunkTokens(plan.window, plan.ceiling, EstimateTokens(len(summary))) * bytesPerToken
 		if budget <= 0 {
 			return "", errors.New("session: the summary no longer fits the window")
 		}
@@ -305,7 +416,7 @@ func (a *Agent) askForSummary(ctx context.Context, plan summaryPlan, previous, c
 	defer cancel()
 	ctx = provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary)
 	ctx = provider.WithReasoningEffort(ctx, provider.EffortLow)
-	ctx = provider.WithContextBudget(ctx, provider.ContextBudget{Window: plan.window, Reserve: plan.answer})
+	ctx = provider.WithContextBudget(ctx, provider.ContextBudget{Window: plan.window, Reserve: plan.ceiling})
 	var ask strings.Builder
 	if previous != "" {
 		ask.WriteString("Summary so far:\n\n")
@@ -319,7 +430,7 @@ func (a *Agent) askForSummary(ctx context.Context, plan summaryPlan, previous, c
 	response, err := a.completeWithModel(ctx, purposeSummary, []ai.Message{
 		textMessage("system", summaryInstruction(plan.answer)),
 		textMessage("user", ask.String()),
-	}, plan.model, ai.WithMaxTokens(plan.answer))
+	}, plan.model, ai.WithMaxTokens(plan.ceiling))
 	if err != nil {
 		return "", err
 	}
@@ -340,7 +451,7 @@ func (a *Agent) askForSummary(ctx context.Context, plan summaryPlan, previous, c
 	if !briefIsProse(text) || briefRepeats(text) {
 		return "", errEmptyAnswer
 	}
-	return clip(text, plan.answer*bytesPerToken*5/4), nil
+	return clip(text, plan.ceiling*bytesPerToken), nil
 }
 
 // summaryInstruction is the summarizer's system message.

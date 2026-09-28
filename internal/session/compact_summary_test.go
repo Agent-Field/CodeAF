@@ -339,3 +339,120 @@ func TestASummarizedConversationResumesWithItsSummary(t *testing.T) {
 		}
 	}
 }
+
+// refusalOver is the local refusal of a request that is over the window by
+// the given tokens, in the words the provider's budget guard uses.
+func refusalOver(window, over int) *provider.APIError {
+	allowed := window - 512 - provider.ContextSafetyTokens(window)
+	return &provider.APIError{Status: 400, Overflow: true, Local: true, ContextLimit: window,
+		InputTokens: allowed + over, OutputTokens: 512, Message: "context needs shortening before sending"}
+}
+
+// CODEAF'S OWN WORDS ARE NOT THE PERSON'S. The truncation continuation has no
+// tag and reads as plain words; kept as the person's latest message, it pushed
+// the request it continued into the summary (2026-09-28, "now translate to
+// armenian").
+func TestTheContinuationNoteIsNotThePersonsLatestMessage(t *testing.T) {
+	agent, _ := newTestAgent(t, &summarizer{}, func(config *Config) { config.ContextWindow = 16_384 })
+	agent.mu.Lock()
+	agent.messages = append(agent.messages,
+		textMessage("user", "tell me a story"),
+		textMessage("assistant", strings.Repeat("Elara walked the Whispering Woods. ", 120)),
+		textMessage("user", "now translate to armenian"),
+		textMessage("assistant", strings.Repeat("Էլարան քայլում էր անտառով։ ", 150)),
+		textMessage("user", truncationContinuationNote),
+	)
+	persons := agent.personMessagesLocked()
+	agent.mu.Unlock()
+	if len(persons) != 2 || persons[1] != 3 {
+		t.Fatalf("person messages at %v, want [1 3]: the continuation was counted as the person's", persons)
+	}
+	if !agent.recoverContext(context.Background(), nil, refusalOver(16_384, 400)) {
+		t.Fatal("the refusal was not recovered")
+	}
+	messages := liveTranscript(agent)
+	if !holdsText(messages, "now translate to armenian") {
+		t.Fatal("the person's request was summarized away in favour of codeaf's continuation")
+	}
+}
+
+// A REFUSAL A FEW TOKENS OVER IS RECOVERED, even when the only region left is
+// smaller than an automatic pass would bother with — the earlier summary and
+// one answer, as in the third refusal on 2026-09-28.
+func TestARefusalJustOverTheWindowIsRecoveredFromASmallRegion(t *testing.T) {
+	model := &summarizer{}
+	agent, _ := newTestAgent(t, model, func(config *Config) { config.ContextWindow = 16_384 })
+	agent.mu.Lock()
+	agent.messages = append(agent.messages,
+		textMessage("user", summaryNote(strings.Repeat("Elara protects the Whispering Woods. ", 50), "grep or read x")),
+		textMessage("user", truncationContinuationNote),
+		textMessage("assistant", strings.Repeat("Here is how the narrative could continue. ", 64)),
+		textMessage("user", "summarize the plot in 5 sentences please"),
+	)
+	agent.mu.Unlock()
+	if !agent.recoverContext(context.Background(), nil, refusalOver(16_384, 78)) {
+		t.Fatal("a request 78 tokens over was left refused")
+	}
+	if model.calls() == 0 {
+		t.Fatal("no summary was written")
+	}
+	messages := liveTranscript(agent)
+	if summaryNotes(messages) != 1 || !holdsText(messages, "summarize the plot in 5 sentences please") {
+		t.Fatal("the recovery did not leave one note and the person's question")
+	}
+}
+
+// THE REPLY BEFORE THE LATEST MESSAGE IS KEPT when that is enough: "translate
+// it" is about the answer just given, and a summary cannot stand in for it.
+func TestTheReplyTheLatestMessageIsAboutIsKept(t *testing.T) {
+	model := &summarizer{}
+	agent, _ := newTestAgent(t, model, func(config *Config) { config.ContextWindow = 65_536 })
+	second := "SECOND STORY " + strings.Repeat("Elara found the lost library. ", 200)
+	agent.mu.Lock()
+	// The weight is the person's own notes, so the fold alone cannot free
+	// what is missing and the summary has to choose where to stop.
+	agent.messages = append(agent.messages,
+		textMessage("user", "tell me a story "+strings.Repeat("with dragons and a river and ", 800)),
+		textMessage("assistant", "Once upon a time."),
+		textMessage("user", "keep going "+strings.Repeat("and add a library and a key ", 800)),
+		textMessage("assistant", second),
+		textMessage("user", "translate it to spanish please"),
+	)
+	agent.mu.Unlock()
+	if !agent.recoverContext(context.Background(), nil, refusalOver(65_536, 2_000)) {
+		t.Fatal("the refusal was not recovered")
+	}
+	messages := liveTranscript(agent)
+	if !holdsText(messages, "SECOND STORY") {
+		t.Fatal("the answer the person asked to translate was summarized away")
+	}
+	if holdsText(messages, "keep going") || summaryNotes(messages) != 1 {
+		t.Fatal("the recovery did not summarize the older notes")
+	}
+}
+
+// A RECOVERY TAKES WHAT IS MISSING AND A LITTLE ROOM, not a quarter of the
+// conversation.
+func TestARecoveryReclaimsWhatIsMissingNotAQuarter(t *testing.T) {
+	agent, _ := newTestAgent(t, &refusingCompleter{t: t}, func(config *Config) { config.ContextWindow = 131_072 })
+	agent.mu.Lock()
+	agent.messages = append(agent.messages, exchanges(40, map[int]string{})...)
+	for index := range agent.messages {
+		if agent.messages[index].Role == "assistant" {
+			agent.messages[index].Content = []ai.ContentPart{{Type: "text", Text: strings.Repeat("working through it. ", 200)}}
+		}
+	}
+	agent.mu.Unlock()
+	before := func() int { agent.mu.Lock(); defer agent.mu.Unlock(); return agent.transcriptTokensLocked() }()
+	if !agent.recoverContext(context.Background(), nil, refusalOver(131_072, 300)) {
+		t.Fatal("the refusal was not recovered")
+	}
+	after := func() int { agent.mu.Lock(); defer agent.mu.Unlock(); return agent.transcriptTokensLocked() }()
+	freed := before - after
+	if freed < 300 {
+		t.Fatalf("freed %d tokens, less than the 300 missing", freed)
+	}
+	if freed >= before/4 {
+		t.Fatalf("freed %d of %d tokens — a quarter, for 300 missing", freed, before)
+	}
+}

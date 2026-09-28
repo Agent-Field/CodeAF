@@ -25,6 +25,10 @@ type compactPolicy struct {
 	summarize      bool
 	summarizeAbove int
 	summarizeTo    int
+	// recovering is the pass a refused request runs: it is asked for a
+	// specific reclaim, so a smaller region is worth summarizing
+	// ([summaryWorthIt]).
+	recovering bool
 }
 
 // automaticCompactPolicy is the pass the loop runs on its own: the threshold
@@ -45,6 +49,12 @@ func (a *Agent) automaticCompactPolicy() compactPolicy {
 // small-window conversation. This is a token allowance, not a summary length.
 const compactRecentTokens = 4096
 const contextRecoveryAttempts = 2
+
+// recoveryRoomDivisor sizes the room a refusal's recovery frees beyond what
+// was missing: a thirty-second of the window, 512 tokens of a 16k window and
+// 4,096 of a 128k one — enough for the next message, not a quarter of the
+// conversation.
+const recoveryRoomDivisor = 32
 
 func (a *Agent) requestedCompactPolicy() compactPolicy {
 	// A person who typed /compact wants the conversation as short as it may
@@ -82,10 +92,22 @@ func (a *Agent) recoverContext(ctx context.Context, hub *eventHub, err error) bo
 	a.mu.Lock()
 	before := a.transcriptTokensLocked()
 	a.mu.Unlock()
+	// WITH NO FIGURES, A QUARTER. A refusal that says neither the limit nor the
+	// size gives no measure of what is missing, and a generous guess costs one
+	// pass where a stingy one costs a second refusal.
 	reclaim := max(1, before/4)
 	if failure != nil && failure.ContextLimit > 0 && failure.InputTokens > 0 {
 		allowed := failure.ContextLimit - failure.OutputTokens - provider.ContextSafetyTokens(failure.ContextLimit)
-		reclaim = max(reclaim, failure.InputTokens-allowed)
+		// WITH FIGURES, WHAT IS MISSING AND A LITTLE ROOM. The quarter used to
+		// be a floor here too, and it made a request 78 tokens over reclaim 1,800
+		// — a summary of the very answer the person was asking about, when
+		// what was missing was a sentence. The room ([recoveryRoomDivisor])
+		// is what keeps the next turn's message from being refused at once.
+		// A refusal whose figures say it already fits leaves the quarter
+		// standing, because then the estimate is what is wrong.
+		if need := failure.InputTokens - allowed; need > 0 {
+			reclaim = min(before, need+failure.ContextLimit/recoveryRoomDivisor)
+		}
 	}
 	policy.target = max(1, before-reclaim)
 	// A refused request needs this line reached, by a summary if the free
@@ -93,6 +115,7 @@ func (a *Agent) recoverContext(ctx context.Context, hub *eventHub, err error) bo
 	// reclaim above was measured against the refused request as a whole.
 	policy.summarizeAbove = policy.target
 	policy.summarizeTo = policy.target
+	policy.recovering = true
 	changed, compactErr := a.compactWithPolicy(ctx, hub, policy)
 	a.mu.Lock()
 	smaller := a.transcriptTokensLocked() < before

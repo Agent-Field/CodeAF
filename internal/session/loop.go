@@ -4895,7 +4895,7 @@ func (a *Agent) compactWithPolicy(ctx context.Context, hub *eventHub, policy com
 	// to splice the answer in; [Agent.compacting] still holds every other pass
 	// off, and a transcript that moved in the gap keeps its shape.
 	if summaryWanted(policy, pass, a.transcriptTokensLocked()) {
-		if plan, ok := a.planSummaryLocked(policy.summarizeTo); ok {
+		if plan, ok := a.planSummaryLocked(policy); ok {
 			a.mu.Unlock()
 			a.tellPhase(provider.PhaseTidying, "summarizing the conversation", time.Now())
 			summary, err := a.writeSummary(ctx, plan)

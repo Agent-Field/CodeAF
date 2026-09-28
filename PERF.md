@@ -30,10 +30,13 @@ no-op compaction emits no seam events, while manual commands retain their no-op 
 A compaction pass makes **one model call only when its free rungs fail**: a summary
 (`internal/session/compact_summary.go`) is written when stubbing and folding leave the
 transcript above the pass's line, and never when the tool definitions alone exceed that
-line. It needs at least **1,024 tokens** of region the previous summary has not read,
-keeps the **three** most recent person messages and everything after them when that
-still reaches the line, and asks for at most a twentieth of the window (**512–4,096**
-tokens). A region larger than one request is summarized in chunks sized to the window,
+line. An automatic or manual pass needs at least **1,024 tokens** of region the previous
+summary has not read; a refused request's recovery needs **128**. It keeps the **three**
+most recent person messages and everything after them when that still reaches the line,
+then two, then the latest with the reply before it, then the latest alone. A summary is
+asked for at most half its region and at most a twentieth of the window (**128–4,096**
+tokens). A refusal that states its figures reclaims what is missing plus a thirty-second
+of the window; one that does not reclaims a quarter of the transcript. A region larger than one request is summarized in chunks sized to the window,
 each bounded to **two minutes**; the session lock is released during every call. The
 render the summarizer reads caps a tool result at 2,000 bytes and a call's arguments at
 400. Tests use scripted completers and assert request counts and sizes, not clocks.
