@@ -131,14 +131,11 @@ trap cleanup EXIT
 docker network create --internal "fc-in-$SEED" > /dev/null 2>&1
 
 log "$TASK: starting the credential guard (holds the key, meters every call)"
-# The guard binds loopback by design; the rig's copy of it is widened to the
-# container's own interfaces so the internal network can reach it. The
-# snapshot's copy is transformed, never the shared file.
-mkdir -p "$OUT"
+# The guard binds loopback by design; the run's frozen copy of it is widened
+# to the container's own interfaces so the internal network can reach it. The
+# copy is transformed, never the shared file.
 sed 's/("127.0.0.1", args.port)/("0.0.0.0", args.port)/' \
-  "$RIG_DIR/../conversation/lib/guard.py" > "$OUT/rig/guard-container.py" 2>/dev/null \
-  || sed 's/("127.0.0.1", args.port)/("0.0.0.0", args.port)/' \
-  "$(cd "$__RIG_SRC/.." 2>/dev/null && pwd)/conversation/lib/guard.py" > "$OUT/rig/guard-container.py"
+  "$RIG_DIR/guard.py" > "$OUT/rig/guard-container.py"
 docker run -d --name "fc-guard-$SEED" --network "fc-in-$SEED" \
   -e "GUARD_UPSTREAM_KEY=$KEY" \
   -v "$OUT:/audit" \
