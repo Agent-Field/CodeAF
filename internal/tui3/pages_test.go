@@ -60,12 +60,12 @@ func placeFrameText(a *app) string {
 // ([TestEveryPlaceIsRegisteredOnceAndInTabOrder]), because the list they have to
 // agree with is the registry rather than a literal seven this file counted. What
 // is left here is the two facts that are about the EDGES of that list.
-func TestTheSevenPlacesAreOneList(t *testing.T) {
-	if len(pages()) != 8 {
-		t.Fatalf("there are %d places, and the design has eight rooms", len(pages()))
+func TestThePlacesAreOneList(t *testing.T) {
+	if len(pages()) != 7 {
+		t.Fatalf("there are %d places, and the design has seven rooms", len(pages()))
 	}
-	// AND alt+0 IS NOTHING, rather than a tenth place: the nine digits are the
-	// eight rooms and the way back to the chats, teams second and the chats
+	// AND alt+0 IS NOTHING, rather than a tenth place: the eight digits are the
+	// seven rooms and the way back to the chats, teams second and the chats
 	// third (the owner's order).
 	if _, ok := placeDigit("alt+0"); ok {
 		t.Fatal("alt+0 reaches a place that does not exist")
@@ -76,8 +76,8 @@ func TestTheSevenPlacesAreOneList(t *testing.T) {
 	if got, ok := placeDigit("alt+3"); !ok || got != pageChats {
 		t.Fatalf("alt+3 reaches %q, not the chats", got.word())
 	}
-	if got, ok := placeDigit("alt+9"); !ok || got != pageSearch {
-		t.Fatalf("alt+9 reaches %q, not search", got.word())
+	if _, ok := placeDigit("alt+9"); ok {
+		t.Fatal("alt+9 still reaches the removed search place")
 	}
 }
 
@@ -90,7 +90,7 @@ func TestOnlyTheCollectionsWearACount(t *testing.T) {
 			t.Fatalf("%s holds a pile of things and would not wear a count", id.word())
 		}
 	}
-	for _, id := range []page{pageSpend, pageSearch, pageSettings} {
+	for _, id := range []page{pageSpend, pageSettings} {
 		if id.counted() {
 			t.Fatalf("%s is not a collection and must not wear a count", id.word())
 		}
@@ -273,7 +273,7 @@ func TestOnlyHomeDrawsTheBoxAndTheDraftsRule(t *testing.T) {
 	if !strings.Contains(text, targetProjectLead) || !strings.Contains(text, "› "+placeRestWord) {
 		t.Fatalf("home's foot lost its rule or its box:\n%s", text)
 	}
-	for _, id := range []page{pageTasks, pageStanding, pageSpend, pageSearch} {
+	for _, id := range []page{pageTasks, pageStanding, pageSpend} {
 		a.showPage(id)
 		text := placeFrameText(a)
 		if strings.Contains(text, targetProjectLead) || strings.Contains(text, placeRestWord) {
@@ -315,7 +315,7 @@ func TestTheMapDrawsInTheCellsThatWereAlreadyThere(t *testing.T) {
 	}
 	// THE NUMBERS ARE ON THE TABS, and the three places off the bar are drawn
 	// after the six with theirs: the map is the one surface whose job is to show
-	// every key, so `alt+7`…`alt+9` are on it.
+	// every key, so `alt+7`…`alt+8` are on it.
 	if bar := after[navRow]; !strings.Contains(bar, "1 home") || !strings.Contains(bar, "2 teams") || !strings.Contains(bar, "3 chats") ||
 		!strings.Contains(bar, "6 settings") || !strings.Contains(bar, "7 standing") || !strings.Contains(bar, "9 search") {
 		t.Fatalf("the map put no numbers on the tab bar: %q", bar)
@@ -823,7 +823,7 @@ func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 		if !placeWordsInOrder(bar, "home", "teams", "chats", "sessions", "spend", "settings") {
 			t.Fatalf("at %d columns the bar is not the six places in order: %q", width, bar)
 		}
-		for _, id := range []page{pageStanding, pageMemory, pageSearch} {
+		for _, id := range []page{pageStanding, pageMemory} {
 			if strings.Contains(bar, id.word()) {
 				t.Fatalf("at %d columns the bar still carries %q: %q", width, id.word(), bar)
 			}

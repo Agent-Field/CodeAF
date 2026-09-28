@@ -492,13 +492,8 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		Agent:             agent,
 		Build:             buildinfo.String(),
 		UnreadProfileKeys: append([]string(nil), proc.UnreadProfileKeys...),
-		// The memory place and the search place read the SAME database the
-		// conversation remembers into, through two seams that fail apart: memory
-		// turned off in the settings opens no store at all and both are then
-		// absent, which is what keeps "memory off makes no calls" a property of
-		// the wiring rather than a branch in every caller (v3Memory).
+		// The memory place reads the conversation's store; memory off supplies no seam.
 		Memory:       v3MemorySeam(cfg.Memory),
-		Search:       v3SearchSeam(cfg.Memory),
 		SearchStatus: v3SearchStatus(cfg.SearchProvider, settings.ProfileDir),
 		// The machine-wide spending ledger the spend place adds up. It is the
 		// same file every window on this machine appends a model call to, named
@@ -2156,18 +2151,6 @@ func v3MemorySeam(brain *store.Store) tui3.MemoryStore {
 		return nil
 	}
 	return v3Brain{brain: brain}
-}
-
-// v3SearchSeam is the same store as the search place asks for it: one full-text
-// query across every thread. It is a SECOND seam beside the memory one because
-// the two capabilities fail apart — a build with memory off has neither today,
-// and the day one of them moves to a different store the other does not have to
-// move with it.
-func v3SearchSeam(brain *store.Store) tui3.SearchStore {
-	if brain == nil {
-		return nil
-	}
-	return brain
 }
 
 // v3RolesSource is the closure internal/roles reads its ladder through: the four

@@ -711,7 +711,6 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 		// conversation's transcript is the only thing left to key it by.
 		Ledger: ledger.read,
 		Memory: memory,
-		Search: client,
 		// AND THE ONE WRITE HOME MAKES AGAINST THAT WORLD GOES THROUGH THE SAME
 		// CACHE IT READS. A bare client.Archive landed on the engine's disk and
 		// left what is held saying the opposite, so the row `ctrl+e` put away sat

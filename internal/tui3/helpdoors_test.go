@@ -39,21 +39,14 @@ func TestTheKeySheetNamesTheWayToEveryPlace(t *testing.T) {
 	// THE CHORDS ARE SPELLED THROUGH THE ONE DOOR, so a Mac sheet says opt+ and this
 	// one does not (chords.go).
 	mac := helpText("", chordSpelling{meta: chordMetaWord})
-	if strings.Contains(mac, chordJumpWords) || !strings.Contains(mac, "opt+1…9") {
+	if strings.Contains(mac, chordJumpWords) || !strings.Contains(mac, "opt+1…8") {
 		t.Errorf("the place rows are not spelled through chords.say — a Mac sheet still reads alt+:\n%s", mac)
 	}
 }
 
-// ── THE SEARCH PLACE HAD NO TYPED DOOR, AND /spend OPENED SOMETHING ELSE ────
-//
-// Every other place has a word — /home, /memory, /standing, /history,
-// /settings — and search had none, so the only ways in were `alt+6`, `tab`, the
-// bar, or typing on home, all of which have to be learned elsewhere first.
-// /spend existed and was an alias of /cost, which prints THIS CONVERSATION's
-// bill: the one guess a developer makes landed on a different question without
-// saying so.
-func TestSearchAndSpendHaveTypedDoorsOfTheirOwn(t *testing.T) {
-	doors := map[string]page{"search": pageSearch, "spend": pageSpend}
+// Spend has a typed door of its own; /cost remains the conversation's bill.
+func TestSpendHasATypedDoorOfItsOwn(t *testing.T) {
+	doors := map[string]page{"spend": pageSpend}
 	for word, want := range doors {
 		named := false
 		for _, c := range commands {
@@ -178,7 +171,7 @@ func TestAnEmptyPlaceSaysWhatToDoNext(t *testing.T) {
 	pal := newPalette(0, false)
 	doors := map[page]string{
 		pageTasks: "/task", pageStanding: `"remind me at 6"`, pageMemory: "/remember",
-		pageSearch: "type a word", pageSpend: "as it runs",
+		pageSpend: "as it runs",
 	}
 	for id, door := range doors {
 		if !strings.Contains(placeWhisper[id].whisper, door) {

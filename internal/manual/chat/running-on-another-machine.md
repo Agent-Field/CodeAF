@@ -273,8 +273,8 @@ that conversation beside the one you are in — the engine gives it a connection
 and the chat you came from keeps running, the same door `codeaf resume` uses locally. The right end of the tab bar reads `on <machine>` so you can
 see whose afternoon you are looking at, and it is not there at all on a local session.
 
-Three of the eight places still read the machine this window is running on, and each says so
-in one line where its rows would be: **spend**, **search** and **memory**. The whole table,
+Home search uses the far machine's conversation list. Spend and memory use their remote
+stores; when an older engine cannot supply them, each says so instead of showing local data. The whole table,
 and why the look-stamp behind each tab's number is kept per machine, is on the Places page
 under *The places over --host*.
 

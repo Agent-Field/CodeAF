@@ -47,7 +47,6 @@ const (
 	pageStanding
 	pageMemory
 	pageSpend
-	pageSearch
 	pageSettings
 	// pageTeams is the team-level view (place_teams.go). It is appended rather
 	// than put after pageHome because the ids are only names: the order a
@@ -237,7 +236,7 @@ type place interface {
 	// box is the editor this place types into, and nil where it has none.
 	//
 	// ONLY HOME HAS A BOX THAT SENDS ANYTHING (the owner's ruling, 2026-09-17).
-	// Tasks, memory and search keep an editor because typing there FILTERS or
+	// Tasks and memory keep an editor because typing there FILTERS or
 	// SEARCHES, and each of them draws its own letters in its own body; the
 	// standing and spend places take no text at all, and the foot under every
 	// place but home draws no box. The shared composer that used to sit under
@@ -378,20 +377,20 @@ func (placeBase) caretRow(a *app, width int, rows []placeRow) (int, int, bool) {
 var placeRegistry = map[page]place{}
 
 // placeOrder is the whole set, in the one order that matters: `alt+1` through
-// `alt+9`, and, for the first [placeBarPlaces] of them, left to right along
+// `alt+8`, and, for the first [placeBarPlaces] of them, left to right along
 // the tab bar and round the circle `tab` walks.
 //
 // THE BAR IS FOUR PLACES AND HOME IS THEIR SUMMARY (DESIGN.md's law 10). What
 // wants you and what is running (home), the work itself (sessions, the tasks
 // place), what it cost (spend), and how this machine is set (settings), with
 // teams and the way back to the chats between home and the work. Standing,
-// memory and search come after them: still rooms, still reached by
-// `/standing`, `/memory` and `/search`, by the typed box's place offers, by
-// `alt+7`…`alt+9` and by the map, but not drawn on a bar a person reads a
+// memory come after them: still rooms, still reached by
+// `/standing` and `/memory`, by the typed box's place offers, by
+// `alt+7`…`alt+8` and by the map, but not drawn on a bar a person reads a
 // hundred times a day, until they are the rooms a person walks into a hundred
 // times a day.
 //
-// THE THREE KEEP A DIGIT EACH so a hand that learned `alt+7` finds a room there
+// THE TWO KEEP A DIGIT EACH so a hand that learned `alt+7` finds a room there
 // rather than a key that does nothing.
 //
 // IT IS A LIST HERE AND NOT AN `init` ORDER. Go runs a package's `init`s in
@@ -404,7 +403,7 @@ var placeRegistry = map[page]place{}
 // is where a person runs the work they handed off (place_teams.go, DESIGN.md
 // section 8.4), so it is read as often as home is; the chats (place_chats.go)
 // are the room a person came from, and goes back to more than to any other.
-var placeOrder = []page{pageHome, pageTeams, pageChats, pageTasks, pageSpend, pageSettings, pageStanding, pageMemory, pageSearch}
+var placeOrder = []page{pageHome, pageTeams, pageChats, pageTasks, pageSpend, pageSettings, pageStanding, pageMemory}
 
 // placeBarPlaces is how many of [placeOrder] the tab bar draws: the four a day
 // is read through, teams beside home, and the way back to the chats.
@@ -413,7 +412,7 @@ const placeBarPlaces = 6
 // barPages is the places the bar draws while a person stands at `here`: the
 // first [placeBarPlaces], and the room they are standing in when it is one of
 // the others — a bar with no word lit is a bar that does not know where you
-// are. With the map up (`every`) it is all of them, numbered, so the three that
+// are. With the map up (`every`) it is all of them, numbered, so the two that
 // are off the bar are on the one surface whose job is to show every key.
 func barPages(here page, every bool) []page {
 	if every {
@@ -442,7 +441,7 @@ func placeDigitOf(id page) int {
 // placeChord is the chord that reaches one place, spelled the way the command
 // menu and the help write it — `alt+3`. It is READ OFF [placeOrder] so a row
 // that names a place's key cannot go on naming the key it had before the bar
-// was reordered (commands.go's /spend and /search rows did exactly that).
+// was reordered (commands.go's /spend row did exactly that).
 func placeChord(id page) string { return chordAltWord + itoa(placeDigitOf(id)) }
 
 // registerPlace files one place under its own id. A second registration for one
@@ -524,8 +523,8 @@ func (p page) lookKey() string {
 //
 // A COLLECTION CAN BE COUNTED AND A STATE CANNOT. Home, tasks, standing and
 // memory each hold a pile of things, so "two of them changed" is a fact about
-// the place. Spend is a sum, search is something you do, and settings is how
-// this machine is set — a number in front of any of the three would be a number
+// the place. Spend is a sum, and settings is how
+// this machine is set — a number in front of either would be a number
 // about nothing, and the tab bar would be teaching a lie about what is in there.
 func (p page) counted() bool {
 	pl := placeFor(p)
@@ -536,7 +535,7 @@ func (p page) counted() bool {
 // `sta` is offered the standing place beside the chats that match (SCREEN 1g).
 //
 // AN EXACT WORD BEATS A PREFIX, and a prefix that fits two places is no answer
-// at all — `s` is `standing`, `spend`, `search` and `settings` at once, and
+// at all — `s` is `standing`, `spend` and `settings` at once, and
 // offering the first of those would be the surface guessing. So an ambiguous
 // prefix offers nothing, and the person types one more letter.
 func parsePageWord(s string) (page, bool) {
@@ -928,7 +927,7 @@ func placeHitsOf[H any](hits []placeHit, blank H) []H {
 }
 
 // placeLineHits is [placeHitsOf] for the places whose rows answer with a LINE OF
-// THEIR OWN BODY — the standing list, memory, spend and search all do — where a
+// THEIR OWN BODY — the standing list, memory and spend all do — where a
 // row that answers to nothing is -1.
 func placeLineHits(hits []placeHit) []int { return placeHitsOf(hits, -1) }
 
@@ -1495,7 +1494,7 @@ const (
 	// it where the place declares no verbs).
 	//
 	// IT SAYS WHAT THE KEY DOES. It read `→ verbs on this row`, which named a
-	// CATEGORY on a line where `alt+1…9 go to a place`, `alt+enter send it off as
+	// CATEGORY on a line where `alt+1…8 go to a place`, `alt+enter send it off as
 	// a task` and `esc close` all name an act — and `verbs` is the machinery's
 	// word for the strip rather than anybody's word for what pressing `→` gets
 	// them. The card's own `→ verbs: pause, stop` keeps the noun because the acts
@@ -1504,7 +1503,7 @@ const (
 	placeMapVerbWords = "→ show what this row can do"
 	// placeMapWords is the hint line while the map is drawn (SCREEN 3b): the
 	// chord list, in the cells the hint was already in.
-	placeMapWords = "alt+1…9 go to a place · " + placeMapTaskWords + " · " +
+	placeMapWords = "alt+1…8 go to a place · " + placeMapTaskWords + " · " +
 		placeMapVerbWords + " · " + mapCloseWords
 	// placeMapTaskWords is the map's clause about the chord that starts a task,
 	// named so the line can be drawn WITHOUT it: only home starts things, so on
@@ -1641,7 +1640,7 @@ func (a *app) placeHintSaid() string {
 		// what the keys are — and the place's resting foot is four clauses that
 		// the design fixes word for word (FIDELITY.md item 3). A key bound on
 		// every place and drawn on none of them would break SCREEN 3a's clause,
-		// and this is the line that keeps it, exactly as it keeps the `ctrl+1…9`
+		// and this is the line that keeps it, exactly as it keeps the `ctrl+1…8`
 		// alias ([chordSpelling.mapLine]).
 		line := a.chords.mapLine(a.placeMapSaid(), a.ctrlDigits())
 		if a.hopAvailable() {
@@ -1684,8 +1683,8 @@ func (a *app) placeHintSaid() string {
 // has no verbs to open.
 //
 // A KEY DRAWN THAT DOES NOTHING IS SCREEN 3a'S CLAUSE READ BACKWARDS. The map
-// promised `→ verbs on this row` over all seven places while [placeSearch]
-// declares no verbs at all — so on search the arrow the map named opened
+// promised `→ verbs on this row` over all seven places while an empty place
+// declares no verbs at all — so there the arrow the map named opened
 // nothing and fell through to the caret inside the box. The line is built from
 // what the standing place actually declares rather than from a constant that
 // cannot know, which is the same rule the foot above it already keeps: key
@@ -2090,8 +2089,6 @@ func (a *app) showPage(id page) (cmd tea.Cmd) {
 		a.noticeHomeRotate()
 	case pageSpend:
 		a.noticeEvent(eventSpendOpened)
-	case pageSearch:
-		a.noticeEvent(eventSearchOpened)
 	}
 	return next.open(a)
 }

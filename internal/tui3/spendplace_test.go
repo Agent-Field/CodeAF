@@ -1229,7 +1229,7 @@ func TestASpendRowOpensTheThingItNames(t *testing.T) {
 	// AND THE CONVERSATION ROW OPENS THAT CONVERSATION. This one is the window's
 	// own, so the door brings it forward rather than reopening it — which is the
 	// first check every door onto a transcript makes, and the reason none of them
-	// may be a bare `showPage` (place_search.go's [app.openConversationRow]).
+	// may be a bare `showPage` (conversationrow.go's [app.openConversationRow]).
 	b := spendLabOn(t, lab.app(mine), path)
 	b.spend.cursor = spendRowFor(t, b, session.SubjectConversation)
 	if row, ok := b.spendSessionRow(b.spendStopAt(b.spend.cursor).subject); !ok || row.Transcript != mine {
