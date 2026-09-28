@@ -89,11 +89,14 @@ ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
 # said out loud, never swallowed into a clean exit: the graded build criterion
 # would otherwise inherit whatever the prewarm left broken.
 # The tree stays byte-identical to the base commit afterwards (build/ is in
-# the project's own .gitignore), which the step asserts.
-RUN cd /root/repos/jsonschema \
+# the project's own .gitignore), which the step asserts — and the whole tree
+# is handed to the agent user afterwards, so the prewarmed build directory is
+# theirs to rebuild into.
+RUN cd /home/agent/repos/jsonschema \
     && make configure compile > /tmp/prewarm.log 2>&1; code=$?; \
     if [ "$code" -ne 0 ]; then echo "prewarm failed (exit $code), tail:" >&2; tail -40 /tmp/prewarm.log >&2; exit 1; fi \
-    && if [ -n "$(git status --porcelain)" ]; then echo "prewarm edited the tree:" >&2; git status --porcelain >&2; exit 1; fi
+    && if [ -n "$(git status --porcelain)" ]; then echo "prewarm edited the tree:" >&2; git status --porcelain >&2; exit 1; fi \
+    && chown -R agent:agent /home/agent/repos/jsonschema /logs
 
-WORKDIR /root/repos/jsonschema
+WORKDIR /home/agent/repos/jsonschema
 CMD ["/bin/bash"]
