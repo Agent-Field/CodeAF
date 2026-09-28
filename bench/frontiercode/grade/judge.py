@@ -183,12 +183,6 @@ def adapt_tests(rubric, grade_dir, key, model, prompt_version):
     return result
 
 
-def rubric_task_dir(grade_dir):
-    """The task dir a grade dir belongs to, recorded by grade.sh at phase A
-    time (the rubric's task_dir file)."""
-    return (pathlib.Path(grade_dir) / "task_dir.txt").read_text().strip()
-
-
 def main():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="cmd", required=True)
