@@ -13,8 +13,11 @@ it performs no tokenizer call, network lookup or extra model request. Image payl
 bytes are replaced by a token allowance. The margin is 5% of the effective endpoint
 window, bounded to 512–8,192 tokens. An unspecified output allowance is bounded by
 one quarter of the window and the configured completion reserve; shrinking it retains
-up to 512 tokens as the useful minimum (one eighth for very small windows), with extra
-room when an explicit thinking budget requires it.
+up to 512 tokens as the useful minimum (one eighth for very small windows). A thinking
+budget shrinks to the room left beside an answer of up to 1,024 tokens (a sixteenth of
+the window) and is dropped below 1,024, so thinking never refuses a request. Endpoints
+that take no tools are left out of the window a tool-carrying request is measured
+against.
 
 Manual and emergency reductions retain 4,096 recent tokens, capped to an eighth of
 the window, and always retain the latest assistant/tool batch. Recovery is bounded

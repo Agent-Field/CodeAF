@@ -379,10 +379,12 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 		Tools:          tools,
 		PromptCacheKey: knobs.cacheKey,
 	}
+	// The knob is decided here and written after the context budget below,
+	// which may shrink the thinking budget to what the window leaves.
+	sentEffort, thinking := EffortNone, 0
 	if !knobs.relaxed.has(relaxReasoning) {
-		wire.Reasoning = reasoningFor(
-			c.resolveEffort(model, knobs.effort),
-			c.resolveReasoningBudget(model, knobs.effort))
+		sentEffort = c.resolveEffort(model, knobs.effort)
+		thinking = c.resolveReasoningBudget(model, knobs.effort)
 	}
 	// The ceiling that travels is the caller's answer plus the thinking pass's
 	// room (thinking.go's ceilingFor), read here and again by the transport so
@@ -406,9 +408,12 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 	// refusal carries none — so this is set at the one line that puts the
 	// object on the bytes, true or false, and nowhere earlier (prefcarry.go).
 	c.prefWentOut(wire.Provider != nil)
-	ceiling, hasCeiling, err = c.budgetWire(&scrubbed, knobs, messages, tools, wire.Provider, ceiling, hasCeiling)
+	ceiling, hasCeiling, thinking, err = c.budgetWire(&scrubbed, knobs, messages, tools, wire.Provider, ceiling, hasCeiling, thinking)
 	if err != nil {
 		return nil, err
+	}
+	if !knobs.relaxed.has(relaxReasoning) {
+		wire.Reasoning = reasoningFor(sentEffort, thinking)
 	}
 	if hasCeiling {
 		if needsMaxCompletionTokens(model) && isVouchedRewriteEndpoint(c.config.BaseURL) {

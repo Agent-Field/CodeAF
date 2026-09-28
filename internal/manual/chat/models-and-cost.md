@@ -1463,6 +1463,10 @@ answer: it cannot think harder than its own ceiling.
   remembered, so it costs one rejected request for that model and never a failed reply.
 - A model whose catalog row says it takes no reasoning knob at all is sent nothing about
   thinking.
+- On a small context window the budget shrinks to the room the conversation leaves beside
+  an answer. When less than 1,024 tokens of thinking would fit, the budget is dropped and
+  the rung travels as `high`, so `xhigh` on a 32,000-token window is never refused for the
+  size of its own thinking.
 
 These rungs are not the same notation as a thinking level written onto a pin
 (`moonshotai/kimi-k3:high`), which still takes only `low`, `medium` and `high`.
@@ -2660,7 +2664,9 @@ The model catalog is the starting window. Before sending a conversation request,
 checks the encoded messages, tool schemas and replayed reasoning, the output allowance
 including thinking, and a safety margin. It uses the smallest known context window among
 endpoints the request can reach. A strict provider pin excludes other endpoints; an
-advisory order does not.
+advisory order does not. A request that carries tools cannot reach an endpoint that takes
+none, so those endpoints' windows are not counted: deepseek-v3.2's two 32,768-token
+endpoints take no tools, and a conversation with tools is measured against the others.
 
 An endpoint's explicit total limit is remembered by base URL, model and provider in
 `model-quirks.json`. A rejected prompt's length is **not** a total context limit. Old
@@ -2668,13 +2674,15 @@ model-wide `served_window` guesses are no longer used to size requests.
 
 When no output cap was requested, the total output allowance is the smaller of the answer
 room setting and a quarter of the effective window. It may shrink to fit, while normally
-keeping at least 512 output tokens (an eighth of a very small window). Explicit thinking
-budgets retain room for an answer. The safety margin is 5% of the window, bounded between
+keeping at least 512 output tokens (an eighth of a very small window). A thinking budget
+shrinks to fit beside room for an answer, and is dropped below 1,024 tokens, so thinking
+alone never makes a request too long. The safety margin is 5% of the window, bounded between
 512 and 8,192 tokens. These are estimates, not a provider tokenizer.
 
 If the request still cannot fit, it is shortened before sending. If protected content
-cannot fit either, codeaf stops locally with `context needs shortening before sending` and
-suggests compaction or a larger-context model. This guard stays on with `--no-compact`.
+cannot fit either, codeaf stops locally with `context needs shortening before sending`,
+naming the input, the short answer it kept room for and the safety margin, and suggests
+compaction or a larger-context model. This guard stays on with `--no-compact`.
 The status line still shows the catalog window; an endpoint may have a smaller limit.
 
 ## A task or a worker on another model gets that model's window

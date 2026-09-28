@@ -73,7 +73,16 @@ func storeContextLimit(limit ContextLimit) bool {
 // servingWindow takes the smallest known window among endpoints this request
 // can reach. A strict pin excludes other endpoints; an advisory order does not.
 // This is a read of the existing sheet and memo, with no network work.
-func (c *Client) servingWindow(model string, prefs *providerPrefs, claimed int) int {
+//
+// AN ENDPOINT THAT TAKES NO TOOLS IS NOT ONE A REQUEST CARRYING TOOLS CAN
+// REACH. Every request says `require_parameters`, which makes the tool list a
+// hard filter at the router, and without it the router still routes tools to
+// the endpoints that take them first. Counting the others shrank the window to
+// theirs: on 2026-09-28 deepseek-v3.2 had two 32k endpoints that take no tools
+// beside eleven of 131k and more, and a first message was refused as too long
+// for a window it could never have been sent to. A wrong guess here costs one
+// real refusal, whose stated limit the memo below then keeps.
+func (c *Client) servingWindow(model string, prefs *providerPrefs, claimed int, carriesTools bool) int {
 	window := claimed
 	take := func(tokens int) {
 		if tokens > 0 && (window <= 0 || tokens < window) {
@@ -88,7 +97,7 @@ func (c *Client) servingWindow(model string, prefs *providerPrefs, claimed int) 
 	}
 	if !c.config.Direct && c.baseServesLanes() {
 		for _, row := range lanes.Default().Sheet().Rows(laneModel(model)) {
-			if accepts(row.ID.Lane) {
+			if accepts(row.ID.Lane) && (!carriesTools || row.Facts.Tools) {
 				take(row.Facts.Context)
 			}
 		}
@@ -121,19 +130,34 @@ func storedContextLimits(base, model string) []ContextLimit {
 // small-window conversations fail even when a substantial answer still fit.
 const minimumContextAnswer = 512
 
+// minimumContextThinking is the smallest thinking budget worth sending. Below
+// it the budget is dropped and the effort travels as its word, which lets the
+// endpoint size the pass inside the output ceiling instead; 1,024 is also the
+// smallest budget Anthropic's endpoints accept.
+const minimumContextThinking = 1024
+
 // ContextSafetyTokens leaves room for tokenizer and chat-template differences.
 // It grows with small windows and is bounded on million-token models.
 func ContextSafetyTokens(window int) int { return min(8192, max(512, window/20)) }
 
 // budgetWire checks the encoded input and sizes a TOTAL output allowance,
 // including thinking. It never lets an omitted max_tokens delegate that size
-// to a provider default which may not fit behind the prompt.
-func (c *Client) budgetWire(request *ai.Request, knobs callKnobs, messages, tools []json.RawMessage, prefs *providerPrefs, ceiling int, hasCeiling bool) (int, bool, error) {
+// to a provider default which may not fit behind the prompt. It returns the
+// thinking budget that fits beside the answer, which is what the request must
+// then carry.
+//
+// THE THINKING BUDGET BENDS TO THE WINDOW; IT NEVER REFUSES A REQUEST. The
+// xhigh rung asks for 32,000 tokens of thinking, sized for a 200k window, and
+// reserving all of it made a first message on a 32k window "too long" with
+// nothing in the conversation to compact (2026-09-28). So the budget shrinks
+// to the room the prompt leaves, and a request is refused only when the prompt
+// does not leave room for a short answer — the one case compaction can fix.
+func (c *Client) budgetWire(request *ai.Request, knobs callKnobs, messages, tools []json.RawMessage, prefs *providerPrefs, ceiling int, hasCeiling bool, thinking int) (int, bool, int, error) {
 	if knobs.contextBudget.Window <= 0 {
-		return ceiling, hasCeiling, nil
+		return ceiling, hasCeiling, thinking, nil
 	}
 	model := c.modelFor(request)
-	window := c.servingWindow(model, prefs, knobs.contextBudget.Window)
+	window := c.servingWindow(model, prefs, knobs.contextBudget.Window, len(tools) > 0)
 	weight := 0
 	for _, message := range messages {
 		weight += len(message)
@@ -157,21 +181,27 @@ func (c *Client) budgetWire(request *ai.Request, knobs callKnobs, messages, tool
 			ceiling = window / 4
 		}
 	}
+	room := window - ContextSafetyTokens(window) - prompt
 	// A useful answer still needs room after thinking. An explicit tiny answer
 	// is allowed, but an ordinary turn cannot be squeezed to a single token.
 	floor := min(ceiling, min(minimumContextAnswer, max(1, window/8)))
-	if !knobs.relaxed.has(relaxReasoning) {
-		if thinking := c.resolveReasoningBudget(model, knobs.effort); thinking > 0 {
-			floor = max(floor, thinking+min(1024, max(1, window/16)))
+	if thinking > 0 {
+		answer := min(1024, max(1, window/16))
+		if thinking > room-answer {
+			thinking = room - answer
+		}
+		if thinking < minimumContextThinking {
+			thinking = 0
+		} else {
+			floor = max(floor, thinking+answer)
 		}
 	}
-	room := window - ContextSafetyTokens(window) - prompt
 	if room < floor {
-		return 0, false, &APIError{Status: http.StatusBadRequest, Code: overflowCode, Overflow: true, Local: true,
+		return 0, false, 0, &APIError{Status: http.StatusBadRequest, Code: overflowCode, Overflow: true, Local: true,
 			ContextLimit: window, InputTokens: prompt, OutputTokens: floor,
-			Message: fmt.Sprintf("context needs shortening before sending: about %d input tokens plus %d output tokens and %d safety tokens exceed the %d-token window; compact the conversation or choose a larger-context model", prompt, floor, ContextSafetyTokens(window), window)}
+			Message: fmt.Sprintf("context needs shortening before sending: about %d input tokens plus a %d-token answer and %d safety tokens exceed the %d-token window; compact the conversation or choose a larger-context model", prompt, floor, ContextSafetyTokens(window), window)}
 	}
-	return min(max(ceiling, floor), room), true, nil
+	return min(max(ceiling, floor), room), true, thinking, nil
 }
 
 var contextLimitPatterns = []*regexp.Regexp{

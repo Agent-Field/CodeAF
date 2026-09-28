@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/lane/lanestub"
 )
 
 func TestContextBudgetReadsTheReportedTotalNotThePrompt(t *testing.T) {
@@ -80,11 +82,11 @@ func TestContextBudgetFitsInputAndOutputAndIgnoresOldModelMemo(t *testing.T) {
 	}
 	// A pinned different endpoint and a different account do not inherit this
 	// endpoint's refusal. An advisory order may still land on the smaller one.
-	if got := client.servingWindow(model, &providerPrefs{Only: []string{"Other"}}, 131072); got != 131072 {
+	if got := client.servingWindow(model, &providerPrefs{Only: []string{"Other"}}, 131072, false); got != 131072 {
 		t.Fatalf("other endpoint got %d", got)
 	}
 	other, _ := NewClient(Config{BaseURL: "http://another.test", Model: model, Direct: true})
-	if got := other.servingWindow(model, nil, 131072); got != 131072 {
+	if got := other.servingWindow(model, nil, 131072, false); got != 131072 {
 		t.Fatalf("other account got %d", got)
 	}
 	quirks.settle()
@@ -155,5 +157,95 @@ func TestContextBudgetStillRequiresUsefulAnswerRoom(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// THE THINKING BUDGET BENDS TO THE WINDOW. The xhigh rung asks for 32,000
+// tokens of thinking; on a 32k window that alone is larger than the window, and
+// reserving it refused a first message with nothing to compact (2026-09-28).
+// The budget now shrinks to what the prompt leaves, the output ceiling still
+// holds it and an answer, and the whole request fits.
+func TestAThinkingBudgetShrinksToTheWindowInsteadOfRefusing(t *testing.T) {
+	client, _ := NewClient(Config{BaseURL: "http://budget.test", Model: "budget/thinks", Direct: true,
+		SupportsParameter: func(string, string) (bool, bool) { return true, true }})
+	const window = 32768
+	request := &ai.Request{Model: "budget/thinks", Messages: userMessages(strings.Repeat("x", 19370*4))}
+	knobs := callKnobs{
+		contextBudget: ContextBudget{Window: window, Reserve: 8192},
+		effort:        effortRequest{effort: EffortHigh, budget: xhighReasoningTokens, explicit: true},
+	}
+	body, err := client.encodeRequest(request, knobs)
+	if err != nil {
+		t.Fatalf("a first message on a 32k window was refused: %v", err)
+	}
+	var wire struct {
+		MaxTokens int `json:"max_tokens"`
+		Reasoning struct {
+			MaxTokens int `json:"max_tokens"`
+		} `json:"reasoning"`
+	}
+	if err = json.Unmarshal(body, &wire); err != nil {
+		t.Fatal(err)
+	}
+	thinking := wire.Reasoning.MaxTokens
+	if thinking < minimumContextThinking || thinking >= xhighReasoningTokens {
+		t.Fatalf("thinking budget %d, want it shrunk below %d and kept above %d", thinking, xhighReasoningTokens, minimumContextThinking)
+	}
+	if wire.MaxTokens <= thinking {
+		t.Fatalf("output ceiling %d leaves no answer after %d of thinking", wire.MaxTokens, thinking)
+	}
+	if 19370+wire.MaxTokens+ContextSafetyTokens(window) > window {
+		t.Fatalf("output ceiling %d does not fit behind the prompt", wire.MaxTokens)
+	}
+
+	// With too little room for a budget worth sending, the budget is dropped
+	// and the effort travels as its word, still under a ceiling that fits.
+	request.Messages = userMessages(strings.Repeat("x", 29500*4))
+	body, err = client.encodeRequest(request, knobs)
+	if err != nil {
+		t.Fatalf("a prompt with room for a short answer was refused: %v", err)
+	}
+	var word struct {
+		MaxTokens int `json:"max_tokens"`
+		Reasoning struct {
+			Effort    string `json:"effort"`
+			MaxTokens int    `json:"max_tokens"`
+		} `json:"reasoning"`
+	}
+	if err = json.Unmarshal(body, &word); err != nil {
+		t.Fatal(err)
+	}
+	if word.Reasoning.MaxTokens != 0 || word.Reasoning.Effort != string(EffortHigh) {
+		t.Fatalf("reasoning = %+v, want the word without a budget", word.Reasoning)
+	}
+	if 29500+word.MaxTokens+ContextSafetyTokens(window) > window {
+		t.Fatalf("output ceiling %d does not fit behind the prompt", word.MaxTokens)
+	}
+}
+
+// A REQUEST CARRYING TOOLS IS MEASURED AGAINST THE ENDPOINTS THAT TAKE THEM.
+// deepseek-v3.2's sheet on 2026-09-28 had two 32k endpoints that take no
+// tools; counting them made every tool-carrying request fit a 32k window that
+// no such request could ever be sent to.
+func TestTheWindowIgnoresEndpointsThatCannotTakeTheRequestsTools(t *testing.T) {
+	forgetLanes(t)
+	const model = "openrouter/windows"
+	server := lanestub.New(model,
+		lanestub.Lane{Name: "wide", Profile: lanestub.Profile{TTFT: 20 * time.Millisecond, Rate: 400, Tokens: 8, Tools: true, Context: 131072}},
+		lanestub.Lane{Name: "narrow", Profile: lanestub.Profile{TTFT: 20 * time.Millisecond, Rate: 400, Tokens: 8, Tools: false, Context: 32768}},
+	)
+	t.Cleanup(server.Close)
+	client, err := NewClient(Config{APIKey: "test-key", BaseURL: server.URL(), Model: model})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lanes.Default().Sheet().Refresh(context.Background(), model); err != nil {
+		t.Fatal(err)
+	}
+	if got := client.servingWindow(model, nil, 163840, true); got != 131072 {
+		t.Fatalf("a request carrying tools measured against %d, want the tool endpoint's 131072", got)
+	}
+	if got := client.servingWindow(model, nil, 163840, false); got != 32768 {
+		t.Fatalf("a request without tools measured against %d, want the smallest endpoint's 32768", got)
 	}
 }
