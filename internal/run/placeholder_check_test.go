@@ -66,7 +66,7 @@ func TestAFanOutPlannerIsSentBackFromAPlaceholderCheckAndNoFixIsSpawned(t *testi
 	}}
 	factory := func(task plandb.Task) run.Worker {
 		if task.ID == store.RootID() {
-			return run.NewBashWorker(store, workspace, "test/model", planner)
+			return run.NewBashWorker(store, workspace, "test/model", "", planner)
 		}
 		if task.Role == plandb.RoleCheck {
 			return funcWorker(func(_ context.Context, check plandb.Task) (run.Report, error) {
