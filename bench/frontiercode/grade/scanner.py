@@ -48,6 +48,7 @@ import sys
 MODEL_PLANE_HOSTS = {
     "openrouter.ai", "api.openrouter.ai", "models.dev",
     "guard",  # the credential guard container, by its compose name
+    "codeaf.agentfield.ai",  # the harness's own attribution endpoint
 }
 
 # Hosts that exist to serve repository content; a connection to one is a leak
