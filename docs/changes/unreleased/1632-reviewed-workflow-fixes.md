@@ -27,3 +27,8 @@ crew pins, fallback history, and spending limits after a restart. Records withou
 complete recovery policy or with unresolved model calls remain interrupted. A
 reopened conversation replaces stale connection streams when its owner changes,
 so new replies and replay cursors belong to the current session.
+
+New-member Traffic roots now open their accepted start call, including calls
+inside collapsed work. New start receipts carry the root message number; older
+receipts use only an unambiguous current-team match. Delivered member briefs
+remain navigable from the same root.
