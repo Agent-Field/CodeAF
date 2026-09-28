@@ -189,6 +189,28 @@ def phase_a(task_dir, repo, base, out_dir):
         # The agent's own diff, captured BEFORE any reference overlay is
         # applied, so the record carries exactly what the agent changed.
         sh(f"git diff '{base}' --binary > /logs/grade/agent.diff", cwd=repo)
+
+        # The judge's input is captured NOW, while the tree is exactly the
+        # agent's: the reverse-classical criterion reverts src/ later, and
+        # evidence gathered after that would show the base tree and judge
+        # nothing. (This really happened: the first gold control graded its
+        # prompt criteria against an unmodified tree.)
+        judge_input = {"base": base, "criteria": {}, "test_files": {}, "overlay": ""}
+        for c in rubric["criteria"]:
+            if c["kind"] == "prompt":
+                paths = (c.get("prompt") or {}).get("paths", [])
+                judge_input["criteria"][c["id"]] = {
+                    "question": c["prompt"]["question"], "paths": paths,
+                    "hunks": diff_hunks(repo, paths, base),
+                    "mechanical": mechanical_evidence(repo, paths),
+                }
+            elif c["kind"] == "classical":
+                overlay = c["classical"]["overlay"]
+                judge_input["overlay"] = pathlib.Path(overlay).read_text(errors="replace")
+                for path in re.findall(r"^diff --git a/(\S+) b/", judge_input["overlay"], re.M):
+                    code, content = sh(f"git show '{base}:{path}'", cwd=repo)
+                    judge_input["test_files"][path] = content if code == 0 else f"[missing at base: {path}]"
+
         for c in rubric["criteria"]:
             kind, cid = c["kind"], c["id"]
             spec = c.get(kind) or c.get(kind.replace("-", "_")) or {}
