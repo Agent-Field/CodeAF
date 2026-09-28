@@ -181,10 +181,15 @@ func (q *quirksStore) load(path string) {
 	if q.contextLimits == nil {
 		q.contextLimits = make(map[string]ContextLimit)
 	}
+	clamped := false
 	for key, limit := range wire.ContextLimits {
 		// Older builds wrote no date. Such a limit has no evidence that the
 		// endpoint still has that window, so a restart lets it lapse.
 		if limit.Tokens > 0 && !limit.At.IsZero() && limit.At.After(time.Now().Add(-servingFactHold)) {
+			if now := time.Now(); limit.At.After(now) {
+				limit.At = now
+				clamped = true
+			}
 			q.contextLimits[key] = limit
 		}
 	}
@@ -207,6 +212,11 @@ func (q *quirksStore) load(path string) {
 				q.servedWindow[name] = tokens
 			}
 		}
+	}
+	if clamped {
+		// A future date must be repaired on disk too, or each restart gives
+		// that stale refusal a fresh hold again.
+		q.persist()
 	}
 }
 

@@ -57,17 +57,18 @@ func (c *Client) rememberContextLimit(model string, failure *APIError) {
 	limit := ContextLimit{Base: c.config.BaseURL, Model: normalizeModel(model), Provider: failure.Provider, Tokens: failure.ContextLimit}
 	changed := storeContextLimit(limit)
 	failure.BudgetChanged = changed
-	if changed {
-		quirks.persist()
-	}
+	// The same limit is still fresh evidence; its new date must survive restart
+	// without treating it as a new budget for recovery.
+	quirks.persist()
 }
 
 // storeContextLimit records one endpoint's stated window and reports whether
 // it is news. The memo's lock is released by a defer, so a panic inside cannot
 // leave every later request waiting on it.
 func storeContextLimit(limit ContextLimit) bool {
-	if limit.At.IsZero() {
-		limit.At = time.Now()
+	now := time.Now()
+	if limit.At.IsZero() || limit.At.After(now) {
+		limit.At = now
 	}
 	key := contextLimitKey(limit.Base, limit.Model, limit.Provider)
 	quirks.mutex.Lock()
@@ -88,7 +89,8 @@ func storeContextLimit(limit ContextLimit) bool {
 // sends `require_parameters`, but default Simple routing sends no provider
 // object and the router can still send tools to a tool-less endpoint. A relayed
 // overflow from that endpoint gets one resend before the caller compacts; its
-// smaller learned limit must not cap later tool requests.
+// smaller learned limit does not cap later tool requests unless the person
+// pinned that endpoint.
 func (c *Client) servingWindow(model string, prefs *providerPrefs, claimed int, carriesTools bool) int {
 	window, _ := c.servingWindowStated(model, prefs, claimed, carriesTools)
 	return window
@@ -123,7 +125,7 @@ func (c *Client) servingWindowStated(model string, prefs *providerPrefs, claimed
 		}
 	}
 	for _, limit := range storedContextLimits(c.config.BaseURL, model) {
-		if takesTools, known := toolSupport[strings.ToLower(strings.TrimSpace(limit.Provider))]; accepts(limit.Provider) && (!carriesTools || !known || takesTools) {
+		if takesTools, known := toolSupport[strings.ToLower(strings.TrimSpace(limit.Provider))]; accepts(limit.Provider) && (!carriesTools || !known || takesTools || prefs != nil && len(prefs.Only) == 1 && namesEndpoint(prefs.Only, limit.Provider)) {
 			take(limit.Tokens, true)
 		}
 	}
@@ -228,11 +230,7 @@ func (c *Client) budgetWire(request *ai.Request, knobs callKnobs, messages, tool
 	// budget that needs room above it, a window too small for the ordinary
 	// answer, or a window an endpoint stated when it refused a request whose
 	// default answer did not fit behind the prompt.
-	naturalAnswer := knobs.contextBudget.Reserve
-	if naturalAnswer <= 0 {
-		naturalAnswer = window / 4
-	}
-	return min(max(ceiling, floor), room), hasCeiling || thinking > 0 || stated || room < naturalAnswer, thinking, nil
+	return min(max(ceiling, floor), room), hasCeiling || thinking > 0 || stated || room < ceiling, thinking, nil
 }
 
 var contextLimitPatterns = []*regexp.Regexp{

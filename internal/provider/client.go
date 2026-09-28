@@ -646,8 +646,18 @@ func (c *Client) sendRecovered(ctx context.Context, request *ai.Request, knobs c
 	if response != nil && endpointRefusalStatus(response.StatusCode) && knobs.contextBudget.Window > 0 && !c.config.Direct && c.baseServesLanes() {
 		peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
 		if readErr == nil {
+			prefs := refusedWirePreferences(response)
+			choice, chosen := laneChoiceFromContext(ctx)
 			if failure, ok := RefusalFrom(apiError(response.StatusCode, peek)); ok && failure.Overflow && failure.FromUpstream() &&
-				failure.ContextLimit > 0 && failure.ContextLimit < c.servingWindow(c.modelFor(request), refusedWirePreferences(response), knobs.contextBudget.Window, len(request.Tools) > 0) {
+				failure.ContextLimit > 0 && failure.ContextLimit < c.servingWindow(c.modelFor(request), prefs, knobs.contextBudget.Window, len(request.Tools) > 0) {
+				if prefs != nil && len(prefs.Only) == 1 || chosen && choice.Pinned && len(choice.Only) == 1 {
+					c.rememberContextLimit(c.modelFor(request), failure)
+					response.Body = rewound(peek, response.Body)
+					return response, nil
+				}
+				c.record(recordFacts{ctx: ctx, request: request, knobs: knobs, stream: stream,
+					attempt: c.attemptsSoFar(knobs), began: began, status: response.StatusCode,
+					err: apiError(response.StatusCode, peek), responseBody: peek})
 				response.Body.Close()
 				retried, retryErr := c.sendRepaired(ctx, request, knobs, stream)
 				c.rememberContextLimit(c.modelFor(request), failure)
