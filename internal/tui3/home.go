@@ -1720,6 +1720,12 @@ func (h *homeView) buildWorld() {
 	var found []homeHit
 	for _, project := range h.world.Projects {
 		hit := homeHit{project: project}
+		// Rank each row once; the sort must not rescan titles and task outcomes.
+		type rankedRow struct {
+			row   session.SessionRow
+			score int
+		}
+		var ranked []rankedRow
 		for _, row := range project.Sessions {
 			// A PUT-AWAY ROW STILL COMPETES UNDER A QUERY, because a filter that
 			// hid a match would be lying about the machine — and typing its name
@@ -1730,6 +1736,7 @@ func (h *homeView) buildWorld() {
 				continue
 			}
 			hit.rows = append(hit.rows, row)
+			ranked = append(ranked, rankedRow{row, score})
 			if score > hit.score {
 				hit.score = score
 			}
@@ -1749,11 +1756,10 @@ func (h *homeView) buildWorld() {
 			// which is what the screen is for when nobody is searching (session's
 			// sortSessions).
 			rows := hit.rows
-			sort.SliceStable(rows, func(i, j int) bool {
-				a, _ := homeRank(rows[i], project, query, h.world.Read)
-				b, _ := homeRank(rows[j], project, query, h.world.Read)
-				return a > b
-			})
+			sort.SliceStable(ranked, func(i, j int) bool { return ranked[i].score > ranked[j].score })
+			for i := range ranked {
+				rows[i] = ranked[i].row
+			}
 			// SORTED BEST-FIRST AND THEN TURNED OVER, rather than sorted worst-first
 			// in one pass. The two are not the same list: a stable sort leaves rows
 			// of EQUAL score in the world's own order, so sorting ascending would
@@ -3326,6 +3332,9 @@ func (a *app) homeOpenLine(line homeLine) tea.Cmd {
 // an engine. The refusal is read rather than guessed at, because between the
 // question and the open a window can appear.
 func (a *app) homeHeldEnter(line homeLine) tea.Cmd {
+	if !a.shared && a.engineHolds(homeWhere(line)) {
+		return a.homeOpenLater(line, true)
+	}
 	if !a.engineHolds(homeWhere(line)) {
 		return a.homeTakeoverEnter(line)
 	}
@@ -3359,6 +3368,9 @@ func (a *app) engineHolds(workspace string) bool {
 // spellings of "open the row" is two answers to whether a folder that vanished
 // is checked, and the second road is the one where the most time has passed.
 func (a *app) homeOpenDoor(line homeLine) tea.Cmd {
+	if !a.shared {
+		return a.homeOpenLater(line, false)
+	}
 	cmd, refusal := a.homeWalkIn(line)
 	if refusal != "" {
 		// HOME TAKES THE REFUSAL ITSELF rather than letting it be said in the
@@ -3563,7 +3575,17 @@ func (a *app) homeStartInProject(project string) tea.Cmd {
 	return a.homeStartWithProject("", project)
 }
 
+// homeStartWithProject leaves the draft visible while the next conversation
+// opens. The shared legacy connection still swaps in place and keeps its
+// existing transition semantics.
 func (a *app) homeStartWithProject(text, place string) tea.Cmd {
+	if a.shared {
+		return a.homeStartWithProjectNow(text, place)
+	}
+	return a.homeStartLater(text, place)
+}
+
+func (a *app) homeStartWithProjectNow(text, place string) tea.Cmd {
 	if (strings.TrimSpace(text) != "" || place != "" || len(a.chips) > 0) && a.updateStopsTurn() {
 		return nil
 	}

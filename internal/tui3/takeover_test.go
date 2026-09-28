@@ -335,7 +335,7 @@ func TestTheRowOpensTheMomentTheOtherWindowLetsGo(t *testing.T) {
 	}
 
 	release()
-	a.takeoverTick(takeoverTickMsg{gen: a.takeover.gen})
+	spend(t, a, a.takeoverTick(takeoverTickMsg{gen: a.takeover.gen}))
 
 	if opened != 1 {
 		t.Fatalf("the freed row was opened %d times, want once", opened)
@@ -514,7 +514,7 @@ func TestAConversationThatCameFreeWhileAwayIsSaidWhenHomeComesBack(t *testing.T)
 	}
 	a.closeHome()
 	release()
-	a.takeoverTick(takeoverTickMsg{gen: a.takeover.gen})
+	spend(t, a, a.takeoverTick(takeoverTickMsg{gen: a.takeover.gen}))
 
 	if opened != 0 {
 		t.Fatal("a conversation was opened under somebody who had walked away")
@@ -1038,7 +1038,7 @@ func TestAClaimThatSucceedsLeavesNoQuestionBehind(t *testing.T) {
 	}
 
 	release()
-	a.takeoverTick(takeoverTickMsg{gen: a.takeover.gen})
+	spend(t, a, a.takeoverTick(takeoverTickMsg{gen: a.takeover.gen}))
 
 	if _, err := os.Stat(session.TakeoverPath(homeSessionDirOf(theirs))); !os.IsNotExist(err) {
 		t.Fatal("the window opened the conversation and left its own question in the folder")

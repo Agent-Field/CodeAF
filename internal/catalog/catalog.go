@@ -263,6 +263,9 @@ type Options struct {
 // the fetch as a future instead: the value is handed out immediately and the
 // first capability question waits, if anything still has to wait at all.
 type Catalog struct {
+	// preview is the last cached listing, or the default service fallback,
+	// used only by nonblocking capability snapshots while discovery runs.
+	preview *rows
 	ready   *rows
 	resolve func() *rows
 	// cancel and warmDone give a lazy catalog ownership of its background
@@ -392,8 +395,18 @@ func loadOrFallback(ctx context.Context, options Options) (resolved *rows, err e
 // the surface is up, so the goroutine warms the value while the caller carries
 // on, and only a question that genuinely arrives first ever blocks.
 func LoadLazy(ctx context.Context, options Options) *Catalog {
+	// A first frame may use yesterday's known capabilities without waiting
+	// for today's listing. ModelsNow keeps its existing fresh-only contract.
+	base, source := normalizeBase(options.BaseURL), strings.TrimSpace(options.Source)
+	var preview *rows
+	if cached, ok := readCache(cachePath(options.Dir, source, base), source, base); ok {
+		preview = newRowsAt(cached.Models, cached.FetchedAt)
+	} else if source == "" && base == DefaultBaseURL {
+		preview = newRows(hardcodedFallbacks())
+	}
 	warmCtx, cancel := context.WithCancel(ctx)
 	resolved := &Catalog{
+		preview:  preview,
 		warmed:   make(chan struct{}),
 		cancel:   cancel,
 		warmDone: make(chan struct{}),
@@ -609,6 +622,20 @@ func (c *Catalog) ModelsNow() []Model {
 		models = append(models, cloneModel(model))
 	}
 	return models
+}
+
+// SnapshotNow returns a catalog whose capability questions never start or
+// join a fetch. Fresh rows win; while warming, only this service's cached rows
+// or its permitted built-in fallback are used. An unknown custom service stays
+// empty rather than inheriting another provider's capabilities.
+func (c *Catalog) SnapshotNow() *Catalog {
+	if c == nil {
+		return &Catalog{}
+	}
+	if resolved := c.rowsNow(); resolved != nil {
+		return &Catalog{ready: resolved}
+	}
+	return &Catalog{ready: c.preview}
 }
 
 // ModelsWithInput returns a stable copy of models advertising modality.

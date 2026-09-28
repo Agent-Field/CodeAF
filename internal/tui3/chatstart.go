@@ -435,22 +435,13 @@ func (a *app) startChatEnter(marked bool) tea.Cmd {
 		return nil
 	}
 	page := a.liveComposer()
-	cmd, started := a.renewRefusing(a.startSay)
-	if !started {
-		// The door refused and said so on the page. Nothing was put down —
-		// [app.renew] asks before it detaches — so the words are still in the box,
-		// the conversation behind is still running, and the person can press enter
-		// again or escape back to it.
-		return nil
-	}
-	a.startBack = startBack{}
-	a.startKept = composerState{}
-	// The surface has had its greeting: this page WAS one, and a conversation
-	// opening under it must not raise a second.
-	a.welcome = welcome{spent: true}
-	a.putComposer(page)
-	send := a.enterLine(marked)
-	return tea.Batch(cmd, send)
+	return a.renewLater(a.startSay, func() tea.Cmd {
+		a.startBack = startBack{}
+		a.startKept = composerState{}
+		a.welcome = welcome{spent: true}
+		a.putComposer(page)
+		return a.enterLine(marked)
+	})
 }
 
 // startChatKey is the page's claim on the keyboard, and it is four keys wide.

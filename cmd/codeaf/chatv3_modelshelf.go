@@ -183,8 +183,8 @@ func (s *v3ModelShelf) sourcesNow() modelsource.Set {
 // v3WindowFor is the session's answer to "how big is this model": its own
 // service's rows first ([v3ModelShelf.contextWindow]), and the catalog the
 // conversation started on when those cannot say — which is the answer this door
-// gave before, kept so a model the shelf has no row for yet answers exactly as
-// it always did.
+// gave before. Agent construction asks this too, so its fallback uses known
+// capabilities without waiting for discovery. A cold unknown stays unknown.
 func v3WindowFor(shelf *v3ModelShelf, launch *catalog.Catalog) func(string) int {
 	return func(model string) int {
 		if window := shelf.contextWindow(model); window > 0 {
@@ -193,7 +193,7 @@ func v3WindowFor(shelf *v3ModelShelf, launch *catalog.Catalog) func(string) int 
 		if launch == nil {
 			return 0
 		}
-		return launch.ContextLength(model)
+		return launch.SnapshotNow().ContextLength(model)
 	}
 }
 

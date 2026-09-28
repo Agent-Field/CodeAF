@@ -695,7 +695,7 @@ func TestEnterStillStartsAChatWithMatchesOnScreen(t *testing.T) {
 	if !strings.Contains(homeText(a), "Pricing Research") {
 		t.Fatal("the query matched nothing, so this proves nothing")
 	}
-	runCmd(a.homeEnter())
+	spend(t, a, a.homeEnter())
 	if a.at(pageHome) {
 		t.Fatal("enter on the action row left home open")
 	}
@@ -1504,7 +1504,7 @@ func TestHomeOpensAnotherProjectAndTheOneYouLeaveGoesOnRunning(t *testing.T) {
 	openHomeFixtureTabs(a)
 	a.openHome()
 	a.home.point(other)
-	a.homeEnter()
+	spend(t, a, a.homeEnter())
 
 	if a.at(pageHome) {
 		t.Fatalf("opening another project left home up saying %q", a.home.msg)
@@ -1577,7 +1577,7 @@ func TestHomeRefusesARowWhoseFolderIsGone(t *testing.T) {
 	openHomeFixtureTabs(a)
 	a.openHome()
 	a.home.point(gone)
-	a.homeEnter()
+	spend(t, a, a.homeEnter())
 
 	if !a.at(pageHome) {
 		t.Fatal("a refused open closed home")
@@ -1781,7 +1781,7 @@ func TestHomeTypingOpensItsOwnConversationEveryTime(t *testing.T) {
 		for _, r := range text {
 			a.homeKey(key(string(r)))
 		}
-		runCmd(a.homeEnter())
+		spend(t, a, a.homeEnter())
 	}
 	// EVERY SENTENCE GETS ITS OWN CONVERSATION, twenty of them. The first
 	// replaces the fresh empty one this window opened on; every one after it is
@@ -1844,7 +1844,7 @@ func TestHomeTypingStartsANewConversationAndSendsIt(t *testing.T) {
 	// possibly a provider — so it is run here the way the loop would run it.
 	// [runCmd] walks into the batch rather than stopping at the message that
 	// stands for one.
-	runCmd(cmd)
+	spend(t, a, cmd)
 	if a.at(pageHome) {
 		t.Fatal("starting a conversation left home on the screen")
 	}

@@ -406,7 +406,7 @@ func TestNewAtHomeSaysItWasTheConversationBehindHome(t *testing.T) {
 		return Conversation{Agent: next, SessionFile: "/tmp/alpha/next/transcript.jsonl"}, nil
 	}
 	typeHome(a, "/new")
-	runCmd(a.key(key("enter")))
+	spend(t, a, a.key(key("enter")))
 
 	if !a.at(pageHome) {
 		t.Fatal("/new at home left the screen")

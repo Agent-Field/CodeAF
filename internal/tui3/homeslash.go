@@ -326,11 +326,10 @@ func (a *app) homeSlash(line string) tea.Cmd {
 		// the conversation `enter` is going to open. So the line under the box
 		// says which conversation actually changed, and the refusals travel here
 		// through the seam [app.renewRefusing] exists for.
-		renewed, started := a.renewRefusing(func(text string) { h.say(text, "") })
-		if started {
+		return a.renewLater(func(text string) { h.say(text, "") }, func() tea.Cmd {
 			h.say(homeFreshBehindWord, "")
-		}
-		return renewed
+			return nil
+		})
 
 	case fateNeedsChat:
 		// THE SAME DOOR `enter` TAKES, and it has to be: `/compact` typed at home
