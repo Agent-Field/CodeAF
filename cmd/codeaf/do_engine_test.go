@@ -376,16 +376,10 @@ func TestDoOnTheRunEngineSeatsEveryLaunchOnTheDoorsModels(t *testing.T) {
 	if err := os.MkdirAll(profileDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := json.Marshal(map[string]string{
+	beltProfileModels(t, profileDir, map[string]string{
 		config.KeyTierWorkerModel:     "vendor/profile-worker",
 		config.KeyTierMastermindModel: "vendor/profile-thinking",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(config.BudgetConfigPath(profileDir), rows, 0o600); err != nil {
-		t.Fatal(err)
-	}
 
 	workspace := beltRepoWorkspace(t)
 	const (
@@ -433,7 +427,7 @@ func TestDoOnTheRunEngineSeatsEveryLaunchOnTheDoorsModels(t *testing.T) {
 	}
 
 	var stdout, stderr strings.Builder
-	err = doErrand(doRequest{
+	err := doErrand(doRequest{
 		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
 		timeout: 60 * time.Second, slots: bound(1), model: workModel, planModel: planModel, checkModel: planModel,
 		stdout: &stdout, stderr: &stderr, newBeltCompleter: newBelt,
@@ -668,18 +662,12 @@ func TestDoOnTheRunEngineSeatsACheckOnTheCheckModel(t *testing.T) {
 	if err := os.MkdirAll(profileDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := json.Marshal(map[string]string{
+	beltProfileModels(t, profileDir, map[string]string{
 		config.KeyTierLowModel:        "vendor/profile-small",
 		config.KeyTierWorkerModel:     "vendor/profile-worker",
 		config.KeyTierHighModel:       "vendor/profile-careful",
 		config.KeyTierMastermindModel: "vendor/profile-thinking",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(config.BudgetConfigPath(profileDir), rows, 0o600); err != nil {
-		t.Fatal(err)
-	}
 
 	workspace := beltRepoWorkspace(t)
 	const (
@@ -722,7 +710,7 @@ func TestDoOnTheRunEngineSeatsACheckOnTheCheckModel(t *testing.T) {
 	}
 
 	var stdout, stderr strings.Builder
-	err = doErrand(doRequest{
+	err := doErrand(doRequest{
 		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
 		timeout: 60 * time.Second, slots: bound(1),
 		model: workModel, planModel: planModel, checkModel: checkModel,
@@ -767,17 +755,11 @@ func TestDoOnTheRunEngineSeatsAnUnpinnedCheckOnTheCrewsChecker(t *testing.T) {
 	if err := os.MkdirAll(profileDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := json.Marshal(map[string]string{
+	beltProfileModels(t, profileDir, map[string]string{
 		config.KeyTierWorkerModel:     "vendor/profile-worker",
 		config.KeyTierHighModel:       "vendor/profile-careful",
 		config.KeyTierMastermindModel: "vendor/profile-thinking",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(config.BudgetConfigPath(profileDir), rows, 0o600); err != nil {
-		t.Fatal(err)
-	}
 
 	workspace := beltRepoWorkspace(t)
 	// The same one-seat shape as the two tests above.
@@ -813,7 +795,7 @@ func TestDoOnTheRunEngineSeatsAnUnpinnedCheckOnTheCrewsChecker(t *testing.T) {
 	}
 
 	var stdout, stderr strings.Builder
-	err = doErrand(doRequest{
+	err := doErrand(doRequest{
 		task: "write out.txt and say what you did", workspace: workspace, asJSON: true,
 		timeout: 60 * time.Second, slots: bound(1),
 		stdout: &stdout, stderr: &stderr, newBeltCompleter: newBelt,
@@ -847,3 +829,33 @@ func TestDoOnTheRunEngineSeatsAnUnpinnedCheckOnTheCrewsChecker(t *testing.T) {
 
 // bound is a named slot count for a request, the way the flag would name one.
 func bound(n int) *int { return &n }
+
+// assertBeltMachineGateDisabled ensures model overrides retain the scripted
+// fixture's isolation from the host's real load and memory.
+func assertBeltMachineGateDisabled(t *testing.T, profile string) {
+	t.Helper()
+	settings := config.NewSettings(config.SettingsOptions{ProfileDir: profile})
+	for _, key := range []string{config.KeyTaskMaxLoad, config.KeyTaskMinFreeMB} {
+		row, ok := settings.Row(key)
+		if !ok || row.Value() != "0" {
+			t.Fatalf("model overrides lost fixture setting %s: got %q, want 0", key, row.Value())
+		}
+	}
+}
+
+// beltProfileModels changes only the model rows: replacing the profile file
+// would silently restore machine limits that beltRunEnv already disabled.
+func beltProfileModels(t *testing.T, profile string, models map[string]string) {
+	t.Helper()
+	settings := config.NewSettings(config.SettingsOptions{ProfileDir: profile})
+	for key, model := range models {
+		row, ok := settings.Row(key)
+		if !ok {
+			t.Fatalf("the %s row is absent", key)
+		}
+		if err := row.Apply(model); err != nil {
+			t.Fatalf("set %s: %v", key, err)
+		}
+	}
+	assertBeltMachineGateDisabled(t, profile)
+}
