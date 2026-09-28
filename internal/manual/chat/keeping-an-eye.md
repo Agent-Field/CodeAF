@@ -866,8 +866,8 @@ same judgement: one you started **in a temp directory**, seven days after you
 last said anything to it. Everything it holds goes with it — the transcript, and
 the `work/` workspace if it owned one. If a task of that conversation was still
 running when you last closed it, furrow is told to forget the copy of your
-folder that task was working in as well, so `furrow forks` is never left naming
-a directory that has gone. Every other conversation under
+folder that task was working in, including its timeline, before the files are
+removed. If retirement fails, the conversation and copy stay for a later retry. Every other conversation under
 `~/.codeaf/v3/projects/` stays whatever its age. If you work in a temp directory
 and want to keep what a conversation makes, anchor it with `/workspace <path>`
 or copy the files out; the starting-codeaf page has both under *I deleted my chat

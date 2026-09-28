@@ -371,6 +371,12 @@ func TestAKeptUniverseBranchIsInThePersonsOwnRepository(t *testing.T) {
 	if _, err := git(repo, "rev-parse", "--verify", "--quiet", tree.branch); err != nil {
 		t.Fatalf("%s cannot be checked out in the person's repository, and the report offers it to them", tree.branch)
 	}
+	if _, err := os.Stat(tree.dir); err != nil {
+		t.Fatalf("kept copy disappeared: %v", err)
+	}
+	if names := forkNames(t, repo); len(names) != 1 || names[0] != tree.universe {
+		t.Fatalf("kept fork lost registration: %v", names)
+	}
 	held := gitOut(t, repo, "show", "--stat", "--oneline", tree.branch)
 	if !strings.Contains(held, "half.txt") {
 		t.Fatalf("the kept branch does not hold the work:\n%s", held)
@@ -454,14 +460,8 @@ const realFurrowEnvVar = "CODEAF_FURROW_REAL"
 // THE WHOLE ROAD, AGAINST THE PROGRAM ITSELF: fork a real repository holding
 // everything git can and cannot see, work in it, and come home to a merge.
 func TestARealFurrowGroundsARepositoryTaskAndItComesHome(t *testing.T) {
-	binary := strings.TrimSpace(os.Getenv(realFurrowEnvVar))
-	if binary == "" {
-		t.Skip("set " + realFurrowEnvVar + " to a furrow binary to run this against the real program")
-	}
+	isolatedRetirementFurrow(t)
 	repo := worldGitCannotSee(t)
-	t.Setenv(furrow.BinaryEnvVar, binary)
-	furrow.Forget()
-	t.Cleanup(furrow.Forget)
 	place := Place{Dir: t.TempDir(), Workspace: repo}
 
 	tree, err := prepareTaskTree(place, repo, "aaaa3333aaaa3333", 15, "the real thing")
@@ -531,8 +531,10 @@ watch)
   echo '{"snapshot":"aaaabbbbcccc0001","workspace":"'"$repo"'"}'
   ;;
 fork-rm)
+  destination=$(sed -n 's/.*"destination":"\([^" ]*\)".*/\1/p' "$repo/.furrow/forks/$2")
+  if [ "$3" != "--keep-files" ] && [ -n "$destination" ]; then rm -rf "$destination"; fi
   rm -f "$repo/.furrow/forks/$2"
-  echo '{"dropped":"'"$2"'"}'
+  echo '{"files_removed":true}'
   ;;
 forks)
   printf '['

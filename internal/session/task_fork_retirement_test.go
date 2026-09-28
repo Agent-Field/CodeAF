@@ -82,3 +82,65 @@ func retirementFurrowRun(t *testing.T, binary, repo string, args ...string) []by
 	}
 	return out
 }
+
+// A successful merge remains successful when cleanup is unavailable. The next
+// closed-session sweep retries only the landed copy, not a task kept for review.
+func TestLandedForkRetirementRetriesFromCheckpoint(t *testing.T) {
+	installFakeFurrow(t)
+	binary := os.Getenv(furrow.BinaryEnvVar)
+	root, repo, now := t.TempDir(), dirtyRepo(t), time.Now()
+	dir, tree := newSweptUniverseSession(t, root, "aaaa5555aaaa5555", repo, now)
+	writeFile(t, filepath.Join(tree.dir, "landed.txt"), "saved work\n")
+	t.Setenv(furrow.BinaryEnvVar, filepath.Join(t.TempDir(), "missing"))
+	furrow.Forget()
+	merged, detail, _, _ := tree.comeHome("land it", []string{"landed.txt"}, gitSignature{})
+	if merged != mergeMerged || !strings.Contains(detail, "cleanup failed") {
+		t.Fatalf("landing = %s: %s", merged, detail)
+	}
+	if got := readFile(t, filepath.Join(repo, "landed.txt")); got != "saved work\n" {
+		t.Fatal(got)
+	}
+	if _, err := os.Stat(tree.dir); err != nil {
+		t.Fatalf("lost retry directory: %v", err)
+	}
+	document, ok := loadTaskCheckpoint((Place{Dir: dir}).Tasks())
+	if !ok {
+		t.Fatal("no checkpoint")
+	}
+	document.Nodes[0].Merge = mergeMerged
+	document.Nodes[0].State = TaskDone
+	writeCheckpoint(t, (Place{Dir: dir}).Tasks(), document)
+	t.Setenv(furrow.BinaryEnvVar, binary)
+	furrow.Forget()
+	if !retireCheckpointForks(context.Background(), dir, true, func(line string) { t.Log(line) }) {
+		t.Fatal("retry failed")
+	}
+	if _, err := os.Stat(tree.dir); !os.IsNotExist(err) {
+		t.Fatalf("landed copy remains: %v", err)
+	}
+	if !retireCheckpointForks(context.Background(), dir, true, func(line string) { t.Log(line) }) {
+		t.Fatal("repeat retry failed")
+	}
+}
+
+func TestCheckpointRetirementLeavesUnmergedAndForeignCopies(t *testing.T) {
+	for _, mode := range []string{"kept", "foreign"} {
+		t.Run(mode, func(t *testing.T) {
+			installFakeFurrow(t)
+			dir, tree := newSweptUniverseSession(t, t.TempDir(), "bbbb6666bbbb6666", dirtyRepo(t), time.Now())
+			document, _ := loadTaskCheckpoint((Place{Dir: dir}).Tasks())
+			if mode == "foreign" {
+				document.Nodes[0].Merge = mergeMerged
+				document.Nodes[0].Worktree = t.TempDir()
+			}
+			writeCheckpoint(t, (Place{Dir: dir}).Tasks(), document)
+			retireCheckpointForks(context.Background(), dir, true, func(line string) { t.Log(line) })
+			if _, err := os.Stat(tree.dir); err != nil {
+				t.Fatalf("protected copy disappeared: %v", err)
+			}
+			if len(forkNames(t, tree.ground)) != 1 {
+				t.Fatal("protected fork was retired")
+			}
+		})
+	}
+}

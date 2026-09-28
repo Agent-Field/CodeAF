@@ -578,10 +578,9 @@ func universeReaches(order groundOrder) bool {
 // anything was written in it.
 func universeBranch(ctx context.Context, workspace *furrow.Workspace, order groundOrder, fork furrow.Fork) (taskTree, error) {
 	drop := func(err error) (taskTree, error) {
-		// A record furrow will not let go of is the same one line in a listing a
-		// landing's is: there is nothing here to report it to.
-		_ = workspace.DropFork(ctx, fork.Name)
-		_ = os.RemoveAll(order.dir)
+		if cleanupErr := workspace.DropFork(ctx, fork.Name, order.dir); cleanupErr != nil {
+			return taskTree{}, errors.Join(err, cleanupErr)
+		}
 		return taskTree{}, err
 	}
 	// AND THE FORK IS ASKED WHOSE `.git` IT IS BEFORE ANYTHING IS WRITTEN IN IT.
@@ -1137,23 +1136,16 @@ func (t taskTree) carryBranchHomeLocked() (string, error) {
 	return git(t.root, "fetch", "--no-tags", t.dir, t.branch+":"+t.branch)
 }
 
-// releaseLanded gives back the working copy of a node whose work is IN, and it
-// is the mirror image of [taskTree.releaseKeptLocked], which gives back the
-// working copy of one whose work is not.
-//
-// A worktree is unregistered before its directory goes, or the ground repository
-// is left pointing at a path that a later sweep may remove underneath it. A
-// universe was never registered with anybody, so the directory is simply the
-// session's own and goes with the work it carried; what furrow is told is that
-// the record may be forgotten ([taskTree.dropUniverse]).
-func (t taskTree) releaseLanded() {
+// releaseLanded retires a completed copy before giving back its directory.
+// A failed retirement preserves the files Furrow needs to remove its timeline.
+func (t taskTree) releaseLanded() error {
 	// THE SAME DOOR [taskTree.releaseKept] closes: a tree whose ground was never
 	// made has nowhere a worktree could be registered and no repository to ask,
 	// and a command with no directory runs in the process's own directory — so
 	// the removal below would take a working copy out of somebody else's
 	// checkout and the branch deletion would name a branch in it.
 	if strings.TrimSpace(t.root) == "" || strings.TrimSpace(t.dir) == "" {
-		return
+		return nil
 	}
 	// THE ROOT LOCK IS THE CALLER'S. Every road that reaches here is a landing
 	// that already holds it ([taskTree.carryBranchHome]'s span, task_run.go),
@@ -1161,7 +1153,9 @@ func (t taskTree) releaseLanded() {
 	// re-entrant: taking it again here waited on itself for the whole of a
 	// suite's timeout.
 	if t.ownRepository() {
-		_ = os.RemoveAll(t.dir)
+		if err := t.dropUniverse(); err != nil {
+			return err
+		}
 	} else if _, err := git(t.root, "worktree", "remove", t.dir); err != nil {
 		_, _ = git(t.root, "worktree", "remove", "--force", t.dir)
 	}
@@ -1174,28 +1168,10 @@ func (t taskTree) releaseLanded() {
 	// being asked. Without it every conversation that ever ran a task would leave
 	// an empty directory behind forever.
 	_ = os.Remove(filepath.Dir(t.dir))
-	// The work is in, so the universe that carried it is furrow's to forget. A
-	// refusal is nothing this caller can act on and nothing it reports: what a
-	// landing leaves behind when furrow will not drop the record is one line in a
-	// listing, which is the reading [furrow.Workspace.DropFork] leaves to whoever
-	// asked. The sweep's reading is the other one.
-	_ = t.dropUniverse()
+	return nil
 }
 
-// dropUniverse tells furrow to forget a fork. The files are the session's to
-// remove and are left alone; what is dropped is the record, so that `furrow
-// forks` in somebody's project does not accumulate one line per task this
-// machine has ever run.
-//
-// IT IS THE ONE DOOR ONTO FURROW'S FORK RECORDS and it has two callers with two
-// different stakes in the answer: [taskTree.releaseLanded], for a fork whose
-// work has come home, and the sweep that reaps a session killed mid-run
-// (sweep.go's [dropSweptForks]). So it reports what happened rather than
-// deciding what a miss is worth — a fork nothing will ever name again is a
-// different kind of leftover from one whose work is safely in.
-//
-// A node that was never grounded in a universe has no record to drop and this
-// says so with a nil, which is why every caller may ask unconditionally.
+// dropUniverse retires the registered fork while its directory still exists.
 func (t taskTree) dropUniverse() error {
 	if t.rung != GroundRungUniverse || strings.TrimSpace(t.universe) == "" || strings.TrimSpace(t.ground) == "" {
 		return nil
@@ -1207,7 +1183,7 @@ func (t taskTree) dropUniverse() error {
 		// is out of reach from here.
 		return errors.New("furrow is not here to forget the fork " + t.universe + " of " + t.ground)
 	}
-	return workspace.DropFork(context.Background(), t.universe)
+	return workspace.DropFork(context.Background(), t.universe, t.dir)
 }
 
 // universeInRecord is the tree a caller holding ONLY WHAT WAS WRITTEN DOWN can
@@ -1216,13 +1192,14 @@ func (t taskTree) dropUniverse() error {
 // THE SWEEP IS WHY IT EXISTS. A landing holds the whole tree it carved; a
 // session killed mid-run leaves nothing but its checkpoint, and the reaper that
 // removes that session's folder (sweep.go's [reapSession]) is the last thing on
-// this machine that will ever know the fork's name. Rebuilding the three fields
+// this machine that will ever know the fork's name. Rebuilding the fields
 // [taskTree.dropUniverse] reads — rather than calling furrow from the sweep —
 // is what keeps one door onto those records: whatever a landing does to forget a
 // fork, a sweep does exactly the same thing, and a fourth rung added to the
 // ladder changes both at once or neither.
 func universeInRecord(record taskRecord) (taskTree, bool) {
 	tree := taskTree{
+		dir:      strings.TrimSpace(record.Worktree),
 		rung:     record.Rung,
 		ground:   strings.TrimSpace(record.Ground),
 		universe: strings.TrimSpace(record.Universe),
