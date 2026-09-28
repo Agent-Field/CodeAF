@@ -1861,6 +1861,8 @@ func (a *app) silentFor() time.Duration {
 	return time.Since(a.lastDelta)
 }
 
+var compactASCIIPunctuation = strings.NewReplacer(" · ", " - ", " → ", " to ", " — ", " - ")
+
 // divider is the compaction mark: one dim line with the fact in it, because a
 // conversation that silently lost its middle is a conversation the person
 // cannot reason about.
@@ -1871,7 +1873,13 @@ func (a *app) silentFor() time.Duration {
 // note lane's lead, so it reads as what it is — something codeaf did, said
 // once, quietly — and the mark tells it apart from the notes around it.
 func (a *app) divider(hint string, width int) string {
-	return a.pal.dim(ansi.Truncate("· ⚭ "+hint, width, glyphMore))
+	lead, more := "· ", glyphMore
+	if a.linear || a.pal.ascii {
+		lead = "- "
+		more = ">"
+		hint = compactASCIIPunctuation.Replace(hint)
+	}
+	return a.pal.dim(ansi.Truncate(lead+a.icon(tokens.GCompacted)+" "+hint, width, more))
 }
 
 // compactRow draws one compaction pass, in the two shapes it has.

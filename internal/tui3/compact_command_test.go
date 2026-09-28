@@ -9,6 +9,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 func TestCompactCommandReportsReductionAndExplainsProtectedHistory(t *testing.T) {
@@ -86,6 +87,44 @@ func TestCompactReplyWhileHomeChangesNeitherPageNorMeter(t *testing.T) {
 	drive(t, a, cmd())
 	if len(a.entries) != 0 || a.ctxTokens != 1234 || a.notices.seen[eventCompacted] {
 		t.Fatalf("late reply changed Home: entries=%v, meter=%d, compact notice=%v", a.entries, a.ctxTokens, a.notices.seen[eventCompacted])
+	}
+}
+
+func TestCompactReplyReportsSizeOnlyWhenTheContextShrinks(t *testing.T) {
+	for _, size := range []int{8615, 9000} {
+		a := newTestApp(&fakeAgent{model: "m"})
+		drive(t, a, compactedMsg{before: 8615, after: size})
+		if got := lastNote(t, a); strings.Contains(got, "about") {
+			t.Fatalf("size %d was described as a reduction: %q", size, got)
+		}
+	}
+}
+
+func TestCompactLinesUseOnlyASCIIOnTheLinearTier(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.linear = true
+	line := a.divider("compacted · summarized 4 messages · ~31k → ~13k tokens · full record in the session journal", 120)
+	drive(t, a, compactedMsg{before: 60000, after: 5000})
+	line += lastNote(t, a)
+	for _, r := range line {
+		if r > 127 {
+			t.Fatalf("linear compaction line contains non-ASCII %q: %q", r, line)
+		}
+	}
+}
+
+func TestCompactLinesUseTheSelectedGlyphTier(t *testing.T) {
+	for _, set := range []tokens.GlyphSet{tokens.Plain, tokens.NerdFont} {
+		a := newTestApp(&fakeAgent{model: "m"})
+		a.pal.icons = set
+		mark := set.Glyph(tokens.GCompacted)
+		if got := a.divider("compacted", 40); !strings.Contains(got, mark+" compacted") {
+			t.Errorf("%s divider = %q, missing selected mark %q", set, got, mark)
+		}
+		drive(t, a, compactedMsg{before: 60000, after: 5000})
+		if got := lastNote(t, a); !strings.HasPrefix(got, mark+" compacted") {
+			t.Errorf("%s command note = %q, missing selected mark %q", set, got, mark)
+		}
 	}
 }
 

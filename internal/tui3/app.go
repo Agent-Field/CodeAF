@@ -5193,10 +5193,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// THE SAME MARK AS A PASS THE ENGINE RAN ON ITS OWN ([app.divider]),
 			// so a person reading back can tell a compaction from any other note
 			// whichever door started it.
-			if msg.before > 0 && msg.after > 0 {
-				a.toldNote(fmt.Sprintf("⚭ compacted · about %d to %d tokens", msg.before, msg.after))
+			lead, separator := a.icon(tokens.GCompacted), " · "
+			if a.linear || a.pal.ascii {
+				separator = " - "
+			}
+			if msg.before > msg.after && msg.after > 0 {
+				a.toldNote(fmt.Sprintf("%s compacted%sabout %d to %d tokens", lead, separator, msg.before, msg.after))
 			} else {
-				a.toldNote("⚭ compacted")
+				a.toldNote(lead + " compacted")
 			}
 			// THE METER FOLLOWS THE PASS, as it does for one inside a turn
 			// ([app.applyEvent]'s EventCompacted). Without this the status line
