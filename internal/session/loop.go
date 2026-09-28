@@ -4825,6 +4825,9 @@ type compactionPass struct {
 	// (compact_summary.go), zero when the free rungs were enough.
 	summarized int
 	marker     string
+	// summarySkipped explains an attempted summary that did not land after
+	// the free rungs changed the conversation.
+	summarySkipped string
 	// stored says the full record went somewhere a later session can still read
 	// it — the store's thread (chatlog.go). It is what makes the difference
 	// between the two announce lines honest.
@@ -4952,6 +4955,9 @@ func (a *Agent) compactWithPolicy(ctx context.Context, hub *eventHub, policy com
 			}
 		}
 	}
+	if pass.summarized == 0 {
+		pass.summarySkipped = why
+	}
 	a.compacting = false
 	close(a.compactDone)
 	a.compactDone = nil
@@ -5032,7 +5038,10 @@ func compactionHint(pass compactionPass, before, after int) string {
 	if pass.summarized > 0 {
 		clauses = append(clauses, fmt.Sprintf("summarized %d message%s", pass.summarized, plural(pass.summarized)))
 	}
-	if before > after {
+	if pass.summarySkipped != "" {
+		clauses = append(clauses, "summary skipped: "+pass.summarySkipped)
+	}
+	if before > after && approxTokens(before) != approxTokens(after) {
 		clauses = append(clauses, fmt.Sprintf("%s → %s tokens", approxTokens(before), approxTokens(after)))
 	}
 	if pass.stored {
