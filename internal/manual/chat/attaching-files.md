@@ -197,7 +197,7 @@ at all.
 
 **The tray lights `start` even with nothing typed.** A file on the tray *is* a message, so
 `enter` starts a new conversation and sends it — and the pictures go with you into that
-conversation, because the tray belongs to you rather than to the screen. The same is true
+conversation, because home's tray is that conversation's first message. The same is true
 of `ctrl+enter`: an errand carries what was dropped into it.
 
 **The list underneath keeps working.** Home's box is a search over every project on the

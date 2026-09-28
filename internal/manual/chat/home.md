@@ -1374,11 +1374,14 @@ lands on home's tray. Choosing `/attach` on the `/` list with `enter` opens it a
 conversation's folder — the same decision `/project` makes — and updates the project
 path at the right end of the keys row.
 
-**The tray belongs to you, not to a conversation.** It survives walking into a conversation
-and back out to home, and the chips you put on it here are the chips the next conversation
-starts with. Home's tray is a reading and not a target: a chip comes off on the row above a
-conversation's own box, where the `x` is. At phone width home draws no tray row at all; the
-files are still there, and the conversation you open shows them.
+**Home's tray belongs to the conversation home starts next.** The chips you put on it here
+are the chips that conversation starts with, and nothing else rides along: an unsent draft
+or attachment in another conversation stays there and comes back when you reopen it. Leave
+home without starting anything and its tray is emptied — home opens clean on every visit.
+Home's tray is a reading and not a target: a chip comes off on the row above a
+conversation's own box, at its remove mark (`×`, or `x` in ASCII mode). At phone width
+home draws no tray row at all; the files are still there, and the conversation you start
+from home carries them.
 
 ## Change the model before starting — /model on home, the seam above the box
 
