@@ -3,21 +3,28 @@ package tui3
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
 func TestReturningHomeDetachesUnsentConversationAttachments(t *testing.T) {
-	for _, door := range []string{"escape", "home", "other place"} {
+	for _, door := range []string{"double space", "home", "other place"} {
 		t.Run(door, func(t *testing.T) {
-			a := backApp(t)
+			lab := newHomeLab(t)
+			now := lab.pin(time.Date(2026, time.September, 28, 12, 0, 0, 0, time.UTC))
+			mine := lab.session("-alpha", "aaaa000000000001", "here", lab.workspace("alpha"), now)
+			a := lab.app(mine)
 			a.chips = []chip{{path: "one.png"}, {path: "notes.txt", file: true}, {path: "two.png"}}
 			a.input.setText("compare [image #1] with [image #2]")
 			a.parks = []parked{{text: "already queued", chips: []chip{{path: "queued.png"}}}}
+			wantDraft := "compare with"
 			switch door {
-			case "escape":
-				drive(t, a, key("esc"))
+			case "double space":
+				a.input.setText("")
+				wantDraft = ""
+				drive(t, a, key(" "), key(" "))
 			case "home":
 				a.openHome()
 			case "other place":
@@ -27,7 +34,7 @@ func TestReturningHomeDetachesUnsentConversationAttachments(t *testing.T) {
 			if !a.at(pageHome) || len(a.chips) != 0 {
 				t.Fatalf("Home inherited attachments: %+v", a.chips)
 			}
-			if got := a.input.String(); got != "compare with" {
+			if got := a.input.String(); got != wantDraft {
 				t.Fatalf("conversation draft = %q", got)
 			}
 			if len(a.parks) != 1 || len(a.parks[0].chips) != 1 {
@@ -36,7 +43,7 @@ func TestReturningHomeDetachesUnsentConversationAttachments(t *testing.T) {
 			a.chips = []chip{{path: "attached-on-home.png"}}
 			drive(t, a, key("esc"))
 			if len(a.chips) != 1 {
-				t.Fatal("Escape while already Home detached its own attachment")
+				t.Fatal("Leaving Home detached its own attachment")
 			}
 		})
 	}
