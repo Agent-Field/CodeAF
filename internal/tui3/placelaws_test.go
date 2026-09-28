@@ -231,7 +231,7 @@ func TestNoPlaceFileMentionsTheBar(t *testing.T) {
 func TestTheReadingLayersImportNoApp(t *testing.T) {
 	readings := []string{
 		"switcher.go", "tasksplace.go", "standingplace.go",
-		"memoryplace.go", "spendplace.go", "searchplace.go", "placeprose.go",
+		"memoryplace.go", "spendplace.go", "placeprose.go",
 	}
 	fset := token.NewFileSet()
 	for _, name := range readings {
@@ -425,7 +425,6 @@ func TestAPlaceNeverReadsTheDiskOnADraw(t *testing.T) {
 				t.Fatalf("the %s place walked the standing store on a draw or a keystroke", place.id.word())
 				return nil
 			}
-			a.searchStore = panicSearch{t: t, place: place.id.word()}
 
 			for _, width := range []int{44, 60, 120, 200} {
 				a.width = width
@@ -510,17 +509,6 @@ func (p panicMemory) ChangedSince(since time.Time) (int, int, error) {
 
 func (p panicMemory) ListMemories(scope string, limit int) ([]store.Memory, error) {
 	p.blame("list what is remembered")
-	return nil, nil
-}
-
-// panicSearch is the conversation index on the same terms.
-type panicSearch struct {
-	t     *testing.T
-	place string
-}
-
-func (p panicSearch) SearchConversations(terms string, limit int) ([]store.ConversationHit, error) {
-	p.t.Fatalf("the %s place searched what was said while drawing its body", p.place)
 	return nil, nil
 }
 

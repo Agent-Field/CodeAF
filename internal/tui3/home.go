@@ -636,9 +636,11 @@ type homeView struct {
 	// mode and nothing to switch: a person's fingers should not have to choose
 	// what a word is for before they have finished typing it.
 	box editor
+	// The tray belongs to Home's next message, never to the conversation behind it.
+	chips []chip
 	// carrying says the tray this box's next message would take with it is
-	// holding something ([app.chips], attach.go). It is a COPY of a fact that
-	// lives on the app, kept the way [homeView.exchanges] is and for the same
+	// holding something ([homeView.chips], attach.go). It is a COPY of a fact that
+	// lives on this view, kept the way [homeView.exchanges] is and for the same
 	// reason: every question this screen asks about "is anything typed" is asked
 	// from a method on the view, and a file dropped on home leaves NOTHING in the
 	// box — an ordinary file rides the tray and writes no token — so a screen
@@ -1303,12 +1305,6 @@ func (a *app) newHomeView(world session.World, known bool) homeView {
 		// with its row, its tail and its pane exactly as they were left
 		// (homeexchange.go).
 		exchanges: a.exchanges,
-		// AND WHAT THE NEXT MESSAGE IS ALREADY CARRYING. The tray belongs to the
-		// person rather than to the screen (attach.go), so a picture attached in
-		// the conversation is a picture home's box is holding the moment it opens
-		// — and it is the reason this screen can be "typed into" with nothing
-		// typed at all ([homeView.carrying]).
-		carrying: len(a.chips) > 0,
 	}
 }
 
@@ -2547,7 +2543,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 	a.pageMsg = ""
 	// THE ROUTER IS READ FIRST, AND IT IS ONE FUNCTION FOR EVERY PLACE
 	// (placekeys.go). It claims the chords that mean the same thing wherever you
-	// are standing, alt+1…9, tab, alt+enter, alt+., the shift arrows, and `→`
+	// are standing, alt+1…8, tab, alt+enter, alt+., the shift arrows, and `→`
 	// when the row has verbs — and hands everything else straight back, so this
 	// handler keeps its right of first refusal over its own keys.
 	if cmd, took := a.placeKey(msg); took {
@@ -2971,7 +2967,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 			// run left standing here is never spent into the draft behind this
 			// screen (dropkeys.go). Ordinary typing pays two integer comparisons
 			// for it: no clock, no syscall, no extra frame.
-			return a.dropWatch(&h.box, &a.chips, at, text)
+			return a.dropWatch(&h.box, &h.chips, at, text)
 		}
 		return nil
 	}
@@ -3571,42 +3567,32 @@ func (a *app) homeStartInProject(project string) tea.Cmd {
 
 func (a *app) homeStartWithProject(text, place string) tea.Cmd {
 	if _, bash := session.BashCommand(text); bash {
-		if refusal := bashRefusal(text, len(a.chips) > 0, false); refusal != "" {
+		if refusal := bashRefusal(text, len(a.home.chips) > 0, false); refusal != "" {
 			a.home.say(refusal, "")
 			return nil
 		}
 	}
-	if (strings.TrimSpace(text) != "" || place != "" || len(a.chips) > 0) && a.updateStopsTurn() {
+	if (strings.TrimSpace(text) != "" || place != "" || len(a.home.chips) > 0) && a.updateStopsTurn() {
 		return nil
 	}
 	if !a.canStart() {
 		a.home.say(newUnavailableWord, "")
 		return nil
 	}
+	if !a.mainComposer().empty() && (a.agent == nil || a.convKey(a.file) == "") {
+		a.home.say(startDraftUnownedWord, "")
+		return nil
+	}
 	if place != "" {
-		// THE TRAY GOES WITH THE PERSON HERE TOO, and carrying it means taking
-		// it OUT of the conversation being stepped aside from before the aside
-		// is stowed. [app.detachConversation] hands the draft and the chips to
-		// the aside together, which is right for a switch — both belong to the
-		// conversation being left — and wrong for this one: these files were
-		// dropped on HOME, for the conversation home is about to open, and
-		// leaving them behind is the surface losing something somebody dropped.
-		// It is the law [app.renew] already applies on the other branch of this
-		// same door (`a.chips = side.chips`).
-		//
-		// THE DRAFT IS A DIFFERENT MATTER AND IS LEFT ALONE. The stepped-aside
-		// conversation's own unsent sentence is its own and comes back with it;
-		// home's box is not that sentence, and what was typed in it was a PLACE,
-		// which this branch has just spent.
-		carried := a.chips
-		a.chips = nil
+		// Home's cargo is handed over only after the old conversation is kept.
+		carried := a.home.chips
 		cmd, refusal := a.startBeside(place)
-		a.chips = carried
 		if refusal != "" {
 			a.home.say(refusal, "")
 			return nil
 		}
 		a.closeHome()
+		a.chips = carried
 		// AND THE PINNED MODEL COMES WITH IT. A path typed into the box is still
 		// a conversation started from home, and the rule above the box said what
 		// it would answer on (homedraft.go).
@@ -3661,9 +3647,8 @@ func (a *app) homeStartWithProject(text, place string) tea.Cmd {
 // TWO ROADS, AND WHICH ONE IS THE TARGET'S OWN ANSWER. A target somewhere other
 // than this window's workspace is [app.startBeside] — a fresh conversation
 // THERE, with the one in front stepped aside into the keeper. The window's own
-// workspace is [app.renew], which additionally TAKES THE PLACE of the
-// conversation behind home when that one is fresh and empty, and that is the
-// behaviour a person has had since before home had a target.
+// workspace is [app.renew], which replaces a fresh conversation only when it
+// has no draft to keep. Home's composer replaces anything /new carried forward.
 //
 // THE FOLDER PIN IS SPENT HERE AND THE MODEL PIN IS NOT (homedraft.go's owner
 // ruling). It is spent on the way OUT rather than on the way in, so a door that
@@ -3676,30 +3661,31 @@ func (a *app) homeOpenAtTarget() (tea.Cmd, bool) {
 // Consuming a slash draft rebuilds Home's rows and can move its cursor to a
 // different project; that new selection must not redirect the submitted work.
 func (a *app) homeOpenAt(target string) (tea.Cmd, bool) {
+	// A draft with no conversation identity cannot be put in the keeper.
+	if !a.mainComposer().empty() && (a.agent == nil || a.convKey(a.file) == "") {
+		a.home.say(startDraftUnownedWord, "")
+		return nil, false
+	}
+	carried := a.home.chips
 	where := strings.TrimSpace(target)
 	if where != "" && where != strings.TrimSpace(a.workspace) {
-		// THE TRAY GOES WITH THE PERSON, and carrying it means taking it OUT of
-		// the conversation being stepped aside from before the aside is stowed —
-		// the law the typed-path branch above states in full.
-		carried := a.chips
-		a.chips = nil
 		cmd, refusal := a.startBeside(where)
-		a.chips = carried
 		if refusal != "" {
 			a.home.say(refusal, "")
 			return nil, false
 		}
 		a.closeHome()
+		a.putComposer(composerState{chips: carried})
 		return tea.Batch(cmd, a.applyTargetPins()), true
 	}
-	a.closeHome()
-	// THE TRAY COMES TOO, and it comes through [app.renew] rather than around it:
-	// the conversation being left hands its chips to the aside and the renew hands
-	// them back, on the law that the draft goes with the PERSON (detach.go).
-	renewed, started := a.renew()
+	// Keep Home visible until creation succeeds, so a refusal keeps both drafts.
+	renewed, started := a.renewRefusing(func(word string) { a.home.say(word, "") })
 	if !started {
 		return nil, false
 	}
+	a.closeHome()
+	// /new carries the old draft by design. Home starts its own message instead.
+	a.putComposer(composerState{chips: carried})
 	return tea.Batch(renewed, a.applyTargetPins()), true
 }
 
@@ -3749,16 +3735,16 @@ func (a *app) homeDroppedLine(line string) bool {
 	// `/image ` followed by a dropped file is somebody using the command exactly
 	// as documented — and a dropped path puts its own `/` at the front of this
 	// box. Taking it out first is what tells the two apart.
-	held := len(a.chips)
+	held := len(h.chips)
 	h.box.reset()
-	took := a.droppedLineInto(&h.box, &a.chips, line)
-	if len(a.chips) == held {
+	took := a.droppedLineInto(&h.box, &h.chips, line)
+	if len(h.chips) == held {
 		// Nothing was taken — a folder, a file over the ceiling, a name that is
 		// not on this machine — and every one of those has already said so. The
 		// words go back exactly where they were typed.
 		h.box.setText(line)
 	}
-	h.carrying = len(a.chips) > 0
+	h.carrying = len(h.chips) > 0
 	h.build()
 	a.touch()
 	return took
@@ -4397,7 +4383,7 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	// THE TRAY IS READ WHERE THE FRAME IS BUILT, so what this screen believes it
 	// is holding and what the row above the box draws can never disagree
 	// ([homeView.carrying]). It is a length and a comparison.
-	a.home.carrying = len(a.chips) > 0
+	a.home.carrying = len(a.home.chips) > 0
 	// HOME IS A PLACE, SO IT PAINTS FROM THE PLACE LADDER (styles.go's
 	// [palette.onPlaces] — the conversation's inks, with the three roles THE
 	// ONE-ACCENT LAW retires re-pointed). The swap is made here as well as in

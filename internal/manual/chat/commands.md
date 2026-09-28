@@ -263,7 +263,6 @@ Canonical word, the other words it answers to, its argument form, and what it do
 |---|---|---|---|
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/status` | `/info`, `/context` | `--json` | prints the same facts as one JSON object, keys in the same order |
-| `/search` | none | none | opens the search place, everything said on this machine (also `alt+9`) |
 | `/spend` | none | none | opens the spend place, what this machine has cost, by the day (also `alt+5`) |
 | `/wall` | | | every open conversation at once, as a grid of live tiles, and the teams you group them into (also `alt+v`, or `▦` under the box) |
 | `/teams` | | | the teams page: your teams as a tree, what waits on you, and the selected team's manager conversation (also `alt+2`, or `teams` on the tab bar) |
@@ -315,12 +314,12 @@ Under the table `/help` prints the keys that have no slash command, including
 rows, directly under the `tab` row:
 
 ```
-alt+1…9        go to a place · in the tab bar's own order: home teams chats sessions spend settings standing memory search
+alt+1…8        go to a place · in the tab bar's own order: home teams chats sessions spend settings standing memory
 alt+.          on a place: what else is here · every key that place has, drawn
                on a place, tab is the next place · esc back
 ```
 
-On a Mac those read `opt+1…9` and `opt+.`; the substitution happens once, at the moment of
+On a Mac those read `opt+1…8` and `opt+.`; the substitution happens once, at the moment of
 drawing, and the words are the same.
 
 **One gesture, one spelling.** Wherever the sheet names the escape key it writes `esc
@@ -838,13 +837,7 @@ pipe it into and it is not written to a file. That also means it is wrapped to t
 of your terminal, so text copied off the screen carries the line breaks the frame put in
 and the note's leading `· `; strip those before feeding it to a parser.
 
-## /search and /spend — the typed doors onto those two places
-
-`/search` opens the **search place** — everything that has been said on this machine,
-found by the words you remember of it. It is the same place `alt+9` opens and the same
-place `tab` walks to. It takes no argument: the place *is* a box, and typing in it
-searches. With the **memory** row off nothing said is indexed, and the place says so and
-searches nothing — find the conversation from home's box instead (see the *places* page).
+## /spend — open the machine-wide spending page
 
 `/spend` opens the **spend place** — what this machine has cost, by the day, by the model
 and by what it was for. It is the same place `alt+5` opens.
@@ -1687,7 +1680,7 @@ Moving in it:
 - ↑ / ctrl+p and ↓ / ctrl+n move a row at a time. Headings are stepped over, never landed
   on. pgup/pgdown move 16. home/end jump to the ends.
 - ← and → switch sections, clamping at the ends rather than wrapping. **`tab` no longer
-  does**: it is the way to the next place — home, tasks, standing, memory, spend, search,
+  does**: it is the way to the next place — home, teams, sessions, spend,
   settings — here as everywhere else, and `shift+tab` walks that circle back. The panel's own
   bar is the second one, under the places' bar.
 - **Any printable key types into a search box** that filters across all tabs at once,

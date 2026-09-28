@@ -1401,14 +1401,12 @@ func TestOpeningOneFullscreenPageClosesTheOtherTwo(t *testing.T) {
 		"the task page":      func(a *app) { openTaskPlaceWithRows(a) },
 		"home":               func(a *app) { a.openHome() },
 		"the spend place":    func(a *app) { a.showPage(pageSpend) },
-		"the search place":   func(a *app) { a.showPage(pageSearch) },
 	}
 	up := map[string]func(*app) bool{
 		"the settings panel": func(a *app) bool { return a.at(pageSettings) },
 		"the task page":      func(a *app) bool { return a.at(pageTasks) },
 		"home":               func(a *app) bool { return a.at(pageHome) },
 		"the spend place":    func(a *app) bool { return a.at(pageSpend) },
-		"the search place":   func(a *app) bool { return a.at(pageSearch) },
 	}
 	for first := range open {
 		for second := range open {

@@ -145,7 +145,7 @@ func (a *app) homeCompleteFile(line homeLine) tea.Cmd {
 		if a.attach(full) {
 			h.say(folderAttachedWord+filepath.Base(path)+homeRidesWord, "")
 		}
-		h.carrying = len(a.chips) > 0
+		h.carrying = len(a.home.chips) > 0
 		c.done = ""
 		c.close()
 		h.build()
