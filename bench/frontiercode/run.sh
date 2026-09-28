@@ -115,7 +115,6 @@ meta "task=$TASK" "arm=codeaf-senior-dev" "model=$MODEL" "variant=$VARIANT" "see
      "platform=$PLATFORM" "cpus=$TASK_CPUS" "memory_mb=$TASK_MEM" "agent_seconds_budget=$TASK_SECS" \
      "emulated=$EMULATED" "rig_rev=${BENCH_RIG_REV:-unknown}" "bin_sha256_16=$BIN_SHA" \
      "max_cost_usd=$MAX_COST" "max_hours=$MAX_HOURS" "stage=start"
-python3 "$SNAPSHOT_DIR/grade/record.py" row --run-dir "$OUT" 2>/dev/null || \
 python3 "$RIG_DIR/grade/record.py" start --run-dir "$OUT" \
   --json "{\"task\":\"$TASK\",\"arm\":\"codeaf-senior-dev\",\"model\":\"$MODEL\",\"variant\":\"$VARIANT\",\"seed\":\"$SEED\",\"base_commit\":\"$TASK_BASE\"}"
 
