@@ -202,9 +202,9 @@ func (a *Agent) beltTokens() int {
 //
 // The cuts are tried from the most kept to the least ([Agent.summaryEndsLocked])
 // and the first one that brings the conversation under the policy's line wins;
-// when none does, the most aggressive worthwhile cut is taken, because a pass
-// that reaches for the line and misses still buys more room than one that
-// stops short of it.
+// when none does, an ordinary pass keeps the most recent three messages.
+// Recovery still takes the largest worthwhile cut because a refused request
+// needs every bit of room it can reclaim.
 func (a *Agent) planSummaryLocked(policy compactPolicy) (summaryPlan, string, bool) {
 	if !a.hasClientLocked() {
 		return summaryPlan{}, "", false
@@ -263,7 +263,9 @@ func (a *Agent) planSummaryLocked(policy compactPolicy) (summaryPlan, string, bo
 			continue
 		}
 		candidate := &cut{end: end, tokens: tokens, answer: summaryTargetTokens(most, tokens)}
-		fallback = candidate
+		if fallback == nil || policy.recovering {
+			fallback = candidate
+		}
 		if total-tokens+candidate.answer+summaryNoteTokens <= policy.summarizeTo {
 			chosen = candidate
 			break
