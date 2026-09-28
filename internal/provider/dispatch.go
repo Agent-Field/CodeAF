@@ -1238,6 +1238,13 @@ func (c *Client) recoverFromRefusal(
 			return nil, err
 		}
 		if response != nil {
+			// THE RUNG THAT LANDED IS REMEMBERED WHEN IT WAS THE TOOLS: every
+			// cheaper rung was already on and refused, so this model is not
+			// served with tools here, and the next turn is sent without them
+			// rather than refused again (toolless.go).
+			if step.bit == relaxTools {
+				c.toolless.learn(model)
+			}
 			return response, nil
 		}
 		last = payload

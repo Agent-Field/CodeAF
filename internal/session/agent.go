@@ -123,6 +123,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	_, pinned := promptProfileWord(env.Get(promptProfileEnv))
 	_, chosen := promptProfileWord(config.PromptProfile)
 	config.liveProfile = &livePromptProfile{auto: !pinned && !chosen}
+	if !config.liveProfile.auto {
+		config.liveProfile.launch = chosenPromptProfile(config)
+	}
 	config.liveProfile.current.Store(config.profile)
 	system, own := config.System, false
 	if strings.TrimSpace(system) == "" {
@@ -165,7 +168,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// Automatic lean sessions keep a dormant brain so a later switch back to
 	// full can enable memory without changing a pointer background readers
 	// hold. remembers gates every memory entry point by the live profile.
-	if config.Memory != nil && (config.hasStore() || config.liveProfile.auto) {
+	if config.Memory != nil && (config.hasStore() || config.liveProfile.auto || config.profile.chat()) {
 		agent.memory = newMemoryBrain(config.Memory)
 		agent.memoryCtx, agent.memoryStop = context.WithCancel(context.Background())
 	}

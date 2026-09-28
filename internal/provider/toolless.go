@@ -24,9 +24,31 @@ import (
 // ladder is still there for a model the catalog does not know.
 
 // toollessMemo is which models this client has already said it is sending no
-// tools to, so the notice is said once per model rather than on every turn.
+// tools to, so the notice is said once per model rather than on every turn —
+// and which models the catalog could not describe but no provider would serve
+// with tools, so the refusal is paid once per model rather than every turn.
+//
+// THE LEARNED HALF LIVES AS LONG AS THE CLIENT AND NO LONGER. It is not written
+// to the quirks file: a provider that starts serving tools next week should
+// get them back on the next launch, and a catalog that learns the model will
+// answer for it from then on.
 type toollessMemo struct {
-	said sync.Map
+	said    sync.Map
+	refused sync.Map
+}
+
+// learn records that the tools rung was what it took for this model. The
+// retry line already told the person, so the notice is marked said.
+func (m *toollessMemo) learn(model string) {
+	key := normalizeModel(model)
+	m.refused.Store(key, true)
+	m.said.Store(key, true)
+}
+
+// learned says a provider has already refused this model's tools here.
+func (m *toollessMemo) learned(model string) bool {
+	_, refused := m.refused.Load(normalizeModel(model))
+	return refused
 }
 
 // publishesNoTools says the catalog knows this model and says it takes no
@@ -42,7 +64,7 @@ func (c *Client) publishesNoTools(model string) bool {
 // leaveOffTools marks this call's body to go without tool definitions when the
 // model takes none, and tells the person the first time.
 func (c *Client) leaveOffTools(ctx context.Context, model string, knobs callKnobs, carriesTools bool) callKnobs {
-	if !carriesTools || knobs.relaxed.has(relaxTools) || !c.publishesNoTools(model) {
+	if !carriesTools || knobs.relaxed.has(relaxTools) || !(c.publishesNoTools(model) || c.toolless.learned(model)) {
 		return knobs
 	}
 	knobs.relaxed |= relaxTools

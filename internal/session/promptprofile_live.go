@@ -8,24 +8,32 @@ import (
 )
 
 // preparePromptProfile changes a conversation's prefix at a request boundary.
-// Nothing already in flight is rewritten. Explicit profile choices, caller
-// prompts and deliberately narrowed workers keep the shape their owner chose.
+// Nothing already in flight is rewritten. Caller prompts and deliberately
+// narrowed workers keep the shape their owner chose; an explicit lean or full
+// choice keeps its word, and gives way only to a model that cannot use tools
+// (chatpage.go), coming back when the conversation leaves that model.
 func (a *Agent) preparePromptProfile(model string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	state := a.config.liveProfile
-	if state == nil || !state.auto || !a.systemOwn || a.config.InTask {
+	if state == nil || !a.systemOwn || a.config.InTask {
 		return nil
 	}
-	window := a.window()
-	if a.config.ContextWindowFor != nil {
-		if known := a.config.ContextWindowFor(model); known > 0 {
-			window = known
+	next := state.launch
+	if state.auto {
+		window := a.window()
+		if a.config.ContextWindowFor != nil {
+			if known := a.config.ContextWindowFor(model); known > 0 {
+				window = known
+			}
+		}
+		next = profileFull
+		if window < leanWindowThreshold {
+			next = profileLean
 		}
 	}
-	next := profileFull
-	if window < leanWindowThreshold {
-		next = profileLean
+	if a.config.takesNoTools(model) {
+		next = profileChat
 	}
 	previous := a.config.promptProfile()
 	if previous == next {
@@ -50,7 +58,15 @@ func (a *Agent) preparePromptProfile(model string) error {
 	for _, tool := range tools {
 		held[tool.Name] = true
 	}
+	// A MODEL WITH NO TOOLS TAKES NONE BACK. What was loaded stays in
+	// profileArmed and returns with the next model that can use it.
+	if next.chat() {
+		tools = nil
+	}
 	for _, tool := range a.profileArmed {
+		if next.chat() {
+			break
+		}
 		if !held[tool.Name] {
 			tools = append(tools, tool)
 			held[tool.Name] = true

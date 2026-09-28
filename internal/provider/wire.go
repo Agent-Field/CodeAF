@@ -328,6 +328,13 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 		scrubbed.Tools = nil
 		scrubbed.ToolChoice = nil
 	}
+	// A CHOICE AMONG NO TOOLS IS NOT SENT. The SDK sets "auto" beside even an
+	// empty belt — a conversation on a model with no tools carries one
+	// (internal/session's chatpage.go) — and an endpoint that validates the
+	// pair refuses tool_choice without tools.
+	if len(scrubbed.Tools) == 0 {
+		scrubbed.ToolChoice = nil
+	}
 	if knobs.relaxed.has(relaxResponseFormat) {
 		scrubbed.ResponseFormat = nil
 	}

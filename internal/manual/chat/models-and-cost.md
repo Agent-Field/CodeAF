@@ -4061,13 +4061,19 @@ microsoft/phi-4 can't use tools, so it answers without them — it cannot read, 
 
 The conversation still works as a chat: the model answers from what it knows and from what
 you paste in. It cannot open files, run commands or look anything up, and it will say so
-if you ask it to. The request-size check counts only what is really sent, so tool
-definitions the model never receives do not make the conversation look fuller than it is.
-Pick a model that takes tools (`/model`) when you need it to work in your files.
+if you ask it to. It is also given a **short chat page** as its instructions instead of
+codeaf's working page — about 2,000 characters rather than 20,000 or more, because the
+working page is almost all about tools — and memory is off, as on a small window. Your
+project's instruction files (AGENTS.md, CLAUDE.md) are not sent to it. The request-size
+check counts only what is really sent. Pick a model that takes tools (`/model`) when you
+need it to work in your files: the next message goes out with the working page and every
+tool back, including any group you had loaded. A lean or full setting you chose still
+applies to every model that can use tools.
 
-A model the catalog does not know is still sent its tools. If no provider serving it accepts
-them, the retry line says so — it used to read `Retry 1/1: removed tools`, which did not
-say why:
+A model the catalog does not know is still sent its tools and its working page. If no
+provider serving it accepts them, the retry line says so — it used to read
+`Retry 1/1: removed tools`, which did not say why — and for the rest of that run codeaf
+sends that model no tools, so the refusal happens once rather than on every message:
 
 ```
 Retry 1/1: sent without tools, which no provider serving this model accepts — it cannot read, search or change files on this answer
