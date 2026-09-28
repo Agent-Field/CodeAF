@@ -36,7 +36,7 @@ func (a *app) conversationLater(ask func() (Conversation, error), say func(strin
 			if current {
 				a.conversationOpening = false
 			}
-			if !current || !here || a.page != page {
+			if !current || !here || !a.at(page) {
 				if conv.Agent != nil {
 					leaveOffFrame(conv.Agent)
 				}
